@@ -4,6 +4,7 @@ import lib.vmm.x64
 import lib.vmm.filesystem
 import lib.vmm.network
 import lib.vmm.threads
+import lib.vmm.determinism
 
 
 int cell_mmap(vm_cell* cell, int address, int length, int prot, int flags, int fd, int offset):
@@ -37,6 +38,7 @@ int cell_mprotect(vm_cell* cell, int address, int length, int prot):
 	if (address % 4096 != 0 || length < 0 || prot < 0 || prot > 7): return -22
 	if (address < CELL_USER_MIN || address >= CELL_RAM_SIZE || length > CELL_RAM_SIZE - address): return -12
 	int end = cell_page_end(address + length)
+	if (cell.region_state != 0 && address < CELL_STACK_LOW && end > CELL_HEAP_MAX): return -13
 	for page in range(address, end, 4096):
 		if ((load_int64(cell_pte(cell, page)) & 4) == 0): return -12
 	if (length > 0): cell_map(cell, address, length, prot)
@@ -79,7 +81,9 @@ int cell_read(vm_cell* cell, int fd, int address, int length):
 	return length
 
 
-int cell_syscall(vm_cell* cell):
+int cell_syscall_dispatch(vm_cell* cell):
+	int number = load_int64(cell.regs)
+	if (cell.deterministic && (number == 56 || number == 202)): return -13
 	int result = cell_thread_syscall(cell)
 	if (result != -4096): return result
 	result = cell_net_syscall(cell)
@@ -117,12 +121,14 @@ int cell_syscall(vm_cell* cell):
 	if (nr == 228): # clock_gettime
 		if (a != 0 && a != 1): return -22
 		if (cell_range(cell, b, 16, 1) == 0): return -14
+		if (cell.deterministic): return cell_deterministic_clock(cell, a, b)
 		return sys_clock_gettime(a, cast(int, cell.ram + b))
 	if (nr == 318): # bounded, nonblocking getrandom
 		if (c != 0 && c != 1): return -22
 		if (b == 0): return 0
 		if (cell_range(cell, a, b, 1) == 0): return -14
 		if (b > 1048576): b = 1048576
+		if (cell.deterministic): return cell_deterministic_random(cell, a, b)
 		return sys_getrandom(cell.ram + a, b, 1)
 	if (nr == 131): # sigaltstack
 		# The cell never delivers a signal, so an alternate stack is
@@ -143,3 +149,18 @@ int cell_syscall(vm_cell* cell):
 	if (nr == 8): return -9 # no seekable descriptors
 	cell.unsupported_syscall = nr
 	return -38
+
+
+int cell_syscall(vm_cell* cell):
+	if (cell.deterministic == 0): return cell_syscall_dispatch(cell)
+	char[72] header
+	save_int64(&header[0], load_int64(cell.regs))
+	save_int64(&header[8], load_int64(cell.regs + 40))
+	save_int64(&header[16], load_int64(cell.regs + 32))
+	save_int64(&header[24], load_int64(cell.regs + 24))
+	save_int64(&header[32], load_int64(cell.regs + 80))
+	save_int64(&header[40], load_int64(cell.regs + 64))
+	save_int64(&header[48], load_int64(cell.regs + 72))
+	int result = cell_syscall_dispatch(cell)
+	cell_transcript_record(cell, &header[0], result)
+	return result

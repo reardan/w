@@ -42,6 +42,14 @@ working directory; argv[0] still resolves from wexec's own), "expect_signal"
 (absent = the 900000 ms default, which the WEXEC_STEP_TIMEOUT_MS
 environment variable replaces; 0 or negative = no timeout; expiry
 SIGKILLs the child and fails the step with a distinct timed-out error).
+An explicit "sandbox": "cell" instead runs a static x64 ELF through wvmd
+("vm_socket" or WVM_SOCKET); optional "vm_template" reuses a daemon handle.
+The guest has seeded single-thread syscall services, no filesystem/network
+capabilities, a 1 MiB limit per output stream and bounded text stdin. Sandbox
+steps reject cwd/env/atomic_output and --trace; no host fallback is allowed.
+Their default timeout is capped at 600000 ms; explicit timeouts must be
+1..600000. Ordinary capture/expectation fields keep their existing behavior.
+
 See docs/projects/wexec.md, "Run-step timeouts and child cleanup", for
 the cleanup half: on platforms with process groups each worker leads a
 fresh group, swept with SIGKILL right after the worker is reaped and
@@ -159,6 +167,7 @@ import tools.manifest_json
 import tools.deps_cache
 import lib.str
 import lib.dir
+import tools.__arch__.wexec_sandbox
 
 const int wexec_cache_timeout_ms = 3000
 
@@ -661,12 +670,23 @@ char* wexec_resolve_direct_file(char* arch, char* path):
 	return name
 
 
+int wexec_target_has_sandbox(json_value* target):
+	json_value* steps = jfield_array(target, c"steps")
+	if (steps == 0): return 0
+	for i in range(json_array_length(steps)):
+		json_value* step = json_array_get(steps, i)
+		if (step.type == json_type_object() && json_object_get(step, c"sandbox") != 0): return 1
+	return 0
+
+
 # Returns the target's cache key, or 0 when the target is not cacheable
-# (no "inputs" declared, or a dependency without a key of its own).
+# (sandbox state, no inputs, or a dependency without a key of its own).
 # Dependencies must have finished before this is called.
 char* wexec_cache_key(char* name, json_value* target):
 	json_value* inputs = jfield_array(target, c"inputs")
-	if (inputs == 0): return 0
+	# A daemon handle is not an immutable image identity across restarts.
+	# Always execute sandbox steps until the protocol provides that identity.
+	if (inputs == 0 || wexec_target_has_sandbox(target)): return 0
 
 	deps_hash h
 	deps_hash_init(&h, 1)
@@ -778,7 +798,8 @@ wexec_cache_key's own gates rather than calling it, because the real
 function needs its dependencies' wexec_keys entries already populated
 by a run in progress; --explain-cache instead walks the "deps" graph
 itself, treating a target as (recursively) cacheable exactly when it
-declares "inputs" and every dependency, transitively, does too — which
+declares "inputs", has no sandbox steps, and every dependency, transitively,
+satisfies those gates too — which
 is precisely the condition wexec_cache_key checks one dependency layer
 at a time via wexec_keys.get(dep, 0). The documented trap: a dependency
 with no "inputs" of its own is a FORCE target, never stores a key, and
@@ -809,7 +830,7 @@ void wexec_reverse_strings(list[char*] items):
 # Shortest-path BFS over the "deps" graph reachable from 'start' (whose
 # own "inputs" gate the caller already checked). Returns 1 and fills
 # chain_out with [start, ..., broken] — the dependency path down to the
-# first target that does not declare "inputs" — when one is reachable;
+# first target without inputs or with sandbox steps — when reachable;
 # returns 0, leaving chain_out empty, when every transitively reachable
 # dependency declares "inputs" of its own. An unknown dependency name
 # (a manifest bug reported elsewhere, at actual scheduling time) is
@@ -827,7 +848,7 @@ int wexec_explain_find_broken(char* start, list[char*] chain_out):
 		json_value* cur_target = wexec_targets.get(cur, 0)
 		if (cur_target == 0): continue
 		if (strcmp(cur, start) != 0):
-			if (wexec_target_declares_inputs(cur_target) == 0):
+			if (wexec_target_declares_inputs(cur_target) == 0 || wexec_target_has_sandbox(cur_target)):
 				char* node = cur
 				while (node != 0):
 					chain_out.push(node)
@@ -856,6 +877,10 @@ int wexec_explain_cache(char* name):
 	wstream* out = stdout_writer()
 	stream_write_cstr(out, c"wexec: explain-cache ")
 	stream_write_line(out, name)
+	if (wexec_target_has_sandbox(target)):
+		stream_write_line(out, c"  not cacheable: sandbox state has no persistent image identity; every request runs it")
+		stream_flush(out)
+		return 0
 	if (wexec_target_declares_inputs(target) == 0):
 		stream_write_line(out, c"  declares \"inputs\": no")
 		stream_write_line(out, c"  not cacheable: FORCE-style target (no \"inputs\"); every request runs it")
@@ -881,7 +906,9 @@ int wexec_explain_cache(char* name):
 		char* broken = path[path.length - 1]
 		stream_write_cstr(out, c"  not cacheable: dependency '")
 		stream_write_cstr(out, broken)
-		stream_write_line(out, c"' declares no \"inputs\" of its own (FORCE-style), so it never stores a cache key — every target downstream of it silently loses caching too, with no diagnostic at build time")
+		if (wexec_target_has_sandbox(wexec_targets.get(broken, 0))):
+			stream_write_line(out, c"' uses sandbox state with no persistent image identity, so it and its downstream targets run on every request")
+		else: stream_write_line(out, c"' declares no \"inputs\" of its own (FORCE-style), so it never stores a cache key — every target downstream of it silently loses caching too, with no diagnostic at build time")
 		stream_flush(out)
 		return 0
 	stream_write_line(out, c"  every declared dependency (transitively) declares \"inputs\" and can store a cache key")
@@ -1512,6 +1539,14 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (count < 1):
 		wexec_step_error(target_name, step_index, c"\"cmd\" is empty")
 		return 1
+	json_value* sandbox = json_object_get(step, c"sandbox")
+	if (sandbox != 0):
+		int valid = sandbox.type == json_type_string()
+		if (valid): valid = strcmp(sandbox.string_value, c"cell") == 0
+		if (json_object_get(step, c"cwd") != 0 || json_object_get(step, c"env") != 0 || json_object_get(step, c"atomic_output") != 0): valid = 0
+		if (valid == 0):
+			wexec_step_error(target_name, step_index, c"sandbox must be cell; cwd, env and atomic_output are unsupported")
+			return 1
 
 	# The win64 self-host targets prefix their PE binaries with "wine" so
 	# the one manifest works on Linux; on Windows the binaries run
@@ -1557,9 +1592,26 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		return 1
 	char* cwd = jfield_string(step, c"cwd")
 	if (cwd != 0): program = wexec_absolute_program(program)
-	process_result* result = process_run(program, argv, opts, stdin_text, timeout_ms)
+	process_result* result = 0
+	if (sandbox != 0):
+		int valid = 1
+		char* socket_path = jfield_string(step, c"vm_socket")
+		if (socket_path == 0): socket_path = env_get(c"WVM_SOCKET")
+		int template_id = 0
+		json_value* selected = json_object_get(step, c"vm_template")
+		if (selected != 0):
+			if (selected.type != json_type_int() || selected.int_value < 1): valid = 0
+			else: template_id = selected.int_value
+		if (json_object_get(step, c"timeout_ms") == 0 && timeout_ms > 600000): timeout_ms = 600000
+		if (valid && socket_path != 0 && timeout_ms > 0 && timeout_ms <= 600000):
+			char* image = wexec_absolute_program(program)
+			strv_set(argv, 0, image)
+			result = wvm_client_cell_run(socket_path, image, template_id, argv, stdin_text, timeout_ms)
+			if (image != program): free(image)
+		else: wexec_step_error(target_name, step_index, c"cell sandbox requires VM socket, valid template, and timeout_ms in 1..600000")
+	else: result = process_run(program, argv, opts, stdin_text, timeout_ms)
 	free(opts)
-	if ((result == 0) && os_windows()): result = wexec_windows_builtin(argv, count)
+	if ((result == 0) && sandbox == 0 && os_windows()): result = wexec_windows_builtin(argv, count)
 	free(cast(char*, argv))
 	if (result == 0):
 		if (staged_path != 0): unlink(staged_path)

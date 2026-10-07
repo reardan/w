@@ -53,6 +53,7 @@ int entry_optional
 # (e.g. reserving extra program headers for dynamic linking), so the finish
 # pass patches these recorded positions instead of hardcoded constants.
 int elf_pie   /* explicit x64 Linux --pie; other targets stay unchanged */
+int x64_syscall_abi /* 1: KVM ring-3 vmcall, 0: native Linux syscall */
 int phdr_table_pos
 int entry_call_disp_pos
 

@@ -7,6 +7,11 @@ void sym_stub_alias(char* name); /* defined in symbol_table */
 void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 
 
+void x64_runtime_syscall():
+	if (x64_syscall_abi): emit(3, c"\x0f\x01\xc1") /* vmcall */
+	else: emit(2, c"\x0f\x05") /* syscall */
+
+
 # The OS-independent x64 stubs: pure register/stack operations with no
 # syscall instructions, shared between the Linux ELF target
 # (define_asm_functions_x64 below) and the win64 PE target
@@ -74,12 +79,16 @@ void define_asm_functions_x64():
 	# a call with any other argument count would read garbage slots.
 	sym_define_declare_global_function_arity(c"syscall", 4)
 	x64_asm(c"mov rax,[rsp+0x20]; mov rdi,[rsp+0x18]; mov rsi,[rsp+0x10]")
-	x64_asm(c"mov rdx,[rsp+8]; syscall; ret")
+	x64_asm(c"mov rdx,[rsp+8]")
+	x64_runtime_syscall()
+	x64_asm(c"ret")
 
 	sym_define_declare_global_function_arity(c"syscall7", 7)
 	x64_asm(c"mov rax,[rsp+0x38]; mov rdi,[rsp+0x30]; mov rsi,[rsp+0x28]")
 	x64_asm(c"mov rdx,[rsp+0x20]; mov r10,[rsp+0x18]; mov r8,[rsp+0x10]")
-	x64_asm(c"mov r9,[rsp+8]; syscall; ret")
+	x64_asm(c"mov r9,[rsp+8]")
+	x64_runtime_syscall()
+	x64_asm(c"ret")
 
 	# thread_create(func): clone with a fresh 4MB stack whose top slot
 	# holds func, so the child's fall-through "ret" jumps straight into
@@ -88,24 +97,28 @@ void define_asm_functions_x64():
 	# The child zeroes rbp so its frame-pointer chain ends at the thread
 	# function instead of running into the parent's frames.
 	sym_define_declare_global_function(c"thread_create")
-	x64_asm(c"call .+0x2a")   # stack_create, emitted immediately after this stub
+	int stack_call = codepos
+	emit(5, c"\xe8....") # patched once the variable-width stub is emitted
 	x64_asm(c"lea rcx,[rax+0x3ffff0]; mov rdx,[rsp+8]; mov [rcx],rdx")
 	x64_asm(c"mov edi,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
 	x64_asm(c"mov rsi,rcx")
 	x64_asm(c"mov eax,0x38")   # clone
-	x64_asm(c"syscall; test eax,eax")
+	x64_runtime_syscall()
+	x64_asm(c"test eax,eax")
 	x64_asm(c"jne .+4")   # parent: keep rbp
 	x64_asm(c"xor ebp,ebp")   # child: the frame-pointer chain ends here
 	x64_asm(c"ret")
 
 	# stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
+	save_int32(code + stack_call + 1, codepos - stack_call - 5)
 	sym_define_declare_global_function(c"stack_create")
 	x64_asm(c"xor edi,edi; mov esi,0x400000; mov edx,3; push dword 0x122")
 	x64_asm(c"pop r10")
 	x64_asm(c"push byte -1")   # fd for MAP_ANONYMOUS
 	x64_asm(c"pop r8; xor r9,r9")
 	x64_asm(c"mov eax,9")   # mmap
-	x64_asm(c"syscall; ret")
+	x64_runtime_syscall()
+	x64_asm(c"ret")
 
 	# Thread-local storage (docs/projects/thread_local.md).
 	# __w_tls_size(): the per-thread block size, patched at finish.
@@ -119,6 +132,7 @@ void define_asm_functions_x64():
 	x64_asm(c"mov rsi,[rsp+8]; mov [rsi],rsi")
 	x64_asm(c"mov edi,0x1001")   # ARCH_SET_GS
 	x64_asm(c"mov eax,0x9e")   # arch_prctl
-	x64_asm(c"syscall; ret")
+	x64_runtime_syscall()
+	x64_asm(c"ret")
 
 	define_asm_functions_x64_portable()

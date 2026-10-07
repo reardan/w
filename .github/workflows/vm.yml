@@ -1,0 +1,72 @@
+name: VM integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vm:
+    name: Required KVM, Linux workspace snapshots and host quotas
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install kernel build and VM dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential flex bison bc libelf-dev libssl-dev \
+            qemu-system-x86 curl xz-utils
+          test -c /dev/kvm
+          sudo chmod a+rw /dev/kvm
+
+      - name: Build pinned Linux fixture
+        run: |
+          curl --fail --location --retry 3 \
+            https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.1.tar.xz \
+            --output "$RUNNER_TEMP/linux.tar.xz"
+          echo "0193b1d86dd372ec891bae799f6da20deef16fc199f30080a4ea9de8cef0c619  $RUNNER_TEMP/linux.tar.xz" | sha256sum --check
+          tar -xJf "$RUNNER_TEMP/linux.tar.xz" -C "$RUNNER_TEMP"
+          ./tools/wvm_kernel.sh "$RUNNER_TEMP/linux-6.12.1" "$RUNNER_TEMP/wvm-kernel" "$(nproc)"
+          echo "WVM_TEST_KERNEL=$RUNNER_TEMP/wvm-kernel/arch/x86/boot/bzImage" >> "$GITHUB_ENV"
+
+      - name: Delegate test cgroup
+        run: |
+          parent="/sys/fs/cgroup/wvm-ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo '+cpu +memory +pids' | sudo tee /sys/fs/cgroup/cgroup.subtree_control
+          sudo mkdir "$parent"
+          echo '+cpu +memory +pids' | sudo tee "$parent/cgroup.subtree_control"
+          sudo chown -R "$(id -u):$(id -g)" "$parent"
+          echo "WVM_TEST_CGROUP=$parent" >> "$GITHUB_ENV"
+
+      - name: Execute all required VM gates
+        run: |
+          set -o pipefail
+          bash tools/wvm_ci.sh 2>&1 | tee vm-tests.log
+
+      - name: Remove delegated cgroup
+        if: always()
+        run: |
+          if [ -n "${WVM_TEST_CGROUP:-}" ] && [ -d "$WVM_TEST_CGROUP" ]; then
+            sudo rmdir "$WVM_TEST_CGROUP"
+          fi
+
+      - name: Upload VM results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: vm-integration
+          path: |
+            vm-tests.log
+            ${{ runner.temp }}/wvm-kernel/wvm-kernel.sha256
+          retention-days: 14

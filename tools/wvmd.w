@@ -3,6 +3,7 @@
 import lib.vmm.control
 import lib.vmm.box_snapshot
 import lib.wvm_client
+import lib.vmm.cell_worker
 
 
 char* wvmd_hex(char* data, int length):
@@ -17,6 +18,9 @@ char* wvmd_hex(char* data, int length):
 
 
 void wvmd_worker(json_value* config):
+	if (vms_worker_snapshot != 0):
+		vms_cell_worker(config)
+		return
 	vm_box_options* options = box_options_new()
 	options.kernel = vms_text(config, c"kernel")
 	options.initrd = vms_text(config, c"initrd")
@@ -26,7 +30,9 @@ void wvmd_worker(json_value* config):
 	options.cpus = vms_number(config, c"cpus", 1)
 	options.memory_mb = vms_number(config, c"memory_mb", 256)
 	options.timeout_ms = vms_number(config, c"timeout_ms", 30000)
-	vm_box_session* box = box_session_open(options)
+	vm_box_session* box = 0
+	if (vms_worker_box != 0): box = box_snapshot_restore_in(vms_worker_box, options.timeout_ms, options.channel_directory)
+	else: box = box_session_open(options)
 	free(options)
 	json_value* ready = json_object()
 	int status = 0
@@ -44,7 +50,13 @@ void wvmd_worker(json_value* config):
 		char* operation = vms_text(request, c"operation")
 		if (operation != 0):
 			status = 125
-			if (strcmp(operation, c"snapshot") == 0):
+			if (strcmp(operation, c"template") == 0):
+				box_snapshot* captured = box_snapshot_create_cow(box, 30000)
+				if (captured != 0):
+					if (vm_backing_send(vms_worker_export, captured.fd) && vm_backing_send(vms_worker_export, captured.ram_fd)): status = 0
+					else: status = box_status_transport
+					box_snapshot_free(captured)
+			else if (strcmp(operation, c"snapshot") == 0):
 				box_snapshot* captured = box_snapshot_create(box, 30000)
 				if (captured != 0):
 					box_snapshot_free(snapshot)

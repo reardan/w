@@ -79,7 +79,8 @@ void elf_start_64():
 	entry_call_disp_pos = codepos - 4
 
 	/* exit cleanly if _main returns: mov edi,eax ; mov eax,231 (exit_group) ; syscall */
-	emit(9, c"\x89\xc7\xb8\xe7\x00\x00\x00\x0f\x05")
+	emit(7, c"\x89\xc7\xb8\xe7\x00\x00\x00")
+	x64_runtime_syscall()
 
 	define_asm_functions_x64()
 

@@ -140,7 +140,8 @@ void elf_header_fields(int machine, int is64):
 	elf_emit_word(is64, base_code_offset + header_size + program_header_size * elf_program_header_count() + elf_build_id_note_size()) /* entry */
 	elf_emit_word(is64, header_size) /* program header offset */
 	elf_emit_word(is64, 0) /* section header offset */
-	emit_int32(0) /* flags */
+	if (x64_syscall_abi): emit_int32(0x57564d01) /* W VM syscall ABI v1 */
+	else: emit_int32(0) /* flags */
 	emit_int16(header_size) /* size of this elf header */
 	emit_int16(program_header_size) /* size per program header */
 	emit_int16(elf_program_header_count()) /* number of program headers */

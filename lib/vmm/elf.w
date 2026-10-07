@@ -11,6 +11,8 @@ int cell_elf_load(vm_cell* cell, char* image, int length):
 	if (load_int16(image + 16) != 2 || load_int16(image + 18) != 62 || load_int32(image + 20) != 1):
 		return cell_fail(cell, c"requires a static x64 ET_EXEC image")
 	if (load_int16(image + 52) != 64 || load_int16(image + 54) != 56): return cell_fail(cell, c"invalid ELF header sizes")
+	int abi = load_int32(image + 48)
+	if (abi != 0 && abi != 0x57564d01): return cell_fail(cell, c"unsupported ELF syscall ABI")
 	int phoff = load_int64(image + 32)
 	int count = load_int16(image + 56)
 	if (count == 0 || count > 128 || phoff < 64 || phoff > length): return cell_fail(cell, c"invalid program header table")
@@ -66,6 +68,7 @@ int cell_elf_load(vm_cell* cell, char* image, int length):
 	cell.heap_start = cell_page_end(high)
 	cell.heap_end = cell.heap_start
 	cell.loaded = 1
+	cell.syscall_abi = abi != 0
 	return 1
 
 

@@ -101,6 +101,67 @@ header directives; the manifest step is a single `bin/wfixture`
 invocation (`tools/wfixture.w`, same substring semantics as the step
 fields it replaces).
 
+## Cell sandbox steps
+
+An explicit `"sandbox": "cell"` step runs a static x64 ELF through a running
+`wvmd` daemon. Compilation remains a separate ordinary step. For example:
+
+```json
+{
+  "cmd": ["bin/my_test_x64", "argument"],
+  "sandbox": "cell",
+  "vm_socket": "bin/wvmd.sock",
+  "timeout_ms": 5000,
+  "stdin": "bounded text input",
+  "expect_stdout": "passed"
+}
+```
+
+Source-owned targets can put the same fields after `step=` on its
+`# wbuild:` line:
+
+```w
+# wbuild: target=my_cell_test dep=wv2
+# wbuild: step="bin/wv2 x64 tests/my_test.w -o bin/my_test_x64"
+# wbuild: step="bin/my_test_x64 argument" sandbox="cell" vm_socket="bin/wvmd.sock" timeout=5000 expect_stdout="passed"
+```
+
+An optional `vm_template=N` on that run-step line selects an existing
+positive daemon handle. `sandbox=`, `vm_socket=`, and `vm_template=` are
+step fields, not target-wide directives. The directive `timeout=` becomes
+the JSON step's `timeout_ms`. Omit `vm_socket=` to use `WVM_SOCKET`.
+
+`vm_socket` defaults to `WVM_SOCKET`. There is no daemon auto-start or host
+execution fallback; missing/unsupported transports fail the step. An optional
+positive `vm_template` reuses a previously created cell template handle,
+allowing parallel build workers to share immutable pages. With no handle,
+the client creates a temporary template, admits a session, revokes the handle
+and destroys the session after execution. A reused handle selects the loaded
+program; `cmd` supplies its argv. The daemon never compiles the source.
+Targets containing sandbox steps run on every request, including when
+they declare cache inputs: daemon handles do not identify immutable images
+across restarts. Their dependent targets also cannot reuse cached results.
+
+Cells have no filesystem/network capabilities or inherited environment. The
+helper selects seed 0 for repeatable clock/random syscall services and a
+single guest thread; CPU instructions and real-time deadlines are not
+virtualized. Cwd/env/atomic_output fields and `--trace` are rejected for
+sandbox steps. Unknown sandbox values fail closed. Windows builds retain a
+stub that rejects sandbox execution instead of importing an unavailable
+socket backend.
+
+Sandbox timeouts must be 1..600000 ms; an absent step timeout caps the usual
+default at 600000. Output is bounded to 1 MiB per stream. Stdin is text and
+shares the daemon's bounded command frame with argv; oversized/embedded-NUL
+requests fail. Normal expectation/status checks and host capture files
+(`stdout_file`, `stderr_file`) retain their existing behavior. Guest timeout
+returns 124 and execution/setup/output-limit errors return 125. Session and
+handle leases bound cleanup if a build client disappears mid-operation.
+
+See [VM control and lifetime rules](vms.md#session-daemon-and-harness-client).
+`wexec_cell_test` exercises real daemon/KVM roundtrips, template reuse and
+failure paths that must never execute a command on the host.
+
 ## Manifest generation
 
 Most test targets are pure boilerplate — "compile `dir/X_test.w` to
