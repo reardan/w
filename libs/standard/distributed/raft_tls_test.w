@@ -53,13 +53,13 @@ generator int rtt_client(rtt_pair* pair):
 		m.from = 99
 		assert_equal(0, raft_tls_send(s, m))
 		int len = raft_wire_size(m)
-		char* frame = malloc(len + 4)
+		char* frame = cast(char*, malloc(len + 4))
 		store_le32(frame, len)
 		raft_wire_encode(m, frame + 4)
 		assert_equal(len + 4, tls_write(s.tls, frame, len + 4))
 		free(frame)
 	else if (pair.mode == 7):
-		char* header = malloc(4)
+		char* header = cast(char*, malloc(4))
 		store_le32(header, (1 << 20) + 1)
 		assert_equal(4, tls_write(s.tls, header, 4))
 		free(header)
@@ -116,7 +116,7 @@ generator int rtt_rotate_during_handshake(rtt_pair* pair):
 
 
 void rtt_exchange(raft_tls_config* a, raft_tls_config* b, int mode):
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	# Bind an ephemeral TCP port; exercise actual remote transport sockets.
 	int listener = socket_tcp_ipv4()
 	assert1(listener >= 0)
@@ -215,8 +215,8 @@ void test_deadline_and_admission_bounds():
 	raft_tls_config* cfg = rtt_config(node)
 	cfg.timeout_ms = 10
 	cfg.max_sessions = 1
-	int* first = malloc(2 * __word_size__)
-	int* second = malloc(2 * __word_size__)
+	int* first = cast(int*, malloc(2 * __word_size__))
+	int* second = cast(int*, malloc(2 * __word_size__))
 	assert1(socket_pair(first) >= 0)
 	assert1(socket_pair(second) >= 0)
 	task_scheduler* scheduler = task_scheduler_new()
@@ -234,13 +234,13 @@ void test_deadline_and_admission_bounds():
 
 
 void test_absolute_deadline_on_ready_socket():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	assert1(socket_pair(fds) >= 0)
 	assert_equal(4, socket_send(fds[0], c"data", 4, msg_nosignal()))
 	tls_conn* c = tls_conn_new(fds[1], 0, 0)
 	c.has_io_deadline = 1
 	c.io_deadline_ms = time_monotonic_ms() - 1
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	assert_equal(0, tls_io_recv_full(c, buf, 4))
 	assert_equal(0, tls_io_send_all(c, c"data", 4))
 	# The readable bytes were not consumed after the deadline.

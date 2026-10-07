@@ -229,7 +229,7 @@ void test_learner_snapshot_wire_and_invalid_identity_metadata():
 	m.snap_config.push(1)
 	m.snap_config.push(-3)
 	int size = raft_wire_size(m)
-	char* encoded = malloc(size)
+	char* encoded = cast(char*, malloc(size))
 	raft_wire_encode(m, encoded)
 	raft_msg* decoded = raft_wire_decode(encoded, size)
 	assert1(cast(int, decoded) != 0)

@@ -127,7 +127,7 @@ int durable_apply_snapshot_matches(lsm* store, u64* index, u64* term):
 int durable_apply_install_pending(raft* r, lsm* store):
 	if (raft_has_pending_snapshot(r) == 0): return 1
 	if (u64_fits_int(r.pending_snap_index) == 0): return 0
-	char* position = malloc(12)
+	char* position = cast(char*, malloc(12))
 	store_le32(position, u64_to_int(r.pending_snap_index))
 	u64_save_le(position + 4, r.snap_last_term)
 	snapshot_file* source = r.pending_snap_file

@@ -56,7 +56,7 @@ raft_tls_peer* rts_peer(raft_tls_config* cfg, int id):
 
 
 char* rts_copy(char* data, int len):
-	char* out = malloc(len)
+	char* out = cast(char*, malloc(len))
 	mem_copy(out, data, len)
 	return out
 
@@ -197,7 +197,7 @@ raft_tls_session* raft_tls_connect(raft_tls_config* cfg, int fd, int peer_id):
 	if (c != 0):
 		char* alpn = tls_alpn_selected(c)
 		if (alpn != 0 && strcmp(alpn, c"w-raft/1") == 0):
-			char* auth = malloc(76)
+			char* auth = cast(char*, malloc(76))
 			store_le32(auth, 0x31545257)
 			mem_copy(auth + 4, cfg.cluster, 32)
 			store_le32(auth + 36, cfg.node.self_id)
@@ -238,7 +238,7 @@ raft_tls_session* raft_tls_accept(raft_tls_config* cfg, int fd):
 	int generation = 0
 	int config_version = cfg.node.config_version
 	int ok = tls_server_do_handshake(c)
-	char* auth = malloc(76)
+	char* auth = cast(char*, malloc(76))
 	if (ok): ok = rts_read_full(c, auth, 76)
 	if (ok):
 		ok = load_le32(auth) == 0x31545257 && rts_equal(auth + 4, cfg.cluster, 32) && load_le32(auth + 40) == cfg.node.self_id
@@ -274,7 +274,7 @@ int raft_tls_send(raft_tls_session* s, raft_msg* m):
 	int len = raft_wire_size(m)
 	if (len < 0 || len > (1 << 20)): return 0
 	s.busy = 1
-	char* frame = malloc(len + 4)
+	char* frame = cast(char*, malloc(len + 4))
 	store_le32(frame, len)
 	raft_wire_encode(m, frame + 4)
 	task_deadline_scope scope
@@ -298,14 +298,14 @@ raft_msg* raft_tls_recv(raft_tls_session* s):
 	task_deadline_scope scope
 	task_deadline_enter(&scope, s.config.timeout_ms)
 	s.tls.io_deadline_ms = task_current().deadline_ms
-	char* header = malloc(4)
+	char* header = cast(char*, malloc(4))
 	int ok = rts_read_full(s.tls, header, 4)
 	int len = 0
 	if (ok): len = load_le32(header)
 	free(header)
 	raft_msg* m = 0
 	if (ok && len > 0 && len <= (1 << 20)):
-		char* data = malloc(len)
+		char* data = cast(char*, malloc(len))
 		ok = rts_read_full(s.tls, data, len)
 		if (ok && rts_live(s)): m = raft_wire_decode(data, len)
 		free(data)

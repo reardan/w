@@ -41,7 +41,7 @@ snapshot_file* snapshot_file_new(file_ops* ops, char* prefix):
 	s.refs = 1
 	s.hash_state = cast(int*, malloc(8 * __word_size__))
 	s.hash_schedule = cast(int*, malloc(64 * __word_size__))
-	s.hash_tail = malloc(128)
+	s.hash_tail = cast(char*, malloc(128))
 	for i in range(8): s.hash_state[i] = sha256_be32(sha256_h0_table() + i * 4)
 	return s
 
@@ -104,7 +104,7 @@ int snapshot_file_seal(snapshot_file* s):
 	if (s.hash_dirty):
 		for i in range(8): s.hash_state[i] = sha256_be32(sha256_h0_table() + i * 4)
 		s.hash_tail_len = 0
-		char* buf = malloc(SNAPSHOT_FILE_CHUNK)
+		char* buf = cast(char*, malloc(SNAPSHOT_FILE_CHUNK))
 		int offset = 0
 		int ok = 1
 		while (ok && offset < s.length):

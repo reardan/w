@@ -44,12 +44,12 @@ void stream_drop(list[raft_msg*] messages):
 snapshot_file* stream_fixture(char* path):
 	snapshot_file* s = snapshot_file_new(cast(file_ops*, 0), path)
 	assert1(cast(int, s) != 0)
-	char* header = malloc(12)
+	char* header = cast(char*, malloc(12))
 	mem_copy(cast(char*, header), c"LSMX", 4)
 	store_le32(header + 4, 1)
 	store_le32(header + 8, 13)
 	assert1(snapshot_file_append(s, header, 12))
-	char* value = malloc(SNAPSHOT_FILE_CHUNK)
+	char* value = cast(char*, malloc(SNAPSHOT_FILE_CHUNK))
 	for i in range(SNAPSHOT_FILE_CHUNK): value[i] = i % 251
 	for i in range(13):
 		store_le32(header, 1)
@@ -110,7 +110,7 @@ void test_stream_snapshot_end_to_end():
 		assert_equal(raft_msg_snapshot_chunk, chunk.type)
 		assert1(chunk.snap_len <= SNAPSHOT_FILE_CHUNK)
 		int wire_len = raft_wire_size(chunk)
-		char* wire = malloc(wire_len)
+		char* wire = cast(char*, malloc(wire_len))
 		raft_wire_encode(chunk, wire)
 		raft_msg* decoded = raft_wire_decode(wire, wire_len)
 		assert1(cast(int, decoded) != 0)
@@ -199,7 +199,7 @@ void test_stream_publication_failures():
 		assert1(lsm_put(store, c"A", c"old", 3))
 		assert1(lsm_flush(store))
 		snapshot_file* s = snapshot_file_new(cast(file_ops*, 0), prefix)
-		char* blob = malloc(24)
+		char* blob = cast(char*, malloc(24))
 		mem_copy(cast(char*, blob), c"LSMX", 4)
 		store_le32(blob + 4, 1)
 		store_le32(blob + 8, 1)
@@ -228,7 +228,7 @@ void test_stream_limits_and_checksum():
 	char* prefix = stream_path(c"_limits")
 	for length in range(1, 140):
 		snapshot_file* s = snapshot_file_new(cast(file_ops*, 0), prefix)
-		char* data = malloc(140)
+		char* data = cast(char*, malloc(140))
 		for i in range(length): data[i] = i
 		assert1(snapshot_file_append(s, data, length))
 		assert1(snapshot_file_seal(s))
@@ -282,7 +282,7 @@ void test_stream_wal_publication_failures():
 		else:
 			assert_equal(2, raft_snap_base(r))
 			assert1(cast(int, r.pending_snap_file) != 0)
-			char* bytes = malloc(4)
+			char* bytes = cast(char*, malloc(4))
 			assert1(snapshot_file_read(r.pending_snap_file, 0, bytes, 3))
 			bytes[3] = 0
 			assert_strings_equal(c"new", bytes)

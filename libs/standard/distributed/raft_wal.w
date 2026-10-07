@@ -400,7 +400,7 @@ int raft_wal_write_append(wal* target, raft* r, int i):
 int raft_wal_write_snapshot_file(wal* target, raft* r):
 	int count = r.snap_config.length
 	int size = 29 + 4 * count
-	char* header = malloc(size)
+	char* header = cast(char*, malloc(size))
 	header[0] = raft_wal_tag_stream_begin
 	u64_save_le(header + 1, r.snap_last_index)
 	u64_save_le(header + 9, r.snap_last_term)
@@ -410,7 +410,7 @@ int raft_wal_write_snapshot_file(wal* target, raft* r):
 	store_le32(header + 25 + 4 * count, r.snap_hash)
 	int ok = wal_append(target, header, size)
 	free(header)
-	char* chunk = malloc(SNAPSHOT_FILE_CHUNK + 5)
+	char* chunk = cast(char*, malloc(SNAPSHOT_FILE_CHUNK + 5))
 	chunk[0] = raft_wal_tag_stream_chunk
 	int offset = 0
 	while (ok && offset < r.snap_len):

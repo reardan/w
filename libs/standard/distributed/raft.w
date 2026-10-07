@@ -852,7 +852,7 @@ raft_msg* raft_make_install_snapshot(raft* r, int peer):
 		m.snap_len = r.snap_len - offset
 		if (m.snap_len > RAFT_SNAPSHOT_CHUNK): m.snap_len = RAFT_SNAPSHOT_CHUNK
 	if (cast(int, r.snap_file) != 0):
-		m.snap_data = malloc(m.snap_len)
+		m.snap_data = cast(char*, malloc(m.snap_len))
 		if (snapshot_file_read(r.snap_file, offset, m.snap_data, m.snap_len) == 0):
 			r.snapshot_failed = 1
 			m.snap_len = 0

@@ -13,7 +13,7 @@ snapshot_file* lsm_export_file(lsm* l, char* prefix):
 	if (l.failed || l.tables.length > LSM_STREAM_TABLE_LIMIT): return 0
 	snapshot_file* s = snapshot_file_new(l.ops, prefix)
 	if (cast(int, s) == 0): return 0
-	char* header = malloc(12)
+	char* header = cast(char*, malloc(12))
 	mem_copy(cast(char*, header), c"LSMX", 4)
 	store_le32(header + 4, lsm_export_version)
 	store_le32(header + 8, 0)
@@ -57,8 +57,8 @@ snapshot_file* lsm_export_file(lsm* l, char* prefix):
 # Read/validate one LSMX record, then stream it directly into the unpublished
 # SST. Only previous/current key and a 32KiB value window remain resident.
 int lsm_stream_records(snapshot_file* s, file_ops* ops, int fd, int count, bloom_filter* bloom):
-	char* header = malloc(9)
-	char* buf = malloc(SNAPSHOT_FILE_CHUNK)
+	char* header = cast(char*, malloc(9))
+	char* buf = cast(char*, malloc(SNAPSHOT_FILE_CHUNK))
 	char* previous = 0
 	int offset = 12
 	int index_bytes = 0
@@ -73,7 +73,7 @@ int lsm_stream_records(snapshot_file* s, file_ops* ops, int fd, int count, bloom
 			index_bytes = index_bytes + klen
 			if (index_bytes > LSM_STREAM_INDEX_LIMIT): ok = 0
 		if (ok):
-			key = malloc(klen + 1)
+			key = cast(char*, malloc(klen + 1))
 			ok = snapshot_file_read(s, offset + 4, key, klen)
 			key[klen] = 0
 			if (strlen(key) != klen): ok = 0
@@ -109,7 +109,7 @@ int lsm_stream_records(snapshot_file* s, file_ops* ops, int fd, int count, bloom
 
 int lsm_import_file_checked(lsm* l, snapshot_file* s, char* expected_key, char* expected_value, int expected_len):
 	if (l.failed || s.length < 12 || s.length > SNAPSHOT_FILE_LIMIT || snapshot_file_seal(s) == 0): return 0
-	char* header = malloc(16)
+	char* header = cast(char*, malloc(16))
 	if (snapshot_file_read(s, 0, header, 12) == 0):
 		free(header)
 		return 0
@@ -134,7 +134,7 @@ int lsm_import_file_checked(lsm* l, snapshot_file* s, char* expected_key, char* 
 		return 0
 	bloom_filter* bloom = bloom_new(sstable_bloom_bits(count), sstable_bloom_probes)
 	int blen = bloom_serialized_size(bloom)
-	char* bdata = malloc(blen)
+	char* bdata = cast(char*, malloc(blen))
 	bloom_serialize(bloom, bdata)
 	mem_copy(cast(char*, header), c"WSST", 4)
 	store_le32(header + 4, sstable_version)

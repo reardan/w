@@ -55,7 +55,7 @@ void followup_apply(followup_owner* owner):
 			char* count = itoa(followup_counter(owner.store) + 1)
 			lsm_batch_put(batch, c"counter", count, strlen(count))
 			free(count)
-			char* padding = malloc(65536)
+			char* padding = cast(char*, malloc(65536))
 			mem_fill[char](padding, 37, 65536)
 			lsm_batch_put(batch, c"padding", padding, 65536)
 			free(padding)
@@ -173,7 +173,7 @@ void test_snapshot_wal_rejects_invalid_boundaries_and_members():
 		fake_fs* files = fake_fs_new(variant)
 		wal_recovery recovery
 		wal* log = wal_open_policy_with_ops(files.ops, c"invalid", WAL_RECOVER_STRICT_TRUNCATE, &recovery)
-		char* header = malloc(37)
+		char* header = cast(char*, malloc(37))
 		mem_fill[char](header, 0, 37)
 		int streamed = variant % 2
 		header[0] = raft_wal_tag_snapshot
