@@ -175,4 +175,6 @@ int dyn_import_get_size(int i):
 
 
 int dyn_import_get_lib(int i):
-	return load_i(dyn_import_lib + i * 4, 4)
+	# Preserve the -1 sentinel for externs declared before any c_lib.
+	# load_i zero-extends 4-byte slots on a 64-bit host.
+	return load_int32(dyn_import_lib + i * 4)

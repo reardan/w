@@ -1057,6 +1057,7 @@ raft_msg* raft_test_install(int from, int to, int term, int snap_index, int snap
 	u64_set_int(m.prev_log_index, snap_index)
 	u64_set_int(m.prev_log_term, snap_term)
 	u64_set_int(m.leader_commit, commit)
+	for id in range(1, 4): m.snap_config.push(id)
 	return m
 
 

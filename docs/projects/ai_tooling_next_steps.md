@@ -841,7 +841,11 @@ issues at once on a 4-CPU machine. Friction they reported:
 - **`ast_expression_suite` rebuilds `bin/wv2` while other targets in the
   same batch are running it,** which fails with ETXTBSY. Also,
   `bin/.wexec_lock` makes every other `./wbuild` call in that checkout
-  wait behind one slow target.
+  wait behind one slow target. The same executable-publication hazard
+  affects `bin/wtest`: running `wtest archs --check` alongside a build
+  that recompiles `tools/test_map.w` fails with ETXTBSY (2026-10-07,
+  #589). Run those checks sequentially until the `wtest` target also
+  publishes through a temporary file and rename.
 - **`./wbuild --help` is rejected** as "unknown target --help", and
   `--keep-going` is mentioned only in `tools/wexec.w` and in the
   comments of `wbuild`, never in CLAUDE.md or AGENTS.md. Without it,
