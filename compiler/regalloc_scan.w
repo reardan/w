@@ -28,8 +28,10 @@ compile-time internal error rather than a miscompile. The rules:
   body ('T name', 'T* name', 'T[..] name', 'name :=' -- any identifier,
   '*' or ']' before the name counts as a type, which over-counts
   declarations and never under-counts them), that is never address-taken
-  ('&name'), subscripted, called, field-accessed, compound-assigned
-  ('+=' and friends, '++'/'--'), or bound by a 'for' header;
+  ('&name'), subscripted, called, field-accessed or compound-assigned
+  ('+=' and friends, '++'/'--'); a 'for' header's loop variable is a
+  declaration like any other (R2b: the loop writes it through the
+  register path);
 - the declared type must be a plain 'int' or a pointer (checked at
   sym_declare: narrow integers, floats, aggregates, strings, containers
   and const-qualified locals never promote);
@@ -187,6 +189,23 @@ void regalloc_slot_assert(int slot):
 				char* name = regalloc_promoted_names[i]
 				if (sym_probe(name) == t):
 					error3(c"internal error: stack slot of register-resident local '", name, c"' addressed (compile with --no-regs and report this)")
+
+
+# The register of the live promoted local whose storage word is stack
+# slot 'slot' (the record's anchor, i.e. for_var - 1 for a loop
+# variable), 0 when that word belongs to no promoted local. The for
+# loops (grammar/for_statement.w, code_generator/loop_ast.w) address
+# their loop variable by slot, not by name, so they ask here before
+# writing it.
+int regalloc_slot_register(int slot):
+	if (regalloc_promoted_count == 0): return 0
+	if (slot < 0): return 0
+	for i in range(regalloc_promoted_syms.length):
+		int t = regalloc_promoted_syms[i]
+		if ((t < table_pos) && regalloc_promoted_live[i]):
+			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
+				if (sym_probe(regalloc_promoted_names[i]) == t): return load_int(table + t + 146)
+	return 0
 
 
 # --- the byte lexer ---------------------------------------------------------
@@ -446,11 +465,18 @@ void rs_identifier():
 	int i = -1
 	if (rs_mode == 1):
 		i = rs_intern(name, rs_ident_hash)
-		if (address_taken || rs_for_header): rs_excluded[i] = 1
+		if (address_taken): rs_excluded[i] = 1
 	rs_prev_kind = 1
 	rs_prev_keyword = 0
 	rs_skip_blanks()
 	int c = rs_c
+	if (rs_for_header):
+		# 'for [T] name[, [T] name] in': every identifier of the header
+		# is a declaration (the type names over-count, conservatively);
+		# the loop stores the variable itself through the register path
+		# (R2b), so it stays a candidate.
+		if (i >= 0): rs_decls[i] = rs_decls[i] + 1
+		return;
 	if ((c == '(') || (c == '[') || (c == '.')):
 		if (i >= 0): rs_excluded[i] = 1
 		return;

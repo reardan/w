@@ -3,10 +3,14 @@
 int* emit_range_loop_ast_begin(loop_ast* node):
 	# With 2+ arguments the first one is the start: copy it into the loop var
 	node.end_slot = node.variable_slot + 1
+	int for_reg = regalloc_slot_register(node.variable_slot - 1)
 	if (node.argument_count >= 2):
 		node.end_slot = node.variable_slot + 2
 		load_slot(node.variable_slot + 1)
-		store_stack_var((stack_pos - node.variable_slot) << word_size_log2)
+		for_store_loop_var(node.variable_slot)
+	elif (for_reg != 0):
+		mov_eax_int(0)
+		mov_reg_eax(for_reg)
 
 	# Enter a new loop context for break/continue
 	int* outer = loop_enter()
@@ -15,7 +19,10 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 	node.top_target = be_ctrl_loop()
 
 	# condition: loop var < end
-	push_slot_copy(node.variable_slot)
+	if (for_reg != 0):
+		mov_eax_reg(for_reg)
+		push_slot()
+	else: push_slot_copy(node.variable_slot)
 	load_slot(node.end_slot)
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
@@ -32,10 +39,17 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 void emit_range_loop_ast_end(loop_ast* node):
 	/* increment: by 1, or by the step argument */
 	be_ctrl_end(node.continue_target)
+	int for_reg = regalloc_slot_register(node.variable_slot - 1)
 	if (node.argument_count == 3):
 		load_slot(node.variable_slot + 3)
-		add_dword_esp_plus_eax((stack_pos - node.variable_slot) << word_size_log2)
-	else: inc_dword_esp_plus((stack_pos - node.variable_slot) << word_size_log2)
+		if (for_reg != 0): add_reg_eax(for_reg)
+		else:
+			regalloc_slot_assert(node.variable_slot - 1)
+			add_dword_esp_plus_eax((stack_pos - node.variable_slot) << word_size_log2)
+	elif (for_reg != 0): add_reg_int8(for_reg, 1)
+	else:
+		regalloc_slot_assert(node.variable_slot - 1)
+		inc_dword_esp_plus((stack_pos - node.variable_slot) << word_size_log2)
 
 	/* jmp back to condition */
 	be_br(node.top_target)
@@ -96,12 +110,12 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 		alu_add()
 		extracted_type = promote(node.element_type)
 	if (extracted_type != -1): coerce(node.variable_type, extracted_type)
-	store_stack_var((stack_pos - node.variable_slot) << word_size_log2)
+	for_store_loop_var(node.variable_slot)
 
 	if (node.value_var != 0):
 		for_iter_call(node.value2_fn, node.container_slot, node.cursor_slot)
 		coerce(node.value_var_type, node.value2_coerce_type)
-		store_stack_var((stack_pos - node.value_var) << word_size_log2)
+		for_store_loop_var(node.value_var)
 
 	return outer
 

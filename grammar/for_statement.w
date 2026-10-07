@@ -251,6 +251,16 @@ void ast_for_range_loop(int for_var, int for_tab_level);
 int ast_iteration_value(int store_slot);
 
 
+# Store the accumulator into the loop variable anchored at slot: its
+# register when it is register-resident (R2b), else its stack word.
+void for_store_loop_var(int slot):
+	int reg = regalloc_slot_register(slot - 1)
+	if (reg != 0): mov_reg_eax(reg)
+	else:
+		regalloc_slot_assert(slot - 1)
+		store_stack_var((stack_pos - slot) << word_size_log2)
+
+
 void for_range_loop(int for_var, int for_tab_level):
 	if (ast_expressions_mode >= 2):
 		ast_for_range_loop(for_var, for_tab_level)
@@ -268,10 +278,19 @@ void for_range_loop(int for_var, int for_tab_level):
 
 	# With 2+ arguments the first one is the start: copy it into the loop var
 	int end_slot = for_var + 1
+	# A register-resident loop variable (R2b): its stack word is never
+	# written, the register is.
+	int for_reg = regalloc_slot_register(for_var - 1)
 	if (num_range_args >= 2):
 		end_slot = for_var + 2
 		load_slot(for_var + 1)
-		store_stack_var((stack_pos - for_var) << word_size_log2)
+		if (for_reg != 0): mov_reg_eax(for_reg)
+		else:
+			regalloc_slot_assert(for_var - 1)
+			store_stack_var((stack_pos - for_var) << word_size_log2)
+	elif (for_reg != 0):
+		mov_eax_int(0)
+		mov_reg_eax(for_reg)
 
 	# Enter a new loop context for break/continue
 	int* outer = loop_enter()
@@ -279,7 +298,10 @@ void for_range_loop(int for_var, int for_tab_level):
 	int h_top = be_ctrl_loop()
 
 	# condition: loop var < end
-	push_slot_copy(for_var)
+	if (for_reg != 0):
+		mov_eax_reg(for_reg)
+		push_slot()
+	else: push_slot_copy(for_var)
 	load_slot(end_slot)
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
@@ -297,8 +319,14 @@ void for_range_loop(int for_var, int for_tab_level):
 	be_ctrl_end(loop_continue_chain)
 	if (num_range_args == 3):
 		load_slot(for_var + 3)
-		add_dword_esp_plus_eax((stack_pos - for_var) << word_size_log2)
-	else: inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
+		if (for_reg != 0): add_reg_eax(for_reg)
+		else:
+			regalloc_slot_assert(for_var - 1)
+			add_dword_esp_plus_eax((stack_pos - for_var) << word_size_log2)
+	elif (for_reg != 0): add_reg_int8(for_reg, 1)
+	else:
+		regalloc_slot_assert(for_var - 1)
+		inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
 
 	/* jmp back to condition */
 	be_br(h_top)
@@ -459,12 +487,12 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		alu_add()
 		extracted_type = promote(element_type)
 	if (extracted_type != -1): coerce(loop_var_type, extracted_type)
-	store_stack_var((stack_pos - for_var) << word_size_log2)
+	for_store_loop_var(for_var)
 
 	if (value_var != 0):
 		for_iter_call(value2_fn, container_slot, cursor_slot)
 		coerce(value_var_type, value2_coerce_type)
-		store_stack_var((stack_pos - value_var) << word_size_log2)
+		for_store_loop_var(value_var)
 
 	# While the body parses, 'return' (grammar/statement.w) must know
 	# about this loop's live resource so it can free it before leaving
@@ -616,6 +644,9 @@ char* for_infer_name(char* msg):
 void for_infer_declare(char* name, int slot, int type):
 	pointer_indirection = 0
 	sym_declare(name, type, 'L', slot - 1, 1)
+	# A promoted loop variable (R2b) is live from here: the loop writes
+	# its register before the first body iteration reads it
+	regalloc_store_declared(sym_probe(name))
 	lint_mark_loop_variable()
 	free(name)
 
