@@ -85,3 +85,33 @@ void emit_gpu_for_launch_ast(gpu_statement_ast* node):
 	gpu_for_emit_runtime_call(node.launch_name, node.base_stack, node.capture_count, node.has_start)
 	pop_to(node.base_stack)
 	ast_gpu_fors_emitted = ast_gpu_fors_emitted + 1
+
+
+# S2.2e: the walk of a launch or gpu for statement (grammar/ast_gpu.w).
+# walk.statement is the statement's gpu_statement_ast; its value field is
+# the header value whose phases are pending (at most one at a time), and
+# the walk's expression child is that value's.
+void emit_gpu_walk_ast(retained_statement_walk* walk, int phase):
+	gpu_statement_ast* node = cast(gpu_statement_ast*, walk.statement)
+	statement_ast* value = node.value
+	int code = phase & 255
+	if (code == ast_gpu_walk_expression):
+		int root = retained_walk_lower_expression(walk)
+		expression_lhs_readonly = walk.tree.readonly
+		value.expression_type = walk.tree.result_type[root]
+	else if (code == ast_gpu_walk_expression_end): emit_statement_ast_expression_end(value)
+	else if (code == ast_gpu_walk_value): emit_gpu_value_ast(value)
+	else if (code == ast_gpu_walk_slot): emit_gpu_dimension_slot_ast(node)
+	else if (code == ast_gpu_walk_launch): emit_gpu_launch_ast(node)
+	else if (code == ast_gpu_walk_device_begin): emit_gpu_for_device_begin_ast(node)
+	else if (code == ast_gpu_walk_loop_variable): emit_gpu_loop_variable_ast(node)
+	else if (code == ast_gpu_walk_guard): emit_gpu_for_guard_ast(node)
+	else if (code == ast_gpu_walk_device_end): emit_gpu_for_device_end_ast(node)
+	else if (code == ast_gpu_walk_capture):
+		statement_ast capture
+		capture.kind = ast_stmt_gpu_capture
+		capture.callee_name = gpu_capture_name(phase >> 8)
+		capture.binding = node.capture_bindings[phase >> 8]
+		emit_gpu_capture_value_ast(&capture)
+	else if (code == ast_gpu_walk_for_launch): emit_gpu_for_launch_ast(node)
+	else: error(c"internal error: unknown gpu statement walk phase")
