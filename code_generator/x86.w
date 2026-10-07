@@ -229,6 +229,15 @@ void emit_alu_reg_esp(int ext, int dst, int disp):
 void emit_alu_reg_eax(int ext, int dst):
 	emit_alu_reg_reg(ext, dst, 0)
 
+/* add eax,R: the register-base fold of a subscript (A1,
+   docs/projects/codegen_gap_plan.md §2.1): the base of 'p[i]' lives in
+   R, so the scaled index in eax gets it added directly instead of
+   through a parked copy ('push eax; ...; pop ebx; add eax,ebx'). The
+   two-register ALU form emit_alu_reg_reg already carries the x64 REX
+   bits for r8-r15. */
+void add_eax_reg(int r):
+	emit_alu_reg_reg(0, 0, r)
+
 # 'op dst,X' for the operand X a shuttle or binop note recorded (kind 1
 # constant, 2 [esp+disp] word load, 3 register).
 void emit_alu_reg_x(int ext, int dst, int kind, int value, int disp, int reg):
@@ -284,6 +293,7 @@ int regalloc_mask_index(int mask, int r):
 # registers the pre-scan asked for (regalloc_pending_mask), making them
 # the current function's saved set. Called by be_function_prologue on the
 # x86 path only; the pending mask is only ever set for that path.
+void regalloc_prologue_args();   /* compiler/regalloc_scan.w: the argument loads (A1) */
 void regalloc_prologue_emit():
 	int mask = regalloc_pending_mask
 	regalloc_pending_mask = 0
@@ -300,6 +310,7 @@ void regalloc_prologue_emit():
 			regalloc_saved_count = regalloc_saved_count + 1
 		r = r + 1
 	regalloc_saved_mask = mask
+	regalloc_prologue_args()
 
 # The framed return of a function whose prologue pushed registers:
 # 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' replaces 'leave'. Callers

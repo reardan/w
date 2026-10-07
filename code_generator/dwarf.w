@@ -180,6 +180,19 @@ int debug_local_register(int i):
 	return load_int(debug_local_regs + i * 4)
 
 
+# A parameter of the function being opened lives in register reg
+# (compiler/regalloc_scan.w's regalloc_prologue_args, A1): its note is
+# among the newest 'A' notes, recorded when the signature was parsed.
+void debug_local_set_register_named(char* name, int reg):
+	int i = debug_local_count
+	while (i > 0):
+		i = i - 1
+		if (load_int(debug_local_kinds + i * 4) != 'A'): return;
+		if (strcmp(cast(char*, load_ptr(debug_local_names + i * __word_size__)), name) == 0):
+			save_int(debug_local_regs + i * 4, reg)
+			return;
+
+
 ########################## DWARF scope notes (#536) ###########################
 # Side tables for .debug_info subprograms, lexical blocks and variables,
 # and for the .debug_frame FDEs (code_generator/dwarf_info.w emits them
