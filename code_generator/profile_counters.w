@@ -73,6 +73,7 @@ int sym_decl_visibility(int t);
 int sym_lookup(char* s);
 int sym_address(char* s);
 int profile_defhash_find(int file_index, int line);   /* compiler/compiler.w */
+void profile_use_function_begin(int symbol, char* name);   /* compiler/profile_use.w (P2) */
 char* profile_defhash_hex_at(int idx);
 char* profile_defhash_name_at(int idx);
 
@@ -212,6 +213,7 @@ int profile_record_new(int symbol, char* name):
 
 # Right after be_function_prologue: the function's entry counter.
 void profile_function_enter(int symbol, char* name):
+	profile_use_function_begin(symbol, name)   # P2: --profile-use classifies the body
 	if (profile_generate_mode == 0): return
 	if (target_isa != 0): return
 	profile_counters_init()
@@ -223,6 +225,7 @@ void profile_function_enter(int symbol, char* name):
 # A generator body: no entry counter (see the header), but a record so
 # its loops are attributed to it rather than to the previous function.
 void profile_generator_enter(int symbol, char* name):
+	profile_use_function_begin(symbol, name)   # P2: --profile-use
 	if (profile_generate_mode == 0): return
 	if (target_isa != 0): return
 	profile_counters_init()

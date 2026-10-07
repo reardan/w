@@ -12,6 +12,7 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
 	# Loop region: the back edge re-tests the condition.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
@@ -62,6 +63,7 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
 	# Loop region: the back edge re-tests.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
@@ -185,6 +187,7 @@ void emit_loop_ast_walk(retained_statement_walk* walk, int phase):
 int* emit_while_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 	node.continue_target = node.top_target
