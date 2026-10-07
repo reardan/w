@@ -1072,7 +1072,10 @@ explicitly. vmcall images require the cell runtime and cannot run as ordinary
 host executables. PIE, dynamic imports and non-x64-Linux targets are rejected.
 The instruction selection contract does not itself prove execution on another
 CPU vendor: validation must include real KVM runs and the recorded host/vendor
-capabilities. Remote AMD/Hygon validation is not yet established here.
+capabilities. ABI v2 passed the 53-target no-skip gate on local Intel hardware
+and on an AMD EPYC 9V74 GitHub runner with Linux 6.17.0-1022-azure
+([recorded run](https://github.com/reardan/w/actions/runs/37682377184)). Hygon
+vendor selection is covered structurally; no Hygon hardware run is claimed.
 
 The VMM enables `KVM_XEN_HVM_CONFIG_INTERCEPT_HCALL` and validates CPL3
 `KVM_EXIT_XEN` exits. This uses the Linux x64 argument registers and preserves
