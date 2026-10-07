@@ -474,3 +474,52 @@ b89e000000|mov eax,0x9e
 4431c0|xor eax,r8d
 448b7e04|mov r15d,[rsi+4]
 448927|mov [rdi],r12d
+
+# ============================================================================
+# code_generator/x86.w : addressing modes (A2, docs/projects/codegen_gap_plan.md G2)
+# [base+index*scale+disp] loads/stores at every width, r12 (SIB forced), r13
+# (disp8 0 forced), r12 as index (REX.X), rsp/rbp bases, mov [mem],imm, and
+# the ALU-on-memory and register-immediate forms the unit added.
+# ============================================================================
+488b04c8|mov rax,[rax+rcx*8]
+498b0cc0|mov rcx,[r8+rax*8]
+4a8b04e0|mov rax,[rax+r12*8]
+4b8b04e4|mov rax,[r12+r12*8]
+498b0424|mov rax,[r12]
+498b442408|mov rax,[r12+8]
+498b4500|mov rax,[r13]
+498b4508|mov rax,[r13+8]
+4b8b44e500|mov rax,[r13+r12*8]
+488b04c4|mov rax,[rsp+rax*8]
+488b44c500|mov rax,[rbp+rax*8]
+488b8480ffffff7f|mov rax,[rax+rax*4+0x7fffffff]
+480fbe0448|movsx rax,byte [rax+rcx*2]
+0fb6044c|movzx eax,byte [rsp+rcx*2]
+480fbf0450|movsx rax,word [rax+rdx*2]
+0fb70450|movzx eax,word [rax+rdx*2]
+48630488|movsxd rax,dword [rax+rcx*4]
+8b0488|mov eax,[rax+rcx*4]
+418b0424|mov eax,[r12]
+418b4500|mov eax,[r13]
+488904c8|mov [rax+rcx*8],rax
+4d890424|mov [r12],r8
+4d894500|mov [r13],r8
+4c8964c508|mov [rbp+rax*8+8],r12
+448820|mov [rax],r12b
+66890408|mov [rax+rcx*1],ax
+890408|mov [rax+rcx*1],eax
+c60000|mov byte [rax],0
+41c604240a|mov byte [r12],0xa
+66c745003412|mov word [r13],0x1234
+c70078563412|mov dword [rax],0x12345678
+48c704c878563412|mov qword [rax+rcx*8],0x12345678
+49c7442408e8030000|mov qword [r12+8],0x3e8
+488304c801|add qword [rax+rcx*8],1
+4983450001|add qword [r13],1
+4c0104c8|add [rax+rcx*8],r8
+4d290424|sub [r12],r8
+803c0800|cmp byte [rax+rcx*1],0
+41bc78563412|mov r12d,0x12345678
+488d04c8|lea rax,[rax+rcx*8]
+498d442408|lea rax,[r12+8]
+4a8d4c2508|lea rcx,[rbp+r12*1+8]

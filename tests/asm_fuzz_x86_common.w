@@ -173,7 +173,11 @@ void asm_fuzz_mutate_operand(asm_insn* insn, asm_operand* op, int reg_limit):
 			return
 		if (op.base >= 0): op.base = fuzz_range(reg_limit)
 		if (op.index >= 0):
-			op.index = fuzz_range(reg_limit)
+			# SIB index field 4 means "no index" (esp/rsp can't be an
+			# index; r12 can, via REX.X), so draw from the other registers.
+			int idx = fuzz_range(reg_limit - 1)
+			if (idx >= 4): idx = idx + 1
+			op.index = idx
 			op.scale = asm_fuzz_pick_scale()
 		op.disp = fuzz_next()
 
