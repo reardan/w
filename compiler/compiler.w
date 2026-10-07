@@ -909,8 +909,11 @@ int link_option(char* arg, int apply):
 	# tests/regalloc_diff_test.w and the fallback a guard failure asks for.
 	if ((strcmp(arg, c"--no-regs") == 0) || (strcmp(arg, c"-O0") == 0)):
 		if (apply): regalloc_disabled = 1
-		# -O0 is "no optimization": the condition chains go too
-		if (apply && (strcmp(arg, c"-O0") == 0)): cond_branch_disabled = 1
+		# -O0 is "no optimization": the condition chains and the
+		# bottom-tested loops go too
+		if (apply && (strcmp(arg, c"-O0") == 0)):
+			cond_branch_disabled = 1
+			loop_rotate_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
@@ -931,6 +934,16 @@ int link_option(char* arg, int apply):
 		return 1
 	if (strcmp(arg, c"--cond-branch") == 0):
 		if (apply): cond_branch_disabled = 0
+		return 1
+	# Loop rotation (docs/projects/codegen_gap_plan.md §2.5, unit A7,
+	# grammar/while_statement.w) is on by default on x86/x64 and arm64;
+	# --no-loop-rotate (and -O0) keeps every loop top-tested, the
+	# reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-loop-rotate") == 0):
+		if (apply): loop_rotate_disabled = 1
+		return 1
+	if (strcmp(arg, c"--loop-rotate") == 0):
+		if (apply): loop_rotate_disabled = 0
 		return 1
 	if (starts_with(arg, c"--ptx=")):
 		# Debug dump of the embedded PTX module (kernels/'gpu for'),
@@ -983,6 +996,7 @@ void help_shared_options():
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
+	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
@@ -1321,6 +1335,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
 				link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
@@ -1674,6 +1690,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(generic_source_seeks))
 		print_error(c"\nDeferred statement source seeks: ")
 		print_error(itoa(defer_source_seeks))
+		print_error(c"\n")
+	# A7: while loops rotated (grammar/loop_rotate.w), those whose
+	# condition skip declined, and condition returns that left the
+	# buffered window.
+	if (stats_mode):
+		print_error(c"Loop rotation: while loops rotated ")
+		print_error(itoa(loop_rotate_whiles))
+		print_error(c", declined ")
+		print_error(itoa(loop_rotate_declined))
+		print_error(c", source seeks ")
+		print_error(itoa(loop_rotate_seeks))
 		print_error(c"\n")
 	if (stats_mode && ast_emit_retained_mode):
 		print_error(c"Generic types from retained trees: ")

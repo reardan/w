@@ -127,7 +127,7 @@ void if_statement_tail():
 	condition_context = 1
 	int p1 = be_ctrl_block() /* ends after the whole if/elif/else */
 	int p2 = be_ctrl_block() /* ends at the elif/else branch */
-	statement_guard(p2, outer_condition)
+	statement_guard(p2, outer_condition, 0)
 	enclosing_tab_level = if_tab_level
 	statement()
 	# Whether the whole if/elif/else cannot complete normally: every arm

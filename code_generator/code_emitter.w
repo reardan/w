@@ -97,6 +97,9 @@ int regalloc_disabled
 # --no-cond-branch / -O0: &&, || and ! in a condition keep their
 # value-producing form (grammar/cond_branch.w).
 int cond_branch_disabled
+# --no-loop-rotate / -O0: while/for loops keep their top-tested shape
+# (grammar/while_statement.w, loop_rotate_on).
+int loop_rotate_disabled
 # A condition chain has emitted its branches and left its regions open
 # for the consumer (grammar/cond_branch.w, cond_pending_*). The consumer
 # clears it before it emits; any other emission while it is set is a

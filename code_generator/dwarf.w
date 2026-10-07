@@ -64,7 +64,16 @@ int debug_line_file_index():
 # stmt_stack_pos is the symbol table's stack_pos at the statement's start,
 # passed in by the caller because this file is compiled before the symbol
 # table module and cannot reference its globals directly.
+void debug_line_note_at(int line, int stmt_stack_pos);
+
 void debug_line_note(int stmt_stack_pos):
+	debug_line_note_at(line_number + 1, stmt_stack_pos)
+
+
+# The same for an explicit 1-based source line: a rotated for loop's
+# bottom test belongs to the header's line, parsed long before it
+# (grammar/loop_rotate.w).
+void debug_line_note_at(int line, int stmt_stack_pos):
 	# Device (PTX) bodies do not advance codepos, so address-keyed line
 	# records would pile up at the same host position: skip them.
 	if (target_isa == 3): return;
@@ -77,7 +86,6 @@ void debug_line_note(int stmt_stack_pos):
 		debug_line_stack_pos = malloc(debug_line_capacity * 4)
 	if (debug_line_count >= debug_line_capacity): return;
 
-	int line = line_number + 1
 	int file_index = debug_line_file_index()
 
 	if (debug_line_count > 0):

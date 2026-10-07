@@ -223,7 +223,7 @@ int ast_statement_expression(int prefix_only):
 # statement_guard's constant-true check, which reads the 'true' tokens the
 # lowering replays); the branch target is read from the region the
 # header's begin phase opened.
-void ast_statement_guard(int target, int outer_condition):
+void ast_statement_guard(int target, int outer_condition, int on_true):
 	control_ast_walk* control = control_ast_guard_pending
 	control_ast_guard_pending = 0
 	int walk = -1
@@ -235,6 +235,9 @@ void ast_statement_guard(int target, int outer_condition):
 	node.column = diag_token_column
 	node.start_offset = token_start_offset
 	node.target = target
+	# The branch is taken when the condition is true (a rotated loop's
+	# bottom test) or false (grammar/while_statement.w, statement_guard)
+	node.branch_nonzero = on_true
 	node.expression_tree = 0
 	node.expression_root = -1
 	lint_condition_begin()
@@ -468,7 +471,7 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 		retained_walk_phase(walk, ast_walk_if_begin)
 		control_ast_guard_pending = control
 	else: emit_if_ast_begin(&node)
-	statement_guard(node.alternate_target, outer_condition)
+	statement_guard(node.alternate_target, outer_condition, 0)
 	enclosing_tab_level = if_tab_level
 	if (walk >= 0): retained_walk_drain(walk)
 	statement()

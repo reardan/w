@@ -317,7 +317,13 @@ Implemented and covered by tests:
   and `!` in an `if`/`elif`/`while` condition branch per operand on the
   comparison's flags instead of materializing a boolean
   (`grammar/cond_branch.w`, `docs/projects/codegen_gap_plan.md` §2.6;
-  `--no-cond-branch`/`-O0` keeps the value form).
+  `--no-cond-branch`/`-O0` keeps the value form). `while` and `for`
+  loops are bottom-tested on x86/x64/win64 and arm64: entered by a
+  jump to the condition, which sits after the body and branches back
+  while it holds, one taken branch per iteration
+  (`grammar/loop_rotate.w`, `docs/projects/codegen_gap_plan.md` §2.5;
+  `--no-loop-rotate`/`-O0` keeps every loop top-tested; wasm and PTX
+  keep their structured shape).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

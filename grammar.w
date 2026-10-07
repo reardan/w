@@ -54,6 +54,7 @@ import grammar.conditional_expr
 import grammar.increment
 import grammar.multi_assign
 import grammar.expression
+import grammar.loop_rotate
 import grammar.while_statement
 import grammar.typed_identifier
 import grammar.variable_declaration
