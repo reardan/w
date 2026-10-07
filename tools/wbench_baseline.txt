@@ -1,8 +1,10 @@
 # wbench baseline: <workload> <sym_lookup calls> <records visited> <output bytes> <best ms>
 # Regenerate with: bin/wbench --write-baseline <this file> (docs/testing.md)
-# Times were recorded on a shared, loaded 4-CPU Linux box (2026-10-06): only
-# the counters and bytes are compared unless --time-factor is given.
-prelude 17500 4417 86236 100
-sym1000 27495 7415 147676 162
-sym4000 57495 16415 336092 566
-self 421505 112653 3053084 2252
+# Refreshed when enabling the CI gate for #538 (2026-10-07). The previous
+# #552 baseline predates register allocation/PGO (#582), asm bodies (#579),
+# and statement-line coverage; this establishes the current compiler's starting point.
+# Best of 3 runs on Linux x86_64; wall time is diagnostic only in CI.
+prelude 19113 4820 123144 33
+sym1000 29108 7818 254216 50
+sym4000 59108 16818 655624 101
+self 488451 128594 2736704 756

@@ -138,6 +138,7 @@ void if_statement_tail():
 	be_ctrl_end(p2)
 	# An 'elif'/'else' only binds to an 'if' at the same indent level
 	if (peek(c"elif") && (tab_level == if_tab_level)):
+		profile_coverage_line()
 		get_token()
 		# The recursion mirrors the statement() recursion a spelled-out
 		# 'else if' chain makes, so the nesting guard bounds elif chains
@@ -218,6 +219,19 @@ void yield_statement_tail():
 	emit_generator_yield_call()
 
 
+# A compact inferred declaration uses ':=' where a goto label uses ':'.
+# Look ahead only in coverage mode, restoring the tokenizer exactly as the
+# label parser does, so both forms get the correct executable-line set.
+int coverage_statement_is_label():
+	if ((nextc != ':') || (is_ident_start_byte(token[0]) == 0)): return 0
+	char* saved = generic_reparse_save()
+	get_token()
+	int is_label = peek(c":")
+	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
+	generic_reparse_restore(saved)
+	return is_label
+
+
 void statement_impl():
 	int retained = retained_enter(retained_statement, filename, token_start_offset, diag_token_line, diag_token_column, token)
 	# Recursion-depth guard (compiler/tokenizer.w): every nested block body
@@ -265,6 +279,8 @@ void statement_impl():
 	# byte, so no emission-time fold may reach back across it.
 	be_notes_reset()
 	debug_line_note(stack_pos)
+	if (coverage_generate_mode && (peek(c":") == 0) && (peek(c"{") == 0) && (peek(c"}") == 0)):
+		if (coverage_statement_is_label() == 0): profile_coverage_line()
 
 	# { statement-list-opt }
 	if (ast_statement_block()): terminates = flow_terminates

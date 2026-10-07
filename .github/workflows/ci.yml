@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 # Every leg bootstraps from the pinned seed (`./wbuild` downloads and
-# sha256-checks it) and runs one umbrella from the generated manifest.
+# sha256-checks it) and runs an umbrella or benchmark target from the manifest.
 # `./wbuild manifest_check` (part of `tests`) fails when a target belongs
 # to no umbrella, so a new target cannot silently fall out of CI.
 #
@@ -29,6 +29,45 @@ env:
   W_CI_NO_SKIP: "1"
 
 jobs:
+  performance:
+    name: Performance regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Lookup calls, records visited and executable bytes are deterministic.
+      # Keep wall time diagnostic: hosted runners do not provide a stable clock
+      # baseline. Intended growth must update the committed baseline for review.
+      - name: Compare compiler benchmarks with the committed baseline
+        run: |
+          set -o pipefail
+          ./wbuild wbench_compare 2>&1 | tee wbench.log
+
+      - name: Report benchmark results
+        if: always()
+        run: |
+          {
+            echo '### Compiler performance'
+            echo 'Lookup calls, records visited and output bytes must remain within 10% of the committed baseline. Wall time is diagnostic only.'
+            echo '```text'
+            cat wbench.log 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compiler-performance
+          path: |
+            wbench.log
+            bin/wbench_results.txt
+            tools/wbench_baseline.txt
+          retention-days: 14
+
   tests:
     name: Full test suite
     runs-on: ubuntu-24.04

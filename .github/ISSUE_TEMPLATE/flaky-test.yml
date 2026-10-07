@@ -1,0 +1,47 @@
+name: Flaky test
+description: Record a failure that passed its single retry on unchanged inputs.
+title: "Flaky test: <target>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow [the flaky-test policy](https://github.com/reardan/w/blob/main/docs/testing.md#flaky-tests).
+        Retry at most once on the same commit, inputs and machine class. A repeated
+        failure is a bug, not a flake. Search existing reports before opening one;
+        add evidence to an existing issue when the target and failure match.
+        Maintainers: apply the `flaky-test` label and assign an owner.
+  - type: input
+    id: target
+    attributes:
+      label: Target and commit
+      description: Include the exact wbuild target and full commit SHA.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Platform and configuration
+      description: OS, architecture, runner class, relevant environment variables and tool versions.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: First failure and single retry
+      description: Paste the full target log or CI run links for both attempts; include the retry command and outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: frequency
+    attributes:
+      label: Frequency and affected PR
+      description: How often has this occurred? Link the PR that encountered it and any related reports.
+    validations:
+      required: true
+  - type: checkboxes
+    id: unchanged
+    attributes:
+      label: Retry conditions
+      options:
+        - label: The first failure passed exactly one retry with the same commit, inputs and machine class.
+          required: true
