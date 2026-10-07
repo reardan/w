@@ -31,6 +31,25 @@ void cell_record_fault(vm_cell* cell):
 	cell_fail(cell, c"guest exception")
 
 
+# Patch only compiler-declared sites in fresh cells and ready clones.
+# Validate the entire list before changing bytes; never scan guest data.
+int cell_hypercall_patch(vm_cell* cell, int opcode):
+	if (opcode != 193 && opcode != 217): return cell_fail(cell, c"unsupported KVM hypercall CPU vendor")
+	if (cell.hypercall_count < 1 || cell.hypercall_count > 64): return cell_fail(cell, c"invalid native hypercall metadata")
+	for i in range(cell.hypercall_count):
+		int address = cell_hypercall_site_get(&cell.hypercall_sites, i)
+		if (cell_range(cell, address, 3, 0) == 0): return cell_fail(cell, c"invalid native hypercall site")
+		if (load_int64(cell_pte(cell, address)) < 0 || load_int64(cell_pte(cell, address + 2)) < 0): return cell_fail(cell, c"non-executable native hypercall site")
+		char* site = cell.ram + address
+		if (site[0] != 15 || site[1] != 1 || ((site[2] & 255) != 193 && (site[2] & 255) != 217)): return cell_fail(cell, c"invalid native hypercall instruction")
+		for j in range(i):
+			if (cell_hypercall_site_get(&cell.hypercall_sites, j) == address): return cell_fail(cell, c"duplicate native hypercall site")
+	for i in range(cell.hypercall_count):
+		char* site = cell.ram + cell_hypercall_site_get(&cell.hypercall_sites, i)
+		if ((site[2] & 255) != opcode): site[2] = cast(char, opcode)
+	return 1
+
+
 # Prepare once for retained pools, or lazily for ordinary one-shot cells.
 int cell_prepare(vm_cell* cell):
 	if (cell.thread_state != 0): return 1
@@ -38,6 +57,8 @@ int cell_prepare(vm_cell* cell):
 	cell.machine = cast(kvm_machine*, malloc(sizeof(kvm_machine)))
 	if (kvm_create(cell.machine) == 0): return cell_fail(cell, c"KVM unavailable or VM creation failed")
 	if (cell.syscall_abi && kvm_enable_vmcall(cell.machine) == 0): return cell_fail(cell, c"KVM ring-3 vmcall interception unavailable")
+	# Live checkpoints preserve guest-modified code and mappings verbatim.
+	if (cell.syscall_abi && cell.live_restored == 0 && cell_hypercall_patch(cell, kvm_hypercall_opcode(cell.machine)) == 0): return 0
 	if (kvm_set_memory(cell.machine, 0, 0, cell.ram, CELL_RAM_SIZE) < 0): return cell_fail(cell, c"KVM memory registration failed")
 	if (cell.retain_cpus && kvm_cell_checkpoint(cell.machine) == 0): return cell_fail(cell, c"vCPU checkpoint failed")
 	if (cell_cpu_setup(cell) == 0): return 0

@@ -310,6 +310,18 @@ disables cached results, sets `W_CI_NO_SKIP=1` and rejects any SKIP output.
 Missing prerequisites fail this workflow. Whether GitHub branch protection
 requires its check is repository configuration outside the workflow file.
 
+The kernel artifact cache uses an exact key containing the source digest,
+kernel configuration/build-script hashes, runner OS/architecture and compiler,
+linker and make versions. It stores only bzImage, resolved `.config`, checksums
+and provenance. Every restore verifies the checksums; a successful build is
+saved before VM tests so a later test failure does not force another kernel
+build. Compiler binaries and test-result stamps are not reused by this cache.
+
+The uploaded `vm-host.log` records uname, CPU/vendor/features from lscpu,
+QEMU version, cgroup placement and KVM API/capability values, including the
+Xen hypercall-interception flag. Use that evidence to identify runner-specific
+behavior; a hosted-runner label alone does not establish Intel or AMD hardware.
+
 Run the same gate against prepared local fixtures:
 
 ```sh
@@ -1048,10 +1060,19 @@ not guest-mutated memory; stripped/unsupported metadata leaves the raw report.
 
 The flag changes all compiler-generated Linux runtime calls, including exit,
 TLS, stack allocation and thread creation. The ELF `e_flags` marker
-`0x57564d01` identifies W VM syscall ABI version 1. Native Linux `syscall`
-remains the default; `--syscall-abi=linux` selects it explicitly. vmcall images
-require the cell runtime and cannot run as ordinary host executables. PIE,
-dynamic imports and non-x64-Linux targets are rejected.
+`0x57564d02` identifies W VM syscall ABI version 2. A bounded `PT_NOTE` records
+the exact compiler-emitted hypercall instruction sites. The loader validates
+that metadata and the declared instructions before selecting Intel `VMCALL`
+or AMD/Hygon `VMMCALL` from KVM's supported CPUID vendor. Only those declared
+sites may be rewritten; the loader never scans arbitrary code for matching
+byte patterns. Malformed or unsupported metadata is rejected.
+
+Native Linux `syscall` remains the default; `--syscall-abi=linux` selects it
+explicitly. vmcall images require the cell runtime and cannot run as ordinary
+host executables. PIE, dynamic imports and non-x64-Linux targets are rejected.
+The instruction selection contract does not itself prove execution on another
+CPU vendor: validation must include real KVM runs and the recorded host/vendor
+capabilities. Remote AMD/Hygon validation is not yet established here.
 
 The VMM enables `KVM_XEN_HVM_CONFIG_INTERCEPT_HCALL` and validates CPL3
 `KVM_EXIT_XEN` exits. This uses the Linux x64 argument registers and preserves

@@ -1,4 +1,6 @@
-# wbuild: target=wvm_live_test tag=tests dep=wv2 dep=wvm_live_fixture dep=wvm_live_thread_fixture
+# wbuild: target=wvm_live_vmcall_fixture dep=wv2
+# wbuild: step="bin/wv2 x64 --syscall-abi=vmcall tests/wvm_live_fixture.w -o bin/wvm_live_vmcall_fixture"
+# wbuild: target=wvm_live_test tag=tests dep=wv2 dep=wvm_live_fixture dep=wvm_live_thread_fixture dep=wvm_live_vmcall_fixture
 # wbuild: step="bin/wv2 x64 tests/wvm_live_test.w -o bin/wvm_live_test"
 # wbuild: step="bin/wvm_live_test" timeout=30000
 import lib.testing
@@ -7,12 +9,12 @@ import lib.file
 import lib.ci_skip
 
 
-vm_cell* live_test_cell():
-	int fd = open(c"bin/wvm_live_fixture", 0, 0)
+vm_cell* live_test_cell_image(char* path):
+	int fd = open(path, 0, 0)
 	asserts(c"live fixture exists", fd >= 0)
 	int length = file_size(fd)
 	close(fd)
-	char* image = file_read_text(c"bin/wvm_live_fixture")
+	char* image = file_read_text(path)
 	asserts(c"live fixture read", image != 0)
 	vm_cell* cell = cell_new()
 	asserts(c"live load", cell_elf_load(cell, image, length))
@@ -24,6 +26,10 @@ vm_cell* live_test_cell():
 	cell.input = c"abc"
 	cell.input_length = 3
 	return cell
+
+
+vm_cell* live_test_cell():
+	return live_test_cell_image(c"bin/wvm_live_fixture")
 
 
 int live_test_available():
@@ -268,3 +274,29 @@ void test_live_restore_parked_futex_timeout():
 	assert_equal(11, clone.status)
 	assert_strings_equal(c"timeout\n", clone.output.data)
 	cell_free(clone)
+
+
+void test_live_vmcall_checkpoint_preserves_modified_unused_site():
+	if (live_test_available() == 0): return
+	vm_cell* cell = live_test_cell_image(c"bin/wvm_live_vmcall_fixture")
+	live_test_pause_at_output(cell)
+	asserts(c"compiler emitted clone site", cell.hypercall_count > 3)
+	int site = cell_hypercall_site_get(&cell.hypercall_sites, 3)
+	assert_equal(56, load_int32(cell.ram + site - 4)) # thread_create's clone number
+	# Model a guest changing an unused runtime stub after startup. Live
+	# restore must preserve it, rather than rerun fresh-image validation.
+	cell.ram[site] = 90
+	cell_live_snapshot* snapshot = cell_live_capture(cell)
+	asserts(c"capture modified vmcall code", snapshot != 0)
+	vm_cell* restored = cell_live_restore(snapshot)
+	asserts(c"restore modified vmcall code", restored != 0)
+	assert_equal(90, cast(int, restored.ram[site]))
+	cell_live_free(snapshot)
+	asserts(c"modified source resumes", cell_resume(cell, 5000))
+	asserts(c"modified restore resumes", cell_resume(restored, 5000))
+	assert_equal(7, cell.status)
+	assert_equal(7, restored.status)
+	assert_equal(cell.output.length, restored.output.length)
+	for i in range(cell.output.length): assert_equal(cast(int, cell.output.data[i]), cast(int, restored.output.data[i]))
+	cell_free(restored)
+	cell_free(cell)

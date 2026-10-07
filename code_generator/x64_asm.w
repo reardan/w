@@ -8,7 +8,11 @@ void sym_define_declare_global_function_arity(char* name, int num_args); /* defi
 
 
 void x64_runtime_syscall():
-	if (x64_syscall_abi): emit(3, c"\x0f\x01\xc1") /* vmcall */
+	if (x64_syscall_abi):
+		if (x64_hypercall_count >= 64): error(c"too many VM hypercall sites")
+		x64_hypercall_sites[x64_hypercall_count] = codepos
+		x64_hypercall_count = x64_hypercall_count + 1
+		emit(3, c"\x0f\x01\xc1") /* loader selects VMCALL/VMMCALL at listed sites */
 	else: emit(2, c"\x0f\x05") /* syscall */
 
 

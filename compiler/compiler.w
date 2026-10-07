@@ -1139,6 +1139,17 @@ void unrecognized_option_error(char* arg):
 	exit(1)
 
 
+void target_option_error(char* message):
+	# Target validation precedes tokenizer/source initialization.
+	diag_part(message)
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, c"")
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
 # The on-demand runtimes a compiled program used -- to_json/from_json,
 # f"..." template strings, the prelude and var -- imported after all
 # user files so the modules' code lands at a top-level boundary, with
@@ -1173,6 +1184,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	data_split = 1
 	elf_pie = 0
 	x64_syscall_abi = 0
+	x64_hypercall_count = 0
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
@@ -1354,9 +1366,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
 	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
-		error(c"--pie requires the x64 Linux target")
+		target_option_error(c"--pie requires the x64 Linux target")
 	if (x64_syscall_abi && (word_size != 8 || target_isa != 0 || target_os != 0 || elf_pie)):
-		error(c"--syscall-abi=vmcall requires static non-PIE x64 Linux")
+		target_option_error(c"--syscall-abi=vmcall requires static non-PIE x64 Linux")
 	import_roots_scan(argc, argv)
 	push_basic_types()
 	pointer_indirection = 0

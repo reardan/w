@@ -87,6 +87,10 @@ void elf_start_64():
 
 void elf_finish_64():
 	elf_finish_entry_patch()
+	if (x64_syscall_abi):
+		save_int32(code + elf_hypercall_note_pos + 20, x64_hypercall_count)
+		for i in range(x64_hypercall_count):
+			save_int64(code + elf_hypercall_note_pos + 24 + i * 8, code_offset + x64_hypercall_sites[i])
 	if (elf_pie): x64_emit_rebase_table()
 	elf_patch_load_segments(1)
 

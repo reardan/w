@@ -29,6 +29,8 @@ void elf_header(int cpu_class):
 void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int align);   /* elf_dynamic.w */
 
 int build_id_note_pos   /* file offset of the note, 0 = not emitted */
+int elf_hypercall_note_pos
+const int elf_hypercall_note_size = 536
 
 # File offset of the ELF header the debugging symbols hang off: 0 for
 # the ELF targets, where it is the image's own header. The PE writer
@@ -137,10 +139,12 @@ void elf_header_fields(int machine, int is64):
 	emit_int16(2 + elf_pie) /* ET_EXEC or ET_DYN */
 	emit_int16(machine)
 	emit_int32(1) /* version */
-	elf_emit_word(is64, base_code_offset + header_size + program_header_size * elf_program_header_count() + elf_build_id_note_size()) /* entry */
+	int entry = base_code_offset + header_size + program_header_size * elf_program_header_count() + elf_build_id_note_size()
+	if (x64_syscall_abi): entry = entry + elf_hypercall_note_size
+	elf_emit_word(is64, entry)
 	elf_emit_word(is64, header_size) /* program header offset */
 	elf_emit_word(is64, 0) /* section header offset */
-	if (x64_syscall_abi): emit_int32(0x57564d01) /* W VM syscall ABI v1 */
+	if (x64_syscall_abi): emit_int32(0x57564d02) /* W VM ABI v2: exact native-hypercall relocation sites */
 	else: emit_int32(0) /* flags */
 	emit_int16(header_size) /* size of this elf header */
 	emit_int16(program_header_size) /* size per program header */
@@ -199,6 +203,16 @@ void elf_phdr_table(int is64):
 	if (elf_pie): elf_dyn_patch_phdr(-1, 6, 4, phdr_table_pos, elf_program_header_count() * 56, 8)
 	elf_emit_gnu_stack(is64)
 	elf_emit_build_id_note()
+	elf_hypercall_note_pos = 0
+	if (x64_syscall_abi):
+		elf_hypercall_note_pos = codepos
+		emit_int32(4) /* namesz */
+		emit_int32(520) /* descsz: version, count, 64 absolute addresses */
+		emit_int32(0x57564d01) /* W hypercall note */
+		emit(4, c"WVM\x00")
+		emit_int32(1) /* descriptor version */
+		emit_zeros(516)
+		elf_dyn_patch_phdr(2, 4, 4, elf_hypercall_note_pos, elf_hypercall_note_size, 4)
 
 
 # The ELF header, program headers and build-id note for machine.

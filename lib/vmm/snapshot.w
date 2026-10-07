@@ -14,6 +14,8 @@ struct cell_snapshot:
 	int mmap_next
 	int max_threads
 	int syscall_abi
+	int hypercall_count
+	cell_hypercall_sites hypercall_sites
 	int max_syscalls
 	int max_instructions
 	int deterministic
@@ -155,6 +157,8 @@ cell_snapshot* cell_snapshot_create_impl(vm_cell* cell, cell_snapshot* parent):
 	snapshot.mmap_next = cell.mmap_next
 	snapshot.max_threads = cell.max_threads
 	snapshot.syscall_abi = cell.syscall_abi
+	snapshot.hypercall_count = cell.hypercall_count
+	snapshot.hypercall_sites = cell.hypercall_sites
 	snapshot.max_syscalls = cell.max_syscalls
 	snapshot.max_instructions = cell.max_instructions
 	snapshot.deterministic = cell.deterministic
@@ -233,6 +237,8 @@ int cell_snapshot_reset(vm_cell* cell):
 	cell.mmap_next = snapshot.mmap_next
 	cell.max_threads = snapshot.max_threads
 	cell.syscall_abi = snapshot.syscall_abi
+	cell.hypercall_count = snapshot.hypercall_count
+	cell.hypercall_sites = snapshot.hypercall_sites
 	cell.max_syscalls = snapshot.max_syscalls
 	cell.max_instructions = snapshot.max_instructions
 	cell.instruction_count = 0
@@ -268,7 +274,9 @@ int cell_snapshot_reset(vm_cell* cell):
 	string_free(cell.errors)
 	cell.output = string_new()
 	cell.errors = string_new()
-	if (retained != 0): return cell_cpu_setup(cell)
+	if (retained != 0):
+		if (cell.syscall_abi && cell_hypercall_patch(cell, kvm_hypercall_opcode(cell.machine)) == 0): return 0
+		return cell_cpu_setup(cell)
 	return 1
 
 

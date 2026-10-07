@@ -16,6 +16,36 @@ const int CELL_PT_BASE = 65536
 const int CELL_TRAMPOLINE = 28672
 const int CELL_OUTPUT_LIMIT = 4194304
 
+# Flat values only: W fixed arrays include absolute pointer descriptors,
+# which cannot be copied safely through daemon backing metadata.
+struct cell_hypercall_words:
+	int s0
+	int s1
+	int s2
+	int s3
+	int s4
+	int s5
+	int s6
+	int s7
+
+struct cell_hypercall_sites:
+	cell_hypercall_words g0
+	cell_hypercall_words g1
+	cell_hypercall_words g2
+	cell_hypercall_words g3
+	cell_hypercall_words g4
+	cell_hypercall_words g5
+	cell_hypercall_words g6
+	cell_hypercall_words g7
+
+
+int cell_hypercall_site_get(cell_hypercall_sites* sites, int index):
+	return load_int64(cast(char*, sites) + index * 8)
+
+void cell_hypercall_site_set(cell_hypercall_sites* sites, int index, int address):
+	save_int64(cast(char*, sites) + index * 8, address)
+
+
 struct vm_cell:
 	kvm_machine* machine
 	char* ram
@@ -62,6 +92,8 @@ struct vm_cell:
 	int debug_control
 	int debug_exit
 	int syscall_abi
+	int hypercall_count
+	cell_hypercall_sites hypercall_sites
 	int max_instructions
 	int instruction_count
 	int* debug_breakpoints

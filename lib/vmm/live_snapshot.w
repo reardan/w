@@ -206,6 +206,7 @@ vm_cell* cell_live_restore(cell_live_snapshot* snapshot):
 	if (snapshot == 0 || cell_timer_run != 0): return 0
 	vm_cell* cell = cell_snapshot_clone(snapshot.memory)
 	if (cell == 0): return 0
+	cell.live_restored = 1
 	int ok = cell_prepare(cell)
 	cell_threads* threads = cast(cell_threads*, cell.thread_state)
 	if (ok && threads.capacity != snapshot.capacity): ok = 0
@@ -266,7 +267,6 @@ vm_cell* cell_live_restore(cell_live_snapshot* snapshot):
 		cell.replay_length = snapshot.replay.length
 	cell.started = 1
 	cell.paused = 1
-	cell.live_restored = 1
 	return cell
 
 
