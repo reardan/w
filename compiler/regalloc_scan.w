@@ -6,9 +6,10 @@ The compiler is single-pass with no tree, so by the time a local is
 declared nothing is known about how the rest of the body uses it. This
 module looks ahead instead: regalloc_function_scan() runs once per
 function body, right before its prologue, reads the body's bytes from
-the source fd through lib/lib.w's buffered getchar (NOT the tokenizer:
-no token, line, warning or diagnostic state moves, and the fd is seeked
-back to where the tokenizer left it), and ranks the body's word-sized
+the source fd through its own buffer (NOT the tokenizer, and not even
+getchar's window: no token, line, warning, diagnostic or buffer state
+moves, and the fd is seeked back to where getchar left it), and ranks
+the body's word-sized
 locals by loop-weighted use count. The top k (4 on x64: r12-r15; 2 on
 x86: esi/edi) are assigned a callee-saved register; the prologue
 (code_generator/arm64.w -> x86.w's regalloc_prologue_emit) pushes those
@@ -209,30 +210,60 @@ int regalloc_slot_register(int slot):
 
 
 # --- the byte lexer ---------------------------------------------------------
-# The scanner walks getchar's own 8KB window for the fd directly
-# (rs_p..rs_end, lib/lib.w's buffer); getchar() refills it on the slow
-# path, with getchar_pos synced first so the refill starts at the right
-# byte. rs_sync() re-derives the pointers after every seek or refill.
-char* rs_p
-char* rs_end
+# Where the scanner's bytes come from: getchar's window for the fd when
+# the wanted offset lies inside it (lib/lib.w's getchar_pos/limit/
+# kernel_pos; under --ast-emit-retained a generic instantiation's
+# source exists ONLY there -- code_generator/retained_emit.w serves the
+# retained bytes through a /dev/null fd whose window is pre-filled),
+# and the fd itself through a private buffer otherwise. Neither path
+# moves getchar's bookkeeping, which also keeps the retained-AST
+# preflight (grammar/ast_expression.w inspects the window) seeing
+# exactly what it would have seen without the scan; the fd's own
+# position is put back when the scan ends. A byte that is neither in
+# the window nor readable from the fd (a pipe) aborts the scan: a
+# truncated body could hide an address-taking use.
+char* rs_buf
+int rs_buf_off        # file offset of rs_buf[0]
+int rs_buf_len
+int rs_off            # file offset of the next byte to read
+int rs_saved_offset   # the fd's own position before the scan
+const int rs_buf_size = 8192
 
-void rs_sync():
-	rs_p = 0
-	rs_end = 0
-	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return;
-	char* buffer = cast(char*, getchar_buf_addr[file])
-	if (buffer == 0): return;
-	rs_p = &buffer[getchar_pos[file]]
-	rs_end = &buffer[getchar_limit[file]]
+void rs_begin(int offset):
+	if (rs_buf == 0): rs_buf = malloc(rs_buf_size)
+	rs_buf_len = 0
+	rs_buf_off = 0
+	rs_off = offset
+
+# Put the fd back exactly where it was (asked of the kernel, not of
+# getchar's bookkeeping: a reparse path may have moved the fd itself).
+void rs_end_scan():
+	if (rs_saved_offset >= 0): seek(file, rs_saved_offset, 0)
 
 void rs_next():
-	if (rs_p < rs_end):
-		rs_c = *rs_p & 255
-		rs_p = rs_p + 1
+	int off = rs_off
+	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+	if ((off >= window_start) && (off < getchar_kernel_pos[file])):
+		char* buffer = cast(char*, getchar_buf_addr[file])
+		rs_c = buffer[off - window_start] & 255
+		rs_off = off + 1
 		return;
-	if (rs_p != 0): getchar_pos[file] = getchar_limit[file]
-	rs_c = getchar(file)
-	rs_sync()
+	if ((off >= rs_buf_off) && (off < rs_buf_off + rs_buf_len)):
+		rs_c = rs_buf[off - rs_buf_off] & 255
+		rs_off = off + 1
+		return;
+	if ((rs_saved_offset < 0) || (seek(file, off, 0) < 0)):
+		rs_abort = 1
+		rs_c = -1
+		return;
+	int n = read(file, rs_buf, rs_buf_size)
+	if (n <= 0):
+		rs_c = -1
+		return;
+	rs_buf_off = off
+	rs_buf_len = n
+	rs_c = rs_buf[0] & 255
+	rs_off = off + 1
 
 
 # Leading whitespace of a new line: count its tabs (the tokenizer's
@@ -655,7 +686,7 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	if (regalloc_disabled): return;
 	if ((target_isa != 0) || (target_os != 0)): return;
 	if (is_variadic): return;
-	if (file < 0): return;
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return;
 	if (token[0] == 0): return;
 	int brace_body = token[0] == '{'
 	if ((brace_body == 0) && (token[0] != ':')): return;
@@ -663,21 +694,20 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	# nextc (file offset byte_offset - 1); the scan starts from it and
 	# reads on from byte_offset, the fd's position.
 	int body_offset = byte_offset
-	getchar_seek(file, body_offset)
-	rs_sync()
+	rs_saved_offset = seek(file, 0, 1)
+	rs_begin(body_offset)
 	rs_c = nextc
 	rs_mode = 0
 	rs_scan_body(brace_body)
 	int mask = 0
 	if (rs_has_loop && (rs_abort == 0)):
-		getchar_seek(file, body_offset)
-		rs_sync()
+		rs_begin(body_offset)
 		rs_c = nextc
 		rs_mode = 1
 		rs_scan_body(brace_body)
 		regalloc_scanned_functions = regalloc_scanned_functions + 1
 		if (rs_abort == 0): mask = rs_assign_registers()
-	getchar_seek(file, byte_offset)
+	rs_end_scan()
 	if (mask == 0):
 		rs_tables_clear()
 		return;
