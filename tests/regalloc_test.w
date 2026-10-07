@@ -607,6 +607,403 @@ void test_lifetimes():
 	assert_equal(2 * 1 + 2 * 10 + 2 * 100, with_switch(6))
 
 
+# --- R3: compound operators and the register-operand folds -----------------
+# (docs/projects/register_allocation_pgo.md §2.3). Compound assignment
+# and '++'/'--' on a promoted local emit 'op R,X' in place; 'x = x op y'
+# and 'x = y op x' fold the same way; a binary operator or compare whose
+# operands are register reads, constants or local loads uses them as
+# direct operands. The expected values come from gcc-compiled C twins of
+# the same functions (the oracle is independent of this compiler).
+
+# every compound operator between registers, with a constant, and the
+# division/modulo/shift forms that keep the accumulator path
+int compound_registers(int n):
+	int a = 1
+	int b = 2
+	int i = 0
+	while (i < n):
+		a += i
+		b += 3
+		a -= 1
+		b *= 2
+		a |= 8
+		b &= 0xffff
+		a ^= i
+		b <<= 1
+		a >>= 1
+		b /= 3
+		a %= 1000
+		i++
+	return a * 100000 + b
+
+
+# compound operands that are stack locals (m is loop-invariant, a/b/c
+# compete for the register budget on x86) and prefix/postfix forms
+int compound_stack(int n):
+	int a = 7
+	int b = 11
+	int c = 13
+	int i = 0
+	int m = n * 3
+	while (i < n):
+		a += m
+		b -= m
+		c += a
+		a += b
+		b -= c
+		a++
+		--b
+		i++
+	return a + b * 7 + c * 1000
+
+
+# 'x = x op y', 'x = y op x' (commutative only), non-commutative with the
+# register on the right (no fold), small and negative constants
+int assign_shapes(int n):
+	int s = 0
+	int t = 1000
+	int u = 5
+	int i = 0
+	while (i < n):
+		s = s + i
+		t = t - i
+		u = i + u
+		s = s * 3
+		t = t & 0xfff
+		u = u | i
+		s = s ^ t
+		t = i - t
+		u = u + 100000
+		s = s + (-7)
+		u = u - 200000
+		i = i + 1
+	return s + t * 3 + u * 5
+
+
+# compares between registers, against constants and locals, in branch
+# and in value context
+int compare_shapes(int n):
+	int i = 0
+	int j = n
+	int hits = 0
+	while (i < n):
+		if (i < j): hits += 1
+		if (i == j): hits += 10
+		if (j > 3): hits += 100
+		if (i >= 2): hits += 1000
+		hits += (i < j)
+		hits += (j <= i) * 7
+		hits += (i != 4) * 3
+		i++
+		j--
+	return hits
+
+
+# the value of a register assignment used inside a larger expression
+int value_kept(int n):
+	int x = 0
+	int y = 0
+	int z = 0
+	int i = 0
+	while (i < n):
+		y = (x += 2) * 3
+		z = (x = x + 1) + y
+		i = i + 1
+	return x * 1000000 + y * 1000 + z
+
+
+# a promoted pointer indexed by a promoted counter: the shuttle's
+# 'mov ebx,R' form feeds an address computation and a store
+int pointer_shapes(int n):
+	int* p = cast(int*, malloc(16 * __word_size__))
+	int i = 0
+	int s = 0
+	while (i < 16):
+		p[i] = i * 3
+		i++
+	i = 0
+	while (i < n):
+		s = s + p[i]
+		p[i] = p[i] + s
+		s += p[i]
+		i += 1
+	int r = s + p[0] + p[n - 1]
+	free(p)
+	return r
+
+
+# constants past the signed-byte immediate form, negative ones, masks
+int large_constants(int n):
+	int s = 1
+	int t = 2
+	int i = 0
+	while (i < n):
+		s = s + 1000000
+		t = t - 70000
+		s = s * 3
+		t = t ^ 0x7fff
+		s = s & 0x3fffffff
+		t = t | 0x10000
+		s = s + (-1000000)
+		i = i + 1
+	return s + t
+
+
+# narrow and unsigned operands never fold into a word-sized ALU operand
+int narrow_and_unsigned(int n):
+	int8 c = 3
+	uint32 u = 3000000
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + c
+		s = s + u
+		s = s - c
+		c = c + 1
+		s += c
+		i++
+	return s
+
+
+# division, modulo and variable shifts between registers keep the
+# accumulator path (edx/ecx operands)
+int div_and_shift(int n):
+	int a = 1000000
+	int b = 7
+	int c = 3
+	int i = 0
+	while (i < n):
+		a = a / b
+		a = a + (a % c)
+		a = a << c
+		a = a >> b
+		a = a * b + c
+		a /= 2
+		a %= 100000
+		a <<= 1
+		a >>= 1
+		i++
+	return a
+
+
+# 'i * k' at the end of a line is a product, not a 'T* name' declaration:
+# k stays a candidate (function-level and loop-scoped alike)
+int star_operand(int n, int m):
+	int s = 0
+	int k = m
+	int i = 0
+	while (i < n):
+		s = s + i * k
+		k = k - 1
+		i = i + 1
+	return s * 100 + k
+
+
+void test_r3_shapes():
+	assert_equal(4606, star_operand(4, 10))
+	assert_equal(3, star_operand(0, 3))
+	assert_equal(100002, compound_registers(0))
+	assert_equal(600020, compound_registers(3))
+	assert_equal(100218, compound_registers(10))
+	assert_equal(56757, compound_stack(3))
+	assert_equal(-1342882, compound_stack(7))
+	assert_equal(-1996233, assign_shapes(4))
+	assert_equal(-1188348, assign_shapes(9))
+	assert_equal(4352, compare_shapes(6))
+	assert_equal(7662, compare_shapes(9))
+	assert_equal(9024033, value_kept(3))
+	assert_equal(15042057, value_kept(5))
+	assert_equal(153, pointer_shapes(4))
+	assert_equal(884529, pointer_shapes(16))
+	assert_equal(1971696, large_constants(1))
+	assert_equal(25840648, large_constants(3))
+	assert_equal(6000009, narrow_and_unsigned(2))
+	assert_equal(15000030, narrow_and_unsigned(5))
+	assert_equal(31249, div_and_shift(1))
+	assert_equal(1, div_and_shift(4))
+
+
+# --- R3: loop-scoped caller-saved registers ---------------------------------
+# Call-free loops may hold their hot locals (and a for-range's hidden end/
+# step words) in caller-saved registers on x64; every other width and target
+# keeps the stack shape. Values are the gcc oracle's (scratch oracle2.c).
+int loop_helper(int x): return x * 2 + 1
+
+
+int loop_args(int n, int m):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + i * m
+		m = m - 1
+		i = i + 1
+	return s * 1000 + m + n
+
+
+int loop_break_continue(int n):
+	int a = 0
+	int b = 0
+	int c = 0
+	int i = 0
+	while (i < n):
+		i = i + 1
+		if (i == 3): continue
+		a = a + i
+		b = b + a
+		if (b > 50): break
+		c = c + 1
+	return a * 10000 + b * 100 + c + i
+
+
+int loop_return_inside(int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + i * 3
+		if (s > 40): return s * 10 + i
+		i = i + 1
+	return s
+
+
+int loop_nested(int n):
+	int a = 1
+	int b = 2
+	int c = 3
+	int d = 4
+	int e = 5
+	int f = 6
+	int g = 7
+	int h = 8
+	int s = 0
+	int i = 0
+	while (i < n):
+		int j = 0
+		while (j < n):
+			s = s + i * j + a - b + c - d + e - f + g - h
+			a = a + 1
+			b = b + 2
+			c = c + 3
+			d = d + 4
+			e = e + 5
+			f = f + 6
+			g = g + 7
+			h = h + 8
+			j = j + 1
+		s = s + loop_helper(i)
+		i = i + 1
+	return s + a + b + c + d + e + f + g + h
+
+
+# list indexing is a hidden runtime call: the loop keeps its registers but
+# spills them around each call
+int loop_hidden_call(int n):
+	list[int] lst = new list[int]
+	int i = 0
+	int s = 0
+	int t = 7
+	for k in range(8): lst.push(k * 5)
+	while (i < n):
+		s = s + lst[i] + t
+		t = t + 1
+		i = i + 1
+	return s * 100 + t
+
+
+int loop_declared_inside(int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		int t = i * 2
+		if (i & 1):
+			int u = t + 1
+			s = s + u
+		else:
+			int u = t - 1
+			s = s + u * 2
+		int v = s + t
+		s = s + v
+		i = i + 1
+	return s
+
+
+int loop_step(int n):
+	int s = 0
+	for i in range(2, n, 3): s = s + i
+	int k = n
+	while (k > 0):
+		s = s * 2 + k
+		k -= 2
+	for a in range(1, n):
+		for b in range(a, n): s = s + a * b
+	return s
+
+
+int loop_switch(int n):
+	int s = 0
+	int k = 0
+	int i = 0
+	while (i < n):
+		switch (i % 4):
+			case 0: s = s + 1
+			case 1: s = s + 10
+			case 2: k = k + 1
+			default: s = s + 100
+		i = i + 1
+		if (k > 2): break
+	return s * 10 + k + i
+
+
+int loop_pointer_param(int* p, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + p[i]
+		p[i] = s
+		i = i + 1
+	return s + p[0]
+
+
+int loop_global_t = 1000
+int loop_shadow_global(int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		int local_t = i + 1
+		s = s + local_t + loop_global_t
+		i = i + 1
+	return s
+
+
+int loop_one_liner(int n):
+	int s = 0
+	for i in range(n): s = s + loop_helper(i)
+	return s + n
+
+
+void test_r3_loops():
+	assert_equal(46010, loop_args(4, 10))
+	assert_equal(3, loop_args(0, 3))
+	assert_equal(122309, loop_break_continue(5))
+	assert_equal(256612, loop_break_continue(20))
+	assert_equal(9, loop_return_inside(3))
+	assert_equal(455, loop_return_inside(10))
+	assert_equal(198, loop_nested(3))
+	assert_equal(-239, loop_nested(5))
+	assert_equal(3910, loop_hidden_call(3))
+	assert_equal(22415, loop_hidden_call(8))
+	assert_equal(52, loop_declared_inside(4))
+	assert_equal(680, loop_declared_inside(7))
+	assert_equal(108, loop_step(5))
+	assert_equal(4737, loop_step(12))
+	assert_equal(1227, loop_switch(6))
+	assert_equal(2344, loop_switch(20))
+	int* buf = cast(int*, malloc(6 * __word_size__))
+	for i in range(6): buf[i] = i + 1
+	assert_equal(22, loop_pointer_param(buf, 6))
+	assert_equal(4010, loop_shadow_global(4))
+	assert_equal(30, loop_one_liner(5))
+
+
 int main():
 	test_sum_to()
 	test_address_taken()
@@ -632,5 +1029,7 @@ int main():
 	test_for_containers()
 	test_many_locals()
 	test_lifetimes()
+	test_r3_shapes()
+	test_r3_loops()
 	println(c"regalloc_test passed")
 	return 0

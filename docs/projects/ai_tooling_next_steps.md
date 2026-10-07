@@ -969,6 +969,32 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   scratchpad and run `bash <file>`. Not a repo bug, but worth knowing
   for the next agent calibrating sizes across a corpus.
 
+## Loop-scoped registers and the operand folds (2026-10-07, regalloc/PGO plan R3)
+
+- **`list[list.length - 1] = v` is rejected as "cannot assign to
+  read-only buffer field".** The grammar sees the `.length` read inside
+  the index expression and treats the whole statement as a store to the
+  field; `int last = list.length - 1` then `list[last] = v` compiles.
+  A false positive in the lvalue check, worth fixing in `grammar/` (it
+  bit `compiler/regalloc_scan.w`'s `rl_eligible` stack twice).
+- **`wtest changed` maps every compiler-tree diff to `verify` alone.**
+  A change under `code_generator/`, `grammar/` or `compiler/` prints
+  `verify self_host_warning_test parser_generator_w_test`, so the
+  targets that actually exercise an emitter change (`asm_x64_test`,
+  `local_load_fold_test`, `regalloc_test`, `ast_retained_emit_test`,
+  `repl_test`, the `defer_*`/`goto_*`/`generator_*` families) have to
+  be named by hand from `./wbuild --list`. A residue rule in
+  `tools/test_map.w` mapping `code_generator/x86.w` to the encode and
+  fold suites (and `compiler/regalloc_scan.w` to the `regalloc_*`
+  targets) would make the selection trustworthy for backend work.
+- **The gcc oracle pattern worked well**: the new `regalloc_test`
+  cases were written once in C with `intptr_t` locals, run at `-O0` to
+  obtain the expected values, then transcribed; every expected number
+  in `test_r3_shapes` / `test_r3_loops` comes from that run, so a
+  wrong fold cannot hide behind an expectation computed by the same
+  compiler. Values must still fit 32 bits for the x86 twin (two
+  constants had to be shrunk).
+
 ## Profile-driven register scan (2026-10-07, PGO plan P2 phase B)
 
 - **`check --lint`'s `void-pointer-conversion` points at the statement

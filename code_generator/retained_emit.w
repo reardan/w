@@ -200,6 +200,7 @@ int retained_emit_expression_group(expression_ast* tree, int group):
 
 void retained_expression_note(expression_ast* tree, int root);
 void emit_expression_ast(expression_ast* tree, int id);
+void emit_expression_ast_root(expression_ast* tree, int root);
 
 struct retained_statement_walk:
 	int node
@@ -358,7 +359,7 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 int retained_walk_lower_expression(retained_statement_walk* walk):
 	int root = retained_emit_expression_group(walk.tree, walk.group)
 	assert1(root == walk.root)
-	emit_expression_ast(walk.tree, root)
+	emit_expression_ast_root(walk.tree, root)
 	return root
 
 

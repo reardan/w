@@ -292,8 +292,15 @@ void for_range_loop(int for_var, int for_tab_level):
 		mov_eax_int(0)
 		mov_reg_eax(for_reg)
 
-	# Enter a new loop context for break/continue
+	# Enter a new loop context for break/continue. The loop may own
+	# caller-saved registers from here (R3): the loop variable itself
+	# (re-read: loop_enter may have given it one) and the hidden end and
+	# step words, loaded ahead of the loop region.
 	int* outer = loop_enter()
+	for_reg = regalloc_slot_register(for_var - 1)
+	int end_reg = regalloc_loop_hidden(end_slot)
+	int step_reg = 0
+	if (num_range_args == 3): step_reg = regalloc_loop_hidden(for_var + 3)
 	# Loop region: the back edge re-tests the condition.
 	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	int h_top = be_ctrl_loop()
@@ -304,7 +311,8 @@ void for_range_loop(int for_var, int for_tab_level):
 		mov_eax_reg(for_reg)
 		push_slot()
 	else: push_slot_copy(for_var)
-	load_slot(end_slot)
+	if (end_reg != 0): mov_eax_reg(end_reg)
+	else: load_slot(end_slot)
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
@@ -320,7 +328,8 @@ void for_range_loop(int for_var, int for_tab_level):
 	/* increment: by 1, or by the step argument */
 	be_ctrl_end(loop_continue_chain)
 	if (num_range_args == 3):
-		load_slot(for_var + 3)
+		if (step_reg != 0): mov_eax_reg(step_reg)
+		else: load_slot(for_var + 3)
 		if (for_reg != 0): add_reg_eax(for_reg)
 		else:
 			regalloc_slot_assert(for_var - 1)
