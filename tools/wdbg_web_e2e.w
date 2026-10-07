@@ -1,5 +1,5 @@
 # wbuild: target=wdbg_web_test tag=tests dep=wdbg_web dep=wdbg dep=wcore input=tools/wdbg_web_e2e.w input=tools/wdbg_web/ input=tests/debug_fixture.w input=tests/crash_null_deref_fixture.w input=tools/web/
-# wbuild: step="bin/wv2 x64 tests/crash_null_deref_fixture.w -o bin/wdbg_web_crash64"
+# wbuild: step="bin/wv2 x64 --no-inline tests/crash_null_deref_fixture.w -o bin/wdbg_web_crash64"
 # wbuild: step="bin/wv2 x64 tools/wdbg_web_e2e.w -o bin/wdbg_web_e2e"
 # wbuild: step="bin/wdbg_web_e2e" expect_stdout="wdbg_web test OK"
 /*
@@ -17,7 +17,9 @@ handshake, CertificateVerify signature and Finished MAC all run). A
 third serves a W_CRASH_DUMP core through --core and wcore.
 
 Prerequisites, built by the wdbg_web_test target before this runs:
-bin/wdbg_web, bin/wdbg, bin/wcore, bin/wdbg_web_crash64.
+bin/wdbg_web, bin/wdbg, bin/wcore, bin/wdbg_web_crash64 (a --no-inline
+build: the core report must show crash_deep's frame, which the default
+build emits in place of its call).
 */
 import lib.lib
 import lib.str
