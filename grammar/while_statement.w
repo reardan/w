@@ -85,6 +85,7 @@ int while_statement():
 	int* outer = loop_enter()
 	# Loop region: the back edge and 'continue' re-test the condition.
 	loop_continue_chain = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# if not expression: leave the loop
 	int outer_condition = condition_context
