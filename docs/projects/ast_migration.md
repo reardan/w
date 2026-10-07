@@ -2396,3 +2396,36 @@ The `--streaming` conflict error has no diagnostic code row yet (`check
 --json` reports W0000). The Node workaround covers `tools/run_wasm.mjs`
 only; the host-import runners under `tools/web/` keep fast API calls on.
 **#489 remains open.**
+
+After merging register allocation and PGO (#582). The register pre-scan
+(`compiler/regalloc_scan.w`) reads each body's bytes from its own image of
+the source before the prologue, and `--profile-use`/`--profile-generate`
+key functions by `w defhash`, a hash of the token stream; neither depends on
+the front end. `w.w` is byte-identical between the default and `--streaming`
+on x86 and x64 with promotion on, with `--no-regs`/`-O0`, with
+`--profile-use=profiles/self.wprof` (`self_x64.wprof` on x64, and
+`bench.wprof` on x86) with and without `--no-regs`, and under
+`--profile-generate` (image and `.wprofmap`); `--stats`' regalloc and
+profile counters and `w defhash` output match too. `profile_check` reports
+1006 of 1008 (x86) and 1051 of 1053 (x64) functions still matching: the two
+stale entries are `link_option` and `link_impl`, whose source this change
+edits, so their hashes moved with their text, not with the front end. That
+is far above the 80% refresh threshold in register_allocation_pgo.md §8, so
+the committed profiles were left as they are (those two functions take the
+static heuristic until the next `profile_refresh`).
+
+Compile time on the merged tree, `bin/wv2 … --strict w.w`, median of nine
+interleaved runs (load average under 1), and instructions retired (callgrind,
+one run each, ±3% from the per-process hash seed):
+
+| | default (AST) | `--streaming` | ratio |
+| --- | ---: | ---: | ---: |
+| x86 wall | 1.231 s | 1.084 s | 1.14x |
+| x86 user + sys | 1.229 s | 1.088 s | 1.13x |
+| x64 wall | 1.276 s | 1.097 s | 1.16x |
+| x64 user + sys | 1.268 s | 1.099 s | 1.15x |
+| x86 instructions | 8.84G | 7.99G | 1.11x |
+| x64 instructions | 9.03G | 8.12G | 1.11x |
+
+#582's register pre-scan and promotion add about the same cost to both
+front ends, so the AST default stays inside the 1.25x checkpoint.
