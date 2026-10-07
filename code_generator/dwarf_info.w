@@ -344,8 +344,13 @@ void dw_variable_emit(int local_index, int arg_words):
 	dw_type_ref(type)
 	int at = codepos
 	emit_int8(0)
-	emit_int8(145) /* DW_OP_fbreg */
-	emit_sleb(dw_local_frame_offset(local_index, arg_words))
+	int reg = debug_local_register(local_index)
+	# A register-resident local (register promotion): DW_OP_reg<n>, the
+	# hardware number being the DWARF number for esi/edi and r12-r15
+	if (reg != 0): emit_int8(80 + reg) /* DW_OP_reg0 + n */
+	else:
+		emit_int8(145) /* DW_OP_fbreg */
+		emit_sleb(dw_local_frame_offset(local_index, arg_words))
 	code[at] = codepos - at - 1
 
 
@@ -524,6 +529,15 @@ void dwarf_frame_emit():
 		dw_cfa_advance(start + 1, body) /* after mov fp,sp */
 		emit_int8(13) /* DW_CFA_def_cfa_register fp */
 		emit_uleb(fp)
+		# Promoted-register pushes follow mov fp,sp: register i of the
+		# mask (ascending order) sits at CFA - (3 + i) words
+		int saved = dwarf_funcs[record + 8]
+		int saved_index = 0
+		for r in range(16):
+			if (saved & (1 << r)):
+				emit_int8(128 + r) /* DW_CFA_offset r */
+				emit_uleb(3 + saved_index)
+				saved_index = saved_index + 1
 		int at = body
 		while ((leave < dwarf_leaves.length) && (dwarf_leaves[leave] < f)): leave = leave + 2
 		while ((leave < dwarf_leaves.length) && (dwarf_leaves[leave] == f)):
@@ -535,6 +549,8 @@ void dwarf_frame_emit():
 				emit_uleb(sp)
 				emit_uleb(word_size)
 				emit_int8(192 + fp) /* DW_CFA_restore fp */
+				for r in range(16):
+					if (saved & (1 << r)): emit_int8(192 + r) /* DW_CFA_restore r */
 				at = position + 1
 				if (position + 2 < end):
 					dw_cfa_advance(at, position + 2) /* after ret */

@@ -209,6 +209,8 @@ void emit_declaration_ast_storage(statement_ast* node):
 	ast_declarations_emitted = ast_declarations_emitted + 1
 	if (node.inferred): emit_inferred_local_storage(node.declared_type)
 	else: emit_typed_local_storage(node.declared_type, node.has_initializer)
+	# a promoted local also gets the value in its register
+	regalloc_store_declared(node.binding)
 
 
 # The -v trace of a typed initializer's promoted type (expression_type

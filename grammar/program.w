@@ -377,6 +377,12 @@ void function_definition(int current_symbol):
 		# when the target's block is the whole function, else the token is
 		# the ':' of the portable body, compiled below as usual.
 		int asm_body = asm_function_body(current_symbol, last_global_declaration)
+		# Register promotion (compiler/regalloc_scan.w): look ahead over
+		# the body for the locals worth a callee-saved register, so the
+		# prologue below (either path) can push them. A whole-asm function
+		# has no W body to scan.
+		if (asm_body == 1): regalloc_function_end()
+		else: regalloc_function_scan(current_symbol, is_w_variadic)
 		if (asm_body == 1): save_int(table + current_symbol + 14, codepos - function_start)
 		else if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
 		else:
@@ -387,6 +393,7 @@ void function_definition(int current_symbol):
 			# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
 			# the function's size-prefixed code-section unit.
 			be_function_prologue()
+			profile_function_enter(current_symbol, last_global_declaration)   # P1: --profile-generate
 			# x86/x64: the saved frame pointer is one more word on the W stack
 			int frame_words = be_frame_words()
 			stack_pos = stack_pos + frame_words
@@ -678,6 +685,7 @@ void script_main():
 	sym_set_w_variadic(current_symbol, -1)
 	be_function_define(current_symbol, c"main")
 	be_function_prologue()
+	profile_function_enter(current_symbol, c"main")   # P1: --profile-generate
 	stack_pos = stack_pos + be_frame_words()
 	current_function_symbol = current_symbol
 	enclosing_tab_level = 0
@@ -827,6 +835,7 @@ void program_item():
 	# token itself has moved on to the declared name, so capturing
 	# this any later would miss the return-type tokens).
 	int defhash_start = token_start_offset
+	profile_use_definition_start = defhash_start   # P2: --profile-use hashes the span from here
 	# kernel declarations: "kernel identifier (" (implicit void
 	# return). A user type or symbol named 'kernel' shadows the
 	# marker, like the limb-intrinsic shadowing rule. Like generics,

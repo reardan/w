@@ -39,6 +39,8 @@ import code_generator.code_emitter
 void error(char *s);       /* from diagnostics.w */
 void emit_x64_opcode();    /* from x86.w (used on the x86 path of be_lea) */
 void lea_eax_esp_plus(int v);   /* from x86.w (the x86 path of be_lea_acc_wstack) */
+void regalloc_prologue_emit();  /* from x86.w (register promotion pushes) */
+void regalloc_function_end();   /* compiler/regalloc_scan.w */
 void sym_define_global(int current_symbol);          /* symbol_table.w */
 void sym_define_global_at(int current_symbol, int v);
 int sym_declare_global(char *s, int type, int symtype);
@@ -510,9 +512,11 @@ int be_function_define_declare(char* name):
 int be_frame_active
 
 
-# Words the current function's prologue pushed beyond the return slot.
+# Words the current function's prologue pushed beyond the return slot:
+# the frame pointer, plus the callee-saved registers promoted locals
+# live in (x86/x64 only, regalloc_prologue_emit).
 int be_frame_words():
-	return be_frame_active
+	return be_frame_active + regalloc_saved_count
 
 
 # Close a function body: on wasm the unit's `end` opcode plus the body
@@ -521,6 +525,7 @@ int be_frame_words():
 void be_function_epilogue():
 	if (be_frame_active): dwarf_function_close()
 	be_frame_active = 0
+	regalloc_function_end()
 	if (target_isa == 2): wasm_function_end()
 
 
@@ -542,5 +547,9 @@ void be_function_prologue():
 		emit_x64_opcode()
 		emit(2, c"\x89\xe5")   # mov ebp,esp / mov rbp,rsp
 		be_frame_active = 1
+		# push the registers promoted locals of this body live in
+		# (docs/projects/register_allocation_pgo.md §2.2); nothing when
+		# the pre-scan promoted nothing, so the bytes above are unchanged
+		regalloc_prologue_emit()
 	# DWARF subprogram + CFI notes (code_generator/dwarf.w)
 	if (be_frame_active): dwarf_function_open(prologue_start)

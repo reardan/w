@@ -12,5 +12,6 @@ import code_generator.dynamic_registry
 import code_generator.ffi
 import code_generator.elf_dynamic
 import code_generator.dwarf
+import code_generator.profile_counters
 
 int codegen_temp_var

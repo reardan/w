@@ -87,11 +87,14 @@ int inferred_declaration():
 	# initializer, so the initializer cannot reference the new name and
 	# the recorded slot index needs no post-expression fixup.
 	sym_declare(name, type, 'L', stack_pos, 1)
-	sym_note_inferred_location(table_pos - symbol_data_size, node.line, node.column)
-	lint_track_local(table_pos - symbol_data_size)
+	int declared = table_pos - symbol_data_size
+	sym_note_inferred_location(declared, node.line, node.column)
+	lint_track_local(declared)
 	free(name)
 	pointer_indirection = 0
 	emit_inferred_local_storage(type)
+	# a promoted local also gets the value in its register
+	regalloc_store_declared(declared)
 	return 1
 
 
@@ -134,6 +137,8 @@ int variable_declaration():
 		pointer_indirection = 0
 
 		emit_typed_local_storage(type, has_initializer)
+		# a promoted local also gets the value in its register
+		regalloc_store_declared(last_declared_symbol)
 		return type
 	return -1
 

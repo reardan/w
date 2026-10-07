@@ -16,10 +16,13 @@ void define_asm_functions():
 	sym_define_declare_global_function_arity(c"syscall7", 7)
 	# The sixth syscall argument travels in ebp, which W code keeps as
 	# its frame pointer (be_function_prologue): save it around the call.
+	# esi/edi carry the 4th and 5th arguments and may hold a caller's
+	# promoted locals (register promotion), so they are saved too.
 	x86_asm(c"push ebp")   # W's frame pointer: the 6th argument borrows ebp
-	x86_asm(c"mov eax,[esp+0x20]; mov ebx,[esp+0x1c]; mov ecx,[esp+0x18]")
-	x86_asm(c"mov edx,[esp+0x14]; mov esi,[esp+0x10]; mov edi,[esp+0xc]")
-	x86_asm(c"mov ebp,[esp+8]; int 0x80; pop ebp; ret")
+	x86_asm(c"push esi; push edi")
+	x86_asm(c"mov eax,[esp+0x28]; mov ebx,[esp+0x24]; mov ecx,[esp+0x20]")
+	x86_asm(c"mov edx,[esp+0x1c]; mov esi,[esp+0x18]; mov edi,[esp+0x14]")
+	x86_asm(c"mov ebp,[esp+0x10]; int 0x80; pop edi; pop esi; pop ebp; ret")
 
 	# debug
 	sym_define_declare_global_function(c"get_context")
@@ -33,21 +36,26 @@ void define_asm_functions():
 	x86_asm(c"mov [eax+0xc],ebx; mov [eax+0x10],esp; mov [eax+0x14],ebp")
 	x86_asm(c"mov [eax+0x18],esi; mov [eax+0x1c],edi; pop eax; ret")
 
-	# repl_setjmp(buf): save return address, caller esp and ebp into the
-	# 12-byte buffer, then return 0. repl_longjmp resumes here returning 1.
+	# repl_setjmp(buf): save return address, caller esp and ebp, then the
+	# callee-saved ebx/esi/edi (register promotion keeps locals of
+	# frames below the caller in esi/edi: longjmp must restore the
+	# caller's values) into the jmp_buf_words-word buffer (lib/setjmp.w),
+	# then return 0. repl_longjmp resumes here returning its value.
 	sym_define_declare_global_function(c"repl_setjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"setjmp")
 	x86_asm(c"mov eax,[esp+4]; mov ecx,[esp]; mov [eax],ecx; lea ecx,[esp+4]")
-	x86_asm(c"mov [eax+4],ecx; mov [eax+8],ebp; xor eax,eax; ret")
+	x86_asm(c"mov [eax+4],ecx; mov [eax+8],ebp; mov [eax+0xc],ebx")
+	x86_asm(c"mov [eax+0x10],esi; mov [eax+0x14],edi; xor eax,eax; ret")
 
-	# repl_longjmp(buf, val): restore esp/ebp and jump to the address saved
-	# by repl_setjmp with val in eax. Like all stubs, the first argument
-	# sits at the highest stack offset.
+	# repl_longjmp(buf, val): restore ebx/esi/edi, esp and ebp and jump to
+	# the address saved by repl_setjmp with val in eax. Like all stubs,
+	# the first argument sits at the highest stack offset.
 	sym_define_declare_global_function(c"repl_longjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"longjmp")
-	x86_asm(c"mov eax,[esp+4]; mov ecx,[esp+8]; mov esp,[ecx+4]")
+	x86_asm(c"mov eax,[esp+4]; mov ecx,[esp+8]; mov ebx,[ecx+0xc]")
+	x86_asm(c"mov esi,[ecx+0x10]; mov edi,[ecx+0x14]; mov esp,[ecx+4]")
 	x86_asm(c"mov ebp,[ecx+8]; jmp [ecx]")
 
 	# endian
@@ -130,11 +138,14 @@ void define_asm_functions():
 
 	# stack_create(): mmap2(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 	# The offset argument travels in ebp, the caller's frame pointer:
-	# saved and restored around the syscall.
+	# saved and restored around the syscall, like esi/edi (the flags and
+	# fd arguments), which may hold the caller's promoted locals.
 	sym_define_declare_global_function(c"stack_create")
 	x86_asm(c"push ebp")   # the offset argument borrows W's frame pointer
+	x86_asm(c"push esi; push edi")
 	x86_asm(c"mov ebx,0; mov ecx,0x400000; mov edx,3; mov esi,0x122")
-	x86_asm(c"mov edi,-1; mov ebp,0; mov eax,0xc0; int 0x80; pop ebp; ret")
+	x86_asm(c"mov edi,-1; mov ebp,0; mov eax,0xc0; int 0x80")
+	x86_asm(c"pop edi; pop esi; pop ebp; ret")
 
 	# Thread-local storage (docs/projects/thread_local.md).
 	# __w_tls_size(): the per-thread block size, patched at finish.

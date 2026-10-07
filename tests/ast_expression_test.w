@@ -2682,6 +2682,8 @@ process_result* ast_test_repl(char* repl, int enabled, char* script):
 	strv_set(args, 0, repl)
 	if (enabled == 1): strv_set(args, 1, c"--ast-expressions")
 	if (enabled == 2): strv_set(args, 1, c"--ast-full-expressions")
+	# S2.4: the REPL lowering from the retained forest.
+	if (enabled == 3): strv_set(args, 1, c"--ast-emit-retained")
 	return ast_test_run(args, script)
 
 
@@ -2691,7 +2693,7 @@ void test_ast_expression_repl_recovery():
 		char* repl = c"bin/ast_repl"
 		if (host): repl = c"bin/ast_repl64"
 		process_result* old = ast_test_repl(repl, 0, script)
-		for enabled in range(1, 3):
+		for enabled in range(1, 4):
 			process_result* ast = ast_test_repl(repl, enabled, script)
 			assert_equal(0, ast.status)
 			assert_equal(old.status, ast.status)
@@ -2712,7 +2714,7 @@ void test_ast_expression_debugger_eval():
 	char* path = ast_test_path(c".w")
 	assert1(file_write_text(path, c"int main():\n\tint answer = (6 * 7)\n\tdebugger\n\treturn answer != 42\nint dbg_twice(int n): return n * 2\n"))
 	for host in range(2):
-		for enabled in range(3):
+		for enabled in range(4):
 			char** args = strv_new(3)
 			char* dbg_path = c"bin/wdbg"
 			if (host): dbg_path = c"bin/wdbg64"
@@ -2720,6 +2722,7 @@ void test_ast_expression_debugger_eval():
 			strv_set(args, 1, path)
 			if (enabled == 1): strv_set(args, 2, c"--ast-expressions")
 			if (enabled == 2): strv_set(args, 2, c"--ast-full-expressions")
+			if (enabled == 3): strv_set(args, 2, c"--ast-emit-retained")
 			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (dbg_twice(answer) + 1)\np (1.5 + 2.5)\np (answer > 40 && dbg_twice(answer) == 84)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
 			assert_equal(0, result.status)
 			assert_contains(result.stdout_text, c"answer = 42")
@@ -3099,7 +3102,7 @@ void test_ast_control_header_repl_recovery():
 		char* old_diagnostics = ast_test_repl_diagnostic_text(old.stderr_text)
 		assert_strings_equal(c"2\n-1\n2\n0\n7427\n", old.stdout_text)
 		assert_contains(old_diagnostics, c"entry_3.w:1:28")
-		for enabled in range(1, 3):
+		for enabled in range(1, 4):
 			process_result* ast = ast_test_repl(repl, enabled, script)
 			assert_equal(0, ast.status)
 			assert_equal(old.status, ast.status)
@@ -3123,7 +3126,7 @@ void test_ast_first_use_container_repl_recovery():
 		if (host): assert_strings_equal(c"42\n42\n8\n7427\n", old.stdout_text)
 		else: assert_strings_equal(c"42\n42\n4\n7427\n", old.stdout_text)
 		assert_contains(old_diagnostics, c"Cannot find symbol: 'missing'")
-		for enabled in range(1, 3):
+		for enabled in range(1, 4):
 			process_result* ast = ast_test_repl(repl, enabled, script)
 			assert_equal(0, ast.status)
 			assert_equal(old.status, ast.status)

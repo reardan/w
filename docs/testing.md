@@ -228,7 +228,93 @@ change, re-run `--write-baseline` (default `-n 3` on an idle machine,
 so the recorded times are meaningful) and commit the new
 `tools/wbench_baseline.txt` with the change. The commit message should
 say why the numbers moved. `wbench_compare_test` (in `tests`) checks
-the compare logic itself against fixture baselines in `tests/wbench/`.
+the compare logic itself against fixture baselines in `tests/wbench/`
+and `tests/bench/fixtures/`.
+
+### The benchmark corpus (run-time performance)
+
+`tests/bench/` holds small compute-bound programs that measure the
+code the compiler emits rather than the compiler itself
+(docs/projects/register_allocation_pgo.md §5): `sum` (the two-local
+summation loop), `sieve`, `sha256_1m` (`lib/sha256.w`), `siphash_keys`
+(map inserts and lookups, the container runtime's hash table),
+`inflate_corpus` (`libs/extras/compress/inflate.w` over the DEFLATE
+corpus), `regex_backtrack` (`lib/regex.w`), `matmul_256` and
+`strcmp_sort` (`list.sort` on strings), plus `self` (the compiler
+compiling `w.w`). Each program is deterministic, takes an optional size
+argument, and prints one line, `<name> size=<n> checksum=<hex>`, that
+is the same on the 32-bit and 64-bit targets and from the C twin in
+`tests/bench/c/<name>.c` (a port of the same algorithm and, where the
+W program uses a library, of that W library code). The default sizes
+run 0.4-1.1 s each on the x86 build.
+
+```sh
+./wbuild bench                 # run every program x86+x64 (checksums asserted), write bin/bench.txt
+./wbuild bench_compare         # the same, then compare against tests/bench/baseline.txt
+./wbuild bench_sum             # one program, both widths, full size
+bin/wbench --programs --compiler bin/wv3 --write-baseline bin/bench_new.txt   # another compiler
+bin/wbench --programs --only sha256_1m --no-valgrind -n 5                      # quick look
+tools/bench_vs_c.sh            # W x86/x64 vs gcc -O2 / clang -O2 (markdown tables)
+```
+
+`bin/wbench --programs` compiles each program for x86 and x64 with the
+given compiler (`--compiler`, default `bin/wv2`; the x64 `self` row
+uses `--compiler64`, default `bin/wv2_64` from `build_x64`, and is
+skipped when that does not exist), runs each `-n` times (default 3)
+and reports per `<name>.<arch>` row the executable size, the callgrind
+instruction count in thousands (`kIr`) with the three hottest
+functions, and the best wall time. `kIr` is measured once per row when
+`valgrind` is on `PATH` (`--no-valgrind` skips it); like the size it is
+a deterministic property of the binary, so it is the number to gate
+on and to quote. `--compare` applies the rules above to the
+`bytes` and `kIr` columns (`kIr` only when both the run and the
+baseline measured it: without valgrind the check is skipped, not
+failed), reports wall time, and fails on a row missing from the
+baseline or on an x86/x64 checksum mismatch. `bin/bench.txt` is
+written in baseline format with the top functions as comments, so
+refreshing `tests/bench/baseline.txt` after an intended codegen change
+is copying it over (on an idle machine, so the recorded times mean
+something) and saying why in the commit message. The baseline's `kIr`
+column moves slightly between runs of `siphash_keys` and `self`
+(the map seed is random per process), well inside the tolerance.
+
+`bench` and `bench_compare` are not part of `tests` (they take
+minutes under valgrind); the CI benchmark job runs `bench_compare` on
+pushes to `main` and keeps `bin/bench.txt` as an artifact.
+`bench_<name>_smoke_test` targets (in `tests`) compile and run each
+program at a tiny size on both widths and assert its checksum, so the
+corpus never stops compiling. Adding a program is one source file with
+its own `# wbuild: target=bench_<name> tag=bench` and
+`bench_<name>_smoke_test` blocks (copy an existing one), its C twin,
+and a new row in the baseline; `tools/wbench.w`'s `prog_names` lists
+the corpus.
+
+`tools/bench_vs_c.sh [-c <compiler>] [-n <runs>] [-o <name>] [-V]`
+builds every program but `self` with the W compiler for both widths
+and its C twin with `gcc -O2`, `clang -O2` and (when the toolchain has
+32-bit multilib; skipped otherwise) `gcc -O2 -m32`, checks that all of
+them print the same line, and prints markdown tables of wall time and
+instruction count. Note that `sum`'s loop is folded to a closed form by
+both C compilers, so that row measures their optimiser, not a loop.
+
+### Profiles (`profiles/*.wprof`)
+
+`profiles/self.wprof`, `self_x64.wprof` (the compiler compiling `w.w`,
+x86 and x64) and `bench.wprof` (the corpus above) are committed text
+profiles taken with `--profile-generate` and merged by `bin/wprof`
+(docs/projects/register_allocation_pgo.md §3.3). `--profile-use=<path>`
+reads one explicitly — the compiler never looks for a profile on its
+own — and `./wbuild verify_pgo` (in `tests`) is the self-host fixpoint
+with the flag: `wv3_pgo == wv4_pgo == wv5_pgo`, the streaming grammar
+equal to `--ast-emit-retained`, and the x64 chain. Entries are keyed by
+`w defhash`, so editing a function's body only makes its entry stale
+(the static heuristic applies to it) and never changes what the
+compiler computes; `./wbuild profile_check` (in `tests`, never fails)
+prints how much of each profile still matches the tree. A PR that
+changes hot code re-runs `./wbuild profile_refresh` and commits the
+result, saying why the numbers moved, with the same idle-machine
+caveat as the benchmark baseline; counts of the hash-table probe loops
+differ slightly between refreshes (addresses), which is expected.
 
 ## Flaky tests
 

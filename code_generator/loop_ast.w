@@ -3,20 +3,35 @@
 int* emit_range_loop_ast_begin(loop_ast* node):
 	# With 2+ arguments the first one is the start: copy it into the loop var
 	node.end_slot = node.variable_slot + 1
+	int for_reg = regalloc_slot_register(node.variable_slot - 1)
 	if (node.argument_count >= 2):
 		node.end_slot = node.variable_slot + 2
 		load_slot(node.variable_slot + 1)
-		store_stack_var((stack_pos - node.variable_slot) << word_size_log2)
+		for_store_loop_var(node.variable_slot)
+	elif (for_reg != 0):
+		mov_eax_int(0)
+		mov_reg_eax(for_reg)
 
-	# Enter a new loop context for break/continue
+	# Enter a new loop context for break/continue. The loop may own
+	# caller-saved registers from here (R3, grammar/for_statement.w's
+	# twin): the loop variable (re-read) and the hidden end/step words.
 	int* outer = loop_enter()
+	for_reg = regalloc_slot_register(node.variable_slot - 1)
+	int end_reg = regalloc_loop_hidden(node.end_slot)
+	if (node.argument_count == 3): regalloc_loop_hidden(node.variable_slot + 3)
 	node.break_target = loop_break_chain
 	# Loop region: the back edge re-tests the condition.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# condition: loop var < end
-	push_slot_copy(node.variable_slot)
-	load_slot(node.end_slot)
+	if (for_reg != 0):
+		mov_eax_reg(for_reg)
+		push_slot()
+	else: push_slot_copy(node.variable_slot)
+	if (end_reg != 0): mov_eax_reg(end_reg)
+	else: load_slot(node.end_slot)
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
@@ -32,10 +47,19 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 void emit_range_loop_ast_end(loop_ast* node):
 	/* increment: by 1, or by the step argument */
 	be_ctrl_end(node.continue_target)
+	int for_reg = regalloc_slot_register(node.variable_slot - 1)
 	if (node.argument_count == 3):
-		load_slot(node.variable_slot + 3)
-		add_dword_esp_plus_eax((stack_pos - node.variable_slot) << word_size_log2)
-	else: inc_dword_esp_plus((stack_pos - node.variable_slot) << word_size_log2)
+		int step_reg = regalloc_hidden_register(node.variable_slot + 3)
+		if (step_reg != 0): mov_eax_reg(step_reg)
+		else: load_slot(node.variable_slot + 3)
+		if (for_reg != 0): add_reg_eax(for_reg)
+		else:
+			regalloc_slot_assert(node.variable_slot - 1)
+			add_dword_esp_plus_eax((stack_pos - node.variable_slot) << word_size_log2)
+	elif (for_reg != 0): add_reg_int8(for_reg, 1)
+	else:
+		regalloc_slot_assert(node.variable_slot - 1)
+		inc_dword_esp_plus((stack_pos - node.variable_slot) << word_size_log2)
 
 	/* jmp back to condition */
 	be_br(node.top_target)
@@ -61,7 +85,9 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
 	# Loop region: the back edge re-tests.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# condition: exit once node.done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
@@ -96,12 +122,12 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 		alu_add()
 		extracted_type = promote(node.element_type)
 	if (extracted_type != -1): coerce(node.variable_type, extracted_type)
-	store_stack_var((stack_pos - node.variable_slot) << word_size_log2)
+	for_store_loop_var(node.variable_slot)
 
 	if (node.value_var != 0):
 		for_iter_call(node.value2_fn, node.container_slot, node.cursor_slot)
 		coerce(node.value_var_type, node.value2_coerce_type)
-		store_stack_var((stack_pos - node.value_var) << word_size_log2)
+		for_store_loop_var(node.value_var)
 
 	return outer
 
@@ -183,7 +209,9 @@ void emit_loop_ast_walk(retained_statement_walk* walk, int phase):
 int* emit_while_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 	node.continue_target = node.top_target
 	loop_continue_chain = node.continue_target
 	return outer

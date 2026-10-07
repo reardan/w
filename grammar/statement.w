@@ -247,6 +247,9 @@ void statement_impl():
 	# tools/gen_nesting_fixtures.w) pins the deep shapes.
 	stmt_nesting_depth = stmt_nesting_depth + 1
 	if (stmt_nesting_depth > 200): error(c"statement nesting too deep")
+	# A loop statement's keyword offset keys its pre-scan record
+	# (grammar/while_statement.w, loop_enter)
+	loop_stmt_offset = token_start_offset
 	# Set by the return/break/continue/goto arms below; published through
 	# lint_last_stmt_jumps at the bottom (compiler/lint.w, unreachable)
 	int jumps = 0

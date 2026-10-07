@@ -39,6 +39,7 @@ long-jump back into repl_eval; the same checkpoint then rolls the entry
 back exactly like a compile error.
 */
 import compiler.compiler
+import lib.args
 import lib.stack_trace
 import lib.utf8
 import debugger.sigcontext
@@ -497,9 +498,17 @@ void repl_state_capture(repl_state* st):
 # rollback restores.
 void repl_state_restore(repl_state* st):
 	retained_rollback(&st.retained)
+	# Under --ast-emit-retained an entry that fails mid-statement leaves the
+	# statement's walk record open; its node was just retracted, so the
+	# record and its phases go back to the walk pools here rather than at
+	# the next walked statement.
+	if (retained_nodes != 0): retained_walk_release()
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	# an entry that failed inside a function body leaves the register
+	# promotion state of that body armed; nothing may inherit it
+	regalloc_reset()
 	table_pos = st.table_pos
 	stack_pos = st.stack_pos
 	loop_depth = st.loop_depth
@@ -851,7 +860,7 @@ void repl_fault_install_handlers():
 # an earlier eval is already executing.
 
 int repl_nest_size():
-	return 7 * __word_size__
+	return (4 + jmp_buf_words) * __word_size__
 
 
 char* repl_nest_save():
@@ -862,7 +871,7 @@ char* repl_nest_save():
 	save_word(s + 1 * __word_size__, repl_fault_active)
 	save_word(s + 2 * __word_size__, repl_result_type)
 	save_word(s + 3 * __word_size__, repl_entry_file)
-	for i in range(3):
+	for i in range(jmp_buf_words):
 		save_word(s + (4 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
 	return s
 
@@ -873,7 +882,7 @@ void repl_nest_restore(char* s):
 	repl_fault_active = load_word(s + 1 * __word_size__)
 	repl_result_type = load_word(s + 2 * __word_size__)
 	repl_entry_file = load_word(s + 3 * __word_size__)
-	for i in range(3):
+	for i in range(jmp_buf_words):
 		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (4 + i) * __word_size__))
 	free(s)
 
@@ -957,9 +966,9 @@ void repl_remove_staging(char* dir, int file_count):
 # session setup; an embedder that already owns its code buffer and signal
 # handlers (wdbg) calls just this before its first repl_eval().
 void repl_engine_init():
-	if (repl_jump_buffer == 0): repl_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_jump_buffer == 0): repl_jump_buffer = cast(int, malloc(jmp_buf_words * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
-	if (repl_fault_jump_buffer == 0): repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_fault_jump_buffer == 0): repl_fault_jump_buffer = cast(int, malloc(jmp_buf_words * __word_size__))
 
 
 # Create the session's staging directory on first use, so a session that
@@ -972,6 +981,27 @@ void repl_stage_init():
 	if (repl_staging_dir != 0): return;
 	repl_staging_dir = cstr(f"/tmp/w_repl_{getpid()}")
 	mkdir(repl_staging_dir, 511)
+
+
+# AST front-end modes for the in-process compilers (repl.w's main and
+# wdbg_main), from the same flags the compiler driver takes and through the
+# driver's own link_option, so --ast-emit-retained implies --ast-retain and
+# full-expression mode exactly as it does for a compile. A flag only raises
+# a mode: whatever compiler/compiler.w makes the default stays on. Call
+# after args_init and before the first compile.
+void repl_ast_option(char* name):
+	if (args_has_bool_flag(name) == 0): return;
+	char* spelled = cstr(f"--{name}")
+	link_option(spelled, 1)
+	free(spelled)
+
+
+void repl_ast_options():
+	repl_ast_option(c"ast-expressions")
+	repl_ast_option(c"ast-full-expressions")
+	repl_ast_option(c"ast-retain")
+	repl_ast_option(c"ast-required")
+	repl_ast_option(c"ast-emit-retained")
 
 
 # Initialize the session: the compiler configured for in-process

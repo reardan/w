@@ -48,6 +48,9 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild verify      # self-host fixpoint (wv3==wv4==wv5) — REQUIRED gate for any compiler change
 ./wbuild verify_x64  # same for the 64-bit target; run for codegen/word-size work
 ./wbuild verify_arm64  # same for the ARM64 target
+./wbuild verify_pgo  # fixpoint of the --profile-use=profiles/self.wprof chain (wv3_pgo == wv4_pgo == wv5_pgo, x86 + x64); in tests
+./wbuild profile_refresh  # regenerate profiles/*.wprof (self, self_x64, bench corpus) from instrumented runs; commit the result when hot code changed
+./wbuild profile_check  # non-failing report: how much of each committed profile still matches the tree (bin/wprof stats); in tests
 ./wbuild tests       # full pre-merge suite
 ./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)

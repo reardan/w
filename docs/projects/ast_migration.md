@@ -1957,3 +1957,299 @@ emission; the gpu for kernel's prologue and epilogue are walked phases
 that are drained immediately, not deferred; the coverage counter does
 not count function, global or linkage boundaries at all. The tree
 schema is unchanged (**version 2**).
+
+## Generic instantiation and deferred statements from the retained forest (S2.3)
+
+Under `--ast-emit-retained`, no generic instantiation and no deferred
+statement replay reopens its source file and seeks to the recorded span
+any more. Two mechanisms replace the seek:
+
+- **Retained type trees.** A generic struct's field list is captured as
+  unbound type trees (`generic_field_ast`, the `generic_type_ast` shapes of
+  tasks 38/45/46) while its definition is skipped; a generic function's
+  header already was (`generic_signature_ast`). A struct instantiation, an
+  instantiation signature (`generic_inst_signature`) and the placeholder
+  inference shapes (`generic_infer_shapes`) are now built by walking those
+  trees under the substitution (`generic_tree_resolve`, grammar/generic.w),
+  making exactly the type-table calls `type_name()` makes for the same
+  tokens in the same order, so type indices and images stay identical. A
+  side-effect-free check (`generic_tree_valid`) runs first and declines any
+  tree whose re-parse would report an error or read the tokens differently
+  (unknown names, wrong arity, list/map storage rules, 64-bit types on x86,
+  a bound parameter applied to arguments, a generic struct's bare name as a
+  slice element), and a field list or header whose lexing printed anything
+  is not captured; those are re-parsed, so the diagnostic is the
+  re-parse's. Fixed-size arrays, `const`, `gpu` and alias-qualified types
+  are not captured shapes and are re-parsed too.
+- **Retained source bytes.** What must still be parsed again - every
+  function body, whose meaning depends on the type arguments, and every
+  deferred statement, whose names bind at each exit - is re-lexed from the
+  retained source version: the bytes `retained_source_byte` recorded while
+  the file was first read (code_generator/retained_emit.w, S2.3 section).
+  The re-parse gets a descriptor whose getchar window is a private copy of
+  those bytes over file offsets [0, length), so every absolute
+  `getchar_seek` inside it (diagnostic context lines, preflight rewinds,
+  walk drains) stays in memory. The descriptor is `/dev/null` when a token
+  the first read consumed follows the span (or the span has no
+  expression), so no expression preflight can run into the window's end;
+  a body or deferred statement that ends its file gets the file's own
+  descriptor positioned at the end of the retained bytes, because the
+  preflight's refill (`ast_expression_refill`) compacts the window there
+  and getchar then re-reads the prefix from the descriptor. No byte of the
+  span is read from the file in either case. A source version that was
+  replaced or rolled back, or a descriptor beyond getchar's table, falls
+  back to the old file re-parse.
+
+`--stats` prints `Generic instantiation source seeks:` and `Deferred
+statement source seeks:` in every mode, and under `--ast-emit-retained`
+also `Generic types from retained trees:`, `Retained-source reparses:` and
+`Retained-source reparses positioned at the file's end:`. For `w.w` the
+default `check` reports 5 generic source seeks (2 signatures and 3 bodies
+from `lib/container.w`); `check --ast-required --ast-emit-retained` reports
+**0 and 0**, with 2 signatures from trees and 3 bodies from retained bytes
+(one, `list_remove_at`, ends its file), identically on the x86 and x64
+hosts. A compile of `w.w` (not `check`, which also instantiates unused
+generics once) has 4 seeks by default and 0 in the mode.
+
+Verification: `ast_generic_retained_test` compiles a tracked fixture
+(`tests/ast_generic_retained_fixture.w` and its helper: recursive,
+container, slice, pointer and nested-application fields, a fixed-array and
+a by-value-list-element struct that are re-parsed, explicit, inferred and
+placeholder-inferred calls, a generic-struct return, defers in plain and
+generic functions, generics from another file) and 18 generated sources
+(each declined shape with its error, lexer warnings in a field list,
+errors and warnings inside re-lexed bodies and defers with their context
+lines, bodies and defers that end their file with and without a final
+newline) in the default mode and with `--ast-emit-retained` on the x86
+target of the 32-bit host and the x64 target of the 64-bit host, requiring
+identical status, output, diagnostics and image; it runs the fixture's
+binaries and pins the `--stats` counters, including 0 seeks for `w.w` in
+both `check` and compile. Outside the suite, 691 tracked `.w` files that
+mention generics or `defer` compiled with `--ast-emit-retained` by this
+branch and by its base gave identical status, output and image on both
+hosts (346 x86 / 365 x64 of them exercise the new paths), apart from the
+six library files whose compile already crashes in both, and none of them
+reports a source seek. `verify`, `verify_x64`, the `generics_*`, `defer_*`
+and `operator_overload_*` targets, `ast_retained_emit_test` and `tests`
+pass.
+
+What this does not claim: function bodies and deferred statements are
+still re-parsed (re-lexed from memory), not instantiated from a retained
+tree. A body's types, overloads, method and generic resolution all depend
+on the type arguments and are decided during the parse, and S2.2 defers
+emission one statement at a time, so no type-independent body tree exists
+to walk under a substitution; a deferred statement must bind its names at
+each exit, so a tree parsed at registration cannot stand in for it.
+`defhash` still hashes tokens from the file (a cache key, not an emitter).
+The operator-overload parameter pre-scan, the declaration lookaheads
+(`generic_declaration_scan_generic_return`, `generic_declaration_scan_repl`)
+and the lazy runtime helpers' backpatch chains are unchanged: the first two
+are lookahead rewinds within the file being parsed, and the last never
+re-read source. The default (streaming) compile and `-v` traces keep the
+file re-parse. No `tree --json` field was added; the schema stays
+**version 2**. **#489 remains open.**
+
+## REPL and wdbg on the retained path (S2.4)
+
+The in-process compilers now take the retained-AST modes exactly as a
+compile does. `repl.w` and `wdbg` read `--ast-expressions`,
+`--ast-full-expressions`, `--ast-retain`, `--ast-required` and
+`--ast-emit-retained` through `repl_ast_options` (`repl/core.w`), which
+applies each present flag with the driver's own `link_option`, so
+`--ast-emit-retained` implies the retained forest and full-expression mode
+here too. A flag only raises a mode, so a default that S2.5 sets in
+`compiler/compiler.w` reaches both front ends without another edit. Before
+this, both front ends silently ignored `--ast-required` and
+`--ast-emit-retained`; the REPL legs that S2.1 and S2.2b added to
+`ast_retained_emit_test` therefore compared `--ast-full-expressions` with
+itself, and now compare it with real retained lowering. wdbg's attach mode
+forwards the active modes (`--ast-emit-retained`, `--ast-required`) to the
+recompile that rebuilds its symbol tables.
+
+- **Rollback.** An entry that fails in the middle of a walked statement
+  leaves that statement's walk record open; its node is retracted by the
+  entry's rollback. `repl_state_restore` now returns such records to the
+  walk pools (`retained_walk_release`) as part of the rollback instead of
+  at the next walked statement, so the pools are empty between entries,
+  after errors and runtime faults alike. Nothing else needed to change:
+  the checkpoint already covered the retained suffix, and walk records
+  never outlive the statement that opened them.
+- **Incremental sessions** (`repl/incremental.w`). `--ast-emit-retained`
+  is part of a session's mode key. An unchanged prefix is no longer only
+  the run of byte-equal sources: a definition whose bytes changed keeps
+  its compiled function (and its suffix) when its retained tree is
+  unchanged. A body is not parsed without emitting it, so the new tree
+  comes from a probe: when the two sources differ only in `#` comments and
+  trailing blanks, the new source compiles once at the end of the session
+  with standard error muted, its retained nodes and bindings are compared
+  with the kept compile's (kinds, operands, literals and arenas verbatim;
+  semantic types structurally; nodes, bindings and symbol-table offsets of
+  the definition's own compile by position; every location by line and
+  column, an extent that ends in trailing blanks or a comment counting as
+  ending at the line's code), and the probe is rolled back. A probe that
+  fails, warns differently or differs anywhere falls back to recompiling
+  the suffix, which prints its own diagnostics once. The admission rules
+  did not change. `incremental_result` gains `tree_reused` and
+  `tree_probed`.
+
+Verification: `repl_retained_emit_test` replays every stdin script of
+`repl_test` (87) and `debug_test` (71 for `bin/wdbg`, 69 for
+`bin/wdbg64`) through the default compile and through
+`--ast-emit-retained` on both widths and requires equal status, stdout and
+stderr. Pids, addresses, timings, the `:symbols` pointer column (see
+below) and fault stack traces (which list stale stack words) are
+normalized first; a difference is retried twice, and a script whose
+default output differs between two runs is skipped and counted (3 or 4 of
+174 REPL runs, 4 of 140 wdbg runs). It also runs the REPL recovery scripts of
+`ast_expression_test` and `ast_retained_emit_test` plus one with errors
+inside walked function bodies, a fault inside a walked loop, `for`,
+`switch` and `defer` entries, on all three front-end modes.
+`ast_expression_test`'s REPL recovery and debugger evaluation legs run
+`--ast-emit-retained` as a third AST mode. `incremental_compilation_test`
+runs its suffix scenario in both lowering modes and checks that the walk
+pool is empty right after a failed update, and adds tree-reuse scenarios
+(comment and trailing-blank edits keep code, symbols and nodes
+byte-for-byte; a moved line or a code edit recompiles; a probe whose
+compile warns is discarded and the warning is printed once; the
+streaming mode never probes).
+
+Measured on this 4-core box under load (medians):
+
+| | default | `--ast-full-expressions` | `--ast-emit-retained` |
+| --- | --- | --- | --- |
+| REPL startup and `:quit`, x86 | 43 ms | 52 ms | 124 ms |
+| REPL startup and `:quit`, x64 | 56 ms | 48 ms | 117 ms |
+
+The difference is retaining the preloaded library (`lib.lib`,
+`lib.assert`, the container runtime) in the forest; entries themselves
+cost the same within noise. An incremental session of 100 functions,
+editing the first one (x86, `--ast-emit-retained`): an unchanged update
+takes 5-8 ms (admission), a comment edit 11-14 ms (one probe, everything
+kept), a code edit 61-67 ms (all 100 recompile, as a comment edit did
+before).
+
+What this does not claim: the REPL and wdbg still default to the
+streaming compile until S2.5 flips the default; the bare-expression and
+persistent-variable items of a REPL entry (`repl_entry_item`) compile
+through `expression()` outside the statement dispatcher, so they lower
+from the retained group but are not walked statements. Tree reuse needs
+a probe compile because bodies are deferred one statement at a time, not
+parsed whole; it only reuses a definition whose positions are unchanged,
+so a comment line added or removed is still an edit, and its probe can
+mark earlier functions as used (lint state). The `:symbols` dump's
+`pointer (n)` column differs between the modes for identifiers referenced
+before their declaration (for example `SYS_CREAT` and `__w_list` in the
+preloaded runtime): it records the global `pointer_indirection` at the
+placeholder's creation, a field nothing reads back. The tree schema is
+unchanged (**version 2**).
+
+## Multi-error checking without fork (C3.1)
+
+`check --all-errors` no longer forks. Every declaration and statement is
+still an analysis boundary (`analysis_run`, `compiler/analysis.w`), but
+the boundary now records the parse state in process
+(`compiler/analysis_state.w`) and arms `error()` to jump back to it with
+the native `repl_setjmp`/`repl_longjmp` stubs, through the existing
+`analysis_probe_error_status` hook in `error()`. After an error the
+boundary restores that state, returns the lexer to the failed item's
+first token, skips to the next sibling with `analysis_skip` as before,
+and the parse continues. Boundaries nest, so the innermost failing
+statement is the unit of recovery and the enclosing function, loop or
+block completes normally.
+
+- **What is restored.** What later parsing reads: the lexer (position,
+  token text and buffer, file and filename; a generic reparse's reopened
+  file is closed), the retained forest (`retained_rollback`, and the
+  failed statement's `--ast-emit-retained` walk record is released so
+  the enclosing walk can record its next phase), the stack depth, the
+  loop/switch/defer/for-cleanup state, the control-region stack, the
+  DWARF block stack, the statement and expression nesting guards,
+  the device, generator and bounds modes, the generic substitution
+  block, and the parse-context flags. A failed statement reports
+  `flow_terminates`, so a function whose final statement failed does not
+  get a follow-on missing-return warning.
+- **What is not restored, on purpose.** No executable is written in
+  check mode, so the code a failed item emitted is simply abandoned and
+  the code buffer is not rewound (forward call chains may thread through
+  it). The symbol and type tables are not rolled back: a binding the
+  failed item had made stays visible ("poisoned symbols",
+  `compiler/diagnostics.w`). A typed local whose initializer failed, a
+  function whose parameter type or body failed and a struct whose field
+  failed therefore no longer produce a "Cannot find symbol" at every
+  later use, which the forked checker did, because it discarded the
+  whole failed probe.
+- **Diagnostics.** Each error is reported once, where the parse meets
+  it; warnings are reported once, as the parse meets them, including the
+  warnings of a function that also has errors (the forked checker
+  suppressed every warning of a probe that later failed). The skip
+  re-reads the failed item's tokens with lexer warnings muted up to the
+  error, so they are not repeated. An error at end of input (an
+  unterminated literal, a missing block end) is final and reported
+  once. Two skip fixes ride along: an `else`/`elif` continues a failed
+  statement only when that statement is an `if` at the same
+  indentation, so a failed `elif x: return y` arm or a failed nested if
+  no longer swallows the enclosing chain's arms. The 100-error limit is
+  a plain counter (`stopping after 100 semantic errors`, unchanged).
+- **Hosts.** No `fork`, no pipe, no `seek` of the kernel offset and no
+  wait status: the Windows restriction is gone, and the only host
+  without recovery is wasm (no `longjmp`), which `check` now rejects
+  with its own message. arm64 Linux was spot-checked under qemu.
+  `W0388` ("requires seekable source files") no longer fires; its code
+  row stays.
+
+Cost of `w.w` (no errors, so every boundary is entered and none
+fails), on the shared, loaded 4-core box, median of five:
+
+| `bin/wv2 check --quiet ... w.w` | x86 host | x64 host |
+| --- | --- | --- |
+| `check` | 0.80 s | 0.61 s |
+| `check --all-errors`, forked (before) | 46.6-102 s (load-dependent, 2-3 runs) | — |
+| `check --all-errors`, in process (after) | 0.79 s | 0.66 s |
+
+On a file with errors (`tests/wbuildd_test.w`, 598 lines, with three
+injected mistakes) the in-process checker takes 0.14 s and reports 20
+errors (one of the mistakes is an unknown type, whose variable's 17 uses
+are follow-ons); the forked one took 3.5 s and stopped at its 100-error
+limit, because discarding the failed functions made every call to
+them and every use of their locals an error. `check` stops at the first
+error in 0.10 s.
+
+Verification: `analysis_errors_test` and `analysis_errors_64_test` keep
+their eight cases and add five (bindings that stay visible, warnings
+beside errors with no missing-return follow-on, the enclosing `elif`/
+`else` arms, an unterminated literal reported once, and recovery under
+`--ast-required --ast-emit-retained` where the failed if is its block's
+last statement; without the walk release that case trips
+`retained_walk_phase`'s assertion). A mutation run over 620 random picks
+of clean `tests/*.w` files (1,824 mutants, three per file) (an inserted call to a missing
+function, a failing inferred declaration, an invalid assignment, a
+renamed identifier), in the default, `--ast-required`, `--ast-retain
+--ast-required` and `--ast-required --ast-emit-retained` modes and on
+the x64 host and target (9,120 checks, plus 128 mutants of the GPU
+fixtures on the x64 target with and without `--ast-emit-retained`),
+found no crash, hang or stderr output, and every inserted error was
+reported except those inside generic bodies or inside the body of a
+statement whose own header was mutated. Against the forked checker on
+297 mutants, the error sets differ only by the
+forked checker's follow-ons (discarded declarations, and repeated
+"unterminated string literal" reports from its skip) and by errors
+those follow-ons pushed past its 100-error limit. `verify`,
+`verify_x64`, `warning_test`, the `type_system_*_test` targets,
+`lint_test`, `ast_diagnostic_codes_test` and `tests` pass.
+
+What this does not claim: no function body is parsed whole before
+emission (the unit is still S2.2's one statement), so recovery is
+around the production parser, not a walk of a failed tree; a binding
+the failed item never made is still missing (an inferred `name := ...`
+whose initializer failed, a declaration whose type name is unknown,
+the variable of a generic struct whose instantiation failed), and
+there is no error type, so a poisoned binding with a wrong or partial
+type can still produce type diagnostics at its uses; a statement whose
+header fails is skipped with its body, so errors inside that body are
+not reported; generic bodies and the on-demand runtimes are still only
+checked when no earlier error was recorded (`compiler/compiler.w`
+returns before instantiating them); a deferred statement that fails is
+reported at each exit that replays it; and an invalid UTF-8 identifier
+mid-file is still reported twice (once by the parse, once by the skip
+that re-reads it, which ends the check). No `tree --json` field was
+added; the schema stays **version 2**.

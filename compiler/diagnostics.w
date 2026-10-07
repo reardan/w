@@ -413,8 +413,21 @@ parameter or return type a mismatch was checked against -- attaches it
 with diag_related_add() right before warning()/error(). The note rides
 only in the --json record's "related" array: human output is unchanged
 and the note is only recorded under --json at all. diag_clear() drops
-pending notes, so a warning suppressed in an --all-errors probe or a
-defhash replay cannot leak its note onto the next diagnostic.
+pending notes, so a warning suppressed while --all-errors resynchronises
+after an error, or in a defhash replay, cannot leak its note onto the
+next diagnostic.
+
+Poisoned symbols (check --all-errors, C3.1): when a declaration or
+statement fails, compiler/analysis.w recovers in process and does not
+roll the symbol and type tables back. A binding the failed item had
+already made -- a typed local whose initializer failed, a function whose
+body or a struct whose field failed -- stays visible, so its later uses
+resolve instead of each adding a follow-on "Cannot find symbol". Such a
+binding carries no marker and no note: the error that poisoned it was
+reported at its own position, once. A binding the failed item never
+made (an inferred 'name := ...' whose initializer failed, a declaration
+whose type name is unknown) does not exist, and its uses are still
+reported.
 */
 const int diag_related_max = 4
 char** diag_related_files

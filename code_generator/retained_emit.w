@@ -200,6 +200,7 @@ int retained_emit_expression_group(expression_ast* tree, int group):
 
 void retained_expression_note(expression_ast* tree, int root);
 void emit_expression_ast(expression_ast* tree, int id);
+void emit_expression_ast_root(expression_ast* tree, int root);
 
 struct retained_statement_walk:
 	int node
@@ -358,7 +359,7 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 int retained_walk_lower_expression(retained_statement_walk* walk):
 	int root = retained_emit_expression_group(walk.tree, walk.group)
 	assert1(root == walk.root)
-	emit_expression_ast(walk.tree, root)
+	emit_expression_ast_root(walk.tree, root)
 	return root
 
 
@@ -418,3 +419,164 @@ int retained_statement_count():
 	for i in range(retained_nodes.length):
 		if (retained_nodes[i].kind == retained_statement): count = count + 1
 	return count
+
+# ---------------------------------------------------------------------------
+# S2.3: generic instantiation and deferred statements from the retained
+# forest instead of the source file.
+#
+# A generic definition and a deferred statement used to be re-read from the
+# file: open the recorded path again, seek to the span's offset, re-lex.
+# Under --ast-emit-retained, grammar/generic.w builds generic struct types,
+# instantiation signatures and inference shapes by walking retained type
+# trees under the instantiation's substitution, so no source is read at all.
+# What still has to be re-parsed (a function body, whose meaning depends on
+# the type arguments; a deferred statement, whose names bind at each exit;
+# a header or field list the trees cannot express) is re-lexed from the
+# retained source version: the bytes the tokenizer recorded while it first
+# read the file (compiler/retained_ast.w, retained_source_byte). Every span
+# has been read through, and so recorded, before it is instantiated.
+#
+# The lexer reads through getchar's per-descriptor window, so a re-parse
+# gets a descriptor whose window is a private copy of the version's bytes,
+# covering file offsets [0, length). Every absolute getchar_seek inside it
+# (a diagnostic's context line, an expression preflight's rewind, a walk
+# drain) stays in memory. A copy, because the expression preflight may
+# compact or replace the window when it runs into the window's end
+# (ast_expression_refill); after that, an earlier offset is no longer in
+# memory and getchar re-reads it from the descriptor. So the descriptor is
+# /dev/null, which never has to supply anything, only when no preflight of
+# the span can reach the window's end: a token the first read consumed
+# follows the span (follow), or the span holds no expression. A body or
+# deferred statement that ends its file gets the file itself, positioned at
+# the end of the retained bytes so its offset agrees with the window: no
+# byte of the span is read from it, but getchar can re-read the prefix after
+# a compaction. A version that was replaced or rolled back falls back to the
+# file re-parse.
+
+# --stats: re-parses served from retained source bytes, and those whose
+# descriptor is the source file positioned at the retained end.
+int retained_source_reparses
+int retained_source_end_positions
+list[int] retained_window_fds
+list[int] retained_window_buffers
+
+
+# 1 when grammar/generic.w may build types from retained trees: the mode is
+# on and no -v trace (which prints every pointer-type lookup a re-parse
+# makes) has to match the streaming compile's.
+int retained_emit_generic_enabled():
+	return ast_emit_retained_mode && (verbosity < 1)
+
+
+# Offset of the first token after the line holding offset in the retained
+# version source (comments and blank lines skipped), or -1 when none was
+# read, or when a block comment opens on that line.
+int retained_source_next_line_token(int source, int offset):
+	if ((source < 0) || (source >= retained_sources.length)): return -1
+	retained_source* record = retained_sources[source]
+	char* bytes = record.bytes
+	int length = record.length
+	if ((bytes == 0) || (offset < 0)): return -1
+	int i = offset
+	while ((i < length) && (bytes[i] != 10)):
+		if ((bytes[i] == '/') && (i + 1 < length) && (bytes[i + 1] == '*')): return -1
+		i = i + 1
+	while (i < length):
+		int c = bytes[i] & 255
+		if ((c == 10) || (c == 13) || (c == ' ') || (c == 9)):
+			i = i + 1
+		else if (c == '#'):
+			while ((i < length) && (bytes[i] != 10)): i = i + 1
+		else if ((c == '/') && (i + 1 < length) && (bytes[i + 1] == '*')):
+			i = i + 2
+			while ((i + 1 < length) && ((bytes[i] != '*') || (bytes[i + 1] != '/'))): i = i + 1
+			if (i + 1 >= length): return -1
+			i = i + 2
+		else:
+			return i
+	return -1
+
+
+# Prime the lexer at offset of the retained version source of path, as
+# generic_reparse_start does with the file. follow is the offset of a token
+# the first read consumed after the span, -1 when there is none, or -2 when
+# the re-parse lexes no expression (a header or field list), so needs none.
+# Returns 0, leaving the lexer untouched, when the version cannot serve the
+# span.
+int retained_source_reparse_begin(char* path, int source, int offset, int line, int column, int follow):
+	if ((ast_emit_retained_mode == 0) || (source < 0)): return 0
+	if (retained_source_find(path) != source): return 0
+	retained_source* record = retained_sources[source]
+	int length = record.length
+	if ((record.bytes == 0) || (offset < 0) || (offset >= length)): return 0
+	if (follow >= length): follow = -1
+	int fd = -1
+	if (follow != -1): fd = open(c"/dev/null", 0, 511)
+	if (fd < 0):
+		# The span may end the file (or the host has no /dev/null): a
+		# descriptor that can re-read the prefix, at the window's end.
+		fd = open(path, 0, 511)
+		if (fd < 0): return 0
+		if (fd < GETCHAR_MAX_FD):
+			getchar_reset(fd)
+			getchar_seek(fd, length)
+			retained_source_end_positions = retained_source_end_positions + 1
+	if (fd >= GETCHAR_MAX_FD):
+		close(fd)
+		return 0
+	if (retained_window_fds == 0):
+		retained_window_fds = new list[int]
+		retained_window_buffers = new list[int]
+	retained_window_fds.push(fd)
+	retained_window_buffers.push(getchar_buf_addr[fd])
+	# Room for one more read, as ast_expression_refill expects of a window.
+	char* copy = malloc(length + GETCHAR_BUF_CAPACITY)
+	char* bytes = record.bytes
+	for i in range(length): copy[i] = bytes[i]
+	getchar_buf_addr[fd] = cast(int, copy)
+	getchar_limit[fd] = length
+	getchar_kernel_pos[fd] = length
+	getchar_pos[fd] = offset
+	# A new stream on this fd (the register pre-scan's file image of a
+	# previous use of the number must not serve it; lib/lib.w)
+	getchar_generation[fd] = getchar_generation[fd] + 1
+	file = fd
+	filename = path
+	byte_offset = offset
+	line_number = line
+	column_number = column
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+	retained_source_reparses = retained_source_reparses + 1
+	return 1
+
+
+# Give a window's descriptor back: free its buffer (the copy, or whatever
+# replaced it) and restore the slot's own.
+void retained_window_release(int top):
+	int fd = retained_window_fds[top]
+	free(cast(char*, getchar_buf_addr[fd]))
+	getchar_buf_addr[fd] = retained_window_buffers[top]
+	getchar_reset(fd)
+	retained_window_fds.pop()
+	retained_window_buffers.pop()
+
+
+# Close the descriptor a re-parse read from: a retained window gives its
+# buffer slot back, a reopened source file is closed.
+void retained_source_reparse_close(int fd):
+	int top = 0
+	if (retained_window_fds != 0): top = retained_window_fds.length
+	if ((top > 0) && (retained_window_fds[top - 1] == fd)): retained_window_release(top - 1)
+	close(fd)
+
+
+# A compile starts with no window open. One can be left over only when an
+# error unwound a REPL entry in the middle of a re-parse; give its buffer
+# slot back so a later open() of that descriptor reads into its own buffer.
+void retained_source_reparse_reset():
+	if (retained_window_fds == 0): return
+	while (retained_window_fds.length > 0): retained_window_release(retained_window_fds.length - 1)
