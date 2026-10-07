@@ -1536,7 +1536,7 @@ int generic_call_expr():
 		# ordinary function reference, noted for a direct call like any
 		# other known W function (grammar/identifier.w)
 		strcpy(last_identifier, mangled)
-		int type = identifier_value(mangled)
+		int type = identifier_value_at(t, mangled)
 		free(mangled)
 		free(cast(char*, args))
 		return type

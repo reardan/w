@@ -36,12 +36,14 @@ struct lazy_runtime:
 	int* chains    # backpatch chain heads (0 = no pending site)
 	int* rel_chains  # direct-call rel32 chain heads (unit A4), 0 = none
 	int needed     # set once any call site used the runtime
+	int imported   # set by lazy_finish_import: the helpers are defined
 
 
 lazy_runtime* lazy_runtime_new(char* module, char* names):
 	lazy_runtime* rt = new lazy_runtime()
 	rt.module = module
 	rt.needed = 0
+	rt.imported = 0
 	int count = 1
 	int i = 0
 	while (names[i]):
@@ -79,13 +81,23 @@ char* lazy_helper_name(lazy_runtime* rt, int i):
 	return names[i]
 
 
+# The helper's symbol once lazy_finish_import compiled the module, -1
+# before: the chains serve every earlier site (even when the program
+# imported the module itself -- the patched bytes are the same), so no
+# site pays a symbol lookup for a helper that is usually not defined
+# yet (tools/wbench.w counts them).
+int lazy_helper_symbol(lazy_runtime* rt, int i):
+	if (rt.imported == 0): return -1
+	return sym_lookup(lazy_helper_name(rt, i))
+
+
 # Leave helper i's address in eax: directly when the runtime module is
 # already compiled, through the helper's backpatch chain otherwise.
 void lazy_emit_helper(lazy_runtime* rt, int i):
 	rt.needed = 1
-	char* name = lazy_helper_name(rt, i)
-	if (sym_lookup(name) >= 0):
-		sym_get_value(name)
+	int t = lazy_helper_symbol(rt, i)
+	if (t >= 0):
+		sym_emit_value(t, lazy_helper_name(rt, i))
 		return;
 	int* chains = rt.chains
 	chains[i] = addr_chain_link(chains[i])
@@ -98,7 +110,7 @@ void lazy_emit_helper(lazy_runtime* rt, int i):
 # callee word; otherwise the address is materialized and pushed.
 int lazy_call_begin(lazy_runtime* rt, int i):
 	int s = stack_pos
-	int t = sym_lookup(lazy_helper_name(rt, i))
+	int t = lazy_helper_symbol(rt, i)
 	if (direct_callee_ok(t)):
 		rt.needed = 1
 		direct_call_record(s, 1, t)
@@ -127,6 +139,7 @@ void lazy_finish_import(lazy_runtime* rt):
 	if (cast(int, rt) == 0): return;
 	if (rt.needed == 0): return;
 	import_module(rt.module)
+	rt.imported = 1
 	int* chains = rt.chains
 	int* rel_chains = rt.rel_chains
 	int i = 0

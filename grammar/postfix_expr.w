@@ -34,10 +34,11 @@ int buffer_result_type(int type):
 # and the later definition patches the reference chain, like any forward
 # reference.
 void bounds_trap_call(char* helper_name):
-	if (sym_lookup(helper_name) < 0): sym_declare_global(helper_name, 4, 2)
+	int t = sym_lookup(helper_name)
+	if (t < 0): t = sym_declare_global(helper_name, 4, 2)
 	push_ebx()
 	push_eax()
-	call_symbol(sym_lookup(helper_name), helper_name)
+	call_symbol(t, helper_name)
 
 
 void buffer_bounds_check():

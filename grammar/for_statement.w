@@ -37,9 +37,9 @@ slot and the cursor lives in a second one, mirroring the range lowering:
 # (grammar/generic.w) when the container is generic and the
 # instantiation's body has not been compiled yet. The instantiation was
 # interned by for_iter_generic_require, so the lookup cannot miss.
-void for_iter_callee(char* fn_name):
-	if (sym_lookup(fn_name) >= 0):
-		sym_get_value(fn_name)
+void for_iter_callee(char* fn_name, int t):
+	if (t >= 0):
+		sym_emit_value(t, fn_name)
 		return;
 	int inst = generic_inst_lookup(fn_name)
 	if (inst < 0): error2(fn_name, c" is not defined")
@@ -59,7 +59,7 @@ void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 		if (inst < 0): error2(fn_name, c" is not defined")
 		direct_call_record(s, 2, inst)
 	else:
-		for_iter_callee(fn_name)
+		for_iter_callee(fn_name, t)
 		push_slot()
 		direct_call_record(s, 0, 0)
 	push_slot_copy(container_slot)

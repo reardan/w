@@ -110,6 +110,7 @@ void generic_inst_emit_callee(int inst);   /* grammar/generic.w */
 void generic_inst_emit_call(int inst);     /* grammar/generic.w */
 void lazy_emit_call(int rt_address, int i);   /* grammar/lazy_runtime.w */
 int identifier_value(char* name);   /* grammar/identifier.w */
+int identifier_value_at(int t, char* name);   /* grammar/identifier.w */
 
 
 void direct_call_record_aux(int s, int kind, int id, int aux):
@@ -261,7 +262,8 @@ int rt_call_begin(char* fn):
 	if (direct_callee_ok(t)):
 		direct_call_record(s, 1, t)
 		return s
-	sym_get_value(fn)
+	if (t < 0): sym_not_found_error(fn)
+	sym_emit_value(t, fn)
 	push_slot()
 	direct_call_record(s, 0, 0)
 	return s
