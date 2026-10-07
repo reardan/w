@@ -701,7 +701,14 @@ void emit_expression_ast(expression_ast* tree, int id):
 				print_error(name)
 				print_error(c": ")
 				sym_info(sym)
-			be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
+			# A register-resident local has no stack address: the same
+			# register lvalue note sym_emit_value sets
+			int reg = regalloc_sym_register(sym)
+			if (reg != 0):
+				reg_lvalue = reg
+				reg_lvalue_end = codepos
+				reg_lvalue_sym = sym
+			else: be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
 		else if (target_isa == 3): gpu_sym_get_value(name)
 		else: sym_emit_value(sym, name)
 		if (op == 'X'):
@@ -860,8 +867,18 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if (op == '='):
 		expression_is_assignment = 1
-		int lhs_slot = push_slot()
 		int subop = tree.value[id]
+		# A register-resident left side (grammar/expression.w's '='):
+		# no parked address, the store is a register move
+		int lhs_reg = 0
+		if ((subop == 0) && regalloc_note_current()): lhs_reg = regalloc_note_take()
+		if (lhs_reg != 0):
+			emit_expression_ast(tree, tree.right[id])
+			int reg_rt = promote(tree.result_type[tree.right[id]])
+			coerce(left_type, reg_rt)
+			mov_reg_eax(lhs_reg)
+			return
+		int lhs_slot = push_slot()
 		int loaded = left_type
 		if (subop):
 			loaded = promote(left_type)

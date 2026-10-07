@@ -26,11 +26,138 @@ int load_note_oplen
 char* load_note_op
 int push_note_start
 int push_note_end
+# A 'mov eax,R' read of a register-resident local (mov_eax_reg), so the
+# pop_ebx shuttle can fold 'push eax; mov eax,R; pop ebx' like a local
+# load.
+int regload_note_start
+int regload_note_end
+int regload_note_reg
 
 void peep_rollback(int pos);
 void be_cmp_note_reset();
 void be_imm_note_reset();
 void be_notes_reset();
+
+############################ register-resident locals ###########################
+# Function-scoped promotion of word-sized locals into callee-saved
+# registers (docs/projects/register_allocation_pgo.md §2.2, unit R2):
+# x64 r12-r15, x86 esi/edi. The state is in code_generator/code_emitter.w
+# (reg_lvalue note, regalloc_* prologue masks), the decision in
+# compiler/regalloc_scan.w. These are the x86-family emitters: the
+# register moves the note's consumers emit, the prologue pushes and the
+# epilogue pops. (The stack-slot assertion that keeps every path off a
+# promoted local's never-updated stack word is regalloc_slot_assert in
+# regalloc_scan.w, called by the slot-addressing grammar helpers: the raw
+# [esp+disp] emitters here also serve pushes stack_pos does not track,
+# so a displacement alone does not name a slot.)
+
+# 1 when the register lvalue note is current: the accumulator "holds" the
+# address of a register-resident local.
+int regalloc_note_current():
+	if (reg_lvalue_end == 0): return 0
+	return reg_lvalue_end == codepos
+
+# Consume the note: returns the register, clearing the note.
+int regalloc_note_take():
+	int r = reg_lvalue
+	reg_lvalue_end = 0
+	return r
+
+# REX prefix for one extended register (r8-r15) in the r/m field (REX.B)
+# or the reg field (REX.R), with REX.W set.
+void emit_rex_w_b(int r):
+	if (r >= 8): emit(1, c"\x49")
+	else: emit(1, c"\x48")
+
+void emit_rex_w_r(int r):
+	if (r >= 8): emit(1, c"\x4c")
+	else: emit(1, c"\x48")
+
+/* mov eax,R (x86: 89 /r with eax as r/m; x64: REX.W[+R] 89 /r) */
+void mov_eax_reg(int r):
+	regload_note_start = codepos
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x89")
+	emit_int8(0xc0 | ((r & 7) << 3))
+	regload_note_end = codepos
+	regload_note_reg = r
+
+/* mov R,eax */
+void mov_reg_eax(int r):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x89")
+	emit_int8(0xc0 | (r & 7))
+
+/* push R / pop R (41 prefix for r8-r15) */
+void push_reg(int r):
+	if (r >= 8): emit(1, c"\x41")
+	emit_int8(0x50 | (r & 7))
+
+void pop_reg(int r):
+	if (r >= 8): emit(1, c"\x41")
+	emit_int8(0x58 | (r & 7))
+
+/* add R,imm8 (sign-extended): 83 /0 ib */
+void add_reg_int8(int r, int v):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x83")
+	emit_int8(0xc0 | (r & 7))
+	emit_int8(v)
+
+/* add R,eax: 01 /r with R as r/m */
+void add_reg_eax(int r):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x01")
+	emit_int8(0xc0 | (r & 7))
+
+/* lea esp,[ebp-disp8] */
+void lea_esp_ebp_minus(int disp):
+	emit_x64_opcode()
+	emit(2, c"\x8d\x65")
+	emit_int8(0 - disp)
+
+# The order registers are pushed: ascending register number, so the pops
+# below and the debugger's saved-slot arithmetic (debugger/locals.w) agree.
+int regalloc_mask_index(int mask, int r):
+	int index = 0
+	int i = 0
+	while (i < r):
+		if (mask & (1 << i)): index = index + 1
+		i = i + 1
+	return index
+
+# The prologue's share: right after 'push ebp ; mov ebp,esp', push the
+# registers the pre-scan asked for (regalloc_pending_mask), making them
+# the current function's saved set. Called by be_function_prologue on the
+# x86 path only; the pending mask is only ever set for that path.
+void regalloc_prologue_emit():
+	int mask = regalloc_pending_mask
+	regalloc_pending_mask = 0
+	regalloc_saved_mask = 0
+	regalloc_saved_count = 0
+	regalloc_active = 0
+	if (mask == 0): return
+	regalloc_active = 1
+	int r = 0
+	while (r < 16):
+		if (mask & (1 << r)):
+			push_reg(r)
+			regalloc_saved_count = regalloc_saved_count + 1
+		r = r + 1
+	regalloc_saved_mask = mask
+
+# The framed return of a function whose prologue pushed registers:
+# 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' replaces 'leave'. Callers
+# emit the ret. Returns 1 when it emitted the frame teardown, 0 when the
+# function saved nothing (the caller emits 'leave').
+int regalloc_epilogue_emit():
+	if (regalloc_saved_count == 0): return 0
+	lea_esp_ebp_minus(regalloc_saved_count << word_size_log2)
+	int r = 15
+	while (r >= 0):
+		if (regalloc_saved_mask & (1 << r)): pop_reg(r)
+		r = r - 1
+	return 1
 
 # ModRM+SIB(+disp) for [esp+disp] with eax in the reg field; disp8 when
 # it fits.
@@ -94,6 +221,10 @@ void promote_eax():
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
 	elif (target_isa == 1): a64(op(0xf9, 0x400000))   # ldr x0,[x0]
 	else:
+		# A register-resident local: its "load" is a register move
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (word_size == 8): lea_load_fold(2, c"\x48\x8b")
 			else: lea_load_fold(1, c"\x8b")
@@ -146,6 +277,10 @@ void promote_int32_eax():
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
 	elif (target_isa == 1): a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
 	else:
+		# x86-32: 'int' is the 4-byte word, so a promoted int reads here
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (word_size == 8): lea_load_fold(2, c"\x48\x63")
 			else: lea_load_fold(1, c"\x8b")
@@ -236,6 +371,8 @@ void be_imm_note_reset():
 	lea_note_end = 0
 	load_note_end = 0
 	push_note_end = 0
+	reg_lvalue_end = 0
+	regload_note_end = 0
 
 # True when a * b does not overflow the compiler's own word. The fold has
 # to produce the same constant whether this compiler is the 32-bit or the
@@ -350,6 +487,9 @@ void promote_uint32_eax():
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
 	elif (target_isa == 1): a64(op(0xb9, 0x400000))   # ldr w0,[x0]
 	else:
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(1, c"\x8b")
 			return
@@ -557,6 +697,16 @@ void pop_ebx():
 				push_imm_end = 0
 				binfold_end = 0
 				return
+			if ((regload_note_end != 0) && (regload_note_end == codepos) && (regload_note_start == push_note_end)):
+				int reg = regload_note_reg
+				peep_rollback(push_note_start)
+				emit_x64_opcode()
+				emit(2, c"\x89\xc3") /* mov ebx,eax */
+				mov_eax_reg(reg)
+				imm_note_end = 0
+				push_imm_end = 0
+				binfold_end = 0
+				return
 		emit(1, c"\x5b")
 		imm_note_end = 0
 		push_imm_end = 0
@@ -609,9 +759,11 @@ void mov_eax_esp_plus(int v):
 	elif (target_isa == 2): wasm_mov_eax_esp_plus(v)
 	elif (target_isa == 1): arm64_ldr_reg_wsp(0, v)
 	else:
-		emit_x64_opcode()
-		emit(1, c"\x8b")
-		emit_eax_esp_disp(v)
+		# Noted like a folded local load, so a slot read as the right
+		# operand of a binary operator (a range loop's end slot against
+		# its loop variable, say) takes pop_ebx's register shuttle too.
+		if (word_size == 8): emit_esp_load(2, c"\x48\x8b", v)
+		else: emit_esp_load(1, c"\x8b", v)
 
 
 /* mov ebx,[esp] */
@@ -887,6 +1039,8 @@ void peep_rollback(int pos):
 	if (lea_note_end > pos): lea_note_end = 0
 	if (load_note_end > pos): load_note_end = 0
 	if (push_note_end > pos): push_note_end = 0
+	if (reg_lvalue_end > pos): reg_lvalue_end = 0
+	if (regload_note_end > pos): regload_note_end = 0
 
 # A jump target is about to be placed at codepos: no fold may reach back
 # across it (a branch patched to land here would then point into, or
@@ -1554,6 +1708,7 @@ void be_arm64_frame_return():
 
 
 void dwarf_leave_note();   /* dwarf.w: CFI for the framed return */
+void be_frame_teardown();
 
 
 # Function return from a body holding stack_words W stack words above
@@ -1565,11 +1720,21 @@ void be_return(int stack_words):
 	if (be_frame_active && (target_isa == 1)):
 		be_arm64_frame_return()
 		return
-	if ((target_isa == 0) && be_frame_active):
-		dwarf_leave_note()
-		emit(1, c"\xc9") /* leave */
+	if ((target_isa == 0) && be_frame_active): be_frame_teardown()
 	else: be_pop(stack_words)
 	ret()
+
+
+# x86/x64 frame teardown: 'leave', or, when the prologue pushed promoted
+# registers, 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' (the CFI note
+# marks the pop of the frame pointer in both shapes).
+void be_frame_teardown():
+	if (regalloc_epilogue_emit()):
+		dwarf_leave_note()
+		emit(1, c"\x5d") /* pop ebp */
+	else:
+		dwarf_leave_note()
+		emit(1, c"\xc9") /* leave */
 
 
 # Return from a body that holds nothing on the W stack beyond its
@@ -1580,9 +1745,7 @@ void be_return_bare():
 	if (be_frame_active && (target_isa == 1)):
 		be_arm64_frame_return()
 		return
-	if ((target_isa == 0) && be_frame_active):
-		dwarf_leave_note()
-		emit(1, c"\xc9") /* leave */
+	if ((target_isa == 0) && be_frame_active): be_frame_teardown()
 	ret()
 
 ############################## end of x86 opcodes ##############################

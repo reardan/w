@@ -5,6 +5,9 @@ import codegen
 import lib.assert
 import compiler.type_table
 import compiler.symbol_table
+# Register promotion pre-scan and decision (reads the symbol and type
+# tables; the grammar's function rule calls it)
+import compiler.regalloc_scan
 import compiler.lint
 import grammar
 # C3.1: check --all-errors state capture, after the grammar it reads
@@ -867,6 +870,16 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--stats-selfcheck") == 0):
 		if (apply): sym_index_selfcheck = 1
 		return 1
+	# Register promotion of hot locals (docs/projects/register_allocation_pgo.md
+	# §2.2) is on by default on x86/x64 Linux; --no-regs (alias -O0) keeps
+	# every local on the stack, which is the reference for
+	# tests/regalloc_diff_test.w and the fallback a guard failure asks for.
+	if ((strcmp(arg, c"--no-regs") == 0) || (strcmp(arg, c"-O0") == 0)):
+		if (apply): regalloc_disabled = 1
+		return 1
+	if (strcmp(arg, c"--regs") == 0):
+		if (apply): regalloc_disabled = 0
+		return 1
 	if (starts_with(arg, c"--ptx=")):
 		# Debug dump of the embedded PTX module (kernels/'gpu for'),
 		# written by ptx_finish_module; ignored when no kernels exist.
@@ -908,6 +921,8 @@ void help_shared_options():
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
+	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
+	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
@@ -1236,6 +1251,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 			# S2.1: so does emission from the retained forest.
 			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0): link_option(*flag_arg, 1)
+			# Register promotion is whole-program too: the auto-imported
+			# runtime compiles before the positional loop below
+			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
+				link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
@@ -1438,6 +1457,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# deps_main, symbols_main, defhash_main), so one call here covers
 	# them all.
 	if (stats_mode): sym_stats_dump()
+	if (stats_mode): regalloc_stats_dump()
 	if (stats_mode && ast_retain_mode):
 		print_int0(c"Retained AST nodes: ", retained_nodes.length)
 		print_error(c"\n")
