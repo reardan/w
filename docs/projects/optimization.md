@@ -59,6 +59,72 @@ displacement. Shifts by a constant use the immediate form. Details and
 measurements in `compiler_performance.md` §13 (`bin/wv3` −10.9%
 instructions, self-compile −20% instructions executed).
 
+**Update 2026-10-07: Apple Silicon / ARM64.** The emission-note optimizer
+now covers the shared ARM64 backend, including `arm64_darwin`. The plan
+and implementation are deliberately local: reuse the existing note
+invalidation and rollback rules, prove the emitted instruction shapes,
+then validate native behavior and self-hosting before measuring.
+
+- Local and argument addresses fuse into scaled `LDR` loads, including
+  signed/unsigned 8-, 16-, and 32-bit extension. Constant struct-field
+  offsets fold into the address first. Negative, unaligned, or oversized
+  displacements retain the original address-plus-load sequence.
+- An adjacent `push; constant/local load; pop` becomes `mov x1,x0; RHS`.
+  Removing the push reduces an x28-relative load displacement by eight
+  bytes. Reads of the pushed temporary itself, calls, nested evaluation,
+  and control-flow boundaries cannot match this rewrite.
+- Integer comparisons used in discard contexts become `CMP; B.cond`,
+  removing `CSET`. Value-producing comparisons and `&&`/`||` keep their
+  materialized accumulator values. Existing imm19 branch chains and
+  patching handle the fused branches.
+- Constants use `MOVZ`/`MOVN` plus only the necessary `MOVK` halfwords,
+  replacing literal loads and branches over inline data. Small negative
+  values use one instruction; 32-bit materializations still zero-extend.
+  Explicit 16-bit lanes preserve the same output on 32- and 64-bit hosts.
+  Relocatable address slots retain their separate emission path.
+
+No new checkpoint state or whole-function rewrite is involved. ARM64
+register allocation (R4 in [register_allocation_pgo.md](register_allocation_pgo.md))
+remains separate: it needs callee-saved register, unwind and debugger work.
+Constant arithmetic folding and immediate shift folding remain x86-only.
+
+Validation: `./wbuild tests_darwin` runs the Darwin fixpoint and the native
+optimizer suite through `tools/mac/run_optimizer_tests.sh`. Its two
+structural tests (`arm64_load_fold_test`, `arm64_cmp_imm_test`) inspect
+instruction counts/encodings, displacement boundaries, extension, full-width
+constants, branch chains and rollback barriers. The suite also runs
+`local_load_fold_test`, `comparison_branch_test`, `const_fold_test`,
+`unsigned_compare_test` and `float_nan_compare_test`. The portable tests
+have Darwin cross-compile twins for Linux CI and are included in the
+standard Mac smoke runner. This native script target lives in
+`build.base.json` because the Darwin executor intentionally does not scan
+source-owned targets. Both frontend modes and `--pac=full` passed the
+focused native tests; native lib/container/generator/compound/limb/goto
+smoke tests also passed.
+
+Matched-source measurement on the Apple Silicon development host: the
+saved pre-change compiler and optimized self-host both compiled the same
+updated `w.w` tree. Five alternating timed runs after a warm-up:
+
+| Metric | Before | After | Change |
+|---|---:|---:|---:|
+| Darwin compiler image | 3,472,786 bytes | 3,128,050 bytes | -9.93% |
+| Median self-compile | 1.3754 s | 1.0076 s | -26.74% |
+
+These are local wall-clock measurements, not a general performance
+promise. Compiling that same source with both compilers produced
+byte-identical x86, x64, win64 and wasm outputs. Native Darwin self-host
+fixpoint, strict compiler checks, generated-manifest validation, and the
+parser-generator grammar sweep (tracked sources plus both new tests)
+passed. Diff-based test selection completed with the tool's documented
+literal fallback for roots whose dependency scan failed. The full `./wbuild tests`
+was attempted but could not run on this Mac: its native executor only
+loads static targets, and the available Linux container snapshot lacks
+the x86 runtime/emulation setup. The existing ARM64 disassembler corpus
+also rejects `brk #0` on a 64-bit native host with both baseline and
+optimized compilers; that separate failure prevents treating its full
+corpus run as a passing gate here.
+
 Original assessment follows. Answers issue #110 verbatim: "Optimization pass - either from the
 generated code (v0), or additional passes of the AST (v2)." Companion to
 `docs/projects/compilation_model.md` (#338/#337 — the AST/artifact
