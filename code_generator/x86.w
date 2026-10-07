@@ -70,6 +70,21 @@ int binop_kind
 int binop_value
 int binop_disp
 int binop_reg
+# The constant-folding notes (described at their section further down):
+# mov_eax_int's immediate, the constant push_eax carried, and the armed
+# two-operand fold.
+int imm_note_start
+int imm_note_end
+int imm_note_value
+int push_imm_start
+int push_imm_end
+int push_imm_value
+int binfold_end
+int binfold_start
+int binfold_left
+int binfold_right
+int fold_mul_fits(int a, int b);
+int fold_add_fits(int a, int b);
 
 void peep_rollback(int pos);
 void be_cmp_note_reset();
@@ -355,6 +370,570 @@ void lea_load_fold(int oplen, char* op):
 	emit_esp_load(oplen, op, disp)
 
 
+############################ memory operands (A2) ############################
+# Addressing modes (docs/projects/codegen_gap_plan.md §2.2, unit A2). The
+# emitter's one data-addressing form was "compute the address into eax,
+# then load [eax] / store [ebx]". The ADDRESS NOTE below describes an
+# address the accumulator holds as a base register, an optional index
+# register with a scale and a displacement -- [base + index*scale + disp]
+# -- so the load or store that consumes it can address memory in one
+# instruction with a ModRM/SIB operand instead. Who sets it:
+#
+# - a subscript whose base is register-resident (A1) or parked on the
+#   stack (subscript_reg_base / subscript_stack_base, called from
+#   grammar/postfix_expr.w's '[' and its retained twin): the index is a
+#   constant (folded into the displacement), a register-resident local
+#   (the SIB index), 'R +/- c' (index and displacement) or whatever eax
+#   holds (eax as the index);
+# - add_eax_int32, the field offset of 'p.f': a register-resident pointer
+#   becomes 'lea eax,[R+off]', anything else keeps 'add eax,off' and is
+#   noted as [eax+off]; a current note just grows its displacement, which
+#   is how 'p.a.b' and 'a[i].f' compose.
+#
+# The bytes the note describes always leave the address in eax: 'lea
+# eax,[...]' (or the 'add') is emitted, so a consumer that does not know
+# the note -- '&a[i]', a struct element copied by address, every path on
+# the other ISAs -- is correct by construction. A consumer that does
+# (the promote_* loaders, the stores and compound stores of
+# grammar/expression.w and grammar/increment.w through mem_lvalue_*
+# below) rolls the bytes back and uses the operand directly, under the
+# same contract as every other note here: valid only while nothing has
+# been emitted since (addr_note_end == codepos), cleared by
+# peep_rollback and be_notes_reset. Base 0 / index 0 mean "the value eax
+# held before the noted bytes" (the two are never both 0), base 4 is
+# esp (a stack local, from the lea note) and 3 is ebx (a popped base).
+int addr_note_start
+int addr_note_end
+int addr_note_base
+int addr_note_index    # -1: no index
+int addr_note_scale
+int addr_note_disp
+
+# The folded memory load the loaders leave behind ('mov eax,[mem]',
+# 'movsx eax,byte [mem]', ...): the compound store can turn 'load; op
+# eax,X; store' into 'op [mem],X', and a comparison of the load against
+# a constant into 'cmp [mem],imm' at the load's width (shuttle_cmp).
+int memload_start
+int memload_end
+int memload_base
+int memload_index
+int memload_scale
+int memload_disp
+int memload_w          # REX.W (the word-sized load)
+int memload_oplen
+char* memload_op
+
+void mov_ebx_esp_plus(int v);
+void imul_eax_int32(int v);
+void mov_eax_int(int v);
+void pop_ebx();
+void alu_add();
+
+int addr_note_current():
+	if (addr_note_end == 0): return 0
+	return addr_note_end == codepos
+
+# REX prefix for an instruction with a memory operand: W for a 64-bit
+# operand, R for an extended reg field, X for an extended SIB index and B
+# for an extended base. Nothing when no bit is needed (the 32-bit forms,
+# movzx/movsx, byte and short stores keep their REX-free encodings).
+void emit_rex_mem(int w, int reg, int index, int base):
+	if (word_size != 8): return
+	int rex = 0x40
+	if (w): rex = rex | 8
+	if (reg >= 8): rex = rex | 4
+	if (index >= 8): rex = rex | 2
+	if (base >= 8): rex = rex | 1
+	if (rex != 0x40): emit_int8(rex)
+
+# ModRM (+SIB, +disp8/disp32) for reg against [base + index*scale + disp].
+# A base of esp/r12 needs the SIB form, ebp/r13 a displacement (mod 1 or
+# 2) even when it is zero, and an SIB index field of 4 with REX.X clear
+# means "no index", so esp can never be an index (W never uses it as a
+# value register) while r12 can.
+void emit_mem_modrm(int reg, int base, int index, int scale, int disp):
+	int mod = 2
+	if ((disp == 0) && ((base & 7) != 5)): mod = 0
+	elif ((disp >= -128) && (disp <= 127)): mod = 1
+	if ((index >= 0) || ((base & 7) == 4)):
+		emit_int8((mod << 6) | ((reg & 7) << 3) | 4)
+		int ss = 0
+		if (scale == 2): ss = 1
+		elif (scale == 4): ss = 2
+		elif (scale == 8): ss = 3
+		int idx = 4
+		if (index >= 0): idx = index & 7
+		emit_int8((ss << 6) | (idx << 3) | (base & 7))
+	else: emit_int8((mod << 6) | ((reg & 7) << 3) | (base & 7))
+	if (mod == 1): emit_int8(disp)
+	elif (mod == 2): emit_int32(disp)
+
+# REX + opcode bytes + memory ModRM.
+void emit_mem_insn(int w, int oplen, char* op, int reg, int base, int index, int scale, int disp):
+	emit_rex_mem(w, reg, index, base)
+	emit(oplen, op)
+	emit_mem_modrm(reg, base, index, scale, disp)
+
+int scale_ok(int s):
+	return (s == 1) || (s == 2) || (s == 4) || (s == 8)
+
+# Leave eax = base + index*scale + disp (index -1: none) and note it.
+# The eax-plus-displacement shape keeps the 'add eax,imm32' form
+# add_eax_int32 always emitted (nothing for a zero displacement: the note
+# is then empty, and its consumer rolls back nothing).
+void addr_form(int base, int index, int scale, int disp):
+	int start = codepos
+	if ((base == 0) && (index < 0)):
+		if (disp != 0):
+			emit_x64_opcode()
+			emit(1, c"\x05")
+			emit_int32(disp)
+	else: emit_mem_insn(word_size == 8, 1, c"\x8d", 0, base, index, scale, disp)
+	if (addr_modes_disabled): return
+	addr_note_start = start
+	addr_note_end = codepos
+	addr_note_base = base
+	addr_note_index = index
+	addr_note_scale = scale
+	addr_note_disp = disp
+
+# The loaders' consumer: replace the current address note with one load
+# of its operand into eax (w: REX.W; op the opcode bytes), noting the
+# load for the compound store and the byte compare.
+void memload_note(int start, int base, int index, int scale, int disp, int w, int oplen, char* op):
+	memload_start = start
+	memload_end = codepos
+	memload_base = base
+	memload_index = index
+	memload_scale = scale
+	memload_disp = disp
+	memload_w = w
+	memload_oplen = oplen
+	memload_op = op
+
+void addr_load_fold(int w, int oplen, char* op):
+	int base = addr_note_base
+	int index = addr_note_index
+	int scale = addr_note_scale
+	int disp = addr_note_disp
+	peep_rollback(addr_note_start)
+	int start = codepos
+	emit_mem_insn(w, oplen, op, 0, base, index, scale, disp)
+	memload_note(start, base, index, scale, disp, w, oplen, op)
+
+# The plain '[eax]' load the loaders emit when no address note precedes
+# them (a field at offset 0, a dereference): the same bytes, noted as
+# the memload of [eax] (base 0: the address eax held before it) so a
+# compare against a constant still folds (shuttle_cmp).
+void plain_load(int w, int oplen, char* op):
+	int start = codepos
+	emit_mem_insn(w, oplen, op, 0, 0, -1, 1, 0)
+	if (addr_modes_disabled): return
+	memload_note(start, 0, -1, 1, 0, w, oplen, op)
+
+int memload_current():
+	if (memload_end == 0): return 0
+	return memload_end == codepos
+
+# The folded load is the word-sized 'mov eax,[mem]'.
+int memload_is_word():
+	if (memload_oplen != 1): return 0
+	if ((memload_op[0] & 255) != 0x8b): return 0
+	if (word_size == 8): return memload_w
+	return 1
+
+# A displacement the disp32 field can hold: the compiler may be a 64-bit
+# host folding offsets a 32-bit field cannot carry.
+int disp_fits(int v):
+	if (__word_size__ == 4): return 1
+	return (v >= -2147483647 - 1) && (v <= 2147483647)
+
+# --- the index of a subscript ------------------------------------------
+# After the index expression ran (its first byte at index_start) and
+# promote() put the index in eax, fold base register r and the element
+# size into one address: a constant index becomes a displacement, a
+# register-resident index ('mov eax,R2' was the whole expression) the
+# SIB index, 'R2 +/- c' (R3's register fold, the binop note) index plus
+# displacement, and anything else scales eax in the SIB byte, or by a
+# shift for a power of two past 8, or by the imul for an odd size. Every
+# shape ends in addr_form, so the load or store that follows folds it.
+# The index shapes, tested against the index expression's first byte:
+# a constant (the imm note), a register read (the regload note), 'R +/-
+# c' (R3's binop note with a register left operand and a constant) and
+# a word-sized local load (the load note). Each returns 1 when the
+# index is that shape and fills index_reg / index_disp (the load's
+# displacement for the last one).
+int index_reg
+int index_disp
+
+int index_is_constant(int index_start, int size):
+	if ((imm_note_end == 0) || (imm_note_end != codepos) || (imm_note_start != index_start)): return 0
+	if (fold_mul_fits(imm_note_value, size) == 0): return 0
+	index_disp = imm_note_value * size
+	return disp_fits(index_disp)
+
+int index_is_register(int index_start, int size):
+	if (scale_ok(size) == 0): return 0
+	if ((regload_note_end != 0) && (regload_note_end == codepos) && (regload_note_start == index_start)):
+		index_reg = regload_note_reg
+		index_disp = 0
+		return 1
+	if ((binop_end == 0) || (binop_end != codepos) || (binop_start != index_start)): return 0
+	if ((binop_left_reg == 0) || (binop_kind != 1)): return 0
+	if ((binop_op != 0) && (binop_op != 5)): return 0
+	if (fold_mul_fits(binop_value, size) == 0): return 0
+	index_disp = binop_value * size
+	if (binop_op == 5): index_disp = 0 - index_disp
+	if (disp_fits(index_disp) == 0): return 0
+	index_reg = binop_left_reg
+	return 1
+
+int index_is_local_load(int index_start, int size):
+	if (scale_ok(size) == 0): return 0
+	if ((load_note_end == 0) || (load_note_end != codepos) || (load_note_start != index_start)): return 0
+	if (load_note_disp < word_size): return 0
+	if (word_size == 8):
+		if ((load_note_oplen != 2) || ((load_note_op[0] & 255) != 0x48) || ((load_note_op[1] & 255) != 0x8b)): return 0
+	elif ((load_note_oplen != 1) || ((load_note_op[0] & 255) != 0x8b)): return 0
+	index_disp = load_note_disp
+	return 1
+
+# The index is in eax, computed by the bytes from index_start, and the
+# base is register r (never eax): fold the two and the element size
+# into one address. A scale the SIB byte cannot carry is a shift for a
+# power of two, the imul otherwise.
+void subscript_index_eax(int base, int size):
+	if (scale_ok(size)):
+		addr_form(base, 0, size, 0)
+		return
+	int k = 0
+	int s = size
+	while ((s > 1) && ((s & 1) == 0)):
+		s = s >> 1
+		k = k + 1
+	if (s == 1):
+		emit_x64_opcode()
+		emit_int8(0xc1)
+		emit_int8(0xe0)
+		emit_int8(k)
+	else: imul_eax_int32(size)
+	addr_form(base, 0, 1, 0)
+
+# The register-resident base of A1: nothing was pushed, the index ran
+# from index_start.
+void subscript_reg_base(int r, int size, int index_start):
+	if (addr_modes_disabled):
+		if (size > 1): imul_eax_int32(size)
+		add_eax_reg(r)
+		return
+	if (size < 1): size = 1
+	if (index_is_constant(index_start, size)):
+		int disp = index_disp
+		peep_rollback(index_start)
+		addr_form(r, -1, 1, disp)
+		return
+	if (index_is_register(index_start, size)):
+		int reg = index_reg
+		int rdisp = index_disp
+		peep_rollback(index_start)
+		addr_form(r, reg, size, rdisp)
+		return
+	subscript_index_eax(r, size)
+
+# The base is parked on the stack (binary1 pushed it directly before
+# index_start). A one-instruction index -- constant, register, 'R +/- c'
+# or a word-sized local load (through ebx) -- rolls the push back and
+# addresses from eax (the base) directly; otherwise the base is popped
+# into ebx and the index in eax is the SIB index. Either way the base's
+# stack word is gone when this returns (the caller drops it from
+# stack_pos).
+void subscript_stack_base(int size, int index_start):
+	if (addr_modes_disabled):
+		if (size > 1): imul_eax_int32(size)
+		pop_ebx()
+		alu_add()
+		return
+	if (size < 1): size = 1
+	if ((push_note_end != 0) && (push_note_end == index_start) && (push_note_start < index_start)):
+		int push_start = push_note_start
+		if (index_is_constant(index_start, size)):
+			int disp = index_disp
+			peep_rollback(push_start)
+			addr_form(0, -1, 1, disp)
+			return
+		if (index_is_register(index_start, size)):
+			int reg = index_reg
+			int rdisp = index_disp
+			peep_rollback(push_start)
+			addr_form(0, reg, size, rdisp)
+			return
+		if (index_is_local_load(index_start, size)):
+			int ldisp = index_disp - word_size
+			peep_rollback(push_start)
+			mov_ebx_esp_plus(ldisp)
+			addr_form(0, 3, size, 0)
+			return
+	pop_ebx()
+	subscript_index_eax(3, size)
+
+# --- stores ----------------------------------------------------------------
+# mov [mem],eax at a width of 1, 2, 4 or word_size bytes.
+void store_mem_eax(int size, int base, int index, int scale, int disp):
+	if (size == 1): emit_mem_insn(0, 1, c"\x88", 0, base, index, scale, disp)
+	elif (size == 2):
+		emit(1, c"\x66")
+		emit_mem_insn(0, 1, c"\x89", 0, base, index, scale, disp)
+	elif (size == 4): emit_mem_insn(0, 1, c"\x89", 0, base, index, scale, disp)
+	else: emit_mem_insn(word_size == 8, 1, c"\x89", 0, base, index, scale, disp)
+
+# mov [mem],R: a byte store needs a byte register that the REX-free
+# encoding can name (al, cl, dl, bl, r8b-r15b; esi/edi would read as
+# dh/bh), so store_mem_reg_ok declines those.
+int store_mem_reg_ok(int size, int r):
+	if (size != 1): return 1
+	return (r < 4) || (r >= 8)
+
+void store_mem_reg(int size, int r, int base, int index, int scale, int disp):
+	if (size == 1): emit_mem_insn(0, 1, c"\x88", r, base, index, scale, disp)
+	elif (size == 2):
+		emit(1, c"\x66")
+		emit_mem_insn(0, 1, c"\x89", r, base, index, scale, disp)
+	elif (size == 4): emit_mem_insn(0, 1, c"\x89", r, base, index, scale, disp)
+	else: emit_mem_insn(word_size == 8, 1, c"\x89", r, base, index, scale, disp)
+
+# mov [mem],imm: C6 /0 ib for a byte, 66 C7 /0 iw, C7 /0 id, REX.W C7 /0 id
+# (sign-extended, so the word form takes a signed 32-bit value only:
+# store_mem_imm_ok).
+int store_mem_imm_ok(int size, int v):
+	if (size < word_size): return 1
+	if (word_size == 4): return 1
+	return ((v >> 31) == 0) || ((v >> 31) == -1)
+
+void store_mem_imm(int size, int v, int base, int index, int scale, int disp):
+	if (size == 1):
+		emit_mem_insn(0, 1, c"\xc6", 0, base, index, scale, disp)
+		emit_int8(v)
+	elif (size == 2):
+		emit(1, c"\x66")
+		emit_mem_insn(0, 1, c"\xc7", 0, base, index, scale, disp)
+		emit_int8(v)
+		emit_int8(v >> 8)
+	elif (size == 4):
+		emit_mem_insn(0, 1, c"\xc7", 0, base, index, scale, disp)
+		emit_int32(v)
+	else:
+		emit_mem_insn(word_size == 8, 1, c"\xc7", 0, base, index, scale, disp)
+		emit_int32(v)
+
+# op [mem],imm / op [mem],R at the word width (ext as in emit_alu_reg_imm:
+# 0 add, 1 or, 4 and, 5 sub, 6 xor, 7 cmp; never imul).
+void alu_mem_imm_w(int w, int ext, int v, int base, int index, int scale, int disp):
+	if ((v >= -128) && (v <= 127)):
+		emit_mem_insn(w, 1, c"\x83", ext, base, index, scale, disp)
+		emit_int8(v)
+	else:
+		emit_mem_insn(w, 1, c"\x81", ext, base, index, scale, disp)
+		emit_int32(v)
+
+void alu_mem_imm(int ext, int v, int base, int index, int scale, int disp):
+	alu_mem_imm_w(word_size == 8, ext, v, base, index, scale, disp)
+
+void alu_mem_reg(int ext, int r, int base, int index, int scale, int disp):
+	char* op = c"\x01\x09\x11\x19\x21\x29\x31\x39" + ext
+	emit_mem_insn(word_size == 8, 1, op, r, base, index, scale, disp)
+
+# cmp byte [mem],imm8 (80 /7 ib)
+void cmp_mem8_imm(int v, int base, int index, int scale, int disp):
+	emit_mem_insn(0, 1, c"\x80", 7, base, index, scale, disp)
+	emit_int8(v)
+
+# cmp [mem],imm at width 1, 2, 4 or 8 (66 83/81 /7 for a word, 83/81 /7
+# without REX.W for a dword on x64).
+void cmp_mem_imm(int width, int v, int base, int index, int scale, int disp):
+	if (width == 1): cmp_mem8_imm(v, base, index, scale, disp)
+	elif (width == 2):
+		emit(1, c"\x66")
+		if ((v >= -128) && (v <= 127)):
+			emit_mem_insn(0, 1, c"\x83", 7, base, index, scale, disp)
+			emit_int8(v)
+		else:
+			emit_mem_insn(0, 1, c"\x81", 7, base, index, scale, disp)
+			emit_int8(v)
+			emit_int8(v >> 8)
+	else: alu_mem_imm_w(width == 8, 7, v, base, index, scale, disp)
+
+# The width at which 'cmp [mem],imm' reads the same as 'cmp rax,imm'
+# after the noted load, or 0. Sign extension preserves both the signed
+# and the unsigned order, so a sign-extending load (movsx, movsxd, the
+# word load) folds for every condition and an immediate the narrow
+# width holds; zero extension preserves only the unsigned order and
+# equality, so a zero-extending load (movzx, the x64 dword load) folds
+# for those conditions and an immediate in the width's unsigned range.
+int memload_cmp_width(int setcc_opcode, int v):
+	int unsigned_or_eq = (setcc_opcode == 0x94) || (setcc_opcode == 0x95) || (setcc_opcode == 0x92) || (setcc_opcode == 0x93) || (setcc_opcode == 0x96) || (setcc_opcode == 0x97)
+	int first = memload_op[0] & 255
+	if (memload_oplen == 2):
+		if (first != 0x0f): return 0
+		int second = memload_op[1] & 255
+		if ((second == 0xbe) && (v >= -128) && (v <= 127)): return 1
+		if ((second == 0xb6) && (v >= 0) && (v <= 255) && unsigned_or_eq): return 1
+		if ((second == 0xbf) && (v >= -32768) && (v <= 32767)): return 2
+		if ((second == 0xb7) && (v >= 0) && (v <= 65535) && unsigned_or_eq): return 2
+		return 0
+	if (memload_oplen != 1): return 0
+	if (first == 0x8b):
+		if (memload_is_word()): return word_size
+		if ((v >= 0) && unsigned_or_eq): return 4
+		return 0
+	if (first == 0x63): return 4
+	return 0
+
+# --- the lvalue of a store (grammar/expression.w '=', grammar/increment.w
+# 'op=' and '++'/'--', and their retained twins) -----------------------
+# mem_lvalue_begin classifies what the accumulator holds right after the
+# left side was parsed and returns the kind, copying the operand into
+# mem_lv_* for the caller to keep in locals (a nested assignment on the
+# right side runs this again):
+#  0  no memory operand: the caller parks the address as before;
+#  1  an address from registers alone ([R+R2*s+d], [esp+d] from the lea
+#     note): nothing is parked, the right side runs with eax free and the
+#     store addresses memory directly (tier A). An esp base is relative
+#     to the stack depth at the '=' (mem_lv_pos, the caller's stack_pos):
+#     the store re-adjusts the displacement by the words the right side
+#     left parked;
+#  2  an address that uses eax or ebx ([eax+d], [R+eax*s], [ebx+eax*s]):
+#     the lea stays and is parked as before, but the store may still
+#     roll back to it when the right side turned out to be one simple
+#     instruction (mem_store_parked, tier B); mem_lv_start is where the
+#     lea begins.
+# The lvalue's registers are never written by the right side: a base or
+# index name written there excludes itself from promotion
+# (compiler/regalloc_scan.w, rs_store_line).
+int mem_lv_base
+int mem_lv_index
+int mem_lv_scale
+int mem_lv_disp
+int mem_lv_pos
+int mem_lv_start
+
+int mem_lvalue_begin(int depth):
+	if ((target_isa != 0) || addr_modes_disabled): return 0
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		mem_lv_base = 4
+		mem_lv_index = -1
+		mem_lv_scale = 1
+		mem_lv_disp = lea_note_disp
+		mem_lv_pos = depth
+		peep_rollback(lea_note_start)
+		return 1
+	if ((addr_note_end == 0) || (addr_note_end != codepos)): return 0
+	mem_lv_base = addr_note_base
+	mem_lv_index = addr_note_index
+	mem_lv_scale = addr_note_scale
+	mem_lv_disp = addr_note_disp
+	mem_lv_pos = depth
+	mem_lv_start = addr_note_start
+	if ((mem_lv_base == 0) || (mem_lv_index == 0) || (mem_lv_base == 3)): return 2
+	peep_rollback(addr_note_start)
+	addr_note_end = 0
+	return 1
+
+# Tier A, the load of the left value for a compound store: re-note the
+# operand (nothing to emit) so promote() folds it into one load.
+void mem_lvalue_renote(int base, int index, int scale, int disp):
+	addr_note_start = codepos
+	addr_note_end = codepos
+	addr_note_base = base
+	addr_note_index = index
+	addr_note_scale = scale
+	addr_note_disp = disp
+
+# Tier A store of eax (the right side's value, already coerced) at
+# 'size' bytes. In statement position (value_dead) a value that was just
+# 'mov eax,R' or 'mov eax,imm' stores the register or the immediate
+# itself. The esp-relative displacement follows the stack depth (pos at
+# the '=', depth now).
+void mem_store_eax(int size, int base, int index, int scale, int disp, int pos, int depth, int value_dead):
+	if (base == 4): disp = disp + ((depth - pos) << word_size_log2)
+	if (value_dead):
+		if ((regload_note_end != 0) && (regload_note_end == codepos) && store_mem_reg_ok(size, regload_note_reg)):
+			int r = regload_note_reg
+			peep_rollback(regload_note_start)
+			store_mem_reg(size, r, base, index, scale, disp)
+			return
+		if ((imm_note_end != 0) && (imm_note_end == codepos) && store_mem_imm_ok(size, imm_note_value)):
+			int v = imm_note_value
+			peep_rollback(imm_note_start)
+			store_mem_imm(size, v, base, index, scale, disp)
+			return
+	store_mem_eax(size, base, index, scale, disp)
+
+# Tier A compound store, statement position: eax was computed as
+# '[mem] op X' -- the folded load directly followed by R3's register
+# operand fold ('op eax,X', the binop note) -- so the whole sequence is
+# one 'op [mem],X'. Returns 1 when it emitted that, 0 for the caller's
+# mem_store_eax.
+int mem_store_compound(int size, int base, int index, int scale, int disp, int pos, int depth):
+	if (size != word_size): return 0
+	if (base == 4): disp = disp + ((depth - pos) << word_size_log2)
+	if ((binop_end == 0) || (binop_end != codepos)): return 0
+	if ((binop_left_reg != 0) || (binop_op == 8) || (binop_kind == 2)): return 0
+	if ((memload_end == 0) || (memload_end != binop_start) || (memload_is_word() == 0)): return 0
+	if ((memload_base != base) || (memload_index != index) || (memload_scale != scale) || (memload_disp != disp)): return 0
+	if ((binop_kind == 1) && (word_size == 8) && (((binop_value >> 31) != 0) && ((binop_value >> 31) != -1))): return 0
+	int ext = binop_op
+	int kind = binop_kind
+	int value = binop_value
+	int reg = binop_reg
+	peep_rollback(memload_start)
+	if (kind == 1): alu_mem_imm(ext, value, base, index, scale, disp)
+	else: alu_mem_reg(ext, reg, base, index, scale, disp)
+	return 1
+
+# Tier B: the lea (from mem_lv_start) was parked by the push that ended
+# at push_end, and the right side has run. When it was exactly one
+# simple instruction after the push -- a constant, a register read or a
+# word-sized local load -- roll everything back to the lea and store the
+# value straight into the operand (eax still holds the index, ebx the
+# popped base): 'mov [R+eax*8],R2'. A local load goes through ebx when
+# the operand does not use it. keep_eax re-materializes the value when
+# the expression's result is used. Returns 1 when it stored, 0 when the
+# caller must pop the address and store through ebx as before.
+int mem_store_parked(int size, int base, int index, int scale, int disp, int start, int push_end, int keep_eax):
+	if ((push_note_end == 0) || (push_note_end != push_end)): return 0
+	if ((regload_note_end != 0) && (regload_note_end == codepos) && (regload_note_start == push_end)):
+		int r = regload_note_reg
+		if (store_mem_reg_ok(size, r) == 0): return 0
+		peep_rollback(start)
+		store_mem_reg(size, r, base, index, scale, disp)
+		if (keep_eax): mov_eax_reg(r)
+		return 1
+	if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_end)):
+		int v = imm_note_value
+		if (store_mem_imm_ok(size, v) == 0): return 0
+		peep_rollback(start)
+		store_mem_imm(size, v, base, index, scale, disp)
+		if (keep_eax): mov_eax_int(v)
+		return 1
+	if ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_end) && (load_note_disp >= word_size)):
+		if ((base == 3) || (index == 3)): return 0
+		int word_load = 0
+		if (word_size == 8):
+			if ((load_note_oplen == 2) && ((load_note_op[0] & 255) == 0x48) && ((load_note_op[1] & 255) == 0x8b)): word_load = 1
+		elif ((load_note_oplen == 1) && ((load_note_op[0] & 255) == 0x8b)): word_load = 1
+		if (word_load == 0): return 0
+		int ldisp = load_note_disp - word_size
+		peep_rollback(start)
+		mov_ebx_esp_plus(ldisp)
+		store_mem_reg(size, 3, base, index, scale, disp)
+		if (keep_eax):
+			emit_x64_opcode()
+			emit(2, c"\x89\xd8") /* mov eax,ebx */
+		return 1
+	return 0
+
+######################## end of memory operands (A2) #########################
+
 
 ################################# x86 opcodes #################################
 # Each helper dispatches to its AArch64 twin (code_generator/arm64.w) when
@@ -395,8 +974,10 @@ void promote_eax():
 			if (word_size == 8): lea_load_fold(2, c"\x48\x8b")
 			else: lea_load_fold(1, c"\x8b")
 			return
-		emit_x64_opcode()
-		emit(2, c"\x8b\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			addr_load_fold(word_size == 8, 1, c"\x8b")
+			return
+		plain_load(word_size == 8, 1, c"\x8b")
 
 
 /* mov ebx,[ebx] */
@@ -419,8 +1000,10 @@ void promote_int8_eax():
 			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbe")
 			else: lea_load_fold(2, c"\x0f\xbe")
 			return
-		emit_x64_opcode() /* needed ?? */
-		emit(3, c"\x0f\xbe\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			addr_load_fold(word_size == 8, 2, c"\x0f\xbe")
+			return
+		plain_load(word_size == 8, 2, c"\x0f\xbe")
 
 
 /* movsx eax, word [eax] */
@@ -433,8 +1016,10 @@ void promote_int16_eax():
 			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbf")
 			else: lea_load_fold(2, c"\x0f\xbf")
 			return
-		emit_x64_opcode() /* needed ?? */
-		emit(3, c"\x0f\xbf\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			addr_load_fold(word_size == 8, 2, c"\x0f\xbf")
+			return
+		plain_load(word_size == 8, 2, c"\x0f\xbf")
 
 
 /* x86: mov eax,[eax] ; x64: movsxd rax, dword [rax] (4-byte int32 load) */
@@ -451,8 +1036,12 @@ void promote_int32_eax():
 			if (word_size == 8): lea_load_fold(2, c"\x48\x63")
 			else: lea_load_fold(1, c"\x8b")
 			return
-		if (word_size == 8): emit(3, c"\x48\x63\x00")
-		else: emit(2, c"\x8b\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			if (word_size == 8): addr_load_fold(1, 1, c"\x63")
+			else: addr_load_fold(0, 1, c"\x8b")
+			return
+		if (word_size == 8): plain_load(1, 1, c"\x63")
+		else: plain_load(0, 1, c"\x8b")
 
 
 /* mov %eax,(%ebx) */
@@ -507,24 +1096,8 @@ void store_ebx_int8():
 # x86 family only, like cmp_fuse: arm64 and wasm materialize constants
 # through variable-length or stateful sequences that a byte rollback would
 # not undo cleanly.
-int imm_note_start
-int imm_note_end
-int imm_note_value
-
-# The same note for a constant push_eax has already pushed, so a
-# two-operand ALU op can fold both sides. push_imm_start is the constant's
-# own start rather than the push's, so rolling back to it removes the mov
-# and the push together.
-int push_imm_start
-int push_imm_end
-int push_imm_value
-
-# Armed by pop_ebx when the pushed constant and the accumulator constant
-# are both current and adjacent; consumed by the ALU op that follows.
-int binfold_end
-int binfold_start
-int binfold_left
-int binfold_right
+# (imm_note_*, push_imm_* and binfold_* are declared with the other
+# notes at the top of the file: the A2 memory-operand helpers read them.)
 
 # Invalidate every note. Must be called wherever codepos moves backward
 # (REPL/wdbg checkpoint rollback), exactly like be_cmp_note_reset: a stale
@@ -541,6 +1114,8 @@ void be_imm_note_reset():
 	regload_note_end = 0
 	shuttle_end = 0
 	binop_end = 0
+	addr_note_end = 0
+	memload_end = 0
 
 # True when a * b does not overflow the compiler's own word. The fold has
 # to produce the same constant whether this compiler is the 32-bit or the
@@ -583,11 +1158,14 @@ void binfold_emit(int folded):
 	mov_eax_int(folded)
 
 
-/* mov eax, op(0x12, 0x345678) */
+/* mov eax, op(0x12, 0x345678); zero is 'xor eax,eax' (A2: two bytes,
+   zero-extends on x64; it clobbers the flags, which no emitter keeps live
+   across a value materialization) */
 void mov_eax_int32(int v):
 	if (target_isa == 3): ptx_mov_ax_int(v)
 	elif (target_isa == 2): wasm_mov_eax_int(v)
 	elif (target_isa == 1): arm64_mov_eax_int32(v)
+	elif ((v == 0) && (addr_modes_disabled == 0)): emit(2, c"\x31\xc0")
 	else:
 		emit(1, c"\xb8")
 		emit_int32(v)
@@ -644,7 +1222,10 @@ void promote_uint8_eax():
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(2, c"\x0f\xb6")
 			return
-		emit(3, c"\x0f\xb6\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			addr_load_fold(0, 2, c"\x0f\xb6")
+			return
+		plain_load(0, 2, c"\x0f\xb6")
 
 
 /* Zero-extending 32-bit load, for uint32: a plain 32-bit mov already
@@ -661,7 +1242,10 @@ void promote_uint32_eax():
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(1, c"\x8b")
 			return
-		emit(2, c"\x8b\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			addr_load_fold(0, 1, c"\x8b")
+			return
+		plain_load(0, 1, c"\x8b")
 
 
 /* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
@@ -674,7 +1258,10 @@ void promote_uint16_eax():
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(2, c"\x0f\xb7")
 			return
-		emit(3, c"\x0f\xb7\x00")
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			addr_load_fold(0, 2, c"\x0f\xb7")
+			return
+		plain_load(0, 2, c"\x0f\xb7")
 
 
 /* mov eax, imm32 -- on x64 too for a value in [0, 2^31), where the 32-bit
@@ -682,16 +1269,22 @@ void promote_uint16_eax():
    anything else (negative, or past 2^31 on a 64-bit host) keeps the
    imm64 form. The test is host-independent: a 32-bit compiler cannot
    hold a value that the 64-bit one would classify differently, and the
-   literals with bit 31 set are negative on both (CLAUDE.md). The
-   negative simm32 form (REX.W C7 /0) is deliberately not used: libs/asm
-   has no C7 /0 decoder and asm_x64_test checks the self-host image
-   decodes completely, for 96 instructions in the x64 compiler image. */
+   literals with bit 31 set are negative on both (CLAUDE.md). A negative
+   value takes the 7-byte sign-extending simm32 form (REX.W C7 /0, A2;
+   libs/asm decodes and re-encodes it byte-exact), the rest of the 64-bit
+   range the movabs. */
 void mov_eax_int(int v):
 	if (target_isa == 2): wasm_mov_eax_int(v)
 	elif (target_isa == 1): arm64_mov_rax_int64(v)
 	else:
 		int start = codepos
-		if ((word_size == 8) && ((v >> 31) != 0)): mov_rax_int64(v)
+		if ((word_size == 8) && ((v >> 31) == -1) && (addr_modes_disabled == 0)):
+			# mov rax,simm32 (REX.W C7 /0 id): 7 bytes for a negative
+			# value instead of the 10-byte movabs (A2; libs/asm decodes
+			# C7 /0 since the unit)
+			emit(3, c"\x48\xc7\xc0")
+			emit_int32(v)
+		elif ((word_size == 8) && ((v >> 31) != 0)): mov_rax_int64(v)
 		else: mov_eax_int32(v)
 		# PTX also reaches here (it has no early return above) but does not
 		# advance codepos, so note it only for the x86 family. Every consumer
@@ -724,9 +1317,30 @@ void add_eax_int32(int v):
 				peep_rollback(lea_note_start)
 				lea_eax_esp_plus(disp)
 				return
-		emit_x64_opcode()
-		emit(1, c"\x05") /* \x2d add eax,... */
-		emit_int32(v)
+		# A2: an offset from an address the note describes ('p.a.b',
+		# 'a[i].f') grows its displacement; from a register-resident
+		# pointer ('p.f', 'mov eax,R' directly before) it is one lea;
+		# anything else keeps 'add eax,off', noted as [eax+off].
+		if (addr_modes_disabled):
+			emit_x64_opcode()
+			emit(1, c"\x05") /* \x2d add eax,... */
+			emit_int32(v)
+			return
+		if ((addr_note_end != 0) && (addr_note_end == codepos)):
+			if (fold_add_fits(addr_note_disp, v) && disp_fits(addr_note_disp + v)):
+				int abase = addr_note_base
+				int aindex = addr_note_index
+				int ascale = addr_note_scale
+				int adisp = addr_note_disp + v
+				peep_rollback(addr_note_start)
+				addr_form(abase, aindex, ascale, adisp)
+				return
+		if ((regload_note_end != 0) && (regload_note_end == codepos)):
+			int r = regload_note_reg
+			peep_rollback(regload_note_start)
+			addr_form(r, -1, 1, v)
+			return
+		addr_form(0, -1, 1, v)
 
 
 /* imul eax, eax, imm32 */
@@ -1288,6 +1902,8 @@ void peep_rollback(int pos):
 	if (regload_note_end > pos): regload_note_end = 0
 	if (shuttle_end > pos): shuttle_end = 0
 	if (binop_end > pos): binop_end = 0
+	if (addr_note_end > pos): addr_note_end = 0
+	if (memload_end > pos): memload_end = 0
 
 # A jump target is about to be placed at codepos: no fold may reach back
 # across it (a branch patched to land here would then point into, or
@@ -1428,6 +2044,16 @@ void neg_eax():
 	elif (target_isa == 2): wasm_neg_eax()
 	elif (target_isa == 1): a64(op(0xcb, 0x0003e0))   # neg x0,x0
 	else:
+		# 'mov eax,imm ; neg eax' is one negated constant (A2), which keeps
+		# the immediate note for the folds after it. The host's most
+		# negative value is its own negation on a 32-bit host but not on a
+		# 64-bit one, so that value alone keeps the two instructions.
+		if ((imm_note_end != 0) && (imm_note_end == codepos) && (addr_modes_disabled == 0)):
+			int v = imm_note_value
+			if (v != (0 - (1 << 31))):
+				peep_rollback(imm_note_start)
+				mov_eax_int(0 - v)
+				return
 		emit_x64_opcode()
 		emit(2, c"\xf7\xd8") /* neg %eax */
 
@@ -1487,14 +2113,29 @@ int shuttle_alu(int ext):
 
 # The compare twin: 'cmp eax,X', or 'cmp R_left,X' when the left operand
 # is a register (its value need not pass through eax at all). Emits the
-# cmp only; the caller materializes or fuses the flags.
-int shuttle_cmp():
+# cmp only; the caller materializes or fuses the flags, and passes the
+# setCC byte it will use (alu_cmp_set): a load directly before the
+# shuttle compared against a constant becomes 'cmp [mem],imm' at the
+# load's width (A2, memload_cmp_width) — the compared value is dead
+# after the compare, since the setCC or the fused branch is all that
+# reads the flags.
+int shuttle_cmp(int setcc_opcode):
 	if ((shuttle_end == 0) || (shuttle_end != codepos)): return 0
 	int kind = shuttle_kind
 	int left_reg = shuttle_left_reg
 	int value = shuttle_value
 	int disp = shuttle_disp
 	int reg = shuttle_reg
+	if ((kind == 1) && (left_reg == 0) && (memload_end != 0) && (memload_end == shuttle_start) && (addr_modes_disabled == 0)):
+		int width = memload_cmp_width(setcc_opcode, value)
+		if (width != 0):
+			int base = memload_base
+			int index = memload_index
+			int scale = memload_scale
+			int mdisp = memload_disp
+			peep_rollback(memload_start)
+			cmp_mem_imm(width, value, base, index, scale, mdisp)
+			return 1
 	peep_rollback(shuttle_start)
 	emit_alu_reg_x(7, left_reg, kind, value, disp, reg)
 	return 1
@@ -1506,6 +2147,24 @@ int shuttle_cmp():
 # is used), a statement-position store leaves eax dead. Otherwise the
 # plain 'mov r,eax'. x86 family only.
 void regalloc_reg_store(int r, int keep_eax):
+	if ((imm_note_end != 0) && (imm_note_end == codepos) && (keep_eax == 0) && (addr_modes_disabled == 0)):
+		# 'mov eax,imm ; mov R,eax' with eax dead: 'mov R,imm' (A2). The
+		# 32-bit form zero-extends on x64; a negative value takes the
+		# sign-extending REX.W C7 /0 form, a wider one keeps the detour.
+		int v = imm_note_value
+		if ((word_size == 4) || ((v >> 31) == 0)):
+			peep_rollback(imm_note_start)
+			if (r >= 8): emit(1, c"\x41")
+			emit_int8(0xb8 | (r & 7))
+			emit_int32(v)
+			return
+		if ((v >> 31) == -1):
+			peep_rollback(imm_note_start)
+			emit_rex_w_b(r)
+			emit(1, c"\xc7")
+			emit_int8(0xc0 | (r & 7))
+			emit_int32(v)
+			return
 	if ((binop_end != 0) && (binop_end == codepos)):
 		int ext = binop_op
 		int commutative = (ext == 0) || (ext == 1) || (ext == 4) || (ext == 6) || (ext == 8)
@@ -1755,7 +2414,7 @@ void alu_cmp_set(int setcc_opcode):
 	elif (target_isa == 2): wasm_alu_cmp_set(setcc_opcode)
 	elif (target_isa == 1): arm64_alu_cmp_set(setcc_opcode)
 	else:
-		if (shuttle_cmp() == 0):
+		if (shuttle_cmp(setcc_opcode) == 0):
 			emit_x64_opcode()
 			emit(2, c"\x39\xc3")
 		cmp_fuse_start = codepos

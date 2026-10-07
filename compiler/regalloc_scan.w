@@ -203,6 +203,17 @@ int rs_incdec
 int[64] rs_br_base
 int[64] rs_br_tokens       # tokens seen inside each open '['
 int rs_br_depth
+# A2's store hazard (rs_store_line, rs_write): the candidates named on
+# the current statement line so far, whether an assignment THROUGH AN
+# ADDRESS ('a[i] = ...', 'p.f += ...', '*p = ...') has been seen on it,
+# the paren depth that keeps a statement spanning lines together, and
+# whether a single '*' (a dereference) precedes the identifier being read.
+int[64] rs_line_names
+int rs_line_name_count
+int rs_line_overflow
+int rs_store_line
+int rs_paren_depth
+int rs_deref_pending
 
 # Byte classes, built once from compiler/tokenizer.w's predicates so the
 # lexer below agrees with it: bit 1 an identifier may start here (a-z,
@@ -908,6 +919,43 @@ void rs_write(int i):
 	while (k < rs_br_depth):
 		if (rs_br_base[k] == i): rs_excluded[i] = 1
 		k = k + 1
+	# Written on the right side of a store through an address that
+	# named it on its left ('a[i] = (i = i + 1)', 'p.f = (p = q)'): A2's
+	# store addresses [base+index*scale+disp] AFTER the right side ran,
+	# where the stack path formed the address first, so such a name
+	# keeps the stack (the stack path reads it before the write). Every
+	# name seen earlier on the line counts, which over-approximates the
+	# left side and only ever excludes.
+	if (rs_store_line):
+		if (rs_line_overflow): rs_excluded[i] = 1
+		k = 0
+		while (k < rs_line_name_count):
+			if (rs_line_names[k] == i): rs_excluded[i] = 1
+			k = k + 1
+
+
+# A statement line starts (or ends): forget its names.
+void rs_line_reset():
+	rs_line_name_count = 0
+	rs_line_overflow = 0
+	rs_store_line = 0
+
+
+void rs_line_name(int i):
+	if (rs_line_name_count >= 64):
+		rs_line_overflow = 1
+		return;
+	rs_line_names[rs_line_name_count] = i
+	rs_line_name_count = rs_line_name_count + 1
+
+
+# An operator run that assigns: '=' alone or '...=' other than a
+# comparison ('==', '<=', '>=', '!=').
+int rs_run_assigns(int n, int first, int second, int last):
+	if (n == 1): return first == '='
+	if (last != '='): return 0
+	if ((n == 2) && ((first == '=') || (first == '<') || (first == '>') || (first == '!'))): return 0
+	return 1
 
 
 # A '[' opened (base: the candidate it follows, -1 none) / a ']' closed.
@@ -943,6 +991,8 @@ void rs_br_pop():
 # increment (both read and write the name), a plain
 # '=' write, or an ordinary operator. The run is consumed.
 void rs_after_ident_operator(int i, int type_context):
+	int deref = rs_deref_pending
+	rs_deref_pending = 0
 	int n = 0
 	int first = rs_c
 	int second = 0
@@ -972,8 +1022,13 @@ void rs_after_ident_operator(int i, int type_context):
 			if ((n == 2) && ((first == '=') || (first == '<') || (first == '>') || (first == '!'))): use = 1
 			else: use = 3
 	# A compound assignment or '++'/'--' (use 3) reads and writes the
-	# name: two uses (R3: grammar/increment.w emits 'op R,X' in place)
-	if (i >= 0):
+	# name: two uses (R3: grammar/increment.w emits 'op R,X' in place).
+	# '*name = ...' and '*name += ...' store through the pointer, not
+	# into the name: a read, and a store through an address (A2).
+	if (deref && ((use == 2) || (use == 3))):
+		if (i >= 0): rs_uses[i] = rs_uses[i] + rs_weight()
+		rs_store_line = 1
+	elif (i >= 0):
 		if (use == 0): rs_declare(i)
 		else if (use == 3):
 			rs_uses[i] = rs_uses[i] + (rs_weight() << 1)
@@ -1052,6 +1107,7 @@ void rs_identifier():
 		return;
 	int i = -1
 	if (rs_mode == 1): i = rs_intern(name, rs_ident_hash)
+	if (i >= 0): rs_line_name(i)
 	rs_prev_index = i
 	rs_prev_kind = 1
 	rs_prev_keyword = 0
@@ -1231,6 +1287,9 @@ void rs_scan_body(int brace_body):
 	rs_sub_base = -1
 	rs_incdec = 0
 	rs_br_depth = 0
+	rs_line_reset()
+	rs_paren_depth = 0
+	rs_deref_pending = 0
 	int first = 1
 	while ((rs_done == 0) && (rs_abort == 0) && (rs_c != -1)):
 		if ((rs_mode == 0) && rs_has_loop): return;
@@ -1238,6 +1297,8 @@ void rs_scan_body(int brace_body):
 			if (rs_same_line && (rs_depth == 0)): return;
 			rs_newline()
 			rs_prev_kind = 0
+			rs_deref_pending = 0
+			if ((rs_paren_depth == 0) && (rs_br_depth == 0)): rs_line_reset()
 			continue
 		int cl = rs_class[rs_c]
 		if (cl & rs_cl_blank):
@@ -1277,12 +1338,14 @@ void rs_scan_body(int brace_body):
 				rs_prev_kind = 2
 				rs_prev_index = -1
 				rs_incdec = 0
+				rs_deref_pending = 0
 				rs_skip_blanks()
 				if ((rs_c == '(') || (rs_c == '[')): rs_lp_mark(rs_lp_has_call)
 			else: rs_identifier()
 			continue
 		rs_type_pos = 0
 		rs_incdec = 0
+		rs_deref_pending = 0
 		if (('0' <= c) && (c <= '9')):
 			while ((rs_c != -1) && ((rs_class[rs_c] & rs_cl_part) || (rs_c == '.'))): rs_next()
 			rs_prev_kind = 2
@@ -1306,6 +1369,7 @@ void rs_scan_body(int brace_body):
 		if (c == ')'):
 			rs_next()
 			rs_prev_kind = 2
+			if (rs_paren_depth > 0): rs_paren_depth = rs_paren_depth - 1
 			continue
 		if (c == ']'):
 			rs_next()
@@ -1321,14 +1385,19 @@ void rs_scan_body(int brace_body):
 			int firstc = c
 			int before = rs_prev_kind
 			int secondc = 0
+			int lastc = 0
 			while (rs_is_op_char(rs_c)):
 				if (n == 1): secondc = rs_c
+				lastc = rs_c
 				n = n + 1
 				rs_next()
 			rs_prev_kind = 0
 			if ((firstc == '%') || ((n >= 2) && (firstc == secondc) && ((firstc == '<') || (firstc == '>')))): rs_lp_mark(rs_lp_has_divshift)
 			# a prefix '++'/'--': the identifier it precedes is written
 			if ((n == 2) && (firstc == secondc) && ((firstc == '+') || (firstc == '-'))): rs_incdec = 1
+			# an assignment after ']' or an operand end ('a[i] =',
+			# 'p.f +=', '(*p).f ='): a store through an address (A2)
+			if (((before == 2) || (before == 4)) && rs_run_assigns(n, firstc, secondc, lastc)): rs_store_line = 1
 			if ((n == 1) && (firstc == '&')):
 				# '&' not after an operand: address-of
 				if (before != 2): rs_prev_kind = 5
@@ -1338,6 +1407,7 @@ void rs_scan_body(int brace_body):
 			else if ((n == 1) && (firstc == '*')):
 				# 'T* name' after a type; '*p' at an operator is a deref
 				if ((before == 1) || (before == 3)): rs_prev_kind = 3
+				else: rs_deref_pending = 1
 			continue
 		# '(' '[' ',' ';' ':' '?' '@' and anything else; '(' right after
 		# an operand ('f(x)(y)', 'table[i](x)') is a call
@@ -1346,6 +1416,7 @@ void rs_scan_body(int brace_body):
 			rs_expect_range = 0
 			rs_lp_mark(rs_lp_has_call)
 		if ((c == '(') || (c == '[') || (c == ',') || (c == ';') || (c == ':')): rs_type_pos = 1
+		if (c == '('): rs_paren_depth = rs_paren_depth + 1
 		if (c == '['):
 			# the subscript's base, for the write hazard (rs_write):
 			# the identifier directly before it, or nothing ('f()[i]',

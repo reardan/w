@@ -3364,6 +3364,11 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	int id = expression_ast_add(tree, node_op, left, right)
 	if (id < 0): return -1
 	tree.value[id] = op
+	# Built by the statement's own expression() call (depth 1), not by a
+	# group's, an argument's or a right side's: the streaming '=' reads
+	# its stmt_context from the same distinction, and the retained
+	# emitter's keep_eax must agree with it byte for byte.
+	tree.high[id] = depth == 1
 	tree.result_type[id] = type_value(lt)
 	if ((op == 0) && (map_store == 0)): tree.result_type[id] = type_value(type_strip_gpu(lt))
 	return id

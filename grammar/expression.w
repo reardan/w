@@ -32,6 +32,24 @@ void assign_store(int type):
 	else: store_ebx_word()
 
 
+# The width of a store that may address its left side as a memory
+# operand (A2, code_generator/x86.w's mem_lvalue_*): assign_store's own
+# sizing for a plain scalar or pointer, 0 for everything that stores
+# through other paths (a struct copy, an imported C bit-field, a device
+# object) or at a width the operand forms do not cover.
+int assign_mem_size(int type):
+	if (type_is_gpu_object(type)): return 0
+	int t = type_canonical(type)
+	if (ci_is_bit_field_access(t)): return 0
+	if (type_num_args(t) > 0): return 0
+	int lhs_size = word_size
+	if ((type_get_pointer_level(t) == 0) & (t != 3) & (t != 4)):
+		int declared_size = type_get_size(t)
+		if (declared_size > 0): lhs_size = declared_size
+	if ((lhs_size == 1) || (lhs_size == 2) || (lhs_size == 4) || (lhs_size == word_size)): return lhs_size
+	return 0
+
+
 # Copy the struct at eax into the struct at ebx, then rebuild any inline
 # array-field descriptors in the destination. Whole words first, then the
 # tail with the narrowest moves that fit (4, 2, 1 bytes), so a struct whose
@@ -220,8 +238,34 @@ int expression():
 		# store below is a register move
 		int lhs_reg = 0
 		if (regalloc_note_current()): lhs_reg = regalloc_note_take()
+		# A memory operand on the left (A2, code_generator/x86.w,
+		# mem_lvalue_begin): kind 1 needs no parked address at all and
+		# stores straight into [base+index*scale+disp] after the right
+		# side; kind 2 parks the lea as before and may still fold the
+		# store when the right side was one simple instruction
+		int mem_kind = 0
+		int mem_size = 0
+		int mem_base = 0
+		int mem_index = 0
+		int mem_scale = 0
+		int mem_disp = 0
+		int mem_pos = 0
+		int mem_start = 0
+		int mem_push_end = 0
+		if (lhs_reg == 0):
+			mem_size = assign_mem_size(type)
+			if (mem_size): mem_kind = mem_lvalue_begin(stack_pos)
+			if (mem_kind):
+				mem_base = mem_lv_base
+				mem_index = mem_lv_index
+				mem_scale = mem_lv_scale
+				mem_disp = mem_lv_disp
+				mem_pos = mem_lv_pos
+				mem_start = mem_lv_start
 		int lhs_slot = stack_pos
-		if (lhs_reg == 0): lhs_slot = push_slot()
+		if ((lhs_reg == 0) && (mem_kind != 1)):
+			lhs_slot = push_slot()
+			mem_push_end = push_note_end
 		# Recursion-depth guard (compiler/tokenizer.w): 'a = b = c = ...'
 		# chains recurse this function directly for each right-hand side,
 		# and each level's left operand has already returned by this point,
@@ -251,12 +295,23 @@ int expression():
 			# is the whole statement, whose value nothing reads
 			regalloc_reg_store(lhs_reg, stmt_context == 0)
 			return type_value(type_strip_gpu(type))
+		if (mem_kind == 1):
+			if (types_compatible_with_expression(type, type2) == 0):
+				warn_type_mismatch(c"assignment", type, type2)
+			mem_store_eax(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos, stmt_context)
+			return type_value(type_strip_gpu(type))
 		# A struct-returning call on the right side parks its return
 		# buffer on the stack (eax points into it), burying the saved
 		# lhs address; read it esp-relative instead of popping. The
 		# saved word and the buffer stay counted in stack_pos, so the
 		# enclosing statement's cleanup pops them.
 		int lhs_buried = stack_pos - lhs_slot
+		if ((mem_kind == 2) && (lhs_buried == 0)):
+			if (mem_store_parked(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_start, mem_push_end, stmt_context == 0)):
+				if (types_compatible_with_expression(type, type2) == 0):
+					warn_type_mismatch(c"assignment", type, type2)
+				stack_pos = stack_pos - 1
+				return type_value(type_strip_gpu(type))
 		if (lhs_buried > 0): mov_ebx_esp_plus(lhs_buried << word_size_log2)
 		else: pop_ebx()
 

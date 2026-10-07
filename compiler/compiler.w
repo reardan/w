@@ -925,6 +925,13 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--no-direct-calls") == 0):
 		if (apply): direct_calls_disabled = 1
 		return 1
+	# Addressing modes (docs/projects/codegen_gap_plan.md §2.2, unit A2)
+	# are on by default on x86/x64; --no-addr-modes keeps the
+	# accumulator-address loads and stores, the reference for
+	# tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-addr-modes") == 0):
+		if (apply): addr_modes_disabled = 1
+		return 1
 	# Branch-on-flags for &&/||/! in conditions (docs/projects/
 	# codegen_gap_plan.md §2.6, grammar/cond_branch.w) is on by default
 	# on x86/x64; --no-cond-branch (and -O0) keeps the value form, which
@@ -999,6 +1006,7 @@ void help_shared_options():
 	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
+	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
@@ -1334,6 +1342,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):

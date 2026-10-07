@@ -957,8 +957,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 		expression_is_assignment = 1
 		int subop = tree.value[id]
 		# The statement's own assignment leaves its value unread (R3:
-		# the register store may then drop the trailing 'mov eax,R')
-		int keep_eax = (id + 1) != ast_statement_root1
+		# the register store may then drop the trailing 'mov eax,R').
+		# A parenthesised '(a = b)' is the tree's root but not the
+		# statement's own expression() call (tree.high, set by
+		# grammar/ast_expression.w's assignment), and keeps the value
+		# exactly as the streaming stmt_context does.
+		int keep_eax = ((id + 1) != ast_statement_root1) || (tree.high[id] == 0)
 		# A register-resident left side (grammar/expression.w's '=',
 		# grammar/increment.w's compound form): no parked address, the
 		# store is a register move or an in-place 'op R,X'
@@ -980,16 +984,49 @@ void emit_expression_ast(expression_ast* tree, int id):
 			coerce(left_type, reg_rt2)
 			regalloc_reg_store(lhs_reg, keep_eax)
 			return
-		int lhs_slot = push_slot()
+		# A memory operand on the left (A2): the twin of
+		# grammar/expression.w's '=' and grammar/increment.w's
+		# compound_assign_scalar, through the same mem_lvalue_* helpers
+		int mem_kind = 0
+		int mem_size = assign_mem_size(left_type)
+		int mem_base = 0
+		int mem_index = 0
+		int mem_scale = 0
+		int mem_disp = 0
+		int mem_pos = 0
+		int mem_start = 0
+		int mem_push_end = 0
+		if (mem_size): mem_kind = mem_lvalue_begin(stack_pos)
+		if ((mem_kind == 2) && subop): mem_kind = 0
+		if (mem_kind):
+			mem_base = mem_lv_base
+			mem_index = mem_lv_index
+			mem_scale = mem_lv_scale
+			mem_disp = mem_lv_disp
+			mem_pos = mem_lv_pos
+			mem_start = mem_lv_start
+		int lhs_slot = stack_pos
+		if (mem_kind != 1):
+			lhs_slot = push_slot()
+			mem_push_end = push_note_end
 		int loaded = left_type
 		if (subop):
+			if (mem_kind == 1): mem_lvalue_renote(mem_base, mem_index, mem_scale, mem_disp)
 			loaded = promote(left_type)
 			push_slot()
 		emit_expression_ast(tree, tree.right[id])
 		int rt = promote(tree.result_type[tree.right[id]])
 		if (subop): rt = compound_assign_apply(subop, loaded, rt)
 		coerce(left_type, rt)
+		if (mem_kind == 1):
+			if (subop && (keep_eax == 0) && mem_store_compound(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos)): return
+			mem_store_eax(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos, keep_eax == 0)
+			return
 		int lhs_buried = stack_pos - lhs_slot
+		if ((mem_kind == 2) && (lhs_buried == 0)):
+			if (mem_store_parked(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_start, mem_push_end, keep_eax)):
+				stack_pos = stack_pos - 1
+				return
 		if (subop): pop_ebx_slot()
 		else if (lhs_buried > 0): mov_ebx_esp_plus(lhs_buried << word_size_log2)
 		else: pop_ebx()
@@ -1143,13 +1180,24 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int base_reg = 0
 		if (regalloc_note_current()): base_reg = regalloc_note_take()
 		else: binary1(left_type)
+		int index_start = codepos
 		emit_expression_ast(tree, tree.right[id])
 		promote(tree.result_type[tree.right[id]])
-		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
-		if (base_reg != 0): add_eax_reg(base_reg)
+		# One address from base, index and element size (A2): the
+		# address note of code_generator/x86.w, as in the streaming
+		# twin; the other ISAs keep the scale-and-add sequence.
+		int element_size = tree.value[id]
+		if (element_size < 1): element_size = 1
+		if (target_isa != 0):
+			if (element_size > 1): imul_eax_int32(element_size)
+			if (base_reg != 0): add_eax_reg(base_reg)
+			else:
+				pop_ebx()
+				alu_add()
+				stack_pos = stack_pos - 1
+		elif (base_reg != 0): subscript_reg_base(base_reg, element_size, index_start)
 		else:
-			pop_ebx()
-			alu_add()
+			subscript_stack_base(element_size, index_start)
 			stack_pos = stack_pos - 1
 		return
 	left_type = binary1(left_type)

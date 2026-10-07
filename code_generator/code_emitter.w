@@ -143,6 +143,11 @@ int direct_callee_id
 int direct_callee_end
 # --no-direct-calls: every call reloads its callee into the accumulator.
 int direct_calls_disabled
+# --no-addr-modes: no [base+index*scale+disp] operands (unit A2,
+# code_generator/x86.w's address note); every load and store goes
+# through the accumulator address as before, the reference for
+# tests/regalloc_diff_test.w and the fallback a miscompile report asks for.
+int addr_modes_disabled
 
 void direct_callee_guard_fail();   /* grammar/stack_slot.w: the diagnostic */
 

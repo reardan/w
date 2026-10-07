@@ -37,6 +37,7 @@ tests/ until a SEEDS bump (docs/release.md).
 # compiler needs the declarations up front.
 int compound_assign_apply(int op, int left_type, int right_type);
 void assign_store(int type);
+int assign_mem_size(int type);
 int expression();
 
 
@@ -97,8 +98,30 @@ int compound_assign_scalar(int op, int type, int implicit_one, int value_dead):
 		error(c"compound assignment is not supported on string, array or slice values")
 	expression_lhs_readonly = 0
 	int lhs_reg = 0
+	# A memory operand on the left (A2, code_generator/x86.w): the load
+	# below folds it, nothing is parked, and the final store addresses
+	# it again -- as 'op [mem],X' when the value is dead
+	int mem_kind = 0
+	int mem_size = 0
+	int mem_base = 0
+	int mem_index = 0
+	int mem_scale = 0
+	int mem_disp = 0
+	int mem_pos = 0
 	if (regalloc_note_current()): lhs_reg = reg_lvalue
-	else: push_slot()  # lhs address, kept for the final store
+	else:
+		mem_size = assign_mem_size(type)
+		if (mem_size): mem_kind = mem_lvalue_begin(stack_pos)
+		if (mem_kind == 1):
+			mem_base = mem_lv_base
+			mem_index = mem_lv_index
+			mem_scale = mem_lv_scale
+			mem_disp = mem_lv_disp
+			mem_pos = mem_lv_pos
+			mem_lvalue_renote(mem_base, mem_index, mem_scale, mem_disp)
+		else:
+			mem_kind = 0
+			push_slot()  # lhs address, kept for the final store
 	int left_type = promote(type)  # eax still holds the address: load
 	int result_type = 0
 	if (implicit_one):
@@ -121,6 +144,12 @@ int compound_assign_scalar(int op, int type, int implicit_one, int value_dead):
 		if (types_compatible_with_expression(type, result_type) == 0):
 			warn_type_mismatch(c"assignment", type, result_type)
 		regalloc_reg_store(lhs_reg, value_dead == 0)
+		return type_value(type)
+	if (mem_kind == 1):
+		if (types_compatible_with_expression(type, result_type) == 0):
+			warn_type_mismatch(c"assignment", type, result_type)
+		if (value_dead && mem_store_compound(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos)): return type_value(type)
+		mem_store_eax(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos, value_dead)
 		return type_value(type)
 	pop_ebx_slot()
 	if (types_compatible_with_expression(type, result_type) == 0):

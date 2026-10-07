@@ -641,6 +641,21 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# mov r/m8, imm8 (0xc6 /0) and mov r/m32, imm32 (0xc7 /0; imm16 with
+	# the 0x66 prefix, imm32 sign-extended under REX.W). The 64-bit form's
+	# immediate is recorded at width 4, the width it is encoded at.
+	if ((op == 0xc6 || op == 0xc7) && ((asm_x86_peek(d) >> 3) & 7) == 0):
+		int modrm = asm_x86_u8(d)
+		insn.mnemonic = c"mov"
+		int size = d.opsize
+		if (op == 0xc6): size = 1
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
+		if (size == 1): asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
+		else if (size == 2): asm_x86_set_imm(&insn.op2, asm_x86_s16(d), 2)
+		else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+		insn.length = d.pos - start
+		return insn.length
+
 	# mov r8, imm8 (0xb0-0xb7)
 	if (op >= 0xb0 && op <= 0xb7):
 		insn.mnemonic = c"mov"

@@ -720,6 +720,80 @@ void test_switch_in_loop():
 	assert_equal(1 + 1000 + 10 + 1000 + 100 + 1 + 1000, switch_in_loop(4))
 
 
+# --- folded compares in the bottom test (A2, code_generator/x86.w) ---
+# Each condition is a load against a constant that A2 folds into
+# 'cmp [mem],imm' at the load's width (a char, a uint8, a struct field
+# through a pointer); the rotated loop's back-edge branch must fuse
+# with that folded compare, and a zero assignment in the body ('xor
+# eax,eax' clobbers the flags) must never leak into the next test.
+struct probe:
+	int status
+	uint8 level
+	int count
+
+
+int scan_bytes(char* s, uint8* u, probe* p):
+	int n = 0
+	int i = 0
+	while (s[i] != 0):
+		n = n + 1
+		i = i + 1
+	int j = 0
+	while (u[j] < 200):
+		int z = 0
+		n = n + 10 + z
+		j = j + 1
+	while (p.status == 0):
+		p.count = p.count + 1
+		if (p.count == 4): p.status = 1
+		n = n + 100
+	while (p.level >= 3 && s[p.level] != 0):
+		p.level = p.level - 1
+		n = n + 1000
+	int k = 0
+	while (s[k] == 'x' || u[k] == 24):
+		k = k + 1
+		n = n + 10000
+	return n
+
+
+void test_folded_compares():
+	char* s = cast(char*, malloc(8))
+	uint8* u = cast(uint8*, malloc(8))
+	probe p
+	p.status = 0
+	p.level = 5
+	p.count = 0
+	# s = "xxaya\0\0\0", u = 0,24,200,3,240,0,0,0
+	s[0] = 'x'
+	s[1] = 'x'
+	s[2] = 'a'
+	s[3] = 'y'
+	s[4] = 'a'
+	s[5] = 0
+	s[6] = 0
+	s[7] = 0
+	u[0] = 0
+	u[1] = 24
+	u[2] = 200
+	u[3] = 3
+	u[4] = 240
+	u[5] = 0
+	u[6] = 0
+	u[7] = 0
+	# 5 chars, 2 bytes below 200, 4 counts to status 1, level 5 -> s[5]
+	# is 0 so no iteration, then x, x, u[2] == 200 != 24 stops: 2
+	assert_equal(5 + 20 + 400 + 0 + 20000, scan_bytes(s, u, &p))
+	assert_equal(1, p.status)
+	assert_equal(4, p.count)
+	assert_equal(5, p.level)
+	s[5] = 'z'
+	p.level = 4
+	# levels 4 and 3 see s[4], s[3] nonzero: two iterations; k stops at 2
+	assert_equal(6 + 20 + 0 + 2000 + 20000, scan_bytes(s, u, &p))
+	assert_equal(2, p.level)
+
+
 int main():
 	test_iteration_counts()
 	test_condition_calls()
@@ -734,5 +808,6 @@ int main():
 	test_forever()
 	test_containers()
 	test_switch_in_loop()
+	test_folded_compares()
 	println(c"loop_rotate_test passed")
 	return 0
