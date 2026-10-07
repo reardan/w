@@ -229,7 +229,11 @@ char* proc_stat_text(int pid):
 	char* buffer = malloc(1024)
 	int count = read(fd, buffer, 1023)
 	close(fd)
-	if (count < 0): count = 0
+	# A zombie reaped between open and read fails the read with ESRCH:
+	# that is "gone" too, not an empty stat line to parse.
+	if (count <= 0):
+		free(buffer)
+		return 0
 	buffer[count] = 0
 	return buffer
 
