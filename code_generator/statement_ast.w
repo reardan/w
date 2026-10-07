@@ -362,6 +362,103 @@ void emit_block_ast_end(statement_ast* node):
 	ast_blocks_emitted = ast_blocks_emitted + 1
 
 
+# S2.2b: the retained walk of a block, an if/elif/else chain or a while
+# loop (code_generator/retained_emit.w). The header of each, the opening
+# token or the keyword and its condition, is parsed completely before its
+# phases are emitted; body statements are walked by their own families as
+# they are reached, and the steps after a body (the jump past the else
+# arms, the back edge, the region ends, the block's deferred statements
+# and stack unwind) are phases emitted once the body has been parsed.
+#
+# Phase codes are private to these emitters. A condition records family
+# (a)'s ast_walk_expression and ast_walk_expression_end too (through
+# ast_statement_walk_expression); those run on the condition's
+# statement_ast, which is the walk's statement while it is drained.
+const int ast_walk_if_begin = 101
+const int ast_walk_guard_value = 102
+const int ast_walk_guard_branch = 103
+const int ast_walk_if_then_end = 104
+const int ast_walk_if_end = 105
+const int ast_walk_while_begin = 106
+const int ast_walk_while_end = 107
+const int ast_walk_block_begin = 108
+const int ast_walk_block_deferred = 109
+const int ast_walk_block_end = 110
+
+
+# What the phases of an if/while walk act on, owned by the parsing frame
+# (which walks before it returns): statement is the if node of the arm
+# being parsed (an elif arm swaps its own in), loop the while node. A
+# block's walk needs none: its statement_ast is the walk's statement.
+struct control_ast_walk:
+	int walk
+	statement_ast* statement
+	loop_ast* loop
+	int* outer
+
+# Indexed by walk record id; an entry is valid while its walk is open.
+list[control_ast_walk*] control_ast_walks
+# The if/while walk whose condition the next ast_statement_guard parses.
+control_ast_walk* control_ast_guard_pending
+
+
+void control_ast_walk_attach(int walk, control_ast_walk* control):
+	if (control_ast_walks == 0): control_ast_walks = new list[control_ast_walk*]
+	while (control_ast_walks.length <= walk): control_ast_walks.push(0)
+	control_ast_walks[walk] = control
+	control.walk = walk
+
+
+# A record's id is on its statement node until retained_emit_statement
+# finishes the walk.
+control_ast_walk* control_ast_walk_of(retained_statement_walk* walk):
+	return control_ast_walks[retained_nodes[walk.node].statement_walk]
+
+
+int* emit_while_loop_ast_begin(loop_ast* node);
+void emit_while_loop_ast_end(loop_ast* node);
+
+
+# The guard's target region is opened by its statement's begin phase, so
+# it is read when the branch is emitted.
+void emit_guard_ast_walk_branch(control_ast_walk* control, statement_ast* guard):
+	if (control.loop != 0): guard.target = control.loop.break_target
+	else: guard.target = control.statement.alternate_target
+	emit_guard_ast_branch(guard)
+
+
+# if/elif/else and while, with their conditions.
+void emit_guard_ast_walk(retained_statement_walk* walk, int phase):
+	if ((phase == ast_walk_expression) || (phase == ast_walk_expression_end)):
+		emit_statement_ast_walk(walk, phase)
+		return
+	control_ast_walk* control = control_ast_walk_of(walk)
+	if (phase == ast_walk_if_begin): emit_if_ast_begin(control.statement)
+	else if (phase == ast_walk_guard_value): emit_guard_ast_value(walk.statement)
+	else if (phase == ast_walk_guard_branch): emit_guard_ast_walk_branch(control, walk.statement)
+	else if (phase == ast_walk_if_then_end): emit_if_ast_then_end(control.statement)
+	else if (phase == ast_walk_if_end): emit_if_ast_end(control.statement)
+	else if (phase == ast_walk_while_begin): control.outer = emit_while_loop_ast_begin(control.loop)
+	else if (phase == ast_walk_while_end): emit_while_loop_ast_end(control.loop)
+	else: error(c"internal error: unknown statement walk phase")
+
+
+# '{' and ':' blocks: open the DWARF scope, then (after the body) run a
+# function body's deferred statements, close the scope and unwind.
+void emit_block_ast_walk(retained_statement_walk* walk, int phase):
+	statement_ast* node = walk.statement
+	if (phase == ast_walk_block_begin):
+		node.stack_depth = stack_pos
+		dwarf_block_begin()
+		if (node.kind == ast_stmt_indent_block): print_int_v1(c"starting stack_pos: ", stack_pos)
+	else if (phase == ast_walk_block_deferred): emit_block_ast_deferred(node)
+	else if (phase == ast_walk_block_end):
+		dwarf_block_end()
+		if (node.kind == ast_stmt_indent_block): print_int_v1(c"ending stack_pos: ", stack_pos)
+		emit_block_ast_end(node)
+	else: error(c"internal error: unknown statement walk phase")
+
+
 void emit_switch_region_ast_begin(statement_ast* node):
 	node.target = be_ctrl_block()
 
@@ -390,3 +487,92 @@ void emit_switch_region_ast_end(statement_ast* node):
 
 void emit_switch_region_ast_cleanup(statement_ast* node):
 	drop_slots(node.unwind_slots)
+
+
+# S2.2c: a switch statement walked from its record (code_generator/
+# retained_emit.w). The grammar (grammar/ast_statement.w) records these
+# phases in the order the streaming hooks ran the steps, and runs them
+# itself, in place, when no walk is open. A header value (the selector or
+# a case value) is walked before the next one is parsed, so the record
+# holds one value at a time; the switch node keeps the facts the later
+# phases need (selector type and slot, regions, the enclosing break
+# context).
+const int switch_walk_value = 1
+const int switch_walk_value_end = 2
+const int switch_walk_selector = 3
+const int switch_walk_region = 4
+const int switch_walk_enter = 5
+const int switch_walk_case_region = 6
+const int switch_walk_match_region = 7
+const int switch_walk_case_begin = 8
+const int switch_walk_case_note = 9
+const int switch_walk_case_compare = 10
+const int switch_walk_case_branch = 11
+const int switch_walk_match_end = 12
+const int switch_walk_case_end = 13
+const int switch_walk_region_end = 14
+const int switch_walk_leave = 15
+const int switch_walk_cleanup = 16
+
+
+struct switch_ast_walk:
+	statement_ast* node
+	statement_ast* value
+	int case_start
+	int case_line
+	int outer_chain
+	int outer_stack
+	int outer_in_switch
+
+
+# A header value's lowering from its retained group (S2.2c; family (a)'s
+# ast_walk_expression step, for a value the walk record does not own).
+void emit_walk_header_value(retained_statement_walk* walk, statement_ast* value):
+	int root = retained_walk_lower_expression(walk)
+	expression_lhs_readonly = walk.tree.readonly
+	value.expression_type = walk.tree.result_type[root]
+
+
+# One switch step; walk is 0 when the grammar runs it during the parse.
+void emit_switch_ast_phase(switch_ast_walk* record, retained_statement_walk* walk, int phase):
+	statement_ast* node = record.node
+	statement_ast* value = record.value
+	if (phase == switch_walk_value): emit_walk_header_value(walk, value)
+	else if (phase == switch_walk_value_end): emit_statement_ast_expression_end(value)
+	else if (phase == switch_walk_selector):
+		node.declared_type = emit_switch_value_ast(value)
+		node.stack_depth = stack_pos
+	else if (phase == switch_walk_region): emit_switch_region_ast_begin(node)
+	else if (phase == switch_walk_enter):
+		# 'break' in a case body exits the switch
+		switch_break_chain = node.target
+		switch_stack_pos = stack_pos
+		break_in_switch = 1
+		switch_depth = switch_depth + 1
+	else if (phase == switch_walk_case_region): emit_switch_case_region_ast_begin(node)
+	else if (phase == switch_walk_match_region): emit_switch_match_region_ast_begin(node)
+	else if (phase == switch_walk_case_begin):
+		value.declared_type = node.declared_type
+		value.stack_depth = node.stack_depth
+		emit_switch_case_ast_begin(value)
+	else if (phase == switch_walk_case_note):
+		switch_note_case_value(record.case_start, value.expression_type, record.case_line, value.line, value.column)
+	else if (phase == switch_walk_case_compare): emit_switch_case_ast_compare(value)
+	else if (phase == switch_walk_case_branch):
+		value.target = node.alternate_target
+		if (value.branch_nonzero): value.target = node.body_target
+		emit_switch_case_ast_branch(value)
+	else if (phase == switch_walk_match_end): emit_switch_match_region_ast_end(node)
+	else if (phase == switch_walk_case_end): emit_switch_case_region_ast_end(node)
+	else if (phase == switch_walk_region_end): emit_switch_region_ast_end(node)
+	else if (phase == switch_walk_leave):
+		switch_break_chain = record.outer_chain
+		switch_stack_pos = record.outer_stack
+		break_in_switch = record.outer_in_switch
+		switch_depth = switch_depth - 1
+	else if (phase == switch_walk_cleanup): emit_switch_region_ast_cleanup(node)
+	else: error(c"internal error: unknown switch walk phase")
+
+
+void emit_switch_ast_walk(retained_statement_walk* walk, int phase):
+	emit_switch_ast_phase(cast(switch_ast_walk*, walk.statement), walk, phase)
