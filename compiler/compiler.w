@@ -1168,6 +1168,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	retained_walks_used = 0
 	retained_walk_phases_used = 0
 	retained_emit_points_used = 0
+	# S2.3: generic/defer instantiation --stats counters.
+	generic_source_seeks = 0
+	defer_source_seeks = 0
+	generic_tree_types = 0
+	retained_source_reparses = 0
+	retained_source_end_positions = 0
+	retained_source_reparse_reset()
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1594,6 +1601,22 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(ast_retained_statements_emitted))
 		print_error(c"\nImmediate statements: ")
 		print_error(itoa(retained_statement_count() - ast_retained_statements_emitted))
+		print_error(c"\n")
+	# S2.3: generic instantiations and deferred-statement replays that
+	# reopened and seeked a source file, and what replaced them.
+	if (stats_mode):
+		print_error(c"Generic instantiation source seeks: ")
+		print_error(itoa(generic_source_seeks))
+		print_error(c"\nDeferred statement source seeks: ")
+		print_error(itoa(defer_source_seeks))
+		print_error(c"\n")
+	if (stats_mode && ast_emit_retained_mode):
+		print_error(c"Generic types from retained trees: ")
+		print_error(itoa(generic_tree_types))
+		print_error(c"\nRetained-source reparses: ")
+		print_error(itoa(retained_source_reparses))
+		print_error(c"\nRetained-source reparses positioned at the file's end: ")
+		print_error(itoa(retained_source_end_positions))
 		print_error(c"\n")
 
 

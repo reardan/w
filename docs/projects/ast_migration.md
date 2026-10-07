@@ -1979,6 +1979,97 @@ that are drained immediately, not deferred; the coverage counter does
 not count function, global or linkage boundaries at all. The tree
 schema is unchanged (**version 2**).
 
+## Generic instantiation and deferred statements from the retained forest (S2.3)
+
+Under `--ast-emit-retained`, no generic instantiation and no deferred
+statement replay reopens its source file and seeks to the recorded span
+any more. Two mechanisms replace the seek:
+
+- **Retained type trees.** A generic struct's field list is captured as
+  unbound type trees (`generic_field_ast`, the `generic_type_ast` shapes of
+  tasks 38/45/46) while its definition is skipped; a generic function's
+  header already was (`generic_signature_ast`). A struct instantiation, an
+  instantiation signature (`generic_inst_signature`) and the placeholder
+  inference shapes (`generic_infer_shapes`) are now built by walking those
+  trees under the substitution (`generic_tree_resolve`, grammar/generic.w),
+  making exactly the type-table calls `type_name()` makes for the same
+  tokens in the same order, so type indices and images stay identical. A
+  side-effect-free check (`generic_tree_valid`) runs first and declines any
+  tree whose re-parse would report an error or read the tokens differently
+  (unknown names, wrong arity, list/map storage rules, 64-bit types on x86,
+  a bound parameter applied to arguments, a generic struct's bare name as a
+  slice element), and a field list or header whose lexing printed anything
+  is not captured; those are re-parsed, so the diagnostic is the
+  re-parse's. Fixed-size arrays, `const`, `gpu` and alias-qualified types
+  are not captured shapes and are re-parsed too.
+- **Retained source bytes.** What must still be parsed again - every
+  function body, whose meaning depends on the type arguments, and every
+  deferred statement, whose names bind at each exit - is re-lexed from the
+  retained source version: the bytes `retained_source_byte` recorded while
+  the file was first read (code_generator/retained_emit.w, S2.3 section).
+  The re-parse gets a descriptor whose getchar window is a private copy of
+  those bytes over file offsets [0, length), so every absolute
+  `getchar_seek` inside it (diagnostic context lines, preflight rewinds,
+  walk drains) stays in memory. The descriptor is `/dev/null` when a token
+  the first read consumed follows the span (or the span has no
+  expression), so no expression preflight can run into the window's end;
+  a body or deferred statement that ends its file gets the file's own
+  descriptor positioned at the end of the retained bytes, because the
+  preflight's refill (`ast_expression_refill`) compacts the window there
+  and getchar then re-reads the prefix from the descriptor. No byte of the
+  span is read from the file in either case. A source version that was
+  replaced or rolled back, or a descriptor beyond getchar's table, falls
+  back to the old file re-parse.
+
+`--stats` prints `Generic instantiation source seeks:` and `Deferred
+statement source seeks:` in every mode, and under `--ast-emit-retained`
+also `Generic types from retained trees:`, `Retained-source reparses:` and
+`Retained-source reparses positioned at the file's end:`. For `w.w` the
+default `check` reports 5 generic source seeks (2 signatures and 3 bodies
+from `lib/container.w`); `check --ast-required --ast-emit-retained` reports
+**0 and 0**, with 2 signatures from trees and 3 bodies from retained bytes
+(one, `list_remove_at`, ends its file), identically on the x86 and x64
+hosts. A compile of `w.w` (not `check`, which also instantiates unused
+generics once) has 4 seeks by default and 0 in the mode.
+
+Verification: `ast_generic_retained_test` compiles a tracked fixture
+(`tests/ast_generic_retained_fixture.w` and its helper: recursive,
+container, slice, pointer and nested-application fields, a fixed-array and
+a by-value-list-element struct that are re-parsed, explicit, inferred and
+placeholder-inferred calls, a generic-struct return, defers in plain and
+generic functions, generics from another file) and 18 generated sources
+(each declined shape with its error, lexer warnings in a field list,
+errors and warnings inside re-lexed bodies and defers with their context
+lines, bodies and defers that end their file with and without a final
+newline) in the default mode and with `--ast-emit-retained` on the x86
+target of the 32-bit host and the x64 target of the 64-bit host, requiring
+identical status, output, diagnostics and image; it runs the fixture's
+binaries and pins the `--stats` counters, including 0 seeks for `w.w` in
+both `check` and compile. Outside the suite, 691 tracked `.w` files that
+mention generics or `defer` compiled with `--ast-emit-retained` by this
+branch and by its base gave identical status, output and image on both
+hosts (346 x86 / 365 x64 of them exercise the new paths), apart from the
+six library files whose compile already crashes in both, and none of them
+reports a source seek. `verify`, `verify_x64`, the `generics_*`, `defer_*`
+and `operator_overload_*` targets, `ast_retained_emit_test` and `tests`
+pass.
+
+What this does not claim: function bodies and deferred statements are
+still re-parsed (re-lexed from memory), not instantiated from a retained
+tree. A body's types, overloads, method and generic resolution all depend
+on the type arguments and are decided during the parse, and S2.2 defers
+emission one statement at a time, so no type-independent body tree exists
+to walk under a substitution; a deferred statement must bind its names at
+each exit, so a tree parsed at registration cannot stand in for it.
+`defhash` still hashes tokens from the file (a cache key, not an emitter).
+The operator-overload parameter pre-scan, the declaration lookaheads
+(`generic_declaration_scan_generic_return`, `generic_declaration_scan_repl`)
+and the lazy runtime helpers' backpatch chains are unchanged: the first two
+are lookahead rewinds within the file being parsed, and the last never
+re-read source. The default (streaming) compile and `-v` traces keep the
+file re-parse. No `tree --json` field was added; the schema stays
+**version 2**. **#489 remains open.**
+
 ## REPL and wdbg on the retained path (S2.4)
 
 The in-process compilers now take the retained-AST modes exactly as a
@@ -2091,6 +2182,8 @@ the driver's own error, and wdbg's attach recompile forwards `--streaming`,
 `--ast-required` as needed. `repl_retained_emit_test`'s baseline legs pass
 `--streaming`, so they still compare retained lowering with the streaming
 front end; its recovery legs add the default (AST) run as the third leg.
+S2.3's `ast_generic_retained_test` likewise compares `--ast-emit-retained`
+with a `--streaming` baseline, the path that still seeks the source.
 
 The gates were inverted. `verify` exercises the AST path because `bin/wv2`
 and every later stage compile AST. Only the bootstrap step differs: the pinned
