@@ -29,7 +29,14 @@
 #   no local notes, no lint, no deferred statements or generator
 #   cleanups of the caller on its 'return', no register promotion, no
 #   retained-tree nodes (the AST modes are off for the duration), and
-#   the caller's flow facts (grammar/type_check.w) are restored.
+#   the caller's flow facts (grammar/type_check.w) are restored;
+# - the emitter's notes stop at the site: a pending condition chain
+#   (grammar/cond_branch.w) is materialized before the body, whose
+#   value use it would be anyway, the discard mark (positional, in the
+#   caller's file) is cleared so no body token can match it, and the
+#   addressing and load notes of code_generator/x86.w (every one ends
+#   at codepos or is void) are reset on both sides of the body, so no
+#   fold reaches across the site in either direction.
 #
 # A trailing 'return' whose jump would land on the next instruction is
 # removed again (the common 'return expr' at the end of the body).
@@ -142,6 +149,18 @@ void inline_emit_call(int r, int s, int passed_args):
 		print_error(c": inlined\x0a")
 
 	# --- the state the body would disturb
+	# A pending condition chain (grammar/cond_branch.w) is the site's
+	# value use, never the body's: materialize it now (emit() would at
+	# the body's first byte), and keep the caller's discard mark from
+	# matching a body token
+	cond_pending_materialize()
+	int saved_discard = cond_discard_mark
+	int saved_ast_discard = ast_cond_discard
+	cond_discard_mark = 0
+	ast_cond_discard = 0
+	# No addressing, load or comparison note of the site survives into
+	# the body (its first statement would reset them; explicit here)
+	be_notes_reset()
 	int n = table_pos
 	char* save = generic_reparse_save()
 	int saved_serial = token_serial
@@ -200,6 +219,7 @@ void inline_emit_call(int r, int s, int passed_args):
 	frame.region = be_ctrl_block()
 	statement()
 	if (stack_pos != frame.base): error(c"internal error: inlined body left the stack unbalanced (compile with --no-inline and report this)")
+	if (cond_pending): error(c"internal error: inlined body left a condition chain pending (compile with --no-inline and report this)")
 	# A jump to the very next instruction: unlink it from the region's
 	# chain and drop it
 	if (frame.tail_jump == codepos):
@@ -207,6 +227,8 @@ void inline_emit_call(int r, int s, int passed_args):
 		ctrl_val_stack[frame.region] = previous
 		peep_rollback(codepos - 5)
 	be_ctrl_end(frame.region)
+	# ... and none of the body's survives into the site
+	be_notes_reset()
 	inline_window_close(frame)
 	inline_frames.pop()
 	free(cast(char*, frame))
@@ -240,3 +262,5 @@ void inline_emit_call(int r, int s, int passed_args):
 	sym_last_declared_offset = saved_declared_offset
 	sym_last_declared_line = saved_declared_line
 	sym_last_declared_column = saved_declared_column
+	cond_discard_mark = saved_discard
+	ast_cond_discard = saved_ast_discard

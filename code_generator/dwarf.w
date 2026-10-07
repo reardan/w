@@ -64,7 +64,16 @@ int debug_line_file_index():
 # stmt_stack_pos is the symbol table's stack_pos at the statement's start,
 # passed in by the caller because this file is compiled before the symbol
 # table module and cannot reference its globals directly.
+void debug_line_note_at(int line, int stmt_stack_pos);
+
 void debug_line_note(int stmt_stack_pos):
+	debug_line_note_at(line_number + 1, stmt_stack_pos)
+
+
+# The same for an explicit 1-based source line: a rotated for loop's
+# bottom test belongs to the header's line, parsed long before it
+# (grammar/loop_rotate.w).
+void debug_line_note_at(int line, int stmt_stack_pos):
 	# Device (PTX) bodies do not advance codepos, so address-keyed line
 	# records would pile up at the same host position: skip them.
 	if (target_isa == 3): return;
@@ -80,7 +89,6 @@ void debug_line_note(int stmt_stack_pos):
 		debug_line_stack_pos = malloc(debug_line_capacity * 4)
 	if (debug_line_count >= debug_line_capacity): return;
 
-	int line = line_number + 1
 	int file_index = debug_line_file_index()
 
 	if (debug_line_count > 0):
@@ -181,6 +189,19 @@ void debug_local_set_register(int reg):
 
 int debug_local_register(int i):
 	return load_int(debug_local_regs + i * 4)
+
+
+# A parameter of the function being opened lives in register reg
+# (compiler/regalloc_scan.w's regalloc_prologue_args, A1): its note is
+# among the newest 'A' notes, recorded when the signature was parsed.
+void debug_local_set_register_named(char* name, int reg):
+	int i = debug_local_count
+	while (i > 0):
+		i = i - 1
+		if (load_int(debug_local_kinds + i * 4) != 'A'): return;
+		if (strcmp(cast(char*, load_ptr(debug_local_names + i * __word_size__)), name) == 0):
+			save_int(debug_local_regs + i * 4, reg)
+			return;
 
 
 ########################## DWARF scope notes (#536) ###########################

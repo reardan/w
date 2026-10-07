@@ -66,54 +66,114 @@ void loop_leave(int* outer):
 	free(outer)
 
 
-void ast_statement_guard(int target, int outer_condition);
+void ast_statement_guard(int target, int outer_condition, int on_true);
 
 
 # The caller opens control regions and installs the condition context.
 # Source/lint completion precedes the branch in both compilation modes.
-void statement_guard(int target, int outer_condition):
+# The branch to target is taken when the condition is false (on_true
+# 0: an if, a top-tested while) or true (1: the bottom test of a
+# rotated while, grammar/loop_rotate.w).
+void statement_guard(int target, int outer_condition, int on_true):
 	int flow_state = flow_condition_begin()
 	if (ast_expressions_mode >= 2):
-		ast_statement_guard(target, outer_condition)
+		ast_statement_guard(target, outer_condition, on_true)
 		flow_condition_end(flow_state)
 		return
 	lint_condition_begin()
-	promote(expression())
+	# The condition is in discard position (grammar/cond_branch.w): a
+	# chain branches per operand and is consumed below
+	cond_discard_arm()
+	int type = expression()
+	cond_discard_clear()
+	if (cond_pending == 0): promote(type)
 	flow_condition_end(flow_state)
 	lint_condition_end()
 	condition_context = outer_condition
-	be_br_zero_discard(target)
+	cond_branch_consume(target, on_true)
 
 
 # while ( expression ) statement — parentheses are optional before ':'
 int ast_while_statement();
 
 
+# The rotated while loop's shape is documented in grammar/loop_rotate.w;
+# the top-tested shape below it is what --no-loop-rotate, the
+# structured-control ISAs and a declined condition skip emit.
 int while_statement():
 	if (ast_expressions_mode >= 2): return ast_while_statement()
 	if (accept(c"while") == 0): return 0
 
 	int while_tab_level = tab_level
-	int* outer = loop_enter()
-	# Loop region: the back edge and 'continue' re-test the condition.
-	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
-	loop_continue_chain = be_ctrl_loop()
-	profile_loop_head()   # P1: --profile-generate
-
-	# if not expression: leave the loop
 	int outer_condition = condition_context
-	condition_context = 1
-	statement_guard(loop_break_chain, outer_condition)
+	int* outer = loop_enter()
+
+	# Rotation: skip the condition to the body, remembering where it
+	# starts; a declined skip returns to it and takes the top-tested path
+	tokenizer_snapshot cond_mark
+	char* cond_text = 0
+	int rotate = 0
+	if (loop_rotate_on()):
+		cond_text = loop_rotate_mark(&cond_mark)
+		rotate = loop_rotate_skip_condition()
+		if (rotate == 0):
+			loop_rotate_return(&cond_mark, cond_text)
+			cond_text = 0
+	int entry = -1
+	if (rotate): entry = be_loop_entry()
+
+	# Loop region: the back edge lands here -- on the condition when it
+	# is top-tested, on the body when it is at the bottom. P1 names the
+	# loop by the current token's line: the condition's first token,
+	# where the retained walk's begin phase stands, not the block opener
+	# the skip stopped at.
+	int opener_line = diag_token_line
+	if (rotate): diag_token_line = cond_mark.diag_token_line
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
+	int h_top = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
+	diag_token_line = opener_line
+
 	# 'while (1)' with no break never completes (grammar/type_check.w)
-	int forever = flow_guard_true
+	int forever = 0
+	if (rotate):
+		# 'continue' re-tests at the bottom
+		loop_continue_chain = be_ctrl_block()
+	else:
+		# if not expression: leave the loop
+		loop_continue_chain = h_top
+		condition_context = 1
+		statement_guard(loop_break_chain, outer_condition, 0)
+		forever = flow_guard_true
 
 	enclosing_tab_level = while_tab_level
 	statement()
-	forever = forever && (flow_loop_break == 0)
 
-	# loop
-	be_br(loop_continue_chain)
-	be_ctrl_end(loop_continue_chain)
+	if (rotate):
+		be_ctrl_end(loop_continue_chain)
+		# Back to the condition: it is parsed here, as the bottom test
+		# that branches to the body while it holds, then the lexer
+		# returns to the end of the body. Its code belongs to the while
+		# line (DWARF, wdbg), like the condition it replaces.
+		tokenizer_snapshot body_mark
+		char* body_text = loop_rotate_mark(&body_mark)
+		loop_rotate_return(&cond_mark, cond_text)
+		be_loop_entry_land(entry)
+		debug_line_note(stack_pos)
+		condition_context = 1
+		statement_guard(h_top, outer_condition, 1)
+		forever = flow_guard_true
+		# Token serials only ever grow (grammar/type_check.w's
+		# constant-condition check compares them): the re-parse's
+		# count stands
+		int serial = token_serial
+		loop_rotate_return(&body_mark, body_text)
+		if (token_serial < serial): token_serial = serial
+	else:
+		# loop
+		be_br(h_top)
+	forever = forever && (flow_loop_break == 0)
+	be_ctrl_end(h_top)
 	be_ctrl_end(loop_break_chain)
 
 	loop_leave(outer)

@@ -527,7 +527,18 @@ int postfix_expr():
 						type = element_type
 						expression_lhs_readonly = 0
 			else:
-				binary1(type) /* load the base pointer and push it */
+				# A register-resident base (the register lvalue note of
+				# compiler/regalloc_scan.w's promotion, A1 of
+				# docs/projects/codegen_gap_plan.md): nothing to load or
+				# park, the index expression runs and the register is
+				# added to the scaled index at the end (add_eax_reg).
+				# The scan excludes a base written inside its own
+				# subscript, so the register still holds the base there.
+				# An ndarray's comma index needs the receiver parked for
+				# its accessor call, so it keeps the stack path.
+				int base_reg = 0
+				if (regalloc_note_current() && (ndarray_index_struct(type) < 0)): base_reg = regalloc_note_take()
+				else: binary1(type) /* load the base pointer and push it */
 				int nd_recv_slot = stack_pos
 				# The element type drives both index scaling and the load width
 				int element_type = 2 /* char: byte elements by default */
@@ -535,6 +546,7 @@ int postfix_expr():
 					int previous_type = type_lookup_previous_pointer(type)
 					if (previous_type >= 0): element_type = previous_type
 				int element_size = type_get_size(element_type)
+				int index_start = codepos
 				int first_index_type = promote(expression())
 				if (peek(c",")):
 					# base[i, j(, ...)]: the ndarray comma-index sugar
@@ -543,10 +555,22 @@ int postfix_expr():
 					# ndX* receiver argument.
 					type = ndarray_index_suffix(type, nd_recv_slot, first_index_type)
 				else:
-					if (element_size > 1): imul_eax_int32(element_size)
-					pop_ebx()
-					alu_add()
-					stack_pos = stack_pos - 1
+					# One address from base, index and element size (A2,
+					# docs/projects/codegen_gap_plan.md §2.2): the load or
+					# store that follows folds it into its operand
+					# (code_generator/x86.w, the address note). The
+					# other ISAs keep the scale-and-add sequence.
+					if (target_isa != 0):
+						if (element_size > 1): imul_eax_int32(element_size)
+						if (base_reg != 0): add_eax_reg(base_reg)
+						else:
+							pop_ebx()
+							alu_add()
+							stack_pos = stack_pos - 1
+					elif (base_reg != 0): subscript_reg_base(base_reg, element_size, index_start)
+					else:
+						subscript_stack_base(element_size, index_start)
+						stack_pos = stack_pos - 1
 					expect(c"]")
 					type = element_type
 					expression_lhs_readonly = 0

@@ -17,25 +17,22 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 	# twin): the loop variable (re-read) and the hidden end/step words.
 	int* outer = loop_enter()
 	for_reg = regalloc_slot_register(node.variable_slot - 1)
-	int end_reg = regalloc_loop_hidden(node.end_slot)
+	regalloc_loop_hidden(node.end_slot)
 	if (node.argument_count == 3): regalloc_loop_hidden(node.variable_slot + 3)
 	node.break_target = loop_break_chain
-	# Loop region: the back edge re-tests the condition.
+	# A rotated loop (grammar/loop_rotate.w) enters at the bottom test
+	node.entry_site = -1
+	if (loop_rotate_on()): node.entry_site = be_loop_entry()
+	# Loop region: the back edge re-tests the condition at a top-tested
+	# head, or starts the body of a rotated loop.
 	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
 	# condition: loop var < end
-	if (for_reg != 0):
-		mov_eax_reg(for_reg)
-		push_slot()
-	else: push_slot_copy(node.variable_slot)
-	if (end_reg != 0): mov_eax_reg(end_reg)
-	else: load_slot(node.end_slot)
-	pop_ebx()
-	alu_cmp_set(0x9c) /* setl: loop var < end */
-	stack_pos = stack_pos - 1
-	be_br_zero_discard(node.break_target)
+	if (node.entry_site < 0):
+		for_range_test(node.variable_slot, node.end_slot)
+		be_br_zero_discard(node.break_target)
 
 	# Continue region: 'continue' in the body runs the increment first
 	node.continue_target = be_ctrl_block()
@@ -61,8 +58,15 @@ void emit_range_loop_ast_end(loop_ast* node):
 		regalloc_slot_assert(node.variable_slot - 1)
 		inc_dword_esp_plus((stack_pos - node.variable_slot) << word_size_log2)
 
-	/* jmp back to condition */
-	be_br(node.top_target)
+	if (node.entry_site >= 0):
+		# the bottom test: back to the body while loop var < end
+		be_loop_entry_land(node.entry_site)
+		debug_line_note_at(node.line, stack_pos)
+		for_range_test(node.variable_slot, node.end_slot)
+		be_br_nonzero_discard(node.top_target)
+	else:
+		/* jmp back to condition */
+		be_br(node.top_target)
 	be_ctrl_end(node.top_target)
 
 	# break exits here; continue ran the increment first
@@ -84,24 +88,20 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 	# The exit region is where node.free_fn releases the container.
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
-	# Loop region: the back edge re-tests.
+	# A rotated loop (grammar/loop_rotate.w) enters at the bottom test
+	node.entry_site = -1
+	if (loop_rotate_on()): node.entry_site = be_loop_entry()
+	# Loop region: the back edge re-tests at a top-tested head, or
+	# starts the body of a rotated loop.
 	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
 	# condition: exit once node.done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
-	if (node.done_fn != 0):
-		for_iter_call(node.done_fn, node.container_slot, node.cursor_slot)
-		be_br_nonzero_discard(node.break_target)
-	else:
-		push_slot_copy(node.cursor_slot)
-		load_slot(node.container_slot)
-		add_eax_int32(word_size)
-		promote_eax()
-		pop_ebx_slot()
-		alu_cmp_set(0x9c) /* setl: cursor < length */
-		be_br_zero_discard(node.break_target)
+	if (node.entry_site < 0):
+		if (for_cursor_test(node.done_fn, node.container_slot, node.cursor_slot)): be_br_zero_discard(node.break_target)
+		else: be_br_nonzero_discard(node.break_target)
 
 	# Continue region: 'continue' in the body advances the cursor first
 	node.continue_target = be_ctrl_block()
@@ -141,8 +141,15 @@ void emit_cursor_loop_ast_end(loop_ast* node):
 		store_stack_var((stack_pos - node.cursor_slot) << word_size_log2)
 	else: inc_dword_esp_plus((stack_pos - node.cursor_slot) << word_size_log2)
 
-	/* jmp back to condition */
-	be_br(node.top_target)
+	if (node.entry_site >= 0):
+		# the bottom test: back to the body while not done
+		be_loop_entry_land(node.entry_site)
+		debug_line_note_at(node.line, stack_pos)
+		if (for_cursor_test(node.done_fn, node.container_slot, node.cursor_slot)): be_br_nonzero_discard(node.top_target)
+		else: be_br_zero_discard(node.top_target)
+	else:
+		/* jmp back to condition */
+		be_br(node.top_target)
 	be_ctrl_end(node.top_target)
 
 	# Both exit edges (done and break) land here: release the container
@@ -206,19 +213,35 @@ void emit_loop_ast_walk(retained_statement_walk* walk, int phase):
 	emit_loop_ast_phase(cast(loop_ast_walk*, walk.statement), walk, phase)
 
 
+# The while loop's phases, the twin of grammar/while_statement.w's
+# while_statement: node.rotated selects the bottom-tested shape of
+# grammar/loop_rotate.w (the entry jump, the body as the loop region's
+# head, 'continue' in a block region that ends at the bottom test).
 int* emit_while_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
+	node.entry_site = -1
+	if (node.rotated): node.entry_site = be_loop_entry()
 	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	node.top_target = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
-	node.continue_target = node.top_target
+	if (node.rotated): node.continue_target = be_ctrl_block()
+	else: node.continue_target = node.top_target
 	loop_continue_chain = node.continue_target
 	return outer
 
 
+# A rotated while, right after its body and with the lexer returned to
+# the condition: 'continue' and the entry jump land on the bottom test,
+# whose code belongs to the while line (DWARF, wdbg).
+void emit_while_loop_ast_bottom(loop_ast* node):
+	be_ctrl_end(node.continue_target)
+	be_loop_entry_land(node.entry_site)
+	debug_line_note(stack_pos)
+
+
 void emit_while_loop_ast_end(loop_ast* node):
-	be_br(node.top_target)
+	if (node.entry_site < 0): be_br(node.top_target)
 	be_ctrl_end(node.top_target)
 	be_ctrl_end(node.break_target)
 	ast_while_loops_emitted = ast_while_loops_emitted + 1

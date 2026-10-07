@@ -94,6 +94,22 @@ int reg_lvalue_end
 int reg_lvalue_sym
 # --no-regs / -O0: promote nothing.
 int regalloc_disabled
+# --no-cond-branch / -O0: &&, || and ! in a condition keep their
+# value-producing form (grammar/cond_branch.w).
+int cond_branch_disabled
+# --no-loop-rotate / -O0: while/for loops keep their top-tested shape
+# (grammar/while_statement.w, loop_rotate_on).
+int loop_rotate_disabled
+# A condition chain has emitted its branches and left its regions open
+# for the consumer (grammar/cond_branch.w, cond_pending_*). The consumer
+# clears it before it emits; any other emission while it is set is a
+# value use of the chain, so emit/emit_i first give the chain its value
+# form (cond_pending_materialize), which is a correct lowering of the
+# pending state wherever it happens -- the check sits where the register
+# lvalue guard does, so no grammar path can read the chain as a value
+# without it.
+int cond_pending
+void cond_pending_materialize();   /* grammar/cond_branch.w */
 # Registers the next prologue must push (set by the pre-scan, consumed by
 # be_function_prologue), the registers the CURRENT function's prologue
 # did push (a bitmask over hardware register numbers, and their count),
@@ -127,6 +143,11 @@ int direct_callee_id
 int direct_callee_end
 # --no-direct-calls: every call reloads its callee into the accumulator.
 int direct_calls_disabled
+# --no-addr-modes: no [base+index*scale+disp] operands (unit A2,
+# code_generator/x86.w's address note); every load and store goes
+# through the accumulator address as before, the reference for
+# tests/regalloc_diff_test.w and the fallback a miscompile report asks for.
+int addr_modes_disabled
 
 void direct_callee_guard_fail();   /* grammar/stack_slot.w: the diagnostic */
 
@@ -144,6 +165,7 @@ void regalloc_guard():
 void emit(int n, char *s):
 	if (reg_lvalue_end != 0): regalloc_guard()
 	if (direct_callee_kind != 0): direct_callee_guard()
+	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
 	for i in range(n):
 		code[codepos] = s[i]
@@ -157,6 +179,7 @@ void emit_string(char* s):
 void emit_i(int v, int n):
 	if (reg_lvalue_end != 0): regalloc_guard()
 	if (direct_callee_kind != 0): direct_callee_guard()
+	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
 	char* p = code + codepos
 	save_i(p, v, n)

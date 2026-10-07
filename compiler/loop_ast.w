@@ -27,6 +27,8 @@ struct loop_ast:
 	int top_target
 	int break_target
 	int continue_target
+	int rotated         # bottom-tested (grammar/loop_rotate.w); a while decides before its begin phase
+	int entry_site      # the rotated loop's entry jump (be_loop_entry), -1 when top-tested
 	char* begin_fn
 	char* done_fn
 	char* value_fn

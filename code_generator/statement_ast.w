@@ -24,6 +24,8 @@ void ast_expression_note_root(expression_ast* tree, int root);
 # retaining the established coercion/diagnostic order.
 void emit_statement_ast_expression(statement_ast* node):
 	if (node.expression_root < 0): return
+	# A guard's condition is in discard position (grammar/cond_branch.w)
+	if ((node.kind == ast_stmt_guard) && cond_branch_on()): ast_cond_discard = 1
 	node.expression_type = emit_prepared_expression_ast(node.expression_tree, node.expression_root)
 
 
@@ -279,11 +281,12 @@ void emit_declaration_ast_walk(retained_statement_walk* walk, int phase):
 
 
 void emit_guard_ast_value(statement_ast* node):
-	promote(node.expression_type)
+	# A pending condition chain is promoted by its consumer below
+	if (cond_pending == 0): promote(node.expression_type)
 
 
 void emit_guard_ast_branch(statement_ast* node):
-	be_br_zero_discard(node.target)
+	cond_branch_consume(node.target, node.branch_nonzero)
 	ast_guards_emitted = ast_guards_emitted + 1
 
 
@@ -424,7 +427,11 @@ void emit_while_loop_ast_end(loop_ast* node);
 # The guard's target region is opened by its statement's begin phase, so
 # it is read when the branch is emitted.
 void emit_guard_ast_walk_branch(control_ast_walk* control, statement_ast* guard):
-	if (control.loop != 0): guard.target = control.loop.break_target
+	if (control.loop != 0):
+		# A rotated while's bottom test branches back to the body
+		# (grammar/loop_rotate.w); a top-tested one exits
+		if (control.loop.entry_site >= 0): guard.target = control.loop.top_target
+		else: guard.target = control.loop.break_target
 	else: guard.target = control.statement.alternate_target
 	emit_guard_ast_branch(guard)
 

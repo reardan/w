@@ -478,6 +478,13 @@ int asm_x86_encode_mov(asm_buffer* b, asm_insn* insn, int start):
 			asm_enc_rex_reg(b, is64, 0, insn.op1.reg)
 			asm_buffer_byte(b, 0xb0 + (insn.op1.reg & 7))
 			asm_buffer_byte(b, insn.op2.imm & 255)
+		else if (insn.op1.size == 8 && insn.op2.size == 4):
+			# mov r64, simm32 (REX.W C7 /0 id), as decoded: the width-4
+			# immediate keeps the 7-byte form byte-exact.
+			asm_enc_rex_reg(b, is64, 1, insn.op1.reg)
+			asm_buffer_byte(b, 0xc7)
+			asm_buffer_byte(b, 0xc0 | (insn.op1.reg & 7))
+			asm_buffer_int32(b, insn.op2.imm)
 		else if (insn.op1.size == 8):
 			# movabs r64, imm64
 			asm_enc_rex_reg(b, is64, 1, insn.op1.reg)
@@ -490,6 +497,20 @@ int asm_x86_encode_mov(asm_buffer* b, asm_insn* insn, int start):
 			asm_buffer_byte(b, 0xb8 + (insn.op1.reg & 7))
 			if (insn.op1.size == 2): asm_enc_imm(b, insn.op2.imm, 2)
 			else: asm_buffer_int32(b, insn.op2.imm)
+		return b.length - start
+	# mov r/m, imm (0xc6 /0 ib, 0xc7 /0 iw/id). A register destination
+	# takes the shorter mov r,imm form above, so op1 is memory here.
+	if (insn.op1.kind == ASM_OP_MEM && insn.op2.kind == ASM_OP_IMM):
+		int msize = insn.op1.size
+		if (msize == 0): msize = 4
+		asm_enc_opsize_prefix(b, msize)
+		asm_enc_rex(b, is64, asm_enc_w(msize), 0, &insn.op1)
+		if (msize == 1): asm_buffer_byte(b, 0xc6)
+		else: asm_buffer_byte(b, 0xc7)
+		asm_enc_modrm(b, 0, &insn.op1, is64)
+		if (msize == 1): asm_enc_imm(b, insn.op2.imm, 1)
+		else if (msize == 2): asm_enc_imm(b, insn.op2.imm, 2)
+		else: asm_buffer_int32(b, insn.op2.imm)
 		return b.length - start
 	# mov r/m, r  (store) and mov r, r/m (load)
 	int size = 4
