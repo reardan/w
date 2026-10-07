@@ -242,6 +242,9 @@ void ast_statement_guard(int target, int outer_condition):
 	expression_lhs_readonly = 0
 	expression_ast tree
 	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	# C3.5: the optimizer pass reads the condition before the walk emits
+	# any of the arm (compiler/ast_opt.w, --ast-opt).
+	if (control != 0): ast_opt_guard(control, &tree, root)
 	if (walk >= 0): retained_walks[walk].statement = &node
 	if (root < 0):
 		# The streaming grammar emits as it parses: the header's
