@@ -1088,3 +1088,16 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   call`), and the third level makes a self-compile take minutes because
   every call prints. `--help` says only "repeat for compiler debug
   traces"; the levels should be named there.
+- **A `wexec` run in one worktree can be killed from another.** During
+  the merge gates, three consecutive `./wbuild` stages of a chained
+  script (the focused gates at `ast_expression_test`, the full suite at
+  `ftp_64_test`, then `bench_compare`) ended with exit 143 (SIGTERM)
+  minutes apart, with nothing in their logs, while a sibling agent's
+  `wexec` ran in a neighbouring worktree; the same chain, restarted
+  under `setsid`, ran to the end. The suite's own `exit 143` sighting
+  above is the same shape. A `pkill wexec` (or a process-group kill by
+  an agent harness timing out a foreground command) has no way to
+  tell worktrees apart. Direction: let `wexec` re-exec under a
+  worktree-specific name (`wexec@lane-calls`) or document `setsid`
+  for chained runs, and make `./wbuild` print "killed by signal N"
+  for a stage that dies that way.

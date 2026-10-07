@@ -52,8 +52,8 @@ callees and callers a --profile-use profile classifies as hot, lowered
 for the ones it classifies cold and for a site outside every loop of
 its function, and open to a body that calls (a wrapper) only when the
 profile makes it hot. It is OPT-IN: --inline turns it on, --profile-use
-turns it on (for the sites the profile marks hot, and the loop sites
-below), and --no-inline turns it off whatever else was given (the
+turns it on for the sites the profile marks hot and no other, and
+--no-inline turns it off whatever else was given (the
 reference for tests/regalloc_diff_test.w). Off by default because the
 capture and the re-parse cost the self-compile 8-15% of its
 instructions for a few percent on the corpus (§8 of the plan).
@@ -454,24 +454,22 @@ int inline_depth_of(int sym):
 	return -1
 
 
-# The byte budget for a site: a site inside a loop of its function
-# gets the default, lowered to the cold budget when a --profile-use
-# profile classifies the callee or the caller cold; a site a profile
-# classifies hot (callee or caller) gets the hot budget wherever it is;
-# a straight-line site without a profile's word gets the cold budget
-# under --inline (an accessor of a few instructions is shorter than
-# the call it replaces, and this is where the corpus gains of §8 come
-# from) and nothing under --profile-use alone (what a copy of the
-# body saves is paid once per execution of the site, and a
-# straight-line site runs once per call of its function, while the
-# re-parse costs compile time at every site).
+# The byte budget for a site. A site a --profile-use profile
+# classifies hot (callee or caller) gets the hot budget wherever it
+# is. Under --profile-use alone that is the only kind of site
+# inlined: a stale or header-only profile then inlines nothing and the
+# image is the plain build's (tests/profile_use_test.w compares them).
+# Under --inline a site inside a loop of its function gets the
+# default, lowered to the cold budget when the profile classifies the
+# callee or the caller cold, and a straight-line site gets the cold
+# budget (an accessor of a few instructions is shorter than the call
+# it replaces, and this is where the corpus gains of §8 come from).
 int inline_site_budget(inline_record* rec, int in_loop):
 	int callee = rec.profile_class
 	int caller = profile_function_class()
 	if ((callee == 2) || (caller == 2)): return inline_budget_hot
-	if (in_loop == 0):
-		if (inline_requested): return inline_budget_cold
-		return 0
+	if (inline_requested == 0): return 0
+	if (in_loop == 0): return inline_budget_cold
 	if ((callee == 1) || (caller == 1)): return inline_budget_cold
 	return inline_budget_default
 

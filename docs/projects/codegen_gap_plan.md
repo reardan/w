@@ -1837,8 +1837,8 @@ What landed (x86 and x64 Linux ELF only; win64, arm64, `arm64_darwin`
 and wasm images are byte-identical to before, asserted by hand with
 `--no-inline` builds of the self-host and `tests/inline_test.w`).
 **Opt-in**: `--inline` turns it on, `--profile-use` turns it on for
-the sites the profile marks hot (and loop sites), `--no-inline` turns
-it off whatever else was given; the default build keeps every call a
+the sites the profile marks hot and no other, `--no-inline` turns it
+off whatever else was given; the default build keeps every call a
 call. The reason is the compile-time cost measured below (the plan's
 §6 risk): the capture of every body plus the re-parse at every site
 costs the self-compile 8–17% of its instructions for at most −4% on
@@ -1902,8 +1902,11 @@ one corpus program, and `wbench_compare` is the gate for that.
   classifies either hot — the only budget open to a body with calls (a
   wrapper's copy saves one call and costs its whole body at every site;
   `free` alone has ~700 sites in the compiler). The profile-hot budget
-  is what the PGO self-host (`verify_pgo`) exercises; the corpus is
-  compiled without a profile, so the loop rule decides there.
+  is what the PGO self-host (`verify_pgo`) exercises, and under
+  `--profile-use` without `--inline` it is the only budget (a stale or
+  header-only profile inlines nothing, and `profile_use_test` holds
+  those images to the plain build's); the corpus is compiled with
+  `--inline` and no profile, so the loop rule decides there.
 - **R3 and the frame.** The register pre-scan asks
   `inline_name_is_leaf` before marking a loop as containing a call, so
   a loop whose only calls inline without calls of their own keeps its
@@ -1916,9 +1919,10 @@ one corpus program, and `wbench_compare` is the gate for that.
   guard by construction.
 - **Off where a call must stay a call, even under `--inline`:**
   `--no-inline` (both are link options; `tests/regalloc_diff_test.w`
-  builds every program once more with `--inline` and compares it
-  with the default build, and once more with an `--inline`-built
-  compiler whose output must match `bin/wv2`'s byte for byte), the
+  builds every program once more with `--inline`, bit 32 of its
+  opt-out mask, outside `opt_out_all`, and compares it with the
+  default build, and once more with an `--inline`-built compiler
+  whose output must match `bin/wv2`'s byte for byte), the
   REPL (a redefinition would not reach inlined copies), `wdbg`'s
   in-process compile (a breakpoint on a function is reached through a
   call of it; the attach-mode recompile keeps the binary's own flags,
@@ -2074,6 +2078,47 @@ blanket cost (B3 in §5.2 is the place for the per-site budget).
 and never inlines; `bench_fold` (74 bytes, leaf) inlines at its two
 sites; `__w_hash_sip` is one loop and is the whole of `siphash_keys`.
 
+**At the site, with A6 and A2 (merged after the unit landed).** The
+body is re-parsed where the call's arguments were just pushed, so the
+emitter's per-site notes are live there: `inline_emit_call`
+materializes a pending condition chain before the body
+(`cond_pending_materialize`; `emit()` would at the body's first byte,
+since the chain's value is the site's, never the body's), zeroes the
+positional discard mark (`cond_discard_mark`, `ast_cond_discard`) for
+the body and restores it afterwards — the mark names a token offset in
+the caller's file, which a body token from another file could
+otherwise match — and reports a chain the body leaves pending as an
+internal error; the addressing, load and comparison notes of
+`code_generator/x86.w` are reset (`be_notes_reset`) on both sides of
+the body, so no fold reaches across the site in either direction (the
+tail-jump elision goes through `peep_rollback`, which drops the notes
+of the bytes it removes). A7's rotated `while` parses its condition
+after the body through the same absolute seek the generic re-parse
+uses; an inlined call in that condition is a loop site (the loop depth
+is still the caller's) and its re-parse runs on its own descriptor, so
+the two never share a window. `tests/inline_test.w`'s
+`test_condition_and_subscript_operands` pins inlined calls as operands
+of `&&`/`||`/`!` chains, of a chain compared as a value, of a rotated
+`while` condition, and as the base and the index of subscripts and
+field accesses.
+
+On the merged tree (A4+A1+A6+A2+A7, `tests/bench/baseline.txt`) the
+corpus under `--inline` against the default build, Ir in thousands:
+
+| program | x64 default | x64 `--inline` | Δ | x86 default | x86 `--inline` | Δ |
+|---|---|---|---|---|---|---|
+| sum | 2,400,095 | 2,400,094 | 0.0% | 2,400,112 | 2,400,112 | 0.0% |
+| sieve | 987,552 | 968,082 | −2.0% | 992,436 | 972,967 | −2.0% |
+| sha256_1m | 4,292,723 | 4,191,273 | −2.4% | 4,589,489 | 4,488,039 | −2.2% |
+| siphash_keys | 3,596,919 | 3,586,219 | −0.3% | 3,302,945 | 3,273,312 | −0.9% |
+| inflate_corpus | 3,888,792 | 3,683,443 | −5.3% | 3,981,531 | 3,775,551 | −5.2% |
+| regex_backtrack | 4,061,937 | 4,061,445 | 0.0% | 3,969,625 | 3,969,133 | 0.0% |
+| matmul_256 | 3,212,303 | 3,210,992 | 0.0% | 4,223,221 | 4,221,910 | 0.0% |
+| strcmp_sort | 2,528,707 | 2,451,203 | −3.1% | 2,517,301 | 2,439,798 | −3.1% |
+
+The gains are a little larger than on the A4-only base (inflate −5.3%
+against −4.3%): the other units shorten the inlined bodies too.
+
 What this unit does not claim:
 
 - No simplification of the inlined body: the parameters are stack
@@ -2104,9 +2149,10 @@ token count says nothing about hidden runtime calls or the size of a
 struct field access); (2) a body with calls is not excluded outright
 but confined to profile-hot sites, and a call of a noreturn function
 does not count as a call (`__w_size_add`'s trap); (3) a straight-line
-site outside every loop gets the cold budget under `--inline` and
-nothing under `--profile-use` alone, so image growth and the re-parse
-cost stay bounded (the plan said "size threshold otherwise"); (4) the
+site outside every loop gets the cold budget under `--inline`, and
+`--profile-use` alone inlines profile-hot sites only, so image growth
+and the re-parse cost stay bounded (the plan said "size threshold
+otherwise"); (4) the
 unit is opt-in rather than on by default, for the compile-time cost
 above; the debugger's in-process compile keeps every call a call even
 under `--inline` (`debug_test` sets a breakpoint on `add`, which would
