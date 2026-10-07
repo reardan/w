@@ -178,6 +178,8 @@ void validate_utf8_literal(int n):
 
 
 void emit_raw_statement_ast(statement_ast* node);
+int ast_raw_walk_open(statement_ast* node);
+void ast_raw_walk_close(int walk, statement_ast* node);
 
 
 # Like a string literal, but the bytes are executable code.
@@ -198,16 +200,24 @@ int raw_asm_literal():
 	int i
 	if (token[0] == 'c'): i = process_prefixed_string_literal()
 	else: i = process_string_literal()
+	int walk = -1
 	if (ast_expressions_mode >= 2):
 		node.end_offset = token_start_offset + token_i
 		# The decoded token is borrowed only until the visitor returns;
-		# advancing the lexer afterwards may overwrite its bytes.
+		# advancing the lexer afterwards may overwrite its bytes (a walk
+		# copies them, grammar/ast_declaration.w).
 		node.literal_bytes = token
 		node.literal_length = i
-		emit_raw_statement_ast(&node)
+		walk = ast_raw_walk_open(&node)
+		if (walk < 0): emit_raw_statement_ast(&node)
 	else: emit(i, token)
 	get_token()
+	# A missing ')' is an error: emit the bytes first, as the parse did
+	if ((walk >= 0) && (peek(c")") == 0)):
+		ast_raw_walk_close(walk, &node)
+		walk = -1
 	expect(c")")
+	if (walk >= 0): ast_raw_walk_close(walk, &node)
 	return 1
 
 
