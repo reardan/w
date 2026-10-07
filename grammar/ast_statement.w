@@ -215,7 +215,19 @@ int ast_statement_expression(int prefix_only):
 
 # A conditional branch owns its expression and resolved failure target.
 # Enclosing if/while bodies still use their streaming scope dispatcher.
+# S2.2b: under an if/while walk (control_ast_guard_pending), the condition
+# is parsed, and the token after it lexed, before the header's phases are
+# emitted (ast_statement_walk_expression emits them before that lex when
+# it cannot rule out a lexer diagnostic). They are emitted here, before
+# the lint and condition state the lowering reads is reset (and before
+# statement_guard's constant-true check, which reads the 'true' tokens the
+# lowering replays); the branch target is read from the region the
+# header's begin phase opened.
 void ast_statement_guard(int target, int outer_condition):
+	control_ast_walk* control = control_ast_guard_pending
+	control_ast_guard_pending = 0
+	int walk = -1
+	if (control != 0): walk = control.walk
 	statement_ast node
 	node.kind = ast_stmt_guard
 	node.source_file = file
@@ -230,16 +242,31 @@ void ast_statement_guard(int target, int outer_condition):
 	expression_lhs_readonly = 0
 	expression_ast tree
 	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	if (walk >= 0): retained_walks[walk].statement = &node
 	if (root < 0):
+		# The streaming grammar emits as it parses: the header's
+		# recorded phases come first.
+		if (walk >= 0): retained_walk_drain(walk)
 		promote(expression())
 		node.end_offset = token_start_offset
 	else:
 		node.expression_tree = &tree
 		node.expression_root = root
 		node.end_offset = tree.end_offset
-		emit_statement_ast_expression(&node)
-		ast_statement_finish_expression(&node)
-		emit_guard_ast_value(&node)
+		if (walk >= 0):
+			ast_statement_walk_expression(walk, &node)
+			retained_walk_phase(walk, ast_walk_guard_value)
+		else:
+			emit_statement_ast_expression(&node)
+			ast_statement_finish_expression(&node)
+			emit_guard_ast_value(&node)
+	if (walk >= 0):
+		retained_walk_phase(walk, ast_walk_guard_branch)
+		retained_walk_drain(walk)
+		retained_walks[walk].statement = 0
+		lint_condition_end()
+		condition_context = outer_condition
+		return
 	lint_condition_end()
 	condition_context = outer_condition
 	emit_guard_ast_branch(&node)
@@ -414,7 +441,12 @@ int ast_statement_switch_case(int type, int slot, int body_target, int next_targ
 	return ast_switch_case_value(-1, &record, &tree)
 
 
-void ast_if_statement_tail():
+# One if or elif arm; walk is the chain's walk record, or -1 when the
+# chain is emitted during its parse. The then-arm's exit phase stays
+# pending across the 'elif'/'else' lex (it cannot print); every body is
+# preceded by a drain, an elif arm drains the enclosing arm's phases
+# before it swaps its node in, and each arm drains before it returns.
+void ast_if_statement_arm(int walk, control_ast_walk* control):
 	statement_ast node
 	node.kind = ast_stmt_if
 	node.source_file = file
@@ -424,20 +456,30 @@ void ast_if_statement_tail():
 	int if_tab_level = tab_level
 	int outer_condition = condition_context
 	condition_context = 1
-	emit_if_ast_begin(&node)
+	statement_ast* outer_arm = 0
+	if (walk >= 0):
+		# The enclosing arm's then-exit acts on its own node.
+		retained_walk_drain(walk)
+		outer_arm = control.statement
+		control.statement = &node
+		retained_walk_phase(walk, ast_walk_if_begin)
+		control_ast_guard_pending = control
+	else: emit_if_ast_begin(&node)
 	statement_guard(node.alternate_target, outer_condition)
 	enclosing_tab_level = if_tab_level
+	if (walk >= 0): retained_walk_drain(walk)
 	statement()
 	# Fall-through bookkeeping mirrors if_statement_tail
 	# (grammar/statement.w, grammar/type_check.w)
 	int arms_terminate = flow_terminates
 	int has_else = 0
-	emit_if_ast_then_end(&node)
+	if (walk >= 0): retained_walk_phase(walk, ast_walk_if_then_end)
+	else: emit_if_ast_then_end(&node)
 	if (peek(c"elif") && (tab_level == if_tab_level)):
 		get_token()
 		stmt_nesting_depth = stmt_nesting_depth + 1
 		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")
-		ast_if_statement_tail()
+		ast_if_statement_arm(walk, control)
 		stmt_nesting_depth = stmt_nesting_depth - 1
 		has_else = 1
 		arms_terminate = arms_terminate && flow_terminates
@@ -445,14 +487,41 @@ void ast_if_statement_tail():
 		if (tab_level == if_tab_level):
 			get_token()
 			enclosing_tab_level = if_tab_level
+			if (walk >= 0): retained_walk_drain(walk)
 			statement()
 			has_else = 1
 			arms_terminate = arms_terminate && flow_terminates
 	node.end_offset = token_start_offset
-	emit_if_ast_end(&node)
+	if (walk >= 0):
+		retained_walk_phase(walk, ast_walk_if_end)
+		retained_walk_drain(walk)
+		control.statement = outer_arm
+	else: emit_if_ast_end(&node)
 	flow_terminates = has_else && arms_terminate
 
 
+# S2.2b: under --ast-emit-retained the whole chain is one statement walk
+# (emit_guard_ast_walk): each arm's header, 'if'/'elif' and its condition,
+# is parsed before its phases are emitted.
+void ast_if_statement_tail():
+	int walk = retained_walk_begin(cast(int, emit_guard_ast_walk), 0)
+	if (walk < 0):
+		ast_if_statement_arm(-1, 0)
+		return
+	control_ast_walk control
+	control.statement = 0
+	control.loop = 0
+	control.outer = 0
+	control_ast_walk_attach(walk, &control)
+	ast_if_statement_arm(walk, &control)
+	retained_emit_statement(retained_walks[walk].node)
+
+
+# S2.2b: under --ast-emit-retained a block is a statement walk
+# (emit_block_ast_walk): its opening token is lexed before the scope is
+# opened, and the body's statements are walked by their own families. The
+# deferred statements are emitted before the unused-local lint, which may
+# print; the scope end and unwind are emitted after the body is parsed.
 int ast_statement_block():
 	if (ast_expressions_mode < 2): return 0
 	int kind = 0
@@ -468,12 +537,16 @@ int ast_statement_block():
 	int block_tab_level = enclosing_tab_level
 	get_token()
 	node.binding = table_pos
-	node.stack_depth = stack_pos
-	dwarf_block_begin()
+	int walk = retained_walk_begin(cast(int, emit_block_ast_walk), &node)
+	if (walk >= 0): retained_walk_phase(walk, ast_walk_block_begin)
+	else:
+		node.stack_depth = stack_pos
+		dwarf_block_begin()
 	int start_tab_level = tab_level
-	if (kind == ast_stmt_indent_block): print_int_v1(c"starting stack_pos: ", stack_pos)
+	if ((walk < 0) && (kind == ast_stmt_indent_block)): print_int_v1(c"starting stack_pos: ", stack_pos)
 	node.function_body = defer_function_body_pending
 	defer_function_body_pending = 0
+	if (walk >= 0): retained_walk_drain(walk)
 	# Fall-through bookkeeping mirrors statement_impl's block loops
 	# (grammar/statement.w, grammar/type_check.w)
 	int terminates = 0
@@ -501,6 +574,15 @@ int ast_statement_block():
 				after_jump = lint_last_stmt_jumps
 				if (flow_terminates): terminates = 1
 	node.end_offset = token_start_offset
+	if (walk >= 0):
+		retained_walk_phase(walk, ast_walk_block_deferred)
+		retained_walk_drain(walk)
+		lint_scope_exit(node.binding)
+		table_pos = node.binding
+		retained_walk_phase(walk, ast_walk_block_end)
+		retained_emit_statement(retained_walks[walk].node)
+		flow_terminates = terminates
+		return 1
 	emit_block_ast_deferred(&node)
 	lint_scope_exit(node.binding)
 	dwarf_block_end()
