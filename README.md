@@ -306,7 +306,11 @@ Implemented and covered by tests:
   `--no-regs`/`-O0` turns it off): `raw_asm` bodies and hand-written
   stubs must preserve `ebx`/`esi`/`edi`, `rbx`/`r12`–`r15` and
   `x19`–`x28`, and a function containing `raw_asm`, `setjmp`, `yield`
-  or an f-string promotes nothing.
+  or an f-string promotes nothing. A call to a known W function is one
+  `call rel32` on x86/x64/win64 (`docs/projects/codegen_gap_plan.md`
+  §2.4; `--no-direct-calls` restores the callee-through-the-accumulator
+  shape); calls through function pointers and C variadic imports stay
+  indirect.
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

@@ -691,6 +691,197 @@ programs and 25% on `inflate_corpus`.
 
 (Appended by each unit, dated, with the §1 tables re-measured.)
 
+### A4 — direct calls, `call rel32` to known W functions (2026-10-07)
+
+What landed (x86 and x64 Linux ELF, and win64 PE by sharing the
+emitter; arm64, `arm64_darwin` and wasm images are byte-identical to
+before):
+
+- **The call shape.** A call whose callee is a known W function
+  (symbol type 2, 'D' or 'U', not a kernel, not `thread_local`; or a
+  generic instantiation) is one `call rel32` (`call_direct_to` /
+  `call_direct_link`, `code_generator/x86.w`). The callee-address
+  `mov eax,imm; push` before the arguments and the `mov eax,[esp+N];
+  call eax` after them are gone, and the `add esp` after the call no
+  longer pops a callee word: five instructions and one stack word per
+  call become one instruction. Calls through function pointers,
+  struct-member callees, `cast(...)` expressions, C imports, C
+  variadics, dynamic imports and every non-x86 ISA keep the `call eax`
+  shape. `--no-direct-calls` (whole-program, a `link_option`) restores
+  the old shape exactly: with it the x86 and x64 self-host images are
+  byte-identical to the base commit's, and `regalloc_diff_test` now
+  asserts the same for every program it already sweeps (a third
+  `.nodirect` build per program, compared byte-for-byte against the
+  image a `--no-direct-calls`-built compiler produces).
+- **Forward references.** An undefined callee links its `rel32` slot
+  into a per-symbol chain (`compiler/symbol_table.w`, record field
+  150; `symbol_data_size` 150 → 154), patched by
+  `sym_define_global_at` through `rel_chain_patch` (displacement =
+  address − (slot + 4)), the twin of the existing `mov imm` chain.
+  Generic instantiations (`grammar/generic.w`, `rel_chain` on the
+  instantiation record) and the lazily imported runtime helpers
+  (`grammar/lazy_runtime.w`, `rel_chains`) keep their own chains and
+  patch them when the body lands; the REPL's late-binding registry
+  (`repl/core.w`) records a slot kind and writes a displacement for
+  kind 1.
+- **The call record.** Every call now records itself on a small stack
+  (`grammar/stack_slot.w`: base slot, kind, id, aux — kind 0 an
+  indirect call whose callee word was pushed, 1 a symbol, 2 a generic
+  instantiation, 3 a lazy runtime helper) and `finish_call` /
+  `rt_call_end` pop their own record and assert the base matches
+  (`internal error: call record does not match`). Keying by base alone
+  was ambiguous: a call's first argument can begin another call at the
+  same base. The pending callee between the identifier and the `(` is
+  a note keyed on `codepos` (`direct_callee_kind/id/end`,
+  `code_generator/code_emitter.w`); `emit()` fails closed (`internal
+  error: direct call target '<name>' used by an unhandled path ...`)
+  if any byte is emitted while a note is current, `peep_rollback`
+  drops a note it rolls past, and `primary_expr` materialises the note
+  as an ordinary function value when no `(` follows. A bare callee
+  wrapped in parentheses — `(f)(x)`, `((f))(x)` — keeps the note
+  across the `)` that closes the group it filled (a token-serial
+  match, no lookahead), and an explicit generic call whose
+  instantiation already has a body is noted like any other known
+  function, because the AST emitter drops grouping and the two
+  emitters must agree byte-for-byte (`ast_expression_test`).
+- **R3 and the frame.** `regalloc_call_spill` / `regalloc_call_reload`
+  wrap the direct call exactly as they wrap `call eax`; a loop-owned
+  register is still spilled around it (`dc_loop_calls` in the test
+  shows `mov [rbp+0x10],rsi; call <__w_list_addr>; mov rsi,[rbp+0x10]`).
+  Argument slots below the base are addressed with `lea_slot` /
+  `load_slot` instead of `s - 1` arithmetic, since no callee word is
+  parked. `emitted_call_count` (PGO) counts direct calls too.
+- **Both emitters.** `code_generator/expression_ast.w` (the retained
+  emitter: `--ast-required`, `--ast-emit-retained`, the REPL) makes the
+  same decision from the same `direct_callee_ok` predicate at its 'C',
+  'W', 'G', 'z', 'F' and print/template sites; `verify_pgo`'s
+  `wv3_pgo_ast == wv3_pgo` and `ast_expression_test`'s legacy/AST
+  image parity over every fixture pin that.
+- **Decoder.** `libs/asm/x86_decode.w` read disp32 and rel32 fields
+  as unsigned on a 64-bit host, so `bin/wdbg`'s `disas` printed a
+  backward `call rel32` as `call .+0xffffff87` and `debug_test_x64`
+  failed (no backward `call rel32` existed in a W image before). It
+  now sign-extends (`asm_x86_s32`); `asm_x64_test` (3,968 functions,
+  435,293 instructions, 0 unknown, 0 mismatch) and the asm fuzz
+  targets cover the encoder/decoder round trip.
+- Tests: `tests/direct_call_test.w` (+ `_64` twin, and a
+  `--no-direct-calls` build of the same program as extra steps) covers
+  forward references, recursion, prototypes defined later and in an
+  imported file, nested calls as arguments, struct-returning callees,
+  methods and operator overloads, W variadics, explicit/inferred/forward
+  generics and an instantiation calling an already-instantiated one,
+  an asm-body callee (#579), function values and parenthesized
+  callees, loops with register-owned locals, `defer`, generators and
+  the lazily imported runtime helpers.
+
+Measurements (`./wbuild bench`: callgrind Ir in thousands, which is
+deterministic; best-of wall ms on the shared 4-core container with
+other agents' builds running, so the ms columns are noise-level
+evidence only; `bytes` is the ELF size; before = `main` at 1335f06):
+
+x64
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,254 | 3,000,254 | +0.0% | 191 | 210 | 211,592 | 203,400 |
+| `sieve` | 1,664,276 | 1,647,240 | −1.0% | 349 | 259 | 211,592 | 203,400 |
+| `sha256_1m` | 5,373,446 | 5,253,121 | −2.2% | 332 | 335 | 219,792 | 211,600 |
+| `siphash_keys` | 4,849,412 | 4,690,602 | −3.3% | 869 | 838 | 215,688 | 203,400 |
+| `inflate_corpus` | 5,179,840 | 4,791,395 | −7.5% | 368 | 306 | 281,512 | 269,224 |
+| `regex_backtrack` | 6,682,831 | 6,453,595 | −3.4% | 455 | 402 | 223,880 | 215,688 |
+| `matmul_256` | 5,065,035 | 5,063,658 | −0.0% | 368 | 363 | 215,696 | 203,408 |
+| `strcmp_sort` | 3,609,401 | 3,405,300 | −5.7% | 521 | 499 | 211,592 | 203,400 |
+
+x86
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,259 | 3,000,258 | −0.0% | 239 | 196 | 181,572 | 173,380 |
+| `sieve` | 1,683,750 | 1,666,714 | −1.0% | 318 | 279 | 181,572 | 173,380 |
+| `sha256_1m` | 5,586,837 | 5,466,512 | −2.2% | 394 | 397 | 185,672 | 177,480 |
+| `siphash_keys` | 4,575,623 | 4,420,135 | −3.4% | 684 | 726 | 181,572 | 173,380 |
+| `inflate_corpus` | 5,357,384 | 4,969,281 | −7.2% | 392 | 331 | 239,060 | 226,772 |
+| `regex_backtrack` | 6,600,523 | 6,371,287 | −3.5% | 425 | 367 | 189,764 | 181,572 |
+| `matmul_256` | 5,068,987 | 5,067,610 | −0.0% | 333 | 324 | 181,576 | 173,384 |
+| `strcmp_sort` | 3,605,684 | 3,402,203 | −5.6% | 441 | 442 | 181,572 | 173,380 |
+
+Self-compile, same input for both compilers (the base commit's source
+tree, compiled from a checkout of 1335f06, so the `self` row of
+`bench.txt` — which compiles the current, larger tree — is not the
+comparison): callgrind Ir of `wv3 --quiet w.w` 6,743,941,970 →
+6,450,379,663 (−4.4%), and of the x64 compiler compiling `x64 w.w`
+6,708,082,896 → 6,475,835,007 (−3.5%). Compiler image (`objdump -d
+-Mintel`, lines with an opcode): x86 `bin/wv3` 584,144 → 497,012
+instructions (−14.9%), 2,744,884 → 2,527,852 bytes (−7.9%); x64 image
+576,400 → 488,250 instructions (−15.3%), 3,130,576 → 2,880,728 bytes
+(−8.0%); `call eax` sites in the x86 image 29,378 → 678 and `call rax`
+in the x64 image 29,562 → 686 (the survivors are function pointers,
+the C-import shims, the hash table's `key_hash`/`key_equal` dispatch
+and the generator/`new` paths listed below).
+
+Static before/after for the hot loop of `inflate_corpus`
+(`libs/extras/compress/inflate.w`, `wh_decode` line 242 `code = code |
+inf_get_bit(c)`, x64, `objdump -d -Mintel`; the whole `inflate_corpus`
+image has 1,736 `call rax` before and 217 after):
+
+```
+before                                     after
+ mov    rax,r12                             mov    rax,r12
+ push   rax                                 push   rax
+ mov    eax,0x806429e      ; callee          mov    rax,QWORD PTR [rsp+0x60]  ; c
+ push   rax                ; parked          push   rax
+ mov    rax,QWORD PTR [rsp+0x68]  ; c        call   8061926 <inf_get_bit>
+ push   rax                                 add    rsp,0x8
+ mov    rax,QWORD PTR [rsp+0x8]   ; reload   pop    rbx
+ call   rax                                 or     rax,rbx
+ add    rsp,0x10
+ pop    rbx
+ or     rax,rbx
+```
+
+The plan's §2.4 expectation for this unit alone (x64:
+`regex_backtrack` −8%, `inflate_corpus` −10%, `strcmp_sort` −10%) was
+not met in full: −3.4%, −7.5% and −5.7%. The per-call saving is the
+five instructions predicted; what the estimate over-counted is how
+much of those loops is the call *shape* versus the callee's own
+prologue/epilogue and R3's spill/reload around the call (both
+untouched here — the inlining unit, A5, is what removes those). `sum`
+and `matmul_256` have no calls in their loops and are unchanged to
+within one instruction.
+
+What this unit does not claim:
+
+- `new T` / `__w_new_object`, the `malloc` inside
+  `buffer_push_range_descriptor`, `str_from_cstr` coercions, generator
+  calls and the C-variadic path keep their indirect shape (each emits
+  its callee outside `finish_call` and records a kind-0 call, see
+  `direct_call_record(s, 0, 0)` in `code_generator/expression_ast.w`
+  and `grammar/`). A forward generic call (`generic_forward_call_expr`,
+  resolved at the drain) stays indirect too.
+- Inlining (A5) is not started; `inf_get_bit`, `__w_size_add`,
+  `bench_fold` and the sort comparators are still calls.
+- win64 (`tests_win64`, `verify_win`) could not be run here: wine is
+  not installed on the container. The PE emitter shares the x86-64
+  code emitter, so win64 images change in the same way (`call rax`
+  29,623 → 686 in the win64 self-host image, 3,145,728 → 2,891,776
+  bytes) and need a wine run before release.
+
+Deviations from the plan's sketch: (1) every call records itself
+rather than only direct ones, because the base slot alone does not
+identify a call; (2) the lazily imported runtime helpers (`print`,
+f-strings, `var`, JSON, the bounds-check trap) are direct calls too,
+through their own chains, since they are among the hottest helper
+sites in the self-compile; (3) the REPL late-binding hook gained a
+slot kind; (4) the `libs/asm` decoder fix above; (5) win64 changed
+(as the plan allowed) and is unverified for lack of wine.
+
+Gates: `verify`, `verify_x64`, `verify_pgo`, `verify_arm64`
+(qemu-user-static), `regalloc_diff_test` (0 mismatches over 408
+compared builds), `asm_x64_test`, `asm_fuzz_x86_test`,
+`asm_fuzz_x64_test`, `ast_expression_test`, `direct_call_test` +
+`_64`, `git diff --name-only 1335f06 | bin/wtest changed` (41
+targets), `./wbuild tests` (921 targets).
+
 ## 9. Reproducing
 
 ```sh
