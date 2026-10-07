@@ -223,8 +223,7 @@ int rs_hash_token(int* newline_out):
 
 
 # The defhash of the definition starting at file offset start (64 hex,
-# malloc'd), or 0 when the span could not be read or lexed. rs_begin /
-# rs_end_scan bookkeeping is the caller's (rs_saved_offset must be set).
+# malloc'd), or 0 when the span could not be read or lexed.
 char* rs_hash_span(int start):
 	rs_abort = 0
 	rs_begin(start)
@@ -253,10 +252,7 @@ int rs_profile_begin(int symbol):
 	int start = profile_use_function_prepare(symbol, sym_record_name(symbol))
 	if (start >= 0):
 		char* hex = 0
-		if ((file >= 0) && (file < GETCHAR_MAX_FD)):
-			rs_saved_offset = seek(file, 0, 1)
-			hex = rs_hash_span(start)
-			rs_end_scan()
+		if ((file >= 0) && (file < GETCHAR_MAX_FD)): hex = rs_hash_span(start)
 		profile_use_function_classify(hex)
 		if (hex != 0): free(hex)
 	rs_profile_class = profile_function_class()

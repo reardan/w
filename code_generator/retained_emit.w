@@ -537,6 +537,9 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	getchar_limit[fd] = length
 	getchar_kernel_pos[fd] = length
 	getchar_pos[fd] = offset
+	# A new stream on this fd (the register pre-scan's file image of a
+	# previous use of the number must not serve it; lib/lib.w)
+	getchar_generation[fd] = getchar_generation[fd] + 1
 	file = fd
 	filename = path
 	byte_offset = offset
