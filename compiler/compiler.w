@@ -7,6 +7,8 @@ import compiler.type_table
 import compiler.symbol_table
 import compiler.lint
 import grammar
+# C3.1: check --all-errors state capture, after the grammar it reads
+import compiler.analysis_state
 import compiler.test_registry
 import lib.sha256
 
@@ -962,7 +964,7 @@ void help_check():
 	println(c"")
 	println(c"options:")
 	println(c"  --json                emit NDJSON diagnostic records on stdout")
-	println(c"  --all-errors          isolate failures and continue checking (POSIX hosts)")
+	println(c"  --all-errors          recover at each statement and keep checking")
 	println(c"  --imports             warn when an identifier resolves through a")
 	println(c"                        transitive import the file does not import directly")
 	println(c"  --bool-ops            also warn on '&'/'|' operands containing calls,")
@@ -1263,7 +1265,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		flag_scan = flag_scan + 1
 	# P1.4: --streaming selects the streaming front end for every root and
 	# the implicit runtime closure. The AST-only modes (and the retaining
-	# tree / check --all-errors queries) have no streaming meaning.
+	# tree query) have no streaming meaning; check --all-errors recovers in
+	# process on either front end (C3.1).
 	if (streaming_flag):
 		if (ast_retain_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
 		if (ast_only_flag != 0): streaming_conflict_error(ast_only_flag)
@@ -1649,8 +1652,10 @@ int check_main(int argc, int argv):
 			diag_json = 1
 			i = i + 1
 		else if (strcmp(*arg, c"--all-errors") == 0):
-			if (os_windows()):
-				println2(c"--all-errors requires a POSIX host with fork support")
+			# C3.1: in-process recovery needs the native setjmp/longjmp
+			# stubs, which wasm hosts lack.
+			if (__target_isa__ == 2):
+				println2(c"--all-errors is not supported on wasm hosts")
 				return 1
 			analysis_requested = 1
 			i = i + 1
