@@ -306,7 +306,11 @@ Implemented and covered by tests:
   `--no-regs`/`-O0` turns it off): `raw_asm` bodies and hand-written
   stubs must preserve `ebx`/`esi`/`edi`, `rbx`/`r12`–`r15` and
   `x19`–`x28`, and a function containing `raw_asm`, `setjmp`, `yield`
-  or an f-string promotes nothing.
+  or an f-string promotes nothing. On the same two targets `&&`, `||`
+  and `!` in an `if`/`elif`/`while` condition branch per operand on the
+  comparison's flags instead of materializing a boolean
+  (`grammar/cond_branch.w`, `docs/projects/codegen_gap_plan.md` §2.6;
+  `--no-cond-branch`/`-O0` keeps the value form).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

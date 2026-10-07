@@ -1,8 +1,6 @@
 # wbench baseline: <workload> <sym_lookup calls> <records visited> <output bytes> <best ms>
 # Regenerate with: bin/wbench --write-baseline <this file> (docs/testing.md)
-# Times were recorded on a shared, loaded 4-CPU Linux box (2026-10-06): only
-# the counters and bytes are compared unless --time-factor is given.
-prelude 17500 4417 86236 100
-sym1000 27495 7415 147676 162
-sym4000 57495 16415 336092 566
-self 421505 112653 3053084 2252
+prelude 19113 4820 123144 83
+sym1000 29108 7818 254216 74
+sym4000 59108 16818 655624 158
+self 490474 129084 2695768 1202
