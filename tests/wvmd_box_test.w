@@ -2,6 +2,7 @@
 # wbuild: step="bin/wv2 x64 tests/wvmd_box_test.w -o bin/wvmd_box_test"
 # wbuild: step="bin/wvmd_box_test" timeout=90000
 import lib.testing
+import lib.ci_skip
 import lib.wvm_client
 import lib.vmm.scheduler
 import lib.file
@@ -77,11 +78,48 @@ json_value* wvmd_box_wait(char* socket_path, int id, char* state):
 	return answer
 
 
+int wvmd_box_shmem(char* group):
+	char* path = strjoin(group, c"/memory.stat")
+	char* text = file_read_text(path)
+	free(path)
+	asserts(c"real cgroup memory accounting readable", text != 0)
+	int value = -1
+	int at = 0
+	while (text[at]):
+		if (starts_with(text + at, c"shmem ")):
+			value = atoi(text + at + 6)
+			break
+		while (text[at] && text[at] != '\n'): at = at + 1
+		if (text[at]): at = at + 1
+	free(text)
+	asserts(c"cgroup exposes shmem charge", value >= 0)
+	return value
+
+
+void wvmd_box_quota_clean(char* group, int baseline):
+	char* path = strjoin(group, c"/cgroup.procs")
+	int deadline = process_monotonic_ms() + 10000
+	int clean = 0
+	while (process_monotonic_ms() < deadline):
+		char* pids = file_read_text(path)
+		asserts(c"real cgroup process accounting readable", pids != 0)
+		# Kernel charge retirement can lag process exit. File page cache may
+		# remain charged; check anonymous memfd shmem rather than total cache.
+		clean = strlen(pids) == 0 && wvmd_box_shmem(group) <= baseline + 65536
+		free(pids)
+		if (clean): break
+		process_sleep_ms(10)
+	free(path)
+	asserts(c"workers and sealed Linux backing released from quota", clean)
+
+
 void test_daemon_real_concurrent_boxes():
 	char* kernel = env_get(c"WVM_TEST_KERNEL")
 	if (kernel == 0):
 		println(c"SKIP: set WVM_TEST_KERNEL for concurrent daemon Linux boxes")
 		return
+	char* cgroup = env_get(c"WVM_TEST_CGROUP")
+	if (cgroup == 0): test_skip(c"SKIP: set WVM_TEST_CGROUP for Linux box host quota integration")
 	string_builder* archive = string_new()
 	wvmd_box_entry(archive, c"dev", 16877, 0, 0, 0, 0)
 	wvmd_box_entry(archive, c"dev/console", 8576, 0, 0, 5, 1)
@@ -95,7 +133,7 @@ void test_daemon_real_concurrent_boxes():
 	string_append(path, c"bin/wvmd_box_test_")
 	string_append_int(path, getpid())
 	string_append(path, c".sock")
-	char** command = strv_new(13)
+	char** command = strv_new(20)
 	strv_set(command, 0, c"bin/wvmd")
 	strv_set(command, 1, c"serve")
 	strv_set(command, 2, c"--socket")
@@ -108,6 +146,15 @@ void test_daemon_real_concurrent_boxes():
 	strv_set(command, 9, c"2")
 	strv_set(command, 10, c"--memory-mb")
 	strv_set(command, 11, c"1024")
+	if (cgroup != 0):
+		strv_set(command, 12, c"--cgroup")
+		strv_set(command, 13, cgroup)
+		strv_set(command, 14, c"--host-memory-mb")
+		strv_set(command, 15, c"2048")
+		strv_set(command, 16, c"--host-cpu-percent")
+		strv_set(command, 17, c"400")
+		strv_set(command, 18, c"--host-pids")
+		strv_set(command, 19, c"128")
 	process* daemon = process_spawn(command[0], command, 0)
 	free(cast(void*, command))
 	asserts(c"daemon started", daemon != 0)
@@ -118,6 +165,19 @@ void test_daemon_real_concurrent_boxes():
 		envelope = wvm_client_call(path.data, c"stats", params, 1000)
 		if (envelope == 0): process_sleep_ms(10)
 	asserts(c"daemon ready", envelope != 0)
+	json_value* initial_stats = vms_field(envelope, c"result")
+	json_value* host_quotas = vms_field(initial_stats, c"host_quotas")
+	asserts(c"quota mode reported", host_quotas != 0)
+	assert_equal(cgroup != 0, host_quotas.int_value)
+	char* quota_path = 0
+	int baseline_shmem = 0
+	if (cgroup != 0):
+		string_builder* quota = string_from(cgroup)
+		string_append(quota, c"/wvmd-")
+		string_append_int(quota, daemon.pid)
+		quota_path = strclone(quota.data)
+		string_free(quota)
+		baseline_shmem = wvmd_box_shmem(quota_path)
 	json_free(envelope)
 	json_object_set(params, c"kernel", json_string(kernel))
 	json_object_set(params, c"initrd", json_string(c"bin/wvmd_box_test.cpio"))
@@ -231,6 +291,8 @@ void test_daemon_real_concurrent_boxes():
 	json_free(answer)
 	json_free(capture)
 	for i in range(1, 3): wvm_client_destroy(path.data, ids[i])
+	if (quota_path != 0):
+		asserts(c"sealed template retains full RAM charge after source exits", wvmd_box_shmem(quota_path) >= baseline_shmem + 256 * 1048576)
 	assert_equal(0, dir_remove_all(workspace))
 	free(workspace)
 	json_value* clone = json_object()
@@ -264,11 +326,22 @@ void test_daemon_real_concurrent_boxes():
 	assert_equal(0, vms_number(answer, c"template_reserved_mb", -1))
 	assert_equal(0, vms_number(answer, c"memory_mb", -1))
 	assert_equal(0, vms_number(answer, c"active", -1))
+	assert_equal(0, vms_number(answer, c"queued", -1))
+	assert_equal(0, vms_number(answer, c"cpus", -1))
+	assert_equal(0, vms_number(answer, c"workspace_reserved_mb", -1))
+	assert_equal(0, vms_number(answer, c"shared_region_bytes", -1))
+	assert_equal(0, vms_number(answer, c"cleanup_failures", -1))
 	json_free(answer)
+	if (quota_path != 0): wvmd_box_quota_clean(quota_path, baseline_shmem)
 	answer = wvmd_box_call(path.data, c"stop", params)
 	json_free(answer)
 	json_free(params)
 	assert_equal(0, process_wait_or_kill(daemon, 10000))
 	process_free(daemon)
+	if (quota_path != 0):
+		int quota_fd = open(quota_path, 65536, 0)
+		if (quota_fd >= 0): close(quota_fd)
+		asserts(c"daemon removed its empty quota leaf", quota_fd < 0)
+		free(quota_path)
 	string_free(path)
 	assert_equal(0, unlink(c"bin/wvmd_box_test.cpio"))
