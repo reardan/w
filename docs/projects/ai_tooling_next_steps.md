@@ -888,3 +888,28 @@ issues at once on a 4-CPU machine. Friction they reported:
   - `hex_word` includes the `0x` prefix.
   - A crash-report frame at a function's first instruction is
     attributed to the last line of the previous file.
+
+## Register promotion (2026-10-07, unit R2 of register_allocation_pgo.md)
+
+- **`lib/testing.w` prints each test function's code address** (`Run:
+  'test_x()' -> 0x0806e2c4`), so comparing the output of two builds of
+  one test program (`tests/regalloc_diff_test.w` builds every runnable
+  test with and without `--no-regs`) needs the addresses blanked first.
+  An option to print the name only would make outputs comparable as
+  they are.
+- **A compile-time-constant check on string globals:** `char* dir =
+  c"bin/x"` at file scope is rejected ("initializer for global must be
+  a compile-time constant"), and `const char*` is rejected the same
+  way, so a tool that wants a named path constant writes a function
+  returning the literal.
+- **`for i in range(hi, 0, -2)` never iterates:** the range loop's
+  condition is always `var < end`, so a negative step is accepted and
+  silently runs zero times. A diagnostic for a constant negative step
+  (or `>` for negative steps) would catch it.
+- **Compiler-internal assertions need the symbol's name, not its record
+  offset:** scope exits truncate the symbol table, so a record offset
+  recorded earlier can alias a later record at the same offset. The
+  promotion's slot assertion had two false positives from that before
+  it compared names (`sym_probe(name) == offset`). Worth a helper on
+  the symbol table ("is this record still the live declaration of this
+  name").
