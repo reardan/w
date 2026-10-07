@@ -2051,3 +2051,114 @@ before their declaration (for example `SYS_CREAT` and `__w_list` in the
 preloaded runtime): it records the global `pointer_indirection` at the
 placeholder's creation, a field nothing reads back. The tree schema is
 unchanged (**version 2**).
+
+## Multi-error checking without fork (C3.1)
+
+`check --all-errors` no longer forks. Every declaration and statement is
+still an analysis boundary (`analysis_run`, `compiler/analysis.w`), but
+the boundary now records the parse state in process
+(`compiler/analysis_state.w`) and arms `error()` to jump back to it with
+the native `repl_setjmp`/`repl_longjmp` stubs, through the existing
+`analysis_probe_error_status` hook in `error()`. After an error the
+boundary restores that state, returns the lexer to the failed item's
+first token, skips to the next sibling with `analysis_skip` as before,
+and the parse continues. Boundaries nest, so the innermost failing
+statement is the unit of recovery and the enclosing function, loop or
+block completes normally.
+
+- **What is restored.** What later parsing reads: the lexer (position,
+  token text and buffer, file and filename; a generic reparse's reopened
+  file is closed), the retained forest (`retained_rollback`, and the
+  failed statement's `--ast-emit-retained` walk record is released so
+  the enclosing walk can record its next phase), the stack depth, the
+  loop/switch/defer/for-cleanup state, the control-region stack, the
+  DWARF block stack, the statement and expression nesting guards,
+  the device, generator and bounds modes, the generic substitution
+  block, and the parse-context flags. A failed statement reports
+  `flow_terminates`, so a function whose final statement failed does not
+  get a follow-on missing-return warning.
+- **What is not restored, on purpose.** No executable is written in
+  check mode, so the code a failed item emitted is simply abandoned and
+  the code buffer is not rewound (forward call chains may thread through
+  it). The symbol and type tables are not rolled back: a binding the
+  failed item had made stays visible ("poisoned symbols",
+  `compiler/diagnostics.w`). A typed local whose initializer failed, a
+  function whose parameter type or body failed and a struct whose field
+  failed therefore no longer produce a "Cannot find symbol" at every
+  later use, which the forked checker did, because it discarded the
+  whole failed probe.
+- **Diagnostics.** Each error is reported once, where the parse meets
+  it; warnings are reported once, as the parse meets them, including the
+  warnings of a function that also has errors (the forked checker
+  suppressed every warning of a probe that later failed). The skip
+  re-reads the failed item's tokens with lexer warnings muted up to the
+  error, so they are not repeated. An error at end of input (an
+  unterminated literal, a missing block end) is final and reported
+  once. Two skip fixes ride along: an `else`/`elif` continues a failed
+  statement only when that statement is an `if` at the same
+  indentation, so a failed `elif x: return y` arm or a failed nested if
+  no longer swallows the enclosing chain's arms. The 100-error limit is
+  a plain counter (`stopping after 100 semantic errors`, unchanged).
+- **Hosts.** No `fork`, no pipe, no `seek` of the kernel offset and no
+  wait status: the Windows restriction is gone, and the only host
+  without recovery is wasm (no `longjmp`), which `check` now rejects
+  with its own message. arm64 Linux was spot-checked under qemu.
+  `W0388` ("requires seekable source files") no longer fires; its code
+  row stays.
+
+Cost of `w.w` (no errors, so every boundary is entered and none
+fails), on the shared, loaded 4-core box, median of five:
+
+| `bin/wv2 check --quiet ... w.w` | x86 host | x64 host |
+| --- | --- | --- |
+| `check` | 0.80 s | 0.61 s |
+| `check --all-errors`, forked (before) | 46.6-102 s (load-dependent, 2-3 runs) | — |
+| `check --all-errors`, in process (after) | 0.79 s | 0.66 s |
+
+On a file with errors (`tests/wbuildd_test.w`, 598 lines, with three
+injected mistakes) the in-process checker takes 0.14 s and reports 20
+errors (one of the mistakes is an unknown type, whose variable's 17 uses
+are follow-ons); the forked one took 3.5 s and stopped at its 100-error
+limit, because discarding the failed functions made every call to
+them and every use of their locals an error. `check` stops at the first
+error in 0.10 s.
+
+Verification: `analysis_errors_test` and `analysis_errors_64_test` keep
+their eight cases and add five (bindings that stay visible, warnings
+beside errors with no missing-return follow-on, the enclosing `elif`/
+`else` arms, an unterminated literal reported once, and recovery under
+`--ast-required --ast-emit-retained` where the failed if is its block's
+last statement; without the walk release that case trips
+`retained_walk_phase`'s assertion). A mutation run over 620 random picks
+of clean `tests/*.w` files (1,824 mutants, three per file) (an inserted call to a missing
+function, a failing inferred declaration, an invalid assignment, a
+renamed identifier), in the default, `--ast-required`, `--ast-retain
+--ast-required` and `--ast-required --ast-emit-retained` modes and on
+the x64 host and target (9,120 checks, plus 128 mutants of the GPU
+fixtures on the x64 target with and without `--ast-emit-retained`),
+found no crash, hang or stderr output, and every inserted error was
+reported except those inside generic bodies or inside the body of a
+statement whose own header was mutated. Against the forked checker on
+297 mutants, the error sets differ only by the
+forked checker's follow-ons (discarded declarations, and repeated
+"unterminated string literal" reports from its skip) and by errors
+those follow-ons pushed past its 100-error limit. `verify`,
+`verify_x64`, `warning_test`, the `type_system_*_test` targets,
+`lint_test`, `ast_diagnostic_codes_test` and `tests` pass.
+
+What this does not claim: no function body is parsed whole before
+emission (the unit is still S2.2's one statement), so recovery is
+around the production parser, not a walk of a failed tree; a binding
+the failed item never made is still missing (an inferred `name := ...`
+whose initializer failed, a declaration whose type name is unknown,
+the variable of a generic struct whose instantiation failed), and
+there is no error type, so a poisoned binding with a wrong or partial
+type can still produce type diagnostics at its uses; a statement whose
+header fails is skipped with its body, so errors inside that body are
+not reported; generic bodies and the on-demand runtimes are still only
+checked when no earlier error was recorded (`compiler/compiler.w`
+returns before instantiating them); a deferred statement that fails is
+reported at each exit that replays it; and an invalid UTF-8 identifier
+mid-file is still reported twice (once by the parse, once by the skip
+that re-reads it, which ends the check). No `tree --json` field was
+added; the schema stays **version 2**.
