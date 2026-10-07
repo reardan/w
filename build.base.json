@@ -304,6 +304,14 @@
 			]
 		},
 		{
+			"name": "arm64_optimization_darwin_test",
+			"tags": ["tests_darwin"],
+			"deps": ["build_darwin"],
+			"steps": [
+				{"cmd": ["tools/mac/run_optimizer_tests.sh"]}
+			]
+		},
+		{
 			"name": "update_darwin",
 			"deps": ["verify_darwin"],
 			"steps": [

@@ -41,6 +41,9 @@ void emit_x64_opcode();    /* from x86.w (used on the x86 path of be_lea) */
 void lea_eax_esp_plus(int v);   /* from x86.w (the x86 path of be_lea_acc_wstack) */
 void regalloc_prologue_emit();  /* from x86.w (register promotion pushes) */
 void regalloc_function_end();   /* compiler/regalloc_scan.w */
+void arm64_lea_note(int start, int k);   /* x86.w shared peephole notes */
+int arm64_add_local_offset(int v);
+void be_cmp_note_record(int start, int cc);   /* x86.w */
 void sym_define_global(int current_symbol);          /* symbol_table.w */
 void sym_define_global_at(int current_symbol, int v);
 int sym_declare_global(char *s, int type, int symtype);
@@ -64,17 +67,63 @@ int op(int msb, int low):
 	return (msb << 24) | low
 
 
-# Load a sign-extended 32-bit (or small) immediate into register `reg`.
-# Small non-negative values use a single movz; everything else uses a
-# PC-relative literal (ldr; b over the 8-byte word) so negative values and
-# the full 32-bit range are handled uniformly.
+# Materialize a word with move-wide instructions, choosing zero or ones
+# as the initial fill. Explicit 32-bit halves and at-most-16-bit shifts
+# keep the instruction sequence identical on 32- and 64-bit hosts.
+# MOVN handles negative small values in one instruction; MOVK fills only
+# differing halfwords. Even the worst case is four instructions, the same
+# size as the old ldr/branch/literal sequence without its memory access.
+void arm64_mov_wide_halves(int reg, int lo, int hi, int wide):
+	int lanes = 2
+	if (wide): lanes = 4
+	int zeros = 0
+	int ones = 0
+	int i = 0
+	while (i < lanes):
+		int part = lo
+		if (i >= 2): part = hi
+		if (i & 1): part = part >> 16
+		part = part & 65535
+		if (part != 0): zeros = zeros + 1
+		if (part != 65535): ones = ones + 1
+		i = i + 1
+	int fill = 0
+	int first = 0x52   # movz Wreg
+	if (ones < zeros):
+		fill = 65535
+		first = 0x12   # movn Wreg
+	if (wide): first = first + 128
+	int emitted = 0
+	i = 0
+	while (i < lanes):
+		int part = lo
+		if (i >= 2): part = hi
+		if (i & 1): part = part >> 16
+		part = part & 65535
+		if (part != fill):
+			if (emitted == 0):
+				int imm = part
+				if (fill): imm = 65535 - part
+				a64(op(first, 0x800000) | (i << 21) | (imm << 5) | reg)
+			else:
+				int keep = 0x72   # movk Wreg
+				if (wide): keep = keep + 128
+				a64(op(keep, 0x800000) | (i << 21) | (part << 5) | reg)
+			emitted = emitted + 1
+		i = i + 1
+	if (emitted == 0): a64(op(first, 0x800000) | reg)
+
+
+# A host word becomes a sign-extended 64-bit word on a 32-bit host.
+# Two shifts avoid a shift by 32, whose meaning differs by host width.
 void arm64_load_scratch(int reg, int v):
 	if ((v >= 0) && (v <= 65535)):
-		a64(op(0xd2, 0x800000) | (v << 5) | reg)   # movz Xreg, #v
+		a64(op(0xd2, 0x800000) | (v << 5) | reg)
 		return
-	a64(op(0x58, 0x000040) | reg)   # ldr Xreg, [pc, #8]
-	a64(op(0x14, 0x000003))         # b .+12 (skip the 8-byte literal)
-	emit_int64(v)
+	if ((v < 0) && (v >= -65536)):
+		a64(op(0x92, 0x800000) | ((0 - (v + 1)) << 5) | reg)
+		return
+	arm64_mov_wide_halves(reg, v, (v >> 16) >> 16, 1)
 
 
 # ldr/str Xrt,[x28, #k] with k a byte offset (always a multiple of 8 for
@@ -116,9 +165,8 @@ void arm64_add_x9_imm(int imm):
 ####################### immediates into the accumulator ######################
 
 void arm64_mov_eax_int32(int v):
-	a64(op(0x18, 0x000040))   # ldr w0, [pc, #8]
-	a64(op(0x14, 0x000002))   # b .+8 (skip the 4-byte literal)
-	emit_int32(v)
+	# W-register writes must zero-extend even when v is negative.
+	arm64_mov_wide_halves(0, v, 0, 0)
 
 
 void arm64_mov_rax_int64(int v):
@@ -126,10 +174,7 @@ void arm64_mov_rax_int64(int v):
 
 
 void arm64_mov_rax_int64_halves(int lo, int hi):
-	a64(op(0x58, 0x000040))   # ldr x0, [pc, #8]
-	a64(op(0x14, 0x000003))   # b .+12 (skip the 8-byte literal)
-	emit_int32(lo)
-	emit_int32(hi)
+	arm64_mov_wide_halves(0, lo, hi, 1)
 
 
 void arm64_push_imm(int v):
@@ -138,6 +183,8 @@ void arm64_push_imm(int v):
 
 
 void arm64_add_eax_int32(int v):
+	if (v == 0): return
+	if (arm64_add_local_offset(v)): return
 	if ((v >= 0) && (v <= 4095)):
 		a64(op(0x91, 0x000000) | (v << 10))   # add x0,x0,#v
 		return
@@ -176,11 +223,13 @@ void arm64_be_pop(int n):
 
 
 void arm64_lea_eax_esp_plus(int k):
+	int start = codepos
 	if ((k >= 0) && (k <= 4095)):
 		a64(op(0x91, 0x000380) | (k << 10))   # add x0,x28,#k
-		return
-	arm64_load_scratch(9, k)
-	a64(op(0x8b, 0x090380))   # add x0,x28,x9
+	else:
+		arm64_load_scratch(9, k)
+		a64(op(0x8b, 0x090380))   # add x0,x28,x9
+	arm64_lea_note(start, k)
 
 
 void arm64_push_eax_plus(int v):
@@ -294,7 +343,9 @@ void arm64_cset(int cond):
 # cmp x1,x0 ; cset x0,<cond>  (x1 is the left operand, x0 the right)
 void arm64_alu_cmp_set(int setcc):
 	a64(op(0xeb, 0x00003f))   # cmp x1, x0
+	int start = codepos
 	arm64_cset(arm64_setcc_cond(setcc))
+	be_cmp_note_record(start, setcc)
 
 
 # cmp x0,#0 ; cset x0,<cond>

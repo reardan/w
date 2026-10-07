@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: arch=arm64_darwin x64
 # Comparison-branch semantics across every condition context, pinning the
 # comparison-branch fusion contract (code_generator/x86.w, optimization.md
 # §1.3): a bare comparison in an if/while/for/switch/ternary condition

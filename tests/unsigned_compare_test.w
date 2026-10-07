@@ -1,4 +1,4 @@
-# wbuild: x64 arch=arm64 arch=wasm
+# wbuild: arch=arm64_darwin x64 arch=arm64 arch=wasm
 /*
 Unsigned word operations (docs/projects/type_system_p0.md, "Unsigned
 operations"): `<`, `<=`, `>`, `>=`, `/`, `%` and `>>` are unsigned when
