@@ -827,6 +827,7 @@ void verbosity_raise():
 # pre-scans, so here they are only recognized.
 int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--pie") == 0): return 1
+	if (strcmp(arg, c"--syscall-abi=vmcall") == 0 || strcmp(arg, c"--syscall-abi=linux") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
 		if (apply): bounds_mode = 1
 		return 1
@@ -851,6 +852,8 @@ int link_option(char* arg, int apply):
 		if (apply):
 			ast_expressions_mode = 2
 			ast_retain_mode = 1
+			# P1.2b: an explicit request keeps the semantic records too.
+			retained_semantic_mode = 1
 		return 1
 	if (strcmp(arg, c"--ast-audit") == 0):
 		if (apply):
@@ -863,6 +866,8 @@ int link_option(char* arg, int apply):
 			ast_required_mode = 1
 		return 1
 	# S2.1: emit expressions from the retained forest (implies --ast-retain).
+	# S2.5: the default for every compile (link_impl), like --ast-retain;
+	# both stay accepted and still conflict with --streaming.
 	if (strcmp(arg, c"--ast-emit-retained") == 0):
 		if (apply):
 			ast_expressions_mode = 2
@@ -873,6 +878,11 @@ int link_option(char* arg, int apply):
 	# out for the whole program, implicit runtime imports included, so
 	# link_impl's flag pre-scan applies it and this only recognizes it.
 	if (strcmp(arg, c"--streaming") == 0): return 1
+	# C3.5: the optional optimizer pass (compiler/ast_opt.w). Whole-program,
+	# so link_impl's flag pre-scan applies it; it conflicts with --streaming.
+	if (strcmp(arg, c"--ast-opt") == 0):
+		if (apply): ast_opt_mode = 1
+		return 1
 	# P1 (docs/projects/register_allocation_pgo.md §3.2): instrumented
 	# execution counters per function and loop head, flushed at exit to
 	# $W_PROFILE_OUT, with a <output>.wprofmap sidecar keyed by defhash
@@ -957,10 +967,12 @@ void help_shared_options():
 	println(c"  --ast-expressions     with --streaming: AST for grouped scalar expressions only")
 	println(c"  --ast-full-expressions AST at every expression (the default; kept for scripts)")
 	println(c"  --ast-audit           JSON fallback records on stderr for each streaming fallback")
-	println(c"  --ast-retain          retain owned traversal trees (experimental)")
+	println(c"  --ast-retain          also keep semantic type/binding records in the forest (queries keep them)")
 	println(c"  --ast-required        reject any expression fallback (coverage gate)")
 	# S2.1
-	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
+	println(c"  --ast-emit-retained   emit from the retained AST (the default; kept for scripts)")
+	# C3.5
+	println(c"  --ast-opt             fold constant if/while conditions and drop the dead arms")
 	# P1
 	println(c"  --coverage            count executable statement lines; report with wcoverage lines")
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
@@ -972,6 +984,7 @@ void help_shared_options():
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --pie                 emit an x64 Linux position-independent executable")
+	println(c"  --syscall-abi=vmcall   emit an x64 static KVM cell executable")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
@@ -1137,6 +1150,17 @@ void unrecognized_option_error(char* arg):
 	exit(1)
 
 
+void target_option_error(char* message):
+	# Target validation precedes tokenizer/source initialization.
+	diag_part(message)
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, c"")
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
 # The on-demand runtimes a compiled program used -- to_json/from_json,
 # f"..." template strings, the prelude and var -- imported after all
 # user files so the modules' code lands at a top-level boundary, with
@@ -1170,6 +1194,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# data_split stays 0 on their paths.
 	data_split = 1
 	elf_pie = 0
+	x64_syscall_abi = 0
+	x64_hypercall_count = 0
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
@@ -1227,8 +1253,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_audit_mode = 0
 	ast_required_mode = 0
 	# S2.1: retained-forest expression emission and its --stats counter.
-	ast_emit_retained_mode = 0
+	# S2.5: every compile emits from the retained forest, so it retains
+	# one; --streaming turns both off below.
+	ast_emit_retained_mode = 1
+	ast_retain_mode = 1
 	ast_retained_emitted = 0
+	# P1.2b: semantic snapshot records only for a tree query (or an
+	# explicit --ast-retain, link_option).
+	retained_semantic_mode = retained_query_mode
 	# S2.2a: retained statement walks and their --stats counter.
 	ast_retained_statements_emitted = 0
 	retained_walks_used = 0
@@ -1241,6 +1273,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	retained_source_reparses = 0
 	retained_source_end_positions = 0
 	retained_source_reparse_reset()
+	# C3.5: the optimizer pass is off unless --ast-opt.
+	ast_opt_reset()
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1315,6 +1349,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			help_link()
 			exit(0)
 		else if (strcmp(*flag_arg, c"--pie") == 0): elf_pie = 1
+		else if (strcmp(*flag_arg, c"--syscall-abi=vmcall") == 0): x64_syscall_abi = 1
+		else if (strcmp(*flag_arg, c"--syscall-abi=linux") == 0): x64_syscall_abi = 0
 		else if (starts_with(*flag_arg, c"-")):
 			if (link_option(*flag_arg, 0) == 0): unrecognized_option_error(*flag_arg)
 			# Full-expression migration flags cover the implicit runtime
@@ -1327,6 +1363,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 				ast_only_flag = *flag_arg
 			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
+			# C3.5: so does the optimizer pass, an AST-only mode.
+			if (strcmp(*flag_arg, c"--ast-opt") == 0):
+				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
 			# --no-asm covers the runtime and every input, whatever its position
 			if (strcmp(*flag_arg, c"--no-asm") == 0): link_option(*flag_arg, 1)
 			# Register promotion is whole-program too: the auto-imported
@@ -1343,13 +1383,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# tree query) have no streaming meaning; check --all-errors recovers in
 	# process on either front end (C3.1).
 	if (streaming_flag):
-		if (ast_retain_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
+		# S2.5: retention is the default, so only a retaining query
+		# conflicts here without an explicit flag.
+		if (retained_query_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
 		if (ast_only_flag != 0): streaming_conflict_error(ast_only_flag)
 		ast_expressions_mode = 0
+		ast_retain_mode = 0
+		ast_emit_retained_mode = 0
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
 	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
-		error(c"--pie requires the x64 Linux target")
+		target_option_error(c"--pie requires the x64 Linux target")
+	if (x64_syscall_abi && (word_size != 8 || target_isa != 0 || target_os != 0 || elf_pie)):
+		target_option_error(c"--syscall-abi=vmcall requires static non-PIE x64 Linux")
 	import_roots_scan(argc, argv)
 	push_basic_types()
 	pointer_indirection = 0
@@ -1558,7 +1604,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (stats_mode): regalloc_stats_dump()
 	if (stats_mode): profile_use_stats_dump()   # P2: --profile-use
 	if (stats_mode && ast_retain_mode):
-		print_int0(c"Retained AST nodes: ", retained_nodes.length)
+		print_int0(c"Retained AST nodes: ", retained_node_count())
+		print_error(c"\n")
+		# P1.2b: expression operands among them, and the session arena.
+		print_int0(c"Retained expression operands: ", retained_operand_total)
+		print_error(c"\nRetained text bytes: ")
+		print_error(itoa(retained_text_total))
+		print_error(c"\nRetained arena bytes: ")
+		print_error(itoa(retained_arena_used()))
 		print_error(c"\n")
 	if (stats_mode && ast_expressions_mode):
 		print_error(c"AST expressions: ")
@@ -1706,6 +1759,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\nRetained-source reparses positioned at the file's end: ")
 		print_error(itoa(retained_source_end_positions))
 		print_error(c"\n")
+	# C3.5: what the optimizer pass folded and removed.
+	if (stats_mode): ast_opt_stats_dump()
 
 
 	return 0

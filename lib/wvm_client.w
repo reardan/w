@@ -166,10 +166,11 @@ int wvm_client_unhex(char* output, char* hex, int length):
 
 # Synchronous harness bridge. One command owner per session. Any uncertain
 # transport, deadline or output destroys the session; never execute locally.
-process_result* wvm_client_exec_wait(char* socket_path, int session, char** argv, char* cwd, int timeout_ms, int output_limit):
+process_result* wvm_client_exec_wait_input(char* socket_path, int session, char** argv, char* cwd, char* input, int timeout_ms, int output_limit):
 	if (timeout_ms < 1 || timeout_ms > 600000 || output_limit < 1 || output_limit > 1048576): return 0
 	int deadline = process_monotonic_ms() + timeout_ms + 5000
 	json_value* params = wvm_client_exec_params(session, argv, cwd, timeout_ms, output_limit)
+	if (input != 0): json_object_set(params, c"stdin", json_string(input))
 	json_value* result = wvm_client_result(socket_path, c"vm_exec", params, 2000)
 	json_free(params)
 	int ok = result != 0
@@ -244,3 +245,42 @@ process_result* wvm_client_exec_wait(char* socket_path, int session, char** argv
 		process_result_free(output)
 		return 0
 	return output
+
+
+process_result* wvm_client_exec_wait(char* socket_path, int session, char** argv, char* cwd, int timeout_ms, int output_limit):
+	return wvm_client_exec_wait_input(socket_path, session, argv, cwd, 0, timeout_ms, output_limit)
+
+
+# Explicit one-shot helper. An optional existing template lets independent
+# build workers share one immutable image. A temporary handle is revoked as
+# soon as its session owns the backing; uncertain commands destroy sessions.
+process_result* wvm_client_cell_run(char* socket_path, char* image, int template_id, char** argv, char* input, int timeout_ms):
+	if (socket_path == 0 || timeout_ms < 1 || timeout_ms > 600000): return 0
+	int owned = template_id == 0
+	json_value* params = json_object()
+	if (owned):
+		json_object_set(params, c"image", json_string(image))
+		json_value* created = wvm_client_result(socket_path, c"template_create", params, 30000)
+		if (created != 0):
+			json_value* id = json_object_get(created, c"template")
+			if (id != 0 && id.type == json_type_int()): template_id = id.int_value
+		json_free(created)
+	json_free(params)
+	if (template_id < 1): return 0
+	params = json_object()
+	json_object_set(params, c"backend", json_string(c"cell"))
+	json_object_set(params, c"seed", json_int(0))
+	json_object_set(params, c"template", json_int(template_id))
+	json_object_set(params, c"lease_ms", json_int(timeout_ms + 60000))
+	int session = wvm_client_open(socket_path, params, 30000)
+	json_free(params)
+	if (owned):
+		params = json_object()
+		json_object_set(params, c"template", json_int(template_id))
+		json_value* removed = wvm_client_result(socket_path, c"template_destroy", params, 2000)
+		json_free(removed)
+		json_free(params)
+	if (session < 1): return 0
+	process_result* result = wvm_client_exec_wait_input(socket_path, session, argv, c"/", input, timeout_ms, 1048576)
+	wvm_client_destroy(socket_path, session)
+	return result

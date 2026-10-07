@@ -30,7 +30,34 @@ json_value* vms_dispatch(vms_control* control, char* method, json_value* params)
 	if (strcmp(method, c"stop") == 0):
 		control.running = 0
 		return json_object()
+	if (strcmp(method, c"templates") == 0): return vms_templates(scheduler)
+	if (strcmp(method, c"template_renew") == 0 || strcmp(method, c"region_renew") == 0):
+		int lease = vms_number(params, c"lease_ms", 60000)
+		if (lease < 100 || lease > 3600000): return vms_error(c"lease must be 100..3600000 ms")
+		if (strcmp(method, c"template_renew") == 0):
+			vm_template* template = vms_template_find(scheduler, vms_number(params, c"template", 0))
+			if (template == 0): return vms_error(c"unknown template")
+			template.lease_deadline = time_monotonic_ms() + lease
+		else:
+			vm_region* region = vms_region_find(scheduler, vms_number(params, c"region", 0))
+			if (region == 0): return vms_error(c"unknown region")
+			region.lease_deadline = time_monotonic_ms() + lease
+		return json_object()
+	if (strcmp(method, c"region_create") == 0): return vms_region_create(scheduler, params)
+	if (strcmp(method, c"region_destroy") == 0): return vms_region_destroy(scheduler, vms_number(params, c"region", 0))
+	if (strcmp(method, c"template_create") == 0):
+		char* backend = vms_text(params, c"backend")
+		if (backend != 0 && strcmp(backend, c"box") == 0): return vms_box_template_create(scheduler, vms_find(scheduler, vms_number(params, c"session", 0)), params)
+		if (backend != 0 && strcmp(backend, c"cell") != 0): return vms_error(c"unknown template backend")
+		return vms_template_create(scheduler, params)
+	if (strcmp(method, c"template_destroy") == 0): return vms_template_destroy(scheduler, vms_number(params, c"template", 0))
 	if (strcmp(method, c"vm_spawn") == 0):
+		if (vms_field(params, c"fs_write") != 0 || vms_field(params, c"private_workspace") != 0 || vms_field(params, c"channel_directory") != 0): return vms_error(c"internal workspace options are not accepted")
+		char* backend = vms_text(params, c"backend")
+		if (backend != 0):
+			if (strcmp(backend, c"cell") == 0): return vms_submit(scheduler, params)
+			if (strcmp(backend, c"box") != 0): return vms_error(c"unknown VM backend")
+			if (vms_field(params, c"template") != 0): return vms_submit(scheduler, params)
 		char* kernel = vms_text(params, c"kernel")
 		char* initrd = vms_text(params, c"initrd")
 		if (kernel == 0 || initrd == 0 || kernel[0] == 0 || initrd[0] == 0): return vms_error(c"kernel and initrd are required")

@@ -1063,3 +1063,17 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   must move `line_number` back as well (as `compiler/lint.w` does and
   `asm_body_error` now does). A shared "report at line/column" helper
   would remove the trap.
+
+## The optimizer pass slot (2026-10-07, AST plan C3.5)
+
+- **One bad directive hides every source-owned target.** A conventional
+  test given `# wbuild: data=...` (that key belongs to `target=`/`binary=`
+  targets; conventional ones spell run-time inputs `deps=`) made manifest
+  generation fail, and wexec fell back to `build.base.json`'s targets
+  only. `./wbuild manifest` then reported `tried to exec bin/wbuildgen,
+  which does not exist` and `./wbuild wbuildgen` reported `unknown
+  target`, because the tool targets are source-owned too. The real error
+  is printed once, above the fallback notice. Direction: have wexec
+  stop (or repeat the generation error at the end) when the requested
+  target is unknown only because generation failed, and accept `data=`
+  on conventional targets as a synonym, or name `deps=` in the error.

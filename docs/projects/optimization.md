@@ -59,6 +59,72 @@ displacement. Shifts by a constant use the immediate form. Details and
 measurements in `compiler_performance.md` §13 (`bin/wv3` −10.9%
 instructions, self-compile −20% instructions executed).
 
+**Update 2026-10-07: Apple Silicon / ARM64.** The emission-note optimizer
+now covers the shared ARM64 backend, including `arm64_darwin`. The plan
+and implementation are deliberately local: reuse the existing note
+invalidation and rollback rules, prove the emitted instruction shapes,
+then validate native behavior and self-hosting before measuring.
+
+- Local and argument addresses fuse into scaled `LDR` loads, including
+  signed/unsigned 8-, 16-, and 32-bit extension. Constant struct-field
+  offsets fold into the address first. Negative, unaligned, or oversized
+  displacements retain the original address-plus-load sequence.
+- An adjacent `push; constant/local load; pop` becomes `mov x1,x0; RHS`.
+  Removing the push reduces an x28-relative load displacement by eight
+  bytes. Reads of the pushed temporary itself, calls, nested evaluation,
+  and control-flow boundaries cannot match this rewrite.
+- Integer comparisons used in discard contexts become `CMP; B.cond`,
+  removing `CSET`. Value-producing comparisons and `&&`/`||` keep their
+  materialized accumulator values. Existing imm19 branch chains and
+  patching handle the fused branches.
+- Constants use `MOVZ`/`MOVN` plus only the necessary `MOVK` halfwords,
+  replacing literal loads and branches over inline data. Small negative
+  values use one instruction; 32-bit materializations still zero-extend.
+  Explicit 16-bit lanes preserve the same output on 32- and 64-bit hosts.
+  Relocatable address slots retain their separate emission path.
+
+No new checkpoint state or whole-function rewrite is involved. ARM64
+register allocation (R4 in [register_allocation_pgo.md](register_allocation_pgo.md))
+remains separate: it needs callee-saved register, unwind and debugger work.
+Constant arithmetic folding and immediate shift folding remain x86-only.
+
+Validation: `./wbuild tests_darwin` runs the Darwin fixpoint and the native
+optimizer suite through `tools/mac/run_optimizer_tests.sh`. Its two
+structural tests (`arm64_load_fold_test`, `arm64_cmp_imm_test`) inspect
+instruction counts/encodings, displacement boundaries, extension, full-width
+constants, branch chains and rollback barriers. The suite also runs
+`local_load_fold_test`, `comparison_branch_test`, `const_fold_test`,
+`unsigned_compare_test` and `float_nan_compare_test`. The portable tests
+have Darwin cross-compile twins for Linux CI and are included in the
+standard Mac smoke runner. This native script target lives in
+`build.base.json` because the Darwin executor intentionally does not scan
+source-owned targets. Both frontend modes and `--pac=full` passed the
+focused native tests; native lib/container/generator/compound/limb/goto
+smoke tests also passed.
+
+Matched-source measurement on the Apple Silicon development host: the
+saved pre-change compiler and optimized self-host both compiled the same
+updated `w.w` tree. Five alternating timed runs after a warm-up:
+
+| Metric | Before | After | Change |
+|---|---:|---:|---:|
+| Darwin compiler image | 3,472,786 bytes | 3,128,050 bytes | -9.93% |
+| Median self-compile | 1.3754 s | 1.0076 s | -26.74% |
+
+These are local wall-clock measurements, not a general performance
+promise. Compiling that same source with both compilers produced
+byte-identical x86, x64, win64 and wasm outputs. Native Darwin self-host
+fixpoint, strict compiler checks, generated-manifest validation, and the
+parser-generator grammar sweep (tracked sources plus both new tests)
+passed. Diff-based test selection completed with the tool's documented
+literal fallback for roots whose dependency scan failed. The full `./wbuild tests`
+was attempted but could not run on this Mac: its native executor only
+loads static targets, and the available Linux container snapshot lacks
+the x86 runtime/emulation setup. The existing ARM64 disassembler corpus
+also rejects `brk #0` on a 64-bit native host with both baseline and
+optimized compilers; that separate failure prevents treating its full
+corpus run as a passing gate here.
+
 Original assessment follows. Answers issue #110 verbatim: "Optimization pass - either from the
 generated code (v0), or additional passes of the AST (v2)." Companion to
 `docs/projects/compilation_model.md` (#338/#337 — the AST/artifact
@@ -469,11 +535,57 @@ reasons (#231, #337) and not yet answered.
 4. **Do not schedule v2** until the maintainer answers `wbuildd.md`
    §6/`compilation_model.md`'s open #231/#338 questions — there's no
    substrate for an "AST optimization pass" until one lands.
+   *Superseded 2026-10-07*: the production AST migration (#489) became
+   that substrate. Every compile retains a forest and emits from it, so
+   the slot exists; item 6 below is its first, opt-in, use.
 5. **Future AST measurements**: once the
    [production AST migration](ast_migration.md) retains the necessary trees,
    count §1.1-shaped patterns over arbitrary W source there. The separate wc2
    spike is retired; do not extend or restore it for optimization research.
    Not required for (1)-(3).
+6. **Landed 2026-10-07 (AST plan C3.5): the v2 pass slot, off by
+   default.** `--ast-opt` runs `compiler/ast_opt.w` between the parse of
+   an if/elif/while header and the retained walk that emits it, and
+   makes the two rewrites that the emission-time folds of §1.3 and the
+   constant-folding update cannot: a condition that folds to a constant
+   (literals, `true`/`false`, `__word_size__`, `__target_isa__` and the
+   integer, comparison and logical operators over them) loses its test
+   and branch, and the arm it kills (the body of `if 0`/`while 0`, the
+   `elif`/`else` arms after `if 1`) is a dead region whose bytes are
+   taken back once it has been parsed and emitted. The peepholes see one
+   instruction window; neither knows where an arm ends.
+
+   "Between body parse and emission" is narrower than a whole function,
+   because emission is deferred one statement or header at a time
+   (ast_migration.md S2.2/S2.5): the pass decides from the condition's
+   tree before the header's phases run, and acts on a dead arm when the
+   phase that ends the arm runs. So the dead arm is still parsed, lowered
+   and checked like any other, and every diagnostic is the default
+   compile's; the pass removes its bytes only when they are contained —
+   no address slot, call, rebase note or data written inside it, no
+   label or pending goto in it, no PGO loop alignment, the stack depth
+   and the control-region stack unchanged — after dropping the branches
+   it threaded into enclosing regions' chains and truncating the DWARF
+   line rows, locals, lexical blocks and frame notes it added. An arm
+   that fails the test stays as unreachable code. x86 and x64 Linux ELF
+   only, and not under `--profile-generate`/`--coverage`.
+
+   Measured on `w.w` (the compiler, 58k lines): 106 conditions folded on
+   either target; 28 dead arms removed and 19 kept on x86 (41 and 6 on
+   x64, where the `__word_size__ == 8` arms are live). The compiler built
+   with the pass is 2,644 bytes smaller on x86 (text 1,719,617 →
+   1,716,973, −0.15%) and 2,286 smaller on x64 (2,030,244 → 2,027,958,
+   −0.11%); file sizes move by one page. Compile time with the pass on,
+   and the run time of the compiler built with it, are within the noise
+   of the default (±2% wall, ±3% callgrind instructions; table in
+   ast_migration.md's C3.5 section). The win is
+   small because the compiler has few constant conditions; it is a slot
+   with two working rewrites, not a speedup. `tests/ast_opt_test.w` pins
+   the semantics on both targets and that the diagnostics are unchanged,
+   and `ast_opt_verify` is the pass's self-host fixpoint (a compiler
+   built with `--ast-opt` rebuilds itself identically with the flag and
+   emits exactly `bin/wv3` without it). Cross-statement passes (constant
+   propagation, dead stores) need checkpoint B's whole-body trees first.
 
 ### Open questions for the maintainer
 

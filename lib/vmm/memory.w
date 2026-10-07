@@ -16,6 +16,36 @@ const int CELL_PT_BASE = 65536
 const int CELL_TRAMPOLINE = 28672
 const int CELL_OUTPUT_LIMIT = 4194304
 
+# Flat values only: W fixed arrays include absolute pointer descriptors,
+# which cannot be copied safely through daemon backing metadata.
+struct cell_hypercall_words:
+	int s0
+	int s1
+	int s2
+	int s3
+	int s4
+	int s5
+	int s6
+	int s7
+
+struct cell_hypercall_sites:
+	cell_hypercall_words g0
+	cell_hypercall_words g1
+	cell_hypercall_words g2
+	cell_hypercall_words g3
+	cell_hypercall_words g4
+	cell_hypercall_words g5
+	cell_hypercall_words g6
+	cell_hypercall_words g7
+
+
+int cell_hypercall_site_get(cell_hypercall_sites* sites, int index):
+	return load_int64(cast(char*, sites) + index * 8)
+
+void cell_hypercall_site_set(cell_hypercall_sites* sites, int index, int address):
+	save_int64(cast(char*, sites) + index * 8, address)
+
+
 struct vm_cell:
 	kvm_machine* machine
 	char* ram
@@ -56,6 +86,30 @@ struct vm_cell:
 	void* snapshot_state
 	void* snapshot_cleanup
 	int retain_cpus
+	int live_restored
+	int paused
+	int pause_after
+	int debug_control
+	int debug_exit
+	int syscall_abi
+	int hypercall_count
+	cell_hypercall_sites hypercall_sites
+	int max_instructions
+	int instruction_count
+	int* debug_breakpoints
+	int debug_hit
+	int max_syscalls
+	int syscall_count
+	int deterministic
+	int deterministic_seed
+	int random_state
+	int clock_ticks
+	string_builder* transcript
+	char* replay
+	int replay_length
+	int replay_pos
+	void* region_state
+	void* region_cleanup
 
 
 int cell_fail(vm_cell* cell, char* error):
@@ -81,6 +135,10 @@ vm_cell* cell_new():
 	cell.unsupported_syscall = -1
 	cell.status = 125
 	cell.max_threads = 16
+	cell.max_syscalls = 1000000
+	cell.transcript = string_new()
+	cell.debug_breakpoints = cast(int*, malloc(4 * sizeof(int)))
+	mem_fill[char](cast(char*, cell.debug_breakpoints), 0, 4 * sizeof(int))
 	return cell
 
 
@@ -101,6 +159,11 @@ void cell_runtime_free(vm_cell* cell):
 		kvm_destroy(cell.machine)
 		free(cell.machine)
 	cell.machine = 0
+	if (cell.region_cleanup != 0):
+		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.region_cleanup)
+		cleanup(cell)
+	cell.region_state = 0
+	cell.region_cleanup = 0
 	cell.thread_state = 0
 	cell.thread_cleanup = 0
 	cell.thread_io_wait = 0
@@ -117,6 +180,9 @@ void cell_free(vm_cell* cell):
 		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.snapshot_cleanup)
 		cleanup(cell)
 	free(cell.owned_input)
+	free(cell.replay)
+	free(cell.debug_breakpoints)
+	string_free(cell.transcript)
 	munmap(cast(int, cell.ram), CELL_RAM_SIZE)
 	free(cell.regs)
 	free(cell.sregs)
@@ -173,3 +239,21 @@ void cell_page_tables(vm_cell* cell):
 	# descriptors, trap code, or the exception stack.
 	for i in range(CELL_USER_MIN / 4096):
 		save_int64(cell_pte(cell, i * 4096), (i * 4096) | 3)
+
+
+# KVM debug controls shared by the execution budget and optional debugger.
+# Breakpoints are hardware execute traps (four x86 slots), not patched code.
+int cell_cpu_debug_apply(vm_cell* cell, kvm_machine* cpu, int stepping):
+	char[72] debug
+	mem_fill[char](&debug[0], 0, 72)
+	int flags = 0
+	int dr7 = 1024
+	for i in range(4):
+		if (cell.debug_breakpoints[i] != 0):
+			flags = flags | 131073 # ENABLE | USE_HW_BP
+			dr7 = dr7 | (1 << (i * 2))
+			save_int64(&debug[8 + i * 8], cell.debug_breakpoints[i])
+	if (stepping): flags = flags | 3
+	save_int32(&debug[0], flags)
+	if (flags & 131072): save_int64(&debug[64], dr7)
+	return sys_ioctl(cpu.cpu_fd, kvm_request(1, 72, 155), cast(int, &debug[0])) == 0

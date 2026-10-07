@@ -24,7 +24,7 @@ void test_source_versions():
 	assert_equal('a', retained_sources[source].bytes[0])
 	assert_equal('z', retained_sources[newer].bytes[0])
 	retained_rollback(&checkpoint)
-	assert_equal(checkpoint.nodes, retained_nodes.length)
+	assert_equal(checkpoint.nodes, retained_node_count())
 	assert_equal(checkpoint.sources, retained_sources.length)
 	assert_equal(outer, retained_parent)
 	# The path index falls back to the surviving older version.
@@ -36,45 +36,51 @@ void test_source_versions():
 	retained_leave(outer, 10000)
 
 
-# Nodes and copied text live in session chunks: rollback is a high-water
-# mark that keeps surviving records in place and reuses retracted slots.
+# Records and copied text live in session arena chunks: rollback is a
+# high-water mark that keeps surviving records in place and reuses retracted
+# space (P1.2b).
 void test_arena_high_water():
 	int source = retained_source_begin(c"arena.w")
 	int root = retained_sources[source].root
 	for i in range(1500): retained_add(retained_statement, root, source, i, 1, 1, c"kept")
-	retained_node* survivor = retained_nodes[1200]
+	retained_record* survivor = retained_record_at(1200)
 	char* kept_name = survivor.name
 	# Equal spellings share one interned copy owned by the session.
-	assert1(retained_nodes[1201].name == kept_name)
+	assert1(retained_record_at(1201).name == kept_name)
 	assert_strings_equal(c"kept", kept_name)
 	assert_equal(1500, retained_sources[source].top_level.length)
-	char* buffer = cast(char*, malloc(retained_text_chunk))
-	for i in range(retained_text_chunk): buffer[i] = 'a' + i % 26
+	char* buffer = cast(char*, malloc(retained_arena_chunk_size + 4096))
+	for i in range(retained_arena_chunk_size + 4096): buffer[i] = 'a' + i % 26
 	char* kept_text = retained_text_copy(buffer, 40000)
 	retained_checkpoint checkpoint
 	retained_capture(&checkpoint)
-	int first_retracted = retained_nodes.length
+	int first_retracted = retained_node_count()
 	for i in range(2500): retained_add(retained_statement, root, source, i, 1, 1, c"retracted")
-	retained_node* reused = retained_nodes[first_retracted]
-	# Records never span a chunk; the largest record fills one exactly.
-	char* large = retained_text_copy(buffer, retained_text_chunk - 1)
+	retained_record* reused = retained_record_at(first_retracted)
+	# Allocations never span a chunk; one larger than a chunk gets its own.
+	char* large = retained_text_copy(buffer, retained_arena_chunk_size - 1)
+	char* larger = retained_text_copy(buffer, retained_arena_chunk_size + 100)
 	char* small = retained_text_copy(buffer, 100000)
 	assert_equal('a', large[0])
-	assert_equal(0, large[retained_text_chunk - 1])
+	assert_equal(0, large[retained_arena_chunk_size - 1])
+	assert_equal(0, larger[retained_arena_chunk_size + 100])
 	assert_equal(0, small[100000])
-	assert1(retained_text_mark > 2 * retained_text_chunk)
+	assert1(retained_arena_index >= checkpoint.arena_chunk + 2)
 	retained_rollback(&checkpoint)
-	assert_equal(first_retracted, retained_nodes.length)
-	assert_equal(checkpoint.text, retained_text_mark)
+	assert_equal(first_retracted, retained_node_count())
+	assert_equal(checkpoint.arena_chunk, retained_arena_index)
+	assert_equal(checkpoint.text, retained_arena_offset)
 	assert_equal(1500, retained_sources[source].top_level.length)
-	assert1(retained_nodes[1200] == survivor)
+	assert1(retained_record_at(1200) == survivor)
 	assert1(survivor.name == kept_name)
 	for i in range(40000): assert_equal('a' + i % 26, kept_text[i])
 	int again = retained_add(retained_statement, root, source, 0, 1, 1, c"kept")
 	assert_equal(first_retracted, again)
-	assert1(retained_nodes[again] == reused)
-	assert1(retained_nodes[again].name == kept_name)
-	assert1(retained_text_copy(buffer, 10) == kept_text + 40001)
+	assert1(retained_record_at(again) == reused)
+	assert1(retained_node_at(again).name == kept_name)
+	# The next allocation starts at the mark, word aligned.
+	char* next = retained_text_copy(buffer, 10)
+	assert1(next == cast(char*, reused) + sizeof(retained_record))
 	free(buffer)
 
 

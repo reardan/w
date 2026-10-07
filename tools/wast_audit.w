@@ -27,8 +27,10 @@ The AST front end is the default (completion plan P1.4), so required-manifest
 first checks that no direct production compile/check step still opts in with
 --ast-full-expressions, or with --ast-expressions outside --streaming: both are
 no-ops now. It lists such steps as stale_ast_flag_steps on stderr, writes no
-manifest and exits 1. --ast-required, --ast-retain and --ast-audit still
-change behaviour and remain allowed.
+manifest and exits 1. --ast-required and --ast-audit still change behaviour
+and remain allowed. --ast-retain and --ast-emit-retained are no-ops since S2.5
+made the retained forest and emission from it the default; they stay allowed
+so a step can still name the mode it gates (the retained canary does).
 
 census prints deterministic file/token fallback counts and accumulated AST /
 streaming counters from --ast-audit --stats stderr. It returns 1 for malformed

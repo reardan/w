@@ -339,8 +339,8 @@ profiles taken with `--profile-generate` and merged by `bin/wprof`
 (docs/projects/register_allocation_pgo.md §3.3). `--profile-use=<path>`
 reads one explicitly — the compiler never looks for a profile on its
 own — and `./wbuild verify_pgo` (in `tests`) is the self-host fixpoint
-with the flag: `wv3_pgo == wv4_pgo == wv5_pgo`, the streaming grammar
-equal to `--ast-emit-retained`, and the x64 chain. Entries are keyed by
+with the flag: `wv3_pgo == wv4_pgo == wv5_pgo`, the default front end
+(retained emission) equal to `--streaming`, and the x64 chain. Entries are keyed by
 `w defhash`, so editing a function's body only makes its entry stale
 (the static heuristic applies to it) and never changes what the
 compiler computes; `./wbuild profile_check` (in `tests`, never fails)

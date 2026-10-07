@@ -80,6 +80,7 @@ void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int a
 
 void elf_emit_dynamic():
 	if (dyn_has_imports() == 0): return;
+	if (x64_syscall_abi): error(c"--syscall-abi=vmcall does not support dynamic imports")
 	if (dyn_lib_count == 0): error(c"extern used without any c_lib to import from")
 
 	int nsym = dyn_import_count + 1   /* index 0 is the reserved null symbol */

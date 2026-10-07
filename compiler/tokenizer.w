@@ -461,10 +461,14 @@ int getc():
 	int c
 	if ((file >= 0) && (file < 256) && (getchar_pos[file] < getchar_limit[file])):
 		char* getc_buffer = cast(char*, getchar_buf_addr[file])
-		c = getc_buffer[getchar_pos[file]] & 255
-		getchar_pos[file] = getchar_pos[file] + 1
-		if (ast_retain_mode):
-			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
+		int pos = getchar_pos[file]
+		c = getc_buffer[pos] & 255
+		getchar_pos[file] = pos + 1
+		# P1.2b: a byte the retained version has not recorded yet records
+		# the rest of the window (compiler/retained_ast.w,
+		# retained_source_window); every other byte costs one comparison.
+		if (ast_retain_mode && ((byte_offset >= retained_append_next) || (filename != retained_append_path))):
+			if (retained_source_window(filename, byte_offset, getc_buffer + pos, getchar_limit[file] - pos) == 0): error(c"source changed during retained AST traversal")
 		byte_offset = byte_offset + 1
 		return c
 	c = getchar_checked(file)
@@ -489,7 +493,13 @@ int getc():
 	# EOF consumes nothing, so the offset only advances for real bytes
 	if (c != -1):
 		if (ast_retain_mode):
-			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
+			# A refilled window is checked or recorded whole (P1.2b).
+			int refilled = 0
+			if ((file >= 0) && (file < 256)):
+				if (getchar_pos[file] == 1): refilled = 1
+			if (refilled):
+				if (retained_source_window(filename, byte_offset, cast(char*, getchar_buf_addr[file]), getchar_limit[file]) == 0): error(c"source changed during retained AST traversal")
+			else if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
 		byte_offset = byte_offset + 1
 	return c
 

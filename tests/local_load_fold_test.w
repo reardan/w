@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: arch=arm64_darwin x64
 # Local-slot load fusion semantics, pinning the contract in
 # code_generator/x86.w (docs/projects/optimization.md's v0 window): a
 # local or argument read folds its 'lea eax,[esp+N]' into the load that
@@ -119,6 +119,23 @@ void test_large_frame():
 		sum = sum + big[i]
 		i = i + 1
 	assert_equal(9480, sum)
+
+
+# ARM64 scaled loads stop at 4095 elements; this frame also exceeds
+# the 12-bit address immediate. Reads must survive the scratch-register
+# fallback and removal of a preceding operand push.
+void test_very_large_frame():
+	int before = -70001
+	int8 narrow = -11
+	int[9000] big
+	big[0] = 17
+	big[8999] = 23
+	int after = 29
+	assert_equal(-70001, before)
+	assert_equal(-11, narrow)
+	assert_equal(-69972, after + before)
+	assert_equal(40, after - narrow)
+	assert_equal(40, big[0] + big[8999])
 
 
 void test_struct_fields():
@@ -425,6 +442,7 @@ int main():
 	test_widths()
 	test_arguments(7, -3, -1, 65535)
 	test_large_frame()
+	test_very_large_frame()
 	test_struct_fields()
 	test_address_of()
 	test_shifts()

@@ -5,6 +5,7 @@ import tools.__arch__.wvm_platform
 import lib.vmm.cell
 import lib.vmm.box
 import lib.vmm.workspace
+import lib.vmm.faults
 import lib.process
 import lib.file
 import lib.str
@@ -27,11 +28,23 @@ int wvm_timeout(char* text):
 	return value
 
 
+int wvm_bounded_number(char* text, int maximum):
+	int value = 0
+	if (text[0] == 0): return -1
+	int at = 0
+	while (text[at]):
+		int digit = cast(int, text[at]) - '0'
+		if (digit < 0 || digit > 9 || value > (maximum - digit) / 10): return -1
+		value = value * 10 + digit
+		at = at + 1
+	return value
+
+
 # Checked, size-bounded read of a regular executable.
 char* wvm_read_image(char* path, int* length):
-	int fd = open(path, 0, 0)
+	int fd = open(path, 2048, 0) # O_NONBLOCK: reject FIFOs without waiting for a writer
 	if (fd < 0): return 0
-	int size = seek(fd, 0, 2)
+	int size = cell_fs_size(fd) # descriptor-based fstat rejects non-regular inputs
 	if (size < 64 || size > 67108864 || seek(fd, 0, 0) != 0):
 		close(fd)
 		return 0
@@ -154,12 +167,20 @@ int main(int argc, int argv):
 		wvm_error(c"Linux x64 KVM is unavailable")
 		return 77
 	if (argc < 3 || strcmp(args[1], c"run") != 0):
-		wvm_error(c"usage: wvm run [--timeout-ms N] [--fs-root DIR [--fs-write]] [--net-allow IPV4:PORT] [--max-threads N] <file.w|static-x64-elf> [guest args...]")
+		wvm_error(c"usage: wvm run [--timeout-ms N] [--fs-root DIR [--fs-write|--fs-private]] [--net-allow IPV4:PORT] [--max-threads N] [--max-syscalls N] [--max-instructions N] [--seed N [--record FILE|--replay FILE]] <file.w|static-x64-elf> [guest args...]")
 		return 2
 	int at = 2
 	int timeout = 5000
 	char* fs_root = 0
 	int fs_write = 0
+	int fs_private = 0
+	int seed = -1
+	int seeded = 0
+	int max_syscalls = 1000000
+	int max_instructions = 0
+	int threads_explicit = 0
+	char* record_path = 0
+	char* replay_path = 0
 	int max_threads = 16
 	int policy_end = 2
 	while (at < argc && args[at][0] == '-'):
@@ -169,6 +190,9 @@ int main(int argc, int argv):
 		if (strcmp(option, c"--fs-write") == 0):
 			fs_write = 1
 			continue
+		if (strcmp(option, c"--fs-private") == 0):
+			fs_private = 1
+			continue
 		if (at >= argc):
 			wvm_error(c"missing option value")
 			return 2
@@ -176,7 +200,16 @@ int main(int argc, int argv):
 		at = at + 1
 		if (strcmp(option, c"--timeout-ms") == 0): timeout = wvm_timeout(value)
 		else if (strcmp(option, c"--fs-root") == 0): fs_root = value
-		else if (strcmp(option, c"--max-threads") == 0): max_threads = wvm_timeout(value)
+		else if (strcmp(option, c"--max-threads") == 0):
+			threads_explicit = 1
+			max_threads = wvm_timeout(value)
+		else if (strcmp(option, c"--max-syscalls") == 0): max_syscalls = wvm_bounded_number(value, 1000000000)
+		else if (strcmp(option, c"--max-instructions") == 0): max_instructions = wvm_bounded_number(value, 1000000000)
+		else if (strcmp(option, c"--seed") == 0):
+			seeded = 1
+			seed = wvm_bounded_number(value, 2147483646)
+		else if (strcmp(option, c"--record") == 0): record_path = value
+		else if (strcmp(option, c"--replay") == 0): replay_path = value
 		else if (strcmp(option, c"--net-allow") == 0):
 			if (wvm_net_option(0, value) == 0):
 				wvm_error(c"invalid --net-allow endpoint; expected IPV4:PORT")
@@ -185,8 +218,12 @@ int main(int argc, int argv):
 			wvm_error(c"unknown run option")
 			return 2
 	policy_end = at
-	if (at >= argc || timeout < 1 || max_threads < 1 || max_threads > 64 || (fs_write && fs_root == 0)):
-		wvm_error(c"missing image or invalid policy: timeout 1..600000, threads 1..64; --fs-write requires --fs-root")
+	if (max_instructions < 0 || (max_instructions > 0 && threads_explicit && max_threads != 1)):
+		wvm_error(c"instruction limit must be 0..1000000000 and requires one thread")
+		return 2
+	if (max_instructions > 0): max_threads = 1
+	if (at >= argc || timeout < 1 || max_threads < 1 || max_threads > 64 || max_syscalls < 1 || ((fs_write || fs_private) && fs_root == 0) || (fs_write && fs_private) || (seeded && seed < 0) || ((record_path != 0 || replay_path != 0) && seeded == 0)):
+		wvm_error(c"missing image or invalid policy: timeout 1..600000, threads 1..64, syscalls 1..1000000000, seed 0..2147483646; --fs-write requires --fs-root; --fs-private requires --fs-root and excludes --fs-write; record/replay require --seed")
 		return 2
 	int probe = kvm_open_system()
 	if (probe < 0):
@@ -243,23 +280,43 @@ int main(int argc, int argv):
 		wvm_error(c"cannot allocate guest RAM")
 		return 125
 	cell.max_threads = max_threads
+	cell.max_syscalls = max_syscalls
+	cell.max_instructions = max_instructions
 	int configured = 1
-	if (fs_root != 0): configured = cell_fs_configure(cell, fs_root, fs_write)
+	if (fs_private): configured = cell_fs_configure_private(cell, fs_root, 67108864, 10000, 60000)
+	else if (fs_root != 0): configured = cell_fs_configure(cell, fs_root, fs_write)
 	int option_at = 2
 	while (option_at < policy_end && configured):
 		char* option = args[option_at]
 		option_at = option_at + 1
 		if (strcmp(option, c"--") == 0): break
-		if (strcmp(option, c"--fs-write") == 0): continue
+		if (strcmp(option, c"--fs-write") == 0 || strcmp(option, c"--fs-private") == 0): continue
 		if (strcmp(option, c"--net-allow") == 0):
 			configured = wvm_net_option(cell, args[option_at])
 			if (configured == 0): cell_fail(cell, c"invalid --net-allow endpoint; expected IPV4:PORT")
 		option_at = option_at + 1
+	if (configured && seeded): configured = cell_deterministic_configure(cell, seed)
+	if (configured && replay_path != 0):
+		int replay_length = 0
+		char* replay = wvm_read_image(replay_path, &replay_length)
+		if (replay == 0): configured = cell_fail(cell, c"cannot read syscall transcript")
+		else:
+			configured = cell_replay_configure(cell, replay, replay_length)
+			free(replay)
 	int loaded = 0
 	if (configured): loaded = cell_elf_load(cell, image, length)
-	free(image)
 	if (loaded): loaded = cell_stack(cell, argc - at, args + at * __word_size__)
 	if (loaded): cell_run(cell, timeout)
+	if (record_path != 0 && cell.started && cell.deterministic):
+		int fd = open(record_path, 193, 384) # O_WRONLY|O_CREAT|O_EXCL, private transcript
+		io_result result
+		int saved = fd >= 0
+		if (saved): saved = io_write_all(fd, cell.transcript.data, cell.transcript.length, &result) == IO_OK
+		if (fd >= 0): close(fd)
+		if (saved == 0):
+			if (fd >= 0): unlink(record_path)
+			cell_fail(cell, c"cannot create syscall transcript (path must not exist)")
+			cell.status = 125
 	io_result written
 	if (io_write_all(1, cell.output.data, cell.output.length, &written) != IO_OK):
 		cell_fail(cell, c"cannot write guest stdout")
@@ -275,6 +332,11 @@ int main(int argc, int argv):
 			string_append_int(detail, cell.fault_vector)
 			string_append(detail, c" at guest RIP ")
 			string_append(detail, hex(cell.fault_rip))
+			char* symbol = cell_fault_symbol(image, length, cell.fault_rip)
+			if (symbol[0]):
+				string_append(detail, c" in ")
+				string_append(detail, symbol)
+			free(symbol)
 			wvm_error(detail.data)
 			string_free(detail)
 		else if (cell.exited == 0 && cell.last_exit != 0):
@@ -290,5 +352,6 @@ int main(int argc, int argv):
 		wvm_error(detail.data)
 		string_free(detail)
 	int status = cell.status
+	free(image)
 	cell_free(cell)
 	return status

@@ -502,7 +502,7 @@ void repl_state_restore(repl_state* st):
 	# statement's walk record open; its node was just retracted, so the
 	# record and its phases go back to the walk pools here rather than at
 	# the next walked statement.
-	if (retained_nodes != 0): retained_walk_release()
+	if (retained_walks != 0): retained_walk_release()
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -990,10 +990,11 @@ void repl_stage_init():
 # wdbg_main), from the same flags the compiler driver takes and through the
 # driver's own link_option, so --ast-emit-retained implies --ast-retain and
 # full-expression mode exactly as it does for a compile. As in link_impl
-# (P1.4), the AST front end is the default and --streaming opts out; with
-# --streaming, --ast-expressions is the grouped scalar mode and an AST-only
-# flag is the driver's streaming_conflict_error. Call after args_init and
-# before the first compile.
+# (P1.4, S2.5), the AST front end with retained emission is the default
+# (so --ast-retain and --ast-emit-retained change nothing) and --streaming
+# opts out of all three; with --streaming, --ast-expressions is the grouped
+# scalar mode and an AST-only flag is the driver's streaming_conflict_error.
+# Call after args_init and before the first compile.
 # Returns 1 when the flag was given (and applied).
 int repl_ast_option(char* name):
 	if (args_has_bool_flag(name) == 0): return 0
@@ -1005,8 +1006,16 @@ int repl_ast_option(char* name):
 
 void repl_ast_options():
 	ast_expressions_mode = 2
+	# S2.5: the retained forest and emission from it are the default too.
+	ast_retain_mode = 1
+	ast_emit_retained_mode = 1
+	# P1.2b: no semantic snapshot records unless --ast-retain asks.
+	retained_semantic_mode = 0
 	int streaming = args_has_bool_flag(c"streaming")
-	if (streaming): ast_expressions_mode = 0
+	if (streaming):
+		ast_expressions_mode = 0
+		ast_retain_mode = 0
+		ast_emit_retained_mode = 0
 	repl_ast_option(c"ast-expressions")
 	char* ast_only_flag = 0
 	if (repl_ast_option(c"ast-full-expressions")): ast_only_flag = c"--ast-full-expressions"

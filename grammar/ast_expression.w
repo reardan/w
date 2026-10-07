@@ -381,6 +381,9 @@ int ast_expression_root_end(int eof, int statement):
 # inferred from a short read. An unavailable prefix still declines safely.
 int ast_expression_refill(int start):
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
+	# S2.5: a retained window on /dev/null is already the whole source a
+	# re-parse can read (code_generator/retained_emit.w).
+	if (retained_window_complete(file)): return 0
 	int index = start - (getchar_kernel_pos[file] - getchar_limit[file])
 	if ((index < 0) || (index > getchar_pos[file])): return -1
 	int kept = getchar_limit[file] - index
@@ -402,6 +405,9 @@ int ast_expression_refill(int start):
 	getchar_limit[file] = kept
 	int count = read(file, bytes + kept, room)
 	if (count <= 0): return count
+	# P1.2b: bytes read from the file are recorded or checked as they
+	# enter the window (compiler/retained_ast.w, retained_source_window).
+	if (retained_source_window(filename, getchar_kernel_pos[file], bytes + kept, count) == 0): error(c"source changed during retained AST traversal")
 	getchar_limit[file] = kept + count
 	getchar_kernel_pos[file] = getchar_kernel_pos[file] + count
 	return 1

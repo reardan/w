@@ -1,6 +1,7 @@
 # Linux x64 PID-1 guest-side command service. Commands use direct execve,
 # stdin /dev/null, independent stdout/stderr pipes and bounded captures.
 import lib.vmm.channel
+import lib.vmm.workspace
 
 
 # Commands retain uid 0 for image compatibility but cannot regain Linux
@@ -187,22 +188,30 @@ int box_guest_serve(int fd, int is_socket):
 
 
 # Requested shares fail closed: readiness is never sent after a failed mount.
-# A positive limit uses a read-only 9p lower plus bounded tmpfs overlay upper.
+# A positive limit imports boot-only files into bounded tmpfs. There is no
+# live host filesystem device, so snapshots capture every workspace byte.
 int box_guest_workspace(int workspace_mb):
 	if (workspace_mb < 0 || workspace_mb > 32768): return 0
 	mkdir(c"/work", 493)
 	if (workspace_mb == 0):
 		return syscall7(165, cast(int, c"work"), cast(int, c"/work"), cast(int, c"9p"), 6, cast(int, c"trans=virtio,version=9p2000.L"), 0) == 0
-	mkdir(c"/work-base", 493)
-	mkdir(c"/work-upper", 448)
-	if (syscall7(165, cast(int, c"work"), cast(int, c"/work-base"), cast(int, c"9p"), 7, cast(int, c"trans=virtio,version=9p2000.L"), 0) < 0): return 0
 	string_builder* options = string_new()
 	string_append(options, c"size=")
 	string_append_int(options, workspace_mb)
 	string_append(options, c"m,mode=0700")
-	int status = syscall7(165, cast(int, c"tmpfs"), cast(int, c"/work-upper"), cast(int, c"tmpfs"), 6, cast(int, options.data), 0)
+	int status = syscall7(165, cast(int, c"tmpfs"), cast(int, c"/work"), cast(int, c"tmpfs"), 6, cast(int, options.data), 0)
 	string_free(options)
 	if (status < 0): return 0
-	mkdir(c"/work-upper/data", 448)
-	mkdir(c"/work-upper/meta", 448)
-	return syscall7(165, cast(int, c"overlay"), cast(int, c"/work"), cast(int, c"overlay"), 6, cast(int, c"lowerdir=/work-base,upperdir=/work-upper/data,workdir=/work-upper/meta"), 0) == 0
+	int input = open(c"/wvm-import", 65536 | 131072 | 524288, 0)
+	int output = open(c"/work", 65536 | 131072 | 524288, 0)
+	vm_workspace workspace
+	mem_fill[char](cast(char*, &workspace), 0, sizeof(vm_workspace))
+	workspace.max_bytes = workspace_mb * 1048576
+	workspace.max_entries = 100000
+	workspace.deadline = process_monotonic_ms() + 30000
+	int ok = input >= 0 && output >= 0
+	if (ok): ok = workspace_copy_dir(&workspace, input, output, 0)
+	if (input >= 0): close(input)
+	if (output >= 0): close(output)
+	if (ok): ok = dir_remove_all(c"/wvm-import") == 0
+	return ok
