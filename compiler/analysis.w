@@ -164,7 +164,7 @@ void analysis_run(int operation, int declaration):
 	analysis_state state
 	analysis_capture(&state)
 	int outer = analysis_jump
-	int[3] resume
+	int[8] resume   /* jmp_buf_words (lib/setjmp.w): pc, sp, fp and the callee-saved set */
 	if (repl_setjmp(&resume)):
 		# error() came back here: the item failed.
 		analysis_jump = 0

@@ -450,3 +450,14 @@ b800000000|mov eax,0
 488936|mov [rsi],rsi
 bf01100000|mov edi,0x1001
 b89e000000|mov eax,0x9e
+# code_generator/x64_asm.w: repl_setjmp / repl_longjmp save and restore the
+# callee-saved set (register promotion, R2)
+4c896020|mov [rax+0x20],r12
+4c896828|mov [rax+0x28],r13
+4c897030|mov [rax+0x30],r14
+4c897838|mov [rax+0x38],r15
+488b5918|mov rbx,[rcx+0x18]
+4c8b6120|mov r12,[rcx+0x20]
+4c8b6928|mov r13,[rcx+0x28]
+4c8b7130|mov r14,[rcx+0x30]
+4c8b7938|mov r15,[rcx+0x38]

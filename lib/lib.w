@@ -13,6 +13,12 @@ import lib.hex
 void exit(int);
 void *malloc(int);
 
+# Words a repl_setjmp/setjmp buffer holds (lib/setjmp.w): resume address,
+# stack pointer, frame pointer, then the callee-saved registers the
+# compiler may keep locals in (x86 ebx esi edi; x64 rbx r12-r15; eight
+# words on every target so a buffer is one size everywhere).
+const int jmp_buf_words = 8
+
 
 int verbosity;
 
@@ -355,6 +361,12 @@ int[256] getchar_limit
 # offset the next read() will fill from. The buffered window therefore
 # covers file offsets [kernel_pos - limit, kernel_pos).
 int[256] getchar_kernel_pos
+# Bumped every time the fd is bound to a new stream (getchar_reset after
+# an open(), or a caller that replaces the window wholesale): a reader
+# that keeps its own copy of the fd's bytes (the compiler's register
+# pre-scan images the whole file once) compares it to know the copy is
+# still of this stream, since a recycled fd number looks the same.
+int[256] getchar_generation
 
 
 # Invalidate the buffer for a freshly open()ed fd (kernel offset 0).
@@ -363,6 +375,7 @@ void getchar_reset(int file):
 		getchar_pos[file] = 0
 		getchar_limit[file] = 0
 		getchar_kernel_pos[file] = 0
+		getchar_generation[file] = getchar_generation[file] + 1
 
 
 # Reposition a buffered fd to an absolute file offset (seek whence 0).

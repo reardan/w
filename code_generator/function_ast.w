@@ -6,9 +6,11 @@ void emit_function_begin_ast(function_ast* node):
 		return
 	if (node.kind == ast_function_generator):
 		sym_define_global(node.binding)
+		profile_generator_enter(node.binding, node.name)   # P1: --profile-generate
 		return
 	be_function_define(node.binding, node.name)
 	be_function_prologue()
+	profile_function_enter(node.binding, node.name)   # P1: --profile-generate
 	node.frame_words = be_frame_words()
 	stack_pos = stack_pos + node.frame_words
 

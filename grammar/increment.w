@@ -80,8 +80,13 @@ int compound_assign_rhs(int op, int left_type):
 # its declared type, the operator token consumed. '++'/'--' pass
 # implicit_one to feed an immediate 1 instead of a parsed right-hand
 # side, so every '+= 1' behavior and diagnostic carries over. eax ends
-# holding the stored value, which the expression yields.
-int compound_assign_scalar(int op, int type, int implicit_one):
+# holding the stored value, which the expression yields -- unless
+# value_dead says the assignment is the whole statement (R3: a
+# register-resident lvalue then becomes 'op R,X' with nothing after it).
+# A register-resident local on the left (the register lvalue note,
+# code_generator/code_emitter.w) has no address to park: promote()
+# reads the register, the store is regalloc_reg_store.
+int compound_assign_scalar(int op, int type, int implicit_one, int value_dead):
 	if (expression_lhs_readonly): error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) | (type == 3) | (type == 4)):
 		error(c"assignment target is not assignable")
@@ -91,7 +96,9 @@ int compound_assign_scalar(int op, int type, int implicit_one):
 	if (type_is_buffer(type_canonical(type))):
 		error(c"compound assignment is not supported on string, array or slice values")
 	expression_lhs_readonly = 0
-	push_slot()  # lhs address, kept for the final store
+	int lhs_reg = 0
+	if (regalloc_note_current()): lhs_reg = reg_lvalue
+	else: push_slot()  # lhs address, kept for the final store
 	int left_type = promote(type)  # eax still holds the address: load
 	int result_type = 0
 	if (implicit_one):
@@ -110,6 +117,11 @@ int compound_assign_scalar(int op, int type, int implicit_one):
 		result_type = compound_assign_rhs(op, left_type)
 		expr_nesting_depth = expr_nesting_depth - 1
 	coerce(type, result_type)
+	if (lhs_reg != 0):
+		if (types_compatible_with_expression(type, result_type) == 0):
+			warn_type_mismatch(c"assignment", type, result_type)
+		regalloc_reg_store(lhs_reg, value_dead == 0)
+		return type_value(type)
 	pop_ebx_slot()
 	if (types_compatible_with_expression(type, result_type) == 0):
 		warn_type_mismatch(c"assignment", type, result_type)
@@ -120,10 +132,11 @@ int compound_assign_scalar(int op, int type, int implicit_one):
 # Shared lowering for both statement forms. The operand has been parsed
 # (lvalue address in eax, 'type' its declared type) and the '++'/'--'
 # token consumed: the compound assignment sequence with an implicit 1.
+# Statement-only, so the value is always dead.
 int increment_apply(int op, int type):
 	if (hash_index_pending): error(c"'++' and '--' are not supported on map or set elements")
 	if (nd_index_pending): error(c"'++' and '--' are not supported on ndarray elements")
-	return compound_assign_scalar(op, type, 1)
+	return compound_assign_scalar(op, type, 1, 1)
 
 
 # Statement dispatch hook (grammar/statement.w): '++x' / '--x'. The

@@ -72,7 +72,53 @@ void resize_code(int n):
 		code_size = x
 
 
+# --- register-resident locals (docs/projects/register_allocation_pgo.md
+# §2.2, unit R2) ---------------------------------------------------------
+# The backend-side state of function-scoped register promotion. It lives
+# here, in the first backend module, because code_generator/arm64.w (the
+# prologue), x86.w (the emitters) and dwarf.w (the frame notes) all read
+# it and are imported after this file; the scan and the promotion
+# decision are in compiler/regalloc_scan.w.
+#
+# reg_lvalue / reg_lvalue_end: the register lvalue note. sym_emit_value
+# (compiler/symbol_table.w) emits NO bytes for a promoted local; it records
+# the register here with reg_lvalue_end = codepos, the same contract as
+# the lea/imm/cmp notes in x86.w: valid only while nothing has been
+# emitted since. Its consumers (promote_eax and the 32-bit loaders, the
+# '=' rule, the declaration storage hooks, multi-assignment) take the
+# register and clear the note before emitting. Any other emission while
+# the note is current is a compiler bug the guard below reports instead
+# of silently materialising a stale stack word.
+int reg_lvalue
+int reg_lvalue_end
+int reg_lvalue_sym
+# --no-regs / -O0: promote nothing.
+int regalloc_disabled
+# Registers the next prologue must push (set by the pre-scan, consumed by
+# be_function_prologue), the registers the CURRENT function's prologue
+# did push (a bitmask over hardware register numbers, and their count),
+# and whether a scanned function's body is being compiled.
+int regalloc_pending_mask
+int regalloc_saved_mask
+int regalloc_saved_count
+int regalloc_active
+int regalloc_function
+# Promoted locals of the current function (0 lets the stack-slot
+# assertions in x86.w return at once).
+int regalloc_promoted_count
+
+void regalloc_guard_fail();   /* compiler/regalloc_scan.w: the diagnostic */
+
+# The fail-closed guard: a current register lvalue note means some grammar
+# path is about to emit code against the accumulator as if it held the
+# local's address.
+void regalloc_guard():
+	if (reg_lvalue_end != 0):
+		if (reg_lvalue_end == codepos): regalloc_guard_fail()
+
+
 void emit(int n, char *s):
+	if (reg_lvalue_end != 0): regalloc_guard()
 	resize_code(n)
 	for i in range(n):
 		code[codepos] = s[i]
@@ -84,6 +130,7 @@ void emit_string(char* s):
 
 
 void emit_i(int v, int n):
+	if (reg_lvalue_end != 0): regalloc_guard()
 	resize_code(n)
 	char* p = code + codepos
 	save_i(p, v, n)

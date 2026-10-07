@@ -1,0 +1,4 @@
+# wbench_compare_test fixture (programs mode): a baseline every real run
+# exceeds, so the comparison must report a regression.
+sum x86 1 -1 1
+sum x64 1 -1 1

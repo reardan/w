@@ -792,7 +792,7 @@ int st_collect_from(int pc, int sp, int fp, char* out, int max):
 # the binary carries no readable symbols or the stack
 # cannot be unwound.
 int stack_trace_collect(char* out, int max):
-	if (st_jmp_buf == 0): st_jmp_buf = malloc(3 * __word_size__)
+	if (st_jmp_buf == 0): st_jmp_buf = malloc(8 * __word_size__) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
@@ -856,7 +856,7 @@ void st_write_frame(int addr):
 # Write a symbolized stack trace of the calling thread to stderr, or
 # nothing when no frames can be recovered.
 void print_stack_trace():
-	if (st_jmp_buf == 0): st_jmp_buf = malloc(3 * __word_size__)
+	if (st_jmp_buf == 0): st_jmp_buf = malloc(8 * __word_size__) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)

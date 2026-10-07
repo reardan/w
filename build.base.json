@@ -35,6 +35,8 @@
 			"wast_audit": "AST audit tool binary",
 			"ast_expression_suite": "AST migration audit; reruns the whole tests umbrella",
 			"wbench_compare": "hand-run benchmark comparison; wbench_compare_test covers it",
+			"profile_refresh": "regenerates profiles/*.wprof from instrumented runs; mutates the checkout (P1, docs/projects/register_allocation_pgo.md)",
+			"bench_compare": "hand-run/CI program benchmark comparison against tests/bench/baseline.txt; wbench_compare_test covers the logic",
 			"wcoverage_report": "writes a coverage report on demand",
 			"wvm_pool_bench": "benchmark driver",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it"
@@ -172,6 +174,43 @@
 				{"cmd": ["cmp", "bin/wv3", "bin/wv4"]},
 				{"cmd": ["cmp", "bin/wv4", "bin/wv5"]},
 				{"cmd": ["echo", "self-host fixpoint OK: wv3 == wv4 == wv5"]}
+			]
+		},
+		{
+			"name": "build_pgo",
+			"deps": ["wv2"],
+			"inputs": ["profiles/self.wprof", "profiles/self_x64.wprof"],
+			"outputs": ["bin/wv3_pgo", "bin/wv4_pgo", "bin/wv5_pgo", "bin/wv3_pgo_ast", "bin/wv3_pgo_64", "bin/wv4_pgo_64"],
+			"steps": [
+				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo"]},
+				{"cmd": ["bin/wv3_pgo", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo"]},
+				{"cmd": ["bin/wv4_pgo", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv5_pgo"]},
+				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--ast-required", "--ast-emit-retained", "--strict", "w.w", "-o", "bin/wv3_pgo_ast"]},
+				{"cmd": ["bin/wv2", "x64", "--profile-use=profiles/self_x64.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo_64"]},
+				{"cmd": ["bin/wv3_pgo_64", "x64", "--profile-use=profiles/self_x64.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo_64"]}
+			]
+		},
+		{
+			"name": "verify_pgo",
+			"tags": ["tests"],
+			"deps": ["build_pgo"],
+			"inputs": [],
+			"steps": [
+				{"cmd": ["cmp", "bin/wv3_pgo", "bin/wv4_pgo"]},
+				{"cmd": ["cmp", "bin/wv4_pgo", "bin/wv5_pgo"]},
+				{"cmd": ["cmp", "bin/wv3_pgo", "bin/wv3_pgo_ast"]},
+				{"cmd": ["cmp", "bin/wv3_pgo_64", "bin/wv4_pgo_64"]},
+				{"cmd": ["echo", "PGO self-host fixpoint OK: wv3_pgo == wv4_pgo == wv5_pgo (== retained), wv3_pgo_64 == wv4_pgo_64"]}
+			]
+		},
+		{
+			"name": "profile_check",
+			"tags": ["tests"],
+			"deps": ["wv2", "wprof"],
+			"steps": [
+				{"cmd": ["bin/wprof", "stats", "profiles/self.wprof", "w.w"]},
+				{"cmd": ["bin/wprof", "stats", "--arch", "x64", "profiles/self_x64.wprof", "w.w"]},
+				{"cmd": ["bin/wprof", "stats", "profiles/bench.wprof", "tests/bench/sum.w", "tests/bench/sieve.w", "tests/bench/sha256_1m.w", "tests/bench/siphash_keys.w", "tests/bench/inflate_corpus.w", "tests/bench/regex_backtrack.w", "tests/bench/matmul_256.w", "tests/bench/strcmp_sort.w"]}
 			]
 		},
 		{
@@ -372,6 +411,12 @@
 			"name": "tests",
 			"deps": [
 				"tests_x64"
+			]
+		},
+		{
+			"name": "bench",
+			"deps": [
+				"bench_report"
 			]
 		}
 	]

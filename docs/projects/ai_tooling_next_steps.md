@@ -905,3 +905,128 @@ issues at once on a 4-CPU machine. Friction they reported:
   `--no-turbo-fast-api-calls` with `v8.setFlagsFromString` before
   compiling the module. Still open: say in the `verify_wasm` output which
   runner was used.
+
+## Register promotion (2026-10-07, unit R2 of register_allocation_pgo.md)
+
+- **`lib/testing.w` prints each test function's code address** (`Run:
+  'test_x()' -> 0x0806e2c4`), so comparing the output of two builds of
+  one test program (`tests/regalloc_diff_test.w` builds every runnable
+  test with and without `--no-regs`) needs the addresses blanked first.
+  An option to print the name only would make outputs comparable as
+  they are.
+- **A compile-time-constant check on string globals:** `char* dir =
+  c"bin/x"` at file scope is rejected ("initializer for global must be
+  a compile-time constant"), and `const char*` is rejected the same
+  way, so a tool that wants a named path constant writes a function
+  returning the literal.
+- **`for i in range(hi, 0, -2)` never iterates:** the range loop's
+  condition is always `var < end`, so a negative step is accepted and
+  silently runs zero times. A diagnostic for a constant negative step
+  (or `>` for negative steps) would catch it.
+- **Compiler-internal assertions need the symbol's name, not its record
+  offset:** scope exits truncate the symbol table, so a record offset
+  recorded earlier can alias a later record at the same offset. The
+  promotion's slot assertion had two false positives from that before
+  it compared names (`sym_probe(name) == offset`). Worth a helper on
+  the symbol table ("is this record still the live declaration of this
+  name").
+- **Callgrind Ir of the compiler is not repeatable to better than
+  ~3%:** `structures/hash_table.w` draws a per-process random siphash
+  seed, so two runs of one `bin/wv2` on one input differ in
+  collision patterns (7.51 G vs 7.72 G seen on `w.w`). An
+  environment variable or flag that pins the seed would make
+  `wbench --no-valgrind`'s opposite, Ir comparisons, trustworthy at
+  the 1% level the PGO plan wants to read.
+
+## Source-owned targets and the profile tooling (2026-10-07, PGO plan P1)
+
+Friction met while adding `--profile-generate`, `bin/wprof` and
+`./wbuild profile_refresh` (docs/projects/register_allocation_pgo.md §11):
+
+- **A `# wbuild: target=` block with no `tag=` cannot live entirely in
+  its source file**: `manifest_check` rejects a target that belongs to
+  no umbrella unless `build.base.json`'s `generate.no_umbrella` lists
+  it, so every hand-run maintenance target (`profile_refresh` joins
+  `wbench_compare`, `update`) still touches the shared base file. A
+  `# wbuild: no_umbrella="<reason>"` directive next to `target=` would
+  keep such targets fully source-owned.
+- **No `rm` in steps**: wexec runs commands without a shell and the
+  repo has `tools/touch.w`/`tools/chmod.w` but nothing that removes or
+  truncates a file, so `bin/wprof` grew a `clear` subcommand just to
+  empty the O_APPEND dump before a profiled run.
+- **`file_write_text` creates 0755 files** (already noted above):
+  `bin/wprof` chmods its output to 0644 so committed `profiles/*.wprof`
+  are not executable.
+- **A `char*` global cannot be initialised from a `c"..."` literal**
+  ("initializer for global must be a compile-time constant"); a
+  zero-argument function returning the literal is the workaround used
+  in tests/profile_generate_test.w.
+
+## Benchmark corpus and `wbench --programs` (2026-10-07, regalloc/PGO plan B1)
+
+- **valgrind does not read the symbol table of W binaries.**
+  `callgrind_annotate` names every W function `file.w:0x<address>`
+  (the DWARF line table gives it the file, the `.symtab` entries have
+  no size so it never attributes addresses to them), while a gcc
+  binary's functions are named directly. `bin/wbench --programs`
+  works around it by resolving each address with `nm -n` against the
+  binary (the symbols are there) and prints the address when `nm` is
+  absent. Emitting `st_size` on the function symbols
+  (`code_generator/elf_32.w`/`elf_64.w`) would make every valgrind
+  tool, `perf` and `addr2line` name W functions without the detour.
+- **Instruction counts overflow a 32-bit word.** The self-compile is
+  7.2 G instructions; `bin/wbench` is an x86 binary, so it records
+  callgrind's count in thousands (`kIr`) and parses the number by
+  dropping its last three digits rather than dividing. A 64-bit
+  `wbench` (`binary=wbench arch=x64`) would remove the unit, at the
+  cost of needing an x86-64 host for the compile-speed baseline too.
+- **The sandbox this unit ran in refuses `for p in ...; do bin/wv2
+  ...` loops and heredocs with variables** as "too complex to verify";
+  the workaround was to write each loop to a script file in the
+  scratchpad and run `bash <file>`. Not a repo bug, but worth knowing
+  for the next agent calibrating sizes across a corpus.
+
+## Loop-scoped registers and the operand folds (2026-10-07, regalloc/PGO plan R3)
+
+- **`list[list.length - 1] = v` is rejected as "cannot assign to
+  read-only buffer field".** The grammar sees the `.length` read inside
+  the index expression and treats the whole statement as a store to the
+  field; `int last = list.length - 1` then `list[last] = v` compiles.
+  A false positive in the lvalue check, worth fixing in `grammar/` (it
+  bit `compiler/regalloc_scan.w`'s `rl_eligible` stack twice).
+- **`wtest changed` maps every compiler-tree diff to `verify` alone.**
+  A change under `code_generator/`, `grammar/` or `compiler/` prints
+  `verify self_host_warning_test parser_generator_w_test`, so the
+  targets that actually exercise an emitter change (`asm_x64_test`,
+  `local_load_fold_test`, `regalloc_test`, `ast_retained_emit_test`,
+  `repl_test`, the `defer_*`/`goto_*`/`generator_*` families) have to
+  be named by hand from `./wbuild --list`. A residue rule in
+  `tools/test_map.w` mapping `code_generator/x86.w` to the encode and
+  fold suites (and `compiler/regalloc_scan.w` to the `regalloc_*`
+  targets) would make the selection trustworthy for backend work.
+- **The gcc oracle pattern worked well**: the new `regalloc_test`
+  cases were written once in C with `intptr_t` locals, run at `-O0` to
+  obtain the expected values, then transcribed; every expected number
+  in `test_r3_shapes` / `test_r3_loops` comes from that run, so a
+  wrong fold cannot hide behind an expectation computed by the same
+  compiler. Values must still fit 32 bits for the x86 twin (two
+  constants had to be shrunk).
+
+## Profile-driven register scan (2026-10-07, PGO plan P2 phase B)
+
+- **`check --lint`'s `void-pointer-conversion` points at the statement
+  after the offending one.** `char* p = malloc(4)` on line 5 followed
+  by `int j = 0` on line 6 is reported at `6:2` with line 6 quoted;
+  the same happens for an assignment (`buf = malloc(n)`). The rule
+  fires when the next token has already been consumed, so the
+  position should be captured before the initializer is parsed
+  (grammar/variable_declaration.w / the assignment path). Fixing the
+  seven cases in compiler/profile_use.w needed the lines before the
+  reported ones.
+- **A profile's accounting cost is not visible from `--stats`.**
+  Finding where `--profile-use`'s extra ~330 M instructions went took
+  callgrind plus the `nm -n` address mapping from B1's note above;
+  a `--stats` line with the number of bytes hashed (and the hash's
+  share of the span bytes) would have answered it directly. Added
+  nothing for it this time: the hashed byte count is the sum of the
+  matched functions' span sizes, which `w defhash` can report.

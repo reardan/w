@@ -123,6 +123,7 @@ void generator_function_definition(int current_symbol):
 		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_generator, 0, 0, 0)
 		else:
 			sym_define_global(current_symbol)
+			profile_generator_enter(current_symbol, last_global_declaration)   # P1: --profile-generate
 			current_function_symbol = current_symbol
 			in_generator_body = 1
 			enclosing_tab_level = 0

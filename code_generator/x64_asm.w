@@ -33,24 +33,28 @@ void define_asm_functions_x64_portable():
 	x64_asm(c"mov [rax+0x58],r11; mov [rax+0x60],r12; mov [rax+0x68],r13")
 	x64_asm(c"mov [rax+0x70],r14; mov [rax+0x78],r15; pop rax; ret")
 
-	# repl_setjmp(buf): save return address, caller rsp and rbp into the
-	# 24-byte buffer, then return 0. repl_longjmp resumes here returning
-	# the value it was given. Mirrors the x86 stub: the W codegen keeps no
-	# live values in callee-saved registers across calls, so rsp/rbp are
-	# all that must survive.
+	# repl_setjmp(buf): save return address, caller rsp and rbp, then the
+	# callee-saved rbx and r12-r15 (register promotion keeps locals of
+	# frames below the caller in r12-r15: longjmp must restore the
+	# caller's values) into the jmp_buf_words-word buffer (lib/setjmp.w),
+	# then return 0. repl_longjmp resumes here returning its value.
 	sym_define_declare_global_function(c"repl_setjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"setjmp")
 	x64_asm(c"mov rax,[rsp+8]; mov rcx,[rsp]; mov [rax],rcx; lea rcx,[rsp+8]")
-	x64_asm(c"mov [rax+8],rcx; mov [rax+0x10],rbp; xor eax,eax; ret")
+	x64_asm(c"mov [rax+8],rcx; mov [rax+0x10],rbp; mov [rax+0x18],rbx")
+	x64_asm(c"mov [rax+0x20],r12; mov [rax+0x28],r13; mov [rax+0x30],r14")
+	x64_asm(c"mov [rax+0x38],r15; xor eax,eax; ret")
 
-	# repl_longjmp(buf, val): restore rsp/rbp and jump to the address
-	# saved by repl_setjmp with val in rax. Like all stubs, the first
-	# argument sits at the highest stack offset.
+	# repl_longjmp(buf, val): restore rbx/r12-r15, rsp and rbp and jump to
+	# the address saved by repl_setjmp with val in rax. Like all stubs,
+	# the first argument sits at the highest stack offset.
 	sym_define_declare_global_function(c"repl_longjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"longjmp")
-	x64_asm(c"mov rax,[rsp+8]; mov rcx,[rsp+0x10]; mov rsp,[rcx+8]")
+	x64_asm(c"mov rax,[rsp+8]; mov rcx,[rsp+0x10]; mov rbx,[rcx+0x18]")
+	x64_asm(c"mov r12,[rcx+0x20]; mov r13,[rcx+0x28]; mov r14,[rcx+0x30]")
+	x64_asm(c"mov r15,[rcx+0x38]; mov rsp,[rcx+8]")
 	x64_asm(c"mov rbp,[rcx+0x10]; jmp [rcx]")
 
 	# gen_switch(int* save_esp_here, int restore_esp): the generator

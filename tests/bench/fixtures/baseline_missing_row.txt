@@ -1,0 +1,3 @@
+# wbench_compare_test fixture (programs mode): the x64 row is missing, which
+# the comparison must report.
+sum x86 1000000000 -1 1000000000

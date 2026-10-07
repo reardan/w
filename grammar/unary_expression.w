@@ -212,6 +212,10 @@ int unary_expression_operand():
 	int op = ident_byte_class[token[0] & 255] == 0
 	if (op && accept(c"&")):
 		type = unary_expression()
+		# A register-resident local has no address: the pre-scan excludes
+		# address-taken names, so this is a compiler bug, reported here
+		# rather than by the emit() guard at some later instruction
+		if (regalloc_note_current()): regalloc_guard_fail()
 		# eax already holds the lvalue address; that address is the value here
 		return 3 /* constant */
 	else if (op && accept(c"*")):

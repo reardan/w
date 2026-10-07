@@ -49,6 +49,7 @@ void pop_to(int base):
 
 # mov eax, <slot>
 void load_slot(int slot):
+	regalloc_slot_assert(slot - 1)  # never a promoted local's word
 	mov_eax_esp_plus((stack_pos - slot) << word_size_log2)
 
 

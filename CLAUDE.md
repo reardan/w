@@ -48,6 +48,9 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild verify      # self-host fixpoint (wv3==wv4==wv5) — REQUIRED gate for any compiler change
 ./wbuild verify_x64  # same for the 64-bit target; run for codegen/word-size work
 ./wbuild verify_arm64  # same for the ARM64 target
+./wbuild verify_pgo  # fixpoint of the --profile-use=profiles/self.wprof chain (wv3_pgo == wv4_pgo == wv5_pgo, x86 + x64); in tests
+./wbuild profile_refresh  # regenerate profiles/*.wprof (self, self_x64, bench corpus) from instrumented runs; commit the result when hot code changed
+./wbuild profile_check  # non-failing report: how much of each committed profile still matches the tree (bin/wprof stats); in tests
 ./wbuild tests       # full pre-merge suite
 ./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
@@ -68,7 +71,10 @@ kept as a comparison oracle until it is retired), and `--ast-required`
 additionally rejects any expression fallback (`./wbuild ast_expression_suite`
 runs the whole suite that way; it is not in `tests`). The pinned seed
 predates the flip, so `./w w.w` (the bin/wv2 stage) still compiles
-streaming; bin/wv2 onward compiles AST.
+streaming; bin/wv2 onward compiles AST. On x86/x64, register promotion of
+hot locals is on by default under either front end (`--no-regs`/`-O0`
+turns it off) and `--profile-use=profiles/<name>.wprof` applies a committed
+profile (docs/projects/register_allocation_pgo.md).
 
 **Run a single/focused test**: `git diff --name-only HEAD | ./bin/wtest changed`
 prints the exact build targets for your diff (build wtest with `./wbuild wtest`);

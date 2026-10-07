@@ -25,9 +25,16 @@ Contract, as in C, with the W-specific differences marked:
   0 again rather than 1, so always pass a nonzero value.
 - The function that called setjmp must still be running when longjmp
   is called (jumping into a frame that has returned is undefined).
-- Locals live in memory in W (there is no register allocation), so a
-  local changed between setjmp and longjmp keeps its latest value; C
-  only guarantees that for volatile locals.
+- A function that calls setjmp keeps every local in memory (the
+  compiler's register promotion, docs/projects/register_allocation_pgo.md
+  §2.2, skips any body that names setjmp/longjmp), so a local of THAT
+  function changed between setjmp and longjmp keeps its latest value; C
+  only guarantees that for volatile locals. Other functions may hold
+  locals in callee-saved registers (x86 esi/edi, x64 r12-r15): setjmp
+  saves that set and longjmp restores it, so a frame unwound by longjmp
+  cannot leak a register value into the setjmp caller's callers. The
+  same contract binds hand-written asm: an asm body or stub must
+  preserve ebx/esi/edi (x86), rbx/r12-r15 (x64) and x19-x28 (arm64).
 - longjmp skips 'defer' statements of the frames it unwinds, and the
   suspended generators of for-in loops in them are not freed.
 - Not available on wasm (no way to unwind the host stack; the stubs
@@ -37,9 +44,17 @@ Contract, as in C, with the W-specific differences marked:
 */
 
 
-# The three words the stubs save: resume address, stack pointer and
-# frame pointer (on arm64 the x28 W stack pointer and x29).
+# The words the stubs save (jmp_buf_words in lib/lib.w): resume address,
+# stack pointer and frame pointer (on arm64 the x28 W stack pointer and
+# x29), then the callee-saved registers register promotion may use
+# (x86: ebx esi edi in r0..r2; x64: rbx r12 r13 r14 r15 in r0..r4;
+# arm64 saves nothing there yet, since it promotes nothing).
 struct jmp_buf:
 	int pc
 	int sp
 	int fp
+	int r0
+	int r1
+	int r2
+	int r3
+	int r4
