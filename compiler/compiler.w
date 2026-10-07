@@ -950,8 +950,9 @@ void help_shared_options():
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
 	println(c"                        writes <output>.wprofmap; the program appends to $W_PROFILE_OUT")
 	# P2
-	println(c"  --profile-use=<path>  read a .wprof profile (bin/wprof merge): hot/cold function")
-	println(c"                        classes and 16-byte alignment of hot loop heads")
+	println(c"  --profile-use=<path>  read a .wprof profile (bin/wprof merge): cold functions skip")
+	println(c"                        register promotion, hot ones rank locals by measured loop")
+	println(c"                        counts, hot loop heads are 16-byte aligned")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")

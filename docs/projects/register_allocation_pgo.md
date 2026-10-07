@@ -1453,3 +1453,204 @@ Not claimed / for the next unit:
 - The accumulator model still materialises `mov eax,R; mov ebx,eax`
   for a register operand; a direct `op eax,R` form is the obvious next
   peephole.
+
+### P2 — phase B: the profile decides the register scan (2026-10-07)
+
+**What landed.** With R2 merged, `--profile-use` now drives the
+register pre-scan (`compiler/regalloc_scan.w`) through one new file,
+`compiler/regalloc_profile.w`, imported by the scanner right after its
+byte source (`rs_next`/`rs_c`):
+
+- *The decision.* `regalloc_function_scan` asks `rs_profile_begin`
+  for the function's class before the heuristic runs. A **cold**
+  function skips the scan entirely (no probe, no full pass, nothing
+  promoted); a **hot** one goes straight to the full pass without the
+  loop probe; an **unknown** one (no profile, file not covered, hash
+  mismatch) keeps R2's heuristic unchanged. The class is computed even
+  where nothing else runs (`--no-regs`, other targets, variadic
+  bodies) because the loop alignment of phase A reads it.
+- *The weights.* In a matched function `rs_weight()` returns, for a
+  use inside a loop, that loop's head evaluations per entry from the
+  profile (`profile_loop_iters(ordinal) / entries`, clamped to
+  [1, 2^20], 1 for a loop that never ran) instead of 8^depth; the
+  loop's ordinal is the n-th `while`/`for` keyword at a line start,
+  which is how P1 numbered the `l` entries. Outside loops the weight
+  stays 1, so the "> 7 uses" threshold now means "> 7 dynamic uses
+  per entry" for a matched function.
+- *The hash.* The function is identified by its defhash before its
+  body is parsed, and the hash is computed from the scanner's byte
+  source instead of phase A's tokenizer look-ahead: `rs_hash_span` is
+  a `get_token`-compatible byte lexer (identifier runs with UTF-8
+  sequences, `s"`/`c"`/`f"` and plain literals with escapes, numbers
+  with fraction and exponent, the `<=>|&!` runs, `+ - * % ^` with `=`
+  or doubling, `:=`, both comment forms, single characters) over the
+  same window R2 reads, feeding `profile_use.w`'s `<kind><len>:<text>`
+  framing (spelled inline, no allocation per token) into sha256. Its
+  end rule is defhash's (the first token opening a line at tab level
+  0 after the first token). Anything the real tokenizer would reject
+  aborts and leaves the function unknown. The result is bit-exact: a
+  freshly generated profile matches every hashed function (`stale 0`
+  on 982 x86 / 1,020 x64 hashes in the self-compile; `profile_check`
+  reports 100% for the three committed profiles). The hash is only
+  computed for names the profile knows (`profile_use_names`); a
+  function whose name is absent from a profile covering its file is
+  cold without a hash.
+- *Edits to R2's file* are confined to tagged `# P2` lines: the
+  import after `rs_next`, the first line of `rs_weight`, one call per
+  loop push in `rs_identifier`, and the function-level decision in
+  `regalloc_function_scan` (an early return for cold, `rs_mode = 1`
+  for hot, the pass-begin calls and the fruitless-pass counter).
+- *`--stats`* prints `regalloc: full passes promoting nothing: N` and,
+  with a profile, `regalloc: profile: cold bodies skipped: N hot
+  bodies scanned: M`; `tests/profile_use_test.w` asserts them on its
+  fixture (3 cold skipped, 1 hot scanned) and compares the
+  stale-profile image with a `--no-regs` build (a stale, matched-by-
+  name function is unknown and takes the heuristic; the fixture's
+  other, cold functions skip it, so the image differs from the plain
+  one by exactly R2's promotions).
+- The three profiles were regenerated against this tree with
+  `./wbuild profile_refresh` (every compiler function's hash changed
+  with R2); `verify_pgo` and `profile_check` pass.
+
+**Where the `--profile-use` compile time goes** (callgrind, one
+compiler binary built from this tree, x86, `w.w`; the per-function
+split uses B1's `nm -n` mapping):
+
+| `bin/wv3` on `w.w` | Ir | vs default |
+| --- | ---: | ---: |
+| `--no-regs` (no scan) | 7.431 G | −575 M |
+| default (static heuristic) | 8.006 G | — |
+| `--profile-use=<fresh self profile>` | 8.338 G | +332 M (+4.1%) |
+
+Phase A's look-ahead cost +8–14% of wall time; this phase's hash pass
+costs +4.1% of instructions on the same binary, and 250 M of those
+332 M are `sha256_block_w`: `lib/sha256.w` runs at ≈ 350 Ir/byte and
+the 982 hashed spans frame to ≈ 0.7 MB. The lexer and framing
+(`rs_hash_ident_run`, `rs_hash_token`, `profile_hash_token`,
+`rs_hnext`, `rs_hash_put`: ≈ 90 M), the map lookups and name copies
+(`__w_hash_sip`, `strcmp`, `strcpy`, `profile_use_load`: ≈ 80 M) are
+the rest; skipping 1,878 cold bodies saves only ≈ 70 M because R2's
+probe already stops at the first loop or hazard, so the bodies that
+are cheap to skip were cheap to scan. An earlier cut of this phase
+used `itoa`/`malloc` per token and `is_ident_part_byte` per byte and
+cost +449 M; the inline framing and the ASCII fast path in the
+identifier loop removed 117 M. What remains is the hash function:
+sha256 is the profile's key (P1's `.wprofmap`, `w defhash`), so the
+same bytes must be hashed by the same function, and a faster
+`lib/sha256.w` (a word-at-a-time message schedule, or R3's loop
+registers in its compression loop) is the only lever left — it would
+also cut the ≈ 12% of every compile that the GNU build-id hash of the
+image costs, which is the larger prize.
+
+**Goal 3 — should the static heuristic be cheaper?** Measured on the
+self-compile without a profile: of 1,006 full passes, 109 (10.8%)
+promote nothing, so a pre-filter could cut at most a tenth of the
+full-pass time, and the whole scan is 575 M Ir ≈ 7% of the compile;
+the gain is bounded by < 1% and no pre-filter was added. (With the
+profile, 352 of 836 full passes promote nothing: hot functions are
+forced into the full pass and many have no local used > 7 times per
+entry. That is the price of not probing, ≈ 20 M Ir, and it is what
+makes the hot path's result exact.)
+
+**Measurements** (4-core cloud container, `w.w` self-compile, same
+input tree; callgrind Ir is one run, wall is best of 5 with the median
+beside it; "base" is the main-branch compiler before R1/R2/P2 from the
+scratchpad, built by the pinned seed):
+
+| self-compile of `w.w` | callgrind Ir | wall, best of 5 (median), 4 rounds |
+| --- | --- | --- |
+| base main x86 (`scratchpad/base/wv_x86`) | 7.517 G | 802 (813) ms |
+| `bin/wv3` x86, plain fixpoint | 8.00–8.05 G (4 runs) | 966 (1009), 908 (953), 939 (974), 941 (979) ms |
+| `bin/wv3_pgo` x86, built with `self.wprof` | 7.82–8.07 G (4 runs: 7.834, 7.823, 7.972, 8.073) | 995 (1045), 911 (938), 936 (981), 970 (988) ms |
+| base main x64 (`scratchpad/base/wv_x64`) | 7.801 G | 860 (875) ms |
+| `bin/wv3_64` x64, plain fixpoint | 8.060 G | 862 (880), 813 (831), 835 (881), 824 (844) ms |
+| `bin/wv3_pgo_64` x64, built with `self_x64.wprof` | 8.036 G | 897 (915), 793 (805), 797 (823), 820 (822) ms |
+
+Reading: the PGO-built compiler is not measurably faster than the
+plain fixpoint. Three of four x86 Ir runs are 0.5–2.7% below the plain
+compiler's band and one is 0.5% above it; the wall figures of the two
+interleave on every round (another agent's builds shared the box, so
+the medians drift by up to 10% between rounds and only the best-of-5
+within a round compares). The x86 PGO image is byte-for-byte the same
+size (2,794,912) and the x64 one 4,096 bytes smaller (3,193,664 vs
+3,197,760: 789 promoted locals instead of 1,496 on x86, 1,150 instead
+of 2,156 on x64, so fewer push/pop pairs and `mov R,eax` stores). The
+compiler's own hot code is the build-id sha256, the hash tables and
+the tokenizer, whose loops R2 already promotes with or without a
+profile; what the profile changes is that 1,879 cold functions are
+left on the stack, and that is neutral for a program whose time is in
+a few dozen functions. Against the base main compiler the fixpoint
+compilers run 0.5 G (x86) / 0.26 G (x64) more instructions and
+≈ 100–160 ms / ≈ 0 ms more wall: that is the cost of running R2's scan on
+every compile (`--no-regs` on the same binary: 7.524 G, 730–781 ms on
+x86), not of the promoted code, which runs the same instruction count
+as the unpromoted base.
+
+Decision counts in the x86 self-compile with the committed
+`profiles/self.wprof`: functions seen 3,866, hot 365, cold 1,879, stale 0, hashes computed 982; 836 bodies scanned, 789 locals promoted, 352 full passes promoting nothing (static heuristic: 1,007 / 1,496 / 109); 47 loops aligned, 395 pad bytes. x64 with `self_x64.wprof`: functions seen 3,871, hot 373, cold 1,877, stale 0, hashes computed 1,020; 844 / 1,150 / 357 (static: 1,007 / 2,156 / 109); 52 loops aligned, 375 pad bytes.
+
+The compile-time cost of the flag itself, on the fixpoint compilers
+(the input to the `build_pgo` chain's builds, not to the compiler it
+produces):
+
+| `w.w`, same binary | callgrind Ir | syscalls (`strace -c`) | wall, best of 5, 4 rounds |
+| --- | --- | --- | --- |
+| `bin/wv3` x86, `--no-regs` | 7.524 G | 1,496 (691 read, 4 lseek) | 781, 756, 756, 730 ms |
+| `bin/wv3` x86, default scan | 7.99–8.14 G (4 runs) | 10,126 (1,140 read, 8,185 lseek) | 978, 900, 943, 985 ms |
+| `bin/wv3` x86, `--profile-use=profiles/self.wprof` | 8.32–8.47 G (4 runs; +0.19 to +0.48 G, mean +0.31 G = +3.8%) | 8,440 (1,103 read, 6,350 lseek) | 906, 941, 945, 955 ms |
+| `bin/wv3_64` x64, `--no-regs` | 7.520 G | | 780 ms |
+| `bin/wv3_64` x64, default scan | 8.242 G | | 819 ms |
+| `bin/wv3_64` x64, `--profile-use=profiles/self_x64.wprof` | 8.367 G (+1.5%) | | 841 ms |
+
+The flag's wall cost is inside the noise of the default scan on x86:
+its extra instructions are the hash pass, and against them every cold
+body skips the scan's `lseek` pair (each scanned body saves and
+restores the fd position; hashed bodies pay one pair too), so the
+compile makes 1,700 fewer system calls. R2's scan itself is the larger
+item on both axes (+0.5 G and +8,600 system calls over `--no-regs`,
+150–200 ms of wall); phase A's +8–14% is gone.
+
+Bench corpus (`tests/bench/*.w`, built by `bin/wv2` with and without
+`profiles/bench.wprof`; callgrind Ir and best-of-5 wall of the
+produced programs):
+
+| program | x86 Ir plain | x86 Ir pgo | x86 ms plain / pgo | x64 Ir plain | x64 Ir pgo | x64 ms plain / pgo |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| sum | 9.600 G | 9.600 G (+0.0%) | 488 / 531 | 9.600 G | 9.600 G (+0.0%) | 508 / 533 |
+| sieve | 3.597 G | 3.597 G (+0.0%) | 395 / 401 | 3.590 G | 3.590 G (+0.0%) | 377 / 377 |
+| sha256_1m | 7.485 G | 7.406 G (−1.1%) | 430 / 444 | 7.436 G | 7.361 G (−1.0%) | 462 / 463 |
+| siphash_keys | 5.955 G | 5.682 G (−4.6%) | 664 / 663 | 6.492 G | 6.137 G (−5.5%) | 884 / 778 |
+| inflate_corpus | 6.480 G | 6.478 G (−0.0%) | 480 / 478 | 6.352 G | 6.347 G (−0.1%) | 466 / 473 |
+| regex_backtrack | 9.693 G | 9.695 G (+0.0%) | 545 / 551 | 9.792 G | 9.703 G (−0.9%) | 565 / 558 |
+| matmul_256 | 7.598 G | 7.606 G (+0.1%) | 443 / 441 | 7.596 G | 7.602 G (+0.1%) | 456 / 431 |
+| strcmp_sort | 4.497 G | 4.490 G (−0.2%) | 446 / 438 | 4.576 G | 4.562 G (−0.3%) | 490 / 477 |
+
+Reading: the program's instruction count is exact (no hash-seed
+noise in these programs), so the Ir column is the result. `sum` and
+`sieve` are byte-identical in their loops (the one hot function
+promotes the same locals either way). `siphash_keys` gains 4.6% / 5.5%
+and `sha256_1m` 1%: with real iteration counts the rank inside the
+hashing loops changes (siphash_keys x64: 134 locals promoted with the
+profile against 227 without, 60 hot bodies, 221 cold ones skipped),
+and the two registers on x86 / four on x64 go to the locals the loop
+actually touches per iteration rather than to the ones with the most
+textual uses at the deepest nesting. `regex_backtrack` x64 −0.9% is the
+same effect in the matcher; the rest is within ±0.3%, and nothing got
+slower by more than 0.1%. Wall columns are best of 5 on a shared box
+and differ by up to 9% on identical instruction counts (`sum` x86), so
+only the Ir column is read.
+
+**Not claimed / gaps.** The weight function changes which locals a
+hot function promotes, not how many registers it has (2 on x86, 4 on
+x64) or what the promoted code looks like; R3's loop-scoped registers
+and the peepholes are where the hot path's instructions go down. A
+function whose profile entry is stale takes the static heuristic, so
+a tree with many edits since `profile_refresh` drifts toward R2's
+default rather than toward "no promotion" — the PGO chain's result is
+then a mixture, which `profile_check` makes visible but does not fail.
+Cold-by-absence (a function added after the profile) still skips the
+scan (phase A's caveat). Generic instantiations share a hash and so a
+class. The `l` ordinals assume a loop keyword at a line start; a
+`while` after a `:` on the same line shifts the ordinals after it
+(weights only). arm64, darwin, win64 and wasm compute classes and
+promote nothing, as before.
