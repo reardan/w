@@ -11,6 +11,10 @@ kernel configuration in `tools/wvm_kernel.config`.
 The usage sections below distinguish these implementations from the target
 architecture.
 
+The macOS Apple Silicon backend is not implemented. Its staged implementation
+and native acceptance gates are in [vms_darwin_plan.md](vms_darwin_plan.md),
+tracking [#591](https://github.com/reardan/w/issues/591).
+
 Goal: let agents (wharness, wexec steps, anything driving the toolchain)
 run work inside virtual machines that start and stop in well under a
 millisecond, and that share RAM pages with each other instead of each
