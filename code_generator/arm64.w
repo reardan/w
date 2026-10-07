@@ -343,7 +343,8 @@ int arm64_pac
 
 
 # Emit an address slot: on x86 a `mov eax, imm32` whose imm32 doubles as a
-# backpatch-chain cell; on arm64 an adrp+add pair, which is PC-relative
+# backpatch-chain cell; on x64 lea rax,[rip+disp32]; on arm64 an
+# adrp+add pair. The latter two are PC-relative
 # and therefore slide-proof (PIE groundwork for the Mach-O target — the
 # kernel slides the image and nothing applies relocations, so absolute
 # literals in code would break). The slot's stored value lives split
@@ -356,6 +357,7 @@ void be_addr_slot_emit():
 	elif (target_isa == 1):
 		a64(op(0x90, 0x000000))   # adrp x0, . (page immediate patched)
 		a64(op(0x91, 0x000000))   # add x0, x0, #0 (pageoff patched)
+	elif (word_size == 8): emit(7, c"\x48\x8d\x05....")   # lea rax,[rip+disp32]
 	else: emit(5, c"\xb8....")   # mov $imm32,%eax
 
 
@@ -389,18 +391,20 @@ int arm64_addr_slot_read(int pos):
 # Read/write the value threaded through an address slot. pos is the
 # buffer offset of the slot's last 4 bytes (codepos-4 right after
 # be_addr_slot_emit, or a recorded chain link minus code_offset). On the
-# x86 family the slot is a plain imm32 cell, byte-identical to the
-# original save_int/load_int accesses; on arm64 the value is
-# reassembled from the adrp+add immediates.
+# x86 target the slot is a plain imm32 cell; x64 reconstructs the
+# address from RIP plus a signed disp32, and arm64 reassembles it
+# from the adrp+add immediates.
 void be_addr_slot_write(int pos, int v):
 	if (target_isa == 2): wasm_addr_slot_write(pos, v)
 	elif (target_isa == 1): arm64_addr_slot_write(pos, v)
+	elif (word_size == 8): save_int32(code + pos, v - code_offset - pos - 4)
 	else: save_int(code + pos, v)
 
 
 int be_addr_slot_read(int pos):
 	if (target_isa == 2): return wasm_addr_slot_read(pos)
 	if (target_isa == 1): return arm64_addr_slot_read(pos)
+	if (word_size == 8): return code_offset + pos + 4 + load_int(code + pos)
 	return load_int(code + pos)
 
 

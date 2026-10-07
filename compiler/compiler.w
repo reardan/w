@@ -826,6 +826,7 @@ void verbosity_raise():
 # options (--pac, --wasm-acc, -v/--verbose) take effect in link_impl's
 # pre-scans, so here they are only recognized.
 int link_option(char* arg, int apply):
+	if (strcmp(arg, c"--pie") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
 		if (apply): bounds_mode = 1
 		return 1
@@ -961,6 +962,7 @@ void help_shared_options():
 	println(c"                        counts, hot loop heads are 16-byte aligned")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
+	println(c"  --pie                 emit an x64 Linux position-independent executable")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
@@ -1144,6 +1146,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# this reset (they compile into their own RWX mmap buffer), so
 	# data_split stays 0 on their paths.
 	data_split = 1
+	elf_pie = 0
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
@@ -1284,6 +1287,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		else if (arg_is_help(*flag_arg)):
 			help_link()
 			exit(0)
+		else if (strcmp(*flag_arg, c"--pie") == 0): elf_pie = 1
 		else if (starts_with(*flag_arg, c"-")):
 			if (link_option(*flag_arg, 0) == 0): unrecognized_option_error(*flag_arg)
 			# Full-expression migration flags cover the implicit runtime
@@ -1305,6 +1309,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
+	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
+		error(c"--pie requires the x64 Linux target")
 	import_roots_scan(argc, argv)
 	push_basic_types()
 	pointer_indirection = 0

@@ -422,7 +422,8 @@ void protobuf_emit_section(int message_type):
 			if (elem_kind == protobuf_kind_bool): elem_aux = type_get_size(bool_type)
 			aux = code_offset + codepos
 			emit_target_word(elem_kind)
-			emit_target_word(elem_aux)
+			if (elem_kind == protobuf_kind_message): be_blob_pointer(elem_aux)
+			else: emit_target_word(elem_aux)
 		save_int(aux_words + i * 4, aux)
 		i = i + 1
 
@@ -445,7 +446,7 @@ void protobuf_emit_section(int message_type):
 		emit_target_word(best_number)
 		emit_target_word(load_int(info + 8 + best * 12))
 		emit_target_word(type_get_field_offset_at(message_type, best))
-		emit_target_word(load_int(aux_words + best * 4))
+		be_blob_pointer(load_int(aux_words + best * 4))
 		last = best_number
 		emitted = emitted + 1
 
@@ -454,7 +455,7 @@ void protobuf_emit_section(int message_type):
 	# (list_element_slot_size), and the runtime sizes them from here.
 	assert1(protobuf_desc_lookup(message_type) == code_offset + codepos)
 	emit_target_word(n)
-	emit_target_word(fields_address)
+	be_blob_pointer(fields_address)
 	emit_target_word(type_stack_words(message_type) << word_size_log2)
 	free(aux_words)
 
@@ -500,7 +501,9 @@ void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_c
 	if (sym_lookup(fn_name) < 0):
 		error3(c"protobuf runtime function '", fn_name, c"' is not defined; import libs.extras.protobuf.message")
 	int s = rt_call_begin(fn_name)
-	push_slot_int(desc_address)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_address)
+	push_slot()
 	for i in range(arg_count): push_slot_copy(arg_slot + i)
 	rt_call_end(s)
 
@@ -584,5 +587,6 @@ int protobuf_descriptor_expr():
 		error(c"proto_descriptor argument must be a protobuf message type")
 	if (peek(c")") == 0): error(c"')' expected in proto_descriptor")
 	int desc_address = protobuf_descriptor(t)
-	mov_eax_int(desc_address)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_address)
 	return type_value(type_get_next_pointer(type_lookup(c"pb_message_desc")))

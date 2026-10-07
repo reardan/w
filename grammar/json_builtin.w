@@ -158,7 +158,7 @@ int json_codec_emit_value_desc(int t):
 	int address = code_offset + codepos
 	emit_target_word(kind)
 	emit_target_word(json_codec_size(t, kind))
-	emit_target_word(aux)
+	be_blob_pointer(aux)
 	return address
 
 
@@ -175,7 +175,7 @@ int json_codec_emit_map_desc(int t):
 	emit_target_word(hash_key_kind_for_type(type_map_key_type(t)))
 	emit_target_word(kind)
 	emit_target_word(json_codec_size(value_type, kind))
-	emit_target_word(aux)
+	be_blob_pointer(aux)
 	return address
 
 
@@ -225,11 +225,11 @@ int json_codec_descriptor(int struct_type):
 	while (i < n):
 		int field_type = type_unqualified(type_get_field_type_at(struct_type, i))
 		int kind = json_codec_kind(field_type)
-		emit_target_word(load_int(name_addresses + i * 4))
+		be_blob_pointer(load_int(name_addresses + i * 4))
 		emit_target_word(type_get_field_offset_at(struct_type, i))
 		emit_target_word(kind)
 		emit_target_word(json_codec_size(field_type, kind))
-		emit_target_word(load_int(aux_addresses + i * 4))
+		be_blob_pointer(load_int(aux_addresses + i * 4))
 		i = i + 1
 
 	be_blob_end(p)
@@ -252,7 +252,9 @@ void json_codec_emit_call(int helper, int desc_address, int arg_slot):
 	lazy_emit_helper(json_codec_rt, helper)
 	int s = stack_pos
 	push_slot()
-	push_slot_int(desc_address)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_address)
+	push_slot()
 	push_slot_copy(arg_slot)
 	rt_call_end(s)
 

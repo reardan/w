@@ -517,6 +517,10 @@ void at_hw_list():
 # --- address mapping and symbolization ---
 # In-process (compiler-table) address for a target address, valid only when
 # symbolized. The shared dbg_* helpers all work in in-process addresses.
+int at_from_v(int linked):
+	return linked + attach_delta
+
+
 int at_to_v(int target):
 	return target - attach_delta
 
@@ -661,19 +665,10 @@ void at_frame_command(char* arg):
 
 
 # --- symbolization calibration ---
-# The source was recompiled through the same ELF backend that built the
-# on-disk binary (wdbg_attach_compile), so code_offset is the load base
-# (0x08048000) and the symbol/line tables already hold absolute target
-# addresses: the mapping delta is zero. Confirm by reading /proc/<pid>/exe
-# and comparing it byte-for-byte against the freshly compiled image
-# (code[0..codepos), the exact bytes elf_32.w/elf_64.w write(output_fd, ...)
-# would put on disk): W's static ET_EXEC ELFs load at a fixed address with
-# no ASLR and a single PT_LOAD segment mapping file offset 0 to code_offset,
-# so file byte i is process byte code_offset+i, and the self-host fixpoint
-# means a matching source recompiles to identical bytes. A mismatch (stale
-# source, a different compiler, or /proc/<pid>/exe being unreadable) means
-# the tables cannot be trusted, so symbols stay off and attach runs in raw
-# mode rather than risk printing wrong names.
+# Validate the recompiled image against /proc/<pid>/exe byte-for-byte.
+# The symbol table holds linked addresses; ET_EXEC has zero bias, while
+# PIE gets its bias from AT_PHDR after validation. A stale source or
+# different compiler keeps attach in raw mode instead of trusting names.
 int at_read_exe_image(int pid, char* buf, int n):
 	char* pid_str = itoa(pid)
 	char* p1 = strjoin(c"/proc/", pid_str)
@@ -715,6 +710,26 @@ void at_calibrate():
 			return;
 		i = i + 1
 	free(buf)
+	if (elf_pie):
+		# AT_PHDR is a runtime address; the recompile records its link
+		# address. auxv avoids guessing from the current PC (which may
+		# be in a library) or parsing names in /proc/<pid>/maps.
+		char* path = strjoin(strjoin(c"/proc/", itoa(attach_pid)), c"/auxv")
+		int fd = open(path, 0, 0)
+		free(path)
+		int found = 0
+		if (fd >= 0):
+			char* pair = malloc(2 * __word_size__)
+			while (read(fd, pair, 2 * __word_size__) == 2 * __word_size__):
+				if (load_word(pair) == 3): /* AT_PHDR */
+					attach_delta = load_word(pair + __word_size__) - code_offset - phdr_table_pos
+					found = 1
+					break
+			free(pair)
+			close(fd)
+		if (found == 0):
+			println2(c"wdbg: cannot read PIE load bias; symbol names are disabled (raw addresses only)")
+			return
 	attach_symbolized = 1
 
 
@@ -1186,7 +1201,7 @@ void at_step_prepare():
 			attach_step_stack = dbg_line_stack(entry)
 		int f = dbg_function_at(at_to_v(pcv))
 		if (f >= 0):
-			attach_step_fstart = dbg_sym_address(f)
+			attach_step_fstart = at_from_v(dbg_sym_address(f))
 			attach_step_fend = attach_step_fstart + dbg_sym_size(f)
 
 
@@ -1200,7 +1215,7 @@ int at_step_should_stop(int mode, int ip):
 	# step/next only stop at exact statement starts (local addressing is
 	# only accurate there); a jump target or a call's continuation is
 	# always one.
-	if (ip != code_offset + dbg_line_addr(entry)): return 0
+	if (at_to_v(ip) != code_offset + dbg_line_addr(entry)): return 0
 	if ((dbg_line_line(entry) == attach_step_line) && (dbg_line_file(entry) == attach_step_file)):
 		return 0
 	if (mode == AT_STEP_OVER):

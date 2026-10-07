@@ -169,7 +169,7 @@ void profile_counters_init():
 # disp32 fields are patched in profile_finish once the table exists.
 void profile_emit_increment(int index):
 	if (word_size == 8):
-		emit(4, c"\x48\xff\x04\x25")   # inc QWORD PTR [disp32]
+		emit(3, c"\x48\xff\x05")   # inc QWORD PTR [rip+disp32]
 		profile_words_push(profile_pt_pos, codepos)
 		profile_words_push(profile_pt_counter, index)
 		profile_words_push(profile_pt_offset, 0)
@@ -382,9 +382,12 @@ void profile_finish(char* output_path, int check_mode):
 	int p = 0
 	while (p < profile_pt_pos.count):
 		int target = base + profile_pt_counter.items[p] * 8 + profile_pt_offset.items[p]
+		if (word_size == 8): target = target - code_offset - profile_pt_pos.items[p] - 4
 		save_int32(code + profile_pt_pos.items[p], target)
 		p = p + 1
 	profile_set_runtime_global(c"__w_profile_counters", base)
+	int pointer_cell = sym_address(c"__w_profile_counters")
+	if (pointer_cell): rebase_note(pointer_cell)
 	profile_set_runtime_global(c"__w_profile_count", count)
 	profile_patch_exit()
 	if (check_mode): return

@@ -56,14 +56,14 @@ void signal_thunk_init():
 
 # Emit an x64 thunk calling handler(sig, &uc_mcontext) with the W stack
 # convention (first argument at the highest address). The handler
-# address fits an imm32: the image loads in the low 2GB.
+# address uses a full-width immediate, including PIE load addresses.
 int signal_emit_handler_thunk(int handler):
 	signal_thunk_writable(1)
 	int addr = signal_thunk_page + signal_thunk_pos
-	/* push rdi ; lea rax,[rdx+40] ; push rax ; mov eax,imm32 */
-	signal_thunk_emit(7, c"\x57\x48\x8d\x42\x28\x50\xb8")
-	save_int32(cast(char*, signal_thunk_page + signal_thunk_pos), handler)
-	signal_thunk_pos = signal_thunk_pos + 4
+	/* push rdi ; lea rax,[rdx+40] ; push rax ; movabs rax,imm64 */
+	signal_thunk_emit(8, c"\x57\x48\x8d\x42\x28\x50\x48\xb8")
+	save_i(cast(char*, signal_thunk_page + signal_thunk_pos), handler, 8)
+	signal_thunk_pos = signal_thunk_pos + 8
 	/* call rax ; add rsp,16 ; ret  (returns into the restorer) */
 	signal_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x10\xc3")
 	signal_thunk_writable(0)

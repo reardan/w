@@ -52,6 +52,7 @@ int entry_optional
 # the entry stub's "call _main". Both shift when the header layout changes
 # (e.g. reserving extra program headers for dynamic linking), so the finish
 # pass patches these recorded positions instead of hardcoded constants.
+int elf_pie   /* explicit x64 Linux --pie; other targets stay unchanged */
 int phdr_table_pos
 int entry_call_disp_pos
 
@@ -166,15 +167,15 @@ void emit_data_word(int v):
 	datapos = datapos + word_size
 
 
-# --- Rebase table (PIE groundwork, arm64 targets) ------------------------
+# --- Rebase table (PIE data pointers) ------------------------
 # Pointer-sized cells in the RW data segment that hold absolute linked
 # vaddrs (string-descriptor data pointers, global array headers) are
 # recorded here during compilation. The container writer appends the
 # table (count + entries, one word each) to the data segment and the
 # entry stub adds the load slide to every listed cell at startup, so the
-# image stays correct when the kernel slides it (always 0 for the ET_EXEC
-# ELF; the Mach-O target is mandatorily PIE). Code needs no entries:
-# address materialization is PC-relative (adrp+add) on arm64.
+# image stays correct when the kernel slides it. Dynamic x64 PIE emits
+# RELATIVE relocations from the same records instead. Code needs no
+# entries: address materialization is PC-relative on arm64 and x64.
 
 char* rebase_table
 int rebase_table_size

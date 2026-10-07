@@ -34,6 +34,8 @@ word poke.
 import lib.lib
 import debugger.locals
 
+int at_from_v(int linked);
+
 
 # Result of evaluating one (sub)expression. When is_lval is 1 the value
 # lives in target memory at addr (val is then only filled by aev_load);
@@ -184,7 +186,7 @@ at_val aev_name(char* name):
 	if (g >= 0):
 		if (dbg_sym_symtype(g) != 2):
 			v.ok = 1
-			v.addr = dbg_sym_address(g)
+			v.addr = at_from_v(dbg_sym_address(g))
 			v.vtype = dbg_sym_type(g)
 			v.is_lval = 1
 			return v

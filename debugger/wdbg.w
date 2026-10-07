@@ -1055,6 +1055,7 @@ void wdbg_attach_compile(char* target):
 	if (__word_size__ == 8): n = 5
 	if (ast_expressions_mode): n = n + 1
 	if (ast_required_mode): n = n + 1
+	if (args_has_bool_flag(c"pie")): n = n + 1
 	int argv = cast(int, malloc(n * __word_size__))
 	int idx = 0
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
@@ -1074,6 +1075,9 @@ void wdbg_attach_compile(char* target):
 		idx = idx + 1
 	if (ast_required_mode):
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--ast-required"))
+		idx = idx + 1
+	if (args_has_bool_flag(c"pie")):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--pie"))
 		idx = idx + 1
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, target))
 	idx = idx + 1

@@ -157,6 +157,7 @@ void crash_build_id():
 		else:
 			vaddr = st_int32(p + 8)
 			fsz = st_int32(p + 16)
+		vaddr = vaddr + st_slide
 		if (st_range_readable(vaddr, fsz) == 0): continue
 		int cur = vaddr
 		int end = vaddr + fsz
@@ -315,6 +316,7 @@ void cd_collect_fallback(int sp):
 				vaddr = st_word(p + 16)
 				memsz = st_word(p + 40)
 				pf = st_int32(p + 4)
+			vaddr = vaddr + st_slide
 			int lo = vaddr - (vaddr & 4095)
 			int hi = vaddr + memsz
 			hi = hi + ((4096 - (hi & 4095)) & 4095)
@@ -338,7 +340,7 @@ int cd_prstatus_size():
 
 
 int cd_notes_size():
-	return cd_note_size(5, cd_prstatus_size()) + cd_note_size(5, 128) + cd_note_size(2, cd_exe_len + 1)
+	return cd_note_size(5, cd_prstatus_size()) + cd_note_size(5, 128) + cd_note_size(2, cd_exe_len + 1) + cd_note_size(5, 4 * __word_size__)
 
 
 # Writes a note header + name at off; returns the descriptor offset.
@@ -577,6 +579,15 @@ int crash_dump_write(int sig, int context):
 	while (k < cd_exe_len):
 		cd_put8(d + k, cd_exe[k])
 		k = k + 1
+
+	# Minimal NT_AUXV: identify the main image even in a dynamic PIE
+	# dump with many ELF headers, or when its header page is omitted.
+	d = cd_note(d + (cd_exe_len + 4) / 4 * 4, c"CORE", 5, 4 * __word_size__, 6)
+	if ((st_state == 1) && (st_macho == 0)):
+		int phoff = st_int32(st_base + 28)
+		if (st_class == 2): phoff = st_word(st_base + 32)
+		cd_putw(d, 3) /* AT_PHDR; the following pair is AT_NULL */
+		cd_putw(d + __word_size__, st_base + phoff)
 
 	int ok = 0
 	if (seek(fd, 0, 0) == 0):
