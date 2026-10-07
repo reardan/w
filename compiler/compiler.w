@@ -849,6 +849,13 @@ int link_option(char* arg, int apply):
 			ast_expressions_mode = 2
 			ast_required_mode = 1
 		return 1
+	# S2.1: emit expressions from the retained forest (implies --ast-retain).
+	if (strcmp(arg, c"--ast-emit-retained") == 0):
+		if (apply):
+			ast_expressions_mode = 2
+			ast_retain_mode = 1
+			ast_emit_retained_mode = 1
+		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		if (apply): quiet_mode = 1
 		return 1
@@ -894,6 +901,8 @@ void help_shared_options():
 	println(c"  --ast-audit           full-expression mode plus JSON fallback records on stderr")
 	println(c"  --ast-retain          retain owned traversal trees (experimental, full AST mode)")
 	println(c"  --ast-required        reject any expression fallback (migration coverage gate)")
+	# S2.1
+	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
@@ -1131,6 +1140,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_relex_replays = 0
 	ast_audit_mode = 0
 	ast_required_mode = 0
+	# S2.1: retained-forest expression emission and its --stats counter.
+	ast_emit_retained_mode = 0
+	ast_retained_emitted = 0
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1208,6 +1220,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# closure as well as explicit inputs. Never hide that gap.
 			if ((strcmp(*flag_arg, c"--ast-full-expressions") == 0) || (strcmp(*flag_arg, c"--ast-audit") == 0) || (strcmp(*flag_arg, c"--ast-required") == 0) || (strcmp(*flag_arg, c"--ast-retain") == 0)):
 				link_option(*flag_arg, 1)
+			# S2.1: so does emission from the retained forest.
+			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
@@ -1529,6 +1543,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(ast_relex_replays))
 		print_error(c"\nAST node slabs: ")
 		print_error(itoa(ast_slabs_allocated))
+		print_error(c"\n")
+	# S2.1: retained-forest expression emission.
+	if (stats_mode && ast_emit_retained_mode):
+		print_error(c"Retained-emitted expressions: ")
+		print_error(itoa(ast_retained_emitted))
 		print_error(c"\n")
 
 
