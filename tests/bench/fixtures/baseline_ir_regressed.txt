@@ -1,0 +1,5 @@
+# wbench_compare_test fixture (programs mode): a kIr column every real run
+# exceeds -- compared with --no-valgrind, the kIr check must be skipped,
+# not failed, and the bytes/ms columns pass.
+sum x86 1000000000 1 1000000000
+sum x64 1000000000 1 1000000000
