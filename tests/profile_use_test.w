@@ -293,9 +293,14 @@ void pu_check_arch(char* arch):
 	int plain_size = 0
 	free(pu_read_bytes(plain, &plain_size))
 	# Padding is inside the page the code occupies before the data
-	# segment, so the sizes agree unless the pad crossed a page.
-	if (pad == 0): asserts(c"no pad: image identical", pu_same_file(plain, pgo))
-	else: asserts(c"pad: image differs", pu_same_file(plain, pgo) == 0)
+	# segment, so the sizes agree unless the pad crossed a page. The
+	# bytes differ either way: the profile also marks cold_step and
+	# never_called cold, so their bodies skip the register scan the
+	# plain build runs (the stale case below compares --no-regs images
+	# for the same reason), and a head that already sits on a 16-byte
+	# boundary (pad 0) is a matter of what precedes it in the image.
+	if (pad == 0): assert_equal(plain_size, size)
+	asserts(c"profile use: image differs", pu_same_file(plain, pgo) == 0)
 	free(err)
 	free(produced)
 
