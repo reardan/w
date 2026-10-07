@@ -65,3 +65,16 @@ int main(int argc, int argv):
 # wbuild: step="bin/wv2 wasm tests/wasm_extern_variadic_fixture.w -o bin/wasm_extern_variadic_fixture" expect_fail expect_stderr="variadic extern functions are not supported on the wasm target"
 # wbuild: step="bin/wv2 wasm tests/wasm_extern_data_fixture.w -o bin/wasm_extern_data_fixture" expect_fail expect_stderr="extern data objects are not supported on the wasm target"
 # wbuild: step="bin/wv2 wasm tests/wasm_c_import_fixture.w -o bin/wasm_c_import_fixture" expect_fail expect_stderr="c_import is not supported on the wasm target"
+
+# Issue #565: the first extern has library index -1, followed by imports
+# from two named libraries. A 64-bit host must preserve that sentinel
+# so Mach-O binds it to libSystem.
+# Compare whole Mach-O images across host widths and both front ends.
+# wbuild: target=dynamic_import_host_test tag=tests dep=build dep=build_x64
+# wbuild: step="bin/wv3 arm64_darwin tests/wasm_extern_test.w -o bin/dynamic_import_host32"
+# wbuild: step="bin/wv3_64 arm64_darwin tests/wasm_extern_test.w -o bin/dynamic_import_host64"
+# wbuild: step="cmp bin/dynamic_import_host32 bin/dynamic_import_host64"
+# wbuild: step="bin/wv3 --streaming arm64_darwin tests/wasm_extern_test.w -o bin/dynamic_import_streaming_host32"
+# wbuild: step="bin/wv3_64 --streaming arm64_darwin tests/wasm_extern_test.w -o bin/dynamic_import_streaming_host64"
+# wbuild: step="cmp bin/dynamic_import_host32 bin/dynamic_import_streaming_host32"
+# wbuild: step="cmp bin/dynamic_import_host32 bin/dynamic_import_streaming_host64"
