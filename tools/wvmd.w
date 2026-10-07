@@ -179,5 +179,8 @@ int main(int argc, int argv):
 			return 125
 	scheduler.max_disk_mb = disk_mb
 	int status = vms_serve(scheduler, path)
-	vms_free(scheduler)
+	if (vms_free(scheduler) == 0):
+		char* error = c"wvmd: resource cleanup failed\n"
+		write(2, error, strlen(error))
+		return 125
 	return status

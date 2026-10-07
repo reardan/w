@@ -146,8 +146,24 @@ jobs:
         if: always()
         run: |
           if [ -n "${WVM_TEST_CGROUP:-}" ] && [ -d "$WVM_TEST_CGROUP" ]; then
-            sudo rmdir "$WVM_TEST_CGROUP/driver"
-            sudo rmdir "$WVM_TEST_CGROUP"
+            sudo python3 - "$WVM_TEST_CGROUP" <<'PY'
+          import errno, os, sys, time
+
+          # Kernel task/group retirement may lag process exit. Retry busy
+          # removal only; never delete descendants or kill leftover workers.
+          for path in (sys.argv[1] + "/driver", sys.argv[1]):
+              deadline = time.monotonic() + 10
+              while True:
+                  try:
+                      os.rmdir(path)
+                      break
+                  except FileNotFoundError:
+                      break
+                  except OSError as error:
+                      if error.errno not in (errno.EBUSY, errno.EINTR) or time.monotonic() >= deadline:
+                          raise
+                      time.sleep(0.01)
+          PY
           fi
 
       - name: Upload VM results

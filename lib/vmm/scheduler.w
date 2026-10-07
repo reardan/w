@@ -790,7 +790,7 @@ void vms_tick(vm_scheduler* scheduler):
 		vms_launch(scheduler, first)
 
 
-void vms_free(vm_scheduler* scheduler):
+int vms_free(vm_scheduler* scheduler):
 	for i in range(scheduler.sessions.length):
 		if (scheduler.sessions[i] != 0): vms_destroy(scheduler, scheduler.sessions[i])
 	list_free[vms_session*](scheduler.sessions)
@@ -799,5 +799,6 @@ void vms_free(vm_scheduler* scheduler):
 	for i in range(scheduler.regions.length): vm_region_free(scheduler.regions[i])
 	list_free[vm_region*](scheduler.regions)
 	registry_close(scheduler.registry)
-	vm_cgroup_free(scheduler.cgroup)
+	int ok = vm_cgroup_free(scheduler.cgroup)
 	free(scheduler)
+	return ok
