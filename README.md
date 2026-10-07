@@ -79,6 +79,10 @@ Other useful targets:
 ./wbuild wvm_pool_bench # cell CoW sharing and reset benchmark
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
+./wbuild verify_pgo  # the same fixpoint with --profile-use=profiles/self.wprof (x86, retained AST, x64);
+                     # part of 'tests' (docs/projects/register_allocation_pgo.md)
+./wbuild profile_refresh  # regenerate profiles/*.wprof from --profile-generate runs (self-compile + tests/bench)
+./wbuild profile_check  # staleness report for the committed profiles (bin/wprof stats); never fails
 ./wbuild ast_expression_suite  # full suite with AST lowering and no expression fallback
 ./wbuild warning_test  # asserts the compiler's type/style warnings
 ./wbuild lint_test   # asserts 'w check --lint' / '--fix' (docs/projects/lint.md)
@@ -296,7 +300,13 @@ Implemented and covered by tests:
   jumps out of or into blocks pop or reserve the locals involved — see
   `grammar/goto_statement.w`). `setjmp`/`longjmp` are runtime stubs in
   every native program; `lib/setjmp.w` has the `jmp_buf` type and the
-  contract.
+  contract. The x86/x64 backends keep the hottest word-sized locals of
+  a function with a loop in callee-saved registers (`esi`/`edi` on x86,
+  `r12`–`r15` on x64; `docs/projects/register_allocation_pgo.md` §2.2,
+  `--no-regs`/`-O0` turns it off): `raw_asm` bodies and hand-written
+  stubs must preserve `ebx`/`esi`/`edi`, `rbx`/`r12`–`r15` and
+  `x19`–`x28`, and a function containing `raw_asm`, `setjmp`, `yield`
+  or an f-string promotes nothing.
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

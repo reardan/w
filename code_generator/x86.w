@@ -26,11 +26,293 @@ int load_note_oplen
 char* load_note_op
 int push_note_start
 int push_note_end
+# A 'mov eax,R' read of a register-resident local (mov_eax_reg), so the
+# pop_ebx shuttle can fold 'push eax; mov eax,R; pop ebx' like a local
+# load.
+int regload_note_start
+int regload_note_end
+int regload_note_reg
+# The register read the push carried (push_eax saw a current regload
+# note): the left operand of a binary operator is 'mov eax,R' directly
+# before its push, so pop_ebx can shuttle it as 'mov ebx,R' and the
+# operator can use R itself (R3, docs/projects/register_allocation_pgo.md
+# §2.3). Cleared with push_note_end.
+int push_left_reg
+int push_left_start
+# The register shuttle note (R3): pop_ebx emitted 'mov ebx,<left>;
+# mov eax,X' with X a constant (kind 1), a word-sized local load
+# (kind 2, [esp+disp]) or a register (kind 3), and the left operand is
+# register shuttle_left_reg or, when that is 0, whatever eax held at
+# shuttle_start. A binary operator running while the note is CURRENT
+# (shuttle_end == codepos) rolls the shuttle back and emits
+# 'op eax,X' (an ALU operator) or 'cmp eax,X' / 'cmp R,X' (a compare)
+# instead of 'op eax,ebx'. Any other consumer sees the ordinary shuttle.
+int shuttle_start
+int shuttle_end
+int shuttle_kind
+int shuttle_left_reg
+int shuttle_value      # kind 1: the constant
+int shuttle_disp       # kind 2: the esp displacement
+int shuttle_oplen      # kind 2: the load's opcode (only the word load folds)
+char* shuttle_op
+int shuttle_reg        # kind 3: the register
+# The register binary-operator note (R3): an ALU operator consumed the
+# shuttle note, so the bytes from binop_start to codepos are
+# '[mov eax,R_left;] op eax,X' and eax holds R_left op X. A store into a
+# register-resident local R (regalloc_reg_store) running while this note
+# is current and R == R_left (or X == R for a commutative op) rolls the
+# sequence back and emits 'op R,X' in place: 'i = i + 1' is 'add R,1'.
+int binop_start
+int binop_end
+int binop_op           # the /n extension: 0 add, 1 or, 4 and, 5 sub, 6 xor; 8 imul
+int binop_left_reg
+int binop_kind
+int binop_value
+int binop_disp
+int binop_reg
 
 void peep_rollback(int pos);
 void be_cmp_note_reset();
 void be_imm_note_reset();
 void be_notes_reset();
+
+############################ register-resident locals ###########################
+# Function-scoped promotion of word-sized locals into callee-saved
+# registers (docs/projects/register_allocation_pgo.md §2.2, unit R2):
+# x64 r12-r15, x86 esi/edi. The state is in code_generator/code_emitter.w
+# (reg_lvalue note, regalloc_* prologue masks), the decision in
+# compiler/regalloc_scan.w. These are the x86-family emitters: the
+# register moves the note's consumers emit, the prologue pushes and the
+# epilogue pops. (The stack-slot assertion that keeps every path off a
+# promoted local's never-updated stack word is regalloc_slot_assert in
+# regalloc_scan.w, called by the slot-addressing grammar helpers: the raw
+# [esp+disp] emitters here also serve pushes stack_pos does not track,
+# so a displacement alone does not name a slot.)
+
+# 1 when the register lvalue note is current: the accumulator "holds" the
+# address of a register-resident local.
+int regalloc_note_current():
+	if (reg_lvalue_end == 0): return 0
+	return reg_lvalue_end == codepos
+
+# Consume the note: returns the register, clearing the note.
+int regalloc_note_take():
+	int r = reg_lvalue
+	reg_lvalue_end = 0
+	return r
+
+# REX prefix for one extended register (r8-r15) in the r/m field (REX.B)
+# or the reg field (REX.R), with REX.W set.
+void emit_rex_w_b(int r):
+	if (r >= 8): emit(1, c"\x49")
+	else: emit(1, c"\x48")
+
+void emit_rex_w_r(int r):
+	if (r >= 8): emit(1, c"\x4c")
+	else: emit(1, c"\x48")
+
+/* mov eax,R (x86: 89 /r with eax as r/m; x64: REX.W[+R] 89 /r) */
+void mov_eax_reg(int r):
+	regload_note_start = codepos
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x89")
+	emit_int8(0xc0 | ((r & 7) << 3))
+	regload_note_end = codepos
+	regload_note_reg = r
+
+/* mov R,eax */
+void mov_reg_eax(int r):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x89")
+	emit_int8(0xc0 | (r & 7))
+
+/* push R / pop R (41 prefix for r8-r15) */
+void push_reg(int r):
+	if (r >= 8): emit(1, c"\x41")
+	emit_int8(0x50 | (r & 7))
+
+void pop_reg(int r):
+	if (r >= 8): emit(1, c"\x41")
+	emit_int8(0x58 | (r & 7))
+
+/* add R,imm8 (sign-extended): 83 /0 ib */
+void add_reg_int8(int r, int v):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x83")
+	emit_int8(0xc0 | (r & 7))
+	emit_int8(v)
+
+/* add R,eax: 01 /r with R as r/m */
+void add_reg_eax(int r):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x01")
+	emit_int8(0xc0 | (r & 7))
+
+/* mov ebx,R (89 /r with ebx as r/m) */
+void mov_ebx_reg(int r):
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x89")
+	emit_int8(0xc3 | ((r & 7) << 3))
+
+# REX.W with REX.R for the reg field and REX.B for the r/m field, x64 only.
+void emit_rex_w_rb(int reg, int rm):
+	if (word_size != 8): return
+	int rex = 0x48
+	if (reg >= 8): rex = rex | 4
+	if (rm >= 8): rex = rex | 1
+	emit_int8(rex)
+
+# The register-operand ALU forms (R3). ext is the ModRM /n extension of
+# the 81/83 immediate group (0 add, 1 or, 4 and, 5 sub, 6 xor, 7 cmp);
+# 8 stands for imul, which has its own opcodes. dst is any register
+# (0 = eax); the x64 forms carry REX.W.
+
+/* op dst,imm: 83 /ext ib when the immediate fits a signed byte, the
+   short eax form (05/0d/25/2d/35/3d id) for eax, 81 /ext id otherwise;
+   imul dst,dst,imm is 6b/69 /r. */
+void emit_alu_reg_imm(int ext, int dst, int v):
+	int fits8 = (v >= -128) && (v <= 127)
+	if (ext == 8):
+		# always the imm32 form (69): libs/asm decodes no 6b
+		emit_rex_w_rb(dst, dst)
+		emit_int8(0x69)
+		emit_int8(0xc0 | ((dst & 7) << 3) | (dst & 7))
+		emit_int32(v)
+		return
+	if (word_size == 8): emit_rex_w_b(dst)
+	if (fits8):
+		emit_int8(0x83)
+		emit_int8(0xc0 | (ext << 3) | (dst & 7))
+		emit_int8(v)
+		return
+	if (dst == 0):
+		emit_int8(0x05 | (ext << 3))
+		emit_int32(v)
+		return
+	emit_int8(0x81)
+	emit_int8(0xc0 | (ext << 3) | (dst & 7))
+	emit_int32(v)
+
+/* The 'op r32, r/m32' opcode of an extension: add 03, or 0b, and 23,
+   sub 2b, xor 33, cmp 3b (each 8*ext + 3). */
+void emit_alu_rm_opcode(int ext):
+	if (ext == 8): emit(2, c"\x0f\xaf")
+	else: emit_int8(0x03 | (ext << 3))
+
+/* op dst,src (register source): the 'r/m, reg' form (01/09/21/29/31/39,
+   dst in r/m) that libs/asm's encoder picks for two registers, so the
+   asm_x64_test encode identity holds; imul has only its 'reg, r/m' form. */
+void emit_alu_reg_reg(int ext, int dst, int src):
+	if (ext == 8):
+		emit_rex_w_rb(dst, src)
+		emit(2, c"\x0f\xaf")
+		emit_int8(0xc0 | ((dst & 7) << 3) | (src & 7))
+		return
+	emit_rex_w_rb(src, dst)
+	emit_int8(0x01 | (ext << 3))
+	emit_int8(0xc0 | ((src & 7) << 3) | (dst & 7))
+
+/* op dst,[esp+disp] */
+void emit_alu_reg_esp(int ext, int dst, int disp):
+	emit_rex_w_rb(dst, 0)
+	emit_alu_rm_opcode(ext)
+	if ((disp >= -128) && (disp <= 127)):
+		emit_int8(0x44 | ((dst & 7) << 3))
+		emit_int8(0x24)
+		emit_int8(disp)
+	else:
+		emit_int8(0x84 | ((dst & 7) << 3))
+		emit_int8(0x24)
+		emit_int32(disp)
+
+/* op dst,eax */
+void emit_alu_reg_eax(int ext, int dst):
+	emit_alu_reg_reg(ext, dst, 0)
+
+# 'op dst,X' for the operand X a shuttle or binop note recorded (kind 1
+# constant, 2 [esp+disp] word load, 3 register).
+void emit_alu_reg_x(int ext, int dst, int kind, int value, int disp, int reg):
+	if (kind == 1): emit_alu_reg_imm(ext, dst, value)
+	elif (kind == 2): emit_alu_reg_esp(ext, dst, disp)
+	else: emit_alu_reg_reg(ext, dst, reg)
+
+/* mov R,[ebp+disp] / mov [ebp+disp],R (8b / 89 /r, ebp base, no SIB):
+   the loop-scoped register loads, write-backs and call spills (R3,
+   compiler/regalloc_scan.w), addressed from the frame pointer so no
+   push or pop between them matters. */
+void emit_ebp_disp_modrm(int r, int disp):
+	if ((disp >= -128) && (disp <= 127)):
+		emit_int8(0x45 | ((r & 7) << 3))
+		emit_int8(disp)
+	else:
+		emit_int8(0x85 | ((r & 7) << 3))
+		emit_int32(disp)
+
+void mov_reg_ebp_disp(int r, int disp):
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x8b")
+	emit_ebp_disp_modrm(r, disp)
+
+void mov_ebp_disp_reg(int r, int disp):
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x89")
+	emit_ebp_disp_modrm(r, disp)
+
+# Loop-scoped allocation is on for the current function (the scan found
+# no goto/label/defer and at least one loop); set with the pending mask.
+int regalloc_loops_ok
+void regalloc_call_spill();    /* compiler/regalloc_scan.w */
+void regalloc_call_reload();
+
+/* lea esp,[ebp-disp8] */
+void lea_esp_ebp_minus(int disp):
+	emit_x64_opcode()
+	emit(2, c"\x8d\x65")
+	emit_int8(0 - disp)
+
+# The order registers are pushed: ascending register number, so the pops
+# below and the debugger's saved-slot arithmetic (debugger/locals.w) agree.
+int regalloc_mask_index(int mask, int r):
+	int index = 0
+	int i = 0
+	while (i < r):
+		if (mask & (1 << i)): index = index + 1
+		i = i + 1
+	return index
+
+# The prologue's share: right after 'push ebp ; mov ebp,esp', push the
+# registers the pre-scan asked for (regalloc_pending_mask), making them
+# the current function's saved set. Called by be_function_prologue on the
+# x86 path only; the pending mask is only ever set for that path.
+void regalloc_prologue_emit():
+	int mask = regalloc_pending_mask
+	regalloc_pending_mask = 0
+	regalloc_saved_mask = 0
+	regalloc_saved_count = 0
+	regalloc_active = 0
+	if (regalloc_loops_ok): regalloc_active = 1
+	if (mask == 0): return
+	regalloc_active = 1
+	int r = 0
+	while (r < 16):
+		if (mask & (1 << r)):
+			push_reg(r)
+			regalloc_saved_count = regalloc_saved_count + 1
+		r = r + 1
+	regalloc_saved_mask = mask
+
+# The framed return of a function whose prologue pushed registers:
+# 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' replaces 'leave'. Callers
+# emit the ret. Returns 1 when it emitted the frame teardown, 0 when the
+# function saved nothing (the caller emits 'leave').
+int regalloc_epilogue_emit():
+	if (regalloc_saved_count == 0): return 0
+	lea_esp_ebp_minus(regalloc_saved_count << word_size_log2)
+	int r = 15
+	while (r >= 0):
+		if (regalloc_saved_mask & (1 << r)): pop_reg(r)
+		r = r - 1
+	return 1
 
 # ModRM+SIB(+disp) for [esp+disp] with eax in the reg field; disp8 when
 # it fits.
@@ -94,6 +376,10 @@ void promote_eax():
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
 	elif (target_isa == 1): a64(op(0xf9, 0x400000))   # ldr x0,[x0]
 	else:
+		# A register-resident local: its "load" is a register move
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (word_size == 8): lea_load_fold(2, c"\x48\x8b")
 			else: lea_load_fold(1, c"\x8b")
@@ -146,6 +432,10 @@ void promote_int32_eax():
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
 	elif (target_isa == 1): a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
 	else:
+		# x86-32: 'int' is the 4-byte word, so a promoted int reads here
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (word_size == 8): lea_load_fold(2, c"\x48\x63")
 			else: lea_load_fold(1, c"\x8b")
@@ -236,6 +526,10 @@ void be_imm_note_reset():
 	lea_note_end = 0
 	load_note_end = 0
 	push_note_end = 0
+	reg_lvalue_end = 0
+	regload_note_end = 0
+	shuttle_end = 0
+	binop_end = 0
 
 # True when a * b does not overflow the compiler's own word. The fold has
 # to produce the same constant whether this compiler is the 32-bit or the
@@ -350,6 +644,9 @@ void promote_uint32_eax():
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
 	elif (target_isa == 1): a64(op(0xb9, 0x400000))   # ldr w0,[x0]
 	else:
+		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
+			mov_eax_reg(regalloc_note_take())
+			return
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(1, c"\x8b")
 			return
@@ -369,13 +666,21 @@ void promote_uint16_eax():
 		emit(3, c"\x0f\xb7\x00")
 
 
-/* mov eax, op(0x12, 0x345678) */
+/* mov eax, imm32 -- on x64 too for a value in [0, 2^31), where the 32-bit
+   write zero-extends into rax (5 bytes instead of the 10-byte movabs);
+   anything else (negative, or past 2^31 on a 64-bit host) keeps the
+   imm64 form. The test is host-independent: a 32-bit compiler cannot
+   hold a value that the 64-bit one would classify differently, and the
+   literals with bit 31 set are negative on both (CLAUDE.md). The
+   negative simm32 form (REX.W C7 /0) is deliberately not used: libs/asm
+   has no C7 /0 decoder and asm_x64_test checks the self-host image
+   decodes completely, for 96 instructions in the x64 compiler image. */
 void mov_eax_int(int v):
 	if (target_isa == 2): wasm_mov_eax_int(v)
 	elif (target_isa == 1): arm64_mov_rax_int64(v)
 	else:
 		int start = codepos
-		if (word_size == 8): mov_rax_int64(v)
+		if ((word_size == 8) && ((v >> 31) != 0)): mov_rax_int64(v)
 		else: mov_eax_int32(v)
 		# PTX also reaches here (it has no early return above) but does not
 		# advance codepos, so note it only for the x86 family. Every consumer
@@ -460,7 +765,11 @@ void call_eax():
 				return
 			a64(op(0xd6, 0x3f0000))   # blr x0
 			return
+		# Loop-owned caller-saved registers survive the callee through
+		# their homes (R3); nothing is emitted when no loop owns any.
+		regalloc_call_spill()
 		emit(2, c"\xff\xd0") /* call *%eax */
+		regalloc_call_reload()
 
 
 void call_relative32(int v):
@@ -490,6 +799,13 @@ void push_eax():
 		if ((imm_note_end != 0) && (imm_note_end == codepos)): carried = 1
 		int start = imm_note_start
 		int value = imm_note_value
+		# The pushed value came straight from a register-resident local
+		# ('mov eax,R' is the instruction before the push): pop_ebx can
+		# shuttle it as 'mov ebx,R' and an operator can read R itself.
+		push_left_reg = 0
+		if ((regload_note_end != 0) && (regload_note_end == codepos)):
+			push_left_reg = regload_note_reg
+			push_left_start = regload_note_start
 		push_note_start = codepos
 		emit(1, c"\x50")
 		push_note_end = codepos
@@ -528,26 +844,55 @@ void pop_ebx():
 		# push the local's esp displacement shrinks by one word; a load of the
 		# pushed temporary itself (disp < word_size) is left alone.
 		if ((armed == 0) && (push_note_end != 0)):
+			# Which simple right operand followed the push: 1 a constant
+			# (one the x64 ALU immediate forms can carry: a signed
+			# 32-bit value), 2 a local load, 3 a register read.
+			int kind = 0
+			int value = right
+			int disp = load_note_disp - word_size
+			int oplen = load_note_oplen
+			char* op = load_note_op
+			int reg = regload_note_reg
 			if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_note_end)):
+				kind = 1
+			elif ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= word_size)):
+				kind = 2
+			elif ((regload_note_end != 0) && (regload_note_end == codepos) && (regload_note_start == push_note_end)):
+				kind = 3
+			if (kind != 0):
+				int left_reg = push_left_reg
+				int left_start = push_left_start
 				peep_rollback(push_note_start)
-				emit_x64_opcode()
-				emit(2, c"\x89\xc3") /* mov ebx,eax */
-				mov_eax_int(right)
+				# The left operand read a register: shuttle it directly
+				# (R3) instead of through the accumulator.
+				if (left_reg != 0): peep_rollback(left_start)
+				int start = codepos
+				if (left_reg != 0): mov_ebx_reg(left_reg)
+				else:
+					emit_x64_opcode()
+					emit(2, c"\x89\xc3") /* mov ebx,eax */
+				if (kind == 1): mov_eax_int(value)
+				elif (kind == 2): emit_esp_load(oplen, op, disp)
+				else: mov_eax_reg(reg)
 				imm_note_end = 0
 				push_imm_end = 0
 				binfold_end = 0
-				return
-			if ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= word_size)):
-				int disp = load_note_disp - word_size
-				int oplen = load_note_oplen
-				char* op = load_note_op
-				peep_rollback(push_note_start)
-				emit_x64_opcode()
-				emit(2, c"\x89\xc3") /* mov ebx,eax */
-				emit_esp_load(oplen, op, disp)
-				imm_note_end = 0
-				push_imm_end = 0
-				binfold_end = 0
+				shuttle_start = start
+				shuttle_end = codepos
+				shuttle_kind = kind
+				shuttle_left_reg = left_reg
+				shuttle_value = value
+				shuttle_disp = disp
+				shuttle_oplen = oplen
+				shuttle_op = op
+				shuttle_reg = reg
+				# A 64-bit constant has no immediate ALU form
+				if ((kind == 1) && (word_size == 8) && ((value >> 31) != 0) && ((value >> 31) != -1)): shuttle_end = 0
+				# Only the word-sized load folds into an ALU operand
+				if (kind == 2):
+					if (word_size == 8):
+						if ((oplen != 2) || ((op[0] & 255) != 0x48) || ((op[1] & 255) != 0x8b)): shuttle_end = 0
+					elif ((oplen != 1) || ((op[0] & 255) != 0x8b)): shuttle_end = 0
 				return
 		emit(1, c"\x5b")
 		imm_note_end = 0
@@ -577,7 +922,10 @@ void mov_eax_ebx():
 		emit(2, c"\x89\xd8")
 
 
-/* lea eax,[esp+op(0x12, 0x345678)] */
+/* lea eax,[esp+disp], disp8 when it fits (the loads that fold this lea
+   already pick the short form through emit_eax_esp_disp). The note
+   records positions, not a length, so lea_load_fold and the add_eax_int32
+   re-emission are unaffected by the width. */
 void lea_eax_esp_plus(int v):
 	if (target_isa == 3): ptx_lea_ax_sp(v)
 	elif (target_isa == 2): wasm_lea_eax_esp_plus(v)
@@ -585,8 +933,8 @@ void lea_eax_esp_plus(int v):
 	else:
 		int start = codepos
 		emit_x64_opcode()
-		emit(3, c"\x8d\x84\x24")
-		emit_int(v)
+		emit(1, c"\x8d")
+		emit_eax_esp_disp(v)
 		lea_note_start = start
 		lea_note_end = codepos
 		lea_note_disp = v
@@ -598,9 +946,11 @@ void mov_eax_esp_plus(int v):
 	elif (target_isa == 2): wasm_mov_eax_esp_plus(v)
 	elif (target_isa == 1): arm64_ldr_reg_wsp(0, v)
 	else:
-		emit_x64_opcode()
-		emit(1, c"\x8b")
-		emit_eax_esp_disp(v)
+		# Noted like a folded local load, so a slot read as the right
+		# operand of a binary operator (a range loop's end slot against
+		# its loop variable, say) takes pop_ebx's register shuttle too.
+		if (word_size == 8): emit_esp_load(2, c"\x48\x8b", v)
+		else: emit_esp_load(1, c"\x8b", v)
 
 
 /* mov ebx,[esp] */
@@ -667,8 +1017,14 @@ void store_ebx_stack_var(int variable_offset):
 		emit_int(variable_offset)
 
 
-/* add esp, (n * word_size) */
+/* add esp, (n * word_size). Popping nothing emits nothing: the block-end
+   pop of a scope that held no locals was 'add esp,0' at 2.3% of the
+   instructions in bin/wv3 (docs/projects/register_allocation_pgo.md
+   §1.1, unit R1). The site may be a jump target, but an instruction that
+   emits nothing only moves the label; the sp-relative notes above stay
+   valid across it because the stack does not move. */
 void be_pop(int n):
+	if (n == 0): return
 	if (target_isa == 3): ptx_be_pop(n)
 	elif (target_isa == 2): wasm_be_pop(n)
 	elif (target_isa == 1): arm64_be_pop(n)
@@ -870,6 +1226,10 @@ void peep_rollback(int pos):
 	if (lea_note_end > pos): lea_note_end = 0
 	if (load_note_end > pos): load_note_end = 0
 	if (push_note_end > pos): push_note_end = 0
+	if (reg_lvalue_end > pos): reg_lvalue_end = 0
+	if (regload_note_end > pos): regload_note_end = 0
+	if (shuttle_end > pos): shuttle_end = 0
+	if (binop_end > pos): binop_end = 0
 
 # A jump target is about to be placed at codepos: no fold may reach back
 # across it (a branch patched to land here would then point into, or
@@ -981,12 +1341,77 @@ void add_stack_word_int32(int offset, int v):
 # Each helper emits one binary operator's code at the target word width:
 # emit_x64_opcode() prefixes REX.W so 64-bit pointers are not truncated.
 
+# The register-operand fold (R3): an ALU operator (ext as in
+# emit_alu_reg_imm) whose operands came through the shuttle note rolls
+# 'mov ebx,<left>; mov eax,X' back and emits '[mov eax,R_left;] op eax,X',
+# noting the sequence for regalloc_reg_store. Returns 1 when it emitted
+# the operator, 0 when the note is not current (the caller emits
+# 'op eax,ebx'). x86 family only; callers have established target_isa.
+int shuttle_alu(int ext):
+	if ((shuttle_end == 0) || (shuttle_end != codepos)): return 0
+	int kind = shuttle_kind
+	int left_reg = shuttle_left_reg
+	int value = shuttle_value
+	int disp = shuttle_disp
+	int reg = shuttle_reg
+	peep_rollback(shuttle_start)
+	int start = codepos
+	if (left_reg != 0): mov_eax_reg(left_reg)
+	emit_alu_reg_x(ext, 0, kind, value, disp, reg)
+	binop_start = start
+	binop_end = codepos
+	binop_op = ext
+	binop_left_reg = left_reg
+	binop_kind = kind
+	binop_value = value
+	binop_disp = disp
+	binop_reg = reg
+	return 1
+
+# The compare twin: 'cmp eax,X', or 'cmp R_left,X' when the left operand
+# is a register (its value need not pass through eax at all). Emits the
+# cmp only; the caller materializes or fuses the flags.
+int shuttle_cmp():
+	if ((shuttle_end == 0) || (shuttle_end != codepos)): return 0
+	int kind = shuttle_kind
+	int left_reg = shuttle_left_reg
+	int value = shuttle_value
+	int disp = shuttle_disp
+	int reg = shuttle_reg
+	peep_rollback(shuttle_start)
+	emit_alu_reg_x(7, left_reg, kind, value, disp, reg)
+	return 1
+
+# A store into register-resident local r of the accumulator (R3's
+# consumer of the binop note): when eax was just computed as 'r op X'
+# (or 'X op r' for a commutative op), the sequence becomes 'op r,X' in
+# place; keep_eax asks for 'mov eax,r' after it (the expression's value
+# is used), a statement-position store leaves eax dead. Otherwise the
+# plain 'mov r,eax'. x86 family only.
+void regalloc_reg_store(int r, int keep_eax):
+	if ((binop_end != 0) && (binop_end == codepos)):
+		int ext = binop_op
+		int commutative = (ext == 0) || (ext == 1) || (ext == 4) || (ext == 6) || (ext == 8)
+		if (binop_left_reg == r):
+			peep_rollback(binop_start)
+			emit_alu_reg_x(ext, r, binop_kind, binop_value, binop_disp, binop_reg)
+			if (keep_eax): mov_eax_reg(r)
+			return
+		if (commutative && (binop_kind == 3) && (binop_reg == r)):
+			peep_rollback(binop_start)
+			if (binop_left_reg != 0): emit_alu_reg_reg(ext, r, binop_left_reg)
+			else: emit_alu_reg_eax(ext, r)
+			if (keep_eax): mov_eax_reg(r)
+			return
+	mov_reg_eax(r)
+
 /* add %ebx,%eax */
 void alu_add():
 	if (target_isa == 3): ptx_alu_ax_bx(c"add.s64")
 	elif (target_isa == 2): wasm_ax_op_bx(0x6a)
 	elif (target_isa == 1): a64(op(0x8b, 0x010000))   # add x0,x0,x1
 	else:
+		if (shuttle_alu(0)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			if (fold_add_fits(binfold_left, binfold_right)):
 				binfold_emit(binfold_left + binfold_right)
@@ -1001,6 +1426,7 @@ void alu_sub():
 	elif (target_isa == 2): wasm_bx_op_ax(0x6b)
 	elif (target_isa == 1): a64(op(0xcb, 0x000020))   # sub x0,x1,x0
 	else:
+		if (shuttle_alu(5)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			if (fold_sub_fits(binfold_left, binfold_right)):
 				binfold_emit(binfold_left - binfold_right)
@@ -1017,6 +1443,7 @@ void alu_imul():
 	elif (target_isa == 2): wasm_ax_op_bx(0x6c)
 	elif (target_isa == 1): a64(op(0x9b, 0x017c00))   # mul x0,x0,x1
 	else:
+		if (shuttle_alu(8)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			if (fold_mul_fits(binfold_left, binfold_right)):
 				binfold_emit(binfold_left * binfold_right)
@@ -1166,6 +1593,7 @@ void alu_and():
 	elif (target_isa == 2): wasm_ax_op_bx(0x71)
 	elif (target_isa == 1): a64(op(0x8a, 0x010000))   # and x0,x0,x1
 	else:
+		if (shuttle_alu(4)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			binfold_emit(binfold_left & binfold_right)
 			return
@@ -1179,6 +1607,7 @@ void alu_or():
 	elif (target_isa == 2): wasm_ax_op_bx(0x72)
 	elif (target_isa == 1): a64(op(0xaa, 0x010000))   # orr x0,x0,x1
 	else:
+		if (shuttle_alu(1)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			binfold_emit(binfold_left | binfold_right)
 			return
@@ -1192,6 +1621,7 @@ void alu_xor():
 	elif (target_isa == 2): wasm_ax_op_bx(0x73)
 	elif (target_isa == 1): a64(op(0xca, 0x010000))   # eor x0,x0,x1
 	else:
+		if (shuttle_alu(6)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			binfold_emit(binfold_left ^ binfold_right)
 			return
@@ -1208,8 +1638,9 @@ void alu_cmp_set(int setcc_opcode):
 	elif (target_isa == 2): wasm_alu_cmp_set(setcc_opcode)
 	elif (target_isa == 1): arm64_alu_cmp_set(setcc_opcode)
 	else:
-		emit_x64_opcode()
-		emit(2, c"\x39\xc3")
+		if (shuttle_cmp() == 0):
+			emit_x64_opcode()
+			emit(2, c"\x39\xc3")
 		cmp_fuse_start = codepos
 		emit_int8(15)
 		emit_int8(setcc_opcode)
@@ -1537,6 +1968,7 @@ void be_arm64_frame_return():
 
 
 void dwarf_leave_note();   /* dwarf.w: CFI for the framed return */
+void be_frame_teardown();
 
 
 # Function return from a body holding stack_words W stack words above
@@ -1548,11 +1980,21 @@ void be_return(int stack_words):
 	if (be_frame_active && (target_isa == 1)):
 		be_arm64_frame_return()
 		return
-	if ((target_isa == 0) && be_frame_active):
-		dwarf_leave_note()
-		emit(1, c"\xc9") /* leave */
+	if ((target_isa == 0) && be_frame_active): be_frame_teardown()
 	else: be_pop(stack_words)
 	ret()
+
+
+# x86/x64 frame teardown: 'leave', or, when the prologue pushed promoted
+# registers, 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' (the CFI note
+# marks the pop of the frame pointer in both shapes).
+void be_frame_teardown():
+	if (regalloc_epilogue_emit()):
+		dwarf_leave_note()
+		emit(1, c"\x5d") /* pop ebp */
+	else:
+		dwarf_leave_note()
+		emit(1, c"\xc9") /* leave */
 
 
 # Return from a body that holds nothing on the W stack beyond its
@@ -1563,9 +2005,7 @@ void be_return_bare():
 	if (be_frame_active && (target_isa == 1)):
 		be_arm64_frame_return()
 		return
-	if ((target_isa == 0) && be_frame_active):
-		dwarf_leave_note()
-		emit(1, c"\xc9") /* leave */
+	if ((target_isa == 0) && be_frame_active): be_frame_teardown()
 	ret()
 
 ############################## end of x86 opcodes ##############################

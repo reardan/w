@@ -15,6 +15,10 @@ program, which parses each ELF from disk with a small DIE walker over
  - p's type is a pointer to the structure point (two int members at
    offsets 0 and word), int is a signed base type of word size, and
    report's local digits is the int[3] descriptor;
+ - accumulate's register-promoted locals i and total (unit R2) have
+   DW_OP_reg<n> locations naming the callee-saved registers the
+   promotion uses (esi/edi on x86, r12-r15 on x64), and accumulate's
+   FDE saves those registers (DW_CFA_offset) after the frame setup;
  - .debug_frame holds a CIE and an FDE starting at scale's low_pc.
 */
 import lib.lib
@@ -100,6 +104,7 @@ struct die:
 	int type_ref    # CU-relative offset, -1 when absent
 	int fbreg       # DW_OP_fbreg operand of DW_AT_location
 	int has_fbreg
+	int reg         # DW_OP_reg<n>: the register number, -1 when absent
 	int frame_base_op
 	int member_offset
 	int byte_size
@@ -154,6 +159,7 @@ void read_attribute(die* d, int attribute, int form):
 		if ((attribute == 2) && (op == 145)):
 			d.fbreg = read_sleb()
 			d.has_fbreg = 1
+		else if ((attribute == 2) && (op >= 80) && (op <= 111)): d.reg = op - 80
 		else if (attribute == 64): d.frame_base_op = op
 		else if ((attribute == 56) && (op == 35)): d.member_offset = read_uleb()
 		reader_pos = block_start + block_length
@@ -212,6 +218,7 @@ void parse_dies(char* data, int info, int abbrev, int abbrev_size):
 		d.parent = -1
 		if (parents.length > 0): d.parent = parents[parents.length - 1]
 		d.type_ref = -1
+		d.reg = -1
 		d.name = c""
 		reader_pos = spec
 		d.tag = read_uleb()
@@ -276,11 +283,36 @@ int find_die_under(int tag, char* name, int ancestor):
 	return -1
 
 
+# ULEB128 read for the CFA instruction walk, advancing *pos past it.
+int read_uleb_at(char* data, int* pos):
+	int value = 0
+	int shift = 0
+	while (1):
+		int b = asm_read_u8(data, *pos)
+		*pos = *pos + 1
+		value = value | ((b & 127) << shift)
+		shift = shift + 7
+		if ((b & 128) == 0): break
+	return value
+
+
 void check_frame_offset(char* name, int parent, int tag, int expected):
 	int i = find_die_under(tag, name, parent)
 	die* d = dies[i]
 	asserts(c"variable has a DW_OP_fbreg location", d.has_fbreg)
 	assert_equal(expected, d.fbreg)
+
+
+# A register-resident local: DW_OP_reg<n> with n in the callee-saved
+# set register promotion hands out on this width.
+int check_register(char* name, int parent, int word_size):
+	int i = find_die_under(52, name, parent)
+	die* d = dies[i]
+	asserts(c"promoted local has no DW_OP_fbreg location", d.has_fbreg == 0)
+	asserts(c"promoted local has a DW_OP_reg location", d.reg >= 0)
+	if (word_size == 8): asserts(c"x64 promoted local in r12-r15", (d.reg >= 12) && (d.reg <= 15))
+	else: asserts(c"x86 promoted local in esi/edi", (d.reg == 6) || (d.reg == 7))
+	return d.reg
 
 
 void check_binary(char* path, int word_size):
@@ -302,7 +334,7 @@ void check_binary(char* path, int word_size):
 	die* s = dies[scale]
 	asserts(c"scale low_pc in .text", (s.low_pc >= text_lo) && (s.low_pc < text_hi))
 	asserts(c"scale high_pc after low_pc", (s.high_pc > s.low_pc) && (s.high_pc <= text_hi))
-	assert_equal(16, s.decl_line)
+	assert_equal(19, s.decl_line)
 	assert_equal(156, s.frame_base_op) /* DW_OP_call_frame_cfa */
 	asserts(c"scale returns int", s.type_ref >= 0)
 	int report = find_die(46, c"report", 0)
@@ -340,6 +372,11 @@ void check_binary(char* path, int word_size):
 	asserts(c"base type named int", strcmp(dies[int_die].name, c"int") == 0)
 	assert_equal(word_size, dies[int_die].byte_size)
 	assert_equal(5, dies[int_die].encoding) /* DW_ATE_signed */
+	# accumulate's loop locals live in registers (two distinct ones)
+	int accumulate = find_die(46, c"accumulate", 0)
+	int reg_i = check_register(c"i", accumulate, word_size)
+	int reg_total = check_register(c"total", accumulate, word_size)
+	asserts(c"i and total in different registers", reg_i != reg_total)
 	int digits = find_die_under(52, c"digits", report)
 	int array = die_at_offset(dies[digits].type_ref)
 	asserts(c"T[N] descriptor named int[3]", strcmp(dies[array].name, c"int[3]") == 0)
@@ -353,6 +390,7 @@ void check_binary(char* path, int word_size):
 	assert_equal(65535, asm_read_u16(data, frame + 6))
 	int position = frame + 4 + asm_read_u32(data, frame)
 	int found = 0
+	int saved = 0
 	while (position < frame + frame_size):
 		int length = asm_read_u32(data, position)
 		assert_equal(0, asm_read_u32(data, position + 4)) /* CIE_pointer */
@@ -361,9 +399,39 @@ void check_binary(char* path, int word_size):
 		if (start == s.low_pc):
 			assert_equal(s.high_pc - s.low_pc, range)
 			found = 1
+		if (start == dies[accumulate].low_pc):
+			# DW_CFA_offset (0x80 | reg) for each promoted register, after
+			# the advance/def_cfa instructions of the frame setup
+			int at = position + 8 + 2 * word_size
+			while (at < position + 4 + length):
+				# the ops code_generator/dwarf_info.w emits: advance_loc,
+				# advance_loc1/2/4, def_cfa, def_cfa_offset,
+				# def_cfa_register, offset, remember/restore_state,
+				# restore, nop
+				int op = asm_read_u8(data, at)
+				at = at + 1
+				if ((op & 192) == 128):
+					int r = op & 63
+					if ((r == reg_i) || (r == reg_total)): saved = saved + 1
+					read_uleb_at(data, &at)
+				else if ((op & 192) == 64): pass
+				else if ((op & 192) == 192): pass
+				else if (op == 2): at = at + 1
+				else if (op == 3): at = at + 2
+				else if (op == 4): at = at + 4
+				else if (op == 12):
+					read_uleb_at(data, &at)
+					read_uleb_at(data, &at)
+				else if ((op == 13) || (op == 14)): read_uleb_at(data, &at)
+				else if ((op == 10) || (op == 11) || (op == 0)): pass
+				else:
+					print_int0(c"unexpected DW_CFA op ", op)
+					println(c"")
+					exit(1)
 		position = position + 4 + length
 	assert_equal(frame + frame_size, position)
 	asserts(c"FDE for scale", found)
+	assert_equal(2, saved)
 	println(path)
 
 

@@ -116,6 +116,12 @@ char* debug_local_slots
 char* debug_local_kinds
 char* debug_local_types
 char* debug_local_addresses
+# Register number (hardware encoding: x86 esi 6 / edi 7, x64 r12-r15)
+# of a local the compiler promoted into a callee-saved register, 0 for a
+# stack-resident one (docs/projects/register_allocation_pgo.md §2.2).
+# The kind stays 'L' so scope visibility is unchanged; the slot is still
+# the record's stack word (pushed, never read).
+char* debug_local_regs
 int debug_local_count
 int debug_local_capacity
 
@@ -134,6 +140,7 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		debug_local_kinds = malloc(debug_local_capacity * 4)
 		debug_local_types = malloc(debug_local_capacity * 4)
 		debug_local_addresses = malloc(debug_local_capacity * 4)
+		debug_local_regs = malloc(debug_local_capacity * 4)
 	if (debug_local_count >= debug_local_capacity):
 		# names holds pointers (word-sized entries); the other four are
 		# 4-byte ints. Growing names with the int-array sizes made the
@@ -151,13 +158,26 @@ void debug_local_note(char* name, int slot, int kind, int type):
 		debug_local_kinds = realloc(debug_local_kinds, old, x)
 		debug_local_types = realloc(debug_local_types, old, x)
 		debug_local_addresses = realloc(debug_local_addresses, old, x)
+		debug_local_regs = realloc(debug_local_regs, old, x)
 	save_ptr(debug_local_names + debug_local_count * __word_size__, cast(int, strclone(name)))
 	save_int(debug_local_slots + debug_local_count * 4, slot)
 	save_int(debug_local_kinds + debug_local_count * 4, kind)
 	save_int(debug_local_types + debug_local_count * 4, type)
 	save_int(debug_local_addresses + debug_local_count * 4, codepos)
+	save_int(debug_local_regs + debug_local_count * 4, 0)
 	dwarf_variable_note(debug_local_count, kind)
 	debug_local_count = debug_local_count + 1
+
+
+# The local recorded last lives in register reg (sym_declare, right after
+# the promotion decision).
+void debug_local_set_register(int reg):
+	if (debug_local_count == 0): return;
+	save_int(debug_local_regs + (debug_local_count - 1) * 4, reg)
+
+
+int debug_local_register(int i):
+	return load_int(debug_local_regs + i * 4)
 
 
 ########################## DWARF scope notes (#536) ###########################
@@ -181,9 +201,11 @@ void debug_local_note(char* name, int slot, int kind, int type):
 
 # Per function (dwarf_func_stride words): symbol table offset, start
 # codepos (the push), body codepos (after mov fp,sp), end codepos,
-# argument words, first event, end of events (event numbers), cloned name.
+# argument words, first event, end of events (event numbers), cloned name,
+# and the mask of callee-saved registers the prologue pushed after the
+# frame pointer (register promotion, x86/x64 only; 0 otherwise).
 list[int] dwarf_funcs
-const int dwarf_func_stride = 8
+const int dwarf_func_stride = 9
 # Events in compile order, 2 words each: kind ('B' block begin, 'b'
 # block end, 'V' variable), and the block or debug_local index.
 list[int] dwarf_events
@@ -262,6 +284,7 @@ void dwarf_function_open(int start):
 	dwarf_funcs.push(dwarf_events.length / 2)
 	dwarf_funcs.push(dwarf_events.length / 2)
 	dwarf_funcs.push(cast(int, strclone(dwarf_define_name)))
+	dwarf_funcs.push(regalloc_saved_mask)
 	dwarf_open_func = dwarf_funcs.length / dwarf_func_stride
 	dwarf_block_stack.clear()
 	if (dwarf_params_symbol == dwarf_define_symbol):
@@ -308,6 +331,10 @@ void dwarf_variable_note(int local_index, int kind):
 # differ from the declared parameter count in the symbol table).
 char* debug_func_starts
 char* debug_func_arg_words
+# Mask of the callee-saved registers the function's prologue pushed
+# after the frame pointer (register promotion): wdbg finds a caller's
+# promoted local in the callee that saved the register (debugger/locals.w).
+char* debug_func_regs
 int debug_func_count
 int debug_func_capacity
 
@@ -317,14 +344,17 @@ void debug_func_note(int start, int arg_words):
 		debug_func_capacity = 1024
 		debug_func_starts = malloc(debug_func_capacity * 4)
 		debug_func_arg_words = malloc(debug_func_capacity * 4)
+		debug_func_regs = malloc(debug_func_capacity * 4)
 	if (debug_func_count >= debug_func_capacity):
 		int old = debug_func_capacity * 4
 		debug_func_capacity = debug_func_capacity * 2
 		int x = debug_func_capacity * 4
 		debug_func_starts = realloc(debug_func_starts, old, x)
 		debug_func_arg_words = realloc(debug_func_arg_words, old, x)
+		debug_func_regs = realloc(debug_func_regs, old, x)
 	save_int(debug_func_starts + debug_func_count * 4, start)
 	save_int(debug_func_arg_words + debug_func_count * 4, arg_words)
+	save_int(debug_func_regs + debug_func_count * 4, regalloc_saved_mask)
 	debug_func_count = debug_func_count + 1
 	if (dwarf_open_func > 0):
 		int record = (dwarf_open_func - 1) * dwarf_func_stride
@@ -340,6 +370,17 @@ int debug_func_args_at(int start):
 			return load_int(debug_func_arg_words + i * 4)
 		i = i + 1
 	return -1
+
+
+# Saved-register mask of the function whose body starts at 'start', 0
+# when unknown.
+int debug_func_regs_at(int start):
+	int i = 0
+	while (i < debug_func_count):
+		if (load_int(debug_func_starts + i * 4) == start):
+			return load_int(debug_func_regs + i * 4)
+		i = i + 1
+	return 0
 
 
 void emit_uleb(int v):
