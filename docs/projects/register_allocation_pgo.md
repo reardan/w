@@ -1104,3 +1104,83 @@ extend. Functions the defhash scan does not record (a script's implicit
 `main`, generator bodies) carry a zero hash and will never match a
 `--profile-use` lookup. The `defhash_note` capacity was raised from
 8,000 to 20,000 definitions because the flag records the whole closure.
+
+### B1 — benchmark corpus and harness (2026-10-07)
+
+**Landed.** `tests/bench/`: eight programs (`sum`, `sieve`, `sha256_1m`,
+`siphash_keys`, `inflate_corpus`, `regex_backtrack`, `matmul_256`,
+`strcmp_sort`) plus the `self` row, each deterministic, size-argument
+driven, printing one `<name> size=<n> checksum=<hex>` line that is
+identical on x86 and x64 (masked-32-bit arithmetic as in `lib/sha256.w`,
+`tests/bench/bench_lib.w`); a C twin for each in `tests/bench/c/` that
+ports the W library code it exercises (sha256, HalfSipHash + the
+runtime's table, inflate, regex, the runtime's merge sort) and prints
+the same line. Targets: `bench_<name>` (tag `bench`: full size, both
+widths, checksum asserted), `bench_<name>_smoke_test` (tag `tests`:
+tiny size, both widths), `bench` (umbrella → `bench_report`, writes
+`bin/bench.txt`), `bench_compare` (against `tests/bench/baseline.txt`).
+`bin/wbench --programs` (`tools/wbench.w`): per `<name>.<arch>` row the
+executable bytes, callgrind `kIr` (once per row, when valgrind is on
+PATH) with the three hottest functions resolved through `nm -n`, best
+wall time of `-n` runs; `--compiler`/`--compiler64` pick the compilers,
+`--size`, `--no-valgrind`, `--prefix`; the compare rules are wbench's
+(bytes and kIr gate within tolerance, kIr skipped — not failed — when
+either side lacks it, wall time reported). `tools/bench_vs_c.sh`
+builds the corpus with W (x86, x64) and gcc/clang `-O2` (and `-m32`
+when multilib exists), checks the lines agree and prints markdown
+tables. `wbench_compare_test` gained the programs-mode fixtures
+(`tests/bench/fixtures/`). `docs/testing.md` "The benchmark corpus".
+The optional CI bench job is a patch at
+`/mnt/project-files/regalloc-pgo/ci-bench.patch` (not committed).
+`build.base.json` got the step-less `bench` umbrella and a
+`no_umbrella` entry for `bench_compare` — the minimal edit the tag
+mechanism needs; P2 owns the rest of that file.
+
+**Baseline (this unmodified compiler, 4-core Xeon 2.1 GHz cloud
+container, best of 3, `./wbuild bench` and `tools/bench_vs_c.sh`; the
+Ir columns are callgrind instruction counts, deterministic per binary
+except for the random map seed in `siphash_keys`/`self`):**
+
+| program | W x86 ms | W x64 ms | gcc -O2 ms | clang -O2 ms | W x86 Ir | W x64 Ir | gcc Ir | clang Ir |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sum | 759 | 751 | 205 | 3 | 13.80 G | 13.80 G | 1.20 G | 0.24 M |
+| sieve | 444 | 434 | 225 | 228 | 4.07 G | 4.07 G | 0.59 G | 0.80 G |
+| sha256_1m | 492 | 496 | 116 | 119 | 7.70 G | 7.70 G | 1.29 G | 1.31 G |
+| siphash_keys | 710 | 987 | 298 | 311 | 6.15 G | 6.91 G | 1.18 G | 1.15 G |
+| inflate_corpus | 510 | 505 | 71 | 69 | 6.78 G | 6.72 G | 0.99 G | 0.84 G |
+| regex_backtrack | 624 | 592 | 220 | 170 | 10.19 G | 10.19 G | 2.54 G | 2.42 G |
+| matmul_256 | 518 | 526 | 171 | 196 | 8.77 G | 8.77 G | 1.18 G | 0.68 G |
+| strcmp_sort | 473 | 524 | 187 | 187 | 4.60 G | 4.72 G | 0.57 G | 0.59 G |
+| self (compiling w.w) | 908 | 805 | — | — | 7.34 G | 7.57 G | — | — |
+
+Hottest functions per row (from `bin/bench.txt`): `sum_to` 100%;
+`sieve` 98%; `sha256_block_w` 76% (`bench_rand` 14% is the data fill);
+`__w_hash_sip` 39%, `__w_hash_table_rehash` 8–12%; `wh_decode` 22%,
+`inf_get_bit` 18%, `__w_size_add` 12%; `rx_here` 37%; `matmul` 99.8%;
+`__w_list_compare_values` 23%, `__w_list_merge_sort` 20%; self:
+`sha256_block_w` 13–15%, `__w_hash_sip` 11–12%, `strcmp` 9%.
+
+**What the numbers say.** W emits 6–11x the instructions of gcc -O2 on
+the loop-bound programs and runs 2.4–7x slower in wall time (the gap
+in cycles is smaller than in instructions because W's memory-operand
+instructions overlap in the pipeline). `sum` is the §1.1/§1.3 loop verbatim: 23
+instructions per iteration (13.8 G / 600 M; `objdump` of
+`bin/wbench_prog_sum_x86` shows the §1.1 shape with 23 instructions —
+§1.1's listing undercounts the `mov ebx,eax` shuttles by three) — the
+per-iteration count is the one R1/R2 move; gcc is 2 instructions per
+iteration and clang folds the loop to a closed form, so that row's C
+columns are an optimiser ceiling, not a loop. The x64
+rows are not faster than x86 today (`siphash_keys` and `strcmp_sort`
+are slower: 8-byte words through the same accumulator model), which
+is the state R2 starts from. `self` x64 is faster in wall time than
+x86 (805 vs 908 ms) with 3% more instructions. Everything else §1
+predicted holds: `sha256_block_w` and `__w_hash_sip` are 25% of the
+self-compile's instructions.
+
+**Not claimed:** no compiler change; the baseline's wall times are
+this container's and only the bytes/kIr columns gate. The `self.x64`
+row needs `bin/wv2_64` (`build_x64`, which `bench`/`bench_compare`
+depend on) and is skipped otherwise. Two tooling notes went to
+`ai_tooling_next_steps.md` (valgrind does not read W's `.symtab`, so
+`wbench` resolves addresses with `nm`; 32-bit `wbench` records Ir in
+thousands).

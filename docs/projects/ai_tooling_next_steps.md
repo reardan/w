@@ -912,3 +912,27 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   ("initializer for global must be a compile-time constant"); a
   zero-argument function returning the literal is the workaround used
   in tests/profile_generate_test.w.
+
+## Benchmark corpus and `wbench --programs` (2026-10-07, regalloc/PGO plan B1)
+
+- **valgrind does not read the symbol table of W binaries.**
+  `callgrind_annotate` names every W function `file.w:0x<address>`
+  (the DWARF line table gives it the file, the `.symtab` entries have
+  no size so it never attributes addresses to them), while a gcc
+  binary's functions are named directly. `bin/wbench --programs`
+  works around it by resolving each address with `nm -n` against the
+  binary (the symbols are there) and prints the address when `nm` is
+  absent. Emitting `st_size` on the function symbols
+  (`code_generator/elf_32.w`/`elf_64.w`) would make every valgrind
+  tool, `perf` and `addr2line` name W functions without the detour.
+- **Instruction counts overflow a 32-bit word.** The self-compile is
+  7.2 G instructions; `bin/wbench` is an x86 binary, so it records
+  callgrind's count in thousands (`kIr`) and parses the number by
+  dropping its last three digits rather than dividing. A 64-bit
+  `wbench` (`binary=wbench arch=x64`) would remove the unit, at the
+  cost of needing an x86-64 host for the compile-speed baseline too.
+- **The sandbox this unit ran in refuses `for p in ...; do bin/wv2
+  ...` loops and heredocs with variables** as "too complex to verify";
+  the workaround was to write each loop to a script file in the
+  scratchpad and run `bash <file>`. Not a repo bug, but worth knowing
+  for the next agent calibrating sizes across a corpus.
