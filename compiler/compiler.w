@@ -1574,6 +1574,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (stats_mode && ast_retain_mode):
 		print_int0(c"Retained AST nodes: ", retained_node_count())
 		print_error(c"\n")
+		# P1.2b: expression operands among them, and the session arena.
+		print_int0(c"Retained expression operands: ", retained_operand_total)
+		print_error(c"\nRetained text bytes: ")
+		print_error(itoa(retained_text_total))
+		print_error(c"\nRetained arena bytes: ")
+		print_error(itoa(retained_arena_used()))
+		print_error(c"\n")
 	if (stats_mode && ast_expressions_mode):
 		print_error(c"AST expressions: ")
 		print_error(itoa(ast_expressions_emitted))

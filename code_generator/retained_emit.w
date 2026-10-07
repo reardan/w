@@ -5,7 +5,8 @@
 # statement walk then has the adapter below reconstitute the arena from that
 # group alone, overwriting every node column and the decoded text/type-name
 # arenas, so the backend visitor in code_generator/expression_ast.w lowers
-# retained data rather than the temporary parse. Node IDs stay group-local, so the root is the group's op.
+# retained data rather than the temporary parse. Node IDs stay
+# group-local, so the root is the group's op.
 #
 # The retained copy closes the arena's borrowed and overloaded slots as
 # follows (each was a gap found by compiling with this mode):
@@ -29,6 +30,14 @@
 # arena it replaces. A difference means the retained copy lost information,
 # so it is a compiler bug and stops the compilation, rather than letting
 # the image silently differ from the default emitter's.
+#
+# P1.2b: a group holds its columns in one session-arena block, and the
+# semantic records above (types, bindings, interned operand spellings) are
+# kept only in a semantic session (retained_semantic_mode: tree queries and
+# --ast-retain). A plain session, the default compile, checks the group's
+# header and lowers its columns in place (retained_emit_lower) instead of
+# copying them back; a semantic session still rebuilds and compares every
+# field as described above.
 import compiler.statement_ast
 
 int ast_emit_retained_mode
@@ -120,7 +129,7 @@ void retained_emit_semantic_check(expression_ast* tree, retained_group* group):
 		if (tree.infer_want[i] != want): retained_emit_check(tree.infer_want[i], want, c"infer_want")
 
 
-# Overwrite the arena bound to tree with the contents of retained group.
+# Check the arena bound to tree against the contents of retained group.
 # Returns the root node ID recorded for the group.
 int retained_emit_expression_group(expression_ast* tree, int id):
 	retained_record* owner = retained_record_at(id)
@@ -130,14 +139,10 @@ int retained_emit_expression_group(expression_ast* tree, int id):
 	assert1(count <= tree.capacity)
 	if (tree.text_used != group.arena_text_length): retained_emit_check(tree.text_used, group.arena_text_length, c"text")
 	if (tree.type_names_used != group.arena_type_names_length): retained_emit_check(tree.type_names_used, group.arena_type_names_length, c"type_names")
-	char* text = group.arena_text
-	for i in range(group.arena_text_length):
-		if (tree.text[i] != text[i]): retained_emit_check(tree.text[i], text[i], c"text")
-		tree.text[i] = text[i]
-	char* type_names = group.arena_type_names
-	for i in range(group.arena_type_names_length):
-		if (tree.type_names[i] != type_names[i]): retained_emit_check(tree.type_names[i], type_names[i], c"type_names")
-		tree.type_names[i] = type_names[i]
+	# The adapter's arena already holds the parse: a difference means the
+	# retained copy lost information (S2.1), and stops the compilation.
+	int at = retained_bytes_differ(tree.type_names, group.arena_type_names, group.arena_type_names_length)
+	if (at >= 0): retained_emit_check(tree.type_names[at], group.arena_type_names[at], c"type_names")
 	tree.count = count
 	tree.text_used = group.arena_text_length
 	tree.type_names_used = group.arena_type_names_length
@@ -149,21 +154,71 @@ int retained_emit_expression_group(expression_ast* tree, int id):
 	tree.readonly = group.readonly
 	tree.whole_expression = group.whole_expression
 	tree.final_token_offset = group.final_token_offset
-	# The arena's columns are contiguous, tree.capacity words apart, in
-	# the order the group keeps them.
-	int* from = group.columns
-	int* to = tree.op
-	int stride = tree.capacity
-	for c in range(retained_expression_columns):
-		for i in range(count):
-			int v = from[i]
-			if (to[i] != v): retained_emit_check(to[i], v, retained_emit_column_name(c))
-			to[i] = v
-		from = &from[count]
-		to = &to[stride]
-	if (group.semantic != 0): retained_emit_semantic_check(tree, group)
+	# P1.2b: a plain session's visitor reads the group's columns in place
+	# (retained_emit_lower), so only a semantic session compares them.
+	if (group.semantic != 0):
+		at = retained_bytes_differ(tree.text, group.arena_text, group.arena_text_length)
+		if (at >= 0): retained_emit_check(tree.text[at], group.arena_text[at], c"text")
+		# The arena's columns are contiguous, tree.capacity words apart, in
+		# the order the group keeps them.
+		int* from = group.columns
+		int* to = tree.op
+		int stride = tree.capacity
+		for c in range(retained_expression_columns):
+			at = retained_words_differ(to, from, count)
+			if (at >= 0): retained_emit_check(to[at], from[at], retained_emit_column_name(c))
+			from = &from[count]
+			to = &to[stride]
+		retained_emit_semantic_check(tree, group)
 	ast_retained_emitted = ast_retained_emitted + 1
 	return group.root
+
+
+# Lower retained group id through the backend visitor; returns its root.
+# A semantic session lowers the arena the check above found equal to the
+# group. P1.2b: a plain session binds the arena's columns and decoded text to
+# the group's own copies, so the visitor reads the retained forest in place,
+# and binds the arena back to its slab afterwards. The one column the visitor
+# writes (it_slot, a list iteration's hidden slot) is copied back too, so the
+# parsing frame sees the arena it would have seen.
+void emit_expression_ast_root(expression_ast* tree, int root);
+
+
+int retained_emit_lower(expression_ast* tree, int id):
+	int root = retained_emit_expression_group(tree, id)
+	retained_group* group = retained_record_at(id).group
+	if (group.semantic != 0):
+		emit_expression_ast_root(tree, root)
+		return root
+	int count = group.count
+	int* c = group.columns
+	tree.text = group.arena_text
+	tree.op = c
+	tree.left = &c[count]
+	tree.right = &c[2 * count]
+	tree.offset = &c[3 * count]
+	tree.value = &c[4 * count]
+	tree.result_type = &c[5 * count]
+	tree.high = &c[6 * count]
+	tree.next_arg = &c[7 * count]
+	tree.in_cast = &c[8 * count]
+	tree.binding_name = &c[9 * count]
+	tree.binding_offset = &c[10 * count]
+	tree.symbol = &c[11 * count]
+	tree.qualified = &c[12 * count]
+	tree.it_slot = &c[13 * count]
+	tree.generic_parameters = &c[14 * count]
+	tree.generic_signature = &c[15 * count]
+	tree.generic_offset = &c[16 * count]
+	tree.generic_instance = &c[17 * count]
+	tree.generic_arity = &c[18 * count]
+	tree.infer_coercion = &c[19 * count]
+	tree.call_receiver_type = &c[20 * count]
+	tree.infer_want = &c[21 * count]
+	emit_expression_ast_root(tree, root)
+	expression_ast_point_columns(tree)
+	retained_copy_words(tree.it_slot, &c[13 * count], count)
+	return root
 
 
 # ---------------------------------------------------------------------------
@@ -353,9 +408,8 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 # adapter rebuilds the arena and checks it against the parse); returns
 # the root node ID.
 int retained_walk_lower_expression(retained_statement_walk* walk):
-	int root = retained_emit_expression_group(walk.tree, walk.group)
+	int root = retained_emit_lower(walk.tree, walk.group)
 	assert1(root == walk.root)
-	emit_expression_ast_root(walk.tree, root)
 	return root
 
 

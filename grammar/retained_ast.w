@@ -311,15 +311,10 @@ void retained_expression_note(expression_ast* tree, int root):
 	# The arena's columns are contiguous, tree.capacity words apart.
 	int* columns = cast(int*, retained_arena_alloc(retained_expression_columns * count * __word_size__))
 	group.columns = columns
-	int* from = tree.op
-	int stride = tree.capacity
-	int to = 0
-	for c in range(retained_expression_columns):
-		for i in range(count): columns[to + i] = from[i]
-		from = &from[stride]
-		to = to + count
+	retained_copy_columns(columns, tree.op, count, tree.capacity, retained_expression_columns)
 	int operand = cast(int, owner) | 1
 	for i in range(count): retained_node_push(operand)
+	retained_operand_total = retained_operand_total + count
 	if (retained_semantic_mode): retained_expression_semantics(tree, group)
 	retained_leave(id, tree.end_offset)
 

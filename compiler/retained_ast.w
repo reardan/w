@@ -190,13 +190,20 @@ int retained_parent = -1
 char* retained_last_path
 int retained_last_source
 retained_source* retained_last_record
-# S2.5: retained_last_record's module node, whose end follows every byte.
-retained_record* retained_last_root
+# P1.2b: getc's recording state (compiler/tokenizer.w): the path and
+# recorded length of retained_last_record while it is the version being
+# read, so a byte inside an already recorded window costs one comparison
+# of its offset. retained_append_sync keeps them current;
+# retained_append_none marks them unusable.
+char* retained_append_path
+int retained_append_next
 # S2.5: the line lookup of the previous retained_add: source and the index
 # of the first line start after its offset. Expression nodes of one group
 # share lines, so most lookups need no search.
 int retained_line_source = -1
 int retained_line_index
+# The start offset of the line retained_line_at found (when it is > 0).
+int retained_line_start
 # Newest source version per path; older versions chain via previous_version.
 map[char*, int] retained_source_index
 # Newest source version per debug file index (-2 = not looked up yet). A
@@ -222,6 +229,9 @@ int retained_arena_offset
 # Interned spellings every group and operand share.
 char* retained_name_expression
 char* retained_name_empty
+# --stats (P1.2b): operands and copied text bytes retained this session.
+int retained_operand_total
+int retained_text_total
 # retained_node_at's ring of loaded views.
 const int retained_view_ring = 8
 retained_node* retained_views
@@ -229,6 +239,8 @@ int retained_view_next
 
 
 void retained_init():
+	# Set last below and cleared with the rest by retained_clear.
+	if (retained_name_expression != 0): return
 	if (retained_sources == 0): retained_sources = new list[retained_source*]
 	if (retained_source_index == 0): retained_source_index = new map[char*, int]
 	if (retained_file_sources == 0): retained_file_sources = new list[int]
@@ -282,12 +294,12 @@ int retained_node_kind(int id):
 
 # Word-aligned bytes from the session arena.
 char* retained_arena_alloc(int size):
-	retained_init()
 	size = (size + __word_size__ - 1) & (0 - __word_size__)
-	if ((retained_arena_index < retained_arena_count) && (retained_arena_offset + size <= retained_arena_sizes[retained_arena_index])):
-		char* here = cast(char*, retained_arena_chunks[retained_arena_index]) + retained_arena_offset
-		retained_arena_offset = retained_arena_offset + size
-		return here
+	int index = retained_arena_index
+	int offset = retained_arena_offset
+	if ((index < retained_arena_count) && (offset + size <= retained_arena_sizes[index])):
+		retained_arena_offset = offset + size
+		return cast(char*, retained_arena_chunks[index]) + offset
 	# The next chunk: the current one is full (or there is none yet).
 	int next = retained_arena_index + 1
 	if (retained_arena_count == 0): next = 0
@@ -319,31 +331,142 @@ char* retained_arena_alloc(int size):
 	return cast(char*, retained_arena_chunks[next])
 
 
+# P1.2b: count words from from to to. The pointers step by raw byte
+# offsets (T* + int is unscaled), which the backend lowers without the
+# multiply an indexed access costs; this loop moves every retained column.
+void retained_copy_words(int* to, int* from, int count):
+	int* p = from
+	int* q = to
+	int blocks = count >> 2
+	while (blocks > 0):
+		q[0] = p[0]
+		q[1] = p[1]
+		q[2] = p[2]
+		q[3] = p[3]
+		p = &p[4]
+		q = &q[4]
+		blocks = blocks - 1
+	int rest = count & 3
+	while (rest > 0):
+		q[0] = p[0]
+		p = &p[1]
+		q = &q[1]
+		rest = rest - 1
+
+
+# columns blocks of count words from from, stride words apart, packed
+# end to end at to: the arena's node columns into a group's block.
+void retained_copy_columns(int* to, int* from, int count, int stride, int columns):
+	int* q = to
+	int* p = from
+	int left = columns
+	# Most groups are an operand or three: copy those a column per step.
+	int step = stride * __word_size__
+	if (count == 1):
+		while (left > 0):
+			q[0] = p[0]
+			p = p + step
+			q = &q[1]
+			left = left - 1
+		return
+	if (count == 2):
+		while (left > 0):
+			q[0] = p[0]
+			q[1] = p[1]
+			p = p + step
+			q = &q[2]
+			left = left - 1
+		return
+	if (count == 3):
+		while (left > 0):
+			q[0] = p[0]
+			q[1] = p[1]
+			q[2] = p[2]
+			p = p + step
+			q = &q[3]
+			left = left - 1
+		return
+	int skip = (stride - count) * __word_size__
+	while (left > 0):
+		int n = count
+		while (n >= 4):
+			q[0] = p[0]
+			q[1] = p[1]
+			q[2] = p[2]
+			q[3] = p[3]
+			p = &p[4]
+			q = &q[4]
+			n = n - 4
+		while (n > 0):
+			q[0] = p[0]
+			p = &p[1]
+			q = &q[1]
+			n = n - 1
+		p = p + skip
+		left = left - 1
+
+
+# Index of the first word where a and b differ, or -1.
+int retained_words_differ(int* a, int* b, int count):
+	int* p = a
+	int* q = b
+	int left = count
+	while (left > 0):
+		if (*p != *q): return count - left
+		p = p + __word_size__
+		q = q + __word_size__
+		left = left - 1
+	return -1
+
+
+# Index of the first byte where a and b differ, or -1.
+int retained_bytes_differ(char* a, char* b, int count):
+	char* start = a
+	char* end = a + count
+	while (a != end):
+		if (*a != *b): return cast(int, a) - cast(int, start)
+		a = a + 1
+		b = b + 1
+	return -1
+
+
+# Bytes of the session arena below its high-water mark.
+int retained_arena_used():
+	int used = retained_arena_offset
+	for i in range(retained_arena_index): used = used + retained_arena_sizes[i]
+	return used
+
+
 # Copy length bytes plus a terminator into the session arena.
 char* retained_text_copy(char* text, int length):
+	retained_text_total = retained_text_total + length
 	char* copy = retained_arena_alloc(length + 1)
-	for i in range(length): copy[i] = text[i]
+	int words = length / __word_size__
+	retained_copy_words(cast(int*, copy), cast(int*, text), words)
+	for i in range(words * __word_size__, length): copy[i] = text[i]
 	copy[length] = 0
 	return copy
 
 
 # Line and column of offset in source, as a node created there records them
-# (line 0 when no line start precedes it). Sets retained_line_index.
+# (line 0 when no line start precedes it). Sets retained_line_index and
+# retained_line_start.
 int retained_line_at(int source, int start):
 	retained_source* location = retained_sources[source]
 	list[int] lines = location.lines
-	int low = 0
 	int high = lines.length
-	int cached = retained_line_index
-	if ((source == retained_line_source) && (cached > 0) && (cached <= high) && (lines[cached - 1] <= start) && ((cached == high) || (lines[cached] > start))):
-		low = cached
-		high = cached
-	while (low < high):
-		int mid = (low + high) / 2
-		if (lines[mid] <= start): low = mid + 1
-		else: high = mid
+	# The starts are contiguous words (lines always holds offset 0).
+	int* starts = cast(int*, &lines[0])
+	int low = retained_line_index
+	if ((source != retained_line_source) || (low <= 0) || (low > high) || (starts[low - 1] > start) || ((low < high) && (starts[low] <= start))):
+		low = 0
+		while (low < high):
+			int mid = (low + high) >> 1
+			if (starts[mid] <= start): low = mid + 1
+			else: high = mid
 	retained_line_source = source
 	retained_line_index = low
+	if (low > 0): retained_line_start = starts[low - 1]
 	return low
 
 
@@ -360,7 +483,7 @@ retained_record* retained_record_new(int kind, int parent, int source, int start
 		int low = retained_line_at(source, start)
 		if (low > 0):
 			node.line = low
-			node.column = start - retained_sources[source].lines[low - 1] + 1
+			node.column = start - retained_line_start + 1
 	node.name = name
 	node.semantic_type = -1
 	node.binding = -1
@@ -397,6 +520,8 @@ void retained_node_load(int id, retained_node* view):
 	view.source = record.source
 	view.start = record.start
 	view.end = record.end
+	# P1.2b: a module ends with every byte its version recorded.
+	if (record.kind == retained_module): view.end = retained_sources[record.source].length
 	view.line = record.line
 	view.column = record.column
 	view.name = record.name
@@ -487,7 +612,7 @@ void retained_node_load(int id, retained_node* view):
 	int low = retained_line_at(record.source, start)
 	if (low > 0):
 		view.line = low
-		view.column = start - retained_sources[record.source].lines[low - 1] + 1
+		view.column = start - retained_line_start + 1
 	int value = c[4 * count + k]
 	int result = c[5 * count + k]
 	int high = c[6 * count + k]
@@ -556,6 +681,35 @@ retained_node* retained_node_at(int id):
 	return view
 
 
+# Room for bytes up to end (inclusive) in source; bytes at and past
+# source.length are unspecified, so a write past the end zeroes the gap.
+void retained_source_reserve(retained_source* source, int end):
+	if (end < source.capacity): return
+	int capacity = source.capacity
+	if (capacity == 0): capacity = 1024
+	while (capacity <= end): capacity = capacity * 2
+	source.bytes = realloc(source.bytes, source.capacity, capacity)
+	source.capacity = capacity
+
+
+# Zero source bytes [from, to): a gap a later read skipped over.
+void retained_source_zero(retained_source* source, int from, int to):
+	char* bytes = source.bytes
+	for i in range(from, to): bytes[i] = 0
+
+
+# Point getc's recording state at retained_last_record (retained_last_path).
+void retained_append_sync():
+	retained_source* source = retained_last_record
+	retained_append_path = retained_last_path
+	retained_append_next = source.length
+
+
+void retained_append_none():
+	retained_append_path = cast(char*, -1)
+	retained_append_next = -1
+
+
 # A fresh compile owns a fresh source version, even at a reused pathname.
 int retained_source_begin(char* path):
 	retained_init()
@@ -580,7 +734,7 @@ int retained_source_begin(char* path):
 	retained_last_source = id
 	retained_last_record = source
 	source.root = retained_add(retained_module, -1, id, 0, 1, 1, path)
-	retained_last_root = retained_record_at(source.root)
+	retained_append_sync()
 	return id
 
 
@@ -602,7 +756,7 @@ int retained_source_id(char* path):
 	retained_last_path = path
 	retained_last_source = id
 	retained_last_record = retained_sources[id]
-	retained_last_root = retained_record_at(retained_last_record.root)
+	retained_append_sync()
 	return id
 
 
@@ -614,17 +768,53 @@ int retained_source_byte(char* path, int offset, int value):
 	if (retained_last_path != path): retained_source_id(path)
 	retained_source* source = retained_last_record
 	if (offset < source.length): return (source.bytes[offset] & 255) == value
-	if (offset >= source.capacity):
-		int capacity = source.capacity
-		if (capacity == 0): capacity = 1024
-		while (capacity <= offset): capacity = capacity * 2
-		source.bytes = realloc(source.bytes, source.capacity, capacity)
-		for i in range(source.capacity, capacity): source.bytes[i] = 0
-		source.capacity = capacity
+	retained_source_reserve(source, offset)
+	retained_source_zero(source, source.length, offset)
 	source.bytes[offset] = value
 	if (value == 10): source.lines.push(offset + 1)
 	if (source.length <= offset): source.length = offset + 1
-	retained_last_root.end = source.length
+	retained_append_sync()
+	return 1
+
+
+
+# P1.2b: record, or check against the recorded copy, count bytes the
+# tokenizer's getchar window holds for path from file offset offset on. getc
+# calls this when the lexer reaches a byte the version has not recorded yet
+# (its window's remaining bytes) and whenever a read() refills the window
+# (the whole new window: a byte read again from the file must not differ),
+# so the per-byte path is one comparison. Bytes are therefore recorded up
+# to the end of the window being read, a little ahead of the lexer; a
+# compile that reads its file to the end records exactly the file either
+# way. Returns 0 when a byte differs from its recorded copy.
+int retained_source_window(char* path, int offset, char* bytes, int count):
+	if (ast_retain_mode == 0): return 1
+	if ((path == 0) || (offset < 0) || (count <= 0)): return 1
+	if (retained_last_path != path): retained_source_id(path)
+	retained_source* source = retained_last_record
+	int end = offset + count
+	int length = source.length
+	int same = length - offset
+	if (same > count): same = count
+	if ((same > 0) && (retained_bytes_differ(source.bytes + offset, bytes, same) >= 0)): return 0
+	if (end > length):
+		retained_source_reserve(source, end)
+		int from = length
+		if (from < offset):
+			retained_source_zero(source, length, offset)
+			from = offset
+		char* base = source.bytes
+		int words = (end - from) / __word_size__
+		retained_copy_words(cast(int*, base + from), cast(int*, bytes + (from - offset)), words)
+		for i in range(from + words * __word_size__, end): base[i] = bytes[i - offset]
+		# Line starts: a second pass over the copy, one compare per byte.
+		char* scan = base + from
+		char* stop = base + end
+		while (scan != stop):
+			if (*scan == 10): source.lines.push(cast(int, scan) - cast(int, base) + 1)
+			scan = scan + 1
+		source.length = end
+	retained_append_sync()
 	return 1
 
 
@@ -668,6 +858,7 @@ void retained_capture(retained_checkpoint* checkpoint):
 void retained_rollback(retained_checkpoint* checkpoint):
 	retained_pending_import = checkpoint.pending_import
 	retained_last_path = 0
+	retained_append_none()
 	retained_line_source = -1
 	retained_semantic_rollback(checkpoint.types, checkpoint.bindings)
 	# Node strings are interned or arena slices, so retracting the suffix
@@ -729,10 +920,12 @@ void retained_clear():
 	retained_source_index = 0
 	retained_file_sources = 0
 	retained_last_path = 0
-	retained_last_root = 0
+	retained_append_none()
 	retained_name_expression = 0
 	retained_name_empty = 0
 	if (retained_views != 0): free(cast(char*, retained_views))
 	retained_views = 0
 	retained_view_next = 0
+	retained_operand_total = 0
+	retained_text_total = 0
 	retained_semantic_clear()
