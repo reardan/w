@@ -1,3 +1,3 @@
-# wbench_compare_test fixture: records visited and output bytes far
-# below any real run (a regression); calls and time stay generous.
-prelude 1000000000 10 10 1000000000
+# wbench_compare_test fixture: lookup calls, records visited and output
+# bytes far below any real run (a regression); time stays generous.
+prelude 10 10 10 1000000000

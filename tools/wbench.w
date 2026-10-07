@@ -1,10 +1,11 @@
 # wbuild: binary=wbench
 # wbuild: target=wbench_compare dep=wbench dep=wv2
-# wbuild: step="bin/wbench -n 1 --compare tools/wbench_baseline.txt"
+# wbuild: step="bin/wbench -n 1 --write-baseline bin/wbench_results.txt --compare tools/wbench_baseline.txt"
 # wbuild: target=wbench_compare_test tag=tests dep=wbench dep=wv2
 # wbuild: step="bin/wbench -n 1 --only prelude --compare tests/wbench/baseline_generous.txt" expect_stdout="prelude     ok" expect_stdout="wbench: no regression against tests/wbench/baseline_generous.txt" reject_stdout="REGRESSION"
-# wbuild: step="bin/wbench -n 1 --only prelude --compare tests/wbench/baseline_regressed.txt" expect_fail expect_stdout="prelude     REGRESSION: records visited" expect_stdout="prelude     REGRESSION: output bytes" expect_stdout="wbench: 1 workload(s) regressed"
+# wbuild: step="bin/wbench -n 1 --only prelude --compare tests/wbench/baseline_regressed.txt" expect_fail expect_stdout="prelude     REGRESSION: sym_lookup calls" expect_stdout="prelude     REGRESSION: records visited" expect_stdout="prelude     REGRESSION: output bytes" expect_stdout="wbench: 1 workload(s) regressed"
 # wbuild: step="bin/wbench -n 1 --only prelude --tolerance 1000000 --compare tests/wbench/baseline_regressed.txt" expect_stdout="wbench: no regression"
+# wbuild: step="bin/wbench -n 1 --only prelude --compare tests/wbench/baseline_slow_time.txt" expect_stdout="wbench: no regression" reject_stdout="REGRESSION"
 # wbuild: step="bin/wbench -n 1 --only prelude --time-factor 1 --compare tests/wbench/baseline_slow_time.txt" expect_fail expect_stdout="prelude     REGRESSION: wall time"
 # wbuild: step="bin/wbench -n 1 --only prelude --write-baseline bin/wbench_baseline_roundtrip.txt"
 # wbuild: step="bin/wbench -n 1 --only prelude --compare bin/wbench_baseline_roundtrip.txt" expect_stdout="prelude     ok"

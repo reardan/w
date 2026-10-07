@@ -12,6 +12,21 @@
 # wbuild: step="bin/testing_runner_fixture" env="W_TEST_LEAKS=1" expect_fail expect_stdout="LEAK: 'test_leaks_one_block()' returned with 1 heap block(s), 40 byte(s) still allocated" expect_stdout="Summary: 2 passed, 1 failed, 0 skipped [leak check]" expect_stdout="Leaked: test_leaks_one_block" reject_stdout="All tests passed!"
 # wbuild: step="bin/testing_runner_fixture --filter=clean" env="W_TEST_LEAKS=1" expect_stdout="Summary: 2 passed, 0 failed, 1 skipped (filter 'clean') [leak check]" expect_stdout="All tests passed!"
 # wbuild: step="bin/testing_runner_fixture" env="W_TEST_LEAKS=0" expect_stdout="All tests passed!"
+# wbuild: step="bin/testing_runner_fixture --filter" expect_fail expect_stderr="--filter requires a value" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_runner_fixture --list --filter=nomatch" expect_fail expect_stderr="Tests FAILED: the filter matched no test."
+# wbuild: step="bin/testing_runner_fixture" env="W_DEBUG_ALLOC=1" expect_stdout="Summary: 3 passed, 0 failed, 0 skipped" reject_stdout="LEAK:"
+# wbuild: step="bin/wv2 tests/testing_assertion_fixture.w -o bin/testing_assertion_fixture"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=asserts" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=assert1" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=equal" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=hex" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=strings" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=contains" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=lacks" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=bytes" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_assertion_fixture" env="W_ASSERT_KIND=near" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stdout="Tests FAILED: assertion in 'test_failure()'." reject_stdout="test_unreachable" reject_stdout="All tests passed!"
+# wbuild: step="bin/wv2 x64 tests/testing_assertion_fixture.w -o bin/testing_assertion_fixture64"
+# wbuild: step="bin/testing_assertion_fixture64" env="W_ASSERT_KIND=equal" expect_fail expect_stdout="Summary: 1 passed, 1 failed, 0 skipped" expect_stderr="Assertion failed."
 import lib.testing
 
 

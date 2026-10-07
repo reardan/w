@@ -53,14 +53,19 @@ a prologue and is counted like one; the synthesized __w_test_main
 its loop-free body has no sites). Asm-bodied functions
 (PR #579) go through the same function_definition path: the increment
 after the prologue touches neither registers nor the stack, so they are
-instrumented like any other function if and when that lands. Only the
-x86 and x64 Linux ELF targets are supported; the option block rejects
+instrumented like any other function if and when that lands.
+
+With --coverage, statement entry sites additionally get kind s counters
+whose file and line are taken from the statement itself. Their hits are
+unioned by tools/wcoverage_lines.w; ordinary profile generation is unchanged.
+Only the x86 and x64 Linux ELF targets are supported; the option block rejects
 the flag on every other target with an error rather than emitting
 counters there (arm64 would need ldr/add/str through a scratch
 register, wasm has no absolute addressing).
 */
 
 int profile_generate_mode
+int coverage_generate_mode
 
 # The record of the function body being compiled (the entry hooks set
 # it; grammar/statement.w's current_function_symbol is declared after
@@ -119,13 +124,15 @@ profile_words* profile_fn_line
 profile_words* profile_fn_loops
 profile_words* profile_fn_counter
 
-# Counters, in emission order (= index): kind 1 function / 2 loop, the
+# Counters, in emission order (= index): kind 1 function / 2 loop /
+# 3 coverage statement, the
 # function record, the loop ordinal (1-based, 0 for a function) and the
 # source line of the site.
 profile_words* profile_ct_kind
 profile_words* profile_ct_record
 profile_words* profile_ct_ordinal
 profile_words* profile_ct_line
+profile_words* profile_ct_file
 
 # disp32 patch sites: code position, counter index, byte offset into
 # the 8-byte counter (4 for the x86 adc half).
@@ -160,6 +167,7 @@ void profile_counters_init():
 	profile_ct_record = profile_words_new()
 	profile_ct_ordinal = profile_words_new()
 	profile_ct_line = profile_words_new()
+	profile_ct_file = profile_words_new()
 	profile_pt_pos = profile_words_new()
 	profile_pt_counter = profile_words_new()
 	profile_pt_offset = profile_words_new()
@@ -195,6 +203,8 @@ int profile_counter_new(int kind, int record, int ordinal):
 	profile_words_push(profile_ct_record, record)
 	profile_words_push(profile_ct_ordinal, ordinal)
 	profile_words_push(profile_ct_line, diag_token_line)
+	if (kind == 3): profile_words_push(profile_ct_file, debug_line_file_index())
+	else: profile_words_push(profile_ct_file, profile_fn_file.items[record])
 	profile_emit_increment(index)
 	return index
 
@@ -243,6 +253,19 @@ void profile_loop_head():
 	int ordinal = profile_fn_loops.items[record] + 1
 	profile_fn_loops.items[record] = ordinal
 	profile_counter_new(2, record, ordinal)
+
+
+# At statement entry, before expression lowering. The same hook serves
+# streaming and retained statements; block delimiters and labels are not
+# executable statements. Each emitted site has its own counter, including
+# repeated generic instantiations and deferred statements. The coverage
+# reader unions their hits by source file and line.
+void profile_coverage_line():
+	if ((coverage_generate_mode == 0) || (profile_generate_mode == 0)): return
+	if (target_isa != 0): return
+	profile_counters_init()
+	if (profile_current_record < 0): return
+	profile_counter_new(3, profile_current_record, 0)
 
 
 # Store a target word into the RW data image at data vaddr `vaddr`.
@@ -335,6 +358,7 @@ void profile_map_write(char* map_path):
 		int record = profile_ct_record.items[i]
 		profile_map_write_int(fd, i)
 		if (profile_ct_kind.items[i] == 1): profile_map_write_cstr(fd, c"\x09f\x09")
+		else if (profile_ct_kind.items[i] == 3): profile_map_write_cstr(fd, c"\x09s\x09")
 		else: profile_map_write_cstr(fd, c"\x09l\x09")
 		profile_map_write_cstr(fd, cast(char*, record_hex[record]))
 		profile_map_write_cstr(fd, c"\x09")
@@ -344,7 +368,7 @@ void profile_map_write(char* map_path):
 		profile_map_write_cstr(fd, shown_name)
 		free(shown_name)
 		profile_map_write_cstr(fd, c"\x09")
-		char* path = debug_file_name(profile_fn_file.items[record])
+		char* path = debug_file_name(profile_ct_file.items[i])
 		char* shown = path
 		if (starts_with(path, cwd)):
 			if (path[cwd_len] == '/'): shown = path + cwd_len + 1

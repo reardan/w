@@ -876,11 +876,14 @@ int link_option(char* arg, int apply):
 	# The map needs the definition spans defhash_note records, so the
 	# flag arms defhash recording over the whole closure; defhash_dump
 	# itself stays with 'w defhash'. x86/x64 Linux ELF only.
-	if (strcmp(arg, c"--profile-generate") == 0):
+	if ((strcmp(arg, c"--profile-generate") == 0) || (strcmp(arg, c"--coverage") == 0)):
 		if (apply):
 			if ((target_isa != 0) || (target_os != 0)):
-				print_error(c"error: --profile-generate is only supported on the x86 and x64 Linux targets\x0a")
+				print_error(c"error: ")
+				print_error(arg)
+				print_error(c" is only supported on the x86 and x64 Linux targets\x0a")
 				exit(1)
+			if (strcmp(arg, c"--coverage") == 0): coverage_generate_mode = 1
 			profile_generate_mode = 1
 			defhash_mode = 1
 			defhash_closure_mode = 1
@@ -953,6 +956,7 @@ void help_shared_options():
 	# S2.1
 	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
 	# P1
+	println(c"  --coverage            count executable statement lines; report with wcoverage lines")
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
 	println(c"                        writes <output>.wprofmap; the program appends to $W_PROFILE_OUT")
 	# P2
@@ -1299,7 +1303,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
-			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--profile-generate") == 0) || (strcmp(*flag_arg, c"--coverage") == 0)): link_option(*flag_arg, 1)
 			# P2: so does the profile the optimizer reads (profile_use.w).
 			if (starts_with(*flag_arg, c"--profile-use=")): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
