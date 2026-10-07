@@ -1,6 +1,7 @@
 # Session-owned production traversal trees with independent semantic records.
-# Backend-specific operands retain their production interpretation; emission
-# still runs through the immediate visitor, not by reloading this forest.
+# Backend-specific operands retain their production interpretation. Every AST
+# compile retains this forest, and expressions are lowered from it (S2.5;
+# code_generator/retained_emit.w) through the backend's existing visitor.
 # IDs are append-only within a session. A checkpoint retracts its suffix;
 # consumers must not keep IDs from a retracted entry.
 # Storage: nodes live in fixed-size chunks owned by the session, and their
@@ -120,6 +121,13 @@ int retained_parent = -1
 char* retained_last_path
 int retained_last_source
 retained_source* retained_last_record
+# S2.5: retained_last_record's module node, whose end follows every byte.
+retained_node* retained_last_root
+# S2.5: the line lookup of the previous retained_add: source and the index
+# of the first line start after its offset. Expression nodes of one group
+# share lines, so most lookups need no search.
+int retained_line_source = -1
+int retained_line_index
 # Newest source version per path; older versions chain via previous_version.
 map[char*, int] retained_source_index
 # Newest source version per debug file index (-2 = not looked up yet). A
@@ -229,12 +237,19 @@ int retained_add(int kind, int parent, int source, int start, int line, int colu
 	node.column = column
 	if ((line == 0) && (source >= 0)):
 		retained_source* location = retained_sources[source]
+		list[int] lines = location.lines
 		int low = 0
-		int high = location.lines.length
+		int high = lines.length
+		int cached = retained_line_index
+		if ((source == retained_line_source) && (cached > 0) && (cached <= high) && (lines[cached - 1] <= start) && ((cached == high) || (lines[cached] > start))):
+			low = cached
+			high = cached
 		while (low < high):
 			int mid = (low + high) / 2
-			if (location.lines[mid] <= start): low = mid + 1
+			if (lines[mid] <= start): low = mid + 1
 			else: high = mid
+		retained_line_source = source
+		retained_line_index = low
 		if (low > 0):
 			node.line = low
 			node.column = start - location.lines[low - 1] + 1
@@ -276,6 +291,7 @@ int retained_source_begin(char* path):
 	retained_last_source = id
 	retained_last_record = source
 	source.root = retained_add(retained_module, -1, id, 0, 1, 1, path)
+	retained_last_root = retained_nodes[source.root]
 	return id
 
 
@@ -297,6 +313,7 @@ int retained_source_id(char* path):
 	retained_last_path = path
 	retained_last_source = id
 	retained_last_record = retained_sources[id]
+	retained_last_root = retained_nodes[retained_last_record.root]
 	return id
 
 
@@ -318,7 +335,7 @@ int retained_source_byte(char* path, int offset, int value):
 	source.bytes[offset] = value
 	if (value == 10): source.lines.push(offset + 1)
 	if (source.length <= offset): source.length = offset + 1
-	retained_nodes[source.root].end = source.length
+	retained_last_root.end = source.length
 	return 1
 
 
@@ -356,6 +373,7 @@ void retained_capture(retained_checkpoint* checkpoint):
 void retained_rollback(retained_checkpoint* checkpoint):
 	retained_pending_import = checkpoint.pending_import
 	retained_last_path = 0
+	retained_line_source = -1
 	retained_semantic_rollback(checkpoint.types, checkpoint.bindings)
 	# Node strings are interned or arena slices, so retracting the suffix
 	# is a high-water mark; the chunks stay allocated for reuse.

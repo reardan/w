@@ -28,6 +28,16 @@ accept `--streaming`. The pinned seed predates the flip, so the bootstrap
 stage compile AST, and images are byte-identical either way. Compiler
 self-host coverage is a narrower gate than full language coverage.
 
+Since S2.5 every AST compile, REPL and wdbg session also **retains the forest
+and emits from it**: each statement is parsed into its retained record and
+then emitted by walking that record, and every expression is lowered from its
+retained group through S2.1's adapter. `--ast-retain` and
+`--ast-emit-retained` are accepted as no-ops kept for scripts (like
+`--ast-full-expressions`), and still conflict with `--streaming`, which opts
+out of the AST front end, the retained forest and retained emission together.
+The temporary expression arena survives only as the adapter's target and for
+`--streaming --ast-expressions`.
+
 The integrated path prepares and lowers runtime expressions, statements,
 control-flow regions, function boundaries, global layouts, enum constants and
 extern bindings through the existing backends. It includes inferred generics,
@@ -49,14 +59,15 @@ fails if a direct compiler step still opts in with a flag the default made
 redundant. These gates prove the tested corpus, not unrestricted
 source-language coverage.
 
-Bodies are still visited incrementally. `--ast-retain` now preserves owned
-production traversal trees (described below), including function/statement
-nesting, expression payloads, owned semantic type graphs and session-local binding
-identities. `w tree --json` exposes this graph. It is not yet an independently
-executable module IR; lowering still uses temporary nodes and some borrowed
-symbol bindings. Deferred
-expressions, generics and helper bodies can be reparsed, while type/import
-declarations still update semantic tables during parsing. Bounded arenas still
+Bodies are still visited incrementally: deferral is per statement (or
+header), not per whole body. The retained forest (described below) holds
+function/statement nesting, expression payloads, owned semantic type graphs
+and session-local binding identities, and `w tree --json` exposes it. It is
+not yet an independently executable module IR: the adapter rebuilds a
+bounded expression arena from each group before the backend visitor runs.
+Generic bodies and deferred statements are re-lexed from the retained source
+bytes rather than the file (S2.3), while type/import declarations still
+update semantic tables during parsing. Bounded arenas still
 fall back on oversized expressions (or reject them in required mode). The
 retired `wc2` resident cache is not part of this implementation.
 
@@ -72,7 +83,10 @@ retired `wc2` resident cache is not part of this implementation.
    invalidation, arbitrary-definition reuse and a resident module cache remain.
 3. Make and validate the production-default migration decision separately from
    opt-in corpus coverage. P1.4 flips the default; the measurements behind the
-   decision are in "AST front end by default (P1.4)" below. Retiring the
+   decision are in "AST front end by default (P1.4)" below. S2.5 makes
+   retained emission the default too; its compile cost is above the plan's
+   1.25x target, so the retained-forest cost work (P1.2) reopens with the
+   numbers in "Retained emission by default (S2.5)" below. Retiring the
    streaming grammar (P1.5) waits for a release that carries the flip. Issue
    #489 remains open for this architectural work.
 
@@ -2435,3 +2449,114 @@ one run each, ±3% from the per-process hash seed):
 
 #582's register pre-scan and promotion add about the same cost to both
 front ends, so the AST default stays inside the 1.25x checkpoint.
+
+## Retained emission by default (S2.5)
+
+Every AST compile now retains the forest and emits from it. `link_impl`'s
+reset (`compiler/compiler.w`) sets `ast_retain_mode` and
+`ast_emit_retained_mode` along with the AST front end, and `--streaming`
+clears all three; `repl_ast_options` (`repl/core.w`) does the same for the
+REPL and wdbg. `--ast-retain` and `--ast-emit-retained` are accepted and
+change nothing, like `--ast-full-expressions` since P1.4. They are still
+errors next to `--streaming`, and a retaining query (`tree`) still
+conflicts with `--streaming` through `retained_query_mode`. wdbg's attach
+recompile keeps forwarding `--ast-emit-retained`, which is now a no-op.
+
+The temporary-arena emission path is reduced to the adapter.
+`emit_prepared_expression_ast` (`code_generator/expression_ast.w`) notes the
+expression into a retained group and has S2.1's adapter rebuild the arena
+from that group before the backend visitor runs. That call used to sit at
+the end of `retained_expression_note`, so S2.2's statement walk had to turn
+the mode off around its note. The note now only records. The arena is
+lowered directly only under `--streaming --ast-expressions` (no forest), or
+when an in-process caller sets `ast_retain_mode` alone, as
+`ast_retained_test` does.
+
+One diagnostic difference surfaced once the default changed. A deferred
+statement re-lexed from a retained window on `/dev/null` (S2.3) lost its
+source context line when its expression preflight called
+`ast_expression_refill`. The refill compacted the window, dropped the
+file's prefix, and `diag_context_collect` could not seek back to line 1.
+Such a window already holds every byte its re-parse can read, so the
+refill now leaves it alone (`retained_window_complete`).
+
+Comparison baselines that assumed the old default now pass `--streaming`:
+`ast_retained_emit_test`'s compile, lint and REPL legs (the lint leg used
+`--ast-full-expressions`; `check --json --lint --streaming` matches the
+default on all 156 fixtures), `coverage_test`, `verify_profile_generate`
+and `verify_pgo` (`bin/wv3_pgo_streaming`). `ast_expression_verify`
+gains a cross-target leg. `w.w` compiled for arm64, arm64_darwin, win64 and
+wasm must be byte-identical between the default and `--streaming`.
+
+Cost work in this unit, all with byte-identical images and `tree --json`
+output:
+
+- The type cache is a dense array with a generation stamp, so the per-declaration
+  invalidation no longer frees and rebuilds a SipHash map.
+- Binding lookups try a direct-mapped front cache and then the raw symbol's
+  `origin_previous` chain before spelling the string key. A binding gains
+  `key_line`, `key_column` and `key_file_index`, appended to the struct.
+- Interning has an empty-name fast path, an 8192-slot front cache and its
+  own multiplicative-hash table in place of a SipHash map.
+- `retained_add` caches its line lookup.
+- `getc` appends a recorded source byte inline, and the module node's end
+  goes through a cached pointer.
+- Field offsets are summed as the fields go, instead of calling
+  `type_get_field_offset_at` once per field.
+- The adapter's field checks compare before they call.
+
+Measured on the shared 4-core box with load average around 1:
+`bin/wv2 … --strict w.w`, median of nine interleaved runs; instructions are
+from callgrind, one run each. "Before" is `origin/main` at `d01aee3`
+(plus the attach.w build fix) compiling this tree with `--ast-retain
+--ast-required --ast-emit-retained`. "After" is this change's default.
+
+| | streaming | before (retained) | after (default) | after / streaming |
+| --- | ---: | ---: | ---: | ---: |
+| x86 wall | 0.886 s | 2.036 s | 1.847 s | 2.08x |
+| x86 user + sys | 0.885 s | 2.034 s | 1.845 s | 2.08x |
+| x64 wall | 0.875 s | 2.126 s | 1.940 s | 2.22x |
+| x64 user + sys | 0.873 s | 2.125 s | 1.938 s | 2.22x |
+| x86 instructions | 6.85G | 12.67G | 11.21G | 1.64x |
+| x64 instructions | 6.81G | 12.75G | 11.25G | 1.65x |
+
+Before this change the default AST compile (no retention) took 1.089 s
+against 0.879 s for streaming (1.24x) and 7.63G instructions. Peak RSS for
+`w.w` on x86 is 118 MB, against 11 MB streaming and 14 MB for the
+non-retaining AST compile. Wall time grows more than instructions do: L1
+instruction misses double (111M vs 51M) and last-level write misses grow
+tenfold (1.86M vs 0.18M; cachegrind). REPL startup and `:quit` takes
+106 ms (x86) and 111 ms (x64), against 43 ms and 45 ms with `--streaming`,
+which matches S2.4's measurement of retaining the preloaded library.
+
+**The plan's 1.25x target is not met, so P1.2 reopens.** The rest of the
+cost is structural. Inclusive costs on x86 (callgrind, after):
+
+- `retained_expression_note`: 2.49G. It allocates one 240-byte node per
+  arena node (480 bytes on x64) and records four semantic types and up to
+  two bindings per node.
+- `retained_binding_note`: 1.09G in total. 0.62G of it comes from
+  `retained_function_parameters`, because a function's binding and each
+  parameter's binding copy their type graphs.
+- `retained_type_note`: 0.66G. `retained_declaration_note` invalidates the
+  type cache at every declaration (6,088 of them in `w.w`), so each one
+  copies the whole type graph it touches again: 34,656 retained types are
+  created.
+- The statement walk: `retained_walk_drain` 1.54G inclusive, most of which
+  is the emission itself. The walk's own overhead is the phase points
+  (tokenizer snapshot saves and compares, about 0.4G) and the adapter
+  (`retained_emit_expression_group`, 0.28G).
+
+Shrinking `retained_node`, keeping type snapshots across declarations that
+did not change a type, and making bindings for parameters lazy are P1.2
+territory: they change the forest's shape or identities, which this unit
+keeps fixed.
+
+What this does not claim: a body is still deferred one statement or header
+at a time, not parsed whole before emission, so checkpoint B's "a function
+body is parsed completely … then emitted" is not reached. Type and import
+declarations still update the semantic tables while they parse, and roots
+too large for the bounded arena still fall back to streaming silently
+unless `--ast-required` is given. The streaming grammar is still compiled
+in and is the `--streaming` oracle until P1.5. The tree schema is
+unchanged (**version 2**). **#489 remains open.**

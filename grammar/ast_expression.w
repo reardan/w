@@ -381,6 +381,9 @@ int ast_expression_root_end(int eof, int statement):
 # inferred from a short read. An unavailable prefix still declines safely.
 int ast_expression_refill(int start):
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
+	# S2.5: a retained window on /dev/null is already the whole source a
+	# re-parse can read (code_generator/retained_emit.w).
+	if (retained_window_complete(file)): return 0
 	int index = start - (getchar_kernel_pos[file] - getchar_limit[file])
 	if ((index < 0) || (index > getchar_pos[file])): return -1
 	int kept = getchar_limit[file] - index

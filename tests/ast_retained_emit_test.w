@@ -4,12 +4,13 @@
 # requires identical exit status, stdout, stderr and image bytes: every
 # fixture for x86 on the 32-bit host and x64 on the 64-bit host, one more
 # target per fixture rotated across arm64, arm64_darwin, win64 and wasm32
-# on alternating hosts, and a `check --json --lint` leg, whose replayed
-# lint warnings (self-assignment, condition assignment) only that mode
-# emits. The lint leg's baseline is --ast-full-expressions, the parse this
-# mode shares: the streaming default reports some void-pointer-conversion
-# lint that full-expression mode does not, so those two differ already. The fixture list is read from ast_expression_test's directive, so
-# the two cannot drift; the data= list below must cover it (asserted).
+# on alternating hosts, and a `check --json --lint` leg for the lint
+# warnings the AST replays (self-assignment, condition assignment). Since S2.5 made this mode the default, nothing lowers the temporary
+# parse any more, so every baseline leg (the lint leg and the REPL sessions
+# included) is the streaming front end, --streaming; it reports the same lint
+# on these fixtures since #558's warnings were ported to the AST (#571). The
+# fixture list is read from ast_expression_test's directive, so the two
+# cannot drift; the data= list below must cover it (asserted).
 # S2.2a adds the statement-walk sources (emit_walk_sources) on the same legs,
 # S2.2d the declaration, goto/label, raw_asm and defer ones, S2.2c the
 # for/switch header fixture and emit_header_walk_sources, and S2.2b
@@ -116,7 +117,7 @@ process* emit_spawn(emit_pair* pair, int retained, char* stem):
 	if (strcmp(pair.arch, c"x86") != 0): emit_shell_word(script, pair.arch)
 	emit_shell_word(script, c"--quiet")
 	if (retained): emit_shell_word(script, c"--ast-emit-retained")
-	else if (pair.check): emit_shell_word(script, c"--ast-full-expressions")
+	else: emit_shell_word(script, c"--streaming")
 	emit_shell_word(script, pair.source)
 	if (pair.check == 0):
 		emit_shell_word(script, c"-o")
@@ -495,7 +496,7 @@ void test_retained_emission_repl_session():
 	for host in range(2):
 		char* repl = c"bin/ast_retained_emit_repl"
 		if (host): repl = c"bin/ast_retained_emit_repl64"
-		process_result* parsed = emit_repl(repl, c"--ast-full-expressions", script)
+		process_result* parsed = emit_repl(repl, c"--streaming", script)
 		process_result* retained = emit_repl(repl, c"--ast-emit-retained", script)
 		assert_equal(0, retained.status)
 		assert_equal(parsed.status, retained.status)
@@ -512,7 +513,7 @@ void test_retained_emission_repl_control():
 	for host in range(2):
 		char* repl = c"bin/ast_retained_emit_repl"
 		if (host): repl = c"bin/ast_retained_emit_repl64"
-		process_result* parsed = emit_repl(repl, c"--ast-full-expressions", script)
+		process_result* parsed = emit_repl(repl, c"--streaming", script)
 		process_result* retained = emit_repl(repl, c"--ast-emit-retained", script)
 		assert_equal(0, retained.status)
 		assert_equal(parsed.status, retained.status)

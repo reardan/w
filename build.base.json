@@ -180,12 +180,12 @@
 			"name": "build_pgo",
 			"deps": ["wv2"],
 			"inputs": ["profiles/self.wprof", "profiles/self_x64.wprof"],
-			"outputs": ["bin/wv3_pgo", "bin/wv4_pgo", "bin/wv5_pgo", "bin/wv3_pgo_ast", "bin/wv3_pgo_64", "bin/wv4_pgo_64"],
+			"outputs": ["bin/wv3_pgo", "bin/wv4_pgo", "bin/wv5_pgo", "bin/wv3_pgo_streaming", "bin/wv3_pgo_64", "bin/wv4_pgo_64"],
 			"steps": [
 				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo"]},
 				{"cmd": ["bin/wv3_pgo", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo"]},
 				{"cmd": ["bin/wv4_pgo", "--profile-use=profiles/self.wprof", "--strict", "w.w", "-o", "bin/wv5_pgo"]},
-				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--ast-required", "--ast-emit-retained", "--strict", "w.w", "-o", "bin/wv3_pgo_ast"]},
+				{"cmd": ["bin/wv2", "--profile-use=profiles/self.wprof", "--streaming", "--strict", "w.w", "-o", "bin/wv3_pgo_streaming"]},
 				{"cmd": ["bin/wv2", "x64", "--profile-use=profiles/self_x64.wprof", "--strict", "w.w", "-o", "bin/wv3_pgo_64"]},
 				{"cmd": ["bin/wv3_pgo_64", "x64", "--profile-use=profiles/self_x64.wprof", "--strict", "w.w", "-o", "bin/wv4_pgo_64"]}
 			]
@@ -198,9 +198,9 @@
 			"steps": [
 				{"cmd": ["cmp", "bin/wv3_pgo", "bin/wv4_pgo"]},
 				{"cmd": ["cmp", "bin/wv4_pgo", "bin/wv5_pgo"]},
-				{"cmd": ["cmp", "bin/wv3_pgo", "bin/wv3_pgo_ast"]},
+				{"cmd": ["cmp", "bin/wv3_pgo", "bin/wv3_pgo_streaming"]},
 				{"cmd": ["cmp", "bin/wv3_pgo_64", "bin/wv4_pgo_64"]},
-				{"cmd": ["echo", "PGO self-host fixpoint OK: wv3_pgo == wv4_pgo == wv5_pgo (== retained), wv3_pgo_64 == wv4_pgo_64"]}
+				{"cmd": ["echo", "PGO self-host fixpoint OK: wv3_pgo == wv4_pgo == wv5_pgo (== streaming), wv3_pgo_64 == wv4_pgo_64"]}
 			]
 		},
 		{
