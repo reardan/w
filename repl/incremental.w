@@ -357,8 +357,10 @@ void incremental_side_collect(incremental_side* side, int source, int node_end, 
 	side.source = source
 	side.nodes = new list[int]
 	side.bindings = new list[int]
+	retained_node view
 	for i in range(side.node_base, node_end):
-		if (retained_nodes[i].source == source): side.nodes.push(i)
+		retained_node_load(i, &view)
+		if (view.source == source): side.nodes.push(i)
 	for i in range(side.binding_base, binding_end):
 		if (retained_bindings[i].source == source): side.bindings.push(i)
 
@@ -509,8 +511,12 @@ int incremental_position_equal(incremental_side* a, int x, incremental_side* b, 
 
 
 int incremental_node_equal(incremental_side* a, int i, incremental_side* b, int j):
-	retained_node* x = retained_nodes[i]
-	retained_node* y = retained_nodes[j]
+	retained_node x_view
+	retained_node y_view
+	retained_node_load(i, &x_view)
+	retained_node_load(j, &y_view)
+	retained_node* x = &x_view
+	retained_node* y = &y_view
 	if (x.kind != y.kind): return 0
 	if (incremental_location_equal(a, x.line, x.column, b, y.line, y.column) == 0): return 0
 	if (incremental_name_equal(x.kind, x.name, y.name) == 0): return 0
@@ -599,7 +605,7 @@ int incremental_tree_unchanged(int index, char* source):
 	incremental_side_collect(&old_side, kept.before.retained.sources, after.retained.nodes, after.retained.bindings)
 	int probe_source = retained_sources.length
 	incremental_side new_side
-	new_side.node_base = retained_nodes.length
+	new_side.node_base = retained_node_count()
 	new_side.table_base = table_pos
 	new_side.binding_base = retained_bindings.length
 	int warnings_before = warning_count
@@ -619,7 +625,7 @@ int incremental_tree_unchanged(int index, char* source):
 		repl_result probe = repl_eval(source)
 		dup2(saved_error, 2)
 		if ((probe.status == 1) && (warning_count - warnings_before == kept.warnings) && (retained_sources.length > probe_source)):
-			incremental_side_collect(&new_side, probe_source, retained_nodes.length, retained_bindings.length)
+			incremental_side_collect(&new_side, probe_source, retained_node_count(), retained_bindings.length)
 			equal = incremental_trees_equal(&old_side, &new_side)
 			if (equal): equal = (kept_length >= 0) && (kept_length == incremental_function_length(sym_probe(kept.name)))
 			incremental_side_free(&new_side)

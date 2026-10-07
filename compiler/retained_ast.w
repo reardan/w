@@ -4,10 +4,23 @@
 # code_generator/retained_emit.w) through the backend's existing visitor.
 # IDs are append-only within a session. A checkpoint retracts its suffix;
 # consumers must not keep IDs from a retracted entry.
-# Storage: nodes live in fixed-size chunks owned by the session, and their
-# strings are either interned (retained_intern) or slices of the session's
-# chunked text arena. Rollback is therefore a high-water mark: it truncates
-# the node list and the text arena without freeing per-node allocations.
+#
+# Storage (P1.2b). Every node that is not an expression operand is a
+# retained_record. An expression group's operands are not records: the group
+# keeps its arena's node columns in one column-major block, and each operand
+# ID maps to its group (retained_expression_columns words per operand, the
+# arena's own encoding). Records, column blocks and copied text live in one
+# chunked session arena, so rollback is a high-water mark. A node ID maps to
+# its record through retained_node_table; an operand's entry is its group's
+# record with the low bit set. Consumers read any node through the full view
+# struct retained_node (retained_node_load), which derives the operand fields
+# the columns do not hold (literals, value-type flags, locations).
+#
+# Semantic snapshot records (compiler/retained_semantic.w) are kept only in
+# a semantic session (retained_semantic_mode): a tree query, an explicit
+# --ast-retain, or an in-process compiler API. A plain compile's forest keeps
+# the raw type and symbol identities its emission lowers, and every semantic
+# field of its nodes reads -1 (or 0 for text).
 import lib.lib
 import compiler.retained_semantic
 
@@ -38,6 +51,7 @@ struct retained_source:
 	# when this version is rolled back.
 	int previous_version
 
+# The view of one node (retained_node_load): every field any kind carries.
 struct retained_node:
 	int kind
 	int parent
@@ -103,6 +117,60 @@ struct retained_node:
 	# (code_generator/retained_emit.w), or -1 once walked or never deferred.
 	int statement_walk
 
+# P1.2b: an expression group's own fields and its operands' columns.
+# columns holds retained_expression_columns blocks of count words, in the
+# arena's column order (compiler/expression_ast.w expression_ast_point_columns):
+# op, left, right, offset, value, result_type, high, next_arg, in_cast,
+# binding_name, binding_offset, symbol, qualified, it_slot,
+# generic_parameters, generic_signature, generic_offset, generic_instance,
+# generic_arity, infer_coercion, call_receiver_type, infer_want.
+# semantic (semantic sessions only, else 0) holds retained_semantic_columns
+# blocks: the semantic result, signature, receiver and inference types, the
+# binding and name binding, the payload text, and the result type's interned
+# spelling, size and pointer level.
+struct retained_group:
+	int id
+	int root
+	int count
+	# 1 when the target word is 64 bits wide (a float literal's high half
+	# is then part of its retained literal).
+	int wide
+	int readonly
+	int whole_expression
+	int final_token_offset
+	char* arena_text
+	int arena_text_length
+	char* arena_type_names
+	int arena_type_names_length
+	int* columns
+	int* semantic
+
+const int retained_expression_columns = 22
+const int retained_semantic_columns = 10
+# compiler/expression_ast.w's ast_warning opcode; this module is also
+# compiled without the expression arena (compiler/module_dependencies.w).
+const int retained_op_warning = 137
+
+# P1.2b: storage of every node but an expression operand.
+struct retained_record:
+	int kind
+	int parent
+	int source
+	int start
+	int end
+	int line
+	int column
+	char* name
+	int semantic_type
+	int binding
+	int statement_walk
+	# Declarations: the declared kind's spelling.
+	char* result_type
+	int import_source
+	char* import_path
+	char* import_alias
+	retained_group* group
+
 struct retained_checkpoint:
 	char* pending_import
 	int nodes
@@ -110,19 +178,20 @@ struct retained_checkpoint:
 	int parent
 	int types
 	int bindings
+	# P1.2b: the session arena's high-water mark (chunk and offset).
 	int text
+	int arena_chunk
 
 int ast_retain_mode
 # Borrowed resolver context, restored by both normal return and rollback.
 char* retained_pending_import
 list[retained_source*] retained_sources
-list[retained_node*] retained_nodes
 int retained_parent = -1
 char* retained_last_path
 int retained_last_source
 retained_source* retained_last_record
 # S2.5: retained_last_record's module node, whose end follows every byte.
-retained_node* retained_last_root
+retained_record* retained_last_root
 # S2.5: the line lookup of the previous retained_add: source and the index
 # of the first line start after its offset. Expression nodes of one group
 # share lines, so most lookups need no search.
@@ -135,99 +204,151 @@ map[char*, int] retained_source_index
 # index keyed by integer; it is emptied whenever the path index changes.
 list[int] retained_file_sources
 
-# Node chunks: node i lives in slot i % chunk of chunk i / chunk, and
-# retained_nodes[i] points at it. Chunks above the high-water mark survive
-# rollback and are reused; retained_clear frees them.
-const int retained_node_chunk_shift = 10
-const int retained_node_chunk = 1024
-list[char*] retained_node_chunks
+# P1.2b: node ID -> record address (an operand's group record | 1).
+int* retained_node_table
+int retained_node_total
+int retained_node_room
 
-# Text arena for copied expression arenas. A record never spans a chunk;
-# expression text and type-name arenas are bounded far below one chunk
-# (grammar/ast_expression.w asserts 32 KiB and 4 KiB respectively).
-const int retained_text_chunk_shift = 17
-const int retained_text_chunk = 131072
-list[char*] retained_text_chunks
-int retained_text_mark
+# P1.2b: the session arena. Allocations never span a chunk; a request larger
+# than a chunk gets a chunk of its own size. Chunks above the high-water mark
+# survive rollback and are reused when large enough; retained_clear frees them.
+const int retained_arena_chunk_size = 1048576
+int* retained_arena_chunks
+int* retained_arena_sizes
+int retained_arena_count
+int retained_arena_room
+int retained_arena_index
+int retained_arena_offset
+# Interned spellings every group and operand share.
+char* retained_name_expression
+char* retained_name_empty
+# retained_node_at's ring of loaded views.
+const int retained_view_ring = 8
+retained_node* retained_views
+int retained_view_next
 
 
 void retained_init():
-	if (retained_nodes == 0): retained_nodes = new list[retained_node*]
 	if (retained_sources == 0): retained_sources = new list[retained_source*]
-	if (retained_node_chunks == 0): retained_node_chunks = new list[char*]
-	if (retained_text_chunks == 0): retained_text_chunks = new list[char*]
 	if (retained_source_index == 0): retained_source_index = new map[char*, int]
 	if (retained_file_sources == 0): retained_file_sources = new list[int]
+	if (retained_node_table == 0):
+		retained_node_room = 4096
+		retained_node_table = cast(int*, malloc(retained_node_room * __word_size__))
+		retained_node_total = 0
+	if (retained_name_expression == 0):
+		retained_name_expression = retained_intern(c"expression")
+		retained_name_empty = retained_intern(c"")
 
 
-# Copy length bytes plus a terminator into the session text arena.
-char* retained_text_copy(char* text, int length):
+int retained_node_count():
+	return retained_node_total
+
+
+# Reserve one more node ID mapped to entry.
+int retained_node_push(int entry):
+	int id = retained_node_total
+	if (id == retained_node_room):
+		int room = retained_node_room * 2
+		int* grown = cast(int*, malloc(room * __word_size__))
+		int* old = retained_node_table
+		for i in range(id): grown[i] = old[i]
+		free(cast(char*, old))
+		retained_node_table = grown
+		retained_node_room = room
+	retained_node_table[id] = entry
+	retained_node_total = id + 1
+	return id
+
+
+# 1 when id is an expression operand (its entry is its group's record).
+int retained_node_is_operand(int id):
+	return retained_node_table[id] & 1
+
+
+# The record of a node that is not an expression operand.
+retained_record* retained_record_at(int id):
+	int entry = retained_node_table[id]
+	if (entry & 1): __w_trap(c"retained_record_at: an expression operand has no record")
+	return cast(retained_record*, entry)
+
+
+int retained_node_kind(int id):
+	int entry = retained_node_table[id]
+	if (entry & 1): return retained_expression
+	retained_record* record = cast(retained_record*, entry)
+	return record.kind
+
+
+# Word-aligned bytes from the session arena.
+char* retained_arena_alloc(int size):
 	retained_init()
-	int size = length + 1
-	if (size > retained_text_chunk): __w_trap(c"retained text record exceeds an arena chunk")
-	int offset = retained_text_mark & (retained_text_chunk - 1)
-	if (offset + size > retained_text_chunk):
-		retained_text_mark = retained_text_mark - offset + retained_text_chunk
-		offset = 0
-	int index = retained_text_mark >> retained_text_chunk_shift
-	while (retained_text_chunks.length <= index): retained_text_chunks.push(cast(char*, malloc(retained_text_chunk)))
-	char* copy = retained_text_chunks[index] + offset
+	size = (size + __word_size__ - 1) & (0 - __word_size__)
+	if ((retained_arena_index < retained_arena_count) && (retained_arena_offset + size <= retained_arena_sizes[retained_arena_index])):
+		char* here = cast(char*, retained_arena_chunks[retained_arena_index]) + retained_arena_offset
+		retained_arena_offset = retained_arena_offset + size
+		return here
+	# The next chunk: the current one is full (or there is none yet).
+	int next = retained_arena_index + 1
+	if (retained_arena_count == 0): next = 0
+	if (next == retained_arena_room):
+		int room = retained_arena_room * 2 + 8
+		int* chunks = cast(int*, malloc(room * __word_size__))
+		int* sizes = cast(int*, malloc(room * __word_size__))
+		for i in range(retained_arena_count):
+			chunks[i] = retained_arena_chunks[i]
+			sizes[i] = retained_arena_sizes[i]
+		if (retained_arena_chunks != 0):
+			free(cast(char*, retained_arena_chunks))
+			free(cast(char*, retained_arena_sizes))
+		retained_arena_chunks = chunks
+		retained_arena_sizes = sizes
+		retained_arena_room = room
+	int chunk_size = retained_arena_chunk_size
+	if (size > chunk_size): chunk_size = size
+	if (next == retained_arena_count):
+		retained_arena_chunks[next] = cast(int, malloc(chunk_size))
+		retained_arena_sizes[next] = chunk_size
+		retained_arena_count = next + 1
+	else if (retained_arena_sizes[next] < size):
+		free(cast(char*, retained_arena_chunks[next]))
+		retained_arena_chunks[next] = cast(int, malloc(chunk_size))
+		retained_arena_sizes[next] = chunk_size
+	retained_arena_index = next
+	retained_arena_offset = size
+	return cast(char*, retained_arena_chunks[next])
+
+
+# Copy length bytes plus a terminator into the session arena.
+char* retained_text_copy(char* text, int length):
+	char* copy = retained_arena_alloc(length + 1)
 	for i in range(length): copy[i] = text[i]
 	copy[length] = 0
-	retained_text_mark = retained_text_mark + size
 	return copy
 
 
-int retained_add(int kind, int parent, int source, int start, int line, int column, char* name):
-	retained_init()
-	int id = retained_nodes.length
-	int chunk = id >> retained_node_chunk_shift
-	if (chunk >= retained_node_chunks.length): retained_node_chunks.push(cast(char*, malloc(retained_node_chunk * sizeof(retained_node))))
-	retained_node* node = cast(retained_node*, retained_node_chunks[chunk] + (id & (retained_node_chunk - 1)) * sizeof(retained_node))
-	node.import_source = -1
-	node.import_path = 0
-	node.import_alias = 0
-	node.payload_text = 0
-	node.arena_text = 0
-	node.arena_type_names = 0
-	node.arena_text_length = 0
-	node.arena_type_names_length = 0
-	node.semantic_type = -1
-	node.value = 0
-	node.high = 0
-	node.symbol = 0
-	node.in_cast = 0
-	node.binding_offset = 0
-	node.binding_text_offset = -1
-	node.it_slot = 0
-	node.readonly = 0
-	node.whole_expression = 0
-	node.final_token_offset = 0
-	node.qualified = 0
-	node.generic_parameters = 0
-	node.generic_offset = 0
-	node.generic_instance = 0
-	node.generic_arity = 0
-	node.infer_coercion = 0
-	node.result_is_value = 0
-	node.binding = -1
-	node.generic_signature = -1
-	node.call_receiver_type = -1
-	node.infer_want = -1
-	node.op = 0
-	node.literal_value = 0
-	node.literal_high = 0
-	node.literal_text = 0
-	node.literal_length = 0
-	node.type_size = 0
-	node.type_pointer_level = 0
-	node.result_type = 0
-	node.binding_name = 0
-	node.binding_file = 0
-	node.binding_line = 0
-	node.binding_column = 0
-	node.binding_scope = 0
-	node.binding_slot = 0
+# Line and column of offset in source, as a node created there records them
+# (line 0 when no line start precedes it). Sets retained_line_index.
+int retained_line_at(int source, int start):
+	retained_source* location = retained_sources[source]
+	list[int] lines = location.lines
+	int low = 0
+	int high = lines.length
+	int cached = retained_line_index
+	if ((source == retained_line_source) && (cached > 0) && (cached <= high) && (lines[cached - 1] <= start) && ((cached == high) || (lines[cached] > start))):
+		low = cached
+		high = cached
+	while (low < high):
+		int mid = (low + high) / 2
+		if (lines[mid] <= start): low = mid + 1
+		else: high = mid
+	retained_line_source = source
+	retained_line_index = low
+	return low
+
+
+retained_record* retained_record_new(int kind, int parent, int source, int start, int line, int column, char* name):
+	retained_record* node = cast(retained_record*, retained_arena_alloc(sizeof(retained_record)))
 	node.kind = kind
 	node.parent = parent
 	node.source = source
@@ -236,35 +357,203 @@ int retained_add(int kind, int parent, int source, int start, int line, int colu
 	node.line = line
 	node.column = column
 	if ((line == 0) && (source >= 0)):
-		retained_source* location = retained_sources[source]
-		list[int] lines = location.lines
-		int low = 0
-		int high = lines.length
-		int cached = retained_line_index
-		if ((source == retained_line_source) && (cached > 0) && (cached <= high) && (lines[cached - 1] <= start) && ((cached == high) || (lines[cached] > start))):
-			low = cached
-			high = cached
-		while (low < high):
-			int mid = (low + high) / 2
-			if (lines[mid] <= start): low = mid + 1
-			else: high = mid
-		retained_line_source = source
-		retained_line_index = low
+		int low = retained_line_at(source, start)
 		if (low > 0):
 			node.line = low
-			node.column = start - location.lines[low - 1] + 1
-	node.name = retained_intern(name)
-	node.left = -1
-	node.right = -1
-	node.next_arg = -1
-	node.name_binding = -1
-	node.type_value_flags = 0
+			node.column = start - retained_sources[source].lines[low - 1] + 1
+	node.name = name
+	node.semantic_type = -1
+	node.binding = -1
 	node.statement_walk = -1
-	retained_nodes.push(node)
+	node.result_type = 0
+	node.import_source = -1
+	node.import_path = 0
+	node.import_alias = 0
+	node.group = 0
+	return node
+
+
+# A record whose name is already interned (or one of the shared spellings).
+int retained_add_interned(int kind, int parent, int source, int start, int line, int column, char* name):
+	retained_init()
+	retained_record* node = retained_record_new(kind, parent, source, start, line, column, name)
+	int id = retained_node_push(cast(int, node))
 	if ((source >= 0) && (parent >= 0)):
 		retained_source* owner = retained_sources[source]
 		if (owner.root == parent): owner.top_level.push(id)
 	return id
+
+
+int retained_add(int kind, int parent, int source, int start, int line, int column, char* name):
+	return retained_add_interned(kind, parent, source, start, line, column, retained_intern(name))
+
+
+# Fill view with node id's fields.
+void retained_node_load(int id, retained_node* view):
+	int entry = retained_node_table[id]
+	retained_record* record = cast(retained_record*, entry & (0 - 2))
+	view.kind = record.kind
+	view.parent = record.parent
+	view.source = record.source
+	view.start = record.start
+	view.end = record.end
+	view.line = record.line
+	view.column = record.column
+	view.name = record.name
+	view.op = 0
+	view.left = -1
+	view.right = -1
+	view.next_arg = -1
+	view.literal_value = 0
+	view.literal_high = 0
+	view.literal_text = 0
+	view.literal_length = 0
+	view.type_size = 0
+	view.type_pointer_level = 0
+	view.result_type = record.result_type
+	view.binding_name = 0
+	view.binding_file = 0
+	view.binding_line = 0
+	view.binding_column = 0
+	view.binding_scope = 0
+	view.binding_slot = 0
+	view.semantic_type = record.semantic_type
+	view.binding = record.binding
+	view.value = 0
+	view.high = 0
+	view.symbol = 0
+	view.in_cast = 0
+	view.binding_offset = 0
+	view.binding_text_offset = -1
+	view.it_slot = 0
+	view.readonly = 0
+	view.whole_expression = 0
+	view.final_token_offset = 0
+	view.qualified = 0
+	view.generic_parameters = 0
+	view.generic_signature = -1
+	view.generic_offset = 0
+	view.generic_instance = 0
+	view.generic_arity = 0
+	view.infer_coercion = 0
+	view.call_receiver_type = -1
+	view.infer_want = -1
+	view.result_is_value = 0
+	view.import_source = record.import_source
+	view.import_path = record.import_path
+	view.import_alias = record.import_alias
+	view.payload_text = 0
+	view.arena_text = 0
+	view.arena_text_length = 0
+	view.arena_type_names = 0
+	view.arena_type_names_length = 0
+	view.name_binding = -1
+	view.type_value_flags = 0
+	view.statement_walk = record.statement_walk
+	retained_group* group = record.group
+	if (group == 0): return
+	if ((entry & 1) == 0):
+		view.op = group.root
+		view.readonly = group.readonly
+		view.whole_expression = group.whole_expression
+		view.final_token_offset = group.final_token_offset
+		view.arena_text = group.arena_text
+		view.arena_text_length = group.arena_text_length
+		view.arena_type_names = group.arena_type_names
+		view.arena_type_names_length = group.arena_type_names_length
+		return
+	# An operand: its group's column entry k.
+	int k = id - group.id - 1
+	int count = group.count
+	int* c = group.columns
+	view.kind = retained_expression
+	view.parent = group.id
+	view.statement_walk = -1
+	view.import_source = -1
+	view.import_path = 0
+	view.import_alias = 0
+	view.result_type = 0
+	view.semantic_type = -1
+	view.binding = -1
+	view.name = retained_name_empty
+	int op = c[k]
+	view.op = op
+	view.left = c[count + k]
+	view.right = c[2 * count + k]
+	int start = c[3 * count + k]
+	view.start = start
+	view.line = 0
+	view.column = 0
+	int low = retained_line_at(record.source, start)
+	if (low > 0):
+		view.line = low
+		view.column = start - retained_sources[record.source].lines[low - 1] + 1
+	int value = c[4 * count + k]
+	int result = c[5 * count + k]
+	int high = c[6 * count + k]
+	view.high = high
+	view.next_arg = c[7 * count + k]
+	view.in_cast = c[8 * count + k]
+	view.binding_text_offset = c[9 * count + k]
+	view.binding_offset = c[10 * count + k]
+	view.symbol = c[11 * count + k]
+	view.qualified = c[12 * count + k]
+	view.it_slot = c[13 * count + k]
+	view.generic_parameters = c[14 * count + k]
+	int signature = c[15 * count + k]
+	view.generic_offset = c[16 * count + k]
+	view.generic_instance = c[17 * count + k]
+	view.generic_arity = c[18 * count + k]
+	view.infer_coercion = c[19 * count + k]
+	int receiver = c[20 * count + k]
+	int want = c[21 * count + k]
+	view.result_is_value = result < -1
+	if (signature < -1): view.type_value_flags = view.type_value_flags | 1
+	if (receiver < -1): view.type_value_flags = view.type_value_flags | 2
+	if (want < -1): view.type_value_flags = view.type_value_flags | 4
+	# Symbol-table names and message operands are text (payload_text), not
+	# offsets or addresses, once retained.
+	if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')): value = 0
+	if ((op == retained_op_warning) && ((high == 0) || (high == 6) || (high == 7) || (high == 8) || (high == 1) || (high == 2) || (high == 5))): value = 0
+	view.value = value
+	if ((op == 0) || (op == 'c') || (op == 'h') || (op == 'f')):
+		view.literal_value = value
+		if ((op == 'f') && group.wide): view.literal_high = high
+	if ((op == 's') || (op == 'S') || (op == 't')):
+		view.literal_length = high
+		view.literal_text = &group.arena_text[value]
+	int* s = group.semantic
+	if (s == 0): return
+	view.semantic_type = s[k]
+	view.generic_signature = s[count + k]
+	view.call_receiver_type = s[2 * count + k]
+	view.infer_want = s[3 * count + k]
+	int binding = s[4 * count + k]
+	view.binding = binding
+	view.name_binding = s[5 * count + k]
+	view.payload_text = cast(char*, s[6 * count + k])
+	view.result_type = cast(char*, s[7 * count + k])
+	view.type_size = s[8 * count + k]
+	view.type_pointer_level = s[9 * count + k]
+	if (binding >= 0):
+		retained_binding* bound = retained_bindings[binding]
+		view.binding_name = bound.name
+		view.binding_file = bound.file
+		view.binding_line = bound.line
+		view.binding_column = bound.column
+		view.binding_scope = bound.scope
+		view.binding_slot = bound.slot
+
+
+# Node id loaded into the next view of a ring of retained_view_ring: a
+# convenience for code that holds a few nodes at once (tests, checks). The
+# view is overwritten by a later call; retained_node_load fills one's own.
+retained_node* retained_node_at(int id):
+	if (retained_views == 0): retained_views = cast(retained_node*, malloc(retained_view_ring * sizeof(retained_node)))
+	retained_node* view = cast(retained_node*, cast(char*, retained_views) + retained_view_next * sizeof(retained_node))
+	retained_view_next = (retained_view_next + 1) % retained_view_ring
+	retained_node_load(id, view)
+	return view
 
 
 # A fresh compile owns a fresh source version, even at a reused pathname.
@@ -291,7 +580,7 @@ int retained_source_begin(char* path):
 	retained_last_source = id
 	retained_last_record = source
 	source.root = retained_add(retained_module, -1, id, 0, 1, 1, path)
-	retained_last_root = retained_nodes[source.root]
+	retained_last_root = retained_record_at(source.root)
 	return id
 
 
@@ -313,7 +602,7 @@ int retained_source_id(char* path):
 	retained_last_path = path
 	retained_last_source = id
 	retained_last_record = retained_sources[id]
-	retained_last_root = retained_nodes[retained_last_record.root]
+	retained_last_root = retained_record_at(retained_last_record.root)
 	return id
 
 
@@ -339,34 +628,40 @@ int retained_source_byte(char* path, int offset, int value):
 	return 1
 
 
-int retained_enter(int kind, char* path, int start, int line, int column, char* name):
+int retained_enter_interned(int kind, char* path, int start, int line, int column, char* name):
 	if (ast_retain_mode == 0): return -1
 	int source = retained_source_id(path)
 	int parent = retained_parent
 	if (parent < 0): parent = retained_sources[source].root
-	int id = retained_add(kind, parent, source, start, line, column, name)
+	int id = retained_add_interned(kind, parent, source, start, line, column, name)
 	retained_parent = id
 	return id
 
 
+int retained_enter(int kind, char* path, int start, int line, int column, char* name):
+	if (ast_retain_mode == 0): return -1
+	return retained_enter_interned(kind, path, start, line, column, retained_intern(name))
+
+
 void retained_leave(int id, int end):
 	if (id < 0): return
-	retained_nodes[id].end = end
-	retained_parent = retained_nodes[id].parent
-	if (retained_nodes[retained_parent].kind == retained_module): retained_parent = -1
+	retained_record* record = retained_record_at(id)
+	record.end = end
+	retained_parent = record.parent
+	if (retained_record_at(retained_parent).kind == retained_module): retained_parent = -1
 
 
 void retained_capture(retained_checkpoint* checkpoint):
 	checkpoint.pending_import = retained_pending_import
-	checkpoint.nodes = 0
+	checkpoint.nodes = retained_node_total
 	checkpoint.sources = 0
 	checkpoint.types = 0
 	checkpoint.bindings = 0
-	checkpoint.text = retained_text_mark
+	checkpoint.text = retained_arena_offset
+	checkpoint.arena_chunk = retained_arena_index
 	if (retained_types != 0): checkpoint.types = retained_types.length
 	if (retained_bindings != 0): checkpoint.bindings = retained_bindings.length
 	checkpoint.parent = retained_parent
-	if (retained_nodes != 0): checkpoint.nodes = retained_nodes.length
 	if (retained_sources != 0): checkpoint.sources = retained_sources.length
 
 
@@ -377,9 +672,10 @@ void retained_rollback(retained_checkpoint* checkpoint):
 	retained_semantic_rollback(checkpoint.types, checkpoint.bindings)
 	# Node strings are interned or arena slices, so retracting the suffix
 	# is a high-water mark; the chunks stay allocated for reuse.
-	if (retained_nodes != 0):
-		while (retained_nodes.length > checkpoint.nodes): retained_nodes.pop()
-	if (retained_text_mark > checkpoint.text): retained_text_mark = checkpoint.text
+	if (retained_node_total > checkpoint.nodes): retained_node_total = checkpoint.nodes
+	if ((retained_arena_index > checkpoint.arena_chunk) || ((retained_arena_index == checkpoint.arena_chunk) && (retained_arena_offset > checkpoint.text))):
+		retained_arena_index = checkpoint.arena_chunk
+		retained_arena_offset = checkpoint.text
 	if ((retained_sources != 0) && (retained_sources.length > checkpoint.sources)): retained_file_sources.clear()
 	if (retained_sources != 0):
 		while (retained_sources.length > checkpoint.sources):
@@ -410,23 +706,33 @@ void retained_clear():
 	checkpoint.types = 0
 	checkpoint.bindings = 0
 	checkpoint.text = 0
+	checkpoint.arena_chunk = 0
 	retained_rollback(&checkpoint)
-	if (retained_nodes != 0): retained_nodes.free()
 	if (retained_sources != 0): retained_sources.free()
 	if (retained_source_index != 0): retained_source_index.free()
 	if (retained_file_sources != 0): retained_file_sources.free()
-	if (retained_node_chunks != 0):
-		for i in range(retained_node_chunks.length): free(retained_node_chunks[i])
-		retained_node_chunks.free()
-	if (retained_text_chunks != 0):
-		for i in range(retained_text_chunks.length): free(retained_text_chunks[i])
-		retained_text_chunks.free()
-	retained_nodes = 0
+	if (retained_node_table != 0): free(cast(char*, retained_node_table))
+	if (retained_arena_chunks != 0):
+		for i in range(retained_arena_count): free(cast(char*, retained_arena_chunks[i]))
+		free(cast(char*, retained_arena_chunks))
+		free(cast(char*, retained_arena_sizes))
+	retained_node_table = 0
+	retained_node_total = 0
+	retained_node_room = 0
+	retained_arena_chunks = 0
+	retained_arena_sizes = 0
+	retained_arena_count = 0
+	retained_arena_room = 0
+	retained_arena_index = 0
+	retained_arena_offset = 0
 	retained_sources = 0
 	retained_source_index = 0
 	retained_file_sources = 0
-	retained_node_chunks = 0
-	retained_text_chunks = 0
-	retained_text_mark = 0
 	retained_last_path = 0
+	retained_last_root = 0
+	retained_name_expression = 0
+	retained_name_empty = 0
+	if (retained_views != 0): free(cast(char*, retained_views))
+	retained_views = 0
+	retained_view_next = 0
 	retained_semantic_clear()

@@ -851,6 +851,8 @@ int link_option(char* arg, int apply):
 		if (apply):
 			ast_expressions_mode = 2
 			ast_retain_mode = 1
+			# P1.2b: an explicit request keeps the semantic records too.
+			retained_semantic_mode = 1
 		return 1
 	if (strcmp(arg, c"--ast-audit") == 0):
 		if (apply):
@@ -959,7 +961,7 @@ void help_shared_options():
 	println(c"  --ast-expressions     with --streaming: AST for grouped scalar expressions only")
 	println(c"  --ast-full-expressions AST at every expression (the default; kept for scripts)")
 	println(c"  --ast-audit           JSON fallback records on stderr for each streaming fallback")
-	println(c"  --ast-retain          retain owned traversal trees (the default; kept for scripts)")
+	println(c"  --ast-retain          also keep semantic type/binding records in the forest (queries keep them)")
 	println(c"  --ast-required        reject any expression fallback (coverage gate)")
 	# S2.1
 	println(c"  --ast-emit-retained   emit from the retained AST (the default; kept for scripts)")
@@ -1234,6 +1236,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_emit_retained_mode = 1
 	ast_retain_mode = 1
 	ast_retained_emitted = 0
+	# P1.2b: semantic snapshot records only for a tree query (or an
+	# explicit --ast-retain, link_option).
+	retained_semantic_mode = retained_query_mode
 	# S2.2a: retained statement walks and their --stats counter.
 	ast_retained_statements_emitted = 0
 	retained_walks_used = 0
@@ -1567,7 +1572,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (stats_mode): regalloc_stats_dump()
 	if (stats_mode): profile_use_stats_dump()   # P2: --profile-use
 	if (stats_mode && ast_retain_mode):
-		print_int0(c"Retained AST nodes: ", retained_nodes.length)
+		print_int0(c"Retained AST nodes: ", retained_node_count())
 		print_error(c"\n")
 	if (stats_mode && ast_expressions_mode):
 		print_error(c"AST expressions: ")

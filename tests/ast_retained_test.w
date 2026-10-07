@@ -27,16 +27,16 @@ void test_retained_production_lifetimes():
 	int two = -1
 	int first_uses = 0
 	int nested_statements = 0
-	for i in range(retained_nodes.length):
-		retained_node* node = retained_nodes[i]
+	for i in range(retained_node_count()):
+		retained_node* node = retained_node_at(i)
 		if (node.source != source_id): continue
 		if (node.kind == retained_expression):
-			assert1(retained_nodes[node.parent].start <= node.start)
-			assert1(retained_nodes[node.parent].end >= node.end)
+			assert1(retained_node_at(node.parent).start <= node.start)
+			assert1(retained_node_at(node.parent).end >= node.end)
 		if (node.kind == retained_function):
 			if (strcmp(node.name, c"retained_one") == 0): one = i
 			if (strcmp(node.name, c"retained_two") == 0): two = i
-		if ((node.kind == retained_statement) && (retained_nodes[node.parent].kind == retained_statement)):
+		if ((node.kind == retained_statement) && (retained_node_at(node.parent).kind == retained_statement)):
 			nested_statements = nested_statements + 1
 		if (node.binding_name != 0):
 			if (strcmp(node.binding_name, c"first") == 0):
@@ -48,35 +48,35 @@ void test_retained_production_lifetimes():
 	assert1(one >= 0 && two >= 0)
 	assert1(first_uses >= 2)
 	assert1(nested_statements >= 2)
-	assert_equal(retained_declaration, retained_nodes[retained_nodes[one].parent].kind)
-	assert_strings_equal(c"retained_one", retained_nodes[retained_nodes[one].parent].name)
+	assert_equal(retained_declaration, retained_node_at(retained_node_at(one).parent).kind)
+	assert_strings_equal(c"retained_one", retained_node_at(retained_node_at(one).parent).name)
 
 	repl_result result = repl_eval(c"retained_one(5) + retained_two(6)")
 	assert_equal(1, result.status)
 	assert_equal(14, result.value)
-	int nodes = retained_nodes.length
+	int nodes = retained_node_count()
 	int sources = retained_sources.length
 	int parent = retained_parent
 	# Failure after valid earlier statements must release all nodes/sources
 	# in the entry, including the unfinished containing statement/function.
 	result = repl_eval(c"int retained_bad(int n):\n\tif (n):\n\t\treturn n + 1\n\treturn retained_missing\n")
 	assert_equal(0, result.status)
-	assert_equal(nodes, retained_nodes.length)
+	assert_equal(nodes, retained_node_count())
 	assert_equal(sources, retained_sources.length)
 	assert_equal(parent, retained_parent)
-	assert_strings_equal(c"retained_one", retained_nodes[one].name)
+	assert_strings_equal(c"retained_one", retained_node_at(one).name)
 	assert_bytes_equal(source, saved_source.bytes, saved_source.length)
 	result = repl_eval(c"retained_one(9)")
 	assert_equal(1, result.status)
 	assert_equal(10, result.value)
 
-	int literal_base = retained_nodes.length
+	int literal_base = retained_node_count()
 	result = repl_eval(c"s\"a\\x00b\".length")
 	assert_equal(1, result.status)
 	assert_equal(3, result.value)
 	int literals = 0
-	for i in range(literal_base, retained_nodes.length):
-		retained_node* node = retained_nodes[i]
+	for i in range(literal_base, retained_node_count()):
+		retained_node* node = retained_node_at(i)
 		if (node.literal_text != 0):
 			assert_equal(3, node.literal_length)
 			assert_equal('a', node.literal_text[0])
@@ -87,16 +87,16 @@ void test_retained_production_lifetimes():
 
 	# Reset uses the same checkpoint path as the debugger's evaluator.
 	repl_genesis_checkpoint()
-	nodes = retained_nodes.length
+	nodes = retained_node_count()
 	sources = retained_sources.length
 	result = repl_eval(c"int retained_after_reset = 7")
 	assert_equal(1, result.status)
-	assert1(retained_nodes.length > nodes)
+	assert1(retained_node_count() > nodes)
 	assert_equal(1, repl_reset_to_genesis())
-	assert_equal(nodes, retained_nodes.length)
+	assert_equal(nodes, retained_node_count())
 	assert_equal(sources, retained_sources.length)
 	retained_clear()
-	assert1(retained_nodes == 0)
+	assert1(retained_node_count() == 0)
 	assert1(retained_sources == 0)
 	assert_equal(-1, retained_parent)
 	ast_retain_mode = 0

@@ -215,8 +215,7 @@ void retained_query_dependencies():
 	module_dependencies_free(graph)
 
 
-void retained_query_node(int id):
-	retained_node* node = retained_nodes[id]
+void retained_query_node(int id, retained_node* node):
 	diag_write_cstr(c"{\"record\": \"node\"")
 	retained_query_int(c"id", id)
 	retained_query_string(c"kind", retained_query_kind(node.kind))
@@ -272,7 +271,7 @@ void retained_query_node(int id):
 void retained_query_dump():
 	diag_write_cstr(c"{\"record\": \"tree\", \"version\": 2")
 	retained_query_int(c"sources", retained_sources.length)
-	retained_query_int(c"nodes", retained_nodes.length)
+	retained_query_int(c"nodes", retained_node_count())
 	if (retained_types != 0): retained_query_int(c"types", retained_types.length)
 	if (retained_bindings != 0): retained_query_int(c"bindings", retained_bindings.length)
 	retained_query_end_record()
@@ -285,11 +284,14 @@ void retained_query_dump():
 		retained_query_int(c"length", source.length)
 		retained_query_int(c"root", source.root)
 		retained_query_end_record()
-	for i in range(retained_nodes.length):
-		retained_node* node = retained_nodes[i]
-		if (retained_query_selected(node.source) == 0): continue
-		if (retained_query_no_expressions && ((node.kind == retained_expression) || (node.kind == retained_expression_group))): continue
-		retained_query_node(i)
+	retained_node view
+	int total = retained_node_count()
+	for i in range(total):
+		int kind = retained_node_kind(i)
+		if (retained_query_no_expressions && ((kind == retained_expression) || (kind == retained_expression_group))): continue
+		retained_node_load(i, &view)
+		if (retained_query_selected(view.source) == 0): continue
+		retained_query_node(i, &view)
 	retained_query_semantics()
 	retained_query_dependencies()
 	diag_flush()

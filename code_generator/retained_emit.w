@@ -42,6 +42,32 @@ void retained_emit_check(int expected, int actual, char* column):
 	error3(c"internal error: --ast-emit-retained: retained ", column, c" differs from the parsed expression")
 
 
+# The name of arena column c (compiler/retained_ast.w retained_group).
+char* retained_emit_column_name(int c):
+	if (c == 0): return c"op"
+	if (c == 1): return c"left"
+	if (c == 2): return c"right"
+	if (c == 3): return c"offset"
+	if (c == 4): return c"value"
+	if (c == 5): return c"result_type"
+	if (c == 6): return c"high"
+	if (c == 7): return c"next_arg"
+	if (c == 8): return c"in_cast"
+	if (c == 9): return c"binding_name"
+	if (c == 10): return c"binding_offset"
+	if (c == 11): return c"symbol"
+	if (c == 12): return c"qualified"
+	if (c == 13): return c"it_slot"
+	if (c == 14): return c"generic_parameters"
+	if (c == 15): return c"generic_signature"
+	if (c == 16): return c"generic_offset"
+	if (c == 17): return c"generic_instance"
+	if (c == 18): return c"generic_arity"
+	if (c == 19): return c"infer_coercion"
+	if (c == 20): return c"call_receiver_type"
+	return c"infer_want"
+
+
 # The arena's type convention: -1 untyped, a table index, or a value type.
 int retained_emit_type(int semantic, int is_value):
 	if (semantic < 0): return -1
@@ -51,122 +77,93 @@ int retained_emit_type(int semantic, int is_value):
 
 
 # A symbol-table name operand: the spelling ends at the record itself.
-int retained_emit_name(retained_node* node, int binding):
+int retained_emit_name(char* payload, int binding):
 	if (binding < 0): return 0
-	return retained_bindings[binding].origin - strlen(node.payload_text)
+	return retained_bindings[binding].origin - strlen(payload)
 
 
-# Warnings whose operand is a message or context string, not an offset.
-int retained_emit_message(retained_node* node):
-	if (node.op != ast_warning): return 0
-	return (node.high == 0) || (node.high == 6) || (node.high == 7) || (node.high == 8)
-
-
-int retained_emit_value(retained_node* node):
-	int op = node.op
-	if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')):
-		return retained_emit_name(node, node.binding)
-	if (retained_emit_message(node)): return cast(int, node.payload_text)
-	if ((op == ast_warning) && ((node.high == 1) || (node.high == 2) || (node.high == 5))):
-		return retained_emit_name(node, node.name_binding)
-	if ((op == 'G') || (op == 'W')): return generic_def_lookup(node.payload_text, 0)
-	return node.value
-
-
-int retained_emit_symbol(retained_node* node):
-	int op = node.op
-	if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
-		if (node.binding >= 0): return retained_bindings[node.binding].origin
-	if ((op == ast_warning) && (node.high == 1) && (node.name_binding >= 0)): return retained_bindings[node.name_binding].origin
-	return node.symbol
+# P1.2b: in a semantic session, the operands rebuilt from their semantic
+# records alone (retained types and bindings, interned spellings) must equal
+# the arena columns, as S2.1's adapter required of every retained node.
+void retained_emit_semantic_check(expression_ast* tree, retained_group* group):
+	int count = group.count
+	int* s = group.semantic
+	for i in range(count):
+		int op = tree.op[i]
+		int high = tree.high[i]
+		int binding = s[4 * count + i]
+		int name_binding = s[5 * count + i]
+		char* payload = cast(char*, s[6 * count + i])
+		int value = tree.value[i]
+		int expected = value
+		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')): expected = retained_emit_name(payload, binding)
+		else if ((op == ast_warning) && ((high == 0) || (high == 6) || (high == 7) || (high == 8))):
+			# A message is compared by text: the retained copy is interned.
+			expected = cast(int, payload)
+			if (value && (strcmp(cast(char*, value), payload) == 0)): expected = value
+		else if ((op == ast_warning) && ((high == 1) || (high == 2) || (high == 5))): expected = retained_emit_name(payload, name_binding)
+		else if ((op == 'G') || (op == 'W')): expected = generic_def_lookup(payload, 0)
+		if (value != expected): retained_emit_check(value, expected, c"value")
+		int symbol = tree.symbol[i]
+		expected = symbol
+		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
+			if (binding >= 0): expected = retained_bindings[binding].origin
+		if ((op == ast_warning) && (high == 1) && (name_binding >= 0)): expected = retained_bindings[name_binding].origin
+		if (symbol != expected): retained_emit_check(symbol, expected, c"symbol")
+		int result = retained_emit_type(s[i], tree.result_type[i] < -1)
+		if (tree.result_type[i] != result): retained_emit_check(tree.result_type[i], result, c"result_type")
+		int signature = retained_emit_type(s[count + i], tree.generic_signature[i] < -1)
+		if (tree.generic_signature[i] != signature): retained_emit_check(tree.generic_signature[i], signature, c"generic_signature")
+		int receiver = retained_emit_type(s[2 * count + i], tree.call_receiver_type[i] < -1)
+		if (tree.call_receiver_type[i] != receiver): retained_emit_check(tree.call_receiver_type[i], receiver, c"call_receiver_type")
+		int want = retained_emit_type(s[3 * count + i], tree.infer_want[i] < -1)
+		if (tree.infer_want[i] != want): retained_emit_check(tree.infer_want[i], want, c"infer_want")
 
 
 # Overwrite the arena bound to tree with the contents of retained group.
 # Returns the root node ID recorded for the group.
-int retained_emit_expression_group(expression_ast* tree, int group):
-	retained_node* owner = retained_nodes[group]
-	int count = 0
-	int limit = retained_nodes.length
-	while ((group + 1 + count < limit) && (retained_nodes[group + 1 + count].parent == group)): count = count + 1
+int retained_emit_expression_group(expression_ast* tree, int id):
+	retained_record* owner = retained_record_at(id)
+	retained_group* group = owner.group
+	int count = group.count
 	if (tree.count != count): retained_emit_check(tree.count, count, c"count")
 	assert1(count <= tree.capacity)
-	if (tree.text_used != owner.arena_text_length): retained_emit_check(tree.text_used, owner.arena_text_length, c"text")
-	if (tree.type_names_used != owner.arena_type_names_length): retained_emit_check(tree.type_names_used, owner.arena_type_names_length, c"type_names")
-	for i in range(owner.arena_text_length):
-		if (tree.text[i] != owner.arena_text[i]): retained_emit_check(tree.text[i], owner.arena_text[i], c"text")
-		tree.text[i] = owner.arena_text[i]
-	for i in range(owner.arena_type_names_length):
-		if (tree.type_names[i] != owner.arena_type_names[i]): retained_emit_check(tree.type_names[i], owner.arena_type_names[i], c"type_names")
-		tree.type_names[i] = owner.arena_type_names[i]
+	if (tree.text_used != group.arena_text_length): retained_emit_check(tree.text_used, group.arena_text_length, c"text")
+	if (tree.type_names_used != group.arena_type_names_length): retained_emit_check(tree.type_names_used, group.arena_type_names_length, c"type_names")
+	char* text = group.arena_text
+	for i in range(group.arena_text_length):
+		if (tree.text[i] != text[i]): retained_emit_check(tree.text[i], text[i], c"text")
+		tree.text[i] = text[i]
+	char* type_names = group.arena_type_names
+	for i in range(group.arena_type_names_length):
+		if (tree.type_names[i] != type_names[i]): retained_emit_check(tree.type_names[i], type_names[i], c"type_names")
+		tree.type_names[i] = type_names[i]
 	tree.count = count
-	tree.text_used = owner.arena_text_length
-	tree.type_names_used = owner.arena_type_names_length
+	tree.text_used = group.arena_text_length
+	tree.type_names_used = group.arena_type_names_length
 	if (tree.end_offset != owner.end): retained_emit_check(tree.end_offset, owner.end, c"end_offset")
-	if (tree.readonly != owner.readonly): retained_emit_check(tree.readonly, owner.readonly, c"readonly")
-	if (tree.whole_expression != owner.whole_expression): retained_emit_check(tree.whole_expression, owner.whole_expression, c"whole_expression")
-	if (tree.final_token_offset != owner.final_token_offset): retained_emit_check(tree.final_token_offset, owner.final_token_offset, c"final_token_offset")
+	if (tree.readonly != group.readonly): retained_emit_check(tree.readonly, group.readonly, c"readonly")
+	if (tree.whole_expression != group.whole_expression): retained_emit_check(tree.whole_expression, group.whole_expression, c"whole_expression")
+	if (tree.final_token_offset != group.final_token_offset): retained_emit_check(tree.final_token_offset, group.final_token_offset, c"final_token_offset")
 	tree.end_offset = owner.end
-	tree.readonly = owner.readonly
-	tree.whole_expression = owner.whole_expression
-	tree.final_token_offset = owner.final_token_offset
-	for i in range(count):
-		retained_node* node = retained_nodes[group + 1 + i]
-		int at = node.start
-		int value = retained_emit_value(node)
-		int symbol = retained_emit_symbol(node)
-		int result = retained_emit_type(node.semantic_type, node.result_is_value)
-		int signature = retained_emit_type(node.generic_signature, node.type_value_flags & 1)
-		int receiver = retained_emit_type(node.call_receiver_type, node.type_value_flags & 2)
-		int want = retained_emit_type(node.infer_want, node.type_value_flags & 4)
-		if (tree.op[i] != node.op): retained_emit_check(tree.op[i], node.op, c"op")
-		if (tree.left[i] != node.left): retained_emit_check(tree.left[i], node.left, c"left")
-		if (tree.right[i] != node.right): retained_emit_check(tree.right[i], node.right, c"right")
-		if (tree.offset[i] != at): retained_emit_check(tree.offset[i], at, c"offset")
-		# A message is compared by text: the retained copy is interned.
-		int original = tree.value[i]
-		if (retained_emit_message(node) && original && (strcmp(cast(char*, original), node.payload_text) == 0)): original = value
-		if (original != value): retained_emit_check(original, value, c"value")
-		if (tree.result_type[i] != result): retained_emit_check(tree.result_type[i], result, c"result_type")
-		if (tree.high[i] != node.high): retained_emit_check(tree.high[i], node.high, c"high")
-		if (tree.next_arg[i] != node.next_arg): retained_emit_check(tree.next_arg[i], node.next_arg, c"next_arg")
-		if (tree.in_cast[i] != node.in_cast): retained_emit_check(tree.in_cast[i], node.in_cast, c"in_cast")
-		if (tree.binding_name[i] != node.binding_text_offset): retained_emit_check(tree.binding_name[i], node.binding_text_offset, c"binding_name")
-		if (tree.binding_offset[i] != node.binding_offset): retained_emit_check(tree.binding_offset[i], node.binding_offset, c"binding_offset")
-		if (tree.symbol[i] != symbol): retained_emit_check(tree.symbol[i], symbol, c"symbol")
-		if (tree.qualified[i] != node.qualified): retained_emit_check(tree.qualified[i], node.qualified, c"qualified")
-		if (tree.it_slot[i] != node.it_slot): retained_emit_check(tree.it_slot[i], node.it_slot, c"it_slot")
-		if (tree.generic_parameters[i] != node.generic_parameters): retained_emit_check(tree.generic_parameters[i], node.generic_parameters, c"generic_parameters")
-		if (tree.generic_signature[i] != signature): retained_emit_check(tree.generic_signature[i], signature, c"generic_signature")
-		if (tree.generic_offset[i] != node.generic_offset): retained_emit_check(tree.generic_offset[i], node.generic_offset, c"generic_offset")
-		if (tree.generic_instance[i] != node.generic_instance): retained_emit_check(tree.generic_instance[i], node.generic_instance, c"generic_instance")
-		if (tree.generic_arity[i] != node.generic_arity): retained_emit_check(tree.generic_arity[i], node.generic_arity, c"generic_arity")
-		if (tree.infer_coercion[i] != node.infer_coercion): retained_emit_check(tree.infer_coercion[i], node.infer_coercion, c"infer_coercion")
-		if (tree.call_receiver_type[i] != receiver): retained_emit_check(tree.call_receiver_type[i], receiver, c"call_receiver_type")
-		if (tree.infer_want[i] != want): retained_emit_check(tree.infer_want[i], want, c"infer_want")
-		tree.op[i] = node.op
-		tree.left[i] = node.left
-		tree.right[i] = node.right
-		tree.offset[i] = at
-		tree.value[i] = value
-		tree.result_type[i] = result
-		tree.high[i] = node.high
-		tree.next_arg[i] = node.next_arg
-		tree.in_cast[i] = node.in_cast
-		tree.binding_name[i] = node.binding_text_offset
-		tree.binding_offset[i] = node.binding_offset
-		tree.symbol[i] = symbol
-		tree.qualified[i] = node.qualified
-		tree.it_slot[i] = node.it_slot
-		tree.generic_parameters[i] = node.generic_parameters
-		tree.generic_signature[i] = signature
-		tree.generic_offset[i] = node.generic_offset
-		tree.generic_instance[i] = node.generic_instance
-		tree.generic_arity[i] = node.generic_arity
-		tree.infer_coercion[i] = node.infer_coercion
-		tree.call_receiver_type[i] = receiver
-		tree.infer_want[i] = want
+	tree.readonly = group.readonly
+	tree.whole_expression = group.whole_expression
+	tree.final_token_offset = group.final_token_offset
+	# The arena's columns are contiguous, tree.capacity words apart, in
+	# the order the group keeps them.
+	int* from = group.columns
+	int* to = tree.op
+	int stride = tree.capacity
+	for c in range(retained_expression_columns):
+		for i in range(count):
+			int v = from[i]
+			if (to[i] != v): retained_emit_check(to[i], v, retained_emit_column_name(c))
+			to[i] = v
+		from = &from[count]
+		to = &to[stride]
+	if (group.semantic != 0): retained_emit_semantic_check(tree, group)
 	ast_retained_emitted = ast_retained_emitted + 1
-	return owner.op
+	return group.root
 
 
 # ---------------------------------------------------------------------------
@@ -236,8 +233,8 @@ int ast_retained_statements_emitted
 int retained_walk_stale(int id):
 	retained_statement_walk* walk = retained_walks[id]
 	if (walk.walked): return 1
-	if (walk.node >= retained_nodes.length): return 1
-	return retained_nodes[walk.node].statement_walk != id
+	if (walk.node >= retained_node_count()): return 1
+	return retained_record_at(walk.node).statement_walk != id
 
 
 void retained_walk_release():
@@ -254,7 +251,7 @@ void retained_walk_release():
 # (a hook called outside the statement dispatcher) or it already has one.
 int retained_walk_begin(int emitter, statement_ast* statement):
 	if ((ast_emit_retained_mode == 0) || (retained_parent < 0)): return -1
-	retained_node* node = retained_nodes[retained_parent]
+	retained_record* node = retained_record_at(retained_parent)
 	if ((node.kind != retained_statement) || (node.statement_walk >= 0)): return -1
 	if (retained_walks == 0):
 		retained_walks = new list[retained_statement_walk*]
@@ -344,9 +341,9 @@ void retained_walk_phase(int id, int code):
 void retained_walk_expression(int id, expression_ast* tree, int root):
 	retained_statement_walk* walk = retained_walks[id]
 	retained_init()
-	int group = retained_nodes.length
+	int group = retained_node_count()
 	retained_expression_note(tree, root)
-	assert1(retained_nodes[group].kind == retained_expression_group)
+	assert1(retained_node_kind(group) == retained_expression_group)
 	walk.tree = tree
 	walk.group = group
 	walk.root = root
@@ -405,21 +402,21 @@ void retained_walk_drain(int id):
 # The walk's entry point: emit the retained statement node's remaining
 # phases and release its record (and any walked records above it).
 void retained_emit_statement(int node):
-	int id = retained_nodes[node].statement_walk
+	int id = retained_record_at(node).statement_walk
 	assert1(id >= 0)
 	retained_walk_drain(id)
 	retained_walks[id].walked = 1
-	retained_nodes[node].statement_walk = -1
+	retained_record_at(node).statement_walk = -1
 	ast_retained_statements_emitted = ast_retained_statements_emitted + 1
 	retained_walk_release()
 
 
 # --stats: statements the dispatcher entered, from the retained forest.
 int retained_statement_count():
-	if (retained_nodes == 0): return 0
+	int total = retained_node_count()
 	int count = 0
-	for i in range(retained_nodes.length):
-		if (retained_nodes[i].kind == retained_statement): count = count + 1
+	for i in range(total):
+		if (retained_node_kind(i) == retained_statement): count = count + 1
 	return count
 
 # ---------------------------------------------------------------------------

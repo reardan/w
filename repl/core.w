@@ -502,7 +502,7 @@ void repl_state_restore(repl_state* st):
 	# statement's walk record open; its node was just retracted, so the
 	# record and its phases go back to the walk pools here rather than at
 	# the next walked statement.
-	if (retained_nodes != 0): retained_walk_release()
+	if (retained_walks != 0): retained_walk_release()
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -1009,6 +1009,8 @@ void repl_ast_options():
 	# S2.5: the retained forest and emission from it are the default too.
 	ast_retain_mode = 1
 	ast_emit_retained_mode = 1
+	# P1.2b: no semantic snapshot records unless --ast-retain asks.
+	retained_semantic_mode = 0
 	int streaming = args_has_bool_flag(c"streaming")
 	if (streaming):
 		ast_expressions_mode = 0

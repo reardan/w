@@ -1143,7 +1143,7 @@ void emit_expression_ast_root(expression_ast* tree, int root):
 int emit_prepared_expression_ast(expression_ast* tree, int root):
 	if (ast_emit_retained_mode):
 		retained_init()
-		int group = retained_nodes.length
+		int group = retained_node_count()
 		retained_expression_note(tree, root)
 		int retained_root = retained_emit_expression_group(tree, group)
 		assert1(retained_root == root)

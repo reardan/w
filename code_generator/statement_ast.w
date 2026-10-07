@@ -414,7 +414,7 @@ void control_ast_walk_attach(int walk, control_ast_walk* control):
 # A record's id is on its statement node until retained_emit_statement
 # finishes the walk.
 control_ast_walk* control_ast_walk_of(retained_statement_walk* walk):
-	return control_ast_walks[retained_nodes[walk.node].statement_walk]
+	return control_ast_walks[retained_record_at(walk.node).statement_walk]
 
 
 int* emit_while_loop_ast_begin(loop_ast* node);
