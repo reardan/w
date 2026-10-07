@@ -51,6 +51,7 @@ void assign_store(int type);
 int* multi_assign_lhs_types   # declared type of each target lvalue
 int* multi_assign_lhs_slots   # stack_pos of each parked target address
 int* multi_assign_rhs_slots   # stack_pos of each parked value temporary
+int* multi_assign_lhs_regs    # register of a register-resident target, 0 otherwise
 int multi_assign_capacity
 
 
@@ -66,10 +67,12 @@ void multi_assign_reserve(int count):
 		multi_assign_lhs_types = cast(int*, malloc(new_bytes))
 		multi_assign_lhs_slots = cast(int*, malloc(new_bytes))
 		multi_assign_rhs_slots = cast(int*, malloc(new_bytes))
+		multi_assign_lhs_regs = cast(int*, malloc(new_bytes))
 	else:
 		multi_assign_lhs_types = cast(int*, realloc(multi_assign_lhs_types, old_bytes, new_bytes))
 		multi_assign_lhs_slots = cast(int*, realloc(multi_assign_lhs_slots, old_bytes, new_bytes))
 		multi_assign_rhs_slots = cast(int*, realloc(multi_assign_rhs_slots, old_bytes, new_bytes))
+		multi_assign_lhs_regs = cast(int*, realloc(multi_assign_lhs_regs, old_bytes, new_bytes))
 
 
 # The same target checks the '=' branch of expression() performs, plus
@@ -99,6 +102,11 @@ int multi_assign(int first_type):
 		multi_assign_check_target(type)
 		multi_assign_reserve(lhs_count + 1)
 		multi_assign_lhs_types[lhs_count] = type
+		# A register-resident target (the register lvalue note) has no
+		# address to park: remember the register, park a dummy word so
+		# the slot bookkeeping is the same for every target
+		multi_assign_lhs_regs[lhs_count] = 0
+		if (regalloc_note_current()): multi_assign_lhs_regs[lhs_count] = regalloc_note_take()
 		push_slot()
 		multi_assign_lhs_slots[lhs_count] = stack_pos
 		lhs_count = lhs_count + 1
@@ -141,8 +149,10 @@ int multi_assign(int first_type):
 	# stack_pos-based offsets stay exact regardless.
 	for i in range(lhs_count):
 		mov_eax_esp_plus((stack_pos - multi_assign_rhs_slots[i]) << word_size_log2)
-		mov_ebx_esp_plus((stack_pos - multi_assign_lhs_slots[i]) << word_size_log2)
-		assign_store(multi_assign_lhs_types[i])
+		if (multi_assign_lhs_regs[i] != 0): mov_reg_eax(multi_assign_lhs_regs[i])
+		else:
+			mov_ebx_esp_plus((stack_pos - multi_assign_lhs_slots[i]) << word_size_log2)
+			assign_store(multi_assign_lhs_types[i])
 
 	# Unlike '=' (whose result can point into a buried struct-return
 	# buffer), nothing of this statement's value points into the parked

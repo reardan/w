@@ -21,6 +21,10 @@ int: 90: default parameter values (up to 10 slots of 4 bytes each)
 int: 130: W variadic function: number of fixed parameters, -1 when not variadic
 int: 134: 1 for generator functions (declared with the 'generator' marker)
 int: 138: 1 for gpu kernels (declared with the 'kernel' marker)
+int: 142: 1 for thread_local globals
+int: 146: register a promoted local lives in (hardware number: x86 esi 6 /
+          edi 7, x64 r12-r15), 0 for a stack-resident local
+          (docs/projects/register_allocation_pgo.md §2.2)
 */
 char *table
 int table_size
@@ -90,7 +94,7 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-const int symbol_data_size = 146
+const int symbol_data_size = 150
 
 
 int next_token(int t):
@@ -422,6 +426,8 @@ value: memory address
 symtype: 0:notype, 1:object, 2:func
 */
 void retained_local_note(int sym);
+# compiler/regalloc_scan.w: the promotion decision for a new local
+int regalloc_declare(int t, char* name, int type);
 
 int pointer_indirection
 void sym_declare(char *s, int type, int visibility, int value, int symtype):
@@ -466,6 +472,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 134, 0)  /* not a generator */
 	save_int(table + t + 138, 0)  /* not a gpu kernel */
 	save_int(table + t + 142, 0)  /* not thread_local */
+	save_int(table + t + 146, 0)  /* stack-resident */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -493,7 +500,12 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 		# The record's codepos must stay an instruction boundary
 		be_notes_reset()
 		debug_local_note(s, value, visibility, type)
-		if (visibility == 'L'): retained_local_note(t)
+		if (visibility == 'L'):
+			# Register promotion: a candidate of the function's pre-scan
+			# gets its register here, recorded in the symbol and wdbg notes
+			int reg = regalloc_declare(t, s, type)
+			if (reg != 0): debug_local_set_register(reg)
+			retained_local_note(t)
 
 
 char *last_global_declaration
@@ -888,7 +900,17 @@ int sym_emit_value(int t, char* s):
 	else if (scope_type == 'U'): save_int(table + t + 2, codepos + code_offset - 4)
 
 	/* local variable */
-	else if (scope_type == 'L'): k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
+	else if (scope_type == 'L'):
+		# A register-resident local emits nothing: the register lvalue
+		# note tells the consumer (promote(), '=', ...) which register
+		# holds the value (code_generator/code_emitter.w)
+		int reg = load_int(table + t + 146)
+		if (reg != 0):
+			reg_lvalue = reg
+			reg_lvalue_end = codepos
+			reg_lvalue_sym = t
+			return type
+		k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 
 	/* argument */
 	else if (scope_type == 'A'):

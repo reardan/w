@@ -25,11 +25,17 @@ void emit_ast_parallel(expression_ast* tree, int id):
 	expression_is_assignment = 1
 	int[4096] lhs_slots
 	int[4096] rhs_slots
+	int[4096] lhs_regs
 	int entry_stack = stack_pos
 	int pair = tree.left[id]
 	while (pair >= 0):
 		emit_expression_ast(tree, tree.left[pair])
 		if (pair == tree.left[id]): entry_stack = stack_pos
+		# A register-resident target has no address to park (the
+		# register lvalue note, grammar/multi_assign.w does the same):
+		# remember the register and park a dummy word
+		lhs_regs[pair] = 0
+		if (regalloc_note_current()): lhs_regs[pair] = regalloc_note_take()
 		lhs_slots[pair] = push_slot()
 		pair = tree.next_arg[pair]
 	pair = tree.left[id]
@@ -43,8 +49,10 @@ void emit_ast_parallel(expression_ast* tree, int id):
 	pair = tree.left[id]
 	while (pair >= 0):
 		mov_eax_esp_plus((stack_pos - rhs_slots[pair]) << word_size_log2)
-		mov_ebx_esp_plus((stack_pos - lhs_slots[pair]) << word_size_log2)
-		assign_store(tree.result_type[tree.left[pair]])
+		if (lhs_regs[pair] != 0): mov_reg_eax(lhs_regs[pair])
+		else:
+			mov_ebx_esp_plus((stack_pos - lhs_slots[pair]) << word_size_log2)
+			assign_store(tree.result_type[tree.left[pair]])
 		pair = tree.next_arg[pair]
 	pop_to(entry_stack)
 
@@ -701,7 +709,14 @@ void emit_expression_ast(expression_ast* tree, int id):
 				print_error(name)
 				print_error(c": ")
 				sym_info(sym)
-			be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
+			# A register-resident local has no stack address: the same
+			# register lvalue note sym_emit_value sets
+			int reg = regalloc_sym_register(sym)
+			if (reg != 0):
+				reg_lvalue = reg
+				reg_lvalue_end = codepos
+				reg_lvalue_sym = sym
+			else: be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
 		else if (target_isa == 3): gpu_sym_get_value(name)
 		else: sym_emit_value(sym, name)
 		if (op == 'X'):
@@ -860,8 +875,18 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if (op == '='):
 		expression_is_assignment = 1
-		int lhs_slot = push_slot()
 		int subop = tree.value[id]
+		# A register-resident left side (grammar/expression.w's '='):
+		# no parked address, the store is a register move
+		int lhs_reg = 0
+		if ((subop == 0) && regalloc_note_current()): lhs_reg = regalloc_note_take()
+		if (lhs_reg != 0):
+			emit_expression_ast(tree, tree.right[id])
+			int reg_rt = promote(tree.result_type[tree.right[id]])
+			coerce(left_type, reg_rt)
+			mov_reg_eax(lhs_reg)
+			return
+		int lhs_slot = push_slot()
 		int loaded = left_type
 		if (subop):
 			loaded = promote(left_type)

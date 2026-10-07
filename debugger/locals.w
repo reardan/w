@@ -15,8 +15,23 @@ Struct values point at their lowest stack address, exactly like the
 generated code. Addresses are only exact at statement boundaries, which is
 where every stop lands. Stack slots are word-sized: 4 bytes on x86, 8 on
 x64.
+
+A local the compiler promoted into a callee-saved register (register
+promotion, docs/projects/register_allocation_pgo.md §2.2; the note's
+register is debug_local_register) has no stack address of its own. In
+the stopped frame its value is the register the kernel saved in the
+signal frame, so dbg_local_runtime_addr returns the address of that
+sigcontext word (reads, 'set' and 'watch' all work on it, and sigreturn
+restores a written value). In an outer frame the register was pushed by
+the nearest inner frame whose prologue saved it (debug_func_regs_at:
+word 2 + i below that frame's return-address slot, i the register's
+index in the ascending push order), or it is still live in the stopped
+frame when no inner frame saved it. Attach mode has no sigcontext, so
+register locals are not addressable there (0).
 */
 import debugger.symbols
+import debugger.registers
+import debugger.frames
 
 
 # Frame description for the current stop, filled by dbg_frame_compute.
@@ -91,10 +106,48 @@ int dbg_local_find(char* name, int stop_addr):
 	return best
 
 
+# sigcontext offset of a callee-saved register by hardware number (x86
+# esi 6 / edi 7; x64 r12-r15), -1 for anything else.
+int dbg_reg_sigcontext_offset(int reg):
+	if (__word_size__ == 8):
+		if ((reg >= 12) && (reg <= 15)): return sigcontext_r12 + (reg - 12) * 8
+		return -1
+	if (reg == 6): return sigcontext_esi()
+	if (reg == 7): return sigcontext_edi()
+	return -1
+
+
+# Address of the word holding register reg's value for the selected
+# frame (see the header), 0 when it cannot be located.
+int dbg_register_local_addr(int reg):
+	int offset = dbg_reg_sigcontext_offset(reg)
+	if (offset < 0): return 0
+	# Inner frames (newer than the selected one) that saved the register
+	int j = dbg_fr_sel - 1
+	while (j >= 0):
+		int f = dbg_function_at(dbg_fr_pc_at(j))
+		if (f >= 0):
+			int mask = debug_func_regs_at(dbg_sym_address(f) - code_offset)
+			if (mask & (1 << reg)):
+				int base = dbg_fr_base_at(j)
+				if (base == 0): return 0
+				int index = 0
+				int r = 0
+				while (r < reg):
+					if (mask & (1 << r)): index = index + 1
+					r = r + 1
+				return base - (2 + index) * __word_size__
+		j = j - 1
+	if (dbg_reg_context == 0): return 0
+	return dbg_reg_context + offset
+
+
 # Runtime address of note i's value, given the trapped esp.
 int dbg_local_runtime_addr(int i, int esp):
 	int slot = dbg_local_slot(i)
 	int type = dbg_local_type(i)
+	int reg = debug_local_register(i)
+	if (reg != 0): return dbg_register_local_addr(reg)
 	int k
 	if (dbg_local_kind(i) == 'L'): k = (dbg_frame_stack - slot - 1) * __word_size__
 	else: k = (dbg_frame_stack + dbg_frame_args - slot + 1) * __word_size__

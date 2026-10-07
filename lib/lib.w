@@ -13,6 +13,12 @@ import lib.hex
 void exit(int);
 void *malloc(int);
 
+# Words a repl_setjmp/setjmp buffer holds (lib/setjmp.w): resume address,
+# stack pointer, frame pointer, then the callee-saved registers the
+# compiler may keep locals in (x86 ebx esi edi; x64 rbx r12-r15; eight
+# words on every target so a buffer is one size everywhere).
+const int jmp_buf_words = 8
+
 
 int verbosity;
 

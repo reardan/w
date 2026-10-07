@@ -373,6 +373,10 @@ void function_definition(int current_symbol):
 			retained_function_parameters(current_symbol)
 			retained_leave(prototype, token_start_offset)
 	else:
+		# Register promotion (compiler/regalloc_scan.w): look ahead over
+		# the body for the locals worth a callee-saved register, so the
+		# prologue below (either path) can push them
+		regalloc_function_scan(current_symbol, is_w_variadic)
 		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
 		else:
 			be_function_define(current_symbol, last_global_declaration)

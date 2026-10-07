@@ -506,6 +506,9 @@ void repl_state_restore(repl_state* st):
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	# an entry that failed inside a function body leaves the register
+	# promotion state of that body armed; nothing may inherit it
+	regalloc_reset()
 	table_pos = st.table_pos
 	stack_pos = st.stack_pos
 	loop_depth = st.loop_depth
@@ -857,7 +860,7 @@ void repl_fault_install_handlers():
 # an earlier eval is already executing.
 
 int repl_nest_size():
-	return 7 * __word_size__
+	return (4 + jmp_buf_words) * __word_size__
 
 
 char* repl_nest_save():
@@ -868,7 +871,7 @@ char* repl_nest_save():
 	save_word(s + 1 * __word_size__, repl_fault_active)
 	save_word(s + 2 * __word_size__, repl_result_type)
 	save_word(s + 3 * __word_size__, repl_entry_file)
-	for i in range(3):
+	for i in range(jmp_buf_words):
 		save_word(s + (4 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
 	return s
 
@@ -879,7 +882,7 @@ void repl_nest_restore(char* s):
 	repl_fault_active = load_word(s + 1 * __word_size__)
 	repl_result_type = load_word(s + 2 * __word_size__)
 	repl_entry_file = load_word(s + 3 * __word_size__)
-	for i in range(3):
+	for i in range(jmp_buf_words):
 		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (4 + i) * __word_size__))
 	free(s)
 
@@ -963,9 +966,9 @@ void repl_remove_staging(char* dir, int file_count):
 # session setup; an embedder that already owns its code buffer and signal
 # handlers (wdbg) calls just this before its first repl_eval().
 void repl_engine_init():
-	if (repl_jump_buffer == 0): repl_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_jump_buffer == 0): repl_jump_buffer = cast(int, malloc(jmp_buf_words * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
-	if (repl_fault_jump_buffer == 0): repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_fault_jump_buffer == 0): repl_fault_jump_buffer = cast(int, malloc(jmp_buf_words * __word_size__))
 
 
 # Create the session's staging directory on first use, so a session that
