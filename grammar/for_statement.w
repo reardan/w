@@ -50,9 +50,18 @@ void for_iter_callee(char* fn_name):
 # fn_name(container, cursor). The operands live in hidden stack slots
 # identified by their stack_pos anchors; the result is left in eax.
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
-	for_iter_callee(fn_name)
 	int s = stack_pos
-	push_slot()
+	# A direct call (unit A4) records the callee instead of parking it
+	int t = sym_lookup(fn_name)
+	if (direct_callee_ok(t)): direct_call_record(s, 1, t)
+	else if ((t < 0) && direct_generic_ok()):
+		int inst = generic_inst_lookup(fn_name)
+		if (inst < 0): error2(fn_name, c" is not defined")
+		direct_call_record(s, 2, inst)
+	else:
+		for_iter_callee(fn_name)
+		push_slot()
+		direct_call_record(s, 0, 0)
 	push_slot_copy(container_slot)
 	if (cursor_slot != 0): push_slot_copy(cursor_slot)
 	rt_call_end(s)

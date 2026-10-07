@@ -94,7 +94,7 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-const int symbol_data_size = 150
+const int symbol_data_size = 154
 
 
 int next_token(int t):
@@ -473,6 +473,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 138, 0)  /* not a gpu kernel */
 	save_int(table + t + 142, 0)  /* not thread_local */
 	save_int(table + t + 146, 0)  /* stack-resident */
+	save_int(table + t + 150, 0)  /* no pending rel32 call sites (A4) */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -557,6 +558,32 @@ void addr_chain_patch(int head, int value):
 		p = next
 
 
+# The rel32 twin of the address-slot chains (docs/projects/codegen_gap_plan.md
+# §2.4, unit A4, direct calls): every cell is the displacement field of a
+# `call rel32` emitted by code_generator/x86.w's call_direct_link while
+# the callee was still undefined (x86 family only), and holds the
+# previous cell's absolute address, code_offset ending the chain like
+# the mov-imm chains above. Patching writes each cell's displacement
+# from the end of its call instruction to value. A function symbol's
+# head lives at table + t + 150, a generic instantiation's in its
+# record (grammar/generic.w); 0 is an empty chain.
+void rel_chain_patch(int head, int value):
+	if (head == 0): return;
+	int p = head - code_offset
+	while (p):
+		int next = load_int(code + p) - code_offset
+		save_int(code + p, value - (code_offset + p + 4))
+		p = next
+
+
+int sym_rel_chain(int t):
+	return load_int(table + t + 150)
+
+
+void sym_set_rel_chain(int t, int head):
+	save_int(table + t + 150, head)
+
+
 void sym_define_global_at(int current_symbol, int v):
 	int t = current_symbol
 	if (table[t + 1] != 'U'):
@@ -574,6 +601,8 @@ void sym_define_global_at(int current_symbol, int v):
 	if (sym_last_declared_offset == current_symbol):
 		sym_set_decl_location(current_symbol, decl_file_index(), sym_last_declared_line, sym_last_declared_column)
 	addr_chain_patch(load_int(table + t + 2), v)
+	rel_chain_patch(sym_rel_chain(t), v)
+	sym_set_rel_chain(t, 0)
 
 	table[t + 1] = 'D'
 	save_int(table + t + 2, v)
@@ -707,8 +736,11 @@ int sym_param_type(int t, int i):
 
 
 # REPL late binding (issue #114): when nonzero, sym_get_value reports every
-# global function address it materializes -- hook(name, slot), slot being
-# the buffer offset of the address cell be_addr_slot_write patches. The REPL
+# global function address it materializes -- hook(name, slot, kind), slot
+# being the buffer offset of the address cell be_addr_slot_write patches
+# (kind 0), or of the displacement cell of a direct `call rel32`
+# sym_emit_call emitted (kind 1, unit A4), which the REPL rewrites as a
+# displacement from the end of that call. The REPL
 # points this at its call-site registry while an entry compiles, so
 # redefining a function at the prompt can rewrite every already-compiled
 # caller to the newest definition (repl/core.w). Zero for ordinary
@@ -948,7 +980,7 @@ int sym_emit_value(int t, char* s):
 			# (still at codepos-4: the D/U paths emit nothing after
 			# be_addr_slot_emit) so a later redefinition of this name
 			# can repatch it. No-op outside the REPL (hook is 0).
-			if (repl_call_site_hook != 0): repl_call_site_hook(s, codepos - 4)
+			if (repl_call_site_hook != 0): repl_call_site_hook(s, codepos - 4, 0)
 			# pac=full: the address just materialized is now a value —
 			# sign it (paciza; call_eax authenticates with blraaz).
 			# Emitted here, after the 'U' backpatch-chain bookkeeping
@@ -973,6 +1005,45 @@ int sym_get_value(char* s):
 	int t = sym_lookup(s)
 	if (t < 0): sym_not_found_error(s)
 	return sym_emit_value(t, s)
+
+
+# 1 when a call to the symbol at table offset t may be a direct `call
+# rel32` (docs/projects/codegen_gap_plan.md §2.4, unit A4): a global W
+# function, defined ('D') or still pending ('U'), on the x86 family. A
+# gpu kernel keeps sym_emit_value's diagnostic, a thread_local the TLS
+# path; function-pointer values, C variadic imports (their inline ABI
+# path never calls through the symbol) and the other targets keep the
+# accumulator call. t may be -1 (a failed lookup).
+int direct_callee_ok(int t):
+	if (direct_calls_disabled): return 0
+	if (target_isa != 0): return 0
+	if (t < 0): return 0
+	char scope_type = table[t + 1]
+	if ((scope_type != 'D') && (scope_type != 'U')): return 0
+	if (load_int(table + t + 10) != 2): return 0
+	if (sym_is_kernel(t)): return 0
+	if (sym_is_thread_local(t)): return 0
+	return 1
+
+
+# Emit a direct call to the function symbol at table offset t (its
+# arguments are already pushed; direct_callee_ok(t) holds): `call
+# rel32` to its address when it is defined, otherwise linked onto its
+# rel32 chain for sym_define_global_at to patch. s is the name for the
+# verbose trace and for the REPL's late-binding registry, which records
+# the displacement cell with kind 1 (repl/core.w).
+void sym_emit_call(int t, char* s):
+	if (verbosity >= 2):
+		print_error(s)
+		print_error(c": call ")
+		sym_info(t)
+	int slot = 0
+	if (table[t + 1] == 'D'): slot = call_direct_to(load_int(table + t + 2))
+	else:
+		int head = call_direct_link(sym_rel_chain(t))
+		sym_set_rel_chain(t, head)
+		slot = head - code_offset
+	if (repl_call_site_hook != 0): repl_call_site_hook(s, slot, 1)
 
 
 void sym_define_declare_global_function(char* name):

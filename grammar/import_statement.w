@@ -387,7 +387,7 @@ int import_alias_member(int alias_index):
 		diag_part(token)
 		error3(c"' is not defined in module imported as '", import_alias_name(alias_index), c"'")
 	strcpy(last_identifier, token)
-	return sym_get_value(token)
+	return identifier_value(token)
 
 
 

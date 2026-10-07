@@ -207,6 +207,7 @@ struct generic_inst_record:
 	int args          # int* vector of type argument indices
 	int arg_count
 	int chain         # head of the call-site mov-imm backpatch chain, 0 none
+	int rel_chain     # head of the direct-call rel32 chain (unit A4), 0 none
 	int signature     # function-signature type index, -1 until parsed
 	int done          # 1 once the body has been compiled
 
@@ -276,6 +277,7 @@ int generic_inst_intern(int def, int args, int arg_count, char* mangled):
 	rec.args = args
 	rec.arg_count = arg_count
 	rec.chain = 0
+	rec.rel_chain = 0
 	rec.signature = -1
 	rec.done = 0
 	generic_insts.push(rec)
@@ -1050,6 +1052,13 @@ void generic_inst_emit_callee(int inst):
 	generic_inst_set_chain(inst, addr_chain_link(generic_inst_chain(inst)))
 
 
+# The direct-call twin (unit A4, grammar/stack_slot.w): `call rel32`
+# whose displacement cell joins the instantiation's rel32 chain, patched
+# with the mov-imm chain once the body is compiled.
+void generic_inst_emit_call(int inst):
+	generic_insts[inst].rel_chain = call_direct_link(generic_insts[inst].rel_chain)
+
+
 /*
 Type-argument inference (docs/projects/generics.md). When a registered
 generic FUNCTION name is followed directly by '(' instead of '[', the
@@ -1469,9 +1478,12 @@ int generic_call_infer_expr(int def):
 	# (already compiled, or being compiled right now at the drain);
 	# otherwise a mov-imm slot on the instantiation's backpatch chain,
 	# exactly like the explicit path
-	if (sym_lookup(generic_inst_mangled(inst)) >= 0): sym_get_value(generic_inst_mangled(inst))
-	else: generic_inst_emit_callee(inst)
-	call_eax()
+	int callee = sym_lookup(generic_inst_mangled(inst))
+	if (callee >= 0): call_symbol(callee, generic_inst_mangled(inst))
+	elif (direct_generic_ok()): generic_inst_emit_call(inst)
+	else:
+		generic_inst_emit_callee(inst)
+		call_eax()
 	pop_to(s)
 	last_call_return_type = return_type
 	last_call_end = codepos
@@ -1529,8 +1541,10 @@ int generic_call_expr():
 	int inst = generic_inst_intern(def, args, arg_count, mangled)
 	generic_pending_call_signature = generic_inst_signature(inst)
 	generic_pending_call_name = generic_inst_mangled(inst)
-	# call target: a mov-imm slot on the instantiation's backpatch chain
-	generic_inst_emit_callee(inst)
+	# call target: noted for the call suffix's direct call (unit A4), or
+	# a mov-imm slot on the instantiation's backpatch chain
+	if (direct_generic_ok()): direct_callee_note(2, inst)
+	else: generic_inst_emit_callee(inst)
 	return 4
 
 
@@ -1560,6 +1574,8 @@ void generic_instantiate_function(int inst):
 	generic_reparse_restore(save)
 	# patch the pre-definition call sites (json_codec chain encoding)
 	addr_chain_patch(generic_inst_chain(inst), address)
+	rel_chain_patch(generic_insts[inst].rel_chain, address)
+	generic_insts[inst].rel_chain = 0
 
 
 # Forward calls: 'fwd[int](x)' where the generic's definition appears

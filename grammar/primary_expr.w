@@ -9,10 +9,9 @@ int hash_literal_type
 
 
 void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot, int value_is_struct):
-	if (value_is_struct): sym_get_value(c"__w_map_set_bytes")
-	else: sym_get_value(c"__w_map_set")
-	int s = stack_pos
-	push_slot()
+	char* fn = c"__w_map_set"
+	if (value_is_struct): fn = c"__w_map_set_bytes"
+	int s = rt_call_begin(fn)
 	push_slot_copy(container_slot)
 	push_slot_copy(key_slot)
 	push_slot_copy(value_slot)
@@ -222,4 +221,8 @@ int primary_expr():
 	else: error2(c"Could not find a valid primary expression, token: ", token)
 
 	get_token()
+	# A noted direct callee (grammar/identifier.w, grammar/generic.w)
+	# that no call suffix will consume is an ordinary function value
+	if (direct_callee_current()):
+		if (peek(c"(") == 0): direct_callee_materialize()
 	return type

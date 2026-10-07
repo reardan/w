@@ -913,6 +913,13 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
 		return 1
+	# Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4) are
+	# on by default on x86/x64; --no-direct-calls reloads every callee
+	# into the accumulator, the reference for tests/regalloc_diff_test.w
+	# and the fallback a guard failure asks for.
+	if (strcmp(arg, c"--no-direct-calls") == 0):
+		if (apply): direct_calls_disabled = 1
+		return 1
 	if (starts_with(arg, c"--ptx=")):
 		# Debug dump of the embedded PTX module (kernels/'gpu for'),
 		# written by ptx_finish_module; ignored when no kernels exist.
@@ -964,6 +971,7 @@ void help_shared_options():
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
+	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
@@ -1298,6 +1306,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# runtime compiles before the positional loop below
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
 			# P2: so does the profile the optimizer reads (profile_use.w).

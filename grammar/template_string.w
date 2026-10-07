@@ -40,15 +40,16 @@ lazy_runtime* template_rt
 lazy_runtime* template_f32_rt
 
 
-void template_emit_helper_address(int i):
+# Begin a call of template helper i (grammar/stack_slot.w's runtime-call
+# protocol); returns the call's stack base.
+int template_call_begin(int i):
 	if (i == 7):
 		if (cast(int, template_f32_rt) == 0):
 			template_f32_rt = lazy_runtime_new(c"structures.template_float", c"__w_template_float")
-		lazy_emit_helper(template_f32_rt, 0)
-		return
+		return lazy_call_begin(template_f32_rt, 0)
 	if (cast(int, template_rt) == 0):
 		template_rt = lazy_runtime_new(c"structures.string", c"__w_template_new __w_template_bytes __w_template_cstr __w_template_int __w_template_str __w_template_finish __w_template_fmt")
-	lazy_emit_helper(template_rt, i)
+	return lazy_call_begin(template_rt, i)
 
 
 int template_chunk_final
@@ -278,9 +279,7 @@ void template_emit_chunk_append(int length, int builder_slot):
 	token[length] = 0
 	be_emit_inline_cstr(length, token)
 	int data_slot = push_slot()
-	template_emit_helper_address(1)
-	int s = stack_pos
-	push_slot()
+	int s = template_call_begin(1)
 	push_slot_copy(builder_slot)
 	push_slot_copy(data_slot)
 	push_slot_int(length)
@@ -294,10 +293,10 @@ void template_emit_chunk_append(int length, int builder_slot):
 lazy_runtime* template_f64_rt
 
 
-void template_emit_float64_helper_address():
+int template_f64_call_begin():
 	if (cast(int, template_f64_rt) == 0):
 		template_f64_rt = lazy_runtime_new(c"structures.template_float64", c"__w_template_float64")
-	lazy_emit_helper(template_f64_rt, 0)
+	return lazy_call_begin(template_f64_rt, 0)
 
 
 # Append the embedded expression's value (in eax, already promoted) to
@@ -320,17 +319,16 @@ void template_emit_value_append(int got, int builder_slot):
 	if (vc == VC_VAR): var_emit_to_cstr()
 	int base_stack = stack_pos
 	int value_slot = push_slot()
+	int s = 0
 	if ((template_spec_present == 0) && (kind < 8)):
 		# plain helper: 2 char*, 3 int-like, 4 string
 		int helper = 3
 		if ((vc == VC_CSTR) || (vc == VC_VAR)): helper = 2
 		if (vc == VC_STRING): helper = 4
-		template_emit_helper_address(helper)
-	else if (kind == 9): template_emit_float64_helper_address()
-	else if (kind == 8): template_emit_helper_address(7)
-	else: template_emit_helper_address(6)
-	int s = stack_pos
-	push_slot()
+		s = template_call_begin(helper)
+	else if (kind == 9): s = template_f64_call_begin()
+	else if (kind == 8): s = template_call_begin(7)
+	else: s = template_call_begin(6)
 	push_slot_copy(builder_slot)
 	push_slot_copy(value_slot)
 	if (template_spec_present || (kind >= 8)):
@@ -358,9 +356,7 @@ int template_string_literal():
 	int base_stack = stack_pos
 
 	# builder = __w_template_new()
-	template_emit_helper_address(0)
-	int s = stack_pos
-	push_slot()
+	int s = template_call_begin(0)
 	rt_call_end(s)
 	int builder_slot = push_slot()
 
@@ -387,9 +383,7 @@ int template_string_literal():
 			start = 0
 
 	# result = __w_template_finish(builder)
-	template_emit_helper_address(5)
-	s = stack_pos
-	push_slot()
+	s = template_call_begin(5)
 	push_slot_copy(builder_slot)
 	rt_call_end(s)
 	pop_to(base_stack)
