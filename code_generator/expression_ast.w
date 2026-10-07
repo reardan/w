@@ -25,11 +25,17 @@ void emit_ast_parallel(expression_ast* tree, int id):
 	expression_is_assignment = 1
 	int[4096] lhs_slots
 	int[4096] rhs_slots
+	int[4096] lhs_regs
 	int entry_stack = stack_pos
 	int pair = tree.left[id]
 	while (pair >= 0):
 		emit_expression_ast(tree, tree.left[pair])
 		if (pair == tree.left[id]): entry_stack = stack_pos
+		# A register-resident target has no address to park (the
+		# register lvalue note, grammar/multi_assign.w does the same):
+		# remember the register and park a dummy word
+		lhs_regs[pair] = 0
+		if (regalloc_note_current()): lhs_regs[pair] = regalloc_note_take()
 		lhs_slots[pair] = push_slot()
 		pair = tree.next_arg[pair]
 	pair = tree.left[id]
@@ -43,8 +49,10 @@ void emit_ast_parallel(expression_ast* tree, int id):
 	pair = tree.left[id]
 	while (pair >= 0):
 		mov_eax_esp_plus((stack_pos - rhs_slots[pair]) << word_size_log2)
-		mov_ebx_esp_plus((stack_pos - lhs_slots[pair]) << word_size_log2)
-		assign_store(tree.result_type[tree.left[pair]])
+		if (lhs_regs[pair] != 0): mov_reg_eax(lhs_regs[pair])
+		else:
+			mov_ebx_esp_plus((stack_pos - lhs_slots[pair]) << word_size_log2)
+			assign_store(tree.result_type[tree.left[pair]])
 		pair = tree.next_arg[pair]
 	pop_to(entry_stack)
 
