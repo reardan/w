@@ -875,6 +875,11 @@ int link_option(char* arg, int apply):
 	# out for the whole program, implicit runtime imports included, so
 	# link_impl's flag pre-scan applies it and this only recognizes it.
 	if (strcmp(arg, c"--streaming") == 0): return 1
+	# C3.5: the optional optimizer pass (compiler/ast_opt.w). Whole-program,
+	# so link_impl's flag pre-scan applies it; it conflicts with --streaming.
+	if (strcmp(arg, c"--ast-opt") == 0):
+		if (apply): ast_opt_mode = 1
+		return 1
 	# P1 (docs/projects/register_allocation_pgo.md §3.2): instrumented
 	# execution counters per function and loop head, flushed at exit to
 	# $W_PROFILE_OUT, with a <output>.wprofmap sidecar keyed by defhash
@@ -963,6 +968,8 @@ void help_shared_options():
 	println(c"  --ast-required        reject any expression fallback (coverage gate)")
 	# S2.1
 	println(c"  --ast-emit-retained   emit from the retained AST (the default; kept for scripts)")
+	# C3.5
+	println(c"  --ast-opt             fold constant if/while conditions and drop the dead arms")
 	# P1
 	println(c"  --coverage            count executable statement lines; report with wcoverage lines")
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
@@ -1246,6 +1253,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	retained_source_reparses = 0
 	retained_source_end_positions = 0
 	retained_source_reparse_reset()
+	# C3.5: the optimizer pass is off unless --ast-opt.
+	ast_opt_reset()
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1332,6 +1341,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 				ast_only_flag = *flag_arg
 			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
+			# C3.5: so does the optimizer pass, an AST-only mode.
+			if (strcmp(*flag_arg, c"--ast-opt") == 0):
+				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
 			# --no-asm covers the runtime and every input, whatever its position
 			if (strcmp(*flag_arg, c"--no-asm") == 0): link_option(*flag_arg, 1)
 			# Register promotion is whole-program too: the auto-imported
@@ -1715,6 +1728,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\nRetained-source reparses positioned at the file's end: ")
 		print_error(itoa(retained_source_end_positions))
 		print_error(c"\n")
+	# C3.5: what the optimizer pass folded and removed.
+	if (stats_mode): ast_opt_stats_dump()
 
 
 	return 0

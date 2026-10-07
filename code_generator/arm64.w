@@ -388,6 +388,12 @@ int arm64_addr_slot_read(int pos):
 	return (page << 12) | ((addw >> 10) & 0xfff)
 
 
+# C3.5: address slots written so far. compiler/ast_opt.w removes a dead
+# region only when none was written inside it: a slot points outside the
+# region or threads a backpatch chain through it.
+int be_addr_slot_writes
+
+
 # Read/write the value threaded through an address slot. pos is the
 # buffer offset of the slot's last 4 bytes (codepos-4 right after
 # be_addr_slot_emit, or a recorded chain link minus code_offset). On the
@@ -395,6 +401,7 @@ int arm64_addr_slot_read(int pos):
 # address from RIP plus a signed disp32, and arm64 reassembles it
 # from the adrp+add immediates.
 void be_addr_slot_write(int pos, int v):
+	be_addr_slot_writes = be_addr_slot_writes + 1
 	if (target_isa == 2): wasm_addr_slot_write(pos, v)
 	elif (target_isa == 1): arm64_addr_slot_write(pos, v)
 	elif (word_size == 8): save_int32(code + pos, v - code_offset - pos - 4)
