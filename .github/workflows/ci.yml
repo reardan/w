@@ -54,14 +54,23 @@ jobs:
         run: sudo sysctl --write kernel.core_pattern=core
 
       # The wvm/kvm tests need a usable /dev/kvm (the hosted runners
-      # expose it, but only to root by default).
+      # expose it on most machines, but only to root by default). A
+      # runner without one sets W_CI_NO_KVM, which lets those tests
+      # skip (lib/ci_skip.w test_skip_kvm) instead of failing the leg.
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -w /dev/kvm
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          fi
+          if [ -w /dev/kvm ]; then
+            echo "KVM enabled"
+          else
+            echo "::warning::/dev/kvm is not available on this runner; KVM tests will skip"
+            echo "W_CI_NO_KVM=1" >> "$GITHUB_ENV"
+          fi
 
       - name: Build and test (GL and UI tests on Xvfb)
         run: |
@@ -73,11 +82,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   arm64:
@@ -111,11 +120,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   win64:
@@ -145,11 +154,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   wasm:
@@ -180,11 +189,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   # The pinned w_darwin seed can segfault compiling today's sources on
@@ -259,9 +268,9 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"

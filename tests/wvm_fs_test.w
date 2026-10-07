@@ -63,7 +63,7 @@ void wvm_fs_run(char* root, char* mode, int writable):
 void test_wvm_fs_confinement():
 	int kvm = kvm_open_system()
 	if (kvm < 0):
-		test_skip(c"SKIP: /dev/kvm unavailable")
+		test_skip_kvm(c"SKIP: /dev/kvm unavailable")
 		return
 	close(kvm)
 	assert_equal(0, syscall(83, cast(int, c"bin/wvm_fs_test_root"), 448, 0))
