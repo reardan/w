@@ -245,11 +245,88 @@ void ast_statement_guard(int target, int outer_condition):
 	emit_guard_ast_branch(&node)
 
 
-# Expression children remain live until their switch value has been lowered.
-# Case bodies and enclosing break-region lifetimes stay in the dispatcher.
-int ast_statement_switch_value():
-	statement_ast node
-	node.kind = ast_stmt_switch_value
+# S2.2c: control headers (switch here, for loops in grammar/ast_loop.w)
+# under a walk. A header is parsed before its code is emitted: each
+# emission step is recorded as a phase of the statement's walk and emitted
+# by it (emit_switch_ast_walk, emit_loop_ast_walk). With no walk open
+# (walk < 0) the same steps run in place, as before.
+#
+# What may not move past a pending phase:
+# - a step that may print (an error, or a lex that may warn), since the
+#   phases may print too: the walk is drained first (ast_walk_settle,
+#   ast_walk_lex);
+# - the next header value's preparation, which commits types, symbols and
+#   literal notes the pending lowering would otherwise follow, and may
+#   print: values are walked one at a time;
+# - the body, whose parse reads the stack depth and the break and
+#   continue context the header's phases set up.
+
+
+# 1 unless the raw source bytes show that lexing the next token cannot
+# print: no line before it starts with a space (the indentation warning),
+# it is not a literal, a comment opener or non-ASCII (unterminated-literal
+# and identifier errors), and a newline follows it inside the read window
+# (the end-of-file warning).
+int ast_walk_lex_may_print():
+	if ((file < 0) || (file >= GETCHAR_MAX_FD) || (nextc < 0)): return 1
+	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+	int window_end = getchar_kernel_pos[file]
+	int at = byte_offset - 1
+	if ((at < window_start) || (at >= window_end)): return 1
+	char* bytes = cast(char*, getchar_buf_addr[file] - window_start)
+	if ((bytes[at] & 255) != nextc): return 1
+	while (at < window_end):
+		int c = bytes[at] & 255
+		if (c == 10):
+			if ((at + 1 < window_end) && (bytes[at + 1] == ' ')): return 1
+			at = at + 1
+		else if ((c == ' ') || (c == 9)): at = at + 1
+		else if (c == '#'):
+			while ((at < window_end) && (bytes[at] != 10)): at = at + 1
+		else: break
+	if (at >= window_end): return 1
+	int first = bytes[at] & 255
+	if ((first == '"') || (first == 39) || (first == '`') || (first == '/')): return 1
+	for k in range(at, window_end):
+		int c = bytes[k] & 255
+		if (c == 10): return 0
+		if ((c == '"') || (c >= 128)): return 1
+	return 1
+
+
+# Emit the phases recorded so far before a parse step that may print or
+# that reads what they set up.
+void ast_walk_settle(int walk):
+	if (walk >= 0): retained_walk_drain(walk)
+
+
+# Before lexing the next token.
+void ast_walk_lex(int walk):
+	if ((walk >= 0) && ast_walk_lex_may_print()): retained_walk_drain(walk)
+
+
+int ast_walk_accept(int walk, char* s):
+	if (peek(s) == 0): return 0
+	ast_walk_lex(walk)
+	get_token()
+	return 1
+
+
+void ast_walk_expect(int walk, char* s):
+	if (peek(s) == 0): ast_walk_settle(walk)
+	else: ast_walk_lex(walk)
+	expect(s)
+
+
+# A header value: the switch selector, a case value, a range argument or
+# an iterable. The caller drains the walk first (no pending phase may still
+# read node, and the preparation must follow the previous value's
+# lowering) and sets node.kind. Under a walk, the value's
+# lowering (lower_phase) and the end-of-root warnings at the token after it
+# (end_phase) are recorded, and that token is lexed now; otherwise the
+# value is lowered in place. A value the expression probe declines is
+# parsed by the streaming grammar, which emits as it parses.
+void ast_walk_header_value(int walk, statement_ast* node, expression_ast* tree, int lower_phase, int end_phase):
 	node.source_file = file
 	node.line = diag_token_line
 	node.column = diag_token_column
@@ -258,54 +335,83 @@ int ast_statement_switch_value():
 	node.expression_root = -1
 	increment_statement_context = 0
 	expression_lhs_readonly = 0
-	expression_ast tree
-	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	int root = ast_expression_prepare_at(tree, token_start_offset, 1)
 	if (root < 0):
 		node.expression_type = expression()
 		node.end_offset = token_start_offset
-	else:
-		node.expression_tree = &tree
-		node.expression_root = root
-		node.end_offset = tree.end_offset
-		emit_statement_ast_expression(&node)
-		ast_statement_finish_expression(&node)
-	return emit_switch_value_ast(&node)
+		return
+	node.expression_tree = tree
+	node.expression_root = root
+	node.end_offset = tree.end_offset
+	if (walk < 0):
+		emit_statement_ast_expression(node)
+		ast_statement_finish_expression(node)
+		return
+	retained_walk_expression(walk, tree, root)
+	retained_walk_phase(walk, lower_phase)
+	if (ast_statement_lex_may_print(tree)): retained_walk_drain(walk)
+	if (tree.whole_expression):
+		token_start_offset = tree.final_token_offset
+		get_token()
+	retained_walk_phase(walk, end_phase)
+
+
+void ast_switch_step(int walk, switch_ast_walk* record, int phase):
+	if (walk >= 0): retained_walk_phase(walk, phase)
+	else: emit_switch_ast_phase(record, 0, phase)
+
+
+# The scrutinee is evaluated exactly once, into a hidden stack slot.
+void ast_switch_selector(int walk, switch_ast_walk* record, expression_ast* tree):
+	ast_walk_settle(walk)
+	record.value.kind = ast_stmt_switch_value
+	ast_walk_header_value(walk, record.value, tree, switch_walk_value, switch_walk_value_end)
+	ast_switch_step(walk, record, switch_walk_selector)
+
+
+# One case value: compare it with the scrutinee and branch to the body
+# when it matches and more values follow, past the case when it does not
+# match and is the last. Returns 1 when another value follows.
+int ast_switch_case_value(int walk, switch_ast_walk* record, expression_ast* tree):
+	ast_walk_settle(walk)
+	statement_ast* value = record.value
+	value.kind = ast_stmt_switch_case
+	ast_switch_step(walk, record, switch_walk_case_begin)
+	record.case_start = switch_case_start()
+	record.case_line = line_number
+	ast_walk_header_value(walk, value, tree, switch_walk_value, switch_walk_value_end)
+	ast_switch_step(walk, record, switch_walk_case_note)
+	ast_switch_step(walk, record, switch_walk_case_compare)
+	value.branch_nonzero = ast_walk_accept(walk, c",")
+	ast_switch_step(walk, record, switch_walk_case_branch)
+	return value.branch_nonzero
+
+
+# The value hooks of the streaming switch rule (grammar/switch_statement.w);
+# ast_switch_statement walks its values itself.
+int ast_statement_switch_value():
+	statement_ast node
+	statement_ast value
+	switch_ast_walk record
+	record.node = &node
+	record.value = &value
+	expression_ast tree
+	ast_switch_selector(-1, &record, &tree)
+	return node.declared_type
 
 
 int ast_statement_switch_case(int type, int slot, int body_target, int next_target):
 	statement_ast node
-	node.kind = ast_stmt_switch_case
-	node.source_file = file
-	node.line = diag_token_line
-	node.column = diag_token_column
-	node.start_offset = token_start_offset
 	node.declared_type = type
 	node.stack_depth = slot
-	node.expression_tree = 0
-	node.expression_root = -1
-	emit_switch_case_ast_begin(&node)
-	increment_statement_context = 0
-	expression_lhs_readonly = 0
-	int start_state = switch_case_start()
-	int value_line = line_number
+	node.body_target = body_target
+	node.alternate_target = next_target
+	statement_ast value
+	switch_ast_walk record
+	record.node = &node
+	record.value = &value
 	expression_ast tree
-	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
-	if (root < 0):
-		node.expression_type = expression()
-		node.end_offset = token_start_offset
-	else:
-		node.expression_tree = &tree
-		node.expression_root = root
-		node.end_offset = tree.end_offset
-		emit_statement_ast_expression(&node)
-		ast_statement_finish_expression(&node)
-	switch_note_case_value(start_state, node.expression_type, value_line, node.line, node.column)
-	emit_switch_case_ast_compare(&node)
-	node.branch_nonzero = accept(c",")
-	node.target = next_target
-	if (node.branch_nonzero): node.target = body_target
-	emit_switch_case_ast_branch(&node)
-	return node.branch_nonzero
+	return ast_switch_case_value(-1, &record, &tree)
 
 
 void ast_if_statement_tail():
@@ -418,24 +524,32 @@ int ast_switch_statement():
 
 	int switch_tab_level = tab_level
 
-	# The scrutinee is evaluated exactly once, into a hidden stack slot
-	node.declared_type = switch_value()
-	node.stack_depth = stack_pos
+	# S2.2c: under --ast-emit-retained the switch is walked from its record;
+	# its phases are drained before each case body, whose parse reads the
+	# scrutinee slot and the break region.
+	statement_ast value
+	expression_ast tree
+	switch_ast_walk record
+	record.node = &node
+	record.value = &value
+	int walk = retained_walk_begin(cast(int, emit_switch_ast_walk), cast(statement_ast*, &record))
 
-	expect(c":")
-	if ((token_newline == 0) && (token[0] != 0)): error(c"switch body must start on a new line")
+	# The scrutinee is evaluated exactly once, into a hidden stack slot
+	ast_switch_selector(walk, &record, &tree)
+
+	ast_walk_expect(walk, c":")
+	if ((token_newline == 0) && (token[0] != 0)):
+		ast_walk_settle(walk)
+		error(c"switch body must start on a new line")
 
 	# Enter a new break context: 'break' in a case body exits the switch.
 	# One region serves both exits — each body's implicit break and every
 	# explicit 'break' branch to the switch end.
-	int outer_chain = switch_break_chain
-	int outer_stack = switch_stack_pos
-	int outer_in_switch = break_in_switch
-	emit_switch_region_ast_begin(&node)
-	switch_break_chain = node.target
-	switch_stack_pos = stack_pos
-	break_in_switch = 1
-	switch_depth = switch_depth + 1
+	record.outer_chain = switch_break_chain
+	record.outer_stack = switch_stack_pos
+	record.outer_in_switch = break_in_switch
+	ast_switch_step(walk, &record, switch_walk_region)
+	ast_switch_step(walk, &record, switch_walk_enter)
 
 	int seen_default = 0
 	# Fall-through bookkeeping and duplicate-case values mirror
@@ -448,44 +562,46 @@ int ast_switch_statement():
 
 	while ((tab_level > switch_tab_level) && (token[0] != 0)):
 		int label_tab_level = tab_level
-		if (seen_default): error(c"'default' must be the last clause in a switch")
+		if (seen_default):
+			ast_walk_settle(walk)
+			error(c"'default' must be the last clause in a switch")
 
 		# Region for jumps past this case while its values do not match
-		emit_switch_case_region_ast_begin(&node)
-		if (accept(c"case")):
+		ast_switch_step(walk, &record, switch_walk_case_region)
+		if (ast_walk_accept(walk, c"case")):
 			# Multi-value case: any matching value jumps to the body
-			emit_switch_match_region_ast_begin(&node)
+			ast_switch_step(walk, &record, switch_walk_match_region)
 			int more = 1
-			while (more):
-				more = switch_case_value(node.declared_type, node.stack_depth, node.body_target, node.alternate_target)
-			emit_switch_match_region_ast_end(&node)
-		else if (accept(c"default")): seen_default = 1
-		else: error(c"'case' or 'default' expected in switch body")
+			while (more): more = ast_switch_case_value(walk, &record, &tree)
+			ast_switch_step(walk, &record, switch_walk_match_end)
+		else if (ast_walk_accept(walk, c"default")): seen_default = 1
+		else:
+			ast_walk_settle(walk)
+			error(c"'case' or 'default' expected in switch body")
 
 		# The body is an ordinary ':' block scoped to the label's line
+		ast_walk_settle(walk)
 		enclosing_tab_level = label_tab_level
 		statement()
 		if (flow_terminates == 0): every_case_terminates = 0
 
 		# Implicit break: leave the switch after the body (no fallthrough)
-		emit_switch_case_region_ast_end(&node)
+		ast_switch_step(walk, &record, switch_walk_case_end)
 
 	# No-match fallthrough, each body's exit jump, and 'break' all land
 	# here, before the scrutinee slot is discarded
 	node.end_offset = token_start_offset
-	emit_switch_region_ast_end(&node)
+	ast_switch_step(walk, &record, switch_walk_region_end)
 
-	switch_break_chain = outer_chain
-	switch_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	switch_depth = switch_depth - 1
+	ast_switch_step(walk, &record, switch_walk_leave)
 	switch_seen_count = switch_seen_base
 	switch_seen_base = outer_seen_base
 	int switch_terminates = seen_default && every_case_terminates && (flow_switch_break == 0)
 	flow_switch_break = outer_switch_break
 
 	# Discard the hidden scrutinee slot
-	emit_switch_region_ast_cleanup(&node)
+	ast_switch_step(walk, &record, switch_walk_cleanup)
+	if (walk >= 0): retained_emit_statement(retained_walks[walk].node)
 	flow_terminates = switch_terminates
 
 	return 1
