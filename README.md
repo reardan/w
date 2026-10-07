@@ -79,6 +79,10 @@ Other useful targets:
 ./wbuild wvm_pool_bench # cell CoW sharing and reset benchmark
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
+./wbuild verify_pgo  # the same fixpoint with --profile-use=profiles/self.wprof (x86, retained AST, x64);
+                     # part of 'tests' (docs/projects/register_allocation_pgo.md)
+./wbuild profile_refresh  # regenerate profiles/*.wprof from --profile-generate runs (self-compile + tests/bench)
+./wbuild profile_check  # staleness report for the committed profiles (bin/wprof stats); never fails
 ./wbuild ast_expression_suite  # full suite with AST lowering and no expression fallback
 ./wbuild warning_test  # asserts the compiler's type/style warnings
 ./wbuild lint_test   # asserts 'w check --lint' / '--fix' (docs/projects/lint.md)

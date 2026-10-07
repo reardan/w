@@ -1550,6 +1550,7 @@ void generic_instantiate_function(int inst):
 	while (peek(c"]") == 0): get_token()
 	expect(c"]")
 	expect(c"(")
+	profile_use_definition_start = generic_def_offset(def)   # P2: --profile-use
 	function_definition(current_symbol)
 	if (table[current_symbol + 1] != 'D'):
 		error3(c"generic function '", generic_def_name(def), c"' has no body")

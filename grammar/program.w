@@ -824,6 +824,7 @@ void program_item():
 	# token itself has moved on to the declared name, so capturing
 	# this any later would miss the return-type tokens).
 	int defhash_start = token_start_offset
+	profile_use_definition_start = defhash_start   # P2: --profile-use hashes the span from here
 	# kernel declarations: "kernel identifier (" (implicit void
 	# return). A user type or symbol named 'kernel' shadows the
 	# marker, like the limb-intrinsic shadowing rule. Like generics,

@@ -2,6 +2,8 @@ import lib.lib
 import compiler.tokenizer
 import compiler.analysis
 import codegen
+# P2: --profile-use (before the grammar, whose loop emitters call it)
+import compiler.profile_use
 import lib.assert
 import compiler.type_table
 import compiler.symbol_table
@@ -875,6 +877,15 @@ int link_option(char* arg, int apply):
 			defhash_mode = 1
 			defhash_closure_mode = 1
 		return 1
+	# P2 (docs/projects/register_allocation_pgo.md §3.4-§3.5): read one
+	# .wprof profile (bin/wprof's output) and let it classify functions
+	# as hot/cold and mark hot loop heads for alignment
+	# (compiler/profile_use.w). Whole-program, like --profile-generate:
+	# link_impl's flag pre-scan applies it before the runtime closure
+	# compiles. Explicit only: no flag, no profile, no change in output.
+	if (starts_with(arg, c"--profile-use=")):
+		if (apply): profile_use_load(arg + 14)
+		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		if (apply): quiet_mode = 1
 		return 1
@@ -925,6 +936,9 @@ void help_shared_options():
 	# P1
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
 	println(c"                        writes <output>.wprofmap; the program appends to $W_PROFILE_OUT")
+	# P2
+	println(c"  --profile-use=<path>  read a .wprof profile (bin/wprof merge): hot/cold function")
+	println(c"                        classes and 16-byte alignment of hot loop heads")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
@@ -1258,6 +1272,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
+			# P2: so does the profile the optimizer reads (profile_use.w).
+			if (starts_with(*flag_arg, c"--profile-use=")): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
@@ -1464,6 +1480,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# deps_main, symbols_main, defhash_main), so one call here covers
 	# them all.
 	if (stats_mode): sym_stats_dump()
+	if (stats_mode): profile_use_stats_dump()   # P2: --profile-use
 	if (stats_mode && ast_retain_mode):
 		print_int0(c"Retained AST nodes: ", retained_nodes.length)
 		print_error(c"\n")

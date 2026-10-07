@@ -276,6 +276,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	# Enter a new loop context for break/continue
 	int* outer = loop_enter()
 	# Loop region: the back edge re-tests the condition.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	int h_top = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
@@ -426,6 +427,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	# The exit region is where free_fn releases the container.
 	int* outer = loop_enter()
 	# Loop region: the back edge re-tests.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	int h_top = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
