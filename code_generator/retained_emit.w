@@ -270,15 +270,21 @@ struct retained_statement_walk:
 	int done
 	int walked
 
-list[retained_statement_walk*] retained_walks
+# P1.2b: the pools are raw arrays (room entries each, grown by doubling):
+# records by pointer, phase codes and points as words, and emission points
+# inline, a tokenizer_snapshot each, with their token texts beside them.
+retained_statement_walk** retained_walks
 int retained_walks_used
-list[int] retained_walk_phase_codes
-list[int] retained_walk_phase_points
+int retained_walks_room
+int* retained_walk_phase_codes
+int* retained_walk_phase_points
 int retained_walk_phases_used
-list[tokenizer_snapshot*] retained_emit_points
-list[char*] retained_emit_point_texts
-list[int] retained_emit_point_sizes
+int retained_walk_phases_room
+tokenizer_snapshot* retained_emit_points
+char** retained_emit_point_texts
+int* retained_emit_point_sizes
 int retained_emit_points_used
+int retained_emit_points_room
 # --stats: statements emitted by the walk rather than during their parse.
 int ast_retained_statements_emitted
 
@@ -308,16 +314,13 @@ int retained_walk_begin(int emitter, statement_ast* statement):
 	if ((ast_emit_retained_mode == 0) || (retained_parent < 0)): return -1
 	retained_record* node = retained_record_at(retained_parent)
 	if ((node.kind != retained_statement) || (node.statement_walk >= 0)): return -1
-	if (retained_walks == 0):
-		retained_walks = new list[retained_statement_walk*]
-		retained_walk_phase_codes = new list[int]
-		retained_walk_phase_points = new list[int]
-		retained_emit_points = new list[tokenizer_snapshot*]
-		retained_emit_point_texts = new list[char*]
-		retained_emit_point_sizes = new list[int]
 	retained_walk_release()
 	int id = retained_walks_used
-	if (id == retained_walks.length): retained_walks.push(new retained_statement_walk)
+	if (id == retained_walks_room):
+		int room = retained_walks_room * 2 + 16
+		retained_walks = cast(retained_statement_walk**, realloc(cast(char*, retained_walks), retained_walks_room * __word_size__, room * __word_size__))
+		for i in range(retained_walks_room, room): retained_walks[i] = new retained_statement_walk
+		retained_walks_room = room
 	retained_walks_used = id + 1
 	retained_statement_walk* walk = retained_walks[id]
 	walk.node = retained_parent
@@ -336,9 +339,13 @@ int retained_walk_begin(int emitter, statement_ast* statement):
 	return id
 
 
+tokenizer_snapshot* retained_emit_point(int point):
+	return cast(tokenizer_snapshot*, cast(char*, retained_emit_points) + point * sizeof(tokenizer_snapshot))
+
+
 # 1 when the lexer is exactly at the recorded point.
 int retained_emit_point_current(int point):
-	tokenizer_snapshot* s = retained_emit_points[point]
+	tokenizer_snapshot* s = retained_emit_point(point)
 	if ((s.token_serial != token_serial) || (s.byte_offset != byte_offset)): return 0
 	if ((s.token_start_offset != token_start_offset) || (s.token_i != token_i)): return 0
 	if ((s.file != file) || (s.filename != filename) || (s.nextc != nextc)): return 0
@@ -350,21 +357,28 @@ int retained_emit_point_current(int point):
 
 int retained_emit_point_save():
 	int id = retained_emit_points_used
-	if (id == retained_emit_points.length):
-		retained_emit_points.push(new tokenizer_snapshot)
-		retained_emit_point_texts.push(0)
-		retained_emit_point_sizes.push(0)
+	if (id == retained_emit_points_room):
+		int room = retained_emit_points_room * 2 + 16
+		int old = retained_emit_points_room
+		retained_emit_points = cast(tokenizer_snapshot*, realloc(cast(char*, retained_emit_points), old * sizeof(tokenizer_snapshot), room * sizeof(tokenizer_snapshot)))
+		retained_emit_point_texts = cast(char**, realloc(cast(char*, retained_emit_point_texts), old * __word_size__, room * __word_size__))
+		retained_emit_point_sizes = cast(int*, realloc(cast(char*, retained_emit_point_sizes), old * __word_size__, room * __word_size__))
+		for i in range(old, room):
+			retained_emit_point_texts[i] = 0
+			retained_emit_point_sizes[i] = 0
+		retained_emit_points_room = room
 	retained_emit_points_used = id + 1
-	tokenizer_snapshot_save(retained_emit_points[id])
-	int length = strlen(token)
+	tokenizer_snapshot_save(retained_emit_point(id))
+	char* from = token
+	int length = strlen(from)
+	char* text = retained_emit_point_texts[id]
 	if (retained_emit_point_sizes[id] <= length):
 		int size = (length + 16) << 1
-		if (retained_emit_point_texts[id] != 0): free(retained_emit_point_texts[id])
-		retained_emit_point_texts[id] = cast(char*, malloc(size))
+		if (text != 0): free(text)
+		text = cast(char*, malloc(size))
+		retained_emit_point_texts[id] = text
 		retained_emit_point_sizes[id] = size
-	char* text = retained_emit_point_texts[id]
-	for i in range(length): text[i] = token[i]
-	text[length] = 0
+	for i in range(length + 1): text[i] = from[i]
 	return id
 
 
@@ -380,12 +394,13 @@ void retained_walk_phase(int id, int code):
 		point = retained_emit_point_save()
 		walk.point_count = walk.point_count + 1
 	int k = retained_walk_phases_used
-	if (k == retained_walk_phase_codes.length):
-		retained_walk_phase_codes.push(code)
-		retained_walk_phase_points.push(point)
-	else:
-		retained_walk_phase_codes[k] = code
-		retained_walk_phase_points[k] = point
+	if (k == retained_walk_phases_room):
+		int room = retained_walk_phases_room * 2 + 64
+		retained_walk_phase_codes = cast(int*, realloc(cast(char*, retained_walk_phase_codes), retained_walk_phases_room * __word_size__, room * __word_size__))
+		retained_walk_phase_points = cast(int*, realloc(cast(char*, retained_walk_phase_points), retained_walk_phases_room * __word_size__, room * __word_size__))
+		retained_walk_phases_room = room
+	retained_walk_phase_codes[k] = code
+	retained_walk_phase_points[k] = point
 	retained_walk_phases_used = k + 1
 	walk.phase_count = walk.phase_count + 1
 
@@ -440,7 +455,7 @@ void retained_walk_drain(int id):
 		int point = retained_walk_phase_points[k]
 		if (retained_emit_point_current(point) == 0):
 			if (resume_text == 0): resume_text = strclone(token)
-			tokenizer_snapshot_restore(retained_emit_points[point], retained_emit_point_texts[point])
+			tokenizer_snapshot_restore(retained_emit_point(point), retained_emit_point_texts[point])
 		walk.done = walk.done + 1
 		# The family's emitter, held as an address like analysis_run's
 		# operation (compiler/analysis.w).
