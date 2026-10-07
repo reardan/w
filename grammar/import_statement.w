@@ -570,7 +570,7 @@ int import_statement():
 
 		char* resolved = import_resolve(token)
 		int retained_id = -1
-		if (ast_retain_mode): retained_id = retained_nodes.length
+		if (ast_retain_mode): retained_id = retained_node_count()
 		retained_import_note(token, resolved, alias, retained_start, byte_offset - 1, retained_line, retained_column)
 		if (alias == 0): import_lint_duplicate(resolved, token)
 
@@ -579,7 +579,7 @@ int import_statement():
 		if (retained_id >= 0):
 			for i in range(retained_sources.length):
 				char* key = retained_sources[i].import_key
-				if ((key != 0) && (strcmp(key, resolved) == 0)): retained_nodes[retained_id].import_source = i
+				if ((key != 0) && (strcmp(key, resolved) == 0)): retained_record_at(retained_id).import_source = i
 		if (alias != 0): import_alias_register(alias, resolved)
 		else: import_plain_register(resolved)
 		get_token()

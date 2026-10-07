@@ -223,7 +223,7 @@ void incremental_tree_reuse(int emit):
 	assert_equal(27, (cast(incremental_test_callback*, third_address))(4))
 	int end_code = codepos
 	int end_table = table_pos
-	int end_nodes = retained_nodes.length
+	int end_nodes = retained_node_count()
 	char* image = cast(char*, malloc(end_code))
 	for i in range(end_code): image[i] = code[i]
 
@@ -239,7 +239,7 @@ void incremental_tree_reuse(int emit):
 	assert_equal(2, result.tree_reused)
 	assert_equal(end_code, codepos)
 	assert_equal(end_table, table_pos)
-	assert_equal(end_nodes, retained_nodes.length)
+	assert_equal(end_nodes, retained_node_count())
 	assert_bytes_equal(image, code, end_code)
 	assert_equal(first_address, incremental_address(c"tree_first"))
 	assert_equal(second_address, incremental_address(c"tree_second"))

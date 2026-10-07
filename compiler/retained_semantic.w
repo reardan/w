@@ -89,16 +89,19 @@ int retained_key_capacity
 list[char*] retained_interned
 # S2.5: open-addressed table of the interned copies (as ints, 0 = empty),
 # keyed by a multiplicative hash of the text. Cheaper than a SipHash map for
-# the short spellings interned here.
+# the short spellings interned here. P1.2b: each slot keeps its copy's hash,
+# so a probe compares text only when the hashes agree.
 int* retained_intern_table
+int* retained_intern_hashes
 int retained_intern_table_capacity
-# Direct-mapped front cache: caller pointer -> interned copy. A hit is
-# confirmed by comparing the text, so a recycled caller pointer is harmless.
-const int retained_intern_slots = 8192
-int* retained_intern_callers
-int* retained_intern_copies
 # S2.5: the interned empty spelling (most nodes have no name).
 char* retained_intern_empty
+
+# P1.2b: 1 when the session keeps semantic snapshot records (types and
+# bindings) for its nodes: a tree query, an explicit --ast-retain, or an
+# in-process compiler API (the default here; the driver and the REPL reset
+# it). A plain compile's forest keeps the raw table identities it lowers.
+int retained_semantic_mode = 1
 
 
 int retained_intern_hash(char* text):
@@ -113,55 +116,59 @@ int retained_intern_hash(char* text):
 # The interned copy of text, or 0.
 char* retained_intern_find(char* text):
 	if (retained_intern_table_capacity == 0): return 0
+	int h = retained_intern_hash(text)
 	int mask = retained_intern_table_capacity - 1
-	int i = retained_intern_hash(text) & mask
+	int i = h & mask
 	while (retained_intern_table[i] != 0):
-		char* copy = cast(char*, retained_intern_table[i])
-		if (strcmp(copy, text) == 0): return copy
+		if (retained_intern_hashes[i] == h):
+			char* copy = cast(char*, retained_intern_table[i])
+			if (strcmp(copy, text) == 0): return copy
 		i = (i + 1) & mask
 	return 0
 
 
-void retained_intern_place(char* copy):
+void retained_intern_place(char* copy, int h):
 	int mask = retained_intern_table_capacity - 1
-	int i = retained_intern_hash(copy) & mask
+	int i = h & mask
 	while (retained_intern_table[i] != 0): i = (i + 1) & mask
 	retained_intern_table[i] = cast(int, copy)
+	retained_intern_hashes[i] = h
 
 
-# Add a copy not yet in the table, growing it at half load.
-void retained_intern_insert(char* copy):
-	if ((retained_interned.length + 1) * 2 > retained_intern_table_capacity):
-		int capacity = retained_intern_table_capacity * 2
-		if (capacity < 4096): capacity = 4096
-		if (retained_intern_table != 0): free(cast(char*, retained_intern_table))
-		retained_intern_table = cast(int*, malloc(capacity * __word_size__))
-		retained_intern_table_capacity = capacity
-		for i in range(capacity): retained_intern_table[i] = 0
-		for i in range(retained_interned.length): retained_intern_place(retained_interned[i])
-	retained_intern_place(copy)
+# Make room for one more copy, growing the table at half load.
+void retained_intern_reserve():
+	if ((retained_interned.length + 1) * 2 <= retained_intern_table_capacity): return
+	int capacity = retained_intern_table_capacity * 2
+	if (capacity < 4096): capacity = 4096
+	if (retained_intern_table != 0):
+		free(cast(char*, retained_intern_table))
+		free(cast(char*, retained_intern_hashes))
+	retained_intern_table = cast(int*, malloc(capacity * __word_size__))
+	retained_intern_hashes = cast(int*, malloc(capacity * __word_size__))
+	retained_intern_table_capacity = capacity
+	for i in range(capacity): retained_intern_table[i] = 0
+	for i in range(retained_interned.length):
+		char* copy = retained_interned[i]
+		retained_intern_place(copy, retained_intern_hash(copy))
 
 
 char* retained_intern(char* text):
 	if (text == 0): return 0
 	if ((text[0] == 0) && (retained_intern_empty != 0)): return retained_intern_empty
-	if (retained_interned == 0):
-		retained_interned = new list[char*]
-		retained_intern_callers = cast(int*, malloc(retained_intern_slots * __word_size__))
-		retained_intern_copies = cast(int*, malloc(retained_intern_slots * __word_size__))
-		for i in range(retained_intern_slots):
-			retained_intern_callers[i] = 0
-			retained_intern_copies[i] = 0
-	int slot = (cast(int, text) >> 3) & (retained_intern_slots - 1)
-	char* cached = cast(char*, retained_intern_copies[slot])
-	if ((retained_intern_callers[slot] == cast(int, text)) && (strcmp(cached, text) == 0)): return cached
-	char* copy = retained_intern_find(text)
-	if (copy == 0):
-		copy = strclone(text)
-		retained_intern_insert(copy)
-		retained_interned.push(copy)
-	retained_intern_callers[slot] = cast(int, text)
-	retained_intern_copies[slot] = cast(int, copy)
+	if (retained_interned == 0): retained_interned = new list[char*]
+	retained_intern_reserve()
+	int h = retained_intern_hash(text)
+	int mask = retained_intern_table_capacity - 1
+	int i = h & mask
+	while (retained_intern_table[i] != 0):
+		if (retained_intern_hashes[i] == h):
+			char* found = cast(char*, retained_intern_table[i])
+			if (strcmp(found, text) == 0): return found
+		i = (i + 1) & mask
+	char* copy = strclone(text)
+	retained_intern_table[i] = cast(int, copy)
+	retained_intern_hashes[i] = h
+	retained_interned.push(copy)
 	if (text[0] == 0): retained_intern_empty = copy
 	return copy
 
@@ -246,14 +253,13 @@ void retained_semantic_clear():
 	if (retained_interned != 0):
 		for i in range(retained_interned.length): free(retained_interned[i])
 		retained_interned.free()
-		free(cast(char*, retained_intern_table))
-		free(cast(char*, retained_intern_callers))
-		free(cast(char*, retained_intern_copies))
+		if (retained_intern_table != 0):
+			free(cast(char*, retained_intern_table))
+			free(cast(char*, retained_intern_hashes))
 	retained_interned = 0
 	retained_intern_table = 0
+	retained_intern_hashes = 0
 	retained_intern_table_capacity = 0
-	retained_intern_callers = 0
-	retained_intern_copies = 0
 	retained_intern_empty = 0
 	if (retained_key_buffer != 0): free(retained_key_buffer)
 	retained_key_buffer = 0

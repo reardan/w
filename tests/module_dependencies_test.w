@@ -75,8 +75,8 @@ void test_owned_module_dependency_analysis():
 	int first_shadow = -1
 	int first_parent = -1
 	int imports = 0
-	for i in range(retained_nodes.length):
-		retained_node* node = retained_nodes[i]
+	for i in range(retained_node_count()):
+		retained_node* node = retained_node_at(i)
 		if (node.source != middle): continue
 		if (node.kind == retained_import):
 			assert_equal(imported, node.import_source)
@@ -91,7 +91,7 @@ void test_owned_module_dependency_analysis():
 			parameter = parameter + 1
 			assert_equal('A', binding.scope)
 			assert_equal(3, binding.line)
-			assert1(retained_nodes[node.parent].start <= node.start)
+			assert1(retained_node_at(node.parent).start <= node.start)
 		if (strcmp(node.name, c"unused_record") == 0): record = record + 1
 		if (strcmp(node.name, c"inferred_unused") == 0):
 			inferred = inferred + 1
@@ -124,11 +124,11 @@ void test_owned_module_dependency_analysis():
 	assert1(file_write_text(broken_path, c"int broken_dependency():\n\treturn missing_module_dependency\n"))
 	char* broken_import = cstr(f"import bin.module_ir_{getpid()}_broken")
 	int bindings_before = retained_bindings.length
-	int nodes_before = retained_nodes.length
+	int nodes_before = retained_node_count()
 	repl_result failed = repl_eval(broken_import)
 	assert_equal(0, failed.status)
 	assert_equal(bindings_before, retained_bindings.length)
-	assert_equal(nodes_before, retained_nodes.length)
+	assert_equal(nodes_before, retained_node_count())
 	assert1(retained_pending_import == 0)
 	free(broken_import)
 	unlink(broken_path)

@@ -174,7 +174,7 @@ int retained_binding_note(int sym, int owner):
 	int source = retained_file_source(file_index)
 	int declaration = owner
 	if ((scope == 'L') || (scope == 'A')):
-		while ((owner >= 0) && (retained_nodes[owner].kind != retained_function)): owner = retained_nodes[owner].parent
+		while ((owner >= 0) && (retained_record_at(owner).kind != retained_function)): owner = retained_record_at(owner).parent
 	else: owner = -1
 	# S2.5: a binding whose key fields all match is the one the key map
 	# would return (keys are unique), so try the front cache and then the
@@ -234,7 +234,7 @@ int retained_binding_note(int sym, int owner):
 	# give the owned declaration its original name location. Do not change
 	# production diagnostics as a side effect of retaining a tree.
 	if ((scope == 'L') && (declaration >= 0)):
-		retained_node* node = retained_nodes[declaration]
+		retained_record* node = retained_record_at(declaration)
 		if ((node.kind == retained_statement) && (strcmp(node.name, name) == 0)):
 			binding.line = node.line
 			binding.column = node.column
@@ -276,97 +276,100 @@ int retained_binding_note(int sym, int owner):
 # Retain the production traversal without keeping pointers into temporary
 # expression arenas or the symbol/type tables. Operand indices are local to
 # each expression group and retain the production op-specific interpretation.
+# P1.2b: the operands are the arena's node columns, copied into one block of
+# the group (compiler/retained_ast.w); a semantic session adds their semantic
+# types, bindings and spellings in a second block.
+void retained_expression_semantics(expression_ast* tree, retained_group* group);
+
+
 void retained_expression_note(expression_ast* tree, int root):
 	if (ast_retain_mode == 0): return
-	int start_offset = tree.offset[root]
-	for i in range(tree.count):
-		if (tree.offset[i] < start_offset): start_offset = tree.offset[i]
-	int group = retained_enter(retained_expression_group, filename, start_offset, 0, 0, c"expression")
-	retained_node* owner = retained_nodes[group]
-	owner.op = root
-	owner.readonly = tree.readonly
-	owner.whole_expression = tree.whole_expression
-	owner.final_token_offset = tree.final_token_offset
-	# One copy of each temporary arena into the session text arena; string
-	# literal operands below are slices of this copy, not separate copies.
-	owner.arena_text_length = tree.text_used
-	owner.arena_text = retained_text_copy(tree.text, tree.text_used)
-	owner.arena_type_names_length = tree.type_names_used
-	owner.arena_type_names = retained_text_copy(tree.type_names, tree.type_names_used)
-	char* arena_text = owner.arena_text
-	for i in range(tree.count):
-		int id = retained_add(retained_expression, group, owner.source, tree.offset[i], 0, 0, c"")
-		retained_node* node = retained_nodes[id]
-		node.op = tree.op[i]
-		node.value = tree.value[i]
-		node.high = tree.high[i]
-		node.symbol = tree.symbol[i]
-		node.in_cast = tree.in_cast[i]
-		node.binding_offset = tree.binding_offset[i]
-		node.binding_text_offset = tree.binding_name[i]
-		node.it_slot = tree.it_slot[i]
-		node.qualified = tree.qualified[i]
-		node.generic_parameters = tree.generic_parameters[i]
-		node.generic_offset = tree.generic_offset[i]
-		node.generic_instance = tree.generic_instance[i]
-		node.generic_arity = tree.generic_arity[i]
-		node.infer_coercion = tree.infer_coercion[i]
-		node.left = tree.left[i]
-		node.right = tree.right[i]
-		node.next_arg = tree.next_arg[i]
-		node.end = tree.end_offset
-		node.semantic_type = retained_type_note(tree.result_type[i])
-		node.result_is_value = type_is_value(tree.result_type[i])
-		node.generic_signature = retained_type_note(tree.generic_signature[i])
-		node.call_receiver_type = retained_type_note(tree.call_receiver_type[i])
-		node.infer_want = retained_type_note(tree.infer_want[i])
+	int count = tree.count
+	int* offsets = tree.offset
+	int start_offset = offsets[root]
+	for i in range(count):
+		if (offsets[i] < start_offset): start_offset = offsets[i]
+	retained_init()
+	int id = retained_enter_interned(retained_expression_group, filename, start_offset, 0, 0, retained_name_expression)
+	retained_record* owner = retained_record_at(id)
+	retained_group* group = cast(retained_group*, retained_arena_alloc(sizeof(retained_group)))
+	owner.group = group
+	group.id = id
+	group.root = root
+	group.count = count
+	group.wide = word_size == 8
+	group.readonly = tree.readonly
+	group.whole_expression = tree.whole_expression
+	group.final_token_offset = tree.final_token_offset
+	# One copy of each temporary arena into the session arena; string
+	# literal operands are slices of this copy, not separate copies.
+	group.arena_text_length = tree.text_used
+	group.arena_text = retained_text_copy(tree.text, tree.text_used)
+	group.arena_type_names_length = tree.type_names_used
+	group.arena_type_names = retained_text_copy(tree.type_names, tree.type_names_used)
+	group.semantic = 0
+	# The arena's columns are contiguous, tree.capacity words apart.
+	int* columns = cast(int*, retained_arena_alloc(retained_expression_columns * count * __word_size__))
+	group.columns = columns
+	retained_copy_columns(columns, tree.op, count, tree.capacity, retained_expression_columns)
+	int operand = cast(int, owner) | 1
+	for i in range(count): retained_node_push(operand)
+	retained_operand_total = retained_operand_total + count
+	if (retained_semantic_mode): retained_expression_semantics(tree, group)
+	retained_leave(id, tree.end_offset)
+
+
+# A semantic session's second block for a group just noted: per operand the
+# semantic result, signature, receiver and inference types, the binding and
+# name binding, the payload text, and the result type's spelling, size and
+# pointer level (the columns retained_node_load reads).
+void retained_expression_semantics(expression_ast* tree, retained_group* group):
+	int count = group.count
+	int* s = cast(int*, retained_arena_alloc(retained_semantic_columns * count * __word_size__))
+	group.semantic = s
+	int id = group.id
+	for i in range(count):
+		s[i] = retained_type_note(tree.result_type[i])
+		s[count + i] = retained_type_note(tree.generic_signature[i])
+		s[2 * count + i] = retained_type_note(tree.call_receiver_type[i])
+		s[3 * count + i] = retained_type_note(tree.infer_want[i])
+		int binding = -1
+		int name_binding = -1
+		char* payload = 0
+		char* result_name = 0
+		int size = 0
+		int pointer_level = 0
 		int type = type_real(tree.result_type[i])
 		if ((type >= 0) && (type < type_count())):
-			node.result_type = retained_intern(type_get_name(type))
-			node.type_size = type_get_size(type)
-			node.type_pointer_level = type_get_pointer_level(type)
+			result_name = retained_intern(type_get_name(type))
+			size = type_get_size(type)
+			pointer_level = type_get_pointer_level(type)
 		# These opcodes always carry a symbol-table binding. Other opcodes
 		# overload the same slot with type/format/diagnostic information.
 		int op = tree.op[i]
-		if ((op == 'G') || (op == 'W')): node.payload_text = retained_intern(generic_def_name(tree.value[i]))
+		int high = tree.high[i]
+		if ((op == 'G') || (op == 'W')): payload = retained_intern(generic_def_name(tree.value[i]))
 		if (op == ast_warning):
-			if ((node.high == 0) || (node.high == 6) || (node.high == 7) || (node.high == 8)):
-				node.payload_text = retained_intern(cast(char*, tree.value[i]))
-				node.value = 0
-			if ((node.high == 1) || (node.high == 2) || (node.high == 5)):
+			if ((high == 0) || (high == 6) || (high == 7) || (high == 8)): payload = retained_intern(cast(char*, tree.value[i]))
+			if ((high == 1) || (high == 2) || (high == 5)):
 				char* message = table + tree.value[i]
-				if ((node.high == 5) && tree.symbol[i]): message = c"it"
-				node.payload_text = retained_intern(message)
-				node.value = 0
+				if ((high == 5) && tree.symbol[i]): message = c"it"
+				payload = retained_intern(message)
 		# Name-bearing warnings spell a symbol whose record ends their name.
-		if ((op == ast_warning) && ((node.high == 1) || (node.high == 2) || ((node.high == 5) && (tree.symbol[i] == 0)))):
-			node.name_binding = retained_binding_note(tree.value[i] + strlen(table + tree.value[i]), group)
-		if (tree.generic_signature[i] < -1): node.type_value_flags = node.type_value_flags | 1
-		if (tree.call_receiver_type[i] < -1): node.type_value_flags = node.type_value_flags | 2
-		if (tree.infer_want[i] < -1): node.type_value_flags = node.type_value_flags | 4
+		if ((op == ast_warning) && ((high == 1) || (high == 2) || ((high == 5) && (tree.symbol[i] == 0)))):
+			name_binding = retained_binding_note(tree.value[i] + strlen(table + tree.value[i]), id)
 		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')):
 			char* name = table + tree.value[i]
 			if (tree.binding_name[i] >= 0): name = &tree.text[tree.binding_name[i]]
-			node.payload_text = retained_intern(name)
-			node.value = 0
-		if ((op == 0) || (op == 'c') || (op == 'h') || (op == 'f')):
-			node.literal_value = tree.value[i]
-			if ((op == 'f') && (word_size == 8)): node.literal_high = tree.high[i]
-		if ((op == 's') || (op == 'S') || (op == 't')):
-			node.literal_length = tree.high[i]
-			node.literal_text = &arena_text[tree.value[i]]
+			payload = retained_intern(name)
 		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
-			node.binding = retained_binding_note(tree.symbol[i], group)
-			if (node.binding >= 0):
-				retained_binding* binding = retained_bindings[node.binding]
-				node.binding_name = binding.name
-				node.binding_file = binding.file
-				node.binding_line = binding.line
-				node.binding_column = binding.column
-				node.binding_scope = binding.scope
-				node.binding_slot = binding.slot
-
-	retained_leave(group, tree.end_offset)
+			binding = retained_binding_note(tree.symbol[i], id)
+		s[4 * count + i] = binding
+		s[5 * count + i] = name_binding
+		s[6 * count + i] = cast(int, payload)
+		s[7 * count + i] = cast(int, result_name)
+		s[8 * count + i] = size
+		s[9 * count + i] = pointer_level
 
 
 # Definition hooks run after the declaration. Adopt its already retained
@@ -376,13 +379,16 @@ void retained_declaration_note(char* name, char* kind, int start, int end, int l
 	int source = retained_source_id(filename)
 	int module = retained_sources[source].root
 	int id = retained_add(retained_declaration, module, source, start, line, column, name)
-	retained_nodes[id].end = end
-	retained_nodes[id].result_type = retained_intern(kind)
-	retained_semantic_invalidate()
-	if ((strcmp(kind, c"function") == 0) || (strcmp(kind, c"global") == 0) || (strcmp(kind, c"const") == 0)):
-		retained_nodes[id].binding = retained_binding_note(sym_probe(name), id)
-		if (retained_nodes[id].binding >= 0): retained_nodes[id].semantic_type = retained_bindings[retained_nodes[id].binding].type
-	else: retained_nodes[id].semantic_type = retained_type_note(type_lookup(name))
+	retained_record* node = retained_record_at(id)
+	node.end = end
+	node.result_type = retained_intern(kind)
+	if (retained_semantic_mode):
+		retained_semantic_invalidate()
+		if ((strcmp(kind, c"function") == 0) || (strcmp(kind, c"global") == 0) || (strcmp(kind, c"const") == 0)):
+			int binding = retained_binding_note(sym_probe(name), id)
+			node.binding = binding
+			if (binding >= 0): node.semantic_type = retained_bindings[binding].type
+		else: node.semantic_type = retained_type_note(type_lookup(name))
 	retained_source* input = retained_sources[source]
 	input.declaration_cursor = id + 1
 	# Only this module's own top-level children since the previous
@@ -391,7 +397,7 @@ void retained_declaration_note(char* name, char* kind, int start, int end, int l
 	for k in range(input.top_cursor, top.length):
 		int i = top[k]
 		if (i >= id): continue
-		retained_node* child = retained_nodes[i]
+		retained_record* child = retained_record_at(i)
 		if ((child.parent == module) && (child.start >= start) && (child.end <= end)): child.parent = id
 	input.top_cursor = top.length
 
@@ -403,7 +409,7 @@ void retained_import_note(char* spelling, char* path, char* alias, int start, in
 	if (ast_retain_mode == 0): return
 	int source = retained_source_id(filename)
 	int id = retained_add(retained_import, retained_sources[source].root, source, start, line, column, spelling)
-	retained_node* node = retained_nodes[id]
+	retained_record* node = retained_record_at(id)
 	node.end = end
 	node.import_path = retained_intern(path)
 	if (alias != 0): node.import_alias = retained_intern(alias)
@@ -411,38 +417,75 @@ void retained_import_note(char* spelling, char* path, char* alias, int start, in
 
 # Inventory declarations even when no expression refers to them. The parent
 # preserves lexical block membership; binding.owner identifies the function.
+# P1.2b: outside a semantic session there is no binding record; the node's
+# name and location are the ones its binding would record.
 void retained_local_note(int sym):
 	if ((ast_retain_mode == 0) || (retained_parent < 0)): return
 	int owner = retained_parent
-	while ((owner >= 0) && (retained_nodes[owner].kind != retained_function)): owner = retained_nodes[owner].parent
+	while ((owner >= 0) && (retained_record_at(owner).kind != retained_function)): owner = retained_record_at(owner).parent
 	if (owner < 0): return
-	int binding = retained_binding_note(sym, retained_parent)
-	if (binding < 0): return
-	retained_binding* record = retained_bindings[binding]
-	int source = record.source
+	int binding = -1
+	int type = -1
+	int scope = 0
+	int source = -1
+	int line = 0
+	int column = 0
+	char* name = 0
+	if (retained_semantic_mode):
+		binding = retained_binding_note(sym, retained_parent)
+		if (binding < 0): return
+		retained_binding* record = retained_bindings[binding]
+		type = record.type
+		scope = record.scope
+		source = record.source
+		line = record.line
+		column = record.column
+		name = record.name
+	else:
+		sym_index_sync()
+		int low = 0
+		int high = sym_index_count
+		while (low < high):
+			int mid = (low + high) / 2
+			if (sym_index_offset(mid) < sym): low = mid + 1
+			else: high = mid
+		if ((low >= sym_index_count) || (sym_index_offset(low) != sym)): return
+		char* spelled = table + sym_index_name_start(low)
+		scope = table[sym + 1]
+		source = retained_file_source(load_int(table + sym + 66))
+		line = load_int(table + sym + 70)
+		column = load_int(table + sym + 74)
+		# As retained_binding_note places an inferred declaration.
+		if (scope == 'L'):
+			retained_record* declaration = retained_record_at(retained_parent)
+			if ((declaration.kind == retained_statement) && (strcmp(declaration.name, spelled) == 0)):
+				line = declaration.line
+				column = declaration.column
+		name = retained_intern(spelled)
 	if (source < 0): return
 	int offset = 0
 	retained_source* input = retained_sources[source]
-	if ((record.line > 0) && (record.line <= input.lines.length)):
-		offset = input.lines[record.line - 1] + record.column - 1
-	int id = retained_add(retained_local, retained_parent, source, offset, record.line, record.column, record.name)
-	retained_nodes[id].binding = binding
-	retained_nodes[id].semantic_type = record.type
-	retained_nodes[id].end = offset + strlen(record.name)
+	if ((line > 0) && (line <= input.lines.length)):
+		offset = input.lines[line - 1] + column - 1
+	int id = retained_add_interned(retained_local, retained_parent, source, offset, line, column, name)
+	retained_record* node = retained_record_at(id)
+	node.binding = binding
+	node.semantic_type = type
+	node.end = offset + strlen(name)
 	# Native parameters are inventoried after their header was parsed. The
 	# function originally entered at its body delimiter; include parameters
 	# in that retained span without moving the production tokenizer.
-	retained_node* parent = retained_nodes[retained_parent]
-	if ((record.scope == 'A') && (parent.kind == retained_function) && (parent.source == source) && (offset < parent.start)):
+	retained_record* parent = retained_record_at(retained_parent)
+	if ((scope == 'A') && (parent.kind == retained_function) && (parent.source == source) && (offset < parent.start)):
 		parent.start = offset
-		parent.line = record.line
-		parent.column = record.column
+		parent.line = line
+		parent.column = column
 
 
 void retained_function_parameters(int binding):
 	if (ast_retain_mode == 0): return
-	if (retained_parent >= 0):
-		retained_nodes[retained_parent].binding = retained_binding_note(binding, retained_parent)
+	if ((retained_parent >= 0) && retained_semantic_mode):
+		retained_record_at(retained_parent).binding = retained_binding_note(binding, retained_parent)
 	sym_index_sync()
 	# The index is sorted by offset: start at the first symbol after binding.
 	int low = 0
