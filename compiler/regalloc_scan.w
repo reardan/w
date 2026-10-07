@@ -29,8 +29,9 @@ compile-time internal error rather than a miscompile. The rules:
   body ('T name', 'T* name', 'T[..] name', 'name :=' -- any identifier,
   '*' or ']' before the name counts as a type, which over-counts
   declarations and never under-counts them), that is never address-taken
-  ('&name'), subscripted, called, field-accessed or compound-assigned
-  ('+=' and friends, '++'/'--'); a 'for' header's loop variable is a
+  ('&name'), subscripted, called or field-accessed (compound assignment
+  and '++'/'--' are reads and writes of the register since R3,
+  grammar/increment.w); a 'for' header's loop variable is a
   declaration like any other (R2b: the loop writes it through the
   register path);
 - the declared type must be a plain 'int' or a pointer (checked at
@@ -455,7 +456,7 @@ int rs_is_op_char(int c):
 
 # An operator run after an identifier (the identifier's index is i, -1
 # when it is not tracked): classify the run as a compound assignment or
-# increment (both exclude the name: R2 promotes plain '=' only), a plain
+# increment (both read and write the name), a plain
 # '=' write, or an ordinary operator. The run is consumed.
 void rs_after_ident_operator(int i, int type_context):
 	int n = 0
@@ -485,9 +486,11 @@ void rs_after_ident_operator(int i, int type_context):
 			# '==', '<=', '>=', '!=' compare; every other '...=' run assigns
 			if ((n == 2) && ((first == '=') || (first == '<') || (first == '>') || (first == '!'))): use = 1
 			else: use = 3
+	# A compound assignment or '++'/'--' (use 3) reads and writes the
+	# name: two uses (R3: grammar/increment.w emits 'op R,X' in place)
 	if (i >= 0):
 		if (use == 0): rs_decls[i] = rs_decls[i] + 1
-		else if (use == 3): rs_excluded[i] = 1
+		else if (use == 3): rs_uses[i] = rs_uses[i] + (rs_weight() << 1)
 		else: rs_uses[i] = rs_uses[i] + rs_weight()
 	# '&' alone after an operand is the binary operator
 	rs_prev_kind = 0

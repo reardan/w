@@ -197,7 +197,7 @@ int expression():
 	if (op):
 		get_token()
 		expression_is_assignment = 1
-		return compound_assign_scalar(op, type, 0)
+		return compound_assign_scalar(op, type, 0, stmt_context)
 	if (accept(c"=")):
 		if (expression_lhs_readonly): error(c"cannot assign to read-only buffer field")
 		if ((type_is_value(type)) | (type == 3) | (type == 4)):
@@ -238,8 +238,11 @@ int expression():
 		if (lhs_reg != 0):
 			if (types_compatible_with_expression(type, type2) == 0):
 				warn_type_mismatch(c"assignment", type, type2)
-			# mov R,eax: the accumulator keeps the stored value
-			mov_reg_eax(lhs_reg)
+			# mov R,eax -- or, when eax was just computed as 'R op X',
+			# 'op R,X' in place (code_generator/x86.w, R3); the
+			# accumulator keeps the stored value unless this assignment
+			# is the whole statement, whose value nothing reads
+			regalloc_reg_store(lhs_reg, stmt_context == 0)
 			return type_value(type_strip_gpu(type))
 		# A struct-returning call on the right side parks its return
 		# buffer on the stack (eax points into it), burying the saved

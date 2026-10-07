@@ -607,6 +607,207 @@ void test_lifetimes():
 	assert_equal(2 * 1 + 2 * 10 + 2 * 100, with_switch(6))
 
 
+# --- R3: compound operators and the register-operand folds -----------------
+# (docs/projects/register_allocation_pgo.md §2.3). Compound assignment
+# and '++'/'--' on a promoted local emit 'op R,X' in place; 'x = x op y'
+# and 'x = y op x' fold the same way; a binary operator or compare whose
+# operands are register reads, constants or local loads uses them as
+# direct operands. The expected values come from gcc-compiled C twins of
+# the same functions (the oracle is independent of this compiler).
+
+# every compound operator between registers, with a constant, and the
+# division/modulo/shift forms that keep the accumulator path
+int compound_registers(int n):
+	int a = 1
+	int b = 2
+	int i = 0
+	while (i < n):
+		a += i
+		b += 3
+		a -= 1
+		b *= 2
+		a |= 8
+		b &= 0xffff
+		a ^= i
+		b <<= 1
+		a >>= 1
+		b /= 3
+		a %= 1000
+		i++
+	return a * 100000 + b
+
+
+# compound operands that are stack locals (m is loop-invariant, a/b/c
+# compete for the register budget on x86) and prefix/postfix forms
+int compound_stack(int n):
+	int a = 7
+	int b = 11
+	int c = 13
+	int i = 0
+	int m = n * 3
+	while (i < n):
+		a += m
+		b -= m
+		c += a
+		a += b
+		b -= c
+		a++
+		--b
+		i++
+	return a + b * 7 + c * 1000
+
+
+# 'x = x op y', 'x = y op x' (commutative only), non-commutative with the
+# register on the right (no fold), small and negative constants
+int assign_shapes(int n):
+	int s = 0
+	int t = 1000
+	int u = 5
+	int i = 0
+	while (i < n):
+		s = s + i
+		t = t - i
+		u = i + u
+		s = s * 3
+		t = t & 0xfff
+		u = u | i
+		s = s ^ t
+		t = i - t
+		u = u + 100000
+		s = s + (-7)
+		u = u - 200000
+		i = i + 1
+	return s + t * 3 + u * 5
+
+
+# compares between registers, against constants and locals, in branch
+# and in value context
+int compare_shapes(int n):
+	int i = 0
+	int j = n
+	int hits = 0
+	while (i < n):
+		if (i < j): hits += 1
+		if (i == j): hits += 10
+		if (j > 3): hits += 100
+		if (i >= 2): hits += 1000
+		hits += (i < j)
+		hits += (j <= i) * 7
+		hits += (i != 4) * 3
+		i++
+		j--
+	return hits
+
+
+# the value of a register assignment used inside a larger expression
+int value_kept(int n):
+	int x = 0
+	int y = 0
+	int z = 0
+	int i = 0
+	while (i < n):
+		y = (x += 2) * 3
+		z = (x = x + 1) + y
+		i = i + 1
+	return x * 1000000 + y * 1000 + z
+
+
+# a promoted pointer indexed by a promoted counter: the shuttle's
+# 'mov ebx,R' form feeds an address computation and a store
+int pointer_shapes(int n):
+	int* p = cast(int*, malloc(16 * __word_size__))
+	int i = 0
+	int s = 0
+	while (i < 16):
+		p[i] = i * 3
+		i++
+	i = 0
+	while (i < n):
+		s = s + p[i]
+		p[i] = p[i] + s
+		s += p[i]
+		i += 1
+	int r = s + p[0] + p[n - 1]
+	free(p)
+	return r
+
+
+# constants past the signed-byte immediate form, negative ones, masks
+int large_constants(int n):
+	int s = 1
+	int t = 2
+	int i = 0
+	while (i < n):
+		s = s + 1000000
+		t = t - 70000
+		s = s * 3
+		t = t ^ 0x7fff
+		s = s & 0x3fffffff
+		t = t | 0x10000
+		s = s + (-1000000)
+		i = i + 1
+	return s + t
+
+
+# narrow and unsigned operands never fold into a word-sized ALU operand
+int narrow_and_unsigned(int n):
+	int8 c = 3
+	uint32 u = 3000000
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + c
+		s = s + u
+		s = s - c
+		c = c + 1
+		s += c
+		i++
+	return s
+
+
+# division, modulo and variable shifts between registers keep the
+# accumulator path (edx/ecx operands)
+int div_and_shift(int n):
+	int a = 1000000
+	int b = 7
+	int c = 3
+	int i = 0
+	while (i < n):
+		a = a / b
+		a = a + (a % c)
+		a = a << c
+		a = a >> b
+		a = a * b + c
+		a /= 2
+		a %= 100000
+		a <<= 1
+		a >>= 1
+		i++
+	return a
+
+
+void test_r3_shapes():
+	assert_equal(100002, compound_registers(0))
+	assert_equal(600020, compound_registers(3))
+	assert_equal(100218, compound_registers(10))
+	assert_equal(56757, compound_stack(3))
+	assert_equal(-1342882, compound_stack(7))
+	assert_equal(-1996233, assign_shapes(4))
+	assert_equal(-1188348, assign_shapes(9))
+	assert_equal(4352, compare_shapes(6))
+	assert_equal(7662, compare_shapes(9))
+	assert_equal(9024033, value_kept(3))
+	assert_equal(15042057, value_kept(5))
+	assert_equal(153, pointer_shapes(4))
+	assert_equal(884529, pointer_shapes(16))
+	assert_equal(1971696, large_constants(1))
+	assert_equal(25840648, large_constants(3))
+	assert_equal(6000009, narrow_and_unsigned(2))
+	assert_equal(15000030, narrow_and_unsigned(5))
+	assert_equal(31249, div_and_shift(1))
+	assert_equal(1, div_and_shift(4))
+
+
 int main():
 	test_sum_to()
 	test_address_taken()
@@ -632,5 +833,6 @@ int main():
 	test_for_containers()
 	test_many_locals()
 	test_lifetimes()
+	test_r3_shapes()
 	println(c"regalloc_test passed")
 	return 0
