@@ -487,3 +487,92 @@ void emit_switch_region_ast_end(statement_ast* node):
 
 void emit_switch_region_ast_cleanup(statement_ast* node):
 	drop_slots(node.unwind_slots)
+
+
+# S2.2c: a switch statement walked from its record (code_generator/
+# retained_emit.w). The grammar (grammar/ast_statement.w) records these
+# phases in the order the streaming hooks ran the steps, and runs them
+# itself, in place, when no walk is open. A header value (the selector or
+# a case value) is walked before the next one is parsed, so the record
+# holds one value at a time; the switch node keeps the facts the later
+# phases need (selector type and slot, regions, the enclosing break
+# context).
+const int switch_walk_value = 1
+const int switch_walk_value_end = 2
+const int switch_walk_selector = 3
+const int switch_walk_region = 4
+const int switch_walk_enter = 5
+const int switch_walk_case_region = 6
+const int switch_walk_match_region = 7
+const int switch_walk_case_begin = 8
+const int switch_walk_case_note = 9
+const int switch_walk_case_compare = 10
+const int switch_walk_case_branch = 11
+const int switch_walk_match_end = 12
+const int switch_walk_case_end = 13
+const int switch_walk_region_end = 14
+const int switch_walk_leave = 15
+const int switch_walk_cleanup = 16
+
+
+struct switch_ast_walk:
+	statement_ast* node
+	statement_ast* value
+	int case_start
+	int case_line
+	int outer_chain
+	int outer_stack
+	int outer_in_switch
+
+
+# A header value's lowering from its retained group (S2.2c; family (a)'s
+# ast_walk_expression step, for a value the walk record does not own).
+void emit_walk_header_value(retained_statement_walk* walk, statement_ast* value):
+	int root = retained_walk_lower_expression(walk)
+	expression_lhs_readonly = walk.tree.readonly
+	value.expression_type = walk.tree.result_type[root]
+
+
+# One switch step; walk is 0 when the grammar runs it during the parse.
+void emit_switch_ast_phase(switch_ast_walk* record, retained_statement_walk* walk, int phase):
+	statement_ast* node = record.node
+	statement_ast* value = record.value
+	if (phase == switch_walk_value): emit_walk_header_value(walk, value)
+	else if (phase == switch_walk_value_end): emit_statement_ast_expression_end(value)
+	else if (phase == switch_walk_selector):
+		node.declared_type = emit_switch_value_ast(value)
+		node.stack_depth = stack_pos
+	else if (phase == switch_walk_region): emit_switch_region_ast_begin(node)
+	else if (phase == switch_walk_enter):
+		# 'break' in a case body exits the switch
+		switch_break_chain = node.target
+		switch_stack_pos = stack_pos
+		break_in_switch = 1
+		switch_depth = switch_depth + 1
+	else if (phase == switch_walk_case_region): emit_switch_case_region_ast_begin(node)
+	else if (phase == switch_walk_match_region): emit_switch_match_region_ast_begin(node)
+	else if (phase == switch_walk_case_begin):
+		value.declared_type = node.declared_type
+		value.stack_depth = node.stack_depth
+		emit_switch_case_ast_begin(value)
+	else if (phase == switch_walk_case_note):
+		switch_note_case_value(record.case_start, value.expression_type, record.case_line, value.line, value.column)
+	else if (phase == switch_walk_case_compare): emit_switch_case_ast_compare(value)
+	else if (phase == switch_walk_case_branch):
+		value.target = node.alternate_target
+		if (value.branch_nonzero): value.target = node.body_target
+		emit_switch_case_ast_branch(value)
+	else if (phase == switch_walk_match_end): emit_switch_match_region_ast_end(node)
+	else if (phase == switch_walk_case_end): emit_switch_case_region_ast_end(node)
+	else if (phase == switch_walk_region_end): emit_switch_region_ast_end(node)
+	else if (phase == switch_walk_leave):
+		switch_break_chain = record.outer_chain
+		switch_stack_pos = record.outer_stack
+		break_in_switch = record.outer_in_switch
+		switch_depth = switch_depth - 1
+	else if (phase == switch_walk_cleanup): emit_switch_region_ast_cleanup(node)
+	else: error(c"internal error: unknown switch walk phase")
+
+
+void emit_switch_ast_walk(retained_statement_walk* walk, int phase):
+	emit_switch_ast_phase(cast(switch_ast_walk*, walk.statement), walk, phase)

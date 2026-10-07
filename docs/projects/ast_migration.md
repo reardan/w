@@ -1724,6 +1724,93 @@ statements can resolve it. Gotos and labels are emitted at the end of
 their statement exactly as before; forward-goto resolution remains emitter
 state. No `tree --json` field was added; the schema stays **version 2**.
 
+## For-loop and switch headers walked from their records (S2.2c)
+
+Under `--ast-emit-retained`, `for` loops over a range or a container and
+`switch` statements are now walked like S2.2a's statements: their
+headers are parsed before their code is emitted, the emission steps are
+recorded as phases of the statement's walk, and
+`retained_emit_statement` emits them. Each family keeps its own emitter
+and phase codes: `emit_loop_ast_walk` with `loop_walk_*`
+(`code_generator/loop_ast.w`) and `emit_switch_ast_walk` with
+`switch_walk_*` (`code_generator/statement_ast.w`). When no walk is open
+(the mode is off, or the hook is reached outside the dispatcher) the
+grammar runs the same steps in place through the same phase functions
+(`emit_loop_ast_phase`, `emit_switch_ast_phase`), so the streaming order
+is the walk's order by construction.
+
+- **What one walk covers.** A range loop's walk records each argument's
+  lowering, end-of-root warnings and spill, then the loop scaffold; a
+  switch's records the selector, the break region, and each clause's
+  region, case values, duplicate-value check, comparisons and branches.
+  The steps after a body (the increment and back edge, the cursor
+  advance and container release, `loop_leave`, the switch's
+  fall-through region and the restore of the enclosing break context)
+  are the walk's last phases, recorded when the body ends and emitted
+  with the statement. The enclosing break/continue context a header sets
+  up is a phase too (`switch_walk_enter`, `switch_walk_leave`), recorded
+  from facts kept in the record, not read from parse state at emission.
+- **What may not move past a pending phase**, so the walk is drained
+  first (`ast_walk_settle`, `ast_walk_lex` in `grammar/ast_statement.w`):
+  a parse step that may print (every header error, and any lex that
+  `ast_walk_lex_may_print` cannot rule out: a following line indented
+  with spaces, a literal, a comment opener, non-ASCII bytes, or no
+  newline left in the read window); the next header value's
+  preparation, which commits types, symbols, literal notes and its own
+  replayed diagnostics, so header values are walked one at a time; and
+  every body, whose parse reads the stack depth, the loop and switch
+  slots and the break region the header's phases set up.
+- **The for-in iterable** starts its loop's walk in
+  `ast_iteration_value`, but the for rule (`grammar/for_statement.w`,
+  owned by no S2.2 family) checks the iterable's type and resolves the
+  iterator protocol between the iterable and `ast_for_cursor_loop`, and
+  those checks print and intern generic instances; so the iterable is
+  walked before it returns, and the cursor loop continues the same walk
+  (`ast_loop_iterable_walk`). The loop variable's declaration and its
+  zero store, emitted by the for rule before `in`, are also emitted
+  during the parse.
+
+`--stats` on `w.w` (`--ast-required --ast-emit-retained`) now reports
+37,155 retained-emitted and 28,613 immediate statements on the x86 host
+(36,829 and 28,939 on the S2.2d base), and 37,179 and 28,624 on x64
+(36,853 and 28,950): the compiler's range loops, cursor loops and
+switches (326 statements) are all walked, so no immediate statement on
+`w.w` belongs to this family.
+
+Verification: `ast_retained_emit_test` compiles a tracked fixture
+(`tests/ast_loop_switch_walk_fixture.w`: range loops with one to three
+arguments and multi-line headers, list, map, set, slice, string,
+generator, cursor-protocol and `enumerate` loops, switches on ints,
+enums, strings and `char*`, multi-value cases, duplicate-value and
+case-type warnings, `break`/`continue` across nested switches and loops)
+and ten generated invalid sources on the same legs; each pins a header
+phase that prints (a selector error, a duplicate case value, a case type
+mismatch) against a later parse step that prints too. Disabling the
+drains makes four of them fail. `verify`, `verify_x64`,
+`ast_expression_test`, `ast_required_expression_verify` (whose
+`--ast-emit-retained` fixpoint equals `bin/wv3`/`bin/wv3_64`),
+`parser_generator_w_test` and `tests` pass, and the 518 tracked `.w`
+files outside the compiler tree that contain a `for` or `switch`
+compile to the same exit status, output and image with and without the
+mode on x86 and x64, apart from the files whose default compile already
+crashes (library files without `main`). Cost, on a shared and loaded 4-core
+box (median of 5): the `--ast-required --ast-emit-retained` compile of
+`w.w` measured 1.72-1.80 s before and 1.88-1.97 s after on x86 (CPU time
+1.59 s and 1.58 s), and 1.81-1.97 s and 1.95-1.98 s on x64 (CPU 1.50 s
+and 1.69 s); the default compile stays within noise (x86 0.96 s and
+0.86-0.88 s, x64 0.73-0.79 s and 0.80-0.84 s).
+
+What this does not claim: a header is walked as a whole only between
+its values; each value is lowered before the next one is prepared, and
+everything is drained before each body, so a loop or switch is still
+not parsed whole before its code is emitted. Lifting that needs the
+preparation of an expression to stop committing types and literal notes
+(a forward reference to a later lowering), and the body walk of family
+(b). The record borrows the hook's nodes and expression arena, which is
+sound because the walk ends before the hook returns (the iterable's
+record is drained before `ast_iteration_value` returns). No `tree
+--json` field was added; the schema stays **version 2**.
+
 ## Blocks, if/elif/else and while from their records (S2.2b)
 
 Under `--ast-emit-retained`, blocks (`{ }` and `:`), `if`/`elif`/`else`
