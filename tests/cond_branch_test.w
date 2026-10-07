@@ -291,14 +291,18 @@ int values_in_conditions(int a, int b, int c):
 	if ((a && b) * 3 == 3 && c): n = n + 32
 	if ((!(a < b)) == (b <= a)): n = n + 64
 	if ((a || b) == (b || a) && (a && b) == (b && a)): n = n + 128
+	# '!!' in value position inside a condition must still booleanize
+	if ((!!a) == 1): n = n + 256
+	if ((!!(a || b)) == 1): n = n + 512
+	if ((!!c) + (!!b) == 2): n = n + 1024
 	return n
 
 
 void test_values_in_conditions():
-	assert_equal(1 + 2 + 4 + 16 + 32 + 64 + 128, values_in_conditions(1, 2, 3))
+	assert_equal(1 + 2 + 4 + 16 + 32 + 64 + 128 + 256 + 512 + 1024, values_in_conditions(1, 2, 3))
 	assert_equal(8 + 16 + 64 + 128, values_in_conditions(0, 0, 0))
-	assert_equal(1 + 4 + 16 + 64 + 128, values_in_conditions(0, 1, 0))
-	assert_equal(1 + 2 + 4 + 16 + 32 + 64 + 128, values_in_conditions(3, 2, 1))
+	assert_equal(1 + 4 + 16 + 64 + 128 + 512, values_in_conditions(0, 1, 0))
+	assert_equal(1 + 2 + 4 + 16 + 32 + 64 + 128 + 256 + 512 + 1024, values_in_conditions(3, 2, 1))
 
 
 # --- ternaries --------------------------------------------------------------------
@@ -346,12 +350,18 @@ int assignments(int limit):
 	if (m[2] || m[1]): n = n + 800
 	if ((m[1] = 6) == 6): n = n + 1600
 	if (m[1] == 6): n = n + 3200
+	# A parked element read as the whole operand of a parenthesized
+	# group is finished inside the chain; the value consumer outside
+	# must see a value, not load it again
+	if ((m[1]) == 6): n = n + 6400
+	if ((m[1]) + 1 == 7): n = n + 12800
+	if (((m[2])) || (m[1]) - 5): n = n + 25600
 	return n * 10 + x
 
 
 void test_assignments():
-	assert_equal((1 + 2 + 4 + 20 + 100 + 200 + 400 + 800 + 1600 + 3200) * 10 + 6, assignments(6))
-	assert_equal((1 + 2 + 100 + 200 + 400 + 800 + 1600 + 3200) * 10 + 4, assignments(3))
+	assert_equal((1 + 2 + 4 + 20 + 100 + 200 + 400 + 800 + 1600 + 3200 + 6400 + 12800 + 25600) * 10 + 6, assignments(6))
+	assert_equal((1 + 2 + 100 + 200 + 400 + 800 + 1600 + 3200 + 6400 + 12800 + 25600) * 10 + 4, assignments(3))
 
 
 # --- loops: break, continue, nesting, register-resident locals ------------------

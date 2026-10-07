@@ -12,14 +12,15 @@ int logical_and_cond():
 	int base = ctrl_stack_pos
 	int h = be_ctrl_block_tagged(1)
 	int type = bitwise_or_expr()
-	int result = type
+	int ops = 0
 	while (accept(c"&&")):
 		cond_operand_branch(type, h, 0)
 		cond_discard_arm()
 		type = bitwise_or_expr()
-		result = type_value(bool_type)
-	cond_chain_finish(base, type)
-	return result
+		ops = 1
+	type = cond_chain_finish(base, type)
+	if (ops): return type_value(bool_type)
+	return type
 
 
 int logical_and_expr():

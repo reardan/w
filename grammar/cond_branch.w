@@ -52,6 +52,7 @@ int cond_discard_mark     # offset + 1 of the token a discard-position operand s
 int cond_pending_base     # ctrl_stack_pos below the pending chain's regions
 int cond_pending_type     # the pending chain's last operand, unpromoted
 int cond_negate           # the pending chain is negated ('!' around it)
+int cond_boolean          # the pending chain's value is 0/1 of its operand ('!!' around it): materializing must booleanize even without branch sites
 # The retained tree's discard flag: set right before a tree root (or a
 # chain operand, '!' operand or '?:' condition inside it) is emitted,
 # consumed by emit_expression_ast (code_generator/expression_ast.w).
@@ -88,8 +89,12 @@ int cond_assignment_follows():
 
 # A chain in discard position has parsed its last operand (type, unless
 # the operand itself left a pending note): leave the whole chain, whose
-# regions start at base, pending for the consumer.
-void cond_chain_finish(int base, int type):
+# regions start at base, pending for the consumer. Returns the operand's
+# type as the chain's value type: a parked element read finished here
+# is a value now, and a caller that reports the operand's own type (a
+# chain without operators) must not report the unfinished one, or a
+# value consumer would load it a second time.
+int cond_chain_finish(int base, int type):
 	if (cond_pending == 0):
 		# A parked map/ndarray element read is the operand's value;
 		# finish it here unless an assignment follows (grammar/
@@ -100,14 +105,17 @@ void cond_chain_finish(int base, int type):
 				type = nd_finalize_pending_read_if_needed(type)
 		cond_pending_type = type
 		cond_negate = 0
+		cond_boolean = 0
 	cond_pending = 1
 	cond_pending_base = base
+	return type
 
 
 # '!' (toggle) or '!!' (no toggle) around the operand just parsed, whose
 # regions, if it was a chain, start at base.
 void cond_negate_pending(int base, int type, int toggle):
 	if (cond_pending):
+		cond_boolean = 1
 		if (toggle):
 			cond_negate = cond_negate ^ 1
 			int i = base
@@ -125,6 +133,7 @@ void cond_negate_pending(int base, int type, int toggle):
 	cond_pending_base = base
 	cond_pending_type = type
 	cond_negate = toggle
+	cond_boolean = 1
 
 
 # Resolve the pending regions above base after the consumer's own branch
@@ -168,7 +177,7 @@ void cond_operand_branch(int type, int h, int on_true):
 
 
 # A value consumer met a pending chain: produce the 0/1 word the value
-# form would have. A chain without operators and without '!' (the usual
+# form would have. A chain without operators, '!' or '!!' (the usual
 # '(x)' group) has nothing to produce: its empty regions are dropped and
 # the operand stays as it was, an lvalue included. Otherwise the last
 # operand is booleanized, and the regions with branches land on pads
@@ -184,7 +193,7 @@ void cond_pending_materialize():
 	while (i < ctrl_stack_pos):
 		if (ctrl_val_stack[i] != 0): sites = 1
 		i = i + 1
-	if ((sites == 0) && (negate == 0)):
+	if ((sites == 0) && (negate == 0) && (cond_boolean == 0)):
 		ctrl_stack_pos = base
 		return
 	promote(cond_pending_type)
