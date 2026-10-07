@@ -225,45 +225,70 @@ int regalloc_slot_register(int slot):
 char* rs_buf
 int rs_buf_off        # file offset of rs_buf[0]
 int rs_buf_len
-int rs_off            # file offset of the next byte to read
 int rs_saved_offset   # the fd's own position before the scan
 const int rs_buf_size = 8192
+# The run being served: rs_p walks rs_run_base..rs_end, and rs_run_base
+# is file offset rs_run_off (the window or the private buffer).
+char* rs_p
+char* rs_end
+char* rs_run_base
+int rs_run_off
 
 void rs_begin(int offset):
 	if (rs_buf == 0): rs_buf = malloc(rs_buf_size)
 	rs_buf_len = 0
 	rs_buf_off = 0
-	rs_off = offset
+	rs_p = 0
+	rs_end = 0
+	rs_run_base = 0
+	rs_run_off = offset
 
 # Put the fd back exactly where it was (asked of the kernel, not of
 # getchar's bookkeeping: a reparse path may have moved the fd itself).
 void rs_end_scan():
 	if (rs_saved_offset >= 0): seek(file, rs_saved_offset, 0)
 
-void rs_next():
-	int off = rs_off
+# Serve the run that holds file offset off, starting there.
+void rs_serve(char* base, int limit, int off, int run_start):
+	rs_run_base = base + (off - run_start)
+	rs_run_off = off
+	rs_p = rs_run_base
+	rs_end = base + limit
+
+# The run is exhausted: find the next byte's offset in the window, in
+# the private buffer, or on the fd.
+void rs_refill():
+	int off = rs_run_off
+	if (rs_run_base != 0): off = rs_run_off + (cast(int, rs_p) - cast(int, rs_run_base))
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
 	if ((off >= window_start) && (off < getchar_kernel_pos[file])):
-		char* buffer = cast(char*, getchar_buf_addr[file])
-		rs_c = buffer[off - window_start] & 255
-		rs_off = off + 1
+		rs_serve(cast(char*, getchar_buf_addr[file]), getchar_limit[file], off, window_start)
 		return;
 	if ((off >= rs_buf_off) && (off < rs_buf_off + rs_buf_len)):
-		rs_c = rs_buf[off - rs_buf_off] & 255
-		rs_off = off + 1
+		rs_serve(rs_buf, rs_buf_len, off, rs_buf_off)
 		return;
+	rs_p = 0
+	rs_end = 0
 	if ((rs_saved_offset < 0) || (seek(file, off, 0) < 0)):
 		rs_abort = 1
-		rs_c = -1
 		return;
 	int n = read(file, rs_buf, rs_buf_size)
-	if (n <= 0):
-		rs_c = -1
-		return;
+	if (n <= 0): return;
 	rs_buf_off = off
 	rs_buf_len = n
-	rs_c = rs_buf[0] & 255
-	rs_off = off + 1
+	rs_serve(rs_buf, n, off, off)
+
+void rs_next():
+	if (rs_p < rs_end):
+		rs_c = *rs_p & 255
+		rs_p = rs_p + 1
+		return;
+	rs_refill()
+	if (rs_p < rs_end):
+		rs_c = *rs_p & 255
+		rs_p = rs_p + 1
+		return;
+	rs_c = -1
 
 
 # Leading whitespace of a new line: count its tabs (the tokenizer's
@@ -319,7 +344,11 @@ void rs_take_ident():
 	while (rs_c != -1):
 		int c = rs_c
 		if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (('0' <= c) && (c <= '9')) || (c == '_') || ((c >= 128) && is_ident_part_byte(c))):
-			rs_ident_put(c)
+			# rs_ident_put, inlined: this loop runs once per identifier byte
+			if (rs_ident_len + 2 > rs_ident_size): rs_ident_put(c)
+			else:
+				rs_ident[rs_ident_len] = c
+				rs_ident_len = rs_ident_len + 1
 			h = (h * 31) + c
 			rs_next()
 		else: break
