@@ -6,9 +6,9 @@ The compiler is single-pass with no tree, so by the time a local is
 declared nothing is known about how the rest of the body uses it. This
 module looks ahead instead: regalloc_function_scan() runs once per
 function body, right before its prologue, reads the body's bytes from
-the source fd through its own buffer (NOT the tokenizer, and not even
-getchar's window: no token, line, warning, diagnostic or buffer state
-moves, and the fd is seeked back to where getchar left it), and ranks
+its own image of the source file (NOT through the tokenizer, and
+without moving getchar's window: no token, line, warning, diagnostic
+or buffer state moves, and the fd stays where getchar left it), and ranks
 the body's word-sized
 locals by loop-weighted use count. The top k (4 on x64: r12-r15; 2 on
 x86: esi/edi) are assigned a callee-saved register; the prologue
@@ -154,6 +154,46 @@ int rs_has_goto            # 'goto' or a label: loops own no registers
 int rs_has_defer           # 'defer': same (every return is an exit edge)
 int rs_tok_off             # file offset of the token being read
 int rs_expect_range        # 'in' of a for header seen: 'range' or a container
+
+# Byte classes, built once from compiler/tokenizer.w's predicates so the
+# lexer below agrees with it: bit 1 an identifier may start here (a-z,
+# A-Z, '_', a UTF-8 lead byte), bit 2 may continue here (those and the
+# digits), bit 4 an operator character, bit 8 a blank inside a line
+# (space, tab, CR), bit 16 a byte the line probe stops at (newline,
+# NUL, '#', a quote, '/', a brace), bit 32 a line's end (newline, NUL).
+# rs_class[-1] is a valid entry (end of input: only the end bits), so
+# the byte loops test one class bit per byte and nothing else.
+const int rs_cl_start = 1
+const int rs_cl_part = 2
+const int rs_cl_op = 4
+const int rs_cl_blank = 8
+const int rs_cl_stop = 16
+const int rs_cl_eol = 32
+char* rs_class
+
+# The reserved words the scanner acts on and the whole-function hazards,
+# in a 64-slot open-addressed table on the identifier hash rs_take_ident
+# accumulates: one probe per identifier instead of a strcmp per
+# candidate word (rs_is_keyword and rs_is_hazard were a tenth of the
+# scan). Only true keywords carry rs_kw_keyword: a user type name wrongly
+# listed would hide a real declaration, while a keyword missing from the
+# list only over-counts declarations (conservative).
+const int rs_kw_keyword = 1
+const int rs_kw_hazard = 2
+const int rs_kw_slots = 64
+int[64] rs_kw_hash
+int[64] rs_kw_kind
+int[64] rs_kw_id
+int[64] rs_kw_text         # char* as int; 0: empty slot
+# the ids rs_identifier compares
+const int rs_id_defer = 1
+const int rs_id_goto = 2
+const int rs_id_new = 3
+const int rs_id_in = 4
+const int rs_id_while = 5
+const int rs_id_for = 6
+const int rs_id_range = 7   # not a keyword: the for header's 'range' call
+
 
 
 void rs_tables_ensure():
@@ -348,43 +388,79 @@ int regalloc_slot_register(int slot):
 
 
 # --- the byte lexer ---------------------------------------------------------
-# Where the scanner's bytes come from: getchar's window for the fd when
-# the wanted offset lies inside it (lib/lib.w's getchar_pos/limit/
-# kernel_pos; under --ast-emit-retained a generic instantiation's
-# source exists ONLY there -- code_generator/retained_emit.w serves the
-# retained bytes through a /dev/null fd whose window is pre-filled),
-# and the fd itself through a private buffer otherwise. Neither path
-# moves getchar's bookkeeping, which also keeps the retained-AST
-# preflight (grammar/ast_expression.w inspects the window) seeing
-# exactly what it would have seen without the scan; the fd's own
-# position is put back when the scan ends. A byte that is neither in
-# the window nor readable from the fd (a pipe) aborts the scan: a
-# truncated body could hide an address-taking use.
-char* rs_buf
-int rs_buf_off        # file offset of rs_buf[0]
-int rs_buf_len
-int rs_saved_offset   # the fd's own position before the scan
-const int rs_buf_size = 8192
+# Where the scanner's bytes come from: an image of the whole source file,
+# read once per fd binding (lib/lib.w's getchar_generation: a recycled
+# fd number or a replaced window is a new binding) by seeking to 0,
+# reading to the end and seeking back -- four system calls per file
+# instead of a save/seek/read/restore quartet per scanned body, which on
+# the 32-bit compiler under a 64-bit kernel cost more than the lexing
+# did (docs §11). The image is a snapshot of bytes the compiler already
+# treats as immutable (every reparse path reopens the path and seeks to
+# a recorded offset); neither it nor the window serving moves getchar's
+# bookkeeping, which also keeps the retained-AST preflight
+# (grammar/ast_expression.w inspects the window) seeing exactly what it
+# would have seen without the scan. The image serves every byte it
+# holds, so a body is one run with no boundary before the end of the
+# file (the byte loops below and the line probe count on that); bytes
+# past it come from getchar's window (under --ast-emit-retained a
+# generic instantiation's source exists ONLY there -- code_generator/
+# retained_emit.w serves the retained bytes through a /dev/null fd
+# whose window is pre-filled, so its image is empty). A byte in neither
+# ends the scan when the fd was imaged (end of file) and aborts it when
+# it could not be (a pipe): a truncated body could hide an
+# address-taking use.
+char* rs_img          # the fd's bytes from file offset 0, rs_img_len of them
+int rs_img_len
+int rs_img_cap
+int rs_img_bound      # rs_img_fd/rs_img_gen are set
+int rs_img_fd         # the fd imaged, and its generation at the time
+int rs_img_gen
+int rs_img_ok         # 1: the whole file was read (possibly empty)
 # The run being served: rs_p walks rs_run_base..rs_end, and rs_run_base
-# is file offset rs_run_off (the window or the private buffer).
+# is file offset rs_run_off (the window or the image).
 char* rs_p
 char* rs_end
 char* rs_run_base
 int rs_run_off
 
+# Image the current fd, once per binding of the fd number to a stream.
+void rs_image_bind():
+	if (rs_img_bound && (rs_img_fd == file) && (rs_img_gen == getchar_generation[file])): return;
+	rs_img_bound = 1
+	rs_img_fd = file
+	rs_img_gen = getchar_generation[file]
+	rs_img_len = 0
+	rs_img_ok = 0
+	int saved = seek(file, 0, 1)
+	if (saved < 0): return;
+	if (seek(file, 0, 0) < 0): return;
+	if (rs_img == 0):
+		rs_img_cap = 1 << 18
+		rs_img = malloc(rs_img_cap)
+	# a short read is the end of a regular file (pipes were refused
+	# above); one byte of room stays for the probe's NUL sentinel
+	int n = 1
+	int want = 1
+	while (n == want):
+		if (rs_img_len + 1 >= rs_img_cap):
+			int x = rs_img_cap << 1
+			rs_img = realloc(rs_img, rs_img_cap, x)
+			rs_img_cap = x
+		want = rs_img_cap - rs_img_len - 1
+		n = read(file, &rs_img[rs_img_len], want)
+		if (n > 0): rs_img_len = rs_img_len + n
+	seek(file, saved, 0)
+	if (n >= 0): rs_img_ok = 1
+	else: rs_img_len = 0
+	rs_img[rs_img_len] = 0
+
+# Start serving at file offset offset (the first rs_next reads it).
 void rs_begin(int offset):
-	if (rs_buf == 0): rs_buf = malloc(rs_buf_size)
-	rs_buf_len = 0
-	rs_buf_off = 0
+	rs_image_bind()
 	rs_p = 0
 	rs_end = 0
 	rs_run_base = 0
 	rs_run_off = offset
-
-# Put the fd back exactly where it was (asked of the kernel, not of
-# getchar's bookkeeping: a reparse path may have moved the fd itself).
-void rs_end_scan():
-	if (rs_saved_offset >= 0): seek(file, rs_saved_offset, 0)
 
 # Serve the run that holds file offset off, starting there.
 void rs_serve(char* base, int limit, int off, int run_start):
@@ -394,27 +470,20 @@ void rs_serve(char* base, int limit, int off, int run_start):
 	rs_end = base + limit
 
 # The run is exhausted: find the next byte's offset in the window, in
-# the private buffer, or on the fd.
+# the image, or nowhere.
 void rs_refill():
 	int off = rs_run_off
 	if (rs_run_base != 0): off = rs_run_off + (cast(int, rs_p) - cast(int, rs_run_base))
+	rs_p = 0
+	rs_end = 0
+	if ((off >= 0) && (off < rs_img_len)):
+		rs_serve(rs_img, rs_img_len, off, 0)
+		return;
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
 	if ((off >= window_start) && (off < getchar_kernel_pos[file])):
 		rs_serve(cast(char*, getchar_buf_addr[file]), getchar_limit[file], off, window_start)
 		return;
-	if ((off >= rs_buf_off) && (off < rs_buf_off + rs_buf_len)):
-		rs_serve(rs_buf, rs_buf_len, off, rs_buf_off)
-		return;
-	rs_p = 0
-	rs_end = 0
-	if ((rs_saved_offset < 0) || (seek(file, off, 0) < 0)):
-		rs_abort = 1
-		return;
-	int n = read(file, rs_buf, rs_buf_size)
-	if (n <= 0): return;
-	rs_buf_off = off
-	rs_buf_len = n
-	rs_serve(rs_buf, n, off, off)
+	if (rs_img_ok == 0): rs_abort = 1
 
 void rs_next():
 	if (rs_p < rs_end):
@@ -437,40 +506,102 @@ import compiler.regalloc_profile
 # Leading whitespace of a new line: count its tabs (the tokenizer's
 # tab_level counts every tab before a token; leading ones are the block
 # structure).
+# The loops below that run once per byte walk the run in locals (the
+# scan's own promotion puts them in registers) and go through rs_next
+# only when the run ends.
 void rs_newline():
 	rs_next()
-	rs_tabs = 0
-	while ((rs_c == 9) || (rs_c == ' ') || (rs_c == 13)):
-		if (rs_c == 9): rs_tabs = rs_tabs + 1
-		rs_next()
+	int tabs = 0
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	while (rs_class[c] & rs_cl_blank):
+		if (c == 9): tabs = tabs + 1
+		if (p < end):
+			c = *p & 255
+			p = p + 1
+		else:
+			rs_p = p
+			rs_next()
+			c = rs_c
+			p = rs_p
+			end = rs_end
+	rs_p = p
+	rs_c = c
+	rs_tabs = tabs
 	rs_line_start = 1
 	rs_for_header = 0
 	rs_expect_range = 0
 
 
 void rs_skip_line_comment():
-	while ((rs_c != 10) && (rs_c != -1)): rs_next()
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	while ((c != 10) && (c != -1)):
+		# (a NUL in the file is not a line end here, as in the tokenizer)
+		if (p < end):
+			c = *p & 255
+			p = p + 1
+		else:
+			rs_p = p
+			rs_next()
+			c = rs_c
+			p = rs_p
+			end = rs_end
+	rs_p = p
+	rs_c = c
 
 
 void rs_skip_block_comment():
 	# rs_c is the '*' after '/'
 	rs_next()
-	while (rs_c != -1):
-		if (rs_c == '*'):
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	int star = 0
+	while (c != -1):
+		if (star && (c == '/')):
+			star = 2
+			break
+		star = c == '*'
+		if (p < end):
+			c = *p & 255
+			p = p + 1
+		else:
+			rs_p = p
 			rs_next()
-			if (rs_c == '/'):
-				rs_next()
-				return;
-		else: rs_next()
+			c = rs_c
+			p = rs_p
+			end = rs_end
+	rs_p = p
+	rs_c = c
+	if (star == 2): rs_next()
 
 
 # A quoted literal; rs_c is the opening quote.
 void rs_skip_quoted(int quote):
 	rs_next()
-	while ((rs_c != quote) && (rs_c != -1)):
-		if (rs_c == 92): rs_next()
-		if (rs_c != -1): rs_next()
-	if (rs_c == quote): rs_next()
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	int escaped = 0
+	while (c != -1):
+		if (escaped): escaped = 0
+		elif (c == quote): break
+		elif (c == 92): escaped = 1
+		if (p < end):
+			c = *p & 255
+			p = p + 1
+		else:
+			rs_p = p
+			rs_next()
+			c = rs_c
+			p = rs_p
+			end = rs_end
+	rs_p = p
+	rs_c = c
+	if (c == quote): rs_next()
 
 
 void rs_ident_put(int c):
@@ -482,61 +613,73 @@ void rs_ident_put(int c):
 	rs_ident_len = rs_ident_len + 1
 
 
-void rs_take_ident():
-	rs_ident_len = 0
+void rs_take_ident_slow():
+	int n = 0
 	int h = 0
-	while (rs_c != -1):
-		int c = rs_c
-		if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (('0' <= c) && (c <= '9')) || (c == '_') || ((c >= 128) && is_ident_part_byte(c))):
-			# rs_ident_put, inlined: this loop runs once per identifier byte
-			if (rs_ident_len + 2 > rs_ident_size): rs_ident_put(c)
-			else:
-				rs_ident[rs_ident_len] = c
-				rs_ident_len = rs_ident_len + 1
-			h = (h * 31) + c
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	char* out = rs_ident
+	while (rs_class[c] & rs_cl_part):
+		if (n + 2 > rs_ident_size):
+			rs_ident_len = n
+			rs_ident_put(c)
+			n = rs_ident_len
+			out = rs_ident
+		else:
+			out[n] = c
+			n = n + 1
+		h = (h * 31) + c
+		if (p < end):
+			c = *p & 255
+			p = p + 1
+		else:
+			rs_p = p
 			rs_next()
-		else: break
-	rs_ident[rs_ident_len] = 0
+			c = rs_c
+			p = rs_p
+			end = rs_end
+	rs_p = p
+	rs_c = c
+	out[n] = 0
+	rs_ident_len = n
 	rs_ident_hash = h
 
 
-# Reserved words that may precede an identifier without being a type.
-# Only true keywords belong here: a user type name wrongly listed would
-# hide a real declaration, while a keyword missing from the list only
-# over-counts declarations (conservative).
-int rs_is_keyword(char* s):
-	int c0 = s[0]
-	if (c0 == 'r'): return strcmp(s, c"return") == 0
-	if (c0 == 'y'): return strcmp(s, c"yield") == 0
-	if (c0 == 'd'): return (strcmp(s, c"defer") == 0) || (strcmp(s, c"default") == 0) || (strcmp(s, c"debugger") == 0)
-	if (c0 == 'g'): return strcmp(s, c"goto") == 0
-	if (c0 == 'n'): return strcmp(s, c"new") == 0
-	if (c0 == 'i'): return (strcmp(s, c"in") == 0) || (strcmp(s, c"if") == 0) || (strcmp(s, c"import") == 0)
-	if (c0 == 'a'): return strcmp(s, c"as") == 0
-	if (c0 == 'e'): return (strcmp(s, c"else") == 0) || (strcmp(s, c"elif") == 0)
-	if (c0 == 'w'): return strcmp(s, c"while") == 0
-	if (c0 == 'f'): return strcmp(s, c"for") == 0
-	if (c0 == 's'): return (strcmp(s, c"switch") == 0) || (strcmp(s, c"sizeof") == 0)
-	if (c0 == 'c'): return (strcmp(s, c"case") == 0) || (strcmp(s, c"continue") == 0) || (strcmp(s, c"cast") == 0) || (strcmp(s, c"const") == 0)
-	if (c0 == 'b'): return strcmp(s, c"break") == 0
-	if (c0 == 'p'): return strcmp(s, c"pass") == 0
-	if (c0 == 'l'): return strcmp(s, c"launch") == 0
-	return 0
-
-
-# Whole-function hazards (§2.4): any register may be live in an asm
-# block, setjmp/longjmp callers keep their locals in memory, generators
-# and gpu bodies have their own stacks, and f-strings re-enter the
-# tokenizer mid-token.
-int rs_is_hazard(char* s):
-	int c0 = s[0]
-	if (c0 == 'r'): return (strcmp(s, c"raw_asm") == 0) || (strcmp(s, c"repl_setjmp") == 0) || (strcmp(s, c"repl_longjmp") == 0)
-	if (c0 == 's'): return strcmp(s, c"setjmp") == 0
-	if (c0 == 'l'): return (strcmp(s, c"longjmp") == 0) || (strcmp(s, c"launch") == 0)
-	if (c0 == 'y'): return strcmp(s, c"yield") == 0
-	if (c0 == 'g'): return strcmp(s, c"gpu") == 0
-	if (c0 == 'k'): return strcmp(s, c"kernel") == 0
-	return 0
+# The run holds the whole identifier (rs_p is past its first byte, rs_c)
+# unless it ends inside it, which only the end of the file or a window
+# can do: then the general path.
+void rs_take_ident():
+	int h = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	int c = -1
+	while (p < end):
+		c = *p & 255
+		if ((rs_class[c] & rs_cl_part) == 0): break
+		h = (h * 31) + c
+		p = p + 1
+		c = -1
+	if (c < 0):
+		rs_take_ident_slow()
+		return;
+	int n = cast(int, p) - cast(int, rs_p) + 1
+	while (n + 2 > rs_ident_size):
+		int x = rs_ident_size << 1
+		rs_ident = realloc(rs_ident, rs_ident_size, x)
+		rs_ident_size = x
+	char* out = rs_ident
+	out[0] = rs_c
+	char* src = rs_p
+	int i = 1
+	while (i < n):
+		out[i] = src[i - 1]
+		i = i + 1
+	out[n] = 0
+	rs_ident_len = n
+	rs_ident_hash = h
+	rs_p = p + 1
+	rs_c = c
 
 
 int rs_weight():
@@ -556,6 +699,76 @@ int rs_hash_str(char* s):
 		h = (h * 31) + (s[i] & 255)
 		i = i + 1
 	return h
+
+
+void rs_kw_add(char* text, int kind, int id):
+	int h = rs_hash_str(text)
+	int i = h & (rs_kw_slots - 1)
+	while (rs_kw_text[i] != 0): i = (i + 1) & (rs_kw_slots - 1)
+	rs_kw_hash[i] = h
+	rs_kw_kind[i] = kind
+	rs_kw_id[i] = id
+	rs_kw_text[i] = cast(int, text)
+
+
+# The slot of the word, or -1.
+int rs_kw_lookup(char* name, int h):
+	int i = h & (rs_kw_slots - 1)
+	while (rs_kw_text[i] != 0):
+		if ((rs_kw_hash[i] == h) && (strcmp(cast(char*, rs_kw_text[i]), name) == 0)): return i
+		i = (i + 1) & (rs_kw_slots - 1)
+	return -1
+
+
+void rs_class_ensure():
+	if (rs_class != 0): return;
+	char* table = malloc(258)
+	rs_class = &table[1]
+	rs_class[-1] = rs_cl_stop | rs_cl_eol
+	for c in range(256):
+		int f = 0
+		if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (c == '_') || ((c >= 128) && is_ident_start_byte(c))): f = rs_cl_start | rs_cl_part
+		elif (('0' <= c) && (c <= '9')): f = rs_cl_part
+		if ((c == '+') || (c == '-') || (c == '*') || (c == '/') || (c == '%') || (c == '^') || (c == '&') || (c == '|') || (c == '<') || (c == '>') || (c == '=') || (c == '!')): f = f | rs_cl_op
+		if ((c == ' ') || (c == 9) || (c == 13)): f = f | rs_cl_blank
+		if ((c == 10) || (c == 0)): f = f | rs_cl_stop | rs_cl_eol
+		if ((c == '#') || (c == '"') || (c == 39) || (c == '/') || (c == '{') || (c == '}')): f = f | rs_cl_stop
+		rs_class[c] = f
+	rs_kw_add(c"return", rs_kw_keyword, 0)
+	rs_kw_add(c"yield", rs_kw_keyword | rs_kw_hazard, 0)
+	rs_kw_add(c"defer", rs_kw_keyword, rs_id_defer)
+	rs_kw_add(c"default", rs_kw_keyword, 0)
+	rs_kw_add(c"debugger", rs_kw_keyword, 0)
+	rs_kw_add(c"goto", rs_kw_keyword, rs_id_goto)
+	rs_kw_add(c"new", rs_kw_keyword, rs_id_new)
+	rs_kw_add(c"in", rs_kw_keyword, rs_id_in)
+	rs_kw_add(c"if", rs_kw_keyword, 0)
+	rs_kw_add(c"import", rs_kw_keyword, 0)
+	rs_kw_add(c"as", rs_kw_keyword, 0)
+	rs_kw_add(c"else", rs_kw_keyword, 0)
+	rs_kw_add(c"elif", rs_kw_keyword, 0)
+	rs_kw_add(c"while", rs_kw_keyword, rs_id_while)
+	rs_kw_add(c"for", rs_kw_keyword, rs_id_for)
+	rs_kw_add(c"switch", rs_kw_keyword, 0)
+	rs_kw_add(c"sizeof", rs_kw_keyword, 0)
+	rs_kw_add(c"case", rs_kw_keyword, 0)
+	rs_kw_add(c"continue", rs_kw_keyword, 0)
+	rs_kw_add(c"cast", rs_kw_keyword, 0)
+	rs_kw_add(c"const", rs_kw_keyword, 0)
+	rs_kw_add(c"break", rs_kw_keyword, 0)
+	rs_kw_add(c"pass", rs_kw_keyword, 0)
+	rs_kw_add(c"launch", rs_kw_keyword | rs_kw_hazard, 0)
+	# whole-function hazards (§2.4): any register may be live in an asm
+	# block, setjmp/longjmp callers keep their locals in memory,
+	# generators and gpu bodies have their own stacks
+	rs_kw_add(c"raw_asm", rs_kw_hazard, 0)
+	rs_kw_add(c"repl_setjmp", rs_kw_hazard, 0)
+	rs_kw_add(c"repl_longjmp", rs_kw_hazard, 0)
+	rs_kw_add(c"setjmp", rs_kw_hazard, 0)
+	rs_kw_add(c"longjmp", rs_kw_hazard, 0)
+	rs_kw_add(c"gpu", rs_kw_hazard, 0)
+	rs_kw_add(c"kernel", rs_kw_hazard, 0)
+	rs_kw_add(c"range", 0, rs_id_range)
 
 
 int rs_lookup_hashed(char* name, int h):
@@ -591,11 +804,25 @@ int rs_intern(char* name, int h):
 
 # Skip blanks inside a line (never a newline).
 void rs_skip_blanks():
-	while ((rs_c == ' ') || (rs_c == 9) || (rs_c == 13)): rs_next()
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	while (rs_class[c] & rs_cl_blank):
+		if (p < end):
+			c = *p & 255
+			p = p + 1
+		else:
+			rs_p = p
+			rs_next()
+			c = rs_c
+			p = rs_p
+			end = rs_end
+	rs_p = p
+	rs_c = c
 
 
 int rs_is_op_char(int c):
-	return (c == '+') || (c == '-') || (c == '*') || (c == '/') || (c == '%') || (c == '^') || (c == '&') || (c == '|') || (c == '<') || (c == '>') || (c == '=') || (c == '!')
+	return rs_class[c] & rs_cl_op
 
 
 # An operator run after an identifier (the identifier's index is i, -1
@@ -650,37 +877,46 @@ void rs_identifier():
 	char* name = rs_ident
 	int type_context = (rs_prev_kind == 3) || (rs_prev_kind == 4) || ((rs_prev_kind == 1) && (rs_prev_keyword == 0))
 	int address_taken = rs_prev_kind == 5
-	int keyword = rs_is_keyword(name)
-	if (rs_is_hazard(name)):
+	int kw = rs_kw_lookup(name, rs_ident_hash)
+	int kind = 0
+	int id = 0
+	if (kw >= 0):
+		kind = rs_kw_kind[kw]
+		id = rs_kw_id[kw]
+	if (kind & rs_kw_hazard):
 		rs_abort = 1
 		return;
-	if (keyword):
+	if (kind & rs_kw_keyword):
 		if (rs_at_start):
-			if ((strcmp(name, c"while") == 0) || (strcmp(name, c"for") == 0)):
+			if ((id == rs_id_while) || (id == rs_id_for)):
 				rs_has_loop = 1
+				# the keyword's file offset (R3 keys the loop's facts by
+				# it): rs_c is the byte after the identifier
+				rs_tok_off = -1
+				if (rs_p != 0): rs_tok_off = rs_run_off + (cast(int, rs_p) - cast(int, rs_run_base)) - 1 - rs_ident_len
 				if (rs_loop_count < 64):
 					rs_loop_tabs[rs_loop_count] = rs_tabs
 					rs_loop_count = rs_loop_count + 1
 					if (rs_mode == 1): rs_lp_open_loop()
 				elif (rs_mode == 1): rs_lp_overflow = 1
 				rs_profile_loop_note()   # P2: this head's weight from the profile
-				if (name[0] == 'f'): rs_for_header = 1
-		if (strcmp(name, c"in") == 0):
+				if (id == rs_id_for): rs_for_header = 1
+		if (id == rs_id_in):
 			# the for header's 'in': 'range' or a container (hidden
 			# iterator calls); elsewhere a container membership test
 			if (rs_for_header): rs_expect_range = 1
 			else: rs_lp_mark(rs_lp_has_call)
 			rs_for_header = 0
-		elif (strcmp(name, c"new") == 0): rs_lp_mark(rs_lp_has_call)
-		elif (strcmp(name, c"goto") == 0): rs_has_goto = 1
-		elif (strcmp(name, c"defer") == 0): rs_has_defer = 1
+		elif (id == rs_id_new): rs_lp_mark(rs_lp_has_call)
+		elif (id == rs_id_goto): rs_has_goto = 1
+		elif (id == rs_id_defer): rs_has_defer = 1
 		rs_prev_kind = 1
 		rs_prev_keyword = 1
 		rs_type_pos = 1
 		return;
 	if (rs_expect_range):
 		rs_expect_range = 0
-		if (strcmp(name, c"range") == 0):
+		if (id == rs_id_range):
 			rs_prev_kind = 1
 			rs_prev_keyword = 1
 			return;
@@ -746,6 +982,96 @@ void rs_line_token():
 		if (rs_mode == 1): rs_lp_close_loop()
 
 
+# Whether a 'while'/'for' opens a line of a ':' body, decided line by
+# line on the image, where mode 0 of rs_scan_body decides the same thing
+# by lexing every token (and most bodies have no loop, so this is most
+# of the scan's work): 0 no, 1 yes, 2 the body has something the line
+# view cannot follow -- a token on the signature line, a brace, a '/'
+# opening a line or followed by '*', a literal running past its line, a
+# NUL, or bytes a window serves -- and rs_scan_body must look. The
+# answer is never a guess: a body without a loop promotes nothing and
+# must not pay a full pass, one with a loop must get the pass, and the
+# scan's output must not depend on which path decided. rs_c is the byte
+# after the ':'; the image's NUL sentinel ends the line loops.
+int rs_probe_lines():
+	if (rs_p == 0): rs_refill()
+	if ((rs_run_base == 0) || (rs_end != &rs_img[rs_img_len])): return 2
+	int c = rs_c
+	char* p = rs_p
+	char* end = rs_end
+	# the rest of the signature line: blanks and a comment; anything
+	# else is a same-line body
+	while (rs_class[c] & rs_cl_blank):
+		c = *p & 255
+		p = p + 1
+	if (c == '#'):
+		while ((rs_class[c] & rs_cl_eol) == 0):
+			c = *p & 255
+			p = p + 1
+	if (c != 10): return 2
+	int start_tabs = -1
+	while (c == 10):
+		c = *p & 255
+		p = p + 1
+		int tabs = 0
+		while (rs_class[c] & rs_cl_blank):
+			if (c == 9): tabs = tabs + 1
+			c = *p & 255
+			p = p + 1
+		if (c == 10): continue
+		if (c == '#'):
+			while ((rs_class[c] & rs_cl_eol) == 0):
+				c = *p & 255
+				p = p + 1
+			continue
+		if (c == 0):
+			if (p > end): return 0   # the sentinel: end of file
+			return 2
+		if (c == '/'): return 2   # a block comment is not a token
+		# a token opens the line (rs_line_token)
+		if (start_tabs < 0): start_tabs = tabs
+		elif (tabs < start_tabs): return 0
+		if (c == 'w'):
+			if ((p[0] == 'h') && (p[1] == 'i') && (p[2] == 'l') && (p[3] == 'e') && ((rs_class[p[4] & 255] & rs_cl_part) == 0)): return 1
+		elif (c == 'f'):
+			if ((p[0] == 'o') && (p[1] == 'r') && ((rs_class[p[2] & 255] & rs_cl_part) == 0)): return 1
+		# the rest of the line
+		while (c != 10):
+			while ((rs_class[c] & rs_cl_stop) == 0):
+				c = *p & 255
+				p = p + 1
+			if (c == 10): break
+			if (c == 0):
+				if (p > end): return 0   # the sentinel: end of file
+				return 2
+			if (c == '#'):
+				while ((rs_class[c] & rs_cl_eol) == 0):
+					c = *p & 255
+					p = p + 1
+				break
+			if ((c == '"') || (c == 39)):
+				int quote = c
+				c = *p & 255
+				p = p + 1
+				while (c != quote):
+					if (c == 92):
+						c = *p & 255
+						p = p + 1
+					if (rs_class[c] & rs_cl_eol): return 2
+					c = *p & 255
+					p = p + 1
+				c = *p & 255
+				p = p + 1
+				continue
+			if (c == '/'):
+				c = *p & 255
+				p = p + 1
+				if (c == '*'): return 2
+				continue
+			return 2   # '{', '}', a NUL
+	return 0
+
+
 # Scan the body from the byte after the current token ('{' or ':'),
 # which rs_c holds. mode 0 stops at the first loop keyword or hazard.
 void rs_scan_body(int brace_body):
@@ -772,8 +1098,9 @@ void rs_scan_body(int brace_body):
 			rs_newline()
 			rs_prev_kind = 0
 			continue
-		if ((rs_c == ' ') || (rs_c == 9) || (rs_c == 13)):
-			rs_next()
+		int cl = rs_class[rs_c]
+		if (cl & rs_cl_blank):
+			rs_skip_blanks()
 			continue
 		if (rs_c == '#'):
 			rs_skip_line_comment()
@@ -796,9 +1123,8 @@ void rs_scan_body(int brace_body):
 		rs_at_start = rs_line_start
 		if (rs_line_start): rs_line_token()
 		if (rs_done): return;
-		rs_tok_off = rs_run_off + (cast(int, rs_p) - cast(int, rs_run_base)) - 1
 		int c = rs_c
-		if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (c == '_') || ((c >= 128) && is_ident_start_byte(c))):
+		if (cl & rs_cl_start):
 			# a field name after '.' is not a variable; a method call or a
 			# container field indexed/called is a hidden call
 			int field = rs_prev_kind == 6
@@ -813,7 +1139,7 @@ void rs_scan_body(int brace_body):
 			continue
 		rs_type_pos = 0
 		if (('0' <= c) && (c <= '9')):
-			while ((rs_c != -1) && (is_ident_part_byte(rs_c) || (rs_c == '.'))): rs_next()
+			while ((rs_c != -1) && ((rs_class[rs_c] & rs_cl_part) || (rs_c == '.'))): rs_next()
 			rs_prev_kind = 2
 			continue
 		if ((c == '"') || (c == 39)):
@@ -906,6 +1232,7 @@ int rs_assign_registers():
 # the function's record; variadic functions promote nothing.
 void regalloc_function_scan(int symbol, int is_variadic):
 	rs_tables_ensure()
+	rs_class_ensure()
 	regalloc_function_end()
 	# P2 (compiler/regalloc_profile.w): the profile's class for this
 	# function, computed here even when nothing below runs (the loop
@@ -926,13 +1253,18 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	# reads on from byte_offset, the fd's position.
 	if (profile_class == 1): return;   # P2: cold
 	int body_offset = byte_offset
-	rs_saved_offset = seek(file, 0, 1)
 	rs_begin(body_offset)
 	rs_c = nextc
 	rs_mode = 0
 	if (profile_class == 2): rs_mode = 1   # P2: hot
-	rs_profile_pass_begin()   # P2
-	rs_scan_body(brace_body)
+	int probe = 2
+	if ((rs_mode == 0) && (brace_body == 0)): probe = rs_probe_lines()
+	if (probe == 2):
+		rs_profile_pass_begin()   # P2
+		rs_scan_body(brace_body)
+	else:
+		rs_abort = 0
+		rs_has_loop = probe
 	int mask = 0
 	if ((rs_mode == 0) && rs_has_loop && (rs_abort == 0)):
 		rs_begin(body_offset)
@@ -945,7 +1277,6 @@ void regalloc_function_scan(int symbol, int is_variadic):
 		regalloc_scanned_functions = regalloc_scanned_functions + 1
 		mask = rs_assign_registers()
 		if (mask == 0): rs_profile_fruitless = rs_profile_fruitless + 1   # P2: --stats
-	rs_end_scan()
 	# Loops own caller-saved registers (R3) only when no jump can leave a
 	# loop body other than through its exit region: no goto/labels, no
 	# defer (every return would be an exit edge), and the scan saw every
