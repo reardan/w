@@ -212,3 +212,55 @@ void test_module_dependency_cycles_and_empty_graph():
 	changed.free()
 	retained_clear()
 	module_dependencies_free(graph)
+
+
+# The compiler-free graph API tools build directly from paths
+# (tools/wbuildd.w): answers depend on files, an edit invalidates exactly
+# the transitive users, and a forgotten module stops being reached.
+void test_module_graph_paths_and_forget():
+	module_dependency_graph* graph = module_graph_new()
+	int shared = module_graph_add_module(graph, c"lib/shared.w")
+	int leaf = module_graph_add_module(graph, c"lib/leaf.w")
+	int first = module_graph_add_module(graph, c"answer first")
+	int second = module_graph_add_module(graph, c"answer second")
+	assert_equal(4, graph.modules.length)
+	assert_strings_equal(c"lib/leaf.w", graph.modules[leaf].path)
+	module_dependency_add(graph, first, shared, module_dependency_import)
+	module_dependency_add(graph, first, leaf, module_dependency_import)
+	module_dependency_add(graph, second, shared, module_dependency_import)
+	# Self edges and negative IDs are ignored.
+	module_dependency_add(graph, second, second, module_dependency_import)
+	module_dependency_add(graph, -1, shared, module_dependency_import)
+	assert_equal(2, graph.modules[shared].users.length)
+	list[int] changed = new list[int]
+	changed.push(shared)
+	list[int] invalid = module_dependencies_invalidate(graph, changed)
+	assert_equal(3, invalid.length)
+	assert_equal(shared, invalid[0])
+	assert_equal(first, invalid[1])
+	assert_equal(second, invalid[2])
+	invalid.free()
+	module_dependencies_forget(graph, first)
+	assert_equal(0, graph.modules[first].targets.length)
+	assert_equal(0, graph.modules[first].reasons.length)
+	assert_equal(1, graph.modules[shared].users.length)
+	assert_equal(second, graph.modules[shared].users[0])
+	assert_equal(0, graph.modules[leaf].users.length)
+	invalid = module_dependencies_invalidate(graph, changed)
+	assert_equal(2, invalid.length)
+	assert_equal(0, dependency_test_contains(invalid, first))
+	invalid.free()
+	# A forgotten module can be re-pointed; nothing was renumbered.
+	module_dependency_add(graph, first, leaf, module_dependency_type)
+	changed.clear()
+	changed.push(leaf)
+	invalid = module_dependencies_invalidate(graph, changed)
+	assert_equal(2, invalid.length)
+	assert1(dependency_test_contains(invalid, first))
+	assert_equal(module_dependency_type, graph.modules[first].reasons[0])
+	invalid.free()
+	# Forgetting a module with no edges is a no-op.
+	module_dependencies_forget(graph, shared)
+	assert_equal(1, graph.modules[shared].users.length)
+	changed.free()
+	module_dependencies_free(graph)

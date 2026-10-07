@@ -59,12 +59,13 @@ Daemon side. A single-threaded lib/event_loop.w loop multiplexes
   - the unix-socket listener (lib/net.w socket_listen_unix_path),
     speaking JSON-RPC 2.0 over lib/framing.w Content-Length frames via
     lib/json_rpc.w (methods: check, deps, symbols, test_changed,
-    status, shutdown);
+    affected, status, shutdown);
   - one lib/inotify.w fd watching every directory of the tree (dot
     directories such as .git skipped; inotify is not recursive, so the
     walk adds one watch per directory and new directories are added as
     they appear);
-  - timers for the test_changed prewarm below;
+  - timers for the test_changed prewarm and the re-check below, and
+    the output pipes of a background re-check's compiler runs;
   - one report pipe per build in flight: the child writes the state it
     learned (new content hashes, a freshly generated manifest) there
     before it exits, and the daemon answers the client once it reads
@@ -77,13 +78,33 @@ Warm state, and how each piece is invalidated:
   closure of its root file -- 'bin/wv2 deps [arch] <root>', itself a
   memoized entry. A later request with the same arguments is answered
   from memory with no compiler run until inotify reports a change to a
-  file in that closure. Anything that can change import RESOLUTION
-  rather than content (a .w file created, deleted or renamed, a
-  directory created/moved, a C header (.h/.c) edited, bin/wv2 itself
-  rebuilt, an inotify queue overflow) drops the whole memo. Requests
-  whose closure cannot be pinned down (more than one root, an absolute
-  or '..' path, a root whose deps run fails) are simply never cached,
-  so they always run the compiler: correct, just not warm.
+  file in that closure. The closures form a retained module graph
+  (compiler/module_graph.w): one node per file and one per answer, an
+  answer depending on every file it read, so "which answers does this
+  edit affect" is module_dependencies_invalidate over the edited
+  paths. A .w file created, deleted or renamed, or a directory created,
+  deleted or moved, affects only the answers that read a path there
+  (or, for a new path P, read bin/P, the compiler's fallback search
+  root that P would now shadow); every cached closure resolved each
+  import at its first candidate, so nothing else can move. A C header
+  (.h/.c) edited, bin/wv2 itself rebuilt or an inotify queue overflow
+  still drops the whole memo. Requests whose closure cannot be pinned
+  down (more than one root, an absolute, '..' or dot-directory path, a
+  root whose deps run fails) are simply never cached, so they always
+  run the compiler: correct, just not warm.
+
+  re-check: an answer an edit invalidated is re-computed in the
+  background (debounced, most recently used first, at most
+  wbd_refresh_limit per burst, one at a time; 'serve --no-refresh' or
+  WBUILDD_REFRESH=0 turns it off), so the agent's next query after a
+  save is usually a memo hit. A refresh runs bin/wv2 exactly as a
+  request would and stores the answer only if no event touched what it
+  read while it ran. A request whose answer is being refreshed waits
+  for that run instead of starting another. A miss that also needs its
+  closure runs 'deps' alongside the request, so a re-check costs the
+  longer of the two compiler runs, not their sum. 'bin/wbuildd affected
+  PATH...' prints the memoized requests an edit to PATH would
+  invalidate.
 
   test_changed: runs 'bin/wtest changed ...' per request, whose own
   bin/.wtest_deps_cache holds the import closures of every manifest
@@ -131,9 +152,10 @@ import structures.json
 import tools.wexec
 import lib.str
 import lib.dir
+import compiler.module_graph
 
 
-const int wbd_protocol = 2
+const int wbd_protocol = 3
 
 
 /* ---- small helpers ---- */
@@ -213,6 +235,11 @@ struct wbd_entry:
 	char* stderr_text
 	int status
 	list[char*] closure
+	char* sub                # the request, to re-run it after an edit
+	list[char*] args
+	int node                 # its answer node in wbd_graph
+	int used_ms              # last stored or served
+	int dropped              # being invalidated (wbd_invalidate_paths)
 
 
 char* wbd_socket_path
@@ -424,35 +451,150 @@ void wbd_rewatch():
 	event_loop_add_fd(wbd_loop, wbd_inotify_fd, poll_in, wbd_on_inotify, 0)
 
 
+/* ---- the memo's module graph (see the header comment) ---- */
+
+# Node IDs index wbd_graph.modules. A file node (wbd_file_ids) stays until
+# the whole memo is dropped; an answer node (a memo entry, or a re-check
+# in flight) is forgotten and its ID reused when the answer goes.
+module_dependency_graph* wbd_graph
+map[char*, int] wbd_file_ids
+list[wbd_entry*] wbd_node_entry     # answer node -> memo entry, else 0
+list[void*] wbd_node_refresh        # answer node -> wbd_refresh in flight, else 0
+list[int] wbd_free_nodes
+int wbd_memo_seq                    # bumped by every event that can change an answer
+int wbd_clears                      # whole-memo drops that dropped something
+char* wbd_last_clear                # what caused the latest of them (static text)
+
+
+void wbd_graph_reset():
+	if (wbd_graph != 0): module_dependencies_free(wbd_graph)
+	wbd_graph = module_graph_new()
+	wbd_file_ids = new map[char*, int]
+	wbd_node_entry = new list[wbd_entry*]
+	wbd_node_refresh = new list[void*]
+	wbd_free_nodes = new list[int]
+
+
+int wbd_node_append(char* path):
+	int id = module_graph_add_module(wbd_graph, path)
+	wbd_node_entry.push(0)
+	wbd_node_refresh.push(0)
+	return id
+
+
+int wbd_file_node(char* path):
+	if (path in wbd_file_ids): return wbd_file_ids[path]
+	int id = wbd_node_append(path)
+	wbd_file_ids[strclone(path)] = id
+	return id
+
+
+# A new answer node depending on every file of closure.
+int wbd_answer_node(list[char*] closure):
+	int node = -1
+	if (wbd_free_nodes.length > 0): node = wbd_free_nodes.pop()
+	else: node = wbd_node_append(c"")
+	for char* p in closure: module_dependency_add(wbd_graph, node, wbd_file_node(p), module_dependency_import)
+	return node
+
+
+void wbd_answer_node_release(int node):
+	if (node < 0): return
+	module_dependencies_forget(wbd_graph, node)
+	wbd_node_entry[node] = 0
+	wbd_node_refresh[node] = 0
+	wbd_free_nodes.push(node)
+
+
+# The answer nodes an edit to paths reaches: their transitive users in
+# the graph. Paths no memoized answer read reach nothing.
+list[int] wbd_affected_nodes(list[char*] paths):
+	list[int] changed = new list[int]
+	for char* p in paths:
+		if (p in wbd_file_ids): changed.push(wbd_file_ids[p])
+	list[int] marked = new list[int]
+	if (changed.length > 0):
+		marked.free()
+		marked = module_dependencies_invalidate(wbd_graph, changed)
+	changed.free()
+	return marked
+
+
 void wbd_entry_free(wbd_entry* e):
+	wbd_answer_node_release(e.node)
 	free(e.key)
 	free(e.stdout_text)
 	free(e.stderr_text)
 	for char* p in e.closure: free(p)
+	e.closure.free()
+	free(e.sub)
+	for char* a in e.args: free(a)
+	e.args.free()
 	free(cast(char*, e))
 
 
-void wbd_clear_all():
-	if (wbd_cache.length > 0): wbd_invalidations = wbd_invalidations + wbd_cache.length
+void wbd_refresh_queue_entry(wbd_entry* e);
+void wbd_refresh_mark_stale(void* refresh);
+void wbd_refresh_drop_all();
+
+
+# Drops the whole memo; why names the event in 'status' (last_clear).
+void wbd_clear_all(char* why):
+	wbd_memo_seq = wbd_memo_seq + 1
+	if (wbd_cache.length > 0):
+		wbd_invalidations = wbd_invalidations + wbd_cache.length
+		wbd_clears = wbd_clears + 1
+		wbd_last_clear = why
 	for wbd_entry* e in wbd_cache: wbd_entry_free(e)
 	wbd_cache = new list[wbd_entry*]
+	wbd_refresh_drop_all()
+	wbd_graph_reset()
 
 
-int wbd_closure_has(wbd_entry* e, char* path):
-	for char* p in e.closure:
-		if (strcmp(p, path) == 0): return 1
-	return 0
-
-
-# Drops every memoized answer whose closure contains path.
-void wbd_invalidate_path(char* path):
-	list[wbd_entry*] kept = new list[wbd_entry*]
-	for wbd_entry* e in wbd_cache:
-		if (wbd_closure_has(e, path)):
+# Drops every memoized answer that read one of paths (queueing each for a
+# background re-check) and marks a re-check in flight that read one stale.
+void wbd_invalidate_paths(list[char*] paths):
+	wbd_memo_seq = wbd_memo_seq + 1
+	list[int] marked = wbd_affected_nodes(paths)
+	if (marked.length == 0):
+		marked.free()
+		return
+	list[wbd_entry*] dropped = new list[wbd_entry*]
+	for int id in marked:
+		wbd_entry* hit = wbd_node_entry[id]
+		if (hit != 0):
+			hit.dropped = 1
+			dropped.push(hit)
+		if (wbd_node_refresh[id] != 0): wbd_refresh_mark_stale(wbd_node_refresh[id])
+	marked.free()
+	if (dropped.length > 0):
+		list[wbd_entry*] kept = new list[wbd_entry*]
+		for wbd_entry* e in wbd_cache:
+			if (e.dropped == 0): kept.push(e)
+		for wbd_entry* gone in dropped:
 			wbd_invalidations = wbd_invalidations + 1
-			wbd_entry_free(e)
-		else: kept.push(e)
-	wbd_cache = kept
+			wbd_refresh_queue_entry(gone)
+			wbd_entry_free(gone)
+		wbd_cache = kept
+	dropped.free()
+
+
+# A directory appeared, vanished or moved: the answers that read a path
+# under it, or under its bin/ twin (the compiler's fallback search root,
+# which a path appearing under dir would now shadow).
+void wbd_invalidate_under(char* dir):
+	if (dir[0] == 0):
+		wbd_clear_all(c"checkout root moved")
+		return
+	char* prefix = strjoin(dir, c"/")
+	char* shadow = strjoin(c"bin/", prefix)
+	list[char*] paths = new list[char*]
+	for char* path, int id in wbd_file_ids:
+		if (starts_with(path, prefix) || starts_with(path, shadow)): paths.push(path)
+	wbd_invalidate_paths(paths)
+	paths.free()
+	free(prefix)
+	free(shadow)
 
 
 wbd_entry* wbd_lookup(char* key):
@@ -537,7 +679,7 @@ int wbd_in_bin(char* dir):
 void wbd_handle_event(inotify_event* ev):
 	if (ev.mask & IN_Q_OVERFLOW):
 		wbd_rewatch_pending = 1
-		wbd_clear_all()
+		wbd_clear_all(c"inotify queue overflow")
 		wbd_hashes_clear()
 		wbd_manifest_drop()
 		wbd_prewarm_schedule(1500)
@@ -548,7 +690,7 @@ void wbd_handle_event(inotify_event* ev):
 		# The watched directory itself went away or moved.
 		if (ev.mask & (IN_DELETE_SELF() | IN_MOVE_SELF)):
 			if (ev.mask & IN_MOVE_SELF): wbd_rewatch_pending = 1
-			wbd_clear_all()
+			wbd_invalidate_under(dir)
 			wbd_hashes_forget_under(dir)
 			if (wbd_in_bin(dir) == 0): wbd_manifest_drop()
 		return
@@ -562,12 +704,11 @@ void wbd_handle_event(inotify_event* ev):
 			# no event of its own).
 			wbd_hashes_forget_under(sub)
 			if (wbd_in_bin(dir) == 0): wbd_manifest_drop()
+			wbd_invalidate_under(sub)
 		if (ev.mask & IN_CREATE): wbd_watch_tree(sub)
 		if (ev.mask & (IN_MOVED_FROM() | IN_MOVED_TO())): wbd_rewatch_pending = 1
 		free(sub)
-		if (ev.mask & changing):
-			wbd_clear_all()
-			if (wbd_in_bin(dir) == 0): wbd_prewarm_schedule(1500)
+		if ((ev.mask & changing) && (wbd_in_bin(dir) == 0)): wbd_prewarm_schedule(1500)
 		return
 	int bin = wbd_in_bin(dir)
 	char* event_path = wbd_join(dir, ev.name)
@@ -575,14 +716,18 @@ void wbd_handle_event(inotify_event* ev):
 	free(event_path)
 	if (bin == 0): wbd_manifest_drop()
 	if (ends_with(ev.name, c".w")):
-		char* path = wbd_join(dir, ev.name)
-		if (ev.mask & changing):
-			# A new, removed or renamed module can change what an
-			# import resolves to anywhere, not just in closures that
-			# already named this path.
-			wbd_clear_all()
-		else: wbd_invalidate_path(path)
-		free(path)
+		list[char*] paths = new list[char*]
+		paths.push(wbd_join(dir, ev.name))
+		# A module appearing at P (created, or renamed over -- how many
+		# editors save) can only redirect an import that resolved past a
+		# missing P to the compiler's fallback search root, bin/P: every
+		# cached closure resolved each import at its first candidate,
+		# the working directory (an import found anywhere else prints an
+		# absolute path, and such closures are never cached).
+		if (ev.mask & (IN_CREATE | IN_MOVED_TO())): paths.push(strjoin(c"bin/", paths[0]))
+		wbd_invalidate_paths(paths)
+		for char* p in paths: free(p)
+		paths.free()
 		# Sources under bin/ are scratch files of tests and tools,
 		# never manifest roots worth re-warming bin/wtest for.
 		if (bin == 0): wbd_prewarm_schedule(1500)
@@ -590,7 +735,7 @@ void wbd_handle_event(inotify_event* ev):
 	if (bin):
 		if (strcmp(dir, c"bin") == 0):
 			if ((strcmp(ev.name, c"wv2") == 0) || (strcmp(ev.name, c"wtest") == 0)):
-				wbd_clear_all()
+				wbd_clear_all(c"bin/wv2 or bin/wtest replaced")
 				wbd_prewarm_schedule(1500)
 			if (wbd_self_name != 0):
 				if (strcmp(ev.name, wbd_self_name) == 0):
@@ -602,7 +747,7 @@ void wbd_handle_event(inotify_event* ev):
 				if (ev.mask & (IN_MOVED_TO() | IN_CREATE | IN_CLOSE_WRITE)): wbd_stale = 1
 		return
 	# C-import headers are the compiler's only non-.w inputs.
-	if (ends_with(ev.name, c".h") || ends_with(ev.name, c".c")): wbd_clear_all()
+	if (ends_with(ev.name, c".h") || ends_with(ev.name, c".c")): wbd_clear_all(c"C header or source changed")
 	if (strcmp(ev.name, c"build.base.json") == 0): wbd_prewarm_schedule(1500)
 
 
@@ -705,7 +850,8 @@ char* wbd_key(char* sub, list[char*] args):
 
 
 # Parses 'bin/wv2 deps' stdout into a normalized closure list, or 0
-# when any entry could escape the watched tree.
+# when any entry could escape the watched tree: absolute, '..', or under
+# a dot directory, which is never watched (no event would reach it).
 list[char*] wbd_parse_closure(char* text):
 	list[char*] closure = new list[char*]
 	string_builder* line = string_new()
@@ -716,7 +862,7 @@ list[char*] wbd_parse_closure(char* text):
 		if ((c == 10) || (c == 0)):
 			if (line.length > 0):
 				char* p = wbd_strip_dot(line.data)
-				if ((p[0] == '/') || contains(p, c"..")): ok = 0
+				if (wbd_hash_path_ok(p) == 0): ok = 0
 				else: closure.push(strclone(p))
 			string_clear(line)
 			if (c == 0): break
@@ -731,6 +877,12 @@ list[char*] wbd_clone_list(list[char*] items):
 	list[char*] copy = new list[char*]
 	for char* p in items: copy.push(strclone(p))
 	return copy
+
+
+void wbd_free_list(list[char*] items):
+	if (items == 0): return
+	for char* p in items: free(p)
+	items.free()
 
 
 const int wbd_cache_limit = 256
@@ -748,7 +900,8 @@ void wbd_evict_oldest():
 	wbd_cache = kept
 
 
-void wbd_store(char* key, process_result* result, list[char*] closure):
+# Memoizes an answer; takes ownership of key and closure.
+void wbd_store(char* key, char* sub, list[char*] args, process_result* result, list[char*] closure):
 	if (wbd_cache.length >= wbd_cache_limit): wbd_evict_oldest()
 	wbd_entry* e = new wbd_entry()
 	e.key = key
@@ -756,6 +909,12 @@ void wbd_store(char* key, process_result* result, list[char*] closure):
 	e.stderr_text = strclone(result.stderr_text)
 	e.status = result.status
 	e.closure = closure
+	e.sub = strclone(sub)
+	e.args = wbd_clone_list(args)
+	e.node = wbd_answer_node(closure)
+	e.used_ms = time_monotonic_ms()
+	e.dropped = 0
+	wbd_node_entry[e.node] = e
 	wbd_cache.push(e)
 
 
@@ -772,19 +931,16 @@ int wbd_closure_has_path(list[char*] closure, char* path):
 	return 0
 
 
-# The import closure pinning a request's answer: the memoized (or
-# freshly run) 'bin/wv2 deps [arch] <root>' for its single root file.
-# Returns an owned list, or 0 when the request cannot be cached. When
-# the request IS that plain deps query, its own (request_key,
-# request_result) answer is reused instead of running deps twice.
-list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result* request_result):
+# The memo key of the 'bin/wv2 deps [arch] <root>' query whose closure
+# pins a request's answer, with that query's own arguments in
+# *deps_args; or 0 when the request cannot be cached: several roots, a
+# root outside the watched tree, or --import-root (which changes what
+# the root's imports resolve to).
+char* wbd_deps_key(list[char*] args, list[char*]* deps_args):
 	char* arch = 0
 	char* root = 0
 	int roots = 0
 	for char* a in args:
-		# --import-root changes what the root's imports resolve to, and a
-		# root may sit outside the watched tree: never memoize such a
-		# request (it is answered fresh every time)
 		if (deps_import_root_width(a) > 0): return 0
 		if (wbd_is_arch_word(a)): arch = a
 		else if ((a[0] != '-') && ends_with(a, c".w")):
@@ -792,36 +948,503 @@ list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result*
 			roots = roots + 1
 	if (roots != 1): return 0
 	if ((root[0] == '/') || contains(root, c"..")): return 0
-	list[char*] deps_args = new list[char*]
-	if (arch != 0): deps_args.push(arch)
-	deps_args.push(root)
-	char* key = wbd_key(c"deps", deps_args)
-	wbd_entry* e = wbd_lookup(key)
-	if (e != 0):
-		free(key)
-		return wbd_clone_list(e.closure)
-	process_result* result = 0
-	int owned = 1
-	if (strcmp(key, request_key) == 0):
-		result = request_result
-		owned = 0
-	else: result = wbd_run_tool(c"bin/wv2", c"deps", deps_args, 0, 600000)
-	if (result == 0):
-		free(key)
+	list[char*] query = new list[char*]
+	if (arch != 0): query.push(strclone(arch))
+	query.push(strclone(root))
+	*deps_args = query
+	return wbd_key(c"deps", query)
+
+
+# The closure a deps run printed (deps_args from wbd_deps_key), or 0
+# when it failed or does not pin the root down: the root itself must be
+# in its own closure, or a path spelling mismatch would make edits to it
+# invisible.
+list[char*] wbd_closure_from(process_result* result, list[char*] deps_args):
+	if (result.status != 0): return 0
+	list[char*] closure = wbd_parse_closure(result.stdout_text)
+	if (closure == 0): return 0
+	if (wbd_closure_has_path(closure, wbd_strip_dot(deps_args[deps_args.length - 1])) == 0):
+		wbd_free_list(closure)
 		return 0
+	return closure
+
+
+# Does closure read only files that before also read?
+int wbd_closure_within(list[char*] closure, list[char*] before):
+	for char* p in closure:
+		if (wbd_closure_has_path(before, p) == 0): return 0
+	return 1
+
+
+/* ---- compiler runs (jobs) ---- */
+
+# One 'bin/wv2 <sub> <args>' run whose stdout and stderr are drained
+# either by the event loop (a background re-check: in_loop) or by
+# wbd_jobs_drive (a request waiting on it). Same bytes as process_run.
+struct wbd_job:
+	process* proc
+	process_capture* out
+	process_capture* err
+	int out_open
+	int err_open
+	int in_loop
+	int done
+	int status
+	void* owner              # the wbd_refresh it belongs to, or 0
+
+
+wbd_job* wbd_job_start(char* sub, list[char*] args):
+	char** argv = wbd_argv_from(c"bin/wv2", sub, args)
+	spawn_options* opts = spawn_options_new()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_pipe
+	process* p = process_spawn(c"bin/wv2", argv, opts)
+	free(cast(char*, opts))
+	free(cast(char*, argv))
+	if (p == 0): return 0
+	wbd_job* job = new wbd_job()
+	job.proc = p
+	job.out = new process_capture()
+	job.err = new process_capture()
+	process_capture_init(job.out)
+	process_capture_init(job.err)
+	job.out_open = 1
+	job.err_open = 1
+	job.in_loop = 0
+	job.done = 0
+	job.status = 0
+	job.owner = 0
+	return job
+
+
+void wbd_job_unwatch(wbd_job* job):
+	if (job.in_loop == 0): return
+	if (job.out_open): event_loop_remove_fd(wbd_loop, job.proc.stdout_fd)
+	if (job.err_open): event_loop_remove_fd(wbd_loop, job.proc.stderr_fd)
+	job.in_loop = 0
+
+
+# Reaps the job once both streams are at EOF.
+void wbd_job_check_done(wbd_job* job):
+	if (job.done || job.out_open || job.err_open): return
+	job.status = process_wait(job.proc)
+	job.done = 1
+
+
+# Reads what fd has; EOF (or an error) closes that stream.
+void wbd_job_read(wbd_job* job, int fd):
+	process_capture* buffer = job.err
+	if (fd == job.proc.stdout_fd): buffer = job.out
+	int n = process_capture_read(buffer, fd)
+	# EAGAIN (-11) / EINTR (-4): nothing after all.
+	if ((n > 0) || (n == -11) || (n == -4)): return
+	if (job.in_loop): event_loop_remove_fd(wbd_loop, fd)
+	if (fd == job.proc.stdout_fd): job.out_open = 0
+	else: job.err_open = 0
+	wbd_job_check_done(job)
+
+
+void wbd_job_kill(wbd_job* job):
+	if ((job != 0) && (job.done == 0)): process_kill(job.proc, sigkill)
+
+
+# The job's answer (its output moves into the result); frees the job.
+process_result* wbd_job_take(wbd_job* job):
+	process_result* result = new process_result()
+	result.status = job.status
+	result.stdout_length = job.out.length
+	result.stdout_text = process_capture_take(job.out)
+	result.stderr_length = job.err.length
+	result.stderr_text = process_capture_take(job.err)
+	process_free(job.proc)
+	free(cast(char*, job.out))
+	free(cast(char*, job.err))
+	free(cast(char*, job))
+	return result
+
+
+# Runs the jobs (0 entries are skipped) to completion in this call, the
+# way process_run drains one child. Past timeout_ms every unfinished job
+# is killed and reports process_status_timeout.
+void wbd_jobs_drive(list[wbd_job*] jobs, int timeout_ms):
+	for wbd_job* j in jobs:
+		if (j != 0): wbd_job_unwatch(j)
+	char* fds = malloc(jobs.length * 2 * 8 + 8)
+	list[wbd_job*] slot_jobs = new list[wbd_job*]
+	list[int] slot_fds = new list[int]
+	int deadline = time_monotonic_ms() + timeout_ms
+	while (1):
+		slot_jobs.clear()
+		slot_fds.clear()
+		for wbd_job* job in jobs:
+			if (job == 0): continue
+			if (job.out_open):
+				slot_jobs.push(job)
+				slot_fds.push(job.proc.stdout_fd)
+			if (job.err_open):
+				slot_jobs.push(job)
+				slot_fds.push(job.proc.stderr_fd)
+		if (slot_fds.length == 0): break
+		for i in range(slot_fds.length): process_pollfd_set(fds, i, slot_fds[i], 1)
+		int wait_ms = deadline - time_monotonic_ms()
+		int ready = 0
+		if (wait_ms > 0): ready = poll(cast(int*, fds), slot_fds.length, wait_ms)
+		if (ready == -4): continue
+		if (ready <= 0):
+			for wbd_job* late in jobs:
+				if ((late != 0) && (late.done == 0)):
+					wbd_job_kill(late)
+					late.out_open = 0
+					late.err_open = 0
+					wbd_job_check_done(late)
+					late.status = process_status_timeout
+			break
+		for i in range(slot_fds.length):
+			if (process_pollfd_revents(fds, i) != 0): wbd_job_read(slot_jobs[i], slot_fds[i])
+	free(fds)
+	slot_jobs.free()
+	slot_fds.free()
+
+
+# Kills a job, waits for it and throws its output away.
+void wbd_job_discard(wbd_job* job):
+	if (job == 0): return
+	wbd_job_kill(job)
+	list[wbd_job*] one = new list[wbd_job*]
+	one.push(job)
+	wbd_jobs_drive(one, 10000)
+	one.free()
+	process_result_free(wbd_job_take(job))
+
+
+/* ---- background re-check of invalidated answers ---- */
+
+const int wbd_refresh_limit = 8
+const int wbd_refresh_delay_ms = 200
+const int wbd_refresh_timeout_ms = 600000
+
+
+# An answer an edit dropped, to compute again. While it runs, an answer
+# node depending on what the dropped answer read stands in for it in
+# wbd_graph, so an event touching any of those files marks it stale.
+struct wbd_refresh:
+	char* key
+	char* sub
+	list[char*] args
+	list[char*] closure       # what the dropped answer read
+	int used_ms
+	int attempts
+	int stale
+	int node                  # the stand-in answer node while running, else -1
+	int seq                   # wbd_memo_seq when it started
+	char* deps_key            # its closure's deps query (set while running)
+	list[char*] deps_args
+	wbd_job* deps_job         # that query, run alongside when not memoized
+	wbd_job* request_job
+	int timer                 # its timeout
+
+
+list[wbd_refresh*] wbd_refresh_queue
+wbd_refresh* wbd_refresh_current
+int wbd_refresh_timer
+int wbd_refresh_enabled
+int wbd_refreshed             # answers re-checked in the background and stored
+int wbd_refresh_discarded     # re-checks an edit overtook, or that failed
+
+
+void wbd_refresh_clear_run(wbd_refresh* r):
+	if (r.deps_key != 0): free(r.deps_key)
+	wbd_free_list(r.deps_args)
+	r.deps_key = 0
+	r.deps_args = 0
+	r.deps_job = 0
+	r.request_job = 0
+
+
+void wbd_refresh_free(wbd_refresh* r):
+	wbd_refresh_clear_run(r)
+	free(r.key)
+	free(r.sub)
+	wbd_free_list(r.args)
+	wbd_free_list(r.closure)
+	free(cast(char*, r))
+
+
+void wbd_refresh_fire(int id, void* ctx);
+
+
+void wbd_refresh_schedule(int delay_ms):
+	if (wbd_refresh_enabled == 0): return
+	if (wbd_refresh_timer != 0): event_loop_cancel_timer(wbd_loop, wbd_refresh_timer)
+	wbd_refresh_timer = event_loop_add_timer(wbd_loop, delay_ms, wbd_refresh_fire, 0)
+
+
+# The index of a queued deps re-check that another queued request's
+# re-check covers (it runs that deps query alongside and stores it), or
+# -1. Such a deps entry costs nothing to drop.
+int wbd_refresh_covered_index():
+	int found = -1
+	for i in range(wbd_refresh_queue.length):
+		wbd_refresh* q = wbd_refresh_queue[i]
+		if (strcmp(q.sub, c"deps") != 0): continue
+		for wbd_refresh* other in wbd_refresh_queue:
+			if (strcmp(other.sub, c"deps") == 0): continue
+			list[char*] deps_args = 0
+			char* deps_key = wbd_deps_key(other.args, &deps_args)
+			if (deps_key != 0):
+				if (strcmp(deps_key, q.key) == 0): found = i
+				free(deps_key)
+			wbd_free_list(deps_args)
+			if (found >= 0): return found
+	return found
+
+
+void wbd_refresh_enqueue(wbd_refresh* r):
+	for wbd_refresh* queued in wbd_refresh_queue:
+		if (strcmp(queued.key, r.key) == 0):
+			wbd_refresh_free(r)
+			return
+	wbd_refresh_queue.push(r)
+	if (wbd_refresh_queue.length > wbd_refresh_limit):
+		# Over the bound: a deps query another queued request's run brings
+		# along goes first, else the least recently used answer is not
+		# re-checked.
+		int oldest = wbd_refresh_covered_index()
+		if (oldest < 0):
+			oldest = 0
+			for i in range(wbd_refresh_queue.length):
+				if (wbd_refresh_queue[i].used_ms < wbd_refresh_queue[oldest].used_ms): oldest = i
+		wbd_refresh* dropped = wbd_refresh_queue[oldest]
+		wbd_refresh_queue.remove(oldest)
+		wbd_refresh_free(dropped)
+	# Debounced: a save is often several events, a checkout hundreds.
+	wbd_refresh_schedule(wbd_refresh_delay_ms)
+
+
+void wbd_refresh_queue_entry(wbd_entry* e):
+	if ((wbd_refresh_enabled == 0) || wbd_stopping): return
+	if (wbd_refresh_current != 0):
+		# Being re-computed already: the event that dropped e marked that
+		# run stale too, and it queues itself again.
+		if (strcmp(wbd_refresh_current.key, e.key) == 0): return
+	wbd_refresh* r = new wbd_refresh()
+	r.key = strclone(e.key)
+	r.sub = strclone(e.sub)
+	r.args = wbd_clone_list(e.args)
+	r.closure = wbd_clone_list(e.closure)
+	r.used_ms = e.used_ms
+	r.attempts = 0
+	r.stale = 0
+	r.seq = 0
+	r.timer = 0
+	r.node = -1
+	r.deps_key = 0
+	r.deps_args = 0
+	wbd_refresh_enqueue(r)
+
+
+void wbd_refresh_mark_stale(void* refresh):
+	wbd_refresh* r = cast(wbd_refresh*, refresh)
+	r.stale = 1
+	# Its answer is outdated already: stop computing it.
+	wbd_job_kill(r.deps_job)
+	wbd_job_kill(r.request_job)
+
+
+void wbd_on_refresh_fd(int fd, int revents, void* ctx);
+void wbd_refresh_timeout(int id, void* ctx);
+
+
+void wbd_refresh_watch(wbd_refresh* r, wbd_job* job):
+	if (job == 0): return
+	job.owner = cast(void*, r)
+	job.in_loop = 1
+	event_loop_add_fd(wbd_loop, job.proc.stdout_fd, poll_in, wbd_on_refresh_fd, cast(void*, job))
+	event_loop_add_fd(wbd_loop, job.proc.stderr_fd, poll_in, wbd_on_refresh_fd, cast(void*, job))
+
+
+# Spawns r's compiler runs; 0 when there is nothing (left) to do.
+int wbd_refresh_start(wbd_refresh* r):
+	wbd_refresh_clear_run(r)
+	if (wbd_lookup(r.key) != 0): return 0
+	list[char*] deps_args = 0
+	r.deps_key = wbd_deps_key(r.args, &deps_args)
+	if (r.deps_key == 0): return 0
+	r.deps_args = deps_args
+	if ((strcmp(r.deps_key, r.key) != 0) && (wbd_lookup(r.deps_key) == 0)):
+		r.deps_job = wbd_job_start(c"deps", r.deps_args)
+		if (r.deps_job == 0): return 0
+	r.request_job = wbd_job_start(r.sub, r.args)
+	if (r.request_job == 0):
+		wbd_job_discard(r.deps_job)
+		r.deps_job = 0
+		return 0
+	r.stale = 0
+	r.seq = wbd_memo_seq
+	r.node = wbd_answer_node(r.closure)
+	wbd_node_refresh[r.node] = cast(void*, r)
+	wbd_refresh_watch(r, r.deps_job)
+	wbd_refresh_watch(r, r.request_job)
+	r.timer = event_loop_add_timer(wbd_loop, wbd_refresh_timeout_ms, wbd_refresh_timeout, cast(void*, r))
+	wbd_refresh_current = r
+	return 1
+
+
+# The better of two queued re-checks: a request other than deps first
+# (its run brings the deps answer along), then the most recently used.
+int wbd_refresh_better(wbd_refresh* a, wbd_refresh* b):
+	int a_deps = strcmp(a.sub, c"deps") == 0
+	int b_deps = strcmp(b.sub, c"deps") == 0
+	if (a_deps != b_deps): return b_deps
+	return a.used_ms > b.used_ms
+
+
+void wbd_refresh_next():
+	while ((wbd_refresh_current == 0) && (wbd_refresh_queue.length > 0) && (wbd_stopping == 0)):
+		int best = 0
+		for i in range(wbd_refresh_queue.length):
+			if (wbd_refresh_better(wbd_refresh_queue[i], wbd_refresh_queue[best])): best = i
+		wbd_refresh* r = wbd_refresh_queue[best]
+		wbd_refresh_queue.remove(best)
+		if (wbd_refresh_start(r) == 0): wbd_refresh_free(r)
+
+
+void wbd_refresh_fire(int id, void* ctx):
+	wbd_refresh_timer = 0
+	# An edit still queued in inotify would overtake the run it starts.
+	wbd_drain_events()
+	wbd_refresh_next()
+
+
+# Both runs are done: keep the answer unless an edit overtook it.
+void wbd_refresh_finish(wbd_refresh* r):
+	if (r.timer != 0):
+		event_loop_cancel_timer(wbd_loop, r.timer)
+		r.timer = 0
+	# Events that landed while it ran go first: one touching a file the
+	# dropped answer read marks r stale through its stand-in node (and
+	# one dropping the whole memo, through wbd_refresh_current).
+	wbd_drain_events()
+	wbd_refresh_current = 0
+	process_result* request = wbd_job_take(r.request_job)
+	process_result* deps = 0
+	if (r.deps_job != 0): deps = wbd_job_take(r.deps_job)
+	r.request_job = 0
+	r.deps_job = 0
+	wbd_answer_node_release(r.node)
+	r.node = -1
 	list[char*] closure = 0
-	if (result.status == 0): closure = wbd_parse_closure(result.stdout_text)
-	# The root itself must be in its own closure, or a path spelling
-	# mismatch would make edits to it invisible.
+	if ((r.stale == 0) && (request.status >= 0)):
+		if (deps != 0): closure = wbd_closure_from(deps, r.deps_args)
+		else if (strcmp(r.deps_key, r.key) == 0): closure = wbd_closure_from(request, r.deps_args)
+		else:
+			wbd_entry* known = wbd_lookup(r.deps_key)
+			if (known != 0): closure = wbd_clone_list(known.closure)
+	# A run that read a file the dropped answer did not (its imports
+	# changed) has no stand-in edge to that file: trust it only when no
+	# event at all came in while it ran.
+	int overtaken = r.stale
+	if ((closure != 0) && (wbd_memo_seq != r.seq) && (wbd_closure_within(closure, r.closure) == 0)):
+		wbd_free_list(closure)
+		closure = 0
+		overtaken = 1
 	if (closure != 0):
-		if (wbd_closure_has_path(closure, wbd_strip_dot(root)) == 0): closure = 0
-	if (closure == 0):
-		if (owned): process_result_free(result)
-		free(key)
-		return 0
-	wbd_store(key, result, closure)
-	if (owned): process_result_free(result)
-	return wbd_clone_list(closure)
+		if ((deps != 0) && (wbd_lookup(r.deps_key) == 0)):
+			wbd_store(strclone(r.deps_key), c"deps", r.deps_args, deps, wbd_clone_list(closure))
+		if (wbd_lookup(r.key) == 0): wbd_store(strclone(r.key), r.sub, r.args, request, closure)
+		else: wbd_free_list(closure)
+		wbd_refreshed = wbd_refreshed + 1
+	else: wbd_refresh_discarded = wbd_refresh_discarded + 1
+	int again = (closure == 0) && overtaken && (r.attempts < 3) && (wbd_stopping == 0) && (wbd_lookup(r.key) == 0)
+	process_result_free(request)
+	if (deps != 0): process_result_free(deps)
+	if (again):
+		r.attempts = r.attempts + 1
+		wbd_refresh_clear_run(r)
+		wbd_refresh_enqueue(r)
+	else:
+		wbd_refresh_free(r)
+		if (wbd_refresh_queue.length > 0): wbd_refresh_schedule(0)
+
+
+void wbd_on_refresh_fd(int fd, int revents, void* ctx):
+	wbd_job* job = cast(wbd_job*, ctx)
+	wbd_refresh* r = cast(wbd_refresh*, job.owner)
+	wbd_job_read(job, fd)
+	if (r != wbd_refresh_current): return
+	if (r.request_job.done == 0): return
+	if ((r.deps_job != 0) && (r.deps_job.done == 0)): return
+	wbd_refresh_finish(r)
+
+
+# A re-check that hangs is killed and not retried.
+void wbd_refresh_timeout(int id, void* ctx):
+	wbd_refresh* r = cast(wbd_refresh*, ctx)
+	r.timer = 0
+	r.attempts = 99
+	wbd_refresh_mark_stale(cast(void*, r))
+
+
+# A request whose answer, or whose closure's deps answer, is being
+# re-checked right now waits for that run rather than start a second
+# one; a queued re-check of it is simply left to the request.
+void wbd_refresh_settle(char* key, char* deps_key):
+	wbd_refresh* r = wbd_refresh_current
+	if (r != 0):
+		int shares = strcmp(r.key, key) == 0
+		if (deps_key != 0):
+			if (strcmp(r.key, deps_key) == 0): shares = 1
+			if ((r.deps_job != 0) && (strcmp(r.deps_key, deps_key) == 0)): shares = 1
+		if (shares):
+			list[wbd_job*] jobs = new list[wbd_job*]
+			jobs.push(r.request_job)
+			jobs.push(r.deps_job)
+			wbd_jobs_drive(jobs, wbd_refresh_timeout_ms)
+			jobs.free()
+			wbd_refresh_finish(r)
+	int i = 0
+	while (i < wbd_refresh_queue.length):
+		wbd_refresh* queued = wbd_refresh_queue[i]
+		if (strcmp(queued.key, key) == 0):
+			wbd_refresh_queue.remove(i)
+			wbd_refresh_free(queued)
+		else: i = i + 1
+
+
+# The whole memo is going: nothing queued is worth re-checking, and the
+# run in flight is outdated (and loses its node with the graph).
+void wbd_refresh_drop_all():
+	for wbd_refresh* r in wbd_refresh_queue: wbd_refresh_free(r)
+	wbd_refresh_queue = new list[wbd_refresh*]
+	if (wbd_refresh_current != 0):
+		wbd_refresh_current.attempts = 99
+		wbd_refresh_mark_stale(cast(void*, wbd_refresh_current))
+		wbd_refresh_current.node = -1
+
+
+# Shutdown: nothing outlives the daemon.
+void wbd_refresh_abort():
+	wbd_refresh* r = wbd_refresh_current
+	if (r == 0): return
+	wbd_refresh_current = 0
+	wbd_job_discard(r.deps_job)
+	wbd_job_discard(r.request_job)
+	r.deps_job = 0
+	r.request_job = 0
+	wbd_refresh_free(r)
+
+
+char* wbd_refresh_state():
+	if (wbd_refresh_enabled == 0): return c"disabled"
+	if (wbd_refresh_current != 0): return c"running"
+	if ((wbd_refresh_queue.length > 0) || (wbd_refresh_timer != 0)): return c"pending"
+	return c"idle"
+
+
+/* ---- queries ---- */
+
+json_value* wbd_serve_miss(char* sub, list[char*] args, char* key, char* deps_key, list[char*] deps_args);
 
 
 # check / deps / symbols: memoized 'bin/wv2 <sub> <args...>'.
@@ -837,30 +1460,61 @@ json_value* wbd_serve_wv2(char* sub, json_value* params):
 		if (starts_with(a, c"-o") || starts_with(a, c"--ptx") || starts_with(a, c"--debug")):
 			return wbd_error_result(c"unsupported flag for a daemon query")
 	char* key = wbd_key(sub, args)
+	list[char*] deps_args = 0
+	char* deps_key = wbd_deps_key(args, &deps_args)
+	wbd_refresh_settle(key, deps_key)
+	json_value* answer = 0
 	wbd_entry* hit = wbd_lookup(key)
 	if (hit != 0):
-		free(key)
 		wbd_hits = wbd_hits + 1
-		return wbd_output_result(hit.stdout_text, hit.stderr_text, hit.status, 1)
-	wbd_misses = wbd_misses + 1
-	process_result* result = wbd_run_tool(c"bin/wv2", sub, args, 0, 600000)
-	if (result == 0):
-		free(key)
-		return wbd_error_result(c"could not run bin/wv2")
-	if (result.status < 0):
-		process_result_free(result)
-		free(key)
-		return wbd_error_result(c"bin/wv2 timed out or could not be waited for")
-	# The deps run may itself be the closure entry this request needs.
-	wbd_entry* again = wbd_lookup(key)
-	if (again == 0):
-		list[char*] closure = wbd_closure_for(args, key, result)
-		again = wbd_lookup(key)
-		if ((closure != 0) && (again == 0)): wbd_store(key, result, closure)
-		else: free(key)
-	else: free(key)
-	json_value* answer = wbd_output_result(result.stdout_text, result.stderr_text, result.status, 0)
+		hit.used_ms = time_monotonic_ms()
+		answer = wbd_output_result(hit.stdout_text, hit.stderr_text, hit.status, 1)
+	else:
+		wbd_misses = wbd_misses + 1
+		answer = wbd_serve_miss(sub, args, key, deps_key, deps_args)
+	free(key)
+	if (deps_key != 0): free(deps_key)
+	wbd_free_list(deps_args)
+	return answer
+
+
+# Runs the request, and alongside it the deps query its closure needs
+# when that is not memoized, then memoizes what it can.
+json_value* wbd_serve_miss(char* sub, list[char*] args, char* key, char* deps_key, list[char*] deps_args):
+	wbd_job* job = wbd_job_start(sub, args)
+	if (job == 0): return wbd_error_result(c"could not run bin/wv2")
+	wbd_job* deps_job = 0
+	if ((deps_key != 0) && (strcmp(deps_key, key) != 0) && (wbd_lookup(deps_key) == 0)):
+		deps_job = wbd_job_start(c"deps", deps_args)
+	list[wbd_job*] jobs = new list[wbd_job*]
+	jobs.push(job)
+	jobs.push(deps_job)
+	wbd_jobs_drive(jobs, 600000)
+	jobs.free()
+	process_result* result = wbd_job_take(job)
+	process_result* deps = 0
+	if (deps_job != 0): deps = wbd_job_take(deps_job)
+	json_value* answer = 0
+	if (result.status < 0): answer = wbd_error_result(c"bin/wv2 timed out or could not be waited for")
+	else:
+		if (deps_key != 0):
+			list[char*] closure = 0
+			if (strcmp(deps_key, key) == 0): closure = wbd_closure_from(result, deps_args)
+			else if (deps != 0):
+				closure = wbd_closure_from(deps, deps_args)
+				if ((closure != 0) && (wbd_lookup(deps_key) == 0)):
+					wbd_store(strclone(deps_key), c"deps", deps_args, deps, wbd_clone_list(closure))
+			else:
+				wbd_entry* known = wbd_lookup(deps_key)
+				if (known != 0):
+					known.used_ms = time_monotonic_ms()
+					closure = wbd_clone_list(known.closure)
+			if (closure != 0):
+				if (wbd_lookup(key) == 0): wbd_store(strclone(key), sub, args, result, closure)
+				else: wbd_free_list(closure)
+		answer = wbd_output_result(result.stdout_text, result.stderr_text, result.status, 0)
 	process_result_free(result)
+	if (deps != 0): process_result_free(deps)
 	return answer
 
 
@@ -923,7 +1577,51 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	json_object_set(result, c"warm_hashes", json_int(deps_file_hashes.length))
 	json_object_set(result, c"hashes_merged", json_int(wbd_hashes_merged))
 	json_object_set(result, c"warm_manifest", json_bool(wexec_warm_manifest != 0))
+	json_object_set(result, c"graph_modules", json_int(wbd_graph.modules.length))
+	json_object_set(result, c"memo_clears", json_int(wbd_clears))
+	if (wbd_last_clear != 0): json_object_set(result, c"last_clear", json_string(wbd_last_clear))
+	json_object_set(result, c"refresh", json_string(wbd_refresh_state()))
+	json_object_set(result, c"refreshed", json_int(wbd_refreshed))
+	json_object_set(result, c"refresh_discarded", json_int(wbd_refresh_discarded))
 	return result
+
+
+# 'affected PATH...': the memoized requests an edit to those paths
+# would drop, one per line ("<sub> <args>"), sorted; nothing is dropped.
+json_value* wbd_handle_affected(json_value* params, void* ctx):
+	wbd_touch()
+	wbd_drain_events()
+	char* why = 0
+	list[char*] args = wbd_request_args(params, &why)
+	if (args == 0): return wbd_error_result(why)
+	list[char*] paths = new list[char*]
+	for char* a in args: paths.push(wbd_strip_dot(a))
+	list[int] marked = wbd_affected_nodes(paths)
+	list[char*] lines = new list[char*]
+	for int id in marked:
+		wbd_entry* e = wbd_node_entry[id]
+		if (e == 0): continue
+		string_builder* line = string_new()
+		string_append(line, e.sub)
+		for char* a in e.args:
+			string_append_char(line, ' ')
+			string_append(line, a)
+		# Insertion sort: a handful of lines, and a stable order to diff.
+		int at = lines.length
+		while ((at > 0) && (strcmp(lines[at - 1], line.data) > 0)): at = at - 1
+		lines.insert(at, line.data)
+		free(line)
+	string_builder* out = string_new()
+	for char* text in lines:
+		string_append(out, text)
+		string_append_char(out, 10)
+	json_value* answer = wbd_output_result(out.data, c"", 0, 1)
+	string_free(out)
+	for char* text in lines: free(text)
+	lines.free()
+	marked.free()
+	paths.free()
+	return answer
 
 
 json_value* wbd_handle_shutdown(json_value* params, void* ctx):
@@ -1350,6 +2048,7 @@ char* wbd_find_self_name():
 
 struct wbd_serve_options:
 	int prewarm
+	int refresh
 	char* prewarm_manifest
 	char* log_path
 	int detach
@@ -1378,6 +2077,9 @@ int wbd_serve(wbd_serve_options* o):
 	wbd_touched_dirs = new list[char*]
 	wbd_touched_dir_seqs = new list[int]
 	wbd_hashes_clear()
+	wbd_graph_reset()
+	wbd_refresh_queue = new list[wbd_refresh*]
+	wbd_refresh_enabled = o.refresh
 	wbd_prewarm_enabled = o.prewarm
 	wbd_prewarm_manifest = o.prewarm_manifest
 	wbd_self_name = wbd_find_self_name()
@@ -1387,6 +2089,7 @@ int wbd_serve(wbd_serve_options* o):
 	jsonrpc_register(wbd_server, c"deps", wbd_handle_deps)
 	jsonrpc_register(wbd_server, c"symbols", wbd_handle_symbols)
 	jsonrpc_register(wbd_server, c"test_changed", wbd_handle_test_changed)
+	jsonrpc_register(wbd_server, c"affected", wbd_handle_affected)
 	jsonrpc_register(wbd_server, c"status", wbd_handle_status)
 	jsonrpc_register(wbd_server, c"shutdown", wbd_handle_shutdown)
 	mkdir(c"bin", 493)
@@ -1422,6 +2125,7 @@ int wbd_serve(wbd_serve_options* o):
 	wbd_err(banner.data)
 	string_free(banner)
 	event_loop_run(wbd_loop)
+	wbd_refresh_abort()
 	if (wbd_prewarm_proc != 0):
 		process_kill(wbd_prewarm_proc, sigterm)
 		wbd_prewarm_wait()
@@ -1619,6 +2323,38 @@ int wbd_status_main(list[char*] args):
 	return 0
 
 
+# 'affected PATH...' asks the running daemon (it never starts one: a new
+# daemon has nothing memoized to affect).
+int wbd_affected_main(list[char*] args):
+	int fd = wbd_connect()
+	if (fd < 0):
+		wbd_err(c"wbuildd: not running\n")
+		return 1
+	json_value* params = json_object()
+	json_object_set(params, c"protocol", json_int(wbd_protocol))
+	char* cwd = wbd_cwd()
+	json_object_set(params, c"cwd", json_string(cwd))
+	free(cwd)
+	json_value* list_json = json_array()
+	for char* a in args: json_array_push(list_json, json_string(a))
+	json_object_set(params, c"args", list_json)
+	json_value* result = wbd_call(fd, c"affected", params)
+	close(fd)
+	if ((result == 0) || (result.type != json_type_object())):
+		wbd_err(c"wbuildd: malformed response\n")
+		return 1
+	json_value* out = json_object_get(result, c"stdout")
+	if ((out == 0) || (out.type != json_type_string())):
+		json_value* error = json_object_get(result, c"error")
+		if ((error != 0) && (error.type == json_type_string())): wbd_err2(c"wbuildd: ", error.string_value)
+		else: wbd_err(c"wbuildd: malformed response\n")
+		json_free(result)
+		return 1
+	if (out.string_value != 0): wbd_out(out.string_value)
+	json_free(result)
+	return 0
+
+
 int wbd_stop_main():
 	json_value* result = wbd_call_simple(c"shutdown")
 	if (result == 0):
@@ -1657,6 +2393,7 @@ process* wbd_spawn_daemon(char* argv0, wbd_serve_options* o):
 	argv_list.push(c"--detach")
 	argv_list.push(c"--log")
 	argv_list.push(o.log_path)
+	if (o.refresh == 0): argv_list.push(c"--no-refresh")
 	if (o.prewarm == 0): argv_list.push(c"--no-prewarm")
 	else if (o.prewarm_manifest != 0):
 		argv_list.push(c"--prewarm-manifest")
@@ -1741,6 +2478,7 @@ int wbd_connect_client():
 	close(probe)
 	wbd_serve_options* o = new wbd_serve_options()
 	o.prewarm = wbd_env_is(c"WBUILDD_PREWARM", c"0") == 0
+	o.refresh = wbd_env_is(c"WBUILDD_REFRESH", c"0") == 0
 	o.prewarm_manifest = 0
 	o.log_path = wbd_default_log()
 	o.detach = 1
@@ -1862,11 +2600,12 @@ int wbd_build_main(list[char*] args):
 
 void wbd_usage():
 	wbd_err(c"usage: wbuildd [--socket PATH] [--no-daemon|--require-daemon] [--no-autostart] <command> [args...]\n")
-	wbd_err(c"  serve|start [--prewarm-manifest M | --no-prewarm] [--log FILE] [--idle-timeout-ms N]\n")
+	wbd_err(c"  serve|start [--prewarm-manifest M | --no-prewarm] [--no-refresh] [--log FILE] [--idle-timeout-ms N]\n")
 	wbd_err(c"  stop | status [--json]                                           control it\n")
 	wbd_err(c"  check|deps|symbols ARGS   == bin/wv2 check|deps|symbols ARGS\n")
 	wbd_err(c"  changed ARGS              == bin/wtest changed ARGS\n")
 	wbd_err(c"  build ARGS                == bin/wexec ARGS\n")
+	wbd_err(c"  affected PATH...          memoized requests an edit to PATH re-checks\n")
 
 
 int main(int argc, int argv):
@@ -1903,11 +2642,13 @@ int main(int argc, int argv):
 	if (strcmp(command, c"changed") == 0):
 		return wbd_query(c"test_changed", c"bin/wtest", c"changed", rest)
 	if (strcmp(command, c"build") == 0): return wbd_build_main(rest)
+	if (strcmp(command, c"affected") == 0): return wbd_affected_main(rest)
 	if (strcmp(command, c"status") == 0): return wbd_status_main(rest)
 	if (strcmp(command, c"stop") == 0): return wbd_stop_main()
 	if ((strcmp(command, c"serve") == 0) || (strcmp(command, c"start") == 0)):
 		wbd_serve_options* o = new wbd_serve_options()
 		o.prewarm = 1
+		o.refresh = 1
 		o.prewarm_manifest = 0
 		o.log_path = 0
 		o.detach = 0
@@ -1919,6 +2660,7 @@ int main(int argc, int argv):
 				j = j + 1
 				o.prewarm_manifest = rest[j]
 			else if (strcmp(opt, c"--no-prewarm") == 0): o.prewarm = 0
+			else if (strcmp(opt, c"--no-refresh") == 0): o.refresh = 0
 			else if ((strcmp(opt, c"--log") == 0) && (j + 1 < rest.length)):
 				j = j + 1
 				o.log_path = rest[j]

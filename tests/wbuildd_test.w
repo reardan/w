@@ -298,10 +298,201 @@ char* wbt_manifest():
 	return text
 
 
+# The import shadowing case needs a top-level directory: an import of
+# wbuildd_shadow_<pid>.m resolves to bin/wbuildd_shadow_<pid>/m.w (the
+# compiler's fallback search root) until the same path appears at the
+# checkout root.
+char* wbt_shadow_dir(char* top):
+	string_builder* p = string_new()
+	string_append(p, top)
+	string_append(p, c"wbuildd_shadow_")
+	string_append_int(p, getpid())
+	char* dir = p.data
+	free(p)
+	return dir
+
+
 void wbt_cleanup():
-	char* names = c"a.w b.w c.w d.w helper.w manifest.json log d.sock a b"
+	char* names = c"a.w b.w c.w d.w helper.w manifest.json log d.sock a b g1.w g2.w g3.w gh.w gh.w.tmp e.w s.w"
 	for char* name in wbt_words(names): unlink(wbt_path(name))
+	unlink(wbt_path(c"sub/x.w"))
+	unlink(wbt_path(c"sub2/x.w"))
+	rmdir(wbt_path(c"sub"))
+	rmdir(wbt_path(c"sub2"))
 	rmdir(wbt_dir())
+	for char* top in wbt_words(c"bin/ ./"):
+		char* dir = wbt_shadow_dir(top)
+		unlink(strjoin(dir, c"/m.w"))
+		rmdir(dir)
+
+
+char* wbt_status_string(char* key):
+	json_value* v = wbt_status()
+	json_value* field = json_object_get(v, key)
+	assert1((field != 0) && (field.type == json_type_string()))
+	char* text = strclone(field.string_value)
+	json_free(v)
+	return text
+
+
+# The background re-check is done (and nothing is queued).
+void wbt_wait_refresh_idle():
+	for waited in range(0, 300000, 20):
+		if (strcmp(wbt_status_string(c"refresh"), c"idle") == 0): return
+		process_sleep_ms(20)
+	asserts(c"the re-check never went idle", 0)
+
+
+char* wbt_importing(char* module, char* body):
+	string_builder* s = string_new()
+	string_append(s, c"import ")
+	string_append(s, module)
+	string_append(s, c"\n")
+	string_append(s, body)
+	char* text = s.data
+	free(s)
+	return text
+
+
+# A save the way many editors do it: a temporary file renamed over the
+# original (IN_MOVED_TO, not a modification).
+void wbt_save_by_rename(char* name, char* text):
+	char* tmp = strjoin(name, c".tmp")
+	wbt_write(tmp, text)
+	assert_equal(0, rename(wbt_path(tmp), wbt_path(name)))
+
+
+# Does the memoized answer of a query survive an event? Another target
+# of a parallel './wbuild tests' can legitimately drop the whole memo
+# (a rebuilt bin/wv2, a C header): such an attempt is retried, while a
+# regression (an event dropping answers that never read what it
+# touched) fails every attempt.
+void wbt_expect_kept(char* query, char* event_name, char* event_text):
+	char* args = strjoin(c"--require-daemon ", query)
+	for attempt in range(10):
+		process_result_free(wbt_client_run(args))
+		int clears = wbt_status_int(c"memo_clears")
+		int invalidations = wbt_status_int(c"invalidations")
+		int hits = wbt_status_int(c"hits")
+		if (event_text != 0): wbt_write(event_name, event_text)
+		else: unlink(wbt_path(event_name))
+		process_result_free(wbt_client_run(args))
+		if (wbt_status_int(c"memo_clears") != clears): continue
+		assert_equal(invalidations, wbt_status_int(c"invalidations"))
+		assert_equal(hits + 1, wbt_status_int(c"hits"))
+		return
+	asserts(c"the memo was dropped on every attempt", 0)
+
+
+# The memo's module graph (compiler/module_graph.w): an edit drops only
+# the answers that read what it touched, whatever kind of event it is,
+# and those answers are re-checked in the background.
+void wbt_graph_invalidation():
+	char* g1 = wbt_path(c"g1.w")
+	char* g2 = wbt_path(c"g2.w")
+	char* check_g1 = wbt_args2(c"check --json ", c"g1.w")
+	char* check_g2 = wbt_args2(c"check --json ", c"g2.w")
+	wbt_write(c"gh.w", c"int gh():\n\treturn 0\n")
+	# tools.wexec makes g1's check slow enough to catch its re-check
+	# running.
+	wbt_write(c"g1.w", wbt_importing(wbt_module(c"gh"), c"import tools.wexec\n\n\nint main():\n\treturn gh()\n"))
+	wbt_write(c"g2.w", c"int main():\n\treturn 2\n")
+	wbt_compare(c"bin/wv2", check_g1, 0)
+	wbt_compare(c"bin/wv2", check_g2, 0)
+
+	# 'affected' answers from the graph: g1's answers read gh.w, g2's did not.
+	process_result* affected = wbt_client_run(strjoin(c"affected ", wbt_path(c"gh.w")))
+	assert_equal(0, affected.status)
+	print(c"affected by gh.w:\n")
+	print(affected.stdout_text)
+	assert1(has_line(affected.stdout_text, strjoin(c"check --json ", g1)))
+	assert1(has_line(affected.stdout_text, strjoin(c"deps ", g1)))
+	assert1(contains(affected.stdout_text, g2) == 0)
+	process_result_free(affected)
+
+	# A module created, then deleted, that no answer read drops nothing
+	# (it used to drop the whole memo).
+	wbt_expect_kept(check_g2, c"e.w", c"int e():\n\treturn 0\n")
+	wbt_expect_kept(check_g2, c"e.w", 0)
+
+	# A save by rename drops g1's answer only; the answer changes.
+	char* before = wbt_compare(c"bin/wv2", check_g1, 0)
+	wbt_save_by_rename(c"gh.w", c"int gh():\n\treturn 0\n\n\nvoid gh_warn(char* s):\n\tint* q = s\n")
+	char* after = wbt_compare(c"bin/wv2", check_g1, 0)
+	assert1(strcmp(before, after) != 0)
+	wbt_expect_kept(check_g2, c"e.w", c"int e():\n\treturn 1\n")
+
+	# The re-check: after an edit, g1's next query is answered from a
+	# memo the daemon refilled in the background.
+	int stored = 0
+	for attempt in range(10):
+		int refreshed = wbt_status_int(c"refreshed")
+		wbt_write(c"gh.w", c"int gh():\n\treturn 1\n")
+		wbt_wait_refresh_idle()
+		if (wbt_status_int(c"refreshed") == refreshed): continue
+		int hits = wbt_status_int(c"hits")
+		wbt_compare(c"bin/wv2", check_g1, 0)
+		if (wbt_status_int(c"hits") > hits):
+			stored = 1
+			break
+	assert1(stored)
+
+	# An edit landing while that re-check runs overtakes it: the run is
+	# discarded and redone, never stored with what it read before.
+	int caught = 0
+	for attempt in range(10):
+		if (caught): break
+		int discarded = wbt_status_int(c"refresh_discarded")
+		wbt_write(c"gh.w", c"int gh():\n\treturn 2\n")
+		for waited in range(0, 5000, 5):
+			if (strcmp(wbt_status_string(c"refresh"), c"running") == 0):
+				wbt_write(c"gh.w", c"int gh():\n\treturn 3\n\n\nvoid gh_warn3(char* s):\n\tint* q = s\n")
+				caught = 1
+				break
+			process_sleep_ms(5)
+		wbt_wait_refresh_idle()
+		if (caught): assert1(wbt_status_int(c"refresh_discarded") > discarded)
+	print_int(c"caught a re-check running: ", caught)
+	char* raced = wbt_compare(c"bin/wv2", check_g1, 0)
+	# Only the second edit has a warning (diagnostics name no function).
+	if (caught): assert1(contains(raced, c"\"severity\": \"warning\""))
+
+	# A module moved away with its directory: the importer's answer goes.
+	assert_equal(0, mkdir(wbt_path(c"sub"), 493))
+	wbt_write(c"sub/x.w", c"int x():\n\treturn 0\n")
+	char* x_module = strjoin(wbt_module(c"sub"), c".x")
+	wbt_write(c"g3.w", wbt_importing(x_module, c"int main():\n\treturn x()\n"))
+	char* check_g3 = wbt_args2(c"check --json ", c"g3.w")
+	wbt_compare(c"bin/wv2", check_g3, 0)
+	assert_equal(0, rename(wbt_path(c"sub"), wbt_path(c"sub2")))
+	wbt_compare(c"bin/wv2", check_g3, 0)
+	wbt_compare(c"bin/wv2", check_g2, 0)
+
+	# A module appearing at the checkout root shadows the bin/ copy an
+	# import resolved to until now.
+	char* bin_shadow = wbt_shadow_dir(c"bin/")
+	char* top_shadow = wbt_shadow_dir(c"")
+	assert_equal(0, mkdir(bin_shadow, 493))
+	assert1(file_write_text(strjoin(bin_shadow, c"/m.w"), c"int shadowed():\n\treturn 0\n"))
+	char* shadow_module = strjoin(top_shadow, c".m")
+	wbt_write(c"s.w", wbt_importing(shadow_module, c"int main():\n\treturn shadowed()\n"))
+	char* deps_s = wbt_args2(c"deps ", c"s.w")
+	char* check_s = wbt_args2(c"check --json ", c"s.w")
+	char* deps_before = wbt_compare(c"bin/wv2", deps_s, 0)
+	assert1(has_line(deps_before, strjoin(bin_shadow, c"/m.w")))
+	char* unshadowed = wbt_compare(c"bin/wv2", check_s, 0)
+	assert1(contains(unshadowed, c"\"severity\": \"warning\"") == 0)
+	assert_equal(0, mkdir(top_shadow, 493))
+	assert1(file_write_text(strjoin(top_shadow, c"/m.w"), c"int shadowed():\n\treturn 1\n\n\nvoid shadow_warn(char* s):\n\tint* q = s\n"))
+	char* deps_after = wbt_compare(c"bin/wv2", deps_s, 0)
+	assert1(has_line(deps_after, strjoin(top_shadow, c"/m.w")))
+	char* shadow_check = wbt_compare(c"bin/wv2", check_s, 0)
+	assert1(contains(shadow_check, c"\"severity\": \"warning\""))
+	unlink(strjoin(top_shadow, c"/m.w"))
+	rmdir(top_shadow)
+	unlink(strjoin(bin_shadow, c"/m.w"))
+	rmdir(bin_shadow)
+	wbt_compare_all()
 
 
 void test_wbuildd_matches_one_shot():
@@ -345,12 +536,19 @@ void test_wbuildd_matches_one_shot():
 	# Edit a module in a.w's closure: the memoized check of a.w must be
 	# invalidated (it now carries the helper's new warning).
 	char* a_check_args = wbt_args2(c"check --json ", c"a.w")
+	# The count proves the edit itself dropped the answer, unless the
+	# whole memo went first: an inotify queue overflow under a parallel
+	# './wbuild tests' (memo_clears and last_clear in status say so).
+	# Until the module graph, any scratch .w file another test created
+	# under bin/ dropped the whole memo too, which is how this assertion
+	# flaked under load.
+	int clears_before = wbt_status_int(c"memo_clears")
 	char* before_edit = wbt_compare(c"bin/wv2", a_check_args, 0)
 	int invalidations_before = wbt_status_int(c"invalidations")
 	wbt_write(c"helper.w", c"int helper():\n\treturn 0\n\n\nvoid helper2(char* s):\n\tint* q = s\n")
 	char* after_edit = wbt_compare(c"bin/wv2", a_check_args, 0)
 	assert1(strcmp(before_edit, after_edit) != 0)
-	assert1(wbt_status_int(c"invalidations") > invalidations_before)
+	if (wbt_status_int(c"memo_clears") == clears_before): assert1(wbt_status_int(c"invalidations") > invalidations_before)
 	wbt_compare_all()
 
 	# The root stops importing the helper (a content edit, not a
@@ -373,6 +571,8 @@ void test_wbuildd_matches_one_shot():
 	wbt_compare(c"bin/wv2", wbt_args2(c"check --json ", c"d.w"), 0)
 	unlink(wbt_path(c"helper.w"))
 	wbt_compare_all()
+
+	wbt_graph_invalidation()
 
 	wbt_wait_prewarm_idle()
 	assert1(wbt_status_int(c"prewarm_runs") >= 1)

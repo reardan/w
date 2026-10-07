@@ -665,17 +665,20 @@ cannot be overwritten in place).
 **Commands.** `bin/wbuildd [--socket P] [--no-daemon|--require-daemon]
 <command>`: `serve` (foreground), `start` (spawns `serve --detach` —
 `setsid`, output to `bin/.wbuildd.log` — and waits until it answers),
-`stop`, `status [--json]`, and the four queries `check|deps|symbols
+`stop`, `status [--json]`, `affected PATH...` (the memoized queries an
+edit to PATH would invalidate; it asks a running daemon and never
+starts one), and the four queries `check|deps|symbols
 ARGS` (≡ `bin/wv2 check|deps|symbols ARGS`) and `changed ARGS`
 (≡ `bin/wtest changed ARGS`, including a path list on stdin). The
 socket is `bin/.wbuildd.sock` relative to the checkout root; `serve`
-options are `--prewarm-manifest M`, `--no-prewarm`, `--log FILE` and
+options are `--prewarm-manifest M`, `--no-prewarm`, `--no-refresh`
+(no background re-check, below), `--log FILE` and
 `--idle-timeout-ms N` (exit after N ms without a request — what the
 test uses so a failed run cannot leave a daemon behind).
 
 **Protocol.** JSON-RPC 2.0 over `lib/framing.w` Content-Length frames
 (`lib/json_rpc.w`, §2.1), methods `check`, `deps`, `symbols`,
-`test_changed`, `status`, `shutdown`. A query's params are
+`test_changed`, `affected`, `status`, `shutdown` (protocol 3). A query's params are
 `{protocol, cwd, args, stdin?}`; its result is `{stdout, stderr,
 status, cached}` — the one-shot command's raw output bytes rather than
 re-parsed diagnostics, so byte-identity with the one-shot path holds by
@@ -701,15 +704,14 @@ how the gate proves an answer came from the daemon.
   file — the output of `bin/wv2 deps [arch] <root>`, itself memoized.
   A repeat request is answered with no compiler run until inotify
   reports a change to a file in that closure (`check --json w.w`:
-  ~1.2s → ~2ms on the x86_64 host this was built on). Events that can change
-  *resolution* rather than content drop the whole memo: a `.w` file
-  created, deleted or renamed; a directory created or moved; a C
-  header (`.h`/`.c`, the compiler's only non-`.w` inputs via
-  `import c`) edited; `bin/wv2` or `bin/wtest` replaced; an inotify
-  queue overflow (which also re-walks the watches). Requests whose
-  closure cannot be pinned down — several roots, an absolute or `..`
-  path, a root whose `deps` fails (syntax errors) — are never cached,
-  so they always run the compiler. Every request first drains pending
+  ~1.2s → ~2ms on the x86_64 host this was built on). Which answers an
+  event drops is decided by a module graph (below); only a C header
+  (`.h`/`.c`, the compiler's only non-`.w` inputs via `import c`)
+  edited, `bin/wv2` or `bin/wtest` replaced, or an inotify queue
+  overflow (which also re-walks the watches) still drops the whole
+  memo. Requests whose closure cannot be pinned down — several roots,
+  an absolute, `..` or dot-directory path, a root whose `deps` fails
+  (syntax errors) — are never cached, so they always run the compiler. Every request first drains pending
   inotify events, so an edit that finished before the request was sent
   is always seen. The memo is bounded (256 answers, oldest evicted
   first).
@@ -742,6 +744,96 @@ variables today). C headers outside the tree (`/usr/include`) are not
 watched; restart the daemon after changing system headers. The
 build RPC (below) now covers §2.4's target layer; wiring `wtest` and
 `w` themselves to try the daemon first is still open.
+
+### Module-graph invalidation and background re-check (completion plan C3.4)
+
+**The graph.** The memo's closures form a graph built with
+`compiler/module_graph.w`, the compiler-free half of
+`compiler/module_dependencies.w`. It is the same graph type and the
+same `module_dependencies_invalidate` walk. There is one node per file
+any closure named and one node per memoized answer, with an edge from
+the answer to every file it read. "Which answers does this edit affect"
+is `module_dependencies_invalidate` over the edited paths, and
+`bin/wbuildd affected PATH...` prints exactly that set without dropping
+anything. When an answer goes, `module_dependencies_forget` detaches its
+node, and the next stored answer reuses the node, so the graph does not
+grow with churn. The graph is reset with the memo.
+
+The snapshot is the import closure that `bin/wv2 deps` printed, not the
+compiler's retained binding/type edges. A check's output depends on
+every file it read, including warnings in an imported module whose
+bindings the root never uses. So the file-level closure is the precise
+set here, and the narrower per-binding edges would be unsound for it.
+
+**Resolution events, narrowed.** Before C3.4, a `.w` file created,
+deleted or renamed anywhere, or a directory created or moved, dropped
+the whole memo, because it could change what an import resolves to.
+Under the compiler's search order (the working directory, then its
+parents, then the compiler binary's directory and its parents,
+`compile_relative_path`), a cached closure resolved every import at
+its first candidate inside the checkout. An import found in a parent
+directory prints an absolute path, and such closures are never cached.
+So a path P appearing can only redirect imports that fell through to
+`bin/P`. A `.w` event at P now drops the answers that read P, plus, for
+a create or a rename onto P, the answers that read `bin/P`. A directory
+event drops the answers that read a path under it or under its `bin/`
+twin. One consequence: an editor that saves by writing a temporary file
+and renaming it over the original (IN_MOVED_TO) used to drop every
+answer, and now drops only the answers that read that file. A test
+creating scratch `.w` files under `bin/` now drops nothing.
+
+**Background re-check.** Dropped answers are queued and re-computed in
+the background:
+
+- debounced 200 ms, and one compiler run at a time;
+- at most 8 per burst (`wbd_refresh_limit`), most recently used first,
+  with a `deps` query that a queued `check` brings along evicted first;
+- a check's missing closure runs its `deps` alongside it, so a re-check
+  costs the longer of the two runs, not their sum.
+
+While a re-check runs, a stand-in answer node carries the dropped
+answer's closure. An event touching any of those files marks the run
+stale and kills it, and it is queued again (up to three times). A run
+that read a file outside the old closure is stored only if no event
+arrived while it ran. A request for an answer being re-checked waits
+for that run instead of starting a second one. `status` reports
+`refresh` (idle/pending/running/disabled), `refreshed`,
+`refresh_discarded`, `graph_modules`, `memo_clears` and `last_clear`
+(the cause of the latest whole-memo drop). `serve --no-refresh` or
+`WBUILDD_REFRESH=0` turns the re-check off; invalidation is unchanged.
+
+**Measured.** The setup: 18 roots (every 20th `tests/*_test.w` plus
+`module_dependencies_test`, `ast_retained_memory_test`,
+`did_you_mean_test`, `sha256_test`, `tools/wbuildd.w` and
+`tools/deps_cache.w`) were checked through one daemon (36 memo entries:
+each check plus its deps). Then a one-line comment was appended to a
+file, either written in place or saved by rename. "Dropped" counts memo
+entries; "re-checked" counts compiler runs for roots. "To all warm" is
+the time from the edit until all 18 roots had been answered again: the
+background re-check plus a query of every root.
+`compiler/tokenizer.w` is read by 2 of the roots; `lib/sha256.w`, a
+leaf with no imports, by 6. The host was the 4-core box, lightly
+loaded.
+
+| Edit | Save | main: dropped / re-run on next query / to all warm | C3.4: dropped / re-checked in background / next round (misses) / to all warm |
+| --- | --- | --- | --- |
+| `compiler/tokenizer.w` | in place | 4 / 2 roots / 2.85 s | 4 / 2 roots / 0.05 s (0) / 1.63 s |
+| `compiler/tokenizer.w` | rename | 36 / 18 roots / 6.07 s | 4 / 2 roots / 0.04 s (0) / 1.72 s |
+| `lib/sha256.w` | in place | 12 / 6 roots / 4.29 s | 12 / 6 roots / 0.05 s (0) / 2.91 s |
+| `lib/sha256.w` | rename | 36 / 18 roots / 5.96 s | 12 / 6 roots / 0.05 s (0) / 3.38 s |
+
+If the agent queries immediately after the save, without waiting for
+the background run, the round takes 1.4-2.3 s with C3.4 (1-3 misses;
+the rest were refreshed while it queried), against 2.9-6.1 s on main.
+
+**What it does not do.** It does not make builds incremental. A
+re-check is a full `bin/wv2 check` of that root; it reuses no compiled
+code. Per-definition reuse needs relocatable definition records
+([incremental_compilation.md](incremental_compilation.md), "Per-definition
+relocation"). The answer/file graph is rebuilt from `deps` output; the
+compiler's retained graph is not shipped to the daemon. A new file in a
+*parent* of the checkout that shadows a `bin/` fallback is outside the
+watched tree, as before.
 
 ### Build RPC, auto-start and `verify_warm` (issue #483)
 

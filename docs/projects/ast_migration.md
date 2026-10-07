@@ -1423,3 +1423,50 @@ nested default-manifest `bin/wexec` (for example `wexec_test`'s
 `WEXEC_LOCK_HELD` exemption assumes its parent is blocked on that one step,
 which holds only at `-j 1`. The canary covers only `w.w`'s closure on two
 hosts, not the language corpus, and the CI leg does not remove that race.
+
+## Module-dependency invalidation in wbuildd (C3.4)
+
+`tools/wbuildd.w` now decides which memoized answers an edit affects
+with the module-dependency graph instead of scanning closures. The
+compiler-free half of `compiler/module_dependencies.w`
+(the graph type, `module_dependency_add`, `module_dependencies_invalidate`,
+`module_dependencies_free`, plus new `module_graph_new`,
+`module_graph_add_module` and `module_dependencies_forget`) moved to
+`compiler/module_graph.w`. The daemon imports that without the compiler;
+`module_dependencies_build` still fills the same type from the retained
+forest. The daemon's graph has one node per file and one per memoized
+answer, built from the `bin/wv2 deps` closure that pins each answer.
+`module_dependencies_invalidate` over the edited paths gives the answers
+to drop, and `bin/wbuildd affected PATH...` prints them.
+
+Resolution-changing events no longer drop the whole memo:
+
+- A `.w` file created, deleted or renamed drops the answers that read
+  that path, or its `bin/` fallback twin, which a new file shadows.
+- A directory event drops the answers that read a path under it.
+- A C header, a rebuilt `bin/wv2` or `bin/wtest`, and an inotify
+  overflow still drop the whole memo.
+
+Dropped answers are re-checked in the background. The run is bounded,
+most recently used first, and discarded if an edit overtakes it. So the
+next query after a save is usually a memo hit. For an 18-root working
+set, saving `compiler/tokenizer.w` by rename used to drop all 36 memo
+entries and cost 6.1 s to re-answer every root. It now drops 4 entries,
+re-checks 2 roots in the background, and every root is warm again in
+1.7 s ([wbuildd.md](wbuildd.md) §8 has the full table). That
+change also fixed a `wbuildd_test` flake: under a parallel
+`./wbuild tests`, another test's scratch `.w` file under `bin/`
+cleared the memo between the test's "before" query and its edit.
+
+What it does not claim:
+
+- The graph is file-level and comes from `deps` output, not from the
+  retained binding/type edges. A check's output depends on every file
+  it read, so file-level is the sound granularity for re-checking.
+- A re-check is a full compile of that root; no machine code is
+  reused. Per-definition relocation, which build-level reuse needs, is
+  designed in
+  [incremental_compilation.md](incremental_compilation.md)
+  ("Per-definition relocation") and is not implemented.
+- `wbuildd_test` and `module_dependencies_test` (plus its x64 twin)
+  are the gates. **#489 remains open.**
