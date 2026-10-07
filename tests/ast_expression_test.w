@@ -3170,6 +3170,18 @@ void test_ast_first_use_container_repl_recovery():
 # wbuild: step="cmp bin/wv3_64 bin/streaming_wv3_64"
 # wbuild: step="bin/streaming_wv3_64 x64 --streaming --strict w.w -o bin/streaming_wv4_64"
 # wbuild: step="cmp bin/streaming_wv3_64 bin/streaming_wv4_64"
+# wbuild: step="bin/wv2 arm64 --strict w.w -o bin/retained_arm64"
+# wbuild: step="bin/wv2 arm64 --streaming --strict w.w -o bin/streaming_arm64"
+# wbuild: step="cmp bin/retained_arm64 bin/streaming_arm64"
+# wbuild: step="bin/wv2_64 arm64_darwin --strict w.w -o bin/retained_arm64_darwin"
+# wbuild: step="bin/wv2_64 arm64_darwin --streaming --strict w.w -o bin/streaming_arm64_darwin"
+# wbuild: step="cmp bin/retained_arm64_darwin bin/streaming_arm64_darwin"
+# wbuild: step="bin/wv2 win64 --strict w.w -o bin/retained_win64.exe"
+# wbuild: step="bin/wv2 win64 --streaming --strict w.w -o bin/streaming_win64.exe"
+# wbuild: step="cmp bin/retained_win64.exe bin/streaming_win64.exe"
+# wbuild: step="bin/wv2_64 wasm --strict w.w -o bin/retained_wasm.wasm"
+# wbuild: step="bin/wv2_64 wasm --streaming --strict w.w -o bin/streaming_wasm.wasm"
+# wbuild: step="cmp bin/retained_wasm.wasm bin/streaming_wasm.wasm"
 
 # wbuild: target=ast_required_expression_verify tag=tests dep=build dep=build_x64
 # wbuild: step="bin/wv2 --ast-required --strict w.w -o bin/ast_required_wv3"

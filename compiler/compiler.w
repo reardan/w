@@ -863,6 +863,8 @@ int link_option(char* arg, int apply):
 			ast_required_mode = 1
 		return 1
 	# S2.1: emit expressions from the retained forest (implies --ast-retain).
+	# S2.5: the default for every compile (link_impl), like --ast-retain;
+	# both stay accepted and still conflict with --streaming.
 	if (strcmp(arg, c"--ast-emit-retained") == 0):
 		if (apply):
 			ast_expressions_mode = 2
@@ -957,10 +959,10 @@ void help_shared_options():
 	println(c"  --ast-expressions     with --streaming: AST for grouped scalar expressions only")
 	println(c"  --ast-full-expressions AST at every expression (the default; kept for scripts)")
 	println(c"  --ast-audit           JSON fallback records on stderr for each streaming fallback")
-	println(c"  --ast-retain          retain owned traversal trees (experimental)")
+	println(c"  --ast-retain          retain owned traversal trees (the default; kept for scripts)")
 	println(c"  --ast-required        reject any expression fallback (coverage gate)")
 	# S2.1
-	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
+	println(c"  --ast-emit-retained   emit from the retained AST (the default; kept for scripts)")
 	# P1
 	println(c"  --coverage            count executable statement lines; report with wcoverage lines")
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
@@ -1227,7 +1229,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_audit_mode = 0
 	ast_required_mode = 0
 	# S2.1: retained-forest expression emission and its --stats counter.
-	ast_emit_retained_mode = 0
+	# S2.5: every compile emits from the retained forest, so it retains
+	# one; --streaming turns both off below.
+	ast_emit_retained_mode = 1
+	ast_retain_mode = 1
 	ast_retained_emitted = 0
 	# S2.2a: retained statement walks and their --stats counter.
 	ast_retained_statements_emitted = 0
@@ -1343,9 +1348,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# tree query) have no streaming meaning; check --all-errors recovers in
 	# process on either front end (C3.1).
 	if (streaming_flag):
-		if (ast_retain_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
+		# S2.5: retention is the default, so only a retaining query
+		# conflicts here without an explicit flag.
+		if (retained_query_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
 		if (ast_only_flag != 0): streaming_conflict_error(ast_only_flag)
 		ast_expressions_mode = 0
+		ast_retain_mode = 0
+		ast_emit_retained_mode = 0
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
 	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):

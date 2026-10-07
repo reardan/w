@@ -55,9 +55,8 @@ int retained_type_note(int index):
 	index = type_real(index)
 	if ((index < 0) || (index >= type_count())): return -1
 	type_rec* original = type_record(index)
-	if (retained_type_cache == 0): retained_type_cache = new map[int, int]
-	if (index in retained_type_cache):
-		int existing = retained_type_cache[index]
+	int existing = retained_type_cached(index)
+	if (existing >= 0):
 		if (retained_type_matches(retained_types[existing], original)): return existing
 	if (retained_types == 0): retained_types = new list[retained_type*]
 	retained_type* type = new retained_type
@@ -84,7 +83,7 @@ int retained_type_note(int index):
 	int id = retained_types.length
 	retained_types.push(type)
 	# Publish before recursion: pointers and fields may form cycles.
-	retained_type_cache[index] = id
+	retained_type_cache_set(index, id)
 	if (original.alias_target >= 0): type.target = retained_type_note(original.alias_target)
 	if (original.pointer_level > 0):
 		int base = type_lookup_previous_pointer(index)
@@ -94,11 +93,19 @@ int retained_type_note(int index):
 		type.return_type = retained_type_note(original.fn_return_type)
 	if (original.kind == type_kind_function):
 		for i in range(original.fn_param_count): type.parameters.push(retained_type_note(original.fn_param_types[i]))
+	# S2.5: type_get_field_offset_at(index, i), summed as the fields go
+	# instead of from the first field each time.
+	int layout_index = type_canonical(index)
+	type_rec* layout = type_record(layout_index)
+	int layout_union = type_get_kind(layout_index) == type_kind_union
+	int layout_offset = 0
 	for i in range(original.num_fields):
 		retained_field* field = new retained_field
 		field.name = retained_intern(original.field_names[i])
 		field.type = retained_type_note(original.field_types[i])
-		field.offset = type_get_field_offset_at(index, i)
+		field.offset = layout_offset
+		if (layout_union): field.offset = 0
+		if (i + 1 < original.num_fields): layout_offset = layout_offset + type_get_size(layout.field_types[i])
 		type.fields.push(field)
 	if ((original.kind == type_kind_enum) && (enum_constants != 0)):
 		for i in range(enum_constants.length):
@@ -139,6 +146,14 @@ int retained_key_text(char* key, int at, char* text, int length):
 	return at + length
 
 
+# 1 when binding's lookup key is the one retained_binding_note spells for
+# these fields.
+int retained_binding_is(retained_binding* binding, int source, int owner, int scope, int line, int column, int file_index, char* name):
+	if ((binding.source != source) || (binding.owner != owner) || (binding.scope != scope)): return 0
+	if ((binding.key_line != line) || (binding.key_column != column) || (binding.key_file_index != file_index)): return 0
+	return strcmp(binding.name, name) == 0
+
+
 int retained_binding_note(int sym, int owner):
 	if (sym < 0): return -1
 	sym_index_sync()
@@ -161,6 +176,24 @@ int retained_binding_note(int sym, int owner):
 	if ((scope == 'L') || (scope == 'A')):
 		while ((owner >= 0) && (retained_nodes[owner].kind != retained_function)): owner = retained_nodes[owner].parent
 	else: owner = -1
+	# S2.5: a binding whose key fields all match is the one the key map
+	# would return (keys are unique), so try the front cache and then the
+	# raw symbol's own chain before spelling the key.
+	if (retained_binding_front == 0):
+		retained_binding_front = cast(int*, malloc(retained_binding_slots * __word_size__))
+		for i in range(retained_binding_slots): retained_binding_front[i] = -1
+	int front = (sym >> 2) & (retained_binding_slots - 1)
+	int candidate = retained_binding_front[front]
+	if ((candidate >= 0) && (candidate < retained_bindings.length)):
+		if (retained_binding_is(retained_bindings[candidate], source, owner, scope, line, column, file_index, name)): return candidate
+	if (retained_binding_origins != 0):
+		candidate = retained_binding_origins.get(sym, -1)
+		while (candidate >= 0):
+			retained_binding* record = retained_bindings[candidate]
+			if (retained_binding_is(record, source, owner, scope, line, column, file_index, name)):
+				retained_binding_front[front] = candidate
+				return candidate
+			candidate = record.origin_previous
 	# A debug file index names exactly one path for the whole process, so
 	# it identifies the declaring file as the path itself would.
 	int name_length = strlen(name)
@@ -181,7 +214,9 @@ int retained_binding_note(int sym, int owner):
 		retained_binding_cache = new map[char*, int]
 		retained_binding_origins = new map[int, int]
 	int existing = retained_binding_cache.get(key, -1)
-	if (existing >= 0): return existing
+	if (existing >= 0):
+		retained_binding_front[front] = existing
+		return existing
 	key = strclone(key)
 	if (retained_bindings == 0): retained_bindings = new list[retained_binding*]
 	retained_binding* binding = new retained_binding
@@ -190,6 +225,9 @@ int retained_binding_note(int sym, int owner):
 	binding.file = retained_intern(path)
 	binding.line = line
 	binding.column = column
+	binding.key_line = line
+	binding.key_column = column
+	binding.key_file_index = file_index
 	# Inferred declarations bind after parsing the initializer. Their raw
 	# symbol location can therefore point at the next token. Keep that
 	# location in the lookup key so later uses find this same record, but
@@ -231,6 +269,7 @@ int retained_binding_note(int sym, int owner):
 	retained_bindings.push(binding)
 	retained_binding_cache[key] = id
 	retained_binding_origins[sym] = id
+	retained_binding_front[front] = id
 	return id
 
 
@@ -328,10 +367,6 @@ void retained_expression_note(expression_ast* tree, int root):
 				node.binding_slot = binding.slot
 
 	retained_leave(group, tree.end_offset)
-	# S2.1: lower the retained group, not the temporary parse.
-	if (ast_emit_retained_mode):
-		int retained_root = retained_emit_expression_group(tree, group)
-		assert1(retained_root == root)
 
 
 # Definition hooks run after the declaration. Adopt its already retained

@@ -1,10 +1,11 @@
-# S2.1: emit expressions from the retained forest (--ast-emit-retained).
-# retained_expression_note copies each prepared expression arena into a
-# retained group just before emission. In this mode the adapter below then
-# reconstitutes the arena from that group alone, overwriting every node
-# column and the decoded text/type-name arenas, so the backend visitor in
-# code_generator/expression_ast.w lowers retained data rather than the
-# temporary parse. Node IDs stay group-local, so the root is the group's op.
+# S2.1: emit expressions from the retained forest (--ast-emit-retained; the
+# default for every AST compile since S2.5). retained_expression_note copies
+# each prepared expression arena into a retained group just before emission,
+# and emit_prepared_expression_ast (code_generator/expression_ast.w) or a
+# statement walk then has the adapter below reconstitute the arena from that
+# group alone, overwriting every node column and the decoded text/type-name
+# arenas, so the backend visitor in code_generator/expression_ast.w lowers
+# retained data rather than the temporary parse. Node IDs stay group-local, so the root is the group's op.
 #
 # The retained copy closes the arena's borrowed and overloaded slots as
 # follows (each was a gap found by compiling with this mode):
@@ -35,6 +36,7 @@ int ast_emit_retained_mode
 int ast_retained_emitted
 
 
+# Callers compare first (S2.5: one call per mismatch, not per column).
 void retained_emit_check(int expected, int actual, char* column):
 	if (expected == actual): return
 	error3(c"internal error: --ast-emit-retained: retained ", column, c" differs from the parsed expression")
@@ -86,23 +88,23 @@ int retained_emit_expression_group(expression_ast* tree, int group):
 	int count = 0
 	int limit = retained_nodes.length
 	while ((group + 1 + count < limit) && (retained_nodes[group + 1 + count].parent == group)): count = count + 1
-	retained_emit_check(tree.count, count, c"count")
+	if (tree.count != count): retained_emit_check(tree.count, count, c"count")
 	assert1(count <= tree.capacity)
-	retained_emit_check(tree.text_used, owner.arena_text_length, c"text")
-	retained_emit_check(tree.type_names_used, owner.arena_type_names_length, c"type_names")
+	if (tree.text_used != owner.arena_text_length): retained_emit_check(tree.text_used, owner.arena_text_length, c"text")
+	if (tree.type_names_used != owner.arena_type_names_length): retained_emit_check(tree.type_names_used, owner.arena_type_names_length, c"type_names")
 	for i in range(owner.arena_text_length):
-		retained_emit_check(tree.text[i], owner.arena_text[i], c"text")
+		if (tree.text[i] != owner.arena_text[i]): retained_emit_check(tree.text[i], owner.arena_text[i], c"text")
 		tree.text[i] = owner.arena_text[i]
 	for i in range(owner.arena_type_names_length):
-		retained_emit_check(tree.type_names[i], owner.arena_type_names[i], c"type_names")
+		if (tree.type_names[i] != owner.arena_type_names[i]): retained_emit_check(tree.type_names[i], owner.arena_type_names[i], c"type_names")
 		tree.type_names[i] = owner.arena_type_names[i]
 	tree.count = count
 	tree.text_used = owner.arena_text_length
 	tree.type_names_used = owner.arena_type_names_length
-	retained_emit_check(tree.end_offset, owner.end, c"end_offset")
-	retained_emit_check(tree.readonly, owner.readonly, c"readonly")
-	retained_emit_check(tree.whole_expression, owner.whole_expression, c"whole_expression")
-	retained_emit_check(tree.final_token_offset, owner.final_token_offset, c"final_token_offset")
+	if (tree.end_offset != owner.end): retained_emit_check(tree.end_offset, owner.end, c"end_offset")
+	if (tree.readonly != owner.readonly): retained_emit_check(tree.readonly, owner.readonly, c"readonly")
+	if (tree.whole_expression != owner.whole_expression): retained_emit_check(tree.whole_expression, owner.whole_expression, c"whole_expression")
+	if (tree.final_token_offset != owner.final_token_offset): retained_emit_check(tree.final_token_offset, owner.final_token_offset, c"final_token_offset")
 	tree.end_offset = owner.end
 	tree.readonly = owner.readonly
 	tree.whole_expression = owner.whole_expression
@@ -116,31 +118,31 @@ int retained_emit_expression_group(expression_ast* tree, int group):
 		int signature = retained_emit_type(node.generic_signature, node.type_value_flags & 1)
 		int receiver = retained_emit_type(node.call_receiver_type, node.type_value_flags & 2)
 		int want = retained_emit_type(node.infer_want, node.type_value_flags & 4)
-		retained_emit_check(tree.op[i], node.op, c"op")
-		retained_emit_check(tree.left[i], node.left, c"left")
-		retained_emit_check(tree.right[i], node.right, c"right")
-		retained_emit_check(tree.offset[i], at, c"offset")
+		if (tree.op[i] != node.op): retained_emit_check(tree.op[i], node.op, c"op")
+		if (tree.left[i] != node.left): retained_emit_check(tree.left[i], node.left, c"left")
+		if (tree.right[i] != node.right): retained_emit_check(tree.right[i], node.right, c"right")
+		if (tree.offset[i] != at): retained_emit_check(tree.offset[i], at, c"offset")
 		# A message is compared by text: the retained copy is interned.
 		int original = tree.value[i]
 		if (retained_emit_message(node) && original && (strcmp(cast(char*, original), node.payload_text) == 0)): original = value
-		retained_emit_check(original, value, c"value")
-		retained_emit_check(tree.result_type[i], result, c"result_type")
-		retained_emit_check(tree.high[i], node.high, c"high")
-		retained_emit_check(tree.next_arg[i], node.next_arg, c"next_arg")
-		retained_emit_check(tree.in_cast[i], node.in_cast, c"in_cast")
-		retained_emit_check(tree.binding_name[i], node.binding_text_offset, c"binding_name")
-		retained_emit_check(tree.binding_offset[i], node.binding_offset, c"binding_offset")
-		retained_emit_check(tree.symbol[i], symbol, c"symbol")
-		retained_emit_check(tree.qualified[i], node.qualified, c"qualified")
-		retained_emit_check(tree.it_slot[i], node.it_slot, c"it_slot")
-		retained_emit_check(tree.generic_parameters[i], node.generic_parameters, c"generic_parameters")
-		retained_emit_check(tree.generic_signature[i], signature, c"generic_signature")
-		retained_emit_check(tree.generic_offset[i], node.generic_offset, c"generic_offset")
-		retained_emit_check(tree.generic_instance[i], node.generic_instance, c"generic_instance")
-		retained_emit_check(tree.generic_arity[i], node.generic_arity, c"generic_arity")
-		retained_emit_check(tree.infer_coercion[i], node.infer_coercion, c"infer_coercion")
-		retained_emit_check(tree.call_receiver_type[i], receiver, c"call_receiver_type")
-		retained_emit_check(tree.infer_want[i], want, c"infer_want")
+		if (original != value): retained_emit_check(original, value, c"value")
+		if (tree.result_type[i] != result): retained_emit_check(tree.result_type[i], result, c"result_type")
+		if (tree.high[i] != node.high): retained_emit_check(tree.high[i], node.high, c"high")
+		if (tree.next_arg[i] != node.next_arg): retained_emit_check(tree.next_arg[i], node.next_arg, c"next_arg")
+		if (tree.in_cast[i] != node.in_cast): retained_emit_check(tree.in_cast[i], node.in_cast, c"in_cast")
+		if (tree.binding_name[i] != node.binding_text_offset): retained_emit_check(tree.binding_name[i], node.binding_text_offset, c"binding_name")
+		if (tree.binding_offset[i] != node.binding_offset): retained_emit_check(tree.binding_offset[i], node.binding_offset, c"binding_offset")
+		if (tree.symbol[i] != symbol): retained_emit_check(tree.symbol[i], symbol, c"symbol")
+		if (tree.qualified[i] != node.qualified): retained_emit_check(tree.qualified[i], node.qualified, c"qualified")
+		if (tree.it_slot[i] != node.it_slot): retained_emit_check(tree.it_slot[i], node.it_slot, c"it_slot")
+		if (tree.generic_parameters[i] != node.generic_parameters): retained_emit_check(tree.generic_parameters[i], node.generic_parameters, c"generic_parameters")
+		if (tree.generic_signature[i] != signature): retained_emit_check(tree.generic_signature[i], signature, c"generic_signature")
+		if (tree.generic_offset[i] != node.generic_offset): retained_emit_check(tree.generic_offset[i], node.generic_offset, c"generic_offset")
+		if (tree.generic_instance[i] != node.generic_instance): retained_emit_check(tree.generic_instance[i], node.generic_instance, c"generic_instance")
+		if (tree.generic_arity[i] != node.generic_arity): retained_emit_check(tree.generic_arity[i], node.generic_arity, c"generic_arity")
+		if (tree.infer_coercion[i] != node.infer_coercion): retained_emit_check(tree.infer_coercion[i], node.infer_coercion, c"infer_coercion")
+		if (tree.call_receiver_type[i] != receiver): retained_emit_check(tree.call_receiver_type[i], receiver, c"call_receiver_type")
+		if (tree.infer_want[i] != want): retained_emit_check(tree.infer_want[i], want, c"infer_want")
 		tree.op[i] = node.op
 		tree.left[i] = node.left
 		tree.right[i] = node.right
@@ -343,10 +345,7 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 	retained_statement_walk* walk = retained_walks[id]
 	retained_init()
 	int group = retained_nodes.length
-	int lowering = ast_emit_retained_mode
-	ast_emit_retained_mode = 0
 	retained_expression_note(tree, root)
-	ast_emit_retained_mode = lowering
 	assert1(retained_nodes[group].kind == retained_expression_group)
 	walk.tree = tree
 	walk.group = group
@@ -462,6 +461,9 @@ int retained_source_reparses
 int retained_source_end_positions
 list[int] retained_window_fds
 list[int] retained_window_buffers
+# S2.5: 1 for a window on /dev/null, which already holds every byte its
+# re-parse may read (see retained_window_complete).
+list[int] retained_window_null
 
 
 # 1 when grammar/generic.w may build types from retained trees: the mode is
@@ -515,6 +517,7 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	if (follow >= length): follow = -1
 	int fd = -1
 	if (follow != -1): fd = open(c"/dev/null", 0, 511)
+	int null_window = fd >= 0
 	if (fd < 0):
 		# The span may end the file (or the host has no /dev/null): a
 		# descriptor that can re-read the prefix, at the window's end.
@@ -530,8 +533,10 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	if (retained_window_fds == 0):
 		retained_window_fds = new list[int]
 		retained_window_buffers = new list[int]
+		retained_window_null = new list[int]
 	retained_window_fds.push(fd)
 	retained_window_buffers.push(getchar_buf_addr[fd])
+	retained_window_null.push(null_window)
 	# Room for one more read, as ast_expression_refill expects of a window.
 	char* copy = cast(char*, malloc(length + GETCHAR_BUF_CAPACITY))
 	char* bytes = record.bytes
@@ -566,6 +571,19 @@ void retained_window_release(int top):
 	getchar_reset(fd)
 	retained_window_fds.pop()
 	retained_window_buffers.pop()
+	retained_window_null.pop()
+
+
+# S2.5: 1 when fd is the innermost retained window and reads /dev/null.
+# Its window is the whole recorded version and a read adds nothing, so
+# ast_expression_refill leaves it as it is instead of compacting it: a
+# compacted window would lose the prefix that a diagnostic's context line
+# (diag_context_collect) seeks back to, and /dev/null cannot re-read it.
+int retained_window_complete(int fd):
+	if (retained_window_fds == 0): return 0
+	int top = retained_window_fds.length
+	if ((top == 0) || (retained_window_fds[top - 1] != fd)): return 0
+	return retained_window_null[top - 1]
 
 
 # Close the descriptor a re-parse read from: a retained window gives its

@@ -464,7 +464,14 @@ int getc():
 		c = getc_buffer[getchar_pos[file]] & 255
 		getchar_pos[file] = getchar_pos[file] + 1
 		if (ast_retain_mode):
-			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
+			# S2.5: retained_source_byte's common case, appending a byte that
+			# is not a newline to the current version, without the call.
+			retained_source* recorded = retained_last_record
+			if ((filename != 0) && (filename == retained_last_path) && (byte_offset == recorded.length) && (byte_offset < recorded.capacity) && (c != 10)):
+				recorded.bytes[byte_offset] = c
+				recorded.length = byte_offset + 1
+				retained_last_root.end = byte_offset + 1
+			else if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
 		byte_offset = byte_offset + 1
 		return c
 	c = getchar_checked(file)
