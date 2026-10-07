@@ -22,23 +22,27 @@ changed since the profile was taken -- silently stops matching and the
 function is "unknown" (the static heuristic applies), never
 mis-optimised. The hash has to be known at the START of the body, before
 a byte of it is emitted and before the definition's end offset exists
-(defhash_note runs after the body). profile_use_function_begin computes
-it by a bounded look-ahead over the same source bytes: it saves the
-lexer (tokenizer_snapshot), reopens the current file on its own
-descriptor, seeks to the definition's first token (the offset the
-top-level recognizer in grammar/program.w and generic_instantiate_function
-in grammar/generic.w store in profile_use_definition_start -- the same
-start defhash_note later records) and runs get_token() over the span,
-feeding the "<kind><len>:<text>" stream of compiler.w's
-defhash_process_span into sha256 until the first token that opens a new
-line at tab level 0, which is where the body ends for every definition
-that parses (a continuation line at tab level 0 inside a body ends the
-scan early, mismatches, and is "unknown"). Deterministic -- it reads the
-file, not the parse state -- and paid only for functions whose name the
-profile knows at all: profile_use_names is the prefilter, so the ~75% of
-a self-compile's functions that never ran cost one map probe. The
-look-ahead re-lexes roughly a quarter of the source once more (the
-tokens of the functions that did run); see §11 for the measured cost.
+(defhash_note runs after the body). It comes from the register pre-scan
+(compiler/regalloc_scan.w, compiler/regalloc_profile.w): right before
+the prologue, regalloc_function_scan calls profile_use_function_prepare
+and, when the profile knows the function's name at all
+(profile_use_names is the prefilter, so the ~75% of a self-compile's
+functions that never ran cost one map probe), rs_hash_span re-lexes the
+definition from its first token (the offset grammar/program.w's
+recognizer and generic_instantiate_function store in
+profile_use_definition_start, the same start defhash_note records
+later) through the scanner's byte source -- getchar's window or the fd,
+never the tokenizer -- reproducing get_token's token boundaries and
+feeding profile_hash_token the "<kind><len>:<text>" stream of
+compiler.w's defhash_process_span, until the first token that opens a
+new line at tab level 0, which is where the body ends for every
+definition that parses (a continuation line at tab level 0 inside a body
+ends the scan early, mismatches, and is "unknown"). Deterministic -- it
+reads the source bytes, not the parse state -- and a byte pass, not a
+token pass: phase A's get_token look-ahead cost +8-14% compile time,
+this one is inside the scan's own budget (§11). Any divergence from the
+real tokenizer shows up as a stale count under --stats against a
+freshly refreshed profile, which is the test.
 
 Classes. hot: entries >= profile_use_hot_entries (10,000) or a loop
 whose head evaluations are >= 16 per entry (and >= 256 in all, so a
@@ -126,8 +130,6 @@ int profile_use_file_cache_known
 char* profile_use_buf
 int profile_use_buf_size
 int profile_use_buf_pos
-
-char* defhash_token_kind(char* tok);   /* compiler/compiler.w */
 
 
 # --- queries -------------------------------------------------------------
@@ -263,7 +265,7 @@ void profile_use_name_note(char* name):
 	int i = 0
 	while ((name[i] != 0) && (name[i] != '$')): i = i + 1
 	if (name[i] == '$'):
-		char* base = malloc(i + 1)
+		char* base = cast(char*, malloc(i + 1))
 		int j = 0
 		while (j < i):
 			base[j] = name[j]
@@ -312,7 +314,7 @@ char* profile_use_read_file(char* path):
 	if (fd < 0): return 0
 	int capacity = 65536
 	int length = 0
-	char* text = malloc(capacity + 1)
+	char* text = cast(char*, malloc(capacity + 1))
 	int n = read(fd, text, capacity)
 	while (n > 0):
 		length = length + n
@@ -376,68 +378,65 @@ void profile_use_load(char* path):
 	profile_use_mode = 1
 
 
-# --- the current function -----------------------------------------------
+# --- the span hash, fed by the scan ---------------------------------------
 
-void profile_use_buf_append(char* s):
-	int len = strlen(s)
+void profile_use_buf_reserve(int len):
 	if (profile_use_buf_size == 0):
 		profile_use_buf_size = 4096
-		profile_use_buf = malloc(profile_use_buf_size)
+		profile_use_buf = cast(char*, malloc(profile_use_buf_size))
 	while (profile_use_buf_size <= profile_use_buf_pos + len):
 		int old_size = profile_use_buf_size
 		profile_use_buf_size = profile_use_buf_size << 1
 		profile_use_buf = realloc(profile_use_buf, old_size, profile_use_buf_size)
+
+
+void profile_hash_begin():
+	profile_use_buf_pos = 0
+
+
+# One token of the span, NUL-terminated text of len bytes: the same
+# "<kind><len>:<text>" framing as defhash_process_span (its
+# defhash_token_kind and itoa spelled inline: this runs once per token
+# of every hashed body, so no allocation and no strlen).
+void profile_hash_token(char* text, int len):
+	int c0 = text[0] & 255
+	int kind = 'o'
+	if (c0 == 0): kind = 'e'
+	else if (('0' <= c0) && (c0 <= '9')): kind = 'n'
+	else if (c0 == '"'): kind = 's'
+	else if (c0 == 39): kind = 'h'
+	else if (((c0 == 's') || (c0 == 'c') || (c0 == 'f')) && (text[1] == '"')): kind = 's'
+	else if (is_ident_start_byte(c0)): kind = 'i'
+	profile_use_buf_reserve(len + 16)
+	char* b = profile_use_buf
+	int p = profile_use_buf_pos
+	b[p] = kind
+	p = p + 1
+	int digits = 1
+	int scale = 1
+	while (len / scale >= 10):
+		scale = scale * 10
+		digits = digits + 1
+	while (scale > 0):
+		b[p] = '0' + (len / scale) % 10
+		p = p + 1
+		scale = scale / 10
+	b[p] = ':'
+	p = p + 1
 	int i = 0
 	while (i < len):
-		profile_use_buf[profile_use_buf_pos] = s[i]
-		profile_use_buf_pos = profile_use_buf_pos + 1
+		b[p] = text[i]
+		p = p + 1
 		i = i + 1
+	profile_use_buf_pos = p
 
 
-# The defhash of the definition starting at start_offset in the current
-# file (64 hex, malloc'd), or 0 when the file cannot be reopened. See the
-# header for the look-ahead and its end rule.
-char* profile_use_span_hash(int start_offset):
-	int f = open(filename, 0, 511)
-	if (f < 0): return 0
+# The 64-hex sha256 of the tokens fed since profile_hash_begin (malloc'd).
+char* profile_hash_end():
 	profile_use_hashes_computed = profile_use_hashes_computed + 1
-	tokenizer_snapshot snap
-	tokenizer_snapshot_save(&snap)
-	char* saved_token = strclone(token)
-	int saved_spaces = spaces_warned_line
-	int saved_rehash = defhash_rehash_mode
-	getchar_reset(f)
-	getchar_seek(f, start_offset)
-	file = f
-	byte_offset = start_offset
-	line_number = 0
-	column_number = 0
-	tab_level = 0
-	token_newline = 0
-	nextc = 0
-	nextc = get_character()
-	defhash_rehash_mode = 1
-	profile_use_buf_pos = 0
-	get_token()
-	int first = 1
-	while (token[0] != 0):
-		if ((first == 0) && token_newline && (tab_level == 0)): break
-		first = 0
-		profile_use_buf_append(defhash_token_kind(token))
-		char* len_digits = itoa(strlen(token))
-		profile_use_buf_append(len_digits)
-		free(len_digits)
-		profile_use_buf_append(c":")
-		profile_use_buf_append(token)
-		get_token()
-	defhash_rehash_mode = saved_rehash
-	close(f)
-	tokenizer_snapshot_restore(&snap, saved_token)
-	free(saved_token)
-	spaces_warned_line = saved_spaces
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(profile_use_buf, profile_use_buf_pos, digest)
-	char* hex = malloc(65)
+	char* hex = cast(char*, malloc(65))
 	int i = 0
 	while (i < 32):
 		hex[i * 2] = diag_hex_digit((digest[i] >> 4) & 15)
@@ -448,10 +447,12 @@ char* profile_use_span_hash(int start_offset):
 	return hex
 
 
+# --- the current function -----------------------------------------------
+
 # name with whitespace removed (as the map writer spells it) and cut at
 # the first '$' (a generic instantiation's base name), malloc'd.
 char* profile_use_name_key(char* name):
-	char* out = malloc(strlen(name) + 1)
+	char* out = cast(char*, malloc(strlen(name) + 1))
 	int i = 0
 	int o = 0
 	while ((name[i] != 0) && (name[i] != '$')):
@@ -473,7 +474,7 @@ int profile_use_file_known():
 	profile_use_file_cache_name = filename
 	char* shown = filename
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	int cwd_len = strlen(cwd)
 	if (starts_with(filename, cwd)):
@@ -483,21 +484,30 @@ int profile_use_file_known():
 	return profile_use_file_cache_known
 
 
-# Right after be_function_prologue, through profile_function_enter /
-# profile_generator_enter in code_generator/profile_counters.w (every
-# function body, streaming and retained): classify the function whose
-# body follows and reset its loop ordinal.
-void profile_use_function_begin(int symbol, char* name):
+# The symbol the scan classified last, so the post-prologue hook does
+# not classify it again (and does not consume a fresh definition start).
+int profile_use_begun_symbol
+int profile_use_begun_pending
+
+# Start of a function body (the scan, before the prologue): reset the
+# per-function state and settle what the name alone settles. Returns the
+# definition's start offset when the profile knows the name, so the
+# caller hashes the span and calls profile_use_function_classify; -1
+# when the class is already final (unknown, or cold because the file is
+# covered and the name is not).
+int profile_use_function_prepare(int symbol, char* name):
 	int start = profile_use_definition_start
 	profile_use_definition_start = -1
 	profile_use_current_class = 0
 	profile_use_current_record = -1
 	profile_use_loop_ordinal = 0
-	if (profile_use_mode == 0): return
+	profile_use_begun_symbol = symbol
+	profile_use_begun_pending = 1
+	if (profile_use_mode == 0): return -1
 	profile_use_functions_seen = profile_use_functions_seen + 1
 	if (profile_use_current_name != 0): free(profile_use_current_name)
 	profile_use_current_name = 0
-	if (name == 0): return
+	if (name == 0): return -1
 	profile_use_current_name = strclone(name)
 	char* key = profile_use_name_key(name)
 	int known_name = (key in profile_use_names)
@@ -506,17 +516,18 @@ void profile_use_function_begin(int symbol, char* name):
 		if (profile_use_file_known()):
 			profile_use_current_class = 1
 			profile_use_functions_cold = profile_use_functions_cold + 1
-		return
-	if (start < 0): return
-	char* hex = profile_use_span_hash(start)
+		return -1
+	return start
+
+
+# The span's hash (0 when the scan could not read it): the final class.
+void profile_use_function_classify(char* hex):
 	if (hex == 0): return
 	if ((hex in profile_use_hash_index) == 0):
 		# The body changed since the profile was taken.
 		profile_use_functions_stale = profile_use_functions_stale + 1
-		free(hex)
 		return
 	int r = profile_use_hash_index[hex]
-	free(hex)
 	profile_use_current_record = r
 	int entries = profile_use_record_entries[r]
 	int hot = entries >= profile_use_hot_entries
@@ -527,6 +538,20 @@ void profile_use_function_begin(int symbol, char* name):
 	else:
 		profile_use_current_class = 1
 		profile_use_functions_cold = profile_use_functions_cold + 1
+
+
+# Right after be_function_prologue, through profile_function_enter /
+# profile_generator_enter in code_generator/profile_counters.w (every
+# function body, streaming and retained): a no-op when the scan already
+# classified this symbol; otherwise (script main, generator bodies,
+# kernels: bodies the scan never sees) the name alone decides and no
+# hash is available, so a known name stays "unknown".
+void profile_use_function_begin(int symbol, char* name):
+	if (profile_use_begun_pending && (symbol == profile_use_begun_symbol)):
+		profile_use_begun_pending = 0
+		return
+	profile_use_function_prepare(symbol, name)
+	profile_use_begun_pending = 0
 
 
 void profile_use_aligned_note(int pos, int pad):
