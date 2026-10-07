@@ -1525,3 +1525,42 @@ parse; the forest is only the emitter's input. Columns that overload
 group-local node ids are held verbatim, as is `generic_instance` (an index
 into the generic-instance queue). No `tree --json` field was added, so the
 schema stays **version 2**. **#489 remains open.**
+
+## #558's conversion warnings in the AST front end
+
+PR #558 added the unsafe-conversion warnings (`grammar/type_check.w`)
+and the `[call-int]` / `[void-pointer-conversion]` lint rules through
+hooks in the streaming expression grammar only, so `--ast-required`
+dropped the narrowing and enum warnings, rejected `==`/`!=` on struct
+values, and lost both lint rules, and `ast_expression_suite` failed on
+`unsafe_conversion_warning_fixture` and `type_check_lint_test`.
+
+The AST front end now records an `ast_warning` event (high 8) wherever
+the streaming grammar runs `check_value_conversion`: call arguments
+(direct, through a function pointer, method and UFCS receivers, explicit
+and inferred generic calls), assignment, map stores and compound map
+stores, map keys and `get`/`add`/`remove` arguments, set `add`, list
+methods and literals, and parallel assignment; initialization, `return`
+and `yield` check after emission as before. Only conversions a check can
+report are recorded (`conversion_check_relevant`). The streaming checks
+trust a literal only while it is the last token parsed; the event keeps
+the converted node, `ast_expression_literal_before` applies the same
+token rule to the tree's token records, and the replay sets
+`const_note_override` with the literal's decoded value and position.
+`==`/`!=` on two struct lvalues is accepted and lowered like
+`equality_op`, with its warning as a high-3 event at the operator;
+calls through a non-function value record a high-9 `[call-int]` event
+after the `(`. The #558 messages also have rows W0400-W0407 in the
+diagnostic code table, so neither front end reports them as W0000.
+
+Diagnostics (human and `check --json --lint`) are byte-identical
+between the default streaming grammar, `--ast-full-expressions` and
+`--ast-required` over every tracked `.w` file outside the compiler
+tree that compiles in required mode (1,374 files plus `w.w`), on the
+x86 and x64 targets, and the produced binaries of the new fixtures are
+identical. The high-8 context string is interned in the retained forest
+and compared by text in `retained_emit.w`, so `--ast-emit-retained`
+reports the same diagnostics. What it does not claim: a struct
+compared with a non-struct operand, or a struct-returning call, still
+falls back to the streaming grammar (and fails `--ast-required`).
+**#489 remains open.**

@@ -636,10 +636,15 @@ int ast_expression_warning(expression_ast* tree, char* context, int want, int go
 	return 1
 
 
+int ast_expression_conversion(expression_ast* tree, char* context, int callee, int index, int want, int got, int id);
+
+
+# coerce_checked: the conversion checks, then the mismatch warning
 int ast_expression_checked_argument(expression_ast* tree, char* context, int want, int id):
 	if (ast_expression_prepare_value(tree, tree.result_type[id], token_start_offset) == 0): return 0
-	if (ast_expression_argument_compatible(tree, want, id)): return 1
 	int got = ast_expression_promoted_type(tree.result_type[id])
+	if (ast_expression_conversion(tree, context, -1, 0, want, got, id) == 0): return 0
+	if (ast_expression_argument_compatible(tree, want, id)): return 1
 	if ((got == 4) && (tree.op[id] != 'v')): return 0
 	return ast_expression_warning(tree, context, want, got)
 
@@ -666,9 +671,108 @@ int ast_expression_warning_message(expression_ast* tree, char* message):
 	return 1
 
 
+# grammar/type_check.w's conversion checks (#532) read the literal the
+# streaming grammar just parsed (const_note_current): it stays noted
+# through a unary '-' or '+' and a conditional's else arm, which emit no
+# code after it, so '300', '-300', 'c' and 'x ? 1 : 300' count but not
+# '(300)' or '200 + 100'. The next node on that path from id, or -1.
+int ast_expression_literal_step(expression_ast* tree, int id):
+	if ((tree.op[id] == 'n') || (tree.op[id] == 'p')): return tree.left[id]
+	if (tree.op[id] == '?'): return tree.high[id]
+	return -1
+
+
+# Here the converted node id qualifies when that path ends at an integer
+# or char literal whose token is the last one before the conversion
+# point at; returns id or -1.
+int ast_expression_literal_before(expression_ast* tree, int id, int at):
+	int literal = id
+	while (ast_expression_literal_step(tree, literal) >= 0): literal = ast_expression_literal_step(tree, literal)
+	if ((tree.op[literal] != 0) && (tree.op[literal] != 'h')): return -1
+	int k = expression_ast_token_at(tree, tree.offset[literal])
+	if (k < 0): return -1
+	if ((k + 1 < tree.token_count) && (tree.tokens[(k + 1) * expression_ast_token_fields] < at)): return -1
+	return id
+
+
+# Stand const_note in for the decoded literal under id (from
+# ast_expression_literal_before; -1 for none) while a replayed check
+# runs. The caller clears const_note_override afterwards.
+void ast_expression_note_constant(expression_ast* tree, int id):
+	const_note_override = -1
+	if (id < 0): return
+	int literal = id
+	int negate = 0
+	while (ast_expression_literal_step(tree, literal) >= 0):
+		if (tree.op[literal] == 'n'): negate = 1 - negate
+		literal = ast_expression_literal_step(tree, literal)
+	const_note_value = tree.value[literal]
+	if (negate): const_note_value = 0 - const_note_value
+	int* row = &tree.tokens[expression_ast_token_at(tree, tree.offset[literal]) * expression_ast_token_fields]
+	const_note_line_number = row[3]
+	const_note_diag_line = row[1]
+	const_note_diag_column = row[2]
+	const_note_override = 1
+
+
+# The note for a prepared root converted after its emission
+# (initialization, return, yield): its virtual end is the conversion point.
+void ast_expression_note_root(expression_ast* tree, int root):
+	ast_expression_note_constant(tree, ast_expression_literal_before(tree, root, tree.end_offset))
+
+
+# The mangled callee name of generic call node id ('G' or 'W'), as its
+# committed instantiation (ast_expression_commit_generic) spells it.
+# The caller frees it.
+char* ast_expression_generic_callee(expression_ast* tree, int id):
+	if (tree.generic_instance[id] >= 0): return strclone(generic_inst_mangled(tree.generic_instance[id]))
+	int count = generic_def_param_count(tree.value[id])
+	int args = cast(int, malloc(count * __word_size__))
+	int argument = tree.right[id]
+	for i in range(count):
+		save_ptr(args + i * __word_size__, tree.value[argument])
+		argument = tree.next_arg[argument]
+	char* mangled = generic_mangle(generic_def_name(tree.value[id]), args, count)
+	free(cast(char*, args))
+	return mangled
+
+
+# Record check_value_conversion for value id (got, promoted) converted to
+# want at the current token, where the streaming grammar checks it.
+# callee is the callee name's symbol-table offset, -2 for a call through
+# a function pointer, -3 - g for generic call node g, or -1 when context
+# names the construct. Only conversions a check can report are recorded.
+int ast_expression_conversion(expression_ast* tree, char* context, int callee, int index, int want, int got, int id):
+	if (conversion_check_relevant(want, got) == 0): return 1
+	int event = expression_ast_add(tree, ast_warning, want, got)
+	if (event < 0): return 0
+	tree.high[event] = 8
+	tree.value[event] = cast(int, context)
+	tree.symbol[event] = callee
+	tree.generic_arity[event] = index
+	# it_slot holds the noted literal's id + 1 (0: none) on these events
+	if (id >= 0): tree.it_slot[event] = ast_expression_literal_before(tree, id, token_start_offset) + 1
+	return 1
+
+
 void ast_expression_replay_warning(expression_ast* tree, int id):
 	if (tree.high[id] == 1):
+		ast_expression_note_constant(tree, tree.it_slot[id] - 1)
 		check_call_argument(tree.symbol[id], -1, table + tree.value[id], tree.generic_arity[id], tree.right[id])
+		const_note_override = 0
+	else if (tree.high[id] == 8):
+		char* callee_name = 0
+		if (tree.symbol[id] >= 0): callee_name = table + tree.symbol[id]
+		if (tree.symbol[id] == -2): callee_name = c"function pointer"
+		char* generic_name = 0
+		if (tree.symbol[id] <= -3):
+			generic_name = ast_expression_generic_callee(tree, -3 - tree.symbol[id])
+			callee_name = generic_name
+		ast_expression_note_constant(tree, tree.it_slot[id] - 1)
+		check_value_conversion(cast(char*, tree.value[id]), callee_name, tree.generic_arity[id], tree.left[id], tree.right[id])
+		const_note_override = 0
+		if (generic_name): free(generic_name)
+	else if (tree.high[id] == 9): check_untyped_callee(tree.left[id])
 	else if (tree.high[id] == 2):
 		diag_part(c"warning: function '")
 		diag_part(table + tree.value[id])
@@ -682,6 +786,11 @@ void ast_expression_replay_warning(expression_ast* tree, int id):
 		if (tree.left[id] == '|'):
 			message = c"warning: bitwise '|' on bool operands in a condition does not short-circuit; did you mean '||'?"
 			spelling = c"|"
+		# equality_op's struct-value comparison (#532)
+		if ((tree.left[id] == 0x94) || (tree.left[id] == 0x95)):
+			message = c"warning: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses"
+			spelling = c"=="
+			if (tree.left[id] == 0x95): spelling = c"!="
 		warn_bool_bitwise_at(message, tree.symbol[id], tree.right[id], tree.generic_arity[id], spelling)
 	else if (tree.high[id] == 4):
 		int saved_depth = expr_nesting_depth
@@ -752,6 +861,10 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 			tree.symbol[event] = sym
 			tree.value[event] = tree.value[id]
 			tree.generic_arity[event] = count
+			tree.it_slot[event] = ast_expression_literal_before(tree, arg, token_start_offset) + 1
+		else if ((param >= 0) && ((variadic < 0) || (count < variadic))):
+			# parse_fixed_call_argument's check_call_argument
+			if (ast_expression_conversion(tree, c"call argument", tree.value[id], count, param, got, arg) == 0): return -1
 		if (previous < 0): tree.left[id] = arg
 		else: tree.next_arg[previous] = arg
 		previous = arg
@@ -822,6 +935,11 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 	tree.result_type[id] = 3
 	if (result >= 0): tree.result_type[id] = type_value(result)
 	if (ast_expression_accept(tree, c"(") == 0): return -1
+	# postfix_expr's check_untyped_callee, an opt-in lint rule
+	if (lint_mode):
+		int event = expression_ast_add(tree, ast_warning, type, -1)
+		if (event < 0): return -1
+		tree.high[event] = 9
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
@@ -834,6 +952,7 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 			int param = type_function_param_type(signature, count)
 			if (ast_expression_data_value(param) == 0): return -1
 			if (ast_expression_argument_compatible(tree, param, arg) == 0): return -1
+			if (ast_expression_conversion(tree, c"call argument", -2, count, param, ast_expression_promoted_type(tree.result_type[arg]), arg) == 0): return -1
 			if (type_is_string(param) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
 		if (previous < 0): tree.right[id] = arg
@@ -896,6 +1015,9 @@ int ast_expression_method_call(expression_ast* tree, int receiver, int record, i
 	tree.value[id] = name_offset
 	tree.call_receiver_type[id] = got
 	ast_expression_advance(tree)
+	# The receiver's check_call_argument (ufcs_call, the method sugar).
+	# Call setup is emitted before it, so no literal note is current.
+	if (ast_expression_conversion(tree, c"call argument", name_offset, 0, want, got, -1) == 0): return -1
 	return ast_expression_call(tree, id, depth)
 
 
@@ -1327,6 +1449,7 @@ int ast_expression_generic_call(expression_ast* tree, int depth):
 		if (argument < 0): return -1
 		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
 		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		if (ast_expression_conversion(tree, c"call argument", -3 - id, count, want, ast_expression_promoted_type(tree.result_type[argument]), argument) == 0): return -1
 		if (type_is_string(want) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[argument]))):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		if (tail < 0): tree.left[id] = argument
@@ -1441,6 +1564,9 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 		if (kinds[i] == -2):
 			int want = ast_expression_generic_parameter(tree, id, i)
 			if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+			# generic_call_infer_expr's post-binding check_call_argument;
+			# the pushed arguments leave no literal note current
+			if (ast_expression_conversion(tree, c"call argument", -3 - id, i, want, ast_expression_promoted_type(tree.result_type[argument]), -1) == 0): return -1
 		argument = tree.next_arg[argument]
 	ast_expression_advance(tree)
 	return id
@@ -2562,6 +2688,13 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 		if (arg < 0): return -1
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
 		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
+		# The streaming key parses coerce_checked under these names
+		# (grammar/hash_builtin.w)
+		char* key_context = c"container remove key"
+		if (method == 12): key_context = c"set add key"
+		if (method == 14): key_context = c"map get key"
+		if (method == 18): key_context = c"map add key"
+		if (ast_expression_conversion(tree, key_context, -1, 0, key_type, ast_expression_promoted_type(tree.result_type[arg]), arg) == 0): return -1
 		if (ast_expression_argument_compatible(tree, key_type, arg) == 0): return -1
 		if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -2570,6 +2703,10 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 			int fallback = ast_expression_assignment(tree, depth + 1)
 			if (fallback < 0): return -1
 			if (ast_expression_data_value(tree.result_type[fallback]) == 0): return -1
+			if (ast_expression_prepare_value(tree, tree.result_type[fallback], token_start_offset) == 0): return -1
+			char* value_context = c"map get default"
+			if (method == 18): value_context = c"map add delta"
+			if (ast_expression_conversion(tree, value_context, -1, 0, value_type, ast_expression_promoted_type(tree.result_type[fallback]), fallback) == 0): return -1
 			if (ast_expression_argument_compatible(tree, value_type, fallback) == 0): return -1
 			if (type_is_string(value_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[fallback]))):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -2601,6 +2738,8 @@ int ast_expression_map_index(expression_ast* tree, int receiver, int depth):
 	int key = ast_expression_assignment(tree, depth + 1)
 	if ((key < 0) || (peek(c"]") == 0)): return -1
 	if (ast_expression_data_value(tree.result_type[key]) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[key], token_start_offset) == 0): return -1
+	if (ast_expression_conversion(tree, c"map key", -1, 0, key_type, ast_expression_promoted_type(tree.result_type[key]), key) == 0): return -1
 	if (ast_expression_argument_compatible(tree, key_type, key) == 0): return -1
 	if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[key]))):
 		if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -2917,6 +3056,9 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 			if (peek(c">=")): op = 0x9d
 			if (peek(c"in")): op = 'H'
 		if (op == 0): return left
+		int op_line = line_number
+		int op_diag_line = diag_token_line
+		int op_column = diag_token_column
 		ast_expression_advance(tree)
 		if (op == 'H'):
 			if (ast_expression_prepare_value(tree, tree.result_type[left], token_start_offset) == 0): return -1
@@ -2926,7 +3068,16 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 		if (right < 0): return -1
 		int valid_left = ast_expression_scalar_value(tree.result_type[left])
 		if ((op == 'H') && type_is_buffer(tree.result_type[left])): valid_left = 1
-		if ((valid_left && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		# '==' and '!=' on two struct lvalues compare their addresses, as
+		# equality_op does, with its #532 warning at the operator
+		int records = equality && ast_expression_record_type(tree.result_type[left]) && ast_expression_record_type(tree.result_type[right])
+		if (records):
+			int event = expression_ast_add(tree, ast_warning, op, op_diag_line)
+			if (event < 0): return -1
+			tree.high[event] = 3
+			tree.symbol[event] = op_line
+			tree.generic_arity[event] = op_column
+		else if ((valid_left && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
 		if ((op != 'H') && var_binary_operands(tree.result_type[left], tree.result_type[right])):
 			if (ast_expression_var_pair(ast_expression_promoted_type(tree.result_type[left]), ast_expression_promoted_type(tree.result_type[right])) == 0): return -1
 		int kind = 0
@@ -3199,6 +3350,9 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 		if (kind): result = float_binary_result_type(kind)
 	if (op):
 		if (types_compatible_with_expression(lt, result) == 0): return -1
+		# park_compound's coerce_checked (grammar/pending_element.w)
+		if (map_store):
+			if (ast_expression_conversion(tree, c"map assignment", -1, 0, lt, result, -1) == 0): return -1
 	else:
 		char* context = c"assignment"
 		if (map_store): context = c"map assignment"
@@ -3257,6 +3411,9 @@ int ast_expression_parallel(expression_ast* tree, int first):
 		if (rhs < 0): return -1
 		if (ast_expression_scalar_value(tree.result_type[rhs]) == 0): return -1
 		int want = tree.result_type[tree.left[pair]]
+		if (ast_expression_prepare_value(tree, tree.result_type[rhs], token_start_offset) == 0): return -1
+		# multi_assign's coerce_checked
+		if (ast_expression_conversion(tree, c"assignment", -1, 0, want, ast_expression_promoted_type(tree.result_type[rhs]), rhs) == 0): return -1
 		if (ast_expression_argument_compatible(tree, want, rhs) == 0): return -1
 		if (type_is_string(want) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[rhs]))):
 			if (sym_probe(c"str_from_cstr") < 0): return -1

@@ -3,7 +3,9 @@ int emit_gpu_value_ast(statement_ast* node):
 	int type = promote(node.expression_type)
 	if (node.kind == ast_stmt_gpu_argument):
 		if (type_num_args(type_real(type)) > 0): error(c"struct arguments are not supported in launch")
+		if (node.expression_root >= 0): ast_expression_note_root(node.expression_tree, node.expression_root)
 		check_call_argument(node.binding, -1, node.callee_name, node.argument_index, type)
+		const_note_override = 0
 		if (node.declared_type >= 0): coerce_call_argument(node.declared_type, type)
 		push_slot()
 	else: coerce(node.declared_type, type)

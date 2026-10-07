@@ -23,9 +23,11 @@
 #   counts, lit_note, flow_true_serial), and the AST statement paths
 #   (grammar/ast_statement.w, ast_loop.w, ast_function.w) mirror the
 #   bookkeeping, so all compilation modes report them identically
-#   (ast_expression_test compares). The narrowing and enum checks use
-#   const_note, which only the streaming grammar records: under
-#   --ast-full-expressions they see only streaming-fallback expressions.
+#   (ast_expression_test compares). The conversion checks read
+#   const_note, which the streaming grammar records as it parses; the
+#   AST front end (grammar/ast_expression.w) records an event where the
+#   streaming grammar would check, and replays it with
+#   const_note_override standing for the literal the tree holds.
 
 void print_error_type(int type_index); /* grammar/promote.w */
 
@@ -40,6 +42,10 @@ int const_note_codepos
 int const_note_line_number
 int const_note_diag_line
 int const_note_diag_column
+# Set by the AST front end around a replayed check: 1 when the converted
+# value is a literal whose value and position it wrote into const_note_*,
+# -1 when it is not; 0 reads the streaming note.
+int const_note_override
 
 
 # The current token is an integer, char or bool literal whose value was
@@ -93,6 +99,7 @@ void warning_at(char* message, int at_line_number, int at_diag_line, int at_diag
 # constant pseudo-type too, but every one of them emits code after its
 # right operand, so 'x + 300' never matches.
 int const_note_current():
+	if (const_note_override): return const_note_override > 0
 	if (const_note_serial == 0): return 0
 	if (token_serial != const_note_serial + 1): return 0
 	return codepos == const_note_codepos
@@ -204,6 +211,19 @@ void check_void_pointer_conversion(char* context, char* callee_name, int arg_ind
 		print_error_type(want)
 		warning(c"' without cast() [void-pointer-conversion]")
 		lint_end()
+
+
+# Whether check_value_conversion can report want <- got for some value:
+# lets the AST front end skip recording the common conversions.
+int conversion_check_relevant(int want, int got):
+	int w = type_unqualified(want)
+	if (w < 0): return 0
+	if (type_get_pointer_level(w) == 0):
+		if (type_get_kind(w) == type_kind_enum): return 1
+		if ((got == 3) && ((type_get_size(w) == 1) || (type_get_size(w) == 2))): return 1
+	if (lint_mode == 0): return 0
+	int g = type_unqualified(got)
+	return (g >= 0) && (type_get_pointer_level(g) > 0)
 
 
 # Every conversion check for one conversion site.

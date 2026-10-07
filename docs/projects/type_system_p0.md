@@ -241,10 +241,12 @@ the streaming parser knows when it emits code):
   or constant expressions.
 - The fall-through and duplicate-case checks read only tokens, so they
   report identically in the opt-in AST modes (`--ast-expressions`,
-  `--ast-full-expressions`); `ast_expression_test` compares the modes'
-  diagnostics. The narrowing and enum checks rely on the streaming
-  grammar's literal note, so under `--ast-full-expressions` they cover
-  only expressions that fall back to the streaming grammar.
+  `--ast-full-expressions`, `--ast-required`); `ast_expression_test`
+  compares the modes' diagnostics. The conversion checks, struct
+  equality and `[call-int]` are recorded as AST events where the
+  streaming grammar runs them and replayed with the literal the tree
+  holds standing in for the streaming literal note, so the AST modes
+  report them byte for byte like the streaming grammar too.
 
 ## Milestones
 
