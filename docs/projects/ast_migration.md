@@ -1859,8 +1859,9 @@ the body has been parsed.
 
 `--stats` on `w.w` (x86 and x64 hosts alike): 58,109 statements walked
 and 7,473 immediate on S2.2a's base, from 29,516 and 35,896; on top of
-S2.2d, 65,381 walked and 325 immediate. What is still immediate is the
-`for` and `switch` statements (family c).
+S2.2d, 65,381 walked and 325 immediate (the `for` and `switch`
+statements); with S2.2c too, **zero immediate statements**: 65,938
+walked on the x86 host and 65,973 for the x64 target.
 
 Verification: `ast_retained_emit_test` compiles a new tracked fixture,
 `tests/ast_control_walk_fixture.w` (every `elif` shape, brace and
