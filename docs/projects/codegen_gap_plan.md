@@ -886,7 +886,14 @@ targets), `./wbuild tests` (921 targets).
 
 What landed (x86 and x64 Linux ELF only; win64, arm64, `arm64_darwin`
 and wasm images are byte-identical to before, asserted by hand with
-`--no-inline` builds of the self-host and `tests/inline_test.w`):
+`--no-inline` builds of the self-host and `tests/inline_test.w`).
+**Opt-in**: `--inline` turns it on, `--profile-use` turns it on for
+the sites the profile marks hot (and loop sites), `--no-inline` turns
+it off whatever else was given; the default build keeps every call a
+call. The reason is the compile-time cost measured below (the plan's
+§6 risk): the capture of every body plus the re-parse at every site
+costs the self-compile 8–17% of its instructions for at most −4% on
+one corpus program, and `wbench_compare` is the gate for that.
 
 - **The mechanism.** A call to a known W function whose body is small,
   loop-free and free of calls that return is emitted as the body
@@ -958,22 +965,22 @@ and wasm images are byte-identical to before, asserted by hand with
   correctness. Inlined locals are plain stack slots (`regalloc_declare`
   returns 0 while `inline_depth != 0`), which satisfies the scan/emit
   guard by construction.
-- **Off where a call must stay a call:** `--no-inline` (a link option;
-  `tests/regalloc_diff_test.w` builds every program a fourth time with
-  it, and once more with a `--no-inline`-built compiler whose output
-  must match `bin/wv2`'s byte for byte), the REPL (a redefinition would
-  not reach inlined copies), `wdbg`'s in-process compile (a breakpoint
-  on a function is reached through a call of it; the attach-mode
-  recompile keeps the binary's own inlining since its tables must
-  match, and `wdbg --no-inline --attach` recompiles a `--no-inline`
-  build the same way — `attach_test`'s fixtures are such builds, since
-  their two-level call stack must be real calls), `w check`,
-  `--profile-generate` (the instrumented binary
-  measures the call graph), generator and `gpu for` bodies. An inlined
-  site still counts in `emitted_call_count` (it can have a call's side
-  effects) but not in `inline_real_calls`.
-- Tests: `tests/inline_test.w` (+ `_64`, `--no-inline` twins on both
-  widths, and a `--stats` step asserting the default build inlined)
+- **Off where a call must stay a call, even under `--inline`:**
+  `--no-inline` (both are link options; `tests/regalloc_diff_test.w`
+  builds every program once more with `--inline` and compares it
+  with the default build, and once more with an `--inline`-built
+  compiler whose output must match `bin/wv2`'s byte for byte), the
+  REPL (a redefinition would not reach inlined copies), `wdbg`'s
+  in-process compile (a breakpoint on a function is reached through a
+  call of it; the attach-mode recompile keeps the binary's own flags,
+  since its tables must match it: `wdbg --inline --attach` for an
+  `--inline` build), `w check`, `--profile-generate` (the instrumented
+  binary measures the call graph), generator and `gpu for` bodies. An
+  inlined site still counts in `emitted_call_count` (it can have a
+  call's side effects) but not in `inline_real_calls`.
+- Tests: `tests/inline_test.w` (+ `_64`; the default build keeps the
+  calls, `--inline` twins on both widths inline them, and a `--stats`
+  step asserts the `--inline` build reports inlined sites)
   covers one and several parameters, argument order and single
   evaluation, both directions of shadowing, globals, early returns,
   void bodies, bodies with locals and a `switch`, nested inlining,
@@ -989,7 +996,9 @@ Measurements (`./wbuild bench`: callgrind Ir in thousands, which is
 deterministic; best-of wall ms on the shared 4-core container with
 other agents' builds running, so the ms columns are noise-level
 evidence only; `bytes` is the ELF size; before = `lane/calls` at
-803a751, i.e. `main` 1335f06 plus A4):
+803a751, i.e. `main` 1335f06 plus A4, which is also what the default
+build emits now; after = the same programs built with `--inline`, the
+site rule above with the 64-byte straight-line budget):
 
 x64
 
@@ -1022,23 +1031,36 @@ runtime and `lib/` — `st_byte`, `st_int32`, `__w_list_load_word` and
 the other small helpers inlined at their ~200 sites, the same in every
 program; `--stats` lists them.)
 
-Self-compile, same input for both compilers (this tree, compiled with
-`--no-inline` to isolate the two effects; callgrind Ir): the compiler
-built without inlining compiling `w.w --no-inline` 6,195,689,556 → the
-inlined compiler doing the same 6,032,226,459 (−2.6%: what inlining
-does for the compiler's own code) → the inlined compiler with inlining
-on 7,141,166,940 (+15.3% over the first: the re-parse of 3,673 bodies,
-proportional to the tokens re-parsed, spread over the lexer, the
-symbol hash and the type table like any other parse). x64:
-6,277,828,480 → 6,087,062,689 (−3.0%) → 7,088,860,386 (+12.9%).
-`tools/wbench.w` counters for `self` (sym_lookup calls / records
-visited): 489,280 / 128,782 → 535,407 / 139,240. Compiler image, same
-tree with and without inlining: x86 2,548,456 → 2,638,568 bytes
-(+3.5%, 3,673 sites from 2,565 recorded bodies), x64 2,905,552 →
-3,003,856 (+3.4%, 3,520 sites). The `self` row of `bench.txt`
-(x86 8,197,003 → 9,333,208 kIr, x64 6,263,483 → 7,107,241) compiles
-the current, larger tree with inlining on and so folds both effects
-and the new sources together.
+Self-compile cost, same input for both compilers (this tree; callgrind
+Ir), which is what decided the default. With the `--inline` policy:
+the compiler built without inlining compiling `w.w --no-inline`
+6,195,689,556 → the inlined compiler doing the same 6,032,226,459
+(−2.6%: what inlining does for the compiler's own code) → the inlined
+compiler with inlining on 7,141,166,940 (+15.3% over the first: the
+capture of every body and the re-parse of 3,673 sites, spread over the
+lexer, the symbol hash and the type table like any other parse); x64
+6,277,828,480 → 6,087,062,689 (−3.0%) → 7,088,860,386 (+12.9%);
+`tools/wbench.w` `self` counters 489,280 / 128,782 → 535,407 /
+139,240; compiler image +3.5% x86 (2,548,456 → 2,638,568 bytes), +3.4%
+x64. A cheaper variant was measured before choosing: no straight-line
+sites at all without a profile (loop sites keep 320 bytes): 645 sites
+on `w.w` instead of 3,673, but x86 6,149,324,408 → 6,230,819,226
+(+1.3%: the loop-only inlining does nothing for the compiler's own
+code) → 6,747,863,551 (+9.7%), x64 6,167,474,046 → 6,166,500,738 →
+6,763,577,648 (+9.7%), and the corpus kept almost nothing (x64
+`inflate_corpus` −1.1%, every other program within ±0.0%: the gains
+in the table come from the straight-line accessor sites in the runtime
+and `lib/`, not from `inf_get_bit`). Making the capture cheaper (plain
+arrays and one text buffer per record, a hash instead of a string
+compare for the dedup of unresolved names, stopping a capture at the
+first loop, hazard or byte over the largest budget) took that variant
+to +7.9%: the fixed cost is the per-lookup capture of every body,
+which no site rule reduces. So the default is off: the default build
+is 6,171,012,092 against 6,155,632,191 with `--no-inline` (+0.25%, the
+flag checks), `--inline` is 7,205,680,010 (+16.8%), and
+`tools/wbench_baseline.txt` holds the default's counters (prelude
+19,113 / 4,820, `self` 493,702 / 129,915 against `main`'s 488,101 /
+128,504 — the lookup fix of a9eb0bb and the source growth only).
 
 Static before/after for the hot loop of `inflate_corpus`
 (`libs/extras/compress/inflate.w`, `inf_get_bits` line 218 `for i in
@@ -1118,14 +1140,14 @@ What this unit does not claim:
   recompile keeps the binary's inlining) is reached only through the
   out-of-line body, which still exists but may never be called; the
   in-process debugger compiles with inlining off, and a binary to be
-  debugged by attaching is built with `--no-inline` (no
+  debugged by attaching is best built without `--inline` (no
   `DW_TAG_inlined_subroutine` records are written).
 - win64 could not be run here (no wine); it is unchanged by
   construction (`target_os != 0` refuses every site) and the
   `--no-inline` byte-identity check above covers it.
-- Compile time: +13–15% Ir for the self-compile, the re-parse cost
-  the plan's §6 named; `tools/wbench_baseline.txt` was refreshed with
-  the new counters and bytes.
+- Compile time under `--inline`: +13–17% Ir for the self-compile,
+  the re-parse cost the plan's §6 named, which is why it is opt-in;
+  the default build pays the flag checks only.
 
 Deviations from the plan's sketch: (1) the budget is in bytes of the
 body's compiled code, not tokens (`inf_get_bit` is 86 tokens, and a
@@ -1133,12 +1155,14 @@ token count says nothing about hidden runtime calls or the size of a
 struct field access); (2) a body with calls is not excluded outright
 but confined to profile-hot sites, and a call of a noreturn function
 does not count as a call (`__w_size_add`'s trap); (3) a straight-line
-site outside every loop gets the cold budget without a profile, so
-image growth and the re-parse cost stay bounded (the plan said "size
-threshold otherwise"); (4) the debugger's in-process compile turns
-inlining off (`debug_test` sets a breakpoint on `add`, which inlines
-into `triple`, and `attach_test`'s fixtures are `--no-inline` builds
-with the flag passed to `wdbg` for the recompile); (5) the span table
+site outside every loop gets the cold budget under `--inline` and
+nothing under `--profile-use` alone, so image growth and the re-parse
+cost stay bounded (the plan said "size threshold otherwise"); (4) the
+unit is opt-in rather than on by default, for the compile-time cost
+above; the debugger's in-process compile keeps every call a call even
+under `--inline` (`debug_test` sets a breakpoint on `add`, which would
+inline into `triple`), and `wdbg --inline --attach` recompiles an
+`--inline` build the same way; (5) the span table
 of S2.3 was not reused — the record
 keeps a private copy of the body's bytes, since the retained source
 window and the file image are both gone by the time a later call site
@@ -1151,9 +1175,10 @@ compared builds), `ast_expression_test`, `ast_retained_emit_test`,
 `regalloc_test` + `_64`, `debug_test`, `debug_test_x64`, `attach_test`,
 `repl_test` + `_x64`, `direct_call_test` + `_64`, `inline_test` +
 `_64`, `crash_trace_test` + `_x64`, `wcore_test`, `crash_dump_test`,
-`crash_install_test`, `wdbg_web_test` (the crash fixtures are
-`--no-inline` builds: they test frame-pointer unwinding through a chain
-of small leaf bodies the default build flattens), `git diff --name-only 803a751 | bin/wtest
+`crash_install_test`, `wdbg_web_test` (the crash fixtures test
+frame-pointer unwinding through a chain of small leaf bodies, which
+an `--inline` build would flatten; the default build keeps them),
+`git diff --name-only 803a751 | bin/wtest
 changed` (25 targets, the `tests` umbrella deferred to the merge of the
 wave), `bench_compare`, `wbench_compare`, `profile_check` (95% of
 `self.wprof` / `self_x64.wprof` entries still match, 100% of

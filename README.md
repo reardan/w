@@ -310,7 +310,13 @@ Implemented and covered by tests:
   `call rel32` on x86/x64/win64 (`docs/projects/codegen_gap_plan.md`
   §2.4; `--no-direct-calls` restores the callee-through-the-accumulator
   shape); calls through function pointers and C variadic imports stay
-  indirect.
+  indirect. `--inline` emits a small leaf callee's body in place of its
+  calls (§2.4, unit A5; also on for profile-hot sites under
+  `--profile-use`, off otherwise because the re-parse costs compile
+  time; `--no-inline` forces it off): bodies with loops, calls that
+  return, `defer`, `goto`, `raw_asm`, f-strings or `yield` stay calls,
+  and a breakpoint on an inlined callee is reached only through its
+  out-of-line body.
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

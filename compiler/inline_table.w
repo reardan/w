@@ -51,8 +51,12 @@ state, so the two emitters agree byte for byte. It is deterministic in
 callees and callers a --profile-use profile classifies as hot, lowered
 for the ones it classifies cold and for a site outside every loop of
 its function, and open to a body that calls (a wrapper) only when the
-profile makes it hot; --no-inline turns it off (the reference for
-tests/regalloc_diff_test.w).
+profile makes it hot. It is OPT-IN: --inline turns it on, --profile-use
+turns it on (for the sites the profile marks hot, and the loop sites
+below), and --no-inline turns it off whatever else was given (the
+reference for tests/regalloc_diff_test.w). Off by default because the
+capture and the re-parse cost the self-compile 8-15% of its
+instructions for a few percent on the corpus (§8 of the plan).
 
 What never inlines: a callee whose body was not seen yet (a forward
 call stays a direct call), recursion (the callee is the function being
@@ -117,8 +121,13 @@ struct inline_record:
 	int param_count
 	int* param_types   # inline_max_params entries
 	char** param_names # inline_max_params cloned names
-	list[char*] free_names   # names resolved outside the body (cloned)
-	list[int] free_syms      # the record each resolved to (-1 unresolved), for the dedup
+	char** free_names  # names resolved outside the body (in free_text)
+	int* free_syms     # the record each resolved to (-1 unresolved)
+	int* free_lens     # each name's length and hash, so the dedup rarely compares bytes
+	int free_count
+	char* free_text    # the names' bytes, one allocation per record
+	int free_text_used
+	int free_text_size
 	int profile_class  # the profile's class of the callee (0 unknown, 1 cold, 2 hot)
 	int sites          # --stats: call sites that inlined this body
 	int refused        # --stats: eligible sites refused by a site rule
@@ -172,13 +181,19 @@ int inline_lookup_name(char* name):
 	return inline_lookup(t)
 
 
+# 1 when inlining is on for this compile.
+int inline_enabled():
+	if (inline_disabled): return 0
+	return inline_requested || profile_use_mode
+
+
 # 1 when a call to the function named name, emitted now, would leave
 # no call instruction in the caller: the body is inlinable and emitted
 # no call itself. The scan uses it to let a loop own registers across
 # such a call; the emitter spills around any call that is emitted
 # anyway, so a wrong answer costs instructions, never correctness.
 int inline_name_is_leaf(char* name):
-	if (inline_disabled): return 0
+	if (inline_enabled() == 0): return 0
 	int i = inline_lookup_name(name)
 	if (i < 0): return 0
 	inline_record* rec = inline_record_at(i)
@@ -216,7 +231,7 @@ void inline_note_parameter(char* name, int type):
 void inline_definition_begin(int sym, char* name, int return_type):
 	inline_table_ensure()
 	inline_capture_record = -1
-	if (inline_disabled): return;
+	if (inline_enabled() == 0): return;
 	if ((target_isa != 0) || (target_os != 0)): return;
 	if (repl_call_site_hook != 0): return;
 	if (profile_generate_mode): return;
@@ -237,8 +252,13 @@ void inline_definition_begin(int sym, char* name, int return_type):
 	rec.param_count = 0
 	rec.param_types = cast(int*, malloc(inline_max_params * __word_size__))
 	rec.param_names = cast(char**, malloc(inline_max_params * __word_size__))
-	rec.free_names = new list[char*]
-	rec.free_syms = new list[int]
+	rec.free_names = cast(char**, malloc((inline_max_tokens + 1) * __word_size__))
+	rec.free_syms = cast(int*, malloc((inline_max_tokens + 1) * __word_size__))
+	rec.free_lens = cast(int*, malloc((inline_max_tokens + 1) * __word_size__))
+	rec.free_count = 0
+	rec.free_text = 0
+	rec.free_text_used = 0
+	rec.free_text_size = 0
 	rec.profile_class = 0
 	rec.sites = 0
 	rec.refused = 0
@@ -367,23 +387,58 @@ void inline_note_lookup(char* s, int found):
 		char scope = table[found + 1]
 		if ((scope == 'L') || (scope == 'A')): return;
 	inline_record* rec = inline_record_at(r)
-	# The capture stops paying once the body is past the token cap
-	if (token_serial - inline_capture_tokens > inline_max_tokens):
+	# The capture stops paying as soon as the body cannot inline any
+	# more: past the token cap or the largest budget, or holding a
+	# loop or a hazard (inline_body_end repeats these checks)
+	if ((token_serial - inline_capture_tokens > inline_max_tokens) || (codepos - inline_capture_codepos > inline_budget_hot) || (inline_loop_count != inline_capture_loops) || (inline_hazard_count != inline_capture_hazards)):
 		inline_capture_active = 0
 		rec.ok = 0
 		return;
 	# One entry per name: a resolved name is recognised by its record
-	# (no string compare), an unresolved one by its spelling
-	list[char*] names = rec.free_names
-	list[int] syms = rec.free_syms
+	# (no string compare), an unresolved one by its length and spelling.
+	# Plain arrays and one text buffer per record: this runs at every
+	# lookup of every body, and the self-compile paid 5% of its time for
+	# the list accessors and the per-name clones a first version used.
+	int n = rec.free_count
+	int* syms = rec.free_syms
 	if (found >= 0):
-		for i in range(syms.length):
+		for i in range(n):
 			if (syms[i] == found): return;
-	else:
-		for i in range(syms.length):
-			if ((syms[i] < 0) && (strcmp(names[i], s) == 0)): return;
-	names.push(strclone(s))
-	syms.push(found)
+	# The name's length and a hash of its bytes in one pass (most
+	# lookups during a capture are probes of names that are not symbols
+	# -- type names, keywords -- and they repeat)
+	int len = 0
+	int key = 5381
+	while (s[len] != 0):
+		key = key * 33 + s[len]
+		len = len + 1
+	key = (key << 8) | (len & 255)
+	if (found < 0):
+		int* lens = rec.free_lens
+		char** names = rec.free_names
+		for i in range(n):
+			if ((syms[i] < 0) && (lens[i] == key)):
+				if (strcmp(names[i], s) == 0): return;
+	if (n > inline_max_tokens): return;
+	if (rec.free_text_used + len + 1 > rec.free_text_size):
+		int size = rec.free_text_size * 2
+		if (size < 256): size = 256
+		while (size < rec.free_text_used + len + 1): size = size * 2
+		char* text = malloc(size)
+		if (rec.free_text != 0):
+			for i in range(rec.free_text_used): text[i] = rec.free_text[i]
+			# Earlier names point into the old buffer: rebase them
+			for i in range(n): rec.free_names[i] = text + (rec.free_names[i] - rec.free_text)
+			free(rec.free_text)
+		rec.free_text = text
+		rec.free_text_size = size
+	char* copy = rec.free_text + rec.free_text_used
+	strcpy(copy, s)
+	rec.free_text_used = rec.free_text_used + len + 1
+	rec.free_names[n] = copy
+	syms[n] = found
+	rec.free_lens[n] = key
+	rec.free_count = n + 1
 
 
 # --- the call site -----------------------------------------------------------
@@ -399,21 +454,25 @@ int inline_depth_of(int sym):
 	return -1
 
 
-# The byte budget for a site: the callee's class and the caller's
-# (profile_function_class, the function being compiled) raise or lower
-# the default, and without a profile's word a site outside every loop
-# of its function gets the cold budget: what a copy of the body saves
-# is paid once per execution of the site, and a straight-line site runs
-# once per call of its function, so only the smallest bodies (an
-# accessor of a few instructions, which is shorter than the call it
-# replaces) are worth their bytes there.
+# The byte budget for a site: a site inside a loop of its function
+# gets the default, lowered to the cold budget when a --profile-use
+# profile classifies the callee or the caller cold; a site a profile
+# classifies hot (callee or caller) gets the hot budget wherever it is;
+# a straight-line site without a profile's word gets the cold budget
+# under --inline (an accessor of a few instructions is shorter than
+# the call it replaces, and this is where the corpus gains of §8 come
+# from) and nothing under --profile-use alone (what a copy of the
+# body saves is paid once per execution of the site, and a
+# straight-line site runs once per call of its function, while the
+# re-parse costs compile time at every site).
 int inline_site_budget(inline_record* rec, int in_loop):
 	int callee = rec.profile_class
 	int caller = profile_function_class()
 	if ((callee == 2) || (caller == 2)): return inline_budget_hot
-	if ((callee == 1) && (caller != 2)): return inline_budget_cold
-	if ((caller == 1) && (callee != 2)): return inline_budget_cold
-	if (in_loop == 0): return inline_budget_cold
+	if (in_loop == 0):
+		if (inline_requested): return inline_budget_cold
+		return 0
+	if ((callee == 1) || (caller == 1)): return inline_budget_cold
 	return inline_budget_default
 
 
@@ -426,7 +485,7 @@ int inline_site_record
 
 int inline_site_ok(int sym, int current, int in_generator, int in_gpu_for, int in_loop):
 	inline_site_record = -1
-	if (inline_disabled): return 0
+	if (inline_enabled() == 0): return 0
 	if (inline_records == 0): return 0
 	if ((target_isa != 0) || (target_os != 0)): return 0
 	if (sym < 0): return 0
@@ -455,9 +514,9 @@ int inline_site_ok(int sym, int current, int in_generator, int in_gpu_for, int i
 	# the caller shadows with a local or argument, or a record declared
 	# since, is a different one), and a name the body left unresolved
 	# must not have become a local or argument
-	list[char*] names = rec.free_names
-	list[int] syms = rec.free_syms
-	for i in range(names.length):
+	char** names = rec.free_names
+	int* syms = rec.free_syms
+	for i in range(rec.free_count):
 		int t = sym_probe(names[i])
 		int captured = 0
 		if (syms[i] >= 0): captured = t != syms[i]

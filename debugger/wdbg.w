@@ -77,10 +77,9 @@ command scripts cannot hang the debuggee.
 one (debugger/attach.w). Passing the program's source as well lets attach
 mode symbolize addresses; without it, attach runs in raw-address mode.
 The recompile that builds the tables must match the binary: a binary
-built with --no-inline needs `wdbg --no-inline --attach <pid> file.w`
-(and is the build to debug when a breakpoint sits on a small function,
-since the default build emits such a callee's body in place of its
-calls).
+built with --inline needs `wdbg --inline --attach <pid> file.w` (and a
+breakpoint on a small callee of such a binary is reached only through
+the out-of-line body, since its calls were emitted in place).
 
 This file is the whole debugger as a library around wdbg_main();
 debugger/debugger.w wraps it as the standalone wdbg binary and w.w
@@ -1060,8 +1059,8 @@ void wdbg_attach_compile(char* target):
 	if (__word_size__ == 8): n = 5
 	if (ast_expressions_mode): n = n + 1
 	if (ast_required_mode): n = n + 1
-	int no_inline = args_has_flag(c"no-inline")
-	if (no_inline): n = n + 1
+	int with_inline = args_has_flag(c"inline")
+	if (with_inline): n = n + 1
 	int argv = cast(int, malloc(n * __word_size__))
 	int idx = 0
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
@@ -1082,12 +1081,11 @@ void wdbg_attach_compile(char* target):
 	if (ast_required_mode):
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--ast-required"))
 		idx = idx + 1
-	# A binary built with --no-inline (every call a call, so a
-	# breakpoint on any function is reached) is recompiled the same way
-	# when wdbg is given the flag too; otherwise the recompile inlines
-	# as the default build did.
-	if (no_inline):
-		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--no-inline"))
+	# A binary built with --inline is recompiled the same way when wdbg
+	# is given the flag too; otherwise the recompile keeps every call a
+	# call, as the default build did.
+	if (with_inline):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--inline"))
 		idx = idx + 1
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, target))
 	idx = idx + 1
@@ -1133,7 +1131,7 @@ int wdbg_main(int argc, int argv):
 
 	if (target == 0):
 		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--ast-expressions] [--ast-emit-retained]")
-		println2(c"   or: wdbg [--no-inline] --attach <pid> [file.w]")
+		println2(c"   or: wdbg [--inline] --attach <pid> [file.w]")
 		exit(1)
 
 	# The in-process model (repl/core.w's repl_inprocess_setup): the
@@ -1144,11 +1142,11 @@ int wdbg_main(int argc, int argv):
 	# window is active.
 	repl_inprocess_setup()
 
-	# Every call stays a call (unit A5, compiler/inline_table.w): a
-	# breakpoint on a function is reached through a call of it, and a
-	# callee whose body was emitted in place of its calls would never be
-	# entered. The attach-mode recompile above keeps the binary's own
-	# inlining, since its tables must match the binary byte for byte.
+	# Every call stays a call (unit A5, compiler/inline_table.w), even
+	# under --inline: a breakpoint on a function is reached through a
+	# call of it, and a callee whose body was emitted in place of its
+	# calls would never be entered. The attach-mode recompile above
+	# keeps the binary's own inlining, since its tables must match it.
 	inline_disabled = 1
 	compile_input_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template

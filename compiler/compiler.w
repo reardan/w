@@ -921,9 +921,14 @@ int link_option(char* arg, int apply):
 		if (apply): direct_calls_disabled = 1
 		return 1
 	# Inlining of small leaf callees (unit A5, compiler/inline_table.w)
-	# is on by default on x86/x64 Linux; --no-inline keeps every call a
-	# call, the reference for tests/regalloc_diff_test.w and the
-	# fallback a guard failure asks for.
+	# is opt-in on x86/x64 Linux: --inline turns it on, --profile-use
+	# turns it on for the sites the profile marks hot, and --no-inline
+	# keeps every call a call whatever else was given (the reference
+	# for tests/regalloc_diff_test.w and the fallback a guard failure
+	# asks for).
+	if (strcmp(arg, c"--inline") == 0):
+		if (apply): inline_requested = 1
+		return 1
 	if (strcmp(arg, c"--no-inline") == 0):
 		if (apply): inline_disabled = 1
 		return 1
@@ -979,7 +984,9 @@ void help_shared_options():
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
-	println(c"  --no-inline           never emit a small callee's body in place of a call")
+	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
+	println(c"                        profile-hot sites under --profile-use)")
+	println(c"  --no-inline           never emit a callee's body in place of a call")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
@@ -1315,7 +1322,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
-			if (strcmp(*flag_arg, c"--no-inline") == 0): link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--inline") == 0) || (strcmp(*flag_arg, c"--no-inline") == 0)): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
 			# P2: so does the profile the optimizer reads (profile_use.w).

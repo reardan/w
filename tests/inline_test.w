@@ -1,12 +1,13 @@
 # wbuild: x64
-# wbuild: step="bin/wv2 --no-inline tests/inline_test.w -o bin/inline_noinline_test"
-# wbuild: step="bin/inline_noinline_test" expect_stdout="inline_test passed"
-# wbuild: step="bin/wv2 x64 --no-inline tests/inline_test.w -o bin/inline_noinline_64_test"
-# wbuild: step="bin/inline_noinline_64_test" expect_stdout="inline_test passed"
-# wbuild: step="bin/wv2 --stats tests/inline_test.w -o bin/inline_stats_test" expect_stderr="inline: bodies recorded"
+# wbuild: step="bin/wv2 --inline tests/inline_test.w -o bin/inline_inline_test"
+# wbuild: step="bin/inline_inline_test" expect_stdout="inline_test passed"
+# wbuild: step="bin/wv2 x64 --inline tests/inline_test.w -o bin/inline_inline_64_test"
+# wbuild: step="bin/inline_inline_64_test" expect_stdout="inline_test passed"
+# wbuild: step="bin/wv2 --inline --stats tests/inline_test.w -o bin/inline_stats_test" expect_stderr="inline: bodies recorded"
 # Inlining of small leaf callees (docs/projects/codegen_gap_plan.md
-# §2.4, unit A5; compiler/inline_table.w, grammar/inline_call.w): a call
-# to a small, loop-free function whose body was already compiled is
+# §2.4, unit A5; compiler/inline_table.w, grammar/inline_call.w): under
+# --inline (or --profile-use, for profile-hot sites) a call to a small,
+# loop-free function whose body was already compiled is
 # emitted as the body itself, with the arguments bound as fresh locals
 # and 'return' lowered to a jump. Every shape the decision and the
 # re-parse distinguish is exercised here, each asserting a computed
@@ -21,9 +22,11 @@
 # runtime calls inside the body, calls inside loops that own registers,
 # a callee defined after the caller, calls as arguments of calls, a
 # switch, defer (never inlined), and an inlined callee that is also
-# used through a function pointer. The extra steps run the same program
-# built with --no-inline on both widths, and check that the default
-# build reports inlining in its --stats.
+# used through a function pointer, and calls as operands of condition
+# chains and of subscripts and field accesses. The default build keeps
+# every call a call; the extra steps run the same program built with
+# --inline on both widths, and check that such a build reports inlining
+# in its --stats.
 import lib.lib
 import lib.assert
 
@@ -215,6 +218,37 @@ int in_loop_nested(int n):
 	return s
 
 
+# --- a call as an operand of a condition chain or a subscript -----------------
+int in_arr_get(int* a, int i):
+	return a[i]
+
+
+int in_cond_chain(int a, int b):
+	# the inlined bodies are operands of && / || / ! in condition
+	# context (grammar/cond_branch.w: branch-on-flags, unit A6), and of
+	# a comparison a value consumer reads
+	int r = 0
+	if ((in_inc(a) > 2) && (in_clamp(b) == 0)): r = r + 1
+	if ((in_inc(a) > 2) || in_isdigit(cast(char, b + '0'))): r = r + 10
+	if (!in_sign(a - b)): r = r + 100
+	if ((a > 0 || b > 0) == in_sign(a + b)): r = r + 1000
+	while (in_inc(r) < 1105): r = r + 1
+	return r
+
+
+int in_subscripts(int* a, int n):
+	# the inlined bodies are index and base operands of subscripts and
+	# field accesses (x86 addressing modes, unit A2)
+	int s = 0
+	for i in range(n):
+		s = s + a[in_clamp(i)] + in_arr_get(a, in_inc(i) - 1) * 10
+	a[in_clamp(n + 5)] = in_fma(s, 1, 1)
+	in_pair p
+	p.a = a[in_sign(n)]
+	p.b = in_arr_get(&p.a, 0) + in_sq_plus(a[in_clamp(1)])
+	return s * 1000 + a[9] + p.b
+
+
 # --- tests ----------------------------------------------------------------------
 void test_parameters():
 	assert_equal(2, in_inc(1))
@@ -346,8 +380,29 @@ void test_loops():
 	assert_equal(9 * 2 + (0 + 1 + 2) * (0 + 1 + 2), in_loop_nested(3))
 
 
+void test_condition_and_subscript_operands():
+	# a=5, b=0: inc(5)=6>2 && clamp(0)==0 -> +1; 6>2 -> +10; sign(5)=1,
+	# !1 -> no; (1) == sign(5)=1 -> +1000; the while leaves r = 1104
+	assert_equal(1104, in_cond_chain(5, 0))
+	# a=0, b=0: inc(0)=1>2 no; isdigit('0') -> +10; !sign(0) -> +100;
+	# (0) == sign(0)=0 -> +1000; the while never runs: 1110
+	assert_equal(1110, in_cond_chain(0, 0))
+	# a=1, b=3: inc(1)=2>2 no; isdigit('3') -> +10; sign(-2)=-1, !(-1) no;
+	# (1) == sign(4)=1 -> +1000; while: 1010 -> 1104
+	assert_equal(1104, in_cond_chain(1, 3))
+	int* a = cast(int*, malloc(10 * __word_size__))
+	for i in range(10): a[i] = i * i
+	# s over i=0..2: a[clamp(i)] = 0,1,4; arr_get(a, inc(i)-1) = a[i] -> 0,1,4
+	# s = (0+0) + (1+10) + (4+40) = 55; a[clamp(8)] = a[8] = fma(55,1,1) = 56
+	# p.a = a[sign(3)] = a[1] = 1; p.b = 1 + sq_plus(a[1]) = 1 + 2 = 3
+	# result = 55*1000 + a[9] (81) + 3
+	assert_equal(55 * 1000 + 81 + 3, in_subscripts(a, 3))
+	assert_equal(56, a[8])
+
+
 int main():
 	test_parameters()
+	test_condition_and_subscript_operands()
 	test_evaluation_order()
 	test_shadowing()
 	test_globals()

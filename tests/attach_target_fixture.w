@@ -22,9 +22,6 @@ int zähler
 # args/locals inspection and frame selection (#123 phase 5) against a real
 # two-level call stack: a breakpoint in bump gives frame 0 = bump (arg n,
 # local inc), frame 1 = slow_step (arg n, local step), frame 2 = main.
-# Built with --no-inline (the .wbuild steps, and wdbg's recompile is
-# told the same): the default build would emit bump in place of its
-# call, and slow_step in place of its own, leaving no frames to stop in.
 int bump(int n):
 	int inc = n + 1
 	return inc

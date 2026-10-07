@@ -53,9 +53,3 @@ int main(int argc, int argv):
 	crash_handler_install()
 	decoy_caller()
 	return crash_level1(0)
-
-
-# Built with --no-inline (tests/crash_null_deref_fixture.w.wbuild): the
-# levels are small leaf bodies, and the default build would emit each in
-# place of its call, leaving no frames to unwind (unit A5). The line
-# numbers above are asserted by the targets, so this note sits at the end.

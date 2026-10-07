@@ -5,11 +5,11 @@ docs/projects/register_allocation_pgo.md §5), direct calls (unit A4,
 docs/projects/codegen_gap_plan.md §2.4) and inlining (unit A5, same
 section): every conventional compile-and-run target of the generated
 manifest is built four times, with the defaults, with --no-regs, with
---no-direct-calls and with --no-inline, on the width its target names
+--no-direct-calls and with --inline, on the width its target names
 (x86 or x64), and the binaries must behave identically: exit status,
 stdout and stderr. The same source is also compiled by compilers that
 were themselves built with --no-regs, with --no-direct-calls and with
---no-inline, and those outputs must be byte-identical to bin/wv2's (no
+--inline, and those outputs must be byte-identical to bin/wv2's (no
 unit may change what the compiler emits, only how the compiler's own
 code runs).
 
@@ -58,8 +58,8 @@ char* nodirect_compiler():
 	return c"bin/regalloc_diff/wv2_nodirect"
 
 
-char* noinline_compiler():
-	return c"bin/regalloc_diff/wv2_noinline"
+char* inline_compiler():
+	return c"bin/regalloc_diff/wv2_inline"
 
 
 int has_text(char* haystack, char* needle):
@@ -119,9 +119,9 @@ process_result* run_as(char* path, char* name, char* stdin_text, int timeout_ms)
 	return r
 
 
-# bin/wv2 [x64] [--no-regs | --no-direct-calls | --no-inline] src -o out;
+# bin/wv2 [x64] [--no-regs | --no-direct-calls | --inline] src -o out;
 # variant 0 is the default build, 1 --no-regs, 2 --no-direct-calls, 3
-# --no-inline
+# --inline
 process_result* compile_with(char* compiler, int arch64, int variant, char* src, char* out):
 	char** argv = strv_new(7)
 	int n = 0
@@ -139,7 +139,7 @@ process_result* compile_with(char* compiler, int arch64, int variant, char* src,
 		argv[n] = c"--no-direct-calls"
 		n = n + 1
 	if (variant == 3):
-		argv[n] = c"--no-inline"
+		argv[n] = c"--inline"
 		n = n + 1
 	argv[n] = src
 	argv[n + 1] = c"-o"
@@ -252,12 +252,12 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	char* regs_keep = strjoin(regs, c".keep")
 	char* noregs = strjoin(regs, c".noregs")
 	char* nodirect = strjoin(regs, c".nodirect")
-	char* noinline = strjoin(regs, c".noinline")
+	char* inlined = strjoin(regs, c".inline")
 
 	process_result* ca = compile_with(c"bin/wv2", arch64, 0, src, regs)
 	process_result* cb = compile_with(c"bin/wv2", arch64, 1, src, noregs)
 	process_result* cd = compile_with(c"bin/wv2", arch64, 2, src, nodirect)
-	process_result* ci = compile_with(c"bin/wv2", arch64, 3, src, noinline)
+	process_result* ci = compile_with(c"bin/wv2", arch64, 3, src, inlined)
 	if ((ca.status != 0) || (cb.status != 0) || (cd.status != 0) || (ci.status != 0)):
 		# A source that does not compile is still a comparison: every
 		# build must fail the same way
@@ -269,12 +269,12 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 			report(c"MISMATCH (compile, --no-direct-calls)", name, cd.stderr_text)
 		else if ((ca.status != ci.status) || (strcmp(ca.stderr_text, ci.stderr_text) != 0)):
 			mismatches = mismatches + 1
-			report(c"MISMATCH (compile, --no-inline)", name, ci.stderr_text)
+			report(c"MISMATCH (compile, --inline)", name, ci.stderr_text)
 		else: skipped = skipped + 1
 		return
 
 	# The --no-regs-built, the --no-direct-calls-built and the
-	# --no-inline-built compilers must emit the same bytes as bin/wv2
+	# --inline-built compilers must emit the same bytes as bin/wv2
 	# (same output path: the binary embeds its own name).
 	shell_status(c"/bin/cp", regs, regs_keep)
 	process_result* cc = compile_with(noregs_compiler(), arch64, 0, src, regs)
@@ -287,16 +287,16 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 		mismatches = mismatches + 1
 		report(c"MISMATCH (compiler output differs from the --no-direct-calls-built compiler)", name, 0)
 		return
-	process_result* cf = compile_with(noinline_compiler(), arch64, 0, src, regs)
+	process_result* cf = compile_with(inline_compiler(), arch64, 0, src, regs)
 	if ((cf.status != 0) || (shell_status(c"/usr/bin/cmp", regs, regs_keep) != 0)):
 		mismatches = mismatches + 1
-		report(c"MISMATCH (compiler output differs from the --no-inline-built compiler)", name, 0)
+		report(c"MISMATCH (compiler output differs from the --inline-built compiler)", name, 0)
 		return
 
 	process_result* ra = run_as(regs, name, stdin_text, timeout_ms)
 	if (compare_runs(ra, regs, noregs, c"--no-regs", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, nodirect, c"--no-direct-calls", name, stdin_text, timeout_ms) == 0): return
-	if (compare_runs(ra, regs, noinline, c"--no-inline", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, inlined, c"--inline", name, stdin_text, timeout_ms) == 0): return
 	compared = compared + 1
 
 
@@ -358,8 +358,8 @@ int main(int argc, char** argv):
 	asserts(c"building the --no-regs compiler", build.status == 0)
 	build = compile_with(c"bin/wv2", 0, 2, c"w.w", nodirect_compiler())
 	asserts(c"building the --no-direct-calls compiler", build.status == 0)
-	build = compile_with(c"bin/wv2", 0, 3, c"w.w", noinline_compiler())
-	asserts(c"building the --no-inline compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, 3, c"w.w", inline_compiler())
+	asserts(c"building the --inline compiler", build.status == 0)
 
 	process** shards = cast(process**, malloc(shard_count * __word_size__))
 	for k in range(shard_count):
