@@ -145,6 +145,22 @@ int direct_calls_disabled
 # through the accumulator address as before, the reference for
 # tests/regalloc_diff_test.w and the fallback a miscompile report asks for.
 int addr_modes_disabled
+# --no-expr-regs (and -O0): no expression register stack (unit A3,
+# code_generator/x86.w's ers_* section); every parked operand goes
+# through 'push eax' / 'pop ebx' as before, the reference for
+# tests/regalloc_diff_test.w and the fallback a miscompile report asks for.
+int ers_disabled
+# 1 while the function being compiled may contain a variable shift, a
+# division or a modulo -- or was not scanned (compiler/regalloc_scan.w
+# sets 0 only after seeing the whole body): the expression register
+# stack then leaves ecx/edx (the shift count and the division's high
+# half) alone and parks in r8-r11 only (nothing on x86).
+int ers_hazard
+# The caller-saved registers the open loops own (R3, rl_add /
+# regalloc_loop_leave in compiler/regalloc_scan.w), as a bitmask over
+# hardware register numbers: the expression register stack never parks
+# in one of them.
+int regalloc_loop_owned
 
 void direct_callee_guard_fail();   /* grammar/stack_slot.w: the diagnostic */
 

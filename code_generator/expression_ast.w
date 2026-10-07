@@ -436,7 +436,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int subop = tree.value[id]
 			if (subop):
 				park_call(park, get_name, 0)
-				push_slot()
+				ers_slot()
 			int right = tree.right[id]
 			emit_expression_ast(tree, right)
 			int got = promote(tree.result_type[right])
@@ -468,7 +468,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int subop = tree.value[id]
 			if (subop):
 				emit_ast_map_call(c"__w_map_get", map_slot, key_slot, 0)
-				push_slot()
+				ers_slot()
 			int right = tree.right[id]
 			emit_expression_ast(tree, right)
 			int got = promote(tree.result_type[right])
@@ -977,7 +977,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			return
 		if (lhs_reg != 0):
 			int reg_loaded = promote(left_type)   # mov eax,R
-			push_slot()
+			ers_slot()
 			emit_expression_ast(tree, tree.right[id])
 			int reg_rt2 = promote(tree.result_type[tree.right[id]])
 			reg_rt2 = compound_assign_apply(subop, reg_loaded, reg_rt2)
@@ -1007,13 +1007,14 @@ void emit_expression_ast(expression_ast* tree, int id):
 			mem_start = mem_lv_start
 		int lhs_slot = stack_pos
 		if (mem_kind != 1):
-			lhs_slot = push_slot()
+			if (subop || (mem_kind == 2)): lhs_slot = ers_slot_keep()
+			else: lhs_slot = ers_slot()
 			mem_push_end = push_note_end
 		int loaded = left_type
 		if (subop):
 			if (mem_kind == 1): mem_lvalue_renote(mem_base, mem_index, mem_scale, mem_disp)
 			loaded = promote(left_type)
-			push_slot()
+			ers_slot()
 		emit_expression_ast(tree, tree.right[id])
 		int rt = promote(tree.result_type[tree.right[id]])
 		if (subop): rt = compound_assign_apply(subop, loaded, rt)

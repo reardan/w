@@ -70,7 +70,7 @@ void increment_expression_error():
 # result type. Shared with the map/ndarray element forms
 # (grammar/pending_element.w).
 int compound_assign_rhs(int op, int left_type):
-	push_slot()
+	ers_slot()
 	int right_type = promote(expression())
 	if (var_binary_operands(left_type, right_type)):
 		error(c"compound assignment does not support var operands")
@@ -121,11 +121,11 @@ int compound_assign_scalar(int op, int type, int implicit_one, int value_dead):
 			mem_lvalue_renote(mem_base, mem_index, mem_scale, mem_disp)
 		else:
 			mem_kind = 0
-			push_slot()  # lhs address, kept for the final store
+			ers_slot_keep()  # lhs address, kept for the final store and loaded through
 	int left_type = promote(type)  # eax still holds the address: load
 	int result_type = 0
 	if (implicit_one):
-		push_slot()
+		ers_slot()
 		mov_eax_int(1)  # constant, exactly like a parsed '1' literal (type 3)
 		if (var_binary_operands(left_type, 3)):
 			error(c"compound assignment does not support var operands")

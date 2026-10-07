@@ -911,6 +911,7 @@ int link_option(char* arg, int apply):
 		if (apply): regalloc_disabled = 1
 		# -O0 is "no optimization": the condition chains go too
 		if (apply && (strcmp(arg, c"-O0") == 0)): cond_branch_disabled = 1
+		if (apply && (strcmp(arg, c"-O0") == 0)): ers_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
@@ -928,6 +929,17 @@ int link_option(char* arg, int apply):
 	# tests/regalloc_diff_test.w.
 	if (strcmp(arg, c"--no-addr-modes") == 0):
 		if (apply): addr_modes_disabled = 1
+		return 1
+	# The expression register stack (docs/projects/codegen_gap_plan.md
+	# §2.3, unit A3) is on by default on x86/x64; --no-expr-regs (and
+	# -O0) parks every waiting operand on the real stack, the reference
+	# for tests/regalloc_diff_test.w and the fallback an internal error
+	# asks for.
+	if (strcmp(arg, c"--no-expr-regs") == 0):
+		if (apply): ers_disabled = 1
+		return 1
+	if (strcmp(arg, c"--expr-regs") == 0):
+		if (apply): ers_disabled = 0
 		return 1
 	# Branch-on-flags for &&/||/! in conditions (docs/projects/
 	# codegen_gap_plan.md §2.6, grammar/cond_branch.w) is on by default
@@ -993,6 +1005,7 @@ void help_shared_options():
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
+	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
@@ -1329,6 +1342,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
+				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).

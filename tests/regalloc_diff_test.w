@@ -3,16 +3,17 @@
 Differential sweep for register promotion (unit R2,
 docs/projects/register_allocation_pgo.md §5), direct calls (unit A4,
 docs/projects/codegen_gap_plan.md §2.4), the condition chains of
-unit A6 (§2.6, grammar/cond_branch.w) and the addressing modes of unit
-A2 (§2.2, code_generator/x86.w): every conventional compile-and-run
-target of the generated manifest is built six times, with the
-defaults, with --no-regs, with --no-direct-calls, with
---no-cond-branch, with --no-addr-modes, and with all four opt-outs
-together, on the width its target names (x86 or x64), and the binaries
-must behave identically: exit status, stdout and stderr. The same
-source is also compiled by compilers that were themselves built with
-each opt-out and with all four, and those outputs must be
-byte-identical to bin/wv2's
+unit A6 (§2.6, grammar/cond_branch.w), the addressing modes of unit
+A2 (§2.2, code_generator/x86.w) and the expression register stack of
+unit A3 (§2.3, code_generator/x86.w's ers_* section): every
+conventional compile-and-run target of the generated manifest is built
+seven times, with the defaults, with --no-regs, with
+--no-direct-calls, with --no-cond-branch, with --no-addr-modes, with
+--no-expr-regs, and with all five opt-outs together, on the width its
+target names (x86 or x64), and the binaries must behave identically:
+exit status, stdout and stderr. The same source is also compiled by
+compilers that were themselves built with each opt-out and with all
+five, and those outputs must be byte-identical to bin/wv2's
 (no unit may change what the compiler emits, only how
 the compiler's own code runs).
 
@@ -67,6 +68,10 @@ char* nocond_compiler():
 
 char* noaddr_compiler():
 	return c"bin/regalloc_diff/wv2_noaddr"
+
+
+char* noexpr_compiler():
+	return c"bin/regalloc_diff/wv2_noexpr"
 
 
 # Built with every opt-out at once
@@ -132,12 +137,13 @@ process_result* run_as(char* path, char* name, char* stdin_text, int timeout_ms)
 
 
 # bin/wv2 [x64] [--no-regs] [--no-direct-calls] [--no-cond-branch]
-# [--no-addr-modes] src -o out; opt_out is a bitmask: 1 = --no-regs,
-# 2 = --no-direct-calls, 4 = --no-cond-branch, 8 = --no-addr-modes
-# (opt_out_all is every opt-out at once)
-const int opt_out_all = 15
+# [--no-addr-modes] [--no-expr-regs] src -o out; opt_out is a bitmask:
+# 1 = --no-regs, 2 = --no-direct-calls, 4 = --no-cond-branch,
+# 8 = --no-addr-modes, 16 = --no-expr-regs (opt_out_all is every
+# opt-out at once)
+const int opt_out_all = 31
 process_result* compile_with(char* compiler, int arch64, int opt_out, char* src, char* out):
-	char** argv = strv_new(10)
+	char** argv = strv_new(12)
 	int n = 0
 	argv[n] = compiler
 	n = n + 1
@@ -157,6 +163,9 @@ process_result* compile_with(char* compiler, int arch64, int opt_out, char* src,
 		n = n + 1
 	if (opt_out & 8):
 		argv[n] = c"--no-addr-modes"
+		n = n + 1
+	if (opt_out & 16):
+		argv[n] = c"--no-expr-regs"
 		n = n + 1
 	argv[n] = src
 	argv[n + 1] = c"-o"
@@ -293,6 +302,7 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	char* nodirect = strjoin(regs, c".nodirect")
 	char* nocond = strjoin(regs, c".nocond")
 	char* noaddr = strjoin(regs, c".noaddr")
+	char* noexpr = strjoin(regs, c".noexpr")
 	char* noopt = strjoin(regs, c".noopt")
 
 	process_result* ca = compile_with(c"bin/wv2", arch64, 0, src, regs)
@@ -300,14 +310,16 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	process_result* cd = compile_with(c"bin/wv2", arch64, 2, src, nodirect)
 	process_result* cn = compile_with(c"bin/wv2", arch64, 4, src, nocond)
 	process_result* cm = compile_with(c"bin/wv2", arch64, 8, src, noaddr)
+	process_result* ce = compile_with(c"bin/wv2", arch64, 16, src, noexpr)
 	process_result* co = compile_with(c"bin/wv2", arch64, opt_out_all, src, noopt)
-	if ((ca.status != 0) || (cb.status != 0) || (cd.status != 0) || (cn.status != 0) || (cm.status != 0) || (co.status != 0)):
+	if ((ca.status != 0) || (cb.status != 0) || (cd.status != 0) || (cn.status != 0) || (cm.status != 0) || (ce.status != 0) || (co.status != 0)):
 		# A source that does not compile is still a comparison: every
 		# build must fail the same way
 		if (same_compile(ca, cb, c"MISMATCH (compile)", name) == 0): return
 		if (same_compile(ca, cd, c"MISMATCH (compile, --no-direct-calls)", name) == 0): return
 		if (same_compile(ca, cn, c"MISMATCH (compile, --no-cond-branch)", name) == 0): return
 		if (same_compile(ca, cm, c"MISMATCH (compile, --no-addr-modes)", name) == 0): return
+		if (same_compile(ca, ce, c"MISMATCH (compile, --no-expr-regs)", name) == 0): return
 		if (same_compile(ca, co, c"MISMATCH (compile, every opt-out)", name) == 0): return
 		skipped = skipped + 1
 		return
@@ -320,6 +332,7 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	if (same_output(nodirect_compiler(), arch64, src, regs, regs_keep, c"--no-direct-calls-built", name) == 0): return
 	if (same_output(nocond_compiler(), arch64, src, regs, regs_keep, c"--no-cond-branch-built", name) == 0): return
 	if (same_output(noaddr_compiler(), arch64, src, regs, regs_keep, c"--no-addr-modes-built", name) == 0): return
+	if (same_output(noexpr_compiler(), arch64, src, regs, regs_keep, c"--no-expr-regs-built", name) == 0): return
 	if (same_output(noopt_compiler(), arch64, src, regs, regs_keep, c"every-opt-out-built", name) == 0): return
 
 	process_result* ra = run_as(regs, name, stdin_text, timeout_ms)
@@ -327,7 +340,8 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	if (compare_runs(ra, regs, nodirect, c"--no-direct-calls", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, nocond, c"--no-cond-branch", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, noaddr, c"--no-addr-modes", name, stdin_text, timeout_ms) == 0): return
-	if (compare_runs(ra, regs, noopt, c"--no-regs --no-direct-calls --no-cond-branch --no-addr-modes", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, noexpr, c"--no-expr-regs", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, noopt, c"--no-regs --no-direct-calls --no-cond-branch --no-addr-modes --no-expr-regs", name, stdin_text, timeout_ms) == 0): return
 	compared = compared + 1
 
 
@@ -393,6 +407,8 @@ int main(int argc, char** argv):
 	asserts(c"building the --no-cond-branch compiler", build.status == 0)
 	build = compile_with(c"bin/wv2", 0, 8, c"w.w", noaddr_compiler())
 	asserts(c"building the --no-addr-modes compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, 16, c"w.w", noexpr_compiler())
+	asserts(c"building the --no-expr-regs compiler", build.status == 0)
 	build = compile_with(c"bin/wv2", 0, opt_out_all, c"w.w", noopt_compiler())
 	asserts(c"building the every-opt-out compiler", build.status == 0)
 

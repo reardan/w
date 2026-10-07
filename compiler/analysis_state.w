@@ -87,6 +87,7 @@ void analysis_restore(analysis_state* state):
 	retained_walk_release()
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	ers_reset()
 	stack_pos = state.stack_pos
 	loop_depth = state.loop_depth
 	loop_break_chain = state.loop_break_chain

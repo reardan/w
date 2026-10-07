@@ -455,6 +455,8 @@ void emit_ffi_call_inline_body(int n, char* classes, int ret_class, int got_vadd
 
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
 	emitted_call_count = emitted_call_count + 1
+	# A parked expression operand (A3) never survives a call.
+	if (ers_count != 0): ers_spill_all()
 	# Loop-owned caller-saved registers (R3, compiler/regalloc_scan.w)
 	# survive the callee through their frame-pointer homes: spilled here
 	# with the W frame pointer still current, reloaded once the C frame
@@ -488,6 +490,8 @@ int ffi_push_promoted_float32():
 		movq_rax_xmm0()
 		push_eax()
 		return 1
+	# a real two-word push: the parked words (A3) must be below it
+	if (ers_count != 0): ers_spill_all()
 	emit(3, c"\x83\xec\x08")           /* sub esp,8 */
 	emit(5, c"\xf2\x0f\x11\x04\x24")   /* movsd [esp],xmm0 */
 	return 2

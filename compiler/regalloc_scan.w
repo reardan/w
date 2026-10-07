@@ -186,6 +186,12 @@ int[64] rs_lp_snap_len
 int rs_lp_depth            # open loops with a record (mode 1)
 int rs_lp_overflow         # more than 64 nested loops: no loop facts
 int rs_has_goto            # 'goto' or a label: loops own no registers
+# A3 (code_generator/x86.w's expression register stack): the body
+# divides, takes a modulo or shifts by a non-literal count, so ecx/edx
+# are not parking registers in it; rs_shift_pending holds a seen shift
+# operator until its count token says whether the count is a literal.
+int rs_has_divshift
+int rs_shift_pending
 int rs_has_defer           # 'defer': same (every return is an exit edge)
 int rs_tok_off             # file offset of the token being read
 int rs_expect_range        # 'in' of a for header seen: 'range' or a container
@@ -397,6 +403,7 @@ void regalloc_function_end():
 	regalloc_function = -1
 	regalloc_loops_ok = 0
 	reg_lvalue_end = 0
+	ers_hazard = 1
 	rl_reset()
 
 
@@ -1003,6 +1010,8 @@ void rs_after_ident_operator(int i, int type_context):
 		n = n + 1
 		rs_next()
 	if ((first == '/') || (first == '%') || ((n >= 2) && (first == second) && ((first == '<') || (first == '>')))): rs_lp_mark(rs_lp_has_divshift)
+	if ((first == '/') || (first == '%')): rs_has_divshift = 1
+	elif ((n >= 2) && (first == second) && ((first == '<') || (first == '>'))): rs_shift_pending = 1
 	int use = 1
 	if (n == 1):
 		if (first == '='):
@@ -1290,6 +1299,8 @@ void rs_scan_body(int brace_body):
 	rs_line_reset()
 	rs_paren_depth = 0
 	rs_deref_pending = 0
+	rs_has_divshift = 0
+	rs_shift_pending = 0
 	int first = 1
 	while ((rs_done == 0) && (rs_abort == 0) && (rs_c != -1)):
 		if ((rs_mode == 0) && rs_has_loop): return;
@@ -1315,9 +1326,15 @@ void rs_scan_body(int brace_body):
 			# a '/' operator (also '/=': an identifier before it already
 			# consumed the run, so this one follows a non-identifier)
 			rs_lp_mark(rs_lp_has_divshift)
+			rs_has_divshift = 1
 			rs_prev_kind = 0
 			continue
 		# a token starts here
+		if (rs_shift_pending):
+			# the count of the shift just seen: a literal keeps the shift
+			# out of ecx (shift_imm_fold), anything else goes through cl
+			if ((rs_c < '0') || (rs_c > '9')): rs_has_divshift = 1
+			rs_shift_pending = 0
 		if (rs_br_depth > 0): rs_br_tokens[rs_br_depth - 1] = rs_br_tokens[rs_br_depth - 1] + 1
 		if (first):
 			first = 0
@@ -1393,6 +1410,8 @@ void rs_scan_body(int brace_body):
 				rs_next()
 			rs_prev_kind = 0
 			if ((firstc == '%') || ((n >= 2) && (firstc == secondc) && ((firstc == '<') || (firstc == '>')))): rs_lp_mark(rs_lp_has_divshift)
+			if (firstc == '%'): rs_has_divshift = 1
+			elif ((n >= 2) && (firstc == secondc) && ((firstc == '<') || (firstc == '>'))): rs_shift_pending = 1
 			# a prefix '++'/'--': the identifier it precedes is written
 			if ((n == 2) && (firstc == secondc) && ((firstc == '+') || (firstc == '-'))): rs_incdec = 1
 			# an assignment after ']' or an operand end ('a[i] =',
@@ -1549,6 +1568,13 @@ void regalloc_function_scan(int symbol, int is_variadic):
 		rs_profile_pass_begin()   # P2
 		rs_scan_body(brace_body)
 	while (rs_lp_depth > 0): rs_lp_close_loop()
+	# The expression register stack (A3) may park in ecx/edx only when
+	# the whole body was seen and nothing in it writes them: a full
+	# pass, or a probe that reached the end without finding a loop.
+	int whole = 0
+	if ((rs_mode == 1) && (rs_abort == 0)): whole = 1
+	if ((rs_mode == 0) && (probe == 2) && (rs_has_loop == 0) && (rs_abort == 0)): whole = 1
+	if (whole && (rs_has_divshift == 0)): ers_hazard = 0
 	if ((rs_mode == 1) && (rs_abort == 0)):
 		regalloc_scanned_functions = regalloc_scanned_functions + 1
 		mask = rs_assign_registers()
@@ -1693,6 +1719,7 @@ void rl_reset():
 	rl_eligible.clear()
 	rl_free_mask = 0
 	regalloc_loop_depth = 0
+	regalloc_loop_owned = 0
 
 
 # The caller-saved registers a loop may own on this target: x64 only
@@ -1742,6 +1769,7 @@ void rl_add(int t, int reg, int slot, int kind, char* name, int live):
 	rl_kind.push(kind)
 	rl_live.push(live)
 	rl_name.push(strclone(name))
+	regalloc_loop_owned = regalloc_loop_owned | (1 << reg)
 	regalloc_loop_regs = regalloc_loop_regs + 1
 
 
@@ -1832,6 +1860,7 @@ void regalloc_loop_leave():
 			if (kind != 'H'): mov_ebp_disp_reg(rl_reg[i], rl_home_disp(i))
 			if (t >= 0): save_int(table + t + 146, 0)
 		rl_free_mask = rl_free_mask | (1 << rl_reg[i])
+		regalloc_loop_owned = regalloc_loop_owned & ~(1 << rl_reg[i])
 		free(rl_name[i])
 	while (rl_sym.length > mark):
 		rl_sym.pop()
@@ -1898,5 +1927,7 @@ void regalloc_stats_dump():
 	print_int0(c" arguments promoted: ", regalloc_promoted_args)
 	print_int0(c" loops owning registers: ", regalloc_loops_owned)
 	print_int0(c" loop registers: ", regalloc_loop_regs)
+	print_int0(c" expression parks: ", ers_parks)
+	print_int0(c" spilled: ", ers_spills)
 	print_error(c"\x0a")
 	rs_profile_stats_dump()   # P2
