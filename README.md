@@ -95,6 +95,11 @@ Other useful targets:
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
 
+Apple Silicon Macs can run static ARM64 W cells through the
+[Hypervisor.framework backend](docs/projects/vms_darwin.md). Run
+`sh tools/mac/run_vm_tests.sh` for the required native gate, or
+`./wbuild wvm_darwin wvmd_darwin` to build the signed CLI and daemon.
+
 The [VM runner](docs/projects/vms.md) executes static x64 W cells with
 checked syscall access, explicit filesystem/TCP capabilities, guest threads,
 and timeouts. Ready-cell snapshots support CoW clones and RAM pools.

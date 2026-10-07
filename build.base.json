@@ -39,6 +39,9 @@
 			"bench_compare": "hand-run/CI program benchmark comparison against tests/bench/baseline.txt; wbench_compare_test covers the logic",
 			"wcoverage_report": "writes a coverage report on demand",
 			"wvm_pool_bench": "benchmark driver",
+			"wvm_darwin": "native Apple Silicon CLI; requires macOS codesign and Hypervisor entitlement",
+			"wvmd_darwin": "native Apple Silicon daemon; exercised by the explicit native VM gate",
+			"vm_darwin_native_test": "required manual Apple Silicon execution gate; never substitute Linux cross-compilation",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it"
 		},
 		"tool_targets": [

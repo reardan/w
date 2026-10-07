@@ -11,9 +11,11 @@ kernel configuration in `tools/wvm_kernel.config`.
 The usage sections below distinguish these implementations from the target
 architecture.
 
-The macOS Apple Silicon backend is not implemented. Its staged implementation
-and native acceptance gates are in [vms_darwin_plan.md](vms_darwin_plan.md),
-tracking [#591](https://github.com/reardan/w/issues/591).
+The initial macOS Apple Silicon cell backend is implemented; see
+[Darwin usage and limits](vms_darwin.md), its [implementation plan](vms_darwin_plan.md)
+and [native validation](vms_darwin_validation.md), tracking
+[#591](https://github.com/reardan/w/issues/591). Linux-specific mechanisms below
+(memfd seals, KVM, cgroups and boxes) do not describe the Darwin implementation.
 
 Goal: let agents (wharness, wexec steps, anything driving the toolchain)
 run work inside virtual machines that start and stop in well under a
@@ -787,9 +789,10 @@ latency guarantees.
    it behind a future `wvmd` API if measured deployment needs justify it.
 3. **Repo split.** VMM core, cells, `wvmd` and the compiler flag in
    `w`; the wharness integration in `w-private`.
-4. **macOS.** Hypervisor.framework allows one VM per process, so on the
-   Mac `wvmd` would run a helper process per VM, sharing snapshot pages
-   through a mapped file instead of a memfd.
+4. **macOS.** The [initial Darwin cell backend](vms_darwin.md) uses
+   Hypervisor.framework in exec-created workers, one VM per process, with
+   read-only unlinked file backing and private clones. Linux boxes, live
+   checkpoints and cgroup-equivalent quotas remain unsupported there.
 
 ## 11. Risks
 
