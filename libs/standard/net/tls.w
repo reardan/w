@@ -480,6 +480,9 @@ struct tls_conn:
 	# -1 for none (the task's deadline still applies). Blocking fds keep
 	# using SO_RCVTIMEO/SO_SNDTIMEO.
 	int io_timeout_ms
+	# Optional absolute deadline also bounds continuously-ready hostile peers.
+	int has_io_deadline
+	int io_deadline_ms
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
@@ -487,6 +490,8 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.fd = fd
 	c.use_mem = use_mem
 	c.io_timeout_ms = 0 - 1
+	c.has_io_deadline = 0
+	c.io_deadline_ms = 0
 	c.mem_in = 0
 	c.mem_in_pos = 0
 	c.mem_out = 0
@@ -593,6 +598,7 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 		return 1
 	int got = 0
 	while (got < n):
+		if (c.has_io_deadline && (c.io_deadline_ms - time_monotonic_ms()) <= 0): return 0
 		int r = socket_recv(c.fd, buf + got, n - got, 0)
 		if (r > 0): got = got + r
 		else if (r == 0): return 0
@@ -615,6 +621,7 @@ int tls_io_send_all(tls_conn* c, char* buf, int n):
 		return 1
 	int sent = 0
 	while (sent < n):
+		if (c.has_io_deadline && (c.io_deadline_ms - time_monotonic_ms()) <= 0): return 0
 		int r = socket_send(c.fd, buf + sent, n - sent, msg_nosignal())
 		if (r > 0): sent = sent + r
 		else if (r == 0 - net_eagain()):
