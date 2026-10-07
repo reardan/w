@@ -486,7 +486,7 @@ generator int group_parent(list[int] log, int fail):
 	task_group* g = task_group_here()
 	task_group_spawn(g, group_child(log, 1, 30, 0))
 	task_group_spawn(g, group_child(log, 2, 5, fail))
-	task_group_spawn(g, group_child(log, 3, 10, 0))
+	task_group_spawn(g, group_child(log, 3, 20, 0))
 	int r = task_group_wait(g)
 	log.push(100)
 	task_group_free(g)
@@ -537,7 +537,7 @@ void test_cancelling_group_waiter_cancels_children():
 	task_scheduler* s = task_scheduler_new()
 	list[int] log = new list[int]
 	task* parent = task_spawn(s, group_parent(log, 0))
-	task_spawn(s, cancel_later(parent, 7))
+	task_spawn(s, cancel_later(parent, 10))
 	assert_equal(0, task_run(s))
 	assert_equal(task_err_cancelled(), task_result(parent))
 	# Child 2 finished at 5ms; 3 and 1 were cancelled; the parent's
