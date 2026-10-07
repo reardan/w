@@ -1654,3 +1654,174 @@ class. The `l` ordinals assume a loop keyword at a line start; a
 `while` after a `:` on the same line shifts the ordinals after it
 (weights only). arm64, darwin, win64 and wasm compute classes and
 promote nothing, as before.
+
+### R3 — compound operators, operand folds, loop-scoped registers (2026-10-07)
+
+Landed as two commits on top of R2 and P2 phase A (merged with phase B
+before the final gates): the folds (`code_generator/x86.w`,
+`grammar/{expression,increment}.w`, `code_generator/{expression_ast,
+retained_emit}.w`) and the loop-scoped allocation
+(`compiler/regalloc_scan.w`, `grammar/{while_statement,for_statement,
+statement}.w`, `code_generator/{loop_ast,ffi}.w`, one hook in
+`compiler/symbol_table.w`), with the cases in `tests/regalloc_test.w`
+(`test_r3_shapes`, `test_r3_loops`; every expected value comes from a
+gcc `-O0` oracle of the same functions, not from the compiler under
+test). Both are **on by default** under R2's switch: `--no-regs` turns
+the scan off, and with it the folds' register paths and the loop
+registers.
+
+What landed, against §2.3:
+
+- **Compound assignment and `++`/`--` on a promoted local** emit
+  `op R,imm` / `op R,eax` / `op R,[esp+d]` / `op R,R2` in place
+  (`regalloc_reg_store` consumes a *binop note* that `alu_*` leave
+  behind, the same `*_end == codepos` discipline as the other notes;
+  `imul` keeps its `69 /r` form so `asm_x64_test`'s encode identity
+  stays byte-exact). The scan counts these as two uses instead of
+  excluding the name. `x = x + y`-shaped plain assignments fold the
+  same way when the left operand of the binary operator is the stored
+  register (and `x = y + x` for the commutative operators), and the
+  value stays in `eax` only when the assignment is not at statement
+  position (`stmt_context`, `ast_statement_root1` for the retained
+  walk) — so `s = s + i` is one instruction.
+- **Register-operand fusion**: `pop_ebx`'s shuttle now also folds a
+  pushed left operand that came straight from a register
+  (`push_left_reg`): `mov eax,R1; push; mov eax,R2; pop ebx; add eax,ebx`
+  becomes `mov eax,R1; add eax,R2`, the comparison forms become
+  `cmp R1,R2` / `cmp R,imm` / `cmp R,[esp+d]` feeding the existing
+  branch fusion, and `mov eax,R; mov ebx,eax` folds to `mov ebx,R`.
+  64-bit constants outside the int32 range and non-word loads decline
+  the fold.
+- **Loop-scoped caller-saved registers (x64 only)**: the scan's full
+  pass records each loop keyword's file offset, the uses gained inside
+  it (ranked, ten candidates per loop) and the hazards its body
+  contains (any call, including the hidden ones: `in` over a
+  container, `new`, method and field calls, subscripted containers;
+  `/`, `%`, shifts are recorded but harmless on x64 since `rcx`/`rdx`
+  are not in the set). `loop_enter()` (both the streaming grammar and
+  the retained walk go through it) looks the loop up by that offset
+  and, in a call-free loop of a function without `goto`/labels or
+  `defer`, loads the candidates that are live locals or arguments
+  (`sym_probe`, one declaration, `regalloc_type_ok`) from their
+  frame-pointer-relative homes into `rsi rdi r8–r11` (`mov R,[rbp±d]`),
+  marks the symbol record's register field, and `loop_leave()` writes
+  the live ones back where every exit edge lands. A for-range's hidden
+  end and step words join as kind `'H'` (no write-back), so
+  `for i in range(n): s = s + i` is the same five-instruction loop as
+  the `while` form. A candidate declared inside the loop body is
+  pending until its declaration (`rl_declare_pending`, kind `'B'`).
+  Any call the emitter still meets inside such a loop (`call_eax`, the
+  inline FFI path) parks the live registers in their homes and fetches
+  them back (`regalloc_call_spill`/`_reload`): the scan's facts are
+  only a hint, correctness never depends on them, and the stack-slot
+  assertions stay fail-closed. `loops owning registers: 402, loop
+  registers: 306` for `w.w` on x64.
+- **Deviations from §2.3**: a `return` inside the loop writes nothing
+  back (every loop-owned value is dead at a return once `defer` is
+  excluded); x86 `ecx`/`edx` are not taken (the shift and division
+  sequences use them and the function-level budget already holds
+  `esi`/`edi`; `rl_target_mask` is where an x86 mask would go);
+  win64 stays off with the rest of promotion (`target_os != 0`);
+  hot-loop alignment is P2's (`profile_use_loop_align`). arm64,
+  darwin, win64 and wasm output is byte-identical (`verify_arm64`).
+- **The scan stops counting `x = i * m` as a `T* name` declaration**:
+  `*` after an identifier is a type only where a statement, parameter,
+  cast or generic argument may begin (line start, after `( , [ { ; :`
+  or a keyword). It still over-counts (`f(a * b)`) and never
+  under-counts; `m` in `s = s + i * m` ranks for function-level
+  promotion now too.
+
+Measurements (4-core cloud container; "before" is the integration
+branch at 7f147be7 — R2 + P2 phase A — built to its fixpoint, "after"
+this branch's fixpoint `bin/wv3` / `bin/wv3_64` after the merge with
+P2 phase B, "main" the pre-plan compilers; best-of-5 wall, callgrind
+Ir):
+
+| micro-benchmark, 10^9 iterations (instructions per iteration from Ir at 10^7) | main | before | after |
+| --- | --- | --- | --- |
+| §1.1 `sum_to` while loop, x86 | 1.340 s, 23 | 0.889 s, 16 | 0.340 s, 5 |
+| same, x64 | 1.263 s, 23 | 0.878 s, 16 | 0.690 s, 5 (0.326–0.363 s with the loop placed elsewhere, see below) |
+| `for i in range(n): s = s + i`, x86 | 1.119 s, 17 | 0.702 s, 12 | 0.349 s, 5 |
+| same, x64 | 1.090 s, 17 | 0.709 s, 12 | 0.339 s, 5 |
+| `s += i; i++` while loop, x86 | 1.313 s, 23 | 1.226 s, 22 | 0.338 s, 5 |
+| same, x64 | 1.227 s, 23 | 1.242 s, 22 | 0.655 s, 5 (layout, as above) |
+
+The x64 `sum_to` loop is §1.3's variant B exactly (`cmp r12,rsi; jge;
+add r13,r12; add r12,1; jmp`, `n` in `rsi` for the loop's extent), yet
+its wall time depends on where the five instructions land: moving the
+function by a few bytes (a padding function of k statements before
+it) gives 363, 355, 340, 668, 326, 351, 684, 352 ms for k = 0..7, the
+slow placements being those where `cmp`+`jge` end on or straddle a
+32-byte boundary (the fused-branch erratum of the Skylake-family
+cores this container runs on). It is the layout sensitivity §2.3's
+alignment step exists for; `--profile-use` pads hot heads to 16 bytes
+(P2), the default build does not, so the unaligned number is the
+honest one for the table.
+
+| `bin/wbench --programs -n 5` (kIr, best ms) | main | before | after |
+| --- | --- | --- | --- |
+| sum x86 / x64 | 13,800,447 (815) / 13,800,447 (775) | 9,600,395 (517) / 9,600,395 (524) | 3,000,259 (423) / 3,000,254 (202) |
+| sieve x86 / x64 | 4,066,658 (440) / 4,066,658 (441) | 3,597,355 (371) / 3,590,054 (387) | 1,683,751 (284) / 1,664,277 (279) |
+| sha256_1m x86 / x64 | 7,701,753 (468) / 7,701,753 (473) | 7,485,168 (459) / 7,436,410 (453) | 5,586,837 (360) / 5,373,447 (347) |
+| siphash_keys x86 / x64 | 6,148,476 (703) / 6,908,822 (1166) | 5,953,930 (670) / 6,490,605 (858) | 4,576,849 (596) / 4,849,309 (861) |
+| inflate_corpus x86 / x64 | 6,777,705 (499) / 6,721,188 (502) | 6,480,057 (487) / 6,351,846 (484) | 5,357,385 (456) / 5,179,840 (454) |
+| regex_backtrack x86 / x64 | 10,185,946 (588) / 10,185,946 (620) | 9,692,806 (557) / 9,791,912 (563) | 6,600,524 (433) / 6,682,831 (443) |
+| matmul_256 x86 / x64 | 8,771,516 (523) / 8,771,516 (521) | 7,597,846 (442) / 7,595,874 (446) | 5,068,987 (360) / 5,065,035 (392) |
+| strcmp_sort x86 / x64 | 4,601,677 (483) / 4,721,782 (525) | 4,497,147 (476) / 4,576,365 (490) | 3,605,684 (443) / 3,609,401 (485) |
+
+Against "before", the corpus instruction counts fall by 17% (inflate)
+to 69% (sum), 25–33% for sha256, regex and matmul; most of it is the
+folds (step A alone: sum 9.60 → 3.00 G, sieve 3.60 → 2.15 G, sha256
+7.49 → 5.59 G, matmul 7.60 → 5.07 G), the loop registers add the rest
+on x64 (sieve 2.15 → 1.66 G, sha256 5.54 → 5.37 G).
+
+| self-compile of `w.w` (compiler binary compiling this tree's `w.w`; best-of-5 wall, callgrind Ir) | main | before | after |
+| --- | --- | --- | --- |
+| x86 | 0.854 s, 8.024 G | 0.981 s, 8.087 G | 0.929 s, 6.786 G |
+| x64 | 0.799 s, 7.875 G | 0.880 s, 8.192 G | 0.824 s, 6.733 G |
+
+The compiler executes 16–18% fewer instructions than before (and 15%
+fewer than main, scan included) but the wall clock recovers only half
+of R2's regression on x86: the scan's extra passes over the source
+are memory- and syscall-bound (seeks), not issue-bound. The `w.w`
+image shrinks from 2,828,672 to 2,705,792 bytes on x86 (622,759 →
+577,960 instructions) and from 3,232,512 to 3,085,056 on x64 (619,726
+→ 574,402).
+
+Gates (merged tree, refreshed profiles): `verify`, `verify_x64`,
+`verify_arm64`, `verify_pgo`, `tests` (916 targets, 0 failures),
+`regalloc_test` + `_64`, `regalloc_diff_test` (406 programs compared
+on their own width, 0 mismatches; the race/timing tests skipped as
+nondeterministic), `asm_x64_test` (528,076 instructions re-encoded, 0
+unknown, 0 mismatches), `asm_fuzz_{x86,x64,arm64}_test`,
+`local_load_fold_test` + `_64`, the `ast_*` suites (canary, expression,
+retained, retained_emit, semantic, symbol_probe, tree_query, audit),
+`repl_test` + `_x64`, `debug_test`, `dwarf_variables_test`,
+`wdbg_web_test`, `wdbg_ui_test`, `compound_assign_*`, `const_fold_*`,
+`defer_*`, `goto_*`, `generator_*`, `for_*`, `increment_*`,
+`switch_*`, `warning_test`, `self_host_warning_test`,
+`parser_generator_w_test`, `profile_check` (100% after
+`profile_refresh`). `verify_win` could not run (no `wine` on the
+box); win64 code is unchanged by construction (`target_os != 0`
+returns before the scan).
+
+Not claimed / for the next unit:
+- **x86 gets no loop registers** (`loops owning registers: 0`): an
+  x86 mask of `ecx`/`edx` needs the shift-by-variable and
+  division sequences to spill them first (they are the only emitter
+  paths that touch those two), or a loop hazard bit the scan already
+  records (`rs_lp_has_divshift`) to decline such loops.
+- **wdbg shows a loop-owned local's stale stack word inside the
+  loop**: `.debug_info` keeps the `fbreg` location (the home), which
+  is only current at loop entry, after write-back, and around calls.
+  A location list per loop extent would fix it.
+- A name used only in the range arguments (`n` in `for i in
+  range(n)`) still gets a register, a load and a write-back it never
+  needs: the scan's per-loop use delta counts the header.
+- Loop candidates beyond the first ten per loop, nested loops sharing
+  a budget (the inner loop takes what the outer left), floats, narrow
+  integers and aggregates are untouched; the profile's loop weights
+  (P2) rank function-level candidates, not yet the per-loop ones.
+- The micro-benchmarks' layout sensitivity above is the strongest
+  argument yet for aligning hot loop heads in the default build (a
+  size budget per function, not only under `--profile-use`).
