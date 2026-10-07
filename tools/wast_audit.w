@@ -8,22 +8,14 @@ Usage:
 manifest generates today's manifest from build.base.json and source directives,
 adds --ast-full-expressions to direct production compile/check steps, writes
 the manifest, and prints a JSON selection report. It never executes steps.
-Run it with: bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
+Run it with: bin/wexec -f bin/ast_suite_manifest.json tests
 Driver-owned compiler launches are not rewritten. Explicit AST modes and pinned
 seeds stay intact. Compile flags also apply to each compilation's implicit
 imports.
 
-Why -j 1 (ast_migration.md, "Reproducible production AST audit"): some suite
-steps launch a nested bin/wexec against the default manifest (wexec_test runs
-"bin/wexec hello", whose dep is the default 'wv2' target). Cache stamps are
-namespaced per manifest, so the suite's own wv2/build runs never refresh the
-default stamps; when those are missing or stale the nested run rebuilds bin/wv2
-in place with the seed. The outer run's bin/.wexec_lock does not stop it: wexec exempts a
-nested run (WEXEC_LOCK_HELD) on the premise that its parent is blocked waiting
-for that one step, which only holds at -j 1. In parallel, sibling targets
-executing bin/wv2 then see ETXTBSY or a half-written compiler. Serial is a
-workaround, not a fix; the race itself is in wexec's lock exemption and the
-non-atomic './w w.w -o bin/wv2' bootstrap step.
+Bootstrap outputs are published by atomic rename (#548), so nested default-
+manifest cache misses can safely rebuild a compiler while sibling targets use
+it. The suite uses wexec's normal parallel scheduler.
 
 required-manifest rejects expression fallback in positive compile/check steps
 and diagnostic fixtures. Expected failures use permissive AST mode to preserve
@@ -59,7 +51,7 @@ int main(int argc, int argv):
 		stream_write_line(help, c"wast_audit required-manifest <output.json>  Gate positive compiler steps and fixtures.")
 		stream_write_line(help, c"wast_audit census <audit.jsonl>    Summarize --ast-audit --stats stderr as JSON.")
 		stream_write_line(help, c"Direct compile/check steps include implicit imports. Nested compiler launches remain driver-controlled.")
-		stream_write_line(help, c"Run manifests serially: bin/wexec -f <output.json> -j 1 tests")
+		stream_write_line(help, c"Run manifests: bin/wexec -f <output.json> tests")
 		stream_flush(help)
 		return 0
 	if (argc != 3):
@@ -110,7 +102,6 @@ int main(int argc, int argv):
 
 # wbuild: target=ast_expression_suite dep=build dep=wast_audit dep=wfixture
 # wbuild: step="bin/wast_audit required-manifest bin/ast_required_suite_manifest.json"
-# The serial run outlives wexec's 900 s default step timeout (about 21 minutes
-# cold on a shared 4-core box), so the outer step gets two hours. Inner steps
-# keep their own timeouts; CI's job timeout is the overall bound.
-# wbuild: step="bin/wexec -f bin/ast_required_suite_manifest.json -j 1 tests" timeout=7200000
+# The complete suite gets two hours on slow hosts. Inner steps keep their
+# own timeouts; CI's job timeout is the overall bound.
+# wbuild: step="bin/wexec -f bin/ast_required_suite_manifest.json tests" timeout=7200000

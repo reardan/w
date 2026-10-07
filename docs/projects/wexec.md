@@ -63,6 +63,16 @@ and `"outputs"` described below. Each step:
 - `"stdout_file"` / `"stderr_file"` — save the captured stream to a
   path; replaces `> file` redirects and lets `grep -qE` regex checks
   and `diff -u` comparisons run as ordinary follow-up steps.
+- `"atomic_output"` — a nonempty output path matching exactly one command
+  argument after argv[0]. The executor replaces that argument with a unique
+  sibling stage path (`<output>.stage.<worker-pid>.<step-index>`) and renames
+  the file over the public output only after exit 0 and all step assertions
+  pass. Expected failures never publish. Ordinary failure and timeout paths
+  remove the stage; killing the executor itself may leave an unused stage
+  file. A missing stage or failed rename fails the step. Relative paths
+  follow `cwd`, if present. Only that one file is published (commands with
+  sidecar outputs need their own protocol). The source directive spelling
+  is `# wbuild: step="..." atomic_output=<path>`.
 - `"timeout_ms"` — per-step timeout in milliseconds. Absent means the
   default, 900000 (15 minutes); an explicit `0` (or a negative value)
   disables the timeout for that step. The `WEXEC_STEP_TIMEOUT_MS`
@@ -206,16 +216,22 @@ in this directory (pid N); remove bin/.wexec_lock if stale` and exits 1.
 The lock is scoped per `bin/` directory (relative to cwd, like
 `bin/.wexec_cache/`), not global.
 
-wexec's own test harness (`wexec_test` and friends) runs `bin/wexec -f
-tests/wexec/*.json ...` as a *step* of an outer, already-locked wexec —
-not a race, since the outer process is blocked in `wait4()` on that
-child the whole time. The outer process marks `WEXEC_LOCK_HELD=1` in the
-environment the moment it acquires the lock (swapped into `environ_ptr`,
-inherited through every `execve` its descendants make, transitively,
-even through intermediate non-wexec programs like `bin/wtest`'s own
-`--run`); a nested wexec sees the marker and skips locking entirely,
-trusting the ancestor. See the block comment above `wexec_lock_file` in
-`tools/wexec.w` for the full design.
+wexec's own test harness (`wexec_test` and friends) and suite drivers run
+nested `bin/wexec` processes as steps. The outer process sets
+`WEXEC_LOCK_HELD=1`, inherited through intermediate programs too; nested
+runs share that ancestor's lock. This does **not** serialize sibling workers
+under `-j N`. Their manifests must use disjoint outputs or publish shared
+executables atomically.
+
+The `wv2`, `build` and `build_x64` compiler steps use `atomic_output` (#548).
+A nested run on a different manifest may miss its separate cache stamp and
+rebuild a compiler while a sibling executes it. Each publisher writes a
+unique sibling file, then renames it over the public path. Existing readers
+keep the old inode; new executions see a complete binary. Failed compiles
+preserve the previous executable. The AST audit suite therefore uses normal
+parallel scheduling, without the former `-j 1` workaround. This is atomic
+publication of individual files, not serialization of arbitrary nested
+commands or a transaction spanning a whole bootstrap chain.
 
 ## Run-step timeouts and child cleanup
 

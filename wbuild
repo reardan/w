@@ -92,8 +92,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
 fi
 ensure_seed w
 if [ ! -x bin/wexec ]; then
-	./w w.w -o bin/wv2
-	./bin/wv2 tools/wexec_main.w -o bin/wexec
+	./w w.w -o "bin/wv2.stage.$$"
+	mv -f "bin/wv2.stage.$$" bin/wv2
+	./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
+	mv -f "bin/wexec.stage.$$" bin/wexec
 fi
 # An executor older than the tree may not be able to load its manifest
 # at all (one built before the manifest stopped being committed); rebuild
@@ -101,8 +103,10 @@ fi
 # least build.base.json's targets, so this only fires across that change.
 if ! ./bin/wexec --list >/dev/null 2>&1; then
 	echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
-	./w w.w -o bin/wv2
-	./bin/wv2 tools/wexec_main.w -o bin/wexec
+	./w w.w -o "bin/wv2.stage.$$"
+	mv -f "bin/wv2.stage.$$" bin/wv2
+	./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
+	mv -f "bin/wexec.stage.$$" bin/wexec
 fi
 ./bin/wexec wv2 wexec >/dev/null
 if [ "$1" = "test_changed" ]; then

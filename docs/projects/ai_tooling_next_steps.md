@@ -66,17 +66,6 @@ is a queue, not an archive.
   helper and its supplying import, or load that helper lazily. Observed
   in the streaming baseline while adding AST list-method coverage.
 
-- **Checks can race a compiler rebuild (2026-10-03).** A concurrent
-  `bin/wv2 check` or `wtest` dependency query keeps `bin/wv2` open, so
-  `wbuild` rebuilding it in place fails with `ETXTBSY`. This surfaced
-  when switching between the ordinary and AST audit manifests. Run these
-  operations sequentially for now; publishing the bootstrap output by
-  atomic rename, as the executor already does for itself, would remove
-  the race. The parallel AST audit suite also hit this entirely inside
-  the suite: `wexec_test`'s nested `bin/wexec hello` rebuilt the default
-  manifest's `wv2` while sibling targets were compiling with it. A serial
-  suite run avoids that internal race too.
-
 - **Nested array descriptors in arrays of structs (2026-10-03).** During
   AST differential testing, `struct R: int[3] items` followed by local
   `R[2] records; records[1].items[2] = 64` (on separate W lines) checked

@@ -845,12 +845,11 @@ listing the changed target/step pairs. Generation does not execute the manifest.
 ```sh
 ./wbuild wast_audit
 bin/wast_audit manifest bin/ast_suite_manifest.json > bin/ast_suite_selection.json
-env -u NO_COLOR bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
+env -u NO_COLOR bin/wexec -f bin/ast_suite_manifest.json tests
 ```
 
-Run the audit suite separately from ordinary builds. Serial execution avoids the
-known nested-build race in which a driver rebuilds a compiler still being used
-by another target. The flag covers implicit runtime imports, but compiler
+Run the audit suite separately from ordinary builds. Bootstrap outputs publish
+atomically, so nested compiler rebuilds are safe alongside sibling targets. The flag covers implicit runtime imports, but compiler
 launches inside test drivers retain their own mode selection. A hybrid-suite
 pass permits fallbacks and does not prove complete language coverage.
 
@@ -1407,8 +1406,8 @@ and notes. **#489 remains open.**
 CI now runs `./wbuild ast_expression_suite` as its own job, beside the ordinary
 `./wbuild tests` job and bootstrapped the same way (the pinned seed, the
 32-bit runtime and ptrace attach). The suite stays out of `tests`: it
-regenerates a required-mode manifest and reruns the whole `tests` umbrella
-serially, so it is a slower separate leg.
+regenerates a required-mode manifest and reruns the whole `tests` umbrella,
+so it is a separate leg.
 
 `./wbuild tests` gains a cheap canary owned by `tests/ast_canary_test.w`.
 `ast_canary_test` runs `bin/wv2 check --quiet --ast-retain --ast-required w.w`
@@ -1417,12 +1416,12 @@ check with `bin/wv2_64` for the x64 target. Each run retains the compiler's
 own forest and fails on any expression fallback. `ast_audit_test` pins that
 the required-mode rewrite leaves both explicit-mode steps untouched.
 
-The serial suite is a workaround. `tools/wast_audit.w` now records why: a
-nested default-manifest `bin/wexec` (for example `wexec_test`'s
-`bin/wexec hello`) can rebuild `bin/wv2` in place, because wexec's
-`WEXEC_LOCK_HELD` exemption assumes its parent is blocked on that one step,
-which holds only at `-j 1`. The canary covers only `w.w`'s closure on two
-hosts, not the language corpus, and the CI leg does not remove that race.
+The former serial workaround was removed by #548: bootstrap compiler steps
+now publish via private staging files and atomic rename. Nested default-
+manifest builds can miss their own cache stamps without overwriting the
+inode used by a running sibling, so the suite uses normal parallel scheduling.
+The canary still covers only `w.w`'s closure on two hosts, not the language
+corpus.
 
 ## Module-dependency invalidation in wbuildd (C3.4)
 
