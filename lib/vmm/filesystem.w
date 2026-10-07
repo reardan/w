@@ -367,7 +367,9 @@ int cell_fs_syscall(vm_cell* cell):
 		int mode = b
 		if (nr == 258): mode = c
 		int depth = cell_fs_private_depth(fs, parent)
-		if (fs.private_copy != 0 && (depth < 0 || depth >= 64)): result = -36
+		# Cleanup must always retain host-owner traversal and removal rights.
+		if (fs.private_copy != 0 && (mode & 448) != 448): result = -13
+		else if (fs.private_copy != 0 && (depth < 0 || depth >= 64)): result = -36
 		else if (fs.private_copy != 0 && fs.private_copy.entries >= fs.private_copy.max_entries): result = -28
 		else:
 			result = syscall(258, parent, cast(int, name), mode & 511)

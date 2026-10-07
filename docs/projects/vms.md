@@ -295,6 +295,9 @@ Linux x64 with real KVM is the execution platform. A ptrace/PTRACE_SYSEMU
 cell backend and a macOS Hypervisor.framework backend are not implemented;
 there is no fallback to either. Existing host-process ptrace debugging is a
 different facility and does not provide a VM execution backend.
+The Apple Silicon implementation and native validation are tracked in
+[#591](https://github.com/reardan/w/issues/591); the owner will test on a Mac
+when that backend is ready.
 
 ### Required VM validation
 

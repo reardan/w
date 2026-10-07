@@ -197,3 +197,29 @@ void test_private_filesystem_guest_and_reset():
 	cell_free(cell)
 	assert_equal(0, unlink(c"bin/wvm_policy_guest/hello"))
 	assert_equal(0, syscall(84, cast(int, root), 0, 0))
+
+
+void test_private_directory_modes_preserve_cleanup():
+	char* root = c"bin/wvm_policy_mode_guard"
+	assert_equal(0, mkdir(root, 448))
+	vm_cell* cell = cell_new()
+	asserts(c"private mode workspace", cell_fs_configure_private(cell, root, 128, 8, 5000))
+	cell_filesystem* fs = cast(cell_filesystem*, cell.fs_state)
+	char* path = strjoin(fs.private_copy.path, c"")
+	cell_page_tables(cell)
+	cell_map(cell, CELL_USER_MIN, 4096, 3)
+	mem_copy[char](cell.ram + CELL_USER_MIN, c"closed", 7)
+	save_int64(cell.regs, 83)
+	save_int64(cell.regs + 40, CELL_USER_MIN)
+	save_int64(cell.regs + 32, 0)
+	assert_equal(-13, cell_fs_syscall(cell))
+	save_int64(cell.regs + 32, 320) # owner read/execute still lacks removal rights
+	assert_equal(-13, cell_fs_syscall(cell))
+	assert_equal(0, fs.private_copy.entries)
+	save_int64(cell.regs + 32, 448)
+	assert_equal(0, cell_fs_syscall(cell))
+	assert_equal(1, fs.private_copy.entries)
+	cell_free(cell)
+	assert_equal(-2, open(path, 65536, 0))
+	free(path)
+	assert_equal(0, syscall(84, cast(int, root), 0, 0))

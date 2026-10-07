@@ -41,9 +41,9 @@ int wvm_bounded_number(char* text, int maximum):
 
 # Checked, size-bounded read of a regular executable.
 char* wvm_read_image(char* path, int* length):
-	int fd = open(path, 0, 0)
+	int fd = open(path, 2048, 0) # O_NONBLOCK: reject FIFOs without waiting for a writer
 	if (fd < 0): return 0
-	int size = seek(fd, 0, 2)
+	int size = cell_fs_size(fd) # descriptor-based fstat rejects non-regular inputs
 	if (size < 64 || size > 67108864 || seek(fd, 0, 0) != 0):
 		close(fd)
 		return 0

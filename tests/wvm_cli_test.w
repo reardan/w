@@ -63,3 +63,21 @@ void test_vm_cli_record_replay_and_limits():
 	assert_equal(125, result.status)
 	asserts(c"instruction budget enforced", contains(result.stderr_text, c"instruction limit"))
 	process_result_free(result)
+	char* fifo = c"bin/wvm_cli_test.fifo"
+	unlink(fifo)
+	assert_equal(0, syscall(133, cast(int, fifo), 4480, 0))
+	result = vm_cli_call(c"--replay", fifo)
+	assert_equal(125, result.status)
+	asserts(c"FIFO transcript rejected", contains(result.stderr_text, c"cannot read syscall transcript"))
+	process_result_free(result)
+	char** args = strv_new(3)
+	args[0] = c"bin/wvm"
+	args[1] = c"run"
+	args[2] = fifo
+	result = process_run(args[0], args, 0, 0, 2000)
+	asserts(c"FIFO image command completed", result != 0)
+	assert_equal(125, result.status)
+	asserts(c"FIFO image rejected", contains(result.stderr_text, c"cannot read image"))
+	process_result_free(result)
+	free(cast(void*, args))
+	assert_equal(0, unlink(fifo))
