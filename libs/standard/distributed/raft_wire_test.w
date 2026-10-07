@@ -291,13 +291,15 @@ void test_install_snapshot_empty_blob():
 	u64_set_int(m.prev_log_index, 4)
 	u64_set_int(m.prev_log_term, 1)
 	u64_set_int(m.leader_commit, 4)
-	assert_equal(17 + 28 + 4, raft_wire_size(m))
+	m.snap_config.push(1)
+	m.snap_config.push(2)
+	assert_equal(17 + 28 + 8 + 4, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(raft_msg_install_snapshot, out.type)
 	assert_equal(4, raft_u64_as_int(out.prev_log_index))
 	assert_equal(1, raft_u64_as_int(out.prev_log_term))
 	assert_equal(0, out.snap_len)
-	assert_equal(0, out.snap_config.length)
+	assert_equal(2, out.snap_config.length)
 	raft_msg_free(m)
 	raft_msg_free(out)
 	u64_free(term)
@@ -315,6 +317,7 @@ void test_install_snapshot_malformed():
 	blob[3] = 3
 	m.snap_data = blob
 	m.snap_len = 4
+	m.snap_config.push(1)
 	int size = raft_wire_size(m)
 	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
@@ -329,10 +332,10 @@ void test_install_snapshot_malformed():
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
 	# huge snap_len overrunning the buffer (offset +28: past config_count,
 	# which is 0/empty here — issue #319 moved snap_len past it)
-	store_le32(buf + 17 + 28, 100000)
+	store_le32(buf + 17 + 32, 100000)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	# negative snap_len
-	store_le32(buf + 17 + 28, 0 - 4)
+	store_le32(buf + 17 + 32, 0 - 4)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(big)
 	free(buf)
@@ -345,6 +348,8 @@ void test_type4_known_type5_rejected():
 	# type, 5 is the first unknown one
 	u64* term = u64_new_int(1)
 	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 2, term)
+	m.snap_config.push(1)
+	m.snap_config.push(2)
 	int size = raft_wire_size(m)
 	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)

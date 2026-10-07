@@ -110,96 +110,14 @@ Log compaction / InstallSnapshot (§7):
     not examined. prev_log_index == snap_base matches the snapshot
     boundary and is checked against snap_last_term.
 
-Cluster membership changes (Ongaro thesis §4.1, single-server changes
-only -- no joint consensus, matching how etcd ships this):
-  - a config change is an ordinary log entry distinguished by
-    raft_entry.kind (raft_entry_kind_config vs _normal), NOT by
-    sniffing command bytes: raft.w's own peer-set bookkeeping must
-    react to these entries regardless of what any higher layer (e.g.
-    kv_state.w) happens to choose as its own command tag bytes, so a
-    dedicated field is the only collision-proof design. The 5-byte
-    command payload (op byte + node id, little-endian u32) is
-    otherwise just as opaque/binary-safe as any other command --
-    mem_dup, the wire and the wal handle it identically to a
-    client command, just carrying a `kind` alongside it.
-  - APPLY ON APPEND, not on commit: "a server always uses the latest
-    configuration in its log, regardless of whether that entry is
-    committed" (§4.1). raft_note_entry_appended runs on every path
-    that pushes a new entry onto r.log -- raft_propose_internal
-    (leader), raft_handle_append's two append branches (follower) and
-    raft_wal_replay_into (crash recovery) -- so live operation and wal
-    replay derive byte-identical peer-set history from the same
-    sequence of records. It mutates r.peers (add/remove the id),
-    reconciles next_index/match_index (raft_sync_index_maps) so a
-    brand-new peer is immediately reachable, and records the index as
-    config_pending_index (commit not yet reached).
-  - SINGLE IN FLIGHT: raft_propose_add_server/raft_propose_remove_
-    server refuse a second proposal while config_pending_index > 0
-    (§4.1: "the leader will avoid overlapping configuration changes by
-    not beginning [a new one] until the prior ... is committed").
-    Single-server changes are only safe (no joint consensus needed)
-    because they are serialized one at a time this way -- overlapping
-    changes could produce two disjoint majorities.
-  - ROLLBACK ON TRUNCATION: only one config change can ever be pending,
-    so one saved snapshot (config_prev_peers, captured the moment the
-    pending entry was itself appended) is always enough to undo it.
-    raft_note_truncated_to runs wherever entries at or above a given
-    conceptual index are discarded (raft_handle_append's conflict
-    path, raft_wal_replay_into's TRUNCATE tag) and restores r.peers
-    from config_prev_peers when the truncation reaches back to or past
-    config_pending_index.
-  - COMMIT: raft_note_commit_advanced runs wherever commit_index
-    moves forward (raft_try_advance_commit, raft_handle_append) and
-    clears config_pending_index once commit_index reaches it. If the
-    committed entry removed this node itself, a LEADER steps down to
-    follower right there (§4.1: "[a leader that removes itself] must
-    step down and return to follower state as soon as it has committed
-    th[e] log entry") -- a follower has nothing to step down from.
-  - REMOVAL DISRUPTION (§4.2.1): once removed, a node simply stops
-    receiving heartbeats (raft_tick/raft_propose_internal only ever
-    iterate the current r.peers) and, left unchecked, would time out
-    and solicit votes at ever-higher terms, forcing the live leader to
-    step down even though the disruptor no longer matters. This stack's
-    existing opt-in pre-vote + leader-stickiness (raft_set_prevote,
-    above) is exactly thesis §4.2.1's mitigation -- a receiver that has
-    heard a valid current-term leader within election_timeout_min_ms
-    refuses to grant even a real vote's PRE-vote poll -- so enabling it
-    is sufficient to keep a removed node from disrupting a stable
-    leader. What is NOT implemented is thesis §4.2.3's fuller leader-
-    lease / check-quorum refinement (a leader tracking per-follower
-    recent-contact to safely ignore votes without waiting on pre-vote
-    timing at all, and to answer reads without a quorum round-trip);
-    this stack has no per-follower contact-tracking plumbing on the
-    leader side, so that refinement is deferred as follow-up, not
-    silently assumed. raft_handle_vote_req also does not filter
-    requests by current r.peers membership -- a removed node's real
-    vote solicitation is refused by the SAME pre-vote/stickiness path
-    only when pre-vote is enabled; running without it reproduces the
-    disruption risk the thesis describes.
-  - PERSISTENCE: config-change entries ride the ordinary APPEND/
-    TRUNCATE wal records (raft_wal.w) via the same replay hooks as
-    live operation (above), so current_term/voted_for/log-derived
-    config all survive a restart together. A taken or received
-    snapshot ALSO records the config in effect at its index --
-    r.snap_config, the FULL member set (self-inclusive, so it is
-    receiver-agnostic and can be forwarded verbatim) -- because a
-    snapshot may cover a compacted prefix a fresh node never saw as
-    individual entries; raft_adopt_snapshot_config derives each
-    receiver's own self-exclusive r.peers by subtracting its own id.
-    This is a wire (install_snapshot) and wal (SNAPSHOT record) layout
-    change from phase 5/6, deliberately: see raft_wire.w/raft_wal.w
-    headers and the updated layout-pinning tests.
-  - NEW-NODE BOOTSTRAP: a freshly added id gets next_index = 1 (empty
-    log assumed) the moment its add-server entry is appended, so it is
-    immediately routed through the EXISTING §7 InstallSnapshot path
-    (raft_make_peer_msg) once the leader's log has compacted past
-    index 1, or ordinary replication otherwise -- no bespoke bootstrap
-    RPC. A learner/non-voting catch-up phase (thesis §4.2.1's other
-    half, join-as-non-voter-first) is OUT OF SCOPE (issue #319): a
-    newly added server is a full voter from the moment its entry is
-    appended, which can transiently cost availability if it is far
-    behind when added (Figure 4.6's motivation for learners) -- left
-    as documented follow-up.
+Cluster membership changes: serialized single-voter transitions with learners.
+See docs/projects/raft_membership.md for the transition and bootstrap contract.
+Peers includes every replication target; only raft_is_voter contributes to
+commit, election, or read quorums. Configuration is applied on append, and is
+rebuilt from the snapshot/bootstrap configuration on truncation. Snapshot
+configuration tokens are voter IDs or -(learner ID + 1). Add a learner first,
+then promote only after it has acknowledged this leader's complete log and a
+current-term entry is committed. Removed and learner nodes never campaign.
 */
 import lib.lib
 import lib.memory
@@ -380,7 +298,10 @@ struct raft:
 	int config_version
 	int read_config_version
 	int self_id
-	list[int] peers            # other node ids, never including self
+	list[int] peers            # other replication nodes, never including self
+	set[int] learners          # non-voting ids, may include self
+	int self_member           # self is present in current configuration
+	list[int] bootstrap_config # full initial configuration before any snapshot
 	# persistent state (Figure 2)
 	u64* current_term
 	int voted_for              # node id, 0 - 1 = none
@@ -423,7 +344,6 @@ struct raft:
 	# cluster membership changes (§4.1, single-server changes; see header)
 	int config_pending_index      # conceptual log index of the not-yet-committed config-change entry; 0 = none in flight
 	int config_pending_removes_self  # 1 iff the pending entry removes self_id (drives the leader step-down on commit)
-	list[int] config_prev_peers   # r.peers as of just before the pending entry was appended (rollback source)
 
 
 # ---- small helpers -------------------------------------------------------------
@@ -457,11 +377,6 @@ void raft_last_term(raft* r, u64* out):
 	u64_copy(out, last.term)
 
 
-# Smallest majority of the full cluster (peers plus self).
-int raft_majority(raft* r):
-	return (r.peers.length + 1) / 2 + 1
-
-
 # Index of id in r.peers, or -1 when id is not a current peer.
 int raft_peer_index(raft* r, int id):
 	int i = 0
@@ -475,6 +390,53 @@ int raft_peer_index(raft* r, int id):
 int raft_is_peer(raft* r, int id):
 	if (raft_peer_index(r, id) >= 0): return 1
 	return 0
+
+
+# Only current voters contribute to any quorum. Replication includes learners.
+int raft_is_voter(raft* r, int id):
+	if (id in r.learners): return 0
+	if (id == r.self_id): return r.self_member
+	return raft_is_peer(r, id)
+
+
+# Smallest majority of the full cluster (peers plus self).
+int raft_majority(raft* r):
+	int voters = raft_is_voter(r, r.self_id)
+	for i in range(r.peers.length):
+		if (raft_is_voter(r, r.peers[i])): voters = voters + 1
+	return voters / 2 + 1
+
+
+int raft_transport_peer_allowed(raft* r, int id):
+	return raft_is_peer(r, id)
+
+
+# Snapshot tokens use signed 32-bit integers on every host architecture.
+int raft_config_token_id(int token):
+	if (token < 0): return 0 - token - 1
+	return token
+
+
+# load_le32 zero-extends on x64, while the token encoding is signed i32.
+int raft_config_load_token(char* data):
+	int token = load_le32(data)
+	if (token > 2147483647): token = token - 2147483647 - 2147483647 - 2
+	return token
+
+
+int raft_config_valid(list[int] cfg):
+	if (cfg.length == 0 || cfg.length > RAFT_SNAPSHOT_MEMBERS): return 0
+	set[int] seen = new set[int]
+	int valid = 1
+	int voters = 0
+	for i in range(cfg.length):
+		int id = raft_config_token_id(cfg[i])
+		if (id < 0 || id >= 2147483647 || id in seen): valid = 0
+		seen.add(id)
+		if (cfg[i] >= 0): voters = voters + 1
+	seen.free()
+	if (voters == 0): return 0
+	return valid
 
 
 # Fresh owned copy of src, element by element (list[int] has no
@@ -542,6 +504,11 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 	r.config_version = 0
 	r.self_id = self_id
 	r.peers = new list[int]
+	r.learners = new set[int]
+	r.self_member = 1
+	r.bootstrap_config = raft_clone_int_list(peers)
+	r.bootstrap_config.push(self_id)
+	assert1(raft_config_valid(r.bootstrap_config))
 	int i = 0
 	while (i < peers.length):
 		assert1(peers[i] != self_id)
@@ -585,7 +552,6 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 	r.pending_snap_index = u64_new()
 	r.config_pending_index = 0
 	r.config_pending_removes_self = 0
-	r.config_prev_peers = new list[int]
 	return r
 
 
@@ -594,6 +560,8 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 void raft_free(raft* r):
 	if (cast(int, r.incoming_snapshot) != 0): raft_msg_free(r.incoming_snapshot)
 	r.read_acks.free()
+	r.learners.free()
+	r.bootstrap_config.free()
 	r.snap_offsets.free()
 	u64_free(r.read_term)
 	u64_free(r.current_term)
@@ -637,6 +605,7 @@ void raft_set_prevote(raft* r, int enabled):
 
 const int raft_config_op_add = 1
 const int raft_config_op_remove = 2
+const int raft_config_op_learner = 3
 
 
 # 5-byte config-entry command: op byte + node id (little-endian u32).
@@ -656,6 +625,14 @@ void raft_config_decode(char* command, int command_len, int* op_out, int* id_out
 	assert1(command_len == 5)
 	op_out[0] = command[0] & 255
 	id_out[0] = load_le32(command + 1)
+
+
+int raft_config_command_valid(char* command, int len):
+	if (len != 5): return 0
+	int op = command[0] & 255
+	int id = load_le32(command + 1)
+	if (id < 0 || id >= 2147483647): return 0
+	return op == raft_config_op_add || op == raft_config_op_remove || op == raft_config_op_learner
 
 
 # Reconcile next_index/match_index against the CURRENT r.peers: insert
@@ -683,125 +660,109 @@ void raft_sync_index_maps(raft* r):
 			r.next_index.remove(k)
 			r.match_index.remove(k)
 		i = i + 1
+	keys.free()
 
 
-# APPLY ON APPEND (§4.1 — see header): called on every path that
-# pushes a NEW entry onto r.log (raft_propose_internal, both of
-# raft_handle_append's append branches, raft_wal_replay_into) with the
-# entry's own conceptual index. A no-op for a normal entry. For a
-# config entry: snapshots the pre-change r.peers into config_prev_peers
-# (the rollback source if this very entry later gets truncated away),
-# records config_pending_index = idx, and — unless the target is this
-# node itself, which is never a member of its own r.peers — mutates
-# r.peers (push for add, remove for remove) and reconciles the
-# next_index/match_index maps so a brand-new peer is immediately
-# reachable on the very next send. A remove targeting self_id touches
-# no list (see raft_propose_remove_server) but is remembered via
-# config_pending_removes_self for raft_note_commit_advanced.
-void raft_note_entry_appended(raft* r, int idx, raft_entry* e):
-	if (e.kind == raft_entry_kind_config()): r.config_version = r.config_version + 1
-	if (e.kind != raft_entry_kind_config()): return
-	int op = 0
-	int id = 0
-	raft_config_decode(e.command, e.command_len, &op, &id)
-	r.config_prev_peers = raft_clone_int_list(r.peers)
-	r.config_pending_index = idx
-	r.config_pending_removes_self = 0
-	if (op == raft_config_op_add):
-		if (id != r.self_id && raft_is_peer(r, id) == 0): r.peers.push(id)
-	if (op == raft_config_op_remove):
-		if (id == r.self_id): r.config_pending_removes_self = 1
-		else:
-			int pi = raft_peer_index(r, id)
-			if (pi >= 0): r.peers.remove(pi)
+# Mutate a full receiver-independent configuration by one logged transition.
+void raft_config_apply(list[int] cfg, int op, int id):
+	for i in range(cfg.length):
+		if (raft_config_token_id(cfg[i]) == id):
+			if (op == raft_config_op_remove): cfg.remove(i)
+			if (op == raft_config_op_add): cfg[i] = id
+			return
+	if (op == raft_config_op_add): cfg.push(id)
+	if (op == raft_config_op_learner): cfg.push(0 - id - 1)
+
+
+# Reconstruct the exact configuration at an index, including applied positions
+# behind commit and multiple uncommitted entries replayed during recovery.
+list[int] raft_full_config_at(raft* r, int index):
+	list[int] base = r.bootstrap_config
+	if (raft_snap_base(r) > 0): base = r.snap_config
+	list[int] cfg = raft_clone_int_list(base)
+	int end = index - raft_snap_base(r)
+	if (end > r.log.length): end = r.log.length
+	for i in range(end):
+		raft_entry* e = r.log[i]
+		if (e.kind == raft_entry_kind_config()):
+			int op = 0
+			int id = 0
+			raft_config_decode(e.command, e.command_len, &op, &id)
+			raft_config_apply(cfg, op, id)
+	return cfg
+
+
+void raft_use_config(raft* r, list[int] cfg):
+	r.peers.free()
+	r.peers = new list[int]
+	r.learners.free()
+	r.learners = new set[int]
+	r.self_member = 0
+	for i in range(cfg.length):
+		int id = raft_config_token_id(cfg[i])
+		if (id == r.self_id): r.self_member = 1
+		else: r.peers.push(id)
+		if (cfg[i] < 0): r.learners.add(id)
 	raft_sync_index_maps(r)
 
 
-# ROLLBACK ON TRUNCATION (§4.1 — see header): keep is the largest
-# conceptual index that SURVIVES a truncation (raft_handle_append's
-# conflict path truncates from a conceptual idx onward, so keep =
-# idx - 1; raft_wal_replay_into's TRUNCATE tag keeps a COUNT above the
-# snapshot base, so keep = snap_base + that count). When the still-
-# pending config entry's index falls at or above the truncated range,
-# its effect never happened as far as the surviving log is concerned:
-# restore r.peers from config_prev_peers (captured the moment that
-# entry was itself appended — see raft_note_entry_appended) and clear
-# the pending bookkeeping. Only one config change can ever be pending
-# at a time (the single-in-flight rule), so one saved snapshot is
-# always enough — there is never a stack of in-flight changes to
-# unwind.
+void raft_note_entry_appended(raft* r, int idx, raft_entry* e):
+	if (e.kind != raft_entry_kind_config()): return
+	r.config_version = r.config_version + 1
+	list[int] cfg = raft_full_config_at(r, idx)
+	raft_use_config(r, cfg)
+	cfg.free()
+	r.config_pending_index = idx
+	r.config_pending_removes_self = 1 - r.self_member
+
+
 void raft_note_truncated_to(raft* r, int keep):
 	r.config_version = r.config_version + 1
-	if (r.config_pending_index > 0 && r.config_pending_index > keep):
-		r.peers = r.config_prev_peers
-		r.config_prev_peers = new list[int]
-		raft_sync_index_maps(r)
-		r.config_pending_index = 0
-		r.config_pending_removes_self = 0
+	list[int] cfg = raft_full_config_at(r, keep)
+	raft_use_config(r, cfg)
+	cfg.free()
+	r.config_pending_index = 0
+	int committed = raft_u64_as_int(r.commit_index)
+	for i in range(r.log.length):
+		int idx = raft_snap_base(r) + i + 1
+		if (idx <= keep && idx > committed && r.log[i].kind == raft_entry_kind_config()): r.config_pending_index = idx
+	r.config_pending_removes_self = 1 - r.self_member
 
 
-# Called wherever commit_index moves forward (raft_try_advance_commit,
-# raft_handle_append). Once commit_index reaches the pending config
-# entry's index, that config is durable: clear the pending bookkeeping,
-# and if the just-committed entry removed THIS node and it is still
-# leader, step down to follower right here — thesis §4.1: "[a leader
-# that removes itself] must step down and return to follower state as
-# soon as it has committed th[e] log entry". A follower has nothing to
-# step down from, so config_pending_removes_self is otherwise inert
-# (see the header's REMOVAL DISRUPTION note for what happens next).
 void raft_note_commit_advanced(raft* r):
 	if (r.config_pending_index > 0 && raft_u64_as_int(r.commit_index) >= r.config_pending_index):
 		if (r.config_pending_removes_self == 1 && r.state == raft_leader):
 			r.state = raft_follower
-			r.leader_hint = 0 - 1
+			r.leader_hint = -1
 		r.config_pending_index = 0
 		r.config_pending_removes_self = 0
-		r.config_prev_peers = new list[int]
 
 
-# The FULL member set (self-inclusive) in effect at exactly
-# last_applied, for a snapshot's own metadata (raft_take_snapshot).
-# last_applied <= commit_index always (only committed entries are ever
-# applied), and config_pending_index (when set) is always strictly
-# ABOVE commit_index (an uncommitted entry cannot have been applied
-# yet) — so whenever a config change is pending, r.peers already
-# reflects it prematurely for last_applied's purposes, and the correct
-# answer is the pre-change snapshot instead (config_prev_peers); with
-# nothing pending, r.peers already IS the config at last_applied.
 list[int] raft_full_config_at_last_applied(raft* r):
-	list[int] base = r.peers
-	if (r.config_pending_index > 0): base = r.config_prev_peers
-	list[int] full = raft_clone_int_list(base)
-	full.push(r.self_id)
-	return full
+	return raft_full_config_at(r, raft_u64_as_int(r.last_applied))
 
 
-list[int] raft_config_exclude_self(raft* r, list[int] cfg):
-	list[int] out = new list[int]
-	int i = 0
-	while (i < cfg.length):
-		if (cfg[i] != r.self_id): out.push(cfg[i])
-		i = i + 1
-	return out
-
-
-# Adopt an externally-supplied FULL member set (self-inclusive — a
-# received or wal-replayed snapshot's recorded config, header) as the
-# definitive config: r.snap_config keeps the full set unchanged (so it
-# can be forwarded verbatim to a future InstallSnapshot recipient
-# without re-deriving anything), while r.peers becomes this node's own
-# self-exclusive view (raft_config_exclude_self). A snapshot's config
-# is committed-and-applied by definition, so any pending in-flight
-# config change is discarded, not rolled back to — the snapshot
-# supersedes it outright.
 void raft_adopt_snapshot_config(raft* r, list[int] cfg):
+	assert1(raft_config_valid(cfg))
 	r.config_version = r.config_version + 1
-	r.snap_config = raft_clone_int_list(cfg)
-	r.peers = raft_config_exclude_self(r, cfg)
-	raft_sync_index_maps(r)
+	list[int] saved = raft_clone_int_list(cfg)
+	r.snap_config.free()
+	r.snap_config = saved
+	raft_use_config(r, saved)
 	r.config_pending_index = 0
 	r.config_pending_removes_self = 0
-	r.config_prev_peers = new list[int]
+
+
+# A new node must start from an operator-provisioned voter configuration,
+# never as an independent one-node voting cluster. Learner self is explicit.
+raft* raft_new_learner(int self_id, list[int] voters, int election_min_ms, int election_max_ms, int heartbeat_ms, int seed):
+	raft* r = raft_new(self_id, voters, election_min_ms, election_max_ms, heartbeat_ms, seed)
+	list[int] cfg = r.bootstrap_config
+	int last = cfg.length - 1
+	cfg[last] = 0 - self_id - 1
+	assert1(raft_config_valid(r.bootstrap_config))
+	raft_use_config(r, r.bootstrap_config)
+	return r
 
 
 # ---- outbound message construction ----------------------------------------------
@@ -911,10 +872,10 @@ void raft_try_advance_commit(raft* r):
 	if (n <= base): n = base + 1   # everything at or below the base is committed
 	while (n <= base + r.log.length):
 		u64_set_int(n_val, n)
-		int count = 1
+		int count = raft_is_voter(r, r.self_id)
 		int i = 0
 		while (i < r.peers.length):
-			if (u64_cmp(r.match_index[r.peers[i]], n_val) >= 0): count = count + 1
+			if (raft_is_voter(r, r.peers[i]) && u64_cmp(r.match_index[r.peers[i]], n_val) >= 0): count = count + 1
 			i = i + 1
 		if (count >= raft_majority(r)):
 			raft_entry* e = r.log[n - base - 1]
@@ -962,6 +923,7 @@ void raft_become_leader(raft* r, int now_ms, list[raft_msg*] out):
 # split): bump the term, vote for self, re-arm a fresh randomized
 # deadline and solicit votes. A single-node cluster wins immediately.
 void raft_start_election(raft* r, int now_ms, list[raft_msg*] out):
+	if (raft_is_voter(r, r.self_id) == 0): return
 	r.state = raft_candidate
 	u64_inc(r.current_term)
 	r.voted_for = r.self_id
@@ -991,6 +953,7 @@ void raft_start_election(raft* r, int now_ms, list[raft_msg*] out):
 # carrying the usual last-log credentials. A single-node cluster is
 # its own majority and proceeds straight to the real election.
 void raft_start_prevote(raft* r, int now_ms, list[raft_msg*] out):
+	if (raft_is_voter(r, r.self_id) == 0): return
 	r.prevotes_received = 1
 	raft_clear_prevote_granters(r)
 	raft_reset_election_deadline(r, now_ms)
@@ -1040,6 +1003,7 @@ void raft_tick(raft* r, int now_ms, list[raft_msg*] out):
 # conflicting vote this term, and the candidate's log is at least as
 # up-to-date (§5.4.1). Granting resets the election deadline.
 void raft_handle_vote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (raft_is_voter(r, r.self_id) == 0 || raft_is_voter(r, m.from) == 0): return
 	raft_msg* reply = raft_msg_new(raft_msg_vote_reply, r.self_id, m.from, r.current_term)
 	reply.vote_granted = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
@@ -1074,6 +1038,7 @@ void raft_handle_vote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out)
 # Granting mutates nothing: no voted_for, no election-deadline reset.
 # The reply echoes the prospective term with prevote = 1.
 void raft_handle_prevote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (raft_is_voter(r, r.self_id) == 0 || raft_is_voter(r, m.from) == 0): return
 	raft_msg* reply = raft_msg_new(raft_msg_vote_reply, r.self_id, m.from, m.term)
 	reply.prevote = 1
 	reply.vote_granted = 0
@@ -1109,6 +1074,7 @@ void raft_handle_prevote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] o
 # term == current_term) fail this check. Leaders never count pre-votes.
 # Each granter counts once per round (prevote_granters, issue #320).
 void raft_handle_prevote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (raft_is_voter(r, r.self_id) == 0 || raft_is_voter(r, m.from) == 0): return
 	if (r.state == raft_leader): return
 	if (r.prevotes_received < 1): return
 	if (m.vote_granted == 0): return
@@ -1127,6 +1093,7 @@ void raft_handle_prevote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*]
 # candidate counts, and each voter counts once per election
 # (vote_granters, issue #320); reaching a majority wins the election.
 void raft_handle_vote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (raft_is_voter(r, r.self_id) == 0 || raft_is_voter(r, m.from) == 0): return
 	if (r.state != raft_candidate): return
 	if (u64_eq(m.term, r.current_term) == 0): return
 	if (m.vote_granted == 0): return
@@ -1411,7 +1378,7 @@ void raft_handle_read(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (r.state != raft_leader || r.read_active == 0 || m.success != 1): return
 	if (u64_eq(m.term, r.read_term) == 0 || u64_fits_int(m.match_index) == 0): return
 	if (u64_to_int(m.match_index) != r.read_seq): return
-	r.read_acks.add(m.from)
+	if (raft_is_voter(r, m.from)): r.read_acks.add(m.from)
 
 
 # Dispatch one inbound message. Does NOT free m; the caller keeps
@@ -1421,6 +1388,13 @@ void raft_handle_read(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 # short-circuits before the step-down check (§9.6). A prevote flag on
 # an append/append_reply is malformed and the message is dropped.
 void raft_on_msg(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (m.type == raft_msg_install_snapshot || m.type == raft_msg_snapshot_chunk):
+		if (raft_config_valid(m.snap_config) == 0): return
+	if (m.to != r.self_id || raft_is_peer(r, m.from) == 0): return
+	# Learners replicate but cannot assert leadership or increase voter terms.
+	if (raft_is_voter(r, m.from) == 0):
+		if (m.type != raft_msg_append_reply && m.type != raft_msg_snapshot_ack): return
+		if (u64_eq(m.term, r.current_term) == 0): return
 	if (m.type == raft_msg_snapshot_chunk || m.type == raft_msg_snapshot_ack):
 		if (m.to != r.self_id || raft_is_peer(r, m.from) == 0): return
 		if (u64_cmp(m.term, r.current_term) > 0): raft_step_down(r, m.term)
@@ -1490,40 +1464,50 @@ int raft_propose(raft* r, char* command, int command_len, int now_ms, list[raft_
 
 # ---- cluster membership: propose API (§4.1; see the file header) ----------------
 
-# Leader only: propose adding id as a new voting member. Rejected (0)
-# when not leader, id is already the leader itself or an existing
-# peer, or a previous config change is still uncommitted (thesis
-# §4.1's single-in-flight safety rule — raft_config_pending). id takes
-# effect for voting-set/majority purposes the MOMENT this entry is
-# appended (raft_note_entry_appended), not when it commits. The new
-# peer's next_index starts at 1 (an empty log is assumed): it catches
-# up through ordinary replication, or through the existing §7
-# InstallSnapshot path the instant next_index backs onto a compacted
-# prefix (raft_make_peer_msg) — no bespoke bootstrap RPC (issue #319
-# scope note: no learner/non-voting phase).
-int raft_propose_add_server(raft* r, int id, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_leader): return 0
-	if (r.config_pending_index > 0): return 0
-	if (id == r.self_id || raft_is_peer(r, id)): return 0
+# Changing a voter set requires commitment in the leader's own term. This
+# prevents consecutive leaders from proposing overlapping uncommitted changes.
+int raft_membership_ready(raft* r):
+	if (r.state != raft_leader || r.config_pending_index != 0 || raft_is_voter(r, r.self_id) == 0): return 0
+	int committed = raft_u64_as_int(r.commit_index)
+	if (committed == 0): return 0
+	u64* term = r.snap_last_term
+	if (committed > raft_snap_base(r)): term = r.log[committed - raft_snap_base(r) - 1].term
+	return u64_eq(term, r.current_term)
+
+
+int raft_propose_add_learner(raft* r, int id, int now_ms, list[raft_msg*] out):
+	if (raft_membership_ready(r) == 0 || id < 0 || id >= 2147483647): return 0
+	if (id == r.self_id || raft_is_peer(r, id) || r.peers.length + r.self_member >= RAFT_SNAPSHOT_MEMBERS): return 0
+	char* cmd = raft_config_encode(raft_config_op_learner, id)
+	int ok = raft_propose_internal(r, cmd, 5, raft_entry_kind_config(), now_ms, out)
+	free(cmd)
+	return ok
+
+
+int raft_learner_ready(raft* r, int id):
+	if (raft_membership_ready(r) == 0 || raft_is_peer(r, id) == 0): return 0
+	if ((id in r.learners) == 0): return 0
+	return raft_u64_as_int(r.match_index[id]) >= raft_last_index(r)
+
+
+int raft_propose_promote_learner(raft* r, int id, int now_ms, list[raft_msg*] out):
+	if (raft_learner_ready(r, id) == 0): return 0
 	char* cmd = raft_config_encode(raft_config_op_add, id)
 	int ok = raft_propose_internal(r, cmd, 5, raft_entry_kind_config(), now_ms, out)
 	free(cmd)
 	return ok
 
 
-# Leader only: propose removing id, which MAY be the leader's own
-# self_id (thesis §4.1 explicitly allows a leader to remove itself).
-# Rejected (0) when not leader, id is neither a current peer nor self,
-# or a previous config change is still uncommitted (same single-in-
-# flight rule as add). Removing self does not touch r.peers (self is
-# never a member of its own peers list); raft_note_commit_advanced
-# steps a leader down to follower once the removal commits (§4.1).
-# See the file header's REMOVAL DISRUPTION note for what governs a
-# removed PEER's continued (non-)disruption of the cluster.
+# Compatibility name now requires an admitted, caught-up learner.
+int raft_propose_add_server(raft* r, int id, int now_ms, list[raft_msg*] out):
+	return raft_propose_promote_learner(r, id, now_ms, out)
+
+
 int raft_propose_remove_server(raft* r, int id, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_leader): return 0
-	if (r.config_pending_index > 0): return 0
+	if (raft_membership_ready(r) == 0): return 0
 	if (id != r.self_id && raft_is_peer(r, id) == 0): return 0
+	int voters = r.peers.length + r.self_member - r.learners.length
+	if (raft_is_voter(r, id) && voters <= 1): return 0
 	char* cmd = raft_config_encode(raft_config_op_remove, id)
 	int ok = raft_propose_internal(r, cmd, 5, raft_entry_kind_config(), now_ms, out)
 	free(cmd)
@@ -1571,9 +1555,11 @@ int raft_take_snapshot(raft* r, char* data, int len):
 	int applied = raft_u64_as_int(r.last_applied)
 	if (applied <= base): return 0
 	raft_entry* boundary = r.log[applied - base - 1]
+	list[int] cfg = raft_full_config_at_last_applied(r)
 	u64_copy(r.snap_last_term, boundary.term)
 	u64_copy(r.snap_last_index, r.last_applied)
-	r.snap_config = raft_full_config_at_last_applied(r)
+	r.snap_config.free()
+	r.snap_config = cfg
 	if (r.snap_data != 0): free(r.snap_data)
 	r.snap_data = mem_dup(data, len)
 	r.snap_len = len

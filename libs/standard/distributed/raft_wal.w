@@ -191,6 +191,9 @@ int raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 	if (tag == raft_wal_tag_append):
 		if (len < 14): return 0
 		if (load_le32(p + 10) != len - 14): return 0
+		int kind = p[1] & 255
+		if (kind != raft_entry_kind_normal() && kind != raft_entry_kind_config()): return 0
+		if (kind == raft_entry_kind_config() && raft_config_command_valid(p + 14, len - 14) == 0): return 0
 		u64* t = u64_new()
 		u64_load_le(t, p + 2)
 		rw.entry_terms.push(t)
@@ -210,6 +213,11 @@ int raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 		int coff = 21 + 4 * ccount
 		if (len < coff + 4): return 0
 		if (load_le32(p + coff) != len - coff - 4): return 0
+		list[int] cfg = new list[int]
+		for i in range(ccount): cfg.push(raft_config_load_token(p + 21 + 4 * i))
+		int valid = raft_config_valid(cfg)
+		cfg.free()
+		if (valid == 0): return 0
 		u64_load_le(rw.snap_index, p + 1)
 		u64_load_le(rw.snap_term, p + 9)
 		# the snapshot covers (and a rewrite drops) every prior entry
@@ -601,7 +609,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		u64_load_le(r.snap_last_index, p + 1)
 		u64_load_le(r.snap_last_term, p + 9)
 		list[int] cfg = new list[int]
-		for ci in range(ccount): cfg.push(load_le32(p + 21 + 4 * ci))
+		for ci in range(ccount): cfg.push(raft_config_load_token(p + 21 + 4 * ci))
 		raft_adopt_snapshot_config(r, cfg)
 		u64_copy(r.commit_index, r.snap_last_index)
 		u64_copy(r.last_applied, r.snap_last_index)
@@ -627,8 +635,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 # raft as usual. The replay is a rescan of the file, and is asserted
 # to land exactly on the shadow: both are pure folds of the same
 # record prefix.
-raft* raft_wal_recover(raft_wal* rw, int self_id, list[int] peers, int election_min_ms, int election_max_ms, int heartbeat_ms, int seed):
-	raft* r = raft_new(self_id, peers, election_min_ms, election_max_ms, heartbeat_ms, seed)
+raft* raft_wal_recover_into(raft_wal* rw, raft* r):
 	wal_reader* rd = wal_reader_open_with_ops(rw.wlog.ops, rw.path)
 	assert1(cast(int, rd) != 0)
 	int* len_out = cast(int*, malloc(__word_size__))
@@ -652,6 +659,14 @@ raft* raft_wal_recover(raft_wal* rw, int self_id, list[int] peers, int election_
 		raft_entry* e = r.log[i]
 		assert1(u64_eq(rw.entry_terms[i], e.term))
 	return r
+
+
+raft* raft_wal_recover(raft_wal* rw, int self_id, list[int] peers, int election_min_ms, int election_max_ms, int heartbeat_ms, int seed):
+	return raft_wal_recover_into(rw, raft_new(self_id, peers, election_min_ms, election_max_ms, heartbeat_ms, seed))
+
+
+raft* raft_wal_recover_learner(raft_wal* rw, int self_id, list[int] voters, int election_min_ms, int election_max_ms, int heartbeat_ms, int seed):
+	return raft_wal_recover_into(rw, raft_new_learner(self_id, voters, election_min_ms, election_max_ms, heartbeat_ms, seed))
 
 
 # ---- shadow queries --------------------------------------------------------------
