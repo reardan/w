@@ -411,8 +411,8 @@ int addr_note_disp
 
 # The folded memory load the loaders leave behind ('mov eax,[mem]',
 # 'movsx eax,byte [mem]', ...): the compound store can turn 'load; op
-# eax,X; store' into 'op [mem],X', and a comparison of a byte load
-# against a small constant into 'cmp byte [mem],imm8'.
+# eax,X; store' into 'op [mem],X', and a comparison of the load against
+# a constant into 'cmp [mem],imm' at the load's width (shuttle_cmp).
 int memload_start
 int memload_end
 int memload_base
@@ -714,13 +714,16 @@ void store_mem_imm(int size, int v, int base, int index, int scale, int disp):
 
 # op [mem],imm / op [mem],R at the word width (ext as in emit_alu_reg_imm:
 # 0 add, 1 or, 4 and, 5 sub, 6 xor, 7 cmp; never imul).
-void alu_mem_imm(int ext, int v, int base, int index, int scale, int disp):
+void alu_mem_imm_w(int w, int ext, int v, int base, int index, int scale, int disp):
 	if ((v >= -128) && (v <= 127)):
-		emit_mem_insn(word_size == 8, 1, c"\x83", ext, base, index, scale, disp)
+		emit_mem_insn(w, 1, c"\x83", ext, base, index, scale, disp)
 		emit_int8(v)
 	else:
-		emit_mem_insn(word_size == 8, 1, c"\x81", ext, base, index, scale, disp)
+		emit_mem_insn(w, 1, c"\x81", ext, base, index, scale, disp)
 		emit_int32(v)
+
+void alu_mem_imm(int ext, int v, int base, int index, int scale, int disp):
+	alu_mem_imm_w(word_size == 8, ext, v, base, index, scale, disp)
 
 void alu_mem_reg(int ext, int r, int base, int index, int scale, int disp):
 	char* op = c"\x01\x09\x11\x19\x21\x29\x31\x39" + ext
@@ -730,6 +733,47 @@ void alu_mem_reg(int ext, int r, int base, int index, int scale, int disp):
 void cmp_mem8_imm(int v, int base, int index, int scale, int disp):
 	emit_mem_insn(0, 1, c"\x80", 7, base, index, scale, disp)
 	emit_int8(v)
+
+# cmp [mem],imm at width 1, 2, 4 or 8 (66 83/81 /7 for a word, 83/81 /7
+# without REX.W for a dword on x64).
+void cmp_mem_imm(int width, int v, int base, int index, int scale, int disp):
+	if (width == 1): cmp_mem8_imm(v, base, index, scale, disp)
+	elif (width == 2):
+		emit(1, c"\x66")
+		if ((v >= -128) && (v <= 127)):
+			emit_mem_insn(0, 1, c"\x83", 7, base, index, scale, disp)
+			emit_int8(v)
+		else:
+			emit_mem_insn(0, 1, c"\x81", 7, base, index, scale, disp)
+			emit_int8(v)
+			emit_int8(v >> 8)
+	else: alu_mem_imm_w(width == 8, 7, v, base, index, scale, disp)
+
+# The width at which 'cmp [mem],imm' reads the same as 'cmp rax,imm'
+# after the noted load, or 0. Sign extension preserves both the signed
+# and the unsigned order, so a sign-extending load (movsx, movsxd, the
+# word load) folds for every condition and an immediate the narrow
+# width holds; zero extension preserves only the unsigned order and
+# equality, so a zero-extending load (movzx, the x64 dword load) folds
+# for those conditions and an immediate in the width's unsigned range.
+int memload_cmp_width(int setcc_opcode, int v):
+	int unsigned_or_eq = (setcc_opcode == 0x94) || (setcc_opcode == 0x95) || (setcc_opcode == 0x92) || (setcc_opcode == 0x93) || (setcc_opcode == 0x96) || (setcc_opcode == 0x97)
+	int first = memload_op[0] & 255
+	if (memload_oplen == 2):
+		if (first != 0x0f): return 0
+		int second = memload_op[1] & 255
+		if ((second == 0xbe) && (v >= -128) && (v <= 127)): return 1
+		if ((second == 0xb6) && (v >= 0) && (v <= 255) && unsigned_or_eq): return 1
+		if ((second == 0xbf) && (v >= -32768) && (v <= 32767)): return 2
+		if ((second == 0xb7) && (v >= 0) && (v <= 65535) && unsigned_or_eq): return 2
+		return 0
+	if (memload_oplen != 1): return 0
+	if (first == 0x8b):
+		if (memload_is_word()): return word_size
+		if ((v >= 0) && unsigned_or_eq): return 4
+		return 0
+	if (first == 0x63): return 4
+	return 0
 
 # --- the lvalue of a store (grammar/expression.w '=', grammar/increment.w
 # 'op=' and '++'/'--', and their retained twins) -----------------------
@@ -1104,11 +1148,14 @@ void binfold_emit(int folded):
 	mov_eax_int(folded)
 
 
-/* mov eax, op(0x12, 0x345678) */
+/* mov eax, op(0x12, 0x345678); zero is 'xor eax,eax' (A2: two bytes,
+   zero-extends on x64; it clobbers the flags, which no emitter keeps live
+   across a value materialization) */
 void mov_eax_int32(int v):
 	if (target_isa == 3): ptx_mov_ax_int(v)
 	elif (target_isa == 2): wasm_mov_eax_int(v)
 	elif (target_isa == 1): arm64_mov_eax_int32(v)
+	elif ((v == 0) && (addr_modes_disabled == 0)): emit(2, c"\x31\xc0")
 	else:
 		emit(1, c"\xb8")
 		emit_int32(v)
@@ -1212,16 +1259,22 @@ void promote_uint16_eax():
    anything else (negative, or past 2^31 on a 64-bit host) keeps the
    imm64 form. The test is host-independent: a 32-bit compiler cannot
    hold a value that the 64-bit one would classify differently, and the
-   literals with bit 31 set are negative on both (CLAUDE.md). The
-   negative simm32 form (REX.W C7 /0) is deliberately not used: libs/asm
-   has no C7 /0 decoder and asm_x64_test checks the self-host image
-   decodes completely, for 96 instructions in the x64 compiler image. */
+   literals with bit 31 set are negative on both (CLAUDE.md). A negative
+   value takes the 7-byte sign-extending simm32 form (REX.W C7 /0, A2;
+   libs/asm decodes and re-encodes it byte-exact), the rest of the 64-bit
+   range the movabs. */
 void mov_eax_int(int v):
 	if (target_isa == 2): wasm_mov_eax_int(v)
 	elif (target_isa == 1): arm64_mov_rax_int64(v)
 	else:
 		int start = codepos
-		if ((word_size == 8) && ((v >> 31) != 0)): mov_rax_int64(v)
+		if ((word_size == 8) && ((v >> 31) == -1) && (addr_modes_disabled == 0)):
+			# mov rax,simm32 (REX.W C7 /0 id): 7 bytes for a negative
+			# value instead of the 10-byte movabs (A2; libs/asm decodes
+			# C7 /0 since the unit)
+			emit(3, c"\x48\xc7\xc0")
+			emit_int32(v)
+		elif ((word_size == 8) && ((v >> 31) != 0)): mov_rax_int64(v)
 		else: mov_eax_int32(v)
 		# PTX also reaches here (it has no early return above) but does not
 		# advance codepos, so note it only for the x86 family. Every consumer
@@ -1909,6 +1962,16 @@ void neg_eax():
 	elif (target_isa == 2): wasm_neg_eax()
 	elif (target_isa == 1): a64(op(0xcb, 0x0003e0))   # neg x0,x0
 	else:
+		# 'mov eax,imm ; neg eax' is one negated constant (A2), which keeps
+		# the immediate note for the folds after it. The host's most
+		# negative value is its own negation on a 32-bit host but not on a
+		# 64-bit one, so that value alone keeps the two instructions.
+		if ((imm_note_end != 0) && (imm_note_end == codepos) && (addr_modes_disabled == 0)):
+			int v = imm_note_value
+			if (v != (0 - (1 << 31))):
+				peep_rollback(imm_note_start)
+				mov_eax_int(0 - v)
+				return
 		emit_x64_opcode()
 		emit(2, c"\xf7\xd8") /* neg %eax */
 
@@ -1968,14 +2031,29 @@ int shuttle_alu(int ext):
 
 # The compare twin: 'cmp eax,X', or 'cmp R_left,X' when the left operand
 # is a register (its value need not pass through eax at all). Emits the
-# cmp only; the caller materializes or fuses the flags.
-int shuttle_cmp():
+# cmp only; the caller materializes or fuses the flags, and passes the
+# setCC byte it will use (alu_cmp_set): a load directly before the
+# shuttle compared against a constant becomes 'cmp [mem],imm' at the
+# load's width (A2, memload_cmp_width) — the compared value is dead
+# after the compare, since the setCC or the fused branch is all that
+# reads the flags.
+int shuttle_cmp(int setcc_opcode):
 	if ((shuttle_end == 0) || (shuttle_end != codepos)): return 0
 	int kind = shuttle_kind
 	int left_reg = shuttle_left_reg
 	int value = shuttle_value
 	int disp = shuttle_disp
 	int reg = shuttle_reg
+	if ((kind == 1) && (left_reg == 0) && (memload_end != 0) && (memload_end == shuttle_start) && (addr_modes_disabled == 0)):
+		int width = memload_cmp_width(setcc_opcode, value)
+		if (width != 0):
+			int base = memload_base
+			int index = memload_index
+			int scale = memload_scale
+			int mdisp = memload_disp
+			peep_rollback(memload_start)
+			cmp_mem_imm(width, value, base, index, scale, mdisp)
+			return 1
 	peep_rollback(shuttle_start)
 	emit_alu_reg_x(7, left_reg, kind, value, disp, reg)
 	return 1
@@ -1987,6 +2065,24 @@ int shuttle_cmp():
 # is used), a statement-position store leaves eax dead. Otherwise the
 # plain 'mov r,eax'. x86 family only.
 void regalloc_reg_store(int r, int keep_eax):
+	if ((imm_note_end != 0) && (imm_note_end == codepos) && (keep_eax == 0) && (addr_modes_disabled == 0)):
+		# 'mov eax,imm ; mov R,eax' with eax dead: 'mov R,imm' (A2). The
+		# 32-bit form zero-extends on x64; a negative value takes the
+		# sign-extending REX.W C7 /0 form, a wider one keeps the detour.
+		int v = imm_note_value
+		if ((word_size == 4) || ((v >> 31) == 0)):
+			peep_rollback(imm_note_start)
+			if (r >= 8): emit(1, c"\x41")
+			emit_int8(0xb8 | (r & 7))
+			emit_int32(v)
+			return
+		if ((v >> 31) == -1):
+			peep_rollback(imm_note_start)
+			emit_rex_w_b(r)
+			emit(1, c"\xc7")
+			emit_int8(0xc0 | (r & 7))
+			emit_int32(v)
+			return
 	if ((binop_end != 0) && (binop_end == codepos)):
 		int ext = binop_op
 		int commutative = (ext == 0) || (ext == 1) || (ext == 4) || (ext == 6) || (ext == 8)
@@ -2236,7 +2332,7 @@ void alu_cmp_set(int setcc_opcode):
 	elif (target_isa == 2): wasm_alu_cmp_set(setcc_opcode)
 	elif (target_isa == 1): arm64_alu_cmp_set(setcc_opcode)
 	else:
-		if (shuttle_cmp() == 0):
+		if (shuttle_cmp(setcc_opcode) == 0):
 			emit_x64_opcode()
 			emit(2, c"\x39\xc3")
 		cmp_fuse_start = codepos

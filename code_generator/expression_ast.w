@@ -899,8 +899,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 		expression_is_assignment = 1
 		int subop = tree.value[id]
 		# The statement's own assignment leaves its value unread (R3:
-		# the register store may then drop the trailing 'mov eax,R')
-		int keep_eax = (id + 1) != ast_statement_root1
+		# the register store may then drop the trailing 'mov eax,R').
+		# A parenthesised '(a = b)' is the tree's root but not the
+		# statement's own expression() call (tree.high, set by
+		# grammar/ast_expression.w's assignment), and keeps the value
+		# exactly as the streaming stmt_context does.
+		int keep_eax = ((id + 1) != ast_statement_root1) || (tree.high[id] == 0)
 		# A register-resident left side (grammar/expression.w's '=',
 		# grammar/increment.w's compound form): no parked address, the
 		# store is a register move or an in-place 'op R,X'

@@ -523,3 +523,15 @@ c70078563412|mov dword [rax],0x12345678
 488d04c8|lea rax,[rax+rcx*8]
 498d442408|lea rax,[r12+8]
 4a8d4c2508|lea rcx,[rbp+r12*1+8]
+# cmp [mem],imm at the load's width (shuttle_cmp's memload fold)
+48817c030e40420f00|cmp qword [rbx+rax*1+0xe],0xf4240
+48837c030efb|cmp qword [rbx+rax*1+0xe],-5
+66817c0302d4fe|cmp word [rbx+rax*1+2],-0x12c
+66837c030400|cmp word [rbx+rax*1+4],0
+803c039c|cmp byte [rbx+rax*1],-0x64
+807c030118|cmp byte [rbx+rax*1+1],0x18
+817c0306a0860100|cmp dword [rbx+rax*1+6],0x186a0
+837c030a07|cmp dword [rbx+rax*1+0xa],7
+4183bc24e803000005|cmp dword [r12+0x3e8],5
+4983bc24e803000005|cmp qword [r12+0x3e8],5
+41807d0a00|cmp byte [r13+0xa],0

@@ -18,7 +18,8 @@
 # and writes through promoted and stack-resident pointers, chains
 # ('p.a[i]', 'a[i].f', 'a[i].inner.b'), element and field addresses,
 # plain, compound and increment stores on elements, fields and stack
-# locals, byte compares against constants, and the left-side-first
+# locals, compares of every width against constants, folded negated
+# constants, and the left-side-first
 # evaluation order of a store whose right side writes the base or the
 # index. Every expected value is written out by hand; the test runs
 # again with --no-regs (no register bases) and with --no-addr-modes (no
@@ -567,6 +568,76 @@ void test_stack_locals():
 	assert_equal(1665, stack_locals(4))
 
 
+# --- compares against constants at every width, folded constants ---------
+int compare_widths(widths* ws, int n):
+	int acc = 0
+	int i = 0
+	while (i < n):
+		if (ws[i].i8 == -1): acc = acc + 1
+		if (ws[i].i8 < -100): acc = acc + 2
+		if (ws[i].u8 >= 200): acc = acc + 4
+		if (ws[i].u8 != 24): acc = acc + 8
+		if (ws[i].i16 <= -300): acc = acc + 16
+		if (ws[i].i16 == 1000): acc = acc + 32
+		if (ws[i].u16 > 40000): acc = acc + 64
+		if (ws[i].u16 != 0): acc = acc + 128
+		if (ws[i].i32 < 0): acc = acc + 256
+		if (ws[i].i32 == 100000): acc = acc + 512
+		if (ws[i].u32 == 7): acc = acc + 1024
+		if (ws[i].u32 >= 2000000000): acc = acc + 2048
+		if (ws[i].w != -5): acc = acc + 4096
+		if (ws[i].w > 1000000): acc = acc + 8192
+		i = i + 1
+	return acc
+
+
+int constants(int n):
+	int a = 0
+	int b = 0
+	int i = 0
+	while (i < n):
+		a = -3
+		b = -(-7)
+		a = a + i
+		b = b - (-1)
+		int m = -(0x7fffffff)
+		if (m < 0): b = b + 1000
+		if (0 - m > 0): b = b + 2000
+		i = i + 1
+	return a * 10000 + b
+
+
+void test_compares():
+	widths* ws = cast(widths*, malloc(3 * sizeof(widths)))
+	ws[0].i8 = -1
+	ws[0].u8 = 200
+	ws[0].i16 = -300
+	ws[0].u16 = 40001
+	ws[0].i32 = -7
+	ws[0].u32 = 7
+	ws[0].w = -5
+	ws[1].i8 = -120
+	ws[1].u8 = 24
+	ws[1].i16 = 1000
+	ws[1].u16 = 0
+	ws[1].i32 = 100000
+	ws[1].u32 = 2000000000
+	ws[1].w = 2000000
+	ws[2].i8 = 5
+	ws[2].u8 = 255
+	ws[2].i16 = 5
+	ws[2].u16 = 65535
+	ws[2].i32 = 0
+	ws[2].u32 = 0
+	ws[2].w = 0
+	# ws[0]: 1 + 4 + 8 + 16 + 64 + 128 + 256 + 1024 = 1501
+	# ws[1]: 2 + 32 + 512 + 2048 + 4096 + 8192 = 14882
+	# ws[2]: 4 + 8 + 64 + 128 + 4096 = 4300
+	assert_equal(1501 + 14882 + 4300, compare_widths(ws, 3))
+	# n = 4: a = -3 + 3 = 0, b = 7 + 1 + 1000 + 2000 = 3008
+	assert_equal(3008, constants(4))
+
+
 int main():
 	test_widths()
 	test_scales()
@@ -581,5 +652,6 @@ int main():
 	test_byte_compares()
 	test_nested()
 	test_stack_locals()
+	test_compares()
 	println(c"addressing_mode_test passed")
 	return 0
