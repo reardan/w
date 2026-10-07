@@ -61,6 +61,36 @@ void emit_statement_ast_exit(statement_ast* node):
 		be_return(stack_pos)
 
 
+void ast_expression_replay_warning(expression_ast* tree, int id);
+
+
+# The tail of ast_expression_finish_prepared that follows its terminator
+# lex: warnings located on the token after the root, then the counters.
+void emit_statement_ast_expression_end(statement_ast* node):
+	expression_ast* tree = node.expression_tree
+	for id in range(tree.count):
+		if ((tree.op[id] == ast_warning) && (tree.offset[id] == tree.end_offset)):
+			ast_expression_replay_warning(tree, id)
+	ast_expressions_emitted = ast_expressions_emitted + 1
+	ast_roots_emitted = ast_roots_emitted + 1
+
+
+# S2.2a: the retained walk of a simple, expression or return/yield statement
+# (code_generator/retained_emit.w). Each phase is one step the streaming
+# hooks in grammar/ast_statement.w run during their parse, at its point.
+void emit_statement_ast_walk(retained_statement_walk* walk, int phase):
+	statement_ast* node = walk.statement
+	if (phase == ast_walk_simple): emit_simple_statement_ast(node)
+	else if (phase == ast_walk_expression):
+		int root = retained_walk_lower_expression(walk)
+		expression_lhs_readonly = walk.tree.readonly
+		node.expression_type = walk.tree.result_type[root]
+	else if (phase == ast_walk_expression_end): emit_statement_ast_expression_end(node)
+	else if (phase == ast_walk_value): emit_statement_ast_value(node)
+	else if (phase == ast_walk_exit): emit_statement_ast_exit(node)
+	else: error(c"internal error: unknown statement walk phase")
+
+
 void emit_goto_target(int label, int source_stack):
 	if (goto_label_pos[label] >= 0):
 		# Backward: the label's depth is known
