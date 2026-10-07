@@ -250,6 +250,37 @@ void test_arity_codes():
 	diag_codes_cleanup(path)
 
 
+# Issue #532's warnings (grammar/type_check.w) have their own codes, and
+# the AST-required front end replays them with the streaming spans: the
+# narrowed literal, the enum literal, the struct operator, the 'case'
+# and 'return' keywords and the function's name position.
+void test_unsafe_conversion_codes():
+	char* path = diag_codes_write(c"enum color:\n\tred\n\nstruct point:\n\tint x\n\nint falls_off(int x):\n\tif (x): return 1\n\nvoid none():\n\treturn 5\n\nint main():\n\tchar c = 300\n\tcolor k = 5\n\tpoint a\n\tpoint b\n\tint same = a == b\n\tswitch same:\n\t\tcase 1:\n\t\t\tpass\n\t\tcase 1:\n\t\t\tpass\n\treturn 0\n")
+	for m in range(2):
+		char* out = diag_codes_check(path, diag_codes_mode(m, c"--ast-required"), 0)
+		assert_equal(6, diag_codes_count(out))
+		json_value* row = diag_codes_record(out, 0)
+		diag_codes_expect_span(row, c"W0403", 7, 15, 7, 15)
+		json_free(row)
+		row = diag_codes_record(out, 1)
+		diag_codes_expect_span(row, c"W0405", 11, 2, 11, 8)
+		json_free(row)
+		row = diag_codes_record(out, 2)
+		diag_codes_expect_span(row, c"W0400", 14, 11, 14, 14)
+		json_free(row)
+		row = diag_codes_record(out, 3)
+		diag_codes_expect_span(row, c"W0401", 15, 12, 15, 13)
+		json_free(row)
+		row = diag_codes_record(out, 4)
+		diag_codes_expect_span(row, c"W0402", 18, 15, 18, 17)
+		json_free(row)
+		row = diag_codes_record(out, 5)
+		diag_codes_expect_span(row, c"W0404", 22, 8, 22, 8)
+		json_free(row)
+		free(out)
+	diag_codes_cleanup(path)
+
+
 # A lint finding names no token: its span is zero-width.
 void test_lint_zero_width_span():
 	char* path = diag_codes_write(c"int main():\n\tint unused = 1\n\treturn 0\n")

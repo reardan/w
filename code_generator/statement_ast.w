@@ -16,6 +16,7 @@ void emit_simple_statement_ast(statement_ast* node):
 
 
 int emit_prepared_expression_ast(expression_ast* tree, int root);
+void ast_expression_note_root(expression_ast* tree, int root);
 
 
 # Value-bearing statements own an expression child. Source terminators
@@ -31,14 +32,18 @@ void emit_statement_ast_value(statement_ast* node):
 	int type = promote(node.expression_type)
 	if (node.kind != ast_stmt_yield): return_mismatch_note(node.declared_type, type)
 	if (node.kind == ast_stmt_yield):
+		ast_expression_note_root(node.expression_tree, node.expression_root)
 		coerce_checked(node.declared_type, type, c"yield")
+		const_note_override = 0
 	else if ((type_num_args(node.declared_type) > 0) && (type_num_args(type) > 0)):
 		if (types_compatible_with_expression(node.declared_type, type) == 0):
 			warn_type_mismatch(c"return", node.declared_type, type)
 		copy_struct_return_value(node.declared_type)
 	else:
 		check_void_return(node.declared_type, type, node.line - 1, node.line, node.column)
+		ast_expression_note_root(node.expression_tree, node.expression_root)
 		coerce_checked(node.declared_type, type, c"return")
+		const_note_override = 0
 
 
 void emit_statement_ast_exit(statement_ast* node):
@@ -163,7 +168,10 @@ void emit_typed_local_storage(int type, int has_initializer):
 
 int emit_declaration_ast_initializer(statement_ast* node):
 	int got = promote(node.expression_type)
-	if (node.inferred == 0): coerce_checked(node.declared_type, got, c"initialization")
+	if (node.inferred == 0):
+		ast_expression_note_root(node.expression_tree, node.expression_root)
+		coerce_checked(node.declared_type, got, c"initialization")
+		const_note_override = 0
 	return got
 
 
