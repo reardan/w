@@ -1890,3 +1890,70 @@ end of a file); `while_statement.w`'s `statement_guard` and
 as a fact, which is sound only because the header is drained before
 the body. No `tree --json` field was added; the schema stays
 **version 2**.
+
+## Launch and gpu for statements walked after their parse (S2.2e)
+
+Family (e) of S2.2 covers function, script, generator and kernel
+boundaries, globals, thread-locals, linkage declarations and GPU
+launches. Of these, only `launch` and `gpu for` are statements of the
+dispatcher (retained statement nodes); under `--ast-emit-retained` both
+are now walked through `retained_emit_statement` with their own emitter
+(`emit_gpu_walk_ast`, `code_generator/gpu_ast.w`; private
+`ast_gpu_walk_*` phase codes in `compiler/gpu_ast.w`).
+
+- **launch.** The kernel name, both dimensions, the argument list and the
+  arity check are parsed before the last value's lowering, coercion and
+  slot push and the runtime call are emitted. Each header value records
+  the phases family (a) records for an expression child (lower from the
+  retained group, end-of-root warnings at the token after it) plus its
+  own value step (`check_call_argument`, coercion, slot push).
+- **gpu for.** The range operands and the host-side tail (capture pushes
+  and the `__w_gpu_launch` call) are walked. The outlined kernel's
+  prologue, loop-variable slot and guard are emitted before the body
+  parses, because the body's parse reads what they set (device mode,
+  `device_symbol_base`, the capture table, `in_gpu_for_body`, the slot the
+  loop variable is declared at); its epilogue is emitted when the body
+  ends, before the host side resolves captures in host mode. Capture
+  bindings are resolved during the parse and kept on the node.
+- **Order-sensitive parse steps.** The header values share one
+  `statement_ast`/`expression_ast` pair in the statement's frame, so at
+  most one value's phases are pending. The parse drains them before a
+  value is prepared (preparation replays warnings and decodes literals),
+  before every parse error (missing `[`/`,`/`]`/`)`, arity, a third range
+  operand, an unresolvable capture), and before lexing a token unless the
+  raw bytes of the rest of the line rule out a lexer diagnostic
+  (`ast_gpu_lex_may_print`). Without these drains the new tests fail on
+  both diagnostics and images.
+
+Function, generator, script and kernel bodies, globals, thread-locals,
+enum values and extern declarations are not statement nodes, so they are
+outside the walk's coverage counter, and none has a parse step between
+its boundary emission and the body (or the end of the declaration) that
+deferral could move: the boundary emitters (`emit_function_begin_ast`,
+`emit_function_end_ast`, `emit_global_declaration_ast`,
+`emit_thread_local_ast`, `emit_linkage_ast`) are unchanged. A global's
+storage is still bound before its constant initializer parses, and a
+kernel's parameters still take their slots as they parse (the slot is
+the declared local's offset).
+
+`w.w` has no GPU statements, so this family does not change its counters
+(66,125 walked and 0 immediate on x86, 66,160 and 0 on x64, with S2.2b-d
+in). The 8 launch and gpu for statements of
+`tests/ast_gpu_walk_fixture.w` were the only immediate statements left
+there (4,125 walked / 8 immediate before, 4,133 / 0 after). Compile time
+of `w.w` is unchanged within this box's noise in either mode.
+Verification: `ast_retained_emit_test` adds that fixture and
+eleven generated sources (argument warnings followed by an indentation
+warning, a continuation line, a warning printed while the next argument
+is prepared, an arity error, a missing `)`, no final newline, a comment
+or unterminated literal after an argument, a third range operand, a
+space-indented line after a gpu for body), compiled in both modes on its
+x64 legs with identical images and diagnostics; `verify`, `verify_x64`,
+`ast_expression_test`, `ast_required_expression_verify`, the compile-only
+`cuda_*`/`gpu_*` targets and `tests` pass.
+
+What this does not claim: no function body is parsed whole before
+emission; the gpu for kernel's prologue and epilogue are walked phases
+that are drained immediately, not deferred; the coverage counter does
+not count function, global or linkage boundaries at all. The tree
+schema is unchanged (**version 2**).
