@@ -32,6 +32,7 @@ syntax here.
 # declaration up front.
 int expression();
 int ast_deferred_expression();
+int ast_defer_registration();
 
 
 /*
@@ -99,20 +100,34 @@ void defer_check_form():
 		error(c"deferred statement cannot declare a variable")
 
 
-# Parse position: the 'defer' keyword has been consumed and the first
-# token of the deferred statement is current. Records the span and
-# skips the rest of the line without emitting code; simple statements
-# are newline-terminated, so the span ends at the line's end.
-void defer_register():
-	defer_check_form()
+# Add a deferred statement's span to the registry (path is owned by the
+# record from here on).
+void defer_record_span(char* path, int offset, int line, int column):
 	if (cast(int, defer_spans) == 0): defer_spans = new list[defer_span_record]
 	defer_span_record rec
-	rec.file = strclone(filename)
-	rec.offset = token_start_offset
-	rec.line = diag_token_line - 1
-	rec.column = diag_token_column - 1
+	rec.file = path
+	rec.offset = offset
+	rec.line = line
+	rec.column = column
 	defer_spans.push(rec)
+
+
+# Simple statements are newline-terminated, so the span ends at the
+# line's end.
+void defer_skip_statement():
 	while ((token_newline == 0) && (token[0] != 0)): get_token()
+
+
+# Parse position: the 'defer' keyword has been consumed and the first
+# token of the deferred statement is current. Records the span and
+# skips the rest of the line without emitting code. Under
+# --ast-emit-retained the statement's walk registers the span once the
+# line is skipped (ast_defer_registration, grammar/ast_declaration.w).
+void defer_register():
+	defer_check_form()
+	if (ast_defer_registration()): return
+	defer_record_span(strclone(filename), token_start_offset, diag_token_line - 1, diag_token_column - 1)
+	defer_skip_statement()
 
 
 # Open the recorded file, seek to the span start and prime the

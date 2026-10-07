@@ -44,6 +44,9 @@
 char** goto_label_names
 int* goto_label_pos      # codepos of the label, or -1 while undefined
 int* goto_label_stack    # stack_pos at the label (valid once defined)
+# 1 once the label's statement is parsed: the duplicate check is a parse
+# fact, independent of when the label is emitted (goto_label_pos)
+int* goto_label_defined
 int goto_label_count
 int goto_label_capacity
 int goto_label_base
@@ -64,6 +67,7 @@ void goto_reserve():
 		goto_label_names = cast(char**, malloc(goto_label_capacity * __word_size__))
 		goto_label_pos = cast(int*, malloc(goto_label_capacity * __word_size__))
 		goto_label_stack = cast(int*, malloc(goto_label_capacity * __word_size__))
+		goto_label_defined = cast(int*, malloc(goto_label_capacity * __word_size__))
 	if (goto_label_count >= goto_label_capacity):
 		int old = goto_label_capacity * __word_size__
 		goto_label_capacity = goto_label_capacity * 2
@@ -71,6 +75,7 @@ void goto_reserve():
 		goto_label_names = cast(char**, realloc(cast(void*, goto_label_names), old, x))
 		goto_label_pos = cast(int*, realloc(goto_label_pos, old, x))
 		goto_label_stack = cast(int*, realloc(goto_label_stack, old, x))
+		goto_label_defined = cast(int*, realloc(goto_label_defined, old, x))
 	if (goto_pending_capacity == 0):
 		goto_pending_capacity = 16
 		goto_pending_label = cast(int*, malloc(goto_pending_capacity * __word_size__))
@@ -127,6 +132,7 @@ int goto_label_intern(char* name):
 	goto_label_names[goto_label_count] = strclone(name)
 	goto_label_pos[goto_label_count] = -1
 	goto_label_stack[goto_label_count] = 0
+	goto_label_defined[goto_label_count] = 0
 	goto_label_count = goto_label_count + 1
 	return goto_label_count - 1
 
@@ -149,6 +155,7 @@ int goto_name_is_ident(char* s):
 void emit_goto_target(int label, int source_stack);
 void emit_label_target(int label, int target_stack);
 void emit_goto_statement_ast(statement_ast* node);
+int ast_goto_walk(statement_ast* node);
 
 
 # goto identifier ;
@@ -170,7 +177,7 @@ int goto_statement():
 	if (ast_expressions_mode >= 2):
 		node.target = label
 		node.stack_depth = stack_pos
-		emit_goto_statement_ast(&node)
+		if (ast_goto_walk(&node) == 0): emit_goto_statement_ast(&node)
 	else: emit_goto_target(label, stack_pos)
 	return 1
 
@@ -201,11 +208,12 @@ int labeled_statement():
 	get_token() /* consume ':' */
 	goto_check_target()
 	int label = goto_label_intern(name)
-	if (goto_label_pos[label] >= 0): error3(c"duplicate label '", name, c"'")
+	if (goto_label_defined[label]): error3(c"duplicate label '", name, c"'")
+	goto_label_defined[label] = 1
 	free(name)
 	if (ast_expressions_mode >= 2):
 		node.target = label
 		node.stack_depth = stack_pos
-		emit_goto_statement_ast(&node)
+		if (ast_goto_walk(&node) == 0): emit_goto_statement_ast(&node)
 	else: emit_label_target(label, stack_pos)
 	return 1

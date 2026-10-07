@@ -1654,3 +1654,72 @@ reports the same diagnostics. What it does not claim: a struct
 compared with a non-struct operand, or a struct-returning call, still
 falls back to the streaming grammar (and fails `--ast-required`).
 **#489 remains open.**
+
+## Declarations, labels, raw_asm and defer from their record (S2.2d)
+
+Under `--ast-emit-retained`, local declarations (typed and `:=`), `goto`,
+labels, `raw_asm(...)` and `defer` statements are now parsed completely
+before any of their code is emitted, and family (a)'s walk
+(`retained_emit_statement`) emits them from what the parse recorded. The
+emitter is `emit_declaration_ast_walk` (`code_generator/statement_ast.w`),
+with private phase codes `ast_walk_declaration_*`, `ast_walk_goto`,
+`ast_walk_raw` and `ast_walk_defer_register`; a declaration's initializer
+reuses family (a)'s expression and expression-end phases.
+
+The parse records the facts and the walk reproduces each side effect at
+the point the streaming parse ran it:
+
+- **Local slot assignment.** The record holds the local's declared type,
+  its name (`:=`) and the initializer's promoted type. The slot is the
+  stack depth when the local's storage is pushed, which only emission
+  knows, so the bind phase (`emit_declaration_ast_bind`) assigns it: it
+  fills the typed local's slot (the type-name parse already declared the
+  symbol) or declares the inferred local after its initializer, then the
+  storage phase pushes it. `inferred_storage_type`'s errors therefore stay
+  after the initializer's warnings. A declaration in a `for` header is not
+  its own statement and keeps emitting during its parse.
+- **Defer registration.** The parse checks the form and records the span
+  (path, offset, line, column); the walk registers it
+  (`defer_record_span`, `grammar/defer.w`) after the rest of the line is
+  skipped, so registration order is statement order as before. The
+  exit-time replay (`ast_deferred_expression`) is unchanged: it is a
+  reparse inside an exit phase or block end, not a statement of its own.
+- **Labels.** The label index and the stack depth at the `goto` or label
+  are parse facts; a label's duplicate check now reads a parse-side flag
+  (`goto_label_defined`) instead of the emitted label position, so it no
+  longer depends on when the label is emitted. Pending forward gotos and
+  label positions stay emitter state, resolved by
+  `emit_goto_target`/`emit_label_target` in walk order.
+- **raw_asm.** The decoded bytes live in the token buffer, which the rest
+  of the parse overwrites, so the record owns a copy until the walk emits
+  it (before a missing `)` is reported).
+
+`--stats` on `w.w` (compile, `--ast-required --ast-emit-retained`, this
+branch's source): 36,726 walked and 28,817 immediate statements on the
+x86 host, against 29,579 and 35,964 before; 36,746 and 28,825 on x64.
+`w.w` has no goto, label, raw_asm or defer statement; its 7,147 local
+declarations account for the difference (the 12 others are `for`
+headers). The remaining immediate statements are blocks,
+`if`/`while`/`for`/`switch` and function-level nodes (families b, c, e).
+
+Verification: `ast_retained_emit_test` compiles a tracked fixture
+(`tests/ast_declaration_walk_fixture.w`: typed, inferred, struct, array and
+array-field locals, `;`-separated declarations, initialization warnings,
+forward and backward gotos across declarations and blocks, defers,
+raw_asm) and fifteen generated invalid sources (initialization warnings
+around indentation, terminator and end-of-file diagnostics, bind-phase and
+parse-phase declaration errors, duplicate and undefined labels, raw_asm
+without `)`, defers whose skipped line prints) on the same legs as S2.2a,
+and checks that a program with one statement of each kind walks all of
+them and adds no immediate statement. `verify`, `verify_x64`,
+`ast_expression_test`, `ast_required_expression_verify` (whose
+`--ast-emit-retained` fixpoint equals `bin/wv3`/`bin/wv3_64`) and `tests`
+pass.
+
+What this does not claim: the unit is still one statement, so the bind
+phase reads the live `stack_pos` and `last_declared_symbol`, and an
+inferred local is declared by the walk; a body-level walk must declare it
+at parse time (its type is known once the initializer is prepared) so later
+statements can resolve it. Gotos and labels are emitted at the end of
+their statement exactly as before; forward-goto resolution remains emitter
+state. No `tree --json` field was added; the schema stays **version 2**.

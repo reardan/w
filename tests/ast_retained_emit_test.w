@@ -10,7 +10,8 @@
 # mode shares: the streaming default reports some void-pointer-conversion
 # lint that full-expression mode does not, so those two differ already. The fixture list is read from ast_expression_test's directive, so
 # the two cannot drift; the data= list below must cover it (asserted).
-# S2.2a adds the statement-walk sources (emit_walk_sources) on the same legs.
+# S2.2a adds the statement-walk sources (emit_walk_sources) on the same legs,
+# and S2.2d the declaration, goto/label, raw_asm and defer ones.
 import lib.testing
 import lib.file
 import lib.process
@@ -229,6 +230,7 @@ void emit_run_pairs(list[emit_pair*] pairs, int width):
 list[char*] emit_walk_sources():
 	list[char*] sources = new list[char*]
 	sources.push(c"tests/ast_statement_walk_fixture.w")
+	sources.push(c"tests/ast_declaration_walk_fixture.w")
 	list[char*] texts = new list[char*]
 	# A value warning after an indentation warning on the next line.
 	texts.push(c"char* f(int x):\n\tint y = x\n\treturn y\n    \tint z = 1\n\treturn 0\n\nint main():\n\tf(1)\n\treturn 0\n")
@@ -247,6 +249,27 @@ list[char*] emit_walk_sources():
 	texts.push(c"int main():\n\tint x = 0\n\tx = 1\n  \tcontinue\n\treturn 0\n")
 	texts.push(c"char* f(int x):\n\treturn x\n\t\"abc\n")
 	texts.push(c"int main():\n\tyield 1\n\treturn 0\n")
+	# S2.2d: an initialization warning after an indentation warning, before
+	# a missing terminator, after ';' and at the end of the source.
+	texts.push(c"int main():\n\tint n = 1\n\tchar* p = n\n    \treturn 0\n")
+	texts.push(c"int main():\n\tint n = 1\n\tchar* p = n )\n\treturn 0\n")
+	texts.push(c"int main():\n\tint n = 1\n\tchar* p = n;\n    \treturn 0\n")
+	texts.push(c"int main():\n\treturn 0\n\nvoid f(int x):\n\tchar* p = x")
+	# Declaration errors: from the bind phase, and from the parse.
+	texts.push(c"void f():\n\tpass\n\nint main():\n\tx := f()\n\treturn 0\n")
+	texts.push(c"int main():\n\tx := main\n\treturn 0\n")
+	texts.push(c"int main():\n\tint[3] a = 0\n\treturn 0\n")
+	texts.push(c"int main():\n\tint n = 1\n\tn := 2\n\treturn 0\n")
+	# Labels and gotos: a duplicate, an undefined label, a bad terminator,
+	# a label after an indentation warning.
+	texts.push(c"int main():\n\tl:\n\tl:\n\treturn 0\n")
+	texts.push(c"int main():\n\tgoto nowhere\n\treturn 0\n")
+	texts.push(c"int main():\n\tgoto x )\n\tx:\n\treturn 0\n")
+	texts.push(c"int main():\n\tint n = 1\n\tint m = n\n  \tx:\n\tgoto x\n")
+	# raw_asm without its ')', defers whose skipped line prints.
+	texts.push(c"int main():\n\traw_asm(c\"\\x90\" ;\n\treturn 0\n")
+	texts.push(c"void g(char* s):\n\tpass\n\nint main():\n\tdefer g(\"abc\n\treturn 0\n")
+	texts.push(c"void g(int s):\n\tpass\n\nint main():\n\tdefer g(1)\n  \treturn 0\n")
 	for i in range(texts.length):
 		string_builder* path = string_new()
 		string_append(path, c"bin/ast_retained_emit_walk_")
@@ -298,7 +321,7 @@ void test_retained_emission_matches_default():
 		pairs.push(emit_pair_new(host, rotated[i % 4], source, 0))
 		pairs.push(emit_pair_new(c"bin/wv2", c"x86", source, 1))
 	emit_run_pairs(pairs, 4)
-	for i in range(1, walked.length): unlink(walked[i])
+	for i in range(2, walked.length): unlink(walked[i])
 	for failure in emit_failures:
 		print(c"retained emission differs: ")
 		println(failure)
@@ -342,6 +365,47 @@ void test_retained_emission_counts_statements():
 	process_result_free(result)
 
 
+# S2.2d: declarations, labels, gotos, raw_asm and defer statements are
+# walked too. The counters of a source with one of each, against the same
+# program without them, differ only in walked statements.
+int emit_statement_counter(char* text, char* label):
+	int at = index_of(text, label)
+	assert1(at >= 0)
+	return atoi(text + at + strlen(label))
+
+
+process_result* emit_stats(char* name, char* text):
+	assert1(file_write_text(name, text) >= 0)
+	char** args = strv_new(8)
+	strv_set(args, 0, c"bin/wv2")
+	strv_set(args, 1, c"check")
+	strv_set(args, 2, c"--ast-emit-retained")
+	strv_set(args, 3, c"--stats")
+	strv_set(args, 4, name)
+	process_result* result = process_run(c"bin/wv2", args, 0, 0, 60000)
+	free(cast(void*, args))
+	unlink(name)
+	assert1(result != 0)
+	assert_equal(0, result.status)
+	return result
+
+
+void test_retained_emission_walks_declarations():
+	string_builder* path = string_new()
+	string_append(path, c"bin/ast_retained_emit_counts_")
+	string_append_int(path, getpid())
+	string_append(path, c".w")
+	process_result* bare = emit_stats(path.data, c"int main():\n\treturn 0\n")
+	process_result* walked = emit_stats(path.data, c"int main():\n\tint a = 1\n\tint b\n\tc := a; b = c\n\tgoto l\n\tl:\n\traw_asm(\"\")\n\tdefer main()\n\treturn b\n")
+	char* emitted = c"Retained-emitted statements: "
+	char* immediate = c"Immediate statements: "
+	assert_equal(emit_statement_counter(bare.stderr_text, emitted) + 8, emit_statement_counter(walked.stderr_text, emitted))
+	assert_equal(emit_statement_counter(bare.stderr_text, immediate), emit_statement_counter(walked.stderr_text, immediate))
+	process_result_free(bare)
+	process_result_free(walked)
+	string_free(path)
+
+
 # REPL entries roll the retained forest back on error and redefine
 # functions; lowering from the forest must replay the same session.
 process_result* emit_repl(char* repl, char* flag, char* script):
@@ -369,7 +433,7 @@ void test_retained_emission_repl_session():
 		process_result_free(retained)
 
 
-# wbuild: binary=ast_retained_emit_test tag=tests dep=build dep=build_x64 data=tests/ast_expression_test.w data=tests/extern_data_test.w data=tests/float_abi_test.w data=tests/extern_alias_test.w data=tests/wasm_extern_test.w data=tests/script_fixture.w data=tests/ast_global_fixture.w data=tests/ast_gpu_statement_fixture.w data=tests/ast_deferred_fixture.w data=tests/ast_scope_fixture.w data=tests/for_test.w data=tests/for_container_test.w data=tests/switch_test.w data=tests/ast_guard_fixture.w data=tests/ast_declaration_fixture.w data=tests/infer_test.w data=tests/const_initializer_test.w data=tests/ast_raw_statement_fixture.w data=tests/goto_test.w data=tests/ast_expression_statement_fixture.w data=tests/ast_value_statement_fixture.w data=tests/ast_simple_statement_fixture.w data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_list_method_expression_fixture.w data=tests/ast_void_call_expression_fixture.w data=tests/ast_composite_type_expression_fixture.w data=tests/ast_integer_intrinsic_expression_fixture.w data=tests/ast_map_method_expression_fixture.w data=tests/ast_generator_call_expression_fixture.w data=tests/ast_list_callback_expression_fixture.w data=tests/ast_map_default_expression_fixture.w data=tests/ast_inferred_generic_expression_fixture.w data=tests/ast_variadic_expression_fixture.w data=tests/varargs_test.w data=tests/ast_atomic_expression_fixture.w data=tests/atomic_host_test.w data=tests/ast_generic_type_expression_fixture.w data=tests/ast_method_expression_fixture.w data=tests/ast_operator_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_var_expression_fixture.w data=tests/dynamic_var_test.w data=tests/c_import_bitfield_fixture.w data=tests/x64_c_import_bitfield_test.w data=tests/c_import_bitfield_fixture.h data=tests/ast_prelude_expression_fixture.w data=tests/ast_prelude_input_fixture.w data=tests/prelude_test.w data=tests/ast_json_expression_fixture.w data=tests/json_codec_test.w data=tests/ast_protobuf_expression_fixture.w data=tests/protobuf_message_test.w data=tests/ast_utf8_expression_fixture.w data=tests/utf8_identifier_test.w data=tests/ast_large_literal_expression_fixture.w data=graphics/ui/font_data.w data=tests/ast_ndarray_expression_fixture.w data=tests/ndarray_index_test.w data=tests/ast_buffer_flow_expression_fixture.w data=tests/array_decay_test.w data=tests/matrix_linalg_test.w data=tests/ast_template_format_expression_fixture.w data=tests/template_format_test.w data=tests/template_format_float64_test.w data=tests/ast_qualified_expression_fixture.w data=tests/import_alias_type_test.w data=tests/import_test.w data=tests/ast_device_expression_fixture.w data=tests/gpu_ptx_emit.w data=tests/cuda_gpu.w data=tests/ast_gpu_qualified_expression_fixture.w data=tests/gpu_qualifier_ptx.w data=tests/gpu_qualifier_gpu.w data=tests/expression_nesting_clean_fixture.w data=tests/ternary_nesting_clean_fixture.w data=tests/gpu_qualifier_ok_fixture.w data=tests/ast_list_it_expression_fixture.w data=tests/list_it_test.w data=tests/golf_it_ints_test.w data=tests/golf_transpose_test.w data=tests/ast_bare_callback_expression_fixture.w data=libs/standard/distributed/raft_sweep_test.w data=tests/generics_test.w data=tests/ast_propagation_expression_fixture.w data=tests/ast_continuation_expression_fixture.w data=tests/lint_warn_fixture.w data=tests/lint_clean_fixture.w data=tests/bool_bitwise_warning_fixture.w data=tests/bool_bitwise_chain_fixture.w data=tests/bool_ops_warn_fixture.w data=structures/hash_table_test.w data=tests/default_args_missing_warning_fixture.w data=tests/list_builtin_warning_fixture.w data=tests/map_default_warning_fixture.w data=tests/warning_fixture.w data=tests/type_system_warning_fixture.w data=tests/ndarray_index_warning_fixture.w data=tests/atomic_host_operand_error_fixture.w data=tests/limb_builtin_warning_fixture.w data=tests/array_cast_warning_fixture.w data=tests/cross_line_call_warning_fixture.w data=tests/shell_commands_test.w data=tests/warning_clean_fixture.w data=tests/result_propagate_test.w data=tests/generator_return_free_test.w data=tests/feature_combo_test.w data=tests/ast_first_use_container_fixture.w data=tests/ast_map_integration_expression_fixture.w data=tests/ast_collection_snapshot_fixture.w data=tests/ast_control_header_fixture.w data=tests/ast_collection_snapshot_x64_fixture.w data=tests/ast_statement_expression_fixture.w data=tests/ast_integration_expression_fixture.w data=tests/ast_scalar_map_expression_fixture.w data=tests/ast_array_allocation_fixture.w data=tests/ast_migration_constructor_fixture.w data=tests/ast_map_default_fixture.w data=tests/ast_map_get_fixture.w data=tests/ast_formatted_template_fixture.w data=tests/ast_migration_generic_fixture.w data=tests/ast_return_statement_fixture.w data=tests/unsigned_compare_test.w data=tests/x64_unsigned_compare_test.w data=tests/ast_statement_walk_fixture.w
+# wbuild: binary=ast_retained_emit_test tag=tests dep=build dep=build_x64 data=tests/ast_expression_test.w data=tests/extern_data_test.w data=tests/float_abi_test.w data=tests/extern_alias_test.w data=tests/wasm_extern_test.w data=tests/script_fixture.w data=tests/ast_global_fixture.w data=tests/ast_gpu_statement_fixture.w data=tests/ast_deferred_fixture.w data=tests/ast_scope_fixture.w data=tests/for_test.w data=tests/for_container_test.w data=tests/switch_test.w data=tests/ast_guard_fixture.w data=tests/ast_declaration_fixture.w data=tests/infer_test.w data=tests/const_initializer_test.w data=tests/ast_raw_statement_fixture.w data=tests/goto_test.w data=tests/ast_expression_statement_fixture.w data=tests/ast_value_statement_fixture.w data=tests/ast_simple_statement_fixture.w data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_list_method_expression_fixture.w data=tests/ast_void_call_expression_fixture.w data=tests/ast_composite_type_expression_fixture.w data=tests/ast_integer_intrinsic_expression_fixture.w data=tests/ast_map_method_expression_fixture.w data=tests/ast_generator_call_expression_fixture.w data=tests/ast_list_callback_expression_fixture.w data=tests/ast_map_default_expression_fixture.w data=tests/ast_inferred_generic_expression_fixture.w data=tests/ast_variadic_expression_fixture.w data=tests/varargs_test.w data=tests/ast_atomic_expression_fixture.w data=tests/atomic_host_test.w data=tests/ast_generic_type_expression_fixture.w data=tests/ast_method_expression_fixture.w data=tests/ast_operator_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_var_expression_fixture.w data=tests/dynamic_var_test.w data=tests/c_import_bitfield_fixture.w data=tests/x64_c_import_bitfield_test.w data=tests/c_import_bitfield_fixture.h data=tests/ast_prelude_expression_fixture.w data=tests/ast_prelude_input_fixture.w data=tests/prelude_test.w data=tests/ast_json_expression_fixture.w data=tests/json_codec_test.w data=tests/ast_protobuf_expression_fixture.w data=tests/protobuf_message_test.w data=tests/ast_utf8_expression_fixture.w data=tests/utf8_identifier_test.w data=tests/ast_large_literal_expression_fixture.w data=graphics/ui/font_data.w data=tests/ast_ndarray_expression_fixture.w data=tests/ndarray_index_test.w data=tests/ast_buffer_flow_expression_fixture.w data=tests/array_decay_test.w data=tests/matrix_linalg_test.w data=tests/ast_template_format_expression_fixture.w data=tests/template_format_test.w data=tests/template_format_float64_test.w data=tests/ast_qualified_expression_fixture.w data=tests/import_alias_type_test.w data=tests/import_test.w data=tests/ast_device_expression_fixture.w data=tests/gpu_ptx_emit.w data=tests/cuda_gpu.w data=tests/ast_gpu_qualified_expression_fixture.w data=tests/gpu_qualifier_ptx.w data=tests/gpu_qualifier_gpu.w data=tests/expression_nesting_clean_fixture.w data=tests/ternary_nesting_clean_fixture.w data=tests/gpu_qualifier_ok_fixture.w data=tests/ast_list_it_expression_fixture.w data=tests/list_it_test.w data=tests/golf_it_ints_test.w data=tests/golf_transpose_test.w data=tests/ast_bare_callback_expression_fixture.w data=libs/standard/distributed/raft_sweep_test.w data=tests/generics_test.w data=tests/ast_propagation_expression_fixture.w data=tests/ast_continuation_expression_fixture.w data=tests/lint_warn_fixture.w data=tests/lint_clean_fixture.w data=tests/bool_bitwise_warning_fixture.w data=tests/bool_bitwise_chain_fixture.w data=tests/bool_ops_warn_fixture.w data=structures/hash_table_test.w data=tests/default_args_missing_warning_fixture.w data=tests/list_builtin_warning_fixture.w data=tests/map_default_warning_fixture.w data=tests/warning_fixture.w data=tests/type_system_warning_fixture.w data=tests/ndarray_index_warning_fixture.w data=tests/atomic_host_operand_error_fixture.w data=tests/limb_builtin_warning_fixture.w data=tests/array_cast_warning_fixture.w data=tests/cross_line_call_warning_fixture.w data=tests/shell_commands_test.w data=tests/warning_clean_fixture.w data=tests/result_propagate_test.w data=tests/generator_return_free_test.w data=tests/feature_combo_test.w data=tests/ast_first_use_container_fixture.w data=tests/ast_map_integration_expression_fixture.w data=tests/ast_collection_snapshot_fixture.w data=tests/ast_control_header_fixture.w data=tests/ast_collection_snapshot_x64_fixture.w data=tests/ast_statement_expression_fixture.w data=tests/ast_integration_expression_fixture.w data=tests/ast_scalar_map_expression_fixture.w data=tests/ast_array_allocation_fixture.w data=tests/ast_migration_constructor_fixture.w data=tests/ast_map_default_fixture.w data=tests/ast_map_get_fixture.w data=tests/ast_formatted_template_fixture.w data=tests/ast_migration_generic_fixture.w data=tests/ast_return_statement_fixture.w data=tests/unsigned_compare_test.w data=tests/x64_unsigned_compare_test.w data=tests/ast_statement_walk_fixture.w data=tests/ast_declaration_walk_fixture.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_retained_emit_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_retained_emit_repl64"
 # wbuild: step="bin/ast_retained_emit_test"
