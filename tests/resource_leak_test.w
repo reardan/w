@@ -78,7 +78,7 @@ void test_generator_loop_error_propagation():
 
 
 int leak_defer_helper(int early):
-	char* p = malloc(16)
+	char* p = cast(char*, malloc(16))
 	defer free(p)
 	p[0] = 'x'
 	if (early): return 7
@@ -91,7 +91,7 @@ void test_defer_on_each_return():
 
 
 void leak_defer_fallthrough():
-	char* p = malloc(16)
+	char* p = cast(char*, malloc(16))
 	defer free(p)
 	p[0] = 'x'
 
@@ -101,7 +101,7 @@ void test_defer_per_call_in_loop():
 
 
 wresult[int]* leak_defer_error():
-	char* p = malloc(16)
+	char* p = cast(char*, malloc(16))
 	defer free(p)
 	int value = result_new_error[int](-4)?
 	return result_new_ok[int](value)

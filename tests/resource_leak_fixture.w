@@ -26,12 +26,12 @@ void test_drained_generator_without_free():
 void test_defer_inside_loop():
 	char* p = 0
 	for i in range(4):
-		p = malloc(16)
+		p = cast(char*, malloc(16))
 		defer free(p)
 
 
 void fixture_early_return(int early):
-	char* p = malloc(16)
+	char* p = cast(char*, malloc(16))
 	if (early): return
 	defer free(p)
 
