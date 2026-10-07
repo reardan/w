@@ -120,6 +120,9 @@ void analysis_restore(analysis_state* state):
 	# The parse-context flags error() can leave set mid-expression.
 	condition_context = 0
 	cast_context = 0
+	cond_pending = 0
+	cond_discard_mark = 0
+	ast_cond_discard = 0
 	increment_statement_context = 0
 	diag_clear()
 	diag_clear_help()

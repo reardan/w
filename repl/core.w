@@ -547,6 +547,9 @@ void repl_state_clear_context():
 	pointer_indirection = 0
 	condition_context = 0
 	cast_context = 0
+	cond_pending = 0
+	cond_discard_mark = 0
+	ast_cond_discard = 0
 	diag_clear()
 
 

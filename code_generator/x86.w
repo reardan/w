@@ -1151,6 +1151,7 @@ void be_blob_end(int p):
 
 int* ctrl_kind_stack    # 0 = forward merge (block), 1 = backward (loop)
 int* ctrl_val_stack     # block: patch-chain head; loop: start codepos
+int* ctrl_tag_stack     # 0 = plain; 1 / 2 = a condition chain's false / true region (grammar/cond_branch.w)
 int ctrl_stack_pos
 int ctrl_stack_capacity
 
@@ -1164,6 +1165,7 @@ void ctrl_stack_reserve():
 		ctrl_stack_capacity = 256
 		ctrl_kind_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
 		ctrl_val_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
+		ctrl_tag_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
 		return
 	if (ctrl_stack_pos >= ctrl_stack_capacity):
 		int old = ctrl_stack_capacity * __word_size__
@@ -1171,11 +1173,13 @@ void ctrl_stack_reserve():
 		int x = ctrl_stack_capacity * __word_size__
 		ctrl_kind_stack = cast(int*, realloc(ctrl_kind_stack, old, x))
 		ctrl_val_stack = cast(int*, realloc(ctrl_val_stack, old, x))
+		ctrl_tag_stack = cast(int*, realloc(ctrl_tag_stack, old, x))
 
 int be_ctrl_block():
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 0
 	ctrl_val_stack[ctrl_stack_pos] = 0
+	ctrl_tag_stack[ctrl_stack_pos] = 0
 	ctrl_stack_pos = ctrl_stack_pos + 1
 	if (target_isa == 3):
 		# The region's value is a PTX label id; its "Ln:" line lands at
@@ -1184,11 +1188,20 @@ int be_ctrl_block():
 	if (target_isa == 2): wasm_ctrl_block()
 	return ctrl_stack_pos - 1
 
+# A block region tagged for a condition chain (grammar/cond_branch.w):
+# 1 collects the branches taken when the chain is false, 2 those taken
+# when it is true. The consumer merges or ends it by the tag.
+int be_ctrl_block_tagged(int tag):
+	int h = be_ctrl_block()
+	ctrl_tag_stack[h] = tag
+	return h
+
 int be_ctrl_loop():
 	be_notes_reset()
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 1
 	ctrl_val_stack[ctrl_stack_pos] = codepos
+	ctrl_tag_stack[ctrl_stack_pos] = 0
 	ctrl_stack_pos = ctrl_stack_pos + 1
 	if (target_isa == 3):
 		# Backward region: the label is placed at the loop start, here.
@@ -1320,6 +1333,31 @@ void be_br_nonzero_discard(int h):
 		cmp_fuse_end = 0
 		return
 	be_br_nonzero(h)
+
+# Pop region h, which must be the top of the stack, and hand its
+# pending branch sites to the open region target below it instead of
+# resolving them here: a block target threads them into its own patch
+# chain (they land wherever it ends), a loop target resolves them to
+# its start now. This is how a condition chain's per-operand branches
+# reach the enclosing if/while's false target (grammar/cond_branch.w).
+# x86 family only: the chain lives in rel32 fields; the other ISAs never
+# request a merge.
+void be_ctrl_merge(int h, int target):
+	if ((target_isa != 0) || (h != ctrl_stack_pos - 1) || (target >= h) || (target < 0)):
+		error(c"internal error: be_ctrl_merge outside its protocol")
+	ctrl_stack_pos = h
+	int chain = ctrl_val_stack[h]
+	if (chain == 0): return
+	if (ctrl_kind_stack[target]):
+		while (chain):
+			int next_site = be_branch_link_get(chain)
+			be_branch_patch(chain, ctrl_val_stack[target])
+			chain = next_site
+		return
+	int tail = chain
+	while (be_branch_link_get(tail)): tail = be_branch_link_get(tail)
+	be_branch_link_set(tail, ctrl_val_stack[target])
+	ctrl_val_stack[target] = chain
 
 # Close the most recently opened region. Block regions resolve their patch
 # chain to the current position (their merge point); loop regions have

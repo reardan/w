@@ -1035,3 +1035,30 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   must move `line_number` back as well (as `compiler/lint.w` does and
   `asm_body_error` now does). A shared "report at line/column" helper
   would remove the trap.
+
+## Branch-on-flags conditions (2026-10-07, codegen_gap_plan.md unit A6)
+
+- **`wbench_compare` fails on an untouched compiler.** `tools/wbench_baseline.txt`
+  was last refreshed in #552 (2026-10-06); on `main` at 1335f06 the
+  counters it pins (`sym_lookup calls`, output bytes) are already 16-43%
+  off, so the gate reports "4 workloads regressed" for a change that
+  moves no counter (verified by running `bin/wbench` with the base
+  commit's compiler: identical counters). A unit that must "refresh the
+  baseline if deterministic counters moved" cannot tell its own effect
+  from the drift without that extra run. Direction: have the PR check
+  (or `wbench_compare` itself) say which commit wrote the baseline, or
+  refresh it in the same PR that changes the compiler's lookup pattern.
+- **The AST fixtures were the test that caught the unit's bugs.**
+  `tests/cond_branch_test.w` covered every shape the unit's design
+  listed and passed in four modes, yet `ast_expression_test` /
+  `ast_retained_emit_test` found two miscompiles (a parenthesised parked
+  map read as a whole operand, `(!!x) == 1`) because they compare
+  streaming and tree emission byte for byte *and* run the fixtures over
+  every expression form the grammar has. `wtest changed` listed both,
+  so the loop worked; the lesson for the next unit is to run those two
+  before the unit's own test is believed.
+- **A `wexec` run died with exit 143 and no diagnostic.** One run of the
+  focused target list stopped mid-`ast_expression_test` with
+  `exit 143` (SIGTERM to wexec itself) and nothing in the log; the same
+  list passed twice afterwards and the full suite passed. Not
+  reproduced; noted so a second sighting is not dismissed as noise.
