@@ -81,7 +81,7 @@ void as_check_malloc_sizes():
 	assert_equal(0, cast(int, malloc(-1)))
 	assert_equal(0, cast(int, malloc(0 - 4096)))
 	assert1(malloc(0) != 0)
-	char* p = malloc(16)
+	char* p = cast(char*, malloc(16))
 	p[0] = 'k'
 	assert_equal(0, cast(int, realloc(p, 16, -8)))
 	assert_equal('k', p[0])
@@ -109,13 +109,13 @@ void as_check_containers_still_grow():
 int as_debug_allocator():
 	# malloc(13) used to come back 3 mod 8 under W_DEBUG_ALLOC.
 	for size in range(1, 40):
-		char* p = malloc(size)
+		char* p = cast(char*, malloc(size))
 		assert_equal(0, cast(int, p) & 7)
 		for k in range(size): p[k] = k
 		free(p)
 	# Shrinking realloc used to copy oldlen bytes into the smaller block
 	# and fault on its guard page.
-	char* big = malloc(5000)
+	char* big = cast(char*, malloc(5000))
 	for k in range(5000): big[k] = k % 100
 	char* small = realloc(big, 5000, 10)
 	for k in range(10): assert_equal(k, small[k])
@@ -135,17 +135,17 @@ int main(int argc, char** argv):
 	char* mode = argv[1]
 	if (strcmp(mode, c"debug") == 0): return as_debug_allocator()
 	if (strcmp(mode, c"debug_slack") == 0):
-		char* p = malloc(10)
+		char* p = cast(char*, malloc(10))
 		p[11] = 1
 		free(p)
 		return 0
 	if (strcmp(mode, c"double_free") == 0):
-		char* q = malloc(24)
+		char* q = cast(char*, malloc(24))
 		free(q)
 		free(q)
 		return 0
 	if (strcmp(mode, c"bad_free") == 0):
-		int* fake = malloc(8 * __word_size__)
+		int* fake = cast(int*, malloc(8 * __word_size__))
 		fake[0] = 13
 		fake[1] = 0
 		free(&fake[2])

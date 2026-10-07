@@ -279,11 +279,11 @@ char* debug_realloc(void* old, int oldlen, int newlen):
 		if (debug_tbl_size[idx] != oldlen):
 			debug_fatal(c"realloc() oldlen does not match the tracked allocation size", cast(int, old))
 		debug_check_canary(idx)
-	char* grown = debug_malloc(newlen)
+	char* grown = cast(char*, debug_malloc(newlen))
 	if (grown == 0): return grown
 	int n = oldlen
 	if (n > newlen): n = newlen
-	char* src = old
+	char* src = cast(char*, old)
 	for i in range(n): grown[i] = src[i]
 	debug_free(old)
 	return grown

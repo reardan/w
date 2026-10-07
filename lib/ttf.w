@@ -596,7 +596,7 @@ int ttf_add_simple(ttf_font* f, ttf_outline* o, int off, int contours, ttf_xform
 	int instruction_length = ttf_u16(f, off + 10 + contours * 2)
 	int pos = off + 12 + contours * 2 + instruction_length
 
-	char* flags = malloc(point_count + 1)
+	char* flags = cast(char*, malloc(point_count + 1))
 	i = 0
 	while (i < point_count):
 		int flag = ttf_u8(f, pos)
@@ -959,7 +959,7 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 	free(cast(char*, cross_x))
 	free(cast(char*, cross_dir))
 
-	out.pixels = malloc(w * h)
+	out.pixels = cast(char*, malloc(w * h))
 	i = 0
 	while (i < w * h):
 		int coverage = acc[i] * 255 / 16
@@ -1090,7 +1090,7 @@ int ttf_checksum(char* data, int length):
 # printing why.
 char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int n = f.glyph_count
-	char* keep = malloc(n + 1)
+	char* keep = cast(char*, malloc(n + 1))
 	mem_fill(keep, 0, n)
 	keep[0] = 1
 	int total = 0

@@ -17,6 +17,13 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Compiler-directory test roots are silently replaced (2026-10-07).**
+  `w check --json compiler/type_table_test.w` checks `w.w`, so a clean
+  result missed an unsafe allocation in the standalone test. Exempt
+  standalone `*_test.w` roots from the compiler-internal root mapping,
+  or expose an explicit option to check the supplied root.
+
+
 - **`--json` codes, spans and related notes: what C3.2 left (2026-10-06).**
   Records now carry `code`, `end_line`, `end_column` and `related`
   (`docs/projects/lint.md` "JSON output"). Open: (a) related notes

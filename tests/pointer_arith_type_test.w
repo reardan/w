@@ -26,7 +26,7 @@ void test_char_deref_truthiness():
 	# buf[0] = 0 with nonzero bytes after it: a wider-than-byte read at
 	# buf[0] is nonzero while the byte itself is zero. Built in writable
 	# memory: string literals live in a read-only segment on arm64.
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	buf[0] = 0
 	buf[1] = 'X'
 	buf[2] = 'Y'

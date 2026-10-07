@@ -21,16 +21,16 @@ import tests.bench.bench_lib
 int main(int argc, char** argv):
 	int mb = bench_size(argc, argv, 16)
 	int len = mb * 1048576
-	char* data = malloc(len)
+	char* data = cast(char*, malloc(len))
 	int state = 123456789
 	int i = 0
 	while (i < len):
 		data[i] = bench_rand(&state) & 255
 		i = i + 1
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(data, len, digest)
 	char* digits = c"0123456789abcdef"
-	char* hex = malloc(65)
+	char* hex = cast(char*, malloc(65))
 	i = 0
 	while (i < 32):
 		int b = digest[i] & 255

@@ -153,7 +153,7 @@ int repl_read_plain(char* prompt):
 int repl_prompt_line(char* prompt, int indent):
 	string_clear(repl_line)
 	if (repl_interactive == 0): return repl_read_plain(prompt)
-	if (repl_read_buffer == 0): repl_read_buffer = malloc(4096)
+	if (repl_read_buffer == 0): repl_read_buffer = cast(char*, malloc(4096))
 	int n = 0
 	# A bracketed paste begun on an earlier physical line of this same
 	# entry is still open (line_edit_read has not seen its end marker
@@ -162,7 +162,7 @@ int repl_prompt_line(char* prompt, int indent):
 	if (line_edit_in_paste()): indent = 0
 	char* initial = 0
 	if (indent > 0):
-		initial = malloc(indent + 1)
+		initial = cast(char*, malloc(indent + 1))
 		for int t in range(indent): initial[t] = 9
 		initial[indent] = 0
 	defer free(initial)
@@ -414,7 +414,7 @@ void repl_cmd_load(char* path):
 	if (path_exists(path) == 0):
 		printf1(c"no such file: %s\n", cast(int, path))
 		return;
-	char* argv_holder = malloc(__word_size__)
+	char* argv_holder = cast(char*, malloc(__word_size__))
 	save_word(argv_holder, cast(int, path))
 	int ran = repl_load_file(path, 1, 1, cast(int, argv_holder))
 	free(argv_holder)
@@ -436,7 +436,7 @@ void repl_cmd_save(char* path):
 	if (out < 0):
 		printf1(c"could not create file: %s\n", cast(int, path))
 		return;
-	char* buffer = malloc(65536)
+	char* buffer = cast(char*, malloc(65536))
 	int i = 0
 	while (i < repl_staged_count):
 		char* entry_path = repl_entry_path(repl_staging_dir, i)
@@ -472,7 +472,7 @@ void repl_handle_export(char* arg):
 	if (arg[i] != '='):
 		println(c"usage: !export NAME=VALUE")
 		return;
-	char* name = malloc(i + 1)
+	char* name = cast(char*, malloc(i + 1))
 	for k in range(i): name[k] = arg[k]
 	name[i] = 0
 	setenv(name, arg + i + 1)
@@ -599,7 +599,7 @@ char* repl_json_read_capture(char* path):
 	string_builder* b = string_new()
 	int f = open(path, 0, 0)
 	if (f >= 0):
-		char* buf = malloc(4096)
+		char* buf = cast(char*, malloc(4096))
 		int n = read(f, buf, 4096)
 		while (n > 0):
 			string_append_bytes(b, buf, n)

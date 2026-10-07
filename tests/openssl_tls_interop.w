@@ -153,7 +153,7 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 		tls_config_free(cfg)
 		close(fd)
 		return osl_fail(p, c"client: tls_write failed", 0)
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	int got = tls_read(conn, buf, 64)
 	char* want = c"gnip\x0a"   # -rev echoes the line reversed
 	int ok = 0
@@ -225,7 +225,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	# the handshake); a 5-byte pipe write cannot block.
 	char* pong = c"pong\x0a"
 	write(p.stdin_fd, pong, strlen(pong))
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	int got = tls_read(conn, buf, 64)
 	int ok = 0
 	if (got == strlen(pong)): ok = osl_bytes_equal(buf, pong, got)

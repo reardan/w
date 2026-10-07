@@ -50,7 +50,7 @@ int equality_op(int type, int negate, int cc, int op_line_number, int op_diag_li
 	if (operand_is_struct_value(left_type) || operand_is_struct_value(right_type)):
 		char* op_text = c"=="
 		if (negate): op_text = c"!="
-		warn_bool_bitwise_at(c"warning: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses", op_line_number, op_diag_line, op_diag_column, op_text)
+		type_error_at(c"'==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses", op_line_number, op_diag_line, op_diag_column, op_text)
 	alu_cmp_set(cc)
 	return type_value(bool_type)
 

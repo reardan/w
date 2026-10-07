@@ -167,7 +167,7 @@ int retained_binding_note(int sym, int owner):
 	if (retained_key_capacity < name_length + 160):
 		if (retained_key_buffer != 0): free(retained_key_buffer)
 		retained_key_capacity = name_length + 256
-		retained_key_buffer = malloc(retained_key_capacity)
+		retained_key_buffer = cast(char*, malloc(retained_key_capacity))
 	char* key = retained_key_buffer
 	int at = retained_key_int(key, 0, source)
 	at = retained_key_int(key, at, owner)

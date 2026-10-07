@@ -69,7 +69,7 @@ void run_clean(char* desc, char** argv):
 
 
 int main():
-	char* root = malloc(4096)
+	char* root = cast(char*, malloc(4096))
 	if (getcwd(root, 4096) <= 0):
 		out(c"FAIL: getcwd failed\n")
 		return 1

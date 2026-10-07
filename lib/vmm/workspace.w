@@ -121,7 +121,7 @@ vm_workspace* workspace_create_in(char* source, char* parent, int max_bytes, int
 	if (max_bytes < 1 || max_entries < 1 || timeout_ms < 1 || timeout_ms > 600000): return 0
 	int input = open(source, 65536 | 131072 | 524288, 0)
 	if (input < 0): return 0
-	vm_workspace* workspace = malloc(sizeof(vm_workspace))
+	vm_workspace* workspace = cast(vm_workspace*, malloc(sizeof(vm_workspace)))
 	mem_fill[char](cast(char*, workspace), 0, sizeof(vm_workspace))
 	workspace.max_bytes = max_bytes
 	workspace.max_entries = max_entries

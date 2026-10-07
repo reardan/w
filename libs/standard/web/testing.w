@@ -21,7 +21,7 @@ int h2_test_raw_accept(int listener, char* settings, int settings_len):
 	int fd = socket_accept_connection(listener)
 	if (fd < 0): exit(90)
 	socket_set_recv_timeout(fd, 10000)
-	char* pre = malloc(24)
+	char* pre = cast(char*, malloc(24))
 	if (h2_fd_read_exact(fd, pre, 24) == 0): exit(91)
 	if (mem_eq(pre, h2_preface(), 24) == 0): exit(92)
 	free(pre)

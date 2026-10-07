@@ -47,7 +47,7 @@ char* asm_parse_token(asm_parse* p):
 	if (p.text[p.pos] == '-'): p.pos = p.pos + 1
 	while (asm_parse_is_ident(p.text[p.pos])): p.pos = p.pos + 1
 	int n = p.pos - start
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	for i in range(n): out[i] = p.text[start + i]
 	out[n] = 0
 	return out
@@ -140,7 +140,7 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 		p.pos = p.pos + 2
 		while (asm_parse_is_ident(p.text[p.pos])): p.pos = p.pos + 1
 		int n = p.pos - start
-		char* label = malloc(n + 1)
+		char* label = cast(char*, malloc(n + 1))
 		for i in range(n): label[i] = p.text[start + i]
 		label[n] = 0
 		op.kind = ASM_OP_LABEL

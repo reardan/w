@@ -61,7 +61,7 @@ char* asm_reg_name_x64(int number):
 # malloc'd name, or 0 when number is outside 8..15.
 char* asm_reg_name_x64_ext(int number, int suffix):
 	if (number < 8 || number > 15): return 0
-	char* name = malloc(5)
+	char* name = cast(char*, malloc(5))
 	name[0] = 'r'
 	int i = 1
 	if (number < 10):
@@ -84,7 +84,7 @@ char* asm_reg_name_arm64(int number, int size):
 		return c"sp"
 	char* prefix = c"x"
 	if (size == 4): prefix = c"w"
-	char* name = malloc(4)
+	char* name = cast(char*, malloc(4))
 	name[0] = prefix[0]
 	if (number < 10):
 		name[1] = '0' + number

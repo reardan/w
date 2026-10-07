@@ -104,7 +104,7 @@ int __w_all(__w_list* list):
 # caller; cstr()/cstr_clone() (lib/utf8.w) recover a C string.
 string input():
 	int capacity = 64
-	char* buffer = malloc(capacity)
+	char* buffer = cast(char*, malloc(capacity))
 	int length = 0
 	int c = getchar(0)
 	if (c < 0):
@@ -125,7 +125,7 @@ string input():
 # All of stdin as one malloc'd C string.
 char* read_all():
 	int capacity = 256
-	char* buffer = malloc(capacity)
+	char* buffer = cast(char*, malloc(capacity))
 	int length = 0
 	int c = getchar(0)
 	while (c >= 0):
@@ -175,7 +175,7 @@ list[int] ints():
 
 # Bytes [start, end) as a new C string.
 char* __w_piece(char* s, int start, int end):
-	char* piece = malloc(end - start + 1)
+	char* piece = cast(char*, malloc(end - start + 1))
 	int i = 0
 	while (start + i < end):
 		piece[i] = s[start + i]
@@ -260,7 +260,7 @@ char* __w_join(__w_list* parts, int sep, int flags):
 				out = __w_join_copy(result, out, text.data, text.length)
 			else: out = __w_join_copy(result, out, cast(char*, word), strlen(cast(char*, word)))
 			i = i + 1
-		if (round == 0): result = malloc(out + 1)
+		if (round == 0): result = cast(char*, malloc(out + 1))
 		else: result[out] = 0
 	return result
 

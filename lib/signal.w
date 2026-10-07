@@ -94,7 +94,7 @@ int signal_altstack_install(int base, int size):
 # sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
 void signal_install_handler(int signum, int handler, int flags):
-	int* act = malloc(5 * __word_size__)
+	int* act = cast(int*, malloc(5 * __word_size__))
 	if (__word_size__ == 8):
 		signal_thunk_init()
 		act[0] = signal_emit_handler_thunk(handler)

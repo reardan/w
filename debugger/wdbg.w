@@ -544,7 +544,7 @@ char* dbg_repl_line
 
 # Read one line into dbg_repl_line; returns its length or -1 on EOF/^C.
 int dbg_repl_read_line(char* prompt):
-	if (dbg_repl_line == 0): dbg_repl_line = malloc(4096)
+	if (dbg_repl_line == 0): dbg_repl_line = cast(char*, malloc(4096))
 	return line_edit_read(prompt, dbg_repl_line, 4096, 0)
 
 
@@ -665,7 +665,7 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 # Interactive command loop. Returning resumes the debuggee.
 void wdbg_command_loop(int context, int stop_addr):
 	dbg_frames_compute(context, stop_addr)
-	char* command = malloc(256)
+	char* command = cast(char*, malloc(256))
 	while (1):
 		int n = wdbg_read_command(command, 256)
 		if (n == -2):
@@ -679,7 +679,7 @@ void wdbg_command_loop(int context, int stop_addr):
 			if (dbg_last_command == 0): continue
 			strcpy(command, dbg_last_command)
 		else:
-			if (dbg_last_command == 0): dbg_last_command = malloc(256)
+			if (dbg_last_command == 0): dbg_last_command = cast(char*, malloc(256))
 			strcpy(dbg_last_command, command)
 
 		char* arg = dbg_split_word(command)

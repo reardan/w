@@ -15,7 +15,7 @@ int count_zero_bytes(char* buf, int len):
 # result is not all zeros.
 void test_random_bytes_fills_buffer():
 	int n = 64
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	mem_fill(buf, 0, n)
 	assert_equal(1, random_bytes(buf, n))
 	asserts(c"random_bytes returned 64 zero bytes", count_zero_bytes(buf, n) < n)
@@ -25,8 +25,8 @@ void test_random_bytes_fills_buffer():
 # Two independent draws differ (collision probability 2^-256).
 void test_random_two_draws_differ():
 	int n = 32
-	char* a = malloc(n)
-	char* b = malloc(n)
+	char* a = cast(char*, malloc(n))
+	char* b = cast(char*, malloc(n))
 	assert_equal(1, random_bytes(a, n))
 	assert_equal(1, random_bytes(b, n))
 	int same = 1
@@ -41,7 +41,7 @@ void test_random_two_draws_differ():
 void test_random_bytes_respects_length():
 	int total = 48
 	int ask = 16
-	char* buf = malloc(total)
+	char* buf = cast(char*, malloc(total))
 	mem_fill(buf, 'Z', total)
 	assert_equal(1, random_bytes(buf, ask))
 	for i in range(ask, total): assert_equal('Z', buf[i] & 255)
@@ -49,7 +49,7 @@ void test_random_bytes_respects_length():
 
 
 void test_random_zero_length():
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	buf[0] = 'w'
 	assert_equal(1, random_bytes(buf, 0))
 	assert_equal('w', buf[0] & 255)
@@ -57,7 +57,7 @@ void test_random_zero_length():
 
 
 void test_random_negative_length_fails():
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	assert_equal(0, random_bytes(buf, 0 - 1))
 	assert_equal(0, random_urandom_fill(buf, 0 - 1))
 	free(buf)
@@ -67,7 +67,7 @@ void test_random_negative_length_fails():
 # the only path, since Darwin has no getrandom syscall).
 void test_random_urandom_fallback_path():
 	int n = 32
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	mem_fill(buf, 0, n)
 	assert_equal(1, random_urandom_fill(buf, n))
 	asserts(c"urandom fallback returned 32 zero bytes", count_zero_bytes(buf, n) < n)

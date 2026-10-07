@@ -432,7 +432,7 @@ void server_response_set_text(ServerResponse* resp, char* text):
 void server_response_append_body(ServerResponse* resp, char* body, int body_len):
 	if (body_len <= 0): return
 	int old_len = resp.body_len
-	char* combined = malloc(old_len + body_len + 1)
+	char* combined = cast(char*, malloc(old_len + body_len + 1))
 	mem_copy(combined, resp.body, old_len)
 	for j in range(body_len): combined[old_len + j] = body[j]
 	combined[old_len + body_len] = 0
@@ -605,7 +605,7 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 		if (total > http_max_body_bytes):
 			req.error = server_error_body_too_large
 			return 0
-		char* buf = malloc(size)
+		char* buf = cast(char*, malloc(size))
 		int ok = connection_context_read_exact(c, buf, size)
 		if (ok != 0): string_append_bytes(out, buf, size)
 		free(buf)
@@ -618,7 +618,7 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 # Reads exactly length bytes of a Content-Length-delimited body into out.
 # Returns 1, or 0 with req.error set.
 int server_read_length_body(ConnectionContext* c, ServerRequest* req, string_builder* out, int length):
-	char* buf = malloc(length)
+	char* buf = cast(char*, malloc(length))
 	int ok = connection_context_read_exact(c, buf, length)
 	if (ok != 0): string_append_bytes(out, buf, length)
 	free(buf)
@@ -851,7 +851,7 @@ void request_context_set_header(RequestContext* rc, char* name, char* value):
 # chunk-size line -- http_max_chunk_size() bounds len well under 2^28,
 # so 8 digits is always enough.
 char* request_context_chunk_size_hex(int n):
-	char* s = malloc(9)
+	char* s = cast(char*, malloc(9))
 	int i = 0
 	if (n == 0):
 		s[i] = '0'

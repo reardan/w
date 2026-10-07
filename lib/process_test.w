@@ -49,7 +49,7 @@ void test_large_stdin_does_not_deadlock():
 	# 256KB through cat overflows the 64KB pipe buffer in both directions,
 	# so this only completes when stdin writes interleave with draining.
 	int size = 262144
-	char* text = malloc(size + 1)
+	char* text = cast(char*, malloc(size + 1))
 	for i in range(size): text[i] = 'a' + (i % 26)
 	text[size] = 0
 	process_result* result = process_run(c"/bin/cat", argv_1(c"/bin/cat"), 0, text, 10000)
@@ -155,7 +155,7 @@ void test_spawn_with_piped_streams_and_manual_wait():
 	char* message = c"manual pipe\x0a"
 	assert_equal(strlen(message), write(p.stdin_fd, message, strlen(message)))
 	process_close_stdin(p)
-	char* buffer = malloc(64)
+	char* buffer = cast(char*, malloc(64))
 	int count = read(p.stdout_fd, buffer, 63)
 	assert_equal(strlen(message), count)
 	buffer[count] = 0
@@ -226,7 +226,7 @@ char* proc_stat_text(int pid):
 	int fd = open(path, 0, 0)
 	free(path)
 	if (fd < 0): return 0
-	char* buffer = malloc(1024)
+	char* buffer = cast(char*, malloc(1024))
 	int count = read(fd, buffer, 1023)
 	close(fd)
 	# A zombie reaped between open and read fails the read with ESRCH:

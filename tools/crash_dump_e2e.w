@@ -196,7 +196,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 
 int main(int argc, char** argv):
 	WCORE = c"bin/wcore"
-	ROOT = malloc(4096)
+	ROOT = cast(char*, malloc(4096))
 	if (getcwd(ROOT, 4096) <= 0):
 		out(c"FAIL: getcwd failed\n")
 		return 1

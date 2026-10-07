@@ -73,13 +73,13 @@ void elf_emit_build_id_note():
 # output is discarded ('w check').
 void elf_fill_build_id():
 	if ((build_id_note_pos == 0) || entry_optional): return
-	char* digests = malloc(64)
+	char* digests = cast(char*, malloc(64))
 	sha256(code, codepos, digests)
 	int n = 32
 	if (datapos > 0):
 		sha256(data, datapos, &digests[32])
 		n = 64
-	char* id = malloc(32)
+	char* id = cast(char*, malloc(32))
 	sha256(digests, n, id)
 	int i = 0
 	while (i < elf_build_id_size):

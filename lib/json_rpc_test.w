@@ -98,7 +98,7 @@ void test_jsonrpc_builders_round_trip():
 
 
 void test_jsonrpc_server_round_trip():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	jsonrpc_server* s = rpc_test_server_new()
 	rpc_test_note_count = 0
@@ -158,7 +158,7 @@ void test_jsonrpc_server_round_trip():
 
 
 void test_jsonrpc_string_id_is_preserved():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	jsonrpc_server* s = rpc_test_server_new()
 
@@ -182,7 +182,7 @@ void test_jsonrpc_string_id_is_preserved():
 
 
 void test_jsonrpc_invalid_request_missing_version():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	jsonrpc_server* s = rpc_test_server_new()
 
@@ -203,7 +203,7 @@ void test_jsonrpc_invalid_request_missing_version():
 
 
 void test_jsonrpc_typed_params_round_trip():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	jsonrpc_server* s = rpc_test_server_new()
 
@@ -247,7 +247,7 @@ void test_jsonrpc_typed_params_round_trip():
 
 
 void test_jsonrpc_event_loop_connection():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	jsonrpc_server* s = rpc_test_server_new()
 	event_loop* loop = event_loop_new()

@@ -41,7 +41,7 @@ struct ui_text_buffer:
 
 void ui_text_buffer_init(ui_text_buffer* b):
 	b.capacity = ui_text_buffer_min_capacity
-	b.data = malloc(b.capacity)
+	b.data = cast(char*, malloc(b.capacity))
 	b.data[0] = 0
 	b.length = 0
 	b.line_capacity = ui_text_buffer_min_capacity

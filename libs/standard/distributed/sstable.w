@@ -172,7 +172,7 @@ int sstable_writer_finish(sstable_writer* w):
 	while (i < count):
 		total = total + 9 + strlen(w.keys[i]) + w.value_lens[i]
 		i = i + 1
-	char* buf = malloc(total)
+	char* buf = cast(char*, malloc(total))
 	buf[0] = 87    # W
 	buf[1] = 83    # S
 	buf[2] = 83    # S
@@ -262,7 +262,7 @@ sstable* sstable_open_report(file_ops* ops, char* path, int* io_failed):
 		io_failed[0] = 1
 		storage_close(ops, fd)
 		return 0
-	char* hdr = malloc(12)
+	char* hdr = cast(char*, malloc(12))
 	int got = -1
 	if (storage_seek(ops, fd, 0, 0) >= 0): got = storage_read(ops, fd, hdr, 12)
 	if (got < 0): io_failed[0] = 1
@@ -282,7 +282,7 @@ sstable* sstable_open_report(file_ops* ops, char* path, int* io_failed):
 	if (bloom_len < 16 || bloom_len > size - 16):
 		storage_close(ops, fd)
 		return 0
-	char* bbuf = malloc(bloom_len)
+	char* bbuf = cast(char*, malloc(bloom_len))
 	got = storage_read(ops, fd, bbuf, bloom_len)
 	if (got < 0): io_failed[0] = 1
 	if (got != bloom_len):
@@ -301,7 +301,7 @@ sstable* sstable_open_report(file_ops* ops, char* path, int* io_failed):
 		return 0
 	bloom_filter* bl = bloom_deserialize(bbuf)
 	free(bbuf)
-	char* cbuf = malloc(4)
+	char* cbuf = cast(char*, malloc(4))
 	got = storage_read(ops, fd, cbuf, 4)
 	if (got < 0): io_failed[0] = 1
 	int count = load_le32(cbuf)
@@ -327,7 +327,7 @@ sstable* sstable_open_report(file_ops* ops, char* path, int* io_failed):
 		if (remaining < 9):
 			sstable_close(s)
 			return 0
-		char* rhdr = malloc(9)
+		char* rhdr = cast(char*, malloc(9))
 		got = -1
 		if (storage_seek(ops, fd, off, 0) >= 0): got = storage_read(ops, fd, rhdr, 9)
 		if (got < 0): io_failed[0] = 1
@@ -345,7 +345,7 @@ sstable* sstable_open_report(file_ops* ops, char* path, int* io_failed):
 		if (ok == 0):
 			sstable_close(s)
 			return 0
-		char* key = malloc(key_len + 1)
+		char* key = cast(char*, malloc(key_len + 1))
 		got = storage_read(ops, fd, key, key_len)
 		if (got < 0): io_failed[0] = 1
 		if (got != key_len):
@@ -392,7 +392,7 @@ int sstable_find(sstable* s, char* key):
 # length s.value_lens[idx]; 0 when the read fails or comes up short.
 char* sstable_read_value(sstable* s, int idx):
 	int len = s.value_lens[idx]
-	char* buf = malloc(len + 1)
+	char* buf = cast(char*, malloc(len + 1))
 	if (storage_seek(s.ops, s.fd, s.value_offs[idx], 0) < 0 || storage_read(s.ops, s.fd, buf, len) != len):
 		free(buf)
 		return 0

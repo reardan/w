@@ -70,7 +70,7 @@ pg_rule_facts* pg_analysis_find(pg_analysis* analysis, char* name):
 
 
 char* pg_kind_set_new(pg_analysis* analysis):
-	char* kinds = malloc(analysis.kind_count)
+	char* kinds = cast(char*, malloc(analysis.kind_count))
 	for i in range(analysis.kind_count): kinds[i] = 0
 	return kinds
 

@@ -61,7 +61,7 @@ char* gt_encode(char* text, int count, int* out_len):
 
 # Decodes into a zeroed gt_hello; asserts success.
 gt_hello* gt_decode(char* data, int len):
-	char* buf = malloc(gt_hello_desc.struct_size)
+	char* buf = cast(char*, malloc(gt_hello_desc.struct_size))
 	mem_fill(buf, 0, gt_hello_desc.struct_size)
 	assert_equal(0, pb_decode_into(&gt_hello_desc, data, len, buf))
 	return cast(gt_hello*, buf)
@@ -383,7 +383,7 @@ void test_grpc_client_status_mapping():
 		hpack_headers_add(l, c"content-type", c"text/html")
 		gt_raw_send_headers(fd, e, 7, l, h2_flag_end_stream)
 		hpack_headers_free(l)
-		char* scratch = malloc(256)
+		char* scratch = cast(char*, malloc(256))
 		while (read(fd, scratch, 256) > 0): scratch[0] = 0
 		exit(0)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)

@@ -67,11 +67,11 @@ vm_cell* cell_new():
 	if (__word_size__ != 8): return 0
 	int addr = mmap(0, CELL_RAM_SIZE, 3, MAP_PRIVATE | MAP_ANONYMOUS)
 	if (addr < 0 && addr > -4096): return 0
-	vm_cell* cell = malloc(sizeof(vm_cell))
+	vm_cell* cell = cast(vm_cell*, malloc(sizeof(vm_cell)))
 	mem_fill[char](cast(char*, cell), 0, sizeof(vm_cell))
 	cell.ram = cast(char*, addr)
-	cell.regs = malloc(KVM_REGS_SIZE)
-	cell.sregs = malloc(KVM_SREGS_SIZE)
+	cell.regs = cast(char*, malloc(KVM_REGS_SIZE))
+	cell.sregs = cast(char*, malloc(KVM_SREGS_SIZE))
 	mem_fill[char](cell.regs, 0, KVM_REGS_SIZE)
 	mem_fill[char](cell.sregs, 0, KVM_SREGS_SIZE)
 	cell.output = string_new()

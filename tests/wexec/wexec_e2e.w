@@ -71,7 +71,7 @@ int has(char* text, char* needle):
 # Copy of base without any "name=" entry (unset name).
 char** env_without(char** base, char* name):
 	int count = env_vector_count(base)
-	char* vector = malloc((count + 1) * __word_size__)
+	char* vector = cast(char*, malloc((count + 1) * __word_size__))
 	int out = 0
 	for i in range(count):
 		char* entry = env_entry_at(base, i)
@@ -328,7 +328,7 @@ void mode_exec_diag_setup():
 	copy_self(path_join(dir, c"exits_127"))
 	# A minimal 32-bit ELF executable whose one program header is a
 	# PT_INTERP naming /no/such/elf_interp (84 header bytes + 19 of path).
-	char* elf = malloc(104)
+	char* elf = cast(char*, malloc(104))
 	int i = 0
 	while (i < 104):
 		elf[i] = 0

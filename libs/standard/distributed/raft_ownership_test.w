@@ -84,7 +84,7 @@ int main():
 
 	# propose from a caller-owned buffer with a non-text byte (tab) in
 	# it, so this also doubles as a binary-safety smoke check
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	buf[0] = 'z'
 	buf[1] = 'a'
 	buf[2] = 'p'

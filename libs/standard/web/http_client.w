@@ -1139,7 +1139,7 @@ URL* http_redirect_target(URL* base, char* location):
 # resets the parse state.
 void http_stream_redirect_reset(http_stream* s):
 	if ((s.conn != 0) && (s.body_complete == 0) && (s.error == 0)):
-		char* scratch = malloc(4096)
+		char* scratch = cast(char*, malloc(4096))
 		int drained = 0
 		int more = 1
 		while (more != 0):
@@ -1250,7 +1250,7 @@ http_response* http_request(http_req* req):
 		http_stream_fail(s, http_error_body_too_large)
 	if (s.error == 0):
 		string_builder* body = string_new()
-		char* scratch = malloc(8192)
+		char* scratch = cast(char*, malloc(8192))
 		int more = 1
 		while (more != 0):
 			int got = http_stream_read(s, scratch, 8192)

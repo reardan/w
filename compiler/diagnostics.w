@@ -22,7 +22,7 @@ void diag_clear():
 void diag_ensure(int n):
 	if (diag_buffer_size == 0):
 		diag_buffer_size = 128
-		diag_buffer = malloc(diag_buffer_size)
+		diag_buffer = cast(char*, malloc(diag_buffer_size))
 		diag_buffer[0] = 0
 	while (diag_buffer_size <= diag_buffer_pos + n):
 		int old_size = diag_buffer_size
@@ -88,7 +88,7 @@ void diag_suggest_begin(char* name):
 	diag_suggest_name = name
 	diag_suggest_best = 0
 	diag_suggest_best_distance = 1000
-	if (diag_suggest_rows == 0): diag_suggest_rows = malloc(3 * (diag_suggest_max_length + 1))
+	if (diag_suggest_rows == 0): diag_suggest_rows = cast(char*, malloc(3 * (diag_suggest_max_length + 1)))
 
 
 int diag_lower(int c):
@@ -191,7 +191,7 @@ int diag_out_buffer_pos
 void diag_out_ensure(int n):
 	if (diag_out_buffer_size == 0):
 		diag_out_buffer_size = 256
-		diag_out_buffer = malloc(diag_out_buffer_size)
+		diag_out_buffer = cast(char*, malloc(diag_out_buffer_size))
 	while (diag_out_buffer_size <= diag_out_buffer_pos + n):
 		int old_size = diag_out_buffer_size
 		diag_out_buffer_size = diag_out_buffer_size << 1
@@ -502,7 +502,7 @@ int diag_source_load(char* path):
 	# Only a regular file is reopened: a FIFO or device would block on
 	# open or hand back different bytes. statx's mode is a u16 at
 	# offset 28 of its 256-byte buffer; S_IFMT 0170000, S_IFREG 0100000.
-	char* info = malloc(256)
+	char* info = cast(char*, malloc(256))
 	int status = statx(path, 0, 2047, info)
 	int mode = load_int(info + 28) & 61440
 	free(info)
@@ -520,7 +520,7 @@ int diag_source_load(char* path):
 	if ((size < 0) || (seek(fd, 0, 0) != 0)):
 		close(fd)
 		return 0
-	diag_source_bytes = malloc(size + 1)
+	diag_source_bytes = cast(char*, malloc(size + 1))
 	int got = 0
 	while (got < size):
 		int n = read(fd, diag_source_bytes + got, size - got)

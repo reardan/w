@@ -450,7 +450,7 @@ void enum_forget_constants(int type_index):
 void prelude_emit_enum_name(int t, int base_stack):
 	int value_slot = push_slot()
 	int capacity = 16
-	char* table_text = malloc(capacity)
+	char* table_text = cast(char*, malloc(capacity))
 	int length = 0
 	int i = 0
 	while ((cast(int, enum_constants) != 0) && (i < enum_constants.length)):

@@ -113,7 +113,7 @@ char* aev_read_ident():
 	while (aev_is_ident_char(aev_text[aev_pos] & 255)): aev_pos = aev_pos + 1
 	int n = aev_pos - start
 	if (n == 0): return 0
-	char* s = malloc(n + 1)
+	char* s = cast(char*, malloc(n + 1))
 	for i in range(n): s[i] = aev_text[start + i]
 	s[n] = 0
 	return s

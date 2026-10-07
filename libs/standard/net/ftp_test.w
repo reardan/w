@@ -20,7 +20,7 @@ import libs.standard.net.testing
 
 # Deterministic binary payload containing NUL, CR and LF bytes.
 char* ftp_test_big_payload(int n):
-	char* data = malloc(n + 1)
+	char* data = cast(char*, malloc(n + 1))
 	for i in range(n): data[i] = (i * 7 + i / 251) & 255
 	data[n] = 0
 	return data
@@ -53,7 +53,7 @@ void ftp_srv_reply(ftp_srv* s, char* text):
 # Reads one CRLF command line into a fresh string; 0 on EOF.
 char* ftp_srv_read_line(int fd):
 	string_builder* line = string_new()
-	char* one = malloc(1)
+	char* one = cast(char*, malloc(1))
 	while (1):
 		int got = read(fd, one, 1)
 		if (got <= 0):
@@ -239,7 +239,7 @@ void ftp_srv_handle(ftp_srv* s, char* verb, char* arg):
 		string_builder* got = string_new()
 		if ((strcmp(verb, c"APPE") == 0) && (s.stored != 0)):
 			string_append_bytes(got, s.stored, s.stored_len)
-		char* chunk = malloc(4096)
+		char* chunk = cast(char*, malloc(4096))
 		int k = read(conn, chunk, 4096)
 		while (k > 0):
 			string_append_bytes(got, chunk, k)
@@ -350,7 +350,7 @@ void test_ftp_argument_validation():
 	assert_equal(0, ftp_valid_argument(c"a\x0db"))
 	assert_equal(0, ftp_valid_argument(c""))
 	assert_equal(0, ftp_valid_argument(0))
-	char* longarg = malloc(ftp_max_argument + 2)
+	char* longarg = cast(char*, malloc(ftp_max_argument + 2))
 	int i = 0
 	while (i < ftp_max_argument + 1):
 		longarg[i] = 'a'
@@ -388,7 +388,7 @@ void ftp_test_feed(int fd, char* text):
 
 
 void test_ftp_reply_multiline():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
 	ftp_test_feed(fds[1], c"211-Features:\x0d\x0a EPSV\x0d\x0a211-not the end\x0d\x0a212 other code\x0d\x0a211 End\x0d\x0a200 single\x0d\x0a226 bare-LF line\x0a")
 	assert_equal(211, ftp_read_reply(c))
@@ -410,7 +410,7 @@ void test_ftp_reply_multiline():
 
 
 void test_ftp_reply_bad_codes():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
 	ftp_test_feed(fds[1], c"600 out of range\x0d\x0a")
 	assert_equal((-1), ftp_read_reply(c))
@@ -427,10 +427,10 @@ void test_ftp_reply_bad_codes():
 
 
 void test_ftp_reply_line_cap():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
 	int n = ftp_max_line + 100
-	char* big = malloc(n + 1)
+	char* big = cast(char*, malloc(n + 1))
 	mem_fill(big, 'x', n)
 	big[0] = '2'
 	big[1] = '0'
@@ -448,7 +448,7 @@ void test_ftp_reply_line_cap():
 
 
 void test_ftp_reply_timeout():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	ftp_client* c = ftp_test_pair_client(fds, 200)
 	ftp_test_feed(fds[1], c"220-partial multi-line reply\x0d\x0a")
 	assert_equal((-1), ftp_read_reply(c))
@@ -459,7 +459,7 @@ void test_ftp_reply_timeout():
 
 
 void test_ftp_reply_eof():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
 	ftp_test_feed(fds[1], c"421 closing")
 	close(fds[1])
@@ -559,10 +559,10 @@ void test_ftp_session_epsv():
 	assert_equal(0, ftp_size(c, c"upload.bin"))
 
 	# RETR streamed into a descriptor.
-	int* pair = malloc(2 * __word_size__)
+	int* pair = cast(int*, malloc(2 * __word_size__))
 	net_test_assert_ok(c"socketpair", socket_pair(pair))
 	assert_equal(13, ftp_retr_fd(c, c"hello.txt", pair[1]))
-	char* got = malloc(32)
+	char* got = cast(char*, malloc(32))
 	assert_equal(13, read(pair[0], got, 32))
 	assert_equal(1, mem_eq(c"Hello, FTP!\x0d\x0a", got, 13))
 	free(got)

@@ -22,7 +22,7 @@ import tests.bench.bench_lib
 
 # A deterministic lowercase text with spaces and newlines, length n.
 char* rb_text(int n):
-	char* text = malloc(n + 1)
+	char* text = cast(char*, malloc(n + 1))
 	int state = 123456789
 	int i = 0
 	while (i < n):
@@ -38,7 +38,7 @@ char* rb_text(int n):
 int main(int argc, char** argv):
 	int rounds = bench_size(argc, argv, 24)
 	char* text = rb_text(16384)
-	char* run = malloc(65)
+	char* run = cast(char*, malloc(65))
 	int i = 0
 	while (i < 64):
 		run[i] = 'a'

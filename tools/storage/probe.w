@@ -88,7 +88,7 @@ int main(int argc, char** args):
 	int durable = atoi(args[4])
 	if (count < 1 || count > 100000): return 2
 	if (strcmp(mode, c"checksum") == 0):
-		char* data = malloc(32768)
+		char* data = cast(char*, malloc(32768))
 		mem_fill[char](data, 'x', 32768)
 		for i in range(count):
 			int begin = metrics_now_us()

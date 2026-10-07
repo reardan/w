@@ -48,7 +48,7 @@ void test_arena_high_water():
 	assert1(retained_nodes[1201].name == kept_name)
 	assert_strings_equal(c"kept", kept_name)
 	assert_equal(1500, retained_sources[source].top_level.length)
-	char* buffer = malloc(retained_text_chunk)
+	char* buffer = cast(char*, malloc(retained_text_chunk))
 	for i in range(retained_text_chunk): buffer[i] = 'a' + i % 26
 	char* kept_text = retained_text_copy(buffer, 40000)
 	retained_checkpoint checkpoint

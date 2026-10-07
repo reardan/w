@@ -31,7 +31,7 @@ const int relro_data_base = 0x09048000
 char* relro_maps_line(char* needle):
 	int fd = open(c"/proc/self/maps", 0, 0)
 	asserts(c"/proc/self/maps opened", fd >= 0)
-	char* buf = malloc(65537)
+	char* buf = cast(char*, malloc(65537))
 	int total = 0
 	int n = read(fd, buf, 65536)
 	while (n > 0):

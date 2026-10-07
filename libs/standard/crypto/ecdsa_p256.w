@@ -57,7 +57,7 @@ bignum* PA_RZ
 # Load a 64-hex-digit (32-byte) big-endian constant into dst.
 void p256_load_hex(bignum* dst, char* h):
 	int l = strlen(h)
-	char* buf = malloc(l / 2 + 2)
+	char* buf = cast(char*, malloc(l / 2 + 2))
 	int hi = 0
 	int oi = 0
 	if ((l & 1) == 1):
@@ -324,12 +324,12 @@ void p256_hash_scalar(bignum* z, char* hash, int hashlen):
 # ---- HMAC-SHA256 (private to this module; RFC 6979 needs it) ----------------
 
 void hmac_sha256(char* key, int keylen, char* msg, int msglen, char* out):
-	char* kb = malloc(64)
+	char* kb = cast(char*, malloc(64))
 	mem_fill(kb, 0, 64)
 	if (keylen > 64): sha256(key, keylen, kb)
 	else: mem_copy(kb, key, keylen)
-	char* ipad = malloc(64 + msglen)
-	char* opad = malloc(64 + 32)
+	char* ipad = cast(char*, malloc(64 + msglen))
+	char* opad = cast(char*, malloc(64 + 32))
 	int i = 0
 	while (i < 64):
 		int kv = kb[i] & 255
@@ -340,7 +340,7 @@ void hmac_sha256(char* key, int keylen, char* msg, int msglen, char* out):
 	while (i < msglen):
 		ipad[64 + i] = msg[i]
 		i = i + 1
-	char* inner = malloc(32)
+	char* inner = cast(char*, malloc(32))
 	sha256(ipad, 64 + msglen, inner)
 	i = 0
 	while (i < 32):
@@ -369,7 +369,7 @@ rfc6979* rfc6979_new(char* d_oct, char* h_oct):
 		g.v[i] = 1
 		g.k[i] = 0
 		i = i + 1
-	char* buf = malloc(97)
+	char* buf = cast(char*, malloc(97))
 	# K = HMAC_K(V || 0x00 || d_oct || h_oct)
 	mem_copy(buf, g.v, 32)
 	buf[32] = 0
@@ -399,7 +399,7 @@ void rfc6979_free(rfc6979* g):
 # RFC 6979 rejection update between candidates.
 void rfc6979_next(rfc6979* g, char* out):
 	if (g.started != 0):
-		char* buf = malloc(33)
+		char* buf = cast(char*, malloc(33))
 		mem_copy(buf, g.v, 32)
 		buf[32] = 0
 		hmac_sha256(g.k, 32, buf, 33, g.k)
@@ -489,8 +489,8 @@ int ecdsa_p256_sign(char* d_bytes, char* hash, int hashlen, char* out_r, char* o
 	bignum* zmod = bignum_new()
 	p256_hash_scalar(z, hash, hashlen)
 	bignum_mod(zmod, z, P256_N)                # z mod n
-	char* doct = malloc(32)
-	char* hoct = malloc(32)
+	char* doct = cast(char*, malloc(32))
+	char* hoct = cast(char*, malloc(32))
 	bignum_to_bytes(d, doct, 32)               # int2octets(d)
 	bignum_to_bytes(zmod, hoct, 32)            # bits2octets(hash)
 	rfc6979* gen = rfc6979_new(doct, hoct)
@@ -505,7 +505,7 @@ int ecdsa_p256_sign(char* d_bytes, char* hash, int hashlen, char* out_r, char* o
 	bignum* kinv = bignum_new()
 	bignum* rd = bignum_new()
 	bignum* zrd = bignum_new()
-	char* kb = malloc(32)
+	char* kb = cast(char*, malloc(32))
 	int result = 0
 	int guard = 0
 	while ((result == 0) && (guard < 1000)):

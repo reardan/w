@@ -103,7 +103,7 @@ sse_reader* sse_open(http_stream* s):
 	sse_reader* r = new sse_reader()
 	r.stream = s
 	r.buf_cap = sse_buf_cap
-	r.buf = malloc(r.buf_cap)
+	r.buf = cast(char*, malloc(r.buf_cap))
 	r.buf_pos = 0
 	r.buf_len = 0
 	r.eof = 0

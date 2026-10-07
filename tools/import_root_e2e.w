@@ -117,7 +117,7 @@ void compile_run(char* desc, char* cwd, char* line, char* binary, char* want):
 
 
 int main():
-	REPO = malloc(4096)
+	REPO = cast(char*, malloc(4096))
 	if (getcwd(REPO, 4096) <= 0):
 		out(c"FAIL: getcwd failed\n")
 		return 1

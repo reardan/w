@@ -111,7 +111,7 @@ int st_int32(int addr):
 # 1 when the page holding addr is mapped: mincore fails with -ENOMEM on
 # an unmapped range instead of faulting like a read would.
 int st_page_readable(int addr):
-	if (st_mincore_vec == 0): st_mincore_vec = malloc(16)
+	if (st_mincore_vec == 0): st_mincore_vec = cast(char*, malloc(16))
 	int page = addr - (addr & 4095)
 	return sys_mincore(page, 1, cast(int, st_mincore_vec)) == 0
 
@@ -792,7 +792,7 @@ int st_collect_from(int pc, int sp, int fp, char* out, int max):
 # the binary carries no readable symbols or the stack
 # cannot be unwound.
 int stack_trace_collect(char* out, int max):
-	if (st_jmp_buf == 0): st_jmp_buf = malloc(8 * __word_size__) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
+	if (st_jmp_buf == 0): st_jmp_buf = cast(char*, malloc(8 * __word_size__)) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
@@ -856,13 +856,13 @@ void st_write_frame(int addr):
 # Write a symbolized stack trace of the calling thread to stderr, or
 # nothing when no frames can be recovered.
 void print_stack_trace():
-	if (st_jmp_buf == 0): st_jmp_buf = malloc(8 * __word_size__) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
+	if (st_jmp_buf == 0): st_jmp_buf = cast(char*, malloc(8 * __word_size__)) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
 	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
 	if (st_state == 0): st_init(pc)
-	char* pcs = malloc(64 * __word_size__)
+	char* pcs = cast(char*, malloc(64 * __word_size__))
 	int n = st_collect_from(pc, sp, fp, pcs, 64)
 	if (n == 0):
 		free(pcs)

@@ -6,7 +6,7 @@ import lib.wvm_client
 
 
 char* wvmd_hex(char* data, int length):
-	char* result = malloc(length * 2 + 1)
+	char* result = cast(char*, malloc(length * 2 + 1))
 	char* digits = c"0123456789abcdef"
 	for i in range(length):
 		int value = cast(int, data[i]) & 255

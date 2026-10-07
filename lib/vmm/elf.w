@@ -75,7 +75,7 @@ int cell_stack(vm_cell* cell, int argc, char** argv):
 	if (cell.loaded == 0 || cell.started): return cell_fail(cell, c"stack setup requires a loaded, unstarted cell")
 	if (argc < 1 || argc > 256): return cell_fail(cell, c"too many guest arguments")
 	int sp = CELL_STACK_TOP
-	int* pointers = malloc(argc * 8)
+	int* pointers = cast(int*, malloc(argc * 8))
 	for i in range(argc):
 		int size = strlen(argv[i]) + 1
 		if (size > 65536 || sp - CELL_STACK_LOW < size + 4096):

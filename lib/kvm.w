@@ -120,7 +120,7 @@ int kvm_set_supported_cpuid(kvm_machine* vm):
 	# differ when fetched on another physical CPU; never reinstall on reset.
 	if (vm.cpuid_set): return 0
 	int capacity = 256
-	char* cpuid = malloc(8 + capacity * 40)
+	char* cpuid = cast(char*, malloc(8 + capacity * 40))
 	mem_fill[char](cpuid, 0, 8 + capacity * 40)
 	save_int32(cpuid, capacity)
 	int status = sys_ioctl(vm.system_fd, kvm_request(3, 8, 5), cast(int, cpuid))
@@ -171,7 +171,7 @@ int kvm_copy_xsave(kvm_machine* destination, kvm_machine* source):
 		size = 4096
 		request = 164
 	if (size > 1048576): return -22
-	char* state = malloc(size)
+	char* state = cast(char*, malloc(size))
 	mem_fill[char](state, 0, size)
 	int result = sys_ioctl(source.cpu_fd, kvm_request(2, 4096, request), cast(int, state))
 	if (result == 0): result = sys_ioctl(destination.cpu_fd, kvm_request(1, 4096, 165), cast(int, state))
@@ -190,7 +190,7 @@ int kvm_cell_checkpoint(kvm_machine* vm):
 		size = 4096
 		request = 164
 	if (size > 1048576): return 0
-	char* state = malloc(4096 + size)
+	char* state = cast(char*, malloc(4096 + size))
 	mem_fill[char](state, 0, 4096 + size)
 	int ok = kvm_get_regs(vm, state) == 0
 	if (ok): ok = kvm_get_sregs(vm, state + 144) == 0

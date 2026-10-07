@@ -153,8 +153,8 @@ struct attach_run:
 # consumed. 1 once the line arrived; 0 on EOF, error or timeout.
 int wait_ready(process* target, int timeout_ms):
 	int deadline = process_monotonic_ms() + timeout_ms
-	char* fds = malloc(8)
-	char* ch = malloc(1)
+	char* fds = cast(char*, malloc(8))
+	char* ch = cast(char*, malloc(1))
 	int ready = 0
 	while (1):
 		int left = deadline - process_monotonic_ms()

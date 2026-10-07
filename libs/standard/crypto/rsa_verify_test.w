@@ -59,10 +59,10 @@ int tr_e(char* out):
 
 
 void test_pkcs1v15_sha256_valid():
-	char* n = malloc(300)
-	char* e = malloc(8)
-	char* sig = malloc(300)
-	char* dig = malloc(48)
+	char* n = cast(char*, malloc(300))
+	char* e = cast(char*, malloc(8))
+	char* sig = cast(char*, malloc(300))
+	char* dig = cast(char*, malloc(48))
 	int nlen = tr_n(n)
 	int elen = tr_e(e)
 	int slen = tr_hex(TR_SIG_V15_256(), sig)
@@ -79,7 +79,7 @@ void test_pkcs1v15_sha256_valid():
 	dig[0] = dig[0] ^ 1
 	# Negative: valid v1.5/SHA-256 signature must fail under the SHA-384
 	# DigestInfo (strict prefix/length match).
-	char* dig384 = malloc(48)
+	char* dig384 = cast(char*, malloc(48))
 	tr_hex(TR_SHA384(), dig384)
 	assert_equal(0, rsa_pkcs1v15_verify_sha384(n, nlen, e, elen, sig, slen, dig384))
 	free(n)
@@ -90,10 +90,10 @@ void test_pkcs1v15_sha256_valid():
 
 
 void test_pkcs1v15_sha384_valid():
-	char* n = malloc(300)
-	char* e = malloc(8)
-	char* sig = malloc(300)
-	char* dig = malloc(48)
+	char* n = cast(char*, malloc(300))
+	char* e = cast(char*, malloc(8))
+	char* sig = cast(char*, malloc(300))
+	char* dig = cast(char*, malloc(48))
 	int nlen = tr_n(n)
 	int elen = tr_e(e)
 	int slen = tr_hex(TR_SIG_V15_384(), sig)
@@ -111,13 +111,13 @@ void test_pkcs1v15_sha384_valid():
 void test_pkcs1v15_sha256_matches_computed_hash():
 	# The embedded SHA-256 digest must equal SHA-256 of the message, i.e. the
 	# signature verifies against a locally recomputed digest too.
-	char* n = malloc(300)
-	char* e = malloc(8)
-	char* sig = malloc(300)
+	char* n = cast(char*, malloc(300))
+	char* e = cast(char*, malloc(8))
+	char* sig = cast(char*, malloc(300))
 	int nlen = tr_n(n)
 	int elen = tr_e(e)
 	int slen = tr_hex(TR_SIG_V15_256(), sig)
-	char* dig = malloc(32)
+	char* dig = cast(char*, malloc(32))
 	sha256(c"W native TLS: RSA verify vector", 31, dig)
 	assert_equal(1, rsa_pkcs1v15_verify_sha256(n, nlen, e, elen, sig, slen, dig))
 	free(n)
@@ -127,10 +127,10 @@ void test_pkcs1v15_sha256_matches_computed_hash():
 
 
 void test_pss_sha256_valid():
-	char* n = malloc(300)
-	char* e = malloc(8)
-	char* sig = malloc(300)
-	char* dig = malloc(48)
+	char* n = cast(char*, malloc(300))
+	char* e = cast(char*, malloc(8))
+	char* sig = cast(char*, malloc(300))
+	char* dig = cast(char*, malloc(48))
 	int nlen = tr_n(n)
 	int elen = tr_e(e)
 	int slen = tr_hex(TR_SIG_PSS_256(), sig)
@@ -164,10 +164,10 @@ char* TR_SIG_PSS_384():
 
 
 void test_pss_sha384_valid():
-	char* n = malloc(300)
-	char* e = malloc(8)
-	char* sig = malloc(300)
-	char* dig = malloc(48)
+	char* n = cast(char*, malloc(300))
+	char* e = cast(char*, malloc(8))
+	char* sig = cast(char*, malloc(300))
+	char* dig = cast(char*, malloc(48))
 	int nlen = tr_hex(TR_N_384(), n)
 	int elen = tr_e(e)
 	int slen = tr_hex(TR_SIG_PSS_384(), sig)
@@ -184,7 +184,7 @@ void test_pss_sha384_valid():
 	dig[47] = dig[47] ^ 1
 	# Negative: the SHA-384 PSS signature must not verify as SHA-256 PSS
 	# (hash and salt lengths differ).
-	char* dig256 = malloc(32)
+	char* dig256 = cast(char*, malloc(32))
 	tr_hex(TR_SHA256(), dig256)
 	assert_equal(0, rsa_pss_verify_sha256(n, nlen, e, elen, sig, slen, dig256))
 	# Sanity: still valid after undoing the tampering.

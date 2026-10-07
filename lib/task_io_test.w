@@ -40,7 +40,7 @@ struct echo_state:
 
 
 generator int echo_handler(int fd):
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	while (1):
 		int n = task_read(fd, buf, 256)
 		if (n <= 0): break
@@ -66,7 +66,7 @@ generator int echo_client(echo_state* state, int id):
 	int length = strlen(message)
 	assert_equal(length, task_write_all(fd, message, length))
 
-	char* reply = malloc(length + 1)
+	char* reply = cast(char*, malloc(length + 1))
 	assert_equal(length, task_read_exact(fd, reply, length))
 	reply[length] = 0
 	asserts(c"echoed bytes differ", strcmp(message, reply) == 0)
@@ -107,7 +107,7 @@ void test_echo_server_with_concurrent_clients():
    repeated EAGAIN suspensions while the reader drains. */
 
 generator int bulk_writer(int fd, int total):
-	char* chunk = malloc(4096)
+	char* chunk = cast(char*, malloc(4096))
 	for i in range(4096): chunk[i] = i & 255
 	int sent = 0
 	while (sent < total):
@@ -121,7 +121,7 @@ generator int bulk_writer(int fd, int total):
 
 
 generator int bulk_reader(int fd):
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int received = 0
 	int checksum = 0
 	while (1):
@@ -134,7 +134,7 @@ generator int bulk_reader(int fd):
 
 
 void test_write_backpressure_megabyte():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[0])
 	socket_set_nonblocking(fds[1])
@@ -158,7 +158,7 @@ void test_write_backpressure_megabyte():
 /* Peer close is delivered as EOF (task_read returns 0). */
 
 generator int read_until_eof(int fd):
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	int n = task_read(fd, buf, 16)
 	free(buf)
 	task_finish(n)
@@ -170,7 +170,7 @@ generator int close_after_5ms(int fd):
 
 
 void test_peer_close_reads_as_eof():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[1])
 
@@ -271,12 +271,12 @@ int task_run_until_reported(task_scheduler* s, write_report* out, int write_fd):
 
 
 void test_write_all_result_counts_under_backpressure():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[0])
 	socket_set_nonblocking(fds[1])
 	int total = 262144
-	char* data = malloc(total)
+	char* data = cast(char*, malloc(total))
 	for i in range(total): data[i] = i & 255
 	write_report* out = new write_report()
 	out.status = -1
@@ -305,11 +305,11 @@ generator int cancel_after_5ms(task* victim):
 void test_write_all_result_cancelled_reports_progress():
 	# Nobody reads: the writer fills the socket buffer, suspends, and is
 	# cancelled. The result says how much the peer's buffer accepted.
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[0])
 	int total = 4194304
-	char* data = malloc(total)
+	char* data = cast(char*, malloc(total))
 	write_report* out = new write_report()
 	out.status = -1
 
@@ -341,11 +341,11 @@ void test_write_all_result_reports_errors():
 
 
 void test_read_exact_result_eof_versus_full():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	assert_equal(5, write(fds[0], c"abcde", 5))
 	close(fds[0])
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	io_result r
 	assert_equal(IO_OK, task_read_exact_result(fds[1], buf, 2, &r))
 	assert_equal(2, r.transferred)

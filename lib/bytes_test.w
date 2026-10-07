@@ -11,7 +11,7 @@ int is64():
 
 
 void test_fixed_width_round_trips():
-	char* p = malloc(8)
+	char* p = cast(char*, malloc(8))
 	store_be16(p, 0xbeef)
 	assert_equal(0xbe, p[0] & 255)
 	assert_equal(0xbeef, load_be16(p))
@@ -29,7 +29,7 @@ void test_fixed_width_round_trips():
 
 # A 32-bit load with bit 31 set follows the masked-word convention.
 void test_load32_high_bit():
-	char* p = malloc(4)
+	char* p = cast(char*, malloc(4))
 	store_be32(p, cast(int, 0xfedcba98))
 	int v = load_be32(p)
 	assert_equal(bytes_mask32() & cast(int, 0xfedcba98), v)
@@ -39,7 +39,7 @@ void test_load32_high_bit():
 
 
 void test_64_parts_round_trip():
-	char* p = malloc(8)
+	char* p = cast(char*, malloc(8))
 	int hi = 0
 	int lo = 0
 	store_be64_parts(p, 0x01020304, cast(int, 0xf5f6f7f8))
@@ -65,7 +65,7 @@ int word_hi32(int v):
 
 
 void test_64_word_checked():
-	char* p = malloc(8)
+	char* p = cast(char*, malloc(8))
 	int v = 7
 	store_be64_parts(p, 0, 0x7fffffff)
 	assert_equal(1, load_be64_word(p, &v))
@@ -86,7 +86,7 @@ void test_64_word_checked():
 
 
 void test_64_native_round_trip():
-	char* p = malloc(8)
+	char* p = cast(char*, malloc(8))
 	store_be64(p, 0x12345678)
 	assert_equal(0, p[0])
 	assert_equal(0x78, p[7] & 255)

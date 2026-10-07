@@ -1101,7 +1101,7 @@ void ptx_peephole():
 
 		# Rebuild the body into a fresh scratch buffer.
 		int cap = n * 2 + 128
-		char* out = malloc(cap)
+		char* out = cast(char*, malloc(cap))
 		int outp = 0
 		L = 0
 		while (L < lines):
@@ -1222,7 +1222,7 @@ int ptx_prom_widen(char* out, int outp, int lr, int src, int lsfx):
 # The prologue twin of ptx_prom_widen: seed a promoted capture's
 # register from %cx (which holds the just-loaded parameter value).
 void ptx_prom_cap_init(int lr, int lsfx):
-	char* buf = malloc(128)
+	char* buf = cast(char*, malloc(128))
 	buf[ptx_prom_widen(buf, 0, lr, 'c', lsfx)] = 0
 	ptx_emit(buf)
 	free(buf)
@@ -1526,7 +1526,7 @@ void ptx_promote():
 		# worst case (every line a sub-word store rewritten to the
 		# two-line shl/shr widen); every other rewrite shrinks.
 		int cap2 = n * 3 + 256
-		char* out = malloc(cap2)
+		char* out = cast(char*, malloc(cap2))
 		int outp = 0
 		int ap = 0
 		L = 0
@@ -1744,7 +1744,7 @@ int ptx_cubin_has_name(char* blob, int n, char* name):
 # where no PTX fallback applies.
 void ptx_cubin_check_entries(char* blob, int n):
 	char* m = ptx_module_buf
-	char* name = malloc(256)
+	char* name = cast(char*, malloc(256))
 	int i = 0
 	while (m[i] != 0):
 		if (starts_with(m + i, c".entry ")):
@@ -1778,7 +1778,7 @@ void ptx_finish_cubin():
 		if (fd < 0): ptx_cubin_fail(c"cannot open file", 0, 0)
 		n = file_size(fd)
 		if (n < 0): n = 0
-		blob = malloc(n + 9)
+		blob = cast(char*, malloc(n + 9))
 		int got = 0
 		while (got < n):
 			int r = read(fd, blob + 8 + got, n - got)
@@ -1793,7 +1793,7 @@ void ptx_finish_cubin():
 		if (((img[18] & 255) | ((img[19] & 255) << 8)) != 190):
 			ptx_cubin_fail(c"not a CUDA cubin (ELF e_machine is not EM_CUDA)", 0, 0)
 		ptx_cubin_check_entries(img, n)
-	else: blob = malloc(9)
+	else: blob = cast(char*, malloc(9))
 	# Low 4 bytes carry the length (a 32-bit compiler host has no wider
 	# int; images are far below 2 GB), high 4 bytes are zero.
 	for i in range(8):

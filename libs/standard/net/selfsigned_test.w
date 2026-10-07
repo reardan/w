@@ -55,10 +55,10 @@ void test_generate_parses_and_self_verifies():
 	assert_equal(1, x509_check_signature(c, c))
 
 	# The key PEM loads as the matching private scalar.
-	char* d = malloc(32)
+	char* d = cast(char*, malloc(32))
 	assert_equal(1, x509_load_ec_private_key(key_pem, strlen(key_pem), d))
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	assert_equal(1, ecdsa_p256_public_key(d, qx, qy))
 	assert_equal(1, mem_eq(qx, c.ec_qx, 32))
 	assert_equal(1, mem_eq(qy, c.ec_qy, 32))

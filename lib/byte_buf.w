@@ -131,7 +131,7 @@ int byte_view_equal(byte_view a, byte_view b):
 char* byte_view_clone(byte_view v):
 	int size = v.length
 	if (size < 1): size = 1
-	char* copy = malloc(size)
+	char* copy = cast(char*, malloc(size))
 	if (copy == 0): return copy
 	for i in range(v.length): copy[i] = v.data[i]
 	return copy
@@ -180,7 +180,7 @@ int byte_buf_reserve(byte_buf* b, int extra):
 	if (grown > limit): grown = limit
 	if (grown < needed): grown = needed
 	char* data = 0
-	if (b.data == 0): data = malloc(grown)
+	if (b.data == 0): data = cast(char*, malloc(grown))
 	else: data = realloc(b.data, b.capacity, grown)
 	if (data == 0): return BYTES_NO_MEMORY
 	b.data = data

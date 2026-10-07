@@ -94,7 +94,7 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 	# LC_LOAD_DYLIB appended here, numbered upward from 2 in load-command
 	# order (MH_TWOLEVEL binds name lookups to their ordinal's image).
 	char* ordinals = 0
-	if (dyn_lib_count > 0): ordinals = malloc(dyn_lib_count * 4)
+	if (dyn_lib_count > 0): ordinals = cast(char*, malloc(dyn_lib_count * 4))
 	int next_ordinal = 2
 	int i = 0
 	while (i < dyn_lib_count):
@@ -124,7 +124,7 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 		while (i < dyn_import_count):
 			cap = cap + strlen(dyn_import_name(i)) + 24
 			i = i + 1
-		macho_bind_buf = malloc(cap)
+		macho_bind_buf = cast(char*, malloc(cap))
 		macho_bind_size = 0
 
 		i = 0

@@ -383,7 +383,7 @@ wresult[char*]* tree_snapshot(wcas* s, char* path, list[char*] ignore):
 	# after the two word-sized ino/off fields, name after d_reclen,
 	# d_type in the record's last byte (4 = directory, 8 = regular).
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int err = 0
 	int n = getdents(fd, buffer, buffer_size)
 	while ((err == 0) && (n > 0)):

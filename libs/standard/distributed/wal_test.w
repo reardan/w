@@ -72,7 +72,7 @@ void test_torn_tail_truncated():
 	wal_close(w)
 	# tear the last record: rewrite the file cut 4 bytes short
 	int fd = open(path, 0, 0)
-	char* buf = malloc(full)
+	char* buf = cast(char*, malloc(full))
 	assert_equal(full, read_exact(fd, buf, full))
 	close(fd)
 	fd = create_file(path, 420)
@@ -136,7 +136,7 @@ void test_empty_and_binary_payloads():
 	create_file(path, 420)
 	wal* w = wal_open(path)
 	assert_equal(1, wal_append(w, c"", 0))
-	char* blob = malloc(4)
+	char* blob = cast(char*, malloc(4))
 	blob[0] = 0
 	blob[1] = 255
 	blob[2] = 10
@@ -230,7 +230,7 @@ int wal_test_exists(char* path):
 void wal_test_poke(char* path, int off, int value):
 	int fd = open(path, 2, 0)
 	assert1(fd >= 0)
-	char* b = malloc(1)
+	char* b = cast(char*, malloc(1))
 	b[0] = value
 	seek(fd, off, 0)
 	assert_equal(1, write_all(fd, b, 1))
@@ -241,7 +241,7 @@ void wal_test_poke(char* path, int off, int value):
 # Rewrites path keeping only its first keep bytes.
 void wal_test_cut(char* path, int keep):
 	int fd = open(path, 0, 0)
-	char* buf = malloc(keep + 1)
+	char* buf = cast(char*, malloc(keep + 1))
 	assert_equal(keep, read_exact(fd, buf, keep))
 	close(fd)
 	fd = create_file(path, 420)
@@ -356,7 +356,7 @@ void test_torn_tail_classification():
 	free(path)
 	# a zero-filled extent after the last good record
 	path = wal_test_three(c"tail_zero.log")
-	char* zeros = malloc(40)
+	char* zeros = cast(char*, malloc(40))
 	mem_fill(zeros, 0, 40)
 	fd = open(path, 2, 0)
 	seek(fd, 44, 0)

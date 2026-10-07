@@ -31,7 +31,7 @@ int debug_last_file
 # The file registry is also used for declaration locations (symbol/type
 # tables), which can be recorded before the first debug_line_note().
 void debug_files_ensure():
-	if (debug_files == 0): debug_files = malloc(256 * __word_size__)
+	if (debug_files == 0): debug_files = cast(char*, malloc(256 * __word_size__))
 
 
 char* debug_file_name(int index):
@@ -71,10 +71,10 @@ void debug_line_note(int stmt_stack_pos):
 	debug_files_ensure()
 	if (debug_line_addresses == 0):
 		debug_line_capacity = 65536
-		debug_line_addresses = malloc(debug_line_capacity * 4)
-		debug_line_lines = malloc(debug_line_capacity * 4)
-		debug_line_file_indexes = malloc(debug_line_capacity * 4)
-		debug_line_stack_pos = malloc(debug_line_capacity * 4)
+		debug_line_addresses = cast(char*, malloc(debug_line_capacity * 4))
+		debug_line_lines = cast(char*, malloc(debug_line_capacity * 4))
+		debug_line_file_indexes = cast(char*, malloc(debug_line_capacity * 4))
+		debug_line_stack_pos = cast(char*, malloc(debug_line_capacity * 4))
 	if (debug_line_count >= debug_line_capacity): return;
 
 	int line = line_number + 1
@@ -135,12 +135,12 @@ void debug_local_note(char* name, int slot, int kind, int type):
 	if (target_isa == 3): return;
 	if (debug_local_capacity == 0):
 		debug_local_capacity = 4096
-		debug_local_names = malloc(debug_local_capacity * __word_size__)
-		debug_local_slots = malloc(debug_local_capacity * 4)
-		debug_local_kinds = malloc(debug_local_capacity * 4)
-		debug_local_types = malloc(debug_local_capacity * 4)
-		debug_local_addresses = malloc(debug_local_capacity * 4)
-		debug_local_regs = malloc(debug_local_capacity * 4)
+		debug_local_names = cast(char*, malloc(debug_local_capacity * __word_size__))
+		debug_local_slots = cast(char*, malloc(debug_local_capacity * 4))
+		debug_local_kinds = cast(char*, malloc(debug_local_capacity * 4))
+		debug_local_types = cast(char*, malloc(debug_local_capacity * 4))
+		debug_local_addresses = cast(char*, malloc(debug_local_capacity * 4))
+		debug_local_regs = cast(char*, malloc(debug_local_capacity * 4))
 	if (debug_local_count >= debug_local_capacity):
 		# names holds pointers (word-sized entries); the other four are
 		# 4-byte ints. Growing names with the int-array sizes made the
@@ -342,9 +342,9 @@ int debug_func_capacity
 void debug_func_note(int start, int arg_words):
 	if (debug_func_capacity == 0):
 		debug_func_capacity = 1024
-		debug_func_starts = malloc(debug_func_capacity * 4)
-		debug_func_arg_words = malloc(debug_func_capacity * 4)
-		debug_func_regs = malloc(debug_func_capacity * 4)
+		debug_func_starts = cast(char*, malloc(debug_func_capacity * 4))
+		debug_func_arg_words = cast(char*, malloc(debug_func_capacity * 4))
+		debug_func_regs = cast(char*, malloc(debug_func_capacity * 4))
 	if (debug_func_count >= debug_func_capacity):
 		int old = debug_func_capacity * 4
 		debug_func_capacity = debug_func_capacity * 2

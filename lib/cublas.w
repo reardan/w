@@ -109,14 +109,14 @@ int cublas_init():
 	# Make lib/cuda.w's driver context current before the runtime API
 	# inside cuBLAS looks for one (see the header).
 	__w_gpu_init()
-	char* cell = malloc(8)
+	char* cell = cast(char*, malloc(8))
 	save_i(cell, 0, 8)
 	if (__cublas_create(cell) != 0):
 		free(cell)
 		return 0
 	__cublas_handle = cast(char*, load_i(cell, 8))
 	free(cell)
-	__cublas_scalars = malloc(32)
+	__cublas_scalars = cast(char*, malloc(32))
 	__cublas_args = cast(int*, malloc(14 * 8))
 	__cublas_state = 1
 	return 1
@@ -128,7 +128,7 @@ int cublas_available():
 
 int cublas_version():
 	if (cublas_init() == 0): return 0
-	char* cell = malloc(8)
+	char* cell = cast(char*, malloc(8))
 	save_i(cell, 0, 8)
 	int v = 0
 	if (__cublas_get_version(__cublas_handle, cell) == 0): v = load_i(cell, 4)

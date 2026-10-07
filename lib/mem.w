@@ -37,7 +37,7 @@ int mem_eq[T](T* a, T* b, int n):
 # Malloc'd copy of n bytes from src with a convenience NUL appended
 # (binary-safe: the NUL is not part of the n bytes). Caller frees.
 char* mem_dup(char* src, int n):
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	mem_copy(out, src, n)
 	out[n] = 0
 	return out

@@ -68,7 +68,7 @@ int malloc_debug_env_check():
 	int fd = open(c"/proc/self/environ", 0, 0)
 	if (fd < 0): return 0
 	int cap = 65536
-	char* buf = freelist_malloc(cap)
+	char* buf = cast(char*, freelist_malloc(cap))
 	int n = read(fd, buf, cap - 1)
 	close(fd)
 	if (n <= 0):
@@ -100,8 +100,8 @@ void malloc_init_mode():
 # "Allocator"): 0 until lib/thread.w's first thread_spawn installs
 # per-thread heaps, so a program that never spawns pays one null check
 # per call. The hooks route the main thread back to the *_backend
-# functions below. Plain ints called as functions, like the compiler's
-# repl_call_site_hook, so this seed-compiled file needs no newer syntax.
+# functions below. Hooks retain word-sized storage; each call explicitly
+# recovers its function-pointer type before invoking the backend.
 int malloc_hook_malloc
 int malloc_hook_free
 int malloc_hook_realloc
@@ -155,20 +155,29 @@ void* malloc_reject_size(int size):
 	return cast(void*, 0)
 
 
+type __malloc_hook_malloc_callback = fn(int) -> void*
+
+
 void* malloc(int size):
 	if (malloc_size_invalid(size)): return malloc_reject_size(size)
-	if (malloc_hook_malloc != 0): return cast(void*, malloc_hook_malloc(size))
+	if (malloc_hook_malloc != 0): return cast(void*, (cast(__malloc_hook_malloc_callback*, malloc_hook_malloc))(size))
 	return malloc_backend(size)
 
 
+type __malloc_hook_free_callback = fn(void*) -> int
+
+
 int free(void* mem_address):
-	if (malloc_hook_free != 0): return malloc_hook_free(mem_address)
+	if (malloc_hook_free != 0): return (cast(__malloc_hook_free_callback*, malloc_hook_free))(mem_address)
 	return malloc_backend_free(mem_address)
 
 
 # An invalid newlen returns null and leaves old allocated, like a
 # failed growth.
+type __malloc_hook_realloc_callback = fn(void*, int, int) -> char*
+
+
 char *realloc(void* old, int oldlen, int newlen):
 	if (malloc_size_invalid(newlen)): return cast(char*, malloc_reject_size(newlen))
-	if (malloc_hook_realloc != 0): return cast(char*, malloc_hook_realloc(old, oldlen, newlen))
+	if (malloc_hook_realloc != 0): return cast(char*, (cast(__malloc_hook_realloc_callback*, malloc_hook_realloc))(old, oldlen, newlen))
 	return malloc_backend_realloc(old, oldlen, newlen)

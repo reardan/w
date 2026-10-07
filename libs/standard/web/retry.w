@@ -90,7 +90,7 @@ int retry_backoff_ms(retry_policy* p, int attempt):
 # A uniformly-distributed 31-bit non-negative int from the CSPRNG (0 on
 # a random failure, which only shortens a single backoff wait).
 int retry_random_u31():
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	int ok = random_bytes(buf, 4)
 	int v = 0
 	if (ok != 0):

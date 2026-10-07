@@ -126,8 +126,8 @@ void cloc_end_line(cloc_counts* out, int has_code, int has_comment):
 # still counts.
 void cloc_scan_text(char* text, int length, cloc_counts* out):
 	out.files = out.files + 1
-	int* kinds = malloc(CLOC_STACK_MAX() * __word_size__)
-	int* depths = malloc(CLOC_STACK_MAX() * __word_size__)
+	int* kinds = cast(int*, malloc(CLOC_STACK_MAX() * __word_size__))
+	int* depths = cast(int*, malloc(CLOC_STACK_MAX() * __word_size__))
 	int top = 0
 	kinds[0] = CLOC_CODE()
 	depths[0] = 0
@@ -321,7 +321,7 @@ char* cloc_group_path(char* root, char* file):
 	int end = start
 	while ((file[end] != 0) && (file[end] != '/')): end = end + 1
 	if (file[end] == 0): return strclone(root)
-	char* group = malloc(end + 1)
+	char* group = cast(char*, malloc(end + 1))
 	for i in range(end): group[i] = file[i]
 	group[end] = 0
 	return group

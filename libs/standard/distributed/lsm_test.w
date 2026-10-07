@@ -34,7 +34,7 @@ list[char*] lt_sst_files(char* prefix):
 	int fd = open(c"bin", 65536, 0)   # O_DIRECTORY
 	assert1(fd >= 0)
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int n = getdents(fd, buffer, buffer_size)
 	while (n > 0):
 		int off = 0
@@ -90,7 +90,7 @@ char* lt_pad_key(char* stem, int i, int digits):
 	char* num = itoa(i)
 	int n = strlen(num)
 	assert1(n <= digits)
-	char* suffix = malloc(digits + 1)
+	char* suffix = cast(char*, malloc(digits + 1))
 	mem_fill(suffix, '0', digits - n)
 	for j in range(n): suffix[digits - n + j] = num[j]
 	suffix[digits] = 0
@@ -410,7 +410,7 @@ void test_recovery_reclaims_dangling_table():
 	char* mpath = strjoin(prefix, c".manifest")
 	wal* mw = wal_open(mpath)
 	assert1(cast(int, mw) != 0)
-	char* rec = malloc(5)
+	char* rec = cast(char*, malloc(5))
 	rec[0] = 1
 	store_le32(rec + 1, 2)
 	assert_equal(1, wal_append(mw, rec, 5))
@@ -476,7 +476,7 @@ void test_torn_data_wal_tail():
 	lsm_close(l)
 	char* wpath = strjoin(prefix, c".wal")
 	int good = lt_file_size(wpath)
-	char* partial = malloc(13)
+	char* partial = cast(char*, malloc(13))
 	mem_fill(partial, 7, 13)
 	store_le32(partial, 30)   # promises 30 payload bytes; only 5 follow
 	lt_append_raw(wpath, partial, 13)
@@ -564,7 +564,7 @@ void test_torn_flush_manifest_recovery():
 	wal* mw = wal_open(mpath)
 	assert1(cast(int, mw) != 0)
 	assert_equal(1, wal_record_count(mw))
-	char* rec = malloc(5)
+	char* rec = cast(char*, malloc(5))
 	rec[0] = 1
 	store_le32(rec + 1, 2)
 	assert_equal(1, wal_append(mw, rec, 5))
@@ -604,7 +604,7 @@ void test_binary_values_all_tiers():
 	lt_clean(prefix)
 	lsm* l = lsm_open(prefix, 1 << 20)
 	assert1(cast(int, l) != 0)
-	char* blob = malloc(5)
+	char* blob = cast(char*, malloc(5))
 	blob[0] = 0
 	blob[1] = 255
 	blob[2] = 10
@@ -629,7 +629,7 @@ void test_binary_values_all_tiers():
 	assert_equal(200, v[4] & 255)
 	free(v)
 	# compacted tier (two tables so the merge really runs)
-	char* blob2 = malloc(3)
+	char* blob2 = cast(char*, malloc(3))
 	blob2[0] = 7
 	blob2[1] = 0
 	blob2[2] = 128
@@ -849,7 +849,7 @@ void test_export_import_roundtrip():
 	assert_equal(1, lsm_put(l, c"beta", c"22", 2))
 	assert_equal(1, lsm_put(l, c"gamma", c"3", 1))
 	assert_equal(1, lsm_delete(l, c"alpha"))
-	char* binval = malloc(4)
+	char* binval = cast(char*, malloc(4))
 	binval[0] = 0
 	binval[1] = 255
 	binval[2] = 7
@@ -904,7 +904,7 @@ void test_import_rejects_malformed_blob():
 	# too short to even carry the 12-byte header
 	assert_equal(0, lsm_import(l, c"xx", 2))
 	# right length, wrong magic
-	char* bad_magic = malloc(12)
+	char* bad_magic = cast(char*, malloc(12))
 	bad_magic[0] = 88
 	bad_magic[1] = 88
 	bad_magic[2] = 88
@@ -914,7 +914,7 @@ void test_import_rejects_malformed_blob():
 	assert_equal(0, lsm_import(l, bad_magic, 12))
 	free(bad_magic)
 	# right magic, a record count the buffer cannot possibly hold
-	char* bad_count = malloc(12)
+	char* bad_count = cast(char*, malloc(12))
 	bad_count[0] = 76
 	bad_count[1] = 83
 	bad_count[2] = 77

@@ -52,7 +52,7 @@ char* pg_run(char* path, char** argv, char** env, int* status):
 	free(opts)
 	asserts(c"spawn failed", child != 0)
 	string_builder* text = string_new()
-	char* chunk = malloc(4096)
+	char* chunk = cast(char*, malloc(4096))
 	int n = read(child.stdout_fd, chunk, 4096)
 	while (n > 0):
 		string_append_bytes(text, chunk, n)

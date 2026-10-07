@@ -113,7 +113,7 @@ int VCPT_NUL_LEN():
 
 
 char* vcpt_nul_content():
-	char* buf = malloc(VCPT_NUL_LEN() + 1)
+	char* buf = cast(char*, malloc(VCPT_NUL_LEN() + 1))
 	int i = 0
 	while (i < VCPT_NUL_LEN()):
 		if ((i % 7) == 0): buf[i] = 0

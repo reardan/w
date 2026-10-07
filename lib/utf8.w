@@ -105,7 +105,7 @@ int string_ends_with(string s, string suffix):
 
 string string_from_bytes(char* data, int length):
 	assert1(utf8_validate_bytes(data, length))
-	char* descriptor = malloc(2 * __word_size__ + length + 1)
+	char* descriptor = cast(char*, malloc(2 * __word_size__ + length + 1))
 	char* out = descriptor + 2 * __word_size__
 	save_word(descriptor, cast(int, out))
 	save_word(descriptor + __word_size__, length)
@@ -138,7 +138,7 @@ char* cstr(string s):
 # terminator, but a char* consumer will see the content truncated at the
 # first interior NUL.
 char* cstr_clone(string s):
-	char* out = malloc(s.length + 1)
+	char* out = cast(char*, malloc(s.length + 1))
 	for i in range(s.length): out[i] = s.data[i]
 	out[s.length] = 0
 	return out

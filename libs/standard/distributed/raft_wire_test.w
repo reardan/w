@@ -7,7 +7,7 @@ import lib.mem
 
 raft_msg* rw_roundtrip(raft_msg* m):
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	raft_msg* out = raft_wire_decode(buf, size)
 	assert1(cast(int, out) != 0)
@@ -91,7 +91,7 @@ void test_binary_command_roundtrip():
 	u64_set_int(m.prev_log_index, 3)
 	u64_set_int(m.prev_log_term, 4)
 	u64_set_int(m.leader_commit, 3)
-	char* cmd = malloc(6)
+	char* cmd = cast(char*, malloc(6))
 	cmd[0] = 'A'
 	cmd[1] = 0
 	cmd[2] = 9
@@ -146,7 +146,7 @@ void test_layout_bytes():
 	u64* term = u64_new_int(1)
 	raft_msg* m = raft_msg_new(raft_msg_vote_reply, 258, 1, term)
 	m.vote_granted = 1
-	char* buf = malloc(raft_wire_size(m))
+	char* buf = cast(char*, malloc(raft_wire_size(m)))
 	raft_wire_encode(m, buf)
 	assert_equal(raft_msg_vote_reply, buf[0] & 255)
 	assert_equal(2, buf[1] & 255)
@@ -170,7 +170,7 @@ void test_prevote_flag_roundtrip():
 	u64_set_int(m.last_log_index, 3)
 	u64_set_int(m.last_log_term, 2)
 	assert_equal(34, raft_wire_size(m))
-	char* buf = malloc(34)
+	char* buf = cast(char*, malloc(34))
 	raft_wire_encode(m, buf)
 	assert_equal(1, buf[33] & 255)
 	free(buf)
@@ -192,7 +192,7 @@ void test_prevote_flag_roundtrip():
 	rep.vote_granted = 1
 	rep.prevote = 1
 	assert_equal(19, raft_wire_size(rep))
-	char* rbuf = malloc(19)
+	char* rbuf = cast(char*, malloc(19))
 	raft_wire_encode(rep, rbuf)
 	assert_equal(1, rbuf[17] & 255)   # granted keeps its offset
 	assert_equal(1, rbuf[18] & 255)   # prevote trails it
@@ -217,13 +217,13 @@ void test_decode_rejects_malformed():
 	u64* t = u64_new_int(5)
 	m.entries.push(raft_entry_new(t, c"P\ta\tb", 5))
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	# short buffer
 	assert_equal(0, cast(int, raft_wire_decode(buf, size - 1)))
 	assert_equal(0, cast(int, raft_wire_decode(buf, 16)))
 	# trailing garbage
-	char* big = malloc(size + 1)
+	char* big = cast(char*, malloc(size + 1))
 	mem_copy(big, buf, size)
 	big[size] = 99
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
@@ -252,7 +252,7 @@ void test_install_snapshot_roundtrip():
 	u64_set_int(m.prev_log_term, 5)
 	u64_set_int(m.leader_commit, 12)
 	# binary blob with embedded zeros and a high byte
-	char* blob = malloc(6)
+	char* blob = cast(char*, malloc(6))
 	blob[0] = 83
 	blob[1] = 0
 	blob[2] = 78
@@ -308,7 +308,7 @@ void test_install_snapshot_malformed():
 	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 2, term)
 	u64_set_int(m.prev_log_index, 9)
 	u64_set_int(m.prev_log_term, 2)
-	char* blob = malloc(4)
+	char* blob = cast(char*, malloc(4))
 	blob[0] = 1
 	blob[1] = 0
 	blob[2] = 2
@@ -316,14 +316,14 @@ void test_install_snapshot_malformed():
 	m.snap_data = blob
 	m.snap_len = 4
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	# truncated blob: snap_len promises more bytes than the buffer has
 	assert_equal(0, cast(int, raft_wire_decode(buf, size - 1)))
 	# shorter than the fixed post-header fields
 	assert_equal(0, cast(int, raft_wire_decode(buf, 17 + 27)))
 	# trailing garbage byte
-	char* big = malloc(size + 1)
+	char* big = cast(char*, malloc(size + 1))
 	mem_copy(big, buf, size)
 	big[size] = 7
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
@@ -346,7 +346,7 @@ void test_type4_known_type5_rejected():
 	u64* term = u64_new_int(1)
 	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 2, term)
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	assert_equal(4, buf[0] & 255)
 	raft_msg* ok = raft_wire_decode(buf, size)
@@ -405,7 +405,7 @@ void test_decode_rejects_bad_entry_kind():
 	u64* t = u64_new_int(1)
 	m.entries.push(raft_entry_new(t, c"x", 1))
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	# the single entry's kind byte sits right after the fixed append
 	# header (17 + 28); stomp it with a value that is neither
@@ -431,7 +431,7 @@ void test_decode_rejects_bad_config_command_len():
 	u64* t = u64_new_int(1)
 	m.entries.push(raft_entry_new_kind(t, c"abcd", 4, raft_entry_kind_config()))
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(buf)
@@ -448,7 +448,7 @@ void test_decode_rejects_bad_config_count():
 	u64_set_int(m.prev_log_index, 1)
 	u64_set_int(m.prev_log_term, 1)
 	int size = raft_wire_size(m)
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	raft_wire_encode(m, buf)
 	# config_count sits at 17 + 24 (no config in this message)
 	store_le32(buf + 17 + 24, 100000)

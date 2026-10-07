@@ -181,8 +181,8 @@ process_result* wvm_client_exec_wait(char* socket_path, int session, char** argv
 	process_result* output = new process_result()
 	mem_fill[char](cast(char*, output), 0, sizeof(process_result))
 	output.status = -3
-	output.stdout_text = malloc(output_limit + 1)
-	output.stderr_text = malloc(output_limit + 1)
+	output.stdout_text = cast(char*, malloc(output_limit + 1))
+	output.stderr_text = cast(char*, malloc(output_limit + 1))
 	output.stdout_text[0] = 0
 	output.stderr_text[0] = 0
 	int offset = 0

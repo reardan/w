@@ -60,7 +60,7 @@ char* box_channel_request(char** args, char* cwd, int timeout_ms, int output_lim
 		if (total > box_channel_max_request): return 0
 		argc = argc + 1
 	if (argc == 0 || args[0][0] != '/'): return 0
-	char* data = malloc(total)
+	char* data = cast(char*, malloc(total))
 	save_int32(data, box_channel_magic)
 	save_int32(data + 4, total - 24)
 	save_int32(data + 8, argc)
@@ -107,7 +107,7 @@ char** box_channel_decode(char* header, char* payload, char** cwd):
 	if (offset != length): return 0
 	*cwd = 0
 	if (cwd_length > 0):
-		*cwd = malloc(cwd_length + 1)
+		*cwd = cast(char*, malloc(cwd_length + 1))
 		mem_copy[char](*cwd, payload, cwd_length)
 		char* directory = *cwd
 		directory[cwd_length] = 0
@@ -115,7 +115,7 @@ char** box_channel_decode(char* header, char* payload, char** cwd):
 	offset = cwd_length
 	for i in range(argc):
 		int size = load_int32(payload + offset)
-		char* value = malloc(size + 1)
+		char* value = cast(char*, malloc(size + 1))
 		mem_copy[char](value, payload + offset + 4, size)
 		value[size] = 0
 		strv_set(args, i, value)

@@ -74,8 +74,8 @@ int defhash_depth
 void deps_record(char* path):
 	int max_deps = 4000
 	if (deps_paths == 0):
-		deps_paths = malloc(max_deps * __word_size__)
-		deps_shadow_lists = malloc(max_deps * __word_size__)
+		deps_paths = cast(char*, malloc(max_deps * __word_size__))
+		deps_shadow_lists = cast(char*, malloc(max_deps * __word_size__))
 	assert1(deps_count < max_deps)
 	save_ptr(deps_paths + deps_count * __word_size__, cast(int, strclone(path)))
 	save_ptr(deps_shadow_lists + deps_count * __word_size__, cast(int, deps_pending_shadows))
@@ -246,7 +246,7 @@ char* compiler_binary_dir():
 	if (path_is_absolute(prog)):
 		return prog
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	path_normalize_sep(cwd)
 	char* joined = strjoin(cwd, c"/")
@@ -319,7 +319,7 @@ char* import_root_at(int index):
 # drop a trailing separator. Returns a fresh allocation.
 char* import_root_clean(char* path):
 	int n = strlen(path)
-	char* out = malloc(n + 2)
+	char* out = cast(char*, malloc(n + 2))
 	int len = 0
 	int i = 0
 	if (path[0] == '/'):
@@ -392,7 +392,7 @@ void import_root_add(char* spelled):
 	char* absolute = path
 	if (path_is_absolute(path) == 0):
 		int max_path_size = 4096
-		char* cwd = malloc(max_path_size)
+		char* cwd = cast(char*, malloc(max_path_size))
 		getcwd(cwd, max_path_size)
 		path_normalize_sep(cwd)
 		char* joined = strjoin(cwd, c"/")
@@ -402,7 +402,7 @@ void import_root_add(char* spelled):
 	char* cleaned = import_root_clean(absolute)
 	if (import_root_is_dir(cleaned) == 0): import_root_error(c"import root is not a directory: ", spelled)
 	int max_roots = 64
-	if (import_roots == 0): import_roots = malloc(max_roots * __word_size__)
+	if (import_roots == 0): import_roots = cast(char*, malloc(max_roots * __word_size__))
 	if (import_root_count >= max_roots): import_root_error(c"too many import roots at ", spelled)
 	save_ptr(import_roots + import_root_count * __word_size__, cast(int, cleaned))
 	import_root_count = import_root_count + 1
@@ -495,7 +495,7 @@ void import_root_note_shadows(char* fn):
 			found_count = found_count + 1
 		free(candidate)
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	path_normalize_sep(cwd)
 	char* fallback = import_probe_upward(cwd, fn)
@@ -528,7 +528,7 @@ int compile_relative_path(char* fn):
 
 	# Get current directory
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	# Normalize backslashes from Windows GetCurrentDirectoryA to forward slashes
 	path_normalize_sep(cwd)
@@ -596,7 +596,7 @@ int compile_input_file(char* path):
 		if (compile_attempt(path)): return 1
 	else:
 		int max_path_size = 4096
-		char* cwd = malloc(max_path_size)
+		char* cwd = cast(char*, malloc(max_path_size))
 		getcwd(cwd, max_path_size)
 		path_normalize_sep(cwd)
 		int result = compile_joined(cwd, path)
@@ -1148,6 +1148,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
+	type_error_count = 0
 	analysis_mode = 0
 	analysis_errors = 0
 	retained_clear()
@@ -1311,8 +1312,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# No function body is being compiled yet: the '?' operator checks
 	# this to reject uses outside a function.
 	current_function_symbol = -1
-	last_identifier = malloc(8000)
-	last_global_declaration = malloc(8000)
+	last_identifier = cast(char*, malloc(8000))
+	last_global_declaration = cast(char*, malloc(8000))
 	be_start(word_size)
 	# --imports must never fire while the auto-imported closure itself is
 	# compiling: auto_import_closure_count (the exclusion list) is not
@@ -1455,6 +1456,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# for programs that declared gpu kernels (code_generator/ptx.w)
 	ptx_finish_module()
 	ptx_finish_cubin()
+
+	if (type_error_count > 0): return 1
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with
@@ -1811,7 +1814,7 @@ void deps_emit(int json, char* path, char* shadows, char* cwd):
 
 void deps_dump(int json):
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	int i = 0
 	while (i < deps_count):
@@ -1959,13 +1962,13 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 	# P1: --profile-generate records the whole closure (w.w's is ~5.6k).
 	int max_defs = 20000
 	if (defhash_names == 0):
-		defhash_names = malloc(max_defs * __word_size__)
-		defhash_kinds = malloc(max_defs * __word_size__)
-		defhash_file_indexes = malloc(max_defs * __word_size__)
-		defhash_lines = malloc(max_defs * __word_size__)
-		defhash_columns = malloc(max_defs * __word_size__)
-		defhash_starts = malloc(max_defs * __word_size__)
-		defhash_ends = malloc(max_defs * __word_size__)
+		defhash_names = cast(char*, malloc(max_defs * __word_size__))
+		defhash_kinds = cast(char*, malloc(max_defs * __word_size__))
+		defhash_file_indexes = cast(char*, malloc(max_defs * __word_size__))
+		defhash_lines = cast(char*, malloc(max_defs * __word_size__))
+		defhash_columns = cast(char*, malloc(max_defs * __word_size__))
+		defhash_starts = cast(char*, malloc(max_defs * __word_size__))
+		defhash_ends = cast(char*, malloc(max_defs * __word_size__))
 	assert1(defhash_count < max_defs)
 	save_ptr(defhash_names + defhash_count * __word_size__, cast(int, name))
 	save_ptr(defhash_kinds + defhash_count * __word_size__, cast(int, kind))
@@ -2010,7 +2013,7 @@ void defhash_buf_reset():
 void defhash_buf_ensure(int n):
 	if (defhash_buf_size == 0):
 		defhash_buf_size = 256
-		defhash_buf = malloc(defhash_buf_size)
+		defhash_buf = cast(char*, malloc(defhash_buf_size))
 	while (defhash_buf_size <= defhash_buf_pos + n):
 		int old_size = defhash_buf_size
 		defhash_buf_size = defhash_buf_size << 1
@@ -2039,7 +2042,7 @@ int defhash_refs_count
 void defhash_refs_reset():
 	if (defhash_refs_buf == 0):
 		defhash_refs_cap = 512
-		defhash_refs_buf = malloc(defhash_refs_cap * __word_size__)
+		defhash_refs_buf = cast(char*, malloc(defhash_refs_cap * __word_size__))
 	defhash_refs_count = 0
 
 
@@ -2143,7 +2146,7 @@ void defhash_process_span(int idx):
 
 
 char* defhash_hex_digits(char* digest):
-	char* hex = malloc(65)
+	char* hex = cast(char*, malloc(65))
 	for i in range(32):
 		hex[i * 2] = diag_hex_digit((digest[i] >> 4) & 15)
 		hex[i * 2 + 1] = diag_hex_digit(digest[i] & 15)
@@ -2161,7 +2164,7 @@ void defhash_emit(int idx, char* cwd, int cwd_len):
 		if (path[cwd_len] == '/'): shown = path + cwd_len + 1
 
 	defhash_process_span(idx)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(defhash_buf, defhash_buf_pos, digest)
 	char* hex = defhash_hex_digits(digest)
 	free(digest)
@@ -2189,7 +2192,7 @@ void defhash_emit(int idx, char* cwd, int cwd_len):
 
 void defhash_dump():
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	int cwd_len = strlen(cwd)
 	int i = 0
@@ -2243,7 +2246,7 @@ int profile_defhash_find(int file_index, int line):
 # what defhash_emit prints as "hash".
 char* profile_defhash_hex_at(int idx):
 	defhash_process_span(idx)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(defhash_buf, defhash_buf_pos, digest)
 	char* hex = defhash_hex_digits(digest)
 	free(digest)

@@ -25,7 +25,7 @@ int texture_failures
 
 # One RGBA pixel from the back buffer; y counts from the bottom.
 int texture_read_channel(int x, int y, int channel):
-	char* pixel = malloc(4)
+	char* pixel = cast(char*, malloc(4))
 	glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel)
 	int value = pixel[channel] & 255
 	free(pixel)
@@ -67,7 +67,7 @@ int main(int argc, int argv):
 
 	# 2x2 GL_R8 checker: row 0 (v near 0) is white/black, row 1 is
 	# black/white. Two-byte rows need GL_UNPACK_ALIGNMENT 1.
-	char* texels = malloc(4)
+	char* texels = cast(char*, malloc(4))
 	texels[0] = 255
 	texels[1] = 0
 	texels[2] = 0
@@ -145,7 +145,7 @@ int main(int argc, int argv):
 
 	# Patch the bottom-right texel to white through glTexSubImage2D (the
 	# other 9-argument entry point) and re-check.
-	char* patch = malloc(1)
+	char* patch = cast(char*, malloc(1))
 	patch[0] = 255
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 1, 0, 1, 1, GL_RED, GL_UNSIGNED_BYTE, patch)
 	glClear(GL_COLOR_BUFFER_BIT)

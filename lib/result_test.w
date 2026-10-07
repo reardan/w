@@ -78,7 +78,7 @@ void test_result_name_available_for_locals():
 
 
 void test_result_pointer_payload():
-	char* payload = malloc(16)
+	char* payload = cast(char*, malloc(16))
 	strcpy(payload, c"carried")
 	wresult[char*]* r = result_new_ok[char*](payload)
 	assert_equal(1, result_is_ok[char*](r))

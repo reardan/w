@@ -190,7 +190,7 @@ pg_match_expr* pg_match_expr_text_new(int kind, char* text, int line, int column
 
 pg_match_expr* pg_match_expr_charset_new(char* charset, int line, int column):
 	pg_match_expr* expression = pg_match_expr_new(pg_match_expr_charset_kind(), line, column)
-	expression.charset = malloc(128)
+	expression.charset = cast(char*, malloc(128))
 	for i in range(128): expression.charset[i] = charset[i]
 	return expression
 

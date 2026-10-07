@@ -97,7 +97,7 @@ int mnist_load_images(char* path, ndf* out):
 
 	ndf a = ndf_new3(count, rows, cols)
 	int n = a.data.length
-	char* raw = malloc(n)
+	char* raw = cast(char*, malloc(n))
 	int got = stream_read(in, raw, n)
 	stream_close(in)
 	if (got != n):
@@ -144,7 +144,7 @@ int mnist_load_labels(char* path, ndi* out):
 		stream_close(in)
 		return MNIST_ERR_BAD_DIMS
 
-	char* raw = malloc(count)
+	char* raw = cast(char*, malloc(count))
 	int got = stream_read(in, raw, count)
 	stream_close(in)
 	if (got != count):

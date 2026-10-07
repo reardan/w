@@ -187,7 +187,7 @@ void test_binary_command_persists():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(1, raft_wal_sync(rw, r))   # STATE: term 1, vote 1
-	char* cmd = malloc(6)
+	char* cmd = cast(char*, malloc(6))
 	cmd[0] = 'A'
 	cmd[1] = 0
 	cmd[2] = 9
@@ -282,7 +282,7 @@ void test_torn_tail_prefix_state():
 	raft_wal_close(rw)
 	# tear the last record: rewrite the file cut 4 bytes short
 	int fd = open(path, 0, 0)
-	char* buf = malloc(full)
+	char* buf = cast(char*, malloc(full))
 	assert_equal(full, read_exact(fd, buf, full))
 	close(fd)
 	fd = create_file(path, 420)
@@ -374,7 +374,7 @@ void test_snapshot_rewrite_compacts_wal():
 	assert_strings_equal(c"b", a2.command)
 	raft_entry* a3 = raft_pop_apply(r)
 	assert_strings_equal(c"c", a3.command)
-	char* blob = malloc(5)
+	char* blob = cast(char*, malloc(5))
 	blob[0] = 9
 	blob[1] = 0
 	blob[2] = 8
@@ -470,7 +470,7 @@ void test_snapshot_torn_tail():
 	raft_wal_close(rw)
 	# tear the final record: rewrite the file cut 4 bytes short
 	int fd = open(path, 0, 0)
-	char* buf = malloc(full)
+	char* buf = cast(char*, malloc(full))
 	assert_equal(full, read_exact(fd, buf, full))
 	close(fd)
 	fd = create_file(path, 420)
@@ -651,7 +651,7 @@ void test_open_rejects_foreign_record():
 	char* path = rwal_path(c"foreign.log")
 	create_file(path, 420)
 	wal* w = wal_open(path)
-	char* junk = malloc(5)
+	char* junk = cast(char*, malloc(5))
 	mem_fill(junk, 9, 5)   # tag 9: no such record kind
 	assert_equal(1, wal_append(w, junk, 5))
 	free(junk)

@@ -120,8 +120,8 @@ char* protobuf_message_info(int type_index):
 void protobuf_message_store(int type_index, char* info):
 	int max_messages = 400
 	if (protobuf_message_types == 0):
-		protobuf_message_types = malloc(max_messages * 4)
-		protobuf_message_infos = malloc(max_messages * __word_size__)
+		protobuf_message_types = cast(char*, malloc(max_messages * 4))
+		protobuf_message_infos = cast(char*, malloc(max_messages * __word_size__))
 	type_index = type_canonical(type_index)
 	int i = protobuf_message_index(type_index)
 	if (i < 0):
@@ -298,12 +298,12 @@ int message_declaration():
 	# type are pointers or lists, which need no size yet.
 	if (accept(c":") == 0):
 		if (forward_declared == 0):
-			char* forward = malloc(4)
+			char* forward = cast(char*, malloc(4))
 			save_int(forward, 0 - 1)
 			protobuf_message_store(type_index, forward)
 		return 1
 	int max_fields = 256
-	char* info = malloc(4 + max_fields * 12)
+	char* info = cast(char*, malloc(4 + max_fields * 12))
 	int n = 0
 	while (tab_level > start_tab_level):
 		if (n >= max_fields): error(c"too many fields in protobuf message")
@@ -328,8 +328,8 @@ int protobuf_desc_lookup(int type_index):
 void protobuf_desc_store(int type_index, int address):
 	int max_types = 400
 	if (protobuf_desc_types == 0):
-		protobuf_desc_types = malloc(max_types * 4)
-		protobuf_desc_addresses = malloc(max_types * 4)
+		protobuf_desc_types = cast(char*, malloc(max_types * 4))
+		protobuf_desc_addresses = cast(char*, malloc(max_types * 4))
 	assert1(protobuf_desc_count < max_types)
 	save_int(protobuf_desc_types + protobuf_desc_count * 4, type_index)
 	save_int(protobuf_desc_addresses + protobuf_desc_count * 4, address)
@@ -406,7 +406,7 @@ void protobuf_emit_section(int message_type):
 	# descriptor for REPEATED (its aux is the nested descriptor for
 	# message elements, or the element width for bool, whose W storage
 	# is one byte).
-	char* aux_words = malloc(n * 4 + 4)
+	char* aux_words = cast(char*, malloc(n * 4 + 4))
 	int i = 0
 	while (i < n):
 		int field_type = type_get_field_type_at(message_type, i)
@@ -471,7 +471,7 @@ int protobuf_descriptor(int message_type):
 	int cached = protobuf_desc_lookup(message_type)
 	if (cached):
 		return cached
-	if (protobuf_pending_types == 0): protobuf_pending_types = malloc(400 * 4)
+	if (protobuf_pending_types == 0): protobuf_pending_types = cast(char*, malloc(400 * 4))
 	protobuf_pending_count = 0
 	protobuf_collect_pending(message_type)
 

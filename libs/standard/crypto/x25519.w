@@ -279,7 +279,7 @@ void x25519_clamp(char* k):
 # branches. Returns 0 on success, -1 when the output is all zero (low-
 # order input point); the zero check ORs the output bytes, constant-time.
 int x25519_scalarmult(char* out, char* scalar, char* point):
-	char* e = malloc(32)
+	char* e = cast(char*, malloc(32))
 	mem_copy(e, scalar, 32)
 	x25519_clamp(e)
 
@@ -369,7 +369,7 @@ int x25519_scalarmult(char* out, char* scalar, char* point):
 # i.e. public-key generation. Same return convention as x25519_scalarmult
 # (a clamped scalar can never yield zero here, so this returns 0).
 int x25519_scalarmult_base(char* out, char* scalar):
-	char* base = malloc(32)
+	char* base = cast(char*, malloc(32))
 	base[0] = 9
 	for i in range(1, 32): base[i] = 0
 	int result = x25519_scalarmult(out, scalar, base)

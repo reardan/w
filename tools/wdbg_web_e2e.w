@@ -69,7 +69,7 @@ we_server* we_start(list[char*] extra):
 	# The first stdout line is the URL. Startup compiles the debuggee
 	# (and mints a P-256 certificate for https), so allow a long wait.
 	string_builder* line = string_new()
-	char* ch = malloc(1)
+	char* ch = cast(char*, malloc(1))
 	int deadline = process_monotonic_ms() + 180000
 	int done = 0
 	while (done == 0):
@@ -148,7 +148,7 @@ int we_status(we_server* s, char* method, char* path, int code_mode):
 
 
 char* we_fixture_abs():
-	char* cwd = malloc(4096)
+	char* cwd = cast(char*, malloc(4096))
 	getcwd(cwd, 4096)
 	char* full = strjoin(cwd, c"/tests/debug_fixture.w")
 	free(cwd)

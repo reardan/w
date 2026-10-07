@@ -253,7 +253,7 @@ void pb_test_simple_desc_init():
 
 
 wresult[char*]* pb_test_simple_decode(char* data, int length):
-	char* buf = malloc(pb_test_simple_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_simple_desc.struct_size))
 	int i = 0
 	while (i < pb_test_simple_desc.struct_size):
 		buf[i] = 0
@@ -344,7 +344,7 @@ void test_message_bytes_embedded_nul_and_utf8_string():
 	# [63 61 66 c3 a9].
 	pb_expect_bytes(c"bytes+utf8", out, out_len, c"\x0a\x03\x61\x00\x62\x12\x05\x63\x61\x66\xc3\xa9", 12)
 
-	char* buf = malloc(pb_test_blob_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_blob_desc.struct_size))
 	int i = 0
 	while (i < pb_test_blob_desc.struct_size):
 		buf[i] = 0
@@ -419,7 +419,7 @@ void test_message_fixed32_and_fixed64():
 	# hand (value 1, little-endian).
 	pb_expect_bytes(c"fixed32/64", out, out_len, c"\x0d\x00\x00\x80\x3f\x11\x01\x00\x00\x00\x00\x00\x00\x00", 14)
 
-	char* buf = malloc(pb_test_fixed_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_fixed_desc.struct_size))
 	int i = 0
 	while (i < pb_test_fixed_desc.struct_size):
 		buf[i] = 0
@@ -482,7 +482,7 @@ void test_message_nested():
 	# 3, length-delimited: tag=(3<<3)|2=26=0x1a, length=2 -> 1a 02 08 05.
 	pb_expect_bytes(c"nested", out, out_len, c"\x1a\x02\x08\x05", 4)
 
-	char* buf = malloc(pb_test_outer_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_outer_desc.struct_size))
 	int i = 0
 	while (i < pb_test_outer_desc.struct_size):
 		buf[i] = 0
@@ -532,7 +532,7 @@ void test_message_repeated_packed():
 	# varint(270)=8e 02, varint(86942)=9e a7 05.
 	pb_expect_bytes(c"repeated packed", out, out_len, c"\x22\x06\x03\x8e\x02\x9e\xa7\x05", 8)
 
-	char* buf = malloc(pb_test_rep_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_rep_desc.struct_size))
 	int i = 0
 	while (i < pb_test_rep_desc.struct_size):
 		buf[i] = 0
@@ -587,7 +587,7 @@ void test_message_repeated_packed_bool():
 	want[4] = 1
 	pb_expect_bytes(c"repeated packed bool", out, out_len, want, 5)
 
-	char* buf = malloc(pb_test_rep_bool_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_rep_bool_desc.struct_size))
 	int i = 0
 	while (i < pb_test_rep_bool_desc.struct_size):
 		buf[i] = 0
@@ -613,7 +613,7 @@ void test_message_repeated_unpacked_decode_is_accepted():
 	pb_test_rep_desc_init()
 	char* data = c"\x20\x03\x20\x8e\x02\x20\x9e\xa7\x05"
 	int length = 9
-	char* buf = malloc(pb_test_rep_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_rep_desc.struct_size))
 	int i = 0
 	while (i < pb_test_rep_desc.struct_size):
 		buf[i] = 0
@@ -694,7 +694,7 @@ void test_message_repeated_message_unpacked():
 	# (length 2), giving 2a 02 08 04.
 	pb_expect_bytes(c"repeated message", out, out_len, c"\x2a\x00\x2a\x02\x08\x04", 6)
 
-	char* buf = malloc(pb_test_poly_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_poly_desc.struct_size))
 	int i = 0
 	while (i < pb_test_poly_desc.struct_size):
 		buf[i] = 0
@@ -826,7 +826,7 @@ void test_message_duplicate_message_merges():
 	# Occurrence 1 sets only x=1 (1a 02 08 01); occurrence 2 sets only
 	# y=2 (1a 02 10 02; tag(2,varint) = (2<<3)|0 = 0x10).
 	char* data = c"\x1a\x02\x08\x01\x1a\x02\x10\x02"
-	char* buf = malloc(pb_test_pt_holder_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_pt_holder_desc.struct_size))
 	int i = 0
 	while (i < pb_test_pt_holder_desc.struct_size):
 		buf[i] = 0
@@ -845,7 +845,7 @@ void test_message_duplicate_message_merges():
 	# Scalars inside the merge still follow last-one-wins: x=1, then
 	# the second occurrence rewrites x=3 and adds y=2.
 	char* data2 = c"\x1a\x02\x08\x01\x1a\x04\x08\x03\x10\x02"
-	char* buf2 = malloc(pb_test_pt_holder_desc.struct_size)
+	char* buf2 = cast(char*, malloc(pb_test_pt_holder_desc.struct_size))
 	i = 0
 	while (i < pb_test_pt_holder_desc.struct_size):
 		buf2[i] = 0
@@ -890,7 +890,7 @@ void pb_test_deep_desc_init():
 # the empty message.
 char* pb_test_build_deep(int levels, int* out_len):
 	int total = levels * 6
-	char* buf = malloc(total)
+	char* buf = cast(char*, malloc(total))
 	for i in range(levels):
 		int pos = i * 6
 		int payload = total - pos - 6
@@ -914,7 +914,7 @@ void test_message_depth_limit():
 	# PB_MAX_DECODE_DEPTH() submessages deep.
 	int len = 0
 	char* data = pb_test_build_deep(PB_MAX_DECODE_DEPTH, &len)
-	char* buf = malloc(pb_test_deep_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_deep_desc.struct_size))
 	int i = 0
 	while (i < pb_test_deep_desc.struct_size):
 		buf[i] = 0
@@ -936,7 +936,7 @@ void test_message_depth_limit():
 	# left the caller's buffer re-zeroed (no dangling partial chain).
 	int len2 = 0
 	char* data2 = pb_test_build_deep(PB_MAX_DECODE_DEPTH + 1, &len2)
-	char* buf2 = malloc(pb_test_deep_desc.struct_size)
+	char* buf2 = cast(char*, malloc(pb_test_deep_desc.struct_size))
 	i = 0
 	while (i < pb_test_deep_desc.struct_size):
 		buf2[i] = 0
@@ -955,7 +955,7 @@ void test_message_depth_limit():
 	# smashed the stack; now it must fail with the same clean error.
 	int len3 = 0
 	char* data3 = pb_test_build_deep(60000, &len3)
-	char* buf3 = malloc(pb_test_deep_desc.struct_size)
+	char* buf3 = cast(char*, malloc(pb_test_deep_desc.struct_size))
 	i = 0
 	while (i < pb_test_deep_desc.struct_size):
 		buf3[i] = 0
@@ -1039,7 +1039,7 @@ void test_message_error_path_resets_out():
 	# field 2 = "hi" decodes (and allocates) fine, then field 1's
 	# varint payload is missing entirely.
 	char* data = c"\x12\x02\x68\x69\x08"
-	char* buf = malloc(pb_test_simple_desc.struct_size)
+	char* buf = cast(char*, malloc(pb_test_simple_desc.struct_size))
 	int i = 0
 	while (i < pb_test_simple_desc.struct_size):
 		buf[i] = 0
@@ -1070,7 +1070,7 @@ void test_message_roundtrip_property_simple():
 		m.a = rand_below(&rs, 2000000000) - 1000000000
 		if (m.a == 0): m.a = 1
 		int slen = rand_below(&rs, 12)
-		char* s = malloc(slen + 1)
+		char* s = cast(char*, malloc(slen + 1))
 		for i in range(slen): s[i] = 'a' + rand_below(&rs, 26)
 		s[slen] = 0
 		m.b.data = s
@@ -1105,7 +1105,7 @@ void test_message_roundtrip_property_repeated():
 
 		int out_len = 0
 		char* out = pb_encode(&pb_test_rep_desc, cast(char*, &rm), &out_len)
-		char* buf = malloc(pb_test_rep_desc.struct_size)
+		char* buf = cast(char*, malloc(pb_test_rep_desc.struct_size))
 		int z = 0
 		while (z < pb_test_rep_desc.struct_size):
 			buf[z] = 0

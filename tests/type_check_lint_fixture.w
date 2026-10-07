@@ -1,13 +1,13 @@
 # wbuild: target=type_check_lint_test tag=tests dep=wv2
-# wbuild: step="bin/wv2 check --quiet tests/type_check_lint_fixture.w" reject_stderr="warning:"
-# wbuild: step="bin/wv2 check --lint --quiet tests/type_check_lint_fixture.w" expect_stderr="warning: called object of type 'int' is not a function; declare it as a function pointer ('type callback = fn(int) -> int', then 'callback* f') [call-int]" expect_stderr="warning: initialization converts 'void*' to 'int*' without cast() [void-pointer-conversion]" expect_stderr="warning: assignment converts 'void*' to 'char*' without cast() [void-pointer-conversion]" expect_stderr="warning: function 'take_ints' argument 1 converts 'void*' to 'int*' without cast() [void-pointer-conversion]" reject_stderr="'void*' to 'void*'" reject_stderr="'int*' to"
-# wbuild: step="bin/wv2 check --lint --strict --quiet tests/type_check_lint_fixture.w" expect_fail expect_stderr="warning(s) treated as errors (--strict)"
-# Issue #532's two opt-in type lint rules (grammar/type_check.w):
-# calling an int ([call-int]) and converting void* to a typed pointer
-# without cast() ([void-pointer-conversion]). Both idioms are common
-# enough across the tree (int-held callbacks, 'T* p = malloc(n)') that
-# they stay out of the always-on warnings; a plain 'w check' must be
-# silent on this file.
+# wbuild: step="bin/wv2 check --quiet tests/type_check_lint_fixture.w" expect_fail expect_stderr="error: called object of type" expect_stderr="error: initialization converts"
+# wbuild: step="bin/wv2 check --lint --quiet tests/type_check_lint_fixture.w" expect_stderr="error: called object of type 'int' is not a function; declare it as a function pointer ('type callback = fn(int) -> int', then 'callback* f') [call-int]" expect_stderr="error: initialization converts 'void*' to 'int*' without cast() [void-pointer-conversion]" expect_stderr="error: assignment converts 'void*' to 'char*' without cast() [void-pointer-conversion]" expect_stderr="error: function 'take_ints' argument 1 converts 'void*' to 'int*' without cast() [void-pointer-conversion]" reject_stderr="'void*' to 'void*'" reject_stderr="'int*' to" expect_fail
+# wbuild: step="bin/wv2 check --lint --strict --quiet tests/type_check_lint_fixture.w" expect_fail expect_stderr="error: called object of type"
+# Issue #532: former opt-in type lint checks are errors in every mode.
+# Their diagnostic text and codes remain stable. Typed callbacks,
+# explicit pointer casts, and erasing a typed pointer remain valid.
+
+
+
 import lib.lib
 
 

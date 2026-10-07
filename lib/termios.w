@@ -104,7 +104,7 @@ int term_get_cols(int fd):
 		int from_env = atoi(env_cols)
 		if (from_env > 0):
 			return from_env
-	char* winsize = malloc(8)
+	char* winsize = cast(char*, malloc(8))
 	int cols = 0
 	if (sys_ioctl(fd, term_tiocgwinsz, cast(int, winsize)) == 0):
 		cols = (winsize[2] & 255) | ((winsize[3] & 255) << 8)

@@ -647,7 +647,7 @@ void export_function_note(int t, char* name, int ret_type):
 	if (ffi_type_class(ret_type) == 1): ret_kind = 2
 	if (type_get_pointer_level(ret_type) == 0):
 		if (strcmp(type_get_name(ret_type), c"void") == 0): ret_kind = 0
-	char* classes = malloc(n + 1)
+	char* classes = cast(char*, malloc(n + 1))
 	for i in range(n):
 		int ptype = sym_param_type(t, i)
 		if (type_stack_words(ptype) != 1):

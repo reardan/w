@@ -184,7 +184,7 @@ void test_empty_edges():
 void test_high_bytes_match_bytewise():
 	# 0xc3 0xa9: UTF-8 e-acute. Matching is byte-oriented, so it is
 	# two "any byte" elements, and high bytes work in negated classes.
-	char* buf = malloc(3)
+	char* buf = cast(char*, malloc(3))
 	buf[0] = 195
 	buf[1] = 169
 	buf[2] = 0

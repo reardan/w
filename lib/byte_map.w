@@ -227,7 +227,7 @@ int byte_map_put(byte_map* m, char* key, int length, int value):
 	if ((m.max_entries > 0) && (m.count >= m.max_entries)): return BYTES_TOO_LARGE
 	int size = length
 	if (size < 1): size = 1
-	char* copy = malloc(size)
+	char* copy = cast(char*, malloc(size))
 	if (copy == 0): return BYTES_NO_MEMORY
 	for i in range(length): copy[i] = key[i]
 	byte_map_entry* e = new byte_map_entry()

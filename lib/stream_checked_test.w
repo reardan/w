@@ -118,7 +118,7 @@ int stream_checked_byte_at(int i):
 # Reads exactly n bytes from a blocking pipe end, checking the pattern
 # from offset start.
 void stream_checked_drain(int fd, int start, int n):
-	char* buf = malloc(n + 1)
+	char* buf = cast(char*, malloc(n + 1))
 	io_result r
 	assert_equal(IO_OK, io_read_exact(fd, buf, n, &r))
 	for i in range(n): assert_equal(stream_checked_byte_at(start + i), buf[i] & 255)
@@ -146,7 +146,7 @@ void test_stream_partial_flush_resumes_after_would_block():
 	asserts(c"F_SETFL failed", sys_fcntl(wr, 4, 2048) >= 0)
 
 	int n = pipe_size * 2 + 100
-	char* data = malloc(n)
+	char* data = cast(char*, malloc(n))
 	for i in range(n): data[i] = stream_checked_byte_at(i)
 	wstream* s = stream_writer_sized(wr, pipe_size * 3)
 	io_result r
@@ -192,7 +192,7 @@ void test_stream_read_error_is_not_eof():
 	assert_equal(IO_IO_ERROR, stream_error(in))
 	assert_equal(21, stream_error_errno(in))  # EISDIR
 	assert_equal(0, in.eof)
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	io_result r
 	assert_equal(IO_IO_ERROR, stream_read_checked(in, buf, 64, &r))
 	assert_equal(0, r.transferred)
@@ -220,7 +220,7 @@ void test_stream_read_write_only_fd_is_error():
 void test_stream_real_eof_is_not_an_error():
 	assert_equal(1, file_write_text(stream_checked_path(c"eof.txt"), c"ab"))
 	wstream* in = stream_open_read(stream_checked_path(c"eof.txt"))
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	io_result r
 	assert_equal(IO_EOF, stream_read_checked(in, buf, 8, &r))
 	assert_equal(2, r.transferred)

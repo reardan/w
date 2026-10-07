@@ -1324,7 +1324,8 @@ void test_ast_warning_events_are_required():
 			if (host):
 				compiler = c"bin/wv2_64"
 				arch = c"x64"
-			ast_test_image_at(compiler, arch, source, 0)
+			int errors = (fixture == 1) || (fixture == 2) || (fixture == 3) || (fixture == 4) || (fixture == 8) || (fixture == 10)
+			if (errors == 0): ast_test_image_at(compiler, arch, source, 0)
 			for strict in range(2):
 				for json in range(2):
 					process_result* old = 0
@@ -1342,7 +1343,7 @@ void test_ast_warning_events_are_required():
 						process_result* result = ast_test_run(args, 0)
 						if (enabled == 0): old = result
 						else:
-							assert_equal(strict, result.status)
+							assert_equal(strict || errors, result.status)
 							assert_equal(old.status, result.status)
 							assert_strings_equal(old.stdout_text, result.stdout_text)
 							assert_strings_equal(old.stderr_text, result.stderr_text)

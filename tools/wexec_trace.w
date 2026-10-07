@@ -193,7 +193,7 @@ int wtr_peek(int pid, int addr):
 # peek fails partway through.
 char* wtr_read_cstring(int pid, int addr):
 	int cap = 256
-	char* buf = malloc(cap)
+	char* buf = cast(char*, malloc(cap))
 	int len = 0
 	int offset = 0
 	int done = 0
@@ -258,7 +258,7 @@ char* wtr_cwd_prefix   # memoized "<cwd>/"; "" when getcwd fails
 
 char* wtr_get_cwd_prefix():
 	if (wtr_cwd_prefix == 0):
-		char* buf = malloc(4096)
+		char* buf = cast(char*, malloc(4096))
 		int n = getcwd(buf, 4096)
 		if (n < 0): buf[0] = 0
 		string_builder* s = string_new()

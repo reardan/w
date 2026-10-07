@@ -26,7 +26,7 @@ pollfd* pollfd_at(pollfd* fds, int index):
 
 
 pollfd* pollfd_new_array(int count):
-	char* buffer = malloc(count * pollfd_size)
+	char* buffer = cast(char*, malloc(count * pollfd_size))
 	int i = 0
 	while (i < count * pollfd_size):
 		buffer[i] = 0

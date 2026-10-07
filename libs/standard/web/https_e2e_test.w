@@ -64,7 +64,7 @@ tls_conn* hs_child_accept(int listener):
 
 # Read one request head over TLS (until CRLFCRLF, EOF, or the recv timeout).
 void hs_child_read_request(tls_conn* tc):
-	char* buf = malloc(8192)
+	char* buf = cast(char*, malloc(8192))
 	int total = 0
 	while (total < 8192):
 		int got = tls_read(tc, buf + total, 8192 - total)
@@ -77,7 +77,7 @@ void hs_child_read_request(tls_conn* tc):
 # (child) After serving, wait for the client's close_notify (returns 0) so
 # the connection tears down cleanly, then close.
 void hs_child_wait_close(tls_conn* tc):
-	char* d = malloc(64)
+	char* d = cast(char*, malloc(64))
 	tls_read(tc, d, 64)
 	free(d)
 	tls_close(tc)

@@ -95,7 +95,7 @@ cell_snapshot* cell_snapshot_create(vm_cell* cell):
 	snapshot.max_threads = cell.max_threads
 	snapshot.input_length = cell.input_length
 	if (cell.input_length != 0):
-		snapshot.input = malloc(cell.input_length)
+		snapshot.input = cast(char*, malloc(cell.input_length))
 		mem_copy[char](snapshot.input, cell.input, cell.input_length)
 	snapshot.resident_pages = copied
 	return snapshot
@@ -142,7 +142,7 @@ int cell_snapshot_reset(vm_cell* cell):
 	cell.input = 0
 	cell.input_length = snapshot.input_length
 	if (snapshot.input_length != 0):
-		cell.owned_input = malloc(snapshot.input_length)
+		cell.owned_input = cast(char*, malloc(snapshot.input_length))
 		mem_copy[char](cell.owned_input, snapshot.input, snapshot.input_length)
 		cell.input = cell.owned_input
 	cell.input_pos = 0

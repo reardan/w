@@ -40,7 +40,7 @@ void test_stream_read_spanning_refills():
 	stream_test_write_fixture(c"bin/stream_test_span.txt", c"0123456789", 3)
 	int fd = open(c"bin/stream_test_span.txt", 0, 0)
 	wstream* in = stream_reader_sized(fd, 3)
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	# 7 > capacity 3: exercises both the buffered and the direct-read path.
 	assert_equal(7, stream_read(in, buf, 7))
 	buf[7] = 0
@@ -126,7 +126,7 @@ void test_stream_flush_makes_bytes_visible():
 void test_stream_over_socketpair():
 	# Sockets are not seekable: file_size() style IO cannot work here,
 	# streams must.
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 
 	wstream* out = stream_writer_sized(fds[0], 4)
@@ -188,7 +188,7 @@ void test_frame_read_truncated_body_fails():
 
 
 void test_frame_over_socketpair():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 
 	wstream* out = stream_writer(fds[0])

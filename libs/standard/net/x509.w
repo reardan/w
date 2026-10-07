@@ -502,8 +502,8 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 		# Uncompressed point only: 0x04 || X(32) || Y(32).
 		if (kl != 65): return 0
 		if ((r.data[ks] & 255) != 4): return 0
-		c.ec_qx = malloc(32)
-		c.ec_qy = malloc(32)
+		c.ec_qx = cast(char*, malloc(32))
+		c.ec_qy = cast(char*, malloc(32))
 		for i in range(32):
 			c.ec_qx[i] = r.data[ks + 1 + i]
 			c.ec_qy[i] = r.data[ks + 33 + i]
@@ -812,7 +812,7 @@ x509_cert* x509_parse(char* der, int len):
 	if (der == 0): return 0
 	if ((len < 1) || (len > X509_MAX_CERT_LEN)): return 0
 	x509_cert* c = new x509_cert()
-	c.der = malloc(len)
+	c.der = cast(char*, malloc(len))
 	mem_copy(c.der, der, len)
 	c.der_len = len
 	c.tbs_start = 0
@@ -900,7 +900,7 @@ list[pem_block*] pem_decode_blocks(char* text, int len, char* label):
 	char* end_marker = strjoin(end_head, c"-----")
 	free(begin_head)
 	free(end_head)
-	char* b64 = malloc(len + 1)
+	char* b64 = cast(char*, malloc(len + 1))
 	int b64len = 0
 	int in_block = 0
 	int block_bad = 0
@@ -1216,9 +1216,9 @@ int x509_der_int_from_be(char* be, int len, char* out):
 int x509_ecdsa_sig_raw_to_der(char* r32, char* s32, char* out, int* out_len):
 	if (r32 == 0): return 0
 	if (s32 == 0): return 0
-	char* rb = malloc(33)
+	char* rb = cast(char*, malloc(33))
 	int rl = x509_der_int_from_be(r32, 32, rb)
-	char* sb = malloc(33)
+	char* sb = cast(char*, malloc(33))
 	int sl = x509_der_int_from_be(s32, 32, sb)
 	int body_len = 2 + rl + 2 + sl
 	int pos = 0
@@ -1259,7 +1259,7 @@ int x509_check_signature(x509_cert* child, x509_cert* issuer):
 	if ((alg == X509_SIGALG_RSA_SHA384) || (alg == X509_SIGALG_RSA_PSS_SHA384) || (alg == X509_SIGALG_ECDSA_SHA384)):
 		whash_alg = WHASH_SHA384
 		dlen = 48
-	char* digest = malloc(48)
+	char* digest = cast(char*, malloc(48))
 	whash_oneshot(whash_alg, child.der + child.tbs_start, child.tbs_len, digest)
 	int result = 0
 	int is_rsa = 0
@@ -1282,8 +1282,8 @@ int x509_check_signature(x509_cert* child, x509_cert* issuer):
 					result = rsa_pss_verify_sha384(n, issuer.rsa_n_len, e, issuer.rsa_e_len, sig, child.sig_len, digest)
 	else:
 		if (issuer.key_type == X509_KEY_EC_P256):
-			char* r32 = malloc(32)
-			char* s32 = malloc(32)
+			char* r32 = cast(char*, malloc(32))
+			char* s32 = cast(char*, malloc(32))
 			if (x509_ecdsa_sig_to_raw(child.der + child.sig_start, child.sig_len, r32, s32) != 0):
 				result = ecdsa_p256_verify(issuer.ec_qx, issuer.ec_qy, digest, dlen, r32, s32)
 			free(r32)
@@ -1523,13 +1523,13 @@ int x509_parse_sec1_key(char* data, int start, int end, int require_params, char
 		pub_start = bs + 1
 	if (asn1_done(&k) == 0): return 0
 	# Validate the scalar by deriving Q = d*G (rejects d == 0 and d >= n).
-	char* d32 = malloc(32)
+	char* d32 = cast(char*, malloc(32))
 	int i = 0
 	while (i < 32):
 		d32[i] = data[ds + i]
 		i = i + 1
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	int ok = ecdsa_p256_public_key(d32, qx, qy)
 	if (ok != 0):
 		if (have_pub != 0):

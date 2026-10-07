@@ -6,7 +6,7 @@ import lib.memory
 
 int main():
 	malloc_force_debug_mode()
-	char* a = malloc(10)
+	char* a = cast(char*, malloc(10))
 	free(a)
 	free(a)
 	return 0

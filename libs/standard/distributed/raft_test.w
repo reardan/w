@@ -1303,7 +1303,7 @@ void test_install_snapshot_receiver_path():
 	assert_equal(1, raft_commit_int(n2))
 	# term-3 snapshot at (5, 2) with a binary blob (embedded zeros)
 	raft_msg* inst = raft_test_install(1, 2, 3, 5, 2, 5)
-	char* blob = malloc(5)
+	char* blob = cast(char*, malloc(5))
 	blob[0] = 1
 	blob[1] = 0
 	blob[2] = 0

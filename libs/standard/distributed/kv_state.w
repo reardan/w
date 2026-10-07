@@ -107,7 +107,7 @@ char* kv_encode_put(char* key, char* value):
 	if (kv_valid_text(value, 1) == 0): return 0
 	int klen = strlen(key)
 	int vlen = strlen(value)
-	char* cmd = malloc(klen + vlen + 4)
+	char* cmd = cast(char*, malloc(klen + vlen + 4))
 	cmd[0] = 'P'
 	cmd[1] = 9
 	int i = 0
@@ -133,7 +133,7 @@ char* kv_encode_put_len(char* key, char* value, int value_len, int* len_out):
 	if (kv_valid_text(key, 0) == 0): return 0
 	if (kv_valid_bytes(value, value_len, 1) == 0): return 0
 	int klen = strlen(key)
-	char* cmd = malloc(klen + value_len + 3)
+	char* cmd = cast(char*, malloc(klen + value_len + 3))
 	cmd[0] = 'P'
 	cmd[1] = 9
 	int i = 0
@@ -153,7 +153,7 @@ char* kv_encode_put_len(char* key, char* value, int value_len, int* len_out):
 char* kv_encode_delete(char* key):
 	if (kv_valid_text(key, 0) == 0): return 0
 	int klen = strlen(key)
-	char* cmd = malloc(klen + 3)
+	char* cmd = cast(char*, malloc(klen + 3))
 	cmd[0] = 'D'
 	cmd[1] = 9
 	for i in range(klen): cmd[2 + i] = key[i]

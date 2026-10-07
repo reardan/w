@@ -43,7 +43,7 @@ char* gs_msg(char* prefix, int n):
 
 
 char* gs_fill(int size, int ch):
-	char* buf = malloc(size + 1)
+	char* buf = cast(char*, malloc(size + 1))
 	for i in range(size): buf[i] = ch
 	buf[size] = 0
 	return buf
@@ -671,7 +671,7 @@ void test_grpc_client_coding_errors():
 		gs_raw_response(fd, e, 1, c"x-bogus", c"abc", 3)
 		gs_raw_response(fd, e, 3, 0, c"abc", 3)
 		gs_raw_response(fd, e, 5, c"gzip", c"not gzip at all", 15)
-		char* scratch = malloc(256)
+		char* scratch = cast(char*, malloc(256))
 		while (read(fd, scratch, 256) > 0): scratch[0] = 0
 		exit(0)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)

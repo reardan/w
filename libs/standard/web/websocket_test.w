@@ -83,7 +83,7 @@ void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int 
 	# Every strict prefix is "need more input".
 	int k = 0
 	while (k < n):
-		char* copy = malloc(n)
+		char* copy = cast(char*, malloc(n))
 		mem_copy(copy, buf, n)
 		ws_frame g
 		assert_equal(0, ws_frame_decode(copy, k, &g, 1000))
@@ -164,7 +164,7 @@ void test_ws_rfc_5_7_encode():
 	wst_expect_encoding(c"masked pong", 1, ws_op_pong, c"Hello", 5, c"37 fa 21 3d", c"8a 85 37 fa 21 3d 7f 9f 4d 51 58")
 
 	# 256 bytes of binary data: 16-bit length.
-	char* data = malloc(65536)
+	char* data = cast(char*, malloc(65536))
 	for i in range(65536): data[i] = i & 255
 	string_builder* out = string_new()
 	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary, data, 256, 0))
@@ -285,7 +285,7 @@ void wst_echo_peer(int fd):
 # A client-role conn talking to a forked echo peer; cfg != 0 turns
 # permessage-deflate on at both ends.
 ws_conn* wst_client_to_echo_z(int* out_pid, ws_deflate_config* cfg):
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	wst_pair(fds)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
@@ -337,12 +337,12 @@ void test_ws_session_echo_and_close():
 	assert_equal(0, m.len)
 	ws_message_free(m)
 	# 16-bit and 64-bit length encodings, both directions.
-	int* sizes = malloc(__word_size__ * 2)
+	int* sizes = cast(int*, malloc(__word_size__ * 2))
 	sizes[0] = 300
 	sizes[1] = 70000
 	for k in range(2):
 		int n = sizes[k]
-		char* data = malloc(n)
+		char* data = cast(char*, malloc(n))
 		int i = 0
 		while (i < n):
 			data[i] = (i * 7 + k) & 255
@@ -368,7 +368,7 @@ void test_ws_session_echo_and_close():
 	assert_equal(1, c.pongs_received)
 	# Control-frame sending rules are enforced locally.
 	assert_equal(0, ws_send_frame(c, 0, ws_op_ping, c"x", 1))
-	char* big = malloc(126)
+	char* big = cast(char*, malloc(126))
 	assert_equal(0, ws_send_ping(c, big, 126))
 	free(big)
 	assert_equal(0, ws_send_frame(c, 1, 3, c"x", 1))
@@ -416,7 +416,7 @@ void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expe
 	if (expect_code == 0):
 		close(fd)
 		exit(0)
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int have = 0
 	while (1):
 		ws_frame f
@@ -453,7 +453,7 @@ void wst_raw_peer(int fd, char* raw_hex, int tested_is_client, int expect_code):
 # `messages` good messages and then fail with expect_error after
 # sending expect_code, on raw[0..n) from the peer.
 void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_deflate_config* cfg, char* raw, int n, int messages, int expect_error, int expect_code):
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	wst_pair(fds)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
@@ -524,7 +524,7 @@ void test_ws_server_rejects_unmasked_frames():
 
 
 void test_ws_client_accepts_close_without_status():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	wst_pair(fds)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
@@ -535,7 +535,7 @@ void test_ws_client_accepts_close_without_status():
 		int n = 0
 		char* raw = hex_decode_loose(c"81 02 6f 6b 88 00", &n)
 		net_test_send_all(fds[1], raw, n)
-		char* buf = malloc(64)
+		char* buf = cast(char*, malloc(64))
 		int have = 0
 		while (have < 6):
 			int got = read(fds[1], buf + have, 64 - have)
@@ -877,7 +877,7 @@ void test_ws_deflate_client_negotiation():
 # n bytes of compressible-but-not-trivial data whose repeats reach
 # beyond small windows.
 char* wst_pattern(int n, int seed):
-	char* data = malloc(n)
+	char* data = cast(char*, malloc(n))
 	for i in range(n): data[i] = ((i / 3) * 7 + seed + ((i >> 9) & 31)) & 255
 	return data
 
@@ -911,7 +911,7 @@ void wst_compressed_session(ws_deflate_config* cfg):
 	wst_expect_binary_echo(c, big, 70000)
 	wst_expect_binary_echo(c, big, 70000)
 	free(big)
-	char* noise = malloc(3000)
+	char* noise = cast(char*, malloc(3000))
 	int i = 0
 	int x = 12345
 	while (i < 3000):
@@ -968,7 +968,7 @@ int wst_read_some(int fd, char* buf, int cap):
 void test_ws_deflate_frames_on_the_wire():
 	wst_use_deflate()
 	ws_deflate_config* cfg = ws_deflate_config_new()
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	wst_pair(fds)
 	ws_conn* client = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
 	ws_conn* server = ws_conn_wrap(connection_context_new(fds[1], 10000, 0), 0, 1)
@@ -980,7 +980,7 @@ void test_ws_deflate_frames_on_the_wire():
 	# the server inflates it. (Peek with MSG_PEEK-free reads: the frame is
 	# re-injected through the client's socket end.)
 	assert_equal(1, ws_send_text(client, text, n))
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	int got = wst_read_some(fds[1], buf, 256)
 	assert_equal(193, buf[0] & 255)
 	assert_equal(128, buf[1] & 128)
@@ -1057,7 +1057,7 @@ void test_ws_deflate_peer_violations():
 # window, a violation for 2^8.
 void test_ws_deflate_window_bits_enforced():
 	wst_use_deflate()
-	char* first = malloc(600)
+	char* first = cast(char*, malloc(600))
 	for i in range(300):
 		first[2 * i] = i & 255
 		first[2 * i + 1] = i >> 8

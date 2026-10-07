@@ -24,7 +24,7 @@ void check(char* want, int got_len):
 
 
 int main(int argc, int argv):
-	buf = malloc(128)
+	buf = cast(char*, malloc(128))
 
 	# Integers, strings and chars in the variadic tail
 	check(c"42 str X", snprintf(buf, 128, c"%d %s %c", 42, c"str", 'X'))

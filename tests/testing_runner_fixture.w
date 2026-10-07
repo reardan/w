@@ -5,7 +5,7 @@ import lib.testing
 
 
 void test_clean_alpha():
-	char* p = malloc(32)
+	char* p = cast(char*, malloc(32))
 	p[0] = 'a'
 	free(p)
 
@@ -18,5 +18,5 @@ char* runner_fixture_kept
 
 
 void test_leaks_one_block():
-	runner_fixture_kept = malloc(40)
+	runner_fixture_kept = cast(char*, malloc(40))
 	runner_fixture_kept[0] = 'x'

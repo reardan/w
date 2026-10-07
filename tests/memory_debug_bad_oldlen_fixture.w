@@ -6,6 +6,6 @@ import lib.memory
 
 int main():
 	malloc_force_debug_mode()
-	char* a = malloc(10)
+	char* a = cast(char*, malloc(10))
 	realloc(a, 999, 20)
 	return 0

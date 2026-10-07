@@ -83,7 +83,7 @@ void test_inotify_watch_lifecycle():
 	# Removing the watch queues its final IN_IGNORED event: a record
 	# with no name, exercising the len == 0 parse path (blocking read
 	# is safe -- the event is already queued).
-	char* buf = malloc(INOTIFY_BUF_SIZE)
+	char* buf = cast(char*, malloc(INOTIFY_BUF_SIZE))
 	int got = read(fd, buf, INOTIFY_BUF_SIZE)
 	assert_equal(INOTIFY_EVENT_HEADER_SIZE, got)
 	assert_equal(INOTIFY_EVENT_HEADER_SIZE, inotify_event_record_size(buf, 0))
@@ -134,7 +134,7 @@ void test_inotify_event_stream():
 	it_assert_ok(c"unlink", unlink(path_b))
 
 	# Every event is already queued, so one read drains all five.
-	char* buf = malloc(INOTIFY_BUF_SIZE)
+	char* buf = cast(char*, malloc(INOTIFY_BUF_SIZE))
 	int got = read(fd, buf, INOTIFY_BUF_SIZE)
 	asserts(c"expected queued inotify events", got > 0)
 
@@ -173,7 +173,7 @@ void test_inotify_directory_events_carry_isdir():
 	it_assert_ok(c"mkdir sub", mkdir(subdir, 493))
 	it_assert_ok(c"rmdir sub", rmdir(subdir))
 
-	char* buf = malloc(INOTIFY_BUF_SIZE)
+	char* buf = cast(char*, malloc(INOTIFY_BUF_SIZE))
 	int got = read(fd, buf, INOTIFY_BUF_SIZE)
 	asserts(c"expected queued inotify events", got > 0)
 
@@ -191,7 +191,7 @@ void test_inotify_directory_events_carry_isdir():
 void test_inotify_event_parse_bounds():
 	# Synthetic buffer: one well-formed record (wd 7, IN_CREATE, cookie
 	# 9, "abc" NUL-padded to len 8), checked against every truncation.
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	save_int32(buf, 7)
 	save_int32(&buf[4], IN_CREATE)
 	save_int32(&buf[8], 9)

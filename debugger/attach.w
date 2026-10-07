@@ -702,7 +702,7 @@ void at_calibrate():
 	# validates a 32-bit image and a 64-bit attach (bin/wdbg64) always
 	# validates a 64-bit one -- this needs no word-size branch itself.
 	attach_delta = 0
-	char* buf = malloc(codepos)
+	char* buf = cast(char*, malloc(codepos))
 	if (at_read_exe_image(attach_pid, buf, codepos) == 0):
 		println2(c"wdbg: cannot read /proc/<pid>/exe to validate the recompile; symbol names are disabled (raw addresses only)")
 		free(buf)
@@ -943,7 +943,7 @@ void at_watch_command(char* arg):
 		save_word(cast(char*, attach_hw_addrs + slot * __word_size__), 0)
 		println(c"cannot program the debug registers (ptrace POKEUSER failed)")
 		return;
-	char* copy = malloc(strlen(arg) + 1)
+	char* copy = cast(char*, malloc(strlen(arg) + 1))
 	strcpy(copy, arg)
 	save_word(cast(char*, attach_hw_texts + slot * __word_size__), cast(int, copy))
 	save_word(cast(char*, attach_hw_olds + slot * __word_size__), dbg_mem_read_word(addr))
@@ -1408,7 +1408,7 @@ void at_detach():
 
 # --- command loop ---
 void at_command_loop():
-	char* command = malloc(256)
+	char* command = cast(char*, malloc(256))
 	while (1):
 		int n = line_edit_read(c"wdbg(attach)> ", command, 256, 0)
 		if (n == -2): continue

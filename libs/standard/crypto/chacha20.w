@@ -106,7 +106,7 @@ void chacha20_block(char* key, int counter, char* nonce, char* out):
 void chacha20_xor(char* key, int counter, char* nonce, char* data, int len, char* out):
 	int* s = cast(int*, malloc(16 * __word_size__))
 	int* w = cast(int*, malloc(16 * __word_size__))
-	char* ks = malloc(64)
+	char* ks = cast(char*, malloc(64))
 	chacha20_init_state(s, key, counter, nonce)
 	int off = 0
 	int i = 0

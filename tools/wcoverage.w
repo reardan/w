@@ -114,7 +114,7 @@ void wcov_direct_imports(char* path, set[char*] out):
 char* wcov_read_fd(int fd):
 	int cap = 8192
 	int len = 0
-	char* buf = malloc(cap)
+	char* buf = cast(char*, malloc(cap))
 	while (1):
 		if (len + 4096 + 1 > cap):
 			buf = realloc(buf, cap, cap * 2)

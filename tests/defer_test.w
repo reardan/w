@@ -218,7 +218,7 @@ int first_byte_of(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0 - 1
 	defer close_counted(fd)
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	int n = read(fd, buf, 1)
 	int result = 0 - 1
 	if (n == 1): result = buf[0]

@@ -92,7 +92,7 @@ void test_tombstones():
 
 void test_binary_values():
 	memtable* m = memtable_new()
-	char* blob = malloc(4)
+	char* blob = cast(char*, malloc(4))
 	blob[0] = 7
 	blob[1] = 0
 	blob[2] = 255

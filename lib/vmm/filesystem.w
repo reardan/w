@@ -39,10 +39,10 @@ int cell_fs_configure(vm_cell* cell, char* root, int writable):
 		close(fd)
 		return cell_fail(cell, c"filesystem confinement requires Linux openat2")
 	close(probe)
-	cell_filesystem* fs = malloc(sizeof(cell_filesystem))
+	cell_filesystem* fs = cast(cell_filesystem*, malloc(sizeof(cell_filesystem)))
 	fs.root = fd
 	fs.writable = writable != 0
-	fs.descriptors = malloc(61 * sizeof(int))
+	fs.descriptors = cast(int*, malloc(61 * sizeof(int)))
 	for i in range(61): fs.descriptors[i] = -1
 	cell.fs_state = cast(void*, fs)
 	cell.fs_cleanup = cast(void*, cell_fs_free)

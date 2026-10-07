@@ -346,7 +346,7 @@ void test_snapshot_install_success_reclaims_old_tables():
 void test_import_rejects_unsorted_blob():
 	char* prefix = ld_prefix(c"snap_bad")
 	lsm* l = ld_old_generation(prefix)
-	char* blob = malloc(30)
+	char* blob = cast(char*, malloc(30))
 	blob[0] = 76
 	blob[1] = 83
 	blob[2] = 77
@@ -409,7 +409,7 @@ void test_batch_all_or_nothing_after_torn_record():
 	# tear the batch record: keep all but its last 3 bytes
 	int after = ld_file_size(wpath)
 	int fd = open(wpath, 0, 0)
-	char* buf = malloc(after)
+	char* buf = cast(char*, malloc(after))
 	assert_equal(after, read_exact(fd, buf, after))
 	close(fd)
 	fd = create_file(wpath, 420)
@@ -440,7 +440,7 @@ void test_batch_all_or_nothing_after_torn_record():
 # ---- bounded ordered scan -----------------------------------------------------------
 
 char* ld_key(int i):
-	char* key = malloc(4)
+	char* key = cast(char*, malloc(4))
 	key[0] = 'k'
 	key[1] = '0' + i / 10
 	key[2] = '0' + i % 10

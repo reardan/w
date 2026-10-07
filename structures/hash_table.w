@@ -50,7 +50,7 @@ int __w_strcmp(char* s1, char* s2):
 
 
 char* __w_strclone(char *c):
-	char *clone = __w_alloc(__w_strlen(c) + 1)
+	char *clone = cast(char*, __w_alloc(__w_strlen(c) + 1))
 	__w_strcpy(clone, c)
 	return clone
 
@@ -270,7 +270,7 @@ int __w_hash_key_equal(int kind, int left, int right):
 
 int __w_hash_clone_string(int key):
 	int length = load_ptr(key + __word_size__)
-	char* clone = __w_alloc(__w_size_add(2 * __word_size__ + 1, length))
+	char* clone = cast(char*, __w_alloc(__w_size_add(2 * __word_size__ + 1, length)))
 	int data = cast(int, clone) + 2 * __word_size__
 	save_ptr(clone, data)
 	save_ptr(clone + __word_size__, length)
@@ -311,7 +311,7 @@ void __w_hash_order_unlink(__w_hash_table* table, int i):
 
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16): capacity = 16
-	__w_hash_table* table = __w_alloc(16 * __word_size__)
+	__w_hash_table* table = cast(__w_hash_table*, __w_alloc(16 * __word_size__))
 	if (__w_hash_seed_state == 0): __w_hash_seed_init(cast(int, table))
 	table.seed0 = __w_hash_seed0
 	table.seed1 = __w_hash_seed1
@@ -323,13 +323,13 @@ __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	table.default_kind = __w_hash_default_none
 	table.default_value = 0
 	int slot_size = __w_hash_slot_size(table)
-	table.keys = __w_alloc(__w_size_mul(capacity, __word_size__))
-	table.values = __w_alloc(__w_size_mul(capacity, slot_size))
-	table.states = __w_alloc(capacity)
+	table.keys = cast(int*, __w_alloc(__w_size_mul(capacity, __word_size__)))
+	table.values = cast(int*, __w_alloc(__w_size_mul(capacity, slot_size)))
+	table.states = cast(char*, __w_alloc(capacity))
 	# Only chain-linked slots are ever read, so the order arrays need no
 	# initialization beyond the empty head/tail sentinels.
-	table.order_next = __w_alloc(__w_size_mul(capacity, __word_size__))
-	table.order_prev = __w_alloc(__w_size_mul(capacity, __word_size__))
+	table.order_next = cast(int*, __w_alloc(__w_size_mul(capacity, __word_size__)))
+	table.order_prev = cast(int*, __w_alloc(__w_size_mul(capacity, __word_size__)))
 	table.order_head = -1
 	table.order_tail = -1
 	int i = 0
@@ -388,11 +388,11 @@ void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
 	table.capacity = new_capacity
 	table.count = 0
 	table.deleted = 0
-	table.keys = __w_alloc(__w_size_mul(table.capacity, __word_size__))
-	table.values = __w_alloc(__w_size_mul(table.capacity, slot_size))
-	table.states = __w_alloc(table.capacity)
-	table.order_next = __w_alloc(__w_size_mul(table.capacity, __word_size__))
-	table.order_prev = __w_alloc(__w_size_mul(table.capacity, __word_size__))
+	table.keys = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
+	table.values = cast(int*, __w_alloc(__w_size_mul(table.capacity, slot_size)))
+	table.states = cast(char*, __w_alloc(table.capacity))
+	table.order_next = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
+	table.order_prev = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
 	table.order_head = -1
 	table.order_tail = -1
 	int i = 0
@@ -497,10 +497,13 @@ int __w_map_default_new_container(int desc):
 # Materialize one default value per the table's policy. Called before
 # the slot is claimed so a factory that mutates this same map cannot
 # invalidate the slot index.
+type __factory_callback = fn() -> int
+
+
 int __w_map_default_materialize(__w_hash_table* table):
 	if (table.default_kind == __w_hash_default_factory):
 		int factory = table.default_value
-		return factory()
+		return (cast(__factory_callback*, factory))()
 	if (table.default_kind == __w_hash_default_container):
 		return __w_map_default_new_container(table.default_value)
 	return table.default_value

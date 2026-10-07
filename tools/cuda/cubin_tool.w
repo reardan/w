@@ -286,7 +286,7 @@ int cubin_file_contains(char* path, char* needle):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return -1
 	string_builder* data = string_new()
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int n = read(fd, buf, 65536)
 	while (n > 0):
 		for i in range(n): string_append_char(data, buf[i])

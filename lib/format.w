@@ -81,14 +81,14 @@ void printf(char* fmt):
 
 
 void printf1(char* fmt, int a):
-	int* args = malloc(__word_size__)
+	int* args = cast(int*, malloc(__word_size__))
 	args[0] = a
 	vfprintf(1, fmt, args, 1)
 	free(args)
 
 
 void printf2(char* fmt, int a, int b):
-	int* args = malloc(2 * __word_size__)
+	int* args = cast(int*, malloc(2 * __word_size__))
 	args[0] = a
 	args[1] = b
 	vfprintf(1, fmt, args, 2)
@@ -96,7 +96,7 @@ void printf2(char* fmt, int a, int b):
 
 
 void printf3(char* fmt, int a, int b, int c):
-	int* args = malloc(3 * __word_size__)
+	int* args = cast(int*, malloc(3 * __word_size__))
 	args[0] = a
 	args[1] = b
 	args[2] = c

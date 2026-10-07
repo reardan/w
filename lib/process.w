@@ -144,7 +144,7 @@ char* process_which(char* name):
 
 # A vector with room for capacity entries, every slot NULL.
 char** strv_new(int capacity):
-	char* vector = malloc((capacity + 1) * __word_size__)
+	char* vector = cast(char*, malloc((capacity + 1) * __word_size__))
 	for i in range(capacity + 1): save_word(vector + i * __word_size__, 0)
 	return cast(char**, vector)
 
@@ -198,7 +198,7 @@ const int process_close_fd_limit = 1024
 # are close-on-exec: process_redirect's dup2 onto 0/1/2 clears the flag
 # on the copy a child keeps, and no unrelated exec inherits them.
 int process_make_pipe(int* read_end, int* write_end):
-	char* kernel_fds = malloc(8)
+	char* kernel_fds = cast(char*, malloc(8))
 	int err = pipe2(cast(int*, kernel_fds), o_cloexec)
 	if (err < 0):
 		free(kernel_fds)
@@ -349,7 +349,7 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	#   offset 88: hStdOutput (int64 handle)
 	#   offset 96: hStdError  (int64 handle)
 	int si_size = 104
-	char* si = malloc(si_size)
+	char* si = cast(char*, malloc(si_size))
 	int k = 0
 	while (k < si_size):
 		si[k] = 0
@@ -397,7 +397,7 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	#   offset 8: hThread  (int64)
 	#   offset 16: dwProcessId (int32)
 	#   offset 20: dwThreadId  (int32)
-	char* pi = malloc(24)
+	char* pi = cast(char*, malloc(24))
 	k = 0
 	while (k < 24):
 		pi[k] = 0
@@ -622,7 +622,7 @@ int process_kill_group(process* p, int sig):
 
 # Milliseconds on the monotonic clock. Only differences are meaningful.
 int process_monotonic_ms():
-	int* ts = malloc(2 * __word_size__)
+	int* ts = cast(int*, malloc(2 * __word_size__))
 	clock_gettime(1, ts)
 	int seconds = 0
 	int nanos = 0
@@ -637,7 +637,7 @@ int process_monotonic_ms():
 
 
 void process_sleep_ms(int ms):
-	char* ts = malloc(2 * __word_size__)
+	char* ts = cast(char*, malloc(2 * __word_size__))
 	save_word(ts, ms / 1000)
 	save_word(ts + __word_size__, (ms % 1000) * 1000000)
 	nanosleep(cast(int*, ts), 0)
@@ -764,7 +764,7 @@ struct process_capture:
 void process_capture_init(process_capture* buffer):
 	buffer.capacity = 4096
 	buffer.length = 0
-	buffer.data = malloc(buffer.capacity)
+	buffer.data = cast(char*, malloc(buffer.capacity))
 
 
 # Read up to 4096 bytes from fd into the buffer, growing as needed.
@@ -933,7 +933,7 @@ process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, 
 	int deadline = 0
 	if (timeout_ms > 0): deadline = process_monotonic_ms() + timeout_ms
 
-	char* fds = malloc(3 * 8)
+	char* fds = cast(char*, malloc(3 * 8))
 	int timed_out = 0
 	int stdout_open = 1
 	int stderr_open = 1

@@ -44,7 +44,7 @@ void wt_fake_head(string_builder* sb):
 	sc_src(sb, 0, c"")
 	sc_src(sb, 0, c"")
 	sc_src(sb, 0, c"int main(int argc, char** argv):")
-	sc_src(sb, 1, c"char* nl = malloc(1)")
+	sc_src(sb, 1, c"char* nl = cast(char*, malloc(1))")
 	sc_src(sb, 1, c"nl[0] = 10")
 	sc_src(sb, 1, c"char* root = argv[2]")
 	sc_src(sb, 1, c"int fd = open(c\"calls.log\", 1089, 420)")

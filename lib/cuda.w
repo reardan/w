@@ -136,7 +136,7 @@ int __w_gpu_cache_capacity
 
 # An 8-byte, zero-initialized output cell for a driver handle.
 char* __w_gpu_cell():
-	char* cell = malloc(8)
+	char* cell = cast(char*, malloc(8))
 	save_i(cell, 0, 8)
 	return cell
 
@@ -219,8 +219,8 @@ int __w_gpu_driver():
 	__w_gpu_device_total = load_i(cell, 4)
 	free(cell)
 	int bytes = __w_gpu_device_total * 8 + 8
-	__w_gpu_ctxs = malloc(bytes)
-	__w_gpu_modules = malloc(bytes)
+	__w_gpu_ctxs = cast(char*, malloc(bytes))
+	__w_gpu_modules = cast(char*, malloc(bytes))
 	for i in range(0, bytes, 8):
 		save_i(__w_gpu_ctxs + i, 0, 8)
 		save_i(__w_gpu_modules + i, 0, 8)
@@ -312,7 +312,7 @@ int __w_gpu_load_module(char* cell, char* module_text):
 	int n = load_i(blob, 8)
 	int err = 1
 	if (n > 0):
-		char* image = malloc(n)
+		char* image = cast(char*, malloc(n))
 		mem_copy(image, blob + 8, n)
 		err = cuModuleLoadData(cell, image)
 		free(image)
@@ -440,7 +440,7 @@ int __w_gpu_kernel_handle(char* name):
 void __w_gpu_launch_raw(char* name, int grid, int block, char* vals, int count):
 	__w_gpu_init()
 	int f = __w_gpu_kernel_handle(name)
-	char* params = malloc(count * 8 + 8)
+	char* params = cast(char*, malloc(count * 8 + 8))
 	for i in range(count): save_ptr(params + i * 8, cast(int, vals) + (count - 1 - i) * 8)
 	__w_gpu_check(cuLaunchKernel(f, grid, 1, 1, block, 1, 1, 0, 0, params, 0), c"cuLaunchKernel")
 	free(params)

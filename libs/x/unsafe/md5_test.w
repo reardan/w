@@ -17,7 +17,7 @@ import lib.mem
 
 
 void md5t_check(char* data, int len, char* want_hex):
-	char* digest = malloc(16)
+	char* digest = cast(char*, malloc(16))
 	md5(data, len, digest)
 	char* got = hex_encode(digest, 16)
 	assert_strings_equal(want_hex, got)
@@ -39,7 +39,7 @@ void test_md5_rfc1321_suite():
 void test_md5_block_boundaries():
 	# 55/56/63/64/65 'a's straddle the 0x80 terminator, the 8-byte length
 	# field, and the 64-byte block edge (checked against hashlib).
-	char* a65 = malloc(65)
+	char* a65 = cast(char*, malloc(65))
 	mem_fill(a65, 'a', 65)
 	md5t_check(a65, 55, c"ef1772b6dff9a122358552954ad0df65")
 	md5t_check(a65, 56, c"3b0c8ac703f828b04c6c197006d17218")
@@ -64,10 +64,10 @@ void md5t_check_streaming(char* data, int len, int step):
 		if (pos + take > len): take = len - pos
 		whash_update(h, data + pos, take)
 		pos = pos + take
-	char* digest = malloc(16)
+	char* digest = cast(char*, malloc(16))
 	whash_final(h, digest)
 	char* got = hex_encode(digest, 16)
-	char* oneshot = malloc(16)
+	char* oneshot = cast(char*, malloc(16))
 	md5(data, len, oneshot)
 	char* want = hex_encode(oneshot, 16)
 	assert_strings_equal(want, got)
@@ -91,7 +91,7 @@ void test_md5_reset_and_clone():
 	whash_update(h, c"abc", 3)
 	whash* c = whash_clone(h)
 	whash_update(c, c"defghijklmnopqrstuvwxyz", 23)
-	char* digest = malloc(16)
+	char* digest = cast(char*, malloc(16))
 	whash_final(c, digest)
 	char* got = hex_encode(digest, 16)
 	assert_strings_equal(c"c3fcd3d76192e4007dfb496cca67e13b", got)
@@ -113,7 +113,7 @@ void test_md5_reset_and_clone():
 
 
 void md5t_check_hmac(char* key, int key_len, char* data, int data_len, char* want_hex):
-	char* mac = malloc(16)
+	char* mac = cast(char*, malloc(16))
 	hmac_compute(WHASH_MD5(), key, key_len, data, data_len, mac)
 	char* got = hex_encode(mac, 16)
 	assert_strings_equal(want_hex, got)
@@ -129,12 +129,12 @@ void test_hmac_md5_rfc2202():
 	free(key1)
 	md5t_check_hmac(c"Jefe", 4, c"what do ya want for nothing?", 28, c"750c783e6ab0b503eaa86e310a5db738")
 	char* key3 = hex_bytes(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	char* data3 = malloc(50)
+	char* data3 = cast(char*, malloc(50))
 	mem_fill(data3, 221, 50)
 	md5t_check_hmac(key3, 16, data3, 50, c"56be34521d144c88dbb8c733f0e8b3f6")
 	free(data3)
 	free(key3)
-	char* key6 = malloc(80)
+	char* key6 = cast(char*, malloc(80))
 	mem_fill(key6, 170, 80)
 	md5t_check_hmac(key6, 80, c"Test Using Larger Than Block-Size Key - Hash Key First", 54, c"6b1ab7fe4bd7bf8f0b62e6ce61b9d0cd")
 	free(key6)

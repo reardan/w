@@ -315,7 +315,7 @@ void fair_test_real_backend(int use_epoll):
 	fair_test* f = fair_test_new(loop)
 	list[int] peers = new list[int]
 	list[int] ends = new list[int]
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	for i in range(6):
 		asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 		assert_equal(1, write(fds[0], c"x", 1))

@@ -18,7 +18,7 @@ char* tool_root_cache
 # The checkout root: the test's cwd, captured on first use.
 char* tool_root():
 	if (tool_root_cache == 0):
-		char* buf = malloc(4096)
+		char* buf = cast(char*, malloc(4096))
 		assert1(getcwd(buf, 4096) > 0)
 		tool_root_cache = buf
 	return tool_root_cache

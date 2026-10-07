@@ -75,7 +75,7 @@ int cell_threads_init(vm_cell* cell):
 	if (cell.max_threads < 1 || cell.max_threads > 64): return cell_fail(cell, c"max threads must be 1..64")
 	cell_threads* state = new cell_threads()
 	mem_fill[char](cast(char*, state), 0, sizeof(cell_threads))
-	state.slots = malloc(sizeof(cell_thread) * cell.max_threads)
+	state.slots = cast(cell_thread*, malloc(sizeof(cell_thread) * cell.max_threads))
 	mem_fill[char](cast(char*, state.slots), 0, sizeof(cell_thread) * cell.max_threads)
 	state.capacity = cell.max_threads
 	state.next_tid = 2
@@ -173,7 +173,7 @@ int cell_thread_clone(vm_cell* cell, int flags, int stack, int parent_tid, int c
 	if (slot < 0): return -11
 	cell_thread* t = &state.slots[slot]
 	if (t.cpu == 0):
-		t.cpu = malloc(sizeof(kvm_machine))
+		t.cpu = cast(kvm_machine*, malloc(sizeof(kvm_machine)))
 		if (kvm_create_cpu(t.cpu, state.slots[0].cpu, slot) == 0):
 			kvm_destroy(t.cpu)
 			free(t.cpu)

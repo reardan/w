@@ -102,7 +102,7 @@ void lint_note_open(char* path):
 void lint_note_internal_root(char* path):
 	if (lint_mode == 0): return
 	while (starts_with(path, c"./")): path = path + 2
-	if (lint_internal_roots == 0): lint_internal_roots = malloc(64 * __word_size__)
+	if (lint_internal_roots == 0): lint_internal_roots = cast(char*, malloc(64 * __word_size__))
 	if (lint_internal_count >= 64): return
 	save_ptr(lint_internal_roots + lint_internal_count * __word_size__, cast(int, strjoin(c"/", path)))
 	lint_internal_count = lint_internal_count + 1
@@ -315,7 +315,7 @@ char* lint_read_file(char* path):
 	if (size < 0):
 		close(fd)
 		return 0
-	char* buffer = malloc(size + 1)
+	char* buffer = cast(char*, malloc(size + 1))
 	int got = 0
 	while (got < size):
 		int n = read(fd, buffer + got, size - got)
@@ -454,7 +454,7 @@ int lint_codepoint_column(char* src, int start, int pos):
 
 
 char* lint_substring(char* src, int start, int end):
-	char* out = malloc(end - start + 1)
+	char* out = cast(char*, malloc(end - start + 1))
 	int j = 0
 	while (start + j < end):
 		out[j] = src[start + j]
@@ -472,7 +472,7 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 		j = j + 1
 	char* name = lint_substring(src, s, e)
 	# Skeleton: every lookalike letter replaced by its Latin twin
-	char* skeleton = malloc(e - s + 1)
+	char* skeleton = cast(char*, malloc(e - s + 1))
 	int k = 0
 	int first_script = 0
 	int second_script = 0
@@ -636,7 +636,7 @@ void lint_text_file(char* path):
 	char* src = lint_read_file(path)
 	if (src == 0): return
 	int n = lint_text_length
-	char* out = malloc(n + 2)
+	char* out = cast(char*, malloc(n + 2))
 	int o = 0
 	lint_text_fixes = 0
 	lint_unicode_reset()

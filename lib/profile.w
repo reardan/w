@@ -44,7 +44,7 @@ int __w_profile_format_counter(char* p, char* out):
 	limb[1] = (lo >> 16) & 65535
 	limb[2] = hi & 65535
 	limb[3] = (hi >> 16) & 65535
-	char* digits = malloc(24)
+	char* digits = cast(char*, malloc(24))
 	int n = 0
 	int nonzero = 1
 	while (nonzero):
@@ -87,12 +87,12 @@ void __w_profile_flush():
 	# lib functions (itoa, strlen, write), whose own counters would
 	# otherwise move while the lines are being written.
 	int bytes = __w_profile_count * 8
-	char* snapshot = malloc(bytes)
+	char* snapshot = cast(char*, malloc(bytes))
 	int b = 0
 	while (b < bytes):
 		snapshot[b] = __w_profile_counters[b]
 		b = b + 1
-	char* line = malloc(64)
+	char* line = cast(char*, malloc(64))
 	int i = 0
 	while (i < __w_profile_count):
 		char* counter = snapshot + i * 8

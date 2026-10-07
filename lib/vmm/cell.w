@@ -35,7 +35,7 @@ void cell_record_fault(vm_cell* cell):
 int cell_prepare(vm_cell* cell):
 	if (cell.thread_state != 0): return 1
 	if (cell.machine != 0): return cell_fail(cell, c"incomplete CPU setup")
-	cell.machine = malloc(sizeof(kvm_machine))
+	cell.machine = cast(kvm_machine*, malloc(sizeof(kvm_machine)))
 	if (kvm_create(cell.machine) == 0): return cell_fail(cell, c"KVM unavailable or VM creation failed")
 	if (kvm_set_memory(cell.machine, 0, 0, cell.ram, CELL_RAM_SIZE) < 0): return cell_fail(cell, c"KVM memory registration failed")
 	if (cell.retain_cpus && kvm_cell_checkpoint(cell.machine) == 0): return cell_fail(cell, c"vCPU checkpoint failed")

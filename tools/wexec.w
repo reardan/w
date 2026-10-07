@@ -271,7 +271,7 @@ void wexec_hash_file(deps_hash* h, char* path):
 	if (fd < 0):
 		deps_hash_cstr(h, c"<missing input>")
 		return
-	char* buffer = malloc(4096)
+	char* buffer = cast(char*, malloc(4096))
 	int n = read(fd, buffer, 4096)
 	while (n > 0):
 		deps_hash_bytes(h, buffer, n)
@@ -1047,7 +1047,7 @@ void wexec_note_expected_failure(process_result* result):
 char* wexec_shebang_interpreter(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0
-	char* buffer = malloc(256)
+	char* buffer = cast(char*, malloc(256))
 	int n = read(fd, buffer, 255)
 	close(fd)
 	if ((n < 3) || (buffer[0] != '#') || (buffer[1] != '!')):
@@ -1080,7 +1080,7 @@ char* wexec_shebang_interpreter(char* path):
 char* wexec_elf_interpreter(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0
-	char* header = malloc(64)
+	char* header = cast(char*, malloc(64))
 	int n = read(fd, header, 64)
 	if ((n < 52) || (header[0] != 127) || (header[1] != 'E') || (header[2] != 'L') || (header[3] != 'F')):
 		free(header)
@@ -1104,7 +1104,7 @@ char* wexec_elf_interpreter(char* path):
 	if ((phoff <= 0) || (phentsize < 32) || (phentsize > 128) || (phnum <= 0) || (phnum > 64)):
 		close(fd)
 		return 0
-	char* ph = malloc(phentsize)
+	char* ph = cast(char*, malloc(phentsize))
 	char* interp = 0
 	int p = 0
 	while ((p < phnum) && (interp == 0)):
@@ -1121,7 +1121,7 @@ char* wexec_elf_interpreter(char* path):
 				if ((interp_len > 1) && (interp_len < 256) && (interp_off > 0)):
 					# p_filesz counts the trailing NUL; read and
 					# NUL-terminate defensively either way.
-					char* text = malloc(interp_len + 1)
+					char* text = cast(char*, malloc(interp_len + 1))
 					seek(fd, interp_off, 0)
 					int got = read(fd, text, interp_len)
 					if ((got > 0) && (text[0] == '/')):
@@ -1289,7 +1289,7 @@ process_result* wexec_builtin_result(int status, string_builder* out):
 	result.stdout_length = out.length
 	result.stdout_text = out.data
 	free(out)
-	result.stderr_text = malloc(1)
+	result.stderr_text = cast(char*, malloc(1))
 	result.stderr_text[0] = 0
 	result.stderr_length = 0
 	return result
@@ -1445,7 +1445,7 @@ spawn_options* wexec_step_spawn_options(char* target_name, int step_index, json_
 char* wexec_absolute_program(char* program):
 	if ((program[0] == '/') || (wexec_index_of_char(program, '/') < 0)):
 		return program
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	if (getcwd(buf, 4096) < 0):
 		free(buf)
 		return program
@@ -1816,7 +1816,7 @@ char* wexec_cache_object_url(char* base, char* key):
 # convenience only. Never strlen/substring-based -- bundle payloads are
 # arbitrary binary and may contain embedded NUL bytes.
 char* wexec_bundle_slice(char* data, int pos, int length):
-	char* out = malloc(length + 1)
+	char* out = cast(char*, malloc(length + 1))
 	for i in range(length): out[i] = data[pos + i]
 	out[length] = 0
 	return out
@@ -2278,7 +2278,7 @@ int wexec_execute(list[char*] requested):
 	int running = 0
 	int finished = 0
 	int failed = 0
-	char* poll_fds = malloc(2 * wexec_jobs * 8 + 16)
+	char* poll_fds = cast(char*, malloc(2 * wexec_jobs * 8 + 16))
 
 	while (finished < total):
 		# Launch phase: start every ready target, oldest first. Inline

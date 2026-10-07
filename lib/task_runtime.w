@@ -128,7 +128,7 @@ void task_remote_post(task_remote* r, task_remote_msg* m):
 # Runs on the owning thread when the inbox fd turns readable.
 void task_remote_on_readable(int fd, int revents, void* context):
 	task_remote* r = cast(task_remote*, context)
-	char* sink = malloc(64)
+	char* sink = cast(char*, malloc(64))
 	while (read(r.read_fd, sink, 64) > 0): pass
 	free(sink)
 	mutex_lock(&r.lock)

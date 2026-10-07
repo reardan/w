@@ -85,8 +85,8 @@ process_result* box_guest_exec(char** args, char* cwd, int timeout_ms, int outpu
 	if (child == 0): return result
 	free(result.stdout_text)
 	free(result.stderr_text)
-	result.stdout_text = malloc(output_limit + 1)
-	result.stderr_text = malloc(output_limit + 1)
+	result.stdout_text = cast(char*, malloc(output_limit + 1))
+	result.stderr_text = cast(char*, malloc(output_limit + 1))
 	int deadline = process_monotonic_ms() + timeout_ms
 	int out_open = 1
 	int err_open = 1
@@ -163,7 +163,7 @@ int box_guest_serve(int fd, int is_socket):
 		if (box_channel_io(fd, &header[0], 24, 0, is_socket, deadline) == 0): return 125
 		int length = load_int32(&header[0] + 4)
 		if (length < 0 || length > box_channel_max_request - 24): return 125
-		char* payload = malloc(length + 1)
+		char* payload = cast(char*, malloc(length + 1))
 		int ok = box_channel_io(fd, payload, length, 0, is_socket, deadline)
 		char* cwd = 0
 		char** args = 0

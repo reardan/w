@@ -79,12 +79,12 @@ int rsa_pkcs1v15_verify(char* n, int nlen, char* e, int elen, char* sig, int sig
 	int tlen = prefixlen + diglen
 	# PKCS#1 v1.5 requires at least 8 bytes of 0xFF padding.
 	if (k < tlen + 11): return 0
-	char* em = malloc(k)
+	char* em = cast(char*, malloc(k))
 	if (rsa_recover(n, nlen, e, elen, sig, siglen, em, k) == 0):
 		free(em)
 		return 0
 	# Build the expected EM: 0x00 0x01 PS(0xFF..) 0x00 prefix digest.
-	char* want = malloc(k)
+	char* want = cast(char*, malloc(k))
 	want[0] = 0
 	want[1] = 1
 	int pslen = k - tlen - 3
@@ -129,9 +129,9 @@ int rsa_pkcs1v15_verify_sha384(char* n, int nlen, char* e, int elen, char* sig, 
 # (WHASH_SHA256() or WHASH_SHA384()).
 void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
 	int hlen = whash_digest_size(whash_alg)
-	char* buf = malloc(seedlen + 4)
+	char* buf = cast(char*, malloc(seedlen + 4))
 	mem_copy(buf, seed, seedlen)
-	char* dig = malloc(hlen)
+	char* dig = cast(char*, malloc(hlen))
 	int counter = 0
 	int outpos = 0
 	while (outpos < mask_len):
@@ -168,7 +168,7 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 	int emlen = (embits + 7) / 8
 	# Consistency: EM must hold PS(>=0) 0x01 salt H 0xbc.
 	if (emlen < hlen + slen + 2): return 0
-	char* em = malloc(k)
+	char* em = cast(char*, malloc(k))
 	if (rsa_recover(n, nlen, e, elen, sig, siglen, em, k) == 0):
 		free(em)
 		return 0
@@ -185,11 +185,11 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 	int topmask = 255 >> topbits            # keep the low (8-topbits) bits
 	if (ok != 0):
 		if (((emp[0] & 255) & ~topmask) != 0): ok = 0
-	char* db = malloc(dblen)
-	char* h = malloc(hlen)
-	char* dbmask = malloc(dblen)
-	char* mprime = malloc(8 + hlen + slen)
-	char* hprime = malloc(hlen)
+	char* db = cast(char*, malloc(dblen))
+	char* h = cast(char*, malloc(hlen))
+	char* dbmask = cast(char*, malloc(dblen))
+	char* mprime = cast(char*, malloc(8 + hlen + slen))
+	char* hprime = cast(char*, malloc(hlen))
 	if (ok != 0):
 		mem_copy(h, emp + dblen, hlen)
 		mgf1(whash_alg, h, hlen, dblen, dbmask)

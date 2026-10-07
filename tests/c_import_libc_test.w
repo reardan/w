@@ -27,7 +27,7 @@ void test_libc_stdio_file_round_trip():
 	assert_equal(0, fclose(out))
 	FILE* in = fopen(path, c"r")
 	assert1(in != 0)
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	assert1(fgets(buf, 64, in) != 0)
 	assert_equal(0, fclose(in))
 	assert_equal(0, strcmp(c"c_import line\x0a", buf))
@@ -79,7 +79,7 @@ void test_libc_extern_data_stdio():
 # snprintf imports as a variadic function: direct calls pass any number
 # of extra arguments, with floats promoted to float64 per the C ABI.
 void test_libc_variadic_snprintf():
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	assert_equal(9, snprintf(buf, 64, c"%d %s", 42, c"vararg"))
 	assert_equal(0, strcmp(c"42 vararg", buf))
 	assert_equal(6, snprintf(buf, 64, c"%.1f %d", 1.5, 27))
@@ -92,7 +92,7 @@ void test_libc_strtol_and_qsort_absent_collisions():
 	assert_equal(1234, strtol(c"1234", 0, 10))
 	assert_equal(255, strtol(c"ff", 0, 16))
 	assert_equal(42, atoi(c"42"))
-	char* copy = malloc(8)
+	char* copy = cast(char*, malloc(8))
 	strcpy(copy, c"seven")
 	assert_equal(0, strcmp(c"seven", copy))
 	free(copy)
@@ -124,7 +124,7 @@ void test_libc_w_syscall_wrappers_still_win():
 	assert_equal(5, write(file, c"hello", 5))
 	assert_equal(0, close(file))
 	file = open(path, 0, 0)
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	assert_equal(5, read(file, buf, 8))
 	assert_equal(0, close(file))
 	buf[5] = 0

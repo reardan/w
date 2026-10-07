@@ -77,7 +77,7 @@ int main_read():
 	print(c"size: ")
 	print(itoa(size))
 	print(c"\x0a")
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 
 	seek(file, 0, 0)
 	read(file, buf, size)

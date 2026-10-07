@@ -159,7 +159,7 @@ void test_ws_loopback_handshake_and_echo():
 	assert_equal(101, c.http_status)
 	asserts(c"no subprotocol unless offered", c.subprotocol == 0)
 	wsh_expect_echo(c, ws_op_text, c"hello over ws://", 16)
-	char* big = malloc(70000)
+	char* big = cast(char*, malloc(70000))
 	for i in range(70000): big[i] = (i * 13) & 255
 	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	free(big)
@@ -224,7 +224,7 @@ void test_wss_loopback_handshake_and_echo():
 # Reads a request head; returns its Sec-WebSocket-Key (malloc'd) or 0.
 char* wsh_read_key(int conn):
 	string_builder* head = string_new()
-	char* one = malloc(1)
+	char* one = cast(char*, malloc(1))
 	while ((head.length < 4) || (strcmp(head.data + head.length - 4, c"\x0d\x0a\x0d\x0a") != 0)):
 		if (read(conn, one, 1) != 1): return 0
 		string_append_char(head, one[0])
@@ -393,7 +393,7 @@ void wsh_deflate_session(int port, char* path, ws_deflate_config* cfg, int expec
 	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(expect_active, ws_compression_active(c))
 	for k in range(3): wsh_expect_echo(c, ws_op_text, c"compress me, compress me, compress me", 37)
-	char* big = malloc(70000)
+	char* big = cast(char*, malloc(70000))
 	for i in range(70000): big[i] = ((i / 5) * 13 + (i >> 11)) & 255
 	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	wsh_expect_echo(c, ws_op_binary, big, 70000)

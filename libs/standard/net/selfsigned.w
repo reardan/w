@@ -153,7 +153,7 @@ string_builder* selfsigned_tbs(char* cn, char* dns_name, int ipv4, char* serial,
 	string_builder* names = string_new_sized(32)
 	if (dns_name != 0): der_put_bytes(names, 0x82, dns_name, strlen(dns_name))
 	if (ipv4 != 0):
-		char* ip = malloc(4)
+		char* ip = cast(char*, malloc(4))
 		store_be32(ip, ipv4)
 		der_put_bytes(names, 0x87, ip, 4)
 		free(ip)
@@ -205,9 +205,9 @@ char* selfsigned_pem(char* label, char* der, int len):
 
 
 int selfsigned_p256_generate(char* common_name, char* dns_name, int ipv4, char** out_cert_pem, char** out_key_pem):
-	char* d = malloc(32)
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* d = cast(char*, malloc(32))
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	int ok = 0
 	int tries = 0
 	while ((ok == 0) && (tries < 8)):
@@ -220,16 +220,16 @@ int selfsigned_p256_generate(char* common_name, char* dns_name, int ipv4, char**
 		return 0
 
 	# A positive, minimal 16-byte serial: top bit clear, first byte non-zero.
-	char* serial = malloc(16)
+	char* serial = cast(char*, malloc(16))
 	random_bytes(serial, 16)
 	serial[0] = (serial[0] & 0x7f) | 0x40
 
 	string_builder* tbs = selfsigned_tbs(common_name, dns_name, ipv4, serial, qx, qy)
 	free(serial)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, tbs.data, tbs.length, digest)
-	char* r = malloc(32)
-	char* s = malloc(32)
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
 	ok = ecdsa_p256_sign(d, digest, 32, r, s)
 	free(digest)
 	if (ok == 0):
@@ -241,7 +241,7 @@ int selfsigned_p256_generate(char* common_name, char* dns_name, int ipv4, char**
 		free(s)
 		string_free(tbs)
 		return 0
-	char* sig = malloc(80)
+	char* sig = cast(char*, malloc(80))
 	int sig_len = 0
 	x509_ecdsa_sig_raw_to_der(r, s, sig, &sig_len)
 	free(r)

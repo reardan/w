@@ -714,7 +714,7 @@ void json_append_float_bits(string_builder* out, int bits, int width):
 	if (float_text_is_special(bits, width)):
 		string_append(out, c"null")
 		return
-	char* digits = malloc(24)
+	char* digits = cast(char*, malloc(24))
 	int e = 0
 	int n = float_text_shortest_digits(bits, width, digits, &e)
 	int negative = 0

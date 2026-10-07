@@ -32,7 +32,7 @@ void hex_put_byte(char* out, int b):
 # a malloc'd NUL-terminated string.
 char* hex_encode(char* data, int len):
 	if (len < 0): len = 0
-	char* out = malloc(len * 2 + 1)
+	char* out = cast(char*, malloc(len * 2 + 1))
 	for i in range(len): hex_put_byte(&out[i * 2], data[i] & 255)
 	out[len * 2] = 0
 	return out
@@ -45,7 +45,7 @@ char* hex_decode(char* text, int len, int* out_len):
 	*out_len = 0
 	if (len < 0): return 0
 	if ((len % 2) != 0): return 0
-	char* out = malloc(len / 2 + 1)
+	char* out = cast(char*, malloc(len / 2 + 1))
 	for i in range(0, len, 2):
 		int hi = hex_decode_char(text[i] & 255)
 		int lo = hex_decode_char(text[i + 1] & 255)
@@ -71,7 +71,7 @@ void hex_decode_into(char* text, char* out, int n):
 char* hex_decode_loose(char* text, int* out_len):
 	int len = 0
 	while (text[len] != 0): len = len + 1
-	char* out = malloc(len / 2 + 1)
+	char* out = cast(char*, malloc(len / 2 + 1))
 	int n = 0
 	int hi = 0 - 1
 	for i in range(len):
@@ -89,7 +89,7 @@ char* hex_decode_loose(char* text, int* out_len):
 
 # "0x" followed by the low `digits` nibbles of v, lowercase (malloc'd).
 char* hex_fixed(int v, int digits):
-	char* s = malloc(digits + 4)
+	char* s = cast(char*, malloc(digits + 4))
 	s[0] = '0'
 	s[1] = 'x'
 	s[digits + 2] = 0

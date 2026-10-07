@@ -327,7 +327,7 @@ int raft_wal_pending(raft_wal* rw, raft* r):
 # One STATE record carrying the raft's current term and vote.
 # Returns wal_append's result (1 ok, 0 failed).
 int raft_wal_write_state(wal* target, raft* r):
-	char* srec = malloc(13)
+	char* srec = cast(char*, malloc(13))
 	srec[0] = raft_wal_tag_state
 	u64_save_le(srec + 1, r.current_term)
 	store_le32(srec + 9, raft_wal_encode_vote(r.voted_for))
@@ -342,7 +342,7 @@ int raft_wal_write_state(wal* target, raft* r):
 int raft_wal_write_append(wal* target, raft* r, int i):
 	raft_entry* e = r.log[i]
 	int cmd_len = e.command_len
-	char* arec = malloc(14 + cmd_len)
+	char* arec = cast(char*, malloc(14 + cmd_len))
 	arec[0] = raft_wal_tag_append
 	arec[1] = e.kind
 	u64_save_le(arec + 2, e.term)
@@ -358,7 +358,7 @@ int raft_wal_write_snapshot(wal* target, raft* r):
 	int blob_len = r.snap_len
 	int ccount = r.snap_config.length
 	int coff = 21 + 4 * ccount
-	char* nrec = malloc(coff + 4 + blob_len)
+	char* nrec = cast(char*, malloc(coff + 4 + blob_len))
 	nrec[0] = raft_wal_tag_snapshot
 	u64_save_le(nrec + 1, r.snap_last_index)
 	u64_save_le(nrec + 9, r.snap_last_term)
@@ -465,7 +465,7 @@ int raft_wal_persist(raft_wal* rw, raft* r, int* wrote_out):
 		wrote = wrote + 1
 	int agree = raft_wal_agree_len(rw, r)
 	if (rw.entry_terms.length > agree):
-		char* trec = malloc(5)
+		char* trec = cast(char*, malloc(5))
 		trec[0] = raft_wal_tag_truncate
 		store_le32(trec + 1, agree)
 		int tok = wal_append(rw.wlog, trec, 5)

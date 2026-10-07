@@ -487,7 +487,7 @@ void test_frame_over_cap_refused():
 	raft_tcp_add_peer(a, 2, base + 15)
 	raft_tcp_set_max_pending(a, 4096)
 
-	char* cmd = malloc(5001)
+	char* cmd = cast(char*, malloc(5001))
 	mem_fill(cmd, 120, 5000)
 	cmd[5000] = 0
 	raft_msg* big = rt_make_msg(raft_msg_append, 1, 2, 2)

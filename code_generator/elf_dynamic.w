@@ -92,8 +92,8 @@ void elf_emit_dynamic():
 	int interp_size = codepos - interp_off
 
 	# ---- .dynstr (string offsets recorded for DT_NEEDED and st_name) ----
-	char* lib_str_off = malloc(dyn_lib_count * 4 + 4)
-	char* imp_str_off = malloc(dyn_import_count * 4 + 4)
+	char* lib_str_off = cast(char*, malloc(dyn_lib_count * 4 + 4))
+	char* imp_str_off = cast(char*, malloc(dyn_import_count * 4 + 4))
 	int dynstr_off = codepos
 	emit_int8(0)   /* index 0 = the empty string */
 	i = 0
