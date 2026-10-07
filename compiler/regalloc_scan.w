@@ -44,7 +44,12 @@ compile-time internal error rather than a miscompile. The rules:
   index in place of the parked copy the stack path needs, which is why
   a subscript weighs two reads in the ranking and why a name written
   inside a subscript whose base it is ('a[a = q]') is excluded: the
-  fold would read the new value. A struct value's 'name.f' and an
+  fold would read the new value. Only a subscript whose index has more
+  than one token counts as a use (two, for the slot load and the parked
+  copy the fold removes), kept apart in rs_base: a one-token index and
+  a field read cost the same on the stack as through a register until
+  A2's addressing forms, so they earn no register. Scalars rank first,
+  bases take the registers they leave. A struct value's 'name.f' and an
   array's 'name[i]' address frame storage; those names are excluded by
   their declared type ('T[..] name' is never a register, and a type
   name the type table already knows as unpromotable -- a struct, a
@@ -59,8 +64,9 @@ compile-time internal error rather than a miscompile. The rules:
   takes a callee-saved register too, loaded from its stack word right
   after the prologue's pushes (regalloc_prologue_args); nothing reads
   the word again, and the register is dead at every return, so no
-  write-back. x86's two registers stay with the body's locals
-  (rs_args_rank);
+  write-back. Scalars rank first; bases and arguments take the
+  registers they leave (rs_assign_registers), and x86's two stay with
+  the scalars (rs_args_rank);
 - uses are weighted 8^depth by 'while'/'for' nesting (indentation-based,
   like the parser's block structure); only names used inside a loop are
   ranked, and a body without a loop is not scanned past the first pass;
@@ -103,7 +109,8 @@ int regalloc_loops_owned
 # --- candidate table (per scanned function) -------------------------------
 list[char*] rs_names      # cloned identifier text
 list[int] rs_decls        # recognised declarations
-list[int] rs_uses         # loop-weighted use count
+list[int] rs_uses         # loop-weighted use count: scalar reads and writes, plus rs_base
+list[int] rs_base         # loop-weighted subscripts with a multi-token index ('a[i * n + k]')
 list[int] rs_excluded     # 1 once a hazardous use was seen
 list[int] rs_reg          # register assigned by the ranking, 0 none
 list[int] rs_taken        # 1 once a declaration took the register
@@ -194,6 +201,7 @@ int rs_decl_index
 int rs_sub_base
 int rs_incdec
 int[64] rs_br_base
+int[64] rs_br_tokens       # tokens seen inside each open '['
 int rs_br_depth
 
 # Byte classes, built once from compiler/tokenizer.w's predicates so the
@@ -242,6 +250,7 @@ void rs_tables_ensure():
 		rs_names = new list[char*]
 		rs_decls = new list[int]
 		rs_uses = new list[int]
+		rs_base = new list[int]
 		rs_excluded = new list[int]
 		rs_reg = new list[int]
 		rs_taken = new list[int]
@@ -268,6 +277,7 @@ void rs_tables_clear():
 	rs_names.clear()
 	rs_decls.clear()
 	rs_uses.clear()
+	rs_base.clear()
 	rs_excluded.clear()
 	rs_reg.clear()
 	rs_taken.clear()
@@ -839,6 +849,7 @@ int rs_intern(char* name, int h):
 	rs_names.push(strclone(name))
 	rs_decls.push(0)
 	rs_uses.push(0)
+	rs_base.push(0)
 	rs_excluded.push(0)
 	rs_reg.push(0)
 	rs_taken.push(0)
@@ -905,10 +916,26 @@ void rs_br_push(int base):
 		rs_abort = 1
 		return;
 	rs_br_base[rs_br_depth] = base
+	rs_br_tokens[rs_br_depth] = 0
 	rs_br_depth = rs_br_depth + 1
 
+# A ']' closes the innermost '[': an index of more than one token
+# ('a[i * n + k]') counts as two reads of the base -- on the stack it
+# costs the base's slot load and a parked copy around the index, which
+# the register-base fold removes; a one-token index ('a[i]') folds into
+# the stack path's shuttle already and a register saves nothing but the
+# load, so it does not count (nor does a field read): a register taken
+# for such uses costs its push and pop per call, or its loop-entry load
+# and write-back, for no instruction saved ('__w_list_compare_values'
+# ran 4-7% more instructions with sa and sb promoted either way).
 void rs_br_pop():
-	if (rs_br_depth > 0): rs_br_depth = rs_br_depth - 1
+	if (rs_br_depth == 0): return;
+	rs_br_depth = rs_br_depth - 1
+	int base = rs_br_base[rs_br_depth]
+	# the count includes the ']' itself
+	if ((base >= 0) && (rs_br_tokens[rs_br_depth] > 2)):
+		rs_uses[base] = rs_uses[base] + (rs_weight() << 1)
+		rs_base[base] = rs_base[base] + (rs_weight() << 1)
 
 
 # An operator run after an identifier (the identifier's index is i, -1
@@ -1048,15 +1075,14 @@ void rs_identifier():
 		rs_lp_mark(rs_lp_has_call)
 		return;
 	if (c == '['):
-		# a subscript base (A1): a read that costs the stack path a slot
-		# load and a parked copy around the index, so it weighs two
-		# reads; rs_scan_body's '[' records the base for rs_write
-		if (i >= 0): rs_uses[i] = rs_uses[i] + (rs_weight() << 1)
+		# a subscript base (A1): a read a register makes no shorter
+		# unless the index has more than one token, which rs_scan_body's
+		# ']' counts (rs_br_pop); its '[' records the base for rs_write
 		rs_sub_base = i
 		return;
 	if (c == '.'):
-		# a field access or a method call's receiver (A1): a read
-		if (i >= 0): rs_uses[i] = rs_uses[i] + rs_weight()
+		# a field access or a method call's receiver (A1): a read a
+		# register makes no shorter (A2's addressing form will)
 		return;
 	if (c == ':'):
 		rs_next()
@@ -1231,6 +1257,7 @@ void rs_scan_body(int brace_body):
 			rs_prev_kind = 0
 			continue
 		# a token starts here
+		if (rs_br_depth > 0): rs_br_tokens[rs_br_depth - 1] = rs_br_tokens[rs_br_depth - 1] + 1
 		if (first):
 			first = 0
 			# ':' with the body on the same line: one statement to EOL
@@ -1341,12 +1368,10 @@ int rs_arg_record(int i):
 	return rs_argsym[i]
 
 
-# Arguments rank at function level on x64 only. x86's two registers are
-# worth more to the scalars they displace: an argument read is already
-# one folded memory operand there ('imul eax,[esp+d]', 'cmp eax,[esp+d]'),
-# while a scalar local that loses its register pays a parked address
-# and a store on every write ('matmul' on x86: +10% instructions with
-# n in edi and acc on the stack). A per-use cost model is A9's.
+# Arguments rank at function level on x64 only (the second round of
+# rs_assign_registers): x86's two registers stay with the body's
+# scalars, where an argument read is already one folded memory operand
+# ('imul eax,[esp+d]', 'cmp eax,[esp+d]'). A per-use cost model is A9's.
 int rs_args_rank():
 	return word_size == 8
 
@@ -1355,6 +1380,19 @@ int rs_args_rank():
 # A local candidate takes its register at its declaration
 # (regalloc_declare); an argument's goes to regalloc_arg_syms for the
 # prologue (regalloc_prologue_args).
+#
+# Two rounds (A1): the body's locals ranked by their scalar uses first
+# (rs_uses less rs_base) -- exactly the pre-A1 ranking, which excluded
+# every subscripted or field-accessed name -- then, for the registers
+# those leave, the bases ranked by their multi-token-index subscripts
+# (rs_base): locals, and on x64 arguments (rs_args_rank). A base never
+# displaces a scalar: a scalar that loses its register pays a parked
+# address and a store on every write ('sieve' on x64 ran 0.4% more
+# instructions with 'composite' in r14 and 'h' on the stack; 'matmul'
+# on x86 10% more with n in edi and acc on the stack). The loop pass
+# (rs_lp_close_loop) ranks every candidate by rs_uses, so there a base
+# with multi-token subscripts competes with the scalars for the
+# caller-saved registers, weighted by those subscripts.
 int rs_assign_registers():
 	int budget = 2
 	int first_reg = 6   # esi, edi
@@ -1363,15 +1401,26 @@ int rs_assign_registers():
 		first_reg = 12  # r12-r15
 	int mask = 0
 	int assigned = 0
+	int round = 0
 	while (assigned < budget):
 		int best = -1
 		int best_uses = 7   # at least one use inside a loop (weight 8)
 		for i in range(rs_count):
-			if ((rs_reg[i] == 0) && (rs_excluded[i] == 0) && (rs_uses[i] > best_uses)):
-				if ((rs_decls[i] == 1) || ((rs_decls[i] == 0) && rs_args_rank() && (rs_arg_record(i) >= 0))):
-					best = i
-					best_uses = rs_uses[i]
-		if (best < 0): break
+			if ((rs_reg[i] != 0) || rs_excluded[i]): continue
+			if (round == 0):
+				if ((rs_decls[i] != 1) || (rs_uses[i] - rs_base[i] <= best_uses)): continue
+				best = i
+				best_uses = rs_uses[i] - rs_base[i]
+			else:
+				if (rs_base[i] <= best_uses): continue
+				if (rs_decls[i] == 1): best = i
+				elif ((rs_decls[i] == 0) && rs_args_rank() && (rs_arg_record(i) >= 0)): best = i
+				else: continue
+				best_uses = rs_base[i]
+		if (best < 0):
+			if (round): break
+			round = 1
+			continue
 		int r = first_reg + assigned
 		rs_reg[best] = r
 		mask = mask | (1 << r)
