@@ -139,6 +139,47 @@ int emit_iteration_value_ast(statement_ast* node):
 	return type
 
 
+# S2.2c: a for loop's header walked from its record (code_generator/
+# retained_emit.w). The grammar (grammar/ast_loop.w) records these phases
+# in the order the streaming hooks ran the steps, and runs them itself, in
+# place, when no walk is open. Header values (range arguments, the
+# iterable) are walked one at a time, like a switch's (switch_ast_walk).
+const int loop_walk_value = 1
+const int loop_walk_value_end = 2
+const int loop_walk_value_store = 3
+const int loop_walk_range_begin = 4
+const int loop_walk_range_end = 5
+const int loop_walk_cursor_begin = 6
+const int loop_walk_cursor_end = 7
+const int loop_walk_leave = 8
+const int loop_walk_cleanup = 9
+
+
+struct loop_ast_walk:
+	loop_ast* loop
+	statement_ast* value
+	int value_type
+	int* outer
+
+
+# One loop step; walk is 0 when the grammar runs it during the parse.
+void emit_loop_ast_phase(loop_ast_walk* record, retained_statement_walk* walk, int phase):
+	if (phase == loop_walk_value): emit_walk_header_value(walk, record.value)
+	else if (phase == loop_walk_value_end): emit_statement_ast_expression_end(record.value)
+	else if (phase == loop_walk_value_store): record.value_type = emit_iteration_value_ast(record.value)
+	else if (phase == loop_walk_range_begin): record.outer = emit_range_loop_ast_begin(record.loop)
+	else if (phase == loop_walk_range_end): emit_range_loop_ast_end(record.loop)
+	else if (phase == loop_walk_cursor_begin): record.outer = emit_cursor_loop_ast_begin(record.loop)
+	else if (phase == loop_walk_cursor_end): emit_cursor_loop_ast_end(record.loop)
+	else if (phase == loop_walk_leave): loop_leave(record.outer)
+	else if (phase == loop_walk_cleanup): emit_loop_ast_cleanup(record.loop)
+	else: error(c"internal error: unknown loop walk phase")
+
+
+void emit_loop_ast_walk(retained_statement_walk* walk, int phase):
+	emit_loop_ast_phase(cast(loop_ast_walk*, walk.statement), walk, phase)
+
+
 int* emit_while_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
