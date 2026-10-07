@@ -84,6 +84,7 @@ int while_statement():
 	int while_tab_level = tab_level
 	int* outer = loop_enter()
 	# Loop region: the back edge and 'continue' re-test the condition.
+	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	loop_continue_chain = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 

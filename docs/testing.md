@@ -297,6 +297,25 @@ them print the same line, and prints markdown tables of wall time and
 instruction count. Note that `sum`'s loop is folded to a closed form by
 both C compilers, so that row measures their optimiser, not a loop.
 
+### Profiles (`profiles/*.wprof`)
+
+`profiles/self.wprof`, `self_x64.wprof` (the compiler compiling `w.w`,
+x86 and x64) and `bench.wprof` (the corpus above) are committed text
+profiles taken with `--profile-generate` and merged by `bin/wprof`
+(docs/projects/register_allocation_pgo.md §3.3). `--profile-use=<path>`
+reads one explicitly — the compiler never looks for a profile on its
+own — and `./wbuild verify_pgo` (in `tests`) is the self-host fixpoint
+with the flag: `wv3_pgo == wv4_pgo == wv5_pgo`, the streaming grammar
+equal to `--ast-emit-retained`, and the x64 chain. Entries are keyed by
+`w defhash`, so editing a function's body only makes its entry stale
+(the static heuristic applies to it) and never changes what the
+compiler computes; `./wbuild profile_check` (in `tests`, never fails)
+prints how much of each profile still matches the tree. A PR that
+changes hot code re-runs `./wbuild profile_refresh` and commits the
+result, saying why the numbers moved, with the same idle-machine
+caveat as the benchmark baseline; counts of the hash-table probe loops
+differ slightly between refreshes (addresses), which is expected.
+
 ## Flaky tests
 
 A **flake** is a test target that fails and then passes on an

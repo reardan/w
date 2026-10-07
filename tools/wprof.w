@@ -32,12 +32,15 @@ docs/projects/register_allocation_pgo.md §3.3).
       are head evaluations (iterations + 1 per entry that leaves through
       the condition), see code_generator/profile_counters.w.
 
-  bin/wprof stats [--compiler <w>] <profile.wprof> <file.w>...
+  bin/wprof stats [--compiler <w>] [--arch <sel>] <profile.wprof> <file.w>...
       How much of a profile still matches a source tree: runs
-      '<w> defhash --closure <file.w>' (default compiler bin/wv2) for
-      the files, collects the current function/operator/generic_function
-      hashes, and prints the share of the profile's functions and
-      entries that match them — the staleness number a PR body quotes.
+      '<w> [sel] defhash --closure <file.w>' (default compiler bin/wv2;
+      --arch x64 for a profile of the x64 closure, whose lib/__arch__/
+      files differ) for the files, collects the current
+      function/operator/generic_function hashes, and prints the share
+      of the profile's functions and entries that match them — the
+      staleness number a PR body quotes (./wbuild profile_check runs it
+      for the committed profiles; the report never fails).
 
   bin/wprof top [-n <count>] [-f|-l] <profile.wprof>
       The hottest functions (by entries) and loops (by iters).
@@ -327,13 +330,18 @@ char* prof_capture(char* path, char** argv, char** env, int* status):
 
 # The "hash" of every function-like NDJSON record 'w defhash --closure'
 # printed, added to hashes.
-void prof_collect_defhashes(char* compiler, char* source, map[char*, int] hashes):
-	char** argv = strv_new(6)
-	strv_set(argv, 0, compiler)
-	strv_set(argv, 1, c"defhash")
-	strv_set(argv, 2, c"--closure")
-	strv_set(argv, 3, c"--quiet")
-	strv_set(argv, 4, source)
+void prof_collect_defhashes(char* compiler, char* arch, char* source, map[char*, int] hashes):
+	char** argv = strv_new(7)
+	int n = 0
+	strv_set(argv, n, compiler)
+	n = n + 1
+	if (arch != 0):
+		strv_set(argv, n, arch)
+		n = n + 1
+	strv_set(argv, n, c"defhash")
+	strv_set(argv, n + 1, c"--closure")
+	strv_set(argv, n + 2, c"--quiet")
+	strv_set(argv, n + 3, source)
 	int status = 0
 	char* text = prof_capture(compiler, argv, 0, &status)
 	free(cast(void*, argv))
@@ -357,6 +365,7 @@ void prof_collect_defhashes(char* compiler, char* source, map[char*, int] hashes
 
 int wprof_stats(char** args, int argc):
 	char* compiler = c"bin/wv2"
+	char* arch = 0
 	char* profile = 0
 	list[char*] sources = new list[char*]
 	int i = 2
@@ -365,13 +374,17 @@ int wprof_stats(char** args, int argc):
 			i = i + 1
 			if (i >= argc): fail(c"--compiler needs a path", 0)
 			compiler = args[i]
+		else if (strcmp(args[i], c"--arch") == 0):
+			i = i + 1
+			if (i >= argc): fail(c"--arch needs a selector", 0)
+			arch = args[i]
 		else if (profile == 0): profile = args[i]
 		else: sources.push(args[i])
 		i = i + 1
 	if ((profile == 0) || (sources.length == 0)): fail(c"stats needs <profile.wprof> <file.w>...", 0)
 	prof_profile_apply(profile)
 	map[char*, int] current = new map[char*, int]
-	for char* source in sources: prof_collect_defhashes(compiler, source, current)
+	for char* source in sources: prof_collect_defhashes(compiler, arch, source, current)
 	# Distinct functions in the profile, and the entries under them.
 	map[char*, int] seen = new map[char*, int]
 	int functions = 0
@@ -562,7 +575,7 @@ int wprof_corpus(char** args, int argc):
 
 void usage():
 	err(c"usage: wprof merge [-o out.wprof] [--zeros] <x.wprofmap> <dump>... [<y.wprof>]...\n")
-	err(c"       wprof stats [--compiler w] <profile.wprof> <file.w>...\n")
+	err(c"       wprof stats [--compiler w] [--arch sel] <profile.wprof> <file.w>...\n")
 	err(c"       wprof top [-n count] [-f|-l] <profile.wprof>\n")
 	err(c"       wprof clear <path>...\n")
 	err(c"       wprof corpus [-o out.wprof] [--compiler w] [--arch sel] <dir>\n")
