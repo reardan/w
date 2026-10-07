@@ -25,19 +25,19 @@ void print_error_type(int type_index);
 lazy_runtime* var_rt
 
 
-void var_emit_helper_address(int i):
+# Begin a call of var helper i (grammar/stack_slot.w's runtime-call
+# protocol); returns the call's stack base.
+int var_call_begin(int i):
 	if (cast(int, var_rt) == 0):
 		var_rt = lazy_runtime_new(c"structures.w_dynamic", c"__w_var_box_int __w_var_box_cstr __w_var_box_str __w_var_unbox_int __w_var_unbox_cstr __w_var_unbox_str __w_var_add __w_var_sub __w_var_mul __w_var_div __w_var_eq __w_var_cmp __w_var_to_cstr")
-	lazy_emit_helper(var_rt, i)
+	return lazy_call_begin(var_rt, i)
 
 
 # Call helper i with the single argument in eax; the result stays in eax.
 void var_emit_call1(int i):
 	int base_stack = stack_pos
 	int value_slot = push_slot()
-	var_emit_helper_address(i)
-	int s = stack_pos
-	push_slot()
+	int s = var_call_begin(i)
 	push_slot_copy(value_slot)
 	rt_call_end(s)
 	pop_to(base_stack)
@@ -125,9 +125,7 @@ void var_binary_call(int left_type, int right_type, int i):
 		if (right_helper < 0): var_box_unsupported(right_type)
 		var_emit_call1(right_helper)
 	int right_slot = push_slot()
-	var_emit_helper_address(i)
-	int s = stack_pos
-	push_slot()
+	int s = var_call_begin(i)
 	push_slot_copy(left_slot)
 	push_slot_copy(right_slot)
 	rt_call_end(s)

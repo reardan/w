@@ -89,8 +89,11 @@ free: existing spellings keep their ladder level.
 The hard part — the left operand was already evaluated before we knew
 a call was coming — is precisely what struct method sugar solved, and
 the `.method()` branch in `grammar/postfix_expr.w` is the template:
-save the already-evaluated operand, `sym_get_value` the callee
-(callee-first stack layout), park a return buffer when the operator
+save the already-evaluated operand, `rt_call_begin` the callee (the
+callee-first stack layout; since unit A4 of `codegen_gap_plan.md` the
+callee is recorded for a direct `call rel32` and no word is parked for
+it, so offsets below the base are written as `lea_slot`/`load_slot`),
+park a return buffer when the operator
 returns a struct by value (`has_return_buffer`), push the operands as
 arguments with `check_call_argument`/`coerce`, and emit the call
 tail. One refactor is needed: `parse_call_suffix` parses its

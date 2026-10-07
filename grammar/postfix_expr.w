@@ -37,8 +37,7 @@ void bounds_trap_call(char* helper_name):
 	if (sym_lookup(helper_name) < 0): sym_declare_global(helper_name, 4, 2)
 	push_ebx()
 	push_eax()
-	sym_get_value(helper_name)
-	call_eax()
+	call_symbol(sym_lookup(helper_name), helper_name)
 
 
 void buffer_bounds_check():
@@ -258,11 +257,14 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 			else: warning(itoa(passed_args))
 	if (callee_name != 0): free(callee_name)
 
-	load_slot(s + 1)
-
-	# A function's address is its value; other callees hold a pointer
-	if (callee_type != 4): promote(callee_type)
-	call_eax()
+	# A known W callee (the call record for this base, unit A4) is one
+	# `call rel32`; otherwise reload the parked callee word -- a
+	# function's address is its value, other callees hold a pointer
+	if (direct_call_take(s)): direct_call_emit_taken()
+	else:
+		load_slot(s + 1)
+		if (callee_type != 4): promote(callee_type)
+		call_eax()
 	pop_to(s)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
@@ -296,8 +298,11 @@ void finish_w_variadic_arguments(int s, int fixed_words_end, int variadic_values
 	# the slice argument, but the callee addresses its parameters as
 	# one contiguous block above the return address: re-push copies
 	# of the fixed argument words so the block it sees is contiguous.
-	int fixed_words = fixed_words_end - s - 1
-	for j in range(1, fixed_words + 1): push_slot_copy(s + 1 + j)
+	# The fixed words start right above the base, or above the callee
+	# word when the call parked one (unit A4).
+	int callee_words = 1 - direct_call_pending(s)
+	int fixed_words = fixed_words_end - s - callee_words
+	for j in range(1, fixed_words + 1): push_slot_copy(s + callee_words + j)
 	# The variadic slice parameter: a pointer to the descriptor
 	lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
 	push_slot()
@@ -515,7 +520,18 @@ int postfix_expr():
 						type = element_type
 						expression_lhs_readonly = 0
 			else:
-				binary1(type) /* load the base pointer and push it */
+				# A register-resident base (the register lvalue note of
+				# compiler/regalloc_scan.w's promotion, A1 of
+				# docs/projects/codegen_gap_plan.md): nothing to load or
+				# park, the index expression runs and the register is
+				# added to the scaled index at the end (add_eax_reg).
+				# The scan excludes a base written inside its own
+				# subscript, so the register still holds the base there.
+				# An ndarray's comma index needs the receiver parked for
+				# its accessor call, so it keeps the stack path.
+				int base_reg = 0
+				if (regalloc_note_current() && (ndarray_index_struct(type) < 0)): base_reg = regalloc_note_take()
+				else: binary1(type) /* load the base pointer and push it */
 				int nd_recv_slot = stack_pos
 				# The element type drives both index scaling and the load width
 				int element_type = 2 /* char: byte elements by default */
@@ -532,9 +548,11 @@ int postfix_expr():
 					type = ndarray_index_suffix(type, nd_recv_slot, first_index_type)
 				else:
 					if (element_size > 1): imul_eax_int32(element_size)
-					pop_ebx()
-					alu_add()
-					stack_pos = stack_pos - 1
+					if (base_reg != 0): add_eax_reg(base_reg)
+					else:
+						pop_ebx()
+						alu_add()
+						stack_pos = stack_pos - 1
 					expect(c"]")
 					type = element_type
 					expression_lhs_readonly = 0
@@ -597,25 +615,35 @@ int postfix_expr():
 
 			if (callee_is_generator):
 				# Calling a generator creates the generator object
-				# instead of running the body; the result is generator*
+				# instead of running the body; the result is generator*,
+				# built from the function's address
+				if (direct_callee_current()): direct_callee_materialize()
 				type = generator_call_suffix(callee_sym, callee_name, expected_args)
 			else if (variadic_fixed >= 0):
 				# Direct call of a variadic C import: the callee is reached
-				# through its GOT slot, so its address in eax is not pushed.
+				# through its GOT slot, so its address in eax is not pushed
+				# (and a noted callee is simply dropped).
+				direct_callee_kind = 0
 				type = parse_variadic_call_suffix(stack_pos, callee_sym, callee_name, declared_return, variadic_fixed)
 			else:
 				int has_return_buffer = 0
-				int s = stack_pos
+				int words = 0
 				if (declared_return >= 0):
 					if (type_num_args(declared_return) > 0):
-						int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-						for j in range(words): push_eax()
-						stack_pos = stack_pos + words
-						s = stack_pos
+						words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
 						has_return_buffer = 1
-				push_slot()
+				int s = stack_pos + words
+				# A noted direct callee (unit A4): record the call for
+				# this base and push no callee word; otherwise the
+				# callee's address is in eax and is parked above the base
+				int direct = direct_callee_current()
+				if (direct): direct_callee_to_record(s)
+				else: direct_call_record(s, 0, 0)
+				for j in range(words): push_eax()
+				stack_pos = stack_pos + words
+				if (direct == 0): push_slot()
 				if (has_return_buffer):
-					lea_eax_esp_plus(word_size)
+					lea_slot(s)
 					push_slot()
 				type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer, w_variadic_fixed)
 
@@ -756,11 +784,12 @@ int postfix_expr():
 						# symbol, then push it as the hidden first source argument.
 						push_slot()
 						int s = rt_call_begin(method_symbol)
+						# The receiver's save is the base slot; the return
+						# buffer's lowest word sits right below it
 						if (has_return_buffer):
-							lea_eax_esp_plus(2 << word_size_log2)
+							lea_slot(s - 1)
 							push_slot()
-						if (has_return_buffer): mov_eax_esp_plus(2 << word_size_log2)
-						else: mov_eax_esp_plus(1 << word_size_log2)
+						load_slot(s)
 
 						int receiver_type = type_lookup_next_pointer(type)
 						check_call_argument(callee_sym, signature_type, callee_name, 0, receiver_type)

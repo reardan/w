@@ -229,6 +229,15 @@ void emit_alu_reg_esp(int ext, int dst, int disp):
 void emit_alu_reg_eax(int ext, int dst):
 	emit_alu_reg_reg(ext, dst, 0)
 
+/* add eax,R: the register-base fold of a subscript (A1,
+   docs/projects/codegen_gap_plan.md §2.1): the base of 'p[i]' lives in
+   R, so the scaled index in eax gets it added directly instead of
+   through a parked copy ('push eax; ...; pop ebx; add eax,ebx'). The
+   two-register ALU form emit_alu_reg_reg already carries the x64 REX
+   bits for r8-r15. */
+void add_eax_reg(int r):
+	emit_alu_reg_reg(0, 0, r)
+
 # 'op dst,X' for the operand X a shuttle or binop note recorded (kind 1
 # constant, 2 [esp+disp] word load, 3 register).
 void emit_alu_reg_x(int ext, int dst, int kind, int value, int disp, int reg):
@@ -284,6 +293,7 @@ int regalloc_mask_index(int mask, int r):
 # registers the pre-scan asked for (regalloc_pending_mask), making them
 # the current function's saved set. Called by be_function_prologue on the
 # x86 path only; the pending mask is only ever set for that path.
+void regalloc_prologue_args();   /* compiler/regalloc_scan.w: the argument loads (A1) */
 void regalloc_prologue_emit():
 	int mask = regalloc_pending_mask
 	regalloc_pending_mask = 0
@@ -300,6 +310,7 @@ void regalloc_prologue_emit():
 			regalloc_saved_count = regalloc_saved_count + 1
 		r = r + 1
 	regalloc_saved_mask = mask
+	regalloc_prologue_args()
 
 # The framed return of a function whose prologue pushed registers:
 # 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' replaces 'leave'. Callers
@@ -777,6 +788,39 @@ void call_relative32(int v):
 	emit_int32(v)
 
 
+# Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4): one
+# `call rel32` to a W function whose arguments are already pushed, in
+# place of call_eax's materialize/park/reload sequence. call_direct_to
+# targets a code address that is known; call_direct_link leaves the
+# displacement cell on a rel32 backpatch chain (the cell holds the
+# previous cell's absolute address, code_offset ends the chain, exactly
+# like the mov-imm chains of compiler/symbol_table.w) that
+# rel_chain_patch resolves once the callee is defined. Both park the
+# loop-owned registers around the call like call_eax and count for
+# emitted_call_count. x86 family only: the callers check target_isa.
+# Each returns the displacement cell -- its buffer offset for the known
+# target, the new chain head (absolute) for the linked one -- so the
+# REPL's late-binding registry can record it before the reload moves
+# codepos on.
+int call_direct_to(int v):
+	emitted_call_count = emitted_call_count + 1
+	regalloc_call_spill()
+	call_relative32(v - (code_offset + codepos + 5))
+	int slot = codepos - 4
+	regalloc_call_reload()
+	return slot
+
+
+int call_direct_link(int head):
+	if (head == 0): head = code_offset
+	emitted_call_count = emitted_call_count + 1
+	regalloc_call_spill()
+	call_relative32(head)
+	int slot = codepos + code_offset - 4
+	regalloc_call_reload()
+	return slot
+
+
 void not_eax():
 	if (target_isa == 3): ptx_not_ax()
 	elif (target_isa == 2): wasm_not_eax()
@@ -1240,6 +1284,7 @@ void peep_rollback(int pos):
 	if (load_note_end > pos): load_note_end = 0
 	if (push_note_end > pos): push_note_end = 0
 	if (reg_lvalue_end > pos): reg_lvalue_end = 0
+	if (direct_callee_end > pos): direct_callee_kind = 0
 	if (regload_note_end > pos): regload_note_end = 0
 	if (shuttle_end > pos): shuttle_end = 0
 	if (binop_end > pos): binop_end = 0

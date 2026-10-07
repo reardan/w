@@ -122,6 +122,30 @@ int regalloc_promoted_count
 
 void regalloc_guard_fail();   /* compiler/regalloc_scan.w: the diagnostic */
 
+# Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4): a call
+# whose callee is a known W function is one `call rel32` instead of
+# materializing the callee's address, parking it on the stack and
+# reloading it before `call eax`. The identifier primary notes such a
+# callee here instead of emitting its address: kind 1 a function symbol
+# (id = its table offset), kind 2 a generic instantiation whose body the
+# drain compiles later (id = its instance index). Like the register
+# lvalue note the callee note is valid only while nothing has been
+# emitted since (direct_callee_end == codepos). The call suffix turns it
+# into a call record keyed by the call's stack base (grammar/stack_slot.w),
+# a primary not followed by '(' materializes the address instead, and
+# any other emission while the note is current is a compiler bug the
+# guard below reports.
+int direct_callee_kind
+int direct_callee_id
+int direct_callee_end
+# --no-direct-calls: every call reloads its callee into the accumulator.
+int direct_calls_disabled
+
+void direct_callee_guard_fail();   /* grammar/stack_slot.w: the diagnostic */
+
+void direct_callee_guard():
+	if (direct_callee_end == codepos): direct_callee_guard_fail()
+
 # The fail-closed guard: a current register lvalue note means some grammar
 # path is about to emit code against the accumulator as if it held the
 # local's address.
@@ -132,6 +156,7 @@ void regalloc_guard():
 
 void emit(int n, char *s):
 	if (reg_lvalue_end != 0): regalloc_guard()
+	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
 	for i in range(n):
@@ -145,6 +170,7 @@ void emit_string(char* s):
 
 void emit_i(int v, int n):
 	if (reg_lvalue_end != 0): regalloc_guard()
+	if (direct_callee_kind != 0): direct_callee_guard()
 	if (cond_pending != 0): cond_pending_materialize()
 	resize_code(n)
 	char* p = code + codepos

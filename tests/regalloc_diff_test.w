@@ -1,16 +1,17 @@
 # wbuild: timeout=1800000
 /*
 Differential sweep for register promotion (unit R2,
-docs/projects/register_allocation_pgo.md §5) and for the condition
-chains of unit A6 (docs/projects/codegen_gap_plan.md §2.6,
-grammar/cond_branch.w): every conventional compile-and-run target of
-the generated manifest is built three times, with both optimizations
-(the default), with --no-regs and with --no-cond-branch, on the width
-its target names (x86 or x64), and the three binaries must behave
+docs/projects/register_allocation_pgo.md §5), direct calls (unit A4,
+docs/projects/codegen_gap_plan.md §2.4) and the condition chains of
+unit A6 (§2.6, grammar/cond_branch.w): every conventional
+compile-and-run target of the generated manifest is built five times,
+with the defaults, with --no-regs, with --no-direct-calls, with
+--no-cond-branch, and with all three opt-outs together, on the width
+its target names (x86 or x64), and the binaries must behave
 identically: exit status, stdout and stderr. The same source is also
-compiled by a compiler that was itself built with --no-regs
---no-cond-branch, and that output must be byte-identical to bin/wv2's
-(neither optimization may change what the compiler emits, only how
+compiled by compilers that were themselves built with each opt-out and
+with all three, and those outputs must be byte-identical to bin/wv2's
+(no unit may change what the compiler emits, only how
 the compiler's own code runs).
 
 Selection is manifest-driven (tools/wbuildgen_lib.w generates the same
@@ -33,7 +34,7 @@ and code addresses differ between the two builds by construction) are
 blanked before the comparison.
 
 The sweep is split across shard processes (this program re-executes
-itself with --shard k); the parent builds the --no-regs compiler, waits
+itself with --shard k); the parent builds the opt-out compilers, waits
 for the shards and fails when any of them reported a mismatch.
 */
 import lib.lib
@@ -52,6 +53,19 @@ char* scratch_dir():
 
 char* noregs_compiler():
 	return c"bin/regalloc_diff/wv2_noregs"
+
+
+char* nodirect_compiler():
+	return c"bin/regalloc_diff/wv2_nodirect"
+
+
+char* nocond_compiler():
+	return c"bin/regalloc_diff/wv2_nocond"
+
+
+# Built with every opt-out at once
+char* noopt_compiler():
+	return c"bin/regalloc_diff/wv2_noopt"
 
 
 int has_text(char* haystack, char* needle):
@@ -111,10 +125,12 @@ process_result* run_as(char* path, char* name, char* stdin_text, int timeout_ms)
 	return r
 
 
-# bin/wv2 [x64] [--no-regs] [--no-cond-branch] src -o out; opt_out is a
-# bitmask: 1 = --no-regs, 2 = --no-cond-branch
+# bin/wv2 [x64] [--no-regs] [--no-direct-calls] [--no-cond-branch] src -o
+# out; opt_out is a bitmask: 1 = --no-regs, 2 = --no-direct-calls,
+# 4 = --no-cond-branch (opt_out_all is every opt-out at once)
+const int opt_out_all = 7
 process_result* compile_with(char* compiler, int arch64, int opt_out, char* src, char* out):
-	char** argv = strv_new(8)
+	char** argv = strv_new(9)
 	int n = 0
 	argv[n] = compiler
 	n = n + 1
@@ -127,6 +143,9 @@ process_result* compile_with(char* compiler, int arch64, int opt_out, char* src,
 		argv[n] = c"--no-regs"
 		n = n + 1
 	if (opt_out & 2):
+		argv[n] = c"--no-direct-calls"
+		n = n + 1
+	if (opt_out & 4):
 		argv[n] = c"--no-cond-branch"
 		n = n + 1
 	argv[n] = src
@@ -201,6 +220,53 @@ int compared
 int skipped
 
 
+# The default build's run ra against the variant build at path other:
+# 1 when they agree; 0 after reporting a mismatch or a nondeterministic
+# program (either build differing from a second run of itself).
+int compare_runs(process_result* ra, char* regs, char* other, char* flag, char* name, char* stdin_text, int timeout_ms):
+	process_result* rb = run_as(other, name, stdin_text, timeout_ms)
+	if (same_result(ra, rb)): return 1
+	process_result* rb2 = run_as(other, name, stdin_text, timeout_ms)
+	process_result* ra2 = run_as(regs, name, stdin_text, timeout_ms)
+	if ((same_result(rb, rb2) == 0) || (same_result(ra, ra2) == 0)):
+		report(c"nondeterministic (two runs of one build differ), not compared", name, 0)
+		skipped = skipped + 1
+		return 0
+	mismatches = mismatches + 1
+	report(c"MISMATCH (behaviour)", name, 0)
+	print(c"  ")
+	print(flag)
+	print(c": status ")
+	print(itoa(ra.status))
+	print(c" vs ")
+	println(itoa(rb.status))
+	if (same_text(ra.stdout_text, rb.stdout_text) == 0): println(c"  stdout differs")
+	if (same_text(ra.stderr_text, rb.stderr_text) == 0): println(c"  stderr differs")
+	return 0
+
+
+# Two failed compiles of one source must fail alike: 1 when they do,
+# 0 after reporting the mismatch.
+int same_compile(process_result* ca, process_result* cb, char* what, char* name):
+	if ((ca.status == cb.status) && (strcmp(ca.stderr_text, cb.stderr_text) == 0)): return 1
+	mismatches = mismatches + 1
+	report(what, name, cb.stderr_text)
+	return 0
+
+
+# compiler (built with an opt-out) compiling src to out must produce the
+# bytes kept in keep: 1 when it does, 0 after reporting the mismatch.
+int same_output(char* compiler, int arch64, char* src, char* out, char* keep, char* which, char* name):
+	process_result* cc = compile_with(compiler, arch64, 0, src, out)
+	if ((cc.status == 0) && (shell_status(c"/usr/bin/cmp", out, keep) == 0)): return 1
+	mismatches = mismatches + 1
+	print(c"regalloc_diff: MISMATCH (compiler output differs from the ")
+	print(which)
+	print(c" compiler) ")
+	println(name)
+	return 0
+
+
 void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeout_ms):
 	char* text = file_read_text(src)
 	if (text == 0):
@@ -214,57 +280,40 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	char* regs = strjoin(c"bin/regalloc_diff/", name)
 	char* regs_keep = strjoin(regs, c".keep")
 	char* noregs = strjoin(regs, c".noregs")
+	char* nodirect = strjoin(regs, c".nodirect")
 	char* nocond = strjoin(regs, c".nocond")
+	char* noopt = strjoin(regs, c".noopt")
 
 	process_result* ca = compile_with(c"bin/wv2", arch64, 0, src, regs)
 	process_result* cb = compile_with(c"bin/wv2", arch64, 1, src, noregs)
-	process_result* cn = compile_with(c"bin/wv2", arch64, 2, src, nocond)
-	if ((ca.status != 0) || (cb.status != 0) || (cn.status != 0)):
-		# A source that does not compile is still a comparison: all
-		# builds must fail the same way
-		if ((ca.status != cb.status) || (strcmp(ca.stderr_text, cb.stderr_text) != 0)):
-			mismatches = mismatches + 1
-			report(c"MISMATCH (compile)", name, cb.stderr_text)
-		else if ((ca.status != cn.status) || (strcmp(ca.stderr_text, cn.stderr_text) != 0)):
-			mismatches = mismatches + 1
-			report(c"MISMATCH (compile, --no-cond-branch)", name, cn.stderr_text)
-		else: skipped = skipped + 1
+	process_result* cd = compile_with(c"bin/wv2", arch64, 2, src, nodirect)
+	process_result* cn = compile_with(c"bin/wv2", arch64, 4, src, nocond)
+	process_result* co = compile_with(c"bin/wv2", arch64, opt_out_all, src, noopt)
+	if ((ca.status != 0) || (cb.status != 0) || (cd.status != 0) || (cn.status != 0) || (co.status != 0)):
+		# A source that does not compile is still a comparison: every
+		# build must fail the same way
+		if (same_compile(ca, cb, c"MISMATCH (compile)", name) == 0): return
+		if (same_compile(ca, cd, c"MISMATCH (compile, --no-direct-calls)", name) == 0): return
+		if (same_compile(ca, cn, c"MISMATCH (compile, --no-cond-branch)", name) == 0): return
+		if (same_compile(ca, co, c"MISMATCH (compile, every opt-out)", name) == 0): return
+		skipped = skipped + 1
 		return
 
-	# The compiler built with both opt-outs must emit the same bytes as
-	# bin/wv2 (same output path: the binary embeds its own name).
+	# The compilers built with each opt-out, and with all of them, must
+	# emit the same bytes as bin/wv2 (same output path: the binary embeds
+	# its own name).
 	shell_status(c"/bin/cp", regs, regs_keep)
-	process_result* cc = compile_with(noregs_compiler(), arch64, 0, src, regs)
-	if ((cc.status != 0) || (shell_status(c"/usr/bin/cmp", regs, regs_keep) != 0)):
-		mismatches = mismatches + 1
-		report(c"MISMATCH (compiler output differs from the --no-regs --no-cond-branch-built compiler)", name, 0)
-		return
+	if (same_output(noregs_compiler(), arch64, src, regs, regs_keep, c"--no-regs-built", name) == 0): return
+	if (same_output(nodirect_compiler(), arch64, src, regs, regs_keep, c"--no-direct-calls-built", name) == 0): return
+	if (same_output(nocond_compiler(), arch64, src, regs, regs_keep, c"--no-cond-branch-built", name) == 0): return
+	if (same_output(noopt_compiler(), arch64, src, regs, regs_keep, c"every-opt-out-built", name) == 0): return
 
 	process_result* ra = run_as(regs, name, stdin_text, timeout_ms)
-	process_result* rb = run_as(noregs, name, stdin_text, timeout_ms)
-	process_result* rn = run_as(nocond, name, stdin_text, timeout_ms)
-	if ((same_result(ra, rb) == 0) || (same_result(ra, rn) == 0)):
-		process_result* rb2 = run_as(noregs, name, stdin_text, timeout_ms)
-		process_result* ra2 = run_as(regs, name, stdin_text, timeout_ms)
-		process_result* rn2 = run_as(nocond, name, stdin_text, timeout_ms)
-		if ((same_result(rb, rb2) == 0) || (same_result(ra, ra2) == 0) || (same_result(rn, rn2) == 0)):
-			report(c"nondeterministic (two runs of one build differ), not compared", name, 0)
-			skipped = skipped + 1
-		else:
-			mismatches = mismatches + 1
-			process_result* other = rb
-			char* which = c"--no-regs"
-			if (same_result(ra, rb)):
-				other = rn
-				which = c"--no-cond-branch"
-			report(c"MISMATCH (behaviour)", name, which)
-			print(c"  status ")
-			print(itoa(ra.status))
-			print(c" vs ")
-			println(itoa(other.status))
-			if (same_text(ra.stdout_text, other.stdout_text) == 0): println(c"  stdout differs")
-			if (same_text(ra.stderr_text, other.stderr_text) == 0): println(c"  stderr differs")
-	else: compared = compared + 1
+	if (compare_runs(ra, regs, noregs, c"--no-regs", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, nodirect, c"--no-direct-calls", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, nocond, c"--no-cond-branch", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, noopt, c"--no-regs --no-direct-calls --no-cond-branch", name, stdin_text, timeout_ms) == 0): return
+	compared = compared + 1
 
 
 # The sweep over the manifest; shard -1 means every target.
@@ -321,8 +370,14 @@ int main(int argc, char** argv):
 		return 0
 
 	shell_status(c"/bin/mkdir", c"-p", scratch_dir())
-	process_result* build = compile_with(c"bin/wv2", 0, 3, c"w.w", noregs_compiler())
-	asserts(c"building the --no-regs --no-cond-branch compiler", build.status == 0)
+	process_result* build = compile_with(c"bin/wv2", 0, 1, c"w.w", noregs_compiler())
+	asserts(c"building the --no-regs compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, 2, c"w.w", nodirect_compiler())
+	asserts(c"building the --no-direct-calls compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, 4, c"w.w", nocond_compiler())
+	asserts(c"building the --no-cond-branch compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, opt_out_all, c"w.w", noopt_compiler())
+	asserts(c"building the every-opt-out compiler", build.status == 0)
 
 	process** shards = cast(process**, malloc(shard_count * __word_size__))
 	for k in range(shard_count):

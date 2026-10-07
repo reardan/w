@@ -6,6 +6,18 @@ void import_warn_unqualified(char* name);
 void import_warn_transitive(char* name);
 
 
+# The identifier's value: a function that may be called directly (unit
+# A4, grammar/stack_slot.w) is only noted -- the call suffix emits the
+# call, and primary_expr materializes the address when no '(' follows.
+# Anything else emits its address or value now.
+int identifier_value(char* name):
+	int t = sym_lookup(name)
+	if (direct_callee_ok(t)):
+		direct_callee_note(1, t)
+		return 4 /* function */
+	return sym_get_value(name)
+
+
 # Returns the identifier's type index, or -1 when the token is not an identifier.
 int identifier():
 	int c = token[0]
@@ -19,5 +31,5 @@ int identifier():
 		import_warn_unqualified(token)
 		import_warn_transitive(token)
 		strcpy(last_identifier, token)
-		return sym_get_value(token)
+		return identifier_value(token)
 	return -1

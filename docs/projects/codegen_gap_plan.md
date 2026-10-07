@@ -691,6 +691,407 @@ programs and 25% on `inflate_corpus`.
 
 (Appended by each unit, dated, with the §1 tables re-measured.)
 
+### A4 — direct calls, `call rel32` to known W functions (2026-10-07)
+
+What landed (x86 and x64 Linux ELF, and win64 PE by sharing the
+emitter; arm64, `arm64_darwin` and wasm images are byte-identical to
+before):
+
+- **The call shape.** A call whose callee is a known W function
+  (symbol type 2, 'D' or 'U', not a kernel, not `thread_local`; or a
+  generic instantiation) is one `call rel32` (`call_direct_to` /
+  `call_direct_link`, `code_generator/x86.w`). The callee-address
+  `mov eax,imm; push` before the arguments and the `mov eax,[esp+N];
+  call eax` after them are gone, and the `add esp` after the call no
+  longer pops a callee word: five instructions and one stack word per
+  call become one instruction. Calls through function pointers,
+  struct-member callees, `cast(...)` expressions, C imports, C
+  variadics, dynamic imports and every non-x86 ISA keep the `call eax`
+  shape. `--no-direct-calls` (whole-program, a `link_option`) restores
+  the old shape exactly: with it the x86 and x64 self-host images are
+  byte-identical to the base commit's, and `regalloc_diff_test` now
+  asserts the same for every program it already sweeps (a third
+  `.nodirect` build per program, compared byte-for-byte against the
+  image a `--no-direct-calls`-built compiler produces).
+- **Forward references.** An undefined callee links its `rel32` slot
+  into a per-symbol chain (`compiler/symbol_table.w`, record field
+  150; `symbol_data_size` 150 → 154), patched by
+  `sym_define_global_at` through `rel_chain_patch` (displacement =
+  address − (slot + 4)), the twin of the existing `mov imm` chain.
+  Generic instantiations (`grammar/generic.w`, `rel_chain` on the
+  instantiation record) and the lazily imported runtime helpers
+  (`grammar/lazy_runtime.w`, `rel_chains`) keep their own chains and
+  patch them when the body lands; the REPL's late-binding registry
+  (`repl/core.w`) records a slot kind and writes a displacement for
+  kind 1.
+- **The call record.** Every call now records itself on a small stack
+  (`grammar/stack_slot.w`: base slot, kind, id, aux — kind 0 an
+  indirect call whose callee word was pushed, 1 a symbol, 2 a generic
+  instantiation, 3 a lazy runtime helper) and `finish_call` /
+  `rt_call_end` pop their own record and assert the base matches
+  (`internal error: call record does not match`). Keying by base alone
+  was ambiguous: a call's first argument can begin another call at the
+  same base. The pending callee between the identifier and the `(` is
+  a note keyed on `codepos` (`direct_callee_kind/id/end`,
+  `code_generator/code_emitter.w`); `emit()` fails closed (`internal
+  error: direct call target '<name>' used by an unhandled path ...`)
+  if any byte is emitted while a note is current, `peep_rollback`
+  drops a note it rolls past, and `primary_expr` materialises the note
+  as an ordinary function value when no `(` follows. A bare callee
+  wrapped in parentheses — `(f)(x)`, `((f))(x)` — keeps the note
+  across the `)` that closes the group it filled (a token-serial
+  match, no lookahead), and an explicit generic call whose
+  instantiation already has a body is noted like any other known
+  function, because the AST emitter drops grouping and the two
+  emitters must agree byte-for-byte (`ast_expression_test`).
+- **R3 and the frame.** `regalloc_call_spill` / `regalloc_call_reload`
+  wrap the direct call exactly as they wrap `call eax`; a loop-owned
+  register is still spilled around it (`dc_loop_calls` in the test
+  shows `mov [rbp+0x10],rsi; call <__w_list_addr>; mov rsi,[rbp+0x10]`).
+  Argument slots below the base are addressed with `lea_slot` /
+  `load_slot` instead of `s - 1` arithmetic, since no callee word is
+  parked. `emitted_call_count` (PGO) counts direct calls too.
+- **Both emitters.** `code_generator/expression_ast.w` (the retained
+  emitter: `--ast-required`, `--ast-emit-retained`, the REPL) makes the
+  same decision from the same `direct_callee_ok` predicate at its 'C',
+  'W', 'G', 'z', 'F' and print/template sites; `verify_pgo`'s
+  `wv3_pgo_ast == wv3_pgo` and `ast_expression_test`'s legacy/AST
+  image parity over every fixture pin that.
+- **Decoder.** `libs/asm/x86_decode.w` read disp32 and rel32 fields
+  as unsigned on a 64-bit host, so `bin/wdbg`'s `disas` printed a
+  backward `call rel32` as `call .+0xffffff87` and `debug_test_x64`
+  failed (no backward `call rel32` existed in a W image before). It
+  now sign-extends (`asm_x86_s32`); `asm_x64_test` (3,968 functions,
+  435,293 instructions, 0 unknown, 0 mismatch) and the asm fuzz
+  targets cover the encoder/decoder round trip.
+- Tests: `tests/direct_call_test.w` (+ `_64` twin, and a
+  `--no-direct-calls` build of the same program as extra steps) covers
+  forward references, recursion, prototypes defined later and in an
+  imported file, nested calls as arguments, struct-returning callees,
+  methods and operator overloads, W variadics, explicit/inferred/forward
+  generics and an instantiation calling an already-instantiated one,
+  an asm-body callee (#579), function values and parenthesized
+  callees, loops with register-owned locals, `defer`, generators and
+  the lazily imported runtime helpers.
+
+Measurements (`./wbuild bench`: callgrind Ir in thousands, which is
+deterministic; best-of wall ms on the shared 4-core container with
+other agents' builds running, so the ms columns are noise-level
+evidence only; `bytes` is the ELF size; before = `main` at 1335f06):
+
+x64
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,254 | 3,000,254 | +0.0% | 191 | 210 | 211,592 | 203,400 |
+| `sieve` | 1,664,276 | 1,647,240 | −1.0% | 349 | 259 | 211,592 | 203,400 |
+| `sha256_1m` | 5,373,446 | 5,253,121 | −2.2% | 332 | 335 | 219,792 | 211,600 |
+| `siphash_keys` | 4,849,412 | 4,690,602 | −3.3% | 869 | 838 | 215,688 | 203,400 |
+| `inflate_corpus` | 5,179,840 | 4,791,395 | −7.5% | 368 | 306 | 281,512 | 269,224 |
+| `regex_backtrack` | 6,682,831 | 6,453,595 | −3.4% | 455 | 402 | 223,880 | 215,688 |
+| `matmul_256` | 5,065,035 | 5,063,658 | −0.0% | 368 | 363 | 215,696 | 203,408 |
+| `strcmp_sort` | 3,609,401 | 3,405,300 | −5.7% | 521 | 499 | 211,592 | 203,400 |
+
+x86
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,259 | 3,000,258 | −0.0% | 239 | 196 | 181,572 | 173,380 |
+| `sieve` | 1,683,750 | 1,666,714 | −1.0% | 318 | 279 | 181,572 | 173,380 |
+| `sha256_1m` | 5,586,837 | 5,466,512 | −2.2% | 394 | 397 | 185,672 | 177,480 |
+| `siphash_keys` | 4,575,623 | 4,420,135 | −3.4% | 684 | 726 | 181,572 | 173,380 |
+| `inflate_corpus` | 5,357,384 | 4,969,281 | −7.2% | 392 | 331 | 239,060 | 226,772 |
+| `regex_backtrack` | 6,600,523 | 6,371,287 | −3.5% | 425 | 367 | 189,764 | 181,572 |
+| `matmul_256` | 5,068,987 | 5,067,610 | −0.0% | 333 | 324 | 181,576 | 173,384 |
+| `strcmp_sort` | 3,605,684 | 3,402,203 | −5.6% | 441 | 442 | 181,572 | 173,380 |
+
+Self-compile, same input for both compilers (the base commit's source
+tree, compiled from a checkout of 1335f06, so the `self` row of
+`bench.txt` — which compiles the current, larger tree — is not the
+comparison): callgrind Ir of `wv3 --quiet w.w` 6,743,941,970 →
+6,450,379,663 (−4.4%), and of the x64 compiler compiling `x64 w.w`
+6,708,082,896 → 6,475,835,007 (−3.5%). Compiler image (`objdump -d
+-Mintel`, lines with an opcode): x86 `bin/wv3` 584,144 → 497,012
+instructions (−14.9%), 2,744,884 → 2,527,852 bytes (−7.9%); x64 image
+576,400 → 488,250 instructions (−15.3%), 3,130,576 → 2,880,728 bytes
+(−8.0%); `call eax` sites in the x86 image 29,378 → 678 and `call rax`
+in the x64 image 29,562 → 686 (the survivors are function pointers,
+the C-import shims, the hash table's `key_hash`/`key_equal` dispatch
+and the generator/`new` paths listed below).
+
+Static before/after for the hot loop of `inflate_corpus`
+(`libs/extras/compress/inflate.w`, `wh_decode` line 242 `code = code |
+inf_get_bit(c)`, x64, `objdump -d -Mintel`; the whole `inflate_corpus`
+image has 1,736 `call rax` before and 217 after):
+
+```
+before                                     after
+ mov    rax,r12                             mov    rax,r12
+ push   rax                                 push   rax
+ mov    eax,0x806429e      ; callee          mov    rax,QWORD PTR [rsp+0x60]  ; c
+ push   rax                ; parked          push   rax
+ mov    rax,QWORD PTR [rsp+0x68]  ; c        call   8061926 <inf_get_bit>
+ push   rax                                 add    rsp,0x8
+ mov    rax,QWORD PTR [rsp+0x8]   ; reload   pop    rbx
+ call   rax                                 or     rax,rbx
+ add    rsp,0x10
+ pop    rbx
+ or     rax,rbx
+```
+
+The plan's §2.4 expectation for this unit alone (x64:
+`regex_backtrack` −8%, `inflate_corpus` −10%, `strcmp_sort` −10%) was
+not met in full: −3.4%, −7.5% and −5.7%. The per-call saving is the
+five instructions predicted; what the estimate over-counted is how
+much of those loops is the call *shape* versus the callee's own
+prologue/epilogue and R3's spill/reload around the call (both
+untouched here — the inlining unit, A5, is what removes those). `sum`
+and `matmul_256` have no calls in their loops and are unchanged to
+within one instruction.
+
+What this unit does not claim:
+
+- `new T` / `__w_new_object`, the `malloc` inside
+  `buffer_push_range_descriptor`, `str_from_cstr` coercions, generator
+  calls and the C-variadic path keep their indirect shape (each emits
+  its callee outside `finish_call` and records a kind-0 call, see
+  `direct_call_record(s, 0, 0)` in `code_generator/expression_ast.w`
+  and `grammar/`). A forward generic call (`generic_forward_call_expr`,
+  resolved at the drain) stays indirect too.
+- Inlining (A5) is not started; `inf_get_bit`, `__w_size_add`,
+  `bench_fold` and the sort comparators are still calls.
+- win64 (`tests_win64`, `verify_win`) could not be run here: wine is
+  not installed on the container. The PE emitter shares the x86-64
+  code emitter, so win64 images change in the same way (`call rax`
+  29,623 → 686 in the win64 self-host image, 3,145,728 → 2,891,776
+  bytes) and need a wine run before release.
+
+Deviations from the plan's sketch: (1) every call records itself
+rather than only direct ones, because the base slot alone does not
+identify a call; (2) the lazily imported runtime helpers (`print`,
+f-strings, `var`, JSON, the bounds-check trap) are direct calls too,
+through their own chains, since they are among the hottest helper
+sites in the self-compile; (3) the REPL late-binding hook gained a
+slot kind; (4) the `libs/asm` decoder fix above; (5) win64 changed
+(as the plan allowed) and is unverified for lack of wine.
+
+Gates: `verify`, `verify_x64`, `verify_pgo`, `verify_arm64`
+(qemu-user-static), `regalloc_diff_test` (0 mismatches over 408
+compared builds), `asm_x64_test`, `asm_fuzz_x86_test`,
+`asm_fuzz_x64_test`, `ast_expression_test`, `direct_call_test` +
+`_64`, `git diff --name-only 1335f06 | bin/wtest changed` (41
+targets), `./wbuild tests` (921 targets).
+
+### A1 — pointer bases in registers, G1 (2026-10-07)
+
+**What landed.** The promotion pre-scan no longer excludes a name
+because it is subscripted or field-accessed; only `name(` and a bare
+`&name` still exclude it (`compiler/regalloc_scan.w`, header comment
+and `rs_identifier`). Whether a candidate may hold a register is
+decided by its type: `T[..] name` and any declaration whose type name
+the type table already knows as unpromotable (a struct value, a narrow
+integer, a float) are excluded in the scan, and `regalloc_type_ok` at
+`sym_declare` stays the final word, so a struct-valued local's
+`s.field` and an array local's `a[i]` — which address frame storage,
+not a pointer's target — never see a register. The subscript path of
+`grammar/postfix_expr.w` (`accept(c"[")`) and its retained twin in
+`code_generator/expression_ast.w` (`op == 'i'`) read a
+register-resident base through the register-lvalue note that
+`sym_emit_value` leaves: instead of `binary1(type)` (slot load, `push`),
+index, `imul`, `pop rbx; add rax,rbx`, the emitter runs the index, scales
+it and adds the register with the new `add_eax_reg(r)` of
+`code_generator/x86.w` (`add eax,R`, REX-carrying for r8–r15) — six
+instructions become three, for reads and for stores alike
+(`a[i] = v`, `a[i] += v`, `&a[i]`). The field path (`accept(c".")`)
+already consumed the note through `promote(type)`, so `p.field` reads
+and writes go `mov rax,R; add rax,off; mov rax,[rax]` with no slot
+load; that is the same count as before (slot load, add, load) and A2's
+addressing forms are what make it pay. An ndarray's comma index keeps
+the stack path (its accessor call needs the parked receiver).
+
+Ranking (`rs_assign_registers`) runs in two rounds so the pointer bases
+never displace a scalar that was winning before: round 0 is the pre-A1
+ranking of locals by scalar reads and writes; round 1 hands the
+registers it leaves to the bases, weighted by their subscripts whose
+index is more than one token (`rs_base`, counted at the closing `]`,
+two uses per subscript for the slot load and the parked copy the fold
+removes). A one-token-index subscript (`sa[j]`) and a field read save
+nothing through a register until A2, so they earn none; ranking them
+cost 4–7% on `strcmp_sort`'s `__w_list_compare_values` and displaced
+`count`/`h` in `sieve` before the rule was added. Loop registers (R3,
+r8–r11 after rsi/rdi) rank the same way, so `a`, `b`, `out` and `mask`
+all get loop registers in `matmul`. A base written inside a subscript
+it is the base of (`a[a = q]`) is excluded, since the fold would read
+the new value.
+
+On x64 a function **argument** ranks like a local: a name the body
+never declares whose record (`sym_probe` at ranking time) is a
+word-sized parameter of this function takes a callee-saved register
+too. `regalloc_prologue_args()` (called from `regalloc_prologue_emit`)
+loads it from its stack word right after the prologue's pushes and
+hands the register to the symbol record; nothing reads the word again
+and the register is dead at every return, so there is no write-back.
+`regalloc_slot_assert`/`regalloc_slot_register` skip records that are
+not locals, and `code_generator/dwarf.w`'s new
+`debug_local_set_register_named` points the argument's DWARF location
+at the register so `wdbg` prints it (checked by hand with `bin/wdbg64`:
+`p` of a promoted `int* p` argument reads correctly from the register).
+x86's two registers stay with the scalars (`rs_args_rank`): ranking
+arguments there displaced `acc` in `matmul` for +10% Ir.
+
+The fail-closed guard is unchanged and still fires on any path that
+would materialise a promoted base's slot. `regalloc_diff_test` sweeps
+all 406 deterministic programs with and without `--no-regs` (0
+mismatches). `tests/regalloc_test.w` gains `test_a1_bases` and
+`test_a1_arguments` (pointer arguments subscripted in loops, element
+stores, nested `a[i][j]`, `p.field[i]`, `a[i].field`, a struct pointer's
+fields read and written, address-taken and subscripted locals,
+`&a[i]`/`&p.f`, an array local, a struct-valued local, a base written
+in its own index, a pointer kept across calls, a recursive argument, a
+struct-valued argument), with values from a C oracle, run on x86, x64
+and their `--no-regs` twins. Nothing reaches arm64, win64 or wasm: the
+scan returns before ranking when `target_isa != 0 || target_os != 0`,
+exactly as before, and those images are byte-identical
+(`verify_arm64` passes; the x86-64 emitter's win64 path never sees a
+promoted symbol).
+
+**The hot loop.** `matmul_256`'s inner loop on x64
+(`bin/wv2 x64 tests/bench/matmul_256.w`, `objdump -d -Mintel`), 30
+instructions before and 24 after; `a`, `b` were slot loads at
+`[rsp+0x78]`, now the loop registers `rdi`, `r8` (`out` is `r9`,
+`mask` `r10`, `n` stays `rsi`):
+
+```
+; before (main 1335f06)                   ; after (A1)
+mov    rax,r13          ; acc             mov    rax,r13
+push   rax                                push   rax
+mov    rax,[rsp+0x78]   ; a  <- slot      mov    rax,r15
+push   rax                                imul   rax,rsi      ; i*n
+mov    rax,r15                            add    rax,r12
+imul   rax,rsi          ; i*n             imul   rax,rax,0x8
+add    rax,r12                            add    rax,rdi      ; + a
+imul   rax,rax,0x8                        mov    rax,[rax]
+pop    rbx                                push   rax
+add    rax,rbx                            mov    rax,r12
+mov    rax,[rax]                          imul   rax,rsi      ; k*n
+push   rax                                add    rax,r14
+mov    rax,[rsp+0x78]   ; b  <- slot      imul   rax,rax,0x8
+push   rax                                add    rax,r8       ; + b
+mov    rax,r12                            mov    rax,[rax]
+imul   rax,rsi          ; k*n             pop    rbx
+add    rax,r14                            imul   rax,rbx
+imul   rax,rax,0x8                        pop    rbx
+pop    rbx                                add    rax,rbx
+add    rax,rbx                            mov    r13,rax
+mov    rax,[rax]                          add    r12,0x1
+pop    rbx                                jmp    <head>       ; cmp r12,rsi / jge
+imul   rax,rbx
+pop    rbx
+add    rax,rbx
+mov    r13,rax
+add    r12,0x1
+jmp    <head>
+```
+
+The 24 that remain are G3's `push`/`pop` around `acc` and the product,
+G5's `i*n` recomputed per iteration and G2's `imul rax,rax,8; mov
+rax,[rax]` in place of `mov rax,[rdi+rax*8]` — which is why this unit
+alone stops at 4.06 G rather than the ~3.5 G the §5.1 row estimated
+(that figure included the scaled-index form A2 owns).
+
+**Measurements** (same 4-core container, shared with two other agents
+during the "after" runs, so wall times are noisy and the Ir columns are
+the gate; `./wbuild bench`, kIr = callgrind Ir / 1000, ms = best of the
+runs):
+
+| program | x64 Ir before | after | Δ | ms before → after | x86 Ir before | after | Δ | ms before → after |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sum | 3.000 G | 3.000 G | -0.0% | 188 → 222 | 3.000 G | 3.000 G | +0.0% | 240 → 201 |
+| sieve | 1.664 G | 1.664 G | -0.0% | 326 → 285 | 1.684 G | 1.684 G | +0.0% | 314 → 326 |
+| sha256_1m | 5.373 G | 5.185 G | -3.5% | 321 → 347 | 5.587 G | 5.587 G | +0.0% | 362 → 349 |
+| siphash_keys | 4.851 G | 4.783 G | -1.4% | 833 → 869 | 4.576 G | 4.576 G | +0.0% | 703 → 623 |
+| inflate_corpus | 5.180 G | 5.180 G | +0.0% | 386 → 394 | 5.357 G | 5.357 G | +0.0% | 371 → 400 |
+| regex_backtrack | 6.683 G | 6.683 G | -0.0% | 456 → 420 | 6.601 G | 6.601 G | +0.0% | 445 → 411 |
+| matmul_256 | 5.065 G | 4.056 G | -19.9% | 382 → 360 | 5.069 G | 5.069 G | +0.0% | 347 → 316 |
+| strcmp_sort | 3.609 G | 3.609 G | -0.0% | 509 → 532 | 3.606 G | 3.606 G | +0.0% | 463 → 447 |
+| self | 6.449 G | 6.410 G | -0.6% | 746 → 744 | 7.903 G | 7.942 G | +0.5% | 969 → 995 |
+
+`matmul_256` x64 is −19.9% (the ~30% the §3.1 experiment bounded
+needed the strength reduction too); `sha256_1m` x64 is −3.5% because
+the message-schedule loop (`w[i - 15]`, `w[i - 2]`, `w[i - 16]`,
+`w[i - 7]`, `w[i]` — `w` is a pointer *argument* of `sha256_block_w`)
+now keeps `w` in the loop register `rsi` with five `add rax,rsi` folds;
+`siphash_keys` x64 is −1.4% (`__w_hash_table_slot`'s `table.states[i]`
+/ `table.keys[i]` bases). The x86 corpus is byte-for-byte unchanged in
+Ir: its two registers stay with the scalars by the ranking rule, no
+argument is promoted and there is no R3 loop pass. The `self` row is
+−0.6% on x64; on x86 the bench run above says +0.5% and a callgrind
+run of the same two compilers on the same input says −0.8% (7.993 G →
+7.930 G; `__w_hash_table_slot` −60 M, `__w_strcmp` −21 M,
+`__w_hash_key_equal` −18 M against +9 M in the scan's `rs_*` functions
+and +11 M of `__w_hash_sip` for the `type_lookup` per declaration) —
+the self-compile's Ir has the ±1.5% run-to-run spread
+`register_allocation_pgo.md` §11 (P1) documents, so the honest
+statement is "unchanged within noise, scan cost about +0.25%" (the
+exact `wbench` counters: `sym_lookup` calls 488,101 → 489,368,
+records visited 128,504 → 128,861, output bytes 2,748,980 → 2,741,360).
+
+`--stats` on the self-compile of `w.w`: x64 locals promoted 2,246 →
+2,340, arguments promoted 0 → 36, loop registers 313 → 352 (420 loops
+owning registers, unchanged); x86 locals promoted 1,552 → 1,600. The
+self-host images are 575,881 → 575,907 instructions (x64) and 585,709 →
+585,841 (x86): each promoted base saves two instructions per
+multi-token subscript and costs the prologue push/pop pair, the
+argument load and the spill/reload around calls inside R3 loops, so the
+static count is flat and the dynamic one is what moved.
+
+**What the unit does not claim.**
+
+- `sha256_1m`'s round loop is untouched: `k` is a pointer local whose
+  `k[i]` has a one-token index, `h[0]`..`h[7]` likewise, and the four
+  callee-saved registers go to the round's state scalars (round 0);
+  only the schedule loop's `w` gained (above). The round loop's cost is
+  G3's (§2.3) and A3's; the §5.1 "−10%" estimate for this unit assumed
+  the frame-array forms of A2.
+- Field accesses (`c.status`, `table.states`) are instruction-count
+  neutral until A2: the base's slot load becomes a register move. So
+  `inflate_corpus` (`inf_get_bit` is also loop-free and therefore not
+  scanned at all) and `siphash_keys` move 0–1.4%, not the 10–15% the
+  §5.1 row hoped for; that estimate assumed the addressing forms.
+- `strcmp_sort`'s `sa[j]`/`sb[j]` have one-token indices and so earn
+  no register (promoting them was measured to cost 4–7% there).
+- x86 promotes no arguments (two registers, both better used for
+  scalars); x86 locals that are bases do promote.
+- Nothing is hoisted or strength-reduced (`i*n` stays in the loop: G5).
+
+**Deviations from the plan.** (1) Function-level promotion of
+*arguments* was added — the plan's text names "pointer locals and
+arguments", but #582's allocator only ever promoted declared locals,
+so arguments needed the prologue load path and the DWARF hook above.
+(2) Ranking is two-round (scalars first) and counts only
+multi-token-index subscripts; the plan's "weight a subscripted base by
+its subscripts" as a single ranking lost on `sieve`, `strcmp_sort` and
+x86 `matmul` (numbers above), so bases only take registers scalars
+leave. (3) Arguments rank on x64 only. (4) The field path needed no
+emitter change (the note was already consumed there); its gain is
+deferred to A2 as explained.
+
+Gates (all on the final commit): `verify`, `verify_x64`, `verify_pgo`
+(wv3_pgo == wv4_pgo == wv5_pgo == retained), `verify_arm64` (qemu),
+`regalloc_diff_test` (4 shards, 406 compared, 276 skipped as
+non-deterministic or no-op, 0 mismatches), the `wtest changed` targets
+(`verify self_host_warning_test parser_generator_w_test skills_test
+manifest_check regalloc_64_test regalloc_test`), `tests` (919 targets),
+`bench_compare` (then `tests/bench/baseline.txt` refreshed),
+`wbench_compare` (`tools/wbench_baseline.txt` refreshed: it was
+already stale on the base commit — `prelude` output bytes 86,236 in
+the file against 127,240 from the base compiler — and this unit moves
+the exact counters by +0.26% `sym_lookup` calls and −0.28% bytes), `profile_check`
+(98% of `profiles/self*.wprof` functions still match: the twenty
+changed definitions; not refreshed), `tools/bench_vs_c.sh -n 3` (W x64
+vs gcc -O2 Ir: matmul 3.43x, sieve 2.81x, sha256 4.01x, siphash 4.05x,
+inflate 5.26x, regex 2.63x, strcmp 6.32x, sum 2.50x).
+
 ### A6 — branch-on-flags for `&&`, `||` and `!` in condition context (2026-10-07)
 
 **What landed.** `grammar/cond_branch.w` (new, imported by `grammar.w`
