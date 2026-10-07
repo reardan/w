@@ -719,7 +719,7 @@ void at_calibrate():
 		free(path)
 		int found = 0
 		if (fd >= 0):
-			char* pair = malloc(2 * __word_size__)
+			char* pair = cast(char*, malloc(2 * __word_size__))
 			while (read(fd, pair, 2 * __word_size__) == 2 * __word_size__):
 				if (load_word(pair) == 3): /* AT_PHDR */
 					attach_delta = load_word(pair + __word_size__) - code_offset - phdr_table_pos

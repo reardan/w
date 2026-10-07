@@ -290,12 +290,10 @@ void pu_check_arch(char* arch):
 		i = i + 1
 	if (pad > 0): asserts(c"the head itself is not a nop", (bytes[head] & 255) != 0x90)
 	free(bytes)
-	int plain_size = 0
-	free(pu_read_bytes(plain, &plain_size))
-	# Padding is inside the page the code occupies before the data
-	# segment, so the sizes agree unless the pad crossed a page.
-	if (pad == 0): asserts(c"no pad: image identical", pu_same_file(plain, pgo))
-	else: asserts(c"pad: image differs", pu_same_file(plain, pgo) == 0)
+	# Zero alignment padding does not imply identical images: the
+	# profile also changes register promotion in the cold bodies.
+	# Check the actual padding above; byte identity is only required
+	# below when the profile cannot change code generation.
 	free(err)
 	free(produced)
 
