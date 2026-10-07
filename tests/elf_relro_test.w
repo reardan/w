@@ -22,7 +22,16 @@ extern int puts(char* s)
 extern int optind
 
 
-const int relro_data_base = 0x09048000
+int relro_data_base():
+	st_init(cast(int, relro_data_base))
+	return 0x09048000 + st_slide
+
+
+char* relro_data_hex():
+	char* h = hex_fixed(relro_data_base(), __word_size__ * 2)
+	int i = 2
+	while ((h[i] == '0') && (strlen(h + i) > 8)): i = i + 1
+	return h + i
 
 
 # The first /proc/self/maps line containing needle, or 0. Mapping
@@ -57,10 +66,10 @@ void test_imports_still_work():
 
 
 void test_got_page_is_read_only():
-	char* got = relro_maps_line(c"-09048000 ")
+	char* got = relro_maps_line(strjoin(strjoin(c"-", relro_data_hex()), c" "))
 	asserts(c"a mapping ends at the data base", got != 0)
 	assert_contains(got, c" r--p ")
-	char* data = relro_maps_line(c"09048000-")
+	char* data = relro_maps_line(strjoin(relro_data_hex(), c"-"))
 	asserts(c"the data mapping starts at the data base", data != 0)
 	assert_contains(data, c" rw-p ")
 
@@ -74,7 +83,7 @@ void test_got_write_faults():
 		int[5] dfl
 		for i in range(5): dfl[i] = 0
 		rt_sigaction(11, &dfl[0], 0)
-		int* slot = cast(int*, relro_data_base - __word_size__)
+		int* slot = cast(int*, relro_data_base() - __word_size__)
 		*slot = 0
 		exit(3)
 	int status = 0

@@ -44,6 +44,10 @@ project quickly and make correct changes.
 - **No package manager, no services**: everything is driven by `./wbuild`,
   a W-native manifest-driven build executor.
 
+For x64 Linux PIE/ASLR output, use `./bin/wv2 x64 --pie file.w -o out`.
+Dynamic ELF output also protects its GOT with GNU RELRO. See
+[PIE and RELRO](docs/projects/pie_aslr.md) for scope and debugger usage.
+
 ## Build, verify, test
 
 The `bin/` output directory is `.gitignore`d; `./wbuild` creates it,

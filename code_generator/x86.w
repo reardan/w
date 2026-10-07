@@ -1064,19 +1064,30 @@ void jmp_int32(int v):
 # instruction stream behind an unconditional jump — byte-identical to the
 # classic jmp_int32 + be_branch_patch pair. On wasm code is not readable
 # memory, so the region instead redirects the emission cursor into the RW
-# data buffer (code_generator/wasm.w) and no jump exists at all;
+# data buffer (code_generator/wasm.w) and no jump exists at all. PIE
+# uses the same cursor swap so descriptor pointers can be relocated;
 # code_offset + codepos yields linear-memory addresses either way.
 
 int be_blob_begin():
-	if (target_isa == 2):
+	if ((target_isa == 2) || elf_pie):
+		be_notes_reset()
 		wasm_blob_begin()
 		return 0
 	jmp_int32(1337030)
 	return codepos
 
 
+# A pointer word inside a descriptor blob. PIE blobs live in data;
+# ordinary integers (lengths, kinds, offsets) must never be rebased.
+void be_blob_pointer(int v):
+	if (elf_pie && (v != 0)): rebase_note(code_offset + codepos)
+	emit_target_word(v)
+
+
 void be_blob_end(int p):
-	if (target_isa == 2): wasm_blob_end()
+	if ((target_isa == 2) || elf_pie):
+		wasm_blob_end()
+		be_notes_reset()
 	else:
 		# The blob holds unaligned bytes; realign so the jump lands on an
 		# instruction boundary (a no-op on x86).

@@ -121,6 +121,10 @@ void dbg_disas_print(int addr, asm_insn* insn, int current):
 	print(text)
 	free(text)
 	if (insn.branch_target != -1): dbg_disas_annotate(insn.branch_target)
+	else if ((strcmp(insn.mnemonic, c"lea") == 0) && (insn.op2.kind == ASM_OP_MEM) && (insn.op2.base == ASM_BASE_RIP)):
+		int disp = insn.op2.disp
+		if (disp & (0 - 2147483647 - 1)): disp = disp | (0 - 2147483647 - 1)
+		dbg_disas_annotate(addr + insn.length + disp)
 	else if (dbg_disas_imm_function(&insn.op2)): dbg_disas_annotate(insn.op2.imm)
 	else if (dbg_disas_imm_function(&insn.op1)): dbg_disas_annotate(insn.op1.imm)
 	put_char(10)

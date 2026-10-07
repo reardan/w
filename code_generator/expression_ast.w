@@ -585,7 +585,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int descriptor = 0
 		if (kind != 2): descriptor = protobuf_descriptor(tree.high[id])
 		if (kind == 5):
-			mov_eax_int(descriptor)
+			be_addr_slot_emit()
+			be_addr_slot_write(codepos - 4, descriptor)
 			return
 		int base_stack = stack_pos
 		int arg = tree.left[id]

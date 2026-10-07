@@ -1025,8 +1025,9 @@ void repl_inprocess_setup():
 	last_global_declaration = malloc(8000)
 
 	# code_offset makes every embedded address point into this mapping,
-	# so no relocation is needed. The codegen embeds addresses as 32-bit
-	# immediates, so on x64 the buffer must sit in the low 2GB:
+	# so no relocation is needed. x64 address slots are RIP-relative,
+	# but compiler symbol/chain tables still store 32-bit virtual addresses:
+	# keep the JIT arena (and its data) in the low 2GB with
 	# MAP_32BIT (0x40).
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */

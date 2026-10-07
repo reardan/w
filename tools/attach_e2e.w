@@ -128,12 +128,16 @@ void fail_banner(int timed_out, char* desc):
 
 
 # Fixed wdbg argv: <dbg> --attach <pid> [src].
+int pie_test_mode
+
+
 char** wdbg_argv(char* dbg, int pid, char* src):
-	char** argv = strv_new(4)
+	char** argv = strv_new(5)
 	strv_set(argv, 0, dbg)
 	strv_set(argv, 1, c"--attach")
 	strv_set(argv, 2, itoa(pid))
 	if (src != 0): strv_set(argv, 3, src)
+	if (pie_test_mode): strv_set(argv, 4, c"--pie")
 	return argv
 
 
@@ -437,6 +441,7 @@ void run_detach_case(char* prefix, char* dbg, char* fixture):
 
 
 void exec_case(attach_case* c):
+	pie_test_mode = index_of(c.fixture, c"_pie") >= 0
 	if (c.kind == 0):
 		check_contains(c.desc, run_attach(c.dbg, c.fixture, c.src, c.commands, c.want_stderr), c.expect)
 	else:
@@ -763,6 +768,9 @@ int main(int argc, char** argv):
 	# case above.
 	run_detach_case(c"x64: ", WDBG64, FINITE_BIN64)
 
+	add_case(0, c"PIE: symbols and breakpoint", WDBG64, c"bin/attach_target_pie", FIXTURE_SRC, c"b bump\nc\nbt\nkill\n", c"main (")
+	add_case(0, c"PIE: global pointer evaluation", WDBG64, c"bin/attach_target_pie", FIXTURE_SRC, c"p attach_pair_ref.second\ndetach\n", c"attach_pair_ref.second = 5678")
+	add_case(0, c"PIE: next over call", WDBG64, c"bin/attach_target_pie", FIXTURE_SRC, c"b slow_step\nc\nn\nkill\n", c"return step")
 	run_all_cases(jobs)
 
 	if (failed == 0):
