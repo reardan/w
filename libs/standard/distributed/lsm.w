@@ -1099,40 +1099,10 @@ char* lsm_export(lsm* l, int* len_out):
 	return buf
 
 
-# Installs a new generation holding exactly the given records (keys
-# strictly ascending, already validated) — header: "Generations". The
-# new table is built and the new manifest published before anything
-# live changes; a failure before that switch leaves l untouched.
-int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, list[int] voff, list[int] vlen):
-	if (l.failed): return 0
-	int count = koff.length
-	list[int] seqs = new list[int]
-	char* path = 0
-	sstable* t = 0
-	if (count > 0):
-		int seq = l.next_seq
-		l.next_seq = l.next_seq + 1
-		path = lsm_table_path(l.prefix, seq)
-		sstable_writer* w = sstable_writer_new_with_ops(l.ops, path)
-		if (cast(int, w) == 0):
-			free(path)
-			return 0
-		int i = 0
-		while (i < count):
-			char* key = mem_dup(blob + koff[i], klen[i])
-			sstable_writer_add(w, key, blob + voff[i], vlen[i], 0)
-			free(key)
-			i = i + 1
-		if (sstable_writer_finish(w) == 0):
-			storage_unlink(l.ops, path)
-			free(path)
-			return 0
-		t = sstable_open_with_ops(l.ops, path)
-		if (cast(int, t) == 0):
-			storage_unlink(l.ops, path)
-			free(path)
-			return 0
-		seqs.push(seq)
+# Publish a fully built, validated table using the existing durable generation
+# boundary. Takes ownership of t/path on both success and failure.
+int lsm_publish_generation(lsm* l, sstable* t, char* path, list[int] seqs):
+	int count = seqs.length
 	int new_epoch = l.epoch + 1
 	fs_replace_report rep
 	int status = lsm_publish_manifest(l.manifest, new_epoch, seqs, &rep)
@@ -1167,6 +1137,43 @@ int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, l
 	lsm_free_tables(old_tables, old_paths)
 	if (status != IO_OK || dstatus != IO_OK): return lsm_fail(l)
 	return 1
+
+
+# Installs a new generation holding exactly the given records (keys
+# strictly ascending, already validated) — header: "Generations". The
+# new table is built and the new manifest published before anything
+# live changes; a failure before that switch leaves l untouched.
+int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, list[int] voff, list[int] vlen):
+	if (l.failed): return 0
+	int count = koff.length
+	list[int] seqs = new list[int]
+	char* path = 0
+	sstable* t = 0
+	if (count > 0):
+		int seq = l.next_seq
+		l.next_seq = l.next_seq + 1
+		path = lsm_table_path(l.prefix, seq)
+		sstable_writer* w = sstable_writer_new_with_ops(l.ops, path)
+		if (cast(int, w) == 0):
+			free(path)
+			return 0
+		int i = 0
+		while (i < count):
+			char* key = mem_dup(blob + koff[i], klen[i])
+			sstable_writer_add(w, key, blob + voff[i], vlen[i], 0)
+			free(key)
+			i = i + 1
+		if (sstable_writer_finish(w) == 0):
+			storage_unlink(l.ops, path)
+			free(path)
+			return 0
+		t = sstable_open_with_ops(l.ops, path)
+		if (cast(int, t) == 0):
+			storage_unlink(l.ops, path)
+			free(path)
+			return 0
+		seqs.push(seq)
+	return lsm_publish_generation(l, t, path, seqs)
 
 
 # Wipes l to an empty tree: installs an empty generation (header) —

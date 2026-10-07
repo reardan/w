@@ -140,11 +140,16 @@ const int raft_wal_tag_state = 1
 const int raft_wal_tag_append = 2
 const int raft_wal_tag_truncate = 3
 const int raft_wal_tag_snapshot = 4
+const int raft_wal_tag_stream_begin = 5
+const int raft_wal_tag_stream_chunk = 6
+const int raft_wal_tag_stream_end = 7
 
 
 # ---- adapter state --------------------------------------------------------------
 
 struct raft_wal:
+	int stream_total
+	int stream_offset
 	wal* wlog               # the underlying append-only log
 	char* path              # owned copy; wlog.path points at it
 	u64* term               # shadow: last persisted current_term
@@ -181,6 +186,33 @@ int raft_wal_decode_vote(int wire):
 int raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 	if (len < 1): return 0
 	int tag = p[0] & 255
+	if (tag == raft_wal_tag_stream_begin):
+		if (rw.stream_total != 0 || len < 29): return 0
+		int count = load_le32(p + 17)
+		if (count < 0 || count > RAFT_SNAPSHOT_MEMBERS || len != 29 + 4 * count): return 0
+		int total = load_le32(p + 21 + 4 * count)
+		if (total <= 0 || total > SNAPSHOT_FILE_LIMIT): return 0
+		list[int] cfg = new list[int]
+		for i in range(count): cfg.push(raft_config_load_token(p + 21 + 4 * i))
+		int valid = raft_config_valid(cfg)
+		cfg.free()
+		if (valid == 0): return 0
+		u64_load_le(rw.snap_index, p + 1)
+		u64_load_le(rw.snap_term, p + 9)
+		while (rw.entry_terms.length > 0): u64_free(rw.entry_terms.pop())
+		rw.stream_total = total
+		rw.stream_offset = 0
+		return 1
+	if (tag == raft_wal_tag_stream_chunk):
+		if (rw.stream_total == 0 || len < 6 || len > SNAPSHOT_FILE_CHUNK + 5 || load_le32(p + 1) != rw.stream_offset || len - 5 > rw.stream_total - rw.stream_offset): return 0
+		rw.stream_offset = rw.stream_offset + len - 5
+		return 1
+	if (tag == raft_wal_tag_stream_end):
+		if (len != 1 || rw.stream_total == 0 || rw.stream_offset != rw.stream_total): return 0
+		rw.stream_total = 0
+		rw.stream_offset = 0
+		return 1
+	if (rw.stream_total != 0): return 0
 	if (tag == raft_wal_tag_state):
 		if (len != 13): return 0
 		int wire = load_le32(p + 9)
@@ -209,7 +241,7 @@ int raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 	if (tag == raft_wal_tag_snapshot):
 		if (len < 25): return 0
 		int ccount = load_le32(p + 17)
-		if (ccount < 0 || ccount > (len - 25) / 4): return 0
+		if (ccount < 0 || ccount > RAFT_SNAPSHOT_MEMBERS || ccount > (len - 25) / 4): return 0
 		int coff = 21 + 4 * ccount
 		if (len < coff + 4): return 0
 		if (load_le32(p + coff) != len - coff - 4): return 0
@@ -280,7 +312,7 @@ raft_wal* raft_wal_open_policy_with_ops(file_ops* ops, char* path, int policy, w
 		if (ok == 1 && raft_wal_shadow_apply(rw, p, len) == 0): ok = 0
 		free(p)
 		p = wal_read_next(rd, &len)
-	if (rd.failed): ok = 0
+	if (rd.failed || rw.stream_total != 0): ok = 0
 	wal_reader_close(rd)
 	if (ok == 0):
 		raft_wal_close(rw)
@@ -361,8 +393,40 @@ int raft_wal_write_append(wal* target, raft* r, int i):
 	return ok
 
 
+# File snapshots use bounded WAL records; atomic rewrite makes BEGIN..END
+# visible together. No external filename is a dependency of durable recovery.
+int raft_wal_write_snapshot_file(wal* target, raft* r):
+	int count = r.snap_config.length
+	int size = 29 + 4 * count
+	char* header = malloc(size)
+	header[0] = raft_wal_tag_stream_begin
+	u64_save_le(header + 1, r.snap_last_index)
+	u64_save_le(header + 9, r.snap_last_term)
+	store_le32(header + 17, count)
+	for i in range(count): store_le32(header + 21 + i * 4, r.snap_config[i])
+	store_le32(header + 21 + 4 * count, r.snap_len)
+	store_le32(header + 25 + 4 * count, r.snap_hash)
+	int ok = wal_append(target, header, size)
+	free(header)
+	char* chunk = malloc(SNAPSHOT_FILE_CHUNK + 5)
+	chunk[0] = raft_wal_tag_stream_chunk
+	int offset = 0
+	while (ok && offset < r.snap_len):
+		int take = r.snap_len - offset
+		if (take > SNAPSHOT_FILE_CHUNK): take = SNAPSHOT_FILE_CHUNK
+		store_le32(chunk + 1, offset)
+		ok = snapshot_file_read(r.snap_file, offset, chunk + 5, take)
+		if (ok): ok = wal_append(target, chunk, take + 5)
+		offset = offset + take
+	chunk[0] = raft_wal_tag_stream_end
+	if (ok): ok = wal_append(target, chunk, 1)
+	free(chunk)
+	return ok
+
+
 # One SNAPSHOT record: meta + config + blob.
 int raft_wal_write_snapshot(wal* target, raft* r):
+	if (cast(int, r.snap_file) != 0): return raft_wal_write_snapshot_file(target, r)
 	int blob_len = r.snap_len
 	int ccount = r.snap_config.length
 	int coff = 21 + 4 * ccount
@@ -453,6 +517,10 @@ int raft_wal_rewrite(raft_wal* rw, raft* r):
 # written (0 = already clean), or a failure status, after which the
 # adapter is poisoned (raft_wal_failed) and every later call fails.
 int raft_wal_persist(raft_wal* rw, raft* r, int* wrote_out):
+	if (r.snapshot_failed):
+		rw.failed = 1
+		wrote_out[0] = 0
+		return IO_IO_ERROR
 	wrote_out[0] = 0
 	if (rw.failed): return IO_IO_ERROR
 	if (u64_cmp(r.snap_last_index, rw.snap_index) > 0):
@@ -552,8 +620,56 @@ int raft_wal_persist_release(raft_wal* rw, raft* r, list[raft_msg*] staged, list
 # entry-owned buffer (raft_entry_new); a TRUNCATE replay frees the
 # whole entry (raft_entry_free, which now also frees its command
 # copy) for every entry it discards.
+void raft_wal_replay_stream(raft* r, char* p, int len):
+	int tag = p[0] & 255
+	if (tag == raft_wal_tag_stream_begin):
+		int count = load_le32(p + 17)
+		raft_msg* m = raft_msg_new(raft_msg_install_snapshot, r.self_id, r.self_id, r.current_term)
+		u64_load_le(m.prev_log_index, p + 1)
+		u64_load_le(m.prev_log_term, p + 9)
+		for i in range(count): m.snap_config.push(raft_config_load_token(p + 21 + i * 4))
+		m.snap_len = load_le32(p + 21 + count * 4)
+		m.chunk_hash = load_le32(p + 25 + count * 4)
+		r.incoming_snapshot = m
+		r.incoming_file = snapshot_file_new(r.snapshot_ops, r.snapshot_prefix)
+		if (cast(int, r.incoming_file) == 0): r.snapshot_failed = 1
+		return
+	if (r.snapshot_failed): return
+	if (tag == raft_wal_tag_stream_chunk):
+		if (snapshot_file_append(r.incoming_file, p + 5, len - 5) == 0): r.snapshot_failed = 1
+		return
+	raft_msg* m = r.incoming_snapshot
+	if (snapshot_file_seal(r.incoming_file) == 0 || r.incoming_file.hash != m.chunk_hash || r.incoming_file.length != m.snap_len):
+		r.snapshot_failed = 1
+		return
+	while (r.log.length > 0): raft_entry_free(r.log.pop())
+	u64_copy(r.snap_last_index, m.prev_log_index)
+	u64_copy(r.snap_last_term, m.prev_log_term)
+	raft_adopt_snapshot_config(r, m.snap_config)
+	u64_copy(r.commit_index, r.snap_last_index)
+	u64_copy(r.last_applied, r.snap_last_index)
+	if (r.snap_data != 0): free(r.snap_data)
+	if (r.pending_snap_data != 0): free(r.pending_snap_data)
+	r.snap_data = 0
+	r.pending_snap_data = 0
+	snapshot_file_free(r.snap_file)
+	snapshot_file_free(r.pending_snap_file)
+	r.snap_file = r.incoming_file
+	r.pending_snap_file = snapshot_file_retain(r.snap_file)
+	r.incoming_file = 0
+	r.snap_len = m.snap_len
+	r.pending_snap_len = m.snap_len
+	r.snap_hash = m.chunk_hash
+	u64_copy(r.pending_snap_index, r.snap_last_index)
+	raft_msg_free(m)
+	r.incoming_snapshot = 0
+
+
 void raft_wal_replay_into(raft* r, char* p, int len):
 	int tag = p[0] & 255
+	if (tag == raft_wal_tag_stream_begin || tag == raft_wal_tag_stream_chunk || tag == raft_wal_tag_stream_end):
+		raft_wal_replay_stream(r, p, len)
+		return
 	if (tag == raft_wal_tag_state):
 		assert1(len == 13)
 		u64_load_le(r.current_term, p + 1)
@@ -636,6 +752,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 # to land exactly on the shadow: both are pure folds of the same
 # record prefix.
 raft* raft_wal_recover_into(raft_wal* rw, raft* r):
+	raft_enable_snapshot_files(r, rw.wlog.ops, rw.path)
 	wal_reader* rd = wal_reader_open_with_ops(rw.wlog.ops, rw.path)
 	assert1(cast(int, rd) != 0)
 	int* len_out = cast(int*, malloc(__word_size__))
@@ -647,7 +764,7 @@ raft* raft_wal_recover_into(raft_wal* rw, raft* r):
 	free(len_out)
 	int read_failed = rd.failed
 	wal_reader_close(rd)
-	if (read_failed):
+	if (read_failed || r.snapshot_failed):
 		raft_free(r)
 		return 0
 	assert1(u64_eq(rw.term, r.current_term))

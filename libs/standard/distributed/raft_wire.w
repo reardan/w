@@ -178,7 +178,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		m.chunk_hash = load_le32(buf + off + 24)
 		m.chunk_crc = load_le32(buf + off + 28)
 		int count = load_le32(buf + off + 32)
-		if (count < 0 || count > RAFT_SNAPSHOT_MEMBERS || count > (len - 57) / 4 || m.chunk_total <= 0 || m.chunk_total > RAFT_SNAPSHOT_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total):
+		if (count < 0 || count > RAFT_SNAPSHOT_MEMBERS || count > (len - 57) / 4 || m.chunk_total <= 0 || m.chunk_total > SNAPSHOT_FILE_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total):
 			raft_msg_free(m)
 			return 0
 		int pos = off + 36

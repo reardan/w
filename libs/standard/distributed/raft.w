@@ -119,6 +119,7 @@ configuration tokens are voter IDs or -(learner ID + 1). Add a learner first,
 then promote only after it has acknowledged this leader's complete log and a
 current-term entry is committed. Removed and learner nodes never campaign.
 */
+import libs.standard.distributed.snapshot_file
 import lib.lib
 import lib.memory
 import lib.sha256
@@ -284,6 +285,12 @@ void raft_msg_free(raft_msg* m):
 # ---- node state ---------------------------------------------------------------
 
 struct raft:
+	file_ops* snapshot_ops
+	char* snapshot_prefix
+	snapshot_file* snap_file
+	snapshot_file* pending_snap_file
+	snapshot_file* incoming_file
+	int snapshot_failed
 	raft_msg* incoming_snapshot
 	int incoming_offset
 	int incoming_deadline
@@ -558,6 +565,10 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 # Frees every owned u64, log entry and the prng; the list/map storage
 # is runtime-managed (matching swim_free in swim.w).
 void raft_free(raft* r):
+	if (r.snapshot_prefix != 0): free(r.snapshot_prefix)
+	snapshot_file_free(r.snap_file)
+	snapshot_file_free(r.pending_snap_file)
+	snapshot_file_free(r.incoming_file)
 	if (cast(int, r.incoming_snapshot) != 0): raft_msg_free(r.incoming_snapshot)
 	r.read_acks.free()
 	r.learners.free()
@@ -831,7 +842,7 @@ raft_msg* raft_make_install_snapshot(raft* r, int peer):
 	u64_copy(m.leader_commit, r.commit_index)
 	m.snap_len = r.snap_len
 	int offset = 0
-	if (r.snap_len > RAFT_SNAPSHOT_CHUNK):
+	if (r.snap_len > RAFT_SNAPSHOT_CHUNK || cast(int, r.snap_file) != 0):
 		m.type = raft_msg_snapshot_chunk
 		if (peer in r.snap_offsets): offset = r.snap_offsets[peer]
 		if (offset < 0 || offset >= r.snap_len): offset = 0
@@ -840,7 +851,12 @@ raft_msg* raft_make_install_snapshot(raft* r, int peer):
 		m.chunk_hash = r.snap_hash
 		m.snap_len = r.snap_len - offset
 		if (m.snap_len > RAFT_SNAPSHOT_CHUNK): m.snap_len = RAFT_SNAPSHOT_CHUNK
-	m.snap_data = mem_dup(r.snap_data + offset, m.snap_len)
+	if (cast(int, r.snap_file) != 0):
+		m.snap_data = malloc(m.snap_len)
+		if (snapshot_file_read(r.snap_file, offset, m.snap_data, m.snap_len) == 0):
+			r.snapshot_failed = 1
+			m.snap_len = 0
+	else: m.snap_data = mem_dup(r.snap_data + offset, m.snap_len)
 	m.snap_config.free()
 	m.snap_config = raft_clone_int_list(r.snap_config)
 	if (m.type == raft_msg_snapshot_chunk): m.chunk_crc = raft_snapshot_chunk_checksum(m)
@@ -979,6 +995,8 @@ void raft_start_prevote(raft* r, int now_ms, list[raft_msg*] out):
 void raft_tick(raft* r, int now_ms, list[raft_msg*] out):
 	if (cast(int, r.incoming_snapshot) != 0 && mono_expired(now_ms, r.incoming_deadline)):
 		raft_msg_free(r.incoming_snapshot)
+		snapshot_file_free(r.incoming_file)
+		r.incoming_file = 0
 		r.incoming_snapshot = 0
 		r.incoming_offset = 0
 	if (r.state == raft_leader):
@@ -1235,7 +1253,10 @@ void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] 
 # as our own latest snapshot (snap_data) and in the pending slot for
 # the state-machine owner (raft_take_pending_snapshot).
 void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	if (m.snap_len < 0 || m.snap_len > RAFT_SNAPSHOT_LIMIT || m.snap_config.length > RAFT_SNAPSHOT_MEMBERS): return
+	if (m.snap_len < 0 || m.snap_len > SNAPSHOT_FILE_LIMIT || m.snap_config.length > RAFT_SNAPSHOT_MEMBERS): return
+	if (m.snap_len > RAFT_SNAPSHOT_LIMIT):
+		if (cast(int, r.incoming_file) == 0 || cast(int, m) != cast(int, r.incoming_snapshot)): return
+		if (r.incoming_file.sealed == 0 || r.incoming_file.length != m.snap_len || r.incoming_file.hash != m.chunk_hash): return
 	raft_msg* reply = raft_msg_new(raft_msg_append_reply, r.self_id, m.from, r.current_term)
 	reply.success = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
@@ -1264,13 +1285,24 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 	u64_copy(r.commit_index, m.prev_log_index)
 	u64_copy(r.last_applied, m.prev_log_index)
 	if (r.snap_data != 0): free(r.snap_data)
-	r.snap_data = mem_dup(m.snap_data, m.snap_len)
+	if (r.pending_snap_data != 0): free(r.pending_snap_data)
+	snapshot_file_free(r.snap_file)
+	snapshot_file_free(r.pending_snap_file)
+	r.snap_file = 0
+	r.pending_snap_file = 0
+	r.snap_data = 0
+	r.pending_snap_data = 0
+	if (cast(int, r.incoming_file) != 0 && cast(int, m) == cast(int, r.incoming_snapshot)):
+		r.snap_file = snapshot_file_retain(r.incoming_file)
+		r.pending_snap_file = snapshot_file_retain(r.incoming_file)
+		r.snap_hash = r.snap_file.hash
+	else:
+		r.snap_data = mem_dup(m.snap_data, m.snap_len)
+		r.pending_snap_data = mem_dup(m.snap_data, m.snap_len)
+		r.snap_hash = raft_snapshot_checksum(r.snap_data, m.snap_len)
 	r.snap_len = m.snap_len
-	r.snap_hash = raft_snapshot_checksum(r.snap_data, r.snap_len)
 	r.snap_offsets.free()
 	r.snap_offsets = new map[int, int]
-	if (r.pending_snap_data != 0): free(r.pending_snap_data)
-	r.pending_snap_data = mem_dup(m.snap_data, m.snap_len)
 	r.pending_snap_len = m.snap_len
 	u64_copy(r.pending_snap_index, m.prev_log_index)
 	reply.success = 1
@@ -1279,13 +1311,16 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 
 
 # Partial staging is volatile and bounded to one snapshot per receiver.
+# When snapshot_prefix is configured, payload bytes live in an unlinked file.
 # Receiver restart loses progress and requests offset zero. Reconnection
 # retransmits one chunk; duplicate chunks return the contiguous offset.
 # Only the final, validated install emits the normal durable append ACK.
 void raft_handle_snapshot_chunk(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (m.to != r.self_id || raft_is_peer(r, m.from) == 0 || u64_eq(m.term, r.current_term) == 0): return
-	if (m.chunk_total <= 0 || m.chunk_total > RAFT_SNAPSHOT_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total): return
+	if (m.chunk_total <= 0 || m.chunk_total > SNAPSHOT_FILE_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total): return
 	if (u64_fits_int(m.prev_log_index) == 0 || m.snap_config.length > RAFT_SNAPSHOT_MEMBERS || m.snap_len <= 0 || m.snap_len > RAFT_SNAPSHOT_CHUNK || m.snap_len > m.chunk_total - m.chunk_offset): return
+	if (m.chunk_total > RAFT_SNAPSHOT_LIMIT && r.snapshot_prefix == 0): return
+	if (r.snapshot_failed): return
 	if (raft_snapshot_chunk_checksum(m) != m.chunk_crc): return
 	if (u64_cmp(m.prev_log_index, r.commit_index) <= 0):
 		raft_msg* done = raft_msg_new(raft_msg_append_reply, r.self_id, m.from, r.current_term)
@@ -1313,7 +1348,16 @@ void raft_handle_snapshot_chunk(raft* r, raft_msg* m, int now_ms, list[raft_msg*
 		pending.chunk_total = m.chunk_total
 		pending.chunk_hash = m.chunk_hash
 		pending.snap_len = m.chunk_total
-		pending.snap_data = cast(char*, malloc(m.chunk_total))
+		snapshot_file_free(r.incoming_file)
+		r.incoming_file = 0
+		if (r.snapshot_prefix != 0):
+			r.incoming_file = snapshot_file_new(r.snapshot_ops, r.snapshot_prefix)
+			if (cast(int, r.incoming_file) == 0):
+				raft_msg_free(pending)
+				r.incoming_snapshot = 0
+				r.snapshot_failed = 1
+				return
+		else: pending.snap_data = cast(char*, malloc(m.chunk_total))
 		r.incoming_snapshot = pending
 		r.incoming_offset = 0
 		same = 1
@@ -1327,11 +1371,22 @@ void raft_handle_snapshot_chunk(raft* r, raft_msg* m, int now_ms, list[raft_msg*
 		r.has_leader_contact = 1
 		raft_reset_election_deadline(r, now_ms)
 		if (m.chunk_offset == r.incoming_offset):
-			mem_copy(pending.snap_data + r.incoming_offset, m.snap_data, m.snap_len)
+			if (cast(int, r.incoming_file) != 0):
+				if (snapshot_file_append(r.incoming_file, m.snap_data, m.snap_len) == 0):
+					r.snapshot_failed = 1
+					return
+			else: mem_copy(pending.snap_data + r.incoming_offset, m.snap_data, m.snap_len)
 			r.incoming_offset = r.incoming_offset + m.snap_len
 		offset = r.incoming_offset
 		if (offset == pending.snap_len):
-			if (raft_snapshot_checksum(pending.snap_data, pending.snap_len) == pending.chunk_hash): raft_handle_install_snapshot(r, pending, now_ms, out)
+			int valid = 0
+			if (cast(int, r.incoming_file) != 0):
+				if (snapshot_file_seal(r.incoming_file)): valid = r.incoming_file.hash == pending.chunk_hash
+				else: r.snapshot_failed = 1
+			else: valid = raft_snapshot_checksum(pending.snap_data, pending.snap_len) == pending.chunk_hash
+			if (valid): raft_handle_install_snapshot(r, pending, now_ms, out)
+			snapshot_file_free(r.incoming_file)
+			r.incoming_file = 0
 			raft_msg_free(pending)
 			r.incoming_snapshot = 0
 			r.incoming_offset = 0
@@ -1549,21 +1604,16 @@ int raft_peer_at(raft* r, int i):
 # (raft_entry_free: term, owned command copy and the struct) and 1 is
 # returned. Peers whose next_index is at or below the new base are
 # brought up by InstallSnapshot from the usual send paths.
-int raft_take_snapshot(raft* r, char* data, int len):
-	if (len < 0 || len > RAFT_SNAPSHOT_LIMIT || r.peers.length >= RAFT_SNAPSHOT_MEMBERS): return 0
+int raft_compact_snapshot(raft* r):
 	int base = raft_snap_base(r)
 	int applied = raft_u64_as_int(r.last_applied)
 	if (applied <= base): return 0
 	raft_entry* boundary = r.log[applied - base - 1]
-	list[int] cfg = raft_full_config_at_last_applied(r)
+	list[int] config = raft_full_config_at_last_applied(r)
 	u64_copy(r.snap_last_term, boundary.term)
 	u64_copy(r.snap_last_index, r.last_applied)
 	r.snap_config.free()
-	r.snap_config = cfg
-	if (r.snap_data != 0): free(r.snap_data)
-	r.snap_data = mem_dup(data, len)
-	r.snap_len = len
-	r.snap_hash = raft_snapshot_checksum(data, len)
+	r.snap_config = config
 	r.snap_offsets.free()
 	r.snap_offsets = new map[int, int]
 	int drop = applied - base
@@ -1577,6 +1627,41 @@ int raft_take_snapshot(raft* r, char* data, int len):
 	return 1
 
 
+int raft_take_snapshot(raft* r, char* data, int len):
+	if (len < 0 || len > RAFT_SNAPSHOT_LIMIT || r.peers.length >= RAFT_SNAPSHOT_MEMBERS || raft_u64_as_int(r.last_applied) <= raft_snap_base(r)): return 0
+	snapshot_file_free(r.snap_file)
+	r.snap_file = 0
+	if (r.snap_data != 0): free(r.snap_data)
+	r.snap_data = mem_dup(data, len)
+	r.snap_len = len
+	r.snap_hash = raft_snapshot_checksum(data, len)
+	return raft_compact_snapshot(r)
+
+
+# Configure scratch storage before receiving chunks. Existing blob APIs remain
+# bounded to 8MiB; this path admits 256MiB with no whole-snapshot allocation.
+void raft_enable_snapshot_files(raft* r, file_ops* ops, char* prefix):
+	assert1(cast(int, r.incoming_snapshot) == 0)
+	if (r.snapshot_prefix != 0): free(r.snapshot_prefix)
+	r.snapshot_prefix = strclone(prefix)
+	r.snapshot_ops = ops
+
+
+int raft_take_snapshot_file(raft* r, snapshot_file* source):
+	if (raft_u64_as_int(r.last_applied) <= raft_snap_base(r) || r.peers.length >= RAFT_SNAPSHOT_MEMBERS): return 0
+	if (snapshot_file_seal(source) == 0 || source.length <= 0): return 0
+	snapshot_file* held = snapshot_file_retain(source)
+	snapshot_file_free(r.snap_file)
+	r.snap_file = held
+	if (r.snap_data != 0): free(r.snap_data)
+	r.snap_data = 0
+	r.snap_len = source.length
+	r.snap_hash = source.hash
+	return raft_compact_snapshot(r)
+
+
+
+
 # ---- pending inbound snapshot ------------------------------------------------------
 
 # 1 while a received (or wal-recovered) snapshot awaits installation
@@ -1585,7 +1670,7 @@ int raft_take_snapshot(raft* r, char* data, int len):
 # pending, because entries after the snapshot index only make sense
 # on top of the snapshot's state.
 int raft_has_pending_snapshot(raft* r):
-	if (r.pending_snap_data != 0): return 1
+	if (r.pending_snap_data != 0 || cast(int, r.pending_snap_file) != 0): return 1
 	return 0
 
 

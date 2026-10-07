@@ -20,6 +20,7 @@ This does not make an external payment/email transactional: encode an
 outbox item in the batch and use an idempotent external consumer.
 */
 import libs.standard.distributed.lsm
+import libs.standard.distributed.lsm_stream
 import libs.standard.distributed.raft
 
 
@@ -118,3 +119,35 @@ int durable_apply_snapshot_matches(lsm* store, u64* index, u64* term):
 	int ok = applied >= 0 && u64_fits_int(index) && applied == u64_to_int(index) && u64_eq(term, stored_term)
 	u64_free(stored_term)
 	return ok
+
+
+# Install a pending blob/file snapshot and verify the application position
+# before clearing the Raft read/apply barrier. Any failure is fail-stop;
+# preserve pending state and recover from the durable Raft WAL before retrying.
+int durable_apply_install_pending(raft* r, lsm* store):
+	if (raft_has_pending_snapshot(r) == 0): return 1
+	if (u64_fits_int(r.pending_snap_index) == 0): return 0
+	char* position = malloc(12)
+	store_le32(position, u64_to_int(r.pending_snap_index))
+	u64_save_le(position + 4, r.snap_last_term)
+	snapshot_file* source = r.pending_snap_file
+	int temporary = 0
+	if (cast(int, source) == 0):
+		temporary = 1
+		source = snapshot_file_new(store.ops, store.prefix)
+		if (cast(int, source) != 0):
+			if (snapshot_file_append(source, r.pending_snap_data, r.pending_snap_len) == 0): source.failed = 1
+	int installed = 0
+	if (cast(int, source) != 0): installed = lsm_import_file_checked(store, source, c"@raft/applied", position, 12)
+	if (temporary): snapshot_file_free(source)
+	free(position)
+	if (installed == 0):
+		store.failed = 1
+		return 0
+	snapshot_file_free(r.pending_snap_file)
+	r.pending_snap_file = 0
+	if (r.pending_snap_data != 0): free(r.pending_snap_data)
+	r.pending_snap_data = 0
+	r.pending_snap_len = 0
+	u64_set_zero(r.pending_snap_index)
+	return 1
