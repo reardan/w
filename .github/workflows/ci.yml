@@ -73,11 +73,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   arm64:
@@ -111,11 +111,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   win64:
@@ -145,11 +145,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   wasm:
@@ -180,11 +180,11 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
   # The pinned w_darwin seed can segfault compiling today's sources on
@@ -259,9 +259,9 @@ jobs:
         if: always()
         run: |
           touch wbuild.log
-          n=$(grep -c 'SKIP' wbuild.log || true)
+          n=$(grep -ac 'SKIP' wbuild.log || true)
           echo "SKIP lines: $n"
           {
             echo "### SKIP lines: $n"
-            grep 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
