@@ -191,3 +191,5 @@
 # wbuild: step="bin/repl64 --quiet" stdin="40 + 2\n:quit\n" expect_stdout="42" reject_stdout="w> " expect_stderr="w> "
 # wbuild: step="script -qc ./bin/repl64 /dev/null" stdin="int myvar_completion_probe64 = 42\nmyvar_completion_p\t + 1\n:quit\n" expect_stdout="43"
 # wbuild: step="script -qc ./bin/repl64 /dev/null" stdin="[200~int addp64(int a, int b):\n\tint total = a + b\n\n\treturn total\n[201~\naddp64(2, 3)\n:quit\n" expect_stdout="5"
+# wbuild: step="bin/repl" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\treturn s\n\nacc(10)\nint acc(int n):\n\tint s = 100\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i * 2\n\t\ti = i + 1\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45" expect_stdout="190"
+# wbuild: step="bin/repl" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\t\tqq_undefined\n\treturn s\n\nint acc(int n):\n\tint s = 0\n\tfor i in range(n): s = s + i\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45"
