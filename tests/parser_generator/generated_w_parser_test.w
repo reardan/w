@@ -140,6 +140,10 @@ void test_w_lexer_literals_and_multi_char_operators():
 	assert_equal(wlang_token_OR_OR, pg_token_stream_la(stream, 14).kind)
 
 
+void test_parse_w_semicolon_separated_statements():
+	assert_w_parse_text(c"int f(int i):\x0a\x09i = i + 1; if (i == 2): return 1\x0a\x09if (i == 8): i = 0; pass\x0a\x09f(1); f(2)\x0a\x09return i;\x0a", c"semicolons.w")
+
+
 void test_parse_w_import_struct_and_function():
 	assert_w_parse_text(c"import lib.testing\x0a\x0astruct point:\x0a\x09int x\x0a\x09int y\x0a\x0aint add(int a, int b):\x0a\x09return a + b\x0a", c"inline.w")
 
