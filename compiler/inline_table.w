@@ -191,7 +191,14 @@ int inline_enabled():
 # no call instruction in the caller: the body is inlinable and emitted
 # no call itself. The scan uses it to let a loop own registers across
 # such a call; the emitter spills around any call that is emitted
-# anyway, so a wrong answer costs instructions, never correctness.
+# anyway, so a wrong answer costs instructions, never correctness. The
+# budget is the loop site's under the current mode and profile, the
+# same rule the site applies (inline_site_budget), so a build whose
+# profile inlines nothing (stale, header-only) scans exactly as the
+# plain build does and emits its bytes (tests/profile_use_test.w).
+int inline_site_budget(inline_record* rec, int in_loop);
+
+
 int inline_name_is_leaf(char* name):
 	if (inline_enabled() == 0): return 0
 	int i = inline_lookup_name(name)
@@ -199,7 +206,9 @@ int inline_name_is_leaf(char* name):
 	inline_record* rec = inline_record_at(i)
 	if (rec.ok == 0): return 0
 	if (rec.has_calls): return 0
-	return rec.code_bytes <= inline_budget_default
+	int budget = inline_site_budget(rec, 1)
+	if (budget == 0): return 0
+	return rec.code_bytes <= budget
 
 
 # A parameter of the function being defined (function_definition, in

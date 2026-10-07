@@ -1908,7 +1908,10 @@ one corpus program, and `wbench_compare` is the gate for that.
   those images to the plain build's); the corpus is compiled with
   `--inline` and no profile, so the loop rule decides there.
 - **R3 and the frame.** The register pre-scan asks
-  `inline_name_is_leaf` before marking a loop as containing a call, so
+  `inline_name_is_leaf` before marking a loop as containing a call
+  (with the loop-site budget of the current mode and profile, so the
+  scan and the emitter agree in every mode: a `--profile-use` build
+  whose profile inlines nothing scans as the plain build does), so
   a loop whose only calls inline without calls of their own keeps its
   registers (`inf_get_bits` below holds `c`, `n` and `i` in
   `rsi`/`rdi`/`r8` across the inlined `inf_get_bit`); a site the
