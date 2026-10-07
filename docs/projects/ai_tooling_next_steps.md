@@ -676,6 +676,17 @@ is cheap and catches the case that bit here.
 release workflow's native darwin fixpoint of current sources, which should
 clear this. It has not yet been checked from a clean checkout on a Mac.
 
+**Native validation (2026-10-07, #591):** the SHA256-verified v0.3.0 seed
+compiled `c310878c` through native `wv2 -> wv3 -> wv4` with byte-identical
+`wv3`/`wv4` on an M3 Pro running macOS 26.3; 119 native smoke tests and
+dynamic linking passed. The old-seed failures below are historical, not a
+failure of the current pin. The full cold `wbuild` executor path still needs
+validation: this checkout's local seed differed from its pin and did not
+finish bootstrap during observation, so tests used an isolated pinned seed.
+The smoke target also depends on Linux `bin/wv2`; add a native compile/run
+target using `bin/wv2_darwin`, and document an isolated pinned-seed retry
+that preserves a local promotion. See [the Darwin VM plan](vms_darwin_plan.md).
+
 Both released darwin seeds miscompile current main: v0.1.0's
 `w_darwin` segfaults compiling `w.w` (first bad commit 2a9c034, July
 19), and v0.2.0's compiles it but writes a corrupt Mach-O magic, so
@@ -841,7 +852,11 @@ issues at once on a 4-CPU machine. Friction they reported:
 - **`ast_expression_suite` rebuilds `bin/wv2` while other targets in the
   same batch are running it,** which fails with ETXTBSY. Also,
   `bin/.wexec_lock` makes every other `./wbuild` call in that checkout
-  wait behind one slow target.
+  wait behind one slow target. The same executable-publication hazard
+  affects `bin/wtest`: running `wtest archs --check` alongside a build
+  that recompiles `tools/test_map.w` fails with ETXTBSY (2026-10-07,
+  #589). Run those checks sequentially until the `wtest` target also
+  publishes through a temporary file and rename.
 - **`./wbuild --help` is rejected** as "unknown target --help", and
   `--keep-going` is mentioned only in `tools/wexec.w` and in the
   comments of `wbuild`, never in CLAUDE.md or AGENTS.md. Without it,

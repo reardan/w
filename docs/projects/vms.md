@@ -11,6 +11,10 @@ A required real-VM CI workflow is implemented; ordinary developer tests may
 still skip unavailable optional host facilities. The usage and validation
 sections below distinguish implemented code from measured proof and follow-ups.
 
+The macOS Apple Silicon backend is not implemented. Its staged implementation
+and native acceptance gates are in [vms_darwin_plan.md](vms_darwin_plan.md),
+tracking [#591](https://github.com/reardan/w/issues/591).
+
 The latency goal is cheap cell reuse and Linux snapshot restore, with shared
 RAM backing across clones. Ready-pool acquisition is distinct from VM creation,
 command execution and dirty-session replacement; measurements below report

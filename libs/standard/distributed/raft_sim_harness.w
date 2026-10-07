@@ -307,13 +307,23 @@ void rsim_propose(rsim* c, int id, char* command):
 	rsim_route_accepted(c, id, raft_propose(r, command, strlen(command), sim_now(c.net), c.out))
 
 
-# Leader-only membership changes (raft.w §4.1), asserted accepted.
+# Raw single-entry config fixtures for the historical membership tests. Public
+# callers use add_learner/promote and membership_ready; these deliberately drive
+# individual append/rollback mechanics without inserting extra catch-up entries.
+int rsim_config_fixture(raft* r, int op, int id, int now_ms, list[raft_msg*] out):
+	if (r.state != raft_leader || r.config_pending_index != 0): return 0
+	char* cmd = raft_config_encode(op, id)
+	int ok = raft_propose_internal(r, cmd, 5, raft_entry_kind_config(), now_ms, out)
+	free(cmd)
+	return ok
+
+
 void rsim_add_server(rsim* c, int leader_id, int new_id):
-	rsim_route_accepted(c, leader_id, raft_propose_add_server(c.nodes[leader_id - 1], new_id, sim_now(c.net), c.out))
+	rsim_route_accepted(c, leader_id, rsim_config_fixture(c.nodes[leader_id - 1], raft_config_op_add, new_id, sim_now(c.net), c.out))
 
 
 void rsim_remove_server(rsim* c, int leader_id, int target_id):
-	rsim_route_accepted(c, leader_id, raft_propose_remove_server(c.nodes[leader_id - 1], target_id, sim_now(c.net), c.out))
+	rsim_route_accepted(c, leader_id, rsim_config_fixture(c.nodes[leader_id - 1], raft_config_op_remove, target_id, sim_now(c.net), c.out))
 
 
 # Block id off from every other node (both directions per pair).
