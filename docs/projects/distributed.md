@@ -115,10 +115,10 @@ plumbing, `libs/standard/crypto/` hashing.
   commit (`raft_note_entry_appended`, run from every path that pushes a
   log entry: `raft_propose_internal`, both of `raft_handle_append`'s
   branches, and `raft_wal_replay_into`), with a single-change-in-flight
-  safety rule (`raft_propose_add_server`/`raft_propose_remove_server`
+  safety rule (the membership proposal APIs
   refuse a second proposal while `raft_config_pending`), rollback on
-  truncation (`raft_note_truncated_to`, restoring the pre-change config
-  saved by `raft_note_entry_appended`), and a leader that removes
+  truncation (`raft_note_truncated_to`, rebuilding from the snapshot or
+  bootstrap configuration and surviving log), and a leader that removes
   itself stepping down once the removal commits
   (`raft_note_commit_advanced`). Snapshots now record the FULL member
   set at their index (`raft.snap_config`, `raft_full_config_at_
@@ -126,12 +126,12 @@ plumbing, `libs/standard/crypto/` hashing.
   record) layout change from phases 5/6, with the layout-pinning tests
   in `raft_wire_test.w` updated accordingly. A newly added server gets
   `next_index = 1` and reuses the existing §7 InstallSnapshot/log-
-  replay paths to catch up — no bespoke bootstrap RPC and no learner/
-  non-voting phase (left as documented follow-up, along with the
-  disruptive-removed-server hazard: mitigated by the existing opt-in
-  pre-vote + leader stickiness per thesis §4.2.1, but the fuller §4.2.3
-  leader-lease/check-quorum refinement is not implemented — this stack
-  has no per-follower recent-contact tracking on the leader side).
+  replay paths to catch up. The [#589 membership update](raft_membership.md)
+  requires learner admission and catch-up before promotion, and a committed
+  current-term entry before configuration changes. Learners do not vote;
+  removed and unknown senders cannot increase current members' terms.
+  Clock-based leader leases remain unsupported; strong reads use quorum
+  confirmation.
   `raft_membership_sim_test.w` covers grow (3→4→5, with quorum
   participation proven by then failing an original node), shrink
   (5→4), removing the leader, the single-in-flight rejection, and the
@@ -166,13 +166,9 @@ plumbing, `libs/standard/crypto/` hashing.
   and `lsm_apply_batch` (one all-or-nothing BATCH record) extend the
   ordered-store interface. Tests: `wal_test`, `raft_wal_test`,
   `durable_gate_test`, `lsm_durability_test`, `lsm_test`.
-- Next candidates: an arena/size-class allocator for long-lived
-  processes (see ai_tooling_next_steps.md), joint-consensus membership
-  changes, chunked InstallSnapshot for snapshots too large for one
-  frame, a learner/non-voting catch-up phase for newly added servers,
-  and thesis §4.2.3's leader-lease/check-quorum refinement to fully
-  close the disruptive-removed-server gap without relying on pre-vote
-  alone.
+- Further extensions include joint-consensus multi-voter transitions and
+  separately specified leader leases. Existing membership operations serialize
+  single-voter changes; reads retain quorum confirmation.
 
 
 ## Storage follow-up (#522)
@@ -181,3 +177,8 @@ Faultable storage integration, chunked snapshots, durable application batches,
 ReadIndex, bounded maintenance, and benchmarks are implemented in
 [Distributed storage qualification](distributed_followup.md). That document
 supersedes the earlier single-frame snapshot follow-up notes above.
+
+[Streaming snapshots](raft_streaming.md), [authenticated remote transport](raft_authenticated_transport.md),
+and [learner promotion](raft_membership.md) implement the follow-up in #589.
+The [combined ownership and recovery contract](distributed_followup.md#combining-the-remote-service-apis)
+describes how to use them together.

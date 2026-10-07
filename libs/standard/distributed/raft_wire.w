@@ -228,7 +228,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		u64_load_le(m.prev_log_term, buf + off + 8)
 		u64_load_le(m.leader_commit, buf + off + 16)
 		int ccount = load_le32(buf + off + 24)
-		if (ccount < 0 || ccount > (len - off - 28) / 4):
+		if (ccount < 0 || ccount > RAFT_SNAPSHOT_MEMBERS || ccount > (len - off - 28) / 4):
 			raft_msg_free(m)
 			return 0
 		int coff = off + 28

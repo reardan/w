@@ -198,6 +198,7 @@ int raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 		cfg.free()
 		if (valid == 0): return 0
 		u64_load_le(rw.snap_index, p + 1)
+		if (u64_fits_int(rw.snap_index) == 0): return 0
 		u64_load_le(rw.snap_term, p + 9)
 		while (rw.entry_terms.length > 0): u64_free(rw.entry_terms.pop())
 		rw.stream_total = total
@@ -251,6 +252,7 @@ int raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 		cfg.free()
 		if (valid == 0): return 0
 		u64_load_le(rw.snap_index, p + 1)
+		if (u64_fits_int(rw.snap_index) == 0): return 0
 		u64_load_le(rw.snap_term, p + 9)
 		# the snapshot covers (and a rewrite drops) every prior entry
 		while (rw.entry_terms.length > 0):

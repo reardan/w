@@ -69,7 +69,7 @@ external work queue.
 `raft_tls_send(session, message)` encodes immediately, returns 1 on success,
 and leaves message ownership with the caller. `raft_tls_recv(session)` returns
 a caller-owned `raft_msg*` or null. Pass only successfully returned messages to
-`raft_step`, then free them using `raft_msg_free`. Serialize operations on a
+`raft_on_msg`, then free them using `raft_msg_free`. Serialize operations on a
 session; a busy flag rejects overlapping calls, because the TLS state and Raft
 framing are not concurrently duplex-safe. For independent send/receive workers,
 use separate authenticated connections, as the loopback transport does.

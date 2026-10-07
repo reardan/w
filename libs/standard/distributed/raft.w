@@ -1253,6 +1253,7 @@ void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] 
 # as our own latest snapshot (snap_data) and in the pending slot for
 # the state-machine owner (raft_take_pending_snapshot).
 void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (u64_fits_int(m.prev_log_index) == 0): return
 	if (m.snap_len < 0 || m.snap_len > SNAPSHOT_FILE_LIMIT || m.snap_config.length > RAFT_SNAPSHOT_MEMBERS): return
 	if (m.snap_len > RAFT_SNAPSHOT_LIMIT):
 		if (cast(int, r.incoming_file) == 0 || cast(int, m) != cast(int, r.incoming_snapshot)): return
