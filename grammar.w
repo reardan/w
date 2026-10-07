@@ -71,6 +71,7 @@ import grammar.generator_decl
 import grammar.kernel_decl
 import grammar.protobuf_builtin
 import grammar.gpu_for
+import grammar.asm_function
 import grammar.program
 import code_generator.statement_ast
 import code_generator.loop_ast

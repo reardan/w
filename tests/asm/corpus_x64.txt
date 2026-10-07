@@ -461,3 +461,16 @@ b89e000000|mov eax,0x9e
 4c8b6928|mov r13,[rcx+0x28]
 4c8b7130|mov r14,[rcx+0x30]
 4c8b7938|mov r15,[rcx+0x38]
+
+##################################################################
+# asm function bodies (grammar/asm_function.w): byte-operand ALU forms
+# and the r8d-r15d 32-bit registers
+##################################################################
+803800|cmp byte [rax],0
+3c00|cmp al,0
+4189c0|mov r8d,eax
+4501d1|add r9d,r10d
+41c1c30d|rol r11d,0xd
+4431c0|xor eax,r8d
+448b7e04|mov r15d,[rsi+4]
+448927|mov [rdi],r12d

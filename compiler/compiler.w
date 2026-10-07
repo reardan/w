@@ -835,6 +835,11 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--strict") == 0):
 		if (apply): strict_mode = 1
 		return 1
+	# Compile every function's portable W body, ignoring asm blocks
+	# (grammar/asm_function.w).
+	if (strcmp(arg, c"--no-asm") == 0):
+		if (apply): asm_bodies_disabled = 1
+		return 1
 	if (strcmp(arg, c"--ast-expressions") == 0):
 		if (apply && (ast_expressions_mode < 2)): ast_expressions_mode = 1
 		return 1
@@ -943,6 +948,7 @@ void help_shared_options():
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
+	println(c"  --no-asm              compile portable W bodies, ignoring 'asm <isa>:' blocks")
 	println(c"  --streaming           use the streaming front end instead of the default AST one")
 	println(c"  --ast-expressions     with --streaming: AST for grouped scalar expressions only")
 	println(c"  --ast-full-expressions AST at every expression (the default; kept for scripts)")
@@ -1312,6 +1318,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 				ast_only_flag = *flag_arg
 			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
+			# --no-asm covers the runtime and every input, whatever its position
+			if (strcmp(*flag_arg, c"--no-asm") == 0): link_option(*flag_arg, 1)
 			# Register promotion is whole-program too: the auto-imported
 			# runtime compiles before the positional loop below
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):

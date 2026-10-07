@@ -104,8 +104,12 @@ char* arm64_cond_name_cset(int c):
 	return asm_name_slot(arm64_cond_table(1), 3, 16, c)
 
 
+# Branch condition names; the hs/lo spellings are accepted as aliases of
+# the canonical cs/cc.
 int arm64_cond_lookup_branch(char* name):
-	return asm_name_slot_find(arm64_cond_table(0), 3, 16, name)
+	int c = asm_name_slot_find(arm64_cond_table(0), 3, 16, name)
+	if (c < 0): c = asm_name_slot_find(arm64_cond_table(1), 3, 16, name)
+	return c
 
 
 int arm64_cond_lookup_cset(char* name):

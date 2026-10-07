@@ -159,6 +159,7 @@ inside a function body is computed at runtime and is not checked.
 | Constant | `const int PAGE = 4 * KB` | Assigning to it is an error (`assignment to const`). |
 | Thread-local global | `thread_local int n` | Has no initializer and starts zeroed ([thread_local.md](projects/thread_local.md)). |
 | Function | `int add(int a, int b):` | The return type comes first. `void` means no value. |
+| Asm function body | `int f(int a):` then `asm x86:` / `asm x64:` / `asm arm64:` blocks of string lines, then the W body | The block for the compile target replaces the W body, which every other target and `--no-asm` compile ([asm_functions.md](projects/asm_functions.md)). |
 | Default arguments, variadics | `int f(int a, int b = 2)`, `int sum(int... v)` | [default_args_variadics.md](projects/default_args_variadics.md) |
 | Generic function / struct | `T max[T](T a, T b):`, `struct pair[T]:` | Monomorphized. Instantiation is explicit (`max[int]`) or inferred for calls after the definition ([generics.md](projects/generics.md)). |
 | Generator | `generator int count(int n):` with `yield v` | Needs `import lib.generator` ([iteration.md](projects/iteration.md)). |

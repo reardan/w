@@ -373,11 +373,18 @@ void function_definition(int current_symbol):
 			retained_function_parameters(current_symbol)
 			retained_leave(prototype, token_start_offset)
 	else:
+		# 'asm <isa>:' blocks opening the body (grammar/asm_function.w): 1
+		# when the target's block is the whole function, else the token is
+		# the ':' of the portable body, compiled below as usual.
+		int asm_body = asm_function_body(current_symbol, last_global_declaration)
 		# Register promotion (compiler/regalloc_scan.w): look ahead over
 		# the body for the locals worth a callee-saved register, so the
-		# prologue below (either path) can push them
-		regalloc_function_scan(current_symbol, is_w_variadic)
-		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
+		# prologue below (either path) can push them. A whole-asm function
+		# has no W body to scan.
+		if (asm_body == 1): regalloc_function_end()
+		else: regalloc_function_scan(current_symbol, is_w_variadic)
+		if (asm_body == 1): save_int(table + current_symbol + 14, codepos - function_start)
+		else if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
 		else:
 			be_function_define(current_symbol, last_global_declaration)
 			# On arm64 sign and push the return address (x30) onto the W stack
