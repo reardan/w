@@ -35,6 +35,7 @@
 			"wast_audit": "AST audit tool binary",
 			"ast_expression_suite": "AST migration audit; reruns the whole tests umbrella",
 			"wbench_compare": "hand-run benchmark comparison; wbench_compare_test covers it",
+			"profile_refresh": "regenerates profiles/*.wprof from instrumented runs; mutates the checkout (P1, docs/projects/register_allocation_pgo.md)",
 			"wcoverage_report": "writes a coverage report on demand",
 			"wvm_pool_bench": "benchmark driver",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it"

@@ -277,6 +277,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	int* outer = loop_enter()
 	# Loop region: the back edge re-tests the condition.
 	int h_top = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# condition: loop var < end
 	push_slot_copy(for_var)
@@ -426,6 +427,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	int* outer = loop_enter()
 	# Loop region: the back edge re-tests.
 	int h_top = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# condition: exit once done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word

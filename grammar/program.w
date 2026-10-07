@@ -382,6 +382,7 @@ void function_definition(int current_symbol):
 			# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
 			# the function's size-prefixed code-section unit.
 			be_function_prologue()
+			profile_function_enter(current_symbol, last_global_declaration)   # P1: --profile-generate
 			# x86/x64: the saved frame pointer is one more word on the W stack
 			int frame_words = be_frame_words()
 			stack_pos = stack_pos + frame_words
@@ -673,6 +674,7 @@ void script_main():
 	sym_set_w_variadic(current_symbol, -1)
 	be_function_define(current_symbol, c"main")
 	be_function_prologue()
+	profile_function_enter(current_symbol, c"main")   # P1: --profile-generate
 	stack_pos = stack_pos + be_frame_words()
 	current_function_symbol = current_symbol
 	enclosing_tab_level = 0

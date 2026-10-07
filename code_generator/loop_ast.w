@@ -13,6 +13,7 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 	node.break_target = loop_break_chain
 	# Loop region: the back edge re-tests the condition.
 	node.top_target = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# condition: loop var < end
 	push_slot_copy(node.variable_slot)
@@ -62,6 +63,7 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 	node.break_target = loop_break_chain
 	# Loop region: the back edge re-tests.
 	node.top_target = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 
 	# condition: exit once node.done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
@@ -184,6 +186,7 @@ int* emit_while_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	node.break_target = loop_break_chain
 	node.top_target = be_ctrl_loop()
+	profile_loop_head()   # P1: --profile-generate
 	node.continue_target = node.top_target
 	loop_continue_chain = node.continue_target
 	return outer
