@@ -53,12 +53,14 @@ compile-time internal error rather than a miscompile. The rules:
 - the declared type must be a plain 'int' or a pointer (checked at
   sym_declare: narrow integers, floats, aggregates, strings, containers
   and const-qualified locals never promote);
-- a function argument ranks like a local (A1): a name the body never
-  declares whose record is a word-sized parameter of this function
-  (sym_probe at ranking time, regalloc_type_ok on its type) takes a
-  callee-saved register too, loaded from its stack word right after the
-  prologue's pushes (regalloc_prologue_args); nothing reads the word
-  again, and the register is dead at every return, so no write-back;
+- on x64 a function argument ranks like a local (A1): a name the body
+  never declares whose record is a word-sized parameter of this
+  function (sym_probe at ranking time, regalloc_type_ok on its type)
+  takes a callee-saved register too, loaded from its stack word right
+  after the prologue's pushes (regalloc_prologue_args); nothing reads
+  the word again, and the register is dead at every return, so no
+  write-back. x86's two registers stay with the body's locals
+  (rs_args_rank);
 - uses are weighted 8^depth by 'while'/'for' nesting (indentation-based,
   like the parser's block structure); only names used inside a loop are
   ranked, and a body without a loop is not scanned past the first pass;
@@ -1339,6 +1341,16 @@ int rs_arg_record(int i):
 	return rs_argsym[i]
 
 
+# Arguments rank at function level on x64 only. x86's two registers are
+# worth more to the scalars they displace: an argument read is already
+# one folded memory operand there ('imul eax,[esp+d]', 'cmp eax,[esp+d]'),
+# while a scalar local that loses its register pays a parked address
+# and a store on every write ('matmul' on x86: +10% instructions with
+# n in edi and acc on the stack). A per-use cost model is A9's.
+int rs_args_rank():
+	return word_size == 8
+
+
 # Rank the candidates and assign registers; returns the mask to push.
 # A local candidate takes its register at its declaration
 # (regalloc_declare); an argument's goes to regalloc_arg_syms for the
@@ -1356,7 +1368,7 @@ int rs_assign_registers():
 		int best_uses = 7   # at least one use inside a loop (weight 8)
 		for i in range(rs_count):
 			if ((rs_reg[i] == 0) && (rs_excluded[i] == 0) && (rs_uses[i] > best_uses)):
-				if ((rs_decls[i] == 1) || ((rs_decls[i] == 0) && (rs_arg_record(i) >= 0))):
+				if ((rs_decls[i] == 1) || ((rs_decls[i] == 0) && rs_args_rank() && (rs_arg_record(i) >= 0))):
 					best = i
 					best_uses = rs_uses[i]
 		if (best < 0): break
