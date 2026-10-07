@@ -1984,3 +1984,63 @@ Not claimed / for the next unit:
   compiler's; `sysenter`/vDSO would not help a static seed binary, and
   the only remaining per-compile calls (open/close/getcwd per import,
   one read chunk per 8 KB of source, the output write) are main's too.
+
+### Combined result: main vs this branch vs C (2026-10-07)
+
+Measured after every unit above had merged (integration branch at the
+C1 merge), on the same idle 4-core cloud container. "main" is the
+compiler built from `86fb3803` (this plan's merge commit) before any
+unit landed; "new" is this branch's `bin/wv3`, compiling each program
+with default flags; "PGO" adds `--profile-use=profiles/bench.wprof`.
+C twins are `tests/bench/c/*.c` built with `gcc -O2` / `clang -O2`
+(x86-64; no 32-bit multilib here). Every binary in every column printed
+the same checksum line. `--no-asm` legs are absent: the asm-bodies
+work (#579) is not on this branch's base.
+
+Instruction counts (callgrind Ir, deterministic per binary):
+
+| program | main x86 | main x64 | new x86 | new x64 | new x64 PGO | gcc -O2 | clang -O2 | new x64 vs main x64 | new x64 vs gcc |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sum | 13.80 G | 13.80 G | 3.00 G | 3.00 G | 3.00 G | 1.20 G | 0.27 M | 4.60x fewer | 2.5x more |
+| sieve | 4.07 G | 4.07 G | 1.68 G | 1.66 G | 1.66 G | 0.59 G | 0.80 G | 2.44x fewer | 2.8x more |
+| sha256_1m | 7.70 G | 7.70 G | 5.59 G | 5.37 G | 5.29 G | 1.29 G | 1.31 G | 1.43x fewer | 4.2x more |
+| siphash_keys | 6.15 G | 6.91 G | 4.58 G | 4.85 G | 4.42 G | 1.18 G | 1.15 G | 1.43x fewer | 4.1x more |
+| inflate_corpus | 6.78 G | 6.72 G | 5.36 G | 5.18 G | 5.18 G | 0.99 G | 0.84 G | 1.30x fewer | 5.3x more |
+| regex_backtrack | 10.19 G | 10.19 G | 6.60 G | 6.68 G | 6.68 G | 2.54 G | 2.42 G | 1.52x fewer | 2.6x more |
+| matmul_256 | 8.77 G | 8.77 G | 5.07 G | 5.07 G | 5.07 G | 1.18 G | 0.68 G | 1.73x fewer | 4.3x more |
+| strcmp_sort | 4.60 G | 4.72 G | 3.61 G | 3.61 G | 3.60 G | 0.57 G | 0.59 G | 1.31x fewer | 6.3x more |
+
+Wall time, best of 7 runs, ms:
+
+| program | main x86 | new x86 | x86 speedup | main x64 | new x64 | new x64 PGO | gcc -O2 | clang -O2 | main x86 / gcc | new x86 / gcc |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sum | 766 | 407 | 1.88x | 1211 | 210 | 409 | 201 | 1 | 3.8x | 2.0x |
+| sieve | 476 | 278 | 1.71x | 488 | 286 | 274 | 222 | 221 | 2.1x | 1.3x |
+| sha256_1m | 462 | 353 | 1.31x | 466 | 336 | 342 | 114 | 118 | 4.1x | 3.1x |
+| siphash_keys | 695 | 581 | 1.20x | 1018 | 820 | 734 | 314 | 309 | 2.2x | 1.9x |
+| inflate_corpus | 515 | 465 | 1.11x | 529 | 453 | 428 | 67 | 69 | 7.7x | 6.9x |
+| regex_backtrack | 600 | 431 | 1.39x | 626 | 430 | 464 | 210 | 171 | 2.9x | 2.1x |
+| matmul_256 | 520 | 367 | 1.42x | 528 | 390 | 404 | 178 | 190 | 2.9x | 2.1x |
+| strcmp_sort | 515 | 434 | 1.19x | 542 | 464 | 493 | 190 | 195 | 2.7x | 2.3x |
+
+`sum`'s x64 wall times are layout-bound (R3's note: the same five-instruction
+loop runs in ~330 or ~670 ms depending on where cmp+jge fall against a
+32-byte boundary), so they move between builds: an earlier run of the
+same table had main x64 805 ms, new x64 221 ms, new x64 PGO 212 ms. The
+x86 columns and all instruction counts are stable. clang folds `sum`
+to a closed form, so its 1 ms is an optimiser ceiling, not codegen.
+
+Self-compile of `w.w` by the compiler binary (best of 7, ms): main x86
+805, new x86 809, new x86 PGO-built 786; main x64 833,
+new x64 831, new x64 PGO-built 756. Callgrind Ir: main x86 7.39 G, new
+x86 6.36 G, PGO 6.26 G; main x64 7.33 G, new x64 6.36 G, PGO 6.13 G. The
+new compiler does more work per compile (the register pre-scan) and
+still finishes at or below main's time; the PGO-built x64 compiler is
+the fastest of the six.
+
+What this does not claim: R4 (arm64 registers, x86 ecx/edx loop
+registers) and P3 (inlining) are not built; x86-32 still has only
+esi/edi plus no loop-scoped registers, which is why x64 gains more on
+the loop-heavy rows. On x86, W remains 1.3-6.9x slower than gcc -O2
+(x86-64) in wall time, down from 2.1-7.7x on main, with `inflate_corpus`
+and `sha256_1m` furthest behind.
