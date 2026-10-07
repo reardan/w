@@ -25,8 +25,9 @@ Manifest shape:
 	]
 }
 
-Step fields: "cmd" (argv, required; argv[0] is resolved against PATH
-when it contains no slash), "stdin" (text piped to the child),
+Step fields: "atomic_output" (one output argument to stage privately and
+publish by rename after a successful step; relative to cwd if set), "cmd"
+(argv, required; argv[0] is resolved against PATH when it contains no slash), "stdin" (text piped to the child),
 "expect_stdout" / "expect_stderr" (a substring — or array of
 substrings — the captured stream must contain), "reject_stdout" /
 "reject_stderr" (substring(s) that must NOT appear, the manifest's
@@ -133,8 +134,8 @@ reclaim) so a second overlapping invocation in the same worktree fails
 fast with a clear message instead of both processes writing/executing
 the same bin/wv2. See the block comment above wexec_lock_file (just
 before main) for the full design, including why wexec's own nested
-test-harness invocations are exempt. "--list", "--explain-cache" and
-"--trace" return before that point and never take the lock: the first
+test-harness invocations share the lock but can run concurrently. "--list",
+"--explain-cache" and "--trace" return before that point and never take the lock: the first
 two run no steps at all, and --trace's own ptrace-wrapped step runner
 (tools/wexec_trace.w) is a deliberately out-of-scope manual audit path,
 not part of the ordinary build/test flow this lock protects.
@@ -1356,8 +1357,8 @@ int wexec_is_target_selector(char* arg):
 # resolves to it through the .exe fallback). Compiles that name a
 # target keep it, except that a win64 output also gains '.exe'. Returns
 # argv itself when nothing changes, else a fresh vector (*count
-# updated).
-char** wexec_windows_native_step(char** argv, int* count):
+# updated). Keep atomic_output aligned with any native '.exe' suffix.
+char** wexec_windows_native_step(char** argv, int* count, char** atomic_output):
 	char* program = strv_get(argv, 0)
 	if ((strcmp(program, c"bin/wv2") != 0) && (strcmp(program, c"bin/wv2.exe") != 0)):
 		return argv
@@ -1380,6 +1381,8 @@ char** wexec_windows_native_step(char** argv, int* count):
 			string_builder* exe = string_new()
 			string_append(exe, arg)
 			string_append(exe, c".exe")
+			if ((*atomic_output != 0) && (strcmp(*atomic_output, arg) == 0)):
+				*atomic_output = exe.data
 			arg = exe.data
 			free(exe)
 		strv_set(out, j, arg)
@@ -1457,6 +1460,43 @@ char* wexec_absolute_program(char* program):
 	return s.data
 
 
+# Resolve an output in the child's cwd, while publication runs in wexec.
+char* wexec_step_output_path(json_value* step, char* path):
+	char* cwd = jfield_string(step, c"cwd")
+	if ((cwd == 0) || (path[0] == '/')): return strclone(path)
+	if (os_windows()):
+		if (path[0] == 92): return strclone(path)
+		if ((strlen(path) > 1) && (path[1] == ':')): return strclone(path)
+	return cstr(f"{cwd}/{path}")
+
+
+# Replace exactly one output argument with a worker-private sibling path.
+# The manifest (and thus its cache key) keeps the public output name.
+int wexec_stage_output(char* target_name, int step_index, json_value* step, char** argv, int count, char* output, char** staged):
+	json_value* value = json_object_get(step, c"atomic_output")
+	if (value == 0): return 0
+	if ((value.type != json_type_string()) || (value.string_value[0] == 0)):
+		wexec_step_error(target_name, step_index, c"\"atomic_output\" must be a nonempty string")
+		return 1
+	int position = -1
+	for i in range(1, count):
+		if (strcmp(strv_get(argv, i), output) == 0):
+			if (position >= 0):
+				wexec_step_error(target_name, step_index, c"\"atomic_output\" must match exactly one command argument after argv[0]")
+				return 1
+			position = i
+	if (position < 0):
+		wexec_step_error(target_name, step_index, c"\"atomic_output\" must match exactly one command argument after argv[0]")
+		return 1
+	*staged = cstr(f"{output}.stage.{getpid()}.{step_index}")
+	char* path = wexec_step_output_path(step, *staged)
+	# A recycled pid must never reuse a partial file left by a killed run.
+	unlink(path)
+	free(path)
+	strv_set(argv, position, *staged)
+	return 0
+
+
 int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (step.type != json_type_object()):
 		wexec_step_error(target_name, step_index, c"step is not a JSON object")
@@ -1492,12 +1532,22 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 			return 1
 		strv_set(argv, i, piece.string_value)
 
+	char* atomic_output = jfield_string(step, c"atomic_output")
 	if (os_windows()):
-		char** native = wexec_windows_native_step(argv, &count)
+		char** native = wexec_windows_native_step(argv, &count, &atomic_output)
 		if (native != argv):
 			free(cast(char*, argv))
 			argv = native
+	# Echo the stable manifest command, then redirect only the child's output.
 	wexec_echo_command(argv, count)
+	char* staged = 0
+	if (wexec_stage_output(target_name, step_index, step, argv, count, atomic_output, &staged)):
+		free(cast(char*, argv))
+		return 1
+	defer free(staged)
+	char* staged_path = 0
+	if (staged != 0): staged_path = wexec_step_output_path(step, staged)
+	defer free(staged_path)
 	char* program = wexec_resolve_program(strv_get(argv, 0))
 	char* stdin_text = jfield_string(step, c"stdin")
 	int timeout_ms = wexec_step_timeout_ms(step)
@@ -1512,6 +1562,7 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if ((result == 0) && os_windows()): result = wexec_windows_builtin(argv, count)
 	free(cast(char*, argv))
 	if (result == 0):
+		if (staged_path != 0): unlink(staged_path)
 		wexec_step_error(target_name, step_index, c"failed to spawn command")
 		return 1
 
@@ -1536,6 +1587,17 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (expects_failure):
 		if (failed): wexec_emit_output(result)
 		else: wexec_note_expected_failure(result)
+	if (staged_path != 0):
+		# Expected failures must never publish their partial output, even if
+		# their status/diagnostic assertions passed. Publish only after all
+		# checks, so a failed step preserves the previous executable.
+		if ((failed == 0) && (result.status == 0) && (expects_failure == 0)):
+			char* output_path = wexec_step_output_path(step, atomic_output)
+			if (rename(staged_path, output_path) < 0):
+				wexec_step_error(target_name, step_index, cstr(f"cannot publish atomic output {output_path}"))
+				failed = 1
+			free(output_path)
+		unlink(staged_path)
 	process_result_free(result)
 	return failed
 
@@ -2815,21 +2877,19 @@ convention "bin/.wexec_cache/" and "bin/.wexec_deps_cache" already use.
 Two unrelated worktrees never collide because each has its own, entirely
 separate "bin/".
 
-Reentrancy: wexec's own test targets (wexec_test and friends,
-build.base.json) run "bin/wexec -f tests/wexec/*.json <target>" as a
-*step* of an outer wexec invocation that already holds this very lock,
-against the exact same bin/ -- not a race, since the outer process is
-blocked in wait4() on this child for the whole step. wexec_lock_acquire
-marks WEXEC_LOCK_HELD=1 in the environment the moment it succeeds
-(env_copy_with, swapped into environ_ptr so every subprocess this run
-spawns inherits it through execve -- including transitively, through
-intermediate non-wexec programs like bin/wtest's own "--run" shelling
-out to bin/wexec again); a nested wexec sees the marker
-(wexec_lock_is_reentrant) and skips locking entirely, trusting the
-already-serialized ancestor. The mutation happens once, in the parent,
-before wexec_execute forks any worker (wexec_launch) -- workers inherit
-the updated environ_ptr for free via fork()'s copy-on-write memory, no
-extra threading needed.
+Reentrancy: test targets and suite drivers launch nested wexec processes
+against the same bin/. WEXEC_LOCK_HELD=1 lets them share their ancestor's
+lock; trying to acquire it again would fail (or deadlock if we waited).
+This marker is inherited through intermediate programs too. It does NOT
+serialize siblings: at -j > 1 the ancestor continues other workers while
+waiting for a nested run. Manifests must use disjoint outputs or atomic
+publication for artifacts those siblings can execute. In particular,
+bootstrap compiler steps use atomic_output: each worker builds a private
+sibling file and renames it over the public executable only on success.
+Readers keep the old inode until exit; new execs see a complete binary.
+Private stage names also prevent concurrent nested publishers from sharing
+one .stage file. This remains necessary across different -f manifests,
+whose independent cache stamps may both miss for the same output (#548).
 
 Mechanism: O_CREAT|O_EXCL (193 = O_WRONLY|O_CREAT|O_EXCL, the same
 combination libs/extras/vcs/cas.w's cas_store_bytes uses) so at most one

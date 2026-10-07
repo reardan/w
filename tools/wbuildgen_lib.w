@@ -534,7 +534,7 @@ vocabulary:
                            timeout=<ms>, stdin="text",
                            stdout_file=<path>, expect_signal,
                            env="NAME=value" (repeatable) and
-                           cwd=<dir>, with wexec's own per-step
+                           cwd=<dir>, atomic_output=<path>, with wexec's own per-step
                            meanings. This is the multi-step
                            shape (a test plus the diagnostic fixtures
                            it drives) without a hand-written
@@ -912,14 +912,14 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 			return 1
 		json_object_set(sd.step, c"expect_status", json_int(status))
 		return 0
-	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0) | (strcmp(key, c"cwd") == 0)):
+	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0) | (strcmp(key, c"cwd") == 0) | (strcmp(key, c"atomic_output") == 0)):
 		if (wbg_need_value(path, key, has_value)): return 1
 		if ((value[0] == 0) && (strcmp(key, c"stdin") != 0)):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		json_object_set(sd.step, key, json_string(value))
 		return 0
-	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_signal, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=, env=, cwd=): ", key)
+	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_signal, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=, env=, cwd=, atomic_output=): ", key)
 	return 1
 
 

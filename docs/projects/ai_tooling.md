@@ -42,6 +42,13 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **Atomic bootstrap publication** (2026-10-07, #548): `wv2`, `build`
+  and `build_x64` stage each compiler in a worker-private file and rename
+  it into place after success. Concurrent checks and nested-manifest cache
+  misses no longer truncate an executable that a sibling is using. The
+  AST suite runs in parallel again; executor regressions force a nested
+  rebuild against a live sibling and check failure preservation/cleanup.
+
 - **`w check` now type-checks uninstantiated generic bodies**
   (2026-07-29, `grammar/generic.w` `generic_check_instantiate_all`,
   armed only by `check_main`). A generic definition nothing
