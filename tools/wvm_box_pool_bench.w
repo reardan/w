@@ -1,4 +1,4 @@
-# wbuild: binary=wvm_box_pool_bench arch=x64
+# wbuild: binary=wvm_box_pool_bench arch=x64 tag=tests
 # Serialized ready-pool measurements. Refill includes destruction and restore;
 # acquire merely leases an already-ready guest. No latency thresholds.
 import lib.vmm.box_pool
