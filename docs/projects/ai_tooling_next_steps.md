@@ -676,6 +676,17 @@ is cheap and catches the case that bit here.
 release workflow's native darwin fixpoint of current sources, which should
 clear this. It has not yet been checked from a clean checkout on a Mac.
 
+**Native validation (2026-10-07, #591):** the SHA256-verified v0.3.0 seed
+compiled `c310878c` through native `wv2 -> wv3 -> wv4` with byte-identical
+`wv3`/`wv4` on an M3 Pro running macOS 26.3; 119 native smoke tests and
+dynamic linking passed. The old-seed failures below are historical, not a
+failure of the current pin. The full cold `wbuild` executor path still needs
+validation: this checkout's local seed differed from its pin and did not
+finish bootstrap during observation, so tests used an isolated pinned seed.
+The smoke target also depends on Linux `bin/wv2`; add a native compile/run
+target using `bin/wv2_darwin`, and document an isolated pinned-seed retry
+that preserves a local promotion. See [the Darwin VM plan](vms_darwin_plan.md).
+
 Both released darwin seeds miscompile current main: v0.1.0's
 `w_darwin` segfaults compiling `w.w` (first bad commit 2a9c034, July
 19), and v0.2.0's compiles it but writes a corrupt Mach-O magic, so
