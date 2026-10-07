@@ -22,8 +22,21 @@ are copied into session ownership; callers may release their input after the
 call. The result reports `status`, `reused`, `compiled`, `failed_index` and a
 static `message`. Successful unchanged updates emit no code. `reused` counts
 unchanged leading functions, while `compiled` counts newly emitted functions.
-Exact source bytes determine equality, including comments and whitespace;
-filesystem timestamps are not involved.
+Equal source bytes always keep a function; filesystem timestamps are not
+involved. With the retained forest on (`--ast-retain`, `--ast-required` or
+`--ast-emit-retained`), a function whose bytes changed is also kept when its
+retained tree is unchanged (S2.4): when the two sources differ only in `#`
+comments and trailing blanks, the new source is compiled once at the end of
+the session with standard error muted, its retained nodes and bindings are
+compared with the kept compile's (kinds, operands, literals, types
+structurally, bindings and symbol references by meaning, every position by
+line and column), and the probe is rolled back. `tree_reused` counts the
+functions kept that way and `tree_probed` the probes. A probe that warns
+differently from the kept compile, fails, or differs anywhere falls back to
+recompiling the suffix, which reports its own diagnostics. The kept function's
+retained source version and staging file keep the bytes that were compiled.
+A comment line inserted or removed moves later lines and is a change; so is
+any change to the session's AST modes, `--ast-emit-retained` included.
 
 `incremental_address(name)` returns a compiled function's native address, or
 zero for an absent name. The caller must invoke it with the declared ABI and
@@ -57,7 +70,8 @@ invalidation guarantees. A session admits at most 256 functions, each at most
 65536 source bytes.
 
 An admitted edit invalidates every later definition, including callers and
-functions that happen to be independent. Deleting a suffix only restores its
+functions that happen to be independent; an edit that leaves the function's
+retained tree unchanged (above) is not an edit in this sense. Deleting a suffix only restores its
 checkpoint; appending definitions only compiles the appended entries. A compile
 error removes the old invalid suffix and keeps the successfully compiled prefix
 available. Repairing the source retries the missing suffix. Admission errors

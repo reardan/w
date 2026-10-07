@@ -2048,3 +2048,97 @@ are lookahead rewinds within the file being parsed, and the last never
 re-read source. The default (streaming) compile and `-v` traces keep the
 file re-parse. No `tree --json` field was added; the schema stays
 **version 2**. **#489 remains open.**
+
+## REPL and wdbg on the retained path (S2.4)
+
+The in-process compilers now take the retained-AST modes exactly as a
+compile does. `repl.w` and `wdbg` read `--ast-expressions`,
+`--ast-full-expressions`, `--ast-retain`, `--ast-required` and
+`--ast-emit-retained` through `repl_ast_options` (`repl/core.w`), which
+applies each present flag with the driver's own `link_option`, so
+`--ast-emit-retained` implies the retained forest and full-expression mode
+here too. A flag only raises a mode, so a default that S2.5 sets in
+`compiler/compiler.w` reaches both front ends without another edit. Before
+this, both front ends silently ignored `--ast-required` and
+`--ast-emit-retained`; the REPL legs that S2.1 and S2.2b added to
+`ast_retained_emit_test` therefore compared `--ast-full-expressions` with
+itself, and now compare it with real retained lowering. wdbg's attach mode
+forwards the active modes (`--ast-emit-retained`, `--ast-required`) to the
+recompile that rebuilds its symbol tables.
+
+- **Rollback.** An entry that fails in the middle of a walked statement
+  leaves that statement's walk record open; its node is retracted by the
+  entry's rollback. `repl_state_restore` now returns such records to the
+  walk pools (`retained_walk_release`) as part of the rollback instead of
+  at the next walked statement, so the pools are empty between entries,
+  after errors and runtime faults alike. Nothing else needed to change:
+  the checkpoint already covered the retained suffix, and walk records
+  never outlive the statement that opened them.
+- **Incremental sessions** (`repl/incremental.w`). `--ast-emit-retained`
+  is part of a session's mode key. An unchanged prefix is no longer only
+  the run of byte-equal sources: a definition whose bytes changed keeps
+  its compiled function (and its suffix) when its retained tree is
+  unchanged. A body is not parsed without emitting it, so the new tree
+  comes from a probe: when the two sources differ only in `#` comments and
+  trailing blanks, the new source compiles once at the end of the session
+  with standard error muted, its retained nodes and bindings are compared
+  with the kept compile's (kinds, operands, literals and arenas verbatim;
+  semantic types structurally; nodes, bindings and symbol-table offsets of
+  the definition's own compile by position; every location by line and
+  column, an extent that ends in trailing blanks or a comment counting as
+  ending at the line's code), and the probe is rolled back. A probe that
+  fails, warns differently or differs anywhere falls back to recompiling
+  the suffix, which prints its own diagnostics once. The admission rules
+  did not change. `incremental_result` gains `tree_reused` and
+  `tree_probed`.
+
+Verification: `repl_retained_emit_test` replays every stdin script of
+`repl_test` (87) and `debug_test` (71 for `bin/wdbg`, 69 for
+`bin/wdbg64`) through the default compile and through
+`--ast-emit-retained` on both widths and requires equal status, stdout and
+stderr. Pids, addresses, timings, the `:symbols` pointer column (see
+below) and fault stack traces (which list stale stack words) are
+normalized first; a difference is retried twice, and a script whose
+default output differs between two runs is skipped and counted (3 or 4 of
+174 REPL runs, 4 of 140 wdbg runs). It also runs the REPL recovery scripts of
+`ast_expression_test` and `ast_retained_emit_test` plus one with errors
+inside walked function bodies, a fault inside a walked loop, `for`,
+`switch` and `defer` entries, on all three front-end modes.
+`ast_expression_test`'s REPL recovery and debugger evaluation legs run
+`--ast-emit-retained` as a third AST mode. `incremental_compilation_test`
+runs its suffix scenario in both lowering modes and checks that the walk
+pool is empty right after a failed update, and adds tree-reuse scenarios
+(comment and trailing-blank edits keep code, symbols and nodes
+byte-for-byte; a moved line or a code edit recompiles; a probe whose
+compile warns is discarded and the warning is printed once; the
+streaming mode never probes).
+
+Measured on this 4-core box under load (medians):
+
+| | default | `--ast-full-expressions` | `--ast-emit-retained` |
+| --- | --- | --- | --- |
+| REPL startup and `:quit`, x86 | 43 ms | 52 ms | 124 ms |
+| REPL startup and `:quit`, x64 | 56 ms | 48 ms | 117 ms |
+
+The difference is retaining the preloaded library (`lib.lib`,
+`lib.assert`, the container runtime) in the forest; entries themselves
+cost the same within noise. An incremental session of 100 functions,
+editing the first one (x86, `--ast-emit-retained`): an unchanged update
+takes 5-8 ms (admission), a comment edit 11-14 ms (one probe, everything
+kept), a code edit 61-67 ms (all 100 recompile, as a comment edit did
+before).
+
+What this does not claim: the REPL and wdbg still default to the
+streaming compile until S2.5 flips the default; the bare-expression and
+persistent-variable items of a REPL entry (`repl_entry_item`) compile
+through `expression()` outside the statement dispatcher, so they lower
+from the retained group but are not walked statements. Tree reuse needs
+a probe compile because bodies are deferred one statement at a time, not
+parsed whole; it only reuses a definition whose positions are unchanged,
+so a comment line added or removed is still an edit, and its probe can
+mark earlier functions as used (lint state). The `:symbols` dump's
+`pointer (n)` column differs between the modes for identifiers referenced
+before their declaration (for example `SYS_CREAT` and `__w_list` in the
+preloaded runtime): it records the global `pointer_indirection` at the
+placeholder's creation, a field nothing reads back. The tree schema is
+unchanged (**version 2**).

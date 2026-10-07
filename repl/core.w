@@ -39,6 +39,7 @@ long-jump back into repl_eval; the same checkpoint then rolls the entry
 back exactly like a compile error.
 */
 import compiler.compiler
+import lib.args
 import lib.stack_trace
 import lib.utf8
 import debugger.sigcontext
@@ -497,6 +498,11 @@ void repl_state_capture(repl_state* st):
 # rollback restores.
 void repl_state_restore(repl_state* st):
 	retained_rollback(&st.retained)
+	# Under --ast-emit-retained an entry that fails mid-statement leaves the
+	# statement's walk record open; its node was just retracted, so the
+	# record and its phases go back to the walk pools here rather than at
+	# the next walked statement.
+	if (retained_nodes != 0): retained_walk_release()
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -972,6 +978,27 @@ void repl_stage_init():
 	if (repl_staging_dir != 0): return;
 	repl_staging_dir = cstr(f"/tmp/w_repl_{getpid()}")
 	mkdir(repl_staging_dir, 511)
+
+
+# AST front-end modes for the in-process compilers (repl.w's main and
+# wdbg_main), from the same flags the compiler driver takes and through the
+# driver's own link_option, so --ast-emit-retained implies --ast-retain and
+# full-expression mode exactly as it does for a compile. A flag only raises
+# a mode: whatever compiler/compiler.w makes the default stays on. Call
+# after args_init and before the first compile.
+void repl_ast_option(char* name):
+	if (args_has_bool_flag(name) == 0): return;
+	char* spelled = cstr(f"--{name}")
+	link_option(spelled, 1)
+	free(spelled)
+
+
+void repl_ast_options():
+	repl_ast_option(c"ast-expressions")
+	repl_ast_option(c"ast-full-expressions")
+	repl_ast_option(c"ast-retain")
+	repl_ast_option(c"ast-required")
+	repl_ast_option(c"ast-emit-retained")
 
 
 # Initialize the session: the compiler configured for in-process

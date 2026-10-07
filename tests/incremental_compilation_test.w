@@ -3,12 +3,33 @@ import lib.testing
 import repl.incremental
 
 
-void test_incremental_suffix_emission():
-	ast_expressions_mode = 2
-	ast_required_mode = 1
-	ast_retain_mode = 1
-	repl_init()
+int incremental_test_ready
+
+
+# One REPL engine per process; each scenario is its own incremental session.
+# emit selects --ast-emit-retained lowering for the session (S2.4).
+void incremental_test_begin(int emit):
+	if (incremental_test_ready == 0):
+		ast_expressions_mode = 2
+		ast_required_mode = 1
+		ast_retain_mode = 1
+		repl_init()
+		incremental_test_ready = 1
+	ast_emit_retained_mode = emit
 	incremental_init()
+
+
+# End the session and remove its staged entries; the next session stages
+# into a fresh directory.
+void incremental_test_end():
+	incremental_clear()
+	repl_cleanup()
+	free(repl_staging_dir)
+	repl_staging_dir = 0
+
+
+void incremental_suffix_emission(int emit):
+	incremental_test_begin(emit)
 	int base_code = codepos
 	int base_table = table_pos
 	list[char*] sources = new list[char*]
@@ -66,6 +87,9 @@ void test_incremental_suffix_emission():
 	assert_equal(0, result.status)
 	assert_equal(1, result.failed_index)
 	assert_equal(1, result.reused)
+	# The error left the return statement's walk open; the rollback that
+	# retracted its node returned the record to the pool.
+	assert_equal(0, retained_walks_used)
 	assert_equal(0, result.compiled)
 	assert_equal(1, incremental_entries.length)
 	assert_equal(prefix_types, retained_types.length)
@@ -160,8 +184,178 @@ void test_incremental_suffix_emission():
 	assert_equal(base_code, codepos)
 	assert_equal(base_table, table_pos)
 	assert_equal(0, incremental_address(c"inc_first"))
-	retained_clear()
-	repl_cleanup()
+	incremental_test_end()
+
+
+void test_incremental_suffix_emission():
+	incremental_suffix_emission(0)
+
+
+# The same session with every statement and expression emitted from the
+# retained forest (--ast-emit-retained); the walk pools drain after each
+# update, including the failed one.
+void test_incremental_suffix_emission_retained():
+	int walked = ast_retained_statements_emitted
+	incremental_suffix_emission(1)
+	assert1(ast_retained_statements_emitted > walked)
+	assert_equal(0, retained_walks_used)
+	ast_emit_retained_mode = 0
+
+
+# S2.4: a definition whose bytes changed but whose retained tree did not keeps
+# its compiled function and its suffix. Run in both lowering modes.
+void incremental_tree_reuse(int emit):
+	incremental_test_begin(emit)
+	list[char*] sources = new list[char*]
+	sources.push(c"int tree_first(int n):\n\treturn n + 1 # one\n")
+	sources.push(c"int tree_second(int n):\n\tint k = n * 2\n\tif (k > 3):\n\t\tk = k - 1\n\treturn tree_first(k) + 1\n")
+	sources.push(c"int tree_third(int n):\n\treturn tree_second(n) * 3\n")
+	incremental_result result = incremental_update(sources)
+	assert_equal(1, result.status)
+	assert_equal(3, result.compiled)
+	assert_equal(0, result.tree_probed)
+	int first_address = incremental_address(c"tree_first")
+	int second_address = incremental_address(c"tree_second")
+	int third_address = incremental_address(c"tree_third")
+	assert_equal(27, third_address(4))
+	int end_code = codepos
+	int end_table = table_pos
+	int end_nodes = retained_nodes.length
+	char* image = malloc(end_code)
+	for i in range(end_code): image[i] = code[i]
+
+	# Comment edits and trailing blanks: every definition is kept, nothing is
+	# emitted, and the probes leave no trace in the session.
+	sources[0] = c"int tree_first(int n):\n\treturn n + 1 # plus one, reworded\n"
+	sources[1] = c"int tree_second(int n):\t\n\tint k = n * 2   \n\tif (k > 3): # large\n\t\tk = k - 1\n\treturn tree_first(k) + 1\n"
+	result = incremental_update(sources)
+	assert_equal(1, result.status)
+	assert_equal(3, result.reused)
+	assert_equal(0, result.compiled)
+	assert_equal(2, result.tree_probed)
+	assert_equal(2, result.tree_reused)
+	assert_equal(end_code, codepos)
+	assert_equal(end_table, table_pos)
+	assert_equal(end_nodes, retained_nodes.length)
+	assert_bytes_equal(image, code, end_code)
+	assert_equal(first_address, incremental_address(c"tree_first"))
+	assert_equal(second_address, incremental_address(c"tree_second"))
+	assert_equal(27, third_address(4))
+	if (emit): assert_equal(0, retained_walks_used)
+	# The new spelling is now the kept one: no probe the second time.
+	result = incremental_update(sources)
+	assert_equal(3, result.reused)
+	assert_equal(0, result.tree_probed)
+
+	# A comment line moves every later line: the tree's positions differ, so
+	# the definition and its suffix recompile (without a probe).
+	sources[1] = c"int tree_second(int n):\n\t# doubled\n\tint k = n * 2\n\tif (k > 3):\n\t\tk = k - 1\n\treturn tree_first(k) + 1\n"
+	result = incremental_update(sources)
+	assert_equal(1, result.status)
+	assert_equal(1, result.reused)
+	assert_equal(2, result.compiled)
+	assert_equal(0, result.tree_probed)
+	third_address = incremental_address(c"tree_third")
+	assert_equal(27, third_address(4))
+
+	# A code change is never a candidate, even one of the same length.
+	sources[0] = c"int tree_first(int n):\n\treturn n + 2 # plus one, reworded\n"
+	result = incremental_update(sources)
+	assert_equal(0, result.reused)
+	assert_equal(3, result.compiled)
+	assert_equal(0, result.tree_probed)
+	third_address = incremental_address(c"tree_third")
+	assert_equal(30, third_address(4))
+
+	# A blank line that becomes spaces passes the layout check, but its
+	# compile warns: the muted probe is discarded and the recompile reports
+	# the warning once.
+	sources[2] = c"int tree_third(int n):\n\n\treturn tree_second(n) * 3\n"
+	result = incremental_update(sources)
+	assert_equal(2, result.reused)
+	assert_equal(1, result.compiled)
+	# (The tokenizer reports space indentation once per line number for the
+	# whole process, so forget an earlier session's report.)
+	spaces_warned_line = -1
+	int warnings = warning_count
+	sources[2] = c"int tree_third(int n):\n  \n\treturn tree_second(n) * 3\n"
+	result = incremental_update(sources)
+	assert_equal(1, result.status)
+	assert_equal(2, result.reused)
+	assert_equal(1, result.compiled)
+	assert_equal(1, result.tree_probed)
+	assert_equal(0, result.tree_reused)
+	assert_equal(warnings + 1, warning_count)
+	third_address = incremental_address(c"tree_third")
+	assert_equal(30, third_address(4))
+
+	# The trees decide: two compiled definitions with different trees compare
+	# unequal, and a definition compares equal with itself.
+	incremental_side a
+	incremental_side b
+	a.node_base = incremental_entries[0].before.retained.nodes
+	a.table_base = incremental_entries[0].before.table_pos
+	a.binding_base = incremental_entries[0].before.retained.bindings
+	incremental_side_collect(&a, incremental_entries[0].before.retained.sources, incremental_entries[1].before.retained.nodes, incremental_entries[1].before.retained.bindings)
+	b.node_base = incremental_entries[2].before.retained.nodes
+	b.table_base = incremental_entries[2].before.table_pos
+	b.binding_base = incremental_entries[2].before.retained.bindings
+	incremental_side_collect(&b, incremental_entries[2].before.retained.sources, incremental_end.retained.nodes, incremental_end.retained.bindings)
+	assert1(a.nodes.length > 0)
+	assert1(b.nodes.length > 0)
+	assert_equal(0, incremental_trees_equal(&a, &b))
+	assert_equal(1, incremental_trees_equal(&a, &a))
+	incremental_side_free(&a)
+	incremental_side_free(&b)
+
+	free(image)
+	sources.free()
+	incremental_test_end()
+
+
+void test_incremental_retained_tree_reuse():
+	incremental_tree_reuse(0)
+
+
+void test_incremental_retained_tree_reuse_emitted():
+	incremental_tree_reuse(1)
+	ast_emit_retained_mode = 0
+
+
+# Without the retained forest there is no tree: only equal bytes are kept.
+void test_incremental_tree_reuse_needs_forest():
+	assert_equal(1, incremental_layout_equal(c"int a(int n):\n\treturn n\n", c"int a(int n):\n\treturn n # same\n"))
+	assert_equal(0, incremental_layout_equal(c"int a(int n):\n\treturn n\n", c"int a(int n):\n\t\treturn n\n"))
+	char* layout = incremental_layout(c"int a(int n): # head\n\treturn n \t\r\n\n")
+	assert_strings_equal(c"int a(int n):\n\treturn n\n\n", layout)
+	free(layout)
+	incremental_test_begin(0)
+	int saved_ast = ast_expressions_mode
+	int saved_required = ast_required_mode
+	int saved_retain = ast_retain_mode
+	incremental_clear()
+	ast_expressions_mode = 0
+	ast_required_mode = 0
+	ast_retain_mode = 0
+	incremental_init()
+	list[char*] sources = new list[char*]
+	sources.push(c"int plain_first(int n):\n\treturn n + 1\n")
+	sources.push(c"int plain_second(int n):\n\treturn plain_first(n) * 2\n")
+	incremental_result result = incremental_update(sources)
+	assert_equal(2, result.compiled)
+	sources[0] = c"int plain_first(int n):\n\treturn n + 1 # one\n"
+	result = incremental_update(sources)
+	assert_equal(1, result.status)
+	assert_equal(0, result.reused)
+	assert_equal(2, result.compiled)
+	assert_equal(0, result.tree_probed)
+	int second = incremental_address(c"plain_second")
+	assert_equal(10, second(4))
+	sources.free()
+	incremental_test_end()
+	ast_expressions_mode = saved_ast
+	ast_required_mode = saved_required
+	ast_retain_mode = saved_retain
 
 
 void test_incremental_admission():
