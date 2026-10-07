@@ -908,6 +908,8 @@ void repl_print_help():
 	println(c"flags: -e entry evaluates one entry and exits (repeatable);")
 	println(c"entries compile through the AST front end; --streaming selects the")
 	println(c"streaming one (with --ast-expressions: grouped scalar AST only);")
+	println(c"--ast-retain, --ast-required and --ast-emit-retained select the")
+	println(c"retained-AST modes exactly as for a compile;")
 	println(c"--json emits one JSON object per entry on stdout instead of the")
 	println(c"plain echo; --quiet routes the banner and prompts to stderr like")
 	println(c"a piped session even when stdin is a tty")
@@ -915,13 +917,7 @@ void repl_print_help():
 
 int main(int argc, int argv):
 	args_init(argc, argv)
-	# AST front end by default, as in link_impl; --streaming opts out.
-	ast_expressions_mode = 2
-	if (args_has_bool_flag(c"streaming")):
-		ast_expressions_mode = args_has_bool_flag(c"ast-expressions")
-	if (args_has_bool_flag(c"ast-retain")):
-		ast_expressions_mode = 2
-		ast_retain_mode = 1
+	repl_ast_options()
 	repl_init()
 
 	# 'debugger' statements trap into wdbg's command loop instead of

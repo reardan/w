@@ -39,6 +39,7 @@ long-jump back into repl_eval; the same checkpoint then rolls the entry
 back exactly like a compile error.
 */
 import compiler.compiler
+import lib.args
 import lib.stack_trace
 import lib.utf8
 import debugger.sigcontext
@@ -497,6 +498,11 @@ void repl_state_capture(repl_state* st):
 # rollback restores.
 void repl_state_restore(repl_state* st):
 	retained_rollback(&st.retained)
+	# Under --ast-emit-retained an entry that fails mid-statement leaves the
+	# statement's walk record open; its node was just retracted, so the
+	# record and its phases go back to the walk pools here rather than at
+	# the next walked statement.
+	if (retained_nodes != 0): retained_walk_release()
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -972,6 +978,36 @@ void repl_stage_init():
 	if (repl_staging_dir != 0): return;
 	repl_staging_dir = cstr(f"/tmp/w_repl_{getpid()}")
 	mkdir(repl_staging_dir, 511)
+
+
+# AST front-end modes for the in-process compilers (repl.w's main and
+# wdbg_main), from the same flags the compiler driver takes and through the
+# driver's own link_option, so --ast-emit-retained implies --ast-retain and
+# full-expression mode exactly as it does for a compile. As in link_impl
+# (P1.4), the AST front end is the default and --streaming opts out; with
+# --streaming, --ast-expressions is the grouped scalar mode and an AST-only
+# flag is the driver's streaming_conflict_error. Call after args_init and
+# before the first compile.
+# Returns 1 when the flag was given (and applied).
+int repl_ast_option(char* name):
+	if (args_has_bool_flag(name) == 0): return 0
+	char* spelled = cstr(f"--{name}")
+	link_option(spelled, 1)
+	free(spelled)
+	return 1
+
+
+void repl_ast_options():
+	ast_expressions_mode = 2
+	int streaming = args_has_bool_flag(c"streaming")
+	if (streaming): ast_expressions_mode = 0
+	repl_ast_option(c"ast-expressions")
+	char* ast_only_flag = 0
+	if (repl_ast_option(c"ast-full-expressions")): ast_only_flag = c"--ast-full-expressions"
+	if (repl_ast_option(c"ast-retain")): ast_only_flag = c"--ast-retain"
+	if (repl_ast_option(c"ast-required")): ast_only_flag = c"--ast-required"
+	if (repl_ast_option(c"ast-emit-retained")): ast_only_flag = c"--ast-emit-retained"
+	if (streaming && (ast_only_flag != 0)): streaming_conflict_error(ast_only_flag)
 
 
 # Initialize the session: the compiler configured for in-process
