@@ -175,7 +175,7 @@ int snapshot_test_fd_count():
 void snapshot_execution_after_reset(int retained):
 	int fd = kvm_open_system()
 	if (fd < 0):
-		test_skip(c"SKIP: /dev/kvm unavailable (snapshot isolation/reset tests still ran)")
+		test_skip_kvm(c"SKIP: /dev/kvm unavailable (snapshot isolation/reset tests still ran)")
 		return
 	close(fd)
 	int fd_count = snapshot_test_fd_count()
