@@ -451,8 +451,20 @@ void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
 # just pushed onto the W stack (no return address between them and sp).
 # Used for variadic imports, whose per-call float classes rule out a
 # single per-function stub. The caller still pops its argument words.
+void emit_ffi_call_inline_body(int n, char* classes, int ret_class, int got_vaddr);
+
 void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
 	emitted_call_count = emitted_call_count + 1
+	# Loop-owned caller-saved registers (R3, compiler/regalloc_scan.w)
+	# survive the callee through their frame-pointer homes: spilled here
+	# with the W frame pointer still current, reloaded once the C frame
+	# below has been dropped. Nothing is emitted outside such a loop.
+	regalloc_call_spill()
+	emit_ffi_call_inline_body(n, classes, ret_class, got_vaddr)
+	regalloc_call_reload()
+
+
+void emit_ffi_call_inline_body(int n, char* classes, int ret_class, int got_vaddr):
 	if (target_isa == 1):
 		# A variadic callee on Darwin reads its variadic tail from the
 		# stack even when the named arguments fit in registers, which

@@ -912,8 +912,15 @@ int sym_emit_value(int t, char* s):
 			return type
 		k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 
-	/* argument */
+	/* argument: register-resident while a loop owns it (R3,
+	   compiler/regalloc_scan.w), the same note as a local */
 	else if (scope_type == 'A'):
+		int arg_reg = load_int(table + t + 146)
+		if (arg_reg != 0):
+			reg_lvalue = arg_reg
+			reg_lvalue_end = codepos
+			reg_lvalue_sym = t
+			return type
 		k = (stack_pos + number_of_args - load_int(table + t + 2) + 1) << word_size_log2
 
 	else:

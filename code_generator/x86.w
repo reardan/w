@@ -236,6 +236,34 @@ void emit_alu_reg_x(int ext, int dst, int kind, int value, int disp, int reg):
 	elif (kind == 2): emit_alu_reg_esp(ext, dst, disp)
 	else: emit_alu_reg_reg(ext, dst, reg)
 
+/* mov R,[ebp+disp] / mov [ebp+disp],R (8b / 89 /r, ebp base, no SIB):
+   the loop-scoped register loads, write-backs and call spills (R3,
+   compiler/regalloc_scan.w), addressed from the frame pointer so no
+   push or pop between them matters. */
+void emit_ebp_disp_modrm(int r, int disp):
+	if ((disp >= -128) && (disp <= 127)):
+		emit_int8(0x45 | ((r & 7) << 3))
+		emit_int8(disp)
+	else:
+		emit_int8(0x85 | ((r & 7) << 3))
+		emit_int32(disp)
+
+void mov_reg_ebp_disp(int r, int disp):
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x8b")
+	emit_ebp_disp_modrm(r, disp)
+
+void mov_ebp_disp_reg(int r, int disp):
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x89")
+	emit_ebp_disp_modrm(r, disp)
+
+# Loop-scoped allocation is on for the current function (the scan found
+# no goto/label/defer and at least one loop); set with the pending mask.
+int regalloc_loops_ok
+void regalloc_call_spill();    /* compiler/regalloc_scan.w */
+void regalloc_call_reload();
+
 /* lea esp,[ebp-disp8] */
 void lea_esp_ebp_minus(int disp):
 	emit_x64_opcode()
@@ -262,6 +290,7 @@ void regalloc_prologue_emit():
 	regalloc_saved_mask = 0
 	regalloc_saved_count = 0
 	regalloc_active = 0
+	if (regalloc_loops_ok): regalloc_active = 1
 	if (mask == 0): return
 	regalloc_active = 1
 	int r = 0
@@ -736,7 +765,11 @@ void call_eax():
 				return
 			a64(op(0xd6, 0x3f0000))   # blr x0
 			return
+		# Loop-owned caller-saved registers survive the callee through
+		# their homes (R3); nothing is emitted when no loop owns any.
+		regalloc_call_spill()
 		emit(2, c"\xff\xd0") /* call *%eax */
+		regalloc_call_reload()
 
 
 void call_relative32(int v):

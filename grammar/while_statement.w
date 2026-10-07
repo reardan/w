@@ -24,11 +24,21 @@ int break_in_switch
 # empty blocks and terminate them correctly.
 int enclosing_tab_level
 
+# File offset of the first token of the statement being parsed
+# (grammar/statement.w sets it on entry): for a loop statement, its
+# keyword, which is how loop_enter finds the loop's pre-scan record
+# (compiler/regalloc_scan.w, R3). Both the streaming loops and the
+# retained-AST walk reach loop_enter before the body's first statement
+# moves it.
+int loop_stmt_offset
+
 
 # Enter a loop context for break/continue: saves the outer context
 # (returned for loop_leave) and opens the exit region that the failed
 # condition and 'break' land after. The caller opens the loop region and
-# sets loop_continue_chain.
+# sets loop_continue_chain. Loop-scoped registers (R3) are loaded here,
+# ahead of the loop region, and written back in loop_leave, after the
+# exit region every exit edge lands on.
 int* loop_enter():
 	int* outer = cast(int*, malloc(5 * __word_size__))
 	outer[0] = loop_break_chain
@@ -37,6 +47,7 @@ int* loop_enter():
 	outer[3] = break_in_switch
 	outer[4] = flow_loop_break
 	flow_loop_break = 0
+	regalloc_loop_enter(loop_stmt_offset)
 	loop_break_chain = be_ctrl_block()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
@@ -45,6 +56,7 @@ int* loop_enter():
 
 
 void loop_leave(int* outer):
+	regalloc_loop_leave()
 	loop_break_chain = outer[0]
 	loop_continue_chain = outer[1]
 	loop_stack_pos = outer[2]
