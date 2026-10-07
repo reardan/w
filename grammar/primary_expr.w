@@ -195,6 +195,9 @@ int primary_expr():
 	# ( expression )
 	else if (accept(c"(")) {
 		lint_condition_group(group_offset)
+		# A group in discard position passes it on to its expression
+		# (grammar/cond_branch.w): '(a || b) && c' branches per operand
+		if (cond_discard_mark == group_offset + 1): cond_discard_arm()
 		# Recursion-depth guard: '(' grouping re-enters expression() while
 		# this primary_expr and its enclosing operand frames are still on
 		# the native stack, and the descent back down to the nested

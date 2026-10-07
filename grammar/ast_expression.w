@@ -3735,9 +3735,13 @@ int ast_expression_emit_prepared(expression_ast* tree, int root):
 
 
 int ast_expression_try_at(int group_offset, int whole):
+	# A tree in discard position emits its root as a condition chain
+	# (grammar/cond_branch.w, code_generator/expression_ast.w)
+	int discard = cond_discard_match()
 	expression_ast tree
 	int root = ast_expression_prepare_at(&tree, group_offset, whole)
 	if (root < 0): return -1
+	ast_cond_discard = discard
 	return ast_expression_emit_prepared(&tree, root)
 
 

@@ -96,8 +96,46 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 # Walk the completed, decoded scalar tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
+# The condition-chain twin of logical_and_cond / logical_or_cond
+# (grammar/cond_branch.w): every operand is in discard position, each
+# but the last branches to the chain's tagged region, the last stays
+# pending with the regions for the consumer. Same bytes as the
+# streaming grammar: regions emit nothing, and a grouped sub-chain is
+# a nested node here exactly where it is a '(' group there.
+void emit_cond_chain_ast(expression_ast* tree, int id):
+	int is_or = tree.op[id] == 'o'
+	int base = ctrl_stack_pos
+	int tag = 1
+	if (is_or): tag = 2
+	int h = be_ctrl_block_tagged(tag)
+	int child = tree.left[id]
+	int type = -1
+	while (child >= 0):
+		int next = tree.next_arg[child]
+		ast_cond_discard = 1
+		emit_expression_ast(tree, child)
+		type = tree.result_type[child]
+		if (next >= 0): cond_operand_branch(type, h, is_or)
+		child = next
+	cond_chain_finish(base, type)
+
+
+# Discard position passes from a node to its first child when that
+# child starts at the node's own first token, where the streaming
+# grammar's '(' and '!' forwarding can reach it: every postfix and
+# binary form, not the prefix operators, casts or assignments.
+int cond_ast_forwards(int op):
+	if ((op == 'n') || (op == 'p') || (op == '~') || (op == 'K') || (op == 'r') || (op == 'd')): return 0
+	if ((op == '=') || (op == 'U')): return 0
+	return 1
+
+
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	# Discard position (grammar/cond_branch.w): consumed here, passed on
+	# below only where the streaming grammar would
+	int discard = ast_cond_discard
+	ast_cond_discard = 0
 	if (op == ast_propagate):
 		int child = tree.left[id]
 		emit_expression_ast(tree, child)
@@ -782,6 +820,26 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int count = emit_ast_direct_arguments(tree, id, s, 0)
 			finish_call(4, s, count, sym, 0, declared_return, count, has_return_buffer, sym_w_variadic_fixed_args(sym))
 		return
+	int cond_join = -1
+	int cond_stub = -1
+	int cond_else = -1
+	if (discard):
+		if ((op == 'a') || (op == 'o')):
+			emit_cond_chain_ast(tree, id)
+			return
+		if ((op == '!') || (op == 'b')):
+			int not_base = ctrl_stack_pos
+			ast_cond_discard = 1
+			emit_expression_ast(tree, tree.left[id])
+			cond_negate_pending(not_base, tree.result_type[tree.left[id]], op == '!')
+			return
+		if (op == '?'):
+			# The condition's chain leaves its regions open above these
+			# (conditional_expr opens them first for the same reason)
+			cond_join = be_ctrl_block()
+			cond_stub = be_ctrl_block()
+			cond_else = be_ctrl_block()
+		if (cond_ast_forwards(op)): ast_cond_discard = 1
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
 	if (op == 'U'):
@@ -941,11 +999,15 @@ void emit_expression_ast(expression_ast* tree, int id):
 		coerce_explicit(tree.value[id], got)
 		return
 	if (op == '?'):
-		promote(left_type)
-		int h_join = be_ctrl_block()
-		int h_stub = be_ctrl_block()
-		int h_else = be_ctrl_block()
-		be_br_zero_discard(h_else)
+		if (cond_pending == 0): promote(left_type)
+		int h_join = cond_join
+		int h_stub = cond_stub
+		int h_else = cond_else
+		if (cond_else < 0):
+			h_join = be_ctrl_block()
+			h_stub = be_ctrl_block()
+			h_else = be_ctrl_block()
+		cond_branch_consume(h_else, 0)
 		emit_expression_ast(tree, tree.right[id])
 		int yt = promote(tree.result_type[tree.right[id]])
 		be_br(h_stub)

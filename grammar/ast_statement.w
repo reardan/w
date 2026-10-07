@@ -247,7 +247,10 @@ void ast_statement_guard(int target, int outer_condition):
 		# The streaming grammar emits as it parses: the header's
 		# recorded phases come first.
 		if (walk >= 0): retained_walk_drain(walk)
-		promote(expression())
+		cond_discard_arm()
+		int streamed = expression()
+		cond_discard_clear()
+		if (cond_pending == 0): promote(streamed)
 		node.end_offset = token_start_offset
 	else:
 		node.expression_tree = &tree

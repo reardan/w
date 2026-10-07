@@ -1,14 +1,17 @@
 # wbuild: timeout=1800000
 /*
 Differential sweep for register promotion (unit R2,
-docs/projects/register_allocation_pgo.md §5): every conventional
-compile-and-run target of the generated manifest is built twice, with
-promotion (the default) and with --no-regs, on the width its target
-names (x86 or x64), and the two binaries must behave identically: exit
-status, stdout and stderr. The same source is also compiled by a
-compiler that was itself built with --no-regs, and that output must be
-byte-identical to bin/wv2's (promotion must not change what the
-compiler emits, only how the compiler's own code runs).
+docs/projects/register_allocation_pgo.md §5) and for the condition
+chains of unit A6 (docs/projects/codegen_gap_plan.md §2.6,
+grammar/cond_branch.w): every conventional compile-and-run target of
+the generated manifest is built three times, with both optimizations
+(the default), with --no-regs and with --no-cond-branch, on the width
+its target names (x86 or x64), and the three binaries must behave
+identically: exit status, stdout and stderr. The same source is also
+compiled by a compiler that was itself built with --no-regs
+--no-cond-branch, and that output must be byte-identical to bin/wv2's
+(neither optimization may change what the compiler emits, only how
+the compiler's own code runs).
 
 Selection is manifest-driven (tools/wbuildgen_lib.w generates the same
 manifest wexec runs): a target qualifies when its two steps are
@@ -108,9 +111,10 @@ process_result* run_as(char* path, char* name, char* stdin_text, int timeout_ms)
 	return r
 
 
-# bin/wv2 [x64] [--no-regs] src -o out
-process_result* compile_with(char* compiler, int arch64, int no_regs, char* src, char* out):
-	char** argv = strv_new(7)
+# bin/wv2 [x64] [--no-regs] [--no-cond-branch] src -o out; opt_out is a
+# bitmask: 1 = --no-regs, 2 = --no-cond-branch
+process_result* compile_with(char* compiler, int arch64, int opt_out, char* src, char* out):
+	char** argv = strv_new(8)
 	int n = 0
 	argv[n] = compiler
 	n = n + 1
@@ -119,8 +123,11 @@ process_result* compile_with(char* compiler, int arch64, int no_regs, char* src,
 	if (arch64):
 		argv[n] = c"x64"
 		n = n + 1
-	if (no_regs):
+	if (opt_out & 1):
 		argv[n] = c"--no-regs"
+		n = n + 1
+	if (opt_out & 2):
+		argv[n] = c"--no-cond-branch"
 		n = n + 1
 	argv[n] = src
 	argv[n + 1] = c"-o"
@@ -207,44 +214,56 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	char* regs = strjoin(c"bin/regalloc_diff/", name)
 	char* regs_keep = strjoin(regs, c".keep")
 	char* noregs = strjoin(regs, c".noregs")
+	char* nocond = strjoin(regs, c".nocond")
 
 	process_result* ca = compile_with(c"bin/wv2", arch64, 0, src, regs)
 	process_result* cb = compile_with(c"bin/wv2", arch64, 1, src, noregs)
-	if ((ca.status != 0) || (cb.status != 0)):
-		# A source that does not compile is still a comparison: both
+	process_result* cn = compile_with(c"bin/wv2", arch64, 2, src, nocond)
+	if ((ca.status != 0) || (cb.status != 0) || (cn.status != 0)):
+		# A source that does not compile is still a comparison: all
 		# builds must fail the same way
 		if ((ca.status != cb.status) || (strcmp(ca.stderr_text, cb.stderr_text) != 0)):
 			mismatches = mismatches + 1
 			report(c"MISMATCH (compile)", name, cb.stderr_text)
+		else if ((ca.status != cn.status) || (strcmp(ca.stderr_text, cn.stderr_text) != 0)):
+			mismatches = mismatches + 1
+			report(c"MISMATCH (compile, --no-cond-branch)", name, cn.stderr_text)
 		else: skipped = skipped + 1
 		return
 
-	# The --no-regs-built compiler must emit the same bytes as bin/wv2
-	# (same output path: the binary embeds its own name).
+	# The compiler built with both opt-outs must emit the same bytes as
+	# bin/wv2 (same output path: the binary embeds its own name).
 	shell_status(c"/bin/cp", regs, regs_keep)
 	process_result* cc = compile_with(noregs_compiler(), arch64, 0, src, regs)
 	if ((cc.status != 0) || (shell_status(c"/usr/bin/cmp", regs, regs_keep) != 0)):
 		mismatches = mismatches + 1
-		report(c"MISMATCH (compiler output differs from the --no-regs-built compiler)", name, 0)
+		report(c"MISMATCH (compiler output differs from the --no-regs --no-cond-branch-built compiler)", name, 0)
 		return
 
 	process_result* ra = run_as(regs, name, stdin_text, timeout_ms)
 	process_result* rb = run_as(noregs, name, stdin_text, timeout_ms)
-	if (same_result(ra, rb) == 0):
+	process_result* rn = run_as(nocond, name, stdin_text, timeout_ms)
+	if ((same_result(ra, rb) == 0) || (same_result(ra, rn) == 0)):
 		process_result* rb2 = run_as(noregs, name, stdin_text, timeout_ms)
 		process_result* ra2 = run_as(regs, name, stdin_text, timeout_ms)
-		if ((same_result(rb, rb2) == 0) || (same_result(ra, ra2) == 0)):
+		process_result* rn2 = run_as(nocond, name, stdin_text, timeout_ms)
+		if ((same_result(rb, rb2) == 0) || (same_result(ra, ra2) == 0) || (same_result(rn, rn2) == 0)):
 			report(c"nondeterministic (two runs of one build differ), not compared", name, 0)
 			skipped = skipped + 1
 		else:
 			mismatches = mismatches + 1
-			report(c"MISMATCH (behaviour)", name, 0)
+			process_result* other = rb
+			char* which = c"--no-regs"
+			if (same_result(ra, rb)):
+				other = rn
+				which = c"--no-cond-branch"
+			report(c"MISMATCH (behaviour)", name, which)
 			print(c"  status ")
 			print(itoa(ra.status))
 			print(c" vs ")
-			println(itoa(rb.status))
-			if (same_text(ra.stdout_text, rb.stdout_text) == 0): println(c"  stdout differs")
-			if (same_text(ra.stderr_text, rb.stderr_text) == 0): println(c"  stderr differs")
+			println(itoa(other.status))
+			if (same_text(ra.stdout_text, other.stdout_text) == 0): println(c"  stdout differs")
+			if (same_text(ra.stderr_text, other.stderr_text) == 0): println(c"  stderr differs")
 	else: compared = compared + 1
 
 
@@ -302,8 +321,8 @@ int main(int argc, char** argv):
 		return 0
 
 	shell_status(c"/bin/mkdir", c"-p", scratch_dir())
-	process_result* build = compile_with(c"bin/wv2", 0, 1, c"w.w", noregs_compiler())
-	asserts(c"building the --no-regs compiler", build.status == 0)
+	process_result* build = compile_with(c"bin/wv2", 0, 3, c"w.w", noregs_compiler())
+	asserts(c"building the --no-regs --no-cond-branch compiler", build.status == 0)
 
 	process** shards = cast(process**, malloc(shard_count * __word_size__))
 	for k in range(shard_count):

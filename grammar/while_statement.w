@@ -78,11 +78,16 @@ void statement_guard(int target, int outer_condition):
 		flow_condition_end(flow_state)
 		return
 	lint_condition_begin()
-	promote(expression())
+	# The condition is in discard position (grammar/cond_branch.w): a
+	# chain branches per operand and is consumed below
+	cond_discard_arm()
+	int type = expression()
+	cond_discard_clear()
+	if (cond_pending == 0): promote(type)
 	flow_condition_end(flow_state)
 	lint_condition_end()
 	condition_context = outer_condition
-	be_br_zero_discard(target)
+	cond_branch_consume(target, 0)
 
 
 # while ( expression ) statement — parentheses are optional before ':'

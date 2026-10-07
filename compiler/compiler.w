@@ -909,9 +909,21 @@ int link_option(char* arg, int apply):
 	# tests/regalloc_diff_test.w and the fallback a guard failure asks for.
 	if ((strcmp(arg, c"--no-regs") == 0) || (strcmp(arg, c"-O0") == 0)):
 		if (apply): regalloc_disabled = 1
+		# -O0 is "no optimization": the condition chains go too
+		if (apply && (strcmp(arg, c"-O0") == 0)): cond_branch_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
+		return 1
+	# Branch-on-flags for &&/||/! in conditions (docs/projects/
+	# codegen_gap_plan.md §2.6, grammar/cond_branch.w) is on by default
+	# on x86/x64; --no-cond-branch (and -O0) keeps the value form, which
+	# is the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-cond-branch") == 0):
+		if (apply): cond_branch_disabled = 1
+		return 1
+	if (strcmp(arg, c"--cond-branch") == 0):
+		if (apply): cond_branch_disabled = 0
 		return 1
 	if (starts_with(arg, c"--ptx=")):
 		# Debug dump of the embedded PTX module (kernels/'gpu for'),
@@ -963,6 +975,7 @@ void help_shared_options():
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
+	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
@@ -1297,6 +1310,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# Register promotion is whole-program too: the auto-imported
 			# runtime compiles before the positional loop below
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)

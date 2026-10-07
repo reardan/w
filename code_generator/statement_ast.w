@@ -24,6 +24,8 @@ void ast_expression_note_root(expression_ast* tree, int root);
 # retaining the established coercion/diagnostic order.
 void emit_statement_ast_expression(statement_ast* node):
 	if (node.expression_root < 0): return
+	# A guard's condition is in discard position (grammar/cond_branch.w)
+	if ((node.kind == ast_stmt_guard) && cond_branch_on()): ast_cond_discard = 1
 	node.expression_type = emit_prepared_expression_ast(node.expression_tree, node.expression_root)
 
 
@@ -279,11 +281,12 @@ void emit_declaration_ast_walk(retained_statement_walk* walk, int phase):
 
 
 void emit_guard_ast_value(statement_ast* node):
-	promote(node.expression_type)
+	# A pending condition chain is promoted by its consumer below
+	if (cond_pending == 0): promote(node.expression_type)
 
 
 void emit_guard_ast_branch(statement_ast* node):
-	be_br_zero_discard(node.target)
+	cond_branch_consume(node.target, 0)
 	ast_guards_emitted = ast_guards_emitted + 1
 
 
