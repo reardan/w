@@ -913,6 +913,14 @@ issues at once on a 4-CPU machine. Friction they reported:
   it compared names (`sym_probe(name) == offset`). Worth a helper on
   the symbol table ("is this record still the live declaration of this
   name").
+- **Callgrind Ir of the compiler is not repeatable to better than
+  ~3%:** `structures/hash_table.w` draws a per-process random siphash
+  seed, so two runs of one `bin/wv2` on one input differ in
+  collision patterns (7.51 G vs 7.72 G seen on `w.w`). An
+  environment variable or flag that pins the seed would make
+  `wbench --no-valgrind`'s opposite, Ir comparisons, trustworthy at
+  the 1% level the PGO plan wants to read.
+
 ## Source-owned targets and the profile tooling (2026-10-07, PGO plan P1)
 
 Friction met while adding `--profile-generate`, `bin/wprof` and

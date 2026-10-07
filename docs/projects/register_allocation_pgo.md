@@ -1296,3 +1296,160 @@ there. The look-ahead reopens the source file once per candidate
 function (926 opens in a self-compile); under `--ast-emit-retained` it
 still reads the file, not the retained copy, which is correct because
 `retained_source_byte` verifies and records the same bytes in order.
+
+### R2 — function-scoped register promotion, x86/x64 (2026-10-07)
+
+Landed as three commits on top of R1 and P1/B1: the promotion itself
+(`compiler/regalloc_scan.w`, new; `code_generator/{x86,code_emitter,
+arm64,dwarf,dwarf_info,x86_asm,x64_asm,expression_ast,statement_ast}.w`;
+`compiler/{symbol_table,compiler,analysis}.w`; `grammar/{program,
+expression,unary_expression,variable_declaration,multi_assign,
+stack_slot}.w`; `repl/core.w`; `debugger/locals.w`; `lib/{lib,setjmp,
+stack_trace}.w`), R2b (`grammar/for_statement.w`,
+`code_generator/loop_ast.w`), and the tests (`tests/regalloc_test.w`,
+`tests/regalloc_diff_test.w`, `dwarf_variables_test`, `repl_test`
+steps). Promotion is **on by default**; `--no-regs` (alias `-O0`)
+turns it off and `--regs` turns it back on, both whole-program.
+
+What landed, against §2.2:
+
+- **The scan** is a byte-level pre-scan of the function body run from
+  `function_definition` before the prologue, reading the source fd
+  through `getchar`'s own buffer and seeking back; it never touches the
+  tokenizer, so no token, line, warning or retained-AST state moves. It
+  agrees with the tokenizer on comments and literals and is
+  conservative everywhere else: a candidate is a name with exactly one
+  recognised declaration that is never address-taken, subscripted,
+  called, field-accessed or compound-assigned (`+=`, `++`); uses are
+  weighted 8^depth by `while`/`for` nesting; only names used inside a
+  loop rank, so a loop-free body is never scanned past its first pass.
+  A body naming `raw_asm`, `setjmp`/`longjmp`, `yield`, `gpu`/`launch`/
+  `kernel`, or containing an f-string (which re-enters the tokenizer)
+  promotes nothing; so do variadic functions and generator bodies.
+  `goto`/labels and `defer` are allowed as planned.
+- **Deviation: no kind `'R'`.** Symbol records keep kind `'L'` and gain
+  a register field (offset 146, `symbol_data_size` 150 — appended,
+  nothing repurposed). `sym_emit_value` sets a *register lvalue note*
+  (`reg_lvalue`/`reg_lvalue_end`, the same `*_end == codepos`
+  discipline as the lea/imm notes) instead of emitting an address;
+  `promote()` consumes it as `mov eax,R`, plain `=` and declarations
+  with initializers as `mov R,eax`, multi-assignment (both the
+  streaming and the retained-AST emitter) as a parked register. `&x`
+  on a promoted local and any consumer that reaches `emit()` with the
+  note still current are compile-time internal errors ("used by an
+  unhandled path (compile with --no-regs and report this)"), and
+  `load_slot` asserts that a promoted local's never-written stack word
+  is not read (`regalloc_slot_assert`, keyed by name because scope
+  exits truncate the table and offsets alias). The guard fired exactly
+  once during development on a path the plan had not listed — the
+  retained-AST parallel assignment, found by `ast_canary_64_test` — and
+  that emitter was made register-aware.
+- **Prologue/epilogue** as planned: `push R` for each promoted register
+  right after `mov ebp,esp` (so P1's function counter follows them),
+  `be_frame_words` = 1 + saved, every `return` through
+  `lea esp,[ebp-W*n]; pop ...; pop ebp; ret`. `.debug_frame` carries
+  `DW_CFA_offset r, 3+i` after the frame setup and `DW_CFA_restore` at
+  the leave; promoted locals get `DW_OP_reg<n>` locations; wdbg reads
+  them from the stop's sigcontext (frame 0) or the inner frame's save
+  slot (`p i`, conditions and logpoints on `debug_fixture3.w`, whose
+  `i` and `sum` are promoted, pass unchanged; attach mode has no
+  register context and reports the local as unavailable).
+- **Stubs**: x86 `syscall7` and `stack_create` now save `esi`/`edi`
+  (the audit found nothing else on x86 or x64 touching the set);
+  `repl_setjmp`/`repl_longjmp` save and restore `ebx esi edi` /
+  `rbx r12–r15`, `jmp_buf` grew to 8 words (`jmp_buf_words`,
+  `lib/lib.w`), and `lib/setjmp.w`, README state the contract: asm
+  bodies and stubs preserve `ebx/esi/edi`, `rbx/r12–r15`, `x19–x28`.
+- **R2b**: `for` headers are declarations to the scan, so a range or
+  container loop variable ranks like any local; the loop's start copy,
+  condition, increment (`add R,1` / `add R,eax`) and container stores
+  go through the register, and the stack paths assert the slot. The
+  hidden end/step slots stay on the stack: the condition's end-slot
+  read folds into `pop_ebx`'s shuttle (`mov_eax_esp_plus` is now noted
+  like a local load), so `for i in range(n): s = s + i` is an 11-
+  instruction loop with one memory read.
+- **`mov eax,R` is noted too** (`regload_note`), so a register operand
+  on the right of a binary operator takes the shuttle
+  (`mov ebx,eax; mov eax,R`) instead of a `push`/`pop` pair.
+- **Budget and heuristic**: top-4 on x64 (`r12`–`r15`), top-2 on x86
+  (`esi`/`edi`), use count > 7 required, no profile input yet (§3.4's
+  hook is the ranking function). arm64, darwin, win64 and wasm promote
+  nothing and emit byte-identical output (`verify_arm64` passes).
+
+Measurements (4-core cloud container; "before" is the integration
+branch at cd88aba7 built by the pinned seed, "after" this branch built
+the same way; best-of-5 wall, callgrind Ir):
+
+| workload (`bin/wbench --programs -n 5`, kIr = callgrind, best wall) | before kIr | after kIr | before ms | after ms |
+| --- | --- | --- | --- | --- |
+| siphash_keys x86 / x64 | 6,064,249 / 6,801,967 | 5,954,186 (−1.8%) / 6,488,888 (−4.6%) | 725 / 1124 | 734 / 1058 |
+| inflate_corpus x86 / x64 | 6,734,003 / 6,679,124 | 6,480,057 (−3.8%) / 6,351,846 (−4.9%) | 513 / 542 | 492 / 496 |
+| regex_backtrack x86 / x64 | 10,052,926 / 10,052,926 | 9,692,806 (−3.6%) / 9,791,912 (−2.6%) | 649 / 629 | 568 / 601 |
+| matmul_256 x86 / x64 | 8,603,595 / 8,603,595 | 7,597,846 (−11.7%) / 7,595,874 (−11.7%) | 540 / 517 | 465 / 442 |
+| strcmp_sort x86 / x64 | 4,550,180 / 4,665,301 | 4,497,147 (−1.2%) / 4,576,365 (−1.9%) | 510 / 607 | 481 / 586 |
+
+| micro-benchmark (best-of-5 wall, callgrind Ir) | before | after |
+| --- | --- | --- |
+| §1.1 `sum_to` while loop, 10^9 iterations, x86 | 1.215 s, 22.000 G | 0.878 s, 16.000 G (−27%) |
+| same, x64 | 1.225 s, 22.000 G | 0.872 s, 16.000 G |
+| `for i in range(10^9): s = s + i` (R2b), x86 | 1.075 s, 16.000 G | 0.708 s, 12.000 G (−25%) |
+| same, x64 | 1.028 s, 16.000 G | 0.682 s, 12.000 G |
+| sha256 over a few MB (`lib/sha256.w`), x86 / x64 | 0.185 s, 3.067 G / 0.192 s, 3.067 G | 0.184 s, 2.979 G (−2.8%) / 0.179 s, 2.955 G (−3.6%) |
+| map insert loop (`map[int,int]`, 10^6 keys), x86 / x64 | 1.013 s, 5.219 G / 1.522 s, 6.412 G | 1.091 s, 5.163 G (−1.1%) / 1.501 s, 6.082 G (−5.1%) |
+
+| self-compile of `w.w` (best-of-5 wall, callgrind Ir) | before (base tree, seed-built) | after: promoted fixpoint compiler (`bin/wv3`) | after with `--no-regs` (same binary, scan off) |
+| --- | --- | --- | --- |
+| x86 | 0.915 s, 7.431 G | 0.980 s, 8.050 G | 0.837 s, 7.425 G |
+| x64 | 0.831 s, 7.604 G | 0.844 s, 8.076 G | 0.812 s, 7.723 G |
+
+The seed-built `bin/wv2` (unpromoted code, but it runs the scan) is
+the slowest point of the chain on x86: 1.082 s, 8.303 G. Callgrind Ir
+of the compiler moves by up to ~3% between runs of the same binary on
+the same input (`structures/hash_table.w` draws a per-process siphash
+seed, so collision patterns differ), so Ir deltas under that are
+noise; the wall figures are best-of-5 on an otherwise idle box.
+
+The while-loop benchmark goes from 22 to 16 instructions per iteration
+(the accumulator model still spends `mov eax,R; mov ebx,eax` on each
+register operand, §1.3's 5-instruction loop needs R3/peepholes), the
+range loop from 16 to 12. `w.w` on x86 promotes 1,491 locals in 1,001
+scanned loop bodies (2,147 on x64 with four registers); the x86 image
+is 2,786,408 → 2,782,312 bytes (607,253 → 613,180 instructions, the
+pushes/pops and `mov R,eax` stores outnumber the removed `[esp+N]`
+operands), the x64 image 3,168,464 → 3,184,848 bytes (594,688 →
+603,755 instructions).
+
+Compile-time cost of the pre-scan (one binary, `w.w`, callgrind, scan on
+vs `--no-regs`): `bin/wv3` runs 8,049,655,177 vs 7,424,880,971 Ir, +625
+M (+8.4%); `bin/wv3_64` on the x64 build 8,075,569,244 vs 7,722,777,155
+(+4.6%); the unpromoted seed-built `bin/wv2` pays +823 M (+11%), the
+scanner's own loops being exactly what promotion helps. The promoted
+compiler compiling `w.w` runs about 7% slower on x86 wall than the base
+compiler (0.915 → 0.980 s) and 1.6% slower on x64 (0.831 → 0.844 s): the
+scan costs more than promotion wins back on the compiler's own loops
+(the promoted binary with the scan off compiles `w.w` in 0.837 s on x86,
+9% faster than base). Skipping the scan for cold functions once a
+profile says which bodies matter (P2 phase B) and a cheaper scan are
+where the compile-time budget goes next.
+
+Gates: `verify`, `verify_x64`, `verify_arm64`, `tests` (916
+targets, 604 s), `regalloc_test` + `_64`, `regalloc_diff_test` (408
+programs compared on their own width, 0 mismatches; race/timing tests
+reported nondeterministic and skipped), `dwarf_variables_test`,
+`repl_test`, `debug_test`, `wdbg_web_test`, `ast_expression_test`,
+`ast_retained_emit_test`, `ast_canary_test` + `_64`, the `asm_*`
+suites, `bench_*_smoke_test`.
+
+Not claimed / for the next unit:
+- Hidden range slots, `ebx`, floats, narrow integers and aggregates
+  stay on the stack; R3's loop-scoped caller-saved allocation and the
+  profile-driven ranking (§3.4) are untouched — `rs_assign_registers`
+  is where a profile's counts replace the static weights.
+- A `longjmp` caller promotes nothing (only the `setjmp` caller needs
+  to); relaxing that is safe but was not needed.
+- `regalloc_diff_test` skips sources that spawn processes, write files
+  or import the compiler (they would race their own manifest run) and
+  blanks hex addresses (`lib/testing.w` prints function addresses).
+- The accumulator model still materialises `mov eax,R; mov ebx,eax`
+  for a register operand; a direct `op eax,R` form is the obvious next
+  peephole.
