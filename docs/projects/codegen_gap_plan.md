@@ -882,6 +882,283 @@ compared builds), `asm_x64_test`, `asm_fuzz_x86_test`,
 `_64`, `git diff --name-only 1335f06 | bin/wtest changed` (41
 targets), `./wbuild tests` (921 targets).
 
+### A5 — inlining small leaf callees (2026-10-07)
+
+What landed (x86 and x64 Linux ELF only; win64, arm64, `arm64_darwin`
+and wasm images are byte-identical to before, asserted by hand with
+`--no-inline` builds of the self-host and `tests/inline_test.w`):
+
+- **The mechanism.** A call to a known W function whose body is small,
+  loop-free and free of calls that return is emitted as the body
+  itself. The arguments stay in the slots the call pushed (one word
+  per parameter) and are bound as fresh `'L'` locals over them; the
+  body is re-parsed by `statement()` from a private copy of its source
+  bytes, through a `/dev/null` descriptor whose `getchar` window is
+  that copy (`grammar/inline_call.w`: the lexer's rewinds stay inside
+  the body, the end of the copy is the end of the stream, and the
+  outer lexer state is saved around it like a generic re-parse);
+  `return` lowers to a jump to a region closed after the body, the
+  trailing one is dropped again (`peep_rollback`), and the value stays
+  in the accumulator where the call's result would be. `finish_call`
+  pops the arguments after the body exactly as after a call: the call
+  record (`grammar/stack_slot.w`) gained kind 4, so the single-pass
+  shape of A4 is unchanged — the begin side decides, the finish side
+  emits. The body's own declarations are not noted anywhere (no DWARF
+  variable, no register promotion, no lint, no retained-tree node), its
+  bytes belong to the call site's line (`debug_line_note` is held off
+  while `inline_depth != 0`), and the caller's flow facts, deferred
+  statements, generator cleanups, the "last declared symbol" note and
+  the AST modes are restored or masked for the duration.
+- **The record.** `compiler/inline_table.w` captures every definition as
+  it compiles (`function_definition`, `grammar/program.w`): the body's
+  span and a copy of its bytes (`inline_source_copy` reads the register
+  pre-scan's file image), the parameter names and types, token and
+  byte counts, and whether the body emitted a call that returns
+  (`inline_real_calls` counted by the x86 call emitters, less
+  `inline_noreturn_calls`, which both emitters note for calls of
+  noreturn functions — the overflow trap of `__w_size_add` leaves its
+  fast path call-free), opened a loop (`regalloc_loop_enter`), or used
+  a construct a re-parse cannot reproduce (`defer`, `goto`/labels,
+  `raw_asm`, f-strings, `?`, `yield`, `launch`, `gpu for`); plus the
+  names it resolved outside itself, with the record each resolved to,
+  reported by `sym_lookup` while the capture is open. A site may
+  inline only when every one of those names resolves to the same
+  record there, and an unresolved one has not become a local or
+  argument (the capture rule: `in_g` shadowed by a caller local in
+  `tests/inline_test.w` keeps `in_read_g(7)` a call). A file-scoped
+  import alias (`import a.b as f`) is resolved per file outside the
+  symbol table, so a body that uses one is a hazard
+  (`import_alias_lookup`; `tests/import_alias_helper.w` found it).
+- **The site rule** (`inline_site_ok`, the same predicate at the
+  streaming grammar's call site and the retained emitter's `'C'` site,
+  so both emit the same bytes; `verify_pgo`'s `wv3_pgo_ast == wv3_pgo`
+  and `ast_expression_test` pin that): the callee's body was already
+  seen (a forward call stays a `call rel32`), is not the function being
+  compiled or one already being inlined further out, depth at most 3,
+  no struct-by-value parameter or return, no W variadic, generator,
+  asm or generic-substituted body, no body that warned or that is
+  itself noreturn; and a byte budget on the body's code as compiled at
+  its definition: 320 at a site inside a loop of the caller
+  (`inf_get_bit` is 314 bytes on x64), 64 at a straight-line site or
+  when a `--profile-use` profile classifies the callee or caller cold
+  (an accessor of a few instructions is shorter than the call it
+  replaces, so it is worth its bytes anywhere), 640 when the profile
+  classifies either hot — the only budget open to a body with calls (a
+  wrapper's copy saves one call and costs its whole body at every site;
+  `free` alone has ~700 sites in the compiler). The profile-hot budget
+  is what the PGO self-host (`verify_pgo`) exercises; the corpus is
+  compiled without a profile, so the loop rule decides there.
+- **R3 and the frame.** The register pre-scan asks
+  `inline_name_is_leaf` before marking a loop as containing a call, so
+  a loop whose only calls inline without calls of their own keeps its
+  registers (`inf_get_bits` below holds `c`, `n` and `i` in
+  `rsi`/`rdi`/`r8` across the inlined `inf_get_bit`); a site the
+  emitter refuses after all is still a call wrapped in
+  `regalloc_call_spill`/`reload`, so a miss costs instructions, never
+  correctness. Inlined locals are plain stack slots (`regalloc_declare`
+  returns 0 while `inline_depth != 0`), which satisfies the scan/emit
+  guard by construction.
+- **Off where a call must stay a call:** `--no-inline` (a link option;
+  `tests/regalloc_diff_test.w` builds every program a fourth time with
+  it, and once more with a `--no-inline`-built compiler whose output
+  must match `bin/wv2`'s byte for byte), the REPL (a redefinition would
+  not reach inlined copies), `wdbg`'s in-process compile (a breakpoint
+  on a function is reached through a call of it; the attach-mode
+  recompile keeps the binary's own inlining since its tables must
+  match, and `wdbg --no-inline --attach` recompiles a `--no-inline`
+  build the same way — `attach_test`'s fixtures are such builds, since
+  their two-level call stack must be real calls), `w check`,
+  `--profile-generate` (the instrumented binary
+  measures the call graph), generator and `gpu for` bodies. An inlined
+  site still counts in `emitted_call_count` (it can have a call's side
+  effects) but not in `inline_real_calls`.
+- Tests: `tests/inline_test.w` (+ `_64`, `--no-inline` twins on both
+  widths, and a `--stats` step asserting the default build inlined)
+  covers one and several parameters, argument order and single
+  evaluation, both directions of shadowing, globals, early returns,
+  void bodies, bodies with locals and a `switch`, nested inlining,
+  struct returns and pointers, recursion, defaults, narrow and float
+  parameters, hidden runtime calls in the body, calls inside loops
+  that own registers, a callee defined after the caller, calls as
+  arguments of calls, `defer`, and an inlined callee also used through
+  a function pointer. `--stats` prints the bodies recorded, sites
+  inlined, sites refused by the capture rule and by the budget, and
+  the twelve bodies accounting for the most inlined bytes.
+
+Measurements (`./wbuild bench`: callgrind Ir in thousands, which is
+deterministic; best-of wall ms on the shared 4-core container with
+other agents' builds running, so the ms columns are noise-level
+evidence only; `bytes` is the ELF size; before = `lane/calls` at
+803a751, i.e. `main` 1335f06 plus A4):
+
+x64
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,254 | 3,000,248 | −0.0% | 211 | 226 | 203,400 | 215,688 |
+| `sieve` | 1,647,240 | 1,627,765 | −1.2% | 313 | 309 | 203,400 | 215,688 |
+| `sha256_1m` | 5,253,121 | 5,151,665 | −1.9% | 340 | 296 | 211,600 | 223,888 |
+| `siphash_keys` | 4,691,937 | 4,679,430 | −0.3% | 867 | 822 | 203,400 | 215,688 |
+| `inflate_corpus` | 4,791,395 | 4,586,040 | −4.3% | 343 | 281 | 269,224 | 281,512 |
+| `regex_backtrack` | 6,453,595 | 6,453,098 | −0.0% | 393 | 392 | 215,688 | 227,976 |
+| `matmul_256` | 5,063,658 | 5,062,145 | −0.0% | 365 | 355 | 203,408 | 215,696 |
+| `strcmp_sort` | 3,405,300 | 3,327,791 | −2.3% | 585 | 483 | 203,400 | 215,688 |
+
+x86
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,258 | 3,000,253 | −0.0% | 215 | 204 | 173,380 | 181,572 |
+| `sieve` | 1,666,714 | 1,647,239 | −1.2% | 302 | 313 | 173,380 | 181,572 |
+| `sha256_1m` | 5,466,512 | 5,365,056 | −1.9% | 344 | 335 | 177,480 | 189,768 |
+| `siphash_keys` | 4,418,526 | 4,405,236 | −0.3% | 697 | 568 | 173,380 | 181,572 |
+| `inflate_corpus` | 4,969,281 | 4,763,296 | −4.1% | 343 | 284 | 226,772 | 239,060 |
+| `regex_backtrack` | 6,371,287 | 6,370,790 | −0.0% | 394 | 397 | 181,572 | 193,860 |
+| `matmul_256` | 5,067,610 | 5,066,294 | −0.0% | 323 | 350 | 173,384 | 181,576 |
+| `strcmp_sort` | 3,402,203 | 3,324,693 | −2.3% | 427 | 434 | 173,380 | 181,572 |
+
+(The 8–12 KB of extra bytes in every program is the auto-imported
+runtime and `lib/` — `st_byte`, `st_int32`, `__w_list_load_word` and
+the other small helpers inlined at their ~200 sites, the same in every
+program; `--stats` lists them.)
+
+Self-compile, same input for both compilers (this tree, compiled with
+`--no-inline` to isolate the two effects; callgrind Ir): the compiler
+built without inlining compiling `w.w --no-inline` 6,195,689,556 → the
+inlined compiler doing the same 6,032,226,459 (−2.6%: what inlining
+does for the compiler's own code) → the inlined compiler with inlining
+on 7,141,166,940 (+15.3% over the first: the re-parse of 3,673 bodies,
+proportional to the tokens re-parsed, spread over the lexer, the
+symbol hash and the type table like any other parse). x64:
+6,277,828,480 → 6,087,062,689 (−3.0%) → 7,088,860,386 (+12.9%).
+`tools/wbench.w` counters for `self` (sym_lookup calls / records
+visited): 489,280 / 128,782 → 535,407 / 139,240. Compiler image, same
+tree with and without inlining: x86 2,548,456 → 2,638,568 bytes
+(+3.5%, 3,673 sites from 2,565 recorded bodies), x64 2,905,552 →
+3,003,856 (+3.4%, 3,520 sites). The `self` row of `bench.txt`
+(x86 8,197,003 → 9,333,208 kIr, x64 6,263,483 → 7,107,241) compiles
+the current, larger tree with inlining on and so folds both effects
+and the new sources together.
+
+Static before/after for the hot loop of `inflate_corpus`
+(`libs/extras/compress/inflate.w`, `inf_get_bits` line 218 `for i in
+range(n): v = v | (inf_get_bit(c) << i)`, x64, `objdump -d -Mintel`;
+the whole image has 1,643 `call rel32` after, from 1,736 + 217
+indirect before A4):
+
+```
+before (A4)                                  after (A5)
+ cmp    r13,QWORD PTR [rsp+0x0]               mov    rsi,QWORD PTR [rbp+0x10]   ; c   (R3: the loop owns
+ jge    <exit>                                mov    rdi,QWORD PTR [rbp+0x18]   ; n    registers now that
+ mov    rax,r12                               mov    r8,QWORD PTR [rbp-0x28]    ;      it holds no call)
+ push   rax                                   cmp    r13,r8
+ mov    rax,QWORD PTR [rsp+0x48]  ; c         jge    <exit>
+ push   rax                                   mov    rax,r12
+ call   8061926 <inf_get_bit>                 push   rax
+ add    rsp,0x8                               mov    rax,rdi
+ pop    rbx                                   push   rax                        ; the parameter slot
+ ...                                          mov    rax,QWORD PTR [rsp+0x0]    ; inf_get_bit's body:
+                                              add    rax,0x30                   ;   if (c.status != 0)
+                                              mov    rax,QWORD PTR [rax]
+                                              cmp    rax,0x0
+                                              je     <next>
+                                              mov    eax,0x0
+                                              jmp    <end of body>              ; return 0
+                                              ... (c.byte_pos >= c.in_length, the shift, bit_pos
+                                                   += 1, the byte advance: 47 instructions)
+                                              add    rsp,0x8                    ; pop b
+                                              jmp    <end of body>              ; return b
+                                              add    rsp,0x8                    ; the argument, as after a call
+                                              pop    rbx
+                                              ...
+```
+
+The plan's §2.4 expectation for this unit (x64: `inflate_corpus`
+−30%, `strcmp_sort` −25%, `siphash_keys` −15%, `sieve` −3%) was not
+met: −4.3%, −2.3%, −0.3% and −1.2%. What the estimate over-counted is
+the call overhead's share of those loops: with A4's shape a call is
+one `call rel32` plus the callee's `push rbp; mov rbp,rsp; ... leave;
+ret` and R3's spill/reload (some eight instructions), while the body
+of `inf_get_bit` is ~50 instructions of stack-slot traffic that the
+copy repeats verbatim — the single-pass emitter inlines the body, it
+does not simplify it (no constant propagation of the arguments, no
+register binding of the parameters: they are `[rsp+disp]` slots). Per
+target callee: `inf_get_bit` inlines at both of its sites (the
+`inf_get_bits` loop and `wh_decode`); `__w_size_add` and
+`__w_size_mul` are leaf bodies under the rule above (222 and 260
+bytes) but their sites — `string_reserve` (`structures/string.w:38`)
+and `__w_list_ensure` (`structures/w_list.w:185`) — are straight-line
+code in small helpers that the hot loops call, so the loop rule gives
+them the 64-byte budget and they stay calls (`__w_size_add` is 16% of
+`inflate_corpus` after this unit). Relaxing the rule to "a site inside
+a loop, or in a function whose own body is still small" (one line in
+`inline_site_budget`) was measured: `inflate_corpus` −6.3% and
+`strcmp_sort` −4.0% instead of −4.3% / −2.3%, for an x86 image of
++8.1% instead of +3.5% and ~5,300 sites instead of 3,700 in the
+self-compile; the cheaper rule was kept, and a `--profile-use` profile
+that marks `string_reserve` hot gets the same effect without the
+blanket cost (B3 in §5.2 is the place for the per-site budget).
+`__w_list_load_word` (163 bytes, leaf) inlines at its 18 loop sites;
+`__w_list_compare_values`, the top of `strcmp_sort`, contains a loop
+and never inlines; `bench_fold` (74 bytes, leaf) inlines at its two
+sites; `__w_hash_sip` is one loop and is the whole of `siphash_keys`.
+
+What this unit does not claim:
+
+- No simplification of the inlined body: the parameters are stack
+  slots, not registers or constants, and the body's own `push`/`pop`
+  traffic is what the copy costs. Binding parameters to R3 registers
+  at a loop site, or folding an immediate argument into the body, is
+  the next step and needs A2/A6's operand model.
+- Bodies with calls are inlined only under a profile that marks the
+  site hot; bodies with loops, never (a loop's R3 facts are keyed by
+  its keyword's file offset in the caller's scan, which a copied loop
+  would collide with).
+- A breakpoint on an inlined callee under `wdbg --attach` (the
+  recompile keeps the binary's inlining) is reached only through the
+  out-of-line body, which still exists but may never be called; the
+  in-process debugger compiles with inlining off, and a binary to be
+  debugged by attaching is built with `--no-inline` (no
+  `DW_TAG_inlined_subroutine` records are written).
+- win64 could not be run here (no wine); it is unchanged by
+  construction (`target_os != 0` refuses every site) and the
+  `--no-inline` byte-identity check above covers it.
+- Compile time: +13–15% Ir for the self-compile, the re-parse cost
+  the plan's §6 named; `tools/wbench_baseline.txt` was refreshed with
+  the new counters and bytes.
+
+Deviations from the plan's sketch: (1) the budget is in bytes of the
+body's compiled code, not tokens (`inf_get_bit` is 86 tokens, and a
+token count says nothing about hidden runtime calls or the size of a
+struct field access); (2) a body with calls is not excluded outright
+but confined to profile-hot sites, and a call of a noreturn function
+does not count as a call (`__w_size_add`'s trap); (3) a straight-line
+site outside every loop gets the cold budget without a profile, so
+image growth and the re-parse cost stay bounded (the plan said "size
+threshold otherwise"); (4) the debugger's in-process compile turns
+inlining off (`debug_test` sets a breakpoint on `add`, which inlines
+into `triple`, and `attach_test`'s fixtures are `--no-inline` builds
+with the flag passed to `wdbg` for the recompile); (5) the span table
+of S2.3 was not reused — the record
+keeps a private copy of the body's bytes, since the retained source
+window and the file image are both gone by the time a later call site
+needs them; (6) win64 is excluded rather than changed (the plan allowed
+either).
+
+Gates: `verify`, `verify_x64`, `verify_pgo`, `verify_arm64`
+(qemu-user-static), `regalloc_diff_test` (0 mismatches over 408
+compared builds), `ast_expression_test`, `ast_retained_emit_test`,
+`regalloc_test` + `_64`, `debug_test`, `debug_test_x64`, `attach_test`,
+`repl_test` + `_x64`, `direct_call_test` + `_64`, `inline_test` +
+`_64`, `crash_trace_test` + `_x64`, `wcore_test`, `crash_dump_test`,
+`crash_install_test`, `wdbg_web_test` (the crash fixtures are
+`--no-inline` builds: they test frame-pointer unwinding through a chain
+of small leaf bodies the default build flattens), `git diff --name-only 803a751 | bin/wtest
+changed` (25 targets, the `tests` umbrella deferred to the merge of the
+wave), `bench_compare`, `wbench_compare`, `profile_check` (95% of
+`self.wprof` / `self_x64.wprof` entries still match, 100% of
+`bench.wprof`).
+
 ## 9. Reproducing
 
 ```sh
