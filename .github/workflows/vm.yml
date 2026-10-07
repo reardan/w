@@ -30,7 +30,58 @@ jobs:
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
 
+      - name: Record host and KVM capabilities
+        run: |
+          set -o pipefail
+          {
+            uname -a
+            lscpu
+            qemu-system-x86_64 --version
+            cat /proc/self/cgroup
+            python3 - <<'PYKVM'
+          import fcntl, json, os
+          capabilities = {"IRQCHIP": 0, "USER_MEMORY": 3, "NR_VCPUS": 9,
+                          "NR_MEMSLOTS": 10, "SET_GUEST_DEBUG": 23, "XEN_HVM": 38,
+                          "ADJUST_CLOCK": 39, "XSAVE": 55, "XCRS": 56,
+                          "MAX_VCPUS": 66, "READONLY_MEM": 81, "IMMEDIATE_EXIT": 136}
+          fd = os.open("/dev/kvm", os.O_RDWR | os.O_CLOEXEC)
+          try:
+              result = {"api_version": fcntl.ioctl(fd, 0xAE00, 0)}
+              for name, capability in capabilities.items():
+                  result[name] = fcntl.ioctl(fd, 0xAE03, capability)
+              result["XEN_INTERCEPT_HCALL"] = bool(result["XEN_HVM"] & 2)
+              print(json.dumps(result, sort_keys=True, indent=2))
+          finally:
+              os.close(fd)
+          PYKVM
+          } | tee vm-host.log
+
+      - name: Identify kernel build toolchain
+        id: kernel-toolchain
+        run: |
+          {
+            cc --version
+            ld --version
+            make --version
+          } > "$RUNNER_TEMP/wvm-kernel-toolchain.txt"
+          digest=$(sha256sum "$RUNNER_TEMP/wvm-kernel-toolchain.txt" | cut -d' ' -f1)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # Cache only the resulting image, resolved config and provenance. No
+      # compiler/test binaries or test-result stamps are reused by this gate.
+      - name: Restore pinned Linux fixture
+        id: kernel-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ${{ runner.temp }}/wvm-kernel/arch/x86/boot/bzImage
+            ${{ runner.temp }}/wvm-kernel/.config
+            ${{ runner.temp }}/wvm-kernel/wvm-kernel.sha256
+            ${{ runner.temp }}/wvm-kernel/wvm-kernel.provenance
+          key: wvm-kernel-v1-${{ runner.os }}-${{ runner.arch }}-0193b1d86dd372ec891bae799f6da20deef16fc199f30080a4ea9de8cef0c619-${{ hashFiles('tools/wvm_kernel.config', 'tools/wvm_kernel.sh') }}-${{ steps.kernel-toolchain.outputs.digest }}
+
       - name: Build pinned Linux fixture
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
         run: |
           curl --fail --location --retry 3 \
             https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.1.tar.xz \
@@ -38,7 +89,38 @@ jobs:
           echo "0193b1d86dd372ec891bae799f6da20deef16fc199f30080a4ea9de8cef0c619  $RUNNER_TEMP/linux.tar.xz" | sha256sum --check
           tar -xJf "$RUNNER_TEMP/linux.tar.xz" -C "$RUNNER_TEMP"
           ./tools/wvm_kernel.sh "$RUNNER_TEMP/linux-6.12.1" "$RUNNER_TEMP/wvm-kernel" "$(nproc)"
+          # Relative checksum paths survive restoration in another runner.
+          (
+            cd "$RUNNER_TEMP/wvm-kernel"
+            sha256sum arch/x86/boot/bzImage .config > wvm-kernel.sha256
+          )
+          {
+            echo 'source_sha256=0193b1d86dd372ec891bae799f6da20deef16fc199f30080a4ea9de8cef0c619'
+            sha256sum tools/wvm_kernel.config tools/wvm_kernel.sh
+            cat "$RUNNER_TEMP/wvm-kernel-toolchain.txt"
+          } > "$RUNNER_TEMP/wvm-kernel/wvm-kernel.provenance"
+
+      - name: Verify Linux fixture
+        run: |
+          (
+            cd "$RUNNER_TEMP/wvm-kernel"
+            sha256sum --check wvm-kernel.sha256
+            cat wvm-kernel.provenance
+          )
           echo "WVM_TEST_KERNEL=$RUNNER_TEMP/wvm-kernel/arch/x86/boot/bzImage" >> "$GITHUB_ENV"
+
+      # Save before execution: a later regression must not repeat the kernel
+      # build on the next run. Only an exact immutable key is restored.
+      - name: Save pinned Linux fixture
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ${{ runner.temp }}/wvm-kernel/arch/x86/boot/bzImage
+            ${{ runner.temp }}/wvm-kernel/.config
+            ${{ runner.temp }}/wvm-kernel/wvm-kernel.sha256
+            ${{ runner.temp }}/wvm-kernel/wvm-kernel.provenance
+          key: ${{ steps.kernel-cache.outputs.cache-primary-key }}
 
       - name: Delegate test cgroup
         run: |
@@ -75,5 +157,7 @@ jobs:
           name: vm-integration
           path: |
             vm-tests.log
+            vm-host.log
             ${{ runner.temp }}/wvm-kernel/wvm-kernel.sha256
+            ${{ runner.temp }}/wvm-kernel/wvm-kernel.provenance
           retention-days: 14
