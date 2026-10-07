@@ -882,6 +882,216 @@ compared builds), `asm_x64_test`, `asm_fuzz_x86_test`,
 `_64`, `git diff --name-only 1335f06 | bin/wtest changed` (41
 targets), `./wbuild tests` (921 targets).
 
+### A1 — pointer bases in registers, G1 (2026-10-07)
+
+**What landed.** The promotion pre-scan no longer excludes a name
+because it is subscripted or field-accessed; only `name(` and a bare
+`&name` still exclude it (`compiler/regalloc_scan.w`, header comment
+and `rs_identifier`). Whether a candidate may hold a register is
+decided by its type: `T[..] name` and any declaration whose type name
+the type table already knows as unpromotable (a struct value, a narrow
+integer, a float) are excluded in the scan, and `regalloc_type_ok` at
+`sym_declare` stays the final word, so a struct-valued local's
+`s.field` and an array local's `a[i]` — which address frame storage,
+not a pointer's target — never see a register. The subscript path of
+`grammar/postfix_expr.w` (`accept(c"[")`) and its retained twin in
+`code_generator/expression_ast.w` (`op == 'i'`) read a
+register-resident base through the register-lvalue note that
+`sym_emit_value` leaves: instead of `binary1(type)` (slot load, `push`),
+index, `imul`, `pop rbx; add rax,rbx`, the emitter runs the index, scales
+it and adds the register with the new `add_eax_reg(r)` of
+`code_generator/x86.w` (`add eax,R`, REX-carrying for r8–r15) — six
+instructions become three, for reads and for stores alike
+(`a[i] = v`, `a[i] += v`, `&a[i]`). The field path (`accept(c".")`)
+already consumed the note through `promote(type)`, so `p.field` reads
+and writes go `mov rax,R; add rax,off; mov rax,[rax]` with no slot
+load; that is the same count as before (slot load, add, load) and A2's
+addressing forms are what make it pay. An ndarray's comma index keeps
+the stack path (its accessor call needs the parked receiver).
+
+Ranking (`rs_assign_registers`) runs in two rounds so the pointer bases
+never displace a scalar that was winning before: round 0 is the pre-A1
+ranking of locals by scalar reads and writes; round 1 hands the
+registers it leaves to the bases, weighted by their subscripts whose
+index is more than one token (`rs_base`, counted at the closing `]`,
+two uses per subscript for the slot load and the parked copy the fold
+removes). A one-token-index subscript (`sa[j]`) and a field read save
+nothing through a register until A2, so they earn none; ranking them
+cost 4–7% on `strcmp_sort`'s `__w_list_compare_values` and displaced
+`count`/`h` in `sieve` before the rule was added. Loop registers (R3,
+r8–r11 after rsi/rdi) rank the same way, so `a`, `b`, `out` and `mask`
+all get loop registers in `matmul`. A base written inside a subscript
+it is the base of (`a[a = q]`) is excluded, since the fold would read
+the new value.
+
+On x64 a function **argument** ranks like a local: a name the body
+never declares whose record (`sym_probe` at ranking time) is a
+word-sized parameter of this function takes a callee-saved register
+too. `regalloc_prologue_args()` (called from `regalloc_prologue_emit`)
+loads it from its stack word right after the prologue's pushes and
+hands the register to the symbol record; nothing reads the word again
+and the register is dead at every return, so there is no write-back.
+`regalloc_slot_assert`/`regalloc_slot_register` skip records that are
+not locals, and `code_generator/dwarf.w`'s new
+`debug_local_set_register_named` points the argument's DWARF location
+at the register so `wdbg` prints it (checked by hand with `bin/wdbg64`:
+`p` of a promoted `int* p` argument reads correctly from the register).
+x86's two registers stay with the scalars (`rs_args_rank`): ranking
+arguments there displaced `acc` in `matmul` for +10% Ir.
+
+The fail-closed guard is unchanged and still fires on any path that
+would materialise a promoted base's slot. `regalloc_diff_test` sweeps
+all 406 deterministic programs with and without `--no-regs` (0
+mismatches). `tests/regalloc_test.w` gains `test_a1_bases` and
+`test_a1_arguments` (pointer arguments subscripted in loops, element
+stores, nested `a[i][j]`, `p.field[i]`, `a[i].field`, a struct pointer's
+fields read and written, address-taken and subscripted locals,
+`&a[i]`/`&p.f`, an array local, a struct-valued local, a base written
+in its own index, a pointer kept across calls, a recursive argument, a
+struct-valued argument), with values from a C oracle, run on x86, x64
+and their `--no-regs` twins. Nothing reaches arm64, win64 or wasm: the
+scan returns before ranking when `target_isa != 0 || target_os != 0`,
+exactly as before, and those images are byte-identical
+(`verify_arm64` passes; the x86-64 emitter's win64 path never sees a
+promoted symbol).
+
+**The hot loop.** `matmul_256`'s inner loop on x64
+(`bin/wv2 x64 tests/bench/matmul_256.w`, `objdump -d -Mintel`), 30
+instructions before and 24 after; `a`, `b` were slot loads at
+`[rsp+0x78]`, now the loop registers `rdi`, `r8` (`out` is `r9`,
+`mask` `r10`, `n` stays `rsi`):
+
+```
+; before (main 1335f06)                   ; after (A1)
+mov    rax,r13          ; acc             mov    rax,r13
+push   rax                                push   rax
+mov    rax,[rsp+0x78]   ; a  <- slot      mov    rax,r15
+push   rax                                imul   rax,rsi      ; i*n
+mov    rax,r15                            add    rax,r12
+imul   rax,rsi          ; i*n             imul   rax,rax,0x8
+add    rax,r12                            add    rax,rdi      ; + a
+imul   rax,rax,0x8                        mov    rax,[rax]
+pop    rbx                                push   rax
+add    rax,rbx                            mov    rax,r12
+mov    rax,[rax]                          imul   rax,rsi      ; k*n
+push   rax                                add    rax,r14
+mov    rax,[rsp+0x78]   ; b  <- slot      imul   rax,rax,0x8
+push   rax                                add    rax,r8       ; + b
+mov    rax,r12                            mov    rax,[rax]
+imul   rax,rsi          ; k*n             pop    rbx
+add    rax,r14                            imul   rax,rbx
+imul   rax,rax,0x8                        pop    rbx
+pop    rbx                                add    rax,rbx
+add    rax,rbx                            mov    r13,rax
+mov    rax,[rax]                          add    r12,0x1
+pop    rbx                                jmp    <head>       ; cmp r12,rsi / jge
+imul   rax,rbx
+pop    rbx
+add    rax,rbx
+mov    r13,rax
+add    r12,0x1
+jmp    <head>
+```
+
+The 24 that remain are G3's `push`/`pop` around `acc` and the product,
+G5's `i*n` recomputed per iteration and G2's `imul rax,rax,8; mov
+rax,[rax]` in place of `mov rax,[rdi+rax*8]` — which is why this unit
+alone stops at 4.06 G rather than the ~3.5 G the §5.1 row estimated
+(that figure included the scaled-index form A2 owns).
+
+**Measurements** (same 4-core container, shared with two other agents
+during the "after" runs, so wall times are noisy and the Ir columns are
+the gate; `./wbuild bench`, kIr = callgrind Ir / 1000, ms = best of the
+runs):
+
+| program | x64 Ir before | after | Δ | ms before → after | x86 Ir before | after | Δ | ms before → after |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sum | 3.000 G | 3.000 G | -0.0% | 188 → 222 | 3.000 G | 3.000 G | +0.0% | 240 → 201 |
+| sieve | 1.664 G | 1.664 G | -0.0% | 326 → 285 | 1.684 G | 1.684 G | +0.0% | 314 → 326 |
+| sha256_1m | 5.373 G | 5.185 G | -3.5% | 321 → 347 | 5.587 G | 5.587 G | +0.0% | 362 → 349 |
+| siphash_keys | 4.851 G | 4.783 G | -1.4% | 833 → 869 | 4.576 G | 4.576 G | +0.0% | 703 → 623 |
+| inflate_corpus | 5.180 G | 5.180 G | +0.0% | 386 → 394 | 5.357 G | 5.357 G | +0.0% | 371 → 400 |
+| regex_backtrack | 6.683 G | 6.683 G | -0.0% | 456 → 420 | 6.601 G | 6.601 G | +0.0% | 445 → 411 |
+| matmul_256 | 5.065 G | 4.056 G | -19.9% | 382 → 360 | 5.069 G | 5.069 G | +0.0% | 347 → 316 |
+| strcmp_sort | 3.609 G | 3.609 G | -0.0% | 509 → 532 | 3.606 G | 3.606 G | +0.0% | 463 → 447 |
+| self | 6.449 G | 6.410 G | -0.6% | 746 → 744 | 7.903 G | 7.942 G | +0.5% | 969 → 995 |
+
+`matmul_256` x64 is −19.9% (the ~30% the §3.1 experiment bounded
+needed the strength reduction too); `sha256_1m` x64 is −3.5% because
+the message-schedule loop (`w[i - 15]`, `w[i - 2]`, `w[i - 16]`,
+`w[i - 7]`, `w[i]` — `w` is a pointer *argument* of `sha256_block_w`)
+now keeps `w` in the loop register `rsi` with five `add rax,rsi` folds;
+`siphash_keys` x64 is −1.4% (`__w_hash_table_slot`'s `table.states[i]`
+/ `table.keys[i]` bases). The x86 corpus is byte-for-byte unchanged in
+Ir: its two registers stay with the scalars by the ranking rule, no
+argument is promoted and there is no R3 loop pass. The `self` row is
+−0.6% on x64; on x86 the bench run above says +0.5% and a callgrind
+run of the same two compilers on the same input says −0.8% (7.993 G →
+7.930 G; `__w_hash_table_slot` −60 M, `__w_strcmp` −21 M,
+`__w_hash_key_equal` −18 M against +9 M in the scan's `rs_*` functions
+and +11 M of `__w_hash_sip` for the `type_lookup` per declaration) —
+the self-compile's Ir has the ±1.5% run-to-run spread
+`register_allocation_pgo.md` §11 (P1) documents, so the honest
+statement is "unchanged within noise, scan cost about +0.25%" (the
+exact `wbench` counters: `sym_lookup` calls 488,101 → 489,368,
+records visited 128,504 → 128,861, output bytes 2,748,980 → 2,741,360).
+
+`--stats` on the self-compile of `w.w`: x64 locals promoted 2,246 →
+2,340, arguments promoted 0 → 36, loop registers 313 → 352 (420 loops
+owning registers, unchanged); x86 locals promoted 1,552 → 1,600. The
+self-host images are 575,881 → 575,907 instructions (x64) and 585,709 →
+585,841 (x86): each promoted base saves two instructions per
+multi-token subscript and costs the prologue push/pop pair, the
+argument load and the spill/reload around calls inside R3 loops, so the
+static count is flat and the dynamic one is what moved.
+
+**What the unit does not claim.**
+
+- `sha256_1m`'s round loop is untouched: `k` is a pointer local whose
+  `k[i]` has a one-token index, `h[0]`..`h[7]` likewise, and the four
+  callee-saved registers go to the round's state scalars (round 0);
+  only the schedule loop's `w` gained (above). The round loop's cost is
+  G3's (§2.3) and A3's; the §5.1 "−10%" estimate for this unit assumed
+  the frame-array forms of A2.
+- Field accesses (`c.status`, `table.states`) are instruction-count
+  neutral until A2: the base's slot load becomes a register move. So
+  `inflate_corpus` (`inf_get_bit` is also loop-free and therefore not
+  scanned at all) and `siphash_keys` move 0–1.4%, not the 10–15% the
+  §5.1 row hoped for; that estimate assumed the addressing forms.
+- `strcmp_sort`'s `sa[j]`/`sb[j]` have one-token indices and so earn
+  no register (promoting them was measured to cost 4–7% there).
+- x86 promotes no arguments (two registers, both better used for
+  scalars); x86 locals that are bases do promote.
+- Nothing is hoisted or strength-reduced (`i*n` stays in the loop: G5).
+
+**Deviations from the plan.** (1) Function-level promotion of
+*arguments* was added — the plan's text names "pointer locals and
+arguments", but #582's allocator only ever promoted declared locals,
+so arguments needed the prologue load path and the DWARF hook above.
+(2) Ranking is two-round (scalars first) and counts only
+multi-token-index subscripts; the plan's "weight a subscripted base by
+its subscripts" as a single ranking lost on `sieve`, `strcmp_sort` and
+x86 `matmul` (numbers above), so bases only take registers scalars
+leave. (3) Arguments rank on x64 only. (4) The field path needed no
+emitter change (the note was already consumed there); its gain is
+deferred to A2 as explained.
+
+Gates (all on the final commit): `verify`, `verify_x64`, `verify_pgo`
+(wv3_pgo == wv4_pgo == wv5_pgo == retained), `verify_arm64` (qemu),
+`regalloc_diff_test` (4 shards, 406 compared, 276 skipped as
+non-deterministic or no-op, 0 mismatches), the `wtest changed` targets
+(`verify self_host_warning_test parser_generator_w_test skills_test
+manifest_check regalloc_64_test regalloc_test`), `tests` (919 targets),
+`bench_compare` (then `tests/bench/baseline.txt` refreshed),
+`wbench_compare` (`tools/wbench_baseline.txt` refreshed: it was
+already stale on the base commit — `prelude` output bytes 86,236 in
+the file against 127,240 from the base compiler — and this unit moves
+the exact counters by +0.26% `sym_lookup` calls and −0.28% bytes), `profile_check`
+(98% of `profiles/self*.wprof` functions still match: the twenty
+changed definitions; not refreshed), `tools/bench_vs_c.sh -n 3` (W x64
+vs gcc -O2 Ir: matmul 3.43x, sieve 2.81x, sha256 4.01x, siphash 4.05x,
+inflate 5.26x, regex 2.63x, strcmp 6.32x, sum 2.50x).
+
 ## 9. Reproducing
 
 ```sh

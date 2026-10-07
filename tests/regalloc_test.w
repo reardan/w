@@ -1004,6 +1004,364 @@ void test_r3_loops():
 	assert_equal(30, loop_one_liner(5))
 
 
+# --- A1: pointer and struct-pointer bases in registers ----------------------
+# (docs/projects/codegen_gap_plan.md §2.1, unit A1). A subscripted or
+# field-accessed pointer local or argument competes for a register like
+# a scalar; grammar/postfix_expr.w adds the register to the scaled index
+# in place of the parked base. Array locals, struct values and
+# address-taken names stay on the stack, and a base written inside its
+# own subscript keeps the stack path's "old value" reading. Values are
+# the gcc oracle's (scratch oracle_a1.c, the same functions in C).
+struct a1_node:
+	int value
+	int* items
+	a1_node* next
+
+
+struct a1_box:
+	pair inner
+	int tag
+
+
+int a1_sum_pointer_arg(int* p, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + p[i]
+		i = i + 1
+	return s
+
+
+int a1_store_elements(int* p, int n):
+	int i = 0
+	while (i < n):
+		p[i] = i * 3
+		i = i + 1
+	int s = 0
+	i = 0
+	while (i < n):
+		s = s + p[i]
+		p[i] = p[i] + 1
+		p[i] += 2
+		p[i]++
+		s = s + p[i]
+		i = i + 1
+	return s + p[n - 1]
+
+
+int a1_local_pointer_bases(int* a, int* b, int n):
+	int* p = a
+	int* q = b
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + p[i] * q[i]
+		q[i] = p[i] - q[i]
+		i = i + 1
+	return s + q[0]
+
+
+int a1_struct_pointer_fields(a1_node* head, int n):
+	a1_node* cur = head
+	int s = 0
+	int i = 0
+	while (i < n):
+		cur.value = cur.value + i
+		s = s + cur.value
+		cur.value += 2
+		cur.value++
+		int* it = cur.items
+		s = s + it[i] + cur.items[i]
+		cur.items[i] = s
+		cur = cur.next
+		i = i + 1
+	return s + head.value
+
+
+int a1_nested_pointers(int** rows, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		int j = 0
+		while (j < n):
+			s = s + rows[i][j]
+			rows[i][j] = s
+			j = j + 1
+		i = i + 1
+	return s + rows[n - 1][n - 1]
+
+
+int a1_array_of_structs(pair* ps, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		ps[i].a = i + 1
+		ps[i].b = ps[i].a * 2
+		s = s + ps[i].a + ps[i].b
+		i = i + 1
+	return s + ps[0].b
+
+
+int a1_nested_field(a1_box* b, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		b.inner.a = b.inner.a + i
+		b[i].tag = i * 7
+		b[i].inner.b = b.inner.a
+		s = s + b.inner.a + b[i].tag + b[i].inner.b
+		i = i + 1
+	return s
+
+
+int a1_address_and_subscript(int n):
+	int[8] storage
+	int* p = storage
+	int** pp = &p
+	int s = 0
+	int i = 0
+	while (i < n):
+		p[i] = i + 5
+		s = s + (*pp)[i] + p[i]
+		i = i + 1
+	return s
+
+
+int a1_element_and_field_address(int* p, a1_node* nd, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		int* e = &p[i]
+		*e = *e + i
+		int* v = &nd.value
+		*v = *v + p[i]
+		s = s + p[i] + nd.value
+		i = i + 1
+	return s
+
+
+int a1_array_local(int n):
+	int[16] arr
+	int i = 0
+	while (i < n):
+		arr[i] = i * i
+		i = i + 1
+	int s = 0
+	i = 0
+	while (i < n):
+		s = s + arr[i]
+		i = i + 1
+	return s
+
+
+int a1_struct_local(int n):
+	pair pr
+	pr.a = 1
+	pr.b = 0
+	int i = 0
+	while (i < n):
+		pr.b = pr.b + pr.a
+		pr.a = pr.a + 1
+		i = i + 1
+	return pr.a * 1000 + pr.b
+
+
+int a1_zero_of(int* r): return 0
+
+
+int a1_base_written_in_index(int* p, int* q, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		int* old = p
+		s = s + p[a1_zero_of(p = q)]
+		p = old
+		i = i + 1
+	return s
+
+
+int a1_node_bump(a1_node* nd, int k):
+	nd.value = nd.value + k
+	return nd.value
+
+
+int a1_pointer_across_calls(a1_node* head, int n):
+	a1_node* cur = head
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + a1_node_bump(cur, i) + cur.value + cur.items[i]
+		i = i + 1
+	return s
+
+
+int a1_count_char(char* s, int n, int ch):
+	int c = 0
+	int i = 0
+	while (i < n):
+		if (s[i] == ch): c = c + 1
+		s[i] = s[i] + 1
+		i = i + 1
+	return c * 100 + s[0]
+
+
+int a1_int_base(int base, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + base[i]
+		i = i + 1
+	return s
+
+
+void test_a1_bases():
+	int* buf = cast(int*, malloc(16 * __word_size__))
+	int* buf2 = cast(int*, malloc(16 * __word_size__))
+	for i in range(16):
+		buf[i] = i + 1
+		buf2[i] = 2
+	assert_equal(0, a1_sum_pointer_arg(buf, 0))
+	assert_equal(120, a1_sum_pointer_arg(buf, 15))
+	assert_equal(8, a1_store_elements(buf, 1))
+	assert_equal(225, a1_store_elements(buf, 8))
+	for i in range(16):
+		buf[i] = i + 1
+		buf2[i] = 2
+	assert_equal(1, a1_local_pointer_bases(buf, buf2, 1))
+	assert_equal(239, a1_local_pointer_bases(buf, buf2, 15))
+	a1_node nd
+	nd.value = 0
+	nd.items = buf2
+	nd.next = &nd
+	for i in range(16): buf2[i] = i
+	assert_equal(0, a1_struct_pointer_fields(&nd, 0))
+	assert_equal(3, a1_struct_pointer_fields(&nd, 1))
+	assert_equal(3, a1_struct_pointer_fields(&nd, 0))
+	nd.value = 0
+	for i in range(16): buf2[i] = i
+	assert_equal(143, a1_struct_pointer_fields(&nd, 6))
+	int** rows = cast(int**, malloc(4 * __word_size__))
+	for i in range(4):
+		rows[i] = cast(int*, malloc(4 * __word_size__))
+		for j in range(4): rows[i][j] = i * 4 + j
+	assert_equal(0, a1_nested_pointers(rows, 1))
+	assert_equal(240, a1_nested_pointers(rows, 4))
+	pair* ps = cast(pair*, malloc(8 * sizeof(pair)))
+	assert_equal(5, a1_array_of_structs(ps, 1))
+	assert_equal(110, a1_array_of_structs(ps, 8))
+	a1_box* boxes = cast(a1_box*, malloc(8 * sizeof(a1_box)))
+	for i in range(8):
+		boxes[i].inner.a = 0
+		boxes[i].inner.b = 0
+		boxes[i].tag = 0
+	assert_equal(0, a1_nested_field(boxes, 1))
+	assert_equal(175, a1_nested_field(boxes, 6))
+	assert_equal(0, a1_address_and_subscript(0))
+	assert_equal(136, a1_address_and_subscript(8))
+	for i in range(16): buf[i] = i + 1
+	nd.value = 0
+	assert_equal(0, a1_element_and_field_address(buf, &nd, 0))
+	assert_equal(268, a1_element_and_field_address(buf, &nd, 8))
+	assert_equal(0, a1_array_local(0))
+	assert_equal(1240, a1_array_local(16))
+	assert_equal(1000, a1_struct_local(0))
+	assert_equal(8028, a1_struct_local(7))
+	for i in range(16):
+		buf[i] = i + 1
+		buf2[i] = 50
+	assert_equal(0, a1_base_written_in_index(buf, buf2, 0))
+	assert_equal(5, a1_base_written_in_index(buf, buf2, 5))
+	nd.value = 0
+	nd.items = buf
+	assert_equal(0, a1_pointer_across_calls(&nd, 0))
+	assert_equal(91, a1_pointer_across_calls(&nd, 6))
+	char* text = strclone(c"abcabcabca")
+	assert_equal(498, a1_count_char(text, 10, 'a'))
+	assert_equal(99, a1_count_char(text, 10, 'a'))
+	free(text)
+	text = strclone(c"\x01\x02\x03\x04")
+	assert_equal(10, a1_int_base(cast(int, text), 4))
+	free(text)
+
+
+# --- A1: arguments at function level ----------------------------------------
+# A pointer or int argument the body subscripts or field-accesses in a
+# loop (with calls inside, so R3's loop registers do not apply) takes a
+# callee-saved register in the prologue; an address-taken argument and a
+# struct-valued one keep the stack.
+int a1_arg_across_calls(a1_node* nd, int* p, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + a1_node_bump(nd, p[i]) + nd.value + p[i] + nd.items[i]
+		p[i] = s
+		nd.value = nd.value - 1
+		i = i + 1
+	return s + nd.value + p[0]
+
+
+int a1_arg_recursive(int* p, int n, int depth):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + p[i]
+		if (depth > 0): s = s + a1_arg_recursive(p, n - 1, depth - 1)
+		i = i + 1
+	return s
+
+
+int a1_set_through(int** pp, int v):
+	**pp = v
+	return v
+
+
+int a1_arg_address_taken(int* p, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		s = s + p[i] + a1_set_through(&p, i)
+		i = i + 1
+	return s
+
+
+int a1_pair_sum(pair q): return q.a + q.b
+
+
+int a1_arg_struct_value(pair pr, int n):
+	int s = 0
+	int i = 0
+	while (i < n):
+		pr.a = pr.a + i
+		s = s + pr.b + a1_pair_sum(pr)
+		i = i + 1
+	return s + pr.a
+
+
+void test_a1_arguments():
+	int* buf = cast(int*, malloc(16 * __word_size__))
+	int* buf2 = cast(int*, malloc(16 * __word_size__))
+	for i in range(16):
+		buf[i] = i + 1
+		buf2[i] = i * 2
+	a1_node nd
+	nd.value = 0
+	nd.items = buf2
+	nd.next = &nd
+	assert_equal(1, a1_arg_across_calls(&nd, buf, 0))
+	assert_equal(151, a1_arg_across_calls(&nd, buf, 6))
+	for i in range(16): buf[i] = i + 1
+	assert_equal(6, a1_arg_recursive(buf, 3, 0))
+	assert_equal(365, a1_arg_recursive(buf, 5, 3))
+	assert_equal(0, a1_arg_address_taken(buf, 0))
+	assert_equal(25, a1_arg_address_taken(buf, 5))
+	pair pr
+	pr.a = 3
+	pr.b = 4
+	assert_equal(3, a1_arg_struct_value(pr, 0))
+	assert_equal(88, a1_arg_struct_value(pr, 5))
+	assert_equal(3, pr.a)
+
+
 int main():
 	test_sum_to()
 	test_address_taken()
@@ -1031,5 +1389,7 @@ int main():
 	test_lifetimes()
 	test_r3_shapes()
 	test_r3_loops()
+	test_a1_bases()
+	test_a1_arguments()
 	println(c"regalloc_test passed")
 	return 0

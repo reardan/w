@@ -1073,6 +1073,23 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == '!'): alu_test_set(0x94)
 		if (op == 'b'): alu_test_set(0x95)
 		return
+	if (op == 'i'):
+		# Pointer subscript: a register-resident base (the register
+		# lvalue note) is added to the scaled index directly, the
+		# streaming twin of grammar/postfix_expr.w's '[' (A1,
+		# docs/projects/codegen_gap_plan.md §2.1).
+		int base_reg = 0
+		if (regalloc_note_current()): base_reg = regalloc_note_take()
+		else: binary1(left_type)
+		emit_expression_ast(tree, tree.right[id])
+		promote(tree.result_type[tree.right[id]])
+		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
+		if (base_reg != 0): add_eax_reg(base_reg)
+		else:
+			pop_ebx()
+			alu_add()
+			stack_pos = stack_pos - 1
+		return
 	left_type = binary1(left_type)
 	int left_slot = stack_pos
 	emit_expression_ast(tree, tree.right[id])
@@ -1091,12 +1108,6 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == '&'): alu_and()
 		else if (op == '|'): alu_or()
 		else: alu_xor()
-		return
-	if (op == 'i'):
-		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
-		pop_ebx()
-		alu_add()
-		stack_pos = stack_pos - 1
 		return
 	if (op >= 0x90):
 		pop_ebx_slot()

@@ -300,10 +300,13 @@ Implemented and covered by tests:
   jumps out of or into blocks pop or reserve the locals involved — see
   `grammar/goto_statement.w`). `setjmp`/`longjmp` are runtime stubs in
   every native program; `lib/setjmp.w` has the `jmp_buf` type and the
-  contract. The x86/x64 backends keep the hottest word-sized locals of
-  a function with a loop in callee-saved registers (`esi`/`edi` on x86,
-  `r12`–`r15` on x64; `docs/projects/register_allocation_pgo.md` §2.2,
-  `--no-regs`/`-O0` turns it off): `raw_asm` bodies and hand-written
+  contract. The x86/x64 backends keep the hottest word-sized locals and
+  arguments of a function with a loop -- scalars and the pointers its
+  subscripts and field accesses go through -- in callee-saved registers
+  (`esi`/`edi` on x86, `r12`–`r15` on x64;
+  `docs/projects/register_allocation_pgo.md` §2.2 and
+  `docs/projects/codegen_gap_plan.md` §8, `--no-regs`/`-O0` turns it
+  off): `raw_asm` bodies and hand-written
   stubs must preserve `ebx`/`esi`/`edi`, `rbx`/`r12`–`r15` and
   `x19`–`x28`, and a function containing `raw_asm`, `setjmp`, `yield`
   or an f-string promotes nothing. A call to a known W function is one
