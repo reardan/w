@@ -291,7 +291,7 @@ void retained_expression_note(expression_ast* tree, int root):
 		int op = tree.op[i]
 		if ((op == 'G') || (op == 'W')): node.payload_text = retained_intern(generic_def_name(tree.value[i]))
 		if (op == ast_warning):
-			if ((node.high == 0) || (node.high == 6) || (node.high == 7)):
+			if ((node.high == 0) || (node.high == 6) || (node.high == 7) || (node.high == 8)):
 				node.payload_text = retained_intern(cast(char*, tree.value[i]))
 				node.value = 0
 			if ((node.high == 1) || (node.high == 2) || (node.high == 5)):

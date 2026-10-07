@@ -137,14 +137,6 @@ int cell_syscall(vm_cell* cell):
 		return 0
 	if (nr == 39 || nr == 186): return 1 # virtual pid/tid
 	if (nr == 24): return 0 # sched_yield: one vCPU
-	if (nr == 131): # sigaltstack: the cell never delivers signals
-		if (a != 0 && cell_range(cell, a, 24, 0) == 0): return -14
-		if (b != 0):
-			if (cell_range(cell, b, 24, 1) == 0): return -14
-			save_int64(cell.ram + b, 0)
-			save_int64(cell.ram + b + 8, 2) # SS_DISABLE
-			save_int64(cell.ram + b + 16, 0)
-		return 0
 	# Path-based access is denied. None of these dereference a guest
 	# string or touch a host path, including /proc/self/environ.
 	if (nr == 2 || nr == 85 || nr == 257): return -13

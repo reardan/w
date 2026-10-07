@@ -57,7 +57,7 @@ int retained_emit_name(retained_node* node, int binding):
 # Warnings whose operand is a message or context string, not an offset.
 int retained_emit_message(retained_node* node):
 	if (node.op != ast_warning): return 0
-	return (node.high == 0) || (node.high == 6) || (node.high == 7)
+	return (node.high == 0) || (node.high == 6) || (node.high == 7) || (node.high == 8)
 
 
 int retained_emit_value(retained_node* node):
