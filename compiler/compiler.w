@@ -861,6 +861,23 @@ int link_option(char* arg, int apply):
 			ast_retain_mode = 1
 			ast_emit_retained_mode = 1
 		return 1
+	# P1 (docs/projects/register_allocation_pgo.md §3.2): instrumented
+	# execution counters per function and loop head, flushed at exit to
+	# $W_PROFILE_OUT, with a <output>.wprofmap sidecar keyed by defhash
+	# (code_generator/profile_counters.w, lib/profile.w). Whole-program:
+	# link_impl's flag pre-scan applies it before the first file compiles.
+	# The map needs the definition spans defhash_note records, so the
+	# flag arms defhash recording over the whole closure; defhash_dump
+	# itself stays with 'w defhash'. x86/x64 Linux ELF only.
+	if (strcmp(arg, c"--profile-generate") == 0):
+		if (apply):
+			if ((target_isa != 0) || (target_os != 0)):
+				print_error(c"error: --profile-generate is only supported on the x86 and x64 Linux targets\x0a")
+				exit(1)
+			profile_generate_mode = 1
+			defhash_mode = 1
+			defhash_closure_mode = 1
+		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		if (apply): quiet_mode = 1
 		return 1
@@ -918,6 +935,9 @@ void help_shared_options():
 	println(c"  --ast-required        reject any expression fallback (migration coverage gate)")
 	# S2.1
 	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
+	# P1
+	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
+	println(c"                        writes <output>.wprofmap; the program appends to $W_PROFILE_OUT")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
@@ -1255,6 +1275,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# runtime compiles before the positional loop below
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
+			# P1: counters cover the runtime closure too (profile_counters.w).
+			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
@@ -1289,6 +1311,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	check_bool_ops_mode = 0
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+	# P1: the counter flush runtime, only under --profile-generate.
+	if (profile_generate_mode): profile_import_runtime()
 	check_imports_mode = import_check_saved
 	check_bool_ops_mode = bool_ops_check_saved
 	# Everything registered so far (hash_table, w_list, and whatever they
@@ -1448,6 +1472,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# them in place; the PE writer embeds a stand-in ELF header at the
 	# start of .text for them (debug_elf_origin, code_generator/pe_64.w).
 	# Mach-O debug info is a later stage.
+	# P1: lay out the --profile-generate counter table, hook exit, write the map.
+	profile_finish(output_path, check_mode)
 	if ((target_os == 0) || (target_os == 2)): emit_debugging_symbols(word_size)
 	be_finish(word_size)
 
@@ -1904,7 +1930,8 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 	retained_declaration_note(name, kind, start_offset, end_offset, line, column)
 	if (defhash_mode == 0): return
 	if ((defhash_closure_mode == 0) && (defhash_depth != 0)): return
-	int max_defs = 8000
+	# P1: --profile-generate records the whole closure (w.w's is ~5.6k).
+	int max_defs = 20000
 	if (defhash_names == 0):
 		defhash_names = malloc(max_defs * __word_size__)
 		defhash_kinds = malloc(max_defs * __word_size__)
@@ -2144,6 +2171,61 @@ void defhash_dump():
 		defhash_emit(i, cwd, cwd_len)
 		i = i + 1
 	free(cwd)
+
+
+# --- P1: --profile-generate's map sidecar (code_generator/profile_counters.w)
+# keys every counter by the enclosing definition's defhash, the same
+# sha256 defhash_emit prints. The option block arms defhash recording,
+# so by profile_finish every definition is in the arrays above;
+# profile_counters.w (compiled before this file, so it cannot read those
+# arrays) asks by the function symbol's declaration file and line, which
+# a function/operator/generic_function entry shares with its name token.
+map[char*, int] profile_defhash_index
+
+
+char* profile_defhash_key(int file_index, int line):
+	char* file_digits = itoa(file_index)
+	char* line_digits = itoa(line)
+	char* with_colon = strjoin(file_digits, c":")
+	char* key = strjoin(with_colon, line_digits)
+	free(file_digits)
+	free(line_digits)
+	free(with_colon)
+	return key
+
+
+# Index of the recorded function-like definition at file_index:line, or -1.
+int profile_defhash_find(int file_index, int line):
+	if (profile_defhash_index == 0):
+		profile_defhash_index = new map[char*, int]
+		int i = 0
+		while (i < defhash_count):
+			char* kind = cast(char*, load_ptr(defhash_kinds + i * __word_size__))
+			if ((strcmp(kind, c"function") == 0) || (strcmp(kind, c"operator") == 0) || (strcmp(kind, c"generic_function") == 0)):
+				char* key = profile_defhash_key(load_ptr(defhash_file_indexes + i * __word_size__), load_ptr(defhash_lines + i * __word_size__))
+				if ((key in profile_defhash_index) == 0): profile_defhash_index[key] = i
+				else: free(key)
+			i = i + 1
+	char* probe = profile_defhash_key(file_index, line)
+	int found = -1
+	if (probe in profile_defhash_index): found = profile_defhash_index[probe]
+	free(probe)
+	return found
+
+
+# The 64-hex sha256 of definition idx's token stream (malloc'd), exactly
+# what defhash_emit prints as "hash".
+char* profile_defhash_hex_at(int idx):
+	defhash_process_span(idx)
+	char* digest = malloc(32)
+	sha256(defhash_buf, defhash_buf_pos, digest)
+	char* hex = defhash_hex_digits(digest)
+	free(digest)
+	return hex
+
+
+char* profile_defhash_name_at(int idx):
+	return cast(char*, load_ptr(defhash_names + idx * __word_size__))
 
 
 int defhash_main(int argc, int argv):

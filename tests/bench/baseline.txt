@@ -1,0 +1,39 @@
+# wbench program baseline: <program> <arch> <output bytes> <kIr: callgrind Ir / 1000, -1 = not measured> <best ms>
+# Regenerate with: ./wbuild bench, then copy bin/bench.txt here (docs/testing.md, "Performance").
+# compiler: bin/wv2   x64 self-compile: bin/wv2_64
+sum x86 192824 13800448 765
+#   top: sum_to 100.0%
+sum x64 238192 13800448 742
+#   top: sum_to 100.0%
+sieve x86 192824 4066659 448
+#   top: sieve 97.95%, bench_fold 1.14%
+sieve x64 238192 4066659 427
+#   top: sieve 97.95%, bench_fold 1.14%
+sha256_1m x86 201020 7701754 471
+#   top: sha256_block_w 75.83%, bench_rand 13.72%, main 6.97%
+sha256_1m x64 246392 7701754 478
+#   top: sha256_block_w 75.83%, bench_rand 13.72%, main 6.97%
+siphash_keys x86 196920 6152240 652
+#   top: __w_hash_sip 38.70%, __w_hash_table_rehash 8.22%, __w_hash_table_slot 6.19%
+siphash_keys x64 238192 6908933 920
+#   top: __w_hash_sip 39.04%, __w_hash_table_rehash 12.24%, __w_hash_table_slot 5.49%
+inflate_corpus x86 258504 6777706 505
+#   top: wh_decode 22.07%, inf_get_bit 17.74%, __w_size_add 11.67%
+inflate_corpus x64 312208 6721189 504
+#   top: wh_decode 22.26%, inf_get_bit 17.89%, __w_size_add 11.77%
+regex_backtrack x86 205112 10185947 598
+#   top: rx_here 37.23%, regex_match_length 35.57%, rx_element_matches 9.02%
+regex_backtrack x64 250480 10185947 573
+#   top: rx_here 37.23%, regex_match_length 35.57%, rx_element_matches 9.02%
+matmul_256 x86 196924 8771517 547
+#   top: matmul 99.78%
+matmul_256 x64 238200 8771517 517
+#   top: matmul 99.78%
+strcmp_sort x86 192824 4601678 455
+#   top: __w_list_compare_values 23.57%, __w_list_merge_sort 20.50%, __w_list_sort_compare 13.47%
+strcmp_sort x64 238192 4721783 535
+#   top: __w_list_compare_values 22.97%, __w_list_merge_sort 19.98%, __w_list_sort_compare 13.13%
+self x86 2801048 7336461 908
+#   top: sha256_block_w 13.29%, __w_hash_sip 11.73%, strcmp 9.53%
+self x64 3328816 7569523 805
+#   top: sha256_block_w 15.31%, __w_hash_sip 11.38%, strcmp 9.23%

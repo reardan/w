@@ -1,0 +1,4 @@
+# wbench_compare_test fixture (programs mode): limits far above any real
+# run, so the comparison must pass. <program> <arch> <bytes> <kIr> <ms>
+sum x86 1000000000 -1 1000000000
+sum x64 1000000000 -1 1000000000

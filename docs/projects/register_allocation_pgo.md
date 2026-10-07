@@ -990,3 +990,197 @@ Gates: `verify`, `verify_x64`, `verify_arm64` (qemu-user-static),
 `verify_wasm` (node), `local_load_fold_test` + `_64`, `asm_x64_test`,
 `asm_fuzz_x86_test`, `asm_fuzz_x64_test`, `const_fold_test` + `_64`,
 `manifest_check`, `parser_generator_w_test`, `tests`.
+
+### P1 — counters, dump, merge (2026-10-07)
+
+**What landed.** `--profile-generate` (compiler/compiler.w option block;
+whole-program, applied in link_impl's flag pre-scan; x86 and x64 Linux
+ELF only — every other target is rejected with an error).
+`code_generator/profile_counters.w` (new) emits one 8-byte counter per
+function and per while/for loop head: `inc QWORD PTR [abs32]` on x64,
+`add DWORD PTR [abs32],1 ; adc DWORD PTR [abs32+4],0` on x86, after the
+prologue and right after `be_ctrl_loop`, so no register is touched and
+no site sits between a compare and its branch. The hooks are one-line
+calls after `be_function_prologue` (grammar/program.w's
+function_definition and script_main, code_generator/function_ast.w) and
+after `be_ctrl_loop` (grammar/while_statement.w, grammar/for_statement.w
+x2, code_generator/loop_ast.w x3); generator bodies get a counter-less
+record so their loops are attributed to them (grammar/generator_decl.w,
+function_ast.w). The streaming grammar and `--ast-emit-retained` produce
+byte-identical instrumented binaries and maps (asserted by
+`verify_profile_generate`). Counters are laid out as one contiguous
+table at finish, so indices are emission order and the output is a pure
+function of sources and flags (§3.5). A loop counter counts head
+evaluations (iterations + 1 per entry that leaves through the
+condition).
+
+`lib/profile.w` (new, auto-imported only in this mode, compiled with the
+counters off) flushes to `$W_PROFILE_OUT` with O_APPEND, one `index
+count` line per nonzero counter per write(2), from a snapshot of the
+table; the compiler redirects lib's `exit()` to `__w_profile_exit` by
+writing a `jmp rel32` over its first five bytes, so `_main`'s
+`exit(main(...))` and direct `exit()` calls both flush (`_exit`/crash do
+not). The sidecar `<output>.wprofmap` is tab-separated: index, kind f/l,
+defhash of the enclosing definition (the exact `w defhash` sha256:
+profile_defhash_find/_hex_at in compiler.w look the definition up by
+declaration file and line among the entries defhash_note recorded, which
+the flag arms over the whole closure), name (whitespace stripped), file,
+line, loop ordinal. `--profile-generate` requires `-o`.
+
+`tools/wprof.w` (new, `bin/wprof`, built x64 so sums are 64-bit): `merge`
+(maps + raw dumps + existing .wprof files → sorted §3.3 text, counts
+summed per (defhash, kind, ordinal), nonzero entries only unless
+`--zeros`), `stats` (share of a profile's functions/entries whose hash
+is still produced by `w defhash --closure` of the given files), `top`,
+`clear` (truncate dumps before a run) and `corpus` (compile+run every
+`<dir>/*.w`, merging the dumps; a missing directory yields a header-only
+profile so `profile_refresh` works before B1's tests/bench/ exists).
+`./wbuild profile_refresh` (owned by tools/wprof.w's directive block;
+`build.base.json` only gained its `no_umbrella` line) regenerates
+`profiles/self.wprof` (x86), `profiles/self_x64.wprof` and
+`profiles/bench.wprof` (empty until B1). `tests/profile_generate_test.w`
+compiles a fixture for both targets, runs it through the return and the
+exit() paths, merges, asserts exact counts, the defhash key and
+cross-target summation; its `verify_profile_generate` block is the
+flag-on fixpoint (prof_wv3 == prof_wv4 and their maps, streaming ==
+retained, x86 and x64).
+
+**Measurements** (4-core cloud container, `w.w` self-compile, matched
+input; callgrind Ir varies ±1.5% between runs of the same binary here
+even with ASLR off, so ranges of three runs are given):
+
+| compiler | wall (7 runs, median) | callgrind Ir (3 runs) |
+| --- | --- | --- |
+| main `bin/wv3`, x86, flag off | 0.76–0.84 s (0.815) | 7.32–7.46 G |
+| this branch `bin/wv3`, x86, flag off | 0.76–0.83 s (0.787) | 7.29–7.52 G |
+| `bin/prof_wv3`, x86, flag on | 0.83–0.92 s (0.861) | 7.66 G (one clean run) |
+| this branch `bin/wv3_64`, x64, flag off | 0.76–0.84 s (0.822) | 7.52–7.62 G |
+| `bin/prof_wv3_64`, x64, flag on | 0.78–0.92 s (0.848) | 7.76–7.95 G |
+
+Flag off is unchanged within noise (the hooks are a flag test per
+function and loop head, ~6.5k per compile; the flag-off compiler's
+output for sha256_test.w, x86, x64 and `--ast-emit-retained`, is
+byte-identical to main's). Flag on costs 151 M (x86) / 158 M (x64)
+counter hits per self-compile — the expected +4% / +2% of Ir — and
++5–9% wall time on x86, +3% on x64. Image sizes: x86 2,817,496 →
+2,931,808 bytes (+4.1%), x64 3,349,424 → 3,435,112 (+2.6%). The x86 map
+has 5,072 counters (3,682 functions, 1,389 loops, plus the one script
+main); `profiles/self.wprof` is 1,155 lines / 143 KB (924 functions and
+230 loops ran), `self_x64.wprof` 1,194 lines / 147 KB.
+
+Top 20 of `profiles/self.wprof` (`bin/wprof top profiles/self.wprof`),
+functions by entries: `__w_list_addr` 13.6 M, `type_real` 8.9 M, `peek`
+6.1 M, `type_record` 5.7 M, `accept` 3.8 M, `type_get_alias_target`
+3.5 M, `type_canonical` 3.5 M, `get_character` 2.8 M, `getc` 2.8 M,
+`load_int` 2.3 M, `takechar` 1.6 M, `resize_code` 1.5 M,
+`__w_hash_key_equal` 1.5 M, `__w_strcmp` 1.5 M, `type_get_const_target`
+1.4 M, `type_unqualified` 1.4 M, `sym_index_offset` 1.1 M,
+`type_get_kind` 0.9 M, `save_int` 0.8 M, `__w_strlen` 0.8 M. Loops by
+head evaluations: `__w_strlen` 8.9 M, `type_lookup_pointer` 5.6 M,
+`__w_strcmp` 4.4 M, `type_canonical` 3.5 M, `__w_hash_sip` loop 1 3.4 M
+and loop 3 3.3 M, `sha256_block_w` loop 3 2.9 M, `emit` 2.6 M,
+`sha256_block_w` loop 2 2.2 M, `__w_hash_table_slot` 1.9 M,
+`freelist_realloc` 1.8 M, `__w_hash_sip` loop 2 1.8 M, `take_ident_run`
+1.7 M, `type_unqualified` 1.4 M, `get_token` loop 1 0.84 M, `sha256_block_w`
+loop 1 0.75 M, `get_token` loop 2 0.75 M, `get_token` loop 11 0.66 M,
+`peek` 0.61 M, `sym_index_sync` 0.50 M. This differs from §1.2's
+callgrind picture in one way worth noting for P2/P3: by *entry count*
+the hottest code is the small accessor layer (`__w_list_addr`,
+`type_real`, `type_record`, the tokenizer's `peek`/`accept`), i.e. P3's
+inlining candidates, while `sha256_block_w` and `__w_hash_sip` dominate
+by *loop iterations* as §1.2 predicted.
+
+**Not claimed / gaps.** arm64, darwin, win64 and wasm are rejected, not
+instrumented (arm64 needs `ldr/add/str` through a scratch register).
+`_exit`, signals and `thread_exit` do not flush. Profile counts are not
+bit-reproducible across refreshes: the hash-table probe loops'
+counts (`__w_strcmp`, `__w_hash_key_equal`) depend on addresses, so two
+consecutive `profile_refresh` runs differed in 4 of 1,155 lines of
+`self.wprof` (and the Ir of a compile varies ±1.5%, see above); a PR
+commits the refreshed files only when hot code changed, as §3.3 says.
+`bench.wprof` is header-only until B1 lands `tests/bench/`; `wprof
+corpus` runs each program with no arguments, which B1 may need to
+extend. Functions the defhash scan does not record (a script's implicit
+`main`, generator bodies) carry a zero hash and will never match a
+`--profile-use` lookup. The `defhash_note` capacity was raised from
+8,000 to 20,000 definitions because the flag records the whole closure.
+
+### B1 — benchmark corpus and harness (2026-10-07)
+
+**Landed.** `tests/bench/`: eight programs (`sum`, `sieve`, `sha256_1m`,
+`siphash_keys`, `inflate_corpus`, `regex_backtrack`, `matmul_256`,
+`strcmp_sort`) plus the `self` row, each deterministic, size-argument
+driven, printing one `<name> size=<n> checksum=<hex>` line that is
+identical on x86 and x64 (masked-32-bit arithmetic as in `lib/sha256.w`,
+`tests/bench/bench_lib.w`); a C twin for each in `tests/bench/c/` that
+ports the W library code it exercises (sha256, HalfSipHash + the
+runtime's table, inflate, regex, the runtime's merge sort) and prints
+the same line. Targets: `bench_<name>` (tag `bench`: full size, both
+widths, checksum asserted), `bench_<name>_smoke_test` (tag `tests`:
+tiny size, both widths), `bench` (umbrella → `bench_report`, writes
+`bin/bench.txt`), `bench_compare` (against `tests/bench/baseline.txt`).
+`bin/wbench --programs` (`tools/wbench.w`): per `<name>.<arch>` row the
+executable bytes, callgrind `kIr` (once per row, when valgrind is on
+PATH) with the three hottest functions resolved through `nm -n`, best
+wall time of `-n` runs; `--compiler`/`--compiler64` pick the compilers,
+`--size`, `--no-valgrind`, `--prefix`; the compare rules are wbench's
+(bytes and kIr gate within tolerance, kIr skipped — not failed — when
+either side lacks it, wall time reported). `tools/bench_vs_c.sh`
+builds the corpus with W (x86, x64) and gcc/clang `-O2` (and `-m32`
+when multilib exists), checks the lines agree and prints markdown
+tables. `wbench_compare_test` gained the programs-mode fixtures
+(`tests/bench/fixtures/`). `docs/testing.md` "The benchmark corpus".
+The optional CI bench job is a patch at
+`/mnt/project-files/regalloc-pgo/ci-bench.patch` (not committed).
+`build.base.json` got the step-less `bench` umbrella and a
+`no_umbrella` entry for `bench_compare` — the minimal edit the tag
+mechanism needs; P2 owns the rest of that file.
+
+**Baseline (this unmodified compiler, 4-core Xeon 2.1 GHz cloud
+container, best of 3, `./wbuild bench` and `tools/bench_vs_c.sh`; the
+Ir columns are callgrind instruction counts, deterministic per binary
+except for the random map seed in `siphash_keys`/`self`):**
+
+| program | W x86 ms | W x64 ms | gcc -O2 ms | clang -O2 ms | W x86 Ir | W x64 Ir | gcc Ir | clang Ir |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sum | 759 | 751 | 205 | 3 | 13.80 G | 13.80 G | 1.20 G | 0.24 M |
+| sieve | 444 | 434 | 225 | 228 | 4.07 G | 4.07 G | 0.59 G | 0.80 G |
+| sha256_1m | 492 | 496 | 116 | 119 | 7.70 G | 7.70 G | 1.29 G | 1.31 G |
+| siphash_keys | 710 | 987 | 298 | 311 | 6.15 G | 6.91 G | 1.18 G | 1.15 G |
+| inflate_corpus | 510 | 505 | 71 | 69 | 6.78 G | 6.72 G | 0.99 G | 0.84 G |
+| regex_backtrack | 624 | 592 | 220 | 170 | 10.19 G | 10.19 G | 2.54 G | 2.42 G |
+| matmul_256 | 518 | 526 | 171 | 196 | 8.77 G | 8.77 G | 1.18 G | 0.68 G |
+| strcmp_sort | 473 | 524 | 187 | 187 | 4.60 G | 4.72 G | 0.57 G | 0.59 G |
+| self (compiling w.w) | 908 | 805 | — | — | 7.34 G | 7.57 G | — | — |
+
+Hottest functions per row (from `bin/bench.txt`): `sum_to` 100%;
+`sieve` 98%; `sha256_block_w` 76% (`bench_rand` 14% is the data fill);
+`__w_hash_sip` 39%, `__w_hash_table_rehash` 8–12%; `wh_decode` 22%,
+`inf_get_bit` 18%, `__w_size_add` 12%; `rx_here` 37%; `matmul` 99.8%;
+`__w_list_compare_values` 23%, `__w_list_merge_sort` 20%; self:
+`sha256_block_w` 13–15%, `__w_hash_sip` 11–12%, `strcmp` 9%.
+
+**What the numbers say.** W emits 6–11x the instructions of gcc -O2 on
+the loop-bound programs and runs 2.4–7x slower in wall time (the gap
+in cycles is smaller than in instructions because W's memory-operand
+instructions overlap in the pipeline). `sum` is the §1.1/§1.3 loop verbatim: 23
+instructions per iteration (13.8 G / 600 M; `objdump` of
+`bin/wbench_prog_sum_x86` shows the §1.1 shape with 23 instructions —
+§1.1's listing undercounts the `mov ebx,eax` shuttles by three) — the
+per-iteration count is the one R1/R2 move; gcc is 2 instructions per
+iteration and clang folds the loop to a closed form, so that row's C
+columns are an optimiser ceiling, not a loop. The x64
+rows are not faster than x86 today (`siphash_keys` and `strcmp_sort`
+are slower: 8-byte words through the same accumulator model), which
+is the state R2 starts from. `self` x64 is faster in wall time than
+x86 (805 vs 908 ms) with 3% more instructions. Everything else §1
+predicted holds: `sha256_block_w` and `__w_hash_sip` are 25% of the
+self-compile's instructions.
+
+**Not claimed:** no compiler change; the baseline's wall times are
+this container's and only the bytes/kIr columns gate. The `self.x64`
+row needs `bin/wv2_64` (`build_x64`, which `bench`/`bench_compare`
+depend on) and is skipped otherwise. Two tooling notes went to
+`ai_tooling_next_steps.md` (valgrind does not read W's `.symtab`, so
+`wbench` resolves addresses with `nm`; 32-bit `wbench` records Ir in
+thousands).
