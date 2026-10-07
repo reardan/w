@@ -362,6 +362,103 @@ void emit_block_ast_end(statement_ast* node):
 	ast_blocks_emitted = ast_blocks_emitted + 1
 
 
+# S2.2b: the retained walk of a block, an if/elif/else chain or a while
+# loop (code_generator/retained_emit.w). The header of each, the opening
+# token or the keyword and its condition, is parsed completely before its
+# phases are emitted; body statements are walked by their own families as
+# they are reached, and the steps after a body (the jump past the else
+# arms, the back edge, the region ends, the block's deferred statements
+# and stack unwind) are phases emitted once the body has been parsed.
+#
+# Phase codes are private to these emitters. A condition records family
+# (a)'s ast_walk_expression and ast_walk_expression_end too (through
+# ast_statement_walk_expression); those run on the condition's
+# statement_ast, which is the walk's statement while it is drained.
+const int ast_walk_if_begin = 101
+const int ast_walk_guard_value = 102
+const int ast_walk_guard_branch = 103
+const int ast_walk_if_then_end = 104
+const int ast_walk_if_end = 105
+const int ast_walk_while_begin = 106
+const int ast_walk_while_end = 107
+const int ast_walk_block_begin = 108
+const int ast_walk_block_deferred = 109
+const int ast_walk_block_end = 110
+
+
+# What the phases of an if/while walk act on, owned by the parsing frame
+# (which walks before it returns): statement is the if node of the arm
+# being parsed (an elif arm swaps its own in), loop the while node. A
+# block's walk needs none: its statement_ast is the walk's statement.
+struct control_ast_walk:
+	int walk
+	statement_ast* statement
+	loop_ast* loop
+	int* outer
+
+# Indexed by walk record id; an entry is valid while its walk is open.
+list[control_ast_walk*] control_ast_walks
+# The if/while walk whose condition the next ast_statement_guard parses.
+control_ast_walk* control_ast_guard_pending
+
+
+void control_ast_walk_attach(int walk, control_ast_walk* control):
+	if (control_ast_walks == 0): control_ast_walks = new list[control_ast_walk*]
+	while (control_ast_walks.length <= walk): control_ast_walks.push(0)
+	control_ast_walks[walk] = control
+	control.walk = walk
+
+
+# A record's id is on its statement node until retained_emit_statement
+# finishes the walk.
+control_ast_walk* control_ast_walk_of(retained_statement_walk* walk):
+	return control_ast_walks[retained_nodes[walk.node].statement_walk]
+
+
+int* emit_while_loop_ast_begin(loop_ast* node);
+void emit_while_loop_ast_end(loop_ast* node);
+
+
+# The guard's target region is opened by its statement's begin phase, so
+# it is read when the branch is emitted.
+void emit_guard_ast_walk_branch(control_ast_walk* control, statement_ast* guard):
+	if (control.loop != 0): guard.target = control.loop.break_target
+	else: guard.target = control.statement.alternate_target
+	emit_guard_ast_branch(guard)
+
+
+# if/elif/else and while, with their conditions.
+void emit_guard_ast_walk(retained_statement_walk* walk, int phase):
+	if ((phase == ast_walk_expression) || (phase == ast_walk_expression_end)):
+		emit_statement_ast_walk(walk, phase)
+		return
+	control_ast_walk* control = control_ast_walk_of(walk)
+	if (phase == ast_walk_if_begin): emit_if_ast_begin(control.statement)
+	else if (phase == ast_walk_guard_value): emit_guard_ast_value(walk.statement)
+	else if (phase == ast_walk_guard_branch): emit_guard_ast_walk_branch(control, walk.statement)
+	else if (phase == ast_walk_if_then_end): emit_if_ast_then_end(control.statement)
+	else if (phase == ast_walk_if_end): emit_if_ast_end(control.statement)
+	else if (phase == ast_walk_while_begin): control.outer = emit_while_loop_ast_begin(control.loop)
+	else if (phase == ast_walk_while_end): emit_while_loop_ast_end(control.loop)
+	else: error(c"internal error: unknown statement walk phase")
+
+
+# '{' and ':' blocks: open the DWARF scope, then (after the body) run a
+# function body's deferred statements, close the scope and unwind.
+void emit_block_ast_walk(retained_statement_walk* walk, int phase):
+	statement_ast* node = walk.statement
+	if (phase == ast_walk_block_begin):
+		node.stack_depth = stack_pos
+		dwarf_block_begin()
+		if (node.kind == ast_stmt_indent_block): print_int_v1(c"starting stack_pos: ", stack_pos)
+	else if (phase == ast_walk_block_deferred): emit_block_ast_deferred(node)
+	else if (phase == ast_walk_block_end):
+		dwarf_block_end()
+		if (node.kind == ast_stmt_indent_block): print_int_v1(c"ending stack_pos: ", stack_pos)
+		emit_block_ast_end(node)
+	else: error(c"internal error: unknown statement walk phase")
+
+
 void emit_switch_region_ast_begin(statement_ast* node):
 	node.target = be_ctrl_block()
 

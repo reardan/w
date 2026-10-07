@@ -85,6 +85,10 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	emit_loop_ast_cleanup(&node)
 
 
+# S2.2b: under --ast-emit-retained a while loop is a statement walk
+# (emit_guard_ast_walk): the keyword and its condition are parsed before
+# the loop's regions are opened, and the back edge and region ends are
+# emitted once the body has been parsed.
 int ast_while_statement():
 	if (peek(c"while") == 0): return 0
 	loop_ast node
@@ -95,7 +99,17 @@ int ast_while_statement():
 	node.start_offset = token_start_offset
 	get_token()
 	int while_tab_level = tab_level
-	int* outer = emit_while_loop_ast_begin(&node)
+	int* outer = 0
+	control_ast_walk control
+	int walk = retained_walk_begin(cast(int, emit_guard_ast_walk), 0)
+	if (walk >= 0):
+		control.statement = 0
+		control.loop = &node
+		control.outer = 0
+		control_ast_walk_attach(walk, &control)
+		retained_walk_phase(walk, ast_walk_while_begin)
+		control_ast_guard_pending = &control
+	else: outer = emit_while_loop_ast_begin(&node)
 	int outer_condition = condition_context
 	condition_context = 1
 	statement_guard(node.break_target, outer_condition)
@@ -103,10 +117,16 @@ int ast_while_statement():
 	# (grammar/while_statement.w, grammar/type_check.w)
 	int forever = flow_guard_true
 	enclosing_tab_level = while_tab_level
+	if (walk >= 0):
+		retained_walk_drain(walk)
+		outer = control.outer
 	statement()
 	forever = forever && (flow_loop_break == 0)
 	node.end_offset = token_start_offset
-	emit_while_loop_ast_end(&node)
+	if (walk >= 0):
+		retained_walk_phase(walk, ast_walk_while_end)
+		retained_emit_statement(retained_walks[walk].node)
+	else: emit_while_loop_ast_end(&node)
 	loop_leave(outer)
 	flow_terminates = forever
 	return 1

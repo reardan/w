@@ -1723,3 +1723,82 @@ at parse time (its type is known once the initializer is prepared) so later
 statements can resolve it. Gotos and labels are emitted at the end of
 their statement exactly as before; forward-goto resolution remains emitter
 state. No `tree --json` field was added; the schema stays **version 2**.
+
+## Blocks, if/elif/else and while from their records (S2.2b)
+
+Under `--ast-emit-retained`, blocks (`{ }` and `:`), `if`/`elif`/`else`
+chains and `while` loops are now statement walks too, on S2.2a's
+mechanism (`code_generator/retained_emit.w`). Each of them is a
+compound statement, so its *header* is the unit: the opening token, or
+the keyword and its condition, is parsed completely before the header's
+code is emitted, the body's statements are walked by their own families
+as they are reached, and the steps after a body are phases emitted once
+the body has been parsed.
+
+- **Emitters and phases.** `emit_guard_ast_walk` (if chains and while
+  loops, with their conditions) and `emit_block_ast_walk` in
+  `code_generator/statement_ast.w`, with private phase codes 101-110.
+  An if/while walk keeps a small frame-owned record,
+  `control_ast_walk` (the arm's if node or the while node, and the
+  `loop_enter` context the begin phase returns), found by walk id; a
+  block's walk needs only its `statement_ast`.
+- **Conditions.** `ast_statement_guard` records into the enclosing
+  if/while walk, handed over in `control_ast_guard_pending` by the
+  statement that calls `statement_guard` (whose signature is shared with
+  the streaming grammar and unchanged). It reuses S2.2a's
+  `ast_statement_walk_expression`, so the condition is lowered from its
+  retained group after the token that follows it is lexed, unless that
+  lex might print. The region the branch targets is opened by the
+  header's begin phase, so the branch phase reads it when it is emitted.
+  The guard drains before it returns: the lowering reads the lint
+  condition state and `condition_context` it then resets, and
+  `statement_guard`'s constant-true check reads the `true` tokens the
+  lowering replays.
+- **Chains.** An `if`/`elif`/`else` chain is one statement node and one
+  walk. Each arm swaps its own node into the record and drains before it
+  returns (its node lives in its frame); the then-arm's exit phase stays
+  pending across the `elif`/`else` lex (it cannot print), and an `elif`
+  arm drains it before swapping its node in.
+- **Blocks.** The scope opening (`stack_pos`, the DWARF lexical block,
+  the `-v` trace) is a phase recorded after the token after `{`/`:` is
+  lexed. At the end, a function body's deferred statements are emitted
+  and drained before the unused-local lint (both may print), the symbol
+  table is truncated in the parse, and the scope end and unwind are the
+  last phase.
+- **Fallback.** Without a walk (the mode is off, or no retained
+  statement node owns the statement) each construct is emitted during
+  its parse exactly as before. A condition the AST probe declines drains
+  the header's phases and is parsed by the streaming grammar.
+
+`--stats` on `w.w` (x86 and x64 hosts alike): 58,109 statements walked
+and 7,473 immediate on S2.2a's base, from 29,516 and 35,896; on top of
+S2.2d, 65,381 walked and 325 immediate. What is still immediate is the
+`for` and `switch` statements (family c).
+
+Verification: `ast_retained_emit_test` compiles a new tracked fixture,
+`tests/ast_control_walk_fixture.w` (every `elif` shape, brace and
+same-line arms, empty blocks, conditions with bool-bitwise warnings and
+assignment-in-condition lint, constant-true loops, a generic body,
+unreachable code and an unused local), and eleven generated sources (a
+condition warning before a space-indented or unterminated body line, an
+`elif` on a space-indented line, the source ending inside or right
+after a block, conditions the probe declines, and a deferred
+statement's warnings before the unused-local lint) on the same legs as
+S2.2a's, plus an if/while REPL session with failing conditions. Removing
+the drain before the unused-local lint makes it fail; an `elif` arm that
+did not drain the enclosing arm's exit crashes on `w.w`. The `-v -v`
+trace is identical to `--ast-full-expressions`. `verify`, `verify_x64`,
+`ast_expression_test`, `ast_required_expression_verify` and `tests` pass.
+
+What this does not claim: no body is parsed whole before emission (the
+unit is still one statement or header, and every body is preceded by a
+drain); the condition's lowering is drained before the following lex
+whenever S2.2a's `ast_statement_lex_may_print` cannot rule out a lexer
+diagnostic, which happens when the read window ends near the condition
+(about 10 of the 2,100 roots of the fixture's compile, mostly near the
+end of a file); `while_statement.w`'s `statement_guard` and
+`loop_enter` are unchanged, so the loop's parse state (`loop_depth`,
+`break_in_switch`) is still set by the begin phase rather than recorded
+as a fact, which is sound only because the header is drained before
+the body. No `tree --json` field was added; the schema stays
+**version 2**.
