@@ -930,5 +930,63 @@ instruction sequences are listed in §1.3's text.
 
 ## 11. Landed units
 
-(none yet — each unit appends a dated section here: what landed, the
+(each unit appends a dated section here: what landed, the
 measurements, what it does not claim.)
+
+### R1 — remove what costs nothing to remove (2026-10-07)
+
+Landed in `code_generator/x86.w` (three emitters, nothing else) and
+`tests/local_load_fold_test.w` (three new cases, both widths):
+
+- `be_pop(0)` emits nothing, on every ISA (the `n == 0` return sits
+  before the dispatch: x86/x64 lose the 6-byte `add esp,0`, arm64 the
+  `add x28,x28,#0`, wasm the four-op `global.get/i32.const 0/i32.add/
+  global.set`, PTX the `add.u64 %sp,%sp,0` line — no fixture pins any of
+  them). The sp-relative notes stay valid across the site because the
+  stack does not move; the one behavioural change is that a comparison's
+  flags now survive a scope end, which is exactly what `cmp_fuse` needs.
+- `lea_eax_esp_plus` goes through `emit_eax_esp_disp`, so a displacement
+  in `[-128, 127]` is the 4-byte (5 on x64) disp8 form. `lea_load_fold`,
+  the `add_eax_int32` member-offset fold and `peep_rollback` only ever
+  used the note's start/end positions, so nothing assumed 7 bytes.
+- `mov_eax_int` on x64 emits `mov eax,imm32` (5 bytes, zero-extending)
+  for `0 <= v < 2^31` and keeps the 10-byte `movabs` otherwise. The
+  classification `(v >> 31) != 0` is host-independent (a 32-bit
+  compiler cannot hold a value the 64-bit one would classify
+  differently; bit-31 literals are negative on both). **Deviation from
+  the plan:** the `mov rax,simm32` (REX.W C7 /0) form for negative
+  values is *not* emitted. `libs/asm` has no C7 /0 decoder, so
+  `asm_x64_test`'s encode-identity pass over the self-host image would
+  report unknown opcodes, and teaching the decoder, encoder, text
+  parser and fuzz tables the form touches PR #579's files for 96
+  instructions (288 bytes) in the x64 compiler image. Address slots
+  (`be_addr_slot_emit`) never go through `mov_eax_int`, so every patched
+  immediate keeps its fixed width.
+
+Measurements (4-core cloud container, `objdump -d -Mintel`, instruction
+count = lines with an opcode, which differs slightly from §1.1's
+593,036 for the same binary; x64 image = `bin/wv3 --quiet x64 w.w`):
+
+| | x86 `bin/wv3` before | after | x64 image before | after |
+| --- | --- | --- | --- | --- |
+| bytes | 2,801,048 | 2,698,648 (−3.7%) | 3,328,816 | 3,070,768 (−7.8%) |
+| instructions | 600,316 | 586,420 (−2.3%) | 587,875 | 573,993 (−2.4%) |
+| `add esp,0x0` | 13,851 | 0 | 13,864 | 0 |
+| `lea eax,[esp+N]` disp32 / disp8 | 6,041 / 2 | 96 / 5,947 | 6,068 / 2 | 201 / 5,868 |
+| `movabs rax,imm64` | — | — | 28,591 | 106 |
+| `mov eax,imm32` | 69,287 | 69,291 | 40,733 | 69,213 |
+
+The 106 surviving `movabs` are 96 negative constants (the C7 /0
+candidates), 3 values past 32 bits and 7 objdump misreads of inline
+data. Self-compile (`bin/wv3 --quiet w.w -o /tmp/x`, x86): callgrind Ir
+7,329,806,622 → 7,294,272,227 (−35.5 M, −0.48%); wall time, seven
+interleaved before/after pairs on an idle container, best 0.752 s →
+0.743 s with both spreads overlapping (0.752–0.861 s vs 0.743–0.799 s),
+i.e. within run-to-run noise. §1.1's
+"small but nonzero" Ir prediction holds; the instruction-count and byte
+predictions (−13.7k, ≈−90 KB on x86) were met or exceeded.
+
+Gates: `verify`, `verify_x64`, `verify_arm64` (qemu-user-static),
+`verify_wasm` (node), `local_load_fold_test` + `_64`, `asm_x64_test`,
+`asm_fuzz_x86_test`, `asm_fuzz_x64_test`, `const_fold_test` + `_64`,
+`manifest_check`, `parser_generator_w_test`, `tests`.
