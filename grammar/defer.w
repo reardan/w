@@ -11,7 +11,11 @@ A deferred statement keeps a SOURCE SPAN (file path + byte offset,
 like generic definitions in grammar/generic.w) so names bind at each
 exit point. In AST mode each replay builds a fresh expression child
 for a deferred-statement node before lowering it inline. Reference
-modes use the ordinary expression entry instead.
+modes use the ordinary expression entry instead. Under
+--ast-emit-retained (S2.3) the span is re-lexed from the retained source
+bytes rather than by reopening and seeking the file
+(defer_reparse_start). It stays a re-parse: the names must bind at each
+exit, so no tree parsed at the registration could stand in for it.
 Because of the re-parse, the deferred expression is evaluated AT EXIT
 TIME: arguments are not captured where the defer appears (unlike Go).
 
@@ -33,6 +37,7 @@ syntax here.
 int expression();
 int ast_deferred_expression();
 int ast_defer_registration();
+int retained_source_next_line_token(int source, int offset);
 
 
 /*
@@ -44,6 +49,7 @@ struct defer_span_record:
 	int offset    # byte offset of the span start
 	int line      # 0-based, for diagnostics during the re-parse
 	int column    # 0-based
+	int source    # retained source version holding the span, or -1 (S2.3)
 
 
 list[defer_span_record] defer_spans
@@ -109,6 +115,8 @@ void defer_record_span(char* path, int offset, int line, int column):
 	rec.offset = offset
 	rec.line = line
 	rec.column = column
+	rec.source = -1
+	if (ast_retain_mode): rec.source = retained_source_find(path)
 	defer_spans.push(rec)
 
 
@@ -130,11 +138,19 @@ void defer_register():
 	defer_skip_statement()
 
 
-# Open the recorded file, seek to the span start and prime the
-# tokenizer, exactly like generic_reparse_start (grammar/generic.w):
-# afterwards the span's first token is current.
+# --stats (S2.3): replays that reopened the file and seeked to the span.
+int defer_source_seeks
+
+
+# Prime the tokenizer at the span start, exactly like
+# generic_reparse_start (grammar/generic.w): from the retained source
+# version when it holds the span, else by reopening the recorded file and
+# seeking to it. Afterwards the span's first token is current.
 void defer_reparse_start(int i):
 	char* path = defer_spans[i].file
+	int follow = retained_source_next_line_token(defer_spans[i].source, defer_spans[i].offset)
+	if (retained_source_reparse_begin(path, defer_spans[i].source, defer_spans[i].offset, defer_spans[i].line, defer_spans[i].column, follow)): return
+	defer_source_seeks = defer_source_seeks + 1
 	file = open(path, 0, 511)
 	if (file < 0): error3(c"cannot reopen deferred statement file '", path, c"'")
 	filename = path
@@ -163,7 +179,7 @@ void defer_emit_all():
 		defer_reparse_start(i)
 		if (ast_deferred_expression() == 0): expression()
 		expect_or_newline(c";")
-		close(file)
+		retained_source_reparse_close(file)
 		generic_reparse_restore(save)
 
 

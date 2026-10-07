@@ -22,6 +22,14 @@ so call sites emit a mov-imm backpatch chain (the json_codec pattern)
 and the bodies are compiled at a top-level boundary by
 generic_finish_instantiations(), after all user files.
 
+Under --ast-emit-retained (S2.3) no instantiation reopens and seeks the
+file: struct field lists, instantiation signatures and inference shapes
+are built by walking retained type trees under the substitution (the
+"Retained type trees" block below), and what is still re-parsed - every
+function body, and a header or field list the trees cannot express - is
+re-lexed from the retained source bytes (generic_reparse_open,
+code_generator/retained_emit.w).
+
 defhash coverage (wave plan C task 4f, compiler/compiler.w's defhash_main
 doc comment): the three registration points below
 (generic_register_struct, generic_declaration_scan,
@@ -58,6 +66,19 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 # Forward declaration: defhash_note is defined in compiler/compiler.w,
 # which compiles after grammar/.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
+# S2.3: retained instantiation (code_generator/retained_emit.w, compiled
+# after grammar/).
+int retained_emit_generic_enabled();
+int retained_source_reparse_begin(char* path, int source, int offset, int line, int column, int follow);
+void retained_source_reparse_close(int fd);
+
+
+# A captured generic struct field: its unbound type tree and its name, in
+# declaration order (S2.3).
+struct generic_field_ast:
+	generic_type_ast* type
+	char* name
+	generic_field_ast* next
 
 
 # Definition registry: one record per generic definition. For functions
@@ -74,6 +95,17 @@ struct generic_def_record:
 	int param_count
 	int param_names   # char** vector of param_count names
 	generic_signature_ast* signature_ast
+	# S2.3: retained source version holding the span (-1 when not
+	# retaining), the offset of the top-level token after a function's
+	# span (-1 when the definition ends the file), the struct's captured
+	# field list, and whether the captured field list / signature may
+	# replace a re-parse (nothing was printed while their tokens were
+	# lexed, so a re-parse would print nothing either).
+	int source
+	int follow
+	generic_field_ast* fields
+	int fields_captured
+	int header_captured
 
 
 list[generic_def_record] generic_defs
@@ -156,6 +188,12 @@ int generic_def_add(char* name, int kind, char* file_path, int offset, int line,
 	rec.param_count = param_count
 	rec.param_names = param_names
 	rec.signature_ast = 0
+	rec.source = -1
+	if (ast_retain_mode): rec.source = retained_source_find(file_path)
+	rec.follow = -1
+	rec.fields = 0
+	rec.fields_captured = 0
+	rec.header_captured = 0
 	generic_defs.push(rec)
 	return generic_defs.length - 1
 
@@ -345,10 +383,21 @@ void generic_reparse_restore(char* s):
 	free(s)
 
 
-# Open the definition's file, seek to the span start and prime the
-# tokenizer: afterwards the span's first token is current.
-void generic_reparse_start(int def):
+# --stats (S2.3): re-parses that reopened a definition's file and seeked
+# to its span, and types or signatures built from retained type trees
+# instead of a re-parse.
+int generic_source_seeks
+int generic_tree_types
+
+
+# Prime the tokenizer at the span start: afterwards the span's first token
+# is current. The retained source version serves the span when it can
+# (retained_source_reparse_begin; follow as documented there); otherwise
+# open the definition's file and seek to it.
+void generic_reparse_open(int def, int follow):
 	char* path = generic_def_file(def)
+	if (retained_source_reparse_begin(path, generic_defs[def].source, generic_def_offset(def), generic_def_line(def), generic_def_column(def), follow)): return
+	generic_source_seeks = generic_source_seeks + 1
 	file = open(path, 0, 511)
 	if (file < 0): error3(c"cannot reopen generic definition file '", path, c"'")
 	filename = path
@@ -364,6 +413,11 @@ void generic_reparse_start(int def):
 	nextc = 0
 	nextc = get_character()
 	get_token()
+
+
+# A header or field list: type names only, no expression.
+void generic_reparse_start(int def):
+	generic_reparse_open(def, -2)
 
 
 /*
@@ -448,6 +502,282 @@ void generic_skip_definition():
 
 
 /*
+Retained type trees (S2.3, --ast-emit-retained). A generic struct's field
+list is captured as unbound type trees while its definition is skipped,
+and a function's header already is (generic_signature_ast, tasks 38/45/46).
+An instantiation then builds its struct type, its signature or its
+inference shapes by walking those trees under the substitution, making
+exactly the type-table calls type_name() would make for the same tokens,
+in the same order, instead of re-parsing the span.
+
+The walk must not fail where a re-parse would report an error, or the
+diagnostic would be lost. So a tree is first checked without side effects
+(generic_tree_valid): every name resolves, a generic struct application
+has the definition's arity, the container storage rules hold, and no shape
+is one type_name() would read differently (a bound parameter applied to
+arguments, a generic struct's name as a slice element). A tree that fails
+the check, or a span whose lexing printed anything, is re-parsed as before
+(from the retained source, see generic_reparse_open).
+*/
+
+int generic_instantiate_struct(int def, int args, int arg_count, char* mangled);
+
+
+# One token of a captured field type. The skip that the capture replaces
+# never consumes a top-level token, so neither does the capture.
+int generic_field_advance():
+	if ((tab_level == 0) || (token[0] == 0)): return 0
+	get_token()
+	return 1
+
+
+int generic_field_accept(char* spelling):
+	if (peek(spelling) == 0): return 0
+	return generic_field_advance()
+
+
+# generic_type_ast_capture_at for a field line: the same shapes, consuming
+# exactly the tokens type_name() would, but never a top-level token.
+generic_type_ast* generic_field_capture(int depth):
+	if (depth > 32): return 0
+	if ((tab_level == 0) || (is_ident_start_byte(token[0]) == 0)): return 0
+	if (peek(c"const") || peek(c"gpu")): return 0
+	int container = 0
+	if (nextc == '['):
+		container = 3
+		if (peek(c"map")): container = 2
+		if (peek(c"set") || peek(c"list")): container = 1
+	generic_type_ast* node = generic_type_ast_new(token, 0)
+	generic_field_advance()
+	if (container):
+		if (generic_field_accept(c"[") == 0):
+			generic_type_ast_free(node)
+			return 0
+		if ((container == 3) && generic_field_accept(c"]")):
+			node = generic_type_ast_slice(node)
+		else:
+			node.first = generic_field_capture(depth + 1)
+			if (node.first == 0):
+				generic_type_ast_free(node)
+				return 0
+			if (container == 2):
+				if (generic_field_accept(c",") == 0):
+					generic_type_ast_free(node)
+					return 0
+				node.second = generic_field_capture(depth + 1)
+				if (node.second == 0):
+					generic_type_ast_free(node)
+					return 0
+			if (container == 3):
+				node.application = 1
+				generic_type_ast* tail = node.first
+				int count = 1
+				while (generic_field_accept(c",")):
+					if (count == generic_max_params):
+						generic_type_ast_free(node)
+						return 0
+					tail.next = generic_field_capture(depth + 1)
+					if (tail.next == 0):
+						generic_type_ast_free(node)
+						return 0
+					tail = tail.next
+					count = count + 1
+			if (generic_field_accept(c"]") == 0):
+				generic_type_ast_free(node)
+				return 0
+	if (node.application != 2):
+		while (generic_field_accept(c"*")): node.stars = node.stars + 1
+	while (generic_field_accept(c"[")):
+		if (generic_field_accept(c"]") == 0):
+			generic_type_ast_free(node)
+			return 0
+		node = generic_type_ast_slice(node)
+	return node
+
+
+void generic_field_list_free(generic_field_ast* field):
+	while (field != 0):
+		generic_field_ast* next = field.next
+		generic_type_ast_free(field.type)
+		free(field.name)
+		free(cast(char*, field))
+		field = next
+
+
+# The field lines of a generic struct, current token the first field's
+# type: skip them like the plain skip does, and capture each 'type name'
+# pair into the definition when the mode allows it.
+void generic_capture_fields(int def):
+	int capturing = retained_emit_generic_enabled()
+	int warnings = warning_count
+	generic_field_ast* tail = 0
+	while ((tab_level > 0) && (token[0] != 0)):
+		if (capturing == 0):
+			get_token()
+		else:
+			generic_type_ast* type = generic_field_capture(0)
+			# the field's name: an identifier on a field line ('alias.T'
+			# leaves its '.' here, which type_name() would have read)
+			if ((type == 0) || (tab_level == 0) || (is_ident_start_byte(token[0]) == 0)):
+				generic_type_ast_free(type)
+				capturing = 0
+			else:
+				generic_field_ast* field = new generic_field_ast
+				field.type = type
+				field.name = strclone(token)
+				field.next = 0
+				if (tail == 0): generic_defs[def].fields = field
+				else: tail.next = field
+				tail = field
+				get_token()
+	if (capturing && (warning_count == warnings)):
+		generic_defs[def].fields_captured = 1
+	else:
+		generic_field_list_free(generic_defs[def].fields)
+		generic_defs[def].fields = 0
+
+
+int generic_tree_is_name(generic_type_ast* node, char* name):
+	return strcmp(node.name, name) == 0
+
+
+# list_element_type_check (is_list) or map_value_type_check without the
+# error: 1 when the type may be stored.
+int generic_tree_storage_ok(int element_type, int is_list):
+	int checked = type_unqualified(element_type)
+	if (type_is_array(checked)): return 0
+	if (is_list && (type_get_size(checked) <= 0)): return 0
+	if (type_has_array_field(checked)): return 0
+	if ((type_num_args(checked) == 0) && (type_stack_words(checked) != 1)): return 0
+	return 1
+
+
+# 1 when walking node under the active substitution makes exactly the
+# calls type_name() would make for its tokens, none of which reports an
+# error. storage: 0 none, 1 a list element, 2 a map value. Pure: looks
+# types up, never creates one.
+int generic_tree_valid(generic_type_ast* node, int storage):
+	if (node == 0): return 0
+	if (node.application == 2):
+		generic_type_ast* element = node.first
+		# 'name[]' with name a generic struct: type_name() reads an
+		# application there
+		if ((element.application == 0) && (element.first == 0) && (element.stars == 0)):
+			if ((generic_subst_lookup(element.name) < 0) && (generic_def_lookup(element.name, 1) >= 0)): return 0
+		# a slice is one word and never an array: storable anywhere
+		return generic_tree_valid(element, 0)
+	if (node.application == 1):
+		if (generic_subst_lookup(node.name) >= 0): return 0
+		int def = generic_def_lookup(node.name, 1)
+		if (def < 0): return 0
+		int count = 0
+		generic_type_ast* arg = node.first
+		while (arg != 0):
+			if (generic_tree_valid(arg, 0) == 0): return 0
+			count = count + 1
+			arg = arg.next
+		if (count != generic_def_param_count(def)): return 0
+		# a struct value's storage is known only once it is instantiated
+		if (storage && (node.stars == 0)): return 0
+		return 1
+	if (node.first != 0):
+		# map/set/list: one word, storable anywhere
+		if (generic_tree_is_name(node, c"map")):
+			if (generic_tree_valid(node.first, 0) == 0): return 0
+			return generic_tree_valid(node.second, 2)
+		if (generic_tree_is_name(node, c"list")): return generic_tree_valid(node.first, 1)
+		return generic_tree_valid(node.first, 0)
+	int type = generic_subst_lookup(node.name)
+	if (type < 0):
+		type = type_lookup(node.name)
+		if (type < 0): return 0
+		int checked = type_unqualified(type)
+		if ((word_size != 8) && ((checked == float64_type) || (checked == int64_type) || (checked == uint64_type))): return 0
+	if (storage && (node.stars == 0)): return generic_tree_storage_ok(type, storage == 1)
+	return 1
+
+
+# Build the type a tree names under the active substitution: the calls
+# type_name() makes for the same tokens, in the same order (container and
+# struct arguments first, then the pointer levels, then slices). The tree
+# must have passed generic_tree_valid.
+int generic_tree_resolve(generic_type_ast* node):
+	if (node.application == 2):
+		int element = generic_tree_resolve(node.first)
+		int slice_type = type_lookup_slice(element)
+		if (slice_type < 0): slice_type = type_push_slice(element)
+		return slice_type
+	int type = -1
+	if (node.application == 1):
+		int def = generic_def_lookup(node.name, 1)
+		int args = cast(int, malloc(generic_max_params * __word_size__))
+		int count = 0
+		generic_type_ast* arg = node.first
+		while (arg != 0):
+			save_ptr(args + count * __word_size__, generic_tree_resolve(arg))
+			count = count + 1
+			arg = arg.next
+		char* mangled = generic_mangle(generic_def_name(def), args, count)
+		type = type_lookup(mangled)
+		if (type < 0): type = generic_instantiate_struct(def, args, count, mangled)
+		else: free(mangled)
+		free(cast(char*, args))
+	else if (node.first != 0):
+		if (generic_tree_is_name(node, c"map")):
+			int key_type = generic_tree_resolve(node.first)
+			int value_type = generic_tree_resolve(node.second)
+			type = type_get_map(key_type, value_type)
+		else if (generic_tree_is_name(node, c"set")):
+			type = type_get_set(generic_tree_resolve(node.first))
+		else:
+			type = type_get_list(generic_tree_resolve(node.first))
+	else:
+		type = generic_subst_lookup(node.name)
+		if (type < 0): type = type_lookup(node.name)
+	char* base_name = type_get_name(type)
+	for i in range(node.stars):
+		int next_level = type_get_pointer_level(type) + 1
+		int pointer_type = type_lookup_pointer(base_name, next_level)
+		if (pointer_type < 0): pointer_type = type_push_pointer(base_name, word_size, next_level)
+		type = pointer_type
+	return type
+
+
+# decl_file_index() as a re-parse of the definition would compute it.
+int generic_def_file_index(int def):
+	char* saved = filename
+	filename = generic_def_file(def)
+	int index = decl_file_index()
+	filename = saved
+	return index
+
+
+# 1 when the struct's captured fields may be walked under the active
+# substitution.
+int generic_struct_tree_ready(int def):
+	if ((retained_emit_generic_enabled() == 0) || (generic_defs[def].fields_captured == 0)): return 0
+	generic_field_ast* field = generic_defs[def].fields
+	while (field != 0):
+		if (generic_tree_valid(field.type, 0) == 0): return 0
+		field = field.next
+	return 1
+
+
+# 1 when the function's captured header may be walked under the active
+# substitution.
+int generic_header_tree_ready(int def):
+	if ((retained_emit_generic_enabled() == 0) || (generic_defs[def].header_captured == 0)): return 0
+	generic_signature_ast* signature = generic_defs[def].signature_ast
+	if (signature == 0): return 0
+	if (generic_tree_valid(signature.result, 0) == 0): return 0
+	generic_type_ast* parameter = signature.parameters
+	while (parameter != 0):
+		if (generic_tree_valid(parameter, 0) == 0): return 0
+		parameter = parameter.next
+	return 1
+
+
+/*
 Struct definitions: capture. Called from struct_declaration() with the
 struct's name as the current token and '[' as the next character.
 */
@@ -460,9 +790,10 @@ void generic_register_struct():
 	int params = cast(int, malloc(generic_max_params * __word_size__))
 	int n = generic_parse_param_names(params)
 	expect(c":")
-	generic_def_add(name, 1, strclone(filename), offset, line, column, n, params)
-	# skip the field lines; they are re-parsed per instantiation
-	while ((tab_level > 0) && (token[0] != 0)): get_token()
+	int def = generic_def_add(name, 1, strclone(filename), offset, line, column, n, params)
+	# skip the field lines; they are re-parsed per instantiation, or
+	# captured for a retained walk
+	generic_capture_fields(def)
 	# defhash coverage (wave plan C task 4f): hash exactly the span just
 	# registered above, so a reformat/comment-only edit leaves the hash
 	# unchanged and a real field-list edit changes it.
@@ -476,8 +807,20 @@ void generic_register_struct():
 # types, and a global symbol declared mid-function would be dropped by
 # function_definition's scope truncation anyway.
 int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
-	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, args, arg_count))
+	if (generic_struct_tree_ready(def)):
+		# S2.3: the same record from the captured fields
+		int tree_index = type_push_size(mangled, 0)
+		type_set_decl_location(tree_index, generic_def_file_index(def), generic_def_line(def) + 1, generic_def_column(def) + 1)
+		generic_field_ast* field = generic_defs[def].fields
+		while (field != 0):
+			int tree_field_type = generic_tree_resolve(field.type)
+			type_add_arg(tree_index, strclone(field.name), tree_field_type)
+			field = field.next
+		free(generic_subst_swap(old_subst))
+		generic_tree_types = generic_tree_types + 1
+		return tree_index
+	char* save = generic_reparse_save()
 	generic_reparse_start(def)
 	# span starts at the struct's name; the instance uses the mangled name
 	int type_index = type_push_size(mangled, 0)
@@ -492,7 +835,7 @@ int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
 		type_add_arg(type_index, strclone(token), field_type)
 		get_token()
 		pointer_indirection = 0
-	close(file)
+	retained_source_reparse_close(file)
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
 	return type_index
@@ -530,6 +873,10 @@ int generic_scanned_type
 # A generic function definition 'T name[params](...) ...' whose type
 # started at first_offset (line/column first_line/first_column), with
 # the name as the current token: register it and skip its body.
+# warning_count when the current declaration's scan started (S2.3).
+int generic_scan_warnings
+
+
 void generic_register_definition(int first_offset, int first_line, int first_column, generic_type_ast* result):
 	char* fname = strclone(token)
 	get_token()
@@ -539,7 +886,11 @@ void generic_register_definition(int first_offset, int first_line, int first_col
 		error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
 	int def = generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
 	generic_defs[def].signature_ast = generic_signature_ast_capture_result(result)
+	# S2.3: a header whose lexing printed nothing may be walked instead
+	# of re-parsed (a re-parse would print it again)
+	if (warning_count == generic_scan_warnings): generic_defs[def].header_captured = 1
 	generic_skip_definition()
+	if (token[0] != 0): generic_defs[def].follow = token_start_offset
 	# defhash coverage (wave plan C task 4f): same span the definition
 	# registry just recorded (first_offset..the skip's end).
 	defhash_note(fname, c"generic_function", decl_file_index(), first_line, first_column, first_offset, token_start_offset)
@@ -578,6 +929,7 @@ int generic_declaration_scan_generic_return():
 
 int generic_declaration_scan():
 	generic_scanned_type = -1
+	generic_scan_warnings = warning_count
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0): return 0
@@ -644,29 +996,42 @@ int generic_inst_signature(int inst):
 	if (sig >= 0):
 		return sig
 	int def = generic_inst_def(inst)
-	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, generic_inst_args(inst), generic_inst_arg_count(inst)))
-	generic_reparse_start(def)
-	int return_type = type_name()
-	get_token() /* the definition's own name */
-	expect(c"[")
-	while (peek(c"]") == 0): get_token()
-	expect(c"]")
-	expect(c"(")
 	char* param_types = malloc(10 * __word_size__)
 	int param_count = 0
-	while (accept(c")") == 0):
-		int param_type = type_name()
-		if (peek(c".")): error(c"variadic parameters are not supported in generic functions")
-		if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
-			get_token() /* the parameter's name */
-		if (peek(c"=")): error(c"default parameter values are not supported in generic functions")
-		if (param_count < 10): save_ptr(param_types + param_count * __word_size__, param_type)
-		param_count = param_count + 1
-		accept(c",")
-	close(file)
+	int return_type = -1
+	if (generic_header_tree_ready(def)):
+		# S2.3: walk the captured header under the substitution
+		generic_signature_ast* signature = generic_defs[def].signature_ast
+		return_type = generic_tree_resolve(signature.result)
+		generic_type_ast* parameter = signature.parameters
+		while (parameter != 0):
+			int tree_param_type = generic_tree_resolve(parameter)
+			if (param_count < 10): save_ptr(param_types + param_count * __word_size__, tree_param_type)
+			param_count = param_count + 1
+			parameter = parameter.next
+		generic_tree_types = generic_tree_types + 1
+	else:
+		char* save = generic_reparse_save()
+		generic_reparse_start(def)
+		return_type = type_name()
+		get_token() /* the definition's own name */
+		expect(c"[")
+		while (peek(c"]") == 0): get_token()
+		expect(c"]")
+		expect(c"(")
+		while (accept(c")") == 0):
+			int param_type = type_name()
+			if (peek(c".")): error(c"variadic parameters are not supported in generic functions")
+			if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
+				get_token() /* the parameter's name */
+			if (peek(c"=")): error(c"default parameter values are not supported in generic functions")
+			if (param_count < 10): save_ptr(param_types + param_count * __word_size__, param_type)
+			param_count = param_count + 1
+			accept(c",")
+		retained_source_reparse_close(file)
+		generic_reparse_restore(save)
 	free(generic_subst_swap(old_subst))
-	generic_reparse_restore(save)
 	char* sig_name = strjoin(generic_inst_mangled(inst), c" sig")
 	sig = type_push_function(sig_name, return_type, param_count, cast(int, param_types))
 	free(param_types)
@@ -893,31 +1258,44 @@ char* generic_infer_shapes(int def):
 	int n = generic_def_param_count(def)
 	int placeholder_args = cast(int, malloc(generic_max_params * __word_size__))
 	for i in range(n): save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))
-	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, placeholder_args, n))
-	generic_reparse_start(def)
-	type_name() /* the return type; only the parameters matter here */
-	get_token() /* the definition's own name */
-	expect(c"[")
-	while (peek(c"]") == 0): get_token()
-	expect(c"]")
-	expect(c"(")
 	char* block = malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__)
 	int count = 0
-	while (accept(c")") == 0):
-		int param_type = type_name()
-		if (peek(c".")): error(c"variadic parameters are not supported in generic functions")
-		if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
-			get_token() /* the parameter's name */
-		if (peek(c"=")): error(c"default parameter values are not supported in generic functions")
-		if (count < generic_infer_max_args):
-			generic_infer_store_shape(block, count, param_type, def)
-		count = count + 1
-		accept(c",")
+	if (generic_header_tree_ready(def)):
+		# S2.3: the placeholder walk of the captured header
+		generic_signature_ast* signature = generic_defs[def].signature_ast
+		generic_tree_resolve(signature.result)
+		generic_type_ast* parameter = signature.parameters
+		while (parameter != 0):
+			int tree_param_type = generic_tree_resolve(parameter)
+			if (count < generic_infer_max_args):
+				generic_infer_store_shape(block, count, tree_param_type, def)
+			count = count + 1
+			parameter = parameter.next
+		generic_tree_types = generic_tree_types + 1
+	else:
+		char* save = generic_reparse_save()
+		generic_reparse_start(def)
+		type_name() /* the return type; only the parameters matter here */
+		get_token() /* the definition's own name */
+		expect(c"[")
+		while (peek(c"]") == 0): get_token()
+		expect(c"]")
+		expect(c"(")
+		while (accept(c")") == 0):
+			int param_type = type_name()
+			if (peek(c".")): error(c"variadic parameters are not supported in generic functions")
+			if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
+				get_token() /* the parameter's name */
+			if (peek(c"=")): error(c"default parameter values are not supported in generic functions")
+			if (count < generic_infer_max_args):
+				generic_infer_store_shape(block, count, param_type, def)
+			count = count + 1
+			accept(c",")
+		retained_source_reparse_close(file)
+		generic_reparse_restore(save)
 	save_ptr(block, count)
-	close(file)
 	free(generic_subst_swap(old_subst))
-	generic_reparse_restore(save)
 	free(cast(char*, placeholder_args))
 	generic_infer_shapes_cache[def] = cast(int, block)
 	return block
@@ -1164,7 +1542,7 @@ void generic_instantiate_function(int inst):
 	int def = generic_inst_def(inst)
 	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, generic_inst_args(inst), generic_inst_arg_count(inst)))
-	generic_reparse_start(def)
+	generic_reparse_open(def, generic_defs[def].follow)
 	int decl_type = type_name()
 	int current_symbol = sym_declare_global(generic_inst_mangled(inst), decl_type, 1)
 	get_token() /* the definition's own name; the instance is the mangled one */
@@ -1176,7 +1554,7 @@ void generic_instantiate_function(int inst):
 	if (table[current_symbol + 1] != 'D'):
 		error3(c"generic function '", generic_def_name(def), c"' has no body")
 	int address = load_int(table + current_symbol + 2)
-	close(file)
+	retained_source_reparse_close(file)
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
 	# patch the pre-definition call sites (json_codec chain encoding)
