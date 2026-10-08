@@ -1589,7 +1589,9 @@ int rs_arg_record(int i):
 # Arguments rank at function level on x64 only (the second round of
 # rs_assign_registers): x86's two registers stay with the body's
 # scalars, where an argument read is already one folded memory operand
-# ('imul eax,[esp+d]', 'cmp eax,[esp+d]'). A per-use cost model is A9's.
+# ('imul eax,[esp+d]', 'cmp eax,[esp+d]'). The loop pass ranks them on
+# both widths; on x86 by the per-use model of rs_lp_key (A9), which is
+# where a pointer argument used as a base takes ecx/edx.
 int rs_args_rank():
 	return word_size == 8
 
@@ -1802,11 +1804,18 @@ void regalloc_prologue_args():
 	regalloc_arg_regs.clear()
 
 
-# --- loop-scoped registers (R3, §2.3) ------------------------------------
+# --- loop-scoped registers (R3, §2.3; x86 since A9) ------------------------
 # In a loop the scan found call-free, locals the function-scoped ranking
 # left on the stack (and the function's arguments, and the range loop's
 # hidden end/step slots) live in caller-saved registers for the loop's
-# extent: x64 rsi rdi r8-r11. The loop head (loop_enter in
+# extent: x64 rsi rdi r8-r11; x86 ecx edx (unit A9,
+# docs/projects/codegen_gap_plan.md §2.7) in a loop whose body never
+# shifts by a variable, divides or takes a modulo, for the candidates
+# whose uses a register shortens there outweigh the expression parks
+# (A3) the register is taken from (rs_lp_key, regalloc_loop_enter). An
+# emitter that writes ecx/edx inside such a loop after all parks the
+# owned register in its home around the sequence (regalloc_hazard_spill
+# / _reload). The loop head (loop_enter in
 # grammar/while_statement.w) loads each from its home, the exit region's
 # end (loop_leave) writes it back and clears the symbol's register field,
 # so code after the loop reads the stack word again. Homes are addressed

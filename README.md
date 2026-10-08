@@ -328,7 +328,11 @@ Implemented and covered by tests:
   while it holds, one taken branch per iteration
   (`grammar/loop_rotate.w`, `docs/projects/codegen_gap_plan.md` §2.5;
   `--no-loop-rotate`/`-O0` keeps every loop top-tested; wasm and PTX
-  keep their structured shape).
+  keep their structured shape). On x86-32 a loop whose body never
+  shifts by a variable, divides or takes a modulo may also keep its
+  hottest written locals, subscript bases and indices in `ecx`/`edx`
+  for the loop's extent (`docs/projects/codegen_gap_plan.md` §2.7 and
+  §8, unit A9; `--no-x86-budget` keeps the two-register budget).
   `--inline` emits a small leaf callee's body in place of its
   calls (§2.4, unit A5; also on for profile-hot sites under
   `--profile-use`, off otherwise because the re-parse costs compile
