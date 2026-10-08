@@ -582,6 +582,17 @@ int addm(int a, int b):
 	return (a * 3) + (b * 5)
 
 
+# A body whose first instruction is itself a park (the product's left
+# operand): a fold inside the body rolls that instruction back, and
+# must not undo the site's spill that ended right before it
+int wbits():
+	return __word_size__ * 8
+
+
+int mulfirst(int a, int b):
+	return (a * b) + (a - b)
+
+
 int inlined_sites(int x, int y, int n):
 	int r = x + seven()
 	r = r + ((x * y) + twice(x + y))
@@ -589,6 +600,8 @@ int inlined_sites(int x, int y, int n):
 	r = r + (x + shl_by(y, n))
 	r = r + (seven() + x * (twice(y) + seven()))
 	r = r + (x + addm(y, x) * (seven() - clampz(x - y)))
+	r = r + ((1 << (wbits() - 1)) >> (wbits() - 3))
+	r = r + (x + mulfirst(y, n) * (wbits() - mulfirst(x, 1)))
 	int i = 0
 	while ((i + seven()) < (x + 7)):
 		r = r + ((i * seven()) + twice(i))
@@ -604,6 +617,8 @@ void test_inline_sites():
 	r = r + (3 + 20)
 	r = r + (7 + 3 * (10 + 7))
 	r = r + (3 + (15 + 15) * 7)
+	r = r - 4   # (1 << 31) >> 29, an arithmetic shift of the sign bit
+	r = r + (3 + 13 * (__word_size__ * 8 - 5))
 	r = r + (0 + 0) + (7 + 2) + (14 + 4)
 	assert_equal(r, inlined_sites(3, 5, 2))
 	assert_equal(inlined_sites(5, 3, 7), inlined_sites(5, 3, 7))

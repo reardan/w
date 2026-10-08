@@ -2397,6 +2397,12 @@ void peep_rollback(int pos):
 # past, the rewritten bytes).
 void be_notes_reset():
 	if (ers_count != 0): ers_assert_none()
+	# nor may a fold undo a spill that lies behind it: the bytes that
+	# follow belong to another statement or an inlined body, whose first
+	# instruction a fold may well roll back (unit A5's site spill is
+	# followed by the body's first byte, not by the push that caused it)
+	ers_spill_end = 0
+	ers_spill_prev_end = 0
 	be_cmp_note_reset()
 	be_imm_note_reset()
 
