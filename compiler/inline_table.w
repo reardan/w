@@ -118,6 +118,7 @@ struct inline_record:
 	int code_bytes     # bytes the body's code took in the definition
 	int ok             # 1 when the body may be inlined
 	int has_calls      # the body emitted a call instruction that returns
+	int has_clobber    # the body writes ecx/edx on x86 (inline_clobber_count)
 	int param_count
 	int* param_types   # inline_max_params entries
 	char** param_names # inline_max_params cloned names
@@ -141,6 +142,7 @@ map[int, int] inline_by_sym       # symbol offset -> record index
 int inline_capture_record
 int inline_capture_tokens
 int inline_capture_calls
+int inline_capture_clobbers
 int inline_capture_noreturn
 int inline_capture_loops
 int inline_capture_hazards
@@ -206,6 +208,10 @@ int inline_name_is_leaf(char* name):
 	inline_record* rec = inline_record_at(i)
 	if (rec.ok == 0): return 0
 	if (rec.has_calls): return 0
+	# x86: a loop's ecx/edx (A9) must not meet an inlined shift count
+	# or division; the scan declines such loops as it declines the
+	# body's own (the emitters would spill around them anyway)
+	if ((word_size == 4) && rec.has_clobber): return 0
 	int budget = inline_site_budget(rec, 1)
 	if (budget == 0): return 0
 	return rec.code_bytes <= budget
@@ -258,6 +264,7 @@ void inline_definition_begin(int sym, char* name, int return_type):
 	rec.code_bytes = 0
 	rec.ok = 1
 	rec.has_calls = 0
+	rec.has_clobber = 0
 	rec.param_count = 0
 	rec.param_types = cast(int*, malloc(inline_max_params * __word_size__))
 	rec.param_names = cast(char**, malloc(inline_max_params * __word_size__))
@@ -307,6 +314,7 @@ void inline_body_begin(int variadic, int generic, int asm_body, int generator):
 	rec.profile_class = profile_function_class()
 	inline_capture_tokens = token_serial
 	inline_capture_calls = inline_real_calls
+	inline_capture_clobbers = inline_clobber_count
 	inline_capture_noreturn = inline_noreturn_calls
 	inline_capture_loops = inline_loop_count
 	inline_capture_hazards = inline_hazard_count
@@ -342,6 +350,7 @@ void inline_body_end():
 	inline_record* rec = inline_record_at(r)
 	rec.tokens = token_serial - inline_capture_tokens
 	rec.has_calls = (inline_real_calls - inline_capture_calls) > (inline_noreturn_calls - inline_capture_noreturn)
+	rec.has_clobber = inline_clobber_count != inline_capture_clobbers
 	rec.code_bytes = codepos - inline_capture_codepos
 	if (inline_loop_count != inline_capture_loops): rec.ok = 0
 	if (inline_hazard_count != inline_capture_hazards): rec.ok = 0

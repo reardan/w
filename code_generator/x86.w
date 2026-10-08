@@ -566,6 +566,30 @@ void mov_ebp_disp_reg(int r, int disp):
 int regalloc_loops_ok
 void regalloc_call_spill();    /* compiler/regalloc_scan.w */
 void regalloc_call_reload();
+# A sequence below writes ecx or edx (the shift count, the division's
+# high half, the limb and bit intrinsics' temporaries): on x86 a loop
+# may own them (A9, compiler/regalloc_scan.w's rl_target_mask), so the
+# emitter parks the owned one in its home around the sequence
+# (regalloc_hazard_spill / _reload, nothing when no loop owns any) --
+# the fallback for a loop the scan could not see the hazard in (a
+# shift-by-constant whose fold fails, an inlined body). A sequence
+# whose ecx lives across grammar-emitted operands (mov_ecx_eax before
+# the limb intrinsics' pointer, the atomic cas) cannot be bracketed and
+# asserts instead (regalloc_hazard_assert): the scan marks every such
+# intrinsic as a call, so this is fail-closed, not a path. Each site
+# also counts for the inline table (inline_clobber_count), so a body
+# that clobbers them never passes as a leaf a loop may own registers
+# across (compiler/inline_table.w, inline_name_is_leaf).
+void regalloc_hazard_spill(int mask);
+void regalloc_hazard_reload(int mask);
+void regalloc_hazard_assert(int mask);
+void rl_hazard_begin(int mask):
+	inline_clobber_count = inline_clobber_count + 1
+	regalloc_hazard_spill(mask)
+void rl_hazard_end(int mask):
+	regalloc_hazard_reload(mask)
+void alu_idiv_x86(int remainder);
+void alu_udiv_x86(int remainder);
 
 /* lea esp,[ebp-disp8] */
 void lea_esp_ebp_minus(int disp):
@@ -2855,16 +2879,26 @@ void alu_idiv():
 	elif (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d20))   # sdiv x0,x9,x0
-	else:
-		# cdq/cqo and idiv write edx: a park there goes to the stack first (A3)
-		ers_hazard_regs(4)
+	else: alu_idiv_x86(0)
+
+
+# The x86 family's signed division: the remainder variant keeps edx
+# (mov eax,edx) before a loop-owned edx comes back (A9).
+void alu_idiv_x86(int remainder):
+	# cdq/cqo and idiv write edx: a park there goes to the stack first (A3)
+	ers_hazard_regs(4)
+	rl_hazard_begin(4)
+	emit_x64_opcode()
+	emit(2, c"\x89\xc3")
+	ers_pop_eax()
+	emit_x64_opcode()
+	emit(1, c"\x99")
+	emit_x64_opcode()
+	emit(2, c"\xf7\xfb")
+	if (remainder):
 		emit_x64_opcode()
-		emit(2, c"\x89\xc3")
-		ers_pop_eax()
-		emit_x64_opcode()
-		emit(1, c"\x99")
-		emit_x64_opcode()
-		emit(2, c"\xf7\xfb")
+		emit(2, c"\x89\xd0")
+	rl_hazard_end(4)
 
 
 /* idiv, then mov %edx,%eax to keep the remainder */
@@ -2875,10 +2909,7 @@ void alu_imod():
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d2a))   # sdiv x10,x9,x0
 		a64(op(0x9b, 0x00a540))   # msub x0,x10,x0,x9  (x0 = x9 - x10*x0)
-	else:
-		alu_idiv()
-		emit_x64_opcode()
-		emit(2, c"\x89\xd0")
+	else: alu_idiv_x86(1)
 
 
 /* mov %eax,%ebx ; pop %eax ; xor %edx,%edx ; div %ebx: the unsigned
@@ -2890,15 +2921,23 @@ void alu_udiv():
 	elif (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00920))   # udiv x0,x9,x0
-	else:
-		ers_hazard_regs(4)
+	else: alu_udiv_x86(0)
+
+
+void alu_udiv_x86(int remainder):
+	ers_hazard_regs(4)
+	rl_hazard_begin(4)
+	emit_x64_opcode()
+	emit(2, c"\x89\xc3")
+	ers_pop_eax()
+	# xor %edx,%edx: a 32-bit write zero-extends into rdx on x64
+	emit(2, c"\x31\xd2")
+	emit_x64_opcode()
+	emit(2, c"\xf7\xf3")
+	if (remainder):
 		emit_x64_opcode()
-		emit(2, c"\x89\xc3")
-		ers_pop_eax()
-		# xor %edx,%edx: a 32-bit write zero-extends into rdx on x64
-		emit(2, c"\x31\xd2")
-		emit_x64_opcode()
-		emit(2, c"\xf7\xf3")
+		emit(2, c"\x89\xd0")
+	rl_hazard_end(4)
 
 
 /* div, then mov %edx,%eax to keep the unsigned remainder */
@@ -2909,10 +2948,7 @@ void alu_umod():
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc0092a))   # udiv x10,x9,x0
 		a64(op(0x9b, 0x00a540))   # msub x0,x10,x0,x9  (x0 = x9 - x10*x0)
-	else:
-		alu_udiv()
-		emit_x64_opcode()
-		emit(2, c"\x89\xd0")
+	else: alu_udiv_x86(1)
 
 
 # Shift by a constant: 'push eax; mov eax,imm; mov ecx,eax; pop eax;
@@ -2952,10 +2988,12 @@ void alu_shl():
 		if (shift_imm_fold(0xe0)): return
 		# the count goes to cl: a park in ecx goes to the stack first (A3)
 		ers_hazard_regs(2)
+		rl_hazard_begin(2)
 		emit(2, c"\x89\xc1")
 		ers_pop_eax()
 		emit_x64_opcode()
 		emit(2, c"\xd3\xe0")
+		rl_hazard_end(2)
 
 
 /* mov %eax,%ecx ; pop %eax ; sar %cl,%eax */
@@ -2968,10 +3006,12 @@ void alu_sar():
 	else:
 		if (shift_imm_fold(0xf8)): return
 		ers_hazard_regs(2)
+		rl_hazard_begin(2)
 		emit(2, c"\x89\xc1")
 		ers_pop_eax()
 		emit_x64_opcode()
 		emit(2, c"\xd3\xf8")
+		rl_hazard_end(2)
 
 
 /* mov %eax,%ecx ; pop %eax ; shr %cl,%eax: the logical (unsigned) twin
@@ -2985,10 +3025,12 @@ void alu_shr():
 	else:
 		if (shift_imm_fold(0xe8)): return
 		ers_hazard_regs(2)
+		rl_hazard_begin(2)
 		emit(2, c"\x89\xc1")
 		ers_pop_eax()
 		emit_x64_opcode()
 		emit(2, c"\xd3\xe8")
+		rl_hazard_end(2)
 
 
 /* and %ebx,%eax */
@@ -3096,6 +3138,10 @@ void mov_ecx_eax():
 	elif (target_isa == 1): a64(op(0xaa, 0x0003e2))   # mov x2,x0
 	else:
 		ers_hazard_regs(2)
+		# ecx lives across the operands the grammar emits next: a loop
+		# owning it cannot be bracketed here (A9)
+		inline_clobber_count = inline_clobber_count + 1
+		regalloc_hazard_assert(2)
 		emit_x64_opcode()
 		emit(2, c"\x89\xc1")
 
@@ -3109,8 +3155,10 @@ void alu_mul_hi():
 		a64(op(0xd3, 0x60fc00))   # lsr x0,x0,#32
 	else:
 		ers_hazard_regs(4)
+		rl_hazard_begin(4)
 		emit(2, c"\xf7\xe3")
 		emit(2, c"\x89\xd0")
+		rl_hazard_end(4)
 
 
 /* mul %ebx ; mov [ecx],edx: low product half stays in eax, the high half
@@ -3125,9 +3173,11 @@ void alu_mul_wide():
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the low half)
 	else:
 		ers_hazard_regs(4)
+		rl_hazard_begin(4)
 		emit(2, c"\xf7\xe3")
 		emit_x64_opcode()
 		emit(2, c"\x89\x11")
+		rl_hazard_end(4)
 
 
 /* add %ebx,%eax (32-bit: CF = carry out of bit 31) ; mov edx,0 (flags
@@ -3145,12 +3195,14 @@ void alu_add_carry():
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (keep the wrapped low half)
 	else:
 		ers_hazard_regs(4)
+		rl_hazard_begin(4)
 		emit(2, c"\x01\xd8")
 		emit(1, c"\xba")
 		emit_int32(0)
 		emit(3, c"\x83\xd2\x00")
 		emit_x64_opcode()
 		emit(2, c"\x89\x11")
+		rl_hazard_end(4)
 
 ####################### end of 32-bit limb intrinsics ######################
 
@@ -3204,6 +3256,7 @@ void alu_atomic_cas():
    the popped left operand in ebx) into eax and the count into cl */
 void alu_bit_operands():
 	ers_hazard_regs(2)
+	rl_hazard_begin(2)
 	emit(2, c"\x89\xc1")
 	emit(2, c"\x89\xd8")
 
@@ -3216,6 +3269,7 @@ void alu_shr32():
 	else:
 		alu_bit_operands()
 		emit(2, c"\xd3\xe8")
+		rl_hazard_end(2)
 
 
 /* value in ebx, count in eax: rol %cl,%eax */
@@ -3229,6 +3283,7 @@ void alu_rotl32():
 	else:
 		alu_bit_operands()
 		emit(2, c"\xd3\xc0")
+		rl_hazard_end(2)
 
 
 /* value in ebx, count in eax: ror %cl,%eax */
@@ -3239,6 +3294,7 @@ void alu_rotr32():
 	else:
 		alu_bit_operands()
 		emit(2, c"\xd3\xc8")
+		rl_hazard_end(2)
 
 
 /* set-bit count of the low 32 bits of eax, via the SWAR reduction
@@ -3270,6 +3326,7 @@ void alu_popcount32():
 		a64(op(0x53, 0x187c00))   # lsr w0,w0,#24 (zero-extends)
 	else:
 		ers_hazard_regs(4)
+		rl_hazard_begin(4)
 		emit(2, c"\x89\xc2")          # mov %eax,%edx
 		emit(3, c"\xc1\xea\x01")      # shr $1,%edx
 		emit(2, c"\x81\xe2")          # and $0x55555555,%edx
@@ -3290,6 +3347,7 @@ void alu_popcount32():
 		emit(2, c"\x69\xc0")          # imul $0x01010101,%eax,%eax
 		emit_int32(0x01010101)
 		emit(3, c"\xc1\xe8\x18")      # shr $24,%eax
+		rl_hazard_end(4)
 
 
 /* leading-zero count of the low 32 bits of eax; clz(0) == 32.
@@ -3301,12 +3359,14 @@ void alu_clz32():
 	elif (target_isa == 1): a64(op(0x5a, 0xc01000))   # clz w0,w0 (clz(0) == 32 in hardware)
 	else:
 		ers_hazard_regs(4)
+		rl_hazard_begin(4)
 		emit(3, c"\x0f\xbd\xd0")      # bsr %eax,%edx (ZF=1 when eax==0)
 		emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
 		emit_int32(32)
 		emit(2, c"\x74\x05")          # jz +5 (zero input: keep the 32)
 		emit(3, c"\x83\xf2\x1f")      # xor $31,%edx (31 - highest set index)
 		emit(2, c"\x89\xd0")          # mov %edx,%eax
+		rl_hazard_end(4)
 
 
 /* trailing-zero count of the low 32 bits of eax; ctz(0) == 32.
@@ -3319,11 +3379,13 @@ void alu_ctz32():
 		a64(op(0x5a, 0xc01000))   # clz w0,w0
 	else:
 		ers_hazard_regs(4)
+		rl_hazard_begin(4)
 		emit(3, c"\x0f\xbc\xd0")      # bsf %eax,%edx (ZF=1 when eax==0)
 		emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
 		emit_int32(32)
 		emit(2, c"\x74\x02")          # jz +2 (zero input: keep the 32)
 		emit(2, c"\x89\xd0")          # mov %edx,%eax
+		rl_hazard_end(4)
 
 #################### end of 32-bit bit-manipulation intrinsics ####################
 

@@ -77,6 +77,10 @@ int inline_real_calls
 int inline_noreturn_calls
 int inline_loop_count
 int inline_hazard_count
+# Sequences that write ecx/edx on x86 (code_generator/x86.w, the shift,
+# division, limb and bit emitters): a body with one is no leaf for a
+# loop that owns those registers (unit A9, inline_name_is_leaf).
+int inline_clobber_count
 
 # Recursive-descent nesting guards (docs/projects/ai_tooling_next_steps.md,
 # "No recursion-depth guard in the recursive-descent parser"): thousands

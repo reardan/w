@@ -84,6 +84,7 @@ import compiler.inline_table
 
 void rs_lp_reset();
 void rl_reset();
+int rs_run_assigns(int n, int first, int second, int last);
 int regalloc_type_ok(int type);
 int rl_find_slot(int slot);
 int rl_declare_pending(int t, char* name, int type);
@@ -112,6 +113,7 @@ list[char*] rs_names      # cloned identifier text
 list[int] rs_decls        # recognised declarations
 list[int] rs_uses         # loop-weighted use count: scalar reads and writes, plus rs_base
 list[int] rs_base         # loop-weighted subscripts with a multi-token index ('a[i * n + k]')
+list[int] rs_lv           # A9: loop-weighted uses a register shortens on x86 (writes, bases, indices, compare left sides)
 list[int] rs_excluded     # 1 once a hazardous use was seen
 list[int] rs_reg          # register assigned by the ranking, 0 none
 list[int] rs_taken        # 1 once a declaration took the register
@@ -175,6 +177,10 @@ int rs_loop_count
 list[int] rs_lp_offset     # keyword file offset
 list[int] rs_lp_flags      # bit 0: a call inside; bit 1: '/', '%' or a shift inside
 list[int] rs_lp_cands      # rs_lp_stride candidate indices, best first, -1 pads
+list[int] rs_lp_vals       # each candidate's loop-weighted key delta (the value a register has in the loop)
+list[int] rs_lp_ops        # binary operators inside the loop, loop-weighted (A9: the parks a loop register displaces on x86)
+int[64] rs_lp_ops_snap     # rs_ops at each open loop's start
+int rs_ops                 # binary operator runs seen, loop-weighted
 const int rs_lp_stride = 10
 const int rs_lp_has_call = 1
 const int rs_lp_has_divshift = 2
@@ -269,6 +275,7 @@ void rs_tables_ensure():
 		rs_decls = new list[int]
 		rs_uses = new list[int]
 		rs_base = new list[int]
+		rs_lv = new list[int]
 		rs_excluded = new list[int]
 		rs_reg = new list[int]
 		rs_taken = new list[int]
@@ -283,6 +290,8 @@ void rs_tables_ensure():
 		rs_lp_offset = new list[int]
 		rs_lp_flags = new list[int]
 		rs_lp_cands = new list[int]
+		rs_lp_vals = new list[int]
+		rs_lp_ops = new list[int]
 	if (rs_ident == 0):
 		rs_ident_size = 64
 		rs_ident = cast(char*, malloc(rs_ident_size))
@@ -296,6 +305,7 @@ void rs_tables_clear():
 	rs_decls.clear()
 	rs_uses.clear()
 	rs_base.clear()
+	rs_lv.clear()
 	rs_excluded.clear()
 	rs_reg.clear()
 	rs_taken.clear()
@@ -317,6 +327,8 @@ void rs_lp_reset():
 	rs_lp_offset.clear()
 	rs_lp_flags.clear()
 	rs_lp_cands.clear()
+	rs_lp_vals.clear()
+	rs_lp_ops.clear()
 	rs_lp_overflow = 0
 	rs_has_goto = 0
 	rs_has_defer = 0
@@ -330,6 +342,18 @@ void rs_lp_mark(int flag):
 	rs_lp_flags[k] = rs_lp_flags[k] | flag
 
 
+# The count a loop ranks its candidates by: every loop-weighted use on
+# x64, where a caller-saved register shortens every read; on x86 only
+# the uses a register shortens there (rs_lv: writes, subscript bases and
+# one-token indices, a compare's left operand -- a read folded as a
+# memory operand, 'cmp R,[esp+d]' or 'imul eax,[esp+d]', costs the same
+# from a slot), because the loop's ecx/edx are taken from A3's parks,
+# which a read-only candidate would not pay for (A9).
+int rs_lp_key(int i):
+	if (word_size == 4): return rs_lv[i]
+	return rs_uses[i]
+
+
 # A loop keyword (mode 1): open its record and snapshot the use counts.
 void rs_lp_open_loop():
 	if (rs_lp_depth >= 64):
@@ -338,9 +362,13 @@ void rs_lp_open_loop():
 	int k = rs_lp_offset.length
 	rs_lp_offset.push(rs_tok_off)
 	rs_lp_flags.push(0)
-	for i in range(rs_lp_stride): rs_lp_cands.push(-1)
+	rs_lp_ops.push(0)
+	for i in range(rs_lp_stride):
+		rs_lp_cands.push(-1)
+		rs_lp_vals.push(0)
+	rs_lp_ops_snap[rs_lp_depth] = rs_ops
 	int* snap = cast(int*, malloc((rs_count + 1) * __word_size__))
-	for i in range(rs_count): snap[i] = rs_uses[i]
+	for i in range(rs_count): snap[i] = rs_lp_key(i)
 	rs_lp_open[rs_lp_depth] = k
 	rs_lp_snap[rs_lp_depth] = cast(int, snap)
 	rs_lp_snap_len[rs_lp_depth] = rs_count
@@ -360,7 +388,7 @@ void rs_lp_close_loop():
 	for i in range(rs_count):
 		int before = 0
 		if (i < snap_len): before = snap[i]
-		int d = rs_uses[i] - before
+		int d = rs_lp_key(i) - before
 		if ((d <= 0) || rs_excluded[i] || (rs_decls[i] > 1)): continue
 		# insertion into the sorted slots: the delta is recomputed for
 		# the slot's occupant (its snapshot entry is still valid here)
@@ -370,14 +398,17 @@ void rs_lp_close_loop():
 			if (c < 0): break
 			int cb = 0
 			if (c < snap_len): cb = snap[c]
-			if (rs_uses[c] - cb < d): break
+			if (rs_lp_key(c) - cb < d): break
 			j = j + 1
 		if (j >= rs_lp_stride): continue
 		int m = rs_lp_stride - 1
 		while (m > j):
 			rs_lp_cands[base + m] = rs_lp_cands[base + m - 1]
+			rs_lp_vals[base + m] = rs_lp_vals[base + m - 1]
 			m = m - 1
 		rs_lp_cands[base + j] = i
+		rs_lp_vals[base + j] = d
+	rs_lp_ops[k] = rs_ops - rs_lp_ops_snap[rs_lp_depth]
 	free(cast(char*, snap))
 	if (rs_lp_depth > 0):
 		int parent = rs_lp_open[rs_lp_depth - 1]
@@ -895,6 +926,7 @@ int rs_intern(char* name, int h):
 	rs_decls.push(0)
 	rs_uses.push(0)
 	rs_base.push(0)
+	rs_lv.push(0)
 	rs_excluded.push(0)
 	rs_reg.push(0)
 	rs_taken.push(0)
@@ -1010,7 +1042,7 @@ void rs_br_push(int base):
 # for such uses costs its push and pop per call, or its loop-entry load
 # and write-back, for no instruction saved ('__w_list_compare_values'
 # ran 4-7% more instructions with sa and sb promoted either way).
-void rs_br_pop():
+void rs_br_pop(int index_ident):
 	if (rs_br_depth == 0): return;
 	rs_br_depth = rs_br_depth - 1
 	int base = rs_br_base[rs_br_depth]
@@ -1018,6 +1050,46 @@ void rs_br_pop():
 	if ((base >= 0) && (rs_br_tokens[rs_br_depth] > 2)):
 		rs_uses[base] = rs_uses[base] + (rs_weight() << 1)
 		rs_base[base] = rs_base[base] + (rs_weight() << 1)
+	# a one-token index that is a tracked name ('a[i]'): in a register
+	# it is the operand's SIB index, no load into eax (A9's x86 loop
+	# ranking)
+	if ((rs_br_tokens[rs_br_depth] == 2) && index_ident && (rs_prev_index >= 0)): rs_lv[rs_prev_index] = rs_lv[rs_prev_index] + rs_weight()
+
+
+# An operator run after an operand (an identifier, a literal, ')' or
+# ']'): a binary operator -- not an assignment, not '++'/'--' -- is a
+# park site (A3) whose register a loop register would take on x86
+# (A9's rs_lp_ops, the loop's operator pressure).
+void rs_count_operator(int n, int first, int second, int last):
+	if (rs_run_assigns(n, first, second, last)): return;
+	if ((n == 2) && (first == second) && ((first == '+') || (first == '-'))): return;
+	rs_ops = rs_ops + rs_weight()
+
+
+# Do the bytes after the current token (blanks skipped) spell candidate
+# i's name as a whole identifier: 'x = x ...'. A peek, consuming only
+# blanks; the end of the window says no.
+int rs_peek_name(int i):
+	rs_skip_blanks()
+	char* name = rs_names[i]
+	int n = strlen(name)
+	if (n == 0): return 0
+	if (rs_c != (name[0] & 255)): return 0
+	if (cast(int, rs_end) - cast(int, rs_p) < n): return 0
+	int j = 1
+	while (j < n):
+		if ((rs_p[j - 1] & 255) != (name[j] & 255)): return 0
+		j = j + 1
+	return (rs_class[rs_p[n - 1] & 255] & rs_cl_part) == 0
+
+
+# Is the operator run a comparison ('<', '>', '<=', '>=', '==', '!='):
+# the name before it is a compare's left operand, which a register
+# serves as 'cmp R,X' without the load into eax (A9's x86 loop ranking).
+int rs_run_compares(int n, int first, int second, int last):
+	if (n == 1): return (first == '<') || (first == '>')
+	if ((n == 2) && (last == '=')): return (first == '=') || (first == '<') || (first == '>') || (first == '!')
+	return 0
 
 
 # An operator run after an identifier (the identifier's index is i, -1
@@ -1036,9 +1108,11 @@ void rs_after_ident_operator(int i, int type_context):
 		last = rs_c
 		n = n + 1
 		rs_next()
-	if ((first == '/') || (first == '%') || ((n >= 2) && (first == second) && ((first == '<') || (first == '>')))): rs_lp_mark(rs_lp_has_divshift)
-	if ((first == '/') || (first == '%')): rs_has_divshift = 1
+	if ((first == '/') || (first == '%')):
+		rs_lp_mark(rs_lp_has_divshift)
+		rs_has_divshift = 1
 	elif ((n >= 2) && (first == second) && ((first == '<') || (first == '>'))): rs_shift_pending = 1
+	rs_count_operator(n, first, second, last)
 	int use = 1
 	if (n == 1):
 		if (first == '='):
@@ -1068,10 +1142,17 @@ void rs_after_ident_operator(int i, int type_context):
 		if (use == 0): rs_declare(i)
 		else if (use == 3):
 			rs_uses[i] = rs_uses[i] + (rs_weight() << 1)
+			rs_lv[i] = rs_lv[i] + (rs_weight() << 1)
 			rs_write(i)
 		else:
 			rs_uses[i] = rs_uses[i] + rs_weight()
-			if (use == 2): rs_write(i)
+			if (use == 2):
+				# 'x = x op ...' folds into 'op R,...' (R3): worth a
+				# compound assignment; a plain store into a register
+				# costs what a store into a slot does
+				if (rs_peek_name(i)): rs_lv[i] = rs_lv[i] + (rs_weight() << 1)
+				rs_write(i)
+			elif (rs_run_compares(n, first, second, last)): rs_lv[i] = rs_lv[i] + rs_weight()
 	# '&' alone after an operand is the binary operator
 	rs_prev_kind = 0
 	# 'T* name' only where a statement, parameter, cast or generic
@@ -1154,13 +1235,18 @@ void rs_identifier():
 	# pointer's value, which a register serves like any other read.
 	if (address_taken && (c != '[') && (c != '.')):
 		if (i >= 0): rs_excluded[i] = 1
-	if (written && (i >= 0)): rs_write(i)
+	if (written && (i >= 0)):
+		rs_lv[i] = rs_lv[i] + rs_weight()
+		rs_write(i)
 	if (rs_for_header):
 		# 'for [T] name[, [T] name] in': every identifier of the header
 		# is a declaration (the type names over-count, conservatively);
 		# the loop stores the variable itself through the register path
-		# (R2b), so it stays a candidate.
-		if (i >= 0): rs_declare(i)
+		# (R2b), so it stays a candidate -- and the loop writes it every
+		# iteration (A9's x86 loop ranking).
+		if (i >= 0):
+			rs_declare(i)
+			rs_lv[i] = rs_lv[i] + rs_weight()
 		return;
 	if (c == '('):
 		if (i >= 0): rs_excluded[i] = 1
@@ -1171,8 +1257,12 @@ void rs_identifier():
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter
 		# unless the index has more than one token, which rs_scan_body's
-		# ']' counts (rs_br_pop); its '[' records the base for rs_write
+		# ']' counts (rs_br_pop); its '[' records the base for rs_write.
+		# With A2's addressing forms a register base is the operand's
+		# base register, one slot load less per subscript (A9's x86
+		# loop ranking counts every subscript).
 		rs_sub_base = i
+		if (i >= 0): rs_lv[i] = rs_lv[i] + rs_weight()
 		return;
 	if (c == '.'):
 		# a field access or a method call's receiver (A1): a read a
@@ -1330,6 +1420,7 @@ void rs_scan_body(int brace_body):
 	rs_deref_pending = 0
 	rs_has_divshift = 0
 	rs_shift_pending = 0
+	rs_ops = 0
 	int first = 1
 	while ((rs_done == 0) && (rs_abort == 0) && (rs_c != -1)):
 		if ((rs_mode == 0) && rs_has_loop): return;
@@ -1356,13 +1447,18 @@ void rs_scan_body(int brace_body):
 			# consumed the run, so this one follows a non-identifier)
 			rs_lp_mark(rs_lp_has_divshift)
 			rs_has_divshift = 1
+			rs_ops = rs_ops + rs_weight()
 			rs_prev_kind = 0
 			continue
 		# a token starts here
 		if (rs_shift_pending):
 			# the count of the shift just seen: a literal keeps the shift
 			# out of ecx (shift_imm_fold), anything else goes through cl
-			if ((rs_c < '0') || (rs_c > '9')): rs_has_divshift = 1
+			# -- for the function (A3's parks) and for the loop (A9's
+			# loop registers; a fold that fails spills around the shift)
+			if ((rs_c < '0') || (rs_c > '9')):
+				rs_has_divshift = 1
+				rs_lp_mark(rs_lp_has_divshift)
 			rs_shift_pending = 0
 		if (rs_br_depth > 0): rs_br_tokens[rs_br_depth - 1] = rs_br_tokens[rs_br_depth - 1] + 1
 		if (first):
@@ -1419,8 +1515,9 @@ void rs_scan_body(int brace_body):
 			continue
 		if (c == ']'):
 			rs_next()
+			int index_ident = rs_prev_kind == 1
 			rs_prev_kind = 4
-			rs_br_pop()
+			rs_br_pop(index_ident)
 			continue
 		if (c == '.'):
 			rs_next()
@@ -1438,9 +1535,11 @@ void rs_scan_body(int brace_body):
 				n = n + 1
 				rs_next()
 			rs_prev_kind = 0
-			if ((firstc == '%') || ((n >= 2) && (firstc == secondc) && ((firstc == '<') || (firstc == '>')))): rs_lp_mark(rs_lp_has_divshift)
-			if (firstc == '%'): rs_has_divshift = 1
+			if (firstc == '%'):
+				rs_lp_mark(rs_lp_has_divshift)
+				rs_has_divshift = 1
 			elif ((n >= 2) && (firstc == secondc) && ((firstc == '<') || (firstc == '>'))): rs_shift_pending = 1
+			if ((before == 2) || (before == 4)): rs_count_operator(n, firstc, secondc, lastc)
 			# a prefix '++'/'--': the identifier it precedes is written
 			if ((n == 2) && (firstc == secondc) && ((firstc == '+') || (firstc == '-'))): rs_incdec = 1
 			# an assignment after ']' or an operand end ('a[i] =',
@@ -1754,20 +1853,34 @@ void rl_reset():
 	regalloc_loop_owned = 0
 
 
-# The caller-saved registers a loop may own on this target: x64 only
-# (x86's ecx/edx are the shift count and the division/multiply high
-# half, R4 territory).
+# The caller-saved registers a loop may own on this target: x64 rsi rdi
+# r8-r11; x86 ecx/edx (A9, docs/projects/codegen_gap_plan.md §2.7) in a
+# loop the scan found free of the sequences that write them -- the
+# shift count and the division's high half (rs_lp_has_divshift, checked
+# in regalloc_loop_enter) -- unless --no-x86-budget.
+# x86 (A9): a loop candidate's value (rs_lp_vals: the loop-weighted
+# count of its uses a register shortens) times this must reach the
+# loop's operator count (rs_lp_ops, the park sites) for the first and
+# the second register taken from the parks.
+const int rl_x86_ratio_first = 8
+const int rl_x86_ratio_second = 8
+
 int rl_target_mask():
 	if (target_isa != 0): return 0
 	if (target_os != 0): return 0
-	if (word_size != 8): return 0
+	if (word_size != 8):
+		if (x86_budget_disabled): return 0
+		return (1 << 1) | (1 << 2)
 	return (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)
 
 
 int rl_take_register():
 	int r = 0
 	while (r < 16):
-		if (rl_free_mask & (1 << r)):
+		# never a register with an expression park in it (A3): a
+		# declaration inside a loop body takes its register while the
+		# statement's parks may be live
+		if ((rl_free_mask & (1 << r)) && ((ers_used & (1 << r)) == 0)):
 			rl_free_mask = rl_free_mask & ~(1 << r)
 			return r
 		r = r + 1
@@ -1823,15 +1936,34 @@ void regalloc_loop_enter(int offset):
 	if (k < 0): return;
 	int flags = rs_lp_flags[k]
 	if (flags & rs_lp_has_call): return;
+	# x86: a body that shifts by a variable, divides or takes a modulo
+	# (in this loop or a nested one: the bit is inherited upward) writes
+	# ecx/edx; the emitters spill a loop register around such a
+	# sequence anyway (regalloc_hazard_spill), so this is the ranking's
+	# choice, not a correctness rule
+	if ((word_size == 4) && (flags & rs_lp_has_divshift)): return;
 	if (regalloc_loop_depth == 1): rl_free_mask = rl_target_mask()
 	int last_open = rl_eligible.length - 1
 	rl_eligible[last_open] = 1
 	regalloc_loops_owned = regalloc_loops_owned + 1
 	int base = k * rs_lp_stride
+	int ops = rs_lp_ops[k]
+	int taken = 0
 	for j in range(rs_lp_stride):
 		if (rl_free_mask == 0): return;
 		int i = rs_lp_cands[base + j]
 		if (i < 0): return;
+		# x86: the register comes out of A3's park set, where it saves
+		# about one instruction per park the loop body makes; the
+		# candidate must be worth more than the parks it displaces
+		# (rs_lp_vals against the loop's operator count), and the
+		# second register is dearer than the first (the parks then
+		# have none). The candidates are sorted, so the first one that
+		# fails ends it.
+		if (word_size == 4):
+			int ratio = rl_x86_ratio_first
+			if (taken): ratio = rl_x86_ratio_second
+			if (rs_lp_vals[base + j] * ratio < ops): return;
 		if (rs_excluded[i] || (rs_reg[i] != 0) || (rs_decls[i] > 1)): continue
 		char* name = rs_names[i]
 		int t = sym_probe(name)
@@ -1851,6 +1983,7 @@ void regalloc_loop_enter(int offset):
 		if (regalloc_type_ok(load_int(table + t + 6)) == 0): continue
 		int reg = rl_take_register()
 		if (reg == 0): return;
+		taken = taken + 1
 		save_int(table + t + 146, reg)
 		rl_add(t, reg, load_int(table + t + 2), scope, name, 1)
 		mov_reg_ebp_disp(reg, rl_home_disp(rl_sym.length - 1))
@@ -1862,6 +1995,10 @@ int regalloc_loop_hidden(int slot):
 	if (rl_eligible == 0): return 0
 	if (rl_eligible.length == 0): return 0
 	if (rl_eligible[rl_eligible.length - 1] == 0): return 0
+	# x86: the end and step words are only ever the right operand of a
+	# compare or an add, folded as memory operands; a register saves
+	# nothing there and is better left to a candidate (A9)
+	if (word_size == 4): return 0
 	int reg = rl_take_register()
 	if (reg == 0): return 0
 	rl_add(-1, reg, slot - 1, 'H', c"", 1)
@@ -1944,6 +2081,41 @@ void regalloc_call_reload():
 		if (rl_entry_live(i)): mov_reg_ebp_disp(rl_reg[i], rl_home_disp(i))
 
 
+# An emitter is about to write the registers of mask (x86: ecx as a
+# shift count, edx as a division's high half, the limb and bit
+# intrinsics' temporaries) while a loop owns one of them (A9): park
+# that register in its home before the sequence and fetch it back
+# after. The scan declines loops whose body spells such an operator
+# (rs_lp_has_divshift), so this is the fallback for what it cannot
+# see -- a shift-by-constant whose fold fails, an inlined body (unit
+# A5) -- and, like the call spill, costs instructions, never
+# correctness. --stats counts the spills.
+int regalloc_hazard_spills
+void regalloc_hazard_spill(int mask):
+	if (rl_sym == 0): return;
+	if ((regalloc_loop_owned & mask) == 0): return;
+	for i in range(rl_sym.length):
+		if ((mask & (1 << rl_reg[i])) && rl_entry_live(i)):
+			regalloc_hazard_spills = regalloc_hazard_spills + 1
+			if (rl_kind[i] != 'H'): mov_ebp_disp_reg(rl_reg[i], rl_home_disp(i))
+
+# An emitter whose ecx lives across grammar-emitted operands (the limb
+# intrinsics' pointer, the atomic cas) cannot bracket the register: the
+# scan counts those intrinsics as calls, so a loop never owns ecx across
+# one, and this is the fail-closed check of that.
+void regalloc_hazard_assert(int mask):
+	if (rl_sym == 0): return;
+	if ((regalloc_loop_owned & mask) == 0): return;
+	for i in range(rl_sym.length):
+		if ((mask & (1 << rl_reg[i])) && rl_entry_live(i)): error3(c"internal error: loop register of '", rl_name[i], c"' clobbered by an intrinsic (compile with --no-regs and report this)")
+
+void regalloc_hazard_reload(int mask):
+	if (rl_sym == 0): return;
+	if ((regalloc_loop_owned & mask) == 0): return;
+	for i in range(rl_sym.length):
+		if ((mask & (1 << rl_reg[i])) && rl_entry_live(i)): mov_reg_ebp_disp(rl_reg[i], rl_home_disp(i))
+
+
 # The loop entry whose storage word is stack slot 'slot' (see
 # regalloc_slot_register), -1 when none.
 int rl_find_slot(int slot):
@@ -1960,6 +2132,7 @@ void regalloc_stats_dump():
 	print_int0(c" arguments promoted: ", regalloc_promoted_args)
 	print_int0(c" loops owning registers: ", regalloc_loops_owned)
 	print_int0(c" loop registers: ", regalloc_loop_regs)
+	print_int0(c" hazard spills: ", regalloc_hazard_spills)
 	print_int0(c" expression parks: ", ers_parks)
 	print_int0(c" spilled: ", ers_spills)
 	print_error(c"\x0a")

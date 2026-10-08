@@ -962,6 +962,16 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--expr-regs") == 0):
 		if (apply): ers_disabled = 0
 		return 1
+	# The x86-32 register budget (docs/projects/codegen_gap_plan.md §2.7,
+	# unit A9: loops own ecx/edx where no shift count or division needs
+	# them) is on by default; --no-x86-budget keeps the pre-A9 budget,
+	# the reference for tests/regalloc_diff_test.w. Nothing on x64.
+	if (strcmp(arg, c"--no-x86-budget") == 0):
+		if (apply): x86_budget_disabled = 1
+		return 1
+	if (strcmp(arg, c"--x86-budget") == 0):
+		if (apply): x86_budget_disabled = 0
+		return 1
 	# Branch-on-flags for &&/||/! in conditions (docs/projects/
 	# codegen_gap_plan.md §2.6, grammar/cond_branch.w) is on by default
 	# on x86/x64; --no-cond-branch (and -O0) keeps the value form, which
@@ -1056,6 +1066,7 @@ void help_shared_options():
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
+	println(c"  --no-x86-budget       x86-32: no loop registers in ecx/edx (the pre-A9 register budget)")
 	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
 	println(c"                        profile-hot sites under --profile-use)")
 	println(c"  --no-inline           never emit a callee's body in place of a call")
@@ -1447,6 +1458,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-x86-budget") == 0) || (strcmp(*flag_arg, c"--x86-budget") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)

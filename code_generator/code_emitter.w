@@ -163,6 +163,10 @@ int ers_disabled
 # stack then leaves ecx/edx (the shift count and the division's high
 # half) alone and parks in r8-r11 only (nothing on x86).
 int ers_hazard
+# --no-x86-budget: x86-32 keeps its pre-A9 register budget -- no loop
+# registers in ecx/edx (compiler/regalloc_scan.w, rl_target_mask), the
+# reference for tests/regalloc_diff_test.w. Nothing on x64.
+int x86_budget_disabled
 # The caller-saved registers the open loops own (R3, rl_add /
 # regalloc_loop_leave in compiler/regalloc_scan.w), as a bitmask over
 # hardware register numbers: the expression register stack never parks
