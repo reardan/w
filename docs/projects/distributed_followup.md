@@ -29,6 +29,15 @@ not turn a good WAL into a torn tail or cause recovery to remove a referenced
 SSTable. `wal_reader.failed` must be checked by replay owners. WAL sync includes
 its parent directory, so an acknowledged first append cannot lose its name.
 
+Raft recovery also checks the separate reader open after the initial WAL
+scan. `raft_wal_recover` and `raft_wal_recover_learner` return null when that
+open or a replay read fails, releasing the partially constructed node. The
+caller retains the WAL adapter and can retry a transient read-side failure;
+the durable log and its shadow are unchanged. `raft_wal_recover_into` takes
+ownership of its fresh node on both success and failure. The storage fault
+tests cover EIO and descriptor exhaustion at open, header/payload read errors,
+and successful retries for both voters and learners.
+
 Publication remains file sync → rename → directory sync. A failure before
 rename retains the old generation. A failure after rename reports
 `fs_replace_report.renamed == 1`, poisons the live handle, and means **unknown

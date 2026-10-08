@@ -35,10 +35,9 @@ Contracts:
 - Identity: peer is a description (for example "tcp:127.0.0.1:8080",
   "unix:/run/app.sock") of the address the socket was connected to or
   accepted from. It is NOT authenticated: authenticated is 1 only for an
-  adapter that cryptographically verified the peer, and no adapter here
-  does. transport_require_authenticated lets a protocol refuse such a
-  transport (IO_UNSUPPORTED). The native TLS library is deliberately not
-  wired in yet; see the audit in docs/projects/budgets_transport.md.
+  adapter that cryptographically verified the peer. Socket adapters do
+  not. import lib.transport_tls for verified TLS server identities.
+  transport_require_authenticated refuses an unverified peer (IO_UNSUPPORTED).
 
 Adapters implement three functions over their own context:
 	read_some(ctx, buf, len, timeout_ms, r)   timeout_ms: -1 = no limit
@@ -157,11 +156,14 @@ void transport_record(transport* t, int start_us, int status, int native_error):
 # remaining time recomputed each round.
 int transport_op(transport* t, int writing, char* buf, int len, io_result* r):
 	while (1):
+		int interrupted = io_check()
+		if (interrupted < 0): return io_result_from_syscall(r, interrupted)
 		int left = transport_remaining_ms(t)
 		if (left == 0): return io_result_set(r, 0, IO_TIMED_OUT, 0)
 		int status = 0
 		if (writing): status = t.write_fn(t.context, buf, len, left, r)
 		else: status = t.read_fn(t.context, buf, len, left, r)
+		if (r.transferred > 0): return status
 		if ((status != IO_WOULD_BLOCK) && (status != IO_INTERRUPTED)): return status
 	return IO_IO_ERROR
 
@@ -189,9 +191,8 @@ int transport_write_all(transport* t, char* buf, int len, io_result* r):
 	step.native_error = 0
 	while ((total < len) && (status == IO_OK)):
 		status = transport_op(t, 1, buf + total, len - total, &step)
-		if (status == IO_OK):
-			if (step.transferred <= 0): status = IO_IO_ERROR
-			else: total = total + step.transferred
+		if (step.transferred > 0): total = total + step.transferred
+		if ((status == IO_OK) && (step.transferred <= 0)): status = IO_IO_ERROR
 	int native_error = 0
 	if (status != IO_OK): native_error = step.native_error
 	io_result_set(r, total, status, native_error)
@@ -206,8 +207,9 @@ int transport_read_exact(transport* t, char* buf, int len, io_result* r):
 	io_result step
 	while (total < len):
 		int status = transport_read_some(t, buf + total, len - total, &step)
+		if (step.transferred > 0): total = total + step.transferred
 		if (status != IO_OK): return io_result_set(r, total, status, step.native_error)
-		total = total + step.transferred
+		if (step.transferred <= 0): return io_result_set(r, total, IO_IO_ERROR, 0)
 	return io_result_set(r, total, IO_OK, 0)
 
 
@@ -250,7 +252,7 @@ int transport_msg_dontwait():
 int transport_socket_wait(int fd, int events, int timeout_ms, io_result* r):
 	int ready = io_poll(fd, events, timeout_ms)
 	if (ready == 0): return io_result_set(r, 0, IO_TIMED_OUT, 0)
-	if (ready < 0): return io_result_from_syscall(r, ready)
+	if (ready < 0): return net_wait_result_from_syscall(r, ready)
 	return io_result_set(r, 0, IO_WOULD_BLOCK, 0)
 
 
@@ -263,7 +265,7 @@ int transport_socket_read(void* context, char* buf, int len, int timeout_ms, io_
 		n = socket_recv(s.fd, buf, len, transport_msg_dontwait())
 	if (n == 0): return io_result_set(r, 0, IO_EOF, 0)
 	if (n == (0 - net_eagain())): return io_result_set(r, 0, IO_WOULD_BLOCK, net_eagain())
-	return io_result_from_syscall(r, n)
+	return net_result_from_syscall(r, n)
 
 
 int transport_socket_write(void* context, char* buf, int len, int timeout_ms, io_result* r):
@@ -275,13 +277,13 @@ int transport_socket_write(void* context, char* buf, int len, int timeout_ms, io
 		if (waited != IO_WOULD_BLOCK): return waited
 		n = socket_send(s.fd, buf, len, flags)
 	if (n == (0 - net_eagain())): return io_result_set(r, 0, IO_WOULD_BLOCK, net_eagain())
-	return io_result_from_syscall(r, n)
+	return net_result_from_syscall(r, n)
 
 
 int transport_socket_close(void* context, io_result* r):
 	transport_socket* s = cast(transport_socket*, context)
 	if (s.owns_fd == 0): return io_result_set(r, 0, IO_OK, 0)
-	return io_close(s.fd, r)
+	return net_result_from_syscall(r, close(s.fd))
 
 
 # Wraps a connected stream socket. owns_fd: transport_close closes it.
@@ -334,18 +336,10 @@ transport* transport_from_socket_owned_peer(int fd, char* peer):
 
 
 # TCP connect to a host-order IPv4 address within timeout_ms (-1: no
-# limit). 0 on failure with r set: IO_TIMED_OUT, or IO_IO_ERROR (the
-# connect path in lib/net.w does not preserve the errno, so
-# native_error is 0 for a refused or unreachable peer).
+# limit). 0 on failure, preserving the checked connect status and errno.
 transport* transport_tcp_connect(int ip, int port, int timeout_ms, io_result* r):
-	int fd = net_connect_timeout(ip, port, timeout_ms)
-	if (fd == -2):
-		io_result_set(r, 0, IO_TIMED_OUT, 0)
-		return 0
-	if (fd < 0):
-		io_result_set(r, 0, IO_IO_ERROR, 0)
-		return 0
-	io_result_set(r, 0, IO_OK, 0)
+	int fd = net_connect_timeout_checked(ip, port, timeout_ms, r)
+	if (fd < 0): return 0
 	return transport_from_socket_owned_peer(fd, transport_format_tcp_peer(ip, port))
 
 
@@ -358,12 +352,12 @@ transport* transport_tcp_accept(int listen_fd, int timeout_ms, io_result* r):
 			io_result_set(r, 0, IO_TIMED_OUT, 0)
 			return 0
 		if (ready < 0):
-			io_result_from_syscall(r, ready)
+			net_wait_result_from_syscall(r, ready)
 			return 0
 	sockaddr_in addr
 	int fd = socket_accept_connection_from(listen_fd, &addr)
 	if (fd < 0):
-		io_result_from_syscall(r, fd)
+		net_result_from_syscall(r, fd)
 		return 0
 	io_result_set(r, 0, IO_OK, 0)
 	return transport_from_socket_owned_peer(fd, transport_format_sockaddr_peer(&addr))
@@ -378,7 +372,7 @@ char* transport_format_unix_peer(char* path):
 transport* transport_unix_connect(char* path, io_result* r):
 	int fd = socket_connect_unix_path(path)
 	if (fd < 0):
-		io_result_from_syscall(r, fd)
+		net_result_from_syscall(r, fd)
 		return 0
 	io_result_set(r, 0, IO_OK, 0)
 	return transport_from_socket_owned_peer(fd, transport_format_unix_peer(path))
@@ -393,11 +387,11 @@ transport* transport_unix_accept(int listen_fd, char* path, int timeout_ms, io_r
 			io_result_set(r, 0, IO_TIMED_OUT, 0)
 			return 0
 		if (ready < 0):
-			io_result_from_syscall(r, ready)
+			net_wait_result_from_syscall(r, ready)
 			return 0
 	int fd = socket_accept_connection(listen_fd)
 	if (fd < 0):
-		io_result_from_syscall(r, fd)
+		net_result_from_syscall(r, fd)
 		return 0
 	io_result_set(r, 0, IO_OK, 0)
 	return transport_from_socket_owned_peer(fd, strjoin(c"unix-client@", path))

@@ -1,3 +1,4 @@
+# wbuild: x64
 /*
 arm64 (A64) property/fuzz round-trip test (issue #171): randomized
 extension of asm_arm64_test's corpus round-trips, plus a dedicated
@@ -35,7 +36,9 @@ small unsigned range that stays legal for every immediate-bearing form
 this library supports, without needing per-mnemonic bit-width knowledge.
 Memory displacements are randomized as a small non-negative multiple of
 the access size, which stays within the legal immediate range for the
-unsigned-offset, pre-index and post-index addressing modes alike.
+unsigned-offset, pre-index and post-index addressing modes alike. LDAR/STLR
+have no displacement field, so their displacement stays zero while their
+register operands and memory base still vary.
 Branch/adr targets and condition-code operands (kind label) are left
 untouched: their legal encodings are per-mnemonic (26/19/14-bit signed
 word counts, sp/pc-relative computations) and modeling that is exactly
@@ -87,6 +90,9 @@ void asm_fuzz_arm64_mutate_insn(asm_insn* insn):
 	asm_fuzz_arm64_mutate_operand(&insn.op1)
 	asm_fuzz_arm64_mutate_operand(&insn.op2)
 	asm_fuzz_arm64_mutate_operand(&insn.op3)
+	# Ordered word accesses have only [Xn], never an immediate offset.
+	if ((strcmp(insn.mnemonic, c"ldar") == 0) || (strcmp(insn.mnemonic, c"stlr") == 0)):
+		insn.op2.disp = 0
 
 
 void asm_fuzz_arm64_report(char* what, int seed, int iter, int line, char* text, char* want, char* got):
@@ -126,7 +132,7 @@ void test_arm64_fuzz_corpus():
 
 		# Property 1: decode(encode(insn)) == insn.
 		asm_buffer* b1 = asm_buffer_new()
-		asm_arm64_encode(b1, &insn)
+		assert_equal(4, asm_arm64_encode(b1, &insn))
 		asm_insn insn2
 		asm_arm64_decode(b1.data, b1.length, 0, &insn2)
 		asm_buffer* b2 = asm_buffer_new()

@@ -244,17 +244,17 @@ heap and must not allocate.
 
 ## Memory-order contract (what x86/x64 code may rely on today)
 
-W has no memory model in the language yet; what holds is the product
-of how the compiler emits code and what x86-TSO guarantees. Stated
-precisely so library code knows where the floor is:
+W defines explicit ordering for its atomic intrinsics. The existing x86
+thread library also relies on x86-TSO for several internal flags; those
+implementation details must not be assumed by portable application code:
 
-- **Compiler.** The single-pass code generator emits one real load for
-  every read of a variable or field and one real store for every
-  write, in source order, and caches nothing in registers across
-  statements, so it never reorders, merges or elides memory accesses.
-  This is a property of today's implementation, not a language
-  promise: an optimizing backend may change it, which is one more
-  reason synchronization goes through the primitives below.
+- **Compiler.** Atomic operations are observable accesses and ordering
+  boundaries in both the streaming and retained AST paths. Their emitters
+  clear local-load, constant and comparison folding notes; they are never
+  treated as constant expressions. Register allocation excludes locals
+  whose address escapes. Acquire/release/fence ordering is a language
+  contract that future optimizations must preserve, rather than a reliance
+  on every local currently being loaded from memory.
 - **Plain word loads/stores** of naturally aligned words do not tear.
   On x86/x64 (TSO) loads are not reordered with loads, stores not with
   stores, and stores not with earlier loads, so a plain store acts as
@@ -264,9 +264,9 @@ precisely so library code knows where the floor is:
   "set my flag, then read yours") are broken without a full barrier.
 - **`atomic_add` / `atomic_cas`** are `lock xadd` / `lock cmpxchg` at
   full word width: atomic read-modify-writes that are full barriers
-  (sequentially consistent), returning the old value. There is no
-  separate fence intrinsic; an `atomic_add(&x, 0)` on a private word is
-  today's full fence.
+  (sequentially consistent), returning the old value. These two operations
+  still require x86/x64; ARM64 read-modify-write lowering remains follow-up
+  work.
 - **`wmutex` / `wcond`** give the usual guarantee: everything written
   before `mutex_unlock` is visible to the next `mutex_lock` holder
   (lock is a `lock cmpxchg`, unlock a `lock xadd` plus, on the
@@ -279,15 +279,53 @@ precisely so library code knows where the floor is:
   `atomic_cas`) rely on TSO's plain-store-is-release. They are correct
   on x86/x64 only.
 
-Not provided yet, and follow-up compiler work: portable acquire loads,
-release stores, relaxed atomics and fences (`ldar`/`stlr`/`dmb` on
-arm64, plain moves plus `mfence` on x86). arm64 rejects host atomics at
-compile time and has no threads, but its plain loads and stores are
-weakly ordered, so **lock-free code must not assume x86 ordering on
-arm64**: when threads land there, every flag-publication idiom above
-needs explicit acquire/release, while code that synchronizes only
-through `wmutex`, `wcond`, `task_xchan` and `lib/executor.w` keeps
-working once those are ported.
+The import-free word access and fence intrinsics are portable across
+x86, x64 (including win64), ARM64 Linux and ARM64 Darwin:
+
+| Intrinsic | Result | Memory ordering |
+|-----------|--------|-----------------|
+| `atomic_load(int* p)` | current `int` | acquire |
+| `atomic_store(int* p, int value)` | `void` | release |
+| `atomic_load_relaxed(int* p)` | current `int` | relaxed |
+| `atomic_store_relaxed(int* p, int value)` | `void` | relaxed |
+| `atomic_fence()` | `void` | sequentially consistent full fence |
+
+The pointee must be a valid, naturally aligned `int`: 4 bytes on x86,
+8 bytes on x64 and ARM64. Every access uses the full target word width;
+packed or unaligned storage, smaller fields and invalid pointers are
+outside the contract. Arguments evaluate once, left to right. Ordinary
+symbols already defined at a call site shadow these names. Pointer/value
+mismatches use the usual function-argument warnings (errors with `--strict`),
+and wrong arity is an error. WASM and GPU bodies reject these host intrinsics
+explicitly; they do not silently substitute ordinary accesses.
+
+A release store synchronizes with an acquire load that observes it, making
+all earlier writes visible to operations after the load. Relaxed operations
+are indivisible word accesses, but do not publish unrelated memory. A full
+fence orders earlier reads/writes before later reads/writes and participates
+in sequentially consistent fence ordering (including store/fence/load
+handshakes). Concurrent access to synchronization words must use the atomic
+operations consistently. Use acquire/release publication or locks to protect
+ordinary payload accesses; plain racing loads/stores have no portable
+synchronization guarantee.
+
+x86/x64 use full-width `mov` for acquire/release and relaxed accesses under
+TSO. Their fence is `lock or dword [esp/rsp],0`, preserving the stack word
+and value registers without requiring SSE2 on baseline x86. ARM64 uses
+`ldar` / `stlr`, ordinary `ldr` / `str` for the relaxed forms, and `dmb ish`
+for the fence. These ARM64 operations require normal shared memory in the
+inner-shareable domain; they are not device/MMIO accessors.
+
+`tests/atomic_host_test.w` exercises bidirectional payload publication and
+store-buffer fence ordering with real x86/x64 threads.
+`tests/atomic_order_codegen_test.w` checks instruction widths, folding
+boundaries and A64 decoder/encoder round trips, and cross-compiles the
+portable fixture for ARM64 Linux/Darwin and win64. The fixture also covers
+streaming, required retained AST and optimized retained compilation. ARM64
+runtime ordering still needs an ARM64 execution host; structural checks on
+x86 do not replace that qualification. Thread creation and mutex/condvar
+ports on ARM64 remain separate work: existing runtime flags rely on x86
+TSO until those ports adopt explicit acquire/release operations.
 
 Cross-thread messages should transfer ownership: send an owned buffer
 (the sender never touches it again and the receiver frees it, which
@@ -304,7 +342,7 @@ stack may cross only under a join-before-return wait
 |--------------|-------|
 | x86 Linux    | works (original stubs, now with futex join, join reclamation, atomics + mutex/condvar, worker pool) |
 | x64 Linux    | works (new stubs, this project; same atomics + mutex/condvar, worker pool) |
-| arm64 Linux  | no `thread_create` stub yet; `sys_clone`/futex are one syscall each away (`clone` 220, `futex` 98); host atomics need LSE or ll-sc emitters, `grammar/atomic_builtin.w` rejects them until then |
+| arm64 Linux  | no `thread_create` stub yet; `sys_clone`/futex are one syscall each away (`clone` 220, `futex` 98); acquire/release loads/stores and fences work; atomic add/cas still need LSE or ll-sc emitters |
 | arm64_darwin | needs `bsdthread_create` + Mach futex equivalents (`ulock_wait`/`ulock_wake`); `sys_clone` is already an ENOSYS stub |
 | win64        | needs `CreateThread` + `WaitOnAddress`; the Unix-primitive stubs return `-1` (the `lock xadd`/`cmpxchg` atomics themselves are OS-independent x86 and already emit for PE) |
 | wasm32/WASI  | no threads (wasm threads proposal + shared memory; `thread_create` is a trap stub in `wasm_module.w`) |
@@ -327,7 +365,7 @@ path survives as the `parallel_for_spawn` fallback).
    (`ldadd`/`cas`) or an ll-sc loop behind the same
    `alu_atomic_add`/`alu_atomic_cas` seam, plus the target_isa
    dispatch the limb intrinsics use; then `grammar/atomic_builtin.w`
-   can lift its `target_isa != 0` rejection.
+   can allow add/cas on ARM64 as well as the existing ordered loads/stores.
 2. **Device/host atomic parity**: `atom.cas.b32` for `atomic_cas` in
    kernels (currently a compile error), and host `atomic_min`/
    `atomic_max` via a cmpxchg loop if a consumer appears.

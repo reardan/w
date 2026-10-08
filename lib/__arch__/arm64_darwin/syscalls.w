@@ -426,6 +426,11 @@ int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrle
 int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
 	return syscall7(105, sockfd, level, optname, optval, optlen, 0)
 
+# optlen is an in/out pointer to a 32-bit socklen_t.
+int sys_getsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	return syscall7(118, sockfd, level, optname, optval, optlen, 0)
+
+
 # Darwin has no getrandom syscall, so there is no number to put here.
 # Return -38 (ENOSYS-style, like the other stubs) so callers such as
 # libs/standard/crypto/random.w take their /dev/urandom fallback path.

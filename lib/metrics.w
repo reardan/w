@@ -5,7 +5,7 @@ histogram and an optional ring of structured events. Every structure is
 sized once at creation; nothing here grows with traffic, and no
 external metrics dependency is involved.
 
-	metrics* m = metrics_new(16)              # standard ids + 10 custom
+	metrics* m = metrics_new(16)              # standard ids + 9 custom
 	metrics_enable_latency(m)                 # io_latency_us histogram
 	metrics_enable_events(m, 64)              # newest 64 events kept
 	metrics_add(m, METRIC_ALLOC_FAILURES, 1)
@@ -19,12 +19,12 @@ external metrics dependency is involved.
 The standard ids (METRIC_*) cover the counters the reliable-services
 design asks for: pending tasks, queued jobs and bytes, blocked workers,
 allocation failures and open descriptors; I/O latency is the histogram.
-Producers set them: task_dump_fd's scheduler counts (lib/task.w,
-active_count and ready.length) feed METRIC_TASKS_PENDING, a bounded
-executor feeds the queue and worker gauges, arena/mem_budget failure
-counters (lib/arena.w) feed METRIC_ALLOC_FAILURES, and
-metrics_sample_open_fds reads /proc/self/fd. lib/transport.w can time
-every read/write into the histogram (transport_set_metrics).
+Optional producers are wired by lib/service_metrics.w: its scheduler,
+executor, arena and budget samplers copy owner counters without adding
+allocations or callbacks to their hot paths. Executor sampling takes its
+lock; other samplers run on the owner's thread. metrics_sample_open_fds
+reads /proc/self/fd. lib/transport.w can time every read/write into the
+histogram (transport_set_metrics).
 
 Counters saturate at the largest int instead of wrapping. The event
 ring keeps the newest events, overwriting the oldest and counting each
@@ -50,7 +50,8 @@ const int METRIC_BYTES_QUEUED = 2
 const int METRIC_WORKERS_BLOCKED = 3
 const int METRIC_ALLOC_FAILURES = 4
 const int METRIC_FDS_OPEN = 5
-const int METRICS_STANDARD_COUNT = 6
+const int METRIC_WORKERS_RUNNING = 6
+const int METRICS_STANDARD_COUNT = 7
 
 
 # Histogram bucket 0 holds values <= 0; bucket k (1..30) holds
@@ -258,6 +259,7 @@ metrics* metrics_new(int capacity):
 	metrics_register(m, c"workers_blocked", METRICS_KIND_GAUGE)
 	metrics_register(m, c"alloc_failures", METRICS_KIND_COUNTER)
 	metrics_register(m, c"fds_open", METRICS_KIND_GAUGE)
+	metrics_register(m, c"workers_running", METRICS_KIND_GAUGE)
 	return m
 
 

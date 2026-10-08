@@ -314,3 +314,79 @@ void test_transport_waits_park_tasks_not_the_thread():
 	assert_equal(IO_TIMED_OUT, st.timeout_status)
 	transport_free(st.reader)
 	transport_free(st.writer)
+
+
+# An adapter may report a confirmed prefix together with its failure.
+int transport_test_partial_failure(void* context, char* buf, int len, int timeout_ms, io_result* r):
+	return io_result_set(r, 3, IO_IO_ERROR, 5)
+
+
+int transport_test_noop_close(void* context, io_result* r):
+	return io_result_set(r, 0, IO_OK, 0)
+
+
+void test_transport_keeps_adapter_partial_failure_count():
+	transport* t = transport_new(malloc(1), transport_test_partial_failure, transport_test_partial_failure, transport_test_noop_close, 0)
+	io_result r
+	assert_equal(IO_IO_ERROR, transport_write_all(t, c"abcdef", 6, &r))
+	assert_equal(3, r.transferred)
+	assert_equal(5, r.native_error)
+	char* buf = cast(char*, malloc(6))
+	assert_equal(IO_IO_ERROR, transport_read_exact(t, buf, 6, &r))
+	assert_equal(3, r.transferred)
+	assert_equal(5, r.native_error)
+	transport_free(t)
+	free(buf)
+
+
+generator int transport_test_ready_cancelled(transport* t):
+	io_result r
+	char* buf = cast(char*, malloc(4))
+	task_deadline_scope scope
+	task_deadline_enter(&scope, 0)
+	assert_equal(IO_TIMED_OUT, transport_read_some(t, buf, 1, &r))
+	assert_equal(0, r.transferred)
+	task_deadline_exit(&scope)
+	task_cancel(task_current())
+	assert_equal(IO_CANCELLED, transport_read_some(t, buf, 1, &r))
+	assert_equal(0, r.transferred)
+	assert_equal(IO_CANCELLED, transport_write_all(t, c"x", 1, &r))
+	# Shielded cleanup can still consume the byte neither check touched.
+	task_current().shielded = 1
+	assert_equal(IO_OK, transport_read_some(t, buf, 1, &r))
+	assert_equal(113, buf[0])
+	free(buf)
+
+
+void test_transport_ready_io_honors_task_cancellation_and_deadline():
+	transport* a = 0
+	transport* b = 0
+	transport_test_pair(&a, &b)
+	io_result r
+	assert_equal(IO_OK, transport_write_all(b, c"q", 1, &r))
+	task_scheduler* s = task_scheduler_new()
+	task_spawn(s, transport_test_ready_cancelled(a))
+	assert_equal(0, task_run(s))
+	task_scheduler_free(s)
+	transport_free(a)
+	transport_free(b)
+
+
+int transport_test_wait_active():
+	return 1
+
+
+int transport_test_wait_cancelled(int fd, int events, int timeout_ms):
+	return 0 - IO_ERRNO_ECANCELED
+
+
+void test_transport_wait_preserves_synthetic_task_cancellation():
+	io_wait_fn* saved_wait = io_wait_hook
+	io_wait_active_fn* saved_active = io_wait_active_hook
+	io_wait_hook = transport_test_wait_cancelled
+	io_wait_active_hook = transport_test_wait_active
+	io_result r
+	assert_equal(IO_CANCELLED, transport_socket_wait(-1, poll_in, 100, &r))
+	assert_equal(IO_ERRNO_ECANCELED, r.native_error)
+	io_wait_hook = saved_wait
+	io_wait_active_hook = saved_active

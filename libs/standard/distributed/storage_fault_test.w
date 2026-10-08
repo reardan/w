@@ -202,3 +202,49 @@ void test_table_recovery_eio_preserves_manifest():
 	free(value)
 	lsm_close(tree)
 	fake_fs_free(fs)
+
+
+# Opening the adapter and replaying into a fresh Raft node are separate
+# I/O operations. A successful initial scan cannot guarantee that the
+# second open/read succeeds: service recovery must return failure,
+# preserve the acknowledged log, and allow a later retry.
+void test_raft_recovery_open_and_read_failures():
+	for learner in range(2):
+		for fault in range(4):
+			fake_fs* fs = fake_fs_new(41)
+			wal_recovery rep
+			raft_wal* rw = raft_wal_open_policy_with_ops(fs.ops, c"raft", WAL_RECOVER_STRICT_TRUNCATE, &rep)
+			assert1(rw != 0)
+			list[int] peers = new list[int]
+			peers.push(2)
+			raft* live = 0
+			if (learner): live = raft_new_learner(1, peers, 100, 200, 20, 1)
+			else: live = raft_new(1, peers, 100, 200, 20, 1)
+			u64_set_int(live.current_term, 7)
+			live.voted_for = 2
+			int wrote = 0
+			assert_equal(IO_OK, raft_wal_persist(rw, live, &wrote))
+			assert_equal(1, wrote)
+			raft_free(live)
+			int size = fake_fs_file_size(fs, c"raft")
+			if (fault == 0): fake_fs_fail_nth(fs, FAKE_FS_OP_OPEN, 1, FAKE_FS_EIO)
+			if (fault == 1): fake_fs_fail_nth(fs, FAKE_FS_OP_OPEN, 1, 24)  # EMFILE
+			if (fault == 2): fake_fs_fail_nth(fs, FAKE_FS_OP_READ, 1, FAKE_FS_EIO)
+			if (fault == 3): fake_fs_fail_nth(fs, FAKE_FS_OP_READ, 3, FAKE_FS_EIO)
+			raft* recovered = 0
+			if (learner): recovered = raft_wal_recover_learner(rw, 1, peers, 100, 200, 20, 1)
+			else: recovered = raft_wal_recover(rw, 1, peers, 100, 200, 20, 1)
+			assert1(recovered == 0)
+			assert_equal(size, fake_fs_file_size(fs, c"raft"))
+			assert_equal(0, raft_wal_failed(rw))
+			if (learner): recovered = raft_wal_recover_learner(rw, 1, peers, 100, 200, 20, 1)
+			else: recovered = raft_wal_recover(rw, 1, peers, 100, 200, 20, 1)
+			assert1(recovered != 0)
+			assert1(u64_eq(recovered.current_term, rw.term))
+			assert_equal(2, recovered.voted_for)
+			assert_equal(IO_OK, raft_wal_persist(rw, recovered, &wrote))
+			assert_equal(0, wrote)
+			raft_free(recovered)
+			raft_wal_close(rw)
+			peers.free()
+			fake_fs_free(fs)

@@ -30,6 +30,13 @@ int main():
 		if (atomic_cas(&value, (1 << 40) + 3, 7) != (1 << 40) + 3): return 12
 		if (value != 7): return 13
 	if (ast_atomic_shadow() != 30): return 14
+	ast_atomic_order = 0
+	atomic_store(ast_atomic_pointer(&value), ast_atomic_value(31, 2))
+	if (ast_atomic_order != 12): return 15
+	if (atomic_load(&value) != 31): return 16
+	atomic_fence()
+	atomic_store_relaxed(&value, -4)
+	if (atomic_load_relaxed(&value) != -4): return 17
 	return 0
 
 # Declared after the intrinsic call sites: the ordinary symbol shadows

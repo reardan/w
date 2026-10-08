@@ -1,15 +1,20 @@
 /*
-Atomic intrinsics: the GPU forms (docs/projects/cuda.md Stage 4) plus
-the host x86/x64 forms (docs/projects/threads.md staging item 3):
+Atomic intrinsics: GPU read-modify-writes (docs/projects/cuda.md Stage 4),
+x86/x64 read-modify-writes, and portable host ordering (threads.md):
 
   int     atomic_add(int* p, int v)         old value; gpu + host x86/x64
   int     atomic_min(int* p, int v)         signed; int* only; gpu only
   int     atomic_max(int* p, int v)         signed; int* only; gpu only
   float32 atomic_add(float32* p, float32 v) gpu only
   int     atomic_cas(int* p, int expected, int desired)  host x86/x64 only
+  int     atomic_load(int* p)             acquire; host x86/x64/arm64
+  void    atomic_store(int* p, int v)      release; host x86/x64/arm64
+  void    atomic_fence()                  seq-cst; host x86/x64/arm64
+  int     atomic_load_relaxed(int* p)     relaxed; host x86/x64/arm64
+  void    atomic_store_relaxed(int* p, int v) relaxed; host x86/x64/arm64
 
-Each returns the value at *p from before the update (the PTX atom
-result operand / the x86 fetched value), so the shared name means the
+The read-modify-write forms return the old value (the PTX atom result
+operand / the x86 fetched value), so the shared name means the
 same thing on both sides of a kernel launch. In device (PTX) bodies
 the pointer must reference device-accessible global memory
 (gpu_alloc/gpu_device_alloc); atomics on stack locals are undefined on
@@ -21,8 +26,9 @@ word width (lock xadd / lock cmpxchg, code_generator/x86.w), a full
 barrier on x86/x64; lib/thread.w's mutex and condvar build on it.
 atomic_min/atomic_max stay device-only (a host lowering needs a
 cmpxchg loop) and atomic_cas host-only (the PTX twin, atom.cas.b32, is
-unimplemented); the arm64 (LSE/ll-sc) and wasm (threads proposal) host
-ports are staged in docs/projects/threads.md.
+unimplemented); their arm64 (LSE/ll-sc) and wasm (threads proposal) ports
+are staged in docs/projects/threads.md. Word loads/stores and fences have
+x86/x64 and ARM64 lowerings now, with ordering documented there.
 
 The intrinsics parse as ordinary calls — no new syntax, so the
 parser-generator grammar is untouched — and are not reserved words: a
@@ -36,12 +42,18 @@ int expression();
 
 
 # Intrinsic index for the current token: 1 atomic_add, 2 atomic_min,
-# 3 atomic_max, 4 atomic_cas; 0 when the token is not an intrinsic name.
+# 3 atomic_max, 4 atomic_cas, 5 load, 6 store, 7 fence, 8/9 relaxed
+# load/store; 0 when the token is not an intrinsic name.
 int atomic_builtin_kind():
 	if (peek(c"atomic_add")): return 1
 	if (peek(c"atomic_min")): return 2
 	if (peek(c"atomic_max")): return 3
 	if (peek(c"atomic_cas")): return 4
+	if (peek(c"atomic_load")): return 5
+	if (peek(c"atomic_store")): return 6
+	if (peek(c"atomic_fence")): return 7
+	if (peek(c"atomic_load_relaxed")): return 8
+	if (peek(c"atomic_store_relaxed")): return 9
 	return 0
 
 
@@ -49,7 +61,12 @@ char* atomic_builtin_name(int kind):
 	if (kind == 1): return c"atomic_add"
 	if (kind == 2): return c"atomic_min"
 	if (kind == 3): return c"atomic_max"
-	return c"atomic_cas"
+	if (kind == 4): return c"atomic_cas"
+	if (kind == 5): return c"atomic_load"
+	if (kind == 6): return c"atomic_store"
+	if (kind == 7): return c"atomic_fence"
+	if (kind == 8): return c"atomic_load_relaxed"
+	return c"atomic_store_relaxed"
 
 
 int atomic_builtin_ready():
@@ -67,14 +84,21 @@ int atomic_builtin_expr():
 	char* name = atomic_builtin_name(kind)
 	int on_gpu = 0
 	if (target_isa == 3): on_gpu = 1
+	if (on_gpu && (kind >= 5)): error(c"host atomics are not available on this target yet")
 	if (on_gpu && (kind == 4)): error(c"atomic_cas is not available in gpu code yet")
 	if (on_gpu == 0):
 		if ((kind == 2) || (kind == 3)):
 			error(c"atomic_min/atomic_max are only available in gpu code")
-		if (target_isa != 0): error(c"host atomics are not available on this target yet")
+		if (target_isa != 0):
+			if ((target_isa != 1) || (kind < 5)):
+				error(c"host atomics are not available on this target yet")
 	int int_type = type_lookup(c"int")
 	get_token()
 	expect(c"(")
+	if (kind == 7):
+		if (peek(c")") == 0): error2(c"')' expected in ", name)
+		alu_atomic_fence()
+		return type_value(type_lookup(c"void"))
 
 	# The target pointer: int* (all ops), or float32* for gpu atomic_add.
 	# The gpu path must classify the pointee hard (it picks the emitted
@@ -103,9 +127,19 @@ int atomic_builtin_expr():
 		int host_pointer_type = type_get_next_pointer(int_type)
 		limb_builtin_check_argument(name, 0, host_pointer_type, got)
 		coerce(host_pointer_type, got)
+	if ((kind == 5) || (kind == 8)):
+		if (peek(c")") == 0): error2(c"')' expected in ", name)
+		alu_atomic_load(kind == 5)
+		return type_value(int_type)
 	push_slot()
 
 	expect(c",")
+	if ((kind == 6) || (kind == 9)):
+		limb_builtin_int_argument(name, 1, int_type)
+		pop_ebx_slot()
+		if (peek(c")") == 0): error2(c"')' expected in ", name)
+		alu_atomic_store(kind == 6)
+		return type_value(type_lookup(c"void"))
 	if (kind == 4):
 		# expected and desired: the pointer sits pushed under the
 		# expected value; the emitter takes the pointer in ebx, expected
