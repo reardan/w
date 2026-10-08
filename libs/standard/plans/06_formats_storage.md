@@ -136,6 +136,10 @@ Consult these CPython sources first:
 
 ### Phase 6: SQLite
 
+Implemented in `libs.standard.sql.client` as part of issue #495; see
+[SQL connectivity](../../../docs/projects/sql.md) for the native adapters,
+parameter binding, tests, and current platform limits.
+
 - Use `c_import`/`extern` against `libsqlite3` only if available in environment;
   otherwise gate tests.
 - Keep a very small prepared-statement API.

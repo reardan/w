@@ -90,6 +90,18 @@ modules:
 	lib.wmeta
 	lib.__arch__.context
 	lib.__arch__.syscalls
+	libs.standard.sql.client
+	libs.standard.sql.common
+	libs.standard.sql.sqlite
+	libs.standard.sql.sqlite_native
+	libs.standard.sql.postgres
+	libs.standard.sql.postgres_native
+	libs.standard.sql.mysql
+	libs.standard.sql.mysql_native
+	libs.standard.sql.sqlserver
+	libs.standard.sql.sqlserver_native
+	libs.standard.sql.oracle
+	libs.standard.sql.oracle_native
 	structures.deque
 	structures.hash_table
 	structures.heap
