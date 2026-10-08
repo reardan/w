@@ -2644,6 +2644,265 @@ compiling `w.w` is 10.76 G Ir by default and 8.60 G with `--streaming`
 | `strcmp_sort` | 2,517,301 → 2,517,301 | 2,528,707 → 2,528,707 |
 | `self` | 8,176,470 → 10,752,699 | 5,157,712 → 6,584,194 |
 
+### A8 — narrow integer promotion and rotates (2026-10-08)
+
+**What landed.** `compiler/regalloc_scan.w`'s `regalloc_type_ok` accepts
+`int32` and `uint32` next to `int` and the pointers: on x86 the two are
+the machine word and promote exactly like `int`; on x64 they take a
+*narrow register*. The rule for a narrow register is that it always
+holds the value as the memory path's load would have promoted it —
+zero-extended for `uint32` (`mov eax,[slot]`), sign-extended for
+`int32` (`movsxd rax,[slot]`) — so every reader of a promoted register
+stays word-sized and unchanged: `mov rax,R`, the shuttle and compare
+folds (`add rax,R`, `cmp R,X`), an addressing-mode index, a `push`.
+Only the writers know. `code_generator/x86.w` keeps a per-register
+kind (`regalloc_reg_kind`: 0 word, 1 zero-extend, 2 sign-extend, two
+masks in `code_emitter.w`) that `regalloc_scan.w` binds whenever it
+hands a register to a symbol (`regalloc_declare`, the prologue's
+argument loads, `rl_add` for the loop registers) and clears when the
+symbol gives it up, and:
+
+- `mov_reg_eax` emits `mov R32,eax` (89 /r without REX.W: the 32-bit
+  write zero-extends) for a `uint32` and `movsxd R,eax` (REX.W 63 /r)
+  for an `int32` — the truncating store and the extending load of the
+  memory path in one instruction;
+- `regalloc_reg_store` runs R3's in-place fold at 32 bits
+  (`emit_alu_reg_*_w(wide 0, ...)`: `add r12d,1`, `add r12d,esi`,
+  `imul r12d,r12d,imm`, `and r12d,[rsp+d]`), followed by `movsxd
+  R,R32` for an `int32`, since the low 32 bits of a sum, difference,
+  product or bitwise result depend only on the low 32 bits of the
+  operands; its `mov R,imm` fold takes the 32-bit form for every value
+  of a `uint32` (the low 32 bits zero-extended are what the store and
+  load would leave), and the two word rules — which already sign-extend
+  — for an `int32`;
+- the frame-home loads (`mov_reg_ebp_disp`: the loop registers at
+  loop entry and after a hidden call's spill, the promoted arguments
+  in the prologue) read the narrow width (`mov r8d,[rbp-0x68]`,
+  `movsxd r12,[rbp+0x18]`), because the word's high half is stale
+  after a 32-bit store exactly as it is for a stack read; the
+  write-backs stay word-sized stores of the extended value;
+- the for-loop steps (`add_reg_int8`, `add_reg_eax`) take the same
+  forms, although a range loop's variable is always an `int`.
+
+A shift by a variable count is never folded in place (it was not before
+either), so `u << n` with `n >= 32` keeps the memory path's result on
+each width (the promoted 64-bit shift, then the truncating store on
+x64; the count mod 32 on x86), and `tests/narrow_regs_test.w` pins
+both. `--no-narrow-regs` keeps the narrow types on the stack and is
+bit 128 of `tests/regalloc_diff_test.w`'s sweep (in `opt_out_all`, with
+its own reference compiler `bin/regalloc_diff/wv2_nonarrow`).
+
+Three changes the row did not name were needed to collect the estimate:
+
+- the pre-scan counted `rotr(` as a call (`rs_lp_has_call`), so the
+  loops of the rewritten `sha256_block_w` owned no registers and the
+  x64 program ran 2.5% *more* instructions than before; the inline
+  intrinsics (`shr`, `rotl`, `rotr`, `popcount`, `clz`, `ctz`,
+  `mul_hi`, `mul_wide`, `add_carry`) are now no call to the scan when
+  no symbol of that name is in scope (`rs_intrinsic_name`, the
+  parsers' own shadowing rule; a later local of that name is a scan
+  miss the emitter spills around, like any other);
+- a constant rotate or shift count arrives at `alu_rotr32`/`alu_rotl32`/
+  `alu_shr32` through `pop_ebx`'s register shuttle (`mov ebx,<left>;
+  mov eax,imm`, shuttle kind 1), so the five-instruction `cl` form
+  collapses to `[mov rax,R ;] ror eax,imm8` (`alu_bit_shuttle_imm`:
+  C1 /0, /1, /5 ib, the count mod 32 as the hardware takes it) — 18
+  rotates per SHA-256 round;
+- `hh = g` between two promoted locals was `mov rax,r8; mov r10d,eax`:
+  a store of a register read with the value dead is now one `mov
+  R,R2` (`mov r10d,r8d`, `movsxd` for an `int32`, `mov r,r` for a
+  word) in `regalloc_reg_store`.
+
+The rotate intrinsics already rotate within 32 bits on every target
+(`ror eax,cl` zero-extends on x64, `rorv w0` on arm64), so nothing was
+needed for narrow operands there.
+
+**The libraries.** `lib/sha256.w`'s `sha256_block_w` is written on
+`uint32` locals with `rotr` and `shr`: no `& mask` in either loop, no
+mask local, `~e & g` for `ch`. `h` and `w` stay `int*` words (a
+`uint32` stored into one is its low 32 bits zero-extended, which is
+what the masked code wrote), so `code_generator/macho_sign.w` and the
+other callers are untouched, and the helpers `sha256_rotr`/`sha256_shr`/
+`sha256_ch`/... stay as they were for `libs/x/unsafe/sha1.w` and
+`md5.w`. `structures/hash_table.w`'s `__w_hash_sip` keeps its state
+words `v0..v3` and the message word as `uint32`: the five `& mask` per
+round and the mask local go, nothing else changes (the brief asked for
+a report either way: the diff is 20 lines and the gain is real, below).
+Both files are seed-compiled: the pinned seed accepts `uint32`, `rotr`
+and `shr`, and every digest and checksum agrees between a seed-built
+and a `bin/wv2`-built program.
+
+**The audit of `uint32` arithmetic** (the row's second item) found no
+redundant mask or re-narrowing to remove in `grammar/` or the retained
+twins: the only widening is the zero-extending load (`promote_uint32_eax`,
+one instruction either way), the only narrowing is the 32-bit store,
+and `uint32` is not an "unsigned word" on x64 (`type_is_unsigned_word`),
+so its `>>`, `/` and comparisons run the signed word forms on the
+zero-extended value, which are exact. What a `uint32` program paid was
+the user-written `& mask` idiom around every store, and that is what
+the narrow registers and the truncating stores remove.
+
+**Measurements** (`./wbuild bench`: callgrind Ir in thousands, which is
+deterministic; best-of-3 wall ms on the shared 4-core container with
+another agent's suite running, so the ms columns are noise-level
+evidence only; before = the thread branch's committed
+`tests/bench/baseline.txt` at 8defad4, i.e. A4, A1, A6, A2, A7, A5, A3
+and main, which this unit was merged with before its final gates;
+after = the tree at the end of this section):
+
+| program | x86 kIr before → after | x86 ms | x64 kIr before → after | x64 ms |
+| --- | --- | --- | --- | --- |
+| `sum` | 2,400,104 → 2,400,104 (+0.0%) | 187 → 176 | 2,400,092 → 2,400,092 (+0.0%) | 155 → 238 |
+| `sieve` | 992,429 → 992,429 (+0.0%) | 290 → 265 | 989,983 → 989,983 (+0.0%) | 264 → 320 |
+| `sha256_1m` | 4,143,048 → 3,150,043 (-24.0%) | 213 → 204 | 3,782,849 → 3,002,967 (-20.6%) | 195 → 177 |
+| `siphash_keys` | 3,239,692 → 2,812,515 (-13.2%) | 564 → 529 | 3,463,896 → 2,878,010 (-16.9%) | 608 → 539 |
+| `inflate_corpus` | 3,922,778 → 3,922,778 (+0.0%) | 243 → 290 | 3,695,921 → 3,695,639 (-0.0%) | 264 → 219 |
+| `regex_backtrack` | 3,890,588 → 3,890,588 (+0.0%) | 267 → 273 | 3,982,745 → 3,982,745 (+0.0%) | 252 → 241 |
+| `matmul_256` | 3,885,572 → 3,885,572 (+0.0%) | 281 → 233 | 2,539,639 → 2,539,639 (+0.0%) | 272 → 229 |
+| `strcmp_sort` | 2,469,465 → 2,469,465 (+0.0%) | 301 → 311 | 2,357,606 → 2,357,606 (+0.0%) | 395 → 380 |
+| `self` | 10,887,252 → 10,720,171 (-1.5%) | 1245 → 1407 | 6,268,180 → 5,994,810 (-4.4%) | 973 → 910 |
+
+`sha256_1m` is −20.6% on x64 and −24.0% on x86 (on the pre-A3 base
+9bd175d the same change measured −22.6% / −24.3%: A3's parked
+temporaries and A8's narrow registers remove different instructions,
+and most of each unit's gain survives the other); `siphash_keys` −16.9%
+on x64 and −13.2% on x86 (`__w_hash_sip`); the self-compile, whose
+build-id hashes every emitted byte and whose symbol tables hash every
+name, −4.4% on x64 and −1.5% on x86. The other six corpus programs
+declare no `int32`/`uint32` local, use no intrinsic and have no
+register-to-register local copy with a dead value, so they are
+unchanged to the instruction (`inflate_corpus` x64 −282 Ir: the
+runtime's hash). Nothing reaches the arm64, win64 or wasm emitters: the
+scan returns before ranking when `target_isa != 0 || target_os != 0`
+and the new notes are x86-family code, so those images differ from the
+base only where the two library rewrites compile to fewer instructions
+(`verify_arm64` and the retained/streaming six-target comparison of
+`ast_expression_verify` pass).
+
+**The hot loop.** The head of the SHA-256 round on x64 (`bin/wv2 x64
+tests/bench/sha256_1m.w`, `objdump -d -Mintel`, both trees with A3):
+`bs1` and `ch` for `e` in `r14`, `f`/`g` in loop registers. 29
+instructions before, 19 after; the whole round 114 → 80, the function
+340 → 301 lines:
+
+```
+; before (8defad4, with A3)              ; after (A8)
+mov    rax,r14          ; (e >> 6)       mov    rax,r14
+sar    rax,0x6                           ror    eax,0x6       ; rotr(e, 6)
+and    rax,0x3ffffff                     mov    rcx,rax
+mov    rcx,rax                           mov    rax,r14
+mov    rax,r14          ; | (e << 26)    ror    eax,0xb       ; rotr(e, 11)
+shl    rax,0x1a                          xor    rax,rcx
+or     rax,rcx                           mov    rcx,rax
+mov    rcx,rax                           mov    rax,r14
+mov    rax,r14          ; (e >> 11)      ror    eax,0x19      ; rotr(e, 25)
+sar    rax,0xb                           xor    rax,rcx
+and    rax,0x1fffff                      push   rax           ; bs1
+mov    rdx,rax                           mov    rax,r14
+mov    rax,r14                           and    rax,rdi       ; e & f
+shl    rax,0x15                          mov    rcx,rax
+or     rax,rdx                           mov    rax,r14
+xor    rax,rcx                           not    rax
+mov    rcx,rax                           and    rax,r8        ; ~e & g
+mov    rax,r14          ; (e >> 25)      xor    rax,rcx       ; ch
+sar    rax,0x19                          push   rax
+and    rax,0x7f
+mov    rdx,rax
+mov    rax,r14
+shl    rax,0x7
+or     rax,rdx
+xor    rax,rcx
+push   rax
+mov    rax,r14          ; e & f
+and    rax,r8
+mov    rcx,rax
+mov    rax,r14          ; (e ^ mask) & g
+xor    rax,r15
+and    rax,r9
+xor    rax,rcx
+push   rax
+```
+
+and the end of the round, the eight-way rotation of the state: `a`,
+`b`, `e` are `r13`, `r15`, `r14`, `c d f g hh` the loop registers
+`rsi r9 rdi r8 r10` (before: `mask` held `r15`, `b` was on the stack):
+
+```
+; before (8defad4, with A3)              ; after (A8)
+mov    rax,r10          ; hh = g         mov    r10d,r8d      ; hh = g
+mov    QWORD PTR [rsp+0x30],rax          mov    r8d,edi       ; g = f
+mov    rax,r9           ; g = f          mov    edi,r14d      ; f = e
+mov    r10,rax                           mov    rbx,r9        ; e = d + t1
+mov    rax,r14          ; f = e          mov    eax,DWORD PTR [rsp+0x18]
+mov    r9,rax                            add    rax,rbx
+mov    rcx,QWORD PTR [rsp+0x18] ; e =    mov    r14d,eax
+mov    rax,r8           ; (d + t1)       mov    r9d,esi       ; d = c
+add    rax,rcx          ;  & mask        mov    esi,r15d      ; c = b
+and    rax,r15                           mov    r15d,r13d     ; b = a
+mov    r14,rax                           mov    eax,DWORD PTR [rsp+0x18]
+...                                      mov    rbx,rax       ; a = t1 + t2
+mov    rax,r13          ; a = (t1 + t2)  mov    eax,DWORD PTR [rsp+0x0]
+add    rax,rcx          ;  & mask        add    rax,rbx
+and    rax,r15                           mov    r13d,eax
+mov    r13,rax
+```
+
+What remains is the `push` of each sub-expression A3's register stack
+cannot park across the next operand's register read, and the 32-bit
+stack loads of the state words the ten registers cannot hold (`t1`,
+`t2`, `bs1`, `ch`, `maj`, `bs0` are declared inside the loop and
+rank below the eight state words). A narrow register holds a
+word-sized value at every interface A3 touches — `regload_note`,
+`push_left_reg`, the shuttle operands, `ers_slot_reg` — so A3's folds
+needed no narrow awareness: the merge touched one function
+(`emit_alu_reg_esp`, where A3's parked-word check and A8's width
+parameter compose) and the sweep's bit table.
+
+**What the unit does not claim.** `int16`/`uint16`/`byte` locals stay
+on the stack (the row kept to the two 32-bit types). An `int32`
+in-place operation costs the extra `movsxd R,R32`; a `uint32` costs
+nothing, which is the type the libraries use. Expression temporaries
+are still word-sized (`uint32 x; x + 1` promotes to a 64-bit sum and the
+store truncates: the memory path's semantics, bit for bit, which the
+differential sweep oracles). Nothing reaches arm64, win64 or wasm: the
+scan returns before ranking when `target_isa != 0 || target_os != 0`,
+and their self-host images are byte-identical to the base commit's
+apart from the two library rewrites (which compile to fewer
+instructions there too; `verify_arm64` passes).
+
+**Deviation from the plan.** The seed's `>>` on a `uint32` is an
+arithmetic shift on its 32-bit host (the unsigned-word rule for `uint32`
+postdates the pinned release), so the seed-built stage hashed wrongly
+with a plain `x >> 3`; the schedule's two logical shifts are the `shr`
+intrinsic, which the seed lowers correctly. The three emitter items
+above (the scan's intrinsic rule, the constant-count rotate, the
+register-to-register store) were not in the row but were necessary to
+make `sha256_1m` move at all once its loops lost their registers; they
+are notes in `x86.w` and a name test in the scan, and the sweep covers
+them with every other opt-out. Promotion of the narrow types on x86 is
+enabled too (the register is the word there), so x86's two registers
+now rank `uint32` locals with the `int`s; `sha256_block_w` on x86 gained
+from that and from the rotates.
+
+Gates: `check --json w.w` (both widths, clean), `verify`, `verify_x64`,
+`verify_pgo`, `verify_arm64`, `ast_expression_verify`,
+`ast_required_expression_verify`, `ast_opt_verify`, `ast_expression_test`,
+`ast_retained_emit_test`, `elf_pie_test`, `asm_x64_test` (the x64
+self-host carries the new forms: 4,184 functions, 403,275 instructions,
+0 unknown, 0 mismatch), `asm_fuzz_x64_test`,
+`asm_x86_asm_test`, `asm_fuzz_x86_test`, `narrow_regs_test` and its
+`_64`, `--no-narrow-regs`, `--no-regs` and `--inline` twins,
+`regalloc_test`, `sha256_test`, `sha2_test`, `hmac_test`,
+`net_tls_test`, the focused targets of `bin/wtest changed` for the diff,
+`regalloc_diff_test` (416 compared, 299 skipped, 0 mismatches over the
+40-way sweep: ten builds on each width, eight opt-out-built compilers),
+`tests` (987 targets), `tests_arm64` (29 targets under qemu with
+`QEMU_LD_PREFIX=/usr/aarch64-linux-gnu`), `verify_wasm` through node,
+`bench_compare` and `wbench_compare` against the refreshed baselines,
+`profile_check` (98% of the committed profiles' functions still match,
+so the profiles were not refreshed). `tests_win64` could not run here
+(no `wine`); `tests_gpu` has no device.
+
 ## 9. Reproducing
 
 ```sh
