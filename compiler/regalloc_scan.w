@@ -1569,12 +1569,12 @@ void regalloc_function_scan(int symbol, int is_variadic):
 		rs_scan_body(brace_body)
 	while (rs_lp_depth > 0): rs_lp_close_loop()
 	# The expression register stack (A3) may park in ecx/edx only when
-	# the whole body was seen and nothing in it writes them: a full
-	# pass, or a probe that reached the end without finding a loop.
-	int whole = 0
-	if ((rs_mode == 1) && (rs_abort == 0)): whole = 1
-	if ((rs_mode == 0) && (probe == 2) && (rs_has_loop == 0) && (rs_abort == 0)): whole = 1
-	if (whole && (rs_has_divshift == 0)): ers_hazard = 0
+	# a full pass saw the whole body and nothing in it writes them. A
+	# body the line probe finished without a loop stays hazardous: the
+	# probe sees line-leading tokens only, and --ast-emit-retained
+	# (whose instantiations the probe cannot serve, rs_image_bind) must
+	# reach the same verdict from the full pass as streaming does here.
+	if ((rs_mode == 1) && (rs_abort == 0) && (rs_has_divshift == 0)): ers_hazard = 0
 	if ((rs_mode == 1) && (rs_abort == 0)):
 		regalloc_scanned_functions = regalloc_scanned_functions + 1
 		mask = rs_assign_registers()
