@@ -1211,3 +1211,15 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   unless `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu` is in the environment;
   the sysroot is installed. Direction: `bin/wrun arm64` could export the
   prefix itself when the sysroot exists and the variable is unset.
+- **The wexec lock serialises every `./wbuild` call, including the
+  one that builds `bin/wtest`.** While `regalloc_diff_test` held the
+  lock for a quarter of an hour (unit A9), `./wbuild wtest` failed
+  with "another build is running (wexec lock)", and the `bin/wtest`
+  left over from an older tree then rejected the manifest with a
+  wbuildgen error, so `wtest changed` could not be asked anything
+  until the sweep finished; `./bin/wv2 tools/test_map.w -o bin/wtest`
+  (the source that owns `binary=wtest` — there is no `tools/wtest.w`,
+  which is where the name suggests looking) was the way out. Direction:
+  let `./wbuild wtest` (and `--list`, `manifest`) run without taking
+  the lock, since they write only their own outputs, or print the
+  owning source's compile line in the lock message.

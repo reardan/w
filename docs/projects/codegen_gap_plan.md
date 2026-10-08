@@ -2903,6 +2903,259 @@ self-host carries the new forms: 4,184 functions, 403,275 instructions,
 so the profiles were not refreshed). `tests_win64` could not run here
 (no `wine`); `tests_gpu` has no device.
 
+### A9 — the x86-32 register budget (2026-10-08)
+
+**What landed.** On x86 a loop may own `ecx` and `edx` the way an x64
+loop owns `rsi rdi r8-r11` (R3): `compiler/regalloc_scan.w`'s
+`rl_target_mask` returns the two registers for `word_size == 4`, and
+`regalloc_loop_enter` hands them to the loop's ranked candidates when
+the loop's scan record has neither the call bit nor the shift/division
+bit (`rs_lp_has_divshift`: a shift by a non-literal count, `/` or `%`
+anywhere in the loop or a loop nested in it — a shift by a literal
+folds to `shl eax,imm8` (`shift_imm_fold`) and no longer sets the bit,
+so `(x << 3) | (x >> 29)` keeps its loop eligible; `mul_wide` and
+`add_carry` set it, since their pointer sits in `ecx` from before the
+operand pops to the sequence's end, `rs_intrinsic_holds_ecx`). The
+loop head loads each register from its home, the exit
+region writes it back, calls spill and reload it, exactly as on x64;
+no grammar file changed, so the retained and the streaming front end
+emit the same bytes (`ast_expression_verify`).
+
+What makes x86 different from x64 is where the two registers come from:
+A3's expression parks already use `ecx`/`edx` in every function the
+pre-scan cleared, and a loop register is subtracted from the park set
+for the loop's extent (`regalloc_loop_owned`), so a register given to a
+candidate is a register the loop's expressions lose. On x64 every read
+of a promoted local saves an instruction; on x86 a read folded as a
+memory operand (`cmp R,[esp+d]`, `imul eax,[esp+d]`, `add eax,[esp+d]`)
+costs the same from a slot, so the ranking the x64 loops use (every
+loop-weighted use, `rs_uses`) over-values read-only candidates there:
+the first variant of this unit, which took the x64 rule unchanged,
+made `sha256_1m` 2.4% *slower* on x86. The scan therefore keeps a
+second loop-weighted count per name, `rs_lv`, of the uses a register
+shortens on x86 — writes (a compound assignment or `x = x op ...`
+folds in place, `add R,...`, so those count double), subscript bases
+(A2's `[R+eax*4]` instead of a slot load), one-token indices (`a[i]`
+with `i` the SIB index, no load into `eax`), a compare's left operand
+(`cmp R,X`) and a `for` loop's variable — and ranks x86 loops by it
+(`rs_lp_key`). Each loop also counts its binary-operator runs
+(`rs_lp_ops`, the park sites), and `regalloc_loop_enter` takes a
+candidate only while `value * 8 >= ops` (`rl_x86_ratio_first/second`,
+both 8: 8/4 lost `matmul_256`'s second base register, 16/16 was no
+better anywhere), stopping at the first candidate that fails since
+they are sorted. The hidden end and step words of a range loop are not
+promoted on x86 (`regalloc_loop_hidden`): they are only ever the right
+operand of a compare or an add, folded as memory operands.
+
+The emitters that write `ecx`/`edx` are the other half. Each such
+sequence in `code_generator/x86.w` is bracketed by `rl_hazard_begin(mask)`
+/ `rl_hazard_end(mask)`: a loop-owned register in the mask is stored to
+its home before the sequence and loaded after (`regalloc_hazard_spill`
+/ `regalloc_hazard_reload`, `--stats` counts them as "hazard spills":
+0 in `w.w`), so a loop the scan did not decline — a shift whose
+constant fold fails, an inlined body (A5), a hazard the scan cannot
+spell — compiles correctly, at the cost of two instructions. The
+bracketed sequences are the signed and unsigned division and modulo
+(restructured into `alu_idiv_x86(remainder)` / `alu_udiv_x86(remainder)`
+so the remainder's `mov eax,edx` sits inside the bracket), the
+variable shifts `alu_shl`/`alu_sar`/`alu_shr`, `alu_mul_hi`,
+`alu_mul_wide`, `alu_add_carry`, `alu_popcount32`, `alu_clz32`,
+`alu_ctz32`, and the `cl`-count forms of `alu_shr32`/`alu_rotl32`/
+`alu_rotr32` (`alu_bit_operands` opens the bracket; a constant count
+takes `alu_bit_shuttle_imm` and never touches `ecx`, so
+`lib/sha256.w`'s `rotr(e, 6)` costs its loop nothing). `mov_ecx_eax` —
+`mul_wide`/`add_carry`'s pointer and the atomic `cas`, whose `ecx`
+lives across the pops that follow — cannot be bracketed and asserts
+instead (`regalloc_hazard_assert`: an internal error, never a
+miscompile; the scan declines such loops, `cas` by the call bit, so the
+assert is the fail-closed check of that rule). Every bracket also bumps
+`inline_clobber_count`, which `compiler/inline_table.w` records per
+inlinable body (`has_clobber`) so that `inline_name_is_leaf` refuses,
+on x86, a leaf whose body writes `ecx`/`edx`: a loop may then not own
+registers across an inlined call of it (`--inline`'s twins in the
+test). The audit of the x86 emitter found no other implicit writer:
+the `rep movs`/`stos` helpers, the syscall and FFI shims and the
+`__w_*` runtime calls are real calls on x86 (the scan's call bit), and
+A3's parks exclude the owned registers (`rl_take_register` also skips
+a register that holds a live park, for a declaration inside a loop
+body). `--no-x86-budget` (`--x86-budget` re-enables; `x86_budget_disabled`
+in `code_emitter.w`) keeps the pre-A9 budget and is bit 256 of
+`tests/regalloc_diff_test.w` (its reference compiler
+`bin/regalloc_diff/wv2_nobudget`, in `opt_out_all`, now 479 with A8's
+bit 128). `tests/x86_budget_test.w` (22 functions, run under
+`--no-x86-budget`, `--no-regs`, `-O0`, `--no-expr-regs`,
+`--no-loop-rotate`, `--inline`, `x64` and `x64 --inline`) pins the
+computed values of loops with literal and variable shifts, division and
+modulo in the loop, in a nested loop only and in an inlined callee,
+calls and hidden calls, range loops, pointer arguments as bases, exit
+edges, the intrinsics and nested loops under register pressure; the
+expected values are the `--no-regs` build's.
+
+**Measurements** (`./wbuild bench`: callgrind Ir in thousands, which is
+deterministic; best-of-3 wall ms on the shared 4-core container with
+another agent's suite running, so the ms columns are noise-level
+evidence only; before = the thread branch's committed
+`tests/bench/baseline.txt` at b12f53c, i.e. A8 and everything before
+it, which this unit was merged with before its final gates; after =
+the tree at the end of this section):
+
+| program | x86 kIr before | after | Δ | ms before → after | x64 kIr before | after | Δ |
+|---|---|---|---|---|---|---|---|
+| sum | 2,400,104 | 2,400,091 | −0.0% | 176 → 173 | 2,400,092 | 2,400,092 | 0.0% |
+| sieve | 992,429 | 857,532 | −13.6% | 265 → 266 | 989,983 | 989,983 | 0.0% |
+| sha256_1m | 3,150,043 | 3,012,142 | −4.4% | 204 → 196 | 3,002,967 | 3,002,967 | 0.0% |
+| siphash_keys | 2,812,515 | 2,647,135 | −5.9% | 529 → 536 | 2,878,010 | 2,879,507 | +0.1% |
+| inflate_corpus | 3,922,778 | 3,905,004 | −0.5% | 290 → 272 | 3,695,639 | 3,695,639 | 0.0% |
+| regex_backtrack | 3,890,588 | 3,780,827 | −2.8% | 273 → 254 | 3,982,745 | 3,982,745 | 0.0% |
+| matmul_256 | 3,885,572 | 3,217,092 | −17.2% | 233 → 189 | 2,539,639 | 2,539,639 | 0.0% |
+| strcmp_sort | 2,469,465 | 2,439,919 | −1.2% | 311 → 350 | 2,357,606 | 2,357,606 | 0.0% |
+| self | 10,720,171 | 10,750,876 | +0.3% | 1407 → 1332 | 5,994,810 | 6,016,659 | +0.4% |
+
+The x64 corpus images are byte-identical, so the x64 rows move only
+through the runtime the programs link (`siphash_keys` +0.1%, the hash
+table's x86-only loop shapes are not on this path; the x64 `self` row
+is `bin/wv2_64`, an x64 compiler whose own code is unchanged, compiling
+a tree 700 lines larger). The two `self` rows of `./wbuild bench`
+measure the seed-built `bin/wv2` (x86) and that x64 compiler, so
+neither sees x86 codegen: the x86 +0.3% is the scan's new counters
+running under the seed. The row this unit is for is the bootstrap
+chain's own compiler, `bin/wv3` (built by `bin/wv2`, so x86 code from
+this unit), compiling the current `w.w` under callgrind:
+
+| `bin/wv3` compiling `w.w` | before (b12f53c's wv3) | after | Δ |
+|---|---|---|---|
+| x86 output | 6.355 G | 6.158 G | −3.1% |
+| x64 output | 6.450 G | 6.254 G | −3.0% |
+
+`--stats` counts no hazard spill in `w.w` (every loop the ranking hands
+`ecx`/`edx` is one the scan cleared).
+
+**The hot loop.** `matmul`'s inner loop on x86 (`bin/wv2
+tests/bench/matmul_256.w`, `objdump -d -Mintel`), `k` and `acc` in
+`esi`/`edi` (R2) in both trees. Before, A3 parked `acc` in `ecx` and
+the base `a` in `edx` and the three operands went through the stack
+around the second subscript's load; after, the loop owns `a` in `ecx`
+and `b` in `edx` (two loads at the loop head, two stores at its exit,
+once per 256 iterations), each subscript is one `[R+eax*4]` operand and
+the parks have no register. 22 instructions → 20, nine memory reads →
+seven, three `push`/`pop` pairs → two:
+
+```
+; before (b12f53c, A8)                   ; after (A9)
+mov    ecx,edi          ; acc (park)     mov    eax,edi          ; acc
+mov    edx,[esp+0x30]   ; a (park)       push   eax
+mov    eax,[esp+0xc]    ; i              mov    eax,[esp+0x10]   ; i
+imul   eax,[esp+0x24]   ; * n            imul   eax,[esp+0x28]   ; * n
+add    eax,esi          ; + k            add    eax,esi          ; + k
+mov    edx,[edx+eax*4]  ; a[..]          mov    eax,[ecx+eax*4]  ; a[..]
+mov    eax,[esp+0x2c]   ; b              push   eax
+push   ecx                               mov    eax,esi          ; k
+push   edx                               imul   eax,[esp+0x2c]   ; * n
+push   eax                               add    eax,[esp+0x10]   ; + j
+mov    eax,esi          ; k              mov    eax,[edx+eax*4]  ; b[..]
+imul   eax,[esp+0x30]   ; * n            pop    ebx
+add    eax,[esp+0x14]   ; + j            imul   eax,ebx
+pop    ebx                               pop    ebx
+mov    eax,[ebx+eax*4]  ; b[..]          add    eax,ebx
+pop    ebx                               mov    edi,eax          ; acc =
+imul   eax,ebx                           add    esi,0x1          ; k = k + 1
+pop    ebx                               cmp    esi,[esp+0x24]
+add    eax,ebx                           jl     <top>
+mov    edi,eax          ; acc =
+add    esi,0x1          ; k = k + 1
+cmp    esi,[esp+0x24]
+jl     <top>
+```
+
+`sieve`'s middle loop owns `composite` in `ecx` the same way, so the
+strided store is `mov BYTE PTR [ecx+esi*1],0x1; add esi,edi` and the
+inner loop is four instructions instead of five (`sieve` −13.6%).
+
+**What the unit does not claim.** `ebx` stays the shuttle: the row's
+second item, a third callee-saved register for functions whose
+expressions never need `pop_ebx`'s register form, did not land (below).
+A loop that divides, takes a modulo, shifts by a variable or calls
+`mul_wide`/`add_carry` anywhere in its body or a nested loop owns no
+register on x86 — the ranking's choice, since the emitters would spill
+around every such sequence — so `inflate_corpus`'s bit reader and
+`regex_backtrack`'s `rx_here` gain little; `sum` is unchanged (its
+loop has one written local, already in `esi`, and the argument read is
+a folded compare). A loop with a call owns none, as on x64. The
+expression parks of a loop that took both registers have none for the
+loop's extent (the ratio rule is what keeps that from costing more than
+it saves: `sha256_block_w`'s round loop takes one register, not two).
+The hidden range-loop words stay on the stack on x86. Nothing reaches
+x64 (`rl_target_mask` and every `word_size == 4` branch leave it
+untouched: the eight corpus programs, `tests/regalloc_test.w`,
+`tests/narrow_regs_test.w`, `tests/expr_regs_test.w` and `w.w` compile
+to byte-identical x64 images under the b12f53c compiler and this one),
+nor arm64, win64 or wasm (the scan returns before ranking there, and
+the brackets emit nothing when no loop owns a register).
+
+**Deviations from the plan.**
+
+- **`ebx` as a third callee-saved register (the row's item 2) is not
+  landed.** The condition the row asks the pre-scan to establish — "the
+  function's expressions never need the shuttle" — is not one the
+  scan can decide: `pop_ebx` is the operand path of every binary
+  operator, the subscript path through a parked base (A3: "a parked
+  register is never a base"), the compare fold, the shift-by-constant
+  fold and the retained twins' emitters, and whether a given use ends
+  as a noted move into a park register or as a real `mov ebx,...` /
+  `pop ebx` depends on the park state at emission time (exhaustion,
+  the spill at a branch or call, `--no-expr-regs`), which the scan does
+  not model. The sound alternative is a lazy `ebx` state in the
+  emitter (save the promoted value before the first shuttle write of a
+  statement, restore it where a promoted read or a label needs it,
+  canonicalise at branches, spill around calls since W callees clobber
+  `ebx`, log it for `peep_rollback`, assert in every shuttle reader),
+  a second register-state machine on top of A3's with its own
+  correctness surface, for an estimated 1-3% on the x86 rows. The
+  estimate in the row (−20-30% on `sum`/`sieve`/`matmul_256`) is what
+  the loop registers deliver on `matmul_256` and `sieve`; `sum` has
+  nothing a third register would hold. It is left as follow-up work,
+  with the design above, rather than landed half-safe.
+- The ranking is a value/pressure model (`rs_lv`, `rs_lp_ops`, the 8:1
+  ratio), not the row's "hand `ecx`/`edx` to loops without the hazard
+  bit": taking the registers unconditionally regressed `sha256_1m` and
+  `siphash_keys` on x86 because every park the loop lost cost an
+  instruction. The model is two counters the scan already walks past
+  and one comparison at loop entry.
+- The loop's hazard bit no longer counts a shift by a literal: it
+  follows the rule A3's function-level park condition already used
+  (`rs_shift_pending`, resolved at the count token), so the rotate
+  idiom `(x << 3) | (x >> 29)` and the `sha256`/`siphash` round loops
+  stay eligible; a constant whose fold fails is what the hazard
+  brackets are for. On x64 the bit was never read by the loop pass, so
+  nothing changes there.
+- A8 made the intrinsics non-calls for the ranking; on x86 the two
+  whose `ecx` cannot be bracketed (`mul_wide`, `add_carry`) set the
+  hazard bit instead, so that a loop never owns `ecx` across one and
+  `mov_ecx_eax`'s assert stays a check, not a path. The first merged
+  version set the bit for every intrinsic and lost `sha256_block_w`'s
+  loop on x86 (`sha256_1m` back to the A8 number); the bracketed ones
+  were released in the last commit.
+- `--no-x86-budget` was added for the differential sweep, as the
+  common brief allows.
+
+**Gates** (on the tree merged with A8, logs in `bin/a9_scratch/`):
+`./wbuild build verify verify_x64 verify_pgo` (`self-host fixpoint OK:
+wv3 == wv4 == wv5`, x64 and PGO fixpoints), `verify_arm64` (`arm64
+self-host fixpoint OK: wv2_arm64 == wv3_arm64`), `regalloc_diff_test`
+(shards 108/108/97/103 compared, 71/71/82/76 skipped, 0 mismatches:
+eleven builds per program with `--no-x86-budget` added), the retained
+parity gates `ast_expression_verify ast_required_expression_verify
+ast_opt_verify ast_expression_test ast_retained_emit_test`,
+`elf_pie_test`, `asm_x86_asm_test` (`bin/wv2 encode identity: 4191
+functions, 634384 instructions, 0 unknown, 0 mismatch`),
+`asm_x64_test` (`4196 functions, 404736 instructions, 0 unknown, 0
+mismatch`), both fuzzers, the focused targets of `bin/wtest changed`
+(15 targets including `x86_budget_test` and its 64-bit twin), `tests`
+(`wexec: OK (989 targets)`), `bench_compare` and `wbench_compare`
+against the refreshed baselines, `profile_check` (96%/96%/98% of the
+committed profiles still match; not refreshed) and
+`tools/bench_vs_c.sh -n 3` (all checksums agree).
+
 ## 9. Reproducing
 
 ```sh
