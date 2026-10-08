@@ -178,6 +178,7 @@ int wexec_jobs               # max targets in flight (-j), default nproc
 map[char*, int] wexec_broken    # name -> 1 once failed or skipped (--keep-going)
 list[char*] wexec_failed_list   # failed targets, in completion order
 list[char*] wexec_skipped_list  # targets skipped behind a failed dependency
+list[char*] wexec_fail_lines    # fail-fast: "wexec: failed: ..." lines, repeated by the epilogue
 int wexec_lock_held             # 1 once *this* process created (and must remove) bin/.wexec_lock
 int wexec_groups_active         # 1 when run-step process-group cleanup is on: the outermost invocation, on a platform with process groups
 int wexec_worker_group          # worker side: 1 once this worker leads its own process group
@@ -2080,7 +2081,7 @@ int wexec_launch_inline(char* name, char* key, json_value* target):
 		wstream* fail_err = stderr_writer()
 		stream_write_line(fail_err, fail_line.data)
 		stream_flush(fail_err)
-		string_free(fail_line)
+		wexec_fail_lines.push(fail_line.data)
 	return -1
 
 
@@ -2238,10 +2239,20 @@ void wexec_report_keep_going(int total):
 	string_free(s)
 
 
-# Fail-fast epilogue: say how much of the run was never attempted, so
-# one broken target cannot silently cancel the rest of an umbrella run.
-# Silent when the failure was the last target scheduled.
+# Fail-fast epilogue: repeat the "wexec: failed: <target> (exit status
+# N)" line(s) printed at reap time, then say how much of the run was
+# never attempted, so one broken target cannot silently cancel the rest
+# of an umbrella run. The repeat matters under -j > 1: the reap-time
+# line goes out before the held output of every younger worker is
+# flushed, so in a long umbrella run it sits thousands of lines above
+# the end of the log, where a CI log viewer (or an API that returns
+# only the tail) never shows it. The count line stays silent when the
+# failure was the last target scheduled.
 void wexec_report_stopped_early(int total, int finished):
+	wstream* err = stderr_writer()
+	for char* line in wexec_fail_lines:
+		stream_write_line(err, line)
+	stream_flush(err)
 	if (finished >= total): return
 	string_builder* s = string_new()
 	string_append(s, c"wexec: stopped early after failure: ")
@@ -2249,7 +2260,6 @@ void wexec_report_stopped_early(int total, int finished):
 	string_append(s, c" of ")
 	string_append_int(s, total)
 	string_append(s, c" targets not attempted")
-	wstream* err = stderr_writer()
 	stream_write_line(err, s.data)
 	stream_flush(err)
 	string_free(s)
@@ -2417,7 +2427,7 @@ int wexec_execute(list[char*] requested):
 							wstream* fail_err = stderr_writer()
 							stream_write_line(fail_err, fail_line.data)
 							stream_flush(fail_err)
-							string_free(fail_line)
+							wexec_fail_lines.push(fail_line.data)
 					else:
 						wexec_mark_finished(w.name, w.key)
 						wexec_cache_remote_push_if_enabled(w.name, w.key)
@@ -2514,6 +2524,7 @@ int wexec_load_manifest(char* path):
 	wexec_closure = new list[char*]
 	wexec_broken = new map[char*, int]
 	wexec_failed_list = new list[char*]
+	wexec_fail_lines = new list[char*]
 	wexec_skipped_list = new list[char*]
 	wexec_make_dirs()
 	return 0
