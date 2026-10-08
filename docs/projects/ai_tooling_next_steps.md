@@ -377,6 +377,19 @@ is a queue, not an archive.
   reproducible locally and gone on rerun — is still undiagnosed; if it
   recurs the new line will say what actually died and how.
 
+- **(2026-10-08) the fail-fast `wexec: failed: <target>` line is buried
+  under -j > 1.** On the first CI run of PR #588 the `tests` leg failed
+  with the reap-time line printed while a long target (the diff sweep)
+  was the oldest in flight, so the held output of every younger worker
+  (5000+ lines) was flushed after it and the last visible lines were
+  `wexec: stopped early after failure: 1 of 932 targets not attempted`.
+  The GitHub job-log API caps what it returns at the last few thousand
+  lines and the raw log download is blocked from cloud sessions, so the
+  failing target could not be named from the log at all. Fixed: the
+  fail-fast epilogue now repeats every `wexec: failed: <target> (exit
+  status N)` line just before the stopped-early count, so the tail of
+  any run names what failed. Covered by `wexec_keep_going_test`.
+
 - **(2026-08-07) `./wbuild -j 2 test_changed` fails with "unknown
   target test_changed".** The `test_changed` dispatcher in `wbuild`
   only matches `$1`, so leading flags fall through to wexec, which
