@@ -2331,6 +2331,19 @@ emitter, with no codegen gain since the seed knows no parks); the x64
 row (`bin/wv2_64`, built by the new compiler) is the codegen effect,
 −4.2%. Both baselines are regenerated on the merged tree.
 
+**Merged with `main`** (the lane merge on top of the thread branch at
+9bd175d, main's 14 PRs with retained emission as the default front end
+and `--streaming` the opt-out). The corpus rows above are unchanged to
+the kIr against the merged baseline (0a76915): main moved no corpus
+codegen, and the default front end and `--streaming` emit
+byte-identical images for every program of the unit's tests and the
+corpus on both widths (`verify_pgo`'s fixpoint now reads
+`== streaming`). Only the `self` rows moved, and that is main's cost,
+not A3's: the x64 compiler compiling `w.w` is 6.584 → 6.268 G
+(−4.8%, A3's codegen effect on the larger retained front end) and the
+x86 seed-built row 10.753 → 10.887 G (+1.3%, A3's own code under the
+seed). Both baselines are regenerated again on this tree.
+
 **The hot loop.** `sha256_block_w`'s round loop on x64
 (`lib/sha256.w`), 133 → 116 instructions, 38 `push`/`pop` → 6 (`e` is
 `r14`, `f` `r8`, `g` `r9`, `a` `r13`, `b` `rsi`, `c` `rdi`, `d` `r10`,
