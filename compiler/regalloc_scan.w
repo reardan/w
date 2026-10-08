@@ -80,6 +80,7 @@ import lib.lib
 import compiler.tokenizer
 import compiler.type_table
 import compiler.symbol_table
+import compiler.inline_table
 
 void rs_lp_reset();
 void rl_reset();
@@ -528,6 +529,32 @@ void rs_image_bind():
 	if (n >= 0): rs_img_ok = 1
 	else: rs_img_len = 0
 	rs_img[rs_img_len] = 0
+
+# A copy of the bytes offset..end of the file being compiled, with a
+# newline appended (compiler/inline_table.w: the body a call site
+# re-parses in place). The bytes come from this scan's image of the
+# file, or from getchar's window when the image does not hold them (a
+# retained source window, a pipe). Returns the length, 0 when they are
+# in neither.
+int inline_source_copy(int offset, int end, char** out):
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return 0
+	if ((offset < 0) || (end <= offset)): return 0
+	int n = end - offset
+	char* src = 0
+	rs_image_bind()
+	if (rs_img_ok && (end <= rs_img_len)): src = &rs_img[offset]
+	else:
+		int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+		if ((offset >= window_start) && (end <= getchar_kernel_pos[file])):
+			src = cast(char*, getchar_buf_addr[file]) + (offset - window_start)
+	if (src == 0): return 0
+	char* text = malloc(n + 2)
+	for i in range(n): text[i] = src[i]
+	text[n] = 10
+	text[n + 1] = 0
+	*out = text
+	return n + 1
+
 
 # Start serving at file offset offset (the first rs_next reads it).
 void rs_begin(int offset):
@@ -1137,7 +1164,9 @@ void rs_identifier():
 		return;
 	if (c == '('):
 		if (i >= 0): rs_excluded[i] = 1
-		rs_lp_mark(rs_lp_has_call)
+		# A call to a function whose body inlines without a call of its
+		# own (unit A5) leaves no call instruction in this loop
+		if (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
 		return;
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter
@@ -1612,6 +1641,9 @@ int regalloc_type_ok(int type):
 int regalloc_declare(int t, char* name, int type):
 	if (regalloc_active == 0): return 0
 	if (target_isa != 0): return 0
+	# The locals of a body inlined at a call site (unit A5) are not in
+	# the scan: plain stack slots, whatever their names
+	if (inline_depth != 0): return 0
 	int i = rs_lookup(name)
 	if (i < 0): return 0
 	if ((rs_reg[i] == 0) || rs_taken[i]): return rl_declare_pending(t, name, type)
@@ -1777,6 +1809,7 @@ void rl_add(int t, int reg, int slot, int kind, char* name, int live):
 # offset of its keyword (grammar/statement.w's loop_stmt_offset). Loads
 # the loop's candidates into free caller-saved registers.
 void regalloc_loop_enter(int offset):
+	inline_loop_count = inline_loop_count + 1
 	rl_ensure()
 	rl_mark.push(rl_sym.length)
 	rl_pending_mark.push(rl_pending.length)

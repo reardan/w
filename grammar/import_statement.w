@@ -123,6 +123,9 @@ int import_alias_lookup(char* name):
 	int i = import_alias_base
 	while (i < import_alias_count):
 		if (strcmp(import_alias_name(i), name) == 0):
+			# An alias is this file's: a body that uses one cannot be
+			# re-parsed in another (unit A5, compiler/inline_table.w)
+			inline_hazard_count = inline_hazard_count + 1
 			return i
 		i = i + 1
 	return -1

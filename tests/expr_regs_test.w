@@ -7,6 +7,14 @@
 # wbuild: step="bin/expr_regs_noregs_test"
 # wbuild: step="bin/wv2 x64 --no-regs tests/expr_regs_test.w -o bin/expr_regs_noregs_64_test"
 # wbuild: step="bin/expr_regs_noregs_64_test"
+# wbuild: step="bin/wv2 --inline tests/expr_regs_test.w -o bin/expr_regs_inline_test"
+# wbuild: step="bin/expr_regs_inline_test"
+# wbuild: step="bin/wv2 x64 --inline tests/expr_regs_test.w -o bin/expr_regs_inline_64_test"
+# wbuild: step="bin/expr_regs_inline_64_test"
+# wbuild: step="bin/wv2 --no-inline --no-loop-rotate tests/expr_regs_test.w -o bin/expr_regs_noinline_test"
+# wbuild: step="bin/expr_regs_noinline_test"
+# wbuild: step="bin/wv2 x64 --no-inline --no-loop-rotate tests/expr_regs_test.w -o bin/expr_regs_noinline_64_test"
+# wbuild: step="bin/expr_regs_noinline_64_test"
 # The expression register stack (docs/projects/codegen_gap_plan.md §2.3,
 # unit A3; code_generator/x86.w's ers_* section): a binary operator's
 # left operand, and the address or loaded value an assignment keeps for
@@ -24,8 +32,10 @@
 # calls, floats, defer, compound assignment through parked addresses,
 # the limb and bit intrinsics, atomics, narrow stores, pointer
 # arithmetic and comparisons. The extra steps build the same program
-# with --no-expr-regs and --no-regs: every build must pass the same
-# assertions.
+# with --no-expr-regs and --no-regs, with --inline (unit A5: a parked
+# operand at a call site whose callee's body is emitted in place) and
+# with --no-inline --no-loop-rotate (unit A7: the rotated loops below
+# top-tested again): every build must pass the same assertions.
 import lib.assert
 import lib.lib
 
@@ -499,6 +509,106 @@ void test_args():
 	assert_equal(18 + (3 + (4 + 7 + 36)), s)
 
 
+# --- rotated loops (A7): parks and the loop's control-flow edges ----------------
+# A while loop is entered by a jump over its body to its condition at
+# the bottom, which branches back to the body's head; the entry jump,
+# the head and the back edge are control-flow edges, so no park may be
+# live across them (the condition's parks are consumed by its compare,
+# the body's by its statements). The condition is re-parsed after the
+# body, with the body's stack words popped.
+int rotated_sum(int n):
+	int i = 0
+	int j = 1
+	int total = 0
+	while (((i * 3) + (j * 5)) < (n * 7)):
+		total = total + ((i * j) + (i + j) * (j - i))
+		i = i + 1
+		j = j + (i * 2)
+	return total + (i * 100) + (j * 1000)
+
+
+int rotated_nested(int n):
+	int acc = 0
+	int i = 0
+	while ((i * i) + (acc & 7) < (n * n) + 5):
+		int k = 0
+		while ((k + (i * 2)) * 2 < (n + i) * 3):
+			acc = acc + ((k * i) + ((acc >> 1) & 3))
+			k = k + 1
+		i = i + 1
+	return acc + (i * 1000)
+
+
+int rotated_const(int n):
+	int i = 0
+	int total = 0
+	while (1):
+		total = total + ((i * 3) + (n * (i + 1)))
+		i = i + 1
+		if (((i * 2) + (n * 0)) >= (n + n)): break
+	for k in range(n):
+		total = total + ((k * k) + (total & 1) * (k + 2))
+	return total
+
+
+void test_rotated_loops():
+	# n = 4: iterations until 3i + 5j >= 28 with j = 1, 3, 7, 13, 21: (0,1) 5, (1,3) 18, (2,7) 41 stop at i=2, j=7
+	assert_equal((0 + (0 + 1) * 1) + (3 + (1 + 3) * 2) + 200 + 7000, rotated_sum(4))
+	assert_equal(0 + 0 + 1000, rotated_sum(0))
+	assert_equal(15, rotated_const(2))
+	assert_equal(4040, rotated_nested(3))
+	assert_equal(3000, rotated_nested(0))
+
+
+# --- inlined call sites (A5): a park live at a site whose body is emitted in place
+int seven():
+	return 7
+
+
+int twice(int x):
+	return x + x
+
+
+int clampz(int x):
+	if (x < 0): return 0
+	return x
+
+
+int shl_by(int x, int n):
+	return (x << n) & 65535
+
+
+int addm(int a, int b):
+	return (a * 3) + (b * 5)
+
+
+int inlined_sites(int x, int y, int n):
+	int r = x + seven()
+	r = r + ((x * y) + twice(x + y))
+	r = r + (x + clampz(y - x) * (y + seven()))
+	r = r + (x + shl_by(y, n))
+	r = r + (seven() + x * (twice(y) + seven()))
+	r = r + (x + addm(y, x) * (seven() - clampz(x - y)))
+	int i = 0
+	while ((i + seven()) < (x + 7)):
+		r = r + ((i * seven()) + twice(i))
+		i = i + 1
+	return r
+
+
+void test_inline_sites():
+	# x = 3, y = 5, n = 2
+	int r = 3 + 7
+	r = r + (15 + 16)
+	r = r + (3 + 2 * 12)
+	r = r + (3 + 20)
+	r = r + (7 + 3 * (10 + 7))
+	r = r + (3 + (15 + 15) * 7)
+	r = r + (0 + 0) + (7 + 2) + (14 + 4)
+	assert_equal(r, inlined_sites(3, 5, 2))
+	assert_equal(inlined_sites(5, 3, 7), inlined_sites(5, 3, 7))
+
+
 int main():
 	test_deep()
 	test_hazards()
@@ -513,5 +623,7 @@ int main():
 	test_narrow()
 	test_compares()
 	test_args()
+	test_rotated_loops()
+	test_inline_sites()
 	println(c"expr_regs_test passed")
 	return 0

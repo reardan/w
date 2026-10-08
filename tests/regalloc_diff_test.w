@@ -4,18 +4,20 @@ Differential sweep for register promotion (unit R2,
 docs/projects/register_allocation_pgo.md §5), direct calls (unit A4,
 docs/projects/codegen_gap_plan.md §2.4), the condition chains of
 unit A6 (§2.6, grammar/cond_branch.w), the addressing modes of unit
-A2 (§2.2, code_generator/x86.w) and the expression register stack of
+A2 (§2.2, code_generator/x86.w), the loop rotation of unit A7
+(§2.5, grammar/loop_rotate.w), the opt-in inlining of unit A5
+(§2.4, compiler/inline_table.w) and the expression register stack of
 unit A3 (§2.3, code_generator/x86.w's ers_* section): every
 conventional compile-and-run target of the generated manifest is built
-seven times, with the defaults, with --no-regs, with
---no-direct-calls, with --no-cond-branch, with --no-addr-modes, with
---no-expr-regs, and with all five opt-outs together, on the width its
-target names (x86 or x64), and the binaries must behave identically:
-exit status, stdout and stderr. The same source is also compiled by
-compilers that were themselves built with each opt-out and with all
-five, and those outputs must be byte-identical to bin/wv2's
-(no unit may change what the compiler emits, only how
-the compiler's own code runs).
+nine times, with the defaults, with --no-regs, with --no-direct-calls,
+with --no-cond-branch, with --no-addr-modes, with --no-loop-rotate,
+with --no-expr-regs, with all six opt-outs together, and with
+--inline, on the width its target names (x86 or x64), and the binaries
+must behave identically: exit status, stdout and stderr. The same
+source is also compiled by compilers that were themselves built with
+each opt-out, with all six, and with --inline, and those outputs must
+be byte-identical to bin/wv2's (no unit may change what the compiler
+emits, only how the compiler's own code runs).
 
 Selection is manifest-driven (tools/wbuildgen_lib.w generates the same
 manifest wexec runs): a target qualifies when its two steps are
@@ -70,6 +72,10 @@ char* noaddr_compiler():
 	return c"bin/regalloc_diff/wv2_noaddr"
 
 
+char* norotate_compiler():
+	return c"bin/regalloc_diff/wv2_norotate"
+
+
 char* noexpr_compiler():
 	return c"bin/regalloc_diff/wv2_noexpr"
 
@@ -77,6 +83,12 @@ char* noexpr_compiler():
 # Built with every opt-out at once
 char* noopt_compiler():
 	return c"bin/regalloc_diff/wv2_noopt"
+
+
+# Built with --inline (unit A5 is opt-in: the inlined build is the
+# variant, the default the reference)
+char* inline_compiler():
+	return c"bin/regalloc_diff/wv2_inline"
 
 
 int has_text(char* haystack, char* needle):
@@ -137,13 +149,15 @@ process_result* run_as(char* path, char* name, char* stdin_text, int timeout_ms)
 
 
 # bin/wv2 [x64] [--no-regs] [--no-direct-calls] [--no-cond-branch]
-# [--no-addr-modes] [--no-expr-regs] src -o out; opt_out is a bitmask:
-# 1 = --no-regs, 2 = --no-direct-calls, 4 = --no-cond-branch,
-# 8 = --no-addr-modes, 16 = --no-expr-regs (opt_out_all is every
-# opt-out at once)
-const int opt_out_all = 31
+# [--no-addr-modes] [--no-loop-rotate] [--inline] [--no-expr-regs]
+# src -o out; opt_out is a bitmask: 1 = --no-regs, 2 =
+# --no-direct-calls, 4 = --no-cond-branch, 8 = --no-addr-modes, 16 =
+# --no-loop-rotate, 64 = --no-expr-regs (opt_out_all is every opt-out
+# at once), 32 = --inline (an opt-in, unit A5: not part of opt_out_all)
+const int opt_out_all = 95
+const int opt_in_inline = 32
 process_result* compile_with(char* compiler, int arch64, int opt_out, char* src, char* out):
-	char** argv = strv_new(12)
+	char** argv = strv_new(14)
 	int n = 0
 	argv[n] = compiler
 	n = n + 1
@@ -165,6 +179,12 @@ process_result* compile_with(char* compiler, int arch64, int opt_out, char* src,
 		argv[n] = c"--no-addr-modes"
 		n = n + 1
 	if (opt_out & 16):
+		argv[n] = c"--no-loop-rotate"
+		n = n + 1
+	if (opt_out & 32):
+		argv[n] = c"--inline"
+		n = n + 1
+	if (opt_out & 64):
 		argv[n] = c"--no-expr-regs"
 		n = n + 1
 	argv[n] = src
@@ -302,25 +322,31 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	char* nodirect = strjoin(regs, c".nodirect")
 	char* nocond = strjoin(regs, c".nocond")
 	char* noaddr = strjoin(regs, c".noaddr")
+	char* norotate = strjoin(regs, c".norotate")
 	char* noexpr = strjoin(regs, c".noexpr")
 	char* noopt = strjoin(regs, c".noopt")
+	char* inl = strjoin(regs, c".inline")
 
 	process_result* ca = compile_with(c"bin/wv2", arch64, 0, src, regs)
 	process_result* cb = compile_with(c"bin/wv2", arch64, 1, src, noregs)
 	process_result* cd = compile_with(c"bin/wv2", arch64, 2, src, nodirect)
 	process_result* cn = compile_with(c"bin/wv2", arch64, 4, src, nocond)
 	process_result* cm = compile_with(c"bin/wv2", arch64, 8, src, noaddr)
-	process_result* ce = compile_with(c"bin/wv2", arch64, 16, src, noexpr)
+	process_result* cr = compile_with(c"bin/wv2", arch64, 16, src, norotate)
+	process_result* ce = compile_with(c"bin/wv2", arch64, 64, src, noexpr)
 	process_result* co = compile_with(c"bin/wv2", arch64, opt_out_all, src, noopt)
-	if ((ca.status != 0) || (cb.status != 0) || (cd.status != 0) || (cn.status != 0) || (cm.status != 0) || (ce.status != 0) || (co.status != 0)):
+	process_result* ci = compile_with(c"bin/wv2", arch64, opt_in_inline, src, inl)
+	if ((ca.status != 0) || (cb.status != 0) || (cd.status != 0) || (cn.status != 0) || (cm.status != 0) || (cr.status != 0) || (ce.status != 0) || (co.status != 0) || (ci.status != 0)):
 		# A source that does not compile is still a comparison: every
 		# build must fail the same way
 		if (same_compile(ca, cb, c"MISMATCH (compile)", name) == 0): return
 		if (same_compile(ca, cd, c"MISMATCH (compile, --no-direct-calls)", name) == 0): return
 		if (same_compile(ca, cn, c"MISMATCH (compile, --no-cond-branch)", name) == 0): return
 		if (same_compile(ca, cm, c"MISMATCH (compile, --no-addr-modes)", name) == 0): return
+		if (same_compile(ca, cr, c"MISMATCH (compile, --no-loop-rotate)", name) == 0): return
 		if (same_compile(ca, ce, c"MISMATCH (compile, --no-expr-regs)", name) == 0): return
 		if (same_compile(ca, co, c"MISMATCH (compile, every opt-out)", name) == 0): return
+		if (same_compile(ca, ci, c"MISMATCH (compile, --inline)", name) == 0): return
 		skipped = skipped + 1
 		return
 
@@ -332,16 +358,20 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	if (same_output(nodirect_compiler(), arch64, src, regs, regs_keep, c"--no-direct-calls-built", name) == 0): return
 	if (same_output(nocond_compiler(), arch64, src, regs, regs_keep, c"--no-cond-branch-built", name) == 0): return
 	if (same_output(noaddr_compiler(), arch64, src, regs, regs_keep, c"--no-addr-modes-built", name) == 0): return
+	if (same_output(norotate_compiler(), arch64, src, regs, regs_keep, c"--no-loop-rotate-built", name) == 0): return
 	if (same_output(noexpr_compiler(), arch64, src, regs, regs_keep, c"--no-expr-regs-built", name) == 0): return
 	if (same_output(noopt_compiler(), arch64, src, regs, regs_keep, c"every-opt-out-built", name) == 0): return
+	if (same_output(inline_compiler(), arch64, src, regs, regs_keep, c"--inline-built", name) == 0): return
 
 	process_result* ra = run_as(regs, name, stdin_text, timeout_ms)
 	if (compare_runs(ra, regs, noregs, c"--no-regs", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, nodirect, c"--no-direct-calls", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, nocond, c"--no-cond-branch", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, noaddr, c"--no-addr-modes", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, norotate, c"--no-loop-rotate", name, stdin_text, timeout_ms) == 0): return
 	if (compare_runs(ra, regs, noexpr, c"--no-expr-regs", name, stdin_text, timeout_ms) == 0): return
-	if (compare_runs(ra, regs, noopt, c"--no-regs --no-direct-calls --no-cond-branch --no-addr-modes --no-expr-regs", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, noopt, c"--no-regs --no-direct-calls --no-cond-branch --no-addr-modes --no-loop-rotate --no-expr-regs", name, stdin_text, timeout_ms) == 0): return
+	if (compare_runs(ra, regs, inl, c"--inline", name, stdin_text, timeout_ms) == 0): return
 	compared = compared + 1
 
 
@@ -407,10 +437,14 @@ int main(int argc, char** argv):
 	asserts(c"building the --no-cond-branch compiler", build.status == 0)
 	build = compile_with(c"bin/wv2", 0, 8, c"w.w", noaddr_compiler())
 	asserts(c"building the --no-addr-modes compiler", build.status == 0)
-	build = compile_with(c"bin/wv2", 0, 16, c"w.w", noexpr_compiler())
+	build = compile_with(c"bin/wv2", 0, 16, c"w.w", norotate_compiler())
+	asserts(c"building the --no-loop-rotate compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, 64, c"w.w", noexpr_compiler())
 	asserts(c"building the --no-expr-regs compiler", build.status == 0)
 	build = compile_with(c"bin/wv2", 0, opt_out_all, c"w.w", noopt_compiler())
 	asserts(c"building the every-opt-out compiler", build.status == 0)
+	build = compile_with(c"bin/wv2", 0, opt_in_inline, c"w.w", inline_compiler())
+	asserts(c"building the --inline compiler", build.status == 0)
 
 	process** shards = cast(process**, malloc(shard_count * __word_size__))
 	for k in range(shard_count):

@@ -1283,6 +1283,7 @@ register promotion), so `-O0` output is the pre-unit form everywhere.
 fixtures, not by the unit's own test, and are now pinned in it: a
 parenthesised parked element read as the whole operand (`(m[k]) != 13`
 loaded the value twice) and `(!!x) == 1` (the booleanise was dropped).
+
 ### A2 — addressing modes, G2 (2026-10-07)
 
 **What landed.** `code_generator/x86.w` gains an *address note*
@@ -1550,6 +1551,642 @@ matmul 2.86x, sieve 1.96x, sha256 3.36x, siphash 3.20x, inflate 4.25x,
 regex 2.31x, strcmp 5.12x, sum 2.50x; A1 reported 3.43x, 2.81x, 4.01x,
 4.05x, 5.26x, 2.63x, 6.32x, 2.50x). `tests_win64` cannot run here (no
 `wine`); the win64 images compile and `win64_header_test` passes.
+
+### A7 — loop rotation, bottom-tested `while`/`for` (2026-10-07)
+
+**What landed.** `grammar/loop_rotate.w` (new, imported by `grammar.w`
+right before `grammar/while_statement.w`: the predicate, the lexer
+mark/return pair and the condition skip), `grammar/while_statement.w`
+(`while_statement` rotated; `statement_guard` takes the branch
+polarity), `grammar/for_statement.w` (`for_range_loop` and
+`for_cursor_loop` rotated; `for_range_test` / `for_cursor_test` hold
+the synthesized condition both shapes share), the retained-tree twins
+`grammar/ast_loop.w` (`ast_while_statement`), `grammar/ast_statement.w`
+(the guard node records its polarity in `branch_nonzero`),
+`code_generator/loop_ast.w` (`emit_while_loop_ast_begin/bottom/end`,
+the range and cursor emitters) and `code_generator/statement_ast.w`
+(`emit_guard_ast_branch`, `emit_guard_ast_walk_branch` picking the
+back-edge target of a rotated loop), `compiler/loop_ast.w` (`rotated`,
+`entry_site`); `code_generator/x86.w` (`be_loop_entry` /
+`be_loop_entry_land`, the forward jump a rotated loop enters by, and
+`be_br_const_discard`, the constant-condition fold both discard
+branches now try), `code_generator/dwarf.w` (`debug_line_note_at`, a
+line row for an explicit line), `code_generator/code_emitter.w` and
+`compiler/compiler.w` (`--no-loop-rotate` / `--loop-rotate`, `-O0`
+implies the former, the `--stats` line);
+`tests/loop_rotate_test.w` (new: x86, x64 and an arm64 twin) and
+`tests/regalloc_diff_test.w` (the sweep now also builds every test
+program with `--no-loop-rotate`, with a compiler built that way, and
+with all four opt-outs at once).
+
+Mechanism. §2.5 asked for the condition at the bottom and an entry
+jump to it. For a `for` loop the condition is synthesized from hidden
+slots, so the grammar simply emits it after the body:
+
+```
+	[init]                       [init]
+	head:  cmp i, end            jmp cond
+	       jge exit              [P2 pad]
+	       body                  head: body
+	       continue: inc i             continue: inc i
+	       jmp head              cond: cmp i, end
+	exit:                              jl head
+	                             exit:
+```
+
+A `while` loop's condition is source text that precedes the body, and
+the single-pass emitter cannot hold its code back. The loop therefore
+marks the lexer at the condition's first token (`tokenizer_snapshot`
+plus the token text; the source position is `byte_offset`, which
+every path that repositions the descriptor re-derives), walks the
+condition's tokens to the block opener without parsing them
+(`loop_rotate_skip_condition`: a bracket-depth walk that knows what
+can end a condition — the `:` outside brackets and ternaries, or a
+`{` block opener after an operand — and treats the `{` after
+`map[..]`/`set[..]`/`list[..]` as the typed literal it is), emits the
+entry jump, the P2 pad, the loop region at the body's head and a block
+region for `continue`, parses the body, then returns the lexer to the
+mark (`getchar_seek` to `byte_offset`, free inside the descriptor's
+8 KiB window, one seek and read outside it) and parses the condition
+as the bottom test: `statement_guard(h_top, outer, 1)` consumes the
+condition with `on_true`, so unit A6's chain consumer branches back to
+the body on the last operand's flags and merges the chain's true
+regions into the loop region (`be_ctrl_merge` to a loop target patches
+them to the head at once) while its false regions land on the exit.
+The lexer then returns to the end of the body, keeping `token_serial`
+monotonic. The walk declines anything it does not understand (a
+template string, whose chunks the template grammar lexes; a brace that
+cannot be a block opener; a newline outside brackets) and a declined
+loop is emitted top-tested, the pre-unit bytes, so the walk can never
+misplace a body, only miss a rotation; over the compiler's own source
+every `while` rotates (`--stats`: `Loop rotation: while loops rotated 1201, declined 0, source seeks 36` for `w.w`, both widths).
+
+The retained tree mirrors the shape phase for phase: the `while`
+walk's begin phase (drained before the body, as before) emits the
+rotated head, the guard's phases are recorded and drained with the
+lexer at the condition after the body, and the end phase closes the
+regions; `ast_expression_verify`/`ast_retained_emit_test` and the
+`verify_pgo` retained leg pin the bytes. The constant-condition fold
+(`be_br_const_discard`) makes `while (1)`'s bottom test a single
+`jmp head` (and `while (0)`'s nothing): a discard branch whose
+accumulator was just loaded by `mov_eax_int` drops the load and
+becomes an unconditional jump or no code, which also turns `if (0)` /
+`if (1)` into their obvious forms; it is part of the unit
+(`--no-loop-rotate` keeps the test) so the opt-out is exactly the
+pre-unit emission. DWARF: the bottom test gets a line row for the
+loop's header line (`debug_line_note_at`), so a breakpoint on the
+`while`/`for` line still hits once per iteration and `step` from the
+body's last line still lands on it; the debugger fixtures
+(`debug_test`, `repl_retained_emit_test`) pass unchanged. P2 keeps
+aligning the loop head, which is now the body's first instruction
+(what the back edge targets); the pad sits between the entry jump and
+the head and is never executed. P1's counter moved with the head and
+now counts body entries (one fewer than condition evaluations per
+loop entry), which no committed profile is sensitive to
+(`profile_check`: `self` 93%, `self_x64` 94%, bench corpus 100% of counters still match, the same figures the base tree reports, so no profile refresh).
+
+Static effect on the loop §2.5 named, `sum_to`'s `for i in range(n)`
+(x64, `objdump -d -Mintel`; the function is 23 instructions either
+way, the loop goes from 5 instructions and 2 taken branches per
+iteration to 4 and 1):
+
+```
+before                                   after
+mov    rsi,QWORD PTR [rbp+0x10]          mov    rsi,QWORD PTR [rbp+0x10]
+head:                                    jmp    cond
+cmp    r12,rsi                           head:
+jge    exit                              add    r13,r12
+add    r13,r12                           add    r12,0x1
+add    r12,0x1                           cond:
+jmp    head                              cmp    r12,rsi
+exit:                                    jl     head
+                                         exit:
+```
+
+Over the whole `--strict` self-image the static counts barely move,
+as they must (a rotated loop trades its `jcc exit; ...; jmp head` for
+`jmp cond; ...; jcc head`): instructions 473,179 → 473,025 (x64) and
+482,162 → 482,066 (x86), bytes 2,849,184 → 2,853,280 and 2,499,792 →
+2,503,888 (+0.1%, the entry jumps of the loops whose constant
+condition folded away). The effect is dynamic: one taken branch and
+one instruction fewer per iteration of every loop.
+
+Measurements (`./wbuild bench`, callgrind Ir deterministic, wall time
+best of 3 on the shared 4-core container with two other agents'
+builds running — the ms columns are noise-level evidence only; before
+= lane/shape at 121d23b (main 1335f06 + A4 + A1 + A6), after = this
+unit):
+
+| program | x64 Ir, G | x64 ms | x86 Ir, G | x86 ms |
+| --- | --- | --- | --- | --- |
+| sum | 3.000 → 2.400 (-20.0%) | 188 → 188 | 3.000 → 2.400 (-20.0%) | 203 → 183 |
+| sieve | 1.647 → 1.472 (-10.6%) | 333 → 327 | 1.667 → 1.492 (-10.5%) | 321 → 327 |
+| sha256_1m | 5.065 → 5.015 (-1.0%) | 304 → 308 | 5.466 → 5.417 (-0.9%) | 351 → 344 |
+| siphash_keys | 4.529 → 4.450 (-1.7%) | 892 → 770 | 4.323 → 4.260 (-1.4%) | 673 → 631 |
+| inflate_corpus | 4.527 → 4.488 (-0.9%) | 332 → 319 | 4.704 → 4.664 (-0.9%) | 345 → 304 |
+| regex_backtrack | 4.800 → 4.643 (-3.3%) | 280 → 288 | 4.718 → 4.560 (-3.3%) | 328 → 284 |
+| matmul_256 | 4.055 → 3.887 (-4.1%) | 426 → 377 | 5.068 → 4.900 (-3.3%) | 397 → 339 |
+| strcmp_sort | 3.047 → 3.013 (-1.1%) | 512 → 484 | 3.050 → 3.020 (-1.0%) | 458 → 415 |
+| self | 6.038 → 6.014 (-0.4%) | 689 → 647 | 8.289 → 8.296 (+0.1%) | 1228 → 934 |
+
+The dynamic effect follows the loop shape of each program. `sum` is
+the §2.5 loop and nothing else: 5 → 4 instructions per iteration is
+the 20%. `sieve` (−10.6% / −10.5%) and `matmul_256` (−4.1% / −3.3%)
+are inner `for ... in range` loops with short bodies (callgrind per
+function: `sieve` 1.596 → 1.421 G, `matmul` 4.042 → 3.874 G Ir on
+x64). `regex_backtrack` (−3.3%) is `while` loops in the matcher
+(`rx_here` 2.146 → 2.122 G, `regex_match_length` 0.989 → 0.879 G).
+The hashing, inflate and string programs (−0.9% to −1.7%) spend their
+iterations on bodies of tens of instructions, so one branch per
+iteration is proportionally small, and the self-compile (−0.4% on
+x64) is dominated by straight-line emitter code; its x86 figure
+(+0.1%) is noise — that stage is built by the pinned seed, so its
+code is the same bytes before and after, and the Ir difference is the
+different source it compiles (this unit's new files). Against the C
+reference (`tools/bench_vs_c.sh -n 3`, x64 Ir, W / gcc -O2): sum 2.40
+vs 1.20 G (gcc keeps `i` and the sum in registers and unrolls; the
+remaining 2× is the `push`/`pop` operand shape, G3), sieve 1.47 vs
+0.59, sha256 5.01 vs 1.29, siphash 4.45 vs 1.18, inflate 4.49 vs
+0.99, regex 4.64 vs 2.54, matmul 3.89 vs 1.18, strcmp 3.01 vs 0.57 —
+the loop-overhead term is gone from every gap that remains;
+what is left is operand traffic and the missing inlining/hoisting
+of the later units.
+
+Gates: `verify`, `verify_x64`, `verify_pgo` (x86 + x64 PGO fixpoints
+and the retained leg), `verify_arm64`, `verify_wasm`,
+`verify_profile_generate`, `regalloc_diff_test` (412 programs
+compared across the 16-way opt-out sweep, 0 mismatches),
+`loop_rotate_test` / `loop_rotate_64_test` / `loop_rotate_arm64_test`,
+`cond_branch_test` (+64), `regalloc_test` (+64), `profile_use_test`,
+`profile_generate_test`, `ast_expression_test` (123 passed),
+`ast_retained_emit_test`, `debug_test`, `debug_test_x64`,
+`check_roots`, `self_host_warning_test`, `parser_generator_w_test`,
+`manifest_check`, `wasm_smoke_test`, `tests_arm64` (29 targets; the
+dynamically linked arm64 tests need `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu`
+in this container), `bench_compare` (no regression; `tests/bench/baseline.txt`
+refreshed from this run) and `wbench_compare` (no regression:
+self visits 200,433 vs 199,737, bytes 2,503,900 vs 2,491,596 —
+within its tolerance, baseline not refreshed). The full `./wbuild tests`
+runs once after the lane merges.
+
+What the unit does not claim. Rotation is on for x86/x64 (win64
+shares the emitter; `verify_win` needs wine, which this container
+lacks) and arm64 (`verify_arm64` and `tests_arm64` under qemu pass;
+on arm64 the bottom test is `cmp; cset; cbnz` since the ISA has no
+comparison-branch fusion yet, still one taken branch per iteration).
+wasm and PTX never rotate: both have structured control flow, where a
+`loop` block cannot be entered in the middle and `br_if` back to the
+loop label already costs what a bottom test does, so their output is
+byte-identical to before by construction (`verify_wasm` /
+`wasm_smoke_test` pass). A `while` whose condition holds a template
+string stays top-tested (declined, see above). No invariant hoisting,
+no strength reduction (wave B); the condition's operands keep their
+`push`/`pop` shape (G3). The compile-time cost is one extra
+tokenization of each `while` condition and two cursor moves, a seek
+and an 8 KiB read each only when the body crosses the descriptor's
+read window (`--stats` counts them; 36 of the 2,402 returns in the self-compile, on 1,201 `while` loops).
+
+Deviations from the plan, with reasons. (1) The plan called this "a
+note-level change in `grammar/while_statement.w`"; a `while`
+condition cannot be emitted after its body by a note, because the
+emitter has already written it, so the unit re-parses it from the
+source at the bottom, the way `defer` and generic instantiation
+already re-parse spans (`generic_reparse_save`, `defer_reparse_start`),
+with a token walk to find the body instead of a parse. (2) arm64
+rotates too, because the `be_*` protocol (a forward branch placeholder
+and `be_branch_patch`) already covers it and gating would have left
+the arm64 output a different shape for no reason; wasm and PTX are
+gated, as explained above. (3) `--no-loop-rotate` exists although the
+plan allowed skipping it: the differential sweep is the only net that
+compares every test program's behaviour across the two shapes, and
+the flag also names the declined path, so the fallback is exercised
+by the sweep rather than only by the template-string case. (4) The
+constant-condition fold was added because without it a rotated
+`while (1)` would have cost `mov; test; jne` per iteration against
+the top-tested `jmp` — a regression on the commonest W loop shape.
+(5) A `for` loop's bottom test gets a DWARF line row for the header
+line; the plan left the attribution open, and this is what keeps the
+debugger's per-iteration stop on the loop line.
+
+**Merged with A2 (2026-10-07).** The lane merged the thread branch at
+8a5bce4 (A4 + A1 + A6 + A2) with two conflicts. `tests/regalloc_diff_test.w`:
+both units had taken bit 8 of the opt-out bitmask; A2's `--no-addr-modes`
+keeps bit 8 and `--no-loop-rotate` is bit 16 (`opt_out_all = 31`,
+seven builds per program, a sixth reference compiler built
+`--no-loop-rotate`, the all-opt-outs label naming all five flags).
+`tests/bench/baseline.txt` was taken from A2's side for the merge
+commit and regenerated afterwards, with `tools/wbench_baseline.txt`,
+on the merged tree. The two units compose where they touch: A2's
+`mov_eax_int` (`xor eax,eax` for zero, `mov rax,simm32` for a
+negative) still sets the immediate note after every form, so
+`be_br_const_discard` folds `while (1)` to a bare `jmp head` and
+`while (0)` to nothing on the merged tree; and A2's `cmp [mem],imm`
+fold (`shuttle_cmp`) records the cmp-fuse note the bottom test's
+`cond_branch_consume(..., on_true)` branches on, so a rotated loop
+whose condition is a byte or field load against a constant ends in
+`cmp BYTE PTR [rax+r14*1],0x0; jne head` / `cmp QWORD PTR [rax],0x0;
+je head` (`tests/loop_rotate_test.w`, `test_folded_compares`, added
+for the merge). Over `w.w` the merged compiler rotates 1,203 `while`
+loops (A2 added two), declines none.
+
+Merged-tree measurements (`./wbuild bench`; before = the A2 tree at
+8a5bce4, re-measured here with the same wbench invocation for the
+`self` rows, after = the merged tree):
+
+| program | x64 Ir, G | x64 ms | x86 Ir, G | x86 ms |
+| --- | --- | --- | --- | --- |
+| sum | 3.000 → 2.400 (-20.0%) | 194 → 188 | 3.000 → 2.400 (-20.0%) | 187 → 188 |
+| sieve | 1.162 → 0.988 (-15.0%) | 310 → 334 | 1.167 → 0.992 (-15.0%) | 298 → 289 |
+| sha256_1m | 4.343 → 4.293 (-1.1%) | 266 → 259 | 4.639 → 4.589 (-1.1%) | 294 → 312 |
+| siphash_keys | 3.676 → 3.597 (-2.1%) | 865 → 731 | 3.364 → 3.302 (-1.8%) | 601 → 608 |
+| inflate_corpus | 3.927 → 3.889 (-1.0%) | 288 → 297 | 4.022 → 3.982 (-1.0%) | 308 → 290 |
+| regex_backtrack | 4.220 → 4.062 (-3.7%) | 328 → 287 | 4.127 → 3.970 (-3.8%) | 297 → 268 |
+| matmul_256 | 3.380 → 3.212 (-5.0%) | 263 → 262 | 4.391 → 4.223 (-3.8%) | 282 → 271 |
+| strcmp_sort | 2.563 → 2.529 (-1.3%) | 445 → 441 | 2.547 → 2.517 (-1.2%) | 370 → 344 |
+| self | 5.288 → 5.263 (-0.5%) | 725 → 636 | 8.492 → 8.466 (-0.3%) | 1114 → 978 |
+
+The program rows are exact (the same kIr to within one on every
+rerun). The `self` rows are not: the compiler's hash tables are
+sip-keyed per process, so its Ir moves by up to ±2% between runs
+(8.333 and 8.466 G for the same x86 binary in two `bench` runs here),
+which is why A2's committed `self` figures (5.228 / 8.303 G) differ
+from the same tree re-measured and why the row above is best read as
+"unchanged". On the same merged source under callgrind, the merged
+x86 compiler runs 0.24% more instructions with rotation than with
+`--no-loop-rotate` (8.428 vs 8.407 G): the cost of tokenizing each
+`while` condition twice. sieve's larger gain here than in the
+single-unit table (−15% against −10.6%) is the shorter A2 body: the
+one branch removed per iteration is a larger share of fewer
+instructions.
+
+Gates on the merged tree: `verify`, `verify_x64`, `verify_pgo`
+(`wv3_pgo == wv4_pgo == wv5_pgo (== retained), wv3_pgo_64 ==
+wv4_pgo_64`), `verify_arm64`, `regalloc_diff_test` (412 compared, 0
+mismatches, 4 nondeterministic programs not counted), the unit tests
+of A7, A2, A6, A4 and R2 on both widths, `profile_use_test`,
+`profile_generate_test`, `ast_expression_test` (123 passed),
+`ast_retained_emit_test`, `asm_x64_test` (394,511 instructions of the
+self-image re-encode byte-exact), `asm_x86_asm_test`; then the full
+`./wbuild tests` (927 targets, `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu`
+for the dynamically linked arm64 tests) and `bench_compare` /
+`wbench_compare` against the regenerated baselines: no regression.
+
+### A5 — inlining small leaf callees (2026-10-07)
+
+What landed (x86 and x64 Linux ELF only; win64, arm64, `arm64_darwin`
+and wasm images are byte-identical to before, asserted by hand with
+`--no-inline` builds of the self-host and `tests/inline_test.w`).
+**Opt-in**: `--inline` turns it on, `--profile-use` turns it on for
+the sites the profile marks hot and no other, `--no-inline` turns it
+off whatever else was given; the default build keeps every call a
+call. The reason is the compile-time cost measured below (the plan's
+§6 risk): the capture of every body plus the re-parse at every site
+costs the self-compile 8–17% of its instructions for at most −4% on
+one corpus program, and `wbench_compare` is the gate for that.
+
+- **The mechanism.** A call to a known W function whose body is small,
+  loop-free and free of calls that return is emitted as the body
+  itself. The arguments stay in the slots the call pushed (one word
+  per parameter) and are bound as fresh `'L'` locals over them; the
+  body is re-parsed by `statement()` from a private copy of its source
+  bytes, through a `/dev/null` descriptor whose `getchar` window is
+  that copy (`grammar/inline_call.w`: the lexer's rewinds stay inside
+  the body, the end of the copy is the end of the stream, and the
+  outer lexer state is saved around it like a generic re-parse);
+  `return` lowers to a jump to a region closed after the body, the
+  trailing one is dropped again (`peep_rollback`), and the value stays
+  in the accumulator where the call's result would be. `finish_call`
+  pops the arguments after the body exactly as after a call: the call
+  record (`grammar/stack_slot.w`) gained kind 4, so the single-pass
+  shape of A4 is unchanged — the begin side decides, the finish side
+  emits. The body's own declarations are not noted anywhere (no DWARF
+  variable, no register promotion, no lint, no retained-tree node), its
+  bytes belong to the call site's line (`debug_line_note` is held off
+  while `inline_depth != 0`), and the caller's flow facts, deferred
+  statements, generator cleanups, the "last declared symbol" note and
+  the AST modes are restored or masked for the duration.
+- **The record.** `compiler/inline_table.w` captures every definition as
+  it compiles (`function_definition`, `grammar/program.w`): the body's
+  span and a copy of its bytes (`inline_source_copy` reads the register
+  pre-scan's file image), the parameter names and types, token and
+  byte counts, and whether the body emitted a call that returns
+  (`inline_real_calls` counted by the x86 call emitters, less
+  `inline_noreturn_calls`, which both emitters note for calls of
+  noreturn functions — the overflow trap of `__w_size_add` leaves its
+  fast path call-free), opened a loop (`regalloc_loop_enter`), or used
+  a construct a re-parse cannot reproduce (`defer`, `goto`/labels,
+  `raw_asm`, f-strings, `?`, `yield`, `launch`, `gpu for`); plus the
+  names it resolved outside itself, with the record each resolved to,
+  reported by `sym_lookup` while the capture is open. A site may
+  inline only when every one of those names resolves to the same
+  record there, and an unresolved one has not become a local or
+  argument (the capture rule: `in_g` shadowed by a caller local in
+  `tests/inline_test.w` keeps `in_read_g(7)` a call). A file-scoped
+  import alias (`import a.b as f`) is resolved per file outside the
+  symbol table, so a body that uses one is a hazard
+  (`import_alias_lookup`; `tests/import_alias_helper.w` found it).
+- **The site rule** (`inline_site_ok`, the same predicate at the
+  streaming grammar's call site and the retained emitter's `'C'` site,
+  so both emit the same bytes; `verify_pgo`'s `wv3_pgo_ast == wv3_pgo`
+  and `ast_expression_test` pin that): the callee's body was already
+  seen (a forward call stays a `call rel32`), is not the function being
+  compiled or one already being inlined further out, depth at most 3,
+  no struct-by-value parameter or return, no W variadic, generator,
+  asm or generic-substituted body, no body that warned or that is
+  itself noreturn; and a byte budget on the body's code as compiled at
+  its definition: 320 at a site inside a loop of the caller
+  (`inf_get_bit` is 314 bytes on x64), 64 at a straight-line site or
+  when a `--profile-use` profile classifies the callee or caller cold
+  (an accessor of a few instructions is shorter than the call it
+  replaces, so it is worth its bytes anywhere), 640 when the profile
+  classifies either hot — the only budget open to a body with calls (a
+  wrapper's copy saves one call and costs its whole body at every site;
+  `free` alone has ~700 sites in the compiler). The profile-hot budget
+  is what the PGO self-host (`verify_pgo`) exercises, and under
+  `--profile-use` without `--inline` it is the only budget (a stale or
+  header-only profile inlines nothing, and `profile_use_test` holds
+  those images to the plain build's); the corpus is compiled with
+  `--inline` and no profile, so the loop rule decides there.
+- **R3 and the frame.** The register pre-scan asks
+  `inline_name_is_leaf` before marking a loop as containing a call
+  (with the loop-site budget of the current mode and profile, so the
+  scan and the emitter agree in every mode: a `--profile-use` build
+  whose profile inlines nothing scans as the plain build does), so
+  a loop whose only calls inline without calls of their own keeps its
+  registers (`inf_get_bits` below holds `c`, `n` and `i` in
+  `rsi`/`rdi`/`r8` across the inlined `inf_get_bit`); a site the
+  emitter refuses after all is still a call wrapped in
+  `regalloc_call_spill`/`reload`, so a miss costs instructions, never
+  correctness. Inlined locals are plain stack slots (`regalloc_declare`
+  returns 0 while `inline_depth != 0`), which satisfies the scan/emit
+  guard by construction.
+- **Off where a call must stay a call, even under `--inline`:**
+  `--no-inline` (both are link options; `tests/regalloc_diff_test.w`
+  builds every program once more with `--inline`, bit 32 of its
+  opt-out mask, outside `opt_out_all`, and compares it with the
+  default build, and once more with an `--inline`-built compiler
+  whose output must match `bin/wv2`'s byte for byte), the
+  REPL (a redefinition would not reach inlined copies), `wdbg`'s
+  in-process compile (a breakpoint on a function is reached through a
+  call of it; the attach-mode recompile keeps the binary's own flags,
+  since its tables must match it: `wdbg --inline --attach` for an
+  `--inline` build), `w check`, `--profile-generate` (the instrumented
+  binary measures the call graph), generator and `gpu for` bodies. An
+  inlined site still counts in `emitted_call_count` (it can have a
+  call's side effects) but not in `inline_real_calls`.
+- Tests: `tests/inline_test.w` (+ `_64`; the default build keeps the
+  calls, `--inline` twins on both widths inline them, and a `--stats`
+  step asserts the `--inline` build reports inlined sites)
+  covers one and several parameters, argument order and single
+  evaluation, both directions of shadowing, globals, early returns,
+  void bodies, bodies with locals and a `switch`, nested inlining,
+  struct returns and pointers, recursion, defaults, narrow and float
+  parameters, hidden runtime calls in the body, calls inside loops
+  that own registers, a callee defined after the caller, calls as
+  arguments of calls, `defer`, and an inlined callee also used through
+  a function pointer. `--stats` prints the bodies recorded, sites
+  inlined, sites refused by the capture rule and by the budget, and
+  the twelve bodies accounting for the most inlined bytes.
+
+Measurements (`./wbuild bench`: callgrind Ir in thousands, which is
+deterministic; best-of wall ms on the shared 4-core container with
+other agents' builds running, so the ms columns are noise-level
+evidence only; `bytes` is the ELF size; before = `lane/calls` at
+803a751, i.e. `main` 1335f06 plus A4, which is also what the default
+build emits now; after = the same programs built with `--inline`, the
+site rule above with the 64-byte straight-line budget):
+
+x64
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,254 | 3,000,248 | −0.0% | 211 | 226 | 203,400 | 215,688 |
+| `sieve` | 1,647,240 | 1,627,765 | −1.2% | 313 | 309 | 203,400 | 215,688 |
+| `sha256_1m` | 5,253,121 | 5,151,665 | −1.9% | 340 | 296 | 211,600 | 223,888 |
+| `siphash_keys` | 4,691,937 | 4,679,430 | −0.3% | 867 | 822 | 203,400 | 215,688 |
+| `inflate_corpus` | 4,791,395 | 4,586,040 | −4.3% | 343 | 281 | 269,224 | 281,512 |
+| `regex_backtrack` | 6,453,595 | 6,453,098 | −0.0% | 393 | 392 | 215,688 | 227,976 |
+| `matmul_256` | 5,063,658 | 5,062,145 | −0.0% | 365 | 355 | 203,408 | 215,696 |
+| `strcmp_sort` | 3,405,300 | 3,327,791 | −2.3% | 585 | 483 | 203,400 | 215,688 |
+
+x86
+
+| program | kIr before | kIr after | ΔIr | ms before | ms after | bytes before | bytes after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sum` | 3,000,258 | 3,000,253 | −0.0% | 215 | 204 | 173,380 | 181,572 |
+| `sieve` | 1,666,714 | 1,647,239 | −1.2% | 302 | 313 | 173,380 | 181,572 |
+| `sha256_1m` | 5,466,512 | 5,365,056 | −1.9% | 344 | 335 | 177,480 | 189,768 |
+| `siphash_keys` | 4,418,526 | 4,405,236 | −0.3% | 697 | 568 | 173,380 | 181,572 |
+| `inflate_corpus` | 4,969,281 | 4,763,296 | −4.1% | 343 | 284 | 226,772 | 239,060 |
+| `regex_backtrack` | 6,371,287 | 6,370,790 | −0.0% | 394 | 397 | 181,572 | 193,860 |
+| `matmul_256` | 5,067,610 | 5,066,294 | −0.0% | 323 | 350 | 173,384 | 181,576 |
+| `strcmp_sort` | 3,402,203 | 3,324,693 | −2.3% | 427 | 434 | 173,380 | 181,572 |
+
+(The 8–12 KB of extra bytes in every program is the auto-imported
+runtime and `lib/` — `st_byte`, `st_int32`, `__w_list_load_word` and
+the other small helpers inlined at their ~200 sites, the same in every
+program; `--stats` lists them.)
+
+Self-compile cost, same input for both compilers (this tree; callgrind
+Ir), which is what decided the default. With the `--inline` policy:
+the compiler built without inlining compiling `w.w --no-inline`
+6,195,689,556 → the inlined compiler doing the same 6,032,226,459
+(−2.6%: what inlining does for the compiler's own code) → the inlined
+compiler with inlining on 7,141,166,940 (+15.3% over the first: the
+capture of every body and the re-parse of 3,673 sites, spread over the
+lexer, the symbol hash and the type table like any other parse); x64
+6,277,828,480 → 6,087,062,689 (−3.0%) → 7,088,860,386 (+12.9%);
+`tools/wbench.w` `self` counters 489,280 / 128,782 → 535,407 /
+139,240; compiler image +3.5% x86 (2,548,456 → 2,638,568 bytes), +3.4%
+x64. A cheaper variant was measured before choosing: no straight-line
+sites at all without a profile (loop sites keep 320 bytes): 645 sites
+on `w.w` instead of 3,673, but x86 6,149,324,408 → 6,230,819,226
+(+1.3%: the loop-only inlining does nothing for the compiler's own
+code) → 6,747,863,551 (+9.7%), x64 6,167,474,046 → 6,166,500,738 →
+6,763,577,648 (+9.7%), and the corpus kept almost nothing (x64
+`inflate_corpus` −1.1%, every other program within ±0.0%: the gains
+in the table come from the straight-line accessor sites in the runtime
+and `lib/`, not from `inf_get_bit`). Making the capture cheaper (plain
+arrays and one text buffer per record, a hash instead of a string
+compare for the dedup of unresolved names, stopping a capture at the
+first loop, hazard or byte over the largest budget) took that variant
+to +7.9%: the fixed cost is the per-lookup capture of every body,
+which no site rule reduces. So the default is off: the default build
+is 6,171,012,092 against 6,155,632,191 with `--no-inline` (+0.25%, the
+flag checks), `--inline` is 7,205,680,010 (+16.8%), and
+`tools/wbench_baseline.txt` holds the default's counters (prelude
+19,113 / 4,820, `self` 493,702 / 129,915 against `main`'s 488,101 /
+128,504 — the lookup fix of a9eb0bb and the source growth only).
+
+Static before/after for the hot loop of `inflate_corpus`
+(`libs/extras/compress/inflate.w`, `inf_get_bits` line 218 `for i in
+range(n): v = v | (inf_get_bit(c) << i)`, x64, `objdump -d -Mintel`;
+the whole image has 1,643 `call rel32` after, from 1,736 + 217
+indirect before A4):
+
+```
+before (A4)                                  after (A5)
+ cmp    r13,QWORD PTR [rsp+0x0]               mov    rsi,QWORD PTR [rbp+0x10]   ; c   (R3: the loop owns
+ jge    <exit>                                mov    rdi,QWORD PTR [rbp+0x18]   ; n    registers now that
+ mov    rax,r12                               mov    r8,QWORD PTR [rbp-0x28]    ;      it holds no call)
+ push   rax                                   cmp    r13,r8
+ mov    rax,QWORD PTR [rsp+0x48]  ; c         jge    <exit>
+ push   rax                                   mov    rax,r12
+ call   8061926 <inf_get_bit>                 push   rax
+ add    rsp,0x8                               mov    rax,rdi
+ pop    rbx                                   push   rax                        ; the parameter slot
+ ...                                          mov    rax,QWORD PTR [rsp+0x0]    ; inf_get_bit's body:
+                                              add    rax,0x30                   ;   if (c.status != 0)
+                                              mov    rax,QWORD PTR [rax]
+                                              cmp    rax,0x0
+                                              je     <next>
+                                              mov    eax,0x0
+                                              jmp    <end of body>              ; return 0
+                                              ... (c.byte_pos >= c.in_length, the shift, bit_pos
+                                                   += 1, the byte advance: 47 instructions)
+                                              add    rsp,0x8                    ; pop b
+                                              jmp    <end of body>              ; return b
+                                              add    rsp,0x8                    ; the argument, as after a call
+                                              pop    rbx
+                                              ...
+```
+
+The plan's §2.4 expectation for this unit (x64: `inflate_corpus`
+−30%, `strcmp_sort` −25%, `siphash_keys` −15%, `sieve` −3%) was not
+met: −4.3%, −2.3%, −0.3% and −1.2%. What the estimate over-counted is
+the call overhead's share of those loops: with A4's shape a call is
+one `call rel32` plus the callee's `push rbp; mov rbp,rsp; ... leave;
+ret` and R3's spill/reload (some eight instructions), while the body
+of `inf_get_bit` is ~50 instructions of stack-slot traffic that the
+copy repeats verbatim — the single-pass emitter inlines the body, it
+does not simplify it (no constant propagation of the arguments, no
+register binding of the parameters: they are `[rsp+disp]` slots). Per
+target callee: `inf_get_bit` inlines at both of its sites (the
+`inf_get_bits` loop and `wh_decode`); `__w_size_add` and
+`__w_size_mul` are leaf bodies under the rule above (222 and 260
+bytes) but their sites — `string_reserve` (`structures/string.w:38`)
+and `__w_list_ensure` (`structures/w_list.w:185`) — are straight-line
+code in small helpers that the hot loops call, so the loop rule gives
+them the 64-byte budget and they stay calls (`__w_size_add` is 16% of
+`inflate_corpus` after this unit). Relaxing the rule to "a site inside
+a loop, or in a function whose own body is still small" (one line in
+`inline_site_budget`) was measured: `inflate_corpus` −6.3% and
+`strcmp_sort` −4.0% instead of −4.3% / −2.3%, for an x86 image of
++8.1% instead of +3.5% and ~5,300 sites instead of 3,700 in the
+self-compile; the cheaper rule was kept, and a `--profile-use` profile
+that marks `string_reserve` hot gets the same effect without the
+blanket cost (B3 in §5.2 is the place for the per-site budget).
+`__w_list_load_word` (163 bytes, leaf) inlines at its 18 loop sites;
+`__w_list_compare_values`, the top of `strcmp_sort`, contains a loop
+and never inlines; `bench_fold` (74 bytes, leaf) inlines at its two
+sites; `__w_hash_sip` is one loop and is the whole of `siphash_keys`.
+
+**At the site, with A6 and A2 (merged after the unit landed).** The
+body is re-parsed where the call's arguments were just pushed, so the
+emitter's per-site notes are live there: `inline_emit_call`
+materializes a pending condition chain before the body
+(`cond_pending_materialize`; `emit()` would at the body's first byte,
+since the chain's value is the site's, never the body's), zeroes the
+positional discard mark (`cond_discard_mark`, `ast_cond_discard`) for
+the body and restores it afterwards — the mark names a token offset in
+the caller's file, which a body token from another file could
+otherwise match — and reports a chain the body leaves pending as an
+internal error; the addressing, load and comparison notes of
+`code_generator/x86.w` are reset (`be_notes_reset`) on both sides of
+the body, so no fold reaches across the site in either direction (the
+tail-jump elision goes through `peep_rollback`, which drops the notes
+of the bytes it removes). A7's rotated `while` parses its condition
+after the body through the same absolute seek the generic re-parse
+uses; an inlined call in that condition is a loop site (the loop depth
+is still the caller's) and its re-parse runs on its own descriptor, so
+the two never share a window. `tests/inline_test.w`'s
+`test_condition_and_subscript_operands` pins inlined calls as operands
+of `&&`/`||`/`!` chains, of a chain compared as a value, of a rotated
+`while` condition, and as the base and the index of subscripts and
+field accesses.
+
+On the merged tree (A4+A1+A6+A2+A7, `tests/bench/baseline.txt`) the
+corpus under `--inline` against the default build, Ir in thousands:
+
+| program | x64 default | x64 `--inline` | Δ | x86 default | x86 `--inline` | Δ |
+|---|---|---|---|---|---|---|
+| sum | 2,400,095 | 2,400,094 | 0.0% | 2,400,112 | 2,400,112 | 0.0% |
+| sieve | 987,552 | 968,082 | −2.0% | 992,436 | 972,967 | −2.0% |
+| sha256_1m | 4,292,723 | 4,191,273 | −2.4% | 4,589,489 | 4,488,039 | −2.2% |
+| siphash_keys | 3,596,919 | 3,586,219 | −0.3% | 3,302,945 | 3,273,312 | −0.9% |
+| inflate_corpus | 3,888,792 | 3,683,443 | −5.3% | 3,981,531 | 3,775,551 | −5.2% |
+| regex_backtrack | 4,061,937 | 4,061,445 | 0.0% | 3,969,625 | 3,969,133 | 0.0% |
+| matmul_256 | 3,212,303 | 3,210,992 | 0.0% | 4,223,221 | 4,221,910 | 0.0% |
+| strcmp_sort | 2,528,707 | 2,451,203 | −3.1% | 2,517,301 | 2,439,798 | −3.1% |
+
+The gains are a little larger than on the A4-only base (inflate −5.3%
+against −4.3%): the other units shorten the inlined bodies too.
+
+What this unit does not claim:
+
+- No simplification of the inlined body: the parameters are stack
+  slots, not registers or constants, and the body's own `push`/`pop`
+  traffic is what the copy costs. Binding parameters to R3 registers
+  at a loop site, or folding an immediate argument into the body, is
+  the next step and needs A2/A6's operand model.
+- Bodies with calls are inlined only under a profile that marks the
+  site hot; bodies with loops, never (a loop's R3 facts are keyed by
+  its keyword's file offset in the caller's scan, which a copied loop
+  would collide with).
+- A breakpoint on an inlined callee under `wdbg --attach` (the
+  recompile keeps the binary's inlining) is reached only through the
+  out-of-line body, which still exists but may never be called; the
+  in-process debugger compiles with inlining off, and a binary to be
+  debugged by attaching is best built without `--inline` (no
+  `DW_TAG_inlined_subroutine` records are written).
+- win64 could not be run here (no wine); it is unchanged by
+  construction (`target_os != 0` refuses every site) and the
+  `--no-inline` byte-identity check above covers it.
+- Compile time under `--inline`: +13–17% Ir for the self-compile,
+  the re-parse cost the plan's §6 named, which is why it is opt-in;
+  the default build pays the flag checks only.
+
+Deviations from the plan's sketch: (1) the budget is in bytes of the
+body's compiled code, not tokens (`inf_get_bit` is 86 tokens, and a
+token count says nothing about hidden runtime calls or the size of a
+struct field access); (2) a body with calls is not excluded outright
+but confined to profile-hot sites, and a call of a noreturn function
+does not count as a call (`__w_size_add`'s trap); (3) a straight-line
+site outside every loop gets the cold budget under `--inline`, and
+`--profile-use` alone inlines profile-hot sites only, so image growth
+and the re-parse cost stay bounded (the plan said "size threshold
+otherwise"); (4) the
+unit is opt-in rather than on by default, for the compile-time cost
+above; the debugger's in-process compile keeps every call a call even
+under `--inline` (`debug_test` sets a breakpoint on `add`, which would
+inline into `triple`), and `wdbg --inline --attach` recompiles an
+`--inline` build the same way; (5) the span table
+of S2.3 was not reused — the record
+keeps a private copy of the body's bytes, since the retained source
+window and the file image are both gone by the time a later call site
+needs them; (6) win64 is excluded rather than changed (the plan allowed
+either).
+
+Gates (on the merged tree, A4+A1+A6+A2+A7+A5): `verify`,
+`verify_x64`, `verify_pgo`, `verify_arm64` (qemu-user-static),
+`regalloc_diff_test` (0 mismatches over 412 compared builds, eight
+variants each), `ast_expression_test`, `ast_retained_emit_test`,
+`regalloc_test` + `_64`, `debug_test`, `debug_test_x64`, `attach_test`,
+`direct_call_test` + `_64`, `inline_test` + `_64`, `loop_rotate_test`
++ `_64` + `_arm64`, `addressing_mode_test` + `_64`, `cond_branch_test`
++ `_64`, `crash_trace_test`, `wdbg_web_test` (the crash fixtures test
+frame-pointer unwinding through a chain of small leaf bodies, which
+an `--inline` build would flatten; the default build keeps them),
+`profile_use_test` (a stale or header-only profile under
+`--profile-use` inlines nothing and scans as the plain build: both
+images byte-identical, which the first merged tree failed on each
+width until the hot-only rule and the scan's budget rule above), the
+full `tests` umbrella (929 targets, `QEMU_LD_PREFIX` set for the
+arm64 runs), `bench_compare`, `wbench_compare` (both clean against the
+baselines regenerated on the merged tree), `profile_check` (95% of
+`self.wprof` / `self_x64.wprof` entries still match, 100% of
+`bench.wprof`; measured before the merge).
+
 
 ### A3 — expression register stack, G3 (2026-10-07)
 
@@ -1842,7 +2479,6 @@ behaviour mismatch of its `--no-expr-regs` build; the binary passes on
 every rerun and the sweep is clean on a quieter machine (noted in
 `docs/projects/ai_tooling_next_steps.md`). `tests_win64` cannot run
 here (no `wine`); the win64 images are byte-identical to A2's.
-
 
 ## 9. Reproducing
 

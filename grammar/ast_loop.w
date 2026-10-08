@@ -128,6 +128,14 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 # (emit_guard_ast_walk): the keyword and its condition are parsed before
 # the loop's regions are opened, and the back edge and region ends are
 # emitted once the body has been parsed.
+# A rotated loop (grammar/loop_rotate.w, the twin of while_statement in
+# grammar/while_statement.w) skips the condition, parses the body with
+# the header's phases drained, and parses the condition as the bottom
+# test afterwards: its guard phases are recorded and drained with the
+# lexer at the condition, the end phase with it back at the body's end.
+void emit_while_loop_ast_bottom(loop_ast* node);
+
+
 int ast_while_statement():
 	if (peek(c"while") == 0): return 0
 	loop_ast node
@@ -136,8 +144,11 @@ int ast_while_statement():
 	node.line = diag_token_line
 	node.column = diag_token_column
 	node.start_offset = token_start_offset
+	node.rotated = 0
+	node.entry_site = -1
 	get_token()
 	int while_tab_level = tab_level
+	int outer_condition = condition_context
 	int* outer = 0
 	control_ast_walk control
 	int walk = retained_walk_begin(cast(int, emit_guard_ast_walk), 0)
@@ -147,19 +158,40 @@ int ast_while_statement():
 		control.outer = 0
 		control_ast_walk_attach(walk, &control)
 		retained_walk_phase(walk, ast_walk_while_begin)
-		control_ast_guard_pending = &control
-	else: outer = emit_while_loop_ast_begin(&node)
-	int outer_condition = condition_context
-	condition_context = 1
-	statement_guard(node.break_target, outer_condition)
+	tokenizer_snapshot cond_mark
+	char* cond_text = 0
+	if (loop_rotate_on()):
+		cond_text = loop_rotate_mark(&cond_mark)
+		node.rotated = loop_rotate_skip_condition()
+		if (node.rotated == 0):
+			loop_rotate_return(&cond_mark, cond_text)
+			cond_text = 0
+	if (walk < 0): outer = emit_while_loop_ast_begin(&node)
 	# Fall-through bookkeeping mirrors while_statement
 	# (grammar/while_statement.w, grammar/type_check.w)
-	int forever = flow_guard_true
+	int forever = 0
+	if (node.rotated == 0):
+		if (walk >= 0): control_ast_guard_pending = &control
+		condition_context = 1
+		statement_guard(node.break_target, outer_condition, 0)
+		forever = flow_guard_true
 	enclosing_tab_level = while_tab_level
 	if (walk >= 0):
 		retained_walk_drain(walk)
 		outer = control.outer
 	statement()
+	if (node.rotated):
+		tokenizer_snapshot body_mark
+		char* body_text = loop_rotate_mark(&body_mark)
+		loop_rotate_return(&cond_mark, cond_text)
+		emit_while_loop_ast_bottom(&node)
+		if (walk >= 0): control_ast_guard_pending = &control
+		condition_context = 1
+		statement_guard(node.top_target, outer_condition, 1)
+		forever = flow_guard_true
+		int serial = token_serial
+		loop_rotate_return(&body_mark, body_text)
+		if (token_serial < serial): token_serial = serial
 	forever = forever && (flow_loop_break == 0)
 	node.end_offset = token_start_offset
 	if (walk >= 0):

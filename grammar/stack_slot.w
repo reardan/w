@@ -115,7 +115,8 @@ void lea_slot(int slot):
 # pushed (an indirect call, or direct calls off); 1: a function symbol
 # (id = table offset); 2: a generic instantiation (id = instance index);
 # 3: a lazy runtime helper (id = the lazy_runtime record, aux = helper
-# index).
+# index); 4: a function symbol whose body finish_call emits in place of
+# the call (id = the compiler/inline_table.w record, unit A5).
 
 int direct_call_count
 int direct_call_capacity
@@ -132,6 +133,7 @@ void generic_inst_emit_callee(int inst);   /* grammar/generic.w */
 void generic_inst_emit_call(int inst);     /* grammar/generic.w */
 void lazy_emit_call(int rt_address, int i);   /* grammar/lazy_runtime.w */
 int identifier_value(char* name);   /* grammar/identifier.w */
+int identifier_value_at(int t, char* name);   /* grammar/identifier.w */
 
 
 void direct_call_record_aux(int s, int kind, int id, int aux):
@@ -283,7 +285,8 @@ int rt_call_begin(char* fn):
 	if (direct_callee_ok(t)):
 		direct_call_record(s, 1, t)
 		return s
-	sym_get_value(fn)
+	if (t < 0): sym_not_found_error(fn)
+	sym_emit_value(t, fn)
 	push_slot()
 	direct_call_record(s, 0, 0)
 	return s

@@ -288,7 +288,7 @@ void emit_guard_ast_value(statement_ast* node):
 
 
 void emit_guard_ast_branch(statement_ast* node):
-	cond_branch_consume(node.target, 0)
+	cond_branch_consume(node.target, node.branch_nonzero)
 	ast_guards_emitted = ast_guards_emitted + 1
 
 
@@ -429,7 +429,11 @@ void emit_while_loop_ast_end(loop_ast* node);
 # The guard's target region is opened by its statement's begin phase, so
 # it is read when the branch is emitted.
 void emit_guard_ast_walk_branch(control_ast_walk* control, statement_ast* guard):
-	if (control.loop != 0): guard.target = control.loop.break_target
+	if (control.loop != 0):
+		# A rotated while's bottom test branches back to the body
+		# (grammar/loop_rotate.w); a top-tested one exits
+		if (control.loop.entry_site >= 0): guard.target = control.loop.top_target
+		else: guard.target = control.loop.break_target
 	else: guard.target = control.statement.alternate_target
 	emit_guard_ast_branch(guard)
 

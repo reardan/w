@@ -1804,6 +1804,7 @@ void call_eax():
 		ers_spill_all()
 		# Loop-owned caller-saved registers survive the callee through
 		# their homes (R3); nothing is emitted when no loop owns any.
+		inline_real_calls = inline_real_calls + 1
 		regalloc_call_spill()
 		emit(2, c"\xff\xd0") /* call *%eax */
 		regalloc_call_reload()
@@ -1834,6 +1835,7 @@ void call_relative32(int v):
 int call_direct_to(int v):
 	emitted_call_count = emitted_call_count + 1
 	ers_spill_all()
+	inline_real_calls = inline_real_calls + 1
 	regalloc_call_spill()
 	call_relative32(v - (code_offset + codepos + 5))
 	int slot = codepos - 4
@@ -1845,6 +1847,7 @@ int call_direct_link(int head):
 	if (head == 0): head = code_offset
 	emitted_call_count = emitted_call_count + 1
 	ers_spill_all()
+	inline_real_calls = inline_real_calls + 1
 	regalloc_call_spill()
 	call_relative32(head)
 	int slot = codepos + code_offset - 4
@@ -2411,6 +2414,23 @@ int jcc_invert(int jcc_opcode):
 	if (jcc_opcode & 1): return jcc_opcode - 1
 	return jcc_opcode + 1
 
+# A discard-context branch on a constant the immediately preceding
+# mov_eax_int loaded ('while (1)', 'if (0)', the bottom test of a rotated
+# constant-condition loop, docs/projects/codegen_gap_plan.md §2.5): the
+# load is dropped and the branch becomes an unconditional jmp when the
+# constant decides it is taken, or nothing at all when it never is. The
+# accumulator is dead on both edges by the discard contract, so the
+# dropped load is unobservable. x86 family only (the immediate note is),
+# and part of unit A7: --no-loop-rotate keeps the test, so the opt-out
+# emits exactly the pre-unit bytes. Returns 1 when it handled the branch.
+int be_br_const_discard(int h, int on_nonzero):
+	if ((target_isa != 0) || loop_rotate_disabled || (imm_note_end == 0) || (imm_note_end != codepos)): return 0
+	int taken = (imm_note_value != 0) == on_nonzero
+	peep_rollback(imm_note_start)
+	imm_note_end = 0
+	if (taken): be_br(h)
+	return 1
+
 # Discard-context twins of be_br_zero/be_br_nonzero for callers that
 # never read the accumulator after the branch on either edge (if/while/
 # for/switch/ternary conditions) — NOT &&/||, whose short-circuit edge
@@ -2426,6 +2446,7 @@ void be_br_zero_discard(int h):
 		be_br_cc(jcc_invert(cmp_fuse_cc - 0x10), h)
 		cmp_fuse_end = 0
 		return
+	if (be_br_const_discard(h, 0)): return
 	be_br_zero(h)
 
 void be_br_nonzero_discard(int h):
@@ -2434,7 +2455,23 @@ void be_br_nonzero_discard(int h):
 		be_br_cc(cmp_fuse_cc - 0x10, h)
 		cmp_fuse_end = 0
 		return
+	if (be_br_const_discard(h, 1)): return
 	be_br_nonzero(h)
+
+# A rotated loop (docs/projects/codegen_gap_plan.md §2.5, unit A7) enters
+# by jumping over its body to the condition at the bottom: be_loop_entry
+# emits the jump and returns its site, be_loop_entry_land resolves it to
+# the current position, which is a jump target like any region end. The
+# site is a plain forward branch outside the region protocol (it crosses
+# the loop region, which the protocol's LIFO nesting cannot express).
+# x86 family and arm64 only; the structured-control ISAs never rotate.
+int be_loop_entry():
+	jmp_int32(0)
+	return codepos
+
+void be_loop_entry_land(int site):
+	be_notes_reset()
+	be_branch_patch(site, codepos)
 
 # Pop region h, which must be the top of the stack, and hand its
 # pending branch sites to the open region target below it instead of

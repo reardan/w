@@ -1063,6 +1063,46 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   list passed twice afterwards and the full suite passed. Not
   reproduced; noted so a second sighting is not dismissed as noise.
 
+## Inlining small leaf callees (2026-10-07, codegen gap plan A5)
+
+- **`wtest changed` selects by import closure, so a codegen unit's
+  behavioural tests are invisible to it.** The diff of unit A5 touched
+  `grammar/` and `compiler/` files only; `wtest changed` returned
+  `verify`, the new `inline_test` twins, `regalloc_diff_test` and the
+  residue targets, but not `direct_call_test`, `ast_expression_test`,
+  `debug_test` or `attach_test`, which exercise exactly the paths the
+  unit changed (call emission, the two emitters' parity, DWARF line
+  notes). A unit has to carry its own list. Direction: let a source
+  declare the compiler paths it pins (`# wbuild: covers=grammar/
+  postfix_expr.w ...`) so a diff in those files selects it, the way
+  `tools/test_map.w` residue rules work today for data files.
+- **The wexec lock makes `./wbuild bench` (25+ minutes of callgrind)
+  exclusive with every other target.** Running a focused test while the
+  bench runs fails with `another build is running in this directory`;
+  the workaround is hand compiles (`bin/wv2 tests/foo.w -o bin/x && bin/x`),
+  which lose the manifest's expectations. Read-only or disjoint-output
+  targets could share the lock.
+- **`-v` levels are undocumented.** `-v` alone shows nothing beyond the
+  default, `-v -v` turns on the per-definition traces (`inline_body_end`,
+  `regalloc`), `-v -v -v` the per-site ones (`<name>: inlined`, `<name>:
+  call`), and the third level makes a self-compile take minutes because
+  every call prints. `--help` says only "repeat for compiler debug
+  traces"; the levels should be named there.
+- **A `wexec` run in one worktree can be killed from another.** During
+  the merge gates, three consecutive `./wbuild` stages of a chained
+  script (the focused gates at `ast_expression_test`, the full suite at
+  `ftp_64_test`, then `bench_compare`) ended with exit 143 (SIGTERM)
+  minutes apart, with nothing in their logs, while a sibling agent's
+  `wexec` ran in a neighbouring worktree; the same chain, restarted
+  under `setsid`, ran to the end. The suite's own `exit 143` sighting
+  above is the same shape. A `pkill wexec` (or a process-group kill by
+  an agent harness timing out a foreground command) has no way to
+  tell worktrees apart. Direction: let `wexec` re-exec under a
+  worktree-specific name (`wexec@lane-calls`) or document `setsid`
+  for chained runs, and make `./wbuild` print "killed by signal N"
+  for a stage that dies that way.
+
+
 ## Expression register stack (2026-10-07, codegen_gap_plan.md unit A3)
 
 - **`./wbuild build` served a stale `bin/wv2`.** After a run of edits to
