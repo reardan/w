@@ -2,16 +2,18 @@
 
 Stage W5 of [issue #514](https://github.com/reardan/w/issues/514)
 (design copy: `docs/projects/reliable_services.md`): "P1 memory budgets
-and diagnostics" and "P2 transport". Three leaf libraries, no compiler
-or runtime changes:
+and diagnostics" and "P2 transport". Reusable library interfaces:
 
 | File | What it is |
 |---|---|
 | `lib/arena.w` | budgeted chunk arena + shared `mem_budget` |
 | `lib/metrics.w` | fixed-size counters/gauges, log2 latency histogram, bounded event ring |
 | `lib/transport.w` | checked byte-transport interface + TCP/Unix socket adapter |
+| `lib/transport_tls.w` | TLS 1.3 client/server adapter, verified server identity |
+| `lib/service_metrics.w` | allocation-free scheduler, executor and budget snapshots |
 
-Tests: `lib/arena_test.w`, `lib/metrics_test.w`, `lib/transport_test.w`
+Tests: `lib/arena_test.w`, `lib/metrics_test.w`, `lib/transport_test.w`,
+`lib/transport_tls_test.w`, `lib/service_metrics_test.w`
 (each with an x64 twin: `arena_64_test`, ...). The source files are
 authoritative where this text and they differ.
 
@@ -61,9 +63,8 @@ Contract:
   `mem_budget` has `used`, `peak`, `failures`.
 - **Single owner.** Neither arenas nor budgets lock. Use one per worker
   thread (tasks on one scheduler are cooperative, so they can share
-  one), or guard with a `wmutex`. A lock-free shared budget would need
-  `atomic_cas`, which is host x86/x64 only today, so it is deferred
-  rather than making the file arch-specific.
+  one), or guard with a `wmutex`. Shared atomic budget accounting is
+  outside this arena API.
 
 `arena_test` drives 400 rounds of "allocate until the budget refuses,
 then reset" with a mix of small and oversized requests and checks that
@@ -77,7 +78,7 @@ is no external metrics dependency.
 
 - **Registry**: `metrics_new(capacity)` pre-registers the standard ids
   the design asks for — `METRIC_TASKS_PENDING`, `METRIC_JOBS_QUEUED`,
-  `METRIC_BYTES_QUEUED`, `METRIC_WORKERS_BLOCKED`,
+  `METRIC_BYTES_QUEUED`, `METRIC_WORKERS_BLOCKED`, `METRIC_WORKERS_RUNNING`,
   `METRIC_ALLOC_FAILURES`, `METRIC_FDS_OPEN` — and `metrics_counter` /
   `metrics_gauge` register more up to the fixed capacity (then return
   -1, which `metrics_add`/`metrics_set` ignore). Counters saturate at
@@ -101,14 +102,17 @@ is no external metrics dependency.
   through the unsorted `dir_platform_read` (-1 where `/proc` is absent);
   `metrics_sample_open_fds` stores it in `METRIC_FDS_OPEN`.
 
-**Integration points** (not wired, to stay out of files owned by other
-stages): `task_dump_fd` (`lib/task.w`) already reads
-`s.active_count` and `s.ready.length`; a sampler setting
-`METRIC_TASKS_PENDING` from them is a three-line addition there. The W3
-bounded executor owns the queued-jobs/bytes and blocked-worker numbers.
-Arena and `mem_budget` failure counters feed `METRIC_ALLOC_FAILURES`.
-`lib/transport.w` already records per-operation latency and failure
-events when given a `metrics` (`transport_set_metrics`).
+**Service integration**: import `lib.service_metrics` and call
+`metrics_sample_scheduler(m, s)`, `metrics_sample_executor(m, ex)`, and
+`metrics_sample_arena(m, a)` or `metrics_sample_budget(m, b)`. These are
+allocation-free snapshots. Sample the scheduler, arena and budget on their
+owner thread; the executor snapshot takes its lock. Serialize writers to a
+shared registry. Use one owner per metric category; arena and shared budget
+allocation counters are alternatives, so do not sample both into the same
+registry. `METRIC_WORKERS_RUNNING` counts active jobs;
+`METRIC_WORKERS_BLOCKED` counts idle workers waiting for work (a running
+job's internal syscall/blocking state is opaque). `lib/transport.w` records
+per-operation latency and failure events with `transport_set_metrics`.
 
 ## Checked byte transport (`lib/transport.w`)
 
@@ -158,78 +162,74 @@ transport_free(t)                      closes if needed, frees adapter state + d
   `transport_require_authenticated` returns `IO_UNSUPPORTED` for them so
   a protocol that needs an authenticated peer fails closed.
 
-Known limits: `transport_tcp_connect` goes through `net_connect_timeout`,
-which does not preserve the connect errno (a refused connection is
-`IO_IO_ERROR` with `native_error` 0) — fixing it needs a
-`getsockopt(SO_ERROR)` syscall wrapper, which `lib/` does not have yet;
-the same gap (no `getpeername`, no `SO_PEERCRED`) is why peer strings
-come from the connect/accept address and Unix clients carry no
-credentials. There is no half-close (`shutdown(2)` is not wrapped). The
-`MSG_DONTWAIT` value is chosen for Linux and Darwin only.
+`transport_tcp_connect` preserves connection errors (including refused
+connections), timeout and cancellation through `net_connect_timeout_checked`.
+Known limits: no `getpeername` or `SO_PEERCRED`, so peer strings come from
+the connect/accept address and Unix clients carry no credentials. There is
+no half-close (`shutdown(2)` is not wrapped). `MSG_DONTWAIT` values support
+Linux and Darwin only. Ready I/O checks the current task's cancellation and
+deadline before touching descriptors, using `io_check`; shielded cleanup
+honors the scheduler's existing shield behavior.
 
-## TLS audit (`libs/standard/net/tls.w`, `x509.w`)
+## Checked TLS transport (`lib/transport_tls.w`)
 
-Read for this stage; nothing in it is wired into `lib/transport.w`, and
-no adapter is advertised as authenticated or mutual TLS.
+`transport_tls_connect(fd, server_name, cfg, timeout_ms, &r)` performs a
+client handshake on an already connected socket. `server_name` is the DNS
+identity to verify, independent of the socket's IP address; `cfg` may be 0
+for secure defaults. `transport_tls_accept(fd, peer, server_cfg, timeout_ms,
+&r)` performs a server handshake on an accepted socket. Both constructors
+own the socket on every path, including failures, return 0 on failure, and
+fill the caller's `io_result`. Configurations are borrowed only during the
+handshake and may be freed once it returns. After construction the ordinary
+transport read/write/deadline/close/peer/metrics APIs apply.
 
-- **Client certificates / mutual TLS: not implemented.** The client
-  never handles a `CertificateRequest`: a server that sends one breaks
-  the handshake ("expected Certificate"). The server role (`tls_accept`)
-  never sends `CertificateRequest`, so it cannot authenticate clients. A
-  server-side TLS transport therefore must keep `authenticated = 0`; a
-  client-side one could claim only *server* authentication, and only
-  when verification was not skipped.
-- **Trust configuration**: `tls_config.trust_store_path`, else
-  `SSL_CERT_FILE`, else the distro bundle paths; an unloadable store
-  fails the handshake (closed). The bundle file is re-read and re-parsed
-  on every handshake (cost, and a mid-flight file swap changes trust),
-  and there is no in-memory anchor or pinning option through
-  `tls_config`. `insecure_skip_verify` skips chain *and* hostname checks
-  (CertificateVerify and Finished are still checked); an adapter must
-  report `authenticated = 0` whenever it is set. TLS 1.3 only, one
-  cipher suite (ChaCha20-Poly1305), X25519; the server takes ECDSA P-256
-  keys only.
-- **Hostname verification**: SAN dNSName only (RFC 6125 wildcards, no CN
-  fallback); IPv4 literals never match and there is no iPAddress SAN
-  support, so connecting by IP cannot verify. **Fixed:** a null or empty
-  hostname no longer skips the check silently: `x509_verify_chain` fails
-  closed ("x509: no hostname to verify"), and chain-only callers must use
-  the explicit `x509_verify_chain_no_hostname`. A null or empty
-  `server_name` no longer faults in the ClientHello builder: `tls_connect`
-  fails before any I/O ("tls: no server name to verify") unless
-  `insecure_skip_verify` is set, in which case the ClientHello omits SNI.
-  An adapter that wants an authenticated peer must still pass a non-empty
-  server name.
-- **Nonblocking progress**: record I/O loops until a whole record moves.
-  On `EAGAIN` it calls `io_wait`: inside a task the task parks (bounded
-  by `io_timeout_ms`); outside a task `io_wait` fails at once, so a
-  non-blocking socket outside a task fails mid-record. There is no
-  resumable state: any timeout or error mid-record leaves the connection
-  unusable. `tls_read` returns only `>0`, `0` (close_notify) or `-1`,
-  and `tls_write` is all-or-nothing `-1`; timeouts are indistinguishable
-  from errors and the reason is a static string on the shared
-  `tls_config` (not per connection). An adapter would map `-1` to
-  `IO_IO_ERROR` with no errno.
-- **Shutdown**: `tls_close` sends close_notify best effort and frees the
-  connection, wiping keys; it does not close the socket (caller owns it)
-  and does not wait for the peer's close_notify. A received close_notify
-  is clean EOF; a TCP EOF without one is an error (truncation is
-  detected). No half-close.
+- **Authentication**: a client verifies the trust chain and DNS hostname
+  before reporting `authenticated = 1`; its peer string is `tls:hostname`.
+  Trust comes from `tls_config.trust_store_path`, then `SSL_CERT_FILE`, then
+  distro bundle paths. Unloadable trust stores, wrong names, expired or
+  invalid chains fail closed. `insecure_skip_verify` skips chain and name
+  verification and ALWAYS yields `authenticated = 0`, even after a valid
+  encrypted handshake. Servers ALWAYS yield 0: they do not request or
+  verify client certificates. No adapter claims mutual TLS.
+- **I/O results**: timeout and cancellation are distinct `IO_TIMED_OUT` and
+  `IO_CANCELLED`; native socket errors are retained. TLS protocol errors and
+  TCP EOF without close_notify are `IO_IO_ERROR` with no synthetic errno.
+  A received close_notify is `IO_EOF`. Errors live on each TLS connection;
+  `transport_tls_last_error(t)` exposes a static diagnostic surviving close.
+  A configuration's compatibility error string cannot overwrite another
+  connection's error.
+- **Progress and waiting**: reads expose authenticated plaintext only;
+  writes confirm each completely sent encrypted record independently, so a
+  later failure preserves the plaintext prefix in `r.transferred`. Bytes in
+  an incomplete record are excluded. Raw TLS I/O in checked mode uses
+  nonblocking syscalls and `io_poll`, both inside and outside tasks, with
+  the remaining absolute deadline recomputed on each attempt. Task state
+  is checked even on continuously ready descriptors. A timeout/error during
+  a TLS record poisons the connection because the record parser is not
+  resumable; close and reconnect. A generic transport deadline or task
+  check that fails before the adapter runs consumes nothing and does not
+  poison the connection. Use one operation at a time per transport.
+- **Shutdown**: close_notify is sent within the current deadline (at most
+  1000 ms when none was set). Close reports an alert-send error or the
+  socket close error, always releases the socket and wipes keys, and is
+  idempotent. It does not wait for the peer's close_notify.
+- **TLS scope**: TLS 1.3, ChaCha20-Poly1305, X25519; server keys are ECDSA
+  P-256. Host verification uses SAN dNSName wildcards, without CN fallback
+  or iPAddress SAN support. Trust bundles are read per handshake. Legacy
+  `tls_connect`/`tls_read`/`tls_write` retain their existing API; importing
+  this adapter opts into checked socket I/O and per-record progress.
 
-Before a TLS adapter is exposed: map results to `IO_*` with a timeout
-distinct from failure, keep per-connection error state, require a server
-name, reflect `insecure_skip_verify` in `authenticated`, and decide
-whether non-blocking use outside tasks is supported. Mutual TLS needs
-`CertificateRequest` + client `Certificate`/`CertificateVerify` on both
-roles and its own tests before anything may be called mTLS.
+`transport_tls_test` and its x64 twin exercise real trusted handshakes,
+wrong hostnames and missing trust stores, insecure identity semantics,
+nonblocking sockets outside tasks, task suspension/cancellation, ready I/O
+with expired/cancelled tasks, partial encrypted writes, abrupt truncation,
+clean shutdown and expired close. Common transport tests additionally check
+partial counts returned together with an adapter error.
 
 ## Deferred
 
-- Thread-safe shared `mem_budget` (needs portable atomics).
-- `getsockopt(SO_ERROR)`, `getpeername`, `SO_PEERCRED`, `shutdown`
-  wrappers in the syscall layer (errno-preserving connect, kernel-sourced
-  peer identity, Unix peer credentials, half-close).
-- Task-scheduler sampler for `METRIC_TASKS_PENDING` in `lib/task.w`;
-  executor gauges from W3.
-- TLS transport adapter (client side, server-authenticated only) after
-  the audit items above.
+- Thread-safe shared `mem_budget` accounting.
+- `getpeername`, `SO_PEERCRED`, `shutdown` syscall
+  wrappers (kernel-sourced peer identity, Unix credentials and half-close).
+- Mutual TLS: `CertificateRequest` and client Certificate/CertificateVerify
+  on both roles, with separate provisioning and authentication tests.

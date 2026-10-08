@@ -4,7 +4,7 @@ import lib.metrics
 
 
 void test_metrics_standard_ids_and_custom_registration():
-	metrics* m = metrics_new(8)
+	metrics* m = metrics_new(METRICS_STANDARD_COUNT + 2)
 	assert_equal(METRICS_STANDARD_COUNT, m.count)
 	assert_strings_equal(c"tasks_pending", m.names[METRIC_TASKS_PENDING])
 	assert_strings_equal(c"fds_open", m.names[METRIC_FDS_OPEN])
@@ -15,7 +15,7 @@ void test_metrics_standard_ids_and_custom_registration():
 	# Kind conflicts and a full registry are refused, not grown.
 	assert_equal(-1, metrics_gauge(m, c"requests"))
 	assert_equal(-1, metrics_counter(m, c"one_too_many"))
-	assert_equal(8, m.count)
+	assert_equal(METRICS_STANDARD_COUNT + 2, m.count)
 	metrics_add(m, requests, 2)
 	metrics_add(m, requests, 3)
 	metrics_set(m, inflight, 7)

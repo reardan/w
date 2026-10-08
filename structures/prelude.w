@@ -20,7 +20,7 @@ void __w_print_nl():
 
 
 void __w_print_cstr(char* s):
-	write(1, s, strlen(s))
+	print_write(1, s, strlen(s))
 
 
 # A char-typed print argument renders as the character itself, one byte
@@ -31,11 +31,11 @@ void __w_print_char(int c):
 
 void __w_print_int(int value):
 	char* s = itoa(value)
-	write(1, s, strlen(s))
+	print_write(1, s, strlen(s))
 
 
 void __w_print_str(string s):
-	write_string(1, s)
+	print_write(1, s.data, s.length)
 
 
 # '[a, b, c]' for scalar element lists; kind selects the element
@@ -48,7 +48,7 @@ void __w_print_list(__w_list* list, int kind):
 		if (i > 0): __w_print_cstr(c", ")
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
 		if (kind == 2): __w_print_cstr(cast(char*, value))
-		else if (kind == 4): write_string(1, cast(string, value))
+		else if (kind == 4): __w_print_str(cast(string, value))
 		else: __w_print_int(value)
 		i = i + 1
 	__w_print_cstr(c"]")

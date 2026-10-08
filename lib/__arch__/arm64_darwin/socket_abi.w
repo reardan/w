@@ -69,3 +69,17 @@ int socket_abi_so_rcvtimeo():
 
 int socket_abi_so_sndtimeo():
 	return 4101
+
+
+# Pending asynchronous socket error (read-and-clear).
+int socket_abi_so_error():
+	return 4103
+
+
+# Classify native Darwin socket errors without confusing equal-numbered
+# Linux errors. The original errno stays in the result.
+import lib.socket_errno_darwin
+
+
+int socket_abi_status_errno(int err):
+	return socket_darwin_status_errno(err)

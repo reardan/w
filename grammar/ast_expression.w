@@ -1782,7 +1782,7 @@ int ast_expression_device_builtin(expression_ast* tree, int kind, int depth):
 
 
 int ast_expression_device_atomic(expression_ast* tree, int kind, int depth):
-	if (kind == 4): return -1
+	if (kind >= 4): return -1
 	int id = expression_ast_add(tree, 'k', -1, -1)
 	if (id < 0): return -1
 	tree.value[id] = kind
@@ -1818,7 +1818,9 @@ int ast_expression_device_atomic(expression_ast* tree, int kind, int depth):
 # registered after parsing the first operand, matching the streaming path.
 int ast_expression_atomic(expression_ast* tree, int kind, int depth):
 	if (target_isa == 3): return ast_expression_device_atomic(tree, kind, depth)
-	if ((target_isa != 0) || ((kind != 1) && (kind != 4))): return -1
+	if ((kind == 2) || (kind == 3)): return -1
+	if (target_isa != 0):
+		if ((target_isa != 1) || (kind < 5)): return -1
 	int id = expression_ast_add(tree, 'k', -1, -1)
 	if (id < 0): return -1
 	int integer = type_lookup(c"int")
@@ -1829,6 +1831,10 @@ int ast_expression_atomic(expression_ast* tree, int kind, int depth):
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	int count = 2
 	if (kind == 4): count = 3
+	if ((kind == 5) || (kind == 8)): count = 1
+	if (kind == 7): count = 0
+	if ((kind == 6) || (kind == 7) || (kind == 9)):
+		tree.result_type[id] = type_value(type_lookup(c"void"))
 	int tail = -1
 	for i in range(count):
 		if (i && (ast_expression_accept(tree, c",") == 0)): return -1

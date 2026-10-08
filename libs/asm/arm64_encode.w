@@ -343,6 +343,17 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 	else if (strcmp(m, c"stp") == 0 | strcmp(m, c"ldp") == 0):
 		if (insn.op3.kind == ASM_OP_MEM): w = arm64_enc_pair(insn)
 		else: done = 0
+	else if ((strcmp(m, c"ldar") == 0) || (strcmp(m, c"stlr") == 0)):
+		if ((insn.op1.kind != ASM_OP_REG) || (insn.op2.kind != ASM_OP_MEM)): return -1
+		if ((insn.op1.size != 4) && (insn.op1.size != 8)): return -1
+		if ((insn.op2.disp != 0) || (insn.op2.index != -1) || (insn.op2.disp_size != ARM64_ADDR_UOFF())): return -1
+		w = cast(int, 0x889ffc00)
+		if (insn.op1.size == 8): w = w | 0x40000000
+		if (strcmp(m, c"ldar") == 0): w = w | 0x00400000
+		w = w | (insn.op2.base << 5) | insn.op1.reg
+	else if (strcmp(m, c"dmb") == 0):
+		if ((insn.op1.kind != ASM_OP_LABEL) || (strcmp(insn.op1.label, c"ish") != 0)): return -1
+		w = cast(int, 0xd5033bbf)
 	else if (strcmp(m, c"nop") == 0): w = cast(int, 0xd503201f)
 	else: done = 0
 	if (done == 0):

@@ -333,6 +333,11 @@ int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrle
 int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
 	return syscall7(208, sockfd, level, optname, optval, optlen, 0)
 
+# optlen is an in/out pointer to a 32-bit socklen_t.
+int sys_getsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	return syscall7(209, sockfd, level, optname, optval, optlen, 0)
+
+
 # getrandom (278): fills buf with up to buflen bytes from the kernel
 # CSPRNG. flags 0 blocks until the entropy pool is initialized.
 int sys_getrandom(char* buf, int buflen, int flags):

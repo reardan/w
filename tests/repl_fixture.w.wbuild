@@ -1,5 +1,6 @@
 # wbuild: target=repl_test tag=tests dep=wv2 data=tests/repl_giant_entry_fixture.txt data=tools/repl_giant_entry_e2e.w
 # wbuild: step="bin/wv2 repl.w -o bin/repl"
+# wbuild: step="bin/repl" stdin="int word = 0\natomic_store(&word, 42)\natomic_fence()\natomic_load(&word)\natomic_store_relaxed(&word, -17)\natomic_load_relaxed(&word)\n:quit\n" expect_stdout="42" expect_stdout="-17" reject_stderr="error:"
 # wbuild: step="bin/repl" stdin="print(c\"hello from the repl\\x0a\")\n:quit\n" expect_stdout="hello from the repl"
 # wbuild: step="bin/repl" stdin="this is not valid w\nprint(c\"recovered\\x0a\")\n:quit\n" expect_stdout="recovered"
 # wbuild: step="bin/repl" stdin="int x = = 3\nqq + 1\nprint(c\"second recovery\\x0a\")\n:quit\n" expect_stdout="second recovery"
@@ -104,6 +105,7 @@
 # wbuild: step="bin/repl" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\t\tqq_undefined\n\treturn s\n\nint acc(int n):\n\tint s = 0\n\tfor i in range(n): s = s + i\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45"
 # wbuild: target=repl_test_x64 tag=tests_x64 dep=wv2 data=tests/repl_giant_entry_fixture.txt data=tools/repl_giant_entry_e2e.w
 # wbuild: step="bin/wv2 x64 repl.w -o bin/repl64"
+# wbuild: step="bin/repl64" stdin="int word = 0\natomic_store(&word, 42)\natomic_fence()\natomic_load(&word)\natomic_store_relaxed(&word, -17)\natomic_load_relaxed(&word)\n:quit\n" expect_stdout="42" expect_stdout="-17" reject_stderr="error:"
 # wbuild: step="bin/repl64" stdin="print(c\"hello from the repl\\x0a\")\n:quit\n" expect_stdout="hello from the repl"
 # wbuild: step="bin/repl64" stdin="this is not valid w\nprint(c\"recovered\\x0a\")\n:quit\n" expect_stdout="recovered"
 # wbuild: step="bin/wv2 tools/repl_giant_entry_e2e.w -o bin/repl_giant_entry_e2e_x64"

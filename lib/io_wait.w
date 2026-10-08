@@ -61,3 +61,17 @@ int io_poll(int fd, int events, int timeout_ms):
 	if (r == -110): /* ETIMEDOUT: this wait's own timeout */
 		return 0
 	return r
+
+
+# Check cancellation/deadline without waiting or consuming descriptor data.
+# A task runtime installs this alongside readiness hooks; ordinary callers
+# return 0. Checked I/O uses it even when a descriptor is always ready.
+type io_check_fn = fn() -> int
+
+
+io_check_fn* io_check_hook
+
+
+int io_check():
+	if (cast(int, io_check_hook) == 0): return 0
+	return io_check_hook()
