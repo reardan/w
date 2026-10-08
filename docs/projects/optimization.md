@@ -568,7 +568,12 @@ reasons (#231, #337) and not yet answered.
    it threaded into enclosing regions' chains and truncating the DWARF
    line rows, locals, lexical blocks and frame notes it added. An arm
    that fails the test stays as unreachable code. x86 and x64 Linux ELF
-   only, and not under `--profile-generate`/`--coverage`.
+   only, and not under `--profile-generate`/`--coverage`. With the
+   bottom-tested loops of codegen_gap_plan.md A7 (merged 2026-10-08) a
+   folded `while` condition is the loop's back edge: `while 1` keeps one
+   jump to the body, `while 0` falls through, and the dead body, which
+   precedes the test, has its region opened at the loop's begin phase
+   (ast_migration.md C3.5).
 
    Measured on `w.w` (the compiler, 58k lines): 106 conditions folded on
    either target; 28 dead arms removed and 19 kept on x86 (41 and 6 on
