@@ -56,7 +56,8 @@ int inferred_declaration():
 	if (is_ident == 0): return 0
 	# ':=' can only follow directly (nextc is its ':') or after blanks
 	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_declaration
 	node.source_file = file
 	node.line = diag_token_line
@@ -77,7 +78,7 @@ int inferred_declaration():
 	if (ast_expressions_mode >= 2):
 		node.inferred = 1
 		node.declared_type = -1
-		ast_local_declaration(&node, name)
+		ast_local_declaration(node, name)
 		free(name)
 		return 1
 	int got = expression()
@@ -105,7 +106,8 @@ int variable_declaration():
 	# expression statement)
 	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0) | gpu_qualifier_ahead()):
 		# println2("variable_declaration()")
-		statement_ast node
+		statement_ast local_node
+		statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 		node.kind = ast_stmt_declaration
 		node.source_file = file
 		node.line = diag_token_line
@@ -117,7 +119,7 @@ int variable_declaration():
 		if (ast_expressions_mode >= 2):
 			node.inferred = 0
 			node.declared_type = type
-			return ast_local_declaration(&node, 0)
+			return ast_local_declaration(node, 0)
 		int has_initializer = 0
 		int type2 = -1
 		# = expression

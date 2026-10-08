@@ -207,6 +207,7 @@ int emit_declaration_ast_initializer(statement_ast* node):
 
 
 void emit_declaration_ast_storage(statement_ast* node):
+	assert1(stack_pos == node.stack_depth)
 	ast_declarations_emitted = ast_declarations_emitted + 1
 	if (node.inferred): emit_inferred_local_storage(node.declared_type)
 	else: emit_typed_local_storage(node.declared_type, node.has_initializer)
@@ -222,33 +223,13 @@ void emit_declaration_ast_trace(statement_ast* node):
 		type_print(node.expression_type)
 
 
-# Local slot assignment. The parse records the local (its name in
-# literal_bytes for ':=', its type, the initializer's promoted type in
-# expression_type); the slot is the stack depth when its storage is
-# pushed, which only emission knows. A typed local was declared by its
-# type-name parse and gets its slot here; an inferred one is declared here,
-# after its initializer, which therefore cannot name it.
-void emit_declaration_ast_bind(statement_ast* node):
-	if (node.inferred):
-		node.declared_type = inferred_storage_type(node.literal_bytes, node.expression_type)
-		sym_declare(node.literal_bytes, node.declared_type, 'L', stack_pos, 1)
-		node.binding = table_pos - symbol_data_size
-		sym_note_inferred_location(node.binding, node.line, node.column)
-		lint_track_local(node.binding)
-	else:
-		node.binding = last_declared_symbol
-		save_int(table + node.binding + 2, stack_pos)
-	pointer_indirection = 0
-	node.stack_depth = stack_pos
-
-
 void defer_record_span(char* path, int offset, int line, int column);
 
 
 # defer registration: the node records the deferred statement's span
-# (literal_bytes is its file path, owned by the registry from here on).
+# (literal_bytes is its owned file path; the registry gets its own copy).
 void emit_defer_ast_register(statement_ast* node):
-	defer_record_span(node.literal_bytes, node.start_offset, node.line - 1, node.column - 1)
+	defer_record_span(strclone(node.literal_bytes), node.start_offset, node.line - 1, node.column - 1)
 
 
 # S2.2d: phases of a local declaration, goto/label, raw-asm or defer
@@ -256,7 +237,6 @@ void emit_defer_ast_register(statement_ast* node):
 # A declaration's initializer also runs family (a)'s ast_walk_expression and
 # ast_walk_expression_end phases.
 const int ast_walk_declaration_initializer = 41
-const int ast_walk_declaration_bind = 42
 const int ast_walk_declaration_storage = 43
 const int ast_walk_goto = 44
 const int ast_walk_raw = 45
@@ -271,7 +251,6 @@ void emit_declaration_ast_walk(retained_statement_walk* walk, int phase):
 	else if (phase == ast_walk_declaration_initializer):
 		node.expression_type = emit_declaration_ast_initializer(node)
 		emit_declaration_ast_trace(node)
-	else if (phase == ast_walk_declaration_bind): emit_declaration_ast_bind(node)
 	else if (phase == ast_walk_declaration_storage): emit_declaration_ast_storage(node)
 	else if (phase == ast_walk_goto): emit_goto_statement_ast(node)
 	else if (phase == ast_walk_raw): emit_raw_statement_ast(node)
@@ -389,8 +368,8 @@ const int ast_walk_block_deferred = 109
 const int ast_walk_block_end = 110
 
 
-# What the phases of an if/while walk act on, owned by the parsing frame
-# (which walks before it returns): statement is the if node of the arm
+# What the phases of an if/while walk act on, owned by the retained session:
+# statement is the if node of the arm
 # being parsed (an elif arm swaps its own in), loop the while node. A
 # block's walk needs none: its statement_ast is the walk's statement.
 struct control_ast_walk:

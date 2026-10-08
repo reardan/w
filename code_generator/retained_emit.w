@@ -295,10 +295,12 @@ int retained_emit_lower(expression_ast* tree, int id):
 # still runs after the parse.
 #
 # Lifetime: the expression view is owned by the pooled walk and points into
-# the retained group, never the parse arena. The statement_ast (or a family's
-# control record) still belongs to the parsing frame; whole-body deferral
-# must replace those borrowed records too. Records, phases and points are
-# pooled and released, last in first out, once walked.
+# the retained group, never the parse arena. Grammar-created statement and
+# control records live in the retained session arena, including their child
+# records and copied names/bytes. Records, phases and points are pooled and
+# released, last in first out, once walked. Parsing still drains phases that
+# establish scope/stack/control state: owned storage alone does not make the
+# analysis independent of emission.
 
 void retained_expression_note(expression_ast* tree, int root);
 void emit_expression_ast(expression_ast* tree, int id);

@@ -65,6 +65,24 @@ struct statement_ast:
 	int argument_index
 
 
+# Grammar nodes and family records must survive the frame that built them.
+# The retained session owns them, including rollback after a failed REPL
+# entry. Streaming callers use their local fallback. Initialize explicitly:
+# the pinned seed does not zero aggregate locals or `new` allocations.
+void* retained_parse_record(void* fallback, int size):
+	void* record = fallback
+	if (ast_retain_mode): record = retained_arena_alloc(size)
+	int* words = cast(int*, record)
+	for i in range(size / __word_size__): words[i] = 0
+	return record
+
+
+# Names passed by a caller may be in a stack buffer or freed after parsing.
+char* retained_parse_name(char* name):
+	if ((name == 0) || (ast_retain_mode == 0)): return name
+	return retained_intern(name)
+
+
 int ast_simple_statements_emitted
 int ast_debugger_statements_emitted
 
