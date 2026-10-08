@@ -39,12 +39,12 @@ struct gpu_statement_ast:
 	char* kernel_name
 	char* launch_name
 	char* variable_name
-	# The header value being parsed or walked, and its expression child;
-	# both live in the statement's frame (S2.2e).
+	# The owned header value being walked. The temporary expression parser
+	# is passed separately and is never stored in the launch record.
 	statement_ast* value
-	expression_ast* tree
 	# A walked gpu for's capture bindings, by capture slot.
 	int* capture_bindings
+	char** capture_names
 
 
 int ast_gpu_launches_emitted

@@ -466,12 +466,83 @@ int getchar_checked(int file):
 	return c
 
 
+# Allocation-free checked printing. error is the positive write-layer error;
+# transferred is the confirmed prefix, including on failure. A writer
+# returning zero with bytes left becomes EIO instead of spinning.
+struct print_result:
+	int transferred
+	int error
+
+
+type print_writer = fn(int, char*, int) -> int
+
+
+# The explicit writer seam also supports redirected application sinks.
+int print_write_using(print_writer* writer, int fd, char* data, int length, print_result* r):
+	r.transferred = 0
+	r.error = 0
+	if (length < 0):
+		r.error = 22
+		return -22
+	while (r.transferred < length):
+		int n = writer(fd, data + r.transferred, length - r.transferred)
+		# WASI has its own errno numbering (4 is EADDRNOTAVAIL, 27 is EINTR).
+		if (__target_isa__ == 2):
+			if (n == -27): continue
+		else:
+			if (n == -4): continue # POSIX EINTR
+		if (n > length - r.transferred): n = -5 # invalid sink count
+		if (n <= 0):
+			if (n == 0): n = -5 # EIO: no progress
+			r.error = 0 - n
+			return n
+		r.transferred = r.transferred + n
+	return 0
+
+
+int print_write_checked(int fd, char* data, int length, print_result* r):
+	return print_write_using(write, fd, data, length, r)
+
+
+int print_checked(string s, print_result* r):
+	return print_write_checked(1, s.data, s.length, r)
+
+
+int print_error_checked(string s, print_result* r):
+	return print_write_checked(2, s.data, s.length, r)
+
+
+# Legacy void print helpers preserve the first error until cleared.
+# These process-local convenience records are for a single printing
+# thread; concurrent producers use caller-owned print_result instead.
+int print_stdout_error
+int print_stderr_error
+
+
+int print_last_error(int fd):
+	if (fd == 1): return print_stdout_error
+	if (fd == 2): return print_stderr_error
+	return 0
+
+
+void print_clear_error(int fd):
+	if (fd == 1): print_stdout_error = 0
+	if (fd == 2): print_stderr_error = 0
+
+
+void print_write(int fd, char* data, int length):
+	print_result r
+	if (print_write_checked(fd, data, length, &r) < 0):
+		if ((fd == 1) && (print_stdout_error == 0)): print_stdout_error = r.error
+		if ((fd == 2) && (print_stderr_error == 0)): print_stderr_error = r.error
+
+
 void putc(int file, int c):
 	# Write the low byte of c straight from its stack slot. The older form
 	# mutated a c"" literal in place, which faults once the code segment is
 	# read-only (the W^X text/data split); both targets are little-endian so
 	# the first byte at &c is the character.
-	write(file, cast(char*, &c), 1)
+	print_write(file, cast(char*, &c), 1)
 
 
 void put_char(int c):
@@ -483,15 +554,15 @@ void put_error(int c):
 
 
 void print(string s):
-	write_string(1, s)
+	print_write(1, s.data, s.length)
 
 
 void print_error(string s):
-	write_string(2, s)
+	print_write(2, s.data, s.length)
 
 
 void print2(string s):
-	write_string(2, s)
+	print_write(2, s.data, s.length)
 
 
 void print_char0(string c, int v):
@@ -562,7 +633,7 @@ void print_color_bg(string s, int color, int background):
 
 
 void print_n(char *s, int n):
-	write(1, s, n)
+	print_write(1, s, n)
 
 
 # Debugging:

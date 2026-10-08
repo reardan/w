@@ -90,3 +90,91 @@ void test_atomic_cas_exact_under_contention():
 		assert_equal(0, thread_join(threads[i]))
 		i = i + 1
 	assert_equal(4 * per_thread, cas_counter)
+
+
+int publication_ready
+int publication_payload
+int publication_bad
+
+
+void publication_writer(void* arg):
+	int count = cast(int, arg)
+	for i in range(1, count + 1):
+		while (atomic_load(&publication_ready) != 0): th_yield()
+		publication_payload = i
+		atomic_store(&publication_ready, 1)
+
+
+void publication_reader(void* arg):
+	int count = cast(int, arg)
+	for i in range(1, count + 1):
+		while (atomic_load(&publication_ready) == 0): th_yield()
+		if (publication_payload != i): publication_bad = 1
+		atomic_store(&publication_ready, 0)
+
+
+# The release flag publishes ordinary payload writes. The acknowledgement
+# releases the payload back to the writer, avoiding a data race when it is
+# reused. Every iteration exercises both directions of the happens-before edge.
+void test_atomic_acquire_release_publication():
+	atomic_store_relaxed(&publication_ready, 0)
+	publication_bad = 0
+	wthread* writer = thread_spawn(publication_writer, cast(void*, 20000))
+	wthread* reader = thread_spawn(publication_reader, cast(void*, 20000))
+	assert1(writer != 0 && reader != 0)
+	assert_equal(0, thread_join(writer))
+	assert_equal(0, thread_join(reader))
+	assert_equal(0, publication_bad)
+	assert_equal(20000, publication_payload)
+	atomic_fence()
+
+
+int fence_round
+int fence_left
+int fence_right
+int fence_left_seen
+int fence_right_seen
+int fence_left_done
+int fence_right_done
+
+
+void fence_left_worker(void* arg):
+	int count = cast(int, arg)
+	for i in range(1, count + 1):
+		while (atomic_load(&fence_round) != i): th_yield()
+		atomic_store_relaxed(&fence_left, 1)
+		atomic_fence()
+		fence_left_seen = atomic_load_relaxed(&fence_right)
+		atomic_store(&fence_left_done, i)
+
+
+void fence_right_worker(void* arg):
+	int count = cast(int, arg)
+	for i in range(1, count + 1):
+		while (atomic_load(&fence_round) != i): th_yield()
+		atomic_store_relaxed(&fence_right, 1)
+		atomic_fence()
+		fence_right_seen = atomic_load_relaxed(&fence_left)
+		atomic_store(&fence_right_done, i)
+
+
+# Store-buffer litmus: two full fences forbid both threads reading zero.
+# The coordinator publishes resets before each round and reads results only
+# after both release completion flags, without serializing the tested accesses.
+void test_atomic_fence_orders_store_then_load():
+	int count = 10000
+	atomic_store_relaxed(&fence_round, 0)
+	atomic_store_relaxed(&fence_left_done, 0)
+	atomic_store_relaxed(&fence_right_done, 0)
+	wthread* left = thread_spawn(fence_left_worker, cast(void*, count))
+	wthread* right = thread_spawn(fence_right_worker, cast(void*, count))
+	assert1(left != 0 && right != 0)
+	for i in range(1, count + 1):
+		atomic_store_relaxed(&fence_left, 0)
+		atomic_store_relaxed(&fence_right, 0)
+		atomic_store(&fence_round, i)
+		while (atomic_load(&fence_left_done) != i): th_yield()
+		while (atomic_load(&fence_right_done) != i): th_yield()
+		assert1(fence_left_seen != 0 || fence_right_seen != 0)
+	assert_equal(0, thread_join(left))
+	assert_equal(0, thread_join(right))

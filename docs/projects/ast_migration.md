@@ -63,8 +63,13 @@ Bodies are still visited incrementally: deferral is per statement (or
 header), not per whole body. The retained forest (described below) holds
 function/statement nesting, expression payloads, owned semantic type graphs
 and session-local binding identities, and `w tree --json` exposes it. It is
-not yet an independently executable module IR: the adapter rebuilds a
-bounded expression arena from each group before the backend visitor runs.
+not yet an independently executable module IR: expression lowering reads
+owned groups, but global symbol/type identities and statement/control
+contexts still belong to the active compiler session.
+Statement, loop, switch and GPU records now have session-owned storage,
+including their names and raw bytes. Local binding accepts an explicit slot
+depth without emitting storage; the dispatcher still supplies the backend's
+current depth until a separate body analysis pass owns that layout.
 Generic bodies and deferred statements are re-lexed from the retained source
 bytes rather than the file (S2.3), while type/import declarations still
 update semantic tables during parsing. Bounded arenas still
@@ -2759,3 +2764,94 @@ Shrinking further means changing the walk itself: fewer emission
 points, or a lexer epoch that makes point checks one comparison. It could
 also mean sparse default columns, which would need per-column pointers in
 the group. **#489 remains open.**
+
+## Expression emission independent of parser frames
+
+`retained_emit_expression(group)` lowers a retained expression without its
+temporary parse arena. Both ordinary and semantic sessions now walk a view
+of the group's own columns and decoded text. The compatibility adapter
+still compares the parse result with the retained copy, but does not use
+the parse result for emission. Semantic sessions preserve their recorded
+`it_slot` values while lowering list callbacks, so tree queries retain the
+same schema and data.
+
+Statement, control-header and GPU-header walks also keep pooled expression
+views. They validate the retained copy when it is recorded and use the
+owned view for lowering, coercions and end-of-expression diagnostics.
+Groups with literal conversion notes retain compact token locations, so
+those diagnostics also survive recycling the parser's token records.
+`ast_detached_expression_test` exercises both host widths and both session
+modes: it overwrites temporary arenas, returns from parsing, closes the
+input, recycles local-symbol storage, and then emits and runs expressions.
+It also delays a statement walk until after its expression parser returns.
+
+On this checkout, five interleaved strict compiles of `w.w` against
+`53549d29` took median 0.986 s versus 0.993 s on the x86 host and 0.886 s
+versus 0.877 s on x64. Those differences are within timing noise; this
+change does not claim to close the separate 1.25x streaming-cost gate.
+
+Validation: x86/x64 self-host fixpoints and
+`env -u NO_COLOR ./wbuild tests` pass (976 targets), including the retained
+versus streaming image comparisons. The environment override lets the
+existing forced-color diagnostic fixtures exercise their intended mode.
+
+At this stage, statement and control records still borrowed their parsing
+frames. The next stage below removes that dependency. Their phases still
+establish the stack slots and control regions that later parsing reads;
+analysis and emission must be separated before an entire function can be
+parsed without code emission. Global bindings and types are still
+session-local, and generic and deferred bodies still re-parse retained
+source bytes. **#489 remains open.**
+
+## Owned statement and control records
+
+Grammar-created statement, loop, switch, control and GPU records now live
+in the retained session arena. Their lifetime follows the session's existing
+checkpoint/rollback mechanism, independently of the parser's stack frames.
+Streaming callers use explicitly initialized local storage. Declaration and
+iterator names, raw-assembly bytes and GPU capture names also have owned
+storage. GPU records no longer retain a pointer to the temporary expression
+parser; the PTX emitter and defer registry receive their own copies of names
+they take ownership of.
+
+Local binding moved from the emitter to `ast_declaration_bind(node, depth)`.
+It assigns a local's type, binding and slot without emitting storage or
+changing the backend stack depth. Typed declarations carry their original
+binding instead of consulting `last_declared_symbol` during emission. The
+storage emitter checks that its actual stack depth agrees with the analyzed
+slot. The dispatcher still finishes initializer emission before binding the
+local, preserving scope and diagnostic ordering.
+
+The lifetime tests return from record construction, poison local fallback
+storage, recycle expression arenas, and then emit and execute both branches
+of an if, a while, a range loop and matching/nonmatching switch cases. They
+also cover raw bytes containing NULs, an abandoned walk followed by session
+rollback, and binding at an explicit depth without code emission. Both x86
+and x64 hosts exercise ordinary and semantic expression groups.
+
+Validation: both self-host fixpoints, strict self-host checks, parser-generator
+grammar validation and `env -u NO_COLOR ./wbuild tests` pass (998 targets).
+The full suite includes retained/streaming image and diagnostic comparisons.
+Tree JSON also matches `8606461d` byte-for-byte for the list-callback, generic
+and typed-expression fixtures.
+
+Five interleaved strict compiles of the same `8606461d` source tree, after a
+warm-up pair, measured these medians on this host:
+
+| Host | Before wall | After wall | Before peak RSS | After peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| x86 | 0.85 s | 0.86 s | 54.0 MiB | 63.6 MiB |
+| x64 | 0.87 s | 0.88 s | 90.4 MiB | 109.4 MiB |
+
+The extra memory retains the records until session teardown/rollback.
+Timing differences are about 1%; this does not establish the separate
+1.25x streaming-relative performance target.
+
+This stage does **not** defer an entire function. Walk phase queues and
+expression views are still pooled; headers are drained before parsing their
+bodies, and the dispatcher still derives scope/layout from live compiler
+state. The next step is independent function analysis for local/hidden
+slots, scope exits and symbolic break/continue regions, followed by a body
+walk that resolves those regions during emission. Register allocation,
+diagnostic ordering, generic/defer replay and function boundary state must
+also be accounted for before whole-function deferral becomes the default.

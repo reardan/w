@@ -273,15 +273,25 @@ void emit_expression_ast(expression_ast* tree, int id):
 			mov_eax_int(0)
 		return
 	if (op == 'k'):
+		int kind = tree.value[id]
+		if (kind == 7):
+			alu_atomic_fence()
+			return
 		int argument = tree.left[id]
 		emit_expression_ast(tree, argument)
 		int pointer = promote(tree.result_type[argument])
 		if (target_isa != 3): coerce(tree.symbol[id], pointer)
+		if ((kind == 5) || (kind == 8)):
+			alu_atomic_load(kind == 5)
+			return
 		push_slot()
 		argument = tree.next_arg[argument]
 		emit_expression_ast(tree, argument)
 		coerce(tree.high[id], promote(tree.result_type[argument]))
-		if (tree.value[id] == 4):
+		if ((kind == 6) || (kind == 9)):
+			pop_ebx_slot()
+			alu_atomic_store(kind == 6)
+		else if (tree.value[id] == 4):
 			push_slot()
 			argument = tree.next_arg[argument]
 			emit_expression_ast(tree, argument)

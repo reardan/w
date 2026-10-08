@@ -144,6 +144,11 @@ struct retained_group:
 	int arena_type_names_length
 	int* columns
 	int* semantic
+	# Only groups with literal conversion notes need token locations after
+	# parsing. Four words per token: offset, diagnostic line/column, lexer
+	# line. Token spellings and the rest of the speculative lexer stay out.
+	int location_count
+	int* locations
 
 const int retained_expression_columns = 22
 const int retained_semantic_columns = 10

@@ -1,6 +1,6 @@
 # Resolved loop lowering state. Slot anchors and iterator helpers are
 # fixed before the body is traversed; backend visitors fill control handles.
-# Helper names are borrowed until the enclosing for rule returns.
+# Retained loops own their helper names independently of the for rule.
 const int ast_loop_range = 1
 const int ast_loop_cursor = 2
 const int ast_loop_while = 3

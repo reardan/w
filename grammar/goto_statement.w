@@ -161,7 +161,8 @@ int ast_goto_walk(statement_ast* node);
 # goto identifier ;
 int goto_statement():
 	if (peek(c"goto") == 0): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_goto
 	node.source_file = file
 	node.line = diag_token_line
@@ -177,7 +178,7 @@ int goto_statement():
 	if (ast_expressions_mode >= 2):
 		node.target = label
 		node.stack_depth = stack_pos
-		if (ast_goto_walk(&node) == 0): emit_goto_statement_ast(&node)
+		if (ast_goto_walk(node) == 0): emit_goto_statement_ast(node)
 	else: emit_goto_target(label, stack_pos)
 	return 1
 
@@ -188,7 +189,8 @@ int goto_statement():
 int labeled_statement():
 	if (goto_name_is_ident(token) == 0): return 0
 	if (nextc != ':'): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_label
 	node.source_file = file
 	node.line = diag_token_line
@@ -214,6 +216,6 @@ int labeled_statement():
 	if (ast_expressions_mode >= 2):
 		node.target = label
 		node.stack_depth = stack_pos
-		if (ast_goto_walk(&node) == 0): emit_goto_statement_ast(&node)
+		if (ast_goto_walk(node) == 0): emit_goto_statement_ast(node)
 	else: emit_label_target(label, stack_pos)
 	return 1

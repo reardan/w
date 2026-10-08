@@ -185,7 +185,8 @@ void ast_raw_walk_close(int walk, statement_ast* node);
 # Like a string literal, but the bytes are executable code.
 int raw_asm_literal():
 	if (peek(c"raw_asm") == 0): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_raw_asm
 	node.source_file = file
 	node.line = diag_token_line
@@ -208,8 +209,8 @@ int raw_asm_literal():
 		# copies them, grammar/ast_declaration.w).
 		node.literal_bytes = token
 		node.literal_length = i
-		walk = ast_raw_walk_open(&node)
-		if (walk < 0): emit_raw_statement_ast(&node)
+		walk = ast_raw_walk_open(node)
+		if (walk < 0): emit_raw_statement_ast(node)
 	else:
 		# raw bytes may use any register: nothing stays parked (A3)
 		if (ers_count != 0): ers_spill_all()
@@ -217,10 +218,10 @@ int raw_asm_literal():
 	get_token()
 	# A missing ')' is an error: emit the bytes first, as the parse did
 	if ((walk >= 0) && (peek(c")") == 0)):
-		ast_raw_walk_close(walk, &node)
+		ast_raw_walk_close(walk, node)
 		walk = -1
 	expect(c")")
-	if (walk >= 0): ast_raw_walk_close(walk, &node)
+	if (walk >= 0): ast_raw_walk_close(walk, node)
 	return 1
 
 

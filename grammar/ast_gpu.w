@@ -61,10 +61,9 @@ void ast_gpu_walk_error(int walk, char* message):
 	error(message)
 
 
-# One header value into owner.value, whose expression child is owner.tree:
-# both live in the statement's frame, so a walk can lower the value after
-# the parse has moved past it.
-void ast_gpu_value(gpu_statement_ast* owner, int walk, int type, int kernel_sym, char* name, int index):
+# One header value into owner.value. The parse arena is only temporary;
+# the walk owns the expression view used by lowering.
+void ast_gpu_value(gpu_statement_ast* owner, int walk, expression_ast* tree, int type, int kernel_sym, char* name, int index):
 	if (walk >= 0): retained_walk_drain(walk)
 	statement_ast* node = owner.value
 	node.kind = ast_stmt_gpu_dimension
@@ -75,13 +74,12 @@ void ast_gpu_value(gpu_statement_ast* owner, int walk, int type, int kernel_sym,
 	node.start_offset = token_start_offset
 	node.declared_type = type
 	node.binding = kernel_sym
-	node.callee_name = name
+	node.callee_name = retained_parse_name(name)
 	node.argument_index = index
 	node.expression_tree = 0
 	node.expression_root = -1
 	increment_statement_context = 0
 	expression_lhs_readonly = 0
-	expression_ast* tree = owner.tree
 	int root = ast_expression_prepare_at(tree, token_start_offset, 1)
 	if (root < 0):
 		node.expression_type = expression()
@@ -93,6 +91,7 @@ void ast_gpu_value(gpu_statement_ast* owner, int walk, int type, int kernel_sym,
 		if (walk >= 0):
 			# ast_statement_walk_expression's steps, with this family's phases
 			retained_walk_expression(walk, tree, root)
+			node.expression_tree = retained_walks[walk].tree
 			retained_walk_phase(walk, ast_gpu_walk_expression)
 			if (ast_statement_lex_may_print(tree)): retained_walk_drain(walk)
 			if (tree.whole_expression):
@@ -112,17 +111,19 @@ void ast_gpu_dimension_slot(gpu_statement_ast* node, int walk):
 
 
 void ast_gpu_capture_value(char* name):
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_gpu_capture
-	node.callee_name = name
+	node.callee_name = retained_parse_name(name)
 	node.binding = sym_lookup(name)
 	if (node.binding < 0): sym_not_found_error(name)
-	emit_gpu_capture_value_ast(&node)
+	emit_gpu_capture_value_ast(node)
 
 
 int ast_launch_statement():
 	if (peek(c"launch") == 0): return 0
-	gpu_statement_ast node
+	gpu_statement_ast local_node
+	gpu_statement_ast* node = cast(gpu_statement_ast*, retained_parse_record(&local_node, sizeof(gpu_statement_ast)))
 	node.kind = ast_gpu_launch
 	node.source_file = file
 	node.line = diag_token_line
@@ -147,31 +148,32 @@ int ast_launch_statement():
 	int is_kernel = 0
 	if (node.kernel_symbol >= 0): is_kernel = sym_is_kernel(node.kernel_symbol)
 	if (is_kernel == 0): error3(c"'", token, c"' is not a kernel")
-	node.kernel_name = strclone(token)
+	node.kernel_name = retained_parse_name(token)
+	if (ast_retain_mode == 0): node.kernel_name = strclone(token)
 	get_token()
 
 	node.base_stack = stack_pos
-	statement_ast value
+	statement_ast local_value
+	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
 	expression_ast tree
-	node.value = &value
-	node.tree = &tree
-	int walk = retained_walk_begin(cast(int, emit_gpu_walk_ast), cast(statement_ast*, &node))
+	node.value = value
+	int walk = retained_walk_begin(cast(int, emit_gpu_walk_ast), cast(statement_ast*, node))
 	ast_gpu_walk_expect(walk, c"[")
 	node.integer_type = type_lookup(c"int")
-	ast_gpu_value(&node, walk, node.integer_type, -1, 0, 0)
-	ast_gpu_dimension_slot(&node, walk) /* grid */
+	ast_gpu_value(node, walk, &tree, node.integer_type, -1, 0, 0)
+	ast_gpu_dimension_slot(node, walk) /* grid */
 	ast_gpu_walk_expect(walk, c",")
-	ast_gpu_value(&node, walk, node.integer_type, -1, 0, 0)
-	ast_gpu_dimension_slot(&node, walk) /* block */
+	ast_gpu_value(node, walk, &tree, node.integer_type, -1, 0, 0)
+	ast_gpu_dimension_slot(node, walk) /* block */
 	ast_gpu_walk_expect(walk, c"]")
 
 	ast_gpu_walk_expect(walk, c"(")
 	node.argument_count = 0
 	if (ast_gpu_walk_accept(walk, c")") == 0):
-		ast_gpu_value(&node, walk, sym_param_type(node.kernel_symbol, node.argument_count), node.kernel_symbol, node.kernel_name, node.argument_count)
+		ast_gpu_value(node, walk, &tree, sym_param_type(node.kernel_symbol, node.argument_count), node.kernel_symbol, node.kernel_name, node.argument_count)
 		node.argument_count = node.argument_count + 1
 		while (ast_gpu_walk_accept(walk, c",")):
-			ast_gpu_value(&node, walk, sym_param_type(node.kernel_symbol, node.argument_count), node.kernel_symbol, node.kernel_name, node.argument_count)
+			ast_gpu_value(node, walk, &tree, sym_param_type(node.kernel_symbol, node.argument_count), node.kernel_symbol, node.kernel_name, node.argument_count)
 			node.argument_count = node.argument_count + 1
 		ast_gpu_walk_expect(walk, c")")
 
@@ -189,14 +191,15 @@ int ast_launch_statement():
 	if (walk >= 0):
 		retained_walk_phase(walk, ast_gpu_walk_launch)
 		retained_emit_statement(retained_walks[walk].node)
-	else: emit_gpu_launch_ast(&node)
-	free(node.kernel_name)
+	else: emit_gpu_launch_ast(node)
+	if (ast_retain_mode == 0): free(node.kernel_name)
 	return 1
 
 
 int ast_gpu_for_statement():
 	if (peek(c"gpu") == 0): return 0
-	gpu_statement_ast node
+	gpu_statement_ast local_node
+	gpu_statement_ast* node = cast(gpu_statement_ast*, retained_parse_record(&local_node, sizeof(gpu_statement_ast)))
 	node.kind = ast_gpu_for
 	node.source_file = file
 	node.line = diag_token_line
@@ -223,7 +226,8 @@ int ast_gpu_for_statement():
 	node.integer_type = type_lookup(c"int")
 	int type = type_name()
 	if (type_unqualified(type) != node.integer_type): error(c"'gpu for' loop variable must be an int")
-	node.variable_name = strclone(token)
+	node.variable_name = retained_parse_name(token)
+	if (ast_retain_mode == 0): node.variable_name = strclone(token)
 	get_token()
 	expect(c"in")
 	if (accept(c"range") == 0): error(c"'gpu for' supports only range iteration")
@@ -234,33 +238,36 @@ int ast_gpu_for_statement():
 	# (slots 0 and 1, parse order). The device guard reloads the bound
 	# from its slot; a step argument is not supported.
 	node.base_stack = stack_pos
-	statement_ast value
+	statement_ast local_value
+	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
 	expression_ast tree
-	node.value = &value
-	node.tree = &tree
+	node.value = value
 	node.capture_bindings = 0
-	int walk = retained_walk_begin(cast(int, emit_gpu_walk_ast), cast(statement_ast*, &node))
+	int walk = retained_walk_begin(cast(int, emit_gpu_walk_ast), cast(statement_ast*, node))
 	int has_parens = ast_gpu_walk_accept(walk, c"(")
 	node.has_start = 0
-	ast_gpu_value(&node, walk, node.integer_type, -1, 0, 0)
-	ast_gpu_dimension_slot(&node, walk)
+	ast_gpu_value(node, walk, &tree, node.integer_type, -1, 0, 0)
+	ast_gpu_dimension_slot(node, walk)
 	if (ast_gpu_walk_accept(walk, c",")):
 		node.has_start = 1
-		ast_gpu_value(&node, walk, node.integer_type, -1, 0, 0)
+		ast_gpu_value(node, walk, &tree, node.integer_type, -1, 0, 0)
 		if (ast_gpu_walk_accept(walk, c",")): ast_gpu_walk_error(walk, c"'gpu for' supports only range(end) and range(start, end)")
-		ast_gpu_dimension_slot(&node, walk)
+		ast_gpu_dimension_slot(node, walk)
 	if (has_parens): ast_gpu_walk_expect(walk, c")")
 
 	# Device side: outline the body into a fresh kernel. Device mode, the
 	# capture table and the loop variable's slot are read by the body's
 	# parse, so a walk emits the kernel's prologue before it.
 	node.symbol_base = table_pos
-	node.kernel_name = gpu_for_kernel_name()
-	node.launch_name = strclone(node.kernel_name)
+	char* kernel_name = gpu_for_kernel_name()
+	node.kernel_name = retained_parse_name(kernel_name)
+	if (ast_retain_mode): free(kernel_name)
+	node.launch_name = retained_parse_name(node.kernel_name)
+	if (ast_retain_mode == 0): node.launch_name = strclone(node.kernel_name)
 	if (walk >= 0):
 		retained_walk_phase(walk, ast_gpu_walk_device_begin)
 		retained_walk_drain(walk)
-	else: emit_gpu_for_device_begin_ast(&node)
+	else: emit_gpu_for_device_begin_ast(node)
 	sym_declare(node.variable_name, node.integer_type, 'L', stack_pos, 1)
 	pointer_indirection = 0
 	# Compiler-inserted guard: threads past the bound do nothing
@@ -269,10 +276,11 @@ int ast_gpu_for_statement():
 		retained_walk_phase(walk, ast_gpu_walk_guard)
 		retained_walk_drain(walk)
 	else:
-		emit_gpu_loop_variable_ast(&node)
-		emit_gpu_for_guard_ast(&node)
-	free(node.variable_name)
-	node.variable_name = 0
+		emit_gpu_loop_variable_ast(node)
+		emit_gpu_for_guard_ast(node)
+	if (ast_retain_mode == 0):
+		free(node.variable_name)
+		node.variable_name = 0
 
 	enclosing_tab_level = gpu_for_tab_level
 	statement()
@@ -282,14 +290,15 @@ int ast_gpu_for_statement():
 	if (walk >= 0):
 		retained_walk_phase(walk, ast_gpu_walk_device_end)
 		retained_walk_drain(walk)
-	else: emit_gpu_for_device_end_ast(&node)
+	else: emit_gpu_for_device_end_ast(node)
 	table_pos = node.symbol_base
 
 	# Host side: push the remaining captures' current values (slot
 	# order; the range operands already sit at node.base_stack+1..), then launch.
 	int k = 1 + node.has_start
 	if (walk >= 0):
-		node.capture_bindings = cast(int*, malloc((node.capture_count + 1) * __word_size__))
+		node.capture_bindings = cast(int*, retained_arena_alloc((node.capture_count + 1) * __word_size__))
+		node.capture_names = cast(char**, retained_arena_alloc((node.capture_count + 1) * __word_size__))
 		while (k < node.capture_count):
 			char* name = gpu_capture_name(k)
 			int binding = sym_lookup(name)
@@ -297,6 +306,7 @@ int ast_gpu_for_statement():
 				retained_walk_drain(walk)
 				sym_not_found_error(name)
 			node.capture_bindings[k] = binding
+			node.capture_names[k] = retained_parse_name(name)
 			retained_walk_phase(walk, ast_gpu_walk_capture + (k << 8))
 			k = k + 1
 	else:
@@ -307,7 +317,6 @@ int ast_gpu_for_statement():
 	if (walk >= 0):
 		retained_walk_phase(walk, ast_gpu_walk_for_launch)
 		retained_emit_statement(retained_walks[walk].node)
-		free(cast(char*, node.capture_bindings))
-	else: emit_gpu_for_launch_ast(&node)
-	free(node.launch_name)
+	else: emit_gpu_for_launch_ast(node)
+	if (ast_retain_mode == 0): free(node.launch_name)
 	return 1

@@ -752,11 +752,16 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 # raft_pop_apply (header). The caller must raft_start() the recovered
 # raft as usual. The replay is a rescan of the file, and is asserted
 # to land exactly on the shadow: both are pure folds of the same
-# record prefix.
+# record prefix. Takes ownership of the fresh r: a failed reader open,
+# read, or snapshot installation frees it and returns 0. The wal and
+# its shadow remain owned by the caller and may be retried after a
+# transient read-side failure; the log itself is unchanged.
 raft* raft_wal_recover_into(raft_wal* rw, raft* r):
 	raft_enable_snapshot_files(r, rw.wlog.ops, rw.path)
 	wal_reader* rd = wal_reader_open_with_ops(rw.wlog.ops, rw.path)
-	assert1(cast(int, rd) != 0)
+	if (cast(int, rd) == 0):
+		raft_free(r)
+		return 0
 	int* len_out = cast(int*, malloc(__word_size__))
 	char* p = wal_read_next(rd, len_out)
 	while (p != 0):

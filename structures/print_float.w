@@ -16,5 +16,5 @@ import lib.float_text
 void __w_print_float32(float f):
 	int32* p = cast(int32*, &f)
 	char* s = float_text_shortest(*p, 32)
-	write(1, s, strlen(s))
+	print_write(1, s, strlen(s))
 	free(s)

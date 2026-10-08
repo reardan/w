@@ -59,3 +59,13 @@ int socket_abi_so_rcvtimeo():
 
 int socket_abi_so_sndtimeo():
 	return 21
+
+
+# Pending asynchronous socket error (read-and-clear).
+int socket_abi_so_error():
+	return 4
+
+
+# Normalize only for portable status classification; retain raw errno.
+int socket_abi_status_errno(int err):
+	return err

@@ -75,6 +75,35 @@ string finisher) with per-helper backpatch chains. The prelude
 deliberately avoids lib/format.w: that module defines a W `printf`,
 which would collide with programs that `c_import` libc's printf.
 
+### Checked output and recoverable print failures
+
+Every built-in print helper, including floats, lists and newlines, now
+retries short writes and EINTR. A zero-progress write reports synthetic error 5 (POSIX EIO).
+The legacy `void` signatures remain compatible; `print_last_error(1)`
+(stdout) and `print_last_error(2)` (stderr) retain the first positive
+write-layer error until `print_clear_error(fd)`. A later successful write does
+not hide an earlier failure. These process-local convenience records
+assume one printing thread.
+
+For concurrent producers or recovery from a partial write, use a
+caller-owned `print_result` with `print_checked(string, &r)`,
+`print_error_checked(string, &r)` or
+`print_write_checked(fd, data, length, &r)` from `lib.lib`.
+They return 0 on completion or a negative write-layer error, with
+`r.transferred` recording the confirmed prefix and `r.error` the positive
+error (zero on success). Linux/Darwin use native errno, WASI uses its
+own errno numbering, and the current Win64 write backend reports a
+generic error 1 rather than `GetLastError`. These checked calls do not change the sticky
+legacy state. An empty request succeeds without touching the descriptor;
+a negative length returns synthetic error 22 (POSIX EINVAL). Callers decide whether and when to
+resume the unwritten suffix, particularly after EAGAIN. Printing does
+not change the process's signal policy; applications writing to pipes
+must arrange their desired SIGPIPE policy.
+
+`print_write_using(writer, fd, data, length, &r)` provides the same loop
+for an application sink; the callback follows `write`'s byte-count or
+negative-error convention (including the target's EINTR code). None of these checked output paths allocates.
+
 ## Stdin helpers: input(), read_all(), ints() (structures/prelude.w)
 
 Plain functions in the prelude, reachable without an import: primary

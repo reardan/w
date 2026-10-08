@@ -84,6 +84,7 @@ import lib.time
 import lib.net
 import lib.poll
 import lib.io_wait
+import lib.io
 import lib.file
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
@@ -483,6 +484,12 @@ struct tls_conn:
 	# Optional absolute deadline also bounds continuously-ready hostile peers.
 	int has_io_deadline
 	int io_deadline_ms
+	# Checked transport mode: nonblocking syscalls + task-aware poll everywhere.
+	int checked_io
+	int peer_verified               # chain + DNS name actually verified
+	int last_io_status
+	int last_native_error
+	char* last_error                 # per-connection static diagnostic
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
@@ -492,6 +499,11 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.io_timeout_ms = 0 - 1
 	c.has_io_deadline = 0
 	c.io_deadline_ms = 0
+	c.checked_io = 0
+	c.peer_verified = 0
+	c.last_io_status = IO_OK
+	c.last_native_error = 0
+	c.last_error = 0
 	c.mem_in = 0
 	c.mem_in_pos = 0
 	c.mem_out = 0
@@ -582,13 +594,55 @@ void tls_set_alpn_selected(tls_conn* c, char* name, int n):
 
 void tls_fail(tls_conn* c, char* msg):
 	c.broken = 1
+	c.last_error = msg
+	if (c.last_io_status == IO_OK): c.last_io_status = IO_IO_ERROR
 	if (c.cfg != 0): c.cfg.last_error = msg
 	if (c.scfg != 0): c.scfg.last_error = msg
 
 
 # ---- raw I/O ------------------------------------------------------------------
 
+# Keep the first I/O failure, even if sending a fatal alert also fails.
+int tls_io_error(tls_conn* c, int status, int native_error, char* message):
+	if (c.last_io_status == IO_OK):
+		c.last_io_status = status
+		c.last_native_error = native_error
+		c.last_error = message
+	return 0
+
+
+int tls_io_remaining(tls_conn* c):
+	int left = c.io_timeout_ms
+	if (c.has_io_deadline):
+		int deadline_left = c.io_deadline_ms - time_monotonic_ms()
+		if (deadline_left <= 0): return 0
+		if (left < 0 || deadline_left < left): left = deadline_left
+	return left
+
+
+int tls_io_wait_ready(tls_conn* c, int events):
+	while (1):
+		if (c.checked_io):
+			int interrupted = io_check()
+			if (interrupted < 0):
+				return tls_io_error(c, io_status_from_errno(0 - interrupted), 0 - interrupted, c"tls: operation interrupted")
+		int left = tls_io_remaining(c)
+		int ready = 0
+		if (c.checked_io):
+			ready = io_poll(c.fd, events, left)
+			if (ready == 0): return tls_io_error(c, IO_TIMED_OUT, 0, c"tls: I/O deadline expired")
+		else: ready = io_wait(c.fd, events, left)
+		if (ready == -4): continue
+		if (ready < 0):
+			io_result waited
+			net_wait_result_from_syscall(&waited, ready)
+			return tls_io_error(c, waited.status, waited.native_error, c"tls: readiness wait failed")
+		return 1
+	return 0
+
+
 # Read exactly n bytes into buf. Returns 1 on success, 0 on EOF/error.
+# A failed record is not resumable; the checked adapter poisons the stream.
 int tls_io_recv_full(tls_conn* c, char* buf, int n):
 	if (n <= 0): return 1
 	if (c.use_mem != 0):
@@ -596,20 +650,25 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 		mem_copy(buf, c.mem_in.data + c.mem_in_pos, n)
 		c.mem_in_pos = c.mem_in_pos + n
 		return 1
+	int flags = 0
+	if (c.checked_io):
+		flags = 64
+		if (msg_nosignal() == 0): flags = 128
 	int got = 0
 	while (got < n):
-		if (c.has_io_deadline && (c.io_deadline_ms - time_monotonic_ms()) <= 0): return 0
-		int r = socket_recv(c.fd, buf + got, n - got, 0)
+		if (c.checked_io):
+			int interrupted = io_check()
+			if (interrupted < 0):
+				return tls_io_error(c, io_status_from_errno(0 - interrupted), 0 - interrupted, c"tls: operation interrupted")
+		if (c.has_io_deadline && tls_io_remaining(c) == 0):
+			return tls_io_error(c, IO_TIMED_OUT, 0, c"tls: I/O deadline expired")
+		int r = socket_recv(c.fd, buf + got, n - got, flags)
 		if (r > 0): got = got + r
-		else if (r == 0): return 0
+		else if (r == 0): return tls_io_error(c, IO_IO_ERROR, 0, c"tls: truncated stream")
 		else if (r == 0 - net_eagain()):
-			# Non-blocking fd inside a task: park until readable. Outside a
-			# task io_wait fails at once, so a blocking fd's SO_RCVTIMEO
-			# expiry still ends the read.
-			if (io_wait(c.fd, poll_in, c.io_timeout_ms) < 0): return 0
+			if (tls_io_wait_ready(c, poll_in) == 0): return 0
 		else if (r != 0 - 4):
-			# any error other than EINTR
-			return 0
+			return tls_io_error(c, io_status_from_errno(socket_abi_status_errno(0 - r)), 0 - r, c"tls: receive failed")
 	return 1
 
 
@@ -619,16 +678,24 @@ int tls_io_send_all(tls_conn* c, char* buf, int n):
 	if (c.use_mem != 0):
 		string_append_bytes(c.mem_out, buf, n)
 		return 1
+	int flags = msg_nosignal()
+	if (c.checked_io):
+		if (msg_nosignal() == 0): flags = flags | 128
+		else: flags = flags | 64
 	int sent = 0
 	while (sent < n):
-		if (c.has_io_deadline && (c.io_deadline_ms - time_monotonic_ms()) <= 0): return 0
-		int r = socket_send(c.fd, buf + sent, n - sent, msg_nosignal())
+		if (c.checked_io):
+			int interrupted = io_check()
+			if (interrupted < 0):
+				return tls_io_error(c, io_status_from_errno(0 - interrupted), 0 - interrupted, c"tls: operation interrupted")
+		if (c.has_io_deadline && tls_io_remaining(c) == 0):
+			return tls_io_error(c, IO_TIMED_OUT, 0, c"tls: I/O deadline expired")
+		int r = socket_send(c.fd, buf + sent, n - sent, flags)
 		if (r > 0): sent = sent + r
 		else if (r == 0 - net_eagain()):
-			if (io_wait(c.fd, poll_out, c.io_timeout_ms) < 0): return 0
+			if (tls_io_wait_ready(c, poll_out) == 0): return 0
 		else if (r != 0 - 4):
-			# error other than EINTR
-			return 0
+			return tls_io_error(c, io_status_from_errno(socket_abi_status_errno(0 - r)), 0 - r, c"tls: send failed")
 	return 1
 
 
@@ -1372,6 +1439,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 			free(th_cv)
 			tls_free_cert_list(certs)
 			return 0
+		c.peer_verified = 1
 
 	tls_free_cert_list(certs)
 

@@ -59,7 +59,11 @@ int arm64_sext(int v, int bits):
 
 # Read one little-endian 32-bit word from a byte pointer.
 int arm64_read_word(char* b):
-	return (b[0] & 255) | ((b[1] & 255) << 8) | ((b[2] & 255) << 16) | ((b[3] & 255) << 24)
+	# Normalize to signed 32-bit on every host: the dispatch masks/literals
+	# sign-extend their high bit even when W int is 64 bits.
+	int low = (b[0] & 255) | ((b[1] & 255) << 8) | ((b[2] & 255) << 16) | ((b[3] & 127) << 24)
+	if (b[3] & 128): return low - 2147483647 - 1
+	return low
 
 
 void arm64_set_reg(asm_operand* op, int number, int size):
@@ -343,10 +347,15 @@ void arm64_dec_branch_reg(asm_insn* insn, int w):
 	arm64_opaque(insn, c"braaz", w)
 
 
-# System (nop, hints, barriers): recognized-opaque except nop is exact.
+# System (nop, hints, barriers): model the full inner-shareable fence.
 void arm64_dec_system(asm_insn* insn, int w):
 	if (w == cast(int, 0xd503201f)):
 		insn.mnemonic = c"nop"
+		return
+	if (w == cast(int, 0xd5033bbf)):
+		insn.mnemonic = c"dmb"
+		insn.op1.kind = ASM_OP_LABEL
+		insn.op1.label = c"ish"
 		return
 	arm64_opaque(insn, c"hint", w)
 
@@ -575,6 +584,21 @@ int arm64_ldst_rt_size(int sz, int opc):
 	return 4
 
 
+# Word acquire/release (LDAR/STLR), with no offset or writeback.
+void arm64_dec_ordered(asm_insn* insn, int w):
+	int size = 4
+	if (arm64_bits(w, 30, 2) == 3): size = 8
+	insn.mnemonic = c"stlr"
+	if (arm64_bits(w, 22, 1)): insn.mnemonic = c"ldar"
+	arm64_set_reg(&insn.op1, arm64_bits(w, 0, 5), size)
+	insn.op2.kind = ASM_OP_MEM
+	insn.op2.base = arm64_bits(w, 5, 5)
+	insn.op2.index = -1
+	insn.op2.disp = 0
+	insn.op2.disp_size = ARM64_ADDR_UOFF()
+	insn.op2.size = size
+
+
 # Load/store register (unsigned immediate offset).
 void arm64_dec_ldst_uimm(asm_insn* insn, int w):
 	int sz = arm64_bits(w, 30, 2)
@@ -747,6 +771,9 @@ int asm_arm64_decode(char* bytes, int length, int address, asm_insn* insn):
 		return 4
 
 	# --- Loads and stores (op0 = x1x0) ---
+	if ((w & cast(int, 0xbfbffc00)) == cast(int, 0x889ffc00)):
+		arm64_dec_ordered(insn, w)
+		return 4
 	if ((w & 0x3b000000) == 0x18000000):
 		arm64_dec_ldst_literal(insn, w, address)
 		return 4

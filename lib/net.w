@@ -4,6 +4,8 @@ import lib.memory
 import lib.__arch__.socket_abi
 import lib.poll
 import lib.io_wait
+import lib.io
+import lib.time
 
 const int SOCKADDR_UN_SIZE = 110
 
@@ -350,25 +352,91 @@ int socket_set_send_timeout(int sockfd, int timeout_ms):
 	return socket_set_timeout_opt(sockfd, socket_abi_so_sndtimeo(), timeout_ms)
 
 
-# Nonblocking TCP connect to ip:port bounded by timeout_ms (inside a
-# task the wait parks the task, via io_poll). Returns the connected fd,
-# still nonblocking and with SIGPIPE suppressed where the target needs
-# it (Darwin), or -2 when the wait timed out, or -1 on any other failure.
-int net_connect_timeout(int ip, int port, int timeout_ms):
-	int fd = socket_tcp_ipv4()
-	if (fd < 0): return -1
-	if (socket_set_nonblocking(fd) < 0):
-		close(fd)
+# SO_ERROR is a native C int and its length a native socklen_t, both
+# four bytes even when W int is eight. Returns zero or negative errno.
+int socket_pending_error(int fd):
+	int32 pending = 0
+	int32 length = 4
+	int rc = sys_getsockopt(fd, sol_socket(), socket_abi_so_error(), &pending, &length)
+	if (rc < 0): return rc
+	return 0 - cast(int, pending)
+
+
+# Socket errors retain native errno while mapping platform categories.
+int net_result_from_syscall(io_result* r, int rc):
+	if (rc >= 0): return io_result_set(r, rc, IO_OK, 0)
+	int err = 0 - rc
+	return io_result_set(r, 0, io_status_from_errno(socket_abi_status_errno(err)), err)
+
+
+# io_poll can return the task runtime's synthetic Linux-style deadline
+# and cancellation codes even on Darwin. Actual socket syscalls must use
+# the native classifier instead (Darwin 110/125 are not native errnos).
+int net_wait_status_from_errno(int err):
+	if ((err == 110) || (err == 125)): return io_status_from_errno(err)
+	return io_status_from_errno(socket_abi_status_errno(err))
+
+
+int net_wait_result_from_syscall(io_result* r, int rc):
+	if (rc >= 0): return io_result_set(r, rc, IO_OK, 0)
+	return io_result_set(r, 0, net_wait_status_from_errno(0 - rc), 0 - rc)
+
+
+# Nonblocking TCP connect with an explicit error result. Returns the
+# connected fd (still nonblocking), or -1 with r holding the native
+# errno/category. Readiness is only a hint: SO_ERROR obtains the actual
+# asynchronous connection outcome. EINTR restarts the wait against the
+# original deadline.
+int net_connect_timeout_checked(int ip, int port, int timeout_ms, io_result* r):
+	int cancelled = io_check()
+	if (cancelled < 0):
+		io_result_from_syscall(r, cancelled)
 		return -1
-	socket_set_nosigpipe(fd)
-	int rc = socket_connect_ipv4(fd, ip, port)
+	int fd = socket_tcp_ipv4()
+	if (fd < 0):
+		net_result_from_syscall(r, fd)
+		return -1
+	int wait_error = 0
+	int rc = socket_set_nonblocking(fd)
+	if (rc >= 0): rc = socket_set_nosigpipe(fd)
+	if (rc >= 0): rc = socket_connect_ipv4(fd, ip, port)
+	if (rc == (0 - net_einprogress())):
+		int start = time_monotonic_ms()
+		while (1):
+			rc = io_check()
+			if (rc < 0):
+				wait_error = 1
+				break
+			int remaining = timeout_ms
+			if (timeout_ms >= 0):
+				remaining = timeout_ms - (time_monotonic_ms() - start)
+				if (remaining < 0): remaining = 0
+			int ready = io_poll(fd, poll_out, remaining)
+			if (ready == -4): continue
+			if (ready == 0):
+				rc = -110
+				wait_error = 1
+			else if (ready < 0):
+				rc = ready
+				wait_error = 1
+			else if ((ready & poll_nval) != 0): rc = -9
+			else:
+				rc = io_check()
+				if (rc < 0): wait_error = 1
+				else: rc = socket_pending_error(fd)
+			break
 	if (rc < 0):
-		int ready = -1
-		if (rc == (0 - net_einprogress())): ready = io_poll(fd, poll_out, timeout_ms)
-		if (ready == 0):
-			close(fd)
-			return -2
-		if ((ready < 0) || ((ready & (poll_err | poll_hup)) != 0) || ((ready & poll_out) == 0)):
-			close(fd)
-			return -1
+		close(fd)
+		if (wait_error): net_wait_result_from_syscall(r, rc)
+		else: net_result_from_syscall(r, rc)
+		return -1
+	io_result_set(r, 0, IO_OK, 0)
+	return fd
+
+
+# Compatibility wrapper: -2 on timeout, -1 on other errors.
+int net_connect_timeout(int ip, int port, int timeout_ms):
+	io_result r
+	int fd = net_connect_timeout_checked(ip, port, timeout_ms, &r)
+	if ((fd < 0) && (r.status == IO_TIMED_OUT)): return -2
 	return fd

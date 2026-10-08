@@ -95,6 +95,11 @@ Other useful targets:
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
 
+Apple Silicon Macs can run static ARM64 W cells through the
+[Hypervisor.framework backend](docs/projects/vms_darwin.md). Run
+`sh tools/mac/run_vm_tests.sh` for the required native gate, or
+`./wbuild wvm_darwin wvmd_darwin` to build the signed CLI and daemon.
+
 The [VM runner](docs/projects/vms.md) executes static x64 W cells with
 checked syscall access, explicit filesystem/TCP capabilities, guest threads,
 and timeouts. Ready-cell snapshots support CoW clones and RAM pools.
@@ -360,6 +365,10 @@ Implemented and covered by tests:
   more on both x86 and x64). See `tests/dynamic_test.w`, `tests/varargs_test.w`,
   `tests/float_abi_test.w`, `tests/extern_data_test.w`,
   `tests/c_import_libc_test.w`, and `tests/cuda_smoke.w`.
+- SQL connectivity: `libs.standard.sql.client` provides synchronous Linux x64
+  adapters for SQLite, PostgreSQL, MySQL, SQL Server (FreeTDS), and Oracle OCI,
+  using optional native client libraries. See [SQL connectivity](docs/projects/sql.md)
+  for the API, binding support, setup, and current limits.
 - Raw syscalls via `syscall(...)`. The ELF entry stub calls `_main`:
   `lib/lib.w` provides a `_main` that forwards to your `main(argc, argv)`,
   or a program can define `_main` itself and skip the library entirely
@@ -373,6 +382,11 @@ Implemented and covered by tests:
   sources compile warning-free (`./wbuild self_host_warning_test`).
 
 Toolchain beyond the compiler:
+
+- **Redis and Memcached clients**: opt-in pure-W modules under
+  `libs/extras/cache`, with binary-safe values, persistent TCP connections,
+  bounded replies and timeouts. See [cache clients](docs/projects/cache_clients.md)
+  for the API, examples, protocol references and supported features.
 
 - **REPL** (`./bin/wv2 repl.w -o bin/repl && ./bin/repl`): each entry
   compiles into an executable mmap buffer

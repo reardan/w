@@ -24,36 +24,6 @@ void vms_ignore_pipe():
 	rt_sigaction(13, &action[0], 0)
 
 
-# Prevent integer overflow in the generic framing parser. The canonical
-# Content-Length header emitted by lib.framing is the wire format here.
-char* vms_take_frame(frame_reader* reader, int maximum):
-	int end = frame_find_header_end(reader)
-	if (end < 0):
-		if (reader.length - reader.offset > 64): reader.error = 1
-		return 0
-	int at = reader.offset
-	char* prefix = c"Content-Length: "
-	for i in range(16):
-		if (at + i >= end || reader.buffer[at + i] != prefix[i]):
-			reader.error = 1
-			return 0
-	at = at + 16
-	int length = 0
-	int digits = 0
-	while (at < end && reader.buffer[at] >= '0' && reader.buffer[at] <= '9'):
-		length = length * 10 + reader.buffer[at] - '0'
-		digits = digits + 1
-		at = at + 1
-		if (digits > 8 || length > maximum):
-			reader.error = 1
-			return 0
-	if (digits == 0 || at + 4 != end):
-		reader.error = 1
-		return 0
-	int ignored = 0
-	return frame_take_buffered_message(reader, &ignored)
-
-
 json_value* vms_dispatch(vms_control* control, char* method, json_value* params):
 	vm_scheduler* scheduler = control.scheduler
 	if (strcmp(method, c"stats") == 0): return vms_stats(scheduler)
@@ -111,34 +81,6 @@ json_value* vms_dispatch(vms_control* control, char* method, json_value* params)
 		session.lease_deadline = time_monotonic_ms() + lease
 		return vms_status(session)
 	return vms_error(c"unknown method")
-
-
-# Bound parser recursion and reject NUL escapes, since downstream argv and
-# path APIs use C strings and cannot represent an embedded NUL.
-int vms_json_safe(char* body):
-	int depth = 0
-	int quoted = 0
-	int at = 0
-	while (body[at] != 0):
-		int ch = cast(int, body[at])
-		if (quoted):
-			if (ch == 92):
-				at = at + 1
-				if (body[at] == 0): return 0
-				if (body[at] == 'u'):
-					int zeros = 0
-					for i in range(4):
-						if (body[at + 1 + i] == 0): return 0
-						if (body[at + 1 + i] == '0'): zeros = zeros + 1
-					if (zeros == 4): return 0
-			else if (ch == 34): quoted = 0
-		else:
-			if (ch == 34): quoted = 1
-			else if (ch == '{' || ch == '['): depth = depth + 1
-			else if (ch == '}' || ch == ']'): depth = depth - 1
-			if (depth < 0 || depth > 32): return 0
-		at = at + 1
-	return quoted == 0 && depth == 0
 
 
 int vms_request(vms_control* control, int fd, char* body):

@@ -1,5 +1,6 @@
 # wbuild: binary=wvmd arch=x64
 # Foreground persistent Linux-box scheduler; no host-execution fallback.
+import tools.__arch__.wvmd_platform
 import lib.vmm.control
 import lib.vmm.box_snapshot
 import lib.wvm_client
@@ -116,6 +117,8 @@ int wvmd_positive(char* text):
 
 int main(int argc, int argv):
 	char** args = cast(char**, argv)
+	int platform_status = wvmd_platform_main(argc, args)
+	if (platform_status >= 0): return platform_status
 	if (argc >= 4 && strcmp(args[1], c"call") == 0):
 		json_value* params = json_object()
 		if (argc == 5):

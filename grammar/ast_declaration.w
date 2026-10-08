@@ -21,11 +21,30 @@ int ast_declaration_walk_begin(statement_ast* node):
 	return retained_walk_begin(cast(int, emit_declaration_ast_walk), node)
 
 
+# Bind a local at an analysis-supplied slot without emitting storage or
+# advancing the backend stack. Typed declarations already carry the binding
+# created by their type-name parse; inferred declarations enter scope only
+# after their initializer. The current dispatcher supplies stack_pos, while
+# a body analysis pass can supply its own independently computed depth.
+void ast_declaration_bind(statement_ast* node, int depth):
+	if (node.inferred):
+		node.declared_type = inferred_storage_type(node.literal_bytes, node.expression_type)
+		sym_declare(node.literal_bytes, node.declared_type, 'L', depth, 1)
+		node.binding = table_pos - symbol_data_size
+		sym_note_inferred_location(node.binding, node.line, node.column)
+		lint_track_local(node.binding)
+	else:
+		save_int(table + node.binding + 2, depth)
+	pointer_indirection = 0
+	node.stack_depth = depth
+
+
 int ast_local_declaration(statement_ast* node, char* name):
+	if (node.inferred == 0): node.binding = last_declared_symbol
 	node.expression_tree = 0
 	node.expression_root = -1
 	node.expression_type = -1
-	node.literal_bytes = name
+	node.literal_bytes = retained_parse_name(name)
 	node.has_initializer = node.inferred
 	if (node.inferred == 0): node.has_initializer = accept(c"=")
 	node.end_offset = token_start_offset
@@ -57,12 +76,13 @@ int ast_local_declaration(statement_ast* node, char* name):
 				node.expression_type = emit_declaration_ast_initializer(node)
 				emit_declaration_ast_trace(node)
 	else: walk = ast_declaration_walk_begin(node)
+	# Finish initializer diagnostics before the new binding enters scope.
+	ast_walk_settle(walk)
+	ast_declaration_bind(node, stack_pos)
 	if (walk >= 0):
-		retained_walk_phase(walk, ast_walk_declaration_bind)
 		retained_walk_phase(walk, ast_walk_declaration_storage)
 		retained_emit_statement(retained_walks[walk].node)
 	else:
-		emit_declaration_ast_bind(node)
 		emit_declaration_ast_storage(node)
 	return node.declared_type
 
@@ -84,17 +104,14 @@ int ast_goto_walk(statement_ast* node):
 int ast_raw_walk_open(statement_ast* node):
 	int walk = retained_walk_begin(cast(int, emit_declaration_ast_walk), node)
 	if (walk < 0): return -1
-	char* bytes = cast(char*, malloc(node.literal_length + 1))
-	for i in range(node.literal_length): bytes[i] = node.literal_bytes[i]
-	node.literal_bytes = bytes
+	node.literal_bytes = retained_text_copy(node.literal_bytes, node.literal_length)
 	retained_walk_phase(walk, ast_walk_raw)
 	return walk
 
 
 void ast_raw_walk_close(int walk, statement_ast* node):
+	assert1(retained_walks[walk].statement == node)
 	retained_emit_statement(retained_walks[walk].node)
-	free(node.literal_bytes)
-	node.literal_bytes = 0
 
 
 # defer: the parse checks the form and records the span; the walk registers
@@ -102,15 +119,16 @@ void ast_raw_walk_close(int walk, statement_ast* node):
 # skipped. Returns 0 when the caller must register it directly. The 'defer'
 # keyword is consumed; the deferred statement's first token is current.
 int ast_defer_registration():
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_deferred_expression
 	node.source_file = file
 	node.line = diag_token_line
 	node.column = diag_token_column
 	node.start_offset = token_start_offset
-	int walk = retained_walk_begin(cast(int, emit_declaration_ast_walk), &node)
+	int walk = retained_walk_begin(cast(int, emit_declaration_ast_walk), node)
 	if (walk < 0): return 0
-	node.literal_bytes = strclone(filename)
+	node.literal_bytes = retained_parse_name(filename)
 	retained_walk_phase(walk, ast_walk_defer_register)
 	defer_skip_statement()
 	node.end_offset = token_start_offset

@@ -315,3 +315,10 @@ ea031eaa|mov x10,x30
 2a0100f9|str x10,[x9]
 9d8f1ff8|str x29,[x28,#-8]!
 9d8740f8|ldr x29,[x28],#8
+
+# Portable atomics: acquire/release at both register widths and full fence.
+00fcdfc8|ldar x0,[x0]
+20fc9fc8|stlr x0,[x1]
+62fcdf88|ldar w2,[x3]
+a4fc9f88|stlr w4,[x5]
+bf3b03d5|dmb ish

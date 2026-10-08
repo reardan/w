@@ -431,7 +431,13 @@ int task_io_wait_active():
 	return task_in_task()
 
 
+int task_io_check():
+	if (task_in_task() == 0): return 0
+	return task_park_check(task_current())
+
+
 task_scheduler* task_scheduler_new():
+	io_check_hook = task_io_check
 	io_wait_hook = task_io_wait
 	io_wait_active_hook = task_io_wait_active
 	task_scheduler* s = new task_scheduler()

@@ -3341,6 +3341,7 @@ void alu_add_carry():
 /* lock xadd [ebx],eax: eax = old *ebx, *ebx += eax's value; the
    fetched pre-update value is the intrinsic's result */
 void alu_atomic_add():
+	be_notes_reset()
 	emit(1, c"\xf0")
 	emit_x64_opcode()
 	emit(3, c"\x0f\xc1\x03")
@@ -3351,9 +3352,44 @@ void alu_atomic_add():
    way (unchanged on success, reloaded on failure), which is the
    intrinsic's result */
 void alu_atomic_cas():
+	be_notes_reset()
 	emit(1, c"\xf0")
 	emit_x64_opcode()
 	emit(3, c"\x0f\xb1\x0b")
+
+# Naturally aligned word accesses only. Direct emission deliberately avoids
+# ordinary load/store folding: these accesses and fences are observable
+# ordering operations, including the relaxed forms. An optimizing backend
+# must preserve these nodes and acquire/release/fence ordering.
+void alu_atomic_load(int acquire):
+	be_notes_reset()
+	if (target_isa == 1):
+		if (acquire): a64(op(0xc8, 0xdffc00))   # ldar x0,[x0]
+		else: a64(op(0xf9, 0x400000))          # ldr x0,[x0]
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x8b\x00")               # mov eax,[eax]; TSO acquire
+
+
+# Pointer in ebx/x1, value in eax/x0.
+void alu_atomic_store(int release):
+	be_notes_reset()
+	if (target_isa == 1):
+		if (release): a64(op(0xc8, 0x9ffc20))   # stlr x0,[x1]
+		else: a64(op(0xf9, 0x000020))          # str x0,[x1]
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x89\x03")               # mov [ebx],eax; TSO release
+
+
+void alu_atomic_fence():
+	be_notes_reset()
+	if (target_isa == 1): a64(op(0xd5, 0x033bbf))   # dmb ish
+	else:
+		# lock or dword [esp/rsp],0 is a full fence, without requiring
+		# SSE2 on the 32-bit seed's baseline CPU. The live stack word
+		# is unchanged and all value registers are preserved.
+		emit(5, c"\xf0\x83\x0c\x24\x00")
 
 ####################### end of host atomic intrinsics ######################
 

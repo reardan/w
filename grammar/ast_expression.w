@@ -697,7 +697,7 @@ int ast_expression_literal_before(expression_ast* tree, int id, int at):
 	if ((tree.op[literal] != 0) && (tree.op[literal] != 'h')): return -1
 	int k = expression_ast_token_at(tree, tree.offset[literal])
 	if (k < 0): return -1
-	if ((k + 1 < tree.token_count) && (tree.tokens[(k + 1) * expression_ast_token_fields] < at)): return -1
+	if ((k + 1 < tree.token_count) && (expression_ast_token_row(tree, k + 1)[0] < at)): return -1
 	return id
 
 
@@ -714,7 +714,9 @@ void ast_expression_note_constant(expression_ast* tree, int id):
 		literal = ast_expression_literal_step(tree, literal)
 	const_note_value = tree.value[literal]
 	if (negate): const_note_value = 0 - const_note_value
-	int* row = &tree.tokens[expression_ast_token_at(tree, tree.offset[literal]) * expression_ast_token_fields]
+	int token_index = expression_ast_token_at(tree, tree.offset[literal])
+	assert1(token_index >= 0)
+	int* row = expression_ast_token_row(tree, token_index)
 	const_note_line_number = row[3]
 	const_note_diag_line = row[1]
 	const_note_diag_column = row[2]
@@ -1780,7 +1782,7 @@ int ast_expression_device_builtin(expression_ast* tree, int kind, int depth):
 
 
 int ast_expression_device_atomic(expression_ast* tree, int kind, int depth):
-	if (kind == 4): return -1
+	if (kind >= 4): return -1
 	int id = expression_ast_add(tree, 'k', -1, -1)
 	if (id < 0): return -1
 	tree.value[id] = kind
@@ -1816,7 +1818,9 @@ int ast_expression_device_atomic(expression_ast* tree, int kind, int depth):
 # registered after parsing the first operand, matching the streaming path.
 int ast_expression_atomic(expression_ast* tree, int kind, int depth):
 	if (target_isa == 3): return ast_expression_device_atomic(tree, kind, depth)
-	if ((target_isa != 0) || ((kind != 1) && (kind != 4))): return -1
+	if ((kind == 2) || (kind == 3)): return -1
+	if (target_isa != 0):
+		if ((target_isa != 1) || (kind < 5)): return -1
 	int id = expression_ast_add(tree, 'k', -1, -1)
 	if (id < 0): return -1
 	int integer = type_lookup(c"int")
@@ -1827,6 +1831,10 @@ int ast_expression_atomic(expression_ast* tree, int kind, int depth):
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	int count = 2
 	if (kind == 4): count = 3
+	if ((kind == 5) || (kind == 8)): count = 1
+	if (kind == 7): count = 0
+	if ((kind == 6) || (kind == 7) || (kind == 9)):
+		tree.result_type[id] = type_value(type_lookup(c"void"))
 	int tail = -1
 	for i in range(count):
 		if (i && (ast_expression_accept(tree, c",") == 0)): return -1

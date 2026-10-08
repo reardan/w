@@ -18,8 +18,8 @@ The follow-up implementation and qualification for issue #522 are documented in
 | W2 | Bounded binary codecs | done: `lib/bytes.w`, `lib/byte_buf.w`, `lib/checked.w`, `lib/byte_map.w`, `compress/crc32c.w` |
 | W3 | Bounded blocking executor | done: `lib/executor.w` (+ `task_remote_call`) |
 | W4 | Clock and I/O simulation interfaces | done: `lib/wclock.w`, `lib/event_loop.w` injection + dispatch limits, `lib/event_sim.w`, `lib/file_ops.w`, `lib/fake_fs.w`, `sim_env.w` |
-| W5 | Budgets and transport adapters | done (no TLS adapter): `lib/arena.w`, `lib/metrics.w`, `lib/transport.w` |
-| W6 | Import roots and compiler hardening | done: `--import-root` (compiler/compiler.w), cache keys in `tools/deps_cache.w` / `wexec` / `wtest` / `wbuildd` |
+| W5 | Budgets and transport adapters | done: `lib/arena.w`, `lib/metrics.w`, `lib/service_metrics.w`, `lib/transport.w`, `lib/transport_tls.w` |
+| W6 | Import roots and compiler hardening | done: `--import-root`, build-cache keys, portable ordered atomic word access and fences |
 
 - **W0.** `lib/io.w` defines `io_result` and the `IO_*` categories with
   the platform errno preserved. Stream writers keep the unwritten suffix
@@ -46,7 +46,10 @@ The follow-up implementation and qualification for issue #522 are documented in
   `raft_wal_persist_release` hold replies until their writes are durable
   and drop them on a failed sync. `lsm_scan` (bounded, resumable) and
   `lsm_apply_batch` (one all-or-nothing WAL record) extend the ordered
-  store.
+  store. A failed reader open or read during Raft recovery returns null
+  and releases the partially constructed node; a transient read-side
+  failure leaves the WAL available for retry. Fault tests cover both
+  voter and learner recovery.
 - **W2.** 64-bit codecs as portable hi/lo halves, checked-word and native
   forms, never silently truncating; overflow-checked add/sub/mul,
   narrowing and allocation sizes on both word sizes; borrowed views,
@@ -71,9 +74,14 @@ The follow-up implementation and qualification for issue #522 are documented in
   `docs/projects/simulation.md`.
 - **W5.** Budgeted arenas with checked arithmetic and an explicit borrow
   count, bounded metrics (counters, log2 latency histogram, event ring,
-  open-fd sampler), and a checked byte-transport interface with TCP/Unix
-  adapters. The native TLS library has no client certificates and is not
-  wired in; the audit is in `docs/projects/budgets_transport.md`.
+  open-fd sampler), plus allocation-free scheduler, executor and allocation
+  samplers in `lib/service_metrics.w`. The checked byte-transport interface
+  has TCP/Unix and native TLS adapters. TLS verifies server identity,
+  distinguishes timeout/cancellation from protocol failure, reports complete
+  record progress, and owns socket shutdown. It supports task and ordinary
+  thread callers; server-side client certificate authentication is not
+  implemented or advertised. TCP connection errors retain their native
+  `SO_ERROR`. Contracts and tests are in `docs/projects/budgets_transport.md`.
 - **W6.** `--import-root <dir>` (repeatable; `--import-root=<dir>` too)
   adds ordered import roots. Each import's module path is tried as
   `<root>/<path>.w` in each root in order, first root wins. After the
@@ -97,13 +105,24 @@ The follow-up implementation and qualification for issue #522 are documented in
   - Details: `docs/projects/compilation_model.md` §7. Tests:
     `import_root_test`, `import_root_order_test` (plus their x64 twins)
     and `import_root_cli_test`.
+  - Atomic acquire loads, release stores, relaxed word accesses and full
+    fences work on x86/x64 and ARM64 Linux/Darwin, with compiler ordering
+    barriers and explicit diagnostics for unsupported targets. The contract
+    and architecture qualification are in `docs/projects/threads.md`.
 
-Known follow-ups found during the work: `task_xchan`'s cross-thread wake
-can race a timeout/cancel resume (move it to `task_remote_call`, see
-`async.md`); arm64 Linux could get real `lib/fs.w` syscalls once qemu
-testing is available; `tls_connect` crashes on a null `server_name`;
-`uint` comparisons compile as signed. Chunked snapshot transfer is now covered
-by the #522 follow-up linked above.
+The later fundamentals audit's builtin hashing and allocation changes landed
+in #528 and #530. Checked printing now preserves partial progress and errors
+through caller-owned results; legacy print helpers and builtin formatted
+printing keep queryable sticky errors (see `docs/projects/golf_ergonomics.md`).
+The original `task_xchan` wake race, unsigned comparisons and null TLS server
+name follow-ups were fixed in #516. Chunked snapshot transfer is covered by
+the #522 follow-up linked above.
+
+Platform limits remain explicit: file durability is qualified on Linux
+x86/x64; other filesystem adapters report unsupported operations. ARM64
+atomic instruction encoding is checked on the host, while execution and
+ordering qualification needs an ARM64 host. Native TLS has no client
+certificates, so its common adapter does not claim mutual TLS.
 
 ## Goal
 
@@ -295,7 +314,7 @@ Decisions taken in the implementation:
   `rejected` / `wait_expired` and `queued_bytes`.
 - Does a binary-key map need hash/equality hooks in built-in maps, or is a
   leaf library enough? A leaf library (`lib/byte_map.w`) is enough: the
-  built-in `map[string, V]` is already length-aware but lacks a seeded
-  hash, limits and sorted iteration. A per-table seed in
-  `structures/hash_table.w` is the cheap built-in change if it is ever
-  needed (it needs a seed bump).
+  built-in `map[string, V]` is length-aware and now has seeded hashing
+  from #528. Explicit size limits and seed-independent sorted iteration
+  remain features of the leaf byte-key map. A per-table seed in
+  `structures/hash_table.w` supplies the built-in protection.

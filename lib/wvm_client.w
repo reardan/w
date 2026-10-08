@@ -10,6 +10,7 @@ json_value* wvm_client_call(char* socket_path, char* method, json_value* params,
 	int fd = socket_unix_stream()
 	if (fd < 0): return 0
 	socket_set_nonblocking(fd)
+	socket_set_nosigpipe(fd)
 	if (socket_connect_unix(fd, socket_path) < 0):
 		close(fd)
 		return 0
@@ -41,8 +42,8 @@ json_value* wvm_client_call(char* socket_path, char* method, json_value* params,
 			failed = 1
 			break
 		# MSG_NOSIGNAL: disconnected daemon must not kill its client.
-		int count = sys_sendto(fd, wire.data + sent, wire.length - sent, 16384, 0, 0)
-		if (count == -11 || count == -4): continue
+		int count = sys_sendto(fd, wire.data + sent, wire.length - sent, msg_nosignal(), 0, 0)
+		if (count == 0 - net_eagain() || count == -4): continue
 		if (count <= 0): failed = 1
 		else: sent = sent + count
 	string_free(wire)
@@ -55,7 +56,7 @@ json_value* wvm_client_call(char* socket_path, char* method, json_value* params,
 		if (events == -4): continue
 		if (events <= 0): break
 		int count = frame_reader_fill(reader)
-		if (count == -11 || count == -4): continue
+		if (count == 0 - net_eagain() || count == -4): continue
 		if (count <= 0 || reader.length > 32768): break
 		int end = frame_find_header_end(reader)
 		if (end < 0):
