@@ -433,7 +433,7 @@ void inline_note_lookup(char* s, int found):
 		int size = rec.free_text_size * 2
 		if (size < 256): size = 256
 		while (size < rec.free_text_used + len + 1): size = size * 2
-		char* text = malloc(size)
+		char* text = cast(char*, malloc(size))
 		if (rec.free_text != 0):
 			for i in range(rec.free_text_used): text[i] = rec.free_text[i]
 			# Earlier names point into the old buffer: rebase them

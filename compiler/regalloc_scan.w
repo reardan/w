@@ -541,7 +541,7 @@ int inline_source_copy(int offset, int end, char** out):
 		if ((offset >= window_start) && (end <= getchar_kernel_pos[file])):
 			src = cast(char*, getchar_buf_addr[file]) + (offset - window_start)
 	if (src == 0): return 0
-	char* text = malloc(n + 2)
+	char* text = cast(char*, malloc(n + 2))
 	for i in range(n): text[i] = src[i]
 	text[n] = 10
 	text[n + 1] = 0
