@@ -3156,6 +3156,94 @@ against the refreshed baselines, `profile_check` (96%/96%/98% of the
 committed profiles still match; not refreshed) and
 `tools/bench_vs_c.sh -n 3` (all checksums agree).
 
+### Merged with `main` again (2026-10-08)
+
+The thread branch (A4, A1, A6, A2, A7, A5, A3, A8, A9 at 104e42a) was
+merged with `main` at 75ca1ad, six commits past 4e2ce84: the Apple
+Silicon hypervisor cell backend (#598), native SQL connectivity, the
+Redis/Memcached clients (#601), service I/O, TLS, metrics and ordered
+atomics (#602), and the two retained front end changes that meet the
+units: #603 lowers a retained expression through a view of its own
+group (`retained_expression_view` / `retained_emit_view`) instead of
+the parse arena, and #604 allocates statement, control and loop
+records in the retained session (`retained_parse_record`) and binds a
+local's slot at parse time (`ast_declaration_bind`) instead of in a
+walk phase.
+
+Resolutions. `code_generator/retained_emit.w`: A6's guard discard flag
+is set in `retained_walk_lower_expression` before `retained_emit_view`,
+which now emits the walk's expression (the arena check moved to parse
+time, `retained_walk_expression`, and emits nothing).
+`grammar/ast_loop.w`: A7's rotated `while` keeps its shape (condition
+skipped, body, condition re-parsed as the bottom test, entry jump) on
+main's session-owned `loop_ast` / `control_ast_walk` pointers.
+`grammar/ast_statement.w`: the `if` arm takes main's node pointer with
+A7's `on_true` argument to `statement_guard`. `grammar/string_literal.w`:
+`raw_asm` keeps A3's park spill on the streaming path with main's owned
+node. Nothing else conflicted; #604's parse-time slot binding drains
+the walk first, so the units' storage-phase hooks
+(`regalloc_store_declared`) see the same order.
+
+Two post-merge fixes, each a semantic conflict git did not flag.
+(1) #602 made every host atomic emitter call `be_notes_reset`, whose A3
+check asserts that no expression register is parked; `atomic_load`,
+`atomic_load_relaxed` and `atomic_fence` have no real push of their
+own, so `a + atomic_load(p)` was an internal error on x64 (default and
+`--streaming`). The emitters now go through `atomic_notes_reset`, which
+spills the parks first, as a call does; `tests/expr_regs_test.w` covers
+the five ordered forms. (2) A7's rotated range and cursor loops noted
+the header's line at the bottom test from the parser's global
+`filename`; #604's `ast_detached_expression_test` lowers a hand-built
+range loop after its parse frame, with `filename` unset, and crashed
+in `debug_line_file_index`. `loop_ast` now owns `source_name`
+(interned beside the helper names) and the bottom test notes
+`debug_line_note_in(node.source_name, node.line, ...)`; a record
+without a name records no location. Neither fix changes an image that
+compiled before (`w.w`, `loop_rotate_test`, `x86_budget_test`, both
+widths, byte-compared).
+
+Gates on the merged tree: `check --json w.w` (both widths, clean),
+`verify`, `verify_x64`, `verify_pgo` (`wv3_pgo == wv4_pgo == wv5_pgo
+(== streaming)`, and the x64 chain), `verify_arm64`,
+`ast_expression_verify` (default == `--streaming` on x86, x64, arm64,
+arm64_darwin, win64, wasm), `ast_required_expression_verify`,
+`ast_opt_verify`, `ast_expression_test` (123 passed),
+`ast_retained_emit_test`, `elf_pie_test`, `asm_x64_test` (4,218
+functions, 408,410 instructions, 0 mismatch), `asm_x86_asm_test`
+(4,213 functions, 639,555 instructions, 0 mismatch), both fuzzers, the
+nine unit tests and their `_64` twins, `regalloc_diff_test` (427
+compared, 309 skipped, 0 mismatches), `tests` (1,014 targets,
+`QEMU_LD_PREFIX` set), `tests_arm64` (30 targets), `bench_compare`,
+`wbench_compare` (against the unchanged `tools/wbench_baseline.txt`)
+and `profile_check` (93% / 93% / 98% of the committed profiles match;
+not refreshed). `tests_win64` was not run (no wine in the container).
+One `regalloc_diff_test` run reported `malloc_churn_test` as a
+behaviour mismatch: the program prints wall-clock milliseconds on
+stderr, and that run's re-check happened to see each build agree with
+itself; the rerun classified it as nondeterministic, as the earlier
+runs did, and passed. That is the diff test's documented two-run
+heuristic, not the merge.
+
+Measurements (`./wbuild bench`, kIr, before = 104e42a's
+`tests/bench/baseline.txt`, after = the merged tree): the corpus is
+unchanged on both widths (`siphash_keys` moves by about 0.01% from run
+to run with the container runtime's hash seeding); output bytes grow
+by about 4 kB with main's `lib/lib.w`. `self` rises 1.4% on x86 and
+1.6% on x64, main's larger compiler tree and #603's owned views and
+parse-time arena check; it was not separated further.
+
+| program | x86 kIr before → after | x64 kIr before → after |
+| --- | --- | --- |
+| `sum` | 2,400,091 → 2,400,092 | 2,400,092 → 2,400,092 |
+| `sieve` | 857,532 → 857,532 | 989,983 → 989,983 |
+| `sha256_1m` | 3,012,142 → 3,012,142 | 3,002,967 → 3,002,968 |
+| `siphash_keys` | 2,647,135 → 2,646,823 | 2,879,507 → 2,879,147 |
+| `inflate_corpus` | 3,905,004 → 3,905,005 | 3,695,639 → 3,695,639 |
+| `regex_backtrack` | 3,780,827 → 3,780,827 | 3,982,745 → 3,982,745 |
+| `matmul_256` | 3,217,092 → 3,217,092 | 2,539,639 → 2,539,640 |
+| `strcmp_sort` | 2,439,919 → 2,439,919 | 2,357,606 → 2,357,606 |
+| `self` | 10,750,876 → 10,904,885 | 6,016,659 → 6,112,144 |
+
 ## 9. Reproducing
 
 ```sh
