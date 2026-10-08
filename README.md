@@ -332,6 +332,10 @@ Implemented and covered by tests:
   more on both x86 and x64). See `tests/dynamic_test.w`, `tests/varargs_test.w`,
   `tests/float_abi_test.w`, `tests/extern_data_test.w`,
   `tests/c_import_libc_test.w`, and `tests/cuda_smoke.w`.
+- SQL connectivity: `libs.standard.sql.client` provides synchronous Linux x64
+  adapters for SQLite, PostgreSQL, MySQL, SQL Server (FreeTDS), and Oracle OCI,
+  using optional native client libraries. See [SQL connectivity](docs/projects/sql.md)
+  for the API, binding support, setup, and current limits.
 - Raw syscalls via `syscall(...)`. The ELF entry stub calls `_main`:
   `lib/lib.w` provides a `_main` that forwards to your `main(argc, argv)`,
   or a program can define `_main` itself and skip the library entirely

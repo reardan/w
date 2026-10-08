@@ -214,6 +214,12 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
+  fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest
+  generation fail because `step=` requires a default-arch target. Allow extra
+  steps on the selected architecture; currently a separate source-owned target
+  depending on the architecture-only test is required.
+
 - **Expected-failure import fixtures cause repeated closure warnings (2026-10-04).**
   During wc2 retirement, `wtest changed` and `wtest archs` retried
   `bin/import_path_shaped_fixture.w`, whose invalid `import lib/assert.w` is
