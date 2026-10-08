@@ -2280,6 +2280,57 @@ Nothing reaches arm64, wasm or win64: `ers_push_eax` falls back to
 are byte-identical (`verify_arm64` passes; win64 keeps the A2 form since
 its shim/call conventions were not audited for the spill points).
 
+**Merged with A7 and A5** (the lane merge on top of 0437845). A7's
+rotated loops add two control-flow edges the design rule already
+covers: the entry jump is `jmp_int32` (a spill point, with nothing to
+spill at a statement start), the bottom test's back edge is `be_br_cc`
+(spills) and its target the loop head (`be_ctrl_loop`, asserts), and
+`be_loop_entry_land` runs `be_notes_reset` (asserts) before the
+re-parsed condition, whose own parks the compare consumes; a rotated
+`while (1)`'s `be_br_const_discard` rolls back a `mov eax,imm` that no
+spill precedes. `tests/expr_regs_test.w` `test_rotated_loops` pins
+parked operands in a rotated condition, in the body, in nested
+rotated loops and around a `break` out of a constant loop, with a
+`--no-loop-rotate` twin. A5's inline site is a call for the stack
+model but emits none: `inline_emit_call` now spills the site's parks
+before the body (`x + f()` with no argument push would otherwise reach
+the body's first statement with a park live and fail closed), and the
+`be_notes_reset` the site runs — like every statement start and jump
+target — now also ends the undoable-spill record, since the
+instruction after a site spill is the body's first byte and not the
+push that caused it: a body opening with a park of its own (`return
+__word_size__ * 8`) had its fold undo the site's spill and leave the
+park live at the region end (`build_pgo`, whose `--profile-use`
+inlines hot sites, and the sweep's `--inline` builds caught it).
+`test_inline_sites` covers zero- and multi-argument leaf callees, an
+early `return`, a variable shift inside the body, a body that opens
+with a park, and a site inside a rotated condition, with `--inline` and
+`--no-inline` twins; `regalloc_diff_test` sweeps `--no-expr-regs` as
+bit 64 beside A7's bit 16 and A5's `--inline` opt-in.
+
+On the merged tree (thread branch 0437845 = A4, A1, A6, A2, A7, A5
+before; the merge after; `./wbuild bench`, kIr = callgrind Ir / 1000,
+ms = best of the runs on the shared box), A3's gains stand on top of
+A7's:
+
+| program | x64 Ir thread | merged | Δ | ms | x86 Ir thread | merged | Δ | ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sum | 2.400 G | 2.400 G | -0.0% | 179 → 188 | 2.400 G | 2.400 G | -0.0% | 181 → 183 |
+| sieve | 0.988 G | 0.990 G | +0.2% | 287 → 297 | 0.992 G | 0.992 G | -0.0% | 275 → 279 |
+| sha256_1m | 4.293 G | 3.783 G | -11.9% | 274 → 232 | 4.589 G | 4.143 G | -9.7% | 286 → 245 |
+| siphash_keys | 3.597 G | 3.465 G | -3.7% | 883 → 731 | 3.303 G | 3.241 G | -1.9% | 587 → 550 |
+| inflate_corpus | 3.889 G | 3.696 G | -5.0% | 272 → 252 | 3.982 G | 3.923 G | -1.5% | 302 → 287 |
+| regex_backtrack | 4.062 G | 3.983 G | -1.9% | 276 → 244 | 3.970 G | 3.891 G | -2.0% | 304 → 255 |
+| matmul_256 | 3.212 G | 2.540 G | -20.9% | 258 → 256 | 4.223 G | 3.886 G | -8.0% | 270 → 300 |
+| strcmp_sort | 2.529 G | 2.358 G | -6.8% | 407 → 421 | 2.517 G | 2.469 G | -1.9% | 356 → 345 |
+| self | 5.158 G | 4.941 G | -4.2% | 601 → 577 | 8.176 G | 8.484 G | +3.8% | 997 → 951 |
+
+The x86 `self` row measures the seed-built `bin/wv2`, so its +3.8% is
+the unit's own code running (the park and spill bookkeeping in the
+emitter, with no codegen gain since the seed knows no parks); the x64
+row (`bin/wv2_64`, built by the new compiler) is the codegen effect,
+−4.2%. Both baselines are regenerated on the merged tree.
+
 **The hot loop.** `sha256_block_w`'s round loop on x64
 (`lib/sha256.w`), 133 → 116 instructions, 38 `push`/`pop` → 6 (`e` is
 `r14`, `f` `r8`, `g` `r9`, `a` `r13`, `b` `rsi`, `c` `rdi`, `d` `r10`,

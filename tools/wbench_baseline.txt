@@ -1,6 +1,6 @@
 # wbench baseline: <workload> <sym_lookup calls> <records visited> <output bytes> <best ms>
 # Regenerate with: bin/wbench --write-baseline <this file> (docs/testing.md)
-prelude 19113 4820 114952 46
-sym1000 29108 7818 237832 84
-sym4000 59108 16818 618760 132
-self 506005 132842 2475736 970
+prelude 19113 4820 114952 42
+sym1000 29108 7818 237832 62
+sym4000 59108 16818 618760 133
+self 509384 133686 2492368 995
