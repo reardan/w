@@ -2,6 +2,7 @@
 # CPU/RAM admission is independent of optional aggregate cgroup quotas.
 import lib.process
 import lib.json_rpc
+import lib.vmm.protocol
 import lib.time
 import lib.vmm.registry
 import lib.vmm.cgroup
@@ -73,30 +74,6 @@ struct vm_scheduler:
 	int expired
 	int cleanup_failures
 	vms_worker* worker
-
-
-json_value* vms_field(json_value* object, char* key):
-	if (object == 0 || object.type != json_type_object()): return 0
-	return json_object_get(object, key)
-
-
-int vms_number(json_value* object, char* key, int fallback):
-	json_value* value = vms_field(object, key)
-	if (value == 0): return fallback
-	if (value.type != json_type_int()): return -1
-	return value.int_value
-
-
-char* vms_text(json_value* object, char* key):
-	json_value* value = vms_field(object, key)
-	if (value == 0 || value.type != json_type_string()): return 0
-	return value.string_value
-
-
-json_value* vms_error(char* message):
-	json_value* value = json_object()
-	json_object_set(value, c"error", json_string(message))
-	return value
 
 
 vm_scheduler* vms_new(int active, int pending, int cpus, int memory_mb, vms_worker* worker):

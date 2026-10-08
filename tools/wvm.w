@@ -1,6 +1,7 @@
 # wbuild: binary=wvm arch=x64
 # Local cell runner. Source compilation happens on the host; only the
 # resulting static x64 program executes in KVM. No host-exec fallback.
+import tools.__arch__.wvm_platform
 import lib.vmm.cell
 import lib.vmm.box
 import lib.vmm.workspace
@@ -155,6 +156,8 @@ int wvm_net_option(vm_cell* cell, char* endpoint):
 
 int main(int argc, int argv):
 	char** args = cast(char**, argv)
+	int platform_status = wvm_platform_main(argc, args)
+	if (platform_status >= 0): return platform_status
 	if (argc >= 2 && strcmp(args[1], c"box") == 0): return wvm_box(argc, args)
 	if (argc == 2 && strcmp(args[1], c"available") == 0):
 		kvm_machine machine

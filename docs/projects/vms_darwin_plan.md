@@ -1,7 +1,11 @@
 # macOS Apple Silicon VM backend implementation plan
 
-Status: proposed, 2026-10-07. Tracks [#591](https://github.com/reardan/w/issues/591).
-This document plans implementation; it does not enable a Darwin VM backend.
+Status: initial D0–D7 implementation delivered, 2026-10-07. Tracks
+[#591](https://github.com/reardan/w/issues/591). The original plan follows;
+[usage and limits](vms_darwin.md) describe the shipped scope and
+[native validation](vms_darwin_validation.md) records evidence and remaining
+Linux validation limits. Darwin runtime support is implemented; Linux
+completion PR #593 integration remains subject to its eventual merge.
 The existing architecture and Linux behavior are described in [vms.md](vms.md).
 
 ## Baseline and scope
