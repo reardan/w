@@ -439,6 +439,7 @@ void emit_guard_ast_walk_branch(control_ast_walk* control, statement_ast* guard)
 # C3.5: the optimizer pass's walk hooks (compiler/ast_opt.w, --ast-opt).
 void ast_opt_condition_start(control_ast_walk* control);
 int ast_opt_guard_phase(control_ast_walk* control, statement_ast* guard, int phase);
+void ast_opt_while_begin(control_ast_walk* control);
 
 
 # if/elif/else and while, with their conditions.
@@ -454,7 +455,9 @@ void emit_guard_ast_walk(retained_statement_walk* walk, int phase):
 	else if (phase == ast_walk_guard_branch): emit_guard_ast_walk_branch(control, walk.statement)
 	else if (phase == ast_walk_if_then_end): emit_if_ast_then_end(control.statement)
 	else if (phase == ast_walk_if_end): emit_if_ast_end(control.statement)
-	else if (phase == ast_walk_while_begin): control.outer = emit_while_loop_ast_begin(control.loop)
+	else if (phase == ast_walk_while_begin):
+		control.outer = emit_while_loop_ast_begin(control.loop)
+		ast_opt_while_begin(control)
 	else if (phase == ast_walk_while_end): emit_while_loop_ast_end(control.loop)
 	else: error(c"internal error: unknown statement walk phase")
 

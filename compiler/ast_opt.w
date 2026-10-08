@@ -93,6 +93,19 @@ struct ast_opt_arm:
 	int cond_addr_slots
 	ast_opt_region* region
 
+# A rotated while loop's dead-body region (grammar/loop_rotate.w, unit A7
+# of codegen_gap_plan.md): the loop enters by a jump to its bottom test,
+# so the body is emitted before the condition is parsed and the fold is
+# known. Under the pass every rotated while opens a region at its begin
+# phase, keyed like an arm; the branch phase adopts it when the condition
+# folded to 0 and drops it otherwise.
+struct ast_opt_loop:
+	int key
+	ast_opt_loop* next
+	ast_opt_region* region
+
+ast_opt_loop* ast_opt_loops
+
 # The folded arms whose phases have not all run, innermost first (they
 # nest like the arms). The parse hook removes any record with the arm's
 # key before it adds one, so a record left behind by an arm that never
@@ -112,6 +125,7 @@ void ast_opt_reset():
 	ast_opt_regions_kept = 0
 	ast_opt_bytes_removed = 0
 	ast_opt_arms = 0
+	ast_opt_loops = 0
 
 
 void ast_opt_stats_dump():
@@ -273,13 +287,19 @@ void ast_opt_arm_drop(control_ast_walk* control):
 	if (ast_opt_arms != 0): ast_opt_arm_unlink(ast_opt_arm_key(control))
 
 
+# The pass rewrites code on x86 and x64 Linux ELF only, and not under
+# --profile-generate or --coverage, whose counters record code positions.
+int ast_opt_rewrites():
+	return (target_isa == 0) && (target_os == 0) && (profile_generate_mode == 0) && (coverage_generate_mode == 0)
+
+
 # The parse hook: the arm's condition tree (root < 0 when the streaming
 # grammar parsed it) before any of the arm's phases are emitted.
 void ast_opt_guard(control_ast_walk* control, expression_ast* tree, int root):
 	if (ast_opt_mode == 0): return
 	int key = ast_opt_arm_key(control)
 	if (ast_opt_arms != 0): ast_opt_arm_unlink(key)
-	if ((root < 0) || (target_isa != 0) || (target_os != 0) || profile_generate_mode || coverage_generate_mode): return
+	if ((root < 0) || (ast_opt_rewrites() == 0)): return
 	ast_opt_eval_failed = 0
 	int value = ast_opt_eval(tree, root, 0)
 	if (ast_opt_eval_failed): return
@@ -393,7 +413,49 @@ int ast_opt_region_close(ast_opt_arm* arm):
 	return 1
 
 
+# Remove and return the region a rotated loop opened at its begin phase,
+# 0 when it opened none.
+ast_opt_region* ast_opt_loop_take(control_ast_walk* control):
+	if ((ast_opt_loops == 0) || (control.loop == 0)): return 0
+	int key = ast_opt_arm_key(control)
+	ast_opt_region* region = 0
+	ast_opt_loop* previous = 0
+	ast_opt_loop* record = ast_opt_loops
+	while (record != 0):
+		ast_opt_loop* next = record.next
+		if (record.key == key):
+			if (previous == 0): ast_opt_loops = next
+			else: previous.next = next
+			if (region != 0): ast_opt_region_free(region)
+			region = record.region
+			free(cast(void*, record))
+		else: previous = record
+		record = next
+	return region
+
+
+void ast_opt_loop_drop(control_ast_walk* control):
+	ast_opt_region* region = ast_opt_loop_take(control)
+	if (region != 0): ast_opt_region_free(region)
+
+
 # --- the walk hooks -----------------------------------------------------------
+
+# A while loop's begin phase has run (emit_while_loop_ast_begin): a rotated
+# loop's body starts here, so this is where a dead body's region opens. A
+# record left by a loop that never reached its end phase (an error unwound
+# its frame) is replaced, as an arm's is.
+void ast_opt_while_begin(control_ast_walk* control):
+	if (ast_opt_mode == 0): return
+	if ((control.loop == 0) || (control.loop.entry_site < 0)): return
+	ast_opt_loop_drop(control)
+	if (ast_opt_rewrites() == 0): return
+	ast_opt_loop* record = cast(ast_opt_loop*, malloc(sizeof(ast_opt_loop)))
+	record.key = ast_opt_arm_key(control)
+	record.region = ast_opt_region_open()
+	record.next = ast_opt_loops
+	ast_opt_loops = record
+
 
 # The condition's lowering is about to run: where its bytes start.
 void ast_opt_condition_start(control_ast_walk* control):
@@ -412,9 +474,16 @@ void ast_opt_condition_start(control_ast_walk* control):
 int ast_opt_guard_phase(control_ast_walk* control, statement_ast* guard, int phase):
 	if (ast_opt_mode == 0): return 0
 	ast_opt_arm* arm = ast_opt_arm_of(control)
-	if (arm == 0): return 0
+	if (arm == 0):
+		# A rotated loop whose condition did not fold keeps its body
+		if (phase == ast_walk_while_end): ast_opt_loop_drop(control)
+		return 0
 	if (phase == ast_walk_guard_value):
 		emit_guard_ast_value(guard)
+		# A constant chain in discard position (grammar/cond_branch.w)
+		# is pending: its branch sites are all in the condition's bytes,
+		# which go below, so its regions go with them.
+		if (cond_pending): cond_pending_discard()
 		# The lowered constant left nothing else behind; if it did, the
 		# arm is emitted as usual.
 		int clean = (arm.cond_start >= 0) && (arm.cond_ctrl_pos == ctrl_stack_pos) && (arm.cond_stack_depth == stack_pos) && (arm.cond_addr_slots == be_addr_slot_writes)
@@ -426,6 +495,20 @@ int ast_opt_guard_phase(control_ast_walk* control, statement_ast* guard, int pha
 		if (const_note_codepos > arm.cond_start): const_note_codepos = -1
 		return 1
 	if (phase == ast_walk_guard_branch):
+		if ((control.loop != 0) && (control.loop.entry_site >= 0)):
+			# A rotated loop's bottom test: the branch is the back edge,
+			# taken when the condition is true. 'while 1' is one jump to
+			# the body (what the default compile's constant fold emits
+			# too); 'while 0' falls through to the exit, and the body
+			# emitted before it is the dead region opened at the begin
+			# phase, closed at the end phase.
+			guard.target = control.loop.top_target
+			ast_opt_conditions_folded = ast_opt_conditions_folded + 1
+			ast_opt_region* body = ast_opt_loop_take(control)
+			if (arm.fold): be_br(guard.target)
+			if (arm.fold == 0): arm.region = body
+			elif (body != 0): ast_opt_region_free(body)
+			return 1
 		if (control.loop != 0): guard.target = control.loop.break_target
 		else: guard.target = control.statement.alternate_target
 		ast_opt_conditions_folded = ast_opt_conditions_folded + 1
@@ -451,6 +534,13 @@ int ast_opt_guard_phase(control_ast_walk* control, statement_ast* guard, int pha
 		ast_opt_arm_drop(control)
 		return 0
 	if (phase == ast_walk_while_end):
+		if (control.loop.entry_site >= 0):
+			# The rotated loop's entry jump was resolved to the bottom
+			# test; a removed body leaves it pointing past the bytes
+			# that follow, so it is re-resolved to the next instruction.
+			if ((arm.fold == 0) && ast_opt_region_close(arm)): be_branch_patch(control.loop.entry_site, codepos)
+			ast_opt_arm_drop(control)
+			return 0
 		int removed = (arm.fold == 0) && ast_opt_region_close(arm)
 		ast_opt_arm_drop(control)
 		if (removed == 0): return 0
