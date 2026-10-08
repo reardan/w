@@ -1175,6 +1175,14 @@ void rs_after_ident_operator(int i, int type_context):
 # call (unit A8: the loops of lib/sha256.w own registers across their
 # rotates). A symbol declared later in the body (a local of that name)
 # is a call the emitter spills around, like any other scan miss.
+# The intrinsics whose emitter keeps a pointer in ecx from before the
+# operand pops to the sequence's end (grammar/limb_builtin.w,
+# mov_ecx_eax): a loop owning ecx on x86 must not meet one.
+int rs_intrinsic_holds_ecx(char* name):
+	if (strcmp(name, c"mul_wide") == 0): return 1
+	return strcmp(name, c"add_carry") == 0
+
+
 int rs_intrinsic_name(char* name):
 	int hit = 0
 	if (strcmp(name, c"rotr") == 0): hit = 1
@@ -1284,10 +1292,15 @@ void rs_identifier():
 		# grammar/limb_builtin.w), which lowers inline unless a symbol
 		# of its name shadows it (the same rule the parsers apply)
 		if (rs_intrinsic_name(name)):
-			# ... but it writes ecx (the count) or edx (the temporaries,
-			# the high half): no loop register there on x86 (A9), where
-			# the limb intrinsics' ecx cannot even be spilled around
-			rs_lp_mark(rs_lp_has_divshift)
+			# ... but mul_wide and add_carry hold their pointer in ecx
+			# across the pops that follow (mov_ecx_eax), which no
+			# bracket can spill around: no loop register there on x86
+			# (A9). The other intrinsics write ecx (a variable count)
+			# or edx (the temporaries, the high half) inside a bracket
+			# that parks an owned register (rl_hazard_begin/_end), and
+			# a constant count never reaches ecx (alu_bit_shuttle_imm),
+			# so the rotate idiom of lib/sha256.w keeps its loop.
+			if (rs_intrinsic_holds_ecx(name)): rs_lp_mark(rs_lp_has_divshift)
 		elif (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
 		return;
 	if (c == '['):
