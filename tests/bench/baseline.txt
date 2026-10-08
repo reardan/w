@@ -1,39 +1,39 @@
 # wbench program baseline: <program> <arch> <output bytes> <kIr: callgrind Ir / 1000, -1 = not measured> <best ms>
 # Regenerate with: ./wbuild bench, then copy bin/bench.txt here (docs/testing.md, "Performance").
 # compiler: bin/wv2   x64 self-compile: bin/wv2_64
-sum x86 165188 2400105 183
+sum x86 165188 2400112 168
 #   top: sum_to 100.0%
-sum x64 195208 2400092 188
+sum x64 199304 2400094 187
 #   top: sum_to 100.0%
-sieve x86 165188 992429 279
+sieve x86 165188 992436 327
 #   top: sieve 94.84%, bench_fold 2.70%, bench_mask32 1.96%
-sieve x64 195208 989983 297
-#   top: sieve 94.58%, bench_fold 2.95%, bench_mask32 1.97%
-sha256_1m x86 173384 4143049 245
-#   top: sha256_block_w 75.04%, bench_rand 14.98%, main 5.67%
-sha256_1m x64 203408 3782849 232
-#   top: sha256_block_w 75.33%, bench_rand 13.75%, main 6.21%
-siphash_keys x86 165188 3241165 550
-#   top: __w_hash_sip 38.84%, __w_hash_table_slot 5.86%, __w_hash_table_rehash 5.28%
-siphash_keys x64 199304 3465089 731
-#   top: __w_hash_sip 40.49%, __w_hash_table_rehash 8.20%, __w_hash_table_slot 5.87%
-inflate_corpus x86 218580 3922779 287
-#   top: inf_get_bit 20.99%, wh_decode 19.36%, __w_size_add 9.35%
-inflate_corpus x64 256936 3695921 252
-#   top: inf_get_bit 20.74%, wh_decode 18.72%, __w_size_add 9.92%
-regex_backtrack x86 173380 3890588 255
-#   top: rx_here 44.56%, regex_match_length 16.94%, rx_element_matches 15.33%
-regex_backtrack x64 207496 3982745 244
-#   top: rx_here 45.34%, regex_match_length 16.55%, rx_element_matches 14.98%
-matmul_256 x86 165192 3885572 300
-#   top: matmul 99.73%
-matmul_256 x64 199312 2539639 256
-#   top: matmul 99.64%
-strcmp_sort x86 165188 2469465 345
-#   top: __w_list_sort_compare 19.73%, __w_list_compare_values 18.33%, __w_list_merge_sort 14.40%
-strcmp_sort x64 195208 2357606 421
-#   top: __w_list_compare_values 19.20%, __w_list_sort_compare 16.91%, __w_list_merge_sort 13.30%
-self x86 2492368 8483964 951
-#   top: __w_hash_sip 11.35%, sha256_block_w 10.23%, strcmp 6.99%
-self x64 2838432 4940525 577
-#   top: __w_hash_sip 10.05%, sha256_block_w 9.76%, getc 9.45%
+sieve x64 199304 987552 289
+#   top: sieve 94.82%, bench_fold 2.71%, bench_mask32 1.97%
+sha256_1m x86 173384 4589489 297
+#   top: sha256_block_w 77.84%, bench_rand 13.53%, main 4.75%
+sha256_1m x64 207504 4292723 273
+#   top: sha256_block_w 76.30%, bench_rand 14.46%, main 5.08%
+siphash_keys x86 169284 3303271 599
+#   top: __w_hash_sip 38.11%, __w_hash_table_rehash 6.20%, __w_hash_table_slot 5.92%
+siphash_keys x64 199304 3596974 752
+#   top: __w_hash_sip 39.07%, __w_hash_table_rehash 9.54%, __w_hash_table_slot 5.83%
+inflate_corpus x86 218584 3981531 291
+#   top: inf_get_bit 20.68%, wh_decode 19.74%, __w_size_add 9.21%
+inflate_corpus x64 261040 3888792 281
+#   top: inf_get_bit 21.17%, wh_decode 18.47%, __w_size_add 9.43%
+regex_backtrack x86 173380 3969625 280
+#   top: rx_here 45.36%, regex_match_length 16.61%, rx_element_matches 15.03%
+regex_backtrack x64 207496 4061937 288
+#   top: rx_here 46.11%, regex_match_length 16.23%, rx_element_matches 14.69%
+matmul_256 x86 169288 4223221 261
+#   top: matmul 99.75%
+matmul_256 x64 199312 3212303 245
+#   top: matmul 99.68%
+strcmp_sort x86 165188 2517301 364
+#   top: __w_list_sort_compare 19.35%, __w_list_compare_values 19.20%, __w_list_merge_sort 14.50%
+strcmp_sort x64 199304 2528707 398
+#   top: __w_list_sort_compare 19.27%, __w_list_compare_values 19.11%, __w_list_merge_sort 12.78%
+self x86 2529436 10752699 1408
+#   top: sha256_block_w 8.19%, __w_hash_sip 7.21%, __w_list_addr 6.45%
+self x64 2908472 6584194 892
+#   top: sha256_block_w 8.62%, __w_list_addr 8.60%, getc 7.07%
