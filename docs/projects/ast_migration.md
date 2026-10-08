@@ -63,8 +63,9 @@ Bodies are still visited incrementally: deferral is per statement (or
 header), not per whole body. The retained forest (described below) holds
 function/statement nesting, expression payloads, owned semantic type graphs
 and session-local binding identities, and `w tree --json` exposes it. It is
-not yet an independently executable module IR: the adapter rebuilds a
-bounded expression arena from each group before the backend visitor runs.
+not yet an independently executable module IR: expression lowering reads
+owned groups, but global symbol/type identities and statement/control
+contexts still belong to the active compiler session.
 Generic bodies and deferred statements are re-lexed from the retained source
 bytes rather than the file (S2.3), while type/import declarations still
 update semantic tables during parsing. Bounded arenas still
@@ -2745,3 +2746,42 @@ Shrinking further means changing the walk itself: fewer emission
 points, or a lexer epoch that makes point checks one comparison. It could
 also mean sparse default columns, which would need per-column pointers in
 the group. **#489 remains open.**
+
+## Expression emission independent of parser frames
+
+`retained_emit_expression(group)` lowers a retained expression without its
+temporary parse arena. Both ordinary and semantic sessions now walk a view
+of the group's own columns and decoded text. The compatibility adapter
+still compares the parse result with the retained copy, but does not use
+the parse result for emission. Semantic sessions preserve their recorded
+`it_slot` values while lowering list callbacks, so tree queries retain the
+same schema and data.
+
+Statement, control-header and GPU-header walks also keep pooled expression
+views. They validate the retained copy when it is recorded and use the
+owned view for lowering, coercions and end-of-expression diagnostics.
+Groups with literal conversion notes retain compact token locations, so
+those diagnostics also survive recycling the parser's token records.
+`ast_detached_expression_test` exercises both host widths and both session
+modes: it overwrites temporary arenas, returns from parsing, closes the
+input, recycles local-symbol storage, and then emits and runs expressions.
+It also delays a statement walk until after its expression parser returns.
+
+On this checkout, five interleaved strict compiles of `w.w` against
+`53549d29` took median 0.986 s versus 0.993 s on the x86 host and 0.886 s
+versus 0.877 s on x64. Those differences are within timing noise; this
+change does not claim to close the separate 1.25x streaming-cost gate.
+
+Validation: x86/x64 self-host fixpoints and
+`env -u NO_COLOR ./wbuild tests` pass (976 targets), including the retained
+versus streaming image comparisons. The environment override lets the
+existing forced-color diagnostic fixtures exercise their intended mode.
+
+This removes the expression-arena lifetime dependency, not the whole-body
+dependency. Statement and control records still borrow their parsing
+frames; their phases still establish the stack slots and control regions
+that later parsing reads. Those records and the analysis/emission state
+must be separated before an entire function can be parsed without code
+emission. Global bindings and types are still session-local, and generic
+and deferred bodies still re-parse retained source bytes. **#489 remains
+open.**

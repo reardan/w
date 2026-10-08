@@ -34,10 +34,10 @@
 # P1.2b: a group holds its columns in one session-arena block, and the
 # semantic records above (types, bindings, interned operand spellings) are
 # kept only in a semantic session (retained_semantic_mode: tree queries and
-# --ast-retain). A plain session, the default compile, checks the group's
-# header and lowers its columns in place (retained_emit_lower) instead of
-# copying them back; a semantic session still rebuilds and compares every
-# field as described above.
+# --ast-retain). Both session modes lower an independent view of the group's
+# columns and text (retained_emit_expression). The compatibility adapter
+# still validates the parse arena against the group, with the full semantic
+# comparison when those records are present, but emission never uses it.
 import compiler.statement_ast
 
 int ast_emit_retained_mode
@@ -170,28 +170,35 @@ int retained_emit_expression_group(expression_ast* tree, int id):
 			from = &from[count]
 			to = &to[stride]
 		retained_emit_semantic_check(tree, group)
-	ast_retained_emitted = ast_retained_emitted + 1
 	return group.root
 
 
-# Lower retained group id through the backend visitor; returns its root.
-# A semantic session lowers the arena the check above found equal to the
-# group. P1.2b: a plain session binds the arena's columns and decoded text to
-# the group's own copies, so the visitor reads the retained forest in place,
-# and binds the arena back to its slab afterwards. The one column the visitor
-# writes (it_slot, a list iteration's hidden slot) is copied back too, so the
-# parsing frame sees the arena it would have seen.
 void emit_expression_ast_root(expression_ast* tree, int root);
 
 
-int retained_emit_lower(expression_ast* tree, int id):
-	int root = retained_emit_expression_group(tree, id)
-	retained_group* group = retained_record_at(id).group
-	if (group.semantic != 0):
-		emit_expression_ast_root(tree, root)
-		return root
+# Bind a lowering view to an owned expression group. Unlike the comparison
+# adapter, this does not read the parse arena or require its stack frame to
+# remain alive. The group's column and text storage belongs to the retained
+# session; the view borrows it only for the duration of the walk.
+void retained_expression_view(expression_ast* tree, int id):
+	retained_record* owner = retained_record_at(id)
+	assert1(owner.kind == retained_expression_group)
+	retained_group* group = owner.group
 	int count = group.count
 	int* c = group.columns
+	tree.slab = -1
+	tree.capacity = count
+	tree.count = count
+	tree.end_offset = owner.end
+	tree.readonly = group.readonly
+	tree.whole_expression = group.whole_expression
+	tree.final_token_offset = group.final_token_offset
+	tree.text_used = group.arena_text_length
+	tree.type_names_used = group.arena_type_names_length
+	tree.token_count = group.location_count
+	tree.tokens = group.locations
+	assert1(tree.type_names_used <= 4096)
+	for i in range(tree.type_names_used): tree.type_names[i] = group.arena_type_names[i]
 	tree.text = group.arena_text
 	tree.op = c
 	tree.left = &c[count]
@@ -215,9 +222,49 @@ int retained_emit_lower(expression_ast* tree, int id):
 	tree.infer_coercion = &c[19 * count]
 	tree.call_receiver_type = &c[20 * count]
 	tree.infer_want = &c[21 * count]
-	emit_expression_ast_root(tree, root)
-	expression_ast_point_columns(tree)
-	retained_copy_words(tree.it_slot, &c[13 * count], count)
+
+
+# Lower a retained expression after its parser has returned. Symbol/type
+# identities are still session-local: this is not a relocatable module IR.
+# In particular, callers must preserve the environment for global calls
+# and register allocation, and establish the intended emission location.
+void retained_emit_view(expression_ast* tree, int id):
+	retained_group* group = retained_record_at(id).group
+	int* slots = tree.it_slot
+	int scratch = 0
+	# A semantic forest exposes it_slot in tree queries. Historically its
+	# copy stayed unchanged while lowering wrote the temporary arena; keep
+	# that property when a list callback allocates its hidden iterator slot.
+	if (group.semantic != 0):
+		for i in range(tree.count):
+			if (tree.op[i] == ast_list_it): scratch = 1
+	if (scratch):
+		# Session ownership also covers a diagnostic's non-local recovery.
+		tree.it_slot = cast(int*, retained_arena_alloc(tree.count * __word_size__))
+		retained_copy_words(tree.it_slot, slots, tree.count)
+	emit_expression_ast_root(tree, group.root)
+	if (scratch): tree.it_slot = slots
+	ast_retained_emitted = ast_retained_emitted + 1
+
+
+int retained_emit_expression(int id):
+	expression_ast tree
+	retained_expression_view(&tree, id)
+	int root = retained_record_at(id).group.root
+	retained_emit_view(&tree, id)
+	return tree.result_type[root]
+
+
+# Compatibility adapter for callers that still keep their parse frame.
+# Validate its copy, then lower through the independent retained view in
+# both ordinary and semantic sessions. The one column the visitor writes
+# (it_slot, a list iteration's hidden slot) is copied back for those callers.
+int retained_emit_lower(expression_ast* tree, int id):
+	int root = retained_emit_expression_group(tree, id)
+	retained_group* group = retained_record_at(id).group
+	retained_emit_expression(id)
+	int count = group.count
+	retained_copy_words(tree.it_slot, &group.columns[13 * count], count)
 	return root
 
 
@@ -247,10 +294,11 @@ int retained_emit_lower(expression_ast* tree, int id):
 # emits them at their original place in the output; the rest of the walk
 # still runs after the parse.
 #
-# Lifetime: a record borrows its statement_ast node and expression arena from
-# the parsing frame. That is sound while a family walks before its hook
-# returns; a walk that outlives the frame must own copies. Records, phases
-# and points are pooled and released, last in first out, once walked.
+# Lifetime: the expression view is owned by the pooled walk and points into
+# the retained group, never the parse arena. The statement_ast (or a family's
+# control record) still belongs to the parsing frame; whole-body deferral
+# must replace those borrowed records too. Records, phases and points are
+# pooled and released, last in first out, once walked.
 
 void retained_expression_note(expression_ast* tree, int root);
 void emit_expression_ast(expression_ast* tree, int id);
@@ -269,6 +317,7 @@ struct retained_statement_walk:
 	int point_count
 	int done
 	int walked
+	expression_ast* expression_view
 
 # P1.2b: the pools are raw arrays (room entries each, grown by doubling):
 # records by pointer, phase codes and points as words, and emission points
@@ -319,7 +368,11 @@ int retained_walk_begin(int emitter, statement_ast* statement):
 	if (id == retained_walks_room):
 		int room = retained_walks_room * 2 + 16
 		retained_walks = cast(retained_statement_walk**, realloc(cast(char*, retained_walks), retained_walks_room * __word_size__, room * __word_size__))
-		for i in range(retained_walks_room, room): retained_walks[i] = new retained_statement_walk
+		for i in range(retained_walks_room, room):
+			retained_statement_walk* fresh = new retained_statement_walk
+			# The pinned seed predates zero-initialized `new`.
+			fresh.expression_view = 0
+			retained_walks[i] = fresh
 		retained_walks_room = room
 	retained_walks_used = id + 1
 	retained_statement_walk* walk = retained_walks[id]
@@ -414,17 +467,22 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 	int group = retained_node_count()
 	retained_expression_note(tree, root)
 	assert1(retained_node_kind(group) == retained_expression_group)
-	walk.tree = tree
+	# Compare while the parser's temporary storage is still available, then
+	# retain only the group's own view. Statement/header emitters install
+	# this view on their value node before coercion and end diagnostics.
+	retained_emit_expression_group(tree, group)
+	if (walk.expression_view == 0): walk.expression_view = new expression_ast
+	retained_expression_view(walk.expression_view, group)
+	walk.tree = walk.expression_view
 	walk.group = group
 	walk.root = root
 
 
-# Lower the walk's expression child from its retained group (S2.1's
-# adapter rebuilds the arena and checks it against the parse); returns
-# the root node ID.
+# Lower the walk's expression child without reading its former parse arena.
 int retained_walk_lower_expression(retained_statement_walk* walk):
-	int root = retained_emit_lower(walk.tree, walk.group)
+	int root = retained_record_at(walk.group).group.root
 	assert1(root == walk.root)
+	retained_emit_view(walk.tree, walk.group)
 	return root
 
 
