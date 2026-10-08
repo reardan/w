@@ -322,13 +322,21 @@ void expression_ast_enter_token(expression_ast* tree, int k):
 	token_serial = row[11]
 
 
+# Location prefix of a parse token or a retained diagnostic token.
+int* expression_ast_token_row(expression_ast* tree, int index):
+	int stride = expression_ast_token_fields
+	# A retained emission view carries compact diagnostic locations only.
+	if (tree.slab < 0): stride = 4
+	return &tree.tokens[index * stride]
+
+
 # Index of the recorded token starting at offset, or -1.
 int expression_ast_token_at(expression_ast* tree, int offset):
 	int low = 0
 	int high = tree.token_count - 1
 	while (low <= high):
 		int middle = (low + high) >> 1
-		int start = tree.tokens[middle * expression_ast_token_fields]
+		int start = expression_ast_token_row(tree, middle)[0]
 		if (start == offset): return middle
 		if (start < offset): low = middle + 1
 		else: high = middle - 1

@@ -697,7 +697,7 @@ int ast_expression_literal_before(expression_ast* tree, int id, int at):
 	if ((tree.op[literal] != 0) && (tree.op[literal] != 'h')): return -1
 	int k = expression_ast_token_at(tree, tree.offset[literal])
 	if (k < 0): return -1
-	if ((k + 1 < tree.token_count) && (tree.tokens[(k + 1) * expression_ast_token_fields] < at)): return -1
+	if ((k + 1 < tree.token_count) && (expression_ast_token_row(tree, k + 1)[0] < at)): return -1
 	return id
 
 
@@ -714,7 +714,9 @@ void ast_expression_note_constant(expression_ast* tree, int id):
 		literal = ast_expression_literal_step(tree, literal)
 	const_note_value = tree.value[literal]
 	if (negate): const_note_value = 0 - const_note_value
-	int* row = &tree.tokens[expression_ast_token_at(tree, tree.offset[literal]) * expression_ast_token_fields]
+	int token_index = expression_ast_token_at(tree, tree.offset[literal])
+	assert1(token_index >= 0)
+	int* row = expression_ast_token_row(tree, token_index)
 	const_note_line_number = row[3]
 	const_note_diag_line = row[1]
 	const_note_diag_column = row[2]

@@ -97,6 +97,7 @@ void emit_gpu_walk_ast(retained_statement_walk* walk, int phase):
 	int code = phase & 255
 	if (code == ast_gpu_walk_expression):
 		int root = retained_walk_lower_expression(walk)
+		value.expression_tree = walk.tree
 		expression_lhs_readonly = walk.tree.readonly
 		value.expression_type = walk.tree.result_type[root]
 	else if (code == ast_gpu_walk_expression_end): emit_statement_ast_expression_end(value)

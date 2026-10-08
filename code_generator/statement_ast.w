@@ -83,6 +83,7 @@ void emit_statement_ast_walk(retained_statement_walk* walk, int phase):
 	if (phase == ast_walk_simple): emit_simple_statement_ast(node)
 	else if (phase == ast_walk_expression):
 		int root = retained_walk_lower_expression(walk)
+		node.expression_tree = walk.tree
 		expression_lhs_readonly = walk.tree.readonly
 		node.expression_type = walk.tree.result_type[root]
 	else if (phase == ast_walk_expression_end): emit_statement_ast_expression_end(node)
@@ -538,6 +539,7 @@ struct switch_ast_walk:
 # ast_walk_expression step, for a value the walk record does not own).
 void emit_walk_header_value(retained_statement_walk* walk, statement_ast* value):
 	int root = retained_walk_lower_expression(walk)
+	value.expression_tree = walk.tree
 	expression_lhs_readonly = walk.tree.readonly
 	value.expression_type = walk.tree.result_type[root]
 

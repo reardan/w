@@ -280,6 +280,16 @@ int retained_binding_note(int sym, int owner):
 # the group (compiler/retained_ast.w); a semantic session adds their semantic
 # types, bindings and spellings in a second block.
 void retained_expression_semantics(expression_ast* tree, retained_group* group);
+int ast_expression_literal_step(expression_ast* tree, int id);
+
+
+int retained_expression_needs_locations(expression_ast* tree, int root):
+	int literal = root
+	while (ast_expression_literal_step(tree, literal) >= 0): literal = ast_expression_literal_step(tree, literal)
+	if ((tree.op[literal] == 0) || (tree.op[literal] == 'h')): return 1
+	for i in range(tree.count):
+		if ((tree.op[i] == ast_warning) && ((tree.high[i] == 1) || (tree.high[i] == 8)) && (tree.it_slot[i] > 0)): return 1
+	return 0
 
 
 void retained_expression_note(expression_ast* tree, int root):
@@ -308,6 +318,14 @@ void retained_expression_note(expression_ast* tree, int root):
 	group.arena_type_names_length = tree.type_names_used
 	group.arena_type_names = retained_text_copy(tree.type_names, tree.type_names_used)
 	group.semantic = 0
+	group.location_count = 0
+	group.locations = 0
+	if (retained_expression_needs_locations(tree, root)):
+		group.location_count = tree.token_count
+		group.locations = cast(int*, retained_arena_alloc(tree.token_count * 4 * __word_size__))
+		for i in range(tree.token_count):
+			int* row = expression_ast_token_row(tree, i)
+			for j in range(4): group.locations[i * 4 + j] = row[j]
 	# The arena's columns are contiguous, tree.capacity words apart.
 	int* columns = cast(int*, retained_arena_alloc(retained_expression_columns * count * __word_size__))
 	group.columns = columns
