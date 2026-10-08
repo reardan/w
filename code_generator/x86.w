@@ -118,6 +118,51 @@ int regalloc_note_take():
 	reg_lvalue_end = 0
 	return r
 
+# The narrow-register table (unit A8, docs/projects/codegen_gap_plan.md
+# §2.7): the kind of value a promoted register holds, 0 a word, 1 a
+# uint32 (zero-extended), 2 an int32 (sign-extended), from the masks in
+# code_emitter.w. The decision side (compiler/regalloc_scan.w) binds a
+# register when it hands it to a symbol and releases it with the
+# symbol; the writers below (mov_reg_eax, regalloc_reg_store, the
+# frame-home loads, the for-loop steps) ask here and emit the 32-bit
+# forms, so the register holds exactly what the memory path's
+# movsxd/mov load would have promoted. x86-32 binds nothing: its
+# 32-bit register is the word.
+int regalloc_reg_kind(int r):
+	if (word_size != 8): return 0
+	if ((regalloc_zx_mask >> r) & 1): return 1
+	if ((regalloc_sx_mask >> r) & 1): return 2
+	return 0
+
+void regalloc_reg_bind(int r, int kind):
+	regalloc_zx_mask = regalloc_zx_mask & ~(1 << r)
+	regalloc_sx_mask = regalloc_sx_mask & ~(1 << r)
+	if (kind == 1): regalloc_zx_mask = regalloc_zx_mask | (1 << r)
+	if (kind == 2): regalloc_sx_mask = regalloc_sx_mask | (1 << r)
+
+void regalloc_reg_unbind_all():
+	regalloc_zx_mask = 0
+	regalloc_sx_mask = 0
+
+# A REX prefix with REX.W when wide, REX.R for the reg field and REX.B
+# for the r/m field; nothing when no bit is set, nothing on x86. The
+# 32-bit forms of the narrow registers (wide 0: 'add r12d,1' is
+# 41 83 c4 01) and the word forms (wide 1) share every encoder below.
+void emit_rex(int wide, int reg, int rm):
+	if (word_size != 8): return
+	int rex = 0x40
+	if (wide): rex = rex | 8
+	if (reg >= 8): rex = rex | 4
+	if (rm >= 8): rex = rex | 1
+	if (rex != 0x40): emit_int8(rex)
+
+/* movsxd R,R32 (REX.W+R+B 63 /r): re-extend an int32 register after a
+   32-bit in-place operation */
+void regalloc_reg_sx(int r):
+	emit_rex(1, r, r)
+	emit(1, c"\x63")
+	emit_int8(0xc0 | ((r & 7) << 3) | (r & 7))
+
 # REX prefix for one extended register (r8-r15) in the r/m field (REX.B)
 # or the reg field (REX.R), with REX.W set.
 void emit_rex_w_b(int r):
@@ -137,8 +182,22 @@ void mov_eax_reg(int r):
 	regload_note_end = codepos
 	regload_note_reg = r
 
-/* mov R,eax */
+/* mov R,eax -- or, for a narrow register (A8), 'mov R32,eax' (89 /r
+   without REX.W: the 32-bit write zero-extends) for a uint32 and
+   'movsxd R,eax' (REX.W 63 /r) for an int32, the truncating store and
+   the extending load of the memory path in one instruction */
 void mov_reg_eax(int r):
+	int kind = regalloc_reg_kind(r)
+	if (kind == 1):
+		emit_rex(0, 0, r)
+		emit(1, c"\x89")
+		emit_int8(0xc0 | (r & 7))
+		return
+	if (kind == 2):
+		emit_rex(1, r, 0)
+		emit(1, c"\x63")
+		emit_int8(0xc0 | ((r & 7) << 3))
+		return
 	if (word_size == 8): emit_rex_w_b(r)
 	emit(1, c"\x89")
 	emit_int8(0xc0 | (r & 7))
@@ -152,18 +211,23 @@ void pop_reg(int r):
 	if (r >= 8): emit(1, c"\x41")
 	emit_int8(0x58 | (r & 7))
 
-/* add R,imm8 (sign-extended): 83 /0 ib */
+/* add R,imm8 (sign-extended): 83 /0 ib; a narrow register takes the
+   32-bit form (and re-extends when signed), like every writer here */
 void add_reg_int8(int r, int v):
-	if (word_size == 8): emit_rex_w_b(r)
+	int kind = regalloc_reg_kind(r)
+	emit_rex(kind == 0, 0, r)
 	emit(1, c"\x83")
 	emit_int8(0xc0 | (r & 7))
 	emit_int8(v)
+	if (kind == 2): regalloc_reg_sx(r)
 
 /* add R,eax: 01 /r with R as r/m */
 void add_reg_eax(int r):
-	if (word_size == 8): emit_rex_w_b(r)
+	int kind = regalloc_reg_kind(r)
+	emit_rex(kind == 0, 0, r)
 	emit(1, c"\x01")
 	emit_int8(0xc0 | (r & 7))
+	if (kind == 2): regalloc_reg_sx(r)
 
 /* mov ebx,R (89 /r with ebx as r/m) */
 void mov_ebx_reg(int r):
@@ -186,17 +250,18 @@ void emit_rex_w_rb(int reg, int rm):
 
 /* op dst,imm: 83 /ext ib when the immediate fits a signed byte, the
    short eax form (05/0d/25/2d/35/3d id) for eax, 81 /ext id otherwise;
-   imul dst,dst,imm is 6b/69 /r. */
-void emit_alu_reg_imm(int ext, int dst, int v):
+   imul dst,dst,imm is 6b/69 /r. wide 0 is the 32-bit form (A8: the
+   in-place operation on a narrow register), wide 1 the word form. */
+void emit_alu_reg_imm_w(int wide, int ext, int dst, int v):
 	int fits8 = (v >= -128) && (v <= 127)
 	if (ext == 8):
 		# always the imm32 form (69): libs/asm decodes no 6b
-		emit_rex_w_rb(dst, dst)
+		emit_rex(wide, dst, dst)
 		emit_int8(0x69)
 		emit_int8(0xc0 | ((dst & 7) << 3) | (dst & 7))
 		emit_int32(v)
 		return
-	if (word_size == 8): emit_rex_w_b(dst)
+	emit_rex(wide, 0, dst)
 	if (fits8):
 		emit_int8(0x83)
 		emit_int8(0xc0 | (ext << 3) | (dst & 7))
@@ -210,6 +275,9 @@ void emit_alu_reg_imm(int ext, int dst, int v):
 	emit_int8(0xc0 | (ext << 3) | (dst & 7))
 	emit_int32(v)
 
+void emit_alu_reg_imm(int ext, int dst, int v):
+	emit_alu_reg_imm_w(1, ext, dst, v)
+
 /* The 'op r32, r/m32' opcode of an extension: add 03, or 0b, and 23,
    sub 2b, xor 33, cmp 3b (each 8*ext + 3). */
 void emit_alu_rm_opcode(int ext):
@@ -219,19 +287,22 @@ void emit_alu_rm_opcode(int ext):
 /* op dst,src (register source): the 'r/m, reg' form (01/09/21/29/31/39,
    dst in r/m) that libs/asm's encoder picks for two registers, so the
    asm_x64_test encode identity holds; imul has only its 'reg, r/m' form. */
-void emit_alu_reg_reg(int ext, int dst, int src):
+void emit_alu_reg_reg_w(int wide, int ext, int dst, int src):
 	if (ext == 8):
-		emit_rex_w_rb(dst, src)
+		emit_rex(wide, dst, src)
 		emit(2, c"\x0f\xaf")
 		emit_int8(0xc0 | ((dst & 7) << 3) | (src & 7))
 		return
-	emit_rex_w_rb(src, dst)
+	emit_rex(wide, src, dst)
 	emit_int8(0x01 | (ext << 3))
 	emit_int8(0xc0 | ((src & 7) << 3) | (dst & 7))
 
+void emit_alu_reg_reg(int ext, int dst, int src):
+	emit_alu_reg_reg_w(1, ext, dst, src)
+
 /* op dst,[esp+disp] */
-void emit_alu_reg_esp(int ext, int dst, int disp):
-	emit_rex_w_rb(dst, 0)
+void emit_alu_reg_esp_w(int wide, int ext, int dst, int disp):
+	emit_rex(wide, dst, 0)
 	emit_alu_rm_opcode(ext)
 	if ((disp >= -128) && (disp <= 127)):
 		emit_int8(0x44 | ((dst & 7) << 3))
@@ -241,6 +312,9 @@ void emit_alu_reg_esp(int ext, int dst, int disp):
 		emit_int8(0x84 | ((dst & 7) << 3))
 		emit_int8(0x24)
 		emit_int32(disp)
+
+void emit_alu_reg_esp(int ext, int dst, int disp):
+	emit_alu_reg_esp_w(1, ext, dst, disp)
 
 /* op dst,eax */
 void emit_alu_reg_eax(int ext, int dst):
@@ -256,11 +330,19 @@ void add_eax_reg(int r):
 	emit_alu_reg_reg(0, 0, r)
 
 # 'op dst,X' for the operand X a shuttle or binop note recorded (kind 1
-# constant, 2 [esp+disp] word load, 3 register).
+# constant, 2 [esp+disp] word load, 3 register), at the word width or
+# (wide 0) the 32-bit width: the low 32 bits of a sum, difference,
+# product or bitwise result depend only on the low 32 bits of the
+# operands, so the 32-bit form on a narrow register reads a word
+# operand's low half and writes the truncated result the memory path
+# would have stored.
+void emit_alu_reg_x_w(int wide, int ext, int dst, int kind, int value, int disp, int reg):
+	if (kind == 1): emit_alu_reg_imm_w(wide, ext, dst, value)
+	elif (kind == 2): emit_alu_reg_esp_w(wide, ext, dst, disp)
+	else: emit_alu_reg_reg_w(wide, ext, dst, reg)
+
 void emit_alu_reg_x(int ext, int dst, int kind, int value, int disp, int reg):
-	if (kind == 1): emit_alu_reg_imm(ext, dst, value)
-	elif (kind == 2): emit_alu_reg_esp(ext, dst, disp)
-	else: emit_alu_reg_reg(ext, dst, reg)
+	emit_alu_reg_x_w(1, ext, dst, kind, value, disp, reg)
 
 /* mov R,[ebp+disp] / mov [ebp+disp],R (8b / 89 /r, ebp base, no SIB):
    the loop-scoped register loads, write-backs and call spills (R3,
@@ -275,7 +357,18 @@ void emit_ebp_disp_modrm(int r, int disp):
 		emit_int32(disp)
 
 void mov_reg_ebp_disp(int r, int disp):
-	if (word_size == 8): emit_rex_w_r(r)
+	# A narrow register (A8) loads its home at the width the memory
+	# path reads it: 'mov R32,[ebp+disp]' zero-extends a uint32,
+	# 'movsxd R,[ebp+disp]' sign-extends an int32 (the word's high half
+	# is stale after a 32-bit store, exactly as for a stack read)
+	int kind = regalloc_reg_kind(r)
+	if (kind == 2):
+		emit_rex(1, r, 0)
+		emit(1, c"\x63")
+		emit_ebp_disp_modrm(r, disp)
+		return
+	if (kind == 1): emit_rex(0, r, 0)
+	elif (word_size == 8): emit_rex_w_r(r)
 	emit(1, c"\x8b")
 	emit_ebp_disp_modrm(r, disp)
 
@@ -2259,12 +2352,17 @@ int shuttle_cmp(int setcc_opcode):
 # is used), a statement-position store leaves eax dead. Otherwise the
 # plain 'mov r,eax'. x86 family only.
 void regalloc_reg_store(int r, int keep_eax):
+	int kind = regalloc_reg_kind(r)
 	if ((imm_note_end != 0) && (imm_note_end == codepos) && (keep_eax == 0) && (addr_modes_disabled == 0)):
 		# 'mov eax,imm ; mov R,eax' with eax dead: 'mov R,imm' (A2). The
 		# 32-bit form zero-extends on x64; a negative value takes the
 		# sign-extending REX.W C7 /0 form, a wider one keeps the detour.
+		# A uint32 register (A8) takes the 32-bit form for every value:
+		# its low 32 bits, zero-extended, are what the memory path's
+		# store and load would leave; an int32 register keeps the two
+		# word rules, which already sign-extend the low 32 bits.
 		int v = imm_note_value
-		if ((word_size == 4) || ((v >> 31) == 0)):
+		if ((word_size == 4) || (kind == 1) || ((v >> 31) == 0)):
 			peep_rollback(imm_note_start)
 			if (r >= 8): emit(1, c"\x41")
 			emit_int8(0xb8 | (r & 7))
@@ -2277,18 +2375,39 @@ void regalloc_reg_store(int r, int keep_eax):
 			emit_int8(0xc0 | (r & 7))
 			emit_int32(v)
 			return
+	if ((regload_note_end != 0) && (regload_note_end == codepos) && (keep_eax == 0) && (addr_modes_disabled == 0)):
+		# 'mov eax,R2 ; mov R,eax' with eax dead: one register move
+		# (A8: 'hh = g' in the sha256 round). The narrow forms extend
+		# the source's low half exactly as a store from eax would.
+		int src = regload_note_reg
+		peep_rollback(regload_note_start)
+		if (kind == 2):
+			emit_rex(1, r, src)
+			emit(1, c"\x63")
+			emit_int8(0xc0 | ((r & 7) << 3) | (src & 7))
+			return
+		emit_rex(kind == 0, src, r)
+		emit(1, c"\x89")
+		emit_int8(0xc0 | ((src & 7) << 3) | (r & 7))
+		return
 	if ((binop_end != 0) && (binop_end == codepos)):
+		# A narrow register (A8) runs the operation at 32 bits -- the
+		# truncation the memory path's store did -- and an int32 one
+		# re-extends the result (movsxd R,R32), so the register again
+		# holds the promoted value every reader expects
 		int ext = binop_op
 		int commutative = (ext == 0) || (ext == 1) || (ext == 4) || (ext == 6) || (ext == 8)
 		if (binop_left_reg == r):
 			peep_rollback(binop_start)
-			emit_alu_reg_x(ext, r, binop_kind, binop_value, binop_disp, binop_reg)
+			emit_alu_reg_x_w(kind == 0, ext, r, binop_kind, binop_value, binop_disp, binop_reg)
+			if (kind == 2): regalloc_reg_sx(r)
 			if (keep_eax): mov_eax_reg(r)
 			return
 		if (commutative && (binop_kind == 3) && (binop_reg == r)):
 			peep_rollback(binop_start)
-			if (binop_left_reg != 0): emit_alu_reg_reg(ext, r, binop_left_reg)
-			else: emit_alu_reg_eax(ext, r)
+			if (binop_left_reg != 0): emit_alu_reg_reg_w(kind == 0, ext, r, binop_left_reg)
+			else: emit_alu_reg_reg_w(kind == 0, ext, r, 0)
+			if (kind == 2): regalloc_reg_sx(r)
 			if (keep_eax): mov_eax_reg(r)
 			return
 	mov_reg_eax(r)
@@ -2677,12 +2796,35 @@ void alu_bit_operands():
 	emit(2, c"\x89\xd8")
 
 
+# A constant count (unit A8, docs/projects/codegen_gap_plan.md §2.7):
+# the operands arrived through pop_ebx's register shuttle as
+# 'mov ebx,<left> ; mov eax,imm' (shuttle kind 1), so the five-
+# instruction form above collapses to '[mov eax,R ;] rol/ror/shr
+# eax,imm8' (C1 /0, /1, /5 ib, the count mod 32 as the hardware
+# would take it), the value staying in eax where the shuttle's left
+# operand was or coming from its register. Returns 1 when it emitted
+# the operation, 0 when the note is not current (the caller emits the
+# cl form). x86 family only.
+int alu_bit_shuttle_imm(int ext):
+	if ((shuttle_end == 0) || (shuttle_end != codepos)): return 0
+	if (shuttle_kind != 1): return 0
+	int left_reg = shuttle_left_reg
+	int count = shuttle_value & 31
+	peep_rollback(shuttle_start)
+	if (left_reg != 0): mov_eax_reg(left_reg)
+	emit(1, c"\xc1")
+	emit_int8(0xc0 | (ext << 3))
+	emit_int8(count)
+	return 1
+
+
 /* value in ebx, count in eax: shr %cl,%eax (logical right shift) */
 void alu_shr32():
 	if (target_isa == 3): ptx_alu_shr32()
 	elif (target_isa == 2): wasm_alu_shr32()
 	elif (target_isa == 1): a64(op(0x1a, 0xc02420))   # lsrv w0,w1,w0 (count mod 32, zero-extends)
 	else:
+		if (alu_bit_shuttle_imm(5)): return
 		alu_bit_operands()
 		emit(2, c"\xd3\xe8")
 
@@ -2696,6 +2838,7 @@ void alu_rotl32():
 		a64(op(0x4b, 0x0003e9))   # neg w9,w0
 		a64(op(0x1a, 0xc92c20))   # rorv w0,w1,w9
 	else:
+		if (alu_bit_shuttle_imm(0)): return
 		alu_bit_operands()
 		emit(2, c"\xd3\xc0")
 
@@ -2706,6 +2849,7 @@ void alu_rotr32():
 	elif (target_isa == 2): wasm_alu_rotr32()
 	elif (target_isa == 1): a64(op(0x1a, 0xc02c20))   # rorv w0,w1,w0
 	else:
+		if (alu_bit_shuttle_imm(1)): return
 		alu_bit_operands()
 		emit(2, c"\xd3\xc8")
 

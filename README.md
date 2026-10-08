@@ -328,7 +328,11 @@ Implemented and covered by tests:
   while it holds, one taken branch per iteration
   (`grammar/loop_rotate.w`, `docs/projects/codegen_gap_plan.md` §2.5;
   `--no-loop-rotate`/`-O0` keeps every loop top-tested; wasm and PTX
-  keep their structured shape).
+  keep their structured shape). `int32`/`uint32` locals and arguments
+  promote like `int`: the word itself on x86, a 32-bit register on x64
+  that stays zero- or sign-extended so wrap-around matches the stack
+  word and the code needs no `& mask` (§2.7, unit A8;
+  `--no-narrow-regs` keeps them on the stack).
   `--inline` emits a small leaf callee's body in place of its
   calls (§2.4, unit A5; also on for profile-hot sites under
   `--profile-use`, off otherwise because the re-parse costs compile
