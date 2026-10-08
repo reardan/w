@@ -149,6 +149,14 @@ void inline_emit_call(int r, int s, int passed_args):
 		print_error(c": inlined\x0a")
 
 	# --- the state the body would disturb
+	# The site is a call for the expression register stack (unit A3,
+	# code_generator/x86.w): an operand the site parked in a scratch
+	# register (the left side of 'x + f()', when no argument push has
+	# spilled it) goes to the real stack now, below the body's frame
+	# base, since the body's statements, their own parks and the jumps
+	# of its returns assume nothing is parked (be_notes_reset below
+	# asserts it)
+	ers_spill_all()
 	# A pending condition chain (grammar/cond_branch.w) is the site's
 	# value use, never the body's: materialize it now (emit() would at
 	# the body's first byte), and keep the caller's discard mark from

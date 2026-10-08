@@ -147,6 +147,8 @@ void emit_goto_statement_ast(statement_ast* node):
 
 
 void emit_raw_statement_ast(statement_ast* node):
+	# raw bytes may use any register: nothing stays parked (A3)
+	if (ers_count != 0): ers_spill_all()
 	emit(node.literal_length, node.literal_bytes)
 	ast_raw_statements_emitted = ast_raw_statements_emitted + 1
 

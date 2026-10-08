@@ -264,7 +264,10 @@ int expression():
 				mem_start = mem_lv_start
 		int lhs_slot = stack_pos
 		if ((lhs_reg == 0) && (mem_kind != 1)):
-			lhs_slot = push_slot()
+			# the parked lea's bytes must stay where mem_store_parked
+			# expects them: no fold of the park (ers_slot_keep)
+			if (mem_kind == 2): lhs_slot = ers_slot_keep()
+			else: lhs_slot = ers_slot()
 			mem_push_end = push_note_end
 		# Recursion-depth guard (compiler/tokenizer.w): 'a = b = c = ...'
 		# chains recurse this function directly for each right-hand side,

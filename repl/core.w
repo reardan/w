@@ -511,6 +511,7 @@ void repl_state_restore(repl_state* st):
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	ers_reset()
 	# an entry that failed inside a function body leaves the register
 	# promotion state of that body armed; nothing may inherit it
 	regalloc_reset()
@@ -928,6 +929,7 @@ char* repl_echo_json(int type, int value):
 		codepos = saved_codepos
 		be_cmp_note_reset()
 		be_imm_note_reset()
+		ers_reset()
 		filename = saved_filename
 		line_number = saved_line
 		return 0
@@ -1073,6 +1075,7 @@ void repl_inprocess_setup():
 	codepos = 0
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	ers_reset()
 	code_offset = buffer
 	repl_engine_init()
 

@@ -42,6 +42,28 @@ int push_slot():
 	return stack_pos
 
 
+# Park eax as a new slot (docs/projects/codegen_gap_plan.md §2.3, unit
+# A3): the word goes to a free scratch register when the expression
+# register stack has one (code_generator/x86.w, ers_push_eax), to the
+# real stack otherwise. The slot is counted in stack_pos exactly like a
+# pushed one; the emitters redirect every reference to it. Used where
+# an operand waits for the other operand of an operator or the right
+# side of an assignment, never for a word a callee or a runtime helper
+# reads from the stack.
+int ers_slot():
+	ers_push_eax(1)
+	stack_pos = stack_pos + 1
+	return stack_pos
+
+
+# The same, but the accumulator keeps the value after the park (the
+# compound forms load through the address they just parked).
+int ers_slot_keep():
+	ers_push_eax(0)
+	stack_pos = stack_pos + 1
+	return stack_pos
+
+
 void push_slot_int(int v):
 	mov_eax_int(v)
 	push_slot()

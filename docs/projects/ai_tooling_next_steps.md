@@ -1156,3 +1156,38 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   stop (or repeat the generation error at the end) when the requested
   target is unknown only because generation failed, and accept `data=`
   on conventional targets as a synonym, or name `deps=` in the error.
+
+
+## Expression register stack (2026-10-07, codegen_gap_plan.md unit A3)
+
+- **`./wbuild build` served a stale `bin/wv2`.** After a run of edits to
+  `code_generator/x86.w`, `./wbuild build` reported `wv2 (cached)` and
+  left a `bin/wv2` that did not match `./w w.w -o <fresh>` on the same
+  tree, and hours of debugging chased miscompiles that the current
+  source did not produce (the symptom: a test that failed under
+  `bin/wv2` passed under a hand-built compiler of the identical
+  source). `./wbuild --no-cache build` fixed it and the two binaries
+  were byte-identical from then on. Not reproduced deliberately; the
+  likely trigger is a source edit landing while a previous (killed)
+  `wexec` had the content hash computed but not the output written.
+  Direction: have `wexec` hash the output it recorded (not only its
+  inputs) before serving a cached binary, or have `build` always
+  re-verify the chain's first stage.
+- **`regalloc_diff_test` reports a timing flake as a behaviour
+  mismatch.** `raft_chunk_64_test` (a TCP slow-receiver test with a
+  60 s budget) failed once in its `--no-expr-regs` build while the full
+  suite and two other agents' runs loaded the machine; every rerun of
+  the same binary passed. The sweep's own nondeterminism check (two
+  runs of one build) cannot see a flake that hits one build once, so
+  the gate reported `MISMATCH (behaviour)` for a miscompile that was
+  not one. Direction: a `# wbuild:` tag (or the manifest's `timeout=`
+  hint) that lets the sweep retry or skip timing-bound programs, as it
+  already skips `*_race_*` and `malloc_churn`.
+- **The retained emitter is the differential test that found the
+  pre-scan asymmetry.** `--ast-emit-retained` cannot be served by the
+  pre-scan's line probe (the instantiation's bytes are in getchar's
+  window only), so it always ran the full pass, and a per-function
+  verdict that the probe path left different (`ers_hazard`) showed up
+  as 14 "retained emission differs" lines rather than as a wrong
+  program. Worth knowing before adding a pre-scan flag: anything the
+  probe decides must be decided the same way by the full pass.

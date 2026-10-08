@@ -2187,6 +2187,364 @@ baselines regenerated on the merged tree), `profile_check` (95% of
 `self.wprof` / `self_x64.wprof` entries still match, 100% of
 `bench.wprof`; measured before the merge).
 
+
+### A3 — expression register stack, G3 (2026-10-07)
+
+**What landed.** `code_generator/x86.w` gains the *expression register
+stack* (section "expression register stack (A3)", the `ers_*` entry
+points): a binary operator's left operand, the address an assignment
+parks for its store and the loaded left value of a compound assignment
+wait in a scratch register instead of on the stack while the other
+side runs. The sequence is fixed — x64 `rcx rdx r8 r9 r10 r11`, x86
+`ecx edx` — minus the registers the open loops own (`regalloc_loop_owned`,
+the R3 mask `rl_add`/`regalloc_loop_leave` now maintain) and minus
+`rcx`/`rdx` in a function whose body may shift by a variable, divide or
+take a modulo (`ers_hazard`, set by the pre-scan's full pass:
+`rs_has_divshift`, with a shift by a literal count exempt). The grammar
+does not know: `stack_pos` counts a parked register as a pushed word
+(`grammar/stack_slot.w`'s `ers_slot`, the one-line replacement for
+`push_slot` at the park sites — `binary1`, the `'='` left side of
+`grammar/expression.w`, the three parks of `grammar/increment.w`, and
+their retained twins in `expression_ast.w`), and the invariant
+
+```
+real rsp == the rsp stack_pos describes + word_size * ers_count
+```
+
+holds everywhere because the virtual words are always the youngest.
+Every `rsp`-relative emitter subtracts the bias (`esp_disp`); one that
+names a virtual word reads or writes the register instead
+(`ers_slot_reg`: the `[rsp+d]` loads, the ALU-with-stack-operand forms,
+`mov rbx,[rsp+d]`, the stack-variable stores, `inc`/`add` on a slot);
+anything the mechanism cannot express *spills* (`ers_spill_all`: push
+every parked register, oldest first, which restores exactly the stack
+the grammar describes). The spill points: every real push (an
+argument, a hidden slot, a return buffer, the string-literal
+`call`/`pop` of `call_relative32`, the `sub esp,8; movsd` of a promoted
+float argument), every call (direct, indirect, lazy, the inline FFI
+shim), every branch, region or bounds trap (`jmp_*`, `be_br_cc`,
+`be_ctrl_block`/`be_ctrl_loop`, `be_bounds_branch`), `lea` of a virtual
+word, `raw_asm` and the asm statement, and every emitter that writes
+`rcx`/`rdx` while it is parked (the variable shifts, `mov ecx,eax`,
+`div`/`idiv`/`mul`, `add_carry`, the limb and bit intrinsics:
+`ers_hazard_regs`). A parked register therefore never lives across a
+control-flow edge: the branch site spills and the target asserts
+`ers_count == 0` (`be_notes_reset`, `be_ctrl_merge`, `ret`), which is
+the §6 design rule, enforced rather than assumed.
+
+The pops. `pop_ebx` on a virtual top emits `mov ebx,R` and *notes* it
+(`ebxreg_*`), so the operator that follows rolls the move back and uses
+the register itself: `add rax,rcx`, `cmp rcx,rax`, `sub rcx,rax; mov
+rax,rcx`, a store of `rax` through `R` (`ebxreg_alu`, `alu_cmp_set`,
+`ebxreg_store`); the R3 shuttle path of `pop_ebx` is unchanged (it
+rolls the park back, which drops the record). `pop_eax` and the
+division/shift pops move the top into `rax`; `be_pop` drops virtual
+words first. The *park fold*: when the accumulator is dead after the
+park and the value it holds came from one instruction — a register
+move (`mov rax,R`), a constant, a word load from a stack slot, a word
+load through A2's address note — that instruction is rolled back and
+re-emitted into the park register (`mov rcx,r14`, `mov rcx,[rsp+0x10]`,
+`mov rcx,[rax+r12*8]`), recorded as `push_left_*` so the consumers that
+roll a park back and expect the accumulator (`subscript_stack_base`,
+`shift_imm_fold`, the shuttle) can rebuild it (`push_left_restore`).
+`ers_slot_keep` is the no-fold variant for the parks whose bytes A2's
+tier-B store (`mem_lv_start`) still references. A spill records what it
+pushed, so a fold that rolls back to or before the spill
+(`peep_rollback`) restores the parks instead of leaving a dead
+`push rcx; push rdx` in the stream.
+
+`--no-expr-regs` (whole-program, `compiler/compiler.w`, `ers_disabled`
+in `code_emitter.w`; `-O0` implies it, `--expr-regs` re-enables) keeps
+the `push`/`pop` form, and `regalloc_diff_test` sweeps it as bit 16 of
+the opt-out mask with its own reference compiler and inside
+`opt_out_all` (0 mismatches). `tests/expr_regs_test.w` (x86, x64, and
+`--no-expr-regs` / `--no-regs` twins of both, all asserting computed
+values) covers exhaustion of the sequence (eight nested parks), calls,
+variable shifts, division and modulo at every nesting position,
+ternaries and condition chains as operands of parked expressions and
+vice versa, loops that own `r8`-`r11`, the SHA-256 rotate idiom,
+struct-returning calls, floats, `defer`, compound assignment through
+parked addresses, the limb and bit intrinsics, atomics, narrow stores,
+pointer arithmetic, comparisons and argument lists. `--stats` reports
+the parks and the spills (`expression parks: N spilled: M`). The
+retained emitter shares the entry points and stays byte-identical
+(`ast_expression_test`, `ast_retained_emit_test`, the `verify_pgo`
+retained leg): the one divergence the sweep found was the hazard
+verdict itself — streaming's line probe finishes a loop-less body
+without a full pass while `--ast-emit-retained` cannot be served by
+the probe and always ran one — so the verdict now comes from the full
+pass only (a loop-less body keeps `ecx`/`edx` hazardous on both paths).
+
+Nothing reaches arm64, wasm or win64: `ers_push_eax` falls back to
+`push_eax` for `target_isa != 0` and `target_os != 0`, so those images
+are byte-identical (`verify_arm64` passes; win64 keeps the A2 form since
+its shim/call conventions were not audited for the spill points).
+
+**Merged with A7 and A5** (the lane merge on top of 0437845). A7's
+rotated loops add two control-flow edges the design rule already
+covers: the entry jump is `jmp_int32` (a spill point, with nothing to
+spill at a statement start), the bottom test's back edge is `be_br_cc`
+(spills) and its target the loop head (`be_ctrl_loop`, asserts), and
+`be_loop_entry_land` runs `be_notes_reset` (asserts) before the
+re-parsed condition, whose own parks the compare consumes; a rotated
+`while (1)`'s `be_br_const_discard` rolls back a `mov eax,imm` that no
+spill precedes. `tests/expr_regs_test.w` `test_rotated_loops` pins
+parked operands in a rotated condition, in the body, in nested
+rotated loops and around a `break` out of a constant loop, with a
+`--no-loop-rotate` twin. A5's inline site is a call for the stack
+model but emits none: `inline_emit_call` now spills the site's parks
+before the body (`x + f()` with no argument push would otherwise reach
+the body's first statement with a park live and fail closed), and the
+`be_notes_reset` the site runs — like every statement start and jump
+target — now also ends the undoable-spill record, since the
+instruction after a site spill is the body's first byte and not the
+push that caused it: a body opening with a park of its own (`return
+__word_size__ * 8`) had its fold undo the site's spill and leave the
+park live at the region end (`build_pgo`, whose `--profile-use`
+inlines hot sites, and the sweep's `--inline` builds caught it).
+`test_inline_sites` covers zero- and multi-argument leaf callees, an
+early `return`, a variable shift inside the body, a body that opens
+with a park, and a site inside a rotated condition, with `--inline` and
+`--no-inline` twins; `regalloc_diff_test` sweeps `--no-expr-regs` as
+bit 64 beside A7's bit 16 and A5's `--inline` opt-in.
+
+On the merged tree (thread branch 0437845 = A4, A1, A6, A2, A7, A5
+before; the merge after; `./wbuild bench`, kIr = callgrind Ir / 1000,
+ms = best of the runs on the shared box), A3's gains stand on top of
+A7's:
+
+| program | x64 Ir thread | merged | Δ | ms | x86 Ir thread | merged | Δ | ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sum | 2.400 G | 2.400 G | -0.0% | 179 → 188 | 2.400 G | 2.400 G | -0.0% | 181 → 183 |
+| sieve | 0.988 G | 0.990 G | +0.2% | 287 → 297 | 0.992 G | 0.992 G | -0.0% | 275 → 279 |
+| sha256_1m | 4.293 G | 3.783 G | -11.9% | 274 → 232 | 4.589 G | 4.143 G | -9.7% | 286 → 245 |
+| siphash_keys | 3.597 G | 3.465 G | -3.7% | 883 → 731 | 3.303 G | 3.241 G | -1.9% | 587 → 550 |
+| inflate_corpus | 3.889 G | 3.696 G | -5.0% | 272 → 252 | 3.982 G | 3.923 G | -1.5% | 302 → 287 |
+| regex_backtrack | 4.062 G | 3.983 G | -1.9% | 276 → 244 | 3.970 G | 3.891 G | -2.0% | 304 → 255 |
+| matmul_256 | 3.212 G | 2.540 G | -20.9% | 258 → 256 | 4.223 G | 3.886 G | -8.0% | 270 → 300 |
+| strcmp_sort | 2.529 G | 2.358 G | -6.8% | 407 → 421 | 2.517 G | 2.469 G | -1.9% | 356 → 345 |
+| self | 5.158 G | 4.941 G | -4.2% | 601 → 577 | 8.176 G | 8.484 G | +3.8% | 997 → 951 |
+
+The x86 `self` row measures the seed-built `bin/wv2`, so its +3.8% is
+the unit's own code running (the park and spill bookkeeping in the
+emitter, with no codegen gain since the seed knows no parks); the x64
+row (`bin/wv2_64`, built by the new compiler) is the codegen effect,
+−4.2%. Both baselines are regenerated on the merged tree.
+
+**Merged with `main`** (the lane merge on top of the thread branch at
+9bd175d, main's 14 PRs with retained emission as the default front end
+and `--streaming` the opt-out). The corpus rows above are unchanged to
+the kIr against the merged baseline (0a76915): main moved no corpus
+codegen, and the default front end and `--streaming` emit
+byte-identical images for every program of the unit's tests and the
+corpus on both widths (`verify_pgo`'s fixpoint now reads
+`== streaming`). Only the `self` rows moved, and that is main's cost,
+not A3's: the x64 compiler compiling `w.w` is 6.584 → 6.268 G
+(−4.8%, A3's codegen effect on the larger retained front end) and the
+x86 seed-built row 10.753 → 10.887 G (+1.3%, A3's own code under the
+seed). Both baselines are regenerated again on this tree.
+
+**The hot loop.** `sha256_block_w`'s round loop on x64
+(`lib/sha256.w`), 133 → 116 instructions, 38 `push`/`pop` → 6 (`e` is
+`r14`, `f` `r8`, `g` `r9`, `a` `r13`, `b` `rsi`, `c` `rdi`, `d` `r10`,
+`mask` `r15`; `hh` and the round temporaries `bs1`, `ch`, `t1`, `bs0`,
+`maj`, `t2` are stack slots — the function has more locals than
+callee-saved registers). The rotate idiom first, then `ch` and `t1`:
+
+```
+; after A2 (8a5bce4)                       ; after A3
+mov    rax,r14                             mov    rax,r14
+sar    rax,0x6                             sar    rax,0x6
+and    rax,0x3ffffff                       and    rax,0x3ffffff
+push   rax                                 mov    rcx,rax
+mov    rax,r14                             mov    rax,r14
+shl    rax,0x1a                            shl    rax,0x1a
+pop    rbx                                 or     rax,rcx
+or     rax,rbx                             mov    rcx,rax
+push   rax                                 mov    rax,r14
+mov    rax,r14                             sar    rax,0xb
+sar    rax,0xb                             and    rax,0x1fffff
+and    rax,0x1fffff                        mov    rdx,rax
+push   rax                                 mov    rax,r14
+mov    rax,r14                             shl    rax,0x15
+shl    rax,0x15                            or     rax,rdx
+pop    rbx                                 xor    rax,rcx
+or     rax,rbx                             mov    rcx,rax
+pop    rbx                                 mov    rax,r14
+xor    rax,rbx                             sar    rax,0x19
+push   rax                                 and    rax,0x7f
+mov    rax,r14                             mov    rdx,rax
+sar    rax,0x19                            mov    rax,r14
+and    rax,0x7f                            shl    rax,0x7
+push   rax                                 or     rax,rdx
+mov    rax,r14                             xor    rax,rcx
+shl    rax,0x7                             push   rax          ; bs1 -> its stack slot
+pop    rbx                                 mov    rax,r14
+or     rax,rbx                             and    rax,r8       ; e & f
+pop    rbx                                 mov    rcx,rax      ; parked
+xor    rax,rbx                             mov    rax,r14
+push   rax                                 xor    rax,r15      ; (e ^ mask) & g
+mov    rax,r14                             and    rax,r9
+and    rax,r8                              xor    rax,rcx
+push   rax                                 push   rax
+mov    rax,r14                             mov    rcx,[rsp+0x10] ; hh, folded into its park
+xor    rax,r15                             mov    rax,[rsp+0x8]
+and    rax,r9                              and    rax,r15
+pop    rbx                                 add    rax,rcx
+xor    rax,rbx                             add    rax,[rsp+0x0]
+push   rax                                 mov    rcx,rax
+mov    rax,[rsp+0x10]                      mov    rax,[rsp+0x60]
+push   rax                                 mov    rax,[rax+r12*8]
+mov    rax,[rsp+0x10]                      add    rax,rcx
+and    rax,r15                             mov    rcx,rax
+pop    rbx                                 mov    rax,[rsp+0x98]
+add    rax,rbx                             mov    rax,[rax+r12*8]
+add    rax,[rsp+0x0]                       add    rax,rcx
+push   rax                                 and    rax,r15
+mov    rax,[rsp+0x68]                      push   rax
+mov    rax,[rax+r12*8]                     ...
+pop    rbx
+add    rax,rbx
+push   rax
+mov    rax,[rsp+0xa0]
+mov    rax,[rax+r12*8]
+pop    rbx
+add    rax,rbx
+and    rax,r15
+push   rax
+...
+```
+
+The `push rax` that remain are the round temporaries going to their
+stack slots (`bs1`, `ch`, `t1`, ...), not expression parks; `hh`, the
+left operand of `t1`'s sum, is loaded straight into its park
+(`mov rcx,[rsp+0x10]`, the park fold), and every `pop rbx` is gone.
+
+**Measurements** (same 4-core container, shared with two other agents
+during both runs, so wall times are noisy and the Ir columns are the
+gate; `./wbuild bench` on the base commit 8a5bce4 and on the final
+commit, kIr = callgrind Ir / 1000, ms = best of the runs):
+
+| program | x64 Ir before | after | Δ | ms before → after | x86 Ir before | after | Δ | ms before → after |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| sum | 3.000 G | 3.000 G | -0.0% | 191 → 195 | 3.000 G | 3.000 G | -0.0% | 181 → 189 |
+| sieve | 1.162 G | 1.165 G | +0.2% | 316 → 299 | 1.167 G | 1.167 G | -0.0% | 313 → 304 |
+| sha256_1m | 4.343 G | 3.833 G | -11.7% | 264 → 230 | 4.639 G | 4.193 G | -9.6% | 301 → 245 |
+| siphash_keys | 3.677 G | 3.544 G | -3.6% | 767 → 679 | 3.365 G | 3.301 G | -1.9% | 621 → 544 |
+| inflate_corpus | 3.927 G | 3.734 G | -4.9% | 300 → 265 | 4.022 G | 3.963 G | -1.5% | 277 → 305 |
+| regex_backtrack | 4.220 G | 4.140 G | -1.9% | 294 → 274 | 4.127 G | 4.048 G | -1.9% | 295 → 262 |
+| matmul_256 | 3.380 G | 2.708 G | -19.9% | 258 → 238 | 4.391 G | 4.053 G | -7.7% | 262 → 280 |
+| strcmp_sort | 2.563 G | 2.392 G | -6.7% | 423 → 437 | 2.547 G | 2.499 G | -1.9% | 365 → 367 |
+| self | 5.198 G | 4.988 G | -4.0% | 611 → 554 | 8.436 G | 8.350 G | -1.0% | 1017 → 925 |
+
+`sha256_1m` is the unit's case: −11.7% x64 (4.343 → 3.833 G), −9.6%
+x86 (the round loop above; x86 parks in `ecx`/`edx` only, and the
+function's `s0`/`s1` schedule keeps spilling when both are taken).
+`matmul_256` x64 −19.9% (3.380 → 2.708 G): the inner loop's `acc` and
+the product no longer go through the stack — A2's listing of 20
+instructions with two `push`/`pop` pairs is 15 with none, `acc` parked
+by `mov rcx,r13` and `a[i*n+k]` loaded straight into its park by
+`mov rdx,[rdi+rax*8]` (both park folds), then `imul rax,rdx; add
+rax,rcx; mov r13,rax` — and x86 −7.7%.
+`strcmp_sort` −6.7% / −1.9%, `inflate_corpus` −4.9% / −1.5%,
+`siphash_keys` −3.6% / −1.9%, `regex_backtrack` −1.9% / −1.9%: these
+are far from the §2.3 estimates (siphash −20%, regex −20%, inflate
+−15%), for two reasons the base listing makes plain. `__w_hash_sip`
+had 31 `push`/`pop` in 240 instructions after A2 (R3's shuttle and A2's
+folds had already taken the one-instruction right sides the estimate
+counted), and 27 remain: its loop owns `r8`-`r11` and the body shifts
+by a variable, so no scratch register is free inside the rounds and
+the parks spill. `rx_here` and `wh_decode` are call-heavy: a park that
+a call then spills costs one instruction more than the push it
+replaced (`mov rcx,rax; push rcx`), which is also the +0.2% of
+`sieve` x64 (the `sieve` function itself is byte-identical; the
+runtime's loop-less helpers pay the spill). `sum` has nothing to park.
+
+The `self` row is the compiler compiling `w.w`: x64 (`bin/wv2_64`,
+built by the new compiler) 5.198 → 4.988 G (−4.0%); the x86 row
+measures `bin/wv2`, which the pinned seed compiles, so its −1.0% is
+the unit's own source. The self-hosted compilers compiling the same
+`w.w` under callgrind: x86 (`bin/wv3`) 5.332 → 5.149 G (−3.4%), x64
+(`bin/wv2_64`) 5.174 → 4.873 G (−5.8%). `--stats` over `w.w`: 15,065
+expression parks of which 648 spill on x86 (`ecx`/`edx` only, and only
+in the full-pass functions), 34,388 parks and 1,857 spills on x64. Static size of the self-host
+images (`objdump -d | grep -c`): x86 (`wv3`) 455,038 → 454,735
+instructions (2,442,824 → 2,451,264 bytes: a `mov rcx,[rsp+d]` is
+longer than the `push` it replaces), x64 455,335 → 451,012
+(2,776,208 → 2,797,184 bytes). Promotion counts and loop registers
+are unchanged. `tests/bench/baseline.txt` is refreshed from the new
+`bin/bench.txt`; `tools/wbench_baseline.txt` is unchanged (`wbench_compare`
+passes: the lookup counters move only with the source's growth, inside
+the tolerance).
+
+**What the unit does not claim.**
+
+- The right operand is still computed in `rax` and the parked left
+  moved around it: `mov rcx,rax; mov rax,r14; shl rax,0x1a; or rax,rcx`
+  where `mov rcx,r14; shl rcx,0x1a; or rax,rcx` would do. Retargeting
+  the right side's instructions into the park register is the next
+  step of the same note mechanism (the park fold already does it for
+  the *left* side's last instruction) and is where the rest of the §2.3
+  estimate (sha256 −30%) lives; the unit reaches −11.7% on x64 and −9.6% on x86.
+- Nothing survives a call: `x + f(y)` spills `x` before the call as
+  before (the §2.3 rule), and a `?:` or `&&`/`||` operand spills at its
+  first branch.
+- x86 has only `ecx`/`edx`, and only in a function the pre-scan's full
+  pass cleared (one with a loop and no variable shift, division or
+  modulo); a loop-less function and a function compiled with `--no-regs`
+  park nothing on x86 (A9's budget row is where `ebx` and the probe's
+  verdict belong).
+- A parked register is never an index or a base for A2's address note
+  (`[rcx+r12*8]`): the subscript path still reads a parked base through
+  `rbx`.
+- win64 is unchanged (byte-identical), not improved.
+
+**Deviations from the plan.** (1) The parks are opt-in at the grammar's
+park sites (`ers_slot`) rather than a replacement of every `push_eax`:
+argument pushes, hidden slots and return buffers are real stack words
+by construction, so the virtual zone can always be the youngest words
+and the stack the grammar describes is recoverable by one spill.
+(2) `--no-expr-regs` was added because the differential sweep needed
+it (the §5 rule). (3) The park fold and the spill undo were not in
+§2.3; both are what makes the mechanism compose with A1/A2's rollbacks
+(`subscript_stack_base`, `shift_imm_fold`, the shuttle) instead of
+fighting them. (4) The hazard verdict comes from the pre-scan's full
+pass only, so a loop-less function keeps `ecx`/`edx` hazardous — the
+cheaper choice over teaching the line probe to see operators, and the
+one that keeps the retained emitter byte-identical. (5) win64 is
+excluded (`target_os != 0`) instead of changed: the §5 rule allows a
+changed win64 image, but its calling convention's shadow space and the
+FFI shims were not audited for the spill points, and the unit cannot
+run `tests_win64` here. (6) The x64 corpus gains are below the §2.3
+estimate (see the table): the right-operand retargeting the estimate
+assumed is listed above as not claimed.
+
+Gates (all on the final commit): `verify`, `verify_x64`, `verify_pgo`
+(wv3_pgo == wv4_pgo == wv5_pgo == retained, both widths), `verify_arm64`
+(qemu, byte-identical images), `regalloc_diff_test` (4 shards,
+410 compared, 277 skipped as non-deterministic or
+no-op, 0 mismatches, now five builds per program), `asm_x64_test`
+(`asm_x64_selfhost` encode identity: 4,058 functions, 389,286
+instructions, 0 unknown, 0 mismatch), `asm_fuzz_x64_test`,
+`ast_expression_test` / `ast_retained_emit_test` (retained parity),
+`expr_regs_test` and its x64 / `--no-expr-regs` / `--no-regs` twins,
+the `wtest changed` targets (33), `tests` (927 targets),
+`bench_compare` and `wbench_compare` (green before and after the
+`tests/bench/baseline.txt` refresh), `profile_check` (88% / 88% of `profiles/self*.wprof` functions
+matched before the refresh — the changed definitions; `profile_refresh`
+rewrote the three profiles and `verify_pgo` / `profile_check` pass on
+them at 100%),
+`tools/bench_vs_c.sh -n 3` (W x64 vs gcc -O2 Ir: matmul 2.29x, sieve 1.97x, sha256 2.96x,
+siphash 3.00x, inflate 3.79x, regex 1.63x, strcmp 4.19x, sum 2.50x; A2 reported
+2.86x, 1.96x, 3.36x, 3.20x, 4.25x, 2.31x, 5.12x, 2.50x). One
+`regalloc_diff_test` run during the full suite reported
+`raft_chunk_64_test` (a TCP slow-receiver test with a 60 s budget) as a
+behaviour mismatch of its `--no-expr-regs` build; the binary passes on
+every rerun and the sweep is clean on a quieter machine (noted in
+`docs/projects/ai_tooling_next_steps.md`). `tests_win64` cannot run
+here (no `wine`); the win64 images are byte-identical to A2's.
+
+
 ### Merged with `main` (2026-10-08)
 
 The thread branch (A4, A1, A6, A2, A7, A5 at 0437845) was merged with

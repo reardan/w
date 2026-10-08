@@ -39,6 +39,21 @@ int regload_note_reg
 # §2.3). Cleared with push_note_end.
 int push_left_reg
 int push_left_start
+# A folded park (A3, ers_push_eax): the left operand's one instruction
+# was replaced by the same instruction targeting the park register, so
+# eax never held the value: kind 1 a constant (push_left_value), 2 a
+# word-sized local load ([esp+push_left_disp], the logical
+# displacement), 4 a word-sized memory load ([push_left_base +
+# push_left_index*push_left_scale + push_left_disp]); 0 when eax held
+# the value (a register read is push_left_reg, as for a push). pop_ebx's
+# shuttle puts the operand back into eax before the right operand.
+# Cleared with push_note_end.
+int push_left_kind
+int push_left_value
+int push_left_disp
+int push_left_base
+int push_left_index
+int push_left_scale
 # The register shuttle note (R3): pop_ebx emitted 'mov ebx,<left>;
 # mov eax,X' with X a constant (kind 1), a word-sized local load
 # (kind 2, [esp+disp]) or a register (kind 3), and the left operand is
@@ -90,6 +105,129 @@ void peep_rollback(int pos);
 void be_cmp_note_reset();
 void be_imm_note_reset();
 void be_notes_reset();
+
+######################## expression register stack (A3) ########################
+# Expression temporaries in scratch registers (docs/projects/
+# codegen_gap_plan.md §2.3, unit A3). A binary operator's left operand,
+# the parked address of a store and the loaded left value of a compound
+# assignment used to go 'push eax' ... 'pop ebx'. Their grammar sites now
+# call ers_push_eax (through grammar/stack_slot.w's ers_slot), which
+# PARKS the accumulator in the next free register of a fixed sequence --
+# x64: rcx rdx r8 r9 r10 r11, x86: ecx edx -- minus the registers the
+# open loops own (regalloc_loop_owned, R3) and minus ecx/edx in a
+# function that may shift by a variable, divide or take a modulo
+# (ers_hazard, from the pre-scan; they are the count and the high half).
+# The grammar's stack_pos bookkeeping is untouched: a parked register
+# occupies a VIRTUAL stack word that the grammar counts like a pushed
+# one, and
+#
+#   real esp == the esp stack_pos describes + word_size * ers_count
+#
+# holds at every point, because the virtual words are always the
+# youngest ones (ers_count of them, ers_reg[ers_count - 1] the top).
+# Every esp-relative emitter below subtracts that bias (esp_disp), and
+# one that names a virtual word (ers_slot_reg) reads or writes the
+# register instead; a lea of one, or anything else the mechanism cannot
+# express, SPILLS: ers_spill_all pushes every parked register, oldest
+# first, which restores exactly the stack the grammar describes (then
+# ers_count is 0 and nothing is biased). The spill points: any real
+# push (an argument, a return buffer, a hidden slot), every call,
+# every branch or region opened (a parked register never lives across
+# a control-flow edge: both sides of a join must agree on the stack
+# shape, so the branch site spills and the target asserts
+# ers_count == 0 through be_notes_reset), and every emitter that writes
+# ecx/edx (the variable shifts, div/idiv/mul, the limb and bit
+# intrinsics) while that register is parked (ers_hazard_regs). The
+# pops: pop_ebx moves the top register into ebx and notes it (ebxreg_*,
+# so the operator can use the register itself: 'add eax,R' instead of
+# 'pop ebx; add eax,ebx'), pop_eax and the division/shift pops move it
+# into eax, be_pop drops it. A fold that rolls a push back
+# (peep_rollback to or before the park's first byte) drops the record,
+# which is exactly the one-word discrepancy a rolled-back real push
+# leaves, so the existing '- word_size' compensations stay right.
+# Fail-closed: a virtual word addressed by an unhandled path, and a
+# parked register still live at a jump target, are internal errors
+# (ers_internal). --no-expr-regs (ers_disabled) and the other ISAs keep
+# the push/pop form; the retained emitter (code_generator/
+# expression_ast.w) shares these entry points and stays byte-identical.
+int ers_count
+int[8] ers_reg
+int[8] ers_start
+int ers_used           # bitmask of the parked registers
+# The "ebx holds register R" note: pop_ebx (a virtual top) and
+# mov_ebx_esp / mov_ebx_esp_plus (a virtual word) emitted 'mov ebx,R'
+# from ebxreg_start to ebxreg_end; a consumer running while it is
+# current rolls the move back and uses R.
+int ebxreg_start
+int ebxreg_end
+int ebxreg_reg
+# --stats
+int ers_parks
+int ers_spills
+# The last spill: where its pushes begin and end, and the parks it
+# pushed. A fold that rolls back to or before ers_spill_start discards
+# the pushes themselves, so the parks come back as they were (every
+# fold's rollback target is a note that was current, so nothing of the
+# spill's run can be kept while its pushes go); a rollback into the
+# middle of a spill is a compiler bug. ers_spill_prev_end is the end of
+# the spill before that one, for the same check once the last one has
+# been undone.
+int ers_spill_start
+int ers_spill_end
+int ers_spill_prev_end
+int ers_spill_count
+int[8] ers_spill_reg
+int[8] ers_spill_at
+
+void ers_spill_all();
+
+void ers_internal(char* what):
+	error3(c"internal error: expression register ", what, c" (compile with --no-expr-regs and report this)")
+
+int ers_bias():
+	return ers_count << word_size_log2
+
+# The register holding the word a logical esp displacement names, 0 when
+# that word is on the real stack.
+int ers_slot_reg(int disp):
+	if (ers_count == 0): return 0
+	if ((disp < 0) || (disp >= ers_bias())): return 0
+	if (disp & (word_size - 1)): ers_internal(c"word addressed at a byte offset")
+	return ers_reg[ers_count - 1 - (disp >> word_size_log2)]
+
+# The real esp displacement of a logical one that names a stack word.
+int esp_disp(int disp):
+	if (ers_count == 0): return disp
+	if (ers_slot_reg(disp) != 0): ers_internal(c"word used by an unhandled path")
+	return disp - ers_bias()
+
+int ebxreg_current():
+	if (ebxreg_end == 0): return 0
+	return ebxreg_end == codepos
+
+# Spill when any register of mask is parked (an emitter is about to
+# write it).
+void ers_hazard_regs(int mask):
+	if (ers_used & mask): ers_spill_all()
+
+# A jump target is being placed: no parked register may be live.
+void ers_assert_none():
+	if (ers_count != 0): ers_internal(c"live across a control-flow edge")
+
+# Consume the top park: its register, 0 when the top word is real.
+int ers_pop_top():
+	if (ers_count == 0): return 0
+	ers_count = ers_count - 1
+	int r = ers_reg[ers_count]
+	ers_used = ers_used & ~(1 << r)
+	return r
+
+void ers_reset():
+	ers_count = 0
+	ers_used = 0
+	ebxreg_end = 0
+	ers_spill_end = 0
+	ers_spill_prev_end = 0
 
 void arm64_promote_acc(int instruction);
 
@@ -235,6 +373,19 @@ void mov_ebx_reg(int r):
 	emit(1, c"\x89")
 	emit_int8(0xc3 | ((r & 7) << 3))
 
+/* mov R,ebx (89 /r with R as r/m, ebx in the reg field) */
+void mov_reg_ebx(int r):
+	if (word_size == 8): emit_rex_w_b(r)
+	emit(1, c"\x89")
+	emit_int8(0xd8 | (r & 7))
+
+/* mov eax,R without the regload note: a parked word read back into the
+   accumulator, whose register no fold may keep using (A3) */
+void mov_eax_reg_quiet(int r):
+	if (word_size == 8): emit_rex_w_r(r)
+	emit(1, c"\x89")
+	emit_int8(0xc0 | ((r & 7) << 3))
+
 # REX.W with REX.R for the reg field and REX.B for the r/m field, x64 only.
 void emit_rex_w_rb(int reg, int rm):
 	if (word_size != 8): return
@@ -242,6 +393,30 @@ void emit_rex_w_rb(int reg, int rm):
 	if (reg >= 8): rex = rex | 4
 	if (rm >= 8): rex = rex | 1
 	emit_int8(rex)
+
+/* mov D,S (any two word registers) */
+void mov_reg_reg(int dst, int src):
+	emit_rex_w_rb(src, dst)
+	emit(1, c"\x89")
+	emit_int8(0xc0 | ((src & 7) << 3) | (dst & 7))
+
+/* mov R,imm: B8+r id (zero-extending on x64), REX.W C7 /0 id for a
+   negative value, movabs for the rest */
+void mov_reg_imm(int r, int v):
+	if ((word_size == 8) && ((v >> 31) == -1)):
+		emit_rex_w_b(r)
+		emit(1, c"\xc7")
+		emit_int8(0xc0 | (r & 7))
+		emit_int32(v)
+		return
+	if ((word_size == 8) && ((v >> 31) != 0)):
+		emit_rex_w_b(r)
+		emit_int8(0xb8 | (r & 7))
+		emit_int64(v)
+		return
+	if (r >= 8): emit(1, c"\x41")
+	emit_int8(0xb8 | (r & 7))
+	emit_int32(v)
 
 # The register-operand ALU forms (R3). ext is the ModRM /n extension of
 # the 81/83 immediate group (0 add, 1 or, 4 and, 5 sub, 6 xor, 7 cmp);
@@ -300,8 +475,14 @@ void emit_alu_reg_reg_w(int wide, int ext, int dst, int src):
 void emit_alu_reg_reg(int ext, int dst, int src):
 	emit_alu_reg_reg_w(1, ext, dst, src)
 
-/* op dst,[esp+disp] */
+/* op dst,[esp+disp]; a parked word is the register itself (A3), at the
+   same width (A8: a narrow register's in-place fold reads its low half) */
 void emit_alu_reg_esp_w(int wide, int ext, int dst, int disp):
+	int r = ers_slot_reg(disp)
+	if (r != 0):
+		emit_alu_reg_reg_w(wide, ext, dst, r)
+		return
+	disp = esp_disp(disp)
 	emit_rex(wide, dst, 0)
 	emit_alu_rm_opcode(ext)
 	if ((disp >= -128) && (disp <= 127)):
@@ -343,6 +524,103 @@ void emit_alu_reg_x_w(int wide, int ext, int dst, int kind, int value, int disp,
 
 void emit_alu_reg_x(int ext, int dst, int kind, int value, int disp, int reg):
 	emit_alu_reg_x_w(1, ext, dst, kind, value, disp, reg)
+
+# --- the expression register stack's emitters (A3; the state and the
+# queries are at the top of the file) ---------------------------------
+void push_eax();
+void emit_mem_insn(int w, int oplen, char* op, int reg, int base, int index, int scale, int disp);
+int memload_is_word();
+
+# Push every parked register, oldest first: the real stack then holds
+# exactly the words stack_pos describes.
+void ers_spill_all():
+	if (ers_count == 0): return
+	ers_spill_prev_end = ers_spill_end
+	ers_spill_start = codepos
+	int i = 0
+	while (i < ers_count):
+		ers_spill_reg[i] = ers_reg[i]
+		ers_spill_at[i] = ers_start[i]
+		push_reg(ers_reg[i])
+		i = i + 1
+	ers_spill_count = ers_count
+	ers_spills = ers_spills + ers_count
+	ers_count = 0
+	ers_used = 0
+	ers_spill_end = codepos
+	push_note_end = 0
+	push_imm_end = 0
+
+# The next register of the sequence, 0 when none is free.
+int ers_pick():
+	int mask = 6   # ecx, edx
+	if (word_size == 8): mask = mask | 0xf00   # r8-r11
+	if (ers_hazard): mask = mask & ~6
+	mask = mask & ~regalloc_loop_owned
+	mask = mask & ~ers_used
+	int r = 1
+	while (r < 12):
+		if (mask & (1 << r)): return r
+		r = r + 1
+	return 0
+
+# The current load note is the plain word-sized 'mov eax,[esp+disp]'
+# (not a narrow, extending load).
+int load_note_is_word():
+	if (word_size == 8):
+		if (load_note_oplen != 2): return 0
+		if ((load_note_op[0] & 255) != 0x48): return 0
+		return (load_note_op[1] & 255) == 0x8b
+	if (load_note_oplen != 1): return 0
+	return (load_note_op[0] & 255) == 0x8b
+
+# The top word into eax: 'mov eax,R' for a parked one, else 'pop eax'.
+void ers_pop_eax():
+	int r = ers_pop_top()
+	if (r != 0): mov_eax_reg_quiet(r)
+	else: emit(1, c"\x58")
+
+# The top word into ebx, noted: 'mov ebx,R' for a parked one (the
+# ebxreg note), else 'pop ebx'.
+void ers_pop_ebx():
+	int r = ers_pop_top()
+	if (r != 0):
+		ebxreg_start = codepos
+		mov_ebx_reg(r)
+		ebxreg_end = codepos
+		ebxreg_reg = r
+	else: emit(1, c"\x5b")
+
+# A word's register into ebx, NOT noted (the mov_ebx_esp* twins): the
+# word stays parked, and the callers of those twins go on using ebx
+# after the store or operator that follows.
+void ers_mov_ebx_reg(int r):
+	mov_ebx_reg(r)
+
+# An ALU operator whose right operand is in eax and whose left one is
+# the register ebx was just loaded from: 'op eax,R' (the commutative
+# forms and imul), 'sub R,eax; mov eax,R' for the difference, noted as
+# a binop (kind 3) so a compound store can fold it. Returns 1 when it
+# emitted the operator, 0 when the note is not current.
+int ebxreg_alu(int ext):
+	if (ebxreg_current() == 0): return 0
+	int r = ebxreg_reg
+	peep_rollback(ebxreg_start)
+	int start = codepos
+	if (ext == 5):
+		emit_alu_reg_reg(5, r, 0)
+		mov_eax_reg_quiet(r)
+		return 1
+	emit_alu_reg_reg(ext, 0, r)
+	binop_start = start
+	binop_end = codepos
+	binop_op = ext
+	binop_left_reg = 0
+	binop_kind = 3
+	binop_value = 0
+	binop_disp = 0
+	binop_reg = r
+	return 1
 
 /* mov R,[ebp+disp] / mov [ebp+disp],R (8b / 89 /r, ebp base, no SIB):
    the loop-scoped register loads, write-backs and call spills (R3,
@@ -436,8 +714,10 @@ int regalloc_epilogue_emit():
 	return 1
 
 # ModRM+SIB(+disp) for [esp+disp] with eax in the reg field; disp8 when
-# it fits.
+# it fits. disp is logical (the word stack_pos describes): the parked
+# words above it come off here (A3).
 void emit_eax_esp_disp(int disp):
+	disp = esp_disp(disp)
 	if ((disp >= -128) && (disp <= 127)):
 		emit(2, c"\x44\x24")
 		emit_int8(disp)
@@ -447,7 +727,14 @@ void emit_eax_esp_disp(int disp):
 
 # A load of [esp+disp] into eax whose opcode bytes (prefixes included) are
 # op[0..oplen). Noted so pop_ebx can re-emit it at another displacement.
+# A parked word (A3) is read from its register, unnoted: the register
+# is not a local's, so no fold may keep using it as a base or an index.
 void emit_esp_load(int oplen, char* op, int disp):
+	int r = ers_slot_reg(disp)
+	if (r != 0):
+		if ((op[oplen - 1] & 255) != 0x8b): ers_internal(c"word read at a narrow width")
+		mov_eax_reg_quiet(r)
+		return
 	int start = codepos
 	emit(oplen, op)
 	emit_eax_esp_disp(disp)
@@ -547,6 +834,8 @@ void emit_rex_mem(int w, int reg, int index, int base):
 # means "no index", so esp can never be an index (W never uses it as a
 # value register) while r12 can.
 void emit_mem_modrm(int reg, int base, int index, int scale, int disp):
+	# an esp base addresses a stack word by its logical displacement (A3)
+	if (base == 4): disp = esp_disp(disp)
 	int mod = 2
 	if ((disp == 0) && ((base & 7) != 5)): mod = 0
 	elif ((disp >= -128) && (disp <= 127)): mod = 1
@@ -742,6 +1031,19 @@ void subscript_reg_base(int r, int size, int index_start):
 # into ebx and the index in eax is the SIB index. Either way the base's
 # stack word is gone when this returns (the caller drops it from
 # stack_pos).
+# A park was rolled back by a fold that goes on using the accumulator
+# as the left operand: a folded park (A3) never put the operand there,
+# so its one instruction comes back (nothing for an ordinary park or
+# push: eax still holds the value).
+void push_left_restore():
+	if (push_left_reg != 0):
+		if (push_left_start == push_note_start): mov_eax_reg(push_left_reg)
+	elif (push_left_kind == 1): mov_eax_int(push_left_value)
+	elif (push_left_kind == 2):
+		if (word_size == 8): emit_esp_load(2, c"\x48\x8b", push_left_disp)
+		else: emit_esp_load(1, c"\x8b", push_left_disp)
+	elif (push_left_kind == 4): emit_mem_insn(word_size == 8, 1, c"\x8b", 0, push_left_base, push_left_index, push_left_scale, push_left_disp)
+
 void subscript_stack_base(int size, int index_start):
 	if (addr_modes_disabled):
 		if (size > 1): imul_eax_int32(size)
@@ -754,20 +1056,28 @@ void subscript_stack_base(int size, int index_start):
 		if (index_is_constant(index_start, size)):
 			int disp = index_disp
 			peep_rollback(push_start)
+			push_left_restore()
 			addr_form(0, -1, 1, disp)
 			return
 		if (index_is_register(index_start, size)):
 			int reg = index_reg
 			int rdisp = index_disp
 			peep_rollback(push_start)
+			push_left_restore()
 			addr_form(0, reg, size, rdisp)
 			return
 		if (index_is_local_load(index_start, size)):
 			int ldisp = index_disp - word_size
 			peep_rollback(push_start)
+			push_left_restore()
 			mov_ebx_esp_plus(ldisp)
 			addr_form(0, 3, size, 0)
 			return
+	# A parked base (A3) is the address's base register itself
+	int r = ers_pop_top()
+	if (r != 0):
+		subscript_index_eax(r, size)
+		return
 	pop_ebx()
 	subscript_index_eax(3, size)
 
@@ -1030,6 +1340,86 @@ int mem_store_parked(int size, int base, int index, int scale, int disp, int sta
 ######################## end of memory operands (A2) #########################
 
 
+# Park eax: the entry point of the grammar's parking sites (ers_slot in
+# grammar/stack_slot.w). Leaves the notes push_eax leaves, so every
+# fold keyed on the push (the register shuttle, the shift-by-constant
+# fold, the subscript and store folds of A2) works on the park's bytes
+# -- rolling them back drops the park. Without a free register, or
+# with the mechanism off, it is a real push.
+void ers_push_eax(int dead):
+	if ((target_isa != 0) || (target_os != 0) || ers_disabled):
+		push_eax()
+		return
+	int r = ers_pick()
+	if (r == 0):
+		push_eax()
+		return
+	int carried = 0
+	if ((imm_note_end != 0) && (imm_note_end == codepos)): carried = 1
+	int start = imm_note_start
+	int value = imm_note_value
+	push_left_reg = 0
+	push_left_kind = 0
+	int folded = 0
+	if ((regload_note_end != 0) && (regload_note_end == codepos)):
+		push_left_reg = regload_note_reg
+		push_left_start = regload_note_start
+	# The accumulator is dead after the park and the value came from
+	# one instruction that can target the park register itself: a
+	# register read, a constant, a word-sized local or memory load.
+	# That instruction is re-emitted into R and eax never holds the
+	# value; pop_ebx's shuttle and the store folds put it back.
+	if (dead && (push_left_reg != 0)):
+		int src = push_left_reg
+		peep_rollback(push_left_start)
+		push_note_start = codepos
+		mov_reg_reg(r, src)
+		folded = 1
+	elif (dead && carried):
+		peep_rollback(start)
+		push_note_start = codepos
+		mov_reg_imm(r, value)
+		push_left_kind = 1
+		push_left_value = value
+		folded = 1
+	elif (dead && (load_note_end != 0) && (load_note_end == codepos) && load_note_is_word()):
+		int ldisp = load_note_disp
+		peep_rollback(load_note_start)
+		push_note_start = codepos
+		emit_mem_insn(word_size == 8, 1, c"\x8b", r, 4, -1, 1, ldisp)
+		push_left_kind = 2
+		push_left_disp = ldisp
+		folded = 1
+	elif (dead && (memload_end != 0) && (memload_end == codepos) && memload_is_word()):
+		int mbase = memload_base
+		int mindex = memload_index
+		int mscale = memload_scale
+		int mdisp = memload_disp
+		peep_rollback(memload_start)
+		push_note_start = codepos
+		emit_mem_insn(word_size == 8, 1, c"\x8b", r, mbase, mindex, mscale, mdisp)
+		push_left_kind = 4
+		push_left_base = mbase
+		push_left_index = mindex
+		push_left_scale = mscale
+		push_left_disp = mdisp
+		folded = 1
+	if (folded == 0):
+		push_note_start = codepos
+		mov_reg_eax(r)
+	push_note_end = codepos
+	ers_start[ers_count] = push_note_start
+	ers_reg[ers_count] = r
+	ers_count = ers_count + 1
+	ers_used = ers_used | (1 << r)
+	ers_parks = ers_parks + 1
+	push_imm_end = 0
+	if (carried):
+		push_imm_start = start
+		if (push_left_kind == 1): push_imm_start = push_note_start
+		push_imm_end = codepos
+		push_imm_value = value
+
 ################################# x86 opcodes #################################
 # Each helper dispatches to its AArch64 twin (code_generator/arm64.w) when
 # target_isa == 1; the x86/x64 byte sequences below are otherwise unchanged,
@@ -1041,6 +1431,7 @@ void push_int8(int v):
 	elif (target_isa == 2): wasm_push_const(v)
 	elif (target_isa == 1): arm64_push_imm(v)
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit_int8(106)
 		emit_int8(v)
 
@@ -1051,6 +1442,7 @@ void push_int32(int v):
 	elif (target_isa == 2): wasm_push_const(v)
 	elif (target_isa == 1): arm64_push_imm(v)
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit_int8(104)
 		emit_int32(v)
 
@@ -1139,12 +1531,24 @@ void promote_int32_eax():
 		else: plain_load(0, 1, c"\x8b")
 
 
+# The address came out of a parked register (A3's ebxreg note: 'mov
+# ebx,R' is the last thing emitted): store through R itself instead.
+int ebxreg_store(int size):
+	if (ebxreg_current() == 0): return 0
+	int r = ebxreg_reg
+	peep_rollback(ebxreg_start)
+	store_mem_eax(size, r, -1, 1, 0)
+	return 1
+
+
 /* mov %eax,(%ebx) */
 void store_ebx_int32():
 	if (target_isa == 3): ptx_st_bx(c".u32")
 	elif (target_isa == 2): wasm_store_ebx_op(0x36)
 	elif (target_isa == 1): a64(op(0xb9, 0x000020))   # str w0,[x1]
-	else: emit(2, c"\x89\x03")
+	else:
+		if (ebxreg_store(4)): return
+		emit(2, c"\x89\x03")
 
 
 /* mov [ebx],eax at the full word width (4 bytes on x86, 8 on x64) */
@@ -1153,6 +1557,7 @@ void store_ebx_word():
 	elif (target_isa == 2): wasm_store_ebx_op(0x36)
 	elif (target_isa == 1): a64(op(0xf9, 0x000020))   # str x0,[x1]
 	else:
+		if (ebxreg_store(word_size)): return
 		emit_x64_opcode()
 		emit(2, c"\x89\x03")
 
@@ -1162,7 +1567,9 @@ void store_ebx_int16():
 	if (target_isa == 3): ptx_st_bx(c".u16")
 	elif (target_isa == 2): wasm_store_ebx_op(0x3b)
 	elif (target_isa == 1): a64(op(0x79, 0x000020))   # strh w0,[x1]
-	else: emit(3, c"\x66\x89\x03")
+	else:
+		if (ebxreg_store(2)): return
+		emit(3, c"\x66\x89\x03")
 
 
 /* mov %al,(%ebx) */
@@ -1170,7 +1577,9 @@ void store_ebx_int8():
 	if (target_isa == 3): ptx_st_bx(c".u8")
 	elif (target_isa == 2): wasm_store_ebx_op(0x3a)
 	elif (target_isa == 1): a64(op(0x39, 0x000020))   # strb w0,[x1]
-	else: emit(2, c"\x88\x03")
+	else:
+		if (ebxreg_store(1)): return
+		emit(2, c"\x88\x03")
 
 
 # Constant folding (docs/projects/optimization.md's v0 window, same shape
@@ -1211,6 +1620,7 @@ void be_imm_note_reset():
 	binop_end = 0
 	addr_note_end = 0
 	memload_end = 0
+	ebxreg_end = 0
 
 # True when a * b does not overflow the compiler's own word. The fold has
 # to produce the same constant whether this compiler is the 32-bit or the
@@ -1564,6 +1974,9 @@ void call_eax():
 				return
 			a64(op(0xd6, 0x3f0000))   # blr x0
 			return
+		# Parked expression registers (A3) go to the real stack: the
+		# callee may write any of them.
+		ers_spill_all()
 		# Loop-owned caller-saved registers survive the callee through
 		# their homes (R3); nothing is emitted when no loop owns any.
 		inline_real_calls = inline_real_calls + 1
@@ -1573,6 +1986,9 @@ void call_eax():
 
 
 void call_relative32(int v):
+	# The call pushes a real word (the string-literal emitters pop it
+	# back): the parked words (A3) must be below it
+	if (ers_count != 0): ers_spill_all()
 	emit(1, c"\xe8")
 	emit_int32(v)
 
@@ -1593,6 +2009,7 @@ void call_relative32(int v):
 # codepos on.
 int call_direct_to(int v):
 	emitted_call_count = emitted_call_count + 1
+	ers_spill_all()
 	inline_real_calls = inline_real_calls + 1
 	regalloc_call_spill()
 	call_relative32(v - (code_offset + codepos + 5))
@@ -1604,6 +2021,7 @@ int call_direct_to(int v):
 int call_direct_link(int head):
 	if (head == 0): head = code_offset
 	emitted_call_count = emitted_call_count + 1
+	ers_spill_all()
 	inline_real_calls = inline_real_calls + 1
 	regalloc_call_spill()
 	call_relative32(head)
@@ -1627,6 +2045,9 @@ void push_eax():
 	elif (target_isa == 2): wasm_push_eax()
 	elif (target_isa == 1): arm64_push_acc()
 	else:
+		# A real push: the parked registers (A3) must be below it, so
+		# they go to the real stack first (nothing when none is parked)
+		if (ers_count != 0): ers_spill_all()
 		# Inlined rather than calling imm_note_current(): W has no inliner and
 		# this is one of the hottest emitters in the compiler. target_isa == 0
 		# is already established by the early returns above.
@@ -1638,6 +2059,7 @@ void push_eax():
 		# ('mov eax,R' is the instruction before the push): pop_ebx can
 		# shuttle it as 'mov ebx,R' and an operator can read R itself.
 		push_left_reg = 0
+		push_left_kind = 0
 		if ((regload_note_end != 0) && (regload_note_end == codepos)):
 			push_left_reg = regload_note_reg
 			push_left_start = regload_note_start
@@ -1655,7 +2077,9 @@ void push_ebx():
 	if (target_isa == 3): ptx_push_bx()
 	elif (target_isa == 2): wasm_push_ebx()
 	elif (target_isa == 1): a64(op(0xf8, 0x1f8f81))   # str x1,[x28,#-8]!
-	else: emit(1, c"\x53")
+	else:
+		if (ers_count != 0): ers_spill_all()
+		emit(1, c"\x53")
 
 
 void pop_ebx():
@@ -1697,10 +2121,15 @@ void pop_ebx():
 			if (kind != 0):
 				int left_reg = push_left_reg
 				int left_start = push_left_start
+				int left_kind = push_left_kind
 				peep_rollback(push_note_start)
 				# The left operand read a register: shuttle it directly
 				# (R3) instead of through the accumulator.
 				if (left_reg != 0): peep_rollback(left_start)
+				# A folded park (A3) never put the left operand in eax:
+				# its one instruction comes back first (a register read
+				# shuttles below without touching eax).
+				if ((left_reg == 0) && (left_kind != 0)): push_left_restore()
 				int start = codepos
 				if (left_reg != 0): mov_ebx_reg(left_reg)
 				else:
@@ -1729,7 +2158,9 @@ void pop_ebx():
 						if ((oplen != 2) || ((op[0] & 255) != 0x48) || ((op[1] & 255) != 0x8b)): shuttle_end = 0
 					elif ((oplen != 1) || ((op[0] & 255) != 0x8b)): shuttle_end = 0
 				return
-		emit(1, c"\x5b")
+		# A parked left operand (A3) comes out of its register, noted so
+		# the operator can read the register itself
+		ers_pop_ebx()
 		imm_note_end = 0
 		push_imm_end = 0
 		binfold_end = 0
@@ -1744,7 +2175,7 @@ void pop_eax():
 	if (target_isa == 3): ptx_pop_ax()
 	elif (target_isa == 2): wasm_pop_eax()
 	elif (target_isa == 1): a64(op(0xf8, 0x408780))   # ldr x0,[x28],#8
-	else: emit(1, c"\x58")
+	else: ers_pop_eax()
 
 
 /* mov eax, ebx */
@@ -1766,6 +2197,8 @@ void lea_eax_esp_plus(int v):
 	elif (target_isa == 2): wasm_lea_eax_esp_plus(v)
 	elif (target_isa == 1): arm64_lea_eax_esp_plus(v)
 	else:
+		# The address of a parked word (A3): it has none until spilled
+		if (ers_slot_reg(v) != 0): ers_spill_all()
 		int start = codepos
 		emit_x64_opcode()
 		emit(1, c"\x8d")
@@ -1794,6 +2227,10 @@ void mov_ebx_esp():
 	elif (target_isa == 2): wasm_mov_ebx_esp()
 	elif (target_isa == 1): a64(op(0xf9, 0x400381))   # ldr x1,[x28]
 	else:
+		int r = ers_slot_reg(0)
+		if (r != 0):
+			ers_mov_ebx_reg(r)
+			return
 		emit_x64_opcode()
 		emit(3, c"\x8b\x1c\x24")
 
@@ -1804,9 +2241,13 @@ void mov_ebx_esp_plus(int v):
 	elif (target_isa == 2): wasm_mov_ebx_esp_plus(v)
 	elif (target_isa == 1): arm64_ldr_reg_wsp(1, v)
 	else:
+		int r = ers_slot_reg(v)
+		if (r != 0):
+			ers_mov_ebx_reg(r)
+			return
 		emit_x64_opcode()
 		emit(3, c"\x8b\x9c\x24")
-		emit_int(v)
+		emit_int(esp_disp(v))
 
 
 /* add ebx, op(0x12, 0x345678) */
@@ -1826,6 +2267,7 @@ void push_eax_plus(int v):
 	elif (target_isa == 2): wasm_push_eax_plus(v)
 	elif (target_isa == 1): arm64_push_eax_plus(v)
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit(2, c"\xff\xb0")
 		emit_int32(v)
 
@@ -1836,9 +2278,13 @@ void store_stack_var(int variable_offset):
 	elif (target_isa == 2): wasm_store_stack_var(variable_offset)
 	elif (target_isa == 1): arm64_str_reg_wsp(0, variable_offset)
 	else:
+		int r = ers_slot_reg(variable_offset)
+		if (r != 0):
+			mov_reg_eax(r)
+			return
 		emit_x64_opcode()
 		emit(3, c"\x89\x84\x24")
-		emit_int(variable_offset)
+		emit_int(esp_disp(variable_offset))
 
 
 /* mov [esp+op(0x12, 0x345678)], ebx */
@@ -1847,9 +2293,13 @@ void store_ebx_stack_var(int variable_offset):
 	elif (target_isa == 2): wasm_store_ebx_stack_var(variable_offset)
 	elif (target_isa == 1): arm64_str_reg_wsp(1, variable_offset)
 	else:
+		int r = ers_slot_reg(variable_offset)
+		if (r != 0):
+			mov_reg_ebx(r)
+			return
 		emit_x64_opcode()
 		emit(3, c"\x89\x9c\x24")
-		emit_int(variable_offset)
+		emit_int(esp_disp(variable_offset))
 
 
 /* add esp, (n * word_size). Popping nothing emits nothing: the block-end
@@ -1859,6 +2309,11 @@ void store_ebx_stack_var(int variable_offset):
    emits nothing only moves the label; the sp-relative notes above stay
    valid across it because the stack does not move. */
 void be_pop(int n):
+	if (n == 0): return
+	# The parked words (A3) are the top ones: dropping one costs nothing
+	while ((ers_count != 0) && (n > 0)):
+		ers_pop_top()
+		n = n - 1
 	if (n == 0): return
 	if (target_isa == 3): ptx_be_pop(n)
 	elif (target_isa == 2): wasm_be_pop(n)
@@ -1872,6 +2327,7 @@ void be_pop(int n):
 void jmp_zero_int32(int v):
 	if (target_isa == 1): arm64_emit_cbz(v)   # cbz x0, <link/placeholder>
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit_x64_opcode()
 		emit(4, c"\x85\xc0\x0f\x84") /* test %eax,%eax ; je ... */
 		emit_int32(v)
@@ -1880,6 +2336,7 @@ void jmp_zero_int32(int v):
 void jmp_nonzero_int32(int v):
 	if (target_isa == 1): arm64_emit_cbnz(v)   # cbnz x0, <link/placeholder>
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit_x64_opcode()
 		emit(4, c"\x85\xc0\x0f\x85") /* test %eax,%eax ; jne ... */
 		emit_int32(v)
@@ -1888,6 +2345,7 @@ void jmp_nonzero_int32(int v):
 void jmp_int32(int v):
 	if (target_isa == 1): arm64_emit_b(v)   # b <link/placeholder>
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit(1, c"\xe9") /* jmp ... */
 		emit_int32(v)
 
@@ -1978,6 +2436,9 @@ void ctrl_stack_reserve():
 		ctrl_tag_stack = cast(int*, realloc(ctrl_tag_stack, old, x))
 
 int be_ctrl_block():
+	# A region's end is a jump target: no parked register (A3) may be
+	# live inside it, so the open spills them
+	if (ers_count != 0): ers_spill_all()
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 0
 	ctrl_val_stack[ctrl_stack_pos] = 0
@@ -1999,6 +2460,7 @@ int be_ctrl_block_tagged(int tag):
 	return h
 
 int be_ctrl_loop():
+	if (ers_count != 0): ers_spill_all()
 	be_notes_reset()
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 1
@@ -2086,6 +2548,29 @@ void be_cmp_note_reset():
 # codepos. Every fold's rollback goes through here.
 void peep_rollback(int pos):
 	codepos = pos
+	# A park whose bytes are discarded is gone (A3): the accumulator holds
+	# its value again, exactly as after rolling back a real push
+	while ((ers_count != 0) && (ers_start[ers_count - 1] >= pos)): ers_pop_top()
+	if ((ers_spill_end != 0) && (pos <= ers_spill_end)):
+		# The last spill's pushes are discarded too (a rollback to
+		# their end drops them as well: the parks were spilled for
+		# the bytes being discarded): its parks are back in their
+		# registers, which nothing has written since
+		if ((pos > ers_spill_start) && (pos < ers_spill_end)): ers_internal(c"fold rolled back into a spill")
+		if (pos > ers_spill_start): codepos = ers_spill_start
+		if (ers_count != 0): ers_internal(c"fold rolled back over a spill with parks above it")
+		int i = 0
+		while (i < ers_spill_count):
+			ers_reg[i] = ers_spill_reg[i]
+			ers_start[i] = ers_spill_at[i]
+			ers_used = ers_used | (1 << ers_reg[i])
+			i = i + 1
+		ers_count = ers_spill_count
+		ers_spills = ers_spills - ers_spill_count
+		ers_spill_end = ers_spill_prev_end
+		ers_spill_prev_end = 0
+		if ((ers_spill_end != 0) && (pos < ers_spill_end)): ers_internal(c"fold rolled back across two spills")
+	if (ebxreg_end > pos): ebxreg_end = 0
 	if (imm_note_end > pos): imm_note_end = 0
 	if (push_imm_end > pos): push_imm_end = 0
 	if (binfold_end > pos): binfold_end = 0
@@ -2105,12 +2590,20 @@ void peep_rollback(int pos):
 # across it (a branch patched to land here would then point into, or
 # past, the rewritten bytes).
 void be_notes_reset():
+	if (ers_count != 0): ers_assert_none()
+	# nor may a fold undo a spill that lies behind it: the bytes that
+	# follow belong to another statement or an inlined body, whose first
+	# instruction a fold may well roll back (unit A5's site spill is
+	# followed by the body's first byte, not by the push that caused it)
+	ers_spill_end = 0
+	ers_spill_prev_end = 0
 	be_cmp_note_reset()
 	be_imm_note_reset()
 
 # jCC rel32 threading region h's chain protocol (the two cases of
 # be_br_zero). x86 family only: callers have already checked target_isa.
 void be_br_cc(int jcc_opcode, int h):
+	if (ers_count != 0): ers_spill_all()
 	emit_int8(15)
 	emit_int8(jcc_opcode)
 	emit_int32(be_br_link(h))
@@ -2200,6 +2693,7 @@ void be_loop_entry_land(int site):
 void be_ctrl_merge(int h, int target):
 	if ((target_isa != 0) || (h != ctrl_stack_pos - 1) || (target >= h) || (target < 0)):
 		error(c"internal error: be_ctrl_merge outside its protocol")
+	ers_assert_none()
 	ctrl_stack_pos = h
 	int chain = ctrl_val_stack[h]
 	if (chain == 0): return
@@ -2239,9 +2733,13 @@ void inc_dword_esp_plus(int v):
 	elif (target_isa == 2): wasm_inc_dword_esp_plus(v)
 	elif (target_isa == 1): arm64_inc_dword_esp_plus(v)
 	else:
+		int r = ers_slot_reg(v)
+		if (r != 0):
+			add_reg_int8(r, 1)
+			return
 		emit_x64_opcode()
 		emit(3, c"\xff\x84\x24") /* inc dword[esp+op(0x12, 0x345678)] */
-		emit_int(v)
+		emit_int(esp_disp(v))
 
 
 void neg_eax():
@@ -2268,9 +2766,13 @@ void add_dword_esp_plus_eax(int v):
 	elif (target_isa == 2): wasm_add_dword_esp_plus_eax(v)
 	elif (target_isa == 1): arm64_add_dword_esp_plus_eax(v)
 	else:
+		int r = ers_slot_reg(v)
+		if (r != 0):
+			add_reg_eax(r)
+			return
 		emit_x64_opcode()
 		emit(3, c"\x01\x84\x24") /* add [esp+op(0x12, 0x345678)], eax */
-		emit_int(v)
+		emit_int(esp_disp(v))
 
 
 /* add word-sized [esp+offset], imm32 */
@@ -2279,9 +2781,13 @@ void add_stack_word_int32(int offset, int v):
 	elif (target_isa == 2): wasm_add_stack_word_int32(offset, v)
 	elif (target_isa == 1): arm64_add_stack_word_int32(offset, v)
 	else:
+		int r = ers_slot_reg(offset)
+		if (r != 0):
+			emit_alu_reg_imm(0, r, v)
+			return
 		emit_x64_opcode()
 		emit(3, c"\x81\x84\x24")
-		emit_int(offset)
+		emit_int(esp_disp(offset))
 		emit_int32(v)
 
 
@@ -2423,6 +2929,7 @@ void alu_add():
 			if (fold_add_fits(binfold_left, binfold_right)):
 				binfold_emit(binfold_left + binfold_right)
 				return
+		if (ebxreg_alu(0)): return
 		emit_x64_opcode()
 		emit(2, c"\x01\xd8")
 
@@ -2438,6 +2945,7 @@ void alu_sub():
 			if (fold_sub_fits(binfold_left, binfold_right)):
 				binfold_emit(binfold_left - binfold_right)
 				return
+		if (ebxreg_alu(5)): return
 		emit_x64_opcode()
 		emit(2, c"\x29\xc3")
 		emit_x64_opcode()
@@ -2455,6 +2963,7 @@ void alu_imul():
 			if (fold_mul_fits(binfold_left, binfold_right)):
 				binfold_emit(binfold_left * binfold_right)
 				return
+		if (ebxreg_alu(8)): return
 		emit_x64_opcode()
 		emit(3, c"\x0f\xaf\xc3")
 
@@ -2467,9 +2976,11 @@ void alu_idiv():
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d20))   # sdiv x0,x9,x0
 	else:
+		# cdq/cqo and idiv write edx: a park there goes to the stack first (A3)
+		ers_hazard_regs(4)
 		emit_x64_opcode()
 		emit(2, c"\x89\xc3")
-		emit(1, c"\x58")
+		ers_pop_eax()
 		emit_x64_opcode()
 		emit(1, c"\x99")
 		emit_x64_opcode()
@@ -2500,9 +3011,10 @@ void alu_udiv():
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00920))   # udiv x0,x9,x0
 	else:
+		ers_hazard_regs(4)
 		emit_x64_opcode()
 		emit(2, c"\x89\xc3")
-		emit(1, c"\x58")
+		ers_pop_eax()
 		# xor %edx,%edx: a 32-bit write zero-extends into rdx on x64
 		emit(2, c"\x31\xd2")
 		emit_x64_opcode()
@@ -2535,6 +3047,7 @@ int shift_imm_fold(int modrm_ext):
 	if ((push_note_end == 0) || (push_note_end != imm_note_start)): return 0
 	int count = imm_note_value & 255
 	peep_rollback(push_note_start)
+	push_left_restore()
 	emit_x64_opcode()
 	if (count == 1):
 		# The shorter by-one form (0xd1), which is also what the in-tree
@@ -2557,8 +3070,10 @@ void alu_shl():
 		a64(op(0x9a, 0xc02120))   # lslv x0,x9,x0
 	else:
 		if (shift_imm_fold(0xe0)): return
+		# the count goes to cl: a park in ecx goes to the stack first (A3)
+		ers_hazard_regs(2)
 		emit(2, c"\x89\xc1")
-		emit(1, c"\x58")
+		ers_pop_eax()
 		emit_x64_opcode()
 		emit(2, c"\xd3\xe0")
 
@@ -2572,8 +3087,9 @@ void alu_sar():
 		a64(op(0x9a, 0xc02920))   # asrv x0,x9,x0
 	else:
 		if (shift_imm_fold(0xf8)): return
+		ers_hazard_regs(2)
 		emit(2, c"\x89\xc1")
-		emit(1, c"\x58")
+		ers_pop_eax()
 		emit_x64_opcode()
 		emit(2, c"\xd3\xf8")
 
@@ -2588,8 +3104,9 @@ void alu_shr():
 		a64(op(0x9a, 0xc02520))   # lsrv x0,x9,x0
 	else:
 		if (shift_imm_fold(0xe8)): return
+		ers_hazard_regs(2)
 		emit(2, c"\x89\xc1")
-		emit(1, c"\x58")
+		ers_pop_eax()
 		emit_x64_opcode()
 		emit(2, c"\xd3\xe8")
 
@@ -2604,6 +3121,7 @@ void alu_and():
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			binfold_emit(binfold_left & binfold_right)
 			return
+		if (ebxreg_alu(4)): return
 		emit_x64_opcode()
 		emit(2, c"\x21\xd8")
 
@@ -2618,6 +3136,7 @@ void alu_or():
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			binfold_emit(binfold_left | binfold_right)
 			return
+		if (ebxreg_alu(1)): return
 		emit_x64_opcode()
 		emit(2, c"\x09\xd8")
 
@@ -2632,6 +3151,7 @@ void alu_xor():
 		if ((binfold_end != 0) && (binfold_end == codepos)):
 			binfold_emit(binfold_left ^ binfold_right)
 			return
+		if (ebxreg_alu(6)): return
 		emit_x64_opcode()
 		emit(2, c"\x31\xd8")
 
@@ -2646,8 +3166,15 @@ void alu_cmp_set(int setcc_opcode):
 	elif (target_isa == 1): arm64_alu_cmp_set(setcc_opcode)
 	else:
 		if (shuttle_cmp(setcc_opcode) == 0):
-			emit_x64_opcode()
-			emit(2, c"\x39\xc3")
+			if (ebxreg_current()):
+				# the parked left operand is still in its register (A3):
+				# cmp R,eax instead of mov ebx,R ; cmp ebx,eax
+				int r = ebxreg_reg
+				peep_rollback(ebxreg_start)
+				emit_alu_reg_reg(7, r, 0)
+			else:
+				emit_x64_opcode()
+				emit(2, c"\x39\xc3")
 		cmp_fuse_start = codepos
 		emit_int8(15)
 		emit_int8(setcc_opcode)
@@ -2688,6 +3215,7 @@ void mov_ecx_eax():
 	elif (target_isa == 2): wasm_mov_ecx_eax()
 	elif (target_isa == 1): a64(op(0xaa, 0x0003e2))   # mov x2,x0
 	else:
+		ers_hazard_regs(2)
 		emit_x64_opcode()
 		emit(2, c"\x89\xc1")
 
@@ -2700,6 +3228,7 @@ void alu_mul_hi():
 		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
 		a64(op(0xd3, 0x60fc00))   # lsr x0,x0,#32
 	else:
+		ers_hazard_regs(4)
 		emit(2, c"\xf7\xe3")
 		emit(2, c"\x89\xd0")
 
@@ -2715,6 +3244,7 @@ void alu_mul_wide():
 		a64(op(0xf9, 0x000049))   # str x9,[x2]
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the low half)
 	else:
+		ers_hazard_regs(4)
 		emit(2, c"\xf7\xe3")
 		emit_x64_opcode()
 		emit(2, c"\x89\x11")
@@ -2734,6 +3264,7 @@ void alu_add_carry():
 		a64(op(0xf9, 0x000049))   # str x9,[x2]
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (keep the wrapped low half)
 	else:
+		ers_hazard_regs(4)
 		emit(2, c"\x01\xd8")
 		emit(1, c"\xba")
 		emit_int32(0)
@@ -2792,6 +3323,7 @@ void alu_atomic_cas():
 /* two-operand entry: mov %eax,%ecx ; mov %ebx,%eax puts the value (from
    the popped left operand in ebx) into eax and the count into cl */
 void alu_bit_operands():
+	ers_hazard_regs(2)
 	emit(2, c"\x89\xc1")
 	emit(2, c"\x89\xd8")
 
@@ -2882,6 +3414,7 @@ void alu_popcount32():
 		a64(op(0x1b, 0x097c00))   # mul w0,w0,w9
 		a64(op(0x53, 0x187c00))   # lsr w0,w0,#24 (zero-extends)
 	else:
+		ers_hazard_regs(4)
 		emit(2, c"\x89\xc2")          # mov %eax,%edx
 		emit(3, c"\xc1\xea\x01")      # shr $1,%edx
 		emit(2, c"\x81\xe2")          # and $0x55555555,%edx
@@ -2912,6 +3445,7 @@ void alu_clz32():
 	elif (target_isa == 2): wasm_alu_clz32()
 	elif (target_isa == 1): a64(op(0x5a, 0xc01000))   # clz w0,w0 (clz(0) == 32 in hardware)
 	else:
+		ers_hazard_regs(4)
 		emit(3, c"\x0f\xbd\xd0")      # bsr %eax,%edx (ZF=1 when eax==0)
 		emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
 		emit_int32(32)
@@ -2929,6 +3463,7 @@ void alu_ctz32():
 		a64(op(0x5a, 0xc00000))   # rbit w0,w0
 		a64(op(0x5a, 0xc01000))   # clz w0,w0
 	else:
+		ers_hazard_regs(4)
 		emit(3, c"\x0f\xbc\xd0")      # bsf %eax,%edx (ZF=1 when eax==0)
 		emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
 		emit_int32(32)
@@ -2961,6 +3496,7 @@ void be_bounds_branch(int kind, int limit, int h):
 		return
 	if (target_isa == 1): arm64_bounds_branch_kind(kind, limit, ctrl_val_stack[h])
 	else:
+		if (ers_count != 0): ers_spill_all()
 		emit_x64_opcode()
 		if (kind == BOUNDS_EAX_NEG): emit(2, c"\x85\xc0") /* test eax,eax */
 		elif (kind == BOUNDS_EBX_NEG): emit(2, c"\x85\xdb") /* test ebx,ebx */
@@ -2987,7 +3523,9 @@ void ret():
 		a64(op(0xf8, 0x40879e))   # ldr x30,[x28],#8  (pop the return-address slot)
 		if (arm64_pac): a64(op(0xda, 0xc1139e))   # autia x30, x28
 		a64(op(0xd6, 0x5f03c0))   # ret
-	else: emit(1, c"\xc3") /* ret */
+	else:
+		if (ers_count != 0): ers_assert_none()
+		emit(1, c"\xc3") /* ret */
 
 # Framed arm64 return: x28 = x29 drops the body's words, the pair pop
 # restores the caller's x29 and the return address and leaves x28 as it

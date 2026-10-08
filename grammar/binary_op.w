@@ -120,7 +120,7 @@ int setcc_unsigned(int cc):
 
 int binary1(int type):
 	type = promote(type)
-	push_slot()
+	ers_slot()
 	return type
 
 

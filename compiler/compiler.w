@@ -927,11 +927,12 @@ int link_option(char* arg, int apply):
 	# tests/regalloc_diff_test.w and the fallback a guard failure asks for.
 	if ((strcmp(arg, c"--no-regs") == 0) || (strcmp(arg, c"-O0") == 0)):
 		if (apply): regalloc_disabled = 1
-		# -O0 is "no optimization": the condition chains and the
-		# bottom-tested loops go too
+		# -O0 is "no optimization": the condition chains, the
+		# bottom-tested loops and the expression registers go too
 		if (apply && (strcmp(arg, c"-O0") == 0)):
 			cond_branch_disabled = 1
 			loop_rotate_disabled = 1
+			ers_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
@@ -949,6 +950,17 @@ int link_option(char* arg, int apply):
 	# tests/regalloc_diff_test.w.
 	if (strcmp(arg, c"--no-addr-modes") == 0):
 		if (apply): addr_modes_disabled = 1
+		return 1
+	# The expression register stack (docs/projects/codegen_gap_plan.md
+	# §2.3, unit A3) is on by default on x86/x64; --no-expr-regs (and
+	# -O0) parks every waiting operand on the real stack, the reference
+	# for tests/regalloc_diff_test.w and the fallback an internal error
+	# asks for.
+	if (strcmp(arg, c"--no-expr-regs") == 0):
+		if (apply): ers_disabled = 1
+		return 1
+	if (strcmp(arg, c"--expr-regs") == 0):
+		if (apply): ers_disabled = 0
 		return 1
 	# Branch-on-flags for &&/||/! in conditions (docs/projects/
 	# codegen_gap_plan.md §2.6, grammar/cond_branch.w) is on by default
@@ -1054,6 +1066,7 @@ void help_shared_options():
 	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
+	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
 	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
 	println(c"                        profile-hot sites under --profile-use)")
 	println(c"  --no-inline           never emit a callee's body in place of a call")
@@ -1444,6 +1457,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
+				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
