@@ -2187,6 +2187,105 @@ baselines regenerated on the merged tree), `profile_check` (95% of
 `self.wprof` / `self_x64.wprof` entries still match, 100% of
 `bench.wprof`; measured before the merge).
 
+### Merged with `main` (2026-10-08)
+
+The thread branch (A4, A1, A6, A2, A7, A5 at 0437845) was merged with
+`main` at 4e2ce84, fourteen squash merges past the units' base 1335f06.
+What main brought in that touches the units: retained emission is now
+the default emitter (#568 made the AST front end the default, #595 the
+retained walk; `--streaming` opts out), so the retained twins the units
+kept byte-identical to the streaming path (`code_generator/
+expression_ast.w`, `statement_ast.w`, `loop_ast.w`, `retained_emit.w`)
+are the primary path and the streaming grammar is the opt-out;
+`--ast-opt` (#599) is an optional pass between a header's parse and its
+walk; #600 stores the retained forest compactly; #597 gives arm64 the
+imm/lea/load/push notes and the CMP;B.cond fusion; #587 makes unsafe
+conversions and invalid calls errors; #585 adds opt-in x64 PIE.
+
+Resolutions that are more than textual: `code_generator/x86.w` keeps
+A2's note declarations at the top of the file and main's arm64 helpers
+in full (the two discard branches carry main's arm64 fusion ahead of
+A7's constant fold; `cond_branch_on()` and `be_br_const_discard` stay
+x86-only, so arm64 images are what main emits plus A7's rotation);
+`retained_emit.w` sets A6's discard flag before `retained_emit_lower`,
+which under P1.2b emits the expression itself; `compiler/
+symbol_table.w` casts `repl_call_site_hook` to a three-argument callback
+type (#587's rule with A4's slot kind) at both the mov-imm and the
+rel32 chain sites; `grammar/json_builtin.w` keeps A4's direct call of
+the codec helper and takes #585's PIE-relocatable descriptor address
+(`be_addr_slot_emit`/`write`, PC-relative on x64) in place of
+`push_slot_int`; `debugger/wdbg.w`'s attach recompile forwards both
+`--inline` and `--pie`; `tests/profile_use_test.w` keeps the units'
+stronger assertion (sizes agree at pad 0, the images always differ)
+over #590's relaxation.
+
+Two post-merge fixes. (1) #587 turned the uncast `malloc` results of
+`compiler/inline_table.w` and `compiler/regalloc_scan.w` into `--strict`
+errors: cast. (2) `--ast-opt` under A7: the pass rewrote a folded
+`while` condition as a top-tested loop's branch (nothing for `while
+1`, a jump past the body for `while 0`), but the retained walk now
+emits the condition after the body as the bottom test, whose branch is
+the back edge, so a folded `while 1` lost its back edge and the
+`--ast-opt` self-host built a compiler that ran every such loop once
+(`ast_opt_verify` failed to parse `code_generator/integer.w`;
+`ast_opt_test`'s control-walk fixture exited 7, with `--no-loop-rotate`
+0). `compiler/ast_opt.w` now opens a rotated loop's dead-body region at
+the while-begin phase (`ast_opt_while_begin`), emits one jump to the
+body for a folded `while 1` (the same bytes A7's constant fold gives)
+and nothing for `while 0`, closes the body region at the end phase and
+re-resolves the entry jump; a constant condition A6 left as a pending
+chain drops its regions with its bytes (`cond_pending_discard`). On
+`w.w` the pass folds 109 conditions and removes 30 dead regions on x86
+(43 on x64), against main's 106 / 28 / 41.
+
+What needed nothing: A4's `call rel32` is PC-relative and
+`elf_pie_test` passes unchanged; A2's addressing forms and A7's entry
+jumps carry no absolute addresses; #597's arm64 notes and A7's arm64
+rotation compose (`verify_arm64`, `tests_arm64` under qemu);
+`--coverage` (#584) counts statements before the units' emission and
+`coverage_test`/`wcoverage_test` pass.
+
+Gates on the merged tree: `check --json w.w` (both widths, clean),
+`verify`, `verify_x64`, `verify_pgo` (`wv3_pgo == wv4_pgo == wv5_pgo
+== streaming`, and the x64 chain), `verify_arm64`,
+`ast_expression_verify` (default == `--streaming` on x86, x64, arm64,
+arm64_darwin, win64, wasm), `ast_required_expression_verify`,
+`ast_opt_verify` (after the fix), `regalloc_diff_test` (414 compared,
+299 skipped, 0 mismatches over the 32-way sweep), `asm_x64_test`
+(4,147 functions, 407,104 instructions, 0 mismatch), `asm_x86_asm_test`
+(627,044 instructions, 0 mismatch), `asm_fuzz_x64_test`,
+`asm_fuzz_x86_test`, the six unit tests and their `_64` twins,
+`loop_rotate_test_arm64`, `ast_expression_test`,
+`ast_retained_emit_test`, `profile_use_test`, `profile_generate_test`,
+`elf_pie_test`, `coverage_test`, `wcoverage_test`, `tests` (983
+targets, `QEMU_LD_PREFIX` set), `tests_arm64` (29 targets),
+`bench_compare` and `wbench_compare` (clean against the baselines
+regenerated on the merged tree).
+
+Measurements (`./wbuild bench`, kIr = callgrind Ir / 1000, before =
+the thread branch's `tests/bench/baseline.txt` at 0437845, after = the
+merged tree): every corpus program is unchanged to within one kIr on
+both widths (`siphash_keys` +0.01%: the container runtime main
+touched), so the units' gains survive the switch of default emitter
+byte for byte. The `self` rows are the only movement: x86 8,176,470 →
+10,752,699 (+31.5%), x64 5,157,712 → 6,584,194 (+27.7%), which is
+main's retained-emission default, not the merge — the merged `bin/wv2`
+compiling `w.w` is 10.76 G Ir by default and 8.60 G with `--streaming`
+(x64: 6.58 G and 5.33 G), the ~1.25x main's P1.2b measured, on a tree
+17k lines larger than the thread's.
+
+| program | x86 kIr before → after | x64 kIr before → after |
+| --- | --- | --- |
+| `sum` | 2,400,112 → 2,400,112 | 2,400,095 → 2,400,094 |
+| `sieve` | 992,436 → 992,436 | 987,552 → 987,552 |
+| `sha256_1m` | 4,589,489 → 4,589,489 | 4,292,723 → 4,292,723 |
+| `siphash_keys` | 3,302,945 → 3,303,271 | 3,596,919 → 3,596,974 |
+| `inflate_corpus` | 3,981,531 → 3,981,531 | 3,888,792 → 3,888,792 |
+| `regex_backtrack` | 3,969,625 → 3,969,625 | 4,061,937 → 4,061,937 |
+| `matmul_256` | 4,223,221 → 4,223,221 | 3,212,303 → 3,212,303 |
+| `strcmp_sort` | 2,517,301 → 2,517,301 | 2,528,707 → 2,528,707 |
+| `self` | 8,176,470 → 10,752,699 | 5,157,712 → 6,584,194 |
+
 ## 9. Reproducing
 
 ```sh
