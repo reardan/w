@@ -90,6 +90,9 @@ modules:
 	lib.wmeta
 	lib.__arch__.context
 	lib.__arch__.syscalls
+	libs.extras.cache.connection
+	libs.extras.cache.redis
+	libs.extras.cache.memcached
 	libs.standard.sql.client
 	libs.standard.sql.common
 	libs.standard.sql.sqlite

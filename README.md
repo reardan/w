@@ -350,6 +350,11 @@ Implemented and covered by tests:
 
 Toolchain beyond the compiler:
 
+- **Redis and Memcached clients**: opt-in pure-W modules under
+  `libs/extras/cache`, with binary-safe values, persistent TCP connections,
+  bounded replies and timeouts. See [cache clients](docs/projects/cache_clients.md)
+  for the API, examples, protocol references and supported features.
+
 - **REPL** (`./bin/wv2 repl.w -o bin/repl && ./bin/repl`): each entry
   compiles into an executable mmap buffer
   and runs immediately. Entries span multiple lines Python-style (a line
