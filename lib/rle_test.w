@@ -7,7 +7,7 @@ void rle_test_roundtrip(char* pixels, int total, int want_length):
 	int length = 0
 	char* stream = rle_encode(pixels, total, &length)
 	if (want_length >= 0): assert_equal(want_length, length)
-	char* out = rle_decode(stream, length, malloc(total), total)
+	char* out = rle_decode(stream, length, cast(char*, malloc(total)), total)
 	for i in range(total): assert_equal(pixels[i] & 255, out[i] & 255)
 
 
@@ -32,7 +32,7 @@ void test_rle_short_runs_stay_literal():
 
 void test_rle_long_runs_split_at_255():
 	int total = 600
-	char* pixels = malloc(total)
+	char* pixels = cast(char*, malloc(total))
 	for i in range(total):
 		pixels[i] = 0
 		if (i >= 300): pixels[i] = (i * 7) & 255
@@ -40,7 +40,7 @@ void test_rle_long_runs_split_at_255():
 
 
 void test_rle_decode_clips_and_pads():
-	char* out = malloc(6)
+	char* out = cast(char*, malloc(6))
 	# A 255-run of 10 into 4 bytes clips; the rest of a 6-byte buffer
 	# past a short stream is zero.
 	rle_decode(c"\x01\x0a", 2, out, 4)

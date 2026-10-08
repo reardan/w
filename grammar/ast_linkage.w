@@ -47,7 +47,7 @@ void ast_extern_function(int binding, int return_type, char* name, char* import_
 		node.module_name = strclone(module_name)
 	node.name = strclone(name)
 	node.import_name = strclone(import_name)
-	node.parameter_classes = malloc(count + 1)
+	node.parameter_classes = cast(char*, malloc(count + 1))
 	for i in range(count): node.parameter_classes[i] = classes[i]
 	node.parameter_classes[count] = 0
 	emit_linkage_ast(&node)

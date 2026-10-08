@@ -70,7 +70,7 @@ struct pd_buf:
 pd_buf* pd_buf_new():
 	pd_buf* b = new pd_buf()
 	b.capacity = 64
-	b.data = malloc(b.capacity)
+	b.data = cast(char*, malloc(b.capacity))
 	b.length = 0
 	return b
 
@@ -257,7 +257,7 @@ pd_buf* pd_read_file(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0
 	pd_buf* b = pd_buf_new()
-	char* chunk = malloc(65536)
+	char* chunk = cast(char*, malloc(65536))
 	int n = read(fd, chunk, 65536)
 	while (n > 0):
 		pd_buf_append(b, chunk, n)
@@ -403,7 +403,7 @@ void pd_pump(int ms):
 	if (ms < 0): ms = 0
 	int ready = poll_single(pd_fd, poll_in, ms)
 	if (ready <= 0): return
-	char* chunk = malloc(65536)
+	char* chunk = cast(char*, malloc(65536))
 	int n = read(pd_fd, chunk, 65536)
 	if (n <= 0): pd_eof = 1
 	else: pd_buf_append(pd_received, chunk, n)
@@ -566,7 +566,7 @@ char* pd_fresh_home(char* dir):
 		pd_die(c"pty_drive: --fresh-home: cannot create the directory")
 	if (dir[0] == '/'):
 		return dir
-	char* cwd = malloc(4096)
+	char* cwd = cast(char*, malloc(4096))
 	if (getcwd(cwd, 4096) < 0): pd_die(c"pty_drive: --fresh-home: getcwd failed")
 	char* with_slash = strjoin(cwd, c"/")
 	return strjoin(with_slash, dir)
@@ -574,7 +574,7 @@ char* pd_fresh_home(char* dir):
 
 # NULL-terminated copy of av[from..to).
 char** pd_strv_from(char** av, int from, int to):
-	char* vector = malloc((to - from + 1) * __word_size__)
+	char* vector = cast(char*, malloc((to - from + 1) * __word_size__))
 	int k = 0
 	while (from + k < to):
 		save_word(vector + k * __word_size__, cast(int, av[from + k]))

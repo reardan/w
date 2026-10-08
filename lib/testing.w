@@ -5,8 +5,8 @@ A program that imports lib.testing gets this file's main(): the
 compiler synthesizes __w_test_main, which calls __w_run_tests(name, fn)
 once per zero-argument test_* function in definition order, and
 __w_run_tests runs each one. A failing assertion (lib/assert.w) prints
-its message and a stack trace and exits 1 at once, so the last
-"Run: 'test_x()'" line names the failing test.
+its message and a stack trace, reports the completed tests in a
+summary, and exits 1 at once.
 
 Controls, all optional and off by default (output without them is the
 historical format, plus one "Summary:" line before "All tests passed!"):
@@ -49,7 +49,7 @@ void assert_near(float want, float got):
 		print2(ftoa(got))
 		println2(c")")
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 # Synthesized by the compiler at the end of every batch compilation that
@@ -67,6 +67,8 @@ int testing_leak_check      # W_TEST_LEAKS: per-test leak verdicts
 int testing_passed
 int testing_skipped
 int testing_leaked          # tests that failed the leak check
+int testing_assert_failed
+char* testing_current_test
 char* testing_leakers       # their names, ", "-joined (0 when none)
 
 
@@ -181,7 +183,9 @@ void __w_run_tests(char* name, int fn):
 
 	int first = debug_tbl_count
 	int* test_func = cast(int*, fn)
+	testing_current_test = name
 	test_func()
+	testing_current_test = 0
 
 	int last = debug_tbl_count
 	if (testing_leak_check && (testing_live_between(first, last) > 0)):
@@ -209,7 +213,10 @@ void testing_configure(int argc, int argv):
 	while ((args != 0) && (i < argc)):
 		char* a = env_entry_at(args, i)
 		if (strcmp(a, c"--list") == 0): testing_list_only = 1
-		elif ((strcmp(a, c"--filter") == 0) && (i + 1 < argc)):
+		elif (strcmp(a, c"--filter") == 0):
+			if (i + 1 >= argc):
+				println2(c"--filter requires a value")
+				exit(2)
 			i = i + 1
 			testing_filter = env_entry_at(args, i)
 		elif (testing_has_prefix(a, c"--filter=")): testing_filter = &a[9]
@@ -229,7 +236,7 @@ void testing_print_summary():
 	print(c"Summary: ")
 	print(itoa(testing_passed))
 	print(c" passed, ")
-	print(itoa(testing_leaked))
+	print(itoa(testing_leaked + testing_assert_failed))
 	print(c" failed, ")
 	print(itoa(testing_skipped))
 	print(c" skipped")
@@ -244,6 +251,18 @@ void testing_print_summary():
 		println(testing_leakers)
 
 
+# Called after the assertion's normal stderr diagnostic. Later tests
+# remain unrun (not mislabeled as filtered/skipped); fail-fast is unchanged.
+void testing_assertion_failed():
+	if (testing_current_test == 0): return
+	testing_assert_failed = testing_assert_failed + 1
+	println(c"")
+	testing_print_summary()
+	print(c"Tests FAILED: assertion in '")
+	print(testing_current_test)
+	println(c"()'.")
+
+
 int main(int argc, int argv):
 	# First, so W_TEST_LEAKS can still choose the allocator backend.
 	testing_configure(argc, argv)
@@ -251,8 +270,13 @@ int main(int argc, int argv):
 	# symbolized stack trace before the unchanged signal death
 	# (lib/crash.w; no-op off Linux x86/x64).
 	crash_handler_install()
+	assert_failure_hook = testing_assertion_failed
 	execute_tests()
-	if (testing_list_only): return 0
+	if (testing_list_only):
+		if ((testing_filter != 0) && (testing_passed == 0)):
+			println2(c"Tests FAILED: the filter matched no test.")
+			return 1
+		return 0
 	println(c"")
 	testing_print_summary()
 	if (testing_leaked > 0):

@@ -70,7 +70,7 @@ void bloom_free(bloom_filter* b):
 # digest bit 31 is set; the 31-bit mask keeps only the low bits, so
 # both values are the same non-negative int on every target.
 void bloom_probe_start(bloom_filter* b, char* key, int* out):
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(key, strlen(key), digest)
 	int h1 = sha256_be32(digest) & bloom_mask31()
 	int h2 = (sha256_be32(digest + 4) & bloom_mask31()) | 1

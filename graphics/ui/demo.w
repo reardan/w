@@ -28,7 +28,7 @@ import graphics.ui.demo_shell
 # bottom-origin, PPM rows run top-down, so rows flip on the way out.
 # Convert with any image tool (e.g. tools/ppm_to_png.py).
 int ui_demo_write_ppm(char* path, int w, int h):
-	char* pixels = malloc(w * h * 4)
+	char* pixels = cast(char*, malloc(w * h * 4))
 	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels)
 	wstream* out = stream_open_write(path)
 	if (out == 0):
@@ -39,7 +39,7 @@ int ui_demo_write_ppm(char* path, int w, int h):
 	stream_write_cstr(out, c" ")
 	stream_write_int(out, h)
 	stream_write_cstr(out, c"\n255\n")
-	char* row = malloc(w * 3)
+	char* row = cast(char*, malloc(w * 3))
 	int y = h - 1
 	while (y >= 0):
 		char* src = &pixels[y * w * 4]

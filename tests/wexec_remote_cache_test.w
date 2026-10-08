@@ -77,7 +77,7 @@ char* wrct_extract_id(char* path):
 # growing past the head into arbitrary binary body bytes).
 char* wrct_bytes_dup(char* data, int start, int end):
 	int n = end - start
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	for i in range(n): out[i] = data[start + i]
 	out[n] = 0
 	return out
@@ -125,7 +125,7 @@ int wrct_parse_content_length(char* head, int head_len):
 # Reads until the request head is fully buffered (CRLFCRLF seen) or the
 # connection ends early. Returns the head-end offset, or -1.
 int wrct_read_head(int conn, string_builder* buf):
-	char* tmp = malloc(4096)
+	char* tmp = cast(char*, malloc(4096))
 	int head_end = -1
 	int done = 0
 	while (done == 0):
@@ -174,7 +174,7 @@ void wrct_serve_one(int conn, wcas* store):
 		return
 	int content_length = wrct_parse_content_length(buf.data, head_end)
 	int need = head_end + content_length
-	char* more = malloc(4096)
+	char* more = cast(char*, malloc(4096))
 	while (buf.length < need):
 		int want = need - buf.length
 		if (want > 4096): want = 4096

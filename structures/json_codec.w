@@ -113,7 +113,7 @@ char* __w_json_cstr_from_string(int s):
 	char* descriptor = cast(char*, s)
 	char* data = cast(char*, __w_json_load_pointer(descriptor))
 	int length = __w_json_load_pointer(descriptor + __word_size__)
-	char* copy = malloc(length + 1)
+	char* copy = cast(char*, malloc(length + 1))
 	for i in range(length): copy[i] = data[i]
 	copy[length] = 0
 	return copy
@@ -192,7 +192,7 @@ char* __w_json_decode(int desc, json_value* value):
 	if (value == 0): return 0
 	if (value.type != json_type_object()): return 0
 	int struct_size = __w_json_desc_word(desc, 1)
-	char* out = malloc(struct_size)
+	char* out = cast(char*, malloc(struct_size))
 	for i in range(struct_size): out[i] = 0
 	if (__w_json_decode_into(desc, value, out) == 0):
 		free(out)
@@ -226,7 +226,7 @@ int __w_json_decode_list(int size, int aux, json_value* v, char* addr):
 	int esize = __w_json_desc_word(aux, 1)
 	int eaux = __w_json_desc_word(aux, 2)
 	__w_list* list = __w_list_new(size)
-	char* slot = malloc(size)
+	char* slot = cast(char*, malloc(size))
 	int n = json_array_length(v)
 	for i in range(n):
 		for j in range(size): slot[j] = 0
@@ -262,7 +262,7 @@ int __w_json_decode_map(int size, int aux, json_value* v, char* addr):
 	int vaux = __w_json_desc_word(aux, 3)
 	__w_hash_table* table = __w_map_new(key_kind, size)
 	int slot_size = __w_hash_slot_size(table)
-	char* slot = malloc(slot_size)
+	char* slot = cast(char*, malloc(slot_size))
 	int ok = 1
 	for char* member_key, json_value* member in v.object_values:
 		if (ok):

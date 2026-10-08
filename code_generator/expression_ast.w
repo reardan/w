@@ -630,7 +630,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int descriptor = 0
 		if (kind != 2): descriptor = protobuf_descriptor(tree.high[id])
 		if (kind == 5):
-			mov_eax_int(descriptor)
+			be_addr_slot_emit()
+			be_addr_slot_write(codepos - 4, descriptor)
 			return
 		int base_stack = stack_pos
 		int arg = tree.left[id]
@@ -808,7 +809,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int c_variadic = sym_variadic_fixed_args(sym)
 			if (c_variadic >= 0):
 				int s = stack_pos
-				char* classes = malloc(extern_max_params)
+				char* classes = cast(char*, malloc(extern_max_params))
 				int arg = tree.left[id]
 				int count = 0
 				while (arg >= 0):
@@ -1275,8 +1276,21 @@ void emit_expression_ast_root(expression_ast* tree, int root):
 
 # Emit an already prepared expression without advancing its source lexer.
 # The grammar completes its virtual terminator and trailing diagnostics.
+# S2.5: an AST compile always retains the expression and lowers the retained
+# group (retained_emit_lower, code_generator/retained_emit.w; P1.2b: the
+# visitor reads the group's columns in place). The temporary parse is
+# lowered directly only under --streaming --ast-expressions, which retains
+# no forest, or by an in-process caller that sets ast_retain_mode alone (it
+# is still noted).
 int emit_prepared_expression_ast(expression_ast* tree, int root):
-	retained_expression_note(tree, root)
-	emit_expression_ast_root(tree, root)
+	if (ast_emit_retained_mode):
+		retained_init()
+		int group = retained_node_count()
+		retained_expression_note(tree, root)
+		int retained_root = retained_emit_lower(tree, group)
+		assert1(retained_root == root)
+	else:
+		retained_expression_note(tree, root)
+		emit_expression_ast_root(tree, root)
 	expression_lhs_readonly = tree.readonly
 	return tree.result_type[root]

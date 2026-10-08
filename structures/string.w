@@ -20,7 +20,7 @@ string_builder* string_new_sized(int capacity):
 	string_builder* s = new string_builder()
 	s.capacity = capacity
 	s.length = 0
-	s.data = __w_alloc(capacity)
+	s.data = cast(char*, __w_alloc(capacity))
 	s.data[0] = 0
 	return s
 
@@ -95,7 +95,7 @@ void string_append_string(string_builder* s, string v):
 # string shares storage with the builder: mutating or freeing the builder
 # invalidates it. See str_from_cstr in lib/lib.w for the layout.
 string string_builder_to_string(string_builder* s):
-	char* descriptor = malloc(2 * __word_size__)
+	char* descriptor = cast(char*, malloc(2 * __word_size__))
 	save_word(descriptor, cast(int, s.data))
 	save_word(descriptor + __word_size__, s.length)
 	return cast(string, cast(int, descriptor))
@@ -202,7 +202,7 @@ void __w_template_pad(string_builder* s, char* text, int length, int width, int 
 # UTF-8 sequence carries); 6 a char*; 7 a string descriptor.
 void __w_template_fmt(string_builder* s, int value, int kind, int width, int precision, int flags):
 	int size = 8 * __word_size__ + 2
-	char* buffer = malloc(size)
+	char* buffer = cast(char*, malloc(size))
 	char* text = buffer
 	int length = 0
 	if (kind == 0):

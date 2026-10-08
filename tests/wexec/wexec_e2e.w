@@ -12,6 +12,7 @@ vector -- no /bin/sh.
 Usage (from the repository root, after bin/wexec is built):
   <driver> xok              PATH lookup skips non-executable shadows
   <driver> lock             bin/.wexec_lock acquire / stale reclaim / reentrancy
+  <driver> atomic           nested parallel atomic publication and failure cleanup
   <driver> timeout          WEXEC_STEP_TIMEOUT_MS default step timeout
   <driver> group_kill       timeout / SIGTERM kill the whole process group
   <driver> exec_diag_setup  write the exec-failure fixtures under
@@ -71,7 +72,7 @@ int has(char* text, char* needle):
 # Copy of base without any "name=" entry (unset name).
 char** env_without(char** base, char* name):
 	int count = env_vector_count(base)
-	char* vector = malloc((count + 1) * __word_size__)
+	char* vector = cast(char*, malloc((count + 1) * __word_size__))
 	int out = 0
 	for i in range(count):
 		char* entry = env_entry_at(base, i)
@@ -245,6 +246,86 @@ void mode_lock():
 	unlink(lock)
 
 
+# Bounded file handshakes force overlap without relying on scheduler timing.
+void atomic_wait(char* path):
+	for i in range(1000):
+		if (path_exists(path)): return
+		process_sleep_ms(10)
+	fail(strjoin(c"atomic handshake timed out: ", path))
+
+
+void atomic_contents(char* path, char* expected):
+	char* text = file_read_text(path)
+	if ((text == 0) || (strcmp(text, expected) != 0)):
+		fail(strjoin(c"unexpected atomic output: ", path))
+	free(text)
+
+
+# The parent manifest seeds an executable; a different nested manifest
+# misses its own cache and replaces it while a sibling executes that inode.
+void mode_atomic():
+	char* dir = c"bin/wexec_atomic"
+	cleanup_paths.push(dir)
+	dir_remove_all(dir)
+	mkdir(dir, 493)
+	mkdir(c"bin/wexec_atomic/directory", 493)
+	char* lock = scratch(c".wexec_atomic_lock_")
+	cleanup_paths.push(lock)
+	char** env = lock_env(lock, 0)
+	char* child = c"tests/wexec/atomic_child.json"
+	list[char*] stamps = dir_names(c"bin/.wexec_cache")
+	for char* stamp in stamps:
+		if (starts_with(stamp, c"tests_wexec_atomic_child.json__")):
+			unlink(path_join(c"bin/.wexec_cache", stamp))
+	# Force -j 4 even on single-core hosts; each nested run inherits the
+	# outer marker, and its own lock acquisition must not fail/deadlock.
+	char** argv = strv_new(6)
+	strv_set(argv, 0, c"bin/wexec")
+	strv_set(argv, 1, c"-j")
+	strv_set(argv, 2, c"4")
+	strv_set(argv, 3, c"-f")
+	strv_set(argv, 4, c"tests/wexec/atomic.json")
+	strv_set(argv, 5, c"main")
+	check(c"nested publication failed with a live sibling", process_run(c"bin/wexec", argv, env_opts(env), 0, 30000), 1, c"old executable survived publication", c"wexec: target compiler", 0, 0)
+	atomic_contents(c"bin/wexec_atomic/live", c"published")
+	if (path_exists(lock)): fail(c"outer lock was not released")
+	check(c"published output was not cacheable", run_wexec(child, c"compiler", env), 1, c"compiler (cached)", 0, 0, 0)
+
+	# Two nested workers publish to the same destination concurrently.
+	# Each checks its private staged contents before returning; sharing
+	# a fixed .stage path would overwrite one writer's bytes.
+	strv_set(argv, 5, c"parallel")
+	check(c"concurrent publishers shared a stage file", process_run(c"bin/wexec", argv, env_opts(env), 0, 30000), 1, c"wexec: OK (3 targets)", 0, 0, 0)
+	free(cast(char*, argv))
+
+	char* output = c"bin/wexec_atomic/output"
+	write_file(output, c"original")
+	check(c"failed producer succeeded", run_wexec(child, c"fail", env), 0, 0, 0, c"exit status 1", 0)
+	atomic_contents(output, c"original")
+	check(c"expected failure failed", run_wexec(child, c"expected", env), 1, 0, 0, 0, 0)
+	atomic_contents(output, c"original")
+	check(c"bad expectation succeeded", run_wexec(child, c"mismatch", env), 0, 0, 0, c"missing text", 0)
+	atomic_contents(output, c"original")
+	check(c"timeout succeeded", run_wexec(child, c"timeout", env), 0, 0, 0, c"timed out", 0)
+	atomic_contents(output, c"original")
+	check(c"missing stage succeeded", run_wexec(child, c"missing", env), 0, 0, 0, c"cannot publish atomic output", 0)
+	atomic_contents(output, c"original")
+	check(c"spawn failure succeeded", run_wexec(child, c"spawn_fail", env), 0, 0, 0, 0, 0)
+	atomic_contents(output, c"original")
+	check(c"bad field type succeeded", run_wexec(child, c"invalid", env), 0, 0, 0, c"must be a nonempty string", 0)
+	check(c"unmatched output succeeded", run_wexec(child, c"unmatched", env), 0, 0, 0, c"must match exactly one", 0)
+	check(c"ambiguous output succeeded", run_wexec(child, c"ambiguous", env), 0, 0, 0, c"must match exactly one", 0)
+	check(c"rename failure succeeded", run_wexec(child, c"rename_fail", env), 0, 0, 0, c"cannot publish atomic output", 0)
+	check(c"cwd publication failed", run_wexec(child, c"cwd", env), 1, 0, 0, 0, 0)
+	atomic_contents(output, c"published")
+	unlink(c"bin/.wexec_cache/tests_wexec_atomic_child.json__ok")
+	check(c"successful producer failed", run_wexec(child, c"ok", env), 1, 0, 0, 0, 0)
+	check(c"successful publication missed cache", run_wexec(child, c"ok", env), 1, c"ok (cached)", 0, 0, 0)
+	list[char*] files = dir_names(dir)
+	for char* path in files:
+		if (has(path, c".stage.")): fail(c"stage file leaked")
+
+
 /* timeout: WEXEC_STEP_TIMEOUT_MS is the default for steps without their
 own timeout_ms; an explicit timeout_ms (even 0) wins. */
 void mode_timeout():
@@ -328,7 +409,7 @@ void mode_exec_diag_setup():
 	copy_self(path_join(dir, c"exits_127"))
 	# A minimal 32-bit ELF executable whose one program header is a
 	# PT_INTERP naming /no/such/elf_interp (84 header bytes + 19 of path).
-	char* elf = malloc(104)
+	char* elf = cast(char*, malloc(104))
 	int i = 0
 	while (i < 104):
 		elf[i] = 0
@@ -373,7 +454,7 @@ int main(int argc, char** argv):
 		return 0
 	if (strcmp(base, c"exits_127") == 0): return 127
 	if (argc < 2):
-		err(c"usage: wexec_e2e xok|lock|timeout|group_kill|exec_diag_setup\n")
+		err(c"usage: wexec_e2e xok|lock|atomic|timeout|group_kill|exec_diag_setup\n")
 		return 2
 	mode_name = argv[1]
 	if (strcmp(mode_name, c"exit0") == 0): return 0
@@ -396,7 +477,29 @@ int main(int argc, char** argv):
 		write_file(argv[2], itoa(getpid()))
 		process_sleep_ms(30000)
 		return 0
-	if (strcmp(mode_name, c"xok") == 0): mode_xok()
+	if (strcmp(mode_name, c"atomic-reader") == 0):
+		write_file(c"bin/wexec_atomic/ready", c"ready")
+		atomic_wait(c"bin/wexec_atomic/published")
+		atomic_contents(self_path, c"published")
+		println(c"old executable survived publication")
+		return 0
+	if (strcmp(mode_name, c"atomic-writer") == 0):
+		atomic_wait(c"bin/wexec_atomic/ready")
+		write_file(argv[2], c"published")
+		return 0
+	if (strcmp(mode_name, c"atomic-concurrent") == 0):
+		write_file(argv[2], argv[3])
+		write_file(argv[3], c"ready")
+		atomic_wait(argv[4])
+		atomic_contents(argv[2], argv[3])
+		return 0
+	if (starts_with(mode_name, c"atomic-")):
+		write_file(argv[2], c"published")
+		if (strcmp(mode_name, c"atomic-fail") == 0): return 1
+		if (strcmp(mode_name, c"atomic-hang") == 0): process_sleep_ms(30000)
+		return 0
+	if (strcmp(mode_name, c"atomic") == 0): mode_atomic()
+	else if (strcmp(mode_name, c"xok") == 0): mode_xok()
 	else if (strcmp(mode_name, c"lock") == 0): mode_lock()
 	else if (strcmp(mode_name, c"timeout") == 0): mode_timeout()
 	else if (strcmp(mode_name, c"group_kill") == 0): mode_group_kill()

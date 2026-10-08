@@ -51,14 +51,14 @@ lazy_runtime* lazy_runtime_new(char* module, char* names):
 		i = i + 1
 	rt.count = count
 	char** split = cast(char**, malloc(count * __word_size__))
-	int* chains = malloc(count * __word_size__)
-	int* rel_chains = malloc(count * __word_size__)
+	int* chains = cast(int*, malloc(count * __word_size__))
+	int* rel_chains = cast(int*, malloc(count * __word_size__))
 	int n = 0
 	int start = 0
 	i = 0
 	while (n < count):
 		if ((names[i] == ' ') || (names[i] == 0)):
-			char* name = malloc(i - start + 1)
+			char* name = cast(char*, malloc(i - start + 1))
 			int k = 0
 			while (k < i - start):
 				name[k] = names[start + k]

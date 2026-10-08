@@ -193,7 +193,7 @@ void sha256(char* data, int len, char* out):
 	# and the 64-bit big-endian bit length, rounded to 64 bytes (two blocks
 	# when the remainder leaves no room for the length field).
 	int rem = len - full * 64
-	char* tail = malloc(128)
+	char* tail = cast(char*, malloc(128))
 	int j = 0
 	while (j < 128):
 		tail[j] = 0

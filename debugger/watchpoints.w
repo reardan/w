@@ -29,9 +29,9 @@ int dbg_watch_count
 
 void dbg_watch_init():
 	if (dbg_watch_addrs != 0): return;
-	dbg_watch_addrs = malloc(dbg_watch_max * __word_size__)
-	dbg_watch_olds = malloc(dbg_watch_max * __word_size__)
-	dbg_watch_texts = malloc(dbg_watch_max * __word_size__)
+	dbg_watch_addrs = cast(char*, malloc(dbg_watch_max * __word_size__))
+	dbg_watch_olds = cast(char*, malloc(dbg_watch_max * __word_size__))
+	dbg_watch_texts = cast(char*, malloc(dbg_watch_max * __word_size__))
 
 
 int dbg_watch_addr_at(int i):
@@ -64,7 +64,7 @@ int dbg_watch_add(char* text, int addr):
 		println(c"too many watchpoints")
 		return -1
 	int i = dbg_watch_count
-	char* copy = malloc(strlen(text) + 1)
+	char* copy = cast(char*, malloc(strlen(text) + 1))
 	strcpy(copy, text)
 	save_word(dbg_watch_addrs + i * __word_size__, addr)
 	save_word(dbg_watch_olds + i * __word_size__, dbg_mem_read_word(addr))

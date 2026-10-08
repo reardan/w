@@ -39,7 +39,7 @@ bitset* bitset_new(int size):
 	b.words = (size + 31) >> 5
 	int alloc_words = b.words
 	if (alloc_words < 1): alloc_words = 1
-	b.data = malloc(alloc_words * __word_size__)
+	b.data = cast(int*, malloc(alloc_words * __word_size__))
 	int i = 0
 	while (i < b.words):
 		b.data[i] = 0

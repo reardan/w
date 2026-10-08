@@ -91,7 +91,7 @@ void file_stat_from_statx(char* buf, file_stat* out):
 
 
 int file_statx_fill(char* path, int flags, file_stat* out):
-	char* buf = malloc(FILE_STATX_BUF_SIZE)
+	char* buf = cast(char*, malloc(FILE_STATX_BUF_SIZE))
 	int err = statx(path, flags, FILE_STATX_BASIC_STATS, buf)
 	if (err == 0): file_stat_from_statx(buf, out)
 	free(buf)
@@ -128,7 +128,7 @@ int file_mode_perm(file_stat* st):
 # The permission bits of mode (low 12 bits: setuid/setgid/sticky and
 # rwx) as four octal digits, e.g. "0644". Returns a malloc'd string.
 char* file_mode_octal(int mode):
-	char* digits = malloc(5)
+	char* digits = cast(char*, malloc(5))
 	digits[4] = 0
 	int i = 3
 	int v = mode & 4095
@@ -188,7 +188,7 @@ int file_touch(char* path, int create_if_missing):
 # Built as two word-sized timespecs so the layout matches every Linux
 # ABI the compiler targets (see lib/time.w's timespec).
 int file_utimens(char* path, int atime_sec, int mtime_sec, int flags):
-	char* times = malloc(4 * __word_size__)
+	char* times = cast(char*, malloc(4 * __word_size__))
 	save_word(times, atime_sec)
 	save_word(times + __word_size__, 0)
 	save_word(times + 2 * __word_size__, mtime_sec)
@@ -242,7 +242,7 @@ struct file_fs_stat:
 
 
 int file_statfs(char* path, file_fs_stat* out):
-	char* buf = malloc(STATFS_BUF_SIZE)
+	char* buf = cast(char*, malloc(STATFS_BUF_SIZE))
 	int* fields = cast(int*, malloc(6 * __word_size__))
 	int err = statfs_fill(path, buf, fields)
 	if (err == 0):

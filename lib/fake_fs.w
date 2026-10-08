@@ -209,7 +209,7 @@ void fake_fs_blob_reserve(fake_fs_blob* b, int n):
 	int cap = b.cap * 2
 	if (cap < 64): cap = 64
 	while (cap < n): cap = cap * 2
-	char* grown = malloc(cap)
+	char* grown = cast(char*, malloc(cap))
 	if (b.size > 0): mem_copy[char](grown, b.data, b.size)
 	if (cast(int, b.data) != 0): free(b.data)
 	b.data = grown
@@ -299,7 +299,7 @@ void fake_fs_apply_meta(list[fake_fs_name*] names, fake_fs_meta* m):
 			char* p = names[j].path
 			if (fake_fs_under(p, m.path)):
 				int rest = strlen(p) - n
-				char* moved = malloc(n2 + rest + 1)
+				char* moved = cast(char*, malloc(n2 + rest + 1))
 				mem_copy[char](moved, m.path2, n2)
 				mem_copy[char](&moved[n2], &p[n], rest)
 				moved[n2 + rest] = 0

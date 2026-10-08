@@ -47,7 +47,7 @@ int unix_fds_cmsg_space(int count):
 
 
 char* unix_fds_msghdr(char* iov, char* control, int control_length):
-	char* msg = malloc(7 * __word_size__)
+	char* msg = cast(char*, malloc(7 * __word_size__))
 	save_word(msg, 0)
 	save_word(msg + __word_size__, 0)
 	save_word(msg + 2 * __word_size__, cast(int, iov))
@@ -59,7 +59,7 @@ char* unix_fds_msghdr(char* iov, char* control, int control_length):
 
 
 char* unix_fds_iovec(char* data, int n):
-	char* iov = malloc(2 * __word_size__)
+	char* iov = cast(char*, malloc(2 * __word_size__))
 	save_word(iov, cast(int, data))
 	save_word(iov + __word_size__, n)
 	return iov
@@ -67,7 +67,7 @@ char* unix_fds_iovec(char* data, int n):
 
 int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 	int space = unix_fds_cmsg_space(count)
-	char* control = malloc(space)
+	char* control = cast(char*, malloc(space))
 	mem_fill(control, 0, space)
 	save_word(control, unix_fds_cmsg_data_offset() + count * 4)
 	save_int(control + __word_size__, unix_fds_sol_socket)
@@ -85,7 +85,7 @@ int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* count_out):
 	*count_out = 0
 	int space = unix_fds_cmsg_space(max)
-	char* control = malloc(space)
+	char* control = cast(char*, malloc(space))
 	char* iov = unix_fds_iovec(buf, cap)
 	char* msg = unix_fds_msghdr(iov, control, space)
 	int got = sys_recvmsg(sock, cast(int, msg), unix_fds_msg_cmsg_cloexec)

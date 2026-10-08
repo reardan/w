@@ -75,6 +75,29 @@ int box_qmp_simple(int fd, char* command, int deadline):
 	return ok
 
 
+int box_qmp_ignore_shared(int fd, int enabled, int deadline):
+	json_value* capability = json_object()
+	json_object_set(capability, c"capability", json_string(c"x-ignore-shared"))
+	json_object_set(capability, c"state", json_bool(enabled))
+	json_value* capabilities = json_array()
+	json_array_push(capabilities, capability)
+	json_value* args = json_object()
+	json_object_set(args, c"capabilities", capabilities)
+	json_value* response = box_qmp_call(fd, c"migrate-set-capabilities", args, -1, deadline)
+	int ok = response != 0
+	json_free(response)
+	json_free(args)
+	return ok
+
+
+int box_qmp_is_paused(int fd, int deadline):
+	json_value* response = box_qmp_call(fd, c"query-status", 0, -1, deadline)
+	json_value* status = json_object_get(response, c"status")
+	int paused = status != 0 && status.type == json_type_string() && strcmp(status.string_value, c"paused") == 0
+	json_free(response)
+	return paused
+
+
 int box_qmp_open(char* path, int deadline):
 	int fd = -1
 	while (deadline > process_monotonic_ms()):

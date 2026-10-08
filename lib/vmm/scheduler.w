@@ -5,6 +5,8 @@ import lib.json_rpc
 import lib.time
 import lib.vmm.registry
 import lib.vmm.cgroup
+import lib.vmm.templates
+import lib.vmm.regions
 
 const int vms_queued = 0
 const int vms_booting = 1
@@ -13,6 +15,12 @@ const int vms_busy = 3
 const int vms_failed = 4
 
 type vms_worker = fn(json_value*) -> void
+
+# Set only in a forked worker after descriptor isolation.
+cell_snapshot* vms_worker_snapshot
+vm_region* vms_worker_region
+box_snapshot* vms_worker_box
+int vms_worker_export
 
 struct vms_session:
 	int id
@@ -33,9 +41,19 @@ struct vms_session:
 	vm_workspace* workspace
 	char* channel_directory
 	int disk_mb
+	vm_template* template
+	vm_region* region
+	vm_template* pending_template
+	int export_fd
 
 struct vm_scheduler:
 	list[vms_session*] sessions
+	list[vm_template*] templates
+	int next_template
+	int template_memory_mb
+	list[vm_region*] regions
+	int next_region
+	int region_bytes
 	int next_id
 	vm_registry* registry
 	vm_cgroup* cgroup
@@ -87,6 +105,10 @@ vm_scheduler* vms_new(int active, int pending, int cpus, int memory_mb, vms_work
 	mem_fill[char](cast(char*, scheduler), 0, sizeof(vm_scheduler))
 	scheduler.sessions = new list[vms_session*]
 	scheduler.next_id = 1
+	scheduler.templates = new list[vm_template*]
+	scheduler.next_template = 1
+	scheduler.regions = new list[vm_region*]
+	scheduler.next_region = 1
 	scheduler.max_active = active
 	scheduler.max_pending = pending
 	scheduler.max_cpus = cpus
@@ -94,6 +116,122 @@ vm_scheduler* vms_new(int active, int pending, int cpus, int memory_mb, vms_work
 	scheduler.max_disk_mb = 1024
 	scheduler.worker = worker
 	return scheduler
+
+
+vm_template* vms_template_find(vm_scheduler* scheduler, int id):
+	for i in range(scheduler.templates.length):
+		vm_template* template = scheduler.templates[i]
+		if (template != 0 && template.available && template.id == id): return template
+	return 0
+
+
+void vms_template_collect(vm_scheduler* scheduler, vm_template* template):
+	if (template == 0 || template.available || template.references != 0): return
+	for i in range(scheduler.templates.length):
+		if (scheduler.templates[i] == template): scheduler.templates[i] = 0
+	scheduler.template_memory_mb = scheduler.template_memory_mb - template.memory_mb
+	vm_template_free(template)
+
+
+json_value* vms_template_create(vm_scheduler* scheduler, json_value* params):
+	int lease = vms_number(params, c"lease_ms", 60000)
+	if (lease < 100 || lease > 3600000): return vms_error(c"template lease must be 100..3600000 ms")
+	int slot = -1
+	for i in range(scheduler.templates.length):
+		if (scheduler.templates[i] == 0): slot = i
+	if ((slot < 0 && scheduler.templates.length >= 16) || scheduler.template_memory_mb + scheduler.memory_mb + 256 > scheduler.max_memory_mb): return vms_error(c"template capacity exhausted")
+	cell_snapshot* snapshot = vm_template_load_charged(scheduler.cgroup, vms_text(params, c"image"))
+	if (snapshot == 0): return vms_error(c"template requires a readable static x64 ELF")
+	vm_template* template = new vm_template()
+	mem_fill[char](cast(char*, template), 0, sizeof(vm_template))
+	template.memory_mb = 256
+	template.lease_deadline = time_monotonic_ms() + lease
+	template.id = scheduler.next_template
+	scheduler.next_template = scheduler.next_template + 1
+	template.available = 1
+	template.references = 0
+	template.snapshot = snapshot
+	if (slot < 0): scheduler.templates.push(template)
+	else: scheduler.templates[slot] = template
+	scheduler.template_memory_mb = scheduler.template_memory_mb + 256
+	json_value* result = json_object()
+	json_object_set(result, c"template", json_int(template.id))
+	json_object_set(result, c"resident_pages", json_int(snapshot.resident_pages))
+	return result
+
+
+json_value* vms_template_destroy(vm_scheduler* scheduler, int id):
+	vm_template* template = vms_template_find(scheduler, id)
+	if (template == 0): return vms_error(c"unknown template")
+	template.available = 0
+	vms_template_collect(scheduler, template)
+	return json_object()
+
+
+json_value* vms_templates(vm_scheduler* scheduler):
+	json_value* result = json_object()
+	json_value* items = json_array()
+	for i in range(scheduler.templates.length):
+		vm_template* template = scheduler.templates[i]
+		if (template == 0): continue
+		json_value* item = json_object()
+		json_object_set(item, c"template", json_int(template.id))
+		json_object_set(item, c"source_session", json_int(template.source_session))
+		json_object_set(item, c"available", json_bool(template.available))
+		json_object_set(item, c"references", json_int(template.references))
+		json_object_set(item, c"lease_remaining_ms", json_int(template.lease_deadline - time_monotonic_ms()))
+		char* backend = c"box"
+		if (template.snapshot != 0): backend = c"cell"
+		json_object_set(item, c"backend", json_string(backend))
+		json_array_push(items, item)
+	json_object_set(result, c"templates", items)
+	return result
+
+
+vm_region* vms_region_find(vm_scheduler* scheduler, int id):
+	for i in range(scheduler.regions.length):
+		vm_region* region = scheduler.regions[i]
+		if (region != 0 && region.available && region.id == id): return region
+	return 0
+
+
+void vms_region_collect(vm_scheduler* scheduler, vm_region* region):
+	if (region == 0 || region.available || region.references != 0): return
+	for i in range(scheduler.regions.length):
+		if (scheduler.regions[i] == region): scheduler.regions[i] = 0
+	scheduler.region_bytes = scheduler.region_bytes - region.length
+	vm_region_free(region)
+
+
+json_value* vms_region_create(vm_scheduler* scheduler, json_value* params):
+	int lease = vms_number(params, c"lease_ms", 3600000)
+	if (lease < 100 || lease > 3600000): return vms_error(c"region lease must be 100..3600000 ms")
+	int size = vms_number(params, c"length", 4096)
+	int slot = -1
+	for i in range(scheduler.regions.length):
+		if (scheduler.regions[i] == 0): slot = i
+	if ((slot < 0 && scheduler.regions.length >= 64) || size > 67108864 - scheduler.region_bytes): return vms_error(c"shared region capacity exhausted")
+	vm_region* region = vm_region_new_charged(scheduler.cgroup, size, vms_number(params, c"writable", 0), vms_text(params, c"data"))
+	if (region == 0): return vms_error(c"invalid shared region")
+	region.lease_deadline = time_monotonic_ms() + lease
+	region.id = scheduler.next_region
+	scheduler.next_region = scheduler.next_region + 1
+	if (slot < 0): scheduler.regions.push(region)
+	else: scheduler.regions[slot] = region
+	scheduler.region_bytes = scheduler.region_bytes + size
+	json_value* result = json_object()
+	json_object_set(result, c"region", json_int(region.id))
+	json_object_set(result, c"address", json_int(CELL_HEAP_MAX))
+	json_object_set(result, c"length", json_int(size))
+	return result
+
+
+json_value* vms_region_destroy(vm_scheduler* scheduler, int id):
+	vm_region* region = vms_region_find(scheduler, id)
+	if (region == 0): return vms_error(c"unknown region")
+	region.available = 0
+	vms_region_collect(scheduler, region)
+	return json_object()
 
 
 vms_session* vms_find(vm_scheduler* scheduler, int id):
@@ -104,18 +242,44 @@ vms_session* vms_find(vm_scheduler* scheduler, int id):
 
 
 int vms_admitted(vm_scheduler* scheduler, vms_session* session):
-	return scheduler.active < scheduler.max_active && session.cpus <= scheduler.max_cpus - scheduler.cpus && session.memory_mb <= scheduler.max_memory_mb - scheduler.memory_mb && session.disk_mb <= scheduler.max_disk_mb - scheduler.disk_mb
+	return scheduler.active < scheduler.max_active && session.cpus <= scheduler.max_cpus - scheduler.cpus && session.memory_mb <= scheduler.max_memory_mb - scheduler.memory_mb - scheduler.template_memory_mb && session.disk_mb <= scheduler.max_disk_mb - scheduler.disk_mb
 
 
 # Admission is FIFO. Completed entries still occupy bounded table slots until
 # destroy or lease expiry, preventing clients from retaining unbounded output.
 json_value* vms_submit(vm_scheduler* scheduler, json_value* config):
 	if (config == 0 || config.type != json_type_object()): return vms_error(c"configuration must be an object")
+	vm_template* template = 0
+	vm_region* region = 0
+	int default_cpus = 1
+	int default_memory = 256
+	char* backend = vms_text(config, c"backend")
+	if (backend != 0 && strcmp(backend, c"box") == 0 && vms_field(config, c"template") != 0):
+		template = vms_template_find(scheduler, vms_number(config, c"template", 0))
+		if (template == 0 || template.box == 0): return vms_error(c"unknown box template")
+		default_cpus = template.box.cpus
+		default_memory = template.box.memory_mb
+		if (vms_number(config, c"cpus", default_cpus) != default_cpus || vms_number(config, c"memory_mb", default_memory) != default_memory): return vms_error(c"box template CPU and memory cannot change")
+		if (vms_field(config, c"workspace") != 0 || vms_field(config, c"fs_root") != 0 || vms_field(config, c"network") != 0 || vms_field(config, c"region") != 0): return vms_error(c"box template restores cannot add external devices")
+	if (backend != 0 && strcmp(backend, c"cell") == 0):
+		template = vms_template_find(scheduler, vms_number(config, c"template", 0))
+		if (template == 0 || template.snapshot == 0): return vms_error(c"unknown cell template")
+		if (vms_field(config, c"region") != 0):
+			region = vms_region_find(scheduler, vms_number(config, c"region", 0))
+			if (region == 0): return vms_error(c"unknown region")
+			int writable = vms_number(config, c"region_write", 0)
+			if (writable < 0 || writable > region.writable): return vms_error(c"region is not writable")
+		if (vms_field(config, c"seed") != 0):
+			int seed = vms_number(config, c"seed", -1)
+			if (seed < 0 || seed > 2147483646 || region != 0): return vms_error(c"seeded cells require seed 0..2147483646 and no shared region")
+		if (vms_number(config, c"memory_mb", 256) != 256 || vms_number(config, c"cpus", 1) != 1): return vms_error(c"cells require 256 MiB and one scheduled CPU")
+		if (scheduler.max_memory_mb - scheduler.template_memory_mb < 256): return vms_error(c"cell and template exceed memory capacity")
+		if (vms_field(config, c"workspace") != 0 || vms_field(config, c"fs_root") != 0 || vms_field(config, c"network") != 0): return vms_error(c"daemon cells have no filesystem or network capabilities")
 	int disk_mb = 0
 	if (vms_text(config, c"workspace") != 0): disk_mb = vms_number(config, c"workspace_mb", 64)
 	if ((vms_text(config, c"workspace") != 0 && disk_mb < 1) || disk_mb < 0 || disk_mb > scheduler.max_disk_mb || disk_mb > 1024): return vms_error(c"workspace exceeds preparation disk capacity")
-	int cpus = vms_number(config, c"cpus", 1)
-	int memory_mb = vms_number(config, c"memory_mb", 256)
+	int cpus = vms_number(config, c"cpus", default_cpus)
+	int memory_mb = vms_number(config, c"memory_mb", default_memory)
 	int lease_ms = vms_number(config, c"lease_ms", 60000)
 	int timeout_ms = vms_number(config, c"timeout_ms", 30000)
 	if (cpus < 1 || cpus > 64 || cpus > scheduler.max_cpus || memory_mb < 64 || memory_mb > 32768 || memory_mb > scheduler.max_memory_mb): return vms_error(c"session exceeds CPU or memory capacity")
@@ -134,7 +298,17 @@ json_value* vms_submit(vm_scheduler* scheduler, json_value* config):
 	session.id = scheduler.next_id
 	scheduler.next_id = scheduler.next_id + 1
 	session.input_fd = -1
+	session.export_fd = -1
 	session.config = json_clone(config)
+	if (template != 0 && template.box != 0):
+		json_object_set(session.config, c"kernel", json_string(template.box.kernel))
+		json_object_set(session.config, c"initrd", json_string(template.box.initrd))
+		json_object_set(session.config, c"cpus", json_int(default_cpus))
+		json_object_set(session.config, c"memory_mb", json_int(default_memory))
+	session.region = region
+	if (region != 0): region.references = region.references + 1
+	session.template = template
+	if (template != 0): template.references = template.references + 1
 	session.cpus = cpus
 	session.memory_mb = memory_mb
 	session.disk_mb = disk_mb
@@ -181,6 +355,12 @@ void vms_release_worker(vm_scheduler* scheduler, vms_session* session):
 	if (scheduler.registry != 0 && cleaned):
 		if (registry_remove(scheduler.registry, session.id) == 0): cleaned = 0
 	if (cleaned == 0): scheduler.cleanup_failures = scheduler.cleanup_failures + 1
+	if (session.pending_template != 0):
+		session.pending_template.references = 0
+		vms_template_collect(scheduler, session.pending_template)
+		session.pending_template = 0
+	if (session.export_fd >= 0): close(session.export_fd)
+	session.export_fd = -1
 	if (session.input_fd >= 0): close(session.input_fd)
 	session.input_fd = -1
 	if (session.reader != 0):
@@ -205,6 +385,12 @@ void vms_destroy(vm_scheduler* scheduler, vms_session* session):
 		return
 	for i in range(scheduler.sessions.length):
 		if (scheduler.sessions[i] == session): scheduler.sessions[i] = 0
+	if (session.region != 0):
+		session.region.references = session.region.references - 1
+		vms_region_collect(scheduler, session.region)
+	if (session.template != 0):
+		session.template.references = session.template.references - 1
+		vms_template_collect(scheduler, session.template)
 	json_free(session.config)
 	json_free(session.result)
 	free(session)
@@ -243,6 +429,14 @@ void vms_launch(vm_scheduler* scheduler, vms_session* session):
 		close(request_write)
 		vms_fail(scheduler, session, 125)
 		return
+	int[2] exports
+	if (socket_pair(&exports[0]) < 0):
+		close(request_read)
+		close(request_write)
+		close(result_read)
+		close(result_write)
+		vms_fail(scheduler, session, 125)
+		return
 	int parent = getpid()
 	int pid = fork()
 	if (pid == 0):
@@ -254,15 +448,49 @@ void vms_launch(vm_scheduler* scheduler, vms_session* session):
 		process_redirect(request_read, 0)
 		process_redirect(result_write, 1)
 		process_redirect_null(2, 1)
+		int export_copy = sys_fcntl(exports[1], 1030, 10)
+		if (export_copy < 0): exit(125)
+		int first_closed = 3
+		if (session.template != 0):
+			int original = -1
+			int extra = -1
+			if (session.template.snapshot != 0):
+				vms_worker_snapshot = session.template.snapshot
+				original = vms_worker_snapshot.fd
+				if (session.region != 0): extra = session.region.fd
+			else:
+				vms_worker_box = session.template.box
+				original = vms_worker_box.fd
+				extra = vms_worker_box.ram_fd
+			int snapshot_fd = sys_fcntl(original, 1030, 10)
+			int extra_fd = -1
+			if (extra >= 0): extra_fd = sys_fcntl(extra, 1030, 10)
+			if (snapshot_fd < 0 || (extra >= 0 && extra_fd < 0)): exit(125)
+			if (dup2(snapshot_fd, 3) < 0): exit(125)
+			if (vms_worker_snapshot != 0): vms_worker_snapshot.fd = 3
+			else: vms_worker_box.fd = 3
+			first_closed = 4
+			if (extra >= 0):
+				if (dup2(extra_fd, 4) < 0): exit(125)
+				if (session.region != 0):
+					vms_worker_region = session.region
+					vms_worker_region.fd = 4
+				else: vms_worker_box.ram_fd = 4
+				first_closed = 5
+		if (dup2(export_copy, first_closed) < 0): exit(125)
+		vms_worker_export = first_closed
+		first_closed = first_closed + 1
 		int last_fd = 65535 * 65536 + 65535
-		if (syscall(436, 3, last_fd, 0) < 0): exit(125)
+		if (syscall(436, first_closed, last_fd, 0) < 0): exit(125)
 		char gate
 		if (read(0, &gate, 1) != 1): exit(125)
 		scheduler.worker(session.config)
 		exit(0)
 	close(request_read)
 	close(result_write)
+	close(exports[1])
 	if (pid < 0):
+		close(exports[0])
 		close(request_write)
 		close(result_read)
 		vms_fail(scheduler, session, 125)
@@ -271,6 +499,7 @@ void vms_launch(vm_scheduler* scheduler, vms_session* session):
 	socket_set_nonblocking(result_read)
 	socket_set_nonblocking(request_write)
 	session.pid = pid
+	session.export_fd = exports[0]
 	session.input_fd = request_write
 	session.reader = frame_reader_new(result_read)
 	session.state = vms_booting
@@ -334,18 +563,79 @@ json_value* vms_operation(vm_scheduler* scheduler, vms_session* session, json_va
 
 
 json_value* vms_exec(vm_scheduler* scheduler, vms_session* session, json_value* params):
+	if (session.template != 0 && session.template.snapshot != 0):
+		char* cwd = vms_text(params, c"cwd")
+		if (cwd != 0 && strcmp(cwd, c"/") != 0): return vms_error(c"cell cwd must be /")
+		json_value* input = vms_field(params, c"stdin")
+		if (input != 0 && (input.type != json_type_string() || strlen(input.string_value) > 4096)): return vms_error(c"invalid cell input")
 	if (vms_field(params, c"operation") != 0 || vms_exec_valid(params) == 0): return vms_error(c"invalid argv, cwd, timeout or output limit")
 	return vms_operation(scheduler, session, params)
 
 
 json_value* vms_snapshot_operation(vm_scheduler* scheduler, vms_session* session, char* operation):
-	if (vms_text(session.config, c"fs_root") != 0 || vms_text(session.config, c"workspace") != 0): return vms_error(c"snapshots do not support external filesystem devices")
+	if (session.template != 0 && session.template.snapshot != 0): return vms_error(c"cell sessions reset to their ready template on every exec")
+	if (vms_text(session.config, c"fs_root") != 0 && vms_number(session.config, c"private_workspace", 0) == 0): return vms_error(c"snapshots do not support external filesystem devices")
 	json_value* params = json_object()
 	json_object_set(params, c"operation", json_string(operation))
 	json_object_set(params, c"timeout_ms", json_int(30000))
 	json_value* result = vms_operation(scheduler, session, params)
 	json_free(params)
 	return result
+
+
+json_value* vms_box_template_create(vm_scheduler* scheduler, vms_session* session, json_value* params):
+	int lease = vms_number(params, c"lease_ms", 3600000)
+	if (lease < 100 || lease > 3600000): return vms_error(c"template lease must be 100..3600000 ms")
+	if (session == 0 || session.state != vms_ready): return vms_error(c"box session is not ready")
+	if (session.template != 0 && session.template.snapshot != 0): return vms_error(c"session is a cell")
+	int slot = -1
+	for i in range(scheduler.templates.length):
+		if (scheduler.templates[i] == 0): slot = i
+	if ((slot < 0 && scheduler.templates.length >= 16) || scheduler.memory_mb + scheduler.template_memory_mb + session.memory_mb > scheduler.max_memory_mb): return vms_error(c"box template capacity exhausted")
+	json_value* answer = vms_snapshot_operation(scheduler, session, c"template")
+	if (vms_field(answer, c"error") != 0): return answer
+	vm_template* template = new vm_template()
+	mem_fill[char](cast(char*, template), 0, sizeof(vm_template))
+	template.id = scheduler.next_template
+	scheduler.next_template = scheduler.next_template + 1
+	template.references = 1
+	template.memory_mb = session.memory_mb
+	template.lease_ms = lease
+	template.lease_deadline = time_monotonic_ms() + lease
+	template.source_session = session.id
+	if (slot < 0): scheduler.templates.push(template)
+	else: scheduler.templates[slot] = template
+	scheduler.template_memory_mb = scheduler.template_memory_mb + template.memory_mb
+	session.pending_template = template
+	return answer
+
+
+int vms_box_template_receive(vm_scheduler* scheduler, vms_session* session, json_value* result):
+	vm_template* template = session.pending_template
+	if (template == 0): return 1
+	int state_fd = vm_backing_receive(session.export_fd)
+	int ram_fd = vm_backing_receive(session.export_fd)
+	int ok = state_fd >= 0 && ram_fd >= 0 && vms_number(result, c"status", 125) == 0
+	if (ok): ok = sys_fcntl(state_fd, F_GET_SEALS, 0) == 15 && sys_fcntl(ram_fd, F_GET_SEALS, 0) == 15
+	if (ok): ok = seek(ram_fd, 0, 2) == session.memory_mb * 1048576
+	if (ok):
+		template.box = new box_snapshot()
+		template.box.fd = state_fd
+		template.box.ram_fd = ram_fd
+		template.box.kernel = strclone(vms_text(session.config, c"kernel"))
+		template.box.initrd = strclone(vms_text(session.config, c"initrd"))
+		template.box.cpus = session.cpus
+		template.box.memory_mb = session.memory_mb
+		template.available = 1
+		template.lease_deadline = time_monotonic_ms() + template.lease_ms
+		json_object_set(result, c"template", json_int(template.id))
+	else:
+		if (state_fd >= 0): close(state_fd)
+		if (ram_fd >= 0): close(ram_fd)
+	template.references = 0
+	vms_template_collect(scheduler, template)
+	session.pending_template = 0
+	return ok
 
 
 char* vms_state_name(int state):
@@ -378,7 +668,7 @@ void vms_output_chunk(json_value* answer, json_value* result, char* key, int off
 	int count = bytes - offset
 	if (count < 0): count = 0
 	if (count > length): count = length
-	char* text = malloc(count * 2 + 1)
+	char* text = cast(char*, malloc(count * 2 + 1))
 	if (count > 0): mem_copy[char](text, value + offset * 2, count * 2)
 	text[count * 2] = 0
 	json_object_set(answer, key, json_string(text))
@@ -393,6 +683,8 @@ json_value* vms_result(vms_session* session, json_value* params):
 	int length = vms_number(params, c"length", 1024)
 	if (offset < 0 || offset > 1048576 || length < 0 || length > 2048): return vms_error(c"invalid output chunk range")
 	json_value* answer = vms_status(session)
+	json_value* template = vms_field(session.result, c"template")
+	if (template != 0): json_object_set(answer, c"template", json_clone(template))
 	vms_output_chunk(answer, session.result, c"stdout_hex", offset, length)
 	vms_output_chunk(answer, session.result, c"stderr_hex", offset, length)
 	return answer
@@ -400,6 +692,8 @@ json_value* vms_result(vms_session* session, json_value* params):
 
 json_value* vms_stats(vm_scheduler* scheduler):
 	json_value* answer = json_object()
+	json_object_set(answer, c"shared_region_bytes", json_int(scheduler.region_bytes))
+	json_object_set(answer, c"template_reserved_mb", json_int(scheduler.template_memory_mb))
 	json_object_set(answer, c"host_quotas", json_bool(scheduler.cgroup != 0))
 	json_object_set(answer, c"active", json_int(scheduler.active))
 	json_object_set(answer, c"queued", json_int(scheduler.queued))
@@ -444,6 +738,9 @@ void vms_receive(vm_scheduler* scheduler, vms_session* session):
 				return
 			session.ready_ms = time_monotonic_ms()
 		else:
+			if (vms_box_template_receive(scheduler, session, result) == 0):
+				status = 125
+				json_object_set(result, c"status", json_int(status))
 			char* channel = vms_text(result, c"channel_directory")
 			if (channel != 0):
 				free(session.channel_directory)
@@ -461,6 +758,16 @@ void vms_receive(vm_scheduler* scheduler, vms_session* session):
 
 void vms_tick(vm_scheduler* scheduler):
 	int now = time_monotonic_ms()
+	for i in range(scheduler.templates.length):
+		vm_template* template = scheduler.templates[i]
+		if (template != 0 && template.available && now >= template.lease_deadline):
+			template.available = 0
+			vms_template_collect(scheduler, template)
+	for i in range(scheduler.regions.length):
+		vm_region* region = scheduler.regions[i]
+		if (region != 0 && region.available && now >= region.lease_deadline):
+			region.available = 0
+			vms_region_collect(scheduler, region)
 	for i in range(scheduler.sessions.length):
 		vms_session* session = scheduler.sessions[i]
 		if (session == 0): continue
@@ -483,10 +790,15 @@ void vms_tick(vm_scheduler* scheduler):
 		vms_launch(scheduler, first)
 
 
-void vms_free(vm_scheduler* scheduler):
+int vms_free(vm_scheduler* scheduler):
 	for i in range(scheduler.sessions.length):
 		if (scheduler.sessions[i] != 0): vms_destroy(scheduler, scheduler.sessions[i])
 	list_free[vms_session*](scheduler.sessions)
+	for i in range(scheduler.templates.length): vm_template_free(scheduler.templates[i])
+	list_free[vm_template*](scheduler.templates)
+	for i in range(scheduler.regions.length): vm_region_free(scheduler.regions[i])
+	list_free[vm_region*](scheduler.regions)
 	registry_close(scheduler.registry)
-	vm_cgroup_free(scheduler.cgroup)
+	int ok = vm_cgroup_free(scheduler.cgroup)
 	free(scheduler)
+	return ok

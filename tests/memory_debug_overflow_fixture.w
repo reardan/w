@@ -9,6 +9,6 @@ import lib.memory
 
 int main():
 	malloc_force_debug_mode()
-	char* a = malloc(16)
+	char* a = cast(char*, malloc(16))
 	a[16] = 1
 	return 0

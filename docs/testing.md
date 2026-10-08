@@ -1,7 +1,7 @@
 # Testing
 
 How W's tests are written and run, and the tools around them: the
-`lib/testing.w` runner (summary, filter, leak checks), module coverage,
+`lib/testing.w` runner (summary, filter, leak checks), execution coverage,
 compiler performance tracking, and the flaky-test policy. Issue #538
 introduced the runner features, `bin/wcoverage`, the `wbench` baseline
 and this policy.
@@ -25,11 +25,14 @@ Summary: 12 passed, 0 failed, 0 skipped
 All tests passed!
 ```
 
-A failing assertion (`lib/assert.w`) prints its message and a stack
-trace and exits 1 straight away. The last `Run:` line names the
-failing test, and no summary is printed because the run never reaches
-it. The `failed` count only counts leak-check failures (see below),
-which let the remaining tests run.
+A failing assertion (`lib/assert.w`, or `assert_near`) prints its
+message and a stack trace, then the runner prints a summary and the
+failing test's name before exiting 1. The summary includes earlier
+passing tests, leak failures, and this assertion failure. Later tests
+remain unrun; they are not counted as filtered/skipped. Assertions
+remain fail-fast, while leak-check failures let the remaining tests run.
+Programs importing only `lib.assert` retain their existing diagnostics
+and exit behavior without a runner summary.
 
 ### Running a subset
 
@@ -44,8 +47,9 @@ Tests that do not match are counted as `skipped`, and the summary
 names the filter. If the argv form and `W_TEST_FILTER` are both set,
 argv wins. A filter that matches no test fails the run with
 `Tests FAILED: the filter matched no test.`, so a typo cannot pass
-silently. The runner ignores every other argument, so a test that
-reads its own argv keeps working.
+silently, including with `--list`. A missing value after `--filter`
+exits 2 with a usage diagnostic. The runner ignores every other argument,
+so a test that reads its own argv keeps working.
 
 ### Leak checks
 
@@ -94,17 +98,25 @@ Limits:
 - A test that asserts free-list block reuse cannot run under the debug
   allocator, because it never reuses a block. `lib/lib_test.w`,
   `lib/arena_test.w` and `lib/ndarray_test.w` fail for this reason.
-- The debug allocator returns some blocks unaligned, and a shrinking
-  `realloc` can fault (#530). Until that is fixed, a test that
-  depends on either cannot use the check.
+- Tests using native resources or allocator-specific behavior need
+  their own lifecycle assertions in addition to heap accounting.
 
-#### Known leaks (reproduced for #538, not yet fixed)
+#### Ownership and retention regressions
 
-These were reproduced with `W_TEST_LEAKS=1` on a scratch program. They
-are not wired into `tests`.
+`tests/resource_leak_test.w` runs under both `W_DEBUG_ALLOC=1` and
+`W_TEST_LEAKS=1` in manifest steps on x86 and x64. It checks manual
+generator cleanup before starting, after yielding and after exhaustion;
+automatic generator-loop cleanup on exhaustion, continue, break, return
+and error propagation; function-scoped defer cleanup; and timer teardown
+with a virtual clock. Its companion `resource_leak_fixture.w` deliberately
+reproduces the cases below and must produce leak verdicts and exit 1.
+The suite also checks that a cleanup test runs after the reported leaks.
 
-1. **Generators driven by hand.** `generator* g = counter(5);
-   gen_next(g)` with no `gen_free(g)` leaks the 24-byte generator
+These cases preserve the documented ownership/defer semantics; the test
+infrastructure detects them, rather than changing when resources are freed.
+
+1. **Generators driven by hand.** Creating a generator and calling
+   `gen_next(g)` with no `gen_free(g)` leaks the 24-byte generator
    object and its 64 KB + 16 KB stack mapping. The leak check sees only
    the object. Draining the generator (`while (gen_next(g)): ...`)
    releases the stack but still leaks the object. A
@@ -189,14 +201,25 @@ a root's x64 closure when it is x64-only.
 This is static reachability, not execution coverage. A "covered" module
 can still contain functions that no test calls.
 
-Line-level coverage is deferred. It needs the compiler to emit a
-counter increment for each statement, plus a (file, line) table and a
-dump at exit. The natural place for the counter is the statement
-emitter in `grammar/`, and the dump could go in `lib/testing.w`'s
-`main` after the run, since W has no exit hooks. That work touches
-`grammar/` and `code_generator/` while the AST completion (#489) is
-reshaping them, so it should be built on the AST lowering once that
-lands, not on the single-pass emitter.
+For execution coverage, compile with `--coverage` on Linux x86 or x64,
+run with `W_PROFILE_OUT` set, then report the recorded hits together with
+the binary's map:
+
+```sh
+./bin/wv2 --coverage tests/stdlib_property_test.w -o bin/property_coverage
+: > bin/property_coverage.raw
+W_PROFILE_OUT=bin/property_coverage.raw ./bin/property_coverage
+./bin/wcoverage lines --file structures/json.w \
+  bin/property_coverage.wprofmap bin/property_coverage.raw
+```
+
+The report includes hit/miss for every emitted executable statement line,
+including never-called functions, and a total percentage. Multiple runs
+and binaries can be merged by source file/line. It measures statement
+entry, not branch completeness; absent modules and uninstantiated generic
+bodies remain outside the denominator. Normal return and `exit()` flush
+data, while crashes do not. See [line execution coverage](projects/line_coverage.md)
+for map/dump pairing, filtering, supported paths and limitations.
 
 ## Performance
 
@@ -222,7 +245,17 @@ more than x times the baseline's (with 50 ms of slack). Use it only
 when comparing against a baseline recorded on the same machine.
 `--only <workload>` runs a single workload.
 
-`wbench_compare` is runnable locally and is not part of `tests`: a
+The **Performance regressions** CI job runs `wbench_compare` on every
+pull request, push to `main`, and manual workflow run, using
+`tools/wbench_baseline.txt`. It fails on deterministic counter/size
+growth above 10%; wall time remains diagnostic because hosted runners
+vary in speed. Its job summary shows the comparison, and the
+`compiler-performance` artifact retains the log, measured
+`bin/wbench_results.txt`, and committed baseline for 14 days, including
+on failure. This baseline does not need a runner-class variant because
+wall-clock measurements are not gated.
+
+`wbench_compare` is also runnable locally and is not part of `tests`: a
 deliberate compiler change shifts the counters. After an intended
 change, re-run `--write-baseline` (default `-n 3` on an idle machine,
 so the recorded times are meaningful) and commit the new
@@ -278,9 +311,10 @@ something) and saying why in the commit message. The baseline's `kIr`
 column moves slightly between runs of `siphash_keys` and `self`
 (the map seed is random per process), well inside the tolerance.
 
-`bench` and `bench_compare` are not part of `tests` (they take
-minutes under valgrind); the CI benchmark job runs `bench_compare` on
-pushes to `main` and keeps `bin/bench.txt` as an artifact.
+`bench` and `bench_compare` are local, opt-in targets outside `tests`
+(they take minutes under valgrind). The CI performance job above gates
+the compiler workloads with `wbench_compare`; it does not run this
+run-time corpus comparison.
 `bench_<name>_smoke_test` targets (in `tests`) compile and run each
 program at a tiny size on both widths and assert its checksum, so the
 corpus never stops compiling. Adding a program is one source file with
@@ -305,8 +339,8 @@ profiles taken with `--profile-generate` and merged by `bin/wprof`
 (docs/projects/register_allocation_pgo.md §3.3). `--profile-use=<path>`
 reads one explicitly — the compiler never looks for a profile on its
 own — and `./wbuild verify_pgo` (in `tests`) is the self-host fixpoint
-with the flag: `wv3_pgo == wv4_pgo == wv5_pgo`, the streaming grammar
-equal to `--ast-emit-retained`, and the x64 chain. Entries are keyed by
+with the flag: `wv3_pgo == wv4_pgo == wv5_pgo`, the default front end
+(retained emission) equal to `--streaming`, and the x64 chain. Entries are keyed by
 `w defhash`, so editing a function's body only makes its entry stale
 (the static heuristic applies to it) and never changes what the
 compiler computes; `./wbuild profile_check` (in `tests`, never fails)
@@ -337,12 +371,16 @@ fails too, it is a real failure: fix it before merging. Never rerun
 until green. A second retry hides exactly the intermittent bugs these
 tests exist to catch.
 
-**Every flake becomes an issue.** If the retry passes, open a GitHub
-issue the same day with the `flaky-test` label. Include the target
+**Every flake becomes an issue.** If the retry passes, use the
+[flaky-test issue form](../.github/ISSUE_TEMPLATE/flaky-test.yml) to open
+a GitHub issue the same day with the `flaky-test` label. Include the target
 name, the first failure's log (the full `wexec` output for that
 target), the commit, the platform, and how often it has been seen. If
 an issue already exists, add a comment to it instead. Mention the
-issue in the PR that hit the flake.
+issue in the PR that hit the flake. Assign an owner and keep the issue
+open until a deterministic reproducer or regression test and a fix land.
+CI does not automatically retry failed jobs; the single retry is an
+explicit maintainer action, with both attempt logs retained.
 
 **No quarantine.** A flaky test is not disabled, skipped, removed from
 its umbrella, wrapped in a retry loop or given a looser expectation
@@ -352,11 +390,29 @@ the code it exposed, or making the test deterministic (fake clocks via
 synchronization). Until then, the one-retry rule keeps merges moving
 and the issue keeps the flake visible.
 
+## Property tests
+
+`tests/stdlib_property_test.w` runs on x86 and x64 in the full suite:
+
+- Map and set insert/overwrite/remove sequences are checked after every
+  operation against independent fixed-size array models (8 seeds,
+  600 operations per seed), including membership, size and stored values.
+- List sorting must preserve the input multiset, order values, and be
+  idempotent (32 generated inputs).
+- Generated nested JSON arrays must preserve integer, boolean, null and
+  string values through stringify/parse, including control characters,
+  quotes and backslashes; canonical serialization must be stable (64 seeds).
+
+The generator uses bounded integer arithmetic and fixed seeds, so the
+same cases run on both word sizes. Failures identify the seed and case
+or operation. These are bounded property checks, not exhaustive proofs;
+add a focused regression case for a discovered bug before extending the
+seed set. Run just one family with `--filter map`, `--filter list` or
+`--filter json` on `bin/stdlib_property_test`.
+
 ## Not done yet
 
-- Line-level and function-level execution coverage (see "Coverage").
+- Branch coverage and execution coverage on targets beyond Linux x86/x64.
 - Leak checks that also catch `mmap`-backed resources (generator
   stacks, thread stacks).
-- Running `wbench_compare` in CI with a baseline per runner class.
-- Property-based testing and mutation testing for the stdlib
-  containers and parsers.
+- Mutation testing and automatic shrinking of failing property cases.

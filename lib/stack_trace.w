@@ -69,7 +69,7 @@ import lib.memory
 int st_state
 int st_base           /* image base = address of the ELF or Mach-O header */
 int st_macho          /* 1 when the image is Mach-O */
-int st_slide          /* Mach-O: runtime minus linked addresses */
+int st_slide          /* runtime minus linked addresses (ELF PIE / Mach-O) */
 int st_text_lo        /* .text start address (ELF: the .text sh_addr) */
 int st_machine        /* e_machine: 3 x86, 62 x86-64, 183 arm64 */
 int st_class          /* 1 = ELFCLASS32, 2 = ELFCLASS64 */
@@ -111,7 +111,7 @@ int st_int32(int addr):
 # 1 when the page holding addr is mapped: mincore fails with -ENOMEM on
 # an unmapped range instead of faulting like a read would.
 int st_page_readable(int addr):
-	if (st_mincore_vec == 0): st_mincore_vec = malloc(16)
+	if (st_mincore_vec == 0): st_mincore_vec = cast(char*, malloc(16))
 	int page = addr - (addr & 4095)
 	return sys_mincore(page, 1, cast(int, st_mincore_vec)) == 0
 
@@ -298,6 +298,17 @@ void st_init(int pc):
 	if (st_byte(base + 4) != __word_size__ / 4): return;
 	st_class = st_byte(base + 4)
 	st_machine = st_int16(base + 18)
+	st_slide = 0
+	if ((st_class == 2) && (st_int16(base + 16) == 3)):
+		int phoff = st_word(base + 32)
+		int phsize = st_int16(base + 54)
+		int phnum = st_int16(base + 56)
+		if ((phsize != 56) || (phnum > 64)): return
+		if (st_range_readable(base + phoff, phsize * phnum) == 0): return
+		for k in range(phnum):
+			int p = base + phoff + k * phsize
+			if ((st_int32(p) == 1) && (st_word(p + 8) == 0)):
+				st_slide = base - st_word(p + 16)
 	int shoff = 0
 	int shentsize = 0
 	int shnum = 0
@@ -337,7 +348,7 @@ void st_init(int pc):
 			int link = st_int32(header + link_off)
 			if (link < shnum): st_strtab_lo = base + st_sh_word(table + link * shentsize, 16, 24)
 		else if (st_cstr_eq(name_addr, c".text")):
-			st_text_lo = st_sh_word(header, 12, 16)
+			st_text_lo = st_sh_word(header, 12, 16) + st_slide
 			st_text_hi = st_text_lo + st_sh_word(header, 20, 32)
 			text_seen = 1
 		else if (st_cstr_eq(name_addr, c".debug_line")):
@@ -392,6 +403,7 @@ int st_func_entry(int pc):
 			info = st_byte(e + 4)
 			value = st_word(e + 8)
 			size = st_word(e + 16)
+		value = value + st_slide
 		if ((info & 15) == 2):
 			if (size > 0):
 				if (pc >= value):
@@ -479,8 +491,8 @@ int st_chain_fp       /* last frame pointer st_chain accepted, 0 = none */
 # Symbol value (entry address) of a symbol table entry.
 int st_entry_value(int e):
 	if (st_macho): return st_word(e + 8) + st_slide
-	if (st_class == 1): return st_int32(e + 4)
-	return st_word(e + 8)
+	if (st_class == 1): return st_int32(e + 4) + st_slide
+	return st_word(e + 8) + st_slide
 
 
 # Length of the frame-pointer prologue at a function entry (x86:
@@ -683,8 +695,8 @@ int st_line_lookup(int pc):
 	# binary through lib/core_file.w, which leaves st_text_hi at 0.
 	if (st_text_hi != 0):
 		if ((pc < st_text_lo) || (pc >= st_text_hi)): return 0
-	# Mach-O line tables hold linked vmaddrs: compare unslid.
-	if (st_macho): pc = pc - st_slide
+	# ELF and Mach-O line tables hold linked addresses: compare unslid.
+	pc = pc - st_slide
 	int unit_length = st_int32(st_dline_lo)
 	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)): return 0
 	if (st_int16(st_dline_lo + 4) != 2): return 0
@@ -792,7 +804,7 @@ int st_collect_from(int pc, int sp, int fp, char* out, int max):
 # the binary carries no readable symbols or the stack
 # cannot be unwound.
 int stack_trace_collect(char* out, int max):
-	if (st_jmp_buf == 0): st_jmp_buf = malloc(8 * __word_size__) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
+	if (st_jmp_buf == 0): st_jmp_buf = cast(char*, malloc(8 * __word_size__)) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
@@ -856,13 +868,13 @@ void st_write_frame(int addr):
 # Write a symbolized stack trace of the calling thread to stderr, or
 # nothing when no frames can be recovered.
 void print_stack_trace():
-	if (st_jmp_buf == 0): st_jmp_buf = malloc(8 * __word_size__) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
+	if (st_jmp_buf == 0): st_jmp_buf = cast(char*, malloc(8 * __word_size__)) /* jmp_buf_words (lib/lib.w): seed-era syntax only here */
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
 	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
 	if (st_state == 0): st_init(pc)
-	char* pcs = malloc(64 * __word_size__)
+	char* pcs = cast(char*, malloc(64 * __word_size__))
 	int n = st_collect_from(pc, sp, fp, pcs, 64)
 	if (n == 0):
 		free(pcs)

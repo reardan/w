@@ -44,12 +44,12 @@ int cell_net_allow(vm_cell* cell, char* ipv4, int port):
 	if (address < 0): return 0
 	cell_net_state* state = cast(cell_net_state*, cell.net_state)
 	if (state == 0):
-		state = malloc(sizeof(cell_net_state))
-		state.descriptors = malloc(64 * __word_size__)
-		state.flags = malloc(64 * __word_size__)
-		state.connecting = malloc(64 * __word_size__)
-		state.addresses = malloc(64 * __word_size__)
-		state.ports = malloc(64 * __word_size__)
+		state = cast(cell_net_state*, malloc(sizeof(cell_net_state)))
+		state.descriptors = cast(int*, malloc(64 * __word_size__))
+		state.flags = cast(int*, malloc(64 * __word_size__))
+		state.connecting = cast(int*, malloc(64 * __word_size__))
+		state.addresses = cast(int*, malloc(64 * __word_size__))
+		state.ports = cast(int*, malloc(64 * __word_size__))
 		state.count = 0
 		for i in range(64):
 			state.descriptors[i] = -1

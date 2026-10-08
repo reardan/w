@@ -176,6 +176,19 @@ void cond_operand_branch(int type, int h, int on_true):
 	cond_branch_consume(h, on_true)
 
 
+# A consumer that rolls the pending chain's bytes back (the optimizer
+# pass of compiler/ast_opt.w, which folded the whole condition to a
+# constant) drops its state too: every branch site of the chain lies in
+# the bytes the caller removes, so the regions above base are popped
+# without being resolved. The caller must have the chain's start.
+void cond_pending_discard():
+	if (cond_pending == 0): return
+	cond_pending = 0
+	cond_negate = 0
+	cond_boolean = 0
+	ctrl_stack_pos = cond_pending_base
+
+
 # A value consumer met a pending chain: produce the 0/1 word the value
 # form would have. A chain without operators, '!' or '!!' (the usual
 # '(x)' group) has nothing to produce: its empty regions are dropped and

@@ -172,7 +172,7 @@ void test_bad_input_is_rejected():
 	ttf_font cut
 	asserts(c"header-only font rejected", ttf_load_bytes(&cut, data, 200) == 0)
 	asserts(c"tiny blob rejected", ttf_load_bytes(&cut, data, 8) == 0)
-	char* junk = malloc(64)
+	char* junk = cast(char*, malloc(64))
 	for i in range(64): junk[i] = 'x'
 	asserts(c"non-font rejected", ttf_load_bytes(&cut, junk, 64) == 0)
 	free(junk)
@@ -195,7 +195,7 @@ void put_u32(char* p, int off, int v):
 # group mapping U+1F600..U+1F602 to glyphs 50..52.
 void test_cmap_format_12():
 	# The subtable sits at offset 4: offset 0 means "absent".
-	char* data = malloc(32)
+	char* data = cast(char*, malloc(32))
 	put_u32(data, 0, 0)
 	put_u16(data, 4, 12)
 	put_u16(data, 6, 0)

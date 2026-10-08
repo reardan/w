@@ -41,6 +41,8 @@ int cf_bin_phoff
 int cf_bin_phentsize
 int cf_bin_phnum
 
+int cf_auxv_phdr      /* runtime AT_PHDR, present in kernel cores */
+int cf_slide          /* PIE load bias from the matching dumped image */
 int cf_text_lo        /* .text address range in the binary */
 int cf_text_hi
 int cf_have_syms      /* 1 when the binary's .symtab/.strtab parsed */
@@ -151,7 +153,7 @@ int cf_load_file(char* path):
 	if (size <= 0):
 		close(f)
 		return 0
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	int got = 0
 	while (got < size):
 		int r = read(f, &buf[got], size - got)
@@ -213,7 +215,7 @@ int cf_code_byte(int vaddr):
 	while (i < cf_bin_phnum):
 		int p = cf_bin_buf + cf_bin_phoff + i * cf_bin_phentsize
 		if (cf_ph_type(p) == 1):
-			int lo = cf_ph_vaddr(p)
+			int lo = cf_ph_vaddr(p) + cf_slide
 			int fsz = cf_ph_filesz(p)
 			int off = cf_ph_offset(p)
 			if ((off >= 0) && (off + fsz <= cf_bin_size)):
@@ -254,6 +256,9 @@ void cf_parse_notes():
 					if (st_cstr_eq(name, c"W")):
 						if (st_byte(desc + descsz - 1) == 0): cf_exe_note = desc
 				if (is_core_note):
+					if (ntype == 6): /* NT_AUXV */
+						for a in range(0, descsz - 2 * cf_wsize + 1, 2 * cf_wsize):
+							if (cf_field(desc + a) == 3): cf_auxv_phdr = cf_field(desc + a + cf_wsize)
 					if ((ntype == 1) && (cf_prstatus == 0)):
 						cf_prstatus = desc
 						cf_prstatus_size = descsz
@@ -302,11 +307,16 @@ void cf_bin_build_id():
 		i = i + 1
 
 
-# The build-id as the crashed process had it mapped: find a dumped PT_LOAD
-# page holding an ET_EXEC ELF header (W binaries are ET_EXEC; the loader,
-# shared libraries and the vDSO are ET_DYN), then follow that copy's
-# program headers to its PT_NOTE, whose p_vaddr is absolute.
+# Find the binary's build-id in dumped ELF header pages, accepting
+# ET_EXEC and ET_DYN. Match the supplied binary so shared libraries do
+# not masquerade as the executable. Kernel AUXV also supplies the PIE
+# bias when coredump_filter omitted the image header page.
 void cf_core_build_id():
+	cf_slide = 0
+	if ((cf_eh_type(cf_bin_buf) == 3) && cf_auxv_phdr):
+		for j in range(cf_bin_phnum):
+			int q = cf_bin_buf + cf_bin_phoff + j * cf_bin_phentsize
+			if (cf_ph_type(q) == 6): cf_slide = cf_auxv_phdr - cf_ph_vaddr(q)
 	int i = 0
 	while (i < cf_core_phnum):
 		int p = cf_core_buf + cf_core_phoff + i * cf_core_phentsize
@@ -316,24 +326,42 @@ void cf_core_build_id():
 		int eh = cf_core_mem(base, 64)
 		if (eh == 0): continue
 		if (cf_is_elf(eh, 64) == 0): continue
-		if ((st_byte(eh + 4) != cf_class) || (cf_eh_type(eh) != 2)): continue
+		if (st_byte(eh + 4) != cf_class): continue
+		if ((cf_eh_type(eh) != 2) && (cf_eh_type(eh) != 3)): continue
+		# AUXV identifies the executable independently of the supplied
+		# binary, preserving mismatch and missing-build-id diagnostics.
+		if (cf_auxv_phdr && (base + cf_eh_phoff(eh) != cf_auxv_phdr)): continue
 		int phentsize = cf_eh_phentsize(eh)
 		int phnum = cf_eh_phnum(eh)
 		int ph = cf_core_mem(base + cf_eh_phoff(eh), phnum * phentsize)
 		if (ph == 0): continue
+		int slide = 0
+		for j in range(phnum):
+			int q = ph + j * phentsize
+			if ((cf_ph_type(q) == 1) && (cf_ph_offset(q) == 0)):
+				slide = base - cf_ph_vaddr(q)
 		int k = 0
 		while (k < phnum):
 			int q = ph + k * phentsize
 			k = k + 1
 			if (cf_ph_type(q) != 4): continue
 			int fsz = cf_ph_filesz(q)
-			int notes = cf_core_mem(cf_ph_vaddr(q), fsz)
+			int notes = cf_core_mem(cf_ph_vaddr(q) + slide, fsz)
 			if (notes == 0): continue
 			int id = cf_find_build_id(notes, notes + fsz)
 			if (id != 0):
-				cf_core_id = id
-				cf_core_id_size = cf_found_id_size
-				return;
+				# Shared libraries can also have dumped ELF headers. Prefer
+				# the binary's build-id; retain the first as mismatch evidence.
+				int matches = (cf_found_id_size == cf_bin_id_size) && (cf_bin_id != 0)
+				if (matches):
+					for j in range(cf_found_id_size):
+						if (st_byte(id + j) != st_byte(cf_bin_id + j)): matches = 0
+				if ((cf_eh_type(eh) == 3) && (cf_auxv_phdr == 0) && (matches == 0)): continue
+				if ((cf_core_id == 0) || matches):
+					cf_core_id = id
+					cf_core_id_size = cf_found_id_size
+					cf_slide = slide
+				if (matches): return
 
 
 int cf_build_ids_match():
@@ -347,7 +375,7 @@ int cf_build_ids_match():
 
 # Lowercase hex of n bytes at addr (malloc'd).
 char* cf_id_hex(int addr, int n):
-	char* s = malloc(n * 2 + 1)
+	char* s = cast(char*, malloc(n * 2 + 1))
 	for i in range(n): hex_put_byte(&s[i * 2], st_byte(addr + i))
 	s[n * 2] = 0
 	return s
@@ -689,6 +717,8 @@ int cf_unwind(int pc, int sp, int fp, char* out, int max):
 # decode the right symbol-entry layout for either word size.
 void cf_parse_bin_sections():
 	int b = cf_bin_buf
+	st_slide = cf_slide
+	st_macho = 0
 	st_class = cf_class
 	st_machine = cf_machine
 	int shoff = cf_eh_shoff(b)
@@ -716,7 +746,7 @@ void cf_parse_bin_sections():
 			int link = st_int32(header + link_off)
 			if (link < shnum): st_strtab_lo = b + st_sh_word(table + link * shentsize, 16, 24)
 		else if (st_cstr_eq(name_addr, c".text")):
-			cf_text_lo = st_sh_word(header, 12, 16)
+			cf_text_lo = st_sh_word(header, 12, 16) + cf_slide
 			cf_text_hi = cf_text_lo + st_sh_word(header, 20, 32)
 			text_seen = 1
 		else if (st_cstr_eq(name_addr, c".debug_line")):
@@ -738,7 +768,7 @@ void cf_text_fallback():
 	while (i < cf_bin_phnum):
 		int p = cf_bin_buf + cf_bin_phoff + i * cf_bin_phentsize
 		if (cf_ph_type(p) == 1):
-			cf_text_lo = cf_ph_vaddr(p)
+			cf_text_lo = cf_ph_vaddr(p) + cf_slide
 			cf_text_hi = cf_text_lo + cf_ph_filesz(p)
 			return;
 		i = i + 1
@@ -748,7 +778,7 @@ void cf_text_fallback():
 # running program's).
 char* cf_hex(int v):
 	int digits = cf_wsize * 2
-	char* s = malloc(digits + 3)
+	char* s = cast(char*, malloc(digits + 3))
 	s[0] = '0'
 	s[1] = 'x'
 	for i in range(digits):
@@ -771,6 +801,10 @@ char* cf_fail_path(char* msg, char* path):
 # Load and validate the core file, then parse its notes. Returns 0 or an
 # error message.
 char* cf_load_core(char* path):
+	cf_auxv_phdr = 0
+	cf_slide = 0
+	cf_core_id = 0
+	cf_core_id_size = 0
 	cf_error_path = cast(char*, 0)
 	cf_core_buf = cf_load_file(path)
 	if (cf_core_buf == 0): return cf_fail_path(c"cannot read core file", path)

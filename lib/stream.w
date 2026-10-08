@@ -55,7 +55,7 @@ wstream* stream_reader_sized(int fd, int capacity):
 	if (capacity < 1): capacity = 1
 	wstream* s = new wstream()
 	s.fd = fd
-	s.buffer = malloc(capacity)
+	s.buffer = cast(char*, malloc(capacity))
 	s.capacity = capacity
 	s.position = 0
 	s.limit = 0

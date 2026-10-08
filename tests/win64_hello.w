@@ -8,7 +8,7 @@ import lib.lib
 int main(int argc, char** argv):
 	println(c"hello from win64!")
 	print_int(c"argc: ", argc)
-	char* copy = malloc(64)
+	char* copy = cast(char*, malloc(64))
 	strcpy(copy, c"heap works")
 	println(str_from_cstr(copy))
 	return 0

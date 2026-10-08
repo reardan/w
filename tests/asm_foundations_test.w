@@ -31,7 +31,7 @@ void test_buffer_and_labels():
 
 	# e9 <rel32=1> 90 c3: the displacement is from the end of the field
 	# (offset 5) to the label (offset 6).
-	char* want = malloc(8)
+	char* want = cast(char*, malloc(8))
 	assert_equal(7, asm_hex_decode(c"e90100000090c3", want, 8))
 	asm_assert_bytes_equal(c"label fixup", want, 7, b.data, b.length)
 
@@ -83,7 +83,7 @@ void test_registers():
 
 
 void test_hex():
-	char* bytes = malloc(16)
+	char* bytes = cast(char*, malloc(16))
 	assert_equal(4, asm_hex_decode(c"8b442410", bytes, 16))
 	assert_equal(0x8b, bytes[0] & 255)
 	assert_equal(0x10, bytes[3] & 255)

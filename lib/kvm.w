@@ -10,6 +10,7 @@ const int KVM_SREGS_SIZE = 312
 const int KVM_EXIT_IO = 2
 const int KVM_EXIT_HLT = 5
 const int KVM_EXIT_INTR = 10
+const int KVM_EXIT_XEN = 34
 
 struct kvm_machine:
 	int system_fd
@@ -54,6 +55,43 @@ int kvm_set_sregs(kvm_machine* vm, char* regs):
 
 int kvm_run(kvm_machine* vm):
 	return sys_ioctl(vm.cpu_fd, kvm_request(0, 0, 128), 0)
+
+
+# Xen's userspace hypercall interception accepts CPL3 and the Linux x64
+# argument registers. Ordinary KVM hypercalls reject CPL3 before userspace.
+# No Xen guest services/shared-info pages are exposed or configured here.
+int kvm_enable_vmcall(kvm_machine* vm):
+	int caps = sys_ioctl(vm.system_fd, kvm_request(0, 0, 3), 38)
+	if (caps < 0 || (caps & 2) == 0): return 0
+	char[56] config
+	mem_fill[char](&config[0], 0, 56)
+	save_int32(&config[0], 2)
+	save_int32(&config[4], 1073741824) # Xen hypercall MSR enables interception
+	return sys_ioctl(vm.vm_fd, kvm_request(1, 56, 122), cast(int, &config[0])) == 0
+
+
+# Use the native vendor instruction: KVM's wrong-vendor emulation may
+# reject CPL3 before Xen interception (notably VMCALL on AMD, Linux 6.8).
+int kvm_hypercall_vendor_opcode(int ebx, int ecx, int edx):
+	if (ebx == 0x756e6547 && ecx == 0x6c65746e && edx == 0x49656e69): return 193
+	if (ebx == 0x68747541 && ecx == 0x444d4163 && edx == 0x69746e65): return 217
+	if (ebx == 0x6f677948 && ecx == 0x656e6975 && edx == 0x6e65476e): return 217
+	return 0
+
+
+int kvm_hypercall_opcode(kvm_machine* vm):
+	char* cpuid = cast(char*, malloc(10248))
+	mem_fill[char](cpuid, 0, 10248)
+	save_int32(cpuid, 256)
+	int result = 0
+	if (sys_ioctl(vm.system_fd, kvm_request(3, 8, 5), cast(int, cpuid)) == 0):
+		int count = load_int32(cpuid)
+		if (count > 0 && count <= 256):
+			for i in range(count):
+				char* entry = cpuid + 8 + i * 40
+				if (load_int32(entry) == 0): result = kvm_hypercall_vendor_opcode(load_int32(entry + 16), load_int32(entry + 20), load_int32(entry + 24))
+	free(cpuid)
+	return result
 
 
 void kvm_memory_record(char* record, int slot, int guest, char* host, int size):
@@ -120,7 +158,7 @@ int kvm_set_supported_cpuid(kvm_machine* vm):
 	# differ when fetched on another physical CPU; never reinstall on reset.
 	if (vm.cpuid_set): return 0
 	int capacity = 256
-	char* cpuid = malloc(8 + capacity * 40)
+	char* cpuid = cast(char*, malloc(8 + capacity * 40))
 	mem_fill[char](cpuid, 0, 8 + capacity * 40)
 	save_int32(cpuid, capacity)
 	int status = sys_ioctl(vm.system_fd, kvm_request(3, 8, 5), cast(int, cpuid))
@@ -171,7 +209,7 @@ int kvm_copy_xsave(kvm_machine* destination, kvm_machine* source):
 		size = 4096
 		request = 164
 	if (size > 1048576): return -22
-	char* state = malloc(size)
+	char* state = cast(char*, malloc(size))
 	mem_fill[char](state, 0, size)
 	int result = sys_ioctl(source.cpu_fd, kvm_request(2, 4096, request), cast(int, state))
 	if (result == 0): result = sys_ioctl(destination.cpu_fd, kvm_request(1, 4096, 165), cast(int, state))
@@ -190,7 +228,7 @@ int kvm_cell_checkpoint(kvm_machine* vm):
 		size = 4096
 		request = 164
 	if (size > 1048576): return 0
-	char* state = malloc(4096 + size)
+	char* state = cast(char*, malloc(4096 + size))
 	mem_fill[char](state, 0, 4096 + size)
 	int ok = kvm_get_regs(vm, state) == 0
 	if (ok): ok = kvm_get_sregs(vm, state + 144) == 0

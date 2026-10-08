@@ -66,7 +66,7 @@ void test_ptr_to_int_address():
 
 # Milestone 3: int[]
 void test_int_pointer_brackets():
-	int* array_ptr = malloc(4 * 10)
+	int* array_ptr = cast(int*, malloc(4 * 10))
 	array_ptr[0] = 879
 	assert_equal(879, array_ptr[0])
 	array_ptr[2] = 9876
@@ -81,7 +81,7 @@ void test_deref_pointer_arithmetic():
 	int x = 1337
 	int* y = &x
 	assert_equal(1337, *(y + 10 - 10))
-	int* a = malloc(__word_size__ * 4)
+	int* a = cast(int*, malloc(__word_size__ * 4))
 	a[0] = 111
 	a[1] = 222
 	assert_equal(222, *(a + __word_size__))
@@ -200,7 +200,7 @@ void test_char_double_pointer():
 
 void test_array_of_structs():
 	int num = 1000
-	point* ptp = malloc(12 * num)
+	point* ptp = cast(point*, malloc(12 * num))
 	int i = 0
 	while (i < num):
 		ptp[i].x = i

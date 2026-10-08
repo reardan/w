@@ -205,10 +205,10 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 
 	if (expected_args >= 0):
 		if (passed_args != expected_args):
-			diag_part(c"warning: function '")
+			diag_part(c"function '")
 			diag_part(callee_name)
 			diag_part(c"' expects ")
-			warning3(itoa(expected_args), c" arguments, got ", itoa(passed_args))
+			type_error3(itoa(expected_args), c" arguments, got ", itoa(passed_args))
 	if (callee_name != 0): free(callee_name)
 
 	# Stack: argN .. arg1, fn. Call __w_gen_create(fn, argv, argc)

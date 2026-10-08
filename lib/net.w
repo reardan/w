@@ -133,7 +133,7 @@ int socket_set_reuseaddr(int sockfd):
 
 
 int socket_pair(int* fds):
-	char* kernel_fds = malloc(8)
+	char* kernel_fds = cast(char*, malloc(8))
 	int err = sys_socketpair(af_unix, sock_stream, 0, cast(int, kernel_fds))
 	if (err < 0):
 		free(kernel_fds)
@@ -194,7 +194,7 @@ int socket_unix_stream():
 
 
 int socket_bind_unix(int sockfd, char* path):
-	char* addr = malloc(SOCKADDR_UN_SIZE)
+	char* addr = cast(char*, malloc(SOCKADDR_UN_SIZE))
 	int addrlen = sockaddr_un_init(addr, path)
 	if (addrlen < 0):
 		free(addr)
@@ -205,7 +205,7 @@ int socket_bind_unix(int sockfd, char* path):
 
 
 int socket_connect_unix(int sockfd, char* path):
-	char* addr = malloc(SOCKADDR_UN_SIZE)
+	char* addr = cast(char*, malloc(SOCKADDR_UN_SIZE))
 	int addrlen = sockaddr_un_init(addr, path)
 	if (addrlen < 0):
 		free(addr)
@@ -332,7 +332,7 @@ int socket_set_blocking(int sockfd):
 # struct timeval is two word-sized fields, matching the native long-sized
 # timeval on every supported target (8 bytes on 32-bit, 16 on 64-bit).
 int socket_set_timeout_opt(int sockfd, int optname, int timeout_ms):
-	int* tv = malloc(__word_size__ * 2)
+	int* tv = cast(int*, malloc(__word_size__ * 2))
 	tv[0] = timeout_ms / 1000
 	tv[1] = (timeout_ms % 1000) * 1000
 	int rc = sys_setsockopt(sockfd, sol_socket(), optname, cast(int, tv), __word_size__ * 2)

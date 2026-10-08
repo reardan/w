@@ -93,7 +93,6 @@ forbid tests
 # or piped stdin.
 case tests/warning_fixture.w
 expect warning_test
-expect strict_mode_test
 expect check_json_test
 expect parser_generator_w_test
 forbid tests

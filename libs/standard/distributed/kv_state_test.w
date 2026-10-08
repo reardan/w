@@ -234,7 +234,7 @@ void test_propose_apply_loop_binary_value():
 	assert1(cast(int, store) != 0)
 	raft* r = kvs_leader(55)
 	list[raft_msg*] out = new list[raft_msg*]
-	char* value = malloc(5)
+	char* value = cast(char*, malloc(5))
 	value[0] = 'a'
 	value[1] = 0
 	value[2] = 'b'

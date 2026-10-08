@@ -156,7 +156,7 @@ char* __w_realloc(void* old, int oldlen, int newlen):
 # 'new T' and 'new T[n]' (grammar/unary_expression.w,
 # code_generator/expression_ast.w): size bytes, zeroed, never null.
 void* __w_new_object(int size):
-	char* p = __w_alloc(size)
+	char* p = cast(char*, __w_alloc(size))
 	int words = size / __word_size__
 	int* w = cast(int*, p)
 	int i = 0
@@ -173,11 +173,11 @@ void* __w_new_object(int size):
 __w_list* __w_list_new(int element_size):
 	if (element_size <= 0): __w_trap(c"list element size must be positive")
 	int capacity = 8
-	__w_list* list = __w_alloc(4 * __word_size__)
+	__w_list* list = cast(__w_list*, __w_alloc(4 * __word_size__))
 	list.capacity = capacity
 	list.length = 0
 	list.element_size = element_size
-	list.items = __w_alloc(__w_size_mul(capacity, element_size))
+	list.items = cast(char*, __w_alloc(__w_size_mul(capacity, element_size)))
 	return list
 
 
@@ -408,6 +408,9 @@ const int __w_sort_by_value = 1
 const int __w_sort_by_addr = 2
 
 
+type __arg_callback = fn(int, int) -> int
+
+
 int __w_list_sort_compare(__w_list* list, __w_list* keys, int mode, int arg, int a, int b):
 	if (mode == __w_sort_by_kind):
 		int ka = __w_list_load_word(keys.items + a * keys.element_size, keys.element_size)
@@ -416,15 +419,15 @@ int __w_list_sort_compare(__w_list* list, __w_list* keys, int mode, int arg, int
 	if (mode == __w_sort_by_value):
 		int va = __w_list_load_word(list.items + a * list.element_size, list.element_size)
 		int vb = __w_list_load_word(list.items + b * list.element_size, list.element_size)
-		return arg(va, vb)
-	return arg(cast(int, list.items + a * list.element_size), cast(int, list.items + b * list.element_size))
+		return (cast(__arg_callback*, arg))(va, vb)
+	return (cast(__arg_callback*, arg))(cast(int, list.items + a * list.element_size), cast(int, list.items + b * list.element_size))
 
 
 # Moves list (and keys, when it is a separate list) into the order given
 # by perm: slot k receives the element that was at perm[k].
 void __w_list_apply_permutation(__w_list* list, int* perm):
 	int size = list.element_size
-	char* staged = __w_alloc(__w_size_mul(list.length, size))
+	char* staged = cast(char*, __w_alloc(__w_size_mul(list.length, size)))
 	int k = 0
 	while (k < list.length):
 		__w_list_copy_bytes(staged + k * size, list.items + perm[k] * size, size)
@@ -442,8 +445,8 @@ void __w_list_apply_permutation(__w_list* list, int* perm):
 void __w_list_merge_sort(__w_list* list, __w_list* keys, int mode, int arg):
 	int n = list.length
 	if (n < 2): return
-	int* perm = __w_alloc(__w_size_mul(n, __word_size__))
-	int* tmp = __w_alloc(__w_size_mul(n, __word_size__))
+	int* perm = cast(int*, __w_alloc(__w_size_mul(n, __word_size__)))
+	int* tmp = cast(int*, __w_alloc(__w_size_mul(n, __word_size__)))
 	int k = 0
 	while (k < n):
 		perm[k] = k
@@ -519,6 +522,10 @@ __w_list* __w_list_sorted_by(__w_list* list, int comparator):
 	return result
 
 
+type __f_callback = fn(int) -> int
+type __reduce_callback = fn(int, int) -> int
+
+
 __w_list* __w_list_sorted_by_addr(__w_list* list, int comparator):
 	__w_list* result = __w_list_copy(list)
 	__w_list_sort_by_addr(result, comparator)
@@ -532,7 +539,7 @@ __w_list* __w_list_map(__w_list* list, int f, int result_element_size):
 	int i = 0
 	while (i < list.length):
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		__w_list_push(result, f(value))
+		__w_list_push(result, (cast(__f_callback*, f))(value))
 		i = i + 1
 	return result
 
@@ -543,7 +550,7 @@ __w_list* __w_list_filter(__w_list* list, int f):
 	int i = 0
 	while (i < list.length):
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		if (f(value)): __w_list_push(result, value)
+		if ((cast(__f_callback*, f))(value)): __w_list_push(result, value)
 		i = i + 1
 	return result
 
@@ -553,7 +560,7 @@ int __w_list_reduce(__w_list* list, int f, int init):
 	int acc = init
 	int i = 0
 	while (i < list.length):
-		acc = f(acc, __w_list_load_word(list.items + i * list.element_size, list.element_size))
+		acc = (cast(__reduce_callback*, f))(acc, __w_list_load_word(list.items + i * list.element_size, list.element_size))
 		i = i + 1
 	return acc
 
@@ -592,7 +599,7 @@ int __w_list_max(__w_list* list):
 # In-place reversal, any element size (structs included).
 void __w_list_reverse(__w_list* list):
 	if (list.length < 2): return;
-	char* temp = __w_alloc(list.element_size)
+	char* temp = cast(char*, __w_alloc(list.element_size))
 	int i = 0
 	int j = list.length - 1
 	while (i < j):

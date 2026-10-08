@@ -44,9 +44,11 @@ module_dependency_graph* module_dependencies_build():
 		for i in range(retained_bindings.length):
 			retained_binding* binding = retained_bindings[i]
 			if (binding.scope == 'D'): definitions[binding.linkage] = binding.source
-	if (retained_nodes != 0):
-		for i in range(retained_nodes.length):
-			retained_node* node = retained_nodes[i]
+	retained_node view
+	retained_node* node = &view
+	if (retained_node_table != 0):
+		for i in range(retained_node_count()):
+			retained_node_load(i, node)
 			if (node.kind == retained_import):
 				module_dependency_add(graph, node.source, node.import_source, module_dependency_import)
 			module_dependency_type_note(graph, node.source, node.semantic_type, visited)

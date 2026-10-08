@@ -25,7 +25,7 @@ import lib.mem
 # Derive the one-time Poly1305 key for (key, nonce): the first 32 bytes of
 # the ChaCha20 block with counter 0 (RFC 8439 section 2.6).
 void poly1305_key_gen(char* key, char* nonce, char* out):
-	char* block = malloc(64)
+	char* block = cast(char*, malloc(64))
 	chacha20_block(key, 0, nonce, block)
 	for i in range(32): out[i] = block[i] & 255
 	mem_fill(block, 0, 64)
@@ -46,7 +46,7 @@ int chacha20poly1305_tag_equal(char* a, char* b):
 # upper four bytes of each length field are zero.
 void chacha20poly1305_mac(char* polykey, char* aad, int aad_len, char* ct, int ct_len, char* out):
 	poly1305* st = poly1305_new(polykey)
-	char* zeros = malloc(16)
+	char* zeros = cast(char*, malloc(16))
 	mem_fill(zeros, 0, 16)
 
 	poly1305_update(st, aad, aad_len)
@@ -56,7 +56,7 @@ void chacha20poly1305_mac(char* polykey, char* aad, int aad_len, char* ct, int c
 	rem = ct_len % 16
 	if (rem != 0): poly1305_update(st, zeros, 16 - rem)
 
-	char* lens = malloc(16)
+	char* lens = cast(char*, malloc(16))
 	mem_fill(lens, 0, 16)
 	store_le32(lens, aad_len)
 	store_le32(lens + 8, ct_len)
@@ -71,7 +71,7 @@ void chacha20poly1305_mac(char* polykey, char* aad, int aad_len, char* ct, int c
 # tag to `tag_out`. key is 32 bytes, nonce 12 bytes; the nonce MUST be
 # unique per invocation with the same key.
 void chacha20poly1305_seal(char* key, char* nonce, char* aad, int aad_len, char* plain, int len, char* ct_out, char* tag_out):
-	char* polykey = malloc(32)
+	char* polykey = cast(char*, malloc(32))
 	poly1305_key_gen(key, nonce, polykey)
 	chacha20_xor(key, 1, nonce, plain, len, ct_out)
 	chacha20poly1305_mac(polykey, aad, aad_len, ct_out, len, tag_out)
@@ -84,8 +84,8 @@ void chacha20poly1305_seal(char* key, char* nonce, char* aad, int aad_len, char*
 # WITHOUT touching `plain_out` -- no plaintext is ever released for a
 # forged message. The comparison is constant time.
 int chacha20poly1305_open(char* key, char* nonce, char* aad, int aad_len, char* ct, int len, char* tag, char* plain_out):
-	char* polykey = malloc(32)
-	char* expected = malloc(16)
+	char* polykey = cast(char*, malloc(32))
+	char* expected = cast(char*, malloc(16))
 	poly1305_key_gen(key, nonce, polykey)
 	chacha20poly1305_mac(polykey, aad, aad_len, ct, len, expected)
 	int ok = chacha20poly1305_tag_equal(expected, tag)

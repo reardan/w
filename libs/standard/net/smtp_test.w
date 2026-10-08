@@ -160,7 +160,7 @@ smtp_fx* fx_start_mode(char* script, int implicit_tls):
 	smtp_fx* fx = new smtp_fx()
 	int listener = net_test_listen(&fx.port)
 	fx.listener = listener
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
@@ -258,7 +258,7 @@ void test_smtp_dot_stuff():
 	assert_equal(0, n)
 	free(out)
 	# 998 octets is the limit; 999 fails closed.
-	char* longline = malloc(1001)
+	char* longline = cast(char*, malloc(1001))
 	mem_fill(longline, 'a', 999)
 	longline[999] = 0
 	asserts(c"999-octet line accepted", smtp_dot_stuff(longline, 999, &n) == 0)
@@ -587,7 +587,7 @@ void test_smtp_rejections():
 	assert_equal(554, smtp_last_code(c))
 	assert_strings_equal(c"5.7.1 spam\n5.7.1 rejected", smtp_last_reply(c))
 	# Over the advertised SIZE: refused locally, nothing sent.
-	char* big = malloc(201)
+	char* big = cast(char*, malloc(201))
 	mem_fill(big, 'a', 200)
 	big[200] = 0
 	assert_equal(0, smtp_send(c, c"a@x.test", one, big, 200))
@@ -633,7 +633,7 @@ void test_smtp_injection_rejected():
 	assert_equal((-1), smtp_command(c, s.data))
 	string_free(s)
 	# A 1000-octet text line fails before DATA is sent.
-	char* longline = malloc(1001)
+	char* longline = cast(char*, malloc(1001))
 	mem_fill(longline, 'a', 1000)
 	longline[1000] = 0
 	assert_equal(0, smtp_data(c, longline, 1000))

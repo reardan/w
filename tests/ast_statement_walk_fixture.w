@@ -20,15 +20,15 @@ walk_pair walk_make_pair(int n):
 	return walk_pair(n, n + 1)
 
 # A return type mismatch, then the same with an explicit terminator.
-char* walk_mismatch(int n):
+char* walk_mismatch(int* n):
 	walk_mark(2)
 	return n
 
-char* walk_mismatch_terminated(int n):
+char* walk_mismatch_terminated(int* n):
 	walk_mark(3); return n;
 
 void walk_void_value(int n):
-	walk_mark(n); return n
+	walk_mark(n); return
 
 generator int walk_values(int limit):
 	for i in range(limit):

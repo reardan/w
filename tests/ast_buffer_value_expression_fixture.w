@@ -26,6 +26,7 @@ int ast_buffer_present(void* first, void* second): return (first != 0) + (second
 int[] ast_buffer_return(int[] values): return values
 
 type ast_buffer_callback = fn(int*, int) -> int
+type ast_buffer_slice_callback = fn(int[]) -> int
 
 int main():
 	int[3] values
@@ -46,7 +47,7 @@ int main():
 	ast_buffer_callback* callback = ast_buffer_sum
 	if ((callback(values, 3)) != 15): return 7
 	int raw = cast(int, ast_buffer_slice_sum)
-	if ((raw(values)) != 15): return 8
+	if (((cast(ast_buffer_slice_callback*, raw))(values)) != 15): return 8
 	ast_buffer_first[1] records
 	records[0].value = 8
 	if ((ast_buffer_mixed(records, cast(ast_buffer_later*, 0))) != 8): return 9

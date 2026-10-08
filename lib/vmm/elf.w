@@ -3,6 +3,42 @@
 import lib.vmm.memory
 
 
+# ABI v2 carries bounded exact instruction locations, not a code scan.
+# Every site must refer to file-backed executable bytes in a checked LOAD.
+int cell_elf_hypercall_note(char* image, int length, int phoff, int count):
+	int found = -1
+	for i in range(count):
+		char* ph = image + phoff + i * 56
+		if (load_int32(ph) == 4):
+			int offset = load_int64(ph + 8)
+			int size = load_int64(ph + 32)
+			if (offset < 0 || offset > length || size < 0 || size > length - offset): return -1
+			if (size >= 16 && load_int32(image + offset) == 4 && load_int32(image + offset + 12) == 0x004d5657):
+				if (found >= 0 || size != 536): return -1
+				if (load_int32(image + offset + 4) != 520 || load_int32(image + offset + 8) != 0x57564d01 || load_int32(image + offset + 16) != 1): return -1
+				found = offset
+	if (found < 0): return -1
+	int sites = load_int32(image + found + 20)
+	if (sites < 1 || sites > 64): return -1
+	for i in range(sites):
+		int address = load_int64(image + found + 24 + i * 8)
+		int valid = 0
+		for j in range(count):
+			char* ph = image + phoff + j * 56
+			if (load_int32(ph) == 1 && (load_int32(ph + 4) & 1)):
+				int start = load_int64(ph + 16)
+				int size = load_int64(ph + 32)
+				if (size >= 3 && address >= start && address - start <= size - 3):
+					char* site = image + load_int64(ph + 8) + address - start
+					if (site[0] == 15 && site[1] == 1 && (site[2] & 255) == 193): valid = 1
+		if (valid == 0): return -1
+		for j in range(i):
+			if (load_int64(image + found + 24 + j * 8) == address): return -1
+	for i in range(sites, 64):
+		if (load_int64(image + found + 24 + i * 8) != 0): return -1
+	return found
+
+
 int cell_elf_load(vm_cell* cell, char* image, int length):
 	if (cell.loaded): return cell_fail(cell, c"cell already loaded")
 	if (length < 64): return cell_fail(cell, c"truncated ELF header")
@@ -11,6 +47,8 @@ int cell_elf_load(vm_cell* cell, char* image, int length):
 	if (load_int16(image + 16) != 2 || load_int16(image + 18) != 62 || load_int32(image + 20) != 1):
 		return cell_fail(cell, c"requires a static x64 ET_EXEC image")
 	if (load_int16(image + 52) != 64 || load_int16(image + 54) != 56): return cell_fail(cell, c"invalid ELF header sizes")
+	int abi = load_int32(image + 48)
+	if (abi != 0 && abi != 0x57564d02): return cell_fail(cell, c"unsupported ELF syscall ABI")
 	int phoff = load_int64(image + 32)
 	int count = load_int16(image + 56)
 	if (count == 0 || count > 128 || phoff < 64 || phoff > length): return cell_fail(cell, c"invalid program header table")
@@ -49,6 +87,10 @@ int cell_elf_load(vm_cell* cell, char* image, int length):
 			if (entry >= address && entry - address < memsz && (flags & 1)): executable_entry = 1
 			if (address + memsz > high): high = address + memsz
 	if (executable_entry == 0): return cell_fail(cell, c"entry is not in an executable segment")
+	int hypercall_note = -1
+	if (abi != 0):
+		hypercall_note = cell_elf_hypercall_note(image, length, phoff, count)
+		if (hypercall_note < 0): return cell_fail(cell, c"invalid native hypercall metadata")
 	cell_page_tables(cell)
 	for i in range(count):
 		char* ph = image + phoff + i * 56
@@ -66,6 +108,11 @@ int cell_elf_load(vm_cell* cell, char* image, int length):
 	cell.heap_start = cell_page_end(high)
 	cell.heap_end = cell.heap_start
 	cell.loaded = 1
+	cell.syscall_abi = abi != 0
+	cell.hypercall_count = 0
+	if (hypercall_note >= 0):
+		cell.hypercall_count = load_int32(image + hypercall_note + 20)
+		for i in range(cell.hypercall_count): cell_hypercall_site_set(&cell.hypercall_sites, i, load_int64(image + hypercall_note + 24 + i * 8))
 	return 1
 
 
@@ -75,7 +122,7 @@ int cell_stack(vm_cell* cell, int argc, char** argv):
 	if (cell.loaded == 0 || cell.started): return cell_fail(cell, c"stack setup requires a loaded, unstarted cell")
 	if (argc < 1 || argc > 256): return cell_fail(cell, c"too many guest arguments")
 	int sp = CELL_STACK_TOP
-	int* pointers = malloc(argc * 8)
+	int* pointers = cast(int*, malloc(argc * 8))
 	for i in range(argc):
 		int size = strlen(argv[i]) + 1
 		if (size > 65536 || sp - CELL_STACK_LOW < size + 4096):

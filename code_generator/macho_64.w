@@ -95,9 +95,9 @@ int macho_text_limit
 # Size both buffers for up to cap bytes of symbol names (the caller
 # passes the whole symbol table's size, which bounds both).
 void macho_symbols_begin(int cap):
-	macho_sym_buf = malloc(cap)
+	macho_sym_buf = cast(char*, malloc(cap))
 	macho_sym_count = 0
-	macho_str_buf = malloc(cap + 8)
+	macho_str_buf = cast(char*, malloc(cap + 8))
 	macho_str_buf[0] = 0
 	macho_str_size = 1
 
@@ -439,7 +439,7 @@ void macho_finish_arm64():
 	# Assemble the hashed file image contiguously (code buffer, then the
 	# separate data buffer, then the bind stream, then alignment zeros) and
 	# hash it into the CodeDirectory.
-	char* img = malloc(code_limit)
+	char* img = cast(char*, malloc(code_limit))
 	for p in range(text_size): img[p] = code[p]
 	for di in range(data_size_padded): img[text_size + di] = data[di]
 	for zi in range(linkedit_fileoff, code_limit): img[zi] = 0
@@ -458,7 +458,7 @@ void macho_finish_arm64():
 
 	# LC_UUID: the first 16 bytes of sha256 over the image with the UUID
 	# still zero, so identical inputs give identical UUIDs.
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(img, code_limit, digest)
 	for ui in range(16): img[macho_uuid_pos + ui] = digest[ui]
 	free(digest)

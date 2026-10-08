@@ -127,7 +127,7 @@ void test_sort_200k_ints():
 
 void test_split_1mb():
 	int n = 1 << 20
-	char* s = malloc(n + 1)
+	char* s = cast(char*, malloc(n + 1))
 	for i in range(n):
 		if (i % 8 == 7): s[i] = ','
 		else: s[i] = 'a' + i % 8
@@ -201,7 +201,7 @@ void test_hash_flood_djb2_collisions():
 	int bits = 17
 	int n = 1 << bits
 	map[char*, int] m = new map[char*, int]
-	char* key = malloc(2 * bits + 1)
+	char* key = cast(char*, malloc(2 * bits + 1))
 	key[2 * bits] = 0
 	for i in range(n):
 		for b in range(bits):

@@ -64,7 +64,7 @@ void no_gpu_path():
 	check(gpu_try_device_alloc(64) == 0, c"gpu_try_device_alloc with no device")
 	check(gpu_try_sync() != 0, c"gpu_try_sync with no device")
 	check(gpu_try_set_device(0) != 0, c"gpu_try_set_device(0) with no device")
-	char* host = malloc(8)
+	char* host = cast(char*, malloc(8))
 	check(gpu_try_memcpy_from(host, host, 8) != 0, c"gpu_try_memcpy_from with no device")
 	free(host)
 	print(c"cuda runtime: no-device error ")
@@ -108,7 +108,7 @@ void gpu_path(int count):
 	# The program continues: normal allocation, copies and launches.
 	char* ok_buf = gpu_try_device_alloc(4096)
 	check(ok_buf != 0, c"gpu_try_device_alloc(4096) after a failure")
-	char* host = malloc(4096)
+	char* host = cast(char*, malloc(4096))
 	save_i(host, 1234567, 8)
 	check(gpu_try_memcpy_to(ok_buf, host, 4096) == 0, c"gpu_try_memcpy_to")
 	save_i(host, 0, 8)

@@ -112,7 +112,7 @@ char* dag_hex_scratch
 # valid only until the next dag_hex_key call (the map clones it if it is
 # used to insert); never free() it and never hold onto it.
 char* dag_hex_key(char* id):
-	if (dag_hex_scratch == 0): dag_hex_scratch = malloc(DAG_ID_SIZE * 2 + 1)
+	if (dag_hex_scratch == 0): dag_hex_scratch = cast(char*, malloc(DAG_ID_SIZE * 2 + 1))
 	int i = 0
 	while (i < DAG_ID_SIZE):
 		hex_put_byte(&dag_hex_scratch[i * 2], id[i] & 255)
@@ -147,7 +147,7 @@ dag_node* dag_require_node(dag* d, char* id):
 int dag_add_node(dag* d, char* id, list[char*] parent_ids):
 	assert1(dag_find_node(d, id) == 0)
 	dag_node* node = new dag_node()
-	node.id = malloc(DAG_ID_SIZE)
+	node.id = cast(char*, malloc(DAG_ID_SIZE))
 	mem_copy(node.id, id, DAG_ID_SIZE)
 	node.parents = new list[dag_node*]
 	int max_parent_gen = -1
@@ -295,7 +295,7 @@ list[char*] dag_merge_base(dag* d, char* a_id, char* b_id):
 		return self_result
 
 	int n = dag_count(d)
-	int* flags = malloc(n * __word_size__)
+	int* flags = cast(int*, malloc(n * __word_size__))
 	mem_fill(flags, 0, n)
 
 	list[dag_node*] frontier = new list[dag_node*]

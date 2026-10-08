@@ -22,9 +22,9 @@ void x25519_test_check32(char* want_hex, char* got):
 
 # RFC 7748 section 5.2, first test vector.
 void test_rfc7748_vector1():
-	char* k = malloc(32)
-	char* u = malloc(32)
-	char* r = malloc(32)
+	char* k = cast(char*, malloc(32))
+	char* u = cast(char*, malloc(32))
+	char* r = cast(char*, malloc(32))
 	hex_decode_into(c"a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4", k, 32)
 	hex_decode_into(c"e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", u, 32)
 	assert_equal(0, x25519_scalarmult(r, k, u))
@@ -36,9 +36,9 @@ void test_rfc7748_vector1():
 
 # RFC 7748 section 5.2, second test vector.
 void test_rfc7748_vector2():
-	char* k = malloc(32)
-	char* u = malloc(32)
-	char* r = malloc(32)
+	char* k = cast(char*, malloc(32))
+	char* u = cast(char*, malloc(32))
+	char* r = cast(char*, malloc(32))
 	hex_decode_into(c"4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d", k, 32)
 	hex_decode_into(c"e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493", u, 32)
 	assert_equal(0, x25519_scalarmult(r, k, u))
@@ -51,9 +51,9 @@ void test_rfc7748_vector2():
 # RFC 7748 section 5.2 iterated test: start with k = u = the base point
 # encoding, then repeatedly (k, u) <- (X25519(k, u), k).
 void test_iterated(int iterations, char* want_hex):
-	char* k = malloc(32)
-	char* u = malloc(32)
-	char* r = malloc(32)
+	char* k = cast(char*, malloc(32))
+	char* u = cast(char*, malloc(32))
+	char* r = cast(char*, malloc(32))
 	hex_decode_into(c"0900000000000000000000000000000000000000000000000000000000000000", k, 32)
 	hex_decode_into(c"0900000000000000000000000000000000000000000000000000000000000000", u, 32)
 	for i in range(iterations):
@@ -70,12 +70,12 @@ void test_iterated(int iterations, char* want_hex):
 # RFC 7748 section 6.1: Alice/Bob public keys from the base point and the
 # shared secret from both sides.
 void test_dh_rfc7748():
-	char* alice_priv = malloc(32)
-	char* bob_priv = malloc(32)
-	char* alice_pub = malloc(32)
-	char* bob_pub = malloc(32)
-	char* shared_a = malloc(32)
-	char* shared_b = malloc(32)
+	char* alice_priv = cast(char*, malloc(32))
+	char* bob_priv = cast(char*, malloc(32))
+	char* alice_pub = cast(char*, malloc(32))
+	char* bob_pub = cast(char*, malloc(32))
+	char* shared_a = cast(char*, malloc(32))
+	char* shared_b = cast(char*, malloc(32))
 	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", alice_priv, 32)
 	hex_decode_into(c"5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", bob_priv, 32)
 
@@ -100,9 +100,9 @@ void test_dh_rfc7748():
 # The all-zero u-coordinate is a low-order point: X25519 with it yields
 # the all-zero shared secret, which x25519_scalarmult must reject.
 void test_low_order_rejection():
-	char* k = malloc(32)
-	char* u = malloc(32)
-	char* r = malloc(32)
+	char* k = cast(char*, malloc(32))
+	char* u = cast(char*, malloc(32))
+	char* r = cast(char*, malloc(32))
 	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", k, 32)
 	mem_fill(u, 0, 32)
 	assert_equal(0 - 1, x25519_scalarmult(r, k, u))
@@ -113,7 +113,7 @@ void test_low_order_rejection():
 
 
 void test_clamp():
-	char* k = malloc(32)
+	char* k = cast(char*, malloc(32))
 	mem_fill(k, 255, 32)
 	x25519_clamp(k)
 	assert_equal(248, k[0] & 255)

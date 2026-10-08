@@ -29,7 +29,7 @@ void hkdf_extract(int alg, char* salt, int salt_len, char* ikm, int ikm_len, cha
 		hmac_compute(alg, salt, salt_len, ikm, ikm_len, out_prk)
 		return
 	int ds = whash_digest_size(alg)
-	char* zeros = malloc(ds)
+	char* zeros = cast(char*, malloc(ds))
 	mem_fill(zeros, 0, ds)
 	hmac_compute(alg, zeros, ds, ikm, ikm_len, out_prk)
 	free(zeros)
@@ -44,8 +44,8 @@ int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char*
 	if ((okm_len < 0) || (okm_len > 255 * ds)): return 0
 	if (okm_len == 0): return 1
 	whmac* m = hmac_new(alg, prk, prk_len)
-	char* t = malloc(ds)
-	char* counter = malloc(1)
+	char* t = cast(char*, malloc(ds))
+	char* counter = cast(char*, malloc(1))
 	int produced = 0
 	int round = 1
 	while (produced < okm_len):
@@ -79,7 +79,7 @@ int tls13_hkdf_expand_label(int alg, char* secret, char* label, int label_len, c
 	char* prefix = c"tls13 "
 	int prefixed_len = label_len + 6
 	int info_len = 2 + 1 + prefixed_len + 1 + context_len
-	char* info = malloc(info_len)
+	char* info = cast(char*, malloc(info_len))
 	store_be16(info, out_len)
 	info[2] = prefixed_len
 	int pos = 3
@@ -112,7 +112,7 @@ int tls13_hkdf_expand_label(int alg, char* secret, char* label, int label_len, c
 # success, 0 on a bad label length.
 int tls13_derive_secret(int alg, char* secret, char* label, int label_len, char* messages, int messages_len, char* out):
 	int ds = whash_digest_size(alg)
-	char* transcript = malloc(ds)
+	char* transcript = cast(char*, malloc(ds))
 	whash_oneshot(alg, messages, messages_len, transcript)
 	int ok = tls13_hkdf_expand_label(alg, secret, label, label_len, transcript, ds, out, ds)
 	free(transcript)

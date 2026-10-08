@@ -47,7 +47,7 @@ void rc4_reset(rc4* r, char* key, int key_len):
 
 rc4* rc4_new(char* key, int key_len):
 	rc4* r = new rc4
-	r.s = malloc(256)
+	r.s = cast(char*, malloc(256))
 	rc4_reset(r, key, key_len)
 	return r
 

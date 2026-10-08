@@ -20,7 +20,7 @@ import lib.hex
 void cc_check_block(char* key_hex, char* nonce_hex, int counter, char* want_hex):
 	char* key = hex_bytes(key_hex)
 	char* nonce = hex_bytes(nonce_hex)
-	char* out = malloc(64)
+	char* out = cast(char*, malloc(64))
 	chacha20_block(key, counter, nonce, out)
 	char* got = hex_encode(out, 64)
 	assert_strings_equal(want_hex, got)
@@ -37,7 +37,7 @@ void cc_check_xor(char* key_hex, char* nonce_hex, int counter, char* pt_hex, cha
 	char* key = hex_bytes(key_hex)
 	char* nonce = hex_bytes(nonce_hex)
 	char* pt = hex_bytes(pt_hex)
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	chacha20_xor(key, counter, nonce, pt, n, out)
 	char* got = hex_encode(out, n)
 	assert_strings_equal(ct_hex, got)

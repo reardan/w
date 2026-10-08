@@ -5,7 +5,7 @@ import lib.sha256
 
 # Format a 32-byte digest as a 64-char lowercase hex string (malloc'd).
 char* sha256_hex(char* digest):
-	char* out = malloc(65)
+	char* out = cast(char*, malloc(65))
 	char* digits = c"0123456789abcdef"
 	for i in range(32):
 		int b = digest[i] & 255
@@ -16,7 +16,7 @@ char* sha256_hex(char* digest):
 
 
 char* hash_hex(char* data, int len):
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(data, len, digest)
 	return sha256_hex(digest)
 
@@ -37,7 +37,7 @@ int main(int argc, int argv):
 
 	# 1,000,000 'a' repeated — the classic long-message NIST vector.
 	int n = 1000000
-	char* big = malloc(n)
+	char* big = cast(char*, malloc(n))
 	for i in range(n): big[i] = 'a'
 	assert_strings_equal(c"cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", hash_hex(big, n))
 

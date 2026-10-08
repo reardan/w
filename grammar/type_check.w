@@ -1,6 +1,5 @@
-# Unsafe-conversion and control-flow checks (issue #532). Each finding
-# is an ordinary warning, so --strict (and the strict self-host stages)
-# turns every one of them into a build failure.
+# Unsafe-conversion and control-flow errors (issue #532).
+# All findings fail compilation, including without --strict.
 #
 # The grammar is single pass with no AST, so these checks see only what
 # the streaming parser knows at the moment it emits code:
@@ -93,6 +92,22 @@ void warning_at(char* message, int at_line_number, int at_diag_line, int at_diag
 	token = saved_token
 
 
+void type_error_at(char* message, int at_line_number, int at_diag_line, int at_diag_column, char* at_token):
+	int saved_line_number = line_number
+	int saved_diag_line = diag_token_line
+	int saved_diag_column = diag_token_column
+	char* saved_token = token
+	line_number = at_line_number
+	diag_token_line = at_diag_line
+	diag_token_column = at_diag_column
+	token = at_token
+	type_error(message)
+	line_number = saved_line_number
+	diag_token_line = saved_diag_line
+	diag_token_column = saved_diag_column
+	token = saved_token
+
+
 # 1 when the expression that just finished parsing ended with the noted
 # literal and nothing was emitted after it: the literal's own token was
 # the last one consumed. Integer operators type their result as the
@@ -143,7 +158,6 @@ void check_constant_narrowing(char* context, char* callee_name, int arg_index, i
 	if ((value >= low) && (value <= high)): return
 	int stored = value & high
 	if ((type_is_unsigned_fixed(want) == 0) && (stored > (high >> 1))): stored = stored - high - 1
-	diag_part(c"warning: ")
 	conversion_context(context, callee_name, arg_index)
 	diag_part(c" narrows constant ")
 	diag_part(itoa(value))
@@ -151,7 +165,7 @@ void check_constant_narrowing(char* context, char* callee_name, int arg_index, i
 	print_error_type(want)
 	diag_part(c"' (stored as ")
 	diag_part(itoa(stored))
-	warning_at(c"); use cast() if the truncation is intended", const_note_line_number, const_note_diag_line, const_note_diag_column, itoa(value))
+	type_error_at(c"); use cast() if the truncation is intended", const_note_line_number, const_note_diag_line, const_note_diag_column, itoa(value))
 
 
 # An integer stored into an enum without cast(): docs/projects/
@@ -174,7 +188,6 @@ void check_enum_conversion(char* context, char* callee_name, int arg_index, int 
 		if (type_num_args(got_real) > 0): return
 		if (type_float_kind(got_real) != 0): return
 		if (type_is_var(got_real) || type_is_string(got_real)): return
-	diag_part(c"warning: ")
 	conversion_context(context, callee_name, arg_index)
 	diag_part(c" converts '")
 	if (got_real == 3): diag_part(itoa(const_note_value))
@@ -183,16 +196,12 @@ void check_enum_conversion(char* context, char* callee_name, int arg_index, int 
 	print_error_type(want)
 	diag_part(c"' implicitly; use cast(")
 	print_error_type(want)
-	if (got_real == 3): warning_at(c", ...)", const_note_line_number, const_note_diag_line, const_note_diag_column, itoa(const_note_value))
-	else: warning(c", ...)")
+	if (got_real == 3): type_error_at(c", ...)", const_note_line_number, const_note_diag_line, const_note_diag_column, itoa(const_note_value))
+	else: type_error(c", ...)")
 
 
-# void* (or void**, ...) converted to a typed pointer of the same depth
-# without cast(). An opt-in lint rule ('check --lint',
-# [void-pointer-conversion]) rather than an always-on warning: as in C,
-# 'T* p = malloc(n)' is the idiom across the whole tree.
+# Recovering a typed pointer from an erased pointer requires cast().
 void check_void_pointer_conversion(char* context, char* callee_name, int arg_index, int want, int got):
-	if (lint_mode == 0): return
 	want = type_unqualified(want)
 	got = type_unqualified(got)
 	if ((want < 0) || (got < 0)): return
@@ -201,16 +210,12 @@ void check_void_pointer_conversion(char* context, char* callee_name, int arg_ind
 	if (type_is_gpu_pointer(want) || type_is_gpu_pointer(got)): return
 	if (strcmp(type_get_name(got), c"void") != 0): return
 	if (strcmp(type_get_name(want), c"void") == 0): return
-	if (lint_file_active() == 0): return
-	if (lint_begin(diag_token_line, diag_token_column, c"void-pointer-conversion")):
-		diag_part(c"warning: ")
-		conversion_context(context, callee_name, arg_index)
-		diag_part(c" converts '")
-		print_error_type(got)
-		diag_part(c"' to '")
-		print_error_type(want)
-		warning(c"' without cast() [void-pointer-conversion]")
-		lint_end()
+	conversion_context(context, callee_name, arg_index)
+	diag_part(c" converts '")
+	print_error_type(got)
+	diag_part(c"' to '")
+	print_error_type(want)
+	type_error(c"' without cast() [void-pointer-conversion]")
 
 
 # Whether check_value_conversion can report want <- got for some value:
@@ -221,7 +226,6 @@ int conversion_check_relevant(int want, int got):
 	if (type_get_pointer_level(w) == 0):
 		if (type_get_kind(w) == type_kind_enum): return 1
 		if ((got == 3) && ((type_get_size(w) == 1) || (type_get_size(w) == 2))): return 1
-	if (lint_mode == 0): return 0
 	int g = type_unqualified(got)
 	return (g >= 0) && (type_get_pointer_level(g) > 0)
 
@@ -239,33 +243,22 @@ void check_value_conversion(char* context, char* callee_name, int arg_index, int
 void check_void_return(int declared_type, int got, int at_line_number, int at_diag_line, int at_diag_column):
 	if (type_unqualified(declared_type) != 0): return
 	if (type_unqualified(got) == 0): return
-	if (at_diag_line == 0): warning(c"warning: return with a value in a void function")
-	else: warning_at(c"warning: return with a value in a void function", at_line_number, at_diag_line, at_diag_column, c"return")
+	if (at_diag_line == 0): type_error(c"return with a value in a void function")
+	else: type_error_at(c"return with a value in a void function", at_line_number, at_diag_line, at_diag_column, c"return")
 
 
-# A call through a value that is not a function or a typed function
-# pointer: 'int x = 5; x(3)' jumps to address 5. Only integer-typed
-# callees are flagged; untyped words (the constant pseudo-type, e.g.
-# 'cast(int, f)(x)' results) and pointers keep working. An opt-in lint
-# rule ('check --lint', [call-int]) rather than an always-on warning:
-# an int holding a function address is the established spelling for
-# callbacks whose signature varies (structures/w_list.w's map/filter/
-# reduce, lib/memory.w's allocator hooks), and the pinned seed compiles
-# the runtime those idioms live in.
+# Calling an integer requires an explicit cast to a function pointer.
 void check_untyped_callee(int type):
 	if (type == 4): return
 	int t = type_unqualified(type)
-	if ((t < 0) || (t == 3) || (t == 4)): return
+	if ((t < 0) || (t == 4)): return
 	if (type_get_pointer_level(t) != 0): return
 	if (type_num_args(t) > 0): return
 	if (type_float_kind(t) != 0): return
 	if (type_is_function_signature(t)): return
-	if (lint_file_active() == 0): return
-	if (lint_begin(diag_token_line, diag_token_column, c"call-int")):
-		diag_part(c"warning: called object of type '")
-		print_error_type(t)
-		warning(c"' is not a function; declare it as a function pointer ('type callback = fn(int) -> int', then 'callback* f') [call-int]")
-		lint_end()
+	diag_part(c"called object of type '")
+	print_error_type(t)
+	type_error(c"' is not a function; declare it as a function pointer ('type callback = fn(int) -> int', then 'callback* f') [call-int]")
 
 
 # --- control flow -----------------------------------------------------
@@ -379,6 +372,6 @@ void check_missing_return(int declared, char* name, int line, int column):
 	declared = type_unqualified(declared)
 	if (declared == 0): return
 	if ((declared == 3) || (declared == 4)): return
-	diag_part(c"warning: function '")
+	diag_part(c"function '")
 	diag_part(name)
-	warning_at(c"' can reach the end of its body without returning a value", line - 1, line, column, name)
+	type_error_at(c"' can reach the end of its body without returning a value", line - 1, line, column, name)

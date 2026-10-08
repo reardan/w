@@ -165,7 +165,7 @@ void repl_register_call_site(char* name, int slot, int kind):
 		int cap = repl_sites_capacity * 2
 		if (cap == 0):
 			cap = 128
-			repl_sites = malloc(cap * 3 * __word_size__)
+			repl_sites = cast(char*, malloc(cap * 3 * __word_size__))
 		else:
 			repl_sites = realloc(repl_sites, repl_sites_capacity * 3 * __word_size__, cap * 3 * __word_size__)
 		repl_sites_capacity = cap
@@ -185,7 +185,7 @@ void repl_queue_late_bind(char* name, int address):
 		int cap = repl_sites_pending_capacity * 2
 		if (cap == 0):
 			cap = 8
-			repl_sites_pending = malloc(cap * 2 * __word_size__)
+			repl_sites_pending = cast(char*, malloc(cap * 2 * __word_size__))
 		else:
 			repl_sites_pending = realloc(repl_sites_pending, repl_sites_pending_capacity * 2 * __word_size__, cap * 2 * __word_size__)
 		repl_sites_pending_capacity = cap
@@ -507,7 +507,7 @@ void repl_state_restore(repl_state* st):
 	# statement's walk record open; its node was just retracted, so the
 	# record and its phases go back to the walk pools here rather than at
 	# the next walked statement.
-	if (retained_nodes != 0): retained_walk_release()
+	if (retained_walks != 0): retained_walk_release()
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -598,6 +598,9 @@ int repl_reset_to_genesis():
 
 # Compile the staged entry file. Returns the address of the entry's
 # anonymous function, or 0 when the entry failed to compile.
+type __repl_bind_hook_callback = fn() -> void
+
+
 int repl_compile_entry(char* path):
 	# Checkpoint everything a failed compile could leave half-updated
 	repl_checkpoint()
@@ -655,7 +658,7 @@ int repl_compile_entry(char* path):
 	number_of_args = 0
 	defer_reset()
 	repl_result_type = -1
-	if (repl_bind_hook != 0): repl_bind_hook()
+	if (repl_bind_hook != 0): (cast(__repl_bind_hook_callback*, repl_bind_hook))()
 
 	while (token[0] != 0): repl_entry_item(entry_symbol)
 
@@ -764,7 +767,7 @@ int repl_fault_emit_handler_thunk(int handler):
 # sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
 void repl_fault_install(int signum, int handler, int flags):
-	if (repl_fault_act == 0): repl_fault_act = malloc(5 * __word_size__)
+	if (repl_fault_act == 0): repl_fault_act = cast(int*, malloc(5 * __word_size__))
 	int* act = repl_fault_act
 	if (__word_size__ == 8):
 		repl_fault_thunk_init()
@@ -806,7 +809,7 @@ void repl_fault_restore_default(int signum):
 # main) still symbolize. Silent no-op when the image has no symbols.
 void repl_fault_trace(int context):
 	if (st_state == 0): st_init(cast(int, repl_fault_install))
-	char* pcs = malloc(64 * __word_size__)
+	char* pcs = cast(char*, malloc(64 * __word_size__))
 	int n = st_scan(ctx_esp(context), pcs, 64, 0)
 	if (n == 0):
 		free(pcs)
@@ -878,7 +881,7 @@ int repl_nest_size():
 
 
 char* repl_nest_save():
-	char* s = malloc(repl_nest_size())
+	char* s = cast(char*, malloc(repl_nest_size()))
 	# The outer checkpoint stays put; the nested call checkpoints into its own
 	save_word(s + 0 * __word_size__, cast(int, repl_saved))
 	repl_saved = new repl_state
@@ -1001,22 +1004,40 @@ void repl_stage_init():
 # AST front-end modes for the in-process compilers (repl.w's main and
 # wdbg_main), from the same flags the compiler driver takes and through the
 # driver's own link_option, so --ast-emit-retained implies --ast-retain and
-# full-expression mode exactly as it does for a compile. A flag only raises
-# a mode: whatever compiler/compiler.w makes the default stays on. Call
-# after args_init and before the first compile.
-void repl_ast_option(char* name):
-	if (args_has_bool_flag(name) == 0): return;
+# full-expression mode exactly as it does for a compile. As in link_impl
+# (P1.4, S2.5), the AST front end with retained emission is the default
+# (so --ast-retain and --ast-emit-retained change nothing) and --streaming
+# opts out of all three; with --streaming, --ast-expressions is the grouped
+# scalar mode and an AST-only flag is the driver's streaming_conflict_error.
+# Call after args_init and before the first compile.
+# Returns 1 when the flag was given (and applied).
+int repl_ast_option(char* name):
+	if (args_has_bool_flag(name) == 0): return 0
 	char* spelled = cstr(f"--{name}")
 	link_option(spelled, 1)
 	free(spelled)
+	return 1
 
 
 void repl_ast_options():
+	ast_expressions_mode = 2
+	# S2.5: the retained forest and emission from it are the default too.
+	ast_retain_mode = 1
+	ast_emit_retained_mode = 1
+	# P1.2b: no semantic snapshot records unless --ast-retain asks.
+	retained_semantic_mode = 0
+	int streaming = args_has_bool_flag(c"streaming")
+	if (streaming):
+		ast_expressions_mode = 0
+		ast_retain_mode = 0
+		ast_emit_retained_mode = 0
 	repl_ast_option(c"ast-expressions")
-	repl_ast_option(c"ast-full-expressions")
-	repl_ast_option(c"ast-retain")
-	repl_ast_option(c"ast-required")
-	repl_ast_option(c"ast-emit-retained")
+	char* ast_only_flag = 0
+	if (repl_ast_option(c"ast-full-expressions")): ast_only_flag = c"--ast-full-expressions"
+	if (repl_ast_option(c"ast-retain")): ast_only_flag = c"--ast-retain"
+	if (repl_ast_option(c"ast-required")): ast_only_flag = c"--ast-required"
+	if (repl_ast_option(c"ast-emit-retained")): ast_only_flag = c"--ast-emit-retained"
+	if (streaming && (ast_only_flag != 0)): streaming_conflict_error(ast_only_flag)
 
 
 # Initialize the session: the compiler configured for in-process
@@ -1036,12 +1057,13 @@ void repl_inprocess_setup():
 	if (word_size == 8): word_size_log2 = 3
 	push_basic_types()
 	pointer_indirection = 0
-	last_identifier = malloc(8000)
-	last_global_declaration = malloc(8000)
+	last_identifier = cast(char*, malloc(8000))
+	last_global_declaration = cast(char*, malloc(8000))
 
 	# code_offset makes every embedded address point into this mapping,
-	# so no relocation is needed. The codegen embeds addresses as 32-bit
-	# immediates, so on x64 the buffer must sit in the low 2GB:
+	# so no relocation is needed. x64 address slots are RIP-relative,
+	# but compiler symbol/chain tables still store 32-bit virtual addresses:
+	# keep the JIT arena (and its data) in the low 2GB with
 	# MAP_32BIT (0x40).
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
@@ -1128,6 +1150,9 @@ int repl_session_function(char* name):
 # undefined prototype's address slot holds its backpatch chain, not an
 # entry point. Returns 1 when main ran, 0 otherwise. Afterwards every
 # function and global from the file is live for later entries.
+type __target_main_callback = fn(int, char**) -> int
+
+
 int repl_load_file(char* path, int run_main, int argc, int argv):
 	repl_note_loaded_file(path)
 	# Late binding (#114): register the file's call sites too, so
@@ -1143,7 +1168,7 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	int main_symbol = sym_lookup(c"main")
 	if (main_symbol >= 0):
 		if (table[main_symbol + 1] == 'D'):
-			int target_main = load_int(table + main_symbol + 2)
+			__target_main_callback* target_main = cast(__target_main_callback*, load_int(table + main_symbol + 2))
 			target_main(argc - 1, argv + __word_size__)
 			return 1
 	return 0
@@ -1158,6 +1183,12 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 # On a fault the handler long-jumps back here and the entry rolls back
 # exactly like a compile error; the staged file is already closed, so
 # only the compiler state restores.
+type __address_callback = fn() -> int
+
+
+type __repl_echo_hook_callback = fn(int, int) -> void
+
+
 repl_result repl_eval(char* entry_text):
 	repl_result r
 	r.status = 0
@@ -1198,9 +1229,9 @@ repl_result repl_eval(char* entry_text):
 		r.status = 2
 		repl_nest_restore(nest)
 		return r
-	r.value = address()
+	r.value = (cast(__address_callback*, address))()
 	r.echo_type = repl_result_type
-	if (repl_echo_hook != 0): repl_echo_hook(r.value, repl_result_type)
+	if (repl_echo_hook != 0): (cast(__repl_echo_hook_callback*, repl_echo_hook))(r.value, repl_result_type)
 	repl_fault_active = 0
 	# Late binding (#114): the entry compiled and ran to completion, so
 	# its function definitions are permanent -- rewrite every older call

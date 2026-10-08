@@ -567,7 +567,7 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 	char* buf
 	if (existing != 0): buf = cast(char*, existing)
 	else:
-		buf = malloc(nested.struct_size)
+		buf = cast(char*, malloc(nested.struct_size))
 		mem_fill(buf, 0, nested.struct_size)
 		# Attach before decoding: if the nested decode fails midway,
 		# the partially-filled submessage stays reachable from the
@@ -704,7 +704,7 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		if ((length - n) < mlen):
 			return PB_ERR_LENGTH_OVERRUN
 		if (depth >= PB_MAX_DECODE_DEPTH): return PB_ERR_DEPTH_EXCEEDED()
-		char* buf = malloc(nested.struct_size)
+		char* buf = cast(char*, malloc(nested.struct_size))
 		mem_fill(buf, 0, nested.struct_size)
 		int code = pb_decode_into_depth(nested, data + n, mlen, buf, depth + 1)
 		if (code != 0):
@@ -862,7 +862,7 @@ void pb_bytes_free(pb_bytes* b):
 # proto_descriptor(T))). Free it with pb_free_message once the fields
 # point only at heap memory it owns, or with free() otherwise.
 char* pb_message_new(pb_message_desc* desc):
-	char* out = malloc(desc.struct_size)
+	char* out = cast(char*, malloc(desc.struct_size))
 	mem_fill(out, 0, desc.struct_size)
 	return out
 

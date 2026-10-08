@@ -52,7 +52,7 @@ char* pu_run(char* path, char** argv, char** env, int* status, char** stderr_out
 	asserts(c"spawn failed", child != 0)
 	string_builder* err = string_new()
 	string_builder* text = string_new()
-	char* chunk = malloc(4096)
+	char* chunk = cast(char*, malloc(4096))
 	int n = read(child.stderr_fd, chunk, 4096)
 	while (n > 0):
 		string_append_bytes(err, chunk, n)
@@ -143,7 +143,7 @@ char* pu_read_bytes(char* path, int* size):
 	int fd = open(path, 0, 0)
 	asserts(c"cannot open binary", fd >= 0)
 	int capacity = 1 << 20
-	char* bytes = malloc(capacity)
+	char* bytes = cast(char*, malloc(capacity))
 	int length = 0
 	int n = read(fd, bytes, capacity)
 	while (n > 0):

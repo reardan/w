@@ -47,7 +47,7 @@ int main(int argc, int argv):
 		readlink_usage()
 		return 1
 	char* path = args_positional(0)
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int len = file_readlink(path, buf, 4096)
 	if (len < 0):
 		wstream* err_out = stderr_writer()

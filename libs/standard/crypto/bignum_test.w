@@ -26,7 +26,7 @@ int t_hex_to_bytes(char* h, char* out):
 
 
 bignum* t_from_hex(char* h):
-	char* buf = malloc(strlen(h) / 2 + 2)
+	char* buf = cast(char*, malloc(strlen(h) / 2 + 2))
 	int n = t_hex_to_bytes(h, buf)
 	bignum* x = bignum_new()
 	bignum_from_bytes(x, buf, n)
@@ -180,7 +180,7 @@ void test_modinv_group_order():
 void test_byte_roundtrip():
 	# 32-byte big-endian import/export must round-trip exactly, including the
 	# leading zero padding.
-	char* src = malloc(32)
+	char* src = cast(char*, malloc(32))
 	int i = 0
 	while (i < 32):
 		src[i] = (i * 7 + 3) & 255
@@ -188,7 +188,7 @@ void test_byte_roundtrip():
 	src[0] = 0    # force a leading zero to exercise left-padding on export
 	bignum* x = bignum_new()
 	bignum_from_bytes(x, src, 32)
-	char* out = malloc(32)
+	char* out = cast(char*, malloc(32))
 	bignum_to_bytes(x, out, 32)
 	i = 0
 	while (i < 32):

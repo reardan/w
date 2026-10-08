@@ -45,9 +45,10 @@ in an import line of its own; otherwise it is listed separately as
 an empty program already pulls in (the auto-imported runtime) are
 exempt: every program reaches them, harness or not.
 
-This is static reachability, not execution coverage: a covered module
-may still have functions no test calls. Line-level coverage needs the
-compiler's help and is deferred (docs/testing.md, "Coverage").
+The default report is static reachability, not execution coverage.
+For line execution coverage use --coverage when compiling, run with
+W_PROFILE_OUT=<dump>, then wcoverage lines <binary.wprofmap> <dump>.
+See docs/projects/line_coverage.md for grouping runs and file filters.
 
 Exit status: 0, or 2 on a usage error or an empty module set.
 */
@@ -58,6 +59,7 @@ import lib.file
 import lib.path
 import lib.process
 import lib.str
+import tools.wcoverage_lines
 
 
 char* wcov_compiler
@@ -114,7 +116,7 @@ void wcov_direct_imports(char* path, set[char*] out):
 char* wcov_read_fd(int fd):
 	int cap = 8192
 	int len = 0
-	char* buf = malloc(cap)
+	char* buf = cast(char*, malloc(cap))
 	while (1):
 		if (len + 4096 + 1 > cap):
 			buf = realloc(buf, cap, cap * 2)
@@ -208,6 +210,8 @@ void wcov_print_list(char* title, list[char*] paths, int total):
 
 int main(int argc, int argv):
 	args_init(argc, argv)
+	if (args_count() > 1):
+		if (strcmp(args_get(1), c"lines") == 0): return wcov_lines_main()
 	wcov_compiler = c"bin/wv2"
 	wcov_jobs = 4
 	int show_covered = 0

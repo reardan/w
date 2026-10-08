@@ -17,6 +17,13 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Compiler-directory test roots are silently replaced (2026-10-07).**
+  `w check --json compiler/type_table_test.w` checks `w.w`, so a clean
+  result missed an unsafe allocation in the standalone test. Exempt
+  standalone `*_test.w` roots from the compiler-internal root mapping,
+  or expose an explicit option to check the supplied root.
+
+
 - **`--json` codes, spans and related notes: what C3.2 left (2026-10-06).**
   Records now carry `code`, `end_line`, `end_column` and `related`
   (`docs/projects/lint.md` "JSON output"). Open: (a) related notes
@@ -65,17 +72,6 @@ is a queue, not an archive.
   but the diagnostic names the current closing token. Name the missing
   helper and its supplying import, or load that helper lazily. Observed
   in the streaming baseline while adding AST list-method coverage.
-
-- **Checks can race a compiler rebuild (2026-10-03).** A concurrent
-  `bin/wv2 check` or `wtest` dependency query keeps `bin/wv2` open, so
-  `wbuild` rebuilding it in place fails with `ETXTBSY`. This surfaced
-  when switching between the ordinary and AST audit manifests. Run these
-  operations sequentially for now; publishing the bootstrap output by
-  atomic rename, as the executor already does for itself, would remove
-  the race. The parallel AST audit suite also hit this entirely inside
-  the suite: `wexec_test`'s nested `bin/wexec hello` rebuilt the default
-  manifest's `wv2` while sibling targets were compiling with it. A serial
-  suite run avoids that internal race too.
 
 - **Nested array descriptors in arrays of structs (2026-10-03).** During
   AST differential testing, `struct R: int[3] items` followed by local
@@ -381,6 +377,19 @@ is a queue, not an archive.
   reproducible locally and gone on rerun — is still undiagnosed; if it
   recurs the new line will say what actually died and how.
 
+- **(2026-10-08) the fail-fast `wexec: failed: <target>` line is buried
+  under -j > 1.** On the first CI run of PR #588 the `tests` leg failed
+  with the reap-time line printed while a long target (the diff sweep)
+  was the oldest in flight, so the held output of every younger worker
+  (5000+ lines) was flushed after it and the last visible lines were
+  `wexec: stopped early after failure: 1 of 932 targets not attempted`.
+  The GitHub job-log API caps what it returns at the last few thousand
+  lines and the raw log download is blocked from cloud sessions, so the
+  failing target could not be named from the log at all. Fixed: the
+  fail-fast epilogue now repeats every `wexec: failed: <target> (exit
+  status N)` line just before the stopped-early count, so the tail of
+  any run names what failed. Covered by `wexec_keep_going_test`.
+
 - **(2026-08-07) `./wbuild -j 2 test_changed` fails with "unknown
   target test_changed".** The `test_changed` dispatcher in `wbuild`
   only matches `$1`, so leading flags fall through to wexec, which
@@ -680,6 +689,17 @@ is cheap and catches the case that bit here.
 release workflow's native darwin fixpoint of current sources, which should
 clear this. It has not yet been checked from a clean checkout on a Mac.
 
+**Native validation (2026-10-07, #591):** the SHA256-verified v0.3.0 seed
+compiled `c310878c` through native `wv2 -> wv3 -> wv4` with byte-identical
+`wv3`/`wv4` on an M3 Pro running macOS 26.3; 119 native smoke tests and
+dynamic linking passed. The old-seed failures below are historical, not a
+failure of the current pin. The full cold `wbuild` executor path still needs
+validation: this checkout's local seed differed from its pin and did not
+finish bootstrap during observation, so tests used an isolated pinned seed.
+The smoke target also depends on Linux `bin/wv2`; add a native compile/run
+target using `bin/wv2_darwin`, and document an isolated pinned-seed retry
+that preserves a local promotion. See [the Darwin VM plan](vms_darwin_plan.md).
+
 Both released darwin seeds miscompile current main: v0.1.0's
 `w_darwin` segfaults compiling `w.w` (first bad commit 2a9c034, July
 19), and v0.2.0's compiles it but writes a corrupt Mach-O magic, so
@@ -845,7 +865,11 @@ issues at once on a 4-CPU machine. Friction they reported:
 - **`ast_expression_suite` rebuilds `bin/wv2` while other targets in the
   same batch are running it,** which fails with ETXTBSY. Also,
   `bin/.wexec_lock` makes every other `./wbuild` call in that checkout
-  wait behind one slow target.
+  wait behind one slow target. The same executable-publication hazard
+  affects `bin/wtest`: running `wtest archs --check` alongside a build
+  that recompiles `tools/test_map.w` fails with ETXTBSY (2026-10-07,
+  #589). Run those checks sequentially until the `wtest` target also
+  publishes through a temporary file and rename.
 - **`./wbuild --help` is rejected** as "unknown target --help", and
   `--keep-going` is mentioned only in `tools/wexec.w` and in the
   comments of `wbuild`, never in CLAUDE.md or AGENTS.md. Without it,
@@ -888,6 +912,23 @@ issues at once on a 4-CPU machine. Friction they reported:
   - `hex_word` includes the `0x` prefix.
   - A crash-report frame at a function's first instruction is
     attributed to the last line of the previous file.
+
+## `bin/wrun wasm` under Node 22 (2026-10-06, AST plan P1.4)
+
+- **Node's WASI runner can crash the wasm self-host.** `verify_wasm` runs
+  `bin/wv2_wasm` through `bin/wrun wasm`, which falls back to
+  `node tools/run_wasm.mjs` when `wasmtime` is not on PATH. With the AST
+  front end as the default, Node 22.22 segfaulted mid-compile of `w.w`:
+  gdb shows a V8 garbage collection triggered by `uvwasi_fd_read`'s
+  external-memory accounting inside a fast API call, crashing while it
+  walks the wasm frames (`InnerPointerToCodeCache::GetCacheEntry`). The
+  same module reaches the fixpoint under wasmtime 25 and under
+  `node --no-turbo-fast-api-calls`, and the streaming front end happens
+  not to hit it. It still crashes after the #569 heap fix, so it is
+  Node's bug, not heap corruption. `tools/run_wasm.mjs` now sets
+  `--no-turbo-fast-api-calls` with `v8.setFlagsFromString` before
+  compiling the module. Still open: say in the `verify_wasm` output which
+  runner was used.
 
 ## Register promotion (2026-10-07, unit R2 of register_allocation_pgo.md)
 
@@ -1101,6 +1142,20 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   worktree-specific name (`wexec@lane-calls`) or document `setsid`
   for chained runs, and make `./wbuild` print "killed by signal N"
   for a stage that dies that way.
+
+## The optimizer pass slot (2026-10-07, AST plan C3.5)
+
+- **One bad directive hides every source-owned target.** A conventional
+  test given `# wbuild: data=...` (that key belongs to `target=`/`binary=`
+  targets; conventional ones spell run-time inputs `deps=`) made manifest
+  generation fail, and wexec fell back to `build.base.json`'s targets
+  only. `./wbuild manifest` then reported `tried to exec bin/wbuildgen,
+  which does not exist` and `./wbuild wbuildgen` reported `unknown
+  target`, because the tool targets are source-owned too. The real error
+  is printed once, above the fallback notice. Direction: have wexec
+  stop (or repeat the generation error at the end) when the requested
+  target is unknown only because generation failed, and accept `data=`
+  on conventional targets as a synonym, or name `deps=` in the error.
 
 
 ## Expression register stack (2026-10-07, codegen_gap_plan.md unit A3)

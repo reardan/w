@@ -247,7 +247,7 @@ void crash_report(int sig, int context):
 # The zeroed struct sigaction (SIG_DFL) the handlers restore first.
 void crash_dfl_act_ensure():
 	if (crash_dfl_act == 0):
-		crash_dfl_act = malloc(5 * __word_size__)
+		crash_dfl_act = cast(int*, malloc(5 * __word_size__))
 		for i in range(5): crash_dfl_act[i] = 0
 
 
@@ -481,7 +481,7 @@ void crash_install_darwin():
 		ss[2] = 0
 		if (sys_sigaltstack(cast(int, &ss[0]), 0) != 0): return;
 	else: return;
-	int* act = malloc(5 * __word_size__)
+	int* act = cast(int*, malloc(5 * __word_size__))
 	act[0] = cast(int, crash_report_darwin)
 	act[1] = 0x08000000 /* SA_ONSTACK */
 	act[2] = tramp
@@ -509,7 +509,7 @@ void crash_handler_install():
 	char* mode = env_get(c"W_CRASH_TRACE")
 	if (mode != 0):
 		if (strcmp(mode, c"0") == 0): return;
-	if (crash_pcs == 0): crash_pcs = malloc(crash_frames_max() * __word_size__)
+	if (crash_pcs == 0): crash_pcs = cast(char*, malloc(crash_frames_max() * __word_size__))
 	# Parse the image and warm every allocation the handler path needs
 	# (the mincore vector and the number-print scratch): the handler
 	# itself must not allocate, the heap may be corrupt by then.

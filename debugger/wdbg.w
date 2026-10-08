@@ -548,7 +548,7 @@ char* dbg_repl_line
 
 # Read one line into dbg_repl_line; returns its length or -1 on EOF/^C.
 int dbg_repl_read_line(char* prompt):
-	if (dbg_repl_line == 0): dbg_repl_line = malloc(4096)
+	if (dbg_repl_line == 0): dbg_repl_line = cast(char*, malloc(4096))
 	return line_edit_read(prompt, dbg_repl_line, 4096, 0)
 
 
@@ -669,7 +669,7 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 # Interactive command loop. Returning resumes the debuggee.
 void wdbg_command_loop(int context, int stop_addr):
 	dbg_frames_compute(context, stop_addr)
-	char* command = malloc(256)
+	char* command = cast(char*, malloc(256))
 	while (1):
 		int n = wdbg_read_command(command, 256)
 		if (n == -2):
@@ -683,7 +683,7 @@ void wdbg_command_loop(int context, int stop_addr):
 			if (dbg_last_command == 0): continue
 			strcpy(command, dbg_last_command)
 		else:
-			if (dbg_last_command == 0): dbg_last_command = malloc(256)
+			if (dbg_last_command == 0): dbg_last_command = cast(char*, malloc(256))
 			strcpy(dbg_last_command, command)
 
 		char* arg = dbg_split_word(command)
@@ -1057,10 +1057,15 @@ void wdbg_fatal_entry(int sig):
 void wdbg_attach_compile(char* target):
 	int n = 4
 	if (__word_size__ == 8): n = 5
-	if (ast_expressions_mode): n = n + 1
+	# The AST front end is link_impl's default; only a streaming, retaining
+	# or required session needs flags (two for --streaming --ast-expressions).
+	if (ast_expressions_mode < 2): n = n + 1
+	if (ast_expressions_mode == 1): n = n + 1
+	if (ast_retain_mode): n = n + 1
 	if (ast_required_mode): n = n + 1
 	int with_inline = args_has_flag(c"inline")
 	if (with_inline): n = n + 1
+	if (args_has_bool_flag(c"pie")): n = n + 1
 	int argv = cast(int, malloc(n * __word_size__))
 	int idx = 0
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
@@ -1069,12 +1074,16 @@ void wdbg_attach_compile(char* target):
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"x64"))
 		idx = idx + 1
 	# The recompile must lower exactly as the binary's compile did, so
-	# the AST modes wdbg runs with are forwarded (--ast-emit-retained
-	# implies the retained forest and full-expression mode).
-	if (ast_expressions_mode):
-		char* ast_flag = c"--ast-expressions"
-		if (ast_expressions_mode >= 2): ast_flag = c"--ast-full-expressions"
-		if (ast_retain_mode): ast_flag = c"--ast-retain"
+	# the AST modes wdbg runs with are forwarded. Full-expression mode is
+	# the driver's default; --ast-emit-retained implies the retained forest.
+	if (ast_expressions_mode < 2):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--streaming"))
+		idx = idx + 1
+	if (ast_expressions_mode == 1):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--ast-expressions"))
+		idx = idx + 1
+	if (ast_retain_mode):
+		char* ast_flag = c"--ast-retain"
 		if (ast_emit_retained_mode): ast_flag = c"--ast-emit-retained"
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, ast_flag))
 		idx = idx + 1
@@ -1086,6 +1095,9 @@ void wdbg_attach_compile(char* target):
 	# call, as the default build did.
 	if (with_inline):
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--inline"))
+		idx = idx + 1
+	if (args_has_bool_flag(c"pie")):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--pie"))
 		idx = idx + 1
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, target))
 	idx = idx + 1
@@ -1130,7 +1142,7 @@ int wdbg_main(int argc, int argv):
 		exit(wdbg_attach_run(attach_pid, 0))
 
 	if (target == 0):
-		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--ast-expressions] [--ast-emit-retained]")
+		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--streaming] [--ast-emit-retained]")
 		println2(c"   or: wdbg [--inline] --attach <pid> [file.w]")
 		exit(1)
 

@@ -11,7 +11,7 @@ int framing_test_pair(int* fds):
 
 
 void test_write_then_read_one_message():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	char* body = c"{\x22jsonrpc\x22:\x222.0\x22}"
@@ -39,7 +39,7 @@ void test_write_then_read_one_message():
 
 
 void test_two_messages_in_one_read():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	char* wire = c"Content-Length: 5\x0d\x0a\x0d\x0ahelloContent-Length: 5\x0d\x0a\x0d\x0aworld"
@@ -64,7 +64,7 @@ void test_two_messages_in_one_read():
 
 
 void test_message_split_across_writes():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	# Split mid-header and mid-body.
@@ -89,7 +89,7 @@ void test_message_split_across_writes():
 
 
 void test_extra_headers_and_case_insensitive_name():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	char* wire = c"Content-Type: application/json\x0d\x0aCONTENT-LENGTH: 2\x0d\x0a\x0d\x0aok"
@@ -109,7 +109,7 @@ void test_extra_headers_and_case_insensitive_name():
 
 
 void test_missing_content_length_sets_error():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	char* wire = c"Content-Type: application/json\x0d\x0a\x0d\x0abody"
@@ -128,7 +128,7 @@ void test_missing_content_length_sets_error():
 
 
 void test_truncated_body_sets_error():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	char* wire = c"Content-Length: 10\x0d\x0a\x0d\x0ashort"
@@ -147,12 +147,12 @@ void test_truncated_body_sets_error():
 
 
 void test_large_message_grows_buffer():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	# Larger than the initial 1024-byte reader buffer.
 	int body_length = 3000
-	char* body = malloc(body_length + 1)
+	char* body = cast(char*, malloc(body_length + 1))
 	for i in range(body_length): body[i] = 'a' + (i % 26)
 	body[body_length] = 0
 
@@ -176,7 +176,7 @@ void test_large_message_grows_buffer():
 # Writes wire to a fresh socket pair, closes the writer, and reads one
 # message with r configured by max_body (0 = default). Returns r.error.
 int framing_test_read_error(char* wire, int wire_len, int max_body):
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 	assert_equal(wire_len, write_all(fds[0], wire, wire_len))
 	close(fds[0])
@@ -198,7 +198,7 @@ void test_content_length_over_cap_is_rejected():
 	assert_equal(frame_error_too_large, framing_test_read_error(wire, strlen(wire), 100))
 
 	# Exactly the cap is fine.
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 	char* ok = c"Content-Length: 5\x0d\x0a\x0d\x0ahello"
 	assert_equal(strlen(ok), write_all(fds[0], ok, strlen(ok)))
@@ -226,7 +226,7 @@ void test_content_length_digit_overflow_is_rejected():
 	char* wire64 = c"Content-Length: 18446744073709551621\x0d\x0a\x0d\x0ahello"
 	assert_equal(frame_error_too_large, framing_test_read_error(wire64, strlen(wire64), 0))
 	char* zeros = c"Content-Length: 0000000000000000000000000000005\x0d\x0a\x0d\x0ahello"
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 	assert_equal(strlen(zeros), write_all(fds[0], zeros, strlen(zeros)))
 	close(fds[0])
@@ -244,7 +244,7 @@ void test_unterminated_header_flood_is_rejected():
 	# 20 KB of header lines with no blank terminator line: the reader
 	# must give up at max_header_bytes rather than buffer forever.
 	int n = 20000
-	char* wire = malloc(n)
+	char* wire = cast(char*, malloc(n))
 	for i in range(n): wire[i] = 'a'
 	int i = 0
 	while (i + 11 < n):
@@ -255,11 +255,11 @@ void test_unterminated_header_flood_is_rejected():
 
 
 void test_read_exact_and_write_all():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	framing_test_pair(fds)
 
 	assert_equal(4, write_all(fds[0], c"abcd", 4))
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	assert_equal(4, read_exact(fds[1], buf, 4))
 	buf[4] = 0
 	assert_strings_equal(c"abcd", buf)

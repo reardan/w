@@ -65,7 +65,7 @@ wcas* vtt_open():
 # A syntactically valid 64-hex id built from one hex digit, for tree
 # entries whose children never need to exist in the store.
 char* vtt_fake_id(int digit):
-	char* id = malloc(65)
+	char* id = cast(char*, malloc(65))
 	for i in range(64): id[i] = digit
 	id[64] = 0
 	return id

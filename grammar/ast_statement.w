@@ -245,6 +245,9 @@ void ast_statement_guard(int target, int outer_condition, int on_true):
 	expression_lhs_readonly = 0
 	expression_ast tree
 	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	# C3.5: the optimizer pass reads the condition before the walk emits
+	# any of the arm (compiler/ast_opt.w, --ast-opt).
+	if (control != 0): ast_opt_guard(control, &tree, root)
 	if (walk >= 0): retained_walks[walk].statement = &node
 	if (root < 0):
 		# The streaming grammar emits as it parses: the header's
@@ -482,6 +485,9 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 	if (walk >= 0): retained_walk_phase(walk, ast_walk_if_then_end)
 	else: emit_if_ast_then_end(&node)
 	if (peek(c"elif") && (tab_level == if_tab_level)):
+		if (coverage_generate_mode):
+			if (walk >= 0): retained_walk_drain(walk)
+			profile_coverage_line()
 		get_token()
 		stmt_nesting_depth = stmt_nesting_depth + 1
 		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")

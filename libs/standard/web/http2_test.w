@@ -80,7 +80,7 @@ void h2t_send_data(int fd, int stream, char* text, int flags):
 
 
 char* h2t_setting(int id, int value):
-	char* p = malloc(6)
+	char* p = cast(char*, malloc(6))
 	p[0] = 0
 	p[1] = id
 	store_be32(p + 2, value)
@@ -220,7 +220,7 @@ void test_h2_w_client_and_server():
 
 	# 200 KB each way: several windows' worth in both directions.
 	int big = 204800
-	char* body = malloc(big)
+	char* body = cast(char*, malloc(big))
 	int i = 0
 	while (i < big):
 		body[i] = 'a' + (i % 26)
@@ -326,7 +326,7 @@ void test_h2_receive_window_violation():
 		h2t_expect(fd, h2_frame_headers, &f, 10)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", 0)
-		char* big = malloc(150)
+		char* big = cast(char*, malloc(150))
 		mem_fill(big, 'z', 150)
 		h2_raw_write_frame(fd, h2_frame_data, 0, 1, big, 150)
 		h2t_expect(fd, h2_frame_rst_stream, &f, 11)
@@ -429,7 +429,7 @@ void h2t_expect_goaway_child(int listener, int kind, int want_code):
 		h2_raw_write_frame(fd, h2_frame_push_promise, h2_flag_end_headers, 1, c"\x00\x00\x00\x02\x82", 5)
 	else if (kind == 2):
 		# A frame above the 16384-byte SETTINGS_MAX_FRAME_SIZE.
-		char* big = malloc(16385)
+		char* big = cast(char*, malloc(16385))
 		mem_fill(big, 0, 16385)
 		h2_raw_write_frame(fd, h2_frame_data, 0, 1, big, 16385)
 	else if (kind == 3):

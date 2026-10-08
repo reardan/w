@@ -26,13 +26,32 @@ int vm_cgroup_number(vm_cgroup* group, char* name, int value):
 	return ok
 
 
-void vm_cgroup_free(vm_cgroup* group):
-	if (group == 0): return
+# Process enumeration can become empty before the kernel releases all task
+# references. Retry only transient removal errors, without killing workers
+# or deleting descendants. A permanently populated group must still fail.
+int vm_cgroup_remove(char* path, int timeout_ms):
+	if (path == 0 || timeout_ms < 0 || timeout_ms > 10000): return 0
+	int deadline = process_monotonic_ms() + timeout_ms
+	while (1):
+		int status = syscall(84, cast(int, path), 0, 0)
+		if (status == 0 || status == -2): return 1
+		if (status != -16 && status != -4): return 0
+		int remaining = deadline - process_monotonic_ms()
+		if (remaining <= 0): return 0
+		if (remaining > 10): remaining = 10
+		process_sleep_ms(remaining)
+	return 0
+
+
+int vm_cgroup_free(vm_cgroup* group):
+	if (group == 0): return 1
 	if (group.fd >= 0): close(group.fd)
+	int ok = 1
 	if (group.path != 0):
-		syscall(84, cast(int, group.path), 0, 0)
+		ok = vm_cgroup_remove(group.path, 5000)
 		free(group.path)
 	free(group)
+	return ok
 
 
 vm_cgroup* vm_cgroup_new(char* parent, int cpu_percent, int memory_mb, int pids):

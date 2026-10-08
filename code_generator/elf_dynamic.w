@@ -54,6 +54,7 @@ void elf_dyn_entry(int tag, int val):
 
 
 void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int align):
+	index = index + elf_pie
 	int vaddr = code_offset + off
 	if (word_size == 8):
 		int base = phdr_table_pos + index * 56
@@ -79,6 +80,7 @@ void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int a
 
 void elf_emit_dynamic():
 	if (dyn_has_imports() == 0): return;
+	if (x64_syscall_abi): error(c"--syscall-abi=vmcall does not support dynamic imports")
 	if (dyn_lib_count == 0): error(c"extern used without any c_lib to import from")
 
 	int nsym = dyn_import_count + 1   /* index 0 is the reserved null symbol */
@@ -92,8 +94,8 @@ void elf_emit_dynamic():
 	int interp_size = codepos - interp_off
 
 	# ---- .dynstr (string offsets recorded for DT_NEEDED and st_name) ----
-	char* lib_str_off = malloc(dyn_lib_count * 4 + 4)
-	char* imp_str_off = malloc(dyn_import_count * 4 + 4)
+	char* lib_str_off = cast(char*, malloc(dyn_lib_count * 4 + 4))
+	char* imp_str_off = cast(char*, malloc(dyn_import_count * 4 + 4))
 	int dynstr_off = codepos
 	emit_int8(0)   /* index 0 = the empty string */
 	i = 0
@@ -172,6 +174,14 @@ void elf_emit_dynamic():
 			emit_int32(got)
 			emit_int32((symidx << 8) + rel_type)
 		i = i + 1
+	# PIE data pointers: ld.so adds the load bias exactly once.
+	if (elf_pie):
+		for r in range(rebase_count):
+			int cell = load_i(rebase_table + r * 8, 8)
+			emit_int64(cell)
+			emit_int32(8) /* R_X86_64_RELATIVE */
+			emit_int32(0)
+			emit_int64(load_i(data + cell - data_offset, 8))
 	int rel_size = codepos - rel_off
 
 	# ---- .dynamic ----
@@ -194,20 +204,22 @@ void elf_emit_dynamic():
 		elf_dyn_entry(17, code_offset + rel_off)  /* DT_REL */
 		elf_dyn_entry(18, rel_size)               /* DT_RELSZ */
 		elf_dyn_entry(19, 8)                       /* DT_RELENT */
+	if (elf_pie): elf_dyn_entry(1879048187, 134217728) /* DT_FLAGS_1: DF_1_PIE */
 	elf_dyn_entry(0, 0)                            /* DT_NULL */
 	int dynamic_size = codepos - dynamic_off
 
 	free(lib_str_off)
 	free(imp_str_off)
 
-	# Fill the reserved program headers (PT_INTERP = R, PT_DYNAMIC = R+W).
+	# Fill the reserved program headers (both read-only). The loader
+	# uses PT_DYNAMIC flags to decide whether it may adjust d_ptr in place.
 	# A W^X writer (data_split) uses phdr slot 1 for its R+W data load
 	# (patched after this runs), so its reserved slots are 2 and 3; a
 	# single-segment image keeps slots 1 and 2.
 	int interp_slot = 1
 	if (data_split): interp_slot = 2
 	elf_dyn_patch_phdr(interp_slot, 3, 4, interp_off, interp_size, 1)
-	elf_dyn_patch_phdr(interp_slot + 1, 2, 6, dynamic_off, dynamic_size, 8)
+	elf_dyn_patch_phdr(interp_slot + 1, 2, 4, dynamic_off, dynamic_size, 8)
 
 	# A dynamically linked program shares the address space with glibc,
 	# whose sbrk caches the break position and never rechecks it, so a raw

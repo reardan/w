@@ -150,7 +150,7 @@ void test_mem_budget_shared_by_arenas():
 int arena_test_rss_pages():
 	int fd = open(c"/proc/self/statm", 0, 0)
 	if (fd < 0): return -1
-	char* buf = malloc(128)
+	char* buf = cast(char*, malloc(128))
 	int n = read(fd, buf, 127)
 	close(fd)
 	if (n <= 0):

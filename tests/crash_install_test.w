@@ -32,7 +32,7 @@ int main(int argc, int argv):
 	assert_equal(499500, total)
 
 	# The shared symbolization machinery still resolves this call chain
-	ci_frames = malloc(8 * __word_size__)
+	ci_frames = cast(char*, malloc(8 * __word_size__))
 	ci_collect()
 	asserts(c"collected at least two frames", ci_count >= 2)
 	assert_strings_equal(c"ci_collect", stack_trace_symbol(load_word(ci_frames)))

@@ -17,7 +17,7 @@
 # one in a 'for' header belongs to the loop statement's node.
 int ast_declaration_walk_begin(statement_ast* node):
 	if ((ast_emit_retained_mode == 0) || (retained_parent < 0)): return -1
-	if (retained_nodes[retained_parent].start != node.start_offset): return -1
+	if (retained_record_at(retained_parent).start != node.start_offset): return -1
 	return retained_walk_begin(cast(int, emit_declaration_ast_walk), node)
 
 

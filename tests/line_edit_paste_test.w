@@ -172,7 +172,7 @@ void test_text_equals_is_byte_exact():
 
 
 void test_paste_consume_preserves_non_marker_escape_content():
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	le_set_line(buf, 64, c"")
 	le_seed_len = 0
 	le_paste_active = 0
@@ -189,7 +189,7 @@ void test_paste_consume_preserves_non_marker_escape_content():
 
 
 void test_paste_consume_crlf_ends_one_line_without_a_blank_accept():
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	le_set_line(buf, 64, c"")
 	le_seed_len = 0
 	letest_preload(c"hi\x0d\x0a\x1b[201~")
@@ -209,7 +209,7 @@ void test_paste_consume_crlf_ends_one_line_without_a_blank_accept():
 
 
 void test_paste_consume_drops_only_the_untouched_seed():
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	# The auto-indent seed, untouched: dropped so it does not double up
 	# with the pasted text's own indentation.
 	le_set_line(buf, 64, c"\x09")
@@ -238,7 +238,7 @@ void test_paste_consume_drops_only_the_untouched_seed():
 
 void test_finish_line_skips_history_while_paste_is_open():
 	le_history_count = 0
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	# A mid-paste line fragment (the paste is still open): no history.
 	le_set_line(buf, 64, c"pasted fragment")
 	le_paste_active = 1
@@ -285,7 +285,7 @@ int letest_single_hook(char* prefix, char* out, int capacity):
 
 
 void test_completion_grows_past_64_candidates():
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	le_set_line(buf, 256, c"prefix_")
 	le_complete_hook = cast(int, letest_complete_hook)
 	letest_hook_calls = 0
@@ -305,7 +305,7 @@ void test_completion_grows_past_64_candidates():
 
 
 void test_completion_single_candidate_still_completes_outright():
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	le_set_line(buf, 256, c"prefix_")
 	le_complete_hook = cast(int, letest_single_hook)
 	int r = le_try_complete(buf, 256)
@@ -319,7 +319,7 @@ void test_completion_single_candidate_still_completes_outright():
 void test_search_step_pushes_back_the_search_ending_key():
 	le_history_count = 0
 	le_history_add(c"int alpha = 1")
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	le_set_line(buf, 64, c"")
 	le_search_begin(buf)
 	# Ctrl-T has no search meaning: it ends the search and must be
@@ -335,7 +335,7 @@ void test_search_step_pushes_back_the_search_ending_key():
 
 
 void test_paste_finish_renders_the_pasted_line():
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	le_set_line(buf, 64, c"")
 	le_seed_len = 0
 	le_paste_active = 0
@@ -369,7 +369,7 @@ void test_paste_finish_renders_the_pasted_line():
 void test_search_step_esc_sequence_ends_search_and_redelivers_it():
 	le_history_count = 0
 	le_history_add(c"int alpha = 1")
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	le_set_line(buf, 64, c"")
 	le_search_begin(buf)
 	assert_equal(0, le_search_match)
@@ -394,7 +394,7 @@ void test_search_step_esc_sequence_ends_search_and_redelivers_it():
 void test_search_step_lone_esc_still_cancels():
 	le_history_count = 0
 	le_history_add(c"int alpha = 1")
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	le_set_line(buf, 64, c"typed")
 	le_search_begin(buf)
 	# ESC followed by ordinary typed input: a lone-ESC cancel. The byte

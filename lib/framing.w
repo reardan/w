@@ -73,7 +73,7 @@ frame_reader* frame_reader_new(int fd):
 	frame_reader* r = new frame_reader()
 	r.fd = fd
 	r.capacity = 1024
-	r.buffer = malloc(r.capacity)
+	r.buffer = cast(char*, malloc(r.capacity))
 	r.length = 0
 	r.offset = 0
 	r.error = 0

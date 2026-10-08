@@ -79,7 +79,7 @@ char* import_resolve_arch(char* path):
 				# Room for the original path plus the inserted "/<arch>" and
 				# the terminator; the allocation is sized from strlen(arch),
 				# so longer values ("arm64_darwin") are covered.
-				char* result = malloc(strlen(path) + strlen(arch) + 2)
+				char* result = cast(char*, malloc(strlen(path) + strlen(arch) + 2))
 				int j = 0
 				while (j < i + 8):
 					result[j] = path[j]
@@ -104,7 +104,7 @@ int import_lookup(char* path):
 
 void import_register(char* path):
 	int max_imports = 1000
-	if (imported_paths == 0): imported_paths = malloc(max_imports * __word_size__)
+	if (imported_paths == 0): imported_paths = cast(char*, malloc(max_imports * __word_size__))
 	assert1(imported_count < max_imports)
 	save_ptr(imported_paths + imported_count * __word_size__, cast(int, path))
 	imported_count = imported_count + 1
@@ -134,8 +134,8 @@ int import_alias_lookup(char* name):
 void import_alias_register(char* name, char* path):
 	int max_aliases = 1000
 	if (import_alias_names == 0):
-		import_alias_names = malloc(max_aliases * __word_size__)
-		import_alias_paths = malloc(max_aliases * __word_size__)
+		import_alias_names = cast(char*, malloc(max_aliases * __word_size__))
+		import_alias_paths = cast(char*, malloc(max_aliases * __word_size__))
 	assert1(import_alias_count < max_aliases)
 	if (import_alias_lookup(name) >= 0): error3(c"duplicate import alias: '", name, c"'")
 	save_ptr(import_alias_names + import_alias_count * __word_size__, cast(int, name))
@@ -145,7 +145,7 @@ void import_alias_register(char* name, char* path):
 
 void import_plain_register(char* path):
 	int max_imports = 1000
-	if (import_plain_paths == 0): import_plain_paths = malloc(max_imports * __word_size__)
+	if (import_plain_paths == 0): import_plain_paths = cast(char*, malloc(max_imports * __word_size__))
 	assert1(import_plain_count < max_imports)
 	save_ptr(import_plain_paths + import_plain_count * __word_size__, cast(int, path))
 	import_plain_count = import_plain_count + 1
@@ -245,8 +245,8 @@ int import_transitive_already_warned(int file_index, char* name):
 void import_transitive_mark_warned(int file_index, char* name):
 	int max_warned = 4000
 	if (import_transitive_warned_files == 0):
-		import_transitive_warned_files = malloc(max_warned * 4)
-		import_transitive_warned_names = malloc(max_warned * __word_size__)
+		import_transitive_warned_files = cast(char*, malloc(max_warned * 4))
+		import_transitive_warned_names = cast(char*, malloc(max_warned * __word_size__))
 	assert1(import_transitive_warned_count < max_warned)
 	save_int(import_transitive_warned_files + import_transitive_warned_count * 4, file_index)
 	save_ptr(import_transitive_warned_names + import_transitive_warned_count * __word_size__, cast(int, strclone(name)))
@@ -573,7 +573,7 @@ int import_statement():
 
 		char* resolved = import_resolve(token)
 		int retained_id = -1
-		if (ast_retain_mode): retained_id = retained_nodes.length
+		if (ast_retain_mode): retained_id = retained_node_count()
 		retained_import_note(token, resolved, alias, retained_start, byte_offset - 1, retained_line, retained_column)
 		if (alias == 0): import_lint_duplicate(resolved, token)
 
@@ -582,7 +582,7 @@ int import_statement():
 		if (retained_id >= 0):
 			for i in range(retained_sources.length):
 				char* key = retained_sources[i].import_key
-				if ((key != 0) && (strcmp(key, resolved) == 0)): retained_nodes[retained_id].import_source = i
+				if ((key != 0) && (strcmp(key, resolved) == 0)): retained_record_at(retained_id).import_source = i
 		if (alias != 0): import_alias_register(alias, resolved)
 		else: import_plain_register(resolved)
 		get_token()

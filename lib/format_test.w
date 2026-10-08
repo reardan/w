@@ -25,7 +25,7 @@ void test_vfprintf_to_file():
 	/* O_WRONLY|O_CREAT|O_TRUNC */
 	int fd = open(path, 577, 493)
 	asserts(c"could not create temp file", fd >= 0)
-	int* args = malloc(3 * __word_size__)
+	int* args = cast(int*, malloc(3 * __word_size__))
 	args[0] = 42
 	args[1] = cast(int, c"abc")
 	args[2] = 'z'
@@ -34,7 +34,7 @@ void test_vfprintf_to_file():
 	close(fd)
 
 	fd = open(path, 0, 0)
-	char* buf = malloc(100)
+	char* buf = cast(char*, malloc(100))
 	int n = read(fd, buf, 99)
 	buf[n] = 0
 	close(fd)
@@ -45,14 +45,14 @@ void test_vfprintf_to_file():
 void test_hex_verb():
 	char* path = fmt_test_path()
 	int fd = open(path, 577, 493)
-	int* args = malloc(__word_size__)
+	int* args = cast(int*, malloc(__word_size__))
 	args[0] = 255
 	vfprintf(fd, c"%x", args, 1)
 	free(args)
 	close(fd)
 
 	fd = open(path, 0, 0)
-	char* buf = malloc(100)
+	char* buf = cast(char*, malloc(100))
 	int n = read(fd, buf, 99)
 	buf[n] = 0
 	close(fd)

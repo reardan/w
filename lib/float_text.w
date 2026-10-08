@@ -65,7 +65,7 @@ struct ftx_decimal:
 
 ftx_decimal* ftx_new():
 	ftx_decimal* a = new ftx_decimal()
-	a.d = malloc(ftx_capacity() + 1)
+	a.d = cast(char*, malloc(ftx_capacity() + 1))
 	a.nd = 0
 	a.dp = 0
 	a.trunc = 0
@@ -84,7 +84,7 @@ void ftx_trim(ftx_decimal* a):
 
 # a = v for 0 <= v (a word-sized integer).
 void ftx_assign(ftx_decimal* a, int v):
-	char* buf = malloc(24)
+	char* buf = cast(char*, malloc(24))
 	int n = 0
 	while (v > 0):
 		int v1 = v / 10
@@ -625,10 +625,10 @@ char* ftx_special_text(int bits, int width):
 # same bits back. Returns a malloc'd string.
 char* float_text_shortest(int bits, int width):
 	if (float_text_is_special(bits, width)): return ftx_special_text(bits, width)
-	char* digits = malloc(24)
+	char* digits = cast(char*, malloc(24))
 	int e = 0
 	int n = float_text_shortest_digits(bits, width, digits, &e)
-	char* s = malloc(n + 32)
+	char* s = cast(char*, malloc(n + 32))
 	int pos = 0
 	if (ftx_sign_of(bits, width)):
 		s[pos] = '-'
@@ -712,7 +712,7 @@ char* float_text_fixed(int bits, int width, int precision):
 	ftx_round(d, d.dp + precision)
 	int whole = d.dp
 	if (whole < 1): whole = 1
-	char* s = malloc(whole + precision + 4)
+	char* s = cast(char*, malloc(whole + precision + 4))
 	int pos = 0
 	if (ftx_sign_of(bits, width)):
 		s[pos] = '-'

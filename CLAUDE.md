@@ -65,7 +65,16 @@ Mac it bootstraps a native Mach-O executor from `./w_darwin`; only the
 darwin targets run here — everything else needs Linux.
 
 Compile and run one program: `./bin/wv2 file.w -o out && ./out`
-(insert `x64` before the file for 64-bit).
+(insert `x64` before the file for 64-bit). The AST front end is the
+default; `--streaming` selects the older streaming front end (same image;
+kept as a comparison oracle until it is retired), and `--ast-required`
+additionally rejects any expression fallback (`./wbuild ast_expression_suite`
+runs the whole suite that way; it is not in `tests`). The pinned seed
+predates the flip, so `./w w.w` (the bin/wv2 stage) still compiles
+streaming; bin/wv2 onward compiles AST. On x86/x64, register promotion of
+hot locals is on by default under either front end (`--no-regs`/`-O0`
+turns it off) and `--profile-use=profiles/<name>.wprof` applies a committed
+profile (docs/projects/register_allocation_pgo.md).
 
 **Run a single/focused test**: `git diff --name-only HEAD | ./bin/wtest changed`
 prints the exact build targets for your diff (build wtest with `./wbuild wtest`);
@@ -111,9 +120,13 @@ imports them needs one `./wbuild` first.
 
 ## Architecture
 
-- **Single-pass, no AST, no IR** (cc500 heritage): grammar rules in
+- **Single-pass, no module AST, no IR** (cc500 heritage): grammar rules in
   `grammar/*.w` fuse parsing and code emission, writing machine-code bytes
   through `code_generator/x86.w` (x64 reuses it via REX-prefix helpers).
+  By default each root is parsed into a temporary AST (`grammar/ast_*.w`)
+  and lowered immediately; the streaming rules (`--streaming`) mirror them,
+  so a language change is still made in both until the streaming grammar
+  is retired (docs/projects/ast_completion_plan.md P1.5).
   Language-behavior changes live in `grammar/`; instruction encoding, ELF
   layout (elf_32/elf_64/elf_dynamic), DWARF, and FFI shims live in
   `code_generator/`. `compiler/` holds the driver, tokenizer, symbol and

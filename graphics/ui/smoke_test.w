@@ -29,7 +29,7 @@ int ui_smoke_failures
 # Red channel at UI pixel x,y (grayscale theme: one channel is
 # enough); flips y for glReadPixels' bottom-origin.
 int ui_smoke_pixel(int x, int y):
-	char* pixel = malloc(4)
+	char* pixel = cast(char*, malloc(4))
 	glReadPixels(x, 240 - 1 - y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel)
 	int value = pixel[0] & 255
 	free(pixel)

@@ -76,7 +76,7 @@ void analysis_restore(analysis_state* state):
 	# start from a fresh buffer of the recorded size.
 	int length = strlen(state.token)
 	if (token_size <= length + 1): token_size = (length + 10) << 1
-	token = malloc(token_size)
+	token = cast(char*, malloc(token_size))
 	strcpy(token, state.token)
 	token_i = state.token_i
 	pointer_indirection = state.pointer_indirection

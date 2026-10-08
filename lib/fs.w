@@ -273,7 +273,7 @@ char* fs_replace_temp_path(char* path, int pid, int sequence):
 	char* pid_text = itoa(pid)
 	char* sequence_text = itoa(sequence)
 	int length = strlen(path) + 5 + strlen(pid_text) + 1 + strlen(sequence_text)
-	char* result = malloc(length + 1)
+	char* result = cast(char*, malloc(length + 1))
 	char* cur = strcpy(result, path)
 	cur = strcpy(cur, c".tmp.")
 	cur = strcpy(cur, pid_text)

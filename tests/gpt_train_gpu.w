@@ -183,7 +183,7 @@ int load_corpus(char* path):
 	if (in == cast(wstream*, 0)): return 0
 	# tiny-shakespeare is ~1.1MB; read in one gulp with slack.
 	int cap = 2 * 1024 * 1024
-	char* raw = malloc(cap)
+	char* raw = cast(char*, malloc(cap))
 	int n = stream_read(in, raw, cap)
 	stream_close(in)
 	if (n <= 0): return 0
@@ -309,7 +309,7 @@ int main():
 			ctx[have] = best
 			have = have + 1
 			ag_tape_reset(t)
-		char* sample = malloc(sample_len + 2)
+		char* sample = cast(char*, malloc(sample_len + 2))
 		i = 1
 		while (i <= sample_len):
 			sample[i - 1] = id_to_char[ctx[i]]

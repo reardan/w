@@ -21,7 +21,7 @@ int ref_k1():
 
 
 int ref_hash(int n):
-	char* msg = malloc(16)
+	char* msg = cast(char*, malloc(16))
 	for i in range(n): msg[i] = i
 	int h = bytes_hash_seeded(ref_k0(), ref_k1(), msg, n)
 	free(msg)
@@ -90,7 +90,7 @@ void test_embedded_nul_keys_are_distinct():
 
 void test_keys_are_copied():
 	byte_map* m = byte_map_new(1, 2)
-	char* key = malloc(4)
+	char* key = cast(char*, malloc(4))
 	key[0] = 'k'
 	key[1] = 0
 	key[2] = 'z'
@@ -139,7 +139,7 @@ void test_limits():
 
 
 void fill(byte_map* m, int n):
-	char* key = malloc(4)
+	char* key = cast(char*, malloc(4))
 	for i in range(n):
 		store_be32(key, i * 7919)
 		assert_equal(BYTES_OK, byte_map_put(m, key, 4, i))
@@ -151,7 +151,7 @@ void test_growth_and_lookup():
 	fill(m, 2000)
 	assert_equal(2000, byte_map_count(m))
 	assert1(m.bucket_count >= 2000)
-	char* key = malloc(4)
+	char* key = cast(char*, malloc(4))
 	int v = 0
 	for i in range(2000):
 		store_be32(key, i * 7919)
@@ -209,13 +209,13 @@ void test_sorted_large_and_empty():
 
 
 void test_random_seeded_map():
-	char* seed = malloc(8)
+	char* seed = cast(char*, malloc(8))
 	assert_equal(1, random_bytes(seed, 8))
 	byte_map* m = byte_map_new(load_le32(seed), load_le32(seed + 4))
 	free(seed)
 	fill(m, 50)
 	int v = 0
-	char* key = malloc(4)
+	char* key = cast(char*, malloc(4))
 	store_be32(key, 49 * 7919)
 	assert_equal(1, byte_map_get(m, key, 4, &v))
 	assert_equal(49, v)

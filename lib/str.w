@@ -8,7 +8,7 @@ import lib.lib
 # 0 <= start <= end <= strlen(s): no strlen, so a caller cutting many
 # pieces out of one string (split) stays linear (issue #528).
 char* str_copy_range(char* s, int start, int end):
-	char* result = malloc(end - start + 1)
+	char* result = cast(char*, malloc(end - start + 1))
 	int i = 0
 	while (start + i < end):
 		result[i] = s[start + i]
@@ -104,7 +104,7 @@ char* replace(char* s, char* needle, char* replacement):
 			matches = matches + 1
 			i = i + needle_length
 		else: i = i + 1
-	char* result = malloc(strlen(s) + matches * (replacement_length - needle_length) + 1)
+	char* result = cast(char*, malloc(strlen(s) + matches * (replacement_length - needle_length) + 1))
 	int out = 0
 	i = 0
 	while (s[i] != 0):
@@ -172,7 +172,7 @@ char* join(list[char*] pieces, char* delimiter):
 		total = total + strlen(pieces[i])
 		if (i > 0): total = total + delimiter_length
 		i = i + 1
-	char* result = malloc(total)
+	char* result = cast(char*, malloc(total))
 	int out = 0
 	i = 0
 	while (i < pieces.length):

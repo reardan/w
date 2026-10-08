@@ -1,4 +1,5 @@
-# Every construct below compiles but triggers exactly one warning.
+# expect_fail
+# Every construct below triggers a warning or an integer-to-pointer error.
 # The warning_test build target compiles this file with bin/wfixture,
 # which asserts each expected message below appears on stderr. The file
 # also intentionally ends without a trailing newline to trigger the
@@ -9,10 +10,10 @@
 # expect_stderr: warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int*'
 # expect_stderr: warning: return type mismatch: expected 'char*', got 'int*'
 # expect_stderr: warning: assignment type mismatch: expected 'pair', got 'single'
-# expect_stderr: warning: assignment type mismatch: expected 'char*', got 'int'
+# expect_stderr: error: assignment type mismatch: expected 'char*', got 'int'
 # expect_stderr: warning: assignment type mismatch: expected 'int', got 'char*'
-# expect_stderr: warning: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int'
-# expect_stderr: warning: return type mismatch: expected 'char*', got 'int'
+# expect_stderr: error: function 'takes_char_ptr' argument 1 type mismatch: expected 'char*', got 'int'
+# expect_stderr: error: return type mismatch: expected 'char*', got 'int'
 # expect_stderr: warning: initialization type mismatch: expected 'char*', got 'function'
 # expect_stderr: warning: assignment type mismatch: expected 'int', got 'function'
 # expect_stderr: warning: line indented with spaces instead of tabs
@@ -35,7 +36,7 @@ char* takes_char_ptr(char* s):
 
 void assignment_base_mismatch():
 	char* cp = c"x"
-	int* ip = malloc(4)
+	int* ip = cast(int*, malloc(4))
 	cp = ip
 
 
@@ -51,12 +52,12 @@ void initialization_mismatch():
 
 
 void argument_mismatch():
-	int* ip = malloc(4)
+	int* ip = cast(int*, malloc(4))
 	takes_char_ptr(ip)
 
 
 char* return_mismatch():
-	int* ip = malloc(4)
+	int* ip = cast(int*, malloc(4))
 	return ip
 
 

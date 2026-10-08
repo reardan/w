@@ -58,7 +58,7 @@ int alpnt_exit_code(int status):
 # handshake succeeded AND its own negotiated protocol equals expect (0 on a
 # failed handshake). *out_status gets the child's wait status.
 int alpnt_loopback(char* server_protos, int required, char* client_protos, char* expect, int* out_status):
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socketpair", socket_pair(fds) >= 0)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
@@ -72,7 +72,7 @@ int alpnt_loopback(char* server_protos, int required, char* client_protos, char*
 		tls_conn* s = tls_accept(fds[1], scfg)
 		if (s == 0): exit(3)
 		if (alpnt_same(tls_alpn_selected(s), expect) == 0): exit(4)
-		char* buf = malloc(64)
+		char* buf = cast(char*, malloc(64))
 		if (tls_write(s, c"ok", 2) != 2): exit(5)
 		if (tls_read(s, buf, 64) != 0): exit(5)
 		tls_close(s)
@@ -85,7 +85,7 @@ int alpnt_loopback(char* server_protos, int required, char* client_protos, char*
 	int result = 0
 	tls_conn* c = tls_connect(fds[0], c"test.w.example", cfg)
 	if (c != 0):
-		char* buf = malloc(64)
+		char* buf = cast(char*, malloc(64))
 		int got = tls_read(c, buf, 64)
 		if ((got == 2) && (alpnt_same(tls_alpn_selected(c), expect) != 0)): result = 1
 		free(buf)
@@ -101,7 +101,7 @@ int alpnt_loopback(char* server_protos, int required, char* client_protos, char*
 
 # Wrap a handshake message in a TLS plaintext record (content type 22).
 char* alpnt_wrap_handshake(char* msg, int mlen, int* out_len):
-	char* rec = malloc(5 + mlen)
+	char* rec = cast(char*, malloc(5 + mlen))
 	rec[0] = 22
 	rec[1] = 3
 	rec[2] = 3
@@ -134,10 +134,10 @@ void alpnt_config_inmem_free(tls_server_config* scfg):
 # ClientHello message offering protos (0 = no ALPN extension), with the
 # key_share of client_priv. *out_len gets its length.
 char* alpnt_client_hello(char* client_priv, char* protos, int* out_len):
-	char* pub = malloc(32)
+	char* pub = cast(char*, malloc(32))
 	x25519_scalarmult_base(pub, client_priv)
-	char* rnd = malloc(32)
-	char* sid = malloc(32)
+	char* rnd = cast(char*, malloc(32))
+	char* sid = cast(char*, malloc(32))
 	alpnt_fill(rnd, 32, 0x11)
 	alpnt_fill(sid, 32, 0x40)
 	int alen = 0
@@ -175,9 +175,9 @@ char* alpnt_server_output(char* chrec, int chrec_len, char* server_protos, int r
 # client_protos (0 = none) but the same pinned ClientHello processes that
 # flight. Returns the client's tls_last_error (0 when it succeeded).
 char* alpnt_client_vs_flight(char* ch_protos, char* client_protos):
-	char* client_priv = malloc(32)
-	char* server_priv = malloc(32)
-	char* server_random = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
+	char* server_priv = cast(char*, malloc(32))
+	char* server_random = cast(char*, malloc(32))
 	alpnt_fill(client_priv, 32, 0x21)
 	alpnt_fill(server_priv, 32, 0x55)
 	alpnt_fill(server_random, 32, 0x66)
@@ -246,7 +246,7 @@ void test_alpn_encode():
 
 
 void test_alpn_client_hello_extension():
-	char* priv = malloc(32)
+	char* priv = cast(char*, malloc(32))
 	alpnt_fill(priv, 32, 0x21)
 	int plain_len = 0
 	char* plain = alpnt_client_hello(priv, 0, &plain_len)
@@ -314,9 +314,9 @@ void test_alpn_server_unconfigured_ignores_offer():
 
 
 void test_alpn_no_application_protocol_alert():
-	char* client_priv = malloc(32)
-	char* server_priv = malloc(32)
-	char* server_random = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
+	char* server_priv = cast(char*, malloc(32))
+	char* server_random = cast(char*, malloc(32))
 	alpnt_fill(client_priv, 32, 0x21)
 	alpnt_fill(server_priv, 32, 0x55)
 	alpnt_fill(server_random, 32, 0x66)
@@ -342,9 +342,9 @@ void test_alpn_no_application_protocol_alert():
 
 
 void test_alpn_malformed_client_list_is_decode_error():
-	char* client_priv = malloc(32)
-	char* server_priv = malloc(32)
-	char* server_random = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
+	char* server_priv = cast(char*, malloc(32))
+	char* server_random = cast(char*, malloc(32))
 	alpnt_fill(client_priv, 32, 0x21)
 	alpnt_fill(server_priv, 32, 0x55)
 	alpnt_fill(server_random, 32, 0x66)

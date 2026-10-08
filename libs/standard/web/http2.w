@@ -344,7 +344,7 @@ int h2_fd_read_exact(int fd, char* p, int n):
 # Serializes one frame (9-byte header + payload) into a malloc'd buffer
 # of 9 + len bytes.
 char* h2_frame_encode(int type, int flags, int stream_id, char* payload, int len):
-	char* buf = malloc(9 + len)
+	char* buf = cast(char*, malloc(9 + len))
 	store_be24(buf, len)
 	buf[3] = type
 	buf[4] = flags
@@ -361,7 +361,7 @@ int h2_raw_write_frame(int fd, int type, int flags, int stream_id, char* payload
 
 
 int h2_raw_read_frame(int fd, h2_frame* f):
-	char* head = malloc(9)
+	char* head = cast(char*, malloc(9))
 	if (h2_fd_read_exact(fd, head, 9) == 0):
 		free(head)
 		return 0
@@ -370,7 +370,7 @@ int h2_raw_read_frame(int fd, h2_frame* f):
 	f.flags = head[4] & 255
 	f.stream_id = h2_get_u31(head + 5)
 	free(head)
-	f.payload = malloc(f.length + 1)
+	f.payload = cast(char*, malloc(f.length + 1))
 	if (h2_fd_read_exact(fd, f.payload, f.length) == 0):
 		free(f.payload)
 		f.payload = 0
@@ -392,7 +392,7 @@ h2_conn* h2_conn_new(int fd, int is_server):
 	c.timeout_ms = 30000
 	c.deadline_ms = 0
 	c.rcap = 32768
-	c.rbuf = malloc(c.rcap)
+	c.rbuf = cast(char*, malloc(c.rcap))
 	c.rstart = 0
 	c.rend = 0
 	c.local_initial_window = h2_default_window
@@ -497,7 +497,7 @@ int h2_write_frame(h2_conn* c, int type, int flags, int stream_id, char* payload
 # The connection window is raised with a WINDOW_UPDATE right after.
 int h2_send_settings(h2_conn* c):
 	c.dec.max_list_size = c.local_max_header_list
-	char* p = malloc(24)
+	char* p = cast(char*, malloc(24))
 	p[0] = 0
 	p[1] = h2_settings_enable_push
 	store_be32(p + 2, 0)
@@ -519,7 +519,7 @@ int h2_send_settings(h2_conn* c):
 
 int h2_send_window_update(h2_conn* c, int stream_id, int inc):
 	if (inc <= 0): return 0
-	char* p = malloc(4)
+	char* p = cast(char*, malloc(4))
 	store_be32(p, inc)
 	int rc = h2_write_frame(c, h2_frame_window_update, 0, stream_id, p, 4)
 	free(p)
@@ -726,7 +726,7 @@ void h2_send_goaway(h2_conn* c, int code, char* debug):
 	c.goaway_sent = 1
 	int dlen = 0
 	if (debug != 0): dlen = strlen(debug)
-	char* p = malloc(8 + dlen)
+	char* p = cast(char*, malloc(8 + dlen))
 	store_be32(p, c.last_peer_stream_id)
 	store_be32(p + 4, code)
 	mem_copy(p + 8, debug, dlen)
@@ -752,7 +752,7 @@ h2_stream* h2_find_stream(h2_conn* c, int id):
 
 
 int h2_write_rst(h2_conn* c, int stream_id, int code):
-	char* p = malloc(4)
+	char* p = cast(char*, malloc(4))
 	store_be32(p, code)
 	int rc = h2_write_frame(c, h2_frame_rst_stream, 0, stream_id, p, 4)
 	free(p)
@@ -1360,7 +1360,7 @@ void h2_goaway(h2_conn* c, int code):
 
 # Sends a PING and pumps until its ACK. 0 on success.
 int h2_ping(h2_conn* c):
-	char* p = malloc(8)
+	char* p = cast(char*, malloc(8))
 	c.ping_sent = c.ping_sent + 1
 	store_be32(p, 0)
 	store_be32(p + 4, c.ping_sent)
@@ -1400,7 +1400,7 @@ void h2_close(h2_conn* c):
 
 char* h2_lower_copy(char* s):
 	int n = strlen(s)
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	for i in range(n + 1):
 		int ch = s[i] & 255
 		if ((ch >= 'A') && (ch <= 'Z')): ch = ch + 32

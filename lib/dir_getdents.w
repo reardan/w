@@ -20,7 +20,7 @@ int dir_getdents_read(char* path, list[char*] names, list[int] kinds, int open_f
 	int fd = open(path, open_flags, 0)
 	if (fd < 0): return -1
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int n = getdents(fd, buffer, buffer_size)
 	while (n > 0):
 		int off = 0

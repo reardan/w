@@ -4,6 +4,13 @@
 import { readFile } from 'node:fs/promises';
 import { WASI } from 'node:wasi';
 import { argv, exit } from 'node:process';
+import { setFlagsFromString } from 'node:v8';
+
+// Node 22's WASI fast API calls can run a garbage collection from inside
+// uvwasi_fd_read (external-memory accounting), which then crashes walking the
+// wasm frames. A large heap such as the self-hosted compiler's AST front end
+// hits it; turn the fast calls off before the module is compiled.
+setFlagsFromString('--no-turbo-fast-api-calls');
 
 const wasi = new WASI({
   version: 'preview1',

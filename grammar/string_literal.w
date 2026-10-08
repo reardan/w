@@ -270,6 +270,20 @@ void emit_utf8_string_descriptor(int i):
 	if (target_isa == 1):
 		arm64_emit_utf8_string_descriptor(i)
 		return
+	if ((word_size == 8) && data_split):
+		# A PIE cannot rebase pointer cells in RX text. Keep only the
+		# literal bytes there; put the descriptor in writable data.
+		emit_int8(233) /* jmp over bytes */
+		emit_int32(i + 1)
+		int data_address = code_offset + codepos
+		emit(i + 1, token)
+		int desc = emit_data_zeros(2 * word_size)
+		save_i(data + desc - data_offset, data_address, word_size)
+		save_i(data + desc - data_offset + word_size, i, word_size)
+		rebase_note(desc)
+		be_addr_slot_emit()
+		be_addr_slot_write(codepos - 4, desc)
+		return
 	int descriptor_size = 2 * word_size
 	call_relative32(descriptor_size + i + 1)
 	int data_address = code_offset + codepos + descriptor_size

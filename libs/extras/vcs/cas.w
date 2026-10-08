@@ -294,7 +294,7 @@ char* cas_id_from_header(string_builder* header, char* data, int length):
 	whash* h = whash_new(WHASH_SHA256)
 	whash_update(h, header.data, header.length)
 	whash_update(h, data, length)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	whash_final(h, digest)
 	whash_free(h)
 	char* id = cas_hex_encode(digest)
@@ -567,10 +567,10 @@ wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 	if (valid == 0): return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
 
 	wcas_object* o = new wcas_object
-	o.object_type = malloc(tag_len + 1)
+	o.object_type = cast(char*, malloc(tag_len + 1))
 	mem_copy(o.object_type, bytes, tag_len)
 	o.object_type[tag_len] = 0
-	o.data = malloc(declared + 1)
+	o.data = cast(char*, malloc(declared + 1))
 	mem_copy(o.data, bytes + i, declared)
 	o.data[declared] = 0
 	o.length = declared
@@ -664,7 +664,7 @@ int cas_verify(wcas* s, char* id):
 		logical = cas_inflate_stored(contents.data, contents.length)
 		string_free(contents)
 		if (logical == 0): return 0
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, logical.data, logical.length, digest)
 	char* actual = cas_hex_encode(digest)
 	free(digest)

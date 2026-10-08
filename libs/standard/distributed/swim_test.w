@@ -6,7 +6,7 @@ import libs.standard.distributed.swim
 # Drains every pending piggyback update so a test can observe only the
 # updates it creates afterward.
 void swim_test_drain(swim* s):
-	int* out = malloc(16 * __word_size__)
+	int* out = cast(int*, malloc(16 * __word_size__))
 	int got = swim_next_piggyback(s, 16, out)
 	while (got > 0): got = swim_next_piggyback(s, 16, out)
 	free(out)
@@ -90,7 +90,7 @@ void test_suspect_expires_to_dead_after_timeout():
 	swim_tick(s, 1500)
 	assert_equal(swim_dead, swim_state(s, 2))
 	# the death is a fresh pending update
-	int* out = malloc(4 * __word_size__)
+	int* out = cast(int*, malloc(4 * __word_size__))
 	assert_equal(1, swim_next_piggyback(s, 4, out))
 	assert_equal(2, out[0])
 	free(out)
@@ -156,7 +156,7 @@ void test_self_refutation_bumps_incarnation():
 	assert_equal(6, swim_on_suspect_msg(s, 1, 2, 300))
 	assert_equal(6, swim_self_incarnation(s))
 	# the refutation pends as an alive update about self
-	int* out = malloc(4 * __word_size__)
+	int* out = cast(int*, malloc(4 * __word_size__))
 	assert_equal(1, swim_next_piggyback(s, 4, out))
 	assert_equal(1, out[0])
 	free(out)
@@ -177,7 +177,7 @@ void test_dead_is_terminal():
 	# repeating dead changes nothing and pends nothing new
 	swim_test_drain(s)
 	swim_on_dead_msg(s, 2, 300)
-	int* out = malloc(2 * __word_size__)
+	int* out = cast(int*, malloc(2 * __word_size__))
 	assert_equal(0, swim_next_piggyback(s, 2, out))
 	free(out)
 	swim_free(s)
@@ -190,7 +190,7 @@ void test_unknown_member_joins_via_alive_gossip():
 	assert_equal(swim_alive, swim_state(s, 7))
 	assert_equal(3, swim_incarnation(s, 7))
 	# and the newcomer itself pends for dissemination
-	int* out = malloc(2 * __word_size__)
+	int* out = cast(int*, malloc(2 * __word_size__))
 	assert_equal(1, swim_next_piggyback(s, 2, out))
 	assert_equal(7, out[0])
 	free(out)
@@ -214,7 +214,7 @@ void test_ack_does_not_clear_suspicion():
 	# an ack from an alive member changes nothing and pends nothing
 	swim_on_ack(s, 2, 50)
 	assert_equal(swim_alive, swim_state(s, 2))
-	int* out = malloc(2 * __word_size__)
+	int* out = cast(int*, malloc(2 * __word_size__))
 	assert_equal(0, swim_next_piggyback(s, 2, out))
 	# an ack at the same incarnation leaves a suspect suspect: only the
 	# suspect bumping its own incarnation refutes (see swim.w header)
@@ -228,7 +228,7 @@ void test_ack_does_not_clear_suspicion():
 void test_piggyback_budget_exhausts():
 	swim* s = swim_new(1, 500, 3)
 	swim_join(s, 2, 0)
-	int* out = malloc(4 * __word_size__)
+	int* out = cast(int*, malloc(4 * __word_size__))
 	assert_equal(1, swim_next_piggyback(s, 4, out))
 	assert_equal(2, out[0])
 	assert_equal(1, swim_next_piggyback(s, 4, out))
@@ -244,7 +244,7 @@ void test_piggyback_prefers_freshest_update():
 	swim* s = swim_new(1, 500, 3)
 	swim_join(s, 2, 0)
 	swim_join(s, 3, 0)
-	int* out = malloc(4 * __word_size__)
+	int* out = cast(int*, malloc(4 * __word_size__))
 	# both pend at full budget 3; table order breaks the tie
 	assert_equal(2, swim_next_piggyback(s, 4, out))
 	assert_equal(2, out[0])
@@ -268,7 +268,7 @@ void test_piggyback_respects_max_cap():
 	swim_join(s, 2, 0)
 	swim_join(s, 3, 0)
 	swim_join(s, 4, 0)
-	int* out = malloc(8 * __word_size__)
+	int* out = cast(int*, malloc(8 * __word_size__))
 	assert_equal(2, swim_next_piggyback(s, 2, out))
 	assert_equal(2, out[0])
 	assert_equal(3, out[1])
@@ -289,7 +289,7 @@ void test_indirect_candidates_exclude_self_target_dead():
 	swim_join(s, 4, 0)
 	swim_join(s, 5, 0)
 	swim_on_dead_msg(s, 4, 10)
-	int* out = malloc(8 * __word_size__)
+	int* out = cast(int*, malloc(8 * __word_size__))
 	# helpers for target 2 exclude self(1), target(2), dead(4)
 	assert_equal(2, swim_indirect_candidates(s, 2, 8, out))
 	assert_equal(3, out[0])

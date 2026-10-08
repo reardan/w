@@ -118,7 +118,7 @@ void macho_build_signature(char* img, int code_limit, int text_size, char* ident
 
 	# Empty CSMAGIC_REQUIREMENTS SuperBlob (12 bytes); its SHA-256 fills
 	# special slot -2. Slot -1 (Info.plist) stays zero.
-	char* reqs = malloc(12)
+	char* reqs = cast(char*, malloc(12))
 	int z = 0
 	while (z < 12):
 		reqs[z] = 0
@@ -181,7 +181,7 @@ void macho_build_signature(char* img, int code_limit, int text_size, char* ident
 
 	# Special slots stored low-index-last: slot -2 (requirements hash),
 	# then slot -1 (absent Info.plist = zero). hashOffset points past them.
-	char* digest = malloc(hash_size)
+	char* digest = cast(char*, malloc(hash_size))
 	sha256(reqs, 12, digest)
 	macho_sig_bytes(digest, hash_size)   /* slot -2 */
 	z = 0

@@ -208,14 +208,24 @@ void gpu_host_access_check(int type):
 		error(c"cannot dereference a gpu pointer in host code; copy the data with gpu_memcpy_from, or cast() to a host pointer for managed memory")
 
 
+# An integer address cannot implicitly become a pointer.
+int integer_pointer_conversion(int want, int got):
+	want = type_unqualified(want)
+	got = type_unqualified(got)
+	if ((want < 0) || (got < 0) || (got == 3) || (got == 4)): return 0
+	if (type_is_string(got)): return 0
+	return (type_get_pointer_level(want) > 0) && (type_get_pointer_level(got) == 0) && type_var_boxable(got)
+
+
 # Warn that 'got' does not convert to 'want'; context names the construct
 # (assignment, initialization, return, ...)
 void warn_type_mismatch(char* context, int want, int got):
 	gpu_domain_check(context, want, got)
-	diag_part(c"warning: ")
+	if (integer_pointer_conversion(want, got) == 0): diag_part(c"warning: ")
 	diag_part(context)
 	diag_expected_got(c" type mismatch: expected '", want, got)
-	warning(c"'")
+	if (integer_pointer_conversion(want, got)): type_error(c"'")
+	else: warning(c"'")
 
 
 int function_signature_matches_record(int signature_type, int symbol):

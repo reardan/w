@@ -147,7 +147,7 @@ raft_tcp* raft_tcp_new(int self_id, int port):
 	t.peers = new list[rt_peer*]
 	t.conns = new list[rt_conn*]
 	t.inbox = new list[raft_msg*]
-	t.scratch = malloc(rt_scratch_size)
+	t.scratch = cast(char*, malloc(rt_scratch_size))
 	t.max_pending = rt_default_max_pending()
 	t.dropped = 0
 	t.inbox_bytes = 0
@@ -300,7 +300,7 @@ int raft_tcp_send(raft_tcp* t, raft_msg* m):
 		# Only an undroppable partially-sent head remains and the new
 		# frame still does not fit.
 		return 0
-	char* tmp = malloc(fsize)
+	char* tmp = cast(char*, malloc(fsize))
 	store_le32(tmp, size)
 	raft_wire_encode(m, tmp + 4)
 	string_append_bytes(p.out, tmp, fsize)

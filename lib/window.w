@@ -38,7 +38,7 @@ list[int] window_extreme(list[int] xs, int k, int want_max):
 	list[int] out = new list[int]
 	if (xs.length < k):
 		return out
-	int* candidates = malloc(xs.length * __word_size__)
+	int* candidates = cast(int*, malloc(xs.length * __word_size__))
 	int head = 0
 	int tail = 0
 	int i = 0

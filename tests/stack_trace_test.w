@@ -33,7 +33,7 @@ int frame_at(int index):
 
 
 int main(int argc, int argv):
-	frames = malloc(16 * __word_size__)
+	frames = cast(char*, malloc(16 * __word_size__))
 	st_test_outer()
 
 	asserts(c"collected at least four frames", frame_count >= 4)

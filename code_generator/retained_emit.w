@@ -1,10 +1,12 @@
-# S2.1: emit expressions from the retained forest (--ast-emit-retained).
-# retained_expression_note copies each prepared expression arena into a
-# retained group just before emission. In this mode the adapter below then
-# reconstitutes the arena from that group alone, overwriting every node
-# column and the decoded text/type-name arenas, so the backend visitor in
-# code_generator/expression_ast.w lowers retained data rather than the
-# temporary parse. Node IDs stay group-local, so the root is the group's op.
+# S2.1: emit expressions from the retained forest (--ast-emit-retained; the
+# default for every AST compile since S2.5). retained_expression_note copies
+# each prepared expression arena into a retained group just before emission,
+# and emit_prepared_expression_ast (code_generator/expression_ast.w) or a
+# statement walk then has the adapter below reconstitute the arena from that
+# group alone, overwriting every node column and the decoded text/type-name
+# arenas, so the backend visitor in code_generator/expression_ast.w lowers
+# retained data rather than the temporary parse. Node IDs stay
+# group-local, so the root is the group's op.
 #
 # The retained copy closes the arena's borrowed and overloaded slots as
 # follows (each was a gap found by compiling with this mode):
@@ -28,6 +30,14 @@
 # arena it replaces. A difference means the retained copy lost information,
 # so it is a compiler bug and stops the compilation, rather than letting
 # the image silently differ from the default emitter's.
+#
+# P1.2b: a group holds its columns in one session-arena block, and the
+# semantic records above (types, bindings, interned operand spellings) are
+# kept only in a semantic session (retained_semantic_mode: tree queries and
+# --ast-retain). A plain session, the default compile, checks the group's
+# header and lowers its columns in place (retained_emit_lower) instead of
+# copying them back; a semantic session still rebuilds and compares every
+# field as described above.
 import compiler.statement_ast
 
 int ast_emit_retained_mode
@@ -35,9 +45,36 @@ int ast_emit_retained_mode
 int ast_retained_emitted
 
 
+# Callers compare first (S2.5: one call per mismatch, not per column).
 void retained_emit_check(int expected, int actual, char* column):
 	if (expected == actual): return
 	error3(c"internal error: --ast-emit-retained: retained ", column, c" differs from the parsed expression")
+
+
+# The name of arena column c (compiler/retained_ast.w retained_group).
+char* retained_emit_column_name(int c):
+	if (c == 0): return c"op"
+	if (c == 1): return c"left"
+	if (c == 2): return c"right"
+	if (c == 3): return c"offset"
+	if (c == 4): return c"value"
+	if (c == 5): return c"result_type"
+	if (c == 6): return c"high"
+	if (c == 7): return c"next_arg"
+	if (c == 8): return c"in_cast"
+	if (c == 9): return c"binding_name"
+	if (c == 10): return c"binding_offset"
+	if (c == 11): return c"symbol"
+	if (c == 12): return c"qualified"
+	if (c == 13): return c"it_slot"
+	if (c == 14): return c"generic_parameters"
+	if (c == 15): return c"generic_signature"
+	if (c == 16): return c"generic_offset"
+	if (c == 17): return c"generic_instance"
+	if (c == 18): return c"generic_arity"
+	if (c == 19): return c"infer_coercion"
+	if (c == 20): return c"call_receiver_type"
+	return c"infer_want"
 
 
 # The arena's type convention: -1 untyped, a table index, or a value type.
@@ -49,122 +86,139 @@ int retained_emit_type(int semantic, int is_value):
 
 
 # A symbol-table name operand: the spelling ends at the record itself.
-int retained_emit_name(retained_node* node, int binding):
+int retained_emit_name(char* payload, int binding):
 	if (binding < 0): return 0
-	return retained_bindings[binding].origin - strlen(node.payload_text)
+	return retained_bindings[binding].origin - strlen(payload)
 
 
-# Warnings whose operand is a message or context string, not an offset.
-int retained_emit_message(retained_node* node):
-	if (node.op != ast_warning): return 0
-	return (node.high == 0) || (node.high == 6) || (node.high == 7) || (node.high == 8)
-
-
-int retained_emit_value(retained_node* node):
-	int op = node.op
-	if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')):
-		return retained_emit_name(node, node.binding)
-	if (retained_emit_message(node)): return cast(int, node.payload_text)
-	if ((op == ast_warning) && ((node.high == 1) || (node.high == 2) || (node.high == 5))):
-		return retained_emit_name(node, node.name_binding)
-	if ((op == 'G') || (op == 'W')): return generic_def_lookup(node.payload_text, 0)
-	return node.value
-
-
-int retained_emit_symbol(retained_node* node):
-	int op = node.op
-	if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
-		if (node.binding >= 0): return retained_bindings[node.binding].origin
-	if ((op == ast_warning) && (node.high == 1) && (node.name_binding >= 0)): return retained_bindings[node.name_binding].origin
-	return node.symbol
-
-
-# Overwrite the arena bound to tree with the contents of retained group.
-# Returns the root node ID recorded for the group.
-int retained_emit_expression_group(expression_ast* tree, int group):
-	retained_node* owner = retained_nodes[group]
-	int count = 0
-	int limit = retained_nodes.length
-	while ((group + 1 + count < limit) && (retained_nodes[group + 1 + count].parent == group)): count = count + 1
-	retained_emit_check(tree.count, count, c"count")
-	assert1(count <= tree.capacity)
-	retained_emit_check(tree.text_used, owner.arena_text_length, c"text")
-	retained_emit_check(tree.type_names_used, owner.arena_type_names_length, c"type_names")
-	for i in range(owner.arena_text_length):
-		retained_emit_check(tree.text[i], owner.arena_text[i], c"text")
-		tree.text[i] = owner.arena_text[i]
-	for i in range(owner.arena_type_names_length):
-		retained_emit_check(tree.type_names[i], owner.arena_type_names[i], c"type_names")
-		tree.type_names[i] = owner.arena_type_names[i]
-	tree.count = count
-	tree.text_used = owner.arena_text_length
-	tree.type_names_used = owner.arena_type_names_length
-	retained_emit_check(tree.end_offset, owner.end, c"end_offset")
-	retained_emit_check(tree.readonly, owner.readonly, c"readonly")
-	retained_emit_check(tree.whole_expression, owner.whole_expression, c"whole_expression")
-	retained_emit_check(tree.final_token_offset, owner.final_token_offset, c"final_token_offset")
-	tree.end_offset = owner.end
-	tree.readonly = owner.readonly
-	tree.whole_expression = owner.whole_expression
-	tree.final_token_offset = owner.final_token_offset
+# P1.2b: in a semantic session, the operands rebuilt from their semantic
+# records alone (retained types and bindings, interned spellings) must equal
+# the arena columns, as S2.1's adapter required of every retained node.
+void retained_emit_semantic_check(expression_ast* tree, retained_group* group):
+	int count = group.count
+	int* s = group.semantic
 	for i in range(count):
-		retained_node* node = retained_nodes[group + 1 + i]
-		int at = node.start
-		int value = retained_emit_value(node)
-		int symbol = retained_emit_symbol(node)
-		int result = retained_emit_type(node.semantic_type, node.result_is_value)
-		int signature = retained_emit_type(node.generic_signature, node.type_value_flags & 1)
-		int receiver = retained_emit_type(node.call_receiver_type, node.type_value_flags & 2)
-		int want = retained_emit_type(node.infer_want, node.type_value_flags & 4)
-		retained_emit_check(tree.op[i], node.op, c"op")
-		retained_emit_check(tree.left[i], node.left, c"left")
-		retained_emit_check(tree.right[i], node.right, c"right")
-		retained_emit_check(tree.offset[i], at, c"offset")
-		# A message is compared by text: the retained copy is interned.
-		int original = tree.value[i]
-		if (retained_emit_message(node) && original && (strcmp(cast(char*, original), node.payload_text) == 0)): original = value
-		retained_emit_check(original, value, c"value")
-		retained_emit_check(tree.result_type[i], result, c"result_type")
-		retained_emit_check(tree.high[i], node.high, c"high")
-		retained_emit_check(tree.next_arg[i], node.next_arg, c"next_arg")
-		retained_emit_check(tree.in_cast[i], node.in_cast, c"in_cast")
-		retained_emit_check(tree.binding_name[i], node.binding_text_offset, c"binding_name")
-		retained_emit_check(tree.binding_offset[i], node.binding_offset, c"binding_offset")
-		retained_emit_check(tree.symbol[i], symbol, c"symbol")
-		retained_emit_check(tree.qualified[i], node.qualified, c"qualified")
-		retained_emit_check(tree.it_slot[i], node.it_slot, c"it_slot")
-		retained_emit_check(tree.generic_parameters[i], node.generic_parameters, c"generic_parameters")
-		retained_emit_check(tree.generic_signature[i], signature, c"generic_signature")
-		retained_emit_check(tree.generic_offset[i], node.generic_offset, c"generic_offset")
-		retained_emit_check(tree.generic_instance[i], node.generic_instance, c"generic_instance")
-		retained_emit_check(tree.generic_arity[i], node.generic_arity, c"generic_arity")
-		retained_emit_check(tree.infer_coercion[i], node.infer_coercion, c"infer_coercion")
-		retained_emit_check(tree.call_receiver_type[i], receiver, c"call_receiver_type")
-		retained_emit_check(tree.infer_want[i], want, c"infer_want")
-		tree.op[i] = node.op
-		tree.left[i] = node.left
-		tree.right[i] = node.right
-		tree.offset[i] = at
-		tree.value[i] = value
-		tree.result_type[i] = result
-		tree.high[i] = node.high
-		tree.next_arg[i] = node.next_arg
-		tree.in_cast[i] = node.in_cast
-		tree.binding_name[i] = node.binding_text_offset
-		tree.binding_offset[i] = node.binding_offset
-		tree.symbol[i] = symbol
-		tree.qualified[i] = node.qualified
-		tree.it_slot[i] = node.it_slot
-		tree.generic_parameters[i] = node.generic_parameters
-		tree.generic_signature[i] = signature
-		tree.generic_offset[i] = node.generic_offset
-		tree.generic_instance[i] = node.generic_instance
-		tree.generic_arity[i] = node.generic_arity
-		tree.infer_coercion[i] = node.infer_coercion
-		tree.call_receiver_type[i] = receiver
-		tree.infer_want[i] = want
+		int op = tree.op[i]
+		int high = tree.high[i]
+		int binding = s[4 * count + i]
+		int name_binding = s[5 * count + i]
+		char* payload = cast(char*, s[6 * count + i])
+		int value = tree.value[i]
+		int expected = value
+		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')): expected = retained_emit_name(payload, binding)
+		else if ((op == ast_warning) && ((high == 0) || (high == 6) || (high == 7) || (high == 8))):
+			# A message is compared by text: the retained copy is interned.
+			expected = cast(int, payload)
+			if (value && (strcmp(cast(char*, value), payload) == 0)): expected = value
+		else if ((op == ast_warning) && ((high == 1) || (high == 2) || (high == 5))): expected = retained_emit_name(payload, name_binding)
+		else if ((op == 'G') || (op == 'W')): expected = generic_def_lookup(payload, 0)
+		if (value != expected): retained_emit_check(value, expected, c"value")
+		int symbol = tree.symbol[i]
+		expected = symbol
+		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
+			if (binding >= 0): expected = retained_bindings[binding].origin
+		if ((op == ast_warning) && (high == 1) && (name_binding >= 0)): expected = retained_bindings[name_binding].origin
+		if (symbol != expected): retained_emit_check(symbol, expected, c"symbol")
+		int result = retained_emit_type(s[i], tree.result_type[i] < -1)
+		if (tree.result_type[i] != result): retained_emit_check(tree.result_type[i], result, c"result_type")
+		int signature = retained_emit_type(s[count + i], tree.generic_signature[i] < -1)
+		if (tree.generic_signature[i] != signature): retained_emit_check(tree.generic_signature[i], signature, c"generic_signature")
+		int receiver = retained_emit_type(s[2 * count + i], tree.call_receiver_type[i] < -1)
+		if (tree.call_receiver_type[i] != receiver): retained_emit_check(tree.call_receiver_type[i], receiver, c"call_receiver_type")
+		int want = retained_emit_type(s[3 * count + i], tree.infer_want[i] < -1)
+		if (tree.infer_want[i] != want): retained_emit_check(tree.infer_want[i], want, c"infer_want")
+
+
+# Check the arena bound to tree against the contents of retained group.
+# Returns the root node ID recorded for the group.
+int retained_emit_expression_group(expression_ast* tree, int id):
+	retained_record* owner = retained_record_at(id)
+	retained_group* group = owner.group
+	int count = group.count
+	if (tree.count != count): retained_emit_check(tree.count, count, c"count")
+	assert1(count <= tree.capacity)
+	if (tree.text_used != group.arena_text_length): retained_emit_check(tree.text_used, group.arena_text_length, c"text")
+	if (tree.type_names_used != group.arena_type_names_length): retained_emit_check(tree.type_names_used, group.arena_type_names_length, c"type_names")
+	# The adapter's arena already holds the parse: a difference means the
+	# retained copy lost information (S2.1), and stops the compilation.
+	int at = retained_bytes_differ(tree.type_names, group.arena_type_names, group.arena_type_names_length)
+	if (at >= 0): retained_emit_check(tree.type_names[at], group.arena_type_names[at], c"type_names")
+	tree.count = count
+	tree.text_used = group.arena_text_length
+	tree.type_names_used = group.arena_type_names_length
+	if (tree.end_offset != owner.end): retained_emit_check(tree.end_offset, owner.end, c"end_offset")
+	if (tree.readonly != group.readonly): retained_emit_check(tree.readonly, group.readonly, c"readonly")
+	if (tree.whole_expression != group.whole_expression): retained_emit_check(tree.whole_expression, group.whole_expression, c"whole_expression")
+	if (tree.final_token_offset != group.final_token_offset): retained_emit_check(tree.final_token_offset, group.final_token_offset, c"final_token_offset")
+	tree.end_offset = owner.end
+	tree.readonly = group.readonly
+	tree.whole_expression = group.whole_expression
+	tree.final_token_offset = group.final_token_offset
+	# P1.2b: a plain session's visitor reads the group's columns in place
+	# (retained_emit_lower), so only a semantic session compares them.
+	if (group.semantic != 0):
+		at = retained_bytes_differ(tree.text, group.arena_text, group.arena_text_length)
+		if (at >= 0): retained_emit_check(tree.text[at], group.arena_text[at], c"text")
+		# The arena's columns are contiguous, tree.capacity words apart, in
+		# the order the group keeps them.
+		int* from = group.columns
+		int* to = tree.op
+		int stride = tree.capacity
+		for c in range(retained_expression_columns):
+			at = retained_words_differ(to, from, count)
+			if (at >= 0): retained_emit_check(to[at], from[at], retained_emit_column_name(c))
+			from = &from[count]
+			to = &to[stride]
+		retained_emit_semantic_check(tree, group)
 	ast_retained_emitted = ast_retained_emitted + 1
-	return owner.op
+	return group.root
+
+
+# Lower retained group id through the backend visitor; returns its root.
+# A semantic session lowers the arena the check above found equal to the
+# group. P1.2b: a plain session binds the arena's columns and decoded text to
+# the group's own copies, so the visitor reads the retained forest in place,
+# and binds the arena back to its slab afterwards. The one column the visitor
+# writes (it_slot, a list iteration's hidden slot) is copied back too, so the
+# parsing frame sees the arena it would have seen.
+void emit_expression_ast_root(expression_ast* tree, int root);
+
+
+int retained_emit_lower(expression_ast* tree, int id):
+	int root = retained_emit_expression_group(tree, id)
+	retained_group* group = retained_record_at(id).group
+	if (group.semantic != 0):
+		emit_expression_ast_root(tree, root)
+		return root
+	int count = group.count
+	int* c = group.columns
+	tree.text = group.arena_text
+	tree.op = c
+	tree.left = &c[count]
+	tree.right = &c[2 * count]
+	tree.offset = &c[3 * count]
+	tree.value = &c[4 * count]
+	tree.result_type = &c[5 * count]
+	tree.high = &c[6 * count]
+	tree.next_arg = &c[7 * count]
+	tree.in_cast = &c[8 * count]
+	tree.binding_name = &c[9 * count]
+	tree.binding_offset = &c[10 * count]
+	tree.symbol = &c[11 * count]
+	tree.qualified = &c[12 * count]
+	tree.it_slot = &c[13 * count]
+	tree.generic_parameters = &c[14 * count]
+	tree.generic_signature = &c[15 * count]
+	tree.generic_offset = &c[16 * count]
+	tree.generic_instance = &c[17 * count]
+	tree.generic_arity = &c[18 * count]
+	tree.infer_coercion = &c[19 * count]
+	tree.call_receiver_type = &c[20 * count]
+	tree.infer_want = &c[21 * count]
+	emit_expression_ast_root(tree, root)
+	expression_ast_point_columns(tree)
+	retained_copy_words(tree.it_slot, &c[13 * count], count)
+	return root
 
 
 # ---------------------------------------------------------------------------
@@ -216,15 +270,21 @@ struct retained_statement_walk:
 	int done
 	int walked
 
-list[retained_statement_walk*] retained_walks
+# P1.2b: the pools are raw arrays (room entries each, grown by doubling):
+# records by pointer, phase codes and points as words, and emission points
+# inline, a tokenizer_snapshot each, with their token texts beside them.
+retained_statement_walk** retained_walks
 int retained_walks_used
-list[int] retained_walk_phase_codes
-list[int] retained_walk_phase_points
+int retained_walks_room
+int* retained_walk_phase_codes
+int* retained_walk_phase_points
 int retained_walk_phases_used
-list[tokenizer_snapshot*] retained_emit_points
-list[char*] retained_emit_point_texts
-list[int] retained_emit_point_sizes
+int retained_walk_phases_room
+tokenizer_snapshot* retained_emit_points
+char** retained_emit_point_texts
+int* retained_emit_point_sizes
 int retained_emit_points_used
+int retained_emit_points_room
 # --stats: statements emitted by the walk rather than during their parse.
 int ast_retained_statements_emitted
 
@@ -234,8 +294,8 @@ int ast_retained_statements_emitted
 int retained_walk_stale(int id):
 	retained_statement_walk* walk = retained_walks[id]
 	if (walk.walked): return 1
-	if (walk.node >= retained_nodes.length): return 1
-	return retained_nodes[walk.node].statement_walk != id
+	if (walk.node >= retained_node_count()): return 1
+	return retained_record_at(walk.node).statement_walk != id
 
 
 void retained_walk_release():
@@ -252,18 +312,15 @@ void retained_walk_release():
 # (a hook called outside the statement dispatcher) or it already has one.
 int retained_walk_begin(int emitter, statement_ast* statement):
 	if ((ast_emit_retained_mode == 0) || (retained_parent < 0)): return -1
-	retained_node* node = retained_nodes[retained_parent]
+	retained_record* node = retained_record_at(retained_parent)
 	if ((node.kind != retained_statement) || (node.statement_walk >= 0)): return -1
-	if (retained_walks == 0):
-		retained_walks = new list[retained_statement_walk*]
-		retained_walk_phase_codes = new list[int]
-		retained_walk_phase_points = new list[int]
-		retained_emit_points = new list[tokenizer_snapshot*]
-		retained_emit_point_texts = new list[char*]
-		retained_emit_point_sizes = new list[int]
 	retained_walk_release()
 	int id = retained_walks_used
-	if (id == retained_walks.length): retained_walks.push(new retained_statement_walk)
+	if (id == retained_walks_room):
+		int room = retained_walks_room * 2 + 16
+		retained_walks = cast(retained_statement_walk**, realloc(cast(char*, retained_walks), retained_walks_room * __word_size__, room * __word_size__))
+		for i in range(retained_walks_room, room): retained_walks[i] = new retained_statement_walk
+		retained_walks_room = room
 	retained_walks_used = id + 1
 	retained_statement_walk* walk = retained_walks[id]
 	walk.node = retained_parent
@@ -282,9 +339,13 @@ int retained_walk_begin(int emitter, statement_ast* statement):
 	return id
 
 
+tokenizer_snapshot* retained_emit_point(int point):
+	return cast(tokenizer_snapshot*, cast(char*, retained_emit_points) + point * sizeof(tokenizer_snapshot))
+
+
 # 1 when the lexer is exactly at the recorded point.
 int retained_emit_point_current(int point):
-	tokenizer_snapshot* s = retained_emit_points[point]
+	tokenizer_snapshot* s = retained_emit_point(point)
 	if ((s.token_serial != token_serial) || (s.byte_offset != byte_offset)): return 0
 	if ((s.token_start_offset != token_start_offset) || (s.token_i != token_i)): return 0
 	if ((s.file != file) || (s.filename != filename) || (s.nextc != nextc)): return 0
@@ -296,21 +357,28 @@ int retained_emit_point_current(int point):
 
 int retained_emit_point_save():
 	int id = retained_emit_points_used
-	if (id == retained_emit_points.length):
-		retained_emit_points.push(new tokenizer_snapshot)
-		retained_emit_point_texts.push(0)
-		retained_emit_point_sizes.push(0)
+	if (id == retained_emit_points_room):
+		int room = retained_emit_points_room * 2 + 16
+		int old = retained_emit_points_room
+		retained_emit_points = cast(tokenizer_snapshot*, realloc(cast(char*, retained_emit_points), old * sizeof(tokenizer_snapshot), room * sizeof(tokenizer_snapshot)))
+		retained_emit_point_texts = cast(char**, realloc(cast(char*, retained_emit_point_texts), old * __word_size__, room * __word_size__))
+		retained_emit_point_sizes = cast(int*, realloc(cast(char*, retained_emit_point_sizes), old * __word_size__, room * __word_size__))
+		for i in range(old, room):
+			retained_emit_point_texts[i] = 0
+			retained_emit_point_sizes[i] = 0
+		retained_emit_points_room = room
 	retained_emit_points_used = id + 1
-	tokenizer_snapshot_save(retained_emit_points[id])
-	int length = strlen(token)
+	tokenizer_snapshot_save(retained_emit_point(id))
+	char* from = token
+	int length = strlen(from)
+	char* text = retained_emit_point_texts[id]
 	if (retained_emit_point_sizes[id] <= length):
 		int size = (length + 16) << 1
-		if (retained_emit_point_texts[id] != 0): free(retained_emit_point_texts[id])
-		retained_emit_point_texts[id] = cast(char*, malloc(size))
+		if (text != 0): free(text)
+		text = cast(char*, malloc(size))
+		retained_emit_point_texts[id] = text
 		retained_emit_point_sizes[id] = size
-	char* text = retained_emit_point_texts[id]
-	for i in range(length): text[i] = token[i]
-	text[length] = 0
+	for i in range(length + 1): text[i] = from[i]
 	return id
 
 
@@ -326,12 +394,13 @@ void retained_walk_phase(int id, int code):
 		point = retained_emit_point_save()
 		walk.point_count = walk.point_count + 1
 	int k = retained_walk_phases_used
-	if (k == retained_walk_phase_codes.length):
-		retained_walk_phase_codes.push(code)
-		retained_walk_phase_points.push(point)
-	else:
-		retained_walk_phase_codes[k] = code
-		retained_walk_phase_points[k] = point
+	if (k == retained_walk_phases_room):
+		int room = retained_walk_phases_room * 2 + 64
+		retained_walk_phase_codes = cast(int*, realloc(cast(char*, retained_walk_phase_codes), retained_walk_phases_room * __word_size__, room * __word_size__))
+		retained_walk_phase_points = cast(int*, realloc(cast(char*, retained_walk_phase_points), retained_walk_phases_room * __word_size__, room * __word_size__))
+		retained_walk_phases_room = room
+	retained_walk_phase_codes[k] = code
+	retained_walk_phase_points[k] = point
 	retained_walk_phases_used = k + 1
 	walk.phase_count = walk.phase_count + 1
 
@@ -342,12 +411,9 @@ void retained_walk_phase(int id, int code):
 void retained_walk_expression(int id, expression_ast* tree, int root):
 	retained_statement_walk* walk = retained_walks[id]
 	retained_init()
-	int group = retained_nodes.length
-	int lowering = ast_emit_retained_mode
-	ast_emit_retained_mode = 0
+	int group = retained_node_count()
 	retained_expression_note(tree, root)
-	ast_emit_retained_mode = lowering
-	assert1(retained_nodes[group].kind == retained_expression_group)
+	assert1(retained_node_kind(group) == retained_expression_group)
 	walk.tree = tree
 	walk.group = group
 	walk.root = root
@@ -357,12 +423,12 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 # adapter rebuilds the arena and checks it against the parse); returns
 # the root node ID.
 int retained_walk_lower_expression(retained_statement_walk* walk):
-	int root = retained_emit_expression_group(walk.tree, walk.group)
-	assert1(root == walk.root)
-	# A guard's condition is in discard position (grammar/cond_branch.w)
+	# A guard's condition is in discard position (grammar/cond_branch.w);
+	# the flag is read by the emission inside retained_emit_lower (P1.2b).
 	if (walk.statement != 0):
 		if ((walk.statement.kind == ast_stmt_guard) && cond_branch_on()): ast_cond_discard = 1
-	emit_expression_ast_root(walk.tree, root)
+	int root = retained_emit_lower(walk.tree, walk.group)
+	assert1(root == walk.root)
 	return root
 
 
@@ -377,6 +443,9 @@ int retained_emit_source_position():
 # is not moved to a point: a phase that reads source (a diagnostic's
 # context line, a deferred-statement reparse) seeks absolutely, and the
 # parse's read position is restored afterwards if a phase moved it.
+type __emitter_callback = fn(retained_statement_walk*, int) -> void
+
+
 void retained_walk_drain(int id):
 	retained_statement_walk* walk = retained_walks[id]
 	if (walk.done >= walk.phase_count): return
@@ -390,11 +459,11 @@ void retained_walk_drain(int id):
 		int point = retained_walk_phase_points[k]
 		if (retained_emit_point_current(point) == 0):
 			if (resume_text == 0): resume_text = strclone(token)
-			tokenizer_snapshot_restore(retained_emit_points[point], retained_emit_point_texts[point])
+			tokenizer_snapshot_restore(retained_emit_point(point), retained_emit_point_texts[point])
 		walk.done = walk.done + 1
 		# The family's emitter, held as an address like analysis_run's
 		# operation (compiler/analysis.w).
-		int emitter = walk.emitter
+		__emitter_callback* emitter = cast(__emitter_callback*, walk.emitter)
 		emitter(walk, retained_walk_phase_codes[k])
 	if (resume_text != 0):
 		tokenizer_snapshot_restore(&resume, resume_text)
@@ -406,21 +475,21 @@ void retained_walk_drain(int id):
 # The walk's entry point: emit the retained statement node's remaining
 # phases and release its record (and any walked records above it).
 void retained_emit_statement(int node):
-	int id = retained_nodes[node].statement_walk
+	int id = retained_record_at(node).statement_walk
 	assert1(id >= 0)
 	retained_walk_drain(id)
 	retained_walks[id].walked = 1
-	retained_nodes[node].statement_walk = -1
+	retained_record_at(node).statement_walk = -1
 	ast_retained_statements_emitted = ast_retained_statements_emitted + 1
 	retained_walk_release()
 
 
 # --stats: statements the dispatcher entered, from the retained forest.
 int retained_statement_count():
-	if (retained_nodes == 0): return 0
+	int total = retained_node_count()
 	int count = 0
-	for i in range(retained_nodes.length):
-		if (retained_nodes[i].kind == retained_statement): count = count + 1
+	for i in range(total):
+		if (retained_node_kind(i) == retained_statement): count = count + 1
 	return count
 
 # ---------------------------------------------------------------------------
@@ -462,6 +531,9 @@ int retained_source_reparses
 int retained_source_end_positions
 list[int] retained_window_fds
 list[int] retained_window_buffers
+# S2.5: 1 for a window on /dev/null, which already holds every byte its
+# re-parse may read (see retained_window_complete).
+list[int] retained_window_null
 
 
 # 1 when grammar/generic.w may build types from retained trees: the mode is
@@ -515,6 +587,7 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	if (follow >= length): follow = -1
 	int fd = -1
 	if (follow != -1): fd = open(c"/dev/null", 0, 511)
+	int null_window = fd >= 0
 	if (fd < 0):
 		# The span may end the file (or the host has no /dev/null): a
 		# descriptor that can re-read the prefix, at the window's end.
@@ -530,10 +603,12 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	if (retained_window_fds == 0):
 		retained_window_fds = new list[int]
 		retained_window_buffers = new list[int]
+		retained_window_null = new list[int]
 	retained_window_fds.push(fd)
 	retained_window_buffers.push(getchar_buf_addr[fd])
+	retained_window_null.push(null_window)
 	# Room for one more read, as ast_expression_refill expects of a window.
-	char* copy = malloc(length + GETCHAR_BUF_CAPACITY)
+	char* copy = cast(char*, malloc(length + GETCHAR_BUF_CAPACITY))
 	char* bytes = record.bytes
 	for i in range(length): copy[i] = bytes[i]
 	getchar_buf_addr[fd] = cast(int, copy)
@@ -566,6 +641,19 @@ void retained_window_release(int top):
 	getchar_reset(fd)
 	retained_window_fds.pop()
 	retained_window_buffers.pop()
+	retained_window_null.pop()
+
+
+# S2.5: 1 when fd is the innermost retained window and reads /dev/null.
+# Its window is the whole recorded version and a read adds nothing, so
+# ast_expression_refill leaves it as it is instead of compacting it: a
+# compacted window would lose the prefix that a diagnostic's context line
+# (diag_context_collect) seeks back to, and /dev/null cannot re-read it.
+int retained_window_complete(int fd):
+	if (retained_window_fds == 0): return 0
+	int top = retained_window_fds.length
+	if ((top == 0) || (retained_window_fds[top - 1] != fd)): return 0
+	return retained_window_null[top - 1]
 
 
 # Close the descriptor a re-parse read from: a retained window gives its

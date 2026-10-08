@@ -138,12 +138,14 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
 		sym_note_related(callee, c"function '", callee_name, c"' is declared here")
 		gpu_domain_check_argument(callee_name, arg_index, param_type, arg_type)
-		diag_part(c"warning: function '")
+		if (integer_pointer_conversion(param_type, arg_type) == 0): diag_part(c"warning: ")
+		diag_part(c"function '")
 		diag_part(callee_name)
 		diag_part(c"' argument ")
 		diag_part(itoa(arg_index + 1))
 		diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
-		warning(c"'")
+		if (integer_pointer_conversion(param_type, arg_type)): type_error(c"'")
+		else: warning(c"'")
 
 
 void init_array_field_descriptors(int type);
@@ -251,13 +253,13 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 			int callee_is_stub = 0
 			if (callee_sym >= 0): callee_is_stub = sym_is_asm_stub(callee_sym)
 			if (callee_is_stub): diag_part(c"function '")
-			else: diag_part(c"warning: function '")
+			else: diag_part(c"function '")
 			diag_part(callee_name)
 			diag_part(c"' expects ")
 			diag_part(itoa(expected_args))
 			diag_part(c" arguments, got ")
 			if (callee_is_stub): error(itoa(passed_args))
-			else: warning(itoa(passed_args))
+			else: type_error(itoa(passed_args))
 	if (callee_name != 0): free(callee_name)
 
 	# A known W callee (the call record for this base, unit A4) is one
@@ -342,10 +344,10 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 
 	if (w_variadic_fixed >= 0):
 		if (passed_args - variadic_values < w_variadic_fixed):
-			diag_part(c"warning: function '")
+			diag_part(c"function '")
 			diag_part(callee_name)
 			diag_part(c"' expects at least ")
-			warning3(itoa(w_variadic_fixed), c" arguments, got ", itoa(passed_args - variadic_values))
+			type_error3(itoa(w_variadic_fixed), c" arguments, got ", itoa(passed_args - variadic_values))
 		finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
 
 	# Missing trailing arguments whose parameters all carry defaults are
@@ -410,7 +412,7 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 # calls because the float argument classes differ per call site (on x64
 # they select xmm registers and set al).
 int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int declared_return, int fixed_args):
-	char* arg_classes = malloc(extern_max_params)
+	char* arg_classes = cast(char*, malloc(extern_max_params))
 	int passed_args = 0
 	if (accept(c")") == 0):
 		arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
@@ -422,10 +424,10 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		expect(c")")
 
 	if (passed_args < fixed_args):
-		diag_part(c"warning: function '")
+		diag_part(c"function '")
 		diag_part(callee_name)
 		diag_part(c"' expects at least ")
-		warning3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
+		type_error3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
 	if (callee_name != 0): free(callee_name)
 
 	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))

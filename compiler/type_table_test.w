@@ -59,7 +59,7 @@ void test_add_get_50_fields():
 	# Build the field names in a heap buffer: string literals live in the
 	# read-execute text segment (W^X, docs/projects/wx_split.md), so
 	# writing into one faults.
-	char* field = malloc(16)
+	char* field = cast(char*, malloc(16))
 	strcpy(field, c"field")
 	int i = 0
 	int count = 50

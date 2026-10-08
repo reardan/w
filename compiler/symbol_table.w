@@ -889,6 +889,9 @@ void sym_not_found_error(char* s):
 # The resolved-symbol emitter is shared with the AST walker. Name binding
 # and its diagnostics happen before this call; stack-relative addresses
 # are computed here, when the actual operand stack position is known.
+type __repl_call_site_hook_callback = fn(char*, int, int) -> void
+
+
 int sym_emit_value(int t, char* s):
 	# A kernel's body lives in the PTX module, not at a host address:
 	# referencing its name as a value can only be a miscall.
@@ -966,7 +969,7 @@ int sym_emit_value(int t, char* s):
 		diag_part(c"Error getting symbol value for '")
 		diag_part(s)
 		diag_part(c"', table[t + 1]='")
-		char* visibility = malloc(2)
+		char* visibility = cast(char*, malloc(2))
 		visibility[0] = table[t + 1]
 		visibility[1] = 0
 		diag_part(visibility)
@@ -987,7 +990,7 @@ int sym_emit_value(int t, char* s):
 			# (still at codepos-4: the D/U paths emit nothing after
 			# be_addr_slot_emit) so a later redefinition of this name
 			# can repatch it. No-op outside the REPL (hook is 0).
-			if (repl_call_site_hook != 0): repl_call_site_hook(s, codepos - 4, 0)
+			if (repl_call_site_hook != 0): (cast(__repl_call_site_hook_callback*, repl_call_site_hook))(s, codepos - 4, 0)
 			# pac=full: the address just materialized is now a value —
 			# sign it (paciza; call_eax authenticates with blraaz).
 			# Emitted here, after the 'U' backpatch-chain bookkeeping
@@ -1050,7 +1053,7 @@ void sym_emit_call(int t, char* s):
 		int head = call_direct_link(sym_rel_chain(t))
 		sym_set_rel_chain(t, head)
 		slot = head - code_offset
-	if (repl_call_site_hook != 0): repl_call_site_hook(s, slot, 1)
+	if (repl_call_site_hook != 0): (cast(__repl_call_site_hook_callback*, repl_call_site_hook))(s, slot, 1)
 
 
 void sym_define_declare_global_function(char* name):

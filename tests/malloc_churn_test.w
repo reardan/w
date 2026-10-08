@@ -40,7 +40,7 @@ int lcg_next():
 # One churn round; returns the free blocks malloc examined during it.
 int churn_round(int n, int small_size, int large_size):
 	int steps0 = malloc_scan_steps
-	int* smalls = malloc(n * __word_size__)
+	int* smalls = cast(int*, malloc(n * __word_size__))
 	int i = 0
 	while (i < n):
 		smalls[i] = cast(int, malloc(small_size))
@@ -49,7 +49,7 @@ int churn_round(int n, int small_size, int large_size):
 	while (i < n):
 		free(cast(void*, smalls[i]))
 		i = i + 1
-	int* larges = malloc(n * __word_size__)
+	int* larges = cast(int*, malloc(n * __word_size__))
 	i = 0
 	while (i < n):
 		larges[i] = cast(int, malloc(large_size))
@@ -77,9 +77,9 @@ void report_round(int n, int steps, int ms):
 # and a slot-tagged byte pattern, catching cross-block corruption from
 # bad bin bookkeeping.
 void mixed_churn(int slots, int ops):
-	int* ptrs = malloc(slots * __word_size__)
-	int* sizes = malloc(slots * __word_size__)
-	int* tags = malloc(slots * __word_size__)
+	int* ptrs = cast(int*, malloc(slots * __word_size__))
+	int* sizes = cast(int*, malloc(slots * __word_size__))
+	int* tags = cast(int*, malloc(slots * __word_size__))
 	int i = 0
 	while (i < slots):
 		ptrs[i] = 0
@@ -99,7 +99,7 @@ void mixed_churn(int slots, int ops):
 			# many size classes live at once.
 			int size = 8 + lcg_next() % 200
 			if ((op & 7) == 0): size = 1024 + lcg_next() % 4096
-			char* fresh = malloc(size)
+			char* fresh = cast(char*, malloc(size))
 			int tag = lcg_next() & 255
 			for j in range(size): fresh[j] = (tag + j) & 255
 			ptrs[slot] = cast(int, fresh)
@@ -123,7 +123,7 @@ void mixed_churn(int slots, int ops):
 
 
 void realloc_smoke():
-	char* p = malloc(24)
+	char* p = cast(char*, malloc(24))
 	int i = 0
 	while (i < 24):
 		p[i] = i + 1

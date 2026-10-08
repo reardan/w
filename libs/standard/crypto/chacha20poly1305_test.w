@@ -22,7 +22,7 @@ import lib.mem
 void cp_check_keygen(char* key_hex, char* nonce_hex, char* want_hex):
 	char* key = hex_bytes(key_hex)
 	char* nonce = hex_bytes(nonce_hex)
-	char* out = malloc(32)
+	char* out = cast(char*, malloc(32))
 	poly1305_key_gen(key, nonce, out)
 	char* got = hex_encode(out, 32)
 	assert_strings_equal(want_hex, got)
@@ -49,8 +49,8 @@ void test_rfc8439_seal_282():
 	char* pt = hex_bytes(c"4c616469657320616e642047656e746c656d656e206f662074686520636c617373206f66202739393a204966204920636f756c64206f6666657220796f75206f6e6c79206f6e652074697020666f7220746865206675747572652c2073756e73637265656e20776f756c642062652069742e")
 	int aad_len = strlen(c"50515253c0c1c2c3c4c5c6c7") / 2
 	int n = strlen(c"4c616469657320616e642047656e746c656d656e206f662074686520636c617373206f66202739393a204966204920636f756c64206f6666657220796f75206f6e6c79206f6e652074697020666f7220746865206675747572652c2073756e73637265656e20776f756c642062652069742e") / 2
-	char* ct = malloc(n + 1)
-	char* tag = malloc(16)
+	char* ct = cast(char*, malloc(n + 1))
+	char* tag = cast(char*, malloc(16))
 	chacha20poly1305_seal(key, nonce, aad, aad_len, pt, n, ct, tag)
 	char* got = hex_encode(ct, n)
 	assert_strings_equal(c"d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d63dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b3692ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc3ff4def08e4b7a9de576d26586cec64b6116", got)
@@ -58,7 +58,7 @@ void test_rfc8439_seal_282():
 	got = hex_encode(tag, 16)
 	assert_strings_equal(c"1ae10b594f09e26a7e902ecbd0600691", got)
 	free(got)
-	char* back = malloc(n + 1)
+	char* back = cast(char*, malloc(n + 1))
 	assert_equal(1, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, back))
 	got = hex_encode(back, n)
 	assert_strings_equal(c"4c616469657320616e642047656e746c656d656e206f662074686520636c617373206f66202739393a204966204920636f756c64206f6666657220796f75206f6e6c79206f6e652074697020666f7220746865206675747572652c2073756e73637265656e20776f756c642062652069742e", got)
@@ -81,7 +81,7 @@ void test_rfc8439_open_a5():
 	char* tag = hex_bytes(c"eead9d67890cbb22392336fea1851f38")
 	int aad_len = strlen(c"f33388860000000000004e91") / 2
 	int n = strlen(c"64a0861575861af460f062c79be643bd5e805cfd345cf389f108670ac76c8cb24c6cfc18755d43eea09ee94e382d26b0bdb7b73c321b0100d4f03b7f355894cf332f830e710b97ce98c8a84abd0b948114ad176e008d33bd60f982b1ff37c8559797a06ef4f0ef61c186324e2b3506383606907b6a7c02b0f9f6157b53c867e4b9166c767b804d46a59b5216cde7a4e99040c5a40433225ee282a1b0a06c523eaf4534d7f83fa1155b0047718cbc546a0d072b04b3564eea1b422273f548271a0bb2316053fa76991955ebd63159434ecebb4e466dae5a1073a6727627097a1049e617d91d361094fa68f0ff77987130305beaba2eda04df997b714d6c6f2c29a6ad5cb4022b02709b") / 2
-	char* pt = malloc(n + 1)
+	char* pt = cast(char*, malloc(n + 1))
 	assert_equal(1, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, pt))
 	char* got = hex_encode(pt, n)
 	assert_strings_equal(c"496e7465726e65742d4472616674732061726520647261667420646f63756d656e74732076616c696420666f722061206d6178696d756d206f6620736978206d6f6e74687320616e64206d617920626520757064617465642c207265706c616365642c206f72206f62736f6c65746564206279206f7468657220646f63756d656e747320617420616e792074696d652e20497420697320696e617070726f70726961746520746f2075736520496e7465726e65742d447261667473206173207265666572656e6365206d6174657269616c206f7220746f2063697465207468656d206f74686572207468616e206173202fe2809c776f726b20696e2070726f67726573732e2fe2809d", got)
@@ -97,7 +97,7 @@ void test_rfc8439_open_a5():
 # Fill a buffer with a sentinel, run an open() that must fail, and check
 # both the return code and that not one plaintext byte was released.
 void cp_check_open_fails(char* key, char* nonce, char* aad, int aad_len, char* ct, int n, char* tag):
-	char* pt = malloc(n + 1)
+	char* pt = cast(char*, malloc(n + 1))
 	mem_fill(pt, 0x5a, n)
 	assert_equal(0, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, pt))
 	for i in range(n): assert_equal(0x5a, pt[i] & 255)
@@ -139,7 +139,7 @@ void test_open_fail_closed():
 	cp_check_open_fails(key, nonce, aad, aad_len, ct, 0, tag)
 
 	# untampered input still opens (the flips above were reverted)
-	char* pt = malloc(n + 1)
+	char* pt = cast(char*, malloc(n + 1))
 	assert_equal(1, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, pt))
 	free(pt)
 	free(tag)
@@ -165,8 +165,8 @@ void test_wycheproof_vectors():
 		int aad_len = strlen(v.aad) / 2
 		int msg_len = strlen(v.msg) / 2
 		if (v.valid == 1):
-			char* got_ct = malloc(msg_len + 1)
-			char* got_tag = malloc(16)
+			char* got_ct = cast(char*, malloc(msg_len + 1))
+			char* got_tag = cast(char*, malloc(16))
 			chacha20poly1305_seal(key, nonce, aad, aad_len, msg, msg_len, got_ct, got_tag)
 			char* got = hex_encode(got_ct, msg_len)
 			assert_strings_equal(v.ct, got)
@@ -176,7 +176,7 @@ void test_wycheproof_vectors():
 			free(got)
 			free(got_tag)
 			free(got_ct)
-			char* back = malloc(msg_len + 1)
+			char* back = cast(char*, malloc(msg_len + 1))
 			assert_equal(1, chacha20poly1305_open(key, nonce, aad, aad_len, ct, msg_len, tag, back))
 			got = hex_encode(back, msg_len)
 			assert_strings_equal(v.msg, got)

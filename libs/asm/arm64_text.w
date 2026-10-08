@@ -46,7 +46,7 @@ char* arm64_parse_ident(arm64_parse* p):
 	int start = p.pos
 	while (arm64_ident_char(p.text[p.pos])): p.pos = p.pos + 1
 	int n = p.pos - start
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	for i in range(n): out[i] = p.text[start + i]
 	out[n] = 0
 	return out
@@ -175,7 +175,7 @@ int asm_arm64_parse(char* line, asm_insn* insn):
 	int start = p.pos
 	while (p.text[p.pos] != 0 && p.text[p.pos] != ' '): p.pos = p.pos + 1
 	int n = p.pos - start
-	char* mn = malloc(n + 1)
+	char* mn = cast(char*, malloc(n + 1))
 	for i in range(n): mn[i] = p.text[start + i]
 	mn[n] = 0
 	insn.mnemonic = mn

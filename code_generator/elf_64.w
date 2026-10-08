@@ -35,8 +35,40 @@ void elf_sym_table_entry_64(int name, int address, int size, int binding, int sy
 	emit_int64(size) /* size */
 
 
+# Static PIE startup: rdx = load bias, rsi = table, rcx = count.
+# Dynamic PIE uses loader RELATIVE relocations; its table count is zero.
+int x64_rebase_table_disp
+
+
+void x64_entry_rebase_stub():
+	emit(7, c"\x48\x8d\x15\x00\x00\x00\x00") /* lea rdx,[rip] */
+	int linked_pc = code_offset + codepos
+	emit(3, c"\x48\x81\xea") /* sub rdx,linked_pc */
+	emit_int32(linked_pc)
+	emit(7, c"\x48\x8d\x35....") /* lea rsi,[rip+table] */
+	x64_rebase_table_disp = codepos - 4
+	emit(7, c"\x48\x8b\x0e\x48\x83\xc6\x08") /* count; advance */
+	emit(5, c"\x48\x85\xc9\x74\x12") /* test rcx; jz done */
+	emit(3, c"\x48\x8b\x06") /* loop: mov rax,[rsi] */
+	emit(3, c"\x48\x01\xd0") /* add rax,rdx */
+	emit(3, c"\x48\x01\x10") /* add [rax],rdx */
+	emit(4, c"\x48\x83\xc6\x08")
+	emit(3, c"\x48\xff\xc9")
+	emit(2, c"\x75\xee") /* jnz loop */
+
+
+void x64_emit_rebase_table():
+	int table = data_offset + datapos
+	int count = rebase_count
+	if (dyn_has_imports()): count = 0
+	emit_data_word(count)
+	for r in range(count): emit_data_word(load_i(rebase_table + r * 8, 8))
+	save_int32(code + x64_rebase_table_disp, table - code_offset - x64_rebase_table_disp - 4)
+
+
 void elf_start_64():
 	elf_image_headers(62, 1)
+	if (elf_pie): x64_entry_rebase_stub()
 
 	/* setup command line args */
 	emit(6, c"\x48\x8d\x44\x24\x08\x50")
@@ -47,13 +79,19 @@ void elf_start_64():
 	entry_call_disp_pos = codepos - 4
 
 	/* exit cleanly if _main returns: mov edi,eax ; mov eax,231 (exit_group) ; syscall */
-	emit(9, c"\x89\xc7\xb8\xe7\x00\x00\x00\x0f\x05")
+	emit(7, c"\x89\xc7\xb8\xe7\x00\x00\x00")
+	x64_runtime_syscall()
 
 	define_asm_functions_x64()
 
 
 void elf_finish_64():
 	elf_finish_entry_patch()
+	if (x64_syscall_abi):
+		save_int32(code + elf_hypercall_note_pos + 20, x64_hypercall_count)
+		for i in range(x64_hypercall_count):
+			save_int64(code + elf_hypercall_note_pos + 24 + i * 8, code_offset + x64_hypercall_sites[i])
+	if (elf_pie): x64_emit_rebase_table()
 	elf_patch_load_segments(1)
 
 

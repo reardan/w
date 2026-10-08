@@ -519,7 +519,7 @@ pg_lexgen_matcher* pg_lexgen_matcher_new(pg_grammar* grammar, pg_token_def* toke
 	pg_lexgen_matcher* candidate = new pg_lexgen_matcher()
 	candidate.token = token
 	candidate.is_skip = is_skip
-	char* bytes = malloc(256)
+	char* bytes = cast(char*, malloc(256))
 	for i in range(256): bytes[i] = 0
 	if (token.expression != 0):
 		list[char*] path = new list[char*]
@@ -1378,7 +1378,7 @@ void pg_emit_streaming_action(pg_source_writer* writer, pg_term* term, int alt_i
 # term earlier in the same alternative.
 char* pg_alt_capture_set(pg_alternative* alternative):
 	int count = alternative.terms.length
-	char* captures = malloc(count + 1)
+	char* captures = cast(char*, malloc(count + 1))
 	for i in range(count + 1): captures[i] = 0
 	for pg_term* term in alternative.terms:
 		if (term.kind == pg_term_kind_action()):

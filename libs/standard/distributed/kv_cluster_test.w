@@ -460,8 +460,9 @@ kvc_node* kvc_add_node(kvc* c, char* name, int port_off):
 	assert1(cast(int, nd.rw) != 0)
 	nd.store = lsm_open(nd.prefix, 1 << 20)
 	assert1(cast(int, nd.store) != 0)
-	list[int] empty_peers = new list[int]
-	nd.r = raft_new(id, empty_peers, 150, 300, 50, 9000 + id)
+	list[int] initial_voters = raft_peers_except(id, id)
+	nd.r = raft_new_learner(id, initial_voters, 150, 300, 50, 9000 + id)
+	initial_voters.free()
 	raft_start(nd.r, c.vnow)
 	nd.tcp = raft_tcp_new(id, nd.port)
 	assert1(cast(int, nd.tcp) != 0)
@@ -483,7 +484,9 @@ void kvc_add_server(kvc* c, int leader_id, int new_id):
 	kvc_node* nd = c.nodes[leader_id - 1]
 	assert_equal(1, nd.alive)
 	list[raft_msg*] out = new list[raft_msg*]
-	assert_equal(1, raft_propose_add_server(nd.r, new_id, c.vnow, out))
+	# This historical fixture tests snapshot transport with one raw config
+	# entry. raft_learner_test covers the public admission/promotion API.
+	assert_equal(1, rsim_config_fixture(nd.r, raft_config_op_add, new_id, c.vnow, out))
 	raft_wal_sync(nd.rw, nd.r)
 	kvc_route_out(nd, out)
 
@@ -676,7 +679,7 @@ void test_cluster_binary_value_roundtrip():
 	int rounds = kvc_run_until_leader(c, 500)
 	assert1(rounds >= 0)
 	int lid = rafts_leader(c.rafts)
-	char* value = malloc(5)
+	char* value = cast(char*, malloc(5))
 	value[0] = 'x'
 	value[1] = 0
 	value[2] = 'y'
@@ -734,7 +737,7 @@ void test_cluster_snapshot_laggard_catchup():
 	raft_tcp_set_max_pending(ldr.tcp, 4096)
 	kvc_put(c, lid, c"k1", c"v1")
 	kvc_put(c, lid, c"k2", c"v2")
-	char* binval = malloc(4)
+	char* binval = cast(char*, malloc(4))
 	binval[0] = 0
 	binval[1] = 'Z'
 	binval[2] = 255

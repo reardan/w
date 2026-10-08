@@ -51,7 +51,7 @@ void test_tcp_sockaddr_round_trip():
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0): exit(1)
-		char* buf = malloc(16)
+		char* buf = cast(char*, malloc(16))
 		int got = read(conn, buf, 4)
 		if (got != 4): exit(1)
 		if (socket_send(conn, buf, got, msg_nosignal()) != got): exit(1)
@@ -63,7 +63,7 @@ void test_tcp_sockaddr_round_trip():
 	net_smoke_assert_ok(c"client socket", client)
 	net_smoke_assert_ok(c"connect", socket_connect_ipv4(client, ip4_from_string(c"127.0.0.1"), port))
 	assert_equal(4, write(client, c"ping", 4))
-	char* echo = malloc(16)
+	char* echo = cast(char*, malloc(16))
 	int got = read(client, echo, 16)
 	assert_equal(4, got)
 	echo[got] = 0
@@ -88,7 +88,7 @@ void test_udp_recvfrom_sockaddr():
 	net_smoke_assert_ok(c"udp sender", sender)
 	assert_equal(4, socket_send_to_ipv4(sender, c"ping", 4, 0, loopback, port))
 
-	char* got = malloc(16)
+	char* got = cast(char*, malloc(16))
 	sockaddr_in from
 	int received = socket_recv_from_ipv4(receiver, got, 16, 0, &from)
 	assert_equal(4, received)
@@ -101,10 +101,10 @@ void test_udp_recvfrom_sockaddr():
 
 
 void test_nonblocking_recv_eagain():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	net_smoke_assert_ok(c"socketpair", socket_pair(fds))
 	net_smoke_assert_ok(c"set nonblocking", socket_set_nonblocking(fds[1]))
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	# The per-target O_NONBLOCK really took effect: an empty read
 	# reports this target's EAGAIN instead of blocking.
 	assert_equal(0 - net_eagain(), socket_recv(fds[1], buf, 8, 0))
@@ -122,11 +122,11 @@ void test_http_get_loopback():
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0): exit(1)
-		char* buf = malloc(4096)
+		char* buf = cast(char*, malloc(4096))
 		if (read(conn, buf, 4095) <= 0): exit(1)
 		char* response = c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 12\x0d\x0a\x0d\x0asmoke passed"
 		socket_send(conn, response, strlen(response), msg_nosignal())
-		char* scratch = malloc(64)
+		char* scratch = cast(char*, malloc(64))
 		while (read(conn, scratch, 64) > 0): scratch[0] = 0
 		exit(0)
 

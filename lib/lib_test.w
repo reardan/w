@@ -34,7 +34,7 @@ void test_itoa_int_min():
 
 
 void test_strcpy():
-	char* str = malloc(1000)
+	char* str = cast(char*, malloc(1000))
 	char* cur = str
 	cur = strcpy(cur, c"one ")
 	cur = strcpy(cur, c"two ")
@@ -44,7 +44,7 @@ void test_strcpy():
 
 
 void test_strcpy2000():
-	char* str = malloc(10000)
+	char* str = cast(char*, malloc(10000))
 	int i = 0
 	char* cur = str
 	while (i < 2000):
@@ -55,7 +55,7 @@ void test_strcpy2000():
 
 
 void test_strncpy():
-	char* str = malloc(100)
+	char* str = cast(char*, malloc(100))
 	strncpy(str, c"abcd1234", 4)
 	# strncpy copies at most n chars and does not null-terminate
 	str[4] = 0
@@ -64,11 +64,11 @@ void test_strncpy():
 
 
 void test_malloc_free_reuse():
-	char* a = malloc(100)
+	char* a = cast(char*, malloc(100))
 	strcpy(a, c"hello")
 	free(a)
 	# The freed block should be recycled for an equal-sized request
-	char* b = malloc(100)
+	char* b = cast(char*, malloc(100))
 	assert_equal(cast(int, a), cast(int, b))
 	free(b)
 
@@ -86,9 +86,9 @@ void test_malloc_reuse_loop():
 void test_malloc_split():
 	# Freeing then immediately re-requesting the same size must reuse
 	# the exact block (size-class bins are LIFO within a class).
-	char* big = malloc(256)
+	char* big = cast(char*, malloc(256))
 	free(big)
-	char* reused = malloc(256)
+	char* reused = cast(char*, malloc(256))
 	assert_equal(cast(int, big), cast(int, reused))
 	free(reused)
 
@@ -99,9 +99,9 @@ void test_malloc_split():
 	# size-class bins prefer the closest-fitting free block over strict
 	# recency across classes), not part of this test's contract.
 	int heap_before = malloc_heap_ptr
-	char* head = malloc(64)
+	char* head = cast(char*, malloc(64))
 	assert_equal(heap_before, malloc_heap_ptr)
-	char* rest = malloc(64)
+	char* rest = cast(char*, malloc(64))
 	assert_equal(heap_before, malloc_heap_ptr)
 	# head and rest must be disjoint 64-byte payloads.
 	assert1((cast(int, rest) >= cast(int, head) + 64) | (cast(int, head) >= cast(int, rest) + 64))
@@ -314,7 +314,7 @@ void test_malloc_survives_blocked_brk():
 		asserts(c"guard mmap failed", guard == guard_at)
 	# Exhaust the current chunk and force several growth cycles
 	for i in range(64):
-		char* block = malloc(16384)
+		char* block = cast(char*, malloc(16384))
 		asserts(c"malloc returned 0 with brk blocked", block != 0)
 		block[0] = i
 		block[16383] = i + 1

@@ -106,7 +106,7 @@ void test_sleeps_wake_in_deadline_order():
 generator int await_then_read(int fd):
 	int revents = task_await_fd(fd, poll_in)
 	asserts(c"expected POLLIN", (revents & poll_in) != 0)
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	int n = read(fd, buf, 8)
 	assert_equal(4, n)
 	free(buf)
@@ -119,7 +119,7 @@ generator int sleep_then_write(int fd):
 
 
 void test_await_fd_wakes_on_data():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[1])
 
@@ -138,7 +138,7 @@ void test_await_fd_wakes_on_data():
    suspends on the other's writes, several rounds deep. */
 
 generator int ponger(int fd, int rounds):
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	int received = 0
 	for i in range(rounds):
 		int revents = task_await_fd(fd, poll_in)
@@ -150,7 +150,7 @@ generator int ponger(int fd, int rounds):
 
 
 generator int pinger(int fd, int rounds):
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	int received = 0
 	for i in range(rounds):
 		assert_equal(1, write(fd, c"i", 1))
@@ -162,7 +162,7 @@ generator int pinger(int fd, int rounds):
 
 
 void test_ping_pong_across_socketpair():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[0])
 	socket_set_nonblocking(fds[1])
@@ -260,7 +260,7 @@ generator int await_silent_fd(int fd):
 
 
 void test_cancel_task_waiting_on_fd():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[1])
 
@@ -303,7 +303,7 @@ generator int await_with_timeout(int fd, int timeout_ms):
 
 
 void test_await_fd_timeout_fires():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[1])
 
@@ -318,7 +318,7 @@ void test_await_fd_timeout_fires():
 
 
 void test_await_fd_timeout_operation_wins():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[1])
 	assert_equal(4, write(fds[0], c"data", 4))
@@ -594,7 +594,7 @@ void test_detach_reclaims_task():
 /* A reader and a writer task can wait on the same descriptor. */
 
 generator int read_n(int fd, int n):
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	int got = 0
 	while (got < n):
 		int r = read(fd, buf + got, n - got)
@@ -606,7 +606,7 @@ generator int read_n(int fd, int n):
 
 
 generator int write_n(int fd, int n):
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	int sent = 0
 	while (sent < n):
 		int r = write(fd, buf + sent, n - sent)
@@ -618,7 +618,7 @@ generator int write_n(int fd, int n):
 
 
 generator int echo_n(int fd, int n):
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int moved = 0
 	while (moved < n):
 		int r = read(fd, buf, 4096)
@@ -635,7 +635,7 @@ generator int echo_n(int fd, int n):
 
 
 void test_reader_and_writer_share_fd():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	socket_set_nonblocking(fds[0])
 	socket_set_nonblocking(fds[1])
@@ -685,7 +685,7 @@ generator int io_wait_reader(int fd):
 
 
 void test_io_wait_follows_context():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	task_scheduler* s = task_scheduler_new()
 	assert_equal(-11, io_wait(fds[1], poll_in, 1000))

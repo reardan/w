@@ -20,8 +20,8 @@ const int dbg_fr_max = 16
 
 void dbg_fr_reset():
 	if (dbg_fr_pc == 0):
-		dbg_fr_pc = malloc(dbg_fr_max * __word_size__)
-		dbg_fr_base = malloc(dbg_fr_max * __word_size__)
+		dbg_fr_pc = cast(char*, malloc(dbg_fr_max * __word_size__))
+		dbg_fr_base = cast(char*, malloc(dbg_fr_max * __word_size__))
 	dbg_fr_count = 0
 	dbg_fr_sel = 0
 

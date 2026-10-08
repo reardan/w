@@ -10,10 +10,33 @@ history, beginning with task 5, the first production change.
 ## Current production migration status
 
 The numbered tasks below record successive stages; their fallback lists describe
-that stage, and later tasks supersede them. The production compiler remains
-streaming by default. `--ast-full-expressions` enables the hybrid AST path;
-`--ast-required` rejects any runtime expression that still needs streaming.
-Compiler self-host coverage is a narrower gate than full language coverage.
+that stage, and later tasks supersede them. Since completion-plan unit P1.4 the
+production compiler compiles **through the AST front end by default**: every
+root is tried as an AST and falls back to the streaming grammar only where the
+AST declines (an expression too large for the bounded arena;
+`ast_expression_suite` finds no other fallback in the tested corpus, and none
+at all in the compiler). `--streaming` selects the
+streaming front end for the whole program, implicit runtime imports included;
+it cannot be combined with `--ast-full-expressions`, `--ast-audit`,
+`--ast-retain`, `--ast-required` or the retaining `tree` query
+(`check --all-errors` works on either front end). `--ast-full-expressions` is now a no-op kept for
+scripts, `--ast-expressions` selects grouped scalar AST only together with
+`--streaming`, and `--ast-required` still rejects any runtime expression that
+would fall back to streaming. The REPL and wdbg follow the same default and
+accept `--streaming`. The pinned seed predates the flip, so the bootstrap
+`./w w.w -o bin/wv2` stage still compiles streaming; `bin/wv2` and every later
+stage compile AST, and images are byte-identical either way. Compiler
+self-host coverage is a narrower gate than full language coverage.
+
+Since S2.5 every AST compile, REPL and wdbg session also **retains the forest
+and emits from it**: each statement is parsed into its retained record and
+then emitted by walking that record, and every expression is lowered from its
+retained group through S2.1's adapter. `--ast-retain` and
+`--ast-emit-retained` are accepted as no-ops kept for scripts (like
+`--ast-full-expressions`), and still conflict with `--streaming`, which opts
+out of the AST front end, the retained forest and retained emission together.
+The temporary expression arena survives only as the adapter's target and for
+`--streaming --ast-expressions`.
 
 The integrated path prepares and lowers runtime expressions, statements,
 control-flow regions, function boundaries, global layouts, enum constants and
@@ -23,22 +46,28 @@ JSON/protobuf/ndarray builtins, GPU/device operations and diagnostic events.
 First-use composite types remain transactional, and unsigned operations retain
 `main`'s target-word-size semantics.
 
+`verify` now exercises the AST path, and `ast_expression_verify` is the
+streaming oracle: `bin/wv2 --streaming` (and `--streaming --ast-expressions`)
+must reproduce `bin/wv3` on both hosts and reach their own fixpoints.
 `./wbuild ast_expression_suite` generates a required-mode manifest with the
 W-native `wast_audit` tool and runs it serially. Positive direct compiler steps
 and diagnostic fixture children reject expression fallback; expected failures
-use permissive AST mode to preserve diagnostics. Explicit comparison modes,
-pinned seeds and other nested compiler drivers retain their existing modes.
-The positive full-AST image comparison leg also rejects fallback. These gates
-prove the tested corpus, not unrestricted source-language coverage.
+use permissive AST mode to preserve diagnostics. Explicit comparison modes
+(`--ast-*`, `--streaming`), pinned seeds and other nested compiler drivers
+retain their existing modes. Before rewriting, `wast_audit required-manifest`
+fails if a direct compiler step still opts in with a flag the default made
+redundant. These gates prove the tested corpus, not unrestricted
+source-language coverage.
 
-Bodies are still visited incrementally. `--ast-retain` now preserves owned
-production traversal trees (described below), including function/statement
-nesting, expression payloads, owned semantic type graphs and session-local binding
-identities. `w tree --json` exposes this graph. It is not yet an independently
-executable module IR; lowering still uses temporary nodes and some borrowed
-symbol bindings. Deferred
-expressions, generics and helper bodies can be reparsed, while type/import
-declarations still update semantic tables during parsing. Bounded arenas still
+Bodies are still visited incrementally: deferral is per statement (or
+header), not per whole body. The retained forest (described below) holds
+function/statement nesting, expression payloads, owned semantic type graphs
+and session-local binding identities, and `w tree --json` exposes it. It is
+not yet an independently executable module IR: the adapter rebuilds a
+bounded expression arena from each group before the backend visitor runs.
+Generic bodies and deferred statements are re-lexed from the retained source
+bytes rather than the file (S2.3), while type/import declarations still
+update semantic tables during parsing. Bounded arenas still
 fall back on oversized expressions (or reject them in required mode). The
 retired `wc2` resident cache is not part of this implementation.
 
@@ -53,7 +82,13 @@ retired `wc2` resident cache is not part of this implementation.
    `repl/incremental.w` reuses emitted scalar-function prefixes. General module
    invalidation, arbitrary-definition reuse and a resident module cache remain.
 3. Make and validate the production-default migration decision separately from
-   opt-in corpus coverage. Issue #489 remains open for this architectural work.
+   opt-in corpus coverage. P1.4 flips the default; the measurements behind the
+   decision are in "AST front end by default (P1.4)" below. S2.5 makes
+   retained emission the default too; its compile cost is above the plan's
+   1.25x target, so the retained-forest cost work (P1.2) reopens with the
+   numbers in "Retained emission by default (S2.5)" below. Retiring the
+   streaming grammar (P1.5) waits for a release that carries the flip. Issue
+   #489 remains open for this architectural work.
 
 The forward plan for these milestones, split into parallelizable units
 with file ownership and gates, is [ast_completion_plan.md](ast_completion_plan.md).
@@ -845,12 +880,11 @@ listing the changed target/step pairs. Generation does not execute the manifest.
 ```sh
 ./wbuild wast_audit
 bin/wast_audit manifest bin/ast_suite_manifest.json > bin/ast_suite_selection.json
-env -u NO_COLOR bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
+env -u NO_COLOR bin/wexec -f bin/ast_suite_manifest.json tests
 ```
 
-Run the audit suite separately from ordinary builds. Serial execution avoids the
-known nested-build race in which a driver rebuilds a compiler still being used
-by another target. The flag covers implicit runtime imports, but compiler
+Run the audit suite separately from ordinary builds. Bootstrap outputs publish
+atomically, so nested compiler rebuilds are safe alongside sibling targets. The flag covers implicit runtime imports, but compiler
 launches inside test drivers retain their own mode selection. A hybrid-suite
 pass permits fallbacks and does not prove complete language coverage.
 
@@ -1407,8 +1441,8 @@ and notes. **#489 remains open.**
 CI now runs `./wbuild ast_expression_suite` as its own job, beside the ordinary
 `./wbuild tests` job and bootstrapped the same way (the pinned seed, the
 32-bit runtime and ptrace attach). The suite stays out of `tests`: it
-regenerates a required-mode manifest and reruns the whole `tests` umbrella
-serially, so it is a slower separate leg.
+regenerates a required-mode manifest and reruns the whole `tests` umbrella,
+so it is a separate leg.
 
 `./wbuild tests` gains a cheap canary owned by `tests/ast_canary_test.w`.
 `ast_canary_test` runs `bin/wv2 check --quiet --ast-retain --ast-required w.w`
@@ -1417,12 +1451,12 @@ check with `bin/wv2_64` for the x64 target. Each run retains the compiler's
 own forest and fails on any expression fallback. `ast_audit_test` pins that
 the required-mode rewrite leaves both explicit-mode steps untouched.
 
-The serial suite is a workaround. `tools/wast_audit.w` now records why: a
-nested default-manifest `bin/wexec` (for example `wexec_test`'s
-`bin/wexec hello`) can rebuild `bin/wv2` in place, because wexec's
-`WEXEC_LOCK_HELD` exemption assumes its parent is blocked on that one step,
-which holds only at `-j 1`. The canary covers only `w.w`'s closure on two
-hosts, not the language corpus, and the CI leg does not remove that race.
+The former serial workaround was removed by #548: bootstrap compiler steps
+now publish via private staging files and atomic rename. Nested default-
+manifest builds can miss their own cache stamps without overwriting the
+inode used by a running sibling, so the suite uses normal parallel scheduling.
+The canary still covers only `w.w`'s closure on two hosts, not the language
+corpus.
 
 ## Module-dependency invalidation in wbuildd (C3.4)
 
@@ -2253,3 +2287,475 @@ reported at each exit that replays it; and an invalid UTF-8 identifier
 mid-file is still reported twice (once by the parse, once by the skip
 that re-reads it, which ends the check). No `tree --json` field was
 added; the schema stays **version 2**.
+
+## AST front end by default (P1.4)
+
+`bin/wv2` now compiles through the AST front end unless told otherwise. The
+reset in `compiler/compiler.w` sets `ast_expressions_mode = 2` for every
+compile. `--streaming` is the opt-out; link_impl's flag pre-scan applies it so
+the implicit runtime closure compiles streaming too, and it is an error next
+to `--ast-full-expressions`, `--ast-audit`, `--ast-retain`, `--ast-required`
+or a retaining query (the message names the conflicting flag). `--ast-required`
+keeps its check and changes nothing else. `--ast-full-expressions` is
+accepted and does nothing. `--ast-expressions` means grouped scalar AST only
+after `--streaming`. The REPL and wdbg default to the AST path the same way
+and accept `--streaming`: S2.4's `repl_ast_options` (`repl/core.w`) sets the
+default, applies `--streaming` and rejects it next to an AST-only flag with
+the driver's own error, and wdbg's attach recompile forwards `--streaming`,
+`--ast-expressions`, `--ast-retain`/`--ast-emit-retained` and
+`--ast-required` as needed. `repl_retained_emit_test`'s baseline legs pass
+`--streaming`, so they still compare retained lowering with the streaming
+front end; its recovery legs add the default (AST) run as the third leg.
+S2.3's `ast_generic_retained_test` likewise compares `--ast-emit-retained`
+with a `--streaming` baseline, the path that still seeks the source.
+
+The gates were inverted. `verify` exercises the AST path because `bin/wv2`
+and every later stage compile AST. Only the bootstrap step differs: the pinned
+v0.3.0 seed still defaults to streaming, so `./w w.w -o bin/wv2` is a
+streaming compile, and `bin/wv2 → wv3 → wv4 → wv5` are AST compiles. The
+fixpoint holds because the two front ends emit the same bytes.
+`ast_expression_verify` now compiles `w.w` with `--streaming` and with
+`--streaming --ast-expressions` on both hosts, compares each against
+`bin/wv3`/`bin/wv3_64` and takes each to its own fixpoint. Before rewriting,
+`wast_audit required-manifest` fails if a direct compiler step still passes
+`--ast-full-expressions`, or `--ast-expressions` without `--streaming`. It
+treats `--streaming` steps as an explicit mode and leaves them alone. The
+baselines in `ast_expression_test` (compile, query, check, REPL and wdbg
+comparisons) now pass `--streaming`, so that test still compares against the
+streaming front end.
+
+Measured on the shared 4-core container, `bin/wv2 … --strict w.w`, median of
+five runs, back to back on a quiet box (load average under 1). "Before" is
+`origin/main` at `2f8b2e1`, compiling its own tree; "after" is this change.
+
+| mode | x86 before | x86 after | x64 before | x64 after |
+| --- | ---: | ---: | ---: | ---: |
+| streaming (default before, `--streaming` after) | 0.813 s | 0.790 s | 0.692 s | 0.675 s |
+| AST (`--ast-full-expressions` before, default after) | 0.902 s | 0.856 s | 0.804 s | 0.796 s |
+| `--ast-required` | 0.862 s | 0.785 s | 0.832 s | 0.777 s |
+| `--ast-retain --ast-required` | 1.49 s | 1.41 s | 1.48 s | 1.35 s |
+| **AST default / streaming** | — | **1.08x** | — | **1.18x** |
+
+Wall-clock noise on this box is about ±8% (the `--ast-required` and default
+rows do the same work). Two earlier runs under load gave 1.12x/1.23x (before)
+and 1.15x/1.25x (after) for x86/x64. Instructions retired (callgrind, one run
+each) are stable: 7.55G vs 6.79G on x86 (1.11x) and 7.71G vs 6.92G on x64
+(1.11x). A small program, `tests/hello.w`, takes 344M vs 294M (1.17x), which
+is mostly the auto-imported runtime. Every image was byte-identical to
+`bin/wv3`/`bin/wv3_64` in every mode. `w.w` compiled for x86, x64, arm64,
+arm64_darwin, win64 and wasm is byte-identical between the default and
+`--streaming`.
+
+On `2f8b2e1`, `./wbuild ast_expression_suite` passed with this change: 888
+targets serially, with 1,080 required-mode steps, 104 expected-failure steps
+and 35 fixture groups, in 12 m 49 s. `./wbuild tests` also passed (888
+targets); one `wbuildd_test` run failed under heavy load and passed on every
+rerun. `verify`, `verify_x64`, `verify_arm64` (qemu) and `verify_win` (wine
+9.0) passed. `verify_wasm` reaches its fixpoint under wasmtime 25 and under
+`node --no-turbo-fast-api-calls`. The plain `bin/wrun wasm` fallback to Node
+22.22 segfaults mid-compile. The crash is a V8 garbage collection inside WASI
+`fd_read`'s fast API call (docs/projects/ai_tooling_next_steps.md); the
+streaming front end does not trigger it. `verify_darwin` needs the arm64
+macOS runner and was not run.
+
+**Rebased onto `4f0efd0` (after #569, #570, #571 and #573-#576).** The two
+blockers found on `df680d1` are fixed on `main`: #571 ports #558's
+conversion warnings and lint rules to the AST front end, so `warning_test`
+and `type_check_lint_test` pass in the default mode, and #569 fixes the
+malloc growth misalignment that corrupted heap block headers. 300
+`bin/wdbg64 tests/debug_fixture.w` sessions in the default mode now all
+pass (it failed about 1-2% before). The Node crash in `verify_wasm` was not
+the heap bug: it still happened after #569, with the same V8 stack (a
+garbage collection from `uvwasi_fd_read`'s external-memory accounting
+inside a fast API call). `tools/run_wasm.mjs` now turns Node's fast API
+calls off with `v8.setFlagsFromString('--no-turbo-fast-api-calls')` before
+it compiles the module, and `verify_wasm` reaches its fixpoint under the
+Node fallback. `ast_parse_cost_test`, `ast_diagnostic_codes_test` and
+`ast_integer32_test` measure a streaming baseline, so they now pass
+`--streaming` for it. `--ast-emit-retained` (S2.1) is rejected next to
+`--streaming` like the other AST-only flags.
+
+On `4f0efd0` with this change, `./wbuild tests` passed (896 targets) and
+`./wbuild ast_expression_suite` passed serially: 896 targets, 1,090
+required-mode steps, 105 expected-failure steps and 35 fixture groups, in
+17 m 56 s on a loaded box. `verify`, `verify_x64`, `verify_arm64` (qemu),
+`verify_win` (wine) and `verify_wasm` (Node 22.22) passed. `w.w` compiled
+for x86, x64, arm64, arm64_darwin, win64 and wasm is byte-identical between
+the default and `--streaming`. `verify_darwin` needs the arm64 macOS runner
+and was not run.
+
+Timings on `49f167c` (the S2.2a base; #573-#576 change only
+`--ast-emit-retained`), `bin/wv2 … --strict w.w`, eleven interleaved runs
+on the shared box under load (load average 6-10); CPU is user plus system
+time. Instructions are from callgrind, one run each.
+
+| mode | x86 wall | x86 CPU | x64 wall | x64 CPU |
+| --- | ---: | ---: | ---: | ---: |
+| `--streaming` | 0.816 s | 0.744 s | 0.688 s | 0.654 s |
+| default (AST) | 0.943 s | 0.879 s | 0.841 s | 0.807 s |
+| `--ast-required` | 0.912 s | 0.861 s | 0.843 s | 0.827 s |
+| `--ast-retain --ast-required` | 1.49 s | 1.37 s | 1.54 s | 1.54 s |
+| **default / streaming** | **1.16x** | **1.18x** | **1.22x** | **1.23x** |
+
+Instructions retired: 7.86G vs 7.16G on x86 (1.10x) and 7.80G vs 7.05G on
+x64 (1.11x). Both hosts stay inside the plan's 1.25x checkpoint, x64 with
+less margin in wall-clock time than in instructions.
+
+What this does not claim. Emission still happens per root during parsing.
+The streaming grammar is still compiled in and maintained; retiring it is
+P1.5, after a release carries this change. Roots too large for the bounded
+arena still fall back to streaming silently unless `--ast-required` is given.
+The `--streaming` conflict error has no diagnostic code row yet (`check
+--json` reports W0000). The Node workaround covers `tools/run_wasm.mjs`
+only; the host-import runners under `tools/web/` keep fast API calls on.
+**#489 remains open.**
+
+After merging register allocation and PGO (#582) and asm function bodies
+(#579). The register pre-scan (`compiler/regalloc_scan.w`) reads each body's
+bytes from its own image of the source before the prologue,
+`--profile-use`/`--profile-generate` key functions by `w defhash`, a hash of
+the token stream, and `asm_function_body` runs ahead of both front ends'
+body paths; none of them depends on the front end. `w.w` is byte-identical
+between the default and `--streaming` on x86 and x64 with promotion on, with
+`--no-regs`/`-O0`, with `--profile-use=profiles/self.wprof` (`self_x64.wprof`
+on x64, and `bench.wprof` on x86) with and without `--no-regs`, and under
+`--profile-generate` (image and `.wprofmap`); `--stats`' regalloc and
+profile counters and `w defhash` output match too. `tests/asm_function_test.w`
+is byte-identical across the default, `--streaming` and `--ast-required`
+(with and without `--no-asm`/`--no-regs`), and every `asm_*_error_fixture`
+gives the same output and exit status in the three modes. `profile_check`
+reports 1000 of 1008 (x86) and 1045 of 1053 (x64) functions still
+matching. The stale entries are functions whose source changed after the
+profiles were generated: `link_option` and `link_impl`, which this change
+edits, and six that #579 edited on `main` (`function_definition`,
+`statement_impl`, `be_function_define` and three in `libs/asm/`). Their
+hashes moved with their text, not with the front end. That is far above the
+80% refresh threshold in register_allocation_pgo.md §8, so the committed
+profiles were left as they are (those functions take the static heuristic
+until the next `profile_refresh`).
+
+Compile time on the merged tree, `bin/wv2 … --strict w.w`, median of nine
+interleaved runs (load average under 1), and instructions retired (callgrind,
+one run each, ±3% from the per-process hash seed):
+
+| | default (AST) | `--streaming` | ratio |
+| --- | ---: | ---: | ---: |
+| x86 wall | 1.196 s | 1.033 s | 1.16x |
+| x86 user + sys | 1.198 s | 1.032 s | 1.16x |
+| x64 wall | 1.229 s | 1.088 s | 1.13x |
+| x64 user + sys | 1.230 s | 1.088 s | 1.13x |
+| x86 instructions | 8.92G | 8.09G | 1.10x |
+| x64 instructions | 9.10G | 8.22G | 1.11x |
+
+#582's register pre-scan and promotion add about the same cost to both
+front ends, so the AST default stays inside the 1.25x checkpoint.
+
+## Retained emission by default (S2.5)
+
+Every AST compile now retains the forest and emits from it. `link_impl`'s
+reset (`compiler/compiler.w`) sets `ast_retain_mode` and
+`ast_emit_retained_mode` along with the AST front end, and `--streaming`
+clears all three; `repl_ast_options` (`repl/core.w`) does the same for the
+REPL and wdbg. `--ast-retain` and `--ast-emit-retained` are accepted and
+change nothing, like `--ast-full-expressions` since P1.4. They are still
+errors next to `--streaming`, and a retaining query (`tree`) still
+conflicts with `--streaming` through `retained_query_mode`. wdbg's attach
+recompile keeps forwarding `--ast-emit-retained`, which is now a no-op.
+
+The temporary-arena emission path is reduced to the adapter.
+`emit_prepared_expression_ast` (`code_generator/expression_ast.w`) notes the
+expression into a retained group and has S2.1's adapter rebuild the arena
+from that group before the backend visitor runs. That call used to sit at
+the end of `retained_expression_note`, so S2.2's statement walk had to turn
+the mode off around its note. The note now only records. The arena is
+lowered directly only under `--streaming --ast-expressions` (no forest), or
+when an in-process caller sets `ast_retain_mode` alone, as
+`ast_retained_test` does.
+
+One diagnostic difference surfaced once the default changed. A deferred
+statement re-lexed from a retained window on `/dev/null` (S2.3) lost its
+source context line when its expression preflight called
+`ast_expression_refill`. The refill compacted the window, dropped the
+file's prefix, and `diag_context_collect` could not seek back to line 1.
+Such a window already holds every byte its re-parse can read, so the
+refill now leaves it alone (`retained_window_complete`).
+
+Comparison baselines that assumed the old default now pass `--streaming`:
+`ast_retained_emit_test`'s compile, lint and REPL legs (the lint leg used
+`--ast-full-expressions`; `check --json --lint --streaming` matches the
+default on all 156 fixtures), `coverage_test`, `verify_profile_generate`
+and `verify_pgo` (`bin/wv3_pgo_streaming`). `ast_expression_verify`
+gains a cross-target leg. `w.w` compiled for arm64, arm64_darwin, win64 and
+wasm must be byte-identical between the default and `--streaming`.
+
+Cost work in this unit, all with byte-identical images and `tree --json`
+output:
+
+- The type cache is a dense array with a generation stamp, so the per-declaration
+  invalidation no longer frees and rebuilds a SipHash map.
+- Binding lookups try a direct-mapped front cache and then the raw symbol's
+  `origin_previous` chain before spelling the string key. A binding gains
+  `key_line`, `key_column` and `key_file_index`, appended to the struct.
+- Interning has an empty-name fast path, an 8192-slot front cache and its
+  own multiplicative-hash table in place of a SipHash map.
+- `retained_add` caches its line lookup.
+- `getc` appends a recorded source byte inline, and the module node's end
+  goes through a cached pointer.
+- Field offsets are summed as the fields go, instead of calling
+  `type_get_field_offset_at` once per field.
+- The adapter's field checks compare before they call.
+
+Measured on the shared 4-core box with load average around 1:
+`bin/wv2 … --strict w.w`, median of nine interleaved runs; instructions are
+from callgrind, one run each. "Before" is `origin/main` at `d01aee3`
+(plus the attach.w build fix) compiling this tree with `--ast-retain
+--ast-required --ast-emit-retained`. "After" is this change's default.
+
+| | streaming | before (retained) | after (default) | after / streaming |
+| --- | ---: | ---: | ---: | ---: |
+| x86 wall | 0.886 s | 2.036 s | 1.847 s | 2.08x |
+| x86 user + sys | 0.885 s | 2.034 s | 1.845 s | 2.08x |
+| x64 wall | 0.875 s | 2.126 s | 1.940 s | 2.22x |
+| x64 user + sys | 0.873 s | 2.125 s | 1.938 s | 2.22x |
+| x86 instructions | 6.85G | 12.67G | 11.21G | 1.64x |
+| x64 instructions | 6.81G | 12.75G | 11.25G | 1.65x |
+
+Before this change the default AST compile (no retention) took 1.089 s
+against 0.879 s for streaming (1.24x) and 7.63G instructions. Peak RSS for
+`w.w` on x86 is 118 MB, against 11 MB streaming and 14 MB for the
+non-retaining AST compile. Wall time grows more than instructions do: L1
+instruction misses double (111M vs 51M) and last-level write misses grow
+tenfold (1.86M vs 0.18M; cachegrind). REPL startup and `:quit` takes
+106 ms (x86) and 111 ms (x64), against 43 ms and 45 ms with `--streaming`,
+which matches S2.4's measurement of retaining the preloaded library.
+
+**The plan's 1.25x target is not met, so P1.2 reopens.** The rest of the
+cost is structural. Inclusive costs on x86 (callgrind, after):
+
+- `retained_expression_note`: 2.49G. It allocates one 240-byte node per
+  arena node (480 bytes on x64) and records four semantic types and up to
+  two bindings per node.
+- `retained_binding_note`: 1.09G in total. 0.62G of it comes from
+  `retained_function_parameters`, because a function's binding and each
+  parameter's binding copy their type graphs.
+- `retained_type_note`: 0.66G. `retained_declaration_note` invalidates the
+  type cache at every declaration (6,088 of them in `w.w`), so each one
+  copies the whole type graph it touches again: 34,656 retained types are
+  created.
+- The statement walk: `retained_walk_drain` 1.54G inclusive, most of which
+  is the emission itself. The walk's own overhead is the phase points
+  (tokenizer snapshot saves and compares, about 0.4G) and the adapter
+  (`retained_emit_expression_group`, 0.28G).
+
+Shrinking `retained_node`, keeping type snapshots across declarations that
+did not change a type, and making bindings for parameters lazy are P1.2
+territory: they change the forest's shape or identities, which this unit
+keeps fixed.
+
+What this does not claim: a body is still deferred one statement or header
+at a time, not parsed whole before emission, so checkpoint B's "a function
+body is parsed completely … then emitted" is not reached. Type and import
+declarations still update the semantic tables while they parse, and roots
+too large for the bounded arena still fall back to streaming silently
+unless `--ast-required` is given. The streaming grammar is still compiled
+in and is the `--streaming` oracle until P1.5. The tree schema is
+unchanged (**version 2**). **#489 remains open.**
+
+## Optimizer pass slot (C3.5)
+
+`--ast-opt` (off by default; an error next to `--streaming`) runs an
+optional tree pass, `compiler/ast_opt.w`, with two rewrites for #110:
+constant-folded if/elif/while conditions and the dead arms they leave.
+`docs/projects/optimization.md` §6 item 6 has the motivation and the
+numbers.
+
+- **Where it hooks.** Emission is deferred per statement or header
+  (S2.2, S2.5), not per body, so the slot is between a header's parse and
+  the walk phases that emit it. `ast_statement_guard`
+  (`grammar/ast_statement.w`) hands the condition's prepared tree to
+  `ast_opt_guard` before any of the arm's phases run; the pass folds it
+  when every node is a literal, `true`/`false`, `__word_size__`,
+  `__target_isa__` or an integer, comparison, logical or `?:` operator
+  over them, with every intermediate value within ±2^30 so the host and
+  target widths cannot disagree, and records the value on the arm (keyed
+  by the arm's `statement_ast` or `loop_ast`). `emit_guard_ast_walk`
+  (`code_generator/statement_ast.w`) asks `ast_opt_guard_phase` about
+  each phase of a folded arm. Both hooks are single tagged call sites.
+- **The rewrites.** A folded condition is still lowered, so its replayed
+  warnings, literal checks and lint state are the default compile's; its
+  bytes are then rolled back (`peep_rollback`) and the branch phase emits
+  nothing (true) or an unconditional jump (false). The arm the condition
+  kills is a dead region: from the false arm's jump to its then-end
+  phase, from a true arm's jump past the else arms to its if-end phase,
+  and from `while 0`'s jump to its while-end phase. It is parsed, walked
+  and emitted as usual, and when its closing phase runs its bytes are
+  taken back if they are contained (no address slot, call, rebase note
+  or data written in it, no goto label or pending goto in it, no PGO
+  loop-head alignment, stack depth and control-region stack unchanged).
+  Removing it restores the chain heads of enclosing regions (a dead
+  `break` threads its jump into the loop's exit chain) and truncates the
+  DWARF line rows, wdbg locals, lexical blocks and frame-teardown notes
+  it added. A region that is not contained stays, unreachable. The
+  address-slot test needed one counter, `be_addr_slot_writes`, in
+  `be_addr_slot_write` (`code_generator/arm64.w`).
+- **Rotated loops (merged with codegen_gap_plan.md unit A7,
+  2026-10-08).** A `while` is bottom-tested by default: the walk emits
+  the condition after the body, where the guard's branch is the back
+  edge. A folded bottom test therefore emits one jump to the body for
+  `while 1` (the same bytes as the default compile's constant fold) and
+  nothing for `while 0`; the dead body precedes the condition, so a
+  rotated loop opens its region at the while-begin phase
+  (`ast_opt_while_begin`), the branch phase adopts it when the condition
+  folded to 0, and the end phase closes it and re-resolves the entry jump
+  to the instruction after the removed bytes. A constant condition that
+  the branch-on-flags unit (A6) left as a pending `&&`/`||`/`!` chain
+  drops the chain's regions with its bytes (`cond_pending_discard`). On
+  the merged tree `w.w` folds 109 conditions and removes 30 dead regions
+  on x86 (43 on x64); `ast_opt_verify` and `ast_opt_test` pass.
+- **What it does not touch.** The retained forest is unchanged, so `w
+  tree --json` is too. The pass runs only on x86 and x64 Linux ELF, and
+  not under `--profile-generate`/`--coverage` (their counters record code
+  positions). `for` and `switch` headers are not folded. The default
+  compile is unchanged: `w.w` compiled by `origin/main`'s compiler and by
+  this one is byte-identical on both hosts, and `profile_check` matches
+  the same functions as on `main` (916 of 1008, 959 of 1053).
+
+`--stats` adds four counters under the flag. On `w.w`: 106 conditions
+folded on both targets; 28 dead regions removed and 19 kept on x86, 41
+and 6 on x64; 988 and 430 bytes removed from the regions alone (the
+folded tests and branches come on top).
+
+| | x86 | x64 |
+| --- | ---: | ---: |
+| `bin/wv3` text, default | 1,719,617 | 2,030,244 |
+| `bin/wv3` text, built with `--ast-opt` | 1,716,973 | 2,027,958 |
+| change | −2,644 (−0.15%) | −2,286 (−0.11%) |
+| file size, default / with `--ast-opt` | 2,769,564 / 2,765,468 | 3,249,464 / 3,245,368 |
+| compile of `w.w` by `bin/wv3`, default (wall) | 1.824 s | 1.884 s |
+| the same with `--ast-opt` | 1.796 s | 1.866 s |
+| compile of `w.w` by the `--ast-opt`-built compiler | 1.821 s | 1.882 s |
+| instructions, default | 11.46G | 11.47G |
+| instructions with `--ast-opt` | 11.43G | 11.49G |
+| instructions, `--ast-opt`-built compiler | 11.43G | 11.49G |
+
+Wall times are medians of nine interleaved runs on the shared 4-core box
+(load average 1.5 to 5, so ±2%); instructions are callgrind, one run
+each, ±3% from the per-process hash seed. Every difference in time is
+inside that noise: the pass neither costs nor saves measurable compile
+time on `w.w`, and the code it removes is not on the compiler's hot
+paths. File sizes move by one 4 KiB page.
+
+Verification: `tests/ast_opt_test.w` runs its constant-condition and
+dead-arm cases compiled without the pass, then with it on x86 and x64.
+They include arms the pass must keep (a forward call that threads a
+backpatch chain through the arm, a label reached by `goto` from outside)
+and one it must clean up after (a dead `break` before enough live code to
+overwrite the arm's bytes before the loop's exit chain is resolved):
+dropping the goto, address-slot-and-call, or chain-head step makes the
+test fail or the compiler crash. Its driver compiles the file and
+`tests/ast_control_walk_fixture.w` both ways and requires identical
+diagnostics, checks the counters, and checks the `--streaming` conflict.
+`ast_opt_verify` (in `tests`) is the self-host fixpoint with the flag on
+x86 and x64, plus a check that the `--ast-opt`-built compiler emits
+exactly `bin/wv3`/`bin/wv3_64` without it. `verify`, `verify_x64`,
+`verify_pgo`, `profile_check`, `tests` and `tests_x64` pass.
+
+What this does not claim: the pass is not on by default, and it is not
+yet a tree rewrite of whole bodies. Dead arms are still parsed, lowered
+and then discarded, so the pass cannot save compile time. Cross-statement passes (constant propagation, dead stores, CSE) need
+checkpoint B's whole-body trees. The tree schema is unchanged
+(**version 2**). **#489 remains open.**
+
+## Compact retained storage and in-place lowering (P1.2b)
+
+S2.5 left the default (retained) compile of `w.w` at about 2.1x
+`--streaming`. This unit changes only the forest's node layout, IDs and
+allocation. Images stay byte-identical to `--streaming` on every target,
+`tree --json` output is byte-identical (schema **version 2**), and REPL
+rollback, S2.3 re-parse, C3.1 recovery and `--all-errors` are unchanged.
+
+- **Records and operands.** A node was one 240-byte `retained_node` (480
+  on x64). Now expression operands are not records. A group keeps its
+  arena's 22 node columns in one column-major block, and an operand ID
+  maps to its group's record through a tagged entry in the node table
+  (`retained_node_table`). Every other node is a 16-word
+  `retained_record`. `retained_node` remains as the full view struct:
+  `retained_node_load` / `retained_node_at` derive an operand's fields
+  from its group, so the query, dependency, REPL and test readers see
+  the same fields as before. `retained_record_at` traps on an operand.
+- **One session arena.** Records, column blocks and copied text share
+  1 MB chunks. Rollback stays a high-water mark (the checkpoint records
+  the chunk and offset), and chunks above the mark are reused.
+- **Semantic records on demand.** Type and binding snapshots for operands,
+  functions, parameters and declarations are kept only in a semantic
+  session (`retained_semantic_mode`): a tree query, an explicit
+  `--ast-retain`, or an in-process API user, which is the variable's
+  default. The compile driver resets it to `retained_query_mode`, and
+  `repl_ast_options` clears it. A semantic group adds a second block for
+  its operands' types, bindings and spellings. There the adapter still
+  rebuilds and compares every field, as S2.1 did.
+- **In-place lowering.** In a plain session, `retained_emit_lower` points
+  the visitor's arena columns and decoded text at the group's block, so
+  the backend lowers the retained forest directly. It then re-binds the
+  arena to its slab and copies back the one column the visitor writes
+  (`it_slot`). Column copies are block copies.
+- **Window-granular source recording.** `getc` used to append each byte.
+  Now it records the rest of the buffered window when it reaches a byte
+  the version has not recorded (`retained_source_window`). A refill
+  records the whole window, and so does `ast_expression_refill`'s read.
+  Bytes already recorded are compared, as before. Growth no longer
+  zero-fills.
+- **Smaller costs.**
+  - The statement-walk pools (records, phases, emission points) are raw
+    arrays.
+  - Interning hashes once and keeps each slot's hash.
+  - Line lookups read the line starts directly.
+- **New `--stats` lines:** retained operands, text bytes and arena bytes.
+  For `w.w` these are 358,925 nodes, 209,565 of them operands, and a
+  31.5 MB arena.
+
+Measured on the shared 4-core box: `… --strict w.w` compiled in a fixed
+`git archive` of `origin/main`, median of nine interleaved runs.
+Instructions are from callgrind, one run each. "Before" is `origin/main`
+(0a1a03a8, S2.5's default); "after" is this change's default. Both x64
+columns use the 64-bit compiler targeting x64.
+
+| | streaming | before | after | after / streaming |
+| --- | ---: | ---: | ---: | ---: |
+| x86 wall | 0.892 s | 1.861 s | 1.358 s | 1.52x |
+| x86 user + sys | 0.889 s | 1.859 s | 1.355 s | 1.52x |
+| x64 wall | 0.875 s | 1.890 s | 1.387 s | 1.59x |
+| x64 user + sys | 0.872 s | 1.886 s | 1.385 s | 1.59x |
+| x86 instructions | 6.98G | 11.39G | 8.73G | 1.25x |
+| x64 instructions | 6.95G | 11.42G | 8.74G | 1.26x |
+| x86 peak RSS | 10.3 MB | 118.5 MB | 52.0 MB | |
+| x64 peak RSS | 15.0 MB | 216.7 MB | 86.9 MB | |
+
+REPL startup plus `:quit` (median of nine) went from 104 ms to 75 ms on
+x86 and from 107 ms to 73 ms on x64. With `--streaming` it takes 43 ms
+on both.
+
+**The 1.25x wall target is not met.** Instructions are at 1.25x, but
+wall time is not.
+
+- The non-retaining AST front end alone is already about 1.25–1.3x in
+  wall time: 7.78G instructions, with the preflight `ast_expression_root_end`,
+  replay and arena recording on top of streaming.
+- Retention adds about 0.95G instructions over that.
+- Wall time grows faster than instructions. Simulated L1 instruction
+  misses are 92M against 52M for streaming and 75M without retention,
+  and indirect-branch mispredictions are 28M against 23M.
+
+The remaining retained-only costs on x86 (self, callgrind) are:
+
+- The statement walk's emission points, about 0.25G: tokenizer snapshot
+  saves, compares and restores, the token text copies and `strcmp`, and
+  `retained_emit_source_position`.
+- Column copies, 0.1G.
+- Node-table pushes and record creation, 0.1G.
+- Source recording and verification, 0.09G.
+
+Shrinking further means changing the walk itself: fewer emission
+points, or a lexer epoch that makes point checks one comparison. It could
+also mean sparse default columns, which would need per-column pointers in
+the group. **#489 remains open.**

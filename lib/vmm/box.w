@@ -6,6 +6,7 @@ import lib.kvm
 import lib.vmm.channel
 import lib.vmm.qmp
 import lib.file
+import lib.vmm.workspace_image
 
 struct vm_box_options:
 	char* kernel
@@ -18,16 +19,21 @@ struct vm_box_options:
 	int memory_mb
 	int timeout_ms
 	char* channel_path # private host socket; set by box_session_open
-	int workspace_mb # guest tmpfs upper bound, 0 uses the supplied share policy
+	int workspace_mb # imported guest tmpfs bound, 0 uses the supplied 9p share policy
 	char* channel_directory # borrowed private parent; null uses /tmp
 	char* qmp_path # internal private control socket
 	int snapshot_fd # borrowed migration image, -1 for cold boot
+	int memory_fd # borrowed RAM image for incoming migration, -1 for ordinary RAM
+	int memory_shared # helper materialization only; clones always use private RAM
+	int snapshot_ignore_shared # device-only stream accompanies a RAM image
+	int snapshot_paused # helper must never execute guest instructions
 
 
 vm_box_options* box_options_new():
-	vm_box_options* options = malloc(sizeof(vm_box_options))
+	vm_box_options* options = cast(vm_box_options*, malloc(sizeof(vm_box_options)))
 	mem_fill[char](cast(char*, options), 0, sizeof(vm_box_options))
 	options.snapshot_fd = -1
+	options.memory_fd = -1
 	options.cpus = 2
 	options.memory_mb = 256
 	options.timeout_ms = 30000
@@ -45,6 +51,13 @@ int box_options_valid(vm_box_options* options):
 	if (options.workspace_mb < 0 || options.workspace_mb > 32768): return 0
 	if (options.workspace_mb > 0 && options.fs_root == 0): return 0
 	if (options.network < 0 || options.network > 2): return 0
+	if (options.memory_fd >= 0 && options.snapshot_fd < 0): return 0
+	if (options.memory_shared < 0 || options.memory_shared > 1): return 0
+	if (options.snapshot_ignore_shared < 0 || options.snapshot_ignore_shared > 1): return 0
+	if (options.snapshot_paused < 0 || options.snapshot_paused > 1): return 0
+	if (options.memory_shared && options.memory_fd < 0): return 0
+	if (options.snapshot_ignore_shared && options.memory_fd < 0): return 0
+	if (options.snapshot_paused && options.snapshot_fd < 0): return 0
 	return 1
 
 
@@ -76,11 +89,31 @@ char** box_command(vm_box_options* options, char* qemu):
 	int count = 0
 	box_arg(args, &count, qemu)
 	box_arg(args, &count, c"-machine")
-	box_arg(args, &count, c"microvm,accel=kvm")
+	if (options.memory_fd >= 0): box_arg(args, &count, c"microvm,accel=kvm,memory-backend=microvm.ram")
+	else: box_arg(args, &count, c"microvm,accel=kvm")
 	box_arg(args, &count, c"-cpu")
 	box_arg(args, &count, c"host")
-	box_arg(args, &count, c"-m")
 	string_builder* value = string_new()
+	if (options.memory_fd >= 0):
+		string_append(value, c"memory-backend-file,id=microvm.ram,size=")
+		string_append_int(value, options.memory_mb * 1048576)
+		string_append(value, c",mem-path=/proc/")
+		string_append_int(value, getpid())
+		string_append(value, c"/fd/")
+		string_append_int(value, options.memory_fd)
+		if (options.memory_shared): string_append(value, c",share=on,readonly=off,rom=off,merge=off")
+		else: string_append(value, c",share=off,readonly=on,rom=off,merge=off")
+		box_arg(args, &count, c"-object")
+		box_arg(args, &count, value.data)
+		string_clear(value)
+		if (options.memory_shared):
+			# An incoming helper never runs: its KVM clock was not set from
+			# the imported state. Omit QEMU's reliable-clock subsection so
+			# clones derive time from captured pvclock RAM and vCPU TSC,
+			# rather than the helper's unrelated uptime on second migration.
+			box_arg(args, &count, c"-global")
+			box_arg(args, &count, c"kvmclock.x-mach-use-reliable-get-clock=off")
+	box_arg(args, &count, c"-m")
 	string_append_int(value, options.memory_mb)
 	box_arg(args, &count, value.data)
 	string_clear(value)
@@ -134,7 +167,7 @@ char** box_command(vm_box_options* options, char* qemu):
 		string_append_char(value, ' ')
 		string_append(value, options.command_line)
 	box_arg(args, &count, value.data)
-	if (options.fs_root != 0):
+	if (options.fs_root != 0 && options.workspace_mb == 0):
 		string_clear(value)
 		string_append(value, c"local,id=work,security_model=mapped-xattr,multidevs=forbid,path=")
 		box_append_path(value, options.fs_root)
@@ -157,6 +190,8 @@ char** box_command(vm_box_options* options, char* qemu):
 # capture. Status is QEMU's status, NOT an init command's exit code.
 int box_run(vm_box_options* options):
 	if (box_options_valid(options) == 0): return 2
+	# Boot-only import is prepared by the persistent session owner.
+	if (options.workspace_mb > 0): return 2
 	int probe = kvm_open_system()
 	if (probe < 0): return 125
 	close(probe)
@@ -196,6 +231,8 @@ struct vm_box_session:
 	int cpus
 	int memory_mb
 	int snapshot_allowed
+	char* workspace_image
+	int snapshot_ignore_shared
 
 
 void box_session_cancel(vm_box_session* session):
@@ -218,6 +255,9 @@ void box_session_close(vm_box_session* session):
 	if (session.child != 0): process_free(session.child)
 	free(session.kernel)
 	free(session.initrd)
+	if (session.workspace_image != 0):
+		unlink(session.workspace_image)
+		free(session.workspace_image)
 	if (session.qmp_path != 0):
 		unlink(session.qmp_path)
 		free(session.qmp_path)
@@ -277,7 +317,8 @@ vm_box_session* box_session_open(vm_box_options* options):
 	session.initrd = strclone(options.initrd)
 	session.cpus = options.cpus
 	session.memory_mb = options.memory_mb
-	session.snapshot_allowed = options.fs_root == 0 && options.network == 0
+	session.snapshot_ignore_shared = options.snapshot_ignore_shared
+	session.snapshot_allowed = (options.fs_root == 0 || options.workspace_mb > 0) && options.network == 0
 	char[16] random
 	if (sys_getrandom(&random[0], 16, 0) != 16):
 		free(qemu)
@@ -328,6 +369,14 @@ vm_box_session* box_session_open(vm_box_options* options):
 	# Replace the ten-byte agent.sock basename with qmp.sock.
 	mem_copy[char](qmp_transport + strlen(qmp_transport) - 10, c"qmp.sock", 9)
 	copied.qmp_path = qmp_transport
+	if (options.workspace_mb > 0 && options.snapshot_fd < 0):
+		session.workspace_image = path_join(session.directory, c"workspace.cpio")
+		if (workspace_image_create(options.initrd, options.fs_root, session.directory, session.workspace_image, options.workspace_mb * 1048576, options.timeout_ms) == 0):
+			free(qmp_transport)
+			free(qemu)
+			box_session_close(session)
+			return 0
+		copied.initrd = session.workspace_image
 	char** args = box_command(&copied, qemu)
 	session.child = box_session_spawn(qemu, args)
 	box_command_free(args)
@@ -351,7 +400,13 @@ vm_box_session* box_session_open(vm_box_options* options):
 		sys_fcntl(session.fd, 2, 1) # FD_CLOEXEC
 		socket_set_nonblocking(session.fd)
 		if (options.snapshot_fd >= 0):
-			if (box_qmp_migrate(session.qmp_fd, options.snapshot_fd, 1, deadline) && box_qmp_simple(session.qmp_fd, c"cont", deadline)):
+			int restored = 1
+			if (options.snapshot_ignore_shared): restored = box_qmp_ignore_shared(session.qmp_fd, 1, deadline)
+			if (restored): restored = box_qmp_migrate(session.qmp_fd, options.snapshot_fd, 1, deadline)
+			if (restored):
+				if (options.snapshot_paused): restored = box_qmp_is_paused(session.qmp_fd, deadline)
+				else: restored = box_qmp_simple(session.qmp_fd, c"cont", deadline)
+			if (restored):
 				session.alive = 1
 				return session
 			box_session_close(session)
@@ -359,6 +414,10 @@ vm_box_session* box_session_open(vm_box_options* options):
 		char[4] greeting
 		if (box_channel_io(session.fd, &greeting[0], 4, 0, 1, deadline)):
 			if (load_int32(&greeting[0]) == box_channel_magic):
+				if (session.workspace_image != 0):
+					if (unlink(session.workspace_image) == 0):
+						free(session.workspace_image)
+						session.workspace_image = 0
 				session.alive = 1
 				return session
 	box_session_close(session)
@@ -390,8 +449,8 @@ process_result* box_session_exec(vm_box_session* session, char** args, char* cwd
 		if (ok):
 			free(result.stdout_text)
 			free(result.stderr_text)
-			result.stdout_text = malloc(out_length + 1)
-			result.stderr_text = malloc(err_length + 1)
+			result.stdout_text = cast(char*, malloc(out_length + 1))
+			result.stderr_text = cast(char*, malloc(err_length + 1))
 			result.stdout_text[out_length] = 0
 			result.stderr_text[err_length] = 0
 			ok = box_channel_io(session.fd, result.stdout_text, out_length, 0, 1, deadline)

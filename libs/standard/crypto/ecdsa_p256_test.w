@@ -16,7 +16,7 @@ import lib.mem
 
 
 void te_assert_hex32(char* got, char* want_hex):
-	char* want = malloc(32)
+	char* want = cast(char*, malloc(32))
 	hex_decode_into(want_hex, want, 32)
 	if (mem_eq(got, want, 32) == 0):
 		println(c"ecdsa: 32-byte value mismatch, wanted:")
@@ -40,10 +40,10 @@ char* TE_UY():
 void test_public_key_derivation():
 	# Q = d*G must match the RFC 6979 A.2.5 public key (validates the
 	# constant-time scalar-multiplication ladder).
-	char* d = malloc(32)
+	char* d = cast(char*, malloc(32))
 	hex_decode_into(TE_D(), d, 32)
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	assert_equal(1, ecdsa_p256_public_key(d, qx, qy))
 	te_assert_hex32(qx, TE_UX())
 	te_assert_hex32(qy, TE_UY())
@@ -54,18 +54,18 @@ void test_public_key_derivation():
 
 # One RFC 6979 case: sign message `msg` and check r,s; then verify.
 void te_rfc6979_case(char* msg, int msglen, char* want_r, char* want_s):
-	char* d = malloc(32)
+	char* d = cast(char*, malloc(32))
 	hex_decode_into(TE_D(), d, 32)
-	char* hash = malloc(32)
+	char* hash = cast(char*, malloc(32))
 	sha256(msg, msglen, hash)
-	char* r = malloc(32)
-	char* s = malloc(32)
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
 	assert_equal(1, ecdsa_p256_sign(d, hash, 32, r, s))
 	te_assert_hex32(r, want_r)
 	te_assert_hex32(s, want_s)
 	# Signature must verify against the public key.
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	hex_decode_into(TE_UX(), qx, 32)
 	hex_decode_into(TE_UY(), qy, 32)
 	assert_equal(1, ecdsa_p256_verify(qx, qy, hash, 32, r, s))
@@ -88,11 +88,11 @@ void test_rfc6979_test():
 void test_verify_known_good():
 	# Independent (OpenSSL-produced) P-256/SHA-256 signature over
 	# "W native TLS: ECDSA verify vector".
-	char* qx = malloc(32)
-	char* qy = malloc(32)
-	char* r = malloc(32)
-	char* s = malloc(32)
-	char* hash = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
+	char* hash = cast(char*, malloc(32))
 	hex_decode_into(c"40d771407fd6b5db1dfdbb553e5d3d44b3ae320ca81c87dfaa93573f8301ff08", qx, 32)
 	hex_decode_into(c"3830b0e8e9892dbc380c937f692eb18bcd0a6f7089fd934cd98ad6a858c4e382", qy, 32)
 	hex_decode_into(c"95906865d4541312663c3ef6b112812897d64db0126a08ee6a9f42d15ac780af", r, 32)
@@ -123,28 +123,28 @@ void test_verify_known_good():
 
 void test_sign_verify_roundtrip():
 	# A different private key; sign an arbitrary digest and verify.
-	char* d = malloc(32)
+	char* d = cast(char*, malloc(32))
 	hex_decode_into(c"00112233445566778899aabbccddeeff0123456789abcdef1122334455667788", d, 32)
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	assert_equal(1, ecdsa_p256_public_key(d, qx, qy))
-	char* hash = malloc(32)
+	char* hash = cast(char*, malloc(32))
 	sha256(c"the quick brown fox", 19, hash)
-	char* r = malloc(32)
-	char* s = malloc(32)
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
 	assert_equal(1, ecdsa_p256_sign(d, hash, 32, r, s))
 	assert_equal(1, ecdsa_p256_verify(qx, qy, hash, 32, r, s))
 
 	# Determinism: signing again yields the identical (r, s).
-	char* r2 = malloc(32)
-	char* s2 = malloc(32)
+	char* r2 = cast(char*, malloc(32))
+	char* s2 = cast(char*, malloc(32))
 	assert_equal(1, ecdsa_p256_sign(d, hash, 32, r2, s2))
 	assert_equal(1, mem_eq(r, r2, 32))
 	assert_equal(1, mem_eq(s, s2, 32))
 
 	# Wrong public key must reject.
-	char* wx = malloc(32)
-	char* wy = malloc(32)
+	char* wx = cast(char*, malloc(32))
+	char* wy = cast(char*, malloc(32))
 	hex_decode_into(TE_UX(), wx, 32)
 	hex_decode_into(TE_UY(), wy, 32)
 	assert_equal(0, ecdsa_p256_verify(wx, wy, hash, 32, r, s))

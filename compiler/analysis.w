@@ -157,9 +157,13 @@ void analysis_skip(int declaration):
 				if ((peek(c"else") == 0) && (peek(c"elif") == 0)): return
 
 
+type __operation_callback = fn() -> void
+
+
 void analysis_run(int operation, int declaration):
+	__operation_callback* run = cast(__operation_callback*, operation)
 	if ((analysis_mode == 0) || (token[0] == 0)):
-		operation()
+		run()
 		return
 	analysis_state state
 	analysis_capture(&state)
@@ -181,6 +185,6 @@ void analysis_run(int operation, int declaration):
 		return
 	analysis_jump = cast(int, &resume)
 	analysis_probe_error_status = cast(int, analysis_error_resume)
-	operation()
+	run()
 	analysis_jump = outer
 	free(state.token)

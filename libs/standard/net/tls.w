@@ -301,7 +301,7 @@ char* tls_alpn_encode(char* protos, int* out_len):
 			string_append_bytes(b, protos + start, nl)
 			start = i + 1
 		i = i + 1
-	char* out = malloc(b.length)
+	char* out = cast(char*, malloc(b.length))
 	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
@@ -480,6 +480,9 @@ struct tls_conn:
 	# -1 for none (the task's deadline still applies). Blocking fds keep
 	# using SO_RCVTIMEO/SO_SNDTIMEO.
 	int io_timeout_ms
+	# Optional absolute deadline also bounds continuously-ready hostile peers.
+	int has_io_deadline
+	int io_deadline_ms
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
@@ -487,6 +490,8 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.fd = fd
 	c.use_mem = use_mem
 	c.io_timeout_ms = 0 - 1
+	c.has_io_deadline = 0
+	c.io_deadline_ms = 0
 	c.mem_in = 0
 	c.mem_in_pos = 0
 	c.mem_out = 0
@@ -497,19 +502,19 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.digest_size = whash_digest_size(c.hash_alg)
 	c.transcript = whash_new(c.hash_alg)
 	c.r_active = 0
-	c.r_key = malloc(TLS_AEAD_KEY_LEN)
-	c.r_iv = malloc(TLS_AEAD_IV_LEN)
+	c.r_key = cast(char*, malloc(TLS_AEAD_KEY_LEN))
+	c.r_iv = cast(char*, malloc(TLS_AEAD_IV_LEN))
 	c.r_seq_hi = 0
 	c.r_seq_lo = 0
 	c.w_active = 0
-	c.w_key = malloc(TLS_AEAD_KEY_LEN)
-	c.w_iv = malloc(TLS_AEAD_IV_LEN)
+	c.w_key = cast(char*, malloc(TLS_AEAD_KEY_LEN))
+	c.w_iv = cast(char*, malloc(TLS_AEAD_IV_LEN))
 	c.w_seq_hi = 0
 	c.w_seq_lo = 0
-	c.c_hs_secret = malloc(c.digest_size)
-	c.s_hs_secret = malloc(c.digest_size)
-	c.c_ap_secret = malloc(c.digest_size)
-	c.s_ap_secret = malloc(c.digest_size)
+	c.c_hs_secret = cast(char*, malloc(c.digest_size))
+	c.s_hs_secret = cast(char*, malloc(c.digest_size))
+	c.c_ap_secret = cast(char*, malloc(c.digest_size))
+	c.s_ap_secret = cast(char*, malloc(c.digest_size))
 	tls_wipe(c.r_key, TLS_AEAD_KEY_LEN)
 	tls_wipe(c.r_iv, TLS_AEAD_IV_LEN)
 	tls_wipe(c.w_key, TLS_AEAD_KEY_LEN)
@@ -593,6 +598,7 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 		return 1
 	int got = 0
 	while (got < n):
+		if (c.has_io_deadline && (c.io_deadline_ms - time_monotonic_ms()) <= 0): return 0
 		int r = socket_recv(c.fd, buf + got, n - got, 0)
 		if (r > 0): got = got + r
 		else if (r == 0): return 0
@@ -615,6 +621,7 @@ int tls_io_send_all(tls_conn* c, char* buf, int n):
 		return 1
 	int sent = 0
 	while (sent < n):
+		if (c.has_io_deadline && (c.io_deadline_ms - time_monotonic_ms()) <= 0): return 0
 		int r = socket_send(c.fd, buf + sent, n - sent, msg_nosignal())
 		if (r > 0): sent = sent + r
 		else if (r == 0 - net_eagain()):
@@ -642,7 +649,7 @@ void tls_seq_inc(int* hi, int* lo):
 int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 	if (encrypted == 0):
 		if (len > TLS_MAX_PLAINTEXT): return 0
-		char* phdr = malloc(5)
+		char* phdr = cast(char*, malloc(5))
 		phdr[0] = ct & 255
 		phdr[1] = 3
 		phdr[2] = 3
@@ -656,21 +663,21 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 	int inner_len = len + 1
 	int rec_len = inner_len + TLS_AEAD_TAG_LEN
 	if (rec_len > TLS_MAX_CIPHERTEXT): return 0
-	char* hdr = malloc(5)
+	char* hdr = cast(char*, malloc(5))
 	hdr[0] = TLS_CT_APPLICATION_DATA
 	hdr[1] = 3
 	hdr[2] = 3
 	store_be16(hdr + 3, rec_len)
 
-	char* inner = malloc(inner_len)
+	char* inner = cast(char*, malloc(inner_len))
 	mem_copy(inner, payload, len)
 	inner[len] = ct & 255
 
-	char* nonce = malloc(TLS_AEAD_IV_LEN)
+	char* nonce = cast(char*, malloc(TLS_AEAD_IV_LEN))
 	tls_nonce(c.w_iv, c.w_seq_hi, c.w_seq_lo, nonce)
 
-	char* ctbuf = malloc(inner_len)
-	char* tag = malloc(TLS_AEAD_TAG_LEN)
+	char* ctbuf = cast(char*, malloc(inner_len))
+	char* tag = cast(char*, malloc(TLS_AEAD_TAG_LEN))
 	chacha20poly1305_seal(c.w_key, nonce, hdr, 5, inner, inner_len, ctbuf, tag)
 	tls_seq_inc(&c.w_seq_hi, &c.w_seq_lo)
 
@@ -691,7 +698,7 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 # Send a 2-byte alert. Encrypted once write keys are active, else plaintext.
 # Best effort during teardown; the return value is ignored by callers.
 int tls_send_alert(tls_conn* c, int level, int desc):
-	char* a = malloc(2)
+	char* a = cast(char*, malloc(2))
 	a[0] = level & 255
 	a[1] = desc & 255
 	int ok = tls_send_record(c, TLS_CT_ALERT, a, 2, c.w_active)
@@ -710,7 +717,7 @@ int tls_send_alert(tls_conn* c, int level, int desc):
 # failures).
 int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 	while (1 == 1):
-		char* hdr = malloc(5)
+		char* hdr = cast(char*, malloc(5))
 		if (tls_io_recv_full(c, hdr, 5) == 0):
 			free(hdr)
 			return 0
@@ -721,7 +728,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 			tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 			tls_fail(c, c"tls: record too long")
 			return 0
-		char* body = malloc(rlen + 1)
+		char* body = cast(char*, malloc(rlen + 1))
 		if (tls_io_recv_full(c, body, rlen) == 0):
 			free(hdr)
 			free(body)
@@ -741,9 +748,9 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_fail(c, c"tls: short ciphertext")
 				return 0
 			int ct_len = rlen - TLS_AEAD_TAG_LEN
-			char* nonce = malloc(TLS_AEAD_IV_LEN)
+			char* nonce = cast(char*, malloc(TLS_AEAD_IV_LEN))
 			tls_nonce(c.r_iv, c.r_seq_hi, c.r_seq_lo, nonce)
-			char* plain = malloc(ct_len)
+			char* plain = cast(char*, malloc(ct_len))
 			int ok = chacha20poly1305_open(c.r_key, nonce, hdr, 5, body, ct_len, body + ct_len, plain)
 			tls_wipe(nonce, TLS_AEAD_IV_LEN)
 			free(nonce)
@@ -773,7 +780,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 				tls_fail(c, c"tls: plaintext too long")
 				return 0
-			char* out = malloc(data_len + 1)
+			char* out = cast(char*, malloc(data_len + 1))
 			mem_copy(out, plain, data_len)
 			tls_wipe(plain, ct_len)
 			free(plain)
@@ -790,7 +797,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
 				tls_fail(c, c"tls: application_data before keys")
 				return 0
-			char* out = malloc(rlen + 1)
+			char* out = cast(char*, malloc(rlen + 1))
 			mem_copy(out, body, rlen)
 			free(hdr)
 			free(body)
@@ -951,7 +958,7 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 	int body_len = b.length - body_start
 	store_be24(b.data + lenpos, body_len)
 
-	char* out = malloc(b.length)
+	char* out = cast(char*, malloc(b.length))
 	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
@@ -1032,7 +1039,7 @@ char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
 	char* ctx = c"TLS 1.3, server CertificateVerify"
 	int clen = strlen(ctx)
 	int total = 64 + clen + 1 + th_len
-	char* out = malloc(total)
+	char* out = cast(char*, malloc(total))
 	mem_fill(out, 0x20, 64)
 	for i in range(clen): out[64 + i] = ctx[i]
 	out[64 + clen] = 0
@@ -1054,7 +1061,7 @@ int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen
 	if (sig_scheme == TLS_SIG_RSA_PKCS1_SHA384): use_sha384 = 1
 	int hlen = 32
 	if (use_sha384 != 0): hlen = 48
-	char* digest = malloc(hlen)
+	char* digest = cast(char*, malloc(hlen))
 	if (use_sha384 != 0): whash_oneshot(WHASH_SHA384, content, clen, digest)
 	else: whash_oneshot(WHASH_SHA256, content, clen, digest)
 	free(content)
@@ -1073,8 +1080,8 @@ int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen
 			ok = rsa_pkcs1v15_verify_sha384(n, leaf.rsa_n_len, e, leaf.rsa_e_len, sig, siglen, digest)
 	else if (leaf.key_type == X509_KEY_EC_P256):
 		if (sig_scheme == TLS_SIG_ECDSA_SECP256R1_SHA256):
-			char* r = malloc(32)
-			char* s = malloc(32)
+			char* r = cast(char*, malloc(32))
+			char* s = cast(char*, malloc(32))
 			if (x509_ecdsa_sig_to_raw(sig, siglen, r, s) != 0):
 				ok = ecdsa_p256_verify(leaf.ec_qx, leaf.ec_qy, digest, 32, r, s)
 			free(r)
@@ -1093,13 +1100,13 @@ int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen
 void tls_derive_handshake(tls_conn* c, char* ecdhe, char* th_ch_sh, char* out_hs):
 	int alg = c.hash_alg
 	int ds = c.digest_size
-	char* zeros = malloc(ds)
+	char* zeros = cast(char*, malloc(ds))
 	tls_wipe(zeros, ds)
 
-	char* early = malloc(ds)
+	char* early = cast(char*, malloc(ds))
 	hkdf_extract(alg, c"", 0, zeros, ds, early)
 
-	char* derived1 = malloc(ds)
+	char* derived1 = cast(char*, malloc(ds))
 	tls13_derive_secret(alg, early, c"derived", 7, c"", 0, derived1)
 
 	hkdf_extract(alg, derived1, ds, ecdhe, ds, out_hs)
@@ -1119,11 +1126,11 @@ void tls_derive_handshake(tls_conn* c, char* ecdhe, char* th_ch_sh, char* out_hs
 void tls_derive_application(tls_conn* c, char* hs_secret, char* th_ch_sf):
 	int alg = c.hash_alg
 	int ds = c.digest_size
-	char* zeros = malloc(ds)
+	char* zeros = cast(char*, malloc(ds))
 	tls_wipe(zeros, ds)
-	char* derived2 = malloc(ds)
+	char* derived2 = cast(char*, malloc(ds))
 	tls13_derive_secret(alg, hs_secret, c"derived", 7, c"", 0, derived2)
-	char* master = malloc(ds)
+	char* master = cast(char*, malloc(ds))
 	hkdf_extract(alg, derived2, ds, zeros, ds, master)
 	tls13_hkdf_expand_label(alg, master, c"c ap traffic", 12, th_ch_sf, ds, c.c_ap_secret, ds)
 	tls13_hkdf_expand_label(alg, master, c"s ap traffic", 12, th_ch_sf, ds, c.s_ap_secret, ds)
@@ -1314,7 +1321,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 		tls_fail(c, c"tls: no certificate")
 		return 0
-	char* th_cert = malloc(ds)
+	char* th_cert = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_cert)
 
 	# CertificateVerify
@@ -1343,7 +1350,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		tls_fail(c, c"tls: bad CertificateVerify length")
 		return 0
 	# Copy the signature out before hs_buf can move.
-	char* sig = malloc(sig_len)
+	char* sig = cast(char*, malloc(sig_len))
 	mem_copy(sig, msg + 8, sig_len)
 	int cvok = tls_verify_certverify(certs[0], sig_scheme, sig, sig_len, th_cert, ds)
 	free(sig)
@@ -1354,7 +1361,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		tls_fail(c, c"tls: CertificateVerify failed")
 		return 0
 	whash_update(c.transcript, msg, mlen)
-	char* th_cv = malloc(ds)
+	char* th_cv = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_cv)
 
 	# Certificate chain + hostname, unless explicitly skipped.
@@ -1383,11 +1390,11 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 		tls_fail(c, c"tls: bad Finished length")
 		return 0
-	char* fkey = malloc(ds)
+	char* fkey = cast(char*, malloc(ds))
 	tls_finished_key(c.hash_alg, c.s_hs_secret, fkey)
-	char* expected = malloc(ds)
+	char* expected = cast(char*, malloc(ds))
 	hmac_compute(c.hash_alg, fkey, ds, th_cv, ds, expected)
-	char* got = malloc(ds)
+	char* got = cast(char*, malloc(ds))
 	mem_copy(got, msg + 4, ds)
 	int fin_ok = hmac_equal(expected, got, ds)
 	tls_wipe(fkey, ds)
@@ -1451,13 +1458,13 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 			tls_fail(c, c"tls: no server name to verify")
 			return 0
 
-	char* priv = malloc(32)
+	char* priv = cast(char*, malloc(32))
 	if (tls_gen_priv(c, priv) == 0):
 		tls_wipe(priv, 32)
 		free(priv)
 		tls_fail(c, c"tls: RNG failure")
 		return 0
-	char* pub = malloc(32)
+	char* pub = cast(char*, malloc(32))
 	x25519_scalarmult_base(pub, priv)
 
 	# ClientHello (raw override for the RFC 8448 replay test).
@@ -1470,8 +1477,8 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 			ch_len = cfg.test_client_hello_len
 			ch_owned = 0
 	if (ch == 0):
-		char* rnd = malloc(32)
-		char* sid = malloc(32)
+		char* rnd = cast(char*, malloc(32))
+		char* sid = cast(char*, malloc(32))
 		int rok = random_bytes(rnd, 32)
 		int sok = random_bytes(sid, 32)
 		if ((rok == 0) || (sok == 0)):
@@ -1515,7 +1522,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
 		tls_fail(c, c"tls: expected ServerHello")
 		return 0
-	char* server_pub = malloc(32)
+	char* server_pub = cast(char*, malloc(32))
 	if (tls_parse_server_hello(c, msg, mlen, server_pub) == 0):
 		free(server_pub)
 		tls_wipe(priv, 32)
@@ -1526,7 +1533,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 	whash_update(c.transcript, msg, mlen)
 
 	# ECDHE shared secret; reject a low-order (all-zero) result.
-	char* ecdhe = malloc(32)
+	char* ecdhe = cast(char*, malloc(32))
 	int xr = x25519_scalarmult(ecdhe, priv, server_pub)
 	tls_wipe(priv, 32)
 	free(priv)
@@ -1539,9 +1546,9 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 		return 0
 
 	# Handshake key schedule over CH..SH.
-	char* th_ch_sh = malloc(ds)
+	char* th_ch_sh = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_ch_sh)
-	char* hs_secret = malloc(ds)
+	char* hs_secret = cast(char*, malloc(ds))
 	tls_derive_handshake(c, ecdhe, th_ch_sh, hs_secret)
 	tls_wipe(ecdhe, 32)
 	free(ecdhe)
@@ -1549,7 +1556,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 
 	# Install server handshake read keys and read the encrypted flight.
 	tls_install_read_keys(c, c.s_hs_secret)
-	char* th_ch_sf = malloc(ds)
+	char* th_ch_sf = cast(char*, malloc(ds))
 	if (tls_read_server_flight(c, server_name, th_ch_sf) == 0):
 		tls_wipe(hs_secret, ds)
 		free(hs_secret)
@@ -1559,13 +1566,13 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 	# Client Finished: HMAC(client_finished_key, TH(CH..serverFinished)),
 	# sent under the client handshake write keys.
 	tls_install_write_keys(c, c.c_hs_secret)
-	char* cfkey = malloc(ds)
+	char* cfkey = cast(char*, malloc(ds))
 	tls_finished_key(c.hash_alg, c.c_hs_secret, cfkey)
-	char* cvd = malloc(ds)
+	char* cvd = cast(char*, malloc(ds))
 	hmac_compute(c.hash_alg, cfkey, ds, th_ch_sf, ds, cvd)
 	tls_wipe(cfkey, ds)
 	free(cfkey)
-	char* fin = malloc(4 + ds)
+	char* fin = cast(char*, malloc(4 + ds))
 	fin[0] = TLS_HS_FINISHED
 	fin[1] = 0
 	fin[2] = 0
@@ -1631,7 +1638,7 @@ void tls_mem_feed(tls_conn* c, char* data, int len):
 # malloc'd copy; *out_len gets its length.
 char* tls_mem_take_output(tls_conn* c, int* out_len):
 	int n = c.mem_out.length
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	mem_copy(out, c.mem_out.data, n)
 	c.mem_out.length = 0
 	*out_len = n
@@ -1641,7 +1648,7 @@ char* tls_mem_take_output(tls_conn* c, int* out_len):
 # Re-key one direction after a KeyUpdate (RFC 8446 7.2): the traffic secret
 # advances by HKDF-Expand-Label(secret, "traffic upd", "", Hash.length).
 void tls_update_secret(int alg, char* secret, int ds):
-	char* next = malloc(ds)
+	char* next = cast(char*, malloc(ds))
 	tls13_hkdf_expand_label(alg, secret, c"traffic upd", 11, c"", 0, next, ds)
 	mem_copy(secret, next, ds)
 	tls_wipe(next, ds)
@@ -1668,7 +1675,7 @@ void tls_post_handshake(tls_conn* c, char* data, int dlen):
 		tls_update_secret(c.hash_alg, read_secret, c.digest_size)
 		tls_install_read_keys(c, read_secret)
 		if (req == 1):
-			char* ku = malloc(5)
+			char* ku = cast(char*, malloc(5))
 			ku[0] = TLS_HS_KEY_UPDATE
 			ku[1] = 0
 			ku[2] = 0
@@ -1906,7 +1913,7 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 	store_be16(b.data + extpos, ext_len)
 	int body_len = b.length - body_start
 	store_be24(b.data + lenpos, body_len)
-	char* out = malloc(b.length)
+	char* out = cast(char*, malloc(b.length))
 	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
@@ -1916,7 +1923,7 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 # Build an empty EncryptedExtensions (no extensions negotiated: no ALPN, no
 # early data, no server_name ack). type(1)+len(3)+extensions_length(2)=0.
 char* tls_build_encrypted_extensions(int* out_len):
-	char* m = malloc(6)
+	char* m = cast(char*, malloc(6))
 	m[0] = TLS_HS_ENCRYPTED_EXTENSIONS
 	m[1] = 0
 	m[2] = 0
@@ -1942,7 +1949,7 @@ char* tls_build_encrypted_extensions_alpn(char* proto, int* out_len):
 	string_append_be16(b, 1 + n)                   # ProtocolNameList length
 	string_append_char(b, n)
 	string_append_bytes(b, proto, n)
-	char* out = malloc(b.length)
+	char* out = cast(char*, malloc(b.length))
 	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
@@ -1969,7 +1976,7 @@ char* tls_build_certificate(list[pem_block*] certs, int* out_len):
 		string_append_be16(b, 0)                    # per-certificate extensions length = 0
 	store_be24(b.data + listpos, b.length - list_start)
 	store_be24(b.data + lenpos, b.length - body_start)
-	char* out = malloc(b.length)
+	char* out = cast(char*, malloc(b.length))
 	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
@@ -1984,11 +1991,11 @@ char* tls_build_certificate(list[pem_block*] certs, int* out_len):
 char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_len):
 	int clen = 0
 	char* content = tls_certverify_content(th_cert, th_len, &clen)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, content, clen, digest)
 	free(content)
-	char* r = malloc(32)
-	char* s = malloc(32)
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
 	int sok = ecdsa_p256_sign(server_d, digest, 32, r, s)
 	tls_wipe(digest, 32)
 	free(digest)
@@ -1996,7 +2003,7 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 		free(r)
 		free(s)
 		return 0
-	char* der = malloc(80)
+	char* der = cast(char*, malloc(80))
 	int der_len = 0
 	x509_ecdsa_sig_raw_to_der(r, s, der, &der_len)
 	free(r)
@@ -2011,7 +2018,7 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 	string_append_bytes(b, der, der_len)
 	free(der)
 	store_be24(b.data + lenpos, b.length - body_start)
-	char* out = malloc(b.length)
+	char* out = cast(char*, malloc(b.length))
 	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
@@ -2160,7 +2167,7 @@ int tls_server_read_client_hello(tls_conn* c, char* out_sid, int* out_sid_len, c
 		tls_fail(c, c"tls: expected ClientHello")
 		return 0
 	whash_update(c.transcript, msg, mlen)
-	char* crandom = malloc(32)
+	char* crandom = cast(char*, malloc(32))
 	int have_chacha = 0
 	int have_x25519 = 0
 	int have_tls13 = 0
@@ -2204,7 +2211,7 @@ int tls_server_do_handshake(tls_conn* c):
 		pem_blocks_free(certs)
 		tls_fail(c, c"tls: server certificate unavailable")
 		return 0
-	char* server_d = malloc(32)
+	char* server_d = cast(char*, malloc(32))
 	tls_wipe(server_d, 32)
 	if (tls_server_load_key(scfg, server_d) == 0):
 		tls_wipe(server_d, 32)
@@ -2214,9 +2221,9 @@ int tls_server_do_handshake(tls_conn* c):
 		return 0
 
 	# ClientHello.
-	char* csid = malloc(32)
+	char* csid = cast(char*, malloc(32))
 	int csid_len = 0
-	char* cpub = malloc(32)
+	char* cpub = cast(char*, malloc(32))
 	if (tls_server_read_client_hello(c, csid, &csid_len, cpub) == 0):
 		free(csid)
 		free(cpub)
@@ -2226,7 +2233,7 @@ int tls_server_do_handshake(tls_conn* c):
 		return 0
 
 	# ServerHello with a fresh (or injected) ephemeral X25519 key and random.
-	char* spriv = malloc(32)
+	char* spriv = cast(char*, malloc(32))
 	if (tls_server_gen_priv(c, spriv) == 0):
 		tls_wipe(spriv, 32)
 		free(spriv)
@@ -2237,9 +2244,9 @@ int tls_server_do_handshake(tls_conn* c):
 		pem_blocks_free(certs)
 		tls_fail(c, c"tls: RNG failure")
 		return 0
-	char* spub = malloc(32)
+	char* spub = cast(char*, malloc(32))
 	x25519_scalarmult_base(spub, spriv)
-	char* srandom = malloc(32)
+	char* srandom = cast(char*, malloc(32))
 	if (tls_server_gen_random(c, srandom) == 0):
 		tls_wipe(spriv, 32)
 		free(spriv)
@@ -2271,7 +2278,7 @@ int tls_server_do_handshake(tls_conn* c):
 		return 0
 
 	# ECDHE shared secret; reject a low-order (all-zero) result.
-	char* ecdhe = malloc(32)
+	char* ecdhe = cast(char*, malloc(32))
 	int xr = x25519_scalarmult(ecdhe, spriv, cpub)
 	tls_wipe(spriv, 32)
 	free(spriv)
@@ -2288,9 +2295,9 @@ int tls_server_do_handshake(tls_conn* c):
 
 	# Handshake key schedule over CH..SH; install directional keys (we write
 	# with the server handshake secret and read with the client one).
-	char* th_ch_sh = malloc(ds)
+	char* th_ch_sh = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_ch_sh)
-	char* hs_secret = malloc(ds)
+	char* hs_secret = cast(char*, malloc(ds))
 	tls_derive_handshake(c, ecdhe, th_ch_sh, hs_secret)
 	tls_wipe(ecdhe, 32)
 	free(ecdhe)
@@ -2328,7 +2335,7 @@ int tls_server_do_handshake(tls_conn* c):
 		free(server_d)
 		tls_fail(c, c"tls: send Certificate failed")
 		return 0
-	char* th_cert = malloc(ds)
+	char* th_cert = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_cert)
 
 	# CertificateVerify (deterministic ECDSA over the CH..Certificate hash).
@@ -2351,18 +2358,18 @@ int tls_server_do_handshake(tls_conn* c):
 		free(hs_secret)
 		tls_fail(c, c"tls: send CertificateVerify failed")
 		return 0
-	char* th_cv = malloc(ds)
+	char* th_cv = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_cv)
 
 	# server Finished over TH(CH..CertificateVerify).
-	char* sfkey = malloc(ds)
+	char* sfkey = cast(char*, malloc(ds))
 	tls_finished_key(c.hash_alg, c.s_hs_secret, sfkey)
-	char* svd = malloc(ds)
+	char* svd = cast(char*, malloc(ds))
 	hmac_compute(c.hash_alg, sfkey, ds, th_cv, ds, svd)
 	tls_wipe(sfkey, ds)
 	free(sfkey)
 	free(th_cv)
-	char* fin = malloc(4 + ds)
+	char* fin = cast(char*, malloc(4 + ds))
 	fin[0] = TLS_HS_FINISHED
 	fin[1] = 0
 	fin[2] = 0
@@ -2381,7 +2388,7 @@ int tls_server_do_handshake(tls_conn* c):
 	# Application secrets over CH..serverFinished; switch our WRITE to the
 	# server application keys. READ stays on the client handshake keys so we
 	# can read the client's Finished, then advances to the client app keys.
-	char* th_ch_sf = malloc(ds)
+	char* th_ch_sf = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_ch_sf)
 	tls_derive_application(c, hs_secret, th_ch_sf)
 	tls_wipe(hs_secret, ds)
@@ -2389,9 +2396,9 @@ int tls_server_do_handshake(tls_conn* c):
 	tls_install_write_keys(c, c.s_ap_secret)
 
 	# client Finished = HMAC(client_finished_key, TH(CH..serverFinished)).
-	char* cfkey = malloc(ds)
+	char* cfkey = cast(char*, malloc(ds))
 	tls_finished_key(c.hash_alg, c.c_hs_secret, cfkey)
-	char* expected = malloc(ds)
+	char* expected = cast(char*, malloc(ds))
 	hmac_compute(c.hash_alg, cfkey, ds, th_ch_sf, ds, expected)
 	tls_wipe(cfkey, ds)
 	free(cfkey)
@@ -2413,7 +2420,7 @@ int tls_server_do_handshake(tls_conn* c):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 		tls_fail(c, c"tls: bad client Finished length")
 		return 0
-	char* got = malloc(ds)
+	char* got = cast(char*, malloc(ds))
 	mem_copy(got, msg + 4, ds)
 	int finok = hmac_equal(expected, got, ds)
 	free(expected)

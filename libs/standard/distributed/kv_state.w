@@ -71,6 +71,7 @@ import lib.memory
 import lib.assert
 import libs.standard.distributed.raft
 import libs.standard.distributed.lsm
+import libs.standard.distributed.lsm_stream
 import libs.standard.distributed.raft_tcp
 import lib.mem
 
@@ -107,7 +108,7 @@ char* kv_encode_put(char* key, char* value):
 	if (kv_valid_text(value, 1) == 0): return 0
 	int klen = strlen(key)
 	int vlen = strlen(value)
-	char* cmd = malloc(klen + vlen + 4)
+	char* cmd = cast(char*, malloc(klen + vlen + 4))
 	cmd[0] = 'P'
 	cmd[1] = 9
 	int i = 0
@@ -133,7 +134,7 @@ char* kv_encode_put_len(char* key, char* value, int value_len, int* len_out):
 	if (kv_valid_text(key, 0) == 0): return 0
 	if (kv_valid_bytes(value, value_len, 1) == 0): return 0
 	int klen = strlen(key)
-	char* cmd = malloc(klen + value_len + 3)
+	char* cmd = cast(char*, malloc(klen + value_len + 3))
 	cmd[0] = 'P'
 	cmd[1] = 9
 	int i = 0
@@ -153,7 +154,7 @@ char* kv_encode_put_len(char* key, char* value, int value_len, int* len_out):
 char* kv_encode_delete(char* key):
 	if (kv_valid_text(key, 0) == 0): return 0
 	int klen = strlen(key)
-	char* cmd = malloc(klen + 3)
+	char* cmd = cast(char*, malloc(klen + 3))
 	cmd[0] = 'D'
 	cmd[1] = 9
 	for i in range(klen): cmd[2 + i] = key[i]
@@ -213,6 +214,16 @@ char* kv_take_snapshot(lsm* store, int* len_out):
 	return blob
 
 
+# Capture a bounded file-backed LSM snapshot and compact the applied Raft
+# prefix. Caller must persist Raft before releasing messages as usual.
+int kv_take_snapshot_file(raft* r, lsm* store, char* scratch_prefix):
+	snapshot_file* source = lsm_export_file(store, scratch_prefix)
+	if (cast(int, source) == 0): return 0
+	int ok = raft_take_snapshot_file(r, source)
+	snapshot_file_free(source)
+	return ok
+
+
 # Rebuild store from an installed snapshot blob (raft_take_pending_
 # snapshot's buffer, or one replayed from a node's own wal-rewritten
 # snapshot record): lsm_import, which builds the new generation before
@@ -238,6 +249,12 @@ int kv_install_snapshot(lsm* store, char* blob, int len):
 # when the snapshot install failed (header): the caller must stop
 # applying and recover the node.
 int kv_apply_pending(raft* r, lsm* store):
+	if (cast(int, r.pending_snap_file) != 0):
+		if (lsm_import_file(store, r.pending_snap_file) == 0): return -1
+		snapshot_file_free(r.pending_snap_file)
+		r.pending_snap_file = 0
+		r.pending_snap_len = 0
+		u64_set_zero(r.pending_snap_index)
 	if (raft_has_pending_snapshot(r)):
 		int blen = 0
 		u64* bidx = u64_new()

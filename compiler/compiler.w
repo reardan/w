@@ -74,8 +74,8 @@ int defhash_depth
 void deps_record(char* path):
 	int max_deps = 4000
 	if (deps_paths == 0):
-		deps_paths = malloc(max_deps * __word_size__)
-		deps_shadow_lists = malloc(max_deps * __word_size__)
+		deps_paths = cast(char*, malloc(max_deps * __word_size__))
+		deps_shadow_lists = cast(char*, malloc(max_deps * __word_size__))
 	assert1(deps_count < max_deps)
 	save_ptr(deps_paths + deps_count * __word_size__, cast(int, strclone(path)))
 	save_ptr(deps_shadow_lists + deps_count * __word_size__, cast(int, deps_pending_shadows))
@@ -246,7 +246,7 @@ char* compiler_binary_dir():
 	if (path_is_absolute(prog)):
 		return prog
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	path_normalize_sep(cwd)
 	char* joined = strjoin(cwd, c"/")
@@ -319,7 +319,7 @@ char* import_root_at(int index):
 # drop a trailing separator. Returns a fresh allocation.
 char* import_root_clean(char* path):
 	int n = strlen(path)
-	char* out = malloc(n + 2)
+	char* out = cast(char*, malloc(n + 2))
 	int len = 0
 	int i = 0
 	if (path[0] == '/'):
@@ -392,7 +392,7 @@ void import_root_add(char* spelled):
 	char* absolute = path
 	if (path_is_absolute(path) == 0):
 		int max_path_size = 4096
-		char* cwd = malloc(max_path_size)
+		char* cwd = cast(char*, malloc(max_path_size))
 		getcwd(cwd, max_path_size)
 		path_normalize_sep(cwd)
 		char* joined = strjoin(cwd, c"/")
@@ -402,7 +402,7 @@ void import_root_add(char* spelled):
 	char* cleaned = import_root_clean(absolute)
 	if (import_root_is_dir(cleaned) == 0): import_root_error(c"import root is not a directory: ", spelled)
 	int max_roots = 64
-	if (import_roots == 0): import_roots = malloc(max_roots * __word_size__)
+	if (import_roots == 0): import_roots = cast(char*, malloc(max_roots * __word_size__))
 	if (import_root_count >= max_roots): import_root_error(c"too many import roots at ", spelled)
 	save_ptr(import_roots + import_root_count * __word_size__, cast(int, cleaned))
 	import_root_count = import_root_count + 1
@@ -495,7 +495,7 @@ void import_root_note_shadows(char* fn):
 			found_count = found_count + 1
 		free(candidate)
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	path_normalize_sep(cwd)
 	char* fallback = import_probe_upward(cwd, fn)
@@ -528,7 +528,7 @@ int compile_relative_path(char* fn):
 
 	# Get current directory
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	# Normalize backslashes from Windows GetCurrentDirectoryA to forward slashes
 	path_normalize_sep(cwd)
@@ -596,7 +596,7 @@ int compile_input_file(char* path):
 		if (compile_attempt(path)): return 1
 	else:
 		int max_path_size = 4096
-		char* cwd = malloc(max_path_size)
+		char* cwd = cast(char*, malloc(max_path_size))
 		getcwd(cwd, max_path_size)
 		path_normalize_sep(cwd)
 		int result = compile_joined(cwd, path)
@@ -826,6 +826,8 @@ void verbosity_raise():
 # options (--pac, --wasm-acc, -v/--verbose) take effect in link_impl's
 # pre-scans, so here they are only recognized.
 int link_option(char* arg, int apply):
+	if (strcmp(arg, c"--pie") == 0): return 1
+	if (strcmp(arg, c"--syscall-abi=vmcall") == 0 || strcmp(arg, c"--syscall-abi=linux") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
 		if (apply): bounds_mode = 1
 		return 1
@@ -850,6 +852,8 @@ int link_option(char* arg, int apply):
 		if (apply):
 			ast_expressions_mode = 2
 			ast_retain_mode = 1
+			# P1.2b: an explicit request keeps the semantic records too.
+			retained_semantic_mode = 1
 		return 1
 	if (strcmp(arg, c"--ast-audit") == 0):
 		if (apply):
@@ -862,11 +866,22 @@ int link_option(char* arg, int apply):
 			ast_required_mode = 1
 		return 1
 	# S2.1: emit expressions from the retained forest (implies --ast-retain).
+	# S2.5: the default for every compile (link_impl), like --ast-retain;
+	# both stay accepted and still conflict with --streaming.
 	if (strcmp(arg, c"--ast-emit-retained") == 0):
 		if (apply):
 			ast_expressions_mode = 2
 			ast_retain_mode = 1
 			ast_emit_retained_mode = 1
+		return 1
+	# P1.4: the AST front end is the default (link_reset). --streaming opts
+	# out for the whole program, implicit runtime imports included, so
+	# link_impl's flag pre-scan applies it and this only recognizes it.
+	if (strcmp(arg, c"--streaming") == 0): return 1
+	# C3.5: the optional optimizer pass (compiler/ast_opt.w). Whole-program,
+	# so link_impl's flag pre-scan applies it; it conflicts with --streaming.
+	if (strcmp(arg, c"--ast-opt") == 0):
+		if (apply): ast_opt_mode = 1
 		return 1
 	# P1 (docs/projects/register_allocation_pgo.md §3.2): instrumented
 	# execution counters per function and loop head, flushed at exit to
@@ -876,11 +891,14 @@ int link_option(char* arg, int apply):
 	# The map needs the definition spans defhash_note records, so the
 	# flag arms defhash recording over the whole closure; defhash_dump
 	# itself stays with 'w defhash'. x86/x64 Linux ELF only.
-	if (strcmp(arg, c"--profile-generate") == 0):
+	if ((strcmp(arg, c"--profile-generate") == 0) || (strcmp(arg, c"--coverage") == 0)):
 		if (apply):
 			if ((target_isa != 0) || (target_os != 0)):
-				print_error(c"error: --profile-generate is only supported on the x86 and x64 Linux targets\x0a")
+				print_error(c"error: ")
+				print_error(arg)
+				print_error(c" is only supported on the x86 and x64 Linux targets\x0a")
 				exit(1)
+			if (strcmp(arg, c"--coverage") == 0): coverage_generate_mode = 1
 			profile_generate_mode = 1
 			defhash_mode = 1
 			defhash_closure_mode = 1
@@ -1008,14 +1026,18 @@ void help_shared_options():
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --no-asm              compile portable W bodies, ignoring 'asm <isa>:' blocks")
-	println(c"  --ast-expressions     experimental AST for grouped scalar expressions")
-	println(c"  --ast-full-expressions try AST at every expression, including runtime imports")
-	println(c"  --ast-audit           full-expression mode plus JSON fallback records on stderr")
-	println(c"  --ast-retain          retain owned traversal trees (experimental, full AST mode)")
-	println(c"  --ast-required        reject any expression fallback (migration coverage gate)")
+	println(c"  --streaming           use the streaming front end instead of the default AST one")
+	println(c"  --ast-expressions     with --streaming: AST for grouped scalar expressions only")
+	println(c"  --ast-full-expressions AST at every expression (the default; kept for scripts)")
+	println(c"  --ast-audit           JSON fallback records on stderr for each streaming fallback")
+	println(c"  --ast-retain          also keep semantic type/binding records in the forest (queries keep them)")
+	println(c"  --ast-required        reject any expression fallback (coverage gate)")
 	# S2.1
-	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
+	println(c"  --ast-emit-retained   emit from the retained AST (the default; kept for scripts)")
+	# C3.5
+	println(c"  --ast-opt             fold constant if/while conditions and drop the dead arms")
 	# P1
+	println(c"  --coverage            count executable statement lines; report with wcoverage lines")
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
 	println(c"                        writes <output>.wprofmap; the program appends to $W_PROFILE_OUT")
 	# P2
@@ -1024,6 +1046,8 @@ void help_shared_options():
 	println(c"                        counts, hot loop heads are 16-byte aligned")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
+	println(c"  --pie                 emit an x64 Linux position-independent executable")
+	println(c"  --syscall-abi=vmcall   emit an x64 static KVM cell executable")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
@@ -1171,11 +1195,36 @@ int arg_is_help(char* arg):
 # parsing the stream sees it instead of bare stderr; the option is not
 # in any source file, so file is the fixed "<command-line>" marker and
 # line/column are 0.
+# P1.4: --streaming named together with an option that only exists on the
+# AST front end (or a retaining query, reported as --ast-retain).
+void streaming_conflict_error(char* arg):
+	diag_part(c"'--streaming' cannot be combined with '")
+	diag_part(arg)
+	diag_part(c"'")
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, arg)
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
 void unrecognized_option_error(char* arg):
 	diag_part(c"unrecognized option: '")
 	diag_part(arg)
 	diag_part(c"'")
 	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, arg)
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
+void target_option_error(char* message):
+	# Target validation precedes tokenizer/source initialization.
+	diag_part(message)
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, c"")
 	else:
 		print_error(c"error: ")
 		print_error(str_from_cstr(diag_buffer))
@@ -1215,15 +1264,20 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# this reset (they compile into their own RWX mmap buffer), so
 	# data_split stays 0 on their paths.
 	data_split = 1
+	elf_pie = 0
+	x64_syscall_abi = 0
+	x64_hypercall_count = 0
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
+	type_error_count = 0
 	analysis_mode = 0
 	analysis_errors = 0
 	retained_clear()
 	ast_retain_mode = retained_query_mode
-	ast_expressions_mode = retained_query_mode * 2
+	# P1.4: every compile takes the AST front end unless --streaming.
+	ast_expressions_mode = 2
 	ast_expressions_emitted = 0
 	ast_simple_statements_emitted = 0
 	ast_debugger_statements_emitted = 0
@@ -1270,8 +1324,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_audit_mode = 0
 	ast_required_mode = 0
 	# S2.1: retained-forest expression emission and its --stats counter.
-	ast_emit_retained_mode = 0
+	# S2.5: every compile emits from the retained forest, so it retains
+	# one; --streaming turns both off below.
+	ast_emit_retained_mode = 1
+	ast_retain_mode = 1
 	ast_retained_emitted = 0
+	# P1.2b: semantic snapshot records only for a tree query (or an
+	# explicit --ast-retain, link_option).
+	retained_semantic_mode = retained_query_mode
 	# S2.2a: retained statement walks and their --stats counter.
 	ast_retained_statements_emitted = 0
 	retained_walks_used = 0
@@ -1284,6 +1344,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	retained_source_reparses = 0
 	retained_source_end_positions = 0
 	retained_source_reparse_reset()
+	# C3.5: the optimizer pass is off unless --ast-opt.
+	ast_opt_reset()
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1341,6 +1403,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# here too, so the flag covers the whole compile wherever it appears
 	# on the line.
 	int flag_scan = i
+	int streaming_flag = 0
+	char* ast_only_flag = 0
 	while (flag_scan < argc):
 		char** flag_arg = argv + flag_scan * __word_size__
 		if (strcmp(*flag_arg, c"-o") == 0):
@@ -1355,14 +1419,25 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		else if (arg_is_help(*flag_arg)):
 			help_link()
 			exit(0)
+		else if (strcmp(*flag_arg, c"--pie") == 0): elf_pie = 1
+		else if (strcmp(*flag_arg, c"--syscall-abi=vmcall") == 0): x64_syscall_abi = 1
+		else if (strcmp(*flag_arg, c"--syscall-abi=linux") == 0): x64_syscall_abi = 0
 		else if (starts_with(*flag_arg, c"-")):
 			if (link_option(*flag_arg, 0) == 0): unrecognized_option_error(*flag_arg)
 			# Full-expression migration flags cover the implicit runtime
 			# closure as well as explicit inputs. Never hide that gap.
 			if ((strcmp(*flag_arg, c"--ast-full-expressions") == 0) || (strcmp(*flag_arg, c"--ast-audit") == 0) || (strcmp(*flag_arg, c"--ast-required") == 0) || (strcmp(*flag_arg, c"--ast-retain") == 0)):
 				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
 			# S2.1: so does emission from the retained forest.
-			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0):
+				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
+			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
+			# C3.5: so does the optimizer pass, an AST-only mode.
+			if (strcmp(*flag_arg, c"--ast-opt") == 0):
+				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
 			# --no-asm covers the runtime and every input, whatever its position
 			if (strcmp(*flag_arg, c"--no-asm") == 0): link_option(*flag_arg, 1)
 			# Register promotion is whole-program too: the auto-imported
@@ -1379,20 +1454,36 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--inline") == 0) || (strcmp(*flag_arg, c"--no-inline") == 0)): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
-			if (strcmp(*flag_arg, c"--profile-generate") == 0): link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--profile-generate") == 0) || (strcmp(*flag_arg, c"--coverage") == 0)): link_option(*flag_arg, 1)
 			# P2: so does the profile the optimizer reads (profile_use.w).
 			if (starts_with(*flag_arg, c"--profile-use=")): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
+	# P1.4: --streaming selects the streaming front end for every root and
+	# the implicit runtime closure. The AST-only modes (and the retaining
+	# tree query) have no streaming meaning; check --all-errors recovers in
+	# process on either front end (C3.1).
+	if (streaming_flag):
+		# S2.5: retention is the default, so only a retaining query
+		# conflicts here without an explicit flag.
+		if (retained_query_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
+		if (ast_only_flag != 0): streaming_conflict_error(ast_only_flag)
+		ast_expressions_mode = 0
+		ast_retain_mode = 0
+		ast_emit_retained_mode = 0
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
+	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
+		target_option_error(c"--pie requires the x64 Linux target")
+	if (x64_syscall_abi && (word_size != 8 || target_isa != 0 || target_os != 0 || elf_pie)):
+		target_option_error(c"--syscall-abi=vmcall requires static non-PIE x64 Linux")
 	import_roots_scan(argc, argv)
 	push_basic_types()
 	pointer_indirection = 0
 	# No function body is being compiled yet: the '?' operator checks
 	# this to reject uses outside a function.
 	current_function_symbol = -1
-	last_identifier = malloc(8000)
-	last_global_declaration = malloc(8000)
+	last_identifier = cast(char*, malloc(8000))
+	last_global_declaration = cast(char*, malloc(8000))
 	be_start(word_size)
 	# --imports must never fire while the auto-imported closure itself is
 	# compiling: auto_import_closure_count (the exclusion list) is not
@@ -1536,6 +1627,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ptx_finish_module()
 	ptx_finish_cubin()
 
+	if (type_error_count > 0): return 1
+
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with
 	# their usual text; this only adds a summary and the failing exit.
@@ -1592,7 +1685,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (stats_mode): inline_stats_dump()
 	if (stats_mode): profile_use_stats_dump()   # P2: --profile-use
 	if (stats_mode && ast_retain_mode):
-		print_int0(c"Retained AST nodes: ", retained_nodes.length)
+		print_int0(c"Retained AST nodes: ", retained_node_count())
+		print_error(c"\n")
+		# P1.2b: expression operands among them, and the session arena.
+		print_int0(c"Retained expression operands: ", retained_operand_total)
+		print_error(c"\nRetained text bytes: ")
+		print_error(itoa(retained_text_total))
+		print_error(c"\nRetained arena bytes: ")
+		print_error(itoa(retained_arena_used()))
 		print_error(c"\n")
 	if (stats_mode && ast_expressions_mode):
 		print_error(c"AST expressions: ")
@@ -1751,6 +1851,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\nRetained-source reparses positioned at the file's end: ")
 		print_error(itoa(retained_source_end_positions))
 		print_error(c"\n")
+	# C3.5: what the optimizer pass folded and removed.
+	if (stats_mode): ast_opt_stats_dump()
 
 
 	return 0
@@ -1903,7 +2005,7 @@ void deps_emit(int json, char* path, char* shadows, char* cwd):
 
 void deps_dump(int json):
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	int i = 0
 	while (i < deps_count):
@@ -2051,13 +2153,13 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 	# P1: --profile-generate records the whole closure (w.w's is ~5.6k).
 	int max_defs = 20000
 	if (defhash_names == 0):
-		defhash_names = malloc(max_defs * __word_size__)
-		defhash_kinds = malloc(max_defs * __word_size__)
-		defhash_file_indexes = malloc(max_defs * __word_size__)
-		defhash_lines = malloc(max_defs * __word_size__)
-		defhash_columns = malloc(max_defs * __word_size__)
-		defhash_starts = malloc(max_defs * __word_size__)
-		defhash_ends = malloc(max_defs * __word_size__)
+		defhash_names = cast(char*, malloc(max_defs * __word_size__))
+		defhash_kinds = cast(char*, malloc(max_defs * __word_size__))
+		defhash_file_indexes = cast(char*, malloc(max_defs * __word_size__))
+		defhash_lines = cast(char*, malloc(max_defs * __word_size__))
+		defhash_columns = cast(char*, malloc(max_defs * __word_size__))
+		defhash_starts = cast(char*, malloc(max_defs * __word_size__))
+		defhash_ends = cast(char*, malloc(max_defs * __word_size__))
 	assert1(defhash_count < max_defs)
 	save_ptr(defhash_names + defhash_count * __word_size__, cast(int, name))
 	save_ptr(defhash_kinds + defhash_count * __word_size__, cast(int, kind))
@@ -2102,7 +2204,7 @@ void defhash_buf_reset():
 void defhash_buf_ensure(int n):
 	if (defhash_buf_size == 0):
 		defhash_buf_size = 256
-		defhash_buf = malloc(defhash_buf_size)
+		defhash_buf = cast(char*, malloc(defhash_buf_size))
 	while (defhash_buf_size <= defhash_buf_pos + n):
 		int old_size = defhash_buf_size
 		defhash_buf_size = defhash_buf_size << 1
@@ -2131,7 +2233,7 @@ int defhash_refs_count
 void defhash_refs_reset():
 	if (defhash_refs_buf == 0):
 		defhash_refs_cap = 512
-		defhash_refs_buf = malloc(defhash_refs_cap * __word_size__)
+		defhash_refs_buf = cast(char*, malloc(defhash_refs_cap * __word_size__))
 	defhash_refs_count = 0
 
 
@@ -2235,7 +2337,7 @@ void defhash_process_span(int idx):
 
 
 char* defhash_hex_digits(char* digest):
-	char* hex = malloc(65)
+	char* hex = cast(char*, malloc(65))
 	for i in range(32):
 		hex[i * 2] = diag_hex_digit((digest[i] >> 4) & 15)
 		hex[i * 2 + 1] = diag_hex_digit(digest[i] & 15)
@@ -2253,7 +2355,7 @@ void defhash_emit(int idx, char* cwd, int cwd_len):
 		if (path[cwd_len] == '/'): shown = path + cwd_len + 1
 
 	defhash_process_span(idx)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(defhash_buf, defhash_buf_pos, digest)
 	char* hex = defhash_hex_digits(digest)
 	free(digest)
@@ -2281,7 +2383,7 @@ void defhash_emit(int idx, char* cwd, int cwd_len):
 
 void defhash_dump():
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	int cwd_len = strlen(cwd)
 	int i = 0
@@ -2335,7 +2437,7 @@ int profile_defhash_find(int file_index, int line):
 # what defhash_emit prints as "hash".
 char* profile_defhash_hex_at(int idx):
 	defhash_process_span(idx)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(defhash_buf, defhash_buf_pos, digest)
 	char* hex = defhash_hex_digits(digest)
 	free(digest)

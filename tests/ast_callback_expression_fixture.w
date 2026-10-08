@@ -27,7 +27,7 @@ int main():
 	if 1: (op = ast_callback_add)
 	if ((op(ast_callback_change(&op), 3)) != 7): return 5
 	int raw_address = (cast(int, ast_callback_add))
-	if ((raw_address(20, 22)) != 42): return 6
+	if (((cast(ast_callback_op*, raw_address))(20, 22)) != 42): return 6
 	if (((ast_callback_add)(2, 3)) != 5): return 7
 	ast_callback_float* scale = ast_callback_scale
 	if ((scale(1.5)) != 3.0): return 8

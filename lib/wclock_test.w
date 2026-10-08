@@ -173,7 +173,7 @@ int wclock_test_fixed_read(void* self, int which, wtime* out):
 
 
 void test_custom_clock():
-	int* base = malloc(__word_size__)
+	int* base = cast(int*, malloc(__word_size__))
 	base[0] = 40
 	wclock* c = wclock_custom_new(wclock_test_fixed_read, cast(void*, base))
 	wtime t

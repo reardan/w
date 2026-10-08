@@ -104,7 +104,7 @@ int extern_statement():
 		int saved_table = table_pos
 		int param_count = 0
 		int is_variadic = 0
-		char* param_classes = malloc(extern_max_params)
+		char* param_classes = cast(char*, malloc(extern_max_params))
 		int ret_class = ffi_type_class(ret_type)
 		if ((ret_class == 2) && (word_size != 8)): error(c"float64 requires the x64 target")
 		while (accept(c")") == 0):

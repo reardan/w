@@ -26,7 +26,7 @@ int dns_test_put_u16(char* msg, int pos, int value):
 # records chaining single-letter names a -> b -> ..., then one A
 # record 1.2.3.4 for the final name. id 0x1234, flags 0x8180.
 char* dns_test_build_cname_chain(int cname_count, int* out_len):
-	char* msg = malloc(1024)
+	char* msg = cast(char*, malloc(1024))
 	int pos = dns_test_put_u16(msg, 0, 0x1234)
 	pos = dns_test_put_u16(msg, pos, 0x8180)
 	pos = dns_test_put_u16(msg, pos, 1)
@@ -78,7 +78,7 @@ char* dns_test_response_a(int* out_len):
 
 
 void test_dns_build_query_encoding():
-	char* out = malloc(512)
+	char* out = cast(char*, malloc(512))
 	int length = dns_build_query(c"example.com", 0x1234, out, 512)
 	int want_len = 0
 	char* want = hex_decode_loose(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &want_len)
@@ -94,7 +94,7 @@ void test_dns_build_query_encoding():
 
 
 void test_dns_build_query_rejects_bad_names():
-	char* out = malloc(512)
+	char* out = cast(char*, malloc(512))
 	asserts(c"empty name accepted", dns_build_query(c"", 1, out, 512) == 0)
 	asserts(c"lone dot accepted", dns_build_query(c".", 1, out, 512) == 0)
 	asserts(c"empty label accepted", dns_build_query(c"a..b", 1, out, 512) == 0)
@@ -102,7 +102,7 @@ void test_dns_build_query_rejects_bad_names():
 	asserts(c"double trailing dot accepted", dns_build_query(c"a..", 1, out, 512) == 0)
 
 	# A 64-byte label is one over the limit.
-	char* long_label = malloc(80)
+	char* long_label = cast(char*, malloc(80))
 	int i = 0
 	while (i < 64):
 		long_label[i] = 'a'
@@ -112,7 +112,7 @@ void test_dns_build_query_rejects_bad_names():
 	free(long_label)
 
 	# Four 63-byte labels encode to 257 bytes, over the 255 cap.
-	char* long_name = malloc(260)
+	char* long_name = cast(char*, malloc(260))
 	int pos = 0
 	for part in range(4):
 		if (part > 0):
@@ -329,7 +329,7 @@ void test_dns_hosts_lookup_file():
 
 void test_dns_resolv_conf_nameservers_text():
 	char* conf = c"# fixture resolv.conf\x0a; another comment\x0adomain example.com\x0anameserver 10.0.0.1\x0anameserver fe80::1\x0a\x09nameserver\x0910.0.0.2\x0anameserver 10.0.0.3 # trailing comment\x0anameserver 10.0.0.4\x0a"
-	int* servers = malloc(4 * __word_size__)
+	int* servers = cast(int*, malloc(4 * __word_size__))
 	int count = dns_resolv_conf_nameservers_text(conf, servers, 3)
 	# The IPv6 server is skipped; the cap stops before 10.0.0.4.
 	assert_equal(3, count)
@@ -345,7 +345,7 @@ void test_dns_resolv_conf_nameservers_text():
 void test_dns_resolv_conf_nameservers_file():
 	char* path = c"bin/dns_test_resolv.txt"
 	asserts(c"fixture write failed", file_write_text(path, c"nameserver 192.0.2.53\x0a") != 0)
-	int* servers = malloc(2 * __word_size__)
+	int* servers = cast(int*, malloc(2 * __word_size__))
 	assert_equal(1, dns_resolv_conf_nameservers_file(path, servers, 2))
 	# String compare: high-bit 0x literals sign-extend on x64.
 	assert_strings_equal(c"0xc0000235", hex(servers[0]))
@@ -408,7 +408,7 @@ void test_dns_query_server_mock_udp():
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		char* buf = malloc(512)
+		char* buf = cast(char*, malloc(512))
 		sockaddr_in from
 		int received = socket_recv_from_ipv4(server, buf, 512 - 16, 0, &from)
 		if (received < 12): exit(1)
@@ -445,12 +445,12 @@ void test_dns_query_server_mock_tcp_fallback():
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		char* buf = malloc(512)
+		char* buf = cast(char*, malloc(512))
 		sockaddr_in from
 		int received = socket_recv_from_ipv4(udp_server, buf, 512 - 16, 0, &from)
 		if (received < 12): exit(1)
 		# Truncated UDP reply: echo the id, set QR|TC|RD|RA.
-		char* truncated = malloc(12)
+		char* truncated = cast(char*, malloc(12))
 		truncated[0] = buf[0]
 		truncated[1] = buf[1]
 		truncated[2] = 0x83
@@ -461,7 +461,7 @@ void test_dns_query_server_mock_tcp_fallback():
 		# Full answer over TCP, RFC 1035 4.2.2 length-prefixed.
 		int conn = socket_accept_connection(tcp_server)
 		if (conn < 0): exit(1)
-		char* prefix = malloc(2)
+		char* prefix = cast(char*, malloc(2))
 		if (dns_test_read_exact(conn, prefix, 2) == 0): exit(1)
 		int query_len = ((prefix[0] & 255) << 8) | (prefix[1] & 255)
 		if ((query_len < 12) || (query_len > 512 - 16)): exit(1)

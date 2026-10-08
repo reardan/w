@@ -7,7 +7,7 @@ import lib.lib
 
 int dir_platform_read(char* path, list[char*] names, list[int] kinds):
 	char* pattern = strjoin(path, c"/*")
-	char* find_data = malloc(320)
+	char* find_data = cast(char*, malloc(320))
 	int handle = FindFirstFileA(pattern, find_data)
 	free(pattern)
 	if (handle == -1):

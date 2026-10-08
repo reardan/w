@@ -15,7 +15,7 @@ import structures.string
 int main():
 	malloc_force_debug_mode()
 
-	char* a = malloc(10)
+	char* a = cast(char*, malloc(10))
 	int i = 0
 	while (i < 10):
 		a[i] = 65 + i
@@ -25,7 +25,7 @@ int main():
 	free(a)
 
 	# Growing realloc: contents up to the old size must survive the copy.
-	char* b = malloc(8)
+	char* b = cast(char*, malloc(8))
 	i = 0
 	while (i < 8):
 		b[i] = 'a' + i
@@ -39,7 +39,7 @@ int main():
 
 	# A block bigger than one page still gets exactly one trailing guard
 	# page and is fully writable up to the requested size.
-	char* big = malloc(10000)
+	char* big = cast(char*, malloc(10000))
 	big[0] = 1
 	big[9999] = 1
 	free(big)
@@ -61,7 +61,7 @@ int main():
 	# freed regions are munmap'd so VMA/address space stays bounded.
 	i = 0
 	while (i < 20000):
-		char* p = malloc(16)
+		char* p = cast(char*, malloc(16))
 		p[0] = 1
 		free(p)
 		i = i + 1

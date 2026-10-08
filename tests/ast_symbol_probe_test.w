@@ -233,7 +233,7 @@ void test_ast_symbol_probe_preserves_usage_and_scope_state():
 generic_signature_ast* ast_test_capture_signature_kind(char* source, int return_shape):
 	if (token == 0):
 		token_size = 20
-		token = malloc(token_size)
+		token = cast(char*, malloc(token_size))
 		token[0] = 0
 	char* saved = generic_reparse_save()
 	int serial = token_serial
@@ -346,7 +346,7 @@ void test_ast_generic_inference_shapes_without_placeholders():
 	push_basic_types()
 	int record = type_push_size(c"ast_inference_record", word_size)
 	int ptr = type_get_next_pointer(record)
-	char* names = malloc(__word_size__)
+	char* names = cast(char*, malloc(__word_size__))
 	save_ptr(names, cast(int, c"T"))
 	int def = generic_def_add(c"ast_inference_shapes", 0, c"no source file needed", 0, 1, 1, 1, cast(int, names))
 	generic_signature_ast* signature = ast_test_capture_signature(c"(T a, T** b, int c, ast_inference_record* d):\n")
@@ -391,7 +391,7 @@ void ast_test_prepared_expression(char* source, int accepted):
 	push_basic_types()
 	if (token == 0):
 		token_size = 20
-		token = malloc(token_size)
+		token = cast(char*, malloc(token_size))
 		token[0] = 0
 	char* saved = generic_reparse_save()
 	int serial = token_serial
@@ -505,7 +505,7 @@ void ast_test_stack_binding_snapshot(int scope, int expected_words):
 	int sym = table_pos - symbol_data_size
 	if (token == 0):
 		token_size = 20
-		token = malloc(token_size)
+		token = cast(char*, malloc(token_size))
 		token[0] = 0
 	char* saved = generic_reparse_save()
 	int serial = token_serial
@@ -548,7 +548,7 @@ void ast_test_stack_binding_snapshot(int scope, int expected_words):
 	assert_strings_equal(c"ast_bound_operand", last_identifier)
 	int length = codepos - before
 	assert1(length > 0)
-	char* actual = malloc(length)
+	char* actual = cast(char*, malloc(length))
 	for i in range(length): actual[i] = code[before + i]
 	codepos = before
 	be_notes_reset()
@@ -598,7 +598,7 @@ void test_ast_global_layout_survives_type_changes():
 	int before = codepos
 	emit_global_storage(record)
 	assert_equal(bytes, codepos - before)
-	char* expected = malloc(bytes)
+	char* expected = cast(char*, malloc(bytes))
 	for i in range(bytes): expected[i] = code[before + i]
 	codepos = before
 	# Reuse both the parent and array records. The emitter must only
