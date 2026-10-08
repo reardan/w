@@ -49,6 +49,7 @@ void ast_for_range_loop(int for_var, int for_tab_level):
 	loop_ast* node = cast(loop_ast*, retained_parse_record(&local_node, sizeof(loop_ast)))
 	node.kind = ast_loop_range
 	node.source_file = file
+	node.source_name = retained_parse_name(filename)
 	node.line = diag_token_line
 	node.column = diag_token_column
 	node.start_offset = token_start_offset
@@ -91,6 +92,7 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	loop_ast* node = cast(loop_ast*, retained_parse_record(&local_node, sizeof(loop_ast)))
 	node.kind = ast_loop_cursor
 	node.source_file = file
+	node.source_name = retained_parse_name(filename)
 	node.line = diag_token_line
 	node.column = diag_token_column
 	node.start_offset = token_start_offset
@@ -149,6 +151,7 @@ int ast_while_statement():
 	loop_ast* node = cast(loop_ast*, retained_parse_record(&local_node, sizeof(loop_ast)))
 	node.kind = ast_loop_while
 	node.source_file = file
+	node.source_name = retained_parse_name(filename)
 	node.line = diag_token_line
 	node.column = diag_token_column
 	node.start_offset = token_start_offset

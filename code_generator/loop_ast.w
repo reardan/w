@@ -61,7 +61,7 @@ void emit_range_loop_ast_end(loop_ast* node):
 	if (node.entry_site >= 0):
 		# the bottom test: back to the body while loop var < end
 		be_loop_entry_land(node.entry_site)
-		debug_line_note_at(node.line, stack_pos)
+		if (node.source_name != 0): debug_line_note_in(node.source_name, node.line, stack_pos)
 		for_range_test(node.variable_slot, node.end_slot)
 		be_br_nonzero_discard(node.top_target)
 	else:
@@ -144,7 +144,7 @@ void emit_cursor_loop_ast_end(loop_ast* node):
 	if (node.entry_site >= 0):
 		# the bottom test: back to the body while not done
 		be_loop_entry_land(node.entry_site)
-		debug_line_note_at(node.line, stack_pos)
+		if (node.source_name != 0): debug_line_note_in(node.source_name, node.line, stack_pos)
 		if (for_cursor_test(node.done_fn, node.container_slot, node.cursor_slot)): be_br_nonzero_discard(node.top_target)
 		else: be_br_zero_discard(node.top_target)
 	else:

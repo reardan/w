@@ -9,6 +9,7 @@ const int ast_loop_while = 3
 struct loop_ast:
 	int kind
 	int source_file
+	char* source_name   # the file name of line, owned by the record (0: no location)
 	int line
 	int column
 	int start_offset

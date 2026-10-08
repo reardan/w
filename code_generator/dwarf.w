@@ -39,25 +39,29 @@ char* debug_file_name(int index):
 	return cast(char*, load_ptr(debug_files + index * __word_size__))
 
 
-int debug_line_file_index():
+int debug_line_file_index_of(char* source):
 	debug_files_ensure()
 	# Fast path: the same file as the previous statement
 	if (debug_file_count > 0):
 		char* last = cast(char*, load_ptr(debug_files + debug_last_file * __word_size__))
-		if (strcmp(last, filename) == 0):
+		if (strcmp(last, source) == 0):
 			return debug_last_file
 	int i = 0
 	while (i < debug_file_count):
 		char* name = cast(char*, load_ptr(debug_files + i * __word_size__))
-		if (strcmp(name, filename) == 0):
+		if (strcmp(name, source) == 0):
 			debug_last_file = i
 			return i
 		i = i + 1
 	if (debug_file_count >= 256): return 0
-	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(filename)))
+	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(source)))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
 	return debug_last_file
+
+
+int debug_line_file_index():
+	return debug_line_file_index_of(filename)
 
 
 # Record that the code being generated at codepos comes from filename:line.
@@ -65,6 +69,7 @@ int debug_line_file_index():
 # passed in by the caller because this file is compiled before the symbol
 # table module and cannot reference its globals directly.
 void debug_line_note_at(int line, int stmt_stack_pos);
+void debug_line_note_in(char* source, int line, int stmt_stack_pos);
 
 void debug_line_note(int stmt_stack_pos):
 	debug_line_note_at(line_number + 1, stmt_stack_pos)
@@ -74,6 +79,13 @@ void debug_line_note(int stmt_stack_pos):
 # bottom test belongs to the header's line, parsed long before it
 # (grammar/loop_rotate.w).
 void debug_line_note_at(int line, int stmt_stack_pos):
+	debug_line_note_in(filename, line, stmt_stack_pos)
+
+
+# ... and in an explicit source file: a retained loop record lowers its
+# bottom test from the file name it owns, not the parser's current one
+# (compiler/loop_ast.w, #604: records outlive their parse frame).
+void debug_line_note_in(char* source, int line, int stmt_stack_pos):
 	# Device (PTX) bodies do not advance codepos, so address-keyed line
 	# records would pile up at the same host position: skip them.
 	if (target_isa == 3): return;
@@ -89,7 +101,7 @@ void debug_line_note_at(int line, int stmt_stack_pos):
 		debug_line_stack_pos = cast(char*, malloc(debug_line_capacity * 4))
 	if (debug_line_count >= debug_line_capacity): return;
 
-	int file_index = debug_line_file_index()
+	int file_index = debug_line_file_index_of(source)
 
 	if (debug_line_count > 0):
 		int prev = debug_line_count - 1
