@@ -52,6 +52,7 @@ int ast_statement_lex_may_print(expression_ast* tree):
 void ast_statement_walk_expression(int walk, statement_ast* node):
 	expression_ast* tree = node.expression_tree
 	retained_walk_expression(walk, tree, node.expression_root)
+	node.expression_tree = retained_walks[walk].tree
 	retained_walk_phase(walk, ast_walk_expression)
 	if (ast_statement_lex_may_print(tree)): retained_walk_drain(walk)
 	if (tree.whole_expression):
@@ -68,7 +69,8 @@ int ast_statement_simple(int* jumps):
 	else if (peek(c"break")): kind = ast_stmt_break
 	else if (peek(c"continue")): kind = ast_stmt_continue
 	if (kind == 0): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = kind
 	node.source_file = file
 	node.line = diag_token_line
@@ -97,16 +99,16 @@ int ast_statement_simple(int* jumps):
 	get_token()
 	# The debugger marker historically precedes terminator diagnostics;
 	# branch validation historically follows them. Preserve both orders.
-	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), &node)
+	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), node)
 	if (walk >= 0):
 		if (kind == ast_stmt_debugger): retained_walk_phase(walk, ast_walk_simple)
 		ast_statement_walk_terminator(walk)
 		if (kind != ast_stmt_debugger): retained_walk_phase(walk, ast_walk_simple)
 		retained_emit_statement(retained_walks[walk].node)
 		return 1
-	if (kind == ast_stmt_debugger): emit_simple_statement_ast(&node)
+	if (kind == ast_stmt_debugger): emit_simple_statement_ast(node)
 	expect_or_newline(c";")
-	if (kind != ast_stmt_debugger): emit_simple_statement_ast(&node)
+	if (kind != ast_stmt_debugger): emit_simple_statement_ast(node)
 	return 1
 
 
@@ -127,7 +129,8 @@ int ast_statement_value(int* jumps):
 	if (peek(c"return")): kind = ast_stmt_return
 	else if (peek(c"yield")): kind = ast_stmt_yield
 	if (kind == 0): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = kind
 	node.source_file = file
 	node.line = diag_token_line
@@ -162,20 +165,20 @@ int ast_statement_value(int* jumps):
 		node.end_offset = tree.end_offset
 	node.declared_type = 0
 	if (has_value): node.declared_type = load_int(table + current_function_symbol + 6)
-	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), &node)
+	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), node)
 	if (walk >= 0):
 		if (has_value):
-			ast_statement_walk_expression(walk, &node)
+			ast_statement_walk_expression(walk, node)
 			retained_walk_phase(walk, ast_walk_value)
 		ast_statement_walk_terminator(walk)
 		retained_walk_phase(walk, ast_walk_exit)
 		retained_emit_statement(retained_walks[walk].node)
 		return 1
-	emit_statement_ast_expression(&node)
-	ast_statement_finish_expression(&node)
-	emit_statement_ast_value(&node)
+	emit_statement_ast_expression(node)
+	ast_statement_finish_expression(node)
+	emit_statement_ast_value(node)
 	expect_or_newline(c";")
-	emit_statement_ast_exit(&node)
+	emit_statement_ast_exit(node)
 	return 1
 
 
@@ -185,7 +188,8 @@ int ast_statement_value(int* jumps):
 int ast_statement_expression(int prefix_only):
 	if (ast_expressions_mode < 2): return 0
 	if (prefix_only && (increment_op() == 0)): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_expression
 	node.source_file = file
 	node.line = diag_token_line
@@ -199,15 +203,15 @@ int ast_statement_expression(int prefix_only):
 	node.expression_tree = &tree
 	node.expression_root = root
 	node.end_offset = tree.end_offset
-	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), &node)
+	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), node)
 	if (walk >= 0):
-		ast_statement_walk_expression(walk, &node)
+		ast_statement_walk_expression(walk, node)
 		ast_expression_statements_emitted = ast_expression_statements_emitted + 1
 		ast_statement_walk_terminator(walk)
 		retained_emit_statement(retained_walks[walk].node)
 		return 1
-	emit_statement_ast_expression(&node)
-	ast_statement_finish_expression(&node)
+	emit_statement_ast_expression(node)
+	ast_statement_finish_expression(node)
 	ast_expression_statements_emitted = ast_expression_statements_emitted + 1
 	expect_or_newline(c";")
 	return 1
@@ -228,7 +232,8 @@ void ast_statement_guard(int target, int outer_condition):
 	control_ast_guard_pending = 0
 	int walk = -1
 	if (control != 0): walk = control.walk
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_guard
 	node.source_file = file
 	node.line = diag_token_line
@@ -245,7 +250,7 @@ void ast_statement_guard(int target, int outer_condition):
 	# C3.5: the optimizer pass reads the condition before the walk emits
 	# any of the arm (compiler/ast_opt.w, --ast-opt).
 	if (control != 0): ast_opt_guard(control, &tree, root)
-	if (walk >= 0): retained_walks[walk].statement = &node
+	if (walk >= 0): retained_walks[walk].statement = node
 	if (root < 0):
 		# The streaming grammar emits as it parses: the header's
 		# recorded phases come first.
@@ -257,12 +262,12 @@ void ast_statement_guard(int target, int outer_condition):
 		node.expression_root = root
 		node.end_offset = tree.end_offset
 		if (walk >= 0):
-			ast_statement_walk_expression(walk, &node)
+			ast_statement_walk_expression(walk, node)
 			retained_walk_phase(walk, ast_walk_guard_value)
 		else:
-			emit_statement_ast_expression(&node)
-			ast_statement_finish_expression(&node)
-			emit_guard_ast_value(&node)
+			emit_statement_ast_expression(node)
+			ast_statement_finish_expression(node)
+			emit_guard_ast_value(node)
 	if (walk >= 0):
 		retained_walk_phase(walk, ast_walk_guard_branch)
 		retained_walk_drain(walk)
@@ -272,7 +277,7 @@ void ast_statement_guard(int target, int outer_condition):
 		return
 	lint_condition_end()
 	condition_context = outer_condition
-	emit_guard_ast_branch(&node)
+	emit_guard_ast_branch(node)
 
 
 # S2.2c: control headers (switch here, for loops in grammar/ast_loop.w)
@@ -378,6 +383,7 @@ void ast_walk_header_value(int walk, statement_ast* node, expression_ast* tree, 
 		ast_statement_finish_expression(node)
 		return
 	retained_walk_expression(walk, tree, root)
+	node.expression_tree = retained_walks[walk].tree
 	retained_walk_phase(walk, lower_phase)
 	if (ast_statement_lex_may_print(tree)): retained_walk_drain(walk)
 	if (tree.whole_expression):
@@ -420,28 +426,34 @@ int ast_switch_case_value(int walk, switch_ast_walk* record, expression_ast* tre
 # The value hooks of the streaming switch rule (grammar/switch_statement.w);
 # ast_switch_statement walks its values itself.
 int ast_statement_switch_value():
-	statement_ast node
-	statement_ast value
-	switch_ast_walk record
-	record.node = &node
-	record.value = &value
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
+	statement_ast local_value
+	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
+	switch_ast_walk local_record
+	switch_ast_walk* record = cast(switch_ast_walk*, retained_parse_record(&local_record, sizeof(switch_ast_walk)))
+	record.node = node
+	record.value = value
 	expression_ast tree
-	ast_switch_selector(-1, &record, &tree)
+	ast_switch_selector(-1, record, &tree)
 	return node.declared_type
 
 
 int ast_statement_switch_case(int type, int slot, int body_target, int next_target):
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.declared_type = type
 	node.stack_depth = slot
 	node.body_target = body_target
 	node.alternate_target = next_target
-	statement_ast value
-	switch_ast_walk record
-	record.node = &node
-	record.value = &value
+	statement_ast local_value
+	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
+	switch_ast_walk local_record
+	switch_ast_walk* record = cast(switch_ast_walk*, retained_parse_record(&local_record, sizeof(switch_ast_walk)))
+	record.node = node
+	record.value = value
 	expression_ast tree
-	return ast_switch_case_value(-1, &record, &tree)
+	return ast_switch_case_value(-1, record, &tree)
 
 
 # One if or elif arm; walk is the chain's walk record, or -1 when the
@@ -450,7 +462,8 @@ int ast_statement_switch_case(int type, int slot, int body_target, int next_targ
 # preceded by a drain, an elif arm drains the enclosing arm's phases
 # before it swaps its node in, and each arm drains before it returns.
 void ast_if_statement_arm(int walk, control_ast_walk* control):
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_if
 	node.source_file = file
 	node.line = diag_token_line
@@ -464,10 +477,10 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 		# The enclosing arm's then-exit acts on its own node.
 		retained_walk_drain(walk)
 		outer_arm = control.statement
-		control.statement = &node
+		control.statement = node
 		retained_walk_phase(walk, ast_walk_if_begin)
 		control_ast_guard_pending = control
-	else: emit_if_ast_begin(&node)
+	else: emit_if_ast_begin(node)
 	statement_guard(node.alternate_target, outer_condition)
 	enclosing_tab_level = if_tab_level
 	if (walk >= 0): retained_walk_drain(walk)
@@ -477,7 +490,7 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 	int arms_terminate = flow_terminates
 	int has_else = 0
 	if (walk >= 0): retained_walk_phase(walk, ast_walk_if_then_end)
-	else: emit_if_ast_then_end(&node)
+	else: emit_if_ast_then_end(node)
 	if (peek(c"elif") && (tab_level == if_tab_level)):
 		if (coverage_generate_mode):
 			if (walk >= 0): retained_walk_drain(walk)
@@ -502,7 +515,7 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 		retained_walk_phase(walk, ast_walk_if_end)
 		retained_walk_drain(walk)
 		control.statement = outer_arm
-	else: emit_if_ast_end(&node)
+	else: emit_if_ast_end(node)
 	flow_terminates = has_else && arms_terminate
 
 
@@ -514,12 +527,13 @@ void ast_if_statement_tail():
 	if (walk < 0):
 		ast_if_statement_arm(-1, 0)
 		return
-	control_ast_walk control
+	control_ast_walk local_control
+	control_ast_walk* control = cast(control_ast_walk*, retained_parse_record(&local_control, sizeof(control_ast_walk)))
 	control.statement = 0
 	control.loop = 0
 	control.outer = 0
-	control_ast_walk_attach(walk, &control)
-	ast_if_statement_arm(walk, &control)
+	control_ast_walk_attach(walk, control)
+	ast_if_statement_arm(walk, control)
 	retained_emit_statement(retained_walks[walk].node)
 
 
@@ -534,7 +548,8 @@ int ast_statement_block():
 	if (peek(c"{")): kind = ast_stmt_brace_block
 	else if (peek(c":")): kind = ast_stmt_indent_block
 	if (kind == 0): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = kind
 	node.source_file = file
 	node.line = diag_token_line
@@ -543,7 +558,7 @@ int ast_statement_block():
 	int block_tab_level = enclosing_tab_level
 	get_token()
 	node.binding = table_pos
-	int walk = retained_walk_begin(cast(int, emit_block_ast_walk), &node)
+	int walk = retained_walk_begin(cast(int, emit_block_ast_walk), node)
 	if (walk >= 0): retained_walk_phase(walk, ast_walk_block_begin)
 	else:
 		node.stack_depth = stack_pos
@@ -589,19 +604,20 @@ int ast_statement_block():
 		retained_emit_statement(retained_walks[walk].node)
 		flow_terminates = terminates
 		return 1
-	emit_block_ast_deferred(&node)
+	emit_block_ast_deferred(node)
 	lint_scope_exit(node.binding)
 	dwarf_block_end()
 	table_pos = node.binding
 	if (kind == ast_stmt_indent_block): print_int_v1(c"ending stack_pos: ", stack_pos)
-	emit_block_ast_end(&node)
+	emit_block_ast_end(node)
 	flow_terminates = terminates
 	return 1
 
 
 int ast_switch_statement():
 	if (peek(c"switch") == 0): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_switch
 	node.unwind_slots = 1
 	node.source_file = file
@@ -615,15 +631,17 @@ int ast_switch_statement():
 	# S2.2c: under --ast-emit-retained the switch is walked from its record;
 	# its phases are drained before each case body, whose parse reads the
 	# scrutinee slot and the break region.
-	statement_ast value
+	statement_ast local_value
+	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
 	expression_ast tree
-	switch_ast_walk record
-	record.node = &node
-	record.value = &value
-	int walk = retained_walk_begin(cast(int, emit_switch_ast_walk), cast(statement_ast*, &record))
+	switch_ast_walk local_record
+	switch_ast_walk* record = cast(switch_ast_walk*, retained_parse_record(&local_record, sizeof(switch_ast_walk)))
+	record.node = node
+	record.value = value
+	int walk = retained_walk_begin(cast(int, emit_switch_ast_walk), cast(statement_ast*, record))
 
 	# The scrutinee is evaluated exactly once, into a hidden stack slot
-	ast_switch_selector(walk, &record, &tree)
+	ast_switch_selector(walk, record, &tree)
 
 	ast_walk_expect(walk, c":")
 	if ((token_newline == 0) && (token[0] != 0)):
@@ -636,8 +654,8 @@ int ast_switch_statement():
 	record.outer_chain = switch_break_chain
 	record.outer_stack = switch_stack_pos
 	record.outer_in_switch = break_in_switch
-	ast_switch_step(walk, &record, switch_walk_region)
-	ast_switch_step(walk, &record, switch_walk_enter)
+	ast_switch_step(walk, record, switch_walk_region)
+	ast_switch_step(walk, record, switch_walk_enter)
 
 	int seen_default = 0
 	# Fall-through bookkeeping and duplicate-case values mirror
@@ -655,13 +673,13 @@ int ast_switch_statement():
 			error(c"'default' must be the last clause in a switch")
 
 		# Region for jumps past this case while its values do not match
-		ast_switch_step(walk, &record, switch_walk_case_region)
+		ast_switch_step(walk, record, switch_walk_case_region)
 		if (ast_walk_accept(walk, c"case")):
 			# Multi-value case: any matching value jumps to the body
-			ast_switch_step(walk, &record, switch_walk_match_region)
+			ast_switch_step(walk, record, switch_walk_match_region)
 			int more = 1
-			while (more): more = ast_switch_case_value(walk, &record, &tree)
-			ast_switch_step(walk, &record, switch_walk_match_end)
+			while (more): more = ast_switch_case_value(walk, record, &tree)
+			ast_switch_step(walk, record, switch_walk_match_end)
 		else if (ast_walk_accept(walk, c"default")): seen_default = 1
 		else:
 			ast_walk_settle(walk)
@@ -674,21 +692,21 @@ int ast_switch_statement():
 		if (flow_terminates == 0): every_case_terminates = 0
 
 		# Implicit break: leave the switch after the body (no fallthrough)
-		ast_switch_step(walk, &record, switch_walk_case_end)
+		ast_switch_step(walk, record, switch_walk_case_end)
 
 	# No-match fallthrough, each body's exit jump, and 'break' all land
 	# here, before the scrutinee slot is discarded
 	node.end_offset = token_start_offset
-	ast_switch_step(walk, &record, switch_walk_region_end)
+	ast_switch_step(walk, record, switch_walk_region_end)
 
-	ast_switch_step(walk, &record, switch_walk_leave)
+	ast_switch_step(walk, record, switch_walk_leave)
 	switch_seen_count = switch_seen_base
 	switch_seen_base = outer_seen_base
 	int switch_terminates = seen_default && every_case_terminates && (flow_switch_break == 0)
 	flow_switch_break = outer_switch_break
 
 	# Discard the hidden scrutinee slot
-	ast_switch_step(walk, &record, switch_walk_cleanup)
+	ast_switch_step(walk, record, switch_walk_cleanup)
 	if (walk >= 0): retained_emit_statement(retained_walks[walk].node)
 	flow_terminates = switch_terminates
 
@@ -700,7 +718,8 @@ int ast_switch_statement():
 # syntax; statement-only increments and parallel stores stay disallowed.
 int ast_deferred_expression():
 	if (ast_expressions_mode < 2): return 0
-	statement_ast node
+	statement_ast local_node
+	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_deferred_expression
 	node.source_file = file
 	node.line = diag_token_line
@@ -714,7 +733,7 @@ int ast_deferred_expression():
 	node.expression_tree = &tree
 	node.expression_root = root
 	node.end_offset = tree.end_offset
-	emit_statement_ast_expression(&node)
-	ast_statement_finish_expression(&node)
+	emit_statement_ast_expression(node)
+	ast_statement_finish_expression(node)
 	ast_deferred_expressions_emitted = ast_deferred_expressions_emitted + 1
 	return 1

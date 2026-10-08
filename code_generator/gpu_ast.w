@@ -30,7 +30,9 @@ void emit_gpu_for_device_begin_ast(gpu_statement_ast* node):
 	if (node.has_start):
 		gpu_capture_reserve() /* slot 0 = start, slot 1 = end */
 	in_gpu_for_body = 1
-	ptx_kernel_begin(node.kernel_name)
+	char* kernel_name = node.kernel_name
+	if (ast_retain_mode): kernel_name = strclone(kernel_name)
+	ptx_kernel_begin(kernel_name)
 
 	# i = block_idx() * block_dim() + thread_idx() [+ start]
 	ptx_special_reg(2)
@@ -111,7 +113,7 @@ void emit_gpu_walk_ast(retained_statement_walk* walk, int phase):
 	else if (code == ast_gpu_walk_capture):
 		statement_ast capture
 		capture.kind = ast_stmt_gpu_capture
-		capture.callee_name = gpu_capture_name(phase >> 8)
+		capture.callee_name = node.capture_names[phase >> 8]
 		capture.binding = node.capture_bindings[phase >> 8]
 		emit_gpu_capture_value_ast(&capture)
 	else if (code == ast_gpu_walk_for_launch): emit_gpu_for_launch_ast(node)
