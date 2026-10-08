@@ -1,0 +1,46 @@
+{
+	"targets": [
+		{
+			"name": "seed",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/live"],
+			"steps": [
+				{"cmd": ["cp", "bin/wexec_e2e_atomic", "bin/wexec_atomic/live"]}
+			]
+		},
+		{
+			"name": "reader",
+			"deps": ["seed"],
+			"steps": [
+				{"cmd": ["bin/wexec_atomic/live", "atomic-reader"]}
+			]
+		},
+		{
+			"name": "nested",
+			"deps": ["seed"],
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/atomic_child.json", "compiler"]}
+			]
+		},
+		{
+			"name": "main",
+			"deps": ["reader", "nested"]
+		},
+		{
+			"name": "a",
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/atomic_child.json", "a"]}
+			]
+		},
+		{
+			"name": "b",
+			"steps": [
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/atomic_child.json", "b"]}
+			]
+		},
+		{
+			"name": "parallel",
+			"deps": ["a", "b"]
+		}
+	]
+}

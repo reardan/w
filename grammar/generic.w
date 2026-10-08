@@ -305,7 +305,7 @@ int generic_subst_lookup(char* name):
 
 
 char* generic_subst_make(int def, int args, int arg_count):
-	char* block = malloc(__word_size__ + arg_count * 2 * __word_size__)
+	char* block = cast(char*, malloc(__word_size__ + arg_count * 2 * __word_size__))
 	save_ptr(block, arg_count)
 	for i in range(arg_count):
 		save_ptr(block + __word_size__ + i * 2 * __word_size__, cast(int, generic_def_param_name(def, i)))
@@ -342,7 +342,7 @@ resumes as if nothing happened.
 save block layout: 14 ints (56 bytes).
 */
 char* generic_reparse_save():
-	char* s = malloc(14 * __word_size__)
+	char* s = cast(char*, malloc(14 * __word_size__))
 	save_ptr(s, cast(int, filename))
 	save_ptr(s + __word_size__, file)
 	save_ptr(s + 2 * __word_size__, nextc)
@@ -999,7 +999,7 @@ int generic_inst_signature(int inst):
 		return sig
 	int def = generic_inst_def(inst)
 	char* old_subst = generic_subst_swap(generic_subst_make(def, generic_inst_args(inst), generic_inst_arg_count(inst)))
-	char* param_types = malloc(10 * __word_size__)
+	char* param_types = cast(char*, malloc(10 * __word_size__))
 	int param_count = 0
 	int return_type = -1
 	if (generic_header_tree_ready(def)):
@@ -1122,7 +1122,7 @@ const int generic_infer_max_args = 16
 
 int generic_infer_placeholder(int i):
 	if (generic_infer_placeholders == 0):
-		generic_infer_placeholders = malloc(generic_max_params * __word_size__)
+		generic_infer_placeholders = cast(char*, malloc(generic_max_params * __word_size__))
 		int j = 0
 		while (j < generic_max_params):
 			save_ptr(generic_infer_placeholders + j * __word_size__, -1)
@@ -1242,7 +1242,7 @@ char* generic_infer_ast_shapes(int def):
 			types[count] = data
 		count = count + 1
 		parameter = parameter.next
-	char* block = malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__)
+	char* block = cast(char*, malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__))
 	save_ptr(block, count)
 	for i in range(count):
 		if (i == generic_infer_max_args): break
@@ -1268,7 +1268,7 @@ char* generic_infer_shapes(int def):
 	int placeholder_args = cast(int, malloc(generic_max_params * __word_size__))
 	for i in range(n): save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))
 	char* old_subst = generic_subst_swap(generic_subst_make(def, placeholder_args, n))
-	char* block = malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__)
+	char* block = cast(char*, malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__))
 	int count = 0
 	if (generic_header_tree_ready(def)):
 		# S2.3: the placeholder walk of the captured header
@@ -1400,13 +1400,13 @@ int generic_call_infer_expr(int def):
 	char* shapes = generic_infer_shapes(def)
 	int shape_count = load_ptr(shapes)
 	int n = generic_def_param_count(def)
-	char* bound = malloc(n * __word_size__)
+	char* bound = cast(char*, malloc(n * __word_size__))
 	int i = 0
 	while (i < n):
 		save_ptr(bound + i * __word_size__, -1)
 		i = i + 1
 	# per argument: promoted type + a flag for the post-binding check
-	char* arg_records = malloc(generic_infer_max_args * 2 * __word_size__)
+	char* arg_records = cast(char*, malloc(generic_infer_max_args * 2 * __word_size__))
 	int s = stack_pos
 	int passed = 0
 	get_token()
@@ -1461,10 +1461,10 @@ int generic_call_infer_expr(int def):
 			error3(c"inferred call returns a struct by value; use explicit type arguments, e.g. '", generic_def_name(def), c"[int](...)'")
 	int expected = type_function_param_count(sig)
 	if (passed != expected):
-		diag_part(c"warning: function '")
+		diag_part(c"function '")
 		diag_part(generic_inst_mangled(inst))
 		diag_part(c"' expects ")
-		warning3(itoa(expected), c" arguments, got ", itoa(passed))
+		type_error3(itoa(expected), c" arguments, got ", itoa(passed))
 	# opaque-shape arguments get their check against the now-concrete
 	# signature (type-parameter shapes match by construction; concrete
 	# shapes were checked while parsing)

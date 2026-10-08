@@ -4,29 +4,10 @@ import libs.standard.distributed.raft_sim_harness
 
 
 /*
-Cluster membership changes (Ongaro thesis §4.1, single-server changes;
-issue #319; raft.w's "Cluster membership changes" header) driven
-through the shared deterministic sim harness (raft_sim_harness.w,
-docs/projects/distributed.md phase 3).
-
-mc_new starts a cluster the usual way (n nodes, full mesh); mc_add_
-node appends a NEW raft with a fresh id and an EMPTY peers list — it
-learns the cluster's membership, and catches up its log, purely
-through the replicated config-change entry the leader proposes via
-raft_propose_add_server, exactly as a real fresh node would (no
-special-cased bootstrap). Node ids are assigned in increasing order
-(1, 2, 3, ...) and never reused within one cluster.
-
-Every node runs with pre-vote (raft_set_prevote) ON: a removed-but-
-not-crashed node keeps ticking and, once its heartbeats stop, would
-otherwise time out and disrupt the live leader with ever-higher terms
-(§4.2.1 — raft_handle_vote_req does not filter by current membership,
-raft.w's header) — its former peers still exist and are still network-
-reachable in these sim scenarios (unlike a partition, removal is
-purely a config change, not a network split), so this is the one place
-that gap is actually reachable in-process. Pre-vote + leader stickiness
-is this stack's documented mitigation (raft.w header); it is exercised
-for real here, not just asserted in prose.
+Historical single-entry membership mechanics: raw configuration fixtures test
+append/commit/truncation and election behavior without inserting the public
+learner catch-up sequence. New nodes use an explicit trusted bootstrap voter
+list. raft_learner_test.w separately qualifies the safe public admission API.
 */
 
 
@@ -38,12 +19,10 @@ rsim* mc_new(int n, int sim_seed, int min_delay, int max_delay, int drop_per_mil
 	return c
 
 
-# Appends a brand-new node with an EMPTY peers list — it knows nothing
-# until the leader's add-server entry (and whatever replicates after)
-# reaches it. Returns the assigned id.
+# Appends a non-voting node with the trusted current voter IDs.
 int mc_add_node(rsim* c, int seed):
-	list[int] peers = new list[int]
-	raft* r = raft_new(c.nodes.length + 1, peers, 150, 300, 50, seed)
+	list[int] peers = raft_peers_except(c.nodes.length + 1, c.nodes.length + 1)
+	raft* r = raft_new_learner(c.nodes.length + 1, peers, 150, 300, 50, seed)
 	peers.free()
 	raft_set_prevote(r, 1)
 	return rsim_add_node(c, r)
@@ -232,7 +211,7 @@ void test_reject_second_inflight_config_change():
 	# let the first change commit, THEN a second proposal is accepted
 	rsim_run(c, 40)
 	assert_equal(0, raft_config_pending(leader))
-	rsim_route_accepted(c, lid, raft_propose_add_server(leader, id4 + 1, sim_now(c.net), c.out))
+	rsim_route_accepted(c, lid, rsim_config_fixture(leader, raft_config_op_add, id4 + 1, sim_now(c.net), c.out))
 	assert_equal(1, raft_config_pending(leader))
 	assert_equal(2, raft_log_length(leader))
 	rsim_free(c)

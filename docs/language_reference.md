@@ -132,7 +132,7 @@ at runtime.
 
 | Conversion | Rule |
 |---|---|
-| Store into a narrower integer (assignment, initialisation, argument, field) | Truncates to the destination width: `char c = 300` holds 44. A bare literal outside the 1- or 2-byte type's signed and unsigned range warns; a computed value truncates silently. **(#532)** |
+| Store into a narrower integer (assignment, initialisation, argument, field) | Truncates to the destination width. A bare literal outside the 1- or 2-byte type's signed and unsigned range is an error; use `char c = cast(char, 300)` to store 44 explicitly. Computed values still truncate silently. **(#532)** |
 | Load of a narrower integer | Sign-extends signed types (`char`, `byte`, `intN`) and zero-extends unsigned ones. |
 | `cast(T, e)` to an integer type, used as a value | **Changes only the static type; no truncation or extension.** `cast(uint8, -1) + 0 == -1` and `cast(char, 255) + 0 == 255`. The value is narrowed only when it is stored. See [Known divergences](#known-divergences). |
 | Integer to `bool` | A constant is normalised to 0/1 (`bool b = 5` holds 1). A non-constant `int` (`bool b = n`) currently crashes the produced program (#525); write `n != 0`. |
@@ -232,8 +232,8 @@ the function exits, not where the `defer` is written
 | `T* + int`, `T* - int`, `p += n`, `p++` | A **raw, unscaled byte offset** for every pointee type: `int* p; p + 1` moves 1 byte. The result keeps the type `T*`, so `*(p + n)` reads a whole `T` at byte offset `n`. |
 | Indexing `p[i]`, `&p[i]` | Scales by `sizeof(T)`. This is the form to use in new code; `lib/ptr.w`'s `ptr_add(p, n)` is `&p[n]` written as a call. |
 | `p - q` | A plain integer byte distance. |
-| `int` ↔ pointer | Warns unless written with `cast()`. The literal `0` and `&x` are untyped constants and convert silently. |
-| `void*` → `T*` | Implicit; only `check --lint` reports it (`[void-pointer-conversion]`). **(#532)** |
+| `int` ↔ pointer | Integer-to-pointer mismatches are errors; the reverse direction warns. Use `cast()` to convert explicitly. The literal `0` and `&x` are untyped constants and convert silently. |
+| `void*` → `T*` | Requires `cast(T*, raw)` (`[void-pointer-conversion]`). **(#532)** |
 | Bounds checks | `--bounds=on` (the default) checks indexing of fixed arrays `T[N]` and slices `T[]` (including `int[] s = new int[n]`), and traps with a stack trace. Indexing a raw `T*` is never checked, even when it holds a `new T[n]` result. `--bounds=off` removes the checks ([arrays_slices_strings.md](projects/arrays_slices_strings.md)). |
 | Null | There is no null keyword; `0` is the null pointer. Dereferencing it is not checked (Linux delivers SIGSEGV). |
 
@@ -246,7 +246,7 @@ the function exits, not where the `defer` is written
 | `for int i in range(end)` / `range(start, end[, step])` | The range arguments are evaluated once. |
 | `for T x in container` | Built-in lists, maps and sets; any `T*` whose module provides `T_iter_begin/done/next/value`; generators ([iteration.md](projects/iteration.md)). |
 | `for int cp in s` (`string`) | Iterates over code points. Needs `import lib.utf8`. |
-| `switch e:` / `case a, b:` / `default:` | No fallthrough. `break` leaves the switch and `continue` goes to the enclosing loop. Case values are integers, `string` or `char*` (compared by contents). A literal or enum-constant label that repeats an earlier one warns. **(#532)** |
+| `switch e:` / `case a, b:` / `default:` | No fallthrough. `break` leaves the switch and `continue` goes to the enclosing loop. Case values are integers, `string` or `char*` (compared by contents). A literal or enum-constant label that repeats an earlier one is an error. **(#532)** |
 | `break`, `continue`, `return [e]`, `pass` | |
 | `defer call(...)` | Function-scoped, runs LIFO at every exit ([defer.md](projects/defer.md)). |
 | `goto name` / `name:` | Function-scoped labels written at the indentation of the statements around them. Native targets only. |
@@ -281,7 +281,7 @@ the function exits, not where the `defer` is written
 
 The checker reports some errors, some warnings (which are errors only
 under `--strict`), and lets other mismatches through silently. The #532
-rows are the first stage of issue #532
+rows are errors by default
 ([type_system_p0.md](projects/type_system_p0.md#unsafe-conversion-checks)
 lists their limits).
 
@@ -289,19 +289,20 @@ lists their limits).
 |---|---|
 | Assigning to a `const` | error |
 | Writing through a pointer to const | error |
-| Wrong argument count | warning **(#532)** |
-| `int` ↔ pointer, pointer ↔ unrelated pointer | warning **(#532)** |
+| Wrong argument count | error **(#532)** |
+| `int` → pointer | error **(#532)** |
+| pointer → `int`, pointer ↔ unrelated pointer | warning |
 | `T*` → `const T*`, and `const T*` → `T*` | warning (both directions) |
 | Function value to a typed function pointer that does not match | warning |
 | `cast(T*, const_ptr)` (removes const) | silent |
-| Narrowing a literal store (`char c = 300`) | warning; a computed value still truncates silently **(#532)** |
-| `int` → `enum` (`color c = 5`, `c = i`) | warning **(#532)** |
-| `void*` → any `T*` | silent; `check --lint` warns (`[void-pointer-conversion]`) **(#532)** |
-| Struct `==` | warning; compares addresses **(#532)** |
-| Falling off the end of a non-void function | warning; the return value is garbage **(#532)** |
-| `return 5` in a `void` function | warning **(#532)** |
-| Calling an `int` variable (`k(1)`) | silent, jumps to that address; `check --lint` warns (`[call-int]`) **(#532)** |
-| Duplicate `case` labels | warning for literal and enum-constant labels **(#532)** |
+| Narrowing a literal store (`char c = 300`) | error; a computed value still truncates silently **(#532)** |
+| `int` → `enum` (`color c = 5`, `c = i`) | error **(#532)** |
+| `void*` → any `T*` | error; requires `cast()` **(#532)** |
+| Struct `==` | error; compare fields or explicitly take addresses **(#532)** |
+| Falling off the end of a non-void function | error when the body can complete normally **(#532)** |
+| `return 5` in a `void` function | error **(#532)** |
+| Calling an `int` variable (`k(1)`) | error; use a typed function pointer **(#532)** |
+| Duplicate `case` labels | error for literal and enum-constant labels **(#532)** |
 | Mixed signed/unsigned, bool ↔ int, float → int | silent (defined conversions) |
 
 `w check --all-errors` reports several errors from one run.

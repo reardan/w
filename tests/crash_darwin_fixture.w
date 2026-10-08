@@ -30,7 +30,7 @@ int decoy_return
 
 
 void decoy_leaf():
-	char* buf = malloc(4 * __word_size__)
+	char* buf = cast(char*, malloc(4 * __word_size__))
 	stack_trace_collect(buf, 4)
 	decoy_return = load_word(buf) + 1
 

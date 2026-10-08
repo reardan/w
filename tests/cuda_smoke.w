@@ -40,7 +40,7 @@ void check(int err, char* name):
 
 # An 8-byte, zero-initialized cell (for a handle or device pointer output).
 char* cell():
-	char* c = malloc(8)
+	char* c = cast(char*, malloc(8))
 	save_i(c, 0, 8)
 	return c
 
@@ -52,9 +52,9 @@ int _main():
 	int bytes = n * 4
 
 	# Host inputs: a[i]=1.0f, b[i]=2.0f
-	char* h_a = malloc(bytes)
-	char* h_b = malloc(bytes)
-	char* h_c = malloc(bytes)
+	char* h_a = cast(char*, malloc(bytes))
+	char* h_b = cast(char*, malloc(bytes))
+	char* h_c = cast(char*, malloc(bytes))
 	int i = 0
 	while (i < n):
 		save_i(h_a + i * 4, 0x3f800000, 4)
@@ -94,7 +94,7 @@ int _main():
 	# kernelParams: a void** where each entry points to one argument value.
 	char* pn = cell()
 	save_i(pn, n, 4)
-	char* params = malloc(8 * 4)
+	char* params = cast(char*, malloc(8 * 4))
 	save_i(params + 0, cast(int, d_a), 8)
 	save_i(params + 8, cast(int, d_b), 8)
 	save_i(params + 16, cast(int, d_c), 8)

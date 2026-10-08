@@ -34,7 +34,7 @@ int main():
 	*integer = 7
 	if (*integer != 7): return 10
 	free(integer)
-	char* context = malloc(3 * __word_size__)
+	char* context = cast(char*, malloc(3 * __word_size__))
 	if ((repl_setjmp(context)) != 0): return 11
 	free(context)
 	return 0

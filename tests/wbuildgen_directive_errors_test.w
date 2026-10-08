@@ -141,6 +141,26 @@ void test_arch_only_single_target():
 	free(out_path)
 
 
+void test_cell_sandbox_step_directives():
+	char* dir = wdet_case_dir(c"cell_sandbox")
+	wdet_write(dir, c"tests/sandbox_test.w", c"# wbuild: step=\"bin/guest hello\" sandbox=cell vm_socket=bin/vm.sock vm_template=17 timeout=3000\nint main():\n\treturn 0\n")
+	process_result* result = wdet_run(dir)
+	assert_equal(0, result.status)
+	process_result_free(result)
+	char* path = path_join(dir, c"out.json")
+	char* output = file_read_text(path)
+	asserts(c"sandbox manifest", output != 0)
+	assert_contains(output, c"\"sandbox\": \"cell\"")
+	assert_contains(output, c"\"vm_socket\": \"bin/vm.sock\"")
+	assert_contains(output, c"\"vm_template\": 17")
+	free(output)
+	free(path)
+	wdet_write(dir, c"tests/sandbox_test.w", c"# wbuild: step=\"bin/guest\" sandbox=host\nint main():\n\treturn 0\n")
+	wdet_expect_error(dir, c"unsupported '# wbuild:' sandbox")
+	wdet_write(dir, c"tests/sandbox_test.w", c"# wbuild: step=\"bin/guest\" sandbox=cell vm_template=0\nint main():\n\treturn 0\n")
+	wdet_expect_error(dir, c"vm_template needs a positive handle")
+
+
 void test_arch_only_rejects_twin_flags():
 	char* dir = wdet_case_dir(c"arch_only_combo")
 	wdet_write(dir, c"tests/combo_test.w", c"# wbuild: arch_only=x64 x64\nint main():\n\treturn 0\n")

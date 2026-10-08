@@ -122,8 +122,8 @@ int main(int argc, char** args):
 	pool_bench_metric(json, c"snapshot_stored_pages", snapshot.resident_pages)
 	int image_end = source.heap_start
 	cell_free(source)
-	int* clone_times = malloc(iterations * sizeof(int))
-	int* reset_times = malloc(iterations * sizeof(int))
+	int* clone_times = cast(int*, malloc(iterations * sizeof(int)))
+	int* reset_times = cast(int*, malloc(iterations * sizeof(int)))
 	for i in range(iterations):
 		start = pool_bench_ns()
 		vm_cell* cell = cell_snapshot_clone(snapshot)
@@ -161,7 +161,7 @@ int main(int argc, char** args):
 	int has_kvm = fd >= 0
 	if (has_kvm): close(fd)
 	int failures = 0
-	int* run_times = malloc(iterations * sizeof(int))
+	int* run_times = cast(int*, malloc(iterations * sizeof(int)))
 	start = pool_bench_ns()
 	for i in range(iterations):
 		vm_cell* cell = cell_pool_acquire(pool)

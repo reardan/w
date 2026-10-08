@@ -52,7 +52,7 @@ struct gen_atlas:
 void gen_atlas_init(gen_atlas* a):
 	a.w = gen_atlas_w
 	a.h_cap = 512
-	a.pixels = malloc(a.w * a.h_cap)
+	a.pixels = cast(char*, malloc(a.w * a.h_cap))
 	int i = 0
 	while (i < a.w * a.h_cap):
 		a.pixels[i] = 0
@@ -122,7 +122,7 @@ float32 gen_capsule_dist(float32 px, float32 py, float32 ax, float32 ay, float32
 
 # Solid white cell: untextured fills sample its center.
 char* gen_mask_white(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	for i in range(size * size): p[i] = 255
 	return p
 
@@ -131,7 +131,7 @@ char* gen_mask_white(int size):
 # tile's bottom-right corner, so the tile drawn at a rect's top-left
 # corner (and UV-mirrored for the other three) rounds it off.
 char* gen_mask_corner(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 s = cast(float32, size)
 	int y = 0
 	while (y < size):
@@ -145,7 +145,7 @@ char* gen_mask_corner(int size):
 
 
 char* gen_mask_disc(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 c = cast(float32, size) * 0.5
 	float32 r = c - 0.5
 	int y = 0
@@ -162,7 +162,7 @@ char* gen_mask_disc(int size):
 # Ring for the radio outline: baked 2x (40px, radius 17, stroke 4) and
 # drawn at 20px, where it lands as a radius-8.5 ring with a 2px stroke.
 char* gen_mask_ring(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 c = cast(float32, size) * 0.5
 	float32 r = c - 3.0
 	float32 half_stroke = 2.0
@@ -180,7 +180,7 @@ char* gen_mask_ring(int size):
 
 # Checkmark: two round-capped strokes in a 30px tile.
 char* gen_mask_check(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 s = cast(float32, size) / 30.0
 	int y = 0
 	while (y < size):
@@ -198,7 +198,7 @@ char* gen_mask_check(int size):
 
 # Chevron (dropdown marker): a 'v' of two round-capped strokes.
 char* gen_mask_chevron(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 s = cast(float32, size) / 24.0
 	int y = 0
 	while (y < size):
@@ -219,7 +219,7 @@ char* gen_mask_chevron(int size):
 # mirrors but never rotates, so a 'v' can be flipped to a '^' and no
 # further. flip_x on this one gives the left-pointing form.
 char* gen_mask_chevron_right(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 s = cast(float32, size) / 24.0
 	int y = 0
 	while (y < size):
@@ -239,7 +239,7 @@ char* gen_mask_chevron_right(int size):
 # across a 24px tile, the same stroke weight as the chevrons so the
 # two read as one icon family.
 char* gen_mask_cross(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 s = cast(float32, size) / 24.0
 	int y = 0
 	while (y < size):
@@ -261,7 +261,7 @@ char* gen_mask_cross(int size):
 # sample the whole tile, edges sample the last row/column's straight
 # profile, the center samples the fully-dark bottom-right texel.
 char* gen_mask_shadow(int size):
-	char* p = malloc(size * size)
+	char* p = cast(char*, malloc(size * size))
 	float32 corner = cast(float32, size) - 8.0
 	float32 spread = 20.0
 	int y = 0
@@ -518,7 +518,7 @@ int main(int argc, int argv):
 	gen_emit_int_func(out, c"ui_font_rle_length", rle_length)
 
 	# Mask records: one 63-byte chunk.
-	char* mask_packed = malloc(gen_mask_count * 9)
+	char* mask_packed = cast(char*, malloc(gen_mask_count * 9))
 	m = 0
 	while (m < gen_mask_count):
 		gen_pack_record(&mask_packed[m * 9], &masks[m])

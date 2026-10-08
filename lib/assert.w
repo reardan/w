@@ -2,11 +2,23 @@ import lib.lib
 import lib.stack_trace
 
 
+# Optional observer for a test runner. Assertions remain fail-fast even
+# when an observer is installed; programs importing only lib.assert do
+# not need the runner or its reporting machinery.
+type assert_failure_callback = fn() -> void
+assert_failure_callback* assert_failure_hook
+
+
+void assert_failure_exit():
+	if (assert_failure_hook != 0): assert_failure_hook()
+	exit(1)
+
+
 void asserts(char* s, int condition):
 	if (condition == 0):
 		println2(s)
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 # todo cannot name the same as the file lol!
@@ -15,7 +27,7 @@ void assert1(int condition):
 	if (condition == 0):
 		println2(c"Assertion2 failed.")
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 void assert_equal(int want, int got):
@@ -26,7 +38,7 @@ void assert_equal(int want, int got):
 		print2(itoa(got))
 		println2(c")")
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 void assert_equal_hex(int want, int got):
@@ -37,7 +49,7 @@ void assert_equal_hex(int want, int got):
 		print2(hex(got))
 		println2(c"")
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 # A null pointer prints as (null) and equals only another null, so a
@@ -57,7 +69,7 @@ void assert_strings_equal(char* want, char* got):
 		print2(assert_text(got))
 		println2(c"'")
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 # 1 when needle occurs in haystack (a null haystack contains nothing).
@@ -81,7 +93,7 @@ void assert_substring(char* haystack, char* needle, int want):
 		print2(c"' in: ")
 		println2(assert_text(haystack))
 		print_stack_trace()
-		exit(1)
+		assert_failure_exit()
 
 
 void assert_contains(char* haystack, char* needle):
@@ -103,4 +115,4 @@ void assert_bytes_equal(char* want, char* got, int length):
 			print2(c" got ")
 			println2(itoa(got[i] & 255))
 			print_stack_trace()
-			exit(1)
+			assert_failure_exit()

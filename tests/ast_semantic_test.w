@@ -5,8 +5,8 @@ import repl.core
 
 
 int semantic_find_declaration(char* name, int start):
-	for i in range(start, retained_nodes.length):
-		retained_node* node = retained_nodes[i]
+	for i in range(start, retained_node_count()):
+		retained_node* node = retained_node_at(i)
 		if ((node.kind == retained_declaration) && (strcmp(node.name, name) == 0)): return i
 	return -1
 
@@ -26,7 +26,7 @@ void test_semantic_owned_graph():
 	char* source = strjoin(prefix, c"enum SemanticColor:\n\tSemanticRed = 7\n\tSemanticBlue = 11\n\nstruct SemanticLink:\n\tSemanticLink* next\n\tint value\n\nint semantic_first(int same):\n\tif (same):\n\t\treturn same + 1\n\treturn same\n\nint semantic_second(int same):\n\treturn same + 2\n")
 	free(prefix)
 	assert1(file_write_text(path, source))
-	int begin = retained_nodes.length
+	int begin = retained_node_count()
 	assert1(compile_input_file(path))
 	close(file)
 	unlink(path)
@@ -35,10 +35,10 @@ void test_semantic_owned_graph():
 	free(dependency_path)
 	free(source)
 	int imports = 0
-	for i in range(begin, retained_nodes.length):
-		retained_node* node = retained_nodes[i]
+	for i in range(begin, retained_node_count()):
+		retained_node* node = retained_node_at(i)
 		if (node.kind != retained_import): continue
-		assert_equal(retained_module, retained_nodes[node.parent].kind)
+		assert_equal(retained_module, retained_node_at(node.parent).kind)
 		assert1(node.end > node.start)
 		assert1(node.line > 0 && node.column > 0)
 		if (strcmp(node.name, dependency) == 0):
@@ -55,7 +55,7 @@ void test_semantic_owned_graph():
 	free(dependency_module)
 	int color_declaration = semantic_find_declaration(c"SemanticColor", begin)
 	assert1(color_declaration >= 0)
-	retained_type* color = retained_types[retained_nodes[color_declaration].semantic_type]
+	retained_type* color = retained_types[retained_node_at(color_declaration).semantic_type]
 	assert_equal(2, color.constants.length)
 	assert_strings_equal(c"SemanticRed", color.constants[0].name)
 	assert_equal(7, color.constants[0].value)
@@ -63,7 +63,7 @@ void test_semantic_owned_graph():
 	assert_equal(11, color.constants[1].value)
 	int declaration = semantic_find_declaration(c"SemanticLink", begin)
 	assert1(declaration >= 0)
-	int original = retained_nodes[declaration].semantic_type
+	int original = retained_node_at(declaration).semantic_type
 	assert1(original >= 0)
 	retained_type* type = retained_types[original]
 	assert_strings_equal(c"SemanticLink", type.name)
@@ -78,15 +78,15 @@ void test_semantic_owned_graph():
 	int first = -1
 	int second = -1
 	int first_count = 0
-	for i in range(begin, retained_nodes.length):
-		retained_node* node = retained_nodes[i]
+	for i in range(begin, retained_node_count()):
+		retained_node* node = retained_node_at(i)
 		if ((node.kind != retained_expression) || (node.binding < 0)): continue
 		retained_binding* binding = retained_bindings[node.binding]
 		if (strcmp(binding.name, c"same") != 0): continue
 		assert1(binding.owner >= 0)
 		assert1(node.line > 0 && node.column > 0)
 		assert_equal('A', binding.scope)
-		char* function_name = retained_nodes[binding.owner].name
+		char* function_name = retained_node_at(binding.owner).name
 		if (strcmp(function_name, c"semantic_first") == 0):
 			if (first < 0): first = node.binding
 			assert_equal(first, node.binding)
@@ -97,19 +97,19 @@ void test_semantic_owned_graph():
 	assert_equal(3, first_count)
 	assert1(first >= 0 && second >= 0 && first != second)
 	int first_declaration = semantic_find_declaration(c"semantic_first", begin)
-	retained_binding* function = retained_bindings[retained_nodes[first_declaration].binding]
+	retained_binding* function = retained_bindings[retained_node_at(first_declaration).binding]
 	assert_equal(1, function.parameters.length)
 	assert_strings_equal(c"int", retained_types[function.return_type].name)
 	assert_strings_equal(c"int", retained_types[function.parameters[0]].name)
 
 	# Replace a record at the same production type index with another shape.
 	# The existing semantic graph, including its recursive edge, is immutable.
-	begin = retained_nodes.length
+	begin = retained_node_count()
 	repl_result result = repl_eval(c"struct SemanticLink:\n\tint replacement\n")
 	assert_equal(1, result.status)
 	declaration = semantic_find_declaration(c"SemanticLink", begin)
 	assert1(declaration >= 0)
-	int replacement = retained_nodes[declaration].semantic_type
+	int replacement = retained_node_at(declaration).semantic_type
 	assert1(replacement >= 0 && replacement != original)
 	assert_equal(1, retained_types[replacement].fields.length)
 	assert_strings_equal(c"replacement", retained_types[replacement].fields[0].name)

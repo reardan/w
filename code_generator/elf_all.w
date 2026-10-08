@@ -29,6 +29,8 @@ void elf_header(int cpu_class):
 void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int align);   /* elf_dynamic.w */
 
 int build_id_note_pos   /* file offset of the note, 0 = not emitted */
+int elf_hypercall_note_pos
+const int elf_hypercall_note_size = 536
 
 # File offset of the ELF header the debugging symbols hang off: 0 for
 # the ELF targets, where it is the image's own header. The PE writer
@@ -73,13 +75,13 @@ void elf_emit_build_id_note():
 # output is discarded ('w check').
 void elf_fill_build_id():
 	if ((build_id_note_pos == 0) || entry_optional): return
-	char* digests = malloc(64)
+	char* digests = cast(char*, malloc(64))
 	sha256(code, codepos, digests)
 	int n = 32
 	if (datapos > 0):
 		sha256(data, datapos, &digests[32])
 		n = 64
-	char* id = malloc(32)
+	char* id = cast(char*, malloc(32))
 	sha256(digests, n, id)
 	int i = 0
 	while (i < elf_build_id_size):
@@ -122,6 +124,10 @@ void elf_save_word(int is64, int pos, int v):
 
 # The ELF header after the ident (elf_header); machine is 3 (x86), 62
 # (x86-64) or 183 (AArch64).
+int elf_program_header_count():
+	return elf_phdr_count + elf_pie
+
+
 void elf_header_fields(int machine, int is64):
 	int header_size = 36 + 16
 	int program_header_size = 32
@@ -130,16 +136,19 @@ void elf_header_fields(int machine, int is64):
 		header_size = 48 + 16
 		program_header_size = 56
 		section_header_size = 64
-	emit_int16(2) /* type: ET_EXEC */
+	emit_int16(2 + elf_pie) /* ET_EXEC or ET_DYN */
 	emit_int16(machine)
 	emit_int32(1) /* version */
-	elf_emit_word(is64, base_code_offset + header_size + program_header_size * elf_phdr_count + elf_build_id_note_size()) /* entry */
+	int entry = base_code_offset + header_size + program_header_size * elf_program_header_count() + elf_build_id_note_size()
+	if (x64_syscall_abi): entry = entry + elf_hypercall_note_size
+	elf_emit_word(is64, entry)
 	elf_emit_word(is64, header_size) /* program header offset */
 	elf_emit_word(is64, 0) /* section header offset */
-	emit_int32(0) /* flags */
+	if (x64_syscall_abi): emit_int32(0x57564d02) /* W VM ABI v2: exact native-hypercall relocation sites */
+	else: emit_int32(0) /* flags */
 	emit_int16(header_size) /* size of this elf header */
 	emit_int16(program_header_size) /* size per program header */
-	emit_int16(elf_phdr_count) /* number of program headers */
+	emit_int16(elf_program_header_count()) /* number of program headers */
 	emit_int16(section_header_size) /* size per section header */
 	emit_int16(0) /* number of section headers */
 	emit_int16(0) /* section header string table index */
@@ -170,7 +179,7 @@ void elf_emit_gnu_stack(int is64):
 	if (is64):
 		w = 8
 		phdr_size = 56
-	int p = phdr_table_pos + elf_gnu_stack_phdr_index * phdr_size
+	int p = phdr_table_pos + (elf_gnu_stack_phdr_index + elf_pie) * phdr_size
 	save_int32(code + p, 1685382481) /* p_type = PT_GNU_STACK */
 	if (is64): save_int32(code + p + 4, 6) /* p_flags (ELF64) */
 	else: save_int32(code + p + 24, 6) /* p_flags (ELF32) */
@@ -187,11 +196,23 @@ void elf_emit_gnu_stack(int is64):
 # table.
 void elf_phdr_table(int is64):
 	phdr_table_pos = codepos
+	if (elf_pie): elf_phdr(is64, 0, 4)
 	elf_phdr(is64, 1, 5)
 	elf_phdr(is64, 0, 6)
 	for i in range(5): elf_phdr(is64, 0, 0)
+	if (elf_pie): elf_dyn_patch_phdr(-1, 6, 4, phdr_table_pos, elf_program_header_count() * 56, 8)
 	elf_emit_gnu_stack(is64)
 	elf_emit_build_id_note()
+	elf_hypercall_note_pos = 0
+	if (x64_syscall_abi):
+		elf_hypercall_note_pos = codepos
+		emit_int32(4) /* namesz */
+		emit_int32(520) /* descsz: version, count, 64 absolute addresses */
+		emit_int32(0x57564d01) /* W hypercall note */
+		emit(4, c"WVM\x00")
+		emit_int32(1) /* descriptor version */
+		emit_zeros(516)
+		elf_dyn_patch_phdr(2, 4, 4, elf_hypercall_note_pos, elf_hypercall_note_size, 4)
 
 
 # The ELF header, program headers and build-id note for machine.
@@ -212,7 +233,7 @@ void elf_patch_relro(int is64, int file_off, int vaddr, int size):
 	if (is64):
 		w = 8
 		phdr_size = 56
-	int p = phdr_table_pos + elf_relro_phdr_index * phdr_size
+	int p = phdr_table_pos + (elf_relro_phdr_index + elf_pie) * phdr_size
 	save_int32(code + p, 1685382482) /* p_type = PT_GNU_RELRO */
 	if (is64): save_int32(code + p + 4, 4) /* p_flags (ELF64): R */
 	else: save_int32(code + p + 24, 4) /* p_flags (ELF32): R */
@@ -243,13 +264,13 @@ void elf_patch_load_segments(int is64):
 	if (is64):
 		w = 8
 		phdr_size = 56
-	elf_save_word(is64, phdr_table_pos + 4 * w, codepos)
-	elf_save_word(is64, phdr_table_pos + 5 * w, codepos)
+	elf_save_word(is64, phdr_table_pos + elf_pie * phdr_size + 4 * w, codepos)
+	elf_save_word(is64, phdr_table_pos + elf_pie * phdr_size + 5 * w, codepos)
 	int relro = dyn_relro_size()
 	if ((datapos > 0) || (relro > 0)):
 		int seg_vaddr = data_offset - relro
 		int data_file_off = (codepos + 4095) & (0 - 4096)
-		int p = phdr_table_pos + phdr_size /* phdr[1] */
+		int p = phdr_table_pos + (1 + elf_pie) * phdr_size /* data load */
 		save_int32(code + p, 1) /* p_type = PT_LOAD */
 		elf_save_word(is64, p + w, data_file_off)
 		elf_save_word(is64, p + 2 * w, seg_vaddr)
@@ -261,4 +282,13 @@ void elf_patch_load_segments(int is64):
 		# pages' zeros, then write code and data as two segments in one
 		# file.
 		while (codepos < data_file_off + relro): emit_int8(0)
+	# ABI order: PHDR and INTERP precede LOADs. Patch by logical slot
+	# until now, then move INTERP in front of the two load headers.
+	if (elf_pie && dyn_has_imports()):
+		for j in range(phdr_size):
+			int p = phdr_table_pos + j
+			char tmp = code[p + 3 * phdr_size]
+			code[p + 3 * phdr_size] = code[p + 2 * phdr_size]
+			code[p + 2 * phdr_size] = code[p + phdr_size]
+			code[p + phdr_size] = tmp
 	elf_write_image()

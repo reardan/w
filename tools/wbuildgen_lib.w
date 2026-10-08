@@ -30,7 +30,7 @@ Generation rules:
   above wbg_parse_directives (timeout=, stdin=, expect_stdout=,
   expect_stderr=, expect_fail, deps=, extra_compile=, arch=,
   arch_only=, name=, argv=, compile_fail, flags=, group=, group_only,
-  step=)
+  step=, plus step-only sandbox=, vm_socket=, vm_template=)
   adds run-step expectations, piped stdin, timeouts, declared run-time
   data inputs, extra compile-only steps, a target-name override, extra
   run-time arguments, a single-arch mode, extra compiler flags and
@@ -534,8 +534,15 @@ vocabulary:
                            timeout=<ms>, stdin="text",
                            stdout_file=<path>, expect_signal,
                            env="NAME=value" (repeatable) and
-                           cwd=<dir>, with wexec's own per-step
-                           meanings. This is the multi-step
+                           cwd=<dir>, atomic_output=<path>,
+                           sandbox="cell", vm_socket=<path>, and
+                           vm_template=<positive-handle>, with wexec's own per-step
+                           meanings. Sandbox fields only decorate an
+                           explicit step=; its timeout= becomes
+                           timeout_ms in JSON. Sandbox targets always
+                           run (daemon handles have no stable cache
+                           identity), even with declared inputs.
+                           This is the multi-step
                            shape (a test plus the diagnostic fixtures
                            it drives) without a hand-written
                            build.base.json target. A target with step=
@@ -912,14 +919,29 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 			return 1
 		json_object_set(sd.step, c"expect_status", json_int(status))
 		return 0
-	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0) | (strcmp(key, c"cwd") == 0)):
+	if (strcmp(key, c"vm_template") == 0):
+		if (wbg_need_value(path, key, has_value)): return 1
+		int id = wbg_parse_ms(value)
+		if (id < 1):
+			wbg_token_error(path, c"'# wbuild:' vm_template needs a positive handle, got ", value)
+			return 1
+		json_object_set(sd.step, key, json_int(id))
+		return 0
+	if (strcmp(key, c"sandbox") == 0):
+		if (wbg_need_value(path, key, has_value)): return 1
+		if (strcmp(value, c"cell") != 0):
+			wbg_token_error(path, c"unsupported '# wbuild:' sandbox: ", value)
+			return 1
+		json_object_set(sd.step, key, json_string(value))
+		return 0
+	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0) | (strcmp(key, c"cwd") == 0) | (strcmp(key, c"atomic_output") == 0) | (strcmp(key, c"vm_socket") == 0)):
 		if (wbg_need_value(path, key, has_value)): return 1
 		if ((value[0] == 0) && (strcmp(key, c"stdin") != 0)):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		json_object_set(sd.step, key, json_string(value))
 		return 0
-	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_signal, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=, env=, cwd=): ", key)
+	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_signal, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=, env=, cwd=, atomic_output=, sandbox=, vm_socket=, vm_template=): ", key)
 	return 1
 
 

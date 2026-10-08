@@ -4,9 +4,9 @@
 # wbuild: step="bin/prof_wv3 --profile-generate --strict w.w -o bin/prof_wv4"
 # wbuild: step="cmp bin/prof_wv3 bin/prof_wv4"
 # wbuild: step="cmp bin/prof_wv3.wprofmap bin/prof_wv4.wprofmap"
-# wbuild: step="bin/wv2 --profile-generate --ast-required --ast-emit-retained --strict w.w -o bin/prof_ast_wv3"
-# wbuild: step="cmp bin/prof_wv3 bin/prof_ast_wv3"
-# wbuild: step="cmp bin/prof_wv3.wprofmap bin/prof_ast_wv3.wprofmap"
+# wbuild: step="bin/wv2 --profile-generate --streaming --strict w.w -o bin/prof_streaming_wv3"
+# wbuild: step="cmp bin/prof_wv3 bin/prof_streaming_wv3"
+# wbuild: step="cmp bin/prof_wv3.wprofmap bin/prof_streaming_wv3.wprofmap"
 # wbuild: step="bin/wv2_64 x64 --profile-generate --strict w.w -o bin/prof_wv3_64"
 # wbuild: step="bin/prof_wv3_64 x64 --profile-generate --strict w.w -o bin/prof_wv4_64"
 # wbuild: step="cmp bin/prof_wv3_64 bin/prof_wv4_64"
@@ -52,7 +52,7 @@ char* pg_run(char* path, char** argv, char** env, int* status):
 	free(opts)
 	asserts(c"spawn failed", child != 0)
 	string_builder* text = string_new()
-	char* chunk = malloc(4096)
+	char* chunk = cast(char*, malloc(4096))
 	int n = read(child.stdout_fd, chunk, 4096)
 	while (n > 0):
 		string_append_bytes(text, chunk, n)

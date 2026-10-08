@@ -35,7 +35,7 @@ int base64_encoded_length(int len):
 char* base64_encode(char* data, int len):
 	if (len < 0): len = 0
 	char* alphabet = base64_alphabet()
-	char* out = malloc(base64_encoded_length(len) + 1)
+	char* out = cast(char*, malloc(base64_encoded_length(len) + 1))
 	int i = 0
 	int o = 0
 	while (i + 3 <= len):
@@ -84,7 +84,7 @@ char* base64_decode(char* text, int len, int* out_len):
 	if (len < 0): return 0
 	if ((len % 4) != 0): return 0
 	if (len == 0):
-		char* empty = malloc(1)
+		char* empty = cast(char*, malloc(1))
 		empty[0] = 0
 		return empty
 	# Padding may only be the last one or two characters.
@@ -92,7 +92,7 @@ char* base64_decode(char* text, int len, int* out_len):
 	if ((text[len - 1] & 255) == '='):
 		pad = 1
 		if ((text[len - 2] & 255) == '='): pad = 2
-	char* out = malloc((len / 4) * 3 + 1)
+	char* out = cast(char*, malloc((len / 4) * 3 + 1))
 	int i = 0
 	int o = 0
 	while (i < len):

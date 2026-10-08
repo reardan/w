@@ -65,7 +65,7 @@ void test_deflate_small_input_roundtrips():
 
 void test_deflate_binary_payload_roundtrips():
 	int n = 512
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	for i in range(n): buf[i] = i & 255
 	dt_roundtrip(c"binary 0..511", buf, n)
 	free(buf)
@@ -76,7 +76,7 @@ void test_deflate_chains_stored_blocks_over_65535_bytes():
 	# deflate() must chain multiple blocks for larger input, each
 	# correctly non-final except the last.
 	int n = 70000
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	for i in range(n): buf[i] = (i * 7 + (i >> 3)) & 255
 	deflate_result* d = deflate(buf, n, DEFLATE_LEVEL_STORED())
 	# Two chained blocks: 65535 bytes then 4465 bytes, 5-byte header each.
@@ -145,7 +145,7 @@ void test_deflate_fast_and_best_roundtrip_empty_and_tiny():
 
 void test_deflate_fast_and_best_roundtrip_binary_payload():
 	int n = 512
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	for i in range(n): buf[i] = i & 255
 	dt_roundtrip_all_levels(c"binary 0..511", buf, n)
 	free(buf)
@@ -156,7 +156,7 @@ void test_deflate_fast_and_best_roundtrip_binary_payload():
 # just a round trip.
 void test_deflate_fast_and_best_compress_highly_repetitive_data():
 	int n = 20000
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	for i in range(n): buf[i] = 'a' + (i % 4)
 	deflate_result* stored = deflate(buf, n, DEFLATE_LEVEL_STORED())
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
@@ -179,7 +179,7 @@ void test_deflate_fast_and_best_compress_highly_repetitive_data():
 # still round-trip exactly.
 void test_deflate_fast_and_best_roundtrip_incompressible_random_data():
 	int n = 20000
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	rand_state rs
 	rand_init(&rs, 1234)
 	for i in range(n): buf[i] = rand_next31(&rs) & 255
@@ -194,7 +194,7 @@ void test_deflate_fast_and_best_roundtrip_incompressible_random_data():
 # byte of bit padding.
 void test_deflate_incompressible_does_not_expand():
 	int n = 100000
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	rand_state rs
 	rand_init(&rs, 4242)
 	for i in range(n): buf[i] = rand_next31(&rs) & 255
@@ -217,7 +217,7 @@ void test_deflate_incompressible_does_not_expand():
 # almost nothing at both compressive levels.
 void test_deflate_all_same_byte_run():
 	int n = 65536
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	for i in range(n): buf[i] = 'x'
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
@@ -245,7 +245,7 @@ void test_deflate_fast_empty_input_is_two_bytes():
 # the byte-alignment transitions between them in both orders.
 void test_deflate_mixed_compressible_and_incompressible():
 	int n = 100000
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	rand_state rs
 	rand_init(&rs, 777)
 	int i = 0
@@ -267,7 +267,7 @@ void test_deflate_mixed_compressible_and_incompressible():
 
 
 void dt_boundary_case(int n, rand_state* rs):
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	for i in range(n):
 		# A mix of pseudo-random bytes and a repeating pattern so both
 		# literals and back-references straddle the boundary.
@@ -400,9 +400,9 @@ void test_deflate_window_stream_of_pieces():
 	# inflate against only the last 2^b bytes -- no distance reaches
 	# further back.
 	int total = 5 * 20000
-	char* all = malloc(total)
+	char* all = cast(char*, malloc(total))
 	for i in range(total): all[i] = ((i / 3) * 7 + ((i >> 10) & 15)) & 255
-	int* bits = malloc(3 * __word_size__)
+	int* bits = cast(int*, malloc(3 * __word_size__))
 	bits[0] = 8
 	bits[1] = 12
 	bits[2] = 15

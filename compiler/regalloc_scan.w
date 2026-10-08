@@ -279,7 +279,7 @@ void rs_tables_ensure():
 		rs_lp_cands = new list[int]
 	if (rs_ident == 0):
 		rs_ident_size = 64
-		rs_ident = malloc(rs_ident_size)
+		rs_ident = cast(char*, malloc(rs_ident_size))
 
 
 # Drop the candidate table (names are cloned per function).
@@ -505,7 +505,7 @@ void rs_image_bind():
 	if (seek(file, 0, 0) < 0): return;
 	if (rs_img == 0):
 		rs_img_cap = 1 << 18
-		rs_img = malloc(rs_img_cap)
+		rs_img = cast(char*, malloc(rs_img_cap))
 	# a short read is the end of a regular file (pipes were refused
 	# above); one byte of room stays for the probe's NUL sentinel
 	int n = 1
@@ -817,7 +817,7 @@ int rs_kw_lookup(char* name, int h):
 
 void rs_class_ensure():
 	if (rs_class != 0): return;
-	char* table = malloc(258)
+	char* table = cast(char*, malloc(258))
 	rs_class = &table[1]
 	rs_class[-1] = rs_cl_stop | rs_cl_eol
 	for c in range(256):

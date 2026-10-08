@@ -46,10 +46,9 @@ Fixed in #526:
 
 What W^X still does not cover: the in-process REPL and wdbg (single RWX
 JIT buffer, below), `lib/dlcall.w`'s call trampolines (written R+W, then
-flipped R+X, which is fine), and address-space randomization: images
-are still `ET_EXEC` at the fixed base 0x08048000 with the data load at
-+16MB. RELRO for dynamically linked output landed in #537; PIE/ASLR is
-designed but deferred (docs/projects/pie_aslr.md).
+flipped R+X, which is fine), and default fixed-address output. x64 Linux supports opt-in
+PIE/ASLR with `--pie`; all Linux dynamic output has GNU RELRO
+(see docs/projects/pie_aslr.md).
 
 Stage B/C implementation notes (choices made where the plan left room):
 

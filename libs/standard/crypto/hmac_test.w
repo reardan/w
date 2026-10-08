@@ -15,7 +15,7 @@ import lib.mem
 # Check one RFC 4231 case for one algorithm, comparing the first
 # trunc_len MAC bytes (the full digest size except case 5).
 void hmact_check(int alg, char* key, int key_len, char* data, int data_len, int trunc_len, char* want_hex):
-	char* mac = malloc(whash_digest_size(alg))
+	char* mac = cast(char*, malloc(whash_digest_size(alg)))
 	hmac_compute(alg, key, key_len, data, data_len, mac)
 	char* got = hex_encode(mac, trunc_len)
 	assert_strings_equal(want_hex, got)
@@ -40,7 +40,7 @@ void test_rfc4231_case2():
 
 void test_rfc4231_case3():
 	char* key = hex_bytes(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	char* data = malloc(50)
+	char* data = cast(char*, malloc(50))
 	mem_fill(data, 221, 50)
 	hmact_check(WHASH_SHA256, key, 20, data, 50, 32, c"773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe")
 	hmact_check(WHASH_SHA384, key, 20, data, 50, 48, c"88062608d3e6ad8a0aa2ace014c8a86f0aa635d947ac9febe83ef4e55966144b2a5ab39dc13814b94e3ab6e101a34f27")
@@ -50,7 +50,7 @@ void test_rfc4231_case3():
 
 void test_rfc4231_case4():
 	char* key = hex_bytes(c"0102030405060708090a0b0c0d0e0f10111213141516171819")
-	char* data = malloc(50)
+	char* data = cast(char*, malloc(50))
 	mem_fill(data, 205, 50)
 	hmact_check(WHASH_SHA256, key, 25, data, 50, 32, c"82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b")
 	hmact_check(WHASH_SHA384, key, 25, data, 50, 48, c"3e8a69b7783c25851933ab6290af6ca77a9981480850009cc5577c6e1f573b4e6801dd23c4a7d679ccf8a386c674cffb")
@@ -69,7 +69,7 @@ void test_rfc4231_case5():
 
 void test_rfc4231_case6():
 	# 131-byte key: longer than both block sizes, so it is hashed first.
-	char* key = malloc(131)
+	char* key = cast(char*, malloc(131))
 	mem_fill(key, 170, 131)
 	char* data = c"Test Using Larger Than Block-Size Key - Hash Key First"
 	hmact_check(WHASH_SHA256, key, 131, data, 54, 32, c"60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54")
@@ -78,7 +78,7 @@ void test_rfc4231_case6():
 
 
 void test_rfc4231_case7():
-	char* key = malloc(131)
+	char* key = cast(char*, malloc(131))
 	mem_fill(key, 170, 131)
 	char* data = c"This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm."
 	hmact_check(WHASH_SHA256, key, 131, data, 152, 32, c"9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2")
@@ -92,7 +92,7 @@ void test_streaming_and_reset():
 	char* data = c"what do ya want for nothing?"
 	whmac* m = hmac_new(WHASH_SHA256, c"Jefe", 4)
 	for i in range(28): hmac_update(m, data + i, 1)
-	char* mac = malloc(32)
+	char* mac = cast(char*, malloc(32))
 	hmac_final(m, mac)
 	char* got = hex_encode(mac, 32)
 	assert_strings_equal(c"5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", got)

@@ -84,11 +84,11 @@ void wasm_extern_init():
 		# Host pointer arrays stride by __word_size__, not the target's
 		# word_size (an x64 host compiling wasm would truncate the
 		# pointers to 4 bytes otherwise — the wasm_func_names lesson).
-		wasm_extern_modules = malloc(wasm_extern_max * __word_size__)
-		wasm_extern_names = malloc(wasm_extern_max * __word_size__)
-		wasm_extern_classes = malloc(wasm_extern_max * __word_size__)
-		wasm_extern_nparams = malloc(wasm_extern_max * 4)
-		wasm_extern_rets = malloc(wasm_extern_max * 4)
+		wasm_extern_modules = cast(char*, malloc(wasm_extern_max * __word_size__))
+		wasm_extern_names = cast(char*, malloc(wasm_extern_max * __word_size__))
+		wasm_extern_classes = cast(char*, malloc(wasm_extern_max * __word_size__))
+		wasm_extern_nparams = cast(char*, malloc(wasm_extern_max * 4))
+		wasm_extern_rets = cast(char*, malloc(wasm_extern_max * 4))
 
 # Register one extern import and return its function index. Imports
 # precede defined functions in the wasm function index space, and W code
@@ -97,7 +97,7 @@ void wasm_extern_init():
 int wasm_extern_add(char* module, char* name, int n_params, char* classes, int ret_kind):
 	wasm_extern_init()
 	if (wasm_extern_count >= wasm_extern_max): error(c"too many extern imports")
-	char* classes_copy = malloc(n_params + 1)
+	char* classes_copy = cast(char*, malloc(n_params + 1))
 	for i in range(n_params): classes_copy[i] = classes[i]
 	save_i(wasm_extern_modules + wasm_extern_count * __word_size__, cast(int, strclone(module)), __word_size__)
 	save_i(wasm_extern_names + wasm_extern_count * __word_size__, cast(int, strclone(name)), __word_size__)
@@ -131,11 +131,11 @@ int wasm_export_count
 
 void wasm_export_init():
 	if (wasm_export_syms == 0):
-		wasm_export_syms = malloc(wasm_export_max * 4)
-		wasm_export_names = malloc(wasm_export_max * __word_size__)
-		wasm_export_classes = malloc(wasm_export_max * __word_size__)
-		wasm_export_nparams = malloc(wasm_export_max * 4)
-		wasm_export_rets = malloc(wasm_export_max * 4)
+		wasm_export_syms = cast(char*, malloc(wasm_export_max * 4))
+		wasm_export_names = cast(char*, malloc(wasm_export_max * __word_size__))
+		wasm_export_classes = cast(char*, malloc(wasm_export_max * __word_size__))
+		wasm_export_nparams = cast(char*, malloc(wasm_export_max * 4))
+		wasm_export_rets = cast(char*, malloc(wasm_export_max * 4))
 
 # The four names wasm_finish always exports.
 int wasm_export_name_reserved(char* name):
@@ -159,7 +159,7 @@ void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_k
 		if (strcmp(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)), name) == 0):
 			error3(c"function '", name, c"' is already exported")
 		e = e + 1
-	char* classes_copy = malloc(n_params + 1)
+	char* classes_copy = cast(char*, malloc(n_params + 1))
 	for i in range(n_params): classes_copy[i] = classes[i]
 	save_i(wasm_export_syms + wasm_export_count * 4, sym, 4)
 	save_i(wasm_export_names + wasm_export_count * __word_size__, cast(int, strclone(name)), __word_size__)
@@ -186,7 +186,7 @@ char* wasm_export_wrapper_tables
 # untouched: wrappers are additive.
 void wasm_emit_export_wrappers():
 	if (wasm_export_count == 0): return
-	wasm_export_wrapper_tables = malloc(wasm_export_count * 4)
+	wasm_export_wrapper_tables = cast(char*, malloc(wasm_export_count * 4))
 	int e = 0
 	while (e < wasm_export_count):
 		int sym = load_i(wasm_export_syms + e * 4, 4)

@@ -265,7 +265,7 @@ void pe_emit_imports():
 	if (dyn_import_count == 0): return
 
 	# Hint/name entries (2-byte hint + NUL-terminated name, 2-aligned).
-	char* hint_rvas = malloc(dyn_import_count * 4)
+	char* hint_rvas = cast(char*, malloc(dyn_import_count * 4))
 	int i = 0
 	while (i < dyn_import_count):
 		pe_align(2)
@@ -275,7 +275,7 @@ void pe_emit_imports():
 		i = i + 1
 
 	# DLL name strings.
-	char* lib_rvas = malloc(dyn_lib_count * 4)
+	char* lib_rvas = cast(char*, malloc(dyn_lib_count * 4))
 	i = 0
 	while (i < dyn_lib_count):
 		save_int(lib_rvas + i * 4, codepos)
@@ -285,7 +285,7 @@ void pe_emit_imports():
 	# Import lookup tables: one two-entry (name RVA, terminator) table
 	# per import, matching its one-entry FirstThunk slot.
 	pe_align(8)
-	char* ilt_rvas = malloc(dyn_import_count * 4)
+	char* ilt_rvas = cast(char*, malloc(dyn_import_count * 4))
 	i = 0
 	while (i < dyn_import_count):
 		save_int(ilt_rvas + i * 4, codepos)

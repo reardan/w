@@ -32,7 +32,7 @@ char* sst_pad_key(char* prefix, int i, int digits):
 	char* num = itoa(i)
 	int n = strlen(num)
 	assert1(n <= digits)
-	char* suffix = malloc(digits + 1)
+	char* suffix = cast(char*, malloc(digits + 1))
 	mem_fill(suffix, '0', digits - n)
 	for j in range(n): suffix[digits - n + j] = num[j]
 	suffix[digits] = 0
@@ -148,7 +148,7 @@ void test_empty_table():
 
 void test_binary_values():
 	char* path = sst_test_path(c"binary.sst")
-	char* blob = malloc(6)
+	char* blob = cast(char*, malloc(6))
 	blob[0] = 0
 	blob[1] = 255
 	blob[2] = 10
@@ -265,7 +265,7 @@ void test_corrupt_file_rejected():
 	assert_equal(0, cast(int, sstable_open(path)))
 	# right magic, wrong version
 	fd = create_file(path, 420)
-	char* hdr = malloc(12)
+	char* hdr = cast(char*, malloc(12))
 	hdr[0] = 87
 	hdr[1] = 83
 	hdr[2] = 83
@@ -306,7 +306,7 @@ void test_truncated_file_rejected():
 	int fd = open(path, 0, 0)
 	assert1(fd >= 0)
 	int full = file_size(fd)
-	char* buf = malloc(full)
+	char* buf = cast(char*, malloc(full))
 	assert_equal(full, read_exact(fd, buf, full))
 	close(fd)
 	fd = create_file(path, 420)

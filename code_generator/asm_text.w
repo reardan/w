@@ -50,7 +50,7 @@ void asm_text_raw_bytes(char* text, asm_buffer* b):
 		if (text[i] == 0): return
 		int start = i
 		while (text[i] != 0 && text[i] != ',' && text[i] != ' '): i = i + 1
-		char* tok = malloc(i - start + 1)
+		char* tok = cast(char*, malloc(i - start + 1))
 		int j = 0
 		while (start + j < i):
 			tok[j] = text[start + j]
@@ -90,7 +90,7 @@ void asm_text_lines(int arch, char* text):
 	while (1):
 		if ((text[i] == ';') || (text[i] == 0)):
 			while (text[start] == ' '): start = start + 1
-			char* one = malloc(i - start + 1)
+			char* one = cast(char*, malloc(i - start + 1))
 			int j = 0
 			while (start + j < i):
 				one[j] = text[start + j]

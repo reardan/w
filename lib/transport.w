@@ -303,7 +303,7 @@ int transport_socket_fd(transport* t):
 
 # "tcp:a.b.c.d:port" from a host-order IPv4 address and port.
 char* transport_format_tcp_peer(int ip, int port):
-	char* out = malloc(40)
+	char* out = cast(char*, malloc(40))
 	strcpy(out, c"tcp:")
 	int shift = 24
 	while (shift >= 0):

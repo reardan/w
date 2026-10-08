@@ -70,3 +70,44 @@ void test_cgroup_delegated_limits():
 	vm_cgroup_free(group)
 	asserts(c"empty group removed", open(path, 65536, 0) < 0)
 	free(path)
+
+
+void test_cgroup_removal_waits_without_killing_worker():
+	char* parent = env_get(c"WVM_TEST_CGROUP")
+	if (parent == 0):
+		println(c"SKIP: set WVM_TEST_CGROUP for bounded quota removal")
+		return
+	vm_cgroup* group = vm_cgroup_new(parent, 100, 64, 8)
+	asserts(c"create quota for removal regression", group != 0)
+	int gate_read = -1
+	int gate_write = -1
+	assert_equal(0, process_make_pipe(&gate_read, &gate_write))
+	int pid = fork()
+	if (pid == 0):
+		close(gate_write)
+		char gate
+		if (read(gate_read, &gate, 1) != 1): exit(20)
+		close(gate_read)
+		# Remain alive during the first removal attempts after release.
+		process_sleep_ms(150)
+		exit(0)
+	asserts(c"fork removal worker", pid > 0)
+	close(gate_read)
+	asserts(c"attach gated removal worker", vm_cgroup_attach(group, pid))
+	char* path = strclone(group.path)
+	assert_equal(0, vm_cgroup_remove(path, 20))
+	assert_equal(0, kill(pid, 0))
+	int present = open(path, 65536, 0)
+	asserts(c"busy removal preserves owned quota", present >= 0)
+	close(present)
+	assert_equal(1, write(gate_write, c"!", 1))
+	close(gate_write)
+	assert_equal(1, vm_cgroup_free(group))
+	int status = 0
+	assert_equal(pid, wait4(pid, &status, 0, 0))
+	assert_equal(0, status)
+	present = open(path, 65536, 0)
+	if (present >= 0): close(present)
+	asserts(c"delayed worker exit permits quota removal", present < 0)
+	assert_equal(1, vm_cgroup_remove(path, 0))
+	free(path)

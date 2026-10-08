@@ -25,8 +25,9 @@ Manifest shape:
 	]
 }
 
-Step fields: "cmd" (argv, required; argv[0] is resolved against PATH
-when it contains no slash), "stdin" (text piped to the child),
+Step fields: "atomic_output" (one output argument to stage privately and
+publish by rename after a successful step; relative to cwd if set), "cmd"
+(argv, required; argv[0] is resolved against PATH when it contains no slash), "stdin" (text piped to the child),
 "expect_stdout" / "expect_stderr" (a substring — or array of
 substrings — the captured stream must contain), "reject_stdout" /
 "reject_stderr" (substring(s) that must NOT appear, the manifest's
@@ -41,6 +42,14 @@ working directory; argv[0] still resolves from wexec's own), "expect_signal"
 (absent = the 900000 ms default, which the WEXEC_STEP_TIMEOUT_MS
 environment variable replaces; 0 or negative = no timeout; expiry
 SIGKILLs the child and fails the step with a distinct timed-out error).
+An explicit "sandbox": "cell" instead runs a static x64 ELF through wvmd
+("vm_socket" or WVM_SOCKET); optional "vm_template" reuses a daemon handle.
+The guest has seeded single-thread syscall services, no filesystem/network
+capabilities, a 1 MiB limit per output stream and bounded text stdin. Sandbox
+steps reject cwd/env/atomic_output and --trace; no host fallback is allowed.
+Their default timeout is capped at 600000 ms; explicit timeouts must be
+1..600000. Ordinary capture/expectation fields keep their existing behavior.
+
 See docs/projects/wexec.md, "Run-step timeouts and child cleanup", for
 the cleanup half: on platforms with process groups each worker leads a
 fresh group, swept with SIGKILL right after the worker is reaped and
@@ -133,8 +142,8 @@ reclaim) so a second overlapping invocation in the same worktree fails
 fast with a clear message instead of both processes writing/executing
 the same bin/wv2. See the block comment above wexec_lock_file (just
 before main) for the full design, including why wexec's own nested
-test-harness invocations are exempt. "--list", "--explain-cache" and
-"--trace" return before that point and never take the lock: the first
+test-harness invocations share the lock but can run concurrently. "--list",
+"--explain-cache" and "--trace" return before that point and never take the lock: the first
 two run no steps at all, and --trace's own ptrace-wrapped step runner
 (tools/wexec_trace.w) is a deliberately out-of-scope manual audit path,
 not part of the ordinary build/test flow this lock protects.
@@ -158,6 +167,7 @@ import tools.manifest_json
 import tools.deps_cache
 import lib.str
 import lib.dir
+import tools.__arch__.wexec_sandbox
 
 const int wexec_cache_timeout_ms = 3000
 
@@ -271,7 +281,7 @@ void wexec_hash_file(deps_hash* h, char* path):
 	if (fd < 0):
 		deps_hash_cstr(h, c"<missing input>")
 		return
-	char* buffer = malloc(4096)
+	char* buffer = cast(char*, malloc(4096))
 	int n = read(fd, buffer, 4096)
 	while (n > 0):
 		deps_hash_bytes(h, buffer, n)
@@ -660,12 +670,23 @@ char* wexec_resolve_direct_file(char* arch, char* path):
 	return name
 
 
+int wexec_target_has_sandbox(json_value* target):
+	json_value* steps = jfield_array(target, c"steps")
+	if (steps == 0): return 0
+	for i in range(json_array_length(steps)):
+		json_value* step = json_array_get(steps, i)
+		if (step.type == json_type_object() && json_object_get(step, c"sandbox") != 0): return 1
+	return 0
+
+
 # Returns the target's cache key, or 0 when the target is not cacheable
-# (no "inputs" declared, or a dependency without a key of its own).
+# (sandbox state, no inputs, or a dependency without a key of its own).
 # Dependencies must have finished before this is called.
 char* wexec_cache_key(char* name, json_value* target):
 	json_value* inputs = jfield_array(target, c"inputs")
-	if (inputs == 0): return 0
+	# A daemon handle is not an immutable image identity across restarts.
+	# Always execute sandbox steps until the protocol provides that identity.
+	if (inputs == 0 || wexec_target_has_sandbox(target)): return 0
 
 	deps_hash h
 	deps_hash_init(&h, 1)
@@ -777,7 +798,8 @@ wexec_cache_key's own gates rather than calling it, because the real
 function needs its dependencies' wexec_keys entries already populated
 by a run in progress; --explain-cache instead walks the "deps" graph
 itself, treating a target as (recursively) cacheable exactly when it
-declares "inputs" and every dependency, transitively, does too — which
+declares "inputs", has no sandbox steps, and every dependency, transitively,
+satisfies those gates too — which
 is precisely the condition wexec_cache_key checks one dependency layer
 at a time via wexec_keys.get(dep, 0). The documented trap: a dependency
 with no "inputs" of its own is a FORCE target, never stores a key, and
@@ -808,7 +830,7 @@ void wexec_reverse_strings(list[char*] items):
 # Shortest-path BFS over the "deps" graph reachable from 'start' (whose
 # own "inputs" gate the caller already checked). Returns 1 and fills
 # chain_out with [start, ..., broken] — the dependency path down to the
-# first target that does not declare "inputs" — when one is reachable;
+# first target without inputs or with sandbox steps — when reachable;
 # returns 0, leaving chain_out empty, when every transitively reachable
 # dependency declares "inputs" of its own. An unknown dependency name
 # (a manifest bug reported elsewhere, at actual scheduling time) is
@@ -826,7 +848,7 @@ int wexec_explain_find_broken(char* start, list[char*] chain_out):
 		json_value* cur_target = wexec_targets.get(cur, 0)
 		if (cur_target == 0): continue
 		if (strcmp(cur, start) != 0):
-			if (wexec_target_declares_inputs(cur_target) == 0):
+			if (wexec_target_declares_inputs(cur_target) == 0 || wexec_target_has_sandbox(cur_target)):
 				char* node = cur
 				while (node != 0):
 					chain_out.push(node)
@@ -855,6 +877,10 @@ int wexec_explain_cache(char* name):
 	wstream* out = stdout_writer()
 	stream_write_cstr(out, c"wexec: explain-cache ")
 	stream_write_line(out, name)
+	if (wexec_target_has_sandbox(target)):
+		stream_write_line(out, c"  not cacheable: sandbox state has no persistent image identity; every request runs it")
+		stream_flush(out)
+		return 0
 	if (wexec_target_declares_inputs(target) == 0):
 		stream_write_line(out, c"  declares \"inputs\": no")
 		stream_write_line(out, c"  not cacheable: FORCE-style target (no \"inputs\"); every request runs it")
@@ -880,7 +906,9 @@ int wexec_explain_cache(char* name):
 		char* broken = path[path.length - 1]
 		stream_write_cstr(out, c"  not cacheable: dependency '")
 		stream_write_cstr(out, broken)
-		stream_write_line(out, c"' declares no \"inputs\" of its own (FORCE-style), so it never stores a cache key — every target downstream of it silently loses caching too, with no diagnostic at build time")
+		if (wexec_target_has_sandbox(wexec_targets.get(broken, 0))):
+			stream_write_line(out, c"' uses sandbox state with no persistent image identity, so it and its downstream targets run on every request")
+		else: stream_write_line(out, c"' declares no \"inputs\" of its own (FORCE-style), so it never stores a cache key — every target downstream of it silently loses caching too, with no diagnostic at build time")
 		stream_flush(out)
 		return 0
 	stream_write_line(out, c"  every declared dependency (transitively) declares \"inputs\" and can store a cache key")
@@ -1047,7 +1075,7 @@ void wexec_note_expected_failure(process_result* result):
 char* wexec_shebang_interpreter(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0
-	char* buffer = malloc(256)
+	char* buffer = cast(char*, malloc(256))
 	int n = read(fd, buffer, 255)
 	close(fd)
 	if ((n < 3) || (buffer[0] != '#') || (buffer[1] != '!')):
@@ -1080,7 +1108,7 @@ char* wexec_shebang_interpreter(char* path):
 char* wexec_elf_interpreter(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0
-	char* header = malloc(64)
+	char* header = cast(char*, malloc(64))
 	int n = read(fd, header, 64)
 	if ((n < 52) || (header[0] != 127) || (header[1] != 'E') || (header[2] != 'L') || (header[3] != 'F')):
 		free(header)
@@ -1104,7 +1132,7 @@ char* wexec_elf_interpreter(char* path):
 	if ((phoff <= 0) || (phentsize < 32) || (phentsize > 128) || (phnum <= 0) || (phnum > 64)):
 		close(fd)
 		return 0
-	char* ph = malloc(phentsize)
+	char* ph = cast(char*, malloc(phentsize))
 	char* interp = 0
 	int p = 0
 	while ((p < phnum) && (interp == 0)):
@@ -1121,7 +1149,7 @@ char* wexec_elf_interpreter(char* path):
 				if ((interp_len > 1) && (interp_len < 256) && (interp_off > 0)):
 					# p_filesz counts the trailing NUL; read and
 					# NUL-terminate defensively either way.
-					char* text = malloc(interp_len + 1)
+					char* text = cast(char*, malloc(interp_len + 1))
 					seek(fd, interp_off, 0)
 					int got = read(fd, text, interp_len)
 					if ((got > 0) && (text[0] == '/')):
@@ -1289,7 +1317,7 @@ process_result* wexec_builtin_result(int status, string_builder* out):
 	result.stdout_length = out.length
 	result.stdout_text = out.data
 	free(out)
-	result.stderr_text = malloc(1)
+	result.stderr_text = cast(char*, malloc(1))
 	result.stderr_text[0] = 0
 	result.stderr_length = 0
 	return result
@@ -1356,8 +1384,8 @@ int wexec_is_target_selector(char* arg):
 # resolves to it through the .exe fallback). Compiles that name a
 # target keep it, except that a win64 output also gains '.exe'. Returns
 # argv itself when nothing changes, else a fresh vector (*count
-# updated).
-char** wexec_windows_native_step(char** argv, int* count):
+# updated). Keep atomic_output aligned with any native '.exe' suffix.
+char** wexec_windows_native_step(char** argv, int* count, char** atomic_output):
 	char* program = strv_get(argv, 0)
 	if ((strcmp(program, c"bin/wv2") != 0) && (strcmp(program, c"bin/wv2.exe") != 0)):
 		return argv
@@ -1380,6 +1408,8 @@ char** wexec_windows_native_step(char** argv, int* count):
 			string_builder* exe = string_new()
 			string_append(exe, arg)
 			string_append(exe, c".exe")
+			if ((*atomic_output != 0) && (strcmp(*atomic_output, arg) == 0)):
+				*atomic_output = exe.data
 			arg = exe.data
 			free(exe)
 		strv_set(out, j, arg)
@@ -1445,7 +1475,7 @@ spawn_options* wexec_step_spawn_options(char* target_name, int step_index, json_
 char* wexec_absolute_program(char* program):
 	if ((program[0] == '/') || (wexec_index_of_char(program, '/') < 0)):
 		return program
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	if (getcwd(buf, 4096) < 0):
 		free(buf)
 		return program
@@ -1455,6 +1485,43 @@ char* wexec_absolute_program(char* program):
 	string_append(s, program)
 	free(buf)
 	return s.data
+
+
+# Resolve an output in the child's cwd, while publication runs in wexec.
+char* wexec_step_output_path(json_value* step, char* path):
+	char* cwd = jfield_string(step, c"cwd")
+	if ((cwd == 0) || (path[0] == '/')): return strclone(path)
+	if (os_windows()):
+		if (path[0] == 92): return strclone(path)
+		if ((strlen(path) > 1) && (path[1] == ':')): return strclone(path)
+	return cstr(f"{cwd}/{path}")
+
+
+# Replace exactly one output argument with a worker-private sibling path.
+# The manifest (and thus its cache key) keeps the public output name.
+int wexec_stage_output(char* target_name, int step_index, json_value* step, char** argv, int count, char* output, char** staged):
+	json_value* value = json_object_get(step, c"atomic_output")
+	if (value == 0): return 0
+	if ((value.type != json_type_string()) || (value.string_value[0] == 0)):
+		wexec_step_error(target_name, step_index, c"\"atomic_output\" must be a nonempty string")
+		return 1
+	int position = -1
+	for i in range(1, count):
+		if (strcmp(strv_get(argv, i), output) == 0):
+			if (position >= 0):
+				wexec_step_error(target_name, step_index, c"\"atomic_output\" must match exactly one command argument after argv[0]")
+				return 1
+			position = i
+	if (position < 0):
+		wexec_step_error(target_name, step_index, c"\"atomic_output\" must match exactly one command argument after argv[0]")
+		return 1
+	*staged = cstr(f"{output}.stage.{getpid()}.{step_index}")
+	char* path = wexec_step_output_path(step, *staged)
+	# A recycled pid must never reuse a partial file left by a killed run.
+	unlink(path)
+	free(path)
+	strv_set(argv, position, *staged)
+	return 0
 
 
 int wexec_run_step(char* target_name, int step_index, json_value* step):
@@ -1472,6 +1539,14 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (count < 1):
 		wexec_step_error(target_name, step_index, c"\"cmd\" is empty")
 		return 1
+	json_value* sandbox = json_object_get(step, c"sandbox")
+	if (sandbox != 0):
+		int valid = sandbox.type == json_type_string()
+		if (valid): valid = strcmp(sandbox.string_value, c"cell") == 0
+		if (json_object_get(step, c"cwd") != 0 || json_object_get(step, c"env") != 0 || json_object_get(step, c"atomic_output") != 0): valid = 0
+		if (valid == 0):
+			wexec_step_error(target_name, step_index, c"sandbox must be cell; cwd, env and atomic_output are unsupported")
+			return 1
 
 	# The win64 self-host targets prefix their PE binaries with "wine" so
 	# the one manifest works on Linux; on Windows the binaries run
@@ -1492,12 +1567,22 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 			return 1
 		strv_set(argv, i, piece.string_value)
 
+	char* atomic_output = jfield_string(step, c"atomic_output")
 	if (os_windows()):
-		char** native = wexec_windows_native_step(argv, &count)
+		char** native = wexec_windows_native_step(argv, &count, &atomic_output)
 		if (native != argv):
 			free(cast(char*, argv))
 			argv = native
+	# Echo the stable manifest command, then redirect only the child's output.
 	wexec_echo_command(argv, count)
+	char* staged = 0
+	if (wexec_stage_output(target_name, step_index, step, argv, count, atomic_output, &staged)):
+		free(cast(char*, argv))
+		return 1
+	defer free(staged)
+	char* staged_path = 0
+	if (staged != 0): staged_path = wexec_step_output_path(step, staged)
+	defer free(staged_path)
 	char* program = wexec_resolve_program(strv_get(argv, 0))
 	char* stdin_text = jfield_string(step, c"stdin")
 	int timeout_ms = wexec_step_timeout_ms(step)
@@ -1507,11 +1592,29 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		return 1
 	char* cwd = jfield_string(step, c"cwd")
 	if (cwd != 0): program = wexec_absolute_program(program)
-	process_result* result = process_run(program, argv, opts, stdin_text, timeout_ms)
+	process_result* result = 0
+	if (sandbox != 0):
+		int valid = 1
+		char* socket_path = jfield_string(step, c"vm_socket")
+		if (socket_path == 0): socket_path = env_get(c"WVM_SOCKET")
+		int template_id = 0
+		json_value* selected = json_object_get(step, c"vm_template")
+		if (selected != 0):
+			if (selected.type != json_type_int() || selected.int_value < 1): valid = 0
+			else: template_id = selected.int_value
+		if (json_object_get(step, c"timeout_ms") == 0 && timeout_ms > 600000): timeout_ms = 600000
+		if (valid && socket_path != 0 && timeout_ms > 0 && timeout_ms <= 600000):
+			char* image = wexec_absolute_program(program)
+			strv_set(argv, 0, image)
+			result = wvm_client_cell_run(socket_path, image, template_id, argv, stdin_text, timeout_ms)
+			if (image != program): free(image)
+		else: wexec_step_error(target_name, step_index, c"cell sandbox requires VM socket, valid template, and timeout_ms in 1..600000")
+	else: result = process_run(program, argv, opts, stdin_text, timeout_ms)
 	free(opts)
-	if ((result == 0) && os_windows()): result = wexec_windows_builtin(argv, count)
+	if ((result == 0) && sandbox == 0 && os_windows()): result = wexec_windows_builtin(argv, count)
 	free(cast(char*, argv))
 	if (result == 0):
+		if (staged_path != 0): unlink(staged_path)
 		wexec_step_error(target_name, step_index, c"failed to spawn command")
 		return 1
 
@@ -1536,6 +1639,17 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (expects_failure):
 		if (failed): wexec_emit_output(result)
 		else: wexec_note_expected_failure(result)
+	if (staged_path != 0):
+		# Expected failures must never publish their partial output, even if
+		# their status/diagnostic assertions passed. Publish only after all
+		# checks, so a failed step preserves the previous executable.
+		if ((failed == 0) && (result.status == 0) && (expects_failure == 0)):
+			char* output_path = wexec_step_output_path(step, atomic_output)
+			if (rename(staged_path, output_path) < 0):
+				wexec_step_error(target_name, step_index, cstr(f"cannot publish atomic output {output_path}"))
+				failed = 1
+			free(output_path)
+		unlink(staged_path)
 	process_result_free(result)
 	return failed
 
@@ -1816,7 +1930,7 @@ char* wexec_cache_object_url(char* base, char* key):
 # convenience only. Never strlen/substring-based -- bundle payloads are
 # arbitrary binary and may contain embedded NUL bytes.
 char* wexec_bundle_slice(char* data, int pos, int length):
-	char* out = malloc(length + 1)
+	char* out = cast(char*, malloc(length + 1))
 	for i in range(length): out[i] = data[pos + i]
 	out[length] = 0
 	return out
@@ -2278,7 +2392,7 @@ int wexec_execute(list[char*] requested):
 	int running = 0
 	int finished = 0
 	int failed = 0
-	char* poll_fds = malloc(2 * wexec_jobs * 8 + 16)
+	char* poll_fds = cast(char*, malloc(2 * wexec_jobs * 8 + 16))
 
 	while (finished < total):
 		# Launch phase: start every ready target, oldest first. Inline
@@ -2815,21 +2929,19 @@ convention "bin/.wexec_cache/" and "bin/.wexec_deps_cache" already use.
 Two unrelated worktrees never collide because each has its own, entirely
 separate "bin/".
 
-Reentrancy: wexec's own test targets (wexec_test and friends,
-build.base.json) run "bin/wexec -f tests/wexec/*.json <target>" as a
-*step* of an outer wexec invocation that already holds this very lock,
-against the exact same bin/ -- not a race, since the outer process is
-blocked in wait4() on this child for the whole step. wexec_lock_acquire
-marks WEXEC_LOCK_HELD=1 in the environment the moment it succeeds
-(env_copy_with, swapped into environ_ptr so every subprocess this run
-spawns inherits it through execve -- including transitively, through
-intermediate non-wexec programs like bin/wtest's own "--run" shelling
-out to bin/wexec again); a nested wexec sees the marker
-(wexec_lock_is_reentrant) and skips locking entirely, trusting the
-already-serialized ancestor. The mutation happens once, in the parent,
-before wexec_execute forks any worker (wexec_launch) -- workers inherit
-the updated environ_ptr for free via fork()'s copy-on-write memory, no
-extra threading needed.
+Reentrancy: test targets and suite drivers launch nested wexec processes
+against the same bin/. WEXEC_LOCK_HELD=1 lets them share their ancestor's
+lock; trying to acquire it again would fail (or deadlock if we waited).
+This marker is inherited through intermediate programs too. It does NOT
+serialize siblings: at -j > 1 the ancestor continues other workers while
+waiting for a nested run. Manifests must use disjoint outputs or atomic
+publication for artifacts those siblings can execute. In particular,
+bootstrap compiler steps use atomic_output: each worker builds a private
+sibling file and renames it over the public executable only on success.
+Readers keep the old inode until exit; new execs see a complete binary.
+Private stage names also prevent concurrent nested publishers from sharing
+one .stage file. This remains necessary across different -f manifests,
+whose independent cache stamps may both miss for the same output (#548).
 
 Mechanism: O_CREAT|O_EXCL (193 = O_WRONLY|O_CREAT|O_EXCL, the same
 combination libs/extras/vcs/cas.w's cas_store_bytes uses) so at most one

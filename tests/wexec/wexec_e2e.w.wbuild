@@ -94,3 +94,6 @@
 # wbuild: step="bin/wexec -f tests/wexec/exec_diag.json bad_interp" expect_fail expect_stderr="exit status 127: tried to exec bin/wexec_exec_diag/bad_interp, whose interpreter /no/such/interp does not exist"
 # wbuild: step="bin/wexec -f tests/wexec/exec_diag.json bad_elf_interp" expect_fail expect_stderr="exit status 127: tried to exec bin/wexec_exec_diag/bad_elf, whose ELF interpreter /no/such/elf_interp does not exist"
 # wbuild: step="bin/wexec -f tests/wexec/exec_diag.json self_127" expect_fail expect_stderr="127 is the exec-failure convention, but bin/wexec_exec_diag/exits_127 exists and is executable, so the command itself likely exited 127"
+# wbuild: target=wexec_atomic_test tag=tests dep=wexec dep=wv2 data=tests/wexec/atomic.json data=tests/wexec/atomic_child.json
+# wbuild: step="bin/wv2 tests/wexec/wexec_e2e.w -o bin/wexec_e2e_atomic" atomic_output=bin/wexec_e2e_atomic
+# wbuild: step="bin/wexec_e2e_atomic atomic" expect_stdout="wexec_atomic: OK"

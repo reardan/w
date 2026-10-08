@@ -39,7 +39,7 @@ const int core_test_size = 1024
 # Lays out: header, two program headers, notes at 256, stack at 768.
 char* core_test_image():
 	int w = core_test_wsize()
-	char* buf = malloc(core_test_size)
+	char* buf = cast(char*, malloc(core_test_size))
 	mem_fill(buf, 0, core_test_size)
 	buf[0] = 127
 	buf[1] = 'E'

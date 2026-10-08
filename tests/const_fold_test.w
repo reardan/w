@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: arch=arm64_darwin x64
 # Constant-folding semantics, pinning the contract in code_generator/x86.w
 # (docs/projects/optimization.md's v0 window): when both operands of an
 # integer binary operator are literals the compiler rolls back the

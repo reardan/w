@@ -16,7 +16,7 @@ import lib.mem
 void rc4t_check_at(char* key_hex, int off, char* want_hex):
 	char* key = hex_bytes(key_hex)
 	rc4* r = rc4_new(key, strlen(key_hex) / 2)
-	char* ks = malloc(off + 16)
+	char* ks = cast(char*, malloc(off + 16))
 	rc4_keystream(r, ks, off + 16)
 	char* got = hex_encode(ks + off, 16)
 	assert_strings_equal(want_hex, got)
@@ -60,9 +60,9 @@ void test_rc4_chunked_matches_oneshot():
 	char* key = hex_bytes(c"0102030405060708090a0b0c0d0e0f10")
 	rc4* a = rc4_new(key, 16)
 	rc4* b = rc4_new(key, 16)
-	char* one = malloc(272)
+	char* one = cast(char*, malloc(272))
 	rc4_keystream(a, one, 272)
-	char* many = malloc(272)
+	char* many = cast(char*, malloc(272))
 	int pos = 0
 	int step = 1
 	while (pos < 272):
@@ -87,7 +87,7 @@ void test_rc4_reset_reuse():
 	# Rekeying an existing instance restarts the keystream exactly.
 	char* key = hex_bytes(c"0102030405")
 	rc4* r = rc4_new(key, 5)
-	char* ks = malloc(64)
+	char* ks = cast(char*, malloc(64))
 	rc4_keystream(r, ks, 64)
 	rc4_reset(r, key, 5)
 	rc4_keystream(r, ks, 16)
@@ -111,7 +111,7 @@ void test_rc4_process_roundtrip():
 	# Encryption and decryption are the same xor; a fresh instance with
 	# the same key restores the plaintext, in place.
 	char* plain = c"Attack at dawn"
-	char* buf = malloc(15)
+	char* buf = cast(char*, malloc(15))
 	mem_copy(buf, plain, 14)
 	buf[14] = 0
 	rc4* r = rc4_new(c"Secret", 6)

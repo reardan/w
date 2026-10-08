@@ -343,7 +343,7 @@ pg_match_expr* pg_reader_parse_matcher_primary(pg_grammar_reader* reader, int li
 		if ((length < 2) || (text[length - 1] != ']')):
 			pg_reader_error(reader, c"unterminated character class", c"]")
 			return 0
-		char* charset = malloc(128)
+		char* charset = cast(char*, malloc(128))
 		int i = 0
 		while (i < 128):
 			charset[i] = 0

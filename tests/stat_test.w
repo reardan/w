@@ -47,7 +47,7 @@ void test_file_stat_blocks_counts_allocated_space():
 	# (1..1024 512-byte units, i.e. up to 512 KiB) -- tight enough to
 	# catch a wrong statx offset (which would read a timestamp-sized
 	# garbage word), loose enough for any sane allocation policy.
-	char* content = malloc(8193)
+	char* content = cast(char*, malloc(8193))
 	for i in range(8192): content[i] = 'x'
 	content[8192] = 0
 	st_write(path, content)
@@ -117,7 +117,7 @@ void test_file_lstat_and_readlink():
 	assert_equal(7, followed.size)
 	assert_equal(0, file_lstat_path(linkpath, &link_st))
 	assert_equal(1, file_is_lnk(&link_st))
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	int n = file_readlink(linkpath, buf, 256)
 	assert_equal(1, n > 0)
 	assert_equal(0, strcmp(buf, c"link_target.txt"))

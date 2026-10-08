@@ -1,8 +1,8 @@
 # wbuild: target=wvm_box_test tag=tests dep=wv2 dep=wvm dep=wvm_init dep=wvm_box_fixture
 # wbuild: step="bin/wv2 x64 tests/wvm_box_test.w -o bin/wvm_box_test"
-# wbuild: step="bin/wvm_box_test" timeout=60000
+# wbuild: step="bin/wvm_box_test" timeout=120000
 import lib.testing
-import lib.vmm.box_snapshot
+import lib.vmm.box_pool
 import lib.file
 import lib.str
 
@@ -40,7 +40,8 @@ void test_box_policy():
 	asserts(c"private virtio channel", box_test_has(command, c"virtserialport,chardev=agent,name=wvm.agent"))
 	asserts(c"escaped socket path", box_test_has(command, c"socket,id=agent,path=/tmp/a,,b.sock,server=on,wait=off"))
 	asserts(c"restricted network", box_test_has(command, c"user,id=net,restrict=on"))
-	asserts(c"bounded workspace readonly lower", box_test_has(command, c"local,id=work,security_model=mapped-xattr,multidevs=forbid,path=/tmp/work,,readonly=off,readonly=on"))
+	assert_equal(0, box_test_has(command, c"-fsdev"))
+	assert_equal(0, box_test_has(command, c"virtio-9p-device,fsdev=work,mount_tag=work"))
 	box_command_free(command)
 	options.workspace_mb = 0
 	options.cpus = 0
@@ -104,6 +105,40 @@ void box_test_file(string_builder* archive, char* name, char* path):
 	free(data)
 
 
+# Prove CoW through the actual QEMU RAM mapping, not aggregate process RSS
+# (which also includes shared libraries and QEMU executable pages).
+int box_test_shared_ram(int pid):
+	string_builder* path = string_from(c"/proc/")
+	string_append_int(path, pid)
+	string_append(path, c"/smaps")
+	char* text = file_read_text(path.data)
+	string_free(path)
+	asserts(c"QEMU memory accounting readable", text != 0)
+	int at = 0
+	int active = 0
+	int shared = 0
+	while (text[at]):
+		int end = at
+		while (text[end] && text[end] != '\n'): end = end + 1
+		int more = text[end] != 0
+		text[end] = 0
+		char* line = text + at
+		int header = 0
+		for i in range(strlen(line)):
+			if (line[i] == ' '): break
+			if (line[i] == '-'): header = 1
+		if (header):
+			active = contains(line, c"/memfd:wvm-linux-ram") != 0
+			if (active): asserts(c"guest RAM mapped privately", contains(line, c" rw-p ") != 0)
+		else if (active && (starts_with(line, c"Shared_Clean:") || starts_with(line, c"Shared_Dirty:"))):
+			int offset = 13
+			while (line[offset] == ' '): offset = offset + 1
+			shared = shared + atoi(line + offset)
+		at = end + more
+	free(text)
+	return shared
+
+
 void test_box_linux_boot():
 	char* kernel = env_get(c"WVM_TEST_KERNEL")
 	if (kernel == 0):
@@ -152,7 +187,7 @@ void test_box_linux_boot():
 	strv_set(guest_args, 0, c"/test")
 	strv_set(guest_args, 1, c"output")
 	for i in range(2):
-		process_result* reply = box_session_exec(session, guest_args, c"/", 1000, 128)
+		process_result* reply = box_session_exec(session, guest_args, c"/", 5000, 128)
 		asserts(c"persistent guest response", reply != 0)
 		assert_equal(9, reply.status)
 		assert_equal(3, reply.stdout_length)
@@ -160,7 +195,7 @@ void test_box_linux_boot():
 		assert_strings_equal(c"guest stderr", reply.stderr_text)
 		process_result_free(reply)
 	strv_set(guest_args, 1, c"snapshot-write")
-	process_result* saved = box_session_exec(session, guest_args, c"/", 1000, 128)
+	process_result* saved = box_session_exec(session, guest_args, c"/", 5000, 128)
 	assert_equal(0, saved.status)
 	process_result_free(saved)
 	session.snapshot_allowed = 0
@@ -173,7 +208,7 @@ void test_box_linux_boot():
 	session = box_snapshot_restore_in(snapshot, 10000, channel_parent.data)
 	asserts(c"snapshot survives source destruction", session != 0)
 	strv_set(guest_args, 1, c"snapshot-read")
-	saved = box_session_exec(session, guest_args, c"/", 1000, 128)
+	saved = box_session_exec(session, guest_args, c"/", 5000, 128)
 	assert_equal(0, saved.status)
 	process_result_free(saved)
 	for i in range(2):
@@ -186,7 +221,7 @@ void test_box_linux_boot():
 		box_session_close(restored)
 	box_snapshot_free(snapshot)
 	strv_set(guest_args, 1, c"caps")
-	process_result* caps = box_session_exec(session, guest_args, 0, 1000, 128)
+	process_result* caps = box_session_exec(session, guest_args, 0, 5000, 128)
 	assert_equal(0, caps.status)
 	process_result_free(caps)
 	strv_set(guest_args, 1, c"wait")
@@ -203,42 +238,146 @@ void test_box_linux_boot():
 	assert_equal(0, syscall(84, cast(int, channel_parent.data), 0, 0))
 	string_free(channel_parent)
 	options.channel_directory = 0
-	char* workspace_kernel = env_get(c"WVM_TEST_WORKSPACE_KERNEL")
-	if (workspace_kernel == 0):
-		println(c"SKIP: set WVM_TEST_WORKSPACE_KERNEL for bounded overlay boot (built-in 9p and overlay)")
-	else:
-		options.kernel = workspace_kernel
-		string_builder* workspace = string_new()
-		string_append(workspace, c"/tmp/wvm-box-test-")
-		string_append_int(workspace, getpid())
-		assert_equal(0, mkdir(workspace.data, 448))
-		char* base_path = strjoin(workspace.data, c"/base.txt")
-		asserts(c"workspace fixture", file_write_text(base_path, c"immutable base"))
-		options.fs_root = workspace.data
-		options.workspace_mb = 1
-		session = box_session_open(options)
-		asserts(c"bounded overlay guest ready", session != 0)
-		guest_args = strv_new(2)
-		strv_set(guest_args, 0, c"/test")
-		strv_set(guest_args, 1, c"workspace")
-		reply = box_session_exec(session, guest_args, c"/work", 1000, 128)
+	# Imported workspaces require only tmpfs, not 9p or overlay drivers.
+	string_builder* workspace = string_new()
+	string_append(workspace, c"/tmp/wvm-box-test-")
+	string_append_int(workspace, getpid())
+	assert_equal(0, mkdir(workspace.data, 448))
+	char* base_path = strjoin(workspace.data, c"/base.txt")
+	asserts(c"workspace fixture", file_write_text(base_path, c"immutable base"))
+	options.fs_root = workspace.data
+	options.workspace_mb = 1
+	session = box_session_open(options)
+	asserts(c"bounded imported workspace ready", session != 0)
+	assert_equal(1, session.snapshot_allowed)
+	guest_args = strv_new(2)
+	strv_set(guest_args, 0, c"/test")
+	strv_set(guest_args, 1, c"workspace")
+	reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	box_snapshot* work_snapshot = box_snapshot_create(session, 10000)
+	asserts(c"workspace captured without external filesystem device", work_snapshot != 0)
+	box_snapshot* cow_snapshot = box_snapshot_create_cow(session, 15000)
+	asserts(c"CoW workspace template captured", cow_snapshot != 0)
+	asserts(c"CoW owns RAM separately", cow_snapshot.ram_fd >= 0)
+	assert_equal(15, sys_fcntl(cow_snapshot.ram_fd, F_GET_SEALS, 0))
+	assert_equal(15, sys_fcntl(cow_snapshot.fd, F_GET_SEALS, 0))
+	asserts(c"device stream excludes guest RAM", file_size(cow_snapshot.fd) < 1048576)
+	strv_set(guest_args, 1, c"workspace-change")
+	reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	box_session_close(session)
+	char* original_base = file_read_text(base_path)
+	assert_strings_equal(c"immutable base", original_base)
+	free(original_base)
+	# Removing the source proves restore has no dependency on host files.
+	assert_equal(0, unlink(base_path))
+	assert_equal(0, syscall(84, cast(int, workspace.data), 0, 0))
+	for clone in range(2):
+		session = box_snapshot_restore(work_snapshot, 10000)
+		asserts(c"independent imported workspace clone", session != 0)
+		strv_set(guest_args, 1, c"workspace-check")
+		reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
 		assert_equal(0, reply.status)
 		process_result_free(reply)
-		strv_set(guest_args, 1, c"workspace-full")
-		reply = box_session_exec(session, guest_args, c"/work", 1000, 128)
+		strv_set(guest_args, 1, c"workspace-change")
+		reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
 		assert_equal(0, reply.status)
 		process_result_free(reply)
-		box_session_close(session)
-		free(cast(void*, guest_args))
-		char* private_path = strjoin(workspace.data, c"/private.txt")
-		assert_equal(0, cast(int, file_read_text(private_path)))
-		free(private_path)
-		assert_equal(0, unlink(base_path))
-		free(base_path)
-		assert_equal(0, syscall(84, cast(int, workspace.data), 0, 0))
-		string_free(workspace)
-		options.fs_root = 0
-		options.workspace_mb = 0
+		if (clone == 0): box_session_close(session)
+	box_snapshot_free(work_snapshot)
+	strv_set(guest_args, 1, c"workspace-full")
+	reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	box_session_close(session)
+	vm_box_session* cow_first = box_snapshot_restore(cow_snapshot, 10000)
+	vm_box_session* cow_second = box_snapshot_restore(cow_snapshot, 10000)
+	asserts(c"two concurrent CoW clones", cow_first != 0 && cow_second != 0)
+	for clone in range(2):
+		session = cow_first
+		if (clone): session = cow_second
+		strv_set(guest_args, 1, c"workspace-check")
+		reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
+		assert_equal(0, reply.status)
+		process_result_free(reply)
+	asserts(c"first clone shares physical RAM pages", box_test_shared_ram(cow_first.child.pid) > 0)
+	asserts(c"second clone shares physical RAM pages", box_test_shared_ram(cow_second.child.pid) > 0)
+	box_pool* pool = box_pool_new(cow_snapshot, 2, 15000)
+	asserts(c"ready Linux pool", pool != 0)
+	box_snapshot_free(cow_snapshot)
+	# Original template and source filesystem are gone; pool owns its backing.
+	vm_box_session* pooled_first = box_pool_acquire(pool)
+	vm_box_session* pooled_second = box_pool_acquire(pool)
+	asserts(c"pool capacity leased", pooled_first != 0 && pooled_second != 0)
+	asserts(c"pool exhaustion bounded", box_pool_acquire(pool) == 0)
+	assert_equal(0, box_pool_release(pool, cow_first))
+	strv_set(guest_args, 1, c"workspace-change")
+	reply = box_session_exec(pooled_first, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	strv_set(guest_args, 1, c"workspace-check")
+	reply = box_session_exec(pooled_second, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	assert_equal(1, box_pool_release(pool, pooled_first))
+	for cycle in range(4):
+		vm_box_session* clean = box_pool_acquire(pool)
+		asserts(c"pool replacement ready", clean != 0)
+		strv_set(guest_args, 1, c"workspace-check")
+		reply = box_session_exec(clean, guest_args, c"/work", 5000, 128)
+		assert_equal(0, reply.status)
+		process_result_free(reply)
+		strv_set(guest_args, 1, c"workspace-change")
+		reply = box_session_exec(clean, guest_args, c"/work", 5000, 128)
+		assert_equal(0, reply.status)
+		process_result_free(reply)
+		assert_equal(1, box_pool_release(pool, clean))
+	assert_equal(1, pool.active)
+	assert_equal(5, pool.replacements)
+	# Missing artifacts fail replacement explicitly and leave bounded vacancy.
+	char* pool_kernel = pool.snapshot.kernel
+	pool.snapshot.kernel = c"/missing-wvm-pool-kernel"
+	assert_equal(0, box_pool_release(pool, pooled_second))
+	pool.snapshot.kernel = pool_kernel
+	assert_equal(0, pool.active)
+	pooled_first = box_pool_acquire(pool)
+	asserts(c"healthy slot remains usable", pooled_first != 0)
+	asserts(c"failed replacement does not cold fallback", box_pool_acquire(pool) == 0)
+	assert_equal(1, box_pool_refill(pool))
+	asserts(c"explicit refill recovers capacity", box_pool_acquire(pool) != 0)
+	# Free also retires both outstanding leases.
+	box_pool_free(pool)
+	strv_set(guest_args, 1, c"workspace-change")
+	reply = box_session_exec(cow_first, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	box_snapshot* dirty_snapshot = box_snapshot_create_cow(cow_first, 15000)
+	asserts(c"checkpoint a dirty CoW clone", dirty_snapshot != 0)
+	box_session_close(cow_first)
+	strv_set(guest_args, 1, c"workspace-check")
+	reply = box_session_exec(cow_second, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	box_session_close(cow_second)
+	session = box_snapshot_restore(dirty_snapshot, 10000)
+	asserts(c"restore checkpoint of dirty clone", session != 0)
+	box_snapshot_free(dirty_snapshot)
+	strv_set(guest_args, 1, c"workspace-changed-check")
+	reply = box_session_exec(session, guest_args, c"/work", 5000, 128)
+	assert_equal(0, reply.status)
+	process_result_free(reply)
+	box_session_close(session)
+	free(cast(void*, guest_args))
+	char* private_path = strjoin(workspace.data, c"/private.txt")
+	assert_equal(0, cast(int, file_read_text(private_path)))
+	free(private_path)
+	free(base_path)
+	string_free(workspace)
+	options.fs_root = 0
+	options.workspace_mb = 0
 	options.timeout_ms = 1
 	assert_equal(124, box_run(options))
 	free(options)

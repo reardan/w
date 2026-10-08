@@ -69,9 +69,13 @@ int elf_emit_tls_entry_thunk(int main_addr):
 	int block = emit_data_zeros(tls_size)
 	int set_addr = sym_address(c"__w_tls_set")
 	int thunk = code_offset + codepos
-	emit(1, c"\x68")  /* push imm32 */
-	emit_int(0)
-	save_int32(code + codepos - 4, block)
+	if (word_size == 8):
+		be_addr_slot_emit()
+		be_addr_slot_write(codepos - 4, block)
+		emit_int8(80) /* push rax */
+	else:
+		emit(1, c"\x68")  /* push imm32 */
+		emit_int(block)
 	emit(1, c"\xe8")  /* call __w_tls_set */
 	emit_int(0)
 	save_int32(code + codepos - 4, set_addr - code_offset - codepos)

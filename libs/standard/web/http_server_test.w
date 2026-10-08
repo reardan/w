@@ -166,7 +166,7 @@ void test_http_chunked_request_body():
 	string_free(req_text)
 
 	string_builder* resp_text = string_new()
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int done = 0
 	while (done == 0):
 		int got = read(fd, buf, 4096)

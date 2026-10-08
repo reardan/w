@@ -54,7 +54,7 @@ int ring_mask31():
 # the x86 target when digest bit 31 is set; the AND keeps only the low
 # 31 bits, so the result is the same non-negative int on every target.
 int ring_hash_point(char* s):
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(s, strlen(s), digest)
 	int p = sha256_be32(digest) & ring_mask31()
 	free(digest)

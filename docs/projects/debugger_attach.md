@@ -466,7 +466,43 @@ and must not use syntax newer than the seed.
   should spawn the debuggee as a child of the test process so
   `YAMA ptrace_scope=1` still permits it.
 
-## Risks
+## KVM guest debugger
+
+`./wbuild wdbg` also builds the separate Linux x64 `bin/wvm_debug` helper.
+`bin/wdbg vm STATIC_X64_ELF [args...]` starts a cell paused at its ELF entry;
+it needs access to `/dev/kvm`. Compile the guest explicitly first:
+
+```sh
+bin/wv2 x64 tests/wvm_debug_fixture.w -o bin/wvm_debug_fixture
+printf 'break vm_debug_target\ncontinue\nregs\nstep\nthreads\ndelete 0\ncontinue\nquit\n' |
+  bin/wdbg vm bin/wvm_debug_fixture normal
+```
+
+The stdin command set is `status`, `regs` (`r`), `step` (`si`), `continue`
+(`c`), `break SYMBOL_OR_ADDRESS` (`b`), `delete SLOT`, `threads`, `thread TID`,
+`read ADDRESS LENGTH`, `write ADDRESS HEX`, and `quit` (`q`). Breakpoints use
+four hardware execution slots numbered 0–3. Function names come from the
+original ELF symbol table. Addresses accept decimal, `0x` hexadecimal,
+`$entry`, `$stack` (the bottom of the writable stack mapping), `$heap`, `$rip`,
+and `$rsp`. Memory commands check guest page permissions and transfer at
+most 1 KiB per command. Guest output is reported as `stdout_hex` and
+`stderr_hex`, so guest bytes cannot inject debugger commands or terminal
+control sequences. Guest faults include their original-image symbol.
+
+Each continue/step has a five-second timeout; use
+`bin/wdbg vm --timeout-ms N ...` to choose 1–600000 ms. Input is bounded to
+4096 bytes per line and 10000 commands per process. Invalid commands or
+unavailable operations make the debugger return 2; a completed guest
+returns its exit status. Quitting a paused guest returns 0. The helper
+exposes cell execution, register/memory inspection, and guest thread
+selection; source stepping, expression evaluation, and watchpoints remain
+the native attach debugger's surface.
+
+`wvm_debug_script_test` covers both direct and `wdbg vm` invocation,
+hardware breakpoints, stepping, register and memory access, child thread
+selection, fault reports, and rejected input on real KVM.
+
+## Native attach risks
 
 - **Seed constraint.** All new `debugger/` code is seed-compiled; no
   post-seed syntax until an `update` promotes one.

@@ -188,7 +188,7 @@ void expression_ast_point_columns(expression_ast* tree):
 
 # A copy of the first used words of old in a new room-word array.
 int* expression_ast_grow_array(int* old, int used, int room):
-	int* grown = malloc(room * __word_size__)
+	int* grown = cast(int*, malloc(room * __word_size__))
 	for i in range(used): grown[i] = old[i]
 	if (old): free(old)
 	return grown
@@ -197,13 +197,13 @@ int* expression_ast_grow_array(int* old, int used, int room):
 expression_ast_slab* expression_ast_new_slab():
 	expression_ast_slab* slab = cast(expression_ast_slab*, malloc(sizeof(expression_ast_slab)))
 	slab.owner = 0
-	slab.text = malloc(32768)
+	slab.text = cast(char*, malloc(32768))
 	slab.capacity = expression_ast_initial_capacity
-	slab.columns = malloc(expression_ast_columns * slab.capacity * __word_size__)
+	slab.columns = cast(char*, malloc(expression_ast_columns * slab.capacity * __word_size__))
 	slab.token_capacity = expression_ast_initial_capacity
-	slab.tokens = malloc(expression_ast_token_fields * slab.token_capacity * __word_size__)
+	slab.tokens = cast(int*, malloc(expression_ast_token_fields * slab.token_capacity * __word_size__))
 	slab.token_text_capacity = 1024
-	slab.token_text = malloc(slab.token_text_capacity)
+	slab.token_text = cast(char*, malloc(slab.token_text_capacity))
 	ast_slabs_allocated = ast_slabs_allocated + 1
 	return slab
 
@@ -238,7 +238,7 @@ void expression_ast_grow(expression_ast* tree):
 	int capacity = old_capacity * 2
 	if (capacity > 4096): capacity = 4096
 	char* old = slab.columns
-	char* memory = malloc(expression_ast_columns * capacity * __word_size__)
+	char* memory = cast(char*, malloc(expression_ast_columns * capacity * __word_size__))
 	int used = tree.count * __word_size__
 	for c in range(expression_ast_columns):
 		char* from = old + c * old_capacity * __word_size__
@@ -257,7 +257,7 @@ int expression_ast_token_text_reserve(expression_ast* tree, int length):
 		expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
 		int room = slab.token_text_capacity * 2
 		while (room < need): room = room * 2
-		char* grown = malloc(room)
+		char* grown = cast(char*, malloc(room))
 		for i in range(tree.token_text_used): grown[i] = slab.token_text[i]
 		free(slab.token_text)
 		slab.token_text = grown

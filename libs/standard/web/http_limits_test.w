@@ -274,7 +274,7 @@ void test_open_connection_cap_queues_clients():
 /* ---- client caps ---- */
 
 void hlt_big_fixed(RequestContext* rc, void* user_data):
-	char* body = malloc(1000)
+	char* body = cast(char*, malloc(1000))
 	for i in range(1000): body[i] = 'b'
 	request_context_set_status(rc, 200)
 	request_context_write_body(rc, body, 1000)
@@ -282,7 +282,7 @@ void hlt_big_fixed(RequestContext* rc, void* user_data):
 
 
 void hlt_big_chunked(RequestContext* rc, void* user_data):
-	char* body = malloc(400)
+	char* body = cast(char*, malloc(400))
 	for i in range(400): body[i] = 'c'
 	request_context_set_status(rc, 200)
 	request_context_begin_stream(rc)

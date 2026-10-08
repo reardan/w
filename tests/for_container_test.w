@@ -170,7 +170,7 @@ struct countdown:
 	int start
 
 countdown* countdown_new(int start):
-	countdown* c = malloc(4)
+	countdown* c = cast(countdown*, malloc(4))
 	c.start = start
 	return c
 

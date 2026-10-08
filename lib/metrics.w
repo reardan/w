@@ -185,7 +185,7 @@ metrics_event_ring* metrics_event_ring_new(int capacity):
 	if (capacity < 1): capacity = 1
 	metrics_event_ring* r = cast(metrics_event_ring*, malloc(sizeof(metrics_event_ring)))
 	r.slots = cast(metrics_event_record*, malloc(capacity * sizeof(metrics_event_record)))
-	r.text_area = malloc(capacity * METRICS_EVENT_TEXT)
+	r.text_area = cast(char*, malloc(capacity * METRICS_EVENT_TEXT))
 	r.capacity = capacity
 	r.start = 0
 	r.count = 0

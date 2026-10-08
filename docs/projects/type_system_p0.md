@@ -11,7 +11,7 @@ listed under its
 | Milestone | Status |
 |---|---|
 | 0 Baseline fixtures | Done (`type_system_p0_test` and the `type_system_*` fixture targets). |
-| 1 Metadata helpers, typed literals | Partly done. The `int` wildcard is gone. **Not implemented:** typed literals, and the overflow and narrowing warnings. Literals are still the untyped 32-bit `constant` pseudo-type, and `char c = 300` is silent. |
+| 1 Metadata helpers, typed literals | Partly done. The `int` wildcard is gone. **Not implemented:** typed literals and general range analysis. Literals retain the 32-bit `constant` pseudo-type; out-of-range bare literals such as `char c = 300` are errors. |
 | 2 `cast(T, x)` | Done, with two gaps: an integer cast does not truncate or extend a value in a register (`cast(uint8, -1)` is still -1 until it is stored), and a cast can remove `const`. |
 | 3 `bool` | Done. A non-constant `int` to `bool` conversion crashes (#525). |
 | 4 Precise call return types | Done. |
@@ -195,9 +195,12 @@ conversions" reduce to one rule, applied by
 
 ## Unsafe conversion checks
 
-Issue #532, stage 1 (`grammar/type_check.w`). Each check is an ordinary
-warning, so `--strict` (and every strict self-host stage) turns it into a
-failed build; making them errors without `--strict` is stage 2.
+Issue #532 (`grammar/type_check.w`). These checks are errors in both
+ordinary compilation and `check`, with or without `--strict`. Independent
+findings are collected before the compiler rejects the build, and no
+output image is written. JSON diagnostics retain their existing codes
+(W0400–W0407) with severity `error`. The REPL unwinds immediately so an
+invalid expression cannot execute.
 
 | Construct | Diagnostic |
 |---|---|
@@ -208,14 +211,17 @@ failed build; making them errors without `--strict` is stage 2.
 | a `case` value equal to an earlier literal or enum constant of the same switch | `duplicate case value 2 in switch; only the first matching case runs` |
 | `return <value>` in a void function (`return f()` of a void call is fine) | `return with a value in a void function` |
 
-The older warnings for a call with the wrong number of arguments and an
-int stored into a pointer were already counted by `--strict`.
+Wrong argument counts (including generic, generator and variadic calls)
+and integer-to-pointer mismatches are errors too. Calling an integer
+(`W0407`, formerly the `call-int` lint) and recovering a typed pointer
+from `void*` (`W0406`, formerly `void-pointer-conversion`) are checked in
+imports as well as command-line roots. Lint suppression cannot disable
+them. Spell erased-pointer recovery as `cast(T*, raw)` and give callbacks
+a function-pointer type (`type callback = fn(int) -> int`, `callback* f`).
+Allocators retain their `void*` return types; consumers explicitly cast.
 
-Two #532 conversions stay opt-in `check --lint` rules, because the tree
-relies on them as idioms: calling an integer-typed value (`[call-int]`;
-int-held callbacks whose signature varies) and storing a `void*` into a
-typed pointer without `cast()` (`[void-pointer-conversion]`; `T* p =
-malloc(n)`). See docs/projects/lint.md.
+Other compatibility warnings, such as unrelated typed pointers and
+function-pointer signature mismatches, still require `--strict` to fail.
 
 Limits of the single-pass design (no AST, so each check sees only what
 the streaming parser knows when it emits code):

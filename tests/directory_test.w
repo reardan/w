@@ -48,7 +48,7 @@ char* print_dirent(char* buf):
 
 void read_directory(int file):
 	int buf_size = 10000
-	char* buf = malloc(buf_size)
+	char* buf = cast(char*, malloc(buf_size))
 	int dents_result = getdents(file, buf, buf_size)
 	print_int(c"dents_result: ", dents_result)
 	translate_syscall_failure(dents_result)
@@ -112,7 +112,7 @@ void ls(int file):
 	ls_max_line_length = 120
 	ls_column = 0
 	int buf_size = 10000
-	char* buf = malloc(buf_size)
+	char* buf = cast(char*, malloc(buf_size))
 	int dents_result = getdents(file, buf, buf_size)
 	print_int(c"dents_result: ", dents_result)
 	translate_syscall_failure(dents_result)

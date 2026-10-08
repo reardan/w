@@ -120,8 +120,8 @@ char* protobuf_message_info(int type_index):
 void protobuf_message_store(int type_index, char* info):
 	int max_messages = 400
 	if (protobuf_message_types == 0):
-		protobuf_message_types = malloc(max_messages * 4)
-		protobuf_message_infos = malloc(max_messages * __word_size__)
+		protobuf_message_types = cast(char*, malloc(max_messages * 4))
+		protobuf_message_infos = cast(char*, malloc(max_messages * __word_size__))
 	type_index = type_canonical(type_index)
 	int i = protobuf_message_index(type_index)
 	if (i < 0):
@@ -298,12 +298,12 @@ int message_declaration():
 	# type are pointers or lists, which need no size yet.
 	if (accept(c":") == 0):
 		if (forward_declared == 0):
-			char* forward = malloc(4)
+			char* forward = cast(char*, malloc(4))
 			save_int(forward, 0 - 1)
 			protobuf_message_store(type_index, forward)
 		return 1
 	int max_fields = 256
-	char* info = malloc(4 + max_fields * 12)
+	char* info = cast(char*, malloc(4 + max_fields * 12))
 	int n = 0
 	while (tab_level > start_tab_level):
 		if (n >= max_fields): error(c"too many fields in protobuf message")
@@ -328,8 +328,8 @@ int protobuf_desc_lookup(int type_index):
 void protobuf_desc_store(int type_index, int address):
 	int max_types = 400
 	if (protobuf_desc_types == 0):
-		protobuf_desc_types = malloc(max_types * 4)
-		protobuf_desc_addresses = malloc(max_types * 4)
+		protobuf_desc_types = cast(char*, malloc(max_types * 4))
+		protobuf_desc_addresses = cast(char*, malloc(max_types * 4))
 	assert1(protobuf_desc_count < max_types)
 	save_int(protobuf_desc_types + protobuf_desc_count * 4, type_index)
 	save_int(protobuf_desc_addresses + protobuf_desc_count * 4, address)
@@ -406,7 +406,7 @@ void protobuf_emit_section(int message_type):
 	# descriptor for REPEATED (its aux is the nested descriptor for
 	# message elements, or the element width for bool, whose W storage
 	# is one byte).
-	char* aux_words = malloc(n * 4 + 4)
+	char* aux_words = cast(char*, malloc(n * 4 + 4))
 	int i = 0
 	while (i < n):
 		int field_type = type_get_field_type_at(message_type, i)
@@ -422,7 +422,8 @@ void protobuf_emit_section(int message_type):
 			if (elem_kind == protobuf_kind_bool): elem_aux = type_get_size(bool_type)
 			aux = code_offset + codepos
 			emit_target_word(elem_kind)
-			emit_target_word(elem_aux)
+			if (elem_kind == protobuf_kind_message): be_blob_pointer(elem_aux)
+			else: emit_target_word(elem_aux)
 		save_int(aux_words + i * 4, aux)
 		i = i + 1
 
@@ -445,7 +446,7 @@ void protobuf_emit_section(int message_type):
 		emit_target_word(best_number)
 		emit_target_word(load_int(info + 8 + best * 12))
 		emit_target_word(type_get_field_offset_at(message_type, best))
-		emit_target_word(load_int(aux_words + best * 4))
+		be_blob_pointer(load_int(aux_words + best * 4))
 		last = best_number
 		emitted = emitted + 1
 
@@ -454,7 +455,7 @@ void protobuf_emit_section(int message_type):
 	# (list_element_slot_size), and the runtime sizes them from here.
 	assert1(protobuf_desc_lookup(message_type) == code_offset + codepos)
 	emit_target_word(n)
-	emit_target_word(fields_address)
+	be_blob_pointer(fields_address)
 	emit_target_word(type_stack_words(message_type) << word_size_log2)
 	free(aux_words)
 
@@ -471,7 +472,7 @@ int protobuf_descriptor(int message_type):
 	int cached = protobuf_desc_lookup(message_type)
 	if (cached):
 		return cached
-	if (protobuf_pending_types == 0): protobuf_pending_types = malloc(400 * 4)
+	if (protobuf_pending_types == 0): protobuf_pending_types = cast(char*, malloc(400 * 4))
 	protobuf_pending_count = 0
 	protobuf_collect_pending(message_type)
 
@@ -500,7 +501,9 @@ void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_c
 	if (sym_lookup(fn_name) < 0):
 		error3(c"protobuf runtime function '", fn_name, c"' is not defined; import libs.extras.protobuf.message")
 	int s = rt_call_begin(fn_name)
-	push_slot_int(desc_address)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_address)
+	push_slot()
 	for i in range(arg_count): push_slot_copy(arg_slot + i)
 	rt_call_end(s)
 
@@ -584,5 +587,6 @@ int protobuf_descriptor_expr():
 		error(c"proto_descriptor argument must be a protobuf message type")
 	if (peek(c")") == 0): error(c"')' expected in proto_descriptor")
 	int desc_address = protobuf_descriptor(t)
-	mov_eax_int(desc_address)
+	be_addr_slot_emit()
+	be_addr_slot_write(codepos - 4, desc_address)
 	return type_value(type_get_next_pointer(type_lookup(c"pb_message_desc")))

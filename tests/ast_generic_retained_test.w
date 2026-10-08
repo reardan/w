@@ -5,7 +5,8 @@
 # re-lexed from the retained source bytes instead of reopening and seeking
 # the file (grammar/generic.w, grammar/defer.w, code_generator/
 # retained_emit.w). Every source below must compile to the same exit
-# status, stdout, stderr and image as the default compile, on the x86
+# status, stdout, stderr and image as the streaming compile (--streaming,
+# the baseline since the AST front end became the default in P1.4), on the x86
 # target on the 32-bit host and the x64 target on the 64-bit host; the
 # fixture's binaries must pass, and --stats must show no instantiation
 # source seek except for the documented fallback (a body or deferred
@@ -39,6 +40,10 @@ process_result* generic_retained_compile(char* compiler, char* arch, char* input
 		i = i + 1
 	if (retained):
 		strv_set(args, i, c"--ast-emit-retained")
+		i = i + 1
+	else if (required == 0):
+		# The baseline is the streaming front end, which seeks the source.
+		strv_set(args, i, c"--streaming")
 		i = i + 1
 	if (required):
 		strv_set(args, i, c"--ast-required")
@@ -91,7 +96,7 @@ void generic_retained_run_passes(char* binary):
 	process_result_free(run)
 
 
-# Default and --ast-emit-retained agree on status, output and image, on
+# --streaming and --ast-emit-retained agree on status, output and image, on
 # both hosts; run_binary also runs both images.
 void generic_retained_same(char* source, int run_binary):
 	char* plain = generic_retained_path(c".plain")

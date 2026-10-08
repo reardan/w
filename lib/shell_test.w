@@ -58,11 +58,11 @@ void test_run_argv_empty_returns_zero():
 
 
 void test_cd_changes_directory():
-	char* original = malloc(4096)
+	char* original = cast(char*, malloc(4096))
 	getcwd(original, 4096)
 
 	assert_equal(0, cd(c"/tmp"))
-	char* now = malloc(4096)
+	char* now = cast(char*, malloc(4096))
 	getcwd(now, 4096)
 	assert_strings_equal(c"/tmp", now)
 	free(now)

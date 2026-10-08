@@ -36,7 +36,7 @@ char* wxs_image():
 	int fd = open(wxs_path(), 0, 0)
 	asserts(c"input PE opened", fd >= 0)
 	int cap = 65536
-	char* buf = malloc(cap)
+	char* buf = cast(char*, malloc(cap))
 	int total = 0
 	int n = read(fd, &buf[total], cap - total)
 	while (n > 0):

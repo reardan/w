@@ -70,7 +70,7 @@ char* xt_load_der(char* name, int* out_len):
 	free(text)
 	asserts(c"expected one PEM block", blocks.length == 1)
 	pem_block* b = blocks[0]
-	char* der = malloc(b.len)
+	char* der = cast(char*, malloc(b.len))
 	mem_copy(der, b.data, b.len)
 	*out_len = b.len
 	pem_blocks_free(blocks)
@@ -452,10 +452,10 @@ void test_verify_argument_errors():
 
 
 void test_ecdsa_sig_to_raw():
-	char* r32 = malloc(32)
-	char* s32 = malloc(32)
+	char* r32 = cast(char*, malloc(32))
+	char* s32 = cast(char*, malloc(32))
 	# SEQUENCE { INTEGER 1, INTEGER 2 }
-	char* sig = malloc(64)
+	char* sig = cast(char*, malloc(64))
 	sig[0] = 48
 	sig[1] = 6
 	sig[2] = 2
@@ -514,8 +514,8 @@ void test_ecdsa_sig_to_raw():
 	char* der = xt_load_der(c"leaf_ec_chain.pem", &len)
 	x509_cert* c = x509_parse(der, len)
 	asserts(c"leaf_ec_chain parses", c != 0)
-	char* rr = malloc(32)
-	char* ss = malloc(32)
+	char* rr = cast(char*, malloc(32))
+	char* ss = cast(char*, malloc(32))
 	assert_equal(1, x509_ecdsa_sig_to_raw(c.der + c.sig_start, c.sig_len, rr, ss))
 	free(rr)
 	free(ss)
@@ -690,14 +690,14 @@ char* XT_KEY_D_HEX():
 
 
 void test_ec_private_key_loading():
-	char* want = malloc(33)
+	char* want = cast(char*, malloc(33))
 	int wlen = 0
 	char* wtmp = hex_decode(XT_KEY_D_HEX(), 64, &wlen)
 	assert_equal(32, wlen)
 	mem_copy(want, wtmp, 32)
 	free(wtmp)
-	char* d1 = malloc(32)
-	char* d2 = malloc(32)
+	char* d1 = cast(char*, malloc(32))
+	char* d2 = cast(char*, malloc(32))
 	# PKCS#8 and SEC1 encodings of the same key load identically.
 	char* p8 = xt_read_fixture(c"key_p256_pkcs8.pem")
 	assert_equal(1, x509_load_ec_private_key(p8, strlen(p8), d1))
@@ -729,7 +729,7 @@ void test_ec_private_key_corruption():
 	list[pem_block*] blocks = pem_decode_blocks(p8, strlen(p8), c"PRIVATE KEY")
 	assert_equal(1, blocks.length)
 	pem_block* b = blocks[0]
-	char* d = malloc(32)
+	char* d = cast(char*, malloc(32))
 	assert_equal(1, x509_parse_pkcs8_ec_key(b.data, 0, b.len, d))
 	# The embedded uncompressed point ends the structure; flip its last byte.
 	b.data[b.len - 1] = b.data[b.len - 1] ^ 1

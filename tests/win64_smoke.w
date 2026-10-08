@@ -24,7 +24,7 @@ int main(int argc, char** argv):
 	# Heap: many allocations so brk growth (committed VirtualAlloc pages)
 	# gets exercised past the first 64KB chunk.
 	for i in range(200):
-		char* chunk = malloc(1000)
+		char* chunk = cast(char*, malloc(1000))
 		chunk[999] = 42
 		free(chunk)
 	check(c"heap", 1)
@@ -45,7 +45,7 @@ int main(int argc, char** argv):
 	fd = open(path, 0, 0)
 	check(c"open", fd >= 0)
 	check(c"seek", seek(fd, 4, 0) == 4)
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	int n = read(fd, buf, 16)
 	buf[n] = 0
 	check(c"read", n == 6)

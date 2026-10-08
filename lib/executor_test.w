@@ -496,7 +496,7 @@ int fsync_loop(void* p):
 	# O_WRONLY|O_CREAT|O_TRUNC
 	int fd = open(req.path, 577, 420)
 	if (fd < 0): return fd
-	char* block = malloc(4096)
+	char* block = cast(char*, malloc(4096))
 	int i = 0
 	while (i < 4096):
 		block[i] = 'w'

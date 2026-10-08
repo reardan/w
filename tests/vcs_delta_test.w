@@ -35,7 +35,7 @@ import libs.extras.vcs.delta
 
 
 char* vcdt_repeat(int ch, int n):
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	for i in range(n): out[i] = ch
 	out[n] = 0
 	return out
@@ -374,7 +374,7 @@ void vcdt_track(char* id):
 # fixtures that need a base id (or self id) with no real object behind
 # it, built from a single repeated character.
 char* vcdt_fake_id(int ch):
-	char* id = malloc(65)
+	char* id = cast(char*, malloc(65))
 	for i in range(64): id[i] = ch
 	id[64] = 0
 	return id

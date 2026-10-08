@@ -63,8 +63,8 @@ void assert_same_bytes(char* a, char* b, int n, char* what):
 
 void test_accessors_match_the_byte_loops():
 	rng_state = 987654321
-	char* got = malloc(64)
-	char* want = malloc(64)
+	char* got = cast(char*, malloc(64))
+	char* want = cast(char*, malloc(64))
 
 	# Every width the generic entry points accept, at both an aligned and
 	# a deliberately unaligned offset -- the symbol table packs 4-byte

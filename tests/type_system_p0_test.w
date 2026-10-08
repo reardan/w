@@ -95,7 +95,7 @@ void test_cast_and_aliases():
 # pointers, words and function addresses; the round trips must be
 # loss-free.
 void test_cast_escape_hatch_roundtrip():
-	char* buffer = malloc(4)
+	char* buffer = cast(char*, malloc(4))
 	buffer[0] = 'q'
 	int word = cast(int, buffer)
 	char* back = cast(char*, word)

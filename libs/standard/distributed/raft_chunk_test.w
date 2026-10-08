@@ -20,7 +20,7 @@ void chunk_drop(list[raft_msg*] messages):
 raft_msg* chunk_wire(raft_msg* m):
 	int size = raft_wire_size(m)
 	assert1(size < rt_max_frame())
-	char* wire = malloc(size)
+	char* wire = cast(char*, malloc(size))
 	raft_wire_encode(m, wire)
 	assert1(cast(int, raft_wire_decode(wire, size - 1)) == 0)
 	raft_msg* copy = raft_wire_decode(wire, size)
@@ -37,7 +37,7 @@ void test_large_restartable_snapshot():
 	u64_set_int(leader.commit_index, 1)
 	u64_set_int(leader.last_applied, 1)
 	int length = rt_max_frame() + 8197
-	char* data = malloc(length)
+	char* data = cast(char*, malloc(length))
 	for i in range(length): data[i] = i % 251
 	assert_equal(1, raft_take_snapshot(leader, data, length))
 	assert_equal(0, raft_take_snapshot(leader, data, RAFT_SNAPSHOT_LIMIT + 1))
@@ -115,7 +115,7 @@ void test_tcp_large_snapshot_with_slow_receiver_and_control_traffic():
 	u64_set_int(leader.commit_index, 1)
 	u64_set_int(leader.last_applied, 1)
 	int length = rt_max_frame() + 7
-	char* data = malloc(length)
+	char* data = cast(char*, malloc(length))
 	mem_fill[char](data, 'S', length)
 	assert1(raft_take_snapshot(leader, data, length))
 	int controls = 0

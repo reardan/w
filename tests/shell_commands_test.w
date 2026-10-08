@@ -78,7 +78,7 @@ char* shtest_capture_stderr_end(char* path):
 # lib/shell_commands.w: the native tools themselves.
 
 void test_pwd_prints_the_current_directory():
-	char* cwd = malloc(4096)
+	char* cwd = cast(char*, malloc(4096))
 	getcwd(cwd, 4096)
 
 	char* cap = shtest_scratch_path(c"_pwd.out")
@@ -355,7 +355,7 @@ void test_wc_counts_every_byte_past_an_embedded_nul():
 	# reported 0 1 1.
 	char* f = shtest_scratch_path(c"_wc_nul.bin")
 	int fd = create_file(f, 511)
-	char* data = malloc(8)
+	char* data = cast(char*, malloc(8))
 	data[0] = 'a'
 	data[1] = 0
 	data[2] = 'b'

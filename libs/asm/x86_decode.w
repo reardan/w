@@ -191,7 +191,7 @@ char* asm_x86_cc(int cc):
 char* asm_x86_concat(char* a, char* b):
 	int la = strlen(a)
 	int lb = strlen(b)
-	char* out = malloc(la + lb + 1)
+	char* out = cast(char*, malloc(la + lb + 1))
 	for i in range(la): out[i] = a[i]
 	for j in range(lb): out[la + j] = b[j]
 	out[la + lb] = 0

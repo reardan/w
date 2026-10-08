@@ -297,7 +297,7 @@ int list_it_argument():
 	if ((sym >= 0) && (sym != list_it_active)): return 0
 	int serial = token_serial
 	char* save = generic_reparse_save()
-	char* open = malloc(64)
+	char* open = cast(char*, malloc(64))
 	int depth = 0
 	int found = 0
 	int after_dot = 0

@@ -194,7 +194,7 @@ void test_float64_long_input():
 	char* tie = c"1.00000000000000011102230246251565404236316680908203125"
 	ft_check_parse(tie, 64, ft_bits64(0x3ff00000, 0))
 	int n = strlen(tie)
-	char* above = malloc(n + 1001)
+	char* above = cast(char*, malloc(n + 1001))
 	strcpy(above, tie)
 	int i = 0
 	while (i < 999):

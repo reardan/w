@@ -19,14 +19,14 @@ int http_server():
 	asserts(c"listen failed: ", listen_result == 0)
 	print_int(c"now listening: http://127.0.0.1:", port)
 	int n = 16000
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 
 	int file = open(c"tests/w.html", 0, 511)
 	asserts(c"Could not open file w.html", file > 0)
 	print_int(c"file: ", file)
 	int size = file_size(file)
 	print_int(c"size: ", size)
-	char* html = malloc(size)
+	char* html = cast(char*, malloc(size))
 	int read_count = read(file, html, size)
 	print_int(c"read_count: ", read_count)
 	asserts(c"file read failed: ", read_count >= 0)

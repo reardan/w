@@ -38,7 +38,7 @@ void test_fs_positional_io_keeps_file_position():
 	assert_equal(1, r.transferred)
 	# The shared position is still 5 after a positional write ...
 	assert_equal(5, seek(fd, 0, 1))
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	assert_equal(IO_OK, fs_pread_exact(fd, buf, 4, 1, &r))
 	assert_equal(4, r.transferred)
 	buf[4] = 0
@@ -62,7 +62,7 @@ void test_fs_positional_io_keeps_file_position():
 void test_fs_positional_rejects_bad_ranges():
 	int fd = fs_test_open_rw(fs_test_path(c"ranges.bin"))
 	io_result r
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	assert_equal(IO_IO_ERROR, fs_pwrite_all(fd, c"x", 1, -1, &r))
 	assert_equal(FS_EINVAL, r.native_error)
 	assert_equal(IO_IO_ERROR, fs_pread(fd, buf, 1, -5, &r))
@@ -100,7 +100,7 @@ void test_fs_sparse_positional_write_at_large_offset():
 	assert_equal(8, r.transferred)
 	assert_equal(0, seek(fd, 0, 1))
 	assert_equal(offset + 8, seek(fd, 0, 2))
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	assert_equal(IO_OK, fs_pread_exact(fd, buf, 8, offset, &r))
 	buf[8] = 0
 	assert_strings_equal(c"far away", buf)
@@ -173,7 +173,7 @@ void test_fs_sync_dir_reports_status():
 	asserts(c"missing dir must fail", fs_sync_dir(fs_test_path(c"no_such_dir"), &r) != IO_OK)
 	assert_equal(2, r.native_error)  # ENOENT
 	# fsync of something that cannot be synced is unsupported, not ok.
-	int* fds = malloc(8)
+	int* fds = cast(int*, malloc(8))
 	assert_equal(0, pipe(fds))
 	int rd = load_int32(cast(char*, fds))
 	int wr = load_int32(cast(char*, fds) + 4)

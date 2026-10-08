@@ -27,7 +27,7 @@ process_result* fixture_ast_run(int ast, char* first, char* second, char* third)
 void test_fixture_ast_mode_preserves_diagnostics():
 	process_result* result = fixture_ast_run(1, c"tests/limb_builtin_warning_fixture.w", c"tests/expression_nesting_clean_fixture.w", c"tests/expression_nesting_error_fixture.w")
 	assert_equal(0, result.status)
-	assert_contains(result.stdout_text, c"--ast-required tests/limb_builtin_warning_fixture.w")
+	assert_contains(result.stdout_text, c"--ast-full-expressions tests/limb_builtin_warning_fixture.w")
 	assert_contains(result.stdout_text, c"--ast-required tests/expression_nesting_clean_fixture.w")
 	assert_contains(result.stdout_text, c"--ast-full-expressions tests/expression_nesting_error_fixture.w")
 	assert_contains(result.stdout_text, c"wfixture: OK (3 fixtures)")

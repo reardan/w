@@ -43,7 +43,7 @@ void test_base64_rfc4648_vectors():
 # Every byte value survives a round-trip, including embedded NULs.
 void test_base64_binary_roundtrip():
 	int n = 256
-	char* data = malloc(n)
+	char* data = cast(char*, malloc(n))
 	for i in range(n): data[i] = i & 255
 	char* encoded = base64_encode(data, n)
 	assert_equal(base64_encoded_length(n), strlen(encoded))
@@ -135,7 +135,7 @@ void test_hex_decode_both_cases():
 
 void test_hex_binary_roundtrip():
 	int n = 256
-	char* data = malloc(n)
+	char* data = cast(char*, malloc(n))
 	for i in range(n): data[i] = i & 255
 	char* encoded = hex_encode(data, n)
 	assert_equal(2 * n, strlen(encoded))

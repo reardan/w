@@ -12,7 +12,7 @@ import lib.unix_fds
 # descriptors are live copies (a write through each lands in its pipe)
 # and were installed close-on-exec.
 void test_unix_fds_pass_pipe_ends():
-	int* pair = malloc(2 * __word_size__)
+	int* pair = cast(int*, malloc(2 * __word_size__))
 	assert_equal(0, socket_pair(pair))
 	int a_read = 0
 	int a_write = 0
@@ -20,15 +20,15 @@ void test_unix_fds_pass_pipe_ends():
 	int b_write = 0
 	assert_equal(0, process_make_pipe(&a_read, &a_write))
 	assert_equal(0, process_make_pipe(&b_read, &b_write))
-	int* send_fds = malloc(2 * __word_size__)
+	int* send_fds = cast(int*, malloc(2 * __word_size__))
 	send_fds[0] = a_write
 	send_fds[1] = b_write
 	assert_equal(3, unix_send_fds(pair[0], c"fds", 3, send_fds, 2))
 	close(a_write)
 	close(b_write)
 
-	char* buf = malloc(16)
-	int* got_fds = malloc(4 * __word_size__)
+	char* buf = cast(char*, malloc(16))
+	int* got_fds = cast(int*, malloc(4 * __word_size__))
 	int count = 0
 	assert_equal(3, unix_recv_fds(pair[1], buf, 16, got_fds, 4, &count))
 	buf[3] = 0
@@ -58,12 +58,12 @@ void test_unix_fds_pass_pipe_ends():
 # Plain data with no descriptors attached reports a count of zero, and
 # a closed peer reads as EOF.
 void test_unix_fds_plain_data_and_eof():
-	int* pair = malloc(2 * __word_size__)
+	int* pair = cast(int*, malloc(2 * __word_size__))
 	assert_equal(0, socket_pair(pair))
 	assert_equal(4, write(pair[0], c"data", 4))
 	close(pair[0])
-	char* buf = malloc(16)
-	int* got_fds = malloc(2 * __word_size__)
+	char* buf = cast(char*, malloc(16))
+	int* got_fds = cast(int*, malloc(2 * __word_size__))
 	int count = 7
 	assert_equal(4, unix_recv_fds(pair[1], buf, 16, got_fds, 2, &count))
 	assert_equal(0, count)

@@ -138,7 +138,7 @@ char* mem_budget_alloc(mem_budget* b, int size):
 		b.failures = b.failures + 1
 		return 0
 	if (mem_budget_reserve(b, size) != ARENA_OK): return 0
-	char* p = malloc(size)
+	char* p = cast(char*, malloc(size))
 	if (p == 0):
 		mem_budget_release(b, size)
 		b.failures = b.failures + 1

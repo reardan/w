@@ -18,7 +18,7 @@ int decoy_return  /* a real return address, captured from decoy_caller */
 
 
 void decoy_leaf():
-	char* buf = malloc(4 * __word_size__)
+	char* buf = cast(char*, malloc(4 * __word_size__))
 	int n = stack_trace_collect(buf, 4)
 	asserts(c"decoy path collected", n >= 1)
 	# stack_trace_collect stores return address - 1
@@ -57,7 +57,7 @@ int frame_at(int index):
 
 
 int main(int argc, int argv):
-	frames = malloc(256 * __word_size__)
+	frames = cast(char*, malloc(256 * __word_size__))
 	decoy_caller()
 	asserts(c"decoy captured", decoy_return != 0)
 	int depth = 20

@@ -210,7 +210,7 @@ char* lsm_table_path(char* prefix, int seq):
 
 # Appends one 5-byte (tag, u32) record. Returns wal_append's result.
 int lsm_append_tagged(wal* target, int tag, int value):
-	char* rec = malloc(5)
+	char* rec = cast(char*, malloc(5))
 	rec[0] = tag
 	store_le32(rec + 1, value)
 	int ok = wal_append(target, rec, 5)
@@ -611,7 +611,7 @@ int lsm_log_record(lsm* l, char* rec, int len):
 int lsm_put(lsm* l, char* key, char* value, int value_len):
 	if (value_len < 0 || l.failed): return 0
 	int key_len = strlen(key)
-	char* rec = malloc(9 + key_len + value_len)
+	char* rec = cast(char*, malloc(9 + key_len + value_len))
 	rec[0] = lsm_tag_put
 	store_le32(rec + 1, key_len)
 	store_le32(rec + 5, value_len)
@@ -636,7 +636,7 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 int lsm_delete(lsm* l, char* key):
 	if (l.failed): return 0
 	int key_len = strlen(key)
-	char* rec = malloc(5 + key_len)
+	char* rec = cast(char*, malloc(5 + key_len))
 	rec[0] = lsm_tag_delete
 	store_le32(rec + 1, key_len)
 	for i in range(key_len): rec[5 + i] = key[i]
@@ -716,7 +716,7 @@ int lsm_apply_batch(lsm* l, lsm_batch* b):
 	if (n == 0): return 1
 	int total = b.encoded_len
 	if (total > wal_max_record()): return 0
-	char* rec = malloc(total)
+	char* rec = cast(char*, malloc(total))
 	rec[0] = lsm_tag_batch
 	store_le32(rec + 1, n)
 	int off = 5
@@ -1067,7 +1067,7 @@ char* lsm_export(lsm* l, int* len_out):
 		i = i + 1
 	char* buf = 0
 	if (read_ok == 1):
-		buf = malloc(total)
+		buf = cast(char*, malloc(total))
 		buf[0] = 76   # L
 		buf[1] = 83   # S
 		buf[2] = 77   # M
@@ -1097,6 +1097,46 @@ char* lsm_export(lsm* l, int* len_out):
 		return 0
 	len_out[0] = total
 	return buf
+
+
+# Publish a fully built, validated table using the existing durable generation
+# boundary. Takes ownership of t/path on both success and failure.
+int lsm_publish_generation(lsm* l, sstable* t, char* path, list[int] seqs):
+	int count = seqs.length
+	int new_epoch = l.epoch + 1
+	fs_replace_report rep
+	int status = lsm_publish_manifest(l.manifest, new_epoch, seqs, &rep)
+	if (status != IO_OK && rep.renamed == 0):
+		# the old generation is still the live one
+		if (count > 0):
+			sstable_close(t)
+			storage_unlink(l.ops, path)
+			free(path)
+		return 0
+	# the manifest names the new generation: switch everything to it
+	list[sstable*] old_tables = l.tables
+	list[char*] old_paths = l.table_paths
+	l.tables = new list[sstable*]
+	l.table_paths = new list[char*]
+	if (count > 0):
+		l.tables.push(t)
+		l.table_paths.push(path)
+	memtable_clear(l.mem)
+	l.epoch = new_epoch
+	if (status != IO_OK):
+		# The rename is visible but its durability is unknown. Preserve
+		# the old data WAL and files; recovery may still select them.
+		lsm_free_tables(old_tables, old_paths)
+		return lsm_fail(l)
+	fs_replace_report drep
+	int dstatus = lsm_publish_data_wal(l.log, new_epoch, &drep)
+	int i = 0
+	while (i < old_paths.length):
+		if (status == IO_OK): storage_unlink(l.ops, old_paths[i])
+		i = i + 1
+	lsm_free_tables(old_tables, old_paths)
+	if (status != IO_OK || dstatus != IO_OK): return lsm_fail(l)
+	return 1
 
 
 # Installs a new generation holding exactly the given records (keys
@@ -1133,40 +1173,7 @@ int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, l
 			free(path)
 			return 0
 		seqs.push(seq)
-	int new_epoch = l.epoch + 1
-	fs_replace_report rep
-	int status = lsm_publish_manifest(l.manifest, new_epoch, seqs, &rep)
-	if (status != IO_OK && rep.renamed == 0):
-		# the old generation is still the live one
-		if (count > 0):
-			sstable_close(t)
-			storage_unlink(l.ops, path)
-			free(path)
-		return 0
-	# the manifest names the new generation: switch everything to it
-	list[sstable*] old_tables = l.tables
-	list[char*] old_paths = l.table_paths
-	l.tables = new list[sstable*]
-	l.table_paths = new list[char*]
-	if (count > 0):
-		l.tables.push(t)
-		l.table_paths.push(path)
-	memtable_clear(l.mem)
-	l.epoch = new_epoch
-	if (status != IO_OK):
-		# The rename is visible but its durability is unknown. Preserve
-		# the old data WAL and files; recovery may still select them.
-		lsm_free_tables(old_tables, old_paths)
-		return lsm_fail(l)
-	fs_replace_report drep
-	int dstatus = lsm_publish_data_wal(l.log, new_epoch, &drep)
-	int i = 0
-	while (i < old_paths.length):
-		if (status == IO_OK): storage_unlink(l.ops, old_paths[i])
-		i = i + 1
-	lsm_free_tables(old_tables, old_paths)
-	if (status != IO_OK || dstatus != IO_OK): return lsm_fail(l)
-	return 1
+	return lsm_publish_generation(l, t, path, seqs)
 
 
 # Wipes l to an empty tree: installs an empty generation (header) —

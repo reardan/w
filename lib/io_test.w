@@ -22,7 +22,7 @@ void test_io_write_all_then_read_exact_eof():
 	assert_equal(IO_OK, io_write_all(wr, c"hello", 5, &r))
 	assert_equal(5, r.transferred)
 	assert_equal(IO_OK, io_close(wr, &r))
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	assert_equal(IO_OK, io_read_exact(rd, buf, 3, &r))
 	assert_equal(3, r.transferred)
 	# Only two bytes remain: EOF with the partial count, not success.

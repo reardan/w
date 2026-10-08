@@ -114,7 +114,7 @@ void test_h2_tls_client_and_server():
 
 	# 200 KB each way: many TLS records and several flow-control windows.
 	int big = 204800
-	char* body = malloc(big)
+	char* body = cast(char*, malloc(big))
 	int i = 0
 	while (i < big):
 		body[i] = 'a' + (i % 26)
@@ -168,7 +168,7 @@ void test_h2_tls_client_refuses_server_without_h2():
 		tls_conn* t = tls_accept(fd, scfg)
 		if (t == 0): exit(81)
 		if (tls_alpn_selected(t) != 0): exit(82)
-		char* buf = malloc(64)
+		char* buf = cast(char*, malloc(64))
 		if (tls_read(t, buf, 64) != 0): exit(83)
 		tls_close(t)
 		close(fd)

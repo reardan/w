@@ -67,7 +67,7 @@ int tlss_bytes_equal(char* a, char* b, int n):
 
 # Wrap a handshake message in a TLS plaintext record (content type 22).
 char* tlss_wrap_handshake(char* msg, int mlen, int* out_len):
-	char* rec = malloc(5 + mlen)
+	char* rec = cast(char*, malloc(5 + mlen))
 	rec[0] = 22
 	rec[1] = 3
 	rec[2] = 3
@@ -102,10 +102,10 @@ void tlss_config_inmem_free(tls_server_config* scfg):
 # key_share carries the public key of client_priv. Returns the handshake
 # message (not record-wrapped); *out_len its length.
 char* tlss_build_client_hello(char* client_priv, int* out_len):
-	char* pub = malloc(32)
+	char* pub = cast(char*, malloc(32))
 	x25519_scalarmult_base(pub, client_priv)
-	char* rnd = malloc(32)
-	char* sid = malloc(32)
+	char* rnd = cast(char*, malloc(32))
+	char* sid = cast(char*, malloc(32))
 	tlss_fill(rnd, 32, 0x11)
 	tlss_fill(sid, 32, 0x40)
 	char* ch = tls_build_client_hello(c"test.w.example", rnd, sid, pub, out_len)
@@ -130,18 +130,18 @@ tls_conn* tlss_run_server(char* client_flight, int flen, tls_server_config* scfg
 # ---- raw <-> DER ECDSA signature round trip -----------------------------------
 
 void tlss_check_der_roundtrip(int r_seed, int s_seed):
-	char* r = malloc(32)
-	char* s = malloc(32)
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
 	tlss_fill(r, 32, r_seed)
 	tlss_fill(s, 32, s_seed)
-	char* der = malloc(80)
+	char* der = cast(char*, malloc(80))
 	int der_len = 0
 	asserts(c"raw_to_der ok", x509_ecdsa_sig_raw_to_der(r, s, der, &der_len) != 0)
 	# DER SEQUENCE of two INTEGERs; total length is short-form.
 	assert_equal(0x30, der[0] & 255)
 	assert_equal(der_len - 2, der[1] & 255)
-	char* r2 = malloc(32)
-	char* s2 = malloc(32)
+	char* r2 = cast(char*, malloc(32))
+	char* s2 = cast(char*, malloc(32))
 	asserts(c"sig_to_raw ok", x509_ecdsa_sig_to_raw(der, der_len, r2, s2) != 0)
 	asserts(c"r round trip", tlss_bytes_equal(r, r2, 32) != 0)
 	asserts(c"s round trip", tlss_bytes_equal(s, s2, 32) != 0)
@@ -177,18 +177,18 @@ void test_server_certverify_signature():
 	x509_cert* leaf = certs[0]
 	assert_equal(X509_KEY_EC_P256, leaf.key_type)
 
-	char* d = malloc(32)
+	char* d = cast(char*, malloc(32))
 	asserts(c"key loads", x509_load_ec_private_key(key_pem, strlen(key_pem), d) != 0)
 
 	# Private key matches the certificate's public key.
-	char* qx = malloc(32)
-	char* qy = malloc(32)
+	char* qx = cast(char*, malloc(32))
+	char* qy = cast(char*, malloc(32))
 	asserts(c"pubkey derive", ecdsa_p256_public_key(d, qx, qy) != 0)
 	asserts(c"qx matches cert", tlss_bytes_equal(qx, leaf.ec_qx, 32) != 0)
 	asserts(c"qy matches cert", tlss_bytes_equal(qy, leaf.ec_qy, 32) != 0)
 
 	# Build a CertificateVerify over a fixed transcript hash, then verify it.
-	char* th = malloc(32)
+	char* th = cast(char*, malloc(32))
 	tlss_fill(th, 32, 0xab)
 	int cv_len = 0
 	char* cv = tls_build_certverify(d, th, 32, &cv_len)
@@ -203,11 +203,11 @@ void test_server_certverify_signature():
 	# Recompute the signed content digest and check the signature.
 	int clen = 0
 	char* content = tls_certverify_content(th, 32, &clen)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, content, clen, digest)
 	free(content)
-	char* r = malloc(32)
-	char* s = malloc(32)
+	char* r = cast(char*, malloc(32))
+	char* s = cast(char*, malloc(32))
 	asserts(c"sig der->raw", x509_ecdsa_sig_to_raw(cv + 8, sig_len, r, s) != 0)
 	asserts(c"sig verifies", ecdsa_p256_verify(leaf.ec_qx, leaf.ec_qy, digest, 32, r, s) != 0)
 
@@ -245,9 +245,9 @@ char* tlss_server_flight(char* chrec, int chrec_len, char* server_priv, char* se
 
 
 void test_server_client_interop_inmem():
-	char* client_priv = malloc(32)
-	char* server_priv = malloc(32)
-	char* server_random = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
+	char* server_priv = cast(char*, malloc(32))
+	char* server_random = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	tlss_fill(server_priv, 32, 0x55)
 	tlss_fill(server_random, 32, 0x66)
@@ -280,7 +280,7 @@ void test_server_client_interop_inmem():
 	int fin_len = cout_len - ch_rec_len
 
 	# Pass 3: a fresh server must accept [ClientHello || clientFinished].
-	char* full = malloc(chrec_len + fin_len)
+	char* full = cast(char*, malloc(chrec_len + fin_len))
 	mem_copy(full, chrec, chrec_len)
 	int i = 0
 	while (i < fin_len):
@@ -305,7 +305,7 @@ void test_server_client_interop_inmem():
 	int sout_len = 0
 	char* sout = tls_mem_take_output(server, &sout_len)
 	tls_mem_feed(client, sout, sout_len)
-	char* rbuf = malloc(256)
+	char* rbuf = cast(char*, malloc(256))
 	int got = tls_read(client, rbuf, 256)
 	assert_equal(smsg_len, got)
 	asserts(c"server->client payload", tlss_bytes_equal(smsg, rbuf, smsg_len) != 0)
@@ -344,7 +344,7 @@ void test_server_client_interop_inmem():
 # must be answered with a fatal handshake_failure alert and NO ServerHello
 # (and therefore no HelloRetryRequest).
 void test_server_no_chacha_rejected():
-	char* client_priv = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	int ch_len = 0
 	char* ch = tlss_build_client_hello(client_priv, &ch_len)
@@ -378,7 +378,7 @@ void test_server_no_chacha_rejected():
 # A ClientHello whose only key_share is not X25519 must be answered with
 # handshake_failure and NO ServerHello (no HelloRetryRequest in MVP).
 void test_server_no_x25519_rejected():
-	char* client_priv = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	int ch_len = 0
 	char* ch = tlss_build_client_hello(client_priv, &ch_len)
@@ -411,7 +411,7 @@ void test_server_no_x25519_rejected():
 void test_server_oversized_length_field():
 	# Minimal ClientHello body: version + 32-byte random + empty session_id +
 	# a cipher_suites length of 0xffff with no suite bytes present.
-	char* body = malloc(37)
+	char* body = cast(char*, malloc(37))
 	body[0] = 0x03
 	body[1] = 0x03
 	int i = 0
@@ -421,7 +421,7 @@ void test_server_oversized_length_field():
 	body[34] = 0                # legacy_session_id length
 	body[35] = 0xff             # cipher_suites length high byte (overflow)
 	body[36] = 0xff
-	char* msg = malloc(41)
+	char* msg = cast(char*, malloc(41))
 	msg[0] = TLS_HS_CLIENT_HELLO
 	msg[1] = 0
 	msg[2] = 0
@@ -453,7 +453,7 @@ void test_server_oversized_length_field():
 # A truncated ClientHello (record ends mid-message) must fail closed with no
 # crash.
 void test_server_truncated_clienthello():
-	char* client_priv = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	int ch_len = 0
 	char* ch = tlss_build_client_hello(client_priv, &ch_len)
@@ -477,9 +477,9 @@ void test_server_truncated_clienthello():
 # A tampered client Finished record (flipped ciphertext byte) must trip
 # bad_record_mac when the server tries to decrypt it.
 void test_server_tampered_client_finished():
-	char* client_priv = malloc(32)
-	char* server_priv = malloc(32)
-	char* server_random = malloc(32)
+	char* client_priv = cast(char*, malloc(32))
+	char* server_priv = cast(char*, malloc(32))
+	char* server_random = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	tlss_fill(server_priv, 32, 0x55)
 	tlss_fill(server_random, 32, 0x66)
@@ -506,7 +506,7 @@ void test_server_tampered_client_finished():
 
 	# Assemble [ClientHello || clientFinished] and flip a ciphertext byte in
 	# the Finished record (offset 5 = first byte past the record header).
-	char* full = malloc(chrec_len + fin_len)
+	char* full = cast(char*, malloc(chrec_len + fin_len))
 	mem_copy(full, chrec, chrec_len)
 	for i in range(fin_len): full[chrec_len + i] = cout[ch_rec_len + i]
 	full[chrec_len + 5] = full[chrec_len + 5] ^ 0xff
@@ -541,7 +541,7 @@ void test_server_tampered_client_finished():
 # the client trusts the leaf with insecure_skip_verify but still verifies the
 # ECDSA CertificateVerify signature and both Finished MACs.
 void test_server_loopback_fork():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socketpair", socket_pair(fds) >= 0)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
@@ -553,7 +553,7 @@ void test_server_loopback_fork():
 		scfg.key_path = tlss_key_path()
 		tls_conn* s = tls_accept(fds[1], scfg)
 		if (s == 0): exit(11)
-		char* buf = malloc(256)
+		char* buf = cast(char*, malloc(256))
 		int got = tls_read(s, buf, 256)
 		if (got <= 0): exit(12)
 		# Echo a fixed response.
@@ -572,7 +572,7 @@ void test_server_loopback_fork():
 	asserts(c"client connects to our server", c != 0)
 	char* ping = c"ping to tls_accept"
 	assert_equal(strlen(ping), tls_write(c, ping, strlen(ping)))
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	int got = tls_read(c, buf, 256)
 	char* reply = c"pong from tls_accept"
 	assert_equal(strlen(reply), got)
@@ -593,7 +593,7 @@ void test_server_loopback_fork():
 # fails before sending anything, leaving the socket untouched for the
 # opt-out attempt that follows.
 void test_server_loopback_no_server_name():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socketpair", socket_pair(fds) >= 0)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
@@ -605,7 +605,7 @@ void test_server_loopback_no_server_name():
 		tls_conn* s = tls_accept(fds[1], scfg)
 		if (s == 0): exit(11)
 		if (tls_write(s, c"ok", 2) != 2): exit(13)
-		char* buf = malloc(64)
+		char* buf = cast(char*, malloc(64))
 		if (tls_read(s, buf, 64) != 0): exit(14)
 		tls_close(s)
 		exit(0)
@@ -620,7 +620,7 @@ void test_server_loopback_no_server_name():
 	cfg.insecure_skip_verify = 1
 	tls_conn* c = tls_connect(fds[0], 0, cfg)
 	asserts(c"no name, insecure: client connects", c != 0)
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	assert_equal(2, tls_read(c, buf, 64))
 	asserts(c"server payload", tlss_bytes_equal(c"ok", buf, 2) != 0)
 	tls_close(c)

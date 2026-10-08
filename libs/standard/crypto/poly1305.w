@@ -94,10 +94,10 @@ poly1305* poly1305_new(char* key):
 	st.pad = cast(int*, malloc(8 * __word_size__))
 	st.ml = cast(int*, malloc(10 * __word_size__))
 	st.t = cast(int*, malloc(10 * __word_size__))
-	st.buffer = malloc(16)
+	st.buffer = cast(char*, malloc(16))
 	st.buffered = 0
 
-	char* rb = malloc(16)
+	char* rb = cast(char*, malloc(16))
 	int i = 0
 	while (i < 16):
 		rb[i] = key[i] & 255

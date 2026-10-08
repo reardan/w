@@ -175,7 +175,7 @@ char* vw_read_bytes(char* path, int* length):
 		println(path)
 		asserts(c"missing build output", 0)
 	string_builder* s = string_new()
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int n = read(fd, buf, 65536)
 	while (n > 0):
 		string_append_bytes(s, buf, n)

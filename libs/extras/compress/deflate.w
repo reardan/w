@@ -1067,7 +1067,7 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 	dfl_bits* w = dfl_bits_new()
 	if (length > 0):
 		int total = window_len + length
-		char* combined = malloc(total)
+		char* combined = cast(char*, malloc(total))
 		mem_copy(combined, window, window_len)
 		for i in range(length): combined[window_len + i] = data[i]
 		if (level <= DEFLATE_LEVEL_STORED()):

@@ -28,7 +28,7 @@ cell_pool* cell_pool_new(cell_snapshot* snapshot, int capacity):
 	mem_fill[char](cast(char*, pool), 0, sizeof(cell_pool))
 	pool.capacity = capacity
 	pool.cells = cast(vm_cell**, malloc(capacity * sizeof(vm_cell*)))
-	pool.leased = malloc(capacity)
+	pool.leased = cast(char*, malloc(capacity))
 	mem_fill[char](cast(char*, pool.cells), 0, capacity * sizeof(vm_cell*))
 	mem_fill[char](pool.leased, 0, capacity)
 	for i in range(capacity):

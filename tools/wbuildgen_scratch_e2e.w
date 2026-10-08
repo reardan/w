@@ -77,7 +77,7 @@ char* in_dir(char* name):
 
 
 int main(int argc, char** argv):
-	char* root = malloc(4096)
+	char* root = cast(char*, malloc(4096))
 	if (getcwd(root, 4096) <= 0):
 		err_out(c"wbuildgen_scratch_test: getcwd failed\n")
 		return 1

@@ -16,7 +16,7 @@ struct walk_countdown:
 	int start
 
 walk_countdown* walk_countdown_new(int start):
-	walk_countdown* c = malloc(4)
+	walk_countdown* c = cast(walk_countdown*, malloc(4))
 	c.start = start
 	return c
 

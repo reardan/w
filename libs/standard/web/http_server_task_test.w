@@ -137,7 +137,7 @@ generator int htt_client(int port, char* path, list[int] ok):
 	assert_equal(req.length, task_write_all(fd, req.data, req.length))
 	string_free(req)
 	string_builder* resp = string_new()
-	char* buf = malloc(1024)
+	char* buf = cast(char*, malloc(1024))
 	while (1):
 		int n = task_read(fd, buf, 1024)
 		if (n <= 0): break

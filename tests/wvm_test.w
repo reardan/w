@@ -115,7 +115,7 @@ void test_wvm_faults_and_timeout():
 
 # Minimal valid ELF for loader tests. All offsets are inside 256 bytes.
 char* wvm_test_elf():
-	char* image = malloc(256)
+	char* image = cast(char*, malloc(256))
 	mem_fill[char](image, 0, 256)
 	save_int32(image, 0x464c457f)
 	image[4] = 2

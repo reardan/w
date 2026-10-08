@@ -52,7 +52,7 @@ void wexec_process_group_kill(int pid):
 # fields; flags 0, no SA_RESTORER (see wexec_process_groups_supported's
 # note above).
 void wexec_install_termination_handler(int handler):
-	int* act = malloc(5 * __word_size__)
+	int* act = cast(int*, malloc(5 * __word_size__))
 	act[0] = handler
 	act[1] = 0
 	act[2] = 0

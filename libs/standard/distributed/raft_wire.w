@@ -178,17 +178,17 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		m.chunk_hash = load_le32(buf + off + 24)
 		m.chunk_crc = load_le32(buf + off + 28)
 		int count = load_le32(buf + off + 32)
-		if (count < 0 || count > RAFT_SNAPSHOT_MEMBERS || count > (len - 57) / 4 || m.chunk_total <= 0 || m.chunk_total > RAFT_SNAPSHOT_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total):
+		if (count < 0 || count > RAFT_SNAPSHOT_MEMBERS || count > (len - 57) / 4 || m.chunk_total <= 0 || m.chunk_total > SNAPSHOT_FILE_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total):
 			raft_msg_free(m)
 			return 0
 		int pos = off + 36
 		for i in range(count):
-			int id = load_le32(buf + pos)
-			if (id < 0):
-				raft_msg_free(m)
-				return 0
+			int id = raft_config_load_token(buf + pos)
 			m.snap_config.push(id)
 			pos = pos + 4
+		if (type == raft_msg_snapshot_chunk && raft_config_valid(m.snap_config) == 0):
+			raft_msg_free(m)
+			return 0
 		m.snap_len = load_le32(buf + pos)
 		if (m.snap_len < 0 || m.snap_len > RAFT_SNAPSHOT_CHUNK || m.snap_len != len - pos - 4 || m.snap_len > m.chunk_total - m.chunk_offset):
 			raft_msg_free(m)
@@ -228,13 +228,16 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		u64_load_le(m.prev_log_term, buf + off + 8)
 		u64_load_le(m.leader_commit, buf + off + 16)
 		int ccount = load_le32(buf + off + 24)
-		if (ccount < 0 || ccount > (len - off - 28) / 4):
+		if (ccount < 0 || ccount > RAFT_SNAPSHOT_MEMBERS || ccount > (len - off - 28) / 4):
 			raft_msg_free(m)
 			return 0
 		int coff = off + 28
 		for ci in range(ccount):
-			m.snap_config.push(load_le32(buf + coff))
+			m.snap_config.push(raft_config_load_token(buf + coff))
 			coff = coff + 4
+		if (raft_config_valid(m.snap_config) == 0):
+			raft_msg_free(m)
+			return 0
 		if (len - coff < 4):
 			raft_msg_free(m)
 			return 0
@@ -275,7 +278,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 			u64_free(eterm)
 			raft_msg_free(m)
 			return 0
-		if (kind == raft_entry_kind_config() && cmd_len != 5):
+		if (kind == raft_entry_kind_config() && raft_config_command_valid(buf + off + 13, cmd_len) == 0):
 			u64_free(eterm)
 			raft_msg_free(m)
 			return 0

@@ -59,7 +59,7 @@ char* us_too_long_path():
 
 void test_sockaddr_un_layout():
 	char* path = c"bin/some.sock"
-	char* addr = malloc(SOCKADDR_UN_SIZE)
+	char* addr = cast(char*, malloc(SOCKADDR_UN_SIZE))
 	int addrlen = sockaddr_un_init(addr, path)
 	# family word + path + NUL.
 	assert_equal(2 + strlen(path) + 1, addrlen)
@@ -73,7 +73,7 @@ void test_sockaddr_un_layout():
 
 void test_sockaddr_un_rejects_too_long_path():
 	char* long_path = us_too_long_path()
-	char* addr = malloc(SOCKADDR_UN_SIZE)
+	char* addr = cast(char*, malloc(SOCKADDR_UN_SIZE))
 	assert_equal(0 - 22, sockaddr_un_init(addr, long_path))
 	# The bind/connect wrappers surface the same failure.
 	int sockfd = socket_unix_stream()
@@ -98,7 +98,7 @@ void test_unix_echo_roundtrip():
 		int client = socket_connect_unix_path(path)
 		if (client < 0): exit(2)
 		if (write(client, c"ping", 4) != 4): exit(3)
-		char* reply = malloc(8)
+		char* reply = cast(char*, malloc(8))
 		int got = read(client, reply, 8)
 		if (got != 4): exit(4)
 		reply[got] = 0
@@ -109,7 +109,7 @@ void test_unix_echo_roundtrip():
 
 	int accepted = socket_accept_connection(server)
 	us_assert_ok(c"socket_accept_connection", accepted)
-	char* request = malloc(8)
+	char* request = cast(char*, malloc(8))
 	int got = read(accepted, request, 8)
 	assert_equal(4, got)
 	request[got] = 0
@@ -168,7 +168,7 @@ void test_unix_live_server_not_stolen():
 	# already closed, so it reads as immediate EOF.
 	int probe = socket_accept_connection(server)
 	us_assert_ok(c"accept of probe connection", probe)
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	assert_equal(0, read(probe, buf, 8))
 	close(probe)
 

@@ -4,6 +4,14 @@
 services foundations. This implementation changes libraries and tests; it
 adds no syntax, compiler backend, on-disk WAL format, or clock-based lease.
 
+The follow-up in [#589](https://github.com/reardan/w/issues/589) adds an
+opt-in file-backed snapshot path, authenticated remote sessions, and safe
+learner promotion. See [streaming snapshots](raft_streaming.md),
+[authenticated transport](raft_authenticated_transport.md), and
+[membership](raft_membership.md) for those APIs and their compatibility
+requirements. The blob snapshot limits below describe the original #522
+path; file-backed snapshots have separate explicit budgets.
+
 ## Faultable storage
 
 `wal_open_policy_with_ops`, `wal_reader_open_with_ops`,
@@ -198,3 +206,29 @@ which is a request, not a guarantee of cold hardware. RSS and throughput include
 process startup; latency samples exclude stdout formatting. Instrumentation
 itself has cost. No CRC format change, page cache, buffer reuse, allocator,
 runtime, or compiler optimization is enabled without a separate comparison.
+
+## Combining the remote-service APIs
+
+Run Raft and its application on a serialized owner. Provision a new node's
+authenticated identity, admit it as a learner, and replicate using the same
+`raft_wal_persist_release` gate as existing transports. A TLS connection
+authenticates and authorizes messages; it does not make an acknowledgment
+durable. Keep blocking persistence and snapshot export/install on the bounded
+storage executor, retaining exclusive ownership of the affected objects while
+the job runs.
+
+For a durable application, capture the same LSM containing `@raft/` metadata
+and retained request results when taking a file-backed snapshot. After receiving
+or recovering a snapshot, use `durable_apply_install_pending` before applying
+later entries or serving reads. Promotion waits for an admitted learner to
+acknowledge the leader's complete log and for commitment in the current term.
+Configuration changes invalidate read barriers and authenticated sessions;
+reconnect and start a fresh barrier under the new configuration.
+
+`raft_followup_integration_test` exercises a persisted application result,
+streamed learner catch-up, a crash between final snapshot acknowledgment and
+application installation, recovery, promotion, and quorum-confirmed reads.
+The individual streaming, learner, and TLS tests cover their fault and resource
+boundaries in more detail. These facilities require the deployment to supply
+trusted initial voter configuration, peer credentials, certificate trust, and
+serialized ownership; they do not discover or authorize arbitrary new members.

@@ -378,7 +378,7 @@ ftp_client* ftp_attach(int fd, int peer_ip, int timeout_ms):
 	c.error = 0
 	c.reply_code = 0
 	c.reply_text = string_new()
-	c.rbuf = malloc(4096)
+	c.rbuf = cast(char*, malloc(4096))
 	c.rpos = 0
 	c.rlen = 0
 	c.use_epsv = 1
@@ -836,7 +836,7 @@ char* ftp_mdtm(ftp_client* c, char* path):
 	if (end - 4 < 14):
 		ftp_fail(c, ftp_error_protocol())
 		return 0
-	char* stamp = malloc(end - 4 + 1)
+	char* stamp = cast(char*, malloc(end - 4 + 1))
 	for i in range(4, end): stamp[i - 4] = text[i]
 	stamp[end - 4] = 0
 	return stamp
@@ -1039,7 +1039,7 @@ char* ftp_download(ftp_client* c, char* verb, char* path, int* out_len):
 	int fd = ftp_begin_transfer(c, verb, path)
 	if (fd < 0): return 0
 	string_builder* out = string_new()
-	char* chunk = malloc(16384)
+	char* chunk = cast(char*, malloc(16384))
 	int failed = 0
 	while (1):
 		int got = ftp_data_recv(c, fd, chunk, 16384)
@@ -1100,7 +1100,7 @@ int ftp_retr_fd(ftp_client* c, char* path, int out_fd):
 	if (path == 0): return ftp_fail_neg(c, ftp_error_bad_argument())
 	int fd = ftp_begin_transfer(c, c"RETR", path)
 	if (fd < 0): return (-1)
-	char* chunk = malloc(16384)
+	char* chunk = cast(char*, malloc(16384))
 	int total = 0
 	int failed = 0
 	while (failed == 0):

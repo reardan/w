@@ -61,7 +61,7 @@ int asm_hex_decode(char* hex, char* out, int max):
 # Malloc'd lowercase hex string for n bytes.
 char* asm_hex_encode(char* bytes, int n):
 	char* digits = c"0123456789abcdef"
-	char* text = malloc(n * 2 + 1)
+	char* text = cast(char*, malloc(n * 2 + 1))
 	for i in range(n):
 		int v = bytes[i] & 255
 		text[i * 2] = digits[v >> 4]
@@ -128,7 +128,7 @@ list[asm_corpus_entry] asm_corpus_load(char* path):
 		char* bytes = 0
 		int length = -1
 		if (ok):
-			bytes = malloc(bar / 2 + 1)
+			bytes = cast(char*, malloc(bar / 2 + 1))
 			length = asm_hex_decode(line, bytes, bar / 2 + 1)
 			if (length <= 0): ok = 0
 			if (length * 2 != bar): ok = 0

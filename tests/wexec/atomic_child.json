@@ -1,0 +1,109 @@
+{
+	"targets": [
+		{
+			"name": "compiler",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/live"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-writer", "bin/wexec_atomic/live"], "atomic_output": "bin/wexec_atomic/live"},
+				{"cmd": ["touch", "bin/wexec_atomic/published"]}
+			]
+		},
+		{
+			"name": "a",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-concurrent", "bin/wexec_atomic/output", "bin/wexec_atomic/a", "bin/wexec_atomic/b"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		},
+		{
+			"name": "b",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-concurrent", "bin/wexec_atomic/output", "bin/wexec_atomic/b", "bin/wexec_atomic/a"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		},
+		{
+			"name": "fail",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/output"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-fail", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		},
+		{
+			"name": "expected",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/output"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-fail", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output", "expect_fail": true}
+			]
+		},
+		{
+			"name": "mismatch",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/output"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output", "expect_stdout": "missing text"}
+			]
+		},
+		{
+			"name": "timeout",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/output"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-hang", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output", "timeout_ms": 100}
+			]
+		},
+		{
+			"name": "ok",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/output"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		},
+		{
+			"name": "missing",
+			"inputs": [],
+			"outputs": ["bin/wexec_atomic/output"],
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "exit0", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		},
+		{
+			"name": "cwd",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "output"], "cwd": "bin/wexec_atomic", "atomic_output": "output"}
+			]
+		},
+		{
+			"name": "invalid",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "bin/wexec_atomic/output"], "atomic_output": true}
+			]
+		},
+		{
+			"name": "unmatched",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "bin/wexec_atomic/output"], "atomic_output": "no-match"}
+			]
+		},
+		{
+			"name": "ambiguous",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "bin/wexec_atomic/output", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		},
+		{
+			"name": "rename_fail",
+			"steps": [
+				{"cmd": ["bin/wexec_e2e_atomic", "atomic-write", "bin/wexec_atomic/directory"], "atomic_output": "bin/wexec_atomic/directory"}
+			]
+		},
+		{
+			"name": "spawn_fail",
+			"steps": [
+				{"cmd": ["/no/such/wexec-command", "bin/wexec_atomic/output"], "atomic_output": "bin/wexec_atomic/output"}
+			]
+		}
+	]
+}

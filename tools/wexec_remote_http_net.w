@@ -29,7 +29,7 @@ int wexec_remote_http_get(char* url, int timeout_ms, int* out_status, char** out
 		ok = 1
 		*out_status = resp.status
 		*out_body_len = resp.body_len
-		char* copy = malloc(resp.body_len + 1)
+		char* copy = cast(char*, malloc(resp.body_len + 1))
 		for i in range(resp.body_len): copy[i] = resp.body[i]
 		copy[resp.body_len] = 0
 		*out_body = copy

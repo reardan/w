@@ -24,7 +24,7 @@ void test_transport_socketpair_round_trip_and_identity():
 	io_result r
 	assert_equal(IO_OK, transport_write_all(a, c"hello", 5, &r))
 	assert_equal(5, r.transferred)
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	assert_equal(IO_OK, transport_read_exact(b, buf, 5, &r))
 	assert_bytes_equal(c"hello", buf, 5)
 	# Empty requests succeed without touching anything.
@@ -45,7 +45,7 @@ void test_transport_peer_close_is_eof_like_raw_io():
 	transport* a = transport_from_socket(fds[0], c"socketpair", 1)
 	io_result r
 	assert_equal(IO_OK, io_close(fds[1], &r))
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	assert_equal(IO_EOF, transport_read_some(a, buf, 16, &r))
 	assert_equal(0, r.transferred)
 	# Same category as checked descriptor I/O on the raw socket.
@@ -84,7 +84,7 @@ void test_transport_read_deadline_times_out():
 	transport* b = 0
 	transport_test_pair(&a, &b)
 	io_result r
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	transport_set_timeout(a, 50)
 	int start = time_monotonic_ms()
 	assert_equal(IO_TIMED_OUT, transport_read_some(a, buf, 16, &r))
@@ -113,7 +113,7 @@ void test_transport_write_deadline_reports_confirmed_prefix():
 	# Nobody reads b: the socket buffers fill and the write must stop at
 	# the deadline instead of blocking forever.
 	int len = 16 * 1024 * 1024
-	char* big = malloc(len)
+	char* big = cast(char*, malloc(len))
 	io_result r
 	transport_set_timeout(a, 100)
 	assert_equal(IO_TIMED_OUT, transport_write_all(a, big, len, &r))
@@ -131,7 +131,7 @@ void test_transport_closed_descriptor_is_never_touched():
 	io_result r
 	assert_equal(IO_OK, transport_close(a, &r))
 	assert_equal(IO_OK, transport_close(a, &r))
-	char* buf = malloc(4)
+	char* buf = cast(char*, malloc(4))
 	assert_equal(IO_IO_ERROR, transport_read_some(a, buf, 4, &r))
 	assert_equal(9, r.native_error)
 	assert_equal(IO_IO_ERROR, transport_write_all(a, buf, 4, &r))
@@ -166,7 +166,7 @@ void test_transport_unix_socket_round_trip():
 	assert_contains(transport_peer(server), c"unix-client@")
 	assert_equal(0, transport_authenticated(server))
 	assert_equal(IO_OK, transport_write_all(client, c"ping", 4, &r))
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	assert_equal(IO_OK, transport_read_exact(server, buf, 4, &r))
 	assert_bytes_equal(c"ping", buf, 4)
 	assert_equal(IO_OK, transport_write_all(server, c"pong", 4, &r))
@@ -217,7 +217,7 @@ void test_transport_tcp_loopback_round_trip_and_reset():
 	assert_equal(0, transport_authenticated(client))
 	assert_equal(IO_UNSUPPORTED, transport_require_authenticated(server, &r))
 	assert_equal(IO_OK, transport_write_all(client, c"request", 7, &r))
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	assert_equal(IO_OK, transport_read_exact(server, buf, 7, &r))
 	assert_bytes_equal(c"request", buf, 7)
 	# Peer closes: EOF on the reader, then errors (never SIGPIPE) on the
@@ -253,7 +253,7 @@ void test_transport_metrics_record_latency_and_failures():
 	metrics_enable_events(m, 4)
 	transport_set_metrics(a, m)
 	io_result r
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	assert_equal(IO_OK, transport_write_all(a, c"x", 1, &r))
 	assert_equal(IO_OK, transport_read_some(b, buf, 8, &r))
 	transport_set_timeout(a, 10)
@@ -282,7 +282,7 @@ struct transport_task_state:
 
 generator int transport_test_reader(transport_task_state* st):
 	io_result r
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	transport_set_timeout(st.reader, 2000)
 	st.read_status = transport_read_some(st.reader, buf, 8, &r)
 	st.read_count = r.transferred

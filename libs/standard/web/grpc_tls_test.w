@@ -42,7 +42,7 @@ char* gt_msg(char* prefix, int n):
 
 
 char* gt_fill(int size, int ch):
-	char* buf = malloc(size + 1)
+	char* buf = cast(char*, malloc(size + 1))
 	for i in range(size): buf[i] = ch
 	buf[size] = 0
 	return buf
@@ -281,7 +281,7 @@ void test_grpc_tls_end_to_end():
 	char* saved_buf = t.app_buf
 	int saved_len = t.app_len
 	int saved_pos = t.app_pos
-	char* fake = malloc(4)
+	char* fake = cast(char*, malloc(4))
 	t.app_buf = fake
 	t.app_len = 4
 	t.app_pos = 1

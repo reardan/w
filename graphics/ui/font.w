@@ -164,7 +164,7 @@ ttf_font* ui_font_face_font(int face):
 	if (ui_font_st.fonts[face] != 0): return ui_font_st.fonts[face]
 	if (face >= ui_font_face_count()): return 0
 	int size = ui_font_face_size(face)
-	char* data = malloc(size + 4)
+	char* data = cast(char*, malloc(size + 4))
 	int chars = ui_font_face_chunk_chars()
 	int n = 0
 	int k = 0
@@ -215,7 +215,7 @@ int ui_font_face_load_ttf(char* path):
 # The same from font bytes in memory (hosts without a filesystem). The
 # bytes are copied, so data is only read during the call.
 int ui_font_face_load_bytes(char* data, int size):
-	char* copy = malloc(size + 1)
+	char* copy = cast(char*, malloc(size + 1))
 	mem_copy(copy, data, size)
 	ttf_font* font = cast(ttf_font*, malloc(sizeof(ttf_font)))
 	if (ttf_load_bytes(font, copy, size) == 0):
@@ -292,7 +292,7 @@ int ui_font_rows_reserve(int rows):
 	if (next < 256): next = 256
 	while (next < rows): next = next * 2
 	int w = ui_font_atlas_w()
-	char* grown = malloc(next * w)
+	char* grown = cast(char*, malloc(next * w))
 	if (grown == 0): return 0
 	int i = 0
 	while (i < ui_font_st.cap_rows * w):
@@ -685,7 +685,7 @@ ui_glyph ui_font_mask(int mask):
 char* ui_font_baked_pixels():
 	if (ui_font_st.baked != 0): return ui_font_st.baked
 	int rle_length = ui_font_rle_length()
-	char* stream = malloc(rle_length)
+	char* stream = cast(char*, malloc(rle_length))
 	int chunk_size = ui_font_rle_chunk_size()
 	int i = 0
 	while (i < ui_font_rle_chunk_count()):
@@ -696,7 +696,7 @@ char* ui_font_baked_pixels():
 		for j in range(count): stream[base + j] = chunk[j]
 		i = i + 1
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
-	char* pixels = rle_decode(stream, rle_length, malloc(total), total)
+	char* pixels = rle_decode(stream, rle_length, cast(char*, malloc(total)), total)
 	free(stream)
 	ui_font_st.baked = pixels
 	return pixels
@@ -710,7 +710,7 @@ char* ui_font_build_atlas():
 	char* baked = ui_font_baked_pixels()
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
 	int extra = ui_font_atlas_w() * ui_font_st.cap_rows
-	char* pixels = malloc(total + extra + 1)
+	char* pixels = cast(char*, malloc(total + extra + 1))
 	mem_copy(pixels, baked, total)
 	for e in range(extra): pixels[total + e] = ui_font_st.pixels[e]
 	return pixels

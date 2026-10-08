@@ -91,6 +91,8 @@ void be_cmp_note_reset();
 void be_imm_note_reset();
 void be_notes_reset();
 
+void arm64_promote_acc(int instruction);
+
 ############################ register-resident locals ###########################
 # Function-scoped promotion of word-sized locals into callee-saved
 # registers (docs/projects/register_allocation_pgo.md §2.2, unit R2):
@@ -964,7 +966,7 @@ void push_int32(int v):
 void promote_eax():
 	if (target_isa == 3): ptx_ld_ax(c".u64")
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
-	elif (target_isa == 1): a64(op(0xf9, 0x400000))   # ldr x0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0xf9, 0x400000))   # ldr x0,[x0]
 	else:
 		# A register-resident local: its "load" is a register move
 		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
@@ -994,7 +996,7 @@ void promote_ebx():
 void promote_int8_eax():
 	if (target_isa == 3): ptx_ld_ax(c".s8")
 	elif (target_isa == 2): wasm_promote_eax_op(0x2c)
-	elif (target_isa == 1): a64(op(0x39, 0x800000))   # ldrsb x0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0x39, 0x800000))   # ldrsb x0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbe")
@@ -1010,7 +1012,7 @@ void promote_int8_eax():
 void promote_int16_eax():
 	if (target_isa == 3): ptx_ld_ax(c".s16")
 	elif (target_isa == 2): wasm_promote_eax_op(0x2e)
-	elif (target_isa == 1): a64(op(0x79, 0x800000))   # ldrsh x0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0x79, 0x800000))   # ldrsh x0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbf")
@@ -1026,7 +1028,7 @@ void promote_int16_eax():
 void promote_int32_eax():
 	if (target_isa == 3): ptx_ld_ax(c".s32")
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
-	elif (target_isa == 1): a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0xb9, 0x800000))   # ldrsw x0,[x0]
 	else:
 		# x86-32: 'int' is the 4-byte word, so a promoted int reads here
 		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
@@ -1093,9 +1095,9 @@ void store_ebx_int8():
 # Everything is fail-closed. Any emission the fold did not expect advances
 # codepos, the == check stops matching, and the plain path runs.
 #
-# x86 family only, like cmp_fuse: arm64 and wasm materialize constants
-# through variable-length or stateful sequences that a byte rollback would
-# not undo cleanly.
+# ARM64 also notes literal materializations for its operand shuttle.
+# Its move-wide sequences have no external patches and can be re-emitted;
+# wasm remains stateful and does not participate.
 # (imm_note_*, push_imm_* and binfold_* are declared with the other
 # notes at the top of the file: the A2 memory-operand helpers read them.)
 
@@ -1158,6 +1160,81 @@ void binfold_emit(int folded):
 	mov_eax_int(folded)
 
 
+# ARM64 uses the same adjacency and rollback barriers as the x86 folds.
+# Its load note stores the A64 opcode in load_note_oplen (load_note_op
+# is unused); no note survives a target change or compiler checkpoint.
+void arm64_lea_note(int start, int k):
+	lea_note_start = start
+	lea_note_end = codepos
+	lea_note_disp = k
+
+
+int arm64_add_local_offset(int v):
+	if ((lea_note_end == 0) || (lea_note_end != codepos)): return 0
+	if (fold_add_fits(lea_note_disp, v) == 0): return 0
+	int disp = lea_note_disp + v
+	peep_rollback(lea_note_start)
+	arm64_lea_eax_esp_plus(disp)
+	return 1
+
+
+# Scaled unsigned-offset loads preserve the original signed/unsigned
+# load opcode. Unaligned, negative, or out-of-range addresses keep the
+# ordinary address materialization and load through x0.
+int arm64_load_offset_fits(int instruction, int disp):
+	int scale = (instruction >> 30) & 3
+	if (disp < 0): return 0
+	if ((disp & ((1 << scale) - 1)) != 0): return 0
+	return (disp >> scale) <= 4095
+
+
+void arm64_emit_local_load(int instruction, int disp):
+	load_note_start = codepos
+	a64(instruction | (28 << 5) | ((disp >> ((instruction >> 30) & 3)) << 10))
+	load_note_end = codepos
+	load_note_disp = disp
+	load_note_oplen = instruction
+
+
+void arm64_promote_acc(int instruction):
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		int disp = lea_note_disp
+		if (arm64_load_offset_fits(instruction, disp)):
+			peep_rollback(lea_note_start)
+			arm64_emit_local_load(instruction, disp)
+			return
+	a64(instruction)
+
+
+void arm64_push_acc():
+	push_note_start = codepos
+	a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
+	push_note_end = codepos
+
+
+# Replace push; literal/local load; pop with mov x1,x0; RHS. Only
+# the known RHS may be crossed: calls, nested pushes and labels stop
+# matching. Removing the push lowers a local's displacement by 8.
+void arm64_pop_secondary():
+	if (push_note_end != 0):
+		int kind = 0
+		int value = imm_note_value
+		int disp = load_note_disp - 8
+		int instruction = load_note_oplen
+		if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_note_end)): kind = 1
+		elif ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= 8)): kind = 2
+		if (kind != 0):
+			peep_rollback(push_note_start)
+			a64(op(0xaa, 0x0003e1))   # mov x1,x0
+			if (kind == 1): arm64_mov_rax_int64(value)
+			else: arm64_emit_local_load(instruction, disp)
+			# The RHS is no longer adjacent to any outstanding push.
+			imm_note_end = 0
+			push_note_end = 0
+			return
+	a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
+
+
 /* mov eax, op(0x12, 0x345678); zero is 'xor eax,eax' (A2: two bytes,
    zero-extends on x64; it clobbers the flags, which no emitter keeps live
    across a value materialization) */
@@ -1217,7 +1294,7 @@ void xor_eax_int32(int v):
 void promote_uint8_eax():
 	if (target_isa == 3): ptx_ld_ax(c".u8")
 	elif (target_isa == 2): wasm_promote_eax_op(0x2d)
-	elif (target_isa == 1): a64(op(0x39, 0x400000))   # ldrb w0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0x39, 0x400000))   # ldrb w0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(2, c"\x0f\xb6")
@@ -1234,7 +1311,7 @@ void promote_uint8_eax():
 void promote_uint32_eax():
 	if (target_isa == 3): ptx_ld_ax(c".u32")
 	elif (target_isa == 2): wasm_promote_eax_op(0x28)
-	elif (target_isa == 1): a64(op(0xb9, 0x400000))   # ldr w0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0xb9, 0x400000))   # ldr w0,[x0]
 	else:
 		if ((reg_lvalue_end != 0) && (reg_lvalue_end == codepos)):
 			mov_eax_reg(regalloc_note_take())
@@ -1253,7 +1330,7 @@ void promote_uint32_eax():
 void promote_uint16_eax():
 	if (target_isa == 3): ptx_ld_ax(c".u16")
 	elif (target_isa == 2): wasm_promote_eax_op(0x2f)
-	elif (target_isa == 1): a64(op(0x79, 0x400000))   # ldrh w0,[x0]
+	elif (target_isa == 1): arm64_promote_acc(op(0x79, 0x400000))   # ldrh w0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			lea_load_fold(2, c"\x0f\xb7")
@@ -1275,7 +1352,11 @@ void promote_uint16_eax():
    range the movabs. */
 void mov_eax_int(int v):
 	if (target_isa == 2): wasm_mov_eax_int(v)
-	elif (target_isa == 1): arm64_mov_rax_int64(v)
+	elif (target_isa == 1):
+		imm_note_start = codepos
+		arm64_mov_rax_int64(v)
+		imm_note_end = codepos
+		imm_note_value = v
 	else:
 		int start = codepos
 		if ((word_size == 8) && ((v >> 31) == -1) && (addr_modes_disabled == 0)):
@@ -1451,7 +1532,7 @@ void not_eax():
 void push_eax():
 	if (target_isa == 3): ptx_push_ax()
 	elif (target_isa == 2): wasm_push_eax()
-	elif (target_isa == 1): a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
+	elif (target_isa == 1): arm64_push_acc()
 	else:
 		# Inlined rather than calling imm_note_current(): W has no inliner and
 		# this is one of the hottest emitters in the compiler. target_isa == 0
@@ -1487,7 +1568,7 @@ void push_ebx():
 void pop_ebx():
 	if (target_isa == 3): ptx_pop_bx()
 	elif (target_isa == 2): wasm_pop_ebx()
-	elif (target_isa == 1): a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
+	elif (target_isa == 1): arm64_pop_secondary()
 	else:
 		# Both operands constant, and the right one emitted EXACTLY one mov
 		# directly after the push (push_imm_end == imm_note_start) -- so the
@@ -1725,19 +1806,30 @@ void jmp_int32(int v):
 # instruction stream behind an unconditional jump — byte-identical to the
 # classic jmp_int32 + be_branch_patch pair. On wasm code is not readable
 # memory, so the region instead redirects the emission cursor into the RW
-# data buffer (code_generator/wasm.w) and no jump exists at all;
+# data buffer (code_generator/wasm.w) and no jump exists at all. PIE
+# uses the same cursor swap so descriptor pointers can be relocated;
 # code_offset + codepos yields linear-memory addresses either way.
 
 int be_blob_begin():
-	if (target_isa == 2):
+	if ((target_isa == 2) || elf_pie):
+		be_notes_reset()
 		wasm_blob_begin()
 		return 0
 	jmp_int32(1337030)
 	return codepos
 
 
+# A pointer word inside a descriptor blob. PIE blobs live in data;
+# ordinary integers (lengths, kinds, offsets) must never be rebased.
+void be_blob_pointer(int v):
+	if (elf_pie && (v != 0)): rebase_note(code_offset + codepos)
+	emit_target_word(v)
+
+
 void be_blob_end(int p):
-	if (target_isa == 2): wasm_blob_end()
+	if ((target_isa == 2) || elf_pie):
+		wasm_blob_end()
+		be_notes_reset()
 	else:
 		# The blob holds unaligned bytes; realign so the jump lands on an
 		# instruction boundary (a no-op on x86).
@@ -1874,11 +1966,19 @@ void be_br_nonzero(int h):
 # ends; a discard-context branch emitted while the note is current
 # (nothing emitted in between) rolls the materialization back and
 # branches on the cmp's flags directly — cmp;jCC instead of
-# cmp;setCC;movzx;test;jCC. Only the x86 family sets the note today;
-# the other ISAs always take the plain path.
+# cmp;setCC;movzx;test;jCC on x86. ARM64 records its CSET instead,
+# yielding CMP;B.cond rather than CMP;CSET;CBZ/CBNZ. Other ISAs take
+# the plain path.
 int cmp_fuse_start
 int cmp_fuse_end
 int cmp_fuse_cc
+
+# Shared by the integer compare emitters; ARM64 records its CSET, x86
+# records SETcc/MOVZX. The condition stays in the common setcc vocabulary.
+void be_cmp_note_record(int start, int cc):
+	cmp_fuse_start = start
+	cmp_fuse_end = codepos
+	cmp_fuse_cc = cc
 
 # Invalidate the fusion note. Must be called wherever codepos moves
 # backward (REPL/wdbg checkpoint rollback): a stale note aliasing a
@@ -1952,21 +2052,30 @@ int be_br_const_discard(int h, int on_nonzero):
 # When the accumulator holds a comparison materialized by the
 # immediately preceding alu_cmp_set, drop the materialization and branch
 # on the cmp's flags; a setCC opcode maps to its jCC twin by
-# subtracting 0x10.
+# subtracting 0x10. ARM64 drops CSET and uses the same CMP flags in
+# B.cond (the existing imm19 branch-link format).
 void be_br_zero_discard(int h):
-	if ((target_isa == 0) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
+	if ((target_isa <= 1) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
+		int cc = cmp_fuse_cc
 		peep_rollback(cmp_fuse_start)
 		# this branch is taken when the condition is false: invert
-		be_br_cc(jcc_invert(cmp_fuse_cc - 0x10), h)
+		if (target_isa == 1):
+			arm64_bounds_branch(jcc_invert(arm64_setcc_cond(cc)), be_br_link(h))
+			be_br_linked(h)
+		else: be_br_cc(jcc_invert(cc - 0x10), h)
 		cmp_fuse_end = 0
 		return
 	if (be_br_const_discard(h, 0)): return
 	be_br_zero(h)
 
 void be_br_nonzero_discard(int h):
-	if ((target_isa == 0) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
+	if ((target_isa <= 1) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
+		int cc = cmp_fuse_cc
 		peep_rollback(cmp_fuse_start)
-		be_br_cc(cmp_fuse_cc - 0x10, h)
+		if (target_isa == 1):
+			arm64_bounds_branch(arm64_setcc_cond(cc), be_br_link(h))
+			be_br_linked(h)
+		else: be_br_cc(cc - 0x10, h)
 		cmp_fuse_end = 0
 		return
 	if (be_br_const_discard(h, 1)): return

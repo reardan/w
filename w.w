@@ -59,5 +59,4 @@ int main(int argc, int argv):
 			# that disagrees with either.
 			println(c"w 0.3.0")
 			return 0
-	link(argc, argv)
-	return 0
+	return link(argc, argv)

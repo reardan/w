@@ -34,6 +34,8 @@ int token_serial
 # when any fired. The count is advisory outside strict mode.
 int strict_mode
 int warning_count
+# Recoverable type errors are collected, but never produce an executable.
+int type_error_count
 
 # 'w defhash' recording: while defhash_mode is set, the grammar rules that
 # recognize a top-level definition (struct/union/enum/type-alias in their
@@ -163,7 +165,7 @@ int diag_context_collect():
 	while ((scan_line < diag_token_line) && (c >= 0)):
 		if (c == 10): scan_line = scan_line + 1
 		c = getchar(file)
-	if (diag_context_buffer == 0): diag_context_buffer = malloc(diag_context_capacity + 1)
+	if (diag_context_buffer == 0): diag_context_buffer = cast(char*, malloc(diag_context_capacity + 1))
 	int length = 0
 	int failed = 0
 	if (c < 0):
@@ -412,6 +414,12 @@ int repl_recovery
 int repl_jump_buffer
 int repl_error_jump
 
+type __repl_error_jump_callback = fn(int, int) -> void
+
+
+type __analysis_probe_error_status_callback = fn() -> int
+
+
 void error(char *s):
 	if (diag_json):
 		diag_append(s)
@@ -419,9 +427,26 @@ void error(char *s):
 	else: diag_human(c"error", s)
 	if (repl_recovery):
 		diag_clear()
-		repl_error_jump(repl_jump_buffer, 1)
-	if (analysis_probe_error_status): exit(analysis_probe_error_status())
+		__repl_error_jump_callback* jump = cast(__repl_error_jump_callback*, repl_error_jump)
+		jump(repl_jump_buffer, 1)
+	if (analysis_probe_error_status): exit((cast(__analysis_probe_error_status_callback*, analysis_probe_error_status))())
 	exit(1)
+
+
+# These checks leave parser state valid, so report all of them in one
+# pass. Interactive evaluation must unwind immediately before executing
+# the invalid expression. Speculative parses discard diagnostics.
+void type_error(char* message):
+	if (analysis_probe_depth || defhash_rehash_mode):
+		diag_clear()
+		diag_clear_help()
+		return
+	if (repl_recovery): error(message)
+	type_error_count = type_error_count + 1
+	if (diag_json):
+		diag_append(message)
+		diag_emit(c"error", filename, diag_token_line, diag_token_column, token)
+	else: diag_human(c"error", message)
 
 
 # error()/warning() with the message's leading parts (diag_part) given
@@ -435,6 +460,12 @@ void error3(char* a, char* b, char* c):
 	diag_part(a)
 	diag_part(b)
 	error(c)
+
+
+void type_error3(char* a, char* b, char* c):
+	diag_part(a)
+	diag_part(b)
+	type_error(c)
 
 
 void warning3(char* a, char* b, char* c):
@@ -451,10 +482,14 @@ int getc():
 	int c
 	if ((file >= 0) && (file < 256) && (getchar_pos[file] < getchar_limit[file])):
 		char* getc_buffer = cast(char*, getchar_buf_addr[file])
-		c = getc_buffer[getchar_pos[file]] & 255
-		getchar_pos[file] = getchar_pos[file] + 1
-		if (ast_retain_mode):
-			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
+		int pos = getchar_pos[file]
+		c = getc_buffer[pos] & 255
+		getchar_pos[file] = pos + 1
+		# P1.2b: a byte the retained version has not recorded yet records
+		# the rest of the window (compiler/retained_ast.w,
+		# retained_source_window); every other byte costs one comparison.
+		if (ast_retain_mode && ((byte_offset >= retained_append_next) || (filename != retained_append_path))):
+			if (retained_source_window(filename, byte_offset, getc_buffer + pos, getchar_limit[file] - pos) == 0): error(c"source changed during retained AST traversal")
 		byte_offset = byte_offset + 1
 		return c
 	c = getchar_checked(file)
@@ -479,7 +514,13 @@ int getc():
 	# EOF consumes nothing, so the offset only advances for real bytes
 	if (c != -1):
 		if (ast_retain_mode):
-			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
+			# A refilled window is checked or recorded whole (P1.2b).
+			int refilled = 0
+			if ((file >= 0) && (file < 256)):
+				if (getchar_pos[file] == 1): refilled = 1
+			if (refilled):
+				if (retained_source_window(filename, byte_offset, cast(char*, getchar_buf_addr[file]), getchar_limit[file]) == 0): error(c"source changed during retained AST traversal")
+			else if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
 		byte_offset = byte_offset + 1
 	return c
 
@@ -600,7 +641,7 @@ char* ident_codepoint_rejection(int cp):
 
 # Uppercase hex spelling of a codepoint, at least four digits (U+00E9)
 char* ident_codepoint_hex(int cp):
-	char* out = malloc(8)
+	char* out = cast(char*, malloc(8))
 	int n = 0
 	int v = cp
 	while ((v > 0) || (n < 4)):
@@ -609,7 +650,7 @@ char* ident_codepoint_hex(int cp):
 		else: out[n] = d - 10 + 'A'
 		v = v >> 4
 		n = n + 1
-	char* text = malloc(n + 1)
+	char* text = cast(char*, malloc(n + 1))
 	for i in range(n): text[i] = out[n - 1 - i]
 	text[n] = 0
 	return text
@@ -737,7 +778,7 @@ void get_token():
 	token_serial = token_serial + 1
 	if (token_size == 0):
 		token_size = 20
-		token = malloc(token_size)
+		token = cast(char*, malloc(token_size))
 	token_newline = 0
 	int w = 1
 	int prev_whitespace

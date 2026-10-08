@@ -23,7 +23,7 @@ int bad_iter_arity_iter_value(bad_iter_arity* b, int cursor):
 
 
 int main():
-	bad_iter_arity* b = malloc(4)
+	bad_iter_arity* b = cast(bad_iter_arity*, malloc(4))
 	for int value in b:
 		print_int(c"value: ", value)
 	return 0

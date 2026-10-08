@@ -47,7 +47,7 @@ int guard_parse_hex(char* s, int* pos):
 # Read a whole file (or pipe) into a NUL-terminated buffer.
 char* guard_read_all(int fd):
 	int cap = 65536
-	char* buf = malloc(cap + 1)
+	char* buf = cast(char*, malloc(cap + 1))
 	int total = 0
 	int n = read(fd, &buf[total], cap - total)
 	while (n > 0):

@@ -18,7 +18,7 @@ void read_drop(list[raft_msg*] messages):
 # Exercise actual request/reply codecs, including malformed truncation.
 raft_msg* read_wire(raft_msg* m):
 	int n = raft_wire_size(m)
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	raft_wire_encode(m, buf)
 	assert1(cast(int, raft_wire_decode(buf, n - 1)) == 0)
 	raft_msg* copy = raft_wire_decode(buf, n)

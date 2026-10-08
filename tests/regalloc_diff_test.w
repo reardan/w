@@ -206,7 +206,7 @@ int is_hex_digit(int c):
 # A copy of text with the digits of every 0x... literal removed.
 char* blank_addresses(char* text):
 	int n = strlen(text)
-	char* out = malloc(n + 1)
+	char* out = cast(char*, malloc(n + 1))
 	int i = 0
 	int j = 0
 	while (i < n):

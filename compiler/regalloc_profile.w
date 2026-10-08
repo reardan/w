@@ -56,7 +56,7 @@ void rs_hash_put(int c):
 	if (rs_hash_tok_len + 2 > rs_hash_tok_size):
 		int x = rs_hash_tok_size << 1
 		if (x < 64): x = 64
-		if (rs_hash_tok == 0): rs_hash_tok = malloc(x)
+		if (rs_hash_tok == 0): rs_hash_tok = cast(char*, malloc(x))
 		else: rs_hash_tok = realloc(rs_hash_tok, rs_hash_tok_size, x)
 		rs_hash_tok_size = x
 	rs_hash_tok[rs_hash_tok_len] = c

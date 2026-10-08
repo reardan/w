@@ -120,7 +120,7 @@ char* vcst_write_legacy(wcas* s, char* object_type, char* data, int length):
 # Lowercase hex of a whash digest (for deriving wexec-style cache keys).
 char* vcst_hex(char* digest, int len):
 	char* hex_digits = c"0123456789abcdef"
-	char* out = malloc(len * 2 + 1)
+	char* out = cast(char*, malloc(len * 2 + 1))
 	for i in range(len):
 		int b = digest[i] & 255
 		out[i * 2] = hex_digits[(b >> 4) & 15]
@@ -202,7 +202,7 @@ void test_cas_binary_payload_roundtrip():
 	# values, twice, must survive unchanged.
 	wcas* s = vcst_open()
 	int n = 512
-	char* buf = malloc(n)
+	char* buf = cast(char*, malloc(n))
 	int i = 0
 	while (i < n):
 		buf[i] = i & 255
@@ -305,7 +305,7 @@ void test_cas_build_cache_client():
 
 	# A fake build-output tarball: 1 KiB of structured binary data.
 	int n = 1024
-	char* tarball = malloc(n)
+	char* tarball = cast(char*, malloc(n))
 	int i = 0
 	while (i < n):
 		tarball[i] = (i * 7 + (i >> 6)) & 255
@@ -314,7 +314,7 @@ void test_cas_build_cache_client():
 	# The cache key, derived exactly the way tools/wexec.w would: a
 	# SHA-256 over the target's command line and input hashes.
 	char* manifest = c"target hello\ncmd bin/wv2 tests/hello.w -o bin/hello\ninput tests/hello.w 9d1e4d\n"
-	char* key_digest = malloc(32)
+	char* key_digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, manifest, strlen(manifest), key_digest)
 	char* key = vcst_hex(key_digest, 32)
 	free(key_digest)
@@ -434,7 +434,7 @@ void test_cas_corrupt_detection():
 void test_cas_compressed_truncation_detection():
 	wcas* s = vcst_open()
 	int n = 2048
-	char* payload = malloc(n)
+	char* payload = cast(char*, malloc(n))
 	for i in range(n): payload[i] = 'A' + (i % 4)
 	char* id = vcst_put(s, c"blob", payload, n)
 	free(payload)
@@ -471,7 +471,7 @@ void test_cas_compressed_truncation_detection():
 void test_cas_write_new_is_compressed_on_disk():
 	wcas* s = vcst_open()
 	int n = 2048
-	char* payload = malloc(n)
+	char* payload = cast(char*, malloc(n))
 	int i = 0
 	while (i < n):
 		# A distinct pattern from test_cas_compressed_truncation_detection's

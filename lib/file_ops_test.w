@@ -27,7 +27,7 @@ void parity_note(parity_log* log, int status, io_result* r):
 char* parity_path(parity_log* log, char* name):
 	int n = strlen(log.base)
 	int m = strlen(name)
-	char* out = malloc(n + m + 2)
+	char* out = cast(char*, malloc(n + m + 2))
 	mem_copy[char](out, log.base, n)
 	out[n] = '/'
 	mem_copy[char](&out[n + 1], name, m)
@@ -42,7 +42,7 @@ void parity_scenario(file_ops* ops, parity_log* log):
 	char* final = parity_path(log, c"final")
 	char* missing = parity_path(log, c"missing")
 	char* text = c"hello parity world"
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 
 	parity_note(log, file_ops_mkdir(ops, log.base, 493, &r), &r)
 	parity_note(log, file_ops_open(ops, missing, FILE_OPS_READ, 0, &fd, &r), &r)

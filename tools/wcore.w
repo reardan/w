@@ -357,7 +357,7 @@ int main(int argc, int argv):
 
 	# Frame 0 is the faulting pc (exact); the rest follows the
 	# frame-pointer chain, falling back to the heuristic scan.
-	char* frames = malloc(cf_frames_max * __word_size__)
+	char* frames = cast(char*, malloc(cf_frames_max * __word_size__))
 	int nframes = cf_backtrace(frames, cf_frames_max)
 
 	if (wc_json): wc_json_report(frames, nframes)

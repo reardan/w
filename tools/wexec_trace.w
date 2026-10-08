@@ -193,7 +193,7 @@ int wtr_peek(int pid, int addr):
 # peek fails partway through.
 char* wtr_read_cstring(int pid, int addr):
 	int cap = 256
-	char* buf = malloc(cap)
+	char* buf = cast(char*, malloc(cap))
 	int len = 0
 	int offset = 0
 	int done = 0
@@ -258,7 +258,7 @@ char* wtr_cwd_prefix   # memoized "<cwd>/"; "" when getcwd fails
 
 char* wtr_get_cwd_prefix():
 	if (wtr_cwd_prefix == 0):
-		char* buf = malloc(4096)
+		char* buf = cast(char*, malloc(4096))
 		int n = getcwd(buf, 4096)
 		if (n < 0): buf[0] = 0
 		string_builder* s = string_new()
@@ -512,6 +512,9 @@ int wexec_trace_run(char* target_name, json_value* target, map[char*, int] decla
 	int undeclared = 0
 	for s in range(step_count):
 		json_value* step = json_array_get(steps, s)
+		if (json_object_get(step, c"sandbox") != 0):
+			wtr_error(c"sandbox steps cannot execute through host ptrace tracing")
+			return 1
 		json_value* cmd = json_object_get(step, c"cmd")
 		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)):
 			wtr_error(cstr(f"target '{target_name}' step {s + 1}: \"cmd\" is missing or not a non-empty array"))

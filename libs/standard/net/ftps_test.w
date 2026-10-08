@@ -22,7 +22,7 @@ import libs.standard.net.testing
 
 # Deterministic binary payload containing NUL, CR and LF bytes.
 char* ftps_payload(int n):
-	char* data = malloc(n + 1)
+	char* data = cast(char*, malloc(n + 1))
 	for i in range(n): data[i] = (i * 7 + i / 251) & 255
 	data[n] = 0
 	return data
@@ -150,7 +150,7 @@ void ftps_srv_upload(ftps_srv* s):
 	int conn = ftps_srv_open_transfer(s, &dt)
 	if (conn < 0): return
 	string_builder* got = string_new()
-	char* chunk = malloc(4096)
+	char* chunk = cast(char*, malloc(4096))
 	int k = 0
 	int clean = 1
 	while (1):
@@ -269,7 +269,7 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 void ftps_srv_run(int listener, int pipe_fd, int implicit, int auth_ok, int inject, int require_prot):
 	ftps_srv* s = new ftps_srv()
 	s.tls = 0
-	s.buf = malloc(4096)
+	s.buf = cast(char*, malloc(4096))
 	s.pos = 0
 	s.len = 0
 	s.data_listener = (-1)
@@ -322,7 +322,7 @@ ftps_fx* ftps_start(int implicit, int auth_ok, int inject, int require_prot):
 	ftps_fx* fx = new ftps_fx()
 	int port = 0
 	int listener = net_test_listen(&port)
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
@@ -529,7 +529,7 @@ void test_ftps_truncated_download():
 
 # Reads what the client wrote on the socketpair's far end.
 char* ftps_drain(int fd):
-	char* buf = malloc(256)
+	char* buf = cast(char*, malloc(256))
 	int got = read(fd, buf, 255)
 	if (got < 0): got = 0
 	buf[got] = 0
@@ -537,7 +537,7 @@ char* ftps_drain(int fd):
 
 
 void test_ftps_insecure_login_policy():
-	int* fds = malloc(2 * __word_size__)
+	int* fds = cast(int*, malloc(2 * __word_size__))
 	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	socket_set_recv_timeout(fds[0], 2000)
 	# A non-loopback peer over plaintext: credentials are withheld.

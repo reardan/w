@@ -6,28 +6,31 @@ Usage:
   bin/wast_audit census bin/compiler_ast_audit.jsonl
 
 manifest generates today's manifest from build.base.json and source directives,
-adds --ast-full-expressions to direct production compile/check steps, writes
+adds --ast-full-expressions to direct production compile/check steps (a no-op
+since the AST front end became the default, kept for old checkouts), writes
 the manifest, and prints a JSON selection report. It never executes steps.
-Run it with: bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
+Run it with: bin/wexec -f bin/ast_suite_manifest.json tests
 Driver-owned compiler launches are not rewritten. Explicit AST modes and pinned
 seeds stay intact. Compile flags also apply to each compilation's implicit
 imports.
 
-Why -j 1 (ast_migration.md, "Reproducible production AST audit"): some suite
-steps launch a nested bin/wexec against the default manifest (wexec_test runs
-"bin/wexec hello", whose dep is the default 'wv2' target). Cache stamps are
-namespaced per manifest, so the suite's own wv2/build runs never refresh the
-default stamps; when those are missing or stale the nested run rebuilds bin/wv2
-in place with the seed. The outer run's bin/.wexec_lock does not stop it: wexec exempts a
-nested run (WEXEC_LOCK_HELD) on the premise that its parent is blocked waiting
-for that one step, which only holds at -j 1. In parallel, sibling targets
-executing bin/wv2 then see ETXTBSY or a half-written compiler. Serial is a
-workaround, not a fix; the race itself is in wexec's lock exemption and the
-non-atomic './w w.w -o bin/wv2' bootstrap step.
+Bootstrap outputs are published by atomic rename (#548), so nested default-
+manifest cache misses can safely rebuild a compiler while sibling targets use
+it. The suite uses wexec's normal parallel scheduler.
 
 required-manifest rejects expression fallback in positive compile/check steps
 and diagnostic fixtures. Expected failures use permissive AST mode to preserve
-diagnostics. Explicit modes, seeds and other nested drivers remain unchanged.
+diagnostics. Explicit modes (--ast-*, --streaming), seeds and other nested
+drivers remain unchanged.
+
+The AST front end is the default (completion plan P1.4), so required-manifest
+first checks that no direct production compile/check step still opts in with
+--ast-full-expressions, or with --ast-expressions outside --streaming: both are
+no-ops now. It lists such steps as stale_ast_flag_steps on stderr, writes no
+manifest and exits 1. --ast-required and --ast-audit still change behaviour
+and remain allowed. --ast-retain and --ast-emit-retained are no-ops since S2.5
+made the retained forest and emission from it the default; they stay allowed
+so a step can still name the mode it gates (the retained canary does).
 
 census prints deterministic file/token fallback counts and accumulated AST /
 streaming counters from --ast-audit --stats stderr. It returns 1 for malformed
@@ -59,7 +62,7 @@ int main(int argc, int argv):
 		stream_write_line(help, c"wast_audit required-manifest <output.json>  Gate positive compiler steps and fixtures.")
 		stream_write_line(help, c"wast_audit census <audit.jsonl>    Summarize --ast-audit --stats stderr as JSON.")
 		stream_write_line(help, c"Direct compile/check steps include implicit imports. Nested compiler launches remain driver-controlled.")
-		stream_write_line(help, c"Run manifests serially: bin/wexec -f <output.json> -j 1 tests")
+		stream_write_line(help, c"Run manifests: bin/wexec -f <output.json> tests")
 		stream_flush(help)
 		return 0
 	if (argc != 3):
@@ -71,6 +74,19 @@ int main(int argc, int argv):
 		if (generated == 0): return 1
 		json_value* root = json_parse(generated)
 		free(generated)
+		if (strcmp(args[1], c"required-manifest") == 0):
+			json_value* stale = ast_audit_stale_flags(root)
+			if (json_array_length(stale) != 0):
+				char* listed = json_stringify(stale)
+				wstream* err = stderr_writer()
+				stream_write_cstr(err, c"wast_audit: stale_ast_flag_steps ")
+				stream_write_line(err, listed)
+				stream_flush(err)
+				free(listed)
+				json_free(stale)
+				json_free(root)
+				return wast_audit_error(c"steps still pass an AST opt-in flag the default makes redundant; drop it (or pair --ast-expressions with --streaming)")
+			json_free(stale)
 		report = ast_audit_manifest_mode(root, strcmp(args[1], c"required-manifest") == 0)
 		if (report == 0):
 			json_free(root)
@@ -110,7 +126,6 @@ int main(int argc, int argv):
 
 # wbuild: target=ast_expression_suite dep=build dep=wast_audit dep=wfixture
 # wbuild: step="bin/wast_audit required-manifest bin/ast_required_suite_manifest.json"
-# The serial run outlives wexec's 900 s default step timeout (about 21 minutes
-# cold on a shared 4-core box), so the outer step gets two hours. Inner steps
-# keep their own timeouts; CI's job timeout is the overall bound.
-# wbuild: step="bin/wexec -f bin/ast_required_suite_manifest.json -j 1 tests" timeout=7200000
+# The complete suite gets two hours on slow hosts. Inner steps keep their
+# own timeouts; CI's job timeout is the overall bound.
+# wbuild: step="bin/wexec -f bin/ast_required_suite_manifest.json tests" timeout=7200000

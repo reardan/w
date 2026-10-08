@@ -16,7 +16,7 @@ import lib.mem
 # One-shot digest of data as hex.
 char* sha2t_digest_hex(int alg, char* data, int len):
 	int ds = whash_digest_size(alg)
-	char* digest = malloc(ds)
+	char* digest = cast(char*, malloc(ds))
 	whash_oneshot(alg, data, len, digest)
 	char* hex = hex_encode(digest, ds)
 	free(digest)
@@ -42,7 +42,7 @@ void test_sha384_block_boundaries():
 	# 111..129 'a's straddle the 128-byte block and the 16-byte length
 	# field: 111 fits one padded block, 112 forces a second, 128 is an
 	# exact block, 129 spills into a new one.
-	char* a129 = malloc(129)
+	char* a129 = cast(char*, malloc(129))
 	mem_fill(a129, 'a', 129)
 	sha2t_check(WHASH_SHA384, a129, 111, c"3c37955051cb5c3026f94d551d5b5e2ac38d572ae4e07172085fed81f8466b8f90dc23a8ffcdea0b8d8e58e8fdacc80a")
 	sha2t_check(WHASH_SHA384, a129, 112, c"187d4e07cb306103c69967bf544d0dfbe9042577599c73c330abc0cb64c61236d5ed565ee19119d8c31779a38f791fcd")
@@ -57,14 +57,14 @@ void test_sha384_million_a():
 	# the streaming interface in 100k slices.
 	int n = 1000000
 	int chunk = 100000
-	char* big = malloc(chunk)
+	char* big = cast(char*, malloc(chunk))
 	mem_fill(big, 'a', chunk)
 	whash* h = whash_new(WHASH_SHA384)
 	int fed = 0
 	while (fed < n):
 		whash_update(h, big, chunk)
 		fed = fed + chunk
-	char* digest = malloc(48)
+	char* digest = cast(char*, malloc(48))
 	whash_final(h, digest)
 	char* got = hex_encode(digest, 48)
 	assert_strings_equal(c"9d0e1809716474cb086e834e310a4a1ced149e9c00f248527972cec5704c2a5b07b8b3dc38ecc4ebae97ddd87f3d8985", got)
@@ -100,7 +100,7 @@ void sha2t_check_streaming(int alg, char* data, int len, int step):
 		whash_update(h, data + pos, take)
 		pos = pos + take
 	int ds = whash_digest_size(alg)
-	char* digest = malloc(ds)
+	char* digest = cast(char*, malloc(ds))
 	whash_final(h, digest)
 	char* got = hex_encode(digest, ds)
 	char* want = sha2t_digest_hex(alg, data, len)
@@ -126,7 +126,7 @@ void test_final_is_nondestructive():
 	# absorbing, snapshot again.
 	whash* h = whash_new(WHASH_SHA384)
 	whash_update(h, c"abc", 3)
-	char* digest = malloc(48)
+	char* digest = cast(char*, malloc(48))
 	whash_final(h, digest)
 	char* got = hex_encode(digest, 48)
 	assert_strings_equal(c"cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7", got)
@@ -146,7 +146,7 @@ void test_clone_and_reset():
 	# The clone diverges from the original after the split point.
 	whash* c = whash_clone(h)
 	whash_update(c, c"def", 3)
-	char* digest = malloc(48)
+	char* digest = cast(char*, malloc(48))
 	whash_final(c, digest)
 	char* got = hex_encode(digest, 48)
 	assert_strings_equal(c"c6a4c65b227e7387b9c3e839d44869c4cfca3ef583dea64117859b808c1e3d8ae689e1e314eeef52a6ffe22681aa11f5", got)

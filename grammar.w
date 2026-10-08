@@ -82,6 +82,8 @@ import code_generator.gpu_ast
 import code_generator.global_ast
 import code_generator.function_ast
 import code_generator.linkage_ast
+# C3.5: the optional optimizer pass, between a header's parse and its walk
+import compiler.ast_opt
 import grammar.ast_statement
 import grammar.ast_declaration
 import grammar.ast_loop

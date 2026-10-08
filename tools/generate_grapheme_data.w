@@ -57,7 +57,7 @@ int gen_hex_digit(int c):
 # to one category; every other line covers a single codepoint.
 char* gen_load_classes(char* path):
 	int size = gen_max_codepoint + 1
-	char* classes = malloc(size)
+	char* classes = cast(char*, malloc(size))
 	for i in range(size): classes[i] = 0
 
 	wstream* in = stream_open_read(path)

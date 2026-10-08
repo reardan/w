@@ -3,6 +3,9 @@ import lib.testing
 import repl.incremental
 
 
+type incremental_test_callback = fn(int) -> int
+
+
 int incremental_test_ready
 
 
@@ -42,7 +45,7 @@ void incremental_suffix_emission(int emit):
 	assert_equal(3, result.compiled)
 	int first_address = incremental_address(c"inc_first")
 	int third_address = incremental_address(c"inc_third")
-	assert_equal(13, third_address(4))
+	assert_equal(13, (cast(incremental_test_callback*, third_address))(4))
 	int unchanged_end = codepos
 	result = incremental_update(sources)
 	assert_equal(1, result.status)
@@ -61,7 +64,7 @@ void incremental_suffix_emission(int emit):
 	retained_binding* saved_binding = retained_bindings[prefix_bindings - 1]
 	char* saved_binding_name = strclone(saved_binding.name)
 	int saved_binding_type = saved_binding.type
-	char* prefix_bytes = malloc(prefix_end)
+	char* prefix_bytes = cast(char*, malloc(prefix_end))
 	for i in range(prefix_end): prefix_bytes[i] = code[i]
 	sources[1] = c"int inc_second(int n):\n\treturn inc_first(n) * 4\n"
 	result = incremental_update(sources)
@@ -78,7 +81,7 @@ void incremental_suffix_emission(int emit):
 	assert_strings_equal(saved_binding_name, saved_binding.name)
 	assert_equal(saved_binding_type, saved_binding.type)
 	third_address = incremental_address(c"inc_third")
-	assert_equal(23, third_address(4))
+	assert_equal(23, (cast(incremental_test_callback*, third_address))(4))
 
 	# Failed replacement retracts the old suffix, retains the valid prefix,
 	# and leaves neither the failed function nor old downstream names callable.
@@ -100,7 +103,7 @@ void incremental_suffix_emission(int emit):
 	assert_equal(saved_binding_type, saved_binding.type)
 	assert_equal(0, incremental_address(c"inc_second"))
 	assert_equal(0, incremental_address(c"inc_third"))
-	assert_equal(5, first_address(4))
+	assert_equal(5, (cast(incremental_test_callback*, first_address))(4))
 	assert_bytes_equal(prefix_bytes, code, prefix_end)
 	sources[1] = c"int inc_second(int n):\n\treturn inc_first(n) * 6\n"
 	result = incremental_update(sources)
@@ -108,7 +111,7 @@ void incremental_suffix_emission(int emit):
 	assert_equal(1, result.reused)
 	assert_equal(2, result.compiled)
 	third_address = incremental_address(c"inc_third")
-	assert_equal(33, third_address(4))
+	assert_equal(33, (cast(incremental_test_callback*, third_address))(4))
 
 	# Deletion removes definitions and machine code without any re-emission.
 	sources.pop()
@@ -128,7 +131,7 @@ void incremental_suffix_emission(int emit):
 	assert_equal(0, result.reused)
 	assert_equal(3, result.compiled)
 	third_address = incremental_address(c"inc_third")
-	assert_equal(39, third_address(4))
+	assert_equal(39, (cast(incremental_test_callback*, third_address))(4))
 
 	# Insertion in the middle preserves the first function and re-emits the
 	# inserted definition and its old suffix, even when calls are independent.
@@ -142,7 +145,7 @@ void incremental_suffix_emission(int emit):
 	assert_equal(1, result.reused)
 	assert_equal(3, result.compiled)
 	int middle_address = incremental_address(c"inc_middle")
-	assert_equal(10, middle_address(4))
+	assert_equal(10, (cast(incremental_test_callback*, middle_address))(4))
 	result = incremental_update(sources)
 	assert_equal(1, result.status)
 	assert_equal(1, result.reused)
@@ -160,7 +163,7 @@ void incremental_suffix_emission(int emit):
 	assert_equal(0, result.status)
 	assert_equal(1, result.failed_index)
 	assert_equal(before_rejection, codepos)
-	assert_equal(39, third_address(4))
+	assert_equal(39, (cast(incremental_test_callback*, third_address))(4))
 	sources[1] = good
 	# Same-state no-op cannot hide a changed compiler mode or ABI.
 	bounds_mode = 1 - bounds_mode
@@ -217,11 +220,11 @@ void incremental_tree_reuse(int emit):
 	int first_address = incremental_address(c"tree_first")
 	int second_address = incremental_address(c"tree_second")
 	int third_address = incremental_address(c"tree_third")
-	assert_equal(27, third_address(4))
+	assert_equal(27, (cast(incremental_test_callback*, third_address))(4))
 	int end_code = codepos
 	int end_table = table_pos
-	int end_nodes = retained_nodes.length
-	char* image = malloc(end_code)
+	int end_nodes = retained_node_count()
+	char* image = cast(char*, malloc(end_code))
 	for i in range(end_code): image[i] = code[i]
 
 	# Comment edits and trailing blanks: every definition is kept, nothing is
@@ -236,11 +239,11 @@ void incremental_tree_reuse(int emit):
 	assert_equal(2, result.tree_reused)
 	assert_equal(end_code, codepos)
 	assert_equal(end_table, table_pos)
-	assert_equal(end_nodes, retained_nodes.length)
+	assert_equal(end_nodes, retained_node_count())
 	assert_bytes_equal(image, code, end_code)
 	assert_equal(first_address, incremental_address(c"tree_first"))
 	assert_equal(second_address, incremental_address(c"tree_second"))
-	assert_equal(27, third_address(4))
+	assert_equal(27, (cast(incremental_test_callback*, third_address))(4))
 	if (emit): assert_equal(0, retained_walks_used)
 	# The new spelling is now the kept one: no probe the second time.
 	result = incremental_update(sources)
@@ -256,7 +259,7 @@ void incremental_tree_reuse(int emit):
 	assert_equal(2, result.compiled)
 	assert_equal(0, result.tree_probed)
 	third_address = incremental_address(c"tree_third")
-	assert_equal(27, third_address(4))
+	assert_equal(27, (cast(incremental_test_callback*, third_address))(4))
 
 	# A code change is never a candidate, even one of the same length.
 	sources[0] = c"int tree_first(int n):\n\treturn n + 2 # plus one, reworded\n"
@@ -265,7 +268,7 @@ void incremental_tree_reuse(int emit):
 	assert_equal(3, result.compiled)
 	assert_equal(0, result.tree_probed)
 	third_address = incremental_address(c"tree_third")
-	assert_equal(30, third_address(4))
+	assert_equal(30, (cast(incremental_test_callback*, third_address))(4))
 
 	# A blank line that becomes spaces passes the layout check, but its
 	# compile warns: the muted probe is discarded and the recompile reports
@@ -287,7 +290,7 @@ void incremental_tree_reuse(int emit):
 	assert_equal(0, result.tree_reused)
 	assert_equal(warnings + 1, warning_count)
 	third_address = incremental_address(c"tree_third")
-	assert_equal(30, third_address(4))
+	assert_equal(30, (cast(incremental_test_callback*, third_address))(4))
 
 	# The trees decide: two compiled definitions with different trees compare
 	# unequal, and a definition compares equal with itself.
@@ -350,7 +353,7 @@ void test_incremental_tree_reuse_needs_forest():
 	assert_equal(2, result.compiled)
 	assert_equal(0, result.tree_probed)
 	int second = incremental_address(c"plain_second")
-	assert_equal(10, second(4))
+	assert_equal(10, (cast(incremental_test_callback*, second))(4))
 	sources.free()
 	incremental_test_end()
 	ast_expressions_mode = saved_ast

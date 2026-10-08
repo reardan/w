@@ -87,7 +87,7 @@ char* cat3(char* a, char* b, char* c):
 # (all bits set, -1 as a word). setrlimit is syscall 75 on i386 and 160
 # on x86-64; struct rlimit is two words.
 int raise_core_limit():
-	char* rl = malloc(2 * __word_size__)
+	char* rl = cast(char*, malloc(2 * __word_size__))
 	save_word(rl, -1)
 	save_word(rl + __word_size__, -1)
 	int nr = 75
@@ -228,7 +228,7 @@ void run_case(char* desc, char* fixture, char* ipreg, char* other):
 
 int main(int argc, char** argv):
 	WCORE = c"bin/wcore"
-	ROOT = malloc(4096)
+	ROOT = cast(char*, malloc(4096))
 	if (getcwd(ROOT, 4096) <= 0):
 		err_out(c"wcore test: getcwd failed\n")
 		return 1

@@ -161,7 +161,7 @@ char* COMMIT_OBJECT_TYPE():
 char* commit_zero_id_cache
 char* REF_ZERO_ID():
 	if (commit_zero_id_cache == 0):
-		char* z = malloc(65)
+		char* z = cast(char*, malloc(65))
 		mem_fill(z, '0', 64)
 		z[64] = 0
 		commit_zero_id_cache = z
@@ -701,7 +701,7 @@ wresult[list[char*]]* ref_list(wrefs* r):
 	if (fd < 0): return result_new_error[list[char*]](fd)
 	list[char*] names = new list[char*]
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int n = getdents(fd, buffer, buffer_size)
 	while (n > 0):
 		int off = 0

@@ -143,7 +143,7 @@ int dns_next_token(char* text, int* pos, int line_end, int* tok_start, int* tok_
 int dns_token_ipv4(char* text, int start, int end, int* out_ip):
 	int length = end - start
 	if ((length <= 0) || (length > 15)): return 0
-	char* token = malloc(16)
+	char* token = cast(char*, malloc(16))
 	mem_copy(token, text + start, length)
 	token[length] = 0
 	int ok = dns_parse_ipv4_literal(token, out_ip)
@@ -236,7 +236,7 @@ int dns_resolv_conf_nameservers_file(char* path, int* out_ips, int max_servers):
 int dns_random_id():
 	int file = open(c"/dev/urandom", 0, 0)
 	if (file >= 0):
-		char* buf = malloc(2)
+		char* buf = cast(char*, malloc(2))
 		int count = read(file, buf, 2)
 		close(file)
 		int id = load_be16(buf)
@@ -377,7 +377,7 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 		return dns_result_error
 
 	# Echoed question must be our A/IN question for hostname.
-	char* name = malloc(dns_name_buffer_size)
+	char* name = cast(char*, malloc(dns_name_buffer_size))
 	char* target = strclone(hostname)
 	int pos = 0
 	if (dns_read_name(msg, msg_len, 12, name, dns_name_buffer_size, &pos) == 0):
@@ -446,7 +446,7 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 # whole exchange (connect, send, receive) shares one timeout budget.
 # Returns 1 with the host-order address in *out_ip, else 0.
 int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
-	char* query = malloc(2 + dns_udp_message_max)
+	char* query = cast(char*, malloc(2 + dns_udp_message_max))
 	int query_id = dns_random_id()
 	int query_len = dns_build_query(hostname, query_id, query + 2, dns_udp_message_max)
 	if (query_len == 0):
@@ -465,7 +465,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 		close(sock)
 		return 0
 
-	char* header = malloc(2)
+	char* header = cast(char*, malloc(2))
 	if (dns_tcp_recv_exact(sock, header, 2, deadline) == 0):
 		free(header)
 		close(sock)
@@ -475,7 +475,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 	if ((response_len < 12) || (response_len > dns_tcp_message_max)):
 		close(sock)
 		return 0
-	char* response = malloc(response_len)
+	char* response = cast(char*, malloc(response_len))
 	if (dns_tcp_recv_exact(sock, response, response_len, deadline) == 0):
 		free(response)
 		close(sock)
@@ -493,7 +493,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 # arrive within timeout_ms. Returns 1 with the host-order address in
 # *out_ip, else 0.
 int dns_query_server(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
-	char* query = malloc(dns_udp_message_max)
+	char* query = cast(char*, malloc(dns_udp_message_max))
 	int query_id = dns_random_id()
 	int query_len = dns_build_query(hostname, query_id, query, dns_udp_message_max)
 	if (query_len == 0):
@@ -515,7 +515,7 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 	if ((ready & poll_in) == 0):
 		close(sock)
 		return 0
-	char* response = malloc(dns_udp_message_max)
+	char* response = cast(char*, malloc(dns_udp_message_max))
 	sockaddr_in from
 	int received = socket_recv_from_ipv4(sock, response, dns_udp_message_max, 0, &from)
 	close(sock)
@@ -556,7 +556,7 @@ int dns_resolve_ipv4(char* hostname, int* out_ip):
 	if (hostname[0] == 0): return 0
 	if (dns_parse_ipv4_literal(hostname, out_ip) != 0): return 1
 	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip) != 0): return 1
-	int* servers = malloc(dns_max_nameservers * __word_size__)
+	int* servers = cast(int*, malloc(dns_max_nameservers * __word_size__))
 	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers)
 	if (count == 0):
 		servers[0] = ip4_from_string(c"127.0.0.1")

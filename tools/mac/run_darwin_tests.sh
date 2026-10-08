@@ -34,6 +34,8 @@ if [ -z "$tests" ]; then
 	# net_darwin, Linux only cross-compiles them; this script is their
 	# run leg.
 	tests="$tests bin/lib_darwin_test bin/hash_table_darwin_test bin/map_set_builtin_darwin_test bin/generator_darwin_test bin/compound_assign_darwin_test bin/limb_builtin_darwin_test"
+	# ARM64 optimizer regression binaries (the generated Darwin twins).
+	tests="$tests bin/arm64_load_fold_test_darwin bin/arm64_cmp_imm_test_darwin bin/local_load_fold_test_darwin bin/comparison_branch_test_darwin bin/const_fold_test_darwin bin/unsigned_compare_test_darwin"
 	# arm64e corruption fixtures (./wbuild pac_darwin): pointer authentication
 	# is enforced natively, so these MUST die by signal before reaching
 	# their NOT REACHED print.

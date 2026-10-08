@@ -74,7 +74,7 @@ void test_metrics_event_ring_drops_oldest():
 	assert_equal(9, metrics_event_ring_at(r, 3).value)
 	assert_equal(0, cast(int, metrics_event_ring_at(r, 4)))
 	# Text is copied and truncated, so temporaries are fine.
-	char* long_text = malloc(200)
+	char* long_text = cast(char*, malloc(200))
 	for i in range(199): long_text[i] = 'x'
 	long_text[199] = 0
 	metrics_event_ring_push(r, 2, 0, long_text)
@@ -92,7 +92,7 @@ void test_metrics_format_is_bounded():
 	metrics_observe_latency(m, 100)
 	metrics_observe_latency(m, 300)
 	metrics_event(m, 5, -1, c"accept failed")
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int n = metrics_format(m, buf, 4096)
 	assert1(n < 4096)
 	assert_contains(buf, c"tasks_pending 3\x0a")

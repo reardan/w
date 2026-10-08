@@ -25,7 +25,7 @@ int main(int argc, char** argv):
 	int i = 0
 	while (i < n):
 		int len = 6 + (bench_rand(&state) & 7)
-		char* w = malloc(len + 1)
+		char* w = cast(char*, malloc(len + 1))
 		int j = 0
 		while (j < len):
 			# Mask off bit 31 before the modulo: the 32-bit host would see a
