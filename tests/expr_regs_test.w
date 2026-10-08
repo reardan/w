@@ -440,6 +440,19 @@ void test_intrinsics():
 	int t = a + atomic_add(&value, b + 2) * 2 + (atomic_cas(&value, a + 10, b * 3) & 0xffff)
 	assert_equal(a + 10 * 2 + ((10 + 0xabcd + 2) & 0xffff), t)
 	assert_equal(10 + 0xabcd + 2, value)
+	# The ordered atomics (main's #602) as the right operand of a parked
+	# left operand: a load or a fence has no real push of its own, so
+	# the barrier spills the park instead of asserting it absent
+	int cell = 5
+	int u = a + atomic_load(&cell)
+	u = u + ((b * 3) ^ atomic_load_relaxed(&cell))
+	atomic_store(&cell, (a & 0xff) + atomic_load(&cell))
+	atomic_store_relaxed(&cell, b + (cell * atomic_load(&cell)))
+	int f = (a * 2) + (b - atomic_load(&cell))
+	atomic_fence()
+	assert_equal(0x12345 + 5 + ((0xabcd * 3) ^ 5), u)
+	assert_equal(0xabcd + (0x45 + 5) * (0x45 + 5), cell)
+	assert_equal(0x12345 * 2 + (0xabcd - cell), f)
 
 
 # --- narrow stores and pointer arithmetic ---------------------------------------
