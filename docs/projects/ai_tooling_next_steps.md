@@ -1191,3 +1191,23 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   as 14 "retained emission differs" lines rather than as a wrong
   program. Worth knowing before adding a pre-scan flag: anything the
   probe decides must be decided the same way by the full pass.
+- **`wtest changed` on a runtime file selects suites the machine cannot
+  run, and `wexec` then stops the whole run on the first of them.** A
+  diff touching `structures/hash_table.w` (unit A8's SipHash rewrite)
+  selects every target, which `wtest` collapses into the umbrellas
+  `tests`, `tests_x64`, `tests_arm64`, `tests_wasm`, `tests_interop`,
+  `tests_gpu`, `tests_win64`, `update_win`, ...; running that list as
+  printed failed at `build_win` (`no executable 'wine' on PATH`) and
+  `wexec` reported `stopped early after failure: 1065 of 1081 targets
+  not attempted`, so one missing host tool cost the run of every
+  runnable gate. Direction: let `wtest changed` (or `wexec`) mark an
+  umbrella whose runner is absent (`wine`, `wasmtime`/`node`, a GPU) as
+  skipped with a one-line reason instead of failing it, or add a
+  `--keep-going` default for umbrella runs; the agent fell back to
+  `./wbuild tests` plus `tests_arm64` by hand.
+- **The arm64 dynamic tests need `QEMU_LD_PREFIX` that nothing sets.**
+  `tests_arm64` fails `dynamic_test_arm64` and `float_abi_test_arm64`
+  with `qemu-aarch64-static: Could not open '/lib/ld-linux-aarch64.so.1'`
+  unless `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu` is in the environment;
+  the sysroot is installed. Direction: `bin/wrun arm64` could export the
+  prefix itself when the sysroot exists and the variable is unset.

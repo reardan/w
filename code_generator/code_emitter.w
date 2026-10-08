@@ -104,6 +104,19 @@ int cond_branch_disabled
 # --no-loop-rotate / -O0: while/for loops keep their top-tested shape
 # (grammar/while_statement.w, loop_rotate_on).
 int loop_rotate_disabled
+# --no-narrow-regs: int32/uint32 locals and arguments stay on the stack
+# (unit A8, docs/projects/codegen_gap_plan.md §2.7); the reference for
+# tests/regalloc_diff_test.w. The two masks name the promoted registers
+# that hold a narrow value on x64, by hardware register number: a
+# uint32 (zero-extended: every write is a 32-bit form) and an int32
+# (sign-extended: a 32-bit write followed by movsxd). The register
+# always holds the value exactly as the memory path's load would
+# promote it, so every reader -- the register reads, the shuttle and
+# compare folds, an addressing-mode index -- stays word-sized
+# (code_generator/x86.w, regalloc_reg_kind); only the writers look here.
+int narrow_regs_disabled
+int regalloc_zx_mask
+int regalloc_sx_mask
 # A condition chain has emitted its branches and left its regions open
 # for the consumer (grammar/cond_branch.w, cond_pending_*). The consumer
 # clears it before it emits; any other emission while it is set is a

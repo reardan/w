@@ -55,9 +55,15 @@ compile-time internal error rather than a miscompile. The rules:
   name the type table already knows as unpromotable -- a struct, a
   narrow integer, a float -- excludes its declaration), and
   regalloc_type_ok at sym_declare is the final word;
-- the declared type must be a plain 'int' or a pointer (checked at
-  sym_declare: narrow integers, floats, aggregates, strings, containers
-  and const-qualified locals never promote);
+- the declared type must be a plain 'int', a pointer or (A8,
+  docs/projects/codegen_gap_plan.md §2.7) an 'int32'/'uint32' (checked
+  at sym_declare: the other narrow integers, floats, aggregates,
+  strings, containers and const-qualified locals never promote). On
+  x64 a 32-bit integer's register holds the value as the memory path's
+  load would promote it -- zero-extended for uint32, sign-extended for
+  int32 -- and every write to it is a 32-bit form (x86.w's
+  regalloc_reg_kind and the writers that consult it), so wrap-around
+  matches the stack word bit for bit and every reader stays word-sized;
 - on x64 a function argument ranks like a local (A1): a name the body
   never declares whose record is a word-sized parameter of this
   function (sym_probe at ranking time, regalloc_type_ok on its type)
@@ -435,6 +441,7 @@ void regalloc_function_end():
 	regalloc_function = -1
 	regalloc_loops_ok = 0
 	reg_lvalue_end = 0
+	regalloc_reg_unbind_all()
 	ers_hazard = 1
 	rl_reset()
 
@@ -1162,6 +1169,27 @@ void rs_after_ident_operator(int i, int type_context):
 
 
 # An identifier (not a field name) has been read into rs_ident.
+# 1 when 'name(' is one of the compiler's inline intrinsics (shr, rotl,
+# rotr, popcount, clz, ctz, mul_hi, mul_wide, add_carry) and no symbol
+# of that name is in scope, so the parsers will lower it without a
+# call (unit A8: the loops of lib/sha256.w own registers across their
+# rotates). A symbol declared later in the body (a local of that name)
+# is a call the emitter spills around, like any other scan miss.
+int rs_intrinsic_name(char* name):
+	int hit = 0
+	if (strcmp(name, c"rotr") == 0): hit = 1
+	elif (strcmp(name, c"rotl") == 0): hit = 1
+	elif (strcmp(name, c"shr") == 0): hit = 1
+	elif (strcmp(name, c"popcount") == 0): hit = 1
+	elif (strcmp(name, c"clz") == 0): hit = 1
+	elif (strcmp(name, c"ctz") == 0): hit = 1
+	elif (strcmp(name, c"mul_hi") == 0): hit = 1
+	elif (strcmp(name, c"mul_wide") == 0): hit = 1
+	elif (strcmp(name, c"add_carry") == 0): hit = 1
+	if (hit == 0): return 0
+	return sym_probe(name) < 0
+
+
 void rs_identifier():
 	char* name = rs_ident
 	int type_context = (rs_prev_kind == 3) || (rs_prev_kind == 4) || ((rs_prev_kind == 1) && (rs_prev_keyword == 0))
@@ -1251,8 +1279,16 @@ void rs_identifier():
 	if (c == '('):
 		if (i >= 0): rs_excluded[i] = 1
 		# A call to a function whose body inlines without a call of its
-		# own (unit A5) leaves no call instruction in this loop
-		if (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
+		# own (unit A5) leaves no call instruction in this loop; neither
+		# does a bit or limb intrinsic (grammar/bit_builtin.w,
+		# grammar/limb_builtin.w), which lowers inline unless a symbol
+		# of its name shadows it (the same rule the parsers apply)
+		if (rs_intrinsic_name(name)):
+			# ... but it writes ecx (the count) or edx (the temporaries,
+			# the high half): no loop register there on x86 (A9), where
+			# the limb intrinsics' ecx cannot even be spilled around
+			rs_lp_mark(rs_lp_has_divshift)
+		elif (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
 		return;
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter
@@ -1723,15 +1759,38 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	regalloc_loops_ok = loops
 
 
-# Is a declared type one a register can hold: the word-sized 'int', or
-# a pointer (not an array, not const).
+# Is a declared type one a register can hold: the word-sized 'int', a
+# pointer (not an array, not const), or -- unit A8,
+# docs/projects/codegen_gap_plan.md §2.7 -- a 32-bit integer
+# ('int32'/'uint32'): the word itself on x86, a narrow value on x64
+# that the register keeps extended as the memory path's load would
+# (regalloc_reg_kind_of_type below, x86.w's writers). --no-narrow-regs
+# keeps the narrow types on the stack.
 int regalloc_type_ok(int type):
 	if (type_is_const(type)): return 0
 	if (type_is_array(type)): return 0
 	if (type_get_pointer_level(type) > 0): return 1
 	if (type_stack_words(type) != 1): return 0
+	int canonical = type_canonical(type)
+	if (type_get_size(type) == 4):
+		if (narrow_regs_disabled): return 0
+		if (canonical == uint32_type): return 1
+		if (canonical == type_lookup(c"int32")): return 1
 	if (type_get_size(type) != word_size): return 0
-	return type_canonical(type) == type_lookup(c"int")
+	return canonical == type_lookup(c"int")
+
+
+# The value kind a register bound to a symbol of this type holds
+# (x86.w's regalloc_reg_kind): 1 a uint32, 2 an int32, 0 the word.
+# Only x64 has narrow registers; on x86 the 32-bit types are the word.
+int regalloc_reg_kind_of_type(int type):
+	if (word_size != 8): return 0
+	if (type_get_pointer_level(type) > 0): return 0
+	if (type_get_size(type) != 4): return 0
+	int canonical = type_canonical(type)
+	if (canonical == uint32_type): return 1
+	if (canonical == type_lookup(c"int32")): return 2
+	return 0
 
 
 # sym_declare's hook for a new local 'name' (record t, declared type):
@@ -1751,6 +1810,7 @@ int regalloc_declare(int t, char* name, int type):
 	if (regalloc_type_ok(type) == 0): return 0
 	rs_taken[i] = 1
 	save_int(table + t + 146, rs_reg[i])
+	regalloc_reg_bind(rs_reg[i], regalloc_reg_kind_of_type(type))
 	regalloc_promoted_syms.push(t)
 	regalloc_promoted_live.push(0)
 	regalloc_promoted_names.push(strclone(name))
@@ -1792,6 +1852,8 @@ void regalloc_prologue_args():
 		int t = regalloc_arg_syms[i]
 		int reg = regalloc_arg_regs[i]
 		save_int(table + t + 146, reg)
+		# a narrow argument (A8) loads its word's low half, extended
+		regalloc_reg_bind(reg, regalloc_reg_kind_of_type(load_int(table + t + 6)))
 		mov_reg_ebp_disp(reg, (number_of_args - load_int(table + t + 2) + 2) << word_size_log2)
 		char* name = sym_record_name(t)
 		regalloc_promoted_syms.push(t)
@@ -1917,6 +1979,11 @@ int rl_entry_live(int i):
 
 
 void rl_add(int t, int reg, int slot, int kind, char* name, int live):
+	# the register's value kind (A8): a narrow symbol's register loads,
+	# stores and operates at 32 bits for the loop's extent
+	int value_kind = 0
+	if (t >= 0): value_kind = regalloc_reg_kind_of_type(load_int(table + t + 6))
+	regalloc_reg_bind(reg, value_kind)
 	rl_sym.push(t)
 	rl_reg.push(reg)
 	rl_slot.push(slot)
@@ -2039,6 +2106,7 @@ void regalloc_loop_leave():
 			if (kind != 'H'): mov_ebp_disp_reg(rl_reg[i], rl_home_disp(i))
 			if (t >= 0): save_int(table + t + 146, 0)
 		rl_free_mask = rl_free_mask | (1 << rl_reg[i])
+		regalloc_reg_bind(rl_reg[i], 0)
 		regalloc_loop_owned = regalloc_loop_owned & ~(1 << rl_reg[i])
 		free(rl_name[i])
 	while (rl_sym.length > mark):

@@ -333,6 +333,11 @@ Implemented and covered by tests:
   hottest written locals, subscript bases and indices in `ecx`/`edx`
   for the loop's extent (`docs/projects/codegen_gap_plan.md` §2.7 and
   §8, unit A9; `--no-x86-budget` keeps the two-register budget).
+  `int32`/`uint32` locals and arguments
+  promote like `int`: the word itself on x86, a 32-bit register on x64
+  that stays zero- or sign-extended so wrap-around matches the stack
+  word and the code needs no `& mask` (§2.7, unit A8;
+  `--no-narrow-regs` keeps them on the stack).
   `--inline` emits a small leaf callee's body in place of its
   calls (§2.4, unit A5; also on for profile-hot sites under
   `--profile-use`, off otherwise because the re-parse costs compile

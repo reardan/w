@@ -176,22 +176,25 @@ void __w_hash_seed_init(int salt):
 # value. lib/byte_map.w's bytes_hash_seeded is the 2-4 variant of the
 # same construction. The result is a masked 32-bit word.
 int __w_hash_sip(__w_hash_table* table, int data, int length):
-	int mask = ((1 << 16) << 16) - 1
+	# The state words are uint32 (unit A8, docs/projects/
+	# codegen_gap_plan.md §2.7): the 32-bit word on a 32-bit host, a
+	# zero-extended 32-bit register on x64, so every store truncates
+	# and no '& mask' is needed; rotl is defined on the low 32 bits.
 	char* p = cast(char*, data)
-	int v0 = table.seed0 & mask
-	int v1 = table.seed1 & mask
-	int v2 = 0x6c796765 ^ v0
-	int v3 = 0x74656462 ^ v1
+	uint32 v0 = table.seed0
+	uint32 v1 = table.seed1
+	uint32 v2 = 0x6c796765 ^ v0
+	uint32 v3 = 0x74656462 ^ v1
 	int i = 0
 	int done = 0
 	while (done == 0):
-		int m = 0
+		uint32 m = 0
 		if (length - i >= 4):
 			int32* word = cast(int32*, p + i)
-			m = word[0] & mask
+			m = word[0]
 			i = i + 4
 		else:
-			m = (length << 24) & mask
+			m = length << 24
 			int shift = 0
 			while (i < length):
 				m = m | ((p[i] & 255) << shift)
@@ -199,32 +202,32 @@ int __w_hash_sip(__w_hash_table* table, int data, int length):
 				i = i + 1
 			done = 1
 		v3 = v3 ^ m
-		v0 = (v0 + v1) & mask
+		v0 = v0 + v1
 		v1 = rotl(v1, 5) ^ v0
 		v0 = rotl(v0, 16)
-		v2 = (v2 + v3) & mask
+		v2 = v2 + v3
 		v3 = rotl(v3, 8) ^ v2
-		v0 = (v0 + v3) & mask
+		v0 = v0 + v3
 		v3 = rotl(v3, 7) ^ v0
-		v2 = (v2 + v1) & mask
+		v2 = v2 + v1
 		v1 = rotl(v1, 13) ^ v2
 		v2 = rotl(v2, 16)
 		v0 = v0 ^ m
 	v2 = v2 ^ 255
 	int r = 0
 	while (r < 3):
-		v0 = (v0 + v1) & mask
+		v0 = v0 + v1
 		v1 = rotl(v1, 5) ^ v0
 		v0 = rotl(v0, 16)
-		v2 = (v2 + v3) & mask
+		v2 = v2 + v3
 		v3 = rotl(v3, 8) ^ v2
-		v0 = (v0 + v3) & mask
+		v0 = v0 + v3
 		v3 = rotl(v3, 7) ^ v0
-		v2 = (v2 + v1) & mask
+		v2 = v2 + v1
 		v1 = rotl(v1, 13) ^ v2
 		v2 = rotl(v2, 16)
 		r = r + 1
-	return (v1 ^ v3) & mask
+	return v1 ^ v3
 
 
 int __w_hash_key_hash(__w_hash_table* table, int key):

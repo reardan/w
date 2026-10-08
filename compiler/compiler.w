@@ -992,6 +992,16 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--loop-rotate") == 0):
 		if (apply): loop_rotate_disabled = 0
 		return 1
+	# Narrow integer promotion (docs/projects/codegen_gap_plan.md §2.7,
+	# unit A8): int32/uint32 locals and arguments take registers like
+	# 'int' on x86/x64; --no-narrow-regs keeps them on the stack, the
+	# reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-narrow-regs") == 0):
+		if (apply): narrow_regs_disabled = 1
+		return 1
+	if (strcmp(arg, c"--narrow-regs") == 0):
+		if (apply): narrow_regs_disabled = 0
+		return 1
 	# Inlining of small leaf callees (unit A5, compiler/inline_table.w)
 	# is opt-in on x86/x64 Linux: --inline turns it on, --profile-use
 	# turns it on for the sites the profile marks hot, and --no-inline
@@ -1063,6 +1073,7 @@ void help_shared_options():
 	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
 	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
+	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
@@ -1464,6 +1475,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-narrow-regs") == 0) || (strcmp(*flag_arg, c"--narrow-regs") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--inline") == 0) || (strcmp(*flag_arg, c"--no-inline") == 0)): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
