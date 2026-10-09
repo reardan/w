@@ -494,13 +494,6 @@ void emit_alu_reg_esp_w(int wide, int ext, int dst, int disp):
 		emit_int8(0x24)
 		emit_int32(disp)
 
-void emit_alu_reg_esp(int ext, int dst, int disp):
-	emit_alu_reg_esp_w(1, ext, dst, disp)
-
-/* op dst,eax */
-void emit_alu_reg_eax(int ext, int dst):
-	emit_alu_reg_reg(ext, dst, 0)
-
 /* add eax,R: the register-base fold of a subscript (A1,
    docs/projects/codegen_gap_plan.md §2.1): the base of 'p[i]' lives in
    R, so the scaled index in eax gets it added directly instead of
@@ -691,16 +684,6 @@ void lea_esp_ebp_minus(int disp):
 	emit(2, c"\x8d\x65")
 	emit_int8(0 - disp)
 
-# The order registers are pushed: ascending register number, so the pops
-# below and the debugger's saved-slot arithmetic (debugger/locals.w) agree.
-int regalloc_mask_index(int mask, int r):
-	int index = 0
-	int i = 0
-	while (i < r):
-		if (mask & (1 << i)): index = index + 1
-		i = i + 1
-	return index
-
 # The prologue's share: right after 'push ebp ; mov ebp,esp', push the
 # registers the pre-scan asked for (regalloc_pending_mask), making them
 # the current function's saved set. Called by be_function_prologue on the
@@ -835,10 +818,6 @@ void mov_eax_int(int v);
 void pop_ebx();
 void alu_add();
 
-int addr_note_current():
-	if (addr_note_end == 0): return 0
-	return addr_note_end == codepos
-
 # REX prefix for an instruction with a memory operand: W for a 64-bit
 # operand, R for an extended reg field, X for an extended SIB index and B
 # for an extended base. Nothing when no bit is needed (the 32-bit forms,
@@ -938,10 +917,6 @@ void plain_load(int w, int oplen, char* op):
 	emit_mem_insn(w, oplen, op, 0, 0, -1, 1, 0)
 	if (addr_modes_disabled): return
 	memload_note(start, 0, -1, 1, 0, w, oplen, op)
-
-int memload_current():
-	if (memload_end == 0): return 0
-	return memload_end == codepos
 
 # The folded load is the word-sized 'mov eax,[mem]'.
 int memload_is_word():
@@ -1448,28 +1423,6 @@ void ers_push_eax(int dead):
 # Each helper dispatches to its AArch64 twin (code_generator/arm64.w) when
 # target_isa == 1; the x86/x64 byte sequences below are otherwise unchanged,
 # so those targets stay byte-identical.
-
-/* push dword 0x12 */
-void push_int8(int v):
-	if (target_isa == 3): ptx_push_const(v)
-	elif (target_isa == 2): wasm_push_const(v)
-	elif (target_isa == 1): arm64_push_imm(v)
-	else:
-		if (ers_count != 0): ers_spill_all()
-		emit_int8(106)
-		emit_int8(v)
-
-
-/* push dword op(0x12, 0x345678) */
-void push_int32(int v):
-	if (target_isa == 3): ptx_push_const(v)
-	elif (target_isa == 2): wasm_push_const(v)
-	elif (target_isa == 1): arm64_push_imm(v)
-	else:
-		if (ers_count != 0): ers_spill_all()
-		emit_int8(104)
-		emit_int32(v)
-
 
 /* mov eax,[eax] */
 void promote_eax():
@@ -3617,13 +3570,6 @@ void be_bounds_branch(int kind, int limit, int h):
 		emit(2, c"\x0f\x88\x0f\x88\x0f\x8f\x0f\x8c\x0f\x8e\x0f\x8e" + 2 * kind)
 		emit_int32(ctrl_val_stack[h])
 	be_ctrl_link(h)
-
-void nop():
-	if (target_isa == 3): return
-	if (target_isa == 2): wasm_nop()
-	elif (target_isa == 1): a64(op(0xd5, 0x03201f))   # nop
-	else: emit(1, c"\x90") /* nop */
-
 
 void ret():
 	if (target_isa == 3): ptx_ret()

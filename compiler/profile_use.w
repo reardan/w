@@ -145,14 +145,6 @@ int profile_function_class():
 	return profile_use_current_class
 
 
-int profile_function_is_hot():
-	return profile_function_class() == 2
-
-
-int profile_function_is_cold():
-	return profile_function_class() == 1
-
-
 # Entry count of the current function, or -1 when it is not matched.
 int profile_function_entries():
 	if (profile_use_current_record < 0): return -1

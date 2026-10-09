@@ -140,7 +140,7 @@ void if_statement_tail():
 	be_ctrl_end(p2)
 	# An 'elif'/'else' only binds to an 'if' at the same indent level
 	if (peek(c"elif") && (tab_level == if_tab_level)):
-		profile_coverage_line()
+		profile_coverage_branch_head()
 		get_token()
 		# The recursion mirrors the statement() recursion a spelled-out
 		# 'else if' chain makes, so the nesting guard bounds elif chains
@@ -287,7 +287,7 @@ void statement_impl():
 	be_notes_reset()
 	debug_line_note(stack_pos)
 	if (coverage_generate_mode && (peek(c":") == 0) && (peek(c"{") == 0) && (peek(c"}") == 0)):
-		if (coverage_statement_is_label() == 0): profile_coverage_line()
+		if (coverage_statement_is_label() == 0): profile_coverage_statement()
 
 	# { statement-list-opt }
 	if (ast_statement_block()): terminates = flow_terminates

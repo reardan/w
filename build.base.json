@@ -39,6 +39,7 @@
 			"profile_refresh": "regenerates profiles/*.wprof from instrumented runs; mutates the checkout (P1, docs/projects/register_allocation_pgo.md)",
 			"bench_compare": "hand-run/CI program benchmark comparison against tests/bench/baseline.txt; wbench_compare_test covers the logic",
 			"wcoverage_report": "writes a coverage report on demand",
+			"compiler_coverage": "reruns the whole tests umbrella under --coverage builds of the compiler, REPL and wdbg; the CI coverage job runs it, coverage_test covers the tool",
 			"wvm_pool_bench": "benchmark driver",
 			"wvm_darwin": "native Apple Silicon CLI; requires macOS codesign and Hypervisor entitlement",
 			"wvmd_darwin": "native Apple Silicon daemon; exercised by the explicit native VM gate",

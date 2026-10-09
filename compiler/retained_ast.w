@@ -278,11 +278,6 @@ int retained_node_push(int entry):
 	return id
 
 
-# 1 when id is an expression operand (its entry is its group's record).
-int retained_node_is_operand(int id):
-	return retained_node_table[id] & 1
-
-
 # The record of a node that is not an expression operand.
 retained_record* retained_record_at(int id):
 	int entry = retained_node_table[id]

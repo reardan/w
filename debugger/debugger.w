@@ -6,9 +6,12 @@ wdbg_main() for 'w --debug file.w'.
 */
 import debugger.wdbg
 import lib.process
+import compiler.coverage_exec
 
 
 int main(int argc, int argv):
+	# $W_COVERAGE_WDBG: re-execute as a --coverage build (compiler/coverage_exec.w).
+	coverage_exec_redirect(c"W_COVERAGE_WDBG", c"wdbg", argv)
 	char** args = cast(char**, argv)
 	if (argc >= 2 && strcmp(args[1], c"vm") == 0):
 		# Keep the Linux x64 VMM outside the seed compiler/debugger graph.

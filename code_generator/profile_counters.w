@@ -58,6 +58,8 @@ instrumented like any other function if and when that lands.
 With --coverage, statement entry sites additionally get kind s counters
 whose file and line are taken from the statement itself. Their hits are
 unioned by tools/wcoverage_lines.w; ordinary profile generation is unchanged.
+An s counter heading an if or elif has ordinal 1 (branch coverage,
+profile_coverage_branch_head below).
 Only the x86 and x64 Linux ELF targets are supported; the option block rejects
 the flag on every other target with an error rather than emitting
 counters there (arm64 would need ldr/add/str through a scratch
@@ -173,9 +175,30 @@ void profile_counters_init():
 	profile_pt_offset = profile_words_new()
 
 
+# x86/x64 Linux ELF, and arm64 Linux ELF (the option block in
+# compiler/compiler.w rejects the flags everywhere else).
+int profile_target_supported():
+	if (target_os != 0): return 0
+	return (target_isa == 0) || (target_isa == 1)
+
+
 # The increment of counter `index` at the current code position; the
-# disp32 fields are patched in profile_finish once the table exists.
+# disp32 fields (arm64: the adrp/add pair) are patched in profile_finish
+# once the table exists.
 void profile_emit_increment(int index):
+	if (target_isa == 1):
+		# x9/x10 are the backend's immediate/address scratch registers,
+		# never live across a statement, a loop head or a prologue end;
+		# plain add leaves NZCV alone.
+		a64(op(0x90, 0) | 9)                     # adrp x9, counter page
+		a64(op(0x91, 0) | (9 << 5) | 9)          # add x9, x9, #pageoff
+		profile_words_push(profile_pt_pos, codepos - 4)
+		profile_words_push(profile_pt_counter, index)
+		profile_words_push(profile_pt_offset, 0)
+		a64(op(0xf9, 0x400000) | (9 << 5) | 10)  # ldr x10, [x9]
+		a64(op(0x91, 0) | (1 << 10) | (10 << 5) | 10)   # add x10, x10, #1
+		a64(op(0xf9, 0) | (9 << 5) | 10)         # str x10, [x9]
+		return
 	if (word_size == 8):
 		emit(3, c"\x48\xff\x05")   # inc QWORD PTR [rip+disp32]
 		profile_words_push(profile_pt_pos, codepos)
@@ -225,7 +248,7 @@ int profile_record_new(int symbol, char* name):
 void profile_function_enter(int symbol, char* name):
 	profile_use_function_begin(symbol, name)   # P2: --profile-use classifies the body
 	if (profile_generate_mode == 0): return
-	if (target_isa != 0): return
+	if (profile_target_supported() == 0): return
 	profile_counters_init()
 	int record = profile_record_new(symbol, name)
 	profile_fn_counter.items[record] = profile_counter_new(1, record, 0)
@@ -237,7 +260,7 @@ void profile_function_enter(int symbol, char* name):
 void profile_generator_enter(int symbol, char* name):
 	profile_use_function_begin(symbol, name)   # P2: --profile-use
 	if (profile_generate_mode == 0): return
-	if (target_isa != 0): return
+	if (profile_target_supported() == 0): return
 	profile_counters_init()
 	profile_current_record = profile_record_new(symbol, name)
 
@@ -246,7 +269,7 @@ void profile_generator_enter(int symbol, char* name):
 # next ordinal within its function.
 void profile_loop_head():
 	if (profile_generate_mode == 0): return
-	if (target_isa != 0): return
+	if (profile_target_supported() == 0): return
 	profile_counters_init()
 	int record = profile_current_record
 	if (record < 0): return
@@ -260,12 +283,30 @@ void profile_loop_head():
 # executable statements. Each emitted site has its own counter, including
 # repeated generic instantiations and deferred statements. The coverage
 # reader unions their hits by source file and line.
-void profile_coverage_line():
+void profile_coverage_site(int branch_head):
 	if ((coverage_generate_mode == 0) || (profile_generate_mode == 0)): return
-	if (target_isa != 0): return
+	if (profile_target_supported() == 0): return
 	profile_counters_init()
 	if (profile_current_record < 0): return
-	profile_counter_new(3, profile_current_record, 0)
+	profile_counter_new(3, profile_current_record, branch_head)
+
+
+# Branch coverage: the statement counter of an if or elif header
+# carries ordinal 1 in the map. The reader pairs it with the function's
+# next statement counter in map order, the first statement of the
+# then-arm, and derives both outcomes of the decision from the counts:
+# the arm ran (taken), and the header was reached more often than the
+# arm ran (not taken: the elif/else arm or the fall-through). Loops are
+# left to line coverage: their head counter sits inside the rotated
+# loop, so it counts iterations rather than condition evaluations.
+void profile_coverage_branch_head():
+	profile_coverage_site(1)
+
+
+# Statement entry: an 'if' statement heads a decision.
+void profile_coverage_statement():
+	if (peek(c"if")): profile_coverage_site(1)
+	else: profile_coverage_site(0)
 
 
 # Store a target word into the RW data image at data vaddr `vaddr`.
@@ -294,6 +335,10 @@ void profile_patch_exit():
 	int exit_addr = sym_address(c"exit")
 	int hook_addr = sym_address(c"__w_profile_exit")
 	int pos = exit_addr - code_offset
+	if (target_isa == 1):
+		# b hook: lr and the argument frame stay as the caller left them.
+		save_int32(code + pos, op(0x14, 0) | (((hook_addr - exit_addr) >> 2) & op(0x03, 0xffffff)))
+		return
 	code[pos] = 0xe9
 	save_int32(code + pos + 1, hook_addr - exit_addr - 5)
 
@@ -336,7 +381,8 @@ void profile_map_write(char* map_path):
 	getcwd(cwd, max_path_size)
 	int cwd_len = strlen(cwd)
 	profile_map_write_cstr(fd, c"# wprofmap v1\x09")
-	if (word_size == 8): profile_map_write_cstr(fd, c"x64")
+	if (target_isa == 1): profile_map_write_cstr(fd, c"arm64")
+	else if (word_size == 8): profile_map_write_cstr(fd, c"x64")
 	else: profile_map_write_cstr(fd, c"x86")
 	profile_map_write_cstr(fd, c"\x09")
 	profile_map_write_int(fd, profile_ct_kind.count)
@@ -390,7 +436,7 @@ void profile_map_write(char* map_path):
 # point lib/profile.w at the table, hook exit, write the map.
 void profile_finish(char* output_path, int check_mode):
 	if (profile_generate_mode == 0): return
-	if (target_isa != 0): return
+	if (profile_target_supported() == 0): return
 	profile_counters_init()
 	if ((check_mode == 0) && (output_path == 0)):
 		print_error(c"error: --profile-generate requires -o <output> (the map is written next to it)\x0a")
@@ -406,8 +452,16 @@ void profile_finish(char* output_path, int check_mode):
 	int p = 0
 	while (p < profile_pt_pos.count):
 		int target = base + profile_pt_counter.items[p] * 8 + profile_pt_offset.items[p]
-		if (word_size == 8): target = target - code_offset - profile_pt_pos.items[p] - 4
-		save_int32(code + profile_pt_pos.items[p], target)
+		int pos = profile_pt_pos.items[p]
+		if (target_isa == 1):
+			# The adrp/add pair addressing x9 (arm64_addr_slot_write
+			# encodes x0; put the register fields back).
+			arm64_addr_slot_write(pos, target)
+			save_int32(code + pos - 4, load_int32(code + pos - 4) | 9)
+			save_int32(code + pos, load_int32(code + pos) | (9 << 5) | 9)
+		else:
+			if (word_size == 8): target = target - code_offset - pos - 4
+			save_int32(code + pos, target)
 		p = p + 1
 	profile_set_runtime_global(c"__w_profile_counters", base)
 	int pointer_cell = sym_address(c"__w_profile_counters")

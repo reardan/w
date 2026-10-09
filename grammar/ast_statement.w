@@ -429,39 +429,6 @@ int ast_switch_case_value(int walk, switch_ast_walk* record, expression_ast* tre
 	return value.branch_nonzero
 
 
-# The value hooks of the streaming switch rule (grammar/switch_statement.w);
-# ast_switch_statement walks its values itself.
-int ast_statement_switch_value():
-	statement_ast local_node
-	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
-	statement_ast local_value
-	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
-	switch_ast_walk local_record
-	switch_ast_walk* record = cast(switch_ast_walk*, retained_parse_record(&local_record, sizeof(switch_ast_walk)))
-	record.node = node
-	record.value = value
-	expression_ast tree
-	ast_switch_selector(-1, record, &tree)
-	return node.declared_type
-
-
-int ast_statement_switch_case(int type, int slot, int body_target, int next_target):
-	statement_ast local_node
-	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
-	node.declared_type = type
-	node.stack_depth = slot
-	node.body_target = body_target
-	node.alternate_target = next_target
-	statement_ast local_value
-	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
-	switch_ast_walk local_record
-	switch_ast_walk* record = cast(switch_ast_walk*, retained_parse_record(&local_record, sizeof(switch_ast_walk)))
-	record.node = node
-	record.value = value
-	expression_ast tree
-	return ast_switch_case_value(-1, record, &tree)
-
-
 # One if or elif arm; walk is the chain's walk record, or -1 when the
 # chain is emitted during its parse. The then-arm's exit phase stays
 # pending across the 'elif'/'else' lex (it cannot print); every body is
@@ -500,7 +467,7 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 	if (peek(c"elif") && (tab_level == if_tab_level)):
 		if (coverage_generate_mode):
 			if (walk >= 0): retained_walk_drain(walk)
-			profile_coverage_line()
+			profile_coverage_branch_head()
 		get_token()
 		stmt_nesting_depth = stmt_nesting_depth + 1
 		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")

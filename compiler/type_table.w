@@ -1228,20 +1228,6 @@ void type_print(int type_index):
 	println2(c"")
 
 
-void type_print_all():
-	println2(c"all types:")
-	int i = 0
-	while (i < type_records.length):
-		type_rec* type = type_record(i)
-		print_error(itoa(i))
-		print_error(c": ")
-		print_error(str_from_cstr(type.name))
-		for int j in range(type_get_pointer_level(i)): print_error(c"*")
-		print_error(c"\x0a")
-		# print_int("len=", strlen(*type))
-		i = i + 1
-
-
 # Sizes use the global target word_size: 'int', 'uint' and 'pointer' are
 # word-sized (8 bytes when compiling for x64) while the explicit-width
 # types (int32, int16, ...) keep their fixed sizes on every target.

@@ -210,6 +210,12 @@ imports them needs one `./wbuild` first.
   from the manifest (literal step references + import closures); a
   `tools/test_map.w` residue rule is only needed for coupling the import
   graph cannot see (run-time data files, non-default-arch modules).
+- New code in `compiler/`, `grammar/` and `code_generator/` needs a test
+  that reaches it: the CI `coverage` job checks that >= 80% of changed
+  executable lines ran under `tests` (`wcoverage changed`; `# coverage:
+  exempt <reason>` on a function's definition line skips it) and that no
+  directory drops below its floor in `tools/coverage_baseline.txt`
+  (`./wbuild compiler_coverage`; docs/projects/line_coverage.md).
 - The agent tooling here is dogfooded: if you hit friction or bugs in
   `w check`, `wtest`, or the other agent-facing surfaces, add an entry to
   `docs/projects/ai_tooling_next_steps.md` in the same PR. (The LSP/MCP/

@@ -1229,3 +1229,13 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   let `./wbuild wtest` (and `--list`, `manifest`) run without taking
   the lock, since they write only their own outputs, or print the
   owning source's compile line in the lock message.
+- **A target that reruns `./wbuild` from inside a step cannot keep
+  using the binaries the nested run rebuilds.** (2026-10-09, compiler
+  coverage.) `compiler_coverage` runs `wexec --no-cache tests` from a
+  step; the nested run rebuilds `bin/wexec` and `bin/wcoverage` while
+  the outer ones are executing, and the write fails with ETXTBSY. The
+  workaround is to run both from copies under `bin/coverage/`.
+  Direction: have wexec write tool binaries to a temporary name and
+  rename over the old one, which is safe while the old one runs. Also,
+  `timeout=0` (no limit) is rejected by wbuildgen, so a long-running
+  target has to spell out a large value such as `timeout=7200000`.

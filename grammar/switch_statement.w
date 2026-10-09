@@ -25,14 +25,11 @@ stay usable as ordinary identifiers everywhere else.
 void statement();
 
 
-int ast_statement_switch_value();
-int ast_statement_switch_case(int type, int slot, int body_target, int next_target);
 void emit_switch_value(int scrutinee_type);
 void emit_switch_case_compare(int scrutinee_type, int value_type);
 
 
 int switch_value():
-	if (ast_expressions_mode >= 2): return ast_statement_switch_value()
 	int type = promote(expression())
 	emit_switch_value(type)
 	return type
@@ -104,7 +101,6 @@ void switch_note_case_value(int start_state, int value_type, int line, int diag_
 
 
 int switch_case_value(int type, int slot, int body_target, int next_target):
-	if (ast_expressions_mode >= 2): return ast_statement_switch_case(type, slot, body_target, next_target)
 	push_slot_copy(slot)
 	int start_state = switch_case_start()
 	int value_line = line_number

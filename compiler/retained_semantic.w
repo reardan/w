@@ -113,20 +113,6 @@ int retained_intern_hash(char* text):
 	return h
 
 
-# The interned copy of text, or 0.
-char* retained_intern_find(char* text):
-	if (retained_intern_table_capacity == 0): return 0
-	int h = retained_intern_hash(text)
-	int mask = retained_intern_table_capacity - 1
-	int i = h & mask
-	while (retained_intern_table[i] != 0):
-		if (retained_intern_hashes[i] == h):
-			char* copy = cast(char*, retained_intern_table[i])
-			if (strcmp(copy, text) == 0): return copy
-		i = (i + 1) & mask
-	return 0
-
-
 void retained_intern_place(char* copy, int h):
 	int mask = retained_intern_table_capacity - 1
 	int i = h & mask

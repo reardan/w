@@ -73,25 +73,6 @@ void lit_note(int value, int negative):
 	lit_note_negative = negative
 
 
-# warning(message) reported at a saved source position instead of the
-# parser's current lookahead token (which, after an expression that ends
-# a line, is already on the next line).
-void warning_at(char* message, int at_line_number, int at_diag_line, int at_diag_column, char* at_token):
-	int saved_line_number = line_number
-	int saved_diag_line = diag_token_line
-	int saved_diag_column = diag_token_column
-	char* saved_token = token
-	line_number = at_line_number
-	diag_token_line = at_diag_line
-	diag_token_column = at_diag_column
-	token = at_token
-	warning(message)
-	line_number = saved_line_number
-	diag_token_line = saved_diag_line
-	diag_token_column = saved_diag_column
-	token = saved_token
-
-
 void type_error_at(char* message, int at_line_number, int at_diag_line, int at_diag_column, char* at_token):
 	int saved_line_number = line_number
 	int saved_diag_line = diag_token_line

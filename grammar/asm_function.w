@@ -34,15 +34,6 @@ import code_generator.asm_body
 int asm_bodies_disabled
 
 
-# The x86/x64/arm64 ISA name of the target, for diagnostics.
-char* asm_target_isa_name():
-	if (target_isa == 1): return c"arm64"
-	if (target_isa == 0):
-		if (word_size == 8): return c"x64"
-		return c"x86"
-	return c"this target"
-
-
 # 1 when ISA name `name` is the compile target's, 0 for another known
 # ISA; an unknown name is an error.
 int asm_isa_matches(char* name):

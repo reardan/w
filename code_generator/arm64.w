@@ -177,11 +177,6 @@ void arm64_mov_rax_int64_halves(int lo, int hi):
 	arm64_mov_wide_halves(0, lo, hi, 1)
 
 
-void arm64_push_imm(int v):
-	arm64_load_scratch(9, v)
-	a64(op(0xf8, 0x1f8f89))   # str x9,[x28,#-8]!
-
-
 void arm64_add_eax_int32(int v):
 	if (v == 0): return
 	if (arm64_add_local_offset(v)): return
