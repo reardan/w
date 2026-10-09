@@ -50,8 +50,9 @@ Faults (all deterministic, from the fs's own seeded prng):
   that would exceed it is cut short, and one that cannot move a byte
   fails with ENOSPC.
 A failed operation transfers nothing and changes nothing (EIO on sync
-excepted, above). Delayed completion is not modelled: every call
-completes before it returns.
+excepted, above). This file_ops adapter is synchronous. lib.fake_fs_async
+adds bounded requests with separately scheduled execution and completion,
+using the same faults and crash state with an instance-owned clock.
 
 Paths are compared as strings: use one spelling per file ("dir/f", no
 "./", "//" or trailing '/'). "." and "/" always exist. Descriptors

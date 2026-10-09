@@ -17,13 +17,16 @@
 # (16 misses + 1 hit per malloc) bounds a round's 2n mallocs well under
 # 40*n visits.
 #
+# Keep diagnostics deterministic too: the compiler differential sweep
+# compares stdout/stderr across optimization variants. Wall-clock timings
+# vary independently of allocator correctness and do not belong in this test.
+#
 # The mixed churn phase reuses, splits and re-files blocks of many size
 # classes while verifying block contents, so bin bookkeeping bugs
 # (wrong bin, bad unlink, bad split) corrupt data the test notices.
 # wbuild: x64
 import lib.lib
 import lib.assert
-import lib.time
 
 
 int lcg_state
@@ -63,13 +66,11 @@ int churn_round(int n, int small_size, int large_size):
 	return malloc_scan_steps - steps0
 
 
-void report_round(int n, int steps, int ms):
+void report_round(int n, int steps):
 	print2(c"churn n=")
 	print2(itoa(n))
 	print2(c" scan_steps=")
-	print2(itoa(steps))
-	print2(c" ms=")
-	println2(itoa(ms))
+	println2(itoa(steps))
 
 
 # Random mixed-size churn with content verification: K slots hold live
@@ -150,13 +151,10 @@ int main(int argc, int argv):
 	# visits each (4M and 16M); the binned allocator stays linear, so
 	# 40*n leaves room for the 16-miss scan cap plus splinter noise
 	# while sitting orders of magnitude below quadratic.
-	int t0 = time_monotonic_ms()
 	int steps1 = churn_round(2000, 24, 4096)
-	int t1 = time_monotonic_ms()
 	int steps2 = churn_round(4000, 24, 4096)
-	int t2 = time_monotonic_ms()
-	report_round(2000, steps1, t1 - t0)
-	report_round(4000, steps2, t2 - t1)
+	report_round(2000, steps1)
+	report_round(4000, steps2)
 	asserts(c"mixed-size churn (n=2000) must not scan superlinearly", steps1 < 2000 * 40)
 	asserts(c"mixed-size churn (n=4000) must not scan superlinearly", steps2 < 4000 * 40)
 

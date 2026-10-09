@@ -42,6 +42,11 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 Shipped from the next-steps backlog:
 
+- **Deterministic allocator churn diagnostics** (2026-10-09, #613):
+  `malloc_churn_test` reports scan counts without wall-clock timings, keeping
+  it in the optimization differential sweep without false stderr mismatches.
+  Scan-cost bounds, mixed-allocation content checks and realloc checks remain.
+
 - **Atomic bootstrap publication** (2026-10-07, #548): `wv2`, `build`
   and `build_x64` stage each compiler in a worker-private file and rename
   it into place after success. Concurrent checks and nested-manifest cache
