@@ -289,10 +289,22 @@ int repl_read_entry():
 # ---------------------------------------------------------------------------
 # Echoing expression results.
 
+# A float variable's echoed type is its declared type (float, float32,
+# float64), not the value pseudo-type an arithmetic result carries, but
+# the word holds the same bits; echo it as the value type.
+int repl_echo_type(int type):
+	if (type <= 0): return type
+	int t = type_unqualified(type)
+	if ((t == float32_type) || (t == float_type)): return float32_value_type
+	if (t == float64_type): return float64_value_type
+	return type
+
+
 # Print an echoed expression value, formatted by its compile-time type.
 void repl_echo(int value, int type):
 	if (type <= 0): /* no result, or void */
 		return;
+	type = repl_echo_type(type)
 	if (type == float32_value_type):
 		float* p = cast(float*, &value)
 		println(ftoa(*p))
@@ -555,6 +567,7 @@ void repl_cmd_sh():
 # repl_echo, which repl_test pins closely, to serve two callers.
 char* repl_format_echo(int value, int type):
 	if (type <= 0): return 0
+	type = repl_echo_type(type)
 	if (type == float32_value_type):
 		float* p = cast(float*, &value)
 		return ftoa(*p)
