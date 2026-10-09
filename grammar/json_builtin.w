@@ -249,9 +249,7 @@ void json_codec_require_json_import(char* builtin_name):
 void json_codec_emit_call(int helper, int desc_address, int arg_slot):
 	if (cast(int, json_codec_rt) == 0):
 		json_codec_rt = lazy_runtime_new(c"structures.json_codec", c"__w_json_encode __w_json_decode")
-	lazy_emit_helper(json_codec_rt, helper)
-	int s = stack_pos
-	push_slot()
+	int s = lazy_call_begin(json_codec_rt, helper)
 	be_addr_slot_emit()
 	be_addr_slot_write(codepos - 4, desc_address)
 	push_slot()

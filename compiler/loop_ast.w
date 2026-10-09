@@ -9,6 +9,7 @@ const int ast_loop_while = 3
 struct loop_ast:
 	int kind
 	int source_file
+	char* source_name   # the file name of line, owned by the record (0: no location)
 	int line
 	int column
 	int start_offset
@@ -27,6 +28,8 @@ struct loop_ast:
 	int top_target
 	int break_target
 	int continue_target
+	int rotated         # bottom-tested (grammar/loop_rotate.w); a while decides before its begin phase
+	int entry_site      # the rotated loop's entry jump (be_loop_entry), -1 when top-tested
 	char* begin_fn
 	char* done_fn
 	char* value_fn

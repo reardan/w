@@ -681,3 +681,39 @@ b8f3000000|mov eax,0xf3
 3c00|cmp al,0
 80f961|cmp cl,0x61
 80217f|and byte [ecx],0x7f
+
+# ============================================================================
+# code_generator/x86.w : addressing modes (A2, docs/projects/codegen_gap_plan.md G2)
+# [base+index*scale+disp] loads/stores at every width, esp/ebp bases,
+# mov [mem],imm and the ALU-on-memory forms the unit added.
+# ============================================================================
+8b048b|mov eax,[ebx+ecx*4]
+8b448c08|mov eax,[esp+ecx*4+8]
+8b4485f8|mov eax,[ebp+eax*4-8]
+0fbe0408|movsx eax,byte [eax+ecx*1]
+0fb6044c|movzx eax,byte [esp+ecx*2]
+0fbf0450|movsx eax,word [eax+edx*2]
+0fb70450|movzx eax,word [eax+edx*2]
+890c88|mov [eax+ecx*4],ecx
+880c01|mov [ecx+eax*1],cl
+66890c48|mov [eax+ecx*2],cx
+c6040800|mov byte [eax+ecx*1],0
+66c7003412|mov word [eax],0x1234
+c7048878563412|mov dword [eax+ecx*4],0x12345678
+c7442408e8030000|mov dword [esp+8],0x3e8
+83048801|add dword [eax+ecx*4],1
+81048878563412|add dword [eax+ecx*4],0x12345678
+010c88|add [eax+ecx*4],ecx
+290c88|sub [eax+ecx*4],ecx
+803c0800|cmp byte [eax+ecx*1],0
+8d048b|lea eax,[ebx+ecx*4]
+8d4c0d08|lea ecx,[ebp+ecx*1+8]
+# cmp [mem],imm at the load's width (shuttle_cmp's memload fold)
+66817c0302d4fe|cmp word [ebx+eax*1+2],-0x12c
+66837c030400|cmp word [ebx+eax*1+4],0
+803c039c|cmp byte [ebx+eax*1],-0x64
+807c030118|cmp byte [ebx+eax*1+1],0x18
+817c0306a0860100|cmp dword [ebx+eax*1+6],0x186a0
+817c030e40420f00|cmp dword [ebx+eax*1+0xe],0xf4240
+837c030a07|cmp dword [ebx+eax*1+0xa],7
+837c030efb|cmp dword [ebx+eax*1+0xe],-5

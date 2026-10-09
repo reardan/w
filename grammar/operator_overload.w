@@ -224,9 +224,9 @@ int operator_emit_binary(int left_type, int right_type, int left_slot, int calle
 	int right_slot = push_slot()
 	int s = rt_call_begin(name)
 	if (has_return_buffer):
-		# Hidden return-buffer argument: the buffer starts past the
-		# callee word and the right-operand save
-		lea_eax_esp_plus(2 << word_size_log2)
+		# Hidden return-buffer argument: the buffer's lowest word sits
+		# right below the right-operand save
+		lea_slot(right_slot - 1)
 		push_slot()
 	# Left operand: reload its saved word and push it as argument 0
 	load_slot(left_slot)

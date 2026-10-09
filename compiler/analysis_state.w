@@ -87,6 +87,7 @@ void analysis_restore(analysis_state* state):
 	retained_walk_release()
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	ers_reset()
 	stack_pos = state.stack_pos
 	loop_depth = state.loop_depth
 	loop_break_chain = state.loop_break_chain
@@ -120,6 +121,9 @@ void analysis_restore(analysis_state* state):
 	# The parse-context flags error() can leave set mid-expression.
 	condition_context = 0
 	cast_context = 0
+	cond_pending = 0
+	cond_discard_mark = 0
+	ast_cond_discard = 0
 	increment_statement_context = 0
 	diag_clear()
 	diag_clear_help()

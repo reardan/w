@@ -134,7 +134,7 @@ void repl_skip_end(int pos):
 # patch can run before that, because patching is keyed to a definition of
 # that very name completing.
 #
-# The registry is one flat growable buffer of (name, slot) records,
+# The registry is one flat growable buffer of (name, slot, kind) records,
 # checkpointed by count: rolling an entry back truncates it in lockstep
 # with codepos, so a failed entry's slots (offsets later code will reuse)
 # are never patched. Patches are queued per definition and applied only
@@ -160,18 +160,19 @@ int repl_sites_pending_capacity
 # Hook target for the compiler's repl_call_site_hook: record one function
 # address slot the compiling entry just materialized. The name is cloned;
 # the caller may free or reuse its buffer.
-void repl_register_call_site(char* name, int slot):
+void repl_register_call_site(char* name, int slot, int kind):
 	if (repl_sites_count == repl_sites_capacity):
 		int cap = repl_sites_capacity * 2
 		if (cap == 0):
 			cap = 128
-			repl_sites = cast(char*, malloc(cap * 2 * __word_size__))
+			repl_sites = cast(char*, malloc(cap * 3 * __word_size__))
 		else:
-			repl_sites = realloc(repl_sites, repl_sites_capacity * 2 * __word_size__, cap * 2 * __word_size__)
+			repl_sites = realloc(repl_sites, repl_sites_capacity * 3 * __word_size__, cap * 3 * __word_size__)
 		repl_sites_capacity = cap
-	char* rec = repl_sites + repl_sites_count * 2 * __word_size__
+	char* rec = repl_sites + repl_sites_count * 3 * __word_size__
 	save_word(rec, cast(int, strclone(name)))
 	save_word(rec + __word_size__, slot)
+	save_word(rec + 2 * __word_size__, kind)
 	repl_sites_count = repl_sites_count + 1
 
 
@@ -207,9 +208,13 @@ void repl_apply_late_bind():
 		int address = load_word(rec + __word_size__)
 		int k = 0
 		while (k < repl_sites_count):
-			char* site = repl_sites + k * 2 * __word_size__
+			char* site = repl_sites + k * 3 * __word_size__
 			if (strcmp(cast(char*, load_word(site)), name) == 0):
-				be_addr_slot_write(load_word(site + __word_size__), address)
+				int slot = load_word(site + __word_size__)
+				# kind 0: an address cell; kind 1: the displacement of a
+				# direct `call rel32` (unit A4), relative to the call's end
+				if (load_word(site + 2 * __word_size__) == 0): be_addr_slot_write(slot, address)
+				else: save_int(code + slot, address - (code_offset + slot + 4))
 			k = k + 1
 		free(name)
 		i = i + 1
@@ -229,7 +234,7 @@ void repl_discard_late_bind():
 void repl_sites_truncate(int count):
 	while (repl_sites_count > count):
 		repl_sites_count = repl_sites_count - 1
-		free(cast(char*, load_word(repl_sites + repl_sites_count * 2 * __word_size__)))
+		free(cast(char*, load_word(repl_sites + repl_sites_count * 3 * __word_size__)))
 
 
 # Declare a global symbol for a REPL definition. An undefined symbol (a
@@ -506,9 +511,15 @@ void repl_state_restore(repl_state* st):
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	ers_reset()
 	# an entry that failed inside a function body leaves the register
 	# promotion state of that body armed; nothing may inherit it
 	regalloc_reset()
+	# likewise the call records and the callee note of the calls it was
+	# inside (grammar/stack_slot.w)
+	direct_call_reset()
+	direct_callee_kind = 0
+	direct_callee_group = 0
 	table_pos = st.table_pos
 	stack_pos = st.stack_pos
 	loop_depth = st.loop_depth
@@ -537,6 +548,9 @@ void repl_state_clear_context():
 	pointer_indirection = 0
 	condition_context = 0
 	cast_context = 0
+	cond_pending = 0
+	cond_discard_mark = 0
+	ast_cond_discard = 0
 	diag_clear()
 
 
@@ -915,6 +929,7 @@ char* repl_echo_json(int type, int value):
 		codepos = saved_codepos
 		be_cmp_note_reset()
 		be_imm_note_reset()
+		ers_reset()
 		filename = saved_filename
 		line_number = saved_line
 		return 0
@@ -1060,6 +1075,7 @@ void repl_inprocess_setup():
 	codepos = 0
 	be_cmp_note_reset()
 	be_imm_note_reset()
+	ers_reset()
 	code_offset = buffer
 	repl_engine_init()
 

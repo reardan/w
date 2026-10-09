@@ -508,6 +508,14 @@ int be_branch_link_get(int site):
 	return load_int32(code + site - 4)
 
 
+# Thread site onto another patch chain: its displacement field becomes
+# the raw link prev (be_ctrl_merge, code_generator/x86.w). x86 family
+# only; the merge is never requested for the other ISAs.
+void be_branch_link_set(int site, int prev):
+	if (target_isa == 1): error(c"internal error: be_branch_link_set on arm64")
+	save_int32(code + site - 4, prev)
+
+
 # Round the code cursor up to a 4-byte boundary on arm64 (a no-op on x86).
 # Called after inline data (string bytes, descriptor blobs) so the next
 # instruction stays aligned, which AArch64 requires.

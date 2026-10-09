@@ -211,7 +211,10 @@ int raw_asm_literal():
 		node.literal_length = i
 		walk = ast_raw_walk_open(node)
 		if (walk < 0): emit_raw_statement_ast(node)
-	else: emit(i, token)
+	else:
+		# raw bytes may use any register: nothing stays parked (A3)
+		if (ers_count != 0): ers_spill_all()
+		emit(i, token)
 	get_token()
 	# A missing ')' is an error: emit the bytes first, as the parse did
 	if ((walk >= 0) && (peek(c")") == 0)):

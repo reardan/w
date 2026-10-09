@@ -482,6 +482,10 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 
 # Lower the walk's expression child without reading its former parse arena.
 int retained_walk_lower_expression(retained_statement_walk* walk):
+	# A guard's condition is in discard position (grammar/cond_branch.w);
+	# the flag is read by the emission inside retained_emit_view (P1.2b).
+	if (walk.statement != 0):
+		if ((walk.statement.kind == ast_stmt_guard) && cond_branch_on()): ast_cond_discard = 1
 	int root = retained_record_at(walk.group).group.root
 	assert1(root == walk.root)
 	retained_emit_view(walk.tree, walk.group)

@@ -39,35 +39,59 @@ char* debug_file_name(int index):
 	return cast(char*, load_ptr(debug_files + index * __word_size__))
 
 
-int debug_line_file_index():
+int debug_line_file_index_of(char* source):
 	debug_files_ensure()
 	# Fast path: the same file as the previous statement
 	if (debug_file_count > 0):
 		char* last = cast(char*, load_ptr(debug_files + debug_last_file * __word_size__))
-		if (strcmp(last, filename) == 0):
+		if (strcmp(last, source) == 0):
 			return debug_last_file
 	int i = 0
 	while (i < debug_file_count):
 		char* name = cast(char*, load_ptr(debug_files + i * __word_size__))
-		if (strcmp(name, filename) == 0):
+		if (strcmp(name, source) == 0):
 			debug_last_file = i
 			return i
 		i = i + 1
 	if (debug_file_count >= 256): return 0
-	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(filename)))
+	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(source)))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
 	return debug_last_file
+
+
+int debug_line_file_index():
+	return debug_line_file_index_of(filename)
 
 
 # Record that the code being generated at codepos comes from filename:line.
 # stmt_stack_pos is the symbol table's stack_pos at the statement's start,
 # passed in by the caller because this file is compiled before the symbol
 # table module and cannot reference its globals directly.
+void debug_line_note_at(int line, int stmt_stack_pos);
+void debug_line_note_in(char* source, int line, int stmt_stack_pos);
+
 void debug_line_note(int stmt_stack_pos):
+	debug_line_note_at(line_number + 1, stmt_stack_pos)
+
+
+# The same for an explicit 1-based source line: a rotated for loop's
+# bottom test belongs to the header's line, parsed long before it
+# (grammar/loop_rotate.w).
+void debug_line_note_at(int line, int stmt_stack_pos):
+	debug_line_note_in(filename, line, stmt_stack_pos)
+
+
+# ... and in an explicit source file: a retained loop record lowers its
+# bottom test from the file name it owns, not the parser's current one
+# (compiler/loop_ast.w, #604: records outlive their parse frame).
+void debug_line_note_in(char* source, int line, int stmt_stack_pos):
 	# Device (PTX) bodies do not advance codepos, so address-keyed line
 	# records would pile up at the same host position: skip them.
 	if (target_isa == 3): return;
+	# The statements of a body inlined at a call site (unit A5) belong
+	# to the call site's line: the caller's note stays current.
+	if (inline_depth != 0): return;
 	debug_files_ensure()
 	if (debug_line_addresses == 0):
 		debug_line_capacity = 65536
@@ -77,8 +101,7 @@ void debug_line_note(int stmt_stack_pos):
 		debug_line_stack_pos = cast(char*, malloc(debug_line_capacity * 4))
 	if (debug_line_count >= debug_line_capacity): return;
 
-	int line = line_number + 1
-	int file_index = debug_line_file_index()
+	int file_index = debug_line_file_index_of(source)
 
 	if (debug_line_count > 0):
 		int prev = debug_line_count - 1
@@ -180,6 +203,19 @@ int debug_local_register(int i):
 	return load_int(debug_local_regs + i * 4)
 
 
+# A parameter of the function being opened lives in register reg
+# (compiler/regalloc_scan.w's regalloc_prologue_args, A1): its note is
+# among the newest 'A' notes, recorded when the signature was parsed.
+void debug_local_set_register_named(char* name, int reg):
+	int i = debug_local_count
+	while (i > 0):
+		i = i - 1
+		if (load_int(debug_local_kinds + i * 4) != 'A'): return;
+		if (strcmp(cast(char*, load_ptr(debug_local_names + i * __word_size__)), name) == 0):
+			save_int(debug_local_regs + i * 4, reg)
+			return;
+
+
 ########################## DWARF scope notes (#536) ###########################
 # Side tables for .debug_info subprograms, lexical blocks and variables,
 # and for the .debug_frame FDEs (code_generator/dwarf_info.w emits them
@@ -251,6 +287,7 @@ void dwarf_function_define(int symbol, char* name):
 
 void dwarf_block_begin():
 	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	if (inline_depth != 0): return;   # a body inlined at a call site (unit A5)
 	int block = dwarf_blocks.length / 3
 	dwarf_blocks.push(codepos)
 	dwarf_blocks.push(codepos)
@@ -262,6 +299,7 @@ void dwarf_block_begin():
 
 void dwarf_block_end():
 	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	if (inline_depth != 0): return;
 	if (dwarf_block_stack.length == 0): return;
 	int block = dwarf_block_stack.pop()
 	dwarf_blocks[block * 3 + 1] = codepos

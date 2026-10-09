@@ -4,6 +4,7 @@ import grammar.hash_builtin
 import grammar.ndarray_index
 import grammar.type_check
 import grammar.promote
+import grammar.cond_branch
 import grammar.generic_signature_ast
 import grammar.generic
 import grammar.defer
@@ -53,6 +54,7 @@ import grammar.conditional_expr
 import grammar.increment
 import grammar.multi_assign
 import grammar.expression
+import grammar.loop_rotate
 import grammar.while_statement
 import grammar.typed_identifier
 import grammar.variable_declaration
@@ -60,6 +62,7 @@ import grammar.for_statement
 import grammar.switch_statement
 import grammar.goto_statement
 import grammar.statement
+import grammar.inline_call
 import grammar.type_alias_declaration
 import grammar.struct_declaration
 import grammar.union_declaration

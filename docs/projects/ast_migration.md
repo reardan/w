@@ -2603,6 +2603,20 @@ numbers.
   it added. A region that is not contained stays, unreachable. The
   address-slot test needed one counter, `be_addr_slot_writes`, in
   `be_addr_slot_write` (`code_generator/arm64.w`).
+- **Rotated loops (merged with codegen_gap_plan.md unit A7,
+  2026-10-08).** A `while` is bottom-tested by default: the walk emits
+  the condition after the body, where the guard's branch is the back
+  edge. A folded bottom test therefore emits one jump to the body for
+  `while 1` (the same bytes as the default compile's constant fold) and
+  nothing for `while 0`; the dead body precedes the condition, so a
+  rotated loop opens its region at the while-begin phase
+  (`ast_opt_while_begin`), the branch phase adopts it when the condition
+  folded to 0, and the end phase closes it and re-resolves the entry jump
+  to the instruction after the removed bytes. A constant condition that
+  the branch-on-flags unit (A6) left as a pending `&&`/`||`/`!` chain
+  drops the chain's regions with its bytes (`cond_pending_discard`). On
+  the merged tree `w.w` folds 109 conditions and removes 30 dead regions
+  on x86 (43 on x64); `ast_opt_verify` and `ast_opt_test` pass.
 - **What it does not touch.** The retained forest is unchanged, so `w
   tree --json` is too. The pass runs only on x86 and x64 Linux ELF, and
   not under `--profile-generate`/`--coverage` (their counters record code

@@ -3378,6 +3378,11 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	int id = expression_ast_add(tree, node_op, left, right)
 	if (id < 0): return -1
 	tree.value[id] = op
+	# Built by the statement's own expression() call (depth 1), not by a
+	# group's, an argument's or a right side's: the streaming '=' reads
+	# its stmt_context from the same distinction, and the retained
+	# emitter's keep_eax must agree with it byte for byte.
+	tree.high[id] = depth == 1
 	tree.result_type[id] = type_value(lt)
 	if ((op == 0) && (map_store == 0)): tree.result_type[id] = type_value(type_strip_gpu(lt))
 	return id
@@ -3749,9 +3754,13 @@ int ast_expression_emit_prepared(expression_ast* tree, int root):
 
 
 int ast_expression_try_at(int group_offset, int whole):
+	# A tree in discard position emits its root as a condition chain
+	# (grammar/cond_branch.w, code_generator/expression_ast.w)
+	int discard = cond_discard_match()
 	expression_ast tree
 	int root = ast_expression_prepare_at(&tree, group_offset, whole)
 	if (root < 0): return -1
+	ast_cond_discard = discard
 	return ast_expression_emit_prepared(&tree, root)
 
 

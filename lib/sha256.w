@@ -104,66 +104,83 @@ int* sha256_k():
 
 
 # Compress one 64-byte block into the eight-word state h[0..7], using
-# w (64 words) as the message schedule. The rotations are written out
-# inline rather than through sha256_rotr/sha256_xor: this runs over every
-# byte of every binary the compiler emits (the ELF build-id), and the
-# per-operation calls made it ~40% of a self-compile. Each rotr(x, n) is
-# ((x >> n) & low_(32-n)_bits) | (x << (32 - n)), with the low-bit mask
-# written as a literal (never bit 31, so no sign-extension gotcha) so a
-# 32-bit host's arithmetic shift cannot smear the sign in; the final
-# & mask trims the 64-bit hosts back to 32 bits.
+# w (64 words) as the message schedule. This runs over every byte of
+# every binary the compiler emits (the ELF build-id), so it is written
+# for the code generator rather than through sha256_rotr/sha256_xor: the
+# working words are uint32 locals -- the machine word on a 32-bit host,
+# a zero-extended register on x64 (unit A8, docs/projects/
+# codegen_gap_plan.md §2.7) -- so every store truncates to 32 bits and
+# no '& mask' is needed anywhere in the loops; the rotations are the
+# rotr intrinsic (grammar/bit_builtin.w: one 'ror' on x86/x64, 'rorv' on
+# arm64, defined on the low 32 bits with the result zero-extended, so
+# it rotates within 32 bits on every target); and the schedule's two
+# logical shifts are the shr intrinsic from the same file, because the
+# pinned seed still shifts a uint32 arithmetically on its 32-bit host
+# (its '>>' predates the unsigned-word rule: a plain x >> 3 there smears
+# the sign in and the seed-built compiler would hash wrongly). h and w
+# stay int* words: a uint32 stored into one is its low 32 bits
+# zero-extended, which is what the masked code wrote.
 void sha256_block_w(int* h, char* block, int* w):
 	int* k = sha256_k()
-	int mask = sha256_mask32()
 
 	int i = 0
 	while (i < 16):
 		char* p = block + i * 4
-		w[i] = (((p[0] & 255) << 24) | ((p[1] & 255) << 16) | ((p[2] & 255) << 8) | (p[3] & 255)) & mask
+		uint32 v = ((p[0] & 255) << 24) | ((p[1] & 255) << 16) | ((p[2] & 255) << 8) | (p[3] & 255)
+		w[i] = v
 		i = i + 1
 	while (i < 64):
-		int x = w[i - 15]
-		int s0 = (((x >> 7) & 0x1ffffff) | (x << 25)) ^ (((x >> 18) & 0x3fff) | (x << 14)) ^ ((x >> 3) & 0x1fffffff)
-		int y = w[i - 2]
-		int s1 = (((y >> 17) & 0x7fff) | (y << 15)) ^ (((y >> 19) & 0x1fff) | (y << 13)) ^ ((y >> 10) & 0x3fffff)
-		w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & mask
+		uint32 x = w[i - 15]
+		uint32 s0 = rotr(x, 7) ^ rotr(x, 18) ^ shr(x, 3)
+		uint32 y = w[i - 2]
+		uint32 s1 = rotr(y, 17) ^ rotr(y, 19) ^ shr(y, 10)
+		uint32 t = w[i - 16] + s0 + w[i - 7] + s1
+		w[i] = t
 		i = i + 1
 
-	int a = h[0]
-	int b = h[1]
-	int c = h[2]
-	int d = h[3]
-	int e = h[4]
-	int f = h[5]
-	int g = h[6]
-	int hh = h[7]
+	uint32 a = h[0]
+	uint32 b = h[1]
+	uint32 c = h[2]
+	uint32 d = h[3]
+	uint32 e = h[4]
+	uint32 f = h[5]
+	uint32 g = h[6]
+	uint32 hh = h[7]
 
 	i = 0
 	while (i < 64):
-		int bs1 = (((e >> 6) & 0x3ffffff) | (e << 26)) ^ (((e >> 11) & 0x1fffff) | (e << 21)) ^ (((e >> 25) & 0x7f) | (e << 7))
-		int ch = (e & f) ^ ((e ^ mask) & g)
-		int t1 = (hh + (bs1 & mask) + ch + k[i] + w[i]) & mask
-		int bs0 = (((a >> 2) & 0x3fffffff) | (a << 30)) ^ (((a >> 13) & 0x7ffff) | (a << 19)) ^ (((a >> 22) & 0x3ff) | (a << 10))
-		int maj = (a & b) ^ (a & c) ^ (b & c)
-		int t2 = ((bs0 & mask) + maj) & mask
+		uint32 bs1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)
+		uint32 ch = (e & f) ^ (~e & g)
+		uint32 t1 = hh + bs1 + ch + k[i] + w[i]
+		uint32 bs0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)
+		uint32 maj = (a & b) ^ (a & c) ^ (b & c)
+		uint32 t2 = bs0 + maj
 		hh = g
 		g = f
 		f = e
-		e = (d + t1) & mask
+		e = d + t1
 		d = c
 		c = b
 		b = a
-		a = (t1 + t2) & mask
+		a = t1 + t2
 		i = i + 1
 
-	h[0] = (h[0] + a) & mask
-	h[1] = (h[1] + b) & mask
-	h[2] = (h[2] + c) & mask
-	h[3] = (h[3] + d) & mask
-	h[4] = (h[4] + e) & mask
-	h[5] = (h[5] + f) & mask
-	h[6] = (h[6] + g) & mask
-	h[7] = (h[7] + hh) & mask
+	a = a + h[0]
+	b = b + h[1]
+	c = c + h[2]
+	d = d + h[3]
+	e = e + h[4]
+	f = f + h[5]
+	g = g + h[6]
+	hh = hh + h[7]
+	h[0] = a
+	h[1] = b
+	h[2] = c
+	h[3] = d
+	h[4] = e
+	h[5] = f
+	h[6] = g
+	h[7] = hh
 
 
 # Compress one 64-byte block into the eight-word state h[0..7].

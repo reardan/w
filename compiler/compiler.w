@@ -927,9 +927,92 @@ int link_option(char* arg, int apply):
 	# tests/regalloc_diff_test.w and the fallback a guard failure asks for.
 	if ((strcmp(arg, c"--no-regs") == 0) || (strcmp(arg, c"-O0") == 0)):
 		if (apply): regalloc_disabled = 1
+		# -O0 is "no optimization": the condition chains, the
+		# bottom-tested loops and the expression registers go too
+		if (apply && (strcmp(arg, c"-O0") == 0)):
+			cond_branch_disabled = 1
+			loop_rotate_disabled = 1
+			ers_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
+		return 1
+	# Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4) are
+	# on by default on x86/x64; --no-direct-calls reloads every callee
+	# into the accumulator, the reference for tests/regalloc_diff_test.w
+	# and the fallback a guard failure asks for.
+	if (strcmp(arg, c"--no-direct-calls") == 0):
+		if (apply): direct_calls_disabled = 1
+		return 1
+	# Addressing modes (docs/projects/codegen_gap_plan.md §2.2, unit A2)
+	# are on by default on x86/x64; --no-addr-modes keeps the
+	# accumulator-address loads and stores, the reference for
+	# tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-addr-modes") == 0):
+		if (apply): addr_modes_disabled = 1
+		return 1
+	# The expression register stack (docs/projects/codegen_gap_plan.md
+	# §2.3, unit A3) is on by default on x86/x64; --no-expr-regs (and
+	# -O0) parks every waiting operand on the real stack, the reference
+	# for tests/regalloc_diff_test.w and the fallback an internal error
+	# asks for.
+	if (strcmp(arg, c"--no-expr-regs") == 0):
+		if (apply): ers_disabled = 1
+		return 1
+	if (strcmp(arg, c"--expr-regs") == 0):
+		if (apply): ers_disabled = 0
+		return 1
+	# The x86-32 register budget (docs/projects/codegen_gap_plan.md §2.7,
+	# unit A9: loops own ecx/edx where no shift count or division needs
+	# them) is on by default; --no-x86-budget keeps the pre-A9 budget,
+	# the reference for tests/regalloc_diff_test.w. Nothing on x64.
+	if (strcmp(arg, c"--no-x86-budget") == 0):
+		if (apply): x86_budget_disabled = 1
+		return 1
+	if (strcmp(arg, c"--x86-budget") == 0):
+		if (apply): x86_budget_disabled = 0
+		return 1
+	# Branch-on-flags for &&/||/! in conditions (docs/projects/
+	# codegen_gap_plan.md §2.6, grammar/cond_branch.w) is on by default
+	# on x86/x64; --no-cond-branch (and -O0) keeps the value form, which
+	# is the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-cond-branch") == 0):
+		if (apply): cond_branch_disabled = 1
+		return 1
+	if (strcmp(arg, c"--cond-branch") == 0):
+		if (apply): cond_branch_disabled = 0
+		return 1
+	# Loop rotation (docs/projects/codegen_gap_plan.md §2.5, unit A7,
+	# grammar/while_statement.w) is on by default on x86/x64 and arm64;
+	# --no-loop-rotate (and -O0) keeps every loop top-tested, the
+	# reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-loop-rotate") == 0):
+		if (apply): loop_rotate_disabled = 1
+		return 1
+	if (strcmp(arg, c"--loop-rotate") == 0):
+		if (apply): loop_rotate_disabled = 0
+		return 1
+	# Narrow integer promotion (docs/projects/codegen_gap_plan.md §2.7,
+	# unit A8): int32/uint32 locals and arguments take registers like
+	# 'int' on x86/x64; --no-narrow-regs keeps them on the stack, the
+	# reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-narrow-regs") == 0):
+		if (apply): narrow_regs_disabled = 1
+		return 1
+	if (strcmp(arg, c"--narrow-regs") == 0):
+		if (apply): narrow_regs_disabled = 0
+		return 1
+	# Inlining of small leaf callees (unit A5, compiler/inline_table.w)
+	# is opt-in on x86/x64 Linux: --inline turns it on, --profile-use
+	# turns it on for the sites the profile marks hot, and --no-inline
+	# keeps every call a call whatever else was given (the reference
+	# for tests/regalloc_diff_test.w and the fallback a guard failure
+	# asks for).
+	if (strcmp(arg, c"--inline") == 0):
+		if (apply): inline_requested = 1
+		return 1
+	if (strcmp(arg, c"--no-inline") == 0):
+		if (apply): inline_disabled = 1
 		return 1
 	if (starts_with(arg, c"--ptx=")):
 		# Debug dump of the embedded PTX module (kernels/'gpu for'),
@@ -987,7 +1070,17 @@ void help_shared_options():
 	println(c"  --syscall-abi=vmcall   emit an x64 static KVM cell executable")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
+	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
+	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
+	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
+	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
+	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
+	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
+	println(c"  --no-x86-budget       x86-32: no loop registers in ecx/edx (the pre-A9 register budget)")
+	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
+	println(c"                        profile-hot sites under --profile-use)")
+	println(c"  --no-inline           never emit a callee's body in place of a call")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
@@ -1373,6 +1466,19 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# runtime compiles before the positional loop below
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-x86-budget") == 0) || (strcmp(*flag_arg, c"--x86-budget") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-narrow-regs") == 0) || (strcmp(*flag_arg, c"--narrow-regs") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--inline") == 0) || (strcmp(*flag_arg, c"--no-inline") == 0)): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if ((strcmp(*flag_arg, c"--profile-generate") == 0) || (strcmp(*flag_arg, c"--coverage") == 0)): link_option(*flag_arg, 1)
 			# P2: so does the profile the optimizer reads (profile_use.w).
@@ -1602,6 +1708,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# them all.
 	if (stats_mode): sym_stats_dump()
 	if (stats_mode): regalloc_stats_dump()
+	if (stats_mode): inline_stats_dump()
 	if (stats_mode): profile_use_stats_dump()   # P2: --profile-use
 	if (stats_mode && ast_retain_mode):
 		print_int0(c"Retained AST nodes: ", retained_node_count())
@@ -1750,6 +1857,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(generic_source_seeks))
 		print_error(c"\nDeferred statement source seeks: ")
 		print_error(itoa(defer_source_seeks))
+		print_error(c"\n")
+	# A7: while loops rotated (grammar/loop_rotate.w), those whose
+	# condition skip declined, and condition returns that left the
+	# buffered window.
+	if (stats_mode):
+		print_error(c"Loop rotation: while loops rotated ")
+		print_error(itoa(loop_rotate_whiles))
+		print_error(c", declined ")
+		print_error(itoa(loop_rotate_declined))
+		print_error(c", source seeks ")
+		print_error(itoa(loop_rotate_seeks))
 		print_error(c"\n")
 	if (stats_mode && ast_emit_retained_mode):
 		print_error(c"Generic types from retained trees: ")

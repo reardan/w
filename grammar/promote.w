@@ -284,6 +284,9 @@ mean eax already holds the value. Structs are used by address, so they
 are never loaded either.
 */
 int promote(int type):
+	# A condition chain left pending (grammar/cond_branch.w) is being
+	# read as a value: give it its value form first
+	if (cond_pending): cond_pending_materialize()
 	if (hash_index_pending): return hash_finish_pending_read()
 	if (nd_index_pending): return nd_finish_pending_read()
 	if (verbosity >= 1):

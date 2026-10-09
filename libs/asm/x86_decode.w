@@ -99,6 +99,17 @@ int asm_x86_u32(asm_x86_dec* d):
 	return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 
 
+# A signed 32-bit field (displacements, rel32 branch targets): the same
+# value on a 32-bit host, where the word is the field, and on a 64-bit
+# host, where the top bit must be sign-extended by hand so a backward
+# `call rel32` decodes as .-N and its branch_target lands on the callee.
+int asm_x86_s32(asm_x86_dec* d):
+	int v = asm_x86_u32(d)
+	if (__word_size__ == 8):
+		if ((v >> 31) & 1): v = v - (1 << 32)
+	return v
+
+
 ############################## operand helpers ################################
 
 void asm_x86_set_reg(asm_operand* op, int rclass, int number, int size):
@@ -145,20 +156,20 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 			rm.scale = scale
 		if (base_lo == 5 && mod == 0):
 			# no base: absolute disp32 (SIB form) — same on x86 and x64.
-			rm.disp = asm_x86_u32(d)
+			rm.disp = asm_x86_s32(d)
 			rm.disp_size = 4
 		else: rm.base = base_lo | (rex_b << 3)
 	else if (rm_field == 5 && mod == 0):
 		# mod=0 rm=5: [rip+disp32] on x64, absolute [disp32] on x86.
 		if (d.mode == 8): rm.base = ASM_BASE_RIP
-		rm.disp = asm_x86_u32(d)
+		rm.disp = asm_x86_s32(d)
 		rm.disp_size = 4
 	else: rm.base = rm_field | (rex_b << 3)
 	if (mod == 1):
 		rm.disp = asm_x86_s8(d)
 		rm.disp_size = 1
 	else if (mod == 2):
-		rm.disp = asm_x86_u32(d)
+		rm.disp = asm_x86_s32(d)
 		rm.disp_size = 4
 
 
@@ -229,7 +240,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	# Jcc rel32
 	if (op >= 0x80 && op <= 0x8f):
 		insn.mnemonic = asm_x86_concat(c"j", asm_x86_cc(op - 0x80))
-		asm_x86_rel_target(insn, d, asm_x86_u32(d))
+		asm_x86_rel_target(insn, d, asm_x86_s32(d))
 		return d.pos - start
 
 	# SETcc r/m8
@@ -630,6 +641,21 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# mov r/m8, imm8 (0xc6 /0) and mov r/m32, imm32 (0xc7 /0; imm16 with
+	# the 0x66 prefix, imm32 sign-extended under REX.W). The 64-bit form's
+	# immediate is recorded at width 4, the width it is encoded at.
+	if ((op == 0xc6 || op == 0xc7) && ((asm_x86_peek(d) >> 3) & 7) == 0):
+		int modrm = asm_x86_u8(d)
+		insn.mnemonic = c"mov"
+		int size = d.opsize
+		if (op == 0xc6): size = 1
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
+		if (size == 1): asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
+		else if (size == 2): asm_x86_set_imm(&insn.op2, asm_x86_s16(d), 2)
+		else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+		insn.length = d.pos - start
+		return insn.length
+
 	# mov r8, imm8 (0xb0-0xb7)
 	if (op >= 0xb0 && op <= 0xb7):
 		insn.mnemonic = c"mov"
@@ -685,7 +711,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0xe8 || op == 0xe9):
 		if (op == 0xe8): insn.mnemonic = c"call"
 		else: insn.mnemonic = c"jmp"
-		asm_x86_rel_target(insn, d, asm_x86_u32(d))
+		asm_x86_rel_target(insn, d, asm_x86_s32(d))
 		insn.length = d.pos - start
 		return insn.length
 

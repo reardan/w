@@ -39,8 +39,24 @@ int conditional_arm_is_value(int t):
 
 
 int conditional_expr():
+	# In condition context (grammar/cond_branch.w) the condition's chain
+	# leaves its regions open above ours, so the three regions below are
+	# opened first; without a '?' they are empty and join the chain's
+	# pending set, which drops them.
+	int discard = cond_discard_match()
+	int base = ctrl_stack_pos
+	int h_join = -1
+	int h_stub = -1
+	int h_else = -1
+	if (discard):
+		h_join = be_ctrl_block()
+		h_stub = be_ctrl_block()
+		h_else = be_ctrl_block()
 	int type = logical_or_expr()
 	if (peek(c"?") == 0):
+		if (discard):
+			if (cond_pending == 0): error(c"internal error: condition chain left nothing pending")
+			cond_pending_base = base
 		return type
 	get_token() /* consume '?' */
 	# Recursion-depth guard (compiler/tokenizer.w): ternary chains recurse
@@ -51,15 +67,16 @@ int conditional_expr():
 	# instead; same counter, limit and message as the operand-level guard.
 	expr_nesting_depth = expr_nesting_depth + 1
 	if (expr_nesting_depth > 1000): error(c"expression nesting too deep")
-	promote(type)
+	if (cond_pending == 0): promote(type)
 	# Three regions: h_join ends at the join point, h_stub ends where the
 	# then arm's code resumes (usually also the join, but a decay stub can
 	# be spliced in below once the else arm's type is known), h_else ends
 	# where the else arm starts.
-	int h_join = be_ctrl_block()
-	int h_stub = be_ctrl_block()
-	int h_else = be_ctrl_block()
-	be_br_zero_discard(h_else)
+	if (discard == 0):
+		h_join = be_ctrl_block()
+		h_stub = be_ctrl_block()
+		h_else = be_ctrl_block()
+	cond_branch_consume(h_else, 0)
 	int then_type = expression()
 	then_type = promote(then_type)
 	expect(c":")

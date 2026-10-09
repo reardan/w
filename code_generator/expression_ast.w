@@ -96,8 +96,46 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 # Walk the completed, decoded scalar tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
+# The condition-chain twin of logical_and_cond / logical_or_cond
+# (grammar/cond_branch.w): every operand is in discard position, each
+# but the last branches to the chain's tagged region, the last stays
+# pending with the regions for the consumer. Same bytes as the
+# streaming grammar: regions emit nothing, and a grouped sub-chain is
+# a nested node here exactly where it is a '(' group there.
+void emit_cond_chain_ast(expression_ast* tree, int id):
+	int is_or = tree.op[id] == 'o'
+	int base = ctrl_stack_pos
+	int tag = 1
+	if (is_or): tag = 2
+	int h = be_ctrl_block_tagged(tag)
+	int child = tree.left[id]
+	int type = -1
+	while (child >= 0):
+		int next = tree.next_arg[child]
+		ast_cond_discard = 1
+		emit_expression_ast(tree, child)
+		type = tree.result_type[child]
+		if (next >= 0): cond_operand_branch(type, h, is_or)
+		child = next
+	cond_chain_finish(base, type)
+
+
+# Discard position passes from a node to its first child when that
+# child starts at the node's own first token, where the streaming
+# grammar's '(' and '!' forwarding can reach it: every postfix and
+# binary form, not the prefix operators, casts or assignments.
+int cond_ast_forwards(int op):
+	if ((op == 'n') || (op == 'p') || (op == '~') || (op == 'K') || (op == 'r') || (op == 'd')): return 0
+	if ((op == '=') || (op == 'U')): return 0
+	return 1
+
+
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	# Discard position (grammar/cond_branch.w): consumed here, passed on
+	# below only where the streaming grammar would
+	int discard = ast_cond_discard
+	ast_cond_discard = 0
 	if (op == ast_propagate):
 		int child = tree.left[id]
 		emit_expression_ast(tree, child)
@@ -187,9 +225,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if (op == 'E'):
 		int base_stack = stack_pos
-		template_emit_helper_address(0)
-		int s = stack_pos
-		push_slot()
+		int s = template_call_begin(0)
 		rt_call_end(s)
 		int builder_slot = push_slot()
 		int part = tree.left[id]
@@ -217,9 +253,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 						template_spec_type = tree.symbol[spec]
 				template_emit_value_append(got, builder_slot)
 			part = tree.next_arg[part]
-		template_emit_helper_address(5)
-		s = stack_pos
-		push_slot()
+		s = template_call_begin(5)
 		push_slot_copy(builder_slot)
 		rt_call_end(s)
 		pop_to(base_stack)
@@ -325,10 +359,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 				types[i] = tree.value[argument]
 				argument = tree.next_arg[argument]
 			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
-			sym_emit_value(sym, name)
+			call_symbol(sym, name)
 			free(name)
-		else: generic_inst_emit_callee(tree.generic_instance[id])
-		call_eax()
+		elif (direct_generic_ok()): generic_inst_emit_call(tree.generic_instance[id])
+		else:
+			generic_inst_emit_callee(tree.generic_instance[id])
+			call_eax()
 		pop_to(s)
 		last_call_return_type = tree.high[id]
 		last_call_end = codepos
@@ -336,6 +372,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 	if (op == 'G'):
 		int sym = tree.symbol[id]
 		int signature = tree.generic_signature[id]
+		int direct = 0
 		if (sym >= 0):
 			# The symbol table has a stable name immediately before its
 			# record, but queued instances already retain their mangling.
@@ -347,15 +384,23 @@ void emit_expression_ast(expression_ast* tree, int id):
 				argument = tree.next_arg[argument]
 			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
 			strcpy(last_identifier, name)
-			sym_emit_value(sym, name)
+			# A direct call (unit A4) records the callee instead of
+			# materializing and parking it (grammar/stack_slot.w)
+			if (direct_callee_ok(sym)): direct = 1
+			else: sym_emit_value(sym, name)
 			free(name)
+		elif (direct_generic_ok()): direct = 2
 		else: generic_inst_emit_callee(tree.generic_instance[id])
 		int result = tree.high[id]
 		int has_return_buffer = emit_ast_return_buffer(result)
 		int s = stack_pos
-		push_slot()
+		if (direct == 1): direct_call_record(s, 1, sym)
+		elif (direct == 2): direct_call_record(s, 2, tree.generic_instance[id])
+		else:
+			push_slot()
+			direct_call_record(s, 0, 0)
 		if (has_return_buffer):
-			lea_eax_esp_plus(word_size)
+			lea_slot(s)
 			push_slot()
 		int arg = tree.left[id]
 		int count = 0
@@ -401,7 +446,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int subop = tree.value[id]
 			if (subop):
 				park_call(park, get_name, 0)
-				push_slot()
+				ers_slot()
 			int right = tree.right[id]
 			emit_expression_ast(tree, right)
 			int got = promote(tree.result_type[right])
@@ -433,7 +478,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int subop = tree.value[id]
 			if (subop):
 				emit_ast_map_call(c"__w_map_get", map_slot, key_slot, 0)
-				push_slot()
+				ers_slot()
 			int right = tree.right[id]
 			emit_expression_ast(tree, right)
 			int got = promote(tree.result_type[right])
@@ -647,8 +692,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 				add_eax_int32(word_size)
 				promote_eax()
 			return
-		print_emit_helper_address(helper)
-		push_slot()
+		print_call_begin(helper)
 		while (arg >= 0):
 			emit_expression_ast(tree, arg)
 			promote(tree.result_type[arg])
@@ -701,11 +745,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 		push_slot()
 		int sym = tree.symbol[id]
 		int s = rt_call_begin(table + tree.value[id])
+		# The receiver's save is the base slot; the return buffer's
+		# lowest word sits right below it
 		if (has_return_buffer):
-			lea_eax_esp_plus(2 << word_size_log2)
+			lea_slot(s - 1)
 			push_slot()
-			mov_eax_esp_plus(2 << word_size_log2)
-		else: mov_eax_esp_plus(1 << word_size_log2)
+		load_slot(s)
 		int got = tree.call_receiver_type[id]
 		coerce(sym_param_type(sym, 0), got)
 		push_call_argument(got)
@@ -719,6 +764,11 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (tree.binding_name[id] >= 0): name = &tree.text[tree.binding_name[id]]
 		strcpy(last_identifier, name)
 		int sym = tree.symbol[id]
+		# A direct call (unit A4) neither materializes nor parks the
+		# callee: the record below stands in for the callee word. A C
+		# variadic import's inline ABI path never read the value either.
+		int direct = 0
+		if ((op == 'C') && (tree.binding_name[id] < 0) && (target_isa != 3)): direct = direct_callee_ok(sym)
 		if (tree.binding_name[id] >= 0):
 			# Verbose table inspection remains a live compiler trace;
 			# actual address lowering uses the operand's owned binding.
@@ -735,7 +785,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 				reg_lvalue_sym = sym
 			else: be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
 		else if (target_isa == 3): gpu_sym_get_value(name)
-		else: sym_emit_value(sym, name)
+		else if (direct == 0): sym_emit_value(sym, name)
 		if (op == 'X'):
 			int s = stack_pos
 			push_slot()
@@ -786,13 +836,39 @@ void emit_expression_ast(expression_ast* tree, int id):
 				return
 			int has_return_buffer = emit_ast_return_buffer(declared_return)
 			int s = stack_pos
-			push_slot()
+			# The same inlining decision as grammar/postfix_expr.w (unit A5)
+			inline_note_call(table + tree.value[id])
+			if (direct && inline_call_site_ok(sym)): direct_call_record(s, 4, inline_site_record)
+			elif (direct): direct_call_record(s, 1, sym)
+			else:
+				push_slot()
+				direct_call_record(s, 0, 0)
 			if (has_return_buffer):
-				lea_eax_esp_plus(word_size)
+				lea_slot(s)
 				push_slot()
 			int count = emit_ast_direct_arguments(tree, id, s, 0)
 			finish_call(4, s, count, sym, 0, declared_return, count, has_return_buffer, sym_w_variadic_fixed_args(sym))
 		return
+	int cond_join = -1
+	int cond_stub = -1
+	int cond_else = -1
+	if (discard):
+		if ((op == 'a') || (op == 'o')):
+			emit_cond_chain_ast(tree, id)
+			return
+		if ((op == '!') || (op == 'b')):
+			int not_base = ctrl_stack_pos
+			ast_cond_discard = 1
+			emit_expression_ast(tree, tree.left[id])
+			cond_negate_pending(not_base, tree.result_type[tree.left[id]], op == '!')
+			return
+		if (op == '?'):
+			# The condition's chain leaves its regions open above these
+			# (conditional_expr opens them first for the same reason)
+			cond_join = be_ctrl_block()
+			cond_stub = be_ctrl_block()
+			cond_else = be_ctrl_block()
+		if (cond_ast_forwards(op)): ast_cond_discard = 1
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
 	if (op == 'U'):
@@ -872,8 +948,9 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int has_return_buffer = emit_ast_return_buffer(tree.high[id])
 		int s = stack_pos
 		push_slot()
+		direct_call_record(s, 0, 0)
 		if (has_return_buffer):
-			lea_eax_esp_plus(word_size)
+			lea_slot(s)
 			push_slot()
 		int signature = tree.value[id]
 		int arg = tree.right[id]
@@ -894,8 +971,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 		expression_is_assignment = 1
 		int subop = tree.value[id]
 		# The statement's own assignment leaves its value unread (R3:
-		# the register store may then drop the trailing 'mov eax,R')
-		int keep_eax = (id + 1) != ast_statement_root1
+		# the register store may then drop the trailing 'mov eax,R').
+		# A parenthesised '(a = b)' is the tree's root but not the
+		# statement's own expression() call (tree.high, set by
+		# grammar/ast_expression.w's assignment), and keeps the value
+		# exactly as the streaming stmt_context does.
+		int keep_eax = ((id + 1) != ast_statement_root1) || (tree.high[id] == 0)
 		# A register-resident left side (grammar/expression.w's '=',
 		# grammar/increment.w's compound form): no parked address, the
 		# store is a register move or an in-place 'op R,X'
@@ -910,23 +991,57 @@ void emit_expression_ast(expression_ast* tree, int id):
 			return
 		if (lhs_reg != 0):
 			int reg_loaded = promote(left_type)   # mov eax,R
-			push_slot()
+			ers_slot()
 			emit_expression_ast(tree, tree.right[id])
 			int reg_rt2 = promote(tree.result_type[tree.right[id]])
 			reg_rt2 = compound_assign_apply(subop, reg_loaded, reg_rt2)
 			coerce(left_type, reg_rt2)
 			regalloc_reg_store(lhs_reg, keep_eax)
 			return
-		int lhs_slot = push_slot()
+		# A memory operand on the left (A2): the twin of
+		# grammar/expression.w's '=' and grammar/increment.w's
+		# compound_assign_scalar, through the same mem_lvalue_* helpers
+		int mem_kind = 0
+		int mem_size = assign_mem_size(left_type)
+		int mem_base = 0
+		int mem_index = 0
+		int mem_scale = 0
+		int mem_disp = 0
+		int mem_pos = 0
+		int mem_start = 0
+		int mem_push_end = 0
+		if (mem_size): mem_kind = mem_lvalue_begin(stack_pos)
+		if ((mem_kind == 2) && subop): mem_kind = 0
+		if (mem_kind):
+			mem_base = mem_lv_base
+			mem_index = mem_lv_index
+			mem_scale = mem_lv_scale
+			mem_disp = mem_lv_disp
+			mem_pos = mem_lv_pos
+			mem_start = mem_lv_start
+		int lhs_slot = stack_pos
+		if (mem_kind != 1):
+			if (subop || (mem_kind == 2)): lhs_slot = ers_slot_keep()
+			else: lhs_slot = ers_slot()
+			mem_push_end = push_note_end
 		int loaded = left_type
 		if (subop):
+			if (mem_kind == 1): mem_lvalue_renote(mem_base, mem_index, mem_scale, mem_disp)
 			loaded = promote(left_type)
-			push_slot()
+			ers_slot()
 		emit_expression_ast(tree, tree.right[id])
 		int rt = promote(tree.result_type[tree.right[id]])
 		if (subop): rt = compound_assign_apply(subop, loaded, rt)
 		coerce(left_type, rt)
+		if (mem_kind == 1):
+			if (subop && (keep_eax == 0) && mem_store_compound(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos)): return
+			mem_store_eax(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_pos, stack_pos, keep_eax == 0)
+			return
 		int lhs_buried = stack_pos - lhs_slot
+		if ((mem_kind == 2) && (lhs_buried == 0)):
+			if (mem_store_parked(mem_size, mem_base, mem_index, mem_scale, mem_disp, mem_start, mem_push_end, keep_eax)):
+				stack_pos = stack_pos - 1
+				return
 		if (subop): pop_ebx_slot()
 		else if (lhs_buried > 0): mov_ebx_esp_plus(lhs_buried << word_size_log2)
 		else: pop_ebx()
@@ -952,11 +1067,15 @@ void emit_expression_ast(expression_ast* tree, int id):
 		coerce_explicit(tree.value[id], got)
 		return
 	if (op == '?'):
-		promote(left_type)
-		int h_join = be_ctrl_block()
-		int h_stub = be_ctrl_block()
-		int h_else = be_ctrl_block()
-		be_br_zero_discard(h_else)
+		if (cond_pending == 0): promote(left_type)
+		int h_join = cond_join
+		int h_stub = cond_stub
+		int h_else = cond_else
+		if (cond_else < 0):
+			h_join = be_ctrl_block()
+			h_stub = be_ctrl_block()
+			h_else = be_ctrl_block()
+		cond_branch_consume(h_else, 0)
 		emit_expression_ast(tree, tree.right[id])
 		int yt = promote(tree.result_type[tree.right[id]])
 		be_br(h_stub)
@@ -1068,6 +1187,34 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == '!'): alu_test_set(0x94)
 		if (op == 'b'): alu_test_set(0x95)
 		return
+	if (op == 'i'):
+		# Pointer subscript: a register-resident base (the register
+		# lvalue note) is added to the scaled index directly, the
+		# streaming twin of grammar/postfix_expr.w's '[' (A1,
+		# docs/projects/codegen_gap_plan.md §2.1).
+		int base_reg = 0
+		if (regalloc_note_current()): base_reg = regalloc_note_take()
+		else: binary1(left_type)
+		int index_start = codepos
+		emit_expression_ast(tree, tree.right[id])
+		promote(tree.result_type[tree.right[id]])
+		# One address from base, index and element size (A2): the
+		# address note of code_generator/x86.w, as in the streaming
+		# twin; the other ISAs keep the scale-and-add sequence.
+		int element_size = tree.value[id]
+		if (element_size < 1): element_size = 1
+		if (target_isa != 0):
+			if (element_size > 1): imul_eax_int32(element_size)
+			if (base_reg != 0): add_eax_reg(base_reg)
+			else:
+				pop_ebx()
+				alu_add()
+				stack_pos = stack_pos - 1
+		elif (base_reg != 0): subscript_reg_base(base_reg, element_size, index_start)
+		else:
+			subscript_stack_base(element_size, index_start)
+			stack_pos = stack_pos - 1
+		return
 	left_type = binary1(left_type)
 	int left_slot = stack_pos
 	emit_expression_ast(tree, tree.right[id])
@@ -1086,12 +1233,6 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == '&'): alu_and()
 		else if (op == '|'): alu_or()
 		else: alu_xor()
-		return
-	if (op == 'i'):
-		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
-		pop_ebx()
-		alu_add()
-		stack_pos = stack_pos - 1
 		return
 	if (op >= 0x90):
 		pop_ebx_slot()

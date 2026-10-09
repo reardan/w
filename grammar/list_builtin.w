@@ -491,11 +491,12 @@ int ufcs_call(int type):
 			has_return_buffer = 1
 	push_slot()
 	int s = rt_call_begin(name)
+	# The receiver's save is the base slot; the return buffer's lowest
+	# word sits right below it
 	if (has_return_buffer):
-		lea_eax_esp_plus(2 << word_size_log2)
+		lea_slot(s - 1)
 		push_slot()
-		mov_eax_esp_plus(2 << word_size_log2)
-	else: mov_eax_esp_plus(1 << word_size_log2)
+	load_slot(s)
 	check_call_argument(callee, 0 - 1, name, 0, type)
 	int param_type = sym_param_type(callee, 0)
 	if (param_type >= 0): coerce(param_type, type)
@@ -591,11 +592,9 @@ void list_literal_parse_entry(int container_type, int container_slot):
 	int element_type = type_list_element_type(container_type)
 	int got_type = parse_coerced(element_type, c"list literal element")
 	int value_slot = push_slot()
-	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
-		sym_get_value(c"__w_list_push_bytes")
-	else: sym_get_value(c"__w_list_push")
-	int s = stack_pos
-	push_slot()
+	char* fn = c"__w_list_push"
+	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)): fn = c"__w_list_push_bytes"
+	int s = rt_call_begin(fn)
 	push_slot_copy(container_slot)
 	push_slot_copy(value_slot)
 	rt_call_end(s)

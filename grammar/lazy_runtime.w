@@ -34,13 +34,16 @@ struct lazy_runtime:
 	int count      # number of helpers
 	char** names   # helper names, indexed like the chains
 	int* chains    # backpatch chain heads (0 = no pending site)
+	int* rel_chains  # direct-call rel32 chain heads (unit A4), 0 = none
 	int needed     # set once any call site used the runtime
+	int imported   # set by lazy_finish_import: the helpers are defined
 
 
 lazy_runtime* lazy_runtime_new(char* module, char* names):
 	lazy_runtime* rt = new lazy_runtime()
 	rt.module = module
 	rt.needed = 0
+	rt.imported = 0
 	int count = 1
 	int i = 0
 	while (names[i]):
@@ -49,6 +52,7 @@ lazy_runtime* lazy_runtime_new(char* module, char* names):
 	rt.count = count
 	char** split = cast(char**, malloc(count * __word_size__))
 	int* chains = cast(int*, malloc(count * __word_size__))
+	int* rel_chains = cast(int*, malloc(count * __word_size__))
 	int n = 0
 	int start = 0
 	i = 0
@@ -62,11 +66,13 @@ lazy_runtime* lazy_runtime_new(char* module, char* names):
 			name[k] = 0
 			split[n] = name
 			chains[n] = 0
+			rel_chains[n] = 0
 			n = n + 1
 			start = i + 1
 		i = i + 1
 	rt.names = split
 	rt.chains = chains
+	rt.rel_chains = rel_chains
 	return rt
 
 
@@ -75,16 +81,56 @@ char* lazy_helper_name(lazy_runtime* rt, int i):
 	return names[i]
 
 
+# The helper's symbol once lazy_finish_import compiled the module, -1
+# before: the chains serve every earlier site (even when the program
+# imported the module itself -- the patched bytes are the same), so no
+# site pays a symbol lookup for a helper that is usually not defined
+# yet (tools/wbench.w counts them).
+int lazy_helper_symbol(lazy_runtime* rt, int i):
+	if (rt.imported == 0): return -1
+	return sym_lookup(lazy_helper_name(rt, i))
+
+
 # Leave helper i's address in eax: directly when the runtime module is
 # already compiled, through the helper's backpatch chain otherwise.
 void lazy_emit_helper(lazy_runtime* rt, int i):
 	rt.needed = 1
-	char* name = lazy_helper_name(rt, i)
-	if (sym_lookup(name) >= 0):
-		sym_get_value(name)
+	int t = lazy_helper_symbol(rt, i)
+	if (t >= 0):
+		sym_emit_value(t, lazy_helper_name(rt, i))
 		return;
 	int* chains = rt.chains
 	chains[i] = addr_chain_link(chains[i])
+
+
+# Begin a call of helper i under the runtime-call protocol of
+# grammar/stack_slot.w: returns the call's stack base. A direct call
+# (unit A4) records the helper -- by symbol when the module is already
+# compiled, else as kind 3 (rt, i) for lazy_emit_call -- and parks no
+# callee word; otherwise the address is materialized and pushed.
+int lazy_call_begin(lazy_runtime* rt, int i):
+	int s = stack_pos
+	int t = lazy_helper_symbol(rt, i)
+	if (direct_callee_ok(t)):
+		rt.needed = 1
+		direct_call_record(s, 1, t)
+		return s
+	if ((t < 0) && direct_generic_ok()):
+		rt.needed = 1
+		direct_call_record_aux(s, 3, cast(int, rt), i)
+		return s
+	lazy_emit_helper(rt, i)
+	push_slot()
+	direct_call_record(s, 0, 0)
+	return s
+
+
+# The direct-call twin of lazy_emit_helper: `call rel32` linked onto
+# helper i's rel32 chain, patched by lazy_finish_import.
+void lazy_emit_call(int rt_address, int i):
+	lazy_runtime* rt = cast(lazy_runtime*, rt_address)
+	int* rel_chains = rt.rel_chains
+	rel_chains[i] = call_direct_link(rel_chains[i])
 
 
 # Import the runtime module when any call site used it and resolve the
@@ -93,10 +139,15 @@ void lazy_finish_import(lazy_runtime* rt):
 	if (cast(int, rt) == 0): return;
 	if (rt.needed == 0): return;
 	import_module(rt.module)
+	rt.imported = 1
 	int* chains = rt.chains
+	int* rel_chains = rt.rel_chains
 	int i = 0
 	while (i < rt.count):
 		if (chains[i]):
 			addr_chain_patch(chains[i], sym_address(lazy_helper_name(rt, i)))
 			chains[i] = 0
+		if (rel_chains[i]):
+			rel_chain_patch(rel_chains[i], sym_address(lazy_helper_name(rt, i)))
+			rel_chains[i] = 0
 		i = i + 1

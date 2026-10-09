@@ -111,6 +111,9 @@ void lint_note_internal_root(char* path):
 # Whether the tokens being parsed right now belong to a linted root.
 int lint_file_active():
 	if ((lint_mode == 0) || (filename == 0)): return 0
+	# A body inlined at a call site (unit A5) was linted where it was
+	# defined
+	if (inline_depth != 0): return 0
 	if ((lint_depth == 0) && (lint_root_files != 0)):
 		if (filename in lint_root_files): return 1
 	int i = 0

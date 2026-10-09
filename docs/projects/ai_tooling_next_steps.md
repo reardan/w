@@ -383,6 +383,19 @@ is a queue, not an archive.
   reproducible locally and gone on rerun — is still undiagnosed; if it
   recurs the new line will say what actually died and how.
 
+- **(2026-10-08) the fail-fast `wexec: failed: <target>` line is buried
+  under -j > 1.** On the first CI run of PR #588 the `tests` leg failed
+  with the reap-time line printed while a long target (the diff sweep)
+  was the oldest in flight, so the held output of every younger worker
+  (5000+ lines) was flushed after it and the last visible lines were
+  `wexec: stopped early after failure: 1 of 932 targets not attempted`.
+  The GitHub job-log API caps what it returns at the last few thousand
+  lines and the raw log download is blocked from cloud sessions, so the
+  failing target could not be named from the log at all. Fixed: the
+  fail-fast epilogue now repeats every `wexec: failed: <target> (exit
+  status N)` line just before the stopped-early count, so the tail of
+  any run names what failed. Covered by `wexec_keep_going_test`.
+
 - **(2026-08-07) `./wbuild -j 2 test_changed` fails with "unknown
   target test_changed".** The `test_changed` dispatcher in `wbuild`
   only matches `$1`, so leading flags fall through to wexec, which
@@ -1070,6 +1083,72 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   `asm_body_error` now does). A shared "report at line/column" helper
   would remove the trap.
 
+## Branch-on-flags conditions (2026-10-07, codegen_gap_plan.md unit A6)
+
+- **`wbench_compare` fails on an untouched compiler.** `tools/wbench_baseline.txt`
+  was last refreshed in #552 (2026-10-06); on `main` at 1335f06 the
+  counters it pins (`sym_lookup calls`, output bytes) are already 16-43%
+  off, so the gate reports "4 workloads regressed" for a change that
+  moves no counter (verified by running `bin/wbench` with the base
+  commit's compiler: identical counters). A unit that must "refresh the
+  baseline if deterministic counters moved" cannot tell its own effect
+  from the drift without that extra run. Direction: have the PR check
+  (or `wbench_compare` itself) say which commit wrote the baseline, or
+  refresh it in the same PR that changes the compiler's lookup pattern.
+- **The AST fixtures were the test that caught the unit's bugs.**
+  `tests/cond_branch_test.w` covered every shape the unit's design
+  listed and passed in four modes, yet `ast_expression_test` /
+  `ast_retained_emit_test` found two miscompiles (a parenthesised parked
+  map read as a whole operand, `(!!x) == 1`) because they compare
+  streaming and tree emission byte for byte *and* run the fixtures over
+  every expression form the grammar has. `wtest changed` listed both,
+  so the loop worked; the lesson for the next unit is to run those two
+  before the unit's own test is believed.
+- **A `wexec` run died with exit 143 and no diagnostic.** One run of the
+  focused target list stopped mid-`ast_expression_test` with
+  `exit 143` (SIGTERM to wexec itself) and nothing in the log; the same
+  list passed twice afterwards and the full suite passed. Not
+  reproduced; noted so a second sighting is not dismissed as noise.
+
+## Inlining small leaf callees (2026-10-07, codegen gap plan A5)
+
+- **`wtest changed` selects by import closure, so a codegen unit's
+  behavioural tests are invisible to it.** The diff of unit A5 touched
+  `grammar/` and `compiler/` files only; `wtest changed` returned
+  `verify`, the new `inline_test` twins, `regalloc_diff_test` and the
+  residue targets, but not `direct_call_test`, `ast_expression_test`,
+  `debug_test` or `attach_test`, which exercise exactly the paths the
+  unit changed (call emission, the two emitters' parity, DWARF line
+  notes). A unit has to carry its own list. Direction: let a source
+  declare the compiler paths it pins (`# wbuild: covers=grammar/
+  postfix_expr.w ...`) so a diff in those files selects it, the way
+  `tools/test_map.w` residue rules work today for data files.
+- **The wexec lock makes `./wbuild bench` (25+ minutes of callgrind)
+  exclusive with every other target.** Running a focused test while the
+  bench runs fails with `another build is running in this directory`;
+  the workaround is hand compiles (`bin/wv2 tests/foo.w -o bin/x && bin/x`),
+  which lose the manifest's expectations. Read-only or disjoint-output
+  targets could share the lock.
+- **`-v` levels are undocumented.** `-v` alone shows nothing beyond the
+  default, `-v -v` turns on the per-definition traces (`inline_body_end`,
+  `regalloc`), `-v -v -v` the per-site ones (`<name>: inlined`, `<name>:
+  call`), and the third level makes a self-compile take minutes because
+  every call prints. `--help` says only "repeat for compiler debug
+  traces"; the levels should be named there.
+- **A `wexec` run in one worktree can be killed from another.** During
+  the merge gates, three consecutive `./wbuild` stages of a chained
+  script (the focused gates at `ast_expression_test`, the full suite at
+  `ftp_64_test`, then `bench_compare`) ended with exit 143 (SIGTERM)
+  minutes apart, with nothing in their logs, while a sibling agent's
+  `wexec` ran in a neighbouring worktree; the same chain, restarted
+  under `setsid`, ran to the end. The suite's own `exit 143` sighting
+  above is the same shape. A `pkill wexec` (or a process-group kill by
+  an agent harness timing out a foreground command) has no way to
+  tell worktrees apart. Direction: let `wexec` re-exec under a
+  worktree-specific name (`wexec@lane-calls`) or document `setsid`
+  for chained runs, and make `./wbuild` print "killed by signal N"
+  for a stage that dies that way.
+
 ## The optimizer pass slot (2026-10-07, AST plan C3.5)
 
 - **One bad directive hides every source-owned target.** A conventional
@@ -1083,3 +1162,70 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   stop (or repeat the generation error at the end) when the requested
   target is unknown only because generation failed, and accept `data=`
   on conventional targets as a synonym, or name `deps=` in the error.
+
+
+## Expression register stack (2026-10-07, codegen_gap_plan.md unit A3)
+
+- **`./wbuild build` served a stale `bin/wv2`.** After a run of edits to
+  `code_generator/x86.w`, `./wbuild build` reported `wv2 (cached)` and
+  left a `bin/wv2` that did not match `./w w.w -o <fresh>` on the same
+  tree, and hours of debugging chased miscompiles that the current
+  source did not produce (the symptom: a test that failed under
+  `bin/wv2` passed under a hand-built compiler of the identical
+  source). `./wbuild --no-cache build` fixed it and the two binaries
+  were byte-identical from then on. Not reproduced deliberately; the
+  likely trigger is a source edit landing while a previous (killed)
+  `wexec` had the content hash computed but not the output written.
+  Direction: have `wexec` hash the output it recorded (not only its
+  inputs) before serving a cached binary, or have `build` always
+  re-verify the chain's first stage.
+- **`regalloc_diff_test` reports a timing flake as a behaviour
+  mismatch.** `raft_chunk_64_test` (a TCP slow-receiver test with a
+  60 s budget) failed once in its `--no-expr-regs` build while the full
+  suite and two other agents' runs loaded the machine; every rerun of
+  the same binary passed. The sweep's own nondeterminism check (two
+  runs of one build) cannot see a flake that hits one build once, so
+  the gate reported `MISMATCH (behaviour)` for a miscompile that was
+  not one. Direction: a `# wbuild:` tag (or the manifest's `timeout=`
+  hint) that lets the sweep retry or skip timing-bound programs, as it
+  already skips `*_race_*` and `malloc_churn`.
+- **The retained emitter is the differential test that found the
+  pre-scan asymmetry.** `--ast-emit-retained` cannot be served by the
+  pre-scan's line probe (the instantiation's bytes are in getchar's
+  window only), so it always ran the full pass, and a per-function
+  verdict that the probe path left different (`ers_hazard`) showed up
+  as 14 "retained emission differs" lines rather than as a wrong
+  program. Worth knowing before adding a pre-scan flag: anything the
+  probe decides must be decided the same way by the full pass.
+- **`wtest changed` on a runtime file selects suites the machine cannot
+  run, and `wexec` then stops the whole run on the first of them.** A
+  diff touching `structures/hash_table.w` (unit A8's SipHash rewrite)
+  selects every target, which `wtest` collapses into the umbrellas
+  `tests`, `tests_x64`, `tests_arm64`, `tests_wasm`, `tests_interop`,
+  `tests_gpu`, `tests_win64`, `update_win`, ...; running that list as
+  printed failed at `build_win` (`no executable 'wine' on PATH`) and
+  `wexec` reported `stopped early after failure: 1065 of 1081 targets
+  not attempted`, so one missing host tool cost the run of every
+  runnable gate. Direction: let `wtest changed` (or `wexec`) mark an
+  umbrella whose runner is absent (`wine`, `wasmtime`/`node`, a GPU) as
+  skipped with a one-line reason instead of failing it, or add a
+  `--keep-going` default for umbrella runs; the agent fell back to
+  `./wbuild tests` plus `tests_arm64` by hand.
+- **The arm64 dynamic tests need `QEMU_LD_PREFIX` that nothing sets.**
+  `tests_arm64` fails `dynamic_test_arm64` and `float_abi_test_arm64`
+  with `qemu-aarch64-static: Could not open '/lib/ld-linux-aarch64.so.1'`
+  unless `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu` is in the environment;
+  the sysroot is installed. Direction: `bin/wrun arm64` could export the
+  prefix itself when the sysroot exists and the variable is unset.
+- **The wexec lock serialises every `./wbuild` call, including the
+  one that builds `bin/wtest`.** While `regalloc_diff_test` held the
+  lock for a quarter of an hour (unit A9), `./wbuild wtest` failed
+  with "another build is running (wexec lock)", and the `bin/wtest`
+  left over from an older tree then rejected the manifest with a
+  wbuildgen error, so `wtest changed` could not be asked anything
+  until the sweep finished; `./bin/wv2 tools/test_map.w -o bin/wtest`
+  (the source that owns `binary=wtest` — there is no `tools/wtest.w`,
+  which is where the name suggests looking) was the way out. Direction:
+  let `./wbuild wtest` (and `--list`, `manifest`) run without taking
+  the lock, since they write only their own outputs, or print the
+  owning source's compile line in the lock message.

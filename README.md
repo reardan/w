@@ -310,13 +310,46 @@ Implemented and covered by tests:
   jumps out of or into blocks pop or reserve the locals involved — see
   `grammar/goto_statement.w`). `setjmp`/`longjmp` are runtime stubs in
   every native program; `lib/setjmp.w` has the `jmp_buf` type and the
-  contract. The x86/x64 backends keep the hottest word-sized locals of
-  a function with a loop in callee-saved registers (`esi`/`edi` on x86,
-  `r12`–`r15` on x64; `docs/projects/register_allocation_pgo.md` §2.2,
-  `--no-regs`/`-O0` turns it off): `raw_asm` bodies and hand-written
+  contract. The x86/x64 backends keep the hottest word-sized locals and
+  arguments of a function with a loop -- scalars and the pointers its
+  subscripts and field accesses go through -- in callee-saved registers
+  (`esi`/`edi` on x86, `r12`–`r15` on x64;
+  `docs/projects/register_allocation_pgo.md` §2.2 and
+  `docs/projects/codegen_gap_plan.md` §8, `--no-regs`/`-O0` turns it
+  off): `raw_asm` bodies and hand-written
   stubs must preserve `ebx`/`esi`/`edi`, `rbx`/`r12`–`r15` and
   `x19`–`x28`, and a function containing `raw_asm`, `setjmp`, `yield`
-  or an f-string promotes nothing.
+  or an f-string promotes nothing. A call to a known W function is one
+  `call rel32` on x86/x64/win64 (`docs/projects/codegen_gap_plan.md`
+  §2.4; `--no-direct-calls` restores the callee-through-the-accumulator
+  shape); calls through function pointers and C variadic imports stay
+  indirect. On the same two targets `&&`, `||`
+  and `!` in an `if`/`elif`/`while` condition branch per operand on the
+  comparison's flags instead of materializing a boolean
+  (`grammar/cond_branch.w`, `docs/projects/codegen_gap_plan.md` §2.6;
+  `--no-cond-branch`/`-O0` keeps the value form). `while` and `for`
+  loops are bottom-tested on x86/x64/win64 and arm64: entered by a
+  jump to the condition, which sits after the body and branches back
+  while it holds, one taken branch per iteration
+  (`grammar/loop_rotate.w`, `docs/projects/codegen_gap_plan.md` §2.5;
+  `--no-loop-rotate`/`-O0` keeps every loop top-tested; wasm and PTX
+  keep their structured shape). On x86-32 a loop whose body never
+  shifts by a variable, divides or takes a modulo may also keep its
+  hottest written locals, subscript bases and indices in `ecx`/`edx`
+  for the loop's extent (`docs/projects/codegen_gap_plan.md` §2.7 and
+  §8, unit A9; `--no-x86-budget` keeps the two-register budget).
+  `int32`/`uint32` locals and arguments
+  promote like `int`: the word itself on x86, a 32-bit register on x64
+  that stays zero- or sign-extended so wrap-around matches the stack
+  word and the code needs no `& mask` (§2.7, unit A8;
+  `--no-narrow-regs` keeps them on the stack).
+  `--inline` emits a small leaf callee's body in place of its
+  calls (§2.4, unit A5; also on for profile-hot sites under
+  `--profile-use`, off otherwise because the re-parse costs compile
+  time; `--no-inline` forces it off): bodies with loops, calls that
+  return, `defer`, `goto`, `raw_asm`, f-strings or `yield` stay calls,
+  and a breakpoint on an inlined callee is reached only through its
+  out-of-line body.
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

@@ -46,15 +46,16 @@ lazy_runtime* print_rt
 lazy_runtime* print_float_rt
 
 
-void print_emit_helper_address(int i):
+# Begin a call of prelude helper i (grammar/stack_slot.w's runtime-call
+# protocol); returns the call's stack base.
+int print_call_begin(int i):
 	if (i == 3):
 		if (cast(int, print_float_rt) == 0):
 			print_float_rt = lazy_runtime_new(c"structures.print_float", c"__w_print_float32")
-		lazy_emit_helper(print_float_rt, 0)
-		return
+		return lazy_call_begin(print_float_rt, 0)
 	if (cast(int, print_rt) == 0):
 		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32_unused __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all __w_lines __w_words __w_split __w_join __w_enum_name")
-	lazy_emit_helper(print_rt, i)
+	return lazy_call_begin(print_rt, i)
 
 
 # Rendering class of a promoted value, shared by print, f-strings
@@ -159,26 +160,20 @@ int print_list_element_kind(int element_type):
 
 # __w_print_nl()
 void print_emit_nl():
-	print_emit_helper_address(5)
-	int s = stack_pos
-	push_slot()
+	int s = print_call_begin(5)
 	rt_call_end(s)
 
 
 # helper(value) with the value in the given stack slot
 void print_emit_call1(int helper, int value_slot):
-	print_emit_helper_address(helper)
-	int s = stack_pos
-	push_slot()
+	int s = print_call_begin(helper)
 	push_slot_copy(value_slot)
 	rt_call_end(s)
 
 
 # __w_print_list(list, kind)
 void print_emit_call_list(int value_slot, int kind):
-	print_emit_helper_address(4)
-	int s = stack_pos
-	push_slot()
+	int s = print_call_begin(4)
 	push_slot_copy(value_slot)
 	push_slot_int(kind)
 	rt_call_end(s)
@@ -238,9 +233,7 @@ int prelude_input_expr():
 	get_token()
 	expect(c"(")
 	if (peek(c")") == 0): error(c"the prelude input helpers take no arguments")
-	print_emit_helper_address(helper)
-	int s = stack_pos
-	push_slot()
+	int s = print_call_begin(helper)
 	rt_call_end(s)
 	if (helper == 8): return type_value(type_get_list(type_lookup(c"int")))
 	if (helper >= 16):
@@ -358,8 +351,7 @@ int prelude_seq_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_emit_helper_address(helper)
-	push_slot()
+	print_call_begin(helper)
 	int got = expression()
 	got = promote(got)
 	prelude_seq_require_int_list(fn_name, got)
@@ -378,8 +370,7 @@ int prelude_math_call_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_emit_helper_address(helper)
-	push_slot()
+	print_call_begin(helper)
 	int got = expression()
 	got = promote(got)
 	prelude_math_require_int(fn_name, got)
@@ -473,9 +464,7 @@ void prelude_emit_enum_name(int t, int base_stack):
 	be_emit_inline_cstr(length, table_text)
 	free(table_text)
 	int table_slot = push_slot()
-	print_emit_helper_address(20)
-	int s = stack_pos
-	push_slot()
+	int s = print_call_begin(20)
 	push_slot_copy(table_slot)
 	push_slot_copy(value_slot)
 	rt_call_end(s)
@@ -520,8 +509,7 @@ int prelude_str_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_emit_helper_address(helper)
-	push_slot()
+	print_call_begin(helper)
 	int got = promote(expression())
 	int kind = 0
 	if (helper == 18):

@@ -9,10 +9,9 @@ int hash_literal_type
 
 
 void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot, int value_is_struct):
-	if (value_is_struct): sym_get_value(c"__w_map_set_bytes")
-	else: sym_get_value(c"__w_map_set")
-	int s = stack_pos
-	push_slot()
+	char* fn = c"__w_map_set"
+	if (value_is_struct): fn = c"__w_map_set_bytes"
+	int s = rt_call_begin(fn)
 	push_slot_copy(container_slot)
 	push_slot_copy(key_slot)
 	push_slot_copy(value_slot)
@@ -81,6 +80,8 @@ int primary_expr():
 	int new_type
 	# Where a '(' group would start (compiler/lint.w, assign-in-condition)
 	int group_offset = token_start_offset
+	# Serial of this primary's first token (direct_callee_keep)
+	int start_serial = token_serial
 	# Float literal (must run before int_literal, which only checks the first
 	# character before decoding the whole token)
 	int literal_type = float_literal()
@@ -195,6 +196,9 @@ int primary_expr():
 	# ( expression )
 	else if (accept(c"(")) {
 		lint_condition_group(group_offset)
+		# A group in discard position passes it on to its expression
+		# (grammar/cond_branch.w): '(a || b) && c' branches per operand
+		if (cond_discard_mark == group_offset + 1): cond_discard_arm()
 		# Recursion-depth guard: '(' grouping re-enters expression() while
 		# this primary_expr and its enclosing operand frames are still on
 		# the native stack, and the descent back down to the nested
@@ -203,9 +207,12 @@ int primary_expr():
 		# for every operand-position recursion. No separate counter here:
 		# a second increment would double-count each paren level and halve
 		# the effective limit.
+		int outer_group = direct_callee_group
+		direct_callee_group = start_serial
 		type = -1
 		if (ast_expressions_mode): type = ast_expression_try(group_offset)
 		if (type == -1): type = expression()
+		direct_callee_group = outer_group
 		if (peek(c")") == 0): error(c"No closing parenthesis")
 	}
 	# char literal e.g. 'c', '\n', '\x41' or 'é' (value = Unicode codepoint);
@@ -222,4 +229,8 @@ int primary_expr():
 	else: error2(c"Could not find a valid primary expression, token: ", token)
 
 	get_token()
+	# A noted direct callee (grammar/identifier.w, grammar/generic.w)
+	# that no call suffix will consume is an ordinary function value
+	if (direct_callee_current()):
+		if (direct_callee_keep(start_serial) == 0): direct_callee_materialize()
 	return type

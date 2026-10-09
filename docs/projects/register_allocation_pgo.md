@@ -44,8 +44,10 @@ as estimates.
   stage 3 adds caller-saved registers for call-free loops.
 - **Performance-driven optimization (§3): compiler-inserted counters,
   not sampling.** `--profile-generate` adds one `inc [counter]` per
-  function entry and per loop head, the runtime writes the counters at
-  exit, `bin/wprof` merges runs into a text profile keyed by each
+  function entry and per loop head (the body's first instruction: since
+  unit A7 of codegen_gap_plan.md rotated the loops, the count is the
+  loop's iterations, not its condition evaluations), the runtime writes
+  the counters at exit, `bin/wprof` merges runs into a text profile keyed by each
   function's `w defhash` hash (so a stale entry just stops matching), and
   `--profile-use=<file>` reads it as an explicit input: the fixpoint and
   wexec's content-hash cache stay deterministic because the profile is a

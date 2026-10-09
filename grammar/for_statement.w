@@ -37,9 +37,9 @@ slot and the cursor lives in a second one, mirroring the range lowering:
 # (grammar/generic.w) when the container is generic and the
 # instantiation's body has not been compiled yet. The instantiation was
 # interned by for_iter_generic_require, so the lookup cannot miss.
-void for_iter_callee(char* fn_name):
-	if (sym_lookup(fn_name) >= 0):
-		sym_get_value(fn_name)
+void for_iter_callee(char* fn_name, int t):
+	if (t >= 0):
+		sym_emit_value(t, fn_name)
 		return;
 	int inst = generic_inst_lookup(fn_name)
 	if (inst < 0): error2(fn_name, c" is not defined")
@@ -50,9 +50,18 @@ void for_iter_callee(char* fn_name):
 # fn_name(container, cursor). The operands live in hidden stack slots
 # identified by their stack_pos anchors; the result is left in eax.
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
-	for_iter_callee(fn_name)
 	int s = stack_pos
-	push_slot()
+	# A direct call (unit A4) records the callee instead of parking it
+	int t = sym_lookup(fn_name)
+	if (direct_callee_ok(t)): direct_call_record(s, 1, t)
+	else if ((t < 0) && direct_generic_ok()):
+		int inst = generic_inst_lookup(fn_name)
+		if (inst < 0): error2(fn_name, c" is not defined")
+		direct_call_record(s, 2, inst)
+	else:
+		for_iter_callee(fn_name, t)
+		push_slot()
+		direct_call_record(s, 0, 0)
 	push_slot_copy(container_slot)
 	if (cursor_slot != 0): push_slot_copy(cursor_slot)
 	rt_call_end(s)
@@ -261,10 +270,48 @@ void for_store_loop_var(int slot):
 		store_stack_var((stack_pos - slot) << word_size_log2)
 
 
+# The range loop's test, 'loop var < end' as a setl comparison for the
+# discard branch that follows: be_br_zero_discard to the exit at a
+# top-tested head, be_br_nonzero_discard back to the body at the bottom
+# of a rotated loop (grammar/loop_rotate.w). The hidden end word is in
+# its loop register (R3) when the loop owns one.
+void for_range_test(int for_var, int end_slot):
+	int for_reg = regalloc_slot_register(for_var - 1)
+	int end_reg = regalloc_hidden_register(end_slot)
+	if (for_reg != 0):
+		mov_eax_reg(for_reg)
+		push_slot()
+	else: push_slot_copy(for_var)
+	if (end_reg != 0): mov_eax_reg(end_reg)
+	else: load_slot(end_slot)
+	pop_ebx()
+	alu_cmp_set(0x9c) /* setl: loop var < end */
+	stack_pos = stack_pos - 1
+
+
+# The cursor loop's test. Returns 1 when the accumulator (or the flags
+# of the setl it leaves current) is nonzero while the loop CONTINUES
+# (the index form, 'cursor < length'), 0 when nonzero means it is DONE
+# (done_fn's result); the caller branches accordingly.
+int for_cursor_test(char* done_fn, int container_slot, int cursor_slot):
+	if (done_fn != 0):
+		for_iter_call(done_fn, container_slot, cursor_slot)
+		return 0
+	push_slot_copy(cursor_slot)
+	load_slot(container_slot)
+	add_eax_int32(word_size)
+	promote_eax()
+	pop_ebx_slot()
+	alu_cmp_set(0x9c) /* setl: cursor < length */
+	return 1
+
+
 void for_range_loop(int for_var, int for_tab_level):
 	if (ast_expressions_mode >= 2):
 		ast_for_range_loop(for_var, for_tab_level)
 		return
+	# The bottom test of a rotated loop belongs to the header's line
+	int header_line = diag_token_line
 	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
@@ -298,25 +345,22 @@ void for_range_loop(int for_var, int for_tab_level):
 	# step words, loaded ahead of the loop region.
 	int* outer = loop_enter()
 	for_reg = regalloc_slot_register(for_var - 1)
-	int end_reg = regalloc_loop_hidden(end_slot)
+	regalloc_loop_hidden(end_slot)
 	int step_reg = 0
 	if (num_range_args == 3): step_reg = regalloc_loop_hidden(for_var + 3)
-	# Loop region: the back edge re-tests the condition.
+	# A rotated loop (grammar/loop_rotate.w) enters at the bottom test
+	int entry = -1
+	if (loop_rotate_on()): entry = be_loop_entry()
+	# Loop region: the back edge re-tests the condition at a top-tested
+	# head, or starts the body of a rotated loop.
 	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	int h_top = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
 	# condition: loop var < end
-	if (for_reg != 0):
-		mov_eax_reg(for_reg)
-		push_slot()
-	else: push_slot_copy(for_var)
-	if (end_reg != 0): mov_eax_reg(end_reg)
-	else: load_slot(end_slot)
-	pop_ebx()
-	alu_cmp_set(0x9c) /* setl: loop var < end */
-	stack_pos = stack_pos - 1
-	be_br_zero_discard(loop_break_chain)
+	if (entry < 0):
+		for_range_test(for_var, end_slot)
+		be_br_zero_discard(loop_break_chain)
 
 	# Continue region: 'continue' in the body runs the increment first
 	loop_continue_chain = be_ctrl_block()
@@ -339,8 +383,15 @@ void for_range_loop(int for_var, int for_tab_level):
 		regalloc_slot_assert(for_var - 1)
 		inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
 
-	/* jmp back to condition */
-	be_br(h_top)
+	if (entry >= 0):
+		# the bottom test: back to the body while loop var < end
+		be_loop_entry_land(entry)
+		debug_line_note_at(header_line, stack_pos)
+		for_range_test(for_var, end_slot)
+		be_br_nonzero_discard(h_top)
+	else:
+		/* jmp back to condition */
+		be_br(h_top)
 	be_ctrl_end(h_top)
 
 	# break exits here; continue ran the increment first
@@ -452,6 +503,8 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 			begin_fn, done_fn, value_fn, next_fn, free_fn,
 			element_type, value_coerce_type, value_var, value_var_type, value2_fn, value2_coerce_type)
 		return
+	# The bottom test of a rotated loop belongs to the header's line
+	int header_line = diag_token_line
 	# hidden slot: the container pointer
 	int container_slot = push_slot()
 
@@ -463,24 +516,20 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	# Enter a new loop context for break/continue
 	# The exit region is where free_fn releases the container.
 	int* outer = loop_enter()
-	# Loop region: the back edge re-tests.
+	# A rotated loop (grammar/loop_rotate.w) enters at the bottom test
+	int entry = -1
+	if (loop_rotate_on()): entry = be_loop_entry()
+	# Loop region: the back edge re-tests at a top-tested head, or
+	# starts the body of a rotated loop.
 	profile_use_loop_align()   # P2: --profile-use pads a hot head to 16 bytes
 	int h_top = be_ctrl_loop()
 	profile_loop_head()   # P1: --profile-generate
 
 	# condition: exit once done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
-	if (done_fn != 0):
-		for_iter_call(done_fn, container_slot, cursor_slot)
-		be_br_nonzero_discard(loop_break_chain)
-	else:
-		push_slot_copy(cursor_slot)
-		load_slot(container_slot)
-		add_eax_int32(word_size)
-		promote_eax()
-		pop_ebx_slot()
-		alu_cmp_set(0x9c) /* setl: cursor < length */
-		be_br_zero_discard(loop_break_chain)
+	if (entry < 0):
+		if (for_cursor_test(done_fn, container_slot, cursor_slot)): be_br_zero_discard(loop_break_chain)
+		else: be_br_nonzero_discard(loop_break_chain)
 
 	# Continue region: 'continue' in the body advances the cursor first
 	loop_continue_chain = be_ctrl_block()
@@ -526,8 +575,15 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		store_stack_var((stack_pos - cursor_slot) << word_size_log2)
 	else: inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 
-	/* jmp back to condition */
-	be_br(h_top)
+	if (entry >= 0):
+		# the bottom test: back to the body while not done
+		be_loop_entry_land(entry)
+		debug_line_note_at(header_line, stack_pos)
+		if (for_cursor_test(done_fn, container_slot, cursor_slot)): be_br_nonzero_discard(h_top)
+		else: be_br_zero_discard(h_top)
+	else:
+		/* jmp back to condition */
+		be_br(h_top)
 	be_ctrl_end(h_top)
 
 	# Both exit edges (done and break) land here: release the container
