@@ -179,6 +179,12 @@ int json_codec_emit_map_desc(int t):
 	return address
 
 
+# Struct types whose descriptors are being emitted, outermost first.
+const int json_codec_pending_max = 64
+int[64] json_codec_pending
+int json_codec_pending_count
+
+
 # Emit (or reuse) the descriptor blob for a struct type and return its
 # absolute address. The be_blob region keeps the blob out of the executed
 # path (jumped over in the instruction stream on the native targets, in
@@ -191,11 +197,23 @@ int json_codec_descriptor(int struct_type):
 	int n = type_num_args(struct_type)
 
 	# Nested struct descriptors first, each in its own blob, so this
-	# blob can embed their addresses
+	# blob can embed their addresses. A struct reached again while its
+	# own nested descriptors are being emitted (a list or map of itself)
+	# would recurse forever: a descriptor can only point at one that
+	# already exists.
+	int depth = 0
+	while (depth < json_codec_pending_count):
+		if (json_codec_pending[depth] == struct_type):
+			error3(c"to_json/from_json do not support recursive struct types: '", type_get_name(struct_type), c"'")
+		depth = depth + 1
+	if (json_codec_pending_count == json_codec_pending_max): error(c"to_json/from_json struct nesting too deep")
+	json_codec_pending[json_codec_pending_count] = struct_type
+	json_codec_pending_count = json_codec_pending_count + 1
 	int i = 0
 	while (i < n):
 		json_codec_ensure_nested(type_get_field_type_at(struct_type, i))
 		i = i + 1
+	json_codec_pending_count = json_codec_pending_count - 1
 
 	int p = be_blob_begin()
 
