@@ -734,7 +734,7 @@ void take_ident_run():
 # (but NOT the newline itself) 
 # Also append a 0 so the string is zero terminated
 void read_until_end():
-	while (nextc != 10 && nextc != 0): takechar()
+	while ((nextc != 10) && (nextc != 0) && (nextc != -1)): takechar()
 	
 	token[token_i] = 0
 	token_i = token_i + 1
