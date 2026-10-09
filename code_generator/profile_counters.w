@@ -58,6 +58,8 @@ instrumented like any other function if and when that lands.
 With --coverage, statement entry sites additionally get kind s counters
 whose file and line are taken from the statement itself. Their hits are
 unioned by tools/wcoverage_lines.w; ordinary profile generation is unchanged.
+An s counter heading an if or elif has ordinal 1 (branch coverage,
+profile_coverage_branch_head below).
 Only the x86 and x64 Linux ELF targets are supported; the option block rejects
 the flag on every other target with an error rather than emitting
 counters there (arm64 would need ldr/add/str through a scratch
@@ -260,12 +262,30 @@ void profile_loop_head():
 # executable statements. Each emitted site has its own counter, including
 # repeated generic instantiations and deferred statements. The coverage
 # reader unions their hits by source file and line.
-void profile_coverage_line():
+void profile_coverage_site(int branch_head):
 	if ((coverage_generate_mode == 0) || (profile_generate_mode == 0)): return
 	if (target_isa != 0): return
 	profile_counters_init()
 	if (profile_current_record < 0): return
-	profile_counter_new(3, profile_current_record, 0)
+	profile_counter_new(3, profile_current_record, branch_head)
+
+
+# Branch coverage: the statement counter of an if or elif header
+# carries ordinal 1 in the map. The reader pairs it with the function's
+# next statement counter in map order, the first statement of the
+# then-arm, and derives both outcomes of the decision from the counts:
+# the arm ran (taken), and the header was reached more often than the
+# arm ran (not taken: the elif/else arm or the fall-through). Loops are
+# left to line coverage: their head counter sits inside the rotated
+# loop, so it counts iterations rather than condition evaluations.
+void profile_coverage_branch_head():
+	profile_coverage_site(1)
+
+
+# Statement entry: an 'if' statement heads a decision.
+void profile_coverage_statement():
+	if (peek(c"if")): profile_coverage_site(1)
+	else: profile_coverage_site(0)
 
 
 # Store a target word into the RW data image at data vaddr `vaddr`.

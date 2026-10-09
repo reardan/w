@@ -1,0 +1,26 @@
+diff --git a/tests/wcoverage/changed_fixture.w b/tests/wcoverage/changed_fixture.w
+new file mode 100644
+--- /dev/null
++++ b/tests/wcoverage/changed_fixture.w
+@@ -0,0 +1,15 @@
++# Input for 'wcoverage changed' in coverage_test: every line is in
++# changed_fixture.diff; debug_dump is exempt from the new-code rule.
++int never_called():
++	return 1
++
++
++int debug_dump():   # coverage: exempt debug output only
++	return 2
++
++
++int main(int argc, int argv):
++	int x = argc
++	if (x > 5):
++		x = 0
++	return x - 1
+diff --git a/tests/wcoverage/line_fixture.w b/tests/wcoverage/line_fixture.w
+--- a/tests/wcoverage/line_fixture.w
++++ b/tests/wcoverage/line_fixture.w
+@@ -4 +4 @@ int coverage_unused():
+-	return 98
++	return 99

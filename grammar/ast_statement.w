@@ -500,7 +500,7 @@ void ast_if_statement_arm(int walk, control_ast_walk* control):
 	if (peek(c"elif") && (tab_level == if_tab_level)):
 		if (coverage_generate_mode):
 			if (walk >= 0): retained_walk_drain(walk)
-			profile_coverage_line()
+			profile_coverage_branch_head()
 		get_token()
 		stmt_nesting_depth = stmt_nesting_depth + 1
 		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")

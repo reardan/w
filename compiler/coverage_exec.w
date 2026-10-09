@@ -10,7 +10,9 @@ the same source compiled with --coverage, so every output is unchanged;
 the variable is cleared for the re-executed process so it does not
 redirect again. When $W_COVERAGE_OUT names a directory, the instrumented
 run's counters go to $W_COVERAGE_OUT/<tag>_x86/<pid>.raw (_x64 for
-64-bit builds) through $W_PROFILE_OUT.
+64-bit builds) through $W_PROFILE_OUT. A process started with
+$W_PROFILE_OUT already set is being profiled by its caller and is not
+redirected.
 
 tools/wcoverage_suite.w drives it: setting the variables for one test-suite
 run reroutes every compile the suite makes, including the compilers that
@@ -31,6 +33,11 @@ void coverage_exec_redirect(char* variable, char* tag, int argv):
 	char* target = env_get(name)
 	if (target == 0): return
 	if (target[0] == 0): return
+	# A caller profiling this very process (verify_pgo, profile_refresh)
+	# set $W_PROFILE_OUT for it: run as asked, not as the coverage build.
+	char* profile = env_get(c"W_PROFILE_OUT")
+	if (profile != 0):
+		if (profile[0] != 0): return
 	char** envp = env_copy_with(env_current(), name, c"")
 	char* out = env_get(c"W_COVERAGE_OUT")
 	if (out != 0):

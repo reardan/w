@@ -65,6 +65,7 @@ import lib.process
 import lib.str
 import tools.wcoverage_lines
 import tools.wcoverage_suite
+import tools.wcoverage_changed
 
 
 char* wcov_compiler
@@ -218,6 +219,7 @@ int main(int argc, int argv):
 	if (args_count() > 1):
 		if (strcmp(args_get(1), c"lines") == 0): return wcov_lines_main()
 		if (strcmp(args_get(1), c"suite") == 0): return wcov_suite_main()
+		if (strcmp(args_get(1), c"changed") == 0): return wcov_changed_main()
 	wcov_compiler = c"bin/wv2"
 	wcov_jobs = 4
 	int show_covered = 0

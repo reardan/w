@@ -13,6 +13,7 @@
 #   --format text|lcov|json       per-line text (default), an lcov
 #                        tracefile, or one JSON object per file
 #   --diagnostics        error/warning call sites and whether they ran
+#   --branches           if/elif decisions and which outcomes ran
 #   --baseline <file>    exit 1 when a prefix drops below its floor
 import lib.lib
 import lib.args
@@ -32,6 +33,12 @@ struct wcov_fn:
 	int hits
 
 
+# An if/elif decision line: both outcomes, unioned over every map.
+struct wcov_branch:
+	int taken       # the then-arm ran
+	int not_taken   # the header was reached more often than the arm ran
+
+
 struct wcov_line:
 	char* path
 	int line
@@ -40,12 +47,16 @@ struct wcov_line:
 	# 'if (c): error(...)' that is the error call, not the condition.
 	int tail_hit
 	wcov_fn* fn
+	wcov_branch* branch   # 0 unless an if/elif header is on the line
 
 
 struct wcov_counter:
 	wcov_line* line
 	wcov_fn* fn
+	wcov_fn* owner   # the function a statement counter belongs to
 	int tail
+	int head         # an if/elif header (ordinal 1 on an s row)
+	int count        # summed over the dumps, saturating at 10^9
 
 
 void wcov_lines_fail(char* detail):
@@ -93,6 +104,8 @@ struct wcov_state:
 	map[char*, wcov_line*] lines
 	map[char*, wcov_fn*] fns
 	list[wcov_counter*] counters
+	list[list[wcov_counter*]] maps   # every map's counters, for the branch pass
+	int branches_done
 
 
 # The function a map row belongs to, keyed by file, defhash and name so
@@ -134,7 +147,10 @@ void wcov_line_map(wcov_state* st, char* path):
 		wcov_counter* counter = new wcov_counter()
 		counter.line = 0
 		counter.fn = 0
+		counter.owner = 0
 		counter.tail = 0
+		counter.head = 0
+		counter.count = 0
 		if (strcmp(fields[1], c"s") == 0):
 			statements = statements + 1
 			int line = wcov_small_decimal(fields[5])
@@ -149,9 +165,12 @@ void wcov_line_map(wcov_state* st, char* path):
 				entry.hit = 0
 				entry.tail_hit = 0
 				entry.fn = 0
+				entry.branch = 0
 				st.lines[key] = entry
-			if (entry.fn == 0): entry.fn = wcov_fn_for(st, fields, 0)
+			counter.owner = wcov_fn_for(st, fields, 0)
+			if (entry.fn == 0): entry.fn = counter.owner
 			counter.line = entry
+			if (strcmp(fields[6], c"1") == 0): counter.head = 1
 			tails[key] = counters.length
 		elif (strcmp(fields[1], c"f") == 0):
 			counter.fn = wcov_fn_for(st, fields, wcov_small_decimal(fields[5]))
@@ -161,6 +180,22 @@ void wcov_line_map(wcov_state* st, char* path):
 	if (statements == 0): wcov_lines_fail(c"no statement counters; compile with --coverage")
 	for char* key in tails: counters[tails[key]].tail = 1
 	st.counters = counters
+	st.maps.push(counters)
+
+
+# count + the decimal digits, capped at 10^9: only "ran at all" and the
+# then-arm vs header comparison need the value, and both survive the cap
+# short of a billion executions.
+int wcov_saturating_add(int count, char* digits):
+	int cap = 1000000000
+	int value = 0
+	int i = 0
+	while (digits[i] != 0):
+		if (value >= cap / 10): return cap
+		value = value * 10 + (digits[i] - '0')
+		i = i + 1
+	if (value >= cap - count): return cap
+	return count + value
 
 
 # One dump file, read a line at a time: a suite run writes thousands.
@@ -180,8 +215,10 @@ void wcov_line_dump(wcov_state* st, char* path):
 		text[space] = 0
 		int index = wcov_small_decimal(text)
 		if (index >= st.counters.length): wcov_lines_fail(c"dump index outside map")
-		if (wcov_decimal_nonzero(text + space + 1)):
+		char* digits = text + space + 1
+		if (wcov_decimal_nonzero(digits)):
 			wcov_counter* counter = st.counters[index]
+			counter.count = wcov_saturating_add(counter.count, digits)
 			if (counter.line != 0):
 				counter.line.hit = 1
 				if (counter.tail): counter.line.tail_hit = 1
@@ -189,6 +226,43 @@ void wcov_line_dump(wcov_state* st, char* path):
 			if (counter.fn != 0): counter.fn.entered = 1
 	string_free(row)
 	stream_close(in)
+
+
+# Branch outcomes from the counts: an if/elif header counter and the
+# next statement counter of the same function in map order, which is the
+# first statement of its then-arm (code_generator/profile_counters.w).
+void wcov_branch_pass(wcov_state* st):
+	for m in range(st.maps.length):
+		list[wcov_counter*] counters = st.maps[m]
+		for i in range(counters.length):
+			wcov_counter* head = counters[i]
+			if (head.head == 0): continue
+			wcov_counter* arm = 0
+			int j = i + 1
+			while ((j < counters.length) && (arm == 0)):
+				wcov_counter* c = counters[j]
+				if (c.line != 0):
+					if (c.owner == head.owner): arm = c
+					else: j = counters.length
+				j = j + 1
+			if (arm == 0): continue
+			wcov_line* line = head.line
+			if (line.branch == 0):
+				line.branch = new wcov_branch()
+				line.branch.taken = 0
+				line.branch.not_taken = 0
+			if (arm.count > 0): line.branch.taken = 1
+			if (head.count > arm.count): line.branch.not_taken = 1
+
+
+int wcov_branch_arms(wcov_line* row):
+	if (row.branch == 0): return 0
+	return 2
+
+
+int wcov_branch_hits(wcov_line* row):
+	if (row.branch == 0): return 0
+	return row.branch.taken + row.branch.not_taken
 
 
 # A dump argument: a file, or a directory of dump files.
@@ -214,6 +288,8 @@ struct wcov_group:
 	char* name
 	int total
 	int hits
+	int branch_total
+	int branch_hits
 
 
 wcov_group* wcov_group_for(map[char*, wcov_group*] groups, char* name):
@@ -222,6 +298,8 @@ wcov_group* wcov_group_for(map[char*, wcov_group*] groups, char* name):
 	g.name = strclone(name)
 	g.total = 0
 	g.hits = 0
+	g.branch_total = 0
+	g.branch_hits = 0
 	groups[g.name] = g
 	return g
 
@@ -258,6 +336,7 @@ struct wcov_options:
 	char* summary
 	char* format
 	int diagnostics
+	int branches
 	char* baseline
 
 
@@ -361,6 +440,17 @@ void wcov_emit_records(wcov_options* opt, list[wcov_line*] rows, list[wcov_fn*] 
 				k = k + 1
 			println(f"FNF:{fn_total}")
 			println(f"FNH:{fn_hits}")
+			int branch_total = 0
+			int branch_hits = 0
+			for i in range(start, end):
+				if (rows[i].branch != 0):
+					println(f"BRDA:{rows[i].line},0,0,{rows[i].branch.taken}")
+					println(f"BRDA:{rows[i].line},0,1,{rows[i].branch.not_taken}")
+					branch_total = branch_total + 2
+					branch_hits = branch_hits + wcov_branch_hits(rows[i])
+			if (branch_total > 0):
+				println(f"BRF:{branch_total}")
+				println(f"BRH:{branch_hits}")
 			for i in range(start, end): println(f"DA:{rows[i].line},{rows[i].hit}")
 			println(f"LF:{end - start}")
 			println(f"LH:{hits}")
@@ -368,7 +458,12 @@ void wcov_emit_records(wcov_options* opt, list[wcov_line*] rows, list[wcov_fn*] 
 		else:
 			print(c"{\"file\": ")
 			wcov_json_string(path)
-			print(f", \"lines\": {end - start}, \"hit\": {hits}, \"missed\": [")
+			int branch_total = 0
+			int branch_hits = 0
+			for i in range(start, end):
+				branch_total = branch_total + wcov_branch_arms(rows[i])
+				branch_hits = branch_hits + wcov_branch_hits(rows[i])
+			print(f", \"lines\": {end - start}, \"hit\": {hits}, \"branches\": {branch_total}, \"branches_hit\": {branch_hits}, \"missed\": [")
 			int first = 1
 			for i in range(start, end):
 				if (rows[i].hit == 0):
@@ -455,6 +550,12 @@ int wcov_check_baseline(wcov_options* opt, list[wcov_line*] rows, int diag_hits,
 		if (strcmp(fields[0], c"diagnostics") == 0):
 			hits = diag_hits
 			total = diag_total
+		elif (starts_with(fields[0], c"branches:")):
+			char* prefix = fields[0] + 9
+			for wcov_line* row in rows:
+				if (starts_with(row.path, prefix)):
+					total = total + wcov_branch_arms(row)
+					hits = hits + wcov_branch_hits(row)
 		else:
 			for wcov_line* row in rows:
 				if (starts_with(row.path, fields[0])):
@@ -516,19 +617,27 @@ void wcov_function_summary(wcov_options* opt, list[wcov_line*] rows, list[wcov_f
 void wcov_group_summary(wcov_options* opt, list[wcov_line*] rows):
 	map[char*, wcov_group*] groups = new map[char*, wcov_group*]
 	int by_dir = strcmp(opt.summary, c"dir") == 0
+	int any_branches = 0
 	for wcov_line* row in rows:
 		char* name = row.path
 		if (by_dir): name = wcov_top_dir(row.path)
 		wcov_group* g = wcov_group_for(groups, name)
 		g.total = g.total + 1
 		g.hits = g.hits + row.hit
+		g.branch_total = g.branch_total + wcov_branch_arms(row)
+		g.branch_hits = g.branch_hits + wcov_branch_hits(row)
+		if (row.branch != 0): any_branches = 1
 	list[char*] names = new list[char*]
 	for char* name in groups: names.push(name)
 	names.sort()
 	for char* name in names:
 		wcov_group* g = groups[name]
-		if (opt.uncovered_only && (g.hits == g.total)): continue
-		wcov_print_row(g.hits, g.total, g.name)
+		if (opt.uncovered_only && (g.hits == g.total) && (g.branch_hits == g.branch_total)): continue
+		if (any_branches):
+			char* pct = wcov_pct(g.branch_hits, g.branch_total)
+			wcov_print_row(g.hits, g.total, f"{pct:>7} {g.branch_hits:>5}/{g.branch_total:<5}  {g.name}")
+			free(pct)
+		else: wcov_print_row(g.hits, g.total, g.name)
 
 
 wcov_state* wcov_state_new():
@@ -536,6 +645,8 @@ wcov_state* wcov_state_new():
 	st.lines = new map[char*, wcov_line*]
 	st.fns = new map[char*, wcov_fn*]
 	st.counters = 0
+	st.maps = new list[list[wcov_counter*]]
+	st.branches_done = 0
 	return st
 
 
@@ -547,6 +658,7 @@ wcov_options* wcov_options_new():
 	opt.summary = 0
 	opt.format = c"text"
 	opt.diagnostics = 0
+	opt.branches = 0
 	opt.baseline = 0
 	return opt
 
@@ -554,18 +666,25 @@ wcov_options* wcov_options_new():
 # One report over loaded state, on stdout; the exit status (1 when a
 # baseline floor fails).
 int wcov_report(wcov_state* st, wcov_options* opt):
+	if (st.branches_done == 0):
+		wcov_branch_pass(st)
+		st.branches_done = 1
 	list[char*] keys = new list[char*]
 	for char* key in st.lines: keys.push(key)
 	keys.sort()
 	list[wcov_line*] rows = new list[wcov_line*]
 	int total = 0
 	int hits = 0
+	int branch_total = 0
+	int branch_hits = 0
 	for char* key in keys:
 		wcov_line* entry = st.lines[key]
 		if (wcov_selected(opt, entry.path) == 0): continue
 		rows.push(entry)
 		total = total + 1
 		hits = hits + entry.hit
+		branch_total = branch_total + wcov_branch_arms(entry)
+		branch_hits = branch_hits + wcov_branch_hits(entry)
 	if (total == 0): wcov_lines_fail(c"no executable lines matched")
 
 	int diag_total = 0
@@ -580,6 +699,15 @@ int wcov_report(wcov_state* st, wcov_options* opt):
 	list[wcov_fn*] fns = wcov_sorted_fns(st, opt)
 	int text = strcmp(opt.format, c"text") == 0
 	if (text == 0): wcov_emit_records(opt, rows, fns)
+	elif (opt.branches):
+		for wcov_line* row in rows:
+			if (row.branch == 0): continue
+			if (opt.uncovered_only && (wcov_branch_hits(row) == 2)): continue
+			char* taken = c"miss"
+			if (row.branch.taken): taken = c"hit"
+			char* not_taken = c"miss"
+			if (row.branch.not_taken): not_taken = c"hit"
+			println(f"{row.path}:{row.line}: taken {taken}, not taken {not_taken}")
 	elif (opt.summary == 0):
 		for wcov_line* row in rows:
 			if (opt.uncovered_only && row.hit): continue
@@ -590,7 +718,9 @@ int wcov_report(wcov_state* st, wcov_options* opt):
 			else: println(c": miss")
 	elif (strcmp(opt.summary, c"function") == 0): wcov_function_summary(opt, rows, fns)
 	else: wcov_group_summary(opt, rows)
-	if (text): wcov_print_total(c"line coverage", hits, total)
+	if (text):
+		wcov_print_total(c"line coverage", hits, total)
+		if (branch_total > 0): wcov_print_total(c"branch coverage", branch_hits, branch_total)
 	if (opt.baseline != 0):
 		if (wcov_check_baseline(opt, rows, diag_hits, diag_total)): return 1
 	return 0
@@ -620,6 +750,7 @@ int wcov_lines_main():
 			else: opt.baseline = value
 		elif (strcmp(arg, c"--uncovered-only") == 0): opt.uncovered_only = 1
 		elif (strcmp(arg, c"--diagnostics") == 0): opt.diagnostics = 1
+		elif (strcmp(arg, c"--branches") == 0): opt.branches = 1
 		elif (ends_with(arg, c".wprofmap")):
 			if ((st.counters != 0) && (dumps == 0)): wcov_lines_fail(c"each map requires a dump")
 			wcov_line_map(st, arg)

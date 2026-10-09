@@ -1,0 +1,3 @@
+# Floors for coverage_test's merged x86 run of line_fixture.w.
+tests/wcoverage/ 50.0
+branches:tests/wcoverage/ 30

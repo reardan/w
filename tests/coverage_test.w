@@ -1,4 +1,4 @@
-# wbuild: tool=tools/wcoverage.w deps=tests/wcoverage/line_fixture.w deps=tests/wcoverage/advanced_fixture.w deps=tests/wcoverage/fstring_fixture.w
+# wbuild: tool=tools/wcoverage.w deps=tests/wcoverage/line_fixture.w deps=tests/wcoverage/advanced_fixture.w deps=tests/wcoverage/fstring_fixture.w deps=tests/wcoverage/diag_fixture.w deps=tests/wcoverage/changed_fixture.w deps=tests/wcoverage/exec_probe.w deps=tests/wcoverage/changed_fixture.diff deps=tests/wcoverage/baseline_pass.txt deps=tests/wcoverage/baseline_fail.txt
 # wbuild: step="bin/wv2 --coverage tests/wcoverage/line_fixture.w -o bin/coverage_fixture"
 # wbuild: step="bin/wv2 --coverage --streaming tests/wcoverage/line_fixture.w -o bin/coverage_fixture_streaming"
 # wbuild: step="cmp bin/coverage_fixture bin/coverage_fixture_streaming"
@@ -37,8 +37,34 @@
 # wbuild: step="bin/coverage_fstring_x64 alt" env="W_PROFILE_OUT=bin/coverage_fstring_x64.raw" expect_stdout="args_2"
 # wbuild: step="bin/wv2 --profile-generate tests/wcoverage/fstring_fixture.w -o bin/coverage_fstring_profile"
 # wbuild: step="bin/wv2 defhash tests/wcoverage/fstring_fixture.w" expect_stdout="\"name\": \"label\"" expect_stdout="\"refs\": [\"label\"]"
+# wbuild: step="bin/wcoverage lines --branches --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="line_fixture.w:7: taken hit, not taken miss" expect_stdout="line_fixture.w:9: taken miss, not taken miss" expect_stdout="line_fixture.w:20: taken miss, not taken hit" expect_stdout="branch coverage: 2/6 (33%)" reject_stdout="line_fixture.w:16:"
+# wbuild: step="bin/wcoverage lines --branches --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw bin/coverage_fixture_streaming.wprofmap bin/coverage_second.raw" expect_stdout="line_fixture.w:7: taken hit, not taken hit" expect_stdout="line_fixture.w:9: taken hit, not taken miss" expect_stdout="line_fixture.w:20: taken hit, not taken hit" expect_stdout="branch coverage: 5/6 (83%)"
+# wbuild: step="bin/wcoverage lines --uncovered-only --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="line_fixture.w:4: miss" reject_stdout=": hit" expect_stdout="line coverage: 8/14 (57%)"
+# wbuild: step="bin/wcoverage lines --summary file --prefix tests/wcoverage/ bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="57.1%       8/14        33.3%     2/6      tests/wcoverage/line_fixture.w"
+# wbuild: step="bin/wcoverage lines --summary dir --prefix tests/ bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="tests/" reject_stdout="lib/"
+# wbuild: step="bin/wcoverage lines --summary function --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="0.0%       0/1       tests/wcoverage/line_fixture.w:3: coverage_unused" expect_stdout="function coverage: 2/3 (66%)"
+# wbuild: step="bin/wcoverage lines --summary function --uncovered-only --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="line_fixture.w:3: coverage_unused" reject_stdout="coverage_choose"
+# wbuild: step="bin/wcoverage lines --format lcov --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="SF:tests/wcoverage/line_fixture.w" expect_stdout="FN:3,coverage_unused" expect_stdout="FNDA:0,coverage_unused" expect_stdout="FNH:2" expect_stdout="BRDA:20,0,1,1" expect_stdout="BRF:6" expect_stdout="DA:4,0" expect_stdout="DA:8,1" expect_stdout="LF:14" expect_stdout="LH:8" expect_stdout="end_of_record" reject_stdout="line coverage"
+# wbuild: step="bin/wcoverage lines --format json --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="{\"file\": \"tests/wcoverage/line_fixture.w\", \"lines\": 14, \"hit\": 8, \"branches\": 6, \"branches_hit\": 2, \"missed\": [4, 9, 10, 12, 19, 21]}"
+# wbuild: step="bin/wcoverage lines --baseline tests/wcoverage/baseline_pass.txt --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_stdout="baseline: ok tests/wcoverage/ 57.1% (floor 50.0%)" expect_stdout="baseline: ok branches:tests/wcoverage/ 33.3% (floor 30%)"
+# wbuild: step="bin/wcoverage lines --baseline tests/wcoverage/baseline_fail.txt --file tests/wcoverage/line_fixture.w bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_fail expect_stdout="baseline: FAIL tests/wcoverage/ 57.1% is below its floor 90.5%"
+# wbuild: step="bin/wcoverage lines --summary nope bin/coverage_fixture.wprofmap bin/coverage_first.raw" expect_fail expect_stderr="--summary takes file, dir or function"
+# wbuild: step="bin/wv2 --coverage tests/wcoverage/diag_fixture.w -o bin/coverage_diag"
+# wbuild: step="bin/coverage_diag" env="W_PROFILE_OUT=bin/coverage_dumps/diag.raw" expect_stderr="seven"
+# wbuild: step="bin/wcoverage lines --diagnostics --file tests/wcoverage/diag_fixture.w bin/coverage_diag.wprofmap bin/coverage_dumps" expect_stdout="diag_fixture.w:13: miss: if (value < 0): fixture_error(c\"negative\")" expect_stdout="diag_fixture.w:15: miss" expect_stdout="diag_fixture.w:16: hit" reject_stdout="diag_fixture.w:3:" reject_stdout="diag_fixture.w:17:" reject_stdout="diag_fixture.w:18:" expect_stdout="diagnostic coverage: 1/3 (33%)"
+# wbuild: step="bin/wcoverage lines --diagnostics --uncovered-only --file tests/wcoverage/diag_fixture.w bin/coverage_diag.wprofmap bin/coverage_dumps" reject_stdout=": hit:" expect_stdout="diag_fixture.w:13: miss"
+# wbuild: step="bin/wv2 --coverage tests/wcoverage/changed_fixture.w -o bin/coverage_changed"
+# wbuild: step="bin/coverage_changed" env="W_PROFILE_OUT=bin/coverage_changed.raw"
+# wbuild: step="bin/wcoverage lines --format lcov --file tests/wcoverage/changed_fixture.w bin/coverage_changed.wprofmap bin/coverage_changed.raw" stdout_file=bin/coverage_changed.info
+# wbuild: step="bin/wcoverage changed --prefix tests/wcoverage/ tests/wcoverage/changed_fixture.diff bin/coverage_changed.info" expect_fail expect_stdout="changed_fixture.w:4: changed line not reached by any test" expect_stdout="changed_fixture.w:14: changed line not reached" expect_stdout="reached: 3/5 (60%), minimum 80%" reject_stdout="changed_fixture.w:8:"
+# wbuild: step="bin/wcoverage changed --min 60 --prefix tests/wcoverage/ tests/wcoverage/changed_fixture.diff bin/coverage_changed.info" expect_stdout="reached: 3/5 (60%), minimum 60%"
+# wbuild: step="bin/wv2 tests/wcoverage/exec_probe.w -o bin/coverage_exec_probe"
+# wbuild: step="bin/wv2 a b" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" env="W_COVERAGE_OUT=bin/coverage_probe" expect_stdout="argv: bin/wv2 a b" expect_stdout="W_COVERAGE_COMPILER=[]" expect_stdout="W_PROFILE_OUT=[bin/coverage_probe/compiler_x86/"
+# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" env="W_PROFILE_OUT=bin/coverage_probe_guard.raw" expect_stdout="w 0.3.0" reject_stdout="argv:"
+# wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_no_such_build" expect_fail expect_stderr="cannot execute coverage build 'bin/coverage_no_such_build' named by $W_COVERAGE_COMPILER"
 import lib.testing
 import lib.file
+import lib.dir
 import tools.wcoverage_lines
 
 
@@ -58,6 +84,9 @@ void test_coverage_prepare_runs():
 	file_write_text(c"bin/coverage_empty.raw", c"")
 	file_write_text(c"bin/coverage_fstring.raw", c"")
 	file_write_text(c"bin/coverage_fstring_x64.raw", c"")
+	file_write_text(c"bin/coverage_changed.raw", c"")
+	dir_remove_all(c"bin/coverage_dumps")
+	mkdir(c"bin/coverage_dumps", 493)
 	file_write_text(c"bin/coverage_bad.raw", c"2147483647 1\n")
 	file_write_text(c"bin/coverage_negative.raw", c"0 -1\n")
 	file_write_text(c"bin/coverage_malformed.wprofmap", c"# wprofmap v1\tx86\t1\n1\ts\thash\tname\tfile.w\t3\t0\n")
