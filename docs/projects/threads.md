@@ -323,7 +323,13 @@ boundaries and A64 decoder/encoder round trips, and cross-compiles the
 portable fixture for ARM64 Linux/Darwin and win64. The fixture also covers
 streaming, required retained AST and optimized retained compilation. ARM64
 runtime ordering still needs an ARM64 execution host; structural checks on
-x86 do not replace that qualification. Thread creation and mutex/condvar
+x86 do not replace that qualification. The checked-in
+`python3 tools/qualify_native.py --suite atomic --rounds 20` command executes
+publication and store-buffer/fence stress with concurrent forked workers sharing
+normal memory, independently of the W thread runtime, in all three compilation
+modes. It records hardware/OS/compiler settings and checks alignment and full
+64-bit values. See [native ARM64 qualification](arm64_qualification.md) for
+commands and the explicitly pending native Linux/Darwin evidence. Thread creation and mutex/condvar
 ports on ARM64 remain separate work: existing runtime flags rely on x86
 TSO until those ports adopt explicit acquire/release operations.
 

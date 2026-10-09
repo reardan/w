@@ -13,7 +13,7 @@ The follow-up implementation and qualification for issue #522 are documented in
 | Stage | Deliverable | Status |
 |---|---|---|
 | W0 | Checked I/O and stream repair | done: `lib/io.w`, `lib/stream.w`, `lib/file.w`, `lib/task_io.w` |
-| W1 | File durability primitives | done on Linux x86/x64: `lib/fs.w`; other targets report `IO_UNSUPPORTED` |
+| W1 | File durability primitives | qualified on Linux x86/x64: `lib/fs.w`; ARM64 Linux/Darwin adapters implemented, native qualification pending |
 | W1a | WAL / LSM / persistence hardening | done: `wal.w`, `raft_wal.w`, `lsm.w`, `sstable.w`, `kv_state.w`, `durable_gate.w` |
 | W2 | Bounded binary codecs | done: `lib/bytes.w`, `lib/byte_buf.w`, `lib/checked.w`, `lib/byte_map.w`, `compress/crc32c.w` |
 | W3 | Bounded blocking executor | done: `lib/executor.w` (+ `task_remote_call`) |
@@ -82,8 +82,8 @@ The follow-up implementation and qualification for issue #522 are documented in
   has TCP/Unix and native TLS adapters. TLS verifies server identity,
   distinguishes timeout/cancellation from protocol failure, reports complete
   record progress, and owns socket shutdown. It supports task and ordinary
-  thread callers; server-side client certificate authentication is not
-  implemented or advertised. TCP connection errors retain their native
+  thread callers; server-side client certificate authentication supports
+  optional/required verification against a separate client trust bundle. TCP connection errors retain their native
   `SO_ERROR`. Contracts and tests are in `docs/projects/budgets_transport.md`.
 - **W6.** `--import-root <dir>` (repeatable; `--import-root=<dir>` too)
   adds ordered import roots. Each import's module path is tried as
@@ -122,10 +122,21 @@ name follow-ups were fixed in #516. Chunked snapshot transfer is covered by
 the #522 follow-up linked above.
 
 Platform limits remain explicit: file durability is qualified on Linux
-x86/x64; other filesystem adapters report unsupported operations. ARM64
-atomic instruction encoding is checked on the host, while execution and
-ordering qualification needs an ARM64 host. Native TLS has no client
-certificates, so its common adapter does not claim mutual TLS.
+x86/x64. ARM64 Linux/Darwin adapters and native concurrent qualification
+harnesses are implemented; native hardware/filesystem evidence is still pending
+([qualification](arm64_qualification.md), [durability ports](durability_ports.md)).
+Windows durability remains a separate, unsupported port. Thread-safe shared
+budget accounting is available on Linux x86/x64, with single-owner arena
+mutation unchanged. Checked transports expose kernel peer addresses, local Unix
+credentials and directional shutdown ([socket identity](socket_identity.md)).
+Native TLS supports optional/required client certificates with distinct client
+trust and authenticated certificate fingerprints ([mutual TLS](mutual_tls.md)).
+
+Tracked follow-ups: [native ARM64 qualification #607](https://github.com/reardan/w/issues/607),
+[durability ports #608](https://github.com/reardan/w/issues/608),
+[shared memory budgets #609](https://github.com/reardan/w/issues/609),
+[socket peer identity and half-close #610](https://github.com/reardan/w/issues/610),
+and [mutual TLS #611](https://github.com/reardan/w/issues/611).
 
 Tracked follow-ups: [native ARM64 qualification #607](https://github.com/reardan/w/issues/607),
 [durability ports #608](https://github.com/reardan/w/issues/608),

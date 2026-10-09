@@ -2,8 +2,9 @@
 Checked TLS 1.3 adapter for lib/transport.w. Owns the connected socket on
 EVERY constructor path. Client/server configurations are borrowed for the
 handshake only. Clients verify the trust chain and expected DNS hostname;
-only verified clients report authenticated=1 (the server identity). The
-server does not authenticate clients: no mutual TLS is implemented.
+verified connections report authenticated=1 for the verified peer. Servers
+can optionally or mandatorily authenticate client certificates; the peer
+identity is tls-client-sha256:<leaf DER fingerprint> (see mutual_tls.md).
 
 All syscalls are nonblocking, regardless of the socket's flags. io_poll
 parks a task or polls the thread, bounded by the transport's absolute
@@ -151,8 +152,9 @@ transport* transport_tls_connect(int fd, char* server_name, tls_config* cfg, int
 	return t
 
 
-# Owns an accepted fd; peer is a caller-supplied address description,
-# never a verified client identity. Config must supply certificate/key.
+# Owns an accepted fd. For an authenticated client, peer is replaced with
+# the verified leaf fingerprint. Otherwise it remains an untrusted address
+# description. Config must supply certificate/key.
 transport* transport_tls_accept(int fd, char* peer, tls_server_config* cfg, int timeout_ms, io_result* r):
 	if (transport_tls_prepare(fd, r) == 0): return 0
 	tls_conn* c = tls_conn_new(fd, 0, 0)
@@ -163,4 +165,10 @@ transport* transport_tls_accept(int fd, char* peer, tls_server_config* cfg, int 
 	int ok = 0
 	if (cfg == 0): tls_fail(c, c"tls: server configuration required")
 	else: ok = tls_server_do_handshake(c)
-	return transport_tls_finish(c, ok, peer, 0, r)
+	char* identity = 0
+	int verified = ok && c.peer_verified
+	if (verified): identity = strjoin(c"tls-client-sha256:", c.peer_certificate_sha256)
+	if (identity != 0): peer = identity
+	transport* t = transport_tls_finish(c, ok, peer, verified, r)
+	if (identity != 0): free(identity)
+	return t

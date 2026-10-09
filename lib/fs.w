@@ -7,26 +7,23 @@ Every operation fills a caller-owned io_result (lib/io.w) and returns
 its status (open-like calls return the descriptor, or -1 with the
 status in r). The platform errno is kept in r.native_error.
 
-Platform support: Linux x86-64 and i386. Every other target (arm64,
-arm64_darwin, win64, wasm) reports IO_UNSUPPORTED from the syscall
-layer's explicit ENOSYS stubs -- nothing here is emulated (positional
-I/O is never seek + write, and O_APPEND is never used for it).
-ARM64 additionally supports truncate for the memfd snapshot lifecycle;
-the remaining durability primitives there are still unsupported.
+Architecture adapters: Linux x86/x64/ARM64 and ARM64 Darwin. Native
+ARM64 qualification is tracked separately in docs/projects/durability_ports.md;
+implementation and cross-compilation do not establish hardware durability.
+Windows and wasm remain explicitly unsupported. Positional I/O is never
+seek + write. Flags below use the portable Linux x86 numbering; Darwin
+translates them in its syscall adapter.
 
-Offsets are word-sized signed byte offsets. On x86-64 that is the full
-63-bit range; on i386 a W word is 32 bits, so positional offsets stop at
-2^31 - 1 there (the kernel's high half is always passed as 0; files are
-opened with O_LARGEFILE so that whole range works).
+Offsets are word-sized signed byte offsets: 63 bits on 64-bit targets,
+31 bits on i386. Range overflow is rejected before invoking the kernel.
 
-Filesystem assumptions behind every durability claim: a local POSIX
-filesystem (ext4, xfs, btrfs, tmpfs for non-crash tests) that honors
-fsync on both files and directories, with rename(2) atomic within one
-directory. fsync on a file makes its data and metadata durable; fsync on
-a directory makes its entries (a create or rename) durable. Where a
-filesystem refuses a directory fsync (EINVAL), fs_sync_dir reports
-IO_UNSUPPORTED rather than success. Network filesystems and Darwin's
-fsync (which needs F_FULLFSYNC) are outside these guarantees.
+Durability requires a local filesystem and device that honor both file
+and directory barriers and same-directory atomic rename. Darwin requires
+F_FULLFSYNC, including the directory barrier: failure is preserved, never
+silently downgraded to fsync. A filesystem that cannot provide the barrier
+returns IO_UNSUPPORTED or IO_IO_ERROR, with publication stage retained.
+Network filesystems and devices that lie about flush completion are outside
+the guarantee. Process-crash tests are not power-loss qualification.
 
 Status summary beyond lib/io.w's categories:
 - exclusive create of an existing path: IO_IO_ERROR with native_error
@@ -41,8 +38,7 @@ import lib.io
 import lib.path
 
 
-# open(2)/openat(2) flags, x86/x86-64 numbering (the only targets where
-# sys_openat is wired up).
+# Portable open flags; architecture adapters translate native differences.
 const int FS_O_RDONLY = 0
 const int FS_O_WRONLY = 1
 const int FS_O_RDWR = 2

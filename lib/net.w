@@ -2,6 +2,7 @@ import lib.lib
 import lib.linux
 import lib.memory
 import lib.__arch__.socket_abi
+import lib.__arch__.socket_identity
 import lib.poll
 import lib.io_wait
 import lib.io
@@ -366,15 +367,13 @@ int socket_pending_error(int fd):
 int net_result_from_syscall(io_result* r, int rc):
 	if (rc >= 0): return io_result_set(r, rc, IO_OK, 0)
 	int err = 0 - rc
-	return io_result_set(r, 0, io_status_from_errno(socket_abi_status_errno(err)), err)
+	return io_result_set(r, 0, io_status_from_errno(err), err)
 
 
-# io_poll can return the task runtime's synthetic Linux-style deadline
-# and cancellation codes even on Darwin. Actual socket syscalls must use
-# the native classifier instead (Darwin 110/125 are not native errnos).
+# io_poll and io_check use the platform errno constants, just like native
+# socket syscalls. Preserve that value alongside its portable category.
 int net_wait_status_from_errno(int err):
-	if ((err == 110) || (err == 125)): return io_status_from_errno(err)
-	return io_status_from_errno(socket_abi_status_errno(err))
+	return io_status_from_errno(err)
 
 
 int net_wait_result_from_syscall(io_result* r, int rc):
@@ -414,7 +413,7 @@ int net_connect_timeout_checked(int ip, int port, int timeout_ms, io_result* r):
 			int ready = io_poll(fd, poll_out, remaining)
 			if (ready == -4): continue
 			if (ready == 0):
-				rc = -110
+				rc = 0 - IO_ERRNO_ETIMEDOUT
 				wait_error = 1
 			else if (ready < 0):
 				rc = ready
@@ -440,3 +439,85 @@ int net_connect_timeout(int ip, int port, int timeout_ms):
 	int fd = net_connect_timeout_checked(ip, port, timeout_ms, &r)
 	if ((fd < 0) && (r.status == IO_TIMED_OUT)): return -2
 	return fd
+
+
+# Caller-owned, kernel-filled sockaddr bytes. length includes the family;
+# Unix paths may be unnamed or contain NUL bytes (Linux abstract names).
+# No string conversion, allocation, or caller-provided label is involved.
+struct net_peer_address:
+	int family
+	int length
+	char[128] data
+
+
+struct net_peer_credentials:
+	int pid                  # -1 when the OS supplies no process id
+	int uid                  # native 32-bit ID bit pattern
+	int gid                  # native 32-bit ID bit pattern
+
+
+const int NET_SHUT_READ = 0
+const int NET_SHUT_WRITE = 1
+const int NET_SHUT_BOTH = 2
+
+
+void net_peer_address_clear(net_peer_address* out):
+	out.family = 0
+	out.length = 0
+	char* raw = cast(char*, &out.data[0])
+	int i = 0
+	while (i < 128):
+		raw[i] = 0
+		i = i + 1
+
+
+void net_peer_credentials_clear(net_peer_credentials* out):
+	out.pid = -1
+	out.uid = -1
+	out.gid = -1
+
+
+# Nonblocking metadata query. A failure leaves an empty result, never
+# stale identity. io_result.transferred is always zero for control calls.
+int socket_peer_address_checked(int fd, net_peer_address* out, io_result* r):
+	net_peer_address_clear(out)
+	if (socket_identity_supported() == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	int32 length = 128
+	int rc = socket_identity_getpeername(fd, cast(char*, &out.data[0]), &length)
+	if (rc < 0):
+		net_peer_address_clear(out)
+		return net_result_from_syscall(r, rc)
+	if ((length < 2) || (length > 128)):
+		net_peer_address_clear(out)
+		return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	out.length = cast(int, length)
+	out.family = socket_abi_family_from_word(load_int16(cast(char*, &out.data[0])))
+	return io_result_set(r, 0, IO_OK, 0)
+
+
+# Only AF_UNIX has local OS credentials. In particular, Linux's dummy
+# SO_PEERCRED result on TCP must never be mistaken for a valid identity.
+# These are connection-time OS credentials, not cryptographic authentication.
+int socket_peer_credentials_checked(int fd, net_peer_credentials* out, io_result* r):
+	net_peer_credentials_clear(out)
+	net_peer_address address
+	int status = socket_peer_address_checked(fd, &address, r)
+	if (status != IO_OK): return status
+	if (address.family != af_unix): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	int rc = socket_identity_credentials(fd, &out.pid, &out.uid, &out.gid)
+	if (rc < 0): net_peer_credentials_clear(out)
+	# Linux connected datagrams can return success with no credentials.
+	# Never expose the kernel's (0, -1, -1) sentinel as a peer identity.
+	int unavailable_id = 65535
+	unavailable_id = (unavailable_id << 16) | 65535
+	if (rc == 0 && out.pid <= 0 && out.uid == unavailable_id && out.gid == unavailable_id):
+		net_peer_credentials_clear(out)
+		return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	return net_result_from_syscall(r, rc)
+
+
+# Raw checked shutdown retains the kernel's repeated-call and errno
+# behavior. Direction uses NET_SHUT_* (identical on Linux and Darwin).
+int socket_shutdown_checked(int fd, int direction, io_result* r):
+	if (socket_identity_supported() == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	return net_result_from_syscall(r, socket_identity_shutdown(fd, direction))

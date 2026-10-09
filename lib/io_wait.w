@@ -20,6 +20,7 @@ convention (revents, 0 on timeout, negative errno), but inside a task
 it parks the task instead of the thread.
 */
 import lib.poll
+import lib.__arch__.io_errno
 
 
 # fd, poll events, timeout_ms (-1 = none) -> revents or a negative errno
@@ -34,7 +35,7 @@ io_wait_fn* io_wait_hook
 # runtime), or -EAGAIN when the caller is not running inside a task.
 int io_wait(int fd, int events, int timeout_ms):
 	if (cast(int, io_wait_hook) == 0):
-		return -11 /* EAGAIN */
+		return 0 - IO_ERRNO_EAGAIN
 	return io_wait_hook(fd, events, timeout_ms)
 
 
@@ -58,7 +59,7 @@ int io_wait_available():
 int io_poll(int fd, int events, int timeout_ms):
 	if (io_wait_available() == 0): return poll_single(fd, events, timeout_ms)
 	int r = io_wait(fd, events, timeout_ms)
-	if (r == -110): /* ETIMEDOUT: this wait's own timeout */
+	if (r == (0 - IO_ERRNO_ETIMEDOUT)): /* ETIMEDOUT: this wait's own timeout */
 		return 0
 	return r
 

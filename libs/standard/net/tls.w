@@ -8,7 +8,8 @@ schedule (see "Reusable internals for #203" below).
 Scope (matches the plan's "keep the surface minimal"):
   - TLS 1.3 only, single cipher suite TLS_CHACHA20_POLY1305_SHA256,
     X25519 key exchange, no HelloRetryRequest, no PSK/0-RTT/resumption,
-    no client certificates. ALPN (RFC 7301) is optional: see below.
+    optional/required client certificates (ECDSA P-256). ALPN (RFC 7301)
+    is optional: see below.
   - Record layer: TLSPlaintext / TLSCiphertext framing with the TLS 1.3
     AEAD nonce (per-record 64-bit sequence number XORed into write_iv),
     additional_data = the 5-byte record header, ChaCha20-Poly1305 only,
@@ -96,6 +97,7 @@ import libs.standard.crypto.rsa_verify
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.x509
 import lib.bytes
+import lib.hex
 import structures.string
 import lib.mem
 
@@ -114,6 +116,7 @@ const int TLS_HS_CLIENT_HELLO = 1
 const int TLS_HS_SERVER_HELLO = 2
 const int TLS_HS_NEW_SESSION_TICKET = 4
 const int TLS_HS_ENCRYPTED_EXTENSIONS = 8
+const int TLS_HS_CERTIFICATE_REQUEST = 13
 const int TLS_HS_CERTIFICATE = 11
 const int TLS_HS_CERTIFICATE_VERIFY = 15
 const int TLS_HS_FINISHED = 20
@@ -156,6 +159,7 @@ const int TLS_SIG_RSA_PSS_RSAE_SHA384 = 0x0805
 const int TLS_EXT_SERVER_NAME = 0x0000
 const int TLS_EXT_SUPPORTED_GROUPS = 0x000a
 const int TLS_EXT_SIGNATURE_ALGORITHMS = 0x000d
+const int TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 0x0032
 const int TLS_EXT_SUPPORTED_VERSIONS = 0x002b
 const int TLS_EXT_KEY_SHARE = 0x0033
 
@@ -226,9 +230,18 @@ void tls_finished_key(int alg, char* secret, char* out):
 	tls13_hkdf_expand_label(alg, secret, c"finished", 8, c"", 0, out, whash_digest_size(alg))
 
 
+# Client authentication policy; optional still rejects an invalid supplied cert.
+const int TLS_CLIENT_AUTH_NONE = 0
+const int TLS_CLIENT_AUTH_OPTIONAL = 1
+const int TLS_CLIENT_AUTH_REQUIRED = 2
+
+
 # ---- configuration ------------------------------------------------------------
 
 struct tls_config:
+	char* client_cert_chain_path # borrowed leaf-first PEM chain, optional
+	char* client_key_path        # borrowed ECDSA P-256 PKCS#8/SEC1 PEM path
+	int require_client_auth      # fail if server omits CertificateRequest
 	char* trust_store_path      # override CA bundle path, 0 = system default
 	int insecure_skip_verify    # tests only: skip chain + hostname checks
 	int has_now_unix            # 1 => use now_unix instead of the clock
@@ -253,6 +266,9 @@ struct tls_config:
 
 tls_config* tls_config_new():
 	tls_config* c = new tls_config()
+	c.client_cert_chain_path = 0
+	c.client_key_path = 0
+	c.require_client_auth = 0
 	c.trust_store_path = 0
 	c.insecure_skip_verify = 0
 	c.has_now_unix = 0
@@ -366,6 +382,10 @@ int tls_config_set_alpn(tls_config* c, char* protos):
 # no filesystem; test_priv/test_random pin the server ephemeral X25519 key
 # and ServerHello random for deterministic traces.
 struct tls_server_config:
+	int client_auth              # TLS_CLIENT_AUTH_NONE/OPTIONAL/REQUIRED
+	char* client_trust_store_path # explicit PEM CA bundle required for auth
+	int has_now_unix             # deterministic client certificate checks
+	int now_unix
 	char* cert_chain_path       # leaf-first cert-chain PEM file, or 0
 	char* key_path              # ECDSA P-256 private-key PEM file, or 0
 	char* last_error            # static string, set on failure; never freed
@@ -382,6 +402,10 @@ struct tls_server_config:
 
 tls_server_config* tls_server_config_new():
 	tls_server_config* c = new tls_server_config()
+	c.client_auth = TLS_CLIENT_AUTH_NONE
+	c.client_trust_store_path = 0
+	c.has_now_unix = 0
+	c.now_unix = 0
 	c.cert_chain_path = 0
 	c.key_path = 0
 	c.last_error = 0
@@ -486,10 +510,24 @@ struct tls_conn:
 	int io_deadline_ms
 	# Checked transport mode: nonblocking syscalls + task-aware poll everywhere.
 	int checked_io
-	int peer_verified               # chain + DNS name actually verified
+	int peer_verified               # complete handshake and chain verified
+	char* peer_certificate_sha256    # owned hex DER fingerprint, or 0
+	int client_auth_requested
+	int client_auth_p256
+	int client_auth_cert_schemes      # bitset of X509_SIGALG_* values
 	int last_io_status
 	int last_native_error
 	char* last_error                 # per-connection static diagnostic
+
+
+int tls_auth_fail(tls_conn* c, int alert, char* message);
+void tls_set_peer_certificate(tls_conn* c, x509_cert* leaf);
+int tls_parse_certificate_request(tls_conn* c, char* msg, int len);
+int tls_client_send_auth(tls_conn* c);
+int tls_send_certificate_request(tls_conn* c);
+int tls_server_read_client_auth(tls_conn* c);
+int tls_server_read_client_finished(tls_conn* c);
+void tls_free_cert_list(list[x509_cert*] certs);
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
@@ -501,6 +539,10 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.io_deadline_ms = 0
 	c.checked_io = 0
 	c.peer_verified = 0
+	c.peer_certificate_sha256 = 0
+	c.client_auth_requested = 0
+	c.client_auth_p256 = 0
+	c.client_auth_cert_schemes = 0
 	c.last_io_status = IO_OK
 	c.last_native_error = 0
 	c.last_error = 0
@@ -568,6 +610,7 @@ void tls_conn_free(tls_conn* c):
 	free(c.s_hs_secret)
 	free(c.c_ap_secret)
 	free(c.s_ap_secret)
+	if (c.peer_certificate_sha256 != 0): free(c.peer_certificate_sha256)
 	if (c.transcript != 0): whash_free(c.transcript)
 	if (c.hs_buf != 0): string_free(c.hs_buf)
 	if (c.mem_in != 0): string_free(c.mem_in)
@@ -594,6 +637,7 @@ void tls_set_alpn_selected(tls_conn* c, char* name, int n):
 
 void tls_fail(tls_conn* c, char* msg):
 	c.broken = 1
+	c.peer_verified = 0
 	c.last_error = msg
 	if (c.last_io_status == IO_OK): c.last_io_status = IO_IO_ERROR
 	if (c.cfg != 0): c.cfg.last_error = msg
@@ -668,7 +712,7 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 		else if (r == 0 - net_eagain()):
 			if (tls_io_wait_ready(c, poll_in) == 0): return 0
 		else if (r != 0 - 4):
-			return tls_io_error(c, io_status_from_errno(socket_abi_status_errno(0 - r)), 0 - r, c"tls: receive failed")
+			return tls_io_error(c, io_status_from_errno(0 - r), 0 - r, c"tls: receive failed")
 	return 1
 
 
@@ -695,7 +739,7 @@ int tls_io_send_all(tls_conn* c, char* buf, int n):
 		else if (r == 0 - net_eagain()):
 			if (tls_io_wait_ready(c, poll_out) == 0): return 0
 		else if (r != 0 - 4):
-			return tls_io_error(c, io_status_from_errno(socket_abi_status_errno(0 - r)), 0 - r, c"tls: send failed")
+			return tls_io_error(c, io_status_from_errno(0 - r), 0 - r, c"tls: send failed")
 	return 1
 
 
@@ -1102,8 +1146,9 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 
 # Build 0x20*64 || "TLS 1.3, server CertificateVerify" || 0x00 || transcript.
 # Returns a malloc'd buffer; *out_len gets its length.
-char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
+char* tls_certverify_content_role(char* transcript_hash, int th_len, int client_role, int* out_len):
 	char* ctx = c"TLS 1.3, server CertificateVerify"
+	if (client_role): ctx = c"TLS 1.3, client CertificateVerify"
 	int clen = strlen(ctx)
 	int total = 64 + clen + 1 + th_len
 	char* out = cast(char*, malloc(total))
@@ -1115,12 +1160,16 @@ char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
 	return out
 
 
+char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
+	return tls_certverify_content_role(transcript_hash, th_len, 0, out_len)
+
+
 # Verify a server CertificateVerify signature (scheme sig_scheme, raw sig
 # bytes) against the leaf certificate's public key over the transcript hash.
 # Returns 1 on success.
-int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen, char* transcript_hash, int th_len):
+int tls_verify_certverify_role(x509_cert* leaf, int sig_scheme, char* sig, int siglen, char* transcript_hash, int th_len, int client_role):
 	int clen = 0
-	char* content = tls_certverify_content(transcript_hash, th_len, &clen)
+	char* content = tls_certverify_content_role(transcript_hash, th_len, client_role, &clen)
 
 	# Hash the signed content with the scheme's hash.
 	int use_sha384 = 0
@@ -1157,6 +1206,10 @@ int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen
 	tls_wipe(digest, hlen)
 	free(digest)
 	return ok
+
+
+int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen, char* transcript_hash, int th_len):
+	return tls_verify_certverify_role(leaf, sig_scheme, sig, siglen, transcript_hash, th_len, 0)
 
 
 # ---- key schedule (client handshake) ------------------------------------------
@@ -1215,32 +1268,37 @@ void tls_derive_application(tls_conn* c, char* hs_secret, char* th_ch_sf):
 # list (possibly empty) or an empty list on a malformed structure.
 list[x509_cert*] tls_parse_certificate(char* msg, int len):
 	list[x509_cert*] certs = new list[x509_cert*]
-	int pos = 4
-	if (pos + 1 > len):
-		return certs
-	int ctx_len = msg[pos] & 255
-	pos = pos + 1
-	pos = pos + ctx_len
-	if (pos + 3 > len):
-		return certs
-	int list_len = load_be24(msg + pos)
-	pos = pos + 3
-	int list_end = pos + list_len
-	if (list_end > len):
-		return certs
-	while (pos + 3 <= list_end):
+	# Initial handshakes always have an empty request context. Validate the
+	# entire structure before accepting any certificate, including the tail.
+	if (len < 8): return certs
+	if ((msg[0] & 255) != TLS_HS_CERTIFICATE || load_be24(msg + 1) != len - 4): return certs
+	if (msg[4] != 0 || load_be24(msg + 5) != len - 8): return certs
+	int pos = 8
+	int valid = 1
+	while (pos < len):
+		if (pos + 3 > len):
+			valid = 0
+			break
 		int clen = load_be24(msg + pos)
 		pos = pos + 3
-		if (pos + clen > list_end):
-			return certs
+		if (clen == 0 || pos + clen + 2 > len):
+			valid = 0
+			break
 		x509_cert* cert = x509_parse(msg + pos, clen)
-		if (cert != 0): certs.push(cert)
+		if (cert == 0):
+			valid = 0
+			break
+		certs.push(cert)
 		pos = pos + clen
-		if (pos + 2 > list_end):
-			return certs
 		int ext_len = load_be16(msg + pos)
 		pos = pos + 2
-		pos = pos + ext_len
+		# No per-certificate extensions are negotiated by this implementation.
+		if (ext_len != 0):
+			valid = 0
+			break
+	if (valid == 0):
+		tls_free_cert_list(certs)
+		return new list[x509_cert*]
 	return certs
 
 
@@ -1375,8 +1433,15 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	if (tls_client_parse_ee(c, msg, mlen) == 0): return 0
 	whash_update(c.transcript, msg, mlen)
 
-	# Certificate
+	# Optional CertificateRequest precedes the server Certificate.
 	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
+	if (htype == TLS_HS_CERTIFICATE_REQUEST):
+		if (tls_parse_certificate_request(c, msg, mlen) == 0): return 0
+		whash_update(c.transcript, msg, mlen)
+		if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
+	if (c.cfg != 0):
+		if (c.cfg.require_client_auth && c.client_auth_requested == 0):
+			return tls_auth_fail(c, TLS_ALERT_HANDSHAKE_FAILURE, c"tls: server omitted CertificateRequest")
 	if (htype != TLS_HS_CERTIFICATE):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
 		tls_fail(c, c"tls: expected Certificate")
@@ -1410,7 +1475,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		return 0
 	int sig_scheme = load_be16(msg + 4)
 	int sig_len = load_be16(msg + 6)
-	if (8 + sig_len > mlen):
+	if (8 + sig_len != mlen):
 		free(th_cert)
 		tls_free_cert_list(certs)
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
@@ -1439,7 +1504,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 			free(th_cv)
 			tls_free_cert_list(certs)
 			return 0
-		c.peer_verified = 1
+		tls_set_peer_certificate(c, certs[0])
 
 	tls_free_cert_list(certs)
 
@@ -1477,6 +1542,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	whash_update(c.transcript, msg, mlen)
 	# Snapshot CH..serverFinished for the application secrets + client Finished.
 	whash_final(c.transcript, th_ch_sf)
+	if (skip == 0): c.peer_verified = 1
 	return 1
 
 
@@ -1634,10 +1700,19 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 	# Client Finished: HMAC(client_finished_key, TH(CH..serverFinished)),
 	# sent under the client handshake write keys.
 	tls_install_write_keys(c, c.c_hs_secret)
+	if (c.client_auth_requested):
+		if (tls_client_send_auth(c) == 0):
+			tls_wipe(hs_secret, ds)
+			free(hs_secret)
+			free(th_ch_sf)
+			return 0
+	char* th_client = cast(char*, malloc(ds))
+	whash_final(c.transcript, th_client)
 	char* cfkey = cast(char*, malloc(ds))
 	tls_finished_key(c.hash_alg, c.c_hs_secret, cfkey)
 	char* cvd = cast(char*, malloc(ds))
-	hmac_compute(c.hash_alg, cfkey, ds, th_ch_sf, ds, cvd)
+	hmac_compute(c.hash_alg, cfkey, ds, th_client, ds, cvd)
+	free(th_client)
 	tls_wipe(cfkey, ds)
 	free(cfkey)
 	char* fin = cast(char*, malloc(4 + ds))
@@ -2056,9 +2131,9 @@ char* tls_build_certificate(list[pem_block*] certs, int* out_len):
 # 0x00 || transcript hash at CH..Certificate), emitted as a DER signature with
 # scheme ecdsa_secp256r1_sha256. Returns a malloc'd handshake message and its
 # length, or 0 if signing failed (bad key). The private key stays in server_d.
-char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_len):
+char* tls_build_certverify_role(char* server_d, char* th_cert, int th_len, int client_role, int* out_len):
 	int clen = 0
-	char* content = tls_certverify_content(th_cert, th_len, &clen)
+	char* content = tls_certverify_content_role(th_cert, th_len, client_role, &clen)
 	char* digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, content, clen, digest)
 	free(content)
@@ -2091,6 +2166,10 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 	*out_len = b.length
 	string_free(b)
 	return out
+
+
+char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_len):
+	return tls_build_certverify_role(server_d, th_cert, th_len, 0, out_len)
 
 
 # ---- credential loading -------------------------------------------------------
@@ -2271,6 +2350,10 @@ int tls_server_read_client_hello(tls_conn* c, char* out_sid, int* out_sid_len, c
 int tls_server_do_handshake(tls_conn* c):
 	tls_server_config* scfg = c.scfg
 	int ds = c.digest_size
+	if (scfg.client_auth < TLS_CLIENT_AUTH_NONE || scfg.client_auth > TLS_CLIENT_AUTH_REQUIRED):
+		return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: invalid client authentication policy")
+	if (scfg.client_auth != TLS_CLIENT_AUTH_NONE && scfg.client_trust_store_path == 0):
+		return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: explicit client trust store required")
 
 	# Load credentials up front: fail before engaging the client if we cannot
 	# serve. The private key lives in server_d until CertificateVerify.
@@ -2388,6 +2471,15 @@ int tls_server_do_handshake(tls_conn* c):
 		tls_fail(c, c"tls: send EncryptedExtensions failed")
 		return 0
 
+	if (scfg.client_auth != TLS_CLIENT_AUTH_NONE):
+		if (tls_send_certificate_request(c) == 0):
+			tls_wipe(hs_secret, ds)
+			free(hs_secret)
+			tls_wipe(server_d, 32)
+			free(server_d)
+			pem_blocks_free(certs)
+			return 0
+
 	# Certificate (the configured chain, leaf-first). DER is copied into the
 	# message, so the blocks are released immediately after.
 	int cert_len = 0
@@ -2463,14 +2555,30 @@ int tls_server_do_handshake(tls_conn* c):
 	free(hs_secret)
 	tls_install_write_keys(c, c.s_ap_secret)
 
-	# client Finished = HMAC(client_finished_key, TH(CH..serverFinished)).
+	# Client authentication extends only the client Finished transcript;
+	# application secrets retain the CH..serverFinished snapshot above.
+	if (scfg.client_auth != TLS_CLIENT_AUTH_NONE):
+		if (tls_server_read_client_auth(c) == 0):
+			free(th_ch_sf)
+			return 0
+	free(th_ch_sf)
+	return tls_server_read_client_finished(c)
+
+
+# Authentication is not published until Finished proves the complete
+# transcript, including the client Certificate and CertificateVerify.
+int tls_server_read_client_finished(tls_conn* c):
+	int ds = c.digest_size
+	char* th_client = cast(char*, malloc(ds))
+	whash_final(c.transcript, th_client)
+	# client Finished = HMAC(client_finished_key, current transcript).
 	char* cfkey = cast(char*, malloc(ds))
 	tls_finished_key(c.hash_alg, c.c_hs_secret, cfkey)
 	char* expected = cast(char*, malloc(ds))
-	hmac_compute(c.hash_alg, cfkey, ds, th_ch_sf, ds, expected)
+	hmac_compute(c.hash_alg, cfkey, ds, th_client, ds, expected)
 	tls_wipe(cfkey, ds)
 	free(cfkey)
-	free(th_ch_sf)
+	free(th_client)
 	int htype = 0
 	char* msg = 0
 	int mlen = 0
@@ -2498,6 +2606,7 @@ int tls_server_do_handshake(tls_conn* c):
 		tls_fail(c, c"tls: client Finished verify failed")
 		return 0
 	tls_install_read_keys(c, c.c_ap_secret)
+	if (c.peer_certificate_sha256 != 0): c.peer_verified = 1
 	return 1
 
 
@@ -2529,3 +2638,248 @@ tls_conn* tls_accept_mem(char* client_flight, int flen, tls_server_config* cfg):
 		tls_conn_free(c)
 		return 0
 	return c
+
+
+# ---- mutual certificate authentication (RFC 8446 4.3.2, 4.4) ------------------
+
+int tls_auth_fail(tls_conn* c, int alert, char* message):
+	tls_send_alert(c, TLS_ALERT_FATAL, alert)
+	tls_fail(c, message)
+	return 0
+
+
+void tls_set_peer_certificate(tls_conn* c, x509_cert* leaf):
+	char* digest = cast(char*, malloc(32))
+	whash_oneshot(WHASH_SHA256, leaf.der, leaf.der_len, digest)
+	if (c.peer_certificate_sha256 != 0): free(c.peer_certificate_sha256)
+	c.peer_certificate_sha256 = hex_encode(digest, 32)
+	free(digest)
+
+
+# Returns a borrowed fingerprint only after the peer's proof and Finished
+# have verified. This is certificate identity, not application authorization.
+char* tls_peer_certificate_sha256(tls_conn* c):
+	if (c == 0): return 0
+	if (c.peer_verified == 0 || c.broken): return 0
+	return c.peer_certificate_sha256
+
+
+int tls_send_certificate_request(tls_conn* c):
+	# Empty request context, one signature_algorithms extension offering
+	# exactly the scheme our client credentials and server verifier support.
+	char* request = c"\x0d\x00\x00\x1b\x00\x00\x18\x00\x0d\x00\x04\x00\x02\x04\x03\x00\x32\x00\x0c\x00\x0a\x04\x03\x04\x01\x05\x01\x08\x04\x08\x05"
+	whash_update(c.transcript, request, 31)
+	if (tls_send_record(c, TLS_CT_HANDSHAKE, request, 31, 1) == 0):
+		tls_fail(c, c"tls: send CertificateRequest failed")
+		return 0
+	return 1
+
+
+# Map the CertificateRequest certificate-signature schemes to X.509's
+# verified signature algorithms. Handshake signatures remain P-256 only.
+int tls_certificate_scheme_bit(int scheme):
+	if (scheme == TLS_SIG_ECDSA_SECP256R1_SHA256): return 1 << X509_SIGALG_ECDSA_SHA256
+	if (scheme == TLS_SIG_RSA_PKCS1_SHA256): return 1 << X509_SIGALG_RSA_SHA256
+	if (scheme == TLS_SIG_RSA_PKCS1_SHA384): return 1 << X509_SIGALG_RSA_SHA384
+	if (scheme == TLS_SIG_RSA_PSS_RSAE_SHA256): return 1 << X509_SIGALG_RSA_PSS_SHA256
+	if (scheme == TLS_SIG_RSA_PSS_RSAE_SHA384): return 1 << X509_SIGALG_RSA_PSS_SHA384
+	return 0
+
+
+int tls_parse_certificate_request(tls_conn* c, char* msg, int len):
+	if (len < 7): return tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: malformed CertificateRequest")
+	if ((msg[0] & 255) != TLS_HS_CERTIFICATE_REQUEST || msg[4] != 0 || load_be24(msg + 1) != len - 4 || load_be16(msg + 5) != len - 7):
+		return tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: malformed CertificateRequest")
+	int valid = 1
+	int pos = 7
+	int have_sigalgs = 0
+	int p256 = 0
+	int proof_schemes = 0
+	int cert_schemes = 0
+	int have_cert_schemes = 0
+	int constrained = 0
+	list[int] seen = new list[int]
+	while (pos < len):
+		if (pos + 4 > len):
+			valid = 0
+			break
+		int kind = load_be16(msg + pos)
+		int size = load_be16(msg + pos + 2)
+		pos = pos + 4
+		if (pos + size > len):
+			valid = 0
+			break
+		int duplicate = 0
+		for i in range(seen.length):
+			if (seen[i] == kind): duplicate = 1
+		if (duplicate):
+			valid = 0
+			break
+		seen.push(kind)
+		if (kind == TLS_EXT_SIGNATURE_ALGORITHMS || kind == TLS_EXT_SIGNATURE_ALGORITHMS_CERT):
+			if (size < 4):
+				valid = 0
+				break
+			int n = load_be16(msg + pos)
+			if (n != size - 2 || (n % 2) != 0):
+				valid = 0
+				break
+			int schemes = 0
+			int at = pos + 2
+			while (at < pos + size):
+				int scheme = load_be16(msg + at)
+				schemes = schemes | tls_certificate_scheme_bit(scheme)
+				if (kind == TLS_EXT_SIGNATURE_ALGORITHMS && scheme == TLS_SIG_ECDSA_SECP256R1_SHA256): p256 = 1
+				at = at + 2
+			if (kind == TLS_EXT_SIGNATURE_ALGORITHMS):
+				have_sigalgs = 1
+				proof_schemes = schemes
+			else:
+				have_cert_schemes = 1
+				cert_schemes = schemes
+		# No automatic selection for OID filters: decline instead of
+		# sending a certificate which might violate an unknown constraint.
+		if (kind == 48): constrained = 1
+		pos = pos + size
+	list_free[int](seen)
+	if (valid == 0 || pos != len || have_sigalgs == 0):
+		return tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: malformed CertificateRequest")
+	c.client_auth_requested = 1
+	c.client_auth_p256 = p256 && constrained == 0
+	if (have_cert_schemes == 0): cert_schemes = proof_schemes
+	c.client_auth_cert_schemes = cert_schemes
+	return 1
+
+
+# RFC 8446 4.4.2.3: client certificate signatures must satisfy
+# signature_algorithms_cert, falling back to signature_algorithms. Validate
+# every supplied certificate; unsupported/malformed chains are never sent.
+int tls_client_chain_compatible(list[pem_block*] blocks, int schemes):
+	int ok = 1
+	for i in range(blocks.length):
+		x509_cert* cert = x509_parse(blocks[i].data, blocks[i].len)
+		if (cert == 0): return 0
+		if ((schemes & (1 << cert.sig_alg)) == 0): ok = 0
+		x509_cert_free(cert)
+	return ok
+
+
+# Send an empty Certificate when no compatible credential was configured;
+# a required server rejects it. Configured but unreadable credentials fail.
+int tls_client_send_auth(tls_conn* c):
+	tls_config* cfg = c.cfg
+	tls_server_config* credentials = tls_server_config_new()
+	int configured = 0
+	if (cfg != 0):
+		credentials.cert_chain_path = cfg.client_cert_chain_path
+		credentials.key_path = cfg.client_key_path
+		configured = cfg.client_cert_chain_path != 0 || cfg.client_key_path != 0
+	list[pem_block*] certs = new list[pem_block*]
+	char* key = cast(char*, malloc(32))
+	tls_wipe(key, 32)
+	if (configured && c.client_auth_p256):
+		pem_blocks_free(certs)
+		certs = tls_server_cert_blocks(credentials)
+		if (certs.length == 0 || tls_server_load_key(credentials, key) == 0):
+			pem_blocks_free(certs)
+			tls_wipe(key, 32)
+			free(key)
+			tls_server_config_free(credentials)
+			return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: client credential unavailable")
+	tls_server_config_free(credentials)
+	if (tls_client_chain_compatible(certs, c.client_auth_cert_schemes) == 0):
+		pem_blocks_free(certs)
+		certs = new list[pem_block*]
+	if (cfg != 0):
+		if (cfg.require_client_auth && certs.length == 0):
+			pem_blocks_free(certs)
+			tls_wipe(key, 32)
+			free(key)
+			return tls_auth_fail(c, TLS_ALERT_HANDSHAKE_FAILURE, c"tls: no compatible client credential")
+	int have_cert = certs.length != 0
+	int len = 0
+	char* msg = tls_build_certificate(certs, &len)
+	pem_blocks_free(certs)
+	whash_update(c.transcript, msg, len)
+	int sent = tls_send_record(c, TLS_CT_HANDSHAKE, msg, len, 1)
+	free(msg)
+	if (sent == 0):
+		tls_wipe(key, 32)
+		free(key)
+		tls_fail(c, c"tls: send client Certificate failed")
+		return 0
+	if (have_cert == 0):
+		tls_wipe(key, 32)
+		free(key)
+		return 1
+	char* th = cast(char*, malloc(c.digest_size))
+	whash_final(c.transcript, th)
+	msg = tls_build_certverify_role(key, th, c.digest_size, 1, &len)
+	free(th)
+	tls_wipe(key, 32)
+	free(key)
+	if (msg == 0): return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: client CertificateVerify signing failed")
+	whash_update(c.transcript, msg, len)
+	sent = tls_send_record(c, TLS_CT_HANDSHAKE, msg, len, 1)
+	free(msg)
+	if (sent == 0):
+		tls_fail(c, c"tls: send client CertificateVerify failed")
+		return 0
+	return 1
+
+
+int tls_check_client_chain(tls_conn* c, list[x509_cert*] certs):
+	x509_trust_store* store = x509_load_trust_store(c.scfg.client_trust_store_path)
+	if (store == 0): return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: cannot load client trust store")
+	int now = tls_now_unix()
+	if (c.scfg.has_now_unix): now = c.scfg.now_unix
+	list[x509_cert*] extra = new list[x509_cert*]
+	for i in range(1, certs.length): extra.push(certs[i])
+	char* reason = 0
+	int ok = x509_verify_client_chain(certs[0], extra, store, now, &reason)
+	list_free[x509_cert*](extra)
+	x509_store_free(store)
+	if (ok == 0): return tls_auth_fail(c, TLS_ALERT_HANDSHAKE_FAILURE, c"tls: client certificate verification failed")
+	return 1
+
+
+int tls_server_read_client_auth(tls_conn* c):
+	int kind = 0
+	int len = 0
+	char* msg = 0
+	if (tls_next_hs_msg(c, &kind, &msg, &len) == 0): return 0
+	if (kind != TLS_HS_CERTIFICATE): return tls_auth_fail(c, TLS_ALERT_UNEXPECTED_MESSAGE, c"tls: expected client Certificate")
+	# Only the exact empty Certificate is an optional unauthenticated peer.
+	if (len == 8 && load_be24(msg + 1) == 4 && msg[4] == 0 && load_be24(msg + 5) == 0):
+		whash_update(c.transcript, msg, len)
+		if (c.scfg.client_auth == TLS_CLIENT_AUTH_REQUIRED):
+			return tls_auth_fail(c, 116, c"tls: client certificate required")
+		return 1
+	list[x509_cert*] certs = tls_parse_certificate(msg, len)
+	if (certs.length == 0):
+		tls_free_cert_list(certs)
+		return tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: malformed client Certificate")
+	whash_update(c.transcript, msg, len)
+	if (tls_check_client_chain(c, certs) == 0):
+		tls_free_cert_list(certs)
+		return 0
+	char* th = cast(char*, malloc(c.digest_size))
+	whash_final(c.transcript, th)
+	if (tls_next_hs_msg(c, &kind, &msg, &len) == 0):
+		free(th)
+		tls_free_cert_list(certs)
+		return 0
+	int ok = 0
+	if (kind == TLS_HS_CERTIFICATE_VERIFY && len >= 8):
+		int scheme = load_be16(msg + 4)
+		int siglen = load_be16(msg + 6)
+		# Must be the scheme we actually requested. Never accept legacy
+		# RSA PKCS#1 or signatures using the server's role context here.
+		if (scheme == TLS_SIG_ECDSA_SECP256R1_SHA256 && siglen == len - 8):
+			ok = tls_verify_certverify_role(certs[0], scheme, msg + 8, siglen, th, c.digest_size, 1)
+	free(th)
+	if (ok): tls_set_peer_certificate(c, certs[0])
+	tls_free_cert_list(certs)
+	if (ok == 0): return tls_auth_fail(c, TLS_ALERT_DECRYPT_ERROR, c"tls: client CertificateVerify failed")
+	whash_update(c.transcript, msg, len)
+	return 1
