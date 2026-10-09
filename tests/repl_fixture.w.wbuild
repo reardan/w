@@ -103,6 +103,9 @@
 # wbuild: step="script -qc ./bin/repl /dev/null" stdin="[200~int addp(int a, int b):\n\tint total = a + b\n\n\treturn total\n[201~\naddp(2, 3)\n:quit\n" expect_stdout="5"
 # wbuild: step="bin/repl" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\treturn s\n\nacc(10)\nint acc(int n):\n\tint s = 100\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i * 2\n\t\ti = i + 1\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45" expect_stdout="190"
 # wbuild: step="bin/repl" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\t\tqq_undefined\n\treturn s\n\nint acc(int n):\n\tint s = 0\n\tfor i in range(n): s = s + i\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45"
+# wbuild: step="bin/repl" stdin="float f = 1.5\nf\n:quit\n" expect_stdout="1.5" reject_stdout="1069547520"
+# wbuild: step="bin/repl --json" stdin="float f = 1.5\nf\n:quit\n" expect_stdout="\"echo\":\"1.5\""
+# wbuild: step="bin/repl" stdin=":type\n:time\n:load\n:save\n!export\n!export NAME\n:type 1 + 2\n:quit\n" expect_stdout="usage: :type <expression>" expect_stdout="usage: :time <expression>" expect_stdout="usage: :load <file>" expect_stdout="usage: :save <file>" expect_stdout="usage: !export NAME=VALUE" expect_stdout="int"
 # wbuild: target=repl_test_x64 tag=tests_x64 dep=wv2 data=tests/repl_giant_entry_fixture.txt data=tools/repl_giant_entry_e2e.w
 # wbuild: step="bin/wv2 x64 repl.w -o bin/repl64"
 # wbuild: step="bin/repl64" stdin="int word = 0\natomic_store(&word, 42)\natomic_fence()\natomic_load(&word)\natomic_store_relaxed(&word, -17)\natomic_load_relaxed(&word)\n:quit\n" expect_stdout="42" expect_stdout="-17" reject_stderr="error:"
@@ -197,7 +200,4 @@
 # wbuild: step="script -qc ./bin/repl64 /dev/null" stdin="[200~int addp64(int a, int b):\n\tint total = a + b\n\n\treturn total\n[201~\naddp64(2, 3)\n:quit\n" expect_stdout="5"
 # wbuild: step="bin/repl64" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\treturn s\n\nacc(10)\nint acc(int n):\n\tint s = 100\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i * 2\n\t\ti = i + 1\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45" expect_stdout="190"
 # wbuild: step="bin/repl64" stdin="int acc(int n):\n\tint s = 0\n\tint i = 0\n\twhile (i < n):\n\t\ts = s + i\n\t\ti = i + 1\n\t\tqq_undefined\n\treturn s\n\nint acc(int n):\n\tint s = 0\n\tfor i in range(n): s = s + i\n\treturn s\n\nacc(10)\n:quit\n" expect_stdout="45"
-# wbuild: step="bin/repl" stdin="float f = 1.5\nf\n:quit\n" expect_stdout="1.5" reject_stdout="1069547520"
-# wbuild: step="bin/repl --json" stdin="float f = 1.5\nf\n:quit\n" expect_stdout="\"echo\":\"1.5\""
-# wbuild: step="bin/repl" stdin=":type\n:time\n:load\n:save\n!export\n!export NAME\n:type 1 + 2\n:quit\n" expect_stdout="usage: :type <expression>" expect_stdout="usage: :time <expression>" expect_stdout="usage: :load <file>" expect_stdout="usage: :save <file>" expect_stdout="usage: !export NAME=VALUE" expect_stdout="int"
 # wbuild: step="bin/repl64" stdin="float64 d = 2.5\nd\nfloat f = 1.5\nf\n:quit\n" expect_stdout="2.5" expect_stdout="1.5" reject_stdout="4612"
