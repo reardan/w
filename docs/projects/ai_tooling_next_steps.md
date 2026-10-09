@@ -1187,8 +1187,10 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   runs of one build) cannot see a flake that hits one build once, so
   the gate reported `MISMATCH (behaviour)` for a miscompile that was
   not one. Direction: a `# wbuild:` tag (or the manifest's `timeout=`
-  hint) that lets the sweep retry or skip timing-bound programs, as it
-  already skips `*_race_*` and `malloc_churn`.
+  hint) that lets the sweep retry or skip timing-bound programs. The
+  allocator churn test now emits only deterministic scan counts, so it
+  stays in the sweep without wall-clock output mismatches; timing-bound
+  networking tests still need an explicit policy.
 - **The retained emitter is the differential test that found the
   pre-scan asymmetry.** `--ast-emit-retained` cannot be served by the
   pre-scan's line probe (the instantiation's bytes are in getchar's
