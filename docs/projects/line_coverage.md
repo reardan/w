@@ -1,6 +1,7 @@
 # Line execution coverage
 
-`--coverage` instruments executable statement entries on Linux x86 and x64.
+`--coverage` instruments executable statement entries on Linux x86, x64 and
+arm64.
 It uses the profile runtime's counters and writes `<binary>.wprofmap`. Running
 that binary with `W_PROFILE_OUT` set appends its nonzero counters to the named
 file. `wcoverage lines` combines those counters with the complete map to report
@@ -37,6 +38,13 @@ Repeated generic instantiations, multiple statements on one line, and deferred
 statements emitted at several exits therefore count as one source line. Empty
 dumps are valid and report all mapped lines as missed. Missing dumps, invalid
 rows, out-of-range indices, and maps without statement counters are errors.
+
+On arm64 the increment is an `adrp`/`add` pair addressing the counter
+through the backend's scratch registers `x9`/`x10`, then `ldr`/`add`/`str`;
+the exit hook is a `b` over `exit`'s first instruction. Run the binary under
+`bin/wrun arm64` (qemu-user) or natively; `coverage_arm64_test` (in
+`tests_arm64`) checks the same fixture results as the x86 run. arm64_darwin,
+win64 and wasm still reject `--coverage` and `--profile-generate`.
 
 Always keep each dump paired with the exact binary's map. Recompiling can
 change counter indices; the raw format has no binary fingerprint to detect a

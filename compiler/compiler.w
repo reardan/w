@@ -890,13 +890,13 @@ int link_option(char* arg, int apply):
 	# link_impl's flag pre-scan applies it before the first file compiles.
 	# The map needs the definition spans defhash_note records, so the
 	# flag arms defhash recording over the whole closure; defhash_dump
-	# itself stays with 'w defhash'. x86/x64 Linux ELF only.
+	# itself stays with 'w defhash'. x86/x64/arm64 Linux ELF only.
 	if ((strcmp(arg, c"--profile-generate") == 0) || (strcmp(arg, c"--coverage") == 0)):
 		if (apply):
-			if ((target_isa != 0) || (target_os != 0)):
+			if (((target_isa != 0) && (target_isa != 1)) || (target_os != 0)):
 				print_error(c"error: ")
 				print_error(arg)
-				print_error(c" is only supported on the x86 and x64 Linux targets\x0a")
+				print_error(c" is only supported on the x86, x64 and arm64 Linux targets\x0a")
 				exit(1)
 			if (strcmp(arg, c"--coverage") == 0): coverage_generate_mode = 1
 			profile_generate_mode = 1

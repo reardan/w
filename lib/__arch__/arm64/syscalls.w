@@ -361,9 +361,13 @@ int sys_inotify_add_watch(int fd, char* path, int mask):
 int sys_inotify_rm_watch(int fd, int wd):
 	return syscall(28, fd, wd, 0)
 
+# exit_group's number, under the name the x86/x64 tables give it
+# (lib/profile.w's exit hook makes the syscall itself).
+const int SYS_EXIT_GROUP = 94
+
 # exit_group: terminates every thread in the process, like libc exit().
 void exit(int error_code):
-	syscall(94, error_code, 0, 0)
+	syscall(SYS_EXIT_GROUP, error_code, 0, 0)
 
 # exit: terminates only the calling thread.
 void thread_exit(int error_code):

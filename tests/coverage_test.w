@@ -19,7 +19,8 @@
 # wbuild: step="bin/wcoverage lines bin/coverage_malformed.wprofmap bin/coverage_empty.raw" expect_fail expect_stderr="map indices must be consecutive"
 # wbuild: step="bin/wv2 --profile-generate tests/wcoverage/line_fixture.w -o bin/coverage_profile_only"
 # wbuild: step="bin/wcoverage lines bin/coverage_profile_only.wprofmap bin/coverage_empty.raw" expect_fail expect_stderr="compile with --coverage"
-# wbuild: step="bin/wv2 arm64 --coverage tests/wcoverage/line_fixture.w -o bin/coverage_unsupported" expect_fail expect_stderr="only supported on the x86 and x64 Linux targets"
+# wbuild: step="bin/wv2 wasm --coverage tests/wcoverage/line_fixture.w -o bin/coverage_unsupported" expect_fail expect_stderr="only supported on the x86, x64 and arm64 Linux targets"
+# wbuild: step="bin/wv2 arm64_darwin --profile-generate tests/wcoverage/line_fixture.w -o bin/coverage_unsupported" expect_fail expect_stderr="only supported on the x86, x64 and arm64 Linux targets"
 # wbuild: step="bin/wv2 --coverage tests/wcoverage/line_fixture.w" expect_fail expect_stderr="requires -o"
 # wbuild: step="bin/wv2 --coverage tests/wcoverage/advanced_fixture.w -o bin/coverage_advanced"
 # wbuild: step="bin/wv2 --coverage --streaming tests/wcoverage/advanced_fixture.w -o bin/coverage_advanced_streaming"
@@ -62,6 +63,19 @@
 # wbuild: step="bin/wv2 a b" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" env="W_COVERAGE_OUT=bin/coverage_probe" expect_stdout="argv: bin/wv2 a b" expect_stdout="W_COVERAGE_COMPILER=[]" expect_stdout="W_PROFILE_OUT=[bin/coverage_probe/compiler_x86/"
 # wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_exec_probe" env="W_PROFILE_OUT=bin/coverage_probe_guard.raw" expect_stdout="w 0.3.0" reject_stdout="argv:"
 # wbuild: step="bin/wv2 --version" env="W_COVERAGE_COMPILER=bin/coverage_no_such_build" expect_fail expect_stderr="cannot execute coverage build 'bin/coverage_no_such_build' named by $W_COVERAGE_COMPILER"
+# wbuild: target=coverage_arm64_test tag=tests_arm64 dep=wv2 dep=wrun dep=wcoverage input=tests/wcoverage/line_fixture.w input=tests/wcoverage/fstring_fixture.w
+# wbuild: step="bin/wv2 arm64 --coverage tests/wcoverage/line_fixture.w -o bin/coverage_fixture_arm64"
+# wbuild: step="bin/wv2 arm64 --coverage --streaming tests/wcoverage/line_fixture.w -o bin/coverage_fixture_arm64_streaming"
+# wbuild: step="cmp bin/coverage_fixture_arm64 bin/coverage_fixture_arm64_streaming"
+# wbuild: step="cmp bin/coverage_fixture_arm64.wprofmap bin/coverage_fixture_arm64_streaming.wprofmap"
+# wbuild: step="rm -f bin/coverage_arm64_first.raw bin/coverage_arm64_alt.raw bin/coverage_fstring_arm64.raw"
+# wbuild: step="bin/wrun arm64 bin/coverage_fixture_arm64" env="W_PROFILE_OUT=bin/coverage_arm64_first.raw"
+# wbuild: step="bin/wcoverage lines --branches --file tests/wcoverage/line_fixture.w bin/coverage_fixture_arm64.wprofmap bin/coverage_arm64_first.raw" expect_stdout="line_fixture.w:7: taken hit, not taken miss" expect_stdout="line_fixture.w:20: taken miss, not taken hit" expect_stdout="line coverage: 8/14 (57%)" expect_stdout="branch coverage: 2/6 (33%)"
+# wbuild: step="bin/wrun arm64 bin/coverage_fixture_arm64 alt" env="W_PROFILE_OUT=bin/coverage_arm64_alt.raw"
+# wbuild: step="bin/wcoverage lines --file tests/wcoverage/line_fixture.w bin/coverage_fixture_arm64.wprofmap bin/coverage_arm64_alt.raw" expect_stdout="line_fixture.w:21: hit" expect_stdout="line_fixture.w:22: miss" expect_stdout="line coverage: 9/14 (64%)"
+# wbuild: step="bin/wv2 arm64 --coverage tests/wcoverage/fstring_fixture.w -o bin/coverage_fstring_arm64"
+# wbuild: step="bin/wrun arm64 bin/coverage_fstring_arm64 alt" env="W_PROFILE_OUT=bin/coverage_fstring_arm64.raw" expect_stdout="a_4 in4{}    5w" expect_stdout="args_2"
+# wbuild: step="bin/wcoverage lines --file tests/wcoverage/fstring_fixture.w bin/coverage_fstring_arm64.wprofmap bin/coverage_fstring_arm64.raw" expect_stdout="fstring_fixture.w:16: hit"
 import lib.testing
 import lib.file
 import lib.dir
