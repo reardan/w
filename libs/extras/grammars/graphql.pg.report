@@ -1,0 +1,8 @@
+75 parser rules, 7 token rules, 2 skip rules, 56 literals emitted
+GENERATED matcher for BLOCK_STRING: g_graphql_BLOCK_STRING
+GENERATED matcher for ID: g_graphql_ID
+GENERATED matcher for FLOAT: g_graphql_FLOAT
+GENERATED matcher for INT: g_graphql_INT
+GENERATED matcher for PUNCTUATOR: g_graphql_PUNCTUATOR
+DROPPED lexer rule WS: whitespace-only rule; the pg generator auto-skips inline space/CR, and this tool always adds `skip NEWLINE newline` / `skip TAB tabs`
+GENERATED matcher for UNICODE_BOM: g_graphql_UNICODE_BOM

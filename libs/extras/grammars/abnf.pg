@@ -1,0 +1,43 @@
+parser abnf
+
+# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.
+skip PG_SKIP_NEWLINE newline
+skip PG_SKIP_TAB tabs
+skip COMMENT g_abnf_COMMENT
+skip WS g_abnf_WS
+
+token NumberValue g_abnf_NumberValue
+token ProseValue g_abnf_ProseValue
+token ID g_abnf_ID
+token INT digits
+token STRING g_abnf_STRING
+
+literal ASSIGN "="
+literal SLASH "/"
+literal STAR "*"
+literal LPAREN "("
+literal RPAREN ")"
+literal LBRACK "["
+literal RBRACK "]"
+
+start rulelist
+
+rule rulelist = rule_* EOF
+rule rule_ = ID ASSIGN SLASH? elements
+rule elements = alternation
+rule alternation = concatenation alternation_g1*
+rule alternation_g1 = SLASH concatenation
+rule concatenation = repetition+
+rule repetition = repeat_? element
+rule repeat_ = INT | INT? STAR INT?
+rule element = ID | group | option | STRING | NumberValue | ProseValue
+rule group = LPAREN alternation RPAREN
+rule option = LBRACK alternation RBRACK
+
+# --- translation report (see build log / --report for details) ---
+# GENERATED matcher for NumberValue: g_abnf_NumberValue
+# GENERATED matcher for ProseValue: g_abnf_ProseValue
+# GENERATED matcher for ID: g_abnf_ID
+# GENERATED matcher for COMMENT: g_abnf_COMMENT
+# GENERATED matcher for WS: g_abnf_WS
+# GENERATED matcher for STRING: g_abnf_STRING

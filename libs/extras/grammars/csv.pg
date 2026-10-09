@@ -1,0 +1,20 @@
+parser csv
+
+# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.
+skip PG_SKIP_NEWLINE newline
+skip PG_SKIP_TAB tabs
+
+token TEXT csv_text
+token STRING doubled_double_quote_string
+
+literal COMMA ","
+literal SYM_1 "\r"
+literal SYM_2 "\n"
+
+start csvFile
+
+rule csvFile = hdr row+ EOF
+rule hdr = row
+rule row = field row_g1* SYM_1? SYM_2
+rule row_g1 = COMMA field
+rule field = TEXT | STRING | 

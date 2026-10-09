@@ -1,0 +1,32 @@
+parser json
+
+# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.
+skip PG_SKIP_NEWLINE newline
+skip PG_SKIP_TAB tabs
+
+token STRING string
+token NUMBER number
+
+literal LBRACE "{"
+literal COMMA ","
+literal RBRACE "}"
+literal COLON ":"
+literal LBRACK "["
+literal RBRACK "]"
+literal KW_TRUE "true"
+literal KW_FALSE "false"
+literal KW_NULL "null"
+
+start json
+
+rule json = value EOF
+rule obj = LBRACE pair obj_g1* RBRACE | LBRACE RBRACE
+rule obj_g1 = COMMA pair
+rule pair = STRING COLON value
+rule arr = LBRACK value arr_g1* RBRACK | LBRACK RBRACK
+rule arr_g1 = COMMA value
+rule value = STRING | NUMBER | obj | arr | KW_TRUE | KW_FALSE | KW_NULL
+
+# --- translation report (see build log / --report for details) ---
+# NOTE token NUMBER: (matcher=number): source allows an optional leading sign, which lexer.w's `number` matcher does not consume -- negative literals will fail to lex; consider a separate MINUS token handled in the parser grammar instead (see how sql.pg treats unary minus)
+# DROPPED lexer rule WS: whitespace-only rule; the pg generator auto-skips inline space/CR, and this tool always adds `skip NEWLINE newline` / `skip TAB tabs`

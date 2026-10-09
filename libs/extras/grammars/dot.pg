@@ -1,0 +1,68 @@
+parser dot
+
+# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.
+skip PG_SKIP_NEWLINE newline
+skip PG_SKIP_TAB tabs
+skip COMMENT block_comment
+skip LINE_COMMENT c_line_comment
+skip PREPROC line_comment
+
+token NUMBER number
+token STRING string
+token ID g_dot_ID
+token HTML_STRING g_dot_HTML_STRING
+
+literal STRICT "strict"
+literal GRAPH "graph"
+literal DIGRAPH "digraph"
+literal NODE "node"
+literal EDGE "edge"
+literal SUBGRAPH "subgraph"
+literal LBRACE "{"
+literal RBRACE "}"
+literal SEMI ";"
+literal ASSIGN "="
+literal LBRACK "["
+literal RBRACK "]"
+literal COMMA ","
+literal ARROW "->"
+literal SYM_1 "--"
+literal COLON ":"
+
+start graph
+
+rule graph = STRICT? graph_g1 id_? LBRACE stmt_list RBRACE EOF
+rule graph_g1 = GRAPH | DIGRAPH
+rule stmt_list = stmt_list_g1*
+rule stmt_list_g1 = stmt SEMI?
+# edge_stmt before node_stmt: pg ordered-choice would otherwise commit to
+# node_stmt on a lone id and never see the following edgeop (ANTLR uses
+# prediction here). Hand adjustment after translation.
+rule stmt = edge_stmt | node_stmt | attr_stmt | id_ ASSIGN id_ | subgraph
+rule attr_stmt = attr_stmt_g1 attr_list
+rule attr_stmt_g1 = GRAPH | NODE | EDGE
+rule attr_list = attr_list_g1+
+rule attr_list_g1 = LBRACK a_list? RBRACK
+rule a_list = a_list_g1+
+rule a_list_g1 = id_ a_list_g1_g1? a_list_g1_g2?
+rule a_list_g1_g1 = ASSIGN id_
+rule a_list_g1_g2 = SEMI | COMMA
+rule edge_stmt = edge_stmt_g1 edgeRHS attr_list?
+rule edge_stmt_g1 = node_id | subgraph
+rule edgeRHS = edgeRHS_g1+
+rule edgeRHS_g1 = edgeop edgeRHS_g1_g1
+rule edgeRHS_g1_g1 = node_id | subgraph
+rule edgeop = ARROW | SYM_1
+rule node_stmt = node_id attr_list?
+rule node_id = id_ port?
+rule port = COLON id_ port_g1?
+rule port_g1 = COLON id_
+rule subgraph = subgraph_g1? LBRACE stmt_list RBRACE
+rule subgraph_g1 = SUBGRAPH id_?
+rule id_ = ID | STRING | HTML_STRING | NUMBER
+
+# --- translation report (see build log / --report for details) ---
+# NOTE token NUMBER: (matcher=number): source allows an optional leading sign, which lexer.w's `number` matcher does not consume -- negative literals will fail to lex; consider a separate MINUS token handled in the parser grammar instead (see how sql.pg treats unary minus)
+# GENERATED matcher for ID: g_dot_ID
+# GENERATED matcher for HTML_STRING: g_dot_HTML_STRING
+# DROPPED lexer rule WS: whitespace-only rule; the pg generator auto-skips inline space/CR, and this tool always adds `skip NEWLINE newline` / `skip TAB tabs`
