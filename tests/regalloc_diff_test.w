@@ -44,11 +44,20 @@ blanked before the comparison.
 The sweep is split across shard processes (this program re-executes
 itself with --shard k); the parent builds the opt-out compilers, waits
 for the shards and fails when any of them reported a mismatch.
+
+The sweep is the slowest target in the tree, so build.base.json pins it
+to its own umbrella, tests_codegen_diff, which CI runs as a separate
+job beside the full suite; `./wbuild tests` leaves it out, and
+`wtest changed` still selects it for compiler changes. CI also splits
+the sweep across runners: W_REGALLOC_DIFF_PART=k/n keeps only every
+n-th selected target starting at the k-th (0-based), so n jobs with
+k = 0..n-1 cover the whole manifest once. Unset, the run covers it all.
 */
 import lib.lib
 import lib.assert
 import lib.process
 import lib.file
+import lib.env
 import structures.json
 import tools.wbuildgen_lib
 
@@ -402,12 +411,33 @@ void sweep_target(char* name, int arch64, char* src, char* stdin_text, int timeo
 	compared = compared + 1
 
 
+int part_index
+int part_count
+
+
+# W_REGALLOC_DIFF_PART=k/n (header comment); a malformed value fails
+# the run rather than silently sweeping a different slice.
+void read_part():
+	part_index = 0
+	part_count = 1
+	char* spec = env_get(c"W_REGALLOC_DIFF_PART")
+	if (spec == 0): return
+	int slash = 0
+	while ((spec[slash] != 0) && (spec[slash] != '/')): slash = slash + 1
+	asserts(c"W_REGALLOC_DIFF_PART is k/n", spec[slash] == '/')
+	part_index = atoi(spec)
+	part_count = atoi(&spec[slash + 1])
+	asserts(c"W_REGALLOC_DIFF_PART has 0 <= k < n", (part_count > 0) && (part_index >= 0) && (part_index < part_count))
+
+
 # The sweep over the manifest; shard -1 means every target.
 void run_shard(int shard):
+	read_part()
 	json_value* manifest = json_parse(wbg_generate(c"build.base.json", 1))
 	asserts(c"manifest parses", manifest != 0)
 	json_value* targets = json_object_get(manifest, c"targets")
 	asserts(c"manifest has targets", targets != 0)
+	int candidates = 0
 	int selected = 0
 	for i in range(json_array_length(targets)):
 		json_value* t = json_array_get(targets, i)
@@ -430,6 +460,9 @@ void run_shard(int shard):
 		char* out = arg_at(c0, n0 - 1)
 		if (json_array_length(c1) != 1): continue
 		if (strcmp(arg_at(c1, 0), out) != 0): continue
+		int in_part = (candidates % part_count) == part_index
+		candidates = candidates + 1
+		if (in_part == 0): continue
 		int mine = (shard < 0) || ((selected % shard_count) == shard)
 		selected = selected + 1
 		if (mine == 0): continue
@@ -438,7 +471,11 @@ void run_shard(int shard):
 		json_value* limit = json_object_get(run, c"timeout_ms")
 		if (limit != 0): timeout_ms = limit.int_value
 		sweep_target(json_text(json_object_get(t, c"name")), arch64, src, stdin_text, timeout_ms)
-	print(c"regalloc_diff: shard ")
+	print(c"regalloc_diff: part ")
+	print(itoa(part_index))
+	print(c"/")
+	print(itoa(part_count))
+	print(c", shard ")
 	print(itoa(shard))
 	print(c": ")
 	print(itoa(compared))
@@ -455,6 +492,7 @@ int main(int argc, char** argv):
 		if (mismatches > 0): return 1
 		return 0
 
+	read_part()
 	shell_status(c"/bin/mkdir", c"-p", scratch_dir())
 	process_result* build = compile_with(c"bin/wv2", 0, 1, c"w.w", noregs_compiler())
 	asserts(c"building the --no-regs compiler", build.status == 0)
