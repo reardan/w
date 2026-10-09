@@ -1,6 +1,10 @@
 # wbuild: binary=wcoverage
 # wbuild: target=wcoverage_report dep=wcoverage
 # wbuild: step="bin/wcoverage"
+# wbuild: target=compiler_coverage dep=wcoverage dep=wexec
+# wbuild: step="mkdir -p bin/coverage"
+# wbuild: step="cp bin/wcoverage bin/coverage/wcoverage"
+# wbuild: step="bin/coverage/wcoverage suite --baseline tools/coverage_baseline.txt" timeout=7200000
 # wbuild: target=wcoverage_test tag=tests dep=wcoverage
 # wbuild: step="bin/wcoverage --roots tests/wcoverage/roots --modules tests/wcoverage/mods --harness tests/wcoverage/harness.w" expect_stdout="roots: 3 (1 did not compile, skipped)" expect_stdout="uncovered modules (2 of 6):" expect_stdout="  tests/wcoverage/mods/sub/deep_unused.w" expect_stdout="  tests/wcoverage/mods/unused.w" expect_stdout="reached only through the test harness (1 of 6):" expect_stdout="  tests/wcoverage/mods/harness_only.w" expect_stdout="module coverage: 3/6 (50%)" reject_stdout="mods/used.w" reject_stdout="mods/used_e2e.w" reject_stdout="__arch__" reject_stdout="harness_direct"
 # wbuild: step="bin/wcoverage -j 1 --roots tests/wcoverage/roots --modules tests/wcoverage/mods --harness tests/wcoverage/harness.w --covered" expect_stdout="covered modules (3 of 6):" expect_stdout="  tests/wcoverage/mods/harness_direct.w" expect_stdout="  tests/wcoverage/mods/used.w" expect_stdout="  tests/wcoverage/mods/used_by_used.w"
@@ -60,6 +64,7 @@ import lib.path
 import lib.process
 import lib.str
 import tools.wcoverage_lines
+import tools.wcoverage_suite
 
 
 char* wcov_compiler
@@ -212,6 +217,7 @@ int main(int argc, int argv):
 	args_init(argc, argv)
 	if (args_count() > 1):
 		if (strcmp(args_get(1), c"lines") == 0): return wcov_lines_main()
+		if (strcmp(args_get(1), c"suite") == 0): return wcov_suite_main()
 	wcov_compiler = c"bin/wv2"
 	wcov_jobs = 4
 	int show_covered = 0

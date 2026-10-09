@@ -6,6 +6,7 @@ A self-compiling compiler for the brand new W Language.
 instead of compiling it to an ELF; see debugger/wdbg.w.
 */
 import compiler.compiler
+import compiler.coverage_exec
 import debugger.wdbg
 import lib.crash
 
@@ -30,6 +31,9 @@ int main(int argc, int argv):
 	# the auto-imported runtime.
 	char** argv0_arg = cast(char**, argv)
 	compiler_argv0 = *argv0_arg
+	# $W_COVERAGE_COMPILER: re-execute as an instrumented build of this
+	# compiler (compiler/coverage_exec.w; returns when unset).
+	coverage_exec_redirect(c"W_COVERAGE_COMPILER", c"compiler", argv)
 	# A compiler crash reports a symbolized stack trace (lib/crash.w).
 	# wdbg_main later replaces these handlers with its own post-mortem
 	# ones for the --debug path.

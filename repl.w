@@ -67,6 +67,7 @@ import repl.core
 import repl.scan
 import repl.shell_translate
 import compiler.compiler
+import compiler.coverage_exec
 import structures.string
 import structures.json
 import lib.args
@@ -916,6 +917,8 @@ void repl_print_help():
 
 
 int main(int argc, int argv):
+	# $W_COVERAGE_REPL: re-execute as a --coverage build (compiler/coverage_exec.w).
+	coverage_exec_redirect(c"W_COVERAGE_REPL", c"repl", argv)
 	args_init(argc, argv)
 	repl_ast_options()
 	repl_init()
