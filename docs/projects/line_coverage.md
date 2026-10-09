@@ -207,3 +207,58 @@ Still open, in rough order of value:
   only through the x86/x64/arm64 Linux compilers that emit them.
 - Mutation testing (a smoke run that flips operators in a few hot
   grammar files and checks `tests` notices) is not started.
+
+## Fuzzing
+
+`tools/wfuzz.w` (`./wbuild wfuzz`) is a coverage-guided fuzzer driven by
+the same counters (issue #440). It runs a `--coverage` binary on mutated
+inputs and keeps an input when its dump reaches a counter index no
+earlier run reached:
+
+```sh
+./wbuild wfuzz
+./bin/wv2 --coverage my_parser.w -o bin/my_parser_cov
+./bin/wfuzz --binary bin/my_parser_cov --corpus seeds/ --out bin/fuzz \
+  --seed 1 --cases 2000
+```
+
+Each case picks a corpus entry (a third of the time the newest one),
+then either applies `tools/fuzz/core.w`'s `wf_generate` mutation or a
+stack of one to four edits: byte overwrite/insert/delete, insertion of a
+W token (`if (`, `struct `, `2147483647`, ...), line duplication,
+deletion or move, and a splice from another entry. The input is written
+to `<out>/work/case.w` and the binary runs with `--arg` list (`{}` is the
+case path, `{out}` a scratch output path), a fresh `$W_PROFILE_OUT` and
+`--timeout-ms` (default 10 s). Exit status 0 or 1 is a normal outcome;
+any other status or a signal is a crash (`<out>/crashes/<sha256>.w` with a
+`.log` holding the status and stderr), a timeout goes to `<out>/hangs/`,
+and new coverage to `<out>/corpus/`. Crashing runs flush no counters, so
+they never grow the corpus. `--diff <exe>` (with `--diff-arg`) also runs
+every input the binary exits 0 on through a reference command and saves
+a different status, stdout or `{out}` file to `<out>/diffs/` (with both
+`{out}` files as `.out` / `.out_ref` and a `.log` of both stderrs); seeds that
+already differ are listed as "seed diffs" and their mutants skip the
+oracle. The run is deterministic for a given `--seed` and `--cases`
+(case *i* draws from `wf_rng(seed, i)`); `--seconds` bounds it by time
+instead. `--minimize <file>` deletes lines and then bytes while the exit
+status stays the same, and prints the result. The header of
+`tools/wfuzz.w` lists every flag.
+
+`./wbuild wfuzz_test` (in `tests`) fuzzes
+`tests/wcoverage/fuzz_target_fixture.w`, whose nested conditions end in
+a null dereference, for 400 cases: coverage must grow past the seed, the
+crash must be found, a second run must produce the same corpus, and the
+minimizer must reduce a crashing input to `if (while (`.
+
+`./wbuild wfuzz_compiler` (in no umbrella) builds
+`bin/wfuzz_compiler/compiler_cov` from `w.w`, seeds the corpus with
+every `.w` file under `tests/` of at most 4 KiB, and fuzzes it for
+`$WFUZZ_SECONDS` (default 300) with `bin/wv2 --streaming` as the
+differential reference, so a program the AST front end compiles must
+compile to the same bytes under the streaming front end. Results are in
+`bin/wfuzz_compiler/out/`. The nightly `.github/workflows/fuzz.yml`
+workflow (also runnable by hand with a budget) runs it for 20 minutes,
+writes the summary and the list of findings to the job summary, and
+uploads the corpus, crashes, hangs and diffs as the `compiler-fuzz`
+artifact for 14 days. Findings do not fail the workflow; reproduce one
+with `bin/wv2 <file> -o /tmp/out` and shrink it with `--minimize`.

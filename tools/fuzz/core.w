@@ -75,13 +75,24 @@ int wf_geti(json_value* value, char* key):
 
 
 # Case IDs choose independent streams: sharding never consumes/skips draws.
+# xorshift diffuses a few bits per step, so nearby seeds and case IDs
+# need several steps each before their streams stop resembling one
+# another (one step per byte left seeds 1..7 replaying the same cases).
 prng* wf_rng(int seed, int case_id):
 	prng* r = prng_new(seed)
 	int i = 0
+	while (i < 8):
+		prng_next(r)
+		i = i + 1
+	i = 0
 	# Mix the ID a byte at a time, avoiding host-width multiplication.
 	while (i < 4):
 		r.state = (r.state ^ ((shr(case_id, i * 8) & 255) + 1)) & prng_mask32()
-		prng_next(r)
+		if (r.state == 0): r.state = 305419896
+		int j = 0
+		while (j < 6):
+			prng_next(r)
+			j = j + 1
 		i = i + 1
 	return r
 
