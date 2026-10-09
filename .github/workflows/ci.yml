@@ -210,6 +210,53 @@ jobs:
             bin/coverage/coverage.json
           retention-days: 14
 
+  # tests_codegen_diff = regalloc_diff_test, which builds every
+  # conventional compile-and-run target eleven times (once per codegen
+  # opt-out) and compares the binaries' behavior. It is the slowest
+  # target by far, so it runs beside the full suite instead of inside
+  # it, split three ways (W_REGALLOC_DIFF_PART, see the test's header);
+  # the setup mirrors the tests job so the swept programs see the same
+  # host.
+  codegen_diff:
+    name: Codegen differential sweep ${{ matrix.part }}/3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2]
+    env:
+      W_REGALLOC_DIFF_PART: ${{ matrix.part }}/3
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install 32-bit runtime, Xvfb and Mesa
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          fi
+          if [ ! -w /dev/kvm ]; then
+            echo "W_CI_NO_KVM=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and run the sweep
+        run: |
+          set -o pipefail
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
+            ./wbuild tests_codegen_diff 2>&1 | tee wbuild.log
+
   arm64:
     name: arm64 (qemu-user)
     runs-on: ubuntu-24.04
