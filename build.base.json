@@ -395,6 +395,12 @@
 			]
 		},
 		{
+			"name": "tests_codegen_diff",
+			"deps": [
+				"regalloc_diff_test"
+			]
+		},
+		{
 			"name": "tests_wasm",
 			"deps": []
 		},
