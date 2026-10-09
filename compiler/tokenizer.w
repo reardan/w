@@ -424,7 +424,17 @@ type __repl_error_jump_callback = fn(int, int) -> void
 type __analysis_probe_error_status_callback = fn() -> int
 
 
+# The -o path while link_impl holds it open and not yet complete: an
+# error after the open (the profile map, the image writers) removes it,
+# so a failed compile never leaves an empty or truncated executable that
+# a shell would happily run.
+char* partial_output_path
+
+
 void error(char *s):
+	if (partial_output_path != 0):
+		unlink(partial_output_path)
+		partial_output_path = 0
 	if (diag_json):
 		diag_append(s)
 		diag_emit(c"error", filename, diag_token_line, diag_token_column, token)

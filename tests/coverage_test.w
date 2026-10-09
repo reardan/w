@@ -1,4 +1,4 @@
-# wbuild: tool=tools/wcoverage.w deps=tests/wcoverage/line_fixture.w deps=tests/wcoverage/advanced_fixture.w
+# wbuild: tool=tools/wcoverage.w deps=tests/wcoverage/line_fixture.w deps=tests/wcoverage/advanced_fixture.w deps=tests/wcoverage/fstring_fixture.w
 # wbuild: step="bin/wv2 --coverage tests/wcoverage/line_fixture.w -o bin/coverage_fixture"
 # wbuild: step="bin/wv2 --coverage --streaming tests/wcoverage/line_fixture.w -o bin/coverage_fixture_streaming"
 # wbuild: step="cmp bin/coverage_fixture bin/coverage_fixture_streaming"
@@ -27,6 +27,16 @@
 # wbuild: step="cmp bin/coverage_advanced.wprofmap bin/coverage_advanced_streaming.wprofmap"
 # wbuild: step="bin/coverage_advanced" env="W_PROFILE_OUT=bin/coverage_advanced.raw"
 # wbuild: step="bin/wcoverage lines --file tests/wcoverage/advanced_fixture.w bin/coverage_advanced.wprofmap bin/coverage_advanced.raw" expect_stdout="advanced_fixture.w:10: hit" expect_stdout="advanced_fixture.w:13: hit" expect_stdout="advanced_fixture.w:15: miss" expect_stdout="advanced_fixture.w:18: hit" expect_stdout="advanced_fixture.w:19: hit" expect_stdout="advanced_fixture.w:22: hit" reject_stdout="advanced_fixture.w:28:" expect_stdout="line coverage: 13/14 (92%)"
+# wbuild: step="bin/wv2 --coverage tests/wcoverage/fstring_fixture.w -o bin/coverage_fstring"
+# wbuild: step="bin/wv2 --coverage --streaming tests/wcoverage/fstring_fixture.w -o bin/coverage_fstring_streaming"
+# wbuild: step="cmp bin/coverage_fstring bin/coverage_fstring_streaming"
+# wbuild: step="cmp bin/coverage_fstring.wprofmap bin/coverage_fstring_streaming.wprofmap"
+# wbuild: step="bin/coverage_fstring" env="W_PROFILE_OUT=bin/coverage_fstring.raw" expect_stdout="a_3 in3{}    4w" expect_stdout="big_3"
+# wbuild: step="bin/wcoverage lines --file tests/wcoverage/fstring_fixture.w bin/coverage_fstring.wprofmap bin/coverage_fstring.raw" expect_stdout="fstring_fixture.w:6: hit" expect_stdout="fstring_fixture.w:7: miss" expect_stdout="fstring_fixture.w:13: hit" expect_stdout="fstring_fixture.w:16: miss" expect_stdout="line coverage: 8/10 (80%)"
+# wbuild: step="bin/wv2 x64 --coverage tests/wcoverage/fstring_fixture.w -o bin/coverage_fstring_x64"
+# wbuild: step="bin/coverage_fstring_x64 alt" env="W_PROFILE_OUT=bin/coverage_fstring_x64.raw" expect_stdout="args_2"
+# wbuild: step="bin/wv2 --profile-generate tests/wcoverage/fstring_fixture.w -o bin/coverage_fstring_profile"
+# wbuild: step="bin/wv2 defhash tests/wcoverage/fstring_fixture.w" expect_stdout="\"name\": \"label\"" expect_stdout="\"refs\": [\"label\"]"
 import lib.testing
 import lib.file
 import tools.wcoverage_lines
@@ -46,6 +56,8 @@ void test_coverage_prepare_runs():
 	file_write_text(c"bin/coverage_second.raw", c"")
 	file_write_text(c"bin/coverage_x64.raw", c"")
 	file_write_text(c"bin/coverage_empty.raw", c"")
+	file_write_text(c"bin/coverage_fstring.raw", c"")
+	file_write_text(c"bin/coverage_fstring_x64.raw", c"")
 	file_write_text(c"bin/coverage_bad.raw", c"2147483647 1\n")
 	file_write_text(c"bin/coverage_negative.raw", c"0 -1\n")
 	file_write_text(c"bin/coverage_malformed.wprofmap", c"# wprofmap v1\tx86\t1\n1\ts\thash\tname\tfile.w\t3\t0\n")

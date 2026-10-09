@@ -1680,6 +1680,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			print_error(c"': ")
 			translate_syscall_failure(output_fd)
 			exit(1)
+		partial_output_path = output_path
 	if (check_mode):
 		output_fd = open(c"/dev/null", 577, 493)
 		if (output_fd < 0):
@@ -1702,6 +1703,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	be_finish(word_size)
 
 	if ((output_path != 0) | check_mode): close(output_fd)
+	partial_output_path = 0
 
 	# Every subcommand routes through link_impl (link, check_main,
 	# deps_main, symbols_main, defhash_main), so one call here covers
@@ -2345,6 +2347,14 @@ void defhash_process_span(int idx):
 	defhash_rehash_mode = 1
 	get_token()
 	int prev_was_dot = 0
+	# f"..{expr}.." spans: get_token() alone would read the text after
+	# an embedded expression's closing '}' as ordinary tokens (a '"'
+	# there opens an unterminated string literal), so track each open
+	# template's brace depth and resume its literal chunk with
+	# get_token_template_chunk(), exactly as the grammar does.
+	int* template_depths = cast(int*, malloc(64 * __word_size__))
+	int template_open = 0
+	int token_is_chunk = 0
 	while ((token[0] != 0) && (token_start_offset < end_offset)):
 		char* kind = defhash_token_kind(token)
 		defhash_buf_append(kind)
@@ -2356,7 +2366,25 @@ void defhash_process_span(int idx):
 		if ((strcmp(kind, c"i") == 0) && (prev_was_dot == 0) && (strcmp(token, self_name) != 0)):
 			if (defhash_is_known_definition(token)): defhash_refs_add(token)
 		prev_was_dot = strcmp(token, c".") == 0
-		get_token()
+		int resume_chunk = 0
+		if (token_is_chunk): token_is_chunk = 0
+		else if ((token[0] == 'f') && (token[1] == '"')):
+			if (token[strlen(token) - 1] == '{'):
+				if (template_open == 64): error(c"f-string templates nested too deeply")
+				template_depths[template_open] = 0
+				template_open = template_open + 1
+		else if (template_open > 0):
+			if (strcmp(token, c"{") == 0): template_depths[template_open - 1] = template_depths[template_open - 1] + 1
+			else if (strcmp(token, c"}") == 0):
+				if (template_depths[template_open - 1] == 0): resume_chunk = 1
+				else: template_depths[template_open - 1] = template_depths[template_open - 1] - 1
+		if (resume_chunk):
+			get_token_template_chunk()
+			# A chunk ending in '{' opens the template's next expression.
+			if (token[strlen(token) - 1] != '{'): template_open = template_open - 1
+			token_is_chunk = 1
+		else: get_token()
+	free(cast(void*, template_depths))
 	defhash_rehash_mode = 0
 	close(f)
 	defhash_refs_sort()
