@@ -128,6 +128,88 @@ jobs:
             grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Statement coverage of the compiler, the REPL and wdbg under the full
+  # test suite (docs/projects/line_coverage.md, "Compiler coverage").
+  # `compiler_coverage` builds --coverage copies of them, reruns `tests`
+  # with every compiler/REPL/debugger process re-executing as those
+  # copies, and checks tools/coverage_baseline.txt. Not a required
+  # check yet: the job reports and uploads, and its result does not
+  # block a merge (continue-on-error).
+  coverage:
+    name: Compiler coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install 32-bit runtime, Xvfb and Mesa
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+
+      - name: Allow debugger attach tests
+        run: sudo sysctl --write kernel.yama.ptrace_scope=0
+
+      - name: Write core files to the working directory
+        run: sudo sysctl --write kernel.core_pattern=core
+
+      - name: Measure coverage and check the baseline
+        env:
+          W_CI_NO_KVM: "1"
+        run: |
+          set -o pipefail
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
+            ./wbuild compiler_coverage 2>&1 | tee coverage.log
+
+      # The new-code rule: changed executable lines in compiler/, grammar/
+      # and code_generator/ must be >= 80% reached, unless their function
+      # is marked '# coverage: exempt <reason>'.
+      - name: Check changed lines
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          set -o pipefail
+          git diff -U0 "origin/${{ github.base_ref }}...HEAD" > changed.diff
+          bin/coverage/wcoverage changed changed.diff bin/coverage/lcov.info | tee changed.txt
+
+      - name: Report coverage
+        if: always()
+        run: |
+          {
+            echo '### Compiler coverage'
+            echo 'Executable statement lines reached by `tests`, per top-level directory; floors in `tools/coverage_baseline.txt`.'
+            echo '```text'
+            cat bin/coverage/summary.txt 2>/dev/null || echo 'no report (see the job log)'
+            grep -a '^baseline:' coverage.log 2>/dev/null || true
+            tail -n 1 bin/coverage/diagnostics.txt 2>/dev/null || true
+            echo '```'
+            if [ -s changed.txt ]; then
+              echo '#### Changed lines'
+              echo '```text'
+              cat changed.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compiler-coverage
+          path: |
+            coverage.log
+            changed.txt
+            bin/coverage/*.txt
+            bin/coverage/lcov.info
+            bin/coverage/coverage.json
+          retention-days: 14
+
   arm64:
     name: arm64 (qemu-user)
     runs-on: ubuntu-24.04
