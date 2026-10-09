@@ -45,8 +45,8 @@ directories before every run for this reason). Use separate dump files for diffe
 binaries, including different target architectures. Maps can subsequently be
 combined because the reporter unions hits by source file and line.
 
-Coverage means reaching a statement, not testing every branch or evaluating
-every subexpression. Blank/comment lines, block delimiters, function headers,
+Coverage means reaching a statement, not evaluating every subexpression;
+`--branches` adds decision outcomes for `if`/`elif` (below). Blank/comment lines, block delimiters, function headers,
 and labels are excluded. A loop header is hit on entry to the loop statement,
 even if its body never executes. A `defer` line can be hit when its statement is
 registered; coverage does not prove every deferred action ran. Uninstantiated
@@ -90,9 +90,23 @@ same merged data:
   lexical scan that skips comments and string contents). A site is hit
   when the *last* statement counter on its line ran, so for
   `if (bad): error(c"...")` the condition alone does not count.
+- `--branches` lists every `if`/`elif` header line with its two
+  outcomes, `taken hit|miss, not taken hit|miss`. The compiler marks the
+  header's statement counter (ordinal 1 in the map); the reader pairs it
+  with the next statement counter of the same function, the first
+  statement of the then-arm. Taken means the arm ran; not taken means the
+  header was reached more often than the arm ran (the `elif`/`else` arm
+  or the fall-through ran). Text reports add a `branch coverage` total
+  whenever the selection has decisions, the summaries add a branch
+  column, lcov gets `BRDA`/`BRF`/`BRH` records and json `branches` /
+  `branches_hit`. Loops are not decisions here: their head counter sits
+  inside the rotated loop and counts iterations, and a loop whose body
+  never ran already shows as missed lines. `&&`/`||` operands and `?:`
+  arms are not counted separately. Counts are summed across dumps and
+  capped at 10^9, which only matters past a billion executions.
 - `--baseline <file>` checks floors: each non-comment line is
   `<prefix> <percent>` (one decimal at most); `diagnostics` is the
-  diagnostic-site floor. A floor that is not met prints `baseline: FAIL`
+  diagnostic-site floor and `branches:<prefix>` a branch floor. A floor that is not met prints `baseline: FAIL`
   and the command exits 1.
 
 A dump argument may be a directory: every file in it is read as a dump of

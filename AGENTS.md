@@ -92,6 +92,16 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    (e.g. a `lib/__arch__/` module missing its `win64` counterpart) shows
    up immediately instead of at that target's next full build.
 3. **Before declaring work done**, run the full suite: `./wbuild tests`.
+   **New compiler code needs a test that reaches it**: the CI `coverage`
+   job fails a PR when under 80% of the changed executable lines in
+   `compiler/`, `grammar/` or `code_generator/` ran during `tests`
+   (`./wbuild compiler_coverage`, then `git diff -U0 origin/main...HEAD >
+   changed.diff && bin/coverage/wcoverage changed changed.diff
+   bin/coverage/lcov.info` reproduces it locally). Mark a function that
+   cannot be reached from a program (debug dumps, internal asserts) with
+   `# coverage: exempt <reason>` on its definition line. When a PR adds
+   tests that raise a directory's coverage, raise its floor in
+   `tools/coverage_baseline.txt` too.
 4. **Find declarations** with `./bin/wv2 symbols --json <file>` (functions,
    globals, types with file/line/column) instead of grepping, **answer
    language-behavior questions** by piping entries + `:quit` into `./bin/repl`,

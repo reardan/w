@@ -216,10 +216,18 @@ W_PROFILE_OUT=bin/property_coverage.raw ./bin/property_coverage
 The report includes hit/miss for every emitted executable statement line,
 including never-called functions, and a total percentage. Multiple runs
 and binaries can be merged by source file/line. It measures statement
-entry, not branch completeness; absent modules and uninstantiated generic
-bodies remain outside the denominator. Normal return and `exit()` flush
+entry, plus `if`/`elif` outcomes with `--branches`; absent modules and
+uninstantiated generic bodies remain outside the denominator. Normal return and `exit()` flush
 data, while crashes do not. See [line execution coverage](projects/line_coverage.md)
 for map/dump pairing, filtering, supported paths and limitations.
+
+`./wbuild compiler_coverage` measures the compiler, REPL and wdbg
+themselves under the whole `tests` umbrella, writes per-directory, per-file,
+per-function, diagnostic, lcov and json reports under `bin/coverage/`, and
+checks the floors in `tools/coverage_baseline.txt`; the CI `coverage` job
+runs it on every push and PR and applies the changed-lines rule
+(`wcoverage changed`). See "Compiler coverage" in
+[line execution coverage](projects/line_coverage.md).
 
 ## Performance
 
@@ -412,7 +420,8 @@ seed set. Run just one family with `--filter map`, `--filter list` or
 
 ## Not done yet
 
-- Branch coverage and execution coverage on targets beyond Linux x86/x64.
+- Branch coverage for loops and `&&`/`||` operands, and execution coverage
+  on targets beyond Linux x86/x64.
 - Leak checks that also catch `mmap`-backed resources (generator
   stacks, thread stacks).
 - Mutation testing and automatic shrinking of failing property cases.
