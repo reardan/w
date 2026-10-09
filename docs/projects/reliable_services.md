@@ -70,7 +70,10 @@ The follow-up implementation and qualification for issue #522 are documented in
   `event_sim` readiness; an injectable `file_ops` interface with a real
   adapter and a fake filesystem modeling write- vs sync-completion,
   ordered metadata journaling, seeded crashes with torn writes, lost
-  unsynced renames and fsync-EIO data loss. Details:
+  unsynced renames and fsync-EIO data loss. `lib/fake_fs_async.w` adds bounded
+  requests with separately delayed execution and completion notification,
+  cancellation, crash invalidation, and event-loop/simulator clock adapters.
+  Details:
   `docs/projects/simulation.md`.
 - **W5.** Budgeted arenas with checked arithmetic and an explicit borrow
   count, bounded metrics (counters, log2 latency histogram, event ring,
@@ -123,6 +126,12 @@ x86/x64; other filesystem adapters report unsupported operations. ARM64
 atomic instruction encoding is checked on the host, while execution and
 ordering qualification needs an ARM64 host. Native TLS has no client
 certificates, so its common adapter does not claim mutual TLS.
+
+Tracked follow-ups: [native ARM64 qualification #607](https://github.com/reardan/w/issues/607),
+[durability ports #608](https://github.com/reardan/w/issues/608),
+[shared memory budgets #609](https://github.com/reardan/w/issues/609),
+[socket peer identity and half-close #610](https://github.com/reardan/w/issues/610),
+and [mutual TLS #611](https://github.com/reardan/w/issues/611).
 
 ## Goal
 
