@@ -558,6 +558,7 @@ int import_statement():
 		read_until_end()
 		import_strip_comment(token)
 		char* alias = import_split_alias(token)
+		if (token[0] == 0): error(c"module name expected after 'import'")
 
 		# Settled (docs/todo.txt "directory and build cleanup"): a
 		# trailing .* wildcard never meant anything -- every import

@@ -1,3 +1,7 @@
+# wbuild: step="cat" stdin="import" stdout_file="bin/import_eof_fixture.w"
+# wbuild: step="bin/wv2 bin/import_eof_fixture.w -o bin/import_eof_fixture" expect_fail expect_stderr="module name expected after 'import'" timeout=20000
+# wbuild: step="cat" stdin="import lib.lib" stdout_file="bin/import_eof_named_fixture.w"
+# wbuild: step="bin/wv2 bin/import_eof_named_fixture.w -o bin/import_eof_named_fixture" timeout=20000
 # wbuild: x64 flags="--import-root tests/import_roots/a --import-root tests/import_roots/b" expect_stdout="import_root_test OK"
 /*
 Explicit ordered import roots (--import-root, compiler/compiler.w;
