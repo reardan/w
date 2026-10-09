@@ -180,3 +180,30 @@ which requires at least 80% of the changed executable lines in
 (`--min`, `--prefix` adjust it). Lines in a function whose definition
 line carries `# coverage: exempt <reason>` are skipped; use it for debug
 dumps and internal-error paths that cannot be reached from a program.
+
+### Gaps the first runs found, and what is still open
+
+The first suite run (2026-10-09, Linux x86_64) measured 93% of the
+compiler-side lines and 35% of its diagnostic call sites. Follow-ups
+from that run: `tests/diagnostic_sites/` covers 28 of the unreached
+diagnostic sites, nineteen never-entered functions with no caller were
+deleted, and a REPL echo bug (float variables printed as raw bits)
+turned up while covering the REPL's commands.
+
+Still open, in rough order of value:
+
+- The remaining unreached diagnostics (`diagnostics.txt`), largely
+  gpu/PTX, protobuf/json builtins, extern/C-import and the streaming
+  front end's copies of AST-reported errors.
+- wdbg (78%): the attach-mode commands (`at_hw_list`, `at_delete_command`,
+  `at_help`, ...) need scripted sessions like `tests/wdbg_*`.
+- Register-allocation slow paths (`rs_take_ident_slow`,
+  `regalloc_guard_fail`) and the retained-AST source checks only fire on
+  inputs no test builds yet; the coverage-guided fuzzer
+  (`tools/wfuzz.w`) is the intended source of such inputs.
+- Coverage of the arm64_darwin, win64 and wasm backends' own code paths:
+  `--coverage` does not support those targets (it needs a counter
+  section and an exit hook per object format), so their lines count
+  only through the x86/x64/arm64 Linux compilers that emit them.
+- Mutation testing (a smoke run that flips operators in a few hot
+  grammar files and checks `tests` notices) is not started.
