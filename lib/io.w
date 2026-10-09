@@ -40,18 +40,8 @@ const int IO_UNSUPPORTED = 7
 const int IO_IO_ERROR = 8
 
 
-# Linux errno numbers the classifier recognizes (every Linux target, and
-# the arm64_darwin layer normalizes to the same -errno convention).
-const int IO_ERRNO_EINTR = 4
-const int IO_ERRNO_EIO = 5
-const int IO_ERRNO_EAGAIN = 11
-const int IO_ERRNO_ENOSPC = 28
-const int IO_ERRNO_ENOSYS = 38
-const int IO_ERRNO_EOPNOTSUPP = 95
-const int IO_ERRNO_ETIMEDOUT = 110
-const int IO_ERRNO_EDQUOT = 122
-const int IO_ERRNO_ECANCELED = 125
-
+# Native errno values; the syscall convention is -errno on every target.
+import lib.__arch__.io_errno
 
 struct io_result:
 	int transferred     # bytes confirmed moved by this call
@@ -67,7 +57,7 @@ int io_status_from_errno(int err):
 	if (err == IO_ERRNO_ECANCELED): return IO_CANCELLED
 	if (err == IO_ERRNO_ETIMEDOUT): return IO_TIMED_OUT
 	if ((err == IO_ERRNO_ENOSPC) || (err == IO_ERRNO_EDQUOT)): return IO_NO_SPACE
-	if ((err == IO_ERRNO_ENOSYS) || (err == IO_ERRNO_EOPNOTSUPP)): return IO_UNSUPPORTED
+	if ((err == IO_ERRNO_ENOSYS) || (err == IO_ERRNO_EOPNOTSUPP) || (err == IO_ERRNO_ENOTSUP)): return IO_UNSUPPORTED
 	return IO_IO_ERROR
 
 

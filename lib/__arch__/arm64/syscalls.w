@@ -399,15 +399,16 @@ int eventfd2(int initval, int flags):
 	return syscall(19, initval, flags, 0)
 
 
-# Positional I/O, openat and flock (lib/fs.w) are wired up on
-# Linux x86/x86-64 only. These explicit ENOSYS stubs make lib/fs.w report
-# IO_UNSUPPORTED here -- never an emulation through seek + write.
+# Native positional and durability operations; offsets are signed 64-bit bytes.
+import lib.fs_flags_arm64
 int sys_pread(int fd, char* buf, int count, int offset):
-	return -38
+	if (offset < 0): return -22
+	return syscall7(67, fd, buf, count, offset, 0, 0)
 
 
 int sys_pwrite(int fd, char* buf, int count, int offset):
-	return -38
+	if (offset < 0): return -22
+	return syscall7(68, fd, buf, count, offset, 0, 0)
 
 
 int sys_ftruncate(int fd, int length):
@@ -415,11 +416,11 @@ int sys_ftruncate(int fd, int length):
 
 
 int sys_flock(int fd, int operation):
-	return -38
+	return syscall(32, fd, operation, 0)
 
 
 int sys_openat(int dirfd, char* path, int flags, int mode):
-	return -38
+	return syscall7(56, dirfd, path, arm64_fs_open_flags(flags), mode, 0, 0)
 
 
 import lib.win32_stubs

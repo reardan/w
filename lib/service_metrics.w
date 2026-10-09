@@ -7,8 +7,9 @@ nothing; the caller chooses the cadence and owns m.
 A metrics instance represents one owner for each category: sampling a
 second scheduler/executor replaces that category rather than silently
 summing stale snapshots. Sample schedulers, arenas and budgets only on
-their owner thread; executor_get_stats provides a locked snapshot and
-may be called from any thread. Serialize access to a shared metrics.
+their owner thread; executor_get_stats and shared-budget snapshots may
+be called from any thread. Serialize
+access to a shared metrics.
 
 Allocation samplers are alternatives: use the enclosing budget OR its
 arena, since a refused arena allocation may also count as a budget
@@ -43,3 +44,12 @@ void metrics_sample_arena(metrics* m, arena* a):
 
 void metrics_sample_budget(metrics* m, mem_budget* b):
 	metrics_set(m, METRIC_ALLOC_FAILURES, b.failures)
+
+
+# Snapshot is coherent under concurrent reservations; serialize metrics itself.
+int metrics_sample_shared_budget(metrics* m, mem_shared_budget* b):
+	mem_shared_budget_stats s
+	int status = mem_shared_budget_snapshot(b, &s)
+	if (status != ARENA_OK): return status
+	metrics_set(m, METRIC_ALLOC_FAILURES, s.failures)
+	return ARENA_OK

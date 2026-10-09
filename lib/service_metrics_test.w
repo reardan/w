@@ -78,3 +78,15 @@ void test_service_metrics_executor_reads_locked_snapshot():
 	assert_equal(0, metrics_get(m, METRIC_WORKERS_RUNNING))
 	executor_free(ex)
 	metrics_free(m)
+
+
+void test_service_metrics_shared_budget_snapshot():
+	metrics* m = metrics_new(METRICS_STANDARD_COUNT)
+	mem_shared_budget b
+	assert_equal(ARENA_OK, mem_shared_budget_init(&b, 1))
+	assert_equal(ARENA_ERR_BUDGET, mem_shared_budget_reserve(&b, 2))
+	assert_equal(ARENA_OK, metrics_sample_shared_budget(m, &b))
+	assert_equal(ARENA_OK, metrics_sample_shared_budget(m, &b))
+	assert_equal(1, metrics_get(m, METRIC_ALLOC_FAILURES))
+	assert_equal(ARENA_OK, mem_shared_budget_destroy(&b))
+	metrics_free(m)

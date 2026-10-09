@@ -38,10 +38,13 @@ Contracts:
   in another struct or on the stack is never passed to arena_free.
 - Single owner: an arena and a mem_budget are not internally locked. Use
   one per worker thread (tasks on one scheduler are cooperative, so they
-  may share it), or guard it with a wmutex.
+  may share it), or guard it with a wmutex. mem_shared_budget provides
+  separate synchronized accounting on Linux x86/x64. Attach it with
+  arena_set_thread_budget; it does not synchronize arena mutation.
 */
 import lib.lib
 import lib.memory
+import lib.__arch__.budget_lock
 
 
 const int ARENA_OK = 0
@@ -50,6 +53,9 @@ const int ARENA_ERR_ALIGN = 2       # alignment not a power of two in 1..ARENA_M
 const int ARENA_ERR_OVERFLOW = 3    # size + padding + header overflows, or > ARENA_MAX_REQUEST
 const int ARENA_ERR_BUDGET = 4      # the arena or shared byte budget is exhausted
 const int ARENA_ERR_NO_MEMORY = 5   # the heap could not supply a chunk
+const int ARENA_ERR_UNSUPPORTED = 7 # shared accounting needs atomic RMW
+const int ARENA_ERR_BUSY = 8        # outstanding shared-budget users or bytes
+const int ARENA_ERR_CLOSED = 9      # destroyed shared budget
 const int ARENA_ERR_BORROWED = 6    # reset/release refused: borrowed views outstanding
 
 
@@ -67,6 +73,9 @@ char* arena_status_name(int status):
 	if (status == ARENA_ERR_BUDGET): return c"budget_exhausted"
 	if (status == ARENA_ERR_NO_MEMORY): return c"no_memory"
 	if (status == ARENA_ERR_BORROWED): return c"borrowed"
+	if (status == ARENA_ERR_UNSUPPORTED): return c"unsupported"
+	if (status == ARENA_ERR_BUSY): return c"busy"
+	if (status == ARENA_ERR_CLOSED): return c"closed"
 	return c"unknown"
 
 
@@ -151,6 +160,185 @@ void mem_budget_free(mem_budget* b, char* p, int size):
 	mem_budget_release(b, size)
 
 
+/* Concurrent byte accounting. The descriptor must be word-aligned, never
+copied, and initialized before publication. Each worker/arena retains a user
+before receiving its pointer and drops it after its final call. The owner
+must stop new callers before destroy/reinit/free: a reference counter does
+not make acquiring a dangling pointer safe. Arena mutation stays single-owner.
+All fields are private by contract; use snapshot while workers are live.
+*/
+struct mem_shared_budget:
+	int lock_word
+	int active
+	int users
+	int limit
+	int used
+	int peak
+	int failures
+	int release_errors
+
+
+struct mem_shared_budget_stats:
+	int active
+	int users
+	int limit
+	int used
+	int peak
+	int failures
+	int release_errors
+
+
+# Zero is a zero-byte limit; negative limits are invalid. To request the
+# largest possible limit, pass arena_int_max(). No arithmetic may wrap.
+int mem_shared_budget_init(mem_shared_budget* b, int limit):
+	b.lock_word = 0
+	b.active = 0
+	b.users = 0
+	b.limit = 0
+	b.used = 0
+	b.peak = 0
+	b.failures = 0
+	b.release_errors = 0
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	if (limit < 0): return ARENA_ERR_INVALID
+	b.limit = limit
+	b.active = 1
+	return ARENA_OK
+
+
+# Called under lock: saturating diagnostics never wrap negative.
+void mem_shared_budget_failure(mem_shared_budget* b):
+	if (b.failures < arena_int_max()): b.failures = b.failures + 1
+
+
+int mem_shared_budget_retain(mem_shared_budget* b):
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	budget_lock_enter(&b.lock_word)
+	int status = ARENA_OK
+	if (b.active == 0): status = ARENA_ERR_CLOSED
+	else if (b.users == arena_int_max()): status = ARENA_ERR_OVERFLOW
+	else: b.users = b.users + 1
+	budget_lock_leave(&b.lock_word)
+	return status
+
+
+int mem_shared_budget_drop(mem_shared_budget* b):
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	budget_lock_enter(&b.lock_word)
+	int status = ARENA_OK
+	if (b.users == 0): status = ARENA_ERR_INVALID
+	else: b.users = b.users - 1
+	budget_lock_leave(&b.lock_word)
+	return status
+
+
+int mem_shared_budget_destroy(mem_shared_budget* b):
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	budget_lock_enter(&b.lock_word)
+	int status = ARENA_OK
+	if (b.users != 0 || b.used != 0): status = ARENA_ERR_BUSY
+	else: b.active = 0
+	budget_lock_leave(&b.lock_word)
+	return status
+
+
+int mem_shared_budget_snapshot(mem_shared_budget* b, mem_shared_budget_stats* out):
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	budget_lock_enter(&b.lock_word)
+	out.active = b.active
+	out.users = b.users
+	out.limit = b.limit
+	out.used = b.used
+	out.peak = b.peak
+	out.failures = b.failures
+	out.release_errors = b.release_errors
+	budget_lock_leave(&b.lock_word)
+	return ARENA_OK
+
+
+# Every refused reservation/allocation counts once, including invalid sizes.
+int mem_shared_budget_reserve(mem_shared_budget* b, int n):
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	budget_lock_enter(&b.lock_word)
+	int status = ARENA_OK
+	if (b.active == 0): status = ARENA_ERR_CLOSED
+	else if (n < 0): status = ARENA_ERR_INVALID
+	else if (n > arena_int_max() - b.used): status = ARENA_ERR_OVERFLOW
+	else if (n > b.limit - b.used): status = ARENA_ERR_BUDGET
+	if (status == ARENA_OK):
+		b.used = b.used + n
+		if (b.used > b.peak): b.peak = b.used
+	else: mem_shared_budget_failure(b)
+	budget_lock_leave(&b.lock_word)
+	return status
+
+
+# Invalid release preserves every other user's reservation. It never clamps
+# the shared balance to zero. Callers must release only bytes they own.
+int mem_shared_budget_release(mem_shared_budget* b, int n):
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	budget_lock_enter(&b.lock_word)
+	int status = ARENA_OK
+	if (b.active == 0): status = ARENA_ERR_CLOSED
+	else if (n < 0 || n > b.used): status = ARENA_ERR_INVALID
+	if (status == ARENA_OK): b.used = b.used - n
+	else if (b.release_errors < arena_int_max()): b.release_errors = b.release_errors + 1
+	budget_lock_leave(&b.lock_word)
+	return status
+
+
+# Internal rollback of an owned reservation when backing allocation failed.
+void mem_shared_budget_alloc_failed(mem_shared_budget* b, int size):
+	budget_lock_enter(&b.lock_word)
+	b.used = b.used - size
+	mem_shared_budget_failure(b)
+	budget_lock_leave(&b.lock_word)
+
+
+type mem_shared_alloc_fn = fn(void*, int) -> char*
+
+
+# Custom backing allocator supports fault injection and allocation domains.
+# Caller frees using that same domain, then releases the charged size. Zero
+# size allocates/charges one byte. The callback runs outside the budget lock.
+int mem_shared_budget_alloc_with(mem_shared_budget* b, int size, char** out, mem_shared_alloc_fn* alloc, void* context):
+	*out = 0
+	if (budget_lock_supported() == 0): return ARENA_ERR_UNSUPPORTED
+	if (size < 0 || size > ARENA_MAX_REQUEST || alloc == 0):
+		budget_lock_enter(&b.lock_word)
+		mem_shared_budget_failure(b)
+		budget_lock_leave(&b.lock_word)
+		if (size > ARENA_MAX_REQUEST): return ARENA_ERR_OVERFLOW
+		return ARENA_ERR_INVALID
+	if (size == 0): size = 1
+	int status = mem_shared_budget_reserve(b, size)
+	if (status != ARENA_OK): return status
+	char* p = alloc(context, size)
+	if (p == 0):
+		mem_shared_budget_alloc_failed(b, size)
+		return ARENA_ERR_NO_MEMORY
+	*out = p
+	return ARENA_OK
+
+
+char* mem_shared_budget_heap_alloc(void* context, int size):
+	return cast(char*, malloc(size))
+
+
+int mem_shared_budget_alloc(mem_shared_budget* b, int size, char** out):
+	return mem_shared_budget_alloc_with(b, size, out, mem_shared_budget_heap_alloc, 0)
+
+
+# p and size must match one successful allocation; caller owns p exclusively.
+# The budget reference must remain held through this call.
+int mem_shared_budget_free(mem_shared_budget* b, char* p, int size):
+	if (p == 0): return ARENA_OK
+	if (size < 0 || size > ARENA_MAX_REQUEST): return ARENA_ERR_INVALID
+	if (size == 0): size = 1
+	free(p)
+	return mem_shared_budget_release(b, size)
+
+
 /* Arena. */
 
 # Chunk header; the usable bytes follow it (arena_chunk_data).
@@ -165,7 +353,8 @@ struct arena:
 	arena_chunk* head      # chunk currently allocated from; older chunks follow
 	int chunk_size         # default usable bytes per chunk
 	int budget             # backing-byte limit; <= 0 means unlimited
-	mem_budget* shared     # optional shared budget, 0 when none
+	mem_budget* shared     # optional single-owner budget, 0 when none
+	mem_shared_budget* thread_budget # optional concurrent accounting; arena still single-owner
 	int poison             # 1: arena_reset fills the kept chunk with 0xa5
 	int reserved           # backing bytes currently held (headers included)
 	int peak_reserved
@@ -197,6 +386,7 @@ void arena_init(arena* a, int chunk_size, int budget):
 	a.chunk_size = chunk_size
 	a.budget = budget
 	a.shared = 0
+	a.thread_budget = 0
 	a.poison = 0
 	a.reserved = 0
 	a.peak_reserved = 0
@@ -222,7 +412,21 @@ arena* arena_new(int chunk_size, int budget):
 # after arena_release); returns ARENA_ERR_INVALID while chunks are held.
 int arena_set_shared_budget(arena* a, mem_budget* b):
 	if (a.chunks != 0): return ARENA_ERR_INVALID
+	if (a.thread_budget != 0): return ARENA_ERR_INVALID
 	a.shared = b
+	return ARENA_OK
+
+
+# Attach/detach only with no chunks or borrows. The attachment retains one
+# budget user even across arena_release; detach explicitly or arena_free.
+int arena_set_thread_budget(arena* a, mem_shared_budget* b):
+	if (a.chunks != 0 || a.borrows != 0 || a.shared != 0): return ARENA_ERR_INVALID
+	if (a.thread_budget == b): return ARENA_OK
+	if (b != 0):
+		int status = mem_shared_budget_retain(b)
+		if (status != ARENA_OK): return status
+	if (a.thread_budget != 0): mem_shared_budget_drop(a.thread_budget)
+	a.thread_budget = b
 	return ARENA_OK
 
 
@@ -236,10 +440,12 @@ int arena_fail(arena* a, int status):
 
 
 void arena_chunk_free(arena* a, arena_chunk* c):
-	a.reserved = a.reserved - c.total
+	int total = c.total
+	a.reserved = a.reserved - total
 	a.chunks = a.chunks - 1
-	if (cast(int, a.shared) != 0): mem_budget_release(a.shared, c.total)
 	free(cast(char*, c))
+	if (cast(int, a.shared) != 0): mem_budget_release(a.shared, total)
+	if (a.thread_budget != 0): mem_shared_budget_release(a.thread_budget, total)
 
 
 # Takes a chunk with at least need usable bytes, budget permitting, and
@@ -254,9 +460,13 @@ int arena_grow(arena* a, int need):
 	if (cast(int, a.shared) != 0):
 		int shared_status = mem_budget_reserve(a.shared, total)
 		if (shared_status != ARENA_OK): return shared_status
+	if (a.thread_budget != 0):
+		int thread_status = mem_shared_budget_reserve(a.thread_budget, total)
+		if (thread_status != ARENA_OK): return thread_status
 	arena_chunk* c = cast(arena_chunk*, malloc(total))
 	if (c == 0):
 		if (cast(int, a.shared) != 0): mem_budget_release(a.shared, total)
+		if (a.thread_budget != 0): mem_shared_budget_alloc_failed(a.thread_budget, total)
 		return ARENA_ERR_NO_MEMORY
 	c.next = a.head
 	c.capacity = capacity
@@ -374,5 +584,6 @@ int arena_free(arena* a):
 	if (cast(int, a) == 0): return ARENA_OK
 	int status = arena_release(a)
 	if (status != ARENA_OK): return status
+	if (a.thread_budget != 0): mem_shared_budget_drop(a.thread_budget)
 	free(cast(char*, a))
 	return ARENA_OK

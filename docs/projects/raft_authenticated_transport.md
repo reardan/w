@@ -13,7 +13,9 @@ credential. The server checks all of these before acknowledging authentication
 or decoding a Raft message. Every received message must name the authenticated
 source and local destination; every send must name the local source and the
 configured peer destination. This is server-certificate TLS plus encrypted
-client credentials, **not mutual certificate TLS**.
+client credentials, **not mutual certificate TLS**. The separate common TLS
+adapter now supports [mutual certificate authentication](mutual_tls.md); this
+Raft credential protocol and its authorization rules remain distinct.
 
 A provisioned credential alone grants no Raft authority. The source/destination
 must also be in the node's live replication peer set, including learners.

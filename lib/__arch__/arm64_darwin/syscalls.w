@@ -8,7 +8,7 @@
 # The wrapper surface matches lib/__arch__/arm64/syscalls.w exactly. Where
 # Darwin has no equivalent raw syscall the wrapper is a documented stub:
 # brk always fails (lib/memory.w then runs in mmap mode) and sys_clone
-# returns -38 (ENOSYS-style; threads go through bsdthread_create).
+# returns -78 (ENOSYS-style; threads go through bsdthread_create).
 # rt_sigaction needs the compiler's signal_trampoline stub (see below).
 #
 # Flag translation: lib/ callers hardcode Linux flag values, so open and
@@ -157,11 +157,10 @@ int getcwd(char* buf, int size):
 # Darwin fsync (95) only pushes the data to the drive, which may hold
 # it in a volatile cache; durable-to-power-loss persistence needs
 # fcntl F_FULLFSYNC (51, xnu bsd/sys/fcntl.h) per Darwin's fsync(2).
-# Try the full flush first and fall back to plain fsync where the
-# filesystem rejects it (e.g. ENOTSUP on SMB/NFS mounts).
+# Never silently downgrade a requested durability barrier to plain fsync.
+# Unsupported filesystems/devices retain their native error.
 int fsync(int file):
-	if (sys_fcntl(file, 51, 0) >= 0): return 0
-	return syscall(95, file, 0, 0)
+	return sys_fcntl(file, 51, 0)
 
 # No fdatasync in the BSD table; fsync's guarantee is a superset.
 int fdatasync(int file):
@@ -218,7 +217,7 @@ int mprotect(int addr, int length, int prot):
 
 # No clone on Darwin (threads go through bsdthread_create, a later stage).
 int sys_clone(int flags, int child_stack):
-	return 0 - 38
+	return 0 - 78
 
 # poll (230): fds points at an array of 8-byte pollfd records.
 # timeout_ms < 0 blocks forever; 0 returns immediately.
@@ -274,13 +273,13 @@ int sys_clock_gettime(int clock_id, int ts):
 # lib/crash.w finds the stub in the image's own symbol table instead
 # (once SEEDS pins a release with the stub, `cast(int,
 # signal_trampoline)` can replace the lookup). A handler without a
-# trampoline fails with -38 (ENOSYS); handler 0 (SIG_DFL) needs none.
+# trampoline fails with -78 (ENOSYS); handler 0 (SIG_DFL) needs none.
 # SA_ONSTACK, SA_RESTART, SA_NODEFER and SA_RESETHAND are translated,
 # and SA_SIGINFO is always set because the trampoline passes the
 # ucontext on. oldact is not reported. Allocation-free: lib/crash.w
 # calls this from inside its handler.
 int rt_sigaction(int signum, int* act, int* oldact):
-	if ((act[0] != 0) && (act[2] == 0)): return 0 - 38
+	if ((act[0] != 0) && (act[2] == 0)): return 0 - 78
 	int[3] nsa
 	nsa[0] = act[0]
 	nsa[1] = act[2]
@@ -432,22 +431,22 @@ int sys_getsockopt(int sockfd, int level, int optname, int optval, int optlen):
 
 
 # Darwin has no getrandom syscall, so there is no number to put here.
-# Return -38 (ENOSYS-style, like the other stubs) so callers such as
+# Return -78 (ENOSYS-style, like the other stubs) so callers such as
 # libs/standard/crypto/random.w take their /dev/urandom fallback path.
 int sys_getrandom(char* buf, int buflen, int flags):
-	return 0 - 38
+	return 0 - 78
 
 # Darwin has no inotify (file watching is kqueue/FSEvents territory);
 # ENOSYS-style stubs like sys_getrandom's, so lib/inotify.w callers see
 # a negative errno-style failure (the lib/stat.w statx convention).
 int sys_inotify_init1(int flags):
-	return 0 - 38
+	return 0 - 78
 
 int sys_inotify_add_watch(int fd, char* path, int mask):
-	return 0 - 38
+	return 0 - 78
 
 int sys_inotify_rm_watch(int fd, int wd):
-	return 0 - 38
+	return 0 - 78
 
 # exit (1): terminates the whole process, like libc exit().
 void exit(int error_code):
@@ -471,42 +470,45 @@ int epoll_event_data_offset():
 
 
 int epoll_create1(int flags):
-	return -38
+	return -78
 
 
 int epoll_ctl(int epfd, int op, int fd, int event):
-	return -38
+	return -78
 
 
 int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
-	return -38
+	return -78
 
 
 int eventfd2(int initval, int flags):
-	return -38
+	return -78
 
 
-# Positional I/O, truncate, openat and flock (lib/fs.w) are wired up on
-# Linux x86/x86-64 only. These explicit ENOSYS stubs make lib/fs.w report
-# IO_UNSUPPORTED here -- never an emulation through seek + write.
+# Native positional and durability operations from XNU syscalls.master.
+# AArch64 passes the full off_t in x3 (pread/pwrite), x1 (ftruncate).
 int sys_pread(int fd, char* buf, int count, int offset):
-	return -38
+	if (offset < 0): return -22
+	return syscall7(153, fd, buf, count, offset, 0, 0)
 
 
 int sys_pwrite(int fd, char* buf, int count, int offset):
-	return -38
+	if (offset < 0): return -22
+	return syscall7(154, fd, buf, count, offset, 0, 0)
 
 
 int sys_ftruncate(int fd, int length):
-	return -38
+	if (length < 0): return -22
+	return syscall(201, fd, length, 0)
 
 
 int sys_flock(int fd, int operation):
-	return -38
+	return syscall(131, fd, operation, 0)
 
 
 int sys_openat(int dirfd, char* path, int flags, int mode):
-	return -38
+	if (dirfd == -100): dirfd = -2  # Darwin AT_FDCWD
+	return syscall7(463, dirfd, path, darwin_open_flags(flags), mode, 0, 0)
 
 
 import lib.win32_stubs

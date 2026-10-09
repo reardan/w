@@ -73,15 +73,15 @@ const int task_state_waiting_external = 6
 
 # Errors delivered through awaits, negative-errno convention.
 int task_err_cancelled():
-	return -125 /* ECANCELED */
+	return 0 - IO_ERRNO_ECANCELED
 
 
 int task_err_timed_out():
-	return -110 /* ETIMEDOUT */
+	return 0 - IO_ERRNO_ETIMEDOUT
 
 
 int task_err_deadlock():
-	return -35 /* EDEADLK */
+	return 0 - IO_ERRNO_EDEADLK
 
 
 # A channel operation on a closed channel.
@@ -91,7 +91,7 @@ int task_err_closed():
 
 # A non-blocking operation that would have had to wait.
 int task_err_would_block():
-	return -11 /* EAGAIN */
+	return 0 - IO_ERRNO_EAGAIN
 
 
 # One registration of a parked task on a wait queue. Waiters live in

@@ -142,6 +142,10 @@ char* x509_oid_server_auth():
 	return c"\x2b\x06\x01\x05\x05\x07\x03\x01"
 
 
+char* x509_oid_client_auth():
+	return c"\x2b\x06\x01\x05\x05\x07\x03\x02"
+
+
 # Does the element at (start, len) in data equal the OID constant `oid`?
 int x509_oid_is(char* data, int start, int len, char* oid):
 	return asn1_bytes_equal(data, start, len, oid, strlen(oid))
@@ -184,6 +188,7 @@ struct x509_cert:
 	int key_usage             # X509_KU_* bit mask
 	int has_eku
 	int eku_server_auth
+	int eku_client_auth
 	int san_present
 	list[char*] san_dns       # SAN dNSName entries (malloc'd strings)
 
@@ -578,6 +583,7 @@ int x509_parse_ext_eku(x509_cert* c, char* data, int start, int len):
 		int ol = 0
 		if (asn1_expect(&e, ASN1_OID, &os, &ol) == 0): return 0
 		if (x509_oid_is(data, os, ol, x509_oid_server_auth()) != 0): c.eku_server_auth = 1
+		if (x509_oid_is(data, os, ol, x509_oid_client_auth()) != 0): c.eku_client_auth = 1
 		count = count + 1
 	if (count == 0): return 0
 	c.has_eku = 1
@@ -845,6 +851,7 @@ x509_cert* x509_parse(char* der, int len):
 	c.key_usage = 0
 	c.has_eku = 0
 	c.eku_server_auth = 0
+	c.eku_client_auth = 0
 	c.san_present = 0
 	c.san_dns = new list[char*]
 	if (x509_parse_into(c) == 0):
@@ -1328,10 +1335,18 @@ char* x509_issuer_check(x509_cert* issuer, int below, int now_day, int now_sec, 
 	return 0
 
 
+# Restrictive EKU on any issuer limits the purposes of chains under it too.
+# Trusting an issuer for serverAuth must not grant it clientAuth authority.
+int x509_cert_allows_purpose(x509_cert* cert, int client_auth):
+	if (cert.has_eku == 0): return 1
+	if (client_auth): return cert.eku_client_auth
+	return cert.eku_server_auth
+
+
 # Shared body of x509_verify_chain / x509_verify_chain_no_hostname:
 # check_host 1 requires a non-empty hostname covered by the leaf's SAN
 # dNSNames; check_host 0 verifies the chain only (hostname ignored).
-int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, char* hostname, int check_host, int now_unix, char** err_out):
+int x509_verify_chain_purpose(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, char* hostname, int check_host, int client_auth, int now_unix, char** err_out):
 	x509_set_err(err_out, 0)
 	if (leaf == 0):
 		x509_set_err(err_out, c"x509: no certificate")
@@ -1364,13 +1379,17 @@ int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_s
 	if (status == 2):
 		x509_set_err(err_out, c"x509: certificate expired")
 		return 0
+	char* purpose_error = c"x509: certificate not valid for server authentication"
+	if (client_auth): purpose_error = c"x509: certificate not valid for client authentication"
 	if (leaf.has_key_usage != 0):
 		if ((leaf.key_usage & X509_KU_DIGITAL_SIGNATURE) == 0):
-			x509_set_err(err_out, c"x509: certificate not valid for server authentication")
+			x509_set_err(err_out, purpose_error)
 			return 0
 	if (leaf.has_eku != 0):
-		if (leaf.eku_server_auth == 0):
-			x509_set_err(err_out, c"x509: certificate not valid for server authentication")
+		int permitted = leaf.eku_server_auth
+		if (client_auth): permitted = leaf.eku_client_auth
+		if (permitted == 0):
+			x509_set_err(err_out, purpose_error)
 			return 0
 	if (check_host != 0):
 		if (x509_match_hostname(leaf, hostname) == 0):
@@ -1392,6 +1411,7 @@ int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_s
 			x509_cert* anchor = store.certs[ai]
 			if (x509_names_equal(anchor, anchor.subject_start, anchor.subject_len, current, current.issuer_start, current.issuer_len) != 0):
 				char* fail = x509_issuer_check(anchor, below, now_day, now_sec, 1)
+				if (fail == 0 && x509_cert_allows_purpose(anchor, client_auth) == 0): fail = purpose_error
 				if (fail != 0): reason = fail
 				else if (x509_check_signature(current, anchor) == 0):
 					reason = c"x509: signature verification failed"
@@ -1421,6 +1441,7 @@ int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_s
 				if (x509_names_equal(cand, cand.subject_start, cand.subject_len, current, current.issuer_start, current.issuer_len) == 0):
 					continue
 				char* fail = x509_issuer_check(cand, below, now_day, now_sec, 0)
+				if (fail == 0 && x509_cert_allows_purpose(cand, client_auth) == 0): fail = purpose_error
 				if (fail != 0):
 					reason = fail
 					continue
@@ -1437,6 +1458,18 @@ int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_s
 	if (reason == 0): reason = c"x509: no trusted issuer found"
 	x509_set_err(err_out, reason)
 	return 0
+
+
+# Retain the server-purpose entry point for existing callers.
+int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, char* hostname, int check_host, int now_unix, char** err_out):
+	return x509_verify_chain_purpose(leaf, extra, store, hostname, check_host, 0, now_unix, err_out)
+
+
+# Client certificates have no DNS hostname requirement. Validate clientAuth
+# EKU (when present), digitalSignature, validity and the complete trust chain.
+# Application authorization must map the verified certificate to a principal.
+int x509_verify_client_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, int now_unix, char** err_out):
+	return x509_verify_chain_purpose(leaf, extra, store, 0, 0, 1, now_unix, err_out)
 
 
 # Verify leaf against the trust store at time now_unix (seconds since epoch;

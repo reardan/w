@@ -32,6 +32,10 @@ Contracts:
   IO_IO_ERROR with EPIPE or ECONNRESET, never a SIGPIPE.
 - After transport_close the descriptor is never touched again: reads
   and writes report IO_IO_ERROR with EBADF and a second close is IO_OK.
+- transport_peer_address reads a kernel address; transport_peer_credentials
+  reads local Unix OS credentials. Neither sets authenticated. Optional
+  adapters return IO_UNSUPPORTED. See docs/projects/socket_identity.md.
+- transport_shutdown performs directional shutdown without releasing the fd.
 - Identity: peer is a description (for example "tcp:127.0.0.1:8080",
   "unix:/run/app.sock") of the address the socket was connected to or
   accepted from. It is NOT authenticated: authenticated is 1 only for an
@@ -60,6 +64,9 @@ import lib.metrics
 
 type transport_io_fn = fn(void*, char*, int, int, io_result*) -> int
 type transport_close_fn = fn(void*, io_result*) -> int
+type transport_peer_address_fn = fn(void*, net_peer_address*, io_result*) -> int
+type transport_peer_credentials_fn = fn(void*, net_peer_credentials*, io_result*) -> int
+type transport_shutdown_fn = fn(void*, int, io_result*) -> int
 
 
 struct transport:
@@ -67,6 +74,10 @@ struct transport:
 	transport_io_fn* read_fn
 	transport_io_fn* write_fn
 	transport_close_fn* close_fn
+	transport_peer_address_fn* peer_address_fn
+	transport_peer_credentials_fn* peer_credentials_fn
+	transport_shutdown_fn* shutdown_fn
+	int shutdown_mask               # completed directions: read 1, write 2
 	char* peer                       # owned description of the peer
 	int authenticated                # 1 only when the adapter verified the peer
 	int closed
@@ -86,6 +97,10 @@ transport* transport_new(void* context, transport_io_fn* rd, transport_io_fn* wr
 	t.read_fn = rd
 	t.write_fn = wr
 	t.close_fn = cl
+	t.peer_address_fn = 0
+	t.peer_credentials_fn = 0
+	t.shutdown_fn = 0
+	t.shutdown_mask = 0
 	if (cast(int, peer) == 0): peer = c"unknown"
 	t.peer = strclone(peer)
 	t.authenticated = 0
@@ -286,6 +301,21 @@ int transport_socket_close(void* context, io_result* r):
 	return net_result_from_syscall(r, close(s.fd))
 
 
+int transport_socket_peer_address(void* context, net_peer_address* out, io_result* r):
+	transport_socket* s = cast(transport_socket*, context)
+	return socket_peer_address_checked(s.fd, out, r)
+
+
+int transport_socket_peer_credentials(void* context, net_peer_credentials* out, io_result* r):
+	transport_socket* s = cast(transport_socket*, context)
+	return socket_peer_credentials_checked(s.fd, out, r)
+
+
+int transport_socket_shutdown(void* context, int direction, io_result* r):
+	transport_socket* s = cast(transport_socket*, context)
+	return socket_shutdown_checked(s.fd, direction, r)
+
+
 # Wraps a connected stream socket. owns_fd: transport_close closes it.
 # peer describes the remote end (copied; 0 = "unknown").
 transport* transport_from_socket(int fd, char* peer, int owns_fd):
@@ -293,7 +323,11 @@ transport* transport_from_socket(int fd, char* peer, int owns_fd):
 	transport_socket* s = cast(transport_socket*, malloc(sizeof(transport_socket)))
 	s.fd = fd
 	s.owns_fd = owns_fd
-	return transport_new(cast(void*, s), transport_socket_read, transport_socket_write, transport_socket_close, peer)
+	transport* t = transport_new(cast(void*, s), transport_socket_read, transport_socket_write, transport_socket_close, peer)
+	t.peer_address_fn = transport_socket_peer_address
+	t.peer_credentials_fn = transport_socket_peer_credentials
+	t.shutdown_fn = transport_socket_shutdown
+	return t
 
 
 # The socket under a socket transport (for setsockopt and the like; do
@@ -395,3 +429,49 @@ transport* transport_unix_accept(int listen_fd, char* path, int timeout_ms, io_r
 		return 0
 	io_result_set(r, 0, IO_OK, 0)
 	return transport_from_socket_owned_peer(fd, strjoin(c"unix-client@", path))
+
+
+# Metadata and shutdown never wait. They honor cancellation/deadlines
+# before touching the adapter; close remains unconditional cleanup.
+int transport_control_ready(transport* t, io_result* r):
+	if (t.closed): return transport_closed_result(r)
+	int interrupted = io_check()
+	if (interrupted < 0): return io_result_from_syscall(r, interrupted)
+	if (transport_remaining_ms(t) == 0): return io_result_set(r, 0, IO_TIMED_OUT, 0)
+	return IO_OK
+
+
+# These queries borrow the transport and fill caller-owned records.
+# They do not change peer (a display label) or authenticated (TLS proof).
+int transport_peer_address(transport* t, net_peer_address* out, io_result* r):
+	net_peer_address_clear(out)
+	int status = transport_control_ready(t, r)
+	if (status != IO_OK): return status
+	if (cast(int, t.peer_address_fn) == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	return t.peer_address_fn(t.context, out, r)
+
+
+int transport_peer_credentials(transport* t, net_peer_credentials* out, io_result* r):
+	net_peer_credentials_clear(out)
+	int status = transport_control_ready(t, r)
+	if (status != IO_OK): return status
+	if (cast(int, t.peer_credentials_fn) == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	return t.peer_credentials_fn(t.context, out, r)
+
+
+# Shutdown does not release the fd, even for a borrowed socket. Success
+# is remembered so repeating completed directions is an IO_OK no-op.
+# Deadline/cancellation/closed checks still apply to repeated calls.
+# Remaining-direction reads/writes retain normal kernel behavior.
+int transport_shutdown(transport* t, int direction, io_result* r):
+	int status = transport_control_ready(t, r)
+	if (status != IO_OK): return status
+	if (cast(int, t.shutdown_fn) == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	int mask = 0
+	if (direction == NET_SHUT_READ): mask = 1
+	else if (direction == NET_SHUT_WRITE): mask = 2
+	else if (direction == NET_SHUT_BOTH): mask = 3
+	if ((mask != 0) && ((t.shutdown_mask & mask) == mask)): return io_result_set(r, 0, IO_OK, 0)
+	status = t.shutdown_fn(t.context, direction, r)
+	if (status == IO_OK): t.shutdown_mask = t.shutdown_mask | mask
+	return status
