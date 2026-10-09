@@ -1,0 +1,159 @@
+parser graphql
+
+# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.
+skip PG_SKIP_NEWLINE newline
+skip PG_SKIP_TAB tabs
+skip LineComment line_comment
+skip UNICODE_BOM g_graphql_UNICODE_BOM
+
+token NAME identifier
+token STRING string
+token BLOCK_STRING g_graphql_BLOCK_STRING
+token ID g_graphql_ID
+token FLOAT g_graphql_FLOAT
+token INT g_graphql_INT
+token PUNCTUATOR g_graphql_PUNCTUATOR
+
+literal COMMA ","
+literal UTF8_BOM "uEFBBBF"
+literal UTF16_BOM "uFEFF"
+literal UTF32_BOM "u0000FEFF"
+literal KW_QUERY "query"
+literal KW_MUTATION "mutation"
+literal KW_SUBSCRIPTION "subscription"
+literal LBRACE "{"
+literal RBRACE "}"
+literal LPAREN "("
+literal RPAREN ")"
+literal COLON ":"
+literal SYM_1 "..."
+literal KW_FRAGMENT "fragment"
+literal KW_ON "on"
+literal KW_TRUE "true"
+literal KW_FALSE "false"
+literal KW_NULL "null"
+literal LBRACK "["
+literal RBRACK "]"
+literal SYM_2 "$"
+literal ASSIGN "="
+literal BANG "!"
+literal SYM_3 "@"
+literal KW_SCHEMA "schema"
+literal KW_EXTEND "extend"
+literal KW_SCALAR "scalar"
+literal KW_TYPE "type"
+literal KW_IMPLEMENTS "implements"
+literal AMP "&"
+literal KW_INTERFACE "interface"
+literal KW_UNION "union"
+literal PIPE "|"
+literal KW_ENUM "enum"
+literal KW_INPUT "input"
+literal KW_DIRECTIVE "directive"
+literal KW_REPEATABLE "repeatable"
+literal SYM_4 "QUERY"
+literal SYM_5 "MUTATION"
+literal SYM_6 "SUBSCRIPTION"
+literal KW_FIELD "FIELD"
+literal SYM_7 "FRAGMENT_DEFINITION"
+literal SYM_8 "FRAGMENT_SPREAD"
+literal SYM_9 "INLINE_FRAGMENT"
+literal SYM_10 "VARIABLE_DEFINITION"
+literal SYM_11 "SCHEMA"
+literal SYM_12 "SCALAR"
+literal KW_OBJECT "OBJECT"
+literal SYM_13 "FIELD_DEFINITION"
+literal SYM_14 "ARGUMENT_DEFINITION"
+literal SYM_15 "INTERFACE"
+literal SYM_16 "UNION"
+literal SYM_17 "ENUM"
+literal SYM_18 "ENUM_VALUE"
+literal SYM_19 "INPUT_OBJECT"
+literal SYM_20 "INPUT_FIELD_DEFINITION"
+
+start document
+
+rule document = definition+ EOF
+rule definition = executableDocument | typeSystemDocument | typeSystemExtensionDocument
+rule executableDocument = executableDefinition+
+rule executableDefinition = operationDefinition | fragmentDefinition
+rule operationDefinition = operationType name? variableDefinitions? directives? selectionSet | selectionSet
+rule operationType = KW_QUERY | KW_MUTATION | KW_SUBSCRIPTION
+rule selectionSet = LBRACE selection+ RBRACE
+rule selection = field | fragmentSpread | inlineFragment
+rule field = alias? name arguments? directives? selectionSet?
+rule arguments = LPAREN argument+ RPAREN
+rule argument = name COLON value
+rule alias = name COLON
+rule fragmentSpread = SYM_1 fragmentName directives?
+rule fragmentDefinition = KW_FRAGMENT fragmentName typeCondition directives? selectionSet
+rule fragmentName = name
+rule typeCondition = KW_ON namedType
+rule inlineFragment = SYM_1 typeCondition? directives? selectionSet
+rule value = variable | intValue | floatValue | stringValue | booleanValue | nullValue | enumValue | listValue | objectValue
+rule intValue = INT
+rule floatValue = FLOAT
+rule booleanValue = KW_TRUE | KW_FALSE
+rule stringValue = STRING | BLOCK_STRING
+rule nullValue = KW_NULL
+rule enumValue = name
+rule listValue = LBRACK RBRACK | LBRACK value+ RBRACK
+rule objectValue = LBRACE objectField* RBRACE
+rule objectField = name COLON value
+rule variable = SYM_2 name
+rule variableDefinitions = LPAREN variableDefinition+ RPAREN
+rule variableDefinition = variable COLON type_ defaultValue?
+rule defaultValue = ASSIGN value
+rule type_ = namedType BANG? | listType BANG?
+rule namedType = name
+rule listType = LBRACK type_ RBRACK
+rule directives = directive+
+rule directive = SYM_3 name arguments?
+rule typeSystemDocument = typeSystemDefinition+
+rule typeSystemDefinition = schemaDefinition | typeDefinition | directiveDefinition
+rule typeSystemExtensionDocument = typeSystemExtension+
+rule typeSystemExtension = schemaExtension | typeExtension
+rule schemaDefinition = KW_SCHEMA directives? LBRACE rootOperationTypeDefinition+ RBRACE
+rule rootOperationTypeDefinition = operationType COLON namedType
+rule schemaExtension = KW_EXTEND KW_SCHEMA directives? LBRACE rootOperationTypeDefinition+ RBRACE | KW_EXTEND KW_SCHEMA directives
+rule description = stringValue
+rule typeDefinition = scalarTypeDefinition | objectTypeDefinition | interfaceTypeDefinition | unionTypeDefinition | enumTypeDefinition | inputObjectTypeDefinition
+rule typeExtension = scalarTypeExtension | objectTypeExtension | interfaceTypeExtension | unionTypeExtension | enumTypeExtension | inputObjectTypeExtension
+rule scalarTypeDefinition = description? KW_SCALAR name directives?
+rule scalarTypeExtension = KW_EXTEND KW_SCALAR name directives
+rule objectTypeDefinition = description? KW_TYPE name implementsInterfaces? directives? fieldsDefinition?
+rule implementsInterfaces = KW_IMPLEMENTS AMP? namedType | implementsInterfaces AMP namedType
+rule fieldsDefinition = LBRACE fieldDefinition+ RBRACE
+rule fieldDefinition = description? name argumentsDefinition? COLON type_ directives?
+rule argumentsDefinition = LPAREN inputValueDefinition+ RPAREN
+rule inputValueDefinition = description? name COLON type_ defaultValue? directives?
+rule objectTypeExtension = KW_EXTEND KW_TYPE name implementsInterfaces? directives? fieldsDefinition | KW_EXTEND KW_TYPE name implementsInterfaces? directives | KW_EXTEND KW_TYPE name implementsInterfaces
+rule interfaceTypeDefinition = description? KW_INTERFACE name implementsInterfaces? directives? fieldsDefinition?
+rule interfaceTypeExtension = KW_EXTEND KW_INTERFACE name implementsInterfaces? directives? fieldsDefinition | KW_EXTEND KW_INTERFACE name implementsInterfaces? directives
+rule unionTypeDefinition = description? KW_UNION name directives? unionMemberTypes?
+rule unionMemberTypes = ASSIGN PIPE? namedType unionMemberTypes_g1*
+rule unionMemberTypes_g1 = PIPE namedType
+rule unionTypeExtension = KW_EXTEND KW_UNION name directives? unionMemberTypes | KW_EXTEND KW_UNION name directives
+rule enumTypeDefinition = description? KW_ENUM name directives? enumValuesDefinition?
+rule enumValuesDefinition = LBRACE enumValueDefinition+ RBRACE
+rule enumValueDefinition = description? enumValue directives?
+rule enumTypeExtension = KW_EXTEND KW_ENUM name directives? enumValuesDefinition | KW_EXTEND KW_ENUM name directives
+rule inputObjectTypeDefinition = description? KW_INPUT name directives? inputFieldsDefinition?
+rule inputFieldsDefinition = LBRACE inputValueDefinition+ RBRACE
+rule inputObjectTypeExtension = KW_EXTEND KW_INPUT name directives? inputFieldsDefinition | KW_EXTEND KW_INPUT name directives
+rule directiveDefinition = description? KW_DIRECTIVE SYM_3 name argumentsDefinition? KW_REPEATABLE? KW_ON directiveLocations
+rule directiveLocations = directiveLocation directiveLocations_g1*
+rule directiveLocations_g1 = PIPE directiveLocation
+rule directiveLocation = executableDirectiveLocation | typeSystemDirectiveLocation
+rule executableDirectiveLocation = SYM_4 | SYM_5 | SYM_6 | KW_FIELD | SYM_7 | SYM_8 | SYM_9 | SYM_10
+rule typeSystemDirectiveLocation = SYM_11 | SYM_12 | KW_OBJECT | SYM_13 | SYM_14 | SYM_15 | SYM_16 | SYM_17 | SYM_18 | SYM_19 | SYM_20
+rule name = NAME
+
+# --- translation report (see build log / --report for details) ---
+# GENERATED matcher for BLOCK_STRING: g_graphql_BLOCK_STRING
+# GENERATED matcher for ID: g_graphql_ID
+# GENERATED matcher for FLOAT: g_graphql_FLOAT
+# GENERATED matcher for INT: g_graphql_INT
+# GENERATED matcher for PUNCTUATOR: g_graphql_PUNCTUATOR
+# DROPPED lexer rule WS: whitespace-only rule; the pg generator auto-skips inline space/CR, and this tool always adds `skip NEWLINE newline` / `skip TAB tabs`
+# GENERATED matcher for UNICODE_BOM: g_graphql_UNICODE_BOM

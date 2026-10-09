@@ -1,0 +1,104 @@
+parser antlr4
+import libs.extras.grammars.antlr_to_pg.antlr4_matchers
+
+skip NEWLINE newline
+skip TAB tabs
+skip LINE_COMMENT c_line_comment
+skip BLOCK_COMMENT block_comment
+# Swallows any balanced {...} block (options{}/tokens{}/channels{}/@header{}
+# bodies, and rule-body actions/predicates `{...}` / `{...}?`) whole, so the
+# rest of this grammar never has to special-case action/predicate content --
+# see pg_lexer_matcher_brace_block in the driver.
+skip ACTION brace_block
+
+token IDENT identifier
+token STRINGLIT char_literal
+token NUMBER digits
+# `[...]` character class -- see pg_lexer_matcher_bracket_charset in the driver.
+token CHARSET bracket_charset
+
+literal KW_FRAGMENT "fragment"
+literal KW_IMPORT "import"
+literal KW_MODE "mode"
+literal KW_OPTIONS "options"
+
+literal COLONCOLON "::"
+literal ARROW "->"
+literal PLUS_ASSIGN "+="
+literal COLON ":"
+literal SEMI ";"
+literal PIPE "|"
+literal LPAREN "("
+literal RPAREN ")"
+literal QUESTION "?"
+literal STAR "*"
+literal PLUS "+"
+literal TILDE "~"
+literal DOT "."
+literal COMMA ","
+literal ASSIGN "="
+literal HASH "#"
+literal AT "@"
+literal LT "<"
+literal GT ">"
+
+start g4_file
+
+rule g4_file = item* EOF
+rule item = grammar_decl | at_action | import_decl | mode_decl | rule_def | bare_marker
+
+rule grammar_decl = IDENT IDENT IDENT SEMI | IDENT IDENT SEMI
+rule at_action = AT IDENT COLONCOLON IDENT | AT IDENT
+rule import_decl = KW_IMPORT IDENT import_tail* SEMI
+rule import_tail = COMMA IDENT
+rule mode_decl = KW_MODE IDENT SEMI
+# Fallback for a bare "options"/"tokens"/"channels" marker whose {...} body
+# has already vanished as an ACTION skip token.
+rule bare_marker = IDENT | KW_OPTIONS
+
+# rule_trailer covers ANTLR rule-level params/returns/locals/throws/options,
+# e.g. `expr[int p] returns [int v] locals [int t] throws X options {...}`:
+# each CHARSET token is one whole `[...]` block (the pg lexer's bracket
+# matcher doesn't care whether it's an arg list or a real character class),
+# and each bare keyword (returns/locals/throws/options) is just an IDENT.
+rule rule_def = KW_FRAGMENT IDENT rule_trailer_item* COLON altlist rule_command? SEMI | IDENT rule_trailer_item* COLON altlist rule_command? SEMI
+# Only KW_OPTIONS (not a bare IDENT) here: a generic IDENT alternative is
+# unbounded and can swallow an entire unrelated following rule (its name
+# looks just like another trailer word) when this rule name turns out to
+# be a standalone top-level `options {...}` marker rather than a real
+# rule with a per-rule options/returns/locals clause attached.
+rule rule_trailer_item = CHARSET | KW_OPTIONS
+rule rule_command = ARROW command_item command_item_tail*
+rule command_item_tail = COMMA command_item
+# The command name (skip/channel/type/mode/pushMode/popMode/more) is
+# usually IDENT, but "mode" is also one of *our* reserved words (for the
+# top-level `mode X;` declaration) -- accept it here too so `-> mode(X)`
+# doesn't get shadowed by that literal.
+rule command_item = command_name rule_command_args?
+rule command_name = IDENT | KW_MODE
+rule rule_command_args = LPAREN command_arg RPAREN
+rule command_arg = IDENT | NUMBER | KW_MODE
+
+rule altlist = alt alt_tail*
+rule alt_tail = PIPE alt
+rule alt = element* alt_label?
+rule alt_label = HASH IDENT
+# `<assoc = right>` / `<true>`-style element options; the driver drops these.
+# ANTLR allows both `key = value` and a bare value (`inferredType <true>`).
+rule element = elem_option | real_element
+rule elem_option = LT IDENT ASSIGN elem_option_value GT | LT elem_option_value GT
+rule elem_option_value = IDENT | STRINGLIT | NUMBER
+rule real_element = labeled_atom element_suffix?
+# STAR/PLUS/QUESTION may be followed by a non-greedy `?` (e.g. `.*?`, `??`);
+# it doesn't change pg's backtracking semantics, so it's just consumed here.
+rule element_suffix = QUESTION QUESTION? | STAR QUESTION? | PLUS QUESTION?
+rule labeled_atom = IDENT ASSIGN atom | IDENT PLUS_ASSIGN atom | atom
+# STRINGLIT DOT DOT STRINGLIT is ANTLR's `'a'..'z'` range form; prefer it
+# over a bare STRINGLIT so the two DOTs aren't mistaken for wildcards.
+rule atom = STRINGLIT DOT DOT STRINGLIT | STRINGLIT | CHARSET | DOT | negated_atom | group | IDENT
+rule negated_atom = TILDE atom
+# ANTLR blocks allow an optional `(options{...})? :` prefix before alts
+# (`(: ELSE statement)?`, `(: .)*?`). options{...} is already an ACTION skip,
+# leaving KW_OPTIONS/IDENT then COLON; bare `(: ...)` is just COLON.
+rule group = LPAREN group_colon_prefix? altlist RPAREN
+rule group_colon_prefix = KW_OPTIONS COLON | IDENT COLON | COLON

@@ -1,0 +1,40 @@
+parser pg
+
+skip NEWLINE newline
+skip TAB tabs
+skip LINE_COMMENT line_comment
+
+token IDENT identifier
+token STRINGLIT string
+
+literal KW_PARSER "parser"
+literal KW_TOKEN "token"
+literal KW_SKIP "skip"
+literal KW_LITERAL "literal"
+literal KW_START "start"
+literal KW_RULE "rule"
+literal KW_RECOVER "recover"
+
+literal ASSIGN "="
+literal PIPE "|"
+literal QUESTION "?"
+literal STAR "*"
+literal PLUS "+"
+
+start pg_file
+
+rule pg_file = directive* EOF
+rule directive = parser_decl | token_decl | skip_decl | literal_decl | start_decl | recover_decl | rule_decl
+rule parser_decl = KW_PARSER IDENT
+rule token_decl = KW_TOKEN IDENT IDENT
+rule skip_decl = KW_SKIP IDENT IDENT
+rule literal_decl = KW_LITERAL IDENT STRINGLIT
+rule start_decl = KW_START IDENT
+rule recover_decl = KW_RECOVER IDENT IDENT recover_skip*
+rule recover_skip = IDENT
+rule rule_decl = KW_RULE IDENT ASSIGN altlist
+rule altlist = alt alt_tail*
+rule alt_tail = PIPE alt
+rule alt = term*
+rule term = IDENT term_suffix?
+rule term_suffix = QUESTION | STAR | PLUS

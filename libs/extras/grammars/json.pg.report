@@ -1,0 +1,3 @@
+7 parser rules, 2 token rules, 0 skip rules, 9 literals emitted
+NOTE token NUMBER: (matcher=number): source allows an optional leading sign, which lexer.w's `number` matcher does not consume -- negative literals will fail to lex; consider a separate MINUS token handled in the parser grammar instead (see how sql.pg treats unary minus)
+DROPPED lexer rule WS: whitespace-only rule; the pg generator auto-skips inline space/CR, and this tool always adds `skip NEWLINE newline` / `skip TAB tabs`

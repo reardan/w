@@ -1,0 +1,217 @@
+parser sql
+
+skip NEWLINE newline
+skip TAB tabs
+skip BLOCK_COMMENT block_comment
+skip LINE_COMMENT sql_line_comment
+
+token STRING doubled_quote_string
+token QUOTED_IDENT string
+token NUMBER number
+token IDENT identifier
+
+literal KW_SELECT "SELECT"
+literal KW_FROM "FROM"
+literal KW_WHERE "WHERE"
+literal KW_GROUP "GROUP"
+literal KW_BY "BY"
+literal KW_HAVING "HAVING"
+literal KW_ORDER "ORDER"
+literal KW_ASC "ASC"
+literal KW_DESC "DESC"
+literal KW_LIMIT "LIMIT"
+literal KW_OFFSET "OFFSET"
+literal KW_AS "AS"
+literal KW_DISTINCT "DISTINCT"
+literal KW_ALL "ALL"
+literal KW_JOIN "JOIN"
+literal KW_INNER "INNER"
+literal KW_LEFT "LEFT"
+literal KW_RIGHT "RIGHT"
+literal KW_FULL "FULL"
+literal KW_OUTER "OUTER"
+literal KW_CROSS "CROSS"
+literal KW_ON "ON"
+literal KW_USING "USING"
+literal KW_UNION "UNION"
+literal KW_INTERSECT "INTERSECT"
+literal KW_EXCEPT "EXCEPT"
+literal KW_INSERT "INSERT"
+literal KW_INTO "INTO"
+literal KW_VALUES "VALUES"
+literal KW_UPDATE "UPDATE"
+literal KW_SET "SET"
+literal KW_DELETE "DELETE"
+literal KW_CREATE "CREATE"
+literal KW_TABLE "TABLE"
+literal KW_DROP "DROP"
+literal KW_ALTER "ALTER"
+literal KW_ADD "ADD"
+literal KW_COLUMN "COLUMN"
+literal KW_RENAME "RENAME"
+literal KW_TO "TO"
+literal KW_INDEX "INDEX"
+literal KW_VIEW "VIEW"
+literal KW_PRIMARY "PRIMARY"
+literal KW_KEY "KEY"
+literal KW_FOREIGN "FOREIGN"
+literal KW_REFERENCES "REFERENCES"
+literal KW_UNIQUE "UNIQUE"
+literal KW_NOT "NOT"
+literal KW_NULL "NULL"
+literal KW_NULLS "NULLS"
+literal KW_FIRST "FIRST"
+literal KW_LAST "LAST"
+literal KW_DEFAULT "DEFAULT"
+literal KW_CHECK "CHECK"
+literal KW_CONSTRAINT "CONSTRAINT"
+literal KW_AND "AND"
+literal KW_OR "OR"
+literal KW_IN "IN"
+literal KW_LIKE "LIKE"
+literal KW_BETWEEN "BETWEEN"
+literal KW_IS "IS"
+literal KW_EXISTS "EXISTS"
+literal KW_CASE "CASE"
+literal KW_WHEN "WHEN"
+literal KW_THEN "THEN"
+literal KW_ELSE "ELSE"
+literal KW_END "END"
+literal KW_CAST "CAST"
+literal KW_IF "IF"
+literal KW_TRUE "TRUE"
+literal KW_FALSE "FALSE"
+
+literal NEQ "<>"
+literal NEQ2 "!="
+literal LE "<="
+literal GE ">="
+literal CONCAT "||"
+literal EQ "="
+literal LT "<"
+literal GT ">"
+literal PLUS "+"
+literal MINUS "-"
+literal STAR "*"
+literal SLASH "/"
+literal PERCENT "%"
+literal LPAREN "("
+literal RPAREN ")"
+literal COMMA ","
+literal DOT "."
+literal SEMI ";"
+
+start script
+
+rule script = SEMI* top_statement* EOF
+rule top_statement = statement SEMI*
+rule statement = select_stmt | insert_stmt | update_stmt | delete_stmt | create_table_stmt | create_index_stmt | create_view_stmt | drop_table_stmt | drop_index_stmt | drop_view_stmt | alter_table_stmt
+
+rule select_stmt = select_core compound_tail* order_by_clause? limit_clause?
+rule compound_tail = compound_op select_core
+rule compound_op = KW_UNION KW_ALL | KW_UNION | KW_INTERSECT | KW_EXCEPT
+rule select_core = KW_SELECT distinct_opt select_list from_clause? where_clause? group_by_clause? having_clause?
+rule distinct_opt = KW_DISTINCT | KW_ALL |
+rule select_list = select_item select_item_tail*
+rule select_item_tail = COMMA select_item
+rule select_item = STAR | table_star | expression alias_opt
+rule table_star = ident_ref DOT STAR
+rule alias_opt = KW_AS ident_ref | ident_ref |
+rule from_clause = KW_FROM table_ref join_tail*
+rule join_tail = join_op table_ref join_condition?
+rule join_op = KW_INNER KW_JOIN | KW_CROSS KW_JOIN | KW_LEFT KW_OUTER KW_JOIN | KW_LEFT KW_JOIN | KW_RIGHT KW_OUTER KW_JOIN | KW_RIGHT KW_JOIN | KW_FULL KW_OUTER KW_JOIN | KW_FULL KW_JOIN | KW_JOIN | COMMA
+rule join_condition = KW_ON expression | KW_USING LPAREN column_list RPAREN
+rule table_ref = table_primary table_alias_opt
+rule table_primary = LPAREN select_stmt RPAREN | LPAREN table_ref RPAREN | qualified_name
+rule table_alias_opt = KW_AS ident_ref | ident_ref |
+rule qualified_name = ident_ref qualified_tail*
+rule qualified_tail = DOT ident_ref
+rule column_list = ident_ref column_list_tail*
+rule column_list_tail = COMMA ident_ref
+rule where_clause = KW_WHERE expression
+rule group_by_clause = KW_GROUP KW_BY expr_list
+rule expr_list = expression expr_list_tail*
+rule expr_list_tail = COMMA expression
+rule having_clause = KW_HAVING expression
+rule order_by_clause = KW_ORDER KW_BY order_item order_item_tail*
+rule order_item_tail = COMMA order_item
+rule order_item = expression direction_opt nulls_opt
+rule direction_opt = KW_ASC | KW_DESC |
+rule nulls_opt = KW_NULLS KW_FIRST | KW_NULLS KW_LAST |
+rule limit_clause = KW_LIMIT expression offset_opt
+rule offset_opt = KW_OFFSET expression | COMMA expression |
+
+rule insert_stmt = KW_INSERT KW_INTO qualified_name insert_columns_opt insert_source
+rule insert_columns_opt = LPAREN column_list RPAREN |
+rule insert_source = KW_VALUES value_row value_row_tail* | select_stmt | KW_DEFAULT KW_VALUES
+rule value_row = LPAREN expr_list RPAREN
+rule value_row_tail = COMMA value_row
+
+rule update_stmt = KW_UPDATE qualified_name KW_SET assignment_list where_clause?
+rule assignment_list = assignment assignment_tail*
+rule assignment_tail = COMMA assignment
+rule assignment = ident_ref EQ expression
+
+rule delete_stmt = KW_DELETE KW_FROM qualified_name where_clause?
+
+rule create_table_stmt = KW_CREATE KW_TABLE if_not_exists_opt qualified_name LPAREN table_element_list RPAREN
+rule if_not_exists_opt = KW_IF KW_NOT KW_EXISTS |
+rule table_element_list = table_element table_element_tail*
+rule table_element_tail = COMMA table_element
+rule table_element = table_constraint | column_def
+rule column_def = ident_ref type_ref column_constraint*
+rule type_ref = ident_ref type_args_opt
+rule type_args_opt = LPAREN NUMBER type_args_tail* RPAREN |
+rule type_args_tail = COMMA NUMBER
+rule column_constraint = KW_PRIMARY KW_KEY | KW_NOT KW_NULL | KW_NULL | KW_UNIQUE | KW_DEFAULT expression | KW_REFERENCES qualified_name LPAREN column_list RPAREN | KW_REFERENCES qualified_name | KW_CHECK LPAREN expression RPAREN
+rule table_constraint = named_constraint_opt table_constraint_body
+rule named_constraint_opt = KW_CONSTRAINT ident_ref |
+rule table_constraint_body = KW_PRIMARY KW_KEY LPAREN column_list RPAREN | KW_UNIQUE LPAREN column_list RPAREN | KW_FOREIGN KW_KEY LPAREN column_list RPAREN KW_REFERENCES qualified_name LPAREN column_list RPAREN | KW_CHECK LPAREN expression RPAREN
+
+rule create_index_stmt = KW_CREATE unique_opt KW_INDEX if_not_exists_opt ident_ref KW_ON qualified_name LPAREN column_list RPAREN
+rule unique_opt = KW_UNIQUE |
+
+rule create_view_stmt = KW_CREATE KW_VIEW if_not_exists_opt qualified_name KW_AS select_stmt
+
+rule drop_table_stmt = KW_DROP KW_TABLE if_exists_opt qualified_name
+rule drop_index_stmt = KW_DROP KW_INDEX if_exists_opt qualified_name
+rule drop_view_stmt = KW_DROP KW_VIEW if_exists_opt qualified_name
+rule if_exists_opt = KW_IF KW_EXISTS |
+
+rule alter_table_stmt = KW_ALTER KW_TABLE qualified_name alter_action
+rule alter_action = KW_ADD KW_COLUMN column_def | KW_ADD column_def | KW_DROP KW_COLUMN ident_ref | KW_RENAME KW_TO qualified_name | KW_RENAME KW_COLUMN ident_ref KW_TO ident_ref | KW_RENAME ident_ref KW_TO ident_ref
+
+rule expression = or_expr
+rule or_expr = and_expr or_tail*
+rule or_tail = KW_OR and_expr
+rule and_expr = not_expr and_tail*
+rule and_tail = KW_AND not_expr
+rule not_expr = KW_NOT not_expr | comparison_expr
+rule comparison_expr = concat_expr comparison_tail?
+rule comparison_tail = comparison_op concat_expr | KW_IS KW_NOT KW_NULL | KW_IS KW_NULL | KW_IS KW_NOT concat_expr | KW_IS concat_expr | KW_NOT KW_IN LPAREN in_list RPAREN | KW_NOT KW_IN LPAREN select_stmt RPAREN | KW_IN LPAREN in_list RPAREN | KW_IN LPAREN select_stmt RPAREN | KW_NOT KW_BETWEEN concat_expr KW_AND concat_expr | KW_BETWEEN concat_expr KW_AND concat_expr | KW_NOT KW_LIKE concat_expr | KW_LIKE concat_expr
+rule comparison_op = EQ | NEQ | NEQ2 | LE | GE | LT | GT
+rule in_list = expr_list |
+rule concat_expr = additive_expr concat_tail*
+rule concat_tail = CONCAT additive_expr
+rule additive_expr = multiplicative_expr additive_tail*
+rule additive_tail = additive_op multiplicative_expr
+rule additive_op = PLUS | MINUS
+rule multiplicative_expr = unary_expr multiplicative_tail*
+rule multiplicative_tail = multiplicative_op unary_expr
+rule multiplicative_op = STAR | SLASH | PERCENT
+rule unary_expr = unary_op unary_expr | postfix_expr
+rule unary_op = MINUS | PLUS | KW_NOT
+rule postfix_expr = primary_expr
+rule primary_expr = NUMBER | STRING | KW_NULL | KW_TRUE | KW_FALSE | case_expr | cast_expr | exists_expr | function_call | grouped_expr | qualified_name
+rule grouped_expr = LPAREN expression RPAREN | LPAREN select_stmt RPAREN
+rule case_expr = KW_CASE expression when_clause+ else_clause? KW_END | KW_CASE when_clause+ else_clause? KW_END
+rule when_clause = KW_WHEN expression KW_THEN expression
+rule else_clause = KW_ELSE expression
+rule cast_expr = KW_CAST LPAREN expression KW_AS type_ref RPAREN
+rule exists_expr = KW_EXISTS LPAREN select_stmt RPAREN
+rule function_call = ident_ref LPAREN function_args RPAREN
+rule function_args = STAR | arg_list |
+rule arg_list = distinct_opt expression arg_tail*
+rule arg_tail = COMMA expression
+
+rule ident_ref = IDENT | QUOTED_IDENT
