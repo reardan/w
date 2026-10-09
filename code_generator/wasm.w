@@ -927,6 +927,3 @@ int wasm_addr_slot_read(int pos):
 void wasm_int3():
 	wasm_cand_drop_all()
 	emit_int8(0x00)   # unreachable (a bare `debugger` dies, like int3 does)
-
-void wasm_nop():
-	emit_int8(0x01)

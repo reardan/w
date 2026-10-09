@@ -155,15 +155,6 @@ void ptx_pop_bx():
 	ptx_line(c"add.u64 %sp, %sp, 8;")
 
 
-# push_int8/push_int32: push a constant without touching the accumulator.
-void ptx_push_const(int v):
-	ptx_emit(c"mov.s64 %cx, ")
-	ptx_emit_int(v)
-	ptx_line(c";")
-	ptx_line(c"sub.u64 %sp, %sp, 8;")
-	ptx_line(c"st.u64 [%sp], %cx;")
-
-
 void ptx_mov_ax_int(int v):
 	ptx_emit(c"mov.s64 %ax, ")
 	ptx_emit_int(v)

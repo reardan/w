@@ -565,6 +565,3 @@ void debug_info_emit_at(int text_start, int text_end):
 	emit_uleb(0) /* end of children */
 	save_int(code + unit_start, codepos - unit_start - 4)
 
-
-void debug_info_emit(int text_end):
-	debug_info_emit_at(0, text_end)
