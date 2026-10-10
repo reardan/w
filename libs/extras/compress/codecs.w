@@ -66,13 +66,17 @@ int compress_codec_deflate_encode(char* in, int len, char** out, int* out_len):
 int compress_codec_deflate_decode(char* in, int len, int max, char** out, int* out_len):
 	*out = 0
 	*out_len = 0
-	wresult[zlib_result*]* res = zlib_decompress(in, len, max)
+	int consumed = 0
+	wresult[zlib_result*]* res = zlib_decompress_ex(in, len, max, &consumed)
 	if (result_is_error[zlib_result*](res)):
 		int code = result_code[zlib_result*](res)
 		result_free[zlib_result*](res)
 		return compress_codec_status(code)
 	zlib_result* r = result_value[zlib_result*](res)
 	result_free[zlib_result*](res)
+	if (consumed != len):
+		zlib_result_free(r)
+		return codec_err_corrupt
 	*out = r.data
 	*out_len = r.length
 	free(r)

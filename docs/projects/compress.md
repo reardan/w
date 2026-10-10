@@ -411,18 +411,18 @@ char* zlib_error_string(int code)
 wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output)
 
 # gzip.w -- same shape, GZIP_ERR_BAD_MAGIC / GZIP_ERR_UNSUPPORTED_METHOD /
-# GZIP_ERR_BAD_CRC / GZIP_ERR_BAD_SIZE / GZIP_ERR_TRUNCATED.
+# GZIP_ERR_BAD_CRC / GZIP_ERR_BAD_SIZE / GZIP_ERR_TRUNCATED / GZIP_ERR_BAD_HEADER.
 # gzip_compress emits a minimal single-member header: MTIME=0, XFL=0,
 # OS=255 ("unknown"), no FNAME/FCOMMENT/FEXTRA -- deterministic output
 # byte-for-byte for the same input and level, which matters for the
 # build cache (Direction 3 keys blobs by content hash; a compressor
 # whose output varies run to run would break that) and matches `gzip
 # -n`'s reproducible-build convention.
-# gzip_decompress parses and skips FEXTRA/FNAME/FCOMMENT/FHCRC per the
-# flag byte (real gzip files -- from gzip(1), git, browsers -- routinely
-# set FNAME) but only reads a single member; multi-member concatenated
-# streams (`cat a.gz b.gz > c.gz`, which gzip(1) explicitly supports)
-# are out of scope for v1 -- flagged as an open question in §10.
+# gzip_decompress parses optional FEXTRA/FNAME/FCOMMENT fields and validates
+# FHCRC, reserved flags, CRC-32 and ISIZE on every concatenated member.
+# A positive max_output bounds their combined output, including empty
+# members after an exact-cap result. Trailing non-member bytes fail; no
+# partial output is returned on any member error.
 ```
 
 `zlib_result`/`gzip_result` reuse one `_free` for both the success
@@ -749,13 +749,9 @@ working, tested package:
    §1 (real-world ambiguity between raw-DEFLATE and zlib-wrapped
    producers). Confirm gzip-only is acceptable, or scope `deflate`
    support (with both interpretations) as explicit future work.
-3. **gzip multi-member streams** (§5.4) — real `gzip(1)` concatenation
-   output exists in the wild (rare, but not nonexistent, and notably
-   how some log-rotation and streaming-compression tools produce
-   output incrementally). Confirm single-member-only is acceptable for
-   v1, or should `gzip_decompress` at least detect and reject
-   (rather than silently truncate at) a trailing second member instead
-   of erroring only on genuine corruption?
+3. **gzip multi-member streams** (§5.4) — implemented: every member is
+   validated and concatenated under a shared output cap; non-member
+   trailing bytes are rejected.
 4. **`cas.w`'s zlib adoption** (§7.1) — should it land as a fast-follow
    PR immediately after PR A (§9), given there is no existing store to
    migrate, or wait until `wvc` (wave 2) has real users first so the

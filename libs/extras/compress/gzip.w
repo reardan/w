@@ -16,15 +16,13 @@ same input and level -- matters for the build cache (content-addressed
 by hash of the blob) and matches `gzip -n`'s reproducible-build
 convention (design doc §5.4).
 
-gzip_decompress parses and skips FEXTRA/FNAME/FCOMMENT/FHCRC (real gzip
-files from gzip(1)/git/browsers routinely set FNAME) but only reads a
-single member; a concatenated multi-member stream (`cat a.gz b.gz`,
-which gzip(1) explicitly supports) is out of scope for v1 -- flagged as
-an open question in the design doc §10 point 3. Any bytes after the
-first member's trailer are silently ignored, not rejected.
+gzip_decompress validates every member in a concatenated stream, including
+optional header CRCs, reserved flags, payload CRCs and sizes. Non-member
+trailing bytes fail. The output cap applies to the sum of all members;
+empty members are permitted even after that cap is reached.
 
 See zlib.w's header comment for the error-code-range and passthrough
-conventions this file shares with it (GZIP_ERR_* codes are 201-205,
+conventions this file shares with it (GZIP_ERR_* codes are 201-206,
 distinct from INFLATE_ERR_*'s 1-6 and ZLIB_ERR_*'s 101-103; a failure
 from the wrapped inflate() call passes its INFLATE_ERR_* code through
 unchanged rather than being remapped to a gzip-specific bucket).
@@ -43,6 +41,7 @@ const int GZIP_ERR_UNSUPPORTED_METHOD = 202
 const int GZIP_ERR_BAD_CRC = 203
 const int GZIP_ERR_BAD_SIZE = 204
 const int GZIP_ERR_TRUNCATED = 205
+const int GZIP_ERR_BAD_HEADER = 206
 
 
 char* gzip_error_string(int code):
@@ -52,6 +51,7 @@ char* gzip_error_string(int code):
 	if (code == GZIP_ERR_BAD_SIZE):
 		return c"gzip: decompressed size does not match the ISIZE trailer"
 	if (code == GZIP_ERR_TRUNCATED): return c"gzip: truncated stream"
+	if (code == GZIP_ERR_BAD_HEADER): return c"gzip: reserved header flags are set"
 	return inflate_error_string(code)
 
 
@@ -106,10 +106,10 @@ gzip_result* gzip_compress(char* data, int length, int level):
 	return r
 
 
-# max_output <= 0 means unbounded (docs/projects/compress.md §5.2/§6.3) --
-# only appropriate for trusted input; untrusted input (an HTTP response
-# body) should always pass a real cap.
-wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
+# One member, with an exact output allowance (zero is bounded, negative
+# unbounded). The public entry point combines members under one budget.
+wresult[gzip_result*]* gzip_decompress_member(char* data, int length, int max_output, int* member_consumed):
+	*member_consumed = 0
 	if (length < 10): return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 	int id1 = data[0] & 255
 	int id2 = data[1] & 255
@@ -117,6 +117,7 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 	int cm = data[2] & 255
 	if (cm != 8): return result_new_error[gzip_result*](GZIP_ERR_UNSUPPORTED_METHOD)
 	int flg = data[3] & 255
+	if ((flg & 224) != 0): return result_new_error[gzip_result*](GZIP_ERR_BAD_HEADER)
 	int f_hcrc = (flg >> 1) & 1
 	int f_extra = (flg >> 2) & 1
 	int f_name = (flg >> 3) & 1
@@ -138,6 +139,8 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 		pos = pos + 1
 	if (f_hcrc):
 		if (pos + 2 > length): return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
+		if (load_le16(data + pos) != (crc32_of(data, pos) & 65535)):
+			return result_new_error[gzip_result*](GZIP_ERR_BAD_CRC)
 		pos = pos + 2
 	if (pos + 8 > length):
 		# Not even room for the 8-byte trailer after a (possibly empty)
@@ -145,7 +148,7 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 
 	int consumed = 0
-	wresult[inflate_result*]* ir = inflate_ex(data + pos, length - pos, max_output, &consumed)
+	wresult[inflate_result*]* ir = inflate_ex_limit(data + pos, length - pos, max_output, &consumed)
 	if (result_is_error[inflate_result*](ir)):
 		int code = result_code[inflate_result*](ir)
 		result_free[inflate_result*](ir)
@@ -168,6 +171,33 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 		inflate_result_free(body)
 		return result_new_error[gzip_result*](GZIP_ERR_BAD_SIZE)
 
+	*member_consumed = trailer_start + 8
 	gzip_result* r = new gzip_result(body.data, body.length)
 	free(body)
 	return result_new_ok[gzip_result*](r)
+
+
+# Decodes the complete sequence of members; no partial output on any error.
+# max_output <= 0 retains the trusted-input unbounded convention.
+wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
+	if (length < 10): return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
+	string_builder* out = string_new()
+	int pos = 0
+	while (pos < length):
+		int remaining = -1
+		if (max_output > 0): remaining = max_output - out.length
+		int consumed = 0
+		wresult[gzip_result*]* res = gzip_decompress_member(data + pos, length - pos, remaining, &consumed)
+		if (result_is_error[gzip_result*](res)):
+			int code = result_code[gzip_result*](res)
+			result_free[gzip_result*](res)
+			string_free(out)
+			return result_new_error[gzip_result*](code)
+		gzip_result* member = result_value[gzip_result*](res)
+		result_free[gzip_result*](res)
+		string_append_bytes(out, member.data, member.length)
+		gzip_result_free(member)
+		pos = pos + consumed
+	gzip_result* result = new gzip_result(out.data, out.length)
+	free(out)
+	return result_new_ok[gzip_result*](result)
