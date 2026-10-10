@@ -27,6 +27,9 @@ generate libs/extras/grammars/antlr_to_pg/pg.pg bin/generated_pg_parser.w
 generate tests/parser_generator/stateful_sample.pg bin/generated_stateful_parser.w
 generate tests/parser_generator/stateful_legacy.pg bin/generated_stateful_legacy.w
 generate tests/parser_generator/ast_predicate.pg bin/generated_ast_predicate.w
+generate libs/extras/grammars/graphql.pg bin/generated_grammars_graphql_parser.w
+compile tests/grammars/graphql_demo.w bin/javascript_graphql_darwin
+bin/javascript_graphql_darwin
 compile tools/antlr_to_pg.w bin/javascript_antlr_darwin
 compile tests/antlr_to_pg_strict_test.w bin/javascript_antlr_strict_darwin
 bin/javascript_antlr_strict_darwin

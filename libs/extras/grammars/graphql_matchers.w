@@ -8,7 +8,7 @@ int pg_lexer_matcher_g_graphql_BLOCK_STRING(char* input, int index):
 	index = _as0
 	_ok = 1
 	if (_ok):
-		if ((input[index + 0] != '"') | (input[index + 1] != '"') | (input[index + 2] != '"')):
+		if ((input[index + 0] != '"') || (input[index + 1] != '"') || (input[index + 2] != '"')):
 			_ok = 0
 		else:
 			index = index + 3
@@ -27,7 +27,7 @@ int pg_lexer_matcher_g_graphql_BLOCK_STRING(char* input, int index):
 			if (index == _s2):
 				break
 	if (_ok):
-		if ((input[index + 0] != '"') | (input[index + 1] != '"') | (input[index + 2] != '"')):
+		if ((input[index + 0] != '"') || (input[index + 1] != '"') || (input[index + 2] != '"')):
 			_ok = 0
 		else:
 			index = index + 3
@@ -52,7 +52,7 @@ int pg_g_graphql_frag_HEX(char* input, int index):
 	index = _as5
 	_ok = 1
 	if (_ok):
-		if ((((input[index] >= '0') & (input[index] <= '9') | (input[index] >= 'a') & (input[index] <= 'f') | (input[index] >= 'A') & (input[index] <= 'F'))) == 0):
+		if ((((input[index] >= '0') && (input[index] <= '9') || (input[index] >= 'a') && (input[index] <= 'f') || (input[index] >= 'A') && (input[index] <= 'F'))) == 0):
 			_ok = 0
 		else:
 			index = index + 1
@@ -136,7 +136,7 @@ int pg_g_graphql_frag_ESC(char* input, int index):
 		index = _as16
 		_ok = 1
 		if (_ok):
-			if ((((input[index] == '"') | (input[index] == 92) | (input[index] == '/') | (input[index] == 'b') | (input[index] == 'f') | (input[index] == 'n') | (input[index] == 'r') | (input[index] == 't'))) == 0):
+			if ((((input[index] == '"') || (input[index] == 92) || (input[index] == '/') || (input[index] == 'b') || (input[index] == 'f') || (input[index] == 'n') || (input[index] == 'r') || (input[index] == 't'))) == 0):
 				_ok = 0
 			else:
 				index = index + 1
@@ -197,7 +197,7 @@ int pg_g_graphql_frag_CHARACTER(char* input, int index):
 		index = _as21
 		_ok = 1
 		if (_ok):
-			if ((((((input[index] == '"') | (input[index] == 92)) == 0) & (input[index] != 0))) == 0):
+			if ((((((input[index] == '"') || (input[index] == 92)) == 0) && (input[index] != 0))) == 0):
 				_ok = 0
 			else:
 				index = index + 1
@@ -327,7 +327,7 @@ int pg_g_graphql_frag_NONZERO_DIGIT(char* input, int index):
 	index = _as33
 	_ok = 1
 	if (_ok):
-		if ((((input[index] >= '1') & (input[index] <= '9'))) == 0):
+		if ((((input[index] >= '1') && (input[index] <= '9'))) == 0):
 			_ok = 0
 		else:
 			index = index + 1
@@ -352,7 +352,7 @@ int pg_g_graphql_frag_DIGIT(char* input, int index):
 	index = _as35
 	_ok = 1
 	if (_ok):
-		if ((((input[index] >= '0') & (input[index] <= '9'))) == 0):
+		if ((((input[index] >= '0') && (input[index] <= '9'))) == 0):
 			_ok = 0
 		else:
 			index = index + 1
@@ -498,7 +498,7 @@ int pg_g_graphql_frag_EXPONENT_INDICATOR(char* input, int index):
 	index = _as51
 	_ok = 1
 	if (_ok):
-		if ((((input[index] == 'e') | (input[index] == 'E'))) == 0):
+		if ((((input[index] == 'e') || (input[index] == 'E'))) == 0):
 			_ok = 0
 		else:
 			index = index + 1
@@ -523,7 +523,7 @@ int pg_g_graphql_frag_SIGN(char* input, int index):
 	index = _as53
 	_ok = 1
 	if (_ok):
-		if ((((input[index] == '+') | (input[index] == '-'))) == 0):
+		if ((((input[index] == '+') || (input[index] == '-'))) == 0):
 			_ok = 0
 		else:
 			index = index + 1
@@ -794,7 +794,7 @@ int pg_lexer_matcher_g_graphql_PUNCTUATOR(char* input, int index):
 	index = _as79
 	_ok = 1
 	if (_ok):
-		if ((input[index + 0] != '.') | (input[index + 1] != '.') | (input[index + 2] != '.')):
+		if ((input[index + 0] != '.') || (input[index + 1] != '.') || (input[index + 2] != '.')):
 			_ok = 0
 		else:
 			index = index + 3
@@ -899,7 +899,7 @@ int pg_g_graphql_frag_UTF8_BOM(char* input, int index):
 	index = _as93
 	_ok = 1
 	if (_ok):
-		if ((input[index + 0] != 'u') | (input[index + 1] != 'E') | (input[index + 2] != 'F') | (input[index + 3] != 'B') | (input[index + 4] != 'B') | (input[index + 5] != 'B') | (input[index + 6] != 'F')):
+		if ((input[index + 0] != 'u') || (input[index + 1] != 'E') || (input[index + 2] != 'F') || (input[index + 3] != 'B') || (input[index + 4] != 'B') || (input[index + 5] != 'B') || (input[index + 6] != 'F')):
 			_ok = 0
 		else:
 			index = index + 7
@@ -924,7 +924,7 @@ int pg_g_graphql_frag_UTF16_BOM(char* input, int index):
 	index = _as95
 	_ok = 1
 	if (_ok):
-		if ((input[index + 0] != 'u') | (input[index + 1] != 'F') | (input[index + 2] != 'E') | (input[index + 3] != 'F') | (input[index + 4] != 'F')):
+		if ((input[index + 0] != 'u') || (input[index + 1] != 'F') || (input[index + 2] != 'E') || (input[index + 3] != 'F') || (input[index + 4] != 'F')):
 			_ok = 0
 		else:
 			index = index + 5
@@ -949,7 +949,7 @@ int pg_g_graphql_frag_UTF32_BOM(char* input, int index):
 	index = _as97
 	_ok = 1
 	if (_ok):
-		if ((input[index + 0] != 'u') | (input[index + 1] != '0') | (input[index + 2] != '0') | (input[index + 3] != '0') | (input[index + 4] != '0') | (input[index + 5] != 'F') | (input[index + 6] != 'E') | (input[index + 7] != 'F') | (input[index + 8] != 'F')):
+		if ((input[index + 0] != 'u') || (input[index + 1] != '0') || (input[index + 2] != '0') || (input[index + 3] != '0') || (input[index + 4] != '0') || (input[index + 5] != 'F') || (input[index + 6] != 'E') || (input[index + 7] != 'F') || (input[index + 8] != 'F')):
 			_ok = 0
 		else:
 			index = index + 9
