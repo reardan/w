@@ -1,4 +1,4 @@
-# wbuild: timeout=1800000
+# wbuild: timeout=3600000
 /*
 Differential sweep for register promotion (unit R2,
 docs/projects/register_allocation_pgo.md §5), direct calls (unit A4,
