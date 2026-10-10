@@ -1,22 +1,24 @@
 # Compiler self-coverage floors for 'wcoverage suite --baseline'
 # (./wbuild compiler_coverage; docs/projects/line_coverage.md,
-# "Baseline and the new-code rule"). Each floor sits about a point under
-# the value measured on Linux x86_64 (2026-10-09, #625 libraries:
-# lines code_generator/ 96.8, compiler/ 94.3, grammar/ 96.8, repl/ 92.2,
-# debugger/ 78.8, w.w 100; branches code_generator/ 87.7, compiler/ 83.6,
-# grammar/ 85.1). Extra margin for the earlier no-libc6:i386 baseline
-# leaves room for the run-to-run drift seen so far. Raise a floor in the PR
-# that adds the tests; lower one only with a reason in the commit message.
-code_generator/ 95.5
-compiler/ 93.0
-grammar/ 95.5
+# "Baseline and the new-code rule"). Floors retain the stricter values
+# from the 2026-10-09 library (#625) and tile-program (#629) baselines.
+# Library tests measured w.w at 100%, raising its floor to 99.0.
+# Tile parsing/analysis/PTX tests measured lines 96.9/94.2/96.8 and
+# branches 88.1/83.6/85.1 for code_generator/compiler/grammar respectively;
+# diagnostic sites reached 51.2%. Their floors retain a 0.6-0.9 point
+# margin. Unrelated REPL/debugger floors retain the prior baseline.
+# Raise a floor in the PR that adds the tests; lower one only with
+# a reason in the commit message.
+code_generator/ 96.0
+compiler/ 93.5
+grammar/ 96.0
 repl/ 91.5
 debugger/ 77.5
 repl.w 80.5
 w.w 99.0
-diagnostics 35.0
-branches:code_generator/ 86.0
-branches:compiler/ 82.0
-branches:grammar/ 82.0
+diagnostics 50.5
+branches:code_generator/ 87.5
+branches:compiler/ 83.0
+branches:grammar/ 84.5
 branches:repl/ 71.5
 branches:debugger/ 64.0

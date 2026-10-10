@@ -354,7 +354,11 @@ jobs:
           name: coverage-tools
 
       - name: Restore instrumented tools
-        run: tar -xzf coverage-tools.tgz
+        run: |
+          tar -xzf coverage-tools.tgz
+          # Keep profiling writes outside the checkout watched by wbuildd.
+          mkdir -p "$RUNNER_TEMP/wcoverage"
+          cp -a bin/coverage/. "$RUNNER_TEMP/wcoverage/"
 
       - name: Install 32-bit runtime, Xvfb and Mesa
         run: |
@@ -377,7 +381,8 @@ jobs:
         run: |
           set -o pipefail
           xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
-            bin/coverage/wcoverage suite --skip-build --shard "$COVERAGE_PART/4" \
+            bin/coverage/wcoverage suite --out "$RUNNER_TEMP/wcoverage" \
+              --skip-build --shard "$COVERAGE_PART/4" \
             2>&1 | tee coverage.log
 
       - name: Package coverage shard
@@ -387,7 +392,9 @@ jobs:
         run: |
           # A missing directory is deliberately not replaced by empty data.
           # The merge job checks every shard's completion evidence.
-          if [ -d "bin/coverage/shards/$COVERAGE_PART-of-4" ]; then
+          if [ -d "$RUNNER_TEMP/wcoverage/shards/$COVERAGE_PART-of-4" ]; then
+            mkdir -p bin/coverage/shards
+            cp -a "$RUNNER_TEMP/wcoverage/shards/$COVERAGE_PART-of-4" bin/coverage/shards/
             tar -czf "coverage-shard-$COVERAGE_PART.tgz" \
               "bin/coverage/shards/$COVERAGE_PART-of-4"
           fi

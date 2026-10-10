@@ -30,6 +30,7 @@ import grammar.retained_ast
 import compiler.statement_ast
 import compiler.loop_ast
 import compiler.gpu_ast
+import compiler.tile_ast
 import compiler.global_ast
 import compiler.function_ast
 import compiler.linkage_ast
@@ -88,6 +89,10 @@ import grammar.ast_statement
 import grammar.ast_declaration
 import grammar.ast_loop
 import grammar.ast_gpu
+import compiler.tile_analysis
+import code_generator.tile_ptx
+import code_generator.tile_host
+import grammar.ast_tile
 import grammar.ast_global
 import grammar.ast_function
 import grammar.ast_linkage

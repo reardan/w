@@ -271,7 +271,8 @@ rule while_stmt = KW_WHILE paren_expression_opt block
 rule for_stmt = KW_FOR for_binding for_binding_tail KW_IN expression block
 # gpu-parallel range loop and the kernel launch statement
 # (docs/projects/cuda.md M2/M1)
-rule gpu_for_stmt = KW_GPU for_stmt
+rule gpu_for_stmt = KW_GPU tile_width_opt for_stmt
+rule tile_width_opt = LBRACK expression RBRACK |
 rule launch_stmt = KW_LAUNCH name_token LBRACK expression COMMA expression RBRACK LPAREN arg_list RPAREN
 # The bare-IDENT alternative is the inferred loop variable
 # ('for x in ...', issue #360): the container fixes the type.

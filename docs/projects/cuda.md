@@ -5,8 +5,8 @@ work: every viable path below assumes a 64-bit host process, because `libcuda.so
 and the CUDA driver API are 64-bit only. Finishing x64 self-hosting (see
 `docs/mvp.txt`) is effectively Stage 0 of this project.
 
-**Status: Stages 0–4 are done; the only open surface is M3 tiles
-(issue #480).** The host side went straight to H1 (real
+**Status: Stages 0–4 are done; M3 now has an initial tile implementation
+(issue #480; see [tiles.md](tiles.md)).** The host side went straight to H1 (real
 dynamic linking, both x86 and x64): `c_lib "libcuda.so.1"` + `extern`
 declarations link the driver API directly (`grammar/extern_statement.w`,
 `code_generator/elf_dynamic.w`, `code_generator/ffi.w`), and `./wbuild cuda_smoke`
@@ -34,14 +34,16 @@ docs/projects/torch.md builds on this:
 its Stage 1 added a non-fatal `gpu_available()` driver+device probe to
 `lib/cuda.w`, and its Stages 2-3 the `lib/tensor.w` managed-memory
 tensor type with CPU fallbacks (reductions ride the Stage 4
-`atomic_add`). Remaining: M3 tile programs (#480), SASS study, and the
+`atomic_add`). M3's initial tile slice is described in `tiles.md`; remaining
+work includes more general tile layouts, SASS study, and the
 caveats listed in each execution-notes section.
 
 ## Context: what W is today
 
-- Single-pass, syntax-directed code generator (cc500 heritage). There is no AST or
-  IR — grammar rules in `grammar/*.w` emit machine bytes immediately via
-  `code_generator/x86.w` (x64 = same module + REX prefix via `emit_x64_opcode()`).
+- The production frontend now retains an AST by default. Ordinary bodies still
+  parse and emit incrementally; tile regions record a complete restricted body,
+  analyze it, then emit. The old streaming frontend remains available until its
+  release/seed retirement gate. See `ast_migration.md` and `tiles.md`.
 - Output is a static ELF executable by default (`code_generator/elf_32.w` /
   `elf_64.w`) with a single load segment. Programs that declare `c_lib` /
   `extern` or use `c_import` instead get PT_INTERP/PT_DYNAMIC records, eager
@@ -269,6 +271,11 @@ real value, and it composes with the planned `thread`/`lock` design in
 
 ### M3: Triton-style tile programs
 
+The initial implementation now records whole tile bodies before analysis and
+PTX emission, with fixed-layout vector operations and staged 16x16 `dot`.
+See [tiles.md](tiles.md) for the implemented subset and its tests. The original
+design motivation below predates the retained AST frontend.
+
 Triton's insight (Tillet et al., MAPL 2019; Triton 3.7 today): don't expose
 threads at all. A "program" instance owns a *tile*; `tl.load`/`tl.store` on
 ranges with masks; the compiler (Triton IR -> TritonGPU MLIR -> LLVM -> PTX)
@@ -325,7 +332,9 @@ performance-oriented API.
 - **Stage 4 — quality** (done): A2 virtual-register emission, explicit memory API,
   `gpu T*` pointer qualifier, error handling for `CUresult` codes, multi-GPU device
   selection.
-- **Someday**: tile semantics (M3, issue #480), SASS study
+- **Initial M3**: whole-body tile recording, masked vector operations and staged
+  matrix `dot` (issue #480; [tiles.md](tiles.md)).
+- **Someday**: more general tile layouts and tuning, SASS study
   (`cuobjdump -sass` on our PTX; CuAssembler experiments). Done from this
   list: shared-memory staging, cuBLAS interop (via runtime dlopen rather
   than `c_import`, so libcublas stays optional), and embedding pre-compiled

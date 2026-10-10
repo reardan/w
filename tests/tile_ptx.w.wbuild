@@ -1,0 +1,7 @@
+# wbuild: target=tile_ptx_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 --strict tests/tile_ptx.w -o bin/tile_ptx --ptx=bin/tile.ptx"
+# wbuild: step="bin/tile_ptx" expect_stdout=".visible .entry" expect_stdout="bar.sync 0;" expect_stdout=".shared" expect_stdout="mul.rn.f32" expect_stdout="add.rn.f32"
+# wbuild: step="bin/wv2 x64 --strict --streaming tests/tile_ptx.w -o bin/tile_ptx_streaming --ptx=bin/tile_streaming.ptx"
+# wbuild: step="bin/tile_ptx_streaming" expect_stdout="bar.sync 0;"
+# wbuild: step="cmp bin/tile.ptx bin/tile_streaming.ptx"
+# wbuild: step="cmp bin/tile_ptx bin/tile_ptx_streaming"

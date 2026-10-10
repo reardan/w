@@ -1267,12 +1267,14 @@ invalid conditional-arm warning fixture explicitly selects permissive AST
 mode so its diagnostic fallback remains testable. Keep new mode-specific
 fixtures explicit; do not relax required mode for positive fixtures globally.
 
-## Coverage dumps invalidate daemon caches (2026-10-09, #625)
+## Coverage dumps invalidate daemon caches (2026-10-09, #625, #629)
 
 The instrumented `wbuildd_test` failed its memo-hit and graph-cache assertions
-when `W_COVERAGE_OUT` wrote profiling dumps under the watched checkout's
-`bin/coverage/` directory. The ordinary test passed, and the instrumented test
-also passed with its dump directory outside the checkout. The workaround is
-to collect those dumps in a temporary directory and merge them into the
-coverage report afterward. Direction: isolate profiling output from watched
-build inputs, or exclude profiling dumps from daemon invalidation.
+when profiling dumps were written under the watched checkout's `bin/coverage/`
+directory. The ordinary test passed, and the instrumented test also passed
+with its dump directory outside the checkout. CI runs the coverage suite with
+`--out` outside the checkout and copies reports back afterward; use the same
+workaround locally. Direction: isolate profiling output from watched build
+inputs, or exclude profiling dumps from daemon invalidation while keeping
+report paths stable. Compiler API harnesses also need direct instrumentation
+because their in-process calls are invisible to subprocess coverage redirects.

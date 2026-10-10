@@ -37,6 +37,10 @@ implementation is described in `ast_migration.md`.
   per-statement retained emission alone does not satisfy checkpoint B.
 
 Streaming grammar retirement still follows P1.5's tagged-release/seed gate.
+Tile programs (#480) now provide a bounded whole-region parse/analyze/emit
+path in the retained arena; both frontend entry modes share it. This is not
+whole-function checkpoint B completion. See [tiles.md](tiles.md) for its
+restricted syntax, owned bindings, analysis and validation contract.
 The final local compile-time measurements are 1.40x streaming on x86 and 1.47x
 on x64; the 1.25x target remains unmet. Both complete test suites pass (1,023
 targets each), along with the x86, x64, Win64 and wasm self-host fixpoints.

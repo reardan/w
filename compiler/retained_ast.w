@@ -32,6 +32,8 @@ const int retained_declaration = 5
 const int retained_expression_group = 6
 const int retained_import = 7
 const int retained_local = 8
+const int retained_tile_expression = 9
+const int retained_tile_statement = 10
 
 struct retained_source:
 	char* path
@@ -180,6 +182,9 @@ struct retained_record:
 	# cursor before publication. Function boundaries start a fresh cursor.
 	int layout_active
 	int layout_depth
+	# A complete tile region, owned by the same checkpointed arena. Kept
+	# opaque here so non-compiler tree consumers need not import its grammar.
+	char* tile_payload
 
 struct retained_checkpoint:
 	char* pending_import
@@ -500,6 +505,7 @@ retained_record* retained_record_new(int kind, int parent, int source, int start
 	node.group = 0
 	node.layout_active = 0
 	node.layout_depth = 0
+	node.tile_payload = 0
 	return node
 
 
