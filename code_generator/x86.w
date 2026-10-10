@@ -1129,6 +1129,13 @@ void lea_esp_ebp_minus(int disp):
 # registers the pre-scan asked for (regalloc_pending_mask), making them
 # the current function's saved set. Called by be_function_prologue on the
 # x86 path only; the pending mask is only ever set for that path.
+# 'sub esp,W*n' (the parameters' homes of unit O5); nothing for 0.
+void sub_rsp_words(int n):
+	if (n == 0): return;
+	emit_x64_opcode()
+	emit(2, c"\x83\xec")
+	emit_int8(n << word_size_log2)
+
 void regalloc_prologue_args();   /* compiler/regalloc_scan.w: the argument loads (A1) */
 void regalloc_fn_region_enter(); /* compiler/regalloc_scan.w: the function region (O2) */
 void regalloc_prologue_emit():
@@ -1139,6 +1146,7 @@ void regalloc_prologue_emit():
 	regalloc_active = 0
 	if (regalloc_loops_ok): regalloc_active = 1
 	if (mask == 0):
+		sub_rsp_words(rg_homes)
 		regalloc_fn_region_enter()
 		return
 	regalloc_active = 1
@@ -1149,6 +1157,7 @@ void regalloc_prologue_emit():
 			regalloc_saved_count = regalloc_saved_count + 1
 		r = r + 1
 	regalloc_saved_mask = mask
+	sub_rsp_words(rg_homes)
 	regalloc_prologue_args()
 	regalloc_fn_region_enter()
 
@@ -1812,6 +1821,10 @@ void ers_push_eax(int dead):
 		push_eax()
 		return
 	int r = ers_pick()
+	# O5: a register call's argument parks in its parameter's register
+	# when nothing holds that one (grammar/stack_slot.w, ers_prefer)
+	if ((ers_prefer != 0) && (((ers_used | regalloc_loop_owned) & (1 << ers_prefer)) == 0)): r = ers_prefer
+	if (ers_count >= 8): r = 0
 	if (r == 0):
 		push_eax()
 		return
@@ -2749,6 +2762,53 @@ int call_direct_to(int v):
 	int slot = codepos - 4
 	regalloc_call_reload()
 	return slot
+
+
+# A register call (unit O5, compiler/regalloc_scan.w's "register
+# arguments" section): the n arguments' sources are in rc_src (a
+# register, or 0 for the real stack word at rc_disp), their parameters'
+# registers in rc_dst; no parked word is left (the caller consumed its
+# parks). The loop-owned registers go to their homes first (a
+# destination may be one of them), then the moves -- a parallel move,
+# a cycle broken through ebx, which nothing holds between statements'
+# operators -- and the stack loads, then `call rel32` to the entry.
+int[8] rc_src
+int[8] rc_disp
+int[8] rc_dst
+void regcall_moves(int n):
+	int[8] pending
+	int left = 0
+	for j in range(n):
+		pending[j] = (rc_src[j] != 0) && (rc_src[j] != rc_dst[j])
+		if (pending[j]): left = left + 1
+	while (left > 0):
+		int moved = 0
+		for a in range(n):
+			if (pending[a] == 0): continue
+			int blocked = 0
+			for b in range(n):
+				if (pending[b] && (b != a) && (rc_src[b] == rc_dst[a])): blocked = 1
+			if (blocked): continue
+			mov_reg_reg(rc_dst[a], rc_src[a])
+			pending[a] = 0
+			left = left - 1
+			moved = 1
+		if (moved == 0):
+			int c = 0
+			while (pending[c] == 0): c = c + 1
+			mov_reg_reg(3, rc_dst[c])
+			for d in range(n):
+				if (pending[d] && (rc_src[d] == rc_dst[c])): rc_src[d] = 3
+	for e in range(n):
+		if (rc_src[e] == 0): emit_mem_insn(1, 1, c"\x8b", rc_dst[e], 4, -1, 1, rc_disp[e])
+
+void call_regargs_to(int entry, int n):
+	emitted_call_count = emitted_call_count + 1
+	inline_real_calls = inline_real_calls + 1
+	regalloc_call_spill()
+	regcall_moves(n)
+	call_relative32(entry - (code_offset + codepos + 5))
+	regalloc_call_reload()
 
 
 int call_direct_link(int head):

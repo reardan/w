@@ -124,10 +124,18 @@ int* direct_call_base
 int* direct_call_kind
 int* direct_call_id
 int* direct_call_aux
+# O5 (compiler/regalloc_scan.w's register arguments): per record, the
+# parameters a register call passes in registers (0: the stack ABI, -1:
+# an argument left the register path, so the call falls back to it) and
+# the arguments parked so far.
+int* direct_call_rc
+int* direct_call_rc_next
 # The record the last direct_call_take popped.
 int direct_call_taken_kind
 int direct_call_taken_id
 int direct_call_taken_aux
+int direct_call_taken_rc
+int direct_call_taken_rc_next
 
 void generic_inst_emit_callee(int inst);   /* grammar/generic.w */
 void generic_inst_emit_call(int inst);     /* grammar/generic.w */
@@ -144,16 +152,91 @@ void direct_call_record_aux(int s, int kind, int id, int aux):
 		direct_call_kind = cast(int*, realloc(cast(char*, direct_call_kind), direct_call_capacity * __word_size__, cap * __word_size__))
 		direct_call_id = cast(int*, realloc(cast(char*, direct_call_id), direct_call_capacity * __word_size__, cap * __word_size__))
 		direct_call_aux = cast(int*, realloc(cast(char*, direct_call_aux), direct_call_capacity * __word_size__, cap * __word_size__))
+		direct_call_rc = cast(int*, realloc(cast(char*, direct_call_rc), direct_call_capacity * __word_size__, cap * __word_size__))
+		direct_call_rc_next = cast(int*, realloc(cast(char*, direct_call_rc_next), direct_call_capacity * __word_size__, cap * __word_size__))
 		direct_call_capacity = cap
 	direct_call_base[direct_call_count] = s
 	direct_call_kind[direct_call_count] = kind
 	direct_call_id[direct_call_count] = id
 	direct_call_aux[direct_call_count] = aux
+	direct_call_rc[direct_call_count] = 0
+	direct_call_rc_next[direct_call_count] = 0
 	direct_call_count = direct_call_count + 1
 
 
 void direct_call_record(int s, int kind, int id):
 	direct_call_record_aux(s, kind, id, 0)
+
+
+# The record of a call to the function symbol t whose arguments the
+# call site pushes one by one through push_call_argument_at (the
+# ordinary call suffix and the AST emitter's 'C'/'G' calls): a register
+# call (O5) when t has a register entry.
+int regargs_callee_params(int t);   /* compiler/regalloc_scan.w */
+int regargs_callee_reg(int t, int index);
+int regargs_callee_entry(int t);
+void push_call_argument_compact(int arg_type, int leaked_words);   /* grammar/postfix_expr.w */
+char* direct_callee_name(int t);
+void direct_call_record_sym(int s, int t):
+	direct_call_record_aux(s, 1, t, 0)
+	int n = regargs_callee_params(t)
+	if (n <= 0): return;
+	direct_call_rc[direct_call_count - 1] = n
+	# the enclosing expression's parks go to the stack now: the
+	# arguments park above them, in their parameters' registers. No
+	# fold of the first argument may take the pushes back (peep_rollback
+	# undoes a spill it rolls back to the end of, as one its own bytes
+	# caused), as be_notes_reset rules for a new statement.
+	if (ers_count != 0):
+		ers_spill_all()
+		ers_spill_end = 0
+		ers_spill_prev_end = 0
+
+
+# One argument of the call based at s: parked in its parameter's
+# register when the call is a register call and the argument is the
+# next word-sized one with nothing left on the stack under it (O5);
+# anything else turns the call back into a stack call (the parks so far
+# reach the real stack in order at the next push, or at the call).
+void push_call_argument_at(int s, int arg_type, int leaked_words):
+	if (direct_call_count > 0):
+		int k = direct_call_count - 1
+		if ((direct_call_base[k] == s) && (direct_call_rc[k] > 0)):
+			int j = direct_call_rc_next[k]
+			if ((leaked_words == 0) && (type_num_args(arg_type) == 0) && (j < direct_call_rc[k]) && (stack_pos == s + j)):
+				ers_prefer = regargs_callee_reg(direct_call_id[k], j)
+				ers_push_eax(1)
+				ers_prefer = 0
+				stack_pos = stack_pos + 1
+				inline_note_argument(stack_pos, 0, 0)
+				direct_call_rc_next[k] = j + 1
+				return;
+			direct_call_rc[k] = -1
+	push_call_argument_compact(arg_type, leaked_words)
+
+
+# finish_call's register call (O5): the n arguments are the words
+# s+1..s+n, parked or (spilled by a call inside a later argument) on
+# the real stack. Anything else -- an argument that left the register
+# path, a count that does not match -- is a stack call to the
+# function's own address, every parked word pushed in order first.
+void regcall_emit_taken(int s, int passed_args):
+	int t = direct_call_taken_id
+	int n = direct_call_taken_rc
+	if ((n <= 0) || (direct_call_taken_rc_next != n) || (passed_args != n) || (stack_pos != s + n) || (ers_count > n) || (regargs_callee_params(t) != n)):
+		if (ers_count != 0): ers_spill_all()
+		sym_emit_call(t, direct_callee_name(t))
+		return;
+	int parked = ers_count
+	for j in range(n):
+		int disp = (stack_pos - (s + 1 + j)) << word_size_log2
+		rc_src[j] = ers_slot_reg(disp)
+		rc_disp[j] = disp - (parked << word_size_log2)
+		rc_dst[j] = regargs_callee_reg(t, j)
+	while (ers_count > 0): ers_pop_top()
+	stack_pos = stack_pos - parked
+	call_regargs_to(regargs_callee_entry(t), n)
+	regargs_calls = regargs_calls + 1
 
 
 void direct_call_mismatch():
@@ -176,6 +259,8 @@ int direct_call_take(int s):
 	direct_call_taken_kind = direct_call_kind[direct_call_count]
 	direct_call_taken_id = direct_call_id[direct_call_count]
 	direct_call_taken_aux = direct_call_aux[direct_call_count]
+	direct_call_taken_rc = direct_call_rc[direct_call_count]
+	direct_call_taken_rc_next = direct_call_rc_next[direct_call_count]
 	return direct_call_taken_kind != 0
 
 
@@ -263,8 +348,10 @@ void direct_callee_materialize():
 
 # Turn the current note into the record of the call based at s.
 void direct_callee_to_record(int s):
-	direct_call_record(s, direct_callee_kind, direct_callee_id)
+	int kind = direct_callee_kind
 	direct_callee_kind = 0
+	if (kind == 1): direct_call_record_sym(s, direct_callee_id)
+	else: direct_call_record(s, kind, direct_callee_id)
 
 
 # The fail-closed diagnostic: something emitted while a callee note was

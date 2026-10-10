@@ -349,7 +349,7 @@ void check_binary(char* path, int word_size):
 	die* s = dies[scale]
 	asserts(c"scale low_pc in .text", (s.low_pc >= text_lo) && (s.low_pc < text_hi))
 	asserts(c"scale high_pc after low_pc", (s.high_pc > s.low_pc) && (s.high_pc <= text_hi))
-	assert_equal(32, s.decl_line)
+	assert_equal(33, s.decl_line)
 	assert_equal(156, s.frame_base_op) /* DW_OP_call_frame_cfa */
 	asserts(c"scale returns int", s.type_ref >= 0)
 	int report = find_die(46, c"report", 0)

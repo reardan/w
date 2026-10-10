@@ -1167,6 +1167,11 @@ int wdbg_main(int argc, int argv):
 	# calls would never be entered. The attach-mode recompile above
 	# keeps the binary's own inlining, since its tables must match it.
 	inline_disabled = 1
+	# Arguments stay on the stack too (unit O5's register entries): a
+	# parameter that a register call delivered lives only in a caller-
+	# saved register, which 'print', 'info args' and the outer frames
+	# cannot read (debugger/locals.w reads r12-r15 alone)
+	reg_args_disabled = 1
 	compile_input_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings used by the debuggee, plus its queued generic

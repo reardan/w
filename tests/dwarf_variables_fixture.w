@@ -7,10 +7,11 @@ struct with two members, a T[N] descriptor, a void function, and
 accumulate's loop locals, which register promotion (unit R2,
 compiler/regalloc_scan.w) keeps in callee-saved registers: their
 locations are DW_OP_reg<n>, and the FDE records the saved registers.
-scale and accumulate make a call (fixture_tick), so on x64 neither is a
-leaf the function region (unit O2) would take; leaf_sum is one, whose
-pointer argument and accumulator live in caller-saved registers there
-(DW_OP_reg4/5: rsi/rdi in the DWARF numbering).
+scale and accumulate call fixture_tick inside a loop, which keeps both
+off the x64 function region (unit O2; a call outside the loops would
+only spill the region around itself); leaf_sum is on it, so its pointer
+argument and locals live in caller-saved registers there (DW_OP_reg4/5
+are rsi/rdi in the DWARF numbering, r8-r11 keep their numbers).
 */
 import lib.lib
 
@@ -30,7 +31,7 @@ void fixture_tick(int depth):
 
 
 int scale(point* p, int factor):
-	fixture_tick(0)
+	while (fixture_ticks < 1): fixture_tick(0)
 	int sx = p.x * factor
 	int sy = p.y * factor
 	if (sx > 0):
@@ -51,8 +52,8 @@ int accumulate(int n):
 	int total = 0
 	while (i < n):
 		total = total + i
+		fixture_tick(0)
 		i = i + 1
-	fixture_tick(0)
 	return total
 
 

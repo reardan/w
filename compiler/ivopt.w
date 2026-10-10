@@ -40,10 +40,14 @@ pointer) that the pre-scan saw declared at most once and never
 address-taken or called (rs_excluded), and the loop must be one that
 owns caller-saved registers (call-free, no goto/defer, x64). A
 candidate takes a free loop register or is dropped. At emission a
-subscript node matches only when its base and every name of its index
-are the very symbol records resolved at the head and its tree has the
-recorded shape; a subscript that does not match is emitted as before,
-so a mismatch costs the optimization, never correctness.
+subscript is rewritten only when it is one the analysis recorded (by
+its base name's file offset) and its base is the very symbol record
+resolved at the head; a name of its index resolving to any other record
+is an internal error. Both front ends ask at the same token -- the AST
+emitter at an 'i' node (code_generator/expression_ast.w), the streaming
+grammar before the primary (grammar/postfix_expr.w, which consumes the
+whole subscript) -- so they emit byte-identical images; a subscript
+that is not rewritten is emitted as before.
 
 --no-ivopts (and -O0) turns the unit off; tests/regalloc_diff_test.w
 compares every test program's behaviour with and without it, and
@@ -66,6 +70,14 @@ list[int] iv_loop_upd_end
 list[int] iv_loop_for_var  # a range loop's variable (name index), -1 for a while
 list[int] iv_loop_cover_first
 list[int] iv_loop_cover_end
+list[int] iv_loop_occ_first
+list[int] iv_loop_occ_end
+# every candidate subscript in the source: the file offsets of its base
+# name and of its ']', and the candidate it is (both front ends match a
+# subscript by its base's offset, so they rewrite the same ones)
+list[int] iv_occ_off
+list[int] iv_occ_close
+list[int] iv_occ_cand
 # candidate subscripts
 list[int] iv_cand_base     # name index
 list[int] iv_cand_index    # node
@@ -114,6 +126,7 @@ list[int] iv_act_cand      # candidate per pointer register
 list[int] iv_act_reg
 list[int] iv_act_es        # element size
 list[int] iv_act_base_sym
+list[int] iv_act_elem      # element type
 int iv_steps_fired         # the active loop's steps emitted (each statement once)
 int iv_range_fired
 
@@ -132,6 +145,11 @@ void iv_tables_ensure():
 	iv_loop_for_var = new list[int]
 	iv_loop_cover_first = new list[int]
 	iv_loop_cover_end = new list[int]
+	iv_loop_occ_first = new list[int]
+	iv_loop_occ_end = new list[int]
+	iv_occ_off = new list[int]
+	iv_occ_close = new list[int]
+	iv_occ_cand = new list[int]
 	iv_cand_base = new list[int]
 	iv_cand_index = new list[int]
 	iv_cand_coef_first = new list[int]
@@ -161,6 +179,7 @@ void iv_tables_ensure():
 	iv_act_reg = new list[int]
 	iv_act_es = new list[int]
 	iv_act_base_sym = new list[int]
+	iv_act_elem = new list[int]
 
 
 # No loop is being maintained (function end, REPL rollback).
@@ -172,6 +191,7 @@ void ivopt_active_reset():
 	iv_act_reg.clear()
 	iv_act_es.clear()
 	iv_act_base_sym.clear()
+	iv_act_elem.clear()
 
 
 # Drop the function's analysis (the pre-scan's tables were cleared).
@@ -191,6 +211,11 @@ void ivopt_reset():
 	iv_loop_for_var.clear()
 	iv_loop_cover_first.clear()
 	iv_loop_cover_end.clear()
+	iv_loop_occ_first.clear()
+	iv_loop_occ_end.clear()
+	iv_occ_off.clear()
+	iv_occ_close.clear()
+	iv_occ_cand.clear()
 	iv_cand_base.clear()
 	iv_cand_index.clear()
 	iv_cand_coef_first.clear()
@@ -765,6 +790,7 @@ int iv_analyze(int start, int tabs):
 		iv_upd_delta.pop()
 	# the candidate subscripts
 	int cand_first = iv_cand_base.length
+	int occ_first = iv_occ_off.length
 	for t in range(first, ntok):
 		if ((iv_is_var(t) == 0) || (iv_is_op(t + 1, '[') == 0)): continue
 		int base = iv_tk_val[t]
@@ -808,17 +834,25 @@ int iv_analyze(int start, int tabs):
 		int same = -1
 		for c in range(cand_first, iv_cand_base.length):
 			if ((iv_cand_base[c] == base) && iv_same_tree(iv_cand_index[c], index)): same = c
+		iv_occ_off.push(iv_text_start + iv_tk_off[t])
+		iv_occ_close.push(iv_text_start + iv_tk_off[close])
 		if (same >= 0):
+			iv_occ_cand.push(same)
 			while (iv_coef_name.length > coef_first):
 				iv_coef_name.pop()
 				iv_coef_tree.pop()
 			continue
+		iv_occ_cand.push(iv_cand_base.length)
 		iv_cand_base.push(base)
 		iv_cand_index.push(index)
 		iv_cand_coef_first.push(coef_first)
 		iv_cand_coef_end.push(iv_coef_name.length)
 	int count = iv_cand_base.length - cand_first
 	if (count == 0):
+		while (iv_occ_off.length > occ_first):
+			iv_occ_off.pop()
+			iv_occ_close.pop()
+			iv_occ_cand.pop()
 		while (iv_upd_offset.length > upd_first):
 			iv_upd_offset.pop()
 			iv_upd_name.pop()
@@ -836,17 +870,13 @@ int iv_analyze(int start, int tabs):
 	iv_loop_for_var.push(for_var)
 	iv_loop_cover_first.push(cover_first)
 	iv_loop_cover_end.push(iv_cover_name.length)
+	iv_loop_occ_first.push(occ_first)
+	iv_loop_occ_end.push(iv_occ_off.length)
 	if (count > 4): count = 4
 	return count
 
 
 # --- emission ---------------------------------------------------------------------
-# Set by emit_range_loop_ast_begin (code_generator/loop_ast.w) around its
-# loop_enter: only a range loop whose increment calls ivopt_range_step
-# may maintain pointers stepped by its variable.
-int ivopt_range_ok
-
-
 int iv_word_int(int type):
 	if (type < 0): return 0
 	if (type_is_array(type) || (type_get_pointer_level(type) != 0)): return 0
@@ -966,7 +996,7 @@ int iv_live_here():
 void ivopt_loop_enter(int offset):
 	if (iv_active || ivopt_disabled || (iv_names == 0)): return;
 	if ((word_size != 8) || (target_isa != 0) || (target_os != 0)): return;
-	if ((ast_expressions_mode < 2) || (inline_depth != 0)): return;
+	if (inline_depth != 0): return;
 	int j = -1
 	for q in range(iv_loop_offset.length):
 		if (iv_loop_offset[q] == offset): j = q
@@ -997,6 +1027,7 @@ void ivopt_loop_enter(int offset):
 		iv_act_reg.push(reg)
 		iv_act_es.push(es)
 		iv_act_base_sym.push(base_t)
+		iv_act_elem.push(element)
 	if (iv_act_reg.length == 0): return;
 	be_notes_reset()
 	for a in range(iv_act_reg.length):
@@ -1149,28 +1180,71 @@ void ivopt_call_reload():
 	pop_eax_slot()
 
 
-int iv_tree_matches(expression_ast* tree, int id, int n):
-	if (id < 0): return 0
-	int op = tree.op[id]
-	int k = iv_nk[n]
-	if (k == 2): return (op == 0) && (tree.value[id] == iv_na[n])
-	if (k == 1): return (op == 'v') && (tree.symbol[id] == iv_sym[iv_na[n]])
-	if (op != k): return 0
-	return iv_tree_matches(tree, tree.left[id], iv_na[n]) && iv_tree_matches(tree, tree.right[id], iv_nb[n])
+# The active pointer of the candidate subscript whose base name starts at
+# file offset offset, -1 when none. Both front ends ask this at the
+# base's token (the AST emitter from the 'i' node's base, postfix_expr
+# before the streaming primary), so they rewrite the same subscripts.
+int iv_occurrence(int offset):
+	int j = iv_active_loop
+	for o in range(iv_loop_occ_first[j], iv_loop_occ_end[j]):
+		if (iv_occ_off[o] == offset):
+			for a in range(iv_act_reg.length):
+				if (iv_act_cand[a] == iv_occ_cand[o]): return a
+			return -1
+	return -1
+
+
+# Symbol record t, met inside a rewritten subscript's index, is one the
+# loop's head resolved; anything else means the scope changed under the
+# analysis (it declines loops that declare names, so it cannot).
+void iv_check_index_symbol(int t):
+	for i in range(iv_sym.length):
+		if (iv_sym[i] == t): return;
+	error(c"internal error: induction pointer subscript resolves to a different name (compile with --no-ivopts and report this)")
+
+
+void iv_check_index_tree(expression_ast* tree, int id):
+	if (id < 0): return;
+	if (tree.op[id] == 'v'): iv_check_index_symbol(tree.symbol[id])
+	iv_check_index_tree(tree, tree.left[id])
+	iv_check_index_tree(tree, tree.right[id])
 
 
 # The pointer register that holds subscript node id's address, 0 when no
-# active pointer matches it exactly.
+# active pointer was recorded for it.
 int ivopt_subscript_register(expression_ast* tree, int id):
 	if (iv_live_here() == 0): return 0
 	if (tree.op[id] != 'i'): return 0
 	int left = tree.left[id]
 	if ((left < 0) || (tree.op[left] != 'v')): return 0
-	int sym = tree.symbol[left]
-	for a in range(iv_act_reg.length):
-		if ((iv_act_base_sym[a] == sym) && (tree.value[id] == iv_act_es[a])):
-			if (iv_tree_matches(tree, tree.right[id], iv_cand_index[iv_act_cand[a]])): return iv_act_reg[a]
-	return 0
+	int a = iv_occurrence(tree.offset[left])
+	if (a < 0): return 0
+	if ((iv_act_base_sym[a] != tree.symbol[left]) || (tree.value[id] != iv_act_es[a])): return 0
+	iv_check_index_tree(tree, tree.right[id])
+	return iv_act_reg[a]
+
+
+# The streaming twin (grammar/postfix_expr.w): at a primary's first
+# token, a recorded subscript 'B[index]' of the active loop is consumed
+# whole and becomes the pointer register's address note; returns its
+# element type, or -1 (nothing consumed).
+int ivopt_stream_subscript():
+	if (iv_live_here() == 0): return -1
+	int a = iv_occurrence(token_start_offset)
+	if (a < 0): return -1
+	if (sym_probe(token) != iv_act_base_sym[a]): return -1
+	int j = iv_active_loop
+	int close = -1
+	for o in range(iv_loop_occ_first[j], iv_loop_occ_end[j]):
+		if (iv_occ_off[o] == token_start_offset): close = iv_occ_close[o]
+	sym_lookup(token)
+	get_token()
+	while (token_start_offset < close):
+		if (is_ident_start_byte(token[0] & 255)): iv_check_index_symbol(sym_lookup(token))
+		get_token()
+	expect(c"]")
+	addr_form(iv_act_reg[a], -1, 1, 0)
+	return iv_act_elem[a]
 
 
 void ivopt_stats_dump():

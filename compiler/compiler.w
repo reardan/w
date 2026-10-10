@@ -956,6 +956,12 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--no-direct-calls") == 0):
 		if (apply): direct_calls_disabled = 1
 		return 1
+	# Register arguments (unit O5, compiler/regalloc_scan.w): on by
+	# default on x64 Linux; --no-reg-args passes every argument on the
+	# stack, the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-reg-args") == 0):
+		if (apply): reg_args_disabled = 1
+		return 1
 	# Addressing modes (docs/projects/codegen_gap_plan.md §2.2, unit A2)
 	# are on by default on x86/x64; --no-addr-modes keeps the
 	# accumulator-address loads and stores, the reference for
@@ -1101,6 +1107,7 @@ void help_shared_options():
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
+	println(c"  --no-reg-args         x64: pass every argument on the stack (no register entries)")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
 	println(c"  --no-x86-budget       x86-32: no loop registers in ecx/edx (the pre-A9 register budget)")
@@ -1511,6 +1518,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-reg-args") == 0): link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
 				link_option(*flag_arg, 1)

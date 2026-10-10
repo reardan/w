@@ -170,10 +170,14 @@ list[int] rs_chain        # next index in the bucket, -1 ends the chain
 int[256] rs_buckets       # hash & 255 -> index + 1, 0 empty
 int rs_count
 # O2: the function region's candidates (rl_fn_region_enter), best first,
-# whether the body calls anything the scan can see, and the candidate
-# whose '.' the next field name follows (rs_field)
+# whether a loop of the body makes a real call (one outside the loops
+# only spills the region around itself, regalloc_call_spill), and the
+# candidate whose '.' the next field name follows (rs_field)
 list[int] rs_fn_cands
 int rs_fn_has_call
+# O5: a call the inliner will not take (a leaf it takes needs no
+# homes: a region spill there is a touch, and no entry is published)
+int rs_fn_real_call
 int rs_field_owner
 
 # Promoted symbol records of the current function (table offsets), for
@@ -222,6 +226,23 @@ int rs_ident_len
 int rs_ident_hash     # rs_hash_str(rs_ident), accumulated while reading
 int[64] rs_loop_tabs
 int rs_loop_count
+
+# --- register arguments (O5; the section at the end of this file) ---
+# A function's register entry lives in its symbol record: the entry's
+# address at +154 (0: none) and its parameters' registers at +158, 4 bits
+# each, parameter 0 lowest (compiler/symbol_table.w's sym_declare).
+int rg_symbol      # the scanned function's record
+int rg_asm_body    # function_definition: the body opens with an asm block
+int rg_shaped      # the region ranked every parameter first (rg_shape_rank)
+int rg_nparams
+int rg_resume      # codepos past the region's argument loads, 0: none
+int rg_regs_cur    # the parameters' registers so far, packed as at +158
+int rg_loaded      # parameters the region loaded
+# --stats
+int regargs_entries
+int regargs_calls
+void rg_shape_rank();
+void rg_note_param(int index, int reg);
 
 # --- loop facts (R3, §2.3): one record per 'while'/'for' keyword of the
 # body in source order, keyed by the keyword's file offset, which
@@ -414,7 +435,9 @@ void rs_lp_reset():
 # Mark a fact on the innermost open loop (parents inherit it when the
 # loop closes).
 void rs_lp_mark(int flag):
-	if (flag & rs_lp_has_call): rs_fn_has_call = 1
+	if (flag & rs_lp_has_call):
+		rs_fn_has_call = 1
+		rs_fn_real_call = 1
 	if (rs_lp_depth == 0): return;
 	int k = rs_lp_open[rs_lp_depth - 1]
 	rs_lp_flags[k] = rs_lp_flags[k] | flag
@@ -528,6 +551,12 @@ void regalloc_function_end():
 	regalloc_reg_unbind_all()
 	ers_hazard = 1
 	rl_reset()
+	rg_shaped = 0
+	rg_resume = 0
+	rg_regs_cur = 0
+	rg_loaded = 0
+	rg_touch = 0
+	rg_homes = 0
 
 
 void regalloc_reset():
@@ -1439,12 +1468,11 @@ void rs_identifier():
 			# a constant count never reaches ecx (alu_bit_shuttle_imm),
 			# so the rotate idiom of lib/sha256.w keeps its loop.
 			if (rs_intrinsic_holds_ecx(name)): rs_lp_mark(rs_lp_has_divshift)
-		elif (rs_lp_depth != 0):
-			if (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
-		elif (rs_fn_has_call == 0):
-			# outside the loops only the function region (O2) asks: is
-			# the body a leaf (one lookup until its first real call)
-			if (inline_name_is_leaf(name) == 0): rs_fn_has_call = 1
+		elif ((rs_lp_depth != 0) && (inline_name_is_leaf(name) == 0)): rs_lp_mark(rs_lp_has_call)
+		else:
+			# only rg_shape_rank reads it: x64 alone pays the lookup
+			if ((rs_fn_real_call == 0) && (word_size == 8)):
+				if (inline_name_is_leaf(name) == 0): rs_fn_real_call = 1
 		return;
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter
@@ -1615,6 +1643,7 @@ void rs_scan_body(int brace_body):
 	rs_shift_pending = 0
 	rs_ops = 0
 	rs_fn_has_call = 0
+	rs_fn_real_call = 0
 	rs_field_owner = -1
 	int first = 1
 	while ((rs_done == 0) && (rs_abort == 0) && (rs_c != -1)):
@@ -1686,8 +1715,10 @@ void rs_scan_body(int brace_body):
 					# tell: the loop declines it, the function region (O2)
 					# takes the chance (a call spills its registers)
 					int had_call = rs_fn_has_call
+					int had_real = rs_fn_real_call
 					rs_lp_mark(rs_lp_has_call)
 					rs_fn_has_call = had_call
+					rs_fn_real_call = had_real
 					if (owner >= 0): rs_field_use(owner)
 				elif (owner >= 0): rs_field_use(owner)
 			else: rs_identifier()
@@ -1943,9 +1974,10 @@ void rs_fn_rank():
 			if (g <= best_gain): continue
 			best = i
 			best_gain = g
-		if (best < 0): return;
+		if (best < 0): break
 		rs_fnreg[best] = 1
 		rs_fn_cands.push(best)
+	rg_shape_rank()   # O5
 
 
 # The prologue has pushed what it saves and loaded the callee-saved
@@ -1975,10 +2007,20 @@ void regalloc_fn_region_enter():
 		int reg = rl_take_register()
 		if (reg == 0): continue
 		save_int(table + t + 146, reg)
-		rl_add(t, reg, load_int(table + t + 2), 'A', rs_names[i], 1)
-		mov_reg_ebp_disp(reg, rl_home_disp(rl_sym.length - 1))
+		int slot = load_int(table + t + 2)
+		# a register-shaped body with homes (O5): the parameter's home
+		# is its frame word below the saved registers ('P'), not the
+		# word above the return address
+		if (rg_homes): rl_add(t, reg, slot - 1, 'P', rs_names[i], 1)
+		else: rl_add(t, reg, slot, 'A', rs_names[i], 1)
+		# the argument's word, read once here (rl_home_disp would count
+		# it as a body touch, O5)
+		mov_reg_ebp_disp(reg, (number_of_args - slot + 2) << word_size_log2)
 		debug_local_set_register_named(rs_names[i], reg)
 		regalloc_fn_regs = regalloc_fn_regs + 1
+		if (rg_shaped): rg_note_param(slot - 1, reg)
+	# O5: a register entry resumes here, past the argument loads
+	if (rg_shaped): rg_resume = codepos
 	rl_fn_pending_end = rl_pending.length
 	rl_fn_reserved = pending
 
@@ -1990,6 +2032,7 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	rs_tables_ensure()
 	rs_class_ensure()
 	regalloc_function_end()
+	rg_symbol = symbol
 	# P2 (compiler/regalloc_profile.w): the profile's class for this
 	# function, computed here even when nothing below runs (the loop
 	# alignment reads it). cold: the scan is skipped; hot: no probe,
@@ -2148,6 +2191,9 @@ void regalloc_store_declared(int t):
 # as a local's would.
 void regalloc_prologue_args():
 	if (regalloc_arg_syms == 0): return;
+	# O5: a callee-saved argument's load is not skipped by a register
+	# entry (rg_resume follows the region's loads only)
+	if (regalloc_arg_syms.length > 0): rg_touch = rg_touch + 1
 	for i in range(regalloc_arg_syms.length):
 		int t = regalloc_arg_syms[i]
 		int reg = regalloc_arg_regs[i]
@@ -2285,7 +2331,10 @@ int rl_take_register():
 # The frame-pointer displacement of an entry's home.
 int rl_home_disp(int i):
 	int kind = rl_kind[i]
-	if (kind == 'A'): return (number_of_args - rl_slot[i] + 2) << word_size_log2
+	if (kind == 'A'):
+		rg_touch = rg_touch + 1   # O5: the argument's word is its home
+		return (number_of_args - rl_slot[i] + 2) << word_size_log2
+	if (kind == 'P'): return 0 - ((regalloc_saved_count + 1 + rl_slot[i]) << word_size_log2)
 	return 0 - (rl_slot[i] << word_size_log2)
 
 
@@ -2542,6 +2591,149 @@ int rl_find_slot(int slot):
 	return -1
 
 
+# --- register arguments (O5) ------------------------------------------------
+# A direct call (A4) to a W function on x64 passes its arguments in
+# registers when the callee published a register entry; every other
+# call -- through a pointer, a forward reference, from asm or the FFI,
+# with the entry not yet published (a self call) -- keeps the stack ABI
+# through the function's own address, which is unchanged. The scheme is
+# callee-side and single-pass sound:
+#
+# - A body may get an entry when it is "register-shaped" (rg_shape_ok:
+#   1 to 6 word-sized, non-narrow, non-const parameters, no aggregate
+#   return, not variadic/a generator/a kernel/an asm body) and the
+#   function region (O2) holds every parameter (rg_shape_rank), so each
+#   has a caller-saved register (rsi rdi r8-r11) loaded right after the
+#   prologue.
+# - The entry is published only once the body is complete
+#   (regargs_close, from be_function_epilogue) and only if nothing in it
+#   read or wrote an argument's stack word: rg_touch counts every such
+#   access (sym_emit_value's 'A' path, the AST emitter's bindings,
+#   rl_home_disp for a spill/reload or a loop's home, a callee-saved
+#   argument's load). Its register callers push no argument words, so
+#   that is the whole correctness condition; the region keeps each
+#   parameter in its register for the body's extent.
+# - The entry itself is a stub after the body: 'push rbp; mov rbp,rsp',
+#   the prologue's register pushes, and a jump to rg_resume, the point
+#   past the region's argument loads. The frame it builds is the
+#   prologue's, so the body, its returns and the debugger see the same
+#   frame either way; only the argument words above the return address
+#   are missing, and nothing reads them.
+#
+# Callers (grammar/stack_slot.w, regcall_*) park each argument straight
+# into its parameter's register (an expression park, A3), so a simple
+# argument costs one instruction and there is no 'add rsp' after the
+# call.
+int rg_enabled():
+	if (reg_args_disabled || direct_calls_disabled || regalloc_disabled): return 0
+	if ((target_isa != 0) || (target_os != 0) || (word_size != 8)): return 0
+	if (repl_call_site_hook != 0): return 0
+	return 1
+
+
+int rg_shape_ok(int symbol):
+	if (rg_enabled() == 0): return 0
+	if (rg_asm_body || (symbol < 0)): return 0
+	if (sym_is_generator(symbol) || sym_is_kernel(symbol)): return 0
+	if (load_int(table + symbol + 130) != -1): return 0   # a W variadic
+	int n = load_int(table + symbol + 22)
+	if ((n < 1) || (n > 6)): return 0
+	# one word per parameter, and no hidden return-buffer word
+	if (number_of_args != n): return 0
+	for i in range(n):
+		int type = load_int(table + symbol + 26 + (i << 2))
+		if (type < 0): return 0
+		if (regalloc_type_ok(type) == 0): return 0
+		# a narrow parameter's register holds its word re-extended by
+		# the load the entry skips
+		if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)): return 0
+	return 1
+
+
+# rs_fn_rank's last step: the body is register-shaped (rg_shaped) when
+# the gain ranking put every parameter into the function region. A
+# parameter the ranking left out is not added: its debug note would name
+# a caller-saved register, which wdbg cannot read (debugger/locals.w reads
+# r12-r15, and attach mode no register at all), so a parameter that
+# stays readable on the stack today would become unreadable
+# (tools/attach_e2e.w's frame-selection case). Filling the free
+# registers gave regex_backtrack -4.7% instead of -0.8%.
+void rg_shape_rank():
+	if (rg_shape_ok(rg_symbol) == 0): return;
+	int n = load_int(table + rg_symbol + 22)
+	int found = 0
+	for i in range(rs_count):
+		if ((rs_decls[i] == 0) && (rs_excluded[i] == 0) && (rs_arg_record(i) >= 0)):
+			if (rs_fnreg[i] == 0): return;
+			found = found + 1
+	if (found != n): return;
+	rg_nparams = n
+	rg_shaped = 1
+	# a call the region spills its registers around: the parameters'
+	# homes go into the frame (rl_home_disp's 'P'), which both entries
+	# reserve below the saved registers
+	if (rs_fn_real_call): rg_homes = n
+
+
+# The region loaded parameter index (0-based) into reg.
+void rg_note_param(int index, int reg):
+	if ((index < 0) || (index >= 6)): return;
+	rg_regs_cur = rg_regs_cur | (reg << (index << 2))
+	rg_loaded = rg_loaded + 1
+
+
+# The body has ended (be_function_epilogue, after its last return):
+# publish the register entry when the body qualifies. framed is
+# be_frame_active.
+void regargs_close(int framed):
+	int shaped = rg_shaped
+	rg_shaped = 0
+	if (shaped == 0): return;
+	if ((framed == 0) || (rg_resume == 0) || (rg_touch != 0)): return;
+	if (rg_loaded != rg_nparams): return;
+	if (rg_enabled() == 0): return;
+	int entry = codepos
+	emit(1, c"\x55")              # push rbp
+	emit(3, c"\x48\x89\xe5")      # mov rbp,rsp
+	for r in range(16):
+		if (regalloc_saved_mask & (1 << r)): push_reg(r)
+	sub_rsp_words(rg_homes)
+	int rel = rg_resume - (codepos + 2)
+	if (rel >= -128):
+		emit_int8(0xeb)            # jmp rel8
+		emit_int8(rel)
+	else:
+		emit_int8(0xe9)            # jmp rel32
+		emit_int32(rg_resume - (codepos + 4))
+	# the symbol record's O5 fields (compiler/symbol_table.w): the
+	# entry's address and the parameters' registers, 4 bits each
+	save_int(table + rg_symbol + 154, code_offset + entry)
+	save_int(table + rg_symbol + 158, rg_regs_cur)
+	# the stub is not the body's code: the inline table's byte budget
+	# (compiler/inline_table.w) measures the body alone
+	if (inline_capture_active): inline_capture_codepos = inline_capture_codepos + (codepos - entry)
+	regargs_entries = regargs_entries + 1
+
+
+# The number of parameters a direct call to the function symbol t
+# passes in registers: all of them when t has a register entry, else 0.
+int regargs_callee_params(int t):
+	if (rg_enabled() == 0): return 0
+	if (t < 0): return 0
+	if (table[t + 1] != 'D'): return 0
+	if (load_int(table + t + 154) == 0): return 0
+	return load_int(table + t + 22)
+
+
+# The register of parameter index of t (regargs_callee_params(t) > 0).
+int regargs_callee_reg(int t, int index):
+	return (load_int(table + t + 158) >> (index << 2)) & 15
+
+
+int regargs_callee_entry(int t):
+	return load_int(table + t + 154)
+
+
 void regalloc_stats_dump():
 	print_int0(c"regalloc: bodies scanned: ", regalloc_scanned_functions)
 	print_int0(c" locals promoted: ", regalloc_promoted_locals)
@@ -2560,5 +2752,9 @@ void regalloc_stats_dump():
 	print_int0(c"constants: folded: ", k64_folds)
 	print_int0(c" const reads: ", const_global_reads_folded)
 	print_int0(c" dead jumps/returns: ", term_notes_elided)
+	print_error(c"\x0a")
+	# O5 (the register arguments section above)
+	print_int0(c"register arguments: entries: ", regargs_entries)
+	print_int0(c" calls: ", regargs_calls)
 	print_error(c"\x0a")
 	rs_profile_stats_dump()   # P2

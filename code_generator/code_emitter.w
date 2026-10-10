@@ -128,6 +128,10 @@ int loop_rotate_disabled
 # when code_generator/expression_ast.w asks it about a subscript.
 int ivopt_disabled
 int ivopt_live
+# set by a range loop's head around its loop_enter: only a range loop
+# whose increment calls ivopt_range_step may maintain pointers its
+# variable steps (grammar/for_statement.w, code_generator/loop_ast.w)
+int ivopt_range_ok
 # --no-narrow-regs: int32/uint32 locals and arguments stay on the stack
 # (unit A8, docs/projects/codegen_gap_plan.md §2.7); the reference for
 # tests/regalloc_diff_test.w. The two masks name the promoted registers
@@ -184,6 +188,24 @@ int direct_callee_id
 int direct_callee_end
 # --no-direct-calls: every call reloads its callee into the accumulator.
 int direct_calls_disabled
+# --no-reg-args: no register entries and no register-argument calls
+# (unit O5, compiler/regalloc_scan.w's "register arguments" section);
+# every W call passes its arguments on the stack, the reference for
+# tests/regalloc_diff_test.w.
+int reg_args_disabled
+# O5: stack-word reads and writes of the current function's arguments
+# (sym_emit_value, the AST emitter's bindings, the loop and region
+# homes) since its scan. A register entry is published only for a body
+# that never touched one: its register callers push no argument words.
+int rg_touch
+# O5: words below the prologue's register pushes that hold the
+# parameters' homes (compiler/regalloc_scan.w's rg_homes): a register-
+# shaped body whose region spills around a call keeps its parameters'
+# homes in its own frame, where a register caller's frame has them too.
+int rg_homes
+# O5: the register a call argument should be parked in (0: any), read
+# by x86.w's ers_push_eax for the one park it is set around.
+int ers_prefer
 # --no-addr-modes: no [base+index*scale+disp] operands (unit A2,
 # code_generator/x86.w's address note); every load and store goes
 # through the accumulator address as before, the reference for
