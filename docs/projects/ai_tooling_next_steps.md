@@ -15,6 +15,18 @@ same PR. When an item ships, its summary moves to the status section of
 `ai_tooling.md` and the entry is deleted here. Keep entries terse; this
 is a queue, not an archive.
 
+## Native Mac test selection (2026-10-09, #608)
+
+`./wbuild tests` on the M3 stops at `unknown target wprof`: the Darwin
+executor's static manifest cannot resolve all source-generated umbrella
+dependencies. A freshly built native `tools/test_map.w` scans the sources,
+but `changed`/`archs --check` still execute the Linux ELF `bin/wv2`, so
+526 closure roots failed with exit 127 and selection fell back to literal
+matching. Make the diagnostic compiler host-aware and expose an explicit
+native suite with the appropriate generated targets. `tests_darwin`
+works for its registered native targets; #608 adds a static native
+filesystem qualification target using that existing convention.
+
 ## Diagnostics (`w check`)
 
 - **Compiler-directory test roots are silently replaced (2026-10-07).**

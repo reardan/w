@@ -310,6 +310,14 @@
 			]
 		},
 		{
+			"name": "fs_durability_darwin_test",
+			"tags": ["tests_darwin"],
+			"deps": ["build_darwin"],
+			"steps": [
+				{"cmd": ["tools/mac/run_fs_tests.sh"]}
+			]
+		},
+		{
 			"name": "arm64_optimization_darwin_test",
 			"tags": ["tests_darwin"],
 			"deps": ["build_darwin"],

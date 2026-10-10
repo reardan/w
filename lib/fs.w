@@ -8,8 +8,9 @@ its status (open-like calls return the descriptor, or -1 with the
 status in r). The platform errno is kept in r.native_error.
 
 Architecture adapters: Linux x86/x64/ARM64 and ARM64 Darwin. Native
-ARM64 qualification is tracked separately in docs/projects/durability_ports.md;
-implementation and cross-compilation do not establish hardware durability.
+ARM64 qualification is tracked in docs/projects/durability_ports.md;
+Darwin/APFS has native process-crash coverage on Apple Silicon.
+Implementation and cross-compilation do not establish hardware durability.
 Windows and wasm remain explicitly unsupported. Positional I/O is never
 seek + write. Flags below use the portable Linux x86 numbering; Darwin
 translates them in its syscall adapter.
@@ -19,8 +20,8 @@ Offsets are word-sized signed byte offsets: 63 bits on 64-bit targets,
 
 Durability requires a local filesystem and device that honor both file
 and directory barriers and same-directory atomic rename. Darwin requires
-F_FULLFSYNC, including the directory barrier: failure is preserved, never
-silently downgraded to fsync. A filesystem that cannot provide the barrier
+fsync followed by F_FULLFSYNC, including the directory barrier: failure
+is preserved, never silently downgraded to fsync. A filesystem that cannot provide the barrier
 returns IO_UNSUPPORTED or IO_IO_ERROR, with publication stage retained.
 Network filesystems and devices that lie about flush completion are outside
 the guarantee. Process-crash tests are not power-loss qualification.
