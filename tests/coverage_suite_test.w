@@ -22,6 +22,7 @@ char* suite_test_map():
 
 void suite_test_artifacts(char* dir, int dumps):
 	mkdir(dir, 493)
+	mkdir(f"{dir}/.dumps", 493)
 	wcov_suite_save(f"{dir}/preparation.id", c"coverage-suite-test\n")
 	for wcov_suite_build* b in wcov_suite_builds(dir):
 		wcov_suite_save(strjoin(b.binary, c".wprofmap"), suite_test_map())

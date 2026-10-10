@@ -122,22 +122,30 @@ the preceding map. Dumps are streamed, so thousands of them are fine.
 
 ## Compiler coverage
 
-`./wbuild compiler_coverage` measures the compiler itself, the REPL and
+`./wbuild compiler_coverage` measures the compiler itself, the REPL, wsh and
 wdbg under the full `tests` umbrella:
 
 1. `bin/wcoverage suite` builds x86 and x64 `--coverage` copies of `w.w`,
-   `repl.w` and `debugger/debugger.w` into `bin/coverage/`.
+   `repl.w`, `wsh.w` and `debugger/debugger.w` into `bin/coverage/`.
 2. It reruns `tests` (`bin/wexec --no-cache --keep-going`) with
    `$W_COVERAGE_COMPILER`, `$W_COVERAGE_COMPILER_64`, `$W_COVERAGE_REPL[_64]`,
-   `$W_COVERAGE_WDBG[_64]` and `$W_COVERAGE_OUT` set. Every compiler, REPL
-   and debugger build checks its variable first thing in `main`
+   `$W_COVERAGE_WSH[_64]`, `$W_COVERAGE_WDBG[_64]` and `$W_COVERAGE_OUT` set.
+   Every compiler, REPL, shell and debugger build checks its variable
+   first thing in `main`
    (`compiler/coverage_exec.w`) and re-executes as the instrumented copy
    with the same arguments, so manifest steps, `wfixture` and the
    compilers tests spawn themselves are all measured without wrapper
    scripts. Each process appends to
-   `bin/coverage/<tag>_<arch>/<pid>.raw`. A process that already has
+   `bin/coverage/.dumps/<tag>_<arch>/<pid>.raw`. The hidden dump directory
+   keeps counter writes out of wbuildd's source watches, preventing
+   inotify queue overflows from clearing its caches. wsh uses its own
+   instrumented launcher so shell startup and exit status are preserved.
+   A process that already has
    `$W_PROFILE_OUT` set is being profiled by its caller and is not
    redirected.
+   The run defaults `WEXEC_STEP_TIMEOUT_MS` to 3600000 (one hour), allowing
+   large differential tests to finish with instrumentation overhead; an
+   explicit caller value or step timeout still takes precedence.
 3. It merges every map with its dumps and writes `summary.txt`,
    `files.txt`, `functions_uncovered.txt`, `lines_uncovered.txt`,
    `diagnostics.txt`, `lcov.info` and `coverage.json` under
@@ -157,7 +165,7 @@ of the last run, preserving its failure status.
 
 ### Parallel coverage jobs
 
-CI prepares the compiler, REPL, debugger and compiler API harness builds once,
+CI prepares the compiler, REPL, shell, debugger and compiler API harness builds once,
 executes four target shards, and merges the counters before applying either
 coverage gate. Each shard also runs the API harnesses, stores their counters
 beside the matching maps, and includes harness failures in its completion receipt:
@@ -174,7 +182,7 @@ bin/coverage/wcoverage suite --out bin/coverage --merge-shards 4 \
 
 Preparation artifacts must preserve executable modes. Each shard publishes
 `bin/coverage/shards/I-of-4/`, including its exact map snapshots,
-`preparation.id`, PID-named raw directories, `run.status`, and timing reports.
+`preparation.id`, PID-named raw files under `.dumps/`, `run.status`, and timing reports.
 Keep these directories separate when downloading artifacts: different runners
 can reuse the same PID. The merge validates all four completion receipts,
 target selections, preparation identities, and maps against preparation.

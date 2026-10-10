@@ -8,16 +8,17 @@ Usage: wcoverage suite [--out <dir>] [--baseline <file>] [--prefix <p>]...
                        [--merge-shards N] [<target>...]
 
 1. Builds --coverage x86 and x64 copies of the compiler (w.w), the REPL
-   (repl.w), wdbg (debugger/debugger.w), and compiler API test harnesses
-   into <dir> (default bin/coverage) with bin/wv2. The harnesses exercise
-   owned-tree APIs that ordinary compiler subprocesses never call.
+   (repl.w), shell (wsh.w), wdbg (debugger/debugger.w), and compiler API
+   test harnesses into <dir> (default bin/coverage) with bin/wv2. The
+   harnesses exercise owned-tree APIs ordinary subprocesses never call.
 2. Runs 'bin/wexec --no-cache --keep-going <target>...' (default: tests)
    with $W_COVERAGE_COMPILER[_64], $W_COVERAGE_REPL[_64],
-   $W_COVERAGE_WDBG[_64] and $W_COVERAGE_OUT set, so every compiler,
-   REPL and debugger process the run starts -- manifest steps, wfixture,
+   $W_COVERAGE_WSH[_64], $W_COVERAGE_WDBG[_64] and $W_COVERAGE_OUT set, so
+   every compiler, REPL, shell and debugger process the run starts --
+   manifest steps, wfixture,
    and the compilers tests spawn themselves -- re-executes as the
    instrumented build (compiler/coverage_exec.w) and appends its counters
-   to <dir>/<tag>_<arch>/<pid>.raw. --no-run reuses the dumps of an
+   to <dir>/.dumps/<tag>_<arch>/<pid>.raw. --no-run reuses the dumps of an
    earlier run (to re-render reports or retry a baseline).
    Then runs each API harness directly with its own W_PROFILE_OUT dump;
    harness failures fail the suite after the reports have been written.
@@ -55,7 +56,7 @@ struct wcov_suite_build:
 	char* tag        # dump subdirectory stem, as coverage_exec_redirect names it
 	char* variable   # the environment variable its uninstrumented builds read
 	char* binary     # <dir>/<tag>_<arch>_cov
-	char* dumps      # <dir>/<tag>_<arch>
+	char* dumps      # <dir>/.dumps/<tag>_<arch>
 	int x64
 	int harness      # direct test run, with no compiler redirect variable
 
@@ -85,6 +86,7 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	list[char*] sources = new list[char*]
 	sources.push(c"w.w")
 	sources.push(c"repl.w")
+	sources.push(c"wsh.w")
 	sources.push(c"debugger/debugger.w")
 	sources.push(c"tests/tile_analysis_unit_test.w")
 	sources.push(c"tests/tile_ast_test.w")
@@ -92,6 +94,7 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	list[char*] tags = new list[char*]
 	tags.push(c"compiler")
 	tags.push(c"repl")
+	tags.push(c"wsh")
 	tags.push(c"wdbg")
 	tags.push(c"tile_analysis_test")
 	tags.push(c"tile_ast_test")
@@ -99,6 +102,7 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	list[char*] variables = new list[char*]
 	variables.push(c"W_COVERAGE_COMPILER")
 	variables.push(c"W_COVERAGE_REPL")
+	variables.push(c"W_COVERAGE_WSH")
 	variables.push(c"W_COVERAGE_WDBG")
 	variables.push(0)
 	variables.push(0)
@@ -115,7 +119,9 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 			if (x64):
 				arch = c"x64"
 				if (b.variable != 0): b.variable = strjoin(b.variable, c"_64")
-			b.dumps = f"{out}/{tags[i]}_{arch}"
+			# Daemons ignore dot directories: per-counter dump writes must
+			# not overflow their source-change inotify queues.
+			b.dumps = f"{out}/.dumps/{tags[i]}_{arch}"
 			b.binary = f"{out}/{tags[i]}_{arch}_cov"
 			builds.push(b)
 	return builds
@@ -134,6 +140,22 @@ void wcov_suite_build_all(list[wcov_suite_build*] builds):
 		for i in range(argv.length): strv_set(v, i, argv[i])
 		println2(f"wcoverage suite: building {b.binary}")
 		if (wcov_suite_spawn(v, 0) != 0): wcov_suite_fail(f"could not build {b.binary}")
+
+
+char** wcov_suite_env(char** base, char* dumps, list[wcov_suite_build*] builds):
+	char** env = env_copy_with(base, c"W_COVERAGE_OUT", dumps)
+	for wcov_suite_build* b in builds:
+		if (b.variable != 0): env = env_copy_with(env, b.variable, b.binary)
+	# Large differential tests spawn thousands of instrumented compilers.
+	# Allow an hour per step for counter overhead, preserving caller overrides.
+	char* timeout = 0
+	for i in range(env_vector_count(base)):
+		char* entry = env_entry_at(base, i)
+		int offset = env_match_name(entry, c"WEXEC_STEP_TIMEOUT_MS")
+		if (offset >= 0): timeout = entry + offset
+	if ((timeout == 0) || (timeout[0] == 0)):
+		env = env_copy_with(env, c"WEXEC_STEP_TIMEOUT_MS", c"3600000")
+	return env
 
 
 # Run report() with stdout sent to <out>/<name>.
@@ -199,7 +221,7 @@ void wcov_suite_validate(char* dir, list[wcov_suite_build*] prepared):
 
 
 # One map per prepared binary, with all shards' counters accumulated into
-# that map. Re-reading all large maps per shard wastes memory and time.
+# that map. Re-reading the large maps per shard wastes memory and time.
 int wcov_suite_load(wcov_state* st, list[char*] dirs, list[wcov_suite_build*] builds):
 	int loaded = 0
 	for wcov_suite_build* b in builds:
@@ -207,7 +229,7 @@ int wcov_suite_load(wcov_state* st, list[char*] dirs, list[wcov_suite_build*] bu
 		char* arch = c"x86"
 		if (b.x64): arch = c"x64"
 		for char* dir in dirs:
-			char* dumps = f"{dir}/{b.tag}_{arch}"
+			char* dumps = f"{dir}/.dumps/{b.tag}_{arch}"
 			list[char*] names = dir_names(dumps)
 			if (names == 0): wcov_suite_fail(f"missing dump directory: {dumps}")
 			wcov_dump_arg(st, dumps)
@@ -271,6 +293,7 @@ int wcov_suite_main():
 		prefixes.push(c"code_generator/")
 		prefixes.push(c"repl/")
 		prefixes.push(c"repl.w")
+		prefixes.push(c"wsh.w")
 		prefixes.push(c"debugger/")
 		prefixes.push(c"w.w")
 		prefixes.push(c"grammar.w")
@@ -314,6 +337,8 @@ int wcov_suite_main():
 		if (preparation_id == 0): wcov_suite_fail(c"missing preparation identity")
 		if (shard != 0): wcov_suite_save(f"{run_out}/preparation.id", preparation_id)
 		free(preparation_id)
+		char* dumps = f"{run_out}/.dumps"
+		mkdir(dumps, 493)
 		list[wcov_suite_build*] run_builds = wcov_suite_builds(run_out)
 		for k in range(builds.length):
 			wcov_suite_build* b = run_builds[k]
@@ -324,9 +349,7 @@ int wcov_suite_main():
 				if (map_text == 0): wcov_suite_fail(c"cannot read prepared map")
 				wcov_suite_save(strjoin(b.binary, c".wprofmap"), map_text)
 				free(map_text)
-		char** env = env_copy_with(env_current(), c"W_COVERAGE_OUT", run_out)
-		for wcov_suite_build* b in builds:
-			if (b.variable != 0): env = env_copy_with(env, b.variable, b.binary)
+		char** env = wcov_suite_env(env_current(), dumps, builds)
 		# The no-cache run rebuilds wexec; execute an isolated copy.
 		char* wexec = f"{run_out}/wexec"
 		char** cp = strv_new(3)
