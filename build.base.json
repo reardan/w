@@ -326,6 +326,14 @@
 			]
 		},
 		{
+			"name": "atomic_native_darwin_test",
+			"tags": ["tests_darwin"],
+			"deps": ["build_darwin"],
+			"steps": [
+				{"cmd": ["python3", "tools/qualify_native.py", "--suite", "atomic", "--rounds", "20"]}
+			]
+		},
+		{
 			"name": "update_darwin",
 			"deps": ["verify_darwin"],
 			"steps": [
