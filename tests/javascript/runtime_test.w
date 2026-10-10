@@ -23,6 +23,7 @@ js_value* js_test_host(void* context, list[js_value*] arguments):
 	js_runtime* rt = cast(js_runtime*, context)
 	assert_equal(-1, js_runtime_collect(rt))
 	assert1(js_runtime_eval(rt, c"1;", 2, 10) == 0)
+	assert1(js_runtime_invoke(rt, rt.undefined_value, arguments, 10) == 0)
 	if (arguments.length != 1):
 		js_runtime_throw(rt, rt.undefined_value)
 		return rt.undefined_value
@@ -37,6 +38,7 @@ void js_test_semantics():
 	js_test_number(rt, c"const factorial = function fact(n) { if (n < 2) return 1; return n * fact(n - 1); }; factorial(5);", 120.0)
 	js_test_number(rt, c"let sum = 0; for (let i = 0; i < 5; i++) { if (i === 2) continue; sum += i; } do { sum++; } while (sum < 10); while (true) { sum++; break; } sum;", 11.0)
 	js_test_number(rt, c"const fns = []; for (let i = 0; i < 3; i++) { fns[i] = function() { return i; }; } fns[0]() * 100 + fns[1]() * 10 + fns[2]();", 12.0)
+	js_test_number(rt, c"let initial; for (let i = 0, capture = (initial = function() { return i; }); i < 1; i++) { i = 7; } initial();", 0.0)
 	js_test_number(rt, c"const a = [2, 4]; const o = {a, value: 1}; o.a[1] += 3; o.value++; a[1] + o.value + a.length;", 11.0)
 	js_test_number(rt, c"let counter = 0; function receiver() { counter++; return o; } receiver().value += 2; counter * 10 + o.value;", 14.0)
 	js_test_number(rt, c"false && missing(); true || missing(); null ?? 42;", 42.0)
@@ -67,6 +69,11 @@ void js_test_errors_and_limits():
 	assert_equal(2, js_test_eval(rt, c"const fixed = 1; fixed = 2;").status)
 	assert_equal(2, js_test_eval(rt, c"{ x; let x = 2; }").status)
 	assert_equal(2, js_test_eval(rt, c"absent;").status)
+	# Declaration conflicts are checked before any new bindings are installed.
+	assert_equal(2, js_test_eval(rt, c"let fresh = 1; const fixed = 2;").status)
+	js_test_number(rt, c"let fresh = 42; fresh;", 42.0)
+	assert_equal(2, js_test_eval(rt, c"function unused() {} function fixed() {}").status)
+	js_test_number(rt, c"let unused = 42; unused;", 42.0)
 	assert_equal(6, js_test_eval(rt, c"var old = 1;").status)
 	assert_equal(6, js_test_eval(rt, c"1 == 1;").status)
 	assert_equal(6, js_test_eval(rt, c"1 + '1';").status)
