@@ -98,7 +98,11 @@ zlib_result* zlib_compress(char* data, int length, int level):
 # only appropriate for trusted input whose length is already bounded some
 # other way; untrusted input (e.g. an HTTP response body) should always
 # pass a real cap.
-wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
+# consumed reports the entire zlib stream, including header and checksum,
+# on success; it is zero on failure. Trailing bytes remain caller-owned
+# and unconsumed so framing protocols can reject them or parse a next item.
+wresult[zlib_result*]* zlib_decompress_ex(char* data, int length, int max_output, int* stream_consumed):
+	if (stream_consumed != 0): stream_consumed[0] = 0
 	if (length < 6): return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
 	int cmf = data[0] & 255
 	int flg = data[1] & 255
@@ -127,6 +131,12 @@ wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
 		inflate_result_free(body)
 		return result_new_error[zlib_result*](ZLIB_ERR_BAD_CHECKSUM)
 
+	if (stream_consumed != 0): stream_consumed[0] = trailer_start + 4
 	zlib_result* r = new zlib_result(body.data, body.length)
 	free(body)
 	return result_new_ok[zlib_result*](r)
+
+
+# Backward-compatible convenience wrapper: accepts trailing bytes.
+wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
+	return zlib_decompress_ex(data, length, max_output, 0)
