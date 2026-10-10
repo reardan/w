@@ -22,8 +22,8 @@ the native tool of the same name (repl.w's repl_dispatch_shell_line),
 which the prefix is also what makes possible. The prefix also retires
 the old collision workarounds with the raw syscall wrappers lib.lib
 declares: the tool for "mkdir" is simply shell_commands_mkdir. The
-"_octal" and "_s" suffixes on chmod/ln stay, because they state the
-tools' restricted scope (octal modes, symbolic links).
+"_octal" and "_s" suffixes distinguish octal chmod and symbolic ln;
+hard links use shell_commands_ln.
 
 Return convention (the design doc's Sec 6.1, revised by issue #335's
 Sec 12 answers): every tool returns an int exit status, the way the
@@ -50,7 +50,7 @@ entirely) needs an explicit path argument.
 
 Stage 1 scope (design doc Sec 11): pwd (zero-arg), ls (bare and -a;
 -l arrived in stage 3 below once lib/stat.w existed), cat (one or more
-paths, no flags). ls lists directories with lib/dir.w's dir_names.
+paths or stdin, no flags). ls lists directories with lib/dir.w's dir_names.
 
 Stage 2 (this file's remaining functions; design doc Sec 11's "rest of
 the v1 subset"): echo, head, tail, wc, mkdir, rm, cp, mv. rm/cp's
@@ -95,10 +95,8 @@ Stage 4 (design doc Sec 11's "stage 4+" items): ln -s, df, ps, and --
 now that lib/regex.w exists as the reusable pattern core Sec 6.3
 waited for -- grep. Notes:
 
-  - ln creates symbolic links only (shell_commands_ln_s): a bare "ln"
-    (a hard link) has no link(2) wrapper in lib/ and stays with the
-    real tool via the translator's fail-closed rule, and the name says
-    so, like chmod_octal's.
+  - ln -s creates symbolic links; bare ln creates hard links through
+    the per-architecture hardlink wrapper (Linux x86/x64/arm64).
   - df reads f_bsize-block counts through lib/stat.w's file_statfs
     (statfs(2), added for this) and prints 1024-byte units:
     "Filesystem 1K-blocks Used Available Mounted on", single-space
@@ -136,6 +134,20 @@ import lib.time
 import lib.passwd
 import lib.regex
 import lib.dir
+import lib.shell_patterns
+import lib.__arch__.hardlink
+
+
+# Each call owns fresh buffering: never reuse the REPL stdin singleton.
+# '-' and an empty default path mean fd0, which must never be closed.
+wstream* shell_commands_input(char* path):
+	if ((path[0] == 0) || (strcmp(path, c"-") == 0)): return stream_reader(0)
+	return stream_open_read(path)
+
+
+void shell_commands_input_close(wstream* in):
+	if (in.fd == 0): stream_free(in)
+	else: stream_close(in)
 
 
 # Print the process's current working directory, like the real pwd.
@@ -272,13 +284,13 @@ int shell_commands_ls(char* path, bool all, bool long_format):
 # the same per-argument recovery a multi-path real cat invocation gives.
 # Returns 1 for a missing path, else 0.
 int shell_commands_cat_one(char* path):
-	wstream* in = stream_open_read(path)
+	wstream* in = shell_commands_input(path)
 	if (in == 0):
 		print_error(c"cat: ")
 		print_error(path)
 		println2(c": No such file or directory")
 		return 1
-	wstream* out = stdout_writer()
+	wstream* out = stream_writer(1)
 	int buffer_size = 65536
 	char* buffer = cast(char*, malloc(buffer_size))
 	int n = stream_read(in, buffer, buffer_size)
@@ -286,13 +298,17 @@ int shell_commands_cat_one(char* path):
 		stream_write(out, buffer, n)
 		n = stream_read(in, buffer, buffer_size)
 	free(buffer)
-	stream_close(in)
+	int failed = stream_error(in) != IO_OK
+	shell_commands_input_close(in)
 	stream_flush(out)
-	return 0
+	if (stream_error(out) != IO_OK): failed = 1
+	stream_free(out)
+	return failed
 
 
 # Concatenate one or more paths to stdout.
 int shell_commands_cat(char*... paths):
+	if (paths.length == 0): return shell_commands_cat_one(c"-")
 	int status = 0
 	int i = 0
 	while (i < paths.length):
@@ -314,74 +330,85 @@ int shell_commands_echo(bool no_newline, char*... words):
 	return 0
 
 
-# First n lines of path (real head's default n is 10). Loads the whole
-# file first (design doc Sec 6.2: "a streaming version is a later
-# optimization").
+# Read at most n newline-terminated records; do not wait for EOF after
+# the nth newline. Both buffers are fixed-size, even for huge lines.
 int shell_commands_head(char* path, int n):
-	list[char*] lines = file_read_lines(path)
-	if (lines == 0):
+	wstream* in = shell_commands_input(path)
+	if (in == 0):
 		print_error(c"head: cannot open '")
 		print_error(path)
 		println2(c"' for reading: No such file or directory")
 		return 1
-	int count = lines.length
-	if (n < count): count = n
-	if (count < 0): count = 0
-	int i = 0
-	while (i < count):
-		println(lines[i])
-		i = i + 1
-	i = 0
-	while (i < lines.length):
-		free(lines[i])
-		i = i + 1
-	return 0
+	wstream* out = stream_writer(1)
+	int lines = 0
+	while (lines < n):
+		int ch = stream_read_byte(in)
+		if (ch < 0): break
+		stream_write_byte(out, ch)
+		if (stream_error(out) != IO_OK): break
+		if (ch == 10): lines++
+	int failed = stream_error(in) != IO_OK
+	shell_commands_input_close(in)
+	stream_flush(out)
+	if (stream_error(out) != IO_OK): failed = 1
+	stream_free(out)
+	return failed
 
 
-# Last n lines of path (real tail's default n is 10).
+# Last n lines, retained in a circular buffer. Memory is proportional
+# to those lines plus the current line, never the complete input.
 int shell_commands_tail(char* path, int n):
-	list[char*] lines = file_read_lines(path)
-	if (lines == 0):
+	wstream* in = shell_commands_input(path)
+	if (in == 0):
 		print_error(c"tail: cannot open '")
 		print_error(path)
 		println2(c"' for reading: No such file or directory")
 		return 1
-	int start = lines.length - n
-	if (start < 0): start = 0
-	int i = start
-	while (i < lines.length):
-		println(lines[i])
-		i = i + 1
-	i = 0
-	while (i < lines.length):
-		free(lines[i])
-		i = i + 1
-	return 0
+	list[string_builder*] lines = new list[string_builder*]
+	int next = 0
+	while (n > 0):
+		int ch = stream_read_byte(in)
+		if (ch < 0): break
+		string_builder* line = string_new()
+		while (ch >= 0):
+			string_append_char(line, ch)
+			if (ch == 10): break
+			ch = stream_read_byte(in)
+		if (lines.length < n): lines.push(line)
+		else:
+			string_free(lines[next])
+			lines[next] = line
+			next = (next + 1) % n
+	int failed = stream_error(in) != IO_OK
+	shell_commands_input_close(in)
+	wstream* out = stream_writer(1)
+	for i in range(lines.length):
+		string_builder* line = lines[(next + i) % lines.length]
+		stream_write(out, line.data, line.length)
+		string_free(line)
+	__w_list_free(cast(__w_list*, lines))
+	stream_flush(out)
+	if (stream_error(out) != IO_OK): failed = 1
+	stream_free(out)
+	return failed
 
 
 # Line/word/byte counts for path, like the real wc; when none of the
 # three are requested (a bare "wc"), all three print, matching real wc's
 # default. Lines are counted as '\x0a' bytes (real wc's definition, not
-# file_read_lines's line count, which can differ for a file with no
+# logical line count, which can differ for a file with no
 # trailing newline); words are maximal runs of non-space/tab/newline
-# bytes. Reads through a stream directly (not file_read_text) so the
+# bytes (including all ASCII whitespace). Reads fixed-size blocks so the
 # true byte count is known: deriving it with strlen would stop at the
 # first NUL byte and truncate every figure for a binary file.
+# Empty path is implicit stdin (no filename label); explicit - keeps its label.
 int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count_bytes):
-	wstream* in = stream_open_read(path)
+	wstream* in = shell_commands_input(path)
 	if (in == 0):
 		print_error(c"wc: ")
 		print_error(path)
 		println2(c": No such file or directory")
 		return 1
-	string_builder* contents = string_new()
-	stream_read_all(in, contents)
-	stream_close(in)
-	# Ownership transfer: take .data and .length, free only the wrapper
-	# (the string_builder_to_string idiom).
-	int length = contents.length
-	char* text = contents.data
-	free(contents)
 	int show_lines = count_lines
 	int show_words = count_words
 	int show_bytes = count_bytes
@@ -392,30 +419,44 @@ int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count
 	int lines = 0
 	int words = 0
 	int in_word = 0
-	for i in range(length):
-		char ch = text[i]
-		if (ch == 10): lines = lines + 1
-		if ((ch == ' ') || (ch == 9) || (ch == 10)): in_word = 0
-		else:
-			if (in_word == 0): words = words + 1
-			in_word = 1
+	int length = 0
+	char* buffer = cast(char*, malloc(65536))
+	int count = stream_read(in, buffer, 65536)
+	while (count > 0):
+		length = length + count
+		for i in range(count):
+			char ch = buffer[i]
+			if (ch == 10): lines++
+			if ((ch == ' ') || ((ch >= 9) && (ch <= 13))): in_word = 0
+			else:
+				if (in_word == 0): words++
+				in_word = 1
+		count = stream_read(in, buffer, 65536)
+	free(buffer)
+	int failed = stream_error(in) != IO_OK
+	shell_commands_input_close(in)
+	if (failed): return 1
+	int printed = 0
 	if (show_lines):
 		char* s = itoa(lines)
 		print(s)
-		print(c" ")
 		free(s)
+		printed = 1
 	if (show_words):
+		if (printed): print(c" ")
 		char* s = itoa(words)
 		print(s)
-		print(c" ")
 		free(s)
+		printed = 1
 	if (show_bytes):
+		if (printed): print(c" ")
 		char* s = itoa(length)
 		print(s)
-		print(c" ")
 		free(s)
-	println(path)
-	free(text)
+	if (path[0] != 0):
+		print(c" ")
+		print(path)
+	println(c"")
 	return 0
 
 
@@ -711,8 +752,7 @@ int shell_commands_du(bool summarize, char* path):
 
 
 # Create a symbolic link at linkpath pointing to target (real
-# "ln -s TARGET LINK_NAME"). Symlinks only -- see the module header
-# for the name and for why hard links stay native.
+# "ln -s TARGET LINK_NAME"). The hard-link counterpart is below.
 int shell_commands_ln_s(char* target, char* linkpath):
 	int err = file_symlink(target, linkpath)
 	if (err == 0): return 0
@@ -966,28 +1006,32 @@ int shell_commands_ps():
 # moves on, cat's per-argument recovery. Returns the number of matching
 # lines, or -1 when path could not be read.
 int shell_commands_grep_one(char* pattern, char* path, int with_name, int line_numbers):
-	list[char*] lines = file_read_lines(path)
-	if (lines == 0):
+	wstream* in = shell_commands_input(path)
+	if (in == 0):
 		print_error(c"grep: ")
 		print_error(path)
 		println2(c": No such file or directory")
 		return -1
 	int matches = 0
 	int i = 0
-	while (i < lines.length):
-		if (regex_search(pattern, lines[i]) >= 0):
-			matches = matches + 1
+	string_builder* line = string_new()
+	while (stream_read_line(in, line)):
+		i++
+		if (regex_search(pattern, line.data) >= 0):
+			matches++
 			if (with_name):
 				print(path)
 				print(c":")
 			if (line_numbers):
-				char* number = itoa(i + 1)
+				char* number = itoa(i)
 				print(number)
 				free(number)
 				print(c":")
-			println(lines[i])
-		free(lines[i])
-		i = i + 1
+			println(line.data)
+	string_free(line)
+	int failed = stream_error(in) != IO_OK
+	shell_commands_input_close(in)
+	if (failed): return -1
 	return matches
 
 
@@ -1006,6 +1050,11 @@ int shell_commands_grep(bool line_numbers, char* pattern, char*... paths):
 		print_error(pattern)
 		println2(c"'")
 		return 2
+	if (paths.length == 0):
+		int n = shell_commands_grep_one(pattern, c"-", 0, line_numbers)
+		if (n < 0): return 2
+		if (n > 0): return 0
+		return 1
 	int with_name = 0
 	if (paths.length > 1): with_name = 1
 	int matched = 0
@@ -1019,3 +1068,155 @@ int shell_commands_grep(bool line_numbers, char* pattern, char*... paths):
 	if (failed): return 2
 	if (matched): return 0
 	return 1
+
+
+# Hard links: exactly source and destination, no overwrite. An existing
+# destination directory receives source's basename.
+int shell_commands_ln(char* source, char* dest):
+	file_stat st
+	char* actual = strclone(dest)
+	if ((file_stat_path(dest, &st) == 0) && file_is_dir(&st)):
+		char* name = path_basename(source)
+		free(actual)
+		actual = path_join(dest, name)
+		free(name)
+	int err = shell_hardlink(source, actual)
+	if (err != 0):
+		print_error(c"ln: cannot create hard link '")
+		print_error(actual)
+		println2(c"'")
+	free(actual)
+	return err != 0
+
+
+# find subset: one root (default '.'), -name literals/*/?, -type f/d/l,
+# -mindepth/-maxdepth nonnegative integers, optional final -print.
+# Filters are ANDed, printing is pre-order and siblings are sorted.
+# lstat each entry; never recurse into a symlink (even a root link).
+# Like the existing rm walker this is a path-based traversal, not a
+# descriptor-relative snapshot of a concurrently modified directory.
+int shell_commands_find_walk(char* path, char* pattern, int kind, int minimum, int maximum, int depth):
+	file_stat st
+	if (file_lstat_path(path, &st) != 0):
+		print_error(c"find: cannot access '")
+		print_error(path)
+		println2(c"'")
+		return 1
+	char* name = path_basename(path)
+	int matches = shell_glob_match(pattern, name)
+	free(name)
+	if ((kind != 0) && ((st.mode & FILE_S_IFMT) != kind)): matches = 0
+	if ((depth >= minimum) && matches): println(path)
+	if ((depth >= maximum) || (file_is_dir(&st) == 0)): return 0
+	list[char*] names = dir_names(path)
+	if (names == 0):
+		print_error(c"find: cannot read directory '")
+		print_error(path)
+		println2(c"'")
+		return 1
+	int status = 0
+	for child_name in names:
+		char* child = path_join(path, child_name)
+		status = status | shell_commands_find_walk(child, pattern, kind, minimum, maximum, depth + 1)
+		free(child)
+		free(child_name)
+	__w_list_free(cast(__w_list*, names))
+	return status
+
+
+int shell_commands_find(char* path, char* pattern, char* type, int minimum, int maximum):
+	int kind = 0
+	if (strcmp(type, c"f") == 0): kind = FILE_S_IFREG
+	elif (strcmp(type, c"d") == 0): kind = FILE_S_IFDIR
+	elif (strcmp(type, c"l") == 0): kind = FILE_S_IFLNK
+	elif (type[0] != 0): return 1
+	if ((minimum < 0) || (maximum < 0) || (shell_glob_valid(pattern) == 0)): return 1
+	# Strip trailing slashes so lstat cannot dereference a root symlink.
+	char* root = strclone(path)
+	int n = strlen(root)
+	while ((n > 1) && (root[n - 1] == '/')):
+		n--
+		root[n] = 0
+	int status = shell_commands_find_walk(root, pattern, kind, minimum, maximum, 0)
+	free(root)
+	return status
+
+
+# Match against the original complete line so '^' never starts matching
+# again in a suffix. Empty global matches advance one byte, and an empty
+# match directly after a nonempty match is skipped (sed's rule).
+char* shell_commands_sed_replace(char* text, char* pattern, char* replacement, int global):
+	string_builder* out = string_new()
+	int n = strlen(text)
+	int cursor = 0
+	int copied = 0
+	int last_end = -1
+	while (cursor <= n):
+		int length = regex_match_length(pattern, text, cursor)
+		if ((length < 0) || ((length == 0) && (cursor == last_end))):
+			cursor++
+			continue
+		stream_append_bytes(out, text + copied, cursor - copied)
+		for i in range(strlen(replacement)):
+			if (replacement[i] == '&'): stream_append_bytes(out, text + cursor, length)
+			else: string_append_char(out, replacement[i])
+		copied = cursor + length
+		last_end = copied
+		cursor = copied
+		if (length == 0): cursor++
+		if (global == 0): break
+	stream_append_bytes(out, text + copied, n - copied)
+	char* result = out.data
+	free(out)
+	return result
+
+
+# Stream one text file; preserve its final newline, including when absent.
+# Regex matching is byte-oriented C-string matching (same as grep).
+int shell_commands_sed_one(bool quiet, list[char*] parts, char* path):
+	wstream* in = shell_commands_input(path)
+	if (in == 0):
+		print_error(c"sed: cannot read '")
+		print_error(path)
+		println2(c"'")
+		return 1
+	wstream* out = stream_writer(1)
+	string_builder* line = string_new()
+	int ch = stream_read_byte(in)
+	while (ch >= 0):
+		string_clear(line)
+		while ((ch >= 0) && (ch != 10)):
+			string_append_char(line, ch)
+			ch = stream_read_byte(in)
+		int newline = ch == 10
+		int copies = quiet == 0
+		char* text = 0
+		if (parts.length == 1):
+			if (strcmp(parts[0], c"d") == 0): copies = 0
+			else: copies++
+			text = strclone(line.data)
+		else: text = shell_commands_sed_replace(line.data, parts[0], parts[1], parts[2][0] == 'g')
+		for i in range(copies):
+			stream_write_cstr(out, text)
+			if (newline): stream_write_byte(out, 10)
+		free(text)
+		if (ch >= 0): ch = stream_read_byte(in)
+	int failed = stream_error(in) != IO_OK
+	shell_commands_input_close(in)
+	stream_flush(out)
+	if (stream_error(out) != IO_OK): failed = 1
+	stream_free(out)
+	string_free(line)
+	return failed
+
+
+int shell_commands_sed(bool quiet, char* script, char*... paths):
+	list[char*] parts = shell_sed_parse(script)
+	if (parts == 0):
+		println2(c"sed: unsupported script")
+		return 1
+	int status = 0
+	if (paths.length == 0): status = shell_commands_sed_one(quiet, parts, c"-")
+	for path in paths: status = status | shell_commands_sed_one(quiet, parts, path)
+	shell_sed_parts_free(parts)
+	return status

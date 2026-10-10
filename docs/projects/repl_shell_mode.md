@@ -1,6 +1,6 @@
 # REPL shell mode: design (issue #335)
 
-Status: design, stages 1–5 shipped (July–September 2026). Scopes issue
+Status: stages 1–6 implemented (July–October 2026). Scopes issue
 #335 against the shipped `!` escape and `lib/shell.w` (issue #276
 P0–P3, previous plan's waves 1–5) and against the Q4/Q5 reasoning in
 `docs/projects/repl_improvements.md`, which this doc extends rather
@@ -14,6 +14,16 @@ stage 5 (September 2026) that settled §12's naming and exit-status
 questions: prefixed tool names, session functions overriding the
 built-ins, and an `int` exit status from every tool; §11 records what
 shipped and what stays deferred.
+
+Stage 6 (October 2026) completes the remaining planned categories: native
+`find`, `sed`, hard-link `ln`, streaming OS pipelines and redirection,
+status-based command lists, and the standalone `wsh` frontend. The
+historical stage notes below describe the decisions at each milestone;
+§10 and stage 6 in §11 describe the current execution contract. The
+native tools deliberately cover documented subsets, with unsupported
+forms delegated to external commands, rather than full GNU compatibility.
+The shared frontend now lives in `repl/frontend.w`; `repl.w` and `wsh.w`
+are small entry points. See also [wsh.md](wsh.md).
 
 ## 1. The issue, verbatim
 
@@ -128,7 +138,7 @@ about the `!` escape's behavior in W mode changes.
   quotes, `(`/`)` in a command line) must never reach the W
   bracket/string continuation scanner in `repl/scan.w`. Shell mode,
   like the `!` escape, never spans multiple lines in v1; this is
-  exactly why pipes and redirection are deferred (§10).
+  independent of stage 6's single-line pipelines (§10).
 - **Escaping back, one line at a time**: a shell-mode line beginning
   with `!` is treated as *one W entry* — compiled, run and echoed
   exactly like an ordinary W-mode entry — after which control returns
@@ -409,57 +419,49 @@ lookup and the `sh_interactive` fallback.
   graph (CLAUDE.md's "Seed constraint" list). Current language syntax
   is fine throughout; no `SEEDS` bump is implicated.
 
-## 9. Standalone tool?
+## 9. Standalone tool
 
-**REPL mode first; a thin `wsh` binary later, reusing
-`repl/core.w`.** Directly answering the issue's own question:
+Implemented in stage 6. `wsh.w` and `repl.w` are thin launchers over
+`repl/frontend.w` and the existing `repl/core.w` session engine. The
+launchers choose shell or W syntax at startup; parsing, evaluation,
+checkpoint/rollback, fault recovery, colon commands, editing and history
+are shared. This avoids maintaining two copies of the REPL prompt loop.
 
-- `repl/core.w` + `repl/scan.w` are *already* split out as a reusable
-  session/eval engine specifically so front ends other than
-  `repl.w`'s W-prompt loop can be built on them (`repl_improvements.md`
-  Q1's whole point, shipped). Shell mode's translator, tool table and
-  dispatch are new logic, but the expensive parts underneath — entry
-  staging, compile/run, checkpoint/rollback, fault recovery — are
-  exactly what `repl/core.w` already gives for free.
-- Building shell mode as a *mode* of the existing REPL, rather than a
-  new `wsh` binary from scratch, means it inherits at zero extra
-  cost: the `!` escape in both directions (§4), `:type`/`:time`/
-  `:load`/`:save`/`:symbols`, `--json`/`-e`/`--quiet` scripted mode,
-  and runtime-fault recovery — and it gets to be dogfooded inside a
-  tool that already has `repl_test`/`repl_test_x64` coverage.
-- A standalone `wsh` built first would either reinvent all of that
-  (wasteful — it is the same engine) or ship without it, which is a
-  strictly worse "just a shell": it would lose exactly the
-  composability Q5 already identified as "the better half of the same
-  feature" — dropping into W to inspect a `shell_result`, define a
-  helper, or loop over a listing is the whole reason to put shell
-  mode inside a W REPL instead of shipping a bash clone.
-- Once shell-mode logic has proven itself inside `bin/repl` (stage 2
-  of §11), extracting `wsh` becomes cheap and low-risk: a new thin
-  front-end file, parallel to `repl.w`'s own role per Q1, that boots
-  `repl/core.w`, starts in shell mode by default, and skips the
-  W-prompt-loop scaffolding it doesn't need. Recommend deferring that
-  extraction until two real front ends would actually benefit from
-  it — i.e. until someone wants `wsh` as a login-shell-like
-  standalone binary — rather than splitting preemptively.
+`./wbuild wsh` builds `bin/wsh`; `wsh -c COMMAND` runs a command list and
+returns its status. Interactive and piped sessions retain `:sh` and `!`
+escapes, and return the last shell status at EOF/`:quit`. See
+[wsh.md](wsh.md) for startup files, JSON records and examples.
 
-## 10. Pipes and redirection: deferred
+## 10. Pipes, redirection, and command lists
 
-Out of scope here. §5.2's fail-closed rule already routes any line
-containing `|`/`<`/`>`/`&`/`;` to native `sh_interactive`, so real
-shell pipelines keep working today via the fallback — they simply
-don't get native `shell_commands` semantics. A *native* pipe between
-two `shell_commands` calls (piping `ls`'s listing into a native `wc`,
-say) would want exactly the primitives
-`docs/projects/streams.md` already built (`wstream` readers/writers)
-plus `lib/process.w`'s existing pipe/fd-redirection support (already
-used for farmed-out `sh()`) — wiring one call's output into another's
-input as streams rather than direct prints. That also means
-revisiting the void-return decision in §6.1 (a tool would need to
-expose its output as a `wstream`, not just print it). Real design
-work, deliberately left to a future doc once the native tool set has
-grown enough to make pipelines between native tools worth the
-complexity.
+Implemented in `repl/shell_plan.w` (pure syntax planning) and
+`repl/shell_execute.w` (execution). The entire line is parsed before any
+command runs. Supported operators are `|`, `<`, `>`, `>>`, `2>`, `2>>`,
+`2>&1`, `1>&2`, `&&`, `||`, semicolons and unquoted newlines. Quoted and
+escaped operators remain data. Redirections apply in source order after
+pipeline descriptors are connected. `&&` and `||` have equal precedence,
+associate left to right, and test the last executed pipeline's status.
+The last stage supplies pipeline status (no `pipefail` option).
+
+Single commands execute in the session process, with redirected standard
+streams restored afterwards, so `cd`, `export` and W function side effects
+persist. All stages of a multi-command pipeline fork before waiting, with
+OS pipes connecting fd 1 to fd 0. Built-in tools, user-defined W functions
+and external commands can mix freely. Child session mutations stay in the
+child, as in a conventional shell. Each W pipeline child creates its own
+entry staging directory while inherited declarations still refer to the
+parent's staged source files; stages cannot overwrite each other's entries.
+
+The tools' existing fd-based I/O contract is sufficient: piping does not
+require returning streams or replacing the integer exit-status convention.
+`cat`, `head`, `tail`, `wc`, `grep` and `sed` accept stdin (no path or `-`).
+
+Unsupported shell syntax (background jobs, here-documents, subshells,
+control structures and substitutions requiring shell parsing) delegates
+the entire line to `/bin/sh`, before any W-side execution. Ordinary
+commands needing expansion can use the external fallback within a native
+pipeline. Malformed supported syntax reports status 2 without executing
+an earlier command. This is not a login shell or a job-control shell.
 
 ## 11. Staged plan
 
@@ -639,28 +641,48 @@ command a return value.
   same way (its return value is its exit status, like a shell
   function's); any other return type echoes as it would at the W
   prompt. `&&`/`||` chaining on the status is the natural next step
-  but still falls to the real shell today (rule 1's `&`/`|`).
+  but is implemented by stage 6 (§10).
 
-**Stage 6+** (research-scale, no wave slot): hard-link `ln` if a
-`link(2)` wrapper ever earns its place in `lib/__arch__`;
-`find`/`sed` (the predicate language and the editing engine remain
-unbuilt; `lib/regex.w` now covers sed's pattern half);
-pipes/redirection (§10) once the native tool set has grown enough to
-want them; the `wsh` standalone extraction (§9) once two real front
-ends want `repl/core.w`.
+**Stage 6, implemented (October 2026): remaining planned tools and frontend.**
+
+- `ln SOURCE DEST` creates hard links through architecture-specific
+  wrappers; `ln -s` remains available. Existing-directory destinations
+  append the source basename. Unsupported flags still run external `ln`.
+- `find [ROOT]` supports `-name` (literal, `*`, `?`), `-type f|d|l`,
+  `-mindepth`, `-maxdepth`, and a final `-print`. Predicates are ANDed;
+  traversal is sorted pre-order, does not follow symlinks, and reports
+  inaccessible paths. Other predicates, actions and glob forms fall back.
+- `sed [-n] SCRIPT [FILE...]` supports one `p`, `d`, or
+  `s/pattern/replacement/[g]` command. Substitution uses the regex core's
+  BRE-compatible subset (literals, dot, anchors, classes and `*`), with
+  `&` for the complete match in replacements. Addresses, backreferences,
+  alternate delimiters, script lists and unsupported regex syntax fall
+  back to external sed. It preserves a missing final newline.
+- Native pipelines, redirection and status chaining are implemented as
+  described in §10, including mixed W-function/external pipelines.
+- `./wbuild wsh` builds a standalone shell sharing the REPL frontend.
+  `wsh -c COMMAND` executes a command list and returns its status; piped
+  and interactive sessions return the last shell status at EOF/`:quit`.
+  `:sh` and the `!` W escape remain available in sessions.
+- Shell `--json` produces one record per whole command line, with `entry`,
+  captured `output`, captured `stderr`, numeric `status`, and null
+  `echo`/`error`. Plain W entries retain their existing JSON schema.
+
+Regression coverage lives in `tests/shell_commands_test.w`,
+`tests/shell_plan_test.w`, `tests/shell_execute_test.w`, and
+`tests/wsh_test.w`, plus the existing REPL session fixtures. Both x86 and
+x64 are exercised. Unsupported platform primitives continue to return
+failure explicitly; interactive shell qualification is Linux x86/x64.
 
 ## 12. Open questions for the maintainer
 
 - ~~**Naming collisions.**~~ Settled in stage 5 (§11): prefixed
   tool names, and the user's own session functions override the
   built-ins.
-- **Scripted mode.** Should `:sh` even be reachable under
-  `--json`/`-e`/`--quiet`, or is shell mode explicitly
-  interactive-only for v1? This doc assumes interactive-only;
-  scripting it would want its own NDJSON shape for a translated
-  call's stdout/stderr/status, unspecified here.
+- ~~**Scripted mode.**~~ Settled in stage 6: `wsh -c`, piped sessions,
+  `--quiet`, and whole-command `--json` records are supported. REPL `-e`
+  continues to evaluate W entries.
 - ~~**Exit status.**~~ Settled in stage 5 (§11): every tool returns
   an `int` status; shell mode prints `[exit N]` when it is nonzero.
-- **Prompt string.** Is `sh> ` acceptable, or is a real-shell-like
-  `$ ` preferred despite the (minor) collision risk with a command's
-  own output that happens to start with `$`?
+- **Prompt string.** Both entry points retain the established `sh> `
+  prompt in shell mode and `w> ` in W mode.

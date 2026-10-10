@@ -1106,7 +1106,8 @@ void repl_init():
 	import_module(c"lib.assert")
 
 
-# Every file compiled through repl_load_file, as passed: the user's own
+# Every file compiled through repl_load_file, using the same absolute
+# spelling as compile_input_file records in declaration metadata: the user's own
 # code, which repl_session_function counts as session-defined alongside
 # the staged prompt entries. Never shrinks (":reset" rolls the symbols
 # back, so a stale path simply matches nothing).
@@ -1115,7 +1116,19 @@ list[char*] repl_loaded_files
 
 void repl_note_loaded_file(char* path):
 	if (repl_loaded_files == 0): repl_loaded_files = new list[char*]
-	repl_loaded_files.push(strclone(path))
+	char* absolute = strclone(path)
+	path_normalize_sep(absolute)
+	if (path_is_absolute(absolute) == 0):
+		char* cwd = cast(char*, malloc(4096))
+		getcwd(cwd, 4096)
+		path_normalize_sep(cwd)
+		char* prefix = strjoin(cwd, c"/")
+		char* joined = strjoin(prefix, absolute)
+		free(prefix)
+		free(cwd)
+		free(absolute)
+		absolute = joined
+	repl_loaded_files.push(absolute)
 
 
 # Table offset of name's newest symbol when it is a function the user
