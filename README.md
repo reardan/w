@@ -357,13 +357,16 @@ Implemented and covered by tests:
   that stays zero- or sign-extended so wrap-around matches the stack
   word and the code needs no `& mask` (§2.7, unit A8;
   `--no-narrow-regs` keeps them on the stack).
-  `--inline` emits a small leaf callee's body in place of its
-  calls (§2.4, unit A5; also on for profile-hot sites under
-  `--profile-use`, off otherwise because the re-parse costs compile
-  time; `--no-inline` forces it off): bodies with loops, calls that
-  return, `defer`, `goto`, `raw_asm`, f-strings or `yield` stay calls,
-  and a breakpoint on an inlined callee is reached only through its
-  out-of-line body.
+  A tiny leaf callee's body (about as long as the call sequence it
+  replaces) is emitted in place of its calls inside loops by default, with a plain
+  `int` parameter the body never writes bound to a literal argument
+  so the body folds it; `--inline` raises the size budget (§2.4, unit
+  A5; also raised for profile-hot sites under `--profile-use`; the
+  larger budgets stay opt-in because the re-parse costs compile
+  time), and `--no-inline` forces it off: bodies with loops, calls
+  that return, `defer`, `goto`, `raw_asm`, f-strings or `yield` stay
+  calls, and a breakpoint on an inlined callee is reached only through
+  its out-of-line body.
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).
