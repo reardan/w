@@ -645,7 +645,7 @@ int wtest_target_mentions(char* name, char* path, int path_has_slash):
 # Rule (a) for declared run-time data: the target-level "data" array
 # ('# wbuild: deps=' directives, tools/wbuildgen.w). An entry ending
 # in '/' is a directory prefix, anything else an exact path.
-int wtest_target_data_mentions(char* name, char* path):
+int wtest_target_own_data_mentions(char* name, char* path):
 	json_value* target = wtest_target_defs.get(name, 0)
 	if (target == 0): return 0
 	json_value* data = jfield_array(target, c"data")
@@ -659,6 +659,28 @@ int wtest_target_data_mentions(char* name, char* path):
 			int n = strlen(text)
 			if ((n > 0) && (text[n - 1] == '/') && starts_with(path, text)): return 1
 		i = i + 1
+	return 0
+
+
+# Shared build prerequisites can own the runtime fixtures for several test
+# shards. Selecting only that prerequisite would rebuild without running tests.
+# Follow dependencies just as wtest_collect_target_roots does for imports.
+int wtest_target_data_mentions(char* name, char* path):
+	map[char*, int] visited = new map[char*, int]
+	list[char*] stack = new list[char*]
+	stack.push(name)
+	while (stack.length > 0):
+		char* current = stack.pop()
+		if (visited.get(current, 0)): continue
+		visited[current] = 1
+		if (wtest_target_own_data_mentions(current, path)): return 1
+		json_value* target = wtest_target_defs.get(current, 0)
+		if (target == 0): continue
+		json_value* deps = jfield_array(target, c"deps")
+		if (deps == 0): continue
+		for i in range(json_array_length(deps)):
+			json_value* dep = json_array_get(deps, i)
+			if (dep.type == json_type_string()): stack.push(dep.string_value)
 	return 0
 
 

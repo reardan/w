@@ -150,8 +150,52 @@ The report covers `compiler/`, `grammar/`, `code_generator/`, `repl/`,
 imports, so they say nothing about the library's own tests; plain
 `wcoverage` and per-test `--coverage` cover those. A test that fails
 under the instrumented builds still contributes what it flushed; the run
-reports failures but they do not fail the target. `--no-run` re-renders
-the reports from the dumps of the last run.
+writes reports even when tests fail, and returns a nonzero status.
+`completeness.txt` distinguishes successful execution from failed or missing
+runs. `--no-run` re-renders the reports from the dumps and completion receipt
+of the last run, preserving its failure status.
+
+### Parallel coverage jobs
+
+CI prepares the six instrumented builds once, executes four target shards,
+and merges the counters before applying either coverage gate:
+
+```sh
+bin/wcoverage suite --out bin/coverage --prepare-only
+cp bin/wcoverage bin/coverage/wcoverage
+# Run each I=0,1,2,3 in an isolated checkout restored from preparation:
+bin/coverage/wcoverage suite --out bin/coverage --skip-build --shard 0/4
+# Collect all four shard directories alongside the prepared builds:
+bin/coverage/wcoverage suite --out bin/coverage --merge-shards 4 \
+  --baseline tools/coverage_baseline.txt
+```
+
+Preparation artifacts must preserve executable modes. Each shard publishes
+`bin/coverage/shards/I-of-4/`, including its exact map snapshots,
+`preparation.id`, PID-named raw directories, `run.status`, and timing reports.
+Keep these directories separate when downloading artifacts: different runners
+can reuse the same PID. The merge validates all four completion receipts,
+target selections, preparation identities, and maps against preparation.
+Missing receipts or mismatched artifacts fail the command. A receipt records
+executor failures too: their counters still generate reports, but cannot pass
+the completeness check. Individual shards do not apply coverage floors.
+
+`--shard I/N` uses the same zero-based manifest target partition as `wexec`.
+Dependencies are retained in each shard, so overlapping setup can execute on
+multiple runners. The AST expression test has independently scheduled test
+function shards, allowing its expensive cases to run on multiple workers.
+`phases.tsv` records preparation, tests, merge and report durations in
+milliseconds; `targets.jsonl` records executor target durations and outcomes.
+These measurements can guide later shard balancing without relying on log
+arrival timestamps.
+
+The counter runtime batches complete rows into appends of at most 4096 bytes,
+reducing write syscalls while preserving the text format and concurrent append
+behavior. Its uint64 decimal formatter uses a stack scratch buffer instead of
+allocating one per counter. `profile_buffer_test` checks several buffer
+boundaries and concurrent appenders on x86 and x64; `coverage_suite_test`
+checks merged branches and diagnostics, colliding PIDs, missing receipts,
+failed runs, and mismatched maps or preparation identities.
 
 Running the instrumented copies does not change any output: they are the
 same source, and the self-host fixpoint steps inside `tests` still
@@ -163,8 +207,8 @@ die by signal (no flush), and the seed-built `bin/wv2` stage.
 
 `tools/coverage_baseline.txt` holds a floor per directory and for
 diagnostic sites, set just under the measured values. The CI
-`coverage` job runs `compiler_coverage` and fails (without blocking
-merges yet) when a directory drops below its floor. Raise a floor in
+`coverage` merge job applies those floors after collecting all test shards
+and fails (without blocking merges yet) when a directory drops below its floor. Raise a floor in
 the same PR that adds the tests; lower one only with a reason in the
 commit message.
 

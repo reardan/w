@@ -71,7 +71,7 @@ always runs them. A step's captured stdout/stderr is re-emitted after
 the step finishes, so output is visible but not interleaved live.
 
 Usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target]
-             [--no-cache] [--keep-going] [--ordered-output] [-j N] target...
+             [--no-cache] [--keep-going] [--ordered-output] [--shard I/N] [--shard-costs path] [--timings path] [-j N] target...
 
 Direct-file UX (issue #323 stage 1): in place of a target name, wexec
 also accepts a bare "<file>.w" or a "[selector] <file>.w" pair (e.g.
@@ -199,8 +199,21 @@ int wexec_gen_gate              # 1 when this run builds the "generated" umbrell
 map[char*, int] wexec_gen_members  # "generated"'s own closure, which the gate never holds back
 map[char*, int] wexec_gen_outputs  # outputs its direct members declare
 int wexec_gen_outputs_loaded      # 1 once wexec_gen_outputs is filled
+int wexec_shard_index
+int wexec_shard_count
+char* wexec_shard_costs_path
+map[char*, int] wexec_shard_costs
+wstream* wexec_timings_stream
+map[char*, int] wexec_target_timing_active
+map[char*, int] wexec_target_started_ms
+map[char*, int] wexec_target_elapsed_ms
+map[char*, char*] wexec_target_status
+map[char*, char*] wexec_target_cache
+int wexec_timings_started_ms
+int wexec_timings_error
 
 
+void wexec_timings_record(char* name, char* status);
 int wexec_collect_closure(char* name);
 int wexec_is_generated_output(char* path);
 
@@ -223,7 +236,7 @@ void wexec_error2(char* message, char* detail):
 
 void wexec_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target] [--no-cache] [--keep-going] [--ordered-output] [-j N] target...")
+	stream_write_line(err, c"usage: wexec [-f manifest.json] [--list [--json]] [--explain-cache target] [--no-cache] [--keep-going] [--ordered-output] [--shard I/N] [--shard-costs path] [--timings path] [-j N] target...")
 	stream_write_line(err, c"       wexec [-f manifest.json] ... [selector] <file>.w")
 	stream_write_line(err, c"       wexec [-f manifest.json] --trace target [--hermetic]")
 	stream_flush(err)
@@ -2215,8 +2228,11 @@ int wexec_launch(char* name, list[wexec_worker*] workers):
 				wexec_print_target_header(name, c" (cached)")
 				wexec_finished[name] = 1
 				wexec_completed = wexec_completed + 1
+				if (wexec_timings_stream != 0): wexec_target_cache[name] = c"local"
 				return 0
-			if (wexec_cache_remote_try(name, key, target)): return 0
+			if (wexec_cache_remote_try(name, key, target)):
+				if (wexec_timings_stream != 0): wexec_target_cache[name] = c"remote"
+				return 0
 	json_value* steps = json_object_get(target, c"steps")
 	if (steps == 0):
 		# Aggregate target: nothing to fork.
@@ -2433,12 +2449,17 @@ int wexec_execute(list[char*] requested):
 						wexec_started[name] = 1
 						wexec_broken[name] = 1
 						wexec_skipped_list.push(name)
+						wexec_timings_record(name, c"skipped")
 						finished = finished + 1
 						launched_any = 1
 					else if (wexec_deps_finished(name)):
 						wexec_started[name] = 1
+						if (wexec_timings_stream != 0):
+							wexec_target_timing_active[name] = 1
+							wexec_target_started_ms[name] = process_monotonic_ms()
 						int outcome = wexec_launch(name, workers)
 						if (outcome < 0):
+							wexec_timings_record(name, c"failed")
 							failed = 1
 							if (wexec_keep_going):
 								# A spawn failure counts as the target
@@ -2448,6 +2469,7 @@ int wexec_execute(list[char*] requested):
 								finished = finished + 1
 								launched_any = 1
 						else if (outcome == 0):
+							wexec_timings_record(name, c"passed")
 							finished = finished + 1
 							launched_any = 1
 						else: running = running + 1
@@ -2556,6 +2578,8 @@ int wexec_execute(list[char*] requested):
 					else:
 						wexec_mark_finished(w.name, w.key)
 						wexec_cache_remote_push_if_enabled(w.name, w.key)
+					if (decoded == 0): wexec_timings_record(w.name, c"passed")
+					else: wexec_timings_record(w.name, c"failed")
 					if (wexec_ordered_output):
 						# Print this worker's whole block now, in
 						# completion order, instead of waiting for its
@@ -2842,6 +2866,211 @@ void wexec_report_ok():
 	stream_write_line(out, s.data)
 	stream_flush(out)
 	string_free(s)
+
+
+# A shard owns runnable roots, not their prerequisites. Flatten only
+# step-less umbrellas; preserving a runnable root's complete dependency
+# closure deliberately allows shared prerequisites to repeat on runners.
+int wexec_parse_shard(char* text):
+	int part = 0
+	int value = 0
+	int digits = 0
+	int i = 0
+	while (text[i] != 0):
+		int ch = text[i]
+		if (ch == '/' && part == 0 && digits):
+			wexec_shard_index = value
+			part = 1
+			value = 0
+			digits = 0
+		else if (ch >= '0' && ch <= '9'):
+			# Bound before multiplication, including on 32-bit hosts.
+			if (value > 100000): return 0
+			value = value * 10 + ch - '0'
+			digits = digits + 1
+		else: return 0
+		i = i + 1
+	if (part != 1 || digits == 0 || value < 1 || wexec_shard_index >= value): return 0
+	wexec_shard_count = value
+	return 1
+
+
+void wexec_shard_roots(char* name, map[char*, int] seen, list[char*] roots):
+	if (seen.get(name, 0)): return
+	seen[name] = 1
+	json_value* target = wexec_targets.get(name, 0)
+	json_value* steps = jfield_array(target, c"steps")
+	if (steps != 0 && json_array_length(steps) > 0):
+		roots.push(name)
+		return
+	json_value* deps = jfield_array(target, c"deps")
+	if (deps == 0): return
+	for i in range(json_array_length(deps)):
+		wexec_shard_roots(json_array_get(deps, i).string_value, seen, roots)
+
+
+# Accept the timing output directly, including concatenated shard files.
+# Cache hits/skips are not representative execution costs. For duplicate
+# targets retain the maximum observed uncached successful duration.
+int wexec_load_shard_costs():
+	wexec_shard_costs = new map[char*, int]
+	list[char*] lines = file_read_lines(wexec_shard_costs_path)
+	if (lines == 0):
+		wexec_error2(c"cannot read shard costs ", wexec_shard_costs_path)
+		return 0
+	for char* line in lines:
+		if (line[0] != 0):
+			json_value* row = json_parse(line)
+			if (row == 0 || row.type != json_type_object()):
+				wexec_error(c"shard costs must be timing NDJSON objects")
+				return 0
+			char* name = jfield_string(row, c"target")
+			char* status = jfield_string(row, c"status")
+			char* cache = jfield_string(row, c"cache")
+			int ms = jfield_int(row, c"elapsed_ms", 0)
+			if (name != 0 && status != 0 && cache != 0):
+				if (strcmp(status, c"passed") == 0 && strcmp(cache, c"none") == 0 && ms > 0):
+					# Keep totals comfortably in a 32-bit word.
+					if (ms > 86400000): ms = 86400000
+					if (ms > wexec_shard_costs.get(name, 0)): wexec_shard_costs[strclone(name)] = ms
+			json_free(row)
+		free(line)
+	return 1
+
+
+int wexec_shard_weight(char* name):
+	# A new target gets a conservative one-second estimate; after one
+	# run its measured duration replaces this fallback automatically.
+	return wexec_shard_costs.get(name, 1000)
+
+
+list[char*] wexec_weighted_shard(list[char*] roots):
+	# Descending duration, preserving lexical order on ties. Every root
+	# is assigned exactly once to the lightest shard (index breaks ties).
+	for i in range(1, roots.length):
+		char* name = roots[i]
+		int j = i - 1
+		while (j >= 0 && wexec_shard_weight(roots[j]) < wexec_shard_weight(name)):
+			roots[j + 1] = roots[j]
+			j = j - 1
+		roots[j + 1] = name
+	list[int] loads = new list[int]
+	for i in range(wexec_shard_count): loads.push(0)
+	list[char*] selected = new list[char*]
+	for char* name in roots:
+		int shard = 0
+		for i in range(1, loads.length):
+			if (loads[i] < loads[shard]): shard = i
+		int weight = wexec_shard_weight(name)
+		if (loads[shard] > 2000000000 - weight):
+			wexec_error(c"shard costs exceed supported total duration")
+			return 0
+		loads[shard] = loads[shard] + weight
+		if (shard == wexec_shard_index): selected.push(name)
+	wexec_sort_strings(selected)
+	return selected
+
+
+list[char*] wexec_select_shard(list[char*] requested):
+	# Validate the entire requested graph before splitting, including
+	# cycles/missing dependencies that would otherwise hide on a shard.
+	for char* name in requested:
+		if (wexec_collect_closure(name)): return 0
+	for char* name in wexec_closure:
+		json_value* steps = json_object_get(wexec_targets.get(name, 0), c"steps")
+		if (steps != 0 && steps.type != json_type_array()):
+			wexec_error2(c"\"steps\" is not an array in target ", name)
+			return 0
+	wexec_states = new map[char*, int]
+	wexec_closure = new list[char*]
+	map[char*, int] seen = new map[char*, int]
+	list[char*] roots = new list[char*]
+	for char* name in requested: wexec_shard_roots(name, seen, roots)
+	wexec_sort_strings(roots)
+	list[char*] selected = new list[char*]
+	if (wexec_shard_costs_path != 0):
+		if (wexec_load_shard_costs() == 0): return 0
+		selected = wexec_weighted_shard(roots)
+		if (selected == 0): return 0
+	else:
+		for i in range(roots.length):
+			if (i % wexec_shard_count == wexec_shard_index): selected.push(roots[i])
+	wstream* err = stderr_writer()
+	stream_write_line(err, cstr(f"wexec: shard {wexec_shard_index}/{wexec_shard_count}: {selected.length} of {roots.length} runnable roots (shared dependencies retained)"))
+	stream_flush(err)
+	return selected
+
+
+int wexec_timings_open(char* path):
+	wexec_timings_stream = stream_open_write(path)
+	if (wexec_timings_stream == 0):
+		wexec_error2(c"cannot open timings file ", path)
+		return 0
+	wexec_target_timing_active = new map[char*, int]
+	wexec_target_started_ms = new map[char*, int]
+	wexec_target_elapsed_ms = new map[char*, int]
+	wexec_target_status = new map[char*, char*]
+	wexec_target_cache = new map[char*, char*]
+	wexec_timings_started_ms = process_monotonic_ms()
+	return 1
+
+
+void wexec_timings_record(char* name, char* status):
+	if (wexec_timings_stream == 0): return
+	int elapsed = 0
+	if (wexec_target_timing_active.get(name, 0)):
+		elapsed = process_monotonic_ms() - wexec_target_started_ms[name]
+	wexec_target_elapsed_ms[name] = elapsed
+	wexec_target_status[name] = status
+	string_builder* line = string_new()
+	string_append(line, c"{\"type\":\"target\",\"target\":")
+	wexec_json_append_string(line, name)
+	string_append(line, c",\"elapsed_ms\":")
+	string_append_int(line, elapsed)
+	string_append(line, c",\"status\":")
+	wexec_json_append_string(line, status)
+	string_append(line, c",\"cache\":")
+	wexec_json_append_string(line, wexec_target_cache.get(name, c"none"))
+	string_append(line, c"}")
+	stream_write_line(wexec_timings_stream, line.data)
+	stream_flush(wexec_timings_stream)
+	string_free(line)
+
+
+int wexec_timings_finish(int failed):
+	if (wexec_timings_stream == 0): return 0
+	for char* name in wexec_closure:
+		if (wexec_target_status.get(name, 0) == 0): wexec_timings_record(name, c"not_started")
+	int elapsed = process_monotonic_ms() - wexec_timings_started_ms
+	int total = wexec_closure.length
+	stream_write_line(wexec_timings_stream, cstr(f"{{\"type\":\"summary\",\"elapsed_ms\":{elapsed},\"failed\":{failed},\"targets\":{total}}}"))
+	stream_flush(wexec_timings_stream)
+	wexec_timings_error = stream_error(wexec_timings_stream) != IO_OK
+	io_result closed
+	if (stream_close_checked(wexec_timings_stream, &closed) != IO_OK): wexec_timings_error = 1
+	wexec_timings_stream = 0
+	wstream* err = stderr_writer()
+	stream_write_line(err, cstr(f"wexec: elapsed {elapsed} ms; slowest targets:"))
+	map[char*, int] printed = new map[char*, int]
+	int rank = 0
+	while (rank < 10):
+		char* slowest = 0
+		int slow_ms = -1
+		for char* name in wexec_closure:
+			if (printed.get(name, 0) == 0 && wexec_target_timing_active.get(name, 0)):
+				int target_ms = wexec_target_elapsed_ms.get(name, 0)
+				if (target_ms > slow_ms):
+					slowest = name
+					slow_ms = target_ms
+		if (slowest == 0): break
+		printed[slowest] = 1
+		char* status = wexec_target_status.get(slowest, c"unknown")
+		char* cache = wexec_target_cache.get(slowest, c"none")
+		stream_write_line(err, cstr(f"wexec:   {slow_ms} ms {slowest} ({status}, cache={cache})"))
+		rank = rank + 1
+	stream_flush(err)
+	if (wexec_timings_error): wexec_error(c"cannot write timings file")
+	return wexec_timings_error
 
 
 # Default parallelism: one target per online CPU.
@@ -3133,6 +3362,7 @@ int wexec_main(int argc, int argv):
 	deps_cache_sha = 1
 	wexec_jobs = 0
 	char* manifest_path = 0
+	char* timings_path = 0
 	list[char*] requested = new list[char*]
 	int list_only = 0
 	int list_json = 0
@@ -3150,6 +3380,29 @@ int wexec_main(int argc, int argv):
 			char** value = argv + i * __word_size__
 			manifest_path = *value
 			wexec_stamp_manifest = manifest_path
+		else if (strcmp(*arg, c"--shard") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_error(c"--shard requires I/N (zero-based, 0 <= I < N)")
+				return 1
+			char** shard_value = argv + i * __word_size__
+			if (wexec_parse_shard(*shard_value) == 0):
+				wexec_error(c"--shard requires I/N (zero-based, 0 <= I < N)")
+				return 1
+		else if (strcmp(*arg, c"--shard-costs") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_usage()
+				return 1
+			char** costs_value = argv + i * __word_size__
+			wexec_shard_costs_path = *costs_value
+		else if (strcmp(*arg, c"--timings") == 0):
+			i = i + 1
+			if (i >= argc):
+				wexec_usage()
+				return 1
+			char** timings_value = argv + i * __word_size__
+			timings_path = *timings_value
 		else if (strcmp(*arg, c"--list") == 0): list_only = 1
 		else if (strcmp(*arg, c"--json") == 0): list_json = 1
 		else if (strcmp(*arg, c"--explain-cache") == 0):
@@ -3183,11 +3436,14 @@ int wexec_main(int argc, int argv):
 		else: requested.push(*arg)
 		i = i + 1
 	if (wexec_jobs < 1): wexec_jobs = wexec_default_jobs()
+	if (wexec_shard_costs_path != 0 && wexec_shard_count == 0):
+		wexec_error(c"--shard-costs requires --shard")
+		return 1
 
 	if (wexec_load_manifest(manifest_path)): return 1
 	if (explain_cache_target != 0): return wexec_explain_cache(explain_cache_target)
 	if (trace_target != 0): return wexec_trace_cmd(trace_target, hermetic)
-	if (list_only):
+	if (list_only && wexec_shard_count == 0):
 		if (list_json): wexec_list_targets_json()
 		else: wexec_list_targets()
 		return 0
@@ -3215,6 +3471,17 @@ int wexec_main(int argc, int argv):
 		wexec_list_targets()
 		return 1
 
+	if (wexec_shard_count):
+		requested = wexec_select_shard(requested)
+		if (requested == 0): return 1
+		if (list_only):
+			wstream* out = stdout_writer()
+			for char* name in requested:
+				if (list_json): wexec_list_json_one(out, name)
+				else: stream_write_line(out, name)
+			stream_flush(out)
+			return 0
+
 	# From here on we actually run target steps that can write into bin/
 	# (compiles, links, caches) -- take the single-writer lock on this
 	# invocation's managed bin/ directory first. See the block comment
@@ -3240,7 +3507,10 @@ int wexec_main(int argc, int argv):
 			slot = slot + 1
 		wexec_install_termination_handler(cast(int, wexec_on_termination))
 
+	if (timings_path != 0):
+		if (wexec_timings_open(timings_path) == 0): return 1
 	int failed = wexec_execute(requested)
+	if (wexec_timings_finish(failed)): failed = 1
 	# Cache keys (and any recomputed import closures) are computed in
 	# the parent only, so the closure cache is saved here once, after
 	# the run — on failure too, so a red run still keeps its deps work.
