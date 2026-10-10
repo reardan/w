@@ -40,6 +40,12 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 ## Implementation status
 
+- **Library dependency discovery (#625):** `w deps` skips executable
+  finalization so an extern-only consumer can report its source import
+  closure before its linked libraries exist. This keeps `wtest` selection
+  and `wexec` cache invalidation sensitive to imported consumer helpers;
+  the library build/cache regression covers that case.
+
 Shipped from the next-steps backlog:
 
 - **Native macOS discovery and focused selection** (2026-10-09, #620):

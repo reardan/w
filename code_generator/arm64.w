@@ -450,7 +450,9 @@ void be_addr_slot_write(int pos, int v):
 	be_addr_slot_writes = be_addr_slot_writes + 1
 	if (target_isa == 2): wasm_addr_slot_write(pos, v)
 	elif (target_isa == 1): arm64_addr_slot_write(pos, v)
-	elif (word_size == 8): save_int32(code + pos, v - code_offset - pos - 4)
+	elif (word_size == 8):
+		static_note_address(pos)
+		save_int32(code + pos, v - code_offset - pos - 4)
 	else: save_int(code + pos, v)
 
 

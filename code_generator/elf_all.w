@@ -141,6 +141,7 @@ void elf_header_fields(int machine, int is64):
 	emit_int32(1) /* version */
 	int entry = base_code_offset + header_size + program_header_size * elf_program_header_count() + elf_build_id_note_size()
 	if (x64_syscall_abi): entry = entry + elf_hypercall_note_size
+	if (elf_shared): entry = 0
 	elf_emit_word(is64, entry)
 	elf_emit_word(is64, header_size) /* program header offset */
 	elf_emit_word(is64, 0) /* section header offset */
@@ -270,6 +271,8 @@ void elf_patch_load_segments(int is64):
 	if ((datapos > 0) || (relro > 0)):
 		int seg_vaddr = data_offset - relro
 		int data_file_off = (codepos + 4095) & (0 - 4096)
+		if (data_file_off > seg_vaddr - code_offset):
+			error(c"image text exceeds the code/data layout limit")
 		int p = phdr_table_pos + (1 + elf_pie) * phdr_size /* data load */
 		save_int32(code + p, 1) /* p_type = PT_LOAD */
 		elf_save_word(is64, p + w, data_file_off)
@@ -284,7 +287,7 @@ void elf_patch_load_segments(int is64):
 		while (codepos < data_file_off + relro): emit_int8(0)
 	# ABI order: PHDR and INTERP precede LOADs. Patch by logical slot
 	# until now, then move INTERP in front of the two load headers.
-	if (elf_pie && dyn_has_imports()):
+	if (elf_pie && dyn_has_imports() && (elf_shared == 0)):
 		for j in range(phdr_size):
 			int p = phdr_table_pos + j
 			char tmp = code[p + 3 * phdr_size]
