@@ -76,6 +76,7 @@ CLI shape: `w [x64] <file.w>... [-o output]` (see `compiler/compiler.w`).
 Other useful targets:
 
 ```sh
+./wbuild wsh         # standalone W shell: bin/wsh or bin/wsh -c 'echo hello | wc -c'
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
 ./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
@@ -401,6 +402,11 @@ Toolchain beyond the compiler:
   (`--no_main` skips running `main`). Compile errors roll back via
   checkpoint instead of killing the process. `:quit` exits, `:help` helps
   (see `docs/projects/repl.md`).
+- **W shell** (`./wbuild wsh`, then `./bin/wsh`): shell commands call native
+  W tools or session functions, with external-command fallback, pipelines,
+  redirection and `&&`/`||`. `./bin/wsh -c 'echo hello | wc -c'` runs a
+  command list and returns its exit status. The REPL exposes the same engine
+  through `:sh`; see [the shell guide](docs/projects/wsh.md).
 - **Debugger** (`./wbuild wdbg`, or `w --debug file.w`): `./bin/wdbg file.w`
   compiles and runs the program in-process, trapping on `debugger` statements,
   patched breakpoints and fatal signals into a gdb-flavored command loop:
