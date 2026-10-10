@@ -98,6 +98,42 @@ int binfold_end
 int binfold_start
 int binfold_left
 int binfold_right
+# Exact constant folding (O1, the k64_* section further down). The wide
+# constant note: 'mov rax,imm64' of a value outside int32 (x64), between
+# wimm_note_start and wimm_note_end, and the constant a push or park
+# carried (push_wimm_*, the wide twin of push_imm_*). binfold_lhi/rhi
+# are the armed fold's high halves (binfold_left/right the low ones; a
+# narrow operand's high half is its sign).
+int wimm_note_start
+int wimm_note_end
+int wimm_note_hi
+int wimm_note_lo
+int push_wimm_start
+int push_wimm_end
+int push_wimm_hi
+int push_wimm_lo
+int binfold_lhi
+int binfold_rhi
+# The const-global read note (O1): sym_emit_value just materialized the
+# address of a const integer global or an enum constant whose value is
+# known (grammar/program.w, const_global_note); promote() of that
+# address while the note is current loads cg_note_value as an immediate
+# instead. cg_note_type is the symbol's type, the only one promote may
+# fold for.
+int cg_note_start
+int cg_note_end
+int cg_note_type
+int cg_note_value
+int const_global_reads_folded
+# The terminator note (O1): the instruction that ends at term_note_end
+# is a 'ret' or an unconditional 'jmp', and no jump target has been
+# placed at codepos since (every jump target resets the notes). Code
+# emitted while it is current is unreachable: an unconditional branch,
+# a stack adjustment or a return there is dropped (be_br_on, be_pop,
+# be_return, be_return_bare).
+int term_note_end
+int term_notes_elided
+int term_unreachable();
 int fold_mul_fits(int a, int b);
 int fold_add_fits(int a, int b);
 
@@ -153,6 +189,15 @@ void be_notes_reset();
 int ers_count
 int[8] ers_reg
 int[8] ers_start
+# The constant a park carries (O1): the park's end (0: not a constant),
+# where the constant's materialization starts, and its 64-bit halves.
+# Unlike push_imm_*, these survive the folds of a later operand (whose
+# rollback drops only the parks above), so '(1 << 16) * (1 << 16)'
+# still sees its left constant once the right one has folded.
+int[8] ers_kend
+int[8] ers_kstart
+int[8] ers_khi
+int[8] ers_klo
 int ers_used           # bitmask of the parked registers
 # The "ebx holds register R" note: pop_ebx (a virtual top) and
 # mov_ebx_esp / mov_ebx_esp_plus (a virtual word) emitted 'mov ebx,R'
@@ -1371,6 +1416,9 @@ void ers_push_eax(int dead):
 	if ((imm_note_end != 0) && (imm_note_end == codepos)): carried = 1
 	int start = imm_note_start
 	int value = imm_note_value
+	int wide = 0
+	if ((wimm_note_end != 0) && (wimm_note_end == codepos)): wide = 1
+	int wide_start = wimm_note_start
 	push_left_reg = 0
 	push_left_kind = 0
 	int folded = 0
@@ -1427,11 +1475,29 @@ void ers_push_eax(int dead):
 	ers_used = ers_used | (1 << r)
 	ers_parks = ers_parks + 1
 	push_imm_end = 0
+	push_wimm_end = 0
 	if (carried):
 		push_imm_start = start
 		if (push_left_kind == 1): push_imm_start = push_note_start
 		push_imm_end = codepos
 		push_imm_value = value
+	if (wide):
+		push_wimm_start = wide_start
+		push_wimm_end = codepos
+		push_wimm_hi = wimm_note_hi
+		push_wimm_lo = wimm_note_lo
+	int top = ers_count - 1
+	ers_kend[top] = 0
+	if (carried):
+		ers_kend[top] = codepos
+		ers_kstart[top] = push_imm_start
+		ers_khi[top] = value >> 31
+		ers_klo[top] = value
+	elif (wide):
+		ers_kend[top] = codepos
+		ers_kstart[top] = wide_start
+		ers_khi[top] = wimm_note_hi
+		ers_klo[top] = wimm_note_lo
 
 ################################# x86 opcodes #################################
 # Each helper dispatches to its AArch64 twin (code_generator/arm64.w) when
@@ -1612,6 +1678,10 @@ void be_imm_note_reset():
 	addr_note_end = 0
 	memload_end = 0
 	ebxreg_end = 0
+	wimm_note_end = 0
+	push_wimm_end = 0
+	cg_note_end = 0
+	term_note_end = 0
 
 # True when a * b does not overflow the compiler's own word. The fold has
 # to produce the same constant whether this compiler is the 32-bit or the
@@ -1644,14 +1714,255 @@ int fold_sub_fits(int a, int b):
 	return 1
 
 void mov_eax_int(int v);
+void mov_rax_int64_halves(int lo, int hi);
 
-# Consume an armed two-operand fold: roll back over the left constant, the
-# push and the right constant, and put the result there instead. Callers
-# test binfold_end themselves, so the common unarmed path costs two global
-# reads and no call.
-void binfold_emit(int folded):
+######################## exact constant folding (O1) ##########################
+# Integer constant expressions fold to the value the target computes, on
+# either host: a fold result is a 64-bit two's-complement pair (k64_hi,
+# k64_lo) of 32-bit halves, each held sign-extended in a host int, and
+# every operation below works on 16-bit limbs, so the 32-bit and the
+# 64-bit self-host compute the same bits (verify_x64 compares their
+# output). The x86 target keeps the low half: its word arithmetic wraps
+# at 32 bits, and the low 32 bits of a 64-bit add, sub, mul, and, or,
+# xor or shl are the 32-bit results. A value that does not fit a signed
+# 32-bit immediate (x64 only) is materialized with 'mov rax,imm64' and
+# noted in the wide note, which the same folds read; the narrow
+# immediate note (imm_note_*) only ever carries an int32-range value.
+int k64_hi
+int k64_lo
+int k64_folds
+
+# x sign-extended from its low 32 bits (identity on a 32-bit host).
+int k64_wrap32(int x):
+	int spare = __word_size__ * 8 - 32
+	return (x << spare) >> spare
+
+# (1 << n) - 1 for 1 <= n <= 31.
+int k64_mask(int n):
+	return (1 << n) - 1
+
+int k64_join(int low16, int high16):
+	return k64_wrap32((low16 & 65535) | ((high16 & 65535) << 16))
+
+void k64_set(int hi, int lo):
+	k64_hi = hi
+	k64_lo = lo
+
+void k64_add(int ahi, int alo, int bhi, int blo):
+	int l0 = (alo & 65535) + (blo & 65535)
+	int l1 = ((alo >> 16) & 65535) + ((blo >> 16) & 65535) + (l0 >> 16)
+	int h0 = (ahi & 65535) + (bhi & 65535) + (l1 >> 16)
+	int h1 = ((ahi >> 16) & 65535) + ((bhi >> 16) & 65535) + (h0 >> 16)
+	k64_set(k64_join(h0, h1), k64_join(l0, l1))
+
+void k64_sub(int ahi, int alo, int bhi, int blo):
+	# a - b = a + ~b + 1
+	k64_add(~bhi, ~blo, 0, 1)
+	k64_add(ahi, alo, k64_hi, k64_lo)
+
+# Limb i (0..3, 16 bits each) of the pair.
+int k64_limb(int hi, int lo, int i):
+	if (i == 0): return lo & 65535
+	if (i == 1): return (lo >> 16) & 65535
+	if (i == 2): return hi & 65535
+	return (hi >> 16) & 65535
+
+# The low 64 bits of a * b. A 16x16-bit limb product can exceed a 32-bit
+# host's signed int, but its bit pattern is exact, and only its two
+# 16-bit halves are used; each column sum stays far below 2^31.
+void k64_mul(int ahi, int alo, int bhi, int blo):
+	int c0 = 0
+	int c1 = 0
+	int c2 = 0
+	int c3 = 0
+	int i = 0
+	while (i < 4):
+		int a = k64_limb(ahi, alo, i)
+		int j = 0
+		while (i + j < 4):
+			int p = a * k64_limb(bhi, blo, j)
+			int low = p & 65535
+			int high = (p >> 16) & 65535
+			int k = i + j
+			if (k == 0):
+				c0 = c0 + low
+				c1 = c1 + high
+			elif (k == 1):
+				c1 = c1 + low
+				c2 = c2 + high
+			elif (k == 2):
+				c2 = c2 + low
+				c3 = c3 + high
+			else: c3 = c3 + low
+			j = j + 1
+		i = i + 1
+	c1 = c1 + (c0 >> 16)
+	c2 = c2 + (c1 >> 16)
+	c3 = c3 + (c2 >> 16)
+	k64_set(k64_join(c2, c3), k64_join(c0, c1))
+
+# Shifts by a count already masked to the target word (0..63 on x64).
+# kind: 0 shl, 1 sar, 2 shr.
+void k64_shift64(int kind, int hi, int lo, int c):
+	if (c == 0):
+		k64_set(hi, lo)
+	elif (kind == 0):
+		if (c < 32): k64_set(k64_wrap32((hi << c) | ((lo >> (32 - c)) & k64_mask(c))), k64_wrap32(lo << c))
+		else: k64_set(k64_wrap32(lo << (c - 32)), 0)
+	elif (c < 32):
+		int low = k64_wrap32(((lo >> c) & k64_mask(32 - c)) | (hi << (32 - c)))
+		if (kind == 1): k64_set(hi >> c, low)
+		else: k64_set((hi >> c) & k64_mask(32 - c), low)
+	elif (kind == 1):
+		k64_set(hi >> 31, hi >> (c - 32))
+	elif (c == 32):
+		k64_set(0, hi)
+	else: k64_set(0, (hi >> (c - 32)) & k64_mask(64 - c))
+
+# Evaluate a op b at the target's word size into (k64_hi, k64_lo); 0 when
+# the operation is not folded (a division by zero, the one quotient that
+# traps, a wide operand of a division). op: '+', '-', '*', '&', '|',
+# '^', 'L' shl, 'R' sar, 'U' shr, '/' and '%' (signed).
+int k64_eval(int op, int ahi, int alo, int bhi, int blo):
+	if (word_size == 4):
+		# 32-bit target: the operands are their low halves
+		ahi = alo >> 31
+		bhi = blo >> 31
+	if (op == '+'): k64_add(ahi, alo, bhi, blo)
+	elif (op == '-'): k64_sub(ahi, alo, bhi, blo)
+	elif (op == '*'): k64_mul(ahi, alo, bhi, blo)
+	elif (op == '&'): k64_set(ahi & bhi, alo & blo)
+	elif (op == '|'): k64_set(ahi | bhi, alo | blo)
+	elif (op == '^'): k64_set(ahi ^ bhi, alo ^ blo)
+	elif ((op == 'L') || (op == 'R') || (op == 'U')):
+		int kind = 0
+		if (op == 'R'): kind = 1
+		if (op == 'U'): kind = 2
+		if (word_size == 4):
+			int c = blo & 31
+			if ((kind == 2) && (c != 0)): k64_set(0, (alo >> c) & k64_mask(32 - c))
+			elif (kind == 0): k64_set(0, k64_wrap32(alo << c))
+			else: k64_set(0, alo >> c)
+		else: k64_shift64(kind, ahi, alo, blo & 63)
+	elif ((op == '/') || (op == '%')):
+		# narrow operands only: host division is then exact on both hosts
+		if ((ahi != (alo >> 31)) || (bhi != (blo >> 31))): return 0
+		if (blo == 0): return 0
+		if ((blo == -1) && (alo == 0 - 2147483647 - 1)): return 0
+		if (op == '/'): k64_set(0, alo / blo)
+		else: k64_set(0, alo % blo)
+		k64_hi = k64_lo >> 31
+	else: return 0
+	if (word_size == 4): k64_hi = k64_lo >> 31
+	k64_folds = k64_folds + 1
+	return 1
+
+# Put the folded constant (k64_hi, k64_lo) in the accumulator: the
+# narrow mov_eax_int forms when it fits a signed 32-bit immediate (always
+# on x86), else 'mov rax,imm64' with the wide note.
+void k64_materialize():
+	if ((word_size == 4) || (k64_hi == (k64_lo >> 31))):
+		mov_eax_int(k64_lo)
+		return
+	int start = codepos
+	int hi = k64_hi
+	int lo = k64_lo
+	if (hi == 0):
+		# [2^31, 2^32): 'mov eax,imm32' zero-extends into rax
+		emit(1, c"\xb8")
+		emit_int32(lo)
+	else: mov_rax_int64_halves(lo, hi)
+	wimm_note_start = start
+	wimm_note_end = codepos
+	wimm_note_hi = hi
+	wimm_note_lo = lo
+
+# The accumulator's constant, when the instruction just emitted
+# materialized one: 1 narrow (imm_note), 2 wide (wimm_note), 0 none. The
+# constant itself is left in (k64_hi, k64_lo), its start in k64_note_start.
+int k64_note_start
+int k64_current():
+	if ((imm_note_end != 0) && (imm_note_end == codepos)):
+		k64_set(imm_note_value >> 31, imm_note_value)
+		k64_note_start = imm_note_start
+		return 1
+	if ((wimm_note_end != 0) && (wimm_note_end == codepos)):
+		k64_set(wimm_note_hi, wimm_note_lo)
+		k64_note_start = wimm_note_start
+		return 2
+	return 0
+
+# A two-operand fold whose left operand is the constant a push or park
+# carried and whose right operand is the constant just materialized
+# directly after that push: evaluate, roll everything back to the left
+# constant and materialize the result. Returns 1 when it folded.
+int k64_lstart
+int k64_lhi
+int k64_llo
+
+# The left operand of a binary operator whose right operand starts at
+# rstart, when it is a constant pushed or parked directly before rstart:
+# 1 with its materialization's start and value in k64_lstart/lhi/llo.
+int k64_left(int rstart):
+	if ((push_note_end != 0) && (push_note_end == rstart)):
+		if ((push_imm_end != 0) && (push_imm_end == rstart)):
+			k64_lstart = push_imm_start
+			k64_llo = push_imm_value
+			k64_lhi = k64_llo >> 31
+			return 1
+		if ((push_wimm_end != 0) && (push_wimm_end == rstart)):
+			k64_lstart = push_wimm_start
+			k64_lhi = push_wimm_hi
+			k64_llo = push_wimm_lo
+			return 1
+	# The top park's constant, which a fold inside the right operand
+	# (whose rollback dropped the notes above) leaves in place
+	if (ers_count != 0):
+		int top = ers_count - 1
+		if ((ers_kend[top] != 0) && (ers_kend[top] == rstart)):
+			k64_lstart = ers_kstart[top]
+			k64_lhi = ers_khi[top]
+			k64_llo = ers_klo[top]
+			return 1
+	return 0
+
+int k64_fold_pushed(int op):
+	if (k64_current() == 0): return 0
+	int rhi = k64_hi
+	int rlo = k64_lo
+	if (k64_left(k64_note_start) == 0): return 0
+	int start = k64_lstart
+	if (k64_eval(op, k64_lhi, k64_llo, rhi, rlo) == 0): return 0
+	peep_rollback(start)
+	k64_materialize()
+	return 1
+
+# Consume an armed two-operand fold (pop_ebx armed it): roll back over the
+# left constant, the push and the right constant, and put op's result
+# there instead. Callers test binfold_end themselves, so the common
+# unarmed path costs two global reads and no call.
+int binfold_op(int op):
+	if (k64_eval(op, binfold_lhi, binfold_left, binfold_rhi, binfold_right) == 0): return 0
 	peep_rollback(binfold_start)
-	mov_eax_int(folded)
+	k64_materialize()
+	return 1
+
+# A one-operand fold of the accumulator's constant: '-' negate, '~' not,
+# '+' add v, '*' multiply by v.
+int k64_fold_unary(int op, int v):
+	if (k64_current() == 0): return 0
+	int hi = k64_hi
+	int lo = k64_lo
+	if (op == '~'): k64_set(~hi, ~lo)
+	elif (op == '-'): k64_sub(0, 0, hi, lo)
+	elif (k64_eval(op, hi, lo, v >> 31, v) == 0): return 0
+	if (word_size == 4): k64_hi = k64_lo >> 31
+	hi = k64_hi
+	lo = k64_lo
+	peep_rollback(k64_note_start)
+	k64_set(hi, lo)
+	k64_materialize()
+	return 1
 
 
 # ARM64 uses the same adjacency and rollback barriers as the x86 folds.
@@ -1853,6 +2164,20 @@ void mov_eax_int(int v):
 		imm_note_value = v
 	else:
 		int start = codepos
+		# The note carries the value the target sees: the low 32 bits on
+		# x86, and a value outside int32 (only a 64-bit host can pass one)
+		# goes to the wide note, so both hosts fold the same constants
+		if ((word_size == 4) && (target_isa == 0)): v = k64_wrap32(v)
+		elif (target_isa == 0):
+			if (((v >> 31) != 0) && ((v >> 31) != -1)):
+				int hi = v >> 16
+				hi = hi >> 16
+				mov_rax_int64(v)
+				wimm_note_start = start
+				wimm_note_end = codepos
+				wimm_note_hi = hi
+				wimm_note_lo = k64_wrap32(v)
+				return
 		if ((word_size == 8) && ((v >> 31) == -1) && (addr_modes_disabled == 0)):
 			# mov rax,simm32 (REX.W C7 /0 id): 7 bytes for a negative
 			# value instead of the 10-byte movabs (A2; libs/asm decodes
@@ -1876,12 +2201,7 @@ void add_eax_int32(int v):
 	elif (target_isa == 2): wasm_ax_op_const(0x6a, v)
 	elif (target_isa == 1): arm64_add_eax_int32(v)
 	else:
-		if ((imm_note_end != 0) && (imm_note_end == codepos)):
-			if (fold_add_fits(imm_note_value, v)):
-				int folded = imm_note_value + v
-				peep_rollback(imm_note_start)
-				mov_eax_int(folded)
-				return
+		if (k64_fold_unary('+', v)): return
 		# Adding zero is a no-op; emitting nothing also keeps a current lea
 		# or constant note current for the load that usually follows.
 		if (v == 0): return
@@ -1924,12 +2244,7 @@ void imul_eax_int32(int v):
 	elif (target_isa == 2): wasm_ax_op_const(0x6c, v)
 	elif (target_isa == 1): arm64_imul_eax_int32(v)
 	else:
-		if ((imm_note_end != 0) && (imm_note_end == codepos)):
-			if (fold_mul_fits(imm_note_value, v)):
-				int folded = imm_note_value * v
-				peep_rollback(imm_note_start)
-				mov_eax_int(folded)
-				return
+		if (k64_fold_unary('*', v)): return
 		emit_x64_opcode()
 		emit(2, c"\x69\xc0")
 		emit_int32(v)
@@ -2026,6 +2341,8 @@ void not_eax():
 	elif (target_isa == 2): wasm_not_eax()
 	elif (target_isa == 1): a64(op(0xaa, 0x2003e0))   # mvn x0,x0
 	else:
+		# '~' of a constant is a constant (O1)
+		if (k64_fold_unary('~', 0)): return
 		emit_x64_opcode()
 		emit(2, c"\xf7\xd0") /* not eax */
 
@@ -2054,14 +2371,22 @@ void push_eax():
 		if ((regload_note_end != 0) && (regload_note_end == codepos)):
 			push_left_reg = regload_note_reg
 			push_left_start = regload_note_start
+		int wide = 0
+		if ((wimm_note_end != 0) && (wimm_note_end == codepos)): wide = 1
 		push_note_start = codepos
 		emit(1, c"\x50")
 		push_note_end = codepos
 		push_imm_end = 0
+		push_wimm_end = 0
 		if (carried):
 			push_imm_start = start
 			push_imm_end = codepos
 			push_imm_value = value
+		if (wide):
+			push_wimm_start = wimm_note_start
+			push_wimm_end = codepos
+			push_wimm_hi = wimm_note_hi
+			push_wimm_lo = wimm_note_lo
 
 
 void push_ebx():
@@ -2082,12 +2407,26 @@ void pop_ebx():
 		# directly after the push (push_imm_end == imm_note_start) -- so the
 		# span from the left constant to here is mov, push, mov, and nothing
 		# else can be hiding in it.
+		# Either constant may also be a wide one (O1: the wide notes).
 		int armed = 0
-		if ((imm_note_end != 0) && (imm_note_end == codepos)):
-			if ((push_imm_end != 0) && (push_imm_end == imm_note_start)): armed = 1
-		int left = push_imm_value
 		int right = imm_note_value
+		int left = push_imm_value
 		int start = push_imm_start
+		int rhi = 0
+		int lhi = 0
+		int rstart = -1
+		if ((imm_note_end != 0) && (imm_note_end == codepos)):
+			rstart = imm_note_start
+			rhi = right >> 31
+		elif ((wimm_note_end != 0) && (wimm_note_end == codepos)):
+			rstart = wimm_note_start
+			rhi = wimm_note_hi
+			right = wimm_note_lo
+		if ((rstart >= 0) && k64_left(rstart)):
+			armed = 1
+			start = k64_lstart
+			lhi = k64_lhi
+			left = k64_llo
 		# Register shuttle: 'push eax; <one simple instruction>; pop ebx' --
 		# the right operand a constant or a folded local load emitted directly
 		# after the push -- becomes 'mov ebx,eax; <instruction>'. Without the
@@ -2160,6 +2499,8 @@ void pop_ebx():
 			binfold_end = codepos
 			binfold_left = left
 			binfold_right = right
+			binfold_lhi = lhi
+			binfold_rhi = rhi
 
 
 void pop_eax():
@@ -2310,6 +2651,8 @@ void be_pop(int n):
 	elif (target_isa == 2): wasm_be_pop(n)
 	elif (target_isa == 1): arm64_be_pop(n)
 	else:
+		# unreachable after a 'ret' or 'jmp' (O1)
+		if (term_unreachable()): return
 		emit_x64_opcode()
 		emit(6, c"\x81\xc4....")
 		save_int(code + codepos - 4, n << word_size_log2)
@@ -2484,6 +2827,15 @@ void be_br_linked(int h):
 	if (ctrl_kind_stack[h]): be_branch_patch(codepos, ctrl_val_stack[h])
 	else: be_ctrl_link(h)
 
+# 1 when codepos is unreachable (O1, the terminator note): the last
+# instruction was a 'ret' or an unconditional 'jmp' and no jump target
+# has been placed since. Nothing is parked then (a park would have been
+# spilled before the jump); the check keeps that a precondition.
+int term_unreachable():
+	if ((target_isa != 0) || (term_note_end == 0) || (term_note_end != codepos) || (ers_count != 0)): return 0
+	term_notes_elided = term_notes_elided + 1
+	return 1
+
 # Branch to region h always (cond 0), or when the accumulator is zero
 # (cond 1) or nonzero (cond 2).
 void be_br_on(int cond, int h):
@@ -2493,7 +2845,15 @@ void be_br_on(int cond, int h):
 		else: ptx_bra_nonzero(ctrl_val_stack[h])
 	elif (target_isa == 2): wasm_br_on(cond, ctrl_stack_pos - 1 - h)
 	else:
-		if (cond == 0): jmp_int32(be_br_link(h))
+		if (cond == 0):
+			# An unconditional branch directly after a 'ret' or 'jmp' is
+			# unreachable (O1): the 'jmp' past the else arms after a
+			# 'return', a loop's back edge after a 'break'
+			if (term_unreachable()): return
+			jmp_int32(be_br_link(h))
+			be_br_linked(h)
+			if (target_isa == 0): term_note_end = codepos
+			return
 		elif (cond == 1): jmp_zero_int32(be_br_link(h))
 		else: jmp_nonzero_int32(be_br_link(h))
 		be_br_linked(h)
@@ -2554,6 +2914,7 @@ void peep_rollback(int pos):
 		while (i < ers_spill_count):
 			ers_reg[i] = ers_spill_reg[i]
 			ers_start[i] = ers_spill_at[i]
+			ers_kend[i] = 0
 			ers_used = ers_used | (1 << ers_reg[i])
 			i = i + 1
 		ers_count = ers_spill_count
@@ -2564,6 +2925,10 @@ void peep_rollback(int pos):
 	if (ebxreg_end > pos): ebxreg_end = 0
 	if (imm_note_end > pos): imm_note_end = 0
 	if (push_imm_end > pos): push_imm_end = 0
+	if (wimm_note_end > pos): wimm_note_end = 0
+	if (push_wimm_end > pos): push_wimm_end = 0
+	if (cg_note_end > pos): cg_note_end = 0
+	if (term_note_end > pos): term_note_end = 0
 	if (binfold_end > pos): binfold_end = 0
 	if (cmp_fuse_end > pos): cmp_fuse_end = 0
 	if (lea_note_end > pos): lea_note_end = 0
@@ -2739,15 +3104,9 @@ void neg_eax():
 	elif (target_isa == 1): a64(op(0xcb, 0x0003e0))   # neg x0,x0
 	else:
 		# 'mov eax,imm ; neg eax' is one negated constant (A2), which keeps
-		# the immediate note for the folds after it. The host's most
-		# negative value is its own negation on a 32-bit host but not on a
-		# 64-bit one, so that value alone keeps the two instructions.
-		if ((imm_note_end != 0) && (imm_note_end == codepos) && (addr_modes_disabled == 0)):
-			int v = imm_note_value
-			if (v != (0 - (1 << 31))):
-				peep_rollback(imm_note_start)
-				mov_eax_int(0 - v)
-				return
+		# the immediate note for the folds after it; the exact fold (O1)
+		# also negates a wide constant and the most negative int32.
+		if ((addr_modes_disabled == 0) && k64_fold_unary('-', 0)): return
 		emit_x64_opcode()
 		emit(2, c"\xf7\xd8") /* neg %eax */
 
@@ -2917,9 +3276,7 @@ void alu_add():
 	else:
 		if (shuttle_alu(0)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
-			if (fold_add_fits(binfold_left, binfold_right)):
-				binfold_emit(binfold_left + binfold_right)
-				return
+			if (binfold_op('+')): return
 		if (ebxreg_alu(0)): return
 		emit_x64_opcode()
 		emit(2, c"\x01\xd8")
@@ -2933,9 +3290,7 @@ void alu_sub():
 	else:
 		if (shuttle_alu(5)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
-			if (fold_sub_fits(binfold_left, binfold_right)):
-				binfold_emit(binfold_left - binfold_right)
-				return
+			if (binfold_op('-')): return
 		if (ebxreg_alu(5)): return
 		emit_x64_opcode()
 		emit(2, c"\x29\xc3")
@@ -2951,9 +3306,7 @@ void alu_imul():
 	else:
 		if (shuttle_alu(8)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
-			if (fold_mul_fits(binfold_left, binfold_right)):
-				binfold_emit(binfold_left * binfold_right)
-				return
+			if (binfold_op('*')): return
 		if (ebxreg_alu(8)): return
 		emit_x64_opcode()
 		emit(3, c"\x0f\xaf\xc3")
@@ -2972,6 +3325,10 @@ void alu_idiv():
 # The x86 family's signed division: the remainder variant keeps edx
 # (mov eax,edx) before a loop-owned edx comes back (A9).
 void alu_idiv_x86(int remainder):
+	# Both operands constant (O1)
+	int op = '/'
+	if (remainder): op = '%'
+	if (k64_fold_pushed(op)): return
 	# cdq/cqo and idiv write edx: a park there goes to the stack first (A3)
 	ers_hazard_regs(4)
 	rl_hazard_begin(4)
@@ -3047,6 +3404,11 @@ void alu_umod():
 # 0xe8 shr, 0xf8 sar).
 int shift_imm_fold(int modrm_ext):
 	if ((imm_note_end == 0) || (imm_note_end != codepos)): return 0
+	# A constant shifted by a constant is a constant (O1)
+	int op = 'L'
+	if (modrm_ext == 0xf8): op = 'R'
+	if (modrm_ext == 0xe8): op = 'U'
+	if (k64_fold_pushed(op)): return 1
 	if ((push_note_end == 0) || (push_note_end != imm_note_start)): return 0
 	int count = imm_note_value & 255
 	peep_rollback(push_note_start)
@@ -3128,8 +3490,7 @@ void alu_and():
 	else:
 		if (shuttle_alu(4)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
-			binfold_emit(binfold_left & binfold_right)
-			return
+			if (binfold_op('&')): return
 		if (ebxreg_alu(4)): return
 		emit_x64_opcode()
 		emit(2, c"\x21\xd8")
@@ -3143,8 +3504,7 @@ void alu_or():
 	else:
 		if (shuttle_alu(1)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
-			binfold_emit(binfold_left | binfold_right)
-			return
+			if (binfold_op('|')): return
 		if (ebxreg_alu(1)): return
 		emit_x64_opcode()
 		emit(2, c"\x09\xd8")
@@ -3158,8 +3518,7 @@ void alu_xor():
 	else:
 		if (shuttle_alu(6)): return
 		if ((binfold_end != 0) && (binfold_end == codepos)):
-			binfold_emit(binfold_left ^ binfold_right)
-			return
+			if (binfold_op('^')): return
 		if (ebxreg_alu(6)): return
 		emit_x64_opcode()
 		emit(2, c"\x31\xd8")
@@ -3619,9 +3978,12 @@ void be_return(int stack_words):
 	if (be_frame_active && (target_isa == 1)):
 		be_arm64_frame_return()
 		return
+	# A return directly after a 'ret' or 'jmp' is unreachable (O1)
+	if (term_unreachable()): return
 	if ((target_isa == 0) && be_frame_active): be_frame_teardown()
 	else: be_pop(stack_words)
 	ret()
+	if (target_isa == 0): term_note_end = codepos
 
 
 # x86/x64 frame teardown: 'leave', or, when the prologue pushed promoted
@@ -3644,7 +4006,10 @@ void be_return_bare():
 	if (be_frame_active && (target_isa == 1)):
 		be_arm64_frame_return()
 		return
+	# The fall-through epilogue after a final 'return' is unreachable (O1)
+	if (term_unreachable()): return
 	if ((target_isa == 0) && be_frame_active): be_frame_teardown()
 	ret()
+	if (target_isa == 0): term_note_end = codepos
 
 ############################## end of x86 opcodes ##############################

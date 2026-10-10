@@ -126,8 +126,11 @@ void inline_window_close(inline_frame* frame):
 void inline_return():
 	inline_frame* frame = inline_frame_top()
 	if (stack_pos > frame.base): be_pop(stack_pos - frame.base)
+	# An unreachable return emits no jump (be_br_on's terminator note),
+	# and then there is no tail jump to drop either
+	int before = codepos
 	be_br(frame.region)
-	frame.tail_jump = codepos
+	if (codepos != before): frame.tail_jump = codepos
 
 
 # Emit the body of record r in place of the call based at s whose

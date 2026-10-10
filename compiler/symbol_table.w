@@ -616,6 +616,9 @@ void sym_define_global_at(int current_symbol, int v):
 
 
 void sym_define_global(int current_symbol):
+	# A symbol defined at codepos (a function entry) is a call target:
+	# what follows is reachable again (O1, the terminator note)
+	term_note_end = 0
 	sym_define_global_at(current_symbol, code_offset + codepos)
 
 
@@ -892,6 +895,8 @@ void sym_not_found_error(char* s):
 type __repl_call_site_hook_callback = fn(char*, int, int) -> void
 
 
+void const_global_note(int t, int start); /* grammar/program.w */
+
 int sym_emit_value(int t, char* s):
 	# A kernel's body lives in the PTX module, not at a host address:
 	# referencing its name as a value can only be a miscall.
@@ -924,8 +929,12 @@ int sym_emit_value(int t, char* s):
 		be_tls_address(load_int(table + t + 2))
 		return type
 	if ((scope_type == 'D') || (scope_type == 'U')):
+		int slot_start = codepos
 		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 		be_addr_slot_write(codepos - 4, load_int(table + t + 2))
+		# A const integer global or enum constant: promote() may load
+		# its known value as an immediate instead (O1)
+		if ((scope_type == 'D') && (symtype == 1) && (target_isa == 0)): const_global_note(t, slot_start)
 
 	int k = 0
 	if (verbosity >= 2):
