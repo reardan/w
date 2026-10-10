@@ -2226,4 +2226,10 @@ void regalloc_stats_dump():
 	print_int0(c" expression parks: ", ers_parks)
 	print_int0(c" spilled: ", ers_spills)
 	print_error(c"\x0a")
+	# O1 (code_generator/x86.w): constant folds, const-global reads
+	# loaded as immediates, unreachable branches/returns not emitted
+	print_int0(c"constants: folded: ", k64_folds)
+	print_int0(c" const reads: ", const_global_reads_folded)
+	print_int0(c" dead jumps/returns: ", term_notes_elided)
+	print_error(c"\x0a")
 	rs_profile_stats_dump()   # P2

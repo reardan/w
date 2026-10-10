@@ -318,6 +318,14 @@ void static_note_address(int pos):
 	static_address_count = static_address_count + 1
 
 
+# A fold rolled back the address slot just noted at pos (O1's const
+# global read): forget it rather than leave the writer's filter to guess.
+void static_unnote_address(int pos):
+	if (static_address_count == 0): return
+	if (load_int32(static_address_slots + (static_address_count - 1) * 4) != pos): return
+	static_address_count = static_address_count - 1
+
+
 void emit_int8(int v):
 	emit_i(v, 1)
 

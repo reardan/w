@@ -98,6 +98,63 @@ int const_symbol_value(int t):
 	return 0
 
 
+# Const globals whose storage this compilation wrote (O1): symbol offset
+# -> storage address. A const object the loader fills (an 'extern' data
+# import) is never in it, so its reads keep loading from memory.
+map[int, int] const_global_addresses
+
+
+void const_global_define(int t, int type):
+	if (type_is_const(type) == 0): return
+	if (cast(int, const_global_addresses) == 0): const_global_addresses = new map[int, int]
+	const_global_addresses[t] = load_int(table + t + 2)
+
+
+# sym_emit_value just materialized the address of global object t,
+# starting at start (x86 family only): when t is an enum constant or a
+# const integer global with a known value no wider than a word, note it,
+# so promote() can load that value as an immediate (code_generator/
+# x86.w, cg_note_*). The value is read back from the image exactly as
+# const_symbol_value does, at the width and signedness the load would
+# use.
+void const_global_note(int t, int start):
+	int type = load_int(table + t + 6)
+	int t_real = type_unqualified(type)
+	char* p = 0
+	if (type_get_kind(type) == type_kind_enum):
+		p = code + load_int(table + t + 2) - code_offset
+		t_real = type
+	else:
+		if (type_is_const(type) == 0): return
+		if (value_class(t_real) != VC_INT): return
+		if (cast(int, const_global_addresses) == 0): return
+		int addr = load_int(table + t + 2)
+		if (const_global_addresses.get(t, -1) != addr): return
+		p = code + addr - code_offset
+		if (data_split): p = data + (addr - data_offset)
+	int size = type_get_size(t_real)
+	int value = 0
+	if (size == 1):
+		value = p[0]
+		if (type_is_unsigned_fixed(t_real)): value = value & 255
+	else if (size == 2):
+		value = (p[0] & 255) | (p[1] << 8)
+		if (type_is_unsigned_fixed(t_real)): value = value & 65535
+	else if (size == 4):
+		value = load_int32(p)
+		# a zero-extending load of a bit-31 value is wider than int32
+		if ((word_size == 8) && type_is_unsigned_fixed(t_real) && (value < 0)): return
+	else if ((size == 8) && (word_size == 8)):
+		# word-sized: the initializer stored a sign-extended int32
+		value = load_int32(p)
+		if (load_int32(p + 4) != (value >> 31)): return
+	else: return
+	cg_note_start = start
+	cg_note_end = codepos
+	cg_note_type = type
+	cg_note_value = value
+
+
 int const_or();
 
 
@@ -780,6 +837,7 @@ void global_variable_declaration(int binding, int type, char* init_name):
 	else:
 		define_global_variable(binding, type)
 		if (init_name): global_initializer(init_name, binding, type)
+	const_global_define(binding, type)
 
 
 void program_item():

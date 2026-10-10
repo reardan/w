@@ -337,6 +337,18 @@ int promote(int type):
 		promote_eax()
 		return type
 	if (ci_is_bit_field_access(type)): return bit_field_promote(type)
+	# The address just materialized is a const integer global's or an
+	# enum constant's (O1, cg_note_*): load its known value as an
+	# immediate, which the constant folds then consume ('cmp r8,5').
+	if ((cg_note_end != 0) && (cg_note_end == codepos) && (type == cg_note_type)):
+		int value = cg_note_value
+		int slot = cg_note_end - 4
+		peep_rollback(cg_note_start)
+		cg_note_end = 0
+		if (elf_static): static_unnote_address(slot)
+		mov_eax_int(value)
+		const_global_reads_folded = const_global_reads_folded + 1
+		return type
 
 	int size = type_get_size(type)
 	int unsigned_fixed = type_is_unsigned_fixed(type)
