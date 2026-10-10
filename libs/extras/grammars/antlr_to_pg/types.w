@@ -23,12 +23,34 @@ type at_char_pred = fn(int) -> int
 struct at_alt:
 
 
+# Semantic sites are retained separately from matching atoms. `position` is
+# the number of preceding atoms in the containing alternative; order is stable.
+struct at_site:
+	char* kind
+	char* raw
+	pg_token* first
+	pg_token* last
+	int position
+
+
+struct at_command:
+	char* name
+	char* argument
+	pg_token* first
+	pg_token* last
+
+
 struct at_rule:
 	char* name
 	int is_fragment
 	int is_lexer
 	list[at_alt*] alts       # alternatives
-	char* command          # lexer command ident ("skip", "channel", ...) or 0
+	char* command          # legacy classifier summary; full ordered list below
+	list[at_command*] commands
+	list[at_site*] options
+	char* mode
+	pg_token* first
+	pg_token* last
 
 
 # kind: 0 lit, 1 charset, 2 ref, 3 group, 4 wildcard, 5 negated
@@ -36,11 +58,18 @@ struct at_element:
 	int kind
 	char* text             # for lit/charset/ref
 	list[at_alt*] group_alts # group alternatives
+	list[at_site*] sites
+	char* label
+	int nongreedy
+	pg_token* first
+	pg_token* last
 	int suffix             # 0, '?', '*' or '+'
 
 
 struct at_alt:
-	list[at_element*] elements   # elements
+	list[at_element*] elements   # matching atoms
+	list[at_site*] sites
+	char* label
 
 
 struct at_classification:
@@ -80,8 +109,14 @@ int g_negset_counter
 # order (tools/antlr_to_pg.w): classify.w defines at_report, matchers_emit.w
 # the other two.
 void at_report(char* prefix, char* rule_name, char* payload);
+void at_loss(pg_token* location, char* rule_name, char* reason);
 char* at_try_generate_matcher(at_rule* rule);
 void at_emit_c_char_literal(string_builder* out, int c);
 
 
 
+
+# Current input is borrowed only while collecting its owned semantic text.
+char* g_at_source
+list[at_site*] g_at_dependencies
+int g_at_semantic_losses

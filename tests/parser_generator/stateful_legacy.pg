@@ -1,0 +1,5 @@
+parser stateful_legacy
+lexer stateful
+token IDENT letters
+literal KEYWORD "if"
+rule program = KEYWORD EOF

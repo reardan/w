@@ -1,0 +1,2762 @@
+{
+  "upstream_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+  "strategy": "reviewed hand adaptation; not executable automatic ANTLR translation",
+  "sites": [
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 38,
+      "column": 1,
+      "offset": 1935,
+      "rule": "<grammar>",
+      "expected": "channels {\n    ERROR\n}",
+      "blocker": "unresolved grammar dependency: channels {\n    ERROR\n}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit native imports and channels replace foreign runtime inheritance; upstream dependency text is retained as provenance."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 42,
+      "column": 1,
+      "offset": 1959,
+      "rule": "<grammar>",
+      "expected": "options {\n    superClass = JavaScriptLexerBase;\n}",
+      "blocker": "unresolved grammar dependency: options {\n    superClass = JavaScriptLexerBase;\n}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit native imports and channels replace foreign runtime inheritance; upstream dependency text is retained as provenance."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 222,
+      "column": 1,
+      "offset": 7477,
+      "rule": "<grammar>",
+      "expected": "mode TEMPLATE;",
+      "blocker": "unresolved mode declaration: mode TEMPLATE;",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 39,
+      "column": 1,
+      "offset": 1860,
+      "rule": "<grammar>",
+      "expected": "options {\n    tokenVocab = JavaScriptLexer;\n    superClass = JavaScriptParserBase;\n}",
+      "blocker": "unresolved grammar dependency: options {\n    tokenVocab = JavaScriptLexer;\n    superClass = JavaScriptParserBase;\n}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit native imports and channels replace foreign runtime inheritance; upstream dependency text is retained as provenance."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 48,
+      "column": 47,
+      "offset": 2095,
+      "rule": "HashBangLine",
+      "expected": "{ this.IsStartOfFile()}?",
+      "blocker": "unmapped predicate at atom position 0: { this.IsStartOfFile()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 48,
+      "column": 77,
+      "offset": 2125,
+      "rule": "HashBangLine",
+      "expected": "~[\\r\\n\\u2028\\u2029]*; // only allowed at start",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 49,
+      "column": 26,
+      "offset": 2197,
+      "rule": "MultiLineComment",
+      "expected": ".*?",
+      "blocker": "non-greedy matching requires an explicit adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Explicit block comment matcher scans through the first closing delimiter."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 50,
+      "column": 26,
+      "offset": 2263,
+      "rule": "SingleLineComment",
+      "expected": "~[\\r\\n\\u2028\\u2029]* -> channel(HIDDEN);",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 52,
+      "column": 59,
+      "offset": 2388,
+      "rule": "RegularExpressionLiteral",
+      "expected": "{this.IsRegexPossible()}?",
+      "blocker": "unmapped predicate at atom position 3: {this.IsRegexPossible()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 59,
+      "column": 34,
+      "offset": 2606,
+      "rule": "OpenBrace",
+      "expected": "{this.ProcessOpenBrace();}",
+      "blocker": "unmapped action at atom position 1: {this.ProcessOpenBrace();}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 61,
+      "column": 106,
+      "offset": 2883,
+      "rule": "TemplateCloseBrace",
+      "expected": "popMode",
+      "blocker": "unsupported command popMode()",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 60,
+      "column": 34,
+      "offset": 2667,
+      "rule": "TemplateCloseBrace",
+      "expected": "{this.IsInTemplateString()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.IsInTemplateString()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 61,
+      "column": 67,
+      "offset": 2844,
+      "rule": "TemplateCloseBrace",
+      "expected": "{this.ProcessTemplateCloseBrace();}",
+      "blocker": "unmapped action at atom position 1: {this.ProcessTemplateCloseBrace();}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 62,
+      "column": 34,
+      "offset": 2925,
+      "rule": "CloseBrace",
+      "expected": "{this.ProcessCloseBrace();}",
+      "blocker": "unmapped action at atom position 1: {this.ProcessCloseBrace();}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 133,
+      "column": 35,
+      "offset": 5084,
+      "rule": "OctalIntegerLiteral",
+      "expected": "{!this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 2: {!this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 192,
+      "column": 29,
+      "offset": 6447,
+      "rule": "Implements",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 193,
+      "column": 29,
+      "offset": 6499,
+      "rule": "StrictLet",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 194,
+      "column": 29,
+      "offset": 6551,
+      "rule": "NonStrictLet",
+      "expected": "{!this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {!this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 195,
+      "column": 29,
+      "offset": 6604,
+      "rule": "Private",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 196,
+      "column": 29,
+      "offset": 6656,
+      "rule": "Public",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 197,
+      "column": 29,
+      "offset": 6708,
+      "rule": "Interface",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 198,
+      "column": 29,
+      "offset": 6760,
+      "rule": "Package",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 199,
+      "column": 29,
+      "offset": 6812,
+      "rule": "Protected",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 200,
+      "column": 29,
+      "offset": 6864,
+      "rule": "Static",
+      "expected": "{this.IsStrictMode()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.IsStrictMode()}?",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 207,
+      "column": 73,
+      "offset": 7079,
+      "rule": "StringLiteral",
+      "expected": "{this.ProcessStringLiteral();}",
+      "blocker": "unmapped action at atom position 1: {this.ProcessStringLiteral();}",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 210,
+      "column": 18,
+      "offset": 7130,
+      "rule": "BackTick",
+      "expected": "pushMode(TEMPLATE)",
+      "blocker": "unsupported command pushMode(TEMPLATE)",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 212,
+      "column": 14,
+      "offset": 7164,
+      "rule": "WhiteSpaces",
+      "expected": "[\\t\\u000B\\u000C\\u0020\\u00A0]+ -> channel(HIDDEN);",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 214,
+      "column": 17,
+      "offset": 7231,
+      "rule": "LineTerminator",
+      "expected": "[\\r\\n\\u2028\\u2029] -> channel(HIDDEN);",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 218,
+      "column": 30,
+      "offset": 7314,
+      "rule": "HtmlComment",
+      "expected": ".*?",
+      "blocker": "non-greedy matching requires an explicit adaptation",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 219,
+      "column": 35,
+      "offset": 7383,
+      "rule": "CDataComment",
+      "expected": ".*?",
+      "blocker": "non-greedy matching requires an explicit adaptation",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 220,
+      "column": 48,
+      "offset": 7460,
+      "rule": "UnexpectedCharacter",
+      "expected": "channel(ERROR)",
+      "blocker": "unsupported command channel(ERROR)",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 224,
+      "column": 1,
+      "offset": 7493,
+      "rule": "BackTickInside",
+      "expected": "BackTickInside                : '`' -> type(BackTick), popMode;",
+      "blocker": "lexer mode TEMPLATE is not lowered",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 224,
+      "column": 40,
+      "offset": 7532,
+      "rule": "BackTickInside",
+      "expected": "type(BackTick)",
+      "blocker": "unsupported command type(BackTick)",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 224,
+      "column": 56,
+      "offset": 7548,
+      "rule": "BackTickInside",
+      "expected": "popMode",
+      "blocker": "unsupported command popMode()",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 225,
+      "column": 1,
+      "offset": 7557,
+      "rule": "TemplateStringStartExpression",
+      "expected": "TemplateStringStartExpression : '${' {this.ProcessTemplateOpenBrace();} -> pushMode(DEFAULT_MODE);",
+      "blocker": "lexer mode TEMPLATE is not lowered",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 225,
+      "column": 76,
+      "offset": 7632,
+      "rule": "TemplateStringStartExpression",
+      "expected": "pushMode(DEFAULT_MODE)",
+      "blocker": "unsupported command pushMode(DEFAULT_MODE)",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 225,
+      "column": 38,
+      "offset": 7594,
+      "rule": "TemplateStringStartExpression",
+      "expected": "{this.ProcessTemplateOpenBrace();}",
+      "blocker": "unmapped action at atom position 1: {this.ProcessTemplateOpenBrace();}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Parser-directed regex goal and checkpointed template/brace state replace host lexer predicates/actions."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 226,
+      "column": 1,
+      "offset": 7656,
+      "rule": "TemplateStringAtom",
+      "expected": "TemplateStringAtom            : ~[`];",
+      "blocker": "lexer mode TEMPLATE is not lowered",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit TEMPLATE mode and state actions. Native TEMPLATE_END remains distinct from BACKTICK; no hidden type remap."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 259,
+      "column": 33,
+      "offset": 8573,
+      "rule": "LineContinuation",
+      "expected": "[\\r\\n\\u2028\\u2029]+;",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 267,
+      "column": 44,
+      "offset": 8770,
+      "rule": "IdentifierPart",
+      "expected": "[\\p{Mn}] | [\\p{Nd}] | [\\p{Pc}] | '\\u200C' | '\\u200D';",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 267,
+      "column": 55,
+      "offset": 8781,
+      "rule": "IdentifierPart",
+      "expected": "[\\p{Nd}] | [\\p{Pc}] | '\\u200C' | '\\u200D';",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 267,
+      "column": 66,
+      "offset": 8792,
+      "rule": "IdentifierPart",
+      "expected": "[\\p{Pc}] | '\\u200C' | '\\u200D';",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 267,
+      "column": 77,
+      "offset": 8803,
+      "rule": "IdentifierPart",
+      "expected": "'\\u200C' | '\\u200D';",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 267,
+      "column": 88,
+      "offset": 8814,
+      "rule": "IdentifierPart",
+      "expected": "'\\u200D';",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 269,
+      "column": 27,
+      "offset": 8851,
+      "rule": "IdentifierStart",
+      "expected": "[\\p{L}] | [$_] | '\\\\' UnicodeEscapeSequence;",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 272,
+      "column": 5,
+      "offset": 8938,
+      "rule": "RegularExpressionFirstChar",
+      "expected": "~[*\\r\\n\\u2028\\u2029\\\\/[]",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 278,
+      "column": 5,
+      "offset": 9085,
+      "rule": "RegularExpressionChar",
+      "expected": "~[\\r\\n\\u2028\\u2029\\\\/[]",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 283,
+      "column": 38,
+      "offset": 9232,
+      "rule": "RegularExpressionClassChar",
+      "expected": "~[\\r\\n\\u2028\\u2029\\]\\\\] | RegularExpressionBackslashSequence;",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 285,
+      "column": 51,
+      "offset": 9345,
+      "rule": "RegularExpressionBackslashSequence",
+      "expected": "~[\\r\\n\\u2028\\u2029]",
+      "blocker": "Unicode escape/property or non-ASCII matching is not verified",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/unicode.w",
+        "libs/extras/javascript/lexical.w"
+      ],
+      "adaptation": "Pinned Unicode 12.1 tables and JS-specific lexical matchers; no ASCII approximation."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 173,
+      "column": 7,
+      "offset": 4247,
+      "rule": "expressionStatement",
+      "expected": "{this.notOpenBraceAndNotFunction()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.notOpenBraceAndNotFunction()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 195,
+      "column": 17,
+      "offset": 5238,
+      "rule": "continueStatement",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 199,
+      "column": 14,
+      "offset": 5318,
+      "rule": "breakStatement",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 203,
+      "column": 15,
+      "offset": 5400,
+      "rule": "returnStatement",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 207,
+      "column": 28,
+      "offset": 5502,
+      "rule": "yieldStatement",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 239,
+      "column": 13,
+      "offset": 6019,
+      "rule": "throwStatement",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 271,
+      "column": 17,
+      "offset": 6590,
+      "rule": "classElement",
+      "expected": "{this.n(\"static\")}?",
+      "blocker": "unmapped predicate at atom position 0: {this.n(\"static\")}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit contextual keyword alternatives in the adapted grammar."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 272,
+      "column": 17,
+      "offset": 6656,
+      "rule": "classElement",
+      "expected": "{this.n(\"static\")}?",
+      "blocker": "unmapped predicate at atom position 0: {this.n(\"static\")}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit contextual keyword alternatives in the adapted grammar."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 273,
+      "column": 17,
+      "offset": 6721,
+      "rule": "classElement",
+      "expected": "{this.n(\"static\")}?",
+      "blocker": "unmapped predicate at atom position 0: {this.n(\"static\")}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit contextual keyword alternatives in the adapted grammar."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 278,
+      "column": 14,
+      "offset": 6818,
+      "rule": "methodDefinition",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 358,
+      "column": 1,
+      "offset": 8788,
+      "rule": "singleExpression",
+      "expected": "singleExpression",
+      "blocker": "unsupported left recursion (including nullable prefixes)",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Hand-reviewed expression precedence tiers; assignment and exponentiation recurse on the right."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 369,
+      "column": 24,
+      "offset": 9746,
+      "rule": "singleExpression",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 370,
+      "column": 24,
+      "offset": 9847,
+      "rule": "singleExpression",
+      "expected": "{this.notLineTerminator()}?",
+      "blocker": "unmapped predicate at atom position 1: {this.notLineTerminator()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 381,
+      "column": 7,
+      "offset": 10882,
+      "rule": "singleExpression",
+      "expected": "<assoc = right>",
+      "blocker": "unmapped element option at atom position 0: <assoc = right>",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Hand-reviewed expression precedence tiers; assignment and exponentiation recurse on the right."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 396,
+      "column": 7,
+      "offset": 12318,
+      "rule": "singleExpression",
+      "expected": "<assoc = right>",
+      "blocker": "unmapped element option at atom position 0: <assoc = right>",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Hand-reviewed expression precedence tiers; assignment and exponentiation recurse on the right."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 397,
+      "column": 7,
+      "offset": 12416,
+      "rule": "singleExpression",
+      "expected": "<assoc = right>",
+      "blocker": "unmapped element option at atom position 0: <assoc = right>",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Hand-reviewed expression precedence tiers; assignment and exponentiation recurse on the right."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 494,
+      "column": 7,
+      "offset": 15259,
+      "rule": "getter",
+      "expected": "{this.n(\"get\")}?",
+      "blocker": "unmapped predicate at atom position 0: {this.n(\"get\")}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit contextual keyword alternatives in the adapted grammar."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 498,
+      "column": 7,
+      "offset": 15324,
+      "rule": "setter",
+      "expected": "{this.n(\"set\")}?",
+      "blocker": "unmapped predicate at atom position 0: {this.n(\"set\")}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit contextual keyword alternatives in the adapted grammar."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 581,
+      "column": 7,
+      "offset": 16307,
+      "rule": "eos",
+      "expected": "{this.lineTerminatorAhead()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.lineTerminatorAhead()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptParser.g4",
+      "line": 582,
+      "column": 7,
+      "offset": 16343,
+      "rule": "eos",
+      "expected": "{this.closeBrace()}?",
+      "blocker": "unmapped predicate at atom position 0: {this.closeBrace()}?",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/predicates.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Pure predicates inspect source trivia and statement context."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 49,
+      "column": 1,
+      "offset": 2172,
+      "rule": "MultiLineComment",
+      "expected": "MultiLineComment  : '/*' .*? '*/'             -> channel(HIDDEN);",
+      "blocker": "heuristic built-in matcher requires an exact reviewed adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 50,
+      "column": 1,
+      "offset": 2238,
+      "rule": "SingleLineComment",
+      "expected": "SingleLineComment : '//' ~[\\r\\n\\u2028\\u2029]* -> channel(HIDDEN);",
+      "blocker": "heuristic built-in matcher requires an exact reviewed adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 55,
+      "column": 1,
+      "offset": 2437,
+      "rule": "OpenBracket",
+      "expected": "OpenBracket                : '[';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 56,
+      "column": 1,
+      "offset": 2471,
+      "rule": "CloseBracket",
+      "expected": "CloseBracket               : ']';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 57,
+      "column": 1,
+      "offset": 2505,
+      "rule": "OpenParen",
+      "expected": "OpenParen                  : '(';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 58,
+      "column": 1,
+      "offset": 2539,
+      "rule": "CloseParen",
+      "expected": "CloseParen                 : ')';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 59,
+      "column": 1,
+      "offset": 2573,
+      "rule": "OpenBrace",
+      "expected": "OpenBrace                  : '{' {this.ProcessOpenBrace();};",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 60,
+      "column": 1,
+      "offset": 2634,
+      "rule": "TemplateCloseBrace",
+      "expected": "TemplateCloseBrace         :     {this.IsInTemplateString()}? '}' // Break lines here to ensure proper transformation by Go/transformGrammar.py",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 60,
+      "column": 1,
+      "offset": 2634,
+      "rule": "TemplateCloseBrace",
+      "expected": "TemplateCloseBrace         :     {this.IsInTemplateString()}? '}' // Break lines here to ensure proper transformation by Go/transformGrammar.py",
+      "blocker": "literal classification does not preserve lexer commands",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 62,
+      "column": 1,
+      "offset": 2892,
+      "rule": "CloseBrace",
+      "expected": "CloseBrace                 : '}' {this.ProcessCloseBrace();};",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 63,
+      "column": 1,
+      "offset": 2954,
+      "rule": "SemiColon",
+      "expected": "SemiColon                  : ';';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 64,
+      "column": 1,
+      "offset": 2988,
+      "rule": "Comma",
+      "expected": "Comma                      : ',';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 65,
+      "column": 1,
+      "offset": 3022,
+      "rule": "Assign",
+      "expected": "Assign                     : '=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 66,
+      "column": 1,
+      "offset": 3056,
+      "rule": "QuestionMark",
+      "expected": "QuestionMark               : '?';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 67,
+      "column": 1,
+      "offset": 3090,
+      "rule": "QuestionMarkDot",
+      "expected": "QuestionMarkDot            : '?.';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 68,
+      "column": 1,
+      "offset": 3125,
+      "rule": "Colon",
+      "expected": "Colon                      : ':';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 69,
+      "column": 1,
+      "offset": 3159,
+      "rule": "Ellipsis",
+      "expected": "Ellipsis                   : '...';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 70,
+      "column": 1,
+      "offset": 3195,
+      "rule": "Dot",
+      "expected": "Dot                        : '.';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 71,
+      "column": 1,
+      "offset": 3229,
+      "rule": "PlusPlus",
+      "expected": "PlusPlus                   : '++';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 72,
+      "column": 1,
+      "offset": 3264,
+      "rule": "MinusMinus",
+      "expected": "MinusMinus                 : '--';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 73,
+      "column": 1,
+      "offset": 3299,
+      "rule": "Plus",
+      "expected": "Plus                       : '+';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 74,
+      "column": 1,
+      "offset": 3333,
+      "rule": "Minus",
+      "expected": "Minus                      : '-';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 75,
+      "column": 1,
+      "offset": 3367,
+      "rule": "BitNot",
+      "expected": "BitNot                     : '~';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 76,
+      "column": 1,
+      "offset": 3401,
+      "rule": "Not",
+      "expected": "Not                        : '!';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 77,
+      "column": 1,
+      "offset": 3435,
+      "rule": "Multiply",
+      "expected": "Multiply                   : '*';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 78,
+      "column": 1,
+      "offset": 3469,
+      "rule": "Divide",
+      "expected": "Divide                     : '/';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 79,
+      "column": 1,
+      "offset": 3503,
+      "rule": "Modulus",
+      "expected": "Modulus                    : '%';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 80,
+      "column": 1,
+      "offset": 3537,
+      "rule": "Power",
+      "expected": "Power                      : '**';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 81,
+      "column": 1,
+      "offset": 3572,
+      "rule": "NullCoalesce",
+      "expected": "NullCoalesce               : '??';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 82,
+      "column": 1,
+      "offset": 3607,
+      "rule": "Hashtag",
+      "expected": "Hashtag                    : '#';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 83,
+      "column": 1,
+      "offset": 3641,
+      "rule": "RightShiftArithmetic",
+      "expected": "RightShiftArithmetic       : '>>';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 84,
+      "column": 1,
+      "offset": 3676,
+      "rule": "LeftShiftArithmetic",
+      "expected": "LeftShiftArithmetic        : '<<';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 85,
+      "column": 1,
+      "offset": 3711,
+      "rule": "RightShiftLogical",
+      "expected": "RightShiftLogical          : '>>>';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 86,
+      "column": 1,
+      "offset": 3747,
+      "rule": "LessThan",
+      "expected": "LessThan                   : '<';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 87,
+      "column": 1,
+      "offset": 3781,
+      "rule": "MoreThan",
+      "expected": "MoreThan                   : '>';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 88,
+      "column": 1,
+      "offset": 3815,
+      "rule": "LessThanEquals",
+      "expected": "LessThanEquals             : '<=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 89,
+      "column": 1,
+      "offset": 3850,
+      "rule": "GreaterThanEquals",
+      "expected": "GreaterThanEquals          : '>=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 90,
+      "column": 1,
+      "offset": 3885,
+      "rule": "Equals_",
+      "expected": "Equals_                    : '==';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 91,
+      "column": 1,
+      "offset": 3920,
+      "rule": "NotEquals",
+      "expected": "NotEquals                  : '!=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 92,
+      "column": 1,
+      "offset": 3955,
+      "rule": "IdentityEquals",
+      "expected": "IdentityEquals             : '===';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 93,
+      "column": 1,
+      "offset": 3991,
+      "rule": "IdentityNotEquals",
+      "expected": "IdentityNotEquals          : '!==';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 94,
+      "column": 1,
+      "offset": 4027,
+      "rule": "BitAnd",
+      "expected": "BitAnd                     : '&';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 95,
+      "column": 1,
+      "offset": 4061,
+      "rule": "BitXOr",
+      "expected": "BitXOr                     : '^';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 96,
+      "column": 1,
+      "offset": 4095,
+      "rule": "BitOr",
+      "expected": "BitOr                      : '|';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 97,
+      "column": 1,
+      "offset": 4129,
+      "rule": "And",
+      "expected": "And                        : '&&';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 98,
+      "column": 1,
+      "offset": 4164,
+      "rule": "Or",
+      "expected": "Or                         : '||';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 99,
+      "column": 1,
+      "offset": 4199,
+      "rule": "MultiplyAssign",
+      "expected": "MultiplyAssign             : '*=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 100,
+      "column": 1,
+      "offset": 4234,
+      "rule": "DivideAssign",
+      "expected": "DivideAssign               : '/=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 101,
+      "column": 1,
+      "offset": 4269,
+      "rule": "ModulusAssign",
+      "expected": "ModulusAssign              : '%=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 102,
+      "column": 1,
+      "offset": 4304,
+      "rule": "PlusAssign",
+      "expected": "PlusAssign                 : '+=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 103,
+      "column": 1,
+      "offset": 4339,
+      "rule": "MinusAssign",
+      "expected": "MinusAssign                : '-=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 104,
+      "column": 1,
+      "offset": 4374,
+      "rule": "LeftShiftArithmeticAssign",
+      "expected": "LeftShiftArithmeticAssign  : '<<=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 105,
+      "column": 1,
+      "offset": 4410,
+      "rule": "RightShiftArithmeticAssign",
+      "expected": "RightShiftArithmeticAssign : '>>=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 106,
+      "column": 1,
+      "offset": 4446,
+      "rule": "RightShiftLogicalAssign",
+      "expected": "RightShiftLogicalAssign    : '>>>=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 107,
+      "column": 1,
+      "offset": 4483,
+      "rule": "BitAndAssign",
+      "expected": "BitAndAssign               : '&=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 108,
+      "column": 1,
+      "offset": 4518,
+      "rule": "BitXorAssign",
+      "expected": "BitXorAssign               : '^=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 109,
+      "column": 1,
+      "offset": 4553,
+      "rule": "BitOrAssign",
+      "expected": "BitOrAssign                : '|=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 110,
+      "column": 1,
+      "offset": 4588,
+      "rule": "PowerAssign",
+      "expected": "PowerAssign                : '**=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 111,
+      "column": 1,
+      "offset": 4624,
+      "rule": "NullishCoalescingAssign",
+      "expected": "NullishCoalescingAssign    : '??=';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 112,
+      "column": 1,
+      "offset": 4660,
+      "rule": "ARROW",
+      "expected": "ARROW                      : '=>';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 116,
+      "column": 1,
+      "offset": 4715,
+      "rule": "NullLiteral",
+      "expected": "NullLiteral: 'null';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 133,
+      "column": 1,
+      "offset": 5050,
+      "rule": "OctalIntegerLiteral",
+      "expected": "OctalIntegerLiteral  : '0' [0-7]+ {!this.IsStrictMode()}?;",
+      "blocker": "heuristic built-in matcher requires an exact reviewed adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 144,
+      "column": 1,
+      "offset": 5442,
+      "rule": "Break",
+      "expected": "Break      : 'break';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 145,
+      "column": 1,
+      "offset": 5464,
+      "rule": "Do",
+      "expected": "Do         : 'do';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 146,
+      "column": 1,
+      "offset": 5483,
+      "rule": "Instanceof",
+      "expected": "Instanceof : 'instanceof';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 147,
+      "column": 1,
+      "offset": 5510,
+      "rule": "Typeof",
+      "expected": "Typeof     : 'typeof';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 148,
+      "column": 1,
+      "offset": 5533,
+      "rule": "Case",
+      "expected": "Case       : 'case';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 149,
+      "column": 1,
+      "offset": 5554,
+      "rule": "Else",
+      "expected": "Else       : 'else';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 150,
+      "column": 1,
+      "offset": 5575,
+      "rule": "New",
+      "expected": "New        : 'new';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 151,
+      "column": 1,
+      "offset": 5595,
+      "rule": "Var",
+      "expected": "Var        : 'var';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 152,
+      "column": 1,
+      "offset": 5615,
+      "rule": "Catch",
+      "expected": "Catch      : 'catch';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 153,
+      "column": 1,
+      "offset": 5637,
+      "rule": "Finally",
+      "expected": "Finally    : 'finally';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 154,
+      "column": 1,
+      "offset": 5661,
+      "rule": "Return",
+      "expected": "Return     : 'return';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 155,
+      "column": 1,
+      "offset": 5684,
+      "rule": "Void",
+      "expected": "Void       : 'void';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 156,
+      "column": 1,
+      "offset": 5705,
+      "rule": "Continue",
+      "expected": "Continue   : 'continue';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 157,
+      "column": 1,
+      "offset": 5730,
+      "rule": "For",
+      "expected": "For        : 'for';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 158,
+      "column": 1,
+      "offset": 5750,
+      "rule": "Switch",
+      "expected": "Switch     : 'switch';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 159,
+      "column": 1,
+      "offset": 5773,
+      "rule": "While",
+      "expected": "While      : 'while';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 160,
+      "column": 1,
+      "offset": 5795,
+      "rule": "Debugger",
+      "expected": "Debugger   : 'debugger';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 161,
+      "column": 1,
+      "offset": 5820,
+      "rule": "Function_",
+      "expected": "Function_  : 'function';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 162,
+      "column": 1,
+      "offset": 5845,
+      "rule": "This",
+      "expected": "This       : 'this';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 163,
+      "column": 1,
+      "offset": 5866,
+      "rule": "With",
+      "expected": "With       : 'with';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 164,
+      "column": 1,
+      "offset": 5887,
+      "rule": "Default",
+      "expected": "Default    : 'default';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 165,
+      "column": 1,
+      "offset": 5911,
+      "rule": "If",
+      "expected": "If         : 'if';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 166,
+      "column": 1,
+      "offset": 5930,
+      "rule": "Throw",
+      "expected": "Throw      : 'throw';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 167,
+      "column": 1,
+      "offset": 5952,
+      "rule": "Delete",
+      "expected": "Delete     : 'delete';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 168,
+      "column": 1,
+      "offset": 5975,
+      "rule": "In",
+      "expected": "In         : 'in';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 169,
+      "column": 1,
+      "offset": 5994,
+      "rule": "Try",
+      "expected": "Try        : 'try';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 170,
+      "column": 1,
+      "offset": 6014,
+      "rule": "As",
+      "expected": "As         : 'as';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 171,
+      "column": 1,
+      "offset": 6033,
+      "rule": "From",
+      "expected": "From       : 'from';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 172,
+      "column": 1,
+      "offset": 6054,
+      "rule": "Of",
+      "expected": "Of         : 'of';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 173,
+      "column": 1,
+      "offset": 6073,
+      "rule": "Yield",
+      "expected": "Yield      : 'yield';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 174,
+      "column": 1,
+      "offset": 6095,
+      "rule": "YieldStar",
+      "expected": "YieldStar  : 'yield*';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 178,
+      "column": 1,
+      "offset": 6146,
+      "rule": "Class",
+      "expected": "Class   : 'class';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 179,
+      "column": 1,
+      "offset": 6165,
+      "rule": "Enum",
+      "expected": "Enum    : 'enum';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 180,
+      "column": 1,
+      "offset": 6183,
+      "rule": "Extends",
+      "expected": "Extends : 'extends';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 181,
+      "column": 1,
+      "offset": 6204,
+      "rule": "Super",
+      "expected": "Super   : 'super';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 182,
+      "column": 1,
+      "offset": 6223,
+      "rule": "Const",
+      "expected": "Const   : 'const';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 183,
+      "column": 1,
+      "offset": 6242,
+      "rule": "Export",
+      "expected": "Export  : 'export';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 184,
+      "column": 1,
+      "offset": 6262,
+      "rule": "Import",
+      "expected": "Import  : 'import';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 186,
+      "column": 1,
+      "offset": 6283,
+      "rule": "Async",
+      "expected": "Async : 'async';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 187,
+      "column": 1,
+      "offset": 6300,
+      "rule": "Await",
+      "expected": "Await : 'await';",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 192,
+      "column": 1,
+      "offset": 6419,
+      "rule": "Implements",
+      "expected": "Implements   : 'implements' {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 193,
+      "column": 1,
+      "offset": 6471,
+      "rule": "StrictLet",
+      "expected": "StrictLet    : 'let'        {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 194,
+      "column": 1,
+      "offset": 6523,
+      "rule": "NonStrictLet",
+      "expected": "NonStrictLet : 'let'        {!this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 195,
+      "column": 1,
+      "offset": 6576,
+      "rule": "Private",
+      "expected": "Private      : 'private'    {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 196,
+      "column": 1,
+      "offset": 6628,
+      "rule": "Public",
+      "expected": "Public       : 'public'     {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 197,
+      "column": 1,
+      "offset": 6680,
+      "rule": "Interface",
+      "expected": "Interface    : 'interface'  {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 198,
+      "column": 1,
+      "offset": 6732,
+      "rule": "Package",
+      "expected": "Package      : 'package'    {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 199,
+      "column": 1,
+      "offset": 6784,
+      "rule": "Protected",
+      "expected": "Protected    : 'protected'  {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 200,
+      "column": 1,
+      "offset": 6836,
+      "rule": "Static",
+      "expected": "Static       : 'static'     {this.IsStrictMode()}?;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 210,
+      "column": 1,
+      "offset": 7113,
+      "rule": "BackTick",
+      "expected": "BackTick: '`' -> pushMode(TEMPLATE);",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 210,
+      "column": 1,
+      "offset": 7113,
+      "rule": "BackTick",
+      "expected": "BackTick: '`' -> pushMode(TEMPLATE);",
+      "blocker": "literal classification does not preserve lexer commands",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 220,
+      "column": 1,
+      "offset": 7413,
+      "rule": "UnexpectedCharacter",
+      "expected": "UnexpectedCharacter : .                     -> channel(ERROR);",
+      "blocker": "heuristic built-in matcher requires an exact reviewed adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 224,
+      "column": 1,
+      "offset": 7493,
+      "rule": "BackTickInside",
+      "expected": "BackTickInside                : '`' -> type(BackTick), popMode;",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 224,
+      "column": 1,
+      "offset": 7493,
+      "rule": "BackTickInside",
+      "expected": "BackTickInside                : '`' -> type(BackTick), popMode;",
+      "blocker": "literal classification does not preserve lexer commands",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 225,
+      "column": 1,
+      "offset": 7557,
+      "rule": "TemplateStringStartExpression",
+      "expected": "TemplateStringStartExpression : '${' {this.ProcessTemplateOpenBrace();} -> pushMode(DEFAULT_MODE);",
+      "blocker": "literal priority over an earlier matcher requires an overlap/order adaptation",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Reviewed native keyword/literal precedence and guarded JavaScript matchers replace implicit ANTLR declaration ordering; the original translator does not certify overlap equivalence."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 225,
+      "column": 1,
+      "offset": 7557,
+      "rule": "TemplateStringStartExpression",
+      "expected": "TemplateStringStartExpression : '${' {this.ProcessTemplateOpenBrace();} -> pushMode(DEFAULT_MODE);",
+      "blocker": "literal classification does not preserve lexer commands",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 48,
+      "column": 1,
+      "offset": 2049,
+      "rule": "<grammar>",
+      "expected": "HashBangLine      :                           { this.IsStartOfFile()}? '#!' ~[\\r\\n\\u2028\\u2029]*; // only allowed at start",
+      "blocker": "legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/javascript/lexical.w",
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Native JavaScript matchers and explicit stateful trivia rules replace the legacy approximate classifier and its implicit whitespace policy."
+    }
+  ]
+}

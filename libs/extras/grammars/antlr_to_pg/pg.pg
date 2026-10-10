@@ -1,4 +1,5 @@
 parser pg
+import libs.extras.grammars.antlr_to_pg.antlr4_matchers
 
 skip NEWLINE newline
 skip TAB tabs
@@ -6,7 +7,25 @@ skip LINE_COMMENT line_comment
 
 token IDENT identifier
 token STRINGLIT string
+token NUMBER digits
+token ACTION brace_block
+token CHARSET bracket_charset
 
+literal KW_MODE "mode"
+literal KW_IMPORT "import"
+literal KW_FRAGMENT "fragment"
+literal KW_LEXER "lexer"
+literal KW_LEXER_MODE "lexer_mode"
+literal KW_LEXER_RULE "lexer_rule"
+literal KW_LEXER_GUARD "lexer_guard"
+literal KW_LEXER_ACTION "lexer_action"
+literal KW_LEXER_COMMAND "lexer_command"
+literal KW_LEXER_PRIORITY "lexer_priority"
+literal KW_GOAL "goal"
+literal AMP "&"
+literal LPAREN "("
+literal RPAREN ")"
+literal DOT "."
 literal KW_PARSER "parser"
 literal KW_TOKEN "token"
 literal KW_SKIP "skip"
@@ -24,10 +43,10 @@ literal PLUS "+"
 start pg_file
 
 rule pg_file = directive* EOF
-rule directive = parser_decl | token_decl | skip_decl | literal_decl | start_decl | recover_decl | rule_decl
+rule directive = parser_decl | token_decl | skip_decl | literal_decl | start_decl | recover_decl | rule_decl | mode_decl | import_decl | fragment_decl | lexer_decl | lexer_mode_decl | lexer_rule_decl | lexer_guard_decl | lexer_action_decl | lexer_command_decl | lexer_priority_decl | goal_decl
 rule parser_decl = KW_PARSER IDENT
-rule token_decl = KW_TOKEN IDENT IDENT
-rule skip_decl = KW_SKIP IDENT IDENT
+rule token_decl = KW_TOKEN IDENT IDENT | KW_TOKEN IDENT ASSIGN matcher_expr
+rule skip_decl = KW_SKIP IDENT IDENT | KW_SKIP IDENT ASSIGN matcher_expr
 rule literal_decl = KW_LITERAL IDENT STRINGLIT
 rule start_decl = KW_START IDENT
 rule recover_decl = KW_RECOVER IDENT IDENT recover_skip*
@@ -36,5 +55,23 @@ rule rule_decl = KW_RULE IDENT ASSIGN altlist
 rule altlist = alt alt_tail*
 rule alt_tail = PIPE alt
 rule alt = term*
-rule term = IDENT term_suffix?
+rule term = IDENT term_suffix? | AMP ACTION | ACTION
 rule term_suffix = QUESTION | STAR | PLUS
+
+rule mode_decl = KW_MODE IDENT
+rule import_decl = KW_IMPORT IDENT dotted_tail*
+rule dotted_tail = DOT IDENT
+rule fragment_decl = KW_FRAGMENT IDENT ASSIGN matcher_expr
+rule lexer_decl = KW_LEXER IDENT
+rule lexer_mode_decl = KW_LEXER_MODE IDENT
+rule lexer_rule_decl = KW_LEXER_RULE IDENT IDENT
+rule lexer_guard_decl = KW_LEXER_GUARD IDENT ACTION
+rule lexer_action_decl = KW_LEXER_ACTION IDENT ACTION
+rule lexer_command_decl = KW_LEXER_COMMAND IDENT IDENT IDENT?
+rule lexer_priority_decl = KW_LEXER_PRIORITY IDENT
+rule goal_decl = KW_GOAL IDENT NUMBER
+rule matcher_expr = matcher_sequence matcher_tail*
+rule matcher_tail = PIPE matcher_sequence
+rule matcher_sequence = matcher_primary+
+rule matcher_primary = matcher_atom term_suffix?
+rule matcher_atom = IDENT | STRINGLIT | CHARSET | LPAREN matcher_expr RPAREN

@@ -617,3 +617,67 @@ void at_classify_all_lexer_rules(list[at_rule*] rules):
 		i = i + 1
 
 
+# True only for a lexer rule explicitly admitting all and only the bytes the
+# legacy PG lexer skips unconditionally. This is deliberately conservative.
+int at_exact_implicit_trivia(at_rule* rule):
+	if (rule.commands.length != 1): return 0
+	at_command* cmd = rule.commands[0]
+	int hidden = strcmp(cmd.name, c"skip") == 0
+	if ((strcmp(cmd.name, c"channel") == 0) && (cmd.argument != 0)):
+		hidden = strcmp(cmd.argument, c"HIDDEN") == 0
+	if (hidden == 0): return 0
+	if (rule.alts.length != 1): return 0
+	at_alt* alt = rule.alts[0]
+	if (alt.elements.length != 1): return 0
+	at_element* e = alt.elements[0]
+	if ((e.kind != 1) || (e.text == 0)): return 0
+	char* text = e.text
+	int i = 1
+	int mask = 0
+	while ((text[i] != 0) && (text[i] != ']')):
+		int c = text[i]
+		if (c == 92):
+			i = i + 1
+			c = text[i]
+			if (c == 'n'): c = 10
+			else if (c == 'r'): c = 13
+			else if (c == 't'): c = 9
+		if (c == 32): mask = mask | 1
+		else if (c == 9): mask = mask | 2
+		else if (c == 10): mask = mask | 4
+		else if (c == 13): mask = mask | 8
+		else: return 0
+		i = i + 1
+	return mask == 15
+
+
+# The old shape classifier is intentionally approximate. Its matches do not
+# constitute a proof that an imported rule accepts exactly the same language.
+# Keep these diagnostics out of legacy output goldens, but never hide them.
+void at_audit_lexer_contract(list[at_rule*] rules):
+	int trivia = 0
+	int preceding_matcher = 0
+	int i = 0
+	while (i < rules.length):
+		at_rule* rule = rules[i]
+		if (rule.is_lexer && (rule.is_fragment == 0)):
+			at_classification* c = at_classify_lexer_rule(rule)
+			if (at_exact_implicit_trivia(rule)): trivia = 1
+			if ((c.kind == 0) && preceding_matcher):
+				at_loss(rule.first, rule.name, c"literal priority over an earlier matcher requires an overlap/order adaptation")
+			if (((c.kind == 1) || (c.kind == 2) || (c.kind == 4)) && (at_exact_implicit_trivia(rule) == 0)):
+				preceding_matcher = 1
+			if ((c.kind == 1) || (c.kind == 2)):
+				at_loss(rule.first, rule.name, c"heuristic built-in matcher requires an exact reviewed adaptation")
+			else if (c.kind == 0):
+				at_alt* alt = rule.alts[0]
+				if ((alt.elements.length != 1) || (alt.elements[0].kind != 0)):
+					at_loss(rule.first, rule.name, c"case-fragment keyword folding loses matching alternatives")
+				if (rule.commands.length > 0): at_loss(rule.first, rule.name, c"literal classification does not preserve lexer commands")
+			else if ((c.kind == 3) && (at_exact_implicit_trivia(rule) == 0)):
+				at_loss(rule.first, rule.name, c"dropped lexer rule is not exact implicit trivia")
+			i = i + 1
+		else:
+			i = i + 1
+	if ((trivia == 0) && (rules.length > 0)):
+		at_loss(rules[0].first, c"<grammar>", c"legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule")

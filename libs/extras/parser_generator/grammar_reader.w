@@ -150,8 +150,22 @@ int pg_reader_is_name(pg_grammar_reader* reader, char* name):
 	return strcmp(reader.token, name) == 0
 
 
+int pg_reader_is_lexer_directive(pg_grammar_reader* reader):
+	if (reader.token_kind != pg_reader_token_name()): return 0
+	if (strcmp(reader.token, c"lexer") == 0): return 1
+	if (strcmp(reader.token, c"lexer_priority") == 0): return 1
+	if (strcmp(reader.token, c"lexer_mode") == 0): return 1
+	if (strcmp(reader.token, c"lexer_rule") == 0): return 1
+	if (strcmp(reader.token, c"lexer_guard") == 0): return 1
+	if (strcmp(reader.token, c"lexer_action") == 0): return 1
+	if (strcmp(reader.token, c"lexer_command") == 0): return 1
+	return 0
+
+
 int pg_reader_is_top_level(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()): return 0
+	if (pg_reader_is_lexer_directive(reader)): return 1
+	if (strcmp(reader.token, c"goal") == 0): return 1
 	if (strcmp(reader.token, c"parser") == 0): return 1
 	if (strcmp(reader.token, c"mode") == 0): return 1
 	if (strcmp(reader.token, c"import") == 0): return 1
@@ -523,6 +537,11 @@ int pg_reader_validate_matcher_definition(pg_grammar_reader* reader, pg_grammar*
 	list[char*] path = new list[char*]
 	path.push(name)
 	int valid = pg_reader_validate_matcher_expression(reader, grammar, expression, path)
+	if (grammar.stateful && valid && (pg_grammar_find_fragment(grammar, name) == 0)):
+		int nullable = pg_reader_matcher_nullable(reader, grammar, expression, path)
+		if (nullable > 0):
+			pg_diagnostics_add(reader.diagnostics, reader.filename, expression.line, expression.column, c"stateful lexer rule can match empty", c"nonempty token matcher", name)
+			valid = 0
 	list_free[char*](path)
 	return valid
 
@@ -581,9 +600,6 @@ void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 			free(code)
 			pg_reader_next(reader)
 		else if (pg_reader_is_symbol(reader, c"&")):
-			if (alternative.terms.length != 0):
-				pg_reader_error(reader, c"semantic predicate must be the first term of an alternative", c"&{ expr } at the start of the alternative")
-				return
 			pg_reader_next(reader)
 			if (pg_reader_is_symbol(reader, c"{") == 0):
 				pg_reader_error(reader, c"grammar parse error", c"&{ expr }")
@@ -609,6 +625,77 @@ void pg_reader_parse_rule_body(pg_grammar_reader* reader, pg_rule* rule):
 	pg_rule_add_alternative(rule, alternative)
 
 
+int pg_reader_stateful_directive(pg_grammar_reader* reader, pg_grammar* grammar):
+	char* directive = reader.token
+	pg_reader_next(reader)
+	char* name = pg_reader_take_name(reader)
+	if (name == 0): return 0
+	if (strcmp(directive, c"lexer") == 0):
+		if (strcmp(name, c"stateful") != 0):
+			pg_reader_error(reader, c"unknown lexer policy", c"stateful")
+			return 0
+		grammar.stateful = 1
+	else if (strcmp(directive, c"lexer_priority") == 0):
+		if ((strcmp(name, c"ordered") != 0) && (strcmp(name, c"legacy") != 0)):
+			pg_reader_error(reader, c"unknown lexer priority", c"ordered or legacy")
+			return 0
+		grammar.ordered_lexer = strcmp(name, c"ordered") == 0
+	else if (strcmp(directive, c"lexer_mode") == 0):
+		if (pg_grammar_lexer_mode(grammar, name) >= 0):
+			pg_reader_error(reader, c"duplicate lexer mode", c"new mode name")
+			return 0
+		grammar.lexer_modes.push(strclone(name))
+	else if (strcmp(directive, c"goal") == 0):
+		int value = 0
+		int digits = 0
+		while ((reader.token_kind == pg_reader_token_symbol()) && (reader.token[0] >= '0') && (reader.token[0] <= '9')):
+			value = value * 10 + reader.token[0] - '0'
+			digits++
+			pg_reader_next(reader)
+		if (digits == 0):
+			pg_reader_error(reader, c"lexical goal requires a nonnegative integer", c"integer")
+			return 0
+		pg_goal_def* goal = new pg_goal_def()
+		goal.rule_name = strclone(name)
+		goal.goal = value
+		grammar.goals.push(goal)
+	else:
+		pg_lexer_rule_config* config = pg_grammar_lexer_config(grammar, name)
+		if (strcmp(directive, c"lexer_rule") == 0):
+			char* mode = pg_reader_take_name(reader)
+			if (mode == 0): return 0
+			free(config.mode)
+			config.mode = mode
+		else if ((strcmp(directive, c"lexer_guard") == 0) || (strcmp(directive, c"lexer_action") == 0)):
+			if (pg_reader_is_symbol(reader, c"{") == 0):
+				pg_reader_error(reader, c"lexer hook requires a brace block", c"{")
+				return 0
+			char* code = pg_reader_read_brace_block(reader)
+			if (code == 0): return 0
+			if (pg_text_contains_newline(code)):
+				pg_reader_error(reader, c"lexer hook must be a single line", c"single-line hook")
+				return 0
+			if (strcmp(directive, c"lexer_guard") == 0): config.guard = code
+			else: config.action = code
+			pg_reader_next(reader)
+		else if (strcmp(directive, c"lexer_command") == 0):
+			char* command_name = pg_reader_take_name(reader)
+			if (command_name == 0): return 0
+			pg_lexer_command* command = new pg_lexer_command()
+			command.name = command_name
+			command.argument = strclone(c"")
+			if ((strcmp(command_name, c"popMode") != 0) && (strcmp(command_name, c"skip") != 0) && (strcmp(command_name, c"more") != 0)):
+				char* argument = pg_reader_take_name(reader)
+				if (argument == 0): return 0
+				free(command.argument)
+				command.argument = argument
+			config.commands.push(command)
+		else:
+			pg_reader_error(reader, c"unknown lexer directive", c"lexer_rule, lexer_guard, lexer_action or lexer_command")
+			return 0
+	return 1
+
+
 pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnostics):
 	pg_grammar_reader* reader = pg_reader_new(input, filename, diagnostics)
 	pg_reader_next(reader)
@@ -620,7 +707,9 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 	if (parser_name == 0): return 0
 	pg_grammar* grammar = pg_grammar_new(parser_name)
 	while (reader.token_kind != pg_reader_token_eof()):
-		if (pg_reader_is_name(reader, c"mode")):
+		if (pg_reader_is_lexer_directive(reader) || pg_reader_is_name(reader, c"goal")):
+			if (pg_reader_stateful_directive(reader, grammar) == 0): return 0
+		else if (pg_reader_is_name(reader, c"mode")):
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			if (name == 0): return 0
@@ -730,4 +819,9 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 				return 0
 		r = r + 1
 	if (pg_reader_validate_matchers(reader, grammar) == 0): return 0
+	if (grammar.stateful):
+		for pg_literal_def* literal in grammar.literals:
+			if (strlen(literal.text) == 0):
+				pg_reader_error(reader, c"stateful lexer literal can match empty", literal.name)
+				return 0
 	return grammar

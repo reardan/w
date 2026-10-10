@@ -393,9 +393,10 @@ list[pg_choice_unit*] pg_plan_choice(pg_analysis* analysis, pg_rule* rule, int a
 	int a = alt_start
 	while (a < alt_start + alt_count):
 		pg_alternative* head = rule.alternatives[a]
-		# A predicate at this offset (only ever possible at the true head
-		# of an alternative -- the grammar reader rejects one anywhere
-		# else) always stands alone: pg_plan_term_factorable already
+		# A predicate at this offset always stands alone. AST mode may
+		# reach a mid-rule predicate after a factored prefix; streaming
+		# safety restricts predicates to the true head of an alternative.
+		# pg_plan_term_factorable already
 		# refuses to factor it, so it can never be part of a run>1 group.
 		# Its guard is the predicate expression itself, tried in
 		# declaration order among its siblings -- see pg_emit_streaming_choice.
@@ -721,11 +722,9 @@ int pg_streaming_check(pg_grammar* grammar):
 # are precisely the rules this generator refuses to emit regardless of
 # whether they contain an action.
 #
-# The one case pg_streaming_check never sees is AST mode, where there is
-# no commit point for an action to run at (every rule still marks and
-# rewinds). This check exists to give that case its own clear,
-# generation-time, rule-named diagnostic instead of a confusing failure
-# somewhere downstream.
+# AST mode has no commit point for a side-effect action. Pure predicates
+# may run repeatedly, including mid-rule, and are supported in AST mode.
+# Streaming mode retains the leading-predicate restriction.
 
 
 int pg_rule_has_actions_or_predicates(pg_rule* rule):
@@ -750,14 +749,83 @@ int pg_grammar_has_actions_or_predicates(pg_grammar* grammar):
 # present are safe to generate (or there are none at all, the case for
 # every grammar written before milestone 4).
 int pg_action_safety_check(pg_grammar* grammar):
-	if (pg_grammar_has_actions_or_predicates(grammar) == 0): return 0
-	if (grammar.mode == pg_grammar_mode_streaming()): return 0
 	int violations = 0
-	for r in range(grammar.rules.length):
-		pg_rule* rule = grammar.rules[r]
-		if (pg_rule_has_actions_or_predicates(rule)):
-			print2(c"parser_generator: rule ")
-			print2(rule.name)
-			println2(c": actions ({ code }) and predicates (&{ expr }) require 'mode streaming' -- AST mode has no commit point to run them at exactly once")
-			violations = violations + 1
+	for pg_rule* rule in grammar.rules:
+		for pg_alternative* alternative in rule.alternatives:
+			for t, term in alternative.terms:
+				if ((grammar.mode == pg_grammar_mode_ast()) && (term.kind == pg_term_kind_action())):
+					print2(c"parser_generator: AST action forbidden in rule ")
+					println2(rule.name)
+					violations++
+				if ((grammar.mode == pg_grammar_mode_streaming()) && (term.kind == pg_term_kind_predicate()) && (t != 0)):
+					print2(c"parser_generator: streaming predicate must be first in rule ")
+					println2(rule.name)
+					violations++
+	return violations
+
+
+# EOF is zero-width at the provider boundary even though ordinary FIRST
+# analysis models it as a terminal. Safety analysis must propagate that
+# fact through helper rules too (e.g. end = EOF; root = end*).
+int pg_safety_term_nullable(pg_analysis* analysis, pg_term* term):
+	if ((term.kind == pg_term_kind_normal()) && (strcmp(term.name, c"EOF") == 0)): return 1
+	return pg_analysis_term_nullable(analysis, term)
+
+
+int pg_safety_nullable_sweep(pg_analysis* analysis):
+	int changed = 0
+	for pg_rule_facts* facts in analysis.rules:
+		if (facts.nullable): continue
+		for pg_alternative* alternative in facts.rule.alternatives:
+			int nullable = 1
+			for pg_term* term in alternative.terms:
+				if (pg_safety_term_nullable(analysis, term) == 0): nullable = 0
+			if (nullable):
+				facts.nullable = 1
+				changed = 1
+	return changed
+
+
+# Nullable-prefix dependency closure catches direct and indirect left
+# recursion, including paths hidden behind optional/empty productions.
+# Rejecting nullable repetition prevents generated loops without progress.
+int pg_grammar_safety_check(pg_grammar* grammar):
+	pg_analysis* analysis = pg_analyze_grammar(grammar)
+	while (pg_safety_nullable_sweep(analysis)): pass
+	int count = grammar.rules.length
+	char* edges = cast(char*, malloc(count * count))
+	for i in range(count * count): edges[i] = 0
+	int violations = 0
+	for r, rule in grammar.rules:
+		for pg_alternative* alternative in rule.alternatives:
+			int prefix = 1
+			for pg_term* term in alternative.terms:
+				if (term.kind != pg_term_kind_normal()): continue
+				pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
+				int token = pg_grammar_is_token_term(grammar, term.name)
+				if ((facts == 0) && (token == 0)):
+					print2(c"parser_generator: undefined term ")
+					println2(term.name)
+					violations++
+				if ((term.modifier == '*') || (term.modifier == '+')):
+					int empty = strcmp(term.name, c"EOF") == 0
+					if (facts != 0): empty = empty | facts.nullable
+					if (empty):
+						print2(c"parser_generator: repeated term can match without progress in rule ")
+						println2(rule.name)
+						violations++
+				if (prefix && (facts != 0)):
+					edges[r * count + facts.rule.kind - 1] = 1
+				if (pg_safety_term_nullable(analysis, term) == 0): prefix = 0
+	for k in range(count):
+		for i in range(count):
+			for j in range(count):
+				if (edges[i * count + k] && edges[k * count + j]): edges[i * count + j] = 1
+	for i in range(count):
+		if (edges[i * count + i]):
+			print2(c"parser_generator: nullable-prefix left recursion in rule ")
+			println2(grammar.rules[i].name)
+			violations++
+	free(edges)
+	pg_analysis_free(analysis)
 	return violations

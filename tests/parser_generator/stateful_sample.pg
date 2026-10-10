@@ -1,0 +1,38 @@
+parser stateful_sample
+lexer stateful
+lexer_priority ordered
+import tests.parser_generator.stateful_support
+lexer_mode TEMPLATE
+skip WS = [ \t\r\n]+
+token IDENT letters
+token LOSER letters
+lexer_action LOSER { state.context.push(999) }
+literal KEYWORD "if"
+literal SLASH "/"
+token REGEX = "/" [a-z]+ "/"
+lexer_guard REGEX { state.goal == 1 }
+literal BANG "!"
+literal OPEN "`"
+lexer_command OPEN pushMode TEMPLATE
+literal CLOSE "`"
+lexer_rule CLOSE TEMPLATE
+lexer_command CLOSE popMode
+lexer_command CLOSE type OPEN
+token TEXT = [a-z ]+
+lexer_rule TEXT TEMPLATE
+literal ENTER "${"
+lexer_rule ENTER TEMPLATE
+lexer_command ENTER pushMode DEFAULT
+literal RBRACE "}"
+lexer_command RBRACE popMode
+start program
+goal regex 1
+goal division 0
+rule program = discarded | division EOF | template EOF | word EOF
+rule discarded = regex BANG
+rule regex = REGEX
+rule division = SLASH IDENT SLASH
+rule template = OPEN part* OPEN
+rule part = TEXT | ENTER expression RBRACE
+rule expression = template | IDENT
+rule word = IDENT &{ stateful_word_allowed(stream) }

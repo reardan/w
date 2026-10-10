@@ -20,8 +20,15 @@ int main():
 	expect_clean(c"{ hero(episode: 1) { name } }\n")
 	expect_clean(c"mutation { create(name: \"Ada\") { id } }\n")
 	expect_clean(c"{ hero { ... on Human { name } } }\n")
+	expect_clean(c"type Human implements Character { name: String }\n")
+	expect_clean(c"type Human implements Character & Named & Node { name: String }\n")
+	expect_clean(c"interface Character implements & Named & Node { name: String }\n")
+	expect_clean(c"extend type Human implements Character & Named\n")
 
 	expect_errors(c"{ }\n")
 	expect_errors(c"query\n")
+	expect_errors(c"type Human implements { name: String }\n")
+	expect_errors(c"type Human implements Character & { name: String }\n")
+	expect_errors(c"type Human implements Character Named { name: String }\n")
 
 	return grammar_demo_finish()

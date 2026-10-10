@@ -5,11 +5,8 @@ skip NEWLINE newline
 skip TAB tabs
 skip LINE_COMMENT c_line_comment
 skip BLOCK_COMMENT block_comment
-# Swallows any balanced {...} block (options{}/tokens{}/channels{}/@header{}
-# bodies, and rule-body actions/predicates `{...}` / `{...}?`) whole, so the
-# rest of this grammar never has to special-case action/predicate content --
-# see pg_lexer_matcher_brace_block in the driver.
-skip ACTION brace_block
+# Keep balanced host blocks as visible tokens. Predicates include trailing ?.
+token ACTION brace_block
 
 token IDENT identifier
 token STRINGLIT char_literal
@@ -48,13 +45,12 @@ rule g4_file = item* EOF
 rule item = grammar_decl | at_action | import_decl | mode_decl | rule_def | bare_marker
 
 rule grammar_decl = IDENT IDENT IDENT SEMI | IDENT IDENT SEMI
-rule at_action = AT IDENT COLONCOLON IDENT | AT IDENT
+rule at_action = AT IDENT COLONCOLON IDENT ACTION | AT IDENT ACTION
 rule import_decl = KW_IMPORT IDENT import_tail* SEMI
 rule import_tail = COMMA IDENT
 rule mode_decl = KW_MODE IDENT SEMI
-# Fallback for a bare "options"/"tokens"/"channels" marker whose {...} body
-# has already vanished as an ACTION skip token.
-rule bare_marker = IDENT | KW_OPTIONS
+# Grammar options, token/channel declarations retain the complete body.
+rule bare_marker = IDENT ACTION | KW_OPTIONS ACTION
 
 # rule_trailer covers ANTLR rule-level params/returns/locals/throws/options,
 # e.g. `expr[int p] returns [int v] locals [int t] throws X options {...}`:
@@ -67,7 +63,7 @@ rule rule_def = KW_FRAGMENT IDENT rule_trailer_item* COLON altlist rule_command?
 # looks just like another trailer word) when this rule name turns out to
 # be a standalone top-level `options {...}` marker rather than a real
 # rule with a per-rule options/returns/locals clause attached.
-rule rule_trailer_item = CHARSET | KW_OPTIONS
+rule rule_trailer_item = CHARSET | KW_OPTIONS ACTION
 rule rule_command = ARROW command_item command_item_tail*
 rule command_item_tail = COMMA command_item
 # The command name (skip/channel/type/mode/pushMode/popMode/more) is
@@ -83,22 +79,21 @@ rule altlist = alt alt_tail*
 rule alt_tail = PIPE alt
 rule alt = element* alt_label?
 rule alt_label = HASH IDENT
-# `<assoc = right>` / `<true>`-style element options; the driver drops these.
+# `<assoc = right>` / `<true>`-style element options are retained as sites.
 # ANTLR allows both `key = value` and a bare value (`inferredType <true>`).
-rule element = elem_option | real_element
+rule element = elem_option | ACTION | real_element
 rule elem_option = LT IDENT ASSIGN elem_option_value GT | LT elem_option_value GT
 rule elem_option_value = IDENT | STRINGLIT | NUMBER
 rule real_element = labeled_atom element_suffix?
 # STAR/PLUS/QUESTION may be followed by a non-greedy `?` (e.g. `.*?`, `??`);
-# it doesn't change pg's backtracking semantics, so it's just consumed here.
+# preserve this bit so strict import can refuse unsupported matching semantics.
 rule element_suffix = QUESTION QUESTION? | STAR QUESTION? | PLUS QUESTION?
 rule labeled_atom = IDENT ASSIGN atom | IDENT PLUS_ASSIGN atom | atom
 # STRINGLIT DOT DOT STRINGLIT is ANTLR's `'a'..'z'` range form; prefer it
 # over a bare STRINGLIT so the two DOTs aren't mistaken for wildcards.
 rule atom = STRINGLIT DOT DOT STRINGLIT | STRINGLIT | CHARSET | DOT | negated_atom | group | IDENT
 rule negated_atom = TILDE atom
-# ANTLR blocks allow an optional `(options{...})? :` prefix before alts
-# (`(: ELSE statement)?`, `(: .)*?`). options{...} is already an ACTION skip,
-# leaving KW_OPTIONS/IDENT then COLON; bare `(: ...)` is just COLON.
+# ANTLR blocks allow an optional options body before the colon; preserve
+# its raw source in the containing group's semantic sites.
 rule group = LPAREN group_colon_prefix? altlist RPAREN
-rule group_colon_prefix = KW_OPTIONS COLON | IDENT COLON | COLON
+rule group_colon_prefix = KW_OPTIONS ACTION COLON | IDENT ACTION COLON | COLON

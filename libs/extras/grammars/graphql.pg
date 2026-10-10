@@ -122,7 +122,9 @@ rule typeExtension = scalarTypeExtension | objectTypeExtension | interfaceTypeEx
 rule scalarTypeDefinition = description? KW_SCALAR name directives?
 rule scalarTypeExtension = KW_EXTEND KW_SCALAR name directives
 rule objectTypeDefinition = description? KW_TYPE name implementsInterfaces? directives? fieldsDefinition?
-rule implementsInterfaces = KW_IMPLEMENTS AMP? namedType | implementsInterfaces AMP namedType
+# Adapt the upstream left-recursive interface list for recursive descent.
+rule implementsInterfaces = KW_IMPLEMENTS AMP? namedType implementsInterfaces_tail*
+rule implementsInterfaces_tail = AMP namedType
 rule fieldsDefinition = LBRACE fieldDefinition+ RBRACE
 rule fieldDefinition = description? name argumentsDefinition? COLON type_ directives?
 rule argumentsDefinition = LPAREN inputValueDefinition+ RPAREN

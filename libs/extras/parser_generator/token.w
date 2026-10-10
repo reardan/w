@@ -22,6 +22,7 @@ struct pg_token:
 	int channel
 	int offset
 	int length
+	int owns_text
 
 
 const int pg_token_eof_kind = 0
@@ -58,6 +59,7 @@ pg_token* pg_token_new(int kind, char* text, char* filename, int line, int colum
 	token.channel = pg_token_default_channel
 	token.offset = 0
 	token.length = strlen(text)
+	token.owns_text = strlen(text) > 0
 	return token
 
 
@@ -65,6 +67,7 @@ pg_token* pg_token_make(int kind, char* input, int start, int length, char* file
 	pg_token* token = pg_token_new(kind, pg_substr(input, start, length), filename, line, column)
 	token.offset = start
 	token.length = length
+	token.owns_text = 1
 	return token
 
 
@@ -82,5 +85,5 @@ pg_token* pg_token_eof(int offset, char* filename, int line, int column):
 
 void pg_token_free(pg_token* token):
 	if (token == 0): return
-	if ((token.text != 0) & (strlen(token.text) > 0)): free(token.text)
+	if (token.owns_text && token.text != 0): free(token.text)
 	free(token)

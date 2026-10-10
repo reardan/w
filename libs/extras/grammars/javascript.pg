@@ -1,0 +1,314 @@
+# Hand-adapted JavaScript grammar; see docs/projects/javascript.md.
+parser javascript
+lexer stateful
+lexer_mode TEMPLATE
+import libs.extras.javascript.lexical
+import libs.extras.javascript.predicates
+
+skip SPACE js_space
+skip LINE_COMMENT js_line_comment
+skip BLOCK_COMMENT js_block_comment
+skip HASHBANG js_hashbang
+token IDENT js_identifier
+token NUMBER js_number
+token STRING js_string
+token REGEX js_regex
+token TEMPLATE_TEXT js_template_text
+
+literal KW_BREAK "break"
+literal KW_CASE "case"
+literal KW_CATCH "catch"
+literal KW_CLASS "class"
+literal KW_CONST "const"
+literal KW_CONTINUE "continue"
+literal KW_DEBUGGER "debugger"
+literal KW_DEFAULT "default"
+literal KW_DELETE "delete"
+literal KW_DO "do"
+literal KW_ELSE "else"
+literal KW_EXPORT "export"
+literal KW_EXTENDS "extends"
+literal KW_FALSE "false"
+literal KW_FINALLY "finally"
+literal KW_FOR "for"
+literal KW_FUNCTION "function"
+literal KW_IF "if"
+literal KW_IMPORT "import"
+literal KW_IN "in"
+literal KW_INSTANCEOF "instanceof"
+literal KW_LET "let"
+literal KW_NEW "new"
+literal KW_NULL "null"
+literal KW_RETURN "return"
+literal KW_SUPER "super"
+literal KW_SWITCH "switch"
+literal KW_THIS "this"
+literal KW_THROW "throw"
+literal KW_TRUE "true"
+literal KW_TRY "try"
+literal KW_TYPEOF "typeof"
+literal KW_VAR "var"
+literal KW_VOID "void"
+literal KW_WHILE "while"
+literal KW_WITH "with"
+literal KW_YIELD "yield"
+literal KW_ASYNC "async"
+literal KW_AWAIT "await"
+literal KW_OF "of"
+literal KW_GET "get"
+literal KW_SET "set"
+literal KW_STATIC "static"
+literal KW_FROM "from"
+literal KW_AS "as"
+literal KW_TARGET "target"
+literal ELLIPSIS "..."
+literal ARROW "=>"
+literal POWER_ASSIGN "**="
+literal POWER "**"
+literal STRICT_EQ "==="
+literal STRICT_NE "!=="
+literal SHR_ASSIGN ">>>="
+literal SHR ">>>"
+literal SHL_ASSIGN "<<="
+literal SAR_ASSIGN ">>="
+literal SHL "<<"
+literal SAR ">>"
+literal EQ "=="
+literal NE "!="
+literal LE "<="
+literal GE ">="
+literal AND "&&"
+literal OR "||"
+literal NULLISH "??"
+literal OPTIONAL "?."
+literal INC "++"
+literal DEC "--"
+literal ADD_ASSIGN "+="
+literal SUB_ASSIGN "-="
+literal MUL_ASSIGN "*="
+literal DIV_ASSIGN "/="
+literal MOD_ASSIGN "%="
+literal BITAND_ASSIGN "&="
+literal BITOR_ASSIGN "|="
+literal BITXOR_ASSIGN "^="
+literal ASSIGN "="
+literal LT "<"
+literal GT ">"
+literal PLUS "+"
+literal MINUS "-"
+literal STAR "*"
+literal SLASH "/"
+literal MOD "%"
+literal BITAND "&"
+literal BITOR "|"
+literal BITXOR "^"
+literal NOT "!"
+literal BITNOT "~"
+literal LPAREN "("
+literal RPAREN ")"
+literal LBRACKET "["
+literal RBRACKET "]"
+literal LBRACE "{"
+literal RBRACE "}"
+literal SEMI ";"
+literal COMMA ","
+literal DOT "."
+literal COLON ":"
+literal QUESTION "?"
+literal BACKTICK "`"
+literal TEMPLATE_END "`"
+literal INTERPOLATION "${"
+
+lexer_guard REGEX { state.goal == 1 }
+lexer_guard OPTIONAL { js_optional_allowed(input, index, length) }
+lexer_rule TEMPLATE_TEXT TEMPLATE
+lexer_rule TEMPLATE_END TEMPLATE
+lexer_rule INTERPOLATION TEMPLATE
+lexer_command BACKTICK pushMode TEMPLATE
+lexer_command TEMPLATE_END popMode
+lexer_command INTERPOLATION pushMode DEFAULT
+lexer_action INTERPOLATION { js_lexer_interpolation(state) }
+lexer_action LBRACE { js_lexer_open_brace(state) }
+lexer_action RBRACE { js_lexer_close_brace(state) }
+
+start program
+
+goal program 1
+goal statement 1
+goal expression 1
+goal assignment 1
+goal unary 1
+goal primary 1
+goal template 1
+goal function_expr 1
+goal function_decl 1
+goal arrow_function 1
+goal arrow_body 1
+goal postfix_tail 0
+goal postfix_update 0
+goal power_tail 0
+goal multiplicative_tail 0
+goal additive_tail 0
+goal shift_tail 0
+goal relational_tail 0
+goal equality_tail 0
+goal bitand_tail 0
+goal bitxor_tail 0
+goal bitor_tail 0
+goal logical_and_tail 0
+goal logical_or_tail 0
+goal coalesce_tail 0
+goal conditional_tail 0
+goal assignment_tail 0
+goal expression_tail 0
+
+rule identifier_reference = IDENT | KW_ASYNC | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET | KW_LET
+rule binding_identifier = identifier_reference
+rule identifier_name = IDENT | KW_BREAK | KW_CASE | KW_CATCH | KW_CLASS | KW_CONST | KW_CONTINUE | KW_DEBUGGER | KW_DEFAULT | KW_DELETE | KW_DO | KW_ELSE | KW_EXPORT | KW_EXTENDS | KW_FALSE | KW_FINALLY | KW_FOR | KW_FUNCTION | KW_IF | KW_IMPORT | KW_IN | KW_INSTANCEOF | KW_LET | KW_NEW | KW_NULL | KW_RETURN | KW_SUPER | KW_SWITCH | KW_THIS | KW_THROW | KW_TRUE | KW_TRY | KW_TYPEOF | KW_VAR | KW_VOID | KW_WHILE | KW_WITH | KW_YIELD | KW_ASYNC | KW_AWAIT | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET
+
+rule program = statement* EOF
+rule statement = block | variable_statement | function_decl | class_decl | if_statement | while_statement | do_statement | for_statement | return_statement | throw_statement | break_statement | continue_statement | switch_statement | try_statement | with_statement | debugger_statement | import_statement | export_statement | labelled_statement | empty_statement | expression_statement
+rule block = LBRACE statement* RBRACE
+rule empty_statement = SEMI
+rule eos = SEMI | &{ js_statement_end(stream) }
+rule expression_statement = &{ js_expression_statement_start(stream) } expression eos
+rule labelled_statement = binding_identifier COLON statement
+rule variable_statement = variable_declarations eos
+rule variable_declarations = variable_kind variable_declarator variable_declarator_tail*
+rule variable_kind = KW_VAR | KW_LET | KW_CONST
+rule variable_declarator_tail = COMMA variable_declarator
+rule variable_declarator = binding_pattern initializer?
+rule initializer = ASSIGN assignment
+rule binding_pattern = binding_identifier | array_binding | object_binding
+rule array_binding = LBRACKET binding_element_opt binding_array_tail* binding_rest? RBRACKET
+rule binding_element_opt = binding_element |
+rule binding_element = binding_pattern initializer?
+rule binding_array_tail = COMMA binding_element_opt
+rule binding_rest = ELLIPSIS binding_pattern
+rule object_binding = LBRACE object_binding_items? RBRACE
+rule object_binding_items = object_binding_property object_binding_tail* COMMA? | binding_rest
+rule object_binding_tail = COMMA object_binding_property | COMMA binding_rest
+rule object_binding_property = property_name COLON binding_element | binding_identifier initializer?
+rule if_statement = KW_IF LPAREN expression RPAREN statement else_clause?
+rule else_clause = KW_ELSE statement
+rule while_statement = KW_WHILE LPAREN expression RPAREN statement
+rule do_statement = KW_DO statement KW_WHILE LPAREN expression RPAREN SEMI?
+rule for_statement = KW_FOR KW_AWAIT? LPAREN for_header RPAREN statement
+rule for_header = for_binding for_in_of expression | for_init? SEMI expression? SEMI expression?
+rule for_binding = variable_kind binding_pattern | postfix
+rule for_in_of = KW_IN | KW_OF
+rule for_init = variable_declarations | expression
+rule return_statement = KW_RETURN return_value? eos
+rule return_value = &{ js_no_linebreak(stream) } expression
+rule throw_statement = KW_THROW &{ js_no_linebreak(stream) } expression eos
+rule break_statement = KW_BREAK jump_label? eos
+rule continue_statement = KW_CONTINUE jump_label? eos
+rule jump_label = &{ js_no_linebreak(stream) } binding_identifier
+rule switch_statement = KW_SWITCH LPAREN expression RPAREN LBRACE switch_clause* RBRACE
+rule switch_clause = KW_CASE expression COLON statement* | KW_DEFAULT COLON statement*
+rule try_statement = KW_TRY block catch_clause finally_clause? | KW_TRY block finally_clause
+rule catch_clause = KW_CATCH catch_binding? block
+rule catch_binding = LPAREN binding_pattern RPAREN
+rule finally_clause = KW_FINALLY block
+rule with_statement = KW_WITH LPAREN expression RPAREN statement
+rule debugger_statement = KW_DEBUGGER eos
+
+rule function_decl = async_modifier? KW_FUNCTION STAR? binding_identifier parameters block
+rule function_expr = async_modifier? KW_FUNCTION STAR? binding_identifier? parameters block
+rule async_modifier = KW_ASYNC &{ js_no_linebreak(stream) }
+rule parameters = LPAREN parameter_list? RPAREN
+rule parameter_list = parameter parameter_tail* COMMA? | rest_parameter
+rule parameter_tail = COMMA parameter | COMMA rest_parameter
+rule parameter = binding_pattern initializer?
+rule rest_parameter = ELLIPSIS binding_pattern
+rule arrow_function = async_modifier? arrow_parameters &{ js_no_linebreak(stream) } ARROW arrow_body
+rule arrow_parameters = parameters | binding_identifier
+rule arrow_body = block | assignment
+rule class_decl = KW_CLASS binding_identifier class_tail
+rule class_expr = KW_CLASS binding_identifier? class_tail
+rule class_tail = extends_clause? LBRACE class_element* RBRACE
+rule extends_clause = KW_EXTENDS postfix
+rule class_element = SEMI | KW_STATIC method | method
+rule method = async_modifier? STAR? property_name parameters block | KW_GET property_name LPAREN RPAREN block | KW_SET property_name LPAREN parameter RPAREN block
+
+rule import_statement = KW_IMPORT STRING eos | KW_IMPORT import_clause KW_FROM STRING eos
+rule import_clause = binding_identifier COMMA import_named | binding_identifier COMMA import_namespace | import_named | import_namespace | binding_identifier
+rule import_namespace = STAR KW_AS binding_identifier
+rule import_named = LBRACE import_specifiers? RBRACE
+rule import_specifiers = import_specifier import_specifier_tail* COMMA?
+rule import_specifier_tail = COMMA import_specifier
+rule import_specifier = identifier_name KW_AS binding_identifier | binding_identifier
+rule export_statement = KW_EXPORT KW_DEFAULT export_default | KW_EXPORT export_all eos | KW_EXPORT export_named export_from? eos | KW_EXPORT variable_statement | KW_EXPORT function_decl | KW_EXPORT class_decl
+rule export_default = function_expr | class_expr | assignment eos
+rule export_all = STAR export_alias? KW_FROM STRING
+rule export_alias = KW_AS identifier_name
+rule export_named = LBRACE export_specifiers? RBRACE
+rule export_specifiers = export_specifier export_specifier_tail* COMMA?
+rule export_specifier_tail = COMMA export_specifier
+rule export_specifier = identifier_name KW_AS identifier_name | identifier_name
+rule export_from = KW_FROM STRING
+
+rule expression = assignment expression_tail*
+rule expression_tail = COMMA assignment
+rule assignment = arrow_function | yield_expression | conditional assignment_tail?
+rule assignment_tail = assignment_operator assignment
+rule assignment_operator = ASSIGN | ADD_ASSIGN | SUB_ASSIGN | MUL_ASSIGN | DIV_ASSIGN | MOD_ASSIGN | POWER_ASSIGN | SHL_ASSIGN | SAR_ASSIGN | SHR_ASSIGN | BITAND_ASSIGN | BITXOR_ASSIGN | BITOR_ASSIGN
+rule yield_expression = KW_YIELD yield_value?
+rule yield_value = &{ js_no_linebreak(stream) } STAR? assignment
+rule conditional = short_circuit conditional_tail?
+rule conditional_tail = QUESTION assignment COLON assignment
+rule short_circuit = logical_or coalesce_tail*
+rule coalesce = bitor coalesce_tail+
+rule coalesce_tail = NULLISH bitor
+rule logical_or = logical_and logical_or_tail*
+rule logical_or_tail = OR logical_and
+rule logical_and = bitor logical_and_tail*
+rule logical_and_tail = AND bitor
+rule bitor = bitxor bitor_tail*
+rule bitor_tail = BITOR bitxor
+rule bitxor = bitand bitxor_tail*
+rule bitxor_tail = BITXOR bitand
+rule bitand = equality bitand_tail*
+rule bitand_tail = BITAND equality
+rule equality = relational equality_tail*
+rule equality_tail = equality_operator relational
+rule equality_operator = EQ | NE | STRICT_EQ | STRICT_NE
+rule relational = shift relational_tail*
+rule relational_tail = relational_operator shift
+rule relational_operator = LT | GT | LE | GE | KW_IN | KW_INSTANCEOF
+rule shift = additive shift_tail*
+rule shift_tail = shift_operator additive
+rule shift_operator = SHL | SAR | SHR
+rule additive = multiplicative additive_tail*
+rule additive_tail = additive_operator multiplicative
+rule additive_operator = PLUS | MINUS
+rule multiplicative = power multiplicative_tail*
+rule multiplicative_tail = multiplicative_operator power
+rule multiplicative_operator = STAR | SLASH | MOD
+rule power = unary power_tail?
+rule power_tail = POWER power
+rule unary = prefix_operator unary | KW_AWAIT unary | update
+rule prefix_operator = PLUS | MINUS | NOT | BITNOT | KW_TYPEOF | KW_VOID | KW_DELETE | INC | DEC
+rule update = postfix postfix_update?
+rule postfix_update = &{ js_no_linebreak(stream) } INC | &{ js_no_linebreak(stream) } DEC
+rule postfix = new_expression | primary postfix_tail*
+rule new_expression = KW_NEW DOT KW_TARGET postfix_tail* | KW_NEW new_callee arguments? postfix_tail*
+rule new_callee = KW_NEW new_callee arguments? | primary new_member_tail*
+rule new_member_tail = DOT identifier_name | LBRACKET expression RBRACKET
+rule postfix_tail = DOT identifier_name | LBRACKET expression RBRACKET | arguments | OPTIONAL identifier_name | OPTIONAL LBRACKET expression RBRACKET | OPTIONAL arguments | template
+rule arguments = LPAREN argument_list? RPAREN
+rule argument_list = argument argument_tail* COMMA?
+rule argument_tail = COMMA argument
+rule argument = ELLIPSIS assignment | assignment
+rule primary = function_expr | class_expr | KW_THIS | KW_SUPER | KW_NULL | KW_TRUE | KW_FALSE | NUMBER | STRING | REGEX | template | array_literal | object_literal | LPAREN expression RPAREN | dynamic_import | identifier_reference
+rule dynamic_import = KW_IMPORT LPAREN assignment RPAREN | KW_IMPORT DOT identifier_name
+rule array_literal = LBRACKET array_element_opt array_tail* RBRACKET
+rule array_element_opt = argument |
+rule array_tail = COMMA array_element_opt
+rule object_literal = LBRACE object_properties? RBRACE
+rule object_properties = object_property object_property_tail* COMMA?
+rule object_property_tail = COMMA object_property
+rule object_property = method | property_name COLON assignment | ELLIPSIS assignment | binding_identifier initializer?
+rule property_name = identifier_name | STRING | NUMBER | LBRACKET assignment RBRACKET
+rule template = BACKTICK template_part* TEMPLATE_END
+rule template_part = TEMPLATE_TEXT | INTERPOLATION expression RBRACE
