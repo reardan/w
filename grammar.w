@@ -90,6 +90,7 @@ import grammar.ast_declaration
 import grammar.ast_loop
 import grammar.ast_gpu
 import compiler.tile_analysis
+import compiler.tile_plan
 import code_generator.tile_ptx
 import code_generator.tile_host
 import grammar.ast_tile

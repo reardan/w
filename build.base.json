@@ -35,6 +35,7 @@
 			"javascript_transform": "manual module-specifier rewriting CLI; covered by javascript_transform_test",
 			"javascript_compatibility": "explicit compatibility gate requiring pinned external Node runtime",
 			"storage_probe": "storage benchmark driver binary",
+			"tile_benchmark": "opt-in CUDA timing sweep; tile_benchmark_compile_test covers its build in tests",
 			"storage_native_test": "storage benchmark run (tools/storage/native_test.py)",
 			"wast_audit": "AST audit tool binary",
 			"ast_expression_suite": "AST migration audit; reruns the whole tests umbrella",

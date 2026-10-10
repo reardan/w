@@ -5,7 +5,7 @@ import lib.str
 
 void tile_reject(char* region, char* message):
 	char* path = f"bin/tile_reject_{getpid()}.w"
-	char* source = f"import lib.lib\nvoid __w_gpu_launch_tiles(char* name, int n, int width, char* vals, int count):\n\tpass\nvoid bad(float32* a, float32* b, float32* c, int n, const float32* ro):\n{region}\nint main():\n\treturn 0\n"
+	char* source = f"import lib.lib\nvoid __w_gpu_launch_tiles(char* name, int n, int width, int threads, char* vals, int count):\n\tpass\nvoid bad(float32* a, float32* b, float32* c, int n, const float32* ro):\n{region}\nint main():\n\treturn 0\n"
 	assert1(file_write_text(path, source))
 	for mode in range(2):
 		char** args = strv_new(9)

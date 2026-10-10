@@ -24,9 +24,15 @@ The representation is deliberately small:
 3. `compiler/tile_analysis.w` checks types, shapes, scalar broadcasting, masks,
    captures, and uniform control flow. It does not allocate physical registers
    or emit instructions.
-4. `code_generator/tile_ptx.w` maps the analyzed tree to a fixed thread layout,
-   registers, shared storage and synchronization. `code_generator/tile_host.w`
-   evaluates the recorded header and captured host values and emits the launch.
+4. `compiler/tile_plan.w` assigns the element-to-thread mapping, per-dot shared
+   buffers and block synchronization points in an arena-owned lowering plan.
+   Planning emits no code, uses no parser state and is cached on the program;
+   semantic reanalysis invalidates the cached plan. An arena rollback generation
+   prevents reuse of a plan whose allocation was reclaimed by a checkpoint.
+5. `code_generator/tile_ptx.w` consumes that plan to emit registers, shared
+   declarations, staging and barriers. `code_generator/tile_host.w` evaluates
+   the recorded header and captured host values and passes the planned thread
+   count and logical width to the launch runtime.
 
 The old GPU capture lookup and retained phase queues cannot simply be delayed:
 lookup emits addresses, and nested phase queues assume draining during parsing.
@@ -109,6 +115,31 @@ Conditions and loop bounds must be block-uniform; tile-valued conditions are
 rejected. Tensor-core instructions, automatic layout search, asynchronous copies
 and automatic tuning are outside this first implementation.
 
+## Lowering plan
+
+`tile_program.plan` points to a `tile_lowering_plan` owned by the same retained
+arena as the syntax tree. The initial plan preserves the existing mapping:
+256 threads, `element = thread + pass * 256`, and `ceil(width/256)` passes.
+Matrix elements use `row = thread >> 4` and `column = thread & 15`.
+`tile_plan_element`, `tile_plan_thread`, `tile_plan_pass`, `tile_plan_row` and
+`tile_plan_col` expose this mapping for independent tests and future consumers.
+
+Each syntactic dot has a `tile_dot_plan` keyed by its owned node identity.
+Plans follow evaluation order, including nested dots and both uniform branches.
+Each dot owns two distinct 1024-byte, four-byte-aligned shared buffers with
+four-byte element strides and 64-byte row strides. Buffer IDs are unique
+within the program; offsets describe a disjoint accounting of shared bytes.
+PTX currently declares a separate symbol for each assigned buffer, so offsets
+are accounting metadata rather than addresses into one combined allocation.
+A dot's plan also records the 16-step K reduction, staging/address shifts and
+two block barriers: inputs ready and readers finished before reuse on the next
+loop iteration. Distinct dots do not yet reuse storage, even in disjoint branches.
+
+The planner is the source of layout and staging choices. Register assignment
+and PTX spelling remain emitter responsibilities. Changing the plan is not yet
+a supported public tuning interface: its current invariants are established by
+analysis and the planner, and tests with artificial plans inspect text only.
+
 ## Scope and validation
 
 Supported scalar/control syntax is intentionally narrower than a general W
@@ -142,3 +173,38 @@ launches, measured about 121 microseconds per tile matmul versus 110 microsecond
 for the existing hand-tiled kernel. Timing includes host launch overhead and a
 synchronization at each batch end. This establishes a starting point for later
 layout/register tuning; the initial implementation does not claim a speedup.
+
+
+## Reproducible benchmark
+
+Build the driver with `./wbuild tile_benchmark_compile_test` (also included in
+`./wbuild tests`). On a machine with CUDA, run:
+
+```sh
+nvidia-smi --query-gpu=name,driver_version --format=csv > bin/tile_benchmark_environment.txt
+git rev-parse HEAD >> bin/tile_benchmark_environment.txt
+sha256sum bin/wv2 bin/tile_benchmark >> bin/tile_benchmark_environment.txt
+./bin/tile_benchmark 100 3 > bin/tile_benchmark.csv
+```
+
+The two optional arguments are launches per batch and number of batches;
+defaults are 100 and 3. `./wbuild tile_benchmark` runs those defaults. Runtime
+benchmarking is opt-in and is not an ordinary-suite performance gate.
+
+The fixed input sweep includes square matrix products from 16 through 512,
+1x1 products with zero/nonzero K, partial 15x17x19 and 511x513x509 products,
+and vector widths 1, 17, 255, 256, 257, 513 and 1024. Each vector width runs
+its exact boundary, boundary plus one, and 65539 elements. Every case checks
+all results against a CPU calculation and a GPU reference, plus output guards,
+before warming up or timing. Deterministic small integer inputs make these
+checks exact in float32 at the chosen sizes.
+
+Matrix reference timings use the existing `tensor_matmul_tiled_kernel`;
+vector references use the scalar GPU addition loop used by `tensor_add_into`.
+After five warm-up pairs, each batch reports nanoseconds per launch, including
+host launch overhead and one synchronization at the end of the batch. The two
+implementations alternate first/second timing order between batches. Allocation,
+CPU validation and managed-memory first-touch costs are outside timing. Keep
+individual batch results and record GPU/driver/compiler revision when comparing
+runs; normal device load and clock variation still affect results. This baseline
+does not replace or select the existing tensor kernel.

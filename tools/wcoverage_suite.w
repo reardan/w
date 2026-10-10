@@ -7,8 +7,9 @@ Usage: wcoverage suite [--out <dir>] [--baseline <file>] [--prefix <p>]...
                        [--no-run] [<target>...]
 
 1. Builds --coverage x86 and x64 copies of the compiler (w.w), the REPL
-   (repl.w) and wdbg (debugger/debugger.w) into <dir> (default
-   bin/coverage) with bin/wv2.
+   (repl.w), wdbg (debugger/debugger.w), and compiler API test harnesses
+   into <dir> (default bin/coverage) with bin/wv2. The harnesses exercise
+   owned-tree APIs that ordinary compiler subprocesses never call.
 2. Runs 'bin/wexec --no-cache --keep-going <target>...' (default: tests)
    with $W_COVERAGE_COMPILER[_64], $W_COVERAGE_REPL[_64],
    $W_COVERAGE_WDBG[_64] and $W_COVERAGE_OUT set, so every compiler,
@@ -17,6 +18,8 @@ Usage: wcoverage suite [--out <dir>] [--baseline <file>] [--prefix <p>]...
    instrumented build (compiler/coverage_exec.w) and appends its counters
    to <dir>/<tag>_<arch>/<pid>.raw. --no-run reuses the dumps of an
    earlier run (to re-render reports or retry a baseline).
+   Then runs each API harness directly with its own W_PROFILE_OUT dump;
+   harness failures fail the suite after the reports have been written.
 3. Merges every map with its dumps and writes, under <dir>:
      summary.txt               per top-level directory
      files.txt                 per file
@@ -52,6 +55,7 @@ struct wcov_suite_build:
 	char* binary     # <dir>/<tag>_<arch>_cov
 	char* dumps      # <dir>/<tag>_<arch>
 	int x64
+	int harness      # direct test run, with no compiler redirect variable
 
 
 void wcov_suite_fail(char* detail):
@@ -76,14 +80,20 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	sources.push(c"w.w")
 	sources.push(c"repl.w")
 	sources.push(c"debugger/debugger.w")
+	sources.push(c"tests/tile_analysis_unit_test.w")
+	sources.push(c"tests/tile_ast_test.w")
 	list[char*] tags = new list[char*]
 	tags.push(c"compiler")
 	tags.push(c"repl")
 	tags.push(c"wdbg")
+	tags.push(c"tile_analysis_test")
+	tags.push(c"tile_ast_test")
 	list[char*] variables = new list[char*]
 	variables.push(c"W_COVERAGE_COMPILER")
 	variables.push(c"W_COVERAGE_REPL")
 	variables.push(c"W_COVERAGE_WDBG")
+	variables.push(0)
+	variables.push(0)
 	for i in range(sources.length):
 		for x64 in range(2):
 			wcov_suite_build* b = new wcov_suite_build()
@@ -92,9 +102,10 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 			b.x64 = x64
 			char* arch = c"x86"
 			b.variable = variables[i]
+			b.harness = b.variable == 0
 			if (x64):
 				arch = c"x64"
-				b.variable = strjoin(variables[i], c"_64")
+				if (b.variable != 0): b.variable = strjoin(b.variable, c"_64")
 			b.dumps = f"{out}/{tags[i]}_{arch}"
 			b.binary = f"{out}/{tags[i]}_{arch}_cov"
 			builds.push(b)
@@ -172,6 +183,7 @@ int wcov_suite_main():
 		out = path_join(cwd, out)
 	mkdir(out, 493)
 	list[wcov_suite_build*] builds = wcov_suite_builds(out)
+	int harness_failed = 0
 
 	if (run):
 		for wcov_suite_build* b in builds:
@@ -179,7 +191,8 @@ int wcov_suite_main():
 			mkdir(b.dumps, 493)
 		wcov_suite_build_all(builds)
 		char** env = env_copy_with(env_current(), c"W_COVERAGE_OUT", out)
-		for wcov_suite_build* b in builds: env = env_copy_with(env, b.variable, b.binary)
+		for wcov_suite_build* b in builds:
+			if (b.variable != 0): env = env_copy_with(env, b.variable, b.binary)
 		# The run rebuilds bin/wexec and bin/wcoverage (--no-cache), so
 		# drive it from a copy; ./wbuild compiler_coverage runs this
 		# tool from a copy too.
@@ -197,6 +210,18 @@ int wcov_suite_main():
 		println2(f"wcoverage suite: running {join(targets, c" ")} under the instrumented builds")
 		int status = wcov_suite_spawn(argv, env)
 		if (status != 0): println2(f"wcoverage suite: warning: the test run exited {status}; its counters are still merged")
+		for wcov_suite_build* b in builds:
+			if (b.harness == 0): continue
+			char** test_argv = strv_new(1)
+			strv_set(test_argv, 0, b.binary)
+			# One run per freshly built harness. Never mix its counter IDs
+			# with a driver map or another architecture's dump.
+			char** test_env = env_copy_with(env, c"W_PROFILE_OUT", f"{b.dumps}/harness.raw")
+			println2(f"wcoverage suite: running compiler API harness {b.binary}")
+			int test_status = wcov_suite_spawn(test_argv, test_env)
+			if (test_status != 0):
+				println2(f"wcoverage suite: compiler API harness {b.binary} failed: {test_status}")
+				harness_failed = 1
 
 	wcov_state* st = wcov_state_new()
 	int loaded = 0
@@ -235,4 +260,6 @@ int wcov_suite_main():
 	opt.summary = c"dir"
 	println(f"compiler coverage ({out}):")
 	if (baseline != 0): opt.baseline = baseline
-	return wcov_report(st, opt)
+	int report_status = wcov_report(st, opt)
+	if (harness_failed): return 1
+	return report_status

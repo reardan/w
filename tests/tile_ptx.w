@@ -9,7 +9,8 @@ int tile_launch_count
 void tile_shadow(float32* gpu):
 	gpu[0] = 1
 
-void __w_gpu_launch_tiles(char* name, int n, int width, char* vals, int count):
+void __w_gpu_launch_tiles(char* name, int n, int width, int threads, char* vals, int count):
+	assert1(threads == 256)
 	assert1(n == 9)
 	assert1(width == 1024 || width == 1)
 	assert1(count >= 4)

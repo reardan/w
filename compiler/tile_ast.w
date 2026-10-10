@@ -1,5 +1,11 @@
 # Owned syntax for a complete tile region. All allocations use the retained
 # session arena, including streaming callers; no backend state lives here.
+char* tile_owned_zero(int size):
+	char* bytes = retained_arena_alloc(size)
+	for i in range(size): bytes[i] = 0
+	return bytes
+
+
 const int tile_literal = 1
 const int tile_reference = 2
 const int tile_binary = 3
@@ -64,6 +70,53 @@ struct tile_node:
 	tile_node* otherwise
 	tile_node* args
 
+# Layout and resource assignments are retained with their syntax owner. They
+# describe logical threads and buffers, never backend registers or stack slots.
+const int tile_sync_stage_ready = 1
+const int tile_sync_reuse_ready = 2
+const int tile_sync_block = 1
+
+struct tile_shared_buffer:
+	int id
+	int offset_bytes
+	int size_bytes
+	int alignment
+	int element_stride
+	int row_stride
+
+struct tile_sync_point:
+	int phase
+	int barrier_id
+	int scope
+
+struct tile_dot_plan:
+	tile_node* node
+	int id
+	tile_shared_buffer* left
+	tile_shared_buffer* right
+	int k_extent
+	int stage_thread_shift
+	int row_shift
+	int col_shift
+	tile_sync_point* stage_ready
+	tile_sync_point* reuse_ready
+	tile_dot_plan* next
+
+struct tile_lowering_plan:
+	int threads
+	int logical_width
+	int lane_passes
+	int lane_stride
+	int matrix_rows
+	int matrix_cols
+	int row_shift
+	int col_mask
+	int element_shift
+	int shared_bytes
+	int dot_count
+	tile_dot_plan* dots
+	tile_dot_plan* dots_tail
+
 struct tile_program:
 	int matrix_mode
 	int shared_bytes
@@ -81,6 +134,8 @@ struct tile_program:
 	tile_binding* tile_binding
 	tile_node* bound
 	tile_node* body
+	tile_lowering_plan* plan
+	int plan_generation
 
 # Stable binary operation codes use ASCII for arithmetic, and these for
 # comparisons/logical operators. Source spellings remain in node.name.

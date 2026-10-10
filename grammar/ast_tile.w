@@ -2,12 +2,6 @@
 # This parser deliberately never calls statement(), expression(), or a backend
 # helper: those entry points retain incremental emission dependencies.
 
-char* tile_owned_zero(int size):
-	char* bytes = retained_arena_alloc(size)
-	for i in range(size): bytes[i] = 0
-	return bytes
-
-
 tile_node* tile_node_new(int kind):
 	tile_node* node = cast(tile_node*, tile_owned_zero(sizeof(tile_node)))
 	node.kind = kind

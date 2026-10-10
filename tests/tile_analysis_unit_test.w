@@ -1,5 +1,6 @@
 # wbuild: x64
 import lib.testing
+import lib.str
 import repl.core
 
 
@@ -194,3 +195,208 @@ void test_tile_analysis_scalar_control_and_types():
 	assert_equal(-1, tile_scalar_type(float64_type))
 	assert_equal(0, tile_float_pointer(type_get_next_pointer(type_lookup(c"int"))))
 	assert_equal(1, tile_float_pointer(type_get_next_pointer(float32_type)))
+
+
+void test_tile_plan_vector_mapping_is_bijective():
+	tile_unit_init()
+	# Every supported width, including partial passes on either side of 256.
+	for width in range(1, 1025):
+		tile_program* program = tile_unit_program(width)
+		tile_analyze(program)
+		int host = codepos
+		int body = ptx_body_pos
+		int module = ptx_module_pos
+		int depth = stack_pos
+		tile_lowering_plan* plan = tile_plan(program)
+		assert1(program.plan == plan)
+		assert1(tile_plan(program) == plan)
+		assert_equal(256, plan.threads)
+		assert_equal(width, plan.logical_width)
+		assert_equal(256, plan.lane_stride)
+		assert_equal((width + 255) / 256, plan.lane_passes)
+		assert_equal(2, plan.element_shift)
+		assert_equal(0, plan.dot_count)
+		assert_equal(0, plan.shared_bytes)
+		assert1(plan.dots == 0)
+		for element in range(width):
+			int thread = tile_plan_thread(plan, element)
+			int lane_pass = tile_plan_pass(plan, element)
+			assert1(thread >= 0 && thread < plan.threads)
+			assert1(lane_pass >= 0 && lane_pass < plan.lane_passes)
+			assert_equal(element, tile_plan_element(plan, thread, lane_pass))
+		assert_equal(host, codepos)
+		assert_equal(body, ptx_body_pos)
+		assert_equal(module, ptx_module_pos)
+		assert_equal(depth, stack_pos)
+
+
+tile_node* tile_unit_zero():
+	tile_node* node = tile_node_new(tile_zero)
+	node.args = tile_unit_literal(16)
+	node.args.next = tile_unit_literal(16)
+	return node
+
+
+tile_node* tile_unit_dot(tile_node* left, tile_node* right):
+	tile_node* node = tile_node_new(tile_dot)
+	node.args = left
+	left.next = right
+	return node
+
+
+void tile_unit_assert_dot_plan(tile_lowering_plan* plan, tile_node* node, int id):
+	tile_dot_plan* dot = tile_plan_dot(plan, node)
+	assert1(dot != 0)
+	assert1(dot.node == node)
+	assert_equal(id, dot.id)
+	assert_equal(16, dot.k_extent)
+	assert_equal(2, dot.stage_thread_shift)
+	assert_equal(6, dot.row_shift)
+	assert_equal(2, dot.col_shift)
+	assert_equal(id * 2, dot.left.id)
+	assert_equal(id * 2 + 1, dot.right.id)
+	assert_equal(id * 2048, dot.left.offset_bytes)
+	assert_equal(id * 2048 + 1024, dot.right.offset_bytes)
+	assert_equal(1024, dot.left.size_bytes)
+	assert_equal(1024, dot.right.size_bytes)
+	assert_equal(4, dot.left.alignment)
+	assert_equal(4, dot.right.alignment)
+	assert_equal(4, dot.left.element_stride)
+	assert_equal(4, dot.right.element_stride)
+	assert_equal(64, dot.left.row_stride)
+	assert_equal(64, dot.right.row_stride)
+	assert_equal(tile_sync_stage_ready, dot.stage_ready.phase)
+	assert_equal(tile_sync_reuse_ready, dot.reuse_ready.phase)
+	assert_equal(tile_sync_block, dot.stage_ready.scope)
+	assert_equal(tile_sync_block, dot.reuse_ready.scope)
+	assert_equal(0, dot.stage_ready.barrier_id)
+	assert_equal(0, dot.reuse_ready.barrier_id)
+
+
+void test_tile_plan_nested_dots_branches_and_reanalysis():
+	tile_unit_init()
+	tile_program* program = tile_unit_program(1)
+	int pointer_type = type_get_next_pointer(float32_type)
+	tile_binding* output = tile_unit_capture(program, c"output", pointer_type)
+	tile_node* inner = tile_unit_dot(tile_unit_zero(), tile_unit_zero())
+	tile_node* outer = tile_unit_dot(inner, tile_unit_zero())
+	tile_node* alternate = tile_unit_dot(tile_unit_zero(), tile_unit_zero())
+	tile_node* after = tile_unit_dot(tile_unit_zero(), tile_unit_zero())
+	tile_node* condition = tile_node_new(tile_if)
+	condition.left = tile_unit_literal(1)
+	condition.body = tile_unit_matrix_store(output, outer)
+	condition.otherwise = tile_unit_matrix_store(output, alternate)
+	tile_node* loop = tile_node_new(tile_for)
+	loop.binding = tile_binding_new(program, c"step", tile_binding_loop, type_lookup(c"int"))
+	loop.left = tile_unit_literal(0)
+	loop.right = tile_unit_literal(2)
+	loop.body = condition
+	loop.next = tile_unit_matrix_store(output, after)
+	program.body = loop
+	tile_analyze(program)
+	tile_lowering_plan* plan = tile_plan(program)
+	assert_equal(4, plan.dot_count)
+	assert_equal(8192, plan.shared_bytes)
+	assert_equal(program.shared_bytes, plan.shared_bytes)
+	assert_equal(16, plan.matrix_rows)
+	assert_equal(16, plan.matrix_cols)
+	assert_equal(4, plan.row_shift)
+	assert_equal(15, plan.col_mask)
+	assert_equal(1, plan.lane_passes)
+	for thread in range(256):
+		assert_equal(thread / 16, tile_plan_row(plan, thread))
+		assert_equal(thread % 16, tile_plan_col(plan, thread))
+		assert_equal(thread, tile_plan_row(plan, thread) * 16 + tile_plan_col(plan, thread))
+	tile_unit_assert_dot_plan(plan, inner, 0)
+	tile_unit_assert_dot_plan(plan, outer, 1)
+	tile_unit_assert_dot_plan(plan, alternate, 2)
+	tile_unit_assert_dot_plan(plan, after, 3)
+	assert1(plan.dots.node == inner)
+	assert1(plan.dots.next.node == outer)
+	assert1(plan.dots.next.next.node == alternate)
+	assert1(plan.dots_tail.node == after)
+	assert1(plan.dots_tail.next == 0)
+	assert1(tile_plan_dot(plan, condition) == 0)
+	# Cached lowering has no parser state, and semantic reanalysis invalidates it.
+	assert1(tile_plan(program) == plan)
+	tile_analyze(program)
+	assert1(program.plan == 0)
+	tile_lowering_plan* rebuilt = tile_plan(program)
+	assert1(rebuilt != plan)
+	assert_equal(plan.shared_bytes, rebuilt.shared_bytes)
+	assert_equal(plan.dot_count, rebuilt.dot_count)
+	tile_unit_assert_dot_plan(rebuilt, inner, 0)
+	tile_unit_assert_dot_plan(rebuilt, after, 3)
+
+
+void test_tile_plan_cache_survives_arena_suffix_rollback():
+	tile_unit_init()
+	tile_program* program = tile_unit_program(1)
+	tile_binding* output = tile_unit_capture(program, c"output", type_get_next_pointer(float32_type))
+	tile_node* node = tile_unit_dot(tile_unit_zero(), tile_unit_zero())
+	program.body = tile_unit_matrix_store(output, node)
+	tile_analyze(program)
+	# The syntax owner survives this checkpoint, but its newly cached plan
+	# does not. Overwrite the reclaimed address before asking to lower again.
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	tile_lowering_plan* discarded = tile_plan(program)
+	int generation = program.plan_generation
+	retained_rollback(&checkpoint)
+	assert1(retained_arena_generation != generation)
+	char* poison = retained_arena_alloc(sizeof(tile_lowering_plan))
+	assert1(poison == cast(char*, discarded))
+	for i in range(sizeof(tile_lowering_plan)): poison[i] = 127
+	tile_lowering_plan* rebuilt = tile_plan(program)
+	assert1(rebuilt != discarded)
+	assert1(tile_plan(program) == rebuilt)
+	assert_equal(retained_arena_generation, program.plan_generation)
+	assert_equal(256, rebuilt.threads)
+	assert_equal(1, rebuilt.dot_count)
+	assert_equal(2048, rebuilt.shared_bytes)
+	tile_unit_assert_dot_plan(rebuilt, node, 0)
+
+
+void test_tile_ptx_consumes_shared_buffers_and_sync_plan():
+	tile_unit_init()
+	tile_program* program = tile_unit_program(1)
+	program.kernel_name = c"tile_plan_consumer_probe"
+	tile_binding* output = tile_unit_capture(program, c"output", type_get_next_pointer(float32_type))
+	tile_node* node = tile_unit_dot(tile_unit_zero(), tile_unit_zero())
+	program.body = tile_unit_matrix_store(output, node)
+	tile_analyze(program)
+	tile_lowering_plan* plan = tile_plan(program)
+	tile_dot_plan* dot = plan.dots
+	# Deliberately artificial plan values prove PTX consumes the contract.
+	# This PTX is inspected only, never loaded or run on a GPU.
+	dot.left.id = 20
+	dot.right.id = 21
+	dot.left.alignment = 8
+	dot.right.alignment = 16
+	dot.left.size_bytes = 2048
+	dot.right.size_bytes = 4096
+	dot.stage_thread_shift = 3
+	dot.row_shift = 7
+	dot.col_shift = 3
+	dot.left.element_stride = 8
+	dot.right.row_stride = 128
+	dot.k_extent = 3
+	dot.stage_ready.barrier_id = 2
+	dot.reuse_ready.barrier_id = 3
+	int start = ptx_module_pos
+	tile_ptx_emit(program)
+	char* emitted = ptx_module_buf + start
+	assert1(contains(emitted, c".shared .align 8 .b8 __tile_a10[2048];"))
+	assert1(contains(emitted, c".shared .align 16 .b8 __tile_b10[4096];"))
+	assert1(contains(emitted, c"mov.u64 %tsa, __tile_a10;"))
+	assert1(contains(emitted, c"mov.u64 %tsb, __tile_b10;"))
+	assert1(contains(emitted, c"shl.b64 %tscratch, %ttid, 3;"))
+	assert1(contains(emitted, c"shl.b64 %tscratch, %trow, 7;"))
+	assert1(contains(emitted, c"shl.b64 %tscratch, %tcol, 3;"))
+	assert1(contains(emitted, c"ld.f32 %tfa, [%tsa+16];"))
+	assert1(contains(emitted, c"ld.f32 %tfb, [%tsb+256];"))
+	assert1(!contains(emitted, c"ld.f32 %tfa, [%tsa+24];"))
+	assert1(!contains(emitted, c"ld.f32 %tfb, [%tsb+384];"))
+	assert1(contains(emitted, c"bar.sync 2;"))
+	assert1(contains(emitted, c"bar.sync 3;"))
+	assert1(!contains(emitted, c"bar.sync 0;"))

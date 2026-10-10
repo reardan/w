@@ -1,8 +1,7 @@
-# Fixed-layout tile lowering. This visitor only sees a complete, analyzed
-# region. Its registers are independent of the streaming W evaluation stack.
+# Tile lowering consumes an owned layout and staging plan for a complete,
+# analyzed region. Registers are independent of the streaming W stack.
 int tile_ptx_register
 int tile_ptx_label
-int tile_ptx_shared
 tile_program* tile_ptx_program
 
 void tile_ptx_reg(char* prefix, int reg):
@@ -67,6 +66,20 @@ int tile_ptx_expression(tile_node* node);
 void tile_ptx_label_emit(int label);
 void tile_ptx_branch(int label, int conditional);
 
+void tile_ptx_immediate_line(char* instruction, int value):
+	ptx_emit(instruction)
+	ptx_emit_int(value)
+	ptx_line(c";")
+
+void tile_ptx_sync(tile_sync_point* point):
+	assert1(point.scope == tile_sync_block)
+	tile_ptx_immediate_line(c"bar.sync ", point.barrier_id)
+
+void tile_ptx_buffer_name(tile_shared_buffer* buffer):
+	if (buffer.id % 2 == 0): ptx_emit(c"__tile_a")
+	else: ptx_emit(c"__tile_b")
+	ptx_emit_int(buffer.id / 2)
+
 # Evaluate the seven addressing operands once, then form this lane's
 # row/column address and bounds predicate. No invalid load is speculative.
 int tile_ptx_matrix_address(tile_node* node):
@@ -113,7 +126,7 @@ int tile_ptx_matrix_address(tile_node* node):
 	tile_ptx_reg(c"%ti", row)
 	ptx_emit(c", ")
 	tile_ptx_reg(c"%ti", row)
-	ptx_line(c", 2;")
+	tile_ptx_immediate_line(c", ", tile_ptx_program.plan.element_shift)
 	tile_ptx_binary_line(c"add.u64 ", operands[0], operands[0], row, 0)
 	return operands[0]
 
@@ -128,38 +141,45 @@ int tile_ptx_index_address(tile_node* node):
 	ptx_line(c", %tn;")
 	ptx_line(c"and.pred %tm, %tm, %tp;")
 	ptx_emit(c"setp.lt.u64 %tp, %tlane, ")
-	ptx_emit_int(tile_ptx_program.width)
+	ptx_emit_int(tile_ptx_program.plan.logical_width)
 	ptx_line(c";")
 	ptx_line(c"and.pred %tm, %tm, %tp;")
 	ptx_emit(c"shl.b64 ")
 	tile_ptx_reg(c"%ti", index)
 	ptx_emit(c", ")
 	tile_ptx_reg(c"%ti", index)
-	ptx_line(c", 2;")
+	tile_ptx_immediate_line(c", ", tile_ptx_program.plan.element_shift)
 	tile_ptx_binary_line(c"add.u64 ", base, base, index, 0)
 	return base
 
 int tile_ptx_dot(tile_node* node):
+	tile_dot_plan* dot = tile_plan_dot(tile_ptx_program.plan, node)
 	int left = tile_ptx_expression(node.args)
 	int right = tile_ptx_expression(node.args.next)
 	int result = tile_ptx_temp()
-	int shared = tile_ptx_shared
-	tile_ptx_shared = shared + 1
-	ptx_emit(c".shared .align 4 .b8 __tile_a")
-	ptx_emit_int(shared)
-	ptx_line(c"[1024];")
-	ptx_emit(c".shared .align 4 .b8 __tile_b")
-	ptx_emit_int(shared)
-	ptx_line(c"[1024];")
-	ptx_emit(c"mov.u64 %tsa, __tile_a")
-	ptx_emit_int(shared)
+	ptx_emit(c".shared .align ")
+	ptx_emit_int(dot.left.alignment)
+	ptx_emit(c" .b8 ")
+	tile_ptx_buffer_name(dot.left)
+	ptx_emit(c"[")
+	ptx_emit_int(dot.left.size_bytes)
+	ptx_line(c"];")
+	ptx_emit(c".shared .align ")
+	ptx_emit_int(dot.right.alignment)
+	ptx_emit(c" .b8 ")
+	tile_ptx_buffer_name(dot.right)
+	ptx_emit(c"[")
+	ptx_emit_int(dot.right.size_bytes)
+	ptx_line(c"];")
+	ptx_emit(c"mov.u64 %tsa, ")
+	tile_ptx_buffer_name(dot.left)
 	ptx_line(c";")
 	ptx_line(c"cvta.shared.u64 %tsa, %tsa;")
-	ptx_emit(c"mov.u64 %tsb, __tile_b")
-	ptx_emit_int(shared)
+	ptx_emit(c"mov.u64 %tsb, ")
+	tile_ptx_buffer_name(dot.right)
 	ptx_line(c";")
 	ptx_line(c"cvta.shared.u64 %tsb, %tsb;")
-	ptx_line(c"shl.b64 %tscratch, %ttid, 2;")
+	tile_ptx_immediate_line(c"shl.b64 %tscratch, %ttid, ", dot.stage_thread_shift)
 	ptx_line(c"add.u64 %taddr, %tsa, %tscratch;")
 	ptx_emit(c"st.f32 [%taddr], ")
 	tile_ptx_reg(c"%tf", left)
@@ -168,20 +188,20 @@ int tile_ptx_dot(tile_node* node):
 	ptx_emit(c"st.f32 [%taddr], ")
 	tile_ptx_reg(c"%tf", right)
 	ptx_line(c";")
-	ptx_barrier()
+	tile_ptx_sync(dot.stage_ready)
 	ptx_emit(c"mov.f32 ")
 	tile_ptx_reg(c"%tf", result)
 	ptx_line(c", 0f00000000;")
-	ptx_line(c"shl.b64 %tscratch, %trow, 6;")
+	tile_ptx_immediate_line(c"shl.b64 %tscratch, %trow, ", dot.row_shift)
 	ptx_line(c"add.u64 %tsa, %tsa, %tscratch;")
-	ptx_line(c"shl.b64 %tscratch, %tcol, 2;")
+	tile_ptx_immediate_line(c"shl.b64 %tscratch, %tcol, ", dot.col_shift)
 	ptx_line(c"add.u64 %tsb, %tsb, %tscratch;")
-	for k in range(16):
+	for k in range(dot.k_extent):
 		ptx_emit(c"ld.f32 %tfa, [%tsa+")
-		ptx_emit_int(k * 4)
+		ptx_emit_int(k * dot.left.element_stride)
 		ptx_line(c"];")
 		ptx_emit(c"ld.f32 %tfb, [%tsb+")
-		ptx_emit_int(k * 64)
+		ptx_emit_int(k * dot.right.row_stride)
 		ptx_line(c"];")
 		ptx_line(c"mul.rn.f32 %tfa, %tfa, %tfb;")
 		ptx_emit(c"add.rn.f32 ")
@@ -189,7 +209,7 @@ int tile_ptx_dot(tile_node* node):
 		ptx_emit(c", ")
 		tile_ptx_reg(c"%tf", result)
 		ptx_line(c", %tfa;")
-	ptx_barrier()
+	tile_ptx_sync(dot.reuse_ready)
 	return result
 
 int tile_ptx_expression(tile_node* node):
@@ -424,10 +444,10 @@ void tile_ptx_statements(tile_node* node):
 		node = node.next
 
 void tile_ptx_emit(tile_program* program):
+	tile_lowering_plan* plan = tile_plan(program)
 	tile_ptx_program = program
 	tile_ptx_register = 0
 	tile_ptx_label = 0
-	tile_ptx_shared = 0
 	ptx_kernel_begin(strclone(program.kernel_name))
 	ptx_line(c".reg .b64 %tn, %ttid, %tlane, %tprogram, %tindex, %trow, %tcol;")
 	ptx_line(c".reg .b64 %tsa, %tsb, %tscratch, %taddr;")
@@ -439,8 +459,8 @@ void tile_ptx_emit(tile_program* program):
 	ptx_line(c"cvt.u64.u32 %ttid, %tid32;")
 	ptx_line(c"mov.u32 %tblock32, %ctaid.x;")
 	ptx_line(c"cvt.u64.u32 %tprogram, %tblock32;")
-	ptx_line(c"shr.u64 %trow, %ttid, 4;")
-	ptx_line(c"and.b64 %tcol, %ttid, 15;")
+	tile_ptx_immediate_line(c"shr.u64 %trow, %ttid, ", plan.row_shift)
+	tile_ptx_immediate_line(c"and.b64 %tcol, %ttid, ", plan.col_mask)
 	tile_binding* binding = program.bindings
 	while (binding != 0):
 		binding.storage_slot = tile_ptx_temp()
@@ -458,12 +478,12 @@ void tile_ptx_emit(tile_program* program):
 				tile_ptx_reg(c"%tf", binding.storage_slot)
 				ptx_line(c", %tid32;")
 		binding = binding.next
-	for lane in range((program.width + 255) / 256):
+	for lane in range(plan.lane_passes):
 		ptx_emit(c"add.u64 %tlane, %ttid, ")
-		ptx_emit_int(lane * 256)
+		ptx_emit_int(lane * plan.lane_stride)
 		ptx_line(c";")
 		ptx_emit(c"mul.lo.u64 %tindex, %tprogram, ")
-		ptx_emit_int(program.width)
+		ptx_emit_int(plan.logical_width)
 		ptx_line(c";")
 		ptx_line(c"add.u64 %tindex, %tindex, %tlane;")
 		ptx_emit(c"mov.u64 ")

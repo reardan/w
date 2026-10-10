@@ -241,6 +241,9 @@ int retained_arena_count
 int retained_arena_room
 int retained_arena_index
 int retained_arena_offset
+# Cached payloads on surviving owners must not reuse an arena suffix after
+# rollback. This generation is monotonic and is never checkpoint-restored.
+int retained_arena_generation
 # Interned spellings every group and operand share.
 char* retained_name_expression
 char* retained_name_empty
@@ -869,6 +872,7 @@ void retained_capture(retained_checkpoint* checkpoint):
 
 
 void retained_rollback(retained_checkpoint* checkpoint):
+	retained_arena_generation = retained_arena_generation + 1
 	retained_pending_import = checkpoint.pending_import
 	retained_last_path = 0
 	retained_append_none()
