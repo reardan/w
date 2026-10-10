@@ -10,7 +10,7 @@
 # wbuild: step="bin/wv2 x64 --pie tests/crash_null_deref_fixture.w -o bin/elf_pie_crash"
 # wbuild: step="bin/wv2 x64 --pie --profile-generate tests/profile_generate_fixture.w -o bin/elf_pie_profile"
 # wbuild: step="bin/elf_pie_profile"
-# wbuild: step="bin/wv2 --pie tests/elf_pie_fixture.w -o bin/elf_pie_invalid" expect_fail expect_stderr="--pie requires the x64 Linux target"
+# wbuild: step="bin/wv2 --pie tests/elf_pie_fixture.w -o bin/elf_pie_invalid" expect_fail expect_stderr="--pie requires an x64 or arm64 ELF target"
 # wbuild: step="bin/wv2 x64 --pie --strict w.w -o bin/elf_pie_wv2"
 # wbuild: step="bin/elf_pie_wv2 x64 --pie --strict w.w -o bin/elf_pie_wv3"
 # wbuild: step="cmp bin/elf_pie_wv2 bin/elf_pie_wv3"

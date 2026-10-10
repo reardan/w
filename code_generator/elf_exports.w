@@ -1,9 +1,52 @@
-# Native x64 shared/static library exports. The parser records the same typed
-# signatures as wasm exports; each entry gets a System V ABI adapter.
+# Native ELF library exports. The parser records the same typed
+# signatures as wasm exports; each entry gets a native C ABI adapter.
 import code_generator.wasm_module
 import code_generator.ffi
 
 char* elf_export_addresses
+
+
+# AAPCS64 adapter. Keep the native frame above the downward-growing W
+# stack and preserve every native callee-saved GPR and low SIMD half.
+# Reserve 256 KiB below x28, like the iOS callback bridge, so host signal
+# frames and native-bridge transitions below sp cannot overwrite W frames.
+# x18 is Android's platform register and is never touched by the adapter
+# or the W ARM64 emitter. Arguments spilled by the C caller remain above
+# the 160-byte save frame. W returns float bits in x0.
+void elf_emit_arm64_export(int address, int n, char* classes, int ret_kind):
+	char* slots = ffi_assign_slots(n, classes, 8)
+	a64(op(0xd1, 0x0283ff))   # sub sp,sp,#160
+	for r in range(12):
+		a64(op(0xf9, 0x0003e0) | (r << 10) | (19 + r)) # str x19..x30,[sp,#8r]
+	for r in range(8):
+		a64(op(0xfd, 0x0003e0) | ((12 + r) << 10) | (8 + r)) # str d8..d15
+	a64(op(0x91, 0x0003fc))   # mov x28,sp
+	int spilled = 0
+	for i in range(n):
+		int slot = load_i(slots + i * 4, 4)
+		int reg = slot
+		if (slot < 0):
+			a64(op(0xf9, 0x4003e9) | ((20 + spilled) << 10)) # ldr x9,[sp,#160+8k]
+			spilled = spilled + 1
+			reg = 9
+		else if (slot >= 16):
+			if (ffi_arg_class(classes, i) == 2): a64(op(0x9e, 0x660009) | ((slot - 16) << 5)) # fmov x9,dN
+			else: a64(op(0x1e, 0x260009) | ((slot - 16) << 5)) # fmov w9,sN
+			reg = 9
+		a64(op(0xf8, 0x1f8f80) | reg) # str xN,[x28,#-8]!
+	a64(op(0xd1, 0x4103ff))   # sub sp,sp,#64,lsl #12 (256 KiB)
+	int delta = address - code_offset - codepos
+	a64(op(0x94, 0x000000) | ((delta >> 2) & op(0x03, 0xffffff))) # bl W function
+	a64(op(0x91, 0x4103ff))   # add sp,sp,#64,lsl #12
+	for r in range(12):
+		a64(op(0xf9, 0x4003e0) | (r << 10) | (19 + r))
+	for r in range(8):
+		a64(op(0xfd, 0x4003e0) | ((12 + r) << 10) | (8 + r))
+	a64(op(0x91, 0x0283ff))   # add sp,sp,#160
+	if (ret_kind == 2): a64(op(0x1e, 0x270000)) # fmov s0,w0
+	if (ret_kind == 3): a64(op(0x9e, 0x670000)) # fmov d0,x0
+	a64(op(0xd6, 0x5f03c0))   # ret
+	free(slots)
 
 
 void elf_emit_export_wrappers():
@@ -22,6 +65,9 @@ void elf_emit_export_wrappers():
 		save_i(elf_export_addresses + e * __word_size__, code_offset + codepos, __word_size__)
 		int n = load_i(wasm_export_nparams + e * 4, 4)
 		char* classes = cast(char*, load_i(wasm_export_classes + e * __word_size__, __word_size__))
+		if (target_isa == 1):
+			elf_emit_arm64_export(address, n, classes, load_i(wasm_export_rets + e * 4, 4))
+			continue
 		char* slots = ffi_assign_slots(n, classes, 6)
 		# Preserve every System V callee-saved register around the W call.
 		emit(4, c"\x55\x48\x89\xe5")

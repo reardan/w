@@ -432,6 +432,7 @@ int wexec_deps_usable():
 int wexec_selector_word(char* word):
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
+	if (strcmp(word, c"arm64_android") == 0): return 1
 	if (strcmp(word, c"arm64_darwin") == 0): return 1
 	if (strcmp(word, c"arm64_ios") == 0): return 1
 	if (strcmp(word, c"arm64_ios_sim") == 0): return 1
@@ -482,7 +483,7 @@ void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*]
 		if (n < 2): continue
 		json_value* program = json_array_get(cmd, 0)
 		if (program.type != json_type_string()): continue
-		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0) && (strcmp(program.string_value, c"bin/wv2_darwin") != 0) && (strcmp(program.string_value, c"./w_darwin") != 0)):
+		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0) && (strcmp(program.string_value, c"bin/wv2_darwin") != 0) && (strcmp(program.string_value, c"./w_darwin") != 0) && (strcmp(program.string_value, c"bin/wv2_android") != 0) && (strcmp(program.string_value, c"./w_android") != 0)):
 			continue
 		int has_output = 0
 		int i = 1
@@ -635,7 +636,8 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 	# tools/wbuildgen.w's wbg_make_target uses for its conventional
 	# twins.
 	int apple = (strcmp(arch, c"arm64_darwin") == 0) || (strcmp(arch, c"arm64_ios") == 0) || (strcmp(arch, c"arm64_ios_sim") == 0)
-	if (ends_with(path, c"_test.w") && (apple == 0)):
+	int android_cross = strcmp(arch, c"arm64_android") == 0 && build_host_android() == 0
+	if (ends_with(path, c"_test.w") && (apple == 0) && android_cross == 0):
 		json_value* run_cmd = json_array()
 		if (strcmp(arch, c"arm64") == 0):
 			json_array_push(run_cmd, json_string(c"bin/wrun"))
@@ -650,7 +652,11 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 		json_array_push(steps, run_step)
 
 	json_object_set(target, c"steps", steps)
-	if (build_host_darwin()):
+	if (build_host_android()):
+		manifest_host_commands_for(target, 0, c"bin/wv2_android", c"arm64_android")
+		if (runs && strcmp(arch, c"arm64_android") != 0):
+			json_object_set(target, c"host_unavailable", json_string(c"test runtime is not native Android; use an arm64_android target"))
+	else if (build_host_darwin()):
 		manifest_host_commands(target, 0)
 		if (runs && strcmp(arch, c"arm64_darwin") != 0):
 			json_object_set(target, c"host_unavailable", json_string(c"test runtime is not native macOS; use an arm64_darwin target"))
@@ -2413,7 +2419,9 @@ int wexec_execute(list[char*] requested):
 		if (target != 0 && json_object_has(target, c"host_skipped")):
 			int skipped = jfield_int(target, c"host_skipped", 0)
 			wstream* err = stderr_writer()
-			stream_write_line(err, cstr(f"wbuild: macOS tests -> tests_darwin; {skipped} targets excluded (outside the qualified native macOS suite; cross-platform coverage is not claimed)"))
+			char* suite_name = c"tests_darwin"
+			if (build_host_android()): suite_name = c"tests_android"
+			stream_write_line(err, cstr(f"wbuild: tests -> {suite_name}; {skipped} targets excluded (outside the qualified native suite; cross-platform coverage is not claimed)"))
 			stream_flush(err)
 	if (wexec_targets.get(c"generated", 0) != 0):
 		if (wexec_collect_closure(c"generated")): return 1
@@ -3505,7 +3513,9 @@ int wexec_main(int argc, int argv):
 		while (slot < wexec_jobs):
 			wexec_live_worker_pids[slot] = 0
 			slot = slot + 1
-		wexec_install_termination_handler(cast(int, wexec_on_termination))
+		if (wexec_install_termination_handler(cast(int, wexec_on_termination)) == 0):
+			wexec_error(c"cannot install termination handlers")
+			return 1
 
 	if (timings_path != 0):
 		if (wexec_timings_open(timings_path) == 0): return 1

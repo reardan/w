@@ -20,6 +20,10 @@
 		"no_umbrella": {
 			"update": "promotes bin/wv3 to the local ./w seed; mutates the checkout",
 			"update_win": "promotes the win64 fixpoint to w.exe; mutates the checkout",
+			"update_android": "promotes the locally verified Android compiler to w_android; mutates the checkout",
+			"wexec_android": "Termux-host executor bootstrap; requires a local Android seed",
+			"android_executor_signal_device_test": "requires an adb Android device selected by ANDROID_SERIAL",
+			"android_seed": "cross-compiles a local Android bootstrap; device qualification is separate",
 			"update_darwin": "promotes the darwin fixpoint to ./w_darwin; mutates the checkout",
 			"wexec_win": "Windows-host executor bootstrap used by wbuild.cmd",
 			"wexec_darwin": "macOS-host executor bootstrap used by ./wbuild on a Mac",
@@ -286,6 +290,55 @@
 				{"cmd": ["bin/wv2", "tools/promote_seed.w", "-o", "bin/promote_seed"]},
 				{"cmd": ["bin/promote_seed", "w.exe", "bin/wv3_win.exe"]}
 			]
+		},
+		{
+			"name": "android_seed",
+			"deps": ["wv2"],
+			"inputs": ["w.w"],
+			"outputs": ["bin/w_android"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64_android", "--strict", "w.w", "-o", "bin/w_android"]}
+			]
+		},
+		{
+			"name": "wexec_android",
+			"inputs": ["tools/wexec_main.w", "tools/wexec.w", "w_android"],
+			"outputs": ["bin/wexec_android"],
+			"steps": [
+				{"cmd": ["./w_android", "arm64_android", "--strict", "w.w", "-o", "bin/wv2_android"], "atomic_output": "bin/wv2_android"},
+				{"cmd": ["bin/wv2_android", "arm64_android", "--strict", "tools/wexec_main.w", "-o", "bin/wexec_android"], "atomic_output": "bin/wexec_android"}
+			]
+		},
+		{
+			"name": "build_android",
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2_android", "arm64_android", "--strict", "w.w", "-o", "bin/wv3_android"]},
+				{"cmd": ["bin/wv3_android", "arm64_android", "--strict", "w.w", "-o", "bin/wv4_android"]},
+				{"cmd": ["bin/wv4_android", "arm64_android", "--strict", "w.w", "-o", "bin/wv5_android"]}
+			]
+		},
+		{
+			"name": "verify_android",
+			"tags": ["tests_android"],
+			"deps": ["build_android"],
+			"steps": [
+				{"cmd": ["cmp", "bin/wv3_android", "bin/wv4_android"]},
+				{"cmd": ["cmp", "bin/wv4_android", "bin/wv5_android"]},
+				{"cmd": ["echo", "Android self-host fixpoint OK: wv3_android == wv4_android == wv5_android"]}
+			]
+		},
+		{
+			"name": "update_android",
+			"deps": ["verify_android"],
+			"steps": [
+				{"cmd": ["bin/wv3_android", "arm64_android", "tools/promote_seed.w", "-o", "bin/promote_seed_android"]},
+				{"cmd": ["bin/promote_seed_android", "w_android", "bin/wv3_android"]}
+			]
+		},
+		{
+			"name": "tests_android",
+			"deps": []
 		},
 		{
 			"name": "wexec_darwin",

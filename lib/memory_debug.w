@@ -12,7 +12,10 @@ size lands in the hole and faults immediately, instead of silently
 corrupting the free-list allocator's next block header.
 
 The trailing guard is created with munmap (not mprotect PROT_NONE) so
-each live block is a single VMA. mprotect-splitting the mapping into a
+each live block is a single VMA on ordinary Linux hosts. Android keeps
+the guard reserved as PROT_NONE because its native translation runtime
+can reuse unmapped guest holes. Quarantine reclamation also releases
+that reserved guard. mprotect-splitting the mapping into a
 RW payload + PROT_NONE guard doubled the VMA count and made modest
 programs hit Linux's default vm.max_map_count (65530) -- wexec under
 W_DEBUG_ALLOC OOMed before finishing `hello`. Raise max_map_count for
@@ -44,9 +47,11 @@ since malloc/free are exactly what it is tracking.
 */
 import lib.linux
 import lib.stack_trace
+import lib.page_size
 
 
-const int debug_page_size = 4096
+int debug_page_size():
+	return runtime_page_size()
 
 
 # Fill byte for the alignment slack after each payload (0x5a, 'Z').
@@ -158,7 +163,9 @@ void debug_quarantine_reclaim_to(int budget):
 		int i = debug_quarantine_cursor
 		debug_quarantine_cursor = i + 1
 		if (debug_tbl_freed[i] == 1):
-			munmap(debug_tbl_region[i], debug_tbl_region_size[i])
+			int span = debug_tbl_region_size[i]
+			if (os_android()): span = span + debug_page_size()
+			munmap(debug_tbl_region[i], span)
 			debug_quarantine_bytes = debug_quarantine_bytes - debug_tbl_region_size[i]
 			debug_tbl_freed[i] = 2
 			# Drop the payload address so a recycled mmap cannot alias
@@ -189,8 +196,8 @@ void debug_fatal(char* message, int addr):
 
 
 int debug_pages_for(int size):
-	int page = debug_page_size
-	int pages = (size + page - 1) >> 12
+	int page = debug_page_size()
+	int pages = (size + page - 1) / page
 	if (pages < 1): pages = 1
 	return pages
 
@@ -203,7 +210,7 @@ void* debug_malloc(int size):
 	# An overflow into the up-to-7-byte rounding slack cannot fault; the
 	# slack holds a canary that free()/realloc() check instead.
 	int placed = ((size + 7) >> 3) << 3
-	int page = debug_page_size
+	int page = debug_page_size()
 	int payload_pages = debug_pages_for(placed)
 	int payload_size = payload_pages * page
 	int region_size = payload_size + page
@@ -221,10 +228,16 @@ void* debug_malloc(int size):
 	# Unmap the guard page so overflow faults on a hole. Prefer munmap
 	# over mprotect(PROT_NONE): mprotect splits one mapping into two
 	# VMAs and burns max_map_count twice as fast.
-	if (munmap(guard_addr, page) != 0):
+	int guard_result
+	if (os_android()):
+		# Reserve the guard: Android native translation may reuse an
+		# unmapped guest hole while creating its own mappings.
+		guard_result = mprotect(guard_addr, page, 0)
+	else: guard_result = munmap(guard_addr, page)
+	if (guard_result != 0):
 		if (debug_guard_warned == 0):
 			debug_guard_warned = 1
-			st_write_cstr(c"memory_debug: munmap guard page failed; overflow may not fault\x0a")
+			st_write_cstr(c"memory_debug: guard page setup failed; overflow may not fault\x0a")
 	int ptr = guard_addr - placed
 	char* slack = cast(char*, ptr)
 	int i = size

@@ -463,6 +463,13 @@ with native UIKit controls in the simulator. This is a separate controls bridge;
 the GL widget renderer is not yet ported to native iOS. Device installation
 requires signing and provisioning. See [native iOS](docs/projects/ios.md).
 
+Experimental Android support uses `arm64_android`: native ARM64 ELF/PIE,
+shared libraries, a local-seed Termux bootstrap, and a JNI native-controls
+demo. `./wbuild android_seed` cross-builds the initial device compiler;
+`python3 tools/android/build.py` packages the demo with an installed SDK/NDK.
+See [Android support](docs/projects/android.md) for setup, device probes,
+and qualification limits.
+
 ## How the bootstrap works
 
 ```
