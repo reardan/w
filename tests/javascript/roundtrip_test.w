@@ -70,11 +70,56 @@ void js_test_lower_reject():
 	assert_equal(1, pg_diagnostics_count(parsed.diagnostics))
 	assert1(parsed.success == 0)
 	pg_parse_result_free(parsed)
-	parsed = js_parse_script(c"const nul = '\\0';", c"nul-value.js")
-	assert1(parsed.success)
-	assert1(js_lower(parsed) == 0)
-	assert_equal(1, pg_diagnostics_count(parsed.diagnostics))
+
+
+
+void js_test_new_spans_and_limits():
+	char* source = c"while (ok) value++;"
+	pg_parse_result* parsed = js_parse_script(source, c"spans.js")
+	js_node* tree = js_lower(parsed)
+	assert1(tree != 0)
+	js_node* loop = tree.children[0]
+	assert_strings_equal(c"while", loop.kind)
+	assert_equal(0, loop.offset)
+	assert_equal(strlen(source), loop.length)
+	assert_equal(7, loop.children[0].offset)
+	assert_equal(2, loop.children[0].length)
+	assert_equal(11, loop.children[1].children[0].offset)
+	assert_equal(7, loop.children[1].children[0].length)
+	js_node_free(tree)
 	pg_parse_result_free(parsed)
+	js_parse_limits* limits = js_parse_limits_new()
+	limits.tokens = 2
+	parsed = js_parse_with_limits(source, strlen(source), c"limited.js", 0, limits)
+	assert_equal(0, parsed.success)
+	assert1(parsed.stream.resource_failed)
+	pg_parse_result_free(parsed)
+	limits.tokens = 1000000
+	limits.ast_nodes = 1
+	parsed = js_parse_with_limits(source, strlen(source), c"limited.js", 0, limits)
+	assert_equal(0, parsed.success)
+	assert1(parsed.stream.resource_failed)
+	pg_parse_result_free(parsed)
+	limits.ast_nodes = 1000000
+	limits.checkpoints = 1
+	parsed = js_parse_with_limits(source, strlen(source), c"limited.js", 0, limits)
+	assert_equal(0, parsed.success)
+	assert1(parsed.stream.resource_failed)
+	pg_parse_result_free(parsed)
+	limits.checkpoints = 0
+	parsed = js_parse_with_limits(source, strlen(source), c"invalid.js", 0, limits)
+	assert_equal(0, parsed.success)
+	pg_parse_result_free(parsed)
+	parsed = js_parse_with_limits(0, 3, c"invalid.js", 0, 0)
+	assert_equal(0, parsed.success)
+	pg_parse_result_free(parsed)
+	parsed = js_parse_with_limits(source, -1, c"invalid.js", 0, 0)
+	assert_equal(0, parsed.success)
+	pg_parse_result_free(parsed)
+	parsed = js_parse_with_limits(0, 0, 0, 0, 0)
+	assert1(parsed.success)
+	pg_parse_result_free(parsed)
+	free(limits)
 
 
 int main(int argc, int argv):
@@ -95,6 +140,12 @@ int main(int argc, int argv):
 	js_test_roundtrip(c"const o = {x: 1, y}; a, b, c;", 0)
 	js_test_roundtrip(c"const escaped = `\\` \\${literal} \\\\`; obj.return;", 0)
 	js_test_roundtrip(c"const o = {__proto__}; function relaxed(a, a) { \"use\\x20strict\"; return a; }", 0)
+	js_test_roundtrip(c"for (let i = 0; i < 4; i++) { if (i === 2) continue; a += i; } while (a) { a--; break; } do a++; while (a < 4); for (;;) break;", 0)
+	js_test_roundtrip(c"const f = function(x) { return function named(y) { return x + y; }; };", 0)
+	js_test_roundtrip(c"const nul = '\\0'; const high = '\\ud800'; const low = '\\udfff'; const pair = '\\ud83d\\ude00';", 0)
+	js_test_roundtrip(c"try { throw 1; } catch (e) { value = e; } finally { done(); } try {} catch {} try {} finally {}", 0)
+	js_test_roundtrip(c"const identity = '\\é';", 0)
+	js_test_new_spans_and_limits()
 	js_test_association()
 	js_test_lower_reject()
 	println(c"javascript_roundtrip_test: OK")

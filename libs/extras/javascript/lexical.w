@@ -137,6 +137,12 @@ int js_string_escape(char* input, int index):
 		if (js_hex(input[i + 1]) < 0): return 0
 		if (js_hex(input[i + 2]) < 0): return 0
 		return 4
+	# Identity escapes consume a full source Unicode scalar, not one byte.
+	if ((input[i] & 255) >= 128):
+		int cp = 0
+		int width = js_decode(input, i, &cp)
+		if (width == 0): return 0
+		return width + 1
 	# Legacy numeric escapes are validated by the strict-mode pass.
 	return 2
 

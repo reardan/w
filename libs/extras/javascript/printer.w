@@ -9,6 +9,11 @@ Shapes: program/block = statements; function(name) = parameters, block;
 variable(const/let/var) = declarators; declarator = binding[, initializer];
 return = [expression]; throw/expression_statement = expression;
 if = condition, then[, else]; export = declaration;
+while/do_while = condition, body; for = init, condition, update, body;
+omitted for clauses = empty; break/continue have no children;
+function_expression(optional name) = parameters, block;
+try = block, catch-or-empty, finally-block-or-empty; catch(name) = block;
+string_utf16 owns explicit code units in string_units;
 import(specifier) = [default-binding]; call = callee, arguments...;
 member/computed_member = receiver, property; property(key) = value;
 template = template_text(raw spelling) and expression children.
@@ -105,6 +110,22 @@ int js_print_expression_list(string_builder* out, js_node* node, int start, pg_d
 int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diagnostics):
 	if (node == 0): return js_print_error(diagnostics, node)
 	int count = node.children.length
+	if (js_kind(node, c"string_utf16")):
+		if (count != 0 || node.string_units == 0): return js_print_error(diagnostics, node)
+		char* digits = c"0123456789abcdef"
+		string_append_char(out, 34)
+		for i in range(node.string_units.units.length):
+			int unit = node.string_units.units[i]
+			if (unit < 0 || unit > 65535): return js_print_error(diagnostics, node)
+			string_append(out, c"\\u")
+			for shift in range(4): string_append_char(out, digits[(unit >> ((3 - shift) * 4)) & 15])
+		string_append_char(out, 34)
+		return 1
+	if (js_kind(node, c"function_expression")):
+		string_append(out, c"(")
+		if (js_print_statement(out, node, 0, diagnostics) == 0): return 0
+		string_append(out, c")")
+		return 1
 	if (js_kind(node, c"identifier")):
 		if (count != 0 || js_print_identifier_valid(node.text, 0) == 0): return js_print_error(diagnostics, node)
 		string_append(out, node.text)
@@ -235,6 +256,7 @@ int js_print_block(string_builder* out, js_node* node, int depth, pg_diagnostics
 
 
 int js_print_dangling_else(js_node* node):
+	if ((js_kind(node, c"while") || js_kind(node, c"for")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
 	if (js_kind(node, c"if") == 0): return 0
 	if (node.children.length == 2): return 1
 	if (node.children.length == 3): return js_print_dangling_else(node.children[2])
@@ -278,8 +300,11 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 				if (js_print_expression(out, binding.children[1], diagnostics) == 0): return 0
 		string_append(out, c";")
 		return 1
-	if (js_kind(node, c"function")):
-		if (count != 2 || js_print_identifier_valid(node.text, 1) == 0): return js_print_error(diagnostics, node)
+	if (js_kind(node, c"function") || js_kind(node, c"function_expression")):
+		if (count != 2): return js_print_error(diagnostics, node)
+		if (strlen(node.text) == 0):
+			if (js_kind(node, c"function_expression") == 0): return js_print_error(diagnostics, node)
+		else if (js_print_identifier_valid(node.text, 1) == 0): return js_print_error(diagnostics, node)
 		if (js_kind(node.children[0], c"parameters") == 0 || js_kind(node.children[1], c"block") == 0): return js_print_error(diagnostics, node)
 		string_append(out, c"function ")
 		string_append(out, node.text)
@@ -290,6 +315,64 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 		if (js_print_expression_list(out, parameters, 0, diagnostics) == 0): return 0
 		string_append(out, c") ")
 		return js_print_block(out, node.children[1], depth, diagnostics)
+	if (js_kind(node, c"try")):
+		if (count != 3 || js_kind(node.children[0], c"block") == 0): return js_print_error(diagnostics, node)
+		js_node* handler = node.children[1]
+		js_node* finalizer = node.children[2]
+		if (js_kind(handler, c"empty") && js_kind(finalizer, c"empty")): return js_print_error(diagnostics, node)
+		string_append(out, c"try ")
+		if (js_print_block(out, node.children[0], depth, diagnostics) == 0): return 0
+		if (js_kind(handler, c"empty") == 0):
+			if (js_kind(handler, c"catch") == 0 || handler.children.length != 1): return js_print_error(diagnostics, handler)
+			string_append(out, c" catch")
+			if (strlen(handler.text) != 0):
+				if (js_print_identifier_valid(handler.text, 1) == 0): return js_print_error(diagnostics, handler)
+				string_append(out, c" (")
+				string_append(out, handler.text)
+				string_append(out, c")")
+			string_append(out, c" ")
+			if (js_print_block(out, handler.children[0], depth, diagnostics) == 0): return 0
+		else if (handler.children.length != 0): return js_print_error(diagnostics, handler)
+		if (js_kind(finalizer, c"empty") == 0):
+			string_append(out, c" finally ")
+			if (js_print_block(out, finalizer, depth, diagnostics) == 0): return 0
+		else if (finalizer.children.length != 0): return js_print_error(diagnostics, finalizer)
+		return 1
+	if (js_kind(node, c"break") || js_kind(node, c"continue")):
+		if (count != 0 || strlen(node.text) != 0): return js_print_error(diagnostics, node)
+		string_append(out, node.kind)
+		string_append(out, c";")
+		return 1
+	if (js_kind(node, c"while") || js_kind(node, c"do_while")):
+		if (count != 2): return js_print_error(diagnostics, node)
+		if (js_kind(node, c"do_while")):
+			string_append(out, c"do ")
+			if (js_print_statement(out, node.children[1], depth, diagnostics) == 0): return 0
+			string_append(out, c" while (")
+		else: string_append(out, c"while (")
+		if (js_print_expression(out, node.children[0], diagnostics) == 0): return 0
+		string_append(out, c")")
+		if (js_kind(node, c"do_while")):
+			string_append(out, c";")
+			return 1
+		string_append(out, c" ")
+		return js_print_statement(out, node.children[1], depth, diagnostics)
+	if (js_kind(node, c"for")):
+		if (count != 4): return js_print_error(diagnostics, node)
+		string_append(out, c"for (")
+		for i in range(3):
+			js_node* part = node.children[i]
+			if (js_kind(part, c"variable") && i == 0):
+				if (js_print_statement(out, part, depth, diagnostics) == 0): return 0
+				# The declaration printer owns its trailing semicolon.
+			else:
+				if (js_kind(part, c"empty")):
+					if (part.children.length != 0): return js_print_error(diagnostics, part)
+				else if (js_print_expression(out, part, diagnostics) == 0): return 0
+				if (i < 2): string_append(out, c";")
+			if (i < 2): string_append(out, c" ")
+		string_append(out, c") ")
+		return js_print_statement(out, node.children[3], depth, diagnostics)
 	if (js_kind(node, c"if")):
 		if (count < 2 || count > 3): return js_print_error(diagnostics, node)
 		string_append(out, c"if (")

@@ -148,8 +148,16 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		if (js_cst_is(node, c"REGEX")): return js_node_new(c"regex", node.text)
 		if (js_cst_is(node, c"TEMPLATE_TEXT")): return js_node_new(c"template_text", node.text)
 		if (js_cst_is(node, c"STRING")):
-			char* text = js_string_decode(node.text, diagnostics)
-			if (text == 0): return 0
+			js_text* units = js_text_decode(node.text, strlen(node.text))
+			if (units == 0): return js_lower_error(node, diagnostics)
+			int byte_length = 0
+			char* text = js_text_to_utf8(units, &byte_length)
+			if (text == 0 || strlen(text) != byte_length):
+				js_node* special = js_string_utf16(units)
+				js_text_free(units)
+				free(text)
+				return special
+			js_text_free(units)
 			js_node* result = js_string(text)
 			# An escaped spelling of use strict must not become a directive.
 			if (strcmp(text, c"use strict") == 0):
@@ -241,13 +249,89 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 				return 0
 		return result
 	if (js_cst_is(node, c"parameters")): return js_lower_parameters(node, diagnostics)
-	if (js_cst_is(node, c"function_decl")):
+	if (js_cst_is(node, c"function_decl") || js_cst_is(node, c"function_expr")):
 		if (js_cst_child(node, c"async_modifier") != 0 || js_cst_child(node, c"STAR") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* binding = js_cst_child(node, c"binding_identifier")
-		char* name = js_identifier_decode(binding.first_token.text)
-		js_node* result = js_node_new(c"function", name)
+		char* name = strclone(c"")
+		if (binding != 0):
+			free(name)
+			name = js_identifier_decode(binding.first_token.text)
+		char* kind = c"function"
+		if (js_cst_is(node, c"function_expr")): kind = c"function_expression"
+		js_node* result = js_node_new(kind, name)
 		free(name)
 		if (js_lower_add(result, js_cst_child(node, c"parameters"), diagnostics) == 0 || js_lower_add(result, js_cst_child(node, c"block"), diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		return result
+	if (js_cst_is(node, c"try_statement")):
+		js_node* result = js_node_new(c"try", c"")
+		if (js_lower_add(result, node.children[1], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		pg_ast_node* handler = js_cst_child(node, c"catch_clause")
+		pg_ast_node* finalizer = js_cst_child(node, c"finally_clause")
+		if (handler == 0): js_node_add(result, js_node_new(c"empty", c""))
+		else if (js_lower_add(result, handler, diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		if (finalizer == 0): js_node_add(result, js_node_new(c"empty", c""))
+		else if (js_lower_add(result, finalizer.children[1], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		return result
+	if (js_cst_is(node, c"catch_clause")):
+		char* name = strclone(c"")
+		pg_ast_node* binding = js_cst_child(node, c"catch_binding")
+		if (binding != 0):
+			pg_ast_node* pattern = binding.children[1]
+			if (pattern.children.length != 1 || js_cst_is(pattern.children[0], c"binding_identifier") == 0):
+				free(name)
+				return js_lower_error(node, diagnostics)
+			free(name)
+			name = js_identifier_decode(pattern.first_token.text)
+		js_node* result = js_node_new(c"catch", name)
+		free(name)
+		if (js_lower_add(result, js_cst_child(node, c"block"), diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		return result
+	if (js_cst_is(node, c"break_statement") || js_cst_is(node, c"continue_statement")):
+		if (js_cst_child(node, c"jump_label") != 0): return js_lower_error(node, diagnostics)
+		char* kind = c"break"
+		if (js_cst_is(node, c"continue_statement")): kind = c"continue"
+		return js_node_new(kind, c"")
+	if (js_cst_is(node, c"while_statement") || js_cst_is(node, c"do_statement")):
+		char* kind = c"while"
+		int condition = 2
+		int body = 4
+		if (js_cst_is(node, c"do_statement")):
+			kind = c"do_while"
+			condition = 4
+			body = 1
+		js_node* result = js_node_new(kind, c"")
+		if (js_lower_add(result, node.children[condition], diagnostics) == 0 || js_lower_add(result, node.children[body], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		return result
+	if (js_cst_is(node, c"for_statement")):
+		pg_ast_node* header = js_cst_child(node, c"for_header")
+		if (js_cst_child(node, c"KW_AWAIT") != 0 || js_cst_child(header, c"for_binding") != 0): return js_lower_error(node, diagnostics)
+		js_node* result = js_node_new(c"for", c"")
+		for i in range(3): js_node_add(result, js_node_new(c"empty", c""))
+		int slot = 0
+		for i in range(header.children.length):
+			pg_ast_node* part = header.children[i]
+			if (js_cst_is(part, c"SEMI")):
+				slot = slot + 1
+				continue
+			if (js_cst_is(part, c"for_init")): part = part.children[0]
+			js_node* lowered = js_lower_node(part, diagnostics)
+			if (lowered == 0):
+				js_node_free(result)
+				return 0
+			js_node_free(js_node_replace(result, slot, lowered))
+		if (js_lower_add(result, node.children[count - 1], diagnostics) == 0):
 			js_node_free(result)
 			return 0
 		return result
