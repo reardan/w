@@ -3,6 +3,14 @@
 # wbuild: step="bin/wsh_test"
 # wbuild: step="script -qec ./bin/wsh /dev/null" stdin="echo wsh-interactive\n:quit\n" expect_stdout="sh> " expect_stdout="wsh-interactive" reject_stdout="error:"
 # wbuild: step="script -qec ./bin/wsh_x64 /dev/null" stdin="echo wsh-interactive64\n:quit\n" expect_stdout="sh> " expect_stdout="wsh-interactive64" reject_stdout="error:"
+# The shared frontend must redirect wsh to a shell build, even when REPL
+# coverage is also enabled. Keep this regression in the ordinary test suite.
+# wbuild: step="bin/wv2 --coverage wsh.w -o bin/wsh_coverage_test"
+# wbuild: step="bin/wsh -c false" env="W_COVERAGE_OUT=" env="W_COVERAGE_REPL=bin/no_such_repl_coverage" env="W_COVERAGE_WSH=bin/wsh_coverage_test" expect_status=1
+# wbuild: step="bin/wsh -c 'echo covered-shell'" env="W_COVERAGE_OUT=" env="W_COVERAGE_REPL=bin/no_such_repl_coverage" env="W_COVERAGE_WSH=bin/wsh_coverage_test" expect_stdout="covered-shell"
+# wbuild: step="bin/wv2 x64 --coverage wsh.w -o bin/wsh_coverage_test64"
+# wbuild: step="bin/wsh_x64 -c false" env="W_COVERAGE_OUT=" env="W_COVERAGE_REPL_64=bin/no_such_repl_coverage" env="W_COVERAGE_WSH_64=bin/wsh_coverage_test64" expect_status=1
+# wbuild: step="bin/wsh_x64 -c 'echo covered-shell64'" env="W_COVERAGE_OUT=" env="W_COVERAGE_REPL_64=bin/no_such_repl_coverage" env="W_COVERAGE_WSH_64=bin/wsh_coverage_test64" expect_stdout="covered-shell64"
 # wbuild: target=wsh dep=wv2 input=wsh.w output=bin/wsh
 # wbuild: step="bin/wv2 wsh.w -o bin/wsh"
 # wbuild: target=wsh_x64 dep=wv2 input=wsh.w output=bin/wsh_x64
@@ -83,6 +91,26 @@ void test_wsh_native_pipeline():
 	wsh_case(c"-c", c"false | true", 0, 0, c"")
 
 
+void test_wsh_find_and_sed_translation():
+	char* dir = f"bin/wsh_tools_{getpid()}"
+	assert_equal(0, mkdir(dir, 493))
+	char* path = f"{dir}/sample.txt"
+	assert1(file_write_text(path, c"alpha\nbeta\n"))
+	wsh_case(c"-c", f"find {dir} -name '*.txt' -type f -mindepth 1 -maxdepth 2 -print", 0, 0, f"{path}\n")
+	wsh_case(c"-c", f"find {dir} -type d -maxdepth 0", 0, 0, f"{dir}\n")
+	wsh_case(c"-c", f"find {dir} -type l", 0, 0, c"")
+	wsh_case(c"-c", f"sed 's/a/A/g' {path}", 0, 0, c"AlphA\nbetA\n")
+	wsh_case(c"-c", f"sed -n p {path}", 0, 0, c"alpha\nbeta\n")
+	wsh_case(c"-c", f"cat {path} | sed d", 0, 0, c"")
+	# Unsupported forms must retain the external tool's behavior.
+	wsh_case(c"-c", f"find {dir} -maxdepth 0 -name '*' -name '*'", 0, 0, f"{dir}\n")
+	wsh_case(c"-c", f"sed -n '1p' {path}", 0, 0, c"alpha\n")
+	unlink(path)
+	assert_equal(0, rmdir(dir))
+	free(path)
+	free(dir)
+
+
 void test_wsh_mode_toggle_and_function_pipeline():
 	# Toggle into W to define a multiline function, then back into shell syntax.
 	# Toggle messages are part of the shared REPL UI, so assert these separately.
@@ -118,6 +146,15 @@ void test_wsh_help():
 		assert_contains(result.stdout_text, c"wsh")
 		assert_contains(result.stdout_text, c"-c")
 		assert_lacks(result.stdout_text, c"must-not-run")
+		process_result_free(result)
+		argv = strv_new(1)
+		strv_set(argv, 0, program)
+		result = process_run(program, argv, 0, c":help\n:quit\n", 30000)
+		free(cast(void*, argv))
+		assert1(result != 0)
+		assert_equal(0, result.status)
+		assert_contains(result.stdout_text, c":sh                 toggle shell mode")
+		assert_contains(result.stdout_text, c":quit               exit the repl")
 		process_result_free(result)
 		arch = arch + 1
 

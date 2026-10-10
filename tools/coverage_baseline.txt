@@ -8,6 +8,9 @@
 # debugger/ 65.0), which leaves room for the run-to-run drift seen so
 # far. Raise a floor in the PR that adds the tests; lower one only with
 # a reason in the commit message.
+# The wsh launcher/translation regressions measure repl/ branches at
+# 74.3%; keep that gain. The frontend move changes the line denominator:
+# repl/ lines measure 91.9%, so the existing 91.5% line floor stays.
 code_generator/ 94.5
 compiler/ 92.5
 grammar/ 95.0
@@ -19,5 +22,5 @@ diagnostics 35.0
 branches:code_generator/ 85.5
 branches:compiler/ 81.0
 branches:grammar/ 81.0
-branches:repl/ 71.5
+branches:repl/ 73.5
 branches:debugger/ 64.0
