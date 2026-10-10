@@ -109,6 +109,22 @@ int rl_take_register();
 int rl_home_disp(int i);
 void rl_ensure();
 void rl_add(int t, int reg, int slot, int kind, char* name, int live);
+# compiler/ivopt.w (unit O7), imported after the grammar
+int ivopt_scan_loop(int start, int end, int tabs);
+void ivopt_reset();
+void ivopt_active_reset();
+void ivopt_loop_enter(int offset);
+void ivopt_loop_leave();
+void ivopt_call_reload();
+int ivopt_covers(char* name);
+int rs_cur_offset();
+void rs_iv_discount();
+int rs_lookup(char* name);
+int ivopt_inside_names();
+char* ivopt_inside_name(int i);
+int ivopt_inside_base(int i);
+int ivopt_inside_index(int i);
+void ivopt_stats_dump();
 
 # Loop-owned registers (R3, the section at the end of this file): the
 # entries of every open loop, innermost last.
@@ -216,6 +232,9 @@ list[int] rs_lp_flags      # bit 0: a call inside; bit 1: '/', '%' or a shift in
 list[int] rs_lp_cands      # rs_lp_stride candidate indices, best first, -1 pads
 list[int] rs_lp_vals       # each candidate's loop-weighted key delta (the value a register has in the loop)
 list[int] rs_lp_ops        # binary operators inside the loop, loop-weighted (A9: the parks a loop register displaces on x86)
+list[int] rs_lp_tabs       # O7: leading tabs of the keyword's line
+list[int] rs_lp_inner      # O7: 1 when another loop is nested in it
+list[int] rs_lp_ivneed     # O7: pointer registers the innermost loops in it want (compiler/ivopt.w)
 int[64] rs_lp_ops_snap     # rs_ops at each open loop's start
 int rs_ops                 # binary operator runs seen, loop-weighted
 const int rs_lp_stride = 16
@@ -339,6 +358,9 @@ void rs_tables_ensure():
 		rs_lp_cands = new list[int]
 		rs_lp_vals = new list[int]
 		rs_lp_ops = new list[int]
+		rs_lp_tabs = new list[int]
+		rs_lp_inner = new list[int]
+		rs_lp_ivneed = new list[int]
 	if (rs_ident == 0):
 		rs_ident_size = 64
 		rs_ident = cast(char*, malloc(rs_ident_size))
@@ -380,6 +402,10 @@ void rs_lp_reset():
 	rs_lp_cands.clear()
 	rs_lp_vals.clear()
 	rs_lp_ops.clear()
+	rs_lp_tabs.clear()
+	rs_lp_inner.clear()
+	rs_lp_ivneed.clear()
+	ivopt_reset()
 	rs_lp_overflow = 0
 	rs_has_goto = 0
 	rs_has_defer = 0
@@ -415,6 +441,10 @@ void rs_lp_open_loop():
 	rs_lp_offset.push(rs_tok_off)
 	rs_lp_flags.push(0)
 	rs_lp_ops.push(0)
+	rs_lp_tabs.push(rs_tabs)
+	rs_lp_inner.push(0)
+	rs_lp_ivneed.push(0)
+	if (rs_lp_depth > 0): rs_lp_inner[rs_lp_open[rs_lp_depth - 1]] = 1
 	for i in range(rs_lp_stride):
 		rs_lp_cands.push(-1)
 		rs_lp_vals.push(0)
@@ -462,9 +492,17 @@ void rs_lp_close_loop():
 		rs_lp_vals[base + j] = d
 	rs_lp_ops[k] = rs_ops - rs_lp_ops_snap[rs_lp_depth]
 	free(cast(char*, snap))
+	# O7 (compiler/ivopt.w): an innermost loop's subscripts that can
+	# become pointer walks, read from its bytes (the keyword's offset to
+	# the first byte of the line that ended it, or of the end of the body)
+	if ((rs_lp_inner[k] == 0) && (word_size == 8) && (rs_abort == 0)):
+		int end = rs_cur_offset()
+		if (end > 0): rs_lp_ivneed[k] = ivopt_scan_loop(rs_lp_offset[k], end, rs_lp_tabs[k])
+		if (rs_lp_ivneed[k] > 0): rs_iv_discount()
 	if (rs_lp_depth > 0):
 		int parent = rs_lp_open[rs_lp_depth - 1]
 		rs_lp_flags[parent] = rs_lp_flags[parent] | rs_lp_flags[k]
+		if (rs_lp_ivneed[k] > rs_lp_ivneed[parent]): rs_lp_ivneed[parent] = rs_lp_ivneed[k]
 
 
 # Everything the current function's scan and prologue set, back to
@@ -688,9 +726,43 @@ void rs_next():
 	rs_c = -1
 
 
+# O7: the file offset of rs_c (the end of the file once it is -1), -1
+# when no byte is being served.
+int rs_cur_offset():
+	if ((rs_p == 0) || (rs_run_base == 0)): return -1
+	int off = rs_run_off + (cast(int, rs_p) - cast(int, rs_run_base))
+	if (rs_c == -1): return off
+	return off - 1
+
+
 # P2: the profile's class, span hash and loop weights read this byte
 # source (compiler/regalloc_profile.w; docs §3.4).
 import compiler.regalloc_profile
+
+
+# O7: the innermost loop just closed (rs_lp_depth is its parent's
+# depth) has subscripts that become pointer walks (compiler/ivopt.w):
+# take back the uses those subscripts counted -- a base's two reads and
+# its register-base gain (rs_br_pop, rs_identifier), one read per name
+# of the index -- so the enclosing loops and the function do not rank
+# names for uses that no longer exist. A ranking heuristic only.
+void rs_iv_discount():
+	if (rs_profile_weighted): return;
+	int depth = rs_lp_depth + 1
+	if (depth > 8): depth = 8
+	int w = 1 << (3 * depth)
+	for q in range(ivopt_inside_names()):
+		int nb = ivopt_inside_base(q)
+		int ni = ivopt_inside_index(q)
+		if ((nb == 0) && (ni == 0)): continue
+		int i = rs_lookup(ivopt_inside_name(q))
+		if (i < 0): continue
+		rs_uses[i] = rs_uses[i] - nb * (w << 1) - ni * w
+		rs_base[i] = rs_base[i] - nb * (w << 1)
+		rs_lv[i] = rs_lv[i] - nb * w
+		if (rs_uses[i] < 0): rs_uses[i] = 0
+		if (rs_base[i] < 0): rs_base[i] = 0
+		if (rs_lv[i] < 0): rs_lv[i] = 0
 
 
 # Leading whitespace of a new line: count its tabs (the tokenizer's
@@ -1849,6 +1921,11 @@ void rs_fn_rank():
 	int mask = rl_target_mask()
 	for r in range(16):
 		if (mask & (1 << r)): budget = budget + 1
+	# O7: the loops' pointer walks keep theirs (compiler/ivopt.w)
+	int ivneed = 0
+	for k in range(rs_lp_ivneed.length):
+		if ((rs_lp_inner[k] == 0) && (rs_lp_ivneed[k] > ivneed)): ivneed = rs_lp_ivneed[k]
+	budget = budget - ivneed
 	while (rs_fn_cands.length < budget):
 		int best = -1
 		int best_gain = rs_fn_min_gain - 1
@@ -2143,6 +2220,7 @@ void rl_reset():
 	rl_fn_region = 0
 	rl_fn_pending_end = 0
 	rl_fn_reserved = 0
+	ivopt_active_reset()
 
 
 # The caller-saved registers a loop may own on this target: x64 rsi rdi
@@ -2164,6 +2242,16 @@ int rl_target_mask():
 		if (x86_budget_disabled): return 0
 		return (1 << 1) | (1 << 2)
 	return (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)
+
+
+# Registers no open loop owns and no expression park holds.
+int rl_free_count():
+	int free = 0
+	int q = 0
+	while (q < 16):
+		if ((rl_free_mask & (1 << q)) && ((ers_used & (1 << q)) == 0)): free = free + 1
+		q = q + 1
+	return free
 
 
 int rl_take_register():
@@ -2256,8 +2344,15 @@ void regalloc_loop_enter(int offset):
 	int base = k * rs_lp_stride
 	int ops = rs_lp_ops[k]
 	int taken = 0
+	# O7 (compiler/ivopt.w): an innermost loop's pointer walks take
+	# their registers first; an enclosing loop leaves as many free as
+	# the innermost loops in it will want
+	int reserve = 0
+	if (rs_lp_inner[k] == 0): ivopt_loop_enter(offset)
+	else: reserve = rs_lp_ivneed[k]
 	for j in range(rs_lp_stride):
 		if (rl_free_mask == 0): return;
+		if ((reserve > 0) && (rl_free_count() - rl_fn_reserved <= reserve)): return;
 		int i = rs_lp_cands[base + j]
 		if (i < 0): return;
 		# x86: the register comes out of A3's park set, where it saves
@@ -2273,6 +2368,7 @@ void regalloc_loop_enter(int offset):
 			if (rs_lp_vals[base + j] * ratio < ops): return;
 		if (rs_excluded[i] || (rs_reg[i] != 0) || (rs_decls[i] > 1) || rs_fnreg[i]): continue
 		char* name = rs_names[i]
+		if (ivopt_covers(name)): continue
 		int t = sym_probe(name)
 		if (t < 0):
 			if (rs_decls[i] == 1): rl_pending.push(i)
@@ -2326,6 +2422,7 @@ int regalloc_hidden_register(int slot):
 void regalloc_loop_leave():
 	rl_ensure()
 	if (rl_mark.length == 0): return;
+	ivopt_loop_leave()
 	regalloc_loop_depth = regalloc_loop_depth - 1
 	int mark = rl_mark[rl_mark.length - 1]
 	int i = rl_sym.length
@@ -2392,6 +2489,7 @@ void regalloc_call_reload():
 	if (rl_sym == 0): return;
 	for i in range(rl_sym.length):
 		if (rl_entry_live(i)): mov_reg_ebp_disp(rl_reg[i], rl_home_disp(i))
+	ivopt_call_reload()
 
 
 # An emitter is about to write the registers of mask (x86: ecx as a
@@ -2451,6 +2549,7 @@ void regalloc_stats_dump():
 	print_int0(c" spilled: ", ers_spills)
 	print_int0(c" retargeted: ", xrt_retargets)
 	print_error(c"\x0a")
+	ivopt_stats_dump()
 	# O1 (code_generator/x86.w): constant folds, const-global reads
 	# loaded as immediates, unreachable branches/returns not emitted
 	print_int0(c"constants: folded: ", k64_folds)

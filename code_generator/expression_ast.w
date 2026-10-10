@@ -265,6 +265,8 @@ int emit_ast_spine_child(expression_ast* tree, int id):
 	int op = tree.op[id]
 	if (emit_ast_plain_binary(op)): return tree.left[id]
 	if (op == 'z'): return tree.right[id]
+	# O7: a subscript an induction pointer addresses has no operands
+	if ((op == 'i') && ivopt_live && (ivopt_subscript_register(tree, id) != 0)): return -1
 	if ((op == '.') || (op == 'B') || (op == 'i') || (op == 'j') || (op == 'J') || (op == 'Z') || (op == 'M') || (op == 'I') || (op == 'F')): return tree.left[id]
 	if ((op == ast_propagate) || (op == ast_list_it) || (op == 'm') || (op == 'q') || (op == ast_nd_read) || (op == ast_nd_index)): return tree.left[id]
 	return -1
@@ -325,6 +327,13 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	# below only where the streaming grammar would
 	int discard = ast_cond_discard
 	ast_cond_discard = 0
+	# O7 (compiler/ivopt.w): the address an induction pointer holds,
+	# noted like any register-based subscript for the load or store
+	if ((op == 'i') && (left_ready == 0) && ivopt_live):
+		int iv_reg = ivopt_subscript_register(tree, id)
+		if (iv_reg != 0):
+			addr_form(iv_reg, -1, 1, 0)
+			return
 	if (emit_ast_plain_binary(op)):
 		if (left_ready == 0):
 			ast_cond_discard = discard

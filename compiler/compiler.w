@@ -944,6 +944,7 @@ int link_option(char* arg, int apply):
 			cond_branch_disabled = 1
 			loop_rotate_disabled = 1
 			ers_disabled = 1
+			ivopt_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
@@ -1002,6 +1003,15 @@ int link_option(char* arg, int apply):
 		return 1
 	if (strcmp(arg, c"--loop-rotate") == 0):
 		if (apply): loop_rotate_disabled = 0
+		return 1
+	# Induction-variable pointers (compiler/ivopt.w, unit O7) are on by
+	# default on x64; --no-ivopts (and -O0) keeps every subscript's own
+	# address arithmetic, the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-ivopts") == 0):
+		if (apply): ivopt_disabled = 1
+		return 1
+	if (strcmp(arg, c"--ivopts") == 0):
+		if (apply): ivopt_disabled = 0
 		return 1
 	# Narrow integer promotion (docs/projects/codegen_gap_plan.md §2.7,
 	# unit A8): int32/uint32 locals and arguments take registers like
@@ -1087,6 +1097,7 @@ void help_shared_options():
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
 	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
+	println(c"  --no-ivopts           no induction-variable pointers for array walks in loops (x64); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
@@ -1508,6 +1519,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-ivopts") == 0) || (strcmp(*flag_arg, c"--ivopts") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-narrow-regs") == 0) || (strcmp(*flag_arg, c"--narrow-regs") == 0)):
 				link_option(*flag_arg, 1)

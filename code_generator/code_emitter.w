@@ -123,6 +123,11 @@ int cond_branch_disabled
 # --no-loop-rotate / -O0: while/for loops keep their top-tested shape
 # (grammar/while_statement.w, loop_rotate_on).
 int loop_rotate_disabled
+# --no-ivopts / -O0: no induction-variable pointers (compiler/ivopt.w);
+# ivopt_live is 1 while a loop's pointers are being maintained, which is
+# when code_generator/expression_ast.w asks it about a subscript.
+int ivopt_disabled
+int ivopt_live
 # --no-narrow-regs: int32/uint32 locals and arguments stay on the stack
 # (unit A8, docs/projects/codegen_gap_plan.md §2.7); the reference for
 # tests/regalloc_diff_test.w. The two masks name the promoted registers
