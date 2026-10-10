@@ -167,8 +167,7 @@ int extern_statement():
 			# GOT slot the loader relocates (one-entry IAT on win64),
 			# emitted just before the shim so its vaddr is known now;
 			# execution enters at the shim, never the slot.
-			int got_vaddr = dyn_emit_import_slot()
-			dyn_add_import(import_name, got_vaddr)
+			int got_vaddr = static_link_import_slot(import_name)
 
 			# The symbol resolves to the shim entry point. For a variadic
 			# function the shim only covers calls that pass exactly the

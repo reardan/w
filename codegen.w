@@ -10,6 +10,9 @@ import code_generator.arm64_asm
 import code_generator.elf
 import code_generator.dynamic_registry
 import code_generator.ffi
+import code_generator.static_link
+import code_generator.elf_exports
+import code_generator.static_library
 import code_generator.elf_dynamic
 import code_generator.dwarf
 import code_generator.profile_counters

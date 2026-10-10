@@ -5,6 +5,12 @@ architectural context; the production compiler has since gained a retained
 AST (see [AST migration](ast_migration.md)). The opt-in
 [LLVM offload experiment](llvm.md) now consumes that production tree,
 superseding §3.6's original parser-generator proposal.
+
+> Update for #625: x64 Linux shared and static library production and
+> separately linked compiler launchers are now implemented. See
+> [Building and linking libraries](build_libraries.md). The historical
+> analysis below describes the toolchain before that implementation.
+
 Assessment for two open epics that both, in different ways, ask "what
 counts as a compiled artifact in this compiler." Companion to
 `docs/projects/wx_split.md` (per-target container-writer work, the

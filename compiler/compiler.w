@@ -835,6 +835,9 @@ void verbosity_raise():
 # pre-scans, so here they are only recognized.
 int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--pie") == 0): return 1
+	if (strcmp(arg, c"--shared") == 0): return 1
+	if (strcmp(arg, c"--static") == 0): return 1
+	if (starts_with(arg, c"--link=")): return 1
 	if (strcmp(arg, c"--syscall-abi=vmcall") == 0 || strcmp(arg, c"--syscall-abi=linux") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
 		if (apply): bounds_mode = 1
@@ -1074,6 +1077,9 @@ void help_shared_options():
 	println(c"                        counts, hot loop heads are 16-byte aligned")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
+	println(c"  --static              emit an x64 W compiled static library (.wa)")
+	println(c"  --shared              emit an x64 Linux shared library (export functions)")
+	println(c"  --link=<path>         link a shared library, repeatable")
 	println(c"  --pie                 emit an x64 Linux position-independent executable")
 	println(c"  --syscall-abi=vmcall   emit an x64 static KVM cell executable")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
@@ -1300,6 +1306,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# data_split stays 0 on their paths.
 	data_split = 1
 	elf_pie = 0
+	elf_shared = 0
+	elf_static = 0
+	static_address_count = 0
+	wasm_export_count = 0
 	x64_syscall_abi = 0
 	x64_hypercall_count = 0
 	arm64_pac = 1
@@ -1458,6 +1468,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			help_link()
 			exit(0)
 		else if (strcmp(*flag_arg, c"--pie") == 0): elf_pie = 1
+		else if (strcmp(*flag_arg, c"--static") == 0):
+			elf_static = 1
+			elf_pie = 1
+		else if (strcmp(*flag_arg, c"--shared") == 0):
+			elf_shared = 1
+			elf_pie = 1
 		else if (strcmp(*flag_arg, c"--syscall-abi=vmcall") == 0): x64_syscall_abi = 1
 		else if (strcmp(*flag_arg, c"--syscall-abi=linux") == 0): x64_syscall_abi = 0
 		else if (starts_with(*flag_arg, c"-")):
@@ -1514,6 +1530,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		ast_emit_retained_mode = 0
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
+	if (elf_shared && elf_static): target_option_error(c"--shared and --static are mutually exclusive")
+	if (elf_static && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
+		target_option_error(c"--static requires the x64 Linux target")
+	if (elf_static && profile_generate_mode): target_option_error(c"--static does not support profiling instrumentation")
+	if (elf_shared && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
+		target_option_error(c"--shared requires the x64 Linux target")
 	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
 		target_option_error(c"--pie requires the x64 Linux target")
 	if (x64_syscall_abi && (word_size != 8 || target_isa != 0 || target_os != 0 || elf_pie)):
@@ -1527,6 +1549,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	last_identifier = cast(char*, malloc(8000))
 	last_global_declaration = cast(char*, malloc(8000))
 	be_start(word_size)
+	static_link_init()
+	# Link arguments are registered before extern declarations, irrespective of order.
+	for link_scan in range(i, argc):
+		char** link_arg = argv + link_scan * __word_size__
+		if (strcmp(*link_arg, c"-o") == 0):
+			link_scan = link_scan + 1
+		else if (import_root_arg_width(*link_arg) == 2):
+			link_scan = link_scan + 1
+		else if (starts_with(*link_arg, c"--link=")):
+			if ((*link_arg)[7] == 0): target_option_error(c"--link requires a library path")
+			if (static_link_load(*link_arg + 7) == 0): dyn_add_lib(*link_arg + 7)
 	# --imports must never fire while the auto-imported closure itself is
 	# compiling: auto_import_closure_count (the exclusion list) is not
 	# populated until these two calls return, so a warning fired during
@@ -1715,8 +1748,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# Mach-O debug info is a later stage.
 	# P1: lay out the --profile-generate counter table, hook exit, write the map.
 	profile_finish(output_path, check_mode)
-	if ((target_os == 0) || (target_os == 2)): emit_debugging_symbols(word_size)
-	be_finish(word_size)
+	if (elf_shared || elf_static): elf_emit_export_wrappers()
+	if (elf_static):
+		static_library_write()
+		if ((output_path != 0) || check_mode): close(output_fd)
+		partial_output_path = 0
+		return 0
+	# Dependency discovery needs source imports, not a loadable image.
+	# Extern-only consumers can be scanned before their libraries exist.
+	if (deps_mode == 0):
+		if ((target_os == 0) || (target_os == 2)): emit_debugging_symbols(word_size)
+		be_finish(word_size)
 
 	if ((output_path != 0) | check_mode): close(output_fd)
 	partial_output_path = 0

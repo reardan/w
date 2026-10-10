@@ -1,0 +1,195 @@
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:38:1: semantic loss [<grammar>]: unresolved grammar dependency: channels {
+    ERROR
+}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:42:1: semantic loss [<grammar>]: unresolved grammar dependency: options {
+    superClass = JavaScriptLexerBase;
+}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:222:1: semantic loss [<grammar>]: unresolved mode declaration: mode TEMPLATE;
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:39:1: semantic loss [<grammar>]: unresolved grammar dependency: options {
+    tokenVocab = JavaScriptLexer;
+    superClass = JavaScriptParserBase;
+}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:48:47: semantic loss [HashBangLine]: unmapped predicate at atom position 0: { this.IsStartOfFile()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:48:77: semantic loss [HashBangLine]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:49:26: semantic loss [MultiLineComment]: non-greedy matching requires an explicit adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:50:26: semantic loss [SingleLineComment]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:52:59: semantic loss [RegularExpressionLiteral]: unmapped predicate at atom position 3: {this.IsRegexPossible()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:59:34: semantic loss [OpenBrace]: unmapped action at atom position 1: {this.ProcessOpenBrace();}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:61:106: semantic loss [TemplateCloseBrace]: unsupported command popMode()
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:60:34: semantic loss [TemplateCloseBrace]: unmapped predicate at atom position 0: {this.IsInTemplateString()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:61:67: semantic loss [TemplateCloseBrace]: unmapped action at atom position 1: {this.ProcessTemplateCloseBrace();}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:62:34: semantic loss [CloseBrace]: unmapped action at atom position 1: {this.ProcessCloseBrace();}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:133:35: semantic loss [OctalIntegerLiteral]: unmapped predicate at atom position 2: {!this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:192:29: semantic loss [Implements]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:193:29: semantic loss [StrictLet]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:194:29: semantic loss [NonStrictLet]: unmapped predicate at atom position 1: {!this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:195:29: semantic loss [Private]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:196:29: semantic loss [Public]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:197:29: semantic loss [Interface]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:198:29: semantic loss [Package]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:199:29: semantic loss [Protected]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:200:29: semantic loss [Static]: unmapped predicate at atom position 1: {this.IsStrictMode()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:207:73: semantic loss [StringLiteral]: unmapped action at atom position 1: {this.ProcessStringLiteral();}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:210:18: semantic loss [BackTick]: unsupported command pushMode(TEMPLATE)
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:212:14: semantic loss [WhiteSpaces]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:214:17: semantic loss [LineTerminator]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:218:30: semantic loss [HtmlComment]: non-greedy matching requires an explicit adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:219:35: semantic loss [CDataComment]: non-greedy matching requires an explicit adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:220:48: semantic loss [UnexpectedCharacter]: unsupported command channel(ERROR)
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:224:1: semantic loss [BackTickInside]: lexer mode TEMPLATE is not lowered
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:224:40: semantic loss [BackTickInside]: unsupported command type(BackTick)
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:224:56: semantic loss [BackTickInside]: unsupported command popMode()
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:225:1: semantic loss [TemplateStringStartExpression]: lexer mode TEMPLATE is not lowered
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:225:76: semantic loss [TemplateStringStartExpression]: unsupported command pushMode(DEFAULT_MODE)
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:225:38: semantic loss [TemplateStringStartExpression]: unmapped action at atom position 1: {this.ProcessTemplateOpenBrace();}
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:226:1: semantic loss [TemplateStringAtom]: lexer mode TEMPLATE is not lowered
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:259:33: semantic loss [LineContinuation]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:267:44: semantic loss [IdentifierPart]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:267:55: semantic loss [IdentifierPart]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:267:66: semantic loss [IdentifierPart]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:267:77: semantic loss [IdentifierPart]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:267:88: semantic loss [IdentifierPart]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:269:27: semantic loss [IdentifierStart]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:272:5: semantic loss [RegularExpressionFirstChar]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:278:5: semantic loss [RegularExpressionChar]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:283:38: semantic loss [RegularExpressionClassChar]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:285:51: semantic loss [RegularExpressionBackslashSequence]: Unicode escape/property or non-ASCII matching is not verified
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:173:7: semantic loss [expressionStatement]: unmapped predicate at atom position 0: {this.notOpenBraceAndNotFunction()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:195:17: semantic loss [continueStatement]: unmapped predicate at atom position 0: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:199:14: semantic loss [breakStatement]: unmapped predicate at atom position 0: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:203:15: semantic loss [returnStatement]: unmapped predicate at atom position 0: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:207:28: semantic loss [yieldStatement]: unmapped predicate at atom position 0: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:239:13: semantic loss [throwStatement]: unmapped predicate at atom position 1: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:271:17: semantic loss [classElement]: unmapped predicate at atom position 0: {this.n("static")}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:272:17: semantic loss [classElement]: unmapped predicate at atom position 0: {this.n("static")}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:273:17: semantic loss [classElement]: unmapped predicate at atom position 0: {this.n("static")}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:278:14: semantic loss [methodDefinition]: unmapped predicate at atom position 1: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:358:1: semantic loss [singleExpression]: unsupported left recursion (including nullable prefixes)
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:369:24: semantic loss [singleExpression]: unmapped predicate at atom position 1: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:370:24: semantic loss [singleExpression]: unmapped predicate at atom position 1: {this.notLineTerminator()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:381:7: semantic loss [singleExpression]: unmapped element option at atom position 0: <assoc = right>
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:396:7: semantic loss [singleExpression]: unmapped element option at atom position 0: <assoc = right>
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:397:7: semantic loss [singleExpression]: unmapped element option at atom position 0: <assoc = right>
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:494:7: semantic loss [getter]: unmapped predicate at atom position 0: {this.n("get")}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:498:7: semantic loss [setter]: unmapped predicate at atom position 0: {this.n("set")}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:581:7: semantic loss [eos]: unmapped predicate at atom position 0: {this.lineTerminatorAhead()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptParser.g4:582:7: semantic loss [eos]: unmapped predicate at atom position 0: {this.closeBrace()}?
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:49:1: semantic loss [MultiLineComment]: heuristic built-in matcher requires an exact reviewed adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:50:1: semantic loss [SingleLineComment]: heuristic built-in matcher requires an exact reviewed adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:55:1: semantic loss [OpenBracket]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:56:1: semantic loss [CloseBracket]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:57:1: semantic loss [OpenParen]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:58:1: semantic loss [CloseParen]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:59:1: semantic loss [OpenBrace]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:60:1: semantic loss [TemplateCloseBrace]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:60:1: semantic loss [TemplateCloseBrace]: literal classification does not preserve lexer commands
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:62:1: semantic loss [CloseBrace]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:63:1: semantic loss [SemiColon]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:64:1: semantic loss [Comma]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:65:1: semantic loss [Assign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:66:1: semantic loss [QuestionMark]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:67:1: semantic loss [QuestionMarkDot]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:68:1: semantic loss [Colon]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:69:1: semantic loss [Ellipsis]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:70:1: semantic loss [Dot]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:71:1: semantic loss [PlusPlus]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:72:1: semantic loss [MinusMinus]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:73:1: semantic loss [Plus]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:74:1: semantic loss [Minus]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:75:1: semantic loss [BitNot]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:76:1: semantic loss [Not]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:77:1: semantic loss [Multiply]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:78:1: semantic loss [Divide]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:79:1: semantic loss [Modulus]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:80:1: semantic loss [Power]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:81:1: semantic loss [NullCoalesce]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:82:1: semantic loss [Hashtag]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:83:1: semantic loss [RightShiftArithmetic]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:84:1: semantic loss [LeftShiftArithmetic]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:85:1: semantic loss [RightShiftLogical]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:86:1: semantic loss [LessThan]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:87:1: semantic loss [MoreThan]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:88:1: semantic loss [LessThanEquals]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:89:1: semantic loss [GreaterThanEquals]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:90:1: semantic loss [Equals_]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:91:1: semantic loss [NotEquals]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:92:1: semantic loss [IdentityEquals]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:93:1: semantic loss [IdentityNotEquals]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:94:1: semantic loss [BitAnd]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:95:1: semantic loss [BitXOr]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:96:1: semantic loss [BitOr]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:97:1: semantic loss [And]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:98:1: semantic loss [Or]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:99:1: semantic loss [MultiplyAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:100:1: semantic loss [DivideAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:101:1: semantic loss [ModulusAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:102:1: semantic loss [PlusAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:103:1: semantic loss [MinusAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:104:1: semantic loss [LeftShiftArithmeticAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:105:1: semantic loss [RightShiftArithmeticAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:106:1: semantic loss [RightShiftLogicalAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:107:1: semantic loss [BitAndAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:108:1: semantic loss [BitXorAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:109:1: semantic loss [BitOrAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:110:1: semantic loss [PowerAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:111:1: semantic loss [NullishCoalescingAssign]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:112:1: semantic loss [ARROW]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:116:1: semantic loss [NullLiteral]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:133:1: semantic loss [OctalIntegerLiteral]: heuristic built-in matcher requires an exact reviewed adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:144:1: semantic loss [Break]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:145:1: semantic loss [Do]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:146:1: semantic loss [Instanceof]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:147:1: semantic loss [Typeof]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:148:1: semantic loss [Case]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:149:1: semantic loss [Else]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:150:1: semantic loss [New]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:151:1: semantic loss [Var]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:152:1: semantic loss [Catch]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:153:1: semantic loss [Finally]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:154:1: semantic loss [Return]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:155:1: semantic loss [Void]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:156:1: semantic loss [Continue]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:157:1: semantic loss [For]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:158:1: semantic loss [Switch]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:159:1: semantic loss [While]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:160:1: semantic loss [Debugger]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:161:1: semantic loss [Function_]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:162:1: semantic loss [This]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:163:1: semantic loss [With]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:164:1: semantic loss [Default]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:165:1: semantic loss [If]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:166:1: semantic loss [Throw]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:167:1: semantic loss [Delete]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:168:1: semantic loss [In]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:169:1: semantic loss [Try]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:170:1: semantic loss [As]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:171:1: semantic loss [From]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:172:1: semantic loss [Of]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:173:1: semantic loss [Yield]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:174:1: semantic loss [YieldStar]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:178:1: semantic loss [Class]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:179:1: semantic loss [Enum]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:180:1: semantic loss [Extends]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:181:1: semantic loss [Super]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:182:1: semantic loss [Const]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:183:1: semantic loss [Export]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:184:1: semantic loss [Import]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:186:1: semantic loss [Async]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:187:1: semantic loss [Await]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:192:1: semantic loss [Implements]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:193:1: semantic loss [StrictLet]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:194:1: semantic loss [NonStrictLet]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:195:1: semantic loss [Private]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:196:1: semantic loss [Public]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:197:1: semantic loss [Interface]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:198:1: semantic loss [Package]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:199:1: semantic loss [Protected]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:200:1: semantic loss [Static]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:210:1: semantic loss [BackTick]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:210:1: semantic loss [BackTick]: literal classification does not preserve lexer commands
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:220:1: semantic loss [UnexpectedCharacter]: heuristic built-in matcher requires an exact reviewed adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:224:1: semantic loss [BackTickInside]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:224:1: semantic loss [BackTickInside]: literal classification does not preserve lexer commands
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:225:1: semantic loss [TemplateStringStartExpression]: literal priority over an earlier matcher requires an overlap/order adaptation
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:225:1: semantic loss [TemplateStringStartExpression]: literal classification does not preserve lexer commands
+libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:48:1: semantic loss [<grammar>]: legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule

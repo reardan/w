@@ -1,0 +1,10 @@
+parser ast_predicate
+import tests.parser_generator.stateful_support
+skip WS = [ \t\r\n]+
+token IDENT letters
+start program
+rule program = word tail? tails EOF
+rule word = IDENT &{ 0 } | IDENT &{ stateful_word_allowed(stream) }
+rule tail = IDENT &{ 0 }
+rule tails = item*
+rule item = IDENT &{ stateful_word_allowed(stream) }

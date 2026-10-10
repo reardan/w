@@ -1,23 +1,22 @@
 # Compiler self-coverage floors for 'wcoverage suite --baseline'
 # (./wbuild compiler_coverage; docs/projects/line_coverage.md,
 # "Baseline and the new-code rule"). Each floor sits about a point under
-# the value measured on Linux x86_64 without libc6:i386 (2026-10-09:
-# lines code_generator/ 95.3, compiler/ 93.2, grammar/ 95.6, repl/ 92.2,
-# debugger/ 78.1, repl.w 81.1, w.w 93.7; diagnostics 35.8; branches
-# code_generator/ 86.4, compiler/ 81.7, grammar/ 81.7, repl/ 72.2,
-# debugger/ 65.0), which leaves room for the run-to-run drift seen so
-# far. Raise a floor in the PR that adds the tests; lower one only with
-# a reason in the commit message.
-code_generator/ 94.5
-compiler/ 92.5
-grammar/ 95.0
+# the value measured on Linux x86_64 (2026-10-09, #625 libraries:
+# lines code_generator/ 96.8, compiler/ 94.3, grammar/ 96.8, repl/ 92.2,
+# debugger/ 78.8, w.w 100; branches code_generator/ 87.7, compiler/ 83.6,
+# grammar/ 85.1). Extra margin for the earlier no-libc6:i386 baseline
+# leaves room for the run-to-run drift seen so far. Raise a floor in the PR
+# that adds the tests; lower one only with a reason in the commit message.
+code_generator/ 95.5
+compiler/ 93.0
+grammar/ 95.5
 repl/ 91.5
 debugger/ 77.5
 repl.w 80.5
-w.w 93.0
+w.w 99.0
 diagnostics 35.0
-branches:code_generator/ 85.5
-branches:compiler/ 81.0
-branches:grammar/ 81.0
+branches:code_generator/ 86.0
+branches:compiler/ 82.0
+branches:grammar/ 82.0
 branches:repl/ 71.5
 branches:debugger/ 64.0

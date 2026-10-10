@@ -102,6 +102,7 @@ void elf_finish_entry_patch():
 	# Append .interp/.dynamic/relocations and fill the reserved program
 	# headers; a no-op when nothing was imported with c_lib/extern.
 	elf_emit_dynamic()
+	if (elf_shared): return
 
 	int t = entry_symbol(0)
 	if (t == 0): return

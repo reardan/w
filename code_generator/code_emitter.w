@@ -63,6 +63,8 @@ int entry_optional
 # the entry stub's "call _main". Both shift when the header layout changes
 # (e.g. reserving extra program headers for dynamic linking), so the finish
 # pass patches these recorded positions instead of hardcoded constants.
+int elf_static /* W x64 compiled static library */
+int elf_shared /* x64 Linux shared object with explicit native exports */
 int elf_pie   /* explicit x64 Linux --pie; other targets stay unchanged */
 int x64_syscall_abi /* 1: KVM ring-3 vmcall, 0: native Linux syscall */
 int x64_hypercall_count
@@ -295,6 +297,25 @@ void rebase_note(int vaddr):
 		rebase_table_size = x
 	save_i(rebase_table + rebase_count * 8, vaddr, 8)
 	rebase_count = rebase_count + 1
+
+
+# Static libraries retain every address slot that can cross from text to
+# data. The writer filters slots removed by a peephole and stores final
+# targets, so repeated writes/backpatches are harmless.
+char* static_address_slots
+int static_address_count
+int static_address_size
+
+
+void static_note_address(int pos):
+	if (elf_static == 0): return
+	int needed = (static_address_count + 1) * 4
+	if (needed > static_address_size):
+		int size = needed * 2 + 4096
+		static_address_slots = realloc(static_address_slots, static_address_size, size)
+		static_address_size = size
+	save_int32(static_address_slots + static_address_count * 4, pos)
+	static_address_count = static_address_count + 1
 
 
 void emit_int8(int v):

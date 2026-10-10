@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/antlr/grammars-v4",
+  "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+  "files": [
+    {
+      "path": "JavaScriptLexer.g4",
+      "sha256": "bddbd846633b6d6ef2b5de205cd3a639a72d3f01ec3254c720e10f9a96099278",
+      "url": "https://raw.githubusercontent.com/antlr/grammars-v4/89fd36482e8cb68a4e55df021a8adbc7541b52f2/javascript/javascript/JavaScriptLexer.g4"
+    },
+    {
+      "path": "JavaScriptParser.g4",
+      "sha256": "c50664be00277d48c8a06d1ceabe4f6d46a04284a5e17eb287628727a95efca4",
+      "url": "https://raw.githubusercontent.com/antlr/grammars-v4/89fd36482e8cb68a4e55df021a8adbc7541b52f2/javascript/javascript/JavaScriptParser.g4"
+    },
+    {
+      "path": "Java/JavaScriptLexerBase.java",
+      "sha256": "f1709c70305c0f7c37c1db68c356d3a19f720af27c90e4371423a9ec5874547b",
+      "url": "https://raw.githubusercontent.com/antlr/grammars-v4/89fd36482e8cb68a4e55df021a8adbc7541b52f2/javascript/javascript/Java/JavaScriptLexerBase.java"
+    },
+    {
+      "path": "Java/JavaScriptParserBase.java",
+      "sha256": "2e8c5fa857bc5b4e49894b7516d8d7204adf0152612c57a5181672b52ab685c8",
+      "url": "https://raw.githubusercontent.com/antlr/grammars-v4/89fd36482e8cb68a4e55df021a8adbc7541b52f2/javascript/javascript/Java/JavaScriptParserBase.java"
+    },
+    {
+      "path": "UPSTREAM_README.md",
+      "sha256": "b89ae2d33934ae415d575c3faaafb0c38d571f06ae414dc9d209cb6d0a851c39",
+      "url": "https://raw.githubusercontent.com/antlr/grammars-v4/89fd36482e8cb68a4e55df021a8adbc7541b52f2/javascript/javascript/README.md"
+    }
+  ]
+}
