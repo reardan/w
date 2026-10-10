@@ -59,6 +59,7 @@ import lib.stream
 import structures.string
 import libs.standard.net.tls
 import lib.mem
+import lib.transport
 
 
 # One accepted connection. reader is a buffered reader over fd; tls is 0
@@ -89,6 +90,8 @@ struct ConnectionContext:
 	int error_recv
 	int error_send
 	int error_timeout
+	transport* checked_transport
+	int error_cancelled
 
 
 const int connection_error_none = 0
@@ -123,6 +126,8 @@ const int connection_max_line_bytes = 8192
 ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls):
 	ConnectionContext* c = new ConnectionContext()
 	c.fd = fd
+	c.checked_transport = 0
+	c.error_cancelled = connection_error_recv
 	c.reader = stream_reader(fd)
 	c.timeout_ms = timeout_ms
 	c.error = 0
@@ -165,7 +170,8 @@ void connection_context_destroy(ConnectionContext* c):
 	if (c == 0): return
 	if (c.tls != 0): tls_close(c.tls)
 	if (c.tls_cfg != 0): tls_config_free(c.tls_cfg)
-	close(c.fd)
+	if (c.checked_transport != 0): transport_free(c.checked_transport)
+	else: close(c.fd)
 	stream_free(c.reader)
 	free(c)
 
@@ -198,11 +204,34 @@ int connection_context_wait(ConnectionContext* c, int rc, int events, int io_err
 # Returns 1 when bytes are buffered, 0 on EOF, -1 on error or timeout
 # (c.error set).
 int connection_context_fill(ConnectionContext* c):
+	if (c.checked_transport != 0):
+		int status = io_check()
+		if (status < 0):
+			if (status == 0 - IO_ERRNO_ECANCELED): c.error = c.error_cancelled
+			else: c.error = c.error_timeout
+			return -1
+		if (transport_remaining_ms(c.checked_transport) == 0):
+			c.error = c.error_timeout
+			return -1
 	wstream* r = c.reader
 	if (r.position < r.limit): return 1
 	if (r.eof != 0): return 0
 	r.position = 0
 	r.limit = 0
+	if (c.checked_transport != 0):
+		io_result result
+		int status = transport_read_some(c.checked_transport, r.buffer, r.capacity, &result)
+		if (status == IO_OK && result.transferred > 0):
+			r.limit = result.transferred
+			c.received_any = 1
+			return 1
+		if (status == IO_EOF):
+			r.eof = 1
+			return 0
+		c.error = c.error_recv
+		if (status == IO_TIMED_OUT): c.error = c.error_timeout
+		if (status == IO_CANCELLED): c.error = c.error_cancelled
+		return -1
 	if (c.tls != 0):
 		int tcount = tls_read(c.tls, r.buffer, r.capacity)
 		if (tcount > 0):
@@ -302,6 +331,14 @@ int connection_context_expect_crlf(ConnectionContext* c):
 # Sends all n bytes, waiting up to timeout_ms per stall. Returns 1, or 0
 # with c.error set.
 int connection_context_write_all(ConnectionContext* c, char* data, int n):
+	if (c.checked_transport != 0):
+		io_result result
+		int status = transport_write_all(c.checked_transport, data, n, &result)
+		if (status == IO_OK): return 1
+		c.error = c.error_send
+		if (status == IO_TIMED_OUT): c.error = c.error_timeout
+		if (status == IO_CANCELLED): c.error = c.error_cancelled
+		return 0
 	if (c.tls != 0):
 		if (n <= 0): return 1
 		int wrote = tls_write(c.tls, data, n)

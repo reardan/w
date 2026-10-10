@@ -15,6 +15,12 @@
 # req.tls_handshake_timeout_ms (else req.timeout_ms); after the handshake
 # the socket is re-armed to req.timeout_ms for the header/body/idle reads.
 #
+# Owned clients / browser loading: http_client_new/close/free, req.client,
+# total_timeout_ms, max_stream_bytes, approve_redirect, response.final_url
+# and redirect_count. See docs/projects/browser_network.md for ownership,
+# checked transport, cancellation and backend qualifications. The historical
+# timeout/cache notes below describe the compatibility path only.
+#
 # Public API:
 #   http_req* http_req_new(char* method, char* url)
 #   void http_req_add_header(http_req* req, char* name, char* value)
@@ -68,6 +74,17 @@ import libs.standard.web.connection
 import libs.standard.net.dns
 import libs.standard.net.tls
 import lib.mem
+import lib.transport_tls
+
+
+# Explicit clients own at most one active stream. Separate instances can run
+# concurrently in tasks; one instance must be serialized by its caller.
+struct http_client:
+	void* active
+	int closed
+
+
+type http_redirect_approval = fn(void*, URL*, URL*, int) -> int
 
 
 struct http_header:
@@ -105,6 +122,13 @@ struct http_req:
 	# http_default_max_response_bytes default); a longer body fails
 	# with http_error_body_too_large. Streaming reads ignore it.
 	int max_body_bytes
+	# Opt-in checked transport. A client also enables a default total 30s
+	# deadline and bounded streaming. Fields remain borrowed until open returns.
+	http_client* client
+	int total_timeout_ms
+	int max_stream_bytes
+	http_redirect_approval* approve_redirect
+	void* redirect_context
 
 
 # One response. headers maps lowercased header names to values
@@ -119,6 +143,8 @@ struct http_response:
 	int body_len
 	int error
 	char* error_message
+	char* final_url
+	int redirect_count
 
 
 # Streaming response: status and headers are parsed eagerly by
@@ -134,6 +160,11 @@ struct http_stream:
 	int error
 	char* cache_host
 	int cache_port
+	http_client* owner
+	int has_deadline
+	int deadline_ms
+	int stream_limit
+	int bytes_read
 
 
 /* Limits (fail closed when exceeded) and defaults */
@@ -196,6 +227,9 @@ const int http_error_bad_header = 14
 
 # TLS handshake (or transport wrap) failed on an https:// request.
 const int http_error_tls = 15
+const int http_error_cancelled = 16
+const int http_error_client_busy = 17
+const int http_error_client_closed = 18
 
 
 # Static description of an http_error_* code. Never freed.
@@ -216,6 +250,9 @@ char* http_error_string(int code):
 	if (code == http_error_too_many_redirects): return c"too many redirects"
 	if (code == http_error_bad_header): return c"invalid request header"
 	if (code == http_error_tls): return c"TLS handshake failed"
+	if (code == http_error_cancelled): return c"cancelled"
+	if (code == http_error_client_busy): return c"client already has an active stream"
+	if (code == http_error_client_closed): return c"client is closed"
 	return c"unknown error"
 
 
@@ -225,6 +262,13 @@ const int http_body_none = 0
 const int http_body_length = 1
 const int http_body_chunked = 2
 const int http_body_close = 3
+
+
+
+int http_checked_error(int status, int fallback):
+	if (status == IO_TIMED_OUT): return http_error_timeout
+	if (status == IO_CANCELLED): return http_error_cancelled
+	return fallback
 
 
 /* Small text helpers */
@@ -334,6 +378,11 @@ http_req* http_req_new(char* method, char* url):
 	req.tls_now_unix = 0
 	req.tls_handshake_timeout_ms = 0
 	req.max_body_bytes = http_default_max_response_bytes
+	req.client = 0
+	req.total_timeout_ms = 0
+	req.max_stream_bytes = 0
+	req.approve_redirect = 0
+	req.redirect_context = 0
 	return req
 
 
@@ -357,7 +406,7 @@ void http_req_free(http_req* req):
 /* Responses */
 
 http_response* http_response_new():
-	http_response* resp = new http_response(0, new map[char*, char*], 0, 0, 0, c"")
+	http_response* resp = new http_response(0, new map[char*, char*], 0, 0, 0, c"", 0, 0)
 	return resp
 
 
@@ -390,6 +439,7 @@ void http_response_free(http_response* resp):
 	list_free[char*](keys)
 	map_free[char*, char*](resp.headers)
 	if (resp.body != 0): free(resp.body)
+	if (resp.final_url != 0): free(resp.final_url)
 	free(resp)
 
 
@@ -549,7 +599,7 @@ int http_send_request(ConnectionContext* c, http_req* req, URL* u, char* method,
 	string_append(out, method)
 	string_append_char(out, ' ')
 	string_append(out, u.path)
-	if (u.query[0] != 0):
+	if (u.has_query || u.query[0] != 0):
 		string_append_char(out, '?')
 		string_append(out, u.query)
 	string_append(out, c" HTTP/1.1\x0d\x0a")
@@ -760,6 +810,11 @@ http_stream* http_stream_new():
 	s.error = 0
 	s.cache_host = 0
 	s.cache_port = 0
+	s.owner = 0
+	s.has_deadline = 0
+	s.deadline_ms = 0
+	s.stream_limit = 0
+	s.bytes_read = 0
 	return s
 
 
@@ -791,6 +846,7 @@ void http_stream_release_conn(http_stream* s):
 				# inside tls_read; caching then would strand those bytes.
 				if (c.tls != 0):
 					if (c.tls.app_pos < c.tls.app_len): can_cache = 0
+	if (c.checked_transport != 0): can_cache = 0
 	if (can_cache != 0):
 		int is_tls = 0
 		if (c.tls != 0): is_tls = 1
@@ -955,7 +1011,7 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 
 # Next body bytes into buf. Returns the count (>= 1), 0 at the end of
 # the body, or -1 on error (s.error and the response error are set).
-int http_stream_read(http_stream* s, char* buf, int cap):
+int http_stream_read_raw(http_stream* s, char* buf, int cap):
 	if (s == 0): return (-1)
 	if (s.error != 0): return (-1)
 	if (s.body_complete != 0): return 0
@@ -967,9 +1023,28 @@ int http_stream_read(http_stream* s, char* buf, int cap):
 	return 0
 
 
+int http_stream_read(http_stream* s, char* buf, int cap):
+	if (s == 0): return -1
+	if (cap <= 0): return 0
+	int want = cap
+	if (s.stream_limit > 0):
+		int remaining = s.stream_limit - s.bytes_read
+		if (remaining < want): want = remaining
+		if (want == 0):
+			char extra
+			int more = http_stream_read_raw(s, &extra, 1)
+			if (more > 0): http_stream_fail(s, http_error_body_too_large)
+			if (s.error != 0): return -1
+			return 0
+	int got = http_stream_read_raw(s, buf, want)
+	if (got > 0): s.bytes_read += got
+	return got
+
+
 void http_stream_close(http_stream* s):
 	if (s == 0): return
 	http_stream_release_conn(s)
+	if (s.owner != 0): s.owner.active = 0
 	if (s.resp != 0): http_response_free(s.resp)
 	if (s.cache_host != 0): free(s.cache_host)
 	free(s)
@@ -991,6 +1066,8 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 	int fd = (-1)
 	tls_conn* tls = 0
 	tls_config* tls_cfg = 0
+	if (s.has_deadline): use_cache = 0
+	transport* checked = 0
 	if (use_cache != 0):
 		fd = http_cache_take(u.host, u.port, is_tls, insecure)
 		if (fd >= 0):
@@ -1004,14 +1081,43 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 				else: socket_set_blocking(fd)
 	if (fd < 0):
 		int ip = 0
-		if (dns_resolve_ipv4(u.host, &ip) == 0):
-			http_stream_fail(s, http_error_dns)
+		int resolved = 0
+		if (s.has_deadline): resolved = dns_resolve_ipv4_until(u.host, &ip, s.deadline_ms)
+		else: resolved = dns_resolve_ipv4(u.host, &ip)
+		if (resolved == 0):
+			int failure = http_error_dns
+			if (s.has_deadline && s.deadline_ms - time_monotonic_ms() <= 0): failure = http_error_timeout
+			if (io_check() == 0 - IO_ERRNO_ECANCELED): failure = http_error_cancelled
+			http_stream_fail(s, failure)
 			return 0
-		fd = net_connect_timeout(ip, u.port, timeout)
+		if (s.has_deadline):
+			int remaining = s.deadline_ms - time_monotonic_ms()
+			if (remaining <= 0):
+				http_stream_fail(s, http_error_timeout)
+				return 0
+			io_result result
+			fd = net_connect_timeout_checked(ip, u.port, remaining, &result)
+			if (fd < 0):
+				http_stream_fail(s, http_checked_error(result.status, http_error_connect))
+				return 0
+			if (is_tls):
+				remaining = s.deadline_ms - time_monotonic_ms()
+				if (remaining < 0): remaining = 0
+				if (req.tls_handshake_timeout_ms > 0 && req.tls_handshake_timeout_ms < remaining): remaining = req.tls_handshake_timeout_ms
+				tls_cfg = http_build_tls_config(req)
+				checked = transport_tls_connect(fd, u.host, tls_cfg, remaining, &result)
+				tls_config_free(tls_cfg)
+				tls_cfg = 0
+				if (checked == 0):
+					http_stream_fail(s, http_checked_error(result.status, http_error_tls))
+					return 0
+			else: checked = transport_from_socket(fd, u.host, 1)
+			transport_set_deadline(checked, s.deadline_ms)
+		else: fd = net_connect_timeout(ip, u.port, timeout)
 		if (fd < 0):
 			http_stream_fail(s, fd == -2 ? http_error_timeout : http_error_connect)
 			return 0
-		if (is_tls != 0):
+		if (is_tls != 0 && checked == 0):
 			# Outside a task net/tls.w uses blocking socket I/O: switch off
 			# O_NONBLOCK and arm SO_RCVTIMEO/SO_SNDTIMEO so the handshake and
 			# every later read/write is bounded. Inside a task
@@ -1040,6 +1146,8 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			socket_set_recv_timeout(fd, timeout)
 			socket_set_send_timeout(fd, timeout)
 	ConnectionContext* c = http_conn_new(fd, timeout)
+	c.checked_transport = checked
+	c.error_cancelled = http_error_cancelled
 	c.tls = tls
 	c.tls_cfg = tls_cfg
 	c.tls_insecure = insecure
@@ -1100,44 +1208,16 @@ int http_open_single(http_stream* s, http_req* req, URL* u, char* method, int in
 # scheme-relative "//host/...", absolute paths "/...", and relative
 # paths. Returns a parsed URL or 0.
 URL* http_redirect_target(URL* base, char* location):
-	if (location == 0): return 0
-	if (location[0] == 0): return 0
-	URL* direct = url_parse(location)
-	if (direct != 0):
-		return direct
-	string_builder* text = string_new()
-	if ((location[0] == '/') && (location[1] == '/')):
-		string_append(text, base.scheme)
-		string_append_char(text, ':')
-		string_append(text, location)
-	else:
-		string_append(text, base.scheme)
-		string_append(text, c"://")
-		string_append(text, base.host)
-		if (base.port != url_default_port(base.scheme)):
-			string_append_char(text, ':')
-			char* port_text = itoa(base.port)
-			string_append(text, port_text)
-			free(port_text)
-		if (location[0] == '/'): string_append(text, location)
-		else:
-			# Merge with the directory of the current path.
-			int last_slash = 0
-			int i = 0
-			while (base.path[i] != 0):
-				if (base.path[i] == '/'): last_slash = i
-				i = i + 1
-			string_append_bytes(text, base.path, last_slash + 1)
-			string_append(text, location)
-	URL* u = url_parse(text.data)
-	string_free(text)
-	return u
+	return url_resolve(base, location)
 
 
 # Prepares the stream for the next hop: drains a bounded amount of the
 # current body so the connection can be reused, releases it, and
 # resets the parse state.
 void http_stream_redirect_reset(http_stream* s):
+	# Redirect drain has its own cap; final-response bytes start at zero.
+	int limit = s.stream_limit
+	s.stream_limit = 0
 	if ((s.conn != 0) && (s.body_complete == 0) && (s.error == 0)):
 		char* scratch = cast(char*, malloc(4096))
 		int drained = 0
@@ -1163,6 +1243,8 @@ void http_stream_redirect_reset(http_stream* s):
 	if (s.cache_host != 0):
 		free(s.cache_host)
 		s.cache_host = 0
+	s.bytes_read = 0
+	s.stream_limit = limit
 
 
 int http_status_is_redirect(int status):
@@ -1180,6 +1262,26 @@ http_stream* http_open(http_req* req):
 	if (req == 0):
 		http_stream_fail(s, http_error_bad_url)
 		return s
+	if (req.client != 0):
+		if (req.client.closed):
+			http_stream_fail(s, http_error_client_closed)
+			return s
+		if (req.client.active != 0):
+			http_stream_fail(s, http_error_client_busy)
+			return s
+		s.owner = req.client
+		s.owner.active = cast(void*, s)
+	if (req.total_timeout_ms > 0 || req.client != 0):
+		int total = req.total_timeout_ms
+		if (total <= 0): total = http_default_timeout_ms
+		s.has_deadline = 1
+		s.deadline_ms = time_monotonic_ms() + total
+	s.stream_limit = req.max_stream_bytes
+	if (req.client != 0 && s.stream_limit <= 0): s.stream_limit = http_default_max_response_bytes
+	int interrupted = io_check()
+	if (interrupted < 0):
+		http_stream_fail(s, interrupted == 0 - IO_ERRNO_ECANCELED ? http_error_cancelled : http_error_timeout)
+		return s
 	int req_error = http_validate_req(req)
 	if (req_error != 0):
 		http_stream_fail(s, req_error)
@@ -1196,6 +1298,7 @@ http_stream* http_open(http_req* req):
 	char* method = req.method
 	int include_body = 1
 	int redirects = 0
+	int followed = 0
 	int done = 0
 	while (done == 0):
 		if (http_open_single(s, req, u, method, include_body) == 0): done = 1
@@ -1220,6 +1323,9 @@ http_stream* http_open(http_req* req):
 							url_free(next)
 							http_stream_fail(s, next_error)
 							done = 1
+						else if (cast(int, req.approve_redirect) != 0 && req.approve_redirect(req.redirect_context, u, next, s.resp.status) == 0):
+							url_free(next)
+							done = 1
 						else:
 							if (s.resp.status == 303):
 								# 303 See Other: switch to GET, drop the body.
@@ -1228,6 +1334,9 @@ http_stream* http_open(http_req* req):
 							http_stream_redirect_reset(s)
 							url_free(u)
 							u = next
+							followed = redirects
+	s.resp.redirect_count = followed
+	s.resp.final_url = url_unparse(u)
 	url_free(u)
 	return s
 
@@ -1277,3 +1386,27 @@ http_response* http_get(char* target):
 	http_response* resp = http_request(req)
 	http_req_free(req)
 	return resp
+
+
+
+http_client* http_client_new():
+	return new http_client(0, 0)
+
+
+# Cancels/tears down the active connection. The caller still owns its
+# stream and may inspect the cancellation result, then close it normally.
+void http_client_close(http_client* client):
+	if (client == 0): return
+	client.closed = 1
+	if (client.active != 0):
+		http_stream* s = cast(http_stream*, client.active)
+		http_stream_fail(s, http_error_cancelled)
+		http_stream_release_conn(s)
+		s.owner = 0
+		client.active = 0
+
+
+void http_client_free(http_client* client):
+	if (client == 0): return
+	http_client_close(client)
+	free(client)
