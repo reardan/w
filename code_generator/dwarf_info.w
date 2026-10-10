@@ -345,9 +345,18 @@ void dw_variable_emit(int local_index, int arg_words):
 	int at = codepos
 	emit_int8(0)
 	int reg = debug_local_register(local_index)
-	# A register-resident local (register promotion): DW_OP_reg<n>, the
-	# hardware number being the DWARF number for esi/edi and r12-r15
-	if (reg != 0): emit_int8(80 + reg) /* DW_OP_reg0 + n */
+	# A register-resident local (register promotion): DW_OP_reg<n>. The
+	# hardware number is the DWARF number on i386 and for r8-r15; x64's
+	# DWARF numbering swaps rcx/rdx and puts rsi/rdi at 4/5 (the loop and
+	# function-region registers, compiler/regalloc_scan.w)
+	if (reg != 0):
+		int dw = reg
+		if (word_size == 8):
+			if (reg == 6): dw = 4
+			elif (reg == 7): dw = 5
+			elif (reg == 1): dw = 2
+			elif (reg == 2): dw = 1
+		emit_int8(80 + dw) /* DW_OP_reg0 + n */
 	else:
 		emit_int8(145) /* DW_OP_fbreg */
 		emit_sleb(dw_local_frame_offset(local_index, arg_words))

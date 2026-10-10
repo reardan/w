@@ -170,8 +170,9 @@ list[int] rs_chain        # next index in the bucket, -1 ends the chain
 int[256] rs_buckets       # hash & 255 -> index + 1, 0 empty
 int rs_count
 # O2: the function region's candidates (rl_fn_region_enter), best first,
-# whether the body calls anything the scan can see, and the candidate
-# whose '.' the next field name follows (rs_field)
+# whether a loop of the body makes a real call (one outside the loops
+# only spills the region around itself, regalloc_call_spill), and the
+# candidate whose '.' the next field name follows (rs_field)
 list[int] rs_fn_cands
 int rs_fn_has_call
 # O5: a call the inliner will not take (a leaf it takes needs no
