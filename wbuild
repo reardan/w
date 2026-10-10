@@ -75,8 +75,8 @@ ensure_seed() {
 # every stage self-sign via macho_sign.w; fresh inodes (cp + mv) avoid
 # the vnode signature-cache gotcha. A warm tree refreshes through the
 # manifest's cached 'wexec_darwin' target, then runs bin/wexec_darwin;
-# only the darwin targets work here — everything else in the manifest
-# runs Linux binaries.
+# host-aware planning keeps target architectures and dispatches tests
+# to the qualified native suite (with an explicit coverage summary).
 if [ "$(uname -s)" = "Darwin" ]; then
 	ensure_seed w_darwin
 	if [ ! -x bin/wexec_darwin ]; then
@@ -88,38 +88,33 @@ if [ "$(uname -s)" = "Darwin" ]; then
 		mv -f bin/wexec_darwin.new bin/wexec_darwin
 	fi
 	./bin/wexec_darwin wexec_darwin >/dev/null
-	exec ./bin/wexec_darwin "$@"
+	executor=./bin/wexec_darwin
+else
+	ensure_seed w
+	if [ ! -x bin/wexec ]; then
+		./w w.w -o "bin/wv2.stage.$$"
+		mv -f "bin/wv2.stage.$$" bin/wv2
+		./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
+		mv -f "bin/wexec.stage.$$" bin/wexec
+	fi
+	# An executor older than the tree may not be able to load its manifest
+	# at all (one built before the manifest stopped being committed); rebuild
+	# it from the seed as on a cold tree. A current executor always loads at
+	# least build.base.json's targets, so this only fires across that change.
+	if ! ./bin/wexec --list >/dev/null 2>&1; then
+		echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
+		./w w.w -o "bin/wv2.stage.$$"
+		mv -f "bin/wv2.stage.$$" bin/wv2
+		./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
+		mv -f "bin/wexec.stage.$$" bin/wexec
+	fi
+	./bin/wexec wv2 wexec >/dev/null
+	executor=./bin/wexec
 fi
-ensure_seed w
-if [ ! -x bin/wexec ]; then
-	./w w.w -o "bin/wv2.stage.$$"
-	mv -f "bin/wv2.stage.$$" bin/wv2
-	./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
-	mv -f "bin/wexec.stage.$$" bin/wexec
-fi
-# An executor older than the tree may not be able to load its manifest
-# at all (one built before the manifest stopped being committed); rebuild
-# it from the seed as on a cold tree. A current executor always loads at
-# least build.base.json's targets, so this only fires across that change.
-if ! ./bin/wexec --list >/dev/null 2>&1; then
-	echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
-	./w w.w -o "bin/wv2.stage.$$"
-	mv -f "bin/wv2.stage.$$" bin/wv2
-	./bin/wv2 tools/wexec_main.w -o "bin/wexec.stage.$$"
-	mv -f "bin/wexec.stage.$$" bin/wexec
-fi
-./bin/wexec wv2 wexec >/dev/null
 if [ "$1" = "test_changed" ]; then
 	shift
-	# Flags left over after 'test_changed' (e.g. --keep-going) are kept in
-	# "$@" and handed to the final './wbuild' invocation below as its
-	# leading arguments, ahead of the target names xargs appends from
-	# bin/wtest's selection; that call falls through to 'exec ./bin/wexec
-	# "$@"' at the bottom of this script, and bin/wexec parses its flags
-	# regardless of where they fall in argv, so they reach wexec either
-	# way. With no extra flags "$@" expands to nothing and this is exactly
-	# the previous pipeline.
-	./bin/wexec wtest >/dev/null
+	# Preserve extra flags (e.g. --keep-going, -j N) for the selected run.
+	"$executor" wtest >/dev/null
 	# Selection baseline: the working tree's diff against HEAD. After a
 	# commit that diff is empty, which used to select nothing and exit 0
 	# silently; fall back to the branch's diff against its merge-base
@@ -138,7 +133,13 @@ if [ "$1" = "test_changed" ]; then
 	# and bin/wexec from build.base.json, so there is no committed
 	# baseline to diff: a new or edited test file selects its own target
 	# through the import-closure rules.
-	printf '%s\n' "$changed" | ./bin/wtest changed --available | xargs -r ./wbuild "$@"
+	# Capture selection first: propagate selector failure, avoid BSD xargs
+	# empty-input differences, and preserve the caller's build flags.
+	selected="$(printf '%s\n' "$changed" | ./bin/wtest changed --available)"
+	if [ -n "$selected" ]; then
+		set -f
+		./wbuild "$@" $selected
+	fi
 	exit 0
 fi
 # Opt-in (issue #483, docs/projects/wbuildd.md §8): WBUILDD=1 runs the
@@ -151,4 +152,4 @@ if [ "${WBUILDD:-}" = 1 ] && [ "$(uname -s)" = Linux ]; then
 		exec ./bin/wbuildd build "$@"
 	fi
 fi
-exec ./bin/wexec "$@"
+exec "$executor" "$@"

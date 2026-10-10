@@ -5,9 +5,8 @@
 
 
 # 1 when wexec_collect_dir's listing (lib/dir.w) is trusted on this
-# platform, so directory inputs hash correctly here. The arm64_darwin
-# sibling returns 0 until its getdirentries64 decoding is checked on a
-# Mac, making wexec warn and treat directory inputs as empty.
+# platform, so directory inputs hash correctly here. The Darwin sibling
+# is qualified by the native mac_build_test gate.
 int wexec_dirents_supported():
 	return 1
 

@@ -403,8 +403,8 @@ no build.json counterpart. They split into four groups:
   `wtest changed` output fed into a build run the same way. **Ported**:
   `wbuild` (the shell script, not wexec) now special-cases a
   `test_changed` first argument and runs
-  `git diff --name-only HEAD | ./bin/wtest changed | xargs -r ./wbuild`
-  — no executor change needed.
+  the selector with `--available`, captures its output, and forwards the
+  selected targets to `./wbuild` only when nonempty.
 
 **B. Darwin toolchain** — `build_darwin`, `verify_darwin`, `update_darwin`
 (the seed/verify/promote triad for the `w_darwin` Mach-O seed). **Ported
@@ -421,21 +421,47 @@ produces byte-identical `wv2/wv3/wv4_darwin_raw` artifacts.
 ported (`./archive.sh w_darwin`, then `cp -f bin/wv3_darwin w_darwin` —
 archive.sh grew that seed-name argument), and is the gate that promotes
 a self-signing seed.
-One deliberate divergence from the Linux chain's idiom: the darwin
-targets declare no `"inputs"`, i.e. they are FORCE-style and never
-cached. That is not laziness — Darwin's `getdirentries64` records
-differ from the Linux layout, and the decoding in
-`lib/__arch__/arm64_darwin/dirent.w` has not been run on a Mac yet; a
-misparse would hash a directory input as an empty file list, and
-caching `verify_darwin` on such a key would return "cached" after real
-source changes — a false-green on the one target whose entire job is
-to be a gate. Until then the darwin `wexec_dirents_supported()` stays
-0. Always-run matches the Makefile's FORCE behavior exactly; if the
-rebuild cost ever matters, validate `lib/dir_test.w` natively, flip
-that flag, and only then add `"inputs"` to the darwin targets. (`wexec_darwin` itself *is* cached, on plain-file
-inputs only — `tools/wexec.w` + the seed — which file-hashes correctly
-on Darwin; a `lib/` edit won't refresh it, `rm -rf bin` or `--no-cache`
-will.)
+Native macOS planning (#620) now uses the full generated registry. Directory
+listing and recursive hashing use Darwin's `getdirentries64` decoder, tested by
+`mac_build_test` with sorted entries, nested files, an empty directory, a symlink,
+and a cache invalidation check. The shell creates the symlink fixture because
+Darwin's W `symlink()` remains a stub. The compiler dependency scan recognizes
+`bin/wv2_darwin` and `./w_darwin`, so imported source changes also invalidate the
+executor's cache. `build_darwin` and `verify_darwin` deliberately remain always-run.
+
+`tools/manifest_host.w` adapts the logical manifest after generation and parsing,
+before selection, execution or cache hashing. On macOS, `bin/wv2` commands use
+`bin/wv2_darwin`; explicit target selectors are retained and an absent selector
+still means x86 Linux. Only the build-system tools (`wtest`, `wbuildgen`, `wmeta`)
+and the `generated` dependency closure acquire a native selector. Native compiler
+and executor bootstrap aliases hash the actual host binaries, and compile outputs
+use fresh inodes. Dependency queries, `archs --check`, `why` and `--defhash` use the
+host compiler as well; failed closure entries validate its content hash, so a
+cached Linux execution failure cannot mask a working native compiler.
+
+On macOS `./wbuild tests` deliberately dispatches to `tests_darwin`, reporting the
+number of step-bearing targets in the original `tests` closure excluded from the
+qualified native plan. This is **not full cross-platform runtime coverage**.
+The Darwin suite includes the native compiler fixpoint, optimizer regressions,
+build-tooling regressions and its existing compile-only gates. Linux, Windows,
+Wasm and other runtime coverage still belongs to their respective environments.
+The count changes with the source tree. `./wbuild tests_darwin` explicitly requests
+that same suite without the dispatch summary.
+
+All targets stay discoverable. Compile-only targets remain usable for cross
+compilation. Runtime targets outside the qualified Darwin suite (including its
+dependencies and native build infrastructure) fail during planning with a platform
+reason; this conservative policy also covers opaque shell steps. `--available`
+reports and drops them, including targets with unavailable dependencies, rather
+than executing ELF binaries or claiming they passed. Qualify additional native
+runtime gates through `tests_darwin` membership. Explicit `-f` manifests retain
+their own runtime policy; only their compiler executable is adapted.
+
+`./wbuild wtest`, `bin/wtest changed --available <path>`,
+`bin/wtest archs <path> --check`, and `./wbuild test_changed [flags]` work natively.
+`test_changed` captures selection before execution, propagates selection errors,
+and handles empty output without depending on GNU `xargs -r`. Linux planning and
+its default suite are unchanged.
 
 **C. Targets that don't fit wexec's execution model** — some because
 they're genuinely interactive, some because they never terminate on

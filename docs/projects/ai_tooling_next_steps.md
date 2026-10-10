@@ -15,17 +15,13 @@ same PR. When an item ships, its summary moves to the status section of
 `ai_tooling.md` and the entry is deleted here. Keep entries terse; this
 is a queue, not an archive.
 
-## Native Mac test selection (2026-10-09, #608)
+## Native macOS qualification
 
-`./wbuild tests` on the M3 stops at `unknown target wprof`: the Darwin
-executor's static manifest cannot resolve all source-generated umbrella
-dependencies. A freshly built native `tools/test_map.w` scans the sources,
-but `changed`/`archs --check` still execute the Linux ELF `bin/wv2`, so
-526 closure roots failed with exit 127 and selection fell back to literal
-matching. Make the diagnostic compiler host-aware and expose an explicit
-native suite with the appropriate generated targets. `tests_darwin`
-works for its registered native targets; #608 adds a static native
-filesystem qualification target using that existing convention.
+- **Directory test setup needs a real `symlink()` (2026-10-09, #620).**
+  `lib/dir_test.w` stops in `dt_setup` because the Darwin syscall is still a
+  stub returning -1. `mac_build_test` validates listing/hashing with a
+  shell-created symlink; implement the syscall and run the full directory
+  API test natively before claiming that broader coverage.
 
 The Linux-container fallback also needs a prerequisite check (2026-10-09,
 #493): this `w-dev` image has no `git`, so `parser_generator_w_test` cannot
@@ -576,27 +572,6 @@ cross-host workflow instead of failing after unrelated tests have run.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
-- **wexec directory hashing is Linux-layout only.** Found while porting
-  the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
-  getdents record layout, so on macOS — where the `getdents` shim
-  returns raw Darwin `getdirentries64` records (see the NOTE in
-  `lib/__arch__/arm64_darwin/syscalls.w`) — a directory input silently
-  hashes as an empty file list. The darwin build targets therefore
-  declare no directory `"inputs"` (FORCE-style, always run). To unlock
-  content-hash caching on macOS, add per-arch dirent accessors
-  (`reclen`/`name`/`kind`) next to each `getdents` shim in
-  `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-  Partially addressed (2026-07-25): the silent misparse is gone —
-  `tools/__arch__/*/wexec_platform.w`'s `wexec_dirents_supported()`
-  reports the layout gap per target, and `wexec_collect_dir` now warns
-  once ("directory inputs are not hashed on this platform") and treats
-  the directory as empty instead of parsing Darwin records with Linux
-  offsets. The per-arch accessors now exist: `lib/dir.w` reads through
-  `lib/__arch__/<target>/dirent.w`, which decodes getdirentries64 on
-  arm64_darwin. What is still open is validating that decoding on a Mac
-  (run `lib/dir_test.w` natively), then flipping the darwin
-  `wexec_dirents_supported()` to 1 and giving the darwin targets
-  `"inputs"`.
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all

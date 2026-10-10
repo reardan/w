@@ -573,6 +573,13 @@ seeds — is `docs/release.md`.
   and `symbols`) searches explicit roots first. With roots,
   `deps --json` reports shadowed duplicates as `"shadows"`.
   `docs/projects/compilation_model.md` §7 has the details.
+- On Apple Silicon macOS, `./wbuild tests` runs the qualified `tests_darwin`
+  suite (including the compiler fixpoint) and prints how many targets from the
+  cross-platform suite were excluded. This does not claim Linux/Windows/Wasm
+  runtime coverage. Source discovery, `./wbuild wtest`, focused selection and
+  `bin/wtest archs <file> --check` use the native compiler while preserving
+  compilation targets. Use `--available` when selecting runnable targets;
+  `test_changed` includes it. See [native planning](docs/projects/wexec.md).
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Selection is manifest-driven: `bin/wtest`
