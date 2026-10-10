@@ -1729,9 +1729,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			print_error(c"': ")
 			translate_syscall_failure(output_fd)
 			exit(1)
-		partial_output_path = output_path
+		# A device such as -o /dev/null is not a partial executable: never
+		# unlink it on a later error (as root that deletes the device, and
+		# the next O_CREAT open recreates it as a regular file that other
+		# processes' output then lands in).
+		if (starts_with(output_path, c"/dev/") == 0): partial_output_path = output_path
 	if (check_mode):
-		output_fd = open(c"/dev/null", 577, 493)
+		# O_WRONLY only: never create /dev/null as a regular file.
+		output_fd = open(c"/dev/null", 1, 0)
 		if (output_fd < 0):
 			# Windows: /dev/null does not exist; use the NUL device instead
 			output_fd = open(c"NUL", 577, 493)
