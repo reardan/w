@@ -30,9 +30,26 @@ struct js_value:
 	js_value* value
 	int immutable
 	int initialized
+	js_value* prototype
+	js_value* getter
+	js_value* setter
+	int accessor
+	int writable
+	int enumerable
+	int configurable
+	void* host_context
+	int host_get
+	int host_set
+	int host_receiver
+	js_value* this_value
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
+# Null getter result and zero setter result delegate to ordinary properties.
+# Negative setter result signals rejection. Keys/context are borrowed.
+type js_host_getter = fn(void*, void*, js_value*, js_text*) -> js_value*
+type js_host_setter = fn(void*, void*, js_value*, js_text*, js_value*) -> int
+type js_host_receiver_function = fn(void*, void*, js_value*, list[js_value*]) -> js_value*
 
 
 # status: normal=0, return=1 (internal), throw=2, break=3, continue=4
@@ -60,6 +77,15 @@ struct js_runtime:
 	int max_source_bytes
 	js_parse_limits* parse_limits
 	int remaining
+	int empty
+
+
+js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key);
+int js_runtime_member_write(js_runtime* rt, js_value* object, js_text* key, js_value* value);
+js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args);
+int js_runtime_same_value(js_value* a, js_value* b);
+js_value* js_runtime_error_value(js_runtime* rt, char* message);
+int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
 void js_runtime_fail(js_runtime* rt, int status, char* message):
@@ -67,6 +93,7 @@ void js_runtime_fail(js_runtime* rt, int status, char* message):
 	rt.completion.status = status
 	rt.completion.message = message
 	rt.completion.value = rt.undefined_value
+	if (status == 2): rt.completion.value = js_runtime_error_value(rt, message)
 
 
 js_value* js_runtime_alloc(js_runtime* rt, int kind):
@@ -88,6 +115,18 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.value = 0
 	value.immutable = 0
 	value.initialized = 1
+	value.prototype = 0
+	value.getter = 0
+	value.setter = 0
+	value.accessor = 0
+	value.writable = 1
+	value.enumerable = 1
+	value.configurable = 1
+	value.host_context = 0
+	value.host_get = 0
+	value.host_set = 0
+	value.host_receiver = 0
+	value.this_value = 0
 	rt.heap.push(value)
 	return value
 
@@ -138,6 +177,12 @@ int js_runtime_put(js_runtime* rt, js_value* object, js_text* key, js_value* val
 		property.key = js_text_clone(key)
 		property.immutable = 0
 		property.initialized = 1
+		property.accessor = 0
+		property.writable = 1
+		property.enumerable = 1
+		property.configurable = 1
+		property.getter = 0
+		property.setter = 0
 		object.properties.push(property)
 	else if (property.immutable):
 		js_runtime_fail(rt, 2, c"assignment to constant binding")
@@ -153,7 +198,7 @@ js_text* js_runtime_key(char* text):
 int js_runtime_set(js_runtime* rt, js_value* object, char* key, js_value* value):
 	js_text* text = js_runtime_key(key)
 	if (text == 0): return 0
-	int ok = js_runtime_put(rt, object, text, value)
+	int ok = js_runtime_member_write(rt, object, text, value)
 	js_text_free(text)
 	return ok
 
@@ -162,10 +207,33 @@ js_value* js_runtime_get(js_runtime* rt, js_value* object, char* key):
 	if (object == 0 || object.owner != rt): return rt.undefined_value
 	js_text* text = js_runtime_key(key)
 	if (text == 0): return rt.undefined_value
-	js_value* property = js_runtime_property(object, text)
+	js_value* value = js_runtime_member_read(rt, object, text)
 	js_text_free(text)
-	if (property == 0): return rt.undefined_value
-	return property.value
+	return value
+
+
+# Minimal typed runtime errors. Full Error intrinsics/prototypes are separate;
+# allocation failure while reporting an error remains bounded.
+js_value* js_runtime_error_value(js_runtime* rt, char* message):
+	if (rt.max_values - rt.heap.length < 3 || rt.max_properties < 2 || strlen(message) > rt.max_properties || rt.max_properties < 14): return rt.undefined_value
+	char* name = c"TypeError"
+	if (strcmp(message, c"uninitialized or missing binding") == 0): name = c"ReferenceError"
+	if (strcmp(message, c"duplicate lexical binding") == 0 || strcmp(message, c"duplicate callable binding") == 0): name = c"SyntaxError"
+	js_value* error = js_runtime_alloc(rt, 5)
+	js_text* key = js_runtime_key(name)
+	js_value* label = js_runtime_string(rt, key)
+	js_text_free(key)
+	key = js_runtime_key(message)
+	js_value* detail = js_runtime_string(rt, key)
+	js_text_free(key)
+	# Error creation bypasses host operations and cannot invoke user code.
+	key = js_runtime_key(c"name")
+	js_runtime_put(rt, error, key, label)
+	js_text_free(key)
+	key = js_runtime_key(c"message")
+	js_runtime_put(rt, error, key, detail)
+	js_text_free(key)
+	return error
 
 
 js_runtime* js_runtime_new():
@@ -187,6 +255,7 @@ js_runtime* js_runtime_new():
 	rt.max_source_bytes = 1048576
 	rt.parse_limits = js_parse_limits_new()
 	rt.remaining = 0
+	rt.empty = 1
 	rt.undefined_value = 0
 	rt.undefined_value = js_runtime_alloc(rt, 0)
 	rt.global = js_runtime_alloc(rt, 8)
@@ -242,7 +311,12 @@ int js_runtime_collect(js_runtime* rt):
 	while (pending.length > 0):
 		js_value* value = pending.pop()
 		js_runtime_mark(pending, value.parent)
-		for i in range(value.properties.length): js_runtime_mark(pending, value.properties[i].value)
+		js_runtime_mark(pending, value.prototype)
+		js_runtime_mark(pending, value.this_value)
+		for i in range(value.properties.length):
+			js_runtime_mark(pending, value.properties[i].value)
+			js_runtime_mark(pending, value.properties[i].getter)
+			js_runtime_mark(pending, value.properties[i].setter)
 	__w_list_free(cast(__w_list*, pending))
 	int live = 0
 	int before = rt.heap.length
@@ -317,6 +391,15 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	if (callable == rt.undefined_value): return callable
 	callable.code = node
 	callable.parent = env
+	js_text* name = js_runtime_key(node.text)
+	js_value* name_value = js_runtime_string(rt, name)
+	js_text_free(name)
+	name = js_runtime_key(c"name")
+	js_runtime_define_data(rt, callable, name, name_value, 0, 0, 1)
+	js_text_free(name)
+	name = js_runtime_key(c"length")
+	js_runtime_define_data(rt, callable, name, js_runtime_number(rt, cast(float64, node.children[0].children.length)), 0, 0, 1)
+	js_text_free(name)
 	if (js_kind(node, c"function_expression") && strlen(node.text) > 0):
 		callable.parent = js_runtime_environment(rt, env)
 		js_runtime_set(rt, callable.parent, node.text, callable)
@@ -447,8 +530,155 @@ int js_runtime_key_is(js_text* key, char* name):
 	return 1
 
 
+# Object internal operations. Environments keep their own parent/binding path;
+# prototype never aliases a closure's environment link.
+int js_runtime_object(js_value* value):
+	return value != 0 && (value.kind == 5 || value.kind == 6 || value.kind == 7 || value.kind == 9)
+
+
+int js_runtime_set_prototype(js_runtime* rt, js_value* object, js_value* prototype):
+	if (js_runtime_object(object) == 0 || object.owner != rt): return 0
+	if (prototype != 0 && (js_runtime_object(prototype) == 0 || prototype.owner != rt)): return 0
+	js_value* current = prototype
+	int depth = 0
+	while (current != 0):
+		if (current == object): return 0
+		depth = depth + 1
+		if (depth >= rt.max_depth):
+			js_runtime_fail(rt, 5, c"JavaScript prototype depth limit")
+			return 0
+		current = current.prototype
+	object.prototype = prototype
+	return 1
+
+
+int js_runtime_set_host_hooks(js_runtime* rt, js_value* object, void* context, js_host_getter* getter, js_host_setter* setter):
+	if (js_runtime_object(object) == 0 || object.owner != rt): return 0
+	object.host_context = context
+	object.host_get = cast(int, getter)
+	object.host_set = cast(int, setter)
+	return 1
+
+
+js_value* js_runtime_host_callable(js_runtime* rt, void* context, js_host_receiver_function* callback):
+	if (callback == 0): return rt.undefined_value
+	js_value* callable = js_runtime_alloc(rt, 9)
+	if (callable != rt.undefined_value):
+		callable.host = cast(int, callback)
+		callable.host_receiver = 1
+		callable.host_context = context
+	return callable
+
+
+# Fully specified descriptors, not partial ECMAScript descriptor records.
+# Attributes are booleans. A null getter/setter denotes its absence.
+int js_runtime_define(js_runtime* rt, js_value* object, js_text* key, js_value* value, js_value* getter, js_value* setter, int accessor, int writable, int enumerable, int configurable):
+	if (js_runtime_object(object) == 0 || object.owner != rt || key == 0): return 0
+	if (value == 0 || value.owner != rt): return 0
+	if (getter != 0 && (getter.owner != rt || (getter.kind != 7 && getter.kind != 9))): return 0
+	if (setter != 0 && (setter.owner != rt || (setter.kind != 7 && setter.kind != 9))): return 0
+	js_value* property = js_runtime_property(object, key)
+	if (property != 0 && property.configurable == 0):
+		if (configurable || enumerable != property.enumerable || accessor != property.accessor): return 0
+		if (accessor):
+			if (getter != property.getter || setter != property.setter): return 0
+		else if (property.writable == 0):
+			if (writable || js_runtime_same_value(property.value, value) == 0): return 0
+	if (property == 0):
+		if (js_runtime_put(rt, object, key, value) == 0): return 0
+		property = js_runtime_property(object, key)
+	property.value = value
+	property.getter = getter
+	property.setter = setter
+	property.accessor = accessor != 0
+	property.writable = writable != 0
+	property.enumerable = enumerable != 0
+	property.configurable = configurable != 0
+	return 1
+
+
+int js_runtime_same_value(js_value* a, js_value* b):
+	if (a.kind == 3 && b.kind == 3):
+		if (f64is_nan(a.number) && f64is_nan(b.number)): return 1
+		if (a.number == 0.0 && b.number == 0.0): return float64_bits(a.number) == float64_bits(b.number)
+	return js_runtime_equal(a, b)
+
+
+int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable):
+	return js_runtime_define(rt, object, key, value, 0, 0, 0, writable, enumerable, configurable)
+
+
+int js_runtime_define_accessor(js_runtime* rt, js_value* object, js_text* key, js_value* getter, js_value* setter, int enumerable, int configurable):
+	return js_runtime_define(rt, object, key, rt.undefined_value, getter, setter, 1, 0, enumerable, configurable)
+
+
+int js_runtime_delete(js_runtime* rt, js_value* object, js_text* key):
+	if (js_runtime_object(object) == 0 || object.owner != rt || key == 0): return 0
+	for i in range(object.properties.length):
+		js_value* property = object.properties[i]
+		if (js_text_equal(property.key, key)):
+			if (property.configurable == 0): return 0
+			js_text_free(property.key)
+			free(property)
+			for j in range(i, object.properties.length - 1): object.properties[j] = object.properties[j + 1]
+			object.properties.pop()
+			return 1
+	return 1
+
+
+# Property callbacks cannot collect or reenter evaluation, including when a
+# host initiates a read outside evaluation. Recursive hooks share depth/budget.
+int js_runtime_property_enter(js_runtime* rt):
+	if (rt.depth >= rt.max_depth || (rt.running && rt.remaining <= 0)):
+		js_runtime_fail(rt, 5, c"JavaScript property execution limit")
+		return 0
+	if (rt.running == 0): rt.remaining = 10000
+	rt.remaining = rt.remaining - 1
+	rt.depth = rt.depth + 1
+	rt.running = rt.running + 1
+	return 1
+
+
+void js_runtime_property_leave(js_runtime* rt):
+	rt.depth = rt.depth - 1
+	rt.running = rt.running - 1
+
+
+js_value* js_runtime_read_receiver(js_runtime* rt, js_value* object, js_text* key, js_value* receiver):
+	if (key == 0 || object == 0 || object.owner != rt || receiver == 0 || receiver.owner != rt): return rt.undefined_value
+	js_value* current = object
+	int depth = 0
+	while (current != 0):
+		depth = depth + 1
+		if (depth > rt.max_depth):
+			js_runtime_fail(rt, 5, c"JavaScript prototype depth limit")
+			return rt.undefined_value
+		if (current.host_get != 0):
+			if (js_runtime_property_enter(rt) == 0): return rt.undefined_value
+			js_host_getter* callback = cast(js_host_getter*, current.host_get)
+			js_value* value = callback(rt, current.host_context, receiver, key)
+			js_runtime_property_leave(rt)
+			if (rt.completion.status != 0): return rt.undefined_value
+			if (value != 0):
+				if (value.owner == rt): return value
+				js_runtime_fail(rt, 2, c"host getter returned a foreign value")
+				return rt.undefined_value
+		js_value* property = js_runtime_property(current, key)
+		if (property != 0):
+			if (property.accessor == 0): return property.value
+			if (property.getter == 0): return rt.undefined_value
+			if (js_runtime_property_enter(rt) == 0): return rt.undefined_value
+			list[js_value*] arguments = new list[js_value*]
+			js_value* value = js_runtime_call_receiver(rt, property.getter, receiver, arguments)
+			__w_list_free(cast(__w_list*, arguments))
+			js_runtime_property_leave(rt)
+			return value
+		current = current.prototype
+	return rt.undefined_value
+
+
 js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key):
-	if (key == 0): return rt.undefined_value
+	if (key == 0 || object == 0 || object.owner != rt): return rt.undefined_value
 	if (js_runtime_key_is(key, c"length")):
 		if (object.kind == 6): return js_runtime_number(rt, cast(float64, object.array_length))
 		if (object.kind == 4): return js_runtime_number(rt, cast(float64, object.text.units.length))
@@ -461,29 +691,69 @@ js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key)
 			js_text_free(unit)
 			return value
 		return rt.undefined_value
+	if (object.kind == 2 || object.kind == 3): return rt.undefined_value
 	if (object.kind < 5 || object.kind > 9):
 		js_runtime_fail(rt, 2, c"property receiver is not an object")
 		return rt.undefined_value
-	js_value* property = js_runtime_property(object, key)
-	if (property == 0): return rt.undefined_value
-	return property.value
+	return js_runtime_read_receiver(rt, object, key, object)
+
+
+int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js_value* value, js_value* receiver):
+	if (object == 0 || object.owner != rt || value == 0 || value.owner != rt || receiver == 0 || receiver.owner != rt || key == 0): return 0
+	js_value* current = object
+	int depth = 0
+	while (current != 0):
+		depth = depth + 1
+		if (depth > rt.max_depth):
+			js_runtime_fail(rt, 5, c"JavaScript prototype depth limit")
+			return 0
+		if (current.host_set != 0):
+			if (js_runtime_property_enter(rt) == 0): return 0
+			js_host_setter* callback = cast(js_host_setter*, current.host_set)
+			int handled = callback(rt, current.host_context, receiver, key, value)
+			js_runtime_property_leave(rt)
+			if (rt.completion.status != 0): return 0
+			if (handled > 0): return 1
+			if (handled < 0):
+				js_runtime_fail(rt, 2, c"host property write rejected")
+				return 0
+		js_value* property = js_runtime_property(current, key)
+		if (property != 0):
+			if (property.accessor):
+				if (property.setter == 0): return 0
+				if (js_runtime_property_enter(rt) == 0): return 0
+				list[js_value*] arguments = new list[js_value*]
+				arguments.push(value)
+				js_runtime_call_receiver(rt, property.setter, receiver, arguments)
+				__w_list_free(cast(__w_list*, arguments))
+				js_runtime_property_leave(rt)
+				return rt.completion.status == 0
+			if (property.writable == 0): return 0
+			break
+		current = current.prototype
+	js_value* own = js_runtime_property(receiver, key)
+	if (own != 0 && (own.accessor || own.writable == 0)): return 0
+	return js_runtime_put(rt, receiver, key, value)
 
 
 int js_runtime_member_write(js_runtime* rt, js_value* object, js_text* key, js_value* value):
-	if (key == 0): return 0
-	if (object.kind != 5 && object.kind != 6 && object.kind != 7 && object.kind != 9):
+	if (key == 0 || object == 0 || value == 0 || object.owner != rt || value.owner != rt): return 0
+	if (object.kind == 8): return js_runtime_put(rt, object, key, value)
+	if (js_runtime_object(object) == 0):
 		js_runtime_fail(rt, 2, c"property receiver is not mutable")
 		return 0
+	int index = -1
 	if (object.kind == 6):
 		if (js_runtime_key_is(key, c"length")):
 			js_runtime_fail(rt, 6, c"array length assignment is outside the runtime subset")
 			return 0
-		int index = js_runtime_array_index(key)
+		index = js_runtime_array_index(key)
 		if (index >= rt.max_properties):
 			js_runtime_fail(rt, 5, c"JavaScript array length limit")
 			return 0
-		if (index >= object.array_length): object.array_length = index + 1
-	return js_runtime_put(rt, object, key, value)
+	int ok = js_runtime_write_receiver(rt, object, key, value, object)
+	if (ok && index >= object.array_length): object.array_length = index + 1
+	return ok
 
 
 js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
@@ -525,10 +795,15 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	return value
 
 
-js_value* js_runtime_call(js_runtime* rt, js_value* callable, list[js_value*] args):
+js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args):
 	if (callable.kind == 9):
-		js_host_function* callback = cast(js_host_function*, callable.host)
-		js_value* value = callback(rt, args)
+		js_value* value = rt.undefined_value
+		if (callable.host_receiver):
+			js_host_receiver_function* callback = cast(js_host_receiver_function*, callable.host)
+			value = callback(rt, callable.host_context, receiver, args)
+		else:
+			js_host_function* callback = cast(js_host_function*, callable.host)
+			value = callback(rt, args)
 		if (value == 0 || value.owner != rt):
 			js_runtime_fail(rt, 2, c"host returned a foreign or null value")
 			return rt.undefined_value
@@ -537,6 +812,7 @@ js_value* js_runtime_call(js_runtime* rt, js_value* callable, list[js_value*] ar
 		js_runtime_fail(rt, 2, c"value is not callable")
 		return rt.undefined_value
 	js_value* env = js_runtime_environment(rt, callable.parent)
+	if (env != rt.undefined_value): env.this_value = receiver
 	js_node* parameters = callable.code.children[0]
 	for i in range(parameters.children.length):
 		js_value* argument = rt.undefined_value
@@ -587,12 +863,14 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 		js_runtime_eval_node(rt, init, scope)
 		if (lexical && rt.completion.status == 0): scope = js_runtime_iteration(rt, scope)
 	int first = 1
+	js_value* result = rt.undefined_value
 	while (rt.completion.status == 0):
 		if ((is_do == 0 || first == 0) && js_kind(condition, c"empty") == 0):
 			js_value* test = js_runtime_eval_node(rt, condition, scope)
 			if (rt.completion.status != 0 || js_runtime_truth(test) == 0): break
 		first = 0
-		js_runtime_eval_node(rt, body, scope)
+		js_value* body_value = js_runtime_eval_node(rt, body, scope)
+		if (rt.empty == 0): result = body_value
 		if (rt.completion.status == 3):
 			rt.completion.status = 0
 			break
@@ -601,7 +879,8 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 		if (is_for):
 			if (lexical): scope = js_runtime_iteration(rt, scope)
 			js_runtime_eval_node(rt, node.children[2], scope)
-	return rt.undefined_value
+	rt.empty = 0
+	return result
 
 
 js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
@@ -627,8 +906,11 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				rt.completion.status = saved_status
 				rt.completion.value = saved_value
 				rt.completion.message = saved_message
+		rt.empty = 0
 		return value
-	if (js_kind(node, c"empty")): return rt.undefined_value
+	if (js_kind(node, c"empty")):
+		rt.empty = 1
+		return rt.undefined_value
 	if (js_kind(node, c"number")):
 		int consumed = 0
 		float64 number = parse_float64(node.text, &consumed)
@@ -643,6 +925,12 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		return value
 	if (js_kind(node, c"string_utf16")): return js_runtime_string(rt, node.string_units)
 	if (js_kind(node, c"literal")):
+		if (strcmp(node.text, c"this") == 0):
+			js_value* scope = env
+			while (scope != 0):
+				if (scope.this_value != 0): return scope.this_value
+				scope = scope.parent
+			return rt.undefined_value
 		if (strcmp(node.text, c"null") == 0): return js_runtime_alloc(rt, 1)
 		return js_runtime_boolean(rt, strcmp(node.text, c"true") == 0)
 	if (js_kind(node, c"identifier")):
@@ -652,15 +940,22 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			return rt.undefined_value
 		return property.value
 	if (js_kind(node, c"function_expression")): return js_runtime_function(rt, node, env)
-	if (js_kind(node, c"function")): return rt.undefined_value
+	if (js_kind(node, c"function")):
+		rt.empty = 1
+		return rt.undefined_value
 	if (js_kind(node, c"program") || js_kind(node, c"block")):
 		js_value* scope = env
 		if (js_kind(node, c"block")): scope = js_runtime_environment(rt, env)
 		js_runtime_declare(rt, node, scope)
 		js_value* result = rt.undefined_value
+		int empty = 1
 		for i in range(count):
 			if (rt.completion.status != 0): break
-			result = js_runtime_eval_node(rt, node.children[i], scope)
+			js_value* value = js_runtime_eval_node(rt, node.children[i], scope)
+			if (rt.empty == 0):
+				result = value
+				empty = 0
+		rt.empty = empty
 		return result
 	if (js_kind(node, c"variable")):
 		for i in range(count):
@@ -674,8 +969,12 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				break
 			binding.value = value
 			binding.initialized = 1
+		rt.empty = 1
 		return rt.undefined_value
-	if (js_kind(node, c"expression_statement")): return js_runtime_eval_node(rt, node.children[0], env)
+	if (js_kind(node, c"expression_statement")):
+		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
+		rt.empty = 0
+		return value
 	if (js_kind(node, c"return") || js_kind(node, c"throw")):
 		js_value* value = rt.undefined_value
 		if (count > 0): value = js_runtime_eval_node(rt, node.children[0], env)
@@ -689,13 +988,16 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"break") || js_kind(node, c"continue")):
 		rt.completion.status = 3
 		if (js_kind(node, c"continue")): rt.completion.status = 4
+		rt.empty = 1
 		return rt.undefined_value
 	if (js_kind(node, c"if") || js_kind(node, c"conditional")):
 		js_value* condition = js_runtime_eval_node(rt, node.children[0], env)
 		if (rt.completion.status != 0): return rt.undefined_value
-		if (js_runtime_truth(condition)): return js_runtime_eval_node(rt, node.children[1], env)
-		if (count == 3): return js_runtime_eval_node(rt, node.children[2], env)
-		return rt.undefined_value
+		js_value* value = rt.undefined_value
+		if (js_runtime_truth(condition)): value = js_runtime_eval_node(rt, node.children[1], env)
+		else if (count == 3): value = js_runtime_eval_node(rt, node.children[2], env)
+		rt.empty = 0
+		return value
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
 	if (js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")): return js_runtime_assign(rt, node, env)
 	if (js_kind(node, c"binary")):
@@ -749,13 +1051,22 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_text_free(key)
 		return object
 	if (js_kind(node, c"call")):
-		js_value* callable = js_runtime_eval_node(rt, node.children[0], env)
+		js_node* target = node.children[0]
+		js_value* receiver = rt.undefined_value
+		js_value* callable = rt.undefined_value
+		if (js_kind(target, c"member") || js_kind(target, c"computed_member")):
+			receiver = js_runtime_eval_node(rt, target.children[0], env)
+			if (rt.completion.status == 0):
+				js_text* key = js_runtime_member_key(rt, target, env)
+				callable = js_runtime_member_read(rt, receiver, key)
+				js_text_free(key)
+		else: callable = js_runtime_eval_node(rt, target, env)
 		list[js_value*] arguments = new list[js_value*]
 		for i in range(1, count):
 			if (rt.completion.status != 0): break
 			arguments.push(js_runtime_eval_node(rt, node.children[i], env))
 		js_value* result = rt.undefined_value
-		if (rt.completion.status == 0): result = js_runtime_call(rt, callable, arguments)
+		if (rt.completion.status == 0): result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return result
 	js_runtime_fail(rt, 6, c"unsupported AST node")
@@ -770,6 +1081,7 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 	rt.remaining = rt.remaining - 1
 	rt.completion.steps = rt.completion.steps + 1
 	rt.depth = rt.depth + 1
+	rt.empty = 0
 	js_value* value = js_runtime_eval_impl(rt, node, env)
 	rt.depth = rt.depth - 1
 	return value
@@ -787,7 +1099,6 @@ int js_runtime_supported(js_node* node):
 		if (consumed != strlen(node.text)): return 0
 		if (node.text[0] == '0' && node.text[1] >= '0' && node.text[1] <= '9'): return 0
 	if (strcmp(kind, c"variable") == 0 && strcmp(node.text, c"var") == 0): return 0
-	if (strcmp(kind, c"literal") == 0 && strcmp(node.text, c"this") == 0): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
 	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0): return 0
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0): return 0
@@ -815,10 +1126,13 @@ int js_runtime_begin(js_runtime* rt, int budget):
 # Call a borrowed same-instance function with borrowed same-instance arguments.
 # The host roots retained functions/arguments across intervening collection.
 # Invocation consumes one step plus AST visits, and retains no new script AST.
-js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_value*] arguments, int budget):
+js_completion* js_runtime_invoke_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] arguments, int budget):
 	if (js_runtime_begin(rt, budget) == 0): return 0
 	if (budget <= 0 || rt.max_depth <= 0):
 		js_runtime_fail(rt, 5, c"JavaScript execution limit")
+		return rt.completion
+	if (receiver == 0 || receiver.owner != rt):
+		js_runtime_fail(rt, 2, c"foreign or null receiver")
 		return rt.completion
 	if (callable == 0 || callable.owner != rt):
 		js_runtime_fail(rt, 2, c"foreign or null callable")
@@ -838,7 +1152,7 @@ js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_val
 	rt.completion.steps = 1
 	rt.depth = 1
 	rt.running = 1
-	js_value* value = js_runtime_call(rt, callable, arguments)
+	js_value* value = js_runtime_call_receiver(rt, callable, receiver, arguments)
 	rt.running = 0
 	rt.depth = 0
 	if (rt.completion.status == 0): rt.completion.value = value
@@ -871,3 +1185,11 @@ js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int bud
 	rt.running = 0
 	if (rt.completion.status == 0): rt.completion.value = value
 	return rt.completion
+
+
+js_value* js_runtime_call(js_runtime* rt, js_value* callable, list[js_value*] arguments):
+	return js_runtime_call_receiver(rt, callable, rt.undefined_value, arguments)
+
+
+js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_value*] arguments, int budget):
+	return js_runtime_invoke_receiver(rt, callable, rt.undefined_value, arguments, budget)
