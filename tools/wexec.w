@@ -420,6 +420,8 @@ int wexec_selector_word(char* word):
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
 	if (strcmp(word, c"arm64_darwin") == 0): return 1
+	if (strcmp(word, c"arm64_ios") == 0): return 1
+	if (strcmp(word, c"arm64_ios_sim") == 0): return 1
 	if (strcmp(word, c"win64") == 0): return 1
 	if (strcmp(word, c"wasm") == 0): return 1
 	return 0
@@ -619,7 +621,8 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 	# other arch runs the binary straight or through the same wrapper
 	# tools/wbuildgen.w's wbg_make_target uses for its conventional
 	# twins.
-	if (ends_with(path, c"_test.w") && (strcmp(arch, c"arm64_darwin") != 0)):
+	int apple = (strcmp(arch, c"arm64_darwin") == 0) || (strcmp(arch, c"arm64_ios") == 0) || (strcmp(arch, c"arm64_ios_sim") == 0)
+	if (ends_with(path, c"_test.w") && (apple == 0)):
 		json_value* run_cmd = json_array()
 		if (strcmp(arch, c"arm64") == 0):
 			json_array_push(run_cmd, json_string(c"bin/wrun"))
@@ -1371,9 +1374,7 @@ process_result* wexec_windows_builtin(char** argv, int count):
 
 
 int wexec_is_target_selector(char* arg):
-	if ((strcmp(arg, c"x64") == 0) || (strcmp(arg, c"arm64") == 0) || (strcmp(arg, c"arm64_darwin") == 0)):
-		return 1
-	return (strcmp(arg, c"win64") == 0) || (strcmp(arg, c"wasm") == 0)
+	return wexec_selector_word(arg)
 
 
 # Windows: manifest steps compile host tools with a bare 'bin/wv2 f.w -o

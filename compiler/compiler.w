@@ -680,6 +680,8 @@ int target_is_selector(char* arg):
 	if (strcmp(arg, c"x64") == 0): return 1
 	if (strcmp(arg, c"arm64") == 0): return 1
 	if (strcmp(arg, c"arm64_darwin") == 0): return 1
+	if (strcmp(arg, c"arm64_ios") == 0): return 1
+	if (strcmp(arg, c"arm64_ios_sim") == 0): return 1
 	if (strcmp(arg, c"win64") == 0): return 1
 	if (strcmp(arg, c"wasm") == 0): return 1
 	return 0
@@ -748,8 +750,14 @@ int target_selector_apply(char* arg):
 		# drops such writes and every import stays unresolved.
 		data_split = 1
 		return 1
-	if (strcmp(arg, c"arm64_darwin") == 0):
-		if (quiet_mode == 0): println2(c"Compiling in arm64_darwin mode")
+	if ((strcmp(arg, c"arm64_darwin") == 0) || (strcmp(arg, c"arm64_ios") == 0) || (strcmp(arg, c"arm64_ios_sim") == 0)):
+		if (quiet_mode == 0):
+			print2(c"Compiling in ")
+			print2(arg)
+			println2(c" mode")
+		target_apple_platform = 1
+		if (strcmp(arg, c"arm64_ios") == 0): target_apple_platform = 2
+		if (strcmp(arg, c"arm64_ios_sim") == 0): target_apple_platform = 7
 		# Same A64 instruction emitter and 64-bit type system as the
 		# arm64 (Linux) target; target_os selects the Darwin syscall
 		# stubs and the Mach-O container writer (Stage 4).
@@ -1096,12 +1104,14 @@ void help_selectors():
 	println(c"  x64           64-bit x86-64 Linux ELF")
 	println(c"  arm64         64-bit AArch64 Linux ELF")
 	println(c"  arm64_darwin  64-bit AArch64 macOS Mach-O (self-signed)")
+	println(c"  arm64_ios     64-bit AArch64 iOS Mach-O (requires app signing)")
+	println(c"  arm64_ios_sim 64-bit AArch64 iOS Simulator Mach-O")
 	println(c"  win64         64-bit x86-64 Windows PE")
 	println(c"  wasm          32-bit wasm32 + WASI module")
 
 
 void help_link():
-	println(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
+	println(c"usage: w [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
 	println(c"")
 	println(c"Compile W source files into a native executable. Without -o the")
 	println(c"executable bytes are written to stdout.")
@@ -1124,7 +1134,7 @@ void help_link():
 
 
 void help_check():
-	println(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile without writing an executable. Diagnostics go to stderr; with")
 	println(c"--json each becomes one NDJSON record on stdout. Empty output with")
@@ -1151,7 +1161,7 @@ void help_check():
 
 
 void help_deps():
-	println(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w deps [--json] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile like 'w check', then print the path of every file in the")
 	println(c"program's transitive import closure (the root, every import, and the")
@@ -1166,7 +1176,7 @@ void help_deps():
 
 
 void help_symbols():
-	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile like 'w check', then dump the global symbol table and the")
 	println(c"user-declared types with their declaration locations.")
@@ -1187,7 +1197,7 @@ void help_symbols():
 
 
 void help_defhash():
-	println(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile like 'w check', then print one NDJSON record per top-level")
 	println(c"definition declared in the root file(s): file, name, kind, a sha256")
@@ -1273,7 +1283,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	code_fixed = 0
 	code_fixed_error_hook = 0
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
+		println2(c"usage: w [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
 		println2(c"run 'w --help' for details")
 		exit(1)
 	int i = start_index
@@ -1282,6 +1292,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	diag_word_size = word_size
 	target_isa = 0
 	target_os = 0
+	target_apple_platform = 1
 	# W^X (docs/projects/wx_split.md Stage C): every file target now
 	# splits read-execute text from read-write data, the default x86
 	# target included. The in-process REPL and wdbg never come through
@@ -1976,14 +1987,14 @@ int check_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w check --help' for details")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
 
 /*
-w deps [--json] [x64|arm64|arm64_darwin|win64] <file.w>...
+w deps [--json] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints the path of
 every file in the program's transitive import closure — the root file,
@@ -2080,7 +2091,7 @@ int deps_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w deps --help' for details")
 		exit(1)
 	deps_mode = 1
@@ -2090,7 +2101,7 @@ int deps_main(int argc, int argv):
 
 
 /*
-w defhash [--closure] [x64|arm64|arm64_darwin|win64] <file.w>...
+w defhash [--closure] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints one NDJSON
 record per top-level definition (function, global variable, struct,
@@ -2530,7 +2541,7 @@ int defhash_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w defhash --help' for details")
 		exit(1)
 	defhash_mode = 1
@@ -2541,7 +2552,7 @@ int defhash_main(int argc, int argv):
 
 
 /*
-w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64] <file.w>...
+w symbols [--json] [--layout] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then dumps the global symbol
 table and user-declared types with their declaration locations. --json emits
@@ -2626,7 +2637,10 @@ void symbols_emit_fields_json(int type_index):
 # to 8), so consult the ISA and OS the selector applied.
 char* symbols_arch_name():
 	if (target_isa == 1):
-		if (target_os == 1): return c"arm64_darwin"
+		if (target_os == 1):
+			if (target_apple_platform == 2): return c"arm64_ios"
+			if (target_apple_platform == 7): return c"arm64_ios_sim"
+			return c"arm64_darwin"
 		return c"arm64"
 	if (target_isa == 2): return c"wasm"
 	if (target_os == 2): return c"win64"
@@ -2805,7 +2819,7 @@ int symbols_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)

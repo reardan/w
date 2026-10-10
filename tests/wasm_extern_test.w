@@ -78,3 +78,8 @@ int main(int argc, int argv):
 # wbuild: step="bin/wv3_64 --streaming arm64_darwin tests/wasm_extern_test.w -o bin/dynamic_import_streaming_host64"
 # wbuild: step="cmp bin/dynamic_import_host32 bin/dynamic_import_streaming_host32"
 # wbuild: step="cmp bin/dynamic_import_host32 bin/dynamic_import_streaming_host64"
+# A narrow output target must not truncate the wider host's library-name
+# pointers. Comparing both hosts also checks the wasm extern import surface.
+# wbuild: step="bin/wv3 wasm tests/wasm_extern_test.w -o bin/dynamic_import_wasm_host32"
+# wbuild: step="bin/wv3_64 wasm tests/wasm_extern_test.w -o bin/dynamic_import_wasm_host64"
+# wbuild: step="cmp bin/dynamic_import_wasm_host32 bin/dynamic_import_wasm_host64"

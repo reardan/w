@@ -52,6 +52,25 @@ void test_custom_manifest_keeps_architecture():
 	json_free(m.root)
 
 
+void test_native_host_preserves_ios_selectors():
+	for i in range(2):
+		char* arch = c"arm64_ios"
+		if (i == 1): arch = c"arm64_ios_sim"
+		manifest* m = bh_manifest()
+		json_value* target = m.by_name[c"cross"]
+		json_value* cmd = bh_command(m, c"cross")
+		json_value* selector = json_array_get(cmd, 1)
+		free(selector.string_value)
+		selector.string_value = strclone(arch)
+		manifest_host_commands(target, 1)
+		cmd = bh_command(m, c"cross")
+		assert_equal(5, json_array_length(cmd))
+		assert_strings_equal(c"bin/wv2_darwin", json_array_get(cmd, 0).string_value)
+		assert_strings_equal(arch, json_array_get(cmd, 1).string_value)
+		assert_strings_equal(c"tests/hello.w", json_array_get(cmd, 2).string_value)
+		json_free(m.root)
+
+
 void test_unavailable_dependency_and_explicit_atomic_output():
 	manifest* m = bh_manifest()
 	json_value* deps = json_array()

@@ -67,6 +67,17 @@ extern void gfx_host_set_frame_callback(int table_index)
 # queue is empty. The queue lives host-side so the frozen snapshot
 # struct needs no ring appended, unlike the native backends.
 extern int gfx_host_next_event(int32* out)
+# Focused editor declaration in logical canvas pixels, once per frame.
+extern void gfx_host_text_input(int active, int multiline, int x, int y, int width, int height, int focus_id)
+extern void gfx_host_pointer_mode(int mode)
+
+
+void gfx_text_input(int active, int multiline, int x, int y, int width, int height, int focus_id):
+	gfx_host_text_input(active, multiline, x, y, width, height, focus_id)
+
+
+void gfx_pointer_mode(int mode):
+	gfx_host_pointer_mode(mode)
 
 
 # "#version" line for shader sources that should compile on every

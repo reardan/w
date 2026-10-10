@@ -14,6 +14,7 @@ import { readFile } from 'node:fs/promises';
 import { WASI } from 'node:wasi';
 import { argv, exit } from 'node:process';
 import { makeEnv } from './webgl_env.mjs';
+import { createRecordingGl } from './recording_gl.mjs';
 
 const fail = (msg) => { console.error(`run_ui_stub: FAIL: ${msg}`); exit(1); };
 const assertEq = (want, got, what) => {
@@ -24,74 +25,7 @@ const framesArg = argv.indexOf('--frames');
 const maxFrames = framesArg >= 0 ? parseInt(argv[framesArg + 1], 10) : 4;
 
 // ---------------------------- recording fake GL ----------------------------
-const calls = {
-  shaderSources: [],
-  linkCount: 0,
-  texImages: [],
-  texParameters: 0,
-  bufferDataBytes: [],
-  drawArrays: [],
-  clearCount: 0,
-};
-let attribCounter = 0;
-const fakeGl = {
-  viewport: () => {},
-  clearColor: () => {},
-  clear: () => calls.clearCount++,
-  enable: () => {},
-  disable: () => {},
-  blendFunc: () => {},
-  getError: () => 0,
-  finish: () => {},
-  pixelStorei: () => {},
-  getParameter: (name) => `fake-webgl(${name})`,
-  readPixels: (x, y, w, h, format, type, out) => out.fill(7),
-  createBuffer: () => ({}),
-  deleteBuffer: () => {},
-  bindBuffer: () => {},
-  bufferData: (target, data, usage) =>
-    calls.bufferDataBytes.push(typeof data === 'number' ? data : data.byteLength),
-  bufferSubData: () => {},
-  createVertexArray: () => ({}),
-  bindVertexArray: () => {},
-  enableVertexAttribArray: () => {},
-  disableVertexAttribArray: () => {},
-  vertexAttribPointer: () => {},
-  drawArrays: (mode, first, count) => calls.drawArrays.push([mode, first, count]),
-  drawElements: () => {},
-  scissor: () => {},
-  createTexture: () => ({}),
-  deleteTexture: () => {},
-  bindTexture: () => {},
-  activeTexture: () => {},
-  texParameteri: () => calls.texParameters++,
-  texImage2D: (target, level, internalFormat, w, h, border, format, type, data) =>
-    calls.texImages.push([internalFormat, w, h, data ? data.byteLength : 0]),
-  texSubImage2D: () => {},
-  createShader: (type) => ({ type }),
-  shaderSource: (shader, source) => calls.shaderSources.push(source),
-  compileShader: () => {},
-  getShaderParameter: (shader, pname) => (pname === 0x8b81 ? true : 0),
-  getShaderInfoLog: () => '',
-  deleteShader: () => {},
-  createProgram: () => ({}),
-  attachShader: () => {},
-  linkProgram: () => calls.linkCount++,
-  getProgramParameter: (program, pname) => (pname === 0x8b82 ? true : 0),
-  getProgramInfoLog: () => '',
-  useProgram: () => {},
-  deleteProgram: () => {},
-  getAttribLocation: () => attribCounter++,
-  getUniformLocation: () => ({}),
-  uniform1i: () => {},
-  uniform1f: () => {},
-  uniform2f: () => {},
-  uniform3f: () => {},
-  uniform4f: () => {},
-  uniformMatrix4fv: (loc, transpose, data) => {
-    if (data.length % 16 !== 0) fail(`uniformMatrix4fv: ${data.length} floats`);
-  },
-};
+const { calls, gl: fakeGl } = createRecordingGl();
 
 // ------------------------------- canvas host --------------------------------
 // The click script: queues delivered before each frame, indexed by the

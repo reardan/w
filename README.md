@@ -434,6 +434,21 @@ Toolchain beyond the compiler:
   (Mach-O, PE) the trace is silently skipped. See `stack_trace_test` and
   `stack_trace_chain_test`.
 
+## Mobile UI
+
+The shared `graphics/ui` widgets run in a mobile browser through wasm/WebGL2.
+On Linux, `./wbuild graphics_ui_mobile_web` builds a responsive form with touch scrolling,
+software-keyboard/Unicode input, safe areas and keyboard-aware sizing. Serve the
+repository and open `/tools/web/?module=/bin/graphics_ui_mobile.wasm`.
+See [the browser host guide](tools/web/README.md) for Mac commands, setup and current limits.
+
+Experimental native iPhone/iPad support uses `arm64_ios` and `arm64_ios_sim`.
+On an Apple Silicon Mac with Xcode, run `./wbuild build_darwin`, then
+`tools/ios/smoke.sh` to build and run a W app
+with native UIKit controls in the simulator. This is a separate controls bridge;
+the GL widget renderer is not yet ported to native iOS. Device installation
+requires signing and provisioning. See [native iOS](docs/projects/ios.md).
+
 ## How the bootstrap works
 
 ```
