@@ -15,6 +15,7 @@ import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import lib.mem
+import graphics.ui.grapheme
 
 
 # Caller-owned single-line text buffer for ui_textbox. text stays
@@ -42,7 +43,7 @@ void ui_textbox_init(ui_textbox_state* st):
 
 void ui_textbox_set(ui_textbox_state* st, char* s):
 	int len = strlen(s)
-	if (len > ui_textbox_capacity): len = ui_textbox_capacity
+	if (len > ui_textbox_capacity): len = ui_grapheme_floor(s, ui_textbox_capacity)
 	mem_copy[char](st.text, s, len)
 	st.text[len] = 0
 	st.length = len
@@ -63,20 +64,21 @@ void ui_textbox_insert(ui_textbox_state* st, int ch):
 	st.length = st.length + n
 	st.caret = st.caret + n
 	st.text[st.length] = 0
+	st.caret = ui_grapheme_ceil(&st.text[0], st.caret)
 
 
-# Delete the whole character before the caret.
+# Delete the whole grapheme before the caret.
 void ui_textbox_backspace(ui_textbox_state* st):
 	if (st.caret == 0): return
-	int from = ui_utf8_prev(&st.text[0], st.caret)
+	int from = ui_grapheme_prev(&st.text[0], st.caret)
 	int n = st.caret - from
 	int i = from
 	while (i + n < st.length):
 		st.text[i] = st.text[i + n]
 		i = i + 1
 	st.length = st.length - n
-	st.caret = from
 	st.text[st.length] = 0
+	st.caret = ui_grapheme_floor(&st.text[0], from)
 
 
 void ui_textbox_mark_edited(ui_textbox_state* st):
@@ -130,10 +132,9 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		while (i < ctx.nav_count):
 			int nav = ctx.navs[i]
 			if ((nav == GFX_NAV_LEFT) && (st.caret > 0)):
-				st.caret = ui_utf8_prev(&st.text[0], st.caret)
+				st.caret = ui_grapheme_prev(&st.text[0], st.caret)
 			else if ((nav == GFX_NAV_RIGHT) && (st.caret < st.length)):
-				int cp = 0
-				st.caret = ui_utf8_next(&st.text[0], st.caret, &cp)
+				st.caret = ui_grapheme_next(&st.text[0], st.caret)
 			else if (nav == GFX_NAV_HOME): st.caret = 0
 			else if (nav == GFX_NAV_END): st.caret = st.length
 			i = i + 1
@@ -162,5 +163,6 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
 		if (caret_w > fit_w): caret_w = fit_w
 		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_w) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
+	ui_text_preedit(ctx, id, r, text_x + cast(float32, ui_text_prefix_width(&st.text[0], st.caret, scale)), ty)
 	ui_text_input_declare(ctx, id, r, 0)
 	return submitted

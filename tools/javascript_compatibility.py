@@ -183,12 +183,38 @@ def consumer_examples(parser: str, builder: str, transform: str, node: str,
              "transformed_execution": after}]
 
 
+def runtime_examples(manifest: dict, node: str, compiler: str, arch: str, work: Path, timeout: float) -> list[dict]:
+    """Compare actual W interpreter completions with a fresh Node Script realm."""
+    runner = work / "runtime-compare"
+    built = run([compiler, arch, "tests/javascript/runtime_compare.w",
+                 "-o", str(runner)], timeout)
+    require(built["exit"] == 0 and not built["timed_out"],
+            "runtime comparison consumer failed to build: " + built["stderr"])
+    wrapper = ("const vm = require('vm'); const fs = require('fs'); "
+               "const result = new vm.Script(fs.readFileSync(0, 'utf8')).runInNewContext(); "
+               "process.stdout.write(String(result) + '\\n');")
+    results = []
+    for entry in manifest["runtime_execution"]:
+        path = work / "runtime.js"
+        path.write_text(entry["source"])
+        actual = run([str(runner), str(path)], timeout)
+        expected = run([node, "-e", wrapper], timeout, entry["source"].encode())
+        passed = (actual["exit"] == expected["exit"] == 0
+                  and not actual["timed_out"] and not expected["timed_out"]
+                  and actual["stdout"] == expected["stdout"] == entry["stdout"])
+        results.append({"name": entry["name"], "passed": passed,
+                        "w": actual, "node": expected})
+    return results
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--parser", default="bin/javascript_inspect")
     ap.add_argument("--builder", default="bin/javascript_build_example")
     ap.add_argument("--transform", default="bin/javascript_transform")
     ap.add_argument("--node", default="node")
+    ap.add_argument("--runtime-compiler", default="bin/wv2")
+    ap.add_argument("--runtime-arch", default="x64")
     ap.add_argument("--report", default="bin/javascript-compatibility.json")
     ap.add_argument("--timeout", type=float, default=15)
     args = ap.parse_args()
@@ -236,18 +262,22 @@ def main() -> int:
             actual = run([node, "--input-type=commonjs"], args.timeout, entry["source"].encode())
             execution.append({"name": entry["name"], "syntax": syntax, "result": actual,
                               "passed": syntax["passed"] and actual["exit"] == 0 and actual["stdout"] == entry["stdout"]})
+        runtime = runtime_examples(manifest, node, str((ROOT / args.runtime_compiler).resolve()),
+                                   args.runtime_arch, work, args.timeout)
         # Execute consumers while their temporary modules and dependencies exist.
         consumers = consumer_examples(parser, builder, transform, node, work, args.timeout)
-    failures = [r["name"] for r in results + growth + execution + consumers if not r["passed"]]
+    failures = [r["name"] for r in results + growth + execution + consumers + runtime if not r["passed"]]
     report = {"node_version": version, "test262_commit": manifest["upstream"]["commit"],
               "adaptation_sites_verified": site_count, "syntax_cases": len(results),
               "syntax_passed": sum(r["passed"] for r in results), "failures": failures,
               "exclusions": manifest["exclusions"], "cases": results, "growth": growth,
-              "controlled_execution": execution, "consumer_examples": consumers}
+              "controlled_execution": execution, "consumer_examples": consumers,
+              "runtime_execution": runtime}
     destination = ROOT / args.report
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(report, indent=2) + "\n")
     print(f"JavaScript syntax: {report['syntax_passed']}/{len(results)}; growth: {sum(r['passed'] for r in growth)}/{len(growth)}; execution: {sum(r['passed'] for r in execution)}/{len(execution)}")
+    print(f"Runtime comparisons: {sum(r['passed'] for r in runtime)}/{len(runtime)}")
     print(f"Consumer examples: {sum(r['passed'] for r in consumers)}/{len(consumers)}")
     print(f"Verified {site_count} upstream adaptation sites; report: {destination}")
     for exclusion in manifest["exclusions"]:

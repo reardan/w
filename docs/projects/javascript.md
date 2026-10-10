@@ -78,13 +78,14 @@ parentheses. Reparse printed output when a validated JavaScript program is
 required: node-shape validation is not a full contextual validator.
 
 The facade supports simple variables, function declarations/expressions and
-parameters, blocks, return, throw, if, while/do/for loops, unlabelled
+parameters, synchronous arrows, blocks, return, throw, if, while/do/for loops,
+lexical `for-of`, unlabelled
 break/continue, try/catch/finally, expressions, assignments and prefix/postfix
 updates, calls/members, dense arrays, ordinary named/string-keyed
 objects (including distinct shorthand properties), templates, simple imports,
 and exported declarations. Lowering preserves escaped non-directive strings so
 printing cannot accidentally introduce a strict-mode directive. Parsing is
-broader: lowering intentionally rejects classes, arrows, async/generator
+broader: lowering intentionally rejects classes, async/generator
 functions, destructuring, rest/default parameters, `new`, optional chains,
 computed/numeric/method object properties, and richer module declarations.
 Node shapes are documented in `libs/extras/javascript/printer.w` and exercised
@@ -96,12 +97,14 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | `for` | empty | initializer, condition, update, body |
 | `break`, `continue` | empty | none |
 | `function_expression` | optional name | parameters, block |
+| `arrow` | empty | parameters, expression or block |
+| `for_of` | `let` or `const` | identifier, iterable expression, body |
 | `try` | empty | block, catch or empty, finally block or empty |
 | `catch` | optional identifier | block |
 | `string_utf16` | empty | none; value in `string_units` |
 
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
-source-backed nodes preserve byte spans. `for-in`, `for-of`, labelled jumps and
+source-backed nodes preserve byte spans. `for-in`, assignment-target/`var` for-of bindings, labelled jumps and
 catch destructuring remain explicit lowering failures. The printer handles
 loop bodies when protecting against a dangling `else`.
 
@@ -174,27 +177,40 @@ The initial semantic subset is deliberately explicit:
 
 - Undefined, null, booleans, binary64 decimal numbers, UTF-16 strings; truthiness,
   strict equality (including NaN), numeric `+ - * /` and comparisons, string
-  concatenation, `!`, numeric unary `+ -`, `void`, `&& || ??`, comma and ternary.
+  concatenation, `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary.
+  `typeof` returns `undefined` for missing names while preserving TDZ failures.
 - `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
   hoisted ordinary function declarations within each block, named/anonymous
-  function expressions, recursive calls, captured mutable environments and
+  function expressions, synchronous arrows with simple parameters and expression
+  or block bodies, recursive calls, captured mutable environments and
   per-iteration `for (let ...)` environments.
 - Dense array literals, bounded index writes and readable `length`; plain data
   objects, shorthand properties, dot/computed property access and mutation.
   String length/indexing use UTF-16 code units.
+- Lexical `for (let/const name of value)` over arrays and strings. Arrays read
+  their live length each iteration; holes yield undefined. Strings iterate Unicode
+  code points, preserving lone surrogates. Each iteration creates a fresh binding
+  for captured closures; the iterable expression sees the binding in its TDZ.
+- Cooked templates normalize raw CR/CRLF, decode escapes into UTF-16, and
+  interpolate undefined, null, booleans, numbers and strings. Number spelling uses
+  JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
+  Substitutions execute once in source order; object conversion remains unsupported.
 - `= += -= *= /=`, prefix/postfix `++ --`, if/while/do/for, unlabelled
   break/continue, return, throw and try/catch/finally.
 
 Unsupported syntax is rejected before execution, including `var`, modules,
-classes, arrows, generators/async, `this`, regex execution, templates, `new`,
+classes, generators/async, `this`, regex execution, tagged templates, `new`,
 destructuring, prototype-literal `__proto__`, loose equality, bitwise operators
-and additional numeric operators. Implicit coercions, prototype chains,
+and additional numeric operators. Custom iterators, default/rest/destructured
+arrow parameters, implicit operator coercions, prototype chains,
 accessors, standard built-ins, array length writes and exotic property-key
 conversions are also outside this subset and report unsupported status when
 encountered. Objects expose only their own data properties. Function declarations
 are lexical bindings and duplicate declarations across evaluations fail. These
 boundaries are not claims of complete ECMAScript semantics; #492 remains the
-broader syntax/conformance track.
+broader syntax/conformance track. Arrows capture the lexical environment;
+`this`, `super` and ordinary functions’ implicit `arguments` object are not yet
+implemented. No DOM, task queue, module loader or browser authority is installed.
 
 `js_runtime_bind(rt, name, callback)` installs a host function. Its W signature
 is `fn(void*, list[js_value*]) -> js_value*`; cast the context to `js_runtime*`.
@@ -206,6 +222,22 @@ host property names; `js_runtime_property/put` accept explicit UTF-16 keys.
 Foreign-instance values are rejected. Host code must cooperate with its own
 cancellation/deadlines; the interpreter cannot preempt native code. Recursive
 evaluation of the same instance returns null.
+
+`js_runtime_invoke(rt, callback, arguments, step_budget)` invokes a retained
+script or host callback synchronously, using the same completion and execution
+limits as evaluation. This gives an external browser event loop a way to dispatch
+native event data without constructing JavaScript source. It validates instance
+ownership for the callable and each argument, and rejects recursive invocation
+of the same instance with null. The argument list and values are borrowed during
+the call; retain handlers across collection with `js_runtime_root`. Invocation
+retains no new script and does not consume `max_scripts`. Host callbacks still
+must cooperate with cancellation. An argument count above `max_properties`
+returns status 5.
+
+[`examples/javascript/events.w`](../../examples/javascript/events.w) retains an
+arrow handler, performs collection, and dispatches a plain event object whose
+result is formatted by a template. Run `./wbuild javascript_events_example`.
+The host owns scheduling, event schemas and the exposed capabilities.
 
 Every AST visit consumes a step. Depth defaults to 256, live heap values to
 100000, properties per object and UTF-16 units per string/key to 10000, retained
@@ -245,7 +277,7 @@ comments and formatting.
 ./wbuild javascript_lexical_test javascript_parser_test javascript_validation_test \
   javascript_bindings_test javascript_restrictions_test javascript_ast_test \
   javascript_roundtrip_test javascript_transform_test javascript_text_test \
-  javascript_runtime_test
+  javascript_runtime_test javascript_browser_runtime_test
 ./wbuild javascript_compatibility
 # Native Apple Silicon equivalent, including generic runtime/importer gates:
 tools/mac/run_javascript_tests.sh
@@ -254,7 +286,9 @@ tools/mac/run_javascript_tests.sh
 The ordinary test targets require no Node installation. The explicit compatibility
 target requires Node v20.19.3 and fails visibly if it is missing or differs. It
 runs pinned Test262 syntax variants (respecting test metadata), a pinned real
-source fixture, bounded growth cases, and controlled execution comparisons.
+source fixture, bounded growth cases, and controlled execution comparisons. Nine additional cases compare actual W runtime
+completion values with fresh Node realms, covering arrows, per-iteration capture,
+Unicode iteration, template cooking/number spelling, abrupt completions and TDZ.
 It also executes the actual builder and transformer, checks their output with
 both parsers, and compares original/transformed behavior and untouched bytes.
 `bin/javascript-compatibility.json` records results. This small corpus is a

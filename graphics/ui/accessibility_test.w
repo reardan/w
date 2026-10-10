@@ -77,3 +77,32 @@ void test_accessibility_focus_and_host_actions():
 	assert_equal(0, ui_access_focus_next(tree, 0, 0))
 	assert_equal(1, calls)
 	ui_access_tree_free(tree)
+
+int access_focus_action(void* context, int id, int action, char* data, int length):
+	int* accepted = cast(int*, context)
+	assert_equal(UI_ACCESS_FOCUS, action)
+	assert_equal(0, length)
+	return id != *accepted
+
+void test_accessibility_focus_acceptance_and_order():
+	ui_access_tree* tree = ui_access_tree_new(8, 0)
+	ui_rect r = ui_rect_new(0.0, 0.0, 1.0, 1.0)
+	ui_access_add(tree, 71, 0, UI_ACCESS_GROUP, r)
+	ui_access_node* first = ui_access_add(tree, 900, 71, UI_ACCESS_BUTTON, r)
+	ui_access_node* second = ui_access_add(tree, 13, 71, UI_ACCESS_TEXTBOX, r)
+	first.states = UI_ACCESS_FOCUSABLE
+	second.states = UI_ACCESS_FOCUSABLE
+	first.actions = UI_ACCESS_FOCUS
+	second.actions = UI_ACCESS_FOCUS
+	int rejected = 13
+	tree.context = cast(void*, &rejected)
+	tree.action = access_focus_action
+	assert_equal(900, ui_access_move_focus(tree, 0))
+	assert_equal(0, ui_access_move_focus(tree, 0))
+	assert_equal(900, tree.focused_id)
+	rejected = 0
+	assert_equal(13, ui_access_move_focus(tree, 1))
+	assert_equal(900, ui_access_move_focus(tree, 1))
+	first.states = UI_ACCESS_DISABLED
+	assert_equal(13, ui_access_move_focus(tree, 0))
+	ui_access_tree_free(tree)

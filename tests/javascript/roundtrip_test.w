@@ -127,6 +127,7 @@ int main(int argc, int argv):
 	if (argc > 1):
 		malloc_force_debug_mode()
 		js_test_roundtrip(c"export function greet(name) { return \"Hello, \" + name; }", 1)
+		js_test_roundtrip(c"const f = x => `${x}`; for (const x of [1, 2]) f(x);", 0)
 		assert_equal(0, debug_alloc_report_leaks())
 		println(c"javascript_roundtrip_test: OK")
 		return 0
@@ -145,6 +146,9 @@ int main(int argc, int argv):
 	js_test_roundtrip(c"const nul = '\\0'; const high = '\\ud800'; const low = '\\udfff'; const pair = '\\ud83d\\ude00';", 0)
 	js_test_roundtrip(c"try { throw 1; } catch (e) { value = e; } finally { done(); } try {} catch {} try {} finally {}", 0)
 	js_test_roundtrip(c"const identity = '\\é';", 0)
+	js_test_roundtrip(c"const f = x => y => x + y; const g = () => ({ok: true}); const h = (a, b) => { return a + b; };", 0)
+	js_test_roundtrip(c"for (const item of items) { use(item); } for (let ch of text) ch = ch;", 0)
+	js_test_roundtrip(c"if (ok) for (const x of items) { if (x) use(x); } else done();", 0)
 	js_test_new_spans_and_limits()
 	js_test_association()
 	js_test_lower_reject()

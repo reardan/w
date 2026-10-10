@@ -234,6 +234,8 @@ assert.deepEqual(viewportSize({ width: 390, height: 300, requestedWidth: 640,
     while ((event = queue.next())) assert.equal(event.code, count++);
   }
   queue.push(EVENT.UP, 1, 0, 0, 0);
+  assert.equal(queue.next(), null, 'later pointer edge waits for committed text');
+  queue.beginFrame();
   assert.equal(queue.next().kind, EVENT.UP, 'queue can be reused after long paste');
 }
 {
@@ -262,4 +264,62 @@ assert.deepEqual(viewportSize({ width: 390, height: 300, requestedWidth: 640,
   h.canvas.fire('pointerup');
   assert.equal(h.doc.activeElement, h.editor, 'tap focuses editor within trusted release');
 }
-console.log('mobile_input_test OK (24 scenarios)');
+// Composition previews replace snapshots and remain distinct from commits.
+{
+  const h = setup();
+  h.input.setTextInput(1, 0, 0, 0, 100, 20, 7);
+  h.editor.fire('compositionstart');
+  h.editor.fire('compositionupdate', { data: '日😀' });
+  assert.deepEqual(h.chars(), []);
+  const preview = h.events.filter(e => e.kind >= EVENT.PREEDIT_BEGIN);
+  assert.deepEqual(preview.map(e => [e.kind, e.code, e.x]), [
+    [EVENT.PREEDIT_BEGIN, 0, 7], [EVENT.PREEDIT_BEGIN, 0, 7],
+    [EVENT.PREEDIT_TEXT, 0x65e5, 7], [EVENT.PREEDIT_TEXT, 0x1f600, 7],
+  ]);
+  h.editor.fire('compositionend', { data: '日' });
+  assert.deepEqual(h.chars(), [0x65e5]);
+  assert.equal(h.events.at(-2).kind, EVENT.PREEDIT_END);
+}
+// A blur clears preview before changing the owner and rejects a late commit.
+{
+  const h = setup();
+  h.input.setTextInput(1, 0, 0, 0, 100, 20, 7);
+  h.editor.fire('compositionstart');
+  h.editor.fire('compositionupdate', { data: '旧' });
+  h.input.setTextInput(1, 0, 0, 0, 100, 20, 8);
+  assert.deepEqual(h.events.at(-1), { kind: EVENT.PREEDIT_END, code: 0, x: 7, y: 0, mods: 0 });
+  h.editor.fire('compositionend', { data: '旧' });
+  assert.deepEqual(h.chars(), []);
+}
+// Navigation must run in the old field/caret before later text or clicks.
+for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
+  const queue = createEventQueue();
+  queue.push(EVENT.NAV, 1, 0, 0, 0);
+  queue.push(kind, 88, 5, 6, 0);
+  assert.equal(queue.next().kind, EVENT.NAV);
+  assert.equal(queue.next(), null, 'later input waits for navigation');
+  queue.beginFrame();
+  assert.equal(queue.next().kind, kind);
+  assert.equal(queue.next(), null);
+}
+// Model the widget's CHAR-before-NAV frame processing to catch reordering.
+{
+  const queue = createEventQueue();
+  queue.push(EVENT.NAV, 1, 0, 0, 0);
+  queue.push(EVENT.CHAR, 88, 0, 0, 0);
+  let text = 'ab', caret = 2;
+  for (let frame = 0; frame < 2; frame++) {
+    queue.beginFrame();
+    const events = [];
+    let event;
+    while ((event = queue.next())) events.push(event);
+    for (const e of events.filter(e => e.kind === EVENT.CHAR)) {
+      text = text.slice(0, caret) + String.fromCodePoint(e.code) + text.slice(caret);
+      caret++;
+    }
+    for (const e of events.filter(e => e.kind === EVENT.NAV)) caret--;
+  }
+  assert.equal(text, 'aXb');
+  assert.equal(caret, 2);
+}
+console.log('mobile_input_test OK (30 scenarios)');

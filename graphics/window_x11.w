@@ -11,12 +11,17 @@ import lib.lib
 import graphics.x11
 import graphics.gl
 import graphics.event
+import graphics.input_queue
+import lib.utf8
 
 
 struct gfx_window:
 	int display
 	int window
 	int context
+	int input_method
+	int text_focus
+	int input_context
 	int wm_delete_atom
 	int32 width
 	int32 height
@@ -29,9 +34,10 @@ struct gfx_window:
 	int32 last_keycode
 	# per-frame event ring (graphics.event); drained by
 	# gfx_window_next_event
-	int32 event_head
-	int32 event_tail
-	int32[320] event_ring
+	gfx_input_queue input_queue
+
+
+gfx_window* gfx_x11_active
 
 
 # "#version" line for shader sources that should compile on every
@@ -48,6 +54,9 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	if (__word_size__ != 8):
 		print_error(c"graphics.window requires a 64-bit target\n")
 		return 0
+	# LC_CTYPE only: leave numeric parsing/formatting locale unchanged.
+	setlocale(0, c"")
+	XSetLocaleModifiers(c"")
 	int display = XOpenDisplay(0)
 	if (display == 0):
 		print_error(c"graphics.window: cannot open X display\n")
@@ -69,7 +78,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	int root = XRootWindow(display, screen)
 	x_set_window_attributes attributes
 	attributes.colormap = XCreateColormap(display, root, visual.visual, 0)
-	attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask
+	attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | StructureNotifyMask | FocusChangeMask
 	attributes.border_pixel = 0
 	int window = XCreateWindow(display, root, 0, 0, width, height, 0, visual.depth, InputOutput, visual.visual, CWBorderPixel | CWEventMask | CWColormap, &attributes)
 	XStoreName(display, window, title)
@@ -93,6 +102,12 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.display = display
 	win.window = window
 	win.context = context
+	win.input_method = XOpenIM(display, 0, cast(char*, 0), cast(char*, 0))
+	win.input_context = 0
+	win.text_focus = 0
+	gfx_x11_active = win
+	if (win.input_method != 0):
+		win.input_context = XCreateIC(win.input_method, c"inputStyle", 1032, c"clientWindow", window, c"focusWindow", window, 0)
 	win.wm_delete_atom = wm_delete
 	win.width = width
 	win.height = height
@@ -101,8 +116,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.mouse_y = 0
 	win.mouse_buttons = 0
 	win.last_keycode = 0
-	win.event_head = 0
-	win.event_tail = 0
+	gfx_input_queue_init(&win.input_queue)
 	glViewport(0, 0, width, height)
 	return win
 
@@ -132,19 +146,36 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 	else if (event_type == KeyPress):
 		int mods = gfx_x11_mods(event.input.state)
 		win.last_keycode = event.input.detail
-		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, event.input.detail, event.input.x, event.input.y, mods)
-		# Server-keymap translation to a character; only the ASCII set
-		# the CHAR contract defines is forwarded (graphics.event).
-		char[8] text
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_KEY_DOWN, event.input.detail, event.input.x, event.input.y, mods)
+		char[256] text
 		int keysym = 0
-		if (XLookupString(event, &text[0], 4, &keysym, 0) == 1):
-			int ch = text[0] & 255
-			# Latin-1 keysyms come back as their codepoint byte.
-			# Ctrl+letter comes back as its control code (Ctrl+S is 19),
-			# forwarded for shortcuts (graphics.event).
-			int ctrl_code = (ch >= 1) && (ch <= 26) && ((mods & GFX_MOD_CTRL) != 0)
-			if (((ch >= 32) && (ch <= 126)) || (ch >= 160) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27) || ctrl_code):
-				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y, mods)
+		if (win.input_context != 0):
+			int32 status = 0
+			int count = Xutf8LookupString(win.input_context, event, &text[0], 256, &keysym, &status)
+			char* bytes = &text[0]
+			# XBufferOverflow reports the required size without consuming
+			# the commit. Retry with owned storage for long IME commits.
+			if ((status == 0 - 1) && (count > 0)):
+				bytes = cast(char*, malloc(count))
+				count = Xutf8LookupString(win.input_context, event, bytes, count, &keysym, &status)
+			if ((status == 2) || (status == 4)):
+				int at = 0
+				while (at < count):
+					int cp = 0
+					int n = utf8_scan(bytes + at, count - at, &cp)
+					if (n == 0): break
+					gfx_input_queue_push(&win.input_queue, GFX_EVENT_CHAR, cp, event.input.x, event.input.y, mods)
+					at = at + n
+			if (bytes != &text[0]): free(bytes)
+		else:
+			# Legacy fallback when no input method is available. Modern X
+			# Unicode keysyms encode a scalar in their low 24 bits.
+			int count = XLookupString(event, &text[0], 256, &keysym, 0)
+			int cp = 0
+			if (count == 1): cp = text[0] & 255
+			else if ((keysym >> 24) == 1): cp = keysym & 0xffffff
+			if ((cp > 0) && (cp <= 1114111) && ((cp < 55296) || (cp > 57343))):
+				gfx_input_queue_push(&win.input_queue, GFX_EVENT_CHAR, cp, event.input.x, event.input.y, mods)
 		# Navigation keysyms have no character; translate the portable
 		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Up 0xff52,
 		# XK_Right 0xff53, XK_Down 0xff54, XK_Page_Up 0xff55,
@@ -161,9 +192,13 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		else if (keysym == 0xff56): nav = GFX_NAV_PAGE_DOWN
 		else if (keysym == 0xffff): nav = GFX_NAV_DELETE
 		if (nav != 0):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, nav, event.input.x, event.input.y, mods)
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_NAV, nav, event.input.x, event.input.y, mods)
+	else if (event_type == FocusIn):
+		if (win.input_context != 0): XSetICFocus(win.input_context)
+	else if (event_type == FocusOut):
+		if (win.input_context != 0): XUnsetICFocus(win.input_context)
 	else if (event_type == KeyRelease):
-		gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, event.input.detail, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_KEY_UP, event.input.detail, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
 	else if (event_type == MotionNotify):
 		win.mouse_x = event.input.x
 		win.mouse_y = event.input.y
@@ -177,13 +212,13 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			# attributed to a stale position.
 			win.mouse_x = event.input.x
 			win.mouse_y = event.input.y
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y, button_mods)
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_MOUSE_DOWN, button, event.input.x, event.input.y, button_mods)
 		else if (button == 4):
 			# Wheel notches arrive as button 4 (up) / 5 (down) press+
 			# release pairs; one SCROLL per press, releases ignored.
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 1, event.input.x, event.input.y, button_mods)
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_SCROLL, 1, event.input.x, event.input.y, button_mods)
 		else if (button == 5):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_SCROLL, 0 - 1, event.input.x, event.input.y, button_mods)
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_SCROLL, 0 - 1, event.input.x, event.input.y, button_mods)
 	else if (event_type == ButtonRelease):
 		int released = event.input.detail
 		if ((released >= 1) && (released <= 3)):
@@ -191,15 +226,17 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			win.mouse_buttons = win.mouse_buttons & (0 - 1 - (1 << (released - 1)))
 			win.mouse_x = event.input.x
 			win.mouse_y = event.input.y
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_MOUSE_UP, released, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_MOUSE_UP, released, event.input.x, event.input.y, gfx_x11_mods(event.input.state))
 
 
 # Drain pending X events. Returns 1 while the window should stay open.
 int gfx_window_poll(gfx_window* win):
+	gfx_x11_active = win
+	gfx_input_queue_begin(&win.input_queue)
 	while (XPending(win.display) > 0):
 		x_event event
 		XNextEvent(win.display, &event)
-		gfx_window_handle_event(win, &event)
+		if (XFilterEvent(&event, 0) == 0): gfx_window_handle_event(win, &event)
 	if (win.should_close): return 0
 	return 1
 
@@ -207,7 +244,7 @@ int gfx_window_poll(gfx_window* win):
 # Pop the oldest queued input event (graphics.event); returns 1 while
 # events remain from the polls since the last drain.
 int gfx_window_next_event(gfx_window* win, gfx_event* out):
-	return gfx_event_ring_next(&win.event_ring[0], &win.event_head, &win.event_tail, out)
+	return gfx_input_queue_next(&win.input_queue, out)
 
 
 void gfx_window_swap(gfx_window* win):
@@ -215,6 +252,10 @@ void gfx_window_swap(gfx_window* win):
 
 
 void gfx_window_destroy(gfx_window* win):
+	if (gfx_x11_active == win): gfx_x11_active = cast(gfx_window*, 0)
+	gfx_input_queue_free(&win.input_queue)
+	if (win.input_context != 0): XDestroyIC(win.input_context)
+	if (win.input_method != 0): XCloseIM(win.input_method)
 	glXMakeCurrent(win.display, 0, 0)
 	glXDestroyContext(win.display, win.context)
 	XDestroyWindow(win.display, win.window)

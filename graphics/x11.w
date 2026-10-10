@@ -22,6 +22,8 @@ enum x_event_type:
 	ButtonPress = 4
 	ButtonRelease = 5
 	MotionNotify = 6
+	FocusIn = 9
+	FocusOut = 10
 	Expose = 12
 	DestroyNotify = 17
 	UnmapNotify = 18
@@ -39,6 +41,7 @@ enum x_event_mask:
 	PointerMotionMask = 0x40
 	ExposureMask = 0x8000
 	StructureNotifyMask = 0x20000
+	FocusChangeMask = 0x200000
 
 
 # XCreateWindow valuemask bits (X.h CW*)
@@ -220,3 +223,19 @@ extern int XSync(int display, int discard)
 # union; keysym_return is a KeySym* (word-sized), status_in_out an
 # XComposeStatus* (pass 0).
 extern int XLookupString(x_event* event, char* buffer_return, int bytes_buffer, int* keysym_return, int status_in_out)
+
+
+# XIM owns the candidate/preedit window (PreeditNothing | StatusNothing).
+extern char* XSetLocaleModifiers(char* modifiers)
+extern int XOpenIM(int display, int database, char* resource_name, char* resource_class)
+extern int XCloseIM(int im)
+extern int XCreateIC(int im, ...)
+extern void XDestroyIC(int ic)
+extern void XSetICFocus(int ic)
+extern void XUnsetICFocus(int ic)
+extern char* Xutf8ResetIC(int ic)
+extern int XFilterEvent(x_event* event, int window)
+extern int Xutf8LookupString(int ic, x_event* event, char* buffer, int capacity, int* keysym, int32* status)
+
+c_lib "libc.so.6"
+extern char* setlocale(int category, char* locale)

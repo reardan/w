@@ -12,6 +12,7 @@ if = condition, then[, else]; export = declaration;
 while/do_while = condition, body; for = init, condition, update, body;
 omitted for clauses = empty; break/continue have no children;
 function_expression(optional name) = parameters, block;
+arrow = parameters, expression-or-block; for_of(let/const) = identifier, iterable, body;
 try = block, catch-or-empty, finally-block-or-empty; catch(name) = block;
 string_utf16 owns explicit code units in string_units;
 import(specifier) = [default-binding]; call = callee, arguments...;
@@ -120,6 +121,22 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 			string_append(out, c"\\u")
 			for shift in range(4): string_append_char(out, digits[(unit >> ((3 - shift) * 4)) & 15])
 		string_append_char(out, 34)
+		return 1
+	if (js_kind(node, c"arrow")):
+		if (count != 2 || strlen(node.text) != 0 || js_kind(node.children[0], c"parameters") == 0): return js_print_error(diagnostics, node)
+		js_node* parameters = node.children[0]
+		for i in range(parameters.children.length):
+			if (js_kind(parameters.children[i], c"identifier") == 0 || js_print_identifier_valid(parameters.children[i].text, 1) == 0): return js_print_error(diagnostics, parameters)
+		string_append(out, c"((")
+		if (js_print_expression_list(out, parameters, 0, diagnostics) == 0): return 0
+		string_append(out, c") => ")
+		if (js_kind(node.children[1], c"block")):
+			if (js_print_statement(out, node.children[1], 0, diagnostics) == 0): return 0
+		else:
+			string_append(out, c"(")
+			if (js_print_expression(out, node.children[1], diagnostics) == 0): return 0
+			string_append(out, c")")
+		string_append(out, c")")
 		return 1
 	if (js_kind(node, c"function_expression")):
 		string_append(out, c"(")
@@ -256,7 +273,7 @@ int js_print_block(string_builder* out, js_node* node, int depth, pg_diagnostics
 
 
 int js_print_dangling_else(js_node* node):
-	if ((js_kind(node, c"while") || js_kind(node, c"for")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
+	if ((js_kind(node, c"while") || js_kind(node, c"for") || js_kind(node, c"for_of")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
 	if (js_kind(node, c"if") == 0): return 0
 	if (node.children.length == 2): return 1
 	if (node.children.length == 3): return js_print_dangling_else(node.children[2])
@@ -357,6 +374,17 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 			return 1
 		string_append(out, c" ")
 		return js_print_statement(out, node.children[1], depth, diagnostics)
+	if (js_kind(node, c"for_of")):
+		if (count != 3 || (strcmp(node.text, c"let") != 0 && strcmp(node.text, c"const") != 0)): return js_print_error(diagnostics, node)
+		if (js_kind(node.children[0], c"identifier") == 0 || js_print_identifier_valid(node.children[0].text, 1) == 0): return js_print_error(diagnostics, node)
+		string_append(out, c"for (")
+		string_append(out, node.text)
+		string_append(out, c" ")
+		if (js_print_expression(out, node.children[0], diagnostics) == 0): return 0
+		string_append(out, c" of (")
+		if (js_print_expression(out, node.children[1], diagnostics) == 0): return 0
+		string_append(out, c")) ")
+		return js_print_statement(out, node.children[2], depth, diagnostics)
 	if (js_kind(node, c"for")):
 		if (count != 4): return js_print_error(diagnostics, node)
 		string_append(out, c"for (")

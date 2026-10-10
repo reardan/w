@@ -134,5 +134,52 @@
       "scope": "Remaining Test262 tests and complete ES2020 conformance",
       "reason": "Only the pinned declared subset is claimed. Full early errors, Annex B and RegExp pattern grammar need further coverage."
     }
+  ],
+  "runtime_execution": [
+    {
+      "name": "arrow-closure",
+      "source": "const add = x => y => x + y; add(20)(22);",
+      "stdout": "42\n"
+    },
+    {
+      "name": "for-of-capture",
+      "source": "const fns = []; let i = 0; for (let x of [2, 4, 6]) { fns[i++] = () => x; x++; } fns[0]() + fns[1]() + fns[2]();",
+      "stdout": "15\n"
+    },
+    {
+      "name": "for-of-live-array",
+      "source": "const items = [1]; let n = 0; for (const x of items) { n++; if (x === 1) items[1] = 2; } n;",
+      "stdout": "2\n"
+    },
+    {
+      "name": "for-of-code-points",
+      "source": "let points = 0; let units = 0; for (const ch of 'a\\ud83d\\ude00\\ud800') { points++; units += ch.length; } `${points}:${units}`;",
+      "stdout": "3:4\n"
+    },
+    {
+      "name": "template-number-spelling",
+      "source": "`${-0},${NaN},${Infinity},${-Infinity},${1e20},${1e21},${1e-6},${1e-7},${5e-324}`;",
+      "stdout": "0,NaN,Infinity,-Infinity,100000000000000000000,1e+21,0.000001,1e-7,5e-324\n"
+    },
+    {
+      "name": "template-cooking",
+      "source": "`a\r\nb\rc\\\r\nd:${null}:${undefined}:${true}:${`nested ${42}`}`;",
+      "stdout": "a\nb\ncd:null:undefined:true:nested 42\n"
+    },
+    {
+      "name": "typeof-tdz",
+      "source": "let caught = 0; try { typeof x; let x; } catch (e) { caught = 1; } `${typeof missing}:${typeof (() => 1)}:${caught}`;",
+      "stdout": "undefined:function:1\n"
+    },
+    {
+      "name": "for-of-finally",
+      "source": "let n = 0; for (const x of [1, 2, 3]) { try { if (x === 3) break; continue; } finally { n += x; } } n;",
+      "stdout": "6\n"
+    },
+    {
+      "name": "template-abrupt-order",
+      "source": "let n = 0; try { `${(() => { throw 7; })()}${n++}`; } catch (e) {} n;",
+      "stdout": "0\n"
+    }
   ]
 }

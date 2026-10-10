@@ -301,6 +301,10 @@ js_value* js_runtime_binding(js_value* env, char* name):
 		if (property != 0):
 			js_text_free(key)
 			return property
+		if (strcmp(name, c"arguments") == 0 && env.code != 0 && js_kind(env.code, c"arrow") == 0):
+			js_text_free(key)
+			js_runtime_fail(cast(js_runtime*, env.owner), 6, c"implicit arguments object is outside the runtime subset")
+			return 0
 		env = env.parent
 	js_text_free(key)
 	return 0
@@ -516,15 +520,67 @@ js_value* js_runtime_call(js_runtime* rt, js_value* callable, list[js_value*] ar
 		js_runtime_fail(rt, 2, c"value is not callable")
 		return rt.undefined_value
 	js_value* env = js_runtime_environment(rt, callable.parent)
+	if (env != rt.undefined_value): env.code = callable.code
 	js_node* parameters = callable.code.children[0]
 	for i in range(parameters.children.length):
 		js_value* argument = rt.undefined_value
 		if (i < args.length): argument = args[i]
 		js_runtime_set(rt, env, parameters.children[i].text, argument)
-	js_runtime_eval_node(rt, callable.code.children[1], env)
+	js_node* body = callable.code.children[1]
+	js_value* result = js_runtime_eval_node(rt, body, env)
+	if (js_kind(callable.code, c"arrow") && js_kind(body, c"block") == 0): return result
 	if (rt.completion.status == 1):
 		rt.completion.status = 0
 		return rt.completion.value
+	return rt.undefined_value
+
+
+# Arrays use a live length and strings yield Unicode code points (including
+# lone surrogate code units). Every iteration has a fresh lexical binding.
+js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
+	char* name = node.children[0].text
+	js_value* initial = js_runtime_environment(rt, env)
+	js_runtime_set(rt, initial, name, rt.undefined_value)
+	js_value* binding = js_runtime_binding(initial, name)
+	if (rt.completion.status != 0): return rt.undefined_value
+	binding.initialized = 0
+	js_value* iterable = js_runtime_eval_node(rt, node.children[1], initial)
+	if (rt.completion.status != 0): return rt.undefined_value
+	if (iterable.kind != 4 && iterable.kind != 6):
+		js_runtime_fail(rt, 6, c"for-of supports arrays and strings only")
+		return rt.undefined_value
+	int index = 0
+	while (rt.completion.status == 0):
+		js_value* value = rt.undefined_value
+		if (iterable.kind == 6):
+			if (index >= iterable.array_length): break
+			char* key = itoa(index)
+			value = js_runtime_get(rt, iterable, key)
+			free(key)
+			index = index + 1
+		else:
+			if (index >= iterable.text.units.length): break
+			js_text* text = js_text_new()
+			int unit = iterable.text.units[index]
+			text.units.push(unit)
+			index = index + 1
+			if (unit >= 55296 && unit <= 56319 && index < iterable.text.units.length):
+				int low = iterable.text.units[index]
+				if (low >= 56320 && low <= 57343):
+					text.units.push(low)
+					index = index + 1
+			value = js_runtime_string(rt, text)
+			js_text_free(text)
+		js_value* scope = js_runtime_environment(rt, env)
+		js_runtime_set(rt, scope, name, value)
+		binding = js_runtime_binding(scope, name)
+		if (rt.completion.status != 0): break
+		binding.immutable = strcmp(node.text, c"const") == 0
+		js_runtime_eval_node(rt, node.children[2], scope)
+		if (rt.completion.status == 3):
+			rt.completion.status = 0
+			break
+		if (rt.completion.status == 4): rt.completion.status = 0
 	return rt.undefined_value
 
 
@@ -574,6 +630,131 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 	return rt.undefined_value
 
 
+# Reformat the shortest round-tripping decimal into ECMAScript's decimal /
+# exponent thresholds, without converting through a word-sized integer.
+char* js_runtime_number_text(float64 number):
+	if (f64is_nan(number)): return strclone(c"NaN")
+	if (number == 0.0): return strclone(c"0")
+	float64 infinity = float64_from_bits(0x7ff << 52)
+	if (number == infinity): return strclone(c"Infinity")
+	if (number == -infinity): return strclone(c"-Infinity")
+	char* raw = f64toa(number)
+	string_builder* digits = string_new()
+	int i = 0
+	int negative = raw[0] == '-'
+	if (negative): i = 1
+	int point = -1
+	while (raw[i] != 0 && raw[i] != 'e'):
+		if (raw[i] == '.'): point = digits.length
+		else: string_append_char(digits, raw[i])
+		i = i + 1
+	if (point < 0): point = digits.length
+	if (raw[i] == 'e'):
+		i = i + 1
+		if (raw[i] == '+'): i = i + 1
+		point = point + atoi(raw + i)
+	int start = 0
+	while (start < digits.length - 1 && digits.data[start] == '0'):
+		start = start + 1
+		point = point - 1
+	int end = digits.length
+	while (end > start + 1 && digits.data[end - 1] == '0'): end = end - 1
+	int count = end - start
+	string_builder* out = string_new()
+	if (negative): string_append_char(out, '-')
+	if (point > 0 && point <= 21):
+		for j in range(point):
+			if (j < count): string_append_char(out, digits.data[start + j])
+			else: string_append_char(out, '0')
+		if (point < count):
+			string_append_char(out, '.')
+			string_append_bytes(out, digits.data + start + point, count - point)
+	else if (point <= 0 && point > -6):
+		string_append(out, c"0.")
+		for j in range(-point): string_append_char(out, '0')
+		string_append_bytes(out, digits.data + start, count)
+	else:
+		string_append_char(out, digits.data[start])
+		if (count > 1):
+			string_append_char(out, '.')
+			string_append_bytes(out, digits.data + start + 1, count - 1)
+		string_append_char(out, 'e')
+		if (point > 0): string_append_char(out, '+')
+		char* exponent = itoa(point - 1)
+		string_append(out, exponent)
+		free(exponent)
+	free(raw)
+	string_free(digits)
+	char* result = out.data
+	free(out)
+	return result
+
+
+js_text* js_runtime_primitive_text(js_runtime* rt, js_value* value):
+	if (value.kind == 4): return js_text_clone(value.text)
+	char* raw = c"undefined"
+	if (value.kind == 1): raw = c"null"
+	if (value.kind == 2):
+		raw = c"false"
+		if (js_runtime_truth(value)): raw = c"true"
+	if (value.kind == 3): raw = js_runtime_number_text(value.number)
+	if (value.kind > 4):
+		js_runtime_fail(rt, 6, c"object string conversion is outside the runtime subset")
+		return 0
+	js_text* result = js_runtime_key(raw)
+	if (value.kind == 3): free(raw)
+	return result
+
+
+# Convert raw template text into a quoted token for the shared UTF-16 decoder.
+# Raw CR and CRLF normalize to LF; escaped line terminators disappear.
+js_text* js_runtime_template_text(char* raw):
+	string_builder* quoted = string_new()
+	string_append_char(quoted, 34)
+	int i = 0
+	while (raw[i] != 0):
+		int ch = raw[i]
+		if (ch == 92):
+			int width = js_string_escape(raw, i)
+			if (width == 0):
+				string_free(quoted)
+				return 0
+			string_append_bytes(quoted, raw + i, width)
+			i = i + width
+			continue
+		if (ch == 34): string_append_char(quoted, 92)
+		if (ch == 13 || ch == 10):
+			string_append(quoted, c"\\n")
+			if (ch == 13 && raw[i + 1] == 10): i = i + 1
+		else: string_append_char(quoted, ch)
+		i = i + 1
+	string_append_char(quoted, 34)
+	js_text* result = js_text_decode(quoted.data, quoted.length)
+	string_free(quoted)
+	return result
+
+
+js_value* js_runtime_template(js_runtime* rt, js_node* node, js_value* env):
+	js_text* joined = js_text_new()
+	for i in range(node.children.length):
+		js_node* part = node.children[i]
+		js_text* text = 0
+		if (js_kind(part, c"template_text")): text = js_runtime_template_text(part.text)
+		else:
+			js_value* value = js_runtime_eval_node(rt, part, env)
+			if (rt.completion.status == 0): text = js_runtime_primitive_text(rt, value)
+		if (text == 0): js_runtime_fail(rt, 6, c"unsupported template conversion")
+		else if (text.units.length > rt.max_properties - joined.units.length): js_runtime_fail(rt, 5, c"JavaScript string length limit")
+		if (rt.completion.status == 0):
+			for j in range(text.units.length): joined.units.push(text.units[j])
+		js_text_free(text)
+		if (rt.completion.status != 0): break
+	js_value* result = rt.undefined_value
+	if (rt.completion.status == 0): result = js_runtime_string(rt, joined)
+	js_text_free(joined)
+	return result
+
+
 js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	int count = node.children.length
 	if (js_kind(node, c"try")):
@@ -598,6 +779,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				rt.completion.value = saved_value
 				rt.completion.message = saved_message
 		return value
+	if (js_kind(node, c"template")): return js_runtime_template(rt, node, env)
 	if (js_kind(node, c"empty")): return rt.undefined_value
 	if (js_kind(node, c"number")):
 		int consumed = 0
@@ -621,7 +803,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 			return rt.undefined_value
 		return property.value
-	if (js_kind(node, c"function_expression")): return js_runtime_function(rt, node, env)
+	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return js_runtime_function(rt, node, env)
 	if (js_kind(node, c"function")): return rt.undefined_value
 	if (js_kind(node, c"program") || js_kind(node, c"block")):
 		js_value* scope = env
@@ -666,6 +848,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (js_runtime_truth(condition)): return js_runtime_eval_node(rt, node.children[1], env)
 		if (count == 3): return js_runtime_eval_node(rt, node.children[2], env)
 		return rt.undefined_value
+	if (js_kind(node, c"for_of")): return js_runtime_for_of(rt, node, env)
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
 	if (js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")): return js_runtime_assign(rt, node, env)
 	if (js_kind(node, c"binary")):
@@ -679,6 +862,22 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (strcmp(node.text, c"&&") == 0 || strcmp(node.text, c"||") == 0 || strcmp(node.text, c"??") == 0 || strcmp(node.text, c",") == 0): return right
 		return js_runtime_binary(rt, node.text, left, right)
 	if (js_kind(node, c"unary")):
+		if (strcmp(node.text, c"typeof") == 0):
+			js_node* operand = node.children[0]
+			js_value* value = rt.undefined_value
+			# typeof suppresses an unresolvable reference, but never a TDZ error.
+			if (js_kind(operand, c"identifier") == 0 || js_runtime_binding(env, operand.text) != 0): value = js_runtime_eval_node(rt, operand, env)
+			if (rt.completion.status != 0): return rt.undefined_value
+			char* type_name = c"object"
+			if (value.kind == 0): type_name = c"undefined"
+			else if (value.kind == 2): type_name = c"boolean"
+			else if (value.kind == 3): type_name = c"number"
+			else if (value.kind == 4): type_name = c"string"
+			else if (value.kind == 7 || value.kind == 9): type_name = c"function"
+			js_text* text = js_runtime_key(type_name)
+			js_value* result = js_runtime_string(rt, text)
+			js_text_free(text)
+			return result
 		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
 		if (rt.completion.status != 0): return rt.undefined_value
 		if (strcmp(node.text, c"!") == 0): return js_runtime_boolean(rt, js_runtime_truth(value) == 0)
@@ -749,7 +948,7 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 # syntax before execution, so unsupported syntax cannot leave partial effects.
 int js_runtime_supported(js_node* node):
 	char* kind = node.kind
-	int supported = js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
+	int supported = js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): return 0
 	if (strcmp(kind, c"number") == 0):
 		int consumed = 0
@@ -759,7 +958,7 @@ int js_runtime_supported(js_node* node):
 	if (strcmp(kind, c"variable") == 0 && strcmp(node.text, c"var") == 0): return 0
 	if (strcmp(kind, c"literal") == 0 && strcmp(node.text, c"this") == 0): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
-	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0): return 0
+	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0): return 0
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
@@ -798,6 +997,37 @@ js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int bud
 	rt.scripts.push(tree)
 	rt.running = 1
 	js_value* value = js_runtime_eval_node(rt, tree, rt.global)
+	rt.running = 0
+	if (rt.completion.status == 0): rt.completion.value = value
+	return rt.completion
+
+
+# Event loops can invoke a retained script callback without constructing source.
+# Callable/arguments must belong to rt; they are borrowed for this synchronous
+# call. The completion is instance-owned, just like js_runtime_eval's result.
+js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_value*] arguments, int budget):
+	if (rt.running): return 0
+	rt.completion.status = 0
+	rt.completion.value = rt.undefined_value
+	rt.completion.message = c""
+	rt.completion.steps = 0
+	rt.depth = 0
+	rt.remaining = budget
+	if (budget <= 0):
+		js_runtime_fail(rt, 5, c"JavaScript execution limit")
+		return rt.completion
+	if (callable == 0 || callable.owner != rt || arguments == 0):
+		js_runtime_fail(rt, 2, c"foreign or null callback/arguments")
+		return rt.completion
+	if (arguments.length > rt.max_properties):
+		js_runtime_fail(rt, 5, c"JavaScript argument limit")
+		return rt.completion
+	for i in range(arguments.length):
+		if (arguments[i] == 0 || arguments[i].owner != rt):
+			js_runtime_fail(rt, 2, c"foreign or null callback argument")
+			return rt.completion
+	rt.running = 1
+	js_value* value = js_runtime_call(rt, callable, arguments)
 	rt.running = 0
 	if (rt.completion.status == 0): rt.completion.value = value
 	return rt.completion

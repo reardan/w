@@ -29,6 +29,7 @@ import graphics.ui.theme
 import graphics.ui.font
 import graphics.ui.render
 import graphics.ui.text
+import graphics.ui.grapheme
 import graphics.ui.widgets.state
 import graphics.ui.widgets.buffer
 import graphics.ui.widgets.layout
@@ -112,7 +113,7 @@ int ui_textarea_delete_selection(ui_textarea_state* st):
 	int start = ui_textarea_sel_start(st)
 	int end = ui_textarea_sel_end(st)
 	ui_text_buffer_delete(&st.buf, start, end - start)
-	ui_textarea_set_caret(st, start)
+	ui_textarea_set_caret(st, ui_grapheme_floor(st.buf.data, start))
 	st.sel_anchor = 0 - 1
 	return 1
 
@@ -138,8 +139,7 @@ void ui_textarea_move_line(ui_textarea_state* st, int delta):
 	else: st.caret_col = len
 	# goal_col counts bytes: never land inside a multi-byte character.
 	char* text = &st.buf.data[ui_text_buffer_line_start(&st.buf, line)]
-	while ((st.caret_col > 0) && ((text[st.caret_col] & 192) == 128)):
-		st.caret_col = st.caret_col - 1
+	st.caret_col = ui_grapheme_floor(text, st.caret_col)
 
 
 # Apply one NAV code. goal_col survives vertical motion and is reset by
@@ -154,20 +154,18 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 		if (ui_textarea_delete_selection(st) == 0):
 			int at = ui_textarea_caret_offset(st)
 			if (at < st.buf.length):
-				int cp = 0
-				ui_text_buffer_delete(&st.buf, at, ui_utf8_next(st.buf.data, at, &cp) - at)
-				ui_textarea_set_caret(st, at)
+				ui_text_buffer_delete(&st.buf, at, ui_grapheme_next(st.buf.data, at) - at)
+				ui_textarea_set_caret(st, ui_grapheme_floor(st.buf.data, at))
 		st.caret_goal_col = st.caret_col
 		return
 	ui_textarea_anchor(st, shift)
 	int offset = ui_textarea_caret_offset(st)
 	if (nav == GFX_NAV_LEFT):
-		if (offset > 0): ui_textarea_set_caret(st, ui_utf8_prev(st.buf.data, offset))
+		if (offset > 0): ui_textarea_set_caret(st, ui_grapheme_prev(st.buf.data, offset))
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_RIGHT):
 		if (offset < st.buf.length):
-			int cp2 = 0
-			ui_textarea_set_caret(st, ui_utf8_next(st.buf.data, offset, &cp2))
+			ui_textarea_set_caret(st, ui_grapheme_next(st.buf.data, offset))
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_HOME):
 		if (ctrl): ui_textarea_set_caret(st, 0)
@@ -186,12 +184,15 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 # Insert one typed character (a codepoint, as UTF-8), replacing any
 # selection first.
 void ui_textarea_type(ui_textarea_state* st, int ch):
-	ui_textarea_delete_selection(st)
+	# Replacement is one edit: keep the original insertion byte offset
+	# even if removing the selection temporarily joins adjacent clusters.
 	int offset = ui_textarea_caret_offset(st)
+	if (ui_textarea_has_selection(st)): offset = ui_textarea_sel_start(st)
+	ui_textarea_delete_selection(st)
 	char[4] bytes
 	int n = ui_utf8_encode(&bytes[0], ch)
 	for k in range(n): ui_text_buffer_insert(&st.buf, offset + k, bytes[k] & 255)
-	ui_textarea_set_caret(st, offset + n)
+	ui_textarea_set_caret(st, ui_grapheme_ceil(st.buf.data, offset + n))
 	st.caret_goal_col = st.caret_col
 
 
@@ -201,9 +202,9 @@ void ui_textarea_backspace(ui_textarea_state* st):
 		return
 	int offset = ui_textarea_caret_offset(st)
 	if (offset == 0): return
-	int from = ui_utf8_prev(st.buf.data, offset)
+	int from = ui_grapheme_prev(st.buf.data, offset)
 	ui_text_buffer_delete(&st.buf, from, offset - from)
-	ui_textarea_set_caret(st, from)
+	ui_textarea_set_caret(st, ui_grapheme_floor(st.buf.data, from))
 	st.caret_goal_col = st.caret_col
 
 
@@ -319,6 +320,7 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		float32 cx = origin_x + cast(float32, ui_text_prefix_width(&st.buf.data[cstart], st.caret_col, scale))
 		float32 cy = origin_y + cast(float32, st.caret_line) * line_h
 		ui_render_rect(ctx.rndr, ui_rect_new(cx, cy, 2.0, line_h), ctx.theme.text)
+		ui_text_preedit(ctx, id, view, cx, cy)
 
 	ui_scroll_end(ctx, &st.scroll)
 	ui_text_input_declare(ctx, id, area, 1)
