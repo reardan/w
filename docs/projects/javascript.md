@@ -1,4 +1,4 @@
-# JavaScript parsing, building, and transforming
+# JavaScript parsing, ASTs, and embedded execution
 
 The JavaScript integration combines a generated parser with a JavaScript-aware
 lexer. It is an initial compatibility implementation, not a claim of complete
@@ -77,8 +77,10 @@ null with diagnostics. Its output is deterministic, with explicit expression
 parentheses. Reparse printed output when a validated JavaScript program is
 required: node-shape validation is not a full contextual validator.
 
-The facade supports simple variables, functions/parameters, blocks, return,
-throw, if, expressions, calls/members, dense arrays, ordinary named/string-keyed
+The facade supports simple variables, function declarations/expressions and
+parameters, blocks, return, throw, if, while/do/for loops, unlabelled
+break/continue, try/catch/finally, expressions, assignments and prefix/postfix
+updates, calls/members, dense arrays, ordinary named/string-keyed
 objects (including distinct shorthand properties), templates, simple imports,
 and exported declarations. Lowering preserves escaped non-directive strings so
 printing cannot accidentally introduce a strict-mode directive. Parsing is
@@ -86,9 +88,145 @@ broader: lowering intentionally rejects classes, arrows, async/generator
 functions, destructuring, rest/default parameters, `new`, optional chains,
 computed/numeric/method object properties, and richer module declarations.
 Node shapes are documented in `libs/extras/javascript/printer.w` and exercised
-in `tests/javascript/roundtrip_test.w`. Decoded text uses W's `char*` convention;
-NUL and lone-surrogate string values are diagnosed instead of silently truncated.
-The concrete tree retains their original spelling.
+in `tests/javascript/roundtrip_test.w`. Additional shapes are:
+
+| Kind | Text | Ordered children |
+| --- | --- | --- |
+| `while`, `do_while` | empty | condition, body |
+| `for` | empty | initializer, condition, update, body |
+| `break`, `continue` | empty | none |
+| `function_expression` | optional name | parameters, block |
+| `try` | empty | block, catch or empty, finally block or empty |
+| `catch` | optional identifier | block |
+| `string_utf16` | empty | none; value in `string_units` |
+
+An omitted for clause/catch/finally uses an `empty` node with offset -1;
+source-backed nodes preserve byte spans. `for-in`, `for-of`, labelled jumps and
+catch destructuring remain explicit lowering failures. The printer handles
+loop bodies when protecting against a dangling `else`.
+
+`libs.extras.javascript.text` supplies owned `js_text` values, with explicit
+UTF-16 code units in `units`. `js_text_decode(bytes, byte_length)` decodes a
+complete quoted token, retaining embedded NUL and unpaired surrogates.
+`js_text_from_utf8(bytes, byte_length)` strictly validates UTF-8 and accepts NUL;
+`js_text_to_utf8(value, &byte_length)` returns an owned terminated buffer and
+explicit byte count, or null for an unpaired surrogate/invalid code unit. It
+never substitutes U+FFFD. Free buffers with `free` and texts with `js_text_free`.
+Do not use `strlen` for the UTF-8 result's content length.
+
+`js_string_utf16` copies this representation into the AST. Scalar, non-NUL
+values keep the existing `string` kind and `text` field for compatibility;
+other values use `string_utf16` and owned `string_units`. The printer escapes
+every code unit of those nodes, permitting lossless parse/print round trips.
+The older `js_string_decode` char-pointer API still rejects unrepresentable
+strings; module-specifier edits and literal object property names retain that
+contract. Runtime computed property keys use UTF-16 and can contain NUL.
+
+`js_parse_with_limits(source, length, filename, module, limits)` exposes
+`js_parse_limits_new()` defaults: one million cumulative token and AST
+allocations and 4096 nested checkpoints. Change the three fields before
+parsing and free the limits independently. Speculative allocations count and
+resource errors remain sticky across rollback. `js_parse` uses the same defaults.
+Null limits select defaults; nonpositive limits, negative lengths and a null
+buffer with positive length produce an owned failed result with diagnostics.
+A null buffer of length zero is an empty program.
+
+## Embed the interpreter
+
+Import `libs.extras.javascript.runtime` after generating the parser. The
+interpreter requires a 64-bit W target because its number representation is
+IEEE-754 binary64; the parser, AST and UTF-16 APIs still support x86.
+
+```sh
+./wbuild javascript_embed_example javascript_runtime_test
+bin/javascript_embed_example
+```
+
+[`examples/javascript/embed.w`](../../examples/javascript/embed.w) binds a
+native `doubleNumber` callback and evaluates a script producing 42. It imports
+only reusable library APIs, with no DOM, renderer, timers or browser policy.
+Pinned consumers must generate `bin/generated_javascript_parser.w` in the W
+dependency checkout (`./wbuild javascript_parser`) before compiling the example
+or their runtime consumer. No Node installation is required for execution.
+
+Create an independent instance with `js_runtime_new`, call
+`js_runtime_eval(rt, source, byte_length, step_budget)`, and destroy it with
+`js_runtime_free`. Instances have separate heaps, global lexical environments,
+script storage and roots. Do not share an instance concurrently. Distinct
+instances share no mutable runtime state. The returned `js_completion` is
+instance-owned and overwritten by the next evaluation:
+
+| Status | Meaning |
+| --- | --- |
+| 0 | normal; value of the final statement (declarations produce undefined) |
+| 2 | thrown value or runtime error; diagnostic in `message` |
+| 5 | execution, parser or allocation limit; terminal for this evaluation |
+| 6 | syntax/operation outside the implemented subset |
+
+Statuses 1, 3 and 4 are internal return/break/continue completions. User-thrown
+values and host exceptions are catchable. Runtime errors currently carry an
+undefined value and a diagnostic message, rather than Error-prototype objects.
+Resource/unsupported failures cannot be caught and do not execute finalizers.
+Normal return/throw/break/continue completions do execute `finally`, and an
+abrupt finalizer overrides the earlier completion.
+
+The initial semantic subset is deliberately explicit:
+
+- Undefined, null, booleans, binary64 decimal numbers, UTF-16 strings; truthiness,
+  strict equality (including NaN), numeric `+ - * /` and comparisons, string
+  concatenation, `!`, numeric unary `+ -`, `void`, `&& || ??`, comma and ternary.
+- `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
+  hoisted ordinary function declarations within each block, named/anonymous
+  function expressions, recursive calls, captured mutable environments and
+  per-iteration `for (let ...)` environments.
+- Dense array literals, bounded index writes and readable `length`; plain data
+  objects, shorthand properties, dot/computed property access and mutation.
+  String length/indexing use UTF-16 code units.
+- `= += -= *= /=`, prefix/postfix `++ --`, if/while/do/for, unlabelled
+  break/continue, return, throw and try/catch/finally.
+
+Unsupported syntax is rejected before execution, including `var`, modules,
+classes, arrows, generators/async, `this`, regex execution, templates, `new`,
+destructuring, prototype-literal `__proto__`, loose equality, bitwise operators
+and additional numeric operators. Implicit coercions, prototype chains,
+accessors, standard built-ins, array length writes and exotic property-key
+conversions are also outside this subset and report unsupported status when
+encountered. Objects expose only their own data properties. Function declarations
+are lexical bindings and duplicate declarations across evaluations fail. These
+boundaries are not claims of complete ECMAScript semantics; #492 remains the
+broader syntax/conformance track.
+
+`js_runtime_bind(rt, name, callback)` installs a host function. Its W signature
+is `fn(void*, list[js_value*]) -> js_value*`; cast the context to `js_runtime*`.
+Arguments and their list are borrowed for the callback, and the callback must
+return a value owned by this same instance. Use `js_runtime_number`,
+`js_runtime_boolean`, `js_runtime_string` or the instance's `undefined_value`.
+`js_runtime_throw` supplies a thrown value. `js_runtime_get/set` provide UTF-8
+host property names; `js_runtime_property/put` accept explicit UTF-16 keys.
+Foreign-instance values are rejected. Host code must cooperate with its own
+cancellation/deadlines; the interpreter cannot preempt native code. Recursive
+evaluation of the same instance returns null.
+
+Every AST visit consumes a step. Depth defaults to 256, live heap values to
+100000, properties per object and UTF-16 units per string/key to 10000, retained
+scripts to 1000, and source bytes per evaluation to 1048576. Configure
+`max_depth`, `max_values`, `max_properties`, `max_scripts`, `max_source_bytes`
+and `parse_limits` before evaluation. Parser limits include speculative work.
+Value/property/string caps bound allocations independently of execution steps.
+A limit abort returns control synchronously to an embedding event loop and
+leaves prior side effects visible; it is not a resumable continuation.
+
+Heap values are borrowed. The global environment and latest completion are
+roots; retain additional host values with `js_runtime_root` and release them
+with `js_runtime_unroot`. Root registration is idempotent, not reference-counted.
+`js_runtime_collect` traces environments, closures and object edges iteratively
+and reclaims unreachable cycles. Collection is permitted between evaluations
+only; attempts from a callback return -1. The interpreter does not collect
+mid-evaluation, so a heap limit can abort a long script even when intermediate
+values are unreachable. Script ASTs stay owned until instance destruction,
+bounded by `max_scripts`, ensuring closure bodies remain valid. The tests cover
+cyclic collection, closure survival, realm isolation, host exceptions, execution
+limits, and zero outstanding allocations after teardown.
 
 ## Preserve source during edits
 
@@ -106,7 +244,8 @@ comments and formatting.
 ```sh
 ./wbuild javascript_lexical_test javascript_parser_test javascript_validation_test \
   javascript_bindings_test javascript_restrictions_test javascript_ast_test \
-  javascript_roundtrip_test javascript_transform_test
+  javascript_roundtrip_test javascript_transform_test javascript_text_test \
+  javascript_runtime_test
 ./wbuild javascript_compatibility
 # Native Apple Silicon equivalent, including generic runtime/importer gates:
 tools/mac/run_javascript_tests.sh

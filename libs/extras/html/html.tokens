@@ -1,0 +1,44 @@
+# Maintained HTML tokenizer subset specification, version 1.
+# Authored for W; no translated/generated third-party grammar material.
+# Offsets count bytes of the original explicit-length input.
+
+space       := U+0009 | U+000A | U+000C | U+000D | U+0020
+alpha       := ASCII A-Z | ASCII a-z
+name        := alpha (any-byte - space - '/' - '>')*
+attribute-name := (any-byte - space - '=' - '/' - '>')+
+attribute   := attribute-name (space* '=' space* value)?
+value       := '"' any-byte-except-double-quote* '"'
+             | "'" any-byte-except-single-quote* "'"
+             | (any-byte - space - '>')*
+start-tag   := '<' name (space* attribute)* space* '/'? '>'
+end-tag     := '</' name (space* attribute)* space* '/'? '>'
+comment     := '<!--' bytes-until-first('-->') '-->'
+doctype     := case-insensitive('<!doctype') (space | '>') ... '>'
+bogus       := ('<!' | '<?') bytes-until-first('>') '>'
+reference   := '&' ('amp' | 'lt' | 'gt' | 'quot' | 'apos' | 'nbsp') ';'
+             | '&#' decimal-digits ';' | '&#' ('x' | 'X') hex-digits ';'
+
+State DATA: '<' followed by alpha starts a tag; '</' followed by alpha starts
+an end tag. '<!--' starts COMMENT. '<!'/'<?' start DOCTYPE/BOGUS. Other '<'
+bytes are ordinary text. Text ends before the next '<' (invalid '<' starts a
+new text token). Decode references in text and attribute values.
+
+State RCDATA: entered by title/textarea starts. Text, including '<', continues
+until a case-insensitive matching '</name' followed by space, '/', or '>'.
+Decode references. Matching close is processed as END_TAG and returns to DATA.
+
+State RAWTEXT/SCRIPT: entered by style/xmp/iframe/noembed/noframes/script.
+Same close recognition as RCDATA, with reference decoding disabled. SCRIPT does
+not implement escaped/double-escaped HTML script states; JS quoting does not
+hide an HTML closing delimiter.
+
+Tag names and attribute names are ASCII lowercase. First duplicate attribute
+wins. Slash before '>' sets self_closing; stray slash diagnoses and advances.
+EOF in a quoted value, tag, comment, or declaration emits its partial token and
+a diagnostic. Unterminated raw text emits text through EOF. Every call advances
+or returns EOF. Resource failures return EOF and set tokenizer.failed.
+
+In decoded text, CRLF/CR become LF, NUL becomes U+FFFD, and invalid numeric
+Unicode scalar values become U+FFFD. Unknown references remain literal.
+This lexical specification accompanies html.w and tests/html_test.w; tree
+recovery and excluded standard algorithms are in docs/projects/html.md.

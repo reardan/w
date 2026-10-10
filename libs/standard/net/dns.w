@@ -493,6 +493,8 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 # arrive within timeout_ms. Returns 1 with the host-order address in
 # *out_ip, else 0.
 int dns_query_server(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
+	int deadline = time_monotonic_ms() + timeout_ms
+	if (timeout_ms <= 0 || io_check() < 0): return 0
 	char* query = cast(char*, malloc(dns_udp_message_max))
 	int query_id = dns_random_id()
 	int query_len = dns_build_query(hostname, query_id, query, dns_udp_message_max)
@@ -533,7 +535,9 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 	free(response)
 	if (parsed == dns_result_ok): return 1
 	if (parsed == dns_result_truncated):
-		return dns_query_server_tcp(server_ip, server_port, hostname, timeout_ms, out_ip)
+		int remaining = deadline - time_monotonic_ms()
+		if (remaining <= 0): return 0
+		return dns_query_server_tcp(server_ip, server_port, hostname, remaining, out_ip)
 	return 0
 
 
@@ -567,3 +571,28 @@ int dns_resolve_ipv4(char* hostname, int* out_ip):
 			return 1
 	free(servers)
 	return 0
+
+
+# Resolution bounded across all configured servers, UDP and TCP fallback.
+# Caller distinguishes cancellation/deadline with io_check and its clock.
+int dns_resolve_ipv4_until(char* hostname, int* out_ip, int deadline_ms):
+	if (hostname == 0): return 0
+	if (hostname[0] == 0 || io_check() < 0): return 0
+	if (deadline_ms - time_monotonic_ms() <= 0): return 0
+	if (dns_parse_ipv4_literal(hostname, out_ip)): return 1
+	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip)): return 1
+	int* servers = cast(int*, malloc(dns_max_nameservers * __word_size__))
+	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers)
+	if (count == 0):
+		servers[0] = ip4_from_string(c"127.0.0.1")
+		count = 1
+	int found = 0
+	int i = 0
+	while (i < count && found == 0):
+		int remaining = deadline_ms - time_monotonic_ms()
+		if (remaining <= 0 || io_check() < 0): break
+		if (remaining > dns_default_timeout_ms): remaining = dns_default_timeout_ms
+		found = dns_query_server(servers[i], dns_port, hostname, remaining, out_ip)
+		i += 1
+	free(servers)
+	return found

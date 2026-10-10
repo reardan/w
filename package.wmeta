@@ -14,6 +14,10 @@ modules:
 	repl
 	compiler.compiler
 	graphics.event
+	graphics.image.image
+	graphics.image.png
+	graphics.image.jpeg
+	graphics.ui.accessibility
 	graphics.gl
 	graphics.math
 	graphics.ui.font
@@ -90,6 +94,17 @@ modules:
 	lib.wmeta
 	lib.__arch__.context
 	lib.__arch__.syscalls
+	libs.extras.html.html
+	libs.extras.css.css
+	libs.extras.javascript.parser
+	libs.extras.javascript.ast
+	libs.extras.javascript.lower
+	libs.extras.javascript.printer
+	libs.extras.javascript.text
+	libs.extras.javascript.runtime
+	libs.standard.web.urlparse
+	libs.standard.web.http_client
+	libs.standard.web.content_decode
 	libs.extras.cache.connection
 	libs.extras.cache.redis
 	libs.extras.cache.memcached

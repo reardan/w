@@ -7,12 +7,13 @@ ui_render_end via glBufferData + GL_DYNAMIC_DRAW (the per-frame
 orphaning idiom; no glBufferSubData needed).
 
 Vertex layout: x, y, u, v, r, g, b, a — 8 float32s, 32 bytes. One
-shader draws text, solid fills and every shape: glyphs and the baked
-AA masks sample the R8 atlas's coverage in .r, solid rects sample the
-solid-white mask's center, so the fragment path never branches.
+shader draws text, solid fills, shapes and RGBA images. Glyphs and
+AA masks sample the R8 atlas coverage in .r, solid rects sample the
+solid-white mask center, and image commands select straight RGBA.
 Rounded rects, discs, rings, the checkmark/chevron and the shadow
 9-patch are all mask quads (graphics.ui.font documents the mask ids)
-— no extra draw calls, no shader changes. The atlas samples LINEAR:
+— adjacent atlas geometry shares a draw call. Texture changes split
+the draw-command ranges without changing paint order. The atlas samples LINEAR:
 masks scale smoothly and glyphs draw 1:1 at integer pens, where
 LINEAR lands exactly on texel centers and stays crisp.
 
@@ -71,6 +72,26 @@ float32 ui_shadow_margin():
 	return 12.0
 
 
+# Images own an RGBA CPU copy and an optional GL texture. Draw commands
+# retain references until the next begin/destroy, so releasing the caller's
+# reference after issuing a draw is safe.
+struct ui_image:
+	int width
+	int height
+	int length
+	char* pixels
+	int32 texture
+	int gl_ready
+	int references
+
+
+struct ui_image_command:
+	int layer
+	int first
+	int count
+	ui_image* image
+
+
 struct ui_renderer:
 	int gl_ready
 	int program
@@ -78,6 +99,9 @@ struct ui_renderer:
 	int32 atlas_tex
 	int u_proj
 	int u_tex
+	int u_rgba
+	list[ui_image_command*] commands
+	ui_image* current_image
 	int a_pos
 	int a_uv
 	int a_color
@@ -118,6 +142,9 @@ void ui_render_init_headless(ui_renderer* r):
 	r.atlas_tex = 0
 	r.u_proj = 0
 	r.u_tex = 0
+	r.u_rgba = 0
+	r.commands = new list[ui_image_command*]
+	r.current_image = 0
 	r.a_pos = 0
 	r.a_uv = 0
 	r.a_color = 0
@@ -140,6 +167,7 @@ void ui_render_init_headless(ui_renderer* r):
 	r.atlas_generation = ui_font_atlas_generation()
 
 
+void ui_render_clear_image_commands(ui_renderer* r);
 void ui_render_upload_atlas(ui_renderer* r);
 void ui_render_destroy(ui_renderer* r);
 
@@ -154,14 +182,12 @@ void ui_render_sync_atlas(ui_renderer* r):
 	int rows = ui_font_uv_rows()
 	if (old_rows != rows):
 		float32 k = cast(float32, old_rows) / cast(float32, rows)
-		int layer = 0
-		while (layer < ui_render_layer_count):
-			float32* batch = r.layer_verts[layer]
-			int i = 0
-			while (i < r.layer_vert_count[layer]):
+		for command_index in range(r.commands.length):
+			ui_image_command* command = r.commands[command_index]
+			if (command.image != 0): continue
+			float32* batch = r.layer_verts[command.layer]
+			for i in range(command.first, command.first + command.count):
 				batch[i * 8 + 3] = batch[i * 8 + 3] * k
-				i = i + 1
-			layer = layer + 1
 	if (r.gl_ready && (r.atlas_generation != ui_font_atlas_generation())): ui_render_upload_atlas(r)
 
 
@@ -187,7 +213,7 @@ int ui_render_init(ui_renderer* r):
 	# Bodies compile as GLSL 130 (GLX), 150 (Mac core) and 300 es
 	# (WebGL2); the backend's gfx_shader_header supplies "#version".
 	char* vertex_source = strjoin(gfx_shader_header(), c"in vec2 a_pos;\nin vec2 a_uv;\nin vec4 a_color;\nout vec2 v_uv;\nout vec4 v_color;\nuniform mat4 u_proj;\nvoid main() {\n\tv_uv = a_uv;\n\tv_color = a_color;\n\tgl_Position = u_proj * vec4(a_pos, 0.0, 1.0);\n}\n")
-	char* fragment_source = strjoin(gfx_shader_header(), c"in vec2 v_uv;\nin vec4 v_color;\nout vec4 frag_color;\nuniform sampler2D u_tex;\nvoid main() {\n\tfrag_color = vec4(v_color.rgb, v_color.a * texture(u_tex, v_uv).r);\n}\n")
+	char* fragment_source = strjoin(gfx_shader_header(), c"in vec2 v_uv;\nin vec4 v_color;\nout vec4 frag_color;\nuniform sampler2D u_tex;\nuniform int u_rgba;\nvoid main() {\n\tvec4 sampled = texture(u_tex, v_uv);\n\tfrag_color = (u_rgba != 0) ? sampled * v_color : vec4(v_color.rgb, v_color.a * sampled.r);\n}\n")
 	r.program = gl_create_program(vertex_source, fragment_source)
 	free(vertex_source)
 	free(fragment_source)
@@ -198,6 +224,7 @@ int ui_render_init(ui_renderer* r):
 	glUseProgram(r.program)
 	r.u_proj = glGetUniformLocation(r.program, c"u_proj")
 	r.u_tex = glGetUniformLocation(r.program, c"u_tex")
+	r.u_rgba = glGetUniformLocation(r.program, c"u_rgba")
 	r.a_pos = glGetAttribLocation(r.program, c"a_pos")
 	r.a_uv = glGetAttribLocation(r.program, c"a_uv")
 	r.a_color = glGetAttribLocation(r.program, c"a_color")
@@ -221,6 +248,7 @@ int ui_render_init(ui_renderer* r):
 # Start a frame: reset the batch, set the pixel-space projection for
 # the current window size.
 void ui_render_begin(ui_renderer* r, int width, int height):
+	ui_render_clear_image_commands(r)
 	int i = 0
 	while (i < ui_render_layer_count):
 		r.layer_vert_count[i] = 0
@@ -308,6 +336,14 @@ void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v
 	p[6] = color.b
 	p[7] = color.a
 	r.layer_vert_count[layer] = count + 1
+	ui_image_command* command = 0
+	if (r.commands.length > 0): command = r.commands[r.commands.length - 1]
+	if (command != 0 && command.layer == layer && command.image == r.current_image && command.first + command.count == count):
+		command.count = command.count + 1
+	else:
+		command = new ui_image_command(layer, count, 1, r.current_image)
+		if (command.image != 0): command.image.references = command.image.references + 1
+		r.commands.push(command)
 
 
 # Two triangles covering rect, sampling the atlas region u0,v0..u1,v1
@@ -504,7 +540,7 @@ void ui_draw_shadow(ui_renderer* r, ui_rect rect, ui_color color):
 	ui_render_quad(r, ui_rect_new(s.x + cs, s.y + cs, s.w - cs * 2.0, s.h - cs * 2.0), uc, vc, uc, vc, color)
 
 
-void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
+void ui_render_upload_batch(ui_renderer* r, float32* batch, int count):
 	if (count == 0): return
 	glBindBuffer(GL_ARRAY_BUFFER, r.vbuf)
 	glBufferData(GL_ARRAY_BUFFER, count * 32, batch, GL_DYNAMIC_DRAW)
@@ -514,6 +550,15 @@ void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
 	glVertexAttribPointer(r.a_uv, 2, GL_FLOAT, 0, 32, 8)
 	glEnableVertexAttribArray(r.a_color)
 	glVertexAttribPointer(r.a_color, 4, GL_FLOAT, 0, 32, 16)
+
+
+# Low-level atlas-only batch helper retained for existing consumers.
+void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
+	if (count == 0): return
+	ui_render_upload_batch(r, batch, count)
+	glActiveTexture(GL_TEXTURE0)
+	glBindTexture(GL_TEXTURE_2D, r.atlas_tex)
+	glUniform1i(r.u_rgba, 0)
 	glDrawArrays(GL_TRIANGLES, 0, count)
 
 
@@ -526,11 +571,30 @@ void ui_render_end(ui_renderer* r):
 	glUseProgram(r.program)
 	int i = 0
 	while (i < ui_render_layer_count):
-		ui_render_draw_batch(r, r.layer_verts[i], r.layer_vert_count[i])
+		ui_render_upload_batch(r, r.layer_verts[i], r.layer_vert_count[i])
+		for j in range(r.commands.length):
+			ui_image_command* command = r.commands[j]
+			if (command.layer != i): continue
+			glActiveTexture(GL_TEXTURE0)
+			if (command.image == 0):
+				glBindTexture(GL_TEXTURE_2D, r.atlas_tex)
+				glUniform1i(r.u_rgba, 0)
+			else:
+				glBindTexture(GL_TEXTURE_2D, command.image.texture)
+				glUniform1i(r.u_rgba, 1)
+			glDrawArrays(GL_TRIANGLES, command.first, command.count)
 		i = i + 1
 
 
 void ui_render_destroy(ui_renderer* r):
+	ui_render_clear_image_commands(r)
+	__w_list_free(cast(__w_list*, r.commands))
+	r.commands = 0
+	if (r.gl_ready):
+		glDeleteTextures(1, &r.atlas_tex)
+		glDeleteBuffers(1, &r.vbuf)
+		glDeleteProgram(r.program)
+		r.gl_ready = 0
 	int i = 0
 	while (i < ui_render_layer_count):
 		free(cast(char*, r.layer_verts[i]))
@@ -538,3 +602,67 @@ void ui_render_destroy(ui_renderer* r):
 		r.layer_vert_count[i] = 0
 		r.layer_vert_cap[i] = 0
 		i = i + 1
+
+
+# RGBA rows are tightly packed, top-to-bottom, with straight alpha.
+# Every dimension/allocation is validated before copying or GL upload.
+ui_image* ui_image_create(ui_renderer* r, int width, int height, char* pixels, int length):
+	if (pixels == 0 || width < 1 || height < 1 || width > 8192 || height > 8192): return 0
+	if (height > 67108864 / 4 / width || length != width * height * 4): return 0
+	ui_image* image = new ui_image(width, height, length, 0, 0, r.gl_ready, 1)
+	image.pixels = cast(char*, malloc(length))
+	for i in range(length): image.pixels[i] = pixels[i]
+	if (r.gl_ready):
+		glGenTextures(1, &image.texture)
+		glActiveTexture(GL_TEXTURE0)
+		glBindTexture(GL_TEXTURE_2D, image.texture)
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.pixels)
+	return image
+
+
+# Updates preserve dimensions and ownership. Queued draws observe the
+# latest update when the frame is submitted, not a pixel snapshot.
+int ui_image_update(ui_image* image, char* pixels, int length):
+	if (image == 0 || pixels == 0 || length != image.length): return 0
+	for i in range(length): image.pixels[i] = pixels[i]
+	if (image.gl_ready):
+		glActiveTexture(GL_TEXTURE0)
+		glBindTexture(GL_TEXTURE_2D, image.texture)
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, image.width, image.height, GL_RGBA, GL_UNSIGNED_BYTE, image.pixels)
+	return 1
+
+
+void ui_image_release(ui_image* image):
+	if (image == 0): return
+	image.references = image.references - 1
+	if (image.references > 0): return
+	if (image.gl_ready): glDeleteTextures(1, &image.texture)
+	free(image.pixels)
+	free(image)
+
+
+void ui_render_clear_image_commands(ui_renderer* r):
+	if (r.commands == 0): return
+	while (r.commands.length > 0):
+		ui_image_command* command = r.commands.pop()
+		ui_image_release(command.image)
+		free(command)
+	r.current_image = 0
+
+
+# Scaling is linear; clipping trims UVs with the ordinary quad path.
+# The image must have been created for the renderer/context in use.
+void ui_draw_image(ui_renderer* r, ui_image* image, ui_rect rect, float32 opacity):
+	if (image == 0 || rect.w <= 0.0 || rect.h <= 0.0 || opacity <= 0.0 || image.gl_ready != r.gl_ready): return
+	if (opacity > 1.0): opacity = 1.0
+	r.current_image = image
+	ui_color tint = ui_gray(1.0)
+	tint.a = opacity
+	ui_render_quad(r, rect, 0.0, 0.0, 1.0, 1.0, tint)
+	r.current_image = 0
