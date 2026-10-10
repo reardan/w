@@ -32,6 +32,7 @@ import compiler.loop_ast
 import compiler.gpu_ast
 import compiler.tile_ast
 import compiler.global_ast
+import compiler.function_record_ast
 import compiler.function_ast
 import compiler.linkage_ast
 import grammar.string_literal
@@ -103,3 +104,6 @@ import grammar.defer_ast
 
 # no idea why this is necessary:
 int grammar_no_reason_temp_var
+
+import grammar.ast_function_record
+import code_generator.function_record_ast

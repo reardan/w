@@ -41,6 +41,34 @@ Tile programs (#480) now provide a bounded whole-region parse/analyze/emit
 path in the retained arena; both frontend entry modes share it. This is not
 whole-function checkpoint B completion. See [tiles.md](tiles.md) for its
 restricted syntax, owned bindings, analysis and validation contract.
+The next scalar slice now has an explicit compiler API:
+`ast_record_scalar_function()` records a complete `int` function in the main
+`function_ast.owned_body`, and `emit_recorded_scalar_function()` lowers it to
+stand-alone native W-ABI code on x86/x64. The supported subset has `int`
+parameters and initialized locals, assignments, arithmetic and comparisons,
+short-circuit logic, `if`/`else`, `while`, one/two-argument range loops, and
+value returns. All paths must return; calls, non-integer types, `break`,
+`continue`, captures, and general function features remain outside this API.
+Integer literals use decimal spelling from `0` through `2147483647`; unary
+`+` and `-` apply separately, including on x64.
+
+Standalone lowering runs only at a function boundary, with no active backend
+frame, control block or expression scratch stack. Its returned code address
+has no registered module symbol, so it emits no DWARF function or local
+records. Existing debug records and pending parameters remain intact; symbol
+registration and debug metadata for these functions are future work.
+
+The record-only parser allocates names, lexical bindings, source locations and
+syntax in the checkpointed retained arena without declaring live symbols,
+assigning backend slots or emitting code. Lowering assigns a fixed frame from
+owned local identities. `ast_function_record_test` and its x64 twin close and
+replace parser input, replace live symbol state, then lower and execute multiple
+recorded functions, including early returns, shadowing and short-circuiting.
+They also cover rollback and repeat lowering. This starts checkpoint B for a
+restricted subset; ordinary CLI function compilation still uses its existing
+incremental main-AST path. There is no tile syntax or tile AST dependency in
+this scalar parser or emitter, and no source replay.
+
 The final local compile-time measurements are 1.40x streaming on x86 and 1.47x
 on x64; the 1.25x target remains unmet. Both complete test suites pass (1,023
 targets each), along with the x86, x64, Win64 and wasm self-host fixpoints.
