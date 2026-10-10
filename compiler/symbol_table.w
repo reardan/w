@@ -294,6 +294,22 @@ int sym_probe(char* name):
 	return -1
 
 
+# 1 when record t, declared under name, is still in scope: on name's
+# chain below table_pos. Unlike sym_probe(name) == t this holds while a
+# later declaration shadows the name -- an inner block's local, or the
+# parameter of a body inlined at a call site (grammar/inline_call.w)
+# whose name a caller's register-resident local also has.
+int sym_record_live(char* name, int t):
+	if ((t < 0) || (t >= table_pos)): return 0
+	if (sym_name_index == 0): return 0
+	if ((name in sym_name_index) == 0): return 0
+	int p = sym_name_index[name]
+	while (p >= 0):
+		if (sym_index_offset(p) == t): return 1
+		p = load_int(sym_index_prev + p * 4)
+	return 0
+
+
 void inline_note_lookup(char* s, int found);   /* compiler/inline_table.w */
 void inline_const_note(int t);   /* grammar/inline_call.w */
 

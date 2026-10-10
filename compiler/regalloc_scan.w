@@ -562,7 +562,7 @@ void regalloc_slot_assert(int slot):
 		if ((t < table_pos) && regalloc_promoted_live[i] && (table[t + 1] == 'L')):
 			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
 				char* name = regalloc_promoted_names[i]
-				if (sym_probe(name) == t):
+				if (sym_record_live(name, t)):
 					error3(c"internal error: stack slot of register-resident local '", name, c"' addressed (compile with --no-regs and report this)")
 
 
@@ -581,7 +581,7 @@ int regalloc_slot_register(int slot):
 		int t = regalloc_promoted_syms[i]
 		if ((t < table_pos) && regalloc_promoted_live[i] && (table[t + 1] == 'L')):
 			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
-				if (sym_probe(regalloc_promoted_names[i]) == t): return load_int(table + t + 146)
+				if (sym_record_live(regalloc_promoted_names[i], t)): return load_int(table + t + 146)
 	return 0
 
 
@@ -2293,7 +2293,9 @@ int rl_entry_live(int i):
 	if ((kind == 'L') || (kind == 'A') || (kind == 'B')):
 		int t = rl_sym[i]
 		if (t >= table_pos): return 0
-		if (sym_probe(rl_name[i]) != t): return 0
+		# shadowing (an inlined body's parameter of the same name) does
+		# not end the entry; leaving the scope does
+		if (sym_record_live(rl_name[i], t) == 0): return 0
 	return 1
 
 
