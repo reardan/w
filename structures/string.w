@@ -35,6 +35,10 @@ void string_reserve(string_builder* s, int extra):
 	# block and the append would write far past it. extra <= 0 asks for
 	# nothing (callers pass size hints that may have wrapped themselves).
 	if (extra <= 0): return
+	# Fast path: length + extra + 1 <= capacity already fits. capacity
+	# and extra are both positive here, so capacity - extra cannot wrap,
+	# and a fitting request can never overflow the checked sum below.
+	if (s.length < s.capacity - extra): return
 	int needed = __w_size_add(__w_size_add(s.length, extra), 1)
 	if (needed > s.capacity):
 		int new_capacity = __w_grow_capacity(s.capacity, needed)
@@ -55,10 +59,13 @@ void string_append(string_builder* s, char* c):
 
 
 void string_append_char(string_builder* s, int c):
-	string_reserve(s, 1)
-	s.data[s.length] = c
-	s.length = s.length + 1
-	s.data[s.length] = 0
+	int length = s.length
+	# Room for the byte and the terminator: skip the string_reserve call.
+	if (length >= s.capacity - 1): string_reserve(s, 1)
+	char* data = s.data
+	data[length] = c
+	data[length + 1] = 0
+	s.length = length + 1
 
 
 string_builder* string_from(char* c):
@@ -81,7 +88,8 @@ int string_equals(string_builder* s, char* c):
 # through embedded NUL bytes, so it can carry string descriptor contents.
 void string_append_bytes(string_builder* s, char* data, int length):
 	string_reserve(s, length)
-	for i in range(length): s.data[s.length + i] = data[i]
+	char* dst = s.data + s.length
+	for i in range(length): dst[i] = data[i]
 	s.length = s.length + length
 	s.data[s.length] = 0
 

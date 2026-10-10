@@ -28,6 +28,13 @@ word 2 + i below that frame's return-address slot, i the register's
 index in the ascending push order), or it is still live in the stopped
 frame when no inner frame saved it. Attach mode has no sigcontext, so
 register locals are not addressable there (0).
+
+A local or argument in a caller-saved register (a loop's registers or
+the function region of compiler/regalloc_scan.w: x64 rsi rdi r8-r11,
+x86 ecx edx) is the sigcontext word in the stopped frame too. In an
+outer frame that register was written to the variable's own stack word
+before the call (regalloc_call_spill), so there the note's stack slot
+holds the value, as for a stack local.
 */
 import debugger.symbols
 import debugger.registers
@@ -106,15 +113,28 @@ int dbg_local_find(char* name, int stop_addr):
 	return best
 
 
-# sigcontext offset of a callee-saved register by hardware number (x86
-# esi 6 / edi 7; x64 r12-r15), -1 for anything else.
+# sigcontext offset of a register a local may live in, by hardware
+# number (x86 esi 6 / edi 7 and the loop registers ecx 1 / edx 2; x64
+# r12-r15 and the loop/region registers rsi rdi r8-r11), -1 for anything
+# else.
 int dbg_reg_sigcontext_offset(int reg):
 	if (__word_size__ == 8):
-		if ((reg >= 12) && (reg <= 15)): return sigcontext_r12 + (reg - 12) * 8
+		if ((reg >= 8) && (reg <= 15)): return sigcontext_r8 + (reg - 8) * 8
+		if (reg == 6): return sigcontext_esi()
+		if (reg == 7): return sigcontext_edi()
 		return -1
 	if (reg == 6): return sigcontext_esi()
 	if (reg == 7): return sigcontext_edi()
+	if (reg == 1): return sigcontext_ecx()
+	if (reg == 2): return sigcontext_edx()
 	return -1
+
+
+# A caller-saved register (see the header): its value lives in the
+# variable's stack word in every frame but the stopped one.
+int dbg_reg_caller_saved(int reg):
+	if (__word_size__ == 8): return (reg >= 6) && (reg <= 11)
+	return (reg == 1) || (reg == 2)
 
 
 # Address of the word holding register reg's value for the selected
@@ -147,7 +167,7 @@ int dbg_local_runtime_addr(int i, int esp):
 	int slot = dbg_local_slot(i)
 	int type = dbg_local_type(i)
 	int reg = debug_local_register(i)
-	if (reg != 0): return dbg_register_local_addr(reg)
+	if ((reg != 0) && ((dbg_reg_caller_saved(reg) == 0) || (dbg_fr_sel == 0))): return dbg_register_local_addr(reg)
 	int k
 	if (dbg_local_kind(i) == 'L'): k = (dbg_frame_stack - slot - 1) * __word_size__
 	else: k = (dbg_frame_stack + dbg_frame_args - slot + 1) * __word_size__

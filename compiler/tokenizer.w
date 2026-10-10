@@ -81,6 +81,15 @@ int inline_hazard_count
 # division, limb and bit emitters): a body with one is no leaf for a
 # loop that owns those registers (unit A9, inline_name_is_leaf).
 int inline_clobber_count
+# Parameters of a body being emitted in place that are bound to the
+# integer constant their call site pushed (grammar/inline_call.w): how
+# many are in scope, and the note sym_emit_value leaves on the 'lea' of
+# one, which promote() (grammar/promote.w) turns into the immediate.
+int inline_const_count
+int inline_const_note_start
+int inline_const_note_end
+int inline_const_note_value
+int inline_const_note_type
 
 # Recursive-descent nesting guards (docs/projects/ai_tooling_next_steps.md,
 # "No recursion-depth guard in the recursive-descent parser"): thousands
@@ -486,6 +495,43 @@ void warning3(char* a, char* b, char* c):
 	diag_part(a)
 	diag_part(b)
 	warning(c)
+
+
+# A descriptor that reads end of file at once and forever: the read end
+# of a pipe whose write end is closed here. The in-memory source windows
+# of the inliner and the retained re-parse (grammar/inline_call.w,
+# code_generator/retained_emit.w) sit on one, so getchar's refill at a
+# window's end reads nothing. /dev/null is only the fallback: where it
+# is a regular file that other processes write to (a container whose
+# /dev/null was deleted and recreated by an O_CREAT open), that refill
+# read their bytes as source, and up to 8 KiB of them into the inliner's
+# body-sized window, past its end into the heap.
+# empty_stream_is tells the register pre-scan (compiler/regalloc_scan.w)
+# that the descriptor it cannot seek is such a stream, not a piped
+# source; empty_stream_forget drops the mark before the number is closed.
+int[256] empty_stream_marks
+
+
+int empty_stream_open():
+	char* ends = cast(char*, malloc(8))
+	int fd = -1
+	if (pipe(cast(int*, ends)) == 0):
+		# the kernel writes two 32-bit descriptors on every target
+		fd = load_int32(ends)
+		close(load_int32(ends + 4))
+	free(ends)
+	if ((fd >= 0) && (fd < 256)): empty_stream_marks[fd] = 1
+	if (fd < 0): fd = open(c"/dev/null", 0, 511)
+	return fd
+
+
+int empty_stream_is(int fd):
+	if ((fd < 0) || (fd >= 256)): return 0
+	return empty_stream_marks[fd]
+
+
+void empty_stream_forget(int fd):
+	if ((fd >= 0) && (fd < 256)): empty_stream_marks[fd] = 0
 
 
 int getc():

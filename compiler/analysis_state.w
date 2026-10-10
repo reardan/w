@@ -58,7 +58,9 @@ void analysis_capture(analysis_state* state):
 void analysis_restore(analysis_state* state):
 	# A failure inside a generic instantiation's reparse leaves that
 	# definition's file open and current.
-	if ((file != state.file) && (file >= 0)): close(file)
+	if ((file != state.file) && (file >= 0)):
+		empty_stream_forget(file)
+		close(file)
 	filename = state.filename
 	file = state.file
 	getchar_seek(file, state.byte_offset)

@@ -583,14 +583,18 @@ int be_frame_active
 # the frame pointer, plus the callee-saved registers promoted locals
 # live in (x86/x64 only, regalloc_prologue_emit).
 int be_frame_words():
-	return be_frame_active + regalloc_saved_count
+	return be_frame_active + regalloc_saved_count + rg_homes
 
 
 # Close a function body: on wasm the unit's `end` opcode plus the body
 # size patch; nothing on the native targets. Called right after the
 # body's final ret().
+void regargs_close(int framed);   /* compiler/regalloc_scan.w (unit O5) */
 void be_function_epilogue():
 	if (be_frame_active): dwarf_function_close()
+	# x64: the register entry (O5), after the body and outside its
+	# .debug_frame range; nothing unless the body qualifies
+	if (target_isa == 0): regargs_close(be_frame_active)
 	be_frame_active = 0
 	regalloc_function_end()
 	if (target_isa == 2): wasm_function_end()

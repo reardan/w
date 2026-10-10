@@ -299,6 +299,15 @@ int promote(int type):
 		print2(last_identifier)
 		println2(c"')")
 
+	# A parameter bound to its call site's constant (grammar/inline_call.w,
+	# inline_const_note): the 'lea' of its slot is the last instruction;
+	# the immediate replaces it, so the operators that fold a constant
+	# operand see one
+	if ((inline_const_note_end != 0) && (inline_const_note_end == codepos) && (type == inline_const_note_type)):
+		inline_const_note_end = 0
+		peep_rollback(inline_const_note_start)
+		mov_eax_int(inline_const_note_value)
+		return type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
 	# An lvalue in device global memory ('gpu T*' element): diagnosed in
 	# host code; on device the load itself becomes ld.global
@@ -337,6 +346,18 @@ int promote(int type):
 		promote_eax()
 		return type
 	if (ci_is_bit_field_access(type)): return bit_field_promote(type)
+	# The address just materialized is a const integer global's or an
+	# enum constant's (O1, cg_note_*): load its known value as an
+	# immediate, which the constant folds then consume ('cmp r8,5').
+	if ((cg_note_end != 0) && (cg_note_end == codepos) && (type == cg_note_type)):
+		int value = cg_note_value
+		int slot = cg_note_end - 4
+		peep_rollback(cg_note_start)
+		cg_note_end = 0
+		if (elf_static): static_unnote_address(slot)
+		mov_eax_int(value)
+		const_global_reads_folded = const_global_reads_folded + 1
+		return type
 
 	int size = type_get_size(type)
 	int unsigned_fixed = type_is_unsigned_fixed(type)
