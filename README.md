@@ -152,6 +152,14 @@ source in the tree (`./wbuild manifest` writes a copy to `bin/build.json`
 for reading; `./wbuild manifest_check`, part of `tests`, fails when
 generation fails). Design notes in `docs/projects/wexec.md`.
 
+On x64 Linux, `./wbuild compiler_shared` builds the compiler implementation
+as `bin/libwcompiler.so` and its small launcher as `bin/wcompiler_shared`.
+`./wbuild compiler_static` links the same implementation from a compiled
+archive into the standalone `bin/wcompiler_static`.
+Source-owned library targets and `link=` connect separately built shared
+libraries or compiled `.wa` static archives;
+see [building and linking libraries](docs/projects/build_libraries.md).
+
 wexec captures each step's stdout/stderr to check expectations, so it
 cannot host a live prompt, a full-screen debugger, or a
 serve-until-Ctrl-C process. Those conveniences are one-liners instead of
@@ -185,7 +193,7 @@ stock x86-64 system.
 | `SEEDS` | Pins {release tag, asset, sha256} for each bootstrap seed binary |
 | `w` | 32-bit static ELF seed binary (downloaded per `SEEDS`, gitignored) |
 | `w_darwin` | arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap (downloaded per `SEEDS`, gitignored) |
-| `w.w` | Compiler entry point (imports `compiler.compiler`, calls `link()`) |
+| `w.w` | Thin compiler launcher; command dispatch and the reusable entry point live in `compiler/cli.w` |
 | `compiler/` | Driver, tokenizer, symbol table, type table |
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |

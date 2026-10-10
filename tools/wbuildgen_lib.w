@@ -659,6 +659,10 @@ struct wbg_custom:
 	char* name
 	char* src
 	int is_binary
+	int is_library
+	char* kind
+	list[char*] links
+	int link_state
 	int staged                    # binary=: compile to <out>.stage, then mv
 	char* arch                    # binary=: target selector word, 0 = default
 	char* out                     # binary=: output path, 0 = bin/<name>
@@ -998,7 +1002,8 @@ targets besides its conventional test target:
   # wbuild: target=<name> [tag=<umbrella>] [dep=<target>] [data=<path>]
   #         [input=<path>] [output=<path>]
   # wbuild: binary=<name> [arch=<sel>] [flags="args"] [out=<path>]
-  #         [staged] [tag=...] [dep=...] [data=...]
+  #         [staged] [tag=...] [dep=...] [data=...] [link=<library-target>]
+  # wbuild: library=<name> kind=shared|static arch=x64 [out=<path>] [link=...]
 
 (each on one line). The tokens after target=/binary= on its line are the
 target's own fields (all repeatable except arch/out/staged); every later
@@ -1012,6 +1017,13 @@ shorthand: deps ["wv2"] (plus dep=), inputs [the source], outputs
 that may be running while it is rebuilt). A source's own test-target
 directives, including its own step= lines, must come before its first
 target=/binary= line.
+
+library= compiles an x64 Linux shared object with kind=shared (default
+bin/lib<name>.so) or a W compiled archive with kind=static (bin/lib<name>.wa). library= and binary= may repeat link=<library-target>:
+each reference adds the producer dependency, its artifact as a cache
+input, and --link=<artifact> to the compiler command. References resolve
+after every source is read and cycles are rejected. Linked targets require
+arch=x64; unsupported kinds and architectures fail during generation.
 
 Source-owned targets are read in a first pass over every .w file (and
 .w.wbuild sidecar) under the scanned directories plus compiler/,
@@ -1030,7 +1042,11 @@ int wbg_open_custom(char* path, char* key, int has_value, char* value):
 	wbg_custom* c = new wbg_custom()
 	c.name = strclone(value)
 	c.src = strclone(path)
-	c.is_binary = strcmp(key, c"binary") == 0
+	c.is_library = strcmp(key, c"library") == 0
+	c.is_binary = (strcmp(key, c"binary") == 0) | c.is_library
+	c.kind = 0
+	c.links = new list[char*]
+	c.link_state = 0
 	c.staged = 0
 	c.arch = 0
 	c.out = 0
@@ -1060,6 +1076,21 @@ int wbg_apply_custom_field(char* path, char* key, int has_value, char* value):
 	if (value[0] == 0):
 		wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 		return 1
+	if (strcmp(key, c"kind") == 0):
+		if (c.is_library == 0):
+			wbg_token_error(path, c"kind= only applies to library=: ", c.name)
+			return 1
+		if (c.kind != 0):
+			wbg_token_error(path, c"duplicate library kind: ", c.name)
+			return 1
+		c.kind = strclone(value)
+		return 0
+	if (strcmp(key, c"link") == 0):
+		if (c.is_binary == 0):
+			wbg_token_error(path, c"link= only applies to binary= or library=: ", c.name)
+			return 1
+		c.links.push(strclone(value))
+		return 0
 	if (strcmp(key, c"tag") == 0):
 		c.tags.push(strclone(value))
 		return 0
@@ -1098,6 +1129,56 @@ json_value* wbg_string_array(list[char*] values):
 	return out
 
 
+# Library references resolve against the complete first pass, so source path
+# order never determines whether a link is legal.
+wbg_custom* wbg_custom_named(char* name):
+	for wbg_custom* c in wbg_customs:
+		if (strcmp(c.name, name) == 0): return c
+	return 0
+
+
+char* wbg_custom_output(wbg_custom* c):
+	if (c.out != 0): return c.out
+	if (c.is_library):
+		char* suffix = c".so"
+		if ((c.kind != 0) && (strcmp(c.kind, c"static") == 0)): suffix = c".wa"
+		return wbg_concat(wbg_concat(c"bin/lib", c.name), suffix)
+	return wbg_concat(c"bin/", c.name)
+
+
+int wbg_validate_links(wbg_custom* c):
+	if (c.link_state == 2): return 0
+	if (c.link_state == 1):
+		wbg_error2(c"cyclic library link: ", c.name)
+		return 1
+	c.link_state = 1
+	if (c.is_library):
+		if (c.kind == 0):
+			wbg_error2(c"library requires kind=shared or kind=static: ", c.name)
+			return 1
+		if ((strcmp(c.kind, c"shared") != 0) && (strcmp(c.kind, c"static") != 0)):
+			wbg_error2(c"unsupported library kind (expected shared or static): ", c.kind)
+			return 1
+	if (c.is_library || (c.links.length > 0)):
+		if ((c.arch == 0) || (strcmp(c.arch, c"x64") != 0)):
+			wbg_error2(c"library linking requires arch=x64: ", c.name)
+			return 1
+	for char* name in c.links:
+		wbg_custom* lib = wbg_custom_named(name)
+		if (lib == 0):
+			wbg_error2(c"unknown library target: ", name)
+			return 1
+		if (lib.is_library == 0):
+			wbg_error2(c"link target is not a library: ", name)
+			return 1
+		if (lib == c):
+			wbg_error2(c"library cannot link itself: ", name)
+			return 1
+		if (wbg_validate_links(lib)): return 1
+	c.link_state = 2
+	return 0
+
+
 # The finished target object for one source-owned target, in the field
 # order the hand-written targets use: name, deps, data, inputs,
 # outputs, steps (plus "tags", which wbg_collect_tags consumes and the
@@ -1106,11 +1187,13 @@ json_value* wbg_custom_json(wbg_custom* c):
 	json_value* target = json_object()
 	json_object_set(target, c"name", json_string(c.name))
 	list[char*] deps = new list[char*]
-	char* out = c.out
+	char* out = wbg_custom_output(c)
 	if (c.is_binary):
 		deps.push(c"wv2")
-		if (out == 0): out = wbg_concat(c"bin/", c.name)
-	for char* dep in c.deps: deps.push(dep)
+	for char* dep in c.deps:
+		if ((dep in deps) == 0): deps.push(dep)
+	for char* name in c.links:
+		if ((name in deps) == 0): deps.push(name)
 	if (deps.length > 0): json_object_set(target, c"deps", wbg_string_array(deps))
 	if (c.tags.length > 0): json_object_set(target, c"tags", wbg_string_array(c.tags))
 	if (c.data.length > 0): json_object_set(target, c"data", wbg_string_array(c.data))
@@ -1120,6 +1203,9 @@ json_value* wbg_custom_json(wbg_custom* c):
 		inputs.push(c.src)
 		outputs.push(out)
 	for char* input in c.inputs: inputs.push(input)
+	for char* name in c.links:
+		char* artifact = wbg_custom_output(wbg_custom_named(name))
+		if ((artifact in inputs) == 0): inputs.push(artifact)
 	for char* output in c.outputs: outputs.push(output)
 	if (inputs.length > 0): json_object_set(target, c"inputs", wbg_string_array(inputs))
 	if (outputs.length > 0): json_object_set(target, c"outputs", wbg_string_array(outputs))
@@ -1130,6 +1216,14 @@ json_value* wbg_custom_json(wbg_custom* c):
 		json_value* cmd = json_array()
 		json_array_push(cmd, json_string(c"bin/wv2"))
 		if (c.arch != 0): json_array_push(cmd, json_string(c.arch))
+		if (c.is_library):
+			json_array_push(cmd, json_string(wbg_concat(c"--", c.kind)))
+		list[char*] linked = new list[char*]
+		for char* name in c.links:
+			if (name in linked): continue
+			linked.push(name)
+			char* artifact = wbg_custom_output(wbg_custom_named(name))
+			json_array_push(cmd, json_string(wbg_concat(c"--link=", artifact)))
 		for char* args in c.flags: wbg_push_split_args(cmd, args)
 		json_array_push(cmd, json_string(c.src))
 		json_array_push(cmd, json_string(c"-o"))
@@ -1158,7 +1252,7 @@ json_value* wbg_custom_json(wbg_custom* c):
 int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 	if (wbg_line_skip): return 0
 	wbg_line_tokens = wbg_line_tokens + 1
-	int opens_custom = (strcmp(key, c"target") == 0) | (strcmp(key, c"binary") == 0)
+	int opens_custom = (strcmp(key, c"target") == 0) | (strcmp(key, c"binary") == 0) | (strcmp(key, c"library") == 0)
 	if (wbg_custom_pass):
 		# Pass 1 (wbg_load_customs): only source-owned targets and their
 		# steps; every other directive belongs to pass 2.
@@ -2318,6 +2412,8 @@ int wbg_load_customs():
 		if (wbg_parse_directives(src)): failed = 1
 	wbg_custom_pass = 0
 	if (failed): return 1
+	for wbg_custom* c in wbg_customs:
+		if (wbg_validate_links(c)): return 1
 	json_value* targets = json_object_get(wbg_base, c"targets")
 	for wbg_custom* c in wbg_customs:
 		if (c.name in wbg_base_targets):

@@ -79,11 +79,13 @@ void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int a
 
 
 void elf_emit_dynamic():
-	if (dyn_has_imports() == 0): return;
+	if ((dyn_has_imports() == 0) && (elf_shared == 0)): return;
 	if (x64_syscall_abi): error(c"--syscall-abi=vmcall does not support dynamic imports")
-	if (dyn_lib_count == 0): error(c"extern used without any c_lib to import from")
+	if ((dyn_lib_count == 0) && dyn_has_imports()): error(c"extern used without any c_lib to import from")
 
-	int nsym = dyn_import_count + 1   /* index 0 is the reserved null symbol */
+	int nexports = 0
+	if (elf_shared): nexports = wasm_export_count
+	int nsym = dyn_import_count + nexports + 1   /* index 0 is the reserved null symbol */
 	int i
 
 	# ---- .interp ----
@@ -96,6 +98,7 @@ void elf_emit_dynamic():
 	# ---- .dynstr (string offsets recorded for DT_NEEDED and st_name) ----
 	char* lib_str_off = cast(char*, malloc(dyn_lib_count * 4 + 4))
 	char* imp_str_off = cast(char*, malloc(dyn_import_count * 4 + 4))
+	char* export_str_off = cast(char*, malloc(nexports * 4 + 4))
 	int dynstr_off = codepos
 	emit_int8(0)   /* index 0 = the empty string */
 	i = 0
@@ -108,6 +111,9 @@ void elf_emit_dynamic():
 		save_int(imp_str_off + i * 4, codepos - dynstr_off)
 		emit_string(dyn_import_name(i))
 		i = i + 1
+	for e in range(nexports):
+		save_int(export_str_off + e * 4, codepos - dynstr_off)
+		emit_string(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)))
 	int dynstr_size = codepos - dynstr_off
 
 	# ---- .dynsym (null entry, then one symbol per import) ----
@@ -132,12 +138,17 @@ void elf_emit_dynamic():
 		else: elf_dyn_emit_sym(load_int(imp_str_off + i * 4), 0, 0, dyn_import_get_binding(i), 2, 0)
 		i = i + 1
 
+	for e in range(nexports):
+		elf_dyn_emit_sym(load_int(export_str_off + e * 4), load_i(elf_export_addresses + e * __word_size__, __word_size__), 0, 1, 2, 1)
+
 	# ---- SysV hash: one bucket chaining every symbol so lookups terminate ----
 	emit_dyn_align(8)
 	int hash_off = codepos
 	emit_int32(1)       /* nbucket */
 	emit_int32(nsym)    /* nchain */
-	emit_int32(1)       /* bucket[0] -> first real symbol */
+	int first_symbol = 0
+	if (nsym > 1): first_symbol = 1
+	emit_int32(first_symbol)       /* bucket[0] -> first real symbol */
 	emit_int32(0)       /* chain[0] for the null symbol */
 	i = 1
 	while (i < nsym):
@@ -204,12 +215,13 @@ void elf_emit_dynamic():
 		elf_dyn_entry(17, code_offset + rel_off)  /* DT_REL */
 		elf_dyn_entry(18, rel_size)               /* DT_RELSZ */
 		elf_dyn_entry(19, 8)                       /* DT_RELENT */
-	if (elf_pie): elf_dyn_entry(1879048187, 134217728) /* DT_FLAGS_1: DF_1_PIE */
+	if (elf_pie && (elf_shared == 0)): elf_dyn_entry(1879048187, 134217728) /* DT_FLAGS_1: DF_1_PIE */
 	elf_dyn_entry(0, 0)                            /* DT_NULL */
 	int dynamic_size = codepos - dynamic_off
 
 	free(lib_str_off)
 	free(imp_str_off)
+	free(export_str_off)
 
 	# Fill the reserved program headers (both read-only). The loader
 	# uses PT_DYNAMIC flags to decide whether it may adjust d_ptr in place.
@@ -218,7 +230,7 @@ void elf_emit_dynamic():
 	# single-segment image keeps slots 1 and 2.
 	int interp_slot = 1
 	if (data_split): interp_slot = 2
-	elf_dyn_patch_phdr(interp_slot, 3, 4, interp_off, interp_size, 1)
+	if (elf_shared == 0): elf_dyn_patch_phdr(interp_slot, 3, 4, interp_off, interp_size, 1)
 	elf_dyn_patch_phdr(interp_slot + 1, 2, 4, dynamic_off, dynamic_size, 8)
 
 	# A dynamically linked program shares the address space with glibc,

@@ -204,6 +204,7 @@ void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int
 	emit(1, c"\xb8")               /* mov eax,imm32: xmm registers used */
 	emit_int32(ffi_fp_used)
 	emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
+	static_note_address(codepos)
 	emit_int32(got_vaddr - code_offset - codepos - 4)
 
 	emit_x64_c_frame_end(ret_class)
@@ -266,6 +267,7 @@ void emit_c_abi_call_win64(int n, char* classes, int ret_class, int got_vaddr, i
 		i = i + 1
 
 	emit(2, c"\xff\x15")       /* call qword ptr [rip+disp32] */
+	static_note_address(codepos)
 	emit_int32(got_vaddr - code_offset - codepos - 4)
 
 	emit_x64_c_frame_end(ret_class)

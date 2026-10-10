@@ -68,7 +68,7 @@ void x64_emit_rebase_table():
 
 void elf_start_64():
 	elf_image_headers(62, 1)
-	if (elf_pie): x64_entry_rebase_stub()
+	if (elf_pie && (elf_shared == 0)): x64_entry_rebase_stub()
 
 	/* setup command line args */
 	emit(6, c"\x48\x8d\x44\x24\x08\x50")
@@ -91,7 +91,7 @@ void elf_finish_64():
 		save_int32(code + elf_hypercall_note_pos + 20, x64_hypercall_count)
 		for i in range(x64_hypercall_count):
 			save_int64(code + elf_hypercall_note_pos + 24 + i * 8, code_offset + x64_hypercall_sites[i])
-	if (elf_pie): x64_emit_rebase_table()
+	if (elf_pie && (elf_shared == 0)): x64_emit_rebase_table()
 	elf_patch_load_segments(1)
 
 

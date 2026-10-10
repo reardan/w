@@ -29,8 +29,7 @@ void emit_linkage_ast(linkage_ast* node):
 		int index = wasm_extern_add(node.module_name, node.import_name, node.parameter_count, node.parameter_classes, node.return_kind)
 		wasm_extern_stub(node.binding, node.name, index, node.parameter_count, node.parameter_classes, node.return_kind)
 	else:
-		int address = dyn_emit_import_slot()
-		dyn_add_import(node.import_name, address)
+		int address = static_link_import_slot(node.import_name)
 		be_align_code()
 		sym_define_global(node.binding)
 		emit_ffi_shim(node.parameter_count, node.parameter_classes, node.return_class, address)

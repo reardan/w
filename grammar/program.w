@@ -639,15 +639,12 @@ int script_function_definition_ahead():
 	return is_definition
 
 
-# An 'export'-marked definition on the wasm target: derive the wasm
-# signature classes from the declared parameter and return types (the
-# extern-statement conventions: word-sized scalars and pointers are i32,
-# float32 is f32) and register the function for the module's export
-# section, where it becomes a host-callable real-signature export
-# (code_generator/wasm_module.w). The native targets have no
-# per-function export surface, so the marker is a no-op there.
+# An 'export'-marked definition registers its typed signature for a host
+# ABI adapter: wasm module exports or x64 --shared/--static functions.
+# Ordinary native executable builds accept the marker without changing
+# their internal W calling convention.
 void export_function_note(int t, char* name, int ret_type):
-	if (target_isa != 2): return;
+	if ((target_isa != 2) && (elf_shared == 0) && (elf_static == 0)): return;
 	if (sym_w_variadic_fixed_args(t) >= 0): error(c"cannot export a variadic function")
 	int n = sym_num_args(t)
 	if (n > sym_max_param_slots): error(c"exported functions support at most 10 parameters")
@@ -655,15 +652,17 @@ void export_function_note(int t, char* name, int ret_type):
 		error(c"cannot export a function returning a struct by value")
 	int ret_kind = 1
 	if (ffi_type_class(ret_type) == 1): ret_kind = 2
+	if ((elf_shared || elf_static) && (ffi_type_class(ret_type) == 2)): ret_kind = 3
 	if (type_get_pointer_level(ret_type) == 0):
 		if (strcmp(type_get_name(ret_type), c"void") == 0): ret_kind = 0
 	char* classes = cast(char*, malloc(n + 1))
 	for i in range(n):
 		int ptype = sym_param_type(t, i)
-		if (type_stack_words(ptype) != 1):
+		if ((type_stack_words(ptype) != 1) || ((elf_shared || elf_static) && (type_num_args(ptype) > 0) && (type_get_pointer_level(ptype) == 0))):
 			error(c"exported function parameters must be single words")
 		classes[i] = 0
 		if (ffi_type_class(ptype) == 1): classes[i] = 1
+		if ((elf_shared || elf_static) && (ffi_type_class(ptype) == 2)): classes[i] = 2
 	wasm_export_add(t, name, n, classes, ret_kind)
 	free(classes)
 
@@ -800,7 +799,7 @@ void program_item():
 
 	# 'export' marks the next function definition as a host-callable
 	# module export with its real typed signature on the wasm target
-	# (export_function_note above); the native targets accept and
+	# (export_function_note above); ordinary native executables accept and
 	# ignore the marker, so one source compiles everywhere. Contextual
 	# like 'kernel': a type or symbol named 'export' keeps the
 	# identifier meaning.
