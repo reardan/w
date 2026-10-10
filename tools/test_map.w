@@ -429,9 +429,11 @@ import lib.file
 import lib.process
 import lib.stream
 import lib.str
+import lib.utf8
 import structures.string
 import structures.json
 import tools.manifest_source
+import tools.manifest_host
 import tools.deps_cache
 
 
@@ -565,6 +567,7 @@ int wtest_load_manifest():
 	if (m == 0):
 		wtest_error(manifest_parse_error, c"")
 		return 1
+	manifest_host_prepare(m, wtest_manifest_path == 0 && strcmp(label, c"build.base.json") == 0)
 	wtest_manifest = m.root
 	wtest_target_names = m.names
 	wtest_target_defs = m.by_name
@@ -574,7 +577,7 @@ int wtest_load_manifest():
 	wtest_never_emit[c"update"] = 1
 	wtest_never_emit[c"update_darwin"] = 1
 	wtest_never_emit[c"build_darwin"] = 1
-	wtest_never_emit[c"verify_darwin"] = 1
+	if (build_host_darwin() == 0): wtest_never_emit[c"verify_darwin"] = 1
 	wtest_never_emit[c"wexec_darwin"] = 1
 	# 'manifest' rewrites build.json in place — a worktree mutation, not
 	# a gate. Selecting it alongside manifest_check made './wbuild
@@ -965,7 +968,7 @@ int wtest_deps_budget_ms():
 void wtest_deps_shellout_warn(char* what, char* id, char* tail):
 	wstream* err = stderr_writer()
 	string_builder* note = string_new()
-	string_append(note, c"wtest: warning: 'bin/wv2 deps' ")
+	string_append(note, cstr(f"wtest: warning: '{build_host_compiler()} deps' "))
 	string_append(note, what)
 	string_append(note, c" for root '")
 	string_append(note, id)
@@ -1001,8 +1004,8 @@ char* wtest_run_deps(char* id):
 		process_result_free(result)
 		result = deps_run(id, budget)
 	if (result == 0):
-		wtest_deps_shellout_warn(c"failed", id, c" (could not run bin/wv2)")
-		wtest_last_failure_line = c"could not run bin/wv2 (spawn failure; never cached)"
+		wtest_deps_shellout_warn(c"failed", id, cstr(f" (could not run {build_host_compiler()})"))
+		wtest_last_failure_line = cstr(f"could not run {build_host_compiler()} (spawn failure; never cached)")
 		return 0
 	if (result.status == process_status_timeout):
 		# Never persisted (header comment above wtest_cache_load): a
@@ -1035,7 +1038,7 @@ char* wtest_run_deps(char* id):
 		# appearing retries it immediately). The 'E ' line is purely
 		# informational (never validated): the recorded stderr detail,
 		# so 'wtest why' can report the reason across runs.
-		if (wtest_file_exists(c"bin/wv2")):
+		if (wtest_file_exists(build_host_compiler())):
 			wtest_last_failure_persist = 1
 			wtest_last_failure_missing = wtest_missing_import(result.stderr_text)
 		process_result_free(result)
@@ -1058,12 +1061,12 @@ char* wtest_closure_compute(char* root):
 	char* blob = wtest_run_deps(root)
 	deps_entry* e = deps_cache_record(root, blob)
 	if (blob != 0):
-		e.vhash = deps_file_hash(c"bin/wv2")
+		e.vhash = deps_file_hash(build_host_compiler())
 		return blob
 	e.detail = wtest_last_failure_line
 	e.keep = wtest_last_failure_persist
 	if (e.keep):
-		e.vhash = deps_file_hash(c"bin/wv2")
+		e.vhash = deps_file_hash(build_host_compiler())
 		e.missing = wtest_last_failure_missing
 	return 0
 
@@ -1171,7 +1174,7 @@ void wtest_compute_closures(list[char*] roots):
 		# failure (bin/wv2 missing) is not persisted, so it is retried
 		# next run.
 		string_builder* note = string_new()
-		string_append(note, c"wtest: warning: 'bin/wv2 deps' failed for ")
+		string_append(note, cstr(f"wtest: warning: '{build_host_compiler()} deps' failed for "))
 		string_append_int(note, failed)
 		string_append(note, c" root")
 		if (failed != 1): string_append_char(note, 's')
@@ -1433,10 +1436,10 @@ int wtest_range_exists(char* path):
 # or any record that fails to parse as a JSON object with both fields.
 map[char*, char*] wtest_defhash_collect(char* file_path):
 	char** argv = strv_new(3)
-	strv_set(argv, 0, c"bin/wv2")
+	strv_set(argv, 0, build_host_compiler())
 	strv_set(argv, 1, c"defhash")
 	strv_set(argv, 2, file_path)
-	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+	process_result* result = process_run(build_host_compiler(), argv, 0, 0, 120000)
 	free(cast(char*, argv))
 	if (result == 0): return 0
 	if (result.status != 0):
@@ -1684,7 +1687,7 @@ void wtest_seed_warn(char* arch, char* id):
 	wtest_seed_warned[strclone(id)] = 1
 	wstream* err = stderr_writer()
 	string_builder* note = string_new()
-	string_append(note, c"wtest: warning: 'bin/wv2 deps' failed for root '")
+	string_append(note, cstr(f"wtest: warning: '{build_host_compiler()} deps' failed for root '"))
 	string_append(note, id)
 	if (strcmp(arch, c"x86") == 0):
 		string_append(note, c"'; seed-graph residue falls back to the compiler-tree prefix floor this run")
@@ -1783,7 +1786,8 @@ json_value* wtest_step_cmd(json_value* step):
 int wtest_map_residue(char* path, int is_w, int exists):
 	int matched = 0
 	if (wtest_seed_graph(path)):
-		wtest_add(path, c"verify")
+		if (build_host_darwin()): wtest_add(path, c"verify_darwin")
+		else: wtest_add(path, c"verify")
 		wtest_add(path, c"self_host_warning_test")
 		if (ends_with(path, c"_asm.w")): wtest_add(path, c"asm_stubs_test")
 		matched = 1
@@ -2472,6 +2476,10 @@ char* wtest_step_unavailable_reason(json_value* step):
 
 
 char* wtest_target_unavailable_reason(char* name):
+	json_value* target = wtest_target_defs.get(name, 0)
+	if (target != 0):
+		char* reason = jfield_string(target, c"host_unavailable")
+		if (reason != 0): return reason
 	json_value* steps = wtest_target_steps(name)
 	if (steps == 0): return 0
 	int i = 0
@@ -2709,7 +2717,7 @@ int wtest_run_selected():
 	int prefix = 1
 	if (custom_manifest): prefix = 3
 	char** argv = strv_new(prefix + selected.length)
-	strv_set(argv, 0, c"bin/wexec")
+	strv_set(argv, 0, build_host_executor())
 	if (custom_manifest):
 		strv_set(argv, 1, c"-f")
 		strv_set(argv, 2, wtest_manifest_path)
@@ -2717,10 +2725,10 @@ int wtest_run_selected():
 	while (i < selected.length):
 		strv_set(argv, prefix + i, selected[i])
 		i = i + 1
-	process* p = process_spawn(c"bin/wexec", argv, 0)
+	process* p = process_spawn(build_host_executor(), argv, 0)
 	free(cast(char*, argv))
 	if (p == 0):
-		wtest_error(c"cannot spawn ", c"bin/wexec")
+		wtest_error(c"cannot spawn ", build_host_executor())
 		return 1
 	int status = process_wait(p)
 	process_free(p)
@@ -2896,7 +2904,7 @@ int wtest_archs_check(char* path):
 		char* rootfile = wtest_root_id_path(root)
 		# 'bin/wv2 [arch] check [--import-root <dir>]... <root>'
 		char** argv = deps_wv2_argv(root, c"check")
-		process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
+		process_result* result = process_run(build_host_compiler(), argv, 0, 0, 120000)
 		free(cast(char*, argv))
 		stream_write_cstr(out, arch)
 		stream_write_byte(out, ' ')
@@ -2995,14 +3003,14 @@ int wtest_closure_count(char* blob):
 void wtest_why_cache_section(char* id, wstream* out):
 	char* text = file_read_text(c"bin/.wtest_deps_cache")
 	if (text == 0):
-		stream_write_line(out, c"cache: no bin/.wtest_deps_cache (cold; 'bin/wv2 deps' runs on the next selection)")
+		stream_write_line(out, cstr(f"cache: no bin/.wtest_deps_cache (cold; '{build_host_compiler()} deps' runs on the next selection)"))
 		return
 	deps_entry* e = 0
 	for deps_entry* record in deps_cache_parse(text):
 		if (strcmp(record.id, id) == 0): e = record
 	free(text)
 	if (e == 0):
-		stream_write_line(out, c"cache: no entry for this root (never computed, or the last failure was non-persistable: timeouts, spawn failures and bin/wv2-missing runs are never cached)")
+		stream_write_line(out, cstr(f"cache: no entry for this root (never computed, or the last failure was non-persistable: timeouts, spawn failures and {build_host_compiler()}-missing runs are never cached)"))
 		return
 	int kind = 1
 	if (e.failed): kind = 2
@@ -3021,12 +3029,12 @@ void wtest_why_cache_section(char* id, wstream* out):
 		string_free(s)
 		if (vhash != 0):
 			string_builder* v = string_new()
-			string_append(v, c"  computed under bin/wv2 ")
+			string_append(v, cstr(f"  computed under {build_host_compiler()} "))
 			string_append(v, vhash)
-			if (strcmp(deps_file_hash(c"bin/wv2"), vhash) == 0):
-				string_append(v, c" (current bin/wv2: same)")
+			if (strcmp(deps_file_hash(build_host_compiler()), vhash) == 0):
+				string_append(v, cstr(f" (current {build_host_compiler()}: same)"))
 			else:
-				string_append(v, c" (current bin/wv2 differs; the closure stays valid while its file contents do)")
+				string_append(v, cstr(f" (current {build_host_compiler()} differs; the closure stays valid while its file contents do)"))
 			stream_write_line(out, v.data)
 			string_free(v)
 		int valid = 0
@@ -3035,9 +3043,9 @@ void wtest_why_cache_section(char* id, wstream* out):
 		if (valid):
 			stream_write_line(out, c"  status: valid -- rule (b) closure selection is live for this root")
 		else:
-			stream_write_line(out, c"  status: STALE (closure contents changed) -- 'bin/wv2 deps' re-runs on the next selection")
+			stream_write_line(out, cstr(f"  status: STALE (closure contents changed) -- '{build_host_compiler()} deps' re-runs on the next selection"))
 	if (kind == 2):
-		stream_write_line(out, c"cache: failure entry (the last 'bin/wv2 deps' run exited nonzero)")
+		stream_write_line(out, cstr(f"cache: failure entry (the last '{build_host_compiler()} deps' run exited nonzero)"))
 		int valid = 1
 		char* root_path = wtest_root_id_path(id)
 		int root_same = 0
@@ -3049,13 +3057,13 @@ void wtest_why_cache_section(char* id, wstream* out):
 			stream_write_line(out, c"  root content: changed since the failure -> retried on the next selection")
 		if (vhash != 0):
 			string_builder* v = string_new()
-			string_append(v, c"  recorded under bin/wv2 ")
+			string_append(v, cstr(f"  recorded under {build_host_compiler()} "))
 			string_append(v, vhash)
-			if (strcmp(deps_file_hash(c"bin/wv2"), vhash) == 0):
+			if (strcmp(deps_file_hash(build_host_compiler()), vhash) == 0):
 				string_append(v, c" (current: same)")
 			else:
 				valid = 0
-				string_append(v, c" (current bin/wv2 differs -> retried on the next selection)")
+				string_append(v, cstr(f" (current {build_host_compiler()} differs -> retried on the next selection)"))
 			stream_write_line(out, v.data)
 			string_free(v)
 		else:
@@ -3081,7 +3089,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 		if (valid):
 			stream_write_line(out, c"  status: valid -- rule (b) is disabled for this root; its targets select via literal/residue rules only")
 		else:
-			stream_write_line(out, c"  status: stale -- 'bin/wv2 deps' re-runs on the next selection")
+			stream_write_line(out, cstr(f"  status: stale -- '{build_host_compiler()} deps' re-runs on the next selection"))
 
 
 # 'wtest why [<arch>] <file.w> [-f manifest.json]' (header comment):
@@ -3146,9 +3154,9 @@ int wtest_why_main(int argc, int argv):
 	else:
 		stream_write_line(out, c"compile root of: no target in this manifest compiles this (arch, file) pair -- rule (b) never consults it")
 	wtest_why_cache_section(id, out)
-	if (wtest_file_exists(c"bin/wv2")): stream_write_line(out, c"bin/wv2: present")
+	if (wtest_file_exists(build_host_compiler())): stream_write_line(out, cstr(f"{build_host_compiler()}: present"))
 	else:
-		stream_write_line(out, c"bin/wv2: MISSING -- 'bin/wv2 deps' cannot run (run a build first)")
+		stream_write_line(out, cstr(f"{build_host_compiler()}: MISSING -- '{build_host_compiler()} deps' cannot run (run a build first)"))
 	stream_flush(out)
 	# Live closure state, through the ordinary validated store: a valid
 	# cached success or failure holds exactly as a selection would see
@@ -3177,7 +3185,7 @@ int wtest_why_main(int argc, int argv):
 			string_free(c2)
 		else:
 			string_builder* c3 = string_new()
-			string_append(c3, c"closure: unavailable -- live 'bin/wv2 deps' run failed: ")
+			string_append(c3, cstr(f"closure: unavailable -- live '{build_host_compiler()} deps' run failed: "))
 			char* live_detail = wtest_failure_line(id)
 			if (live_detail != 0): string_append(c3, live_detail)
 			else: string_append(c3, c"(no detail)")
@@ -3258,8 +3266,8 @@ int wtest_cache_main(int argc, int argv):
 			return 1
 		i = i + 1
 	if (wtest_load_manifest()): return 1
-	if (wtest_file_exists(c"bin/wv2") == 0):
-		wtest_error(c"cannot warm the deps cache: ", c"bin/wv2 not found (run a build first)")
+	if (wtest_file_exists(build_host_compiler()) == 0):
+		wtest_error(c"cannot warm the deps cache: ", cstr(f"{build_host_compiler()} not found (run a build first)"))
 		return 1
 	wtest_archs_ensure_roots()
 	wtest_cache_load()

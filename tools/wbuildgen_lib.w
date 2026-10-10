@@ -2905,9 +2905,8 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 /* Generate the manifest in memory and return its rendered JSON text, or
 0 after printing an error. scan_tree = 0 skips the source-tree walk, so
 only build.base.json's own targets and its tool_targets come out: the
-executors on hosts whose directory listing is not trusted yet (darwin;
-see wexec_dirents_supported) still run the hand-written darwin/win64
-toolchain targets. Call it once
+bootstrap recovery can still run the hand-written toolchain targets
+when a new source directive is not understood. Call it once
 per process: the wbg_* tables are global. */
 char* wbg_generate(char* base_path, int scan_tree):
 	wbg_scan_tree = scan_tree

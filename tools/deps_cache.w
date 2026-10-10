@@ -39,6 +39,7 @@ import lib.lib
 import lib.file
 import lib.path
 import lib.process
+import tools.build_host
 import lib.sha256
 import lib.str
 import structures.string
@@ -457,7 +458,7 @@ int deps_entry_valid(deps_entry* e, int check_compiler):
 		if (strcmp(deps_file_hash(e.root), e.digest) != 0): return 0
 		if (check_compiler):
 			if (e.vhash == 0): return 0
-			if (strcmp(deps_file_hash(c"bin/wv2"), e.vhash) != 0): return 0
+			if (strcmp(deps_file_hash(build_host_compiler()), e.vhash) != 0): return 0
 			if ((e.missing != 0) && path_exists(e.missing)): return 0
 	e.checked = 1
 	return 1
@@ -537,7 +538,7 @@ char** deps_wv2_argv(char* id, char* sub):
 	char* column = substring(id, 0, strlen(id) - strlen(root) - 1)
 	char* arch = deps_arch_word(column)
 	list[char*] words = new list[char*]
-	words.push(c"bin/wv2")
+	words.push(build_host_compiler())
 	if (strcmp(arch, c"x86") != 0): words.push(arch)
 	words.push(sub)
 	int i = strlen(arch)
@@ -561,7 +562,7 @@ char** deps_wv2_argv(char* id, char* sub):
 process_result* deps_run(char* id, int timeout_ms):
 	char** argv = deps_wv2_argv(id, c"deps")
 	if (argv == 0): return 0
-	process_result* r = process_run(c"bin/wv2", argv, 0, 0, timeout_ms)
+	process_result* r = process_run(build_host_compiler(), argv, 0, 0, timeout_ms)
 	free(cast(char*, argv))
 	return r
 

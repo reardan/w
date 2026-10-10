@@ -163,6 +163,7 @@ import tools.__arch__.wexec_platform
 import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
 import tools.manifest_source
+import tools.manifest_host
 import tools.manifest_json
 import tools.deps_cache
 import lib.str
@@ -312,15 +313,8 @@ void wexec_warn_dir_unhashed(char* path):
 	stream_flush(err)
 
 
-# Recursively collect every regular file under path (lib/dir.w's
-# dir_walk_files, which decodes each target's dirent layout). On darwin
-# the record layout lib/__arch__/arm64_darwin/dirent.w decodes has not
-# been checked on a Mac yet, so that platform's
-# tools/__arch__/wexec_platform.w still reports directory listing
-# unsupported and this function warns once and returns no files: the
-# same hash as an empty directory, but an honest diagnostic in the log.
-# The darwin build targets declare no directory "inputs" (FORCE-style),
-# so nothing relies on directory hashing there today.
+# Recursively collect regular files through lib/dir.w's per-target
+# record decoder. Darwin discovery is qualified by mac_build_test.
 void wexec_collect_dir(char* path, list[char*] files):
 	if (wexec_dirents_supported() == 0):
 		wexec_warn_dir_unhashed(path)
@@ -415,7 +409,7 @@ int wexec_deps_wv2_ok
 int wexec_deps_usable():
 	if (wexec_deps_probed == 0):
 		wexec_deps_probed = 1
-		int fd = open(c"bin/wv2", 0, 0)
+		int fd = open(build_host_compiler(), 0, 0)
 		if (fd >= 0):
 			close(fd)
 			wexec_deps_wv2_ok = 1
@@ -438,7 +432,7 @@ int wexec_selector_word(char* word):
 deps_entry* wexec_deps_lookup(char* arch, char* root):
 	char* id = deps_id(arch, root)
 	deps_entry* entry = deps_cache_find(id)
-	if ((entry != 0) && deps_entry_valid(entry, 0)):
+	if ((entry != 0) && deps_entry_valid(entry, 1)):
 		free(id)
 		return entry
 	char* blob = 0
@@ -447,6 +441,7 @@ deps_entry* wexec_deps_lookup(char* arch, char* root):
 		if (result.status == 0): blob = deps_blob(result.stdout_text)
 		process_result_free(result)
 	entry = deps_cache_record(id, blob)
+	entry.vhash = deps_file_hash(build_host_compiler())
 	free(id)
 	return entry
 
@@ -472,7 +467,7 @@ void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*]
 		if (n < 2): continue
 		json_value* program = json_array_get(cmd, 0)
 		if (program.type != json_type_string()): continue
-		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0)):
+		if ((strcmp(program.string_value, c"bin/wv2") != 0) && (strcmp(program.string_value, c"./w") != 0) && (strcmp(program.string_value, c"bin/wv2_darwin") != 0) && (strcmp(program.string_value, c"./w_darwin") != 0)):
 			continue
 		int has_output = 0
 		int i = 1
@@ -639,6 +634,10 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 		json_array_push(steps, run_step)
 
 	json_object_set(target, c"steps", steps)
+	if (build_host_darwin()):
+		manifest_host_commands(target, 0)
+		if (runs && strcmp(arch, c"arm64_darwin") != 0):
+			json_object_set(target, c"host_unavailable", json_string(c"test runtime is not native macOS; use an arm64_darwin target"))
 	return target
 
 
@@ -1685,6 +1684,10 @@ int wexec_collect_closure(char* name):
 	if (target == 0):
 		wexec_error2(c"unknown target ", name)
 		return 1
+	char* unavailable = jfield_string(target, c"host_unavailable")
+	if (unavailable != 0):
+		wexec_error2(name, cstr(f": {unavailable}"))
+		return 1
 	wexec_states[name] = 1
 	json_value* deps = json_object_get(target, c"deps")
 	if (deps != 0):
@@ -2388,6 +2391,13 @@ void wexec_report_failures(int total, int finished):
 # completion with up to wexec_jobs targets in flight. Returns 0 when
 # everything succeeded.
 int wexec_execute(list[char*] requested):
+	for char* name in requested:
+		json_value* target = wexec_targets.get(name, 0)
+		if (target != 0 && json_object_has(target, c"host_skipped")):
+			int skipped = jfield_int(target, c"host_skipped", 0)
+			wstream* err = stderr_writer()
+			stream_write_line(err, cstr(f"wbuild: macOS tests -> tests_darwin; {skipped} targets excluded (outside the qualified native macOS suite; cross-platform coverage is not claimed)"))
+			stream_flush(err)
 	if (wexec_targets.get(c"generated", 0) != 0):
 		if (wexec_collect_closure(c"generated")): return 1
 		wexec_gen_members = new map[char*, int]
@@ -2591,14 +2601,10 @@ json_value* wexec_warm_manifest
 char* wexec_warm_manifest_label
 
 
-# path = 0 is the default manifest: generated in memory from
-# build.base.json and the source tree (tools/manifest_source.w). The
-# generator walks directories with lib/dir.w; where that listing is
-# not trusted yet (darwin; see wexec_dirents_supported) only
-# build.base.json's own targets are
-# loaded -- the darwin toolchain targets that executor runs all live
-# there.
+# Generate the full registry, then apply host planning to the parsed
+# manifest. Directory decoding is qualified on Linux, Windows and macOS.
 int wexec_load_manifest(char* path):
+	int repository = path == 0
 	int scan_tree = wexec_dirents_supported() || os_windows()
 	int warm = (path == 0) && (wexec_warm_manifest != 0)
 	char* text = 0
@@ -2627,6 +2633,7 @@ int wexec_load_manifest(char* path):
 	if (m == 0):
 		wexec_error(manifest_parse_error)
 		return 1
+	manifest_host_prepare(m, repository && strcmp(path, c"build.base.json") == 0)
 	wexec_manifest = m.root
 	wexec_targets = m.by_name
 	wexec_names = m.names
