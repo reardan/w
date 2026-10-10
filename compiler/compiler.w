@@ -1270,6 +1270,8 @@ void finish_on_demand_imports():
 
 
 int link_impl(int argc, int argv, int start_index, int check_mode):
+	code_fixed = 0
+	code_fixed_error_hook = 0
 	if (argc <= start_index):
 		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
 		println2(c"run 'w --help' for details")
@@ -1362,6 +1364,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# S2.3: generic/defer instantiation --stats counters.
 	generic_source_seeks = 0
 	defer_source_seeks = 0
+	defer_tree_captures = 0
+	defer_tree_emissions = 0
+	defer_reparse_exits = 0
 	generic_tree_types = 0
 	retained_source_reparses = 0
 	retained_source_end_positions = 0
@@ -1859,6 +1864,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(generic_source_seeks))
 		print_error(c"\nDeferred statement source seeks: ")
 		print_error(itoa(defer_source_seeks))
+		print_error(c"\nDeferred syntax trees captured: ")
+		print_error(itoa(defer_tree_captures))
+		print_error(c"\nDeferred syntax tree emissions: ")
+		print_error(itoa(defer_tree_emissions))
+		print_error(c"\nDeferred expression reparses: ")
+		print_error(itoa(defer_reparse_exits))
 		print_error(c"\n")
 	# A7: while loops rotated (grammar/loop_rotate.w), those whose
 	# condition skip declined, and condition returns that left the

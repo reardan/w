@@ -827,6 +827,11 @@ int postfix_expr():
 						accept(c"(")
 						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer, w_variadic_fixed)
 						drop_slots(1)
+						# Match scalar field reads: a non-pointer scalar
+						# result cannot borrow the receiver's buffer.
+						if ((receiver_struct_value_words > 0) && (declared_return >= 0)):
+							if ((type_num_args(declared_return) == 0) && (type_get_pointer_level(declared_return) == 0)):
+								drop_slots(receiver_struct_value_words)
 						if (has_return_buffer):
 							lea_eax_esp_plus(0)
 							type = type_value(declared_return)

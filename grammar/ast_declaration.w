@@ -78,7 +78,8 @@ int ast_local_declaration(statement_ast* node, char* name):
 	else: walk = ast_declaration_walk_begin(node)
 	# Finish initializer diagnostics before the new binding enters scope.
 	ast_walk_settle(walk)
-	ast_declaration_bind(node, stack_pos)
+	ast_declaration_bind(node, ast_body_depth())
+	ast_body_reserve(type_stack_words(node.declared_type))
 	if (walk >= 0):
 		retained_walk_phase(walk, ast_walk_declaration_storage)
 		retained_emit_statement(retained_walks[walk].node)
@@ -130,7 +131,8 @@ int ast_defer_registration():
 	if (walk < 0): return 0
 	node.literal_bytes = retained_parse_name(filename)
 	retained_walk_phase(walk, ast_walk_defer_register)
-	defer_skip_statement()
+	int tree = defer_tree_capture()
 	node.end_offset = token_start_offset
 	retained_emit_statement(retained_walks[walk].node)
+	defer_spans[defer_count() - 1].tree = tree
 	return 1

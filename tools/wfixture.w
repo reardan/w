@@ -61,7 +61,9 @@ when any fixture fails.
 
 With --ast-expressions, successful fixtures require AST expression compilation;
 expected failures use permissive AST expression mode to retain their existing
-diagnostics. This applies to the compiler child process for every fixture.
+diagnostics. A fixture with an explicit --streaming or --ast-* selector
+keeps its chosen front end, just like an explicitly selected audit step.
+Architecture selectors still receive the appropriate injected AST mode.
 
 Usage: wfixture [--ast-expressions] <compiler> <fixture.w>...
 */
@@ -228,6 +230,13 @@ char* wfixture_resolve_program(char* name):
 
 char* wfixture_compiler_mode():
 	if (wfixture_ast_mode == 0): return 0
+	# A mode-specific diagnostic fixture owns its front-end selection.
+	# Keep audit behavior consistent with tools/ast_audit.w: do not
+	# combine --streaming with an AST-only flag or strengthen an explicit
+	# permissive AST fixture into required mode. Ordinary fixtures still
+	# require AST coverage, including those selecting only an architecture.
+	if (wfixture_selector != 0):
+		if ((strcmp(wfixture_selector, c"--streaming") == 0) || starts_with(wfixture_selector, c"--ast-")): return 0
 	if (wfixture_expect_fail): return c"--ast-full-expressions"
 	return c"--ast-required"
 
@@ -311,11 +320,12 @@ int wfixture_run(char* compiler, char* fixture):
 	char* out_path = wfixture_output_path(fixture)
 	wfixture_echo_command(compiler, fixture, out_path)
 	int has_selector = wfixture_selector != 0
-	char** argv = strv_new(4 + has_selector + wfixture_ast_mode)
+	char* mode = wfixture_compiler_mode()
+	int has_mode = mode != 0
+	char** argv = strv_new(4 + has_selector + has_mode)
 	int a = 0
 	strv_set(argv, a, compiler)
 	a = a + 1
-	char* mode = wfixture_compiler_mode()
 	if (mode != 0):
 		strv_set(argv, a, mode)
 		a = a + 1

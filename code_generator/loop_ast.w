@@ -1,12 +1,12 @@
 # Lower resolved range/cursor state around the grammar-owned body visit.
 # No source tokens are read by these visitors.
 int* emit_range_loop_ast_begin(loop_ast* node):
+	assert1(node.layout_ready)
+	assert1(stack_pos == node.body_depth)
 	# With 2+ arguments the first one is the start: copy it into the loop var
-	node.end_slot = node.variable_slot + 1
 	int for_reg = regalloc_slot_register(node.variable_slot - 1)
 	if (node.argument_count >= 2):
-		node.end_slot = node.variable_slot + 2
-		load_slot(node.variable_slot + 1)
+		load_slot(node.start_slot)
 		for_store_loop_var(node.variable_slot)
 	elif (for_reg != 0):
 		mov_eax_int(0)
@@ -18,7 +18,7 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 	int* outer = loop_enter()
 	for_reg = regalloc_slot_register(node.variable_slot - 1)
 	regalloc_loop_hidden(node.end_slot)
-	if (node.argument_count == 3): regalloc_loop_hidden(node.variable_slot + 3)
+	if (node.argument_count == 3): regalloc_loop_hidden(node.step_slot)
 	node.break_target = loop_break_chain
 	# A rotated loop (grammar/loop_rotate.w) enters at the bottom test
 	node.entry_site = -1
@@ -46,9 +46,9 @@ void emit_range_loop_ast_end(loop_ast* node):
 	be_ctrl_end(node.continue_target)
 	int for_reg = regalloc_slot_register(node.variable_slot - 1)
 	if (node.argument_count == 3):
-		int step_reg = regalloc_hidden_register(node.variable_slot + 3)
+		int step_reg = regalloc_hidden_register(node.step_slot)
 		if (step_reg != 0): mov_eax_reg(step_reg)
-		else: load_slot(node.variable_slot + 3)
+		else: load_slot(node.step_slot)
 		if (for_reg != 0): add_reg_eax(for_reg)
 		else:
 			regalloc_slot_assert(node.variable_slot - 1)
@@ -76,13 +76,15 @@ void emit_range_loop_ast_end(loop_ast* node):
 
 
 int* emit_cursor_loop_ast_begin(loop_ast* node):
+	assert1(node.layout_ready)
+	assert1(stack_pos == node.entry_depth)
 	# hidden slot: the container pointer
-	node.container_slot = push_slot()
+	assert1(push_slot() == node.container_slot)
 
 	# hidden slot: the cursor
 	if (node.begin_fn != 0): for_iter_call(node.begin_fn, node.container_slot, 0)
 	else: mov_eax_int(0)
-	node.cursor_slot = push_slot()
+	assert1(push_slot() == node.cursor_slot)
 
 	# Enter a new loop context for break/continue
 	# The exit region is where node.free_fn releases the container.
@@ -161,8 +163,8 @@ void emit_cursor_loop_ast_end(loop_ast* node):
 
 
 void emit_loop_ast_cleanup(loop_ast* node):
-	if (node.kind == ast_loop_range): drop_slots(node.argument_count)
-	else if (node.kind == ast_loop_cursor): drop_slots(2)
+	assert1(node.layout_ready)
+	drop_slots(node.cleanup_slots)
 
 
 int emit_iteration_value_ast(statement_ast* node):

@@ -12,10 +12,11 @@ history, beginning with task 5, the first production change.
 The numbered tasks below record successive stages; their fallback lists describe
 that stage, and later tasks supersede them. Since completion-plan unit P1.4 the
 production compiler compiles **through the AST front end by default**: every
-root is tried as an AST and falls back to the streaming grammar only where the
-AST declines (an expression too large for the bounded arena;
-`ast_expression_suite` finds no other fallback in the tested corpus, and none
-at all in the compiler). `--streaming` selects the
+root is tried as an AST and falls back to the streaming grammar where the
+AST declines. Expression storage now grows beyond its former fixed node,
+text and source-window capacities; syntax nesting remains guarded.
+`ast_expression_suite` rejects fallback in its positive compiler steps.
+`--streaming` selects the
 streaming front end for the whole program, implicit runtime imports included;
 it cannot be combined with `--ast-full-expressions`, `--ast-audit`,
 `--ast-retain`, `--ast-required` or the retaining `tree` query
@@ -70,22 +71,24 @@ Statement, loop, switch and GPU records now have session-owned storage,
 including their names and raw bytes. Local binding accepts an explicit slot
 depth without emitting storage; the dispatcher still supplies the backend's
 current depth until a separate body analysis pass owns that layout.
-Generic bodies and deferred statements are re-lexed from the retained source
-bytes rather than the file (S2.3), while type/import declarations still
-update semantic tables during parsing. Bounded arenas still
-fall back on oversized expressions (or reject them in required mode). The
+Generic bodies and unsupported deferred statements are re-lexed from the
+retained source bytes rather than the file (S2.3). Supported deferred calls
+reuse unbound syntax trees and bind names independently at each exit.
+Type/import declarations still update semantic tables during parsing. The
 retired `wc2` resident cache is not part of this implementation.
 
 ## Remaining milestones
 
 1. Retain complete function and module trees with owned source locations and
    stable bindings. Remove body reparsing and parse-time semantic side effects;
-   replace bounded temporary arenas with appropriate lifetime management.
+   finish independent semantic analysis and body emission.
 2. Move the opt-in production multi-error checker and native incremental function
    sessions onto independent retained-tree analysis/emission. `check --all-errors`
    now recovers at statement/declaration boundaries on POSIX hosts, and
-   `repl/incremental.w` reuses emitted scalar-function prefixes. General module
-   invalidation, arbitrary-definition reuse and a resident module cache remain.
+   `repl/incremental.w` reuses emitted scalar-function prefixes, and
+   `repl/incremental_graph.w` preserves independent scalar functions with
+   dependency-based invalidation. General module code reuse, relocation and a
+   resident module cache remain.
 3. Make and validate the production-default migration decision separately from
    opt-in corpus coverage. P1.4 flips the default; the measurements behind the
    decision are in "AST front end by default (P1.4)" below. S2.5 makes
@@ -93,7 +96,7 @@ retired `wc2` resident cache is not part of this implementation.
    1.25x target, so the retained-forest cost work (P1.2) reopens with the
    numbers in "Retained emission by default (S2.5)" below. Retiring the
    streaming grammar (P1.5) waits for a release that carries the flip. Issue
-   #489 remains open for this architectural work.
+   #489 was closed after the default switch; this architectural work remains.
 
 The forward plan for these milestones, split into parallelizable units
 with file ownership and gates, is [ast_completion_plan.md](ast_completion_plan.md).
@@ -2855,3 +2858,100 @@ slots, scope exits and symbolic break/continue regions, followed by a body
 walk that resolves those regions during emission. Register allocation,
 diagnostic ordering, generic/defer replay and function boundary state must
 also be accounted for before whole-function deferral becomes the default.
+
+## Independent layout, growing expressions and reusable defer syntax
+
+Retained statements now carry a semantic layout cursor. Function boundaries
+seed it from their calling-convention frame; successful statements publish
+their resulting depth to their parent. Failed statements are retracted before
+publication, so normal retained rollback also restores the analysis state.
+Scalar declarations, block exits, range/cursor hidden slots and switch storage
+use this cursor. Break/continue bind to lexical control records whose backend
+targets are resolved during emission. Goto validation uses parsed references
+and definitions independently of machine-code patch sites.
+
+Aggregate/descriptor expressions and declined probes explicitly suspend the
+cursor: their persistent result-buffer layout still depends on lowering.
+PTX outlining and streaming inline bodies also keep the existing path. This
+is integrated semantic analysis groundwork, not whole-function deferral.
+The phase queues, per-header expression views, local symbol environments,
+coercion diagnostics and generic instantiation still need separation from
+emission before a complete body can be analyzed and then emitted.
+
+The layout regressions also cover aggregate-valued control headers. Range
+loops record the actual slots of their arguments instead of assuming no
+temporary buffers separate them. Scalar-returning methods reclaim a temporary
+struct receiver after argument cleanup; pointer/aggregate results retain it
+because they can borrow that storage. Both streaming and AST lowering implement
+these fixes. Tests vary register allocation, loop rotation and conditional
+branch optimization, including short-circuit conditions and floating returns.
+
+Expression arenas now grow their node columns, decoded text, recorded source
+windows, speculative type records and type names. Borrowed temporary type
+pointers are rebound when their storage moves. Replay ordering uses stable
+token buckets for large event lists. Flat binary/postfix chains use an explicit
+work stack, preserving receiver and argument evaluation order without native
+recursion proportional to the chain length. Address-space overflow and true
+syntax nesting remain checked; this is not a claim that every semantic shape
+can dispense with the streaming fallback.
+
+The emitter's work stacks use reusable, nested scratch buffers. Diagnostic
+unwinding releases abandoned owners on the next bind, so failed REPL entries
+do not leak one buffer per failure. Regression tests exercise 100 KB literals,
+300,000-term binary chains, 12,000 chained method receivers, speculative type
+storage growth and repeated failure/rollback followed by successful execution.
+The fixture runner's required-coverage test now uses unsupported generic-record
+inference instead of treating the removed node capacity as a language limit.
+
+Deferred scalar calls retain an unbound syntax tree containing names, literals
+and argument edges. Each exit resolves the complete tree before committing
+symbol uses, then lowers it through the production expression emitter. This
+preserves late/shadowed bindings and LIFO cleanup. Unsupported syntax or
+diagnostic-sensitive modes use the original replay path. New stats distinguish
+captured trees, tree emissions and reparsed exits. Generic function bodies are
+still reparsed; their unbound statement/type analysis is a separate dependency.
+
+Independent native function updates are documented in
+[incremental_compilation.md](incremental_compilation.md#independent-native-function-updates).
+They reuse unrelated scalar functions at stable addresses and atomically
+compile changed functions and their users, with no general relocation claim.
+The fixed executable arena rejects exhaustion before moving existing code,
+and a failed update leaves the prior functions callable.
+
+CI now has an actual separate required-AST matrix leg with the ordinary
+suite's runtime, display and debugger setup. The ordinary compiler canaries
+remain in place. This gate also exposed a preflight boundary gap: a cast or
+`sizeof` followed by a parenthesized statement on the next line was already
+parsed correctly, but rejected because byte preflight included the next line.
+A successful complete typed parse now refines that conservative boundary,
+preserving true multiline calls/indexing and delayed next-token diagnostics.
+The allocator churn regression prints deterministic scan counts. The rebase
+keeps the upstream removal of wall-clock timing output, which avoids unstable
+compiler-mode behavior comparisons while retaining allocator assertions.
+Streaming grammar deletion still waits for the tagged release and seed
+transition specified by P1.5.
+
+Validation (2026-10-09): `env -u NO_COLOR ./wbuild --keep-going tests` and
+`env -u NO_COLOR ./wbuild ast_expression_suite` both pass, with 1,023 targets
+in each full suite. `verify`, `verify_x64`, `verify_win`, `verify_wasm`,
+`self_host_warning_test`, `asm_seed_gate` and `wbench_compare` also pass.
+Windows self-hosting used an isolated Wine configuration. The layout fixture
+also runs under Wine and WebAssembly. Representative AST/streaming image
+comparisons pass on x86, x64, ARM64, Win64 and wasm. ARM64/Darwin runtime
+fixpoints were not run on this Linux host.
+
+Before rebasing onto `cc2d322d`, nine interleaved strict compiles of `w.w`,
+after a warm-up pair,
+measured these median wall times with the suites idle. Commands used `bin/wv2
+--quiet --strict w.w` and `bin/wv2_64 x64 --quiet --strict w.w`, with
+`--streaming` added for the comparison and separate `-o` paths.
+
+| Compiler host | Default AST | Streaming | Ratio |
+| --- | ---: | ---: | ---: |
+| x86 | 1.100 s | 0.786 s | 1.40x |
+| x64 | 0.739 s | 0.504 s | 1.47x |
+
+The output images match byte-for-byte on both widths. The separate 1.25x
+performance target remains unmet. Sampling points to distributed parsing,
+type-query, retained-copy and emission-state costs; these correctness changes
+do not establish completion of the performance or tree-then-emit milestones.

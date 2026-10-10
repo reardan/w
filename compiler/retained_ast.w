@@ -175,6 +175,11 @@ struct retained_record:
 	char* import_path
 	char* import_alias
 	retained_group* group
+	# Statement-local semantic layout cursor. A successful child publishes
+	# its final depth to its parent; a failed child's rollback removes its
+	# cursor before publication. Function boundaries start a fresh cursor.
+	int layout_active
+	int layout_depth
 
 struct retained_checkpoint:
 	char* pending_import
@@ -493,6 +498,8 @@ retained_record* retained_record_new(int kind, int parent, int source, int start
 	node.import_path = 0
 	node.import_alias = 0
 	node.group = 0
+	node.layout_active = 0
+	node.layout_depth = 0
 	return node
 
 

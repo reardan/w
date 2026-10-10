@@ -11,6 +11,7 @@ void ast_function_body(int binding, int code_start, int kind, int written_return
 	node.name = strclone(last_global_declaration)
 	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
+	ast_body_layout_begin(retained, stack_pos)
 	retained_function_parameters(binding)
 	current_function_symbol = binding
 	if (kind == ast_function_generator): in_generator_body = 1
@@ -55,6 +56,7 @@ void ast_script_main():
 	sym_set_w_variadic(binding, -1)
 	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
+	ast_body_layout_begin(retained, stack_pos)
 	current_function_symbol = binding
 	enclosing_tab_level = 0
 	emit_function_debug_ast(&node)

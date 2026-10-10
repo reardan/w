@@ -17,7 +17,9 @@ struct loop_ast:
 	int variable_slot
 	int variable_type
 	int argument_count
+	int start_slot
 	int end_slot
+	int step_slot
 	int container_slot
 	int cursor_slot
 	int element_type
@@ -25,6 +27,10 @@ struct loop_ast:
 	int value_var
 	int value_var_type
 	int value2_coerce_type
+	int layout_ready
+	int entry_depth
+	int body_depth
+	int cleanup_slots
 	int top_target
 	int break_target
 	int continue_target
@@ -36,6 +42,29 @@ struct loop_ast:
 	char* next_fn
 	char* free_fn
 	char* value2_fn
+
+
+# Compute permanent loop slots independently of the backend's stack. An
+# analysis cursor can supply depth before the header is lowered. Suspended
+# cursors supply the compatibility depth after persistent header buffers
+# have been lowered; ordinary balanced temporaries do not affect the layout.
+void ast_loop_layout(loop_ast* node, int depth):
+	node.entry_depth = depth
+	node.body_depth = depth
+	node.cleanup_slots = 0
+	if (node.kind == ast_loop_range):
+		node.cleanup_slots = node.argument_count
+		node.body_depth = depth + node.argument_count
+		node.start_slot = depth + 1
+		node.end_slot = depth + 1
+		if (node.argument_count >= 2): node.end_slot = depth + 2
+		node.step_slot = depth + 3
+	else if (node.kind == ast_loop_cursor):
+		node.cleanup_slots = 2
+		node.container_slot = depth + 1
+		node.cursor_slot = depth + 2
+		node.body_depth = depth + 2
+	node.layout_ready = 1
 
 
 int ast_range_loops_emitted

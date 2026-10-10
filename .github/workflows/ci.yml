@@ -69,9 +69,22 @@ jobs:
           retention-days: 14
 
   tests:
-    name: Full test suite
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Full test suite
+            targets: tests tests_interop
+            timeout: 30
+          # This regenerates the complete tests manifest with --ast-required
+          # on compiler steps. The compiler-only canaries cannot replace it:
+          # ordinary AST compilation can silently take a streaming fallback.
+          - name: Required AST test suite
+            targets: ast_expression_suite
+            timeout: 120
 
     steps:
       - name: Check out repository
@@ -115,7 +128,7 @@ jobs:
         run: |
           set -o pipefail
           xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
-            ./wbuild tests tests_interop 2>&1 | tee wbuild.log
+            ./wbuild ${{ matrix.targets }} 2>&1 | tee wbuild.log
 
       - name: Report skips
         if: always()

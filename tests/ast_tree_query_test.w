@@ -195,3 +195,43 @@ void test_owned_tree_query():
 	process_result_free(result)
 	unlink(path)
 	free(path)
+
+
+# Reused defer syntax keeps the registration's source coordinates while
+# each emitted expression resolves the exit's live declaration binding.
+void test_deferred_tree_source_and_exit_bindings():
+	char* path = cstr(f"bin/ast_defer_query_{getpid()}.w")
+	char* source = c"int total\n\nvoid record(int item):\n\ttotal = item\n\nvoid run(int early):\n\tint value = 1\n\tdefer record(value)\n\tif (early): return\n\tint value = 2\n\treturn\n\nint main():\n\trun(0)\n\treturn 0\n"
+	assert1(file_write_text(path, source))
+	process_result* result = tree_test_run_filtered(path, path, 0)
+	assert_equal(0, result.status)
+	list[char*] lines = split(result.stdout_text, 10)
+	int groups = 0
+	int first_binding = -1
+	int second_binding = -1
+	for i in range(lines.length):
+		if (lines[i][0] == 0): continue
+		json_value* row = json_parse(lines[i])
+		if (strcmp(jfield_string(row, c"record"), c"node") == 0):
+			if (jfield_int(row, c"line", 0) == 8):
+				char* kind = jfield_string(row, c"kind")
+				if (strcmp(kind, c"expression_group") == 0):
+					assert_equal(8, jfield_int(row, c"column", 0))
+					int start = jfield_int(row, c"start", 0)
+					assert_equal(start + 13, jfield_int(row, c"end", 0))
+					assert_equal(start + 12, jfield_int(row, c"final_token_offset", 0))
+					groups = groups + 1
+				elif (strcmp(kind, c"expression") == 0):
+					if (jfield_int(row, c"column", 0) == 15):
+						int binding = jfield_int(row, c"binding", -1)
+						assert1(binding >= 0)
+						if (first_binding < 0): first_binding = binding
+						else if (binding != first_binding): second_binding = binding
+		json_free(row)
+	for i in range(lines.length): free(lines[i])
+	lines.free()
+	assert1(groups >= 2)
+	assert1((first_binding >= 0) && (second_binding >= 0))
+	process_result_free(result)
+	unlink(path)
+	free(path)

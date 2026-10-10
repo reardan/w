@@ -63,6 +63,8 @@ struct statement_ast:
 	int function_body
 	char* callee_name
 	int argument_index
+	int control_kind
+	void* control_record
 
 
 # Grammar nodes and family records must survive the frame that built them.
@@ -107,3 +109,100 @@ int ast_switch_regions_emitted
 int ast_blocks_emitted
 
 int ast_deferred_expressions_emitted
+
+
+# Scope and jump layout are analysis facts. These helpers take an explicit
+# semantic depth and never consult or modify backend stack/control state.
+void ast_block_layout(statement_ast* node, int depth):
+	node.stack_depth = depth
+
+
+void ast_jump_layout(statement_ast* node, int depth, int target_depth, int target, int valid):
+	node.stack_depth = depth
+	node.target = target
+	node.valid_jump = valid
+	node.unwind_slots = depth - target_depth
+
+
+# Semantic layout belongs to the retained lexical tree, never a process
+# global. Each statement changes its own cursor and publishes it only after
+# success. Existing retained checkpoints therefore also roll layout back.
+# PTX outlining and streaming inline expansions retain their original path.
+int ast_body_layout_owner():
+	if ((ast_retain_mode == 0) || (ast_expressions_mode < 2) || (target_isa == 3)): return -1
+	if (retained_parent < 0): return -1
+	if (retained_record_at(retained_parent).layout_active != 1): return -1
+	return retained_parent
+
+
+void ast_body_layout_begin(int id, int depth):
+	if ((id < 0) || (target_isa == 3)): return
+	retained_record* record = retained_record_at(id)
+	record.layout_active = 1
+	record.layout_depth = depth
+
+
+void ast_body_statement_begin(int id):
+	if ((id < 0) || (target_isa == 3)): return
+	retained_record* record = retained_record_at(id)
+	if (record.parent < 0): return
+	retained_record* parent = retained_record_at(record.parent)
+	if (parent.layout_active == 1): ast_body_layout_begin(id, parent.layout_depth)
+
+
+int ast_body_depth():
+	int owner = ast_body_layout_owner()
+	if (owner < 0): return stack_pos
+	return retained_record_at(owner).layout_depth
+
+
+void ast_body_set_depth(int depth):
+	int owner = ast_body_layout_owner()
+	if (owner >= 0): retained_record_at(owner).layout_depth = depth
+
+
+void ast_body_reserve(int words):
+	int owner = ast_body_layout_owner()
+	if (owner >= 0):
+		retained_record* record = retained_record_at(owner)
+		record.layout_depth = record.layout_depth + words
+
+
+# Some expression forms keep aggregate result/descriptor buffers alive
+# beyond the root. Their sizes and argument compaction are still decided
+# during lowering. Mark this statement explicitly unsupported rather than
+# pretending its backend depth was independently analyzed. Suspension is
+# published only on success, exactly like an ordinary depth update.
+void ast_body_layout_suspend():
+	int owner = ast_body_layout_owner()
+	if (owner >= 0): retained_record_at(owner).layout_active = -1
+
+
+void ast_body_expression_layout(expression_ast* tree):
+	if (ast_body_layout_owner() < 0): return
+	for i in range(tree.count):
+		int type = type_real(tree.result_type[i])
+		if ((type >= 0) && (type_num_args(type) > 0)):
+			ast_body_layout_suspend()
+			return
+		# Stack descriptors for slices and non-heap aggregate literals.
+		if ((tree.op[i] == 'Z') || (tree.op[i] == 'D')):
+			ast_body_layout_suspend()
+			return
+
+
+void ast_body_statement_end(int id):
+	if ((id < 0) || (target_isa == 3)): return
+	retained_record* record = retained_record_at(id)
+	if (record.layout_active == 0): return
+	if (record.layout_active < 0):
+		if (record.parent >= 0):
+			retained_record* suspended_parent = retained_record_at(record.parent)
+			if (suspended_parent.layout_active == 1): suspended_parent.layout_active = -1
+		return
+	# The live emitter is still incremental. Check its layout against the
+	# independently advanced cursor at this statement boundary.
+	assert1(record.layout_depth == stack_pos)
+	if (record.parent < 0): return
+	retained_record* parent = retained_record_at(record.parent)
+	if (parent.layout_active == 1): parent.layout_depth = record.layout_depth
