@@ -15,8 +15,8 @@ one file: `bin/javascript_runtime_runner FILE script 10000`.
 
 These 22 locally authored audit fixtures are **not Test262 tests**. Each carries
 a normative ECMA-262 section reference, a SHA-256 source pin and an independent
-expected result. The initial ledger has six passes (four execution cases and two
-syntax negatives) and sixteen known failures. This is a regression baseline,
+expected result. After the early-error repairs the ledger has thirteen passes (four execution
+cases and nine syntax negatives) and nine known failures. This is a regression baseline,
 not an estimate of standards coverage. The separate 18-file vendored Test262
 corpus and `javascript_compatibility` remain a syntax differential gate; their
 Node execution examples do not establish W execution conformance.
@@ -75,3 +75,21 @@ licensed syntax corpus unchanged until that adapter can honor its contracts.
 
 CSS computed-style/geometry fixtures belong to Win's CSS implementation track;
 this target measures only the W JavaScript engine.
+
+## Front-end checkpoint
+
+Async/generator parameter expressions and duplicate parameter names, duplicate
+module export names and undeclared local exports now have early-error checks.
+Exports are checked after all module bindings are collected, including imports
+and hoisted var declarations. Reexports do not require a local binding. Chained
+iteration labels and escaped label names now validate; their lowering remains
+an explicit expected failure.
+
+RegExp literals now pass a structural Pattern grammar validator that handles
+group/assertion nesting, escape and character-class boundaries, quantifier
+placement, unbounded decimal bounds, lazy quantifiers and legacy non-Unicode
+quantified lookahead. This is still an ES2020 syntax slice. Full escape-value,
+character-class range, named-capture/backreference and Unicode-property early
+errors remain unimplemented; this does not add RegExp execution or newer flags.
+Positive and negative fixtures in `standards_early_test.w` exercise these
+boundaries, including nested functions in parameter initializers.

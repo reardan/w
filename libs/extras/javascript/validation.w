@@ -3,6 +3,7 @@
 import lib.utf8
 import structures.string
 import libs.extras.javascript.lexical
+import libs.extras.javascript.regexp_syntax
 import libs.extras.parser_generator.runtime
 
 
@@ -108,6 +109,7 @@ struct js_validation_context:
 	int switches
 	int top_level
 	int new_target_allowed
+	int in_parameters
 
 
 int js_is_function(pg_ast_node* node):
@@ -117,22 +119,33 @@ int js_is_function(pg_ast_node* node):
 int js_jump_label_exists(pg_ast_node* node, int continuing):
 	pg_ast_node* label = js_cst_child(node, c"jump_label")
 	if (label == 0): return 0
-	char* name = label.first_token.text
+	char* name = js_identifier_decode(label.first_token.text)
 	pg_ast_node* parent = node.parent
+	int found = 0
 	while (parent != 0 && js_is_function(parent) == 0):
-		if (js_cst_is(parent, c"labelled_statement") && strcmp(parent.first_token.text, name) == 0):
-			if (continuing == 0): return 1
-			pg_ast_node* target = parent.children[2]
-			while (js_cst_is(target, c"statement")): target = target.children[0]
-			return js_cst_is(target, c"for_statement") || js_cst_is(target, c"while_statement") || js_cst_is(target, c"do_statement")
+		if (js_cst_is(parent, c"labelled_statement")):
+			char* candidate = js_identifier_decode(parent.first_token.text)
+			int matches = strcmp(candidate, name) == 0
+			free(candidate)
+			if (matches):
+				found = 1
+				if (continuing):
+					pg_ast_node* target = parent.children[2]
+					while (js_cst_is(target, c"statement") || js_cst_is(target, c"labelled_statement")):
+						if (js_cst_is(target, c"statement")): target = target.children[0]
+						else: target = target.children[2]
+					found = js_cst_is(target, c"for_statement") || js_cst_is(target, c"while_statement") || js_cst_is(target, c"do_statement")
+				break
 		parent = parent.parent
-	return 0
+	free(name)
+	return found
 
 
 void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diagnostics* diagnostics):
 	if (node == 0): return
 	js_validation_context here = *context
 	if (js_is_function(node)):
+		here.in_parameters = 0
 		here.function_depth = here.function_depth + 1
 		here.async_function = js_cst_child(node, c"async_modifier") != 0
 		here.generator = js_cst_child(node, c"STAR") != 0
@@ -146,6 +159,9 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 		if (js_directive_strict(body)): here.strict = 1
 	if (js_cst_is(node, c"class_decl") || js_cst_is(node, c"class_expr")): here.strict = 1
 	if (js_cst_is(node, c"program") && js_directive_strict(node)): here.strict = 1
+	if (js_cst_is(node, c"parameters") || js_cst_is(node, c"arrow_parameters") || js_cst_is(node, c"parameter")): here.in_parameters = 1
+	if (here.in_parameters && js_cst_is(node, c"yield_expression")): js_validation_error(diagnostics, node, c"yield expression in formal parameters")
+	if (here.in_parameters && js_cst_is(node, c"unary") && js_cst_child(node, c"KW_AWAIT") != 0): js_validation_error(diagnostics, node, c"await expression in formal parameters")
 	if (js_cst_is(node, c"return_statement") && here.function_depth == 0): js_validation_error(diagnostics, node, c"return outside function")
 	if (js_cst_is(node, c"yield_expression") && here.generator == 0): js_validation_error(diagnostics, node, c"yield outside generator")
 	if (js_cst_is(node, c"unary") && js_cst_child(node, c"KW_AWAIT") != 0 && here.async_function == 0): js_validation_error(diagnostics, node, c"await outside async function (ES2020)")
@@ -215,6 +231,7 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 			if (strcmp(name, c"eval") == 0 || strcmp(name, c"arguments") == 0): bad = 1
 		if (bad): js_validation_error(diagnostics, node, c"reserved identifier in this context")
 		free(name)
+	if (js_cst_is(node, c"REGEX") && js_regexp_syntax(node.text) == 0): js_validation_error(diagnostics, node, c"invalid regular expression structure")
 	if (node.token != 0 && here.strict):
 		if (js_cst_is(node, c"NUMBER") && node.text[0] == '0' && js_digit(node.text[1])): js_validation_error(diagnostics, node, c"legacy leading-zero number in strict code")
 		if (js_cst_is(node, c"STRING")):
@@ -243,5 +260,6 @@ void js_validate(pg_parse_result* result, int module):
 	context.switches = 0
 	context.top_level = 1
 	context.new_target_allowed = 0
+	context.in_parameters = 0
 	js_validate_node(result.root, &context, result.diagnostics)
 	if (pg_diagnostics_count(result.diagnostics) != 0): result.success = 0

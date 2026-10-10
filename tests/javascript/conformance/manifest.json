@@ -305,14 +305,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-REGEXP-EARLY",
-        "reason": "Invalid regular-expression patterns pass early validation.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -325,14 +317,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-MODULE-EXPORT",
-        "reason": "An exported local name is not checked against declared module bindings.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -345,14 +329,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-MODULE-DEFAULT",
-        "reason": "Duplicate default exports are not rejected during early validation.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -365,14 +341,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-ASYNC-PARAMETER",
-        "reason": "Await expressions in async formal parameters pass early validation.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -385,14 +353,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-GENERATOR-PARAMETER",
-        "reason": "Yield expressions in generator formal parameters pass early validation.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -405,14 +365,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-ASYNC-DUPLICATE",
-        "reason": "Async simple duplicate parameters pass early validation.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -425,14 +377,6 @@
         "phase": "early",
         "outcome": "error",
         "error_type": "SyntaxError"
-      },
-      "xfail": {
-        "bug": "JS-GENERATOR-DUPLICATE",
-        "reason": "Generator simple duplicate parameters pass early validation.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -450,11 +394,11 @@
         }
       },
       "xfail": {
-        "bug": "JS-CHAINED-LABEL",
-        "reason": "Continue to a chained iteration label is incorrectly rejected.",
+        "bug": "JS-LABEL-LOWERING",
+        "reason": "Chained iteration labels now pass early validation; labelled statement lowering remains unavailable.",
         "observed": {
-          "phase": "early",
-          "outcome": "error"
+          "phase": "lower",
+          "outcome": "unsupported"
         }
       }
     }

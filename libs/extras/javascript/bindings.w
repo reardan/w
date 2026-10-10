@@ -135,7 +135,7 @@ void js_binding_validate_parameters(pg_ast_node* node, js_binding_scope* scope, 
 	pg_ast_node* body = js_binding_function_body(node)
 	if (non_simple && js_directive_strict(body)):
 		js_validation_error(diagnostics, params, c"use strict directive with non-simple parameters")
-	int unique = strict || non_simple || js_cst_is(node, c"arrow_function") || js_cst_is(node, c"method")
+	int unique = strict || non_simple || js_cst_child(node, c"async_modifier") != 0 || js_cst_child(node, c"STAR") != 0 || js_cst_is(node, c"arrow_function") || js_cst_is(node, c"method")
 	list[js_binding_name*] names = new list[js_binding_name*]
 	js_binding_collect(params, names)
 	for js_binding_name* binding in names:
@@ -223,9 +223,63 @@ void js_binding_walk(pg_ast_node* node, js_binding_scope* scope, int strict, int
 	if (own_scope): js_binding_scope_free(scope)
 
 
+# ExportedNames and local ExportEntries are checked after the complete module
+# scope is collected, so declarations and imports may follow an export clause.
+void js_binding_export_name(list[js_binding_name*] exported, char* name, pg_ast_node* node, pg_diagnostics* diagnostics):
+	if (js_binding_name_exists(exported, name)): js_validation_error(diagnostics, node, c"duplicate module export name")
+	js_binding_name_add(exported, name, node)
+
+
+void js_binding_export_specifiers(pg_ast_node* node, js_binding_scope* scope, list[js_binding_name*] exported, int local, pg_diagnostics* diagnostics):
+	if (js_cst_is(node, c"export_specifier")):
+		char* name = js_identifier_decode(node.last_token.text)
+		js_binding_export_name(exported, name, node, diagnostics)
+		free(name)
+		if (local):
+			name = js_identifier_decode(node.first_token.text)
+			if (js_binding_name_exists(scope.lexical, name) == 0 && js_binding_name_exists(scope.variables, name) == 0):
+				js_validation_error(diagnostics, node, c"module export references an undeclared local binding")
+			free(name)
+		return
+	for pg_ast_node* child in node.children: js_binding_export_specifiers(child, scope, exported, local, diagnostics)
+
+
+void js_binding_exports(pg_ast_node* node, js_binding_scope* scope, list[js_binding_name*] exported, pg_diagnostics* diagnostics):
+	if (js_cst_is(node, c"export_statement")):
+		if (js_cst_child(node, c"KW_DEFAULT") != 0):
+			js_binding_export_name(exported, c"default", node, diagnostics)
+			return
+		pg_ast_node* named = js_cst_child(node, c"export_named")
+		if (named != 0):
+			js_binding_export_specifiers(named, scope, exported, js_cst_child(node, c"export_from") == 0, diagnostics)
+			return
+		pg_ast_node* all = js_cst_child(node, c"export_all")
+		if (all != 0):
+			pg_ast_node* alias = js_cst_child(all, c"export_alias")
+			if (alias != 0):
+				char* name = js_identifier_decode(alias.last_token.text)
+				js_binding_export_name(exported, name, alias, diagnostics)
+				free(name)
+			return
+		list[js_binding_name*] names = new list[js_binding_name*]
+		for pg_ast_node* child in node.children:
+			if (js_cst_is(child, c"function_decl") || js_cst_is(child, c"class_decl")): js_binding_collect(js_cst_child(child, c"binding_identifier"), names)
+			if (js_cst_is(child, c"variable_statement")): js_binding_collect(child, names)
+		for js_binding_name* name in names: js_binding_export_name(exported, name.name, name.node, diagnostics)
+		js_binding_names_free(names)
+		return
+	# Valid exports only occur in the top-level statement wrappers.
+	if (js_cst_is(node, c"program") || js_cst_is(node, c"statement")):
+		for pg_ast_node* child in node.children: js_binding_exports(child, scope, exported, diagnostics)
+
+
 void js_validate_bindings(pg_parse_result* result, int module):
 	if (result.success == 0): return
 	js_binding_scope* scope = js_binding_scope_new(0, 0, 1)
 	js_binding_walk(result.root, scope, module, module, 0, result.diagnostics)
+	if (module):
+		list[js_binding_name*] exported = new list[js_binding_name*]
+		js_binding_exports(result.root, scope, exported, result.diagnostics)
+		js_binding_names_free(exported)
 	js_binding_scope_free(scope)
 	if (pg_diagnostics_count(result.diagnostics) != 0): result.success = 0
