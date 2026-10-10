@@ -236,14 +236,26 @@ runner calls in the debugger and detect stale tooling builds before use.
 
 ## Test selection (`bin/wtest`)
 
+- **Generated UI font data can be read during replacement (2026-10-09).**
+  A parallel `./wbuild --keep-going tests` run failed `graphics_darwin`
+  step 24 with an unterminated string in `graphics/ui/font_data.w`; the
+  same compile checked cleanly once generation finished. `wexec_test` runs
+  `bin/wexec hello`, rebuilding `ui_font_data` through a nested manifest while
+  the atlas generator writes that shared source directly. Publish generated
+  font data atomically and isolate nested test builds from shared outputs.
+
 - **Failed build dependency closures ignore repaired imports (2026-10-09).**
   During `wllvm` development, an initial error in `tools/wllvm_emit.w` cached
   a failed `x64 tools/wllvm.w` closure in `bin/.wexec_deps_cache`. Fixing the
   imported module left `wexec` reusing the stale result: `wexec_deps_lookup`
   calls `deps_entry_valid(entry, 0)`, whose failed-entry path checks only the
   root's hash. Retry failed closures when their known imports change, or avoid
-  persisting a failure without an invalidation dependency. `--no-cache` is
-  the development workaround; `wtest` has a separate closure cache.
+  persisting a failure without an invalidation dependency. The same gap affects
+  `bin/.wtest_deps_cache`: repairing a transient `urlparse.w` error left 29
+  dependent roots cached as failures because their root/compiler hashes were
+  unchanged, dropping HTTP and wexec targets from selection and failing seven
+  `wtest_map_test` assertions. Remove those failed records to retry; `--no-cache`
+  is the `wexec` development workaround.
 
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest
