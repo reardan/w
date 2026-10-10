@@ -264,3 +264,45 @@ void test_css_deterministic():
 		assert_equal(a.tokens[i].match, b.tokens[i].match)
 	css_document_free(a)
 	css_document_free(b)
+
+
+void test_css_token_semantic_metadata():
+	char* source = c"#123 #\\31 23 #valid 1\\65 2px 1e2px .5PX"
+	css_document* d = css_tokenize_n(source, strlen(source), 0)
+	assert_equal(0, d.tokens[0].hash_id)
+	assert_equal(1, d.tokens[2].hash_id)
+	assert_equal(1, d.tokens[4].hash_id)
+	assert_strings_equal(c"123", d.tokens[0].value)
+	assert_strings_equal(c"123", d.tokens[2].value)
+	assert_strings_equal(c"1e2px", d.tokens[6].value)
+	assert_strings_equal(c"1e2px", d.tokens[8].value)
+	assert_equal(1, d.tokens[6].number_length)
+	assert_equal(3, d.tokens[8].number_length)
+	assert_equal(2, d.tokens[10].number_length)
+	css_document_free(d)
+
+
+void test_css_qualified_semicolon_and_eof():
+	css_document* d = css_test_sheet(c"bad; a {color:red}")
+	assert_equal(1, d.nodes.length)
+	assert_equal(0, d.nodes[0].start)
+	assert_strings_equal(c"bad", d.tokens[d.nodes[0].first].value)
+	asserts(c"semicolon remains in complete selector prelude", css_delim(d.tokens[d.nodes[0].first + 1], ';'))
+	css_document_free(d)
+	char* source = c"color:rgb(255 0 0"
+	d = css_parse_declarations_n(source, strlen(source), 0)
+	assert_equal(1, d.nodes.length)
+	int open = d.nodes[0].first + 1
+	int close = d.tokens[open].match
+	asserts(c"EOF function gets balanced component range", close > open && css_delim(d.tokens[close], ')'))
+	assert_equal(strlen(source), d.tokens[close].start)
+	assert_equal(strlen(source), d.tokens[close].end)
+	assert_equal(open, d.tokens[close].match)
+	css_document_free(d)
+	css_limits* limits = css_default_limits()
+	limits.tokens = 1
+	d = css_tokenize_n(c"(", 1, limits)
+	assert_equal(1, d.failed)
+	assert_equal(1, d.tokens.length)
+	css_document_free(d)
+	free(limits)
