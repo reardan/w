@@ -1,0 +1,3 @@
+# wbuild: target=sql_parser_generated_check tag=tests dep=grammars_parser_generator
+# wbuild: step="bin/parser_generator_grammars libs/extras/grammars/sql.pg -o bin/checked_sql_parser.w"
+# wbuild: step="cmp bin/checked_sql_parser.w libs/standard/sql/generated_sql_parser.w"
