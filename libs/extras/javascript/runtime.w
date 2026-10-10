@@ -42,6 +42,10 @@ struct js_value:
 	int host_set
 	int host_receiver
 	js_value* this_value
+	int variable_scope
+	int lexical_binding
+	int silent_immutable
+	int strict
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -127,6 +131,10 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.host_set = 0
 	value.host_receiver = 0
 	value.this_value = 0
+	value.variable_scope = 0
+	value.lexical_binding = 0
+	value.silent_immutable = 0
+	value.strict = 0
 	rt.heap.push(value)
 	return value
 
@@ -183,6 +191,8 @@ int js_runtime_put(js_runtime* rt, js_value* object, js_text* key, js_value* val
 		property.configurable = 1
 		property.getter = 0
 		property.setter = 0
+		property.lexical_binding = 0
+		property.silent_immutable = 0
 		object.properties.push(property)
 	else if (property.immutable):
 		js_runtime_fail(rt, 2, c"assignment to constant binding")
@@ -259,11 +269,14 @@ js_runtime* js_runtime_new():
 	rt.undefined_value = 0
 	rt.undefined_value = js_runtime_alloc(rt, 0)
 	rt.global = js_runtime_alloc(rt, 8)
+	rt.global.variable_scope = 1
 	rt.completion.value = rt.undefined_value
 	js_runtime_set(rt, rt.global, c"undefined", rt.undefined_value)
 	js_runtime_set(rt, rt.global, c"NaN", js_runtime_number(rt, float64_from_bits((0x7ff << 52) | 1)))
 	js_runtime_set(rt, rt.global, c"Infinity", js_runtime_number(rt, float64_from_bits(0x7ff << 52)))
-	for i in range(rt.global.properties.length): rt.global.properties[i].immutable = 1
+	for i in range(rt.global.properties.length):
+		rt.global.properties[i].immutable = 1
+		rt.global.properties[i].lexical_binding = 1
 	return rt
 
 
@@ -382,8 +395,20 @@ js_value* js_runtime_binding(js_value* env, char* name):
 
 js_value* js_runtime_environment(js_runtime* rt, js_value* parent):
 	js_value* env = js_runtime_alloc(rt, 8)
-	if (env != rt.undefined_value): env.parent = parent
+	if (env != rt.undefined_value):
+		env.parent = parent
+		if (parent != 0): env.strict = parent.strict
 	return env
+
+
+int js_runtime_strict_body(js_node* body):
+	for i in range(body.children.length):
+		js_node* statement = body.children[i]
+		if (js_kind(statement, c"expression_statement") == 0 || statement.children.length != 1): return 0
+		js_node* expression = statement.children[0]
+		if (js_kind(expression, c"string") && strcmp(expression.text, c"use strict") == 0): return 1
+		if (js_kind(expression, c"string") == 0 && js_kind(expression, c"string_non_directive") == 0 && js_kind(expression, c"string_utf16") == 0): return 0
+	return 0
 
 
 js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
@@ -391,6 +416,7 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	if (callable == rt.undefined_value): return callable
 	callable.code = node
 	callable.parent = env
+	callable.strict = env.strict || js_runtime_strict_body(node.children[1])
 	js_text* name = js_runtime_key(node.text)
 	js_value* name_value = js_runtime_string(rt, name)
 	js_text_free(name)
@@ -404,18 +430,36 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 		callable.parent = js_runtime_environment(rt, env)
 		js_runtime_set(rt, callable.parent, node.text, callable)
 		js_value* binding = js_runtime_binding(callable.parent, node.text)
-		if (binding != 0): binding.immutable = 1
+		if (binding != 0):
+			binding.immutable = 1
+			binding.silent_immutable = 1
 	return callable
 
 
-# Predeclare lexical names before evaluating any statement (TDZ), and hoist
-# ordinary callable declarations in this lexical scope.
+# The two-pass variable scan validates the whole body before installing names.
+# It crosses statement blocks but never descends into nested functions.
+void js_runtime_var_declare(js_runtime* rt, js_node* node, js_value* env, int install):
+	if (rt.completion.status != 0): return
+	if (js_kind(node, c"function") || js_kind(node, c"function_expression")): return
+	if (js_kind(node, c"variable")):
+		if (strcmp(node.text, c"var") != 0): return
+		for i in range(node.children.length):
+			js_text* key = js_runtime_key(node.children[i].children[0].text)
+			js_value* binding = js_runtime_property(env, key)
+			if (binding != 0 && binding.lexical_binding): js_runtime_fail(rt, 2, c"duplicate lexical binding")
+			else if (binding == 0 && install): js_runtime_put(rt, env, key, rt.undefined_value)
+			js_text_free(key)
+		return
+	for i in range(node.children.length): js_runtime_var_declare(rt, node.children[i], env, install)
+
+
+# Lexical declarations are distinct from function/var/parameter bindings.
+# Function and global body functions share the variable environment; ordinary
+# nested block functions remain block lexical (Annex B is not implemented).
 void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
-	# Check this scope before installing any bindings. A failed subsequent
-	# script must not leave earlier declarations permanently uninitialized.
 	for i in range(node.children.length):
 		js_node* statement = node.children[i]
-		if (js_kind(statement, c"variable")):
+		if (js_kind(statement, c"variable") && strcmp(statement.text, c"var") != 0):
 			for j in range(statement.children.length):
 				js_text* key = js_runtime_key(statement.children[j].children[0].text)
 				int duplicate = js_runtime_property(env, key) != 0
@@ -425,7 +469,8 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 					return
 		else if (js_kind(statement, c"function")):
 			js_text* key = js_runtime_key(statement.text)
-			int duplicate = js_runtime_property(env, key) != 0
+			js_value* binding = js_runtime_property(env, key)
+			int duplicate = binding != 0 && (env.variable_scope == 0 || binding.lexical_binding)
 			js_text_free(key)
 			if (duplicate):
 				js_runtime_fail(rt, 2, c"duplicate callable binding")
@@ -433,23 +478,23 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 	for i in range(node.children.length):
 		if (rt.completion.status != 0): return
 		js_node* statement = node.children[i]
-		if (js_kind(statement, c"variable")):
+		if (js_kind(statement, c"variable") && strcmp(statement.text, c"var") != 0):
 			for j in range(statement.children.length):
 				if (rt.completion.status != 0): return
 				char* name = statement.children[j].children[0].text
 				js_text* key = js_runtime_key(name)
-				if (js_runtime_property(env, key) != 0): js_runtime_fail(rt, 2, c"duplicate lexical binding")
-				else:
-					js_runtime_put(rt, env, key, rt.undefined_value)
-					js_value* binding = js_runtime_property(env, key)
-					if (binding != 0):
-						binding.initialized = 0
-						binding.immutable = strcmp(statement.text, c"const") == 0
+				js_runtime_put(rt, env, key, rt.undefined_value)
+				js_value* binding = js_runtime_property(env, key)
+				if (binding != 0):
+					binding.initialized = 0
+					binding.immutable = strcmp(statement.text, c"const") == 0
+					binding.lexical_binding = 1
 				js_text_free(key)
 		else if (js_kind(statement, c"function")):
 			js_text* key = js_runtime_key(statement.text)
-			if (js_runtime_property(env, key) != 0): js_runtime_fail(rt, 2, c"duplicate callable binding")
-			else: js_runtime_put(rt, env, key, js_runtime_function(rt, statement, env))
+			js_runtime_put(rt, env, key, js_runtime_function(rt, statement, env))
+			js_value* binding = js_runtime_property(env, key)
+			if (binding != 0): binding.lexical_binding = env.variable_scope == 0
 			js_text_free(key)
 
 
@@ -787,7 +832,8 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 				value = js_runtime_binary(rt, op, old, value)
 	if (rt.completion.status == 0):
 		if (binding != 0):
-			if (binding.immutable): js_runtime_fail(rt, 2, c"assignment to constant binding")
+			if (binding.immutable):
+				if (binding.silent_immutable == 0 || env.strict): js_runtime_fail(rt, 2, c"assignment to constant binding")
 			else: binding.value = value
 		else: js_runtime_member_write(rt, object, key, value)
 	js_text_free(key)
@@ -812,7 +858,11 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 		js_runtime_fail(rt, 2, c"value is not callable")
 		return rt.undefined_value
 	js_value* env = js_runtime_environment(rt, callable.parent)
-	if (env != rt.undefined_value): env.this_value = receiver
+	if (env != rt.undefined_value):
+		env.this_value = receiver
+		env.variable_scope = 1
+		env.strict = callable.strict
+		env.code = callable.code.children[1]
 	js_node* parameters = callable.code.children[0]
 	for i in range(parameters.children.length):
 		js_value* argument = rt.undefined_value
@@ -851,7 +901,7 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 		condition = node.children[1]
 		body = node.children[3]
 		js_node* init = node.children[0]
-		if (js_kind(init, c"variable")):
+		if (js_kind(init, c"variable") && strcmp(init.text, c"var") != 0):
 			lexical = strcmp(init.text, c"let") == 0
 			scope = js_runtime_environment(rt, env)
 			# A temporary borrowed wrapper drives the ordinary TDZ declaration pass.
@@ -945,8 +995,11 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		return rt.undefined_value
 	if (js_kind(node, c"program") || js_kind(node, c"block")):
 		js_value* scope = env
-		if (js_kind(node, c"block")): scope = js_runtime_environment(rt, env)
-		js_runtime_declare(rt, node, scope)
+		if (js_kind(node, c"program")): scope.strict = js_runtime_strict_body(node)
+		if (js_kind(node, c"block") && env.code != node): scope = js_runtime_environment(rt, env)
+		if (scope.variable_scope): js_runtime_var_declare(rt, node, scope, 0)
+		if (rt.completion.status == 0): js_runtime_declare(rt, node, scope)
+		if (rt.completion.status == 0 && scope.variable_scope): js_runtime_var_declare(rt, node, scope, 1)
 		js_value* result = rt.undefined_value
 		int empty = 1
 		for i in range(count):
@@ -960,6 +1013,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"variable")):
 		for i in range(count):
 			js_node* declaration = node.children[i]
+			if (strcmp(node.text, c"var") == 0 && declaration.children.length == 1): continue
 			js_value* value = rt.undefined_value
 			if (declaration.children.length == 2): value = js_runtime_eval_node(rt, declaration.children[1], env)
 			if (rt.completion.status != 0): break
@@ -1011,8 +1065,22 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (strcmp(node.text, c"&&") == 0 || strcmp(node.text, c"||") == 0 || strcmp(node.text, c"??") == 0 || strcmp(node.text, c",") == 0): return right
 		return js_runtime_binary(rt, node.text, left, right)
 	if (js_kind(node, c"unary")):
-		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
+		js_node* operand = node.children[0]
+		js_value* value = rt.undefined_value
+		int missing_typeof = strcmp(node.text, c"typeof") == 0 && js_kind(operand, c"identifier") && js_runtime_binding(env, operand.text) == 0
+		if (missing_typeof == 0): value = js_runtime_eval_node(rt, operand, env)
 		if (rt.completion.status != 0): return rt.undefined_value
+		if (strcmp(node.text, c"typeof") == 0):
+			char* name = c"object"
+			if (value.kind == 0): name = c"undefined"
+			else if (value.kind == 2): name = c"boolean"
+			else if (value.kind == 3): name = c"number"
+			else if (value.kind == 4): name = c"string"
+			else if (value.kind == 7 || value.kind == 9): name = c"function"
+			js_text* text = js_runtime_key(name)
+			js_value* result = js_runtime_string(rt, text)
+			js_text_free(text)
+			return result
 		if (strcmp(node.text, c"!") == 0): return js_runtime_boolean(rt, js_runtime_truth(value) == 0)
 		if (strcmp(node.text, c"void") == 0): return rt.undefined_value
 		if (value.kind != 3):
@@ -1098,9 +1166,8 @@ int js_runtime_supported(js_node* node):
 		parse_float64(node.text, &consumed)
 		if (consumed != strlen(node.text)): return 0
 		if (node.text[0] == '0' && node.text[1] >= '0' && node.text[1] <= '9'): return 0
-	if (strcmp(kind, c"variable") == 0 && strcmp(node.text, c"var") == 0): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
-	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0): return 0
+	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0): return 0
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
