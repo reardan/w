@@ -50,14 +50,15 @@ void wexec_process_group_kill(int pid):
 # struct sigaction: {handler, flags, restorer, mask[2]}, five 4-byte
 # fields; flags 0, no SA_RESTORER (see wexec_process_groups_supported's
 # note above).
-void wexec_install_termination_handler(int handler):
+int wexec_install_termination_handler(int handler):
 	int* act = cast(int*, malloc(5 * __word_size__))
 	act[0] = handler
 	act[1] = 0
 	act[2] = 0
 	act[3] = 0
 	act[4] = 0
-	rt_sigaction(1, act, 0)
-	rt_sigaction(2, act, 0)
-	rt_sigaction(15, act, 0)
+	int ok = rt_sigaction(1, act, 0) == 0
+	if (rt_sigaction(2, act, 0) != 0): ok = 0
+	if (rt_sigaction(15, act, 0) != 0): ok = 0
 	free(act)
+	return ok

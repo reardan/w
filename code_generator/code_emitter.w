@@ -39,7 +39,7 @@ int target_isa
 # Target operating system / executable container: 0 = linux (ELF),
 # 1 = darwin (Mach-O, the arm64_darwin target, docs/projects/arm64.md
 # Stage 4), 2 = windows (PE32+, the win64 target,
-# docs/projects/windows.md). Selects the container writer, the __arch__
+# docs/projects/windows.md), 3 = wasm, 4 = Android (ELF). Selects the container writer, the __arch__
 # library modules and the extern C ABI. Defaults to 0 so every existing
 # Linux target is wholly unaffected.
 int target_os
@@ -64,8 +64,9 @@ int entry_optional
 # (e.g. reserving extra program headers for dynamic linking), so the finish
 # pass patches these recorded positions instead of hardcoded constants.
 int elf_static /* W x64 compiled static library */
-int elf_shared /* x64 Linux shared object with explicit native exports */
-int elf_pie   /* explicit x64 Linux --pie; other targets stay unchanged */
+int elf_shared /* ELF shared object with explicit native exports */
+char* elf_soname /* Android shared object basename, set before finish */
+int elf_pie   /* ELF PIE; mandatory for Android */
 int x64_syscall_abi /* 1: KVM ring-3 vmcall, 0: native Linux syscall */
 int x64_hypercall_count
 int[64] x64_hypercall_sites
@@ -366,3 +367,9 @@ int bounds_relation(int kind):
 	if (kind == BOUNDS_EBX_GT_EAX): return 1
 	if (kind >= BOUNDS_EBX_LE_EAX): return 2
 	return 0
+
+
+# Android binaries support both 4 KB and 16 KB kernel pages.
+int elf_page_size():
+	if (target_os == 4): return 16384
+	return 4096

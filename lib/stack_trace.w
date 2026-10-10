@@ -63,6 +63,7 @@ This file is reachable from the container runtime's trap paths
 import graph: seed-era syntax only.
 */
 import lib.memory
+import lib.page_size
 
 
 # Parsed image state: 0 = not yet parsed, 1 = ready, -1 = unavailable.
@@ -112,13 +113,13 @@ int st_int32(int addr):
 # an unmapped range instead of faulting like a read would.
 int st_page_readable(int addr):
 	if (st_mincore_vec == 0): st_mincore_vec = cast(char*, malloc(16))
-	int page = addr - (addr & 4095)
+	int page = addr - (addr & (runtime_page_size() - 1))
 	return sys_mincore(page, 1, cast(int, st_mincore_vec)) == 0
 
 
 int st_range_readable(int addr, int length):
 	if (length <= 0): return 0
-	for p in range(addr - (addr & 4095), addr + length, 4096):
+	for p in range(addr - (addr & (runtime_page_size() - 1)), addr + length, runtime_page_size()):
 		if (st_page_readable(p) == 0): return 0
 	return 1
 
@@ -459,7 +460,7 @@ int st_scan(int sp, char* out, int max, int skip_entry):
 	int probed_page = 1
 	for i in range(65536):
 		int slot = sp + i * __word_size__
-		int page = slot - (slot & 4095)
+		int page = slot - (slot & (runtime_page_size() - 1))
 		if (page != probed_page):
 			if (st_page_readable(slot) == 0):
 				return found

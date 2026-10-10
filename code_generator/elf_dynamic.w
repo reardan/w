@@ -78,6 +78,55 @@ void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int a
 		save_i(code + base + 28, align, 4)
 
 
+# Android's linker validates SHT_DYNAMIC against PT_DYNAMIC and follows
+# sh_link to SHT_STRTAB. Preserve the existing debug sections and append
+# the dynamic section descriptions to a copied table. Old table bytes
+# remain harmless padding inside the text segment.
+void elf_android_section(int name, int type, int off, int size, int link, int entsize, int align):
+	emit_int32(name)
+	emit_int32(type)
+	emit_int64(2) # SHF_ALLOC, read-only
+	emit_int64(code_offset + off)
+	emit_int64(off)
+	emit_int64(size)
+	emit_int32(link)
+	int info = 0
+	if (type == 11): info = 1 # first non-local .dynsym index
+	emit_int32(info)
+	emit_int64(align)
+	emit_int64(entsize)
+
+
+void elf_android_dynamic_sections(int str_off, int str_size, int sym_off, int nsym, int hash_off, int rel_off, int rel_size, int dyn_off, int dyn_size):
+	int old_off = load_i(code + 40, 8)
+	int count = load_i(code + 60, 2)
+	int stridx = load_i(code + 62, 2)
+	int table_size = count * 64
+	char* table = cast(char*, malloc(table_size))
+	for b in range(table_size): table[b] = code[old_off + b]
+	int old_names = load_i(table + stridx * 64 + 24, 8)
+	int names_size = load_i(table + stridx * 64 + 32, 8)
+	char* names = cast(char*, malloc(names_size))
+	for b in range(names_size): names[b] = code[old_names + b]
+	int names_off = codepos
+	emit(names_size, names)
+	free(names)
+	emit(41, c".dynstr\x00.dynsym\x00.hash\x00.rela.dyn\x00.dynamic\x00")
+	save_i(table + stridx * 64 + 24, names_off, 8)
+	save_i(table + stridx * 64 + 32, names_size + 41, 8)
+	emit_dyn_align(8)
+	int table_off = codepos
+	emit(table_size, table)
+	free(table)
+	elf_android_section(names_size, 3, str_off, str_size, 0, 0, 1)
+	elf_android_section(names_size + 8, 11, sym_off, nsym * 24, count, 24, 8)
+	elf_android_section(names_size + 16, 5, hash_off, (nsym + 3) * 4, count + 1, 4, 8)
+	elf_android_section(names_size + 22, 4, rel_off, rel_size, count + 1, 24, 8)
+	elf_android_section(names_size + 32, 6, dyn_off, dyn_size, count, 16, 8)
+	save_int64(code + 40, table_off)
+	save_i(code + 60, count + 5, 2)
+
+
 void elf_emit_dynamic():
 	if ((dyn_has_imports() == 0) && (elf_shared == 0)): return;
 	if (x64_syscall_abi): error(c"--syscall-abi=vmcall does not support dynamic imports")
@@ -90,7 +139,8 @@ void elf_emit_dynamic():
 
 	# ---- .interp ----
 	int interp_off = codepos
-	if (target_isa == 1): emit_string(c"/lib/ld-linux-aarch64.so.1")
+	if (target_os == 4): emit_string(c"/system/bin/linker64")
+	else if (target_isa == 1): emit_string(c"/lib/ld-linux-aarch64.so.1")
 	else if (word_size == 8): emit_string(c"/lib64/ld-linux-x86-64.so.2")
 	else: emit_string(c"/lib/ld-linux.so.2")
 	int interp_size = codepos - interp_off
@@ -114,6 +164,10 @@ void elf_emit_dynamic():
 	for e in range(nexports):
 		save_int(export_str_off + e * 4, codepos - dynstr_off)
 		emit_string(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)))
+	int soname_off = 0
+	if (elf_soname != 0):
+		soname_off = codepos - dynstr_off
+		emit_string(elf_soname)
 	int dynstr_size = codepos - dynstr_off
 
 	# ---- .dynsym (null entry, then one symbol per import) ----
@@ -190,7 +244,8 @@ void elf_emit_dynamic():
 		for r in range(rebase_count):
 			int cell = load_i(rebase_table + r * 8, 8)
 			emit_int64(cell)
-			emit_int32(8) /* R_X86_64_RELATIVE */
+			if (target_isa == 1): emit_int32(1027) /* R_AARCH64_RELATIVE */
+			else: emit_int32(8) /* R_X86_64_RELATIVE */
 			emit_int32(0)
 			emit_int64(load_i(data + cell - data_offset, 8))
 	int rel_size = codepos - rel_off
@@ -202,6 +257,7 @@ void elf_emit_dynamic():
 	while (i < dyn_lib_count):
 		elf_dyn_entry(1, load_int(lib_str_off + i * 4))   /* DT_NEEDED */
 		i = i + 1
+	if (soname_off != 0): elf_dyn_entry(14, soname_off) # DT_SONAME
 	elf_dyn_entry(4, code_offset + hash_off)      /* DT_HASH */
 	elf_dyn_entry(5, code_offset + dynstr_off)    /* DT_STRTAB */
 	elf_dyn_entry(6, code_offset + dynsym_off)    /* DT_SYMTAB */
@@ -218,6 +274,7 @@ void elf_emit_dynamic():
 	if (elf_pie && (elf_shared == 0)): elf_dyn_entry(1879048187, 134217728) /* DT_FLAGS_1: DF_1_PIE */
 	elf_dyn_entry(0, 0)                            /* DT_NULL */
 	int dynamic_size = codepos - dynamic_off
+	if (target_os == 4): elf_android_dynamic_sections(dynstr_off, dynstr_size, dynsym_off, nsym, hash_off, rel_off, rel_size, dynamic_off, dynamic_size)
 
 	free(lib_str_off)
 	free(imp_str_off)

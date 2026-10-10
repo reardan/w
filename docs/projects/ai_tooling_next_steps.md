@@ -47,6 +47,11 @@ suggesting that it behaves like pointer arithmetic.
 
 ## Diagnostics (`w check`)
 
+- **ARM64 check errors report x64 architecture (2026-10-10).**
+  `w check --json arm64 tools/wexec_main.w` correctly selected the ARM64
+  import path but reported `"arch": "x64"` for a missing platform module.
+  Derive diagnostic architecture from the target selector, not word size.
+
 - **Compiler-directory test roots are silently replaced (2026-10-07).**
   `w check --json compiler/type_table_test.w` checks `w.w`, so a clean
   result missed an unsafe allocation in the standalone test. Exempt

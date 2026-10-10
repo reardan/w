@@ -8,6 +8,7 @@ This should only be functions that are highly common and every application requi
 import lib.linux
 import lib.memory
 import lib.hex
+import lib.page_size
 
 
 void exit(int);
@@ -44,6 +45,7 @@ from the symbol table to the call instruction at the entry point.
 */
 int _main(int argc, int argv):
 	environ_ptr = argv + (argc + 1) * __word_size__
+	runtime_page_size_init(cast(int*, environ_ptr))
 	exit(main(argc, argv))
 
 

@@ -166,7 +166,7 @@ void elf_phdr(int is64, int type, int flags):
 	elf_emit_word(is64, 0) /* filesz */
 	elf_emit_word(is64, 0) /* memsz */
 	if (is64 == 0): emit_int32(flags)
-	elf_emit_word(is64, 4096) /* align */
+	elf_emit_word(is64, elf_page_size()) /* align */
 
 
 # PT_GNU_STACK (0x6474e551) with flags R+W and no X: the kernel maps the
@@ -270,7 +270,8 @@ void elf_patch_load_segments(int is64):
 	int relro = dyn_relro_size()
 	if ((datapos > 0) || (relro > 0)):
 		int seg_vaddr = data_offset - relro
-		int data_file_off = (codepos + 4095) & (0 - 4096)
+		int page = elf_page_size()
+		int data_file_off = (codepos + page - 1) & (0 - page)
 		if (data_file_off > seg_vaddr - code_offset):
 			error(c"image text exceeds the code/data layout limit")
 		int p = phdr_table_pos + (1 + elf_pie) * phdr_size /* data load */

@@ -2,6 +2,7 @@
 # the wrappers live in per-architecture modules; the reserved __arch__
 # import segment binds whichever one matches the compile target.
 import code_generator.integer
+import lib.__arch__.android
 import lib.__arch__.syscalls
 
 

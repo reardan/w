@@ -207,6 +207,7 @@ char* wbd_cwd():
 int wbd_is_arch_word(char* word):
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
+	if (strcmp(word, c"arm64_android") == 0): return 1
 	if (strcmp(word, c"arm64_darwin") == 0): return 1
 	if (strcmp(word, c"win64") == 0): return 1
 	if (strcmp(word, c"wasm") == 0): return 1

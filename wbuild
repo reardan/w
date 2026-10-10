@@ -47,6 +47,15 @@ ensure_seed() {
 	seed="$1"
 	set -- $(awk -v f="$seed" '$1 == f { print $2, $3, $4 }' SEEDS)
 	if [ -z "$3" ]; then
+		if [ "$seed" = w_android ]; then
+			if [ -x "$seed" ]; then
+				echo "wbuild: using local Android seed w_android (no published SEEDS pin yet)" >&2
+				return
+			fi
+			echo "wbuild: Android needs a local ARM64 seed. On a supported host run: ./wbuild build && bin/wv2 arm64_android w.w -o w_android" >&2
+			echo "wbuild: copy w_android and this checkout into Termux's private home, chmod +x w_android, then run sh ./wbuild verify_android" >&2
+			exit 1
+		fi
 		echo "wbuild: no SEEDS entry for '$seed'" >&2
 		exit 1
 	fi
@@ -77,7 +86,25 @@ ensure_seed() {
 # manifest's cached 'wexec_darwin' target, then runs bin/wexec_darwin;
 # host-aware planning keeps target architectures and dispatches tests
 # to the qualified native suite (with an explicit coverage summary).
-if [ "$(uname -s)" = "Darwin" ]; then
+host_android=0
+if [ -n "${ANDROID_ROOT:-}" ] || [ -x /system/bin/getprop ]; then
+	host_android=1
+fi
+if [ "$host_android" = 1 ]; then
+	case "$(uname -m)" in
+		aarch64|arm64) ;;
+		*) echo "wbuild: Android hosting requires ARM64" >&2; exit 1 ;;
+	esac
+	ensure_seed w_android
+	if [ ! -x bin/wexec_android ]; then
+		./w_android arm64_android w.w -o "bin/wv2_android.stage.$$"
+		mv -f "bin/wv2_android.stage.$$" bin/wv2_android
+		bin/wv2_android arm64_android tools/wexec_main.w -o "bin/wexec_android.stage.$$"
+		mv -f "bin/wexec_android.stage.$$" bin/wexec_android
+	fi
+	./bin/wexec_android wexec_android >/dev/null
+	executor=./bin/wexec_android
+elif [ "$(uname -s)" = "Darwin" ]; then
 	ensure_seed w_darwin
 	if [ ! -x bin/wexec_darwin ]; then
 		./w_darwin arm64_darwin w.w -o bin/wv2_darwin_raw
@@ -138,7 +165,7 @@ if [ "$1" = "test_changed" ]; then
 	selected="$(printf '%s\n' "$changed" | ./bin/wtest changed --available)"
 	if [ -n "$selected" ]; then
 		set -f
-		./wbuild "$@" $selected
+		sh ./wbuild "$@" $selected
 	fi
 	exit 0
 fi
@@ -147,7 +174,7 @@ fi
 # terminal, but starting from the daemon's warm manifest and content
 # hashes, and auto-starting the daemon when none runs. If bin/wbuildd
 # cannot be brought up to date, the one-shot executor runs instead.
-if [ "${WBUILDD:-}" = 1 ] && [ "$(uname -s)" = Linux ]; then
+if [ "${WBUILDD:-}" = 1 ] && [ "$host_android" = 0 ] && [ "$(uname -s)" = Linux ]; then
 	if ./bin/wexec wbuildd >/dev/null 2>&1; then
 		exec ./bin/wbuildd build "$@"
 	fi
