@@ -274,6 +274,144 @@ void ers_reset():
 	ers_spill_end = 0
 	ers_spill_prev_end = 0
 
+######################## operand retargeting (O6) ########################
+# Expression registers instead of the accumulator shuttle (unit O6,
+# /mnt/project-files/codegen-gap/optimizer_plan_2026-10-10.md). A3 parks
+# a binary operator's left operand in a scratch register R while the
+# right operand runs in eax, then the operator reads R:
+#
+#   <left into eax>; mov R,eax; <right into eax>; op eax,R
+#
+# The right operand is usually a short straight-line computation of its
+# own ('rotr(e, 11)', '~e & g', 'k[i]'), so the park's move is pure
+# overhead: the same instructions could have computed the right operand
+# into R while the left one stayed in eax:
+#
+#   <left into eax>; <right into R>; op eax,R
+#
+# which also turns the non-commutative 'sub R,eax; mov eax,R' into one
+# 'sub eax,R', and lets a right operand whose last instruction is a
+# word load be the operator's memory operand itself ('add
+# rax,[r11+r12*8]'). A folded park (the left
+# operand was one instruction re-emitted into R: a register read, a
+# constant, a word load) and a commutative operator go the other way:
+# the right operand runs in eax as before and the operator reads the
+# left operand's register, immediate or memory word directly
+# ('mov rax,r14; ror eax,6; xor rax,r13').
+#
+# This is the note-based form of that retargeting, so both front ends
+# (streaming and AST, which emit through the same entry points) get it
+# and stay byte-identical. THE TRACE: while any park is live, the
+# emitters that write only the accumulator from a simple source record
+# each instruction they emit (xrt_add): mov eax,R (mov_eax_reg), mov
+# eax,imm (mov_eax_int), the folded loads (emit_esp_load,
+# addr_load_fold, plain_load), the register shuttle's 'op eax,X'
+# (shuttle_alu), the shifts and rotates by a constant (shift_imm_fold,
+# alu_bit_shuttle_imm), not/neg, and the retargeted sequences this
+# section emits itself. An entry names registers by number, eax = 0
+# being the accumulator; retargeting maps register 0 to R. Every park
+# notes where its trace begins (ers_xrt_anchor, the codepos right after
+# the park's bytes). THE CONSUMER (xrt_consume, from ebxreg_alu and
+# alu_cmp_set): when the operator pops the park as the ebxreg note and
+# the recorded entries cover exactly the bytes from the park's end to
+# the pop, every byte of the right operand is known and re-emittable,
+# so it rolls back to the park and emits the retargeted form above.
+# Fail-closed: any emission that is not recorded leaves a gap in the
+# trace (a call, a real push or spill, a branch, a store, a nested park
+# that was not itself retargeted, a read of a parked word), and a gap
+# keeps the A3 form. A rollback drops the entries past its target
+# (peep_rollback), a jump target drops them all (be_notes_reset). The
+# retargeted instructions read the same registers and memory at the
+# same point of the program: the trace has no stores, and a recorded
+# instruction writes only its destination (the accumulator, or the
+# scratch register of a nested retarget), so evaluation order and
+# every observable effect are unchanged. x86 and x64 (on x86 the park
+# registers are ecx/edx, so fewer operators qualify); --no-expr-regs
+# and -O0 have no parks, so no retargets either.
+#
+# Entry fields (12 words each, at most 32 entries): 0 start, 1 end, 2
+# kind, 3 destination register, then by kind: 1 MOVR (4 source), 2 IMM
+# (4 value, a signed 32-bit one), 3 LOAD (4 REX.W, 5 opcode length, 6 opcode bytes, 7 base,
+# 8 index or -1, 9 scale, 10 displacement), 4 ALU (4 /n extension, 5
+# operand kind 1 immediate or 3 register, 6 value or register), 5 ALUM
+# (4 extension, 7..10 the memory operand), 6 SHIFT (4 REX.W, 5 /n
+# extension, 6 count, 7 the by-one 0xd1 form), 7 UNARY (4 /n: 2 not, 3
+# neg). A memory operand based on esp keeps its REAL displacement, which
+# no park or pop changes; it is turned back into the logical one the
+# emitters take (+ ers_bias()) when re-emitted.
+int xrt_n
+int[384] xrt_f
+int[384] xrt_c
+int xrt_retargets
+# The park a pop just consumed (ers_pop_ebx): the ebxreg note it left
+# ends at xrt_pop_end, and the park was at index xrt_pop_index.
+int xrt_pop_end
+int xrt_pop_index
+# Per park: where its trace begins, its first byte and register (to
+# recognize it when it is popped), and how its left operand got into
+# the register: 0 'mov R,eax' (eax held it), 1 a register read
+# (ers_xrt_a = the register), 2 a constant (a = value), 3 a word local
+# load (a = real displacement), 4 a word memory load (a..d = base, index,
+# scale, displacement).
+int[8] ers_xrt_anchor
+int[8] ers_xrt_start
+int[8] ers_xrt_reg
+int[8] ers_xrt_form
+int[8] ers_xrt_a
+int[8] ers_xrt_b
+int[8] ers_xrt_c
+int[8] ers_xrt_d
+
+# Record one accumulator instruction emitted from start to codepos.
+void xrt_add(int start, int kind, int dst, int x4, int x5, int x6, int x7, int x8, int x9, int x10):
+	if (ers_count == 0): return
+	while ((xrt_n > 0) && (xrt_f[(xrt_n - 1) * 12 + 1] > start)): xrt_n = xrt_n - 1
+	if (xrt_n == 32):
+		# Full: entries before the oldest live park can never be part
+		# of a trace again
+		int low = ers_start[0]
+		int keep = 0
+		int i = 0
+		while (i < xrt_n):
+			if (xrt_f[i * 12] >= low):
+				int k = 0
+				while (k < 12):
+					xrt_f[keep * 12 + k] = xrt_f[i * 12 + k]
+					k = k + 1
+				keep = keep + 1
+			i = i + 1
+		xrt_n = keep
+		if (xrt_n == 32): return
+	int b = xrt_n * 12
+	xrt_f[b] = start
+	xrt_f[b + 1] = codepos
+	xrt_f[b + 2] = kind
+	xrt_f[b + 3] = dst
+	xrt_f[b + 4] = x4
+	xrt_f[b + 5] = x5
+	xrt_f[b + 6] = x6
+	xrt_f[b + 7] = x7
+	xrt_f[b + 8] = x8
+	xrt_f[b + 9] = x9
+	xrt_f[b + 10] = x10
+	xrt_n = xrt_n + 1
+
+# A folded load of the accumulator: op[0..oplen) with REX.W in w, the
+# esp-relative displacement made real.
+void xrt_add_load(int start, int w, int oplen, char* op, int base, int index, int scale, int disp):
+	if (ers_count == 0): return
+	if (base == 4): disp = disp - ers_bias()
+	xrt_add(start, 3, 0, w, oplen, cast(int, op), base, index, scale, disp)
+
+# The register shuttle's 'op eax,X' (X a constant, a word local or a
+# register); a parked word read as X is the register of an outer park,
+# left unrecorded (a gap).
+void xrt_add_alu(int start, int ext, int kind, int value, int disp, int reg):
+	if (ers_count == 0): return
+	if (kind == 1): xrt_add(start, 4, 0, ext, 1, value, 0, 0, 0, 0)
+	elif (kind == 3): xrt_add(start, 4, 0, ext, 3, reg, 0, 0, 0, 0)
+	elif (ers_slot_reg(disp) == 0): xrt_add(start, 5, 0, ext, 0, 0, 4, -1, 1, disp - ers_bias())
+
 void arm64_promote_acc(int instruction);
 
 ############################ register-resident locals ###########################
@@ -364,6 +502,7 @@ void mov_eax_reg(int r):
 	emit_int8(0xc0 | ((r & 7) << 3))
 	regload_note_end = codepos
 	regload_note_reg = r
+	if (ers_count != 0): xrt_add(regload_note_start, 1, 0, r, 0, 0, 0, 0, 0, 0)
 
 /* mov R,eax -- or, for a narrow register (A8), 'mov R32,eax' (89 /r
    without REX.W: the 32-bit write zero-extends) for a uint32 and
@@ -627,6 +766,8 @@ void ers_pop_ebx():
 		mov_ebx_reg(r)
 		ebxreg_end = codepos
 		ebxreg_reg = r
+		xrt_pop_end = codepos
+		xrt_pop_index = ers_count
 	else: emit(1, c"\x5b")
 
 # A word's register into ebx, NOT noted (the mov_ebx_esp* twins): the
@@ -635,6 +776,260 @@ void ers_pop_ebx():
 void ers_mov_ebx_reg(int r):
 	mov_ebx_reg(r)
 
+# --- operand retargeting (O6; the state and the recorders are at the top
+# of the file) ---------------------------------------------------------
+void emit_rex_mem(int w, int reg, int index, int base);
+void emit_mem_modrm(int reg, int base, int index, int scale, int disp);
+
+# A recorded register with the accumulator (0) mapped to t.
+int xrt_map(int q, int t):
+	if (q == 0): return t
+	return q
+
+# The logical displacement the emitters take for a recorded real one.
+int xrt_disp(int base, int disp):
+	if (base == 4): return disp + ers_bias()
+	return disp
+
+# 'op d,[mem]' at the word width (ext as for emit_alu_reg_x, 8 imul).
+void xrt_alu_mem(int ext, int d, int base, int index, int scale, int disp):
+	emit_rex_mem(1, d, index, base)
+	emit_alu_rm_opcode(ext)
+	emit_mem_modrm(d, base, index, scale, xrt_disp(base, disp))
+
+# 'mov d,imm' (xor for zero, as mov_eax_int32 does).
+void xrt_mov_imm(int d, int v):
+	if (v == 0):
+		emit_rex(0, d, d)
+		emit_int8(0x31)
+		emit_int8(0xc0 | ((d & 7) << 3) | (d & 7))
+	else: mov_reg_imm(d, v)
+
+# Re-emit the copied entry at xrt_c[b] with the accumulator mapped to t,
+# recording it again (it may belong to an outer park's trace).
+void xrt_emit(int b, int t):
+	int kind = xrt_c[b + 2]
+	int d = xrt_map(xrt_c[b + 3], t)
+	int x4 = xrt_c[b + 4]
+	int x5 = xrt_c[b + 5]
+	int x6 = xrt_c[b + 6]
+	int x7 = xrt_c[b + 7]
+	int x8 = xrt_c[b + 8]
+	int x9 = xrt_c[b + 9]
+	int x10 = xrt_c[b + 10]
+	int start = codepos
+	if (kind == 1):
+		x4 = xrt_map(x4, t)
+		mov_reg_reg(d, x4)
+	elif (kind == 2): xrt_mov_imm(d, x4)
+	elif (kind == 3):
+		x7 = xrt_map(x7, t)
+		if (x8 == 0): x8 = t
+		emit_mem_insn(x4, x5, cast(char*, x6), d, x7, x8, x9, xrt_disp(x7, x10))
+	elif (kind == 4):
+		if (x5 == 1): emit_alu_reg_imm_w(1, x4, d, x6)
+		else:
+			x6 = xrt_map(x6, t)
+			emit_alu_reg_reg_w(1, x4, d, x6)
+	elif (kind == 5):
+		x7 = xrt_map(x7, t)
+		if (x8 == 0): x8 = t
+		xrt_alu_mem(x4, d, x7, x8, x9, x10)
+	elif (kind == 6):
+		emit_rex(x4, 0, d)
+		if (x7):
+			emit_int8(0xd1)
+			emit_int8(0xc0 | (x5 << 3) | (d & 7))
+		else:
+			emit_int8(0xc1)
+			emit_int8(0xc0 | (x5 << 3) | (d & 7))
+			emit_int8(x6)
+	else:
+		emit_rex(1, 0, d)
+		emit_int8(0xf7)
+		emit_int8(0xc0 | (x4 << 3) | (d & 7))
+	xrt_add(start, kind, d, x4, x5, x6, x7, x8, x9, x10)
+
+# A register the trace reads: the accumulator only once the trace has
+# written it, never the park's register or ebx.
+int xrt_read_ok(int q, int defined, int r):
+	if (q == 0): return defined
+	return (q != r) && (q != 3)
+
+# The copied trace (n entries) is one the retarget can re-emit: it
+# writes the accumulator before reading it and ends with its value
+# there, and it neither reads nor writes the park's register r, ebx or
+# the register avoid (a folded park's source, 0 for none).
+int xrt_trace_ok(int n, int r, int avoid):
+	int defined = 0
+	int i = 0
+	while (i < n):
+		int b = i * 12
+		int kind = xrt_c[b + 2]
+		int d = xrt_c[b + 3]
+		if ((d == r) || (d == 3) || (d == 4)): return 0
+		if ((d != 0) && (d == avoid)): return 0
+		int acc = d == 0
+		if (kind == 1):
+			if (xrt_read_ok(xrt_c[b + 4], defined, r) == 0): return 0
+		elif (kind == 3):
+			if (xrt_read_ok(xrt_c[b + 7], defined, r) == 0): return 0
+			if ((xrt_c[b + 8] >= 0) && (xrt_read_ok(xrt_c[b + 8], defined, r) == 0)): return 0
+		elif (kind != 2):
+			# the in-place forms read their destination
+			if (acc && (defined == 0)): return 0
+			if ((kind == 4) || (kind == 5)):
+				int ext = xrt_c[b + 4]
+				if ((ext != 0) && (ext != 1) && (ext != 4) && (ext != 5) && (ext != 6) && (ext != 8)): return 0
+			if ((kind == 4) && (xrt_c[b + 5] == 3) && (xrt_read_ok(xrt_c[b + 6], defined, r) == 0)): return 0
+			if (kind == 5):
+				if (xrt_read_ok(xrt_c[b + 7], defined, r) == 0): return 0
+				if ((xrt_c[b + 8] >= 0) && (xrt_read_ok(xrt_c[b + 8], defined, r) == 0)): return 0
+		if (acc): defined = 1
+		i = i + 1
+	return defined
+
+# The last copied entry can be the operator's source operand itself: a
+# word load into the accumulator. (A right operand that is one register
+# read or one constant never gets here: pop_ebx's shuttle takes it.)
+int xrt_last_folds(int b):
+	if ((xrt_c[b + 3] != 0) || (xrt_c[b + 2] != 3)): return 0
+	if ((xrt_c[b + 4] != (word_size == 8)) || (xrt_c[b + 5] != 1)): return 0
+	char* op = cast(char*, xrt_c[b + 6])
+	return (op[0] & 255) == 0x8b
+
+# An operator 'op eax,X' just emitted from start: record it, and note it
+# as the binop R3's store folds know (X a register, kind 3, or a
+# constant, kind 1; eax held the left operand at start).
+void xrt_note_op(int start, int ext, int kind, int x):
+	xrt_add(start, 4, 0, ext, kind, x, 0, 0, 0, 0)
+	binop_start = start
+	binop_end = codepos
+	binop_op = ext
+	binop_left_reg = 0
+	binop_kind = kind
+	binop_value = 0
+	binop_disp = 0
+	binop_reg = 0
+	if (kind == 1): binop_value = x
+	else: binop_reg = x
+
+# The operator 'op eax,[mem]' (ext as for emit_alu_reg_x; 7 cmp) with
+# [mem] the folded last entry's operand at xrt_c[b], its accumulator
+# mapped to r; recorded unless it is a compare.
+void xrt_emit_op_last(int ext, int b, int r):
+	int start = codepos
+	int base = xrt_map(xrt_c[b + 7], r)
+	int index = xrt_c[b + 8]
+	if (index == 0): index = r
+	xrt_alu_mem(ext, 0, base, index, xrt_c[b + 9], xrt_c[b + 10])
+	if (ext != 7): xrt_add(start, 5, 0, ext, 0, 0, base, index, xrt_c[b + 9], xrt_c[b + 10])
+
+# The consumer: the operator ext (emit_alu_reg_x's /n: 0 add, 1 or, 4
+# and, 5 sub, 6 xor, 8 imul; 7 a compare, whose flags the caller turns
+# into a value or a branch) pops the park the ebxreg note names, and the
+# right operand's bytes are exactly the recorded trace after the park:
+# re-emit them retargeted (see the section comment at the top of the
+# file). Returns 1 when it emitted the operator, 0 to keep the A3 form.
+int xrt_consume(int ext):
+	if (xrt_n == 0): return 0
+	if ((xrt_pop_end != ebxreg_end) || (ebxreg_end != codepos)): return 0
+	int k = xrt_pop_index
+	int r = ebxreg_reg
+	if ((ers_count != k) || (ers_reg[k] != r) || (ers_xrt_reg[k] != r)): return 0
+	int park = ers_start[k]
+	if (ers_xrt_start[k] != park): return 0
+	int anchor = ers_xrt_anchor[k]
+	int stop = ebxreg_start
+	if (anchor >= stop): return 0
+	if ((ers_spill_end != 0) && (park <= ers_spill_end)): return 0
+	# the entries from the anchor must cover [anchor, stop) exactly
+	int j = xrt_n
+	while ((j > 0) && (xrt_f[(j - 1) * 12] >= anchor)): j = j - 1
+	if (j == xrt_n): return 0
+	int pos = anchor
+	int i = j
+	while (i < xrt_n):
+		if (xrt_f[i * 12] != pos): return 0
+		pos = xrt_f[i * 12 + 1]
+		i = i + 1
+	if (pos != stop): return 0
+	int n = xrt_n - j
+	i = 0
+	while (i < n * 12):
+		xrt_c[i] = xrt_f[j * 12 + i]
+		i = i + 1
+	int form = ers_xrt_form[k]
+	int a = ers_xrt_a[k]
+	int fi = ers_xrt_b[k]
+	int fs = ers_xrt_c[k]
+	int fd = ers_xrt_d[k]
+	int avoid = 0
+	if (form == 1): avoid = a
+	if ((form == 4) && ((a == 3) || (fi == 3))): return 0
+	if (xrt_trace_ok(n, r, avoid) == 0): return 0
+	int commutative = (ext == 0) || (ext == 1) || (ext == 4) || (ext == 6) || (ext == 8)
+	int swap = 0
+	if ((form == 1) && (commutative || (ext == 7))): swap = 1
+	if (((form == 2) || (form == 3)) && commutative): swap = 1
+	if ((form == 4) && commutative && (a != 0) && (fi != 0)): swap = 1
+	peep_rollback(park)
+	xrt_retargets = xrt_retargets + 1
+	int start = 0
+	if (swap):
+		# the right operand in eax as before, the left operand read
+		# where the park got it from
+		i = 0
+		while (i < n):
+			xrt_emit(i * 12, 0)
+			i = i + 1
+		start = codepos
+		if (form == 1):
+			if (ext == 7): emit_alu_reg_reg(7, a, 0)
+			else:
+				emit_alu_reg_reg(ext, 0, a)
+				xrt_note_op(start, ext, 3, a)
+		elif (form == 2):
+			emit_alu_reg_imm_w(1, ext, 0, a)
+			xrt_note_op(start, ext, 1, a)
+		elif (form == 3):
+			xrt_alu_mem(ext, 0, 4, -1, 1, a)
+			xrt_add(start, 5, 0, ext, 0, 0, 4, -1, 1, a)
+		else:
+			xrt_alu_mem(ext, 0, a, fi, fs, fd)
+			xrt_add(start, 5, 0, ext, 0, 0, a, fi, fs, fd)
+		return 1
+	# the left operand into eax (a folded park's one instruction), the
+	# right one into r
+	start = codepos
+	if (form == 1):
+		mov_reg_reg(0, a)
+		xrt_add(start, 1, 0, a, 0, 0, 0, 0, 0, 0)
+	elif (form == 2):
+		xrt_mov_imm(0, a)
+		xrt_add(start, 2, 0, a, 0, 0, 0, 0, 0, 0)
+	elif (form == 3):
+		emit_mem_insn(1, 1, c"\x8b", 0, 4, -1, 1, xrt_disp(4, a))
+		xrt_add(start, 3, 0, 1, 1, cast(int, c"\x8b"), 4, -1, 1, a)
+	elif (form == 4):
+		emit_mem_insn(1, 1, c"\x8b", 0, a, fi, fs, xrt_disp(a, fd))
+		xrt_add(start, 3, 0, 1, 1, cast(int, c"\x8b"), a, fi, fs, fd)
+	int last = (n - 1) * 12
+	int folds = xrt_last_folds(last)
+	int count = n
+	if (folds): count = n - 1
+	i = 0
+	while (i < count):
+		xrt_emit(i * 12, r)
+		i = i + 1
+	if (folds):
+		xrt_emit_op_last(ext, last, r)
+		return 1
+	start = codepos
+	emit_alu_reg_reg(ext, 0, r)
+	if (ext != 7): xrt_add(start, 4, 0, ext, 3, r, 0, 0, 0, 0)
+	return 1
+
 # An ALU operator whose right operand is in eax and whose left one is
 # the register ebx was just loaded from: 'op eax,R' (the commutative
 # forms and imul), 'sub R,eax; mov eax,R' for the difference, noted as
@@ -642,6 +1037,7 @@ void ers_mov_ebx_reg(int r):
 # emitted the operator, 0 when the note is not current.
 int ebxreg_alu(int ext):
 	if (ebxreg_current() == 0): return 0
+	if (xrt_consume(ext)): return 1
 	int r = ebxreg_reg
 	peep_rollback(ebxreg_start)
 	int start = codepos
@@ -799,6 +1195,10 @@ void emit_esp_load(int oplen, char* op, int disp):
 	load_note_disp = disp
 	load_note_op = op
 	load_note_oplen = oplen
+	if (ers_count != 0):
+		# on x64 the REX.W byte leads the opcode bytes here
+		if ((word_size == 8) && ((op[0] & 255) == 0x48)): xrt_add_load(start, 1, oplen - 1, op + 1, 4, -1, 1, disp)
+		else: xrt_add_load(start, 0, oplen, op, 4, -1, 1, disp)
 
 # Replace the current lea note with a direct [esp+disp] load. Callers have
 # checked the note is current (lea_note_end != 0 && == codepos).
@@ -956,6 +1356,7 @@ void addr_load_fold(int w, int oplen, char* op):
 	int start = codepos
 	emit_mem_insn(w, oplen, op, 0, base, index, scale, disp)
 	memload_note(start, base, index, scale, disp, w, oplen, op)
+	if (ers_count != 0): xrt_add_load(start, w, oplen, op, base, index, scale, disp)
 
 # The plain '[eax]' load the loaders emit when no address note precedes
 # them (a field at offset 0, a dereference): the same bytes, noted as
@@ -971,9 +1372,11 @@ void plain_load(int w, int oplen, char* op):
 		int rstart = codepos
 		emit_mem_insn(w, oplen, op, 0, r, -1, 1, 0)
 		memload_note(rstart, r, -1, 1, 0, w, oplen, op)
+		if (ers_count != 0): xrt_add_load(rstart, w, oplen, op, r, -1, 1, 0)
 		return
 	int start = codepos
 	emit_mem_insn(w, oplen, op, 0, 0, -1, 1, 0)
+	if (ers_count != 0): xrt_add_load(start, w, oplen, op, 0, -1, 1, 0)
 	if (addr_modes_disabled): return
 	memload_note(start, 0, -1, 1, 0, w, oplen, op)
 
@@ -1412,6 +1815,7 @@ void ers_push_eax(int dead):
 	if (r == 0):
 		push_eax()
 		return
+	int park_bias = ers_bias()
 	int carried = 0
 	if ((imm_note_end != 0) && (imm_note_end == codepos)): carried = 1
 	int start = imm_note_start
@@ -1469,6 +1873,28 @@ void ers_push_eax(int dead):
 		push_note_start = codepos
 		mov_reg_eax(r)
 	push_note_end = codepos
+	# where this park's trace begins, and how its operand got into r (O6)
+	ers_xrt_anchor[ers_count] = codepos
+	ers_xrt_start[ers_count] = push_note_start
+	ers_xrt_reg[ers_count] = r
+	ers_xrt_form[ers_count] = 0
+	if (folded == 0): ers_xrt_form[ers_count] = 0
+	elif (push_left_reg != 0):
+		ers_xrt_form[ers_count] = 1
+		ers_xrt_a[ers_count] = push_left_reg
+	elif (push_left_kind == 1):
+		ers_xrt_form[ers_count] = 2
+		ers_xrt_a[ers_count] = push_left_value
+	elif (push_left_kind == 2):
+		ers_xrt_form[ers_count] = 3
+		ers_xrt_a[ers_count] = push_left_disp - park_bias
+	elif (push_left_kind == 4):
+		ers_xrt_form[ers_count] = 4
+		ers_xrt_a[ers_count] = push_left_base
+		ers_xrt_b[ers_count] = push_left_index
+		ers_xrt_c[ers_count] = push_left_scale
+		ers_xrt_d[ers_count] = push_left_disp
+		if (push_left_base == 4): ers_xrt_d[ers_count] = push_left_disp - park_bias
 	ers_start[ers_count] = push_note_start
 	ers_reg[ers_count] = r
 	ers_count = ers_count + 1
@@ -2194,6 +2620,7 @@ void mov_eax_int(int v):
 			imm_note_start = start
 			imm_note_end = codepos
 			imm_note_value = v
+			if (ers_count != 0): xrt_add(start, 2, 0, v, 0, 0, 0, 0, 0, 0)
 
 
 void add_eax_int32(int v):
@@ -2343,8 +2770,10 @@ void not_eax():
 	else:
 		# '~' of a constant is a constant (O1)
 		if (k64_fold_unary('~', 0)): return
+		int start = codepos
 		emit_x64_opcode()
 		emit(2, c"\xf7\xd0") /* not eax */
+		if (ers_count != 0): xrt_add(start, 7, 0, 2, 0, 0, 0, 0, 0, 0)
 
 
 /* push eax */
@@ -2448,6 +2877,11 @@ void pop_ebx():
 				kind = 2
 			elif ((regload_note_end != 0) && (regload_note_end == codepos) && (regload_note_start == push_note_end)):
 				kind = 3
+			# A narrow local load after a park is the retarget's (O6,
+			# xrt_consume): 'mov ecx,[esp+d]; op eax,ecx', or 'op
+			# eax,R' for a register left operand, instead of the shuttle's
+			# 'mov ebx,eax; mov eax,[esp+d]; op eax,ebx'
+			if ((kind == 2) && (load_note_is_word() == 0) && (ers_count != 0) && (ers_start[ers_count - 1] == push_note_start)): kind = 0
 			if (kind != 0):
 				int left_reg = push_left_reg
 				int left_start = push_left_start
@@ -2941,6 +3375,10 @@ void peep_rollback(int pos):
 	if (binop_end > pos): binop_end = 0
 	if (addr_note_end > pos): addr_note_end = 0
 	if (memload_end > pos): memload_end = 0
+	# the trace entries past the rollback (O6); codepos, not pos: a
+	# spill rollback may have moved further back
+	while ((xrt_n > 0) && (xrt_f[(xrt_n - 1) * 12 + 1] > codepos)): xrt_n = xrt_n - 1
+	if (xrt_pop_end > codepos): xrt_pop_end = 0
 
 # A jump target is about to be placed at codepos: no fold may reach back
 # across it (a branch patched to land here would then point into, or
@@ -2953,6 +3391,7 @@ void be_notes_reset():
 	# followed by the body's first byte, not by the push that caused it)
 	ers_spill_end = 0
 	ers_spill_prev_end = 0
+	xrt_n = 0
 	be_cmp_note_reset()
 	be_imm_note_reset()
 
@@ -3107,8 +3546,10 @@ void neg_eax():
 		# the immediate note for the folds after it; the exact fold (O1)
 		# also negates a wide constant and the most negative int32.
 		if ((addr_modes_disabled == 0) && k64_fold_unary('-', 0)): return
+		int start = codepos
 		emit_x64_opcode()
 		emit(2, c"\xf7\xd8") /* neg %eax */
+		if (ers_count != 0): xrt_add(start, 7, 0, 3, 0, 0, 0, 0, 0, 0)
 
 
 void add_dword_esp_plus_eax(int v):
@@ -3161,7 +3602,9 @@ int shuttle_alu(int ext):
 	peep_rollback(shuttle_start)
 	int start = codepos
 	if (left_reg != 0): mov_eax_reg(left_reg)
+	int op_start = codepos
 	emit_alu_reg_x(ext, 0, kind, value, disp, reg)
+	if (ers_count != 0): xrt_add_alu(op_start, ext, kind, value, disp, reg)
 	binop_start = start
 	binop_end = codepos
 	binop_op = ext
@@ -3413,16 +3856,19 @@ int shift_imm_fold(int modrm_ext):
 	int count = imm_note_value & 255
 	peep_rollback(push_note_start)
 	push_left_restore()
+	int start = codepos
 	emit_x64_opcode()
 	if (count == 1):
 		# The shorter by-one form (0xd1), which is also what the in-tree
 		# assembler (libs/asm) picks for a count of 1.
 		emit_int8(0xd1)
 		emit_int8(modrm_ext)
+		if (ers_count != 0): xrt_add(start, 6, 0, 1, (modrm_ext >> 3) & 7, count, 1, 0, 0, 0)
 		return 1
 	emit_int8(0xc1)
 	emit_int8(modrm_ext)
 	emit_int8(count)
+	if (ers_count != 0): xrt_add(start, 6, 0, 1, (modrm_ext >> 3) & 7, count, 0, 0, 0, 0)
 	return 1
 
 
@@ -3537,9 +3983,10 @@ void alu_cmp_set(int setcc_opcode):
 			if (ebxreg_current()):
 				# the parked left operand is still in its register (A3):
 				# cmp R,eax instead of mov ebx,R ; cmp ebx,eax
-				int r = ebxreg_reg
-				peep_rollback(ebxreg_start)
-				emit_alu_reg_reg(7, r, 0)
+				if (xrt_consume(7) == 0):
+					int r = ebxreg_reg
+					peep_rollback(ebxreg_start)
+					emit_alu_reg_reg(7, r, 0)
 			else:
 				emit_x64_opcode()
 				emit(2, c"\x39\xc3")
@@ -3770,9 +4217,11 @@ int alu_bit_shuttle_imm(int ext):
 	int count = shuttle_value & 31
 	peep_rollback(shuttle_start)
 	if (left_reg != 0): mov_eax_reg(left_reg)
+	int start = codepos
 	emit(1, c"\xc1")
 	emit_int8(0xc0 | (ext << 3))
 	emit_int8(count)
+	if (ers_count != 0): xrt_add(start, 6, 0, 0, ext, count, 0, 0, 0, 0)
 	return 1
 
 

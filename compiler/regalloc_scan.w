@@ -2445,6 +2445,7 @@ void regalloc_stats_dump():
 	print_int0(c" hazard spills: ", regalloc_hazard_spills)
 	print_int0(c" expression parks: ", ers_parks)
 	print_int0(c" spilled: ", ers_spills)
+	print_int0(c" retargeted: ", xrt_retargets)
 	print_error(c"\x0a")
 	# O1 (code_generator/x86.w): constant folds, const-global reads
 	# loaded as immediates, unreachable branches/returns not emitted
