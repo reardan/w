@@ -691,6 +691,15 @@ is cheap and catches the case that bit here.
 
 ## Darwin bootstrap from a clean checkout is broken with the pinned seeds (2026-09-25)
 
+**Qualification follow-up (2026-10-10, #607):** the local unpinned seed again
+stalled, while an isolated SHA256-verified v0.3.0 seed compiled current main
+(`cc2d322d`) to a native Darwin fixpoint. Also, the native executor's static
+manifest fallback leaves `tests_darwin` empty: it reports success without running
+tagged targets, since tag expansion only happens during manifest generation.
+Run native targets by name until the fallback expands tags (or native directory
+scanning is enabled). The new `atomic_native_darwin_test` target was exercised
+explicitly, together with `verify_darwin` and `arm64_optimization_darwin_test`.
+
 **Update (2026-09-25):** `SEEDS` now pins v0.3.0. Its `w-arm64-macos` is the
 release workflow's native darwin fixpoint of current sources, which should
 clear this. It has not yet been checked from a clean checkout on a Mac.

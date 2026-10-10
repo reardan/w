@@ -1,0 +1,83 @@
+{
+  "evidence": "native concurrent ordering stress",
+  "utc": "2026-10-10T02:18:45Z",
+  "uname": [
+    "Darwin",
+    "Wesleys-MacBook-Pro.local",
+    "25.3.0",
+    "Darwin Kernel Version 25.3.0: Wed Jan 28 20:54:22 PST 2026; root:xnu-12377.81.4~5/RELEASE_ARM64_T6030",
+    "arm64",
+    "arm"
+  ],
+  "cpu_count": 12,
+  "compiler": "/Users/wesleyreardan/git/w/bin/wv2_darwin",
+  "compiler_sha256": "e1c2d1e1ee039a7f35e9db9edde53a81cc946e9026c9f9de76aa289e073fad10",
+  "driver_sha256": "4451b659480ed6a5e818808621f9058f385b1fc400267be446acfb01162f74f7",
+  "suite": "atomic",
+  "rounds": 20,
+  "iterations_per_litmus": 100000,
+  "revision": "cc2d322d9395d615f59eb2436481cddaf7b444fd",
+  "worktree_diff_sha256": "24baa700a5a0785b8ac7370d76742f75da15176e95b37ccbe458e65667f7d565",
+  "runs": [
+    {
+      "arch": "arm64_darwin",
+      "mode": "streaming",
+      "fixture": "atomic_native",
+      "command": [
+        "/Users/wesleyreardan/git/w/bin/wv2_darwin",
+        "arm64_darwin",
+        "--streaming",
+        "/Users/wesleyreardan/git/w/tests/atomic_native_fixture.w",
+        "-o",
+        "/Users/wesleyreardan/git/w/bin/native_qualification/build-bz9i9c9e/atomic_native_arm64_darwin_streaming"
+      ],
+      "source_sha256": "9f1bab1f16feaa6c252a302bd4f72b534a4a9fb663b7a0707162253fa35ed639",
+      "binary": "/Users/wesleyreardan/git/w/bin/native_qualification/atomic_native_arm64_darwin_streaming",
+      "binary_sha256": "2bfd9ab18dd2c4f481c8ada1c4d7fe23af73d52a39687b739469426594a23344",
+      "completed_rounds": 20
+    },
+    {
+      "arch": "arm64_darwin",
+      "mode": "retained",
+      "fixture": "atomic_native",
+      "command": [
+        "/Users/wesleyreardan/git/w/bin/wv2_darwin",
+        "arm64_darwin",
+        "--ast-required",
+        "--ast-retain",
+        "/Users/wesleyreardan/git/w/tests/atomic_native_fixture.w",
+        "-o",
+        "/Users/wesleyreardan/git/w/bin/native_qualification/build-mc4zptyy/atomic_native_arm64_darwin_retained"
+      ],
+      "source_sha256": "9f1bab1f16feaa6c252a302bd4f72b534a4a9fb663b7a0707162253fa35ed639",
+      "binary": "/Users/wesleyreardan/git/w/bin/native_qualification/atomic_native_arm64_darwin_retained",
+      "binary_sha256": "2bfd9ab18dd2c4f481c8ada1c4d7fe23af73d52a39687b739469426594a23344",
+      "completed_rounds": 20
+    },
+    {
+      "arch": "arm64_darwin",
+      "mode": "optimized",
+      "fixture": "atomic_native",
+      "command": [
+        "/Users/wesleyreardan/git/w/bin/wv2_darwin",
+        "arm64_darwin",
+        "--ast-required",
+        "--ast-retain",
+        "--ast-opt",
+        "/Users/wesleyreardan/git/w/tests/atomic_native_fixture.w",
+        "-o",
+        "/Users/wesleyreardan/git/w/bin/native_qualification/build-9njs7mot/atomic_native_arm64_darwin_optimized"
+      ],
+      "source_sha256": "9f1bab1f16feaa6c252a302bd4f72b534a4a9fb663b7a0707162253fa35ed639",
+      "binary": "/Users/wesleyreardan/git/w/bin/native_qualification/atomic_native_arm64_darwin_optimized",
+      "binary_sha256": "2bfd9ab18dd2c4f481c8ada1c4d7fe23af73d52a39687b739469426594a23344",
+      "completed_rounds": 20
+    }
+  ],
+  "passed": true,
+  "w_source_tree_sha256": "fdc9263c6e4a4984ceb5196c109ee7606262be68a07296c8aa5786db9291c670",
+  "hardware": "hw.model: Mac15,6\nmachdep.cpu.brand_string: Apple M3 Pro\nhw.physicalcpu: 12\nhw.logicalcpu: 12\nhw.cachelinesize: 128\nkern.hv_vmm_present: 0\n",
+  "os_version": "ProductName:\t\tmacOS\nProductVersion:\t\t26.3\nBuildVersion:\t\t25D125\n",
+  "scratch_parent": "/var/folders/sh/9ld8yprn1wj0xdkbd78kxn8h0000gn/T",
+  "filesystem": "Filesystem   1024-blocks      Used Available Capacity iused     ifree %iused  Mounted on\n/dev/disk3s5   971350180 852760524  78764920    92% 3787029 787649200    0%   /System/Volumes/Data\n"
+}
