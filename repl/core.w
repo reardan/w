@@ -1072,6 +1072,8 @@ void repl_inprocess_setup():
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
 	code_size = buffer_size
+	code_fixed = 1
+	code_fixed_error_hook = cast(int, error)
 	codepos = 0
 	be_cmp_note_reset()
 	be_imm_note_reset()

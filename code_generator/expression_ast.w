@@ -25,13 +25,67 @@ void emit_expression_ast(expression_ast* tree, int id);
 int ast_statement_root1
 
 
+# Emitter work arrays outlive diagnostic recovery. As with parse slabs,
+# active owners form a stack ordered by their native frame addresses;
+# binding at or above an abandoned owner recycles its storage. Retained
+# expression views have no parse slab, so emission owns a separate pool.
+struct ast_emission_scratch:
+	int owner
+	int index
+	int capacity
+	int* words
+
+
+int ast_emission_scratch_depth
+int ast_emission_scratch_total
+int ast_emission_scratch_room
+int* ast_emission_scratch_pool
+
+
+void ast_emission_scratch_reserve(ast_emission_scratch* scratch, int used, int extra):
+	if ((extra >= 0) && (extra <= scratch.capacity - used)): return
+	int room = expression_ast_room(scratch.capacity, used, extra, __word_size__)
+	scratch.words = expression_ast_grow_array(scratch.words, used, room)
+	scratch.capacity = room
+
+
+ast_emission_scratch* ast_emission_scratch_bind(int owner, int words):
+	while (ast_emission_scratch_depth > 0):
+		ast_emission_scratch* top = cast(ast_emission_scratch*, ast_emission_scratch_pool[ast_emission_scratch_depth - 1])
+		if (expression_ast_address_below_or_at(top.owner, owner) == 0): break
+		ast_emission_scratch_depth = ast_emission_scratch_depth - 1
+	int index = ast_emission_scratch_depth
+	if (index == ast_emission_scratch_total):
+		if (index == ast_emission_scratch_room):
+			ast_emission_scratch_room = expression_ast_room(ast_emission_scratch_room, index, 1, __word_size__)
+			ast_emission_scratch_pool = expression_ast_grow_array(ast_emission_scratch_pool, index, ast_emission_scratch_room)
+		ast_emission_scratch* added = cast(ast_emission_scratch*, expression_ast_allocate(sizeof(ast_emission_scratch)))
+		added.index = index
+		added.capacity = 0
+		added.words = 0
+		ast_emission_scratch_pool[index] = cast(int, added)
+		ast_emission_scratch_total = index + 1
+	ast_emission_scratch* scratch = cast(ast_emission_scratch*, ast_emission_scratch_pool[index])
+	scratch.owner = owner
+	ast_emission_scratch_depth = index + 1
+	ast_emission_scratch_reserve(scratch, 0, words)
+	return scratch
+
+
+void ast_emission_scratch_release(ast_emission_scratch* scratch):
+	ast_emission_scratch_depth = scratch.index
+
+
 # Parallel stores need slots for every pair, but ordinary recursive
 # expression emission must not reserve these arrays on every frame.
 void emit_ast_parallel(expression_ast* tree, int id):
 	expression_is_assignment = 1
-	int[4096] lhs_slots
-	int[4096] rhs_slots
-	int[4096] lhs_regs
+	int room = expression_ast_room(0, tree.count, 0, 3 * __word_size__)
+	int owner = 0
+	ast_emission_scratch* scratch = ast_emission_scratch_bind(cast(int, &owner), room * 3)
+	int* lhs_slots = scratch.words
+	int* rhs_slots = &lhs_slots[room]
+	int* lhs_regs = &rhs_slots[room]
 	int entry_stack = stack_pos
 	int pair = tree.left[id]
 	while (pair >= 0):
@@ -61,6 +115,7 @@ void emit_ast_parallel(expression_ast* tree, int id):
 			assign_store(tree.result_type[tree.left[pair]])
 		pair = tree.next_arg[pair]
 	pop_to(entry_stack)
+	ast_emission_scratch_release(scratch)
 
 
 # Emit fixed/default arguments and W variadic tails for a saved callee.
@@ -130,15 +185,155 @@ int cond_ast_forwards(int op):
 	return 1
 
 
+# Ordinary binary tails have no control regions to open before visiting
+# their left operand. Walk the left spine explicitly: its length is not
+# expression nesting (a flat sum can contain arbitrarily many terms).
+int emit_ast_plain_binary(int op):
+	if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op == '%')): return 1
+	if ((op == 'L') || (op == 'R') || (op == '&') || (op == '|') || (op == '^') || (op == 'l')): return 1
+	return (op >= 0x94) && (op <= 0x9f)
+
+
+void emit_ast_binary_tail(expression_ast* tree, int id):
+	int op = tree.op[id]
+	int left_type = binary1(tree.result_type[tree.left[id]])
+	int left_slot = stack_pos
+	emit_expression_ast(tree, tree.right[id])
+	int right_type = promote(tree.result_type[tree.right[id]])
+	if (op == 'l'):
+		operator_emit_binary(left_type, right_type, left_slot, tree.symbol[id], strclone(table + tree.value[id]))
+		return
+	if ((op == 'L') || (op == 'R')):
+		stack_pos = stack_pos - 1
+		if (op == 'L'): alu_shl()
+		else if (type_is_unsigned_word(left_type)): alu_shr()
+		else: alu_sar()
+		return
+	if ((op == '&') || (op == '|') || (op == '^')):
+		pop_ebx_slot()
+		if (op == '&'): alu_and()
+		else if (op == '|'): alu_or()
+		else: alu_xor()
+		return
+	if (op >= 0x90):
+		pop_ebx_slot()
+		int cc = op
+		int swap = 0
+		if ((op == 0x9c) || (op == 0x9e)): swap = 1
+		if ((op == 0x9c) || (op == 0x9f)): cc = 0x97
+		if ((op == 0x9e) || (op == 0x9d)): cc = 0x93
+		int result = 0
+		if ((op == 0x94) || (op == 0x95)): result = var_binary_compare_eq(left_type, right_type, op == 0x95)
+		else: result = var_binary_compare_order(left_type, right_type, op)
+		if ((result == 0) && ((op == 0x94) || (op == 0x95))): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
+		if (result == 0): result = float_binary_compare(left_type, right_type, cc, swap)
+		if (result == 0):
+			if (unsigned_word_operand(left_type, right_type) >= 0): op = setcc_unsigned(op)
+			alu_cmp_set(op)
+		return
+	if (var_binary_operands(left_type, right_type)):
+		pop_ebx_slot()
+		var_binary_arithmetic(left_type, right_type, op)
+		return
+	if (binary_float_kind(left_type, right_type)):
+		pop_ebx_slot()
+		float_binary_arithmetic(left_type, right_type, op)
+		return
+	if ((op == '+') || (op == '-') || (op == '*')):
+		pop_ebx_slot()
+		if (op == '+'): alu_add()
+		else if (op == '-'): alu_sub()
+		else: alu_imul()
+	else:
+		int is_unsigned = unsigned_word_operand(left_type, right_type) >= 0
+		if (op == '/'):
+			if (is_unsigned): alu_udiv()
+			else: alu_idiv()
+		else:
+			if (is_unsigned): alu_umod()
+			else: alu_imod()
+		stack_pos = stack_pos - 1
+
+
+void emit_expression_ast_node(expression_ast* tree, int id, int left_ready);
+
+
+# These nodes begin by visiting their receiver/left operand with no
+# preceding backend effects. Calls with setup before their receiver are
+# deliberately excluded; skipping that setup would change evaluation order.
+int emit_ast_spine_child(expression_ast* tree, int id):
+	int op = tree.op[id]
+	if (emit_ast_plain_binary(op)): return tree.left[id]
+	if (op == 'z'): return tree.right[id]
+	if ((op == '.') || (op == 'B') || (op == 'i') || (op == 'j') || (op == 'J') || (op == 'Z') || (op == 'M') || (op == 'I') || (op == 'F')): return tree.left[id]
+	if ((op == ast_propagate) || (op == ast_list_it) || (op == 'm') || (op == 'q') || (op == ast_nd_read) || (op == ast_nd_index)): return tree.left[id]
+	return -1
+
+
+int emit_ast_spine_discard(int op, int discard):
+	if ((op == ast_propagate) || (op == ast_list_it) || (op == 'm') || (op == 'q') || (op == 'z') || (op == ast_nd_read) || (op == ast_nd_index)): return 0
+	return discard
+
+
+void emit_ast_left_spine(expression_ast* tree, int id):
+	int owner = 0
+	ast_emission_scratch* scratch = ast_emission_scratch_bind(cast(int, &owner), 128)
+	int capacity = scratch.capacity / 2
+	int* pending = scratch.words
+	int count = 0
+	int child = emit_ast_spine_child(tree, id)
+	int discard = ast_cond_discard
+	while (child >= 0):
+		if (count == capacity):
+			ast_emission_scratch_reserve(scratch, count * 2, 2)
+			capacity = scratch.capacity / 2
+			pending = scratch.words
+		pending[count * 2] = id
+		pending[count * 2 + 1] = discard
+		count = count + 1
+		discard = emit_ast_spine_discard(tree.op[id], discard)
+		id = child
+		child = emit_ast_spine_child(tree, id)
+	ast_cond_discard = discard
+	emit_expression_ast_node(tree, id, 0)
+	while (count > 0):
+		count = count - 1
+		ast_cond_discard = pending[count * 2 + 1]
+		emit_expression_ast_node(tree, pending[count * 2], 1)
+	ast_emission_scratch_release(scratch)
+
+
+# Nested operands are parser-depth bounded; flat postfix chains use
+# the spine walk, including method receivers and indirect callees. Keep
+# a defensive backend guard for malformed trees supplied by API callers.
+int ast_expression_emit_depth
+int ast_expression_root_owner
+
+
 void emit_expression_ast(expression_ast* tree, int id):
+	if (ast_expression_emit_depth >= 4096): error(c"expression emission exceeds safe recursive depth")
+	ast_expression_emit_depth = ast_expression_emit_depth + 1
+	int child = emit_ast_spine_child(tree, id)
+	if ((child >= 0) && (emit_ast_spine_child(tree, child) >= 0)): emit_ast_left_spine(tree, id)
+	else: emit_expression_ast_node(tree, id, 0)
+	ast_expression_emit_depth = ast_expression_emit_depth - 1
+
+
+void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	int op = tree.op[id]
 	# Discard position (grammar/cond_branch.w): consumed here, passed on
 	# below only where the streaming grammar would
 	int discard = ast_cond_discard
 	ast_cond_discard = 0
+	if (emit_ast_plain_binary(op)):
+		if (left_ready == 0):
+			ast_cond_discard = discard
+			emit_expression_ast(tree, tree.left[id])
+		emit_ast_binary_tail(tree, id)
+		return
 	if (op == ast_propagate):
 		int child = tree.left[id]
-		emit_expression_ast(tree, child)
+		if (left_ready == 0): emit_expression_ast(tree, child)
 		result_propagate_suffix(tree.result_type[child])
 		return
 	if (op == ast_forward_generic):
@@ -163,7 +358,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if (op == ast_list_it):
 		int receiver = tree.left[id]
-		emit_expression_ast(tree, receiver)
+		if (left_ready == 0): emit_expression_ast(tree, receiver)
 		int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
 		char* value_fn = c"__w_list_iter_value"
 		if (type_num_args(type_unqualified(element)) > 0): value_fn = c"__w_list_addr"
@@ -424,7 +619,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int index = id
 		if (op == ast_nd_store): index = tree.left[id]
 		int receiver = tree.left[index]
-		emit_expression_ast(tree, receiver)
+		if (left_ready == 0): emit_expression_ast(tree, receiver)
 		binary1(tree.result_type[receiver])
 		int* park = park_new(stack_pos - 1, tree.high[index] + 1)
 		park[2] = stack_pos
@@ -462,7 +657,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int index = id
 		if (op == 'w'): index = tree.left[id]
 		int receiver = tree.left[index]
-		emit_expression_ast(tree, receiver)
+		if (left_ready == 0): emit_expression_ast(tree, receiver)
 		promote(tree.result_type[receiver])
 		int base_stack = stack_pos
 		int map_slot = push_slot()
@@ -738,7 +933,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if (op == 'z'):
 		int receiver = tree.right[id]
-		emit_expression_ast(tree, receiver)
+		if (left_ready == 0): emit_expression_ast(tree, receiver)
 		if (type_num_args(type_real(tree.result_type[receiver])) == 0): promote(tree.result_type[receiver])
 		int result = tree.high[id]
 		int has_return_buffer = emit_ast_return_buffer(result)
@@ -757,6 +952,17 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int count = emit_ast_direct_arguments(tree, id, s, 1)
 		finish_call(4, s, count, sym, 0, result, count, has_return_buffer, sym_w_variadic_fixed_args(sym))
 		drop_slots(1)
+		# finish_call popped all arguments and their temporary buffers
+		# to s; removing the saved receiver exposes its buffer again.
+		# A scalar method result no longer refers to its temporary
+		# by-value receiver, just like a scalar field read. Keep the
+		# receiver alive for pointer and aggregate results, which can
+		# borrow its storage. In particular a scalar guard must not
+		# leave this buffer on every trip around a while back edge.
+		int receiver_type = tree.result_type[receiver]
+		if (type_is_value(receiver_type) && (type_num_args(type_real(receiver_type)) > 0)):
+			if ((result >= 0) && (type_num_args(result) == 0) && (type_get_pointer_level(result) == 0)):
+				drop_slots((type_get_size(type_real(receiver_type)) + word_size - 1) >> word_size_log2)
 		if (has_return_buffer): lea_eax_esp_plus(0)
 		return
 	if ((op == 'v') || (op == 'C') || (op == 'X')):
@@ -868,8 +1074,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 			cond_join = be_ctrl_block()
 			cond_stub = be_ctrl_block()
 			cond_else = be_ctrl_block()
-		if (cond_ast_forwards(op)): ast_cond_discard = 1
-	emit_expression_ast(tree, tree.left[id])
+		if (cond_ast_forwards(op) && (left_ready == 0)): ast_cond_discard = 1
+	if (left_ready == 0): emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
 	if (op == 'U'):
 		expression_is_assignment = 1
@@ -1215,63 +1421,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			subscript_stack_base(element_size, index_start)
 			stack_pos = stack_pos - 1
 		return
-	left_type = binary1(left_type)
-	int left_slot = stack_pos
-	emit_expression_ast(tree, tree.right[id])
-	int right_type = promote(tree.result_type[tree.right[id]])
-	if (op == 'l'):
-		operator_emit_binary(left_type, right_type, left_slot, tree.symbol[id], strclone(table + tree.value[id]))
-		return
-	if ((op == 'L') || (op == 'R')):
-		stack_pos = stack_pos - 1
-		if (op == 'L'): alu_shl()
-		else if (type_is_unsigned_word(left_type)): alu_shr()
-		else: alu_sar()
-		return
-	if ((op == '&') || (op == '|') || (op == '^')):
-		pop_ebx_slot()
-		if (op == '&'): alu_and()
-		else if (op == '|'): alu_or()
-		else: alu_xor()
-		return
-	if (op >= 0x90):
-		pop_ebx_slot()
-		int cc = op
-		int swap = 0
-		if ((op == 0x9c) || (op == 0x9e)): swap = 1
-		if ((op == 0x9c) || (op == 0x9f)): cc = 0x97
-		if ((op == 0x9e) || (op == 0x9d)): cc = 0x93
-		int result = 0
-		if ((op == 0x94) || (op == 0x95)): result = var_binary_compare_eq(left_type, right_type, op == 0x95)
-		else: result = var_binary_compare_order(left_type, right_type, op)
-		if ((result == 0) && ((op == 0x94) || (op == 0x95))): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
-		if (result == 0): result = float_binary_compare(left_type, right_type, cc, swap)
-		if (result == 0):
-			if (unsigned_word_operand(left_type, right_type) >= 0): op = setcc_unsigned(op)
-			alu_cmp_set(op)
-		return
-	if (var_binary_operands(left_type, right_type)):
-		pop_ebx_slot()
-		var_binary_arithmetic(left_type, right_type, op)
-		return
-	if (binary_float_kind(left_type, right_type)):
-		pop_ebx_slot()
-		float_binary_arithmetic(left_type, right_type, op)
-		return
-	if ((op == '+') || (op == '-') || (op == '*')):
-		pop_ebx_slot()
-		if (op == '+'): alu_add()
-		else if (op == '-'): alu_sub()
-		else: alu_imul()
-	else:
-		int is_unsigned = unsigned_word_operand(left_type, right_type) >= 0
-		if (op == '/'):
-			if (is_unsigned): alu_udiv()
-			else: alu_idiv()
-		else:
-			if (is_unsigned): alu_umod()
-			else: alu_imod()
-		stack_pos = stack_pos - 1
+	emit_ast_binary_tail(tree, id)
 
 
 # Emit a tree's root with ast_statement_root1 marking it when the tree
@@ -1279,10 +1429,23 @@ void emit_expression_ast(expression_ast* tree, int id):
 # the '=' visitor); the outer marker is restored afterwards.
 void emit_expression_ast_root(expression_ast* tree, int root):
 	int outer_root = ast_statement_root1
+	int outer_depth = ast_expression_emit_depth
+	int outer_owner = ast_expression_root_owner
+	int owner = 0
+	# A longjmp can abandon the previous root without restoring its
+	# depth. Preserve counters only for a still-live enclosing frame.
+	if ((outer_owner == 0) || expression_ast_address_below_or_at(outer_owner, cast(int, &owner))):
+		outer_depth = 0
+		outer_owner = 0
+		outer_root = 0
+	ast_expression_root_owner = cast(int, &owner)
+	ast_expression_emit_depth = 0
 	ast_statement_root1 = 0
 	if (tree.whole_expression > 1): ast_statement_root1 = root + 1
 	emit_expression_ast(tree, root)
 	ast_statement_root1 = outer_root
+	ast_expression_emit_depth = outer_depth
+	ast_expression_root_owner = outer_owner
 
 # Emit an already prepared expression without advancing its source lexer.
 # The grammar completes its virtual terminator and trailing diagnostics.

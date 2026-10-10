@@ -61,6 +61,43 @@ void ast_statement_walk_expression(int walk, statement_ast* node):
 	retained_walk_phase(walk, ast_walk_expression_end)
 
 
+# Resolve a break/continue against the retained lexical ancestors. The
+# identity is the control record itself, not an already-open backend region.
+# Region handles are looked up only by emit_simple_statement_ast. No new
+# mutable context stack is needed: retained rollback restores these parents.
+void ast_jump_resolve_retained(statement_ast* node):
+	if ((ast_emit_retained_mode == 0) || (retained_parent < 0)): return
+	int parent = retained_record_at(retained_parent).parent
+	node.valid_jump = 0
+	while (parent >= 0):
+		retained_record* record = retained_record_at(parent)
+		if (record.kind == retained_function): return
+		int id = record.statement_walk
+		if ((id >= 0) && (retained_walk_stale(id) == 0)):
+			retained_statement_walk* walk = retained_walks[id]
+			loop_ast* loop = 0
+			if (walk.emitter == cast(int, emit_loop_ast_walk)):
+				loop_ast_walk* loop_record = cast(loop_ast_walk*, walk.statement)
+				loop = loop_record.loop
+			else if (walk.emitter == cast(int, emit_guard_ast_walk)):
+				loop = control_ast_walks[id].loop
+			if (loop != 0):
+				node.control_kind = 1
+				node.control_record = loop
+				node.valid_jump = 1
+				node.unwind_slots = node.stack_depth - loop.body_depth
+				return
+			if ((node.kind == ast_stmt_break) && (walk.emitter == cast(int, emit_switch_ast_walk))):
+				switch_ast_walk* switch_record = cast(switch_ast_walk*, walk.statement)
+				statement_ast* region = switch_record.node
+				node.control_kind = 2
+				node.control_record = region
+				node.valid_jump = 1
+				node.unwind_slots = node.stack_depth - region.stack_depth
+				return
+		parent = record.parent
+
+
 int ast_statement_simple(int* jumps):
 	if (ast_expressions_mode < 2): return 0
 	int kind = 0
@@ -86,16 +123,13 @@ int ast_statement_simple(int* jumps):
 		if (break_in_switch): flow_switch_break = 1
 		else: flow_loop_break = 1
 		if (break_in_switch):
-			node.target = switch_break_chain
-			node.unwind_slots = stack_pos - switch_stack_pos
+			ast_jump_layout(node, ast_body_depth(), switch_stack_pos, switch_break_chain, node.valid_jump)
 		else:
-			node.target = loop_break_chain
-			node.unwind_slots = stack_pos - loop_stack_pos
+			ast_jump_layout(node, ast_body_depth(), loop_stack_pos, loop_break_chain, node.valid_jump)
 	else if (kind == ast_stmt_continue):
 		*jumps = 1
-		node.valid_jump = loop_depth != 0
-		node.target = loop_continue_chain
-		node.unwind_slots = stack_pos - loop_stack_pos
+		ast_jump_layout(node, ast_body_depth(), loop_stack_pos, loop_continue_chain, loop_depth != 0)
+	if ((kind == ast_stmt_break) || (kind == ast_stmt_continue)): ast_jump_resolve_retained(node)
 	get_token()
 	# The debugger marker historically precedes terminator diagnostics;
 	# branch validation historically follows them. Preserve both orders.
@@ -406,8 +440,16 @@ void ast_switch_step(int walk, switch_ast_walk* record, int phase):
 # The scrutinee is evaluated exactly once, into a hidden stack slot.
 void ast_switch_selector(int walk, switch_ast_walk* record, expression_ast* tree):
 	ast_walk_settle(walk)
+	record.node.stack_depth = ast_body_depth() + 1
+	ast_body_reserve(1)
 	record.value.kind = ast_stmt_switch_value
 	ast_walk_header_value(walk, record.value, tree, switch_walk_value, switch_walk_value_end)
+	# A scalar result can still retain its aggregate receiver's buffer.
+	# Such a root suspends the independent cursor. Finish its expression
+	# phases before choosing the compatibility selector slot.
+	if (ast_body_layout_owner() < 0):
+		ast_walk_settle(walk)
+		record.node.stack_depth = stack_pos + 1
 	ast_switch_step(walk, record, switch_walk_selector)
 
 
@@ -531,10 +573,10 @@ int ast_statement_block():
 	int block_tab_level = enclosing_tab_level
 	get_token()
 	node.binding = table_pos
+	ast_block_layout(node, ast_body_depth())
 	int walk = retained_walk_begin(cast(int, emit_block_ast_walk), node)
 	if (walk >= 0): retained_walk_phase(walk, ast_walk_block_begin)
 	else:
-		node.stack_depth = stack_pos
 		dwarf_block_begin()
 	int start_tab_level = tab_level
 	if ((walk < 0) && (kind == ast_stmt_indent_block)): print_int_v1(c"starting stack_pos: ", stack_pos)
@@ -573,6 +615,7 @@ int ast_statement_block():
 		retained_walk_drain(walk)
 		lint_scope_exit(node.binding)
 		table_pos = node.binding
+		ast_body_set_depth(node.stack_depth)
 		retained_walk_phase(walk, ast_walk_block_end)
 		retained_emit_statement(retained_walks[walk].node)
 		flow_terminates = terminates
@@ -582,6 +625,7 @@ int ast_statement_block():
 	dwarf_block_end()
 	table_pos = node.binding
 	if (kind == ast_stmt_indent_block): print_int_v1(c"ending stack_pos: ", stack_pos)
+	ast_body_set_depth(node.stack_depth)
 	emit_block_ast_end(node)
 	flow_terminates = terminates
 	return 1
@@ -679,6 +723,7 @@ int ast_switch_statement():
 	flow_switch_break = outer_switch_break
 
 	# Discard the hidden scrutinee slot
+	ast_body_reserve(0 - node.unwind_slots)
 	ast_switch_step(walk, record, switch_walk_cleanup)
 	if (walk >= 0): retained_emit_statement(retained_walks[walk].node)
 	flow_terminates = switch_terminates

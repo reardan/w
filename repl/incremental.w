@@ -33,6 +33,10 @@ list[incremental_entry*] incremental_entries
 repl_state incremental_base
 repl_state incremental_end
 int incremental_active
+# 0: prefix checkpoints; 1: independent append-only definitions. The two
+# update APIs share one compiler owner and cannot be mixed in a session.
+int incremental_strategy
+char* incremental_table_owner
 int incremental_ast_mode
 int incremental_required_mode
 int incremental_retain_mode
@@ -50,8 +54,9 @@ void incremental_option(string_builder* key, int value):
 char* incremental_options_key():
 	string_builder* key = string_new()
 	incremental_option(key, cast(int, code))
-	incremental_option(key, cast(int, table))
 	incremental_option(key, code_offset)
+	incremental_option(key, code_fixed)
+	incremental_option(key, code_fixed_error_hook)
 	incremental_option(key, word_size)
 	incremental_option(key, word_size_log2)
 	incremental_option(key, target_isa)
@@ -68,6 +73,25 @@ char* incremental_options_key():
 	incremental_option(key, analysis_mode)
 	incremental_option(key, lint_mode)
 	incremental_option(key, lint_fix_mode)
+	incremental_option(key, ast_opt_mode)
+	incremental_option(key, retained_semantic_mode)
+	incremental_option(key, regalloc_disabled)
+	incremental_option(key, cond_branch_disabled)
+	incremental_option(key, loop_rotate_disabled)
+	incremental_option(key, narrow_regs_disabled)
+	incremental_option(key, direct_calls_disabled)
+	incremental_option(key, addr_modes_disabled)
+	incremental_option(key, ers_disabled)
+	incremental_option(key, x86_budget_disabled)
+	incremental_option(key, inline_disabled)
+	incremental_option(key, inline_requested)
+	incremental_option(key, asm_bodies_disabled)
+	incremental_option(key, elf_pie)
+	incremental_option(key, arm64_pac)
+	incremental_option(key, profile_generate_mode)
+	incremental_option(key, coverage_generate_mode)
+	incremental_option(key, profile_use_mode)
+	incremental_option(key, cast(int, profile_use_path))
 	char* result = key.data
 	free(key)
 	return result
@@ -273,6 +297,10 @@ void incremental_restore(repl_state* state):
 	repl_discard_late_bind()
 	repl_sites_truncate(state.sites_count)
 	repl_state_clear_context()
+	# A failed compile or a rolled-back probe may have grown the table.
+	# Offsets survive that owned allocation change; its address is not an
+	# immutable emission option.
+	incremental_table_owner = table
 
 
 void incremental_drop(int count):
@@ -652,7 +680,9 @@ void incremental_init():
 	incremental_retain_mode = ast_retain_mode
 	incremental_emit_mode = ast_emit_retained_mode
 	incremental_options = incremental_options_key()
+	incremental_table_owner = table
 	incremental_active = 1
+	incremental_strategy = 0
 
 
 incremental_result incremental_update(list[char*] sources):
@@ -665,12 +695,15 @@ incremental_result incremental_update(list[char*] sources):
 	result.tree_reused = 0
 	result.tree_probed = 0
 	assert1(incremental_active)
+	if (incremental_strategy != 0):
+		result.message = c"incremental session uses independent definitions"
+		return result
 	char* options = incremental_options_key()
 	int same_options = strcmp(options, incremental_options) == 0
 	free(options)
 	# Compiler state has process-global ownership. Reject foreign evaluation or
 	# changed compilation modes instead of silently reusing a different session.
-	if (same_options == 0 || type_count() != incremental_end.type_count || imported_count != incremental_end.imported_count || codepos != incremental_end.codepos || table_pos != incremental_end.table_pos || ast_expressions_mode != incremental_ast_mode || ast_required_mode != incremental_required_mode || ast_retain_mode != incremental_retain_mode || ast_emit_retained_mode != incremental_emit_mode):
+	if (same_options == 0 || table != incremental_table_owner || type_count() != incremental_end.type_count || imported_count != incremental_end.imported_count || codepos != incremental_end.codepos || table_pos != incremental_end.table_pos || ast_expressions_mode != incremental_ast_mode || ast_required_mode != incremental_required_mode || ast_retain_mode != incremental_retain_mode || ast_emit_retained_mode != incremental_emit_mode):
 		result.message = c"incremental session compiler state or options changed"
 		return result
 	if (sources.length > 256):
@@ -745,6 +778,7 @@ incremental_result incremental_update(list[char*] sources):
 		i = i + 1
 	repl_no_run = old_no_run
 	repl_state_capture(&incremental_end)
+	incremental_table_owner = table
 	incremental_strings_free(names)
 	if (i == sources.length): result.status = 1
 	return result
@@ -763,6 +797,7 @@ int incremental_address(char* name):
 
 void incremental_clear():
 	if (incremental_active == 0): return
+	assert1(incremental_strategy == 0)
 	incremental_restore(&incremental_base)
 	incremental_drop(0)
 	incremental_entries.free()

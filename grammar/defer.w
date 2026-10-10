@@ -7,21 +7,19 @@ registers a deferred statement; every registered statement runs in LIFO
 order at each function exit: before each 'return' and at the function's
 fall-through end. Defers are function-scoped (not block-scoped).
 
-A deferred statement keeps a SOURCE SPAN (file path + byte offset,
-like generic definitions in grammar/generic.w) so names bind at each
-exit point. In AST mode each replay builds a fresh expression child
-for a deferred-statement node before lowering it inline. Reference
-modes use the ordinary expression entry instead. Under
---ast-emit-retained (S2.3) the span is re-lexed from the retained source
-bytes rather than by reopening and seeking the file
-(defer_reparse_start). It stays a re-parse: the names must bind at each
-exit, so no tree parsed at the registration could stand in for it.
-Because of the re-parse, the deferred expression is evaluated AT EXIT
-TIME: arguments are not captured where the defer appears (unlike Go).
+AST registration captures supported plain-call expressions as unbound
+syntax trees. Each exit resolves the names against its live scope and
+builds a typed expression tree, so shadowed and later-declared locals
+bind at exit time. No arguments or symbol-table offsets are captured at
+registration. The same tree can therefore serve different exit scopes.
 
-Local variable references re-parse correctly at any exit point because
-sym_get_value computes esp-relative addresses from the live stack_pos
-of the emission site, not the registration site.
+A source span remains for unsupported syntax or exit-site bindings. That
+path reparses from retained bytes (or reopens the source in streaming
+mode), preserving existing diagnostics and conversions. See defer_ast.w
+for the intentionally conservative reusable subset.
+
+Local addresses use the exit's live stack_pos, never the registration
+site's operand-stack depth.
 
 v1 restricts the deferred statement to a simple expression statement
 (typically a call) so the re-parse cannot declare variables or change
@@ -38,6 +36,13 @@ int expression();
 int ast_deferred_expression();
 int ast_defer_registration();
 int retained_source_next_line_token(int source, int offset);
+int defer_tree_capture();
+int defer_tree_emit(int index);
+void defer_tree_free(int address);
+int defer_tree_pending
+int defer_tree_captures
+int defer_tree_emissions
+int defer_reparse_exits
 
 
 /*
@@ -50,6 +55,7 @@ struct defer_span_record:
 	int line      # 0-based, for diagnostics during the re-parse
 	int column    # 0-based
 	int source    # retained source version holding the span, or -1 (S2.3)
+	int tree      # owned unbound deferred-call syntax, 0 for fallback
 
 
 list[defer_span_record] defer_spans
@@ -65,7 +71,12 @@ int defer_count():
 # entry with this (the type_table_truncate trick — list[T]'s '.length'
 # is read-only at the language level).
 void defer_truncate(int n):
+	defer_tree_free(defer_tree_pending)
+	defer_tree_pending = 0
 	if (cast(int, defer_spans) == 0): return;
+	for i in range(n, defer_spans.length):
+		defer_tree_free(defer_spans[i].tree)
+		free(defer_spans[i].file)
 	__w_list* raw = cast(__w_list*, defer_spans)
 	raw.length = n
 
@@ -115,6 +126,7 @@ void defer_record_span(char* path, int offset, int line, int column):
 	rec.offset = offset
 	rec.line = line
 	rec.column = column
+	rec.tree = 0
 	rec.source = -1
 	if (ast_retain_mode): rec.source = retained_source_find(path)
 	defer_spans.push(rec)
@@ -175,6 +187,8 @@ void defer_emit_all():
 	int i = defer_count()
 	while (i > 0):
 		i = i - 1
+		if (defer_tree_emit(i)): continue
+		defer_reparse_exits = defer_reparse_exits + 1
 		char* save = generic_reparse_save()
 		defer_reparse_start(i)
 		if (ast_deferred_expression() == 0): expression()

@@ -12,7 +12,15 @@ void emit_simple_statement_ast(statement_ast* node):
 		if (node.kind == ast_stmt_break): error(c"'break' outside of a loop or switch")
 		else: error(c"'continue' outside of a loop")
 	if (node.unwind_slots > 0): be_pop(node.unwind_slots)
-	be_br(node.target)
+	int target = node.target
+	if (node.control_kind == 1):
+		loop_ast* loop = cast(loop_ast*, node.control_record)
+		target = loop.break_target
+		if (node.kind == ast_stmt_continue): target = loop.continue_target
+	else if (node.control_kind == 2):
+		statement_ast* region = cast(statement_ast*, node.control_record)
+		target = region.target
+	be_br(target)
 
 
 int emit_prepared_expression_ast(expression_ast* tree, int root);
@@ -449,7 +457,7 @@ void emit_guard_ast_walk(retained_statement_walk* walk, int phase):
 void emit_block_ast_walk(retained_statement_walk* walk, int phase):
 	statement_ast* node = walk.statement
 	if (phase == ast_walk_block_begin):
-		node.stack_depth = stack_pos
+		assert1(stack_pos == node.stack_depth)
 		dwarf_block_begin()
 		if (node.kind == ast_stmt_indent_block): print_int_v1(c"starting stack_pos: ", stack_pos)
 	else if (phase == ast_walk_block_deferred): emit_block_ast_deferred(node)
@@ -543,7 +551,7 @@ void emit_switch_ast_phase(switch_ast_walk* record, retained_statement_walk* wal
 	else if (phase == switch_walk_value_end): emit_statement_ast_expression_end(value)
 	else if (phase == switch_walk_selector):
 		node.declared_type = emit_switch_value_ast(value)
-		node.stack_depth = stack_pos
+		assert1(node.stack_depth == stack_pos)
 	else if (phase == switch_walk_region): emit_switch_region_ast_begin(node)
 	else if (phase == switch_walk_enter):
 		# 'break' in a case body exits the switch

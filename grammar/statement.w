@@ -241,6 +241,7 @@ int coverage_statement_is_label():
 
 void statement_impl():
 	int retained = retained_enter(retained_statement, filename, token_start_offset, diag_token_line, diag_token_column, token)
+	ast_body_statement_begin(retained)
 	# Recursion-depth guard (compiler/tokenizer.w): every nested block body
 	# ('{...}', a tab-scoped ':' block, or an if/while/for/switch body)
 	# recurses back through this same function, so wrapping its one entry
@@ -464,6 +465,7 @@ void statement_impl():
 	stmt_nesting_depth = stmt_nesting_depth - 1
 	lint_last_stmt_jumps = jumps
 	flow_terminates = terminates || jumps
+	ast_body_statement_end(retained)
 	retained_leave(retained, token_start_offset)
 
 

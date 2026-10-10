@@ -8,8 +8,39 @@ plan. The retired `wc2` experiment's requirements list in
 [wc2.md](wc2.md) still applies to every unit below.
 
 Issue #489's body predates all of this ("blocked on the #488 spike"). #488
-is closed and the production migration is well past the spike. This plan
-is what #489 should point at.
+is closed and the production migration is well past the spike. #489 was
+closed after AST and retained emission became the defaults. Its broader
+definition of done below still needs the architectural follow-ups.
+
+### Implementation checkpoint (2026-10-09)
+
+The assessment and task specifications below preserve the original baseline;
+they are not a claim that all of the listed gaps still exist. The current
+implementation is described in `ast_migration.md`.
+
+- The AST and retained-emission default switches, diagnostic codes/spans,
+  DWARF support, in-process multi-error recovery, daemon answer invalidation
+  and the first optional optimizer have landed.
+- The CI matrix now includes a separate `ast_expression_suite` leg with the
+  same runtime/ptrace/display setup as ordinary tests. The compiler canaries
+  remain in the ordinary suite.
+- Expression storage now grows beyond the former node, literal, source-window
+  and speculative-type capacities; the explicit syntax nesting guard remains.
+- Independent function reuse is available through `repl/incremental_graph.w`:
+  dependency-based invalidation, atomic updates, and unchanged functions kept
+  at their existing addresses. Its scalar admission rules and append-only
+  lifetime do not implement general module relocation or a `wbuildd` code cache.
+- Supported deferred calls retain unbound syntax and bind their names at each
+  exit. Other deferred syntax and generic bodies still use source replay.
+- Independent layout/control analysis is being separated from backend state.
+  Whole-function parse-before-emission remains an architectural milestone;
+  per-statement retained emission alone does not satisfy checkpoint B.
+
+Streaming grammar retirement still follows P1.5's tagged-release/seed gate.
+The final local compile-time measurements are 1.40x streaming on x86 and 1.47x
+on x64; the 1.25x target remains unmet. Both complete test suites pass (1,023
+targets each), along with the x86, x64, Win64 and wasm self-host fixpoints.
+See the latest section of `ast_migration.md` for the measurements and scope.
 
 ## 1. Where the AST work stands
 

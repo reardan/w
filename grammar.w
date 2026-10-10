@@ -93,6 +93,7 @@ import grammar.ast_function
 import grammar.ast_linkage
 import code_generator.expression_ast
 import grammar.ast_expression
+import grammar.defer_ast
 
 # no idea why this is necessary:
 int grammar_no_reason_temp_var

@@ -1,4 +1,4 @@
-# Production expression AST. Each parse/emit attempt owns this bounded
+# Production expression AST. Each parse/emit attempt owns this growing
 # arena: a small header on its stack bound to a reusable node slab (see
 # expression_ast_bind); unsupported syntax and
 # REPL error recovery cannot leave allocated nodes or compiler state behind.
@@ -13,11 +13,9 @@
 # roots; those links do not change a nested call's own argument list.
 # Logical chains use the same sibling links, with a separate node for
 # each source-level chain (parenthesized subchains keep their boundary).
-# The source window admits embedded asset chunks as well as ordinary
-# expressions. Decoded text has extra room for per-chunk terminators.
-# 4096 nodes cover the existing 900-level ternary fixture (3601 nodes);
-# parsing retains the streaming expression nesting guard of 1000.
-const int ast_expression_source_limit = 16384
+# Storage grows with the expression; parsing retains the streaming
+# expression nesting guard of 1000. Allocation arithmetic is checked
+# before multiplication, including on a 32-bit host.
 
 
 # Comma-index pseudo-lvalues retain their operands until the parent
@@ -58,10 +56,10 @@ struct expression_ast:
 	int token_text_capacity
 	int* tokens
 	char* token_text
-	type_rec[16] pointer_types
-	int[16] pointer_offsets
-	int[16] pointer_bases
-	char[4096] type_names
+	type_rec* pointer_types
+	int* pointer_offsets
+	int* pointer_bases
+	char* type_names
 	# P1.1: the node columns and decoded text live in a reusable heap slab
 	# bound by expression_ast_bind, so declaring a tree does not zero-fill
 	# half a megabyte of stack per expression root.
@@ -107,11 +105,19 @@ int ast_required_mode
 # body compiled while emitting an outer root) and keep their slabs. REPL
 # error recovery only unwinds frames, so a stale owner is released by the
 # next bind at or above its address. Node columns and token records start
-# small and grow (nodes up to the 4096-node arena limit); decoded text
-# keeps its fixed allowance.
+# small and grow, including decoded text and temporary types.
 struct expression_ast_slab:
 	int owner
+	int* replay_entries
+	int replay_capacity
 	char* text
+	int text_capacity
+	type_rec* pointer_types
+	int* pointer_offsets
+	int* pointer_bases
+	int types_capacity
+	char* type_names
+	int type_names_capacity
 	char* columns
 	int capacity
 	int* tokens
@@ -158,6 +164,10 @@ void expression_ast_point_columns(expression_ast* tree):
 	int column = slab.capacity * __word_size__
 	tree.capacity = slab.capacity
 	tree.text = slab.text
+	tree.pointer_types = slab.pointer_types
+	tree.pointer_offsets = slab.pointer_offsets
+	tree.pointer_bases = slab.pointer_bases
+	tree.type_names = slab.type_names
 	tree.op = cast(int*, memory)
 	tree.left = cast(int*, memory + column)
 	tree.right = cast(int*, memory + 2 * column)
@@ -186,24 +196,54 @@ void expression_ast_point_columns(expression_ast* tree):
 	tree.token_text_capacity = slab.token_text_capacity
 
 
+# Source positions and allocator byte counts are signed on x86. Leave
+# room for the allocator header and rounding before doing any arithmetic.
+int expression_ast_room(int current, int used, int extra, int width):
+	int limit = 2147483584 / width
+	if ((used < 0) || (extra < 0) || (extra > limit) || (used > limit - extra)):
+		error(c"expression storage exceeds addressable memory")
+	int need = used + extra
+	int room = current
+	if (room == 0): room = 16
+	while (room < need):
+		if (room > limit / 2): room = limit
+		else: room = room * 2
+	return room
+
+
+char* expression_ast_allocate(int bytes):
+	char* memory = cast(char*, malloc(bytes))
+	if (memory == 0): error(c"unable to allocate expression storage")
+	return memory
+
+
 # A copy of the first used words of old in a new room-word array.
 int* expression_ast_grow_array(int* old, int used, int room):
-	int* grown = cast(int*, malloc(room * __word_size__))
+	int* grown = cast(int*, expression_ast_allocate(room * __word_size__))
 	for i in range(used): grown[i] = old[i]
 	if (old): free(old)
 	return grown
 
 
 expression_ast_slab* expression_ast_new_slab():
-	expression_ast_slab* slab = cast(expression_ast_slab*, malloc(sizeof(expression_ast_slab)))
+	expression_ast_slab* slab = cast(expression_ast_slab*, expression_ast_allocate(sizeof(expression_ast_slab)))
 	slab.owner = 0
-	slab.text = cast(char*, malloc(32768))
+	slab.replay_entries = 0
+	slab.replay_capacity = 0
+	slab.text_capacity = 1024
+	slab.text = expression_ast_allocate(slab.text_capacity)
+	slab.types_capacity = 0
+	slab.pointer_types = 0
+	slab.pointer_offsets = 0
+	slab.pointer_bases = 0
+	slab.type_names_capacity = 0
+	slab.type_names = 0
 	slab.capacity = expression_ast_initial_capacity
-	slab.columns = cast(char*, malloc(expression_ast_columns * slab.capacity * __word_size__))
+	slab.columns = expression_ast_allocate(expression_ast_columns * slab.capacity * __word_size__)
 	slab.token_capacity = expression_ast_initial_capacity
-	slab.tokens = cast(int*, malloc(expression_ast_token_fields * slab.token_capacity * __word_size__))
+	slab.tokens = cast(int*, expression_ast_allocate(expression_ast_token_fields * slab.token_capacity * __word_size__))
 	slab.token_text_capacity = 1024
-	slab.token_text = cast(char*, malloc(slab.token_text_capacity))
+	slab.token_text = expression_ast_allocate(slab.token_text_capacity)
 	ast_slabs_allocated = ast_slabs_allocated + 1
 	return slab
 
@@ -235,10 +275,9 @@ void expression_ast_bind(expression_ast* tree):
 void expression_ast_grow(expression_ast* tree):
 	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
 	int old_capacity = slab.capacity
-	int capacity = old_capacity * 2
-	if (capacity > 4096): capacity = 4096
+	int capacity = expression_ast_room(old_capacity, tree.count, 1, expression_ast_columns * __word_size__)
 	char* old = slab.columns
-	char* memory = cast(char*, malloc(expression_ast_columns * capacity * __word_size__))
+	char* memory = expression_ast_allocate(expression_ast_columns * capacity * __word_size__)
 	int used = tree.count * __word_size__
 	for c in range(expression_ast_columns):
 		char* from = old + c * old_capacity * __word_size__
@@ -250,14 +289,80 @@ void expression_ast_grow(expression_ast* tree):
 	expression_ast_point_columns(tree)
 
 
+# Replay workspace belongs to the parse slab too. A nested generic
+# compilation binds another slab, leaving its parent's event order intact.
+int* expression_ast_replay_workspace(expression_ast* tree, int tokens):
+	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+	int room = expression_ast_room(slab.replay_capacity, (tree.count * 2 + tree.types_count + 1) * 4, tokens, __word_size__)
+	if (room > slab.replay_capacity):
+		if (slab.replay_entries): free(slab.replay_entries)
+		slab.replay_entries = cast(int*, expression_ast_allocate(room * __word_size__))
+		slab.replay_capacity = room
+	return slab.replay_entries
+
+
+# Decoded literals and saved stack-binding names share one offset arena.
+void expression_ast_text_reserve(expression_ast* tree, int extra):
+	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+	if ((extra >= 0) && (extra <= slab.text_capacity - tree.text_used)): return
+	int room = expression_ast_room(slab.text_capacity, tree.text_used, extra, 1)
+	char* grown = expression_ast_allocate(room)
+	for i in range(tree.text_used): grown[i] = slab.text[i]
+	free(slab.text)
+	slab.text = grown
+	slab.text_capacity = room
+	tree.text = grown
+
+
+# Probe type records never use nested descriptors: only their scalar
+# prefix is initialized/read. Rebind the borrowed table entries when
+# growing that array, before any subsequent type query can observe it.
+void expression_ast_type_reserve(expression_ast* tree):
+	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+	if (tree.types_count < slab.types_capacity): return
+	int room = expression_ast_room(slab.types_capacity, tree.types_count, 1, sizeof(type_rec))
+	char* grown = expression_ast_allocate(room * sizeof(type_rec))
+	char* old = cast(char*, slab.pointer_types)
+	for i in range(tree.types_count * sizeof(type_rec)): grown[i] = old[i]
+	if (old): free(old)
+	slab.pointer_types = cast(type_rec*, grown)
+	slab.pointer_offsets = expression_ast_grow_array(slab.pointer_offsets, tree.types_count, room)
+	slab.pointer_bases = expression_ast_grow_array(slab.pointer_bases, tree.types_count, room)
+	slab.types_capacity = room
+	tree.pointer_types = slab.pointer_types
+	tree.pointer_offsets = slab.pointer_offsets
+	tree.pointer_bases = slab.pointer_bases
+	for i in range(tree.types_count): type_records[tree.types_base + i] = cast(int, &tree.pointer_types[i])
+
+
+# Temporary type names can also be borrowed by another temporary record
+# (a pointer to a container). Relocate every such name before freeing the
+# old bytes; the name index must then rebuild its borrowed keys.
+void expression_ast_type_names_reserve(expression_ast* tree, int extra):
+	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+	int room = expression_ast_room(slab.type_names_capacity, tree.type_names_used, extra, 1)
+	if (room == slab.type_names_capacity): return
+	char* grown = expression_ast_allocate(room)
+	char* old = slab.type_names
+	for i in range(tree.type_names_used): grown[i] = old[i]
+	for i in range(tree.types_count):
+		type_rec* rec = &tree.pointer_types[i]
+		int offset = cast(int, rec.name) - cast(int, old)
+		if ((offset >= 0) && (offset < tree.type_names_used)): rec.name = grown + offset
+	if (old): free(old)
+	slab.type_names = grown
+	slab.type_names_capacity = room
+	tree.type_names = grown
+	type_index_indexed = -1
+
+
 # Keep length more bytes of token text (plus a terminator) in the slab.
 int expression_ast_token_text_reserve(expression_ast* tree, int length):
-	int need = tree.token_text_used + length + 1
-	if (need > tree.token_text_capacity):
+	int extra = length + 1
+	if ((extra < 0) || (extra > tree.token_text_capacity - tree.token_text_used)):
 		expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
-		int room = slab.token_text_capacity * 2
-		while (room < need): room = room * 2
-		char* grown = cast(char*, malloc(room))
+		int room = expression_ast_room(tree.token_text_capacity, tree.token_text_used, extra, 1)
+		char* grown = expression_ast_allocate(room)
 		for i in range(tree.token_text_used): grown[i] = slab.token_text[i]
 		free(slab.token_text)
 		slab.token_text = grown
@@ -265,7 +370,7 @@ int expression_ast_token_text_reserve(expression_ast* tree, int length):
 		tree.token_text = grown
 		tree.token_text_capacity = room
 	int start = tree.token_text_used
-	tree.token_text_used = need
+	tree.token_text_used = start + extra
 	return start
 
 
@@ -285,7 +390,7 @@ void expression_ast_record_token(expression_ast* tree):
 	if (tree.token_count == tree.token_capacity):
 		expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
 		int words = tree.token_count * expression_ast_token_fields
-		slab.token_capacity = slab.token_capacity * 2
+		slab.token_capacity = expression_ast_room(slab.token_capacity, tree.token_count, 1, expression_ast_token_fields * __word_size__)
 		slab.tokens = expression_ast_grow_array(slab.tokens, words, slab.token_capacity * expression_ast_token_fields)
 		tree.tokens = slab.tokens
 		tree.token_capacity = slab.token_capacity
@@ -403,7 +508,8 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	if (existing >= 0): return existing
 	# Array promotion can intern a slice-value type during emission.
 	# Preserve type registration order until it too has a replay event.
-	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	if (tree.pending_buffer_types): return -1
+	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = type_get_name(type_canonical(base))
@@ -432,9 +538,10 @@ int ast_expression_const_type(expression_ast* tree, int base, int offset):
 	int existing = type_lookup_const(base)
 	if (existing >= 0): return existing
 	base = type_canonical(base)
-	if ((type_num_args(base) > 0) || tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	if ((type_num_args(base) > 0) || tree.pending_buffer_types): return -1
 	int length = strlen(type_get_name(base)) + 7
-	if (tree.type_names_used + length > 4096): return -1
+	expression_ast_type_names_reserve(tree, length)
+	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = &tree.type_names[tree.type_names_used]
@@ -466,9 +573,10 @@ int ast_expression_gpu_type(expression_ast* tree, int base, int offset):
 	for index in range(type_count()):
 		type_rec* existing = type_record(index)
 		if ((existing.kind == type_kind_gpu) && (existing.alias_target == base)): return index
-	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	if (tree.pending_buffer_types): return -1
 	int length = strlen(type_get_name(base)) + 5
-	if (tree.type_names_used + length > 4096): return -1
+	expression_ast_type_names_reserve(tree, length)
+	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	type_rec* source = type_record(base)
@@ -522,7 +630,6 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 
 
 int expression_ast_add(expression_ast* tree, int op, int left, int right):
-	if (tree.count == 4096): return -1
 	if (tree.count == tree.capacity): expression_ast_grow(tree)
 	int id = tree.count
 	tree.count = id + 1
@@ -555,7 +662,8 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 # Parameter types live in AST nodes, so no nested array descriptor of
 # these borrowed records is read during the probe.
 int ast_expression_reserve_signature(expression_ast* tree, int id, int result, int arity):
-	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	if (tree.pending_buffer_types): return -1
+	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = c""
@@ -583,7 +691,6 @@ int ast_expression_composite_type(expression_ast* tree, int kind, int element, i
 	if (kind == type_kind_map): extra = type_canonical(extra)
 	int existing = type_lookup_composite(kind, element, extra)
 	if (existing >= 0): return existing
-	if (tree.types_count == 16): return -1
 	char* name = 0
 	if (kind == type_kind_map): name = type_make_map_name(element, extra)
 	else if (kind == type_kind_set): name = type_make_set_name(element)
@@ -595,9 +702,8 @@ int ast_expression_composite_type(expression_ast* tree, int kind, int element, i
 			name = strjoin(storage, c" value")
 			free(storage)
 	int length = strlen(name) + 1
-	if (tree.type_names_used + length > 4096):
-		free(name)
-		return -1
+	expression_ast_type_names_reserve(tree, length)
+	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = &tree.type_names[tree.type_names_used]

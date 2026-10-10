@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 arch=arm64_darwin
 # File durability primitives (lib/fs.w): positional I/O including a
 # sparse write beyond 4 GiB on x86-64 (the i386 twin checks its
 # documented 2^31 - 1 word limit instead), truncate, exclusive create,
@@ -7,6 +7,7 @@
 import lib.testing
 import lib.fs
 import lib.file
+import lib.process
 
 
 # Per-word-size scratch paths: the 32- and 64-bit twins run in
@@ -178,7 +179,7 @@ void test_fs_sync_dir_reports_status():
 	int rd = load_int32(cast(char*, fds))
 	int wr = load_int32(cast(char*, fds) + 4)
 	assert_equal(IO_UNSUPPORTED, fs_fsync(wr, &r))
-	assert_equal(FS_EINVAL, r.native_error)
+	assert_equal(0 - fsync(wr), r.native_error)
 	close(rd)
 	close(wr)
 	free(fds)
@@ -194,7 +195,7 @@ void test_fs_lock_contention():
 	# the same process contends like another process would.
 	assert_equal(-1, fs_lock_acquire(path, &r))
 	assert_equal(IO_WOULD_BLOCK, r.status)
-	assert_equal(11, r.native_error)  # EWOULDBLOCK
+	assert_equal(IO_ERRNO_EAGAIN, r.native_error)  # EWOULDBLOCK
 	assert_equal(IO_OK, fs_lock_release(first, &r))
 	int again = fs_lock_acquire(path, &r)
 	asserts(c"lock after release failed", again >= 0)
@@ -274,3 +275,108 @@ void test_fs_replace_durable_retries_stale_temp_name():
 	free(text)
 	unlink(stale)
 	free(stale)
+
+
+# fork shares the open file description, including its seek position.
+# Two writers repeatedly update disjoint ranges while the parent moves
+# that shared cursor: a seek/write emulation corrupts these records.
+void test_fs_concurrent_positional_access():
+	char* path = fs_test_path(c"concurrent.bin")
+	int fd = fs_test_open_rw(path)
+	int rd = 0
+	int wr = 0
+	assert_equal(0, process_make_pipe(&rd, &wr))
+	int[2] children
+	for worker in range(2):
+		int pid = fork()
+		asserts(c"fork failed", pid >= 0)
+		if (pid == 0):
+			close(wr)
+			char token = 0
+			if (read(rd, &token, 1) != 1): exit(2)
+			io_result r
+			char* data = c"AAAAAAAA"
+			if (worker == 1): data = c"BBBBBBBB"
+			char[8] buf
+			for round in range(2000):
+				if (fs_pwrite_all(fd, data, 8, worker * 16, &r) != IO_OK): exit(3)
+				if (fs_pread_exact(fd, &buf[0], 8, worker * 16, &r) != IO_OK): exit(4)
+				for i in range(8):
+					if (buf[i] != data[i]): exit(5)
+			exit(0)
+		children[worker] = pid
+	close(rd)
+	assert_equal(2, write(wr, c"go", 2))
+	close(wr)
+	for round in range(2000): assert_equal(100, seek(fd, 100, 0))
+	for worker in range(2):
+		int status = 0
+		assert_equal(children[worker], wait4(children[worker], &status, 0, 0))
+		assert_equal(0, status)
+	assert_equal(100, seek(fd, 0, 1))
+	char[24] buf
+	io_result r
+	assert_equal(IO_OK, fs_pread_exact(fd, &buf[0], 24, 0, &r))
+	for i in range(8):
+		assert_equal('A', buf[i])
+		assert_equal(0, buf[i + 8])
+		assert_equal('B', buf[i + 16])
+	close(fd)
+	unlink(path)
+
+
+void test_fs_lock_released_after_process_death():
+	char* path = fs_test_path(c"crash.lock")
+	int rd = 0
+	int wr = 0
+	assert_equal(0, process_make_pipe(&rd, &wr))
+	# A second pipe parks the owner until SIGKILL; no timing sleeps.
+	int park_rd = 0
+	int park_wr = 0
+	assert_equal(0, process_make_pipe(&park_rd, &park_wr))
+	int pid = fork()
+	asserts(c"fork failed", pid >= 0)
+	if (pid == 0):
+		close(rd)
+		close(park_wr)
+		io_result r
+		int fd = fs_lock_acquire(path, &r)
+		if (fd < 0): exit(2)
+		if (write(wr, c"x", 1) != 1): exit(3)
+		char token = 0
+		read(park_rd, &token, 1)
+		exit(4)
+	close(wr)
+	close(park_rd)
+	char token = 0
+	assert_equal(1, read(rd, &token, 1))
+	close(rd)
+	io_result r
+	assert_equal(-1, fs_lock_acquire(path, &r))
+	assert_equal(IO_WOULD_BLOCK, r.status)
+	assert_equal(IO_ERRNO_EAGAIN, r.native_error)
+	assert_equal(0, kill(pid, 9))
+	int status = 0
+	assert_equal(pid, wait4(pid, &status, 0, 0))
+	assert_equal(9, status & 127)
+	close(park_wr)
+	int fd = fs_lock_acquire(path, &r)
+	asserts(c"lock survived owner death", fd >= 0)
+	assert_equal(IO_OK, fs_lock_release(fd, &r))
+	unlink(path)
+
+
+void test_fs_open_cloexec_and_bad_descriptors():
+	io_result r
+	int fd = fs_test_open_rw(fs_test_path(c"cloexec.bin"))
+	assert_equal(1, sys_fcntl(fd, 1, 0) & 1)
+	close(fd)
+	char[1] buf
+	assert_equal(IO_IO_ERROR, fs_pread(-1, &buf[0], 1, 0, &r))
+	assert_equal(9, r.native_error)
+	assert_equal(IO_IO_ERROR, fs_pwrite(-1, c"x", 1, 0, &r))
+	assert_equal(9, r.native_error)
+	assert_equal(IO_IO_ERROR, fs_fsync(-1, &r))
+	assert_equal(9, r.native_error)
+	assert_equal(-1, fs_openat(-1, c"relative", FS_O_RDONLY, 0, &r))
+	assert_equal(9, r.native_error)

@@ -6,6 +6,13 @@ int code_size
 int codepos
 int base_code_offset
 int code_offset
+# In-process code lives at the addresses compiled callers already use.
+# Its executable mapping cannot be moved with the heap allocator.
+int code_fixed
+# Standalone assembler clients import this module without compiler diagnostics.
+# An in-process compiler installs its recoverable diagnostic entry here.
+type code_fixed_error_callback = fn(char*) -> void
+int code_fixed_error_hook
 
 # W^X text/data split (docs/projects/arm64.md Stage 3, extended to every
 # file target by docs/projects/wx_split.md). When data_split is set,
@@ -70,6 +77,12 @@ int tls_size_patch_pos
 
 
 void resize_code(int n):
+	if (code_fixed):
+		if ((n < 0) || (codepos < 0) || (codepos >= code_size) || (n >= code_size - codepos)):
+			char* message = c"in-process code buffer exhausted; start a new session"
+			if (code_fixed_error_hook): (cast(code_fixed_error_callback*, code_fixed_error_hook))(message)
+			println2(message)
+			exit(1)
 	if (code_size <= codepos + n):
 		int x = (codepos + n) << 1
 		code = realloc(code, code_size, x)

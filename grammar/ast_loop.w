@@ -15,6 +15,16 @@ void ast_iteration_value_into(int walk, loop_ast_walk* record, expression_ast* t
 	if (store_slot): value.kind = ast_stmt_range_argument
 	ast_walk_header_value(walk, value, tree, loop_walk_value, loop_walk_value_end)
 	ast_loop_step(walk, record, loop_walk_value_store)
+	if (store_slot): ast_body_reserve(1)
+
+
+# The argument's actual slot can be separated from the preceding argument
+# by retained aggregate-result buffers. An active cursor supplies it before
+# lowering; a suspended cursor completes the header's compatibility phases.
+int ast_range_argument_slot(int walk):
+	if (ast_body_layout_owner() >= 0): return ast_body_depth()
+	ast_walk_settle(walk)
+	return stack_pos
 
 
 # The walk an iterable started for the cursor loop that follows it, plus
@@ -54,6 +64,7 @@ void ast_for_range_loop(int for_var, int for_tab_level):
 	node.column = diag_token_column
 	node.start_offset = token_start_offset
 	node.variable_slot = for_var
+	int entry_depth = ast_body_depth()
 	statement_ast local_value
 	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
 	expression_ast tree
@@ -66,13 +77,30 @@ void ast_for_range_loop(int for_var, int for_tab_level):
 	int has_parens = ast_walk_accept(walk, c"(")
 	node.argument_count = 1
 	ast_iteration_value_into(walk, record, &tree, 1)
+	int first_slot = ast_range_argument_slot(walk)
+	int second_slot = 0
+	int third_slot = 0
 	while (ast_walk_accept(walk, c",")):
 		ast_iteration_value_into(walk, record, &tree, 1)
 		node.argument_count = node.argument_count + 1
+		int slot = ast_range_argument_slot(walk)
+		if (node.argument_count == 2): second_slot = slot
+		else if (node.argument_count == 3): third_slot = slot
 	if (has_parens): ast_walk_expect(walk, c")")
 	if (node.argument_count > 3):
 		ast_walk_settle(walk)
 		error(c"range() takes 1-3 arguments")
+	# Aggregate receivers can leave result buffers between the range
+	# arguments. Their cursor is explicitly suspended until expression
+	# layout is independent; preserve the streaming header's real depth.
+	if (ast_body_layout_owner() < 0):
+		ast_walk_settle(walk)
+		entry_depth = stack_pos - node.argument_count
+	ast_loop_layout(node, entry_depth)
+	node.start_slot = first_slot
+	node.end_slot = first_slot
+	if (node.argument_count >= 2): node.end_slot = second_slot
+	node.step_slot = third_slot
 	ast_loop_step(walk, record, loop_walk_range_begin)
 	ast_walk_settle(walk)
 	enclosing_tab_level = for_tab_level
@@ -80,6 +108,7 @@ void ast_for_range_loop(int for_var, int for_tab_level):
 	node.end_offset = token_start_offset
 	ast_loop_step(walk, record, loop_walk_range_end)
 	ast_loop_step(walk, record, loop_walk_leave)
+	ast_body_reserve(0 - node.cleanup_slots)
 	ast_loop_step(walk, record, loop_walk_cleanup)
 	if (walk >= 0): retained_emit_statement(retained_walks[walk].node)
 
@@ -109,6 +138,8 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	node.value_var = value_var
 	node.value_var_type = value_var_type
 	node.value2_coerce_type = value2_coerce_type
+	ast_loop_layout(node, ast_body_depth())
+	ast_body_reserve(node.cleanup_slots)
 	loop_ast_walk local_record
 	loop_ast_walk* record = cast(loop_ast_walk*, retained_parse_record(&local_record, sizeof(loop_ast_walk)))
 	record.loop = node
@@ -129,6 +160,7 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	if (free_fn != 0): for_cleanup_truncate(for_cleanup_count() - 1)
 	ast_loop_step(walk, record, loop_walk_cursor_end)
 	ast_loop_step(walk, record, loop_walk_leave)
+	ast_body_reserve(0 - node.cleanup_slots)
 	ast_loop_step(walk, record, loop_walk_cleanup)
 	if (walk >= 0): retained_emit_statement(retained_walks[walk].node)
 
@@ -157,6 +189,7 @@ int ast_while_statement():
 	node.start_offset = token_start_offset
 	node.rotated = 0
 	node.entry_site = -1
+	ast_loop_layout(node, ast_body_depth())
 	get_token()
 	int while_tab_level = tab_level
 	int outer_condition = condition_context

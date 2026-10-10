@@ -19,8 +19,12 @@ void ast_deferred_future():
 	int later = 4
 
 
+int ast_deferred_identity(int value):
+	return value
+
+
 void ast_deferred_order():
-	defer ast_deferred_mark(5)
+	defer ast_deferred_mark(ast_deferred_identity(5))
 	defer ast_deferred_mark(6)
 
 

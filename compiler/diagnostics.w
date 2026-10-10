@@ -1081,3 +1081,9 @@ void diag_code_table():
 	diag_code_row(c"W0405", c"return with a value in a void function")
 	diag_code_row(c"W0406", c"@ converts '@' to '@' without cast() [void-pointer-conversion]")
 	diag_code_row(c"W0407", c"called object of type '@' is not a function; declare it as a function pointer ('type callback = fn(int) -> int', then 'callback* f') [call-int]")
+	# Retained-expression storage and fixed-address native sessions.
+	diag_code_row(c"W0408", c"expression storage exceeds addressable memory")
+	diag_code_row(c"W0409", c"unable to allocate expression storage")
+	diag_code_row(c"W0410", c"expression source exceeds addressable offsets")
+	diag_code_row(c"W0411", c"expression emission exceeds safe recursive depth")
+	diag_code_row(c"W0412", c"in-process code buffer exhausted; start a new session")

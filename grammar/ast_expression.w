@@ -138,7 +138,7 @@ int ast_expression_comment_end(char* bytes, int start, int limit, int multiline)
 # the speculative tokenizer, so it cannot diagnose or run past the
 # closing ')'. A -2 result requests more buffered bytes; -1 declines
 # unsupported syntax. No tokenizer or diagnostic state changes here.
-# The byte/node/depth limits are fallback boundaries, not language limits.
+# Syntax safety is checked here; recursive nesting is checked by the parser.
 int ast_expression_end(int start):
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
@@ -150,12 +150,12 @@ int ast_expression_end(int start):
 	int end = -1
 	int i = 0
 	int limit = getchar_limit[file]
-	while ((i < ast_expression_source_limit) && (index + i + 1 < limit)):
+	while ((index + i + 1 < limit)):
 		int ch = bytes[index + i] & 255
 		# P1.1 fast path: a run of word bytes (or blanks) has no effect
 		# but advancing previous; the general cases below are unchanged.
 		if (ast_preflight_class[ch]):
-			while ((i + 1 < ast_expression_source_limit) && (index + i + 2 < limit) && ast_preflight_class[bytes[index + i + 1] & 255]): i = i + 1
+			while ((index + i + 2 < limit) && ast_preflight_class[bytes[index + i + 1] & 255]): i = i + 1
 			previous = bytes[index + i] & 255
 			i = i + 1
 			continue
@@ -171,14 +171,12 @@ int ast_expression_end(int start):
 		if ((ch == '/') && (bytes[index + i + 1] == '*')):
 			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 1)
 			if (after < 0): return after
-			if (after - index >= ast_expression_source_limit): return -1
 			i = after - index
 			previous = 0
 			continue
 		if ((ch == 39) || (ch == '"')):
 			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
 			if (quoted < 0): return quoted
-			if (quoted - index >= ast_expression_source_limit): return -1
 			i = quoted - index + 1
 			previous = 0
 			continue
@@ -211,7 +209,7 @@ int ast_expression_end(int start):
 		if ((previous == '/') && ((ch == '*') || (ch == '/'))): break
 		previous = ch
 		i = i + 1
-	if ((end < 0) && (i < ast_expression_source_limit) && (index + i + 1 >= getchar_limit[file])): return -2
+	if ((end < 0) && (index + i + 1 >= getchar_limit[file])): return -2
 	return end
 
 
@@ -273,13 +271,13 @@ int ast_expression_root_end(int eof, int statement):
 	int previous = 0
 	int i = 0
 	int limit = getchar_limit[file]
-	while ((i < ast_expression_source_limit) && (index + i < limit)):
+	while ((index + i < limit)):
 		int ch = bytes[index + i] & 255
 		# P1.1 fast path: word bytes only update significant/previous and
 		# blanks only previous; none of them can end or decline a root.
 		int run = ast_preflight_class[ch]
 		if (run):
-			while ((i + 1 < ast_expression_source_limit) && (index + i + 1 < limit) && (ast_preflight_class[bytes[index + i + 1] & 255] == run)): i = i + 1
+			while ((index + i + 1 < limit) && (ast_preflight_class[bytes[index + i + 1] & 255] == run)): i = i + 1
 			previous = bytes[index + i] & 255
 			if (run == 1): significant = previous
 			i = i + 1
@@ -287,14 +285,12 @@ int ast_expression_root_end(int eof, int statement):
 		if ((ch == '/') && (index + i + 1 < getchar_limit[file]) && (bytes[index + i + 1] == '*')):
 			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 1)
 			if (after < 0): return after
-			if (after - index >= ast_expression_source_limit): return -1
 			i = after - index
 			previous = 0
 			continue
 		if ((ch == 39) || (ch == '"')):
 			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
 			if (quoted < 0): return quoted
-			if (quoted - index >= ast_expression_source_limit): return -1
 			i = quoted - index + 1
 			significant = 34
 			previous = 0
@@ -370,7 +366,7 @@ int ast_expression_root_end(int eof, int statement):
 		if ((ch != ' ') && (ch != 9)): significant = ch
 		previous = ch
 		i = i + 1
-	if ((i < ast_expression_source_limit) && (eof == 0)): return -2
+	if ((eof == 0)): return -2
 	return -1
 
 
@@ -387,24 +383,24 @@ int ast_expression_refill(int start):
 	int index = start - (getchar_kernel_pos[file] - getchar_limit[file])
 	if ((index < 0) || (index > getchar_pos[file])): return -1
 	int kept = getchar_limit[file] - index
-	# The expression remains limited to 8 KiB, but deciding whether a
-	# newline ends it can require looking past a long following comment.
-	if ((kept < 0) || (kept >= 65536)): return -1
+	if (kept < 0): return -1
 	char* bytes = cast(char*, getchar_buf_addr[file])
 	int room = GETCHAR_BUF_CAPACITY - kept
 	if (room <= 0):
 		char* old = bytes
-		bytes = cast(char*, malloc(kept + GETCHAR_BUF_CAPACITY))
+		int capacity = expression_ast_room(GETCHAR_BUF_CAPACITY, kept, GETCHAR_BUF_CAPACITY, 1)
+		bytes = expression_ast_allocate(capacity)
 		for i in range(kept): bytes[i] = old[index + i]
 		getchar_buf_addr[file] = cast(int, bytes)
 		free(old)
-		room = GETCHAR_BUF_CAPACITY
+		room = capacity - kept
 	else:
 		for i in range(kept): bytes[i] = bytes[index + i]
 	getchar_pos[file] = getchar_pos[file] - index
 	getchar_limit[file] = kept
 	int count = read(file, bytes + kept, room)
 	if (count <= 0): return count
+	if (count > 2147483584 - getchar_kernel_pos[file]): error(c"expression source exceeds addressable offsets")
 	# P1.2b: bytes read from the file are recorded or checked as they
 	# enter the window (compiler/retained_ast.w, retained_source_window).
 	if (retained_source_window(filename, getchar_kernel_pos[file], bytes + kept, count) == 0): error(c"source changed during retained AST traversal")
@@ -421,14 +417,12 @@ void ast_expression_retain_token():
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return
 	int missing = getchar_kernel_pos[file] - getchar_limit[file] - token_start_offset
 	if (missing <= 0): return
-	if ((token_i > ast_expression_source_limit) || (missing > token_i + 1) || (nextc < 0)): return
+	if ((missing > token_i + 1) || (nextc < 0)): return
 	if (byte_offset - 1 - token_start_offset != token_i): return
 	int length = getchar_limit[file]
-	# A recovered token is bounded by the AST source limit. Decline an
-	# unusual pre-existing window rather than assume its allocation size.
-	if (length > GETCHAR_BUF_CAPACITY): return
 	char* old = cast(char*, getchar_buf_addr[file])
-	char* bytes = cast(char*, malloc(missing + length + GETCHAR_BUF_CAPACITY))
+	int capacity = expression_ast_room(GETCHAR_BUF_CAPACITY, length, missing, 1)
+	char* bytes = expression_ast_allocate(capacity)
 	# A speculative declaration lookahead can seek back to the byte
 	# after nextc, leaving both the raw token and nextc outside the new
 	# window. The tokenizer still owns that one lookahead byte.
@@ -1908,7 +1902,7 @@ int ast_expression_forward_generic(expression_ast* tree, int depth):
 	int id = expression_ast_add(tree, ast_forward_generic, -1, -1)
 	if (id < 0): return -1
 	int length = strlen(token) + 1
-	if (tree.type_names_used + length > 4096): return -1
+	expression_ast_type_names_reserve(tree, length)
 	tree.value[id] = tree.type_names_used
 	strcpy(&tree.type_names[tree.type_names_used], token)
 	tree.type_names_used = tree.type_names_used + length
@@ -3450,8 +3444,7 @@ int ast_expression_parallel(expression_ast* tree, int first):
 # Snapshot native stack bindings after semantic replay. Their address is
 # relative to the operand stack at emission, but the declaration slot,
 # argument-frame size and aggregate width belong to the resolved operand.
-# Names share the decoded-text arena: source spelling plus its terminators
-# stays within the same source-window allowance as decoded literals.
+# Names share the growing decoded-text arena with literal chunks.
 void ast_expression_capture_stack_bindings(expression_ast* tree):
 	if (target_isa == 3): return
 	for id in range(tree.count):
@@ -3465,7 +3458,7 @@ void ast_expression_capture_stack_bindings(expression_ast* tree):
 				tree.binding_offset[id] = offset
 				char* name = table + tree.value[id]
 				int length = strlen(name) + 1
-				assert1(tree.text_used + length <= 32768)
+				expression_ast_text_reserve(tree, length)
 				tree.binding_name[id] = tree.text_used
 				for i in range(length): tree.text[tree.text_used + i] = name[i]
 				tree.text_used = tree.text_used + length
@@ -3490,7 +3483,7 @@ void ast_expression_replay_event(expression_ast* tree, int id, int at):
 		if (length):
 			validate_utf8_literal(length)
 			token[length] = 0
-		assert1(tree.text_used + length + 1 <= 32768)
+		expression_ast_text_reserve(tree, length + 1)
 		for j in range(length): tree.text[tree.text_used + j] = token[j]
 		tree.text[tree.text_used + length] = 0
 		tree.value[id] = tree.text_used
@@ -3509,9 +3502,7 @@ void ast_expression_replay_event(expression_ast* tree, int id, int at):
 		int length = process_string_literal_from(tree.value[id])
 		if (tree.op[id] == 'S'): validate_utf8_literal(length)
 		token[length] = 0
-		# The source bound leaves ample space for all
-		# decoded bytes and one terminator per arena node.
-		assert1(tree.text_used + length + 1 <= 32768)
+		expression_ast_text_reserve(tree, length + 1)
 		tree.value[id] = tree.text_used
 		tree.high[id] = length
 		for j in range(length + 1): tree.text[tree.text_used + j] = token[j]
@@ -3580,7 +3571,7 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 	# Entries are (token, value) pairs; a negative value is a pointer
 	# record, otherwise a node id. Insertion order is the visit order, so
 	# a stable sort by token gives the lexing visit's sequence.
-	int* entries = cast(int*, malloc((tree.count * 2 + tree.types_count + 1) * 2 * __word_size__))
+	int* entries = expression_ast_replay_workspace(tree, tokens)
 	int used = 0
 	for i in range(tree.types_count):
 		int k = expression_ast_token_at(tree, tree.pointer_offsets[i])
@@ -3603,16 +3594,36 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 				entries[used * 2] = g
 				entries[used * 2 + 1] = id
 				used = used + 1
-	for i in range(1, used):
-		int key = entries[i * 2]
-		int value = entries[i * 2 + 1]
-		int j = i
-		while ((j > 0) && (entries[(j - 1) * 2] > key)):
-			entries[j * 2] = entries[(j - 1) * 2]
-			entries[j * 2 + 1] = entries[(j - 1) * 2 + 1]
-			j = j - 1
-		entries[j * 2] = key
-		entries[j * 2 + 1] = value
+	if (used <= 32):
+		for i in range(1, used):
+			int key = entries[i * 2]
+			int value = entries[i * 2 + 1]
+			int j = i
+			while ((j > 0) && (entries[(j - 1) * 2] > key)):
+				entries[j * 2] = entries[(j - 1) * 2]
+				entries[j * 2 + 1] = entries[(j - 1) * 2 + 1]
+				j = j - 1
+			entries[j * 2] = key
+			entries[j * 2 + 1] = value
+	else:
+		# Stable counting sort by token index. Large expressions must not
+		# make source-order diagnostics quadratic in their node count.
+		int* ordered = &entries[used * 2]
+		int* starts = &ordered[used * 2]
+		for i in range(tokens): starts[i] = 0
+		for i in range(used): starts[entries[i * 2]] = starts[entries[i * 2]] + 1
+		int total = 0
+		for i in range(tokens):
+			int count = starts[i]
+			starts[i] = total
+			total = total + count
+		for i in range(used):
+			int key = entries[i * 2]
+			int at = starts[key]
+			ordered[at * 2] = key
+			ordered[at * 2 + 1] = entries[i * 2 + 1]
+			starts[key] = at + 1
+		entries = ordered
 	int current = -1
 	for e in range(used):
 		int k = entries[e * 2]
@@ -3627,7 +3638,6 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 				ast_tokens_replayed = ast_tokens_replayed + 1
 				current = k
 			ast_expression_replay_event(tree, value, tree.tokens[k * expression_ast_token_fields])
-	free(entries)
 	# grammar/type_check.w's constant-true conditions: the last 'true'
 	# token the lexing visit would have passed.
 	for id in range(tree.count):
@@ -3712,6 +3722,23 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	if ((root >= 0) && whole && (token_start_offset < end) && peek(c":")):
 		end = token_start_offset
 		tree.end_offset = end
+	# Unlike a primary expression, cast/sizeof finish in the unary
+	# grammar and cannot acquire a postfix call. Preflight conservatively
+	# includes a following '(' across a newline; only a successful typed
+	# parse proves that it begins the next statement. Stop before the
+	# intervening whitespace so replay leaves that token's diagnostics
+	# deferred until the completed expression has been emitted.
+	if ((root >= 0) && whole && token_newline && (token_start_offset < end) && peek(c"(")):
+		int following = token_start_offset
+		int previous = expression_ast_token_at(tree, following) - 1
+		if (previous >= 0):
+			end = tree.tokens[previous * expression_ast_token_fields + 7] - 1
+			tree.end_offset = end
+			for i in range(tree.types_count):
+				if (tree.pointer_offsets[i] == following): tree.pointer_offsets[i] = end
+			for id in range(tree.count):
+				if ((tree.op[id] == ast_warning) && (tree.offset[id] == following)): tree.offset[id] = end
+			token_start_offset = end
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
 	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
@@ -3722,12 +3749,15 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	if (relex):
 		getchar_seek(file, entry.byte_offset)
 		tokenizer_snapshot_restore(&entry, tree.token_text + tree.tokens[10])
-	if (accepted == 0): return -1
+	if (accepted == 0):
+		ast_body_layout_suspend()
+		return -1
 	if (relex): ast_expression_replay_by_lexing(tree, end)
 	else: ast_expression_replay_recorded(tree, end)
 	for i in range(tree.types_count):
 		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(tree, i)
 	ast_expression_capture_stack_bindings(tree)
+	ast_body_expression_layout(tree)
 	return root
 
 
@@ -3774,6 +3804,7 @@ int ast_expression_try_root(int statement_context):
 		ast_roots_emitted = ast_roots_emitted + 1
 		return result
 	ast_roots_fallback = ast_roots_fallback + 1
+	ast_body_layout_suspend()
 	if (ast_audit_mode):
 		diag_write_cstr(c"{\"ast_fallback\": true, ")
 		diag_write_json_field(c"file", filename)

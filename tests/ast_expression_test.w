@@ -379,8 +379,7 @@ void test_ast_full_expression_coverage_gate():
 	process_result* required = ast_test_run(args, 0)
 	assert_equal(0, required.status)
 	process_result_free(required)
-	# An expression exceeding the bounded arena still proves required
-	# mode cannot silently use the streaming fallback.
+	# Expressions larger than the old arena must stay on the AST path.
 	string_builder* large = string_from(c"int main(): return ")
 	for i in range(2200): string_append(large, c"1+")
 	string_append(large, c"1\n")
@@ -393,9 +392,7 @@ void test_ast_full_expression_coverage_gate():
 	strv_set(args, 3, c"--ast-required")
 	strv_set(args, 4, path)
 	required = ast_test_run(args, 0)
-	assert_equal(1, required.status)
-	assert_contains(required.stderr_text, c"AST-required compilation encountered an unsupported expression")
-	assert_contains(required.stderr_text, path)
+	assert_equal(0, required.status)
 	process_result_free(required)
 	unlink(path)
 	free(path)
@@ -2292,6 +2289,27 @@ void test_ast_multiline_expression_hits_and_diagnostics():
 	ast_test_diagnostics(c"int main(): return (2 +\n\t3")
 	ast_test_diagnostics(c"int main(): return (2 + # no final newline")
 	ast_test_diagnostics(c"int main(): return (2 /* newline\n unclosed")
+
+
+void test_ast_unary_newline_boundary_diagnostics():
+	char* path = ast_test_path(c"_unary_boundary.w")
+	assert1(file_write_text(path, c"int plus(int a): return a + 1\nint main():\n\tint[2] data\n\tdata[0] = 42\n\tint n = plus\n\t(41)\n\tint m = data\n\t[0]\n\treturn n + m - 84\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		ast_test_image_at(compiler, c"x86", path, 1)
+		ast_test_image_at(compiler, c"x64", path, 1)
+	unlink(path)
+	free(path)
+	# A primary still consumes its real call/index continuation; unary
+	# cast/sizeof end before a fresh parenthesized statement.
+	ast_test_diagnostics(c"int plus(int a): return a + 1\nint main():\n\tint n = plus\n\t(41)\n\treturn n - 42\n")
+	ast_test_diagnostics(c"int main():\n\tint[2] data\n\tdata[0] = 42\n\tint n = data\n\t[0]\n\treturn n - 42\n")
+	ast_test_diagnostics(c"int main():\n\tint n = cast(int, 1)\n\t(missing) = 2\n\treturn n\n")
+	ast_test_diagnostics(c"int main():\n\tint n = cast(int, 0xffffffff)\n (n) = 2\n\treturn n\n")
+	ast_test_diagnostics(c"int main():\n\tint n = sizeof(int)\n\t(n) = 0xffffffff\n\treturn n\n")
+	ast_test_diagnostics(c"int main():\n\tint n = 2\n\t(n)\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\tint[2] data\n\tchar* p = cast(char*, data)\n\t(p) = 0\n\treturn 0\n")
 
 
 void test_ast_allocation_expression_hits_and_diagnostics():

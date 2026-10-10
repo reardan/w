@@ -1,3 +1,6 @@
+# This deliberately invalid conditional tests its type-mismatch warning.
+# Keep diagnostic fallback available; it is not a positive AST-coverage case.
+# wfixture: --ast-full-expressions
 # expect_stderr: conditional arms type mismatch: expected 'int', got 'char*'
 int main():
 	int x = 1

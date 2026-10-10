@@ -187,6 +187,7 @@ int detached_guard_prepare(char* condition, int is_loop):
 	if (is_loop):
 		control.loop = cast(loop_ast*, retained_parse_record(&local_loop, sizeof(loop_ast)))
 		control.loop.kind = ast_loop_while
+		ast_loop_layout(control.loop, stack_pos)
 	else:
 		control.statement = cast(statement_ast*, retained_parse_record(&local_arm, sizeof(statement_ast)))
 		control.statement.kind = ast_stmt_if
@@ -373,6 +374,7 @@ int detached_range_prepare(int slot):
 	loop.kind = ast_loop_range
 	loop.variable_slot = slot
 	loop.argument_count = 1
+	ast_loop_layout(loop, slot)
 	statement_ast local_value
 	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
 	value.kind = ast_stmt_range_argument
@@ -399,6 +401,7 @@ int detached_switch_prepare():
 	statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))
 	node.kind = ast_stmt_switch
 	node.unwind_slots = 1
+	node.stack_depth = stack_pos + 1
 	statement_ast local_value
 	statement_ast* value = cast(statement_ast*, retained_parse_record(&local_value, sizeof(statement_ast)))
 	value.kind = ast_stmt_switch_value
@@ -509,3 +512,196 @@ void test_retained_for_and_switch_records_outlive_parse_frame():
 			codepos = start
 			be_notes_reset()
 	retained_semantic_mode = 0
+
+
+void test_control_layout_ignores_backend_stack():
+	detached_init()
+	int before = codepos
+	int depth = stack_pos
+	stack_pos = 999
+	loop_ast loop
+	loop.kind = ast_loop_range
+	loop.variable_slot = 7
+	for arguments in range(1, 4):
+		loop.argument_count = arguments
+		ast_loop_layout(&loop, 7)
+		assert_equal(7, loop.entry_depth)
+		assert_equal(7 + arguments, loop.body_depth)
+		assert_equal(arguments, loop.cleanup_slots)
+		int end = 8
+		if (arguments >= 2): end = 9
+		assert_equal(end, loop.end_slot)
+	loop.kind = ast_loop_cursor
+	ast_loop_layout(&loop, 11)
+	assert_equal(12, loop.container_slot)
+	assert_equal(13, loop.cursor_slot)
+	assert_equal(13, loop.body_depth)
+	assert_equal(2, loop.cleanup_slots)
+	loop.kind = ast_loop_while
+	ast_loop_layout(&loop, 17)
+	assert_equal(17, loop.body_depth)
+	assert_equal(0, loop.cleanup_slots)
+	statement_ast block
+	ast_block_layout(&block, 5)
+	assert_equal(5, block.stack_depth)
+	statement_ast jump
+	ast_jump_layout(&jump, 17, 5, 123, 1)
+	assert_equal(12, jump.unwind_slots)
+	assert_equal(123, jump.target)
+	assert_equal(999, stack_pos)
+	assert_equal(before, codepos)
+	stack_pos = depth
+
+
+void test_goto_scope_validation_precedes_branch_emission():
+	detached_init()
+	int before = codepos
+	int depth = stack_pos
+	int labels = goto_label_base
+	int pending = goto_pending_base
+	goto_scope_begin()
+	# Interning order need not be goto order, and an abandoned parse may
+	# intern a name without registering a successful goto to it.
+	int late = goto_label_intern(c"later-reference")
+	int first = goto_label_intern(c"first-reference")
+	goto_label_intern(c"abandoned-reference")
+	goto_label_note_reference(first)
+	goto_label_note_reference(late)
+	assert_equal(first, goto_scope_unresolved())
+	goto_label_defined[first] = 1
+	assert_equal(late, goto_scope_unresolved())
+	int nested_labels = goto_label_base
+	int nested_pending = goto_pending_base
+	goto_scope_begin()
+	int nested = goto_label_intern(c"later-reference")
+	goto_label_note_reference(nested)
+	assert_equal(nested, goto_scope_unresolved())
+	goto_label_defined[nested] = 1
+	goto_scope_end(nested_labels, nested_pending)
+	assert_equal(late, goto_scope_unresolved())
+	goto_label_defined[late] = 1
+	assert_equal(-1, goto_scope_unresolved())
+	# No machine branch exists: all semantic labels are known while their
+	# code offsets are still unbound and the pending patch list is empty.
+	assert_equal(-1, goto_label_pos[first])
+	assert_equal(-1, goto_label_pos[late])
+	assert_equal(goto_pending_base, goto_pending_count)
+	goto_scope_validate()
+	goto_scope_end(labels, pending)
+	assert_equal(before, codepos)
+	assert_equal(depth, stack_pos)
+
+
+void test_symbolic_jump_binds_regions_only_during_emission():
+	detached_init()
+	ast_expressions_mode = 2
+	ast_retain_mode = 1
+	ast_emit_retained_mode = 1
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	int before = codepos
+	int function = retained_enter(retained_function, c"symbolic-control.w", 0, 1, 1, c"function")
+	int parent = retained_enter(retained_statement, c"symbolic-control.w", 0, 1, 1, c"while")
+	loop_ast local_loop
+	loop_ast* loop = cast(loop_ast*, retained_parse_record(&local_loop, sizeof(loop_ast)))
+	loop.kind = ast_loop_while
+	loop.break_target = -123
+	loop.continue_target = -456
+	ast_loop_layout(loop, 0)
+	control_ast_walk local_control
+	control_ast_walk* control = cast(control_ast_walk*, retained_parse_record(&local_control, sizeof(control_ast_walk)))
+	control.loop = loop
+	int walk = retained_walk_begin(cast(int, emit_guard_ast_walk), 0)
+	control_ast_walk_attach(walk, control)
+	int child = retained_enter(retained_statement, c"symbolic-control.w", 1, 1, 2, c"break")
+	statement_ast local_jump
+	statement_ast* jump = cast(statement_ast*, retained_parse_record(&local_jump, sizeof(statement_ast)))
+	jump.kind = ast_stmt_break
+	jump.stack_depth = 0
+	jump.target = -999
+	ast_jump_resolve_retained(jump)
+	assert_equal(1, jump.valid_jump)
+	assert_equal(1, jump.control_kind)
+	assert_equal(cast(int, loop), cast(int, jump.control_record))
+	assert_equal(0, jump.unwind_slots)
+	assert_equal(before, codepos)
+	retained_leave(child, 2)
+	retained_leave(parent, 2)
+	retained_leave(function, 2)
+	# Analyze first, then assign the native region. The jump's stale
+	# numeric target must never be used by the emitter.
+	be_notes_reset()
+	loop.break_target = be_ctrl_block()
+	mov_eax_int(41)
+	emit_simple_statement_ast(jump)
+	mov_eax_int(-1)
+	be_ctrl_end(loop.break_target)
+	ret()
+	detached_callback* run = cast(detached_callback*, code + before)
+	assert_equal(41, run())
+	codepos = before
+	be_notes_reset()
+	retained_rollback(&checkpoint)
+	retained_walk_release()
+
+
+void test_layout_cursor_rollback_and_nested_functions():
+	detached_init()
+	ast_expressions_mode = 2
+	ast_retain_mode = 1
+	ast_emit_retained_mode = 1
+	retained_checkpoint entry
+	retained_capture(&entry)
+	int before = codepos
+	int depth = stack_pos
+	stack_pos = 999
+	int function = retained_enter(retained_function, c"layout-cursor.w", 0, 1, 1, c"outer")
+	ast_body_layout_begin(function, 4)
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	int statement = retained_enter(retained_statement, c"layout-cursor.w", 1, 1, 2, c"local")
+	ast_body_statement_begin(statement)
+	ast_body_reserve(3)
+	assert_equal(7, ast_body_depth())
+	assert_equal(999, stack_pos)
+	assert_equal(4, retained_record_at(function).layout_depth)
+	# A failed statement never publishes its partially advanced cursor.
+	retained_rollback(&checkpoint)
+	assert_equal(4, ast_body_depth())
+	statement = retained_enter(retained_statement, c"layout-cursor.w", 1, 1, 2, c"local")
+	ast_body_statement_begin(statement)
+	ast_body_reserve(3)
+	stack_pos = 7
+	ast_body_statement_end(statement)
+	retained_leave(statement, 2)
+	assert_equal(7, ast_body_depth())
+	int nested = retained_enter(retained_function, c"layout-cursor.w", 2, 1, 3, c"nested")
+	ast_body_layout_begin(nested, 2)
+	statement = retained_enter(retained_statement, c"layout-cursor.w", 3, 1, 4, c"nested-local")
+	ast_body_statement_begin(statement)
+	ast_body_reserve(6)
+	assert_equal(8, ast_body_depth())
+	stack_pos = 8
+	ast_body_statement_end(statement)
+	retained_leave(statement, 4)
+	retained_leave(nested, 4)
+	assert_equal(7, ast_body_depth())
+	# An unsupported expression suspends only the current statement until
+	# success. Recovery must not poison an otherwise analyzable parent.
+	retained_capture(&checkpoint)
+	statement = retained_enter(retained_statement, c"layout-cursor.w", 4, 1, 5, c"aggregate")
+	ast_body_statement_begin(statement)
+	ast_body_layout_suspend()
+	retained_rollback(&checkpoint)
+	assert_equal(1, retained_record_at(function).layout_active)
+	assert_equal(7, ast_body_depth())
+	statement = retained_enter(retained_statement, c"layout-cursor.w", 4, 1, 5, c"aggregate")
+	ast_body_statement_begin(statement)
+	ast_body_layout_suspend()
+	ast_body_statement_end(statement)
+	retained_leave(statement, 5)
+	assert_equal(-1, retained_record_at(function).layout_active)
+	retained_leave(function, 5)
+	retained_rollback(&entry)
+	assert_equal(before, codepos)
+	stack_pos = depth

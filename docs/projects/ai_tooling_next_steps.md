@@ -678,6 +678,15 @@ is cheap and catches the case that bit here.
 
 ## Darwin bootstrap from a clean checkout is broken with the pinned seeds (2026-09-25)
 
+**Qualification follow-up (2026-10-10, #607):** the local unpinned seed again
+stalled, while an isolated SHA256-verified v0.3.0 seed compiled current main
+(`cc2d322d`) to a native Darwin fixpoint. Also, the native executor's static
+manifest fallback leaves `tests_darwin` empty: it reports success without running
+tagged targets, since tag expansion only happens during manifest generation.
+Run native targets by name until the fallback expands tags (or native directory
+scanning is enabled). The new `atomic_native_darwin_test` target was exercised
+explicitly, together with `verify_darwin` and `arm64_optimization_darwin_test`.
+
 **Update (2026-09-25):** `SEEDS` now pins v0.3.0. Its `w-arm64-macos` is the
 release workflow's native darwin fixpoint of current sources, which should
 clear this. It has not yet been checked from a clean checkout on a Mac.
@@ -1228,3 +1237,17 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   rename over the old one, which is safe while the old one runs. Also,
   `timeout=0` (no limit) is rejected by wbuildgen, so a long-running
   target has to spell out a large value such as `timeout=7200000`.
+
+
+## Explicit fixture front ends in the AST sweep (2026-10-09, #489)
+
+The post-rebase `ast_expression_suite` injected `--ast-full-expressions`
+into diagnostic fixtures explicitly selecting `# wfixture: --streaming`,
+so the compiler rejected conflicting flags before reaching their diagnostics.
+`wfixture` now preserves explicit `--streaming` and `--ast-*` selectors,
+matching the audit transform for direct compiler steps, and allocates argv
+for the flags actually emitted. Ordinary positive fixtures, including
+architecture-only selectors, still receive `--ast-required`. The deliberately
+invalid conditional-arm warning fixture explicitly selects permissive AST
+mode so its diagnostic fallback remains testable. Keep new mode-specific
+fixtures explicit; do not relax required mode for positive fixtures globally.
