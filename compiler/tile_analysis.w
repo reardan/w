@@ -301,6 +301,9 @@ void tile_analyze_statements(tile_program* program, tile_node* first):
 
 
 void tile_analyze(tile_program* program):
+	# Analysis may be repeated after owned syntax changes. A lowering plan is
+	# valid only for the analysis that produced it; old plans remain arena-owned.
+	program.plan = 0
 	if ((program.width < 1) || (program.width > 1024)):
 		tile_error_at(program.bound, c"tile width must be a constant from 1 to 1024")
 	if (program.binding_count > 256):

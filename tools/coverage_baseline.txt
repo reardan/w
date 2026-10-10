@@ -9,19 +9,22 @@
 # margin. Unrelated REPL/debugger floors retain the prior baseline.
 # Raise a floor in the PR that adds the tests; lower one only with
 # a reason in the commit message.
+# Owned scalar recording and tile-plan API harnesses (2026-10-09) raise
+# grammar lines to 96.9% and code-generator/grammar branches to 88.3/85.2%.
+# Raise those floors by the measured gains, preserving the existing margin.
 # The wsh launcher/translation regressions measure repl/ branches at
 # 74.3%; keep that gain. The frontend move changes the line denominator:
 # repl/ lines measure 91.9%, so the existing 91.5% line floor stays.
 code_generator/ 96.0
 compiler/ 93.5
-grammar/ 96.0
+grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
 repl.w 80.5
 w.w 99.0
 diagnostics 50.5
-branches:code_generator/ 87.5
+branches:code_generator/ 87.7
 branches:compiler/ 83.0
-branches:grammar/ 84.5
+branches:grammar/ 84.6
 branches:repl/ 73.5
 branches:debugger/ 64.0

@@ -122,6 +122,7 @@ char* retained_query_kind(int kind):
 	if (kind == retained_local): return c"local"
 	if (kind == retained_tile_expression): return c"tile_expression"
 	if (kind == retained_tile_statement): return c"tile_statement"
+	if (kind == retained_function_expression): return c"function_expression"
 	return c"unknown"
 
 

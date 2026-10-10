@@ -18,6 +18,9 @@ struct function_ast:
 	int outer_label_base
 	int outer_pending_base
 	char* name
+	# Set by ast_record_scalar_function; the ordinary incremental path
+	# continues to use the boundary fields above.
+	function_body_ast* owned_body
 
 struct function_parameter_ast:
 	int index

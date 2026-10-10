@@ -455,14 +455,14 @@ void __w_gpu_launch(char* name, int n, char* vals, int count):
 	__w_gpu_launch_raw(name, grid, block, vals, count)
 
 
-# Tile programs assign width logical elements to one 256-thread block.
+# Tile programs assign width logical elements to one planned thread block.
 # Explicit matrix tile programs use width=1: n then counts programs.
 # Divide before rounding up so a large positive n cannot overflow.
-void __w_gpu_launch_tiles(char* name, int n, int width, char* vals, int count):
+void __w_gpu_launch_tiles(char* name, int n, int width, int threads, char* vals, int count):
 	if (n <= 0): return
 	int grid = n / width
 	if (n % width != 0): grid = grid + 1
-	__w_gpu_launch_raw(name, grid, 256, vals, count)
+	__w_gpu_launch_raw(name, grid, threads, vals, count)
 
 
 # Cached driver+device probe: 0 unknown, 1 usable, 2 unusable. Unlike

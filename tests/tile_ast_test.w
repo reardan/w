@@ -146,12 +146,36 @@ void test_tile_body_is_owned_and_detached():
 	assert_equal(depth, stack_pos)
 	assert_equal(1, program.analyzed)
 	assert_equal(1, program.body.binding.rank)
+	# Planning also survives the discarded tokenizer and replaced host symbols.
+	tile_lowering_plan* plan = tile_plan(program)
+	assert_equal(4, plan.lane_passes)
+	assert_equal(256, plan.threads)
+	assert_equal(1023, tile_plan_element(plan, 255, 3))
+	assert_equal(before, codepos)
+	assert_equal(body, ptx_body_pos)
+	assert_equal(module, ptx_module_pos)
+	assert_equal(depth, stack_pos)
 	tile_ptx_emit(program)
 	assert1(ptx_module_pos > module)
 	assert_equal(before, codepos)
 	assert_equal(depth, stack_pos)
 	assert1(contains(ptx_module_buf, c"ld.f32"))
 	assert1(contains(ptx_module_buf, c"st.f32"))
+	# Artificial layout choices make hardcoded PTX mapping regressions visible.
+	plan.lane_stride = 128
+	plan.lane_passes = 2
+	plan.logical_width = 777
+	plan.row_shift = 3
+	plan.col_mask = 7
+	plan.element_shift = 3
+	int planned_start = ptx_module_pos
+	tile_ptx_emit(program)
+	char* planned = ptx_module_buf + planned_start
+	assert1(contains(planned, c"add.u64 %tlane, %ttid, 128;"))
+	assert1(!contains(planned, c"add.u64 %tlane, %ttid, 256;"))
+	assert1(contains(planned, c"mul.lo.u64 %tindex, %tprogram, 777;"))
+	assert1(contains(planned, c"shr.u64 %trow, %ttid, 3;"))
+	assert1(contains(planned, c"and.b64 %tcol, %ttid, 7;"))
 	retained_rollback(&entry)
 	table_pos = symbols
 	sym_index_sync()

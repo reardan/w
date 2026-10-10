@@ -34,6 +34,7 @@ const int retained_import = 7
 const int retained_local = 8
 const int retained_tile_expression = 9
 const int retained_tile_statement = 10
+const int retained_function_expression = 11
 
 struct retained_source:
 	char* path
@@ -185,6 +186,7 @@ struct retained_record:
 	# A complete tile region, owned by the same checkpointed arena. Kept
 	# opaque here so non-compiler tree consumers need not import its grammar.
 	char* tile_payload
+	char* function_payload
 
 struct retained_checkpoint:
 	char* pending_import
@@ -241,6 +243,9 @@ int retained_arena_count
 int retained_arena_room
 int retained_arena_index
 int retained_arena_offset
+# Cached payloads on surviving owners must not reuse an arena suffix after
+# rollback. This generation is monotonic and is never checkpoint-restored.
+int retained_arena_generation
 # Interned spellings every group and operand share.
 char* retained_name_expression
 char* retained_name_empty
@@ -506,6 +511,7 @@ retained_record* retained_record_new(int kind, int parent, int source, int start
 	node.layout_active = 0
 	node.layout_depth = 0
 	node.tile_payload = 0
+	node.function_payload = 0
 	return node
 
 
@@ -869,6 +875,7 @@ void retained_capture(retained_checkpoint* checkpoint):
 
 
 void retained_rollback(retained_checkpoint* checkpoint):
+	retained_arena_generation = retained_arena_generation + 1
 	retained_pending_import = checkpoint.pending_import
 	retained_last_path = 0
 	retained_append_none()

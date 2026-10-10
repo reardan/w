@@ -165,8 +165,10 @@ of the last run, preserving its failure status.
 
 ### Parallel coverage jobs
 
-CI prepares the eight instrumented builds once, executes four target shards,
-and merges the counters before applying either coverage gate:
+CI prepares the compiler, REPL, shell, debugger and compiler API harness builds once,
+executes four target shards, and merges the counters before applying either
+coverage gate. Each shard also runs the API harnesses, stores their counters
+beside the matching maps, and includes harness failures in its completion receipt:
 
 ```sh
 bin/wcoverage suite --out bin/coverage --prepare-only

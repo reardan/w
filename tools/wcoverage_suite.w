@@ -8,8 +8,9 @@ Usage: wcoverage suite [--out <dir>] [--baseline <file>] [--prefix <p>]...
                        [--merge-shards N] [<target>...]
 
 1. Builds --coverage x86 and x64 copies of the compiler (w.w), the REPL
-   (repl.w), shell (wsh.w) and wdbg (debugger/debugger.w) into <dir> (default
-   bin/coverage) with bin/wv2.
+   (repl.w), shell (wsh.w), wdbg (debugger/debugger.w), and compiler API
+   test harnesses into <dir> (default bin/coverage) with bin/wv2. The
+   harnesses exercise owned-tree APIs ordinary subprocesses never call.
 2. Runs 'bin/wexec --no-cache --keep-going <target>...' (default: tests)
    with $W_COVERAGE_COMPILER[_64], $W_COVERAGE_REPL[_64],
    $W_COVERAGE_WSH[_64], $W_COVERAGE_WDBG[_64] and $W_COVERAGE_OUT set, so
@@ -19,6 +20,8 @@ Usage: wcoverage suite [--out <dir>] [--baseline <file>] [--prefix <p>]...
    instrumented build (compiler/coverage_exec.w) and appends its counters
    to <dir>/.dumps/<tag>_<arch>/<pid>.raw. --no-run reuses the dumps of an
    earlier run (to re-render reports or retry a baseline).
+   Then runs each API harness directly with its own W_PROFILE_OUT dump;
+   harness failures fail the suite after the reports have been written.
 3. Merges every map with its dumps and writes, under <dir>:
      summary.txt               per top-level directory
      files.txt                 per file
@@ -55,6 +58,7 @@ struct wcov_suite_build:
 	char* binary     # <dir>/<tag>_<arch>_cov
 	char* dumps      # <dir>/.dumps/<tag>_<arch>
 	int x64
+	int harness      # direct test run, with no compiler redirect variable
 
 
 char* wcov_suite_report_dir
@@ -84,16 +88,25 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	sources.push(c"repl.w")
 	sources.push(c"wsh.w")
 	sources.push(c"debugger/debugger.w")
+	sources.push(c"tests/tile_analysis_unit_test.w")
+	sources.push(c"tests/tile_ast_test.w")
+	sources.push(c"tests/ast_function_record_test.w")
 	list[char*] tags = new list[char*]
 	tags.push(c"compiler")
 	tags.push(c"repl")
 	tags.push(c"wsh")
 	tags.push(c"wdbg")
+	tags.push(c"tile_analysis_test")
+	tags.push(c"tile_ast_test")
+	tags.push(c"function_record_test")
 	list[char*] variables = new list[char*]
 	variables.push(c"W_COVERAGE_COMPILER")
 	variables.push(c"W_COVERAGE_REPL")
 	variables.push(c"W_COVERAGE_WSH")
 	variables.push(c"W_COVERAGE_WDBG")
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
 	for i in range(sources.length):
 		for x64 in range(2):
 			wcov_suite_build* b = new wcov_suite_build()
@@ -102,9 +115,10 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 			b.x64 = x64
 			char* arch = c"x86"
 			b.variable = variables[i]
+			b.harness = b.variable == 0
 			if (x64):
 				arch = c"x64"
-				b.variable = strjoin(variables[i], c"_64")
+				if (b.variable != 0): b.variable = strjoin(b.variable, c"_64")
 			# Daemons ignore dot directories: per-counter dump writes must
 			# not overflow their source-change inotify queues.
 			b.dumps = f"{out}/.dumps/{tags[i]}_{arch}"
@@ -130,7 +144,8 @@ void wcov_suite_build_all(list[wcov_suite_build*] builds):
 
 char** wcov_suite_env(char** base, char* dumps, list[wcov_suite_build*] builds):
 	char** env = env_copy_with(base, c"W_COVERAGE_OUT", dumps)
-	for wcov_suite_build* b in builds: env = env_copy_with(env, b.variable, b.binary)
+	for wcov_suite_build* b in builds:
+		if (b.variable != 0): env = env_copy_with(env, b.variable, b.binary)
 	# Large differential tests spawn thousands of instrumented compilers.
 	# Allow an hour per step for counter overhead, preserving caller overrides.
 	char* timeout = 0
@@ -357,6 +372,20 @@ int wcov_suite_main():
 		println2(f"wcoverage suite: running {target_set} ({identity}) under the instrumented builds")
 		started = time_monotonic_ms()
 		failed = wcov_suite_spawn(argv, env)
+		# Run the prepared API binaries in every shard. Their exact maps
+		# travel with that shard, and failures must enter its receipt too.
+		for k in range(builds.length):
+			wcov_suite_build* b = builds[k]
+			if (b.harness == 0): continue
+			char** test_argv = strv_new(1)
+			strv_set(test_argv, 0, b.binary)
+			wcov_suite_build* destination = run_builds[k]
+			char** test_env = env_copy_with(env, c"W_PROFILE_OUT", f"{destination.dumps}/harness.raw")
+			println2(f"wcoverage suite: running compiler API harness {b.binary}")
+			int test_status = wcov_suite_spawn(test_argv, test_env)
+			if (test_status != 0):
+				println2(f"wcoverage suite: compiler API harness {b.binary} failed: {test_status}")
+				failed = 1
 		wcov_suite_timing(run_out, c"tests", started)
 		wcov_suite_save(f"{run_out}/run.status", f"wcoverage suite v1\n{identity}\n{target_set}\n{failed}\n")
 		if (failed != 0): println2(f"wcoverage suite: test run exited {failed}; retaining counters and failing completeness")
