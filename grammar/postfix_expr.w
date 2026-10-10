@@ -457,8 +457,16 @@ postfix-expr:
 	postfix-expr . identifier
 
  */
+int ivopt_stream_subscript();   /* compiler/ivopt.w (unit O7) */
+
+
 int postfix_expr():
-	int type = primary_expr()
+	# O7 (compiler/ivopt.w): a subscript an induction pointer holds is
+	# the pointer register's address, like the AST emitter's 'i' node
+	int type = -1
+	if (ivopt_live): type = ivopt_stream_subscript()
+	if (type >= 0): expression_lhs_readonly = 0
+	else: type = primary_expr()
 	# A pending generic instantiation from primary_expr: consume the
 	# signature immediately so nested expressions cannot pick it up.
 	int generic_sig = generic_pending_call_signature
