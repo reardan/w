@@ -332,10 +332,31 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 # Predeclare lexical names before evaluating any statement (TDZ), and hoist
 # ordinary callable declarations in this lexical scope.
 void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
+	# Check this scope before installing any bindings. A failed subsequent
+	# script must not leave earlier declarations permanently uninitialized.
 	for i in range(node.children.length):
 		js_node* statement = node.children[i]
 		if (js_kind(statement, c"variable")):
 			for j in range(statement.children.length):
+				js_text* key = js_runtime_key(statement.children[j].children[0].text)
+				int duplicate = js_runtime_property(env, key) != 0
+				js_text_free(key)
+				if (duplicate):
+					js_runtime_fail(rt, 2, c"duplicate lexical binding")
+					return
+		else if (js_kind(statement, c"function")):
+			js_text* key = js_runtime_key(statement.text)
+			int duplicate = js_runtime_property(env, key) != 0
+			js_text_free(key)
+			if (duplicate):
+				js_runtime_fail(rt, 2, c"duplicate callable binding")
+				return
+	for i in range(node.children.length):
+		if (rt.completion.status != 0): return
+		js_node* statement = node.children[i]
+		if (js_kind(statement, c"variable")):
+			for j in range(statement.children.length):
+				if (rt.completion.status != 0): return
 				char* name = statement.children[j].children[0].text
 				js_text* key = js_runtime_key(name)
 				if (js_runtime_property(env, key) != 0): js_runtime_fail(rt, 2, c"duplicate lexical binding")
@@ -584,6 +605,21 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 	return rt.undefined_value
 
 
+# The initializer and each iteration have distinct let environments. In
+# particular a closure created by the initializer cannot observe body writes.
+js_value* js_runtime_iteration(js_runtime* rt, js_value* scope):
+	js_value* next = js_runtime_environment(rt, scope.parent)
+	for i in range(scope.properties.length):
+		if (rt.completion.status != 0): break
+		js_value* binding = scope.properties[i]
+		js_runtime_put(rt, next, binding.key, binding.value)
+		js_value* copy = js_runtime_property(next, binding.key)
+		if (copy != 0):
+			copy.immutable = binding.immutable
+			copy.initialized = binding.initialized
+	return next
+
+
 js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 	int is_for = js_kind(node, c"for")
 	int is_do = js_kind(node, c"do_while")
@@ -596,7 +632,7 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 		body = node.children[3]
 		js_node* init = node.children[0]
 		if (js_kind(init, c"variable")):
-			lexical = 1
+			lexical = strcmp(init.text, c"let") == 0
 			scope = js_runtime_environment(rt, env)
 			# A temporary borrowed wrapper drives the ordinary TDZ declaration pass.
 			js_node* wrapper = js_node_new(c"block", c"")
@@ -605,6 +641,7 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 			wrapper.children.pop()
 			js_node_free(wrapper)
 		js_runtime_eval_node(rt, init, scope)
+		if (lexical && rt.completion.status == 0): scope = js_runtime_iteration(rt, scope)
 	int first = 1
 	while (rt.completion.status == 0):
 		if ((is_do == 0 || first == 0) && js_kind(condition, c"empty") == 0):
@@ -618,14 +655,7 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 		if (rt.completion.status == 4): rt.completion.status = 0
 		if (rt.completion.status != 0): break
 		if (is_for):
-			if (lexical):
-				js_value* next = js_runtime_environment(rt, env)
-				for i in range(scope.properties.length):
-					js_value* binding = scope.properties[i]
-					js_runtime_put(rt, next, binding.key, binding.value)
-					js_value* copy = js_runtime_property(next, binding.key)
-					if (copy != 0): copy.immutable = binding.immutable
-				scope = next
+			if (lexical): scope = js_runtime_iteration(rt, scope)
 			js_runtime_eval_node(rt, node.children[2], scope)
 	return rt.undefined_value
 
@@ -968,10 +998,9 @@ int js_runtime_supported(js_node* node):
 	return 1
 
 
-# Returns the instance-owned completion, overwritten by the next evaluation.
-# Limit aborts return control synchronously; they are not resumable. Side effects
-# already performed remain visible, exactly as with a thrown exception.
-js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int budget):
+# Both script evaluation and host invocation replace the instance completion.
+# Reentrant entry returns null without disturbing the active operation.
+int js_runtime_begin(js_runtime* rt, int budget):
 	if (rt.running): return 0
 	rt.completion.status = 0
 	rt.completion.value = rt.undefined_value
@@ -979,6 +1008,47 @@ js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int bud
 	rt.completion.steps = 0
 	rt.depth = 0
 	rt.remaining = budget
+	return 1
+
+
+# Call a borrowed same-instance function with borrowed same-instance arguments.
+# The host roots retained functions/arguments across intervening collection.
+# Invocation consumes one step plus AST visits, and retains no new script AST.
+js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_value*] arguments, int budget):
+	if (js_runtime_begin(rt, budget) == 0): return 0
+	if (budget <= 0 || rt.max_depth <= 0):
+		js_runtime_fail(rt, 5, c"JavaScript execution limit")
+		return rt.completion
+	if (callable == 0 || callable.owner != rt):
+		js_runtime_fail(rt, 2, c"foreign or null callable")
+		return rt.completion
+	if (arguments == 0):
+		js_runtime_fail(rt, 2, c"null argument list")
+		return rt.completion
+	if (arguments.length > rt.max_properties):
+		js_runtime_fail(rt, 5, c"JavaScript host argument count limit")
+		return rt.completion
+	for i in range(arguments.length):
+		js_value* argument = arguments[i]
+		if (argument == 0 || argument.owner != rt):
+			js_runtime_fail(rt, 2, c"foreign or null argument")
+			return rt.completion
+	rt.remaining = budget - 1
+	rt.completion.steps = 1
+	rt.depth = 1
+	rt.running = 1
+	js_value* value = js_runtime_call(rt, callable, arguments)
+	rt.running = 0
+	rt.depth = 0
+	if (rt.completion.status == 0): rt.completion.value = value
+	return rt.completion
+
+
+# Returns the instance-owned completion, overwritten by the next evaluation
+# or invocation. Limit aborts return synchronously; they are not resumable.
+# Side effects already performed remain visible, as with a thrown exception.
+js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int budget):
+	if (js_runtime_begin(rt, budget) == 0): return 0
 	if (budget <= 0 || length < 0 || length > rt.max_source_bytes || rt.scripts.length >= rt.max_scripts):
 		js_runtime_fail(rt, 5, c"JavaScript input or execution limit")
 		return rt.completion
@@ -997,37 +1067,6 @@ js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int bud
 	rt.scripts.push(tree)
 	rt.running = 1
 	js_value* value = js_runtime_eval_node(rt, tree, rt.global)
-	rt.running = 0
-	if (rt.completion.status == 0): rt.completion.value = value
-	return rt.completion
-
-
-# Event loops can invoke a retained script callback without constructing source.
-# Callable/arguments must belong to rt; they are borrowed for this synchronous
-# call. The completion is instance-owned, just like js_runtime_eval's result.
-js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_value*] arguments, int budget):
-	if (rt.running): return 0
-	rt.completion.status = 0
-	rt.completion.value = rt.undefined_value
-	rt.completion.message = c""
-	rt.completion.steps = 0
-	rt.depth = 0
-	rt.remaining = budget
-	if (budget <= 0):
-		js_runtime_fail(rt, 5, c"JavaScript execution limit")
-		return rt.completion
-	if (callable == 0 || callable.owner != rt || arguments == 0):
-		js_runtime_fail(rt, 2, c"foreign or null callback/arguments")
-		return rt.completion
-	if (arguments.length > rt.max_properties):
-		js_runtime_fail(rt, 5, c"JavaScript argument limit")
-		return rt.completion
-	for i in range(arguments.length):
-		if (arguments[i] == 0 || arguments[i].owner != rt):
-			js_runtime_fail(rt, 2, c"foreign or null callback argument")
-			return rt.completion
-	rt.running = 1
-	js_value* value = js_runtime_call(rt, callable, arguments)
 	rt.running = 0
 	if (rt.completion.status == 0): rt.completion.value = value
 	return rt.completion

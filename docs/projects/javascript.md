@@ -157,7 +157,7 @@ Create an independent instance with `js_runtime_new`, call
 `js_runtime_free`. Instances have separate heaps, global lexical environments,
 script storage and roots. Do not share an instance concurrently. Distinct
 instances share no mutable runtime state. The returned `js_completion` is
-instance-owned and overwritten by the next evaluation:
+instance-owned and overwritten by the next evaluation or host invocation:
 
 | Status | Meaning |
 | --- | --- |
@@ -183,7 +183,8 @@ The initial semantic subset is deliberately explicit:
   hoisted ordinary function declarations within each block, named/anonymous
   function expressions, synchronous arrows with simple parameters and expression
   or block bodies, recursive calls, captured mutable environments and
-  per-iteration `for (let ...)` environments.
+  per-iteration `for (let ...)` environments, including a separate initializer
+  environment for captured bindings.
 - Dense array literals, bounded index writes and readable `length`; plain data
   objects, shorthand properties, dot/computed property access and mutation.
   String length/indexing use UTF-16 code units.
@@ -206,7 +207,9 @@ arrow parameters, implicit operator coercions, prototype chains,
 accessors, standard built-ins, array length writes and exotic property-key
 conversions are also outside this subset and report unsupported status when
 encountered. Objects expose only their own data properties. Function declarations
-are lexical bindings and duplicate declarations across evaluations fail. These
+are lexical bindings and duplicate declarations across evaluations fail. Scope
+conflicts are checked before installing bindings, so a rejected script does not
+leave its otherwise fresh declarations in the temporal dead zone. These
 boundaries are not claims of complete ECMAScript semantics; #492 remains the
 broader syntax/conformance track. Arrows capture the lexical environment;
 `this`, `super` and ordinary functions’ implicit `arguments` object are not yet
@@ -221,18 +224,23 @@ return a value owned by this same instance. Use `js_runtime_number`,
 host property names; `js_runtime_property/put` accept explicit UTF-16 keys.
 Foreign-instance values are rejected. Host code must cooperate with its own
 cancellation/deadlines; the interpreter cannot preempt native code. Recursive
-evaluation of the same instance returns null.
+evaluation or invocation of the same instance returns null without changing the
+active completion.
 
-`js_runtime_invoke(rt, callback, arguments, step_budget)` invokes a retained
-script or host callback synchronously, using the same completion and execution
-limits as evaluation. This gives an external browser event loop a way to dispatch
-native event data without constructing JavaScript source. It validates instance
-ownership for the callable and each argument, and rejects recursive invocation
-of the same instance with null. The argument list and values are borrowed during
-the call; retain handlers across collection with `js_runtime_root`. Invocation
-retains no new script and does not consume `max_scripts`. Host callbacks still
-must cooperate with cancellation. An argument count above `max_properties`
-returns status 5.
+Use `js_runtime_invoke(rt, callable, arguments, step_budget)` to call a retained
+JavaScript closure from a native event loop or another host entry point. Pass a
+non-null borrowed `list[js_value*]` (an empty list means no arguments); the
+callable and every argument must belong to the instance. The argument count is
+bounded by `max_properties`. Foreign/null values or
+non-callables return a thrown runtime error. The result uses the same completion
+statuses and ownership as `js_runtime_eval`. Invocation consumes one dispatch
+step plus the usual AST-visit steps, enforces depth/value limits, and propagates
+JavaScript or host exceptions. Native callbacks remain cooperatively bounded.
+It does not parse or retain a new script, so invoking a closure still works at
+the retained-script cap. Register roots for any callable or arguments held by
+host code across collection; the latest returned/thrown value is automatically
+rooted by its completion. This entry point implements execution only: the host
+owns event queues, timers and scheduling.
 
 [`examples/javascript/events.w`](../../examples/javascript/events.w) retains an
 arrow handler, performs collection, and dispatches a plain event object whose
@@ -277,7 +285,7 @@ comments and formatting.
 ./wbuild javascript_lexical_test javascript_parser_test javascript_validation_test \
   javascript_bindings_test javascript_restrictions_test javascript_ast_test \
   javascript_roundtrip_test javascript_transform_test javascript_text_test \
-  javascript_runtime_test javascript_browser_runtime_test
+  javascript_runtime_test javascript_runtime_invoke_test javascript_browser_runtime_test
 ./wbuild javascript_compatibility
 # Native Apple Silicon equivalent, including generic runtime/importer gates:
 tools/mac/run_javascript_tests.sh

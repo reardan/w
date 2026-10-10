@@ -69,34 +69,119 @@ char* url_substring_lower(char* text, int start, int end):
 	return result
 
 
-# IPv6 syntax validation (no zone identifiers or embedded IPv4 yet).
-int url_ipv6_valid(char* text, int start, int end):
-	int groups = 0
-	int compressed = 0
+# Parse eight 16-bit groups, including a terminal dotted IPv4 address.
+# The caller supplies eight zeroed words. No zones or IPvFuture syntax.
+int url_ipv6_words(char* text, int start, int end, list[int] words):
+	int count = 0
+	int compressed = -1
 	int i = start
 	if (i == end): return 0
 	if (text[i] == ':'):
 		if (i + 1 >= end || text[i + 1] != ':'): return 0
-		compressed = 1
+		compressed = 0
 		i += 2
 	while (i < end):
-		int digits = 0
-		while (i < end && hex_decode_char(text[i] & 255) >= 0):
-			digits += 1
-			i += 1
-		if (digits == 0 || digits > 4): return 0
-		groups += 1
-		if (groups > 8): return 0
+		if (count == 8): return 0
+		int segment_end = i
+		int dotted = 0
+		while (segment_end < end && text[segment_end] != ':'):
+			if (text[segment_end] == '.'): dotted = 1
+			segment_end += 1
+		if (dotted):
+			if (segment_end != end || count > 6): return 0
+			int pair = 0
+			for octet in range(4):
+				int first = i
+				int value = 0
+				while (i < end && text[i] >= '0' && text[i] <= '9'):
+					value = value * 10 + text[i] - '0'
+					i += 1
+					if (value > 255 || i - first > 3): return 0
+				if (i == first || (i - first > 1 && text[first] == '0')): return 0
+				pair = pair * 256 + value
+				if (octet == 1 || octet == 3):
+					words[count] = pair
+					count += 1
+					pair = 0
+				if (octet < 3):
+					if (i == end || text[i] != '.'): return 0
+					i += 1
+			if (i != end): return 0
+		else:
+			if (segment_end == i || segment_end - i > 4): return 0
+			int value = 0
+			while (i < segment_end):
+				int digit = hex_decode_char(text[i] & 255)
+				if (digit < 0): return 0
+				value = value * 16 + digit
+				i += 1
+			words[count] = value
+			count += 1
 		if (i < end):
-			if (text[i] != ':'): return 0
 			i += 1
 			if (i < end && text[i] == ':'):
-				if (compressed): return 0
-				compressed = 1
+				if (compressed >= 0): return 0
+				compressed = count
 				i += 1
 			else if (i == end): return 0
-	if (compressed): return groups < 8
-	return groups == 8
+	if (compressed < 0): return count == 8
+	if (count == 8): return 0
+	int gap = 8 - count
+	int j = count - 1
+	while (j >= compressed):
+		words[j + gap] = words[j]
+		j -= 1
+	for k in range(gap): words[compressed + k] = 0
+	return 1
+
+
+# An owned bracketed canonical host, or null on invalid input. RFC 5952
+# zero compression uses the first longest run of at least two zero groups.
+# Dotted IPv4 tails serialize as hex groups, giving all spellings one origin.
+char* url_ipv6_normalize(char* text, int start, int end):
+	list[int] words = list[int]{}
+	for i in range(8): words.push(0)
+	if (url_ipv6_words(text, start, end, words) == 0):
+		words.free()
+		return 0
+	int best_start = -1
+	int best_length = 1
+	int i = 0
+	while (i < 8):
+		if (words[i] != 0): i += 1
+		else:
+			int first = i
+			while (i < 8 && words[i] == 0): i += 1
+			if (i - first > best_length):
+				best_start = first
+				best_length = i - first
+	string_builder* out = string_new()
+	string_append_char(out, '[')
+	i = 0
+	while (i < 8):
+		if (i == best_start):
+			string_append(out, c"::")
+			i += best_length
+		else:
+			if (i > 0 && i != best_start + best_length): string_append_char(out, ':')
+			int shift = 12
+			while (shift > 0 && ((words[i] >> shift) & 15) == 0): shift -= 4
+			while (shift >= 0):
+				string_append_char(out, hex_digit((words[i] >> shift) & 15))
+				shift -= 4
+			i += 1
+	string_append_char(out, ']')
+	words.free()
+	char* result = out.data
+	free(out)
+	return result
+
+
+int url_ipv6_valid(char* text, int start, int end):
+	char* host = url_ipv6_normalize(text, start, end)
+	if (host == 0): return 0
+	free(host)
+	return 1
 
 
 # Reject controls, spaces, backslashes and invalid percent escapes before
@@ -134,12 +219,14 @@ URL* url_parse(char* text):
 		authority_end += 1
 	int host_end = host_start
 	int valid = 1
+	char* host = 0
 	if (text[host_start] == '['):
 		host_end += 1
 		while (host_end < authority_end && text[host_end] != ']'): host_end += 1
 		if (host_end == authority_end): valid = 0
 		else:
-			valid = url_ipv6_valid(text, host_start + 1, host_end)
+			host = url_ipv6_normalize(text, host_start + 1, host_end)
+			valid = host != 0
 			host_end += 1
 	else:
 		while (host_end < authority_end && text[host_end] != ':'):
@@ -161,13 +248,15 @@ URL* url_parse(char* text):
 			i += 1
 		if (port == 0): valid = 0
 	if (valid == 0):
+		free(host)
 		free(scheme)
 		return 0
 	int path_end = authority_end
 	while (text[path_end] != 0 && text[path_end] != '?' && text[path_end] != '#'): path_end += 1
 	URL* u = new URL()
 	u.scheme = scheme
-	u.host = url_substring_lower(text, host_start, host_end)
+	if (host != 0): u.host = host
+	else: u.host = url_substring_lower(text, host_start, host_end)
 	u.port = port
 	if (path_end == authority_end): u.path = strclone(c"/")
 	else: u.path = substring(text, authority_end, path_end)
@@ -397,8 +486,7 @@ URL* url_resolve(URL* base, char* reference):
 	return result
 
 
-# Origin tuple comparison for normalized DNS names / identical IPv6 text.
-# Does not equate different textual spellings of the same IPv6 address.
+# Origin tuple comparison for normalized DNS names / canonical IPv6 hosts.
 int url_same_origin(URL* a, URL* b):
 	if (a == 0 || b == 0): return 0
 	return a.port == b.port && strcmp(a.scheme, b.scheme) == 0 && strcmp(a.host, b.host) == 0

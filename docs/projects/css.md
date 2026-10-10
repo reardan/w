@@ -27,6 +27,13 @@ byte offsets `start/end`, and `match` (-1 for no matching delimiter). Source is
 explicit-length, including embedded NUL. Invalid UTF-8 is retained as bytes;
 this is a UTF-8-oriented syntax parser, not an encoding detector.
 
+Unquoted `url(...)` produces one `url` token with the decoded URL and the full
+wrapper's byte span. Malformed forms produce `bad-url` and a diagnostic, consume
+through the next unescaped closing parenthesis or EOF, and invalidate only the
+containing declaration. URL punctuation does not alter block balancing. Quoted
+URLs retain `ident`, parenthesis, and string component tokens. Unterminated valid
+URLs retain their decoded value with an EOF diagnostic.
+
 Nodes have `kind`, decoded `name`, byte span, token range `first/last`, children
 and an `important` flag. Qualified-rule children begin with selector nodes,
 followed by declaration nodes. At-rules contain nested rules, declarations or an

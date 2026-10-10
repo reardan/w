@@ -67,8 +67,15 @@ and decimal/hex numeric references **with semicolons**. Unknown references remai
 literal. Numeric NUL, out-of-range scalars, and surrogate values become U+FFFD.
 Text and attribute NUL bytes also become U+FFFD with diagnostics. CR and CRLF
 become LF. `title`/`textarea` select RCDATA; `style`, `xmp`, `iframe`, `noembed`,
-`noframes`, and `script` select raw text. Their matching, case-insensitive end tag
+`noframes` select raw text. Their matching, case-insensitive end tag
 requires a following space, `/`, or `>`; apparent other markup remains text.
+`script` also disables reference decoding, but tracks HTML escaped and double-
+escaped script states: `<!--` enters escaped text, a delimited `<script` enters
+double escape, and a delimited `</script` leaves double escape as text. In normal
+or escaped text it closes the element. `-->` returns either escape mode to normal
+script data. EOF in either escape mode is diagnosed. JavaScript quoting and
+comments do not affect these transitions. The lexical contract follows the
+[HTML script states](https://html.spec.whatwg.org/multipage/parsing.html#script-data-state).
 
 ## Initial tree recovery
 
@@ -91,7 +98,7 @@ misnesting is diagnosed. Unmatched and void end tags are ignored with diagnostic
 EOF closes remaining spans without inventing source bytes.
 
 Not implemented: full named entity tables and legacy missing-semicolon rules,
-numeric-reference Windows-1252 remapping, script escaped/double-escaped states,
+numeric-reference Windows-1252 remapping,
 full comment/doctype state machines and quirks modes, `plaintext`, `noscript`
 scripting flags, fragment contexts, all HTML insertion modes, table foster
 parenting and implicit tbody, adoption-agency formatting reconstruction,

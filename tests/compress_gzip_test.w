@@ -198,3 +198,66 @@ void test_gzip_error_string_covers_every_code_and_falls_through():
 	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_SIZE)) > 0)
 	assert1(strlen(gzip_error_string(GZIP_ERR_TRUNCATED)) > 0)
 	assert_strings_equal(inflate_error_string(INFLATE_ERR_BAD_HUFFMAN()), gzip_error_string(INFLATE_ERR_BAD_HUFFMAN()))
+
+
+void test_gzip_concatenated_members_and_total_limit():
+	gzip_result* first = gzip_compress(c"abc", 3, DEFLATE_LEVEL_FAST())
+	gzip_result* second = gzip_compress(c"def", 3, DEFLATE_LEVEL_STORED())
+	gzip_result* empty = gzip_compress(c"", 0, DEFLATE_LEVEL_STORED())
+	string_builder* joined = string_new()
+	string_append_bytes(joined, first.data, first.length)
+	string_append_bytes(joined, empty.data, empty.length)
+	string_append_bytes(joined, second.data, second.length)
+	string_append_bytes(joined, empty.data, empty.length)
+	gzip_result* decoded = result_expect[gzip_result*](gzip_decompress(joined.data, joined.length, 6))
+	assert_equal(6, decoded.length)
+	assert_bytes_equal(c"abcdef", decoded.data, 6)
+	gzip_result_free(decoded)
+	# A cap shared across members, including exactly zero remaining, never
+	# becomes the inflater's legacy zero-means-unlimited convention.
+	for cap in range(1, 6):
+		wresult[gzip_result*]* res = gzip_decompress(joined.data, joined.length, cap)
+		assert_equal(INFLATE_ERR_TOO_LARGE, result_code[gzip_result*](res))
+		result_free[gzip_result*](res)
+	# Empty Huffman members are also legal after consuming the exact cap.
+	gzip_result* empty_fast = gzip_compress(c"", 0, DEFLATE_LEVEL_FAST())
+	string_append_bytes(joined, empty_fast.data, empty_fast.length)
+	decoded = result_expect[gzip_result*](gzip_decompress(joined.data, joined.length, 6))
+	assert_equal(6, decoded.length)
+	gzip_result_free(decoded)
+	string_append_bytes(joined, first.data, first.length)
+	wresult[gzip_result*]* res = gzip_decompress(joined.data, joined.length, 6)
+	assert_equal(INFLATE_ERR_TOO_LARGE, result_code[gzip_result*](res))
+	result_free[gzip_result*](res)
+	gzip_result_free(empty_fast)
+	string_free(joined)
+	gzip_result_free(first)
+	gzip_result_free(second)
+	gzip_result_free(empty)
+
+
+void test_gzip_optional_header_crc_and_reserved_flags():
+	gzip_result* body = gzip_compress(c"header", 6, DEFLATE_LEVEL_FAST())
+	string_builder* framed = string_new()
+	string_append_bytes(framed, body.data, 10)
+	framed.data[3] = 30  # FHCRC, FEXTRA, FNAME, FCOMMENT
+	string_append_bytes(framed, c"\x02\x00ABname\x00comment\x00", 17)
+	int crc = crc32_of(framed.data, framed.length) & 65535
+	string_append_char(framed, crc & 255)
+	string_append_char(framed, (crc >> 8) & 255)
+	int header_length = framed.length
+	string_append_bytes(framed, body.data + 10, body.length - 10)
+	gzip_result* decoded = result_expect[gzip_result*](gzip_decompress(framed.data, framed.length, 6))
+	assert_bytes_equal(c"header", decoded.data, 6)
+	gzip_result_free(decoded)
+	framed.data[header_length - 1] = framed.data[header_length - 1] ^ 1
+	wresult[gzip_result*]* res = gzip_decompress(framed.data, framed.length, 6)
+	assert_equal(GZIP_ERR_BAD_CRC, result_code[gzip_result*](res))
+	result_free[gzip_result*](res)
+	framed.data[3] = framed.data[3] | 32
+	res = gzip_decompress(framed.data, framed.length, 6)
+	assert_equal(GZIP_ERR_BAD_HEADER, result_code[gzip_result*](res))
+	result_free[gzip_result*](res)
+	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_HEADER)) > 0)
+	string_free(framed)
+	gzip_result_free(body)

@@ -165,6 +165,90 @@ void test_css_limits():
 	free(limits)
 
 
+void test_css_urls():
+	char* source = c"URL( a\\20 b\\)c?x=1;y=[z]#f )"
+	css_document* d = css_tokenize_n(source, strlen(source), 0)
+	assert_equal(0, d.failed)
+	assert_equal(0, d.diagnostics.length)
+	assert_equal(1, d.tokens.length)
+	assert_strings_equal(c"url", d.tokens[0].kind)
+	assert_strings_equal(c"a b)c?x=1;y=[z]#f", d.tokens[0].value)
+	assert_equal(0, d.tokens[0].start)
+	assert_equal(strlen(source), d.tokens[0].end)
+	assert_equal(-1, d.tokens[0].match)
+	css_document_free(d)
+	source = c"\\75rl() url( \"x\" ) url('y') url (z)"
+	d = css_tokenize_n(source, strlen(source), 0)
+	assert_equal(0, d.diagnostics.length)
+	assert_strings_equal(c"url", d.tokens[0].kind)
+	assert_equal(0, d.tokens[0].value_length)
+	assert_strings_equal(c"ident", d.tokens[2].kind)
+	asserts(c"quoted URL keeps paired components", d.tokens[3].match > 3)
+	assert_strings_equal(c"string", d.tokens[5].kind)
+	css_document_free(d)
+	# Bad URL remnants include escaped closers and internal semicolons. They
+	# invalidate only their declaration; the next declaration/rule survives.
+	d = css_test_sheet(c"a{background:url(a b\\); bogus:x);color:red}b{x:url(ok)}")
+	assert_equal(0, d.failed)
+	assert_equal(2, d.nodes.length)
+	assert_equal(2, d.nodes[0].children.length)
+	assert_strings_equal(c"color", d.nodes[0].children[1].name)
+	css_node* value = d.nodes[1].children[1]
+	assert_strings_equal(c"url", d.tokens[value.first].kind)
+	assert_strings_equal(c"ok", d.tokens[value.first].value)
+	assert_equal(2, d.diagnostics.length)
+	css_document_free(d)
+	list[char*] bad = list[char*]{c"url(a\"b)", c"url(a'b)", c"url(a(b)", c"url(a\\\nb)", c"url(a\x01b)", c"url(a\x7fb)"}
+	for source in bad:
+		d = css_tokenize_n(source, strlen(source), 0)
+		assert_equal(1, d.tokens.length)
+		assert_strings_equal(c"bad-url", d.tokens[0].kind)
+		assert_equal(0, d.tokens[0].value_length)
+		assert_equal(1, d.diagnostics.length)
+		css_document_free(d)
+	__w_list_free(cast(__w_list*, bad))
+	source = c"url(x\0y)"
+	d = css_tokenize_n(source, 8, 0)
+	assert_strings_equal(c"x\xef\xbf\xbdy", d.tokens[0].value)
+	assert_equal(5, d.tokens[0].value_length)
+	css_document_free(d)
+	d = css_tokenize_n(c"url(x ", 6, 0)
+	assert_strings_equal(c"url", d.tokens[0].kind)
+	assert_strings_equal(c"x", d.tokens[0].value)
+	assert_equal(1, d.diagnostics.length)
+	css_document_free(d)
+	d = css_tokenize_n(c"url(x\\", 6, 0)
+	assert_strings_equal(c"url", d.tokens[0].kind)
+	assert_strings_equal(c"x\xef\xbf\xbd", d.tokens[0].value)
+	assert_equal(2, d.diagnostics.length)
+	css_document_free(d)
+	d = css_tokenize_n(c"x\\", 2, 0)
+	assert_strings_equal(c"ident", d.tokens[0].kind)
+	assert_strings_equal(c"x\xef\xbf\xbd", d.tokens[0].value)
+	assert_equal(1, d.diagnostics.length)
+	css_document_free(d)
+	d = css_tokenize_n(c"\"x\\", 3, 0)
+	assert_strings_equal(c"string", d.tokens[0].kind)
+	assert_strings_equal(c"x", d.tokens[0].value)
+	assert_equal(1, d.diagnostics.length)
+	css_document_free(d)
+	source = c"url(a\\29 b) url(a b\\)c)"
+	for length in range(strlen(source) + 1):
+		d = css_tokenize_n(source, length, 0)
+		assert_equal(0, d.failed)
+		for token in d.tokens:
+			asserts(c"URL prefix span", token.start >= 0 && token.end >= token.start && token.end <= length)
+		css_document_free(d)
+	css_limits* limits = css_default_limits()
+	limits.tokens = 1
+	limits.depth = 1
+	d = css_tokenize_n(c"url([a]{b};c)", 13, limits)
+	assert_equal(0, d.failed)
+	assert_equal(1, d.tokens.length)
+	css_document_free(d)
+	free(limits)
+
+
 void test_css_deterministic():
 	char* source = c"@media (width > 1px) { .\\61 { color: red; bad; --x: [a;b] } }"
 	css_document* a = css_test_sheet(source)

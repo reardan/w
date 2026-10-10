@@ -20,15 +20,22 @@ parsing alone preserves path spelling. Percent escapes are validated and retaine
 so `%2F`, `%23` and `%2e` never become structural separators or dot segments.
 Repeated slashes and path/query case remain unchanged.
 
-Bracketed IPv6 with hexadecimal groups and one optional `::` is accepted and
-retains its brackets in `host`. Embedded IPv4, zone identifiers, userinfo, IDNA,
-WHATWG backslash repair and percent-escape normalization are not implemented.
-Spaces, controls, backslashes, invalid ports and invalid percent escapes fail.
-`url_same_origin` compares normalized scheme/host/effective-port tuples. It does
-not equate different text representations of the same IPv6 address or apply IDNA;
-callers must account for this when constructing policy inputs. The current TCP
-HTTP connector still resolves IPv4 addresses only; accepting IPv6 URL syntax does
-not imply IPv6 transport support.
+Bracketed IPv6 accepts hexadecimal groups, one optional `::`, and a terminal
+dotted IPv4 address. Hosts serialize with lowercase hex, suppressed leading
+zeros, and the first longest zero run of at least two groups compressed, following
+[RFC 5952 section 4](https://www.rfc-editor.org/rfc/rfc5952#section-4).
+Dotted tails serialize as two hex groups, so `::ffff:192.0.2.128` and
+`::ffff:c000:280` have the same canonical host. Dotted octets must be decimal
+0–255 without leading zeros. IPv4-mapped IPv6 remains distinct from an ordinary
+IPv4 host. `url_same_origin` compares normalized scheme/host/effective-port
+tuples, including equivalent IPv6 spellings.
+
+Zone identifiers, IPvFuture, userinfo, IDNA, WHATWG backslash repair and
+percent-escape normalization are not implemented. Spaces, controls, backslashes,
+invalid ports and invalid percent escapes fail. DNS host normalization is still
+ASCII lowercasing; it does not apply IDNA. The current TCP HTTP connector still
+resolves IPv4 addresses only; accepting IPv6 URL syntax does not imply IPv6
+transport support.
 
 `file:` is explicitly rejected by both entry points. Local files need a separate
 embedding policy and explicit file loader; they must not acquire an HTTP origin
@@ -123,10 +130,11 @@ zlib-wrapped deflate. Advertise these encodings explicitly in request headers.
 The implementation reuses the existing codec registry and bounded inflater;
 it does not implement another compressor. Unsupported/stacked encodings fail
 explicitly. Input is collected incrementally, but decompression occurs once at
-finish; this API does not yet produce streaming decompressed chunks. Existing
-codec behavior applies, including gzip's single-member support and ignored bytes
-after its first member. Consumers requiring strict concatenation/trailing-byte
-validation need that codec extension before accepting those responses.
+finish; this API does not yet produce streaming decompressed chunks. Gzip decoding validates and concatenates every member, sharing one output
+budget across them. Reserved header flags, bad header/payload checksums, truncated
+later members and trailing non-member bytes all fail without exposing partial
+output. Deflate requires exactly one complete zlib stream and rejects trailing
+bytes. Empty gzip members remain valid when the output budget is exhausted.
 
 ## Validation
 
@@ -136,7 +144,8 @@ round trips and origin comparison. `http_browser_test` and
 slow trickles, truncation, redirect approval/loops, bounded streaming, TLS failure
 and cancellation. `content_decode_test` and `content_decode_64_test` cover byte
 chunks, explicit EOF, every truncation of a compressed fixture, expansion/input
-limits, unsupported encodings and binary identity/deflate data. Existing HTTP,
+limits, concatenated gzip members, header/trailer validation, trailing-byte
+rejection, unsupported encodings and binary identity/deflate data. Existing HTTP,
 DNS, transport and TLS suites remain compatibility guards.
 
 The combined [external consumer](../../examples/web/browser_resource.w) uses

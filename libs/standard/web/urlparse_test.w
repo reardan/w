@@ -304,3 +304,72 @@ void test_url_ipv6_fragments_and_origin():
 	asserts(c"double compression", url_parse(c"http://[1::2::3]/") == 0)
 	asserts(c"bad escape", url_parse(c"http://example/a%2") == 0)
 	asserts(c"space", url_parse(c"http://example/a b") == 0)
+
+
+void test_url_ipv6_canonical_hosts():
+	list[char*] inputs = list[char*]{
+		c"[0:0:0:0:0:0:0:0]", c"[0:0:0:0:0:0:0:1]",
+		c"[2001:0DB8:0:0:1:0:0:1]", c"[2001:db8:0:1:0:0:0:1]",
+		c"[2001:db8:0:1:1:1:1:1]", c"[2001:db8:1:1:0:0:0:0]",
+		c"[::FFFF:192.0.2.128]", c"[0:0:0:0:0:ffff:c000:0280]",
+		c"[1:2:3:4:5:6:192.0.2.1]", c"[1:2:3:4:5:6::8]"
+	}
+	list[char*] expected = list[char*]{
+		c"[::]", c"[::1]", c"[2001:db8::1:0:0:1]", c"[2001:db8:0:1::1]",
+		c"[2001:db8:0:1:1:1:1:1]", c"[2001:db8:1:1::]",
+		c"[::ffff:c000:280]", c"[::ffff:c000:280]",
+		c"[1:2:3:4:5:6:c000:201]", c"[1:2:3:4:5:6:0:8]"
+	}
+	for i in range(inputs.length):
+		char* input = strjoin(c"http://", inputs[i])
+		URL* u = url_parse(input)
+		asserts(input, u != 0)
+		assert_strings_equal(expected[i], u.host)
+		char* serialized = url_unparse(u)
+		URL* again = url_parse(serialized)
+		assert_equal(1, url_same_origin(u, again))
+		assert_strings_equal(expected[i], again.host)
+		url_free(again)
+		url_free(u)
+		free(serialized)
+		free(input)
+	inputs.free()
+	expected.free()
+
+
+void test_url_ipv6_origin_equivalence():
+	URL* base = url_parse(c"https://[2001:0db8:0000:0000:0001:0:0:1]:443/a")
+	URL* next = url_resolve(base, c"//[2001:db8:0:0:1::1]/b")
+	assert_equal(1, url_same_origin(base, next))
+	url_free(next)
+	next = url_resolve(base, c"//[2001:db8::2]/b")
+	assert_equal(0, url_same_origin(base, next))
+	url_free(next)
+	next = url_resolve(base, c"//[2001:db8::1:0:0:1]:444/b")
+	assert_equal(0, url_same_origin(base, next))
+	url_free(next)
+	url_free(base)
+	base = url_parse(c"http://[::ffff:192.0.2.128]/")
+	next = url_parse(c"http://[::ffff:c000:280]/")
+	assert_equal(1, url_same_origin(base, next))
+	url_free(next)
+	next = url_parse(c"http://192.0.2.128/")
+	assert_equal(0, url_same_origin(base, next))
+	url_free(next)
+	url_free(base)
+
+
+void test_url_ipv6_invalid_tails():
+	list[char*] hosts = list[char*]{
+		c"[::ffff:192.0.2]", c"[::ffff:192.0.2.256]", c"[::ffff:192.00.2.1]",
+		c"[::ffff:192.0.2.1.]", c"[::ffff:192.0.2.1:1]", c"[1:2:3:4:5:192.0.2.1]",
+		c"[1:2:3:4:5:6::192.0.2.1]", c"[::ffff:192..2.1]", c"[::ffff:-1.0.2.1]",
+		c"[::ffff:1234567890.0.2.1]", c"[::ffff:0x7f.0.0.1]", c"[::%25eth0]",
+		c"[1:2:3:4:5:6:7:8::]", c"[1:2:3:4:5:6:7:8:]", c"[:::]",
+		c"[::1]:65536", c"[::1]suffix", c"[v1.example]"
+	}
+	for host in hosts:
+		char* text = strjoin(c"http://", host)
+		asserts(text, url_parse(text) == 0)
+		free(text)
+	hosts.free()

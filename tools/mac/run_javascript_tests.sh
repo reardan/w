@@ -38,7 +38,7 @@ compile tests/parser_generator/stateful_runtime_test.w bin/javascript_runtime_da
 bin/javascript_runtime_darwin
 compile tests/parser_generator/generated_stateful_test.w bin/javascript_stateful_darwin
 bin/javascript_stateful_darwin
-for suite in lexical parser validation bindings restrictions ast roundtrip transform text runtime browser_runtime; do
+for suite in lexical parser validation bindings restrictions ast roundtrip transform text runtime runtime_invoke browser_runtime; do
     compile "tests/javascript/${suite}_test.w" "bin/javascript_${suite}_darwin"
     "bin/javascript_${suite}_darwin"
 done
