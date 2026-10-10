@@ -78,6 +78,7 @@ Other useful targets:
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
+./wbuild wllvm       # optional scalar-subset LLVM IR emitter (bin/wllvm file.w -o file.ll)
 ./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
 ./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
 ./wbuild wvmd        # persistent Linux-box session scheduler
@@ -94,6 +95,10 @@ Other useful targets:
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
+
+The [LLVM offload experiment](docs/projects/llvm.md) visits the production
+retained AST and emits LLVM IR text for a checked scalar subset. Running that
+output uses an external Clang installation; ordinary W builds do not need LLVM.
 
 Apple Silicon Macs can run static ARM64 W cells through the
 [Hypervisor.framework backend](docs/projects/vms_darwin.md). Run

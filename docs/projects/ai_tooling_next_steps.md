@@ -226,6 +226,15 @@ filesystem qualification target using that existing convention.
 
 ## Test selection (`bin/wtest`)
 
+- **Failed build dependency closures ignore repaired imports (2026-10-09).**
+  During `wllvm` development, an initial error in `tools/wllvm_emit.w` cached
+  a failed `x64 tools/wllvm.w` closure in `bin/.wexec_deps_cache`. Fixing the
+  imported module left `wexec` reusing the stale result: `wexec_deps_lookup`
+  calls `deps_entry_valid(entry, 0)`, whose failed-entry path checks only the
+  root's hash. Retry failed closures when their known imports change, or avoid
+  persisting a failure without an invalidation dependency. `--no-cache` is
+  the development workaround; `wtest` has a separate closure cache.
+
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest
   generation fail because `step=` requires a default-arch target. Allow extra
