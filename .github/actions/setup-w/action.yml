@@ -1,0 +1,72 @@
+name: Set up W with a cached bootstrap
+description: Restore the pinned Linux seed and content-keyed bootstrap without caching test results
+
+runs:
+  using: composite
+  steps:
+    # Match the Linux hosts in ci.yml. Native Darwin and release/VM gates
+    # deliberately keep their existing bootstrap paths.
+    - name: Check host
+      shell: bash
+      run: |
+        test "$RUNNER_OS" = Linux
+        test "$RUNNER_ARCH" = X64
+
+    # Like Bazelisk's download cache, the seed survives compiler edits.
+    - name: Restore pinned seed
+      id: seed
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: w
+        key: w-seed-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('SEEDS') }}
+
+    - name: Validate restored seed
+      shell: bash
+      run: |
+        # wbuild allows local promotions. CI must use the pinned seed even
+        # after restoration; discard a mismatched file before bootstrapping.
+        if [ -f w ]; then
+          if ! awk '$1 == "w" { print $4 "  w" }' SEEDS | sha256sum --check --strict; then
+            rm -f w
+          fi
+        fi
+
+    # Exact content keys let different commits/jobs share the bootstrap.
+    # No fallback: wbuild executes the restored wexec before refreshing it,
+    # so an executor from different sources must not interpret a new tree.
+    # Keep this input set aligned with the wv2/wexec targets and their imports.
+    - name: Restore bootstrap
+      id: bootstrap
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          bin/wv2
+          bin/wexec
+          bin/.wexec_cache/wv2
+          bin/.wexec_cache/wexec
+        key: w-bootstrap-v1-${{ runner.os }}-${{ runner.arch }}-ubuntu-24.04-${{ hashFiles('SEEDS', 'wbuild', 'build.base.json', '*.w', 'compiler/**', 'grammar/**', 'code_generator/**', 'lib/**', 'structures/**', 'libs/**', 'debugger/**', 'repl/**', 'tools/**', '.github/actions/setup-w/**') }}
+
+    # Always run wbuild, including on a hit: it checks content stamps and
+    # output presence. Only these two targets are saved, before any test can
+    # mutate bin/. No verify stamps, test results or coverage data are saved.
+    - name: Prepare bootstrap
+      shell: bash
+      run: ./wbuild wv2 wexec
+
+    - name: Save pinned seed
+      if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.seed.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: w
+        key: ${{ steps.seed.outputs.cache-primary-key }}
+
+    - name: Save bootstrap
+      if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && steps.bootstrap.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          bin/wv2
+          bin/wexec
+          bin/.wexec_cache/wv2
+          bin/.wexec_cache/wexec
+        key: ${{ steps.bootstrap.outputs.cache-primary-key }}
