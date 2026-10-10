@@ -1014,11 +1014,12 @@ int link_option(char* arg, int apply):
 		if (apply): narrow_regs_disabled = 0
 		return 1
 	# Inlining of small leaf callees (unit A5, compiler/inline_table.w)
-	# is opt-in on x86/x64 Linux: --inline turns it on, --profile-use
-	# turns it on for the sites the profile marks hot, and --no-inline
-	# keeps every call a call whatever else was given (the reference
-	# for tests/regalloc_diff_test.w and the fallback a guard failure
-	# asks for).
+	# is on by default on x86/x64 Linux for tiny leaves only: --inline
+	# raises the budgets, --profile-use raises them for the sites the
+	# profile marks hot, and --no-inline keeps every call a call
+	# whatever else was given (the reference for
+	# tests/regalloc_diff_test.w and the fallback a guard failure asks
+	# for).
 	if (strcmp(arg, c"--inline") == 0):
 		if (apply): inline_requested = 1
 		return 1
@@ -1092,8 +1093,8 @@ void help_shared_options():
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
 	println(c"  --no-x86-budget       x86-32: no loop registers in ecx/edx (the pre-A9 register budget)")
-	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
-	println(c"                        profile-hot sites under --profile-use)")
+	println(c"  --inline              emit small leaf callees' bodies in place of their calls (tiny")
+	println(c"                        leaves always are; larger for profile-hot sites under --profile-use)")
 	println(c"  --no-inline           never emit a callee's body in place of a call")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")

@@ -175,6 +175,11 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 	if (type_num_args(arg_type) > 0):
 		is_struct = 1
 		arg_words = (type_get_size(arg_type) + word_size - 1) >> word_size_log2
+	# The word about to be pushed is an immediate (the last instruction
+	# is mov eax,imm; the push may spill parked registers first, which
+	# leaves eax alone): an inlined callee may bind its parameter to it
+	int is_const = (target_isa == 0) && (is_struct == 0) && (leaked_words == 0) && (imm_note_end != 0) && (imm_note_end == codepos)
+	int const_value = imm_note_value
 	if (is_struct == 0): push_eax()
 	else:
 		int j = arg_words - 1
@@ -191,6 +196,9 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 			store_stack_var((i + leaked_words) << word_size_log2)
 			i = i - 1
 		drop_slots(leaked_words)
+	# Every argument word a call pushes is noted where it ends up,
+	# constant or not (compiler/inline_table.w, inline_note_argument)
+	for w in range(arg_words): inline_note_argument(stack_pos - w, is_const && (w == 0), const_value)
 	if (is_struct):
 		if (type_has_array_field(arg_type)):
 			lea_eax_esp_plus(0)

@@ -299,6 +299,15 @@ int promote(int type):
 		print2(last_identifier)
 		println2(c"')")
 
+	# A parameter bound to its call site's constant (grammar/inline_call.w,
+	# inline_const_note): the 'lea' of its slot is the last instruction;
+	# the immediate replaces it, so the operators that fold a constant
+	# operand see one
+	if ((inline_const_note_end != 0) && (inline_const_note_end == codepos) && (type == inline_const_note_type)):
+		inline_const_note_end = 0
+		peep_rollback(inline_const_note_start)
+		mov_eax_int(inline_const_note_value)
+		return type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
 	# An lvalue in device global memory ('gpu T*' element): diagnosed in
 	# host code; on device the load itself becomes ld.global

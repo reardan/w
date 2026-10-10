@@ -295,6 +295,7 @@ int sym_probe(char* name):
 
 
 void inline_note_lookup(char* s, int found);   /* compiler/inline_table.w */
+void inline_const_note(int t);   /* grammar/inline_call.w */
 
 int sym_lookup(char *s):
 	sym_index_sync()
@@ -992,6 +993,11 @@ int sym_emit_value(int t, char* s):
 		if (words > 1): k = k - ((words - 1) << word_size_log2)
 		# lea (n)(%esp),%eax on x86; add x0,x28,#k on arm64
 		be_lea_acc_wstack(k)
+		# A parameter of a body emitted in place that is bound to its
+		# constant argument (grammar/inline_call.w): promote() loads
+		# the immediate instead
+		if (inline_const_count != 0):
+			if (scope_type == 'L'): inline_const_note(t)
 
 	if (symtype == 2):
 		if ((scope_type == 'D') || (scope_type == 'U')):

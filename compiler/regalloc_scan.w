@@ -592,8 +592,12 @@ void rs_image_bind():
 	rs_img_len = 0
 	rs_img_ok = 0
 	int saved = seek(file, 0, 1)
-	if (saved < 0): return;
-	if (seek(file, 0, 0) < 0): return;
+	# An empty stream (the closed pipe under an in-memory window,
+	# compiler/tokenizer.w) cannot seek; it images as an empty file
+	int empty = (saved < 0) && empty_stream_is(file)
+	if ((saved < 0) && (empty == 0)): return;
+	if (empty == 0):
+		if (seek(file, 0, 0) < 0): return;
 	if (rs_img == 0):
 		rs_img_cap = 1 << 18
 		rs_img = cast(char*, malloc(rs_img_cap))
@@ -609,7 +613,7 @@ void rs_image_bind():
 		want = rs_img_cap - rs_img_len - 1
 		n = read(file, &rs_img[rs_img_len], want)
 		if (n > 0): rs_img_len = rs_img_len + n
-	seek(file, saved, 0)
+	if (empty == 0): seek(file, saved, 0)
 	if (n >= 0): rs_img_ok = 1
 	else: rs_img_len = 0
 	rs_img[rs_img_len] = 0
@@ -1363,7 +1367,7 @@ void rs_identifier():
 			# a constant count never reaches ecx (alu_bit_shuttle_imm),
 			# so the rotate idiom of lib/sha256.w keeps its loop.
 			if (rs_intrinsic_holds_ecx(name)): rs_lp_mark(rs_lp_has_divshift)
-		elif (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
+		elif ((rs_lp_depth != 0) && (inline_name_is_leaf(name) == 0)): rs_lp_mark(rs_lp_has_call)
 		return;
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter
