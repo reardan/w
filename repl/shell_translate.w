@@ -57,10 +57,9 @@ rather than passed through: 1-4 octal digits, translated to a decimal
 int literal in the generated call ("chmod 644 f" ->
 "shell_commands_chmod_octal(420, c\"f\")").
 
-Stage 4 adds ln (-s/--symbolic REQUIRED -- a bare "ln" is a hard
-link, which stays native), df (no flags, any number of paths), ps
+Stage 4 adds ln (-s/--symbolic for symlinks, no flag for hard links), df (no flags, any number of paths), ps
 (bare only), and grep (-n/--line-number, then a pattern and one or
-more files) -- grep landing now that lib/regex.w exists as the
+more files, or stdin when omitted) -- grep landing now that lib/regex.w exists as the
 reusable pattern core the design doc's Sec 6.3 deferred on. grep's
 pattern is the second positional-shaped word whose SPELLING is
 validated (chmod's octal-mode precedent): a pattern lib/regex.w's
@@ -83,6 +82,7 @@ bytes either way); it just no longer forces the native detour.
 */
 import lib.lib
 import lib.regex
+import lib.shell_patterns
 import structures.string
 
 
@@ -92,7 +92,7 @@ import structures.string
 # (Sec 5.2 rule 1). 96 is the backtick.
 int shell_translate_is_meta(char c):
 	return (c == '|') || (c == '<') || (c == '>') || (c == ';') || (c == '&') ||
-		(c == '$') || (c == 96) || (c == '~') || (c == '*') || (c == '?')
+		(c == '$') || (c == 96) || (c == '~') || (c == '*') || (c == '?') || (c == '[')
 
 
 # Quote-aware rule-1 scan (module header, stage 4): 1 when the line
@@ -303,7 +303,8 @@ int shell_parse(list[char*] words, char* letters, char* longs, list[char*] pos):
 	int flags = 0
 	for i in range(1, words.length):
 		char* w = words[i]
-		if (w[0] != '-'):
+		int stdin_operand = (strcmp(w, c"-") == 0) && ((strcmp(words[0], c"cat") == 0) || (strcmp(words[0], c"wc") == 0) || (strcmp(words[0], c"grep") == 0))
+		if ((w[0] != '-') || stdin_operand):
 			pos.push(w)
 			continue
 		int bit = shell_long_index(longs, w)
@@ -357,7 +358,7 @@ char* shell_translate_echo(list[char*] words):
 	return shell_call_close(out)
 
 
-# head/tail: one required path and the valued flag "-n N"/"--lines N"
+# head/tail: one optional path (default stdin) and the valued flag "-n N"/"--lines N"
 # (Sec 5.4's first valued flag) selecting the line count, default 10
 # like the real tools. The inline "=value" spellings ("-n=5") are
 # rejected -- they fail closed to native so the real tool's own
@@ -368,18 +369,18 @@ char* shell_translate_head_tail(list[char*] words, char* callee):
 	int i = 1
 	while (i < words.length):
 		char* w = words[i]
-		if (w[0] == '-'):
+		if ((w[0] == '-') && (strcmp(w, c"-") != 0)):
 			if (shell_translate_flag_named(w, c"n", c"lines") == 0): return 0
 			if (shell_translate_flag_inline_value(w) != 0): return 0
 			i++
 			# "-n" with nothing after it, or a partly-numeric value: never guess
-			if ((i >= words.length) || (shell_translate_all_digits(words[i]) == 0)): return 0
+			if ((i >= words.length) || (shell_translate_all_digits(words[i]) == 0) || (strlen(words[i]) > 9)): return 0
 			n = atoi(words[i])
 		else:
 			if (path != 0): return 0 /* exactly one path in v1 */
 			path = w
 		i++
-	if (path == 0): return 0
+	if (path == 0): path = c"-"
 	string_builder* out = shell_call_open(callee)
 	shell_call_lit(out, path)
 	char* n_str = itoa(n)
@@ -405,9 +406,8 @@ int shell_translate_octal_value(char* s):
 
 
 # The tools whose positionals need more than pass-through: chmod's
-# leading octal mode word, ln's required -s (a bare "ln" is a hard
-# link, left to the real tool; the flag itself is not an argument of
-# shell_commands_ln_s), and grep's pattern, which lib/regex.w's
+# leading octal mode word, ln's optional -s selecting symbolic links,
+# and grep's pattern, which lib/regex.w's
 # regex_valid must accept (\d, a**, an unclosed class fail closed to
 # native, where the real grep's own syntax applies). No clustering for
 # grep: "-n" and "--line-number" are its only spellings.
@@ -428,19 +428,101 @@ char* shell_translate_checked(list[char*] words, char* tool):
 			s = shell_call_close(out)
 	elif (strcmp(tool, c"ln") == 0):
 		flags = shell_parse(words, c"s", c"--symbolic", pos)
-		if ((flags == 1) && (pos.length == 2)):
-			string_builder* out = shell_call_open(c"ln_s")
+		if ((flags >= 0) && (pos.length == 2)):
+			char* callee = c"ln"
+			if (flags == 1): callee = c"ln_s"
+			string_builder* out = shell_call_open(callee)
 			for p in pos: shell_call_lit(out, p)
 			s = shell_call_close(out)
 	else:
 		flags = shell_parse(words, c"", c"-n --line-number", pos)
-		if ((flags >= 0) && (pos.length >= 2) && regex_valid(pos[0])):
+		if ((flags >= 0) && (pos.length >= 1) && regex_valid(pos[0])):
 			string_builder* out = shell_call_open(c"grep")
 			shell_call_bool(out, flags != 0)
 			for p in pos: shell_call_lit(out, p)
 			s = shell_call_close(out)
 	__w_list_free(cast(__w_list*, pos))
 	return s
+
+
+# One optional root, filters at most once each, optional FINAL -print.
+# Other find expressions (-o, -exec, -L, multiple roots, actions in the
+# middle) must go to the external shell without partial evaluation.
+char* shell_translate_find(list[char*] words):
+	char* path = c"."
+	char* pattern = c"*"
+	char* type = c""
+	char* minimum = c"0"
+	char* maximum = c"2147483647"
+	int seen = 0
+	int i = 1
+	if ((i < words.length) && (words[i][0] != '-')):
+		path = words[i]
+		if ((strcmp(path, c"!") == 0) || (strcmp(path, c"(") == 0)): return 0
+		i++
+	while (i < words.length):
+		char* flag = words[i]
+		if (strcmp(flag, c"-print") == 0):
+			if (i != words.length - 1): return 0
+			i++
+			continue
+		i++
+		if (i >= words.length): return 0
+		char* value = words[i]
+		int bit = 0
+		if (strcmp(flag, c"-name") == 0):
+			if (shell_glob_valid(value) == 0): return 0
+			pattern = value
+			bit = 1
+		elif (strcmp(flag, c"-type") == 0):
+			if ((strcmp(value, c"f") != 0) && (strcmp(value, c"d") != 0) && (strcmp(value, c"l") != 0)): return 0
+			type = value
+			bit = 2
+		elif ((strcmp(flag, c"-mindepth") == 0) || (strcmp(flag, c"-maxdepth") == 0)):
+			# Bound before atoi: same accepted range on x86 and x64.
+			if ((shell_translate_all_digits(value) == 0) || (strlen(value) > 9)): return 0
+			if (strcmp(flag, c"-mindepth") == 0):
+				minimum = value
+				bit = 4
+			else:
+				maximum = value
+				bit = 8
+		else: return 0
+		if (seen & bit): return 0
+		seen = seen | bit
+		i++
+	string_builder* out = shell_call_open(c"find")
+	shell_call_lit(out, path)
+	shell_call_lit(out, pattern)
+	shell_call_lit(out, type)
+	char* min_text = itoa(atoi(minimum))
+	char* max_text = itoa(atoi(maximum))
+	shell_call_arg(out, min_text)
+	shell_call_arg(out, max_text)
+	free(min_text)
+	free(max_text)
+	return shell_call_close(out)
+
+
+char* shell_translate_sed(list[char*] words):
+	int quiet = 0
+	int i = 1
+	if ((i < words.length) && (strcmp(words[i], c"-n") == 0)):
+		quiet = 1
+		i++
+	if (i >= words.length): return 0
+	char* script = words[i]
+	list[char*] parts = shell_sed_parse(script)
+	if (parts == 0): return 0
+	shell_sed_parts_free(parts)
+	i++
+	for j in range(i, words.length):
+		if ((words[j][0] == '-') && (strcmp(words[j], c"-") != 0)): return 0
+	string_builder* out = shell_call_open(c"sed")
+	shell_call_bool(out, quiet)
+	shell_call_lit(out, script)
+	for j in range(i, words.length): shell_call_lit(out, words[j])
+	return shell_call_close(out)
 
 
 # Translate one shell-mode line to a ready-to-eval "shell_commands_...."
@@ -454,9 +536,9 @@ char* shell_translate_checked(list[char*] words, char* tool):
 # rm -i, touch -t, wc --lines, ...) all stay native.
 #   pwd, ps    bare only
 #   ls         [-a|--all] [-l] [path=.]
-#   cat, df    path... (cat needs one or more, df zero or more)
+#   cat, df    path... (cat defaults to stdin)
 #   echo, head, tail, chmod, ln, grep: see the functions above
-#   wc         -l -w -c (any combination) path
+#   wc         -l -w -c (any combination) [path=stdin]
 #   mkdir      [-p|--parents] dir...
 #   rm         [-r|--recursive] [-f|--force] path...
 #   cp         [-r|--recursive] src dst
@@ -472,9 +554,9 @@ char* shell_translate_line(char* line):
 	if (strcmp(cmd, c"pwd") == 0): result = shell_tool(words, cmd, c"", c"", 0, 0, 0, 0)
 	elif (strcmp(cmd, c"ps") == 0): result = shell_tool(words, cmd, c"", c"", 0, 0, 0, 0)
 	elif (strcmp(cmd, c"ls") == 0): result = shell_tool(words, cmd, c"al", c"--all", 0, 1, c".", 1)
-	elif (strcmp(cmd, c"cat") == 0): result = shell_tool(words, cmd, c"", c"", 1, -1, 0, 0)
+	elif (strcmp(cmd, c"cat") == 0): result = shell_tool(words, cmd, c"", c"", 0, -1, 0, 0)
 	elif (strcmp(cmd, c"df") == 0): result = shell_tool(words, cmd, c"", c"", 0, -1, 0, 0)
-	elif (strcmp(cmd, c"wc") == 0): result = shell_tool(words, cmd, c"lwc", c"", 1, 1, 0, 1)
+	elif (strcmp(cmd, c"wc") == 0): result = shell_tool(words, cmd, c"lwc", c"", 0, 1, c"", 1)
 	elif (strcmp(cmd, c"mkdir") == 0): result = shell_tool(words, cmd, c"p", c"--parents", 1, -1, 0, 0)
 	elif (strcmp(cmd, c"rm") == 0): result = shell_tool(words, cmd, c"rf", c"--recursive --force", 1, -1, 0, 0)
 	elif (strcmp(cmd, c"cp") == 0): result = shell_tool(words, cmd, c"r", c"--recursive", 2, 2, 0, 0)
@@ -484,6 +566,8 @@ char* shell_translate_line(char* line):
 	elif (strcmp(cmd, c"echo") == 0): result = shell_translate_echo(words)
 	elif ((strcmp(cmd, c"head") == 0) || (strcmp(cmd, c"tail") == 0)): result = shell_translate_head_tail(words, cmd)
 	elif ((strcmp(cmd, c"chmod") == 0) || (strcmp(cmd, c"ln") == 0) || (strcmp(cmd, c"grep") == 0)): result = shell_translate_checked(words, cmd)
+	elif (strcmp(cmd, c"find") == 0): result = shell_translate_find(words)
+	elif (strcmp(cmd, c"sed") == 0): result = shell_translate_sed(words)
 	shell_translate_free_words(words)
 	return result
 

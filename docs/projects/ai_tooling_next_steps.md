@@ -29,6 +29,14 @@ produce its tracked-source list, even though the host can. Report missing
 tools before launching the suite; allow a host-generated file list for this
 cross-host workflow instead of failing after unrelated tests have run.
 
+## Debugging generated test runners (2026-10-09)
+
+`bin/wdbg tests/shell_execute_test.w --break_start` crashed in the
+`lib.testing` generated runner before reaching a source breakpoint during
+shell completion work, while the compiled test binary reached its ordinary
+assertion. The stale debugger binary may contribute; qualify generated test
+runner calls in the debugger and detect stale tooling builds before use.
+
 ## Diagnostics (`w check`)
 
 - **Compiler-directory test roots are silently replaced (2026-10-07).**

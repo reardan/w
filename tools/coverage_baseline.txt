@@ -9,6 +9,9 @@
 # margin. Unrelated REPL/debugger floors retain the prior baseline.
 # Raise a floor in the PR that adds the tests; lower one only with
 # a reason in the commit message.
+# The wsh launcher/translation regressions measure repl/ branches at
+# 74.3%; keep that gain. The frontend move changes the line denominator:
+# repl/ lines measure 91.9%, so the existing 91.5% line floor stays.
 code_generator/ 96.0
 compiler/ 93.5
 grammar/ 96.0
@@ -20,5 +23,5 @@ diagnostics 50.5
 branches:code_generator/ 87.5
 branches:compiler/ 83.0
 branches:grammar/ 84.5
-branches:repl/ 71.5
+branches:repl/ 73.5
 branches:debugger/ 64.0

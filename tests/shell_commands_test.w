@@ -10,6 +10,7 @@ round trip, cd/export, native fallback) lives in build.base.json's
 repl_test/repl_test_x64.
 */
 import lib.testing
+import lib.process
 import lib.shell_commands
 import repl.shell_translate
 import lib.file
@@ -904,16 +905,13 @@ void test_translate_stage1():
 	tr(c"ls -lah", 0)
 	tr(c"ls -x", 0)
 	tr(c"ls a b", 0)
-	tr(c"cat", 0)
+	tr(c"cat", c"shell_commands_cat()")
 	tr(c"cat a.txt", c"shell_commands_cat(c\"a.txt\")")
 	tr(c"cat a.txt b.txt", c"shell_commands_cat(c\"a.txt\", c\"b.txt\")")
 	tr(c"cat -n a.txt", 0)
-	# sed and find stay unrecognized (design doc Sec 6.3) -- stable
-	# examples of always-native commands now that stage 4 promoted grep
-	# (the way stage 2 promoted this test's original "echo" example and
-	# stage 4 its "grep" one).
+	# Unsupported sed scripts and find actions stay external.
 	tr(c"sed hi", 0)
-	tr(c"find .", 0)
+	tr(c"find . -exec echo x", 0)
 	tr(c"cat 'a b.txt'", c"shell_commands_cat(c\"a b.txt\")")
 	tr(c"cat \"plain\"", c"shell_commands_cat(c\"plain\")")
 	# "foo\ bar.txt" -> one word, the escaped space kept literal.
@@ -959,7 +957,7 @@ void test_translate_stage2():
 	tr(c"head --lines=5 a.txt", 0)
 	tr(c"head --lines 5 a.txt", c"shell_commands_head(c\"a.txt\", 5)")
 	tr(c"head -n five a.txt", 0)
-	tr(c"head -n 5", 0)
+	tr(c"head -n 5", c"shell_commands_head(c\"-\", 5)")
 	tr(c"head a.txt b.txt", 0)
 	tr(c"tail a.txt", c"shell_commands_tail(c\"a.txt\", 10)")
 	tr(c"tail -n 3 a.txt", c"shell_commands_tail(c\"a.txt\", 3)")
@@ -971,7 +969,7 @@ void test_translate_stage2():
 	tr(c"wc -lw a.txt", c"shell_commands_wc(c\"a.txt\", true, true, false)")
 	tr(c"wc -lwc a.txt", c"shell_commands_wc(c\"a.txt\", true, true, true)")
 	tr(c"wc -x a.txt", 0)
-	tr(c"wc -l", 0)
+	tr(c"wc -l", c"shell_commands_wc(c\"\", true, false, false)")
 	tr(c"mkdir newdir", c"shell_commands_mkdir(false, c\"newdir\")")
 	tr(c"mkdir -p a/b/c", c"shell_commands_mkdir(true, c\"a/b/c\")")
 	tr(c"mkdir --parents a/b/c", c"shell_commands_mkdir(true, c\"a/b/c\")")
@@ -1290,9 +1288,8 @@ void test_grep_invalid_pattern_reports_error():
 void test_translate_stage4():
 	tr(c"ln -s target link", c"shell_commands_ln_s(c\"target\", c\"link\")")
 	tr(c"ln --symbolic target link", c"shell_commands_ln_s(c\"target\", c\"link\")")
-	# A bare "ln" is a hard link -- no native implementation, so the
-	# real tool handles it.
-	tr(c"ln target link", 0)
+	# A bare ln creates a hard link.
+	tr(c"ln target link", c"shell_commands_ln(c\"target\", c\"link\")")
 	tr(c"ln -sf target link", 0)
 	tr(c"ln -s target", 0)
 	tr(c"ln -s a b c", 0)
@@ -1313,8 +1310,8 @@ void test_translate_stage4():
 	# line to native).
 	tr(c"grep 'a.*b' f", c"shell_commands_grep(false, c\"a.*b\", c\"f\")")
 	tr(c"grep 'foo$' f", c"shell_commands_grep(false, c\"foo$\", c\"f\")")
-	# A file-less grep reads stdin -- native territory.
-	tr(c"grep foo", 0)
+	# A file-less grep reads stdin.
+	tr(c"grep foo", c"shell_commands_grep(false, c\"foo\")")
 	tr(c"grep -i foo f", 0)
 	tr(c"grep -rn foo f", 0)
 	# Patterns lib/regex.w's regex_valid rejects run the real grep
@@ -1504,3 +1501,293 @@ void test_session_call_variadic_takes_the_rest():
 		shell_translate_session_call(shtest_words(c"shout false a b"), kinds, 1, shell_arg_string))
 	assert_strings_equal(c"shout(true)",
 		shell_translate_session_call(shtest_words(c"shout true"), kinds, 1, shell_arg_string))
+
+
+# Real fd0 redirection, repeated in one process to catch stale singleton
+# buffers/EOF state and accidental closing of stdin after each invocation.
+void shtest_stdin_start(char* text):
+	dup2(0, 92)
+	char* path = shtest_scratch_path(c"_stdin")
+	file_write_text(path, text)
+	int fd = open(path, 0, 0)
+	assert1(fd >= 0)
+	dup2(fd, 0)
+	close(fd)
+	unlink(path)
+	free(path)
+
+
+void shtest_stdin_end():
+	# dup2 fails with EBADF if a tool closed fd0.
+	assert1(dup2(0, 93) >= 0)
+	close(93)
+	dup2(92, 0)
+	close(92)
+
+
+void test_stdin_tools_and_fresh_invocations():
+	char* cap = shtest_scratch_path(c"_stdin.out")
+	for i in range(8):
+		shtest_stdin_start(c"alpha one\x0abeta two\x0a")
+		shtest_capture_stdout_start(cap)
+		int status = 1
+		if (i == 0): status = shell_commands_cat()
+		if (i == 1): status = shell_commands_cat(c"-")
+		if (i == 2): status = shell_commands_head(c"-", 1)
+		if (i == 3): status = shell_commands_tail(c"-", 1)
+		if (i == 4): status = shell_commands_wc(c"", false, false, true)
+		if (i == 5): status = shell_commands_grep(false, c"beta")
+		if (i == 6): status = shell_commands_grep(true, c"alpha", c"-")
+		if (i == 7): status = shell_commands_sed(false, c"s/[a-z]*/X/")
+		char* got = shtest_capture_stdout_end(cap)
+		shtest_stdin_end()
+		assert_equal(0, status)
+		if (i < 2): assert_strings_equal(c"alpha one\x0abeta two\x0a", got)
+		if (i == 2): assert_strings_equal(c"alpha one\x0a", got)
+		if ((i == 3) || (i == 5)): assert_strings_equal(c"beta two\x0a", got)
+		if (i == 4): assert_strings_equal(c"19\x0a", got)
+		if (i == 6): assert_strings_equal(c"1:alpha one\x0a", got)
+		if (i == 7): assert_strings_equal(c"X one\x0aX two\x0a", got)
+		free(got)
+	free(cap)
+
+
+void test_translate_stdin_and_new_tools():
+	tr(c"cat -", c"shell_commands_cat(c\"-\")")
+	tr(c"head", c"shell_commands_head(c\"-\", 10)")
+	tr(c"tail -n 1 -", c"shell_commands_tail(c\"-\", 1)")
+	tr(c"wc -c", c"shell_commands_wc(c\"\", false, false, true)")
+	tr(c"wc -l -", c"shell_commands_wc(c\"-\", true, false, false)")
+	tr(c"grep x -", c"shell_commands_grep(false, c\"x\", c\"-\")")
+	tr(c"find", c"shell_commands_find(c\".\", c\"*\", c\"\", 0, 2147483647)")
+	tr(c"find dir -name '*.w' -type f -mindepth 1 -maxdepth 2 -print", c"shell_commands_find(c\"dir\", c\"*.w\", c\"f\", 1, 2)")
+	tr(c"find -type l", c"shell_commands_find(c\".\", c\"*\", c\"l\", 0, 2147483647)")
+	tr(c"find . -type d -maxdepth 0", c"shell_commands_find(c\".\", c\"*\", c\"d\", 0, 0)")
+	tr(c"find . -print -name x", 0)
+	tr(c"find . -name x -name y", 0)
+	tr(c"find . -name '[ab]'", 0)
+	tr(c"find . -maxdepth 999999999999", 0)
+	tr(c"find . -mindepth -1", 0)
+	tr(c"find . -type b", 0)
+	tr(c"find . -name", 0)
+	tr(c"find a b", 0)
+	tr(c"find -L .", 0)
+	tr(c"find . -delete", 0)
+	tr(c"sed 's/a/A/g'", c"shell_commands_sed(false, c\"s/a/A/g\")")
+	tr(c"sed -n p a -", c"shell_commands_sed(true, c\"p\", c\"a\", c\"-\")")
+	tr(c"sed d", c"shell_commands_sed(false, c\"d\")")
+	tr(c"sed -i 's/a/b/' f", 0)
+	tr(c"sed 's/a+/b/'", 0)
+	tr(c"sed 's/a/b/i'", 0)
+	tr(c"sed 's//b/'", 0)
+	tr(c"sed 's/a/\\1/'", 0)
+	tr(c"sed 's/a/b/;p'", 0)
+	tr(c"sed '1p'", 0)
+	tr(c"sed", 0)
+	tr(c"sed -n", 0)
+	tr(c"sed p --unknown", 0)
+	tr(c"ln -f a b", 0)
+
+
+void test_sed_substitution_edges():
+	assert_strings_equal(c"<aaa> b aa", shell_commands_sed_replace(c"aaa b aa", c"a*", c"<&>", 0))
+	assert_strings_equal(c"XbX", shell_commands_sed_replace(c"ab", c"a*", c"X", 1))
+	assert_strings_equal(c"XaXbX", shell_commands_sed_replace(c"ab", c"z*", c"X", 1))
+	assert_strings_equal(c"Xab", shell_commands_sed_replace(c"ab", c"^", c"X", 1))
+	assert_strings_equal(c"abX", shell_commands_sed_replace(c"ab", c"$", c"X", 1))
+	assert_strings_equal(c"XX", shell_commands_sed_replace(c"aa", c"a", c"X", 1))
+	assert_strings_equal(c"bb", shell_commands_sed_replace(c"bb", c"a", c"X", 1))
+	assert_strings_equal(c"X", shell_commands_sed_replace(c"", c"^$", c"X", 1))
+
+
+void test_sed_files_print_delete_quiet_and_errors():
+	char* path = shtest_scratch_path(c"_sed.txt")
+	char* cap = shtest_scratch_path(c"_sed.out")
+	file_write_text(path, c"aaa\x0abb")
+	for i in range(5):
+		shtest_capture_stdout_start(cap)
+		int status = 1
+		if (i == 0): status = shell_commands_sed(false, c"s/a*/X/g", path)
+		if (i == 1): status = shell_commands_sed(true, c"p", path)
+		if (i == 2): status = shell_commands_sed(false, c"p", path)
+		if (i == 3): status = shell_commands_sed(false, c"d", path)
+		if (i == 4): status = shell_commands_sed(true, c"s/a/X/", path)
+		char* got = shtest_capture_stdout_end(cap)
+		assert_equal(0, status)
+		if (i == 0): assert_strings_equal(c"X\x0aXbXbX", got)
+		if (i == 1): assert_strings_equal(c"aaa\x0abb", got)
+		if (i == 2): assert_strings_equal(c"aaa\x0aaaa\x0abbbb", got)
+		if (i >= 3): assert_strings_equal(c"", got)
+		free(got)
+	shtest_quiet_start()
+	assert_equal(1, shell_commands_sed(false, c"bad script", path))
+	assert_equal(1, shell_commands_sed(false, c"p", c"/no/such/w_sed", path))
+	shtest_quiet_end()
+	unlink(path)
+	free(path)
+	free(cap)
+
+
+void test_find_depth_types_names_and_symlinks():
+	char* dir = shtest_scratch_path(c"_find")
+	char* sub = path_join(dir, c"sub")
+	char* a = path_join(dir, c"a.w")
+	char* b = path_join(sub, c"b.w")
+	char* link = path_join(dir, c"loop")
+	char* broken = path_join(dir, c"broken")
+	assert_equal(0, shell_commands_mkdir(true, sub))
+	file_write_text(a, c"a")
+	file_write_text(b, c"b")
+	assert_equal(0, shell_commands_ln_s(c".", link))
+	assert_equal(0, shell_commands_ln_s(c"absent", broken))
+	char* cap = shtest_scratch_path(c"_find.out")
+	for i in range(6):
+		shtest_capture_stdout_start(cap)
+		int status = 1
+		if (i == 0): status = shell_commands_find(dir, c"*", c"", 0, 10)
+		if (i == 1): status = shell_commands_find(dir, c"?.w", c"f", 1, 1)
+		if (i == 2): status = shell_commands_find(dir, c"*.w", c"f", 2, 2)
+		if (i == 3): status = shell_commands_find(dir, c"*", c"d", 0, 0)
+		if (i == 4): status = shell_commands_find(dir, c"*", c"l", 0, 10)
+		if (i == 5): status = shell_commands_find(link, c"*", c"l", 0, 10)
+		char* got = shtest_capture_stdout_end(cap)
+		assert_equal(0, status)
+		if (i == 0): assert_equal(6, shtest_count_newlines(got))
+		if (i == 1): assert_strings_equal(strjoin(a, c"\x0a"), got)
+		if (i == 2): assert_strings_equal(strjoin(b, c"\x0a"), got)
+		if (i == 3): assert_strings_equal(strjoin(dir, c"\x0a"), got)
+		if (i == 4): assert_equal(2, shtest_count_newlines(got))
+		if (i == 5): assert_strings_equal(strjoin(link, c"\x0a"), got)
+		free(got)
+	shtest_quiet_start()
+	assert_equal(1, shell_commands_find(c"/no/such/w_find", c"*", c"", 0, 1))
+	assert_equal(1, shell_commands_find(dir, c"*", c"z", 0, 1))
+	assert_equal(1, shell_commands_find(dir, c"*", c"", -1, 1))
+	shtest_quiet_end()
+	assert_equal(1, shell_glob_match(c"a*b?", c"axxbz"))
+	assert_equal(0, shell_glob_match(c"a*b?", c"axxb"))
+	assert_equal(0, shell_glob_match(c"abc", c"abd"))
+	assert_equal(1, shell_glob_match(c"*", c".hidden"))
+	assert_equal(0, shell_glob_valid(c"a\\b"))
+	shell_commands_rm(true, false, dir)
+	free(cap)
+	free(broken)
+	free(link)
+	free(b)
+	free(a)
+	free(sub)
+	free(dir)
+
+
+void test_ln_hard_links_share_content_without_replacing():
+	char* dir = shtest_scratch_path(c"_hardlinks")
+	char* sub = path_join(dir, c"sub")
+	char* source = path_join(dir, c"source")
+	char* dest = path_join(dir, c"dest")
+	shell_commands_mkdir(true, sub)
+	file_write_text(source, c"before")
+	assert_equal(0, shell_commands_ln(source, dest))
+	assert_equal(0, shell_commands_ln(source, sub))
+	file_stat st
+	assert_equal(0, file_stat_path(source, &st))
+	assert_equal(3, st.nlink)
+	file_write_text(dest, c"after")
+	assert_strings_equal(c"after", file_read_text(source))
+	shtest_quiet_start()
+	assert_equal(1, shell_commands_ln(source, dest))
+	assert_equal(1, shell_commands_ln(c"/no/such/w_link", path_join(dir, c"missing")))
+	shtest_quiet_end()
+	assert_strings_equal(c"after", file_read_text(dest))
+	shell_commands_rm(true, false, dir)
+	free(dest)
+	free(source)
+	free(sub)
+	free(dir)
+
+
+# Keep the producer end OPEN while waiting for the consumer: no EOF is
+# possible. Whole-input head would hang here just as with yes | head.
+# Timeout kills/reaps only the test child, then produces a normal failure.
+void test_head_pipe_exits_before_producer_eof():
+	char* cap = shtest_scratch_path(c"_head_pipe.out")
+	for n in range(2):
+		int read_end = -1
+		int write_end = -1
+		assert_equal(0, process_make_pipe(&read_end, &write_end))
+		shtest_capture_stdout_start(cap)
+		int pid = fork()
+		assert1(pid >= 0)
+		if (pid == 0):
+			close(write_end)
+			dup2(read_end, 0)
+			close(read_end)
+			exit(shell_commands_head(c"-", n))
+		close(read_end)
+		if (n > 0): assert_equal(6, write(write_end, c"first\x0a", 6))
+		process* child = new process
+		child.pid = pid
+		child.stdin_fd = -1
+		child.stdout_fd = -1
+		child.stderr_fd = -1
+		child.reaped = 0
+		child.win_handle = 0
+		int status = process_wait_timeout(child, 1500)
+		if (status == process_status_timeout):
+			process_kill(child, sigkill)
+			process_wait(child)
+		close(write_end)
+		process_free(child)
+		char* got = shtest_capture_stdout_end(cap)
+		assert_equal(0, status)
+		if (n == 0): assert_strings_equal(c"", got)
+		else: assert_strings_equal(c"first\x0a", got)
+		free(got)
+	free(cap)
+
+
+void test_head_tail_preserve_partial_lines_and_tail_ring():
+	char* path = shtest_scratch_path(c"_partial_lines")
+	char* cap = shtest_scratch_path(c"_partial_lines.out")
+	file_write_text(path, c"a\x0ab\x0ac\x0ad")
+	for i in range(4):
+		shtest_capture_stdout_start(cap)
+		int status = 0
+		if (i == 0): status = shell_commands_head(path, 20)
+		if (i == 1): status = shell_commands_tail(path, 2)
+		if (i == 2): status = shell_commands_tail(path, 0)
+		if (i == 3): status = shell_commands_tail(path, 20)
+		char* got = shtest_capture_stdout_end(cap)
+		assert_equal(0, status)
+		if ((i == 0) || (i == 3)): assert_strings_equal(c"a\x0ab\x0ac\x0ad", got)
+		if (i == 1): assert_strings_equal(c"c\x0ad", got)
+		if (i == 2): assert_strings_equal(c"", got)
+		free(got)
+	unlink(path)
+	free(path)
+	free(cap)
+
+
+void test_new_tool_rejections_and_read_errors():
+	tr(c"head -n 9999999999999", 0)
+	tr(c"sed 's/a/b///g'", 0)
+	tr(c"sed 's/[[:alpha:]]/b/'", 0)
+	tr(c"sed 's/a/b/\x0ap'", 0)
+	assert_equal(1, shell_glob_match(c"*", c"*literal"))
+	shtest_quiet_start()
+	assert_equal(1, shell_commands_cat(c"/"))
+	assert_equal(1, shell_commands_head(c"/", 1))
+	assert_equal(1, shell_commands_tail(c"/", 1))
+	assert_equal(1, shell_commands_wc(c"/", true, false, false))
+	assert_equal(2, shell_commands_grep(false, c"x", c"/"))
+	assert_equal(1, shell_commands_sed(false, c"p", c"/"))
+	shtest_quiet_end()
+
+
+void test_translate_bracket_globs_respect_quotes():
+	tr(c"echo [ab]", 0)
+	tr(c"cat file[0-9].txt", 0)
+	tr(c"echo '[ab]'", c"shell_commands_echo(false, c\"[ab]\")")
+	tr(c"echo \"[ab]\"", c"shell_commands_echo(false, c\"[ab]\")")
+	tr(c"echo \\[ab]", c"shell_commands_echo(false, c\"[ab]\")")
+	tr(c"sed 's/[ab]/X/g'", c"shell_commands_sed(false, c\"s/[ab]/X/g\")")
+	assert_equal(0, shell_translate_has_meta(c"find . -name '[ab]'"))
