@@ -82,16 +82,19 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	sources.push(c"debugger/debugger.w")
 	sources.push(c"tests/tile_analysis_unit_test.w")
 	sources.push(c"tests/tile_ast_test.w")
+	sources.push(c"tests/ast_function_record_test.w")
 	list[char*] tags = new list[char*]
 	tags.push(c"compiler")
 	tags.push(c"repl")
 	tags.push(c"wdbg")
 	tags.push(c"tile_analysis_test")
 	tags.push(c"tile_ast_test")
+	tags.push(c"function_record_test")
 	list[char*] variables = new list[char*]
 	variables.push(c"W_COVERAGE_COMPILER")
 	variables.push(c"W_COVERAGE_REPL")
 	variables.push(c"W_COVERAGE_WDBG")
+	variables.push(0)
 	variables.push(0)
 	variables.push(0)
 	for i in range(sources.length):
