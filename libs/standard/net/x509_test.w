@@ -148,9 +148,9 @@ void test_parse_trustasia_chain_certs():
 	assert_equal(1, x509_match_hostname(leaf, c"www.tm.cn"))
 	assert_equal(1, x509_match_hostname(leaf, c"tm.cn"))
 	assert_equal(0, x509_match_hostname(leaf, c"a.b.tm.cn"))
-	# Its issuer key is EC P-384: parseable, but unsupported for verifying.
+	# Its issuer key is EC P-384.
 	x509_cert* ca = xt_load_cert(c"trustasia_ca.pem")
-	assert_equal(X509_KEY_UNSUPPORTED, ca.key_type)
+	assert_equal(X509_KEY_EC_P384, ca.key_type)
 	assert_equal(X509_SIGALG_RSA_SHA384, ca.sig_alg)
 	x509_cert_free(leaf)
 	x509_cert_free(ca)
@@ -226,13 +226,20 @@ void test_verify_digicert_sha384_link():
 	x509_store_add(store, root)
 	char* err = 0
 	assert_equal(1, x509_verify_chain_no_hostname(ta, 0, store, XT_NOW_TRUSTASIA(), &err))
-	# The TrustAsia leaf cannot be verified: its issuer key is P-384,
-	# which this stack does not support -> fail closed.
+	# The TrustAsia leaf requires P-384/SHA-384 issuer verification.
 	x509_cert* leaf = xt_load_cert(c"trustasia_leaf.pem")
 	x509_trust_store* tstore = x509_store_new()
 	x509_store_add(tstore, xt_load_cert(c"trustasia_ca.pem"))
-	assert_equal(0, x509_verify_chain(leaf, 0, tstore, c"www.tm.cn", XT_NOW_TRUSTASIA(), &err))
+	assert_equal(1, x509_verify_chain(leaf, 0, tstore, c"www.tm.cn", XT_NOW_TRUSTASIA(), &err))
+	list[x509_cert*] extra = new list[x509_cert*]
+	extra.push(ta)
+	assert_equal(1, x509_verify_chain(leaf, extra, store, c"www.tm.cn", XT_NOW_TRUSTASIA(), &err))
+	assert_equal(0, x509_verify_chain(leaf, extra, store, c"wrong.example", XT_NOW_TRUSTASIA(), &err))
+	assert_strings_equal(c"x509: hostname mismatch", err)
+	leaf.der[leaf.sig_start + 17] = leaf.der[leaf.sig_start + 17] ^ 32
+	assert_equal(0, x509_verify_chain(leaf, extra, store, c"www.tm.cn", XT_NOW_TRUSTASIA(), &err))
 	assert_strings_equal(c"x509: signature verification failed", err)
+	list_free[x509_cert*](extra)
 	x509_cert_free(ta)
 	x509_cert_free(leaf)
 	x509_store_free(store)
@@ -741,3 +748,22 @@ void test_ec_private_key_corruption():
 	pem_blocks_free(blocks)
 	free(p8)
 	free(d)
+
+
+void test_p384_signature_der_width():
+	x509_cert* leaf = xt_load_cert(c"trustasia_leaf.pem")
+	char[48] r
+	char[48] s
+	char* sig = leaf.der + leaf.sig_start
+	int n = leaf.sig_len
+	assert_equal(1, x509_ecdsa_sig_to_raw_width(sig, n, r, s, 48))
+	assert_equal(0, x509_ecdsa_sig_to_raw(sig, n, r, s))
+	assert_equal(0, x509_ecdsa_sig_to_raw_width(sig, n, r, s, 49))
+	assert_equal(0, x509_ecdsa_sig_to_raw_width(sig, n - 1, r, s, 48))
+	# An encoded signature must consume the entire input.
+	char* trailing = cast(char*, malloc(n + 1))
+	mem_copy(trailing, sig, n)
+	trailing[n] = 0
+	assert_equal(0, x509_ecdsa_sig_to_raw_width(trailing, n + 1, r, s, 48))
+	free(trailing)
+	x509_cert_free(leaf)

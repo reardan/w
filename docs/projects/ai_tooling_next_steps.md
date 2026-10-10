@@ -236,6 +236,13 @@ runner calls in the debugger and detect stale tooling builds before use.
 
 ## Test selection (`bin/wtest`)
 
+- **Stale selector gives misleading manifest errors (2026-10-09).** On a
+  reused checkout, `bin/wtest changed` rejected current `link` directives in
+  `library_shared_test.w` and `compiler_shared.w`. `./wbuild wtest` refreshed
+  the binary and resolved it. Detect an outdated generator/tool binary or
+  suggest rebuilding it before reporting these as source errors.
+
+
 - **Generated UI font data can be read during replacement (2026-10-09).**
   A parallel `./wbuild --keep-going tests` run failed `graphics_darwin`
   step 24 with an unterminated string in `graphics/ui/font_data.w`; the

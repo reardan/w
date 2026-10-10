@@ -140,7 +140,7 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	socket_set_send_timeout(fd, osl_io_timeout_ms())
 
 	tls_config* cfg = tls_config_new()
-	cfg.insecure_skip_verify = 1   # throwaway self-signed test cert
+	cfg.trust_store_path = cert   # explicitly trust this throwaway CA only
 	tls_conn* conn = tls_connect(fd, c"localhost", cfg)
 	if (conn == 0):
 		int r = osl_fail(p, c"client: tls_connect failed", tls_last_error(cfg))
@@ -268,15 +268,15 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 # Returns 1 on success, 0 on failure (prints a clear message via osl_fail
 # either way -- unlike the shell version, which redirected openssl req's
 # own stderr to /dev/null and relied on `set -e` to die silently).
-int osl_generate_cert(char* openssl_bin, char* cert, char* key):
-	char** argv = strv_new(16)
+int osl_generate_cert(char* openssl_bin, char* cert, char* key, char* curve):
+	char** argv = strv_new(20)
 	strv_set(argv, 0, c"openssl")
 	strv_set(argv, 1, c"req")
 	strv_set(argv, 2, c"-x509")
 	strv_set(argv, 3, c"-newkey")
 	strv_set(argv, 4, c"ec")
 	strv_set(argv, 5, c"-pkeyopt")
-	strv_set(argv, 6, c"ec_paramgen_curve:P-256")
+	strv_set(argv, 6, curve)
 	strv_set(argv, 7, c"-keyout")
 	strv_set(argv, 8, key)
 	strv_set(argv, 9, c"-out")
@@ -286,6 +286,10 @@ int osl_generate_cert(char* openssl_bin, char* cert, char* key):
 	strv_set(argv, 13, c"-nodes")
 	strv_set(argv, 14, c"-subj")
 	strv_set(argv, 15, c"/CN=localhost")
+	strv_set(argv, 16, c"-addext")
+	strv_set(argv, 17, c"subjectAltName=DNS:localhost")
+	strv_set(argv, 18, c"-addext")
+	strv_set(argv, 19, c"basicConstraints=critical,CA:TRUE")
 
 	process_result* pr = process_run(openssl_bin, argv, 0, 0, 30000)
 	free(cast(void*, argv))
@@ -323,11 +327,15 @@ int main():
 	char* cert = path_join(dir, c"cert.pem")
 	char* key = path_join(dir, c"key.pem")
 
-	int ok = osl_generate_cert(openssl_bin, cert, key)
+	int ok = osl_generate_cert(openssl_bin, cert, key, c"ec_paramgen_curve:P-256")
 	if (ok != 0):
 		if (osl_client_direction(openssl_bin, cert, key) == 0): ok = 0
 	if (ok != 0):
 		if (osl_server_direction(openssl_bin, cert, key) == 0): ok = 0
+
+	# P-384 exercises both X.509 signatures and TLS CertificateVerify.
+	if (ok != 0): ok = osl_generate_cert(openssl_bin, cert, key, c"ec_paramgen_curve:P-384")
+	if (ok != 0): ok = osl_client_direction(openssl_bin, cert, key)
 
 	free(cert)
 	free(key)

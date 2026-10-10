@@ -551,8 +551,9 @@ void test_bad_certverify():
 	tls_config_free(cfg)
 
 
-# With verification ON (default), the self-signed RFC test certificate does
-# not chain to any system trust anchor, so the handshake fails closed.
+# With verification ON, the RFC test certificate lacks a matching SAN.
+# Preserve the X.509 reason through the TLS API. Use an explicit test root
+# so the result is independent of the host trust store.
 void test_chain_verification_fails():
 	int ch_len = 0
 	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
@@ -560,6 +561,7 @@ void test_chain_verification_fails():
 	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tls_config_new()
 	cfg.insecure_skip_verify = 0        # verification ON
+	cfg.trust_store_path = c"libs/standard/net/x509_fixtures/ca_rsa.pem"
 	cfg.test_accept_any_cipher = 1
 	cfg.has_now_unix = 1
 	cfg.now_unix = 1500000000           # 2017, inside the cert's validity
@@ -570,6 +572,7 @@ void test_chain_verification_fails():
 	char* server_bytes = tlst_build_server_bytes(0 - 1, 0, 0 - 1, &sb_len)
 	tls_conn* c = tls_connect_mem(server_bytes, sb_len, c"rsa", cfg)
 	asserts(c"tls: untrusted chain must fail", c == 0)
+	assert_strings_equal(c"x509: hostname mismatch", tls_last_error(cfg))
 	free(server_bytes)
 	free(ch)
 	free(priv)
@@ -726,3 +729,30 @@ void test_connect_without_server_name_insecure_proceeds():
 	asserts(c"dead socket still fails", c == 0)
 	assert_strings_equal(c"tls: send ClientHello failed", tls_last_error(cfg))
 	tls_config_free(cfg)
+
+
+# OpenSSL SHA-384 signature using x509_fixtures/key_p384_pkcs8.pem over
+# 64 spaces || "TLS 1.3, server CertificateVerify" || NUL || bytes 0..31.
+# Fixed public vector: no OpenSSL or network dependency at test time.
+void test_p384_certverify():
+	int n = 0
+	char* qx = hex_decode_loose(c"3954433e70c2f049a13ad46dd63421dd30cdf50ba5c4c7b3d65edc6f43ad72cbf5b08de880e3da10b28bb01cb16dbdaf", &n)
+	char* qy = hex_decode_loose(c"fb390f5802d3344578c1ed3f0a745c966958b3c99233ad857286748b6693ab30b6b5e00b5a8725f3c58d6a44e628f88b", &n)
+	char* sig = hex_decode_loose(c"3065023100e2eba9392e041e886cb23881b8316308b99d9680d1c97334ffd84a0c25dd6b7a82004ae7169e580806b81aade065d61b023024a62614ff4bebc31d3e2291e0070c67fe34b56e2d856b6736362221b317d1d7112ae3b5d16e38745924eb9be94bac9b", &n)
+	char[32] transcript
+	for i in range(32): transcript[i] = i
+	x509_cert leaf
+	leaf.key_type = X509_KEY_EC_P384
+	leaf.ec_qx = qx
+	leaf.ec_qy = qy
+	assert_equal(1, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32))
+	assert_equal(0, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP256R1_SHA256, sig, n, transcript, 32))
+	assert_equal(0, tls_verify_certverify_role(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32, 1))
+	transcript[0] ^= 1
+	assert_equal(0, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32))
+	transcript[0] ^= 1
+	sig[n - 1] ^= 1
+	assert_equal(0, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32))
+	free(qx)
+	free(qy)
+	free(sig)

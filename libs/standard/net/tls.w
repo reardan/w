@@ -9,7 +9,8 @@ Scope (matches the plan's "keep the surface minimal"):
   - TLS 1.3 only, single cipher suite TLS_CHACHA20_POLY1305_SHA256,
     X25519 key exchange, no HelloRetryRequest, no PSK/0-RTT/resumption,
     optional/required client certificates (ECDSA P-256). ALPN (RFC 7301)
-    is optional: see below.
+    is optional: see below. Server signature verification supports RSA
+    SHA-256/SHA-384 and ECDSA P-256/SHA-256 or P-384/SHA-384.
   - Record layer: TLSPlaintext / TLSCiphertext framing with the TLS 1.3
     AEAD nonce (per-record 64-bit sequence number XORed into write_iv),
     additional_data = the 5-byte record header, ChaCha20-Poly1305 only,
@@ -151,6 +152,7 @@ const int TLS_GROUP_X25519 = 0x001d
 const int TLS_SIG_RSA_PKCS1_SHA256 = 0x0401
 const int TLS_SIG_RSA_PKCS1_SHA384 = 0x0501
 const int TLS_SIG_ECDSA_SECP256R1_SHA256 = 0x0403
+const int TLS_SIG_ECDSA_SECP384R1_SHA384 = 0x0503
 const int TLS_SIG_RSA_PSS_RSAE_SHA256 = 0x0804
 const int TLS_SIG_RSA_PSS_RSAE_SHA384 = 0x0805
 
@@ -1041,9 +1043,10 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 
 	# signature_algorithms
 	string_append_be16(b, TLS_EXT_SIGNATURE_ALGORITHMS)
-	string_append_be16(b, 12)
-	string_append_be16(b, 10)                      # list length
+	string_append_be16(b, 14)
+	string_append_be16(b, 12)                      # list length
 	string_append_be16(b, TLS_SIG_ECDSA_SECP256R1_SHA256)
+	string_append_be16(b, TLS_SIG_ECDSA_SECP384R1_SHA384)
 	string_append_be16(b, TLS_SIG_RSA_PSS_RSAE_SHA256)
 	string_append_be16(b, TLS_SIG_RSA_PSS_RSAE_SHA384)
 	string_append_be16(b, TLS_SIG_RSA_PKCS1_SHA256)
@@ -1175,6 +1178,7 @@ int tls_verify_certverify_role(x509_cert* leaf, int sig_scheme, char* sig, int s
 	int use_sha384 = 0
 	if (sig_scheme == TLS_SIG_RSA_PSS_RSAE_SHA384): use_sha384 = 1
 	if (sig_scheme == TLS_SIG_RSA_PKCS1_SHA384): use_sha384 = 1
+	if (sig_scheme == TLS_SIG_ECDSA_SECP384R1_SHA384): use_sha384 = 1
 	int hlen = 32
 	if (use_sha384 != 0): hlen = 48
 	char* digest = cast(char*, malloc(hlen))
@@ -1200,6 +1204,15 @@ int tls_verify_certverify_role(x509_cert* leaf, int sig_scheme, char* sig, int s
 			char* s = cast(char*, malloc(32))
 			if (x509_ecdsa_sig_to_raw(sig, siglen, r, s) != 0):
 				ok = ecdsa_p256_verify(leaf.ec_qx, leaf.ec_qy, digest, 32, r, s)
+			free(r)
+			free(s)
+
+	else if (leaf.key_type == X509_KEY_EC_P384):
+		if (sig_scheme == TLS_SIG_ECDSA_SECP384R1_SHA384):
+			char* r = cast(char*, malloc(48))
+			char* s = cast(char*, malloc(48))
+			if (x509_ecdsa_sig_to_raw_width(sig, siglen, r, s, 48) != 0):
+				ok = ecdsa_p384_verify(leaf.ec_qx, leaf.ec_qy, digest, hlen, r, s)
 			free(r)
 			free(s)
 
@@ -1344,7 +1357,7 @@ int tls_check_chain(tls_conn* c, list[x509_cert*] certs, char* server_name):
 	x509_store_free(store)
 	if (chok == 0):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_HANDSHAKE_FAILURE)
-		tls_fail(c, c"tls: certificate verification failed")
+		tls_fail(c, verr)
 		return 0
 	return 1
 
@@ -2679,6 +2692,7 @@ int tls_send_certificate_request(tls_conn* c):
 # verified signature algorithms. Handshake signatures remain P-256 only.
 int tls_certificate_scheme_bit(int scheme):
 	if (scheme == TLS_SIG_ECDSA_SECP256R1_SHA256): return 1 << X509_SIGALG_ECDSA_SHA256
+	if (scheme == TLS_SIG_ECDSA_SECP384R1_SHA384): return 1 << X509_SIGALG_ECDSA_SHA384
 	if (scheme == TLS_SIG_RSA_PKCS1_SHA256): return 1 << X509_SIGALG_RSA_SHA256
 	if (scheme == TLS_SIG_RSA_PKCS1_SHA384): return 1 << X509_SIGALG_RSA_SHA384
 	if (scheme == TLS_SIG_RSA_PSS_RSAE_SHA256): return 1 << X509_SIGALG_RSA_PSS_SHA256
