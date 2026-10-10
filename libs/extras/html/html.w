@@ -259,6 +259,42 @@ int html_raw_end(html_tokenizer* t, int at):
 	int c = t.source[after]
 	return html_space(c) || (c == '>') || (c == '/')
 
+# Script text follows HTML's escaped/double-escaped states, independently of
+# JavaScript strings/comments. Scan one complete text token, preserving bytes
+# for the common normalization/decoding path below.
+void html_script_text(html_tokenizer* t):
+	int escaped = 0
+	int dashes = 0
+	int start = t.position
+	while (t.position < t.length):
+		int pos = t.position
+		int c = t.source[pos]
+		if ((escaped < 2) && html_raw_end(t, pos)): return
+		if ((escaped == 0) && html_match(t, pos, c"<!--")):
+			escaped = 1
+			dashes = 2
+			t.position = pos + 4
+			continue
+		if (escaped != 0):
+			# In double escape, a matching end spelling only leaves that mode;
+			# it does not close the script. Consume its delimiter as text too.
+			int after = 0
+			if ((escaped == 1) && html_match(t, pos, c"<script")): after = pos + 7
+			if ((escaped == 2) && html_match(t, pos, c"</script")): after = pos + 8
+			if ((after != 0) && (after < t.length)):
+				int delimiter = t.source[after]
+				if (html_space(delimiter) || (delimiter == '/') || (delimiter == '>')):
+					escaped = 3 - escaped
+					dashes = 0
+					t.position = after + 1
+					continue
+			if ((c == '>') && (dashes == 2)): escaped = 0
+			if (c == '-'):
+				if (dashes < 2): dashes = dashes + 1
+			else: dashes = 0
+		t.position = pos + 1
+	if (escaped != 0): html_report(t, start, t.position, c"EOF in escaped script text")
+
 int html_is_raw(char* name):
 	return (strcmp(name, c"script") == 0) || (strcmp(name, c"style") == 0) || (strcmp(name, c"xmp") == 0) || (strcmp(name, c"iframe") == 0) || (strcmp(name, c"noembed") == 0) || (strcmp(name, c"noframes") == 0)
 
@@ -286,7 +322,9 @@ html_token* html_tokenizer_next(html_tokenizer* t):
 			free(t.raw_name)
 			t.raw_name = 0
 		else:
-			while ((t.position < t.length) && !html_raw_end(t, t.position)): t.position = t.position + 1
+			if (strcmp(t.raw_name, c"script") == 0): html_script_text(t)
+			else:
+				while ((t.position < t.length) && !html_raw_end(t, t.position)): t.position = t.position + 1
 			token.kind = HTML_TEXT
 			token.text = html_decode(t, start, t.position, t.rcdata, &token.text_length)
 			token.end = t.position

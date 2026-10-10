@@ -85,7 +85,7 @@ int css_at(css_document* d, int pos):
 
 int css_escape_start(css_document* d, int pos):
 	int c = css_at(d, pos + 1)
-	return css_at(d, pos) == '\\' && c >= 0 && c != 10 && c != 13 && c != 12
+	return css_at(d, pos) == '\\' && c != 10 && c != 13 && c != 12
 
 
 int css_ident_start(css_document* d, int pos):
@@ -124,6 +124,7 @@ int css_escape(css_document* d, int pos, string_builder* out):
 			pos = pos + 1
 		return pos
 	if (c < 0):
+		css_error(d, c"EOF in escape", pos - 1, pos)
 		css_append_codepoint(out, 65533)
 		return pos
 	if (c == 0): css_append_codepoint(out, 65533)
@@ -186,6 +187,50 @@ int css_delim(css_token* t, int c):
 	return css_kind(t, c"delim") && t.value_length == 1 && t.value[0] == c
 
 
+int css_ascii_equal(char* a, char* b):
+	int i = 0
+	while (a[i] != 0 && b[i] != 0):
+		int c = a[i] & 255
+		if (c >= 'A' && c <= 'Z'): c = c + 32
+		if (c != b[i]): return 0
+		i = i + 1
+	return a[i] == b[i]
+
+
+# Consume an unquoted URL after its opening parenthesis. Its punctuation is
+# data, not component delimiters; malformed URLs recover at the next unescaped
+# ')' (or EOF), so internal semicolons cannot become declarations.
+int css_url(css_document* d, int pos, int start, string_builder* out, int* bad):
+	while (css_space(css_at(d, pos))): pos = pos + 1
+	while (pos < d.length):
+		int c = css_at(d, pos)
+		if (c == ')'): return pos + 1
+		if (css_space(c)):
+			while (css_space(css_at(d, pos))): pos = pos + 1
+			if (css_at(d, pos) == ')'): return pos + 1
+			if (pos == d.length): break
+			*bad = 1
+		else if (c == '"' || c == 39 || c == '(' || (c >= 1 && c <= 8) || c == 11 || (c >= 14 && c <= 31) || c == 127): *bad = 1
+		else if (c == '\\'):
+			if (css_escape_start(d, pos)): pos = css_escape(d, pos, out)
+			else: *bad = 1
+		else:
+			if (c == 0): css_append_codepoint(out, 65533)
+			else: string_append_char(out, c)
+			pos = pos + 1
+		if (*bad):
+			while (pos < d.length && css_at(d, pos) != ')'):
+				if (css_escape_start(d, pos)): pos = css_escape(d, pos, out)
+				else: pos = pos + 1
+			if (pos < d.length): pos = pos + 1
+			out.length = 0
+			out.data[0] = 0
+			css_error(d, c"invalid unquoted URL", start, pos)
+			return pos
+	css_error(d, c"EOF in URL", start, pos)
+	return pos
+
+
 void css_scan(css_document* d):
 	list[int] stack = new list[int]
 	int pos = 0
@@ -219,7 +264,8 @@ void css_scan(css_document* d):
 					break
 				if (ch == '\\'):
 					int next = css_at(d, pos + 1)
-					if (next == 10 || next == 13 || next == 12):
+					if (next < 0): pos = pos + 1
+					else if (next == 10 || next == 13 || next == 12):
 						pos = pos + 2
 						if (next == 13 && css_at(d, pos) == 10): pos = pos + 1
 					else: pos = css_escape(d, pos, out)
@@ -242,6 +288,17 @@ void css_scan(css_document* d):
 		else if (css_ident_start(d, pos)):
 			kind = c"ident"
 			pos = css_name(d, pos, out)
+			if (css_ascii_equal(out.data, c"url") && css_at(d, pos) == '('):
+				int content = pos + 1
+				while (css_space(css_at(d, content))): content = content + 1
+				# Quoted URLs retain the existing ident + balanced components API.
+				if (css_at(d, content) != '"' && css_at(d, content) != 39):
+					kind = c"url"
+					string_free(out)
+					out = string_new()
+					int bad = 0
+					pos = css_url(d, pos + 1, start, out, &bad)
+					if (bad): kind = c"bad-url"
 		else if ((c == '@' && css_ident_start(d, pos + 1)) || (c == '#' && (css_name_char(css_at(d, pos + 1)) || css_escape_start(d, pos + 1)))):
 			if (c == '@'): kind = c"at-keyword"
 			else: kind = c"hash"
@@ -344,16 +401,6 @@ int css_next_component(css_document* d, int pos, int last):
 	return pos + 1
 
 
-int css_ascii_equal(char* a, char* b):
-	int i = 0
-	while (a[i] != 0 && b[i] != 0):
-		int c = a[i] & 255
-		if (c >= 'A' && c <= 'Z'): c = c + 32
-		if (c != b[i]): return 0
-		i = i + 1
-	return a[i] == b[i]
-
-
 void css_declarations(css_document* d, list[css_node*] output, int first, int last):
 	int pos = first
 	while (pos < last && d.failed == 0):
@@ -381,7 +428,7 @@ void css_declarations(css_document* d, list[css_node*] output, int first, int la
 		int valid = 1
 		for i in range(value_first, value_last):
 			css_token* t = d.tokens[i]
-			if (css_kind(t, c"bad-string")): valid = 0
+			if (css_kind(t, c"bad-string") || css_kind(t, c"bad-url")): valid = 0
 			if ((css_delim(t, ')') || css_delim(t, ']') || css_delim(t, '}')) && t.match < 0): valid = 0
 		if (valid == 0):
 			css_error(d, c"invalid declaration value", d.tokens[start].start, d.tokens[end - 1].end)

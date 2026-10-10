@@ -280,7 +280,7 @@ int wh_build(winflate_ctx* c, whuff* h, int* lengths, int n):
 
 void inf_emit_byte(winflate_ctx* c, int b):
 	if (c.status != 0): return
-	if ((c.max_output > 0) && (c.out.length - c.base >= c.max_output)):
+	if ((c.max_output >= 0) && (c.out.length - c.base >= c.max_output)):
 		c.status = INFLATE_ERR_TOO_LARGE
 		return
 	string_append_char(c.out, b)
@@ -435,7 +435,7 @@ void inf_stored_block(winflate_ctx* c):
 	if (c.byte_pos + len > c.in_length):
 		c.status = INFLATE_ERR_TRUNCATED
 		return
-	if ((c.max_output > 0) && (c.out.length - c.base + len > c.max_output)):
+	if ((c.max_output >= 0) && (c.out.length - c.base + len > c.max_output)):
 		c.status = INFLATE_ERR_TOO_LARGE
 		return
 	string_append_bytes(c.out, &c.in_data[c.byte_pos], len)
@@ -607,13 +607,17 @@ winflate_ctx* inf_ctx_new(char* data, int length, int max_output):
 	c.bit_pos = 0
 	c.out = string_new()
 	c.max_output = max_output
+	if (max_output <= 0): c.max_output = -1
 	c.status = 0
 	c.base = 0
 	return c
 
 
-wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int* consumed):
+# Internal bounded variant: zero means no output, negative means unbounded.
+# Wrappers with a shared budget need zero to remain a real bound.
+wresult[inflate_result*]* inflate_ex_limit(char* data, int length, int max_output, int* consumed):
 	winflate_ctx* c = inf_ctx_new(data, length, max_output)
+	c.max_output = max_output
 	inf_run_blocks(c, 0)
 
 	int extra_byte = 0
@@ -630,6 +634,12 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 	free(c.out)
 	free(c)
 	return result_new_ok[inflate_result*](r)
+
+
+# Compatibility API retains the documented <= 0 unbounded convention.
+wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int* consumed):
+	if (max_output <= 0): max_output = -1
+	return inflate_ex_limit(data, length, max_output, consumed)
 
 
 # The documented API (docs/projects/compress.md §5.2): decodes the whole

@@ -81,6 +81,41 @@ void test_html_tokens():
 	assert_strings_equal(c"div", token.name)
 	html_token_free(token)
 
+void test_html_script_states():
+	# An escaped script start enters double escape: its first end spelling is
+	# text, while the second closes the element. Names are ASCII insensitive.
+	html_fixture(c"<script><!--<ScRiPt>x</sCrIpT>--></script><p>after", c"(html(head(script[<!--<ScRiPt>x</sCrIpT>-->]))(body(p[after])))")
+	html_fixture(c"<script><!--<script>x</script>y</script><p>after", c"(html(head(script[<!--<script>x</script>y]))(body(p[after])))")
+	html_fixture(c"<script><!--x</script><p>after", c"(html(head(script[<!--x]))(body(p[after])))")
+	# A non-delimited name is not a double escape, and --> exits either mode.
+	html_fixture(c"<script><!--<scriptx>x</script><p>after", c"(html(head(script[<!--<scriptx>x]))(body(p[after])))")
+	html_fixture(c"<script><!--<script>--></script><p>after", c"(html(head(script[<!--<script>-->]))(body(p[after])))")
+	html_fixture(c"<script><!--><script></script><p>after", c"(html(head(script[<!--><script>]))(body(p[after])))")
+	html_fixture(c"<script><!--<script/ >x</script/ >y</script><p>after", c"(html(head(script[<!--<script/ >x</script/ >y]))(body(p[after])))")
+	# JS quoting never protects an end delimiter; entities remain literal.
+	html_fixture(c"<script>'&amp;</script><p>after", c"(html(head(script['&amp;]))(body(p[after])))")
+	html_document* doc = html_parse(c"<script><!--<script>", 20)
+	assert_equal(0, doc.failed)
+	asserts(c"escaped EOF is diagnosed", doc.diagnostics != 0)
+	assert_strings_equal(c"EOF in escaped script text", doc.diagnostics.message)
+	html_document_free(doc)
+	# Every explicit-length prefix can stop in an escape transition. Text and
+	# diagnostics remain within the supplied bytes, including repeated EOF.
+	char* source = c"<script><!--<script\n>\r\n&x;</script>--></script><p>after"
+	for length in range(strlen(source) + 1):
+		html_tokenizer* t = html_tokenizer_new(source, length, 0)
+		while (1):
+			html_token* token = html_tokenizer_next(t)
+			int done = token.kind == HTML_EOF
+			asserts(c"script span", token.start >= 0 && token.end >= token.start && token.end <= length)
+			html_token_free(token)
+			if (done): break
+		html_token* eof = html_tokenizer_next(t)
+		assert_equal(HTML_EOF, eof.kind)
+		html_token_free(eof)
+		assert_equal(0, t.failed)
+		html_tokenizer_free(t)
+
 void test_html_entities_and_bytes():
 	html_fixture(c"&lt;&gt;&amp;&quot;&apos;&nbsp;&#65;&#x1f600; &unknown; &#xD800; &#0;", c"(html(head)(body[<>&\"'\xc2\xa0A\xf0\x9f\x98\x80 &unknown; \xef\xbf\xbd \xef\xbf\xbd]))")
 	char[5] source

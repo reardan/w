@@ -102,3 +102,73 @@ void test_content_http_integration():
 	free(url)
 	gzip_result_free(compressed)
 	net_test_finish(pid, listener)
+
+
+void test_content_gzip_members_validate_before_exposing_output():
+	compress_codecs_register()
+	gzip_result* first = gzip_compress(c"abc", 3, DEFLATE_LEVEL_FAST())
+	gzip_result* second = gzip_compress(c"\x00de", 3, DEFLATE_LEVEL_FAST())
+	string_builder* joined = string_new()
+	string_append_bytes(joined, first.data, first.length)
+	string_append_bytes(joined, second.data, second.length)
+	content_decoder* d = content_decoder_new(c"gzip", joined.length, 6)
+	for i in range(joined.length):
+		assert_equal(content_decode_more, content_decoder_feed(d, joined.data + i, 1))
+	assert_equal(content_decode_done, content_decoder_finish(d))
+	assert_equal(6, d.output_length)
+	assert_bytes_equal(c"abc\x00de", d.output, 6)
+	content_decoder_free(d)
+	# EOF within the second member invalidates the entire result. EOF at
+	# the first member boundary is itself a complete, valid gzip stream.
+	for length in range(first.length + 1, joined.length):
+		d = content_decoder_new(c"gzip", joined.length, 6)
+		content_decoder_feed(d, joined.data, length)
+		assert_equal(content_decode_corrupt, content_decoder_finish(d))
+		assert_equal(0, d.output_length)
+		assert1(d.output == 0)
+		content_decoder_free(d)
+	for cap in range(1, 6):
+		d = content_decoder_new(c"gzip", joined.length, cap)
+		content_decoder_feed(d, joined.data, joined.length)
+		assert_equal(content_decode_output_limit, content_decoder_finish(d))
+		assert1(d.output == 0)
+		content_decoder_free(d)
+	# A corrupt second member must not leave the first member visible.
+	joined.data[joined.length - 8] = joined.data[joined.length - 8] ^ 1
+	d = content_decoder_new(c"gzip", joined.length, 6)
+	content_decoder_feed(d, joined.data, joined.length)
+	assert_equal(content_decode_corrupt, content_decoder_finish(d))
+	assert1(d.output == 0)
+	content_decoder_free(d)
+	joined.data[joined.length - 8] = joined.data[joined.length - 8] ^ 1
+	# Arbitrary bytes, even zero padding, are not additional gzip members.
+	string_append_char(joined, 0)
+	d = content_decoder_new(c"gzip", joined.length, 6)
+	content_decoder_feed(d, joined.data, joined.length)
+	assert_equal(content_decode_corrupt, content_decoder_finish(d))
+	assert1(d.output == 0)
+	content_decoder_free(d)
+	string_free(joined)
+	gzip_result_free(first)
+	gzip_result_free(second)
+
+
+void test_content_deflate_rejects_trailing_input():
+	compress_codecs_register()
+	zlib_result* z = zlib_compress(c"abc", 3, DEFLATE_LEVEL_FAST())
+	string_builder* joined = string_new()
+	string_append_bytes(joined, z.data, z.length)
+	string_append_bytes(joined, z.data, z.length)
+	content_decoder* d = content_decoder_new(c"deflate", joined.length, 6)
+	content_decoder_feed(d, joined.data, joined.length)
+	assert_equal(content_decode_corrupt, content_decoder_finish(d))
+	assert_equal(0, d.output_length)
+	assert1(d.output == 0)
+	content_decoder_free(d)
+	d = content_decoder_new(c"deflate", joined.length, 6)
+	content_decoder_feed(d, joined.data, z.length + 1)
+	assert_equal(content_decode_corrupt, content_decoder_finish(d))
+	assert1(d.output == 0)
+	content_decoder_free(d)
+	string_free(joined)
+	zlib_result_free(z)

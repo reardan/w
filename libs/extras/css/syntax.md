@@ -17,14 +17,24 @@ The scanner visits input bytes left to right with this priority:
 4. Optional sign, digits and/or decimal fraction, optional exponent → `number`.
    An immediately following identifier makes `dimension`; `%` makes `percentage`.
    Decoded values retain numeric spelling and decoded unit or percent suffix.
-5. Name-start, `--`, `-` followed by name-start, or valid escape → `ident`.
+5. Name-start, `--`, `-` followed by name-start, or valid escape → `ident`,
+   except an ASCII-case-insensitive decoded `url` immediately followed by `(`.
+   When the next non-whitespace byte is not a quote, consume a `url` token
+   through `)` or EOF; its decoded value excludes the wrapper and edge whitespace.
+   Escapes and NUL replacement apply inside URLs. Whitespace followed by more
+   content, quotes, `(`, non-printable bytes, or a backslash-newline produce an
+   empty `bad-url` token. Recovery consumes through the next unescaped `)` or
+   EOF; internal punctuation never becomes component delimiters. A quoted URL
+   retains the existing `ident` plus balanced-parenthesis/string representation.
 6. `@` followed by an identifier → `at-keyword`; `#` followed by name character
    or valid escape → `hash`. Their decoded values omit the prefix.
 7. Any other byte → `delim`.
 
 Names allow ASCII letters, underscore, non-ASCII bytes, digits after the first
 character, hyphens and escapes. A valid escape is backslash followed by a byte
-other than newline/EOF. Hex escapes consume 1–6 hex digits and one optional
+other than newline, or EOF. An escaped EOF in names/URLs produces U+FFFD and
+a diagnostic; a trailing backslash in a string is ignored before its EOF
+diagnostic. Hex escapes consume 1–6 hex digits and one optional
 whitespace codepoint (CRLF counts as one). Zero, surrogate and out-of-range
 escapes decode to U+FFFD. Input NUL in names/strings also becomes U+FFFD. Escapes
 are UTF-8 encoded; other non-ASCII source bytes are retained without validating
@@ -54,14 +64,13 @@ Declarations split only at top-level semicolons. A declaration starts with an
 identifier, optional trivia, and colon; otherwise the segment is diagnosed and
 omitted. Its value is a component-token range trimmed of edge trivia. A trailing
 ASCII-case-insensitive `!important` is extracted into `important`. Bad strings
-and unmatched closing delimiters invalidate the declaration. Balanced nested
+and bad URLs and unmatched closing delimiters invalidate the declaration. Balanced nested
 blocks, including custom-property braces, retain internal semicolons. Invalid
 properties or values under a particular CSS module are left to its consumer.
 EOF can close the last declaration without a semicolon.
 
-Known deviations: `url()` remains ident plus balanced component tokens rather
-than CSS's special URL/bad-URL tokens; function tokens similarly remain ident
-plus opening parenthesis. CDO/CDC are ordinary delimiters. CSS nesting declarations
+Known deviations: function tokens (including quoted URLs) remain ident plus
+opening parenthesis. CDO/CDC are ordinary delimiters. CSS nesting declarations
 and full selector grammar validation are not implemented. A missing closing
 parenthesis/bracket consumes components until EOF according to block recovery;
 no heuristic guesses where a later rule was intended to start.

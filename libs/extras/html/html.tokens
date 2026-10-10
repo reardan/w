@@ -1,4 +1,4 @@
-# Maintained HTML tokenizer subset specification, version 1.
+# Maintained HTML tokenizer subset specification, version 2.
 # Authored for W; no translated/generated third-party grammar material.
 # Offsets count bytes of the original explicit-length input.
 
@@ -27,10 +27,17 @@ State RCDATA: entered by title/textarea starts. Text, including '<', continues
 until a case-insensitive matching '</name' followed by space, '/', or '>'.
 Decode references. Matching close is processed as END_TAG and returns to DATA.
 
-State RAWTEXT/SCRIPT: entered by style/xmp/iframe/noembed/noframes/script.
-Same close recognition as RCDATA, with reference decoding disabled. SCRIPT does
-not implement escaped/double-escaped HTML script states; JS quoting does not
-hide an HTML closing delimiter.
+State RAWTEXT: entered by style/xmp/iframe/noembed/noframes.
+Same close recognition as RCDATA, with reference decoding disabled.
+
+State SCRIPT: entered by script. References remain literal. Normal and escaped
+text recognize the same matching close as RAWTEXT. '<!--' in normal text enters
+escaped text (with two trailing dashes). In escaped text, case-insensitive
+'<script' followed by space, '/', or '>' enters double-escaped text. There,
+case-insensitive '</script' with the same delimiter returns to escaped text,
+retaining the entire spelling as text. '-->' in either escape mode returns to
+normal script data. EOF in an escape mode emits a diagnostic. JS quoting and
+comments do not hide HTML delimiters. Each script text run is one token.
 
 Tag names and attribute names are ASCII lowercase. First duplicate attribute
 wins. Slash before '>' sets self_closing; stray slash diagnoses and advances.
