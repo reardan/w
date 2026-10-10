@@ -1439,7 +1439,12 @@ void rs_identifier():
 			# a constant count never reaches ecx (alu_bit_shuttle_imm),
 			# so the rotate idiom of lib/sha256.w keeps its loop.
 			if (rs_intrinsic_holds_ecx(name)): rs_lp_mark(rs_lp_has_divshift)
-		elif ((rs_lp_depth != 0) && (inline_name_is_leaf(name) == 0)): rs_lp_mark(rs_lp_has_call)
+		elif (rs_lp_depth != 0):
+			if (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
+		elif (rs_fn_has_call == 0):
+			# outside the loops only the function region (O2) asks: is
+			# the body a leaf (one lookup until its first real call)
+			if (inline_name_is_leaf(name) == 0): rs_fn_has_call = 1
 		return;
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter

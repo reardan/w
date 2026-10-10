@@ -19,6 +19,10 @@ program, which parses each ELF from disk with a small DIE walker over
    DW_OP_reg<n> locations naming the callee-saved registers the
    promotion uses (esi/edi on x86, r12-r15 on x64), and accumulate's
    FDE saves those registers (DW_CFA_offset) after the frame setup;
+ - on x64, the leaf leaf_sum's pointer argument q and locals acc and k
+   live in distinct caller-saved registers of the function region (unit
+   O2): DW_OP_reg<n> in the DWARF numbering (rsi=4, rdi=5, r8-r11), with
+   no DW_OP_fbreg;
  - .debug_frame holds a CIE and an FDE starting at scale's low_pc.
 */
 import lib.lib
@@ -315,6 +319,17 @@ int check_register(char* name, int parent, int word_size):
 	return d.reg
 
 
+# A local or parameter of a leaf's function region (x64, unit O2): a
+# caller-saved register, rsi/rdi (DWARF 4/5) or r8-r11.
+int check_region_register(char* name, int parent, int tag):
+	int i = find_die_under(tag, name, parent)
+	die* d = dies[i]
+	asserts(c"region local has no DW_OP_fbreg location", d.has_fbreg == 0)
+	int r = d.reg
+	asserts(c"region local in rsi/rdi/r8-r11", (r == 4) || (r == 5) || ((r >= 8) && (r <= 11)))
+	return r
+
+
 void check_binary(char* path, int word_size):
 	word = word_size
 	asm_binary* binary = asm_binary_open(path)
@@ -334,7 +349,7 @@ void check_binary(char* path, int word_size):
 	die* s = dies[scale]
 	asserts(c"scale low_pc in .text", (s.low_pc >= text_lo) && (s.low_pc < text_hi))
 	asserts(c"scale high_pc after low_pc", (s.high_pc > s.low_pc) && (s.high_pc <= text_hi))
-	assert_equal(19, s.decl_line)
+	assert_equal(32, s.decl_line)
 	assert_equal(156, s.frame_base_op) /* DW_OP_call_frame_cfa */
 	asserts(c"scale returns int", s.type_ref >= 0)
 	int report = find_die(46, c"report", 0)
@@ -377,6 +392,12 @@ void check_binary(char* path, int word_size):
 	int reg_i = check_register(c"i", accumulate, word_size)
 	int reg_total = check_register(c"total", accumulate, word_size)
 	asserts(c"i and total in different registers", reg_i != reg_total)
+	if (word_size == 8):
+		int leaf = find_die(46, c"leaf_sum", 0)
+		int reg_q = check_region_register(c"q", leaf, 5)
+		int reg_acc = check_region_register(c"acc", leaf, 52)
+		int reg_k = check_region_register(c"k", leaf, 52)
+		asserts(c"q, acc and k in different registers", (reg_q != reg_acc) && (reg_q != reg_k) && (reg_acc != reg_k))
 	int digits = find_die_under(52, c"digits", report)
 	int array = die_at_offset(dies[digits].type_ref)
 	asserts(c"T[N] descriptor named int[3]", strcmp(dies[array].name, c"int[3]") == 0)
