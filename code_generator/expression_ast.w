@@ -141,7 +141,7 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 		if (is_tail):
 			push_slot()
 			variadic_values = variadic_values + 1
-		else: push_call_argument_compact(got, stack_pos - arg_stack)
+		else: push_call_argument_at(s, got, stack_pos - arg_stack)
 		count = count + 1
 		arg = tree.next_arg[arg]
 	if (variadic >= 0): finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
@@ -598,7 +598,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		int result = tree.high[id]
 		int has_return_buffer = emit_ast_return_buffer(result)
 		int s = stack_pos
-		if (direct == 1): direct_call_record(s, 1, sym)
+		if (direct == 1): direct_call_record_sym(s, sym)
 		elif (direct == 2): direct_call_record(s, 2, tree.generic_instance[id])
 		else:
 			push_slot()
@@ -616,7 +616,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			if (sym >= 0): want = sym_param_type(sym, count)
 			else: want = type_function_param_type(signature, count)
 			if (want >= 0): coerce_call_argument(want, got)
-			push_call_argument_compact(got, stack_pos - arg_stack)
+			push_call_argument_at(s, got, stack_pos - arg_stack)
 			count = count + 1
 			arg = tree.next_arg[arg]
 		finish_call(4, s, count, sym, 0, result, count, has_return_buffer, -1)
@@ -998,7 +998,10 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 				reg_lvalue = reg
 				reg_lvalue_end = codepos
 				reg_lvalue_sym = sym
-			else: be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
+			else:
+				# O5: an argument's stack word (compiler/regalloc_scan.w)
+				if (table[sym + 1] == 'A'): rg_touch = rg_touch + 1
+				be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
 		else if (target_isa == 3): gpu_sym_get_value(name)
 		else if (direct == 0): sym_emit_value(sym, name)
 		if (op == 'X'):
@@ -1054,7 +1057,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			# The same inlining decision as grammar/postfix_expr.w (unit A5)
 			inline_note_call(table + tree.value[id])
 			if (direct && inline_call_site_ok(sym)): direct_call_record(s, 4, inline_site_record)
-			elif (direct): direct_call_record(s, 1, sym)
+			elif (direct): direct_call_record_sym(s, sym)
 			else:
 				push_slot()
 				direct_call_record(s, 0, 0)

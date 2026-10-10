@@ -448,7 +448,11 @@ void function_definition(int current_symbol):
 		# prologue below (either path) can push them. A whole-asm function
 		# has no W body to scan.
 		if (asm_body == 1): regalloc_function_end()
-		else: regalloc_function_scan(current_symbol, is_w_variadic)
+		else:
+			# an asm block's entry is the symbol: no register entry (O5)
+			rg_asm_body = asm_body != 0
+			regalloc_function_scan(current_symbol, is_w_variadic)
+			rg_asm_body = 0
 		if (asm_body == 1): save_int(table + current_symbol + 14, codepos - function_start)
 		else if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
 		else:

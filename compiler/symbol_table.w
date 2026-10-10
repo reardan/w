@@ -94,7 +94,7 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-const int symbol_data_size = 154
+const int symbol_data_size = 162
 
 
 int next_token(int t):
@@ -480,6 +480,8 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 142, 0)  /* not thread_local */
 	save_int(table + t + 146, 0)  /* stack-resident */
 	save_int(table + t + 150, 0)  /* no pending rel32 call sites (A4) */
+	save_int(table + t + 154, 0)  /* no register entry (O5) */
+	save_int(table + t + 158, 0)  /* its parameters' registers (O5) */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -973,6 +975,7 @@ int sym_emit_value(int t, char* s):
 			reg_lvalue_end = codepos
 			reg_lvalue_sym = t
 			return type
+		rg_touch = rg_touch + 1   # O5: the body reads its argument word
 		k = (stack_pos + number_of_args - load_int(table + t + 2) + 1) << word_size_log2
 
 	else:
