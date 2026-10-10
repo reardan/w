@@ -32,6 +32,9 @@ slot and the cursor lives in a second one, mirroring the range lowering:
 */
 
 
+void ivopt_range_step();   /* compiler/ivopt.w (unit O7) */
+
+
 # Load the iterator function's address into eax: directly for an
 # ordinary symbol, through the generic instantiation's backpatch chain
 # (grammar/generic.w) when the container is generic and the
@@ -346,8 +349,11 @@ void for_range_loop(int for_var, int for_tab_level):
 	# Enter a new loop context for break/continue. The loop may own
 	# caller-saved registers from here (R3): the loop variable itself
 	# (re-read: loop_enter may have given it one) and the hidden end and
-	# step words, loaded ahead of the loop region.
+	# step words, loaded ahead of the loop region. O7: this loop's
+	# increment steps pointers its variable drives (compiler/ivopt.w).
+	ivopt_range_ok = num_range_args < 3
 	int* outer = loop_enter()
+	ivopt_range_ok = 0
 	for_reg = regalloc_slot_register(for_var - 1)
 	regalloc_loop_hidden(end_slot)
 	int step_reg = 0
@@ -386,6 +392,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	else:
 		regalloc_slot_assert(for_var - 1)
 		inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
+	if (ivopt_live && (num_range_args < 3)): ivopt_range_step()   # O7: compiler/ivopt.w
 
 	if (entry >= 0):
 		# the bottom test: back to the body while loop var < end

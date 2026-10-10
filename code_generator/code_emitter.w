@@ -128,6 +128,10 @@ int loop_rotate_disabled
 # when code_generator/expression_ast.w asks it about a subscript.
 int ivopt_disabled
 int ivopt_live
+# set by a range loop's head around its loop_enter: only a range loop
+# whose increment calls ivopt_range_step may maintain pointers its
+# variable steps (grammar/for_statement.w, code_generator/loop_ast.w)
+int ivopt_range_ok
 # --no-narrow-regs: int32/uint32 locals and arguments stay on the stack
 # (unit A8, docs/projects/codegen_gap_plan.md §2.7); the reference for
 # tests/regalloc_diff_test.w. The two masks name the promoted registers
