@@ -1,5 +1,5 @@
 # Owned semantic snapshots for native controls and page content (#637/#465).
-# No platform bridge is installed by this module; see browser_ui.md.
+# Opt-in native adapters are separate imports; see accessibility.md.
 import lib.lib
 import lib.container
 import lib.utf8
@@ -166,6 +166,17 @@ int ui_access_focus_next(ui_access_tree* tree, int current_id, int reverse):
 	if (result != 0): return result
 	if (reverse): return last
 	return first
+
+# Apply a Tab/Shift-Tab proposal through the host, updating snapshot focus
+# only when accepted. The caller draws a focus ring at the resulting bounds.
+int ui_access_move_focus(ui_access_tree* tree, int reverse):
+	if (tree == 0): return 0
+	int id = ui_access_focus_next(tree, tree.focused_id, reverse)
+	if (id == 0): return 0
+	if (!ui_access_dispatch(tree, id, UI_ACCESS_FOCUS, 0, 0)): return 0
+	tree.focused_id = id
+	return id
+
 
 void ui_access_tree_free(ui_access_tree* tree):
 	if (tree == 0): return

@@ -32,6 +32,7 @@ import lib.mem
 import libs.standard.crypto.base64
 import graphics.ui.font_data
 import lib.bytes
+import graphics.ui.grapheme
 
 
 # Mask ids in atlas bake order.
@@ -595,8 +596,8 @@ int ui_font_resolve(int face, int cp, int* gid):
 	return face
 
 
-# Rasterize cp for strike and pack it into the atlas.
-ui_glyph ui_font_make_glyph(int strike, int cp):
+# Rasterize an outline directly, including glyphs selected by a shaper.
+ui_glyph ui_font_make_glyph_id(int strike, int face, int gid):
 	ui_strike* s = &ui_font_st.strikes[strike]
 	int ppem = s.ppem
 	ui_glyph g
@@ -609,11 +610,8 @@ ui_glyph ui_font_make_glyph(int strike, int cp):
 	g.bearing_top = 0
 	g.face = s.face
 	g.gid = 0
-	if (ui_font_is_control(cp)):
-		return g
-	int gid = 0
-	int face = ui_font_resolve(s.face, cp, &gid)
 	ttf_font* font = ui_font_face_font(face)
+	if ((font == 0) || (gid < 0) || (gid >= font.glyph_count)): return g
 	g.face = face
 	g.gid = gid
 	ttf_bitmap bm
@@ -641,17 +639,30 @@ ui_glyph ui_font_make_glyph(int strike, int cp):
 	return g
 
 
-# The glyph for codepoint cp in strike, rasterized on first use.
-ui_glyph ui_font_glyph(int strike, int cp):
-	strike = ui_font_strike_valid(strike)
-	if ((cp < 0) || (cp > 1114111)): cp = 65533
-	int key = strike * 2097152 + cp
+# Rasterize cp for strike and pack it into the atlas.
+ui_glyph ui_font_make_glyph(int strike, int cp):
+	int face = ui_font_st.strikes[strike].face
+	int gid = 0
+	if (ui_font_is_control(cp)):
+		ui_glyph empty
+		mem_fill[char](cast(char*, &empty), 0, sizeof(ui_glyph))
+		empty.face = face
+		return empty
+	face = ui_font_resolve(face, cp, &gid)
+	return ui_font_make_glyph_id(strike, face, gid)
+
+
+# Slots above Unicode's maximum are reserved for direct TrueType glyph IDs.
+ui_glyph ui_font_cached_glyph(int strike, int value, int direct):
+	int key = strike * 2097152 + value
 	int mask = ui_font_st.table_cap - 1
 	int h = ui_font_hash(key, mask)
 	while (ui_font_st.keys[h] != 0 - 1):
 		if (ui_font_st.keys[h] == key): return ui_font_st.glyphs[ui_font_st.slots[h]]
 		h = (h + 1) & mask
-	ui_glyph g = ui_font_make_glyph(strike, cp)
+	ui_glyph g
+	if (direct): g = ui_font_make_glyph_id(strike, ui_font_st.strikes[strike].face, value - 1114112)
+	else: g = ui_font_make_glyph(strike, value)
 	if (ui_font_st.glyph_count >= ui_font_st.glyph_cap):
 		int next = ui_font_st.glyph_cap * 2
 		ui_font_st.glyphs = cast(ui_glyph*, realloc(cast(char*, ui_font_st.glyphs), ui_font_st.glyph_cap * sizeof(ui_glyph), next * sizeof(ui_glyph)))
@@ -662,6 +673,21 @@ ui_glyph ui_font_glyph(int strike, int cp):
 	if (ui_font_st.glyph_count * 2 > ui_font_st.table_cap): ui_font_table_grow()
 	ui_font_table_insert(key, slot)
 	return g
+
+
+# Direct IDs always name the strike's face, with no codepoint fallback.
+ui_glyph ui_font_glyph_id(int strike, int gid):
+	strike = ui_font_strike_valid(strike)
+	ttf_font* font = ui_font_face_font(ui_font_st.strikes[strike].face)
+	if ((gid < 0) || (gid >= font.glyph_count)): gid = 0
+	return ui_font_cached_glyph(strike, 1114112 + gid, 1)
+
+
+# The glyph for codepoint cp in strike, rasterized on first use.
+ui_glyph ui_font_glyph(int strike, int cp):
+	strike = ui_font_strike_valid(strike)
+	if ((cp < 0) || (cp > 1114111)): cp = 65533
+	return ui_font_cached_glyph(strike, cp, 0)
 
 
 # Pixels to add to the pen between two glyphs of strike (negative
@@ -802,23 +828,25 @@ int ui_text_prefix_width(char* s, int count, int scale):
 	return ui_text_width_strike_n(s, count, ui_font_strike_from_scale(scale))
 
 
-# Nearest codepoint boundary (a byte offset) to the pixel offset x_rel
+# Nearest grapheme boundary (a byte offset) to the pixel offset x_rel
 # from the string's left edge in strike (caret placement from a click).
 int ui_text_caret_from_x_strike(char* s, int strike, int x_rel):
 	int acc = 0
 	int i = 0
+	int length = strlen(s)
 	ui_glyph prev
 	prev.face = 0 - 1
 	while (s[i] != 0):
-		int cp = 0
-		int next = ui_utf8_next(s, i, &cp)
-		ui_glyph g = ui_font_glyph(strike, cp)
-		acc = acc + ui_font_kern(strike, &prev, &g)
-		if (x_rel < acc + g.advance / 2):
-			return i
-		acc = acc + g.advance
-		prev = g
-		i = next
+		int start = i
+		int before = acc
+		int end = ui_grapheme_next_n(s, length, i)
+		while (i < end):
+			int cp = 0
+			i = ui_utf8_next(s, i, &cp)
+			ui_glyph g = ui_font_glyph(strike, cp)
+			acc = acc + ui_font_kern(strike, &prev, &g) + g.advance
+			prev = g
+		if (x_rel < before + (acc - before) / 2): return start
 	return i
 
 

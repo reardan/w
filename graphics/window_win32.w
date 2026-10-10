@@ -22,8 +22,7 @@ polling state and the graphics.event ring:
 	WM_KEYDOWN / WM_KEYUP       KEY_DOWN / KEY_UP (code = the Win32
 	                            virtual-key code), NAV for the arrows,
 	                            Home/End, PgUp/PgDn and Delete
-	WM_CHAR                     CHAR (ANSI code page; the ASCII control
-	                            set 8/9/13/27 and printable characters)
+	WM_CHAR                     CHAR (UTF-16 decoded to Unicode scalars)
 	mouse buttons / motion      mouse_x/mouse_y/mouse_buttons +
 	                            MOUSE_DOWN/MOUSE_UP (1 left, 2 middle,
 	                            3 right)
@@ -37,26 +36,35 @@ Design notes: docs/projects/graphics.md
 import lib.lib
 import graphics.gl
 import graphics.event
+import graphics.input_queue
 import lib.mem
+import graphics.text_unicode
 
 
 c_lib "user32.dll"
-extern int RegisterClassExA(char* window_class)
-extern int CreateWindowExA(int ex_style, char* class_name, char* title, int style, int x, int y, int width, int height, int parent, int menu, int instance, int param)
+extern int RegisterClassExW(char* window_class)
+extern int CreateWindowExW(int ex_style, char* class_name, char* title, int style, int x, int y, int width, int height, int parent, int menu, int instance, int param)
 extern int ShowWindow(int hwnd, int show)
-extern int PeekMessageA(char* msg, int hwnd, int filter_min, int filter_max, int remove)
+extern int PeekMessageW(char* msg, int hwnd, int filter_min, int filter_max, int remove)
 extern int TranslateMessage(char* msg)
-extern int DispatchMessageA(char* msg)
-extern int DefWindowProcA(int hwnd, int msg, int wparam, int lparam)
+extern int DispatchMessageW(char* msg)
+extern int DefWindowProcW(int hwnd, int msg, int wparam, int lparam)
 extern int DestroyWindow(int hwnd)
 extern int GetDC(int hwnd)
 extern int ReleaseDC(int hwnd, int dc)
-extern int LoadCursorA(int instance, int name)
+extern int LoadCursorW(int instance, int name)
 extern int AdjustWindowRect(int32* rect, int style, int menu)
 extern int GetKeyState(int virtual_key)
 extern int ScreenToClient(int hwnd, int32* point)
 extern int SetCapture(int hwnd)
 extern int ReleaseCapture()
+
+c_lib "imm32.dll"
+extern int ImmGetContext(int hwnd)
+extern int ImmReleaseContext(int hwnd, int context)
+extern int ImmGetCompositionStringW(int context, int index, char* buffer, int length)
+extern int ImmSetCompositionWindow(int context, int32* form)
+extern int ImmNotifyIME(int context, int action, int index, int value)
 
 c_lib "gdi32.dll"
 extern int ChoosePixelFormat(int dc, char* descriptor)
@@ -76,16 +84,17 @@ struct gfx_window:
 	int32 mouse_x
 	int32 mouse_y
 	int32 mouse_buttons
+	int32 text_focus
+	int32 pending_surrogate
 	int32 last_keycode
 	# per-frame event ring (graphics.event); drained by
 	# gfx_window_next_event
-	int32 event_head
-	int32 event_tail
-	int32[320] event_ring
+	gfx_input_queue input_queue
 
 
 gfx_window* gfx_win32_active    /* the window the procedure reports into */
 int gfx_win32_class_registered
+char* gfx_win32_class_name
 
 
 # Same GLSL dialect as the GLX backend: legacy WGL contexts are
@@ -121,7 +130,7 @@ int gfx_win32_hi16(int v):
 
 
 void gfx_win32_push(gfx_window* win, int kind, int code, int mods):
-	gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, kind, code, win.mouse_x, win.mouse_y, mods)
+	gfx_input_queue_push(&win.input_queue, kind, code, win.mouse_x, win.mouse_y, mods)
 
 
 # Portable NAV code for a Win32 virtual-key code, or 0.
@@ -155,12 +164,34 @@ void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
 		gfx_win32_push(win, GFX_EVENT_MOUSE_UP, button, gfx_win32_mods())
 
 
+# Read a native preedit snapshot without inserting it into the document.
+# Committed results remain owned by DefWindowProcW -> WM_CHAR, so every
+# commit takes exactly one path through the UTF-16 decoder.
+void gfx_win32_preedit(gfx_window* win):
+	int im = ImmGetContext(win.hwnd)
+	if (im == 0): return
+	int length = cast(int32, ImmGetCompositionStringW(im, 8, cast(char*, 0), 0))
+	gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, 0, win.text_focus, 0, 0)
+	if (length > 0):
+		char* bytes = cast(char*, malloc(length))
+		int count = cast(int32, ImmGetCompositionStringW(im, 8, bytes, length))
+		if (count > length): count = length
+		int32 high = 0
+		int at = 0
+		while (at + 1 < count):
+			int cp = gfx_utf16_input(&high, (bytes[at] & 255) | ((bytes[at + 1] & 255) << 8))
+			if (cp >= 0): gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_TEXT, cp, win.text_focus, 0, 0)
+			at = at + 2
+		free(bytes)
+	ImmReleaseContext(win.hwnd, im)
+
+
 # The window procedure (WNDPROC), entered through a win_callback thunk.
 # Only the low 32 bits of msg are defined (it is a UINT in edx).
 int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 	gfx_window* win = gfx_win32_active
 	int m = msg & 65535
-	if ((win == 0) || (win.hwnd != hwnd)): return DefWindowProcA(hwnd, msg, wparam, lparam)
+	if ((win == 0) || (win.hwnd != hwnd)): return DefWindowProcW(hwnd, msg, wparam, lparam)
 	if ((m == 16) || (m == 2)):          /* WM_CLOSE, WM_DESTROY */
 		win.should_close = 1
 		return 0
@@ -176,14 +207,23 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		gfx_win32_push(win, GFX_EVENT_KEY_DOWN, vk, mods)
 		int nav = gfx_win32_nav(vk)
 		if (nav != 0): gfx_win32_push(win, GFX_EVENT_NAV, nav, mods)
-		if (m == 260): return DefWindowProcA(hwnd, msg, wparam, lparam)
+		if (m == 260): return DefWindowProcW(hwnd, msg, wparam, lparam)
 		return 0
 	if ((m == 257) || (m == 261)):        /* WM_KEYUP, WM_SYSKEYUP */
 		gfx_win32_push(win, GFX_EVENT_KEY_UP, wparam & 255, gfx_win32_mods())
-		if (m == 261): return DefWindowProcA(hwnd, msg, wparam, lparam)
+		if (m == 261): return DefWindowProcW(hwnd, msg, wparam, lparam)
 		return 0
+	if (m == 269):                        /* WM_IME_STARTCOMPOSITION */
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_BEGIN, 0, win.text_focus, 0, 0)
+	if (m == 271):                        /* WM_IME_COMPOSITION */
+		if (lparam & 8): gfx_win32_preedit(win)
+		if ((lparam & 2048) || (lparam == 0)):
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_END, 0, win.text_focus, 0, 0)
+	if (m == 270):                        /* WM_IME_ENDCOMPOSITION */
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_END, 0, win.text_focus, 0, 0)
 	if (m == 258):                        /* WM_CHAR */
-		int ch = wparam & 255
+		int ch = gfx_utf16_input(&win.pending_surrogate, wparam)
+		if (ch < 0): return 0
 		int mods = gfx_win32_mods()
 		# Ctrl+letter arrives as its control code (Ctrl+S is 19),
 		# forwarded for shortcuts (graphics.event).
@@ -191,6 +231,14 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		if (((ch >= 32) && (ch != 127)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27) || ctrl_code):
 			gfx_win32_push(win, GFX_EVENT_CHAR, ch, mods)
 		return 0
+	if (m == 265):                        /* WM_UNICHAR */
+		if (wparam == 65535): return 1     /* UNICODE_NOCHAR capability query */
+		if ((wparam >= 32) && (wparam <= 1114111) && ((wparam < 55296) || (wparam > 57343))):
+			gfx_win32_push(win, GFX_EVENT_CHAR, wparam, gfx_win32_mods())
+		return 0
+	if (m == 8):                          /* WM_KILLFOCUS */
+		win.pending_surrogate = 0
+		gfx_input_queue_push(&win.input_queue, GFX_EVENT_PREEDIT_END, 0, win.text_focus, 0, 0)
 	if (m == 512):                        /* WM_MOUSEMOVE */
 		win.mouse_x = gfx_win32_lo16(lparam)
 		win.mouse_y = gfx_win32_hi16(lparam)
@@ -231,7 +279,7 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 			gfx_win32_push(win, GFX_EVENT_SCROLL, 0 - 1, wheel_mods)
 			delta = delta + 120
 		return 0
-	return DefWindowProcA(hwnd, msg, wparam, lparam)
+	return DefWindowProcW(hwnd, msg, wparam, lparam)
 
 
 # WNDCLASSEXA (80 bytes on x64) for the class every gfx window uses.
@@ -245,11 +293,15 @@ int gfx_win32_register_class(int instance):
 	save_int32(wc + 4, 35)                /* CS_OWNDC | CS_HREDRAW | CS_VREDRAW */
 	save_int64(wc + 8, proc)              /* lpfnWndProc */
 	save_int64(wc + 24, instance)         /* hInstance */
-	save_int64(wc + 40, LoadCursorA(0, 32512))    /* IDC_ARROW */
-	save_int64(wc + 64, cast(int, c"w_gfx_window"))   /* lpszClassName */
-	int atom = RegisterClassExA(wc)
+	save_int64(wc + 40, LoadCursorW(0, 32512))    /* IDC_ARROW */
+	gfx_win32_class_name = gfx_utf16_from_utf8(c"w_gfx_window")
+	save_int64(wc + 64, cast(int, gfx_win32_class_name))   /* lpszClassName */
+	int atom = RegisterClassExW(wc)
 	free(wc)
-	if (atom == 0): return 0
+	if (atom == 0):
+		free(gfx_win32_class_name)
+		gfx_win32_class_name = cast(char*, 0)
+		return 0
 	gfx_win32_class_registered = 1
 	return 1
 
@@ -279,7 +331,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 		return 0
 	int instance = GetModuleHandleA(cast(char*, 0))
 	if (gfx_win32_register_class(instance) == 0):
-		print_error(c"graphics.window: RegisterClassExA failed\n")
+		print_error(c"graphics.window: RegisterClassExW failed\n")
 		return 0
 
 	# Grow the outer rectangle so the client area is exactly width x height.
@@ -302,15 +354,19 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.mouse_y = 0
 	win.mouse_buttons = 0
 	win.last_keycode = 0
-	win.event_head = 0
-	win.event_tail = 0
+	win.pending_surrogate = 0
+	win.text_focus = 0
+	gfx_input_queue_init(&win.input_queue)
 	gfx_win32_active = win
 
 	int use_default = 0 - 2147483648  /* CW_USEDEFAULT */
-	int hwnd = CreateWindowExA(0, c"w_gfx_window", title, style, use_default, use_default, rect[2] - rect[0], rect[3] - rect[1], 0, 0, instance, 0)
+	char* wide_title = gfx_utf16_from_utf8(title)
+	int hwnd = CreateWindowExW(0, gfx_win32_class_name, wide_title, style, use_default, use_default, rect[2] - rect[0], rect[3] - rect[1], 0, 0, instance, 0)
+	free(wide_title)
 	if (hwnd == 0):
-		print_error(c"graphics.window: CreateWindowExA failed\n")
+		print_error(c"graphics.window: CreateWindowExW failed\n")
 		gfx_win32_active = cast(gfx_window*, 0)
+		gfx_input_queue_free(&win.input_queue)
 		free(win)
 		return 0
 	win.hwnd = hwnd
@@ -326,6 +382,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 		ReleaseDC(hwnd, dc)
 		DestroyWindow(hwnd)
 		gfx_win32_active = cast(gfx_window*, 0)
+		gfx_input_queue_free(&win.input_queue)
 		free(win)
 		return 0
 	int context = wglCreateContext(dc)
@@ -335,6 +392,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 		ReleaseDC(hwnd, dc)
 		DestroyWindow(hwnd)
 		gfx_win32_active = cast(gfx_window*, 0)
+		gfx_input_queue_free(&win.input_queue)
 		free(win)
 		return 0
 	win.dc = dc
@@ -347,12 +405,13 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 # Drain pending window messages. Returns 1 while the window should stay
 # open.
 int gfx_window_poll(gfx_window* win):
+	gfx_input_queue_begin(&win.input_queue)
 	char* msg = cast(char*, malloc(48))            /* MSG */
-	while (PeekMessageA(msg, 0, 0, 0, 1)):     /* PM_REMOVE */
+	while (PeekMessageW(msg, 0, 0, 0, 1)):     /* PM_REMOVE */
 		if ((load_int32(msg + 8) & 65535) == 18):  /* WM_QUIT */
 			win.should_close = 1
 		TranslateMessage(msg)
-		DispatchMessageA(msg)
+		DispatchMessageW(msg)
 	free(msg)
 	if (win.should_close): return 0
 	return 1
@@ -361,7 +420,7 @@ int gfx_window_poll(gfx_window* win):
 # Pop the oldest queued input event (graphics.event); returns 1 while
 # events remain from the polls since the last drain.
 int gfx_window_next_event(gfx_window* win, gfx_event* out):
-	return gfx_event_ring_next(&win.event_ring[0], &win.event_head, &win.event_tail, out)
+	return gfx_input_queue_next(&win.input_queue, out)
 
 
 void gfx_window_swap(gfx_window* win):
@@ -369,6 +428,7 @@ void gfx_window_swap(gfx_window* win):
 
 
 void gfx_window_destroy(gfx_window* win):
+	gfx_input_queue_free(&win.input_queue)
 	wglMakeCurrent(0, 0)
 	wglDeleteContext(win.context)
 	ReleaseDC(win.hwnd, win.dc)

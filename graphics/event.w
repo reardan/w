@@ -33,7 +33,8 @@ enum gfx_event_kind:
 	GFX_EVENT_KEY_UP = 2
 	# code = a Unicode codepoint of typed text, or 8 (backspace),
 	# 9 (tab), 13 (return), 27 (escape). How much of Unicode arrives
-	# depends on the backend: Cocoa any codepoint, X11 Latin-1, the web
+	# depends on the backend: Cocoa Unicode key text, X11 XIM Unicode, Win32
+	# UTF-16 decoded scalars, the web
 	# Unicode through the browser text-input bridge. With Ctrl held, a letter arrives as its control code
 	# 1..26 from the native backends (Ctrl+S is 19) and as the letter
 	# itself from the web host; Cocoa also queues Command chords' letter
@@ -59,6 +60,14 @@ enum gfx_event_kind:
 	# Pointer capture lost, gesture became scrolling, or host lost focus.
 	# Cancels the press without manufacturing a release/click.
 	GFX_EVENT_POINTER_CANCEL = 9
+	# Preedit snapshot stream: BEGIN clears, TEXT appends a Unicode scalar,
+	# END clears on cancellation/commit. Preedit is never committed text;
+	# commits still arrive through CHAR. x carries the stable focus ID
+	# (zero means current focus); y on BEGIN is the selection start in
+	# scalar units. A new BEGIN replaces the previous snapshot.
+	GFX_EVENT_PREEDIT_BEGIN = 10
+	GFX_EVENT_PREEDIT_TEXT = 11
+	GFX_EVENT_PREEDIT_END = 12
 
 
 enum gfx_nav_code:
