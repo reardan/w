@@ -178,8 +178,23 @@ jobs:
           W_CI_NO_KVM: "1"
         run: |
           set -o pipefail
+          ./wbuild wcoverage wexec
+          mkdir -p bin/coverage
+          cp bin/wcoverage bin/coverage/wcoverage
+          # Profile dumps are writes, so keep them outside wbuildd's
+          # watched checkout while its memoization tests are running.
           xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
-            ./wbuild compiler_coverage 2>&1 | tee coverage.log
+            bin/coverage/wcoverage suite --out "$RUNNER_TEMP/wcoverage" \
+              --baseline tools/coverage_baseline.txt 2>&1 | tee coverage.log
+
+      - name: Collect coverage reports
+        if: always()
+        run: |
+          mkdir -p bin/coverage
+          for report in "$RUNNER_TEMP/wcoverage/"*.txt \
+              "$RUNNER_TEMP/wcoverage/lcov.info" "$RUNNER_TEMP/wcoverage/coverage.json"; do
+            if [ -f "$report" ]; then cp "$report" bin/coverage/; fi
+          done
 
       # The new-code rule: changed executable lines in compiler/, grammar/
       # and code_generator/ must be >= 80% reached, unless their function

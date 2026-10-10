@@ -1267,3 +1267,12 @@ architecture-only selectors, still receive `--ast-required`. The deliberately
 invalid conditional-arm warning fixture explicitly selects permissive AST
 mode so its diagnostic fallback remains testable. Keep new mode-specific
 fixtures explicit; do not relax required mode for positive fixtures globally.
+
+- Compiler coverage writes its default raw dumps under `bin/coverage`, which
+  `wbuildd` watches. Under instrumentation, those writes repeatedly invalidate
+  the daemon memo and fail `wbuildd_test` (PR #629 CI). CI runs the suite with
+  `--out` outside the checkout and copies reports back afterward; use the same
+  workaround locally. Give the suite a separate, unwatched dump destination
+  while keeping report paths stable. Compiler API harnesses also need direct
+  instrumentation because their in-process calls are invisible to subprocess
+  coverage redirects.
