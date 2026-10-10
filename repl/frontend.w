@@ -1040,8 +1040,9 @@ char* repl_shell_options(int argc, int argv):
 
 
 int repl_main(int argc, int argv, int initial_shell):
-	# $W_COVERAGE_REPL: re-execute as a --coverage build (compiler/coverage_exec.w).
-	coverage_exec_redirect(c"W_COVERAGE_REPL", c"repl", argv)
+	# Preserve the launcher's startup mode when re-executing for coverage.
+	if (initial_shell): coverage_exec_redirect(c"W_COVERAGE_WSH", c"wsh", argv)
+	else: coverage_exec_redirect(c"W_COVERAGE_REPL", c"repl", argv)
 	args_init(argc, argv)
 	char* shell_command_text = 0
 	if (initial_shell): shell_command_text = repl_shell_options(argc, argv)
