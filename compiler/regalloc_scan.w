@@ -2700,13 +2700,10 @@ void regargs_close(int framed):
 	for r in range(16):
 		if (regalloc_saved_mask & (1 << r)): push_reg(r)
 	sub_rsp_words(rg_homes)
-	int rel = rg_resume - (codepos + 2)
-	if (rel >= -128):
-		emit_int8(0xeb)            # jmp rel8
-		emit_int8(rel)
-	else:
-		emit_int8(0xe9)            # jmp rel32
-		emit_int32(rg_resume - (codepos + 4))
+	# jmp rel32 like every other compiler-emitted jump: the self-host
+	# disassembly gate (asm_x64_test) decodes compiler forms only
+	emit_int8(0xe9)
+	emit_int32(rg_resume - (codepos + 4))
 	# the symbol record's O5 fields (compiler/symbol_table.w): the
 	# entry's address and the parameters' registers, 4 bits each
 	save_int(table + rg_symbol + 154, code_offset + entry)
