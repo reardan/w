@@ -104,7 +104,7 @@ int variable_declaration():
 	# import_alias_type_ahead only claims a member that names a type
 	# declared in the aliased module, so 'alias.value' stays an
 	# expression statement)
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0) | gpu_qualifier_ahead()):
+	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0) | gpu_qualifier_ahead() | safe_qualifier_ahead()):
 		# println2("variable_declaration()")
 		statement_ast local_node
 		statement_ast* node = cast(statement_ast*, retained_parse_record(&local_node, sizeof(statement_ast)))

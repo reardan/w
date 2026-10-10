@@ -602,6 +602,7 @@ type __repl_bind_hook_callback = fn() -> void
 
 
 int repl_compile_entry(char* path):
+	if (safe_mode): target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	# Checkpoint everything a failed compile could leave half-updated
 	repl_checkpoint()
 
@@ -1020,6 +1021,8 @@ int repl_ast_option(char* name):
 
 
 void repl_ast_options():
+	if (args_has_bool_flag(c"safe")):
+		target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	ast_expressions_mode = 2
 	# S2.5: the retained forest and emission from it are the default too.
 	ast_retain_mode = 1
@@ -1049,6 +1052,7 @@ void repl_ast_options():
 # runs from, the shared eval engine (repl_engine_init: recoverable
 # compile errors, staging directory) and the runtime support modules.
 void repl_inprocess_setup():
+	if (safe_mode): target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	verbosity = -1
 	# The in-process model runs compiled code directly, so the target
 	# architecture is the one this binary was compiled for.

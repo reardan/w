@@ -78,6 +78,7 @@ import grammar.protobuf_builtin
 import grammar.gpu_for
 import grammar.asm_function
 import grammar.program
+import grammar.safe_cleanup
 import code_generator.statement_ast
 import code_generator.loop_ast
 import code_generator.gpu_ast

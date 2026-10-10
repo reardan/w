@@ -67,10 +67,30 @@ int gpu_qualifier_ahead():
 	return is_type
 
 
+# Contextual checked-pointer qualifiers preserve ordinary identifiers with
+# these spellings. A qualifier is recognized only before a known type.
+int safe_qualifier_ahead():
+	int kind = 0
+	if (peek(c"own")): kind = 1
+	if (peek(c"ref")): kind = 2
+	if (peek(c"refmut")): kind = 3
+	if (kind == 0): return 0
+	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
+	char* save = generic_reparse_save()
+	get_token()
+	int is_type = peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	if (is_type): return kind
+	return 0
+
+
 int type_name():
 	int type = 0
 	int is_const = 0
 	int is_gpu = 0
+	int safe_kind = safe_qualifier_ahead()
+	if (safe_kind): get_token()
 	pointer_indirection = 0
 	if (accept(c"const")): is_const = 1
 	if (gpu_qualifier_ahead()):
@@ -155,5 +175,13 @@ int type_name():
 		type = pointer_type
 
 	type = type_name_array_suffix(type)
+	if (safe_kind):
+		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || type_is_slice(type)):
+			error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")
+		if (is_gpu || type_is_gpu_pointer(type)): error(c"checked GPU pointers are not supported")
+		int element = type_lookup_previous_pointer(type)
+		if ((element < 0) || (type_get_size(element) <= 0)):
+			error(c"checked pointers require a sized pointee")
+		type = type_get_safe(type, safe_kind)
 
 	return type

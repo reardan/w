@@ -569,7 +569,7 @@ void emit_global_type_storage(int type):
 # 'T identity[T](T x)'). Statement keywords, calls, assignments and
 # 'name :=' declarations all fall through to script mode.
 int script_statement_starts_here():
-	if (peek(c"const")): return 0
+	if (peek(c"const") || safe_qualifier_ahead()): return 0
 	if (peek(c"map") & (nextc == '[')): return 0
 	if (peek(c"set") & (nextc == '[')): return 0
 	if (peek(c"list") & (nextc == '[')): return 0
@@ -625,7 +625,7 @@ int script_declaration_keyword():
 # statement; the scan-ahead gives it a clear diagnostic instead of the
 # statement parser's confusing "';' expected, found '('".
 int script_function_definition_ahead():
-	if ((peek(c"const") | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0): return 0
+	if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	while (accept(c"*")) {}
@@ -808,7 +808,7 @@ void program_item():
 		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
 			get_token()
 			export_pending = 1
-			if ((peek(c"const") | (type_lookup(token) >= 0)) == 0):
+			if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0)) == 0):
 				error(c"'export' must be followed by a function definition")
 
 	# Script mode: a token that cannot start a declaration begins
