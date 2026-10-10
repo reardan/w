@@ -2,8 +2,9 @@
 
 `lib/fs.w` has native positional I/O, truncation, directory-relative/exclusive
 creation, advisory process-lifetime locks and durability adapters on Linux
-x86/x64/ARM64 and ARM64 Darwin. The ARM64 implementations are cross-compiled;
-native hardware/filesystem qualification remains pending. A successful syscall
+x86/x64/ARM64 and ARM64 Darwin. ARM64 Linux native qualification remains pending. Darwin/APFS has native
+process-crash and fault-injection coverage on an M3 Pro; physical power-loss
+qualification remains pending. A successful syscall
 is not evidence that a device survives power loss.
 
 | Operation | ARM64 Linux | ARM64 Darwin |
@@ -12,7 +13,7 @@ is not evidence that a device survives power loss.
 | Truncate | `ftruncate` 46 | `ftruncate` 201 |
 | Relative/exclusive create | `openat` 56, translated ARM flag assignments | `openat` 463, translated flags and `AT_FDCWD=-2` |
 | Advisory lock | `flock` 32 | `flock` 131 |
-| Durability barrier | `fsync` 82 | `fcntl(F_FULLFSYNC=51)` |
+| Durability barrier | `fsync` 82 | `fsync` 95 then `fcntl(F_FULLFSYNC=51)` |
 | Publish | `renameat` 38 | `rename` 128 |
 
 Offsets are signed 64-bit words. The kernel receives one positional operation;
@@ -33,7 +34,8 @@ for directories, durable replacement reports the failure at `FS_STAGE_SYNC_DIR`
 with `renamed=1`; it cannot claim completion. A refused file barrier leaves the
 original destination intact and reports `FS_STAGE_SYNC_FILE`. ENOTSUP and
 EOPNOTSUPP become `IO_UNSUPPORTED`; native errors remain available. Other errors
-remain errors. No APFS/HFS+/external-drive combination is claimed qualified yet.
+remain errors. Native APFS process-crash results are recorded below; HFS+,
+external drives and physical power-loss behavior remain unqualified.
 
 Guarantees require local filesystems that honor file/directory synchronization,
 atomic same-directory rename, and devices/controllers that truthfully implement
@@ -81,10 +83,20 @@ to a complete old or new record. Do not label SIGKILL or QEMU as that evidence.
 ## Current evidence and unsupported targets
 
 Both ARM64 targets cross-compile every fixture in all three compilation modes.
-The x64 Linux supplementary harness passes in all three modes. This session had
-no ARM64 Linux or Apple Silicon hardware; native qualification for #608 is still
-pending. In particular Darwin directory-barrier support must be established on
-the exact filesystem/device before claiming durable replacement there.
+The x64 Linux supplementary harness passes in all three modes. ARM64 Linux
+native qualification remains pending.
+
+On 2026-10-09, native M3 Pro/macOS 26.3 tests on local internal APFS passed
+15 filesystem tests, five checked-I/O tests, and 17 injected failure/SIGKILL
+cases with recovery. File and directory full barriers succeeded on this
+filesystem/device. Run `./wbuild fs_durability_darwin_test`; the full scope,
+assumptions and test mechanism are in [Darwin qualification](reliable_services.md#darwin-qualification-608).
+The existing `tools/qualify_native.py --suite durability` fixture also passed
+20 rounds in each of streaming, retained and optimized modes (60 runs), using
+`--compiler bin/wv2_darwin --scratch bin`; local evidence is written to
+`bin/fs608_native_qualification.json`.
+These results cover process crashes with a live kernel and caches, not physical
+power loss. Other filesystem/device combinations require their own evidence.
 
 Windows is a separate port, explicitly **unsupported** by this durability API.
 The win64 `sys_pread`, `sys_pwrite`, `sys_ftruncate`, `sys_openat` and `sys_flock`

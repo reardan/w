@@ -13,7 +13,7 @@ The follow-up implementation and qualification for issue #522 are documented in
 | Stage | Deliverable | Status |
 |---|---|---|
 | W0 | Checked I/O and stream repair | done: `lib/io.w`, `lib/stream.w`, `lib/file.w`, `lib/task_io.w` |
-| W1 | File durability primitives | qualified on Linux x86/x64: `lib/fs.w`; ARM64 Linux/Darwin adapters implemented, native qualification pending |
+| W1 | File durability primitives | Linux x86/x64; native Darwin/APFS process-crash tests passed, ARM64 Linux qualification pending; see below |
 | W1a | WAL / LSM / persistence hardening | done: `wal.w`, `raft_wal.w`, `lsm.w`, `sstable.w`, `kv_state.w`, `durable_gate.w` |
 | W2 | Bounded binary codecs | done: `lib/bytes.w`, `lib/byte_buf.w`, `lib/checked.w`, `lib/byte_map.w`, `compress/crc32c.w` |
 | W3 | Bounded blocking executor | done: `lib/executor.w` (+ `task_remote_call`) |
@@ -29,11 +29,13 @@ The follow-up implementation and qualification for issue #522 are documented in
   reports write/close failure; `task_write_all_result` /
   `task_read_exact_result` retry EINTR after a cancellation check and
   treat zero progress as an error.
-- **W1.** `lib/fs.w`: `pread`/`pwrite` (64-bit offsets on x86-64, 31-bit
+- **W1.** `lib/fs.w`: `pread`/`pwrite` (63-bit signed offsets on 64-bit targets, 31-bit
   on i386), `ftruncate`, `openat` / exclusive create, directory fsync
   (`IO_UNSUPPORTED` when refused), `flock` process locks, and
   `fs_replace_durable` reporting the failing stage and whether the rename
-  happened. arm64, Darwin, win64 and wasm get explicit ENOSYS stubs.
+  happened. ARM64 Linux and Darwin adapters are implemented. Darwin
+  requires `F_FULLFSYNC` after filesystem sync; win64 and wasm remain
+  unsupported.
 - **W1a.** WAL recovery policies (permissive / strict / strict-truncate)
   with a report naming the first bad offset and classifying clean end,
   torn tail or interior corruption; a failed fsync poisons the handle.
@@ -219,8 +221,61 @@ File operations, Linux x64 first, other architectures explicit
 Durable replace reports the failing stage and whether the rename already
 happened: a directory-sync failure after rename means the new file may be
 visible while crash durability is unknown. Durability claims assume a
-local POSIX filesystem honoring `fsync` on files and directories (ext4,
-xfs, btrfs); anything else must report an error rather than claim it.
+local filesystem honoring file and directory barriers (Linux ext4, xfs,
+btrfs; Darwin/APFS as qualified below). A rejected barrier reports an
+error rather than durability success.
+
+### Darwin qualification (#608)
+
+Run `./wbuild fs_durability_darwin_test` on an Apple Silicon Mac (also
+included in `./wbuild tests_darwin`). It bootstraps the native compiler,
+runs the shared `lib/fs_test.w` and `lib/io_test.w` suites, then runs
+`tools/mac/test_fs_durability.py`. The generated Darwin twins remain
+compile guards in Linux `tests`. Python 3 is needed for the fault harness.
+
+Native validation on 2026-10-09: M3 Pro, macOS 26.3 (25D125), Darwin
+25.3.0, local APFS on the internal Apple storage device. Fifteen filesystem
+tests and five checked-I/O tests cover sparse offsets at 5 GiB, hole reads,
+truncate, overflow rejection, two concurrent processes using the same open
+file description while its cursor moves, exclusive creation, relative
+open, close-on-exec, native errno, lock contention and release after
+SIGKILL, file/directory barriers and replacement reports. Seventeen
+additional cases inject errors at file barrier/rename/directory barrier
+and SIGKILL immediately before and after those operations. They check
+old/new visibility, temp cleanup or crash leftovers, `stage`/`renamed`,
+and successful reopen/republication after ambiguous publication.
+
+The fault harness shadows only the Darwin syscall adapter in a temporary
+import root. `lib/fs.w` and its replacement algorithm are unmodified;
+non-injected operations use real APFS syscalls. Barrier EIO, EINTR, EINVAL,
+ENOTSUP and EOPNOTSUPP are propagated without fallback or retry. A
+file-barrier failure preserves the old destination; a directory-barrier
+failure reports `renamed=1`, so recovery must inspect the visible version
+and republish/sync before acknowledging durability. Process death before
+rename can leave a temp sibling; recovery must not treat it as published.
+
+Darwin's raw syscall bridge negates errno without renumbering it. Checked
+I/O now uses Darwin's numbers (e.g. EAGAIN=35, ENOTSUP=45, ENOSYS=78),
+preserving them in `native_error`; Linux values remain unchanged. Darwin
+ENOSYS stubs also use native 78. Both `fsync` and its `fdatasync` wrapper
+require filesystem `fsync` followed by `fcntl(F_FULLFSYNC)`, including on
+the parent directory after rename. This preserves the strict no-fallback
+contract introduced in #616 for all callers, including stream/storage sync.
+
+These are **process-crash and syscall-failure tests, not power-cut tests**.
+Durability is conditional on the filesystem and device honoring both
+barriers and atomic same-directory rename. APFS here accepts full barriers
+on files and directories. Other filesystems, network mounts, external
+controllers and devices that ignore flushes remain unqualified; rejected
+barriers return an error, never success. Apple's [fsync documentation](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html)
+and [fcntl documentation](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fcntl.2.html)
+explain why a plain filesystem sync is insufficient for the drive cache.
+
+ARM64 Linux native qualification remains open under #608. Windows needs
+its own handle-sharing, locking, replacement and flush contract and native
+crash tests; `lib/fs.w` continues returning `IO_UNSUPPORTED` there, without
+claiming POSIX directory durability. This Darwin work does not complete
+all of #608.
 
 ### Storage hardening (W1a)
 
@@ -323,9 +378,10 @@ Decisions taken in the implementation:
 - Can `?` propagation support allocation-free values without complicating
   the bootstrap ABI? Not attempted; `io_result` is caller-owned instead.
 - Which filesystem/platform combinations satisfy durable replacement, and
-  how is capability discovery exposed? Linux x86/x64 on a local POSIX
-  filesystem; elsewhere the primitives return `IO_UNSUPPORTED` and
-  directory fsync maps EINVAL to `IO_UNSUPPORTED`.
+  how is capability discovery exposed? Linux x86/x64 on local POSIX
+  filesystems, plus ARM64 Darwin on local APFS under the qualification
+  above. Rejected barriers preserve native
+  errors and map EINVAL/ENOTSUP/EOPNOTSUPP to `IO_UNSUPPORTED`.
 - What executor defaults keep throughput predictable under slow storage?
   No implicit defaults. A sync class of 1-2 workers per device or log
   with a queue of about 4x workers, a byte cap equal to the dirty memory

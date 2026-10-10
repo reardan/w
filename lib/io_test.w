@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 arch=arm64_darwin
 import lib.testing
 import lib.io
 import lib.process
@@ -44,12 +44,20 @@ void test_io_errors_keep_native_errno():
 
 
 void test_io_status_classification():
-	assert_equal(IO_WOULD_BLOCK, io_status_from_errno(11))
+	assert_equal(IO_WOULD_BLOCK, io_status_from_errno(IO_ERRNO_EAGAIN))
 	assert_equal(IO_INTERRUPTED, io_status_from_errno(4))
 	assert_equal(IO_NO_SPACE, io_status_from_errno(28))
-	assert_equal(IO_NO_SPACE, io_status_from_errno(122))
-	assert_equal(IO_TIMED_OUT, io_status_from_errno(110))
-	assert_equal(IO_CANCELLED, io_status_from_errno(125))
-	assert_equal(IO_UNSUPPORTED, io_status_from_errno(38))
+	assert_equal(IO_NO_SPACE, io_status_from_errno(IO_ERRNO_EDQUOT))
+	assert_equal(IO_TIMED_OUT, io_status_from_errno(IO_ERRNO_ETIMEDOUT))
+	assert_equal(IO_CANCELLED, io_status_from_errno(IO_ERRNO_ECANCELED))
+	assert_equal(IO_UNSUPPORTED, io_status_from_errno(IO_ERRNO_ENOSYS))
 	assert_equal(IO_IO_ERROR, io_status_from_errno(5))
 	assert_strings_equal(c"no_space", io_status_name(IO_NO_SPACE))
+
+
+void test_io_unsupported_native_errno_is_preserved():
+	io_result r
+	assert_equal(IO_UNSUPPORTED, io_result_from_syscall(&r, 0 - IO_ERRNO_ENOTSUP))
+	assert_equal(IO_ERRNO_ENOTSUP, r.native_error)
+	assert_equal(IO_UNSUPPORTED, io_result_from_syscall(&r, 0 - IO_ERRNO_EOPNOTSUPP))
+	assert_equal(IO_ERRNO_EOPNOTSUPP, r.native_error)

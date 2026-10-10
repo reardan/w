@@ -154,13 +154,14 @@ int getcwd(char* buf, int size):
 	close(fd)
 	return result
 
-# Darwin fsync (95) only pushes the data to the drive, which may hold
-# it in a volatile cache; durable-to-power-loss persistence needs
-# fcntl F_FULLFSYNC (51, xnu bsd/sys/fcntl.h) per Darwin's fsync(2).
-# Never silently downgrade a requested durability barrier to plain fsync.
-# Unsupported filesystems/devices retain their native error.
+# First flush filesystem data/metadata, then require the device barrier.
+# Never fall back after F_FULLFSYNC fails: fsync alone can leave data in
+# the drive's volatile cache. Keep the original negative Darwin errno.
+# The initial fsync also diagnoses non-syncable descriptors (e.g. pipes).
 int fsync(int file):
-	return sys_fcntl(file, 51, 0)
+	int ret = syscall(95, file, 0, 0)
+	if (ret < 0): return ret
+	return sys_fcntl(file, 51, 0)  # F_FULLFSYNC
 
 # No fdatasync in the BSD table; fsync's guarantee is a superset.
 int fdatasync(int file):
