@@ -12,6 +12,29 @@ Writing a test is covered in `AGENTS.md` and `CLAUDE.md`: create
 `# wbuild:` directives for expectations and extra steps
 (`tools/wbuildgen_lib.w` documents the vocabulary).
 
+## CI partitions
+
+The full suite (`tests tests_interop`) and required-AST suite each run in four
+isolated jobs. `wexec --shard I/4` partitions the generated manifest's runnable
+roots, preserving each root's dependencies. New targets enter the partition
+automatically. The aggregate checks retain the names `Full test suite` and
+`Required AST test suite`, and fail if any corresponding shard fails or is
+cancelled. Required-AST shards use the transformed manifest, preserving the
+existing no-fallback gate.
+
+Each job uploads its log and `ci-timings.jsonl`, and summarizes the slowest
+targets. Initial assignment is deterministic round-robin; `--shard-costs` can
+use prior timing reports for duration-based balancing. All shards must use
+the same timing input. See [executor sharding](projects/wexec.md) for local
+commands and the timing format.
+
+Compiler coverage uses a preparation job, four instrumented test jobs, and a
+merge job. Its existing informational/nonblocking policy remains, but failed
+or missing test runs produce a failing completeness result instead of a green
+coverage report. See [parallel coverage](projects/line_coverage.md#parallel-coverage-jobs).
+Sharding reduces elapsed time by using more runners; shared dependency work
+can increase total runner time. Build-cache policy is unchanged.
+
 ## The runner (`lib/testing.w`)
 
 Importing `lib.testing` provides `main()`. The compiler registers every
@@ -48,8 +71,25 @@ names the filter. If the argv form and `W_TEST_FILTER` are both set,
 argv wins. A filter that matches no test fails the run with
 `Tests FAILED: the filter matched no test.`, so a typo cannot pass
 silently, including with `--list`. A missing value after `--filter`
-exits 2 with a usage diagnostic. The runner ignores every other argument,
-so a test that reads its own argv keeps working.
+exits 2 with a usage diagnostic.
+
+`--shard I/N` (also `--shard=I/N`) partitions tests by their zero-based
+index in definition order modulo `N`. For example, `--shard 0/4` runs
+indices 0, 4, 8, …; the four shards together run every test exactly once.
+Shard membership is determined before filtering, so adding `--filter`
+does not move a test between shards. `--list --shard 0/4` lists that
+shard without running it. The summary includes `[shard 0/4]`.
+
+Both integers must be decimal, with `0 <= I < N <= 2147483647`; invalid
+arguments exit 2. A shard selecting no test, including after filtering,
+exits 1 in both run and list modes. This makes accidental empty CI shards
+visible. The runner ignores other arguments, so a test that reads its
+own argv keeps working.
+
+The `ast_expression_test` build target schedules eight such shards,
+`ast_expression_test_0` through `ast_expression_test_7`, after a shared
+`ast_expression_test_prepare` builds the test binary and its REPLs. Its
+scratch files use process IDs, so those runners can safely overlap.
 
 ### Leak checks
 

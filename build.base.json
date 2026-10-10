@@ -444,6 +444,11 @@
 			"deps": []
 		},
 		{
+			"name": "ast_expression_test",
+			"tags": ["tests"],
+			"deps": []
+		},
+		{
 			"name": "tests",
 			"deps": [
 				"tests_x64"

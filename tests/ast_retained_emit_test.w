@@ -355,7 +355,7 @@ void emit_header_walk_sources(list[char*] sources):
 
 void test_retained_emission_matches_default():
 	emit_failures = new list[char*]
-	list[char*] fixtures = emit_directive_data(c"tests/ast_expression_test.w", c"# wbuild: binary=ast_expression_test ")
+	list[char*] fixtures = emit_directive_data(c"tests/ast_expression_test.w", c"# wbuild: binary=ast_expression_test_prepare ")
 	char* own = c"# wbuild: binary=ast_retained_emit_test "
 	list[char*] declared = emit_directive_data(c"tests/ast_retained_emit_test.w", own)
 	assert1(fixtures.length > 100)

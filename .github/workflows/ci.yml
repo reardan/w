@@ -69,22 +69,13 @@ jobs:
           retention-days: 14
 
   tests:
-    name: ${{ matrix.name }}
+    name: full test shard ${{ matrix.part }}/4
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ matrix.timeout }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: Full test suite
-            targets: tests tests_interop
-            timeout: 30
-          # This regenerates the complete tests manifest with --ast-required
-          # on compiler steps. The compiler-only canaries cannot replace it:
-          # ordinary AST compilation can silently take a streaming fallback.
-          - name: Required AST test suite
-            targets: ast_expression_suite
-            timeout: 120
+        part: [0, 1, 2, 3]
 
     steps:
       - name: Check out repository
@@ -124,11 +115,14 @@ jobs:
             echo "W_CI_NO_KVM=1" >> "$GITHUB_ENV"
           fi
 
-      - name: Build and test (GL and UI tests on Xvfb)
+      - name: Build and test shard (GL and UI tests on Xvfb)
+        env:
+          TEST_PART: ${{ matrix.part }}
         run: |
           set -o pipefail
           xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
-            ./wbuild ${{ matrix.targets }} 2>&1 | tee wbuild.log
+            ./wbuild --shard "$TEST_PART/4" --timings bin/ci-timings.jsonl \
+            tests tests_interop 2>&1 | tee wbuild.log
 
       - name: Report skips
         if: always()
@@ -141,24 +135,38 @@ jobs:
             grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Statement coverage of the compiler, the REPL and wdbg under the full
-  # test suite (docs/projects/line_coverage.md, "Compiler coverage").
-  # `compiler_coverage` builds --coverage copies of them, reruns `tests`
-  # with every compiler/REPL/debugger process re-executing as those
-  # copies, and checks tools/coverage_baseline.txt. Not a required
-  # check yet: the job reports and uploads, and its result does not
-  # block a merge (continue-on-error).
-  coverage:
-    name: Compiler coverage
+      - name: Report slowest targets
+        if: always()
+        run: |
+          {
+            echo '### Target timings'
+            echo '```text'
+            grep -a -A 10 '^wexec: elapsed .*slowest targets:' wbuild.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload shard log and timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tests-full-${{ matrix.part }}
+          path: |
+            wbuild.log
+            bin/ci-timings.jsonl
+          retention-days: 14
+
+  ast_tests:
+    name: ast test shard ${{ matrix.part }}/4
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
-    continue-on-error: true
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
       - name: Install 32-bit runtime, Xvfb and Mesa
         run: |
@@ -170,16 +178,232 @@ jobs:
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
 
+      # wcore_test needs core files in the crashing process's cwd; the
+      # runner's default core_pattern pipes them to a handler.
       - name: Write core files to the working directory
         run: sudo sysctl --write kernel.core_pattern=core
 
-      - name: Measure coverage and check the baseline
+      # The wvm/kvm tests need a usable /dev/kvm (the hosted runners
+      # expose it on most machines, but only to root by default). A
+      # runner without one sets W_CI_NO_KVM, which lets those tests
+      # skip (lib/ci_skip.w test_skip_kvm) instead of failing the leg.
+      - name: Enable KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          fi
+          if [ -w /dev/kvm ]; then
+            echo "KVM enabled"
+          else
+            echo "::warning::/dev/kvm is not available on this runner; KVM tests will skip"
+            echo "W_CI_NO_KVM=1" >> "$GITHUB_ENV"
+          fi
+
+      # Generate the required-AST manifest before partitioning it. Nested
+      # compiler drivers retain their explicit mode assertions, as before.
+      - name: Prepare required AST manifest
+        run: |
+          ./wbuild build wast_audit wfixture
+          bin/wast_audit required-manifest bin/ast_required_suite_manifest.json
+
+      - name: Build and test shard (GL and UI tests on Xvfb)
         env:
-          W_CI_NO_KVM: "1"
+          TEST_PART: ${{ matrix.part }}
         run: |
           set -o pipefail
           xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
-            ./wbuild compiler_coverage 2>&1 | tee coverage.log
+            bin/wexec -f bin/ast_required_suite_manifest.json \
+            --shard "$TEST_PART/4" --timings bin/ci-timings.jsonl tests \
+            2>&1 | tee wbuild.log
+
+      - name: Report skips
+        if: always()
+        run: |
+          touch wbuild.log
+          n=$(grep -ac 'SKIP' wbuild.log || true)
+          echo "SKIP lines: $n"
+          {
+            echo "### SKIP lines: $n"
+            grep -a 'SKIP' wbuild.log | sort | uniq -c | sed 's/^/    /' || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report slowest targets
+        if: always()
+        run: |
+          {
+            echo '### Target timings'
+            echo '```text'
+            grep -a -A 10 '^wexec: elapsed .*slowest targets:' wbuild.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload shard log and timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tests-ast-${{ matrix.part }}
+          path: |
+            wbuild.log
+            bin/ci-timings.jsonl
+          retention-days: 14
+
+  # Retain the existing required-check names. A cancelled, missing or failed
+  # shard must fail these gates; never let an aggregate pass after a skip.
+  tests_gate:
+    name: Full test suite
+    needs: [tests]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require all test shards
+        env:
+          RESULT: ${{ needs.tests.result }}
+        run: test "$RESULT" = success
+
+  ast_gate:
+    name: Required AST test suite
+    needs: [ast_tests]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require all test shards
+        env:
+          RESULT: ${{ needs.ast_tests.result }}
+        run: test "$RESULT" = success
+
+  # Coverage stays informational, but failures remain explicit in the shard
+  # logs and merged completeness report. All shards use one exact set of maps.
+  coverage_prepare:
+    name: Prepare compiler coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build instrumented tools
+        run: |
+          ./wbuild wcoverage wexec
+          mkdir -p bin/coverage
+          cp bin/wcoverage bin/coverage/wcoverage
+          bin/coverage/wcoverage suite --prepare-only
+          # tar preserves executable permissions across artifact handoff.
+          tar -czf coverage-tools.tgz w bin/wv2 bin/wexec bin/coverage
+
+      - name: Upload instrumented tools and maps
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-tools
+          path: coverage-tools.tgz
+          retention-days: 3
+
+  coverage_shards:
+    name: Compiler coverage shard ${{ matrix.part }}/4
+    needs: [coverage_prepare]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [0, 1, 2, 3]
+    env:
+      W_CI_NO_KVM: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download instrumented tools
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-tools
+
+      - name: Restore instrumented tools
+        run: tar -xzf coverage-tools.tgz
+
+      - name: Install 32-bit runtime, Xvfb and Mesa
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+
+      - name: Allow debugger attach tests
+        run: sudo sysctl --write kernel.yama.ptrace_scope=0
+
+      # wcore_test needs core files in the crashing process's cwd; the
+      # runner's default core_pattern pipes them to a handler.
+      - name: Write core files to the working directory
+        run: sudo sysctl --write kernel.core_pattern=core
+
+      - name: Measure coverage shard
+        env:
+          COVERAGE_PART: ${{ matrix.part }}
+        run: |
+          set -o pipefail
+          xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' \
+            bin/coverage/wcoverage suite --skip-build --shard "$COVERAGE_PART/4" \
+            2>&1 | tee coverage.log
+
+      - name: Package coverage shard
+        if: always()
+        env:
+          COVERAGE_PART: ${{ matrix.part }}
+        run: |
+          # A missing directory is deliberately not replaced by empty data.
+          # The merge job checks every shard's completion evidence.
+          if [ -d "bin/coverage/shards/$COVERAGE_PART-of-4" ]; then
+            tar -czf "coverage-shard-$COVERAGE_PART.tgz" \
+              "bin/coverage/shards/$COVERAGE_PART-of-4"
+          fi
+
+      - name: Upload coverage shard
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-shard-${{ matrix.part }}
+          path: |
+            coverage-shard-${{ matrix.part }}.tgz
+            coverage.log
+          retention-days: 3
+
+  coverage:
+    name: Compiler coverage
+    needs: [coverage_prepare, coverage_shards]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download instrumented tools
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-tools
+
+      - name: Download coverage shards
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-shard-*
+          path: coverage-inputs
+
+      - name: Merge coverage and check completeness and baseline
+        run: |
+          set -o pipefail
+          tar -xzf coverage-tools.tgz
+          for archive in coverage-inputs/coverage-shard-*/coverage-shard-*.tgz; do
+            [ ! -f "$archive" ] || tar -xzf "$archive"
+          done
+          bin/coverage/wcoverage suite --merge-shards 4 \
+            --baseline tools/coverage_baseline.txt 2>&1 | tee coverage.log
 
       # The new-code rule: changed executable lines in compiler/, grammar/
       # and code_generator/ must be >= 80% reached, unless their function
@@ -198,9 +422,12 @@ jobs:
             echo '### Compiler coverage'
             echo 'Executable statement lines reached by `tests`, per top-level directory; floors in `tools/coverage_baseline.txt`.'
             echo '```text'
+            cat bin/coverage/completeness.txt 2>/dev/null || echo 'coverage collection incomplete'
             cat bin/coverage/summary.txt 2>/dev/null || echo 'no report (see the job log)'
             grep -a '^baseline:' coverage.log 2>/dev/null || true
             tail -n 1 bin/coverage/diagnostics.txt 2>/dev/null || true
+            echo 'Phase durations (milliseconds):'
+            cat bin/coverage/phases.tsv bin/coverage/shards/*/phases.tsv 2>/dev/null || true
             echo '```'
             if [ -s changed.txt ]; then
               echo '#### Changed lines'
@@ -221,6 +448,10 @@ jobs:
             bin/coverage/*.txt
             bin/coverage/lcov.info
             bin/coverage/coverage.json
+            bin/coverage/phases.tsv
+            bin/coverage/shards/*/phases.tsv
+            bin/coverage/shards/*/targets.jsonl
+            bin/coverage/shards/*/run.status
           retention-days: 14
 
   # tests_codegen_diff = regalloc_diff_test, which builds every

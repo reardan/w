@@ -33,6 +33,79 @@ being compiled by the toolchain it is building.
   `tools/manifest_source.w`) and run it at startup; `tools/wbuildgen.w`
   is the CLI that writes a copy for reading. See "Manifest format".
 
+## Sharding and timings
+
+Independent runners can partition any requested umbrellas, including custom
+`-f` manifests, without maintaining hand-written test lists:
+
+```sh
+./wbuild --shard 0/4 --timings bin/timings-0.jsonl tests
+./wbuild --list --shard 0/4 tests
+./wbuild --list --json --shard 0/4 tests
+```
+
+Shard indices are zero-based. The executor validates the complete requested
+dependency graph, recursively expands targets with no steps (including empty
+step arrays), deduplicates the resulting runnable roots, sorts them by name,
+and assigns root `i` to shard `i % N`. Thus every runnable root belongs to
+exactly one shard; duplicate requests and nested umbrellas cannot lose tests
+or assign a root twice. The list forms print only that shard's roots and run
+no steps. An empty shard succeeds. New manifest targets automatically join
+the partition.
+
+Each selected root retains its entire dependency closure. Shared prerequisites
+can therefore run on multiple runners; they execute once per invocation and
+retain ordinary caching. A prerequisite that is also a requested runnable root
+may run in more than one shard. The generated-source gate also remains active.
+The original umbrella is not scheduled after flattening, so its unrelated
+members do not leak into the shard. Each CI shard needs its own worktree/bin
+directory; the executor's existing single-writer lock still protects a shared
+checkout. Sharding changes distribution, not dependency semantics.
+
+For measured balancing, concatenate prior timing reports and give every runner
+the same file:
+
+```sh
+cat timings-*.jsonl > prior-timings.jsonl
+./wbuild --shard 0/4 --shard-costs prior-timings.jsonl tests
+```
+
+This uses longest-first assignment to the currently lightest shard, with
+lexical target names and shard indices breaking ties deterministically.
+Successful uncached target durations supply the costs; cached, failed, skipped,
+and summary rows are ignored. Repeated target rows use their maximum duration.
+New targets receive a 1000 ms estimate. Costs describe the root's own work;
+shared prerequisites retain their dependency scheduling and are not charged
+twice to a root's estimate. Without a costs file, sorted round-robin assignment
+is reproducible from the manifest alone. `--shard-costs` requires `--shard`.
+
+`--timings path` truncates the named file and flushes one NDJSON row when each
+target completes. A parent directory must already exist. Rows have this form:
+
+```json
+{"type":"target","target":"example_test","elapsed_ms":125,"status":"passed","cache":"none"}
+{"type":"summary","elapsed_ms":500,"failed":0,"targets":12}
+```
+
+Statuses are `passed`, `failed`, `skipped` (failed prerequisite), and
+`not_started` (fail-fast cancellation). Cache values are `none`, `local`, or
+`remote`. Target durations use the monotonic clock, from launch preparation
+(including cache lookup) to completion, including publication of cache outputs;
+they exclude time waiting for prerequisites or a worker slot. Skipped and
+unstarted targets have zero duration. The final summary measures the whole
+scheduler run and records its failure status. Failed runs still write their
+completed target rows and summary. An externally killed process can leave a
+partial report without a summary. A requested report that cannot be opened or
+written makes the invocation fail.
+
+The executor also prints the ten slowest targets to stderr. Sharding and
+report paths are explicit CLI options, never inherited environment settings:
+nested executors keep their ordinary selection unless explicitly given their
+own options, and reports from separate executors need distinct filenames.
+`tests/wexec_shard_test.w` covers partition completeness, dependency retention,
+invalid graphs/specifications, duration balancing, cache timing, and both
+failure scheduling modes.
+
 ## Manifest format
 
 The root object has optional `"dirs"` (created with mkdir before any
