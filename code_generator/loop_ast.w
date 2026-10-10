@@ -15,7 +15,10 @@ int* emit_range_loop_ast_begin(loop_ast* node):
 	# Enter a new loop context for break/continue. The loop may own
 	# caller-saved registers from here (R3, grammar/for_statement.w's
 	# twin): the loop variable (re-read) and the hidden end/step words.
+	# O7: this loop's increment steps pointers its variable drives
+	ivopt_range_ok = node.argument_count < 3
 	int* outer = loop_enter()
+	ivopt_range_ok = 0
 	for_reg = regalloc_slot_register(node.variable_slot - 1)
 	regalloc_loop_hidden(node.end_slot)
 	if (node.argument_count == 3): regalloc_loop_hidden(node.step_slot)
@@ -57,6 +60,7 @@ void emit_range_loop_ast_end(loop_ast* node):
 	else:
 		regalloc_slot_assert(node.variable_slot - 1)
 		inc_dword_esp_plus((stack_pos - node.variable_slot) << word_size_log2)
+	if (ivopt_live && (node.argument_count < 3)): ivopt_range_step()   # O7: compiler/ivopt.w
 
 	if (node.entry_site >= 0):
 		# the bottom test: back to the body while loop var < end

@@ -356,7 +356,12 @@ Implemented and covered by tests:
   promote like `int`: the word itself on x86, a 32-bit register on x64
   that stays zero- or sign-extended so wrap-around matches the stack
   word and the code needs no `& mask` (§2.7, unit A8;
-  `--no-narrow-regs` keeps them on the stack).
+  `--no-narrow-regs` keeps them on the stack). On x64 an innermost
+  counted loop that walks an array by a linear subscript such as
+  `b[k * n + j]` keeps the element's address in a loop-owned register
+  and advances it by the scaled stride where the index variable steps
+  (`compiler/ivopt.w`; it declines any loop it cannot prove, and
+  `--no-ivopts`/`-O0` keeps the subscript arithmetic).
   `--inline` emits a small leaf callee's body in place of its
   calls (§2.4, unit A5; also on for profile-hot sites under
   `--profile-use`, off otherwise because the re-parse costs compile
