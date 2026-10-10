@@ -15,6 +15,38 @@ sketch below, which is the pre-implementation shape and is not kept in
 sync. Remaining: http_client + darwin socket audit (phase 2), SSE/retry
 (phase 3), x509 (phase 6), TLS client/server (phases 7–9).
 
+## Cipher and key-exchange expansion (2026-10)
+
+Both TLS roles support `TLS_CHACHA20_POLY1305_SHA256`,
+`TLS_AES_128_GCM_SHA256`, and `TLS_AES_256_GCM_SHA384`. The last suite uses
+SHA-384 for the transcript, HKDF, Finished, and traffic-secret updates.
+AES-GCM is portable pure W with arithmetic SubBytes and bitwise GHASH,
+without secret-indexed lookup tables or hardware acceleration. ChaCha20
+remains the default preference.
+
+Clients advertise X25519 and P-256 and initially send an X25519 share.
+`tls_config.key_share_group = TLS_GROUP_SECP256R1` sends P-256 initially.
+HelloRetryRequest can request the other advertised group; the client also
+supports cookie-only retries. Both roles use the synthetic `message_hash`
+transcript and reject repeated retries or changed retry parameters. The
+server checks that CH2 preserves CH1 except for the requested share and
+padding. The server can constrain negotiation with
+`tls_server_config.cipher_suite` and `key_exchange_group` (zero selects
+automatically). This implementation does not support PSK/resumption/0-RTT.
+
+P-256 ECDH validates scalars and peer points and reuses the existing fixed
+scalar schedule. Its bignum arithmetic remains variable-time, as in P-256
+signing; this expansion does not claim a constant-time P-256 backend.
+Certificate algorithms and trust-store loading are separate from these
+cipher suites and are unchanged here; TLS 1.2 remains unsupported.
+
+Validation includes NIST CAVP AES-GCM vectors, RFC 5903 P-256 ECDH, the
+actual RFC 8448 AES-GCM record, offline retry and KeyUpdate tests, and
+`./wbuild openssl_interop_test`. That optional target tests all three suites
+with X25519, direct P-256 and P-256 retry, in both roles on x86 and x64.
+
+The remaining sections retain the original implementation plan.
+
 ## Motivation
 
 wharness — the W-native coding agent (w-private) — calls the Anthropic

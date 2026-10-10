@@ -30,7 +30,7 @@ tls_server_config* mt_server_config():
 # 5 wrong signing key, 6 optional empty, 7 optional trusted, 8 optional bad,
 # 9 client requires request, 10 non-signing KU, 11 unavailable credentials,
 # 12 insecure client must remain unauthenticated, 13 no client trust config.
-void mt_exchange(int mode):
+void mt_exchange_suite(int mode, int suite):
 	int* fds = cast(int*, malloc(2 * __word_size__))
 	assert_equal(0, socket_pair(fds))
 	int succeeds = mode == 0 || mode == 6 || mode == 7 || mode == 12
@@ -39,6 +39,8 @@ void mt_exchange(int mode):
 	if (pid == 0):
 		close(fds[0])
 		tls_server_config* cfg = mt_server_config()
+		cfg.cipher_suite = suite
+		if (suite != 0): cfg.key_exchange_group = TLS_GROUP_SECP256R1
 		if (mode == 2): cfg.client_trust_store_path = c"libs/standard/distributed/raft_tls_fixtures/ca.pem"
 		if (mode == 6 || mode == 7 || mode == 8): cfg.client_auth = TLS_CLIENT_AUTH_OPTIONAL
 		if (mode == 9): cfg.client_auth = TLS_CLIENT_AUTH_NONE
@@ -127,6 +129,15 @@ void mt_exchange(int mode):
 	assert_equal(pid, wait4(pid, &status, 0, 0))
 	assert_equal(0, status)
 	free(fds)
+
+
+void mt_exchange(int mode):
+	mt_exchange_suite(mode, 0)
+
+
+void test_mutual_tls_aes_and_p256_retry():
+	mt_exchange_suite(0, TLS_SUITE_AES_128_GCM_SHA256)
+	mt_exchange_suite(0, TLS_SUITE_AES_256_GCM_SHA384)
 
 
 void test_mutual_tls_required_and_optional_authenticated_identity():

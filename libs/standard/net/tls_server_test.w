@@ -340,24 +340,24 @@ void test_server_client_interop_inmem():
 
 # ---- negative / hostile-client ------------------------------------------------
 
-# A well-formed ClientHello that does not offer TLS_CHACHA20_POLY1305_SHA256
+# A well-formed ClientHello that does not offer any supported cipher suite
 # must be answered with a fatal handshake_failure alert and NO ServerHello
 # (and therefore no HelloRetryRequest).
-void test_server_no_chacha_rejected():
+void test_server_no_supported_suite_rejected():
 	char* client_priv = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	int ch_len = 0
 	char* ch = tlss_build_client_hello(client_priv, &ch_len)
-	# cipher_suites: the single suite sits at message bytes 73..74.
-	ch[73] = 0x13
-	ch[74] = 0x01               # TLS_AES_128_GCM_SHA256 instead of ChaCha20
+	for i in range(3):
+		ch[73 + 2*i] = 0x13
+		ch[74 + 2*i] = 4 + i   # CCM/CCM8/unknown, none supported
 	int chrec_len = 0
 	char* chrec = tlss_wrap_handshake(ch, ch_len, &chrec_len)
 
 	tls_server_config* scfg = tlss_config_inmem()
 	int ok = 0
 	tls_conn* s = tlss_run_server(chrec, chrec_len, scfg, &ok)
-	asserts(c"no-chacha handshake fails", ok == 0)
+	asserts(c"no-supported-suite handshake fails", ok == 0)
 	asserts(c"connection broken", s.broken == 1)
 	int out_len = 0
 	char* out = tls_mem_take_output(s, &out_len)
@@ -375,9 +375,8 @@ void test_server_no_chacha_rejected():
 	free(client_priv)
 
 
-# A ClientHello whose only key_share is not X25519 must be answered with
-# handshake_failure and NO ServerHello (no HelloRetryRequest in MVP).
-void test_server_no_x25519_rejected():
+# A P-256 key share with the X25519 length must fail before any reply.
+void test_server_malformed_p256_rejected():
 	char* client_priv = cast(char*, malloc(32))
 	tlss_fill(client_priv, 32, 0x21)
 	int ch_len = 0
@@ -391,13 +390,13 @@ void test_server_no_x25519_rejected():
 	tls_server_config* scfg = tlss_config_inmem()
 	int ok = 0
 	tls_conn* s = tlss_run_server(chrec, chrec_len, scfg, &ok)
-	asserts(c"no-x25519 handshake fails", ok == 0)
+	asserts(c"malformed P-256 handshake fails", ok == 0)
 	asserts(c"connection broken", s.broken == 1)
 	int out_len = 0
 	char* out = tls_mem_take_output(s, &out_len)
 	assert_equal(7, out_len)
 	assert_equal(TLS_CT_ALERT, out[0] & 255)
-	assert_equal(TLS_ALERT_HANDSHAKE_FAILURE, out[6] & 255)
+	assert_equal(TLS_ALERT_DECODE_ERROR, out[6] & 255)
 	free(out)
 	tls_conn_free(s)
 	tlss_config_inmem_free(scfg)
