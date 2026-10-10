@@ -64,6 +64,7 @@ char* incremental_options_key():
 	incremental_option(key, data_split)
 	incremental_option(key, bounds_mode)
 	incremental_option(key, strict_mode)
+	incremental_option(key, safe_mode)
 	incremental_option(key, check_bool_ops_mode)
 	incremental_option(key, check_imports_mode)
 	incremental_option(key, generic_check_mode)

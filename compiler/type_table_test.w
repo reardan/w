@@ -232,6 +232,42 @@ void test_gpu_qualifier_types():
 	assert_equal(1, types_compatible(gvoid_ptr, gptr))
 	assert_equal(1, types_compatible(gptr, gvoid_ptr))
 
+# Checked pointer identities survive aliases and value promotion while
+# keeping the raw pointer ABI. Shared dereference produces a const lvalue.
+void test_checked_pointer_types():
+	push_basic_types()
+	assert_equal(0, type_safe_used)
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	int owner = type_get_safe(pointer_type, 1)
+	int shared = type_get_safe(pointer_type, 2)
+	int exclusive = type_get_safe(pointer_type, 3)
+	assert_equal(1, type_safe_used)
+	assert_equal(owner, type_get_safe(pointer_type, 1))
+	assert_equal(1, type_safe_kind(owner))
+	assert_equal(2, type_safe_kind(type_value(shared)))
+	assert_equal(3, type_safe_kind(exclusive))
+	assert_equal(0, type_safe_kind(pointer_type))
+	assert_equal(0, type_safe_kind(-1))
+	assert_equal(pointer_type, type_safe_target(owner))
+	assert_equal(pointer_type, type_safe_target(pointer_type))
+	assert_equal(owner, type_canonical(owner))
+	assert_equal(owner, type_unqualified(type_push_const(owner)))
+	int alias = type_push_alias(c"owned_int", owner)
+	assert_equal(1, type_safe_kind(alias))
+	assert_equal(pointer_type, type_safe_target(alias))
+	assert_equal(__word_size__, type_get_size(owner))
+	assert_equal(1, type_get_pointer_level(shared))
+	assert_equal(type_lookup(c"int"), type_lookup_previous_pointer(owner))
+	assert_equal(type_lookup(c"int"), type_lookup_previous_pointer(exclusive))
+	int read_only = type_lookup_previous_pointer(shared)
+	assert1(type_is_const(read_only))
+	assert_equal(read_only, type_lookup_previous_pointer(shared))
+	assert_equal(type_lookup(c"int"), type_unqualified(read_only))
+	assert1(types_compatible(owner, pointer_type))
+	assert1(types_compatible(shared, owner))
+	assert_equal(0, types_compatible(owner, type_lookup_pointer(c"char", 1)))
+
+
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"

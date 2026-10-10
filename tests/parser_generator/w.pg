@@ -83,6 +83,9 @@ literal KW_OPERATOR "operator"
 literal KW_KERNEL "kernel"
 literal KW_LAUNCH "launch"
 literal KW_GPU "gpu"
+literal KW_OWN "own"
+literal KW_REF "ref"
+literal KW_REFMUT "refmut"
 # 'export' is contextual in the compiler too (grammar/program.w: it
 # marks the next function definition as a wasm module export, and a
 # type or symbol named 'export' keeps the identifier meaning), so it is
@@ -161,7 +164,7 @@ rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_ELIF | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_GOTO | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU | KW_EXPORT | KW_THREAD_LOCAL
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_ELIF | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_GOTO | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU | KW_OWN | KW_REF | KW_REFMUT | KW_EXPORT | KW_THREAD_LOCAL
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN extern_alias | KW_EXTERN type_ref IDENT
 rule extern_alias = ASSIGN STRING |
@@ -230,7 +233,7 @@ rule param_default = ASSIGN expression |
 
 # 'gpu T*' marks a device-memory pointer (grammar/type_name.w); gpu_for_stmt
 # is tried first at statement start, and 'for' is never a type_atom.
-rule type_ref = KW_CONST type_ref | KW_GPU type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
+rule type_ref = KW_CONST type_ref | KW_GPU type_ref | KW_OWN type_ref | KW_REF type_ref | KW_REFMUT type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
 # Generics ([T] parameter lists on definitions, [int] argument lists at
 # instantiation sites). Permissive: type_ref covers both bare parameter
 # names and concrete argument types; PG is syntax-only.

@@ -11,6 +11,7 @@ void emit_simple_statement_ast(statement_ast* node):
 	if (node.valid_jump == 0):
 		if (node.kind == ast_stmt_break): error(c"'break' outside of a loop or switch")
 		else: error(c"'continue' outside of a loop")
+	safe_owner_cleanup(0, stack_pos - node.unwind_slots, 0)
 	if (node.unwind_slots > 0): be_pop(node.unwind_slots)
 	int target = node.target
 	if (node.control_kind == 1):
@@ -53,6 +54,7 @@ void emit_statement_ast_value(statement_ast* node):
 		check_void_return(node.declared_type, type, node.line - 1, node.line, node.column)
 		ast_expression_note_root(node.expression_tree, node.expression_root)
 		coerce_checked(node.declared_type, type, c"return")
+		safe_owner_move(node.expression_tree, node.expression_root, node.declared_type)
 		const_note_override = 0
 
 
@@ -68,6 +70,7 @@ void emit_statement_ast_exit(statement_ast* node):
 	else:
 		for_cleanup_emit_returning()
 		defer_emit_returning()
+		safe_owner_cleanup_returning()
 		be_return(stack_pos)
 
 
@@ -215,6 +218,7 @@ int emit_declaration_ast_initializer(statement_ast* node):
 		ast_expression_note_root(node.expression_tree, node.expression_root)
 		coerce_checked(node.declared_type, got, c"initialization")
 		const_note_override = 0
+	safe_owner_move(node.expression_tree, node.expression_root, node.declared_type)
 	return got
 
 
@@ -223,6 +227,7 @@ void emit_declaration_ast_storage(statement_ast* node):
 	ast_declarations_emitted = ast_declarations_emitted + 1
 	if (node.inferred): emit_inferred_local_storage(node.declared_type)
 	else: emit_typed_local_storage(node.declared_type, node.has_initializer)
+	if (type_safe_kind(node.declared_type)): inline_hazard_count = inline_hazard_count + 1
 	# a promoted local also gets the value in its register
 	regalloc_store_declared(node.binding)
 
@@ -350,6 +355,8 @@ void emit_if_ast_end(statement_ast* node):
 
 void emit_block_ast_deferred(statement_ast* node):
 	if (node.function_body): defer_emit_all()
+	safe_owner_cleanup(node.binding, node.stack_depth, 0)
+	if (node.function_body): safe_owner_cleanup(0, stack_pos, 1)
 
 
 void emit_block_ast_end(statement_ast* node):

@@ -30,6 +30,7 @@ struct type_rec:
 
 
 list[int] type_records
+int type_safe_used
 
 # Name -> index of the FIRST record carrying that name, which is what
 # type_lookup returns. Names are not unique here: pointer records store
@@ -459,6 +460,52 @@ int type_lookup_const(int target):
 # memory (ld.global/st.global on device, a diagnostic on the host), and
 # pointer compatibility compares the "gpu " name prefix.
 const int type_kind_gpu = 20
+
+# Checked pointer qualifiers retain distinct canonical identities. Their
+# layout is an ordinary pointer; alias_target records that raw pointer.
+# Ownership and borrow legality are checked from expression provenance,
+# separately from representation compatibility.
+const int type_kind_own = 21
+const int type_kind_ref = 22
+const int type_kind_refmut = 23
+
+
+int type_safe_kind(int type_index):
+	type_index = type_unqualified(type_index)
+	if (type_index < 0): return 0
+	int kind = type_record(type_index).kind
+	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
+	return 0
+
+
+int type_safe_target(int type_index):
+	type_index = type_unqualified(type_index)
+	if (type_safe_kind(type_index)): return type_record(type_index).alias_target
+	return type_index
+
+
+int type_get_safe(int target, int kind):
+	type_safe_used = 1
+	target = type_unqualified(target)
+	int i = 0
+	while (i < type_records.length):
+		type_rec* t = type_record(i)
+		if ((t.kind == kind + 20) && (t.alias_target == target)): return i
+		i = i + 1
+	char* prefix = c"own "
+	if (kind == 2): prefix = c"ref "
+	if (kind == 3): prefix = c"refmut "
+	type_rec* new_type = type_alloc()
+	new_type.name = strjoin(prefix, type_get_name(target))
+	new_type.total_size = word_size
+	new_type.pointer_level = type_get_pointer_level(target)
+	new_type.alias_target = target
+	new_type.kind = kind + 20
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
+	int index = type_records.length
+	type_records.push(cast(int, new_type))
+	return index
 
 
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
@@ -919,8 +966,10 @@ int type_is_unsigned_word(int t):
 # word-sized scalar, not an untyped word: int <-> pointer conversions need
 # an explicit cast(). Distinct struct types never convert.
 int types_compatible(int want, int got):
-	want = type_unqualified(want)
-	got = type_unqualified(got)
+	# The safety pass validates whether this is a move or a borrow and
+	# rejects raw escapes/adoption; the ABI-level conversion is identical.
+	want = type_safe_target(want)
+	got = type_safe_target(got)
 	if (got == 3): return 1
 	if (got == 4): return 0
 	if (want == got): return 1
@@ -1043,8 +1092,15 @@ int type_get_next_pointer(int type_index):
 
 
 int type_lookup_previous_pointer(int type_index):
+	int safe_kind = type_safe_kind(type_index)
+	if (safe_kind): type_index = type_safe_target(type_index)
 	type_index = type_canonical(type_index)
-	return type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) - 1)
+	int element = type_lookup_pointer(type_get_name(type_index), type_get_pointer_level(type_index) - 1)
+	if ((safe_kind == 2) && (element >= 0)):
+		int read_only = type_lookup_const(element)
+		if (read_only < 0): read_only = type_push_const(element)
+		return read_only
+	return element
 
 
 # Clears an existing struct/union/enum's field list so a redeclaration at
@@ -1232,6 +1288,7 @@ void type_print(int type_index):
 # word-sized (8 bytes when compiling for x64) while the explicit-width
 # types (int32, int16, ...) keep their fixed sizes on every target.
 void push_basic_types():
+	type_safe_used = 0
 	# Callers that never pick a target (unit tests) default to 32-bit
 	if (word_size == 0):
 		word_size = 4

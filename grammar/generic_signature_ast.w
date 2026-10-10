@@ -1,3 +1,5 @@
+int safe_qualifier_ahead();  # grammar/type_name.w
+
 # Unbound generic signature syntax. Capture never looks up or interns a
 # type: definitions can mention parameters and types declared later.
 # Unsupported shapes leave the ordinary instantiation parser in charge.
@@ -67,7 +69,7 @@ int generic_type_ast_accept(int* brackets, char* spelling):
 generic_type_ast* generic_type_ast_capture_at(int depth, int* brackets, int with_suffix):
 	if (depth > 32): return 0
 	if (is_ident_start_byte(token[0]) == 0): return 0
-	if (peek(c"const") || peek(c"gpu")): return 0
+	if (peek(c"const") || peek(c"gpu") || safe_qualifier_ahead()): return 0
 	int container = 0
 	if (nextc == '['):
 		container = 3

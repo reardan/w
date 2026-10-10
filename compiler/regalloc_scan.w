@@ -1780,6 +1780,7 @@ void regalloc_function_scan(int symbol, int is_variadic):
 # (regalloc_reg_kind_of_type below, x86.w's writers). --no-narrow-regs
 # keeps the narrow types on the stack.
 int regalloc_type_ok(int type):
+	if (type_safe_kind(type)): return 0
 	if (type_is_const(type)): return 0
 	if (type_is_array(type)): return 0
 	if (type_get_pointer_level(type) > 0): return 1
