@@ -689,6 +689,7 @@ void lea_esp_ebp_minus(int disp):
 # the current function's saved set. Called by be_function_prologue on the
 # x86 path only; the pending mask is only ever set for that path.
 void regalloc_prologue_args();   /* compiler/regalloc_scan.w: the argument loads (A1) */
+void regalloc_fn_region_enter(); /* compiler/regalloc_scan.w: the function region (O2) */
 void regalloc_prologue_emit():
 	int mask = regalloc_pending_mask
 	regalloc_pending_mask = 0
@@ -696,7 +697,9 @@ void regalloc_prologue_emit():
 	regalloc_saved_count = 0
 	regalloc_active = 0
 	if (regalloc_loops_ok): regalloc_active = 1
-	if (mask == 0): return
+	if (mask == 0):
+		regalloc_fn_region_enter()
+		return
 	regalloc_active = 1
 	int r = 0
 	while (r < 16):
@@ -706,6 +709,7 @@ void regalloc_prologue_emit():
 		r = r + 1
 	regalloc_saved_mask = mask
 	regalloc_prologue_args()
+	regalloc_fn_region_enter()
 
 # The framed return of a function whose prologue pushed registers:
 # 'lea esp,[ebp-W*saved] ; pop ... ; pop ebp' replaces 'leave'. Callers
@@ -913,6 +917,16 @@ void addr_load_fold(int w, int oplen, char* op):
 # the memload of [eax] (base 0: the address eax held before it) so a
 # compare against a constant still folds (shuttle_cmp).
 void plain_load(int w, int oplen, char* op):
+	# O2: the address is a register's value ('mov eax,R' directly
+	# before: a field at offset 0 or a dereference of a register-resident
+	# pointer): load through the register, '[R]'
+	if ((addr_modes_disabled == 0) && (regload_note_end != 0) && (regload_note_end == codepos)):
+		int r = regload_note_reg
+		peep_rollback(regload_note_start)
+		int rstart = codepos
+		emit_mem_insn(w, oplen, op, 0, r, -1, 1, 0)
+		memload_note(rstart, r, -1, 1, 0, w, oplen, op)
+		return
 	int start = codepos
 	emit_mem_insn(w, oplen, op, 0, 0, -1, 1, 0)
 	if (addr_modes_disabled): return
