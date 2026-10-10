@@ -1,0 +1,462 @@
+{
+  "version": 1,
+  "kind": "native-ecmascript",
+  "cases": [
+    {
+      "id": "arithmetic",
+      "path": "arithmetic.js",
+      "sha256": "466f660a0334ef6bc5f7a91b6c6b632c6133577dd7f192afa395d79ec243c23d",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-addition-operator-plus",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "0.30000000000000004"
+        }
+      }
+    },
+    {
+      "id": "closures",
+      "path": "closures.js",
+      "sha256": "ac2467e014e19a9dd343683f9ca06f3a3773706f8326619bda4194cef497f406",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-function-definitions",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "12.0"
+        }
+      }
+    },
+    {
+      "id": "utf16",
+      "path": "utf16.js",
+      "sha256": "d128e8a9809d8cd28d4471e6c1d9d5dac0d93b99972176dbeff3ca4203f2fdaf",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-ecmascript-language-types-string-type",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "string",
+          "units": [
+            0,
+            55296,
+            120
+          ]
+        }
+      }
+    },
+    {
+      "id": "throw-number",
+      "path": "throw-number.js",
+      "sha256": "667de2a8e6972037434f18e4baabbb7e5fd30facb6fe9d81a9f85b2a63ab301b",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-throw-statement",
+      "expected": {
+        "phase": "execute",
+        "outcome": "throw",
+        "value": {
+          "type": "number",
+          "value": "7.0"
+        }
+      }
+    },
+    {
+      "id": "syntax-negative",
+      "path": "syntax-negative.js",
+      "sha256": "1931c81b6275becee5dcdd0499ff58f7d4216b2c30bfa8b10f0acf5305f7eb97",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-let-and-const-declarations",
+      "expected": {
+        "phase": "parse",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      }
+    },
+    {
+      "id": "duplicate-lexical",
+      "path": "duplicate-lexical.js",
+      "sha256": "a3c3f6514ab1f2729c3c24e07453778c9398283caec02ead7efd75fcde37f434",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-let-and-const-declarations",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      }
+    },
+    {
+      "id": "declaration-completion",
+      "path": "declaration-completion.js",
+      "sha256": "622b99a0879e4a56cfca5f1c48712042c4bfce3f470d2724cf23b74420b5d186",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-statement-semantics-runtime-semantics-evaluation",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "1.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-COMPLETION-DECLARATION",
+        "reason": "An empty declaration completion overwrites the preceding value.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "normal",
+          "value": {
+            "type": "undefined"
+          }
+        }
+      }
+    },
+    {
+      "id": "loop-completion",
+      "path": "loop-completion.js",
+      "sha256": "d5a429f5934d39d4f4c048e13b7537141ddc9d78a93d5719c1b64b4395d6367a",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-while-statement-runtime-semantics-labelledevaluation",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-COMPLETION-LOOP",
+        "reason": "Loop completion discards the last body value.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "normal",
+          "value": {
+            "type": "undefined"
+          }
+        }
+      }
+    },
+    {
+      "id": "duplicate-function",
+      "path": "duplicate-function.js",
+      "sha256": "5b7927d307dd0fd617e5dec7bf0f68efcc6f9c9fc5d2bdb03eb78c1367a5db50",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-globaldeclarationinstantiation",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "2.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-FUNCTION-REDECLARATION",
+        "reason": "Global declaration instantiation rejects valid function redeclarations.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "throw",
+          "value": {
+            "type": "undefined"
+          },
+          "message": "duplicate callable binding"
+        }
+      }
+    },
+    {
+      "id": "named-expression",
+      "path": "named-expression.js",
+      "sha256": "9a642eea8039d94b847f0567d711b05278ec240e4897b4941aedd22fb2431350",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-instantiateordinaryfunctionexpression",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-SLOPPY-FUNCTION-NAME",
+        "reason": "Sloppy assignment to an immutable function-expression name throws instead of being ignored.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "throw",
+          "value": {
+            "type": "undefined"
+          },
+          "message": "assignment to constant binding"
+        }
+      }
+    },
+    {
+      "id": "catch-reference-error",
+      "path": "catch-reference-error.js",
+      "sha256": "2604a0704a33f2f2ead2e832cd3993b39236e0b3389bf3fdb024d6a6a672bb7c",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/executable-code-and-execution-contexts.html#sec-getvalue",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "boolean",
+          "value": false
+        }
+      },
+      "xfail": {
+        "bug": "JS-TYPED-ERROR",
+        "reason": "The runtime catches undefined instead of a ReferenceError object.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "normal",
+          "value": {
+            "type": "boolean",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "id": "primitive-member",
+      "path": "primitive-member.js",
+      "sha256": "95b8e4ff84a6bdc330694feae9190c1327a3914171d9e17f5178f66b6614d977",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-property-accessors",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "undefined"
+        }
+      },
+      "xfail": {
+        "bug": "JS-PRIMITIVE-GET",
+        "reason": "Boolean property access throws instead of boxing the primitive.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "throw",
+          "value": {
+            "type": "undefined"
+          },
+          "message": "property receiver is not an object"
+        }
+      }
+    },
+    {
+      "id": "var",
+      "path": "var.js",
+      "sha256": "d7bef9d3b5cd0180fa0dfa897f383063ef8b62cde4ce75fcfce0e0e72af91bbc",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-variable-statement",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-VAR",
+        "reason": "Variable statements are rejected by the executable-subset preflight.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "arrow",
+      "path": "arrow.js",
+      "sha256": "ea8c66527c47c750d28e9a3c8341811c74dda2db510221fd865adc8964573939",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-arrow-function-definitions",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-ARROW",
+        "reason": "Arrow function AST lowering is unavailable.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "regex-negative",
+      "path": "regex-negative.js",
+      "sha256": "f5a6d90f3b86dd8bd1705aea5663f8f14a2844cab5bd71bb3bcddb3ad00438a8",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-primary-expression-regular-expression-literals",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-REGEXP-EARLY",
+        "reason": "Invalid regular-expression patterns pass early validation.",
+        "observed": {
+          "phase": "execute",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "module-missing-export",
+      "path": "module-missing-export.js",
+      "sha256": "19aa7d38dd37b57fa17d37aea6b2694f4557609f1b63753b0c06a8023d8f7998",
+      "goal": "module",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-module-semantics-static-semantics-early-errors",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-MODULE-EXPORT",
+        "reason": "An exported local name is not checked against declared module bindings.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "module-duplicate-default",
+      "path": "module-duplicate-default.js",
+      "sha256": "bcfc4d484ae5756ba363ac61920f8fefbc15dcc9b52ecdd3f3fbee7c539bffaf",
+      "goal": "module",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-module-semantics-static-semantics-early-errors",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-MODULE-DEFAULT",
+        "reason": "Duplicate default exports are not rejected during early validation.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "async-parameter-await",
+      "path": "async-parameter-await.js",
+      "sha256": "ba3702e593f3bd3da8c06ee31c2bf00d53733200b6691cc8361abe2d55e83cb0",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-async-function-definitions-static-semantics-early-errors",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-ASYNC-PARAMETER",
+        "reason": "Await expressions in async formal parameters pass early validation.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "generator-parameter-yield",
+      "path": "generator-parameter-yield.js",
+      "sha256": "6c12a8e750904bc369160ce36f48f4281bf17a7e85d70bfbb35b3142a2680a78",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-generator-function-definitions-static-semantics-early-errors",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-GENERATOR-PARAMETER",
+        "reason": "Yield expressions in generator formal parameters pass early validation.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "async-duplicate-parameters",
+      "path": "async-duplicate-parameters.js",
+      "sha256": "aa015a5aa727173126309d56576ec9dc0b01e6e9635999d5b87faf57db831c28",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-async-function-definitions-static-semantics-early-errors",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-ASYNC-DUPLICATE",
+        "reason": "Async simple duplicate parameters pass early validation.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "generator-duplicate-parameters",
+      "path": "generator-duplicate-parameters.js",
+      "sha256": "f6522d12f1d273b2b9d160aa10610059acf00e1b20e2479e4629942a70b35693",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-generator-function-definitions-static-semantics-early-errors",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      },
+      "xfail": {
+        "bug": "JS-GENERATOR-DUPLICATE",
+        "reason": "Generator simple duplicate parameters pass early validation.",
+        "observed": {
+          "phase": "lower",
+          "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "chained-label",
+      "path": "chained-label.js",
+      "sha256": "d0ebb2d63e916a8f30b56f4882457180db6fc9ed12eb8ee6d18cb4cd6a8bb105",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      },
+      "xfail": {
+        "bug": "JS-CHAINED-LABEL",
+        "reason": "Continue to a chained iteration label is incorrectly rejected.",
+        "observed": {
+          "phase": "early",
+          "outcome": "error"
+        }
+      }
+    }
+  ]
+}
