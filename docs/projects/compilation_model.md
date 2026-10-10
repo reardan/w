@@ -1,6 +1,16 @@
 # Compilation Model: Libraries for Everything (#338) and LLVM Offload (#337)
 
-Status: design only, 2026-07-18. No code changes ship with this file.
+Initial assessment: 2026-07-18. Sections 1–6 preserve that assessment's
+architectural context; the production compiler has since gained a retained
+AST (see [AST migration](ast_migration.md)). The opt-in
+[LLVM offload experiment](llvm.md) now consumes that production tree,
+superseding §3.6's original parser-generator proposal.
+
+> Update for #625: x64 Linux shared and static library production and
+> separately linked compiler launchers are now implemented. See
+> [Building and linking libraries](build_libraries.md). The historical
+> analysis below describes the toolchain before that implementation.
+
 Assessment for two open epics that both, in different ways, ask "what
 counts as a compiled artifact in this compiler." Companion to
 `docs/projects/wx_split.md` (per-target container-writer work, the
@@ -421,7 +431,15 @@ compiled by `bin/wv2`. This:
 - Is explicitly **not** a path to replacing `w.w`'s compile path, same
   disclaimer `wbuildd.md` gives `bin/wc2` for the identical reason.
 
-### 3.7 Recommendation
+### 3.7 Original recommendation and implemented experiment
+
+The bounded experiment is now `bin/wllvm`, documented in [llvm.md](llvm.md).
+It reuses production parsing, semantic analysis and retained bindings, then
+walks the retained tree to emit LLVM IR for an explicit scalar subset.
+Unsupported constructs fail rather than silently falling back. LLVM remains
+an external, opt-in consumer of the text output; bootstrap and the normal
+compiler backends do not depend on it. The original assessment below records
+why this is an experiment rather than a commitment to a full LLVM backend.
 
 Don't schedule a real LLVM backend now: the dependency cost (an
 external toolchain at minimum, a multi-month binding project at worst)
@@ -549,7 +567,7 @@ should compile to. No design is attempted here pending that answer.
 | #338 claim 2 (thin CLI wrappers) | Already proven achievable (`wvc.w`/`cas.w`); several tools (`wexec.w`, `test_map.w`, `wbuildgen.w`) are the counter-example | Refactor those three into a library + porcelain split, no new compiler work |
 | #338 claim 1 (compiled library format) | No relocatable/archive format exists; a "static library" has nothing to match today | Don't schedule the archive+linker option (b) without an explicit maintainer sizing call; shared-library production (c) is the more tractable literal reading if wanted |
 | #338 performance motivation | Likely the same complaint `wbuildd` already solves | Ride `wbuildd`'s existing schedule |
-| #337 | AST exists (PG, syntax-only) but the new streaming mode is the wrong half of it; a real backend needs an external LLVM toolchain, in tension with the project's zero-dependency identity | Run the bounded, seed-safe `bin/wllvm`-style experiment (§3.6); do not commit to a full backend before it reports back |
+| #337 | The production retained AST now supplies semantic types and bindings; LLVM remains an optional external toolchain | The bounded [`bin/wllvm` experiment](llvm.md) consumes that AST; broader backend support remains separate work |
 | #332 | Real primitives exist (`lib/stream.w`, PG listener mode, `lib/task.w`) but nothing composes them into a pipeline today | Scope a dedicated design doc once the push-vs-pull and #338/#333 dependencies are answered |
 | #333 | Generics and typed containers already cover much of the underlying capability; the operator spelling and the `*` examples are unresolved | Get worked examples from the maintainer before any design work starts |
 

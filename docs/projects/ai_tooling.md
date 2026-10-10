@@ -40,7 +40,22 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 ## Implementation status
 
+- **Library dependency discovery (#625):** `w deps` skips executable
+  finalization so an extern-only consumer can report its source import
+  closure before its linked libraries exist. This keeps `wtest` selection
+  and `wexec` cache invalidation sensitive to imported consumer helpers;
+  the library build/cache regression covers that case.
+
 Shipped from the next-steps backlog:
+
+- **Native macOS discovery and focused selection** (2026-10-09, #620):
+  Darwin directory decoding and recursive cache invalidation are qualified by
+  `mac_build_test`; the executor now discovers source-owned targets. Shared host
+  compiler selection uses `bin/wv2_darwin` for deps, checks and compilation while
+  retaining target selectors. Failure caches validate against that compiler.
+  `wbuild tests` dispatches to `tests_darwin` with an explicit excluded-target
+  count; `test_changed` uses the native selector/executor and reports unsupported
+  targets. The native gate proves transitive selection and checks six targets.
 
 - **Deterministic allocator churn diagnostics** (2026-10-09, #613):
   `malloc_churn_test` reports scan counts without wall-clock timings, keeping

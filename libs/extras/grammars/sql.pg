@@ -5,82 +5,85 @@ skip TAB tabs
 skip BLOCK_COMMENT block_comment
 skip LINE_COMMENT sql_line_comment
 
-token STRING doubled_quote_string
-token QUOTED_IDENT string
-token NUMBER number
-token IDENT identifier
+token KW_SELECT = [Ss][Ee][Ll][Ee][Cc][Tt]
+token KW_FROM = [Ff][Rr][Oo][Mm]
+token KW_WHERE = [Ww][Hh][Ee][Rr][Ee]
+token KW_GROUP = [Gg][Rr][Oo][Uu][Pp]
+token KW_BY = [Bb][Yy]
+token KW_HAVING = [Hh][Aa][Vv][Ii][Nn][Gg]
+token KW_ORDER = [Oo][Rr][Dd][Ee][Rr]
+token KW_ASC = [Aa][Ss][Cc]
+token KW_DESC = [Dd][Ee][Ss][Cc]
+token KW_LIMIT = [Ll][Ii][Mm][Ii][Tt]
+token KW_OFFSET = [Oo][Ff][Ff][Ss][Ee][Tt]
+token KW_AS = [Aa][Ss]
+token KW_DISTINCT = [Dd][Ii][Ss][Tt][Ii][Nn][Cc][Tt]
+token KW_ALL = [Aa][Ll][Ll]
+token KW_JOIN = [Jj][Oo][Ii][Nn]
+token KW_INNER = [Ii][Nn][Nn][Ee][Rr]
+token KW_LEFT = [Ll][Ee][Ff][Tt]
+token KW_RIGHT = [Rr][Ii][Gg][Hh][Tt]
+token KW_FULL = [Ff][Uu][Ll][Ll]
+token KW_OUTER = [Oo][Uu][Tt][Ee][Rr]
+token KW_CROSS = [Cc][Rr][Oo][Ss][Ss]
+token KW_ON = [Oo][Nn]
+token KW_USING = [Uu][Ss][Ii][Nn][Gg]
+token KW_UNION = [Uu][Nn][Ii][Oo][Nn]
+token KW_INTERSECT = [Ii][Nn][Tt][Ee][Rr][Ss][Ee][Cc][Tt]
+token KW_EXCEPT = [Ee][Xx][Cc][Ee][Pp][Tt]
+token KW_INSERT = [Ii][Nn][Ss][Ee][Rr][Tt]
+token KW_INTO = [Ii][Nn][Tt][Oo]
+token KW_VALUES = [Vv][Aa][Ll][Uu][Ee][Ss]
+token KW_UPDATE = [Uu][Pp][Dd][Aa][Tt][Ee]
+token KW_SET = [Ss][Ee][Tt]
+token KW_DELETE = [Dd][Ee][Ll][Ee][Tt][Ee]
+token KW_CREATE = [Cc][Rr][Ee][Aa][Tt][Ee]
+token KW_TABLE = [Tt][Aa][Bb][Ll][Ee]
+token KW_DROP = [Dd][Rr][Oo][Pp]
+token KW_ALTER = [Aa][Ll][Tt][Ee][Rr]
+token KW_ADD = [Aa][Dd][Dd]
+token KW_COLUMN = [Cc][Oo][Ll][Uu][Mm][Nn]
+token KW_RENAME = [Rr][Ee][Nn][Aa][Mm][Ee]
+token KW_TO = [Tt][Oo]
+token KW_INDEX = [Ii][Nn][Dd][Ee][Xx]
+token KW_VIEW = [Vv][Ii][Ee][Ww]
+token KW_PRIMARY = [Pp][Rr][Ii][Mm][Aa][Rr][Yy]
+token KW_KEY = [Kk][Ee][Yy]
+token KW_FOREIGN = [Ff][Oo][Rr][Ee][Ii][Gg][Nn]
+token KW_REFERENCES = [Rr][Ee][Ff][Ee][Rr][Ee][Nn][Cc][Ee][Ss]
+token KW_UNIQUE = [Uu][Nn][Ii][Qq][Uu][Ee]
+token KW_NOT = [Nn][Oo][Tt]
+token KW_NULL = [Nn][Uu][Ll][Ll]
+token KW_NULLS = [Nn][Uu][Ll][Ll][Ss]
+token KW_FIRST = [Ff][Ii][Rr][Ss][Tt]
+token KW_LAST = [Ll][Aa][Ss][Tt]
+token KW_DEFAULT = [Dd][Ee][Ff][Aa][Uu][Ll][Tt]
+token KW_CHECK = [Cc][Hh][Ee][Cc][Kk]
+token KW_CONSTRAINT = [Cc][Oo][Nn][Ss][Tt][Rr][Aa][Ii][Nn][Tt]
+token KW_AND = [Aa][Nn][Dd]
+token KW_OR = [Oo][Rr]
+token KW_IN = [Ii][Nn]
+token KW_LIKE = [Ll][Ii][Kk][Ee]
+token KW_BETWEEN = [Bb][Ee][Tt][Ww][Ee][Ee][Nn]
+token KW_IS = [Ii][Ss]
+token KW_EXISTS = [Ee][Xx][Ii][Ss][Tt][Ss]
+token KW_CASE = [Cc][Aa][Ss][Ee]
+token KW_WHEN = [Ww][Hh][Ee][Nn]
+token KW_THEN = [Tt][Hh][Ee][Nn]
+token KW_ELSE = [Ee][Ll][Ss][Ee]
+token KW_END = [Ee][Nn][Dd]
+token KW_CAST = [Cc][Aa][Ss][Tt]
+token KW_IF = [Ii][Ff]
+token KW_TRUE = [Tt][Rr][Uu][Ee]
+token KW_FALSE = [Ff][Aa][Ll][Ss][Ee]
 
-literal KW_SELECT "SELECT"
-literal KW_FROM "FROM"
-literal KW_WHERE "WHERE"
-literal KW_GROUP "GROUP"
-literal KW_BY "BY"
-literal KW_HAVING "HAVING"
-literal KW_ORDER "ORDER"
-literal KW_ASC "ASC"
-literal KW_DESC "DESC"
-literal KW_LIMIT "LIMIT"
-literal KW_OFFSET "OFFSET"
-literal KW_AS "AS"
-literal KW_DISTINCT "DISTINCT"
-literal KW_ALL "ALL"
-literal KW_JOIN "JOIN"
-literal KW_INNER "INNER"
-literal KW_LEFT "LEFT"
-literal KW_RIGHT "RIGHT"
-literal KW_FULL "FULL"
-literal KW_OUTER "OUTER"
-literal KW_CROSS "CROSS"
-literal KW_ON "ON"
-literal KW_USING "USING"
-literal KW_UNION "UNION"
-literal KW_INTERSECT "INTERSECT"
-literal KW_EXCEPT "EXCEPT"
-literal KW_INSERT "INSERT"
-literal KW_INTO "INTO"
-literal KW_VALUES "VALUES"
-literal KW_UPDATE "UPDATE"
-literal KW_SET "SET"
-literal KW_DELETE "DELETE"
-literal KW_CREATE "CREATE"
-literal KW_TABLE "TABLE"
-literal KW_DROP "DROP"
-literal KW_ALTER "ALTER"
-literal KW_ADD "ADD"
-literal KW_COLUMN "COLUMN"
-literal KW_RENAME "RENAME"
-literal KW_TO "TO"
-literal KW_INDEX "INDEX"
-literal KW_VIEW "VIEW"
-literal KW_PRIMARY "PRIMARY"
-literal KW_KEY "KEY"
-literal KW_FOREIGN "FOREIGN"
-literal KW_REFERENCES "REFERENCES"
-literal KW_UNIQUE "UNIQUE"
-literal KW_NOT "NOT"
-literal KW_NULL "NULL"
-literal KW_NULLS "NULLS"
-literal KW_FIRST "FIRST"
-literal KW_LAST "LAST"
-literal KW_DEFAULT "DEFAULT"
-literal KW_CHECK "CHECK"
-literal KW_CONSTRAINT "CONSTRAINT"
-literal KW_AND "AND"
-literal KW_OR "OR"
-literal KW_IN "IN"
-literal KW_LIKE "LIKE"
-literal KW_BETWEEN "BETWEEN"
-literal KW_IS "IS"
-literal KW_EXISTS "EXISTS"
-literal KW_CASE "CASE"
-literal KW_WHEN "WHEN"
-literal KW_THEN "THEN"
-literal KW_ELSE "ELSE"
-literal KW_END "END"
-literal KW_CAST "CAST"
-literal KW_IF "IF"
-literal KW_TRUE "TRUE"
-literal KW_FALSE "FALSE"
+# Keywords precede IDENT so equal-length matches prefer the keyword.
+# SQL quotes double their delimiter; backslash is an ordinary byte.
+token STRING = "'" ("''" | [^'])* "'"
+token QUOTED_IDENT = "\"" ("\"\"" | [^\"])* "\""
+token NUMBER = ([0-9]+ ("." [0-9]*)? | "." [0-9]+) ([eE] [+-]? [0-9]+)?
+token PARAMETER = "?" [0-9]* | "$" [0-9]+ | ":" [0-9]+ | ":" [a-zA-Z_] [a-zA-Z0-9_]*
+token IDENT identifier
 
 literal NEQ "<>"
 literal NEQ2 "!="
@@ -103,8 +106,8 @@ literal SEMI ";"
 
 start script
 
-rule script = SEMI* top_statement* EOF
-rule top_statement = statement SEMI*
+rule script = SEMI* top_statement* statement? EOF
+rule top_statement = statement SEMI+
 rule statement = select_stmt | insert_stmt | update_stmt | delete_stmt | create_table_stmt | create_index_stmt | create_view_stmt | drop_table_stmt | drop_index_stmt | drop_view_stmt | alter_table_stmt
 
 rule select_stmt = select_core compound_tail* order_by_clause? limit_clause?
@@ -202,7 +205,7 @@ rule multiplicative_op = STAR | SLASH | PERCENT
 rule unary_expr = unary_op unary_expr | postfix_expr
 rule unary_op = MINUS | PLUS | KW_NOT
 rule postfix_expr = primary_expr
-rule primary_expr = NUMBER | STRING | KW_NULL | KW_TRUE | KW_FALSE | case_expr | cast_expr | exists_expr | function_call | grouped_expr | qualified_name
+rule primary_expr = NUMBER | STRING | PARAMETER | KW_NULL | KW_TRUE | KW_FALSE | case_expr | cast_expr | exists_expr | function_call | grouped_expr | qualified_name
 rule grouped_expr = LPAREN expression RPAREN | LPAREN select_stmt RPAREN
 rule case_expr = KW_CASE expression when_clause+ else_clause? KW_END | KW_CASE when_clause+ else_clause? KW_END
 rule when_clause = KW_WHEN expression KW_THEN expression

@@ -31,6 +31,9 @@
 			"testing_ground": "hand-run argv demo (tests/testing_ground.w)",
 			"rewrite_c_strings": "one-off source rewriting tool",
 			"grammars_refresh": "rewrites the committed json/csv translator outputs in libs/extras/grammars; mutates the checkout",
+			"javascript_inspect": "manual JavaScript inspection CLI; parser behavior is covered by javascript_parser_test",
+			"javascript_transform": "manual module-specifier rewriting CLI; covered by javascript_transform_test",
+			"javascript_compatibility": "explicit compatibility gate requiring pinned external Node runtime",
 			"storage_probe": "storage benchmark driver binary",
 			"storage_native_test": "storage benchmark run (tools/storage/native_test.py)",
 			"wast_audit": "AST audit tool binary",
@@ -323,6 +326,14 @@
 			"deps": ["build_darwin"],
 			"steps": [
 				{"cmd": ["tools/mac/run_optimizer_tests.sh"]}
+			]
+		},
+		{
+			"name": "atomic_native_darwin_test",
+			"tags": ["tests_darwin"],
+			"deps": ["build_darwin"],
+			"steps": [
+				{"cmd": ["python3", "tools/qualify_native.py", "--suite", "atomic", "--rounds", "20"]}
 			]
 		},
 		{

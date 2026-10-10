@@ -49,7 +49,7 @@ def run(command, cwd, timeout):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=["all", "atomic", "durability"], default="all")
-    parser.add_argument("--compiler", default=str(ROOT / "bin/wv2"))
+    parser.add_argument("--compiler", help="defaults to bin/wv2_darwin on macOS, bin/wv2 elsewhere")
     parser.add_argument("--cross", nargs="+", choices=["arm64", "arm64_darwin"])
     parser.add_argument("--host-smoke", action="store_true",
                         help="x64 Linux supplementary harness validation, not ARM64 qualification")
@@ -78,13 +78,16 @@ def main():
         if (os.cpu_count() or 0) < 2:
             parser.error("native concurrent qualification requires at least two logical CPUs")
         archs = ["arm64_darwin" if system == "Darwin" else "arm64"]
-        evidence = "native runtime stress (process-crash, not power-loss evidence)"
+        evidence = ("native concurrent ordering stress" if args.suite == "atomic" else
+                    "native runtime stress (process-crash, not power-loss evidence)")
     fixtures = FIXTURES if args.suite == "all" else [args.suite + "_native"]
-    compiler = Path(args.compiler).resolve()
+    compiler = Path(args.compiler or ROOT / "bin" / (
+        "wv2_darwin" if system == "Darwin" else "wv2")).resolve()
     report = {
         "evidence": evidence, "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "uname": list(platform.uname()), "cpu_count": os.cpu_count(),
         "compiler": str(compiler), "compiler_sha256": digest(compiler),
+        "driver_sha256": digest(__file__),
         "suite": args.suite, "rounds": args.rounds, "iterations_per_litmus": 100000,
         "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "worktree_diff_sha256": hashlib.sha256(subprocess.check_output(["git", "diff", "HEAD"], cwd=ROOT)).hexdigest(),
@@ -102,7 +105,9 @@ def main():
         if cpuinfo.exists():
             report["cpuinfo"] = cpuinfo.read_text()
     elif system == "Darwin":
-        report["hardware"] = subprocess.check_output(["sysctl", "hw.model", "machdep.cpu.brand_string"], text=True)
+        report["hardware"] = subprocess.check_output([
+            "sysctl", "hw.model", "machdep.cpu.brand_string", "hw.physicalcpu",
+            "hw.logicalcpu", "hw.cachelinesize", "kern.hv_vmm_present"], text=True)
         report["os_version"] = subprocess.check_output(["sw_vers"], text=True)
     output = args.output or ROOT / "bin" / f"qualification_{archs[0]}_{args.suite}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -114,11 +119,18 @@ def main():
                 for fixture in fixtures:
                     source = ROOT / "tests" / f"{fixture}_fixture.w"
                     binary = build_dir / f"{fixture}_{arch}_{mode}"
-                    command = [str(compiler), arch, *flags, str(source), "-o", str(binary)]
                     print("compile", arch, mode, fixture, flush=True)
-                    run(command, ROOT, args.timeout)
+                    # macOS caches code signatures per vnode. Rebuilding an
+                    # executed Mach-O in place can get a valid image killed;
+                    # publish a fresh inode on every qualification invocation.
+                    with tempfile.TemporaryDirectory(prefix="build-", dir=build_dir) as staging:
+                        staged_binary = Path(staging) / binary.name
+                        command = [str(compiler), arch, *flags, str(source), "-o", str(staged_binary)]
+                        run(command, ROOT, args.timeout)
+                        staged_binary.replace(binary)
                     record = {"arch": arch, "mode": mode, "fixture": fixture,
                               "command": command, "source_sha256": digest(source),
+                              "binary": str(binary),
                               "binary_sha256": digest(binary), "completed_rounds": 0}
                     report["runs"].append(record)
                     if args.cross:

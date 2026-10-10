@@ -1,0 +1,138 @@
+{
+  "upstream": {
+    "repository": "https://github.com/tc39/test262",
+    "commit": "2e0a56762801e275a9fdf96dc49d90ba0cddcf63",
+    "license_sha256": "4dd9244dfe8197c75348c4b24ab53d29d3b1cfad143ac76b5a3d8942aa354ce0"
+  },
+  "node_version": "v20.19.3",
+  "cases": [
+    {
+      "path": "test262/language/expressions/coalesce/cannot-chain-head-with-logical-and.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js",
+      "sha256": "229a0a642165e11d07289eacb573e78271b2e3413382890bd86d6cb25e26887f"
+    },
+    {
+      "path": "test262/language/expressions/coalesce/cannot-chain-head-with-logical-or.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-head-with-logical-or.js",
+      "sha256": "91dbfbc63fc979794ec2187814716dea4c58ab2420f76f9147fd24e30be8275f"
+    },
+    {
+      "path": "test262/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js",
+      "sha256": "258107e623a7469a80a022bbe5d2d0144190d9b4b49668e652c316caf870f464"
+    },
+    {
+      "path": "test262/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js",
+      "sha256": "56194c3aea6b3c3b7460cb53851d1f789c17c377b9a493e0ae6e2369017e0d22"
+    },
+    {
+      "path": "test262/language/expressions/coalesce/chainable.js",
+      "upstream_path": "test/language/expressions/coalesce/chainable.js",
+      "sha256": "7622256e5670f281c8669195ddc3085c61bc7d4343d76aeb1b87a6416f09c6aa"
+    },
+    {
+      "path": "test262/language/expressions/coalesce/chainable-with-bitwise-or.js",
+      "upstream_path": "test/language/expressions/coalesce/chainable-with-bitwise-or.js",
+      "sha256": "39393e487ec2e5059a0c9b60ba03b46da70ac7bf12a0c001e19272297cf7db54"
+    },
+    {
+      "path": "test262/language/expressions/coalesce/follows-null.js",
+      "upstream_path": "test/language/expressions/coalesce/follows-null.js",
+      "sha256": "2ed314c110892feadee587f1101889c43552612d8b63117e817add625aac1dbc"
+    },
+    {
+      "path": "test262/language/expressions/template-literal/literal-expr-template.js",
+      "upstream_path": "test/language/expressions/template-literal/literal-expr-template.js",
+      "sha256": "983cb080b4f9785a2f56555877d0df165fc6feff6af203babc57feb9de273e33"
+    },
+    {
+      "path": "test262/language/expressions/template-literal/literal-expr-obj.js",
+      "upstream_path": "test/language/expressions/template-literal/literal-expr-obj.js",
+      "sha256": "3aeb6bf98a697df8cb141bd0a583e056ac848535e44ee01d9b1fe532779cc9db"
+    },
+    {
+      "path": "test262/language/expressions/template-literal/literal-expr-primitive.js",
+      "upstream_path": "test/language/expressions/template-literal/literal-expr-primitive.js",
+      "sha256": "b7434c3258ab9b2cd995da99a49196b7530db641e867882de07f4a92ebff069a"
+    },
+    {
+      "path": "test262/language/expressions/template-literal/invalid-unicode-escape-sequence-1.js",
+      "upstream_path": "test/language/expressions/template-literal/invalid-unicode-escape-sequence-1.js",
+      "sha256": "80e285ee957b85b440e6abe8e755c8084d087dd9f5db86d7200fa67d443f9ce8"
+    },
+    {
+      "path": "test262/language/expressions/optional-chaining/member-expression.js",
+      "upstream_path": "test/language/expressions/optional-chaining/member-expression.js",
+      "sha256": "01d84d40740bc737edca904689ea6b48ce7b6b8c292cb01b3f96d4d817b9f70f"
+    },
+    {
+      "path": "test262/language/expressions/exponentiation/exp-operator-syntax-error-negate-unary-expression-base.js",
+      "upstream_path": "test/language/expressions/exponentiation/exp-operator-syntax-error-negate-unary-expression-base.js",
+      "sha256": "00004fc034b44a8742353a3e3964728f1f83f70d157f291a09b55d548b370fb7"
+    },
+    {
+      "path": "test262/language/literals/regexp/S7.8.5_A1.1_T1.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A1.1_T1.js",
+      "sha256": "143373d24d3d76e48d5fc20c4d87a0777dc972989825c77d9ee2dfb8e07a8ac3"
+    },
+    {
+      "path": "test262/language/literals/regexp/S7.8.5_A1.2_T1.js",
+      "upstream_path": "test/language/literals/regexp/S7.8.5_A1.2_T1.js",
+      "sha256": "33e0e27331ea23bc70dac6539c402fcd43b0c083aa4d5da2e4b5c05ae2d70072"
+    },
+    {
+      "path": "test262/language/module-code/export-star-as-dflt.js",
+      "upstream_path": "test/language/module-code/export-star-as-dflt.js",
+      "sha256": "a9724b86d659a6d967194d51e68c42a8b22595eeb236ee0eda32ac57778156cc"
+    },
+    {
+      "path": "test262/language/expressions/assignment/id-eval-strict.js",
+      "upstream_path": "test/language/expressions/assignment/id-eval-strict.js",
+      "sha256": "2869d20f457a72b0b6051423e054179353d2721a3e2549ffa0e3878f5724e60f"
+    },
+    {
+      "path": "test262/language/expressions/assignment/dstr/array-elem-target-simple-no-strict.js",
+      "upstream_path": "test/language/expressions/assignment/dstr/array-elem-target-simple-no-strict.js",
+      "sha256": "9cc902fe3638dd99b35e62345beac213cc4435dd45bafeaa25851b0cc996c854"
+    }
+  ],
+  "real_sources": [
+    {
+      "path": "real/is-number/index.js",
+      "upstream_manifest": "real/is-number/UPSTREAM.json",
+      "mode": "script"
+    }
+  ],
+  "controlled_execution": [
+    {
+      "name": "division-associativity",
+      "source": "console.log(24 / 4 / 2);",
+      "stdout": "3\n"
+    },
+    {
+      "name": "exponent-associativity",
+      "source": "console.log(2 ** 3 ** 2);",
+      "stdout": "512\n"
+    },
+    {
+      "name": "nested-template",
+      "source": "const n = 3; console.log(`a${{x: `b${n}`}.x}c`);",
+      "stdout": "ab3c\n"
+    }
+  ],
+  "exclusions": [
+    {
+      "scope": "Test262 execution and runtime negatives",
+      "reason": "This target validates parsing and early-error acceptance. It does not execute harness-dependent Test262 code."
+    },
+    {
+      "scope": "Module resolution/linking",
+      "reason": "Module syntax is checked without loading imports; resolution/runtime expectations are not parse failures."
+    },
+    {
+      "scope": "Remaining Test262 tests and complete ES2020 conformance",
+      "reason": "Only the pinned declared subset is claimed. Full early errors, Annex B and RegExp pattern grammar need further coverage."
+    }
+  ]
+}

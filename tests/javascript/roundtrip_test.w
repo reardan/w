@@ -1,0 +1,101 @@
+# wbuild: name=javascript_roundtrip_test
+# wbuild: target=javascript_roundtrip_test tag=tests dep=javascript_parser
+# wbuild: step="bin/wv2 tests/javascript/roundtrip_test.w -o bin/javascript_roundtrip_test"
+# wbuild: step="bin/javascript_roundtrip_test" expect_stdout="javascript_roundtrip_test: OK"
+# wbuild: step="bin/javascript_roundtrip_test memory" expect_stdout="javascript_roundtrip_test: OK"
+# wbuild: target=javascript_roundtrip_64_test tag=tests_x64 dep=javascript_parser
+# wbuild: step="bin/wv2 x64 tests/javascript/roundtrip_test.w -o bin/javascript_roundtrip_64_test"
+# wbuild: step="bin/javascript_roundtrip_64_test" expect_stdout="javascript_roundtrip_test: OK"
+import lib.assert
+import lib.args
+import libs.extras.javascript.parser
+import libs.extras.javascript.lower
+import libs.extras.javascript.printer
+
+
+void js_test_roundtrip(char* source, int module):
+	pg_parse_result* parsed = js_parse(source, strlen(source), c"roundtrip.js", module)
+	if (parsed.success == 0): pg_diagnostics_print(parsed.diagnostics)
+	assert1(parsed.success)
+	js_node* tree = js_lower(parsed)
+	if (tree == 0): pg_diagnostics_print(parsed.diagnostics)
+	assert1(tree != 0)
+	assert_equal(0, tree.offset)
+	char* printed = js_print(tree, parsed.diagnostics)
+	if (printed == 0): pg_diagnostics_print(parsed.diagnostics)
+	assert1(printed != 0)
+	pg_parse_result* reparsed = js_parse(printed, strlen(printed), c"printed.js", module)
+	if (reparsed.success == 0):
+		println2(printed)
+		pg_diagnostics_print(reparsed.diagnostics)
+	assert1(reparsed.success)
+	js_node* other = js_lower(reparsed)
+	assert1(other != 0)
+	assert1(js_node_equal(tree, other))
+	js_node_free(tree)
+	js_node_free(other)
+	free(printed)
+	pg_parse_result_free(parsed)
+	pg_parse_result_free(reparsed)
+
+
+void js_test_association():
+	pg_parse_result* parsed = js_parse_script(c"a - b - c; a ** b ** c; a = b = c;", c"association.js")
+	assert1(parsed.success)
+	js_node* program = js_lower(parsed)
+	assert1(program != 0)
+	js_node* subtract = program.children[0].children[0]
+	assert_strings_equal(c"-", subtract.text)
+	assert_strings_equal(c"-", subtract.children[0].text)
+	assert_strings_equal(c"c", subtract.children[1].text)
+	js_node* power = program.children[1].children[0]
+	assert_strings_equal(c"**", power.text)
+	assert_strings_equal(c"a", power.children[0].text)
+	assert_strings_equal(c"**", power.children[1].text)
+	js_node* assignment = program.children[2].children[0]
+	assert_strings_equal(c"assignment", assignment.kind)
+	assert_strings_equal(c"assignment", assignment.children[1].kind)
+	assert_equal(0, subtract.offset)
+	assert_equal(9, subtract.length)
+	assert_equal(0, subtract.children[0].offset)
+	assert_equal(5, subtract.children[0].length)
+	js_node_free(program)
+	pg_parse_result_free(parsed)
+
+
+void js_test_lower_reject():
+	pg_parse_result* parsed = js_parse_script(c"class A {}", c"unsupported.js")
+	assert1(parsed.success)
+	assert1(js_lower(parsed) == 0)
+	assert_equal(1, pg_diagnostics_count(parsed.diagnostics))
+	assert1(parsed.success == 0)
+	pg_parse_result_free(parsed)
+	parsed = js_parse_script(c"const nul = '\\0';", c"nul-value.js")
+	assert1(parsed.success)
+	assert1(js_lower(parsed) == 0)
+	assert_equal(1, pg_diagnostics_count(parsed.diagnostics))
+	pg_parse_result_free(parsed)
+
+
+int main(int argc, int argv):
+	args_init(argc, argv)
+	if (argc > 1):
+		malloc_force_debug_mode()
+		js_test_roundtrip(c"export function greet(name) { return \"Hello, \" + name; }", 1)
+		assert_equal(0, debug_alloc_report_leaks())
+		println(c"javascript_roundtrip_test: OK")
+		return 0
+	js_test_roundtrip(c"export function greet(name) { return \"Hello, \" + name; }", 1)
+	js_test_roundtrip(c"const x = 2 + 3 * 4; const ratio = a / b / c; const ok = /ab+c/i.test(s);", 0)
+	js_test_roundtrip(c"const t = `a${{x: `b${n}`}.x}c`;", 0)
+	js_test_roundtrip(c"function f() { return\n/x/; }", 0)
+	js_test_roundtrip(c"if (ok) /x/.test(s); else value = cond ? a : b;", 0)
+	js_test_roundtrip(c"a++; --b; a[b + c](d, e); const values = [1, 'two', true, null];", 0)
+	js_test_roundtrip(c"import x from './old.js'; import './side.js'; export const name = 'a\\n\\\"b';", 1)
+	js_test_roundtrip(c"const o = {x: 1, y}; a, b, c;", 0)
+	js_test_roundtrip(c"const escaped = `\\` \\${literal} \\\\`; obj.return;", 0)
+	js_test_roundtrip(c"const o = {__proto__}; function relaxed(a, a) { \"use\\x20strict\"; return a; }", 0)
+	js_test_association()
+	js_test_lower_reject()
+	println(c"javascript_roundtrip_test: OK")
+	return 0

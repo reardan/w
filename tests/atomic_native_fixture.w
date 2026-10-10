@@ -3,14 +3,26 @@
 import lib.assert
 
 struct native_atomic_state:
+	# Isolate the tested locations from each other and the control flags.
+	# Apple Silicon has 128-byte cache lines; sharing a line can mask the
+	# weak-memory outcomes this litmus is intended to exercise.
+	# Fixed arrays include a two-word header: (1 + 2 + 13) * 8 = 128.
 	int ready
+	int[13] ready_padding
 	int payload
+	int[13] payload_padding
 	int round
+	int[13] round_padding
 	int left
+	int[13] left_padding
 	int right
+	int[13] right_padding
 	int left_seen
+	int[13] left_seen_padding
 	int right_seen
+	int[13] right_seen_padding
 	int left_done
+	int[13] left_done_padding
 	int right_done
 
 void native_wait(int pid):
@@ -22,10 +34,17 @@ int main():
 	assert_equal(8, __word_size__)
 	int mapping = mmap(0, 16384, 3, 33)
 	assert1(mapping > 0)
-	assert_equal(0, mapping % 8)
+	assert_equal(0, mapping % 128)
 	native_atomic_state* s = cast(native_atomic_state*, mapping)
 	# Every field is an aligned, full-width word, including values > 2^32.
-	assert_equal(0, cast(int, &s.right_done) % 8)
+	assert_equal(mapping + 128, cast(int, &s.payload))
+	assert_equal(mapping + 256, cast(int, &s.round))
+	assert_equal(mapping + 384, cast(int, &s.left))
+	assert_equal(mapping + 512, cast(int, &s.right))
+	assert_equal(mapping + 640, cast(int, &s.left_seen))
+	assert_equal(mapping + 768, cast(int, &s.right_seen))
+	assert_equal(mapping + 896, cast(int, &s.left_done))
+	assert_equal(mapping + 1024, cast(int, &s.right_done))
 	int high = (1 << 40) + 17
 	atomic_store_relaxed(&s.payload, high)
 	assert_equal(high, atomic_load_relaxed(&s.payload))

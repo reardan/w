@@ -156,7 +156,7 @@ void test_trailing_action_only_alternative_accepted():
 # checks for this milestone. ---------------------------------------------
 
 
-# Actions/predicates are streaming-mode only: AST mode has no commit point
+# Side-effect actions are streaming-mode only: AST mode has no commit point
 # to run them at exactly once, so pg_action_safety_check rejects it by
 # rule name before generation even reaches the AST emitter.
 void test_action_rejected_in_ast_mode():
@@ -257,14 +257,16 @@ void test_action_binding_paste_in_string_or_comment_ignored():
 	assert1(generated != 0)
 
 
-# A predicate must lead its alternative -- the grammar reader rejects one
-# appearing mid-alternative at grammar-parse time (not generation time).
+# A streaming predicate must lead its alternative. AST predicates may be
+# mid-rule, so this restriction is checked during generation.
 void test_predicate_must_be_first_term():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	char* source = c"parser bad_predicate_position\nmode streaming\ntoken IDENT letters\nstart value\nrule value = IDENT &{ 1 }\n"
 	pg_grammar* grammar = pg_grammar_read(source, c"bad_predicate_position.pg", diagnostics)
-	assert1(grammar == 0)
-	assert1(pg_diagnostics_count(diagnostics) > 0)
+	assert1(grammar != 0)
+	assert_equal(0, pg_diagnostics_count(diagnostics))
+	assert1(pg_action_safety_check(grammar) > 0)
+	assert1(pg_generate_parser(grammar) == 0)
 # wbuild: target=parser_generator_actions_test tag=tests dep=parser_generator_test
 # wbuild: step="bin/parser_generator tests/parser_generator/actions_sample.pg -o bin/generated_actions_parser.w"
 # wbuild: step="bin/parser_generator tests/parser_generator/action_paste_reject.pg -o bin/pg_action_paste_reject.w" expect_fail expect_stderr="parser_generator: rule value: action binding $1 is immediately followed by an identifier character -- substitution would paste them into one identifier; separate them with whitespace"

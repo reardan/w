@@ -228,7 +228,7 @@ deltas being the three new targets and `tests` gaining
 
 A target that declares `"inputs"` (files, or directory prefixes ending
 in `/` that are walked recursively with `lib/dir.w`) is cached by content
-hash: a 64-bit rolling hash over the serialized target definition, the
+hash: SHA-256 over the serialized target definition, the
 dependencies' cache keys and every input file's contents. After a
 successful run the key is stamped into `bin/.wexec_cache/<name>`; a
 later invocation whose key matches the stamp — and whose declared
@@ -241,6 +241,64 @@ cacheable (the dependency's fresh run may have changed anything), so
 an `"inputs": []` target caches purely on its definition and its
 dependencies' keys — that is how `build` and `verify` piggyback on
 `wv2`'s source hash. `--no-cache` forces every target to run.
+
+### GitHub Actions caching
+
+The Linux jobs in `.github/workflows/ci.yml` use the local composite action
+[setup-w](../../.github/actions/setup-w/action.yml) to persist two small
+caches between runs (issue #627):
+
+| Cache | Key inputs | Saved files |
+| --- | --- | --- |
+| Seed | Host OS/architecture and `SEEDS` | `w` |
+| Bootstrap | Host OS/architecture, Ubuntu release, seed pins, bootstrap scripts/manifest, compiler and executor source trees, action definition | `bin/wv2`, `bin/wexec`, and their two `.wexec_cache` stamps |
+
+The bootstrap source hash includes root-level `*.w` files, `compiler/`, `grammar/`,
+`code_generator/`, `lib/`, `structures/`, `libs/`, `debugger/`, `repl/`, and `tools/`.
+Keep this list aligned with the bootstrap's imports when moving modules.
+These are **content keys**, not commit IDs: a documentation or leaf-test
+edit can reuse the same bootstrap across commits and across Linux CI jobs.
+A compiler, executor, seed, or build-definition change gets a new key.
+The seed is cached independently so compiler edits do not repeat its download.
+Every restored seed is checked against `SEEDS`; a mismatch is removed so
+`wbuild` downloads and verifies the pinned binary again.
+
+Only exact bootstrap keys are used. There is no broad `restore-keys`
+fallback because `wbuild` executes the restored executor before refreshing
+it. `./wbuild wv2 wexec` always runs after restoration, checking the normal
+content stamps and output presence and rebuilding missing outputs.
+An absent or evicted cache simply takes the existing cold bootstrap path.
+
+Successful bootstrap preparation on `main` saves immediately, before the
+test workload. Pull requests (including forks) restore the base branch's
+caches but do not upload them. Concurrent jobs can prepare the same key;
+GitHub's immutable cache accepts one writer and the others keep running.
+Saving before tests also prevents test fixtures that alter `bin/` from
+entering the archive, and a later test failure does not lose the bootstrap.
+
+The action deliberately does not archive all of `bin/`: no test binaries,
+test-result or `verify` stamps, later self-host stages, generated manifests,
+coverage data, daemon state, or temporary files. Fixpoint stages, tests,
+coverage, and benchmarks still execute. Native Darwin keeps its artifact
+handoff; release builds and the required VM gate retain their existing
+bootstrap policies (the VM workflow separately caches its pinned kernel).
+
+The cache action logs whether each restore hit and `wexec` logs `(cached)`
+for reused targets. Inspect storage with `gh cache list` or the repository's
+Actions **Caches** page. To force a cold CI bootstrap, delete its
+`w-bootstrap-v1-...` entry; bump the action's key version when changing the
+archive contract. Cache availability is an optimization, not a prerequisite.
+
+This follows the separation of downloaded tools and build outputs used by
+[bazel-contrib/setup-bazel](https://github.com/bazel-contrib/setup-bazel),
+including its restore-only pull-request recommendation.
+[Bazel's remote caching documentation](https://bazel.build/remote/caching)
+describes the action-input/output model; W already supplies its own content
+stamps, so this integration needs no Bazel dependency or remote cache server.
+[GitHub's caching strategies](https://github.com/actions/cache/blob/main/caching-strategies.md)
+describe content keys, separate restore/save actions, and sharing one built
+tool between jobs; its [cache access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
+explain default/base-branch visibility and cache eviction.
 
 ## Parallelism
 
@@ -403,8 +461,8 @@ no build.json counterpart. They split into four groups:
   `wtest changed` output fed into a build run the same way. **Ported**:
   `wbuild` (the shell script, not wexec) now special-cases a
   `test_changed` first argument and runs
-  `git diff --name-only HEAD | ./bin/wtest changed | xargs -r ./wbuild`
-  — no executor change needed.
+  the selector with `--available`, captures its output, and forwards the
+  selected targets to `./wbuild` only when nonempty.
 
 **B. Darwin toolchain** — `build_darwin`, `verify_darwin`, `update_darwin`
 (the seed/verify/promote triad for the `w_darwin` Mach-O seed). **Ported
@@ -421,21 +479,47 @@ produces byte-identical `wv2/wv3/wv4_darwin_raw` artifacts.
 ported (`./archive.sh w_darwin`, then `cp -f bin/wv3_darwin w_darwin` —
 archive.sh grew that seed-name argument), and is the gate that promotes
 a self-signing seed.
-One deliberate divergence from the Linux chain's idiom: the darwin
-targets declare no `"inputs"`, i.e. they are FORCE-style and never
-cached. That is not laziness — Darwin's `getdirentries64` records
-differ from the Linux layout, and the decoding in
-`lib/__arch__/arm64_darwin/dirent.w` has not been run on a Mac yet; a
-misparse would hash a directory input as an empty file list, and
-caching `verify_darwin` on such a key would return "cached" after real
-source changes — a false-green on the one target whose entire job is
-to be a gate. Until then the darwin `wexec_dirents_supported()` stays
-0. Always-run matches the Makefile's FORCE behavior exactly; if the
-rebuild cost ever matters, validate `lib/dir_test.w` natively, flip
-that flag, and only then add `"inputs"` to the darwin targets. (`wexec_darwin` itself *is* cached, on plain-file
-inputs only — `tools/wexec.w` + the seed — which file-hashes correctly
-on Darwin; a `lib/` edit won't refresh it, `rm -rf bin` or `--no-cache`
-will.)
+Native macOS planning (#620) now uses the full generated registry. Directory
+listing and recursive hashing use Darwin's `getdirentries64` decoder, tested by
+`mac_build_test` with sorted entries, nested files, an empty directory, a symlink,
+and a cache invalidation check. The shell creates the symlink fixture because
+Darwin's W `symlink()` remains a stub. The compiler dependency scan recognizes
+`bin/wv2_darwin` and `./w_darwin`, so imported source changes also invalidate the
+executor's cache. `build_darwin` and `verify_darwin` deliberately remain always-run.
+
+`tools/manifest_host.w` adapts the logical manifest after generation and parsing,
+before selection, execution or cache hashing. On macOS, `bin/wv2` commands use
+`bin/wv2_darwin`; explicit target selectors are retained and an absent selector
+still means x86 Linux. Only the build-system tools (`wtest`, `wbuildgen`, `wmeta`)
+and the `generated` dependency closure acquire a native selector. Native compiler
+and executor bootstrap aliases hash the actual host binaries, and compile outputs
+use fresh inodes. Dependency queries, `archs --check`, `why` and `--defhash` use the
+host compiler as well; failed closure entries validate its content hash, so a
+cached Linux execution failure cannot mask a working native compiler.
+
+On macOS `./wbuild tests` deliberately dispatches to `tests_darwin`, reporting the
+number of step-bearing targets in the original `tests` closure excluded from the
+qualified native plan. This is **not full cross-platform runtime coverage**.
+The Darwin suite includes the native compiler fixpoint, optimizer regressions,
+build-tooling regressions and its existing compile-only gates. Linux, Windows,
+Wasm and other runtime coverage still belongs to their respective environments.
+The count changes with the source tree. `./wbuild tests_darwin` explicitly requests
+that same suite without the dispatch summary.
+
+All targets stay discoverable. Compile-only targets remain usable for cross
+compilation. Runtime targets outside the qualified Darwin suite (including its
+dependencies and native build infrastructure) fail during planning with a platform
+reason; this conservative policy also covers opaque shell steps. `--available`
+reports and drops them, including targets with unavailable dependencies, rather
+than executing ELF binaries or claiming they passed. Qualify additional native
+runtime gates through `tests_darwin` membership. Explicit `-f` manifests retain
+their own runtime policy; only their compiler executable is adapted.
+
+`./wbuild wtest`, `bin/wtest changed --available <path>`,
+`bin/wtest archs <path> --check`, and `./wbuild test_changed [flags]` work natively.
+`test_changed` captures selection before execution, propagates selection errors,
+and handles empty output without depending on GNU `xargs -r`. Linux planning and
+its default suite are unchanged.
 
 **C. Targets that don't fit wexec's execution model** — some because
 they're genuinely interactive, some because they never terminate on

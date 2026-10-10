@@ -329,9 +329,10 @@ publication and store-buffer/fence stress with concurrent forked workers sharing
 normal memory, independently of the W thread runtime, in all three compilation
 modes. It records hardware/OS/compiler settings and checks alignment and full
 64-bit values. See [native ARM64 qualification](arm64_qualification.md) for
-commands and the explicitly pending native Linux/Darwin evidence. Thread creation and mutex/condvar
-ports on ARM64 remain separate work: existing runtime flags rely on x86
-TSO until those ports adopt explicit acquire/release operations.
+commands, the recorded Apple Silicon pass, and pending native Linux evidence.
+Thread creation and mutex/condvar ports on ARM64 remain separate work: existing
+runtime flags rely on x86 TSO until those ports adopt explicit acquire/release
+operations.
 
 Cross-thread messages should transfer ownership: send an owned buffer
 (the sender never touches it again and the receiver frees it, which

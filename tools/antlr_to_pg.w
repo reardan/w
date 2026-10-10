@@ -21,7 +21,7 @@ antlr_to_pg: best-effort translator from ANTLR4 grammars to the
 ParserGenerator .pg DSL (libs/extras/grammars/antlr_to_pg/README.md).
 
 	bin/antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME]
-		[--report FILE] [--matchers FILE]
+		[--report FILE] [--matchers FILE] [--strict] [--audit FILE]
 
 `./wbuild antlr_to_pg` generates the antlr4.pg and pg.pg parsers into bin/
 and builds bin/antlr_to_pg; antlr_to_pg_test re-translates the vendored
@@ -33,6 +33,7 @@ import bin.generated_antlr4_parser
 import bin.generated_pg_parser
 import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.ast
+import libs.extras.grammars.antlr_to_pg.audit
 import libs.extras.grammars.antlr_to_pg.charsets
 import libs.extras.grammars.antlr_to_pg.classify
 import libs.extras.grammars.antlr_to_pg.emit
@@ -40,16 +41,20 @@ import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import libs.extras.grammars.antlr_to_pg.matchers_analyze
 import libs.extras.grammars.antlr_to_pg.matchers_emit
 import lib.utf8
+import libs.extras.parser_generator.grammar_reader
+import libs.extras.parser_generator.analysis
 
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 void at_usage():
-	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE]")
+	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--audit FILE]")
 
 
 int main(int argc, int argv):
 	args_init(argc, argv)
+	int strict = args_has_bool_flag(c"strict")
+	g_at_dependencies = new list[at_site*]
 	g_fragments = new map[char*, at_rule*]
 	g_lexer_rules = new map[char*, at_rule*]
 	g_all_rule_names = new map[char*, int]
@@ -107,6 +112,7 @@ int main(int argc, int argv):
 			println2(cstr(f"antlr_to_pg: failed to parse {path}"))
 			pg_diagnostics_print(diagnostics)
 			return 1
+		g_at_source = source
 		list[at_rule*] rules = at_collect_rules(root)
 		int ri = 0
 		while (ri < rules.length):
@@ -131,6 +137,14 @@ int main(int argc, int argv):
 			g_lexer_rules[r.name] = r
 		i = i + 1
 
+	int unsafe = at_audit(all_rules)
+	at_collect_parser_refs(all_rules)
+	at_audit_lexer_contract(all_rules)
+	at_print_audit(args_value(c"audit"))
+	if (unsafe || (strict && (g_at_semantic_losses > 0))):
+		println2(c"antlr_to_pg: semantic audit failed; output files left unchanged")
+		return 1
+
 	at_collect_rule_names(all_rules)
 	at_collect_parser_refs(all_rules)
 	# Resolve ~(TokenA|TokenB|...) to charsets before matcher/classify so
@@ -138,6 +152,21 @@ int main(int argc, int argv):
 	at_fold_negated_token_refs(all_rules)
 	at_classify_all_lexer_rules(all_rules)
 	at_translate_all_parser_rules(all_rules)
+
+	# Every legacy lowering warning is a strict failure, except informative
+	# generated-matcher notices. No parser/matcher output has been published.
+	if (strict):
+		i = 0
+		int lowering_losses = 0
+		while (i < g_report_lines.length):
+			char* report_line = g_report_lines[i]
+			if ((starts_with(report_line, c"GENERATED matcher for ") == 0) && (starts_with(report_line, c"DROPPED lexer rule ") == 0)):
+				println2(report_line)
+				lowering_losses = lowering_losses + 1
+			i = i + 1
+		if (lowering_losses > 0):
+			println2(c"antlr_to_pg: strict lowering failed; output files left unchanged")
+			return 1
 
 	if (g_parser_rule_names.length == 0):
 		string_builder* report = string_new()
@@ -162,6 +191,14 @@ int main(int argc, int argv):
 		print2(c"antlr_to_pg: internal error -- emitted .pg failed its own pg.pg self-check:\n")
 		pg_diagnostics_print(self_check_diagnostics)
 		return 1
+
+	if (strict):
+		pg_diagnostics* grammar_diagnostics = pg_diagnostics_new()
+		pg_grammar* grammar = pg_grammar_read(out.data, c"<strict generated .pg>", grammar_diagnostics)
+		if ((grammar == 0) || (pg_diagnostics_count(grammar_diagnostics) > 0)):
+			pg_diagnostics_print(grammar_diagnostics)
+			return 1
+		if (pg_grammar_safety_check(grammar) != 0): return 1
 
 	if (file_write_text(out_path, out.data) == 0):
 		println2(cstr(f"antlr_to_pg: could not write {out_path}"))

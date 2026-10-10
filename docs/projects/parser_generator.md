@@ -396,3 +396,116 @@ mkdir -p bin
 
 `./wbuild parser_generator_test` wraps this, and `./wbuild tests` now
 includes that target.
+
+## Stateful lexer providers and lexical goals
+
+The default eager lexer and generated output remain unchanged. An AST grammar
+can opt into incremental, transactional tokenization with `lexer stateful`:
+
+```text
+parser example
+lexer stateful
+lexer_priority ordered
+lexer_mode TEMPLATE
+skip WS = [ \t\r\n]+
+token IDENT letters
+token REGEX = "/" [a-z]+ "/"
+lexer_guard REGEX { state.goal == 1 }
+literal OPEN "`"
+lexer_command OPEN pushMode TEMPLATE
+literal CLOSE "`"
+lexer_rule CLOSE TEMPLATE
+lexer_command CLOSE popMode
+lexer_command CLOSE type OPEN
+token TEXT = [a-z ]+
+lexer_rule TEXT TEMPLATE
+start program
+goal regex 1
+rule regex = REGEX
+rule template = OPEN TEXT? OPEN
+rule program = regex EOF | template EOF
+```
+
+`lexer_mode NAME` declares a mode; `DEFAULT` is predefined as zero. Generated
+constants are `<parser>_mode_<NAME>`. `lexer_rule TOKEN MODE` changes the active
+mode of a token, literal, or skip declaration. Stateful lexers do **not** insert
+implicit whitespace rules: each mode must explicitly declare its trivia.
+
+`lexer_priority ordered` chooses the first declaration among equal longest
+matches, across token, literal, and skip declarations. The default `legacy`
+policy retains skip/token ordering and literal priority on equal lengths.
+`lexer_command TOKEN ...` lines execute in declaration order after selection:
+
+- `mode NAME`, `pushMode NAME`, and `popMode` change the checkpointed mode stack.
+- `type TOKEN` remaps the selected token kind.
+- `channel default`, `channel hidden`, or `channel error` selects its channel.
+  Error-channel tokens add diagnostics; non-default channels stay in `all_tokens`.
+- `skip` retains the token as hidden trivia. `more` is rejected.
+
+`lexer_guard TOKEN { expression }` is a pure candidate guard. It runs only for
+a positive-length candidate and can read `state`, `input`, `index` (the source
+start), and `length` (the matched length). It cannot mutate state. The supported
+placement is a whole-candidate guard, not arbitrary positions inside a matcher.
+`lexer_action TOKEN { callback(state) }` runs only after a winner is selected,
+before advancing its source position. Here `length` is the winning length.
+Selected actions may modify checkpointed state, including `state.context`, but
+must not modify external state: rollback can cause the action to be replayed.
+Opaque host state must supply the snapshot/restore/free hooks in `lexer_state.w`.
+Both hooks currently require single-line W bodies.
+
+`goal RULE INTEGER` enters a lexical goal before **any** rule lookahead and
+restores the caller's goal on both success and failure. Goals are opaque numbers;
+JavaScript policy belongs to the JavaScript support library. Goal changes discard
+incompatible unconsumed lookahead, including trivia and branch diagnostics.
+Stateful generation currently disables FIRST dispatch and left factoring and
+uses checkpoints for every alternative and optional/repeated attempt. Recovery
+directives and streaming mode are explicitly rejected on this path.
+
+Pure `&{ expression }` predicates now work at any sequence position in AST mode.
+They can inspect `stream`, its preceding token, context and
+`pg_token_stream_line_break_before(stream)`; they may execute repeatedly.
+Arbitrary `{ action }` terms remain forbidden in AST mode. Streaming predicates
+retain their existing leading-position restriction. `$n`/`text(n)` bindings are
+not available in predicates. Grammar generation rejects undefined references,
+nullable-prefix direct/indirect left recursion, and repetitions that can succeed
+without advancing, including rules consisting only of EOF.
+
+The generated stateful entry points are:
+
+```text
+<parser>_provider_new(input, length, filename) -> pg_lexer_state*
+<parser>_next(state, diagnostics) -> pg_token*
+<parser>_parse_provider(state, next, diagnostics) -> pg_parse_result*
+<parser>_parse_owned(input, length, filename) -> pg_parse_result*
+```
+
+`parse_provider` takes ownership of the provider and diagnostics. `parse_owned`
+creates both. Always check `result.success`: a non-null tree is insufficient
+when lexical diagnostics or trailing input exist. The result retains the source,
+tree, selected tokens, abandoned token/node storage, and diagnostics; free it with
+`pg_parse_result_free`. Do not separately free its root, stream or diagnostics.
+The length-aware API reports embedded NUL as invalid input instead of silently
+accepting a truncated program. Source spans and columns count bytes; line
+tracking recognizes LF, CR, CRLF, U+2028 and U+2029.
+
+Provider callbacks must return contiguous, advancing token spans and may return
+EOF only when called at the end of input. Streams reject inconsistent providers.
+Stateful streams default to one million cumulative token and AST allocations
+and 4096 nested checkpoints; the `token_limit`, `ast_limit`, and
+`checkpoint_limit` fields can be adjusted before parsing. Resource failure is
+sticky across rollback and makes the owned parse fail, even if another branch
+could otherwise succeed. Speculative work counts toward these limits because
+abandoned storage remains alive for borrowed token/node references.
+
+Legacy `_parse` and `_lex` signatures remain available. Stateful `_parse` scans
+lazily, while `_lex` eagerly scans under the initial goal and is useful only when
+that goal determines the intended tokenization. Context-sensitive consumers
+should use the owned parse API. The legacy `_parse` ownership limitations still
+apply.
+
+`parser_generator_stateful_lexer_test` exercises nested templates, remapped
+closing delimiters, lexical-goal rollback, selected-only actions, both priority
+policies, mid-rule predicates with optional/repeated/shared-prefix terms,
+invalid commands, unterminated modes, underflow, and nullable recursion. Existing
+sample, matcher, action, streaming, C and W grammar generated outputs remain
+byte-identical when stateful features are not requested.

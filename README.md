@@ -78,6 +78,7 @@ Other useful targets:
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
+./wbuild wllvm       # optional scalar-subset LLVM IR emitter (bin/wllvm file.w -o file.ll)
 ./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
 ./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
 ./wbuild wvmd        # persistent Linux-box session scheduler
@@ -94,6 +95,10 @@ Other useful targets:
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
+
+The [LLVM offload experiment](docs/projects/llvm.md) visits the production
+retained AST and emits LLVM IR text for a checked scalar subset. Running that
+output uses an external Clang installation; ordinary W builds do not need LLVM.
 
 Apple Silicon Macs can run static ARM64 W cells through the
 [Hypervisor.framework backend](docs/projects/vms_darwin.md). Run
@@ -147,6 +152,14 @@ source in the tree (`./wbuild manifest` writes a copy to `bin/build.json`
 for reading; `./wbuild manifest_check`, part of `tests`, fails when
 generation fails). Design notes in `docs/projects/wexec.md`.
 
+On x64 Linux, `./wbuild compiler_shared` builds the compiler implementation
+as `bin/libwcompiler.so` and its small launcher as `bin/wcompiler_shared`.
+`./wbuild compiler_static` links the same implementation from a compiled
+archive into the standalone `bin/wcompiler_static`.
+Source-owned library targets and `link=` connect separately built shared
+libraries or compiled `.wa` static archives;
+see [building and linking libraries](docs/projects/build_libraries.md).
+
 wexec captures each step's stdout/stderr to check expectations, so it
 cannot host a live prompt, a full-screen debugger, or a
 serve-until-Ctrl-C process. Those conveniences are one-liners instead of
@@ -180,7 +193,7 @@ stock x86-64 system.
 | `SEEDS` | Pins {release tag, asset, sha256} for each bootstrap seed binary |
 | `w` | 32-bit static ELF seed binary (downloaded per `SEEDS`, gitignored) |
 | `w_darwin` | arm64 Mach-O seed (ad-hoc signed) for native macOS bootstrap (downloaded per `SEEDS`, gitignored) |
-| `w.w` | Compiler entry point (imports `compiler.compiler`, calls `link()`) |
+| `w.w` | Thin compiler launcher; command dispatch and the reusable entry point live in `compiler/cli.w` |
 | `compiler/` | Driver, tokenizer, symbol table, type table |
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |
@@ -573,6 +586,13 @@ seeds — is `docs/release.md`.
   and `symbols`) searches explicit roots first. With roots,
   `deps --json` reports shadowed duplicates as `"shadows"`.
   `docs/projects/compilation_model.md` §7 has the details.
+- On Apple Silicon macOS, `./wbuild tests` runs the qualified `tests_darwin`
+  suite (including the compiler fixpoint) and prints how many targets from the
+  cross-platform suite were excluded. This does not claim Linux/Windows/Wasm
+  runtime coverage. Source discovery, `./wbuild wtest`, focused selection and
+  `bin/wtest archs <file> --check` use the native compiler while preserving
+  compilation targets. Use `--available` when selecting runnable targets;
+  `test_changed` includes it. See [native planning](docs/projects/wexec.md).
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Selection is manifest-driven: `bin/wtest`

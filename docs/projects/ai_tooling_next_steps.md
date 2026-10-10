@@ -15,17 +15,19 @@ same PR. When an item ships, its summary moves to the status section of
 `ai_tooling.md` and the entry is deleted here. Keep entries terse; this
 is a queue, not an archive.
 
-## Native Mac test selection (2026-10-09, #608)
+## Native macOS qualification
 
-`./wbuild tests` on the M3 stops at `unknown target wprof`: the Darwin
-executor's static manifest cannot resolve all source-generated umbrella
-dependencies. A freshly built native `tools/test_map.w` scans the sources,
-but `changed`/`archs --check` still execute the Linux ELF `bin/wv2`, so
-526 closure roots failed with exit 127 and selection fell back to literal
-matching. Make the diagnostic compiler host-aware and expose an explicit
-native suite with the appropriate generated targets. `tests_darwin`
-works for its registered native targets; #608 adds a static native
-filesystem qualification target using that existing convention.
+- **Directory test setup needs a real `symlink()` (2026-10-09, #620).**
+  `lib/dir_test.w` stops in `dt_setup` because the Darwin syscall is still a
+  stub returning -1. `mac_build_test` validates listing/hashing with a
+  shell-created symlink; implement the syscall and run the full directory
+  API test natively before claiming that broader coverage.
+
+The Linux-container fallback also needs a prerequisite check (2026-10-09,
+#493): this `w-dev` image has no `git`, so `parser_generator_w_test` cannot
+produce its tracked-source list, even though the host can. Report missing
+tools before launching the suite; allow a host-generated file list for this
+cross-host workflow instead of failing after unrelated tests have run.
 
 ## Diagnostics (`w check`)
 
@@ -225,6 +227,15 @@ filesystem qualification target using that existing convention.
   (`dl_trampoline_argv` + `dl_call`), one `int*` parameter.
 
 ## Test selection (`bin/wtest`)
+
+- **Failed build dependency closures ignore repaired imports (2026-10-09).**
+  During `wllvm` development, an initial error in `tools/wllvm_emit.w` cached
+  a failed `x64 tools/wllvm.w` closure in `bin/.wexec_deps_cache`. Fixing the
+  imported module left `wexec` reusing the stale result: `wexec_deps_lookup`
+  calls `deps_entry_valid(entry, 0)`, whose failed-entry path checks only the
+  root's hash. Retry failed closures when their known imports change, or avoid
+  persisting a failure without an invalidation dependency. `--no-cache` is
+  the development workaround; `wtest` has a separate closure cache.
 
 - **Extra steps on architecture-only tests (2026-10-07).** Adding a native ABI
   fixture step after `arch_only=x64` in `sql_native_test.w` makes manifest
@@ -570,27 +581,6 @@ filesystem qualification target using that existing convention.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
-- **wexec directory hashing is Linux-layout only.** Found while porting
-  the darwin triad: `wexec_collect_dir` (tools/wexec.w) parses the Linux
-  getdents record layout, so on macOS — where the `getdents` shim
-  returns raw Darwin `getdirentries64` records (see the NOTE in
-  `lib/__arch__/arm64_darwin/syscalls.w`) — a directory input silently
-  hashes as an empty file list. The darwin build targets therefore
-  declare no directory `"inputs"` (FORCE-style, always run). To unlock
-  content-hash caching on macOS, add per-arch dirent accessors
-  (`reclen`/`name`/`kind`) next to each `getdents` shim in
-  `lib/__arch__/*/syscalls.w` and use them from `wexec_collect_dir`.
-  Partially addressed (2026-07-25): the silent misparse is gone —
-  `tools/__arch__/*/wexec_platform.w`'s `wexec_dirents_supported()`
-  reports the layout gap per target, and `wexec_collect_dir` now warns
-  once ("directory inputs are not hashed on this platform") and treats
-  the directory as empty instead of parsing Darwin records with Linux
-  offsets. The per-arch accessors now exist: `lib/dir.w` reads through
-  `lib/__arch__/<target>/dirent.w`, which decodes getdirentries64 on
-  arm64_darwin. What is still open is validating that decoding on a Mac
-  (run `lib/dir_test.w` natively), then flipping the darwin
-  `wexec_dirents_supported()` to 1 and giving the darwin targets
-  `"inputs"`.
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all
@@ -702,6 +692,15 @@ dylib exports the symbol when the host has the dylib (a Mac, or an SDK
 is cheap and catches the case that bit here.
 
 ## Darwin bootstrap from a clean checkout is broken with the pinned seeds (2026-09-25)
+
+**Qualification follow-up (2026-10-10, #607):** the local unpinned seed again
+stalled, while an isolated SHA256-verified v0.3.0 seed compiled current main
+(`cc2d322d`) to a native Darwin fixpoint. Also, the native executor's static
+manifest fallback leaves `tests_darwin` empty: it reports success without running
+tagged targets, since tag expansion only happens during manifest generation.
+Run native targets by name until the fallback expands tags (or native directory
+scanning is enabled). The new `atomic_native_darwin_test` target was exercised
+explicitly, together with `verify_darwin` and `arm64_optimization_darwin_test`.
 
 **Update (2026-09-25):** `SEEDS` now pins v0.3.0. Its `w-arm64-macos` is the
 release workflow's native darwin fixpoint of current sources, which should
@@ -1268,11 +1267,14 @@ invalid conditional-arm warning fixture explicitly selects permissive AST
 mode so its diagnostic fallback remains testable. Keep new mode-specific
 fixtures explicit; do not relax required mode for positive fixtures globally.
 
-- Compiler coverage writes its default raw dumps under `bin/coverage`, which
-  `wbuildd` watches. Under instrumentation, those writes repeatedly invalidate
-  the daemon memo and fail `wbuildd_test` (PR #629 CI). CI runs the suite with
-  `--out` outside the checkout and copies reports back afterward; use the same
-  workaround locally. Give the suite a separate, unwatched dump destination
-  while keeping report paths stable. Compiler API harnesses also need direct
-  instrumentation because their in-process calls are invisible to subprocess
-  coverage redirects.
+## Coverage dumps invalidate daemon caches (2026-10-09, #625, #629)
+
+The instrumented `wbuildd_test` failed its memo-hit and graph-cache assertions
+when profiling dumps were written under the watched checkout's `bin/coverage/`
+directory. The ordinary test passed, and the instrumented test also passed
+with its dump directory outside the checkout. CI runs the coverage suite with
+`--out` outside the checkout and copies reports back afterward; use the same
+workaround locally. Direction: isolate profiling output from watched build
+inputs, or exclude profiling dumps from daemon invalidation while keeping
+report paths stable. Compiler API harnesses also need direct instrumentation
+because their in-process calls are invisible to subprocess coverage redirects.

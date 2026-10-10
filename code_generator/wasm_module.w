@@ -146,13 +146,13 @@ int wasm_export_name_reserved(char* name):
 	return 0
 
 # Register one 'export'-marked function, called by grammar/program.w
-# right after the definition parses (wasm target only). The signature
+# right after the definition parses (wasm or native library output). The signature
 # was validated there, where the type helpers live; name uniqueness is
 # checked here, where the registry lives.
 void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_kind):
 	wasm_export_init()
 	if (wasm_export_count >= wasm_export_max): error(c"too many exported functions")
-	if (wasm_export_name_reserved(name)):
+	if ((target_isa == 2) && wasm_export_name_reserved(name)):
 		error3(c"export name '", name, c"' collides with a reserved module export")
 	int e = 0
 	while (e < wasm_export_count):

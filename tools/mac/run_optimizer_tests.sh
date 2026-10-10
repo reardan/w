@@ -2,7 +2,7 @@
 # Native optimizer regressions. ./wbuild arm64_optimization_darwin_test
 # builds the current Darwin compiler before calling this script. Keeping
 # this target in build.base.json also works with the native executor's
-# static manifest (it does not scan source-owned targets on macOS).
+# bootstrap recovery manifest as well as full source discovery.
 set -eu
 cd "$(dirname "$0")/../.."
 

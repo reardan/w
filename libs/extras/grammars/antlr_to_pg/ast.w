@@ -4,6 +4,21 @@
 import libs.extras.grammars.antlr_to_pg.types
 import bin.generated_antlr4_parser
 
+
+# Copy exact bytes, including trivia between terminals. Token spans survive
+# until the input parse is released; semantic text is independently owned.
+at_site* at_build_site(pg_ast_node* node, char* kind, int position):
+	at_site* site = new at_site()
+	site.kind = kind
+	site.first = node.first_token
+	site.last = node.last_token
+	site.position = position
+	site.raw = c""
+	if ((site.first != 0) && (site.last != 0)):
+		site.raw = pg_substr(g_at_source, site.first.offset, site.last.offset + site.last.length - site.first.offset)
+	return site
+
+
 char* at_unescape_antlr_string(char* raw):
 	string_builder* out = string_new()
 	int n = strlen(raw) - 1
@@ -55,8 +70,11 @@ at_element* at_build_atom(pg_ast_node* node):
 	pg_ast_node* child = pg_ast_child(node, 0)
 	at_element* elem = new at_element()
 	elem.suffix = 0
+	elem.first = node.first_token
+	elem.last = node.last_token
 	elem.group_alts = 0
 	elem.text = 0
+	elem.sites = new list[at_site*]
 	# `'a'..'z'` range: four children STRINGLIT DOT DOT STRINGLIT. Fold into
 	# a charset so the matcher generator / classifier see one atom.
 	if (pg_ast_child_count(node) == 4):
@@ -188,6 +206,10 @@ at_element* at_build_atom(pg_ast_node* node):
 	else if (child.kind == antlr4_ast_group):
 		elem.kind = 3
 		elem.group_alts = at_build_altlist(at_group_altlist_node(child))
+		if (pg_ast_child_count(child) > 3):
+			pg_ast_node* prefix = pg_ast_child(child, 1)
+			if (pg_ast_child_count(prefix) > 1):
+				elem.sites.push(at_build_site(prefix, c"block option", 0))
 	else:
 		elem.kind = 2
 		elem.text = strclone(child.text)
@@ -197,14 +219,18 @@ at_element* at_build_atom(pg_ast_node* node):
 at_element* at_build_atom_from_labeled(pg_ast_node* node):
 	int cnt = pg_ast_child_count(node)
 	if (cnt == 3):
-		return at_build_atom(pg_ast_child(node, 2))
+		at_element* elem = at_build_atom(pg_ast_child(node, 2))
+		elem.label = pg_substr(g_at_source, node.first_token.offset, pg_ast_child(node, 1).last_token.offset + pg_ast_child(node, 1).last_token.length - node.first_token.offset)
+		return elem
 	return at_build_atom(pg_ast_child(node, 0))
 
 
 at_element* at_build_real_element(pg_ast_node* node):
 	at_element* elem = at_build_atom_from_labeled(pg_ast_child(node, 0))
 	if (pg_ast_child_count(node) > 1):
-		pg_ast_node* suf_tok = pg_ast_child(pg_ast_child(node, 1), 0)
+		pg_ast_node* suffix_node = pg_ast_child(node, 1)
+		elem.nongreedy = pg_ast_child_count(suffix_node) > 1
+		pg_ast_node* suf_tok = pg_ast_child(suffix_node, 0)
 		if (suf_tok.kind == antlr4_token_QUESTION):
 			elem.suffix = '?'
 		else if (suf_tok.kind == antlr4_token_STAR):
@@ -214,12 +240,11 @@ at_element* at_build_real_element(pg_ast_node* node):
 	return elem
 
 
-# `<key = value>` element options (rare operator-precedence hints) carry no
-# matching structure; the caller skips them entirely rather than pushing a
-# placeholder element.
+# Semantic elements are retained in alt.sites with their atom position.
+# Matching-only atoms remain separate for legacy best-effort classification.
 at_element* at_build_element(pg_ast_node* node):
 	pg_ast_node* inner = pg_ast_child(node, 0)
-	if (inner.kind == antlr4_ast_elem_option):
+	if ((inner.kind == antlr4_ast_elem_option) || (inner.kind == antlr4_token_ACTION)):
 		return 0
 	return at_build_real_element(inner)
 
@@ -227,14 +252,24 @@ at_element* at_build_element(pg_ast_node* node):
 at_alt* at_build_alt(pg_ast_node* node):
 	at_alt* alt = new at_alt()
 	alt.elements = new list[at_element*]
+	alt.sites = new list[at_site*]
 	int cnt = pg_ast_child_count(node)
 	int limit = cnt
 	if (cnt > 0):
 		if (pg_ast_child(node, cnt - 1).kind == antlr4_ast_alt_label):
 			limit = cnt - 1
+			alt.label = strclone(pg_ast_child(pg_ast_child(node, cnt - 1), 1).text)
 	int i = 0
 	while (i < limit):
-		at_element* elem = at_build_element(pg_ast_child(node, i))
+		pg_ast_node* element_node = pg_ast_child(node, i)
+		pg_ast_node* inner = pg_ast_child(element_node, 0)
+		if (inner.kind == antlr4_ast_elem_option):
+			alt.sites.push(at_build_site(inner, c"element option", alt.elements.length))
+		else if (inner.kind == antlr4_token_ACTION):
+			char* kind = c"action"
+			if (inner.text[strlen(inner.text) - 1] == '?'): kind = c"predicate"
+			alt.sites.push(at_build_site(inner, kind, alt.elements.length))
+		at_element* elem = at_build_element(element_node)
 		if (elem != 0):
 			alt.elements.push(elem)
 		i = i + 1
@@ -277,6 +312,7 @@ at_rule* at_build_rule(pg_ast_node* node):
 	# remap ignored); else the first name. Looking only at the first item
 	# would let `-> type(X), mode(Y)` slip through once type is allowed.
 	char* command = 0
+	list[at_command*] commands = new list[at_command*]
 	if (altlist_idx + 1 < cnt):
 		pg_ast_node* maybe_cmd = pg_ast_child(node, altlist_idx + 1)
 		if (maybe_cmd.kind == antlr4_ast_rule_command):
@@ -294,6 +330,14 @@ at_rule* at_build_rule(pg_ast_node* node):
 				if (item.kind == antlr4_ast_command_item):
 					pg_ast_node* command_name_node = pg_ast_child(item, 0)
 					char* cname = pg_ast_child(command_name_node, 0).text
+					at_command* cmd = new at_command()
+					cmd.name = strclone(cname)
+					cmd.first = item.first_token
+					cmd.last = item.last_token
+					if (pg_ast_child_count(item) > 1):
+						pg_ast_node* args_node = pg_ast_child(item, 1)
+						cmd.argument = strclone(pg_ast_child(pg_ast_child(args_node, 1), 0).text)
+					commands.push(cmd)
 					if (first == 0):
 						first = cname
 					if ((strcmp(cname, c"mode") == 0) | (strcmp(cname, c"pushMode") == 0) | (strcmp(cname, c"popMode") == 0) | (strcmp(cname, c"more") == 0)):
@@ -320,6 +364,16 @@ at_rule* at_build_rule(pg_ast_node* node):
 	rule.is_lexer = at_is_upper_first(name)
 	rule.alts = at_build_altlist(altlist_node)
 	rule.command = command
+	rule.commands = commands
+	rule.first = node.first_token
+	rule.last = node.last_token
+	rule.options = new list[at_site*]
+	int ti = name_idx + 1
+	while (ti < altlist_idx):
+		pg_ast_node* trailer = pg_ast_child(node, ti)
+		if (trailer.kind == antlr4_ast_rule_trailer_item):
+			rule.options.push(at_build_site(trailer, c"rule option", 0))
+		ti = ti + 1
 	return rule
 
 
@@ -327,11 +381,13 @@ list[at_rule*] at_collect_rules(pg_ast_node* root):
 	list[at_rule*] rules = new list[at_rule*]
 	int n = pg_ast_child_count(root) - 1
 	int i = 0
+	char* active_mode = c"DEFAULT_MODE"
 	while (i < n):
 		pg_ast_node* item_node = pg_ast_child(root, i)
 		pg_ast_node* inner = pg_ast_child(item_node, 0)
 		if (inner.kind == antlr4_ast_rule_def):
 			at_rule* rule = at_build_rule(inner)
+			rule.mode = strclone(active_mode)
 			# Multi-file directories sometimes hold independent grammars (not
 			# just a lexer/parser pair). Keep the first definition of each
 			# rule name and report later duplicates so merged inputs don't
@@ -341,6 +397,11 @@ list[at_rule*] at_collect_rules(pg_ast_node* root):
 			else:
 				g_seen_rule_names[rule.name] = 1
 				rules.push(rule)
+		else if (inner.kind == antlr4_ast_mode_decl):
+			active_mode = pg_ast_child(inner, 1).text
+			g_at_dependencies.push(at_build_site(inner, c"mode declaration", 0))
+		else if ((inner.kind == antlr4_ast_bare_marker) || (inner.kind == antlr4_ast_at_action) || (inner.kind == antlr4_ast_import_decl)):
+			g_at_dependencies.push(at_build_site(inner, c"grammar dependency", 0))
 		else if (inner.kind == antlr4_ast_grammar_decl):
 			if (g_grammar_name == 0):
 				int cnt = pg_ast_child_count(inner)

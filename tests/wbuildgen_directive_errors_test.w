@@ -453,6 +453,101 @@ void test_target_after_test_directives():
 	free(out_path)
 
 
+void test_library_target_shape():
+	char* dir = wdet_case_dir(c"library_shape")
+	wdet_write(dir, c"tests/math.w", c"# wbuild: library=math kind=shared arch=x64 tag=tests flags=\"--strict\"\nint answer():\n\treturn 42\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	assert_contains(out, c"\"name\": \"math\",\n\t\t\t\"deps\": [\"wv2\"]")
+	assert_contains(out, c"\"inputs\": [\"tests/math.w\"]")
+	assert_contains(out, c"\"outputs\": [\"bin/libmath.so\"]")
+	assert_contains(out, c"\"--shared\"")
+	assert_contains(out, c"\"--strict\"")
+	assert_contains(out, c"\"tests/math.w\", \"-o\", \"bin/libmath.so\"")
+	assert_lacks(out, c"\"cmd\": [\"bin/libmath.so\"]")
+	free(out)
+	free(out_path)
+
+
+# Alphabetical source order puts the binary before either producer.
+# Edges must resolve after all declarations have been read; a library
+# can itself consume another library and both edges enter the cache.
+void test_library_links_resolve_forward():
+	char* dir = wdet_case_dir(c"library_links")
+	wdet_write(dir, c"tests/a_app.w", c"# wbuild: binary=app arch=x64 link=middle tag=tests\nint main():\n\treturn 0\n")
+	wdet_write(dir, c"tests/b_middle.w", c"# wbuild: library=middle kind=shared arch=x64 link=leaf out=bin/middle.so\nint middle():\n\treturn 1\n")
+	wdet_write(dir, c"tests/z_leaf.w", c"# wbuild: library=leaf kind=shared arch=x64 staged\nint leaf():\n\treturn 2\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	assert_contains(out, c"\"name\": \"app\",\n\t\t\t\"deps\": [\"wv2\", \"middle\"]")
+	assert_contains(out, c"\"inputs\": [\"tests/a_app.w\", \"bin/middle.so\"]")
+	assert_contains(out, c"\"--link=bin/middle.so\"")
+	assert_contains(out, c"\"name\": \"middle\",\n\t\t\t\"deps\": [\"wv2\", \"leaf\"]")
+	assert_contains(out, c"\"inputs\": [\"tests/b_middle.w\", \"bin/libleaf.so\"]")
+	assert_contains(out, c"\"--link=bin/libleaf.so\"")
+	assert_contains(out, c"\"tests/z_leaf.w\", \"-o\", \"bin/libleaf.so.stage\"")
+	assert_contains(out, c"\"cmd\": [\"mv\", \"bin/libleaf.so.stage\", \"bin/libleaf.so\"]")
+	free(out)
+	free(out_path)
+
+
+void test_static_library_target_shape():
+	char* dir = wdet_case_dir(c"static_library_shape")
+	wdet_write(dir, c"tests/a_app.w", c"# wbuild: binary=app arch=x64 link=math tag=tests\nint main():\n\treturn 0\n")
+	wdet_write(dir, c"tests/z_math.w", c"# wbuild: library=math kind=static arch=x64\nint answer():\n\treturn 42\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	assert_contains(out, c"\"outputs\": [\"bin/libmath.wa\"]")
+	assert_contains(out, c"\"--static\"")
+	assert_contains(out, c"\"inputs\": [\"tests/a_app.w\", \"bin/libmath.wa\"]")
+	assert_contains(out, c"\"--link=bin/libmath.wa\"")
+	assert_lacks(out, c"\"cmd\": [\"bin/libmath.wa\"]")
+	free(out)
+	free(out_path)
+
+
+void test_library_rejects_invalid_kind_and_arch():
+	char* dir = wdet_case_dir(c"library_bad_kind")
+	wdet_write(dir, c"tests/lib.w", c"# wbuild: library=bad kind=bogus arch=x64\n")
+	wdet_expect_error(dir, c"unsupported library kind")
+	dir = wdet_case_dir(c"library_missing_kind")
+	wdet_write(dir, c"tests/lib.w", c"# wbuild: library=bad arch=x64\n")
+	wdet_expect_error(dir, c"library requires kind=")
+	dir = wdet_case_dir(c"library_bad_arch")
+	wdet_write(dir, c"tests/lib.w", c"# wbuild: library=bad kind=shared arch=arm64\n")
+	wdet_expect_error(dir, c"library linking requires arch=x64: bad")
+	dir = wdet_case_dir(c"library_missing_arch")
+	wdet_write(dir, c"tests/lib.w", c"# wbuild: library=bad kind=shared\n")
+	wdet_expect_error(dir, c"library linking requires arch=x64: bad")
+
+
+void test_library_rejects_invalid_links():
+	char* dir = wdet_case_dir(c"library_unknown_link")
+	wdet_write(dir, c"tests/app.w", c"# wbuild: binary=app arch=x64 link=missing\n")
+	wdet_expect_error(dir, c"unknown library target: missing")
+	dir = wdet_case_dir(c"library_nonlibrary_link")
+	wdet_write(dir, c"tests/app.w", c"# wbuild: binary=app arch=x64 link=helper\n# wbuild: binary=helper arch=x64\n")
+	wdet_expect_error(dir, c"link target is not a library: helper")
+	dir = wdet_case_dir(c"library_self_link")
+	wdet_write(dir, c"tests/lib.w", c"# wbuild: library=recursive kind=shared arch=x64 link=recursive\n")
+	wdet_expect_error(dir, c"library cannot link itself: recursive")
+	dir = wdet_case_dir(c"library_cycle")
+	wdet_write(dir, c"tests/lib.w", c"# wbuild: library=first kind=shared arch=x64 link=second\n# wbuild: library=second kind=shared arch=x64 link=first\n")
+	wdet_expect_error(dir, c"cyclic library link:")
+
+
 void test_target_rejects_duplicate_name():
 	char* dir = wdet_case_dir(c"target_dup")
 	wdet_write(dir, c"tests/dup.w", c"# wbuild: target=tests\n# wbuild: step=\"true\"\n")
