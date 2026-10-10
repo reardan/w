@@ -1,0 +1,515 @@
+# AArch64 Darwin (XNU) syscall wrappers. Numbers come from the BSD table
+# (apple-oss-distributions/xnu, bsd/kern/syscalls.master); arguments pass
+# in x0..x5 with the number in x16 via the syscall/syscall7 stubs
+# (svc #0x80 convention). The stubs convert Darwin's carry-flag + positive
+# errno convention to the -errno contract the other targets expose, so
+# lib/ stays architecture-agnostic.
+#
+# The wrapper surface matches lib/__arch__/arm64/syscalls.w exactly. Where
+# Darwin has no equivalent raw syscall the wrapper is a documented stub:
+# brk always fails (lib/memory.w then runs in mmap mode) and sys_clone
+# returns -78 (ENOSYS-style; threads go through bsdthread_create).
+# rt_sigaction needs the compiler's signal_trampoline stub (see below).
+#
+# Flag translation: lib/ callers hardcode Linux flag values, so open and
+# mmap translate the bits Darwin numbers differently (O_CREAT/O_TRUNC/...,
+# MAP_ANON) instead of forking every caller.
+
+# Two words, matching XNU's user64_timeval (tv_sec and tv_usec are both
+# 64-bit for 64-bit processes).
+struct darwin_timeval:
+	int tv_sec
+	int tv_usec
+
+
+# Linux open flag values -> Darwin. Read/write bits (0x3) match; O_CREAT,
+# O_EXCL, O_TRUNC, O_APPEND, O_NONBLOCK, O_DIRECTORY and O_CLOEXEC are
+# renumbered.
+int darwin_open_flags(int mode):
+	int flags = mode & 3
+	if (mode & 64):
+		flags = flags | 512      /* O_CREAT: 0x40 -> 0x200 */
+	if (mode & 128):
+		flags = flags | 2048     /* O_EXCL: 0x80 -> 0x800 */
+	if (mode & 512):
+		flags = flags | 1024     /* O_TRUNC: 0x200 -> 0x400 */
+	if (mode & 1024):
+		flags = flags | 8        /* O_APPEND: 0x400 -> 0x8 */
+	if (mode & 2048):
+		flags = flags | 4        /* O_NONBLOCK: 0x800 -> 0x4 */
+	if (mode & 65536):
+		flags = flags | 1048576  /* O_DIRECTORY: 0x10000 -> 0x100000 */
+	if (mode & 524288):
+		flags = flags | 16777216 /* O_CLOEXEC: 0x80000 -> 0x1000000 */
+	return flags
+
+
+/* File IO: */
+
+# open with O_WRONLY|O_CREAT|O_TRUNC (Darwin 0x601 = 1537).
+int create_file(char* filename, int permissions):
+	return syscall(5, filename, 1537, permissions)
+
+# mode: 0 - read, 1 - write, 2 - readwrite (plus O_CREAT etc., which
+# callers pass as Linux values; see darwin_open_flags).
+int open(char *filename, int mode, int permissions):
+	return syscall(5, filename, darwin_open_flags(mode), permissions)
+
+int write(int file, char* s, int length):
+	return syscall(4, file, s, length)
+
+int read(int file, char* buf, int size):
+	return syscall(3, file, buf, size)
+
+int close(int file):
+	return syscall(6, file, 0, 0)
+
+# reference: 0 - beginning, 1 - current position, 2 - end of file
+int seek(int file, int offset, int reference):
+	return syscall(199, file, offset, reference)
+
+int unlink(char* path):
+	return syscall(10, path, 0, 0)
+
+# Directory syscalls:
+int mkdir(char* path, int mode):
+	return syscall(136, path, mode, 0)
+
+int rmdir(char* path):
+	return syscall(137, path, 0, 0)
+
+int rename(char* oldpath, char* newpath):
+	return syscall(128, oldpath, newpath, 0)
+
+# Portable metadata wrappers are Linux-first (lib/stat.w). Darwin stubs
+# keep the symbols linkable; real getattrlist/stat paths are future work.
+int at_fdcwd():
+	return 0 - 100
+
+
+const int at_symlink_nofollow = 256
+
+
+int statx(char* path, int flags, int mask, char* buf):
+	return -1
+
+
+int chmod(char* path, int mode):
+	return -1
+
+
+int utimensat(char* path, int times, int flags):
+	return -1
+
+
+int fchownat(char* path, int uid, int gid, int flags):
+	return -1
+
+
+int chown(char* path, int uid, int gid):
+	return -1
+
+
+int lchown(char* path, int uid, int gid):
+	return -1
+
+
+int getuid():
+	return -1
+
+
+int getgid():
+	return -1
+
+
+int readlink(char* path, char* buf, int size):
+	return -1
+
+
+int symlink(char* target, char* linkpath):
+	return -1
+
+
+# getdirentries64 (344): reads from the fd's offset like the Linux
+# getdents flavors; the extra off_t* out-parameter receives the new
+# position. NOTE: the Darwin record layout differs from both Linux
+# variants (d_ino u64, d_seekoff u64, d_reclen u16, d_namlen u16,
+# d_type u8, name), so directory listers need Darwin-aware parsing
+# before they run natively.
+int getdents(int file, char* buf, int count):
+	int position = 0
+	return syscall7(344, file, buf, count, cast(int, &position), 0, 0)
+
+int sys_fcntl(int fd, int cmd, int arg):
+	return syscall(92, fd, cmd, arg)
+
+# Darwin has no getcwd syscall; libc builds it on fcntl(F_GETPATH = 50,
+# xnu bsd/sys/fcntl.h), which fills buf with the fd's path. buf must have
+# room for MAXPATHLEN (1024) bytes.
+int getcwd(char* buf, int size):
+	int fd = open(c".", 0, 0)
+	if (fd < 0):
+		return fd
+	int result = sys_fcntl(fd, 50, cast(int, buf))
+	close(fd)
+	return result
+
+# First flush filesystem data/metadata, then require the device barrier.
+# Never fall back after F_FULLFSYNC fails: fsync alone can leave data in
+# the drive's volatile cache. Keep the original negative Darwin errno.
+# The initial fsync also diagnoses non-syncable descriptors (e.g. pipes).
+int fsync(int file):
+	int ret = syscall(95, file, 0, 0)
+	if (ret < 0): return ret
+	return sys_fcntl(file, 51, 0)  # F_FULLFSYNC
+
+# No fdatasync in the BSD table; fsync's guarantee is a superset.
+int fdatasync(int file):
+	return fsync(file)
+
+# No time(2): gettimeofday (116) with a null timezone; the third XNU
+# argument (mach_absolute_time out-pointer) is unused.
+int linux_time(int* out):
+	darwin_timeval tv
+	tv.tv_sec = 0
+	tv.tv_usec = 0
+	syscall(116, cast(int, &tv), 0, 0)
+	if (out != 0): *out = tv.tv_sec
+	return tv.tv_sec
+
+/* memory and threading */
+# No brk on Darwin. Returning 0 makes lib/memory.w's first growth check
+# (brk(target) == target) fail cleanly, flipping the allocator into its
+# mmap mode permanently; the initial malloc_heap_ptr = brk(0) stays 0, so
+# no live block can sit below the failed break.
+int brk(char* addr):
+	return 0
+
+# mmap (197). Darwin renumbers MAP_ANON (0x1000, Linux 0x20); MAP_SHARED,
+# MAP_PRIVATE and MAP_FIXED match Linux. The x86-only MAP_32BIT (0x40) is
+# dropped. fd must be -1 for anonymous mappings; the offset is in bytes.
+int mmap(int addr, int length, int prot, int flags):
+	int darwin_flags = flags & 19 /* MAP_SHARED|MAP_PRIVATE|MAP_FIXED */
+	if (flags & 32):
+		darwin_flags = darwin_flags | 4096 /* MAP_ANON */
+	return syscall7(197, addr, length, prot, darwin_flags, -1, 0)
+
+# Linux snapshot-memory primitives are unsupported on this target.
+# Keep anonymous mmap above available to the allocator; never emulate a
+# file-backed clone with anonymous memory or issue Linux seal commands.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	return -1
+
+int memfd_create(char* name, int flags):
+	return -1
+
+int madvise(int addr, int length, int advice):
+	return -1
+
+
+# munmap (73): releases a mapping created by mmap. addr must be page-aligned.
+int munmap(int addr, int length):
+	return syscall(73, addr, length, 0)
+
+# mprotect (74): changes page protection (PROT_NONE=0, READ=1, WRITE=2,
+# EXEC=4) on an existing mapping. addr and length must be page-aligned.
+int mprotect(int addr, int length, int prot):
+	return syscall(74, addr, length, prot)
+
+# No clone on Darwin (threads go through bsdthread_create, a later stage).
+int sys_clone(int flags, int child_stack):
+	return 0 - 78
+
+# poll (230): fds points at an array of 8-byte pollfd records.
+# timeout_ms < 0 blocks forever; 0 returns immediately.
+int sys_poll(int fds, int nfds, int timeout_ms):
+	return syscall(230, fds, nfds, timeout_ms)
+
+# ioctl (54): request values like TCGETS/TCSETS come from lib/termios.w
+# and are Linux-numbered; terminal control needs Darwin request values
+# before it works natively.
+int sys_ioctl(int fd, int request, int arg):
+	return syscall(54, fd, request, arg)
+
+# mincore (78): one residency byte per page in vec.
+int sys_mincore(int addr, int length, int vec):
+	return syscall(78, addr, length, vec)
+
+# Darwin has no nanosleep syscall; sleep on select (93) with an empty fd
+# set and the interval as the timeout, the classic BSD idiom.
+int darwin_sleep(int sec, int nsec):
+	darwin_timeval tv
+	tv.tv_sec = sec
+	tv.tv_usec = nsec / 1000
+	return syscall7(93, 0, 0, 0, 0, cast(int, &tv), 0)
+
+# req/rem point at { long seconds; long nanoseconds }; rem is ignored.
+int sys_nanosleep(int req, int rem):
+	int* r = cast(int*, req)
+	return darwin_sleep(r[0], r[1])
+
+# Darwin has no clock_gettime syscall; both wrappers read the wall clock
+# via gettimeofday (116) whatever clock_id asks for. Good enough for the
+# relative timing lib/time.w does, but NOT truly monotonic.
+int sys_clock_gettime(int clock_id, int ts):
+	darwin_timeval tv
+	tv.tv_sec = 0
+	tv.tv_usec = 0
+	int err = syscall(116, cast(int, &tv), 0, 0)
+	if (err < 0):
+		return err
+	int* out = cast(int*, ts)
+	out[0] = tv.tv_sec
+	out[1] = tv.tv_usec * 1000
+	return 0
+
+# Raw sigaction (46) takes a struct __sigaction {handler, sa_tramp,
+# uint32 sa_mask, int sa_flags}, and XNU delivers a signal by entering
+# sa_tramp, which must call the handler and then sigreturn. The
+# compiler's signal_trampoline stub (code_generator/arm64_asm.w) does
+# that for a plain W handler(sig, ucontext). act has the Linux layout
+# the shared callers build ({handler, flags, restorer, mask}); here the
+# restorer slot carries the trampoline's address. It is not named in
+# this file because the pinned seed compiles it and predates the stub:
+# lib/crash.w finds the stub in the image's own symbol table instead
+# (once SEEDS pins a release with the stub, `cast(int,
+# signal_trampoline)` can replace the lookup). A handler without a
+# trampoline fails with -78 (ENOSYS); handler 0 (SIG_DFL) needs none.
+# SA_ONSTACK, SA_RESTART, SA_NODEFER and SA_RESETHAND are translated,
+# and SA_SIGINFO is always set because the trampoline passes the
+# ucontext on. oldact is not reported. Allocation-free: lib/crash.w
+# calls this from inside its handler.
+int rt_sigaction(int signum, int* act, int* oldact):
+	if ((act[0] != 0) && (act[2] == 0)): return 0 - 78
+	int[3] nsa
+	nsa[0] = act[0]
+	nsa[1] = act[2]
+	int lflags = act[1]
+	int flags = 64 /* SA_SIGINFO */
+	if (lflags & 0x08000000):
+		flags = flags | 1   /* SA_ONSTACK */
+	if (lflags & 0x10000000):
+		flags = flags | 2   /* SA_RESTART */
+	if (lflags & 0x40000000):
+		flags = flags | 16  /* SA_NODEFER */
+	if ((lflags >> 31) & 1):
+		flags = flags | 4   /* SA_RESETHAND */
+	# sa_mask (32 bits; signal 32 does not exist) then sa_flags
+	nsa[2] = (act[3] & 0x7fffffff) | (flags << 32)
+	return syscall(46, signum, cast(int, &nsa[0]), 0)
+
+
+/* Process management */
+
+# fork (2) returns two values on Darwin: x0 = pid, x1 = 1 in the child.
+# The syscall_fork stub (code_generator/arm64_asm.w) folds that into the
+# child-sees-0 contract.
+int fork():
+	return syscall_fork()
+
+# argv and envp are NULL-terminated vectors of char* (word-sized entries).
+int execve(char* path, char** argv, char** envp):
+	return syscall(59, path, argv, envp)
+
+# Reaps a child. pid -1 waits for any child; options 1 is WNOHANG.
+int wait4(int pid, int* status, int options, int rusage):
+	return syscall7(7, pid, status, options, rusage, 0, 0)
+
+# pipe (42) returns the two fds in x0/x1 instead of writing through a
+# pointer; the syscall_pipe stub (code_generator/arm64_asm.w) stores them
+# as two 32-bit fds, matching the other targets' contract.
+int pipe(int* fds):
+	return syscall_pipe(fds)
+
+int dup2(int oldfd, int newfd):
+	return syscall(90, oldfd, newfd, 0)
+
+# kill (37) has a third 'posix' argument on Darwin; libc passes 1 for
+# POSIX-conformant semantics.
+int kill(int pid, int sig):
+	return syscall(37, pid, sig, 1)
+
+# Darwin has no pipe2: pipe, then mark both ends close-on-exec with
+# fcntl(F_SETFD = 2, FD_CLOEXEC = 1) when flags carries o_cloexec (the
+# Linux value; lib/linux.w). Not atomic against a concurrent fork.
+int pipe2(int* fds, int flags):
+	int err = pipe(fds)
+	if (err < 0): return err
+	if (flags & 524288):
+		sys_fcntl(load_int32(cast(char*, fds)), 2, 1)
+		sys_fcntl(load_int32(cast(char*, fds) + 4), 2, 1)
+	return 0
+
+# setpgid (82): pid 0 means the caller, pgid 0 means "pgid = pid".
+int setpgid(int pid, int pgid):
+	return syscall(82, pid, pgid, 0)
+
+# Darwin has no close_range: -ENOSYS (78), so callers fall back to a
+# close loop.
+int close_range(int first, int last, int flags):
+	return -78
+
+
+# sigaltstack (53): ss/old_ss point at a stack_t {ss_sp, ss_size,
+# ss_flags}. lib/crash.w delivers its darwin handlers on one.
+int sys_sigaltstack(int ss, int old_ss):
+	return syscall(53, ss, old_ss, 0)
+
+
+# ptrace is unsupported on Darwin here; the stub keeps the debugger's
+# attach module linkable (attach mode is Linux x86/x86-64 only).
+int sys_ptrace(int request, int pid, int addr, int data):
+	return -1
+
+int chdir(char* path):
+	return syscall(12, path, 0, 0)
+
+int getpid():
+	return syscall(20, 0, 0, 0)
+
+# req points at a two-word timespec (seconds, nanoseconds). rem may be 0.
+int nanosleep(int* req, int* rem):
+	return darwin_sleep(req[0], req[1])
+
+# fds points at an array of pollfd structs (8 bytes each).
+int poll(int* fds, int nfds, int timeout_ms):
+	return syscall(230, fds, nfds, timeout_ms)
+
+# clock_id is ignored; see sys_clock_gettime. out points at a two-word
+# timespec.
+int clock_gettime(int clock_id, int* out):
+	return sys_clock_gettime(clock_id, cast(int, out))
+
+
+/* Native socket syscalls on Darwin. */
+int sys_socket(int family, int socket_type, int protocol):
+	return syscall(97, family, socket_type, protocol)
+
+
+int sys_connect(int sockfd, int addr, int addrlen):
+	return syscall(98, sockfd, addr, addrlen)
+
+
+int sys_accept(int sockfd, int addr, int addrlen):
+	return syscall(30, sockfd, addr, addrlen)
+
+
+int sys_sendto(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	return syscall7(133, sockfd, buf, len, flags, addr, addrlen)
+
+
+int sys_bind(int sockfd, int addr, int addrlen):
+	return syscall(104, sockfd, addr, addrlen)
+
+
+int sys_listen(int sockfd, int backlog):
+	return syscall(106, sockfd, backlog, 0)
+
+
+int sys_getsockname(int sockfd, int addr, int addrlen):
+	return syscall(32, sockfd, addr, addrlen)
+
+
+int sys_socketpair(int family, int socket_type, int protocol, int fds):
+	return syscall7(135, family, socket_type, protocol, fds, 0, 0)
+
+
+# recvfrom (29) with a null address doubles as recv.
+int sys_recv(int sockfd, char* buf, int len, int flags):
+	return syscall7(29, sockfd, buf, len, flags, 0, 0)
+
+
+int sys_recvfrom(int sockfd, char* buf, int len, int flags, int addr, int addrlen):
+	return syscall7(29, sockfd, buf, len, flags, addr, addrlen)
+
+
+int sys_setsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	return syscall7(105, sockfd, level, optname, optval, optlen, 0)
+
+# optlen is an in/out pointer to a 32-bit socklen_t.
+int sys_getsockopt(int sockfd, int level, int optname, int optval, int optlen):
+	return syscall7(118, sockfd, level, optname, optval, optlen, 0)
+
+
+# Darwin has no getrandom syscall, so there is no number to put here.
+# Return -78 (ENOSYS-style, like the other stubs) so callers such as
+# libs/standard/crypto/random.w take their /dev/urandom fallback path.
+int sys_getrandom(char* buf, int buflen, int flags):
+	return 0 - 78
+
+# Darwin has no inotify (file watching is kqueue/FSEvents territory);
+# ENOSYS-style stubs like sys_getrandom's, so lib/inotify.w callers see
+# a negative errno-style failure (the lib/stat.w statx convention).
+int sys_inotify_init1(int flags):
+	return 0 - 78
+
+int sys_inotify_add_watch(int fd, char* path, int mask):
+	return 0 - 78
+
+int sys_inotify_rm_watch(int fd, int wd):
+	return 0 - 78
+
+# exit (1): terminates the whole process, like libc exit().
+void exit(int error_code):
+	syscall(1, error_code, 0, 0)
+
+# bsdthread_terminate (361) with no stack to free and no port/semaphore
+# to signal: terminates only the calling thread.
+void thread_exit(int error_code):
+	syscall7(361, 0, 0, 0, 0, 0, 0)
+
+
+/* No epoll or eventfd here: -ENOSYS makes lib/event_loop.w fall back to
+   poll and lib/task_runtime.w to a pipe. */
+
+int epoll_event_bytes():
+	return 16
+
+
+int epoll_event_data_offset():
+	return 8
+
+
+int epoll_create1(int flags):
+	return -78
+
+
+int epoll_ctl(int epfd, int op, int fd, int event):
+	return -78
+
+
+int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
+	return -78
+
+
+int eventfd2(int initval, int flags):
+	return -78
+
+
+# Native positional and durability operations from XNU syscalls.master.
+# AArch64 passes the full off_t in x3 (pread/pwrite), x1 (ftruncate).
+int sys_pread(int fd, char* buf, int count, int offset):
+	if (offset < 0): return -22
+	return syscall7(153, fd, buf, count, offset, 0, 0)
+
+
+int sys_pwrite(int fd, char* buf, int count, int offset):
+	if (offset < 0): return -22
+	return syscall7(154, fd, buf, count, offset, 0, 0)
+
+
+int sys_ftruncate(int fd, int length):
+	if (length < 0): return -22
+	return syscall(201, fd, length, 0)
+
+
+int sys_flock(int fd, int operation):
+	return syscall(131, fd, operation, 0)
+
+
+int sys_openat(int dirfd, char* path, int flags, int mode):
+	if (dirfd == -100): dirfd = -2  # Darwin AT_FDCWD
+	return syscall7(463, dirfd, path, darwin_open_flags(flags), mode, 0, 0)
+
+
+import lib.win32_stubs

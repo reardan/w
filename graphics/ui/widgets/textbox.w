@@ -103,7 +103,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	# it. Inert while another widget holds a popup open or inside a
 	# disabled scope.
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
-		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+		if (ui_pointer_inside(ctx, r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.focus = id
 			# Proportional caret: the nearest glyph boundary to the
 			# click.
@@ -113,7 +113,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	int submitted = 0
 	# A focused field behind an open popup keeps its focus but not the
 	# keyboard: the popup (a menu, a dropdown) is what the keys are for.
-	if ((ctx.focus == id) && (ui_scope_blocked(ctx) == 0)):
+	if ((ctx.focus == id) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
@@ -162,4 +162,5 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
 		if (caret_w > fit_w): caret_w = fit_w
 		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_w) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
+	ui_text_input_declare(ctx, id, r, 0)
 	return submitted

@@ -11,6 +11,20 @@ is this framework's web backend). Follows the same survey →
 options → staged-recommendation shape as `docs/projects/compress.md`
 and `docs/projects/wbuildd.md`.
 
+**Mobile update (2026-10-09, #464).** The browser host now supports
+primary-pointer touch gestures, pixel scrolling and cancellation, a DOM
+software-keyboard bridge with Unicode/IME commits, safe areas, and
+keyboard-aware viewport sizing with a Retina drawing buffer. The new
+`graphics/ui/mobile_demo_web.w` demonstrates a responsive scrolling form;
+see [the browser host guide](../../tools/web/README.md) for build/run commands
+and remaining selection, shaping, accessibility and device-test limits.
+Experimental `arm64_ios` and `arm64_ios_sim` targets now build native
+UIKit apps through `graphics/ios/ui.w`; see [iOS](ios.md). This native
+control bridge does not yet host the existing GL `graphics/ui` renderer.
+Android still uses the browser path. The design sections below retain
+historical decisions; this status and the linked implementation guides
+supersede their original mobile non-goals.
+
 Status: design 2026-07-18; stage 1 implemented 2026-08-07 per
 `docs/projects/ui_framework_plan.md` — `graphics/ui/` (rect, theme,
 baked bitmap font, batching renderer, text, label/button/checkbox),
@@ -35,7 +49,8 @@ input landed 2026-09-25 (#462): struct values such as
 `locationInWindow` are read through key-value coding (`valueForKey:`
 boxes the NSPoint in an NSValue, `getValue:size:` copies it out), so
 the no-struct-return rule in `graphics/cocoa.w` stands. Still pending:
-TTF/SDF typography (#379), win64 backend, accessibility (§8 stage 4).
+complex-script shaping (#459) and accessibility (#465). Runtime TrueType
+fonts and the Win32/WGL backend have since shipped.
 
 The widget set's expansion past stage 3 is issue #441 and has its own
 pair of docs: `docs/projects/ui_widgets.md` (design — the
@@ -92,8 +107,9 @@ only in §3 to rule out a DOM-based alternative.
 
 ## 1. What "runs anywhere" means against this repo's actual targets
 
-The compiler emits six targets today (`CLAUDE.md`): x86 and x64 Linux
-ELF, arm64 Linux ELF, `arm64_darwin` Mach-O, win64 PE, and wasm32/WASI.
+The compiler emits x86 and x64 Linux ELF, arm64 Linux ELF,
+`arm64_darwin` macOS Mach-O, experimental `arm64_ios` and
+`arm64_ios_sim` Mach-O, win64 PE, and wasm32/WASI.
 `graphics/window.w` already dispatches per-target through
 `graphics/__arch__/<target>/window_native.w`; verified current state of
 that dispatch (each file read directly):
@@ -104,25 +120,18 @@ that dispatch (each file read directly):
 | arm64 Linux | `graphics.window_x11` (same file) | same as x64 | real, needs qemu to run in CI |
 | `arm64_darwin` | `graphics.window_cocoa` (AppKit/NSOpenGL) | mouse x/y, 3-button mask, scroll, Unicode CHAR, NAV, modifiers, last keycode, close (#462) | real, tested natively (`graphics_cocoa_input_darwin` via `tools/mac/run_darwin_tests.sh`) |
 | wasm32 (browser) | `graphics.window_web` (canvas + WebGL2 via `tools/web/webgl_env.mjs`) | 7-field snapshot: width, height, should_close, mouse_x, mouse_y, mouse_buttons, last_keycode (`graphics/window_web.w:59`-`60`) | real, tested (`wasm_webgl_test`), needs Node or a browser |
-| win64 | `graphics.window_stub` (`graphics/__arch__/win64/window_native.w` imports it directly) | none — `gfx_window_open` prints a gap message and returns 0 | **no backend at all** |
+| win64 | `graphics.window_win32` (Win32/WGL) | mouse, wheel, CHAR, NAV, modifiers | implemented (#463) |
+| iOS device / simulator | `graphics.ios.ui` with packaged UIKit host | native controls, keyboard/IME and lifecycle callbacks | experimental; GL widget renderer not ported |
 | x86 Linux | `graphics.window_stub` | none | **no backend at all** (32-bit is the seed/bootstrap target, not expected to grow a GUI) |
 
-Two things this table settles up front: **"desktop" today means Linux
-(X11) and macOS (Cocoa) only** — win64 has an OpenGL binding
-(`graphics/__arch__/win64/gl_native.w` imports the same `graphics.gl_linux`
-externs, which is almost certainly a placeholder, since win64 has no
-`libGL.so`/GLX and no window to make a context current in) but no real
-window or input path, so it is unusable for a UI today, not merely
-input-incomplete like macOS. And **"mobile" does not exist as a
-compile target in this repo at all** — no iOS or Android backend, and
-none is close: iOS requires sandboxed, App-Store-signed Mach-O with no
-JIT and a UIKit-not-AppKit event model; Android requires an entirely
-different (Linux-kernel-but-not-glibc, Java/NDK-hosted) launch story.
-The only realistic "mobile" story for v1 is the existing wasm/WebGL2
-canvas path running inside a mobile browser — same artifact as the
-desktop-web target, not a separate mobile backend. §8's non-goals
-section states this plainly rather than implying mobile is one release
-away.
+The shared GL widget renderer runs on Linux, macOS, Windows and the web.
+On a phone, the wasm/WebGL2 host is the path for those same widgets.
+Native iOS has a separate, minimal UIKit control bridge: W creates labels,
+text fields and buttons, and receives callbacks through an ARM64 ABI
+adapter. The simulator smoke test exercises a UIKit button action, W
+state change, and UIKit label update. Physical-device deployment needs a
+matching signing identity, provisioning profile and entitlements; it has
+not been device-qualified. Native Android is not implemented.
 
 ## 2. Capability inventory: what `graphics/` gives you today
 
@@ -444,20 +453,17 @@ here as a stage-1 prerequisite, not an incidental nice-to-have.
   `window_cocoa.w:17`) — a real, not cosmetic, gap: no macOS widget can
   detect a click until this lands. Same missing-text-translation gap as
   X11 (`keyCode` is a raw HID scancode, not a character).
-- **Web (wasm/WebGL2)**: the *widest* snapshot today (7 fields,
-  `window_web.w:59`-`60`) but the *narrowest* actual event coverage —
-  `wasm_webgl.md`'s own Deferred section already states "Keyboard/mouse
-  callback events (state polling covers the demos; event callbacks are
-  D2-ready when wanted)" — meaning the plumbing (the D2 table-callback
-  contract) exists and is proven for the frame-callback use case, but
-  no keyboard/mouse *callback* is wired yet, only the polled snapshot.
-  No scroll wheel, no text input (`beforeinput`/`keydown` composition
-  events), no touch events at all.
-- **win64**: no backend, no input, full stop (§1).
-- **Mobile (no compile target)**: not applicable — see §1/§9. If the
-  wasm/WebGL2 path is ever run inside a mobile browser, the "web" row
-  above already covers it, but touch (as distinct from mouse) events
-  are entirely unaddressed in that row too.
+- **Web (wasm/WebGL2)**: the seven-field polling snapshot is retained,
+  with an event queue for keys, Unicode text, navigation, pointer edges,
+  pixel scrolling and cancellation. Pointer capture separates touch panning
+  from widget drags. A focused W editor declares its clipped rectangle and
+  stable id to a DOM textarea for software-keyboard and IME commits.
+  See [tools/web/README.md](../../tools/web/README.md) for the contract and
+  current selection/composition limitations.
+- **win64**: the Win32/WGL backend and input now ship (#463).
+- **Mobile**: the browser host now supplies touch/pointer input and a
+  software-keyboard bridge; native iOS has the separate UIKit surface
+  described in [ios.md](ios.md).
 
 **What a UI framework needs beyond today's polling model**, in priority
 order for forms specifically: (1) a real per-frame event queue instead
@@ -503,6 +509,10 @@ in the v1 widget list (§4) and cannot work without them.
    (§9), and a retained-mode evolution if stage 2's usage motivates it.
 
 ## 9. Non-goals for v1
+
+These are the original v1 boundaries, not the current support matrix.
+Mobile browser input, native iOS groundwork, TrueType fonts, multiline
+editing and Windows support have since advanced as recorded above.
 
 - **Native mobile app packaging** (iOS/Android). Not a compile target
   today (§1) and not proposed here; the wasm/WebGL2 web target running

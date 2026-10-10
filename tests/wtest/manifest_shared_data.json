@@ -1,0 +1,68 @@
+{
+	"targets": [
+		{
+			"name": "shared",
+			"data": [
+				"tests/wtest/shared.input",
+				"tests/wtest/shared_dir/"
+			],
+			"steps": [
+				{
+					"cmd": [
+						"true"
+					]
+				}
+			]
+		},
+		{
+			"name": "middle",
+			"deps": [
+				"shared"
+			],
+			"steps": [
+				{
+					"cmd": [
+						"true"
+					]
+				}
+			]
+		},
+		{
+			"name": "shard_a",
+			"deps": [
+				"shared"
+			],
+			"steps": [
+				{
+					"cmd": [
+						"true"
+					]
+				}
+			]
+		},
+		{
+			"name": "shard_b",
+			"deps": [
+				"shared",
+				"middle"
+			],
+			"steps": [
+				{
+					"cmd": [
+						"true"
+					]
+				}
+			]
+		},
+		{
+			"name": "unrelated",
+			"steps": [
+				{
+					"cmd": [
+						"true"
+					]
+				}
+			]
+		}
+	]
+}

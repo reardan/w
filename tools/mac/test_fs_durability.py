@@ -27,7 +27,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="fs_durability_", dir=ROOT / "bin") as scratch:
         work = Path(scratch)
         overlay = work / "imports"
-        relative = Path("lib/__arch__/arm64_darwin/syscalls.w")
+        relative = Path("lib/darwin/syscalls.w")
         source = (ROOT / relative).read_text()
         for original, replacement in [
             ("sys_fcntl(file, 51, 0)", "fs_fault_fullsync(file)"),

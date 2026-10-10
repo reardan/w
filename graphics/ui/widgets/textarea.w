@@ -232,7 +232,7 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
 		float32 px = cast(float32, ctx.input.press_x)
 		float32 py = cast(float32, ctx.input.press_y)
-		if (ui_rect_contains(area, px, py)):
+		if (ui_pointer_inside(ctx, area, px, py)):
 			ctx.focus = id
 			int line = cast(int, (py - view.y + st.scroll.offset_y) / line_h)
 			if (line < 0): line = 0
@@ -276,7 +276,8 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 			i = i + 1
 
 	# Keep the caret in view after typing or motion.
-	ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
+	if ((ctx.focus == id) && ((ctx.char_count > 0) || (ctx.nav_count > 0) || ctx.input.mouse_pressed)):
+		ui_scroll_reveal(&st.scroll, cast(float32, st.caret_line) * line_h, line_h)
 
 	ui_scroll_begin(ctx, view, &st.scroll)
 	ui_layout* lo = ui_layout_top(ctx)
@@ -320,4 +321,5 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		ui_render_rect(ctx.rndr, ui_rect_new(cx, cy, 2.0, line_h), ctx.theme.text)
 
 	ui_scroll_end(ctx, &st.scroll)
+	ui_text_input_declare(ctx, id, area, 1)
 	return changed

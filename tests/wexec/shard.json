@@ -1,0 +1,19 @@
+{
+  "targets": [
+    {"name":"prepare", "steps":[{"cmd":["echo","prepared"]}]},
+    {"name":"delta", "deps":["prepare"], "steps":[{"cmd":["echo","ran delta"]}]},
+    {"name":"beta", "deps":["prepare"], "steps":[{"cmd":["echo","ran beta"]}]},
+    {"name":"alpha", "deps":["prepare"], "steps":[{"cmd":["sleep","0.05"]},{"cmd":["echo","ran alpha"]}]},
+    {"name":"gamma", "deps":["prepare"], "steps":[{"cmd":["echo","ran gamma"]}]},
+    {"name":"empty", "steps":[]},
+    {"name":"nested", "deps":["gamma","alpha","empty"], "steps":[]},
+    {"name":"suite", "deps":["delta","nested","beta","alpha"]},
+    {"name":"cached", "inputs":["tests/wexec/shard.json"], "steps":[{"cmd":["echo","cacheable"]}]},
+    {"name":"fails", "steps":[{"cmd":["false"]}]},
+    {"name":"blocked", "deps":["fails"], "steps":[{"cmd":["echo","must not run"]}]},
+    {"name":"failure_suite", "deps":["blocked","delta"]},
+    {"name":"invalid_suite", "deps":["alpha","missing"]},
+    {"name":"invalid_steps", "steps":"invalid"},
+    {"name":"cycle", "deps":["cycle"]}
+  ]
+}

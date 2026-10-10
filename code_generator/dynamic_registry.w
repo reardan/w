@@ -4,9 +4,9 @@ c_lib / extern statements. The grammar fills it while parsing; the ELF
 writer (elf_dynamic.w) drains it at finish time to build .dynamic and the
 relocation tables.
 
-Entries are stored in word-sized slots (heap pointers and vaddrs both fit
-in the host word), indexed with save_i / load_i so the tables work whether
-the compiler itself runs as x86 or x64.
+Names are host pointers, stored at __word_size__ even when cross-compiling
+to a narrower target. GOT addresses use the target's word_size because
+they describe the emitted image, not the compiler's own heap.
 */
 import code_generator.code_emitter
 import code_generator.integer
@@ -42,8 +42,8 @@ char* dyn_import_lib
 
 void dyn_init():
 	if (dyn_lib_names == 0):
-		dyn_lib_names = cast(char*, malloc(dyn_max_libs * word_size))
-		dyn_import_names = cast(char*, malloc(dyn_max_imports * word_size))
+		dyn_lib_names = cast(char*, malloc(dyn_max_libs * __word_size__))
+		dyn_import_names = cast(char*, malloc(dyn_max_imports * __word_size__))
 		dyn_import_got = cast(char*, malloc(dyn_max_imports * word_size))
 		dyn_import_binding = cast(char*, malloc(dyn_max_imports * 4))
 		dyn_import_symtype = cast(char*, malloc(dyn_max_imports * 4))
@@ -105,19 +105,19 @@ int dyn_emit_import_slot():
 void dyn_add_lib(char* soname):
 	dyn_init()
 	if (dyn_lib_count >= dyn_max_libs): error(c"too many c_lib entries")
-	save_i(dyn_lib_names + dyn_lib_count * word_size, cast(int, strclone(soname)), word_size)
+	save_ptr(dyn_lib_names + dyn_lib_count * __word_size__, cast(int, strclone(soname)))
 	dyn_lib_count = dyn_lib_count + 1
 
 
 char* dyn_lib_name(int i):
-	return cast(char*, load_i(dyn_lib_names + i * word_size, word_size))
+	return cast(char*, load_ptr(dyn_lib_names + i * __word_size__))
 
 
 # Returns the import's index, which is also its .dynsym index minus one.
 int dyn_add_import(char* name, int got_vaddr):
 	dyn_init()
 	if (dyn_import_count >= dyn_max_imports): error(c"too many extern imports")
-	save_i(dyn_import_names + dyn_import_count * word_size, cast(int, strclone(name)), word_size)
+	save_ptr(dyn_import_names + dyn_import_count * __word_size__, cast(int, strclone(name)))
 	save_i(dyn_import_got + dyn_import_count * word_size, got_vaddr, word_size)
 	save_i(dyn_import_binding + dyn_import_count * 4, 1, 4)
 	save_i(dyn_import_symtype + dyn_import_count * 4, 2, 4)
@@ -155,7 +155,7 @@ int dyn_add_import_data(char* name, int copy_vaddr, int size, int weak):
 
 
 char* dyn_import_name(int i):
-	return cast(char*, load_i(dyn_import_names + i * word_size, word_size))
+	return cast(char*, load_ptr(dyn_import_names + i * __word_size__))
 
 
 int dyn_import_got_vaddr(int i):

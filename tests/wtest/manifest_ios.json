@@ -1,0 +1,12 @@
+{
+	"targets": [
+		{
+			"name": "ios_device_fixture",
+			"steps": [{"cmd": ["bin/wv2", "arm64_ios", "graphics/ios/demo.w", "-o", "bin/ios_device_fixture"]}]
+		},
+		{
+			"name": "ios_simulator_fixture",
+			"steps": [{"cmd": ["bin/wv2", "arm64_ios_sim", "graphics/ios/demo.w", "-o", "bin/ios_simulator_fixture"]}]
+		}
+	]
+}

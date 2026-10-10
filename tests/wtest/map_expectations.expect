@@ -528,3 +528,28 @@ expect ca_loner
 forbid ca_all
 forbid ca_outer
 forbid ca_blocked
+
+# Runtime fixtures inherited through shared build prerequisites must select
+# the shards that consume them, including a diamond-shaped dependency graph.
+case -f tests/wtest/manifest_shared_data.json tests/wtest/shared.input
+noorder
+expect shard_a
+expect shard_b
+forbid unrelated
+
+case -f tests/wtest/manifest_shared_data.json tests/wtest/shared_dir/new.input
+noorder
+expect shard_a
+expect shard_b
+forbid unrelated
+
+# AST fixture edits must run all consumers of the shared AST preparation.
+case tests/ast_expression_fixture.w
+expect ast_expression_test_0
+expect ast_expression_test_1
+expect ast_expression_test_2
+expect ast_expression_test_3
+expect ast_expression_test_4
+expect ast_expression_test_5
+expect ast_expression_test_6
+expect ast_expression_test_7

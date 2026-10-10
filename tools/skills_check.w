@@ -196,7 +196,7 @@ int main(int argc, int argv):
 	println(c"skills_check: OK")
 	return 0
 # wbuild: target=skills_test tag=tests dep=wv2 dep=skills_check data=AGENTS.md data=README.md data=.cursor/skills/w-arm64-qemu/SKILL.md data=.cursor/skills/w-c-import-debug/SKILL.md data=.cursor/skills/w-check-diagnostics/SKILL.md data=.cursor/skills/w-debug-wdbg/SKILL.md data=.cursor/skills/w-repl-explore/SKILL.md data=.cursor/skills/w-seed-update/SKILL.md data=.cursor/skills/w-select-tests/SKILL.md
-# wbuild: step="bin/wv2 --help" stdout_file=bin/skills_help_w.txt expect_stdout="usage: w [x64|arm64|arm64_darwin|win64|wasm]" expect_stdout="-h, --help"
+# wbuild: step="bin/wv2 --help" stdout_file=bin/skills_help_w.txt expect_stdout="usage: w [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm]" expect_stdout="-h, --help"
 # wbuild: step="bin/wv2 check --help" stdout_file=bin/skills_help_check.txt
 # wbuild: step="bin/wv2 deps --help" stdout_file=bin/skills_help_deps.txt
 # wbuild: step="bin/wv2 symbols --help" stdout_file=bin/skills_help_symbols.txt

@@ -57,6 +57,14 @@ Shipped from the next-steps backlog:
   count; `test_changed` uses the native selector/executor and reports unsupported
   targets. The native gate proves transitive selection and checks six targets.
 
+- **64-bit-host wasm cross-compilation** (2026-10-09, #464): dynamic
+  library/import names now retain host-width pointers when targeting wasm32.
+  Signed i32 constants are normalized before LEB emission, including positive
+  folded values with bit 31 set. This fixes a Darwin-host crash in
+  `ast_extern_function` and invalid wasm in the UI demo's `fexp2` function.
+  Registry/encoding tests run at both host widths, and the dynamic-import
+  cross-host test now compares wasm output too.
+
 - **Deterministic allocator churn diagnostics** (2026-10-09, #613):
   `malloc_churn_test` reports scan counts without wall-clock timings, keeping
   it in the optimization differential sweep without false stderr mismatches.

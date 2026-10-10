@@ -30,6 +30,7 @@ struct ui_input:
 	# it, so one wheel event does not scroll two nested regions.
 	int32 scroll_x
 	int32 scroll_y
+	int32 scroll_pixels_y # positive down; independent of wheel notches
 	int32 scroll_at_x      # pointer position when the wheel turned
 	int32 scroll_at_y
 	int32 mods             # gfx_mod bits on the most recent event
@@ -96,3 +97,10 @@ struct ui_context:
 	int32[4] scope_saved
 	int32[4] layer_saved
 	int32 bracket_depth
+	# Per-frame editable control declaration for soft-keyboard hosts.
+	int32 text_input_id
+	int32 text_input_scope
+	int32 text_input_multiline
+	ui_rect text_input_rect
+	ui_rect text_input_clip
+	int32 pointer_mode     # 1 while a widget owns a drag
