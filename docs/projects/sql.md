@@ -1,5 +1,8 @@
 # Basic SQL connectivity
 
+For parsing SQL or constructing parameterized queries without opening a
+connection, see [SQL parsing and query construction](sql_parsing.md).
+
 Issue [#495](https://github.com/reardan/w/issues/495) has an initial synchronous,
 Linux x64 implementation in `libs.standard.sql.client`. It uses each database's
 native client library, loaded on demand through `lib.dlcall`. Importing the module

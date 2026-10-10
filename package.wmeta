@@ -94,6 +94,8 @@ modules:
 	libs.extras.cache.redis
 	libs.extras.cache.memcached
 	libs.standard.sql.client
+	libs.standard.sql.parser
+	libs.standard.sql.builder
 	libs.standard.sql.common
 	libs.standard.sql.sqlite
 	libs.standard.sql.sqlite_native

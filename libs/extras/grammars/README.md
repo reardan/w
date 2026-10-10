@@ -48,6 +48,11 @@ when the grammar has one) before the generated module.
 
 ## What `sql.pg` covers
 
+For an importable parser with document ownership, diagnostics, AST traversal,
+and a parameterized query builder, see
+[SQL parsing and query construction](../../../docs/projects/sql_parsing.md).
+The runnable example is `examples/sql/parse_and_build.w` (`./wbuild sql_parse_example`).
+
 A syntax-only common subset (this grammar validates shape, not semantics
 — it doesn't know that `FOREIGN KEY` needs a matching table, for
 instance):
@@ -80,14 +85,14 @@ alternative — the same pattern `w.pg`/`c.pg` use throughout).
 
 ## Known limitations / next steps
 
-- Keywords are matched case-sensitively (uppercase, as in the examples
-  above) — the DSL's literal matcher does a plain case-sensitive prefix
-  match, so `select` won't lex as `KW_SELECT`. Fixing this needs either a
-  case-folding preprocessing pass or a dedicated case-insensitive literal
-  matcher in `libs/extras/parser_generator/lexer.w`.
-- `--` line comments and SQL `''` string escaping are supported via the
-  upstream `sql_line_comment` and `doubled_quote_string` matchers
-  (`skip LINE_COMMENT sql_line_comment`, `token STRING doubled_quote_string`).
+- Keywords match ASCII case-insensitively via inline token matchers, preserving
+  the original spelling. Longer names such as `selectivity` stay identifiers.
+- `--` line comments, `/* ... */` comments, SQL `''` string escaping, and `""`
+  quoted-identifier escaping are supported. String/identifier matchers require
+  closing quotes; the document API also diagnoses unterminated block comments.
+- Decimal/exponent numbers and `?`, `?1`, `$1`, `:1`, `:name` parameters are
+  supported. Parameter binding and schema validation are outside the parser.
+- Statements require semicolon separators; the final semicolon is optional.
 - No window functions (`OVER (...)`), CTEs (`WITH`), or dialect-specific
   extensions (T-SQL `[bracket]` identifiers, MySQL `` `backtick` ``
   identifiers, PostgreSQL `::type` casts, upserts).

@@ -27,6 +27,12 @@ native suite with the appropriate generated targets. `tests_darwin`
 works for its registered native targets; #608 adds a static native
 filesystem qualification target using that existing convention.
 
+The Linux-container fallback also needs a prerequisite check (2026-10-09,
+#493): this `w-dev` image has no `git`, so `parser_generator_w_test` cannot
+produce its tracked-source list, even though the host can. Report missing
+tools before launching the suite; allow a host-generated file list for this
+cross-host workflow instead of failing after unrelated tests have run.
+
 ## Diagnostics (`w check`)
 
 - **Compiler-directory test roots are silently replaced (2026-10-07).**
