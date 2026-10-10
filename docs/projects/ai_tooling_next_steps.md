@@ -1241,3 +1241,17 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   rename over the old one, which is safe while the old one runs. Also,
   `timeout=0` (no limit) is rejected by wbuildgen, so a long-running
   target has to spell out a large value such as `timeout=7200000`.
+
+
+## Explicit fixture front ends in the AST sweep (2026-10-09, #489)
+
+The post-rebase `ast_expression_suite` injected `--ast-full-expressions`
+into diagnostic fixtures explicitly selecting `# wfixture: --streaming`,
+so the compiler rejected conflicting flags before reaching their diagnostics.
+`wfixture` now preserves explicit `--streaming` and `--ast-*` selectors,
+matching the audit transform for direct compiler steps, and allocates argv
+for the flags actually emitted. Ordinary positive fixtures, including
+architecture-only selectors, still receive `--ast-required`. The deliberately
+invalid conditional-arm warning fixture explicitly selects permissive AST
+mode so its diagnostic fallback remains testable. Keep new mode-specific
+fixtures explicit; do not relax required mode for positive fixtures globally.
