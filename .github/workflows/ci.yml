@@ -14,8 +14,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Every leg bootstraps from the pinned seed (`./wbuild` downloads and
-# sha256-checks it) and runs an umbrella or benchmark target from the manifest.
+# Linux legs reuse a content-keyed seed/bootstrap cache (setup-w); later
+# fixpoint stages and tests still run on every job. Each leg runs an
+# umbrella or benchmark target from the manifest.
 # `./wbuild manifest_check` (part of `tests`) fails when a target belongs
 # to no umbrella, so a new target cannot silently fall out of CI.
 #
@@ -37,6 +38,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
 
       # Lookup calls, records visited and executable bytes are deterministic.
       # Keep wall time diagnostic: hosted runners do not provide a stable clock
@@ -89,6 +93,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
 
       - name: Install 32-bit runtime, Xvfb and Mesa
         run: |
@@ -159,6 +166,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
 
       - name: Install 32-bit runtime, Xvfb and Mesa
         run: |
@@ -245,6 +255,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
+
       - name: Install 32-bit runtime, Xvfb and Mesa
         run: |
           sudo dpkg --add-architecture i386
@@ -283,6 +296,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
+
       - name: Install qemu-user and the arm64 libc
         run: |
           sudo apt-get update
@@ -319,6 +335,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
+
       - name: Install wine
         run: |
           sudo apt-get update
@@ -350,6 +369,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
 
       # bin/wrun runs WASI modules on node's built-in WASI when wasmtime
       # is absent, and the host-import / WebGL stubs need node itself.
@@ -390,6 +412,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
 
       - name: Cross-compile the bootstrap and the darwin test binaries
         run: |

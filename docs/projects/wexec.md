@@ -228,7 +228,7 @@ deltas being the three new targets and `tests` gaining
 
 A target that declares `"inputs"` (files, or directory prefixes ending
 in `/` that are walked recursively with `lib/dir.w`) is cached by content
-hash: a 64-bit rolling hash over the serialized target definition, the
+hash: SHA-256 over the serialized target definition, the
 dependencies' cache keys and every input file's contents. After a
 successful run the key is stamped into `bin/.wexec_cache/<name>`; a
 later invocation whose key matches the stamp — and whose declared
@@ -241,6 +241,64 @@ cacheable (the dependency's fresh run may have changed anything), so
 an `"inputs": []` target caches purely on its definition and its
 dependencies' keys — that is how `build` and `verify` piggyback on
 `wv2`'s source hash. `--no-cache` forces every target to run.
+
+### GitHub Actions caching
+
+The Linux jobs in `.github/workflows/ci.yml` use the local composite action
+[setup-w](../../.github/actions/setup-w/action.yml) to persist two small
+caches between runs (issue #627):
+
+| Cache | Key inputs | Saved files |
+| --- | --- | --- |
+| Seed | Host OS/architecture and `SEEDS` | `w` |
+| Bootstrap | Host OS/architecture, Ubuntu release, seed pins, bootstrap scripts/manifest, compiler and executor source trees, action definition | `bin/wv2`, `bin/wexec`, and their two `.wexec_cache` stamps |
+
+The bootstrap source hash includes root-level `*.w` files, `compiler/`, `grammar/`,
+`code_generator/`, `lib/`, `structures/`, `libs/`, `debugger/`, `repl/`, and `tools/`.
+Keep this list aligned with the bootstrap's imports when moving modules.
+These are **content keys**, not commit IDs: a documentation or leaf-test
+edit can reuse the same bootstrap across commits and across Linux CI jobs.
+A compiler, executor, seed, or build-definition change gets a new key.
+The seed is cached independently so compiler edits do not repeat its download.
+Every restored seed is checked against `SEEDS`; a mismatch is removed so
+`wbuild` downloads and verifies the pinned binary again.
+
+Only exact bootstrap keys are used. There is no broad `restore-keys`
+fallback because `wbuild` executes the restored executor before refreshing
+it. `./wbuild wv2 wexec` always runs after restoration, checking the normal
+content stamps and output presence and rebuilding missing outputs.
+An absent or evicted cache simply takes the existing cold bootstrap path.
+
+Successful bootstrap preparation on `main` saves immediately, before the
+test workload. Pull requests (including forks) restore the base branch's
+caches but do not upload them. Concurrent jobs can prepare the same key;
+GitHub's immutable cache accepts one writer and the others keep running.
+Saving before tests also prevents test fixtures that alter `bin/` from
+entering the archive, and a later test failure does not lose the bootstrap.
+
+The action deliberately does not archive all of `bin/`: no test binaries,
+test-result or `verify` stamps, later self-host stages, generated manifests,
+coverage data, daemon state, or temporary files. Fixpoint stages, tests,
+coverage, and benchmarks still execute. Native Darwin keeps its artifact
+handoff; release builds and the required VM gate retain their existing
+bootstrap policies (the VM workflow separately caches its pinned kernel).
+
+The cache action logs whether each restore hit and `wexec` logs `(cached)`
+for reused targets. Inspect storage with `gh cache list` or the repository's
+Actions **Caches** page. To force a cold CI bootstrap, delete its
+`w-bootstrap-v1-...` entry; bump the action's key version when changing the
+archive contract. Cache availability is an optimization, not a prerequisite.
+
+This follows the separation of downloaded tools and build outputs used by
+[bazel-contrib/setup-bazel](https://github.com/bazel-contrib/setup-bazel),
+including its restore-only pull-request recommendation.
+[Bazel's remote caching documentation](https://bazel.build/remote/caching)
+describes the action-input/output model; W already supplies its own content
+stamps, so this integration needs no Bazel dependency or remote cache server.
+[GitHub's caching strategies](https://github.com/actions/cache/blob/main/caching-strategies.md)
+describe content keys, separate restore/save actions, and sharing one built
+tool between jobs; its [cache access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching#restrictions-for-accessing-a-cache)
+explain default/base-branch visibility and cache eviction.
 
 ## Parallelism
 
