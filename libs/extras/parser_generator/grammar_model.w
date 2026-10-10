@@ -143,10 +143,36 @@ int pg_grammar_mode_streaming():
 # tokens/skips are separate lists sharing the same element type: tokens
 # produce default-channel tokens, skips hidden-channel ones (see
 # pg_grammar_add_skip's negative kind numbering).
+# Stateful lexer metadata is separate from token definitions so literal,
+# token and skip declarations share one ordered command surface.
+struct pg_lexer_command:
+	char* name
+	char* argument
+
+
+struct pg_lexer_rule_config:
+	char* name
+	char* mode
+	char* guard
+	char* action
+	list[pg_lexer_command*] commands
+
+
+struct pg_goal_def:
+	char* rule_name
+	int goal
+
+
 struct pg_grammar:
 	char* name
 	char* start_rule
 	int mode
+	int stateful
+	int ordered_lexer
+	list[char*] lexer_modes
+	list[char*] lexer_order
+	list[pg_lexer_rule_config*] lexer_rules
+	list[pg_goal_def*] goals
 	list[pg_token_def*] tokens
 	list[pg_token_def*] skips
 	list[pg_fragment_def*] fragments
@@ -161,6 +187,13 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.name = strclone(name)
 	grammar.start_rule = 0
 	grammar.mode = pg_grammar_mode_ast()
+	grammar.stateful = 0
+	grammar.ordered_lexer = 0
+	grammar.lexer_modes = new list[char*]
+	grammar.lexer_modes.push(strclone(c"DEFAULT"))
+	grammar.lexer_order = new list[char*]
+	grammar.lexer_rules = new list[pg_lexer_rule_config*]
+	grammar.goals = new list[pg_goal_def*]
 	grammar.tokens = new list[pg_token_def*]
 	grammar.skips = new list[pg_token_def*]
 	grammar.fragments = new list[pg_fragment_def*]
@@ -282,6 +315,7 @@ pg_recover_def* pg_recover_def_new(char* rule_name, char* sync_token):
 pg_token_def* pg_grammar_add_token(pg_grammar* grammar, char* name, char* matcher):
 	pg_token_def* token = pg_token_def_new(name, matcher, grammar.tokens.length + grammar.literals.length + 1)
 	grammar.tokens.push(token)
+	grammar.lexer_order.push(strclone(name))
 	return token
 
 
@@ -289,6 +323,7 @@ pg_token_def* pg_grammar_add_token_expression(pg_grammar* grammar, char* name, p
 	pg_token_def* token = pg_token_def_new(name, 0, grammar.tokens.length + grammar.literals.length + 1)
 	token.expression = expression
 	grammar.tokens.push(token)
+	grammar.lexer_order.push(strclone(name))
 	return token
 
 
@@ -298,6 +333,7 @@ pg_token_def* pg_grammar_add_token_expression(pg_grammar* grammar, char* name, p
 pg_token_def* pg_grammar_add_skip(pg_grammar* grammar, char* name, char* matcher):
 	pg_token_def* token = pg_token_def_new(name, matcher, 0 - grammar.skips.length - 3)
 	grammar.skips.push(token)
+	grammar.lexer_order.push(strclone(name))
 	return token
 
 
@@ -305,6 +341,7 @@ pg_token_def* pg_grammar_add_skip_expression(pg_grammar* grammar, char* name, pg
 	pg_token_def* token = pg_token_def_new(name, 0, 0 - grammar.skips.length - 3)
 	token.expression = expression
 	grammar.skips.push(token)
+	grammar.lexer_order.push(strclone(name))
 	return token
 
 
@@ -317,6 +354,7 @@ pg_fragment_def* pg_grammar_add_fragment(pg_grammar* grammar, char* name, pg_mat
 pg_literal_def* pg_grammar_add_literal(pg_grammar* grammar, char* name, char* text):
 	pg_literal_def* literal = pg_literal_def_new(name, text, grammar.tokens.length + grammar.literals.length + 1)
 	grammar.literals.push(literal)
+	grammar.lexer_order.push(strclone(name))
 	return literal
 
 
@@ -506,6 +544,26 @@ void pg_grammar_free(pg_grammar* grammar):
 	while (i < grammar.imports.length):
 		free(grammar.imports[i])
 		i = i + 1
+	for char* entry in grammar.lexer_modes: free(entry)
+	for char* entry in grammar.lexer_order: free(entry)
+	for pg_lexer_rule_config* config in grammar.lexer_rules:
+		free(config.name)
+		free(config.mode)
+		if (config.guard != 0): free(config.guard)
+		if (config.action != 0): free(config.action)
+		for pg_lexer_command* command in config.commands:
+			free(command.name)
+			free(command.argument)
+			free(command)
+		list_free[pg_lexer_command*](config.commands)
+		free(config)
+	for pg_goal_def* goal in grammar.goals:
+		free(goal.rule_name)
+		free(goal)
+	list_free[char*](grammar.lexer_modes)
+	list_free[char*](grammar.lexer_order)
+	list_free[pg_lexer_rule_config*](grammar.lexer_rules)
+	list_free[pg_goal_def*](grammar.goals)
 	free(grammar.name)
 	if (grammar.start_rule != 0): free(grammar.start_rule)
 	list_free[pg_token_def*](grammar.tokens)
@@ -516,3 +574,28 @@ void pg_grammar_free(pg_grammar* grammar):
 	list_free[pg_recover_def*](grammar.recovers)
 	list_free[char*](grammar.imports)
 	free(grammar)
+
+
+pg_lexer_rule_config* pg_grammar_lexer_config(pg_grammar* grammar, char* name):
+	for pg_lexer_rule_config* config in grammar.lexer_rules:
+		if (strcmp(config.name, name) == 0): return config
+	pg_lexer_rule_config* config = new pg_lexer_rule_config()
+	config.name = strclone(name)
+	config.mode = strclone(c"DEFAULT")
+	config.guard = 0
+	config.action = 0
+	config.commands = new list[pg_lexer_command*]
+	grammar.lexer_rules.push(config)
+	return config
+
+
+int pg_grammar_lexer_mode(pg_grammar* grammar, char* name):
+	for i in range(grammar.lexer_modes.length):
+		if (strcmp(grammar.lexer_modes[i], name) == 0): return i
+	return -1
+
+
+int pg_grammar_rule_goal(pg_grammar* grammar, char* name):
+	for pg_goal_def* goal in grammar.goals:
+		if (strcmp(goal.rule_name, name) == 0): return goal.goal
+	return -1

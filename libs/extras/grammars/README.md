@@ -10,6 +10,9 @@ examples.
 
 ## Layout
 
+- `javascript.pg` — an explicitly adapted grammar with stateful lexical goals,
+  template modes, and Unicode-aware matchers. See
+  [JavaScript APIs, examples, and compatibility boundaries](../../../docs/projects/javascript.md).
 - `sql.pg`, `json.pg`, `csv.pg`, `abnf.pg`, `dot.pg`, `graphql.pg` —
   grammar sources. `sql.pg` is hand-written; the others are
   machine-translated from ANTLR4 by `tools/antlr_to_pg.w` (see

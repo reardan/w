@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/jonschlinkert/is-number",
+  "commit": "98e8ff1da1a89f93d1397a24d7413ed15421c139",
+  "version": "7.0.0",
+  "files": [
+    {
+      "path": "index.js",
+      "sha256": "04255e482e181687823a95b207802ddd32e746c65dce4c95a5176fc192735960",
+      "url": "https://raw.githubusercontent.com/jonschlinkert/is-number/98e8ff1da1a89f93d1397a24d7413ed15421c139/index.js"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "35bdd8a44339719441900fb50fbefc5e2dca1ca662cbaed7a687de842c8b70f2",
+      "url": "https://raw.githubusercontent.com/jonschlinkert/is-number/98e8ff1da1a89f93d1397a24d7413ed15421c139/LICENSE"
+    }
+  ]
+}

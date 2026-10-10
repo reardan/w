@@ -94,3 +94,11 @@ void pg_diagnostics_free(pg_diagnostics* diagnostics):
 	# compiler/type_table.w uses for type_table_truncate().
 	__w_list_free(cast(__w_list*, diagnostics.items))
 	free(diagnostics)
+
+
+# Discard branch-local messages when speculative parsing rolls back.
+void pg_diagnostics_truncate(pg_diagnostics* diagnostics, int count):
+	if (diagnostics == 0): return
+	if (count < 0): count = 0
+	while (diagnostics.items.length > count):
+		pg_diagnostic_free(diagnostics.items.pop())

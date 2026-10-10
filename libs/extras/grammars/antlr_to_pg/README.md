@@ -27,9 +27,9 @@ grammars describe the two formats involved, run through
 - `antlr4_matchers.w` — two custom pg lexer matchers `antlr4.pg` needs
   that `libs/extras/parser_generator/lexer.w` doesn't provide: a `[...]`
   character-class matcher and a balanced `{...}` block matcher (the
-  latter also swallows options{}/tokens{}/channels{}/@header{} bodies and
-  rule-body actions/predicates as a single hidden token, so the grammar
-  itself never has to special-case them). `antlr4.pg` imports it.
+  latter retains options{}/tokens{}/channels{}/@header{} bodies and
+  rule-body actions/predicates as visible tokens, with comments and quoted
+  braces handled while balancing). `antlr4.pg` imports it.
 - `types.w`, `ast.w`, `charsets.w`, `classify.w`, `emit.w` — the
   translator: walks the `pg_ast_node` tree `antlr4.pg`'s generated parser
   produces for an input `.g4` file, reconstructs a Rule/Alt/Element model
@@ -113,8 +113,8 @@ parser (the sweep script concatenates them in that order). Refuse (report UNRECO
 - recursive fragment references, except two special-cased shapes:
   nested delimiters (`D F D | OPEN .*? CLOSE`, Lua/CMake/Rust raw strings)
   and direct self-nested block comments (`'/*' (SELF | .)* '*/'`)
-- actions/predicates, `mode`/`pushMode`/`popMode`/`more` commands
-  (`type` is allowed; the token-id remap is ignored)
+- `mode`/`pushMode`/`popMode`/`more` commands
+  (`type` is allowed in best-effort mode; strict mode rejects ignored remaps)
 
 Parser `.` maps to a shared `PG_ANY` token (`any` matcher). Simple parser
 `~[...]` / `~('a'|'b')` become synthetic `PG_NEGSET_N` tokens with
@@ -150,3 +150,37 @@ compile every result with `bin/wv2`, to find both the classifier's real
 coverage on a large, varied corpus and translator bugs a handful of
 hand-picked samples wouldn't exercise. See `SWEEP_RESULTS.md` for the
 numbers, the bugs it found, and next steps.
+
+## Semantic preservation and strict imports
+
+`--strict` refuses translation before publishing parser or matcher files when
+semantic audit or lowering reports a loss. `--audit FILE` saves deterministic
+source-located diagnostics separately from the legacy lowering report; losses
+are always printed to stderr, including best-effort runs. Strict mode also runs
+the shared ParserGenerator grammar safety check on its emitted model. Direct
+and indirect nullable-prefix recursion and zero-consumption repetitions are
+refused in both modes because running the generated parser could hang.
+
+The source model now preserves exact action/predicate/option text and spans,
+ordered alternative sites with atom positions, labels, greedy/non-greedy
+suffixes, grammar dependency/header blocks, lexer mode membership, and ordered
+commands including arguments. `at_rule.command` remains only a legacy summary;
+new consumers must use `commands`. Semantic site spans borrow tokens from the
+ANTLR input tree, whose lifetime must enclose the model. Collection copies raw
+text from `g_at_source`; set it before `at_collect_rules`.
+
+Unmapped host code, dependency blocks (`tokenVocab`/`superClass` included),
+mode operations, remaps, non-hidden channels, non-greedy suffixes, Unicode
+escapes/properties, and associativity options are strict blockers. No foreign
+code is executed. This is a conservative blocker check, not an ECMAScript
+conformance guarantee or a general ANTLR action translator. Heuristic built-in
+matcher substitutions and undeclared implicit whitespace are strict blockers.
+Literal rules declared after a nonliteral matcher are also strict blockers
+until their priority/overlap relationship has a reviewed adaptation;
+use the JS-specific provider/grammar for JavaScript compatibility work.
+
+`./wbuild antlr_to_pg_strict_test` checks model preservation, malformed host
+blocks, recursion/nullable loops, source hashes, deterministic JS blocker output,
+and CLI failure atomicity. The existing JSON/CSV `.pg`, `.report`, and matcher
+goldens remain byte-identical. See `testdata/antlr/javascript/README.md` for
+pinned upstream provenance and the adaptation audit.

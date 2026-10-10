@@ -23,6 +23,17 @@ int at_is_pg_reserved(char* name):
 		return 1
 	if (strcmp(name, c"recover") == 0):
 		return 1
+	if (strcmp(name, c"mode") == 0): return 1
+	if (strcmp(name, c"import") == 0): return 1
+	if (strcmp(name, c"fragment") == 0): return 1
+	if (strcmp(name, c"lexer") == 0): return 1
+	if (strcmp(name, c"lexer_mode") == 0): return 1
+	if (strcmp(name, c"lexer_rule") == 0): return 1
+	if (strcmp(name, c"lexer_guard") == 0): return 1
+	if (strcmp(name, c"lexer_action") == 0): return 1
+	if (strcmp(name, c"lexer_command") == 0): return 1
+	if (strcmp(name, c"lexer_priority") == 0): return 1
+	if (strcmp(name, c"goal") == 0): return 1
 	return 0
 
 
