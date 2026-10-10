@@ -49,6 +49,9 @@ struct ui_scroll_state:
 	float32 content_h
 	# The widget id owning a thumb drag, 0 when none.
 	int32 drag_id
+	int32 text_input_before
+	int32 previous_focus
+	float32 previous_view_h
 	float32 drag_grab_y
 
 
@@ -63,6 +66,9 @@ void ui_scroll_init(ui_scroll_state* st):
 	st.content_h = 0.0
 	st.drag_id = 0
 	st.drag_grab_y = 0.0
+	st.text_input_before = 0
+	st.previous_focus = 0
+	st.previous_view_h = 0.0
 
 
 # How far the content can scroll before its bottom reaches the
@@ -104,6 +110,7 @@ void ui_scroll_reveal(ui_scroll_state* st, float32 top, float32 height):
 # region shifted up by the current offset, so content coordinates run
 # from the region's origin regardless of scroll position.
 void ui_scroll_begin(ui_context* ctx, ui_rect area, ui_scroll_state* st):
+	st.text_input_before = ctx.text_input_id
 	st.view_x = area.x
 	st.view_y = area.y
 	st.view_w = area.w
@@ -117,6 +124,7 @@ void ui_scroll_begin(ui_context* ctx, ui_rect area, ui_scroll_state* st):
 # thumb when the content overflows.
 void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 	ui_rect area = ui_rect_new(st.view_x, st.view_y, st.view_w, st.view_h)
+	ui_rect visible = ui_rect_intersect(area, ui_clip_current(ctx.rndr))
 	ui_rect content = ui_region_content(ctx)
 	st.content_w = content.w
 	st.content_h = content.h
@@ -125,12 +133,27 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 
 	# The wheel belongs to the region under the pointer, and is claimed
 	# so one notch never scrolls two nested regions.
-	if (ctx.input.scroll_y != 0):
-		if (ui_rect_contains(area, cast(float32, ctx.input.scroll_at_x), cast(float32, ctx.input.scroll_at_y))):
+	if (((ctx.input.scroll_y != 0) || (ctx.input.scroll_pixels_y != 0)) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
+		if (ui_rect_contains(visible, cast(float32, ctx.input.scroll_at_x), cast(float32, ctx.input.scroll_at_y))):
 			if (ui_scroll_overflows(st)):
 				st.offset_y = st.offset_y - cast(float32, ctx.input.scroll_y * ui_scroll_notch)
+				st.offset_y = st.offset_y + cast(float32, ctx.input.scroll_pixels_y)
 				ctx.input.scroll_y = 0
+				ctx.input.scroll_pixels_y = 0
 	ui_scroll_clamp(st)
+
+	# Reveal a focused editor when a software keyboard shrinks the viewport,
+	# or when focus changes. Ordinary scrolling must not snap to the caret.
+	if ((ctx.text_input_id != 0) && (ctx.text_input_id != st.text_input_before) && (ctx.text_input_id == ctx.focus)):
+		if ((ctx.focus != st.previous_focus) || (st.view_h != st.previous_view_h)):
+			ui_rect field = ctx.text_input_rect
+			float32 old_offset = st.offset_y
+			float32 reveal_h = field.h
+			if (reveal_h > st.view_h): reveal_h = st.view_h
+			ui_scroll_reveal(st, field.y - area.y + st.offset_y, reveal_h)
+			ctx.text_input_rect.y = field.y - (st.offset_y - old_offset)
+	st.previous_focus = ctx.focus
+	st.previous_view_h = st.view_h
 
 	# The thumb's id is taken whether or not there is a thumb. Widget ids
 	# are sequential in call order, so allocating it only on the overflow
@@ -157,17 +180,23 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 	if (max > 0.0): thumb_y = area.y + travel * (st.offset_y / max)
 	ui_rect thumb = ui_rect_new(track_x, thumb_y, bar_w, thumb_h)
 
+	# A canceled/released press, a fresh gesture or an inert scope ends
+	# the previous drag even if its widget could not process that frame.
+	if (ctx.input.mouse_pressed || (ctx.input.mouse_down == 0) || ctx.disabled || ui_scope_blocked(ctx)):
+		st.drag_id = 0
+
 	# Dragging the thumb, on the same press/active model as every other
 	# widget — but tracked on the scroll state, since a viewport is not
 	# issued through ui_layout_next and has no widget id of its own.
 	if (ctx.disabled == 0):
 		if (ui_scope_blocked(ctx) == 0):
 			if (ctx.input.mouse_pressed):
-				if (ui_rect_contains(thumb, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+				if (ui_rect_contains(ui_rect_intersect(thumb, visible), cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 					st.drag_id = id
 					st.drag_grab_y = cast(float32, ctx.input.press_y) - thumb_y
 			if (st.drag_id == id):
 				if (ctx.input.mouse_down):
+					ctx.pointer_mode = 1
 					if (travel > 0.0):
 						float32 want = cast(float32, ctx.input.mouse_y) - st.drag_grab_y - area.y
 						st.offset_y = max * (want / travel)

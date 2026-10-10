@@ -8,7 +8,7 @@ globals below, then redirects lib's exit() to __w_profile_exit. Every
 exit of the program — _main's exit(main(...)) and direct exit() calls —
 therefore reaches __w_profile_flush: when $W_PROFILE_OUT is set, it
 appends one "index count\n" line per nonzero counter to that file, each
-line in one write(2) on an O_APPEND descriptor so concurrent processes
+batch of complete lines in one write(2) on an O_APPEND descriptor so concurrent processes
 (a test suite, a parallel build) interleave whole lines, never bytes.
 bin/wprof merges these dumps with the compiler's .wprofmap sidecar.
 
@@ -44,7 +44,7 @@ int __w_profile_format_counter(char* p, char* out):
 	limb[1] = (lo >> 16) & 65535
 	limb[2] = hi & 65535
 	limb[3] = (hi >> 16) & 65535
-	char* digits = cast(char*, malloc(24))
+	char[24] digits
 	int n = 0
 	int nonzero = 1
 	while (nonzero):
@@ -65,7 +65,6 @@ int __w_profile_format_counter(char* p, char* out):
 	while (k < n):
 		out[k] = digits[n - 1 - k]
 		k = k + 1
-	free(digits)
 	return n
 
 
@@ -92,6 +91,9 @@ void __w_profile_flush():
 	while (b < bytes):
 		snapshot[b] = __w_profile_counters[b]
 		b = b + 1
+	# Keep complete records together; each append is at most PIPE_BUF.
+	char* buffer = cast(char*, malloc(4096))
+	int used = 0
 	char* line = cast(char*, malloc(64))
 	int i = 0
 	while (i < __w_profile_count):
@@ -109,8 +111,21 @@ void __w_profile_flush():
 			n = n + __w_profile_format_counter(counter, line + n)
 			line[n] = 10
 			n = n + 1
-			write(fd, line, n)
+			if (used + n > 4096):
+				# Do not retry a short append: another writer could interleave
+				# its rows between the two halves of our partial record.
+				if (write(fd, buffer, used) != used):
+					used = 0
+					break
+				used = 0
+			k = 0
+			while (k < n):
+				buffer[used + k] = line[k]
+				k = k + 1
+			used = used + n
 		i = i + 1
+	if (used > 0): write(fd, buffer, used)
+	free(buffer)
 	free(line)
 	free(snapshot)
 	close(fd)

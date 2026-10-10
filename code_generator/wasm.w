@@ -298,6 +298,11 @@ void wasm_op(int opcode):
 
 # i32.const with a canonical signed-LEB immediate (plain constants).
 void wasm_i32_const(int v):
+	# Folded bit patterns can be positive 0x80000000..0xffffffff on a
+	# 64-bit host. Sign-extend the target i32 before signed LEB emission;
+	# otherwise the fifth byte has invalid unused bits (e.g. fexp2).
+	int shift = (__word_size__ - 4) * 8
+	v = (v << shift) >> shift
 	emit_int8(0x41)
 	while (1):
 		int b = v & 0x7f

@@ -74,7 +74,10 @@ char* import_resolve_arch(char* path):
 				else if (target_os == 2): arch = c"win64"
 				else if (target_isa == 1):
 					arch = c"arm64"
-					if (target_os == 1): arch = c"arm64_darwin"
+					if (target_os == 1):
+						arch = c"arm64_darwin"
+						if (target_apple_platform == 2): arch = c"arm64_ios"
+						if (target_apple_platform == 7): arch = c"arm64_ios_sim"
 				else if (word_size == 8): arch = c"x64"
 				# Room for the original path plus the inserted "/<arch>" and
 				# the terminator; the allocation is sized from strlen(arch),

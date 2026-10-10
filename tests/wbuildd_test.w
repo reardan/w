@@ -28,6 +28,9 @@ run cannot leave it behind.
 */
 # wbuild: tool=tools/wbuildd.w
 # wbuild: tool=tools/test_map.w
+# wbuild: tool=tools/wexec_main.w
+# The daemon exits when bin/wexec is replaced. Finish that build before
+# starting it, including when a shard schedules wexec independently.
 import lib.testing
 import lib.process
 import lib.file
@@ -158,6 +161,8 @@ void wbt_report(char* what, char* label, char* want, char* got):
 	println(want)
 	println(c"--- daemon:")
 	println(got)
+	println(c"--- daemon log:")
+	println(file_read_text(wbt_path(c"log")))
 
 
 # stderr minus bin/wtest's import-closure cache progress lines ("wtest:

@@ -17,6 +17,8 @@ historical format, plus one "Summary:" line before "All tests passed!"):
                                matches no test fails the run (a typo
                                must not pass silently). The argv form
                                wins over the environment.
+  --shard I/N                  run definition indices congruent to I modulo N
+  --shard=I/N                  (zero-based, before filtering). Empty shards fail.
   --list                       print the test names (after filtering),
                                one per line, and run nothing.
   W_TEST_LEAKS=1               leak check: run under the guard-page debug
@@ -28,7 +30,7 @@ historical format, plus one "Summary:" line before "All tests passed!"):
                                (overflow/use-after-free trapping, no leak
                                verdict).
 
-Arguments other than --filter/--list are left alone, so tests that read
+Arguments other than --filter/--shard/--list are left alone, so tests that read
 their own argv (x25519_test's --iterated-1000) keep working.
 */
 import lib.lib
@@ -62,6 +64,9 @@ void __w_test_main();
 
 
 char* testing_filter        # comma-separated substrings, 0 = run all
+int testing_shard_count     # 0 = unsharded; positive N from --shard I/N
+int testing_shard_index     # zero-based I
+int testing_test_index      # definition ordinal, including filtered tests
 int testing_list_only       # --list: print names, run nothing
 int testing_leak_check      # W_TEST_LEAKS: per-test leak verdicts
 int testing_passed
@@ -89,6 +94,30 @@ int testing_has_prefix(char* s, char* prefix):
 	while (prefix[i] != 0):
 		if (s[i] != prefix[i]): return 0
 		i = i + 1
+	return 1
+
+
+# Parse strictly, with the same limit on every target. Do not let overflowing
+# shard counts wrap into a valid selection on 32-bit hosts.
+int testing_parse_shard(char* value):
+	int[2] parts
+	int pos = 0
+	for part in range(2):
+		int start = pos
+		int number = 0
+		while (value[pos] >= '0' && value[pos] <= '9'):
+			int digit = value[pos] - '0'
+			if (number > 214748364 || (number == 214748364 && digit > 7)): return 0
+			number = number * 10 + digit
+			pos = pos + 1
+		if (pos == start): return 0
+		parts[part] = number
+		if (part == 0):
+			if (value[pos] != '/'): return 0
+			pos = pos + 1
+	if (value[pos] != 0 || parts[1] == 0 || parts[0] >= parts[1]): return 0
+	testing_shard_index = parts[0]
+	testing_shard_count = parts[1]
 	return 1
 
 
@@ -166,6 +195,11 @@ void testing_note_leaker(char* name):
 
 # Called by the synthesized __w_test_main for each discovered test.
 void __w_run_tests(char* name, int fn):
+	int index = testing_test_index
+	testing_test_index = testing_test_index + 1
+	if (testing_shard_count > 0 && index % testing_shard_count != testing_shard_index):
+		testing_skipped = testing_skipped + 1
+		return
 	if (testing_selected(name) == 0):
 		testing_skipped = testing_skipped + 1
 		return
@@ -203,7 +237,7 @@ void execute_tests():
 	__w_test_main()
 
 
-# Reads --filter/--list from argv and W_TEST_FILTER/W_TEST_LEAKS from the
+# Reads --filter/--shard/--list from argv and W_TEST_FILTER/W_TEST_LEAKS from the
 # environment. argv is the kernel's word-sized char* vector.
 void testing_configure(int argc, int argv):
 	char* env_filter = env_get(c"W_TEST_FILTER")
@@ -220,6 +254,17 @@ void testing_configure(int argc, int argv):
 			i = i + 1
 			testing_filter = env_entry_at(args, i)
 		elif (testing_has_prefix(a, c"--filter=")): testing_filter = &a[9]
+		elif (strcmp(a, c"--shard") == 0 || testing_has_prefix(a, c"--shard=")):
+			char* value = &a[8]
+			if (strcmp(a, c"--shard") == 0):
+				if (i + 1 >= argc):
+					println2(c"--shard requires I/N (zero-based index, positive count)")
+					exit(2)
+				i = i + 1
+				value = env_entry_at(args, i)
+			if (testing_parse_shard(value) == 0):
+				println2(c"--shard requires I/N with 0 <= I < N <= 2147483647")
+				exit(2)
 		i = i + 1
 	char* leaks = env_get(c"W_TEST_LEAKS")
 	if ((leaks != 0) && (leaks[0] != 0) && (strcmp(leaks, c"0") != 0)):
@@ -244,6 +289,12 @@ void testing_print_summary():
 		print(c" (filter '")
 		print(testing_filter)
 		print(c"')")
+	if (testing_shard_count > 0):
+		print(c" [shard ")
+		print(itoa(testing_shard_index))
+		print(c"/")
+		print(itoa(testing_shard_count))
+		print(c"]")
 	if (testing_leak_check): print(c" [leak check]")
 	println(c"")
 	if (testing_leakers != 0):
@@ -273,6 +324,9 @@ int main(int argc, int argv):
 	assert_failure_hook = testing_assertion_failed
 	execute_tests()
 	if (testing_list_only):
+		if (testing_shard_count > 0 && testing_passed == 0):
+			println2(c"Tests FAILED: the shard selected no test (after filtering).")
+			return 1
 		if ((testing_filter != 0) && (testing_passed == 0)):
 			println2(c"Tests FAILED: the filter matched no test.")
 			return 1
@@ -281,6 +335,9 @@ int main(int argc, int argv):
 	testing_print_summary()
 	if (testing_leaked > 0):
 		println(c"Tests FAILED: leak check.")
+		return 1
+	if (testing_shard_count > 0 && testing_passed == 0):
+		println(c"Tests FAILED: the shard selected no test (after filtering).")
 		return 1
 	if ((testing_filter != 0) && (testing_passed == 0)):
 		println(c"Tests FAILED: the filter matched no test.")

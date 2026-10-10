@@ -90,10 +90,12 @@ void ui_split(ui_context* ctx, ui_rect area, int vertical, ui_split_state* st, u
 	# on its state.
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
+	if (ctx.input.mouse_pressed || (ctx.input.mouse_down == 0) || ctx.disabled || ui_scope_blocked(ctx)):
+		st.drag_id = 0
 	if (ctx.disabled == 0):
 		if (ui_scope_blocked(ctx) == 0):
 			if (ctx.input.mouse_pressed):
-				if (ui_rect_contains(divider, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+				if (ui_pointer_inside(ctx, divider, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 					st.drag_id = id
 					# Remember where inside the handle the press landed, so
 					# the divider does not jump to centre itself under the
@@ -102,6 +104,7 @@ void ui_split(ui_context* ctx, ui_rect area, int vertical, ui_split_state* st, u
 					else: st.drag_grab = cast(float32, ctx.input.press_y) - divider.y
 			if (st.drag_id == id):
 				if (ctx.input.mouse_down):
+					ctx.pointer_mode = 1
 					float32 want = cast(float32, ctx.input.mouse_y) - area.y - st.drag_grab
 					if (vertical): want = cast(float32, ctx.input.mouse_x) - area.x - st.drag_grab
 					if (want < min_pos): want = min_pos

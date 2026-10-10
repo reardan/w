@@ -23,6 +23,9 @@
 //             pollState() -> { width, height, shouldClose, mouseX,
 //                              mouseY, mouseButtons, lastKeycode },
 //             setFrameCallback(tableIndex),
+//             textInput(active, multiline, x, y, width, height, focusId),
+//             pointerMode(mode), pixelRatio() -> number,
+//               (optional mobile input and logical-pixel drawing support),
 //             nextEvent() -> { kind, code, x, y, mods } | null
 //               (optional: the input event queue; kind numbers mirror
 //               graphics/event.w's gfx_event_kind, mods its gfx_mod
@@ -76,7 +79,10 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
 
   const env = {
     // ------------------------------ core GL ------------------------------
-    glViewport: (x, y, w, h) => gl.viewport(x, y, w, h),
+    glViewport: (x, y, w, h) => {
+      const ratio = host.pixelRatio?.() ?? 1;
+      gl.viewport(Math.round(x * ratio), Math.round(y * ratio), Math.round(w * ratio), Math.round(h * ratio));
+    },
     glClearColor: (r, g, b, a) => gl.clearColor(r, g, b, a),
     glClear: (mask) => gl.clear(mask),
     glEnable: (cap) => gl.enable(cap),
@@ -131,7 +137,10 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       gl.vertexAttribPointer(index, size, type, !!normalized, stride, offset),
     glDrawArrays: (mode, first, count) => gl.drawArrays(mode, first, count),
     glDrawElements: (mode, count, type, offset) => gl.drawElements(mode, count, type, offset),
-    glScissor: (x, y, w, h) => gl.scissor(x, y, w, h),
+    glScissor: (x, y, w, h) => {
+      const ratio = host.pixelRatio?.() ?? 1;
+      gl.scissor(Math.round(x * ratio), Math.round(y * ratio), Math.round(w * ratio), Math.round(h * ratio));
+    },
     glBufferSubData: (target, offset, size, ptr) =>
       gl.bufferSubData(target, offset, new Uint8Array(memory().buffer, ptr, size)),
 
@@ -242,6 +251,9 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
       dv.setInt32(ptr + 20, s.mouseButtons, true);
       dv.setInt32(ptr + 24, s.lastKeycode, true);
     },
+    gfx_host_text_input: (active, multiline, x, y, width, height, focusId) =>
+      host.textInput?.(active, multiline, x, y, width, height, focusId),
+    gfx_host_pointer_mode: mode => host.pointerMode?.(mode),
     gfx_host_set_frame_callback: (tableIndex) => host.setFrameCallback(tableIndex),
     gfx_host_next_event: (ptr) => {
       const e = host.nextEvent ? host.nextEvent() : null;
