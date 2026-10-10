@@ -20,7 +20,8 @@ Gated on openssl being on PATH: without it, prints the same "openssl
 interop OK (skipped: ...)" message the shell runner used to, and exits 0,
 so the manifest entry stays safe on minimal machines.
 
-Two real handshakes against the installed openssl:
+Eighteen real handshakes: three TLS 1.3 cipher suites times X25519,
+direct P-256, and P-256 via HelloRetryRequest, in both roles:
   1. client direction: spawn `openssl s_server -rev`, tls_connect to it,
      write a line, read the reversed echo.
   2. server direction: listen, spawn `openssl s_client`, tls_accept the
@@ -49,6 +50,11 @@ import structures.string
 import libs.standard.net.tls
 import lib.dir
 import lib.ci_skip
+
+
+int osl_group(int mode):
+	if (mode == 0): return TLS_GROUP_X25519
+	return TLS_GROUP_SECP256R1
 
 
 int osl_io_timeout_ms():
@@ -107,11 +113,11 @@ int osl_connect_retry(int port):
 
 
 # Direction 1: our tls_connect client against `openssl s_server -rev`.
-int osl_client_direction(char* openssl_bin, char* cert, char* key):
+int osl_client_direction(char* openssl_bin, char* cert, char* key, int suite, char* suite_name, int mode):
 	int port = osl_free_port()
 	if (port <= 0): return osl_fail(0, c"client: no free port", 0)
 
-	char** sargv = strv_new(12)
+	char** sargv = strv_new(16)
 	strv_set(sargv, 0, c"openssl")
 	strv_set(sargv, 1, c"s_server")
 	strv_set(sargv, 2, c"-accept")
@@ -124,6 +130,11 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	strv_set(sargv, 9, c"1")
 	strv_set(sargv, 10, c"-rev")
 	strv_set(sargv, 11, c"-quiet")
+	strv_set(sargv, 12, c"-ciphersuites")
+	strv_set(sargv, 13, suite_name)
+	strv_set(sargv, 14, c"-groups")
+	strv_set(sargv, 15, c"X25519")
+	if (mode != 0): strv_set(sargv, 15, c"P-256")
 
 	spawn_options* opts = spawn_options_new()
 	opts.stdin_mode = process_pipe
@@ -141,12 +152,18 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 
 	tls_config* cfg = tls_config_new()
 	cfg.trust_store_path = cert   # explicitly trust this throwaway CA only
+	if (mode == 1): cfg.key_share_group = TLS_GROUP_SECP256R1
 	tls_conn* conn = tls_connect(fd, c"localhost", cfg)
 	if (conn == 0):
 		int r = osl_fail(p, c"client: tls_connect failed", tls_last_error(cfg))
 		tls_config_free(cfg)
 		close(fd)
 		return r
+	if (conn.cipher_suite != suite || conn.retry_seen != cast(int, mode == 2) || conn.key_group != osl_group(mode)):
+		tls_close(conn)
+		tls_config_free(cfg)
+		close(fd)
+		return osl_fail(p, c"client: wrong negotiation", 0)
 	char* ping = c"ping\x0a"
 	if (tls_write(conn, ping, strlen(ping)) != strlen(ping)):
 		tls_close(conn)
@@ -170,7 +187,7 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 
 
 # Direction 2: our tls_accept server against `openssl s_client`.
-int osl_server_direction(char* openssl_bin, char* cert, char* key):
+int osl_server_direction(char* openssl_bin, char* cert, char* key, int suite, char* suite_name, int mode):
 	int lfd = socket_tcp_ipv4()
 	if (lfd < 0): return osl_fail(0, c"server: socket failed", 0)
 	socket_set_reuseaddr(lfd)
@@ -186,7 +203,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	# SO_RCVTIMEO on a listening socket bounds accept() as well.
 	socket_set_recv_timeout(lfd, osl_io_timeout_ms())
 
-	char** sargv = strv_new(7)
+	char** sargv = strv_new(11)
 	strv_set(sargv, 0, c"openssl")
 	strv_set(sargv, 1, c"s_client")
 	strv_set(sargv, 2, c"-connect")
@@ -194,6 +211,12 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	strv_set(sargv, 4, c"-servername")
 	strv_set(sargv, 5, c"localhost")
 	strv_set(sargv, 6, c"-quiet")
+	strv_set(sargv, 7, c"-ciphersuites")
+	strv_set(sargv, 8, suite_name)
+	strv_set(sargv, 9, c"-groups")
+	strv_set(sargv, 10, c"X25519")
+	if (mode == 1): strv_set(sargv, 10, c"P-256")
+	if (mode == 2): strv_set(sargv, 10, c"X25519:P-256")
 
 	spawn_options* opts = spawn_options_new()
 	opts.stdin_mode = process_pipe
@@ -214,12 +237,20 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	tls_server_config* scfg = tls_server_config_new()
 	scfg.cert_chain_path = cert
 	scfg.key_path = key
+	scfg.cipher_suite = suite
+	scfg.key_exchange_group = osl_group(mode)
 	tls_conn* conn = tls_accept(cfd, scfg)
 	if (conn == 0):
 		int r = osl_fail(p, c"server: tls_accept failed", tls_server_last_error(scfg))
 		tls_server_config_free(scfg)
 		close(cfd)
 		return r
+
+	if (conn.cipher_suite != suite || conn.retry_seen != cast(int, mode == 2) || conn.key_group != osl_group(mode)):
+		tls_close(conn)
+		tls_server_config_free(scfg)
+		close(cfd)
+		return osl_fail(p, c"server: wrong negotiation", 0)
 
 	# Feed one line into s_client's stdin (it forwards it over TLS after
 	# the handshake); a 5-byte pipe write cannot block.
@@ -328,14 +359,22 @@ int main():
 	char* key = path_join(dir, c"key.pem")
 
 	int ok = osl_generate_cert(openssl_bin, cert, key, c"ec_paramgen_curve:P-256")
-	if (ok != 0):
-		if (osl_client_direction(openssl_bin, cert, key) == 0): ok = 0
-	if (ok != 0):
-		if (osl_server_direction(openssl_bin, cert, key) == 0): ok = 0
+	for suite_index in range(3):
+		int suite = TLS_SUITE_CHACHA20_POLY1305_SHA256
+		char* suite_name = c"TLS_CHACHA20_POLY1305_SHA256"
+		if (suite_index == 1):
+			suite = TLS_SUITE_AES_128_GCM_SHA256
+			suite_name = c"TLS_AES_128_GCM_SHA256"
+		if (suite_index == 2):
+			suite = TLS_SUITE_AES_256_GCM_SHA384
+			suite_name = c"TLS_AES_256_GCM_SHA384"
+		for mode in range(3):
+			if (ok != 0): ok = osl_client_direction(openssl_bin, cert, key, suite, suite_name, mode)
+			if (ok != 0): ok = osl_server_direction(openssl_bin, cert, key, suite, suite_name, mode)
 
 	# P-384 exercises both X.509 signatures and TLS CertificateVerify.
 	if (ok != 0): ok = osl_generate_cert(openssl_bin, cert, key, c"ec_paramgen_curve:P-384")
-	if (ok != 0): ok = osl_client_direction(openssl_bin, cert, key)
+	if (ok != 0): ok = osl_client_direction(openssl_bin, cert, key, TLS_SUITE_AES_256_GCM_SHA384, c"TLS_AES_256_GCM_SHA384", 2)
 
 	free(cert)
 	free(key)

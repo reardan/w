@@ -1,19 +1,18 @@
 /*
-TLS 1.3 client (RFC 8446) for the pure-W HTTPS stack: plan 11
+TLS 1.3 client and server (RFC 8446) for the pure-W HTTPS stack: plan 11
 (libs/standard/plans/11_native_http_tls.md) phase 7, issue #201, part of
-#155. Client role only -- tls_accept / the server handshake is #203, which
-reuses this module's record layer, transcript, nonce construction and key
-schedule (see "Reusable internals for #203" below).
+#155. Both roles share the record layer, transcript and key schedule.
 
 Scope (matches the plan's "keep the surface minimal"):
-  - TLS 1.3 only, single cipher suite TLS_CHACHA20_POLY1305_SHA256,
-    X25519 key exchange, no HelloRetryRequest, no PSK/0-RTT/resumption,
+  - TLS 1.3: ChaCha20-Poly1305/SHA-256, AES-128-GCM/SHA-256 and
+    AES-256-GCM/SHA-384; X25519 and P-256 ECDH with HelloRetryRequest.
+    No PSK/0-RTT/resumption;
     optional/required client certificates (ECDSA P-256). ALPN (RFC 7301)
     is optional: see below. Server signature verification supports RSA
     SHA-256/SHA-384 and ECDSA P-256/SHA-256 or P-384/SHA-384.
   - Record layer: TLSPlaintext / TLSCiphertext framing with the TLS 1.3
     AEAD nonce (per-record 64-bit sequence number XORed into write_iv),
-    additional_data = the 5-byte record header, ChaCha20-Poly1305 only,
+    additional_data = the 5-byte record header,
     max record length enforced. Any decrypt/MAC failure sends
     bad_record_mac and tears the connection down (fail closed).
   - Handshake: ClientHello (SNI, supported_versions, key_share, sig algs,
@@ -31,8 +30,9 @@ Scope (matches the plan's "keep the surface minimal"):
 
 Security posture: fail closed on every parse/verify/MAC error, wipe all key
 material on close and on every error path, constant-time compares for
-secret-dependent checks (hmac_equal for Finished, chacha20poly1305_open's
-tag compare). Certificate validation is on by default; tls_config's
+secret-dependent checks (Finished and AEAD tags). The P-256 bignum
+backend retains its documented variable-time arithmetic limitation.
+Certificate validation is on by default; tls_config's
 insecure_skip_verify (loud name, tests only) skips ONLY chain building and
 hostname matching -- the CertificateVerify handshake signature and the
 Finished MAC are always checked.
@@ -92,6 +92,8 @@ import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import libs.standard.crypto.hkdf
 import libs.standard.crypto.chacha20poly1305
+import libs.standard.crypto.aes_gcm
+import libs.standard.crypto.ecdh_p256
 import libs.standard.crypto.x25519
 import libs.standard.crypto.random
 import libs.standard.crypto.rsa_verify
@@ -143,8 +145,11 @@ const int TLS_ALERT_UNSUPPORTED_EXTENSION = 110
 const int TLS_ALERT_NO_APPLICATION_PROTOCOL = 120
 
 
-# The single supported cipher suite and named group.
+# Supported TLS 1.3 cipher suites and named groups.
 const int TLS_SUITE_CHACHA20_POLY1305_SHA256 = 0x1303
+const int TLS_SUITE_AES_128_GCM_SHA256 = 0x1301
+const int TLS_SUITE_AES_256_GCM_SHA384 = 0x1302
+const int TLS_GROUP_SECP256R1 = 0x0017
 const int TLS_GROUP_X25519 = 0x001d
 
 
@@ -163,6 +168,7 @@ const int TLS_EXT_SUPPORTED_GROUPS = 0x000a
 const int TLS_EXT_SIGNATURE_ALGORITHMS = 0x000d
 const int TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 0x0032
 const int TLS_EXT_SUPPORTED_VERSIONS = 0x002b
+const int TLS_EXT_COOKIE = 0x002c
 const int TLS_EXT_KEY_SHARE = 0x0033
 
 
@@ -184,7 +190,7 @@ const int TLS_MAX_CIPHERTEXT = 16640
 const int TLS_MAX_HANDSHAKE = 65536
 
 
-# AEAD parameters for ChaCha20-Poly1305.
+# Maximum key capacity and common AEAD IV/tag lengths.
 const int TLS_AEAD_KEY_LEN = 32
 const int TLS_AEAD_IV_LEN = 12
 const int TLS_AEAD_TAG_LEN = 16
@@ -219,7 +225,7 @@ void tls_nonce(char* iv, int seq_hi, int seq_lo, char* out):
 
 # ---- key schedule helpers (reusable by #203) ----------------------------------
 
-# Record-protection key (16..32 bytes) and iv (12 bytes) from a traffic
+# Legacy ChaCha20 record-protection key (32 bytes) and iv (12 bytes) from a traffic
 # secret: HKDF-Expand-Label(secret, "key"/"iv", "", length). ChaCha20 uses a
 # 32-byte key.
 void tls_derive_traffic_keys(int alg, char* secret, char* out_key, char* out_iv):
@@ -249,21 +255,14 @@ struct tls_config:
 	int has_now_unix            # 1 => use now_unix instead of the clock
 	int now_unix
 	char* last_error            # static string, set on failure; never freed
+	int key_share_group         # 0/X25519 or P-256: initial client share
 	# Deterministic-test injection (mirrors now_unix injection):
-	char* test_priv             # 32-byte X25519 private key, or 0 for random
+	char* test_priv             # 32-byte selected-group private key, or 0 for random
 	char* test_client_hello     # raw ClientHello handshake message to send
 	int test_client_hello_len   # verbatim, for the RFC 8448 replay test
 	char* alpn                  # ALPN ProtocolNameList body (length-prefixed
 	int alpn_len                # names, no outer length), or 0 = no ALPN;
 	                            # set via tls_config_set_alpn
-	int test_accept_any_cipher  # RFC 8448 replay: accept a non-ChaCha suite id
-	                            # in ServerHello (records stay ChaCha20). RFC
-	                            # 8448 section 3 is an AES-128-GCM trace, so the
-	                            # replay test asserts the cipher-independent
-	                            # values (secrets, transcript, CertificateVerify
-	                            # signature, Finished MACs) over the real
-	                            # handshake while the record layer re-seals the
-	                            # flight with ChaCha20. Production never sets it.
 
 
 tls_config* tls_config_new():
@@ -278,8 +277,8 @@ tls_config* tls_config_new():
 	c.last_error = 0
 	c.test_priv = 0
 	c.test_client_hello = 0
+	c.key_share_group = 0
 	c.test_client_hello_len = 0
-	c.test_accept_any_cipher = 0
 	c.alpn = 0
 	c.alpn_len = 0
 	return c
@@ -384,6 +383,8 @@ int tls_config_set_alpn(tls_config* c, char* protos):
 # no filesystem; test_priv/test_random pin the server ephemeral X25519 key
 # and ServerHello random for deterministic traces.
 struct tls_server_config:
+	int cipher_suite           # 0 = any supported suite, otherwise require this suite
+	int key_exchange_group     # 0 = any supported group, otherwise require this group
 	int client_auth              # TLS_CLIENT_AUTH_NONE/OPTIONAL/REQUIRED
 	char* client_trust_store_path # explicit PEM CA bundle required for auth
 	int has_now_unix             # deterministic client certificate checks
@@ -395,7 +396,7 @@ struct tls_server_config:
 	int test_cert_pem_len
 	char* test_key_pem          # inject private-key PEM bytes instead of a file
 	int test_key_pem_len
-	char* test_priv             # 32-byte server X25519 private key, or 0
+	char* test_priv             # 32-byte server selected-group private key, or 0
 	char* test_random           # 32-byte ServerHello random, or 0
 	char* alpn                  # ALPN preference list body, or 0 = ignore ALPN
 	int alpn_len
@@ -404,6 +405,8 @@ struct tls_server_config:
 
 tls_server_config* tls_server_config_new():
 	tls_server_config* c = new tls_server_config()
+	c.cipher_suite = 0
+	c.key_exchange_group = 0
 	c.client_auth = TLS_CLIENT_AUTH_NONE
 	c.client_trust_store_path = 0
 	c.has_now_unix = 0
@@ -465,6 +468,15 @@ struct tls_conn:
 	string_builder* mem_in          # in-memory input (server bytes), for tests
 	int mem_in_pos
 	string_builder* mem_out         # captured client output, for tests
+	int cipher_suite
+	int key_len
+	int key_group
+	int retry_seen
+	int retry_group
+	string_builder* retry_cookie
+	string_builder* hello
+	aes_gcm_key* r_aes
+	aes_gcm_key* w_aes
 	int hash_alg
 	int digest_size
 	whash* transcript
@@ -523,6 +535,8 @@ struct tls_conn:
 
 
 int tls_auth_fail(tls_conn* c, int alert, char* message);
+int tls_group_size(int group);
+int tls_hello_has_group(char* msg, int len, int group);
 void tls_set_peer_certificate(tls_conn* c, x509_cert* leaf);
 int tls_parse_certificate_request(tls_conn* c, char* msg, int len);
 int tls_client_send_auth(tls_conn* c);
@@ -554,6 +568,15 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	if (use_mem != 0):
 		c.mem_in = string_new_sized(256)
 		c.mem_out = string_new_sized(256)
+	c.cipher_suite = TLS_SUITE_CHACHA20_POLY1305_SHA256
+	c.key_len = 32
+	c.key_group = TLS_GROUP_X25519
+	c.retry_seen = 0
+	c.retry_group = 0
+	c.retry_cookie = string_new()
+	c.hello = string_new()
+	c.r_aes = 0
+	c.w_aes = 0
 	c.hash_alg = WHASH_SHA256
 	c.digest_size = whash_digest_size(c.hash_alg)
 	c.transcript = whash_new(c.hash_alg)
@@ -567,18 +590,18 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.w_iv = cast(char*, malloc(TLS_AEAD_IV_LEN))
 	c.w_seq_hi = 0
 	c.w_seq_lo = 0
-	c.c_hs_secret = cast(char*, malloc(c.digest_size))
-	c.s_hs_secret = cast(char*, malloc(c.digest_size))
-	c.c_ap_secret = cast(char*, malloc(c.digest_size))
-	c.s_ap_secret = cast(char*, malloc(c.digest_size))
+	c.c_hs_secret = cast(char*, malloc(48))
+	c.s_hs_secret = cast(char*, malloc(48))
+	c.c_ap_secret = cast(char*, malloc(48))
+	c.s_ap_secret = cast(char*, malloc(48))
 	tls_wipe(c.r_key, TLS_AEAD_KEY_LEN)
 	tls_wipe(c.r_iv, TLS_AEAD_IV_LEN)
 	tls_wipe(c.w_key, TLS_AEAD_KEY_LEN)
 	tls_wipe(c.w_iv, TLS_AEAD_IV_LEN)
-	tls_wipe(c.c_hs_secret, c.digest_size)
-	tls_wipe(c.s_hs_secret, c.digest_size)
-	tls_wipe(c.c_ap_secret, c.digest_size)
-	tls_wipe(c.s_ap_secret, c.digest_size)
+	tls_wipe(c.c_hs_secret, 48)
+	tls_wipe(c.s_hs_secret, 48)
+	tls_wipe(c.c_ap_secret, 48)
+	tls_wipe(c.s_ap_secret, 48)
 	c.hs_buf = string_new_sized(512)
 	c.hs_pos = 0
 	c.app_buf = 0
@@ -596,14 +619,18 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 # Wipe every key/secret buffer and release the connection. Safe on 0.
 void tls_conn_free(tls_conn* c):
 	if (c == 0): return
+	aes_gcm_key_free(c.r_aes)
+	aes_gcm_key_free(c.w_aes)
+	string_free(c.hello)
+	string_free(c.retry_cookie)
 	tls_wipe(c.r_key, TLS_AEAD_KEY_LEN)
 	tls_wipe(c.r_iv, TLS_AEAD_IV_LEN)
 	tls_wipe(c.w_key, TLS_AEAD_KEY_LEN)
 	tls_wipe(c.w_iv, TLS_AEAD_IV_LEN)
-	tls_wipe(c.c_hs_secret, c.digest_size)
-	tls_wipe(c.s_hs_secret, c.digest_size)
-	tls_wipe(c.c_ap_secret, c.digest_size)
-	tls_wipe(c.s_ap_secret, c.digest_size)
+	tls_wipe(c.c_hs_secret, 48)
+	tls_wipe(c.s_hs_secret, 48)
+	tls_wipe(c.c_ap_secret, 48)
+	tls_wipe(c.s_ap_secret, 48)
 	free(c.r_key)
 	free(c.r_iv)
 	free(c.w_key)
@@ -791,10 +818,14 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 
 	char* ctbuf = cast(char*, malloc(inner_len))
 	char* tag = cast(char*, malloc(TLS_AEAD_TAG_LEN))
-	chacha20poly1305_seal(c.w_key, nonce, hdr, 5, inner, inner_len, ctbuf, tag)
+	int sealed = 1
+	if (c.cipher_suite == TLS_SUITE_CHACHA20_POLY1305_SHA256):
+		chacha20poly1305_seal(c.w_key, nonce, hdr, 5, inner, inner_len, ctbuf, tag)
+	else: sealed = aes_gcm_seal(c.w_aes, nonce, hdr, 5, inner, inner_len, ctbuf, tag)
 	tls_seq_inc(&c.w_seq_hi, &c.w_seq_lo)
 
-	int ok = tls_io_send_all(c, hdr, 5)
+	int ok = sealed
+	if (ok != 0): ok = tls_io_send_all(c, hdr, 5)
 	if (ok != 0): ok = tls_io_send_all(c, ctbuf, inner_len)
 	if (ok != 0): ok = tls_io_send_all(c, tag, TLS_AEAD_TAG_LEN)
 
@@ -864,7 +895,10 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 			char* nonce = cast(char*, malloc(TLS_AEAD_IV_LEN))
 			tls_nonce(c.r_iv, c.r_seq_hi, c.r_seq_lo, nonce)
 			char* plain = cast(char*, malloc(ct_len))
-			int ok = chacha20poly1305_open(c.r_key, nonce, hdr, 5, body, ct_len, body + ct_len, plain)
+			int ok = 0
+			if (c.cipher_suite == TLS_SUITE_CHACHA20_POLY1305_SHA256):
+				ok = chacha20poly1305_open(c.r_key, nonce, hdr, 5, body, ct_len, body + ct_len, plain)
+			else: ok = aes_gcm_open(c.r_aes, nonce, hdr, 5, body, ct_len, body + ct_len, plain)
 			tls_wipe(nonce, TLS_AEAD_IV_LEN)
 			free(nonce)
 			free(hdr)
@@ -998,7 +1032,7 @@ char* tls_build_client_hello(char* server_name, char* random, char* session_id, 
 
 # Same, additionally offering the ALPN ProtocolNameList body (alpn, alpn_len)
 # when alpn != 0 (RFC 7301 section 3.1).
-char* tls_build_client_hello_alpn(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int* out_len):
+char* tls_build_client_hello_group(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int group, int* out_len):
 	string_builder* b = string_new_sized(256)
 	string_append_char(b, TLS_HS_CLIENT_HELLO)
 	int lenpos = b.length
@@ -1009,8 +1043,10 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 	string_append_bytes(b, random, 32)            # random
 	string_append_char(b, 32)                       # legacy_session_id length
 	string_append_bytes(b, session_id, 32)        # legacy_session_id
-	string_append_be16(b, 2)                       # cipher_suites length
+	string_append_be16(b, 6)                       # cipher_suites length
 	string_append_be16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256)
+	string_append_be16(b, TLS_SUITE_AES_128_GCM_SHA256)
+	string_append_be16(b, TLS_SUITE_AES_256_GCM_SHA384)
 	string_append_char(b, 1)                        # legacy_compression_methods length
 	string_append_char(b, 0)                        # null compression
 
@@ -1035,11 +1071,12 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 	string_append_char(b, 2)                        # list length (bytes)
 	string_append_be16(b, 0x0304)
 
-	# supported_groups = x25519
+	# supported_groups = X25519, secp256r1
 	string_append_be16(b, TLS_EXT_SUPPORTED_GROUPS)
+	string_append_be16(b, 6)
 	string_append_be16(b, 4)
-	string_append_be16(b, 2)
 	string_append_be16(b, TLS_GROUP_X25519)
+	string_append_be16(b, TLS_GROUP_SECP256R1)
 
 	# signature_algorithms
 	string_append_be16(b, TLS_EXT_SIGNATURE_ALGORITHMS)
@@ -1052,13 +1089,14 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 	string_append_be16(b, TLS_SIG_RSA_PKCS1_SHA256)
 	string_append_be16(b, TLS_SIG_RSA_PKCS1_SHA384)
 
-	# key_share: one x25519 entry
+	# key_share: selected group, or only the group for HelloRetryRequest
 	string_append_be16(b, TLS_EXT_KEY_SHARE)
-	string_append_be16(b, 38)                      # ext_data length
-	string_append_be16(b, 36)                      # client_shares length
-	string_append_be16(b, TLS_GROUP_X25519)
-	string_append_be16(b, 32)                      # key_exchange length
-	string_append_bytes(b, pubkey, 32)
+	int share_len = tls_group_size(group)
+	string_append_be16(b, share_len + 6)
+	string_append_be16(b, share_len + 4)
+	string_append_be16(b, group)
+	string_append_be16(b, share_len)
+	string_append_bytes(b, pubkey, share_len)
 
 	# application_layer_protocol_negotiation
 	if ((alpn != 0) && (alpn_len > 0)):
@@ -1081,10 +1119,17 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 
 # ---- ServerHello --------------------------------------------------------------
 
-# The HelloRetryRequest sentinel random (RFC 8446 4.1.3). We do not support
-# HRR, so a ServerHello carrying it is rejected.
+char* tls_build_client_hello_alpn(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int* out_len):
+	return tls_build_client_hello_group(server_name, random, session_id, pubkey, alpn, alpn_len, TLS_GROUP_X25519, out_len)
+
+
+# The HelloRetryRequest sentinel random (RFC 8446 4.1.3).
+char* tls_hrr_random():
+	return c"\xcf\x21\xad\x74\xe5\x9a\x61\x11\xbe\x1d\x8c\x02\x1e\x65\xb8\x91\xc2\xa2\x11\x16\x7a\xbb\x8c\x5e\x07\x9e\x09\xe2\xc8\xa8\x33\x9c"
+
+
 int tls_is_hrr(char* random):
-	char* hrr = c"\xcf\x21\xad\x74\xe5\x9a\x61\x11\xbe\x1d\x8c\x02\x1e\x65\xb8\x91\xc2\xa2\x11\x16\x7a\xbb\x8c\x5e\x07\x9e\x09\xe2\xc8\xa8\x33\x9c"
+	char* hrr = tls_hrr_random()
 	int i = 0
 	int diff = 0
 	while (i < 32):
@@ -1093,55 +1138,97 @@ int tls_is_hrr(char* random):
 	return diff == 0
 
 
-# Parse a ServerHello body (msg points at the handshake header; body at
-# msg+4): validate the cipher suite and negotiated TLS 1.3, extract the
-# X25519 server key_share into out_pub (32 bytes). Returns 1 on success.
-int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
-	int pos = 4
-	if (pos + 2 + 32 + 1 > len): return 0
-	pos = pos + 2                        # legacy_version
-	char* srandom = msg + pos
-	pos = pos + 32                       # random
-	int sid_len = msg[pos] & 255
-	pos = pos + 1
-	if (pos + sid_len + 3 > len): return 0
-	pos = pos + sid_len                  # legacy_session_id_echo
-	int suite = load_be16(msg + pos)
-	pos = pos + 2
-	if (suite != TLS_SUITE_CHACHA20_POLY1305_SHA256):
-		int allow = 0
-		if (c.cfg != 0): allow = c.cfg.test_accept_any_cipher
-		if (allow == 0): return 0
-	pos = pos + 1                        # legacy_compression_method
-	if (tls_is_hrr(srandom) != 0): return 0
+# Cipher suite controls both transcript hash and record key size.
+int tls_suite_supported(int suite):
+	return suite == TLS_SUITE_CHACHA20_POLY1305_SHA256 || suite == TLS_SUITE_AES_128_GCM_SHA256 || suite == TLS_SUITE_AES_256_GCM_SHA384
+
+
+int tls_hello_offers_suite(char* hello, int len, int suite):
+	if (len < 39): return 0
+	int pos = 39 + (hello[38] & 255)
 	if (pos + 2 > len): return 0
-	int ext_total = load_be16(msg + pos)
-	pos = pos + 2
-	int ext_end = pos + ext_total
-	if (ext_end > len): return 0
-	int have_key_share = 0
-	int have_version = 0
-	while (pos + 4 <= ext_end):
-		int etype = load_be16(msg + pos)
-		int elen = load_be16(msg + pos + 2)
-		pos = pos + 4
-		if (pos + elen > ext_end): return 0
-		if (etype == TLS_EXT_SUPPORTED_VERSIONS):
-			if (elen != 2): return 0
-			if (load_be16(msg + pos) != 0x0304): return 0
-			have_version = 1
-		else if (etype == TLS_EXT_KEY_SHARE):
-			if (elen < 4): return 0
-			int group = load_be16(msg + pos)
-			int klen = load_be16(msg + pos + 2)
-			if (group != TLS_GROUP_X25519): return 0
-			if (klen != 32): return 0
-			if (4 + 32 > elen): return 0
-			mem_copy(out_pub, msg + pos + 4, 32)
-			have_key_share = 1
-		pos = pos + elen
-	if (have_version == 0): return 0
-	if (have_key_share == 0): return 0
+	int n = load_be16(hello + pos)
+	pos += 2
+	if (n < 2 || (n & 1) || n > len - pos): return 0
+	for i in range(0, n, 2):
+		if (load_be16(hello + pos + i) == suite): return 1
+	return 0
+
+
+void tls_set_suite(tls_conn* c, int suite):
+	c.cipher_suite = suite
+	c.key_len = 32
+	if (suite == TLS_SUITE_AES_128_GCM_SHA256): c.key_len = 16
+	int alg = WHASH_SHA256
+	if (suite == TLS_SUITE_AES_256_GCM_SHA384): alg = WHASH_SHA384
+	if (alg != c.hash_alg):
+		whash_free(c.transcript)
+		c.hash_alg = alg
+		c.digest_size = whash_digest_size(alg)
+		c.transcript = whash_new(alg)
+		whash_update(c.transcript, c.hello.data, c.hello.length)
+
+
+# Returns 1 for ServerHello, 2 for HelloRetryRequest, 0 on invalid input.
+# Validate the entire message before committing negotiation state.
+int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
+	if (len < 44 || msg[0] != TLS_HS_SERVER_HELLO || load_be24(msg + 1) != len - 4): return 0
+	if (load_be16(msg + 4) != 0x0303): return 0
+	int retry = tls_is_hrr(msg + 6)
+	if (retry && c.retry_seen): return 0
+	int sid_len = msg[38] & 255
+	if (sid_len > 32 || 39 + sid_len + 5 > len): return 0
+	if (c.hello.length < 39 + sid_len || sid_len != (c.hello.data[38] & 255)): return 0
+	if (mem_eq(msg + 39, c.hello.data + 39, sid_len) == 0): return 0
+	int pos = 39 + sid_len
+	int suite = load_be16(msg + pos)
+	if (tls_suite_supported(suite) == 0 || tls_hello_offers_suite(c.hello.data, c.hello.length, suite) == 0): return 0
+	if (c.retry_seen && suite != c.cipher_suite): return 0
+	if (msg[pos + 2] != 0): return 0
+	pos += 3
+	int ext_len = load_be16(msg + pos)
+	pos += 2
+	if (ext_len != len - pos): return 0
+	int version = 0
+	int group = 0
+	int cookie_start = 0
+	int cookie_len = 0
+	while (pos < len):
+		if (len - pos < 4): return 0
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		pos += 4
+		if (n > len - pos): return 0
+		if (kind == TLS_EXT_SUPPORTED_VERSIONS):
+			if (version || n != 2 || load_be16(msg + pos) != 0x0304): return 0
+			version = 1
+		else if (kind == TLS_EXT_KEY_SHARE):
+			if (group || n < 2): return 0
+			group = load_be16(msg + pos)
+			int size = tls_group_size(group)
+			if (size == 0): return 0
+			if (retry):
+				if (n != 2 || group == c.key_group): return 0
+				if (tls_hello_has_group(c.hello.data, c.hello.length, group) == 0): return 0
+			else:
+				if (group != c.key_group || n != size + 4 || load_be16(msg + pos + 2) != size): return 0
+				mem_copy(out_pub, msg + pos + 4, size)
+		else if (kind == TLS_EXT_COOKIE && retry):
+			if (cookie_start || n < 3 || load_be16(msg + pos) != n - 2): return 0
+			cookie_start = pos
+			cookie_len = n
+		else: return 0
+		pos += n
+	if (version == 0): return 0
+	if (retry):
+		# A cookie-only retry is legal; an empty retry cannot change CH2.
+		if (group == 0 && cookie_start == 0): return 0
+		c.retry_group = group
+		c.retry_cookie.length = 0
+		if (cookie_start): string_append_bytes(c.retry_cookie, msg + cookie_start, cookie_len)
+	else if (group == 0): return 0
+	tls_set_suite(c, suite)
+	if (retry): return 2
 	return 1
 
 
@@ -1242,7 +1329,7 @@ void tls_derive_handshake(tls_conn* c, char* ecdhe, char* th_ch_sh, char* out_hs
 	char* derived1 = cast(char*, malloc(ds))
 	tls13_derive_secret(alg, early, c"derived", 7, c"", 0, derived1)
 
-	hkdf_extract(alg, derived1, ds, ecdhe, ds, out_hs)
+	hkdf_extract(alg, derived1, ds, ecdhe, 32, out_hs)
 
 	tls13_hkdf_expand_label(alg, out_hs, c"c hs traffic", 12, th_ch_sh, ds, c.c_hs_secret, ds)
 	tls13_hkdf_expand_label(alg, out_hs, c"s hs traffic", 12, th_ch_sh, ds, c.s_hs_secret, ds)
@@ -1561,14 +1648,22 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 
 # Install the read protection derived from a traffic secret.
 void tls_install_read_keys(tls_conn* c, char* secret):
-	tls_derive_traffic_keys(c.hash_alg, secret, c.r_key, c.r_iv)
+	tls13_hkdf_expand_label(c.hash_alg, secret, c"key", 3, c"", 0, c.r_key, c.key_len)
+	tls13_hkdf_expand_label(c.hash_alg, secret, c"iv", 2, c"", 0, c.r_iv, 12)
+	aes_gcm_key_free(c.r_aes)
+	c.r_aes = 0
+	if (c.cipher_suite != TLS_SUITE_CHACHA20_POLY1305_SHA256): c.r_aes = aes_gcm_key_new(c.r_key, c.key_len)
 	c.r_seq_hi = 0
 	c.r_seq_lo = 0
 	c.r_active = 1
 
 
 void tls_install_write_keys(tls_conn* c, char* secret):
-	tls_derive_traffic_keys(c.hash_alg, secret, c.w_key, c.w_iv)
+	tls13_hkdf_expand_label(c.hash_alg, secret, c"key", 3, c"", 0, c.w_key, c.key_len)
+	tls13_hkdf_expand_label(c.hash_alg, secret, c"iv", 2, c"", 0, c.w_iv, 12)
+	aes_gcm_key_free(c.w_aes)
+	c.w_aes = 0
+	if (c.cipher_suite != TLS_SUITE_CHACHA20_POLY1305_SHA256): c.w_aes = aes_gcm_key_new(c.w_key, c.key_len)
 	c.w_seq_hi = 0
 	c.w_seq_lo = 0
 	c.w_active = 1
@@ -1582,6 +1677,213 @@ int tls_gen_priv(tls_conn* c, char* priv):
 			mem_copy(priv, c.cfg.test_priv, 32)
 			return 1
 	return random_bytes(priv, 32)
+
+
+int tls_group_size(int group):
+	if (group == TLS_GROUP_X25519): return 32
+	if (group == TLS_GROUP_SECP256R1): return 65
+	return 0
+
+
+# Return the extension-vector length offset, validating the variable prefix.
+int tls_hello_extensions(char* msg, int len):
+	if (len < 39 || msg[0] != TLS_HS_CLIENT_HELLO || load_be24(msg + 1) != len - 4): return -1
+	if (load_be16(msg + 4) != 0x0303 || (msg[38] & 255) > 32): return -1
+	int pos = 39 + (msg[38] & 255)
+	if (pos + 2 > len): return -1
+	int n = load_be16(msg + pos)
+	pos += 2
+	if (n < 2 || (n & 1) || n > len - pos): return -1
+	pos += n
+	if (pos + 2 > len || msg[pos] != 1 || msg[pos + 1] != 0): return -1
+	pos += 2
+	if (pos + 2 > len || load_be16(msg + pos) != len - pos - 2): return -1
+	return pos
+
+
+int tls_hello_has_group(char* msg, int len, int group):
+	int start = tls_hello_extensions(msg, len)
+	if (start < 0): return 0
+	int pos = start + 2
+	int found = 0
+	int seen = 0
+	while (pos < len):
+		if (len - pos < 4): return 0
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		pos += 4
+		if (n > len - pos): return 0
+		if (kind == TLS_EXT_SUPPORTED_GROUPS):
+			if (seen || n < 4 || (n & 1) || load_be16(msg + pos) != n - 2): return 0
+			seen = 1
+			for i in range(2, n, 2):
+				if (load_be16(msg + pos + i) == group): found = 1
+		pos += n
+	return found
+
+
+int tls_make_key_share(tls_conn* c, int group, char* priv, char* pub, int server):
+	char* injected = 0
+	if (server):
+		if (c.scfg != 0): injected = c.scfg.test_priv
+	else:
+		if (c.cfg != 0): injected = c.cfg.test_priv
+	int ok = 0
+	if (injected != 0):
+		mem_copy(priv, injected, 32)
+		ok = 1
+	else if (group == TLS_GROUP_SECP256R1): ok = ecdh_p256_generate(priv)
+	else: ok = random_bytes(priv, 32)
+	if (ok == 0): return 0
+	if (group == TLS_GROUP_SECP256R1): return ecdh_p256_public_key(priv, pub)
+	if (group != TLS_GROUP_X25519): return 0
+	x25519_scalarmult_base(pub, priv)
+	return 1
+
+
+int tls_shared_secret(int group, char* priv, char* pub, char* out):
+	if (group == TLS_GROUP_SECP256R1): return ecdh_p256_shared_secret(priv, pub, 65, out)
+	if (group != TLS_GROUP_X25519): return 0
+	return x25519_scalarmult(out, priv, pub) == 0
+
+
+# RFC 8446 4.4.1 replaces ClientHello1 with message_hash(Hash(CH1)).
+void tls_retry_transcript(tls_conn* c, char* hrr, int len):
+	char* synthetic = cast(char*, malloc(4 + c.digest_size))
+	synthetic[0] = 254
+	store_be24(synthetic + 1, c.digest_size)
+	whash_final(c.transcript, synthetic + 4)
+	whash_free(c.transcript)
+	c.transcript = whash_new(c.hash_alg)
+	whash_update(c.transcript, synthetic, 4 + c.digest_size)
+	whash_update(c.transcript, hrr, len)
+	free(synthetic)
+	c.retry_seen = 1
+
+
+# Preserve CH1 byte-for-byte except for the requested key share and cookie.
+# In particular random, session ID, SNI, ALPN, suites and groups stay fixed.
+char* tls_retry_client_hello(char* first, int len, int group, char* pub, string_builder* cookie, int* out_len):
+	int ext = tls_hello_extensions(first, len)
+	if (ext < 0): return 0
+	string_builder* b = string_new()
+	string_append_bytes(b, first, ext + 2)
+	int pos = ext + 2
+	while (pos < len):
+		if (len - pos < 4):
+			string_free(b)
+			return 0
+		int kind = load_be16(first + pos)
+		int n = load_be16(first + pos + 2)
+		if (n > len - pos - 4):
+			string_free(b)
+			return 0
+		if (kind == TLS_EXT_KEY_SHARE && group != 0):
+			int size = tls_group_size(group)
+			string_append_be16(b, kind)
+			string_append_be16(b, size + 6)
+			string_append_be16(b, size + 4)
+			string_append_be16(b, group)
+			string_append_be16(b, size)
+			string_append_bytes(b, pub, size)
+		else if (kind != TLS_EXT_COOKIE): string_append_bytes(b, first + pos, n + 4)
+		pos += n + 4
+	if (cookie.length):
+		string_append_be16(b, TLS_EXT_COOKIE)
+		string_append_be16(b, cookie.length)
+		string_append_bytes(b, cookie.data, cookie.length)
+	store_be16(b.data + ext, b.length - ext - 2)
+	store_be24(b.data + 1, b.length - 4)
+	*out_len = b.length
+	char* result = b.data
+	free(b)
+	return result
+
+
+int tls_client_key_exchange(tls_conn* c, char* server_name, char* shared):
+	int group = TLS_GROUP_X25519
+	if (c.cfg != 0 && c.cfg.key_share_group != 0): group = c.cfg.key_share_group
+	if (tls_group_size(group) == 0):
+		tls_fail(c, c"tls: unsupported initial key share group")
+		return 0
+	c.key_group = group
+	char* priv = cast(char*, malloc(32))
+	char* pub = cast(char*, malloc(65))
+	char* peer = cast(char*, malloc(65))
+	char* ch = 0
+	int ch_len = 0
+	int ok = 0
+	while (1):
+		if (tls_make_key_share(c, group, priv, pub, 0) == 0):
+			tls_fail(c, c"tls: RNG or private key failure")
+			break
+		if (c.cfg != 0 && c.cfg.test_client_hello != 0):
+			ch_len = c.cfg.test_client_hello_len
+			ch = mem_dup(c.cfg.test_client_hello, ch_len)
+		else:
+			char* rnd = cast(char*, malloc(32))
+			char* sid = cast(char*, malloc(32))
+			int random_ok = random_bytes(rnd, 32) && random_bytes(sid, 32)
+			if (random_ok):
+				char* alpn = 0
+				int alpn_len = 0
+				if (c.cfg != 0):
+					alpn = c.cfg.alpn
+					alpn_len = c.cfg.alpn_len
+				ch = tls_build_client_hello_group(server_name, rnd, sid, pub, alpn, alpn_len, group, &ch_len)
+			free(rnd)
+			free(sid)
+			if (random_ok == 0):
+				tls_fail(c, c"tls: RNG failure")
+				break
+		string_append_bytes(c.hello, ch, ch_len)
+		whash_update(c.transcript, ch, ch_len)
+		if (tls_send_record(c, TLS_CT_HANDSHAKE, ch, ch_len, 0) == 0):
+			tls_fail(c, c"tls: send ClientHello failed")
+			break
+		int kind = 0
+		char* msg = 0
+		int len = 0
+		if (tls_next_hs_msg(c, &kind, &msg, &len) == 0): break
+		int parsed = tls_parse_server_hello(c, msg, len, peer)
+		if (kind != TLS_HS_SERVER_HELLO): parsed = 0
+		if (parsed == 2):
+			tls_retry_transcript(c, msg, len)
+			if (c.retry_group != 0):
+				c.key_group = c.retry_group
+				tls_wipe(priv, 32)
+				if (tls_make_key_share(c, c.key_group, priv, pub, 0) == 0):
+					tls_fail(c, c"tls: RNG or private key failure")
+					break
+			free(ch)
+			ch = tls_retry_client_hello(c.hello.data, c.hello.length, c.retry_group, pub, c.retry_cookie, &ch_len)
+			if (ch == 0):
+				tls_auth_fail(c, TLS_ALERT_ILLEGAL_PARAMETER, c"tls: cannot construct second ClientHello")
+				break
+			c.hello.length = 0
+			string_append_bytes(c.hello, ch, ch_len)
+			whash_update(c.transcript, ch, ch_len)
+			if (tls_send_record(c, TLS_CT_HANDSHAKE, ch, ch_len, 0) == 0):
+				tls_fail(c, c"tls: send second ClientHello failed")
+				break
+			if (tls_next_hs_msg(c, &kind, &msg, &len) == 0): break
+			parsed = tls_parse_server_hello(c, msg, len, peer)
+			if (kind != TLS_HS_SERVER_HELLO): parsed = 0
+		if (parsed != 1):
+			tls_auth_fail(c, TLS_ALERT_ILLEGAL_PARAMETER, c"tls: bad ServerHello or HelloRetryRequest")
+			break
+		whash_update(c.transcript, msg, len)
+		if (tls_shared_secret(c.key_group, priv, peer, shared) == 0):
+			tls_auth_fail(c, TLS_ALERT_ILLEGAL_PARAMETER, c"tls: bad key share")
+			break
+		ok = 1
+		break
+	if (ch != 0): free(ch)
+	tls_wipe(priv, 32)
+	free(priv)
+	free(pub)
+	free(peer)
+	return ok
 
 
 # Drive the full client handshake on connection c. server_name is the SNI /
@@ -1605,93 +1907,12 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 			tls_fail(c, c"tls: no server name to verify")
 			return 0
 
-	char* priv = cast(char*, malloc(32))
-	if (tls_gen_priv(c, priv) == 0):
-		tls_wipe(priv, 32)
-		free(priv)
-		tls_fail(c, c"tls: RNG failure")
-		return 0
-	char* pub = cast(char*, malloc(32))
-	x25519_scalarmult_base(pub, priv)
-
-	# ClientHello (raw override for the RFC 8448 replay test).
-	char* ch = 0
-	int ch_len = 0
-	int ch_owned = 1
-	if (cfg != 0):
-		if (cfg.test_client_hello != 0):
-			ch = cfg.test_client_hello
-			ch_len = cfg.test_client_hello_len
-			ch_owned = 0
-	if (ch == 0):
-		char* rnd = cast(char*, malloc(32))
-		char* sid = cast(char*, malloc(32))
-		int rok = random_bytes(rnd, 32)
-		int sok = random_bytes(sid, 32)
-		if ((rok == 0) || (sok == 0)):
-			free(rnd)
-			free(sid)
-			tls_wipe(priv, 32)
-			free(priv)
-			free(pub)
-			tls_fail(c, c"tls: RNG failure")
-			return 0
-		char* alpn = 0
-		int alpn_len = 0
-		if (cfg != 0):
-			alpn = cfg.alpn
-			alpn_len = cfg.alpn_len
-		ch = tls_build_client_hello_alpn(server_name, rnd, sid, pub, alpn, alpn_len, &ch_len)
-		free(rnd)
-		free(sid)
-	free(pub)
-
-	whash_update(c.transcript, ch, ch_len)
-	int sent = tls_send_record(c, TLS_CT_HANDSHAKE, ch, ch_len, 0)
-	if (ch_owned != 0): free(ch)
-	if (sent == 0):
-		tls_wipe(priv, 32)
-		free(priv)
-		tls_fail(c, c"tls: send ClientHello failed")
-		return 0
-
-	# ServerHello
-	int htype = 0
-	char* msg = 0
-	int mlen = 0
-	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
-		tls_wipe(priv, 32)
-		free(priv)
-		return 0
-	if (htype != TLS_HS_SERVER_HELLO):
-		tls_wipe(priv, 32)
-		free(priv)
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
-		tls_fail(c, c"tls: expected ServerHello")
-		return 0
-	char* server_pub = cast(char*, malloc(32))
-	if (tls_parse_server_hello(c, msg, mlen, server_pub) == 0):
-		free(server_pub)
-		tls_wipe(priv, 32)
-		free(priv)
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_HANDSHAKE_FAILURE)
-		tls_fail(c, c"tls: bad ServerHello")
-		return 0
-	whash_update(c.transcript, msg, mlen)
-
-	# ECDHE shared secret; reject a low-order (all-zero) result.
 	char* ecdhe = cast(char*, malloc(32))
-	int xr = x25519_scalarmult(ecdhe, priv, server_pub)
-	tls_wipe(priv, 32)
-	free(priv)
-	free(server_pub)
-	if (xr != 0):
+	if (tls_client_key_exchange(c, server_name, ecdhe) == 0):
 		tls_wipe(ecdhe, 32)
 		free(ecdhe)
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_HANDSHAKE_FAILURE)
-		tls_fail(c, c"tls: bad key share")
 		return 0
-
+	ds = c.digest_size
 	# Handshake key schedule over CH..SH.
 	char* th_ch_sh = cast(char*, malloc(ds))
 	whash_final(c.transcript, th_ch_sh)
@@ -1937,110 +2158,130 @@ void tls_close(tls_conn* c):
 
 # ---- ClientHello parsing (bounded) --------------------------------------------
 
-# Parse a ClientHello body (msg points at the handshake header; body at msg+4,
-# len = 4 + body length). Strictly bounded: every embedded length is checked
-# against the message end before use. Copies the 32-byte client random into
-# out_random, the legacy_session_id (<= 32 bytes) into out_sid/*out_sid_len,
-# and, if present, the X25519 client key share into out_pub. Sets the have_*
-# flags for the ChaCha20 suite, an X25519 key_share, TLS 1.3 in
-# supported_versions, and ecdsa_secp256r1_sha256 in signature_algorithms.
-# Returns 1 for a structurally well-formed ClientHello (whatever it offered),
-# 0 for a malformed/truncated one (the caller answers decode_error). The
-# have_* flags let the caller pick handshake_failure vs protocol_version for a
-# well-formed-but-unacceptable hello.
-int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, int* out_sid_len, char* out_pub, int* have_chacha, int* have_x25519, int* have_tls13, int* have_ecdsa):
-	*have_chacha = 0
-	*have_x25519 = 0
+# Validate extension framing and reject duplicate extension types.
+int tls_extensions_valid(char* msg, int len, int start):
+	char* seen = cast(char*, malloc(8192))
+	mem_fill(seen, 0, 8192)
+	int pos = start
+	int ok = 1
+	while (pos < len):
+		if (len - pos < 4):
+			ok = 0
+			break
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		int mask = 1 << (kind & 7)
+		if (n > len - pos - 4 || (seen[kind >> 3] & mask)):
+			ok = 0
+			break
+		seen[kind >> 3] |= mask
+		pos += n + 4
+	free(seen)
+	return ok
+
+
+# Validate every KeyShareEntry, including unknown groups, in linear time.
+# In CH2 the vector must contain exactly the single requested share.
+int tls_key_shares_valid(char* msg, int len, int pos, int n):
+	if (n < 2 || load_be16(msg + pos) != n - 2): return 0
+	char* seen = cast(char*, malloc(8192))
+	mem_fill(seen, 0, 8192)
+	int kp = pos + 2
+	int ok = 1
+	while (kp < pos + n):
+		if (pos + n - kp < 4):
+			ok = 0
+			break
+		int group = load_be16(msg + kp)
+		int size = load_be16(msg + kp + 2)
+		int mask = 1 << (group & 7)
+		if (size == 0 || size > pos + n - kp - 4 || (seen[group >> 3] & mask) || tls_hello_has_group(msg, len, group) == 0):
+			ok = 0
+			break
+		seen[group >> 3] |= mask
+		kp += size + 4
+	free(seen)
+	return ok
+
+
+int tls_retry_single_share(char* msg, int len, int group):
+	int ext = tls_hello_extensions(msg, len)
+	if (ext < 0 || tls_extensions_valid(msg, len, ext + 2) == 0): return 0
+	int pos = ext + 2
+	while (pos < len):
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		if (kind == TLS_EXT_KEY_SHARE):
+			if (n != tls_group_size(group) + 6): return 0
+			return load_be16(msg + pos + 6) == group
+		pos += n + 4
+	return 0
+
+
+# A positive selected_group has a key share; negative requests a retry.
+int tls_parse_client_hello_options(char* msg, int len, char* out_random, char* out_sid, int* out_sid_len, char* out_pub, int* selected_suite, int* selected_group, int* have_tls13, int* have_ecdsa, int preferred_suite, int preferred_group):
+	*selected_suite = 0
+	*selected_group = 0
 	*have_tls13 = 0
 	*have_ecdsa = 0
-	*out_sid_len = 0
-	int pos = 4
-	# legacy_version(2) + random(32) + session_id length(1)
-	if (pos + 2 + 32 + 1 > len): return 0
-	pos = pos + 2
-	mem_copy(out_random, msg + pos, 32)
-	pos = pos + 32
-	int sid_len = msg[pos] & 255
-	pos = pos + 1
-	if (sid_len > 32): return 0
-	if (pos + sid_len > len): return 0
-	if (sid_len > 0): mem_copy(out_sid, msg + pos, sid_len)
-	*out_sid_len = sid_len
-	pos = pos + sid_len
-	# cipher_suites
-	if (pos + 2 > len): return 0
-	int cs_len = load_be16(msg + pos)
-	pos = pos + 2
-	if (pos + cs_len > len): return 0
-	if ((cs_len & 1) != 0): return 0
-	int cs_end = pos + cs_len
-	while (pos + 2 <= cs_end):
-		if (load_be16(msg + pos) == TLS_SUITE_CHACHA20_POLY1305_SHA256): *have_chacha = 1
-		pos = pos + 2
-	pos = cs_end
-	# legacy_compression_methods
-	if (pos + 1 > len): return 0
-	int comp_len = msg[pos] & 255
-	pos = pos + 1
-	if (pos + comp_len > len): return 0
-	pos = pos + comp_len
-	# extensions (a TLS 1.3 ClientHello always carries them, but tolerate none)
-	if (pos == len): return 1
-	if (pos + 2 > len): return 0
-	int ext_total = load_be16(msg + pos)
-	pos = pos + 2
-	int ext_end = pos + ext_total
-	if (ext_end > len): return 0
-	while (pos + 4 <= ext_end):
-		int etype = load_be16(msg + pos)
-		int elen = load_be16(msg + pos + 2)
-		pos = pos + 4
-		if (pos + elen > ext_end): return 0
-		if (etype == TLS_EXT_SUPPORTED_VERSIONS):
-			if (elen >= 1):
-				int vl = msg[pos] & 255
-				if (1 + vl <= elen):
-					int vp = pos + 1
-					int ve = pos + 1 + vl
-					while (vp + 2 <= ve):
-						if (load_be16(msg + vp) == 0x0304): *have_tls13 = 1
-						vp = vp + 2
-		else if (etype == TLS_EXT_KEY_SHARE):
-			if (elen >= 2):
-				int ksl = load_be16(msg + pos)
-				if (2 + ksl <= elen):
-					int kp = pos + 2
-					int ke = pos + 2 + ksl
-					while (kp + 4 <= ke):
-						int grp = load_be16(msg + kp)
-						int kxl = load_be16(msg + kp + 2)
-						kp = kp + 4
-						if (kp + kxl > ke): return 0
-						if (grp == TLS_GROUP_X25519):
-							if (kxl == 32):
-								if (*have_x25519 == 0):
-									mem_copy(out_pub, msg + kp, 32)
-									*have_x25519 = 1
-						kp = kp + kxl
-		else if (etype == TLS_EXT_SIGNATURE_ALGORITHMS):
-			if (elen >= 2):
-				int sl = load_be16(msg + pos)
-				if (2 + sl <= elen):
-					int sp = pos + 2
-					int se = pos + 2 + sl
-					while (sp + 2 <= se):
-						if (load_be16(msg + sp) == TLS_SIG_ECDSA_SECP256R1_SHA256): *have_ecdsa = 1
-						sp = sp + 2
-		pos = pos + elen
+	int ext = tls_hello_extensions(msg, len)
+	if (ext < 0 || tls_extensions_valid(msg, len, ext + 2) == 0): return 0
+	mem_copy(out_random, msg + 6, 32)
+	*out_sid_len = msg[38] & 255
+	mem_copy(out_sid, msg + 39, *out_sid_len)
+	if (preferred_suite != 0):
+		if (tls_hello_offers_suite(msg, len, preferred_suite)): *selected_suite = preferred_suite
+	else if (tls_hello_offers_suite(msg, len, TLS_SUITE_CHACHA20_POLY1305_SHA256)): *selected_suite = TLS_SUITE_CHACHA20_POLY1305_SHA256
+	else if (tls_hello_offers_suite(msg, len, TLS_SUITE_AES_128_GCM_SHA256)): *selected_suite = TLS_SUITE_AES_128_GCM_SHA256
+	else if (tls_hello_offers_suite(msg, len, TLS_SUITE_AES_256_GCM_SHA384)): *selected_suite = TLS_SUITE_AES_256_GCM_SHA384
+	int pos = ext + 2
+	while (pos < len):
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		pos += 4
+		if (kind == TLS_EXT_SUPPORTED_VERSIONS):
+			if (n < 3 || (msg[pos] & 255) != n - 1 || ((n - 1) & 1)): return 0
+			for i in range(1, n, 2):
+				if (load_be16(msg + pos + i) == 0x0304): *have_tls13 = 1
+		else if (kind == TLS_EXT_SIGNATURE_ALGORITHMS):
+			if (n < 4 || load_be16(msg + pos) != n - 2 || (n & 1)): return 0
+			for i in range(2, n, 2):
+				if (load_be16(msg + pos + i) == TLS_SIG_ECDSA_SECP256R1_SHA256): *have_ecdsa = 1
+		else if (kind == TLS_EXT_KEY_SHARE):
+			if (tls_key_shares_valid(msg, len, pos, n) == 0): return 0
+			int kp = pos + 2
+			while (kp < pos + n):
+				if (pos + n - kp < 4): return 0
+				int group = load_be16(msg + kp)
+				int size = load_be16(msg + kp + 2)
+				kp += 4
+				if (size == 0 || size > pos + n - kp): return 0
+				if (tls_group_size(group) != 0):
+					if (size != tls_group_size(group) || tls_hello_has_group(msg, len, group) == 0): return 0
+					if (preferred_group == 0 || preferred_group == group):
+						if (*selected_group == 0 || group == TLS_GROUP_X25519):
+							*selected_group = group
+							mem_copy(out_pub, msg + kp, size)
+				kp += size
+		pos += n
+	if (*selected_group == 0):
+		int wanted = preferred_group
+		if (wanted == 0):
+			if (tls_hello_has_group(msg, len, TLS_GROUP_X25519)): wanted = TLS_GROUP_X25519
+			else: wanted = TLS_GROUP_SECP256R1
+		if (tls_hello_has_group(msg, len, wanted)): *selected_group = 0 - wanted
 	return 1
+
+
+int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, int* out_sid_len, char* out_pub, int* suite, int* group, int* have_tls13, int* have_ecdsa):
+	return tls_parse_client_hello_options(msg, len, out_random, out_sid, out_sid_len, out_pub, suite, group, have_tls13, have_ecdsa, 0, 0)
 
 
 # ---- server flight builders ---------------------------------------------------
 
-# Build a ServerHello (RFC 8446 4.1.3): our single cipher suite, the echoed
-# legacy_session_id, supported_versions=TLS 1.3, and an X25519 key_share
-# carrying server_pub. Returns a malloc'd handshake message; *out_len its len.
-char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_pub, int* out_len):
+# Build ServerHello or, when server_pub is null, HelloRetryRequest.
+# The caller supplies the negotiated suite/group and echoed session ID.
+char* tls_build_server_hello_group(char* random, char* sid, int sid_len, char* server_pub, int suite, int group, int* out_len):
 	string_builder* b = string_new_sized(128)
 	string_append_char(b, TLS_HS_SERVER_HELLO)
 	int lenpos = b.length
@@ -2050,7 +2291,7 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 	string_append_bytes(b, random, 32)             # random
 	string_append_char(b, sid_len)                   # legacy_session_id_echo length
 	if (sid_len > 0): string_append_bytes(b, sid, sid_len)
-	string_append_be16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256)
+	string_append_be16(b, suite)
 	string_append_char(b, 0)                         # legacy_compression_method = null
 	int extpos = b.length
 	string_append_be16(b, 0)                        # extensions length placeholder
@@ -2059,12 +2300,17 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 	string_append_be16(b, TLS_EXT_SUPPORTED_VERSIONS)
 	string_append_be16(b, 2)
 	string_append_be16(b, 0x0304)
-	# key_share: one x25519 entry
+	# key_share: selected group, or only the group for HelloRetryRequest
 	string_append_be16(b, TLS_EXT_KEY_SHARE)
-	string_append_be16(b, 36)                       # ext_data length
-	string_append_be16(b, TLS_GROUP_X25519)
-	string_append_be16(b, 32)                       # key_exchange length
-	string_append_bytes(b, server_pub, 32)
+	int size = tls_group_size(group)
+	if (server_pub == 0):
+		string_append_be16(b, 2)
+		string_append_be16(b, group)
+	else:
+		string_append_be16(b, size + 4)
+		string_append_be16(b, group)
+		string_append_be16(b, size)
+		string_append_bytes(b, server_pub, size)
 	int ext_len = b.length - ext_start
 	store_be16(b.data + extpos, ext_len)
 	int body_len = b.length - body_start
@@ -2074,6 +2320,10 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 	*out_len = b.length
 	string_free(b)
 	return out
+
+
+char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_pub, int* out_len):
+	return tls_build_server_hello_group(random, sid, sid_len, server_pub, TLS_SUITE_CHACHA20_POLY1305_SHA256, TLS_GROUP_X25519, out_len)
 
 
 # Build an empty EncryptedExtensions (no extensions negotiated: no ALPN, no
@@ -2311,50 +2561,82 @@ int tls_server_select_alpn(tls_conn* c, char* msg, int len):
 
 # ---- server handshake state machine -------------------------------------------
 
-# Read and validate the ClientHello (bounded), folding it into the transcript.
-# On success returns 1 with the session_id echo (out_sid/*out_sid_len) and the
-# client X25519 share (out_pub, 32 bytes). On a malformed hello or one that
-# does not offer TLS 1.3 + ChaCha20 + X25519 + ecdsa_secp256r1_sha256 it sends
-# the appropriate fatal alert (protocol_version / handshake_failure /
-# decode_error -- never a HelloRetryRequest), marks the connection, returns 0.
+# Normalize a retried hello for comparison: key_share is the only extension
+# our server asks to change; padding may also change per RFC 8446 4.1.2.
+# PSK/early_data are outside this implementation's retry contract.
+char* tls_retry_invariant(char* msg, int len, int* out_len):
+	int ext = tls_hello_extensions(msg, len)
+	if (ext < 0 || tls_extensions_valid(msg, len, ext + 2) == 0): return 0
+	string_builder* b = string_new()
+	string_append_bytes(b, msg + 4, ext - 4)
+	int pos = ext + 2
+	while (pos < len):
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		if (kind == 41 || kind == 42 || kind == TLS_EXT_COOKIE):
+			string_free(b)
+			return 0
+		if (kind != TLS_EXT_KEY_SHARE && kind != 21): string_append_bytes(b, msg + pos, n + 4)
+		pos += n + 4
+	*out_len = b.length
+	char* out = b.data
+	free(b)
+	return out
+
+
 int tls_server_read_client_hello(tls_conn* c, char* out_sid, int* out_sid_len, char* out_pub):
 	int htype = 0
 	char* msg = 0
 	int mlen = 0
-	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
-	if (htype != TLS_HS_CLIENT_HELLO):
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
-		tls_fail(c, c"tls: expected ClientHello")
-		return 0
-	whash_update(c.transcript, msg, mlen)
-	char* crandom = cast(char*, malloc(32))
-	int have_chacha = 0
-	int have_x25519 = 0
-	int have_tls13 = 0
-	int have_ecdsa = 0
-	int pok = tls_parse_client_hello(msg, mlen, crandom, out_sid, out_sid_len, out_pub, &have_chacha, &have_x25519, &have_tls13, &have_ecdsa)
-	free(crandom)
-	if (pok == 0):
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
-		tls_fail(c, c"tls: malformed ClientHello")
-		return 0
-	if (have_tls13 == 0):
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_PROTOCOL_VERSION)
-		tls_fail(c, c"tls: client does not offer TLS 1.3")
-		return 0
-	if (have_chacha == 0):
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_HANDSHAKE_FAILURE)
-		tls_fail(c, c"tls: no supported cipher suite")
-		return 0
-	if (have_x25519 == 0):
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_HANDSHAKE_FAILURE)
-		tls_fail(c, c"tls: no X25519 key_share")
-		return 0
-	if (have_ecdsa == 0):
-		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_HANDSHAKE_FAILURE)
-		tls_fail(c, c"tls: client does not accept ecdsa_secp256r1_sha256")
-		return 0
-	return tls_server_select_alpn(c, msg, mlen)
+	int preferred_suite = c.scfg.cipher_suite
+	int preferred_group = c.scfg.key_exchange_group
+	if (preferred_suite != 0 && tls_suite_supported(preferred_suite) == 0): return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: unsupported configured suite")
+	if (preferred_group != 0 && tls_group_size(preferred_group) == 0): return tls_auth_fail(c, TLS_ALERT_INTERNAL_ERROR, c"tls: unsupported configured group")
+	for attempt in range(2):
+		if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
+		if (htype != TLS_HS_CLIENT_HELLO): return tls_auth_fail(c, TLS_ALERT_UNEXPECTED_MESSAGE, c"tls: expected ClientHello")
+		char[32] crandom
+		int suite = 0
+		int group = 0
+		int have_tls13 = 0
+		int have_ecdsa = 0
+		if (tls_parse_client_hello_options(msg, mlen, crandom, out_sid, out_sid_len, out_pub, &suite, &group, &have_tls13, &have_ecdsa, preferred_suite, preferred_group) == 0):
+			return tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: malformed ClientHello")
+		if (have_tls13 == 0): return tls_auth_fail(c, TLS_ALERT_PROTOCOL_VERSION, c"tls: client does not offer TLS 1.3")
+		if (suite == 0): return tls_auth_fail(c, TLS_ALERT_HANDSHAKE_FAILURE, c"tls: no supported cipher suite")
+		if (group == 0): return tls_auth_fail(c, TLS_ALERT_HANDSHAKE_FAILURE, c"tls: no supported key exchange group")
+		if (have_ecdsa == 0): return tls_auth_fail(c, TLS_ALERT_HANDSHAKE_FAILURE, c"tls: client does not accept ecdsa_secp256r1_sha256")
+		if (attempt == 0):
+			string_append_bytes(c.hello, msg, mlen)
+			whash_update(c.transcript, msg, mlen)
+			tls_set_suite(c, suite)
+		else:
+			int old_len = 0
+			int new_len = 0
+			char* old = tls_retry_invariant(c.hello.data, c.hello.length, &old_len)
+			char* next = tls_retry_invariant(msg, mlen, &new_len)
+			int same = old != 0 && next != 0 && old_len == new_len
+			if (same): same = mem_eq(old, next, old_len)
+			if (old != 0): free(old)
+			if (next != 0): free(next)
+			if (same == 0 || group != c.key_group || suite != c.cipher_suite || tls_retry_single_share(msg, mlen, c.key_group) == 0):
+				return tls_auth_fail(c, TLS_ALERT_ILLEGAL_PARAMETER, c"tls: invalid second ClientHello")
+			whash_update(c.transcript, msg, mlen)
+		if (group > 0):
+			c.key_group = group
+			return tls_server_select_alpn(c, msg, mlen)
+		# Only one retry. The selected group was advertised without a share.
+		if (attempt != 0): return tls_auth_fail(c, TLS_ALERT_ILLEGAL_PARAMETER, c"tls: repeated retry")
+		c.key_group = 0 - group
+		preferred_group = c.key_group
+		preferred_suite = c.cipher_suite
+		int hrr_len = 0
+		char* hrr = tls_build_server_hello_group(tls_hrr_random(), out_sid, *out_sid_len, 0, c.cipher_suite, c.key_group, &hrr_len)
+		tls_retry_transcript(c, hrr, hrr_len)
+		int sent = tls_send_record(c, TLS_CT_HANDSHAKE, hrr, hrr_len, 0)
+		free(hrr)
+		if (sent == 0): return 0
+	return 0
 
 
 # Drive the full server handshake on connection c (c.scfg holds credentials).
@@ -2387,7 +2669,7 @@ int tls_server_do_handshake(tls_conn* c):
 	# ClientHello.
 	char* csid = cast(char*, malloc(32))
 	int csid_len = 0
-	char* cpub = cast(char*, malloc(32))
+	char* cpub = cast(char*, malloc(65))
 	if (tls_server_read_client_hello(c, csid, &csid_len, cpub) == 0):
 		free(csid)
 		free(cpub)
@@ -2396,9 +2678,12 @@ int tls_server_do_handshake(tls_conn* c):
 		pem_blocks_free(certs)
 		return 0
 
-	# ServerHello with a fresh (or injected) ephemeral X25519 key and random.
+	ds = c.digest_size
+	# ServerHello with a fresh (or injected) ephemeral key and random.
 	char* spriv = cast(char*, malloc(32))
-	if (tls_server_gen_priv(c, spriv) == 0):
+	char* spub = cast(char*, malloc(65))
+	if (tls_make_key_share(c, c.key_group, spriv, spub, 1) == 0):
+		free(spub)
 		tls_wipe(spriv, 32)
 		free(spriv)
 		free(csid)
@@ -2408,8 +2693,6 @@ int tls_server_do_handshake(tls_conn* c):
 		pem_blocks_free(certs)
 		tls_fail(c, c"tls: RNG failure")
 		return 0
-	char* spub = cast(char*, malloc(32))
-	x25519_scalarmult_base(spub, spriv)
 	char* srandom = cast(char*, malloc(32))
 	if (tls_server_gen_random(c, srandom) == 0):
 		tls_wipe(spriv, 32)
@@ -2424,7 +2707,7 @@ int tls_server_do_handshake(tls_conn* c):
 		tls_fail(c, c"tls: RNG failure")
 		return 0
 	int sh_len = 0
-	char* sh = tls_build_server_hello(srandom, csid, csid_len, spub, &sh_len)
+	char* sh = tls_build_server_hello_group(srandom, csid, csid_len, spub, c.cipher_suite, c.key_group, &sh_len)
 	free(srandom)
 	free(spub)
 	free(csid)
@@ -2443,11 +2726,11 @@ int tls_server_do_handshake(tls_conn* c):
 
 	# ECDHE shared secret; reject a low-order (all-zero) result.
 	char* ecdhe = cast(char*, malloc(32))
-	int xr = x25519_scalarmult(ecdhe, spriv, cpub)
+	int xr = tls_shared_secret(c.key_group, spriv, cpub, ecdhe)
 	tls_wipe(spriv, 32)
 	free(spriv)
 	free(cpub)
-	if (xr != 0):
+	if (xr == 0):
 		tls_wipe(ecdhe, 32)
 		free(ecdhe)
 		tls_wipe(server_d, 32)
@@ -2826,7 +3109,7 @@ int tls_client_send_auth(tls_conn* c):
 		tls_wipe(key, 32)
 		free(key)
 		return 1
-	char* th = cast(char*, malloc(c.digest_size))
+	char* th = cast(char*, malloc(48))
 	whash_final(c.transcript, th)
 	msg = tls_build_certverify_role(key, th, c.digest_size, 1, &len)
 	free(th)
@@ -2877,7 +3160,7 @@ int tls_server_read_client_auth(tls_conn* c):
 	if (tls_check_client_chain(c, certs) == 0):
 		tls_free_cert_list(certs)
 		return 0
-	char* th = cast(char*, malloc(c.digest_size))
+	char* th = cast(char*, malloc(48))
 	whash_final(c.transcript, th)
 	if (tls_next_hs_msg(c, &kind, &msg, &len) == 0):
 		free(th)
