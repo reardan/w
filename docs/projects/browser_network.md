@@ -108,6 +108,35 @@ borrowed URLs, reenter the same client, or outlive the request. Apply destinatio
 and credential policies in the embedding; the compatibility client does not
 strip caller-supplied headers when origins change.
 
+## HTTPS trust and compatibility
+
+On Linux, HTTPS uses the host CA bundle automatically, including
+`/etc/ssl/certs/ca-certificates.crt` and the common distribution alternatives.
+An explicit `req.tls_trust_store_path` takes precedence over `SSL_CERT_FILE`,
+which takes precedence over those default paths. A missing or unusable explicit
+bundle fails closed; it never silently falls back to other roots. W does not
+ship its own root list or download trust anchors from the peer. Keep the host's
+`ca-certificates` package current; private CAs can be supplied in a PEM bundle.
+Native macOS Keychain and Windows certificate-store integration is not provided
+by this PEM loader; those hosts need an accessible bundle/override.
+
+The October 2026 `example.com` verification failure was caused by missing P-384
+issuer signature support, despite a usable Linux trust store. X.509 now parses
+P-384 keys and verifies ECDSA signatures with them, and the TLS client offers and
+verifies `ecdsa_secp384r1_sha384` for server CertificateVerify. P-256 and RSA
+verification remain supported. Verification errors retain their static X.509 or
+TLS reason in `response.error_message`, while `response.error` remains
+`http_error_tls`. No certificate contents are included in these messages.
+
+Live Linux checks completed verified TLS to example.com, example.org, Google,
+GitHub, Cloudflare, Amazon, Wikipedia and Microsoft (the latter two returned
+HTTP 403). Offline tests cover published P-384 vectors, an archived DigiCert /
+TrustAsia chain, malformed/tampered signatures and handshake signatures; the
+optional `openssl_interop_test` also covers a verified P-384 server handshake.
+This does not establish universal HTTPS compatibility: the stack still requires
+TLS 1.3, ChaCha20-Poly1305 and X25519, and does not implement every certificate
+algorithm, extension or chain-building strategy.
+
 ## Content decoding
 
 Import `libs.standard.web.content_decode`. `content_decoder_new(encoding,
