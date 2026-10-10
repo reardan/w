@@ -8,16 +8,21 @@
 # debugger/ 65.0), which leaves room for the run-to-run drift seen so
 # far. Raise a floor in the PR that adds the tests; lower one only with
 # a reason in the commit message.
-code_generator/ 94.5
-compiler/ 92.5
-grammar/ 95.0
+# Tile parsing/analysis/PTX tests (2026-10-09, Linux x86_64) raise the
+# affected directory measurements to lines 96.9/94.2/96.8 and branches
+# 88.1/83.6/85.1 for code_generator/compiler/grammar respectively;
+# diagnostic sites reach 51.2%. Their floors retain a 0.6-0.9 point
+# margin. Unrelated REPL/debugger/driver floors retain the prior baseline.
+code_generator/ 96.0
+compiler/ 93.5
+grammar/ 96.0
 repl/ 91.5
 debugger/ 77.5
 repl.w 80.5
 w.w 93.0
-diagnostics 35.0
-branches:code_generator/ 85.5
-branches:compiler/ 81.0
-branches:grammar/ 81.0
+diagnostics 50.5
+branches:code_generator/ 87.5
+branches:compiler/ 83.0
+branches:grammar/ 84.5
 branches:repl/ 71.5
 branches:debugger/ 64.0

@@ -120,6 +120,8 @@ char* retained_query_kind(int kind):
 	if (kind == retained_expression_group): return c"expression_group"
 	if (kind == retained_import): return c"import"
 	if (kind == retained_local): return c"local"
+	if (kind == retained_tile_expression): return c"tile_expression"
+	if (kind == retained_tile_statement): return c"tile_statement"
 	return c"unknown"
 
 

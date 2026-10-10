@@ -74,9 +74,11 @@ void gpu_for_emit_runtime_call(char* kernel_name, int base, int count, int has_s
 # expression using a symbol named 'gpu' (rewound with the reparse
 # save/seek/restore trick).
 int ast_gpu_for_statement();
+int ast_tile_statement();
 
 
 int gpu_for_statement():
+	if (ast_tile_statement()): return 1
 	if (ast_expressions_mode >= 2): return ast_gpu_for_statement()
 	if (peek(c"gpu") == 0): return 0
 	char* save = generic_reparse_save()
