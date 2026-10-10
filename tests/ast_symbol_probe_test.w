@@ -116,6 +116,7 @@ void test_ast_pointer_probe_records_are_transactional():
 	push_basic_types()
 	int base = type_push_size(c"ast_pointer_probe_base", word_size)
 	expression_ast tree
+	expression_ast_bind(&tree)
 	tree.types_base = type_count()
 	tree.types_count = 0
 	tree.pending_buffer_types = 0
@@ -143,13 +144,13 @@ void test_ast_pointer_probe_records_are_transactional():
 	tree.pending_buffer_types = 1
 	assert_equal(-1, ast_expression_pointer_type(&tree, second, 13))
 	assert_equal(tree.types_base, type_count())
-	# Capacity failure leaves only arena-owned records to roll back.
+	# Growth leaves only arena-owned records to roll back.
 	tree.pending_buffer_types = 0
 	int current = second
-	for i in range(16):
+	for i in range(40):
 		current = ast_expression_pointer_type(&tree, current, 20 + i)
 		assert1(current >= 0)
-	assert_equal(-1, ast_expression_pointer_type(&tree, current, 40))
+	assert1(ast_expression_pointer_type(&tree, current, 60) >= 0)
 	ast_expression_restore_types(&tree)
 	assert_equal(tree.types_base, type_count())
 	assert_equal(-1, type_lookup_next_pointer(second))
@@ -160,6 +161,7 @@ void test_ast_composite_probe_records_are_transactional():
 	push_basic_types()
 	int base = type_push_size(c"ast_composite_probe_base", word_size)
 	expression_ast tree
+	expression_ast_bind(&tree)
 	tree.types_base = type_count()
 	tree.types_count = 0
 	tree.type_names_used = 0
@@ -623,6 +625,7 @@ void test_ast_container_probe_records_are_transactional():
 	push_basic_types()
 	int base = type_push_size(c"ast_container_probe_base", word_size)
 	expression_ast tree
+	expression_ast_bind(&tree)
 	tree.types_base = type_count()
 	tree.types_count = 0
 	tree.type_names_used = 0
@@ -654,15 +657,13 @@ void test_ast_container_probe_records_are_transactional():
 	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
 	tree.types_base = type_count()
 	tree.types_count = 0
-	tree.type_names_used = 4096
-	assert_equal(-1, ast_expression_composite_type(&tree, type_kind_list, third, -1, 14))
-	assert_equal(tree.types_base, type_count())
 	tree.type_names_used = 0
 	int current = third
-	for i in range(16):
+	for i in range(40):
 		current = ast_expression_composite_type(&tree, type_kind_list, current, -1, 20 + i)
 		assert1(current >= 0)
-	assert_equal(-1, ast_expression_composite_type(&tree, type_kind_list, current, -1, 40))
+	assert1(ast_expression_composite_type(&tree, type_kind_list, current, -1, 60) >= 0)
+	assert1(tree.type_names_used > 4096)
 	ast_expression_restore_types(&tree)
 	assert_equal(tree.types_base, type_count())
 	assert_equal(-1, type_lookup_list(third))

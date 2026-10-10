@@ -35,6 +35,17 @@ int main():
 	set[char*] names = set[char*]{c"hi", c"bye"}
 	list[char*] words = list[char*]{c"hi"}
 	if (!(key in names) || !(key in words)): return 9
+	# Unary casts stop before the following parenthesized statement even
+	# though lexical preflight also permits multiline postfix calls.
+	char* key_data = cast(char*, key)
+	(key_data + 1)[0] = 'o'
+	if (key[1] != 'o'): return 10
+	char* key_again = cast(char*, key) # retain the newline boundary
+	/* lookahead comment */ (key_again)[0] = 'g'
+	if (key[0] != 'g'): return 11
+	int element_size = sizeof(int)
+	(element_size) = element_size + 1
+	if (element_size != __word_size__ + 1): return 12
 	names.free()
 	words.free()
 	return 0

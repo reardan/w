@@ -315,22 +315,26 @@ void for_range_loop(int for_var, int for_tab_level):
 	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
-	push_slot()
+	int first_slot = push_slot()
+	int second_slot = 0
+	int third_slot = 0
 	while (accept(c",")):
 		promote(expression())
-		push_slot()
+		int slot = push_slot()
 		num_range_args = num_range_args + 1
+		if (num_range_args == 2): second_slot = slot
+		else if (num_range_args == 3): third_slot = slot
 	if (has_parens): expect(c")")
 	if (num_range_args > 3): error(c"range() takes 1-3 arguments")
 
 	# With 2+ arguments the first one is the start: copy it into the loop var
-	int end_slot = for_var + 1
+	int end_slot = first_slot
 	# A register-resident loop variable (R2b): its stack word is never
 	# written, the register is.
 	int for_reg = regalloc_slot_register(for_var - 1)
 	if (num_range_args >= 2):
-		end_slot = for_var + 2
-		load_slot(for_var + 1)
+		end_slot = second_slot
+		load_slot(first_slot)
 		if (for_reg != 0): mov_reg_eax(for_reg)
 		else:
 			regalloc_slot_assert(for_var - 1)
@@ -347,7 +351,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	for_reg = regalloc_slot_register(for_var - 1)
 	regalloc_loop_hidden(end_slot)
 	int step_reg = 0
-	if (num_range_args == 3): step_reg = regalloc_loop_hidden(for_var + 3)
+	if (num_range_args == 3): step_reg = regalloc_loop_hidden(third_slot)
 	# A rotated loop (grammar/loop_rotate.w) enters at the bottom test
 	int entry = -1
 	if (loop_rotate_on()): entry = be_loop_entry()
@@ -373,7 +377,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	be_ctrl_end(loop_continue_chain)
 	if (num_range_args == 3):
 		if (step_reg != 0): mov_eax_reg(step_reg)
-		else: load_slot(for_var + 3)
+		else: load_slot(third_slot)
 		if (for_reg != 0): add_reg_eax(for_reg)
 		else:
 			regalloc_slot_assert(for_var - 1)
@@ -702,6 +706,7 @@ char* for_infer_name(char* msg):
 	if (is_ident == 0): error(msg)
 	char* name = strclone(token)
 	get_token()
+	ast_body_reserve(1)
 	push_slot()
 	return name
 
@@ -875,7 +880,7 @@ int for_statement():
 		infer_name = for_infer_name(c"type not found in for_statement loop variable")
 		type = type_lookup(c"int")
 	else if (type_stack_words(type) != 1): error(c"for loop variable must be a word-sized type")
-	int for_var = stack_pos
+	int for_var = ast_body_depth()
 
 	# Optional second loop variable: for K key, V value in map
 	int value_var = 0
@@ -890,7 +895,7 @@ int for_statement():
 			value_type = type_lookup(c"int")
 		else if (type_stack_words(value_type) != 1):
 			error(c"for loop value variable must be a word-sized type")
-		value_var = stack_pos
+		value_var = ast_body_depth()
 
 	expect(c"in")
 	if (accept(c"range")):

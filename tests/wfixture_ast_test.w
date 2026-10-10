@@ -42,15 +42,16 @@ void test_fixture_ast_mode_preserves_selector():
 
 
 void test_fixture_ast_mode_enforces_positive_coverage():
-	string_builder* name = string_from(c"bin/wfixture_ast_capacity_")
+	string_builder* name = string_from(c"bin/wfixture_ast_unsupported_")
 	string_append_int(name, getpid())
 	char* output = strclone(name.data)
 	string_append(name, c".w")
-	string_builder* source = string_from(c"# reject_stderr: error\nint main(): return ")
-	for i in range(2300): string_append(source, c"1+")
-	string_append(source, c"1\n")
-	assert1(file_write_text(name.data, source.data))
-	string_free(source)
+	# Inference through a generic record parameter still needs the
+	# streaming header replay. This is a semantic coverage gap, not an
+	# expression-size limit: ordinary compilation accepts the fallback,
+	# while the fixture runner must require positive AST coverage.
+	char* source = c"# reject_stderr: error\nstruct CoverageBox[T]:\n\tT value\nint read_box[T](CoverageBox[T]* box, T hint): return box.value + cast(int, hint)\nint main():\n\tCoverageBox[int] box\n\tbox.value = 1\n\treturn read_box(&box, 2)\n"
+	assert1(file_write_text(name.data, source))
 	process_result* plain = fixture_ast_run(0, name.data, 0, 0)
 	assert_equal(0, plain.status)
 	process_result_free(plain)

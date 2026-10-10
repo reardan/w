@@ -197,8 +197,7 @@ void retained_expression_view(expression_ast* tree, int id):
 	tree.type_names_used = group.arena_type_names_length
 	tree.token_count = group.location_count
 	tree.tokens = group.locations
-	assert1(tree.type_names_used <= 4096)
-	for i in range(tree.type_names_used): tree.type_names[i] = group.arena_type_names[i]
+	tree.type_names = group.arena_type_names
 	tree.text = group.arena_text
 	tree.op = c
 	tree.left = &c[count]

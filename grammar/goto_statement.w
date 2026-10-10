@@ -47,6 +47,11 @@ int* goto_label_stack    # stack_pos at the label (valid once defined)
 # 1 once the label's statement is parsed: the duplicate check is a parse
 # fact, independent of when the label is emitted (goto_label_pos)
 int* goto_label_defined
+# First successful goto to each label, in source order. This is semantic
+# input, independent of the pending machine-branch patch list. A body can
+# validate its labels before emitting any of those branches.
+int* goto_label_reference
+int goto_reference_serial
 int goto_label_count
 int goto_label_capacity
 int goto_label_base
@@ -68,6 +73,7 @@ void goto_reserve():
 		goto_label_pos = cast(int*, malloc(goto_label_capacity * __word_size__))
 		goto_label_stack = cast(int*, malloc(goto_label_capacity * __word_size__))
 		goto_label_defined = cast(int*, malloc(goto_label_capacity * __word_size__))
+		goto_label_reference = cast(int*, malloc(goto_label_capacity * __word_size__))
 	if (goto_label_count >= goto_label_capacity):
 		int old = goto_label_capacity * __word_size__
 		goto_label_capacity = goto_label_capacity * 2
@@ -76,6 +82,7 @@ void goto_reserve():
 		goto_label_pos = cast(int*, realloc(goto_label_pos, old, x))
 		goto_label_stack = cast(int*, realloc(goto_label_stack, old, x))
 		goto_label_defined = cast(int*, realloc(goto_label_defined, old, x))
+		goto_label_reference = cast(int*, realloc(goto_label_reference, old, x))
 	if (goto_pending_capacity == 0):
 		goto_pending_capacity = 16
 		goto_pending_label = cast(int*, malloc(goto_pending_capacity * __word_size__))
@@ -97,15 +104,37 @@ void goto_scope_begin():
 	goto_pending_base = goto_pending_count
 
 
-# Close the innermost body's label scope: every goto must have found its
-# label, then the outer scope's bases come back.
+# Reference registration is separate from interning: a parser may intern a
+# name before it discovers a malformed terminator. Only a successful goto
+# participates in undefined-label analysis, matching diagnostic recovery.
+void goto_label_note_reference(int label):
+	if (goto_label_reference[label] >= 0): return
+	goto_label_reference[label] = goto_reference_serial
+	goto_reference_serial = goto_reference_serial + 1
+
+
+# Return the first unresolved goto, preserving diagnostic order even when
+# earlier labels were interned by definitions or another nested function.
+# Neither code offsets nor emitted branch patch sites participate.
+int goto_scope_unresolved():
+	int unresolved = -1
+	for label in range(goto_label_base, goto_label_count):
+		if ((goto_label_reference[label] >= 0) && (goto_label_defined[label] == 0)):
+			if (unresolved < 0): unresolved = label
+			else if (goto_label_reference[label] < goto_label_reference[unresolved]): unresolved = label
+	return unresolved
+
+
+void goto_scope_validate():
+	int label = goto_scope_unresolved()
+	if (label >= 0): error3(c"goto to undefined label '", goto_label_names[label], c"'")
+
+
+# Close the innermost body's label scope after semantic validation, then
+# restore the outer scope's bases. Validation itself can run before lowering.
 void goto_scope_end(int outer_label_base, int outer_pending_base):
-	int i = goto_pending_base
-	while (i < goto_pending_count):
-		int label = goto_pending_label[i]
-		if (label >= 0): error3(c"goto to undefined label '", goto_label_names[label], c"'")
-		i = i + 1
-	i = goto_label_base
+	goto_scope_validate()
+	int i = goto_label_base
 	while (i < goto_label_count):
 		free(goto_label_names[i])
 		i = i + 1
@@ -133,6 +162,7 @@ int goto_label_intern(char* name):
 	goto_label_pos[goto_label_count] = -1
 	goto_label_stack[goto_label_count] = 0
 	goto_label_defined[goto_label_count] = 0
+	goto_label_reference[goto_label_count] = -1
 	goto_label_count = goto_label_count + 1
 	return goto_label_count - 1
 
@@ -175,9 +205,10 @@ int goto_statement():
 	node.end_offset = token_start_offset + token_i
 	get_token()
 	expect_or_newline(c";")
+	goto_label_note_reference(label)
 	if (ast_expressions_mode >= 2):
 		node.target = label
-		node.stack_depth = stack_pos
+		node.stack_depth = ast_body_depth()
 		if (ast_goto_walk(node) == 0): emit_goto_statement_ast(node)
 	else: emit_goto_target(label, stack_pos)
 	return 1
@@ -215,7 +246,7 @@ int labeled_statement():
 	free(name)
 	if (ast_expressions_mode >= 2):
 		node.target = label
-		node.stack_depth = stack_pos
+		node.stack_depth = ast_body_depth()
 		if (ast_goto_walk(node) == 0): emit_goto_statement_ast(node)
 	else: emit_label_target(label, stack_pos)
 	return 1

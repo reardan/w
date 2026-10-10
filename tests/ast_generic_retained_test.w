@@ -85,19 +85,23 @@ int generic_retained_same_file(char* first, char* second):
 	return same
 
 
-void generic_retained_run_passes(char* binary):
+void generic_retained_run_passes(char* binary, int banner):
 	char** args = strv_new(2)
 	strv_set(args, 0, binary)
 	process_result* run = process_run(binary, args, 0, 0, 120000)
 	free(cast(void*, args))
 	assert1(run != 0)
 	assert_equal(0, run.status)
-	assert_contains(run.stdout_text, c"All tests passed!")
+	if (banner): assert_contains(run.stdout_text, c"All tests passed!")
+	else:
+		assert_strings_equal(c"", run.stdout_text)
+		assert_strings_equal(c"", run.stderr_text)
 	process_result_free(run)
 
 
 # --streaming and --ast-emit-retained agree on status, output and image, on
-# both hosts; run_binary also runs both images.
+# both hosts; run_binary also runs both images (1: test-runner banner,
+# 2: a silent fixture whose exit status asserts its runtime behavior).
 void generic_retained_same(char* source, int run_binary):
 	char* plain = generic_retained_path(c".plain")
 	char* retained = generic_retained_path(c".retained")
@@ -115,8 +119,8 @@ void generic_retained_same(char* source, int run_binary):
 		assert1(generic_retained_same_file(plain, retained))
 		if (run_binary):
 			assert_equal(0, a.status)
-			generic_retained_run_passes(plain)
-			generic_retained_run_passes(retained)
+			generic_retained_run_passes(plain, run_binary == 1)
+			generic_retained_run_passes(retained, run_binary == 1)
 		process_result_free(a)
 		process_result_free(b)
 		unlink(plain)
@@ -231,11 +235,37 @@ void test_file_ending_spans_position_the_file_at_its_end():
 	char* stats = generic_retained_stats(c"bin/wv2", path, 1, 0)
 	assert_equal(0, generic_retained_counter(stats, c"Generic instantiation source seeks: "))
 	assert_equal(0, generic_retained_counter(stats, c"Deferred statement source seeks: "))
-	assert_equal(3, generic_retained_counter(stats, c"Retained-source reparses: "))
+	assert_equal(1, generic_retained_counter(stats, c"Retained-source reparses: "))
 	assert_equal(1, generic_retained_counter(stats, c"Retained-source reparses positioned at the file's end: "))
 	free(stats)
 	unlink(path)
 	free(path)
 
-# wbuild: binary=ast_generic_retained_test tag=tests dep=build dep=build_x64 data=tests/ast_generic_retained_fixture.w data=tests/ast_generic_retained_helper.w
+# wbuild: binary=ast_generic_retained_test tag=tests dep=build dep=build_x64 data=tests/ast_generic_retained_fixture.w data=tests/ast_generic_retained_helper.w data=tests/ast_deferred_fixture.w
 # wbuild: step="bin/ast_generic_retained_test"
+
+
+# A deferred call's names are rebound at each exit, including a name
+# declared after registration and a later declaration that shadows it.
+# The fixture contains only reusable calls: no source is parsed again.
+void test_deferred_call_trees_bind_at_exits_without_reparsing():
+	generic_retained_same(c"tests/ast_deferred_fixture.w", 2)
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		char* stats = generic_retained_stats(compiler, c"tests/ast_deferred_fixture.w", 1, 1)
+		assert1(generic_retained_counter(stats, c"Deferred syntax trees captured: ") > 0)
+		assert1(generic_retained_counter(stats, c"Deferred syntax tree emissions: ") > generic_retained_counter(stats, c"Deferred syntax trees captured: "))
+		assert_equal(0, generic_retained_counter(stats, c"Deferred expression reparses: "))
+		assert_equal(0, generic_retained_counter(stats, c"Retained-source reparses: "))
+		free(stats)
+
+
+void test_deferred_tree_fallback_is_decided_at_each_exit():
+	# The first exit has an int local (eligible); the second shadows it
+	# with a char (falls back). Binding cannot be cached across exits.
+	generic_retained_same_text(c"int total\n\nvoid mark(int value):\n\ttotal = value\n\nvoid run(int early):\n\tint value = 2\n\tdefer mark(value)\n\tif (early): return\n\tchar value = 3\n\treturn\n\nint main():\n\trun(1)\n\tif (total != 2): return 1\n\trun(0)\n\treturn total - 3\n")
+	# Failed eligibility after a valid argument must not commit its use
+	# tracking or suppress the ordinary unknown-name diagnostic.
+	generic_retained_same_text(c"void mark(int first, int second):\n\tpass\n\nint main():\n\tint value = 2\n\tdefer mark(value, missing)\n\treturn 0\n")
+	generic_retained_same_text(c"void mark(int value):\n\tpass\n\nint main():\n\tdefer mark(2147483648)\n\treturn 0\n")

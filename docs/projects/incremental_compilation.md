@@ -99,13 +99,66 @@ retained traversal; it is not sufficient to authorize general code reuse. See
 [the module dependency increment](ast_migration.md#declaration-inventory-and-independent-module-dependency-analysis)
 for ownership, schema and remaining gaps.
 
+## Independent native function updates
+
+`repl/incremental_graph.w` adds a separate append-only strategy using the same
+production compiler and conservative scalar-function admission rules:
+
+```w
+repl_init()
+incremental_graph_init()
+incremental_result result = incremental_graph_update(sources)
+int address = incremental_graph_address(c"my_function")
+incremental_graph_clear()
+repl_cleanup()
+```
+
+Each update supplies the complete ordered list of function definitions. It
+compiles changed definitions and their transitive users, while unrelated
+definitions retain their machine code and addresses regardless of their position
+in the list. Reordering independent functions and deleting unreferenced functions
+emit no code. The admission rules require calls to earlier functions or self,
+so a forward dependency walk suffices; identifier references conservatively
+count as dependencies even when a local shadows their spelling. A changed callee
+invalidates its users even when its signature appears unchanged, preserving the
+production compiler's type checking and any emission-time specialization.
+
+All dirty definitions compile in one no-execution REPL transaction. A failed
+compile restores the previous complete program, including symbol and retained
+tree state. Only a successful update patches recorded function-address and direct
+call sites through the REPL's existing late-binding registry. `status`, `reused`
+and `compiled` describe the result; `failed_index` identifies admission failures,
+but is `-1` for a transaction compile failure, whose diagnostic identifies its
+source position in the staged batch. No-op updates perform no compilation. The
+prefix and independent update APIs reject attempts to mix their strategies in
+one session. Changes to compiler state or emission options reject reuse.
+
+This strategy does not relocate code: old definitions remain allocated until
+`incremental_graph_clear()`, and changed definitions append new code. Deleted
+names disappear from the address API; their internal compiler records remain
+until clear and can be shadowed if the name is reintroduced. A deleted function's
+name is reserved until clear: incoming definitions may not mention it, even as
+a local variable, unless that function is also reintroduced in the same update.
+This conservative admission rule prevents an out-of-scope or later local from
+accidentally resolving to a deleted compiler symbol. Callers must discard
+saved addresses after an update and invoke each address with its declared ABI.
+The API still excludes imports, globals, composite types and arbitrary modules,
+and it is not integrated into `wbuildd`. It makes independent scalar-function
+reuse available without claiming a general module cache or bounded session memory.
+
+`tests/incremental_graph_test.w` exercises both native widths: independent byte
+and address reuse, transitive invalidation, deletion/reordering/reintroduction,
+recursive calls, signature changes, atomic failed updates, missing dependencies
+and changed compiler options.
+
 ## Per-definition relocation (design; not implemented)
 
-Everything above reuses a *prefix*: an edit to one definition throws away
-every definition after it, because their machine code was emitted at
-addresses that assumed the old layout. Reusing an unchanged definition
-whatever its position means relocating it: copying its bytes to a new
-address and fixing every place where those bytes encode an address. This
+The original checkpoint strategy reuses a *prefix*: an edit to one definition
+throws away every definition after it. The independent strategy preserves
+unrelated definitions at their original addresses, at the cost of keeping old
+code allocated. Compacting those definitions or linking them into a fresh image
+requires relocation: copying their bytes to a new address and fixing every
+place where those bytes encode an address. This
 section records what such a definition record must hold. It is a design
 only: nothing below exists yet, and `wbuildd`'s module-graph invalidation
 (above) does not depend on it.
