@@ -119,21 +119,26 @@ int __w_word_max():
 int __w_size_mul(int a, int b):
 	if ((a < 0) || (b < 0)): __w_size_overflow_trap(a, c" * ", b)
 	if (a == 0): return 0
-	if (b > __w_word_max() / a): __w_size_overflow_trap(a, c" * ", b)
+	# The word maximum is spelled inline rather than through
+	# __w_word_max(): these helpers sit on every container growth path.
+	if (b > ((1 << (__word_size__ * 8 - 1)) - 1) / a): __w_size_overflow_trap(a, c" * ", b)
 	return a * b
 
 
 # a + b for non-negative sizes; traps on a negative operand or overflow.
+# With both operands non-negative the sum overflows the word exactly when
+# the wrapped two's-complement sum comes out negative, so one sign test
+# of a | b | sum covers both trap conditions.
 int __w_size_add(int a, int b):
-	if ((a < 0) || (b < 0)): __w_size_overflow_trap(a, c" + ", b)
-	if (a > __w_word_max() - b): __w_size_overflow_trap(a, c" + ", b)
-	return a + b
+	int sum = a + b
+	if ((a | b | sum) < 0): __w_size_overflow_trap(a, c" + ", b)
+	return sum
 
 
 # Growth target for a container holding capacity slots that needs at
 # least needed: double, unless doubling would overflow or fall short.
 int __w_grow_capacity(int capacity, int needed):
-	if (capacity > __w_word_max() / 2): return needed
+	if (capacity > ((1 << (__word_size__ * 8 - 1)) - 1) / 2): return needed
 	int doubled = capacity * 2
 	if (doubled < needed): return needed
 	return doubled
@@ -429,11 +434,71 @@ void __w_list_apply_permutation(__w_list* list, int* perm):
 	int size = list.element_size
 	char* staged = cast(char*, __w_alloc(__w_size_mul(list.length, size)))
 	int k = 0
+	if (size == __word_size__):
+		# Word-sized elements: move whole words, no per-element call.
+		int* from = cast(int*, list.items)
+		int* to = cast(int*, staged)
+		while (k < list.length):
+			to[k] = from[perm[k]]
+			k = k + 1
+		k = 0
+		while (k < list.length):
+			from[k] = to[k]
+			k = k + 1
+		free(staged)
+		return
 	while (k < list.length):
 		__w_list_copy_bytes(staged + k * size, list.items + perm[k] * size, size)
 		k = k + 1
 	__w_list_copy_bytes(list.items, staged, list.length * size)
 	free(staged)
+
+
+# __w_list_merge_sort's passes for the common by-kind case whose keys
+# are word-sized (list.sort() / l.sorted() on int, pointer and char*
+# lists, sort_by keys of word type): the same merge order and tie rule
+# as the generic loop, with the keys read directly as words and the
+# __w_list_compare_values comparison done inline instead of three calls
+# per comparison. Returns whichever of perm / tmp holds the result.
+int* __w_list_merge_words(int* perm, int* tmp, int n, int* key_words, int kind):
+	int width = 1
+	while (width < n):
+		int lo = 0
+		while (lo < n):
+			int mid = lo + width
+			if (mid > n): mid = n
+			int hi = mid + width
+			if (hi > n): hi = n
+			int i = lo
+			int j = mid
+			int out = lo
+			while (out < hi):
+				int take_left = 0
+				if (i < mid):
+					if (j >= hi): take_left = 1
+					else:
+						int a = key_words[perm[i]]
+						int b = key_words[perm[j]]
+						if (kind == 2):
+							char* sa = cast(char*, a)
+							char* sb = cast(char*, b)
+							int c = 0
+							while ((sa[c] != 0) && (sa[c] == sb[c])): c = c + 1
+							take_left = (sa[c] - sb[c]) <= 0
+						else: take_left = a <= b
+				if (take_left):
+					tmp[out] = perm[i]
+					i = i + 1
+				else:
+					tmp[out] = perm[j]
+					j = j + 1
+				out = out + 1
+			lo = hi
+		int* swap = perm
+		perm = tmp
+		tmp = swap
+		width = width * 2
+	return perm
 
 
 # Stable bottom-up merge sort (issue #528; the lib/byte_map.w
@@ -451,6 +516,16 @@ void __w_list_merge_sort(__w_list* list, __w_list* keys, int mode, int arg):
 	while (k < n):
 		perm[k] = k
 		k = k + 1
+	if ((mode == __w_sort_by_kind) && (keys.element_size == __word_size__)):
+		int* sorted = __w_list_merge_words(perm, tmp, n, cast(int*, keys.items), arg)
+		if (sorted != perm):
+			tmp = perm
+			perm = sorted
+		__w_list_apply_permutation(list, perm)
+		if (keys != list): __w_list_apply_permutation(keys, perm)
+		free(perm)
+		free(tmp)
+		return
 	int width = 1
 	while (width < n):
 		int lo = 0
