@@ -57,3 +57,94 @@ to a wrapper with its real typed signature (`int`/pointers → `i32`,
 readback. The table/`ax` contract above still works unchanged for
 callbacks held as W function pointers. See
 `docs/projects/wasm_backend.md` (2026-08 execution notes).
+
+## Mobile browser input and sizing
+
+`index.html` now uses `mobile_input.mjs` for mouse, pen, and touch input.
+A primary pointer is captured until release; cancellation, lost capture,
+window blur, and page hiding clear the pressed state. A touch movement of
+8 CSS pixels starts panning and cancels the pending click. Widgets that
+explicitly report drag capture (scroll thumbs and splitters) retain their
+pointer stream. Wheel units and touch movement become pixel scroll events;
+there is no momentum/fling implementation yet.
+
+The viewport follows `visualViewport`, including software-keyboard resize,
+orientation changes, and safe-area padding. W receives logical CSS-pixel
+window sizes and coordinates. The canvas backing buffer uses device pixel
+ratio, and the WebGL bridge scales `glViewport` and `glScissor`. This host
+convention applies to onscreen drawing: framebuffer/readback clients must
+account for device pixels separately. Applications must lay out against
+`win.width` / `win.height`; resizing the host cannot make fixed widget
+coordinates responsive.
+
+Focused W textboxes and textareas publish their rectangle through
+`gfx_host_text_input(active, multiline, x, y, width, height, focus_id)`. A small DOM
+textarea provides the software keyboard and IME. Pointer handlers run one
+W frame synchronously before focusing it, preserving iOS's trusted-gesture
+requirement and avoiding a keyboard on ordinary button taps. Touch focuses
+on release only after a tap; swiping across a field does not open the keyboard. Committed
+Unicode scalar values become CHAR events; composition preedit stays in the
+browser and is committed once. A stable `focus_id` prevents a pending
+composition from being committed into a different field. Paste is queued across frames (32 characters and 8 navigation events
+per frame, matching the W UI buffers), so large pastes are not truncated.
+Backspace, forward delete, and line breaks use the existing editor events.
+Browser shortcuts with Ctrl/Command/Alt are left to the browser.
+
+The DOM textarea is an input sink, not a synchronized copy of W's complete
+text selection. Autocorrect is disabled; native selection handles, dictation
+replacement, cut/copy of a W selection, rich clipboard content, and full
+screen-reader widget semantics are not implemented. The host does not yet
+expose a semantic accessibility tree for canvas controls. Real-device Safari
+and Android checks remain necessary: Node event tests cannot prove keyboard
+presentation or browser composition behavior on every OS.
+
+Host ABI additions (existing headless hosts may omit these callbacks):
+
+- `gfx_host_text_input(active, multiline, x, y, width, height, focus_id)` forwards to
+  `host.textInput(...)`.
+- `gfx_host_pointer_mode(mode)` forwards to `host.pointerMode(mode)`;
+  `1` keeps a widget's touch drag, `0` permits page-style touch panning.
+- Event kind `8` carries signed pixel scroll distance in `code` (positive
+  down); kind `9` cancels the current pointer gesture.
+
+Run the input/viewport/GL-bridge regression suite with:
+
+```sh
+node tools/web/mobile_input_test.mjs
+```
+
+It covers pointer capture and cancellation, secondary contacts, scroll-unit
+conversion, drag versus pan, focus during a gesture, Unicode and IME event
+ordering, long paste backpressure, browser shortcuts, keyboard viewport
+sizing, and Retina viewport/clipping conversion.
+
+The actual wasm form is exercised separately with the shared recording GL host:
+
+```sh
+./bin/wv2 wasm graphics/ui/mobile_demo_web.w -o bin/graphics_ui_mobile.wasm
+node tools/web/run_mobile_ui.mjs bin/graphics_ui_mobile.wasm
+```
+
+On Apple Silicon macOS, build the native compiler first and use it for the
+compile step (the Linux `bin/wv2` executable cannot run directly on macOS):
+
+```sh
+./wbuild build_darwin
+bin/wv2_darwin arm64_darwin tools/generate_ui_atlas.w -o bin/generate_ui_atlas_darwin
+bin/generate_ui_atlas_darwin
+bin/wv2_darwin wasm graphics/ui/mobile_demo_web.w -o bin/graphics_ui_mobile.wasm
+node tools/web/run_mobile_ui.mjs bin/graphics_ui_mobile.wasm
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000/tools/web/?module=/bin/graphics_ui_mobile.wasm`, or
+use the Mac's LAN address from a phone on the same network. On Linux,
+`./wbuild graphics_ui_mobile_web` builds the demo, and
+`./wbuild web_mobile_input_test wasm_mobile_ui_test` runs both mobile checks
+(Node 20+ required).
+
+This drives Unicode editing, long paste, the focused-field ABI, keyboard
+viewport shrink, exact pixel scrolling, gesture cancellation and scroll bounds
+through the compiled W widgets (18 frames), in addition to the 24 JavaScript
+input-policy scenarios. It is a headless integration check, not a substitute
+for physical device keyboard/IME testing.

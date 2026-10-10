@@ -145,6 +145,14 @@
 	},
 	"targets": [
 		{
+			"name": "web_mobile_input_test",
+			"tags": ["tests_wasm"],
+			"deps": ["wrun"],
+			"steps": [
+				{"cmd": ["bin/wrun", "node", "tools/web/mobile_input_test.mjs"]}
+			]
+		},
+		{
 			"name": "wv2",
 			"inputs": ["w.w", "compiler/", "grammar/", "code_generator/", "lib/", "structures/", "libs/", "debugger/"],
 			"outputs": ["bin/wv2"],

@@ -20,6 +20,7 @@ void manifest_host_members(manifest* m, char* name, map[char*, int] seen):
 
 
 int manifest_host_selector(char* word):
+	if (strcmp(word, c"arm64_ios") == 0 || strcmp(word, c"arm64_ios_sim") == 0): return 1
 	return strcmp(word, c"x64") == 0 || strcmp(word, c"arm64") == 0 || strcmp(word, c"arm64_darwin") == 0 || strcmp(word, c"win64") == 0 || strcmp(word, c"wasm") == 0
 
 

@@ -44,6 +44,10 @@ int target_isa
 # Linux target is wholly unaffected.
 int target_os
 
+# Mach-O platform, separate from the shared Darwin ABI: 1 = macOS,
+# 2 = iOS device, 7 = iOS Simulator (Apple Silicon).
+int target_apple_platform
+
 # Where the finished ELF is written: stdout by default, or the file given
 # with the -o flag.
 int output_fd

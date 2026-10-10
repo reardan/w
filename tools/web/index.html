@@ -15,24 +15,31 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>W wasm graphics host</title>
 <style>
-  body { margin: 0; background: #14161c; color: #d6d8de; font: 14px/1.4 monospace; }
-  #wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
-  canvas { background: #000; border: 1px solid #333; }
-  #log { width: 640px; max-height: 12em; overflow-y: auto; white-space: pre-wrap;
-         color: #9aa0ad; border-top: 1px solid #333; padding-top: 8px; }
+  html, body { margin: 0; overflow: hidden; background: #14161c; color: #d6d8de; font: 14px/1.4 monospace; }
+  #wrap { position: fixed; left: 0; top: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  canvas { display: block; background: #000; touch-action: none; outline: none; }
+  #text-input { position: fixed; width: 1px; height: 1px; padding: 0; border: 0;
+    opacity: 0.01; font-size: 16px; resize: none; pointer-events: none; }
+  #log { width: min(640px, 100%); max-height: 8em; overflow-y: auto;
+    white-space: pre-wrap; overflow-wrap: anywhere; color: #9aa0ad; }
   #log .err { color: #e08080; }
 </style>
 </head>
 <body>
 <div id="wrap">
   <canvas id="canvas" width="640" height="480" tabindex="0"></canvas>
-  <div id="log"></div>
+  <div id="log" role="log"></div>
 </div>
+  <textarea id="text-input" tabindex="-1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="W text editor"></textarea>
 <script type="module">
 import { makeEnv } from './webgl_env.mjs';
 import { makeWasi } from './wasi_lite.mjs';
+import { createInput, viewportSize, createEventQueue } from './mobile_input.mjs';
 
 const logPane = document.getElementById('log');
 const log = (text, cls) => {
@@ -52,77 +59,66 @@ const state = {
   shouldClose: 0, mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0,
 };
 
-// Input event queue drained by gfx_host_next_event. Kind numbers mirror
-// graphics/event.w's gfx_event_kind: 1 KEY_DOWN, 2 KEY_UP, 3 CHAR,
-// 4 MOUSE_DOWN, 5 MOUSE_UP, 6 SCROLL, 7 NAV. Buttons map from JS 0/1/2
-// to 1/2/3 (left/middle/right); CHAR carries ASCII 32..126 plus 8 BS,
-// 9 TAB, 13 CR, 27 ESC; SCROLL carries +1 up / -1 down per notch; NAV
-// carries gfx_nav_code (1 left, 2 right, 3 home, 4 end, 5 up, 6 down,
-// 7 page up, 8 page down, 9 delete). Every event carries gfx_mod bits
-// in mods: 1 shift, 2 ctrl, 4 alt, 8 super.
-const events = [];
-const pushEvent = (kind, code, x, y, mods) => {
-  if (events.length < 256) events.push({ kind, code, x, y, mods });
-};
-const modsOf = (e) =>
-  (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
-const buttonOf = (e) => (e.button === 0 ? 1 : e.button === 1 ? 2 : e.button === 2 ? 3 : 0);
-const charOf = (e) => {
-  if (e.key.length === 1) {
-    const c = e.key.charCodeAt(0);
-    return c >= 32 && c < 127 ? c : 0;
-  }
-  return { Backspace: 8, Tab: 9, Enter: 13, Escape: 27 }[e.key] ?? 0;
-};
-
-canvas.addEventListener('mousemove', (e) => { state.mouseX = e.offsetX; state.mouseY = e.offsetY; });
-canvas.addEventListener('mousedown', (e) => {
-  state.mouseButtons |= 1 << e.button;
-  const b = buttonOf(e);
-  if (b) pushEvent(4, b, e.offsetX, e.offsetY, modsOf(e));
-});
-canvas.addEventListener('mouseup', (e) => {
-  state.mouseButtons &= ~(1 << e.button);
-  const b = buttonOf(e);
-  if (b) pushEvent(5, b, e.offsetX, e.offsetY, modsOf(e));
-});
-canvas.addEventListener('keydown', (e) => {
-  state.lastKeycode = e.keyCode;
-  const mods = modsOf(e);
-  pushEvent(1, e.keyCode, state.mouseX, state.mouseY, mods);
-  const c = charOf(e);
-  if (c) pushEvent(3, c, state.mouseX, state.mouseY, mods);
-  const nav = {
-    ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4,
-    ArrowUp: 5, ArrowDown: 6, PageUp: 7, PageDown: 8, Delete: 9,
-  }[e.key];
-  if (nav) pushEvent(7, nav, state.mouseX, state.mouseY, mods);
-});
-canvas.addEventListener('keyup', (e) => { pushEvent(2, e.keyCode, state.mouseX, state.mouseY, modsOf(e)); });
-canvas.addEventListener('wheel', (e) => {
-  // deltaY < 0 is wheel-away/up = +1, matching X11 button 4; one
-  // event per wheel notch regardless of delta magnitude.
-  if (e.deltaY) pushEvent(6, e.deltaY < 0 ? 1 : -1, e.offsetX, e.offsetY, modsOf(e));
-  e.preventDefault();
-}, { passive: false });
-
+// The queue is drained synchronously by the W frame. Do not silently drop
+// Unicode commits or pointer release events when pasting a long string.
+const events = createEventQueue();
+const pushEvent = (...args) => events.push(...args);
 let frameCallback = 0;
+let running = false;
+let inFrame = false;
+let requestedWidth = 640;
+let requestedHeight = 480;
+let size = { width: 640, height: 480, ratio: 1 };
+const resize = () => {
+  const viewport = window.visualViewport;
+  const wrap = document.getElementById('wrap');
+  wrap.style.width = `${viewport?.width ?? innerWidth}px`;
+  wrap.style.transform = `translate(${viewport?.offsetLeft ?? 0}px, ${viewport?.offsetTop ?? 0}px)`;
+  const padding = getComputedStyle(wrap);
+  size = viewportSize({ width: viewport?.width ?? innerWidth,
+    height: viewport?.height ?? innerHeight, requestedWidth, requestedHeight,
+    insetLeft: parseFloat(padding.paddingLeft) || 0,
+    insetRight: parseFloat(padding.paddingRight) || 0,
+    insetTop: parseFloat(padding.paddingTop) || 0,
+    insetBottom: parseFloat(padding.paddingBottom) || 0, dpr: devicePixelRatio });
+  canvas.style.width = `${size.width}px`;
+  canvas.style.height = `${size.height}px`;
+  if (canvas.width !== size.bufferWidth) canvas.width = size.bufferWidth;
+  if (canvas.height !== size.bufferHeight) canvas.height = size.bufferHeight;
+};
+window.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('scroll', resize);
+const runFrame = () => {
+  if (!running || inFrame || !instance || !frameCallback) return;
+  inFrame = true;
+  try {
+    resize();
+    events.beginFrame();
+    instance.exports.table.get(frameCallback)();
+    if (instance.exports.ax.value === 0) {
+      running = false;
+      log('frame callback returned 0; stopped');
+    }
+  } finally { inFrame = false; }
+};
+const input = createInput({ canvas, editor: document.getElementById('text-input'),
+  state, pushEvent, flushFrame: runFrame });
 const host = {
   canvasInit: (title, width, height) => {
     if (!gl) return 0;
     document.title = title;
-    canvas.width = width;
-    canvas.height = height;
+    requestedWidth = width;
+    requestedHeight = height;
+    resize();
     return 1;
   },
-  pollState: () => ({
-    width: canvas.width, height: canvas.height,
-    shouldClose: state.shouldClose,
-    mouseX: state.mouseX, mouseY: state.mouseY,
-    mouseButtons: state.mouseButtons, lastKeycode: state.lastKeycode,
-  }),
-  setFrameCallback: (tableIndex) => { frameCallback = tableIndex; },
-  nextEvent: () => events.shift() ?? null,
+  pollState: () => ({ width: size.width, height: size.height, ...state }),
+  pixelRatio: () => size.ratio,
+  textInput: (...args) => input.setTextInput(...args),
+  pointerMode: mode => input.setPointerMode(mode),
+  setFrameCallback: tableIndex => { frameCallback = tableIndex; },
+  nextEvent: () => events.next(),
 };
 
 // --------------------------------- run -----------------------------------
@@ -147,11 +143,10 @@ try {
   const code = wasi.runStart(instance);
   log(`_start returned (exit ${code})`);
   if (frameCallback !== 0) {
-    const table = instance.exports.table;
+    running = true;
     const tick = () => {
-      table.get(frameCallback)();
-      if (instance.exports.ax.value !== 0) requestAnimationFrame(tick);
-      else log('frame callback returned 0; stopped');
+      runFrame();
+      if (running) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
   }

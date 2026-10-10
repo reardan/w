@@ -8,6 +8,7 @@ import lib.lib
 import graphics.gl
 import graphics.window
 import graphics.event
+import graphics.__arch__.text_input
 import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
@@ -30,6 +31,7 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.input.right_y = 0
 	ctx.input.scroll_x = 0
 	ctx.input.scroll_y = 0
+	ctx.input.scroll_pixels_y = 0
 	ctx.input.scroll_at_x = 0
 	ctx.input.scroll_at_y = 0
 	ctx.input.mods = 0
@@ -43,6 +45,12 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.popup_depth = 0
 	ctx.scope = 0
 	ctx.bracket_depth = 0
+	ctx.text_input_id = 0
+	ctx.text_input_scope = 0
+	ctx.text_input_multiline = 0
+	ctx.text_input_rect = ui_rect_new(0.0, 0.0, 0.0, 0.0)
+	ctx.text_input_clip = ctx.text_input_rect
+	ctx.pointer_mode = 0
 	ui_layout_reset(&ctx.layout_stack[0], ui_rect_new(0.0, 0.0, 0.0, 0.0))
 	ctx.layout_depth = 1
 
@@ -75,6 +83,16 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		ctx.input.scroll_y = ctx.input.scroll_y + e.code
 		ctx.input.scroll_at_x = e.x
 		ctx.input.scroll_at_y = e.y
+	else if (e.kind == GFX_EVENT_SCROLL_PIXELS):
+		ctx.input.scroll_pixels_y = ctx.input.scroll_pixels_y + e.code
+		ctx.input.scroll_at_x = e.x
+		ctx.input.scroll_at_y = e.y
+	else if (e.kind == GFX_EVENT_POINTER_CANCEL):
+		ctx.input.mouse_down = 0
+		ctx.input.mouse_pressed = 0
+		ctx.input.mouse_released = 0
+		ctx.input.mouse_right_pressed = 0
+		ctx.active = 0
 	else if (e.kind == GFX_EVENT_CHAR):
 		if (ctx.char_count < 32):
 			ctx.chars[ctx.char_count] = e.code
@@ -102,6 +120,12 @@ void ui_begin(ui_context* ctx, int width, int height):
 	# the frame that opened it to make earlier widgets inert).
 	ctx.scope = 0
 	ctx.bracket_depth = 0
+	ctx.text_input_id = 0
+	ctx.text_input_scope = 0
+	ctx.text_input_multiline = 0
+	ctx.text_input_rect = ui_rect_new(0.0, 0.0, 0.0, 0.0)
+	ctx.text_input_clip = ctx.text_input_rect
+	ctx.pointer_mode = 0
 	ui_render_begin(ctx.rndr, width, height)
 	if (ctx.rndr.gl_ready):
 		glClearColor(ctx.theme.background.r, ctx.theme.background.g, ctx.theme.background.b, 1.0)
@@ -119,16 +143,35 @@ void ui_begin_window(ui_context* ctx, gfx_window* win):
 	ui_begin(ctx, win.width, win.height)
 
 
+# Revalidate after the whole frame: a later widget may open a popup over
+# an editor that already declared itself. Popup editors retain their scope
+# even after ui_popup_end restores the outer scope.
+int ui_text_input_active(ui_context* ctx):
+	if ((ctx.text_input_id == 0) || (ctx.text_input_id != ctx.focus)): return 0
+	if (ctx.popup_depth > 0):
+		if (ctx.text_input_scope != ctx.popup_stack[ctx.popup_depth - 1]): return 0
+	else if (ctx.text_input_scope != 0): return 0
+	return ui_rect_is_empty(ui_rect_intersect(ctx.text_input_rect, ctx.text_input_clip)) == 0
+
+
 # Finish a frame: draw the batch, clear the per-frame edges, release
 # the press owner once the release has been seen by every widget.
 void ui_end(ui_context* ctx):
 	ui_render_end(ctx.rndr)
+	# Sync only after every widget has declared itself; no transient blur
+	# between ui_begin and the focused field. Headless tests have no host.
+	if (ctx.rndr.gl_ready):
+		ui_rect r = ui_rect_intersect(ctx.text_input_rect, ctx.text_input_clip)
+		int editing = ui_text_input_active(ctx)
+		gfx_text_input(editing, ctx.text_input_multiline, cast(int, r.x), cast(int, r.y), cast(int, r.w), cast(int, r.h), ctx.text_input_id)
+		gfx_pointer_mode(ctx.pointer_mode)
 	if (ctx.input.mouse_released): ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
 	ctx.input.mouse_right_pressed = 0
 	ctx.input.scroll_x = 0
 	ctx.input.scroll_y = 0
+	ctx.input.scroll_pixels_y = 0
 	ctx.char_count = 0
 	ctx.nav_count = 0
 
@@ -159,6 +202,21 @@ int ui_char_is_typing(int mods):
 	return (mods & (GFX_MOD_CTRL | GFX_MOD_SUPER)) == 0
 
 
+# A clipped-away widget must not receive a touch through its viewport.
+int ui_pointer_inside(ui_context* ctx, ui_rect r, float32 x, float32 y):
+	return ui_rect_contains(ui_rect_intersect(r, ui_clip_current(ctx.rndr)), x, y)
+
+
+# Register only the focused, enabled editor; ui_end sends the final one.
+void ui_text_input_declare(ui_context* ctx, int id, ui_rect area, int multiline):
+	if ((ctx.focus != id) || ctx.disabled || ui_scope_blocked(ctx)): return
+	ctx.text_input_id = id
+	ctx.text_input_scope = ctx.scope
+	ctx.text_input_multiline = multiline
+	ctx.text_input_rect = area
+	ctx.text_input_clip = ui_clip_current(ctx.rndr)
+
+
 # Shared press/release logic: claims hot when the pointer is over the
 # rect, active when this frame's press landed inside it; returns 1 on
 # the frame the release lands while still over it. Inert inside a
@@ -166,10 +224,10 @@ int ui_char_is_typing(int mods):
 int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
 	if (ctx.disabled): return 0
 	if (ui_scope_blocked(ctx)): return 0
-	int over = ui_rect_contains(r, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
+	int over = ui_pointer_inside(ctx, r, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
 	if (over): ctx.hot = id
 	if (ctx.input.mouse_pressed):
-		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+		if (ui_pointer_inside(ctx, r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.active = id
 	if (ctx.input.mouse_released && (ctx.active == id) && over): return 1
 	return 0

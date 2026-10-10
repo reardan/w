@@ -688,6 +688,8 @@ int wtest_selector(char* word):
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
 	if (strcmp(word, c"arm64_darwin") == 0): return 1
+	if (strcmp(word, c"arm64_ios") == 0): return 1
+	if (strcmp(word, c"arm64_ios_sim") == 0): return 1
 	if (strcmp(word, c"win64") == 0): return 1
 	if (strcmp(word, c"wasm") == 0): return 1
 	return 0

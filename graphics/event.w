@@ -34,7 +34,7 @@ enum gfx_event_kind:
 	# code = a Unicode codepoint of typed text, or 8 (backspace),
 	# 9 (tab), 13 (return), 27 (escape). How much of Unicode arrives
 	# depends on the backend: Cocoa any codepoint, X11 Latin-1, the web
-	# ASCII (#459). With Ctrl held, a letter arrives as its control code
+	# Unicode through the browser text-input bridge. With Ctrl held, a letter arrives as its control code
 	# 1..26 from the native backends (Ctrl+S is 19) and as the letter
 	# itself from the web host; Cocoa also queues Command chords' letter
 	# with GFX_MOD_SUPER. Widgets that insert text skip CHARs carrying
@@ -54,6 +54,11 @@ enum gfx_event_kind:
 	# per-backend (X11 keysyms, JS e.key) into portable codes, unlike
 	# the raw keycodes on KEY_DOWN/KEY_UP.
 	GFX_EVENT_NAV = 7
+	# Logical pixel scroll delta, positive down; x,y locate the viewport.
+	GFX_EVENT_SCROLL_PIXELS = 8
+	# Pointer capture lost, gesture became scrolling, or host lost focus.
+	# Cancels the press without manufacturing a release/click.
+	GFX_EVENT_POINTER_CANCEL = 9
 
 
 enum gfx_nav_code:

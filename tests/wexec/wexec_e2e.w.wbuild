@@ -68,6 +68,9 @@
 # wbuild: step="bin/wexec -f tests/wexec/direct_file.json tests/wexec/direct_file/known.w" expect_stdout="wexec: target direct_file_known_target"
 # wbuild: step="bin/wexec -f tests/wexec/direct_file.json tests/wexec/direct_file/sample_test.w" expect_stdout="direct file adhoc test ran"
 # wbuild: step="bin/wexec -f tests/wexec/direct_file.json x64 tests/wexec/direct_file/sample_test.w" expect_stdout="wexec: target x64:tests/wexec/direct_file/sample_test.w" expect_stdout="direct file adhoc test ran"
+# Apple mobile artifacts are compile-only, even for a _test.w source.
+# wbuild: step="bin/wexec -f tests/wexec/direct_file.json arm64_ios tests/wexec/direct_file/sample_test.w" expect_stdout="wexec: target arm64_ios:tests/wexec/direct_file/sample_test.w" reject_stdout="direct file adhoc test ran"
+# wbuild: step="bin/wexec -f tests/wexec/direct_file.json arm64_ios_sim tests/wexec/direct_file/sample_test.w" expect_stdout="wexec: target arm64_ios_sim:tests/wexec/direct_file/sample_test.w" reject_stdout="direct file adhoc test ran"
 # wbuild: step="test -x bin/sample_test"
 # wbuild: step="test -x bin/sample_test_x64"
 # wbuild: step="bin/wexec -f tests/wexec/direct_file.json tests/wexec/direct_file/does_not_exist.w" expect_fail expect_stderr="no such file"

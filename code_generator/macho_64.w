@@ -276,12 +276,17 @@ void macho_start_arm64():
 	macho_uuid_pos = codepos
 	emit_zeros(16)
 
-	# LC_BUILD_VERSION: platform macOS, minos = sdk = 12.0.
+	# Device and simulator use different platforms despite sharing the ABI.
+	# A zero-initialized embedding client bypassing the CLI still gets macOS.
+	int platform = target_apple_platform
+	if (platform == 0): platform = 1
 	emit_int32(50)     /* LC_BUILD_VERSION */
 	emit_int32(24)     /* cmdsize */
-	emit_int32(1)      /* platform PLATFORM_MACOS */
-	emit_int32(786432) /* minos 12.0.0 (0x000c0000) */
-	emit_int32(786432) /* sdk 12.0.0 */
+	emit_int32(platform)
+	int deployment = 786432  /* macOS 12.0 */
+	if (platform != 1): deployment = 1114112  /* iOS 17.0 */
+	emit_int32(deployment) /* minos */
+	emit_int32(deployment) /* sdk baseline */
 	emit_int32(0)      /* ntools */
 
 	# LC_MAIN: dyld calls the entry with the C ABI. entryoff is patched
