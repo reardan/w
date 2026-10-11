@@ -944,6 +944,7 @@ int link_option(char* arg, int apply):
 			cond_branch_disabled = 1
 			loop_rotate_disabled = 1
 			ers_disabled = 1
+			ivopt_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
@@ -954,6 +955,12 @@ int link_option(char* arg, int apply):
 	# and the fallback a guard failure asks for.
 	if (strcmp(arg, c"--no-direct-calls") == 0):
 		if (apply): direct_calls_disabled = 1
+		return 1
+	# Register arguments (unit O5, compiler/regalloc_scan.w): on by
+	# default on x64 Linux; --no-reg-args passes every argument on the
+	# stack, the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-reg-args") == 0):
+		if (apply): reg_args_disabled = 1
 		return 1
 	# Addressing modes (docs/projects/codegen_gap_plan.md §2.2, unit A2)
 	# are on by default on x86/x64; --no-addr-modes keeps the
@@ -1003,6 +1010,15 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--loop-rotate") == 0):
 		if (apply): loop_rotate_disabled = 0
 		return 1
+	# Induction-variable pointers (compiler/ivopt.w, unit O7) are on by
+	# default on x64; --no-ivopts (and -O0) keeps every subscript's own
+	# address arithmetic, the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-ivopts") == 0):
+		if (apply): ivopt_disabled = 1
+		return 1
+	if (strcmp(arg, c"--ivopts") == 0):
+		if (apply): ivopt_disabled = 0
+		return 1
 	# Narrow integer promotion (docs/projects/codegen_gap_plan.md §2.7,
 	# unit A8): int32/uint32 locals and arguments take registers like
 	# 'int' on x86/x64; --no-narrow-regs keeps them on the stack, the
@@ -1014,11 +1030,12 @@ int link_option(char* arg, int apply):
 		if (apply): narrow_regs_disabled = 0
 		return 1
 	# Inlining of small leaf callees (unit A5, compiler/inline_table.w)
-	# is opt-in on x86/x64 Linux: --inline turns it on, --profile-use
-	# turns it on for the sites the profile marks hot, and --no-inline
-	# keeps every call a call whatever else was given (the reference
-	# for tests/regalloc_diff_test.w and the fallback a guard failure
-	# asks for).
+	# is on by default on x86/x64 Linux for tiny leaves only: --inline
+	# raises the budgets, --profile-use raises them for the sites the
+	# profile marks hot, and --no-inline keeps every call a call
+	# whatever else was given (the reference for
+	# tests/regalloc_diff_test.w and the fallback a guard failure asks
+	# for).
 	if (strcmp(arg, c"--inline") == 0):
 		if (apply): inline_requested = 1
 		return 1
@@ -1086,14 +1103,16 @@ void help_shared_options():
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
 	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
+	println(c"  --no-ivopts           no induction-variable pointers for array walks in loops (x64); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
+	println(c"  --no-reg-args         x64: pass every argument on the stack (no register entries)")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
 	println(c"  --no-x86-budget       x86-32: no loop registers in ecx/edx (the pre-A9 register budget)")
-	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
-	println(c"                        profile-hot sites under --profile-use)")
+	println(c"  --inline              emit small leaf callees' bodies in place of their calls (tiny")
+	println(c"                        leaves always are; larger for profile-hot sites under --profile-use)")
 	println(c"  --no-inline           never emit a callee's body in place of a call")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
@@ -1499,6 +1518,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-reg-args") == 0): link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
 				link_option(*flag_arg, 1)
@@ -1507,6 +1527,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-ivopts") == 0) || (strcmp(*flag_arg, c"--ivopts") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-narrow-regs") == 0) || (strcmp(*flag_arg, c"--narrow-regs") == 0)):
 				link_option(*flag_arg, 1)
@@ -1729,9 +1751,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			print_error(c"': ")
 			translate_syscall_failure(output_fd)
 			exit(1)
-		partial_output_path = output_path
+		# A device such as -o /dev/null is not a partial executable: never
+		# unlink it on a later error (as root that deletes the device, and
+		# the next O_CREAT open recreates it as a regular file that other
+		# processes' output then lands in).
+		if (starts_with(output_path, c"/dev/") == 0): partial_output_path = output_path
 	if (check_mode):
-		output_fd = open(c"/dev/null", 577, 493)
+		# O_WRONLY only: never create /dev/null as a regular file.
+		output_fd = open(c"/dev/null", 1, 0)
 		if (output_fd < 0):
 			# Windows: /dev/null does not exist; use the NUL device instead
 			output_fd = open(c"NUL", 577, 493)

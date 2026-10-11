@@ -575,7 +575,9 @@ int retained_statement_count():
 # compact or replace the window when it runs into the window's end
 # (ast_expression_refill); after that, an earlier offset is no longer in
 # memory and getchar re-reads it from the descriptor. So the descriptor is
-# /dev/null, which never has to supply anything, only when no preflight of
+# an empty stream (compiler/tokenizer.w's empty_stream_open: a closed
+# pipe, /dev/null only as a fallback), which never has to supply
+# anything, only when no preflight of
 # the span can reach the window's end: a token the first read consumed
 # follows the span (follow), or the span holds no expression. A body or
 # deferred statement that ends its file gets the file itself, positioned at
@@ -645,7 +647,7 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	if ((record.bytes == 0) || (offset < 0) || (offset >= length)): return 0
 	if (follow >= length): follow = -1
 	int fd = -1
-	if (follow != -1): fd = open(c"/dev/null", 0, 511)
+	if (follow != -1): fd = empty_stream_open()
 	int null_window = fd >= 0
 	if (fd < 0):
 		# The span may end the file (or the host has no /dev/null): a
@@ -721,6 +723,7 @@ void retained_source_reparse_close(int fd):
 	int top = 0
 	if (retained_window_fds != 0): top = retained_window_fds.length
 	if ((top > 0) && (retained_window_fds[top - 1] == fd)): retained_window_release(top - 1)
+	empty_stream_forget(fd)
 	close(fd)
 
 

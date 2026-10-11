@@ -175,6 +175,11 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 	if (type_num_args(arg_type) > 0):
 		is_struct = 1
 		arg_words = (type_get_size(arg_type) + word_size - 1) >> word_size_log2
+	# The word about to be pushed is an immediate (the last instruction
+	# is mov eax,imm; the push may spill parked registers first, which
+	# leaves eax alone): an inlined callee may bind its parameter to it
+	int is_const = (target_isa == 0) && (is_struct == 0) && (leaked_words == 0) && (imm_note_end != 0) && (imm_note_end == codepos)
+	int const_value = imm_note_value
 	if (is_struct == 0): push_eax()
 	else:
 		int j = arg_words - 1
@@ -191,6 +196,9 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 			store_stack_var((i + leaked_words) << word_size_log2)
 			i = i - 1
 		drop_slots(leaked_words)
+	# Every argument word a call pushes is noted where it ends up,
+	# constant or not (compiler/inline_table.w, inline_note_argument)
+	for w in range(arg_words): inline_note_argument(stack_pos - w, is_const && (w == 0), const_value)
 	if (is_struct):
 		if (type_has_array_field(arg_type)):
 			lea_eax_esp_plus(0)
@@ -206,7 +214,7 @@ void push_call_argument(int arg_type):
 # itself a struct-returning call leaves its return buffer on the stack;
 # push_call_argument_compact slides the pushed argument down over that
 # leak so the callee's parameter block stays contiguous.
-void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_name, int arg_index):
+void parse_fixed_call_argument(int s, int callee_sym, int signature_type, char* callee_name, int arg_index):
 	int entry_stack_pos = stack_pos
 	int arg_type = expression()
 	arg_type = promote(arg_type)
@@ -216,7 +224,7 @@ void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_
 		if (callee_sym >= 0): param_type = sym_param_type(callee_sym, arg_index)
 		if (signature_type >= 0): param_type = type_function_param_type(signature_type, arg_index)
 		if (param_type >= 0): coerce_call_argument(param_type, arg_type)
-	push_call_argument_compact(arg_type, stack_pos - entry_stack_pos)
+	push_call_argument_at(s, arg_type, stack_pos - entry_stack_pos)
 
 
 # One trailing argument of a call to a W variadic function: checked and
@@ -269,6 +277,7 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	# callees hold a pointer
 	if (direct_call_take(s)):
 		if (direct_call_taken_kind == 4): inline_emit_call(direct_call_taken_id, s, passed_args)
+		elif (direct_call_taken_rc != 0): regcall_emit_taken(s, passed_args)
 		else: direct_call_emit_taken()
 	else:
 		load_slot(s + 1)
@@ -336,7 +345,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 				if (variadic_values == 0): fixed_words_end = stack_pos
 				parse_variadic_element_argument(callee_name, variadic_element_type, passed_args)
 				variadic_values = variadic_values + 1
-			else: parse_fixed_call_argument(callee_sym, signature_type, callee_name, passed_args)
+			else: parse_fixed_call_argument(s, callee_sym, signature_type, callee_name, passed_args)
 			passed_args = passed_args + 1
 			more_args = accept(c",")
 
@@ -362,7 +371,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 				mov_eax_int(sym_param_default(callee_sym, passed_args))
 				int default_param_type = sym_param_type(callee_sym, passed_args)
 				if (default_param_type >= 0): coerce(default_param_type, 3)
-				push_call_argument(3)
+				push_call_argument_at(s, 3, 0)
 				passed_args = passed_args + 1
 
 	return finish_call(callee_type, s, expected_args, callee_sym, callee_name, declared_return, passed_args, has_return_buffer, w_variadic_fixed)
@@ -448,8 +457,16 @@ postfix-expr:
 	postfix-expr . identifier
 
  */
+int ivopt_stream_subscript();   /* compiler/ivopt.w (unit O7) */
+
+
 int postfix_expr():
-	int type = primary_expr()
+	# O7 (compiler/ivopt.w): a subscript an induction pointer holds is
+	# the pointer register's address, like the AST emitter's 'i' node
+	int type = -1
+	if (ivopt_live): type = ivopt_stream_subscript()
+	if (type >= 0): expression_lhs_readonly = 0
+	else: type = primary_expr()
 	# A pending generic instantiation from primary_expr: consume the
 	# signature immediately so nested expressions cannot pick it up.
 	int generic_sig = generic_pending_call_signature

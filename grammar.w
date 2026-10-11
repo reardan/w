@@ -78,6 +78,8 @@ import grammar.protobuf_builtin
 import grammar.gpu_for
 import grammar.asm_function
 import grammar.program
+# O7: induction-variable pointers (after the grammar it emits through)
+import compiler.ivopt
 import code_generator.statement_ast
 import code_generator.loop_ast
 import code_generator.gpu_ast

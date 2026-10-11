@@ -85,6 +85,8 @@ int __w_hash_slot_size(__w_hash_table* table):
 
 
 char* __w_hash_value_addr(__w_hash_table* table, int i):
+	# Scalar values (the common case) skip the __w_hash_slot_size call.
+	if (table.value_size < __word_size__): return cast(char*, table.values) + i * __word_size__
 	return cast(char*, table.values) + i * __w_hash_slot_size(table)
 
 
@@ -230,13 +232,57 @@ int __w_hash_sip(__w_hash_table* table, int data, int length):
 	return v1 ^ v3
 
 
+# __w_hash_sip over the __word_size__ bytes of key itself (word keys):
+# the same blocks the generic loop reads from memory, taken from the
+# word directly. A word is one (x86) or two (x64) full little-endian
+# 4-byte blocks followed by the length block, which holds no tail bytes.
+int __w_hash_sip_word(__w_hash_table* table, int key):
+	uint32 v0 = table.seed0
+	uint32 v1 = table.seed1
+	uint32 v2 = 0x6c796765 ^ v0
+	uint32 v3 = 0x74656462 ^ v1
+	int blocks = __word_size__ / 4
+	int b = 0
+	while (b <= blocks):
+		uint32 m = __word_size__ << 24
+		if (b == 0): m = key
+		else if (b < blocks): m = (key >> 16) >> 16
+		v3 = v3 ^ m
+		v0 = v0 + v1
+		v1 = rotl(v1, 5) ^ v0
+		v0 = rotl(v0, 16)
+		v2 = v2 + v3
+		v3 = rotl(v3, 8) ^ v2
+		v0 = v0 + v3
+		v3 = rotl(v3, 7) ^ v0
+		v2 = v2 + v1
+		v1 = rotl(v1, 13) ^ v2
+		v2 = rotl(v2, 16)
+		v0 = v0 ^ m
+		b = b + 1
+	v2 = v2 ^ 255
+	int r = 0
+	while (r < 3):
+		v0 = v0 + v1
+		v1 = rotl(v1, 5) ^ v0
+		v0 = rotl(v0, 16)
+		v2 = v2 + v3
+		v3 = rotl(v3, 8) ^ v2
+		v0 = v0 + v3
+		v3 = rotl(v3, 7) ^ v0
+		v2 = v2 + v1
+		v1 = rotl(v1, 13) ^ v2
+		v2 = rotl(v2, 16)
+		r = r + 1
+	return v1 ^ v3
+
+
 int __w_hash_key_hash(__w_hash_table* table, int key):
 	int kind = table.key_kind
 	if (kind == __w_hash_key_cstr): return __w_hash_sip(table, key, __w_strlen(cast(char*, key)))
 	if (kind == __w_hash_key_string):
 		return __w_hash_sip(table, load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
-	int word = key
-	return __w_hash_sip(table, cast(int, &word), __word_size__)
+	return __w_hash_sip_word(table, key)
 
 
 int __w_hash_string_equal(int left, int right):
@@ -353,28 +399,25 @@ int __w_hash_table_slot(__w_hash_table* table, int key):
 	int i = __w_hash_key_hash(table, key) & mask
 	int first_deleted = -1
 	int probes = 0
-	while ((table.states[i] != 0) && (probes < table.capacity)):
-		if (table.states[i] == 1):
-			if (__w_hash_key_equal(table.key_kind, table.keys[i], key)):
-				return i
+	int kind = table.key_kind
+	char* states = table.states
+	int* keys = table.keys
+	# Identical words are equal keys under every kind (a C string or
+	# descriptor equals itself), so only non-identical pointer keys need
+	# the content compare.
+	int by_content = (kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)
+	while ((states[i] != 0) && (probes < table.capacity)):
+		if (states[i] == 1):
+			int stored = keys[i]
+			if (stored == key): return i
+			if (by_content):
+				if (__w_hash_key_equal(kind, stored, key)): return i
 		else if (first_deleted < 0): first_deleted = i
 		i = (i + 1) & mask
 		probes = probes + 1
 	if (first_deleted >= 0):
 		return first_deleted
 	return i
-
-
-# Rehash helper: the key is already owned (cloned) by the table, and the
-# value is copied slot-wise from its old storage.
-void __w_hash_table_move_owned(__w_hash_table* table, int key, char* value_src):
-	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1):
-		table.states[i] = 1
-		table.keys[i] = key
-		table.count = table.count + 1
-		__w_hash_order_link(table, i)
-	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
 # Rebuild the table at new_capacity, dropping every tombstone.
@@ -398,21 +441,41 @@ void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
 	table.order_prev = cast(int*, __w_alloc(__w_size_mul(table.capacity, __word_size__)))
 	table.order_head = -1
 	table.order_tail = -1
+	int* keys = table.keys
+	char* states = table.states
 	int i = 0
-	while (i < table.capacity):
-		table.keys[i] = 0
-		table.states[i] = 0
+	while (i < new_capacity):
+		keys[i] = 0
+		states[i] = 0
 		i = i + 1
-	char* value_bytes = cast(char*, table.values)
+	# slot_size is a word multiple, so the value storage clears by words.
+	int slot_words = slot_size / __word_size__
+	int* value_words = table.values
 	i = 0
-	while (i < table.capacity * slot_size):
-		value_bytes[i] = 0
+	while (i < new_capacity * slot_words):
+		value_words[i] = 0
 		i = i + 1
 
-	# Re-insert by walking the old chain so growth preserves insertion order
+	# Re-insert by walking the old chain so growth preserves insertion
+	# order. The new table has no tombstones and the keys are distinct,
+	# so __w_hash_table_slot's probe would stop at the first empty slot
+	# without a key ever comparing equal: probe for that slot directly.
+	int mask = new_capacity - 1
 	i = old_head
 	while (i >= 0):
-		__w_hash_table_move_owned(table, old_keys[i], cast(char*, old_values) + i * slot_size)
+		int key = old_keys[i]
+		int slot = __w_hash_key_hash(table, key) & mask
+		while (states[slot] != 0): slot = (slot + 1) & mask
+		states[slot] = 1
+		keys[slot] = key
+		table.count = table.count + 1
+		__w_hash_order_link(table, slot)
+		int* dst = &value_words[slot * slot_words]
+		int* src = &old_values[i * slot_words]
+		int w = 0
+		while (w < slot_words):
+			dst[w] = src[w]
+			w = w + 1
 		i = old_next[i]
 	free(old_keys)
 	free(old_values)
