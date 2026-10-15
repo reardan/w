@@ -126,6 +126,75 @@ ordinary W function pointers are not interchangeable with C callbacks.
 Android native linking supports function imports and exports; external data,
 thread-local storage, and W static-library output remain unsupported.
 
+## Packaging other apps
+
+`build.py` packages any W source that exports the three callbacks. Other
+repositories pass their own identity and options; the defaults reproduce
+the demo:
+
+```sh
+python3 tools/android/build.py /path/to/app.w --import-root /path/to/repo \
+    --package org.example.app --label "Example" --icon icon.png \
+    --theme daynight --min-sdk 29 --internet --scheme example \
+    --out /path/to/repo/bin/android --apk-name Example.apk
+```
+
+`--theme daynight` uses the device's DayNight theme without an action bar
+(API 29+); `light` remains the default. `--internet` adds the INTERNET
+permission and a network security configuration that allows cleartext HTTP
+only to `127.0.0.1` and `localhost` (for `adb reverse` development); other
+hosts need HTTPS. Each `--scheme` adds a VIEW/BROWSABLE intent filter and
+makes the Activity `singleTask`, so later links reach the running app.
+`--keystore` (or `W_ANDROID_KEYSTORE`) selects the development signing
+keystore, created if missing; by default every app built from one W checkout
+shares `bin/android/debug.keystore`, so updates install over each other.
+`--keystore-pass` and `--key-alias` match an existing keystore. The Java
+Activity keeps the class name `org.wlang.androiddemo.WActivity` whatever the
+application id, because the JNI entry points name it.
+
+## IDE-companion controls
+
+`graphics/android/kit.w` adds optional controls for richer apps such as the
+Wide companion; `graphics/android/kit_demo.w` is a compact example. The
+bridge is `tools/android/kit.c` plus `WKit.java`; the basic API is unchanged.
+New control and event numbers start at 32.
+
+- **Screens:** `wandroid_screen(title, flags)` pushes a screen with a top bar
+  (title, Up arrow, `wandroid_action` text actions) and makes it the target
+  for new controls, including labels, buttons and fields. Fixed screens give
+  lists, text views and fill areas the free height; `android_screen_scroll`
+  scrolls form content. `wandroid_screen_pop`/`_clear`/`_depth` manage the
+  stack. With two or more screens, Back and Up send `android_event_back`, and
+  W decides whether to pop. `wandroid_tab` adds persistent bottom tabs.
+  `wandroid_row` ... `wandroid_row_end` lays out controls side by side.
+- **Lists:** `wandroid_list` with two-line rows (`_add`, `_set`, `_clear`);
+  a tap sends `android_event_item` with the decimal row index.
+- **Text:** `wandroid_text_view(text, flags)` is read-only and selectable:
+  monospace (or proportional), optionally wrapped, with unified-diff colors
+  or tail-following `wandroid_text_append` styled by role. `wandroid_text_area`
+  is multi-line input that reports `android_event_text`. `wandroid_text_set`,
+  `_get`, `wandroid_style`, `wandroid_enable`, `wandroid_show` and
+  `wandroid_focus` work on any handle that supports them.
+- **Dialogs:** `wandroid_dialog(title, message, "Allow\nDeny\nAlways")` and
+  the list form `wandroid_choose` answer with `android_event_dialog` (the
+  index, or -1 when dismissed); `wandroid_toast` shows a short message.
+- **Timers:** `wandroid_timer(ms, repeat)` sends `android_event_timer`.
+- **HTTP:** `wandroid_http(method, url, headers, body)` runs
+  `HttpURLConnection` on a worker thread. `android_event_http` delivers
+  `"STATUS\nBODY"` on the UI thread; status 0 reports a transport failure.
+  Redirects are not followed and bodies are limited to 8 MiB.
+- **Secrets:** `wandroid_secure_put/get/delete` encrypt values with an
+  AES-GCM key held in AndroidKeyStore and keep only ciphertext in private
+  SharedPreferences.
+- **Deep links:** `wandroid_intent_uri` reads the launching URI; later links
+  arrive as `android_event_uri`.
+
+Timer, dialog and HTTP ids are a separate number space from control handles;
+the event kind identifies them. Timers and dialogs end with their Activity.
+HTTP results are delivered to the current Activity, including one recreated
+while the request was in flight. Text crosses JNI as UTF-8 byte arrays in both
+directions, and query results are copied into W-owned buffers.
+
 ## Validation
 
 The ordinary host suite includes Android ELF structure, host planning,
@@ -133,8 +202,17 @@ bootstrap selection, runtime layout, strict build-tool cross compilation,
 and demo shared-library checks. These need neither an SDK nor a device:
 
 ```sh
-./wbuild android_elf_test android_bootstrap_test android_build_tools_compile_test android_app_test
+./wbuild android_elf_test android_bootstrap_test android_build_tools_compile_test android_app_test android_kit_test
 ```
+
+`android_kit_test` builds the kit example and runs `tools/android/check_bridge.py`,
+which checks that every W `extern` has a C definition with the same arity and
+that `kit.c`, `WKit.java`, `kit.w` and `WActivity` agree on operation codes,
+event kinds and JNI signatures. On a device, `tools/android/kit_smoke.py`
+exercises screens, lists, text, secrets, a timer, HTTP through `adb reverse`,
+Back, a dialog and a deep link (see its usage text for the build command). It
+passed on the Samsung SM-S134DL (Android 13, 4 KB pages) with the DayNight
+theme, as did the Wide companion's end-to-end test built on these controls.
 
 The optional device probes test exported integer/float arguments, stack
 spills, relocated data, and a W compiler running inside Android's app sandbox:
