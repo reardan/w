@@ -73,9 +73,13 @@ void arm64_entry_rebase_stub():
 # pass, after all code and data have been emitted.
 void arm64_emit_rebase_table():
 	int table_vaddr = data_offset + datapos
-	emit_data_word(rebase_count)
+	int count = rebase_count
+	# The ELF loader has already applied RELATIVE relocations. Darwin
+	# continues to use its entry walk for local data pointers.
+	if (elf_pie && dyn_has_imports()): count = 0
+	emit_data_word(count)
 	int r = 0
-	while (r < rebase_count):
+	while (r < count):
 		emit_data_word(load_i(rebase_table + r * 8, 8))
 		r = r + 1
 	save_int64(code + arm64_rebase_lit_pos, table_vaddr)
@@ -115,7 +119,7 @@ void elf_finish_arm64():
 
 	# The rebase table lands at the end of the data segment, after every
 	# data cell it lists has been reserved.
-	arm64_emit_rebase_table()
-
-	arm64_patch_entry_bl(entry_symbol(0))
+	if (elf_shared == 0):
+		arm64_emit_rebase_table()
+		arm64_patch_entry_bl(entry_symbol(0))
 	elf_patch_load_segments(1)

@@ -1,1 +1,2 @@
-import lib.io_errno_linux
+# Shared Linux/Android AArch64 kernel ABI.
+import lib.arm64.io_errno

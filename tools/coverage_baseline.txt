@@ -15,8 +15,10 @@
 # The wsh launcher/translation regressions measure repl/ branches at
 # 74.3%; keep that gain. The frontend move changes the line denominator:
 # repl/ lines measure 91.9%, so the existing 91.5% line floor stays.
+# Android target/ELF regressions measure compiler/ lines at 94.3% and
+# branches at 84.0%; retain those gains with the existing margins.
 code_generator/ 96.0
-compiler/ 93.5
+compiler/ 93.6
 grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
@@ -24,7 +26,7 @@ repl.w 80.5
 w.w 99.0
 diagnostics 50.5
 branches:code_generator/ 87.7
-branches:compiler/ 83.0
+branches:compiler/ 83.4
 branches:grammar/ 84.6
 branches:repl/ 73.5
 branches:debugger/ 64.0

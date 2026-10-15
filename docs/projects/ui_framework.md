@@ -21,7 +21,8 @@ and remaining selection, shaping, accessibility and device-test limits.
 Experimental `arm64_ios` and `arm64_ios_sim` targets now build native
 UIKit apps through `graphics/ios/ui.w`; see [iOS](ios.md). This native
 control bridge does not yet host the existing GL `graphics/ui` renderer.
-Android still uses the browser path. The design sections below retain
+Android also has an experimental native-controls bridge; the shared GL
+widgets still use the browser path there. The design sections below retain
 historical decisions; this status and the linked implementation guides
 supersede their original mobile non-goals.
 
@@ -110,6 +111,7 @@ only in §3 to rule out a DOM-based alternative.
 The compiler emits x86 and x64 Linux ELF, arm64 Linux ELF,
 `arm64_darwin` macOS Mach-O, experimental `arm64_ios` and
 `arm64_ios_sim` Mach-O, win64 PE, and wasm32/WASI.
+Experimental `arm64_android` adds Android ELF/PIE and shared-library output.
 `graphics/window.w` already dispatches per-target through
 `graphics/__arch__/<target>/window_native.w`; verified current state of
 that dispatch (each file read directly):
@@ -122,6 +124,7 @@ that dispatch (each file read directly):
 | wasm32 (browser) | `graphics.window_web` (canvas + WebGL2 via `tools/web/webgl_env.mjs`) | 7-field snapshot: width, height, should_close, mouse_x, mouse_y, mouse_buttons, last_keycode (`graphics/window_web.w:59`-`60`) | real, tested (`wasm_webgl_test`), needs Node or a browser |
 | win64 | `graphics.window_win32` (Win32/WGL) | mouse, wheel, CHAR, NAV, modifiers | implemented (#463) |
 | iOS device / simulator | `graphics.ios.ui` with packaged UIKit host | native controls, keyboard/IME and lifecycle callbacks | experimental; GL widget renderer not ported |
+| Android ARM64 | `graphics.android.ui` with packaged JNI/Activity host | native controls, UTF-8 text and lifecycle callbacks | experimental; GL widget renderer not ported; see [Android](android.md) |
 | x86 Linux | `graphics.window_stub` | none | **no backend at all** (32-bit is the seed/bootstrap target, not expected to grow a GUI) |
 
 The shared GL widget renderer runs on Linux, macOS, Windows and the web.
@@ -131,7 +134,9 @@ text fields and buttons, and receives callbacks through an ARM64 ABI
 adapter. The simulator smoke test exercises a UIKit button action, W
 state change, and UIKit label update. Physical-device deployment needs a
 matching signing identity, provisioning profile and entitlements; it has
-not been device-qualified. Native Android is not implemented.
+not been device-qualified. Android has a separate experimental JNI/Activity
+controls bridge with the same basic label, text field, button, and lifecycle
+scope; its setup and qualification limits are in [Android support](android.md).
 
 ## 2. Capability inventory: what `graphics/` gives you today
 
