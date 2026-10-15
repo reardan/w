@@ -1877,6 +1877,7 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add(path, c"c_import_test")
 		wtest_add(path, c"c_preprocessor_test")
+		wtest_add(path, c"c_preprocessor_standalone_test")
 		wtest_add(path, c"c_import_errno_test")
 		wtest_add(path, c"c_import_libc_test")
 		wtest_add(path, c"c_import_verbose_note_test")
