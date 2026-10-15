@@ -8,6 +8,11 @@ import lib.sha256
 import libs.extras.grammars.antlr_to_pg.ast
 import libs.extras.grammars.antlr_to_pg.audit
 import libs.extras.grammars.antlr_to_pg.classify
+# classify.w calls at_try_generate_matcher, defined in matchers_emit.w.
+import libs.extras.grammars.antlr_to_pg.charsets
+import libs.extras.grammars.antlr_to_pg.matchers_ascii
+import libs.extras.grammars.antlr_to_pg.matchers_analyze
+import libs.extras.grammars.antlr_to_pg.matchers_emit
 
 list[at_rule*] strict_test_rules(char* source):
 	g_seen_rule_names = new map[char*, int]

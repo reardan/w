@@ -1339,9 +1339,10 @@ void finish_on_demand_imports():
 # entry_symbol (code_generator/image.w) only picks that runtime entry
 # when '_main' is defined, so in a program without lib.lib the call is
 # dead code, and a missing entry point already has its own error there.
-# Likewise 'main' in a --shared object (elf_shared): a library has no
-# entry point (elf_all.w), so lib.lib's _main -> main call is unreachable
-# and a library such as an Android app (exported callbacks) defines none.
+# Likewise 'main' in a --shared object or --static library: a library
+# has no entry point (elf_all.w, static_library_write), so lib.lib's
+# _main -> main call is unreachable and a library such as an Android app
+# (exported callbacks) defines none.
 void undefined_function_check():
 	int failures = 0
 	int t = 0
@@ -1349,7 +1350,7 @@ void undefined_function_check():
 		char* name = table + t
 		t = t + strlen(table + t)
 		int pending = (load_int(table + t + 2) != code_offset) || (sym_rel_chain(t) != 0)
-		int entry_only = (strcmp(name, c"_main") == 0) || (elf_shared && (strcmp(name, c"main") == 0))
+		int entry_only = (strcmp(name, c"_main") == 0) || ((elf_shared || elf_static) && (strcmp(name, c"main") == 0))
 		if ((table[t + 1] == 'U') && (load_int(table + t + 10) == 2) && pending && (entry_only == 0)):
 			int file_index = sym_decl_file_index(t)
 			if (file_index >= 0):

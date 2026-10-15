@@ -2,6 +2,9 @@ import lib.testing
 import compiler.tokenizer
 import libs.extras.c_preprocessor.pp_lexer
 import libs.extras.c_preprocessor.pp_directives
+# The code generator prototypes hooks the grammar and compiler define
+# (code_emitter.w); link them so every called prototype has a body.
+import compiler.compiler
 
 
 char* cpp_test(char* source):

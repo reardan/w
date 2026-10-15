@@ -4,6 +4,9 @@
 import lib.lib
 import lib.assert
 import code_generator.wasm
+# The code generator prototypes hooks the grammar and compiler define
+# (code_emitter.w); link them so every called prototype has a body.
+import compiler.compiler
 
 
 int main():
