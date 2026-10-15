@@ -1,0 +1,379 @@
+{
+  "version": 1,
+  "suite": "test262-bounded-runtime",
+  "upstream": {
+    "repository": "https://github.com/tc39/test262",
+    "commit": "2e0a56762801e275a9fdf96dc49d90ba0cddcf63"
+  },
+  "files": [
+    {
+      "path": "upstream/LICENSE",
+      "upstream_path": "LICENSE",
+      "sha256": "4dd9244dfe8197c75348c4b24ab53d29d3b1cfad143ac76b5a3d8942aa354ce0"
+    },
+    {
+      "path": "upstream/INTERPRETING.md",
+      "upstream_path": "INTERPRETING.md",
+      "sha256": "cc213fd1e590ebdccacc7c846340517cbee2a241ea8a915392b0d071f3fd800e"
+    },
+    {
+      "path": "upstream/harness/assert.js",
+      "upstream_path": "harness/assert.js",
+      "sha256": "206e274ca325eb8a652e3911c3fbd090e2480d11ed7579dc17a5d17a2360ed48"
+    },
+    {
+      "path": "upstream/harness/sta.js",
+      "upstream_path": "harness/sta.js",
+      "sha256": "1930c54af79455c484799f43e9a28e2b2f15c40d0917c9941ca54e26db243f35"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/chainable.js",
+      "upstream_path": "test/language/expressions/coalesce/chainable.js",
+      "sha256": "7622256e5670f281c8669195ddc3085c61bc7d4343d76aeb1b87a6416f09c6aa"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/follows-null.js",
+      "upstream_path": "test/language/expressions/coalesce/follows-null.js",
+      "sha256": "2ed314c110892feadee587f1101889c43552612d8b63117e817add625aac1dbc"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/follows-undefined.js",
+      "upstream_path": "test/language/expressions/coalesce/follows-undefined.js",
+      "sha256": "f98e6c6cbf9613658805edc574a0d3978dafb0fb57ecef5a3d64d33324aedbc0"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-0.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-0.js",
+      "sha256": "d690ff5d98ee2034f23fa6587f6c8863e5db8955fbf11c4e12e2f4e9415f25f1"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-42.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-42.js",
+      "sha256": "8bde92ffd370188c240b79b636dfbc324b0fa1f83a822ef0a7981a12c64fcdf5"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-empty-string.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-empty-string.js",
+      "sha256": "87d25a3a917432c4738efdbc16d7e88139cff16036a88ce54ed493240d184292"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-false.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-false.js",
+      "sha256": "224ea05d11ea94ceeb0c79ffa53381840333f82cd0178f7080f174248ebad9e6"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-object.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-object.js",
+      "sha256": "b4a6779dcbec6e1375850b3e766dd0025f4de0f863688ca5477c327ada372d51"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-string.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-string.js",
+      "sha256": "bb0092cf9692bb0b450313cd1f573941ad14592f2c15c469a5e9f5fa443a3690"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-number-true.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-number-true.js",
+      "sha256": "c85343805943828b3bfa8bbebb1abe64fa4e34006ce86b22ee685b6bacde9b8b"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/short-circuit-prevents-evaluation.js",
+      "upstream_path": "test/language/expressions/coalesce/short-circuit-prevents-evaluation.js",
+      "sha256": "90371a54d566a374edc649ab76b89ceb4575a67e1e9a0d4bfa2d9bfa5bb1bb28"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js",
+      "sha256": "229a0a642165e11d07289eacb573e78271b2e3413382890bd86d6cb25e26887f"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-or.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-head-with-logical-or.js",
+      "sha256": "91dbfbc63fc979794ec2187814716dea4c58ab2420f76f9147fd24e30be8275f"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js",
+      "sha256": "258107e623a7469a80a022bbe5d2d0144190d9b4b49668e652c316caf870f464"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js",
+      "upstream_path": "test/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js",
+      "sha256": "56194c3aea6b3c3b7460cb53851d1f789c17c377b9a493e0ae6e2369017e0d22"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/chainable-with-bitwise-or.js",
+      "upstream_path": "test/language/expressions/coalesce/chainable-with-bitwise-or.js",
+      "sha256": "39393e487ec2e5059a0c9b60ba03b46da70ac7bf12a0c001e19272297cf7db54"
+    },
+    {
+      "path": "upstream/test/language/expressions/coalesce/tco-pos-null.js",
+      "upstream_path": "test/language/expressions/coalesce/tco-pos-null.js",
+      "sha256": "ec25ce2e585ccff5748b586fd0cb859676af661166df79f49f083b75ab381488"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A1.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A1.js",
+      "sha256": "e19b6800a638faf54237a41ab7b772d65176ed29b5d9284fcb6f0bfc38b1dd92"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A2.1_T2.js",
+      "sha256": "d11183b387b45262c3f3954964ae29a9bfbb7d58d6de2c3e1629d6a3d2738026"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A4_T1.js",
+      "sha256": "12928eb319dcf0cc785e399580effb0b7495709296dce9c0a58e8408616a959f"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A4_T2.js",
+      "sha256": "aee914241b607f56a98de04492f2d580e7bc69cca232af679d0c02b7025cc06b"
+    },
+    {
+      "path": "upstream/test/language/expressions/assignment/id-eval-strict.js",
+      "upstream_path": "test/language/expressions/assignment/id-eval-strict.js",
+      "sha256": "2869d20f457a72b0b6051423e054179353d2721a3e2549ffa0e3878f5724e60f"
+    },
+    {
+      "path": "upstream/test/language/module-code/export-star-as-dflt.js",
+      "upstream_path": "test/language/module-code/export-star-as-dflt.js",
+      "sha256": "a9724b86d659a6d967194d51e68c42a8b22595eeb236ee0eda32ac57778156cc"
+    },
+    {
+      "path": "upstream/test/language/expressions/dynamic-import/always-create-new-promise.js",
+      "upstream_path": "test/language/expressions/dynamic-import/always-create-new-promise.js",
+      "sha256": "e11f060801c828fbd99052aeb90eb4fa94420eed9ddf5530983decd121420cc1"
+    },
+    {
+      "path": "upstream/test/language/statements/const/global-use-before-initialization-in-declaration-statement.js",
+      "upstream_path": "test/language/statements/const/global-use-before-initialization-in-declaration-statement.js",
+      "sha256": "833b4091c9fc08da08e5adffe63c10e4271b17fa874592b84682e78fe62db8ed"
+    },
+    {
+      "path": "upstream/test/language/statements/const/global-use-before-initialization-in-prior-statement.js",
+      "upstream_path": "test/language/statements/const/global-use-before-initialization-in-prior-statement.js",
+      "sha256": "54abbcfd8d2a15136a05a589592086476eb24a4a9e2bf6044ec6934282fc5b89"
+    },
+    {
+      "path": "upstream/test/language/statements/let/global-use-before-initialization-in-declaration-statement.js",
+      "upstream_path": "test/language/statements/let/global-use-before-initialization-in-declaration-statement.js",
+      "sha256": "841de5082a955cbaf965ecf81c9b52e46ee5ff8d82a598938b2cb8e98846d703"
+    },
+    {
+      "path": "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
+      "upstream_path": "test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
+      "sha256": "528ca7f5a56663c102c4489c7fa6285d85ad77333994401c48497f174870b94d"
+    }
+  ],
+  "cases": [
+    "upstream/test/language/expressions/coalesce/chainable.js",
+    "upstream/test/language/expressions/coalesce/follows-null.js",
+    "upstream/test/language/expressions/coalesce/follows-undefined.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-0.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-42.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-empty-string.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-false.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-object.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-string.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-number-true.js",
+    "upstream/test/language/expressions/coalesce/short-circuit-prevents-evaluation.js",
+    "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js",
+    "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-or.js",
+    "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js",
+    "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js",
+    "upstream/test/language/expressions/coalesce/chainable-with-bitwise-or.js",
+    "upstream/test/language/expressions/coalesce/tco-pos-null.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A1.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js",
+    "upstream/test/language/expressions/assignment/id-eval-strict.js",
+    "upstream/test/language/module-code/export-star-as-dflt.js",
+    "upstream/test/language/expressions/dynamic-import/always-create-new-promise.js",
+    "upstream/test/language/statements/const/global-use-before-initialization-in-declaration-statement.js",
+    "upstream/test/language/statements/const/global-use-before-initialization-in-prior-statement.js",
+    "upstream/test/language/statements/let/global-use-before-initialization-in-declaration-statement.js",
+    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js"
+  ],
+  "baseline": {
+    "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/chainable.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/follows-null.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/follows-null.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/follows-undefined.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/follows-undefined.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-0.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-0.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-42.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-42.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-empty-string.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-empty-string.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-false.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-false.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-object.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Object method syntax is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-object.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Object method syntax is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-string.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-string.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-true.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-number-true.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-prevents-evaluation.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/coalesce/short-circuit-prevents-evaluation.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-or.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-or.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-and.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/cannot-chain-tail-with-logical-or.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/coalesce/chainable-with-bitwise-or.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Bitwise OR evaluation is outside the implemented runtime subset."
+    },
+    "upstream/test/language/expressions/coalesce/chainable-with-bitwise-or.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Bitwise OR evaluation is outside the implemented runtime subset."
+    },
+    "upstream/test/language/expressions/coalesce/tco-pos-null.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported harness includes: tcoHelper.js"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+    },
+    "upstream/test/language/expressions/assignment/id-eval-strict.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/module-code/export-star-as-dflt.js#module": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported flags: module"
+    },
+    "upstream/test/language/expressions/dynamic-import/always-create-new-promise.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: dynamic-import"
+    },
+    "upstream/test/language/expressions/dynamic-import/always-create-new-promise.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: dynamic-import"
+    },
+    "upstream/test/language/statements/const/global-use-before-initialization-in-declaration-statement.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/const/global-use-before-initialization-in-declaration-statement.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/const/global-use-before-initialization-in-prior-statement.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/const/global-use-before-initialization-in-prior-statement.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/global-use-before-initialization-in-declaration-statement.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/global-use-before-initialization-in-declaration-statement.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js#strict": {
+      "status": "PASS"
+    }
+  }
+}
