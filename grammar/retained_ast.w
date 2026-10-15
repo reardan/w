@@ -36,7 +36,8 @@ int retained_type_matches(retained_type* type, type_rec* original):
 		if (strcmp(field.name, original.field_names[i]) != 0): return 0
 		if (retained_types[field.type].origin != type_real(original.field_types[i])): return 0
 	if (original.kind == type_kind_function):
-		for i in range(original.fn_param_count):
+		# type_rec records at most 10 parameter types (type_push_function).
+		for i in range(min(original.fn_param_count, 10)):
 			if (retained_types[type.parameters[i]].origin != type_real(original.fn_param_types[i])): return 0
 	int constants = 0
 	if ((original.kind == type_kind_enum) && (enum_constants != 0)):
@@ -92,7 +93,7 @@ int retained_type_note(int index):
 	if ((original.kind == type_kind_function) || (original.kind == type_kind_map)):
 		type.return_type = retained_type_note(original.fn_return_type)
 	if (original.kind == type_kind_function):
-		for i in range(original.fn_param_count): type.parameters.push(retained_type_note(original.fn_param_types[i]))
+		for i in range(min(original.fn_param_count, 10)): type.parameters.push(retained_type_note(original.fn_param_types[i]))
 	# S2.5: type_get_field_offset_at(index, i), summed as the fields go
 	# instead of from the first field each time.
 	int layout_index = type_canonical(index)
