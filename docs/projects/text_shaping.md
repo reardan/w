@@ -30,7 +30,8 @@ shaping engine use the same rasterizer and cache.
 The host must split paragraphs by bidi direction, script and font, choose
 fallbacks and line breaks, and assemble the resulting runs into visual order.
 The optional paragraph bidi adapter described below supplies directional runs
-and their visual order for a paragraph displayed on one unwrapped line.
+and their visual order for either an unwrapped paragraph or caller-selected
+wrapped lines, retaining the paragraph's resolved context.
 `AUTO` guesses one run's properties; it is not Unicode paragraph bidi.
 Clusters identify source ranges and may combine multiple graphemes in one
 ligature. They are not a complete caret or selection model. Shape again after
@@ -75,7 +76,7 @@ same Linux loader and `libdl.so.2` as the shaping adapter. It is not a portable
 fallback, and its Unicode data version is supplied by the installed FriBidi.
 
 `ui_bidi_utf8(text, byte_length, direction, max_scalars)` analyzes one paragraph
-displayed on one unwrapped line. Choose `UI_BIDI_AUTO`, `UI_BIDI_LTR`, or
+and supplies its unwrapped layout. Choose `UI_BIDI_AUTO`, `UI_BIDI_LTR`, or
 `UI_BIDI_RTL`. AUTO uses the first strong direction outside isolates, falling
 back to LTR. UTF-8 must be valid; embedded NUL and supplementary scalars are
 accepted. Hard line/paragraph separators (LF, CR, VT, FF, U+001C–U+001E, NEL,
@@ -97,6 +98,11 @@ LTR). The result owns:
 - `runs[run_count]` in logical order, each with `byte_start`, `byte_length`,
   `scalar_start`, `scalar_count`, `level`, and `direction`.
 - `visual_runs[run_count]`, indexing `runs` from the leftmost run to the rightmost.
+
+The paragraph also owns `bidi_types` and `resolved_levels`, retaining native
+analysis before line-specific resets. Treat all output fields as read-only;
+use the line API below to lay out a different width. The input text is not
+retained or borrowed and may be released after analysis.
 
 The maps represent bidi reordering of scalars. They are not glyph arrays,
 grapheme boundaries, or a caret/selection model. Controls retain their source
@@ -123,11 +129,79 @@ ui_bidi_paragraph_free(paragraph)
 Shaped cluster offsets are relative to the slice: add `item.byte_start` to map
 them back into the document. Directional runs may still contain several scripts
 or require font fallback. The host must subdivide them further and order those
-subruns according to the enclosing direction. Line wrapping also remains a
-separate layout step: do not independently analyze each wrapped line, because
-paragraph context affects bidi resolution. This API does not yet expose
-reordering of line ranges from a previously analyzed paragraph. It does not
-change default widget rendering or add native IME support.
+subruns according to the enclosing direction. Line wrapping remains a separate
+layout step: do not independently analyze each wrapped line, because paragraph
+context affects bidi resolution. Use the retained analysis as described below.
+Neither API changes default widget rendering or adds native IME support.
+
+### Wrapped lines and reflow
+
+`ui_bidi_reorder_line(paragraph, scalar_start, scalar_count)` returns an owned
+`ui_bidi_line` for a contiguous logical scalar range of a successful paragraph.
+The caller selects line breaks from measured/shaped text. Arguments are scalar
+indices, not UTF-8 byte offsets; a range cannot split a UTF-8 scalar. The caller
+must also avoid breaking graphemes or shaping clusters and implement its own
+line-break policy. This API does not measure widths or choose break positions.
+
+Each call copies the selected resolved levels, applies line-ending whitespace
+resets and produces new visual ordering. It retains the paragraph's base
+direction, paired-bracket resolution, numeric context, isolates and overrides,
+even when their establishing text is outside the line. The trailing reset
+includes isolate controls and intervening whitespace, including on FriBidi
+versions whose native line reset omits isolates. Retained explicit controls and
+boundary neutrals follow the same trailing reset convention. Native scalar
+mark reordering stays disabled: shape original logical slices to position marks.
+
+Check `line.status`, then consume:
+
+| Field | Coordinate system |
+| --- | --- |
+| `direction` | Resolved paragraph direction |
+| `scalar_start`, `count` | Paragraph scalar start and line scalar count |
+| `byte_start`, `byte_length` | Line range in the original paragraph's UTF-8 |
+| `byte_offsets[count + 1]` | Original paragraph byte offsets, including the line-end sentinel |
+| `levels[count]` | Logical line-local indices, after line-specific resets |
+| `logical_to_visual`, `visual_to_logical` | Inverse scalar maps; both indices and values are line-local |
+| `runs[run_count]` | Logical order; each run's byte/scalar starts are paragraph-relative |
+| `visual_runs[run_count]` | Indices into this line's `runs`, leftmost to rightmost |
+
+For example, a visual scalar index `v` maps to paragraph scalar
+`line.scalar_start + line.visual_to_logical[v]` and paragraph byte offset
+`line.byte_offsets[line.visual_to_logical[v]]`. These remain scalar positions,
+not caret or glyph positions. As for an unwrapped paragraph, add a run's
+`byte_start` to its shaped cluster offsets to obtain paragraph byte offsets.
+
+```w
+# paragraph is successful; the application has selected a legal scalar range.
+ui_bidi_line* line = ui_bidi_reorder_line(paragraph, first_scalar, scalar_count)
+if (line.status == UI_BIDI_OK):
+	int advance = 0
+	for i in range(line.run_count):
+		ui_bidi_run* item = &line.runs[line.visual_runs[i]]
+		# Each directional run must still be segmented by script/font as needed.
+		ui_shaped_run* run = ui_shape_utf8(text + item.byte_start, item.byte_length, strike, item.direction, 0, 0, 65536)
+		if (run.status == UI_SHAPE_OK):
+			ui_draw_shaped_run(renderer, x + cast(float32, advance) / 64.0, y, run, color)
+			advance = advance + run.advance
+		ui_shaped_run_free(run)
+ui_bidi_line_free(line)
+```
+
+Lines own every output array and survive paragraph disposal. Reordering a line
+does not mutate the paragraph or earlier lines; overlapping ranges, different
+widths and out-of-order calls are supported. Free each line, including failed
+results, with `ui_bidi_line_free`; freeing null is a no-op. The original text
+must remain available separately if the application will shape it later.
+
+Null/failed paragraphs and negative or out-of-range scalar ranges return
+`UI_BIDI_INVALID`, checked without addition overflow. An empty range at any
+valid boundary (including paragraph end) succeeds without a native call; it
+owns one byte-offset sentinel and has no runs/maps/levels. Nonempty lines can
+return `UI_BIDI_UNAVAILABLE` or `UI_BIDI_FAILED`; failures own no partial arrays.
+Each line is bounded by its validated paragraph (at most 65536 scalars), with
+storage proportional to the selected range, not the whole paragraph. The caller
+bounds the number of simultaneously retained lines. Whole-paragraph line output
+matches the unwrapped layout.
 
 Inputs and budgets are capped at 65536 bytes/scalars. W-owned arrays are bounded
 by that cap, while native temporary allocations and execution remain under
@@ -139,10 +213,18 @@ punctuation, isolates, explicit overrides, trailing whitespace, inverse maps
 and byte ranges, UTF-8 rejection, NUL, supplementary scalars, the maximum
 budget, empty input, unavailable-native behavior and native failure cleanup.
 A headless integration case shapes logical slices in visual run order and
-keeps a Hebrew combining mark attached to its base. Native tests visibly skip
+keeps a Hebrew combining mark attached to its base. Wrapped-line tests cover
+LTR/RTL whitespace resets, digits and paired brackets retaining context,
+cross-line isolates/overrides, trailing isolate controls, independent reflow,
+paragraph disposal, empty and invalid ranges, NUL/supplementary offsets, maximum
+ranges, native failure cleanup, and shaped marks at nonzero document offsets.
+Native tests visibly skip
 when their optional library is unavailable. This is regression coverage, not a
 claim of complete Unicode bidi conformance qualification.
 
 The adapter uses FriBidi's published
 [paragraph and line ABI](https://github.com/fribidi/fribidi/blob/master/lib/fribidi-bidi.h)
 and [paired-bracket API](https://github.com/fribidi/fribidi/blob/master/lib/fribidi-brackets.h).
+The line suffix reset follows [Unicode bidi rule L1](https://www.unicode.org/reports/tr9/#L1)
+and the [retained-control convention](https://www.unicode.org/reports/tr9/#Retaining_Explicit_Formatting_Characters),
+using the published [FriBidi type masks](https://github.com/fribidi/fribidi/blob/master/lib/fribidi-bidi-types.h).
