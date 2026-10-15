@@ -218,7 +218,11 @@ int emit_declaration_ast_initializer(statement_ast* node):
 		ast_expression_note_root(node.expression_tree, node.expression_root)
 		coerce_checked(node.declared_type, got, c"initialization")
 		const_note_override = 0
-	safe_owner_move(node.expression_tree, node.expression_root, node.declared_type)
+	int destination = node.declared_type
+	# Inferred bindings are installed after initializer lowering. Their
+	# source type already carries ownership, even while declared_type is -1.
+	if (node.inferred): destination = got
+	safe_owner_move(node.expression_tree, node.expression_root, destination)
 	return got
 
 

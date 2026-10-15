@@ -176,6 +176,8 @@ int type_name():
 
 	type = type_name_array_suffix(type)
 	if (safe_kind):
+		if (type_safe_entrypoint == 0): error(c"checked pointers are not supported by in-process sessions")
+		if (ast_retain_mode == 0): error(c"checked pointers require the retained frontend")
 		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || type_is_slice(type)):
 			error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")
 		if (is_gpu || type_is_gpu_pointer(type)): error(c"checked GPU pointers are not supported")

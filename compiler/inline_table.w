@@ -235,6 +235,7 @@ void inline_note_parameter(char* name, int type):
 	rec.param_count = n + 1
 	# By-value aggregates span several stack words with a layout the
 	# call's push protocol owns; the body stays a call.
+	if (type_safe_kind(type)): rec.ok = 0
 	if (type_stack_words(type) != 1): rec.ok = 0
 	if (type_num_args(type_unqualified(type)) > 0): rec.ok = 0
 
@@ -263,6 +264,7 @@ void inline_definition_begin(int sym, char* name, int return_type):
 	rec.tokens = 0
 	rec.code_bytes = 0
 	rec.ok = 1
+	if (type_safe_kind(return_type)): rec.ok = 0
 	rec.has_calls = 0
 	rec.has_clobber = 0
 	rec.param_count = 0

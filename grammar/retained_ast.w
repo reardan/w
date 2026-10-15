@@ -238,6 +238,7 @@ int retained_binding_note(int sym, int owner):
 		if ((node.kind == retained_statement) && (strcmp(node.name, name) == 0)):
 			binding.line = node.line
 			binding.column = node.column
+	binding.assembly_body = 0
 	binding.scope = scope
 	binding.slot = load_int(table + sym + 2)
 	binding.source = source

@@ -14,12 +14,19 @@
 # wbuild: step="bin/wv2 check --json --safe --bounds=off tests/safe_cli_fixture.w" expect_fail expect_stdout="<command-line>"
 # wbuild: step="bin/wv2 check --json --streaming tests/safe_cli_fixture.w --safe" expect_fail expect_stdout="<command-line>"
 # wbuild: step="bin/wv2 repl.w -o bin/safe_cli_repl"
+# wbuild: step="bin/safe_cli_repl" stdin="own int* p = new int\n:quit\n" expect_stderr="checked pointers are not supported by in-process sessions"
 # wbuild: step="bin/safe_cli_repl --safe" expect_fail expect_stderr="--safe is not supported by in-process REPL or debugger sessions"
-# wbuild: step="bin/wv2 wdbg.w -o bin/safe_cli_wdbg"
+# wbuild: step="bin/wv2 debugger/debugger.w -o bin/safe_cli_wdbg"
+# wbuild: step="bin/safe_cli_wdbg tests/safe_syntax_fixture.w" expect_fail expect_stderr="checked pointers are not supported by in-process sessions"
 # wbuild: step="bin/safe_cli_wdbg --safe tests/safe_cli_fixture.w" expect_fail expect_stderr="--safe is not supported by in-process REPL or debugger sessions"
+# wbuild: step="bin/wv2 --bounds=off tests/safe_runtime_fixture.w" expect_fail expect_stderr="checked pointers require bounds checks"
+# wbuild: step="bin/wv2 --bounds=off tests/safe_runtime_fixture.w --bounds=on" expect_fail expect_stderr="checked pointers require bounds checks"
+# wbuild: step="bin/wv2 --streaming tests/safe_runtime_fixture.w" expect_fail expect_stderr="checked pointers require the retained frontend"
+# wbuild: step="bin/wv2 check --json --safe arm64 tests/safe_cli_fixture.w" expect_fail expect_stdout="only Linux x86 and x64"
 import lib.testing
 import lib.process
 import lib.file
+import structures.json
 
 
 void test_safe_cli_json_conflict_is_structured():
@@ -36,8 +43,8 @@ void test_safe_cli_json_conflict_is_structured():
 	assert_equal(1, result.status)
 	json_value* diagnostic = json_parse(result.stdout_text)
 	assert1(diagnostic != 0)
-	assert_strings_equal(c"error", json_get_string(diagnostic, c"severity"))
-	assert_strings_equal(c"<command-line>", json_get_string(diagnostic, c"file"))
+	assert_strings_equal(c"error", json_object_get(diagnostic, c"severity").string_value)
+	assert_strings_equal(c"<command-line>", json_object_get(diagnostic, c"file").string_value)
 	assert_strings_equal(c"", result.stderr_text)
 	json_free(diagnostic)
 	process_result_free(result)

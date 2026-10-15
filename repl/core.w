@@ -351,6 +351,7 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# type-name ...: a function definition or a persistent variable
+	if (safe_qualifier_ahead()): error(c"checked pointers are not supported by in-process sessions")
 	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		int decl_type = type_name()
 		if (token[0] == 0): error(c"identifier expected after type name")
@@ -1052,6 +1053,7 @@ void repl_ast_options():
 # runs from, the shared eval engine (repl_engine_init: recoverable
 # compile errors, staging directory) and the runtime support modules.
 void repl_inprocess_setup():
+	type_safe_entrypoint = 0
 	if (safe_mode): target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	verbosity = -1
 	# The in-process model runs compiled code directly, so the target

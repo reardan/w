@@ -1320,6 +1320,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	safe_reset()
+	type_safe_entrypoint = 1
 	warning_count = 0
 	type_error_count = 0
 	analysis_mode = 0
@@ -1495,7 +1496,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				ast_only_flag = *flag_arg
 			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
 			if (strcmp(*flag_arg, c"--safe") == 0): safe_mode = 1
-			if (strcmp(*flag_arg, c"--bounds=off") == 0): unsafe_bounds_flag = 1
+			if (strcmp(*flag_arg, c"--bounds=off") == 0):
+				unsafe_bounds_flag = 1
+				safe_bounds_disabled = 1
 			# C3.5: so does the optimizer pass, an AST-only mode.
 			if (strcmp(*flag_arg, c"--ast-opt") == 0):
 				link_option(*flag_arg, 1)
@@ -1604,6 +1607,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# a direct import for every file (grammar/import_statement.w).
 	auto_import_closure_count = imported_count
 	safe_trust_sources(0)
+	# Application semantic records are required even without --safe: a later
+	# imported signature may introduce checked pointers into an earlier body.
+	if (ast_retain_mode): retained_semantic_mode = 1
 	analysis_mode = analysis_requested
 
 	output_fd = 1 /* default: write the ELF to stdout */
@@ -1720,6 +1726,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 
 	if (type_error_count > 0): return 1
 	safe_check_finish()
+	type_safe_entrypoint = 0
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with

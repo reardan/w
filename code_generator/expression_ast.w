@@ -640,21 +640,6 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			char* set_name = ndarray_accessor_name_for(tree.value[index], tree.high[index], c"_set")
 			sym_lookup(set_name)
 			int subop = tree.value[id]
-		if (type_safe_kind(left_type) == 1):
-			int left = tree.left[id]
-			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
-				error(c"safe owner assignment requires a plain local or parameter")
-			regalloc_note_take()
-			int slot = 0 - tree.binding_offset[left]
-			emit_expression_ast(tree, tree.right[id])
-			int got = promote(tree.result_type[tree.right[id]])
-			coerce(left_type, got)
-			safe_owner_move(tree, tree.right[id], left_type)
-			push_slot()
-			safe_owner_drop_slot(slot)
-			pop_eax_slot()
-			store_stack_var((stack_pos - slot) << word_size_log2)
-			return
 			if (subop):
 				park_call(park, get_name, 0)
 				ers_slot()
@@ -1192,6 +1177,21 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	if (op == '='):
 		expression_is_assignment = 1
 		int subop = tree.value[id]
+		if (type_safe_kind(left_type) == 1):
+			int left = tree.left[id]
+			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
+				error(c"safe owner assignment requires a plain local or parameter")
+			regalloc_note_take()
+			int slot = 0 - tree.binding_offset[left]
+			emit_expression_ast(tree, tree.right[id])
+			int got = promote(tree.result_type[tree.right[id]])
+			coerce(left_type, got)
+			safe_owner_move(tree, tree.right[id], left_type)
+			push_slot()
+			safe_owner_drop_slot(slot)
+			pop_eax_slot()
+			store_stack_var((stack_pos - slot) << word_size_log2)
+			return
 		# The statement's own assignment leaves its value unread (R3:
 		# the register store may then drop the trailing 'mov eax,R').
 		# A parenthesised '(a = b)' is the tree's root but not the

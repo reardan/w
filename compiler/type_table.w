@@ -30,6 +30,7 @@ struct type_rec:
 
 
 list[int] type_records
+int type_safe_entrypoint
 int type_safe_used
 
 # Name -> index of the FIRST record carrying that name, which is what

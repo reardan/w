@@ -383,6 +383,9 @@ void function_definition(int current_symbol):
 		# when the target's block is the whole function, else the token is
 		# the ':' of the portable body, compiled below as usual.
 		int asm_body = asm_function_body(current_symbol, last_global_declaration)
+		if (asm_body && retained_semantic_mode):
+			int binding = retained_binding_note(current_symbol, retained_parent)
+			if (binding >= 0): retained_bindings[binding].assembly_body = 1
 		# The body's span and the counters its inlining facts are deltas
 		# of (compiler/inline_table.w), before anything of it is read
 		inline_body_begin(is_w_variadic, generic_subst_block != 0, asm_body != 0, 0)
