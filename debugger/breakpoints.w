@@ -14,7 +14,9 @@ A slot optionally carries a stop condition (an expression compiled and
 evaluated on every hit; a false value skips the stop), an ignore count
 (skips that many further eligible hits before actually stopping) and a
 log expression (turns the slot into a logpoint: eligible hits print the
-expression's value and auto-continue instead of stopping). The hit count
+expression's value, or a message with {expr} parts filled in, and
+auto-continue instead of stopping). A disabled slot keeps all of that but
+stays disarmed, so it costs nothing until it is enabled. The hit count
 tracks every reach of the address regardless of condition. wdbg.w's trap
 handler owns the gating logic; this file only stores the state.
 */
@@ -28,6 +30,7 @@ char* bp_addrs   /* absolute address, 0 = free slot */
 char* bp_bytes   /* original code byte */
 char* bp_armeds  /* 1 while the int3 is written into the code */
 char* bp_temps   /* 1 = one-shot breakpoint (tbreak) */
+char* bp_disableds /* 1 = kept but never armed (disable) */
 char* bp_hit_counts    /* times execution reached this address, any condition */
 char* bp_ignore_counts /* eligible (condition-true) hits still to skip */
 char* bp_cond_exprs    /* owned char* condition text (word slots), 0 = none */
@@ -40,6 +43,7 @@ void bp_init():
 	bp_bytes = cast(char*, malloc(bp_max * 4))
 	bp_armeds = cast(char*, malloc(bp_max * 4))
 	bp_temps = cast(char*, malloc(bp_max * 4))
+	bp_disableds = cast(char*, malloc(bp_max * 4))
 	bp_hit_counts = cast(char*, malloc(bp_max * 4))
 	bp_ignore_counts = cast(char*, malloc(bp_max * 4))
 	bp_cond_exprs = cast(char*, malloc(bp_max * __word_size__))
@@ -47,6 +51,7 @@ void bp_init():
 	int i = 0
 	while (i < bp_max):
 		save_int(bp_addrs + i * 4, 0)
+		save_int(bp_disableds + i * 4, 0)
 		save_int(bp_hit_counts + i * 4, 0)
 		save_int(bp_ignore_counts + i * 4, 0)
 		save_word(bp_cond_exprs + i * __word_size__, 0)
@@ -61,6 +66,10 @@ int bp_addr(int i):
 
 int bp_is_temp(int i):
 	return load_int(bp_temps + i * 4)
+
+
+int bp_is_disabled(int i):
+	return load_int(bp_disableds + i * 4)
 
 
 int bp_hits(int i):
@@ -133,6 +142,7 @@ int bp_read_byte(int addr):
 
 void bp_arm(int i):
 	if (bp_addr(i) == 0): return;
+	if (bp_is_disabled(i)): return;
 	if (load_int(bp_armeds + i * 4)): return;
 	save_int(bp_bytes + i * 4, bp_read_byte(bp_addr(i)))
 	bp_write_byte(bp_addr(i), 204) /* int3 */
@@ -162,8 +172,21 @@ int bp_add(int addr, int temp):
 	save_int(bp_addrs + i * 4, addr)
 	save_int(bp_armeds + i * 4, 0)
 	save_int(bp_temps + i * 4, temp)
+	save_int(bp_disableds + i * 4, 0)
 	bp_arm(i)
 	return i
+
+
+# Disable (keep its settings, take its int3 out) or re-enable slot i.
+# Re-arming at the stop address is safe: every resume steps over a
+# breakpoint at the resume address before re-arming it.
+void bp_set_disabled(int i, int disabled):
+	if (disabled):
+		bp_disarm(i)
+		save_int(bp_disableds + i * 4, 1)
+	else:
+		save_int(bp_disableds + i * 4, 0)
+		bp_arm(i)
 
 
 void bp_delete(int i):
@@ -220,6 +243,7 @@ void bp_describe(int i):
 	if (bp_ignore(i) > 0):
 		print(c", ignore: ")
 		dbg_print_dec(bp_ignore(i))
+	if (bp_is_disabled(i)): print(c", disabled")
 
 
 void bp_list():

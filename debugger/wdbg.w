@@ -30,6 +30,12 @@ Breakpoints (patched int3 bytes with the original byte remembered):
 	                  "logpoint n hit h: expr = value" and auto-continue
 	                  instead of stopping (combine with condition/ignore
 	                  on the same slot number)
+	log <t> <message> a message with {expr} parts prints each expr's
+	                  value in place: log 12 i={i} sum={sum} prints
+	                  "logpoint n hit h: i=3 sum=3"; {{ and }} are braces
+	disable <n>       keep breakpoint n's settings but stop arming it
+	enable <n>        arm a disabled breakpoint again
+	                  (enable/disable without n: every breakpoint)
 	watch <x|addr>    software watchpoint on a variable's word: while any
 	                  exist, resumes single-step statement-by-statement
 	                  and stop with an old -> new report on change (slow)
@@ -461,6 +467,31 @@ void dbg_ignore_command(char* arg):
 	println(c" eligible hits")
 
 
+# enable/disable [<n>]: re-arm or disarm breakpoint n (all without n),
+# keeping its condition, ignore count, log text and hit count.
+void dbg_enable_command(char* arg, int disabled):
+	if (arg[0] == 0):
+		int i = 0
+		while (i < bp_used):
+			if (bp_addr(i) != 0): bp_set_disabled(i, disabled)
+			i = i + 1
+		if (disabled): println(c"all breakpoints disabled")
+		else: println(c"all breakpoints enabled")
+		return;
+	int n = atoi(arg) - 1
+	if ((n < 0) || (n >= bp_used)):
+		println(c"no such breakpoint")
+		return;
+	if (bp_addr(n) == 0):
+		println(c"no such breakpoint")
+		return;
+	bp_set_disabled(n, disabled)
+	print(c"breakpoint ")
+	dbg_print_dec(n + 1)
+	if (disabled): println(c": disabled")
+	else: println(c": enabled")
+
+
 # log <function | line | file:line> <expr>: like 'break', but the new
 # slot is a logpoint - eligible hits print <expr> and auto-continue.
 void dbg_log_command(int current_file, char* arg):
@@ -623,6 +654,8 @@ void dbg_help():
 	println(c"  b/break <function | line | file:line>   tb/tbreak <target>")
 	println(c"  condition <n> [<expr>]   ignore <n> <count>")
 	println(c"  log <target> <expr> (logpoint: prints and auto-continues)")
+	println(c"  log <target> <message with {expr} parts> (templated logpoint)")
+	println(c"  disable [n]   enable [n] (keep settings, stop/start arming)")
 	println(c"  watch <name | address> (software watchpoint; slow while set)")
 	println(c"  d/delete [n]   d w [n]   i b / i w (list)")
 	println(c"inspection:")
@@ -726,6 +759,8 @@ void wdbg_command_loop(int context, int stop_addr):
 		else if (strcmp(command, c"condition") == 0): dbg_condition_command(arg)
 		else if (strcmp(command, c"ignore") == 0): dbg_ignore_command(arg)
 		else if (strcmp(command, c"log") == 0): dbg_log_command(dbg_current_file(stop_addr), arg)
+		else if (strcmp(command, c"disable") == 0): dbg_enable_command(arg, 1)
+		else if (strcmp(command, c"enable") == 0): dbg_enable_command(arg, 0)
 		else if ((strcmp(command, c"d") == 0) | (strcmp(command, c"delete") == 0)):
 			if ((arg[0] == 0) | (strcmp(arg, c"all") == 0)):
 				bp_delete_all()
@@ -840,16 +875,71 @@ int dbg_step_should_stop(int context, int eip):
 	return 1
 
 
-# A logpoint's eligible hit: evaluate its expression and print one line,
-# never entering the command loop. Sets dbg_eval_ok like dbg_eval_call
-# (0 on a compile error) so the caller can decide whether to keep
-# auto-continuing or fail closed and stop.
+# A log text with a '{' is a message template rather than one expression.
+int dbg_log_is_template(char* text):
+	int i = 0
+	while (text[i]):
+		if (text[i] == '{'): return 1
+		i = i + 1
+	return 0
+
+
+# Print a template's literal text with each {expr} replaced by its value
+# ({{ and }} print braces; an unclosed '{' prints as text). Sets
+# dbg_eval_ok to 0 when any part failed to compile.
+void dbg_log_template(char* text, int addr, int esp):
+	int ok = 1
+	int i = 0
+	while (text[i]):
+		int c = text[i]
+		if ((c == '{') && (text[i + 1] == '{')):
+			put_char('{')
+			i = i + 2
+		else if ((c == '}') && (text[i + 1] == '}')):
+			put_char('}')
+			i = i + 2
+		else if (c == '{'):
+			int end = i + 1
+			while ((text[end] != 0) && (text[end] != '}')): end = end + 1
+			if (text[end] == 0):
+				print(text + i)
+				i = end
+			else:
+				char* expr = cast(char*, malloc(end - i))
+				int k = 0
+				while (k < end - i - 1):
+					expr[k] = text[i + 1 + k]
+					k = k + 1
+				expr[k] = 0
+				int v = dbg_eval_call(expr, addr, esp)
+				if (dbg_eval_ok): dbg_print_dec(v)
+				else:
+					print(c"<failed to compile: ")
+					print(expr)
+					print(c">")
+					ok = 0
+				free(expr)
+				i = end + 1
+		else:
+			put_char(c)
+			i = i + 1
+	put_char(10)
+	dbg_eval_ok = ok
+
+
+# A logpoint's eligible hit: evaluate its expression (or fill its message
+# template) and print one line, never entering the command loop. Sets
+# dbg_eval_ok like dbg_eval_call (0 on a compile error) so the caller can
+# decide whether to keep auto-continuing or fail closed and stop.
 void dbg_log_report(int bp, int addr, int esp):
 	print(c"logpoint ")
 	dbg_print_dec(bp + 1)
 	print(c" hit ")
 	dbg_print_dec(bp_hits(bp))
 	print(c": ")
+	if (dbg_log_is_template(bp_log_expr(bp))):
+		dbg_log_template(bp_log_expr(bp), addr, esp)
+		return;
 	print(bp_log_expr(bp))
 	print(c" = ")
 	int v = dbg_eval_call(bp_log_expr(bp), addr, esp)

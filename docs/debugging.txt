@@ -67,6 +67,19 @@ Current state:
 		                stopping; combine with condition/ignore on
 		                the same slot number for a conditional
 		                logpoint
+		log <t> <message>  a message containing {expr} parts is a
+		                template: each part prints its expression's
+		                value in place, so 'log 12 i={i} sum={sum}'
+		                prints "logpoint n hit h: i=3 sum=3"; {{ and }}
+		                print literal braces, and a part that fails to
+		                compile prints <failed to compile: expr> and
+		                stops once, like a broken expression logpoint
+		disable [n]     keep breakpoint n's condition, ignore count,
+		                log text and hit count but take its int3 out,
+		                so it costs nothing until re-enabled (every
+		                breakpoint without n); i b shows "disabled"
+		enable [n]      arm disabled breakpoint n again (every
+		                breakpoint without n)
 		d / delete [n]  delete breakpoint n, or all breakpoints and
 		                watchpoints with no argument
 		i b             list breakpoints, with condition/ignore/hit
