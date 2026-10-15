@@ -38,11 +38,15 @@ compile tests/parser_generator/stateful_runtime_test.w bin/javascript_runtime_da
 bin/javascript_runtime_darwin
 compile tests/parser_generator/generated_stateful_test.w bin/javascript_stateful_darwin
 bin/javascript_stateful_darwin
-for suite in lexical parser validation bindings restrictions ast roundtrip transform text runtime runtime_invoke browser_runtime; do
+for suite in lexical parser validation bindings restrictions ast roundtrip transform text runtime runtime_invoke browser_runtime runtime_objects runtime_environments standards_early; do
     compile "tests/javascript/${suite}_test.w" "bin/javascript_${suite}_darwin"
     "bin/javascript_${suite}_darwin"
 done
 bin/javascript_roundtrip_darwin memory
+bin/javascript_runtime_objects_darwin memory
+bin/javascript_runtime_environments_darwin memory
+compile tools/javascript_runtime_runner.w bin/javascript_conformance_darwin
+python3 tools/javascript_conformance.py --runner bin/javascript_conformance_darwin
 compile examples/javascript/inspect.w bin/javascript_inspect_darwin
 compile examples/javascript/build.w bin/javascript_build_darwin
 compile examples/javascript/transform.w bin/javascript_transform_darwin
