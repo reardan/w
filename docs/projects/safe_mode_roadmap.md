@@ -22,9 +22,9 @@ implementation rather than introduce a second ownership model.
 | Area | Available behavior | Remaining scope |
 | --- | --- | --- |
 | Compiler interface | `--safe`, structured diagnostics, deterministic option conflicts, unsupported-target errors | More targets and in-process execution |
-| Pointer contracts | Contextual `own T*`, `ref T*`, `refmut T*`; qualifiers survive aliases; ownership semantics also apply without `--safe` | Optional references, escaping lifetime contracts and reference-bearing aggregates |
+| Pointer contracts | Contextual `own T*`, `ref T*`, `refmut T*`; qualifiers survive aliases; ownership semantics also apply without `--safe` | Optional references, named lifetime contracts and reference-bearing aggregates |
 | Analysis | Resolved binding identities, initialization/move state, borrow provenance, last-use liveness, reborrows, branch joins and loop backedges | More control-flow forms and more precise projections |
-| Calls | Direct, imported and recursive calls; forward declarations checked against implementations; owned returns | Borrowed returns, indirect calls, callbacks, methods and unmodeled generic operations |
+| Calls | Direct, imported and recursive calls; forward declarations checked against implementations; owned returns; reference returns tied to a sole borrowed input | Named lifetime contracts, slice returns, indirect calls, callbacks, methods and unmodeled generic operations |
 | Cleanup | Reverse-order destruction on scope exit, return, break and continue; replacement, parameters and inferred owner moves | Deferred expressions, partial construction and aggregate destruction rules |
 | Storage and libraries | Pointer-free values, fixed arrays, immutable slices, audited allocation/destruction/bounds operations and scalar output | Safe containers, strings, arena lifetimes and richer raw interoperation |
 | Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
@@ -45,11 +45,19 @@ before dereferencing an optional reference. Ordinary `ref` and `refmut`
 remain initialized, aligned, non-null references to valid values. Do not
 make null a valid value of an existing checked reference type.
 
-Define how a function signature relates a returned reference to arguments
-or other permitted backing storage. Verify bodies and callers against the
-same contract, including recursion and imported declarations. A returned
-reference must not outlive a stack local, owner or temporary that backs it.
-The current implementation rejects borrowed returns and slice returns.
+Reference returns now use a bounded signature contract: exactly one borrowed
+input supplies the result's backing-storage lifetime. Bodies must return a
+reference derived from that input; callers preserve provenance and reborrow
+ancestry through nested, recursive and imported calls. Mutable results require
+a mutable borrowed input. This rule applies with or without `--safe` and
+supports references into pointer-free structs and array/slice elements.
+
+Extend this to named lifetime relationships between multiple borrowed inputs
+and results, and specify other permitted backing storage. Slice returns and
+ambiguous reference-return signatures remain rejected. A returned reference
+must not outlive a stack local, owner or temporary that backs it; admitting
+additional contracts must preserve body and caller checks against the same
+signature, including recursion and imported declarations.
 
 Acceptance: positive and negative fixtures cover presence checks, returned
 views, nested reborrows, branch joins and loop backedges. Removing `--safe`

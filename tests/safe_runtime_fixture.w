@@ -10,6 +10,15 @@ own int* safe_make(int value):
 int safe_consume(own int* p):
 	return *p
 
+refmut int* safe_runtime_view(refmut int* p):
+	return p
+
+int safe_returned_borrow_cleanup():
+	own int* p = safe_make(6)
+	refmut int* r = safe_runtime_view(p)
+	*r = *r + 1
+	return safe_consume(p)
+
 int safe_paths(int n):
 	own int* p = safe_make(10)
 	if n == 0: return *p
@@ -34,6 +43,7 @@ int safe_multiple_arguments():
 
 int main():
 	int before = debug_alloc_report_leaks()
+	if safe_returned_borrow_cleanup() != 7: return 5
 	if safe_multiple_arguments() != 12: return 4
 	if safe_paths(0) != 10: return 1
 	if safe_paths(1) != 1: return 2

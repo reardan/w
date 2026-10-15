@@ -74,11 +74,49 @@ conservatively borrow their whole backing value; this release does not prove
 that different fields or indices are disjoint.
 
 Function parameters express the call contract: `own` consumes an allocation,
-`ref` reads it, and `refmut` may mutate it. Borrowed arguments may not escape
-from a checked function. Returning references or slices requires lifetime
-contracts that are not yet supported and is rejected. Owned returns must
-transfer an owner on every normal path. Recursion and imported functions use
-the same contracts. Indirect calls, callbacks, methods and unmodeled generic
+`ref` reads it, and `refmut` may mutate it. A function returning `ref` or
+`refmut` must have exactly one borrowed parameter (`ref`, `refmut`, or a
+slice). Its result borrows from that parameter's backing storage. This
+signature rule supplies an implicit lifetime contract; scalar and owned
+parameters do not contribute a lifetime. A mutable result requires a
+`refmut` parameter. The body must return a reference with that provenance on
+every normal path: returning a local, an owned parameter, or a fresh owner
+is rejected even when its type matches.
+
+```w
+ref int* view(ref int* p):
+	return p
+
+int main():
+	own int* p = new int
+	*p = 7
+	ref int* r = view(p)
+	int value = *r
+	# The returned borrow ends at its last use above.
+	own int* q = p
+	return *q - value
+```
+
+Returned references can select fields or array elements, pass through nested
+calls, and reborrow references. Callers retain the original backing storage
+and reborrow ancestry, so a live result prevents conflicting access, moves,
+replacement or destruction. Projections still borrow the whole backing
+value. Bind a result before dereferencing it; direct dereference of a call
+result remains unsupported. References cannot be reassigned or fabricated
+from a temporary owner. Multiple borrowed inputs require named lifetime
+contracts, which are not yet supported. Slice returns remain unsupported.
+Borrow initialization cannot interchange slice and scalar-reference
+representations, even when ordinary warnings are nonfatal.
+Buffer metadata (`.length` and `.data`) cannot be borrowed: a slice descriptor
+can be local even when its elements outlive the function, and mutable access
+to length metadata could invalidate bounds checks. Reading `.length` as a
+scalar and borrowing slice elements remain supported. Ordinary struct fields
+named `length` follow the usual field-borrow rules.
+
+Owned returns must transfer an owner on every normal path. Recursion,
+forward declarations and imported functions use the same signature contract;
+the implementation is checked even without `--safe`. Indirect calls,
+callbacks, methods and unmodeled generic
 operations are rejected rather than treated as ordinary scalar calls.
 Forward declarations resolve to a checked implementation and must agree with
 its parameter and return contracts.
@@ -213,6 +251,23 @@ Use a fixed-point compiler from main for the baseline, from this same source
 directory. Add `x64` for the 64-bit runtime comparison. The ordinary
 `./wbuild wbench_compare` gate also passes without changing its baseline.
 
+The returned-reference extension was also compared against main `4b3d7fbd`
+on the same current sources, using fixed-point x86 compilers. The following
+are medians of seven alternating runs after warmup on a shared Linux host;
+wall time includes startup and output, and RSS comes from `/usr/bin/time`.
+
+| Existing corpus | Main time | Extended time | Main peak RSS | Extended peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Manual cost fixture | 37.26 ms | 40.01 ms | 4,992 KiB | 4,896 KiB |
+| Checked cost fixture (`--safe`) | 47.50 ms | 50.24 ms | 6,784 KiB | 6,464 KiB |
+| `w.w` | 1,080.19 ms | 1,079.44 ms | 106,704 KiB | 106,816 KiB |
+
+Both existing cost fixtures produce byte-identical executables before and
+after the extension on x86 (114,952 bytes) and x64 (135,696 bytes), and all
+four binaries execute successfully. The benchmark regression gate also
+passes. These measurements cover the existing corpus; broader returned-view
+workloads still need measurement.
+
 ## Validation
 
 `safe_mode_test` exercises accepted and rejected programs on x86 and x64,
@@ -224,8 +279,25 @@ rejection. The parser-generator grammar includes the contextual qualifiers
 and unsafe blocks. Self-host fixpoints, the full suite, cross-architecture
 compiler checks and changed-line coverage remain the release gates.
 
-The integrated implementation passed all 1,193 full-suite targets, both
+Returned-reference regressions additionally cover shared and mutable views,
+nested calls and reborrows, field and array-element views, recursion, aliases,
+imports and forward declarations. Negative cases cover local/owner escapes,
+ambiguous signatures, mutable upgrades, live-borrow mutation and moves,
+branch and loop paths, conflicts during argument evaluation, pointer/slice
+representation confusion with nonfatal warnings, and buffer-metadata
+borrows that could escape or corrupt bounds. The guard
+allocator also checks destruction after a returned mutable borrow ends.
+
+The original implementation passed all 1,193 full-suite targets, both
 self-host fixpoints, 43 architecture/root checks and the performance gate.
 Coverage completed the same 1,193 targets and reached 835 of 862 changed
 executable compiler lines (96%, above the 80% floor). Compiler line/branch
 coverage reached 95.1% / 84.9%; coverage floors were raised to retain the gain.
+
+The returned-reference extension adds 59 regression cases and passes all
+1,205 full-suite targets, both self-host fixpoints, 46 architecture/root
+checks and the benchmark gate. The instrumented suite also passes all
+1,205 targets and reaches 46 of 46 changed executable compiler lines (100%).
+Compiler line/branch coverage is 95.1% / 85.0%; the compiler branch floor
+was raised from 84.2% to 84.3%. These are regression measurements, not a proof
+of soundness or Rust-level language coverage.

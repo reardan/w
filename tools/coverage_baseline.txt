@@ -19,6 +19,8 @@
 # compiler lines at 95.1% and branches at 84.9% after integration with
 # the optimizer/Android changes; retain 0.8 and 0.7 point margins.
 # Code-generator lines/branches reach 97.0/88.4%; raise those floors too.
+# Returned-reference and borrow-representation regressions raise compiler
+# branches to 85.0%; preserve the existing 0.7 point margin.
 code_generator/ 96.1
 compiler/ 94.3
 grammar/ 96.1
@@ -28,7 +30,7 @@ repl.w 80.5
 w.w 99.0
 diagnostics 50.5
 branches:code_generator/ 87.8
-branches:compiler/ 84.2
+branches:compiler/ 84.3
 branches:grammar/ 84.6
 branches:repl/ 73.5
 branches:debugger/ 64.0
