@@ -24,7 +24,7 @@ certificates come from files published in public GitHub repositories:
   `gtsRoot` constants).
 - `trustasia_leaf.pem`, `trustasia_ca.pem`, `digicert_global_root_ca.pem` —
   a real DigiCert-rooted chain: `*.tm.cn` leaf (EC P-256, signed
-  ecdsa-with-SHA384 by a P-384 CA — parse-only in the tests), TrustAsia ECC
+  ecdsa-with-SHA384 by a P-384 CA — verified end to end in the tests), TrustAsia ECC
   OV TLS Pro CA (EC P-384, signed by DigiCert Global Root CA with
   sha384WithRSAEncryption — exercises the RSA PKCS#1 v1.5 SHA-384 verify
   path on real certificates), DigiCert Global Root CA (RSA-2048). Source:

@@ -38,7 +38,7 @@ compile tests/parser_generator/stateful_runtime_test.w bin/javascript_runtime_da
 bin/javascript_runtime_darwin
 compile tests/parser_generator/generated_stateful_test.w bin/javascript_stateful_darwin
 bin/javascript_stateful_darwin
-for suite in lexical parser validation bindings restrictions ast roundtrip transform; do
+for suite in lexical parser validation bindings restrictions ast roundtrip transform text runtime runtime_invoke browser_runtime; do
     compile "tests/javascript/${suite}_test.w" "bin/javascript_${suite}_darwin"
     "bin/javascript_${suite}_darwin"
 done
@@ -51,7 +51,7 @@ bin/javascript_inspect_darwin --module --check bin/javascript_built.mjs
 python3 tools/javascript_unicode.py --check
 # The explicit compatibility runner requires the pinned Node release. Missing
 # or mismatched Node fails visibly; no tests are silently skipped.
-python3 tools/javascript_compatibility.py --parser bin/javascript_inspect_darwin --builder bin/javascript_build_darwin --transform bin/javascript_transform_darwin
+python3 tools/javascript_compatibility.py --parser bin/javascript_inspect_darwin --builder bin/javascript_build_darwin --transform bin/javascript_transform_darwin --runtime-compiler bin/wv2_darwin --runtime-arch arm64_darwin
 node --check bin/javascript_built.mjs
 node --input-type=module -e 'import { greet } from "./bin/javascript_built.mjs"; if (greet("world") !== "Hello, world") process.exit(1);'
 echo 'JavaScript native qualification passed'

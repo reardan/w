@@ -1,7 +1,7 @@
 // Browser input policy kept separate from the page so its event sequences can
 // be regression-tested without a GPU. Coordinates are logical CSS pixels.
 export const EVENT = { KEY_DOWN: 1, KEY_UP: 2, CHAR: 3, DOWN: 4, UP: 5,
-  SCROLL: 6, NAV: 7, SCROLL_PIXELS: 8, CANCEL: 9 };
+  SCROLL: 6, NAV: 7, SCROLL_PIXELS: 8, CANCEL: 9, PREEDIT_BEGIN: 10, PREEDIT_TEXT: 11, PREEDIT_END: 12 };
 const modsOf = e => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) |
   (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 const navOf = { ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4,
@@ -22,6 +22,14 @@ export function createInput({ canvas, editor, state, pushEvent,
   let scrollRemainder = 0;
   const emit = (kind, code = 0, e = {}) =>
     pushEvent(kind, code, state.mouseX, state.mouseY, modsOf(e));
+  const preedit = (text, end = false) => {
+    pushEvent(end ? EVENT.PREEDIT_END : EVENT.PREEDIT_BEGIN, 0, focusId, 0, 0);
+    if (!end) for (const char of text ?? '') {
+      const cp = char.codePointAt(0);
+      if (cp >= 32 && !(cp >= 0xd800 && cp <= 0xdfff))
+        pushEvent(EVENT.PREEDIT_TEXT, cp, focusId, 0, 0);
+    }
+  };
   const move = e => {
     const r = canvas.getBoundingClientRect();
     state.mouseX = Math.round(e.clientX - r.left);
@@ -137,10 +145,11 @@ export function createInput({ canvas, editor, state, pushEvent,
     target.addEventListener('keydown', keydown);
     target.addEventListener('keyup', e => emit(EVENT.KEY_UP, e.keyCode, e));
   }
-  editor.addEventListener('compositionstart', () => { composing = true; justComposed = null; discardComposition = false; });
+  editor.addEventListener('compositionstart', () => { composing = true; justComposed = null; discardComposition = false; preedit(''); });
+  editor.addEventListener('compositionupdate', e => { if (!discardComposition) preedit(e.data); });
   editor.addEventListener('compositionend', e => {
     composing = false;
-    if (!discardComposition) commit(e.data);
+    if (!discardComposition) { preedit('', true); commit(e.data); }
     justComposed = e.data;
     resetEditor();
   });
@@ -175,6 +184,7 @@ export function createInput({ canvas, editor, state, pushEvent,
       if (composing && (!active || focusId !== nextFocusId)) {
         // Do not deliver an old field's pending preedit into a newly focused
         // field. Blur ends native composition; ignore its trailing commit.
+        preedit('', true);
         discardComposition = true;
         editor.blur();
         composing = false;
@@ -221,6 +231,9 @@ export function createEventQueue() {
     next() {
       if (head === events.length || (events[head].kind === EVENT.CHAR && chars >= 32) ||
         (events[head].kind === EVENT.NAV && navs >= 8)) return null;
+      const next = events[head];
+      if (chars && (next.kind === EVENT.DOWN || next.kind === EVENT.UP || next.kind === EVENT.NAV)) return null;
+      if (navs && (next.kind === EVENT.CHAR || next.kind === EVENT.DOWN || next.kind === EVENT.UP)) return null;
       const event = events[head++];
       // Avoid shift()'s quadratic copies on large pastes while releasing
       // consumed references. Compact only after at least half is drained.

@@ -1106,10 +1106,12 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 				if (req.tls_handshake_timeout_ms > 0 && req.tls_handshake_timeout_ms < remaining): remaining = req.tls_handshake_timeout_ms
 				tls_cfg = http_build_tls_config(req)
 				checked = transport_tls_connect(fd, u.host, tls_cfg, remaining, &result)
+				char* detail = tls_last_error(tls_cfg)
 				tls_config_free(tls_cfg)
 				tls_cfg = 0
 				if (checked == 0):
 					http_stream_fail(s, http_checked_error(result.status, http_error_tls))
+					if (s.error == http_error_tls && detail != 0): s.resp.error_message = detail
 					return 0
 			else: checked = transport_from_socket(fd, u.host, 1)
 			transport_set_deadline(checked, s.deadline_ms)
@@ -1138,9 +1140,11 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			tls_cfg = http_build_tls_config(req)
 			tls = tls_connect_timeout(fd, u.host, tls_cfg, hs_timeout)
 			if (tls == 0):
+				char* detail = tls_last_error(tls_cfg)
 				tls_config_free(tls_cfg)
 				close(fd)
 				http_stream_fail(s, http_error_tls)
+				if (detail != 0): s.resp.error_message = detail
 				return 0
 			tls.io_timeout_ms = timeout
 			socket_set_recv_timeout(fd, timeout)

@@ -74,8 +74,16 @@ compile-time internal error rather than a miscompile. The rules:
   registers they leave (rs_assign_registers), and x86's two stay with
   the scalars (rs_args_rank);
 - uses are weighted 8^depth by 'while'/'for' nesting (indentation-based,
-  like the parser's block structure); only names used inside a loop are
-  ranked, and a body without a loop is not scanned past the first pass;
+  like the parser's block structure); on x86 only names used inside a
+  loop are ranked, and a body without a loop is not scanned past the
+  first pass. On x64 (unit O2) every body is scanned whole: a leaf body
+  keeps the names with the most register gain in caller-saved registers
+  for its whole extent (the function region, rs_fn_rank), and a name a
+  loop does not rank -- or any name of a loop-free body -- takes a
+  callee-saved register when its gain pays for the push and pop
+  (rs_assign_registers' third round). A field access 'name.f' counts as
+  a use of the name there: through a register it is one '[R+disp]'
+  operand;
 - a body containing raw_asm, setjmp/longjmp, yield, gpu/launch/kernel
   constructs, or an f"..." template string promotes nothing; variadic
   functions (the caller decides) and generator bodies (no prologue)
@@ -94,6 +102,29 @@ int rs_run_assigns(int n, int first, int second, int last);
 int regalloc_type_ok(int type);
 int rl_find_slot(int slot);
 int rl_declare_pending(int t, char* name, int type);
+int rl_target_mask();
+int rs_gain(int i);
+int rs_fn_target_ok();
+int rl_take_register();
+int rl_home_disp(int i);
+void rl_ensure();
+void rl_add(int t, int reg, int slot, int kind, char* name, int live);
+# compiler/ivopt.w (unit O7), imported after the grammar
+int ivopt_scan_loop(int start, int end, int tabs);
+void ivopt_reset();
+void ivopt_active_reset();
+void ivopt_loop_enter(int offset);
+void ivopt_loop_leave();
+void ivopt_call_reload();
+int ivopt_covers(char* name);
+int rs_cur_offset();
+void rs_iv_discount();
+int rs_lookup(char* name);
+int ivopt_inside_names();
+char* ivopt_inside_name(int i);
+int ivopt_inside_base(int i);
+int ivopt_inside_index(int i);
+void ivopt_stats_dump();
 
 # Loop-owned registers (R3, the section at the end of this file): the
 # entries of every open loop, innermost last.
@@ -109,6 +140,13 @@ list[int] rl_pending_mark
 list[int] rl_eligible   # per open loop: 1 when it may own registers
 int rl_free_mask        # registers no open loop owns
 int regalloc_loop_depth # open loops (every loop_enter, active or not)
+# O2: the function region (rl_fn_region_enter) is open below every loop,
+# the rl_pending entries below rl_fn_pending_end are its locals, and
+# rl_fn_reserved of the free registers are kept for those not declared yet
+int rl_fn_region
+int rl_fn_pending_end
+int rl_fn_reserved
+int regalloc_fn_regs    # --stats
 # --stats
 int regalloc_loop_regs
 int regalloc_loops_owned
@@ -120,6 +158,9 @@ list[int] rs_decls        # recognised declarations
 list[int] rs_uses         # loop-weighted use count: scalar reads and writes, plus rs_base
 list[int] rs_base         # loop-weighted subscripts with a multi-token index ('a[i * n + k]')
 list[int] rs_lv           # A9: loop-weighted uses a register shortens on x86 (writes, bases, indices, compare left sides)
+list[int] rs_field        # O2: loop-weighted field accesses 'name.f' (not a method call): a register base folds them
+list[int] rs_peek         # O2: loop-weighted 'x = x op ...' writes (half of their rs_lv is gain)
+list[int] rs_fnreg        # O2: 1 when the function region (rl_fn_*) holds the name
 list[int] rs_excluded     # 1 once a hazardous use was seen
 list[int] rs_reg          # register assigned by the ranking, 0 none
 list[int] rs_taken        # 1 once a declaration took the register
@@ -128,6 +169,16 @@ list[int] rs_hash         # rs_hash_str(name), chained through rs_chain
 list[int] rs_chain        # next index in the bucket, -1 ends the chain
 int[256] rs_buckets       # hash & 255 -> index + 1, 0 empty
 int rs_count
+# O2: the function region's candidates (rl_fn_region_enter), best first,
+# whether a loop of the body makes a real call (one outside the loops
+# only spills the region around itself, regalloc_call_spill), and the
+# candidate whose '.' the next field name follows (rs_field)
+list[int] rs_fn_cands
+int rs_fn_has_call
+# O5: a call the inliner will not take (a leaf it takes needs no
+# homes: a region spill there is a touch, and no entry is published)
+int rs_fn_real_call
+int rs_field_owner
 
 # Promoted symbol records of the current function (table offsets), for
 # the stack-slot assertion, and whether each one's storage word has been
@@ -176,6 +227,23 @@ int rs_ident_hash     # rs_hash_str(rs_ident), accumulated while reading
 int[64] rs_loop_tabs
 int rs_loop_count
 
+# --- register arguments (O5; the section at the end of this file) ---
+# A function's register entry lives in its symbol record: the entry's
+# address at +154 (0: none) and its parameters' registers at +158, 4 bits
+# each, parameter 0 lowest (compiler/symbol_table.w's sym_declare).
+int rg_symbol      # the scanned function's record
+int rg_asm_body    # function_definition: the body opens with an asm block
+int rg_shaped      # the region ranked every parameter first (rg_shape_rank)
+int rg_nparams
+int rg_resume      # codepos past the region's argument loads, 0: none
+int rg_regs_cur    # the parameters' registers so far, packed as at +158
+int rg_loaded      # parameters the region loaded
+# --stats
+int regargs_entries
+int regargs_calls
+void rg_shape_rank();
+void rg_note_param(int index, int reg);
+
 # --- loop facts (R3, §2.3): one record per 'while'/'for' keyword of the
 # body in source order, keyed by the keyword's file offset, which
 # grammar/while_statement.w's loop_enter looks up (loop_stmt_offset).
@@ -185,11 +253,20 @@ list[int] rs_lp_flags      # bit 0: a call inside; bit 1: '/', '%' or a shift in
 list[int] rs_lp_cands      # rs_lp_stride candidate indices, best first, -1 pads
 list[int] rs_lp_vals       # each candidate's loop-weighted key delta (the value a register has in the loop)
 list[int] rs_lp_ops        # binary operators inside the loop, loop-weighted (A9: the parks a loop register displaces on x86)
+list[int] rs_lp_tabs       # O7: leading tabs of the keyword's line
+list[int] rs_lp_inner      # O7: 1 when another loop is nested in it
+list[int] rs_lp_ivneed     # O7: pointer registers the innermost loops in it want (compiler/ivopt.w)
 int[64] rs_lp_ops_snap     # rs_ops at each open loop's start
 int rs_ops                 # binary operator runs seen, loop-weighted
-const int rs_lp_stride = 10
+const int rs_lp_stride = 16
 const int rs_lp_has_call = 1
 const int rs_lp_has_divshift = 2
+# O2's register gain thresholds (rs_gain): the function region costs one
+# instruction per name (rs_fn_rank), a callee-saved register in a body or
+# for a name a loop does not rank (rs_assign_registers' third round, x64)
+# its push and pop besides that
+const int rs_fn_min_gain = 2
+const int rs_callee_min_gain = 5
 # The open loops' records and use-count snapshots (parallel to
 # rs_loop_tabs); the delta against the snapshot at the loop's end ranks
 # the loop's own candidates.
@@ -282,6 +359,10 @@ void rs_tables_ensure():
 		rs_uses = new list[int]
 		rs_base = new list[int]
 		rs_lv = new list[int]
+		rs_field = new list[int]
+		rs_peek = new list[int]
+		rs_fnreg = new list[int]
+		rs_fn_cands = new list[int]
 		rs_excluded = new list[int]
 		rs_reg = new list[int]
 		rs_taken = new list[int]
@@ -298,6 +379,9 @@ void rs_tables_ensure():
 		rs_lp_cands = new list[int]
 		rs_lp_vals = new list[int]
 		rs_lp_ops = new list[int]
+		rs_lp_tabs = new list[int]
+		rs_lp_inner = new list[int]
+		rs_lp_ivneed = new list[int]
 	if (rs_ident == 0):
 		rs_ident_size = 64
 		rs_ident = cast(char*, malloc(rs_ident_size))
@@ -312,6 +396,10 @@ void rs_tables_clear():
 	rs_uses.clear()
 	rs_base.clear()
 	rs_lv.clear()
+	rs_field.clear()
+	rs_peek.clear()
+	rs_fnreg.clear()
+	rs_fn_cands.clear()
 	rs_excluded.clear()
 	rs_reg.clear()
 	rs_taken.clear()
@@ -335,6 +423,10 @@ void rs_lp_reset():
 	rs_lp_cands.clear()
 	rs_lp_vals.clear()
 	rs_lp_ops.clear()
+	rs_lp_tabs.clear()
+	rs_lp_inner.clear()
+	rs_lp_ivneed.clear()
+	ivopt_reset()
 	rs_lp_overflow = 0
 	rs_has_goto = 0
 	rs_has_defer = 0
@@ -343,6 +435,9 @@ void rs_lp_reset():
 # Mark a fact on the innermost open loop (parents inherit it when the
 # loop closes).
 void rs_lp_mark(int flag):
+	if (flag & rs_lp_has_call):
+		rs_fn_has_call = 1
+		rs_fn_real_call = 1
 	if (rs_lp_depth == 0): return;
 	int k = rs_lp_open[rs_lp_depth - 1]
 	rs_lp_flags[k] = rs_lp_flags[k] | flag
@@ -357,7 +452,7 @@ void rs_lp_mark(int flag):
 # which a read-only candidate would not pay for (A9).
 int rs_lp_key(int i):
 	if (word_size == 4): return rs_lv[i]
-	return rs_uses[i]
+	return rs_uses[i] + rs_gain(i)
 
 
 # A loop keyword (mode 1): open its record and snapshot the use counts.
@@ -369,6 +464,10 @@ void rs_lp_open_loop():
 	rs_lp_offset.push(rs_tok_off)
 	rs_lp_flags.push(0)
 	rs_lp_ops.push(0)
+	rs_lp_tabs.push(rs_tabs)
+	rs_lp_inner.push(0)
+	rs_lp_ivneed.push(0)
+	if (rs_lp_depth > 0): rs_lp_inner[rs_lp_open[rs_lp_depth - 1]] = 1
 	for i in range(rs_lp_stride):
 		rs_lp_cands.push(-1)
 		rs_lp_vals.push(0)
@@ -416,9 +515,17 @@ void rs_lp_close_loop():
 		rs_lp_vals[base + j] = d
 	rs_lp_ops[k] = rs_ops - rs_lp_ops_snap[rs_lp_depth]
 	free(cast(char*, snap))
+	# O7 (compiler/ivopt.w): an innermost loop's subscripts that can
+	# become pointer walks, read from its bytes (the keyword's offset to
+	# the first byte of the line that ended it, or of the end of the body)
+	if ((rs_lp_inner[k] == 0) && (word_size == 8) && (rs_abort == 0)):
+		int end = rs_cur_offset()
+		if (end > 0): rs_lp_ivneed[k] = ivopt_scan_loop(rs_lp_offset[k], end, rs_lp_tabs[k])
+		if (rs_lp_ivneed[k] > 0): rs_iv_discount()
 	if (rs_lp_depth > 0):
 		int parent = rs_lp_open[rs_lp_depth - 1]
 		rs_lp_flags[parent] = rs_lp_flags[parent] | rs_lp_flags[k]
+		if (rs_lp_ivneed[k] > rs_lp_ivneed[parent]): rs_lp_ivneed[parent] = rs_lp_ivneed[k]
 
 
 # Everything the current function's scan and prologue set, back to
@@ -444,6 +551,12 @@ void regalloc_function_end():
 	regalloc_reg_unbind_all()
 	ers_hazard = 1
 	rl_reset()
+	rg_shaped = 0
+	rg_resume = 0
+	rg_regs_cur = 0
+	rg_loaded = 0
+	rg_touch = 0
+	rg_homes = 0
 
 
 void regalloc_reset():
@@ -478,7 +591,7 @@ void regalloc_slot_assert(int slot):
 		if ((t < table_pos) && regalloc_promoted_live[i] && (table[t + 1] == 'L')):
 			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
 				char* name = regalloc_promoted_names[i]
-				if (sym_probe(name) == t):
+				if (sym_record_live(name, t)):
 					error3(c"internal error: stack slot of register-resident local '", name, c"' addressed (compile with --no-regs and report this)")
 
 
@@ -497,7 +610,7 @@ int regalloc_slot_register(int slot):
 		int t = regalloc_promoted_syms[i]
 		if ((t < table_pos) && regalloc_promoted_live[i] && (table[t + 1] == 'L')):
 			if ((load_int(table + t + 146) != 0) && (load_int(table + t + 2) == slot)):
-				if (sym_probe(regalloc_promoted_names[i]) == t): return load_int(table + t + 146)
+				if (sym_record_live(regalloc_promoted_names[i], t)): return load_int(table + t + 146)
 	return 0
 
 
@@ -546,8 +659,12 @@ void rs_image_bind():
 	rs_img_len = 0
 	rs_img_ok = 0
 	int saved = seek(file, 0, 1)
-	if (saved < 0): return;
-	if (seek(file, 0, 0) < 0): return;
+	# An empty stream (the closed pipe under an in-memory window,
+	# compiler/tokenizer.w) cannot seek; it images as an empty file
+	int empty = (saved < 0) && empty_stream_is(file)
+	if ((saved < 0) && (empty == 0)): return;
+	if (empty == 0):
+		if (seek(file, 0, 0) < 0): return;
 	if (rs_img == 0):
 		rs_img_cap = 1 << 18
 		rs_img = cast(char*, malloc(rs_img_cap))
@@ -563,7 +680,7 @@ void rs_image_bind():
 		want = rs_img_cap - rs_img_len - 1
 		n = read(file, &rs_img[rs_img_len], want)
 		if (n > 0): rs_img_len = rs_img_len + n
-	seek(file, saved, 0)
+	if (empty == 0): seek(file, saved, 0)
 	if (n >= 0): rs_img_ok = 1
 	else: rs_img_len = 0
 	rs_img[rs_img_len] = 0
@@ -638,9 +755,43 @@ void rs_next():
 	rs_c = -1
 
 
+# O7: the file offset of rs_c (the end of the file once it is -1), -1
+# when no byte is being served.
+int rs_cur_offset():
+	if ((rs_p == 0) || (rs_run_base == 0)): return -1
+	int off = rs_run_off + (cast(int, rs_p) - cast(int, rs_run_base))
+	if (rs_c == -1): return off
+	return off - 1
+
+
 # P2: the profile's class, span hash and loop weights read this byte
 # source (compiler/regalloc_profile.w; docs §3.4).
 import compiler.regalloc_profile
+
+
+# O7: the innermost loop just closed (rs_lp_depth is its parent's
+# depth) has subscripts that become pointer walks (compiler/ivopt.w):
+# take back the uses those subscripts counted -- a base's two reads and
+# its register-base gain (rs_br_pop, rs_identifier), one read per name
+# of the index -- so the enclosing loops and the function do not rank
+# names for uses that no longer exist. A ranking heuristic only.
+void rs_iv_discount():
+	if (rs_profile_weighted): return;
+	int depth = rs_lp_depth + 1
+	if (depth > 8): depth = 8
+	int w = 1 << (3 * depth)
+	for q in range(ivopt_inside_names()):
+		int nb = ivopt_inside_base(q)
+		int ni = ivopt_inside_index(q)
+		if ((nb == 0) && (ni == 0)): continue
+		int i = rs_lookup(ivopt_inside_name(q))
+		if (i < 0): continue
+		rs_uses[i] = rs_uses[i] - nb * (w << 1) - ni * w
+		rs_base[i] = rs_base[i] - nb * (w << 1)
+		rs_lv[i] = rs_lv[i] - nb * w
+		if (rs_uses[i] < 0): rs_uses[i] = 0
+		if (rs_base[i] < 0): rs_base[i] = 0
+		if (rs_lv[i] < 0): rs_lv[i] = 0
 
 
 # Leading whitespace of a new line: count its tabs (the tokenizer's
@@ -934,6 +1085,9 @@ int rs_intern(char* name, int h):
 	rs_uses.push(0)
 	rs_base.push(0)
 	rs_lv.push(0)
+	rs_field.push(0)
+	rs_peek.push(0)
+	rs_fnreg.push(0)
 	rs_excluded.push(0)
 	rs_reg.push(0)
 	rs_taken.push(0)
@@ -1073,6 +1227,17 @@ void rs_count_operator(int n, int first, int second, int last):
 	rs_ops = rs_ops + rs_weight()
 
 
+# O2: 'name.f' that is not a method call ('name.f(') or an indexed
+# container field ('name.f[i]', a hidden call): through a register the
+# field's load or store is one '[R+disp]' operand (A2), where the stack
+# path loads the pointer first -- one instruction saved on x64, where a
+# field access counts as a use of the name (rs_uses) and towards its
+# register gain (rs_gain). x86 keeps its A9-tuned model.
+void rs_field_use(int i):
+	rs_field[i] = rs_field[i] + rs_weight()
+	if (word_size == 8): rs_uses[i] = rs_uses[i] + rs_weight()
+
+
 # Do the bytes after the current token (blanks skipped) spell candidate
 # i's name as a whole identifier: 'x = x ...'. A peek, consuming only
 # blanks; the end of the window says no.
@@ -1157,7 +1322,9 @@ void rs_after_ident_operator(int i, int type_context):
 				# 'x = x op ...' folds into 'op R,...' (R3): worth a
 				# compound assignment; a plain store into a register
 				# costs what a store into a slot does
-				if (rs_peek_name(i)): rs_lv[i] = rs_lv[i] + (rs_weight() << 1)
+				if (rs_peek_name(i)):
+					rs_lv[i] = rs_lv[i] + (rs_weight() << 1)
+					rs_peek[i] = rs_peek[i] + rs_weight()
 				rs_write(i)
 			elif (rs_run_compares(n, first, second, last)): rs_lv[i] = rs_lv[i] + rs_weight()
 	# '&' alone after an operand is the binary operator
@@ -1301,7 +1468,11 @@ void rs_identifier():
 			# a constant count never reaches ecx (alu_bit_shuttle_imm),
 			# so the rotate idiom of lib/sha256.w keeps its loop.
 			if (rs_intrinsic_holds_ecx(name)): rs_lp_mark(rs_lp_has_divshift)
-		elif (inline_name_is_leaf(name) == 0): rs_lp_mark(rs_lp_has_call)
+		elif ((rs_lp_depth != 0) && (inline_name_is_leaf(name) == 0)): rs_lp_mark(rs_lp_has_call)
+		else:
+			# only rg_shape_rank reads it: x64 alone pays the lookup
+			if ((rs_fn_real_call == 0) && (word_size == 8)):
+				if (inline_name_is_leaf(name) == 0): rs_fn_real_call = 1
 		return;
 	if (c == '['):
 		# a subscript base (A1): a read a register makes no shorter
@@ -1314,8 +1485,9 @@ void rs_identifier():
 		if (i >= 0): rs_lv[i] = rs_lv[i] + rs_weight()
 		return;
 	if (c == '.'):
-		# a field access or a method call's receiver (A1): a read a
-		# register makes no shorter (A2's addressing form will)
+		# a field access or a method call's receiver (A1); the field
+		# name decides which (rs_scan_body's field branch, rs_field)
+		rs_field_owner = i
 		return;
 	if (c == ':'):
 		rs_next()
@@ -1470,6 +1642,9 @@ void rs_scan_body(int brace_body):
 	rs_has_divshift = 0
 	rs_shift_pending = 0
 	rs_ops = 0
+	rs_fn_has_call = 0
+	rs_fn_real_call = 0
+	rs_field_owner = -1
 	int first = 1
 	while ((rs_done == 0) && (rs_abort == 0) && (rs_c != -1)):
 		if ((rs_mode == 0) && rs_has_loop): return;
@@ -1500,6 +1675,8 @@ void rs_scan_body(int brace_body):
 			rs_prev_kind = 0
 			continue
 		# a token starts here
+		int owner = rs_field_owner
+		rs_field_owner = -1
 		if (rs_shift_pending):
 			# the count of the shift just seen: a literal keeps the shift
 			# out of ecx (shift_imm_fold), anything else goes through cl
@@ -1531,7 +1708,19 @@ void rs_scan_body(int brace_body):
 				rs_incdec = 0
 				rs_deref_pending = 0
 				rs_skip_blanks()
-				if ((rs_c == '(') || (rs_c == '[')): rs_lp_mark(rs_lp_has_call)
+				if (rs_c == '('): rs_lp_mark(rs_lp_has_call)
+				elif (rs_c == '['):
+					# a container field indexed is a hidden call; a pointer
+					# field indexed is not, and which it is the scan cannot
+					# tell: the loop declines it, the function region (O2)
+					# takes the chance (a call spills its registers)
+					int had_call = rs_fn_has_call
+					int had_real = rs_fn_real_call
+					rs_lp_mark(rs_lp_has_call)
+					rs_fn_has_call = had_call
+					rs_fn_real_call = had_real
+					if (owner >= 0): rs_field_use(owner)
+				elif (owner >= 0): rs_field_use(owner)
 			else: rs_identifier()
 			continue
 		rs_type_pos = 0
@@ -1571,6 +1760,7 @@ void rs_scan_body(int brace_body):
 		if (c == '.'):
 			rs_next()
 			rs_prev_kind = 6
+			rs_field_owner = owner
 			continue
 		if (rs_is_op_char(c)):
 			int n = 0
@@ -1671,15 +1861,29 @@ int rs_assign_registers():
 	int mask = 0
 	int assigned = 0
 	int round = 0
+	# a loop-free body (scanned whole on x64) has no loop names to rank
+	if ((rs_has_loop == 0) && rs_fn_target_ok()): round = 2
 	while (assigned < budget):
 		int best = -1
 		int best_uses = 7   # at least one use inside a loop (weight 8)
+		if (round == 2): best_uses = rs_callee_min_gain - 1
 		for i in range(rs_count):
-			if ((rs_reg[i] != 0) || rs_excluded[i]): continue
-			if (round == 0):
-				if ((rs_decls[i] != 1) || (rs_uses[i] - rs_base[i] <= best_uses)): continue
+			if ((rs_reg[i] != 0) || rs_excluded[i] || rs_fnreg[i]): continue
+			if (round == 2):
+				if (rs_gain(i) <= best_uses): continue
+				if (rs_decls[i] != 1):
+					if (rs_decls[i] != 0): continue
+					if (rs_arg_record(i) < 0): continue
 				best = i
-				best_uses = rs_uses[i] - rs_base[i]
+				best_uses = rs_gain(i)
+			elif (round == 0):
+				if ((rs_decls[i] != 1) || (rs_uses[i] - rs_base[i] <= 7)): continue
+				# x64 (O2): ranked by the scalar uses plus the register gain
+				int key = rs_uses[i] - rs_base[i]
+				if (word_size == 8): key = key + rs_gain(i)
+				if (key <= best_uses): continue
+				best = i
+				best_uses = key
 			else:
 				if (rs_base[i] <= best_uses): continue
 				if (rs_decls[i] == 1): best = i
@@ -1687,8 +1891,10 @@ int rs_assign_registers():
 				else: continue
 				best_uses = rs_base[i]
 		if (best < 0):
-			if (round): break
-			round = 1
+			if (round == 2): break
+			if (round == 1):
+				if (rs_fn_target_ok() == 0): break
+			round = round + 1
 			continue
 		int r = first_reg + assigned
 		rs_reg[best] = r
@@ -1701,6 +1907,124 @@ int rs_assign_registers():
 	return mask
 
 
+# --- the function region (O2) ----------------------------------------------
+# A body the scan saw whole that makes no call it can see (a leaf: no
+# call, method call, 'new', container iteration or membership test,
+# and no goto/labels or defer) keeps its best names in the caller-saved
+# registers the loops use (x64: rsi rdi r8-r11) for the whole body, at
+# no prologue or epilogue cost: an argument is loaded from its stack
+# word right after the prologue, a local takes its register at its
+# declaration (class 'B' of the loop machinery below), and nothing is
+# written back, since every register is dead at a return. The region is
+# the loop machinery's outermost level (rl_fn_region_enter): a call the
+# body emits after all (a container subscript, an operator overload, a
+# bounds trap) spills the live entries to their homes and reloads them
+# (regalloc_call_spill / _reload), exactly as inside a loop, so a scan
+# miss costs instructions, never correctness. Loops inside the body take
+# the registers the region leaves.
+#
+# The ranking key is a name's register gain (rs_gain): the uses a
+# register makes shorter on x64 -- writes folded into 'op R,X',
+# compound assignments and '++', compare left sides, subscript bases and
+# one-token indices (rs_lv), and field accesses through the name as a
+# base (rs_field) -- loop-weighted. 'x = x op ...' counts half of what
+# rs_lv gives it: it folds to 'op R,...' only when the right side is
+# simple, which the scan does not look at. A plain read costs one
+# instruction either way ('mov rax,[rbp+d]' or 'mov rax,R'). The
+# region's own cost is one instruction per name (the argument's load,
+# or the local's copy of its initial value), so a name needs a gain of
+# rs_fn_min_gain. The x64 loop ranking (rs_lp_key) and the callee-saved
+# ranking (rs_assign_registers) add the gain to the use count too.
+
+int rs_gain(int i):
+	return rs_lv[i] - rs_peek[i] + rs_field[i]
+
+
+# Only x64 has a region: x86's caller-saved pair is the expression
+# stack's whole park set (A3, A9).
+int rs_fn_target_ok():
+	if (word_size != 8): return 0
+	return rl_target_mask() != 0
+
+
+# Pick the region's names (rs_fn_cands, best first) from the scan's
+# candidates: declared exactly once in the body, or a promotable argument.
+void rs_fn_rank():
+	rs_fn_cands.clear()
+	if (rs_fn_target_ok() == 0): return;
+	if (rs_fn_has_call): return;
+	int budget = 0
+	int mask = rl_target_mask()
+	for r in range(16):
+		if (mask & (1 << r)): budget = budget + 1
+	# O7: the loops' pointer walks keep theirs (compiler/ivopt.w)
+	int ivneed = 0
+	for k in range(rs_lp_ivneed.length):
+		if ((rs_lp_inner[k] == 0) && (rs_lp_ivneed[k] > ivneed)): ivneed = rs_lp_ivneed[k]
+	budget = budget - ivneed
+	while (rs_fn_cands.length < budget):
+		int best = -1
+		int best_gain = rs_fn_min_gain - 1
+		for i in range(rs_count):
+			if (rs_fnreg[i] || rs_excluded[i]): continue
+			if (rs_decls[i] != 1):
+				if (rs_decls[i] != 0): continue
+				if (rs_arg_record(i) < 0): continue
+			int g = rs_gain(i)
+			if (g <= best_gain): continue
+			best = i
+			best_gain = g
+		if (best < 0): break
+		rs_fnreg[best] = 1
+		rs_fn_cands.push(best)
+	rg_shape_rank()   # O5
+
+
+# The prologue has pushed what it saves and loaded the callee-saved
+# arguments (x86.w's regalloc_prologue_emit): open the function region,
+# load its arguments into their registers and leave its locals pending
+# their declarations, with a register reserved for each.
+void debug_local_set_register_named(char* name, int reg);
+void regalloc_fn_region_enter():
+	if (rs_fn_cands == 0): return;
+	if (rs_fn_cands.length == 0): return;
+	if (regalloc_active == 0): return;
+	rl_ensure()
+	rl_mark.push(rl_sym.length)
+	rl_pending_mark.push(rl_pending.length)
+	rl_eligible.push(1)
+	rl_fn_region = 1
+	rl_free_mask = rl_target_mask()
+	int pending = 0
+	for j in range(rs_fn_cands.length):
+		int i = rs_fn_cands[j]
+		if (rs_decls[i] == 1):
+			rl_pending.push(i)
+			pending = pending + 1
+			continue
+		int t = rs_argsym[i]
+		if ((t < 0) || (load_int(table + t + 146) != 0)): continue
+		int reg = rl_take_register()
+		if (reg == 0): continue
+		save_int(table + t + 146, reg)
+		int slot = load_int(table + t + 2)
+		# a register-shaped body with homes (O5): the parameter's home
+		# is its frame word below the saved registers ('P'), not the
+		# word above the return address
+		if (rg_homes): rl_add(t, reg, slot - 1, 'P', rs_names[i], 1)
+		else: rl_add(t, reg, slot, 'A', rs_names[i], 1)
+		# the argument's word, read once here (rl_home_disp would count
+		# it as a body touch, O5)
+		mov_reg_ebp_disp(reg, (number_of_args - slot + 2) << word_size_log2)
+		debug_local_set_register_named(rs_names[i], reg)
+		regalloc_fn_regs = regalloc_fn_regs + 1
+		if (rg_shaped): rg_note_param(slot - 1, reg)
+	# O5: a register entry resumes here, past the argument loads
+	if (rg_shaped): rg_resume = codepos
+	rl_fn_pending_end = rl_pending.length
+	rl_fn_reserved = pending
+
+
 # Called by function_definition (grammar/program.w) with the current
 # token at the body's '{' or ':', right before the prologue. symbol is
 # the function's record; variadic functions promote nothing.
@@ -1708,6 +2032,7 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	rs_tables_ensure()
 	rs_class_ensure()
 	regalloc_function_end()
+	rg_symbol = symbol
 	# P2 (compiler/regalloc_profile.w): the profile's class for this
 	# function, computed here even when nothing below runs (the loop
 	# alignment reads it). cold: the scan is skipped; hot: no probe,
@@ -1731,6 +2056,9 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	rs_c = nextc
 	rs_mode = 0
 	if (profile_class == 2): rs_mode = 1   # P2: hot
+	# O2: on x64 every body is ranked (loop-free ones too, rs_fn_rank
+	# and rs_assign_registers), so there is no probe for a loop
+	if (word_size == 8): rs_mode = 1
 	int probe = 2
 	if ((rs_mode == 0) && (brace_body == 0)): probe = rs_probe_lines()
 	if (probe == 2):
@@ -1754,16 +2082,19 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	# (whose instantiations the probe cannot serve, rs_image_bind) must
 	# reach the same verdict from the full pass as streaming does here.
 	if ((rs_mode == 1) && (rs_abort == 0) && (rs_has_divshift == 0)): ers_hazard = 0
-	if ((rs_mode == 1) && (rs_abort == 0)):
-		regalloc_scanned_functions = regalloc_scanned_functions + 1
-		mask = rs_assign_registers()
-		if (mask == 0): rs_profile_fruitless = rs_profile_fruitless + 1   # P2: --stats
 	# Loops own caller-saved registers (R3) only when no jump can leave a
 	# loop body other than through its exit region: no goto/labels, no
 	# defer (every return would be an exit edge), and the scan saw every
-	# loop.
+	# loop. The function region (O2) asks the same of the whole body.
+	int body_ok = 0
+	if ((rs_abort == 0) && (rs_has_goto == 0) && (rs_has_defer == 0) && (rs_lp_overflow == 0)): body_ok = 1
+	if ((rs_mode == 1) && (rs_abort == 0)):
+		regalloc_scanned_functions = regalloc_scanned_functions + 1
+		if (body_ok): rs_fn_rank()
+		mask = rs_assign_registers()
+		if (mask == 0): rs_profile_fruitless = rs_profile_fruitless + 1   # P2: --stats
 	int loops = 0
-	if ((rs_abort == 0) && (rs_lp_offset.length > 0) && (rs_has_goto == 0) && (rs_has_defer == 0) && (rs_lp_overflow == 0)): loops = 1
+	if (body_ok && ((rs_lp_offset.length > 0) || (rs_fn_cands.length > 0))): loops = 1
 	if ((mask == 0) && (loops == 0)):
 		rs_tables_clear()
 		return;
@@ -1858,9 +2189,11 @@ void regalloc_store_declared(int t):
 # register, and keep it on the promoted list for the guard. Its wdbg/
 # DWARF note (recorded at the parameter's declaration) gets the register
 # as a local's would.
-void debug_local_set_register_named(char* name, int reg);
 void regalloc_prologue_args():
 	if (regalloc_arg_syms == 0): return;
+	# O5: a callee-saved argument's load is not skipped by a register
+	# entry (rg_resume follows the region's loads only)
+	if (regalloc_arg_syms.length > 0): rg_touch = rg_touch + 1
 	for i in range(regalloc_arg_syms.length):
 		int t = regalloc_arg_syms[i]
 		int reg = regalloc_arg_regs[i]
@@ -1935,6 +2268,10 @@ void rl_reset():
 	rl_free_mask = 0
 	regalloc_loop_depth = 0
 	regalloc_loop_owned = 0
+	rl_fn_region = 0
+	rl_fn_pending_end = 0
+	rl_fn_reserved = 0
+	ivopt_active_reset()
 
 
 # The caller-saved registers a loop may own on this target: x64 rsi rdi
@@ -1958,7 +2295,27 @@ int rl_target_mask():
 	return (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)
 
 
+# Registers no open loop owns and no expression park holds.
+int rl_free_count():
+	int free = 0
+	int q = 0
+	while (q < 16):
+		if ((rl_free_mask & (1 << q)) && ((ers_used & (1 << q)) == 0)): free = free + 1
+		q = q + 1
+	return free
+
+
 int rl_take_register():
+	# the function region's locals not declared yet keep their registers
+	# (O2): a loop, a hidden slot or a loop's own local takes one only
+	# when more are free
+	if (rl_fn_reserved > 0):
+		int free = 0
+		int q = 0
+		while (q < 16):
+			if ((rl_free_mask & (1 << q)) && ((ers_used & (1 << q)) == 0)): free = free + 1
+			q = q + 1
+		if (free <= rl_fn_reserved): return 0
 	int r = 0
 	while (r < 16):
 		# never a register with an expression park in it (A3): a
@@ -1974,7 +2331,10 @@ int rl_take_register():
 # The frame-pointer displacement of an entry's home.
 int rl_home_disp(int i):
 	int kind = rl_kind[i]
-	if (kind == 'A'): return (number_of_args - rl_slot[i] + 2) << word_size_log2
+	if (kind == 'A'):
+		rg_touch = rg_touch + 1   # O5: the argument's word is its home
+		return (number_of_args - rl_slot[i] + 2) << word_size_log2
+	if (kind == 'P'): return 0 - ((regalloc_saved_count + 1 + rl_slot[i]) << word_size_log2)
 	return 0 - (rl_slot[i] << word_size_log2)
 
 
@@ -1987,7 +2347,9 @@ int rl_entry_live(int i):
 	if ((kind == 'L') || (kind == 'A') || (kind == 'B')):
 		int t = rl_sym[i]
 		if (t >= table_pos): return 0
-		if (sym_probe(rl_name[i]) != t): return 0
+		# shadowing (an inlined body's parameter of the same name) does
+		# not end the entry; leaving the scope does
+		if (sym_record_live(rl_name[i], t) == 0): return 0
 	return 1
 
 
@@ -2031,15 +2393,22 @@ void regalloc_loop_enter(int offset):
 	# sequence anyway (regalloc_hazard_spill), so this is the ranking's
 	# choice, not a correctness rule
 	if ((word_size == 4) && (flags & rs_lp_has_divshift)): return;
-	if (regalloc_loop_depth == 1): rl_free_mask = rl_target_mask()
+	if ((regalloc_loop_depth == 1) && (rl_fn_region == 0)): rl_free_mask = rl_target_mask()
 	int last_open = rl_eligible.length - 1
 	rl_eligible[last_open] = 1
 	regalloc_loops_owned = regalloc_loops_owned + 1
 	int base = k * rs_lp_stride
 	int ops = rs_lp_ops[k]
 	int taken = 0
+	# O7 (compiler/ivopt.w): an innermost loop's pointer walks take
+	# their registers first; an enclosing loop leaves as many free as
+	# the innermost loops in it will want
+	int reserve = 0
+	if (rs_lp_inner[k] == 0): ivopt_loop_enter(offset)
+	else: reserve = rs_lp_ivneed[k]
 	for j in range(rs_lp_stride):
 		if (rl_free_mask == 0): return;
+		if ((reserve > 0) && (rl_free_count() - rl_fn_reserved <= reserve)): return;
 		int i = rs_lp_cands[base + j]
 		if (i < 0): return;
 		# x86: the register comes out of A3's park set, where it saves
@@ -2053,8 +2422,9 @@ void regalloc_loop_enter(int offset):
 			int ratio = rl_x86_ratio_first
 			if (taken): ratio = rl_x86_ratio_second
 			if (rs_lp_vals[base + j] * ratio < ops): return;
-		if (rs_excluded[i] || (rs_reg[i] != 0) || (rs_decls[i] > 1)): continue
+		if (rs_excluded[i] || (rs_reg[i] != 0) || (rs_decls[i] > 1) || rs_fnreg[i]): continue
 		char* name = rs_names[i]
+		if (ivopt_covers(name)): continue
 		int t = sym_probe(name)
 		if (t < 0):
 			if (rs_decls[i] == 1): rl_pending.push(i)
@@ -2108,6 +2478,7 @@ int regalloc_hidden_register(int slot):
 void regalloc_loop_leave():
 	rl_ensure()
 	if (rl_mark.length == 0): return;
+	ivopt_loop_leave()
 	regalloc_loop_depth = regalloc_loop_depth - 1
 	int mark = rl_mark[rl_mark.length - 1]
 	int i = rl_sym.length
@@ -2134,7 +2505,7 @@ void regalloc_loop_leave():
 	rl_mark.pop()
 	rl_pending_mark.pop()
 	rl_eligible.pop()
-	if (regalloc_loop_depth == 0): rl_free_mask = 0
+	if ((regalloc_loop_depth == 0) && (rl_fn_region == 0)): rl_free_mask = 0
 
 
 # regalloc_declare's second source: a candidate some open loop listed
@@ -2149,11 +2520,16 @@ int rl_declare_pending(int t, char* name, int type):
 		if (i < 0): continue
 		if (strcmp(rs_names[i], name) != 0): continue
 		rl_pending[k] = -1
-		if (rl_eligible[rl_eligible.length - 1] == 0): return 0
+		if (k < rl_fn_pending_end):
+			# the function region's (O2): its reservation is this one's
+			if (rl_fn_reserved > 0): rl_fn_reserved = rl_fn_reserved - 1
+		elif (rl_eligible[rl_eligible.length - 1] == 0): return 0
 		if (regalloc_type_ok(type) == 0): return 0
 		int reg = rl_take_register()
 		if (reg == 0): return 0
 		rl_add(t, reg, load_int(table + t + 2), 'B', name, 0)
+		save_int(table + t + 146, reg)
+		if (k < rl_fn_pending_end): regalloc_fn_regs = regalloc_fn_regs + 1
 		return reg
 	return 0
 
@@ -2169,6 +2545,7 @@ void regalloc_call_reload():
 	if (rl_sym == 0): return;
 	for i in range(rl_sym.length):
 		if (rl_entry_live(i)): mov_reg_ebp_disp(rl_reg[i], rl_home_disp(i))
+	ivopt_call_reload()
 
 
 # An emitter is about to write the registers of mask (x86: ecx as a
@@ -2216,14 +2593,167 @@ int rl_find_slot(int slot):
 	return -1
 
 
+# --- register arguments (O5) ------------------------------------------------
+# A direct call (A4) to a W function on x64 passes its arguments in
+# registers when the callee published a register entry; every other
+# call -- through a pointer, a forward reference, from asm or the FFI,
+# with the entry not yet published (a self call) -- keeps the stack ABI
+# through the function's own address, which is unchanged. The scheme is
+# callee-side and single-pass sound:
+#
+# - A body may get an entry when it is "register-shaped" (rg_shape_ok:
+#   1 to 6 word-sized, non-narrow, non-const parameters, no aggregate
+#   return, not variadic/a generator/a kernel/an asm body) and the
+#   function region (O2) holds every parameter (rg_shape_rank), so each
+#   has a caller-saved register (rsi rdi r8-r11) loaded right after the
+#   prologue.
+# - The entry is published only once the body is complete
+#   (regargs_close, from be_function_epilogue) and only if nothing in it
+#   read or wrote an argument's stack word: rg_touch counts every such
+#   access (sym_emit_value's 'A' path, the AST emitter's bindings,
+#   rl_home_disp for a spill/reload or a loop's home, a callee-saved
+#   argument's load). Its register callers push no argument words, so
+#   that is the whole correctness condition; the region keeps each
+#   parameter in its register for the body's extent.
+# - The entry itself is a stub after the body: 'push rbp; mov rbp,rsp',
+#   the prologue's register pushes, and a jump to rg_resume, the point
+#   past the region's argument loads. The frame it builds is the
+#   prologue's, so the body, its returns and the debugger see the same
+#   frame either way; only the argument words above the return address
+#   are missing, and nothing reads them.
+#
+# Callers (grammar/stack_slot.w, regcall_*) park each argument straight
+# into its parameter's register (an expression park, A3), so a simple
+# argument costs one instruction and there is no 'add rsp' after the
+# call.
+int rg_enabled():
+	if (reg_args_disabled || direct_calls_disabled || regalloc_disabled): return 0
+	if ((target_isa != 0) || (target_os != 0) || (word_size != 8)): return 0
+	if (repl_call_site_hook != 0): return 0
+	return 1
+
+
+int rg_shape_ok(int symbol):
+	if (rg_enabled() == 0): return 0
+	if (rg_asm_body || (symbol < 0)): return 0
+	if (sym_is_generator(symbol) || sym_is_kernel(symbol)): return 0
+	if (load_int(table + symbol + 130) != -1): return 0   # a W variadic
+	int n = load_int(table + symbol + 22)
+	if ((n < 1) || (n > 6)): return 0
+	# one word per parameter, and no hidden return-buffer word
+	if (number_of_args != n): return 0
+	for i in range(n):
+		int type = load_int(table + symbol + 26 + (i << 2))
+		if (type < 0): return 0
+		if (regalloc_type_ok(type) == 0): return 0
+		# a narrow parameter's register holds its word re-extended by
+		# the load the entry skips
+		if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)): return 0
+	return 1
+
+
+# rs_fn_rank's last step: the body is register-shaped (rg_shaped) when
+# the gain ranking put every parameter into the function region. A
+# parameter the ranking left out is not added: its debug note would name
+# a caller-saved register, which wdbg cannot read (debugger/locals.w reads
+# r12-r15, and attach mode no register at all), so a parameter that
+# stays readable on the stack today would become unreadable
+# (tools/attach_e2e.w's frame-selection case). Filling the free
+# registers gave regex_backtrack -4.7% instead of -0.8%.
+void rg_shape_rank():
+	if (rg_shape_ok(rg_symbol) == 0): return;
+	int n = load_int(table + rg_symbol + 22)
+	int found = 0
+	for i in range(rs_count):
+		if ((rs_decls[i] == 0) && (rs_excluded[i] == 0) && (rs_arg_record(i) >= 0)):
+			if (rs_fnreg[i] == 0): return;
+			found = found + 1
+	if (found != n): return;
+	rg_nparams = n
+	rg_shaped = 1
+	# a call the region spills its registers around: the parameters'
+	# homes go into the frame (rl_home_disp's 'P'), which both entries
+	# reserve below the saved registers
+	if (rs_fn_real_call): rg_homes = n
+
+
+# The region loaded parameter index (0-based) into reg.
+void rg_note_param(int index, int reg):
+	if ((index < 0) || (index >= 6)): return;
+	rg_regs_cur = rg_regs_cur | (reg << (index << 2))
+	rg_loaded = rg_loaded + 1
+
+
+# The body has ended (be_function_epilogue, after its last return):
+# publish the register entry when the body qualifies. framed is
+# be_frame_active.
+void regargs_close(int framed):
+	int shaped = rg_shaped
+	rg_shaped = 0
+	if (shaped == 0): return;
+	if ((framed == 0) || (rg_resume == 0) || (rg_touch != 0)): return;
+	if (rg_loaded != rg_nparams): return;
+	if (rg_enabled() == 0): return;
+	int entry = codepos
+	emit(1, c"\x55")              # push rbp
+	emit(3, c"\x48\x89\xe5")      # mov rbp,rsp
+	for r in range(16):
+		if (regalloc_saved_mask & (1 << r)): push_reg(r)
+	sub_rsp_words(rg_homes)
+	# jmp rel32 like every other compiler-emitted jump: the self-host
+	# disassembly gate (asm_x64_test) decodes compiler forms only
+	emit_int8(0xe9)
+	emit_int32(rg_resume - (codepos + 4))
+	# the symbol record's O5 fields (compiler/symbol_table.w): the
+	# entry's address and the parameters' registers, 4 bits each
+	save_int(table + rg_symbol + 154, code_offset + entry)
+	save_int(table + rg_symbol + 158, rg_regs_cur)
+	# the stub is not the body's code: the inline table's byte budget
+	# (compiler/inline_table.w) measures the body alone
+	if (inline_capture_active): inline_capture_codepos = inline_capture_codepos + (codepos - entry)
+	regargs_entries = regargs_entries + 1
+
+
+# The number of parameters a direct call to the function symbol t
+# passes in registers: all of them when t has a register entry, else 0.
+int regargs_callee_params(int t):
+	if (rg_enabled() == 0): return 0
+	if (t < 0): return 0
+	if (table[t + 1] != 'D'): return 0
+	if (load_int(table + t + 154) == 0): return 0
+	return load_int(table + t + 22)
+
+
+# The register of parameter index of t (regargs_callee_params(t) > 0).
+int regargs_callee_reg(int t, int index):
+	return (load_int(table + t + 158) >> (index << 2)) & 15
+
+
+int regargs_callee_entry(int t):
+	return load_int(table + t + 154)
+
+
 void regalloc_stats_dump():
 	print_int0(c"regalloc: bodies scanned: ", regalloc_scanned_functions)
 	print_int0(c" locals promoted: ", regalloc_promoted_locals)
 	print_int0(c" arguments promoted: ", regalloc_promoted_args)
 	print_int0(c" loops owning registers: ", regalloc_loops_owned)
 	print_int0(c" loop registers: ", regalloc_loop_regs)
+	print_int0(c" function registers: ", regalloc_fn_regs)
 	print_int0(c" hazard spills: ", regalloc_hazard_spills)
 	print_int0(c" expression parks: ", ers_parks)
 	print_int0(c" spilled: ", ers_spills)
+	print_int0(c" retargeted: ", xrt_retargets)
+	print_error(c"\x0a")
+	ivopt_stats_dump()
+	# O1 (code_generator/x86.w): constant folds, const-global reads
+	# loaded as immediates, unreachable branches/returns not emitted
+	print_int0(c"constants: folded: ", k64_folds)
+	print_int0(c" const reads: ", const_global_reads_folded)
+	print_int0(c" dead jumps/returns: ", term_notes_elided)
+	print_error(c"\x0a")
+	# O5 (the register arguments section above)
+	print_int0(c"register arguments: entries: ", regargs_entries)
+	print_int0(c" calls: ", regargs_calls)
 	print_error(c"\x0a")
 	rs_profile_stats_dump()   # P2

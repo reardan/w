@@ -18,11 +18,15 @@ modules:
 	graphics.image.png
 	graphics.image.jpeg
 	graphics.ui.accessibility
+	graphics.ui.accessibility_cocoa
+	graphics.ui.contrast
 	graphics.gl
 	graphics.math
 	graphics.ui.font
+	graphics.ui.grapheme
 	graphics.ui.rect
 	graphics.ui.render
+	graphics.ui.shape
 	graphics.ui.text
 	graphics.ui.theme
 	graphics.ui.widgets

@@ -2,9 +2,9 @@
 
 `lib/transport_tls.w` and `libs/standard/net/tls.w` support TLS 1.3 client
 certificate authentication during the initial handshake. Existing server-only
-TLS remains the default. The cipher suite remains
-`TLS_CHACHA20_POLY1305_SHA256`, with X25519 exchange and ECDSA P-256 client
-credentials. Post-handshake authentication and session resumption are not
+TLS remains the default. The TLS layer negotiates ChaCha20-Poly1305 or
+AES-128/256-GCM, with X25519 or P-256 exchange (including HelloRetryRequest).
+Client credentials remain ECDSA P-256. Post-handshake authentication and session resumption are not
 implemented.
 
 Configure the client with borrowed PEM paths in `tls_config`:

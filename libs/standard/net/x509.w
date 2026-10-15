@@ -46,6 +46,7 @@ import libs.standard.crypto.sha2
 import libs.standard.crypto.base64
 import libs.standard.crypto.rsa_verify
 import libs.standard.crypto.ecdsa_p256
+import libs.standard.crypto.ecdsa_p384
 import libs.standard.net.asn1
 import lib.time
 import lib.mem
@@ -62,6 +63,7 @@ const int X509_MAX_CHAIN_LEN = 6
 const int X509_KEY_UNSUPPORTED = 0
 const int X509_KEY_RSA = 1
 const int X509_KEY_EC_P256 = 2
+const int X509_KEY_EC_P384 = 3
 const int X509_SIGALG_UNKNOWN = 0
 const int X509_SIGALG_RSA_SHA256 = 1
 const int X509_SIGALG_RSA_SHA384 = 2
@@ -108,6 +110,10 @@ char* x509_oid_sha384():
 
 char* x509_oid_ec_public_key():
 	return c"\x2a\x86\x48\xce\x3d\x02\x01"
+
+
+char* x509_oid_secp384r1():
+	return c"\x2b\x81\x04\x00\x22"
 
 
 char* x509_oid_prime256v1():
@@ -177,7 +183,7 @@ struct x509_cert:
 	int rsa_n_len
 	int rsa_e_start           # RSA public exponent content
 	int rsa_e_len
-	char* ec_qx               # 32-byte P-256 coords (malloc'd) when EC_P256
+	char* ec_qx               # malloc'd coords: 32 bytes for P-256, 48 for P-384
 	char* ec_qy
 	int sig_start             # signatureValue content (BIT STRING payload)
 	int sig_len
@@ -464,13 +470,15 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 			if (nl != 0): return 0
 			if (asn1_done(&alg) == 0): return 0
 	else if (x509_oid_is(r.data, os, ol, x509_oid_ec_public_key()) != 0):
-		# Named-curve parameters; only P-256 is supported, other curves
+		# Named-curve parameters; P-256 and P-384 are supported, other curves
 		# degrade to an unsupported key.
 		int cs = 0
 		int cl = 0
 		if (asn1_expect(&alg, ASN1_OID, &cs, &cl) == 0): return 0
 		if (asn1_done(&alg) == 0): return 0
 		if (x509_oid_is(r.data, cs, cl, x509_oid_prime256v1()) != 0): kind = X509_KEY_EC_P256
+		# secp384r1 contains a zero byte: compare its explicit DER length.
+		if (asn1_bytes_equal(r.data, cs, cl, x509_oid_secp384r1(), 5) != 0): kind = X509_KEY_EC_P384
 	else:
 		while (asn1_done(&alg) == 0):
 			if (asn1_skip(&alg) == 0): return 0
@@ -503,16 +511,18 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 		c.rsa_n_len = nl
 		c.rsa_e_start = es
 		c.rsa_e_len = el
-	else if (kind == X509_KEY_EC_P256):
-		# Uncompressed point only: 0x04 || X(32) || Y(32).
-		if (kl != 65): return 0
+	else if (kind == X509_KEY_EC_P256 || kind == X509_KEY_EC_P384):
+		# Uncompressed point only: 0x04 || X || Y, at the curve's width.
+		int width = 32
+		if (kind == X509_KEY_EC_P384): width = 48
+		if (kl != 1 + 2 * width): return 0
 		if ((r.data[ks] & 255) != 4): return 0
-		c.ec_qx = cast(char*, malloc(32))
-		c.ec_qy = cast(char*, malloc(32))
-		for i in range(32):
+		c.ec_qx = cast(char*, malloc(width))
+		c.ec_qy = cast(char*, malloc(width))
+		for i in range(width):
 			c.ec_qx[i] = r.data[ks + 1 + i]
-			c.ec_qy[i] = r.data[ks + 33 + i]
-		c.key_type = X509_KEY_EC_P256
+			c.ec_qy[i] = r.data[ks + 1 + width + i]
+		c.key_type = kind
 	else: c.key_type = X509_KEY_UNSUPPORTED
 	return 1
 
@@ -1159,10 +1169,11 @@ int x509_match_hostname(x509_cert* c, char* hostname):
 # ---- signature verification ----------------------------------------------------------
 
 # Convert a DER-encoded ECDSA signature (SEQUENCE of two positive INTEGERs)
-# into fixed 32-byte big-endian r and s. Strict: minimal integer encodings,
-# values that fit 256 bits (an oversized r/s is rejected here; range checks
-# against the group order happen in ecdsa_p256_verify), no trailing bytes.
-int x509_ecdsa_sig_to_raw(char* sig, int len, char* out_r, char* out_s):
+# into fixed-width big-endian r and s. Strict: minimal integer encodings,
+# values that fit the curve width (an oversized r/s is rejected here; range checks
+# against the group order happen in the curve verifier), no trailing bytes.
+int x509_ecdsa_sig_to_raw_width(char* sig, int len, char* out_r, char* out_s, int width):
+	if (width != 32 && width != 48): return 0
 	if (sig == 0): return 0
 	if (len < 1): return 0
 	asn1 top
@@ -1180,21 +1191,25 @@ int x509_ecdsa_sig_to_raw(char* sig, int len, char* out_r, char* out_s):
 	int sl = 0
 	if (asn1_read_positive_integer(&nums, &ss, &sl) == 0): return 0
 	if (asn1_done(&nums) == 0): return 0
-	if ((rl > 32) || (sl > 32)): return 0
+	if ((rl > width) || (sl > width)): return 0
 	int i = 0
-	while (i < 32):
+	while (i < width):
 		out_r[i] = 0
 		out_s[i] = 0
 		i = i + 1
 	i = 0
 	while (i < rl):
-		out_r[32 - rl + i] = sig[rs + i]
+		out_r[width - rl + i] = sig[rs + i]
 		i = i + 1
 	i = 0
 	while (i < sl):
-		out_s[32 - sl + i] = sig[ss + i]
+		out_s[width - sl + i] = sig[ss + i]
 		i = i + 1
 	return 1
+
+
+int x509_ecdsa_sig_to_raw(char* sig, int len, char* out_r, char* out_s):
+	return x509_ecdsa_sig_to_raw_width(sig, len, out_r, out_s, 32)
 
 
 # DER INTEGER content for a big-endian value: strip leading zero bytes, then
@@ -1288,13 +1303,18 @@ int x509_check_signature(x509_cert* child, x509_cert* issuer):
 				else:
 					result = rsa_pss_verify_sha384(n, issuer.rsa_n_len, e, issuer.rsa_e_len, sig, child.sig_len, digest)
 	else:
-		if (issuer.key_type == X509_KEY_EC_P256):
-			char* r32 = cast(char*, malloc(32))
-			char* s32 = cast(char*, malloc(32))
-			if (x509_ecdsa_sig_to_raw(child.der + child.sig_start, child.sig_len, r32, s32) != 0):
-				result = ecdsa_p256_verify(issuer.ec_qx, issuer.ec_qy, digest, dlen, r32, s32)
-			free(r32)
-			free(s32)
+		if (issuer.key_type == X509_KEY_EC_P256 || issuer.key_type == X509_KEY_EC_P384):
+			int width = 32
+			if (issuer.key_type == X509_KEY_EC_P384): width = 48
+			char* r = cast(char*, malloc(width))
+			char* s = cast(char*, malloc(width))
+			if (x509_ecdsa_sig_to_raw_width(child.der + child.sig_start, child.sig_len, r, s, width) != 0):
+				if (issuer.key_type == X509_KEY_EC_P384):
+					result = ecdsa_p384_verify(issuer.ec_qx, issuer.ec_qy, digest, dlen, r, s)
+				else:
+					result = ecdsa_p256_verify(issuer.ec_qx, issuer.ec_qy, digest, dlen, r, s)
+			free(r)
+			free(s)
 	free(digest)
 	return result
 

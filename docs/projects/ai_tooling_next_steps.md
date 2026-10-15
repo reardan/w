@@ -37,6 +37,14 @@ shell completion work, while the compiled test binary reached its ordinary
 assertion. The stale debugger binary may contribute; qualify generated test
 runner calls in the debugger and detect stale tooling builds before use.
 
+## Fixed-array pointer arithmetic (2026-10-10)
+
+While implementing AES-GCM, `char[16] block` followed by `block + 4`
+passed `w check` but corrupted the local array and trapped at runtime.
+`cast(char*, block) + 4` works. Diagnose ambiguous fixed-array arithmetic
+or document its value semantics at the check site; avoid a clean check
+suggesting that it behaves like pointer arithmetic.
+
 ## Diagnostics (`w check`)
 
 - **Compiler-directory test roots are silently replaced (2026-10-07).**
@@ -235,6 +243,13 @@ runner calls in the debugger and detect stale tooling builds before use.
   (`dl_trampoline_argv` + `dl_call`), one `int*` parameter.
 
 ## Test selection (`bin/wtest`)
+
+- **Stale selector gives misleading manifest errors (2026-10-09).** On a
+  reused checkout, `bin/wtest changed` rejected current `link` directives in
+  `library_shared_test.w` and `compiler_shared.w`. `./wbuild wtest` refreshed
+  the binary and resolved it. Detect an outdated generator/tool binary or
+  suggest rebuilding it before reporting these as source errors.
+
 
 - **Generated UI font data can be read during replacement (2026-10-09).**
   A parallel `./wbuild --keep-going tests` run failed `graphics_darwin`

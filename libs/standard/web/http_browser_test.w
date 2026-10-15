@@ -165,27 +165,29 @@ void test_http_cancel_before_connect():
 	io_check_hook = old
 
 
-void test_http_checked_tls_failure():
-	int port = 0
-	int listener = net_test_listen(&port)
-	int pid = fork()
-	asserts(c"fork", pid >= 0)
-	if (pid == 0):
-		int fd = socket_accept_connection(listener)
-		char[8192] buf
-		read(fd, buf, 8192)
-		net_test_send_text(fd, c"not tls")
-		close(fd)
-		exit(0)
-	char* url = net_test_url(c"https", port, c"/")
-	http_req* req = http_req_new(c"GET", url)
-	req.total_timeout_ms = 3000
-	http_response* resp = http_request(req)
-	assert_equal(http_error_tls, resp.error)
-	http_response_free(resp)
-	http_req_free(req)
-	free(url)
-	net_test_finish(pid, listener)
+void test_http_tls_failure_details():
+	for checked in range(2):
+		int port = 0
+		int listener = net_test_listen(&port)
+		int pid = fork()
+		asserts(c"fork", pid >= 0)
+		if (pid == 0):
+			int fd = socket_accept_connection(listener)
+			char[8192] buf
+			read(fd, buf, 8192)
+			net_test_send_text(fd, c"\x16\x03\x03\xff\xff")
+			close(fd)
+			exit(0)
+		char* url = net_test_url(c"https", port, c"/")
+		http_req* req = http_req_new(c"GET", url)
+		if (checked): req.total_timeout_ms = 3000
+		http_response* resp = http_request(req)
+		assert_equal(http_error_tls, resp.error)
+		assert_strings_equal(c"tls: record too long", resp.error_message)
+		http_response_free(resp)
+		http_req_free(req)
+		free(url)
+		net_test_finish(pid, listener)
 
 
 generator int browser_cancel_request(http_req* req, int* error):

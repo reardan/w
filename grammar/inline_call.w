@@ -12,7 +12,7 @@
 #   register: compiler/regalloc_scan.w's regalloc_declare keeps its
 #   hands off while inline_depth is set);
 # - the lexer is primed on the record's private copy of the body's
-#   bytes through a /dev/null descriptor whose window is that copy
+#   bytes through an always-at-EOF descriptor whose window is that copy
 #   (the getchar window of lib/lib.w: lookahead rewinds inside the body
 #   seek within it, and the end of the copy is the end of the stream),
 #   with the outer lexer state saved around it like a generic re-parse
@@ -62,7 +62,64 @@ struct inline_frame:
 	int saved_kernel_pos
 
 list[int] inline_frames   # inline_frame* each
-int inline_fd             # the /dev/null descriptor, 0 until opened, -1 failed
+int inline_fd             # the empty-stream descriptor, 0 until opened, -1 failed
+
+# Parameters bound to their constant argument, innermost body last:
+# the symbol record and the value (inline_const_count entries are live,
+# compiler/tokenizer.w).
+list[int] inline_const_syms
+list[int] inline_const_values
+int inline_int_type
+
+
+# sym_emit_value has just emitted the 'lea' of the 'L' record t: when t
+# is a bound parameter, note the lea for promote() (grammar/promote.w),
+# which loads the immediate in its place.
+void inline_const_note(int t):
+	if (target_isa != 0): return;
+	if ((lea_note_end == 0) || (lea_note_end != codepos)): return;
+	int i = inline_const_count - 1
+	while (i >= 0):
+		if (inline_const_syms[i] == t):
+			inline_const_note_start = lea_note_start
+			inline_const_note_end = codepos
+			inline_const_note_value = inline_const_values[i]
+			inline_const_note_type = load_int(table + t + 6)
+			return;
+		i = i - 1
+
+
+# Bind parameter i of record rec (declared as the 'L' record t over the
+# slot its argument was pushed into) to that argument when it is an
+# integer constant: a plain 'int' parameter (the word the call pushed is
+# the value as the body reads it) that the body never writes and never
+# takes the address of (inline_param_read_only). The slot keeps the
+# pushed word, so any read that does not go through promote() still
+# finds the value.
+void inline_const_bind(inline_record* rec, int i, int t, int slot):
+	if ((rec.param_ro & (1 << i)) == 0): return;
+	if (inline_argument_is_const(slot) == 0): return;
+	if (inline_int_type == 0): inline_int_type = type_lookup(c"int")
+	int* types = rec.param_types
+	if (types[i] != inline_int_type): return;
+	if (t < 0): return;
+	if (inline_const_syms == 0):
+		inline_const_syms = new list[int]
+		inline_const_values = new list[int]
+	# Entries above the live count belong to bodies already closed
+	while (inline_const_syms.length > inline_const_count):
+		inline_const_syms.pop()
+		inline_const_values.pop()
+	inline_const_syms.push(t)
+	inline_const_values.push(inline_arg_value[slot])
+	inline_const_count = inline_const_count + 1
+	inline_consts_bound = inline_consts_bound + 1
+	if (verbosity >= 2):
+		char** names = rec.param_names
+		print_error(rec.name)
+		print_error(c": constant argument ")
+		print_error(names[i])
+		print_error(c"\x0a")
 
 
 inline_frame* inline_frame_top():
@@ -76,7 +133,8 @@ inline_frame* inline_frame_top():
 int inline_call_site_ok(int sym):
 	if (inline_fd < 0): return 0
 	if (inline_fd == 0):
-		inline_fd = open(c"/dev/null", 0, 511)
+		# never /dev/null directly (compiler/tokenizer.w, empty_stream_open)
+		inline_fd = empty_stream_open()
 		if ((inline_fd < 0) || (inline_fd >= GETCHAR_MAX_FD)):
 			if (inline_fd >= 0): close(inline_fd)
 			inline_fd = -1
@@ -126,8 +184,11 @@ void inline_window_close(inline_frame* frame):
 void inline_return():
 	inline_frame* frame = inline_frame_top()
 	if (stack_pos > frame.base): be_pop(stack_pos - frame.base)
+	# An unreachable return emits no jump (be_br_on's terminator note),
+	# and then there is no tail jump to drop either
+	int before = codepos
 	be_br(frame.region)
-	frame.tail_jump = codepos
+	if (codepos != before): frame.tail_jump = codepos
 
 
 # Emit the body of record r in place of the call based at s whose
@@ -207,7 +268,10 @@ void inline_emit_call(int r, int s, int passed_args):
 	pointer_indirection = 0
 	int* types = rec.param_types
 	char** names = rec.param_names
-	for i in range(rec.param_count): sym_declare(names[i], types[i], 'L', s + i, 1)
+	int saved_const_count = inline_const_count
+	for i in range(rec.param_count):
+		sym_declare(names[i], types[i], 'L', s + i, 1)
+		inline_const_bind(rec, i, sym_probe(names[i]), s + 1 + i)
 
 	inline_frame* frame = new inline_frame()
 	frame.record = r
@@ -242,6 +306,8 @@ void inline_emit_call(int r, int s, int passed_args):
 	free(cast(char*, frame))
 	inline_open_syms.pop()
 	inline_depth = inline_depth - 1
+	inline_const_count = saved_const_count
+	inline_const_note_end = 0
 
 	# --- back to the call site
 	table_pos = n

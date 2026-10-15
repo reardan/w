@@ -438,8 +438,7 @@ void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip
 # top at y_top, leaned by skew about the baseline (0.0 upright;
 # graphics.ui.text's italic passes ui_text_italic_skew()). Returns the
 # pen advance. Inkless glyphs (space) advance without pushing a quad.
-int ui_render_glyph_strike(ui_renderer* r, float32 x, float32 y_top, int ch, int strike, float32 skew, ui_color color):
-	ui_glyph g = ui_font_glyph(strike, ch)
+int ui_render_glyph_metrics(ui_renderer* r, float32 x, float32 y_top, ui_glyph g, int strike, float32 skew, ui_color color):
 	if (g.w > 0):
 		float32 baseline = y_top + cast(float32, ui_font_strike_ascent(strike))
 		float32 gx = x + cast(float32, g.bearing_x)
@@ -450,6 +449,10 @@ int ui_render_glyph_strike(ui_renderer* r, float32 x, float32 y_top, int ch, int
 		float32 v1 = ui_render_v(g.y + g.h)
 		ui_render_quad_sheared(r, ui_rect_new(gx, gy, cast(float32, g.w), cast(float32, g.h)), u0, v0, u1, v1, color, skew, baseline)
 	return g.advance
+
+
+int ui_render_glyph_strike(ui_renderer* r, float32 x, float32 y_top, int ch, int strike, float32 skew, ui_color color):
+	return ui_render_glyph_metrics(r, x, y_top, ui_font_glyph(strike, ch), strike, skew, color)
 
 
 # ui_render_glyph_strike, upright, at the strike text_scale selects.

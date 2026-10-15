@@ -94,7 +94,7 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-const int symbol_data_size = 154
+const int symbol_data_size = 162
 
 
 int next_token(int t):
@@ -294,7 +294,24 @@ int sym_probe(char* name):
 	return -1
 
 
+# 1 when record t, declared under name, is still in scope: on name's
+# chain below table_pos. Unlike sym_probe(name) == t this holds while a
+# later declaration shadows the name -- an inner block's local, or the
+# parameter of a body inlined at a call site (grammar/inline_call.w)
+# whose name a caller's register-resident local also has.
+int sym_record_live(char* name, int t):
+	if ((t < 0) || (t >= table_pos)): return 0
+	if (sym_name_index == 0): return 0
+	if ((name in sym_name_index) == 0): return 0
+	int p = sym_name_index[name]
+	while (p >= 0):
+		if (sym_index_offset(p) == t): return 1
+		p = load_int(sym_index_prev + p * 4)
+	return 0
+
+
 void inline_note_lookup(char* s, int found);   /* compiler/inline_table.w */
+void inline_const_note(int t);   /* grammar/inline_call.w */
 
 int sym_lookup(char *s):
 	sym_index_sync()
@@ -479,6 +496,8 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 142, 0)  /* not thread_local */
 	save_int(table + t + 146, 0)  /* stack-resident */
 	save_int(table + t + 150, 0)  /* no pending rel32 call sites (A4) */
+	save_int(table + t + 154, 0)  /* no register entry (O5) */
+	save_int(table + t + 158, 0)  /* its parameters' registers (O5) */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -616,6 +635,9 @@ void sym_define_global_at(int current_symbol, int v):
 
 
 void sym_define_global(int current_symbol):
+	# A symbol defined at codepos (a function entry) is a call target:
+	# what follows is reachable again (O1, the terminator note)
+	term_note_end = 0
 	sym_define_global_at(current_symbol, code_offset + codepos)
 
 
@@ -892,6 +914,8 @@ void sym_not_found_error(char* s):
 type __repl_call_site_hook_callback = fn(char*, int, int) -> void
 
 
+void const_global_note(int t, int start); /* grammar/program.w */
+
 int sym_emit_value(int t, char* s):
 	# A kernel's body lives in the PTX module, not at a host address:
 	# referencing its name as a value can only be a miscall.
@@ -924,8 +948,12 @@ int sym_emit_value(int t, char* s):
 		be_tls_address(load_int(table + t + 2))
 		return type
 	if ((scope_type == 'D') || (scope_type == 'U')):
+		int slot_start = codepos
 		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 		be_addr_slot_write(codepos - 4, load_int(table + t + 2))
+		# A const integer global or enum constant: promote() may load
+		# its known value as an immediate instead (O1)
+		if ((scope_type == 'D') && (symtype == 1) && (target_isa == 0)): const_global_note(t, slot_start)
 
 	int k = 0
 	if (verbosity >= 2):
@@ -963,6 +991,7 @@ int sym_emit_value(int t, char* s):
 			reg_lvalue_end = codepos
 			reg_lvalue_sym = t
 			return type
+		rg_touch = rg_touch + 1   # O5: the body reads its argument word
 		k = (stack_pos + number_of_args - load_int(table + t + 2) + 1) << word_size_log2
 
 	else:
@@ -983,6 +1012,11 @@ int sym_emit_value(int t, char* s):
 		if (words > 1): k = k - ((words - 1) << word_size_log2)
 		# lea (n)(%esp),%eax on x86; add x0,x28,#k on arm64
 		be_lea_acc_wstack(k)
+		# A parameter of a body emitted in place that is bound to its
+		# constant argument (grammar/inline_call.w): promote() loads
+		# the immediate instead
+		if (inline_const_count != 0):
+			if (scope_type == 'L'): inline_const_note(t)
 
 	if (symtype == 2):
 		if ((scope_type == 'D') || (scope_type == 'U')):

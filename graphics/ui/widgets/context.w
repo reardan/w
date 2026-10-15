@@ -14,6 +14,8 @@ import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
+import lib.utf8
+import graphics.ui.text
 
 
 void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
@@ -42,6 +44,11 @@ void ui_context_init(ui_context* ctx, ui_renderer* rndr, ui_theme* theme):
 	ctx.next_id = 1
 	ctx.char_count = 0
 	ctx.nav_count = 0
+	ctx.preedit[0] = 0
+	ctx.preedit_length = 0
+	ctx.preedit_focus = 0
+	ctx.preedit_active = 0
+	ctx.preedit_selection = 0
 	ctx.popup_depth = 0
 	ctx.scope = 0
 	ctx.bracket_depth = 0
@@ -93,6 +100,28 @@ void ui_feed_event(ui_context* ctx, gfx_event* e):
 		ctx.input.mouse_released = 0
 		ctx.input.mouse_right_pressed = 0
 		ctx.active = 0
+	else if (e.kind == GFX_EVENT_PREEDIT_BEGIN):
+		ctx.preedit_length = 0
+		ctx.preedit[0] = 0
+		ctx.preedit_focus = e.x
+		if (ctx.preedit_focus == 0): ctx.preedit_focus = ctx.focus
+		ctx.preedit_active = 1
+		ctx.preedit_selection = e.y
+	else if (e.kind == GFX_EVENT_PREEDIT_TEXT):
+		if (ctx.preedit_active && ((e.x == 0) || (e.x == ctx.preedit_focus))):
+			int cp = e.code
+			if ((cp >= 32) && (cp <= 1114111) && ((cp < 55296) || (cp > 57343))):
+				char[4] bytes
+				int n = utf8_encode(&bytes[0], cp)
+				if (ctx.preedit_length + n < 1024):
+					for i in range(n): ctx.preedit[ctx.preedit_length + i] = bytes[i]
+					ctx.preedit_length = ctx.preedit_length + n
+					ctx.preedit[ctx.preedit_length] = 0
+	else if (e.kind == GFX_EVENT_PREEDIT_END):
+		if ((e.x == 0) || (e.x == ctx.preedit_focus)):
+			ctx.preedit_active = 0
+			ctx.preedit_length = 0
+			ctx.preedit[0] = 0
 	else if (e.kind == GFX_EVENT_CHAR):
 		if (ctx.char_count < 32):
 			ctx.chars[ctx.char_count] = e.code
@@ -158,6 +187,10 @@ int ui_text_input_active(ui_context* ctx):
 # the press owner once the release has been seen by every widget.
 void ui_end(ui_context* ctx):
 	ui_render_end(ctx.rndr)
+	if (ctx.preedit_focus != ctx.focus):
+		ctx.preedit_active = 0
+		ctx.preedit_length = 0
+		ctx.preedit[0] = 0
 	# Sync only after every widget has declared itself; no transient blur
 	# between ui_begin and the focused field. Headless tests have no host.
 	if (ctx.rndr.gl_ready):
@@ -243,3 +276,18 @@ ui_color ui_widget_fill(ui_context* ctx, int id):
 ui_color ui_text_color(ui_context* ctx):
 	if (ctx.disabled): return ctx.theme.disabled_text
 	return ctx.theme.text
+
+
+# Draw a clipped, underlined IME preview at the insertion point. The
+# caller's buffer/selection remains untouched until committed CHARs arrive.
+void ui_text_preedit(ui_context* ctx, int id, ui_rect clip, float32 x, float32 y):
+	if ((ctx.focus != id) || (ctx.preedit_focus != id) || (ctx.preedit_active == 0)): return
+	if (ctx.disabled || ui_scope_blocked(ctx)): return
+	ui_clip_push(ctx.rndr, clip)
+	int scale = ctx.theme.text_scale
+	int width = ui_text_width(&ctx.preedit[0], scale)
+	int height = ui_text_height(scale)
+	ui_render_rect(ctx.rndr, ui_rect_new(x, y, cast(float32, width), cast(float32, height)), ctx.theme.widget)
+	ui_draw_text(ctx.rndr, x, y, &ctx.preedit[0], scale, ctx.theme.text)
+	ui_render_rect(ctx.rndr, ui_rect_new(x, y + cast(float32, height - 1), cast(float32, width), 1.0), ctx.theme.focus)
+	ui_clip_pop(ctx.rndr)

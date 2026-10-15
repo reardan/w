@@ -78,6 +78,12 @@ struct ui_context:
 	int32[8] navs          # GFX_EVENT_NAV codes in arrival order
 	int32[8] nav_mods      # gfx_mod bits held for navs[i]
 	int32 nav_count
+	# Persistent IME preview, separate from caller-owned document text.
+	char[1024] preedit
+	int32 preedit_length
+	int32 preedit_focus
+	int32 preedit_active
+	int32 preedit_selection
 	# Layout regions, innermost at layout_depth - 1. ui_begin seeds
 	# depth 1 with the window, so the plain vertical stack is the
 	# root-region case.

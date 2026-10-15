@@ -6,32 +6,15 @@ Everything runs offline against checked-in fixtures -- no network, no
 openssl. The core correctness test replays the RFC 8448 section 3 "Simple
 1-RTT Handshake" trace through the real client state machine.
 
-Note on the cipher suite: RFC 8448 section 3 negotiates TLS_AES_128_GCM_
-SHA256, but this client implements TLS_CHACHA20_POLY1305_SHA256 only. Every
-value the trace pins down that MATTERS -- the traffic secrets, the transcript
-hashes, the server CertificateVerify RSA-PSS signature and both Finished MACs
--- is derived from the SHA-256 key schedule and the handshake transcript and
-is therefore *independent of the record cipher*. So the replay injects the
-RFC's real ClientHello and client private key, feeds the RFC's real
-ServerHello (its AES suite id accepted via the loud test_accept_any_cipher
-knob) and the RFC's real server-flight PLAINTEXT re-sealed with ChaCha20 keys
-derived from the RFC's server handshake secret, and asserts:
-  - the derived client/server handshake + application traffic secrets equal
-    the RFC values,
-  - the handshake completes -- meaning the real RFC CertificateVerify
-    signature verified over our transcript and the real RFC server Finished
-    MAC (9b9b1...) matched,
-  - the client Finished the state machine emits carries the RFC's recorded
-    verify_data (a8ec4...).
-The ChaCha20 record layer itself is covered by its own module's RFC 8439 /
-Wycheproof vectors plus the round-trip and framing units below.
+The RFC 8448 replay uses its real AES-128-GCM suite, traffic secrets,
+CertificateVerify, and Finished MACs. AES-GCM has independent NIST vectors.
 
 Record-layer units: AEAD nonce construction vs a known vector, an AEAD round
 trip through the record framing, fragmented-handshake reassembly and
 max-length enforcement. Negative/fail-closed tests: a bad server Finished
 MAC, a tampered ciphertext byte (bad_record_mac), a CertificateVerify
 signature mismatch, a chain that fails x509_verify_chain, a fatal alert, and
-that a non-ChaCha ServerHello is rejected by default.
+that a unsupported-suite ServerHello is rejected by default.
 */
 import lib.testing
 import lib.memory
@@ -58,11 +41,12 @@ char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 	return out
 
 
-# Derive the ChaCha20 record key (32) + iv (12) for a traffic secret (hex).
+# Derive the AES-128-GCM record key (16) + iv (12) for a traffic secret (hex).
 void tlst_keys_from_secret(char* secret_hex, char* out_key, char* out_iv):
 	int slen = 0
 	char* secret = hex_decode_loose(secret_hex, &slen)
-	tls_derive_traffic_keys(WHASH_SHA256, secret, out_key, out_iv)
+	tls13_hkdf_expand_label(WHASH_SHA256, secret, c"key", 3, c"", 0, out_key, 16)
+	tls13_hkdf_expand_label(WHASH_SHA256, secret, c"iv", 2, c"", 0, out_iv, 12)
 	free(secret)
 
 
@@ -85,7 +69,9 @@ char* tlst_enc_record(char* key, char* iv, int seq_hi, int seq_lo, char* plain, 
 	tls_nonce(iv, seq_hi, seq_lo, nonce)
 	char* ct = cast(char*, malloc(inner_len))
 	char* tag = cast(char*, malloc(16))
-	chacha20poly1305_seal(key, nonce, rec, 5, inner, inner_len, ct, tag)
+	aes_gcm_key* aes = aes_gcm_key_new(key, 16)
+	assert_equal(1, aes_gcm_seal(aes, nonce, rec, 5, inner, inner_len, ct, tag))
+	aes_gcm_key_free(aes)
 	int i = 0
 	while (i < inner_len):
 		rec[5 + i] = ct[i]
@@ -110,7 +96,9 @@ int tlst_dec_record(char* key, char* iv, int seq_hi, int seq_lo, char* rec, int 
 	char* nonce = cast(char*, malloc(12))
 	tls_nonce(iv, seq_hi, seq_lo, nonce)
 	char* plain = cast(char*, malloc(ct_len))
-	int ok = chacha20poly1305_open(key, nonce, rec, 5, rec + 5, ct_len, rec + 5 + ct_len, plain)
+	aes_gcm_key* aes = aes_gcm_key_new(key, 16)
+	int ok = aes_gcm_open(aes, nonce, rec, 5, rec + 5, ct_len, rec + 5 + ct_len, plain)
+	aes_gcm_key_free(aes)
 	asserts(c"tlst_dec_record: open failed", ok != 0)
 	int p = ct_len - 1
 	while ((p >= 0) && (plain[p] == 0)): p = p - 1
@@ -209,7 +197,6 @@ char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off,
 tls_config* tlst_replay_config(char* ch, int ch_len, char* priv):
 	tls_config* cfg = tls_config_new()
 	cfg.insecure_skip_verify = 1
-	cfg.test_accept_any_cipher = 1
 	cfg.test_priv = priv
 	cfg.test_client_hello = ch
 	cfg.test_client_hello_len = ch_len
@@ -551,8 +538,9 @@ void test_bad_certverify():
 	tls_config_free(cfg)
 
 
-# With verification ON (default), the self-signed RFC test certificate does
-# not chain to any system trust anchor, so the handshake fails closed.
+# With verification ON, the RFC test certificate lacks a matching SAN.
+# Preserve the X.509 reason through the TLS API. Use an explicit test root
+# so the result is independent of the host trust store.
 void test_chain_verification_fails():
 	int ch_len = 0
 	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
@@ -560,7 +548,9 @@ void test_chain_verification_fails():
 	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tls_config_new()
 	cfg.insecure_skip_verify = 0        # verification ON
-	cfg.test_accept_any_cipher = 1
+	cfg.trust_store_path = c"libs/standard/net/x509_fixtures/ca_rsa.pem"
+
+
 	cfg.has_now_unix = 1
 	cfg.now_unix = 1500000000           # 2017, inside the cert's validity
 	cfg.test_priv = priv
@@ -570,6 +560,7 @@ void test_chain_verification_fails():
 	char* server_bytes = tlst_build_server_bytes(0 - 1, 0, 0 - 1, &sb_len)
 	tls_conn* c = tls_connect_mem(server_bytes, sb_len, c"rsa", cfg)
 	asserts(c"tls: untrusted chain must fail", c == 0)
+	assert_strings_equal(c"x509: hostname mismatch", tls_last_error(cfg))
 	free(server_bytes)
 	free(ch)
 	free(priv)
@@ -601,9 +592,8 @@ void test_fatal_alert():
 	tls_config_free(cfg)
 
 
-# A ServerHello negotiating a non-ChaCha suite is rejected by default (no
-# test_accept_any_cipher): our client offers only TLS_CHACHA20_POLY1305_SHA256.
-void test_non_chacha_suite_rejected():
+# Unsupported suites must be rejected before processing encrypted records.
+void test_unsupported_suite_rejected():
 	int ch_len = 0
 	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
@@ -616,8 +606,9 @@ void test_non_chacha_suite_rejected():
 	# RFC 8448 ServerHello negotiates TLS_AES_128_GCM_SHA256 (0x1301).
 	int sb_len = 0
 	char* server_bytes = tlst_build_server_bytes(0 - 1, 0, 0 - 1, &sb_len)
+	server_bytes[5 + 40] = 4   # TLS_AES_128_CCM_SHA256, unsupported
 	tls_conn* c = tls_connect_mem(server_bytes, sb_len, c"server", cfg)
-	asserts(c"tls: non-ChaCha suite must be rejected", c == 0)
+	asserts(c"tls: unsupported suite must be rejected", c == 0)
 	free(server_bytes)
 	free(ch)
 	free(priv)
@@ -627,7 +618,7 @@ void test_non_chacha_suite_rejected():
 # ---- ClientHello construction -------------------------------------------------
 
 # The builder must produce a well-formed ClientHello: right handshake header,
-# TLS 1.3 version, our single cipher suite, and an x25519 key_share carrying
+# TLS 1.3 version, our three cipher suites, and an x25519 key_share carrying
 # exactly the supplied public key.
 void test_client_hello_build():
 	char* rnd = cast(char*, malloc(32))
@@ -649,7 +640,7 @@ void test_client_hello_build():
 	char* want = hex_encode(pub, 32)
 	tlst_assert_hex(want, ch + len - 32, 32)
 	free(want)
-	# cipher_suites: length at 71..72, the single suite 0x1303 at 73..74.
+	# cipher_suites: length at 71..72, the first suite 0x1303 at 73..74.
 	assert_equal(TLS_SUITE_CHACHA20_POLY1305_SHA256, ((ch[73] & 255) << 8) | (ch[74] & 255))
 
 	free(ch)
@@ -668,10 +659,10 @@ void tlst_check_no_sni(char* name, char* rnd, char* sid, char* pub, int named_le
 	assert_equal(named_len - (9 + strlen(c"example.com")), len)
 	int body = ((ch[1] & 255) << 16) | ((ch[2] & 255) << 8) | (ch[3] & 255)
 	assert_equal(len - 4, body)
-	# Extensions length at 77..78, first extension type at 79..80.
-	int ext_len = ((ch[77] & 255) << 8) | (ch[78] & 255)
-	assert_equal(len - 79, ext_len)
-	assert_equal(TLS_EXT_SUPPORTED_VERSIONS, ((ch[79] & 255) << 8) | (ch[80] & 255))
+	# Extensions length at 81..82, first extension type at 83..84.
+	int ext_len = ((ch[81] & 255) << 8) | (ch[82] & 255)
+	assert_equal(len - 83, ext_len)
+	assert_equal(TLS_EXT_SUPPORTED_VERSIONS, ((ch[83] & 255) << 8) | (ch[84] & 255))
 	char* want = hex_encode(pub, 32)
 	tlst_assert_hex(want, ch + len - 32, 32)
 	free(want)
@@ -690,7 +681,7 @@ void test_client_hello_without_sni():
 		pub[i] = 0x80 + i
 	int named_len = 0
 	char* named = tls_build_client_hello(c"example.com", rnd, sid, pub, &named_len)
-	assert_equal(TLS_EXT_SERVER_NAME, ((named[79] & 255) << 8) | (named[80] & 255))
+	assert_equal(TLS_EXT_SERVER_NAME, ((named[83] & 255) << 8) | (named[84] & 255))
 	tlst_check_no_sni(0, rnd, sid, pub, named_len)
 	tlst_check_no_sni(c"", rnd, sid, pub, named_len)
 	free(named)
@@ -726,3 +717,45 @@ void test_connect_without_server_name_insecure_proceeds():
 	asserts(c"dead socket still fails", c == 0)
 	assert_strings_equal(c"tls: send ClientHello failed", tls_last_error(cfg))
 	tls_config_free(cfg)
+
+
+# OpenSSL SHA-384 signature using x509_fixtures/key_p384_pkcs8.pem over
+# 64 spaces || "TLS 1.3, server CertificateVerify" || NUL || bytes 0..31.
+# Fixed public vector: no OpenSSL or network dependency at test time.
+void test_p384_certverify():
+	int n = 0
+	char* qx = hex_decode_loose(c"3954433e70c2f049a13ad46dd63421dd30cdf50ba5c4c7b3d65edc6f43ad72cbf5b08de880e3da10b28bb01cb16dbdaf", &n)
+	char* qy = hex_decode_loose(c"fb390f5802d3344578c1ed3f0a745c966958b3c99233ad857286748b6693ab30b6b5e00b5a8725f3c58d6a44e628f88b", &n)
+	char* sig = hex_decode_loose(c"3065023100e2eba9392e041e886cb23881b8316308b99d9680d1c97334ffd84a0c25dd6b7a82004ae7169e580806b81aade065d61b023024a62614ff4bebc31d3e2291e0070c67fe34b56e2d856b6736362221b317d1d7112ae3b5d16e38745924eb9be94bac9b", &n)
+	char[32] transcript
+	for i in range(32): transcript[i] = i
+	x509_cert leaf
+	leaf.key_type = X509_KEY_EC_P384
+	leaf.ec_qx = qx
+	leaf.ec_qy = qy
+	assert_equal(1, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32))
+	assert_equal(0, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP256R1_SHA256, sig, n, transcript, 32))
+	assert_equal(0, tls_verify_certverify_role(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32, 1))
+	transcript[0] ^= 1
+	assert_equal(0, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32))
+	transcript[0] ^= 1
+	sig[n - 1] ^= 1
+	assert_equal(0, tls_verify_certverify(&leaf, TLS_SIG_ECDSA_SECP384R1_SHA384, sig, n, transcript, 32))
+	free(qx)
+	free(qy)
+	free(sig)
+
+
+# Compare the actual AES-GCM wire record to RFC 8448 section 3, not just
+# to another invocation of our own decryptor.
+void test_rfc8448_encrypted_server_record():
+	int n = 0
+	char* flight = hex_decode_loose(rfc_flight_plain_hex(), &n)
+	char[32] key
+	char[12] iv
+	tlst_keys_from_secret(rfc_shts_hex(), key, iv)
+	int rn = 0
+	char* record = tlst_enc_record(key, iv, 0, 0, flight, n, TLS_CT_HANDSHAKE, &rn)
+	tlst_assert_hex(c"17030302a2d1ff334a56f5bff6594a07cc87b580233f500f45e489e7f33af35edf7869fcf40aa40aa2b8ea73f848a7ca07612ef9f945cb960b4068905123ea78b111b429ba9191cd05d2a389280f526134aadc7fc78c4b729df828b5ecf7b13bd9aefb0e57f271585b8ea9bb355c7c79020716cfb9b1183ef3ab20e37d57a6b9d7477609aee6e122a4cf51427325250c7d0e509289444c9b3a648f1d71035d2ed65b0e3cdd0cbae8bf2d0b227812cbb360987255cc744110c453baa4fcd610928d809810e4b7ed1a8fd991f06aa6248204797e36a6a73b70a2559c09ead686945ba246ab66e5edd8044b4c6de3fcf2a89441ac66272fd8fb330ef8190579b3684596c960bd596eea520a56a8d650f563aad27409960dca63d3e688611ea5e22f4415cf9538d51a200c27034272968a264ed6540c84838d89f72c24461aad6d26f59ecaba9acbbb317b66d902f4f292a36ac1b639c637ce343117b659622245317b49eeda0c6258f100d7d961ffb138647e92ea330faeea6dfa31c7a84dc3bd7e1b7a6c7178af36879018e3f252107f243d243dc7339d5684c8b0378bf30244da8c87c843f5e56eb4c5e8280a2b48052cf93b16499a66db7cca71e4599426f7d461e66f99882bd89fc50800becca62d6c74116dbd2972fda1fa80f85df881edbe5a37668936b335583b599186dc5c6918a396fa48a181d6b6fa4f9d62d513afbb992f2b992f67f8afe67f76913fa388cb5630c8ca01e0c65d11c66a1e2ac4c85977b7c7a6999bbf10dc35ae69f5515614636c0b9b68c19ed2e31c0b3b66763038ebba42f3b38edc0399f3a9f23faa63978c317fc9fa66a73f60f0504de93b5b845e275592c12335ee340bbc4fddd502784016e4b3be7ef04dda49f4b440a30cb5d2af939828fd4ae3794e44f94df5a631ede42c1719bfdabf0253fe5175be898e750edc53370d2b", record, rn)
+	free(record)
+	free(flight)
