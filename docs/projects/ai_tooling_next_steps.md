@@ -31,6 +31,12 @@ cross-host workflow instead of failing after unrelated tests have run.
 
 ## Debugging generated test runners (2026-10-09)
 
+`wdbg64` does not apply `--import-root` to in-process debuggee compilation
+(2026-10-15, #647). A Win consumer that passes `wv2 x64 check --json
+--import-root win/src --import-root W` cannot resolve `win.script` under the
+debugger. Forward import roots into in-process setup; a temporary working
+directory with a `win` symlink currently supplies the missing search root.
+
 `bin/wdbg tests/shell_execute_test.w --break_start` crashed in the
 `lib.testing` generated runner before reaching a source breakpoint during
 shell completion work, while the compiled test binary reached its ordinary
@@ -46,6 +52,11 @@ or document its value semantics at the check site; avoid a clean check
 suggesting that it behaves like pointer arithmetic.
 
 ## Diagnostics (`w check`)
+
+- **ARM64 check errors report x64 architecture (2026-10-10).**
+  `w check --json arm64 tools/wexec_main.w` correctly selected the ARM64
+  import path but reported `"arch": "x64"` for a missing platform module.
+  Derive diagnostic architecture from the target selector, not word size.
 
 - **Compiler-directory test roots are silently replaced (2026-10-07).**
   `w check --json compiler/type_table_test.w` checks `w.w`, so a clean

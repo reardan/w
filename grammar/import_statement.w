@@ -74,6 +74,7 @@ char* import_resolve_arch(char* path):
 				else if (target_os == 2): arch = c"win64"
 				else if (target_isa == 1):
 					arch = c"arm64"
+					if (target_os == 4): arch = c"arm64_android"
 					if (target_os == 1):
 						arch = c"arm64_darwin"
 						if (target_apple_platform == 2): arch = c"arm64_ios"

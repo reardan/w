@@ -680,6 +680,7 @@ void compile_save(char* fn):
 int target_is_selector(char* arg):
 	if (strcmp(arg, c"x64") == 0): return 1
 	if (strcmp(arg, c"arm64") == 0): return 1
+	if (strcmp(arg, c"arm64_android") == 0): return 1
 	if (strcmp(arg, c"arm64_darwin") == 0): return 1
 	if (strcmp(arg, c"arm64_ios") == 0): return 1
 	if (strcmp(arg, c"arm64_ios_sim") == 0): return 1
@@ -708,8 +709,17 @@ int target_selector_apply(char* arg):
 		# data segment; the code segment is mapped read-execute.
 		data_split = 1
 		return 1
-	if (strcmp(arg, c"arm64") == 0):
-		if (quiet_mode == 0): println2(c"Compiling in arm64 mode")
+	if ((strcmp(arg, c"arm64") == 0) || (strcmp(arg, c"arm64_android") == 0)):
+		if (strcmp(arg, c"arm64_android") == 0):
+			target_os = 4
+			elf_pie = 1
+			# Android arm64-v8a includes ARMv8.0 devices. Register-form
+			# PAC instructions require v8.3; supported devices can opt in.
+			arm64_pac = 0
+		if (quiet_mode == 0):
+			print2(c"Compiling in ")
+			print2(arg)
+			println2(c" mode")
 		# AArch64 is a 64-bit target, so it inherits the x64 type system
 		# (8-byte pointers, int64, float64); target_isa selects the A64
 		# instruction emitter and the Mach-O/ELF-arm64 container.
@@ -947,6 +957,7 @@ int link_option(char* arg, int apply):
 			cond_branch_disabled = 1
 			loop_rotate_disabled = 1
 			ers_disabled = 1
+			ivopt_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
 		if (apply): regalloc_disabled = 0
@@ -957,6 +968,12 @@ int link_option(char* arg, int apply):
 	# and the fallback a guard failure asks for.
 	if (strcmp(arg, c"--no-direct-calls") == 0):
 		if (apply): direct_calls_disabled = 1
+		return 1
+	# Register arguments (unit O5, compiler/regalloc_scan.w): on by
+	# default on x64 Linux; --no-reg-args passes every argument on the
+	# stack, the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-reg-args") == 0):
+		if (apply): reg_args_disabled = 1
 		return 1
 	# Addressing modes (docs/projects/codegen_gap_plan.md §2.2, unit A2)
 	# are on by default on x86/x64; --no-addr-modes keeps the
@@ -1006,6 +1023,15 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--loop-rotate") == 0):
 		if (apply): loop_rotate_disabled = 0
 		return 1
+	# Induction-variable pointers (compiler/ivopt.w, unit O7) are on by
+	# default on x64; --no-ivopts (and -O0) keeps every subscript's own
+	# address arithmetic, the reference for tests/regalloc_diff_test.w.
+	if (strcmp(arg, c"--no-ivopts") == 0):
+		if (apply): ivopt_disabled = 1
+		return 1
+	if (strcmp(arg, c"--ivopts") == 0):
+		if (apply): ivopt_disabled = 0
+		return 1
 	# Narrow integer promotion (docs/projects/codegen_gap_plan.md §2.7,
 	# unit A8): int32/uint32 locals and arguments take registers like
 	# 'int' on x86/x64; --no-narrow-regs keeps them on the stack, the
@@ -1017,11 +1043,12 @@ int link_option(char* arg, int apply):
 		if (apply): narrow_regs_disabled = 0
 		return 1
 	# Inlining of small leaf callees (unit A5, compiler/inline_table.w)
-	# is opt-in on x86/x64 Linux: --inline turns it on, --profile-use
-	# turns it on for the sites the profile marks hot, and --no-inline
-	# keeps every call a call whatever else was given (the reference
-	# for tests/regalloc_diff_test.w and the fallback a guard failure
-	# asks for).
+	# is on by default on x86/x64 Linux for tiny leaves only: --inline
+	# raises the budgets, --profile-use raises them for the sites the
+	# profile marks hot, and --no-inline keeps every call a call
+	# whatever else was given (the reference for
+	# tests/regalloc_diff_test.w and the fallback a guard failure asks
+	# for).
 	if (strcmp(arg, c"--inline") == 0):
 		if (apply): inline_requested = 1
 		return 1
@@ -1057,7 +1084,7 @@ int link_option(char* arg, int apply):
 void help_shared_options():
 	println(c"  -o <path>             write the executable to <path> (mode 0755)")
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
-	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
+	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (Android: off, otherwise: ret)")
 	println(c"  --safe                experimental ownership and borrowing checks")
 	println(c"  --strict              treat warnings as errors and write no output")
 	println(c"  --no-asm              compile portable W bodies, ignoring 'asm <isa>:' blocks")
@@ -1082,22 +1109,24 @@ void help_shared_options():
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --static              emit an x64 W compiled static library (.wa)")
-	println(c"  --shared              emit an x64 Linux shared library (export functions)")
+	println(c"  --shared              emit an x64/arm64 ELF shared library (export functions)")
 	println(c"  --link=<path>         link a shared library, repeatable")
-	println(c"  --pie                 emit an x64 Linux position-independent executable")
+	println(c"  --pie                 emit an x64/arm64 ELF position-independent executable")
 	println(c"  --syscall-abi=vmcall   emit an x64 static KVM cell executable")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --no-regs, -O0        keep every local on the stack (no register promotion)")
 	println(c"  --no-cond-branch      materialize &&/||/! in conditions (no branch-on-flags chains); -O0 too")
 	println(c"  --no-loop-rotate      keep while/for loops top-tested (no bottom-tested rotation); -O0 too")
+	println(c"  --no-ivopts           no induction-variable pointers for array walks in loops (x64); -O0 too")
 	println(c"  --regs                promote hot locals into callee-saved registers (default)")
 	println(c"  --no-narrow-regs      keep int32/uint32 locals and arguments on the stack (no 32-bit registers)")
 	println(c"  --no-direct-calls     call known functions through the accumulator, not `call rel32`")
+	println(c"  --no-reg-args         x64: pass every argument on the stack (no register entries)")
 	println(c"  --no-addr-modes       address every load and store through the accumulator, no [base+index*scale+disp] operands")
 	println(c"  --no-expr-regs        park every waiting operand on the stack, not in a scratch register; -O0 too")
 	println(c"  --no-x86-budget       x86-32: no loop registers in ecx/edx (the pre-A9 register budget)")
-	println(c"  --inline              emit a small leaf callee's body in place of its call (on for")
-	println(c"                        profile-hot sites under --profile-use)")
+	println(c"  --inline              emit small leaf callees' bodies in place of their calls (tiny")
+	println(c"                        leaves always are; larger for profile-hot sites under --profile-use)")
 	println(c"  --no-inline           never emit a callee's body in place of a call")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
@@ -1113,6 +1142,7 @@ void help_selectors():
 	println(c"the subcommand word or anywhere before the first input file):")
 	println(c"  x64           64-bit x86-64 Linux ELF")
 	println(c"  arm64         64-bit AArch64 Linux ELF")
+	println(c"  arm64_android 64-bit AArch64 Android ELF (PIE, 16 KB pages)")
 	println(c"  arm64_darwin  64-bit AArch64 macOS Mach-O (self-signed)")
 	println(c"  arm64_ios     64-bit AArch64 iOS Mach-O (requires app signing)")
 	println(c"  arm64_ios_sim 64-bit AArch64 iOS Simulator Mach-O")
@@ -1121,7 +1151,7 @@ void help_selectors():
 
 
 void help_link():
-	println(c"usage: w [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
+	println(c"usage: w [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
 	println(c"")
 	println(c"Compile W source files into a native executable. Without -o the")
 	println(c"executable bytes are written to stdout.")
@@ -1144,7 +1174,7 @@ void help_link():
 
 
 void help_check():
-	println(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+	println(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 	println(c"")
 	println(c"Compile without writing an executable. Diagnostics go to stderr; with")
 	println(c"--json each becomes one NDJSON record on stdout. Empty output with")
@@ -1171,7 +1201,7 @@ void help_check():
 
 
 void help_deps():
-	println(c"usage: w deps [--json] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+	println(c"usage: w deps [--json] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 	println(c"")
 	println(c"Compile like 'w check', then print the path of every file in the")
 	println(c"program's transitive import closure (the root, every import, and the")
@@ -1186,7 +1216,7 @@ void help_deps():
 
 
 void help_symbols():
-	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 	println(c"")
 	println(c"Compile like 'w check', then dump the global symbol table and the")
 	println(c"user-declared types with their declaration locations.")
@@ -1207,7 +1237,7 @@ void help_symbols():
 
 
 void help_defhash():
-	println(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+	println(c"usage: w defhash [--closure] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 	println(c"")
 	println(c"Compile like 'w check', then print one NDJSON record per top-level")
 	println(c"definition declared in the root file(s): file, name, kind, a sha256")
@@ -1293,7 +1323,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	code_fixed = 0
 	code_fixed_error_hook = 0
 	if (argc <= start_index):
-		println2(c"usage: w [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
+		println2(c"usage: w [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe] [--quiet] [-v|--verbose] [--version]")
 		println2(c"run 'w --help' for details")
 		exit(1)
 	int i = start_index
@@ -1311,6 +1341,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	data_split = 1
 	elf_pie = 0
 	elf_shared = 0
+	elf_soname = 0
 	elf_static = 0
 	static_address_count = 0
 	wasm_export_count = 0
@@ -1510,6 +1541,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-regs") == 0) || (strcmp(*flag_arg, c"-O0") == 0) || (strcmp(*flag_arg, c"--regs") == 0)):
 				link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-direct-calls") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--no-reg-args") == 0): link_option(*flag_arg, 1)
 			if (strcmp(*flag_arg, c"--no-addr-modes") == 0): link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-expr-regs") == 0) || (strcmp(*flag_arg, c"--expr-regs") == 0)):
 				link_option(*flag_arg, 1)
@@ -1518,6 +1550,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--no-cond-branch") == 0) || (strcmp(*flag_arg, c"--cond-branch") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-loop-rotate") == 0) || (strcmp(*flag_arg, c"--loop-rotate") == 0)):
+				link_option(*flag_arg, 1)
+			if ((strcmp(*flag_arg, c"--no-ivopts") == 0) || (strcmp(*flag_arg, c"--ivopts") == 0)):
 				link_option(*flag_arg, 1)
 			if ((strcmp(*flag_arg, c"--no-narrow-regs") == 0) || (strcmp(*flag_arg, c"--narrow-regs") == 0)):
 				link_option(*flag_arg, 1)
@@ -1549,10 +1583,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (elf_static && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
 		target_option_error(c"--static requires the x64 Linux target")
 	if (elf_static && profile_generate_mode): target_option_error(c"--static does not support profiling instrumentation")
-	if (elf_shared && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
-		target_option_error(c"--shared requires the x64 Linux target")
-	if (elf_pie && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
-		target_option_error(c"--pie requires the x64 Linux target")
+	if (elf_shared && ((word_size != 8) || ((target_isa != 0) && (target_isa != 1)) || ((target_os != 0) && (target_os != 4)))):
+		target_option_error(c"--shared requires an x64 or arm64 ELF target")
+	if (elf_pie && ((word_size != 8) || ((target_isa != 0) && (target_isa != 1)) || ((target_os != 0) && (target_os != 4)))):
+		target_option_error(c"--pie requires an x64 or arm64 ELF target")
 	if (x64_syscall_abi && (word_size != 8 || target_isa != 0 || target_os != 0 || elf_pie)):
 		target_option_error(c"--syscall-abi=vmcall requires static non-PIE x64 Linux")
 	import_roots_scan(argc, argv)
@@ -1753,9 +1787,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			print_error(c"': ")
 			translate_syscall_failure(output_fd)
 			exit(1)
-		partial_output_path = output_path
+		# A device such as -o /dev/null is not a partial executable: never
+		# unlink it on a later error (as root that deletes the device, and
+		# the next O_CREAT open recreates it as a regular file that other
+		# processes' output then lands in).
+		if (starts_with(output_path, c"/dev/") == 0): partial_output_path = output_path
 	if (check_mode):
-		output_fd = open(c"/dev/null", 577, 493)
+		# O_WRONLY only: never create /dev/null as a regular file.
+		output_fd = open(c"/dev/null", 1, 0)
 		if (output_fd < 0):
 			# Windows: /dev/null does not exist; use the NUL device instead
 			output_fd = open(c"NUL", 577, 493)
@@ -1771,6 +1810,12 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# start of .text for them (debug_elf_origin, code_generator/pe_64.w).
 	# Mach-O debug info is a later stage.
 	# P1: lay out the --profile-generate counter table, hook exit, write the map.
+	if ((target_os == 4) && elf_shared):
+		elf_soname = c"libw.so"
+		if (output_path != 0):
+			elf_soname = output_path
+			for p in range(strlen(output_path)):
+				if ((output_path[p] == '/') || (output_path[p] == '\\')): elf_soname = output_path + p + 1
 	profile_finish(output_path, check_mode)
 	if (elf_shared || elf_static): elf_emit_export_wrappers()
 	if (elf_static):
@@ -1781,7 +1826,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# Dependency discovery needs source imports, not a loadable image.
 	# Extern-only consumers can be scanned before their libraries exist.
 	if (deps_mode == 0):
-		if ((target_os == 0) || (target_os == 2)): emit_debugging_symbols(word_size)
+		if ((target_os == 0) || (target_os == 2) || (target_os == 4)): emit_debugging_symbols(word_size)
 		be_finish(word_size)
 
 	if ((output_path != 0) | check_mode): close(output_fd)
@@ -2053,14 +2098,14 @@ int check_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+		println2(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 		println2(c"run 'w check --help' for details")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
 
 
 /*
-w deps [--json] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
+w deps [--json] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints the path of
 every file in the program's transitive import closure — the root file,
@@ -2157,7 +2202,7 @@ int deps_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+		println2(c"usage: w deps [--json] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 		println2(c"run 'w deps --help' for details")
 		exit(1)
 	deps_mode = 1
@@ -2167,7 +2212,7 @@ int deps_main(int argc, int argv):
 
 
 /*
-w defhash [--closure] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
+w defhash [--closure] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then prints one NDJSON
 record per top-level definition (function, global variable, struct,
@@ -2607,7 +2652,7 @@ int defhash_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 		println2(c"run 'w defhash --help' for details")
 		exit(1)
 	defhash_mode = 1
@@ -2618,7 +2663,7 @@ int defhash_main(int argc, int argv):
 
 
 /*
-w symbols [--json] [--layout] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
+w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64] <file.w>...
 
 Compiles like 'w check' (output to /dev/null), then dumps the global symbol
 table and user-declared types with their declaration locations. --json emits
@@ -2707,6 +2752,7 @@ char* symbols_arch_name():
 			if (target_apple_platform == 2): return c"arm64_ios"
 			if (target_apple_platform == 7): return c"arm64_ios_sim"
 			return c"arm64_darwin"
+		if (target_os == 4): return c"arm64_android"
 		return c"arm64"
 	if (target_isa == 2): return c"wasm"
 	if (target_os == 2): return c"win64"
@@ -2885,7 +2931,7 @@ int symbols_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)

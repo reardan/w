@@ -23,10 +23,10 @@
 # a callee defined after the caller, calls as arguments of calls, a
 # switch, defer (never inlined), and an inlined callee that is also
 # used through a function pointer, and calls as operands of condition
-# chains and of subscripts and field accesses. The default build keeps
-# every call a call; the extra steps run the same program built with
-# --inline on both widths, and check that such a build reports inlining
-# in its --stats.
+# chains and of subscripts and field accesses. The default build
+# inlines only the tiniest of these (tests/inline_const_test.w); the
+# extra steps run the same program built with --inline on both widths,
+# and check that such a build reports inlining in its --stats.
 import lib.lib
 import lib.assert
 

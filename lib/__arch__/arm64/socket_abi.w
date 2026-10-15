@@ -1,8 +1,2 @@
-# Per-target socket ABI values for lib/net.w (plan 11 phase 2 darwin
-# socket audit, issue #200): the parts of the BSD socket interface that
-# Linux and Darwin define differently. lib/net.w imports this module
-# through the reserved __arch__ path segment, so one import line binds
-# the right values for whichever target is being compiled.
-#
-# Linux arm64 values: lib/socket_abi_linux.w, shared with x86 and x64.
-import lib.socket_abi_linux
+# Shared Linux/Android AArch64 kernel ABI.
+import lib.arm64.socket_abi

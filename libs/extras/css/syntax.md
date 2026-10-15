@@ -17,6 +17,7 @@ The scanner visits input bytes left to right with this priority:
 4. Optional sign, digits and/or decimal fraction, optional exponent → `number`.
    An immediately following identifier makes `dimension`; `%` makes `percentage`.
    Decoded values retain numeric spelling and decoded unit or percent suffix.
+   `number_length` records the numeric prefix boundary before escape decoding.
 5. Name-start, `--`, `-` followed by name-start, or valid escape → `ident`,
    except an ASCII-case-insensitive decoded `url` immediately followed by `(`.
    When the next non-whitespace byte is not a quote, consume a `url` token
@@ -27,7 +28,9 @@ The scanner visits input bytes left to right with this priority:
    EOF; internal punctuation never becomes component delimiters. A quoted URL
    retains the existing `ident` plus balanced-parenthesis/string representation.
 6. `@` followed by an identifier → `at-keyword`; `#` followed by name character
-   or valid escape → `hash`. Their decoded values omit the prefix.
+   or valid escape → `hash`. Their decoded values omit the prefix. Hash tokens
+   record `hash_id` when the raw spelling after `#` would start an identifier;
+   unrestricted hashes such as `#123` remain distinct from escaped ID hashes.
 7. Any other byte → `delim`.
 
 Names allow ASCII letters, underscore, non-ASCII bytes, digits after the first
@@ -43,12 +46,13 @@ UTF-8. Raw source spans always refer to the original bytes.
 Delimiter tokens `(`, `[`, `{` and their matching closers retain partner token
 indices. Comments and strings never contribute delimiters. Unexpected closers
 are diagnosed without altering the opening stack. EOF implicitly closes
-remaining blocks for tree parsing; their `match` stays -1 and diagnostics record
-that closure. No synthetic tokens are appended.
+remaining blocks/functions with synthetic closing delimiter tokens whose source
+spans are `[length,length)`. Partner indices remain valid for consumers and
+diagnostics record the closure. Synthetic tokens count toward the token limit.
 
 A stylesheet is a list of qualified rules and at-rules. Each rule retains its
-prelude token range. A qualified rule requires a brace block. A semicolon ends
-an invalid qualified prelude and recovery resumes after it. At-rules end at a
+prelude token range. A qualified rule requires a brace block. Semicolons remain
+inside qualified preludes for downstream grammar validation. At-rules end at a
 semicolon, brace block or EOF. `media`, `supports`, `layer`, `container` and
 `keyframes` blocks recursively contain rules; `font-face` and `page` blocks
 contain declarations. Unknown at-rule blocks are retained as opaque token
