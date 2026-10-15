@@ -2,31 +2,32 @@
 
 `libs/extras/javascript/modules.w` evaluates an acyclic graph of modules using
 validated parser nodes and the existing runtime AST evaluator. It is a standalone
-host API. **The browser does not yet load or execute module scripts.** No network
-policy or browser integration is supplied by this library.
+host API. The Win browser integrates it through `win/src/win/modules.w`, which
+prefetches a bounded source graph asynchronously before invoking the synchronous
+resolver. Network policy remains the browser host's responsibility.
 
 ## Supported subset
 
 - Named imports, including aliases: `import {value as local} from './dep.js'`.
 - Side-effect imports: `import './setup.js'`.
-- Immutable declaration exports: `export const value = 42`.
-- Local export aliases of const or imported bindings: `export {value as answer}`.
+- Const declaration exports, including binding patterns: `export const {value} = object`.
+- Function declaration exports: `export function f() { return 1; }`.
+- Local export aliases of const, function, or imported bindings: `export {value as answer}`.
 - Ordinary module bodies within the existing runtime's syntax subset, with
   separate strict environments, private lexical bindings, and undefined
   top-level `this`.
 
-**Mutable exports are rejected.** This includes exported `let`, `var`, and
-function declarations, including indirect local export clauses. The runtime does
-not yet implement live import bindings. Restricting exports to immutable bindings
-makes importing their values correct: exported objects retain shared identity,
-object properties remain mutable, and exported const function values retain their
-closures. Imported bindings are immutable. This is not general ECMAScript module
-support.
+Exported `let` and `var` declarations remain rejected, including indirect local
+export clauses. Function declarations may be reassigned inside their module;
+imports are live aliases and observe the current exported value. Import bindings
+remain read-only in the importer. Exported objects retain shared identity and
+mutable properties, and exported functions retain their closure environments.
+This is not general ECMAScript module support.
 
 Default/namespace imports, default/star exports, `export ... from`, cycles,
 dynamic import, import metadata, top-level await, and unsupported body syntax
-produce explicit failures. To export a function in this subset, use a const
-function value, such as `export const f = () => 1`.
+produce explicit failures. No source rewriting or synchronous approximation of
+`await` is performed.
 
 The implementation extracts import/export metadata from the validated parser
 structure and lowers executable statements directly into owned AST nodes. It
@@ -80,7 +81,8 @@ name, unevaluated module, or foreign record. Root retained values with
 `js_runtime_root` across loader destruction or collection. The loader roots each
 module's environment and cached exception. Free the loader **before** its borrowed
 runtime. Executable ASTs remain runtime-owned, allowing rooted exported closures
-to survive loader destruction. Internal link/execute helpers are not host entry
+to survive loader destruction. Live imported aliases retain their dependency
+environments across collection even after the loader has been destroyed. Internal link/execute helpers are not host entry
 points.
 
 ## Limits and tests
@@ -106,5 +108,17 @@ The test's build directives register `javascript_modules_test` with the generate
 manifest. Tests cover graph caching, aliases, shared identity, private scopes,
 strict evaluation, closure lifetime, read-only imports, preflight rejection,
 cached failures through different and previously linked parents, reentrancy, and
-resource limits. Browser integration and mutable live bindings remain separate
-work.
+resource limits. Tests also exercise destructured const exports, function
+reassignment observed through imports, and imported closures after loader teardown
+and collection.
+
+Win's source cache accepts URL-like specifiers, rejects bare and cross-origin
+requests, and resolves relative dependencies against the response URL. It limits
+concurrency to three cancellable loaders. Source/graph failures are currently
+sticky for the document's module context; there are no import maps or CORS module
+fetches. Its integration test executes the unchanged `webgl_env.mjs`,
+`accessibility.mjs`, and `mobile_input.mjs`, including `makeEnv` and the event queue.
+The original `tools/web/index.html` still needs top-level await; the original
+`wasi_lite.mjs` additionally needs classes, `super`, `instanceof`, and BigInt
+arithmetic. Passing module preflight does not imply every API used by an uncalled
+export (for example `Map` or DOM accessibility operations) is available.

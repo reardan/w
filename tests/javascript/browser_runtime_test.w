@@ -76,7 +76,7 @@ void browser_semantics():
 	assert_equal(6, browser_eval(rt, c"for (const x of {}) {}").status)
 	assert_equal(6, browser_eval(rt, c"for (const x in {}) {}").status)
 	assert_equal(6, browser_eval(rt, c"async x => x;").status)
-	assert_equal(6, browser_eval(rt, c"(x = 1) => x;").status)
+	browser_number(rt, c"((x = 1) => x)();", 1.0)
 	browser_number(rt, c"const receiver = {answer: 42, method: function() { return () => this.answer; }}; const captured = receiver.method(); captured();", 42.0)
 	browser_number(rt, c"const rebound = {answer: 7, captured}; rebound.captured();", 42.0)
 	js_runtime_collect(rt)
