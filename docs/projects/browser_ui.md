@@ -2,8 +2,8 @@
 
 Third party browser applications can use the existing TrueType rasterizer,
 UTF-8 drawing, pair kerning, clipping and font fallback APIs, plus the new
-[shaped-run adapter](text_shaping.md), [text/IME input](text_input.md), and
-[macOS native accessibility bridge](accessibility.md). These are reusable
+[paragraph bidi and shaped-run adapters](text_shaping.md), [text/IME input](text_input.md), and
+[web and macOS accessibility bridges](accessibility.md). These are reusable
 library APIs; page layout, DOM focus, selection and application policy remain
 with the browser.
 
@@ -58,8 +58,15 @@ on Linux; AppKit compilation, runtime tests and VoiceOver qualification need a
 Mac. Portable tests cover ownership, limits, focus actions and default-theme
 contrast.
 
+The opt-in `graphics.ui.accessibility_web` bridge publishes snapshots through
+the wasm host into an ARIA DOM mirror. It exposes document structure and
+controls, queues focus/activation/value requests, and revalidates those requests
+against the W snapshot. Replacing or closing a publication invalidates actions
+from its old DOM elements. See [accessibility](accessibility.md) for publication,
+ownership, host setup and the limits of the initial role/state mapping.
+
 Immediate-mode widgets do not automatically populate snapshots or install
-widget-wide Tab/Shift-Tab routing. Web ARIA, Linux AT-SPI and Windows UI
+widget-wide Tab/Shift-Tab routing. Linux AT-SPI and Windows UI
 Automation remain open parts of #465. Build the semantic tree from visible
 controls and page content, route focus through application callbacks, and draw
 a visible focus indicator when integrating the bridge.
@@ -89,7 +96,11 @@ real input methods; headless event tests alone cannot establish that behavior.
 For document rendering, `graphics.ui.shape` can shape and draw a single
 font/script/direction run through HarfBuzz on Linux x64. It preserves source
 clusters and positioned glyphs, including substitutions and combining marks.
-Ordinary widget drawing still uses codepoint lookup and pair kerning. Paragraph
-bidi ordering, script/font segmentation, shaped caret layout, CFF outlines and
-broader native input remain open parts of #459. See [shaping](text_shaping.md)
+`graphics.ui.bidi` additionally resolves a single unwrapped paragraph through
+FriBidi on Linux x64, providing logical directional ranges and visual run order.
+Feed the original logical slices to the shaper; scalar reordering maps are not
+glyph or caret positions. The host still selects scripts/fonts and line breaks.
+Ordinary widget drawing still uses codepoint lookup and pair kerning. Portable
+bidi/shaping, wrapped-line reordering, script/font segmentation, shaped caret
+layout, CFF outlines and broader native input remain open parts of #459. See [shaping](text_shaping.md)
 for font coverage, optional dependencies and explicit limits.

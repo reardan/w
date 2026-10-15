@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { WASI } from 'node:wasi';
+import { makeEnv } from './webgl_env.mjs';
+import { createAccessibility } from './accessibility.mjs';
+import { makeDocument } from './accessibility_dom_fixture.mjs';
+const document = makeDocument(), container = document.createElement('div');
+const access = createAccessibility({ document, container });
+const wasi = new WASI({ version: 'preview1', args: [process.argv[2]], env: {}, returnOnExit: true });
+let instance;
+const env = makeEnv({ memory: () => instance.exports.memory, gl: {}, host: { accessibility: access } });
+instance = await WebAssembly.instantiate(await WebAssembly.compile(await readFile(process.argv[2])), {
+  ...wasi.getImportObject(), env,
+});
+assert.equal(wasi.start(instance), 0);
+const api = instance.exports;
+let [button, textbox] = container.children[0].children[0].children;
+assert.equal(button.getAttribute('aria-label'), 'Open <日本>');
+assert.equal(textbox.value, 'a\u0000é');
+button.emit('click');
+textbox.focus();
+textbox.value = '文\u0000🙂'; textbox.emit('input');
+assert.equal(api.web_test_other_snapshot(), 0);
+assert.equal(api.web_test_dispatch(), 3);
+assert.equal(api.web_test_call_count(), 3);
+assert.equal(api.web_test_focus(), 3);
+assert.equal(api.web_test_dispatch(), 0);
+// Host snapshot says enabled; W state changed before dispatch. W must reject.
+button.emit('click'); api.web_test_disable();
+assert.equal(api.web_test_dispatch(), 1);
+assert.equal(api.web_test_call_count(), 3);
+textbox.value = '文\u0000🙂'; textbox.emit('input');
+assert.equal(api.web_test_publish(), 1);
+textbox.emit('input'); button.emit('click');
+assert.equal(api.web_test_dispatch(), 0, 'old generation objects/queued actions cannot target new snapshot');
+[button, textbox] = container.children[0].children[0].children;
+assert.equal(button.getAttribute('aria-disabled'), 'true');
+assert.equal(document.activeElement, textbox);
+button.emit('click'); assert.equal(api.web_test_dispatch(), 0);
+textbox.value = '文\u0000🙂'; textbox.emit('input');
+assert.equal(api.web_test_dispatch(), 1); assert.equal(api.web_test_call_count(), 4);
+api.web_test_close();
+assert.equal(container.children.length, 0);
+textbox.emit('input');
+assert.equal(api.web_test_dispatch(), 0);
+console.log('web accessibility W/DOM round trip OK');

@@ -222,7 +222,7 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 		if (parent != 0 && strcmp(parent.first_token.text, c"const") == 0): js_validation_error(diagnostics, node, c"const declaration requires initializer")
 		pg_ast_node* binding = js_cst_unwrap(node.children[0])
 		if (binding.token == 0): js_validation_error(diagnostics, node, c"destructuring declaration requires initializer")
-	if (js_cst_is(node, c"identifier_reference") || js_cst_is(node, c"binding_identifier")):
+	if (js_cst_is(node, c"identifier_reference") || js_cst_is(node, c"binding_identifier") || js_cst_is(node, c"label_identifier")):
 		char* name = js_identifier_decode(node.first_token.text)
 		int bad = js_reserved_identifier(name) || (here.strict && js_strict_reserved(name))
 		if (strcmp(name, c"await") == 0 && (here.module || here.async_function)): bad = 1

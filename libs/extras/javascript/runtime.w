@@ -65,6 +65,13 @@ struct js_completion:
 	int steps
 
 
+# Active labels borrow AST nodes and live on the evaluator stack. Function
+# calls start a fresh label chain; completion targets never cross that boundary.
+struct js_runtime_label:
+	js_node* node
+	js_runtime_label* parent
+
+
 struct js_runtime:
 	list[js_value*] heap
 	list[js_value*] roots
@@ -82,6 +89,8 @@ struct js_runtime:
 	js_parse_limits* parse_limits
 	int remaining
 	int empty
+	js_runtime_label* label
+	js_node* jump_target
 
 
 js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key);
@@ -266,6 +275,8 @@ js_runtime* js_runtime_new():
 	rt.parse_limits = js_parse_limits_new()
 	rt.remaining = 0
 	rt.empty = 1
+	rt.label = 0
+	rt.jump_target = 0
 	rt.undefined_value = 0
 	rt.undefined_value = js_runtime_alloc(rt, 0)
 	rt.global = js_runtime_alloc(rt, 8)
@@ -874,7 +885,10 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 		if (i < args.length): argument = args[i]
 		js_runtime_set(rt, env, parameters.children[i].text, argument)
 	js_node* body = callable.code.children[1]
+	js_runtime_label* saved_label = rt.label
+	rt.label = 0
 	js_value* result = js_runtime_eval_node(rt, body, env)
+	rt.label = saved_label
 	if (js_kind(callable.code, c"arrow") && js_kind(body, c"block") == 0): return result
 	if (rt.completion.status == 1):
 		rt.completion.status = 0
@@ -926,10 +940,12 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 		binding.immutable = strcmp(node.text, c"const") == 0
 		js_value* body_value = js_runtime_eval_node(rt, node.children[2], scope)
 		if (rt.empty == 0): result = body_value
-		if (rt.completion.status == 3):
+		if (rt.completion.status == 3 && rt.jump_target == 0):
 			rt.completion.status = 0
 			break
-		if (rt.completion.status == 4): rt.completion.status = 0
+		if (rt.completion.status == 4 && (rt.jump_target == 0 || rt.jump_target == node)):
+			rt.completion.status = 0
+			rt.jump_target = 0
 	rt.empty = 0
 	return result
 
@@ -980,10 +996,12 @@ js_value* js_runtime_loop(js_runtime* rt, js_node* node, js_value* env):
 		first = 0
 		js_value* body_value = js_runtime_eval_node(rt, body, scope)
 		if (rt.empty == 0): result = body_value
-		if (rt.completion.status == 3):
+		if (rt.completion.status == 3 && rt.jump_target == 0):
 			rt.completion.status = 0
 			break
-		if (rt.completion.status == 4): rt.completion.status = 0
+		if (rt.completion.status == 4 && (rt.jump_target == 0 || rt.jump_target == node)):
+			rt.completion.status = 0
+			rt.jump_target = 0
 		if (rt.completion.status != 0): break
 		if (is_for):
 			if (lexical): scope = js_runtime_iteration(rt, scope)
@@ -1119,6 +1137,17 @@ js_value* js_runtime_template(js_runtime* rt, js_node* node, js_value* env):
 
 js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	int count = node.children.length
+	if (js_kind(node, c"label")):
+		js_runtime_label label
+		label.node = node
+		label.parent = rt.label
+		rt.label = &label
+		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
+		rt.label = label.parent
+		if (rt.completion.status == 3 && rt.jump_target == node):
+			rt.completion.status = 0
+			rt.jump_target = 0
+		return value
 	if (js_kind(node, c"try")):
 		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
 		js_node* handler = node.children[1]
@@ -1134,12 +1163,15 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			int saved_status = rt.completion.status
 			js_value* saved_value = rt.completion.value
 			char* saved_message = rt.completion.message
+			js_node* saved_target = rt.jump_target
+			rt.jump_target = 0
 			rt.completion.status = 0
 			js_value* final_value = js_runtime_eval_node(rt, node.children[2], env)
 			if (rt.completion.status == 0):
 				rt.completion.status = saved_status
 				rt.completion.value = saved_value
 				rt.completion.message = saved_message
+				rt.jump_target = saved_target
 			else: value = final_value
 		rt.empty = 0
 		return value
@@ -1233,6 +1265,15 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"break") || js_kind(node, c"continue")):
 		rt.completion.status = 3
 		if (js_kind(node, c"continue")): rt.completion.status = 4
+		rt.jump_target = 0
+		if (strlen(node.text) != 0):
+			js_runtime_label* label = rt.label
+			while (label != 0 && strcmp(label.node.text, node.text) != 0): label = label.parent
+			# Validated source guarantees an enclosing target in this function.
+			if (label != 0):
+				rt.jump_target = label.node
+				if (rt.completion.status == 4):
+					while (js_kind(rt.jump_target, c"label")): rt.jump_target = rt.jump_target.children[0]
 		rt.empty = 1
 		return rt.undefined_value
 	if (js_kind(node, c"if") || js_kind(node, c"conditional")):
@@ -1351,8 +1392,10 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 # syntax before execution, so unsupported syntax cannot leave partial effects.
 int js_runtime_supported(js_node* node):
 	char* kind = node.kind
-	int supported = js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
+	int supported = js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): return 0
+	# Labelled function declarations require the unsupported Annex B rules.
+	if (js_kind(node, c"label") && js_kind(node.children[0], c"function")): return 0
 	if (strcmp(kind, c"number") == 0):
 		int consumed = 0
 		parse_float64(node.text, &consumed)
@@ -1378,6 +1421,8 @@ int js_runtime_begin(js_runtime* rt, int budget):
 	rt.completion.message = c""
 	rt.completion.steps = 0
 	rt.depth = 0
+	rt.label = 0
+	rt.jump_target = 0
 	rt.remaining = budget
 	return 1
 

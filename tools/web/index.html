@@ -33,11 +33,13 @@
 <body>
 <div id="wrap">
   <canvas id="canvas" width="640" height="480" tabindex="0"></canvas>
+  <div id="accessibility"></div>
   <div id="log" role="log"></div>
 </div>
   <textarea id="text-input" tabindex="-1" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="W text editor"></textarea>
 <script type="module">
 import { makeEnv } from './webgl_env.mjs';
+import { createAccessibility } from './accessibility.mjs';
 import { makeWasi } from './wasi_lite.mjs';
 import { createInput, viewportSize, createEventQueue } from './mobile_input.mjs';
 
@@ -105,6 +107,7 @@ const runFrame = () => {
 const input = createInput({ canvas, editor: document.getElementById('text-input'),
   state, pushEvent, flushFrame: runFrame });
 const host = {
+  accessibility: createAccessibility({ document, canvas, container: document.getElementById('accessibility') }),
   canvasInit: (title, width, height) => {
     if (!gl) return 0;
     document.title = title;

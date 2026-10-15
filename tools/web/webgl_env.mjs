@@ -33,6 +33,8 @@
 //               omits mods reports no modifiers held.) }
 //   log     optional diagnostic sink (defaults to console.error)
 
+import { makeAccessibilityEnv } from './accessibility.mjs';
+
 const GL_STR_SCRATCH = 3072;
 const GL_STR_SCRATCH_END = 4096;
 
@@ -78,6 +80,7 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
   };
 
   const env = {
+    ...makeAccessibilityEnv({ memory, access: host.accessibility }),
     // ------------------------------ core GL ------------------------------
     glViewport: (x, y, w, h) => {
       const ratio = host.pixelRatio?.() ?? 1;

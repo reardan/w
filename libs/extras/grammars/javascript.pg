@@ -164,6 +164,7 @@ goal expression_tail 0
 
 rule identifier_reference = IDENT | KW_ASYNC | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET | KW_LET
 rule binding_identifier = identifier_reference
+rule label_identifier = identifier_reference | KW_AWAIT | KW_YIELD
 rule identifier_name = IDENT | KW_BREAK | KW_CASE | KW_CATCH | KW_CLASS | KW_CONST | KW_CONTINUE | KW_DEBUGGER | KW_DEFAULT | KW_DELETE | KW_DO | KW_ELSE | KW_EXPORT | KW_EXTENDS | KW_FALSE | KW_FINALLY | KW_FOR | KW_FUNCTION | KW_IF | KW_IMPORT | KW_IN | KW_INSTANCEOF | KW_LET | KW_NEW | KW_NULL | KW_RETURN | KW_SUPER | KW_SWITCH | KW_THIS | KW_THROW | KW_TRUE | KW_TRY | KW_TYPEOF | KW_VAR | KW_VOID | KW_WHILE | KW_WITH | KW_YIELD | KW_ASYNC | KW_AWAIT | KW_OF | KW_GET | KW_SET | KW_STATIC | KW_FROM | KW_AS | KW_TARGET
 
 rule program = statement* EOF
@@ -172,7 +173,7 @@ rule block = LBRACE statement* RBRACE
 rule empty_statement = SEMI
 rule eos = SEMI | &{ js_statement_end(stream) }
 rule expression_statement = &{ js_expression_statement_start(stream) } expression eos
-rule labelled_statement = binding_identifier COLON statement
+rule labelled_statement = label_identifier COLON statement
 rule variable_statement = variable_declarations eos
 rule variable_declarations = variable_kind variable_declarator variable_declarator_tail*
 rule variable_kind = KW_VAR | KW_LET | KW_CONST
@@ -203,7 +204,7 @@ rule return_value = &{ js_no_linebreak(stream) } expression
 rule throw_statement = KW_THROW &{ js_no_linebreak(stream) } expression eos
 rule break_statement = KW_BREAK jump_label? eos
 rule continue_statement = KW_CONTINUE jump_label? eos
-rule jump_label = &{ js_no_linebreak(stream) } binding_identifier
+rule jump_label = &{ js_no_linebreak(stream) } label_identifier
 rule switch_statement = KW_SWITCH LPAREN expression RPAREN LBRACE switch_clause* RBRACE
 rule switch_clause = KW_CASE expression COLON statement* | KW_DEFAULT COLON statement*
 rule try_statement = KW_TRY block catch_clause finally_clause? | KW_TRY block finally_clause

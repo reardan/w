@@ -79,7 +79,7 @@ required: node-shape validation is not a full contextual validator.
 
 The facade supports simple variables, function declarations/expressions and
 parameters, synchronous arrows, blocks, return, throw, if, while/do/for loops,
-lexical `for-of`, unlabelled
+lexical `for-of`, labelled statements and labelled/unlabelled
 break/continue, try/catch/finally, expressions, assignments and prefix/postfix
 updates, calls/members, dense arrays, ordinary named/string-keyed
 objects (including distinct shorthand properties), templates, simple imports,
@@ -95,7 +95,8 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | --- | --- | --- |
 | `while`, `do_while` | empty | condition, body |
 | `for` | empty | initializer, condition, update, body |
-| `break`, `continue` | empty | none |
+| `label` | decoded label name | statement |
+| `break`, `continue` | optional decoded target label | none |
 | `function_expression` | optional name | parameters, block |
 | `arrow` | empty | parameters, expression or block |
 | `for_of` | `let` or `const` | identifier, iterable expression, body |
@@ -104,9 +105,9 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | `string_utf16` | empty | none; value in `string_units` |
 
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
-source-backed nodes preserve byte spans. `for-in`, assignment-target/`var` for-of bindings, labelled jumps and
+source-backed nodes preserve byte spans. `for-in`, assignment-target/`var` for-of bindings and
 catch destructuring remain explicit lowering failures. The printer handles
-loop bodies when protecting against a dangling `else`.
+loop bodies and label wrappers when protecting against a dangling `else`.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
 UTF-16 code units in `units`. `js_text_decode(bytes, byte_length)` decodes a
@@ -176,6 +177,11 @@ Resource/unsupported failures cannot be caught and do not execute finalizers.
 Normal return/throw/break/continue completions do execute `finally`, and an
 abrupt finalizer overrides the earlier completion.
 
+Labelled break exits its enclosing labelled statement; labelled continue targets
+the loop wrapped by one or more labels. Targets survive `finally` unless its
+abrupt completion overrides them, and labels cannot cross a function boundary.
+Labelled function declarations remain unsupported (Annex B semantics).
+
 The initial semantic subset is deliberately explicit:
 
 - Undefined, null, booleans, binary64 decimal numbers, UTF-16 strings; truthiness,
@@ -206,8 +212,8 @@ The initial semantic subset is deliberately explicit:
   interpolate undefined, null, booleans, numbers and strings. Number spelling uses
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
   Substitutions execute once in source order; object conversion remains unsupported.
-- `= += -= *= /=`, prefix/postfix `++ --`, if/while/do/for, unlabelled
-  break/continue, return, throw and try/catch/finally.
+- `= += -= *= /=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
+  labelled/unlabelled break/continue, return, throw and try/catch/finally.
 
 Unsupported syntax is rejected before execution, including modules, classes,
 generators/async, regex execution, tagged templates, `new`, destructuring,
@@ -360,7 +366,9 @@ properties, complete ECMAScript early errors and cross-module export resolution,
 Annex B behavior, and broader contextual keyword handling. Function-call
 assignment targets are rejected; Node permits some of
 these forms and defers their failure until execution. Sloppy-context uses of `await`/`yield` as identifiers are not generally
-accepted. This integration does not support TypeScript, JSX, or post-ES2020 syntax
+accepted outside label names. Label names have their own contextual checks, so
+strict `eval`/`arguments` labels are valid while generator `yield`, async `await`,
+and module-reserved labels are rejected. This integration does not support TypeScript, JSX, or post-ES2020 syntax
 as a compatibility contract. Full-edition acceptance requires expanding the
 pinned corpus and eliminating these exclusions before closing #492 as complete
 ECMAScript compatibility.

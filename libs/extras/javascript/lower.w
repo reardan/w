@@ -311,11 +311,23 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 			js_node_free(result)
 			return 0
 		return result
+	if (js_cst_is(node, c"labelled_statement")):
+		char* name = js_identifier_decode(node.first_token.text)
+		js_node* result = js_node_new(c"label", name)
+		free(name)
+		if (js_lower_add(result, node.children[2], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		return result
 	if (js_cst_is(node, c"break_statement") || js_cst_is(node, c"continue_statement")):
-		if (js_cst_child(node, c"jump_label") != 0): return js_lower_error(node, diagnostics)
 		char* kind = c"break"
 		if (js_cst_is(node, c"continue_statement")): kind = c"continue"
-		return js_node_new(kind, c"")
+		js_node* result = js_node_new(kind, c"")
+		pg_ast_node* label = js_cst_child(node, c"jump_label")
+		if (label != 0):
+			free(result.text)
+			result.text = js_identifier_decode(label.first_token.text)
+		return result
 	if (js_cst_is(node, c"while_statement") || js_cst_is(node, c"do_statement")):
 		char* kind = c"while"
 		int condition = 2
