@@ -171,6 +171,11 @@ void incremental_suffix_emission(int emit):
 	assert_equal(0, result.status)
 	assert_equal(before_rejection, codepos)
 	bounds_mode = 1 - bounds_mode
+	safe_mode = 1
+	result = incremental_update(sources)
+	assert_equal(0, result.status)
+	assert_equal(before_rejection, codepos)
+	safe_mode = 0
 	int saved_word_size = word_size
 	word_size = 16
 	result = incremental_update(sources)
