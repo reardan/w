@@ -254,8 +254,47 @@ void lint_unreachable_check(int after_jump):
 		lint_end()
 
 
+# Probe with the real lexer so comments, strings and nested calls do not
+# look like operators. Only a single-line group followed by ':' qualifies;
+# C-style brace headers still require their parentheses. Restore the lexer
+# before parsing, including its serial used by other semantic lint rules.
+void lint_condition_parens():
+	if (lint_file_active() == 0): return
+	if (peek(c"(") == 0): return
+	tokenizer_snapshot mark
+	tokenizer_snapshot_save(&mark)
+	int saved_rehash = defhash_rehash_mode
+	defhash_rehash_mode = 1
+	int depth = 1
+	int simple = 1
+	get_token()
+	while (simple && (depth > 0)):
+		if ((token[0] == 0) || (diag_token_line != mark.diag_token_line)):
+			simple = 0
+		else if ((token[0] == 'f') && (token[1] == '"')):
+			# Template interpolation needs the parser to drive its lexer.
+			simple = 0
+		else if (peek(c"&&") || peek(c"||") || peek(c"&") || peek(c"|") || peek(c"^") || peek(c"?")):
+			simple = 0
+		else if (ends_with(token, c"=") && (peek(c"==") == 0) && (peek(c"!=") == 0) &&
+				(peek(c"<=") == 0) && (peek(c">=") == 0)):
+			simple = 0
+		else:
+			if (peek(c"(")): depth = depth + 1
+			else if (peek(c")")): depth = depth - 1
+			get_token()
+	int report = simple && peek(c":") && (diag_token_line == mark.diag_token_line)
+	getchar_seek(file, mark.byte_offset)
+	tokenizer_snapshot_restore(&mark, c"(")
+	defhash_rehash_mode = saved_rehash
+	if (report && lint_begin(mark.diag_token_line, mark.diag_token_column, c"condition-parens")):
+		warning(c"warning: unnecessary parentheses around a single condition [condition-parens]")
+		lint_end()
+
+
 void lint_condition_begin():
 	if (lint_mode == 0): return
+	lint_condition_parens()
 	lint_cond_start = token_start_offset + 1
 	lint_cond_depth = expr_nesting_depth
 	lint_cond_paren_depth = 0
