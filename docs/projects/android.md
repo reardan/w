@@ -66,6 +66,25 @@ rules in [release.md](../release.md), including real hashes for every pin.
 `graphics/android/ui.w` provides a small native-controls bridge: labels,
 buttons, and single-line text fields. W owns application state; Android owns
 rendering, keyboard/IME, scrolling, insets, and standard accessibility.
+The demo uses light/dark palettes that follow the system, rounded sections,
+52 dp buttons, persistent field labels, and a scrollable column capped at
+560 dp on wide screens. Text respects Android's font-size setting. Primary
+and secondary buttons retain native ripple feedback and keyboard focus;
+Done dismisses the software keyboard.
+
+The original label/button/text-field API remains available. Optional
+presentation roles are `wandroid_heading`, `wandroid_caption`,
+`wandroid_value`, `wandroid_status`, and `wandroid_secondary_button`.
+`wandroid_section(title)` begins a new card; another section starts a sibling
+card, and `wandroid_section_end()` returns to the page. Sections do not nest.
+These label roles, including section headings, return handles usable with
+`wandroid_label_set`. A text field's hint also serves as its persistent,
+accessibility-associated label. The demo's **Start fresh** button resets
+the counter; clearing the name restores its greeting.
+
+<img src="../images/android_demo_light.png" width="300" alt="W Android demo in light mode, with name and tap-counter cards">
+<img src="../images/android_demo_dark.png" width="300" alt="W Android demo in dark mode on a physical Samsung phone">
+
 The existing OpenGL widget renderer has not been ported to native Android.
 The browser/Wasm route remains available separately.
 
@@ -129,7 +148,10 @@ The probe APK packages `compiler/cli.w` as a shared library and the runtime
 sources as assets. It calls `compiler_main` once to compile a W fixture on
 the device, loads that generated library, and checks containers, allocation,
 page-size discovery, and guard allocation. It also exercises native controls,
-W state changes, Unicode input, and the active lifecycle callback. This
+W state changes, counter reset, empty-name fallback, Unicode input, and the
+active lifecycle callback. The smoke check recreates the Activity and repeats
+the UI checks; compiler probes run once per process so a rotation or theme
+change cannot re-enter the compiler's one-shot entry point. This
 embedded-compiler test does not replace the Termux compiler fixpoint test.
 
 The APK probes have passed on Android 16 emulator images with 4 KB and
@@ -157,12 +179,21 @@ or configured ARM64 binfmt translation. The dynamic dependency is necessary
 for the emulator's program runner, which rejects static executables; these
 adb-shell checks do not qualify the static-seed Termux bootstrap.
 
-Physical ARM64 devices, Termux self-hosting, native debugging, and release
-distribution require separate qualification. Android's app sandbox and
+Physical-device validation passed on a Samsung SM-S134DL running Android 13
+with 4 KB pages, using main commit `dd348fea`: native controls, Unicode,
+lifecycle, ARM64 ABI, embedded compilation/execution, runtime smoke,
+`wv3 == wv4 == wv5`, and executor SIGTERM cleanup. The static Android seed
+also compiled and ran the runtime smoke under adb. This qualifies the tested
+device; it does not cover physical 16 KB devices or the Termux environment.
+
+Termux self-hosting, native debugging, and release distribution still
+require separate qualification. Android's app sandbox and
 execution policies still apply; the presence of a desktop API in an import
 closure does not make it usable inside an ordinary Android app.
 
 References: [Termux execution environment](https://github.com/termux/termux-packages/wiki/Termux-execution-environment),
 [Android page sizes](https://developer.android.com/guide/practices/page-sizes),
 [Bionic linker requirements](https://android.googlesource.com/platform/bionic/+/master/android-changes-for-ndk-developers.md),
-[Android app sandbox](https://source.android.com/docs/security/app-sandbox).
+[Android app sandbox](https://source.android.com/docs/security/app-sandbox),
+[View accessibility](https://developer.android.com/guide/topics/ui/accessibility/views/apps-views),
+[edge-to-edge layouts](https://developer.android.com/develop/ui/views/layout/edge-to-edge).
