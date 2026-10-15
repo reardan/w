@@ -98,6 +98,63 @@ int const_symbol_value(int t):
 	return 0
 
 
+# Const globals whose storage this compilation wrote (O1): symbol offset
+# -> storage address. A const object the loader fills (an 'extern' data
+# import) is never in it, so its reads keep loading from memory.
+map[int, int] const_global_addresses
+
+
+void const_global_define(int t, int type):
+	if (type_is_const(type) == 0): return
+	if (cast(int, const_global_addresses) == 0): const_global_addresses = new map[int, int]
+	const_global_addresses[t] = load_int(table + t + 2)
+
+
+# sym_emit_value just materialized the address of global object t,
+# starting at start (x86 family only): when t is an enum constant or a
+# const integer global with a known value no wider than a word, note it,
+# so promote() can load that value as an immediate (code_generator/
+# x86.w, cg_note_*). The value is read back from the image exactly as
+# const_symbol_value does, at the width and signedness the load would
+# use.
+void const_global_note(int t, int start):
+	int type = load_int(table + t + 6)
+	int t_real = type_unqualified(type)
+	char* p = 0
+	if (type_get_kind(type) == type_kind_enum):
+		p = code + load_int(table + t + 2) - code_offset
+		t_real = type
+	else:
+		if (type_is_const(type) == 0): return
+		if (value_class(t_real) != VC_INT): return
+		if (cast(int, const_global_addresses) == 0): return
+		int addr = load_int(table + t + 2)
+		if (const_global_addresses.get(t, -1) != addr): return
+		p = code + addr - code_offset
+		if (data_split): p = data + (addr - data_offset)
+	int size = type_get_size(t_real)
+	int value = 0
+	if (size == 1):
+		value = p[0]
+		if (type_is_unsigned_fixed(t_real)): value = value & 255
+	else if (size == 2):
+		value = (p[0] & 255) | (p[1] << 8)
+		if (type_is_unsigned_fixed(t_real)): value = value & 65535
+	else if (size == 4):
+		value = load_int32(p)
+		# a zero-extending load of a bit-31 value is wider than int32
+		if ((word_size == 8) && type_is_unsigned_fixed(t_real) && (value < 0)): return
+	else if ((size == 8) && (word_size == 8)):
+		# word-sized: the initializer stored a sign-extended int32
+		value = load_int32(p)
+		if (load_int32(p + 4) != (value >> 31)): return
+	else: return
+	cg_note_start = start
+	cg_note_end = codepos
+	cg_note_type = type
+	cg_note_value = value
+
+
 int const_or();
 
 
@@ -383,6 +440,9 @@ void function_definition(int current_symbol):
 		# when the target's block is the whole function, else the token is
 		# the ':' of the portable body, compiled below as usual.
 		int asm_body = asm_function_body(current_symbol, last_global_declaration)
+		if (asm_body && retained_semantic_mode):
+			int binding = retained_binding_note(current_symbol, retained_parent)
+			if (binding >= 0): retained_bindings[binding].assembly_body = 1
 		# The body's span and the counters its inlining facts are deltas
 		# of (compiler/inline_table.w), before anything of it is read
 		inline_body_begin(is_w_variadic, generic_subst_block != 0, asm_body != 0, 0)
@@ -391,7 +451,11 @@ void function_definition(int current_symbol):
 		# prologue below (either path) can push them. A whole-asm function
 		# has no W body to scan.
 		if (asm_body == 1): regalloc_function_end()
-		else: regalloc_function_scan(current_symbol, is_w_variadic)
+		else:
+			# an asm block's entry is the symbol: no register entry (O5)
+			rg_asm_body = asm_body != 0
+			regalloc_function_scan(current_symbol, is_w_variadic)
+			rg_asm_body = 0
 		if (asm_body == 1): save_int(table + current_symbol + 14, codepos - function_start)
 		else if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
 		else:
@@ -569,7 +633,7 @@ void emit_global_type_storage(int type):
 # 'T identity[T](T x)'). Statement keywords, calls, assignments and
 # 'name :=' declarations all fall through to script mode.
 int script_statement_starts_here():
-	if (peek(c"const")): return 0
+	if (peek(c"const") || safe_qualifier_ahead()): return 0
 	if (peek(c"map") & (nextc == '[')): return 0
 	if (peek(c"set") & (nextc == '[')): return 0
 	if (peek(c"list") & (nextc == '[')): return 0
@@ -625,7 +689,7 @@ int script_declaration_keyword():
 # statement; the scan-ahead gives it a clear diagnostic instead of the
 # statement parser's confusing "';' expected, found '('".
 int script_function_definition_ahead():
-	if ((peek(c"const") | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0): return 0
+	if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	while (accept(c"*")) {}
@@ -780,6 +844,7 @@ void global_variable_declaration(int binding, int type, char* init_name):
 	else:
 		define_global_variable(binding, type)
 		if (init_name): global_initializer(init_name, binding, type)
+	const_global_define(binding, type)
 
 
 void program_item():
@@ -808,7 +873,7 @@ void program_item():
 		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
 			get_token()
 			export_pending = 1
-			if ((peek(c"const") | (type_lookup(token) >= 0)) == 0):
+			if ((peek(c"const") | safe_qualifier_ahead() | (type_lookup(token) >= 0)) == 0):
 				error(c"'export' must be followed by a function definition")
 
 	# Script mode: a token that cannot start a declaration begins

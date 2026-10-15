@@ -21,6 +21,8 @@ struct css_token:
 	int start
 	int end
 	int match
+	int hash_id
+	int number_length
 
 
 struct css_diagnostic:
@@ -150,7 +152,7 @@ css_token* css_emit(css_document* d, char* kind, string_builder* out, int start,
 		d.failed = 1
 		string_free(out)
 		return 0
-	css_token* t = new css_token(strclone(kind), out.data, out.length, start, end, -1)
+	css_token* t = new css_token(strclone(kind), out.data, out.length, start, end, -1, 0, 0)
 	free(out)
 	d.tokens.push(t)
 	return t
@@ -308,6 +310,8 @@ void css_scan(css_document* d):
 			pos = pos + 1
 		css_token* t = css_emit(d, kind, out, start, pos)
 		if (t == 0): break
+		if (css_kind(t, c"hash")): t.hash_id = css_ident_start(d, start + 1)
+		if (css_kind(t, c"number") || css_kind(t, c"dimension") || css_kind(t, c"percentage")): t.number_length = css_number_end(d, start) - start
 		if (css_delim(t, '(') || css_delim(t, '[') || css_delim(t, '{')):
 			if (stack.length >= d.limits.depth):
 				css_error(d, c"nesting limit", start, pos)
@@ -325,9 +329,22 @@ void css_scan(css_document* d):
 				d.tokens[opening].match = d.tokens.length - 1
 				stack.pop()
 			else: css_error(d, c"unmatched closing delimiter", start, pos)
-	for i in range(stack.length):
-		css_token* t = d.tokens[stack[i]]
+	# CSS component parsing closes open blocks/functions at EOF. Materialize
+	# zero-width closing tokens so all consumers share the balanced-range API.
+	# These tokens count toward the same token budget as source tokens.
+	while (stack.length > 0 && d.failed == 0):
+		int opening = stack.pop()
+		css_token* t = d.tokens[opening]
 		css_error(d, c"unclosed block", t.start, d.length)
+		int closing = ')'
+		if (css_delim(t, '[')): closing = ']'
+		if (css_delim(t, '{')): closing = '}'
+		string_builder* out = string_new()
+		string_append_char(out, closing)
+		css_token* end = css_emit(d, c"delim", out, d.length, d.length)
+		if (end != 0):
+			end.match = opening
+			t.match = d.tokens.length - 1
 	__w_list_free(cast(__w_list*, stack))
 
 
@@ -475,7 +492,7 @@ void css_rules(css_document* d, list[css_node*] output, int first, int last, int
 			continue
 		int start = pos
 		int at_rule = css_kind(d.tokens[start], c"at-keyword")
-		while (pos < last && !css_delim(d.tokens[pos], '{') && !css_delim(d.tokens[pos], ';') && !css_delim(d.tokens[pos], '}')): pos = css_next_component(d, pos, last)
+		while (pos < last && !css_delim(d.tokens[pos], '{') && (at_rule == 0 || !css_delim(d.tokens[pos], ';')) && !css_delim(d.tokens[pos], '}')): pos = css_next_component(d, pos, last)
 		int has_block = pos < last && css_delim(d.tokens[pos], '{')
 		if (at_rule == 0 && has_block == 0):
 			css_error(d, c"qualified rule requires block", d.tokens[start].start, d.tokens[pos - 1].end)

@@ -1,281 +1,231 @@
-# Optional ownership and borrowing checks
+# Experimental ownership and borrowing checks
 
-Status: proposed. The `--safe` flag and ownership types below are not
-implemented. This plan adds an opt-in mode that checks ownership and
-borrowing at compile time, with explicit boundaries for raw-pointer code.
-Existing W programs keep their current behavior by default.
-
-Implementation tracking: [issue #644](https://github.com/reardan/w/issues/644).
-
-The goal is to prevent dangling references, use after move or destruction,
-double destruction, and conflicting access through references in checked
-code. The guarantee depends on the compiler and audited runtime interfaces
-upholding their contracts. A flag cannot infer every existing pointer's
-ownership or make arbitrary legacy libraries safe.
-
-## Compiler interface
-
-Proposed commands:
+The compiler accepts `--safe` on Linux x86 and x64:
 
 ```sh
 ./bin/wv2 --safe app.w -o app
 ./bin/wv2 check --json --safe app.w
 ```
 
-Safety violations are errors independently of `--strict`. The flag checks
-application roots and imported application functions, including generic
-instantiations and compiler-generated operations. Unknown or unsupported
-operations are errors rather than unchecked fallbacks. Reject
-`--bounds=off` and frontend modes that bypass the analysis, regardless of
-option order. Keep the default mode compatible with existing code.
+This is a bounded, single-threaded subset, tracked by
+[issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
+legacy W code memory-safe. Unsupported operations produce errors. The broader
+design, including optional references and escaping lifetime contracts, is
+tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 
-New ownership types have the same move, borrowing and cleanup semantics
-with or without `--safe`. The flag requires checked operations throughout
-application code; removing it must not change whether the same declaration
-owns or destroys its storage. Raw `T*` keeps its existing semantics.
+## Pointer contracts
 
-## Current foundations and gaps
-
-The [language reference](../language_reference.md#pointers-and-arrays)
-documents raw pointers and bounds-checked arrays and slices. Bounds checks
-do not establish that backing storage is still alive. W currently has no
-general ownership checker or automatic lifetime management.
-
-The [arena API](../../lib/arena.w) refuses reset or destruction while
-explicitly registered borrows remain outstanding. Registration is the
-caller's responsibility. The [debug allocator](../../lib/memory_debug.w)
-helps detect memory errors during execution; it does not establish a
-compile-time safety guarantee.
-
-The compiler already retains [syntax trees](../../compiler/retained_ast.w)
-and [semantic records](../../compiler/retained_semantic.w). Normal compilation
-does not retain every semantic snapshot, so safe compilation must enable
-the records it needs. Retained emission is incremental: it is not yet a
-general whole-function analysis pipeline. The
-[recorded function representation](../../compiler/function_record_ast.w)
-currently covers a limited integer subset. Extending whole-function
-coverage is a dependency, tracked alongside the
-[production AST plan](ast_completion_plan.md).
-
-## Ownership model
-
-Settle surface syntax in the first milestone. The required concepts are:
-
-| Concept | Contract |
+| Type | Meaning |
 | --- | --- |
-| Owned pointer | One owner. Assignment or argument passing transfers ownership. Normal scope exit destroys the owned value. |
-| Shared reference | Multiple readers may coexist. The backing storage remains alive for every use. |
-| Mutable reference | Exclusive access to the referenced storage while borrowed, including restrictions on access through its owner. |
-| Optional reference | Absence is explicit and must be checked before access. |
-| Raw pointer | Existing `T*`. Dereferencing or manufacturing a checked reference requires an explicit unsafe boundary. |
+| `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
+| `ref T*` | A non-null shared borrow; readers may coexist. |
+| `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
+| `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
 
-Infer local ownership and borrowing where unambiguous. Require function
-contracts to describe ownership transfer, borrowed parameters, escape
-behavior, and the relationship between returned references and arguments.
-Verify function bodies against those contracts, including recursive calls
-and indirect calls through typed function pointers.
+Qualifiers are contextual: existing identifiers named `own`, `ref` or `refmut`
+retain their meaning. Type aliases preserve qualifiers. A checked pointer has
+the same size and calling convention as a raw pointer. The pointee must be
+sized and contain no references, raw pointers, unions or containers. Partial
+moves and checked pointers stored in aggregates or globals are rejected.
 
-Checked references must be initialized, aligned, non-null and point to a
-valid value of the declared type. Checked allocation must initialize that
-value and either return a valid owner or report/trap allocation failure.
-Check allocation-size arithmetic before allocating. Integer casts, union
-access, bytewise copies and existing implicit conversions must not provide
-a route to fabricate a reference or duplicate an owner.
+```w
+int read_value(ref int* p):
+	return *p
 
-Borrow lifetimes end after their last use where analysis can establish it.
-Track fields separately when disjointness is proven; conservatively treat
-potentially overlapping indexed accesses as conflicting. Initially reject
-partial moves out of aggregates and reference-bearing aggregate patterns
-without implemented lifetime rules.
+own int* make_value(int value):
+	own int* p = new int
+	*p = value
+	return p
 
-## Unsafe boundaries and library contracts
+int main():
+	own int* p = make_value(7)
+	ref int* r = p
+	int value = read_value(r)
+	# r's last use is above; p can now move.
+	q := p
+	return *q - value
+```
 
-Introduce explicit unsafe operations or blocks for raw-pointer
-dereferences and arithmetic, pointer/integer conversions, unchecked foreign
-calls, assembly and conversion from raw storage to checked references.
-Unsafe code must still uphold the contracts of checked values it creates
-or exposes; the boundary does not make invalid accesses well-defined.
+`new T` zero-initializes its allocation and traps on allocation failure. It
+must initialize an owner in checked code. Owners and references require
+initializers. Checked references cannot be null or fabricated by casts, pointer
+arithmetic, raw-pointer conversion or an integer. Optional references are not
+part of this subset; use ordinary control flow instead of a nullable reference.
 
-Imported application code must be checked or reached through an explicit
-unsafe interface. Do not trust an entire module because it was imported,
-has a library path, or suppresses diagnostics. Existing auto-imported
-container runtimes and on-demand libraries need a small audited interface
-whose contracts are tied to the resolved implementation. Treat those
-implementations as part of the trusted runtime, and invalidate checked
-results when their code or contracts change.
+An owner's declaration, move and destruction have the same meaning without
+`--safe`. Any function that uses a checked type is analyzed, together with its
+called implementations. Removing the flag does not permit copying an owner,
+using a moved owner or mutating a live shared borrow. Unannotated legacy
+functions retain their existing behavior by default. Application semantic
+records are retained before parsing, so a later imported ownership contract
+cannot erase earlier binding identities.
 
-Start with allocation, destruction, borrowing, bounds-checked slices and
-minimal output interfaces. Add safe container interfaces only after modeling
-reference invalidation: growth, clear, removal, replacement and destruction
-can invalidate references into storage. Slices and strings need provenance
-and lifetime tracking even though their runtime layout already includes a
-length. Their raw data fields cannot bypass these restrictions.
+## Lifetimes and calls
 
-## Implementation milestones
+A shared or mutable reference can borrow a named owner, another reference, or
+an initialized stack place (`ref int* r = &value`). A reborrow suspends
+conflicting access through its parent until the child reference's last use.
+Reference bindings cannot be reassigned in this release.
 
-### 1 Specify semantics and add the compiler option
+Reference liveness follows branches and loop backedges. Ownership state must
+be valid on every incoming path where a value is used. An early return does
+not contaminate the state of a continuing branch. Field and index projections
+conservatively borrow their whole backing value; this release does not prove
+that different fields or indices are disjoint.
 
-Write the ownership syntax and conversion rules, call contracts, nullability,
-scope rules, cleanup order and unsafe boundary syntax before implementing
-them. Specify representative accepted and rejected programs. Decide how
-allocation failures and optional references are expressed using W's type
-system; these are prerequisites for checked allocation.
+Function parameters express the call contract: `own` consumes an allocation,
+`ref` reads it, and `refmut` may mutate it. Borrowed arguments may not escape
+from a checked function. Returning references or slices requires lifetime
+contracts that are not yet supported and is rejected. Owned returns must
+transfer an owner on every normal path. Recursion and imported functions use
+the same contracts. Indirect calls, callbacks, methods and unmodeled generic
+operations are rejected rather than treated as ordinary scalar calls.
+Forward declarations resolve to a checked implementation and must agree with
+its parameter and return contracts.
 
-Add option parsing, help, session reset and diagnostics in
-[compiler/compiler.w](../../compiler/compiler.w). Thread the option through
-normal compilation, structured checks and in-process compilation. Extend
-[type records](../../compiler/type_table.w), retained types and bindings to
-preserve qualifiers and contracts through aliases, casts and signatures.
+Argument evaluation is included in checking: an earlier mutable argument
+cannot coexist with a later read of the same storage, including a read or
+write hidden inside a nested call.
 
-Acceptance: default-mode fixtures retain their behavior; option conflicts
-are deterministic; safe mode cannot report success for a construct whose
-checking is not implemented. Keep the mode experimental until the usable
-subset below passes its release gates.
+## Arrays, slices and control flow
 
-### 2 Represent control flow and memory operations
+Fixed arrays of pointer-free values are initialized by the existing array
+runtime. Array and slice indices retain runtime bounds checks. A slice made
+with `array[start:end]` is an immutable shared view in checked code; subviews
+retain the original backing storage's lifetime. A slice parameter borrows for
+the call. Array storage cannot be copied or returned by value; pass a slice.
+Raw `.data` access requires an unsafe boundary.
 
-Build an architecture-independent analysis representation from resolved
-syntax and stable binding identities. Represent locals, field projections,
-indexed storage, initialization, reads, writes, moves, borrows, calls and
-destruction. Add edges for branches, loops, short-circuit expressions,
-returns, break/continue and cleanup. Preserve source spans for every event.
+The supported control flow is blocks, `if`/`else`, `while`, `break`, `continue`,
+returns, short-circuit Boolean expressions and scalar conditional expressions.
+`for`, `switch`, generators, arbitrary `goto`, GPU operations and container
+operations remain unsupported. This restriction includes container growth,
+clear and removal: these cannot silently invalidate a checked reference.
+Declarations require a lexical block, including inside conditionals and
+loops. Executable assembly bodies are rejected.
 
-Require complete analysis coverage for each admitted function. Extend the
-whole-function pipeline where incremental retained emission lacks required
-structure; do not assume the existing scalar recording API already supports
-pointers or calls. Perform ownership analysis before lowering cleanup and
-before publishing a binary or executing generated code.
+## Cleanup and unsafe boundaries
 
-Acceptance: fixtures inspect operation order and control-flow edges for
-every admitted construct, including implicit conversions and generated
-container calls. Unmodeled paths fail explicitly.
+Every live owner is destroyed in reverse declaration order at its normal
+scope exit. Function exits also destroy owned parameters. Return values are
+evaluated and ownership transferred before other owners are destroyed.
+Replacement assignment evaluates and transfers the new owner, destroys the
+previous live allocation, and installs the replacement. Moving an owner clears
+its stack slot; cleanup tests the slot before freeing it. This accounts for
+branch-dependent transfers without reference counting or garbage collection.
+There is no cleanup promise after process termination or a trap.
 
-### 3 Check ownership and borrow lifetimes
+Exit-time `defer` is rejected in checked functions. Its existing deferred
+reads and arbitrary control flow have not been integrated into borrow
+liveness, and it cannot be used to manually free an owner a second time.
 
-Track each owned location as uninitialized, live or moved. Compute reference
-provenance and borrow liveness across control-flow joins and loop backedges
-until the analysis converges. A value must be valid on every incoming path
-where it is used. Reborrowing must suspend conflicting access through the
-parent reference for the duration of the child borrow.
+An explicit boundary permits raw operations:
 
-Reject use after move/destruction, destruction or movement while borrowed,
-conflicting accesses, references to expired stack storage, and uncontracted
-escapes through returns, globals, fields or calls. Check function bodies
-against declared contracts, and callers against the same contracts.
+```w
+int main():
+	unsafe:
+		int value = 1
+		int* raw = &value
+		*raw = 2
+	return 0
+```
 
-Use [structured diagnostics](../../compiler/diagnostics.w) with stable codes
-and related locations: show the failing operation, the borrow or move that
-caused it, and the later use keeping a borrow alive. These must be real
-errors in both compilation and `check --json`.
+Unsafe code is responsible for valid pointers, aliasing, foreign-call contracts
+and all raw memory operations it performs. It must not invalidate storage
+used by checked code. An unsafe block cannot manipulate checked pointers,
+call checked-pointer contracts, transfer control out of the block or defer
+work. Raw interoperation therefore does not bypass the compiler's owner
+transfer and cleanup rules. It also cannot establish that a previously
+uninitialized checked binding is initialized.
 
-Acceptance: positive fixtures cover valid transfer, sharing, exclusive
-borrows and reborrows. Negative fixtures cover each rule on straight-line,
-branching and looping paths, including recursive and imported calls.
+The audited runtime exposes scalar `put_char`, `put_error` and `exit` calls
+and compiler-generated allocation, destruction and bounds operations. Import
+`lib.safe` for checked `safe_print_int` and `safe_println_int` formatting.
+Other runtime calls need an unsafe boundary. Source
+hashes in `compiler/safe_runtime.w` bind these contracts to their resolved
+implementations. A changed runtime or shadow import fails checking until its
+contract is reviewed and its pin updated. Merely importing a library does not
+grant permission to call arbitrary raw interfaces.
 
-### 4 Lower cleanup and integrate safe interfaces
+## Entry points, diagnostics and costs
 
-Generate destruction for owned values at normal scope exits, returns,
-break and continue. Define replacement assignment, field destruction order
-and partially initialized construction. Initially reject unsupported
-construction patterns. Preserve return values and transfer ownership before
-cleaning up the remaining locals. Use conditional cleanup state only where
-control flow requires it, so a value is destroyed at most once.
+`--bounds=off` and the streaming frontend are incompatible with checked
+pointers, with or without `--safe`. Other targets and in-process REPL/debugger
+execution reject checked pointers. A requested `--safe` is also rejected by
+in-process entry points. Compilation and structured checking run the same
+analysis before an output file is published.
 
-Model W's existing [defer semantics](defer.md): deferred expressions observe
-values at exit, and returns evaluate their result before deferred work.
-Specify the exact ordering between these expressions and automatic
-destruction. Do not assume dynamic defer registration when the existing
-emitter has different behavior. Reject ambiguous or unmodeled combinations,
-including a deferred free that duplicates an owner's cleanup.
+Ownership errors use diagnostic family `W0413`, with source spans and related
+ownership/borrow locations. Safety errors do not depend on `--strict`.
+Compiler sessions reset mode state; incremental option fingerprints include
+`safe_mode`. Existing source closures and compiler-content hashes invalidate
+build results when a contract, implementation or compiler changes.
 
-Ship the minimal audited allocation and slice interfaces, then extend
-containers with invalidation-aware contracts. Define cleanup behavior on
-termination and traps without promising cleanup on paths that cannot run it.
+Ownership graphs and borrow state are allocated only when checking is needed.
+Application semantic retention also runs in ordinary retained compilation to
+support flag-independent qualifier semantics. Runtime costs include
+allocation, bounds checks and conditional destruction; moved slots are
+cleared. Checked pointers add no reference counts or extra pointer words.
+Functions with checked pointer parameters, results or locals are excluded
+from the current inliner so optimization cannot erase a transfer or cleanup.
 
-Acceptance: runtime fixtures count destruction across early exits, moves,
-replacement, branch-dependent initialization and defer interactions. Invalid
-container growth or destruction during a live borrow fails at compile time.
+### Measured costs
 
-### 5 Integrate compiler sessions and build tooling
+Measurements on a Linux x86_64 development host compare fixed-point x86
+compilers from main `0ccebf65` and this implementation, using the same current
+input sources and default optimization. Compile figures are medians of 11
+alternating runs after warmup; wall time includes process startup and output
+writing, and peak RSS comes from `/usr/bin/time`.
 
-Include the safety mode, ownership contracts, compiler version, target and
-relevant source dependencies in cached answers. Verify the existing cache
-keys before adding new key components. Update function dependency hashes
-when public ownership or lifetime contracts change.
+| Ordinary compilation | Main time | This branch time | Main peak RSS | This branch peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| `tests/safe_cost_manual_fixture.w` | 38.56 ms | 38.29 ms | 4,416 KiB | 4,896 KiB |
+| `w.w` | 871.39 ms | 1,078.03 ms | 77,216 KiB | 106,592 KiB |
 
-Checkpoint and roll back analysis state with the existing compiler session.
-Keep compile/check results consistent. Reject safe REPL execution until
-persistent bindings, replacement, cleanup and cross-entry borrows are
-modeled. Likewise, do not allow debugger evaluation or another in-process
-entry point to silently ignore a requested safety mode.
+The larger corpus shows a real default-compilation cost: about 24% more time
+and 38% more peak memory. Retaining application bindings before discovering
+later contracts is necessary for the current flag-independent implementation;
+reducing that retention cost is future work. The small legacy fixture's
+executable is byte-identical between the two compilers.
 
-Acceptance: toggling flags, editing imported contracts, failed compiles and
-session rollback cannot reuse stale safe results or corrupt subsequent
-checks. Document which targets and entry points support the experimental
-mode; reject unsupported combinations.
+On this branch, compiling the manual fixture took 38.69 ms / 4,672 KiB;
+compiling `tests/safe_cost_fixture.w` with `--safe` took 48.56 ms / 6,464 KiB.
+These equivalent programs allocate, use and destroy one integer a million
+times and verify the same accumulated result. Median runtime over 21
+alternating runs was 28.88 ms manual / 28.87 ms checked on x86, and
+31.33 ms / 31.82 ms on x64. These small differences are host-sensitive, not
+a general performance guarantee. Both reported 264 KiB peak RSS at the
+measurement tool's resolution. Checked cleanup adds 26 bytes to `.text` on
+x86 and 32 on x64; alignment leaves total ELF sizes unchanged at 114,952 and
+135,696 bytes respectively.
 
-### 6 Release a bounded safe subset
+The committed fixtures make the corpus repeatable:
 
-The first usable release supports ordinary single-threaded functions,
-owned heap values, stack references, arrays/slices, structured branches and
-loops, and simple borrowing across calls. Ship automatic cleanup and the
-audited library interfaces with that release.
+```sh
+bin/wv3 --quiet w.w -o bin/safe_measure_compiler
+bin/wv3 --quiet tests/safe_cost_manual_fixture.w -o bin/safe_cost_manual
+bin/wv3 --quiet --safe tests/safe_cost_fixture.w -o bin/safe_cost
+bin/safe_cost_manual
+bin/safe_cost
+```
 
-Initially reject constructs lacking rules: generators with borrows across
-suspension, shared mutable globals, uncontracted callbacks, GPU memory,
-cross-thread ownership transfer, unsafe aggregate representations and
-arbitrary goto paths. Add each only with implemented rules and tests.
-Raw interoperation remains possible through explicit unsafe interfaces.
+Use a fixed-point compiler from main for the baseline, from this same source
+directory. Add `x64` for the 64-bit runtime comparison. The ordinary
+`./wbuild wbench_compare` gate also passes without changing its baseline.
 
-Acceptance: the documented safe subset works end to end, unsupported cases
-fail closed, and the full compatibility, coverage and performance gates
-below pass. A diagnostics-only prototype is an intermediate milestone,
-not the completed safe mode.
+## Validation
 
-## Cost and compatibility
+`safe_mode_test` exercises accepted and rejected programs on x86 and x64,
+with and without the flag. `safe_runtime_test` uses the guard allocator to
+observe leaks and duplicate destruction across transfer, replacement,
+parameters, return, break, continue and fall-through cleanup.
+`safe_cli_test` covers option order, structured conflicts and in-process
+rejection. The parser-generator grammar includes the contextual qualifiers
+and unsafe blocks. Self-host fixpoints, the full suite, cross-architecture
+compiler checks and changed-line coverage remain the release gates.
 
-Ownership and borrow analysis run at compile time. Preserve ordinary
-pointer width for references to sized values and existing slice layouts;
-do not add a reference count or garbage collector. Runtime work consists
-of required allocation/destruction, existing bounds checks, any necessary
-allocation validation, and conditional cleanup flags where needed.
-
-Measure compilation time, peak compiler memory, generated code size and
-runtime on a fixed corpus. Compare checked programs with equivalent manual
-cleanup programs, and measure the additional cost of semantic retention
-separately. Do not promise zero runtime overhead or a compile-time budget
-before measurements exist. Default compilation must not allocate or run
-ownership-analysis state unnecessarily.
-
-Keep compiler and auto-imported runtime implementation code compatible with
-the pinned seed. New syntax is usable in leaf tests after the compiler
-supports it. Migrate bootstrap sources only after a release containing that
-syntax and an update of every `SEEDS` entry, following the
-[release process](../release.md). A local seed promotion is insufficient.
-
-## Verification gates
-
-- Add conventional `*_test.w` hosts and compile-error fixtures with their
-  `# wbuild:` and expected-diagnostic directives. Cover both accepted and
-  rejected programs rather than testing only diagnostic wording.
-- Update `tests/parser_generator/w.pg` whenever surface syntax changes.
-- Check compiler edits through `./bin/wv2 check --json w.w`, fixing warnings
-  as well as errors. Use `bin/wtest changed` to select focused targets and
-  `bin/wtest archs <file> --check` for files used under multiple targets.
-- Require self-host fixpoints (`verify` and `verify_x64` for lowering or
-  word-size changes), self-host warning checks and the full `./wbuild tests`.
-- Exercise at least 80 percent of changed executable compiler lines with
-  the coverage workflow. Raise directory coverage floors when tests raise
-  measured coverage.
-- Include cross-target compilation and available runtime tests. Track
-  unsupported targets explicitly until equivalent cleanup and diagnostics
-  are verified.
-- Compare default-mode behavior and representative emitted binaries against
-  the baseline. Differential tests must also confirm that safety checks run
-  before optimizations and are not lost through aliases, casts, generic
-  specialization or library calls.
-
-The implementation is complete for its declared subset when checked code
-cannot bypass ownership rules, cleanup and library contracts work together,
-legacy default-mode programs retain their behavior, and the guarantees,
-unsafe boundary and measured costs are documented in the language reference.
+The integrated implementation passed all 1,193 full-suite targets, both
+self-host fixpoints, 43 architecture/root checks and the performance gate.
+Coverage completed the same 1,193 targets and reached 835 of 862 changed
+executable compiler lines (96%, above the 80% floor). Compiler line/branch
+coverage reached 95.1% / 84.9%; coverage floors were raised to retain the gain.

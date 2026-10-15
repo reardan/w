@@ -138,10 +138,11 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 		int param_type = sym_param_type(sym, count)
 		if (is_tail): param_type = element
 		if (param_type >= 0): coerce_call_argument(param_type, got)
+		safe_owner_move(tree, arg, param_type)
 		if (is_tail):
 			push_slot()
 			variadic_values = variadic_values + 1
-		else: push_call_argument_compact(got, stack_pos - arg_stack)
+		else: push_call_argument_at(s, got, stack_pos - arg_stack)
 		count = count + 1
 		arg = tree.next_arg[arg]
 	if (variadic >= 0): finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
@@ -265,6 +266,8 @@ int emit_ast_spine_child(expression_ast* tree, int id):
 	int op = tree.op[id]
 	if (emit_ast_plain_binary(op)): return tree.left[id]
 	if (op == 'z'): return tree.right[id]
+	# O7: a subscript an induction pointer addresses has no operands
+	if ((op == 'i') && ivopt_live && (ivopt_subscript_register(tree, id) != 0)): return -1
 	if ((op == '.') || (op == 'B') || (op == 'i') || (op == 'j') || (op == 'J') || (op == 'Z') || (op == 'M') || (op == 'I') || (op == 'F')): return tree.left[id]
 	if ((op == ast_propagate) || (op == ast_list_it) || (op == 'm') || (op == 'q') || (op == ast_nd_read) || (op == ast_nd_index)): return tree.left[id]
 	return -1
@@ -325,6 +328,13 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	# below only where the streaming grammar would
 	int discard = ast_cond_discard
 	ast_cond_discard = 0
+	# O7 (compiler/ivopt.w): the address an induction pointer holds,
+	# noted like any register-based subscript for the load or store
+	if ((op == 'i') && (left_ready == 0) && ivopt_live):
+		int iv_reg = ivopt_subscript_register(tree, id)
+		if (iv_reg != 0):
+			addr_form(iv_reg, -1, 1, 0)
+			return
 	if (emit_ast_plain_binary(op)):
 		if (left_ready == 0):
 			ast_cond_discard = discard
@@ -589,7 +599,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		int result = tree.high[id]
 		int has_return_buffer = emit_ast_return_buffer(result)
 		int s = stack_pos
-		if (direct == 1): direct_call_record(s, 1, sym)
+		if (direct == 1): direct_call_record_sym(s, sym)
 		elif (direct == 2): direct_call_record(s, 2, tree.generic_instance[id])
 		else:
 			push_slot()
@@ -607,7 +617,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			if (sym >= 0): want = sym_param_type(sym, count)
 			else: want = type_function_param_type(signature, count)
 			if (want >= 0): coerce_call_argument(want, got)
-			push_call_argument_compact(got, stack_pos - arg_stack)
+			push_call_argument_at(s, got, stack_pos - arg_stack)
 			count = count + 1
 			arg = tree.next_arg[arg]
 		finish_call(4, s, count, sym, 0, result, count, has_return_buffer, -1)
@@ -989,7 +999,10 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 				reg_lvalue = reg
 				reg_lvalue_end = codepos
 				reg_lvalue_sym = sym
-			else: be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
+			else:
+				# O5: an argument's stack word (compiler/regalloc_scan.w)
+				if (table[sym + 1] == 'A'): rg_touch = rg_touch + 1
+				be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
 		else if (target_isa == 3): gpu_sym_get_value(name)
 		else if (direct == 0): sym_emit_value(sym, name)
 		if (op == 'X'):
@@ -1045,7 +1058,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			# The same inlining decision as grammar/postfix_expr.w (unit A5)
 			inline_note_call(table + tree.value[id])
 			if (direct && inline_call_site_ok(sym)): direct_call_record(s, 4, inline_site_record)
-			elif (direct): direct_call_record(s, 1, sym)
+			elif (direct): direct_call_record_sym(s, sym)
 			else:
 				push_slot()
 				direct_call_record(s, 0, 0)
@@ -1176,6 +1189,21 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	if (op == '='):
 		expression_is_assignment = 1
 		int subop = tree.value[id]
+		if (type_safe_kind(left_type) == 1):
+			int left = tree.left[id]
+			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
+				error(c"safe owner assignment requires a plain local or parameter")
+			regalloc_note_take()
+			int slot = 0 - tree.binding_offset[left]
+			emit_expression_ast(tree, tree.right[id])
+			int got = promote(tree.result_type[tree.right[id]])
+			coerce(left_type, got)
+			safe_owner_move(tree, tree.right[id], left_type)
+			push_slot()
+			safe_owner_drop_slot(slot)
+			pop_eax_slot()
+			store_stack_var((stack_pos - slot) << word_size_log2)
+			return
 		# The statement's own assignment leaves its value unread (R3:
 		# the register store may then drop the trailing 'mov eax,R').
 		# A parenthesised '(a = b)' is the tree's root but not the

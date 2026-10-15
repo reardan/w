@@ -31,5 +31,5 @@ void wexec_process_group_kill(int pid):
 	return
 
 
-void wexec_install_termination_handler(int handler):
-	return
+int wexec_install_termination_handler(int handler):
+	return 0

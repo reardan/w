@@ -85,7 +85,7 @@ void test_unavailable_dependency_and_explicit_atomic_output():
 
 
 void test_other_hosts_keep_the_manifest():
-	if (build_host_darwin()): return
+	if (build_host_darwin() || build_host_android()): return
 	manifest* m = bh_manifest()
 	char* before = json_stringify(m.root)
 	manifest_host_prepare(m, 1)
@@ -141,3 +141,62 @@ void test_native_directory_discovery():
 	entries = dir_read(c"bin/mac_build_dir/empty")
 	assert_equal(0, entries.length)
 	dir_entries_free(entries)
+
+
+void test_android_host_plan():
+	manifest* m = bh_manifest()
+	# Rename the fixture's native suite to qualify it for Android.
+	m.by_name[c"tests_android"] = m.by_name[c"tests_darwin"]
+	manifest_host_prepare_android(m, 1)
+	json_value* cmd = bh_command(m, c"wtest")
+	assert_strings_equal(c"bin/wv2_android", json_array_get(cmd, 0).string_value)
+	assert_strings_equal(c"arm64_android", json_array_get(cmd, 1).string_value)
+	assert_strings_equal(c"win64", json_array_get(bh_command(m, c"cross"), 1).string_value)
+	assert1(jfield_string(m.by_name[c"linux_test"], c"host_unavailable") != 0)
+	assert1(jfield_string(m.by_name[c"cross"], c"host_unavailable") == 0)
+	assert_strings_equal(c"tests_android", json_array_get(jfield_array(m.by_name[c"tests"], c"deps"), 0).string_value)
+	assert_strings_equal(c"bin/wv2_android", json_array_get(jfield_array(m.by_name[c"wv2"], c"inputs"), 0).string_value)
+	json_free(m.root)
+
+
+void test_android_custom_manifest_and_selector():
+	manifest* m = bh_manifest()
+	manifest_host_prepare_android(m, 0)
+	json_value* cmd = bh_command(m, c"wtest")
+	assert_strings_equal(c"bin/wv2_android", json_array_get(cmd, 0).string_value)
+	assert_strings_equal(c"tools/test_map.w", json_array_get(cmd, 1).string_value)
+	assert_equal(4, json_array_length(cmd))
+	assert_equal(1, manifest_host_selector(c"arm64_android"))
+	assert_equal(0, json_object_has(m.by_name[c"tests"], c"host_skipped"))
+	json_free(m.root)
+
+
+# wbuild: target=android_build_host_test tag=tests_android dep=wv2
+# wbuild: step="bin/wv2_android arm64_android tests/build_host_test.w -o bin/build_host_test_android"
+# wbuild: step="bin/build_host_test_android"
+
+
+void test_android_build_verify_aliases():
+	manifest* m = manifest_parse(c"{\"targets\":[{\"name\":\"build\",\"steps\":[{\"cmd\":[\"./w\",\"w.w\"]}]},{\"name\":\"verify\",\"deps\":[\"build\"]},{\"name\":\"build_android\"},{\"name\":\"verify_android\",\"deps\":[\"build_android\"]},{\"name\":\"tests_android\",\"deps\":[\"verify_android\"]}]}", c"Android aliases", 1)
+	assert1(m != 0)
+	manifest_host_prepare_android(m, 1)
+	assert_equal(0, json_array_length(jfield_array(m.by_name[c"build"], c"steps")))
+	assert_strings_equal(c"build_android", json_array_get(jfield_array(m.by_name[c"build"], c"deps"), 0).string_value)
+	assert_strings_equal(c"verify_android", json_array_get(jfield_array(m.by_name[c"verify"], c"deps"), 0).string_value)
+	assert1(jfield_string(m.by_name[c"build"], c"host_unavailable") == 0)
+	assert1(jfield_string(m.by_name[c"verify"], c"host_unavailable") == 0)
+	json_free(m.root)
+
+
+# wbuild: target=android_bootstrap_test tag=tests
+# wbuild: step="python3 tests/android_bootstrap_test.py"
+
+
+void test_android_native_targets_require_device():
+	manifest* m = manifest_parse(c"{\"targets\":[{\"name\":\"native\",\"steps\":[{\"cmd\":[\"bin/wv2_android\",\"arm64_android\",\"w.w\"]}]},{\"name\":\"tests_android\",\"deps\":[\"native\"]},{\"name\":\"cross\",\"steps\":[{\"cmd\":[\"bin/wv2\",\"arm64_android\",\"w.w\"]}]}]}", c"Android device gate", 1)
+	assert1(m != 0)
+	manifest_host_require_android(m)
+	assert1(jfield_string(m.by_name[c"native"], c"host_unavailable") != 0)
+	assert1(jfield_string(m.by_name[c"tests_android"], c"host_unavailable") != 0)
+	assert1(jfield_string(m.by_name[c"cross"], c"host_unavailable") == 0)
+	json_free(m.root)

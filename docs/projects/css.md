@@ -23,7 +23,11 @@ errors recover locally and do not set `failed`. Callers should inspect both
 
 Every result copies the exact source bytes, so the caller may free the input
 immediately. Each token has `kind`, decoded `value` and `value_length`, half-open
-byte offsets `start/end`, and `match` (-1 for no matching delimiter). Source is
+byte offsets `start/end`, and `match` (-1 for no matching delimiter). Hash tokens
+carry `hash_id` to distinguish identifier hashes; numeric tokens carry
+`number_length` for the numeric prefix before the unit. EOF recovery closes open
+blocks with zero-width synthetic delimiter tokens at `[length,length)`; these
+count toward the token budget and retain reciprocal `match` links. Source is
 explicit-length, including embedded NUL. Invalid UTF-8 is retained as bytes;
 this is a UTF-8-oriented syntax parser, not an encoding detector.
 

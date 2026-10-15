@@ -113,6 +113,7 @@ char* process_which_by(char* name, process_path_check* usable):
 	if (path == 0):
 		path = c"/usr/bin:/bin"
 		if (win): path = c"C:/Windows/System32"
+		if (os_android()): path = c"/system/bin"
 	string_builder* candidate = string_new()
 	char* found = 0
 	int p = 0

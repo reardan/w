@@ -25,6 +25,7 @@ int ast_statement_simple(int* jumps);
 int ast_statement_value(int* jumps);
 int ast_statement_expression(int prefix_only);
 void statement();
+void ivopt_step(int offset);   /* compiler/ivopt.w (unit O7) */
 void ast_if_statement_tail();
 int ast_statement_block();
 int asm_block_misplaced();   /* grammar/asm_function.w */
@@ -272,6 +273,9 @@ void statement_impl():
 	# A loop statement's keyword offset keys its pre-scan record
 	# (grammar/while_statement.w, loop_enter)
 	loop_stmt_offset = token_start_offset
+	# O7 (compiler/ivopt.w): a whole-line induction step is followed by
+	# the pointer increments of the loop it steps
+	int ivopt_offset = token_start_offset
 	# Set by the return/break/continue/goto arms below; published through
 	# lint_last_stmt_jumps at the bottom (compiler/lint.w, unreachable)
 	int jumps = 0
@@ -353,6 +357,15 @@ void statement_impl():
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		pop_to(s)
+
+	# An explicit raw-operation boundary. Keep it contextual like a label;
+	# an existing symbol named unsafe retains its ordinary meaning.
+	else if (peek(c"unsafe") && (nextc == ':') && (sym_lookup(c"unsafe") < 0)):
+		if (retained >= 0): retained_record_at(retained).name = retained_intern(c"unsafe block")
+		enclosing_tab_level = tab_level
+		get_token()
+		statement()
+		terminates = flow_terminates
 
 	# type-name identifier
 	else if (variable_declaration() >= 0): expect_or_newline(c";")
@@ -463,6 +476,7 @@ void statement_impl():
 	# chain above falls through to here (none of them return early), so
 	# this single decrement is reached on every normal exit.
 	stmt_nesting_depth = stmt_nesting_depth - 1
+	if (ivopt_live): ivopt_step(ivopt_offset)
 	lint_last_stmt_jumps = jumps
 	flow_terminates = terminates || jumps
 	ast_body_statement_end(retained)

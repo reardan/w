@@ -33,6 +33,9 @@ Contents: [Lexical structure](#lexical-structure) ·
 [Reserved identifiers](#reserved-identifiers-and-prelude-names) ·
 [Known divergences](#known-divergences)
 
+For the experimental `--safe` ownership subset (`own`, `ref`, `refmut` and
+`unsafe:`), see [ownership and borrowing checks](projects/safe_mode.md).
+
 ## Lexical structure
 
 | Item | Rule |

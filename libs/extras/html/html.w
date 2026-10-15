@@ -3,6 +3,7 @@ import lib.lib
 import lib.str
 import lib.utf8
 import structures.string
+import libs.extras.html.entities
 
 const int HTML_EOF = 0
 const int HTML_START = 1
@@ -178,8 +179,93 @@ void html_tokenizer_free(html_tokenizer* t):
 	html_diagnostics_free(t.diagnostics)
 	free(t)
 
-# Decode the documented named subset and semicolon-terminated numeric references.
-# Unknown names remain literal; numeric invalid scalar values become U+FFFD.
+# A lookup compares only the supplied bytes, without allocating a temporary name.
+char* html_entity_lookup(char* name, int length):
+	int lo = 0
+	int hi = HTML_ENTITY_COUNT
+	while (lo < hi):
+		int mid = lo + (hi - lo) / 2
+		char* entry = html_entity_entry(mid)
+		int i = 0
+		while ((i < length) && (entry[i] != 0) && (entry[i] == name[i])): i = i + 1
+		int comparison = 0 - (entry[i] & 255)
+		if (i < length): comparison = (name[i] & 255) - (entry[i] & 255)
+		if (comparison < 0): hi = mid
+		else if (comparison > 0): lo = mid + 1
+		else: return entry + length + 1
+	return 0
+
+int html_alnum(int c):
+	return html_alpha(c) || ((c >= '0') && (c <= '9'))
+
+# HTML's numeric-reference repair table; the five unmapped C1 controls survive.
+int html_reference_control(int cp):
+	if ((cp < 128) || (cp > 159)): return cp
+	char* mapped = c"\xac\x20\x81\x00\x1a\x20\x92\x01\x1e\x20\x26\x20\x20\x20\x21\x20\xc6\x02\x30\x20\x60\x01\x39\x20\x52\x01\x8d\x00\x7d\x01\x8f\x00\x90\x00\x18\x20\x19\x20\x1c\x20\x1d\x20\x22\x20\x13\x20\x14\x20\xdc\x02\x22\x21\x61\x01\x3a\x20\x53\x01\x9d\x00\x7e\x01\x78\x01"
+	int offset = (cp - 128) * 2
+	return (mapped[offset] & 255) | ((mapped[offset + 1] & 255) << 8)
+
+# Append a reference, returning the first unconsumed byte, or start on no match.
+# No rescan of decoded output: &amp;lt; becomes &lt;, never '<'.
+int html_reference(html_tokenizer* t, int start, int end, int attribute, string_builder* out):
+	int pos = start + 1
+	if (pos >= end): return start
+	if (t.source[pos] == '#'):
+		pos = pos + 1
+		int base = 10
+		if ((pos < end) && (html_lower(t.source[pos]) == 'x')):
+			base = 16
+			pos = pos + 1
+		int digits = pos
+		int cp = 0
+		while (pos < end):
+			int digit = html_lower(t.source[pos] & 255)
+			if ((digit >= '0') && (digit <= '9')): digit = digit - '0'
+			else if ((digit >= 'a') && (digit <= 'f')): digit = digit - 'a' + 10
+			else: break
+			if (digit >= base): break
+			# Saturate above Unicode's maximum before another multiply can overflow.
+			if (cp <= 1114111): cp = cp * base + digit
+			pos = pos + 1
+		if (pos == digits):
+			html_report(t, start, pos, c"absence of digits in numeric character reference")
+			return start
+		if ((pos < end) && (t.source[pos] == ';')): pos = pos + 1
+		else: html_report(t, start, pos, c"missing semicolon after character reference")
+		if ((cp == 0) || (cp > 1114111) || ((cp >= 55296) && (cp <= 57343))):
+			html_report(t, start, pos, c"invalid numeric character reference")
+			cp = 65533
+		else if (((cp >= 64976) && (cp <= 65007)) || ((cp & 65535) >= 65534)):
+			html_report(t, start, pos, c"noncharacter character reference")
+		else if ((cp == 13) || ((cp < 32) && !html_space(cp)) || ((cp >= 127) && (cp <= 159))):
+			html_report(t, start, pos, c"control character reference")
+			cp = html_reference_control(cp)
+		char[4] encoded
+		int count = utf8_encode(encoded, cp)
+		string_append_bytes(out, encoded, count)
+		return pos
+	if (!html_alnum(t.source[pos] & 255)): return start
+	# Bound lookup work by the longest spelling, even for adversarial long names.
+	while ((pos < end) && (pos - start - 1 < HTML_ENTITY_MAX_NAME) && html_alnum(t.source[pos] & 255)): pos = pos + 1
+	if ((pos < end) && (pos - start - 1 < HTML_ENTITY_MAX_NAME) && (t.source[pos] == ';')): pos = pos + 1
+	int candidate = pos
+	while (candidate > start + 1):
+		char* value = html_entity_lookup(t.source + start + 1, candidate - start - 1)
+		if (value != 0):
+			if (t.source[candidate - 1] != ';'):
+				if (attribute && (candidate < end) && ((t.source[candidate] == '=') || html_alnum(t.source[candidate] & 255))): return start
+				html_report(t, start, candidate, c"missing semicolon after character reference")
+			string_append(out, value)
+			return candidate
+		candidate = candidate - 1
+	# An unknown alphanumeric name ending in ';' is a recoverable parse error.
+	# This scan and the literal copy each visit the run once, keeping work linear.
+	pos = start + 1
+	while ((pos < end) && html_alnum(t.source[pos] & 255)): pos = pos + 1
+	if ((pos < end) && (t.source[pos] == ';')): html_report(t, start, pos + 1, c"unknown named character reference")
+	return start
+
+# entities: 0 normalizes only, 1 decodes text/RCDATA, 2 decodes attribute values.
 char* html_decode(html_tokenizer* t, int start, int end, int entities, int* length):
 	string_builder* out = string_new()
 	int i = start
@@ -194,43 +280,8 @@ char* html_decode(html_tokenizer* t, int start, int end, int entities, int* leng
 			i = i + 1
 			if ((i < end) && (t.source[i] == 10)): i = i + 1
 		else if (entities && (c == '&')):
-			int stop = i + 1
-			while ((stop < end) && (t.source[stop] != ';') && !html_space(t.source[stop]) && (t.source[stop] != '&') && (t.source[stop] != '<')): stop = stop + 1
-			int cp = -1
-			if ((stop < end) && (t.source[stop] == ';')):
-				char* name = html_slice(t.source, i + 1, stop, 0)
-				if (strcmp(name, c"amp") == 0): cp = 38
-				else if (strcmp(name, c"lt") == 0): cp = 60
-				else if (strcmp(name, c"gt") == 0): cp = 62
-				else if (strcmp(name, c"quot") == 0): cp = 34
-				else if (strcmp(name, c"apos") == 0): cp = 39
-				else if (strcmp(name, c"nbsp") == 0): cp = 160
-				else if (name[0] == '#'):
-					int p = i + 2
-					int base = 10
-					if ((p < stop) && (html_lower(t.source[p]) == 'x')):
-						base = 16
-						p = p + 1
-					int valid = p < stop
-					cp = 0
-					while (p < stop):
-						int digit = html_lower(t.source[p])
-						if ((digit >= '0') && (digit <= '9')): digit = digit - '0'
-						else if ((digit >= 'a') && (digit <= 'f')): digit = digit - 'a' + 10
-						else: digit = 99
-						if (digit >= base): valid = 0
-						if (cp <= 1114111): cp = cp * base + digit
-						p = p + 1
-					if (!valid): cp = -1
-					else if ((cp == 0) || (cp > 1114111) || ((cp >= 55296) && (cp <= 57343))):
-						cp = 65533
-						html_report(t, i, stop + 1, c"invalid numeric character reference")
-				free(name)
-			if (cp >= 0):
-				char[4] encoded
-				int count = utf8_encode(encoded, cp)
-				string_append_bytes(out, encoded, count)
-				i = stop + 1
+			int after = html_reference(t, i, end, entities == 2, out)
+			if (after > i): i = after
 			else:
 				string_append_char(out, c)
 				i = i + 1
@@ -400,7 +451,7 @@ html_token* html_tokenizer_next(html_tokenizer* t):
 						t.position = t.position + 1
 					value_end = t.position
 					if ((quote != 0) && (t.position < t.length)): t.position = t.position + 1
-					a.value = html_decode(t, value_start, value_end, 1, &a.value_length)
+					a.value = html_decode(t, value_start, value_end, 2, &a.value_length)
 				else: a.value = strclone(c"")
 				a.end = t.position
 				if (html_attribute_find(token.attributes, a.name) != 0):

@@ -1,6 +1,2 @@
-# KVM execution currently requires a Linux x64 host.
-import lib.lib
-
-
-int kvm_open_system():
-	return -38
+# Shared Linux/Android AArch64 kernel ABI.
+import lib.arm64.kvm

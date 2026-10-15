@@ -3,7 +3,7 @@
 import libs.extras.html.html
 
 int main():
-	char* input = c"<title>Demo</title><p>Hello &amp; welcome<p>Second paragraph"
+	char* input = c"<title>Demo</title><p>Hello &amp; welcome &mdash; caf&eacute;<p>&copy; 2026 &NotEqualTilde; &#128;"
 	html_document* document = html_parse(input, strlen(input))
 	if (document.failed):
 		html_document_free(document)
@@ -13,6 +13,9 @@ int main():
 	while (element != 0):
 		if (element.name != 0):
 			print(element.name)
+			if ((element.first_child != 0) && (element.first_child.kind == HTML_TEXT)):
+				print(c": ")
+				print(element.first_child.text)
 			print(c"\n")
 		element = element.next_sibling
 	html_document_free(document)

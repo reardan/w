@@ -39,7 +39,7 @@ int target_isa
 # Target operating system / executable container: 0 = linux (ELF),
 # 1 = darwin (Mach-O, the arm64_darwin target, docs/projects/arm64.md
 # Stage 4), 2 = windows (PE32+, the win64 target,
-# docs/projects/windows.md). Selects the container writer, the __arch__
+# docs/projects/windows.md), 3 = wasm, 4 = Android (ELF). Selects the container writer, the __arch__
 # library modules and the extern C ABI. Defaults to 0 so every existing
 # Linux target is wholly unaffected.
 int target_os
@@ -64,8 +64,9 @@ int entry_optional
 # (e.g. reserving extra program headers for dynamic linking), so the finish
 # pass patches these recorded positions instead of hardcoded constants.
 int elf_static /* W x64 compiled static library */
-int elf_shared /* x64 Linux shared object with explicit native exports */
-int elf_pie   /* explicit x64 Linux --pie; other targets stay unchanged */
+int elf_shared /* ELF shared object with explicit native exports */
+char* elf_soname /* Android shared object basename, set before finish */
+int elf_pie   /* ELF PIE; mandatory for Android */
 int x64_syscall_abi /* 1: KVM ring-3 vmcall, 0: native Linux syscall */
 int x64_hypercall_count
 int[64] x64_hypercall_sites
@@ -123,6 +124,15 @@ int cond_branch_disabled
 # --no-loop-rotate / -O0: while/for loops keep their top-tested shape
 # (grammar/while_statement.w, loop_rotate_on).
 int loop_rotate_disabled
+# --no-ivopts / -O0: no induction-variable pointers (compiler/ivopt.w);
+# ivopt_live is 1 while a loop's pointers are being maintained, which is
+# when code_generator/expression_ast.w asks it about a subscript.
+int ivopt_disabled
+int ivopt_live
+# set by a range loop's head around its loop_enter: only a range loop
+# whose increment calls ivopt_range_step may maintain pointers its
+# variable steps (grammar/for_statement.w, code_generator/loop_ast.w)
+int ivopt_range_ok
 # --no-narrow-regs: int32/uint32 locals and arguments stay on the stack
 # (unit A8, docs/projects/codegen_gap_plan.md §2.7); the reference for
 # tests/regalloc_diff_test.w. The two masks name the promoted registers
@@ -179,6 +189,24 @@ int direct_callee_id
 int direct_callee_end
 # --no-direct-calls: every call reloads its callee into the accumulator.
 int direct_calls_disabled
+# --no-reg-args: no register entries and no register-argument calls
+# (unit O5, compiler/regalloc_scan.w's "register arguments" section);
+# every W call passes its arguments on the stack, the reference for
+# tests/regalloc_diff_test.w.
+int reg_args_disabled
+# O5: stack-word reads and writes of the current function's arguments
+# (sym_emit_value, the AST emitter's bindings, the loop and region
+# homes) since its scan. A register entry is published only for a body
+# that never touched one: its register callers push no argument words.
+int rg_touch
+# O5: words below the prologue's register pushes that hold the
+# parameters' homes (compiler/regalloc_scan.w's rg_homes): a register-
+# shaped body whose region spills around a call keeps its parameters'
+# homes in its own frame, where a register caller's frame has them too.
+int rg_homes
+# O5: the register a call argument should be parked in (0: any), read
+# by x86.w's ers_push_eax for the one park it is set around.
+int ers_prefer
 # --no-addr-modes: no [base+index*scale+disp] operands (unit A2,
 # code_generator/x86.w's address note); every load and store goes
 # through the accumulator address as before, the reference for
@@ -318,6 +346,14 @@ void static_note_address(int pos):
 	static_address_count = static_address_count + 1
 
 
+# A fold rolled back the address slot just noted at pos (O1's const
+# global read): forget it rather than leave the writer's filter to guess.
+void static_unnote_address(int pos):
+	if (static_address_count == 0): return
+	if (load_int32(static_address_slots + (static_address_count - 1) * 4) != pos): return
+	static_address_count = static_address_count - 1
+
+
 void emit_int8(int v):
 	emit_i(v, 1)
 
@@ -366,3 +402,9 @@ int bounds_relation(int kind):
 	if (kind == BOUNDS_EBX_GT_EAX): return 1
 	if (kind >= BOUNDS_EBX_LE_EAX): return 2
 	return 0
+
+
+# Android binaries support both 4 KB and 16 KB kernel pages.
+int elf_page_size():
+	if (target_os == 4): return 16384
+	return 4096
