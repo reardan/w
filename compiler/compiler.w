@@ -1320,15 +1320,17 @@ void finish_on_demand_imports():
 
 
 # A function that was only ever declared by a prototype ('int f(int x);')
-# stays an undefined ('U') global, and every call or address-of threads
-# its address slot onto the symbol's backpatch chain
-# (sym_get_value / sym_define_global_at, compiler/symbol_table.w), which
-# a later definition patches. A chain still non-empty once the whole
-# program has compiled means some site would jump to a stale address
-# (the chain terminator), so the binary segfaults on the call: report
-# every such function at its prototype, then fail. A prototype nothing
-# references keeps an empty chain (its value is still the code_offset
-# terminator it was declared with) and stays legal. extern/c_lib
+# stays an undefined ('U') global. An address-of (or an indirect call)
+# threads its address slot onto the symbol's backpatch chain
+# (sym_get_value), and a direct call threads its rel32 displacement onto
+# the separate rel32 chain (sym_emit_call); sym_define_global_at patches
+# both when a definition appears (compiler/symbol_table.w). Either chain
+# still non-empty once the whole program has compiled means some site
+# would jump to a stale address (the chain terminator), so the binary
+# segfaults on the call: report every such function at its prototype,
+# then fail. A prototype nothing references keeps both chains empty (its
+# value is still the code_offset terminator it was declared with, and
+# its rel32 chain head is 0) and stays legal. extern/c_lib
 # functions, kernels and runtime stubs are defined ('D') when declared,
 # so they never match.
 #
@@ -1337,13 +1339,18 @@ void finish_on_demand_imports():
 # entry_symbol (code_generator/image.w) only picks that runtime entry
 # when '_main' is defined, so in a program without lib.lib the call is
 # dead code, and a missing entry point already has its own error there.
+# Likewise 'main' in a --shared object (elf_shared): a library has no
+# entry point (elf_all.w), so lib.lib's _main -> main call is unreachable
+# and a library such as an Android app (exported callbacks) defines none.
 void undefined_function_check():
 	int failures = 0
 	int t = 0
 	while (t <= table_pos - 1):
 		char* name = table + t
 		t = t + strlen(table + t)
-		if ((table[t + 1] == 'U') && (load_int(table + t + 10) == 2) && (load_int(table + t + 2) != code_offset) && (strcmp(name, c"_main") != 0)):
+		int pending = (load_int(table + t + 2) != code_offset) || (sym_rel_chain(t) != 0)
+		int entry_only = (strcmp(name, c"_main") == 0) || (elf_shared && (strcmp(name, c"main") == 0))
+		if ((table[t + 1] == 'U') && (load_int(table + t + 10) == 2) && pending && (entry_only == 0)):
 			int file_index = sym_decl_file_index(t)
 			if (file_index >= 0):
 				# Reposition the diagnostic at the prototype, reopening its

@@ -12,13 +12,16 @@ int prototype_never_used(int x);
 int prototype_defined_later(int x);
 
 
-int call_through(int f, int x):
+type int_unary = fn(int) -> int
+
+
+int call_through(int_unary* f, int x):
 	return f(x)
 
 
 int main(int argc, int argv):
 	assert_equal(7, prototype_defined_later(6))
-	assert_equal(11, call_through(cast(int, prototype_defined_later), 10))
+	assert_equal(11, call_through(prototype_defined_later, 10))
 	println(c"prototype_unused_test: ok")
 	return 0
 
