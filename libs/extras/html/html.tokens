@@ -1,5 +1,6 @@
-# Maintained HTML tokenizer subset specification, version 2.
-# Authored for W; no translated/generated third-party grammar material.
+# Maintained HTML tokenizer subset specification, version 3.
+# Authored for W; named-reference data is pinned in entities.json.
+# See entities-provenance.md and WHATWG-LICENSE.txt for the data source/license.
 # Offsets count bytes of the original explicit-length input.
 
 space       := U+0009 | U+000A | U+000C | U+000D | U+0020
@@ -15,8 +16,20 @@ end-tag     := '</' name (space* attribute)* space* '/'? '>'
 comment     := '<!--' bytes-until-first('-->') '-->'
 doctype     := case-insensitive('<!doctype') (space | '>') ... '>'
 bogus       := ('<!' | '<?') bytes-until-first('>') '>'
-reference   := '&' ('amp' | 'lt' | 'gt' | 'quot' | 'apos' | 'nbsp') ';'
-             | '&#' decimal-digits ';' | '&#' ('x' | 'X') hex-digits ';'
+reference   := longest exact key from entities.json
+             | '&#' decimal-digits ';'? | '&#' ('x' | 'X') hex-digits ';'?
+
+Named references are case-sensitive, with one or two scalar output values.
+Only keys explicitly present without ';' may match without a semicolon.
+In attribute values, a match without ';' followed by ASCII alphanumeric or '='
+stays literal without a diagnostic. Otherwise missing ';' is diagnosed.
+Unmatched alphanumeric names followed by ';' stay literal with a diagnostic.
+Numeric references require at least one digit and consume the complete digit
+run, even on overflow; missing digits stay literal with a diagnostic.
+NUL, surrogate and out-of-range numeric values become U+FFFD with diagnostics.
+Noncharacters and controls are diagnosed; the HTML Windows-1252 mapping repairs
+mapped C1 controls, with other controls/noncharacters retained. Referenced CR
+is not source-normalized. Reference output is never retokenized or decoded again.
 
 State DATA: '<' followed by alpha starts a tag; '</' followed by alpha starts
 an end tag. '<!--' starts COMMENT. '<!'/'<?' start DOCTYPE/BOGUS. Other '<'

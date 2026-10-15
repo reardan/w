@@ -6,7 +6,7 @@ cookies/cache and content isolation remain in the application repository.
 
 | Foundation | Import / documentation | Delivered boundary |
 | --- | --- | --- |
-| HTML | `libs.extras.html.html`; [HTML](html.md) | Owned explicit-length tokens and static trees, spans, diagnostics, budgets, raw/RCDATA/script content, escaped/double-escaped script states, initial implied-element and malformed-markup recovery |
+| HTML | `libs.extras.html.html`; [HTML](html.md) | Owned explicit-length tokens and static trees, spans, diagnostics, budgets, full named references and numeric repair, raw/RCDATA/script content, escaped/double-escaped script states, initial implied-element and malformed-markup recovery |
 | CSS | `libs.extras.css.css`; [CSS](css.md) | Owned tokens, selectors as component groups, stylesheet/at-rule/declaration nodes, escapes, URL/bad-URL tokens, balanced blocks and local recovery |
 | JavaScript AST | `libs.extras.javascript.parser`, `.lower`, `.text`; [JavaScript](javascript.md) | Loops including lexical for-of, functions/arrows, try/catch/finally, UTF-16 values preserving NUL and lone surrogates, caller parser limits, explicit unsupported lowerings |
 | JavaScript execution | `libs.extras.javascript.runtime`; [embedding](javascript.md#embed-the-interpreter) | Binary64 subset interpreter on 64-bit targets, lexical closures/arrows, templates, for-of, values/objects/arrays, completion results, host callbacks and bounded retained-function invocation, isolated heaps, roots/cyclic collection and terminal budgets |
@@ -17,7 +17,7 @@ cookies/cache and content isolation remain in the application repository.
 | Accessibility | `graphics.ui.accessibility`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in macOS NSAccessibility companion and default-theme contrast checks |
 
 The support contracts are intentionally specific. HTML does not implement every
-WHATWG tree algorithm or entity; CSS does not validate every selector/property
+WHATWG tree algorithm; CSS does not validate every selector/property
 or apply cascade; the interpreter is a documented semantic subset rather than
 complete ECMAScript. It returns control on a budget failure but cannot resume an
 aborted evaluation. HTTP transport remains IPv4, with explicit clients serialized
@@ -49,7 +49,9 @@ independent consumers. None implements application DOM/layout policy.
 Use `--import-root /path/to/pinned/w` when compiling outside the dependency
 checkout. HTML, CSS and image decoders need no generator or external library at
 build/run time. The maintained HTML/CSS token specifications record their scope
-and provenance. JavaScript consumers first run `./wbuild javascript_parser` in
+and provenance. HTML's complete named-reference table is checked in with its
+pinned WHATWG source; `python3 tools/html_entities.py --check` verifies offline
+reproduction. JavaScript consumers first run `./wbuild javascript_parser` in
 the dependency checkout. UI consumers retain the existing reproducible
 `ui_font_data`/`generated` build targets and checked-in font inputs. Shaped runs optionally require system HarfBuzz
 on Linux x64; the macOS accessibility adapter ships a separately built AppKit
