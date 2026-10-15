@@ -241,12 +241,10 @@
       "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/short-circuit-number-object.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Object method syntax is not implemented by AST lowering."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/short-circuit-number-object.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "Object method syntax is not implemented by AST lowering."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/short-circuit-number-string.js#sloppy": {
       "status": "PASS"
@@ -291,12 +289,10 @@
       "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/chainable-with-bitwise-or.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Bitwise OR evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/chainable-with-bitwise-or.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "Bitwise OR evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/tco-pos-null.js#strict": {
       "status": "UNSUPPORTED",

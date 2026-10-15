@@ -75,6 +75,7 @@ int js_lower_arguments(js_node* call, pg_ast_node* arguments, pg_diagnostics* di
 
 
 js_node* js_lower_postfix_tails(pg_ast_node* node, js_node* value, int start, pg_diagnostics* diagnostics):
+	int optional = 0
 	for i in range(start, node.children.length):
 		pg_ast_node* tail = node.children[i]
 		pg_ast_node* first = tail.children[0]
@@ -92,12 +93,36 @@ js_node* js_lower_postfix_tails(pg_ast_node* node, js_node* value, int start, pg
 			if (js_lower_add(next, tail.children[1], diagnostics) == 0):
 				js_node_free(next)
 				return 0
+		else if (js_cst_is(first, c"OPTIONAL")):
+			optional = 1
+			pg_ast_node* part = tail.children[1]
+			if (js_cst_is(part, c"arguments")):
+				next = js_node_new(c"optional_call", c"")
+				js_node_add(next, value)
+				if (js_lower_arguments(next, part, diagnostics) == 0):
+					js_node_free(next)
+					return 0
+			else:
+				char* kind = c"optional_member"
+				int index = 1
+				if (js_cst_is(part, c"LBRACKET")):
+					kind = c"optional_computed_member"
+					index = 2
+				next = js_node_new(kind, c"")
+				js_node_add(next, value)
+				if (js_lower_add(next, tail.children[index], diagnostics) == 0):
+					js_node_free(next)
+					return 0
 		else:
 			js_node_free(value)
 			return js_lower_error(tail, diagnostics)
 		next.offset = value.offset
 		next.length = tail.last_token.offset + tail.last_token.length - next.offset
 		value = next
+	if (optional):
+		js_node* chain = js_node_new(c"optional_chain", c"")
+		js_node_add(chain, value)
+		return chain
 	return value
 
 
@@ -115,10 +140,10 @@ js_node* js_lower_parameters(pg_ast_node* node, pg_diagnostics* diagnostics):
 		pg_ast_node* parameter = list.children[i]
 		if (parameter.token != 0): continue
 		if (js_cst_is(parameter, c"parameter_tail")): parameter = parameter.children[1]
-		if (js_cst_is(parameter, c"parameter") == 0 || parameter.children.length != 1):
+		if (js_cst_is(parameter, c"parameter") == 0 && js_cst_is(parameter, c"rest_parameter") == 0):
 			js_node_free(result)
 			return js_lower_error(parameter, diagnostics)
-		if (js_lower_add(result, parameter.children[0], diagnostics) == 0):
+		if (js_lower_add(result, parameter, diagnostics) == 0):
 			js_node_free(result)
 			return 0
 	return result
@@ -126,6 +151,27 @@ js_node* js_lower_parameters(pg_ast_node* node, pg_diagnostics* diagnostics):
 
 js_node* js_lower_object_property(pg_ast_node* node, pg_diagnostics* diagnostics):
 	pg_ast_node* first = node.children[0]
+	if (js_cst_is(first, c"ELLIPSIS")):
+		js_node* spread = js_node_new(c"spread", c"")
+		if (js_lower_add(spread, node.children[1], diagnostics)): return spread
+		js_node_free(spread)
+		return 0
+	if (js_cst_is(first, c"method")):
+		pg_ast_node* name = js_cst_child(first, c"property_name")
+		pg_ast_node* parameters = js_cst_child(first, c"parameters")
+		if (name.children.length != 1 || parameters == 0 || js_cst_child(first, c"async_modifier") != 0 || js_cst_child(first, c"STAR") != 0): return js_lower_error(node, diagnostics)
+		char* key = js_identifier_decode(name.first_token.text)
+		if (js_cst_is(name.children[0], c"STRING")):
+			free(key)
+			key = js_string_decode(name.first_token.text, diagnostics)
+		if (key == 0): return 0
+		js_node* property = js_node_new(c"property", key)
+		js_node* method = js_node_new(c"function_expression", c"")
+		free(key)
+		js_node_add(property, method)
+		if (js_lower_add(method, parameters, diagnostics) && js_lower_add(method, js_cst_child(first, c"block"), diagnostics)): return property
+		js_node_free(property)
+		return 0
 	char* key = 0
 	if (js_cst_is(first, c"binding_identifier")): key = js_identifier_decode(first.first_token.text)
 	else if (js_cst_is(first, c"property_name") && first.children.length == 1):
@@ -148,7 +194,13 @@ js_node* js_lower_object_property(pg_ast_node* node, pg_diagnostics* diagnostics
 js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 	int count = node.children.length
 	if (node.token != 0):
-		if (js_cst_is(node, c"NUMBER")): return js_number(node.text)
+		if (js_cst_is(node, c"NUMBER")):
+			int length = strlen(node.text)
+			if (length > 1 && node.text[length - 1] == 'n'):
+				js_node* result = js_node_new(c"bigint", node.text)
+				result.text[length - 1] = 0
+				return result
+			return js_number(node.text)
 		if (js_cst_is(node, c"REGEX")): return js_node_new(c"regex", node.text)
 		if (js_cst_is(node, c"TEMPLATE_TEXT")): return js_node_new(c"template_text", node.text)
 		if (js_cst_is(node, c"STRING")):
@@ -177,6 +229,67 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 	if (js_cst_is(node, c"identifier_reference") || js_cst_is(node, c"identifier_name") || js_cst_is(node, c"binding_identifier")): return js_lower_identifier(node)
 	if (js_cst_is(node, c"statement") || js_cst_is(node, c"binding_pattern") || js_cst_is(node, c"return_value")):
 		if (count == 1): return js_lower_node(node.children[0], diagnostics)
+	if (js_cst_is(node, c"parameter") || js_cst_is(node, c"binding_element")):
+		if (count == 1): return js_lower_node(node.children[0], diagnostics)
+		js_node* result = js_node_new(c"default_pattern", c"")
+		if (js_lower_add(result, node.children[0], diagnostics) && js_lower_add(result, node.children[1].children[1], diagnostics)): return result
+		js_node_free(result)
+		return 0
+	if (js_cst_is(node, c"binding_rest") || js_cst_is(node, c"rest_parameter")):
+		js_node* result = js_node_new(c"rest", c"")
+		if (js_lower_add(result, node.children[1], diagnostics)): return result
+		js_node_free(result)
+		return 0
+	if (js_cst_is(node, c"object_binding")):
+		js_node* result = js_node_new(c"object_pattern", c"")
+		pg_ast_node* items = js_cst_child(node, c"object_binding_items")
+		if (items == 0): return result
+		for i in range(items.children.length):
+			pg_ast_node* item = items.children[i]
+			if (item.token != 0): continue
+			if (js_cst_is(item, c"object_binding_tail")): item = item.children[1]
+			if (js_lower_add(result, item, diagnostics) == 0):
+				js_node_free(result)
+				return 0
+		return result
+	if (js_cst_is(node, c"object_binding_property")):
+		pg_ast_node* name = node.children[0]
+		if (name.children.length > 1): return js_lower_error(node, diagnostics)
+		char* key = js_identifier_decode(name.first_token.text)
+		if (js_cst_is(name, c"property_name") && js_cst_is(name.children[0], c"STRING")):
+			free(key)
+			key = js_string_decode(name.first_token.text, diagnostics)
+		if (key == 0): return 0
+		js_node* result = js_node_new(c"pattern_property", key)
+		free(key)
+		if (count == 3):
+			if (js_lower_add(result, node.children[2], diagnostics)): return result
+		else:
+			js_node* binding = js_lower_identifier(name)
+			if (count == 2):
+				js_node* fallback = js_node_new(c"default_pattern", c"")
+				js_node_add(fallback, binding)
+				js_node_add(result, fallback)
+				if (js_lower_add(fallback, node.children[1].children[1], diagnostics)): return result
+			else:
+				js_node_add(result, binding)
+				return result
+		js_node_free(result)
+		return 0
+	if (js_cst_is(node, c"array_binding")):
+		js_node* result = js_node_new(c"array_pattern", c"")
+		for i in range(1, count - 1):
+			pg_ast_node* item = node.children[i]
+			if (js_cst_is(item, c"binding_array_tail")): item = item.children[1]
+			if (js_cst_is(item, c"binding_element_opt")):
+				if (item.children.length == 0):
+					if (i < count - 2 && js_cst_is(node.children[i + 1], c"binding_rest") == 0): js_node_add(result, js_node_new(c"empty", c""))
+					continue
+				item = item.children[0]
+			if (js_lower_add(result, item, diagnostics) == 0):
+				js_node_free(result)
+				return 0
+		return result
 	if (js_cst_is(node, c"primary")):
 		if (count == 1): return js_lower_node(node.children[0], diagnostics)
 		if (count == 3 && js_cst_is(node.children[0], c"LPAREN")): return js_lower_node(node.children[1], diagnostics)
@@ -226,7 +339,10 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 	if (js_cst_is(node, c"postfix")): return js_lower_postfix(node, diagnostics)
 	if (js_cst_is(node, c"argument")):
 		if (count == 1): return js_lower_node(node.children[0], diagnostics)
-		return js_lower_error(node, diagnostics)
+		js_node* result = js_node_new(c"spread", c"")
+		if (js_lower_add(result, node.children[1], diagnostics)): return result
+		js_node_free(result)
+		return 0
 	if (js_cst_is(node, c"program") || js_cst_is(node, c"block")):
 		js_node* result = js_node_new(node.name, c"")
 		for i in range(count):

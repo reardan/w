@@ -1,4 +1,4 @@
-# Bounded acyclic modules with immutable named exports. Syntax is extracted
+# Bounded acyclic modules with named const/function exports. Syntax is extracted
 # from validated parser nodes; executable statements use the runtime AST.
 import libs.extras.javascript.runtime
 
@@ -108,9 +108,16 @@ int js_modules_const(js_module* entry, char* name):
 		if (strcmp(entry.imports[i].local, name) == 0): return 1
 	for i in range(entry.tree.children.length):
 		js_node* node = entry.tree.children[i]
+		if (js_kind(node, c"function") && strcmp(node.text, name) == 0): return 1
 		if (js_kind(node, c"variable") == 0 || strcmp(node.text, c"const") != 0): continue
 		for j in range(node.children.length):
-			if (strcmp(node.children[j].children[0].text, name) == 0): return 1
+			list[js_node*] names = new list[js_node*]
+			js_runtime_pattern_names(node.children[j].children[0], names)
+			int found = 0
+			for k in range(names.length):
+				if (strcmp(names[k].text, name) == 0): found = 1
+			__w_list_free(cast(__w_list*, names))
+			if (found): return 1
 	return 0
 
 int js_modules_parse(js_modules* modules, js_module* entry, char* source, int length):
@@ -156,8 +163,8 @@ int js_modules_parse(js_modules* modules, js_module* entry, char* source, int le
 			if (named != 0 && js_cst_child(node, c"export_from") == 0):
 				js_modules_specifiers(named, entry.exports, 0, 0)
 				continue
-			if (node.children.length != 2 || js_cst_is(node.children[1], c"variable_statement") == 0):
-				js_runtime_fail(rt, 6, c"only immutable named exports are supported")
+			if (node.children.length != 2 || (js_cst_is(node.children[1], c"variable_statement") == 0 && js_cst_is(node.children[1], c"function_decl") == 0)):
+				js_runtime_fail(rt, 6, c"only named const and function exports are supported")
 				break
 			node = node.children[1]
 		js_node* lowered = js_lower_node(node, parsed.diagnostics)
@@ -166,12 +173,17 @@ int js_modules_parse(js_modules* modules, js_module* entry, char* source, int le
 			break
 		js_node_add(tree, lowered)
 		if (exported):
+			if (js_kind(lowered, c"function")):
+				js_modules_name(entry.exports, lowered.text, lowered.text, 0)
+				continue
 			if (js_kind(lowered, c"variable") == 0 || strcmp(lowered.text, c"const") != 0):
 				js_runtime_fail(rt, 6, c"mutable module exports are unsupported")
 				break
 			for j in range(lowered.children.length):
-				char* name = lowered.children[j].children[0].text
-				js_modules_name(entry.exports, name, name, 0)
+				list[js_node*] names = new list[js_node*]
+				js_runtime_pattern_names(lowered.children[j].children[0], names)
+				for k in range(names.length): js_modules_name(entry.exports, names[k].text, names[k].text, 0)
+				__w_list_free(cast(__w_list*, names))
 	if (rt.completion.status == 0 && js_runtime_supported(tree) == 0): js_runtime_fail(rt, 6, c"module syntax outside the runtime subset")
 	if (rt.completion.status == 0):
 		for i in range(entry.exports.length):
@@ -287,6 +299,9 @@ int js_modules_execute(js_modules* modules, js_module* entry, int depth):
 		if (binding != 0):
 			binding.immutable = 1
 			binding.lexical_binding = 1
+			binding.accessor = 2
+			binding.getter = dependency.environment
+			binding.host_context = original
 		js_text_free(key)
 	if (rt.completion.status == 0): js_runtime_var_declare(rt, entry.tree, entry.environment, 0)
 	if (rt.completion.status == 0): js_runtime_declare(rt, entry.tree, entry.environment)
@@ -328,4 +343,4 @@ js_value* js_modules_export(js_modules* modules, js_module* entry, char* name):
 	if (exported == 0): return 0
 	js_value* binding = js_runtime_binding(entry.environment, exported.local)
 	if (binding == 0 || binding.initialized == 0): return 0
-	return binding.value
+	return js_runtime_binding_value(modules.runtime, binding)

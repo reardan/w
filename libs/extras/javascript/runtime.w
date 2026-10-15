@@ -14,7 +14,7 @@ import lib.fmath64
 
 
 # kind: undefined=0, null=1, boolean=2, number=3, string=4,
-# object=5, array=6, callable=7, environment=8, host-callable=9.
+# object=5, array=6, callable=7, environment=8, host-callable=9, bounded BigInt=10.
 struct js_value:
 	void* owner
 	int kind
@@ -51,6 +51,19 @@ struct js_value:
 	int promise_state
 	js_value* promise_result
 	list[js_value*] reactions
+	# Binary storage is owned only by ArrayBuffer; views trace binary_buffer.
+	int binary_kind
+	byte* binary_bytes
+	int binary_length
+	int binary_offset
+	int binary_owned
+	int binary_detached
+	js_value* binary_buffer
+	int binary_constructor
+	int host_construct
+	int text_codec
+	int bigint_bits
+	int bigint_unsigned
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -78,6 +91,8 @@ struct js_runtime_label:
 
 
 struct js_runtime:
+	js_value* array_prototype
+	js_value* string_prototype
 	list[js_value*] heap
 	list[js_value*] roots
 	list[js_node*] scripts
@@ -101,8 +116,34 @@ struct js_runtime:
 	int max_microtasks
 	js_value* promise_prototype
 	js_value* promise_constructor
+	int max_binary_bytes
+	int binary_bytes_used
 
 
+js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
+void js_runtime_install_collections(js_runtime* rt);
+int js_runtime_array_resize(js_runtime* rt, js_value* object, js_value* value);
+int js_runtime_int32(float64 value);
+int js_runtime_bit_operator(char* op);
+js_value* js_runtime_bit_binary(js_runtime* rt, char* op, float64 left, float64 right);
+float64 js_runtime_numeric_literal(char* text, int* consumed);
+void js_runtime_pattern_declare(js_runtime* rt, js_node* pattern, js_value* env, int mode, int immutable);
+void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, js_value* env);
+void js_runtime_array_append(js_runtime* rt, js_value* array, js_value* value);
+int js_runtime_compat_step(js_runtime* rt);
+js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index);
+void js_runtime_arguments(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments);
+js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* skipped, js_value** receiver);
+void js_runtime_install_bigint(js_runtime* rt);
+js_value* js_runtime_bigint_i64(js_runtime* rt, int bits);
+js_value* js_runtime_bigint_u64(js_runtime* rt, int bits);
+js_value* js_runtime_bigint_convert(js_runtime* rt, js_value* value, int allow_number);
+js_value* js_bigint_literal(js_runtime* rt, char* raw);
+js_value* js_bigint_negate(js_runtime* rt, js_value* value);
+char* js_bigint_text(js_value* value);
+void js_runtime_install_builtins(js_runtime* rt);
+void js_runtime_install_binary(js_runtime* rt);
+js_value* js_runtime_binary_construct(js_runtime* rt, int kind, list[js_value*] args);
 void js_runtime_install_promises(js_runtime* rt);
 js_value* js_runtime_promise_construct(js_runtime* rt, list[js_value*] args);
 
@@ -143,6 +184,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.immutable = 0
 	value.initialized = 1
 	value.prototype = 0
+	if (kind == 6): value.prototype = rt.array_prototype
 	value.getter = 0
 	value.setter = 0
 	value.accessor = 0
@@ -161,6 +203,18 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.promise_state = 0
 	value.promise_result = 0
 	value.reactions = 0
+	value.binary_kind = 0
+	value.binary_bytes = 0
+	value.binary_length = 0
+	value.binary_offset = 0
+	value.binary_owned = 0
+	value.binary_detached = 0
+	value.binary_buffer = 0
+	value.binary_constructor = 0
+	value.host_construct = 0
+	value.text_codec = 0
+	value.bigint_bits = 0
+	value.bigint_unsigned = 0
 	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
@@ -281,6 +335,8 @@ js_runtime* js_runtime_new():
 	rt.max_microtasks = 10000
 	rt.promise_prototype = 0
 	rt.promise_constructor = 0
+	rt.max_binary_bytes = 67108864
+	rt.binary_bytes_used = 0
 	rt.heap = new list[js_value*]
 	rt.roots = new list[js_value*]
 	rt.scripts = new list[js_node*]
@@ -313,6 +369,10 @@ js_runtime* js_runtime_new():
 		rt.global.properties[i].immutable = 1
 		rt.global.properties[i].lexical_binding = 1
 	js_runtime_install_promises(rt)
+	js_runtime_install_binary(rt)
+	js_runtime_install_collections(rt)
+	js_runtime_install_builtins(rt)
+	js_runtime_install_bigint(rt)
 	return rt
 
 
@@ -333,6 +393,10 @@ void js_runtime_unroot(js_runtime* rt, js_value* value):
 
 
 void js_runtime_value_free(js_value* value):
+	if (value.binary_owned):
+		js_runtime* rt = cast(js_runtime*, value.owner)
+		rt.binary_bytes_used = rt.binary_bytes_used - value.binary_length
+		free(value.binary_bytes)
 	if (value.reactions != 0): __w_list_free(cast(__w_list*, value.reactions))
 	js_text_free(value.text)
 	for i in range(value.properties.length):
@@ -357,6 +421,8 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.promise_constructor)
 	js_runtime_mark(pending, rt.promise_prototype)
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
+	js_runtime_mark(pending, rt.array_prototype)
+	js_runtime_mark(pending, rt.string_prototype)
 	js_runtime_mark(pending, rt.global)
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
@@ -364,6 +430,7 @@ int js_runtime_collect(js_runtime* rt):
 	while (pending.length > 0):
 		js_value* value = pending.pop()
 		js_runtime_mark(pending, value.promise_result)
+		js_runtime_mark(pending, value.binary_buffer)
 		js_runtime_mark(pending, value.getter)
 		js_runtime_mark(pending, value.setter)
 		if (value.reactions != 0):
@@ -421,6 +488,7 @@ void js_runtime_throw(js_runtime* rt, js_value* value):
 
 
 int js_runtime_truth(js_value* value):
+	if (value.kind == 10): return value.bigint_bits != 0
 	if (value.kind == 0 || value.kind == 1): return 0
 	if (value.kind == 2 || value.kind == 3): return value.number != 0.0 && f64is_nan(value.number) == 0
 	if (value.kind == 4): return value.text.units.length != 0
@@ -494,11 +562,9 @@ void js_runtime_var_declare(js_runtime* rt, js_node* node, js_value* env, int in
 	if (js_kind(node, c"variable")):
 		if (strcmp(node.text, c"var") != 0): return
 		for i in range(node.children.length):
-			js_text* key = js_runtime_key(node.children[i].children[0].text)
-			js_value* binding = js_runtime_property(env, key)
-			if (binding != 0 && binding.lexical_binding): js_runtime_fail(rt, 2, c"duplicate lexical binding")
-			else if (binding == 0 && install): js_runtime_put(rt, env, key, rt.undefined_value)
-			js_text_free(key)
+			int mode = 2
+			if (install): mode = 3
+			js_runtime_pattern_declare(rt, node.children[i].children[0], env, mode, 0)
 		return
 	for i in range(node.children.length): js_runtime_var_declare(rt, node.children[i], env, install)
 
@@ -511,12 +577,8 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 		js_node* statement = node.children[i]
 		if (js_kind(statement, c"variable") && strcmp(statement.text, c"var") != 0):
 			for j in range(statement.children.length):
-				js_text* key = js_runtime_key(statement.children[j].children[0].text)
-				int duplicate = js_runtime_property(env, key) != 0
-				js_text_free(key)
-				if (duplicate):
-					js_runtime_fail(rt, 2, c"duplicate lexical binding")
-					return
+				js_runtime_pattern_declare(rt, statement.children[j].children[0], env, 0, 0)
+				if (rt.completion.status != 0): return
 		else if (js_kind(statement, c"function")):
 			js_text* key = js_runtime_key(statement.text)
 			js_value* binding = js_runtime_property(env, key)
@@ -530,16 +592,7 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 		js_node* statement = node.children[i]
 		if (js_kind(statement, c"variable") && strcmp(statement.text, c"var") != 0):
 			for j in range(statement.children.length):
-				if (rt.completion.status != 0): return
-				char* name = statement.children[j].children[0].text
-				js_text* key = js_runtime_key(name)
-				js_runtime_put(rt, env, key, rt.undefined_value)
-				js_value* binding = js_runtime_property(env, key)
-				if (binding != 0):
-					binding.initialized = 0
-					binding.immutable = strcmp(statement.text, c"const") == 0
-					binding.lexical_binding = 1
-				js_text_free(key)
+				js_runtime_pattern_declare(rt, statement.children[j].children[0], env, 1, strcmp(statement.text, c"const") == 0)
 		else if (js_kind(statement, c"function")):
 			js_text* key = js_runtime_key(statement.text)
 			js_runtime_put(rt, env, key, js_runtime_function(rt, statement, env))
@@ -553,6 +606,7 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env);
 
 int js_runtime_equal(js_value* a, js_value* b):
 	if (a.kind != b.kind): return 0
+	if (a.kind == 10): return a.bigint_bits == b.bigint_bits && a.bigint_unsigned == b.bigint_unsigned
 	if (a.kind == 0 || a.kind == 1): return 1
 	if (a.kind == 2 || a.kind == 3): return f64is_nan(a.number) == 0 && f64is_nan(b.number) == 0 && a.number == b.number
 	if (a.kind == 4): return js_text_equal(a.text, b.text)
@@ -576,6 +630,7 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 		return rt.undefined_value
 	float64 x = a.number
 	float64 y = b.number
+	if (js_runtime_bit_operator(op)): return js_runtime_bit_binary(rt, op, x, y)
 	if (strcmp(op, c"+") == 0): return js_runtime_number(rt, x + y)
 	if (strcmp(op, c"-") == 0): return js_runtime_number(rt, x - y)
 	if (strcmp(op, c"*") == 0): return js_runtime_number(rt, x * y)
@@ -595,7 +650,7 @@ js_text* js_runtime_member_key(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"member")): return js_runtime_key(node.children[1].text)
 	js_value* key = js_runtime_eval_node(rt, node.children[1], env)
 	if (key.kind == 4): return js_text_clone(key.text)
-	if (key.kind == 3 && key.number >= 0.0 && key.number < cast(float64, rt.max_properties)):
+	if (key.kind == 3 && key.number >= -4294967295.0 && key.number <= 4294967295.0):
 		int index = cast(int, key.number)
 		if (cast(float64, index) == key.number):
 			char* spelling = itoa(index)
@@ -785,8 +840,8 @@ js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key)
 			js_value* value = js_runtime_string(rt, unit)
 			js_text_free(unit)
 			return value
-		return rt.undefined_value
-	if (object.kind == 2 || object.kind == 3): return rt.undefined_value
+		return js_runtime_read_receiver(rt, rt.string_prototype, key, object)
+	if (object.kind == 2 || object.kind == 3 || object.kind == 10): return rt.undefined_value
 	if (object.kind < 5 || object.kind > 9):
 		js_runtime_fail(rt, 2, c"property receiver is not an object")
 		return rt.undefined_value
@@ -840,8 +895,7 @@ int js_runtime_member_write(js_runtime* rt, js_value* object, js_text* key, js_v
 	int index = -1
 	if (object.kind == 6):
 		if (js_runtime_key_is(key, c"length")):
-			js_runtime_fail(rt, 6, c"array length assignment is outside the runtime subset")
-			return 0
+			return js_runtime_array_resize(rt, object, value)
 		index = js_runtime_array_index(key)
 		if (index >= rt.max_properties):
 			js_runtime_fail(rt, 5, c"JavaScript array length limit")
@@ -862,7 +916,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(target, c"identifier")):
 		binding = js_runtime_binding(env, target.text)
 		if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
-		else: old = binding.value
+		else: old = js_runtime_binding_value(rt, binding)
 	else:
 		object = js_runtime_eval_node(rt, target.children[0], env)
 		key = js_runtime_member_key(rt, target, env)
@@ -876,10 +930,10 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		else:
 			value = js_runtime_eval_node(rt, node.children[1], env)
 			if (read && rt.completion.status == 0):
-				char[2] op
-				op[0] = node.text[0]
-				op[1] = 0
+				char* op = strclone(node.text)
+				op[strlen(op) - 1] = 0
 				value = js_runtime_binary(rt, op, old, value)
+				free(op)
 	if (rt.completion.status == 0):
 		if (binding != 0):
 			if (binding.immutable):
@@ -915,10 +969,16 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 		env.strict = callable.strict
 		env.code = callable.code
 	js_node* parameters = callable.code.children[0]
+	for i in range(parameters.children.length): js_runtime_pattern_declare(rt, parameters.children[i], env, 4, 0)
 	for i in range(parameters.children.length):
+		if (rt.completion.status != 0): break
+		js_node* parameter = parameters.children[i]
 		js_value* argument = rt.undefined_value
-		if (i < args.length): argument = args[i]
-		js_runtime_set(rt, env, parameters.children[i].text, argument)
+		if (js_kind(parameter, c"rest")):
+			argument = js_runtime_alloc(rt, 6)
+			for j in range(i, args.length): js_runtime_array_append(rt, argument, args[j])
+		else if (i < args.length): argument = args[i]
+		js_runtime_pattern_bind(rt, parameter, argument, env)
 	js_node* body = callable.code.children[1]
 	js_runtime_label* saved_label = rt.label
 	rt.label = 0
@@ -934,12 +994,10 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 # Arrays use a live length and strings yield Unicode code points (including
 # lone surrogate code units). Every iteration has a fresh lexical binding.
 js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
-	char* name = node.children[0].text
+	js_node* pattern = node.children[0]
 	js_value* initial = js_runtime_environment(rt, env)
-	js_runtime_set(rt, initial, name, rt.undefined_value)
-	js_value* binding = js_runtime_binding(initial, name)
+	js_runtime_pattern_declare(rt, pattern, initial, 1, 0)
 	if (rt.completion.status != 0): return rt.undefined_value
-	binding.initialized = 0
 	js_value* iterable = js_runtime_eval_node(rt, node.children[1], initial)
 	if (rt.completion.status != 0): return rt.undefined_value
 	if (iterable.kind != 4 && iterable.kind != 6):
@@ -969,10 +1027,9 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 			value = js_runtime_string(rt, text)
 			js_text_free(text)
 		js_value* scope = js_runtime_environment(rt, env)
-		js_runtime_set(rt, scope, name, value)
-		binding = js_runtime_binding(scope, name)
+		js_runtime_pattern_declare(rt, pattern, scope, 1, strcmp(node.text, c"const") == 0)
+		js_runtime_pattern_bind(rt, pattern, value, scope)
 		if (rt.completion.status != 0): break
-		binding.immutable = strcmp(node.text, c"const") == 0
 		js_value* body_value = js_runtime_eval_node(rt, node.children[2], scope)
 		if (rt.empty == 0): result = body_value
 		if (rt.completion.status == 3 && rt.jump_target == 0):
@@ -1113,11 +1170,12 @@ js_text* js_runtime_primitive_text(js_runtime* rt, js_value* value):
 		raw = c"false"
 		if (js_runtime_truth(value)): raw = c"true"
 	if (value.kind == 3): raw = js_runtime_number_text(value.number)
-	if (value.kind > 4):
+	if (value.kind == 10): raw = js_bigint_text(value)
+	if (value.kind > 4 && value.kind != 10):
 		js_runtime_fail(rt, 6, c"object string conversion is outside the runtime subset")
 		return 0
 	js_text* result = js_runtime_key(raw)
-	if (value.kind == 3): free(raw)
+	if (value.kind == 3 || value.kind == 10): free(raw)
 	return result
 
 
@@ -1171,6 +1229,7 @@ js_value* js_runtime_template(js_runtime* rt, js_node* node, js_value* env):
 
 
 js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
+	if (js_kind(node, c"bigint")): return js_bigint_literal(rt, node.text)
 	int count = node.children.length
 	if (js_kind(node, c"label")):
 		js_runtime_label label
@@ -1216,7 +1275,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		return rt.undefined_value
 	if (js_kind(node, c"number")):
 		int consumed = 0
-		float64 number = parse_float64(node.text, &consumed)
+		float64 number = js_runtime_numeric_literal(node.text, &consumed)
 		if (consumed != strlen(node.text)):
 			js_runtime_fail(rt, 6, c"only decimal number literals are in the runtime subset")
 			return rt.undefined_value
@@ -1246,7 +1305,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (property == 0 || property.initialized == 0):
 			js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 			return rt.undefined_value
-		return property.value
+		return js_runtime_binding_value(rt, property)
 	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return js_runtime_function(rt, node, env)
 	if (js_kind(node, c"function")):
 		rt.empty = 1
@@ -1275,12 +1334,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_value* value = rt.undefined_value
 			if (declaration.children.length == 2): value = js_runtime_eval_node(rt, declaration.children[1], env)
 			if (rt.completion.status != 0): break
-			js_value* binding = js_runtime_binding(env, declaration.children[0].text)
-			if (binding == 0):
-				js_runtime_fail(rt, 6, c"lexical declaration requires a block")
-				break
-			binding.value = value
-			binding.initialized = 1
+			js_runtime_pattern_bind(rt, declaration.children[0], value, env)
 		rt.empty = 1
 		return rt.undefined_value
 	if (js_kind(node, c"expression_statement")):
@@ -1344,6 +1398,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			else if (value.kind == 2): name = c"boolean"
 			else if (value.kind == 3): name = c"number"
 			else if (value.kind == 4): name = c"string"
+			else if (value.kind == 10): name = c"bigint"
 			else if (value.kind == 7 || value.kind == 9): name = c"function"
 			js_text* text = js_runtime_key(name)
 			js_value* result = js_runtime_string(rt, text)
@@ -1351,11 +1406,20 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			return result
 		if (strcmp(node.text, c"!") == 0): return js_runtime_boolean(rt, js_runtime_truth(value) == 0)
 		if (strcmp(node.text, c"void") == 0): return rt.undefined_value
+		if (value.kind == 10):
+			if (strcmp(node.text, c"-") == 0): return js_bigint_negate(rt, value)
+			js_runtime_fail(rt, 2, c"BigInt cannot implicitly convert to Number")
+			return rt.undefined_value
 		if (value.kind != 3):
 			js_runtime_fail(rt, 6, c"implicit numeric conversion is outside the runtime subset")
 			return rt.undefined_value
+		if (strcmp(node.text, c"~") == 0): return js_runtime_number(rt, cast(float64, ~js_runtime_int32(value.number)))
 		if (strcmp(node.text, c"-") == 0): return js_runtime_number(rt, -value.number)
 		return value
+	if (js_kind(node, c"optional_chain")):
+		int skipped = 0
+		js_value* receiver = rt.undefined_value
+		return js_runtime_chain(rt, node.children[0], env, &skipped, &receiver)
 	if (js_kind(node, c"member") || js_kind(node, c"computed_member")):
 		js_value* object = js_runtime_eval_node(rt, node.children[0], env)
 		js_text* key = js_runtime_member_key(rt, node, env)
@@ -1368,10 +1432,26 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_value* object = js_runtime_alloc(rt, kind)
 		for i in range(count):
 			if (rt.completion.status != 0): break
+			if (js_kind(node.children[i], c"spread")):
+				js_value* spread = js_runtime_eval_node(rt, node.children[i].children[0], env)
+				if (kind == 6):
+					int index = 0
+					while (js_runtime_compat_step(rt)):
+						js_value* item = js_runtime_iter_next(rt, spread, &index)
+						if (item == 0): break
+						js_runtime_array_append(rt, object, item)
+				else:
+					for j in range(spread.properties.length):
+						js_value* property = spread.properties[j]
+						if (property.enumerable == 0): continue
+						if (js_runtime_compat_step(rt) == 0): break
+						js_value* item = js_runtime_member_read(rt, spread, property.key)
+						if (rt.completion.status == 0): js_runtime_member_write(rt, object, property.key, item)
+				continue
 			js_text* key = 0
 			js_value* value = rt.undefined_value
 			if (kind == 6):
-				char* index = itoa(i)
+				char* index = itoa(object.array_length)
 				key = js_runtime_key(index)
 				free(index)
 				value = js_runtime_eval_node(rt, node.children[i], env)
@@ -1381,7 +1461,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				if (js_kind(property, c"property_shorthand")):
 					js_value* binding = js_runtime_binding(env, property.text)
 					if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
-					else: value = binding.value
+					else: value = js_runtime_binding_value(rt, binding)
 				else: value = js_runtime_eval_node(rt, property.children[0], env)
 			if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
 			js_text_free(key)
@@ -1396,16 +1476,19 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				js_text* key = js_runtime_member_key(rt, target, env)
 				callable = js_runtime_member_read(rt, receiver, key)
 				js_text_free(key)
+		else if (js_kind(target, c"optional_chain")):
+			int skipped = 0
+			callable = js_runtime_chain(rt, target.children[0], env, &skipped, &receiver)
 		else: callable = js_runtime_eval_node(rt, target, env)
 		list[js_value*] arguments = new list[js_value*]
-		for i in range(1, count):
-			if (rt.completion.status != 0): break
-			arguments.push(js_runtime_eval_node(rt, node.children[i], env))
+		js_runtime_arguments(rt, node, env, arguments)
 		js_value* result = rt.undefined_value
 		if (rt.completion.status == 0):
 			if (js_kind(node, c"construct")):
 				if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
-				else: js_runtime_fail(rt, 6, c"only native Promise construction is supported")
+				else if (callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
+				else if (callable.host_construct): result = js_runtime_call_receiver(rt, callable, rt.undefined_value, arguments)
+				else: js_runtime_fail(rt, 6, c"unsupported native constructor")
 			else: result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return result
@@ -1431,21 +1514,22 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 # syntax before execution, so unsupported syntax cannot leave partial effects.
 int js_runtime_supported(js_node* node):
 	char* kind = node.kind
-	int supported = js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
+	int supported = js_kind(node, c"bigint") || js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
+	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
 	if (supported == 0): return 0
 	# Labelled function declarations require the unsupported Annex B rules.
 	if (js_kind(node, c"label") && js_kind(node.children[0], c"function")): return 0
 	if (strcmp(kind, c"number") == 0):
 		int consumed = 0
-		parse_float64(node.text, &consumed)
+		js_runtime_numeric_literal(node.text, &consumed)
 		if (consumed != strlen(node.text)): return 0
 		if (node.text[0] == '0' && node.text[1] >= '0' && node.text[1] <= '9'): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
-	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0): return 0
-	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0): return 0
+	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"~") != 0): return 0
+	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
-		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0): return 0
+		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && js_runtime_bit_operator(op) == 0): return 0
 	for i in range(node.children.length):
 		if (js_runtime_supported(node.children[i]) == 0): return 0
 	return 1
@@ -1539,3 +1623,13 @@ js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_val
 
 
 import libs.extras.javascript.promises
+
+import libs.extras.javascript.binary
+
+import libs.extras.javascript.runtime_compat
+
+import libs.extras.javascript.runtime_builtins
+
+import libs.extras.javascript.runtime_collections
+
+import libs.extras.javascript.bigint

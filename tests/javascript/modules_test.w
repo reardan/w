@@ -116,14 +116,12 @@ void test_modules_rejections():
 	module_reject(c"export {x} from 'dep';", 6)
 	module_reject(c"export let x = 1;", 6)
 	module_reject(c"let x = 1; export {x};", 6)
-	module_reject(c"export function f() {}", 6)
 	module_reject(c"export {x};", 6)
 	module_reject(c"export const x = 1; export {x};", 6)
 	module_reject(c"import {x} from 'dep'; const x = 2;", 6)
 	module_reject(c"import('dep');", 6)
 	module_reject(c"import 'de\\u0000p';", 6)
 	module_reject(c"await 1;", 6)
-	module_reject(c"export const [x] = [1];", 6)
 	module_reject(c"import {x} from 'dep'; class Unsupported {}", 6)
 
 void test_modules_cached_failure():
@@ -213,7 +211,29 @@ void test_modules_limits_and_imports():
 	js_runtime_free(rt)
 	module_fixture_free(fixture)
 
+void test_modules_function_exports():
+	module_fixture* fixture = module_fixture_new()
+	module_fixture_add(fixture, c"dep", c"let count = 0; export function next() { return ++count; } function hidden() { return 7; } export {hidden as value}; export function swap() { next = () => 20; }")
+	module_fixture_add(fixture, c"root", c"import {next, value, swap} from 'dep'; export const [result] = [next() + next() + value()]; swap(); export const changed = next(); export const retained = () => next();")
+	js_runtime* rt = js_runtime_new()
+	js_modules* modules = js_modules_new(rt, module_resolve, fixture)
+	js_module* root = js_modules_evaluate(modules, c"root", c"", 10000)
+	asserts(c"function exports evaluated", root != 0)
+	assert1(js_modules_export(modules, root, c"result").number == 10.0)
+	assert1(js_modules_export(modules, root, c"changed").number == 20.0)
+	js_value* retained = js_modules_export(modules, root, c"retained")
+	js_runtime_root(rt, retained)
+	js_modules_free(modules)
+	js_runtime_collect(rt)
+	list[js_value*] args = new list[js_value*]
+	assert_equal(0, js_runtime_invoke(rt, retained, args, 1000).status)
+	assert1(rt.completion.value.number == 20.0)
+	__w_list_free(cast(__w_list*, args))
+	js_runtime_free(rt)
+	module_fixture_free(fixture)
+
 int main():
+	test_modules_function_exports()
 	test_modules_graph()
 	test_modules_rejections()
 	test_modules_cached_failure()

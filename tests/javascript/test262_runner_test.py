@@ -27,9 +27,9 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 37, 'FAIL': 0, 'UNSUPPORTED': 16, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 28)
-        self.assertEqual(report['assertions'], 164)
+        self.assertEqual(report['counts'], {'PASS': 41, 'FAIL': 0, 'UNSUPPORTED': 12, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 32)
+        self.assertEqual(report['assertions'], 194)
         self.assertEqual(report['variants'], 53)
         self.assertEqual(report['baseline_changes'], [])
 
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 36, 'FAIL': 0, 'UNSUPPORTED': 17, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 40, 'FAIL': 0, 'UNSUPPORTED': 13, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -67,7 +67,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=improve):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 38, 'FAIL': 0, 'UNSUPPORTED': 15, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 42, 'FAIL': 0, 'UNSUPPORTED': 11, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
@@ -85,12 +85,13 @@ class AdapterContract(unittest.TestCase):
                 self.assertEqual(result['actual']['phase'], 'metadata')
                 self.assertEqual(result['actual']['message'],
                                  'unsupported required built-ins: ' + ', '.join(requirements[case]))
-        # Direct execution retains genuine ReferenceError, including the three
-        # unavailable built-ins. No runtime exception is relabelled by classify.
-        for source in ['unknownUserVariable;', 'eval("1 + 1");', 'Number.NaN;', 'isNaN(0);']:
+        # Direct execution retains genuine ReferenceError, including the
+        # unavailable eval/isNaN built-ins. No runtime exception is relabelled by classify.
+        for source in ['unknownUserVariable;', 'eval("1 + 1");', 'isNaN(0);']:
             actual = self.execute(source)
             self.assertEqual(actual['error_type'], 'ReferenceError')
             self.assertEqual(adapter.classify({}, actual), 'FAIL')
+        self.assertEqual(self.execute("assert.sameValue(Number.isFinite(1), true);")['outcome'], 'normal')
         # Claiming availability actually runs the pinned cases; it must expose
         # failures until the runtime implements the advertised capability.
         with patch.object(adapter, 'BUILTINS', adapter.KNOWN_BUILTINS):

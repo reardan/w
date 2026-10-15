@@ -85,9 +85,11 @@ updates, calls/members, dense arrays, ordinary named/string-keyed
 objects (including distinct shorthand properties), templates, simple imports,
 and exported declarations. Lowering preserves escaped non-directive strings so
 printing cannot accidentally introduce a strict-mode directive. Parsing is
-broader: lowering intentionally rejects classes, async/generator
-functions, destructuring, rest/default parameters, `new`, optional chains,
-computed/numeric/method object properties, and richer module declarations.
+broader: lowering intentionally rejects classes, async/generator functions,
+computed object keys and richer module declarations. Runtime-oriented lowering
+also supports binding patterns, rest/default parameters, `new`, optional chains,
+spread and object methods. These newer nodes are not yet supported by every
+printer/rewrite operation; `js_print` reports an explicit unsupported shape.
 Node shapes are documented in `libs/extras/javascript/printer.w` and exercised
 in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 
@@ -99,7 +101,14 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | `break`, `continue` | optional decoded target label | none |
 | `function_expression` | optional name | parameters, block |
 | `arrow` | empty | parameters, expression or block |
-| `for_of` | `let` or `const` | identifier, iterable expression, body |
+| `for_of` | `let` or `const` | binding pattern, iterable expression, body |
+| `object_pattern`, `array_pattern` | empty | binding entries |
+| `pattern_property` | decoded property name | binding pattern |
+| `default_pattern` | empty | binding pattern, initializer |
+| `rest`, `spread` | empty | binding pattern or expression |
+| `optional_chain` | empty | complete chain expression |
+| `optional_member`, `optional_computed_member`, `optional_call` | empty | same children as ordinary operation |
+| `bigint` | integer spelling without `n` | none |
 | `try` | empty | block, catch or empty, finally block or empty |
 | `catch` | optional identifier | block |
 | `string_utf16` | empty | none; value in `string_units` |
@@ -189,27 +198,32 @@ Labelled function declarations remain unsupported (Annex B semantics).
 
 The initial semantic subset is deliberately explicit:
 
-- Undefined, null, booleans, binary64 decimal numbers, UTF-16 strings; truthiness,
+- Undefined, null, booleans, binary64 decimal/hex/binary/octal numbers, UTF-16 strings; truthiness,
   strict equality (including NaN), numeric `+ - * /` and comparisons, string
   concatenation, `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary.
+  Bitwise `& | ^ ~ << >> >>>` use 32-bit JavaScript integer semantics.
   `typeof` returns `undefined` for missing names while preserving TDZ failures.
 - Function/global `var` hoisting and redeclaration, parameter/var sharing, and
   duplicate body function declarations with the last declaration winning.
   Nested block functions remain lexical; Annex B semantics are not implemented.
 - `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
   hoisted ordinary function declarations within each block, named/anonymous
-  function expressions, synchronous arrows with simple parameters and expression
-  or block bodies, recursive calls, captured mutable environments and
+  function expressions, synchronous arrows with expression or block bodies,
+  object/array binding patterns and default/rest parameters, recursive calls, captured mutable environments and
   per-iteration `for (let ...)` environments, including a separate initializer
   environment for captured bindings.
-- Dense array literals, bounded index writes and readable `length`; plain data
-  objects, shorthand properties, dot/computed property access and mutation.
+- Dense array literals, bounded index writes and writable `length`; plain data
+  objects, shorthand properties and methods, dot/computed property access,
+  optional chains and mutation. Array/call spread accepts arrays and strings;
+  object spread copies enumerable own properties. Shared non-enumerable array
+  methods include `push`, `shift`, `slice`, `splice`, and `includes`; string
+  methods include `slice`, `codePointAt`, `startsWith`, and `indexOf`.
   String length/indexing use UTF-16 code units. Host-installed prototypes, data
   descriptors and accessors participate in property reads/writes; inherited
   accessors receive the original receiver. Read-only writes are ignored in
   sloppy code and throw in strict code. Function values expose `name`/`length`.
   Method calls pass `this`; arrows retain their enclosing receiver.
-- Lexical `for (let/const name of value)` over arrays and strings. Arrays read
+- Lexical `for (let/const pattern of value)` over arrays and strings. Arrays read
   their live length each iteration; holes yield undefined. Strings iterate Unicode
   code points, preserving lone surrogates. Each iteration creates a fresh binding
   for captured closures; the iterable expression sees the binding in its TDZ.
@@ -217,21 +231,28 @@ The initial semantic subset is deliberately explicit:
   interpolate undefined, null, booleans, numbers and strings. Number spelling uses
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
   Substitutions execute once in source order; object conversion remains unsupported.
-- `= += -= *= /=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
+- `= += -= *= /= &= |= ^= <<= >>= >>>=`, prefix/postfix `++ --`, if/while/do/for, labelled statements,
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
 
-Unsupported syntax is rejected before execution, including modules, classes,
-generators/async, regex execution, tagged templates, destructuring,
-prototype-literal `__proto__`, loose equality, bitwise operators and additional
-numeric operators. Custom iterators, default/rest/destructured arrow parameters,
-implicit operator coercions, standard built-ins, array length writes and exotic
-property-key conversions remain outside this subset. Global `this`, sloppy
-receiver substitution/boxing, `super` and ordinary functions' implicit
-`arguments` object are not implemented; accessing these receiver/arguments
-features reports unsupported status. Explicit `arguments` parameters remain
-ordinary bindings. Native Promise construction is supported; other constructors
-report unsupported at execution. No DOM, timer task queue, module loader or
-browser authority is installed by the runtime.
+Unsupported syntax is rejected before execution, including module declarations
+through the script API, classes, generators/async, regex execution, tagged
+templates, prototype-literal `__proto__`, loose equality and additional numeric
+operators. Custom iterators, implicit operator coercions and exotic property-key
+conversions remain outside this subset. Destructuring assignment, computed binding
+keys and catch patterns remain unsupported. Global `this`, sloppy receiver
+substitution/boxing, `super` and ordinary functions' implicit `arguments` object
+are not implemented; accessing these receiver/arguments features reports
+unsupported status. Explicit `arguments` parameters remain ordinary bindings.
+
+Native Promise, binary buffers/views and text-codec constructors are supported;
+other constructor capabilities depend on installed host hooks. The runtime also
+installs bounded Number, Math and Date operations; this is not a complete standard
+library. BigInt literals lower to a distinct node for the bounded binary-boundary
+implementation; arbitrary-precision arithmetic is not implemented. No DOM, timer
+task queue or browser authority is installed by the runtime. The separate
+[module API](javascript_modules.md) provides bounded acyclic graph loading with
+named const/function exports and live read-only imports. Browser module loading
+does not yet support top-level await.
 
 Scope conflicts are checked before installing bindings, so a rejected script
 does not leave its otherwise fresh declarations in the temporal dead zone.
