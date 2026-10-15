@@ -74,19 +74,31 @@ shell_result* shell_result_from_process(process_result* pr):
 	return r
 
 
+# Android has no /bin/sh. Resolve Termux's sh from PATH, falling back
+# to the Android system shell (the returned string is caller-owned).
+char* shell_path():
+	if (os_android()):
+		char* found = process_which(c"sh")
+		if (found != 0): return found
+		return strclone(c"/system/bin/sh")
+	return strclone(c"/bin/sh")
+
+
 # Run cmd via /bin/sh -c with stdout and stderr captured separately.
 # Returns 0 only when the spawn itself failed (e.g. /bin/sh missing); a
 # shell-reported error (bad syntax, nonzero exit, a signal death) still
 # returns a shell_result with the decoded status.
 shell_result* sh(char* cmd):
+	char* path = shell_path()
 	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/sh")
+	strv_set(argv, 0, path)
 	strv_set(argv, 1, c"-c")
 	strv_set(argv, 2, cmd)
 	spawn_options* opts = shell_spawn_options()
-	process_result* pr = process_run(c"/bin/sh", argv, opts, 0, 0)
+	process_result* pr = process_run(path, argv, opts, 0, 0)
 	free(opts)
 	free(cast(void*, argv))
+	free(path)
 	if (pr == 0): return 0
 	return shell_result_from_process(pr)
 
@@ -114,14 +126,16 @@ shell_result* run_argv(list[char*] argv):
 # process currently has. Returns the decoded exit status, or -1 when the
 # spawn itself failed.
 int sh_interactive(char* cmd):
+	char* path = shell_path()
 	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/sh")
+	strv_set(argv, 0, path)
 	strv_set(argv, 1, c"-c")
 	strv_set(argv, 2, cmd)
 	spawn_options* opts = shell_spawn_options()
-	process* p = process_spawn(c"/bin/sh", argv, opts)
+	process* p = process_spawn(path, argv, opts)
 	free(opts)
 	free(cast(void*, argv))
+	free(path)
 	if (p == 0): return -1
 	int status = process_wait(p)
 	process_free(p)

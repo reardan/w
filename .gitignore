@@ -15,6 +15,7 @@ log/*.core
 # promoted by ./wbuild update / update_darwin / update_win.
 /w
 /w_darwin
+/w_android
 /w.exe
 *.download
 

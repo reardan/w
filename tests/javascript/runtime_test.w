@@ -74,7 +74,7 @@ void js_test_errors_and_limits():
 	js_test_number(rt, c"let fresh = 42; fresh;", 42.0)
 	assert_equal(2, js_test_eval(rt, c"function unused() {} function fixed() {}").status)
 	js_test_number(rt, c"let unused = 42; unused;", 42.0)
-	assert_equal(6, js_test_eval(rt, c"var old = 1;").status)
+	js_test_number(rt, c"var old = 1; old;", 1.0)
 	assert_equal(6, js_test_eval(rt, c"1 == 1;").status)
 	assert_equal(6, js_test_eval(rt, c"1 + '1';").status)
 	js_completion* result = js_test_eval(rt, c"throw 'failure';")

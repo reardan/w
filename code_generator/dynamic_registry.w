@@ -71,7 +71,8 @@ int dyn_relro_slots
 # pages: the loader can only mprotect page ranges, and nothing else
 # shares those pages. 0 when nothing was imported.
 int dyn_relro_size():
-	return (dyn_relro_slots * word_size + 4095) & (0 - 4096)
+	int page = elf_page_size()
+	return (dyn_relro_slots * word_size + page - 1) & (0 - page)
 
 
 int dyn_emit_import_slot():
@@ -82,7 +83,7 @@ int dyn_emit_import_slot():
 	# those pages PT_GNU_RELRO and ld.so mprotects them read-only once
 	# relocation is done. Growing down keeps every slot's vaddr final the
 	# moment it is allocated, without knowing the import count up front.
-	if (data_split && (target_os == 0)):
+	if (data_split && ((target_os == 0) || (target_os == 4))):
 		dyn_relro_slots = dyn_relro_slots + 1
 		return data_offset - dyn_relro_slots * word_size
 	# W^X targets (data_split) map the code stream read-execute, so the

@@ -576,6 +576,13 @@ int wtest_load_manifest():
 	wtest_never_emit = new map[char*, int]
 	wtest_never_emit[c"update"] = 1
 	wtest_never_emit[c"update_darwin"] = 1
+	wtest_never_emit[c"update_android"] = 1
+	wtest_never_emit[c"build_android"] = 1
+	wtest_never_emit[c"wexec_android"] = 1
+	wtest_never_emit[c"android_seed"] = 1
+	# Explicit adb device gate: never select a connected device implicitly.
+	wtest_never_emit[c"android_executor_signal_device_test"] = 1
+	if (build_host_android() == 0): wtest_never_emit[c"verify_android"] = 1
 	wtest_never_emit[c"build_darwin"] = 1
 	if (build_host_darwin() == 0): wtest_never_emit[c"verify_darwin"] = 1
 	wtest_never_emit[c"wexec_darwin"] = 1
@@ -709,6 +716,7 @@ int wtest_excluded_root(char* path):
 int wtest_selector(char* word):
 	if (strcmp(word, c"x64") == 0): return 1
 	if (strcmp(word, c"arm64") == 0): return 1
+	if (strcmp(word, c"arm64_android") == 0): return 1
 	if (strcmp(word, c"arm64_darwin") == 0): return 1
 	if (strcmp(word, c"arm64_ios") == 0): return 1
 	if (strcmp(word, c"arm64_ios_sim") == 0): return 1
@@ -751,6 +759,8 @@ int wtest_root_program(char* program):
 	if (strcmp(program, c"bin/wv2") == 0): return 1
 	if (strcmp(program, c"./w") == 0): return 1
 	if (strcmp(program, c"bin/wv2_darwin") == 0): return 1
+	if (strcmp(program, c"bin/wv2_android") == 0): return 1
+	if (strcmp(program, c"./w_android") == 0): return 1
 	return 0
 
 
@@ -1777,6 +1787,7 @@ char* wtest_arch_verify_target(char* arch):
 	if (strcmp(arch, c"wasm") == 0): return c"verify_wasm"
 	if (strcmp(arch, c"win64") == 0): return c"verify_win"
 	if (strcmp(arch, c"arm64_darwin") == 0): return c"verify_darwin"
+	if (strcmp(arch, c"arm64_android") == 0): return c"verify_android"
 	return 0
 
 
@@ -1810,7 +1821,8 @@ json_value* wtest_step_cmd(json_value* step):
 int wtest_map_residue(char* path, int is_w, int exists):
 	int matched = 0
 	if (wtest_seed_graph(path)):
-		if (build_host_darwin()): wtest_add(path, c"verify_darwin")
+		if (build_host_android()): wtest_add(path, c"verify_android")
+		else if (build_host_darwin()): wtest_add(path, c"verify_darwin")
 		else: wtest_add(path, c"verify")
 		wtest_add(path, c"self_host_warning_test")
 		if (ends_with(path, c"_asm.w")): wtest_add(path, c"asm_stubs_test")
@@ -3301,6 +3313,7 @@ int wtest_cache_main(int argc, int argv):
 	arch_words.push(c"x64")
 	arch_words.push(c"arm64")
 	arch_words.push(c"arm64_darwin")
+	arch_words.push(c"arm64_android")
 	arch_words.push(c"win64")
 	arch_words.push(c"wasm")
 	for char* arch in arch_words:

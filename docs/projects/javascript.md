@@ -161,14 +161,17 @@ instance-owned and overwritten by the next evaluation or host invocation:
 
 | Status | Meaning |
 | --- | --- |
-| 0 | normal; value of the final statement (declarations produce undefined) |
+| 0 | normal; last nonempty statement value (declarations preserve an earlier value) |
 | 2 | thrown value or runtime error; diagnostic in `message` |
 | 5 | execution, parser or allocation limit; terminal for this evaluation |
 | 6 | syntax/operation outside the implemented subset |
 
 Statuses 1, 3 and 4 are internal return/break/continue completions. User-thrown
-values and host exceptions are catchable. Runtime errors currently carry an
-undefined value and a diagnostic message, rather than Error-prototype objects.
+values and host exceptions are catchable. Runtime errors carry an object with
+`name` and `message` properties (ReferenceError,
+TypeError or SyntaxError); full Error intrinsics/prototypes remain unimplemented.
+If the configured heap/property limits cannot accommodate that object, the
+thrown value is undefined and the diagnostic remains in `message`.
 Resource/unsupported failures cannot be caught and do not execute finalizers.
 Normal return/throw/break/continue completions do execute `finally`, and an
 abrupt finalizer overrides the earlier completion.
@@ -179,6 +182,9 @@ The initial semantic subset is deliberately explicit:
   strict equality (including NaN), numeric `+ - * /` and comparisons, string
   concatenation, `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary.
   `typeof` returns `undefined` for missing names while preserving TDZ failures.
+- Function/global `var` hoisting and redeclaration, parameter/var sharing, and
+  duplicate body function declarations with the last declaration winning.
+  Nested block functions remain lexical; Annex B semantics are not implemented.
 - `let`/`const` with temporal dead zones and immutable bindings, lexical blocks,
   hoisted ordinary function declarations within each block, named/anonymous
   function expressions, synchronous arrows with simple parameters and expression
@@ -187,7 +193,11 @@ The initial semantic subset is deliberately explicit:
   environment for captured bindings.
 - Dense array literals, bounded index writes and readable `length`; plain data
   objects, shorthand properties, dot/computed property access and mutation.
-  String length/indexing use UTF-16 code units.
+  String length/indexing use UTF-16 code units. Host-installed prototypes, data
+  descriptors and accessors participate in property reads/writes; inherited
+  accessors receive the original receiver. Read-only writes are ignored in
+  sloppy code and throw in strict code. Function values expose `name`/`length`.
+  Method calls pass `this`; arrows retain their enclosing receiver.
 - Lexical `for (let/const name of value)` over arrays and strings. Arrays read
   their live length each iteration; holes yield undefined. Strings iterate Unicode
   code points, preserving lone surrogates. Each iteration creates a fresh binding
@@ -199,21 +209,25 @@ The initial semantic subset is deliberately explicit:
 - `= += -= *= /=`, prefix/postfix `++ --`, if/while/do/for, unlabelled
   break/continue, return, throw and try/catch/finally.
 
-Unsupported syntax is rejected before execution, including `var`, modules,
-classes, generators/async, `this`, regex execution, tagged templates, `new`,
-destructuring, prototype-literal `__proto__`, loose equality, bitwise operators
-and additional numeric operators. Custom iterators, default/rest/destructured
-arrow parameters, implicit operator coercions, prototype chains,
-accessors, standard built-ins, array length writes and exotic property-key
-conversions are also outside this subset and report unsupported status when
-encountered. Objects expose only their own data properties. Function declarations
-are lexical bindings and duplicate declarations across evaluations fail. Scope
-conflicts are checked before installing bindings, so a rejected script does not
-leave its otherwise fresh declarations in the temporal dead zone. These
-boundaries are not claims of complete ECMAScript semantics; #492 remains the
-broader syntax/conformance track. Arrows capture the lexical environment;
-`this`, `super` and ordinary functions’ implicit `arguments` object are not yet
-implemented. No DOM, task queue, module loader or browser authority is installed.
+Unsupported syntax is rejected before execution, including modules, classes,
+generators/async, regex execution, tagged templates, `new`, destructuring,
+prototype-literal `__proto__`, loose equality, bitwise operators and additional
+numeric operators. Custom iterators, default/rest/destructured arrow parameters,
+implicit operator coercions, standard built-ins, array length writes and exotic
+property-key conversions remain outside this subset. Global `this`, sloppy
+receiver substitution/boxing, `super` and ordinary functions' implicit
+`arguments` object are not implemented; accessing these receiver/arguments
+features reports unsupported status. Explicit `arguments` parameters remain
+ordinary bindings. No DOM, task queue, module loader or browser authority is
+installed.
+
+Scope conflicts are checked before installing bindings, so a rejected script
+does not leave its otherwise fresh declarations in the temporal dead zone.
+Named function-expression bindings ignore assignment in sloppy code and throw
+in strict code. Strictness propagates into nested closures. The global environment
+still combines lexical and variable bindings rather than implementing the full
+ECMAScript Global Environment Record. These boundaries are not claims of complete
+ECMAScript semantics; #492 remains the broader syntax/conformance track.
 
 `js_runtime_bind(rt, name, callback)` installs a host function. Its W signature
 is `fn(void*, list[js_value*]) -> js_value*`; cast the context to `js_runtime*`.
@@ -221,7 +235,9 @@ Arguments and their list are borrowed for the callback, and the callback must
 return a value owned by this same instance. Use `js_runtime_number`,
 `js_runtime_boolean`, `js_runtime_string` or the instance's `undefined_value`.
 `js_runtime_throw` supplies a thrown value. `js_runtime_get/set` provide UTF-8
-host property names; `js_runtime_property/put` accept explicit UTF-16 keys.
+host property names; `js_runtime_member_read/write` accept explicit UTF-16 keys
+and honor descriptors, prototypes and host hooks. `js_runtime_property/put` are
+low-level own-property/binding operations, not descriptor-aware object access.
 Foreign-instance values are rejected. Host code must cooperate with its own
 cancellation/deadlines; the interpreter cannot preempt native code. Recursive
 evaluation or invocation of the same instance returns null without changing the
@@ -246,6 +262,27 @@ owns event queues, timers and scheduling.
 arrow handler, performs collection, and dispatches a plain event object whose
 result is formatted by a template. Run `./wbuild javascript_events_example`.
 The host owns scheduling, event schemas and the exposed capabilities.
+
+Host object integration uses fully specified descriptors, not partial ECMAScript
+descriptor records. `js_runtime_define_data` takes a value and writable,
+enumerable, configurable flags; `js_runtime_define_accessor` takes optional
+same-instance getter/setter callables and enumerable/configurable flags.
+`js_runtime_delete` respects configurability, and `js_runtime_set_prototype`
+rejects foreign values, cycles and excessive chain depth. Prototype/accessor
+edges participate in collection.
+
+`js_runtime_set_host_hooks(rt, object, context, getter, setter)` installs
+synchronous property callbacks. Both receive `(runtime, context, receiver, key)`;
+the setter additionally receives the value. A null getter result or zero setter
+result delegates to ordinary property lookup; a negative setter result rejects
+the write. Returned values must belong to the instance. Callback contexts and
+keys are borrowed; values retained only by native contexts need explicit roots.
+Callbacks cannot collect or reenter evaluation and share depth/execution limits.
+
+`js_runtime_host_callable` creates a callback with context, receiver and argument
+list. `js_runtime_invoke_receiver` supplies an explicit receiver when invoking a
+retained function; its ownership and budget contract matches `js_runtime_invoke`.
+This supports browser event receivers without putting event scheduling in W.
 
 Every AST visit consumes a step. Depth defaults to 256, live heap values to
 100000, properties per object and UTF-16 units per string/key to 10000, retained
@@ -285,7 +322,9 @@ comments and formatting.
 ./wbuild javascript_lexical_test javascript_parser_test javascript_validation_test \
   javascript_bindings_test javascript_restrictions_test javascript_ast_test \
   javascript_roundtrip_test javascript_transform_test javascript_text_test \
-  javascript_runtime_test javascript_runtime_invoke_test javascript_browser_runtime_test
+  javascript_runtime_test javascript_runtime_invoke_test javascript_browser_runtime_test \
+  javascript_runtime_objects_test javascript_runtime_environments_test \
+  javascript_standards_early_test javascript_conformance
 ./wbuild javascript_compatibility
 # Native Apple Silicon equivalent, including generic runtime/importer gates:
 tools/mac/run_javascript_tests.sh
@@ -308,10 +347,18 @@ adaptation ledger, and strict-import blockers live under
 `libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/`. Compatibility
 fixtures and provenance live under `tests/javascript/corpus/`.
 
-Remaining compatibility work includes full regular-expression pattern validation
-(the lexer validates boundaries and flags), complete ECMAScript early errors and
-module export resolution, Annex B behavior, and broader contextual keyword
-handling. Function-call assignment targets are rejected; Node permits some of
+The [native execution ledger](../../tests/javascript/conformance/README.md)
+executes pinned local fixtures in W with exact expected-failure accounting and
+separate parse, early-error, lowering and execution observations. It is not a
+Test262 runtime adapter or a standards pass-rate claim.
+
+Early-error checks include async/generator parameter expressions and duplicate
+parameters, duplicate module export names, missing local exports, chained labels
+and structural RegExp groups/assertions/quantifiers. Remaining work includes
+RegExp escape values, class ranges, named captures/backreferences and Unicode
+properties, complete ECMAScript early errors and cross-module export resolution,
+Annex B behavior, and broader contextual keyword handling. Function-call
+assignment targets are rejected; Node permits some of
 these forms and defers their failure until execution. Sloppy-context uses of `await`/`yield` as identifiers are not generally
 accepted. This integration does not support TypeScript, JSX, or post-ES2020 syntax
 as a compatibility contract. Full-edition acceptance requires expanding the
