@@ -171,6 +171,11 @@ Statuses 1, 3 and 4 are internal return/break/continue completions. User-thrown
 values and host exceptions are catchable. Runtime errors carry an object with
 `name` and `message` properties (ReferenceError,
 TypeError or SyntaxError); full Error intrinsics/prototypes remain unimplemented.
+Runtime-created error values also carry a host-visible `intrinsic_error_name`
+brand, a borrowed static string independent of mutable JavaScript `name`
+properties. Ordinary values have an empty brand. The Test262 driver uses this
+identity for negative error checks, so a user-created object with a matching
+`name` cannot imitate an engine exception.
 If the configured heap/property limits cannot accommodate that object, the
 thrown value is undefined and the diagnostic remains in `message`.
 Resource/unsupported failures cannot be caught and do not execute finalizers.
@@ -330,7 +335,7 @@ comments and formatting.
   javascript_roundtrip_test javascript_transform_test javascript_text_test \
   javascript_runtime_test javascript_runtime_invoke_test javascript_browser_runtime_test \
   javascript_runtime_objects_test javascript_runtime_environments_test \
-  javascript_standards_early_test javascript_conformance
+  javascript_standards_early_test javascript_conformance javascript_test262
 ./wbuild javascript_compatibility
 # Native Apple Silicon equivalent, including generic runtime/importer gates:
 tools/mac/run_javascript_tests.sh
@@ -356,7 +361,13 @@ fixtures and provenance live under `tests/javascript/corpus/`.
 The [native execution ledger](../../tests/javascript/conformance/README.md)
 executes pinned local fixtures in W with exact expected-failure accounting and
 separate parse, early-error, lowering and execution observations. It is not a
-Test262 runtime adapter or a standards pass-rate claim.
+standards pass-rate claim. The separate [bounded Test262 runtime profile](../../tests/javascript/test262/README.md)
+executes pinned upstream tests with native W assertion overrides and explicit
+PASS/FAIL/UNSUPPORTED/ERROR results. Run `./wbuild javascript_test262` to save its
+report to `bin/test262-conformance.json`. Its reviewed per-variant baseline fails
+on unexpected support changes. Use
+`python3 tools/test262_conformance.py --require-all` to fail on every unsupported
+variant as well. Full upstream harness and full-suite execution remain deferred.
 
 Early-error checks include async/generator parameter expressions and duplicate
 parameters, duplicate module export names, missing local exports, chained labels

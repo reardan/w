@@ -46,6 +46,8 @@ struct js_value:
 	int lexical_binding
 	int silent_immutable
 	int strict
+	# Host-visible immutable error brand; independent of mutable JS properties.
+	char* intrinsic_error_name
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -144,6 +146,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.lexical_binding = 0
 	value.silent_immutable = 0
 	value.strict = 0
+	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
 
@@ -239,6 +242,7 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message):
 	if (strcmp(message, c"uninitialized or missing binding") == 0): name = c"ReferenceError"
 	if (strcmp(message, c"duplicate lexical binding") == 0 || strcmp(message, c"duplicate callable binding") == 0): name = c"SyntaxError"
 	js_value* error = js_runtime_alloc(rt, 5)
+	error.intrinsic_error_name = name
 	js_text* key = js_runtime_key(name)
 	js_value* label = js_runtime_string(rt, key)
 	js_text_free(key)

@@ -13,10 +13,10 @@ Python 3.9+ is required. Node, downloads and external harness libraries are not
 required. Every case uses a new process and a new realm. The CLI can also execute
 one file: `bin/javascript_runtime_runner FILE script 10000`.
 
-These 31 locally authored audit fixtures are **not Test262 tests**. Each carries
+These 36 locally authored audit fixtures are **not Test262 tests**. Each carries
 a normative ECMA-262 section reference, a SHA-256 source pin and an independent
-expected result. The integrated ledger has 31 passes (22 execution cases and
-nine syntax negatives), with no expected failures.
+expected result. The integrated baseline expects 36 passes (25 execution cases and
+11 syntax negatives), with no expected failures.
 This is a regression baseline,
 not an estimate of standards coverage. The separate 18-file vendored Test262
 corpus and `javascript_compatibility` remain a syntax differential gate; their
@@ -63,15 +63,20 @@ phase/outcome counts. Contract tests cover real execution, fresh realms, phase
 separation, budget exhaustion, metadata failures, changed failures, XPASS,
 crashes and timeouts.
 
-## Deferred upstream adapter
+## Separate bounded upstream adapter
 
-A real Test262 adapter must pin the upstream revision and harness files, expand
-strict/sloppy variants, honor includes and raw/async/module flags, implement
-assertions, `$DONE` and host hooks, and compare negative error type and phase.
-None of those harness capabilities is claimed by this native runner. A
-`kind: test262` manifest or Test262 flags/includes metadata is an explicit harness
-error rather than an implicit skip or a passing result. Keep the existing
-licensed syntax corpus unchanged until that adapter can honor its contracts.
+The [Test262 runtime profile](../test262/README.md) executes a separately pinned
+upstream corpus using native W assertion overrides, strict/sloppy variants, and
+phase/type-checked negatives. Run `./wbuild javascript_test262` to save its report
+to `bin/test262-conformance.json`. The profile explicitly reports unsupported
+includes, async/module tests and unsupported runtime/harness features; its
+reviewed per-variant baseline rejects unexpected changes in support.
+
+This native ledger remains a distinct locally authored regression suite; the two
+result totals must not be combined into a Test262 pass-rate claim. A
+`kind: test262` manifest or Test262 flags/includes metadata is still an explicit
+harness error in this native runner. Full harness execution and full-suite
+coverage remain deferred, and the licensed syntax corpus remains unchanged.
 
 CSS computed-style/geometry fixtures belong to Win's CSS implementation track;
 this target measures only the W JavaScript engine.
@@ -84,7 +89,10 @@ Exports are checked after all module bindings are collected, including imports
 and hoisted var declarations. Reexports do not require a local binding. Chained
 iteration labels and escaped label names validate, lower, print and execute.
 The execution fixtures cover nested labelled continue, finally overriding a jump,
-labelled completion values and escaped target names.
+labelled completion values and escaped target names. Additional cases cover
+chained for-of iteration, continue overriding break in a finalizer, preservation
+of a labelled completion through a normal finalizer, and early rejection of
+continue to a non-iteration label or jumps across a function boundary.
 
 RegExp literals now pass a structural Pattern grammar validator that handles
 group/assertion nesting, escape and character-class boundaries, quantifier

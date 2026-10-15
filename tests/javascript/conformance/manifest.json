@@ -457,6 +457,75 @@
           "value": "3.0"
         }
       }
+    },
+    {
+      "id": "labelled-nested-continue",
+      "path": "labelled-nested-continue.js",
+      "sha256": "1d7330282c4f2787601af4aa301df159409e5766fefa5a100e78c79459f1654d",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "6.0"
+        }
+      }
+    },
+    {
+      "id": "labelled-finally-continue-overrides-break",
+      "path": "labelled-finally-continue-overrides-break.js",
+      "sha256": "86a91aadabe9d79f4bfdaf0aa6f77cb11c61ad9ec67ae38296eaab7e66516c7e",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "3.0"
+        }
+      }
+    },
+    {
+      "id": "labelled-completion-through-finally",
+      "path": "labelled-completion-through-finally.js",
+      "sha256": "f6e258e6b64200a99fb53d6fb6554332d489faf466849921eadbd798acec1ada",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      }
+    },
+    {
+      "id": "labelled-continue-block",
+      "path": "labelled-continue-block.js",
+      "sha256": "1a45a8bce29f193ccef48439f88d05781a03b7753198632d92d3969eda4913ce",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      }
+    },
+    {
+      "id": "labelled-function-boundary",
+      "path": "labelled-function-boundary.js",
+      "sha256": "0fcaab3a91cfd780c662f23b74fec33f78072d695763d7afa9dedab258c66817",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "early",
+        "outcome": "error",
+        "error_type": "SyntaxError"
+      }
     }
   ]
 }

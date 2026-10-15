@@ -1,6 +1,8 @@
 old/
 /wv*
 test
+# Pinned Test262 source tree is corpus data, not a local test binary.
+!/tests/javascript/test262/upstream/test/
 test_output.txt
 *_test
 bin/
