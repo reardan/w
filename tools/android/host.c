@@ -47,6 +47,13 @@ static intptr_t add(int kind, const char *text) {
 intptr_t wandroid_label(const char *text) { return add(1, text); }
 intptr_t wandroid_button(const char *text) { return add(2, text); }
 intptr_t wandroid_text_field(const char *text) { return add(3, text); }
+intptr_t wandroid_heading(const char *text) { return add(4, text); }
+intptr_t wandroid_caption(const char *text) { return add(5, text); }
+intptr_t wandroid_section(const char *text) { return add(6, text); }
+intptr_t wandroid_value(const char *text) { return add(7, text); }
+intptr_t wandroid_secondary_button(const char *text) { return add(8, text); }
+intptr_t wandroid_status(const char *text) { return add(9, text); }
+void wandroid_section_end(void) { (void)add(10, ""); }
 void wandroid_label_set(intptr_t handle, const char *text) {
     if (!active_env || (*active_env)->ExceptionCheck(active_env)) return;
     jbyteArray bytes = utf8(text);
