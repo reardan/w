@@ -136,3 +136,7 @@ JNIEXPORT void JNICALL Java_org_wlang_androiddemo_WActivity_nativeProbes(
     fail(env, "Rebuild APK with --probes to run compiler/ABI probes");
 #endif
 }
+
+/* Context for tools/android/kit.c; valid only during a W callback. */
+JNIEnv *wandroid_jni_env(void) { return active_env; }
+jobject wandroid_jni_activity(void) { return active_activity; }

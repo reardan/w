@@ -181,6 +181,18 @@ public final class WActivity extends Activity {
         }
     }
 
+    // Optional screen/list/dialog/HTTP controls (kinds and events from 32) live in WKit.java.
+    private final WKit kit = new WKit(this);
+    public long kitCall(int op, long a, long b, byte[] s, byte[] t, byte[] u, byte[] v) { return kit.call(op, a, b, s, t, u, v); }
+    public byte[] kitBytes(int op, long a, byte[] s) { return kit.bytes(op, a, s); }
+    long kitRegister(View view) { controls.add(view); return controls.size(); }
+    View kitView(long handle) { return handle > 0 && handle <= controls.size() ? controls.get((int) handle - 1) : null; }
+    void kitTarget(LinearLayout container) { form = container; section = null; }
+    void kitEvent(long handle, long kind, byte[] value) { nativeEvent(handle, kind, value); }
+    @Override public void onBackPressed() { if (!kit.back()) super.onBackPressed(); }
+    @Override protected void onNewIntent(android.content.Intent intent) { super.onNewIntent(intent); setIntent(intent); kit.newIntent(intent); }
+    @Override protected void onDestroy() { kit.destroy(); super.onDestroy(); }
+
     @Override protected void onResume() {
         super.onResume();
         nativeLifecycle(1);
