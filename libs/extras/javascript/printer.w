@@ -10,7 +10,8 @@ variable(const/let/var) = declarators; declarator = binding[, initializer];
 return = [expression]; throw/expression_statement = expression;
 if = condition, then[, else]; export = declaration;
 while/do_while = condition, body; for = init, condition, update, body;
-omitted for clauses = empty; break/continue have no children;
+omitted for clauses = empty; break/continue have optional target text and no children;
+label = decoded label text with one statement child;
 function_expression(optional name) = parameters, block;
 arrow = parameters, expression-or-block; for_of(let/const) = identifier, iterable, body;
 try = block, catch-or-empty, finally-block-or-empty; catch(name) = block;
@@ -273,7 +274,7 @@ int js_print_block(string_builder* out, js_node* node, int depth, pg_diagnostics
 
 
 int js_print_dangling_else(js_node* node):
-	if ((js_kind(node, c"while") || js_kind(node, c"for") || js_kind(node, c"for_of")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
+	if ((js_kind(node, c"label") || js_kind(node, c"while") || js_kind(node, c"for") || js_kind(node, c"for_of")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
 	if (js_kind(node, c"if") == 0): return 0
 	if (node.children.length == 2): return 1
 	if (node.children.length == 3): return js_print_dangling_else(node.children[2])
@@ -355,9 +356,18 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 			if (js_print_block(out, finalizer, depth, diagnostics) == 0): return 0
 		else if (finalizer.children.length != 0): return js_print_error(diagnostics, finalizer)
 		return 1
+	if (js_kind(node, c"label")):
+		if (count != 1 || js_print_identifier_valid(node.text, 0) == 0): return js_print_error(diagnostics, node)
+		string_append(out, node.text)
+		string_append(out, c": ")
+		return js_print_statement(out, node.children[0], depth, diagnostics)
 	if (js_kind(node, c"break") || js_kind(node, c"continue")):
-		if (count != 0 || strlen(node.text) != 0): return js_print_error(diagnostics, node)
+		if (count != 0): return js_print_error(diagnostics, node)
+		if (strlen(node.text) != 0 && js_print_identifier_valid(node.text, 0) == 0): return js_print_error(diagnostics, node)
 		string_append(out, node.kind)
+		if (strlen(node.text) != 0):
+			string_append(out, c" ")
+			string_append(out, node.text)
 		string_append(out, c";")
 		return 1
 	if (js_kind(node, c"while") || js_kind(node, c"do_while")):

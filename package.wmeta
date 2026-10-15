@@ -19,6 +19,8 @@ modules:
 	graphics.image.jpeg
 	graphics.ui.accessibility
 	graphics.ui.accessibility_cocoa
+	graphics.ui.accessibility_web
+	graphics.ui.bidi
 	graphics.ui.contrast
 	graphics.gl
 	graphics.math

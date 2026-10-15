@@ -1324,3 +1324,14 @@ workaround locally. Direction: isolate profiling output from watched build
 inputs, or exclude profiling dumps from daemon invalidation while keeping
 report paths stable. Compiler API harnesses also need direct instrumentation
 because their in-process calls are invisible to subprocess coverage redirects.
+
+## Warm-build gate under parallel test activity (2026-10-15, #637)
+
+A combined `tests tests_wasm javascript_compatibility` run failed `verify_warm`
+at `vw_expect_warm`: all ten retries failed to observe both `warm_manifest`
+and nonempty `warm_hashes`, after the cold/cached output comparisons passed.
+`env -u NO_COLOR ./wbuild -j 1 verify_warm` then passed unchanged. Parallel
+invalidation is a possible cause, but the daemon log retained only startup
+information. Direction: record per-retry cache status and invalidating paths,
+then isolate the warm-state observation from unrelated writes without weakening
+the cache assertions.

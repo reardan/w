@@ -306,14 +306,6 @@
           "type": "number",
           "value": "42.0"
         }
-      },
-      "xfail": {
-        "bug": "JS-LABEL-LOWERING",
-        "reason": "Chained iteration labels now pass early validation; labelled statement lowering remains unavailable.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -403,6 +395,66 @@
             111,
             114
           ]
+        }
+      }
+    },
+    {
+      "id": "labelled-continue",
+      "path": "labelled-continue.js",
+      "sha256": "8a0625d7e700d511d35e1dcebb4c69d9d0fc5c4d66804e229c8a65b695061038",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "3.0"
+        }
+      }
+    },
+    {
+      "id": "labelled-finally",
+      "path": "labelled-finally.js",
+      "sha256": "5c4c26da05d39e3d15ec5b93b089875abb1c965564e5b4b69df094fa4e7368b2",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "3.0"
+        }
+      }
+    },
+    {
+      "id": "labelled-completion",
+      "path": "labelled-completion.js",
+      "sha256": "f05bf1a507fd50f3ab5a221e569d22b86ba96f09694d2e9cfbb928051116dfad",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      }
+    },
+    {
+      "id": "labelled-escaped",
+      "path": "labelled-escaped.js",
+      "sha256": "97068e80902b708471886baa7ce0b6075e3626208e1dfea5e9030a627f4f8cc9",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-labelled-statements",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "3.0"
         }
       }
     }

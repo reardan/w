@@ -8,13 +8,13 @@ cookies/cache and content isolation remain in the application repository.
 | --- | --- | --- |
 | HTML | `libs.extras.html.html`; [HTML](html.md) | Owned explicit-length tokens and static trees, spans, diagnostics, budgets, full named references and numeric repair, raw/RCDATA/script content, escaped/double-escaped script states, initial implied-element and malformed-markup recovery |
 | CSS | `libs.extras.css.css`; [CSS](css.md) | Owned tokens, selectors as component groups, stylesheet/at-rule/declaration nodes, escapes, URL/bad-URL tokens, balanced blocks, hash/numeric metadata and EOF recovery |
-| JavaScript AST | `libs.extras.javascript.parser`, `.lower`, `.text`; [JavaScript](javascript.md) | Loops including lexical for-of, functions/arrows, try/catch/finally, UTF-16 values preserving NUL and lone surrogates, caller parser limits, explicit unsupported lowerings |
+| JavaScript AST | `libs.extras.javascript.parser`, `.lower`, `.text`; [JavaScript](javascript.md) | Loops including lexical for-of, labelled statements and jumps, functions/arrows, try/catch/finally, UTF-16 values preserving NUL and lone surrogates, caller parser limits, explicit unsupported lowerings |
 | JavaScript execution | `libs.extras.javascript.runtime`; [embedding](javascript.md#embed-the-interpreter) | Binary64 subset interpreter on 64-bit targets, lexical closures/arrows, templates, for-of, values/objects/arrays, statement completions, var environments, typed errors, descriptors/prototypes, synchronous host property hooks and receiver-aware invocation, isolated heaps, roots/cyclic collection and terminal budgets |
 | URLs / loading | `libs.standard.web.urlparse`, `.http_client`; [networking](browser_network.md) | References/fragments, dot segments, canonical IPv6 hosts including dotted tails, origin tuples, owned clients, checked total-deadline transport, task cancellation, redirect approval/final URL, bounded delivery |
 | Content decoding | `libs.standard.web.content_decode`; [decoding](browser_network.md#content-decoding) | Bounded chunk collection and explicit completion, identity and registered gzip/deflate, separate input/output caps, validated concatenated gzip members |
 | Images | `graphics.image.png`, `.jpeg`, `graphics.ui.render`; [images](images.md) | Bounded PNG and baseline JPEG into owned RGBA; texture updates, alpha, scaling, clipping, queued lifetime and native readback probes |
-| Text / input | `graphics.ui.shape`, `graphics.ui.grapheme`, `graphics.event`; [UI dependencies](browser_ui.md) | Optional Linux x64 OpenType run shaping, grapheme-safe editing, X11 Unicode commits, Windows Unicode/IMM and web preedit |
-| Accessibility | `graphics.ui.accessibility`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in macOS NSAccessibility companion and default-theme contrast checks |
+| Text / input | `graphics.ui.bidi`, `graphics.ui.shape`, `graphics.ui.grapheme`, `graphics.event`; [UI dependencies](browser_ui.md) | Optional Linux x64 paragraph bidi and OpenType run shaping, grapheme-safe editing, X11 Unicode commits, Windows Unicode/IMM and web preedit |
+| Accessibility | `graphics.ui.accessibility`, `.accessibility_web`; [UI dependencies](browser_ui.md) | Bounded semantic snapshots, explicit-length UTF-8 metadata, stable IDs, validated host actions/focus traversal, opt-in web ARIA and macOS NSAccessibility bridges, and default-theme contrast checks |
 
 The support contracts are intentionally specific. HTML does not implement every
 WHATWG tree algorithm; CSS does not validate every selector/property
@@ -27,15 +27,18 @@ budget across gzip members. PNG excludes interlace and packed/16-bit samples; JP
 scan/color modes. Consult each linked document before accepting a wider input
 contract.
 
-These issue tracks remain broader than the delivered APIs. Paragraph bidi,
-script/font segmentation, Cocoa IME and other text work remain
+These issue tracks remain broader than the delivered APIs. Portable bidi/shaping,
+script/font segmentation, shaped caret layout, Cocoa IME and other text work remain
 [#459](https://github.com/reardan/w/issues/459). Linux AT-SPI, Windows UI
-Automation, web ARIA and automatic widget metadata remain
+Automation, automatic widget metadata and widget-wide keyboard routing remain
 [#465](https://github.com/reardan/w/issues/465). Broader JavaScript syntax,
 standard built-ins and full early-error/runtime conformance remain
 [#492](https://github.com/reardan/w/issues/492). The macOS accessibility helper
 requires native Mac compilation and qualification; Linux cross-compilation is
-only the W ABI/build check.
+only the W ABI/build check. The web bridge also needs browser and assistive
+technology qualification; DOM/wasm contract tests do not establish screen-reader
+behavior. These remaining dependencies keep the broader umbrella open even as
+the bounded library milestones are delivered.
 
 ## Consumers and reproducibility
 
@@ -54,7 +57,7 @@ pinned WHATWG source; `python3 tools/html_entities.py --check` verifies offline
 reproduction. JavaScript consumers first run `./wbuild javascript_parser` in
 the dependency checkout. UI consumers retain the existing reproducible
 `ui_font_data`/`generated` build targets and checked-in font inputs. Shaped runs optionally require system HarfBuzz
-on Linux x64; the macOS accessibility adapter ships a separately built AppKit
+on Linux x64; paragraph bidi additionally requires system FriBidi. The macOS accessibility adapter ships a separately built AppKit
 companion beside the application. JPEG fixture
 generation is separate from normal builds; its provenance and reproduction
 instructions accompany the checked-in fixture bytes.

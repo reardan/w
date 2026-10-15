@@ -13,10 +13,10 @@ Python 3.9+ is required. Node, downloads and external harness libraries are not
 required. Every case uses a new process and a new realm. The CLI can also execute
 one file: `bin/javascript_runtime_runner FILE script 10000`.
 
-These 27 locally authored audit fixtures are **not Test262 tests**. Each carries
+These 31 locally authored audit fixtures are **not Test262 tests**. Each carries
 a normative ECMA-262 section reference, a SHA-256 source pin and an independent
-expected result. The integrated ledger has 26 passes (17 execution cases and
-nine syntax negatives) and one known failure for labelled-statement lowering.
+expected result. The integrated ledger has 31 passes (22 execution cases and
+nine syntax negatives), with no expected failures.
 This is a regression baseline,
 not an estimate of standards coverage. The separate 18-file vendored Test262
 corpus and `javascript_compatibility` remain a syntax differential gate; their
@@ -53,8 +53,7 @@ use UTF-16 code-unit arrays, preserving NUL and unpaired surrogates.
 
 Exit status is 0 for a fully accounted baseline (PASS/XFAIL), 1 for FAIL/XPASS/
 ERROR, and 2 for invalid manifest/setup. No automatic baseline update exists.
-When a fix advances only one stage (for example an early-error correction makes
-chained labels reach an unsupported lowerer), inspect that new result before
+When a fix advances only one stage, inspect that new result before
 updating its fingerprint. Do not remove the normative expectation.
 
 The manifest reader rejects unknown metadata, unpinned source changes, escaped
@@ -83,8 +82,9 @@ Async/generator parameter expressions and duplicate parameter names, duplicate
 module export names and undeclared local exports now have early-error checks.
 Exports are checked after all module bindings are collected, including imports
 and hoisted var declarations. Reexports do not require a local binding. Chained
-iteration labels and escaped label names now validate; their lowering remains
-an explicit expected failure.
+iteration labels and escaped label names validate, lower, print and execute.
+The execution fixtures cover nested labelled continue, finally overriding a jump,
+labelled completion values and escaped target names.
 
 RegExp literals now pass a structural Pattern grammar validator that handles
 group/assertion nesting, escape and character-class boundaries, quantifier

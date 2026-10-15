@@ -5,7 +5,8 @@ populate them from their controls and document model. `graphics.ui.accessibility
 now publishes those snapshots to macOS NSAccessibility through an opt-in native
 companion. The existing GL window content view becomes the parent of real
 `NSAccessibilityElement` objects. This is useful for a third party browser's
-chrome and document content without coupling the bridge to HTML or layout.
+chrome and document content without coupling the bridge to HTML or layout. The opt-in
+`graphics.ui.accessibility_web` adapter exposes snapshots through browser ARIA.
 
 ## macOS setup and lifecycle
 
@@ -72,6 +73,82 @@ used to qualify an application's reading order, spoken names and geometry.
 Linux development can cross-compile the smoke executable; it cannot establish
 VoiceOver behavior or run AppKit tests.
 
+## Browser ARIA mirror (wasm)
+
+`graphics.ui.accessibility_web` publishes the same semantic snapshots through
+`tools/web/webgl_env.mjs` into an opt-in DOM mirror. The standard
+`tools/web/index.html` host supplies the adapter; an application activates it by
+publishing. Custom hosts pass
+`accessibility: createAccessibility({document, container, canvas})` to `makeEnv`.
+Use a dedicated empty container and at most one adapter per canvas. Hosts without
+this optional capability return zero from publication and otherwise keep working.
+
+1. Import `graphics.ui.accessibility_web` in a wasm application. Build the
+   document, button, textbox and other nodes with `ui_access_add`, then set their
+   names, values, descriptions, supported actions and focusability explicitly.
+2. Install the tree's action callback and call `ui_access_web_publish(tree)`.
+   A zero result leaves the previous DOM publication installed. Parents must
+   precede children; headings require levels 1–6, and textboxes must be leaves.
+3. In the frame/event loop call `ui_access_web_dispatch(tree)` against the same
+   live snapshot **before** replacing it. The callback changes the application
+   model and accepts or rejects each action. Accepted focus requests also update
+   `tree.focused_id`; paint the corresponding focus bounds in the application.
+   A dispatch return value counts consumed requests, including rejected ones.
+4. Republish after semantic changes and after processing requests, including
+   rejected edits/focus requests, to restore the DOM to the authoritative model.
+   Publishing copies text, drops pending old requests, and invalidates every old
+   DOM listener. Do not publish every render frame: replacement resets DOM node
+   identity, text selection and browser composition.
+5. Call `gfx_access_close()` before freeing the final snapshot or removing the
+   canvas. It removes the mirror, clears requests and restores the canvas's
+   previous `aria-hidden` and `tabindex` attributes. Callbacks must not free the
+   tree, recursively dispatch, or publish during dispatch.
+
+The mirror preserves hierarchy and DOM reading order. Document, group, heading,
+link, button, checkbox, image, list, list item, table, row and cell roles map to
+ARIA; plain text uses text content, and textboxes use native multiline textareas.
+Names and descriptions use text/attribute assignment, never HTML parsing. Text
+crosses the ABI as strict, explicit-length UTF-8 (including NUL and leading BOM).
+Disabled/hidden ancestors suppress descendant actions and tab stops; readonly
+textboxes reject value changes. Checkbox checked state, heading level, row/cell
+selection and expanded state on supported actionable roles are exposed. Snapshot
+state has no separate "expandable but collapsed" flag; collapsed capability,
+non-textbox values, table relations and single-line editor distinctions remain
+future extensions rather than invented ARIA semantics.
+
+DOM Tab traversal, focus, button/link activation, checkbox toggling and committed
+textarea edits enter a bounded queue. Composition updates are not committed until
+an input event outside composition. There are at most 64 queued requests, and
+their combined UTF-8 value bytes cannot exceed the snapshot's text budget. Nodes
+and stored text retain the snapshot budgets, with host ceilings of 100,000 nodes
+and 16 MiB. Queue overflow drops the new request. Dispatch revalidates actions
+against current W state, so a control disabled after publication cannot act.
+A different W tree cannot drain the publication's queue. Calls validate wasm
+memory bounds and nonoverlapping output buffers, and refresh views after memory
+growth. Invalid UTF-8 or a failed staging operation aborts the entire publication.
+
+The semantic DOM is visually clipped; it does not intercept canvas pointer
+input. While installed, it replaces the canvas's accessibility exposure and tab
+stop. Programmatic snapshot focus does not echo a request. DOM keyboard events
+stay separate from the existing canvas keyboard event queue. The application
+must paint visible focus and coordinate its canvas editor model with semantic
+focus/value callbacks. Geometry, spatial touch exploration, selection/range
+round trips, incremental updates and automatic widget semantics are not provided
+by this adapter.
+
+`graphics_ui_accessibility_web_test` (in `tests_wasm`) runs portable DOM contract
+tests and a real
+compiled W wasm instance through the existing `makeEnv` host, checking the full
+publish/action/focus/value round trip, disabled-state revalidation and teardown.
+The Node fixture is not a browser accessibility implementation. A separate real
+Chromium development probe confirmed accessible button/textbox names and values,
+Unicode static text, input dispatch, stale listener rejection and canvas state
+restoration. Browser/screen-reader combinations still need interactive
+qualification; none of these tests establish VoiceOver, NVDA or Orca behavior.
+The role/state and keyboard mappings follow
+[WAI-ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/) and the
+[ARIA button pattern](https://www.w3.org/WAI/ARIA/apg/patterns/button/).
+
 ## Focus and contrast
 
 `ui_access_move_focus(tree, reverse)` proposes insertion-order traversal,
@@ -91,8 +168,9 @@ Disabled controls, arbitrary application backgrounds, and the illustrative ocean
 theme are outside this default-theme assertion. These checks do not substitute
 for testing a rendered application's complete contrast and focus appearance.
 
-Linux AT-SPI, Windows UI Automation, the web ARIA mirror, automatic widget
-semantics and widget-wide keyboard routing remain open parts of #465. A semantic
+Linux AT-SPI, Windows UI Automation, automatic widget semantics and widget-wide
+keyboard routing remain open parts of #465. The opt-in web ARIA mirror above is
+an initial adapter, with platform qualification and richer semantics still open. A semantic
 snapshot or a cross-compiled Cocoa binary is not evidence that these other
 platforms have assistive technology integration.
 
