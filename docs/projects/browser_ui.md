@@ -96,11 +96,13 @@ real input methods; headless event tests alone cannot establish that behavior.
 For document rendering, `graphics.ui.shape` can shape and draw a single
 font/script/direction run through HarfBuzz on Linux x64. It preserves source
 clusters and positioned glyphs, including substitutions and combining marks.
-`graphics.ui.bidi` additionally resolves a single unwrapped paragraph through
-FriBidi on Linux x64, providing logical directional ranges and visual run order.
+`graphics.ui.bidi` additionally resolves a paragraph through FriBidi on Linux
+x64, providing logical directional ranges and visual run order. Its
+`ui_bidi_reorder_line` API reorders caller-selected wrapped ranges using retained
+paragraph context, with independent owned output for each line and reflow.
 Feed the original logical slices to the shaper; scalar reordering maps are not
 glyph or caret positions. The host still selects scripts/fonts and line breaks.
 Ordinary widget drawing still uses codepoint lookup and pair kerning. Portable
-bidi/shaping, wrapped-line reordering, script/font segmentation, shaped caret
+bidi/shaping, script/font segmentation, shaped caret
 layout, CFF outlines and broader native input remain open parts of #459. See [shaping](text_shaping.md)
 for font coverage, optional dependencies and explicit limits.
