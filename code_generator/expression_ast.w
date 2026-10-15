@@ -138,6 +138,7 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 		int param_type = sym_param_type(sym, count)
 		if (is_tail): param_type = element
 		if (param_type >= 0): coerce_call_argument(param_type, got)
+		safe_owner_move(tree, arg, param_type)
 		if (is_tail):
 			push_slot()
 			variadic_values = variadic_values + 1
@@ -1188,6 +1189,21 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	if (op == '='):
 		expression_is_assignment = 1
 		int subop = tree.value[id]
+		if (type_safe_kind(left_type) == 1):
+			int left = tree.left[id]
+			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
+				error(c"safe owner assignment requires a plain local or parameter")
+			regalloc_note_take()
+			int slot = 0 - tree.binding_offset[left]
+			emit_expression_ast(tree, tree.right[id])
+			int got = promote(tree.result_type[tree.right[id]])
+			coerce(left_type, got)
+			safe_owner_move(tree, tree.right[id], left_type)
+			push_slot()
+			safe_owner_drop_slot(slot)
+			pop_eax_slot()
+			store_stack_var((stack_pos - slot) << word_size_log2)
+			return
 		# The statement's own assignment leaves its value unread (R3:
 		# the register store may then drop the trailing 'mov eax,R').
 		# A parenthesised '(a = b)' is the tree's root but not the

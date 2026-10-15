@@ -85,7 +85,7 @@ int retained_type_note(int index):
 	# Publish before recursion: pointers and fields may form cycles.
 	retained_type_cache_set(index, id)
 	if (original.alias_target >= 0): type.target = retained_type_note(original.alias_target)
-	if (original.pointer_level > 0):
+	if ((original.pointer_level > 0) && (type_safe_kind(index) == 0)):
 		int base = type_lookup_previous_pointer(index)
 		if (base >= 0): type.target = retained_type_note(base)
 	if (original.kind == type_kind_array): type.array_length = original.fn_return_type
@@ -238,6 +238,7 @@ int retained_binding_note(int sym, int owner):
 		if ((node.kind == retained_statement) && (strcmp(node.name, name) == 0)):
 			binding.line = node.line
 			binding.column = node.column
+	binding.assembly_body = 0
 	binding.scope = scope
 	binding.slot = load_int(table + sym + 2)
 	binding.source = source

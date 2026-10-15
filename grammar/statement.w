@@ -358,6 +358,15 @@ void statement_impl():
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		pop_to(s)
 
+	# An explicit raw-operation boundary. Keep it contextual like a label;
+	# an existing symbol named unsafe retains its ordinary meaning.
+	else if (peek(c"unsafe") && (nextc == ':') && (sym_lookup(c"unsafe") < 0)):
+		if (retained >= 0): retained_record_at(retained).name = retained_intern(c"unsafe block")
+		enclosing_tab_level = tab_level
+		get_token()
+		statement()
+		terminates = flow_terminates
+
 	# type-name identifier
 	else if (variable_declaration() >= 0): expect_or_newline(c";")
 

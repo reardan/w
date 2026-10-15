@@ -59,6 +59,8 @@ struct retained_binding:
 	int key_line
 	int key_column
 	int key_file_index
+	# Selected assembly contains executable operations absent from the W tree.
+	int assembly_body
 
 list[retained_type*] retained_types
 list[retained_binding*] retained_bindings

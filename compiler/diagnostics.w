@@ -655,6 +655,7 @@ void diag_emit(char* severity, char* file, int line, int column, char* token):
 # never renumber, reorder-insensitive (the most specific match wins),
 # one row per distinct message shape; W0000 is reserved for "no row".
 void diag_code_table():
+	diag_code_row(c"W0413", c"safe: @")
 	# name resolution and redefinition
 	diag_code_row(c"W0001", c"Cannot find symbol: '@")
 	diag_code_row(c"W0002", c"symbol redefined: '@'")
