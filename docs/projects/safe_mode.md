@@ -10,8 +10,8 @@ The compiler accepts `--safe` on Linux x86 and x64:
 This is a bounded, single-threaded subset, tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
-design, including optional references and escaping lifetime contracts, remains
-in [PR #645](https://github.com/reardan/w/pull/645).
+design, including optional references and escaping lifetime contracts, is
+tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 
 ## Pointer contracts
 
