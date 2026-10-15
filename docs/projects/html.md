@@ -5,7 +5,9 @@ an owned static document tree for consumers such as Win. It does not depend on a
 DOM, renderer, CSS library, or JavaScript runtime. This is an initial HTML subset,
 not a claim of WHATWG parser conformance. The maintained lexical contract is
 [`html.tokens`](../../libs/extras/html/html.tokens); implementation and fixtures
-are hand maintained together, with no downloaded grammar or generation step.
+are hand maintained together. The complete named-reference table is generated
+offline from a pinned WHATWG data snapshot and checked in; consumers need no
+download or generation step.
 
 ```w
 import libs.extras.html.html
@@ -62,9 +64,23 @@ wins; duplicates consume the attribute budget. Comments end at `-->`; other
 `<!doctype ...>` becomes a doctype token with retained text. EOF in tags,
 comments, or declarations produces partial tokens and diagnostics.
 
-Data/RCDATA and attribute values decode `amp`, `lt`, `gt`, `quot`, `apos`, `nbsp`,
-and decimal/hex numeric references **with semicolons**. Unknown references remain
-literal. Numeric NUL, out-of-range scalars, and surrogate values become U+FFFD.
+Data/RCDATA and attribute values decode all 2,231 case-sensitive WHATWG named
+reference spellings, including two-code-point values and 106 legacy spellings
+without semicolons. Matching takes the longest valid spelling. In an attribute,
+a legacy match followed by an ASCII letter, digit, or `=` stays literal:
+`&notit;` becomes `¬it;` in text but remains `&notit;` in an attribute.
+Other missing semicolons are diagnosed while still decoding the reference.
+Unknown names stay literal; an unknown alphanumeric name followed by `;`
+also produces a diagnostic. Decoded bytes are never parsed again as markup or
+references (`&amp;lt;` becomes `&lt;`).
+
+Decimal/hex numeric references consume their digit run with or without a
+semicolon. Missing digits preserve the literal spelling with a diagnostic;
+missing semicolons are diagnosed. Numeric NUL, out-of-range scalars (including
+arbitrarily long overflowing digit runs), and surrogate values become U+FFFD.
+HTML's Windows-1252 control-reference substitutions apply; unmapped controls
+and Unicode noncharacters survive with diagnostics. Referenced CR stays CR,
+because source newline normalization precedes reference decoding.
 Text and attribute NUL bytes also become U+FFFD with diagnostics. CR and CRLF
 become LF. `title`/`textarea` select RCDATA; `style`, `xmp`, `iframe`, `noembed`,
 `noframes` select raw text. Their matching, case-insensitive end tag
@@ -97,9 +113,7 @@ boundary. End tags close the nearest named ancestor and any intervening nodes;
 misnesting is diagnosed. Unmatched and void end tags are ignored with diagnostics.
 EOF closes remaining spans without inventing source bytes.
 
-Not implemented: full named entity tables and legacy missing-semicolon rules,
-numeric-reference Windows-1252 remapping,
-full comment/doctype state machines and quirks modes, `plaintext`, `noscript`
+Not implemented: full comment/doctype state machines and quirks modes, `plaintext`, `noscript`
 scripting flags, fragment contexts, all HTML insertion modes, table foster
 parenting and implicit tbody, adoption-agency formatting reconstruction,
 SVG/MathML foreign content, templates, encoding sniffing, streaming/chunk resume,
@@ -122,5 +136,16 @@ failure follows the repository allocator's normal behavior.
 `tests/html_test.w` has x86/x64 semantic fixtures for implied tags, malformed
 nesting, raw CSS/JS, RCDATA, references, attribute ownership, explicit-length NUL
 input, spans, every EOF prefix of a mixed document, and independent resource
-limits. `examples/web/html_document.w` demonstrates an external consumer using
-only the public parse/free and linked-tree interfaces.
+limits. `tests/html_entities_test.w` independently reads the pinned JSON and
+checks every spelling in text and all three attribute quoting contexts, plus
+legacy ambiguity, numeric repair, source spans, EOF prefixes and capped
+diagnostics. Its selected fixtures also run with allocation leak checks.
+The generated table uses immutable packed records and bounded binary lookups;
+it requires no per-document table allocation or global initialization.
+
+`python3 tools/html_entities.py --check` verifies the snapshot's SHA-256 and
+byte-identical regeneration as part of the entity tests. Run without `--check`
+to regenerate. The [data provenance](../../libs/extras/html/entities-provenance.md)
+records the upstream URLs, pin, licensing and update procedure.
+`examples/web/html_document.w` demonstrates an external consumer using only
+the public parse/free and linked-tree interfaces.
