@@ -8,10 +8,11 @@ const calls = {
   bufferDataBytes: [],
   drawArrays: [],
   clearCount: 0,
+  viewports: [],
 };
 let attribCounter = 0;
 const fakeGl = {
-  viewport: () => {},
+  viewport: (...v) => calls.viewports.push(v),
   clearColor: () => {},
   clear: () => calls.clearCount++,
   enable: () => {},

@@ -118,6 +118,11 @@ export function createInput({ canvas, editor, state, pushEvent,
   });
   win.addEventListener('blur', cancel);
   doc.addEventListener('visibilitychange', () => { if (doc.hidden) cancel(); });
+  // A touch long-press must not open the browser's context menu over the
+  // W surface; mouse right-click keeps the desktop behavior.
+  canvas.addEventListener('contextmenu', e => {
+    if (e.pointerType === 'touch' || pointer?.type === 'touch') e.preventDefault();
+  });
   canvas.addEventListener('wheel', e => {
     move(e);
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? canvas.clientHeight : 1;

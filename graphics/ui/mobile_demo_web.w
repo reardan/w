@@ -40,3 +40,8 @@ int main():
 
 # wbuild: target=wasm_mobile_ui_test tag=tests_wasm dep=graphics_ui_mobile_web dep=wrun
 # wbuild: step="bin/wrun node tools/web/run_mobile_ui.mjs bin/graphics_ui_mobile.wasm" expect_stdout="run_mobile_ui OK"
+
+# Opt-in: real headless Chromium (CHROMIUM=/path overrides) on an emulated
+# 412x764 DPR 1.75 touch phone; prints SKIP when no Chromium is installed.
+# wbuild: target=web_mobile_browser_test dep=graphics_ui_mobile_web dep=wrun
+# wbuild: step="bin/wrun node tools/web/run_browser_mobile.mjs bin/graphics_ui_mobile.wasm" expect_stdout="run_browser_mobile"

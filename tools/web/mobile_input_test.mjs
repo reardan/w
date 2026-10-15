@@ -322,4 +322,36 @@ for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
   assert.equal(text, 'aXb');
   assert.equal(caret, 2);
 }
-console.log('mobile_input_test OK (30 scenarios)');
+// Android Gboard: keydown carries keyCode 229 / key "Unidentified" for
+// every soft key. Text arrives only through beforeinput/input, exactly once;
+// soft Backspace/Enter arrive as beforeinput intents.
+{
+  const h = setup();
+  h.input.setTextInput(1, 0, 0, 0, 100, 20, 3);
+  for (const ch of ['a', 'é']) {
+    const down = h.editor.fire('keydown', { key: 'Unidentified', keyCode: 229 });
+    assert.equal(down.prevented, undefined, 'IME keydown is left to the browser');
+    h.editor.fire('beforeinput', { inputType: 'insertText', data: ch });
+    h.editor.value += ch;
+    h.editor.fire('input', { inputType: 'insertText', data: ch });
+    h.editor.fire('keyup', { key: 'Unidentified', keyCode: 229 });
+  }
+  assert.deepEqual(h.chars(), [97, 233]);
+  assert.equal(h.editor.value, '\u200b', 'sink is reset so Backspace always has a target');
+  h.editor.fire('keydown', { key: 'Unidentified', keyCode: 229 });
+  const back = h.editor.fire('beforeinput', { inputType: 'deleteContentBackward' });
+  h.editor.fire('keydown', { key: 'Unidentified', keyCode: 229 });
+  const enter = h.editor.fire('beforeinput', { inputType: 'insertParagraph' });
+  assert.ok(back.prevented && enter.prevented);
+  assert.deepEqual(h.chars(), [97, 233, 8, 13]);
+  assert.deepEqual(h.events.filter(e => e.kind === EVENT.KEY_DOWN).map(e => e.code), [229, 229, 229, 229]);
+}
+// Touch long-press cannot open the browser menu; mouse right-click can.
+{
+  const h = setup();
+  h.canvas.fire('pointerdown');
+  assert.equal(h.canvas.fire('contextmenu', { pointerType: undefined }).prevented, true);
+  h.canvas.fire('pointerup');
+  assert.equal(h.canvas.fire('contextmenu', { pointerType: 'mouse' }).prevented, undefined);
+}
+console.log('mobile_input_test OK (32 scenarios)');

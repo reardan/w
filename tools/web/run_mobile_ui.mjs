@@ -32,6 +32,9 @@ instance = await WebAssembly.instantiate(await WebAssembly.compile(await readFil
   { ...wasi.getImportObject(), env });
 assert.equal(wasi.start(instance), 0);
 assert.ok(callback, 'W registered the form frame');
+// The 720x720 request is clamped to the 390px phone; the default viewport
+// covers that canvas in device pixels, not the requested size.
+assert.deepEqual(calls.viewports, [[0, 0, 1170, 2160]], 'viewport starts at the clamped canvas size');
 let frames = 0;
 function frame() {
   events.beginFrame();
@@ -77,6 +80,8 @@ const emailId = textField[6];
 dimensions = viewportSize({ width: 320, height: 250, requestedWidth: 390, requestedHeight: 720, dpr: 3 });
 frame(); frame();
 assert.equal(dimensions.width, 320);
+assert.deepEqual(calls.viewports.at(-1), [0, 0, 960, 750], 'host resize resets the viewport');
+assert.equal(calls.viewports.length, 2, 'viewport is reset once per size change, not per frame');
 assert.equal(textField[0], 1, 'keyboard resize preserves focus');
 assert.equal(textField[6], emailId);
 assert.ok(textField[3] >= 0 && textField[3] + textField[5] <= 250, 'focused field revealed above keyboard');
