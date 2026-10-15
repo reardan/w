@@ -448,6 +448,19 @@ Shipped from the next-steps backlog:
   `tests/forward_call_hint_fixture.w` /
   `tests/forward_call_no_hint_fixture.w` (`forward_call_hint_test`,
   `bin/wfixture`).
+- **Called-but-bodiless prototypes are a compile error** (2026-10-15):
+  a prototype that is called or address-taken but never given a body
+  used to compile silently and segfault at the call; a full compile
+  (any target) now fails with `function 'name' is declared but never
+  defined` at the prototype (`undefined_function_check`,
+  `compiler/compiler.w`). Unreferenced prototypes stay legal, and
+  `w check`/`symbols`/`deps` stay lenient on purpose: they analyze one
+  file at a time, where a module may prototype functions only the
+  program's entry file imports. Every offender is reported before the
+  compile fails. `_main` is exempt: the win64/wasm runtime entries call
+  it, but `entry_symbol` only selects them when it is defined. Fixtures:
+  `tests/undefined_prototype_{call,addr}_fixture.w`
+  (`undefined_prototype_test`) and `tests/prototype_unused_test.w`.
 - **`-v`/`--verbose` driver flag, and the c_import skip notice it
   surfaces** (2026-07-25): `w [-v|--verbose] file.w` (also accepted by
   `w check` among its leading flags, and anywhere in the argument list

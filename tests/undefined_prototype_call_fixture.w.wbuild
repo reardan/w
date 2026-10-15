@@ -1,0 +1,6 @@
+# wbuild: target=undefined_prototype_test tag=tests dep=wv2 dep=wfixture
+# wbuild: step="bin/wfixture bin/wv2 tests/undefined_prototype_call_fixture.w tests/undefined_prototype_addr_fixture.w"
+# wbuild: step="bin/wv2 check --json --quiet tests/undefined_prototype_call_fixture.w" stdout_file="bin/undefined_prototype_check.ndjson"
+# wbuild: step="test ! -s bin/undefined_prototype_check.ndjson"
+# wbuild: step="bin/wv2 check --json x64 --quiet tests/undefined_prototype_addr_fixture.w" stdout_file="bin/undefined_prototype_check_x64.ndjson"
+# wbuild: step="test ! -s bin/undefined_prototype_check_x64.ndjson"

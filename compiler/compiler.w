@@ -1319,6 +1319,55 @@ void finish_on_demand_imports():
 	generic_finish_instantiations()
 
 
+# A function that was only ever declared by a prototype ('int f(int x);')
+# stays an undefined ('U') global, and every call or address-of threads
+# its address slot onto the symbol's backpatch chain
+# (sym_get_value / sym_define_global_at, compiler/symbol_table.w), which
+# a later definition patches. A chain still non-empty once the whole
+# program has compiled means some site would jump to a stale address
+# (the chain terminator), so the binary segfaults on the call: report
+# every such function at its prototype, then fail. A prototype nothing
+# references keeps an empty chain (its value is still the code_offset
+# terminator it was declared with) and stays legal. extern/c_lib
+# functions, kernels and runtime stubs are defined ('D') when declared,
+# so they never match.
+#
+# '_main' is exempt: the win64/wasm runtime entry functions
+# (lib/__arch__/<arch>/syscalls.w) prototype and call it, but
+# entry_symbol (code_generator/image.w) only picks that runtime entry
+# when '_main' is defined, so in a program without lib.lib the call is
+# dead code, and a missing entry point already has its own error there.
+void undefined_function_check():
+	int failures = 0
+	int t = 0
+	while (t <= table_pos - 1):
+		char* name = table + t
+		t = t + strlen(table + t)
+		if ((table[t + 1] == 'U') && (load_int(table + t + 10) == 2) && (load_int(table + t + 2) != code_offset) && (strcmp(name, c"_main") != 0)):
+			int file_index = sym_decl_file_index(t)
+			if (file_index >= 0):
+				# Reposition the diagnostic at the prototype, reopening its
+				# file so the human renderer can quote the source line
+				if ((failures > 0) && (file >= 0)): close(file)
+				filename = debug_file_name(file_index)
+				file = open(filename, 0, 511)
+				getchar_reset(file)
+				line_number = sym_decl_line(t) - 1
+				diag_token_line = sym_decl_line(t)
+				diag_token_column = sym_decl_column(t)
+				token = name
+			diag_set_help(c"define its body, or import the module that defines it")
+			diag_part(c"function '")
+			diag_part(name)
+			if (diag_json):
+				diag_append(c"' is declared but never defined")
+				diag_emit(c"error", filename, diag_token_line, diag_token_column, token)
+			else: diag_human(c"error", c"' is declared but never defined")
+			failures = failures + 1
+		t = next_token(t)
+	if (failures > 0): exit(1)
+
+
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	code_fixed = 0
 	code_fixed_error_hook = 0
@@ -1761,6 +1810,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (type_error_count > 0): return 1
 	safe_check_finish()
 	type_safe_entrypoint = 0
+	# A called-but-bodiless prototype fails only a real compile, never
+	# check/deps/symbols/defhash (check_mode): those analyze one file at
+	# a time (the language server, 'w check' on a module), and a hub file
+	# may legitimately prototype functions whose bodies live in modules
+	# only the program's entry file imports. Linking the whole program
+	# is where the missing body becomes a real error.
+	if (check_mode == 0): undefined_function_check()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with
