@@ -124,6 +124,8 @@ void js_test_new_spans_and_limits():
 
 int main(int argc, int argv):
 	args_init(argc, argv)
+	if (argc > 1): malloc_force_debug_mode()
+	js_test_roundtrip(c"new Promise((resolve, reject) => { resolve(3); }).then(value => value); new A.B(1); new A[method](); new new A();", 0)
 	if (argc > 1):
 		malloc_force_debug_mode()
 		js_test_roundtrip(c"export function greet(name) { return \"Hello, \" + name; }", 1)

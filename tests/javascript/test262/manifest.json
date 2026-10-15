@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "suite": "test262-bounded-runtime",
   "upstream": {
     "repository": "https://github.com/tc39/test262",
@@ -261,12 +261,10 @@
       "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/short-circuit-prevents-evaluation.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/short-circuit-prevents-evaluation.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/coalesce/cannot-chain-head-with-logical-and.js#sloppy": {
       "status": "PASS"
@@ -306,35 +304,35 @@
     },
     "upstream/test/language/expressions/addition/S11.6.1_A1.js#sloppy": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "unsupported required built-ins: eval"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A1.js#strict": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "unsupported required built-ins: eval"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#sloppy": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "instanceof evaluation is outside the implemented runtime subset."
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#strict": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "instanceof evaluation is outside the implemented runtime subset."
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "unsupported required built-ins: Number, isNaN"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#strict": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "unsupported required built-ins: Number, isNaN"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js#sloppy": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "unsupported required built-ins: Number, isNaN"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js#strict": {
       "status": "UNSUPPORTED",
-      "reason": "New-expression syntax (including Test262Error failure branches) is not implemented by AST lowering."
+      "reason": "unsupported required built-ins: Number, isNaN"
     },
     "upstream/test/language/expressions/assignment/id-eval-strict.js#strict": {
       "status": "PASS"
@@ -375,5 +373,18 @@
     "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js#strict": {
       "status": "PASS"
     }
+  },
+  "builtins_required": {
+    "upstream/test/language/expressions/addition/S11.6.1_A1.js": [
+      "eval"
+    ],
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js": [
+      "Number",
+      "isNaN"
+    ],
+    "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js": [
+      "Number",
+      "isNaN"
+    ]
   }
 }

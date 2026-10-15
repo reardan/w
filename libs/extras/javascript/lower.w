@@ -74,10 +74,8 @@ int js_lower_arguments(js_node* call, pg_ast_node* arguments, pg_diagnostics* di
 	return 1
 
 
-js_node* js_lower_postfix(pg_ast_node* node, pg_diagnostics* diagnostics):
-	js_node* value = js_lower_node(node.children[0], diagnostics)
-	if (value == 0): return 0
-	for i in range(1, node.children.length):
+js_node* js_lower_postfix_tails(pg_ast_node* node, js_node* value, int start, pg_diagnostics* diagnostics):
+	for i in range(start, node.children.length):
 		pg_ast_node* tail = node.children[i]
 		pg_ast_node* first = tail.children[0]
 		js_node* next = 0
@@ -101,6 +99,12 @@ js_node* js_lower_postfix(pg_ast_node* node, pg_diagnostics* diagnostics):
 		next.length = tail.last_token.offset + tail.last_token.length - next.offset
 		value = next
 	return value
+
+
+js_node* js_lower_postfix(pg_ast_node* node, pg_diagnostics* diagnostics):
+	js_node* value = js_lower_node(node.children[0], diagnostics)
+	if (value == 0): return 0
+	return js_lower_postfix_tails(node, value, 1, diagnostics)
 
 
 js_node* js_lower_parameters(pg_ast_node* node, pg_diagnostics* diagnostics):
@@ -203,6 +207,22 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 			js_node_free(result)
 			return 0
 		return result
+	if (js_cst_is(node, c"new_expression") || js_cst_is(node, c"new_callee")):
+		if (js_cst_is(node.children[0], c"KW_NEW") == 0): return js_lower_postfix(node, diagnostics)
+		if (count < 2 || js_cst_is(node.children[1], c"DOT")): return js_lower_error(node, diagnostics)
+		js_node* constructed = js_node_new(c"construct", c"")
+		if (js_lower_add(constructed, node.children[1], diagnostics) == 0):
+			js_node_free(constructed)
+			return 0
+		int tail = 2
+		if (count > 2 && js_cst_is(node.children[2], c"arguments")):
+			if (js_lower_arguments(constructed, node.children[2], diagnostics) == 0):
+				js_node_free(constructed)
+				return 0
+			tail = 3
+		constructed.offset = node.first_token.offset
+		constructed.length = node.last_token.offset + node.last_token.length - constructed.offset
+		return js_lower_postfix_tails(node, constructed, tail, diagnostics)
 	if (js_cst_is(node, c"postfix")): return js_lower_postfix(node, diagnostics)
 	if (js_cst_is(node, c"argument")):
 		if (count == 1): return js_lower_node(node.children[0], diagnostics)

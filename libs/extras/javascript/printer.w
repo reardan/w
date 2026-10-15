@@ -198,12 +198,14 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 			if (js_print_expression(out, node.children[i], diagnostics) == 0): return 0
 		string_append(out, c")")
 		return 1
-	if (js_kind(node, c"call")):
+	if (js_kind(node, c"call") || js_kind(node, c"construct")):
 		if (count < 1): return js_print_error(diagnostics, node)
+		if (js_kind(node, c"construct")): string_append(out, c"(new ")
 		if (js_print_expression(out, node.children[0], diagnostics) == 0): return 0
 		string_append(out, c"(")
 		if (js_print_expression_list(out, node, 1, diagnostics) == 0): return 0
 		string_append(out, c")")
+		if (js_kind(node, c"construct")): string_append(out, c")")
 		return 1
 	if (js_kind(node, c"member") || js_kind(node, c"computed_member")):
 		if (count != 2): return js_print_error(diagnostics, node)
