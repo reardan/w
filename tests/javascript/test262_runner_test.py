@@ -27,9 +27,9 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 35, 'FAIL': 0, 'UNSUPPORTED': 18, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 26)
-        self.assertEqual(report['assertions'], 156)
+        self.assertEqual(report['counts'], {'PASS': 37, 'FAIL': 0, 'UNSUPPORTED': 16, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 28)
+        self.assertEqual(report['assertions'], 164)
         self.assertEqual(report['variants'], 53)
         self.assertEqual(report['baseline_changes'], [])
 
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 34, 'FAIL': 0, 'UNSUPPORTED': 19, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 36, 'FAIL': 0, 'UNSUPPORTED': 17, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -67,10 +67,37 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=improve):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 36, 'FAIL': 0, 'UNSUPPORTED': 17, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 38, 'FAIL': 0, 'UNSUPPORTED': 15, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
+
+    def test_pinned_builtin_requirements_do_not_mask_runtime_failures(self):
+        manifest, _ = adapter.load_manifest(adapter.MANIFEST)
+        requirements = manifest['builtins_required']
+        self.assertEqual(len(requirements), 3)
+        report, status = adapter.run(adapter.MANIFEST, BINARY)
+        self.assertEqual(status, 0)
+        for result in report['results']:
+            case = result['id'].split('#')[0]
+            if case in requirements:
+                self.assertEqual(result['status'], 'UNSUPPORTED')
+                self.assertEqual(result['actual']['phase'], 'metadata')
+                self.assertEqual(result['actual']['message'],
+                                 'unsupported required built-ins: ' + ', '.join(requirements[case]))
+        # Direct execution retains genuine ReferenceError, including the three
+        # unavailable built-ins. No runtime exception is relabelled by classify.
+        for source in ['unknownUserVariable;', 'eval("1 + 1");', 'Number.NaN;', 'isNaN(0);']:
+            actual = self.execute(source)
+            self.assertEqual(actual['error_type'], 'ReferenceError')
+            self.assertEqual(adapter.classify({}, actual), 'FAIL')
+        # Claiming availability actually runs the pinned cases; it must expose
+        # failures until the runtime implements the advertised capability.
+        with patch.object(adapter, 'BUILTINS', adapter.KNOWN_BUILTINS):
+            promoted, status = adapter.run(adapter.MANIFEST, BINARY)
+        self.assertEqual(status, 1)
+        self.assertEqual(promoted['counts']['FAIL'], 6)
+        self.assertEqual(len(promoted['baseline_changes']), 6)
 
     def test_assertions_execute_and_reject_truthy_values(self):
         for source in ['assert(true);', 'assert.sameValue(NaN, NaN);', 'assert.notSameValue(0, -0);', 'assert.sameValue();']:
@@ -161,6 +188,10 @@ class AdapterContract(unittest.TestCase):
             (base / 'upstream').symlink_to(adapter.MANIFEST.parent / 'upstream', target_is_directory=True)
             for mutate in [
                 lambda m: m['files'][0].update(sha256='0' * 64),
+                lambda m: m['builtins_required'].update(unpinned=['eval']),
+                lambda m: m['builtins_required'].update({m['cases'][0]: ['unknownBuiltin']}),
+                lambda m: m['builtins_required'].update({m['cases'][0]: ['eval', 'eval']}),
+                lambda m: m['builtins_required'].update({m['cases'][0]: []}),
                 lambda m: m['files'][0].update(path='upstream/../escape', upstream_path='../escape'),
                 lambda m: m['cases'].append(m['cases'][0]),
                 lambda m: m['upstream'].update(commit='main'),

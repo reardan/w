@@ -48,6 +48,9 @@ struct js_value:
 	int strict
 	# Host-visible immutable error brand; independent of mutable JS properties.
 	char* intrinsic_error_name
+	int promise_state
+	js_value* promise_result
+	list[js_value*] reactions
 
 
 type js_host_function = fn(void*, list[js_value*]) -> js_value*
@@ -93,6 +96,15 @@ struct js_runtime:
 	int empty
 	js_runtime_label* label
 	js_node* jump_target
+	list[js_value*] microtasks
+	int microtask_head
+	int max_microtasks
+	js_value* promise_prototype
+	js_value* promise_constructor
+
+
+void js_runtime_install_promises(js_runtime* rt);
+js_value* js_runtime_promise_construct(js_runtime* rt, list[js_value*] args);
 
 
 js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key);
@@ -146,6 +158,9 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.lexical_binding = 0
 	value.silent_immutable = 0
 	value.strict = 0
+	value.promise_state = 0
+	value.promise_result = 0
+	value.reactions = 0
 	value.intrinsic_error_name = c""
 	rt.heap.push(value)
 	return value
@@ -261,6 +276,11 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message):
 
 js_runtime* js_runtime_new():
 	js_runtime* rt = new js_runtime()
+	rt.microtasks = new list[js_value*]
+	rt.microtask_head = 0
+	rt.max_microtasks = 10000
+	rt.promise_prototype = 0
+	rt.promise_constructor = 0
 	rt.heap = new list[js_value*]
 	rt.roots = new list[js_value*]
 	rt.scripts = new list[js_node*]
@@ -292,6 +312,7 @@ js_runtime* js_runtime_new():
 	for i in range(rt.global.properties.length):
 		rt.global.properties[i].immutable = 1
 		rt.global.properties[i].lexical_binding = 1
+	js_runtime_install_promises(rt)
 	return rt
 
 
@@ -312,6 +333,7 @@ void js_runtime_unroot(js_runtime* rt, js_value* value):
 
 
 void js_runtime_value_free(js_value* value):
+	if (value.reactions != 0): __w_list_free(cast(__w_list*, value.reactions))
 	js_text_free(value.text)
 	for i in range(value.properties.length):
 		js_value* property = value.properties[i]
@@ -332,12 +354,20 @@ void js_runtime_mark(list[js_value*] pending, js_value* value):
 int js_runtime_collect(js_runtime* rt):
 	if (rt.running): return -1
 	list[js_value*] pending = new list[js_value*]
+	js_runtime_mark(pending, rt.promise_constructor)
+	js_runtime_mark(pending, rt.promise_prototype)
+	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.global)
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
 	for i in range(rt.roots.length): js_runtime_mark(pending, rt.roots[i])
 	while (pending.length > 0):
 		js_value* value = pending.pop()
+		js_runtime_mark(pending, value.promise_result)
+		js_runtime_mark(pending, value.getter)
+		js_runtime_mark(pending, value.setter)
+		if (value.reactions != 0):
+			for i in range(value.reactions.length): js_runtime_mark(pending, value.reactions[i])
 		js_runtime_mark(pending, value.parent)
 		js_runtime_mark(pending, value.prototype)
 		js_runtime_mark(pending, value.this_value)
@@ -363,6 +393,7 @@ void js_runtime_free(js_runtime* rt):
 	if (rt == 0): return
 	for i in range(rt.heap.length): js_runtime_value_free(rt.heap[i])
 	for i in range(rt.scripts.length): js_node_free(rt.scripts[i])
+	__w_list_free(cast(__w_list*, rt.microtasks))
 	__w_list_free(cast(__w_list*, rt.heap))
 	__w_list_free(cast(__w_list*, rt.roots))
 	__w_list_free(cast(__w_list*, rt.scripts))
@@ -1355,7 +1386,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
 			js_text_free(key)
 		return object
-	if (js_kind(node, c"call")):
+	if (js_kind(node, c"call") || js_kind(node, c"construct")):
 		js_node* target = node.children[0]
 		js_value* receiver = rt.undefined_value
 		js_value* callable = rt.undefined_value
@@ -1371,7 +1402,11 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			if (rt.completion.status != 0): break
 			arguments.push(js_runtime_eval_node(rt, node.children[i], env))
 		js_value* result = rt.undefined_value
-		if (rt.completion.status == 0): result = js_runtime_call_receiver(rt, callable, receiver, arguments)
+		if (rt.completion.status == 0):
+			if (js_kind(node, c"construct")):
+				if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
+				else: js_runtime_fail(rt, 6, c"only native Promise construction is supported")
+			else: result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return result
 	js_runtime_fail(rt, 6, c"unsupported AST node")
@@ -1396,7 +1431,7 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 # syntax before execution, so unsupported syntax cannot leave partial effects.
 int js_runtime_supported(js_node* node):
 	char* kind = node.kind
-	int supported = js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
+	int supported = js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): return 0
 	# Labelled function declarations require the unsupported Annex B rules.
 	if (js_kind(node, c"label") && js_kind(node.children[0], c"function")): return 0
@@ -1501,3 +1536,6 @@ js_value* js_runtime_call(js_runtime* rt, js_value* callable, list[js_value*] ar
 
 js_completion* js_runtime_invoke(js_runtime* rt, js_value* callable, list[js_value*] arguments, int budget):
 	return js_runtime_invoke_receiver(rt, callable, rt.undefined_value, arguments, budget)
+
+
+import libs.extras.javascript.promises

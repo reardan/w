@@ -15,9 +15,9 @@ report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
 The initial corpus contains 28 upstream files expanded into 53 variants:
-**35 PASS, 0 FAIL, 18 UNSUPPORTED, 0 ERROR**. Of those passes, 26 reach runtime
+**37 PASS, 0 FAIL, 16 UNSUPPORTED, 0 ERROR**. Of those passes, 28 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. The positive cases execute 156 assertions across strict/sloppy
+syntax errors. The positive cases execute 164 assertions across strict/sloppy
 variants. These numbers describe this small selected corpus, **not full Test262
 coverage or a browser standards pass rate**. The unsupported examples remain in
 the report rather than being removed to improve the result.
@@ -45,8 +45,20 @@ formatting, construction/prototypes of Test262Error, `assert.throws`, comparison
 helpers, `$DONE`, `print`, and `$262` host operations are not implemented. Calls
 to the installed unsupported helper stubs or missing assertion/host properties
 produce UNSUPPORTED, never a passing no-op. Full harness-object introspection is
-outside this profile. New-expression syntax is currently unsupported, including
-unreached `new Test262Error` expressions in upstream failure branches.
+outside this profile. Constructor syntax now lowers, allowing unreachable
+`new Test262Error` branches in the two newly passing short-circuit variants;
+executing that constructor remains unsupported.
+
+Manifest version 2 records built-in requirements for three hash-pinned addition
+cases: `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
+`Number` and `isNaN`. The adapter capability inventory does not yet advertise
+these built-ins, so those six variants report an explicit metadata UNSUPPORTED
+reason before execution. This is a declared capability boundary, not an exception
+filter: unknown identifiers and direct uses of missing built-ins still throw
+ReferenceError and classify as FAIL. A regression test advertises all three
+capabilities and verifies that execution exposes all six failures. Source bytes
+and hashes are unchanged. The separate `instanceof` case remains unsupported
+by runtime preflight.
 
 The native callbacks count real assertion invocations. Contract tests verify
 both passing and failing assertion paths, signed zero, NaN, boolean strictness,

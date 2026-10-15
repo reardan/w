@@ -221,7 +221,7 @@ The initial semantic subset is deliberately explicit:
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
 
 Unsupported syntax is rejected before execution, including modules, classes,
-generators/async, regex execution, tagged templates, `new`, destructuring,
+generators/async, regex execution, tagged templates, destructuring,
 prototype-literal `__proto__`, loose equality, bitwise operators and additional
 numeric operators. Custom iterators, default/rest/destructured arrow parameters,
 implicit operator coercions, standard built-ins, array length writes and exotic
@@ -229,8 +229,9 @@ property-key conversions remain outside this subset. Global `this`, sloppy
 receiver substitution/boxing, `super` and ordinary functions' implicit
 `arguments` object are not implemented; accessing these receiver/arguments
 features reports unsupported status. Explicit `arguments` parameters remain
-ordinary bindings. No DOM, task queue, module loader or browser authority is
-installed.
+ordinary bindings. Native Promise construction is supported; other constructors
+report unsupported at execution. No DOM, timer task queue, module loader or
+browser authority is installed by the runtime.
 
 Scope conflicts are checked before installing bindings, so a rejected script
 does not leave its otherwise fresh declarations in the temporal dead zone.
@@ -316,6 +317,43 @@ bounded by `max_scripts`, ensuring closure bodies remain valid. The tests cover
 cyclic collection, closure survival, realm isolation, host exceptions, execution
 limits, and zero outstanding allocations after teardown.
 
+## Promises and microtask checkpoints
+
+`js_runtime_new` installs `Promise`, `Promise.resolve`, `Promise.reject`,
+`Promise.prototype.then/catch`, and `queueMicrotask`. `new Promise(executor)`
+calls its executor synchronously with resolve/reject functions. Settlement is
+first-call-wins, including adoption of a pending native promise. Reactions run
+as FIFO microtasks, propagate missing handlers, adopt returned native promises,
+reject direct self-resolution, and turn handler/executor throws into rejections.
+
+Hosts create pending promises with `js_runtime_promise_new(rt)` and settle them
+with `js_runtime_promise_settle(rt, promise, value, rejected)`, where `rejected`
+is zero for resolution and nonzero for rejection. Both values must belong to
+that runtime. Host-retained pending promises need ordinary roots. Settlement
+never invokes JavaScript. Pending reactions, queued jobs, captured resolvers,
+and settlement values participate in collection.
+
+Call `js_runtime_drain_microtasks(rt, budget)` at a host checkpoint, such as after
+a script, event, or timer callback. Evaluation does not drain automatically.
+The returned instance-owned completion replaces the prior completion, so inspect
+or retain its value first. Reentry returns null. Draining charges one step per
+job plus normal AST work and shares one budget across recursively queued jobs.
+A thrown `queueMicrotask` callback stops the checkpoint with status 2; Promise
+handler throws are converted to rejection. Resource limits remain status 5.
+Unstarted jobs stay queued and rooted; a started job is not replayed after an
+abort. As elsewhere, a limit abort can leave prior effects or promises pending.
+`max_microtasks` defaults to 10000 queued jobs; `max_properties` also caps each
+pending promise's reactions. Queue storage compacts consumed entries.
+`js_runtime_clear_microtasks(rt)` cancels queued jobs between executions; it does
+not remove reactions attached to still-pending promises.
+
+This is a native-promise subset: arbitrary thenable assimilation, Promise
+combinators/finally, subclass/species behavior, unhandled-rejection reporting,
+async/await, and general constructor semantics are not implemented. In particular,
+objects with a `then` property are currently fulfilled as ordinary objects.
+Constructor syntax is lowered and printed as `construct` AST nodes, with tests
+for member callees and trailing method calls.
+
 ## Preserve source during edits
 
 `js_rewrite_module_specifiers(result, from, to, &length)` returns an owned edited
@@ -333,7 +371,7 @@ comments and formatting.
 ./wbuild javascript_lexical_test javascript_parser_test javascript_validation_test \
   javascript_bindings_test javascript_restrictions_test javascript_ast_test \
   javascript_roundtrip_test javascript_transform_test javascript_text_test \
-  javascript_runtime_test javascript_runtime_invoke_test javascript_browser_runtime_test \
+  javascript_runtime_test javascript_runtime_invoke_test javascript_runtime_promises_test javascript_browser_runtime_test \
   javascript_runtime_objects_test javascript_runtime_environments_test \
   javascript_standards_early_test javascript_conformance javascript_test262
 ./wbuild javascript_compatibility

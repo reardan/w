@@ -17,6 +17,10 @@ MANIFEST = ROOT / 'tests/javascript/test262/manifest.json'
 STATUSES = ('PASS', 'FAIL', 'UNSUPPORTED', 'ERROR')
 FLAGS = {'onlyStrict', 'noStrict', 'raw', 'module', 'async', 'generated', 'CanBlockIsFalse', 'CanBlockIsTrue', 'non-deterministic'}
 FEATURES = {'coalesce-expression'}
+# Explicit capability inventory for requirements declared by hash-pinned cases.
+# Promote only alongside runtime implementation and executable contract checks.
+KNOWN_BUILTINS = {'eval', 'Number', 'isNaN'}
+BUILTINS = set()
 DOC_FIELDS = {'description', 'info', 'esid', 'es5id', 'es6id', 'author'}
 
 
@@ -120,8 +124,8 @@ def unsupported(meta):
 
 def load_manifest(path):
     data = json.loads(path.read_text())
-    require(set(data) == {'version', 'suite', 'upstream', 'files', 'cases', 'baseline'}, 'invalid manifest fields')
-    require(data['version'] == 1 and data['suite'] == 'test262-bounded-runtime', 'invalid manifest version/suite')
+    require(set(data) == {'version', 'suite', 'upstream', 'files', 'cases', 'baseline', 'builtins_required'}, 'invalid manifest fields')
+    require(data['version'] == 2 and data['suite'] == 'test262-bounded-runtime', 'invalid manifest version/suite')
     require(set(data['upstream']) == {'repository', 'commit'}, 'invalid provenance')
     require(data['upstream']['repository'] == 'https://github.com/tc39/test262', 'invalid upstream repository')
     require(re.fullmatch('[0-9a-f]{40}', data['upstream']['commit']) is not None, 'unpinned revision')
@@ -141,6 +145,12 @@ def load_manifest(path):
     require(len(set(data['cases'])) == len(data['cases']), 'duplicate cases')
     for case in data['cases']:
         require(case in sources and case.startswith('upstream/test/') and case.endswith('.js') and '_FIXTURE' not in case, 'invalid test source')
+    requirements = data['builtins_required']
+    require(isinstance(requirements, dict), 'invalid built-in requirements')
+    for case, names in requirements.items():
+        require(case in data['cases'], 'built-in requirements must name a pinned case')
+        require(isinstance(names, list) and names and all(isinstance(name, str) for name in names), 'invalid required built-ins')
+        require(len(set(names)) == len(names) and set(names) <= KNOWN_BUILTINS, 'unknown or duplicate required built-ins')
     baseline = data['baseline']
     require(isinstance(baseline, dict), 'invalid status baseline')
     expected_ids = {case + '#' + mode for case in data['cases'] for mode in variants(metadata(sources[case]))}
@@ -202,6 +212,9 @@ def run(manifest_path, binary, timeout=10, budget=100000):
                 results.append({'id': case, 'status': 'ERROR', 'actual': {'phase': 'metadata', 'outcome': 'harness_error', 'message': str(error)}})
                 continue
             reason = unsupported(meta)
+            missing = sorted(set(manifest['builtins_required'].get(case, [])) - BUILTINS)
+            if not reason and missing:
+                reason = 'unsupported required built-ins: ' + ', '.join(missing)
             for mode in variants(meta):
                 if reason:
                     actual = {'phase': 'metadata', 'outcome': 'unsupported', 'message': reason}
