@@ -31,6 +31,12 @@ cross-host workflow instead of failing after unrelated tests have run.
 
 ## Debugging generated test runners (2026-10-09)
 
+`wdbg64` does not apply `--import-root` to in-process debuggee compilation
+(2026-10-15, #647). A Win consumer that passes `wv2 x64 check --json
+--import-root win/src --import-root W` cannot resolve `win.script` under the
+debugger. Forward import roots into in-process setup; a temporary working
+directory with a `win` symlink currently supplies the missing search root.
+
 `bin/wdbg tests/shell_execute_test.w --break_start` crashed in the
 `lib.testing` generated runner before reaching a source breakpoint during
 shell completion work, while the compiled test binary reached its ordinary

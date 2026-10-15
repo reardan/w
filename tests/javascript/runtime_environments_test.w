@@ -27,6 +27,7 @@ void test_environments():
 	environment_number(rt, c"function scope(a) { { var a = 11; } return a; } scope(2);", 11.0)
 	environment_number(rt, c"function hoist() { if (false) { var x = 1; } return typeof x === 'undefined' ? 1 : 0; } hoist();", 1.0)
 	environment_number(rt, c"function hidden() { function inner() { var noLeak = 2; } return typeof noLeak === 'undefined' ? 1 : 0; } hidden();", 1.0)
+	environment_number(rt, c"(() => { var arrowLocal = 42; }); let arrowLocal = 7; arrowLocal;", 7.0)
 	environment_number(rt, c"function duplicate() { return 1; } function duplicate() { return 2; } duplicate();", 2.0)
 	environment_number(rt, c"function duplicate() { return 3; } duplicate();", 3.0)
 	environment_number(rt, c"function replace(a) { function a() { return 5; } var a; return a(); } replace(1);", 5.0)

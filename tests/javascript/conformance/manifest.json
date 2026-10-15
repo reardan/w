@@ -103,17 +103,6 @@
           "type": "number",
           "value": "1.0"
         }
-      },
-      "xfail": {
-        "bug": "JS-COMPLETION-DECLARATION",
-        "reason": "An empty declaration completion overwrites the preceding value.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "normal",
-          "value": {
-            "type": "undefined"
-          }
-        }
       }
     },
     {
@@ -128,17 +117,6 @@
         "value": {
           "type": "number",
           "value": "42.0"
-        }
-      },
-      "xfail": {
-        "bug": "JS-COMPLETION-LOOP",
-        "reason": "Loop completion discards the last body value.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "normal",
-          "value": {
-            "type": "undefined"
-          }
         }
       }
     },
@@ -155,18 +133,6 @@
           "type": "number",
           "value": "2.0"
         }
-      },
-      "xfail": {
-        "bug": "JS-FUNCTION-REDECLARATION",
-        "reason": "Global declaration instantiation rejects valid function redeclarations.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "throw",
-          "value": {
-            "type": "undefined"
-          },
-          "message": "duplicate callable binding"
-        }
       }
     },
     {
@@ -181,18 +147,6 @@
         "value": {
           "type": "number",
           "value": "42.0"
-        }
-      },
-      "xfail": {
-        "bug": "JS-SLOPPY-FUNCTION-NAME",
-        "reason": "Sloppy assignment to an immutable function-expression name throws instead of being ignored.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "throw",
-          "value": {
-            "type": "undefined"
-          },
-          "message": "assignment to constant binding"
         }
       }
     },
@@ -209,18 +163,6 @@
           "type": "boolean",
           "value": false
         }
-      },
-      "xfail": {
-        "bug": "JS-TYPED-ERROR",
-        "reason": "The runtime catches undefined instead of a ReferenceError object.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "normal",
-          "value": {
-            "type": "boolean",
-            "value": true
-          }
-        }
       }
     },
     {
@@ -234,18 +176,6 @@
         "outcome": "normal",
         "value": {
           "type": "undefined"
-        }
-      },
-      "xfail": {
-        "bug": "JS-PRIMITIVE-GET",
-        "reason": "Boolean property access throws instead of boxing the primitive.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "throw",
-          "value": {
-            "type": "undefined"
-          },
-          "message": "property receiver is not an object"
         }
       }
     },
@@ -262,14 +192,6 @@
           "type": "number",
           "value": "42.0"
         }
-      },
-      "xfail": {
-        "bug": "JS-VAR",
-        "reason": "Variable statements are rejected by the executable-subset preflight.",
-        "observed": {
-          "phase": "execute",
-          "outcome": "unsupported"
-        }
       }
     },
     {
@@ -284,14 +206,6 @@
         "value": {
           "type": "number",
           "value": "42.0"
-        }
-      },
-      "xfail": {
-        "bug": "JS-ARROW",
-        "reason": "Arrow function AST lowering is unavailable.",
-        "observed": {
-          "phase": "lower",
-          "outcome": "unsupported"
         }
       }
     },
@@ -399,6 +313,96 @@
         "observed": {
           "phase": "lower",
           "outcome": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "arrow-receiver",
+      "path": "arrow-receiver.js",
+      "sha256": "cfe00e4c0af3cb15df053811f0f2c102b1f9785c697d1a313f5e9eecdcbcc326",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-arrow-function-definitions-runtime-semantics-evaluation",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      }
+    },
+    {
+      "id": "arrow-var-scope",
+      "path": "arrow-var-scope.js",
+      "sha256": "1c86a1b47053e3d4003a6e8b9847ae56ea96e0c9bfb6865f2ff42b87507eebf7",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-variable-statement",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "7.0"
+        }
+      }
+    },
+    {
+      "id": "for-of-completion",
+      "path": "for-of-completion.js",
+      "sha256": "4aeb3d80d2972cf7e14aef6774103085dbf8ab5b73ae130d5fc7e4a17b9585cb",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-runtime-semantics-forinofbodyevaluation-lhs-stmt-iterator-lhskind-labelset",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      }
+    },
+    {
+      "id": "finally-completion",
+      "path": "finally-completion.js",
+      "sha256": "b22aa680c3048e819eed6ff7be2700923017ddb470c47487b0203ca8b615ea4d",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/ecmascript-language-statements-and-declarations.html#sec-try-statement-runtime-semantics-evaluation",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "number",
+          "value": "42.0"
+        }
+      }
+    },
+    {
+      "id": "reference-error-name",
+      "path": "reference-error-name.js",
+      "sha256": "bdda25078dad8c7bc9c7c304ee7003024caa40d3d6e67d0d62c416e9b6f44d1c",
+      "goal": "script",
+      "spec": "https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-native-error-types-used-in-this-standard-referenceerror",
+      "expected": {
+        "phase": "execute",
+        "outcome": "normal",
+        "value": {
+          "type": "string",
+          "units": [
+            82,
+            101,
+            102,
+            101,
+            114,
+            101,
+            110,
+            99,
+            101,
+            69,
+            114,
+            114,
+            111,
+            114
+          ]
         }
       }
     }

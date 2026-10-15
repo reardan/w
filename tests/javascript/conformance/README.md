@@ -13,10 +13,11 @@ Python 3.9+ is required. Node, downloads and external harness libraries are not
 required. Every case uses a new process and a new realm. The CLI can also execute
 one file: `bin/javascript_runtime_runner FILE script 10000`.
 
-These 22 locally authored audit fixtures are **not Test262 tests**. Each carries
+These 27 locally authored audit fixtures are **not Test262 tests**. Each carries
 a normative ECMA-262 section reference, a SHA-256 source pin and an independent
-expected result. After the early-error repairs the ledger has thirteen passes (four execution
-cases and nine syntax negatives) and nine known failures. This is a regression baseline,
+expected result. The integrated ledger has 26 passes (17 execution cases and
+nine syntax negatives) and one known failure for labelled-statement lowering.
+This is a regression baseline,
 not an estimate of standards coverage. The separate 18-file vendored Test262
 corpus and `javascript_compatibility` remain a syntax differential gate; their
 Node execution examples do not establish W execution conformance.
@@ -33,8 +34,8 @@ interpreter. Keep its validator sequence synchronized with `js_parse`.
 Outcomes are `normal`, `error` (syntax), `throw`, `unsupported`, or `limit`.
 The Python supervisor separately reports `crash`, `timeout`, and `harness_error`
 at the process boundary. Runtime error objects/types are not synthesized from
-message strings. Currently native thrown values are compared directly; typed
-runtime-error assertions need the runtime's error-object support. Numbers use
+message strings. Native thrown values are compared directly; runtime error names
+are asserted by JavaScript reading the runtime-provided error object. Numbers use
 lossless decimal strings (including signed zero and non-finite values); strings
 use UTF-16 code-unit arrays, preserving NUL and unpaired surrogates.
 

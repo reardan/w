@@ -839,7 +839,8 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 			if (binding.immutable):
 				if (binding.silent_immutable == 0 || env.strict): js_runtime_fail(rt, 2, c"assignment to constant binding")
 			else: binding.value = value
-		else: js_runtime_member_write(rt, object, key, value)
+		else if (js_runtime_member_write(rt, object, key, value) == 0 && env.strict):
+			js_runtime_fail(rt, 2, c"property write rejected")
 	js_text_free(key)
 	if (js_kind(node, c"update_postfix")): return old
 	return value
@@ -896,6 +897,7 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 		js_runtime_fail(rt, 6, c"for-of supports arrays and strings only")
 		return rt.undefined_value
 	int index = 0
+	js_value* result = rt.undefined_value
 	while (rt.completion.status == 0):
 		js_value* value = rt.undefined_value
 		if (iterable.kind == 6):
@@ -922,12 +924,14 @@ js_value* js_runtime_for_of(js_runtime* rt, js_node* node, js_value* env):
 		binding = js_runtime_binding(scope, name)
 		if (rt.completion.status != 0): break
 		binding.immutable = strcmp(node.text, c"const") == 0
-		js_runtime_eval_node(rt, node.children[2], scope)
+		js_value* body_value = js_runtime_eval_node(rt, node.children[2], scope)
+		if (rt.empty == 0): result = body_value
 		if (rt.completion.status == 3):
 			rt.completion.status = 0
 			break
 		if (rt.completion.status == 4): rt.completion.status = 0
-	return rt.undefined_value
+	rt.empty = 0
+	return result
 
 
 # The initializer and each iteration have distinct let environments. In
@@ -1131,11 +1135,12 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_value* saved_value = rt.completion.value
 			char* saved_message = rt.completion.message
 			rt.completion.status = 0
-			js_runtime_eval_node(rt, node.children[2], env)
+			js_value* final_value = js_runtime_eval_node(rt, node.children[2], env)
 			if (rt.completion.status == 0):
 				rt.completion.status = saved_status
 				rt.completion.value = saved_value
 				rt.completion.message = saved_message
+			else: value = final_value
 		rt.empty = 0
 		return value
 	if (js_kind(node, c"template")): return js_runtime_template(rt, node, env)
@@ -1159,8 +1164,13 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (strcmp(node.text, c"this") == 0):
 			js_value* scope = env
 			while (scope != 0):
-				if (scope.this_value != 0): return scope.this_value
+				if (scope.this_value != 0):
+					if (scope.strict == 0 && scope.this_value.kind < 5):
+						js_runtime_fail(rt, 6, c"sloppy receiver conversion is outside the runtime subset")
+						return rt.undefined_value
+					return scope.this_value
 				scope = scope.parent
+			js_runtime_fail(rt, 6, c"global this is outside the runtime subset")
 			return rt.undefined_value
 		if (strcmp(node.text, c"null") == 0): return js_runtime_alloc(rt, 1)
 		return js_runtime_boolean(rt, strcmp(node.text, c"true") == 0)
