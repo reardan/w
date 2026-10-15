@@ -43,6 +43,11 @@ struct gfx_window:
 	int32 mouse_y
 	int32 mouse_buttons
 	int32 last_keycode
+	# W-only fields after the host-written snapshot: the logical size the
+	# GL viewport was last set to, so a host resize (phone rotation,
+	# software keyboard, window resize) resets it like X11's ConfigureNotify.
+	int32 viewport_width
+	int32 viewport_height
 
 
 # The frame callback contract: return 1 to keep the loop running, 0 to
@@ -56,9 +61,11 @@ type gfx_frame_fn = fn() -> int
 c_lib "env"
 
 extern int gfx_host_canvas_init(char* title, int width, int height)
-# Writes the 7 int32 gfx_window fields (width, height, should_close,
-# mouse_x, mouse_y, mouse_buttons, last_keycode) at the given pointer.
-# The struct layout is frozen: the host writes these by byte offset.
+# Writes the first 7 int32 gfx_window fields (width, height,
+# should_close, mouse_x, mouse_y, mouse_buttons, last_keycode) at the
+# given pointer. That prefix is frozen: the host writes it by byte offset.
+# width/height are the canvas's live logical (CSS-pixel) size, which the
+# browser host clamps to the requested size and the visible viewport.
 extern void gfx_host_poll_state(gfx_window* win)
 extern void gfx_host_set_frame_callback(int table_index)
 # Pops the oldest event from the host-side queue into five int32s
@@ -88,6 +95,14 @@ char* gfx_shader_header():
 	return c"#version 300 es\nprecision highp float;\n"
 
 
+# Keep the default viewport covering the canvas after a host resize.
+void gfx_window_sync_viewport(gfx_window* win):
+	if ((win.viewport_width == win.width) && (win.viewport_height == win.height)): return
+	win.viewport_width = win.width
+	win.viewport_height = win.height
+	glViewport(0, 0, win.width, win.height)
+
+
 # Bind the host canvas and make its WebGL2 context current. Returns 0
 # (with a message on stderr) when the host has no canvas — e.g. the
 # module is running under a plain WASI runtime instead of the web glue.
@@ -103,14 +118,20 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.mouse_y = 0
 	win.mouse_buttons = 0
 	win.last_keycode = 0
-	glViewport(0, 0, width, height)
+	win.viewport_width = 0
+	win.viewport_height = 0
+	# The host may already have clamped the canvas below the request (a
+	# phone narrower than width); start from the size it actually has.
+	gfx_host_poll_state(win)
+	gfx_window_sync_viewport(win)
 	return win
 
 
 # Refresh the input/size snapshot from the host. Non-blocking; returns 1
-# while the canvas should stay live.
+# while the canvas should stay live. A size change resets the viewport.
 int gfx_window_poll(gfx_window* win):
 	gfx_host_poll_state(win)
+	gfx_window_sync_viewport(win)
 	if (win.should_close): return 0
 	return 1
 

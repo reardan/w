@@ -77,6 +77,14 @@ event loop. The wasm backend (`graphics/window_web.w`, selected via
 - `gfx_window_poll` is non-blocking: one `gfx_host_poll_state` import
   refreshes the 7-field input snapshot (the gfx_window struct layout is
   the import's contract).
+  `width`/`height` there are the canvas's live logical (CSS-pixel)
+  size: the browser host clamps the requested size to the visible
+  viewport (phone width, software keyboard, rotation). `gfx_window_open`
+  polls once so a clamped canvas starts at its real size, and
+  `gfx_window_poll` resets `glViewport` when that size changes (the
+  X11/Win32 resize behavior); the env glue scales GL viewport/scissor
+  coordinates by `devicePixelRatio`, and the page re-covers the buffer
+  itself on a DPR-only change (2026-10).
 - `gfx_window_swap` is a no-op — the browser composites on return.
 - `gfx_window_run(win, frame)` registers a `fn() -> int` frame callback
   (D2's table-index convention); the host calls it once per
@@ -148,7 +156,11 @@ the fixpoint never caught them:
 - Keyboard/mouse callback events (state polling covers the demos; event
   callbacks are D2-ready when wanted).
 - A real-browser CI gate (headless Chromium + pixel asserts via
-  `glReadPixels`); the recording fake covers the plumbing today.
+  `glReadPixels`); the recording fake covers the plumbing today. The
+  opt-in `web_mobile_browser_test` target (`tools/web/run_browser_mobile.mjs`)
+  already drives `tools/web/index.html` in a local headless Chromium with
+  phone emulation over the DevTools protocol — layout, DPR buffer and
+  viewport, touch, soft keyboard/IME, rotation — but is not in CI.
 - JSPI as an alternative driver for unmodified blocking demos.
 - Direct `call` optimization for extern calls (they go through the
   stub + `call`; inlining the import call at W call sites is a pure

@@ -28,6 +28,13 @@ functions at instantiation.
 - `run_webgl_stub.mjs` — Node runner for headless graphics testing
   (the `wasm_webgl_test` build target): drives the frame loop over a
   recording fake WebGL2 context and asserts the GL call trace.
+- `mobile_input.mjs` — pointer/touch/wheel/keyboard/IME policy and
+  viewport sizing used by `index.html`, kept DOM-free enough for
+  `mobile_input_test.mjs` to drive it with fakes.
+- `run_mobile_ui.mjs` — Node runner for the compiled mobile form
+  (`wasm_mobile_ui_test`).
+- `run_browser_mobile.mjs` — opt-in real-browser check of `index.html`
+  in headless Chromium with phone emulation (`web_mobile_browser_test`).
 
 ## Running the demo in a browser
 
@@ -76,6 +83,20 @@ convention applies to onscreen drawing: framebuffer/readback clients must
 account for device pixels separately. Applications must lay out against
 `win.width` / `win.height`; resizing the host cannot make fixed widget
 coordinates responsive.
+
+Resize contract: the size passed to `gfx_window_open` is a ceiling. The
+page clamps it to the visible viewport minus safe-area insets, and every
+`gfx_window_poll` refreshes `win.width` / `win.height` with the live logical
+size (there is no separate resize event kind; compare against the last
+frame if you need one). `gfx_window_open` already reports the clamped size,
+and the W backend calls `glViewport(0, 0, width, height)` whenever that
+size changes, as the X11 and Win32 backends do on a native resize. A
+device-pixel-ratio change alone (browser zoom, moving to another display)
+keeps the logical size, so the page resets the GL viewport to the new
+backing buffer itself. Programs that set a custom viewport should set it
+every frame. The canvas suppresses tap highlight, long-press callout, text
+selection, and the touch long-press context menu; mouse right-click is
+unchanged.
 
 Focused W textboxes and textareas publish their rectangle through
 `gfx_host_text_input(active, multiline, x, y, width, height, focus_id)`. A small DOM
@@ -145,6 +166,25 @@ use the Mac's LAN address from a phone on the same network. On Linux,
 
 This drives Unicode editing, long paste, the focused-field ABI, keyboard
 viewport shrink, exact pixel scrolling, gesture cancellation and scroll bounds
-through the compiled W widgets (18 frames), in addition to the 24 JavaScript
-input-policy scenarios. It is a headless integration check, not a substitute
+through the compiled W widgets (18 frames), including the GL viewport
+following the clamped and keyboard-shrunk canvas, in addition to the 32
+JavaScript input-policy scenarios (Android's keyCode 229 / `Unidentified`
+keydowns among them). It is a headless integration check, not a substitute
 for physical device keyboard/IME testing.
+
+The page itself can be checked in a real browser engine with
+`./wbuild web_mobile_browser_test` (Node 22+, a local Chromium: `CHROMIUM`,
+`chromium`, `chromium-browser`, `google-chrome`, or `/snap/bin/chromium`;
+prints `SKIP` without one, so it is outside the `tests` umbrella). It serves
+the checkout on a free loopback port and emulates a 412x764 CSS-pixel phone
+at DPR 1.75 with touch over the DevTools protocol, then checks: no
+horizontal overflow, canvas clamped to the phone width with a DPR-scaled
+backing store and matching GL viewport, a tap becoming button-1
+down/up at logical canvas coordinates and focusing the keyboard sink,
+IME commits, a keyCode-229 keydown plus text, Backspace, composition
+preedit versus commit, a one-finger pan becoming cancel plus exact pixel
+scroll without page scroll, rotation to landscape, and a DPR-only change.
+`node tools/web/run_browser_mobile.mjs bin/graphics_ui_mobile.wasm out.png`
+also saves a phone screenshot. Chromium's emulation does not show a real
+software keyboard or run a real IME, so physical-device checks still
+apply.

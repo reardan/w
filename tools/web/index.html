@@ -22,7 +22,11 @@
   #wrap { position: fixed; left: 0; top: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center;
     padding: env(safe-area-inset-top) env(safe-area-inset-right)
       env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  canvas { display: block; background: #000; touch-action: none; outline: none; }
+  /* No tap flash, long-press callout, or text-selection magnifier over the
+     W surface: touches belong to the program (tools/web/mobile_input.mjs). */
+  canvas { display: block; background: #000; touch-action: none; outline: none;
+    -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none;
+    -webkit-user-select: none; user-select: none; }
   #text-input { position: fixed; width: 1px; height: 1px; padding: 0; border: 0;
     opacity: 0.01; font-size: 16px; resize: none; pointer-events: none; }
   #log { width: min(640px, 100%); max-height: 8em; overflow-y: auto;
@@ -85,8 +89,15 @@ const resize = () => {
     insetBottom: parseFloat(padding.paddingBottom) || 0, dpr: devicePixelRatio });
   canvas.style.width = `${size.width}px`;
   canvas.style.height = `${size.height}px`;
-  if (canvas.width !== size.bufferWidth) canvas.width = size.bufferWidth;
-  if (canvas.height !== size.bufferHeight) canvas.height = size.bufferHeight;
+  if (canvas.width !== size.bufferWidth || canvas.height !== size.bufferHeight) {
+    canvas.width = size.bufferWidth;
+    canvas.height = size.bufferHeight;
+    // Resizing the backing store does not move the GL viewport. W resets
+    // it when its logical size changes (gfx_window_poll); a DPR-only change
+    // (browser zoom, moving between displays) keeps the logical size, so
+    // the host covers the new device-pixel buffer itself.
+    gl?.viewport(0, 0, size.bufferWidth, size.bufferHeight);
+  }
 };
 window.addEventListener('resize', resize);
 window.visualViewport?.addEventListener('resize', resize);
