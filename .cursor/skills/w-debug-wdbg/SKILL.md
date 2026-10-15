@@ -65,6 +65,9 @@ printf 'log file.w:42 x\nc\n' | ./bin/wdbg file.w
 # skip the first N hits, or combine a logpoint with a condition
 printf 'break file.w:42\nignore 1 100\nc\n' | ./bin/wdbg file.w
 printf 'log file.w:42 x\ncondition 1 x < 0\nc\n' | ./bin/wdbg file.w
+
+# a message template prints several values per hit
+printf 'log file.w:42 i={i} total={total}\nc\n' | ./bin/wdbg file.w
 ```
 
 ## Command reference (see docs/debugging.txt)
@@ -72,7 +75,8 @@ printf 'log file.w:42 x\ncondition 1 x < 0\nc\n' | ./bin/wdbg file.w
 - Stepping: `step` / `next` / `stepi` / `finish`, `c` (continue)
 - Breakpoints: `break function|line|file:line`, `tbreak`, `delete`
 - Conditions/logpoints: `condition <n> [<expr>]`, `ignore <n> <count>`,
-  `log <target> <expr>` (auto-continues; combine with `condition`)
+  `log <target> <expr>` or `log <target> <message with {expr} parts>`
+  (auto-continues; combine with `condition`), `disable [n]` / `enable [n]`
 - State: `print <name or any W expression>` (compiled on the fly),
   `set var value`, `x addr`, `backtrace`, `list`,
   `info locals|args|globals|breakpoints`, `registers`, `stack` (`st`)
