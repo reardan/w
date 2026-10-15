@@ -169,6 +169,50 @@ cleared. Checked pointers add no reference counts or extra pointer words.
 Functions with checked pointer parameters, results or locals are excluded
 from the current inliner so optimization cannot erase a transfer or cleanup.
 
+### Measured costs
+
+Measurements on a Linux x86_64 development host compare fixed-point x86
+compilers from main `0ccebf65` and this implementation, using the same current
+input sources and default optimization. Compile figures are medians of 11
+alternating runs after warmup; wall time includes process startup and output
+writing, and peak RSS comes from `/usr/bin/time`.
+
+| Ordinary compilation | Main time | This branch time | Main peak RSS | This branch peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| `tests/safe_cost_manual_fixture.w` | 38.56 ms | 38.29 ms | 4,416 KiB | 4,896 KiB |
+| `w.w` | 871.39 ms | 1,078.03 ms | 77,216 KiB | 106,592 KiB |
+
+The larger corpus shows a real default-compilation cost: about 24% more time
+and 38% more peak memory. Retaining application bindings before discovering
+later contracts is necessary for the current flag-independent implementation;
+reducing that retention cost is future work. The small legacy fixture's
+executable is byte-identical between the two compilers.
+
+On this branch, compiling the manual fixture took 38.69 ms / 4,672 KiB;
+compiling `tests/safe_cost_fixture.w` with `--safe` took 48.56 ms / 6,464 KiB.
+These equivalent programs allocate, use and destroy one integer a million
+times and verify the same accumulated result. Median runtime over 21
+alternating runs was 28.88 ms manual / 28.87 ms checked on x86, and
+31.33 ms / 31.82 ms on x64. These small differences are host-sensitive, not
+a general performance guarantee. Both reported 264 KiB peak RSS at the
+measurement tool's resolution. Checked cleanup adds 26 bytes to `.text` on
+x86 and 32 on x64; alignment leaves total ELF sizes unchanged at 114,952 and
+135,696 bytes respectively.
+
+The committed fixtures make the corpus repeatable:
+
+```sh
+bin/wv3 --quiet w.w -o bin/safe_measure_compiler
+bin/wv3 --quiet tests/safe_cost_manual_fixture.w -o bin/safe_cost_manual
+bin/wv3 --quiet --safe tests/safe_cost_fixture.w -o bin/safe_cost
+bin/safe_cost_manual
+bin/safe_cost
+```
+
+Use a fixed-point compiler from main for the baseline, from this same source
+directory. Add `x64` for the 64-bit runtime comparison. The ordinary
+`./wbuild wbench_compare` gate also passes without changing its baseline.
+
 ## Validation
 
 `safe_mode_test` exercises accepted and rejected programs on x86 and x64,
@@ -179,3 +223,9 @@ parameters, return, break, continue and fall-through cleanup.
 rejection. The parser-generator grammar includes the contextual qualifiers
 and unsafe blocks. Self-host fixpoints, the full suite, cross-architecture
 compiler checks and changed-line coverage remain the release gates.
+
+The integrated implementation passed all 1,193 full-suite targets, both
+self-host fixpoints, 43 architecture/root checks and the performance gate.
+Coverage completed the same 1,193 targets and reached 835 of 862 changed
+executable compiler lines (96%, above the 80% floor). Compiler line/branch
+coverage reached 95.1% / 84.9%; coverage floors were raised to retain the gain.
