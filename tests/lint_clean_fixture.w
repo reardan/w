@@ -41,7 +41,7 @@ int labels(int a):
 
 int scopes(int a):
 	# Sibling blocks may reuse a name: the first one is out of scope
-	if (a > 0):
+	if a > 0:
 		int b = a
 		a = b
 	else:
@@ -63,3 +63,22 @@ int scripts(int a):
 
 int main():
 	return loops(2) + intentional(3) + labels(4) + scopes(5) + scripts(6)
+
+
+int condition_groups(int a, int b):
+	if a != b: pass
+	if (a && b): pass
+	if (a || b): pass
+	if ((a > 0) && (b > 0)): pass
+	if (a & b): pass
+	if (a | b): pass
+	if (a ^ b): pass
+	if (a ? b : 0): pass
+	if (f"{a}" != s"0"): pass
+	if ((a += 1)): pass
+	if (a) { a = a + 1; }
+	if (a !=
+			b): pass
+	if (a != b): pass # nolint
+	if (a == 0): pass # nolint
+	return a

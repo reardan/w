@@ -33,6 +33,7 @@ behavior and the message text.
 | `unreachable` | the first statement after `return`, `break`, `continue` or `goto` in the same block (a `label:` resets it) | no |
 | `shadow` | a typed local that hides a live local or parameter of the same name (loop variables are exempt, since they stay bound after their loop) | no |
 | `assign-in-condition` | `=` as the whole condition of an `if`/`while`; `((x = f()))` and `(x = f()) != 0` stay quiet | no |
+| `condition-parens` | outer parentheses around a single-line `if`/`else if`/`while` condition before `:`; compound conditions, assignments and template strings are exempt | no |
 | `self-assign` | `x = x` | no |
 | `duplicate-import` | a plain `import` of a module the same file already imported | no |
 | `trailing-whitespace` | spaces or tabs at the end of a line (not inside a multi-line string) | yes |
@@ -68,6 +69,11 @@ added. The note `fixed N issue(s) in '<file>'` goes to stderr unless
 The existing `--imports` and `--bool-ops` checks compose with `--lint`
 but are not part of it: both audit the whole import closure, and the
 tree relies on transitive imports by design.
+
+`condition-parens` prefers `if r.status != status:` over
+`if (r.status != status):`. It leaves grouping inside the condition alone,
+as well as conditions containing logical/bitwise combinations, ternaries
+or assignments. `# nolint` suppresses it like the other lint rules.
 
 ## JSON output
 
@@ -135,7 +141,7 @@ The lint rules' codes:
 | `self-assign` | W0095 | `line-too-long` | W0102 |
 | `duplicate-import` | W0096 | `bidi-control` | W0103 |
 | `trailing-whitespace` | W0097 | `mixed-script` | W0104 |
-| | | `confusable` | W0105 |
+| `condition-parens` | W0413 | `confusable` | W0105 |
 
 `ast_diagnostic_codes_test` pins the code, span and note of each row of
 the first table. The redefinition, `:=` and mismatch cases also run
@@ -161,6 +167,9 @@ parse point:
 - `assign-in-condition`: the if/while condition records its first token
   and nesting depth, so `expression()`'s `=` arm can tell whether it is
   the whole condition or the inside of a `(...)` group spanning it.
+- `condition-parens`: the if/while condition probes ahead with the lexer,
+  then restores its snapshot before parsing; only a simple outer group
+  immediately followed by `:` on the same line is reported.
 - `self-assign`: `token_serial` (compiler/tokenizer.w) counts
   `get_token()` calls, so `expression()` knows when each side of `=` was
   a single token.
