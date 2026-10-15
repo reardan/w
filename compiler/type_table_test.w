@@ -1,6 +1,10 @@
 import lib.testing
 import compiler.tokenizer
 import codegen
+# codegen's backends reach the symbol table and grammar through
+# prototypes, and a full compile rejects a called prototype that never
+# gets a body, so link the rest of the compiler rather than half of it.
+import compiler.compiler
 
 /*
 todo: fix this so that it can use self directory

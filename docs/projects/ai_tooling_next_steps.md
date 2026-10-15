@@ -1335,3 +1335,15 @@ invalidation is a possible cause, but the daemon log retained only startup
 information. Direction: record per-retry cache status and invalidating paths,
 then isolate the warm-state observation from unrelated writes without weakening
 the cache assertions.
+
+## Fresh worktrees (2026-10-15)
+
+- **`bin/wtest changed` in a fresh git worktree** falls back to literal
+  matching for ~100 roots: their `bin/wv2 deps` runs fail on generated,
+  gitignored imports (`bin/wc2_parser.w`, the
+  `tests/parser_generator/generated_*` sources) that no target has
+  produced yet in that checkout. The warning names them, but the
+  selection is silently weaker until a full `./wbuild tests` has run
+  once. Direction: have wtest build (or name) the generator targets a
+  failing root needs, the way `./wbuild` builds the `generated`
+  umbrella first.

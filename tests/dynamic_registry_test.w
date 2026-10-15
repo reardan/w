@@ -12,6 +12,20 @@ void error(char* message):
 import code_generator.dynamic_registry
 
 
+# Like error() above: the code generator's hooks into the grammar and
+# compiler (code_emitter.w prototypes), unreachable from this test.
+void cond_pending_materialize():
+	error(c"cond_pending_materialize: unexpected")
+
+
+void regalloc_guard_fail():
+	error(c"regalloc_guard_fail: unexpected")
+
+
+void direct_callee_guard_fail():
+	error(c"direct_callee_guard_fail: unexpected")
+
+
 int main():
 	word_size = 4
 	dyn_add_lib(c"env")
