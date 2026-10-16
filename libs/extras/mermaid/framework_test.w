@@ -47,6 +47,14 @@ void test_framework_cynefin_domains_and_transitions():
 	asserts(c"confusion centered between rows", c.y > a.y + a.h)
 	char* svg = mm_svg(s)
 	asserts(c"items exported", index_of(svg, c"Experiment") >= 0)
+	asserts(c"transition legend exported", index_of(svg, c"complex -&gt; complicated: Learned") >= 0)
+	int last_box = -1
+	int legend = -1
+	for i in range(s.items.length):
+		mm_primitive* p = s.items[i]
+		if (p.kind == MM_BOX): last_box = i
+		if (index_of(p.text, c"Learned") >= 0): legend = i
+	asserts(c"transition text not hidden by region fills", legend > last_box)
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
@@ -68,7 +76,7 @@ void test_framework_wardley_normalized_axes_and_dependencies():
 	mm_document_free(d)
 
 void test_framework_invalid_input_and_prefixes():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"ishikawa-beta\n"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA ## description", c"ishikawa-beta\n"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid framework fails explicitly", d.error != 0)

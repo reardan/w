@@ -133,11 +133,6 @@ mm_scene* mm_cynefin_render(mm_document* d):
 		if (i == 4):
 			b.x = 40 + (width + 100) / 2
 			b.y = 80 + height + 50
-	for mm_edge* e in d.edges:
-		mm_bounds* a = s.nodes[e.from_node]
-		mm_bounds* b = s.nodes[e.to_node]
-		mm_framework_arrow(s, a.x + a.w / 2, a.y + a.h, b.x + b.w / 2, b.y, 1)
-		mm_text(s, (a.x + b.x) / 2, (a.y + a.h + b.y) / 2, e.label)
 	for i in range(5):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
@@ -148,6 +143,53 @@ mm_scene* mm_cynefin_render(mm_document* d):
 			mm_member* m = n.members[j]
 			mm_text(s, b.x + 20, b.y + 60 + j * 28, m.text + 6)
 	s.has_title = d.title[0] != 0
+
+	int legend_y = 80 + height * 3 + 140
+	for i in range(d.edges.length):
+		mm_edge* e = d.edges[i]
+		mm_bounds* a = s.nodes[e.from_node]
+		mm_bounds* b = s.nodes[e.to_node]
+		int ax = a.x + a.w / 2
+		int ay = a.y + a.h / 2
+		int bx = b.x + b.w / 2
+		int by = b.y + b.h / 2
+		if (a.y == b.y):
+			if (a.x < b.x):
+				ax = a.x + a.w
+				bx = b.x
+			else:
+				ax = a.x
+				bx = b.x + b.w
+		else:
+			if (a.y < b.y):
+				ay = a.y + a.h
+				by = b.y
+			else:
+				ay = a.y
+				by = b.y + b.h
+		if (e.from_node == e.to_node):
+			ax = a.x + a.w
+			ay = a.y + 30
+			bx = ax
+			by = a.y + a.h - 30
+			mm_line(s, ax, ay, ax + 30, ay, 1)
+			mm_line(s, ax + 30, ay, ax + 30, by, 1)
+			mm_framework_arrow(s, ax + 30, by, bx, by, 1)
+		else: mm_framework_arrow(s, ax, ay, bx, by, 1)
+		string_builder* number = string_new()
+		string_append_int(number, i + 1)
+		mm_text(s, (ax + bx) / 2 + 8, (ay + by) / 2 - 20, number.data)
+		string_append(number, c": ")
+		mm_node* from = d.nodes[e.from_node]
+		mm_node* to = d.nodes[e.to_node]
+		string_append(number, from.label)
+		string_append(number, c" -> ")
+		string_append(number, to.label)
+		if (e.label[0] != 0):
+			string_append(number, c": ")
+			string_append(number, e.label)
+		mm_text(s, 40, legend_y + i * 24, number.data)
+		string_free(number)
 	mm_text(s, 40, 30, d.title)
 	return s
 

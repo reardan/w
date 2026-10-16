@@ -49,7 +49,7 @@ void mm_c4_body(mm_parser* p, int scope, int depth):
 			mm_separators(p)
 			continue
 		list[char*] args = mm_c4_arguments(p)
-		int group = mm_in_words(function, c"|Boundary|Enterprise_Boundary|System_Boundary|Container_Boundary|Deployment_Node|Node|Node_L|Node_R|")
+		int group = mm_in_words(function, c"|Boundary|Enterprise_Boundary|System_Boundary|Container_Boundary|Deployment_Node|Node|")
 		int node = group || mm_in_words(function, c"|Person|Person_Ext|System|System_Ext|SystemDb|SystemDb_Ext|SystemQueue|SystemQueue_Ext|Container|Container_Ext|ContainerDb|ContainerDb_Ext|ContainerQueue|ContainerQueue_Ext|Component|Component_Ext|ComponentDb|ComponentDb_Ext|ComponentQueue|ComponentQueue_Ext|")
 		int relationship = mm_in_words(function, c"|Rel|BiRel|Rel_Back|")
 		if (node):

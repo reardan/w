@@ -3,6 +3,9 @@ import libs.extras.mermaid.frameworks
 import libs.extras.mermaid.framework_render
 
 int mm_git_branch(mm_parser* p, char* name, int create, int head, int lane):
+	if (name[0] == 0):
+		mm_error(p.doc, p.pos, c"expected nonempty branch name")
+		return -1
 	string_builder* id = string_from(c"@branch:")
 	string_append(id, name)
 	int index = mm_find_node(p.doc, id.data)

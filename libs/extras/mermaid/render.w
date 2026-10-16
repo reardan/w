@@ -36,6 +36,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 		b.w = strlen(n.label) * 8 + 40
 		if (b.w < 180): b.w = 180
 		b.h = 60
+		if (d.kind == MM_ARCHITECTURE && n.group): b.w = b.w + strlen(n.annotation) * 8 + 24
 		if (n.shape == 10 || n.shape == 12): b.h = 110
 		if (n.shape == 11): b.h = 72
 		if (n.shape == 13):
@@ -327,7 +328,14 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		if (n.group == 0 || n.parent != scope): continue
 		mm_bounds* b = s.nodes[i]
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
-		mm_text(s, b.x + 16, b.y + 12, n.label)
+		if (d.kind == MM_ARCHITECTURE && n.annotation[0] != 0):
+			string_builder* label = string_from(c"[")
+			string_append(label, n.annotation)
+			string_append(label, c"] ")
+			string_append(label, n.label)
+			mm_text(s, b.x + 16, b.y + 12, label.data)
+			string_free(label)
+		else: mm_text(s, b.x + 16, b.y + 12, n.label)
 		mm_line(s, b.x, b.y + 40, b.x + b.w, b.y + 40, 0)
 		mm_render_groups(d, s, i)
 

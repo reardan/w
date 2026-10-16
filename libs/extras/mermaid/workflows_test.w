@@ -84,3 +84,16 @@ void test_workflow_large_label_layout_bound():
 	mm_scene_free(s)
 	mm_document_free(d)
 	string_free(source)
+
+void test_workflow_cycle_does_not_pull_downstream_step_before_loop():
+	char* text = c"swimlane-beta LR\nsubgraph Customer\nrequest\nreceive\nend\nsubgraph Engineering\nwork\ncheck\nend\nrequest --> work --> check\ncheck --> receive\ncheck --> work\n"
+	mm_document* d = mm_parse(text, strlen(text))
+	asserts(c"looping process parses", d.error == 0)
+	mm_scene* s = mm_render(d)
+	int check_index = mm_find_node(d, c"check")
+	int receive_index = mm_find_node(d, c"receive")
+	mm_bounds* check = s.nodes[check_index]
+	mm_bounds* receive = s.nodes[receive_index]
+	asserts(c"downstream step placed after process loop", receive.rank > check.rank && receive.x > check.x)
+	mm_scene_free(s)
+	mm_document_free(d)

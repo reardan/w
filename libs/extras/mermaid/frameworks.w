@@ -32,7 +32,7 @@ void mm_outline_body(mm_parser* p):
 		if (depth < indents.length && indents[depth] != indent): mm_error(p.doc, p.pos, c"inconsistent outline indentation")
 		if (depth >= 64): mm_error(p.doc, p.pos, c"outline nesting limit exceeded")
 		char* text = mm_line_text(p)
-		if (index_of(text, c":::") >= 0 || index_of(text, c"icon(") >= 0 || index_of(text, c"├") >= 0 || index_of(text, c"└") >= 0 || index_of(text, c"│") >= 0): mm_error(p.doc, p.pos, c"outline annotations and tree command prefixes are not yet supported")
+		if (index_of(text, c":::") >= 0 || index_of(text, c" ##") >= 0 || index_of(text, c"icon(") >= 0 || index_of(text, c"├") >= 0 || index_of(text, c"└") >= 0 || index_of(text, c"│") >= 0): mm_error(p.doc, p.pos, c"outline annotations and tree command prefixes are not yet supported")
 		if (text[0] == '"'):
 			int size = strlen(text)
 			if (size < 2 || text[size - 1] != '"'): mm_error(p.doc, p.pos, c"unterminated outline label")

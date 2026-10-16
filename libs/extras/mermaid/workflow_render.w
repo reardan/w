@@ -35,8 +35,12 @@ mm_scene* mm_workflow_render(mm_document* d):
 			for i in range(d.nodes.length):
 				if (done[i] == 0 && incoming[i] == 0 && index < 0): index = i
 			if (index < 0):
+				int best_rank = -1
 				for i in range(d.nodes.length):
-					if (done[i] == 0 && index < 0): index = i
+					mm_bounds* candidate = s.nodes[i]
+					if (done[i] == 0 && candidate.rank > best_rank):
+						index = i
+						best_rank = candidate.rank
 			if (index < 0): break
 			done[index] = 1
 			mm_bounds* from = s.nodes[index]
@@ -136,7 +140,33 @@ mm_scene* mm_workflow_render(mm_document* d):
 				bx = a.x + a.w - 16
 		int mx = (ax + bx) / 2
 		int my = (ay + by) / 2
-		if (horizontal):
+		int backwards = 0
+		if (horizontal): backwards = (reverse == 0 && bx < ax) || (reverse && bx > ax)
+		else: backwards = (reverse == 0 && by < ay) || (reverse && by > ay)
+		if (backwards && e.from_node != e.to_node):
+			if (horizontal):
+				ax = a.x + a.w / 2
+				ay = a.y + a.h
+				bx = b.x + b.w / 2
+				by = b.y + b.h
+				my = ay + 24
+				if (by + 24 > my): my = by + 24
+				mm_line(s, ax, ay, ax, my, e.dashed)
+				mm_line(s, ax, my, bx, my, e.dashed)
+				if (e.arrow): mm_framework_arrow(s, bx, my, bx, by, e.dashed)
+				else: mm_line(s, bx, my, bx, by, e.dashed)
+			else:
+				ax = a.x + a.w
+				ay = a.y + a.h / 2
+				bx = b.x + b.w
+				by = b.y + b.h / 2
+				mx = ax + 24
+				if (bx + 24 > mx): mx = bx + 24
+				mm_line(s, ax, ay, mx, ay, e.dashed)
+				mm_line(s, mx, ay, mx, by, e.dashed)
+				if (e.arrow): mm_framework_arrow(s, mx, by, bx, by, e.dashed)
+				else: mm_line(s, mx, by, bx, by, e.dashed)
+		else if (horizontal):
 			if (e.from_node == e.to_node): mx = a.x + a.w + 30
 			mm_line(s, ax, ay, mx, ay, e.dashed)
 			mm_line(s, mx, ay, mx, by, e.dashed)
@@ -166,7 +196,7 @@ mm_scene* mm_workflow_render(mm_document* d):
 			for j in range(n.members.length):
 				mm_member* m = n.members[j]
 				mm_text(s, b.x + 12, b.y + 64 + j * 24, m.text)
-		else: mm_text(s, b.x + 16, b.y + (b.h - 16) / 2, n.label)
+		else: mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, b.y + (b.h - 16) / 2, n.label)
 	__w_list_free(cast(__w_list*, sizes))
 	if (s.width < 240): s.width = 240
 	if (s.height < 160): s.height = 160

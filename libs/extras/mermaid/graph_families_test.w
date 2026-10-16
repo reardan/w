@@ -98,3 +98,27 @@ void test_graph_accessible_metadata_and_title_once():
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
+
+void test_graph_family_source_mutations_preserve_failure_contract():
+	list[char*] sources = list[char*]{c"requirementDiagram\nrequirement R {\nid: 1\n}\n", c"mindmap\nRoot\n  Child\n", c"kanban\nTodo\n  Task\n", c"treeView-beta\nRoot/\n  file.w\n", c"ishikawa-beta\nProblem\nCause\n  Detail\n", c"cynefin-beta\ncomplex\n\"Item\"\n", c"wardley-beta\ncomponent A [0.5,0.5]\n", c"gitGraph\ncommit\nbranch work\ncommit\n", c"block\ncolumns 2\na b\n", c"architecture-beta\nservice a(server)[A]\n", c"usecase-beta\nactor A\nB(Work)\nA --> B\n", c"C4Context\nPerson(a,A)\nSystem(b,B)\nRel(a,b,Uses)\n", c"swimlane-beta\nsubgraph G\na\nend\n", c"eventmodeling\ntf 01 ui A\ntf 02 cmd B\n"}
+	char* changes = c"#{}[]():;<>\"'\t\n-@012"
+	for char* source in sources:
+		mm_document* original = mm_parse(source, strlen(source))
+		asserts(c"mutation base parses", original.error == 0)
+		for i in range(48):
+			int start = i * 7 % (original.length + 1)
+			int end = start
+			if (i % 2 && end < original.length): end = end + 1
+			mm_document* d = mm_edit(original, start, end, changes + i % strlen(changes), 1)
+			asserts(c"valid byte edits own a document", d != 0)
+			mm_scene* s = mm_render(d)
+			if (d.error != 0):
+				asserts(c"mutated failures suppress preview", s == 0)
+				asserts(c"mutated diagnostics bounded", d.error_offset >= 0 && d.error_offset <= d.length)
+			else:
+				asserts(c"valid mutations render nonempty viewboxes", s != 0 && s.width > 0 && s.height > 0)
+				for mm_node* n in d.nodes: asserts(c"parent indices valid", n.parent >= -1 && n.parent < d.nodes.length)
+			mm_scene_free(s)
+			mm_document_free(d)
+		mm_document_free(original)
+	__w_list_free(cast(__w_list*, sources))
