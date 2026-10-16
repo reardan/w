@@ -103,6 +103,8 @@ modules:
 	libs.extras.html.html
 	libs.extras.css.css
 	libs.extras.mermaid.model
+	libs.extras.mermaid.parse_common
+	libs.extras.mermaid.uml
 	libs.extras.mermaid.parser
 	libs.extras.mermaid.render
 	libs.extras.mermaid.io

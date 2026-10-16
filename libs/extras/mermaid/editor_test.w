@@ -66,3 +66,26 @@ void test_mermaid_native_display_list_is_clipped():
 	ui_render_destroy(&r)
 	mm_scene_free(scene)
 	mm_document_free(d)
+
+void test_mermaid_native_uml_markers_and_groups_are_clipped():
+	list[char*] sources = list[char*]{c"classDiagram\nnamespace Domain {\nclass A {\n+field\n+run()\n}\nA *--|> B\n}\nB o..> C\n", c"stateDiagram-v2\n[*] --> Outer\nstate Outer {\n[*] --> A\nstate F <<fork>>\nA --> F\nF --> [*]\n}\nOuter --> [*]\n"}
+	for char* source in sources:
+		mm_document* d = mm_parse(source, strlen(source))
+		asserts(c"UML parse", d.error == 0)
+		mm_scene* scene = mm_render(d)
+		ui_renderer r
+		ui_render_init_headless(&r)
+		ui_render_begin(&r, 640, 480)
+		ui_rect clip = ui_rect_new(120.0, 80.0, 300.0, 250.0)
+		ui_clip_push(&r, clip)
+		mm_ui_render(&r, scene, ui_rect_new(0.0, 0.0, 640.0, 480.0), 1.5, -160.0, -200.0)
+		assert_equal(1, r.clip_depth[0])
+		asserts(c"UML geometry emitted", r.layer_vert_count[0] > 0)
+		for i in range(r.layer_vert_count[0]):
+			float32* v = &r.layer_verts[0][i * 8]
+			asserts(c"UML clipped x", v[0] >= 119.99 && v[0] <= 420.01)
+			asserts(c"UML clipped y", v[1] >= 79.99 && v[1] <= 330.01)
+		ui_render_destroy(&r)
+		mm_scene_free(scene)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, sources))
