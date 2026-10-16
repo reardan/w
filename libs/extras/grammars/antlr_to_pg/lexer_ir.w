@@ -179,7 +179,7 @@ void at_exact_audit_case_literals(at_rule* rule, list[at_alt*] alts):
 						at_alt* body = candidate.alts[0]
 						if ((body.elements.length == 1) && (body.elements[0].kind == 0) && (body.elements[0].suffix == 0)):
 							if (strcmp(body.elements[0].text, element.text) == 0): declared = 1
-				if (declared == 0): at_loss(element.first, rule.name, c"case-insensitive parser literals require explicit lexer token rules")
+				if (declared == 0): at_loss_code(element.first, rule.name, c"AT_CASE_LITERAL", c"case_insensitive", c"unsupported", c"case-insensitive parser literals require explicit lexer token rules")
 			if (element.group_alts != 0): at_exact_audit_case_literals(rule, element.group_alts)
 
 
@@ -187,7 +187,10 @@ void at_exact_audit_rule(at_rule* rule):
 	if (g_at_exact_lexer == 0): return
 	if (rule.is_lexer):
 		char* reason = g_at_exact_reasons.get(rule.name, c"unprepared exact lexer rule")
-		if (reason != 0): at_loss(rule.first, rule.name, reason)
+		if (reason != 0):
+			char* code = c"AT_EXACT_LEXER_UNSUPPORTED"
+			if ((rule.name in g_at_exact_productive) == 0): code = c"AT_NONPRODUCTIVE_LEXER"
+			at_loss_code(rule.first, rule.name, code, c"lexer_matcher", c"unsupported", reason)
 	else if (at_exact_case(rule)):
 		# Implicit literal tokens are still emitted by the PG literal path.
 		# Until synthesized as case-aware lexer rules, refuse this shape.
