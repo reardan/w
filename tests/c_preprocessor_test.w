@@ -69,6 +69,28 @@ void test_gnu_variadic_comma_swallow():
 	assert_strings_equal(c"printf(\"hi\")\n", cpp_test(c"#define LOG(fmt, ...) printf(fmt, ## __VA_ARGS__)\nLOG(\"hi\")\n"))
 
 
+void test_gnu_variadic_comma_keeps_nonempty_arguments():
+	assert_strings_equal(c"printf(\"%d %d\", 1, 2)\n", cpp_test(c"#define LOG(fmt, ...) printf(fmt, ## __VA_ARGS__)\nLOG(\"%d %d\", 1, 2)\n"))
+
+
+void test_gnu_named_variadic_comma_paste():
+	assert_strings_equal(c"g(\"x\")\ng(\"x\", 1, y)\n", cpp_test(c"#define G(fmt, args...) g(fmt, ## args)\nG(\"x\")\nG(\"x\", 1, y)\n"))
+
+
+void test_kernel_static_assert_comma_paste():
+	# Linux's static_assert(expr, ...) passes `##__VA_ARGS__` ahead of a
+	# stringized argument; it used to fail with "invalid token paste".
+	assert_strings_equal(c"_Static_assert(1, \"msg\");\n_Static_assert(2, \"2\");\n", cpp_test(c"#define __sa(expr, msg, ...) _Static_assert(expr, msg)\n#define static_assert(expr, ...) __sa(expr, ##__VA_ARGS__, #expr)\nstatic_assert(1, \"msg\");\nstatic_assert(2);\n"))
+
+
+void test_stringize_keeps_space_after_string_literal():
+	assert_strings_equal(c"\"\\\"a\\\" ;\"\n", cpp_test(c"#define S(x) #x\nS(  \"a\" ;)\n"))
+
+
+void test_substituted_argument_takes_parameter_spacing():
+	assert_strings_equal(c"\".quad foo\"\n", cpp_test(c"#define R(sym) .quad sym\n#define STR(x) #x\n#define XSTR(x) STR(x)\nXSTR(R(foo))\n"))
+
+
 void test_pragma_once_include():
 	cpp_result* result = cpp_preprocess_text(c"#include \"tests/c_preprocessor/once.h\"\n#include \"tests/c_preprocessor/once.h\"\n", c"<test>")
 	assert_strings_equal(c"9\n", result.text)
