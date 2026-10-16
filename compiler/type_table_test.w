@@ -466,6 +466,40 @@ void test_generic_contract_snapshot_survives_rollback():
 	retained_clear()
 
 
+void test_mixed_owner_snapshot_survives_rollback():
+	push_basic_types()
+	retained_clear()
+	retained_init()
+	int pointer = type_lookup_pointer(c"int", 1)
+	int base = type_push(c"OwnedGroupedPair")
+	type_add_arg(base, c"stored", type_get_safe(pointer, 1))
+	type_add_arg(base, c"left", type_get_safe_lifetime(pointer, 2, c"left"))
+	type_add_arg(base, c"right", type_get_safe_lifetime(pointer, 2, c"right"))
+	int raw = type_push_pointer(c"OwnedGroupedPair", word_size, 1)
+	int input = type_get_safe_lifetime(raw, 1, c"a,b")
+	int output = type_get_safe_lifetime(raw, 1, c"c,d")
+	assert_equal(input, type_get_safe_lifetime(raw, 1, c"a,b"))
+	assert_equal(2, type_lifetime_count(input))
+	assert_equal(0, strcmp(type_lifetime_at(input, 1), c"b"))
+	assert_equal(4, type_contract_slots(&input, output, 1))
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	int first = retained_type_note(input)
+	assert1(retained_types[first].lifetime_labels != type_record(input).safe_labels)
+	assert_equal(type_kind_own, retained_types[first].kind)
+	assert_equal(0, strcmp(retained_types[first].lifetime_labels[1], c"b"))
+	retained_rollback(&checkpoint)
+	int* reused = cast(int*, retained_arena_alloc(128))
+	for i in range(128 / __word_size__): reused[i] = 0
+	int restored = retained_type_note(input)
+	int result = retained_type_note(output)
+	assert_equal(0, strcmp(retained_types[restored].lifetime_labels[0], c"a"))
+	assert_equal(0, strcmp(retained_types[restored].lifetime_labels[1], c"b"))
+	assert_equal(0, strcmp(retained_types[result].lifetime_labels[0], c"c"))
+	assert_equal(0, strcmp(type_lifetime_at(input, 1), c"b"))
+	retained_clear()
+
+
 void test_aggregate_group_snapshot_survives_rollback():
 	push_basic_types()
 	retained_clear()

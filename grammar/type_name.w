@@ -96,7 +96,6 @@ int type_name():
 	if (safe_kind):
 		get_token()
 		if (accept(c"[")):
-			if (safe_kind == 1): error(c"lifetime labels require ref or refmut")
 			if (is_ident_start_byte(token[0]) == 0): error(c"lifetime label must be an identifier")
 			lifetime = strclone(token)
 			get_token()

@@ -239,7 +239,7 @@ rule param_default = ASSIGN expression |
 
 # 'gpu T*' marks a device-memory pointer (grammar/type_name.w); gpu_for_stmt
 # is tried first at statement start, and 'for' is never a type_atom.
-rule type_ref = KW_CONST type_ref | KW_GPU type_ref | KW_OWN type_ref | KW_REF lifetime_opt type_ref | KW_REFMUT lifetime_opt type_ref | KW_OPTREF lifetime_opt type_ref | KW_OPTREFMUT lifetime_opt type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
+rule type_ref = KW_CONST type_ref | KW_GPU type_ref | KW_OWN lifetime_opt type_ref | KW_REF lifetime_opt type_ref | KW_REFMUT lifetime_opt type_ref | KW_OPTREF lifetime_opt type_ref | KW_OPTREFMUT lifetime_opt type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
 rule lifetime_opt = LBRACK name_token fn_binder_tail* RBRACK |
 # Generics ([T] parameter lists on definitions, [int] argument lists at
 # instantiation sites). Permissive: type_ref covers both bare parameter

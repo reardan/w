@@ -240,7 +240,45 @@ destructor graphs; a 256-node work budget bounds expansion of repeated child
 types in an acyclic graph. Checker traversal and emission both enforce this
 budget. Parent references preserve
 whole-root borrows when lending child payloads. Partial moves, field owner
-replacement and mixed borrowed/owned field lifetimes remain unsupported.
+replacement remain unsupported. Mixed owners use the explicit contract below.
+
+### Mixed owner provenance
+
+`own[a,b] Record*` binds the shared external-data groups of its pointee. Require
+an explicit label vector of exact arity, including for a single group. Admit
+shared pointer/slice/borrowed-record fields and recursively supported owned
+children; reject exclusive and optional borrowed fields. Keep ordinary
+`own Record*` and whole-owner reference shape validation unchanged.
+
+Separate the allocation root from every external component, including component
+zero. Synthetic external roots for parameters must follow real local binding
+indices, never replace them. Moves preserve component origins/parents while
+consuming only the allocation binding. A labeled owner is a shared loan of its
+external data for access/liveness analysis, while retaining unique ownership of
+its allocation. Scope exit invalidates an owner whose borrowed data expires.
+
+Constructors evaluate fields once, preserve group mappings, consume owned fields
+and reserve prior shared origins during later arguments. Calls propagate external
+components through the normalized contract slots and reserve them independently
+of moved allocations. Return checks validate every external component, and defer
+keeps those returned components reserved until exit. Whole-binding replacement
+joins old/new provenance conservatively; it does not claim precise loan release.
+
+Projecting a borrowed field uses its external group. Projecting owned storage
+uses the containing allocation root. Never accept returning owned-child storage
+under an external-data contract. Returning an inline slice copies its descriptor
+before recursive owner cleanup. Nested annotated owned children recursively map
+their external groups, without moving the child to read a borrowed field.
+
+Raw type records own their label vectors. Speculative generic type records store
+label strings and their pointer vector in the expression type-name slab; slab
+growth rebases both levels. Committed types clone the labels, and retained
+snapshots own independent arena metadata. Keep this bookkeeping compile-time
+only: no runtime layout or cleanup changes are needed for shared borrowed fields.
+
+Whole mixed-owner borrowing, exclusive/optional fields, field replacement and
+partial moves retain separate required gates. Do not infer completion of A2/A3
+from this shared-field step.
 
 ## Audited concrete storage
 

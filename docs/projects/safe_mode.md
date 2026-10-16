@@ -18,6 +18,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | Type | Meaning |
 | --- | --- |
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
+| `own[a,b] Record*` | A unique allocation carrying shared borrowed fields; labels bind their external data groups. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
@@ -371,7 +372,7 @@ Each borrowed result component must derive from its permitted input components.
 Construction evaluates each field once, preserving argument reservations.
 Copies, control-flow joins, calls and returns retain every origin and ancestor
 within each group. Borrowed wrapper reassignment, reference-field replacement,
-mixed owned/borrowed fields and partial moves remain separate requirements.
+mixed records containing exclusive borrows and partial moves remain separate requirements.
 There is no new runtime representation or allocation for group metadata.
 
 ### Owned structs
@@ -406,14 +407,63 @@ then frees the containing allocation. Moved source slots are skipped.
 Borrowing a child owner borrows the whole containing owner. `ref Pair*` and
 `refmut Pair*` parameters can lend child payloads; a shared parent cannot
 supply an exclusive child borrow. Partial field moves and owner-field
-assignment remain rejected. Recursive ownership type cycles, mixed borrowed
-fields and mutable-reference fields are not supported. Allocation failure
+assignment remain rejected. Recursive ownership type cycles and mutable-reference
+fields are not supported. Shared borrowed fields use the labeled form below. Allocation failure
 and other traps terminate the process; cleanup during termination is not
 promised.
 
 Owned type graphs are bounded to depth 32 and at most 256 allocation nodes
 per expanded destructor. Larger graphs produce errors instead of unbounded
 compiler work.
+
+### Owners carrying shared borrowed fields
+
+`own[a,b] Record*` owns its allocation and retains the shared data named by
+its field groups. Each label binds one template group, ordered by first
+occurrence, just as for borrowed records. Even a one-group mixed owner must
+supply its label explicitly. Its fields may be plain values, supported owned
+children, shared pointers/slices or nested shared borrowed records. An owned
+child with borrowed data carries its own mapped labels.
+
+```w
+struct StoredView:
+	own int* stored
+	ref[item] int* item
+	ref[data] int[] data
+
+own[a,b] StoredView* store(ref[a] int* item, ref[b] int[] data):
+	return new StoredView(new int, item, data)
+
+ref[b] int[] take_data(own[a,b] StoredView* view):
+	return view.data
+```
+
+Construction initializes every field once, moves owned arguments, and reserves
+earlier borrowed data while evaluating later arguments. The owner moves through
+bindings, direct/generic/quantified calls and returns; each external component
+keeps its origins and reborrow parents. Every returned component must satisfy
+the declared input contract. Local data cannot escape inside a returned owner.
+A live owner prevents writes or invalidation of its borrowed data.
+
+`take_data` consumes and destroys the descriptor and its owned child, but the
+returned slice keeps the external data alive. Its inline descriptor is copied
+before cleanup. By contrast, borrowing `view.stored` keeps the owner's allocation
+alive and cannot be returned under an external-data label. Labels never stand
+for the descriptor allocation. The same separation holds through nested owned
+children, imports and aliases.
+
+Whole-binding replacement drops the old owner exactly once. The checker joins
+old and new borrowed origins conservatively, including across loops; replacing
+an owner does not necessarily release its old external loans before its last
+use. Borrowing an owned child reserves the whole containing allocation.
+Reference-field/owned-field replacement, partial moves, exclusive or optional
+borrowed fields, and whole mixed-owner `ref Record*`/`refmut Record*` views remain
+rejected pending their separate implementation gates. Raw/unannotated mixed
+owner forms, self-reference and checked globals remain rejected too.
+
+The runtime pointer layout, recursive cleanup order, allocation-failure policy
+and depth/work bounds are unchanged. Borrowed fields require no extra allocation
+or destruction; their component metadata exists only during compilation.
 
 ### Call checking
 
