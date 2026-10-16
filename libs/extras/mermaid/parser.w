@@ -33,14 +33,48 @@ int mm_node_parse(mm_parser* p):
 		if (previous < 0 || n.parent < 0): n.parent = p.scope
 	mm_space(p)
 	int close = 0
-	int doubled = 0
-	if (mm_match(p, c"[")):
+	int extra = 0
+	int flow = p.doc.kind == MM_FLOW || p.doc.kind == MM_AGENT
+	if (flow && mm_match(p, c"([")):
+		close = ']'
+		extra = ')'
+		n.shape = 21
+	else if (flow && mm_match(p, c"[[")):
+		close = ']'
+		extra = ']'
+		n.shape = 22
+	else if (flow && mm_match(p, c"{{")):
+		close = '}'
+		extra = '}'
+		n.shape = 23
+	else if (flow && (mm_match(p, c"[/") || mm_match(p, c"[\\"))):
+		int opening = p.doc.source[p.pos - 1]
+		mm_space(p)
+		free(n.label)
+		if (mm_peek(p) == '"'):
+			n.label = mm_quoted(p)
+			mm_space(p)
+		else:
+			int start = p.pos
+			while (mm_peek(p) != 0 && mm_peek(p) != 10):
+				if ((mm_peek(p) == '/' || mm_peek(p) == '\\') && p.pos + 1 < p.doc.length && p.doc.source[p.pos + 1] == ']'): break
+				p.pos = p.pos + 1
+			n.label = mm_style_trim(p.doc.source, start, p.pos)
+		int ending = mm_peek(p)
+		if (ending != '/' && ending != '\\'): mm_error(p.doc, p.pos, c"expected slanted shape closing delimiter")
+		else: p.pos = p.pos + 1
+		if (mm_match(p, c"]") == 0): mm_error(p.doc, p.pos, c"expected slanted shape closing bracket")
+		n.shape = 24
+		if (opening == '\\'): n.shape = 25
+		if (opening == '/' && ending == '\\'): n.shape = 26
+		if (opening == '\\' && ending == '/'): n.shape = 27
+	else if (mm_match(p, c"[")):
 		close = ']'
 		n.shape = 0
-	else if (p.doc.kind == MM_FLOW || p.doc.kind == MM_AGENT):
+	else if (flow):
 		if (mm_match(p, c"((")):
 			close = ')'
-			doubled = 1
+			extra = ')'
 			n.shape = 2
 		else if (mm_match(p, c"(")):
 			close = ')'
@@ -52,8 +86,8 @@ int mm_node_parse(mm_parser* p):
 		if (mm_peek(p) == '[' || mm_peek(p) == '(' || mm_peek(p) == '{' || mm_peek(p) == '/' || mm_peek(p) == '\\'): mm_error(p.doc, p.pos, c"unsupported node shape; quote literal labels beginning with a delimiter")
 		free(n.label)
 		n.label = mm_until(p, close)
-		if (doubled):
-			if (mm_peek(p) != close): mm_error(p.doc, p.pos, c"expected second closing parenthesis")
+		if (extra != 0):
+			if (mm_peek(p) != extra): mm_error(p.doc, p.pos, c"expected second closing shape delimiter")
 			else: p.pos = p.pos + 1
 	if (p.doc.kind == MM_AGENT): mm_agent_metadata(p, n)
 	mm_space(p)
@@ -327,6 +361,12 @@ mm_document* mm_parse_raw(char* source, int length):
 		d.direction = strclone(c"LR")
 		mm_space(&p)
 		if (mm_match(&p, c"LR")): mm_space(&p)
+		else if (mm_match(&p, c"TB")):
+			free(d.direction)
+			d.direction = strclone(c"TB")
+		else if (mm_match(&p, c"BT")):
+			free(d.direction)
+			d.direction = strclone(c"BT")
 		mm_match(&p, c":")
 	else if (strcmp(header, c"block") == 0):
 		d.kind = MM_BLOCK
@@ -452,8 +492,9 @@ mm_document* mm_parse_raw(char* source, int length):
 	return d
 
 # Parse an optional Markdown/frontmatter envelope without losing its bytes.
-mm_document* mm_parse(char* source, int length):
-	mm_document* envelope = mm_source_prepare(source, length)
+mm_document* mm_parse_selected(char* source, int length, int selected):
+	mm_document* envelope = mm_source_prepare_selected(source, length, selected)
+	envelope.diagram_index = selected
 	if (envelope.error != 0): return envelope
 	int start = envelope.source_start
 	mm_document* d = mm_parse_raw(envelope.source + start, envelope.source_end - start)
@@ -463,12 +504,17 @@ mm_document* mm_parse(char* source, int length):
 	d.palette_line = envelope.palette_line
 	d.palette_label = envelope.palette_label
 	d.theme = envelope.theme
+	d.packet_bits = envelope.packet_bits
+	d.packet_msb = envelope.packet_msb
+	d.layout_algorithm = envelope.layout_algorithm
+	if (d.layout_algorithm == 1 && d.kind != MM_FLOW && d.kind != MM_ER && d.kind != MM_CLASS && d.kind != MM_STATE && d.kind != MM_REQUIREMENT && d.kind != MM_C4 && d.kind != MM_ARCHITECTURE && d.kind != MM_USECASE && d.kind != MM_AGENT): mm_error(d, 0, c"force layout is only supported for graph diagrams")
 	free(d.source)
 	d.source = envelope.source
 	envelope.source = 0
 	d.length = envelope.length
 	d.source_start = start
 	d.source_end = envelope.source_end
+	d.diagram_index = selected
 	if (envelope.title[0] != 0):
 		free(d.title)
 		d.title = strclone(envelope.title)
@@ -486,6 +532,9 @@ mm_document* mm_parse(char* source, int length):
 	mm_document_free(envelope)
 	return d
 
+mm_document* mm_parse(char* source, int length):
+	return mm_parse_selected(source, length, 0)
+
 # Immutable edit: result owns a reparsed copy; original is always unchanged.
 # Returns null for an invalid range/budget or an edit splitting a UTF-8 codepoint.
 mm_document* mm_edit(mm_document* d, int start, int end, char* replacement, int length):
@@ -497,6 +546,6 @@ mm_document* mm_edit(mm_document* d, int start, int end, char* replacement, int 
 	string_append_bytes(s, d.source, start)
 	string_append_bytes(s, replacement, length)
 	string_append_bytes(s, d.source + end, d.length - end)
-	mm_document* result = mm_parse(s.data, s.length)
+	mm_document* result = mm_parse_selected(s.data, s.length, d.diagram_index)
 	string_free(s)
 	return result
