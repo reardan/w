@@ -101,6 +101,33 @@ int retained_decimal_address(char* text):
 	return starts_with(text + i, c" (0x")
 
 
+# The df /tmp fixture reads live filesystem usage. Even two matching
+# baseline runs do not imply that the retained run sees the same free space.
+# Keep the filesystem, capacity, mount and formatting; mask only numeric
+# Used/Available fields in the row immediately after df's exact header.
+int retained_df_row(string_builder* out, char* text, int i):
+	int column = 0
+	while (text[i] && (text[i] != 10)):
+		int end = i
+		while (text[end] && (text[end] != ' ') && (text[end] != 10)): end = end + 1
+		int digits = i
+		if (text[digits] == '-'): digits = digits + 1
+		int number = digits
+		while ((text[digits] >= '0') && (text[digits] <= '9')): digits = digits + 1
+		if (((column == 2) || (column == 3)) && (digits > number) && (digits == end)):
+			string_append(out, c"<usage>")
+			i = end
+		else:
+			while (i < end):
+				string_append_char(out, text[i])
+				i = i + 1
+		while (text[i] == ' '):
+			string_append_char(out, text[i])
+			i = i + 1
+		column = column + 1
+	return i
+
+
 # Staging directories are pid-tagged and registers, stack and code
 # addresses vary from run to run. The ":symbols" dump's "pointer (n)" column
 # is the symbol table's declaration-time pointer_indirection, a field that
@@ -116,7 +143,11 @@ char* retained_normalize(char* text):
 	string_builder* out = string_new()
 	int i = 0
 	while (text[i]):
-		if (((i == 0) || (text[i - 1] == 10)) && starts_with(text + i, c"  at ")):
+		if (((i == 0) || (text[i - 1] == 10)) && starts_with(text + i, c"Filesystem 1K-blocks Used Available Mounted on\n")):
+			char* header = c"Filesystem 1K-blocks Used Available Mounted on\n"
+			string_append(out, header)
+			i = retained_df_row(out, text, i + strlen(header))
+		else if (((i == 0) || (text[i - 1] == 10)) && starts_with(text + i, c"  at ")):
 			while (text[i] && (text[i] != 10)): i = i + 1
 			if (text[i]): i = i + 1
 		else if (starts_with(text + i, c"elapsed: ")):
@@ -146,6 +177,26 @@ char* retained_normalize(char* text):
 	char* result = strclone(out.data)
 	string_free(out)
 	return result
+
+
+void test_retained_df_normalization():
+	char* a = retained_normalize(c"Filesystem 1K-blocks Used Available Mounted on\n/dev/root 1000 200 800 /\nshell mode off\n42\n")
+	char* b = retained_normalize(c"Filesystem 1K-blocks Used Available Mounted on\n/dev/root 1000 -300 700 /\nshell mode off\n42\n")
+	assert_strings_equal(c"Filesystem 1K-blocks Used Available Mounted on\n/dev/root 1000 <usage> <usage> /\nshell mode off\n42\n", a)
+	assert_strings_equal(a, b)
+	free(b)
+	# Real differences in capacity, mount or later output must still fail.
+	b = retained_normalize(c"Filesystem 1K-blocks Used Available Mounted on\n/dev/root 2000 200 800 /other\nshell mode off\n43\n")
+	assert1(strcmp(a, b) != 0)
+	free(b)
+	free(a)
+	# Do not normalize ordinary numeric output or a malformed usage field.
+	a = retained_normalize(c"/dev/root 1000 200 800 /\n")
+	assert_strings_equal(c"/dev/root 1000 200 800 /\n", a)
+	free(a)
+	a = retained_normalize(c"Filesystem 1K-blocks Used Available Mounted on\n/dev/root 1000 broken 800 /\n")
+	assert_strings_equal(c"Filesystem 1K-blocks Used Available Mounted on\n/dev/root 1000 broken <usage> /\n", a)
+	free(a)
 
 
 struct retained_run:
@@ -209,8 +260,8 @@ void retained_first_difference(char* label, char* a, char* b):
 	while (a[end_a] && (a[end_a] != 10)): end_a = end_a + 1
 	int end_b = i
 	while (b[end_b] && (b[end_b] != 10)): end_b = end_b + 1
-	char* left = substring(a, i, end_a - i)
-	char* right = substring(b, i, end_b - i)
+	char* left = substring(a, i, end_a)
+	char* right = substring(b, i, end_b)
 	println(f"{label} line {line}:")
 	println(f"  baseline: {left}")
 	println(f"  retained: {right}")
