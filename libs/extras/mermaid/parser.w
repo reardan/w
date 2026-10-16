@@ -11,6 +11,7 @@ import libs.extras.mermaid.systems
 import libs.extras.mermaid.c4
 import libs.extras.mermaid.workflows
 import libs.extras.mermaid.narrative
+import libs.extras.mermaid.railroad_parse
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -302,6 +303,13 @@ mm_document* mm_parse_raw(char* source, int length):
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
 		mm_match(&p, c"-v2")
+	else if (strcmp(header, c"railroad") == 0):
+		d.kind = MM_RAIL_IR
+		if (mm_match(&p, c"-ebnf")): d.kind = MM_RAIL_EBNF
+		else if (mm_match(&p, c"-abnf")): d.kind = MM_RAIL_ABNF
+		else if (mm_match(&p, c"-peg")): d.kind = MM_RAIL_PEG
+		if (mm_match(&p, c"-beta") == 0): mm_error(d, p.pos, c"expected railroad -beta suffix")
+		mm_rail_new(d)
 	else if (strcmp(header, c"pie") == 0): d.kind = MM_PIE
 	else if (strcmp(header, c"quadrantChart") == 0): d.kind = MM_QUADRANT
 	else if (strcmp(header, c"xychart") == 0): d.kind = MM_XY
@@ -329,6 +337,9 @@ mm_document* mm_parse_raw(char* source, int length):
 		return d
 	if (d.kind == MM_MINDMAP || d.kind == MM_KANBAN):
 		mm_hierarchy_body(&p)
+		return d
+	if (d.kind >= MM_RAIL_IR && d.kind <= MM_RAIL_PEG):
+		mm_rail_body(&p)
 		return d
 	mm_separators(&p)
 	if (d.kind == MM_FLOW || d.kind == MM_ER):

@@ -8,6 +8,7 @@ import libs.extras.mermaid.blocks
 import libs.extras.mermaid.systems
 import libs.extras.mermaid.workflow_render
 import libs.extras.mermaid.narrative_render
+import libs.extras.mermaid.railroad_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -374,6 +375,7 @@ mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error == 0 && (d.kind == MM_MINDMAP || d.kind == MM_KANBAN)): return mm_hierarchy_render(d)
 	if (d.error != 0): return 0
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET): return mm_data_render(d)
+	if (d.kind >= MM_RAIL_IR && d.kind <= MM_RAIL_PEG): return mm_rail_render(d)
 	mm_scene* s = new mm_scene()
 	s.items = new list[mm_primitive*]
 	s.nodes = new list[mm_bounds*]
