@@ -484,21 +484,22 @@ workloads still need measurement.
 ### Named lifetimes, aggregates and storage
 
 The following measurement compares the fixed-point x86 `wv3` compiler from
-`origin/main` at `e44be9c7` with this extension. Both compilers compiled the
-same current source corpus with default optimization. After one warmup,
+`origin/main` at `e44be9c7` with the implementation at `b28642e4`. Both compiled
+the same current source corpus with default optimization. After one warmup,
 five alternating baseline/current runs supplied the medians below. Elapsed
 time includes process-launch measurement overhead; `/usr/bin/time` supplied
-peak RSS. Team builds and tests were paused during this measurement window.
+peak RSS. No team builds or tests ran during this measurement window;
+unrelated shared-host load remained possible.
 
 | Corpus / emitted target | Baseline time | Current time | Baseline peak RSS | Current peak RSS |
 | --- | ---: | ---: | ---: | ---: |
-| Manual cleanup / x86 | 46.61 ms | 48.37 ms | 5,120 KiB | 5,120 KiB |
-| Manual cleanup / x64 | 50.51 ms | 49.52 ms | 5,120 KiB | 5,120 KiB |
-| Checked cleanup / x86 | 61.42 ms | 60.65 ms | 6,912 KiB | 6,688 KiB |
-| Checked cleanup / x64 | 62.86 ms | 68.51 ms | 6,688 KiB | 6,688 KiB |
-| `w.w` / x86 | 1,255.44 ms | 1,277.01 ms | 107,712 KiB | 108,608 KiB |
+| Manual cleanup / x86 | 64.23 ms | 81.37 ms | 5,120 KiB | 5,120 KiB |
+| Manual cleanup / x64 | 73.61 ms | 75.18 ms | 5,120 KiB | 5,120 KiB |
+| Checked cleanup / x86 | 108.36 ms | 96.57 ms | 6,912 KiB | 6,912 KiB |
+| Checked cleanup / x64 | 123.21 ms | 120.91 ms | 6,912 KiB | 6,912 KiB |
+| `w.w` / x86 | 2,117.76 ms | 2,198.00 ms | 107,712 KiB | 108,832 KiB |
 
-On `w.w`, this sample is about 1.7% slower with 0.8% more peak memory.
+On `w.w`, this sample is about 3.8% slower with 1.0% more peak memory.
 Short-fixture timing remains noisy and does not establish a general overhead
 bound. Both manual and checked fixtures produce byte-identical executables
 across the two compilers on each architecture: 123,200 bytes on x86 and
@@ -561,3 +562,17 @@ heap allocations. The
 [collection example](../../tests/safe_collection_runtime_fixture.w) combines
 growable storage, returned views, borrowed slice fields, whole-owner moves
 and recursive destruction in one program.
+
+The final merged implementation passes all 1,237 targets from
+`./wbuild -j 6 tests verify_x64 wbench_compare`, including both self-host
+fixpoints and the benchmark gate. The instrumented full suite passes all
+1,236 of its targets and reaches 636 of 653 changed executable compiler
+lines (97%). Compiler line/branch coverage is 95.3% / 85.5%; code-generator
+coverage is 97.0% / 88.5%. Coverage floors retain the measured gains.
+Compiler checks pass for x86, x64, win64, arm64 and arm64_darwin, along with
+six manifest-selected architecture/root checks. These check compiler
+portability; checked application support remains Linux x86/x64.
+Independent review found an evaluation-order lifetime hole in
+projected stores and indices; temporary backing-storage reservations and
+15 positive/negative regression cases cover the fix. These results remain
+regression evidence, not a proof of soundness or Rust-level maturity.
