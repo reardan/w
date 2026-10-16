@@ -69,6 +69,26 @@ const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
 const int MM_COMPOSITION = 3
 const int MM_AGGREGATION = 4
+const int MM_SEQUENCE = 20
+const int MM_JOURNEY = 21
+const int MM_TIMELINE = 22
+const int MM_GANTT = 23
+const int MM_ZENUML = 24
+
+# Ordered events own their labels; actor indices refer to document nodes.
+struct mm_narrative_event:
+	int kind
+	int from_node
+	int to_node
+	char* label
+	char* detail
+	char* section
+	int value
+	int start
+	int end
+	int dashed
+	int arrow
+
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
 
@@ -132,6 +152,8 @@ struct mm_document:
 	int source_start
 	int source_end
 	mm_data_chart* data
+	list[mm_narrative_event*] narrative
+	int narrative_numbered
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -140,6 +162,7 @@ mm_document* mm_document_new():
 	d.accessibility_title = strclone(c"")
 	d.accessibility_description = strclone(c"")
 	d.direction = strclone(c"TB")
+	d.narrative = new list[mm_narrative_event*]
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
 	return d
@@ -221,6 +244,12 @@ void mm_document_free(mm_document* d):
 		free(d.data.y_label)
 		free(d.data.y_end)
 		free(d.data)
+	for mm_narrative_event* event in d.narrative:
+		free(event.label)
+		free(event.detail)
+		free(event.section)
+		free(event)
+	__w_list_free(cast(__w_list*, d.narrative))
 	free(d.source)
 	free(d.title)
 	free(d.accessibility_title)

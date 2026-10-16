@@ -7,6 +7,7 @@ import libs.extras.mermaid.gitgraph
 import libs.extras.mermaid.blocks
 import libs.extras.mermaid.systems
 import libs.extras.mermaid.workflow_render
+import libs.extras.mermaid.narrative_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -361,6 +362,7 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
 
 # Failed parses cannot produce a misleading partial preview.
 mm_scene* mm_render_diagram(mm_document* d):
+	if (d.error == 0 && d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML): return mm_narrative_render(d)
 	if (d.error != 0): return 0
 	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
 	if (d.kind == MM_BLOCK): return mm_blocks_render(d)

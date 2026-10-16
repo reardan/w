@@ -1,0 +1,9 @@
+gantt
+title Release schedule
+dateFormat YYYY-MM-DD
+section Development
+Implement :done, code, 2026-10-01, 4d
+Tests :active, crit, tests, after code, 3d
+section Release
+Review :review, after tests, 2d
+Ship :milestone, ship, after review, 0d

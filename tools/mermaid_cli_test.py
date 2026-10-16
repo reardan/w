@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="mermaid-", dir="bin") as temp:
     assert source.read_bytes() == original
     run("write", source, source)
     assert source.read_bytes() == original
-    invalid = b"sequenceDiagram\nA->>B: hello\n"
+    invalid = b"unknownDiagram\nA->>B: hello\n"
     source.write_bytes(invalid)
     assert b"unsupported diagram type" in run("check", source, ok=False).stderr
     run("write", source, copy)

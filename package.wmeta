@@ -114,6 +114,8 @@ modules:
 	libs.extras.mermaid.hierarchy_render
 	libs.extras.mermaid.model
 	libs.extras.mermaid.parse_common
+	libs.extras.mermaid.narrative
+	libs.extras.mermaid.narrative_render
 	libs.extras.mermaid.uml
 	libs.extras.mermaid.source
 	libs.extras.mermaid.data_parse

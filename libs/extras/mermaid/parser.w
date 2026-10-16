@@ -10,6 +10,7 @@ import libs.extras.mermaid.blocks
 import libs.extras.mermaid.systems
 import libs.extras.mermaid.c4
 import libs.extras.mermaid.workflows
+import libs.extras.mermaid.narrative
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -292,6 +293,11 @@ mm_document* mm_parse_raw(char* source, int length):
 		mm_match(&p, c"-beta")
 		if (mm_end(&p) == 0): mm_direction(&p)
 	else if (strcmp(header, c"eventmodeling") == 0): d.kind = MM_EVENT_MODEL
+	else if (strcmp(header, c"sequenceDiagram") == 0): d.kind = MM_SEQUENCE
+	else if (strcmp(header, c"journey") == 0): d.kind = MM_JOURNEY
+	else if (strcmp(header, c"timeline") == 0): d.kind = MM_TIMELINE
+	else if (strcmp(header, c"gantt") == 0): d.kind = MM_GANTT
+	else if (strcmp(header, c"zenuml") == 0): d.kind = MM_ZENUML
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -304,7 +310,7 @@ mm_document* mm_parse_raw(char* source, int length):
 	else if (strcmp(header, c"treemap") == 0): d.kind = MM_TREEMAP
 	else if (strcmp(header, c"venn") == 0): d.kind = MM_VENN
 	else if (strcmp(header, c"packet") == 0): d.kind = MM_PACKET
-	else: mm_error(d, 0, c"unsupported diagram type; supported: flowchart, graph, erDiagram, classDiagram, stateDiagram-v2")
+	else: mm_error(d, 0, c"unsupported diagram type")
 	free(header)
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_chart* chart = mm_data_new(d)
@@ -360,6 +366,9 @@ mm_document* mm_parse_raw(char* source, int length):
 		return d
 	if (d.kind == MM_REQUIREMENT):
 		mm_requirement_body(&p)
+		return d
+	if (d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML):
+		mm_narrative_body(&p)
 		return d
 	if (d.kind == MM_CLASS || d.kind == MM_STATE):
 		mm_uml_body(&p, -1, 0)
