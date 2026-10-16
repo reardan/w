@@ -828,6 +828,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 				emit_expression_ast(tree, argument)
 				int got = promote(tree.result_type[argument])
 				new_store_field(base, tree.value[entry], got, stack_pos - entry_stack)
+				safe_owner_move(tree, argument, type_get_field_type_at(base, tree.value[entry]))
 				if (stack_pos > entry_stack): pop_to(entry_stack)
 				entry = tree.next_arg[entry]
 			pop_eax_slot()
@@ -1202,7 +1203,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			coerce(left_type, got)
 			safe_owner_move(tree, tree.right[id], left_type)
 			push_slot()
-			safe_owner_drop_slot(slot)
+			safe_owner_drop_slot(slot, left_type)
 			pop_eax_slot()
 			store_stack_var((stack_pos - slot) << word_size_log2)
 			return

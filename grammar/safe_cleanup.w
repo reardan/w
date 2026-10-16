@@ -24,19 +24,39 @@ void safe_owner_clear_slot(int slot):
 	pop_eax_slot()
 
 
-# Drop only live owners, so allocator hooks also observe exactly one free
-# per allocation. Every admitted owner currently owns one plain allocation;
-# reference-bearing aggregates are rejected by the checker.
-void safe_owner_drop_slot(int slot):
-	load_slot(slot)
+# Drop owned fields in reverse declaration order, then the allocation.
+# The descriptor is held in a stack slot across nested allocator calls.
+# Emission is bounded before the semantic pass runs: recursive type graphs
+# cannot make the compiler recurse forever while building the destructor.
+void safe_owner_drop_value(int type, int depth):
+	if (depth > 32): error(c"safe: recursive owned aggregate destruction is not supported")
 	int done = be_ctrl_block()
 	be_br_zero(done)
+	int object_slot = push_slot()
+	int element = type_lookup_previous_pointer(type)
+	int field = type_num_args(element)
+	while (field > 0):
+		field = field - 1
+		int field_type = type_get_field_type_at(element, field)
+		if (type_safe_kind(field_type) == 1):
+			load_slot(object_slot)
+			add_eax_int32(type_get_field_offset_at(element, field))
+			promote(field_type)
+			safe_owner_drop_value(field_type, depth + 1)
 	int call_stack = rt_call_begin(c"free")
-	push_slot_copy(slot)
+	push_slot_copy(object_slot)
 	rt_call_end(call_stack)
+	drop_slots(1)
+	be_ctrl_end(done)
+
+
+# A transferred owner has a cleared source slot; cleanup is idempotent on
+# that path, including when an aggregate's child owner moved into its fields.
+void safe_owner_drop_slot(int slot, int type):
+	load_slot(slot)
+	safe_owner_drop_value(type, 0)
 	mov_eax_int(0)
 	store_stack_var((stack_pos - slot) << word_size_log2)
-	be_ctrl_end(done)
 
 
 # min_binding selects a lexical scope; min_depth selects a jump's unwind
@@ -55,7 +75,7 @@ void safe_owner_cleanup(int min_binding, int min_depth, int parameters):
 		if (table[symbol + 1] == 'A'):
 			if (parameters == 0): continue
 		else if (load_int(table + symbol + 2) < min_depth): continue
-		safe_owner_drop_slot(safe_owner_slot(symbol))
+		safe_owner_drop_slot(safe_owner_slot(symbol), load_int(table + symbol + 6))
 
 
 void safe_owner_cleanup_returning():
