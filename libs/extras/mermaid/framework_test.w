@@ -92,3 +92,25 @@ void test_framework_invalid_input_and_prefixes():
 			mm_scene_free(s)
 			mm_document_free(d)
 	__w_list_free(cast(__w_list*, samples))
+
+void test_framework_outline_accessibility_is_not_a_node():
+	list[char*] headers = list[char*]{c"treeView-beta", c"ishikawa-beta"}
+	for char* header in headers:
+		string_builder* source = string_from(header)
+		string_append(source, c"\naccTitle: Accessible outline\naccDescr: Outline description\nRoot\n  Category\n  accDescr {\n    Detailed description\n  }\n    Leaf\n")
+		mm_document* d = framework_parse(source.data)
+		assert_equal(3, d.nodes.length)
+		mm_node* leaf = d.nodes[2]
+		assert_equal(1, leaf.parent)
+		assert_strings_equal(c"Accessible outline", d.accessibility_title)
+		assert_strings_equal(c"\n    Detailed description", d.accessibility_description)
+		mm_scene* scene = mm_render(d)
+		char* svg = mm_svg(scene)
+		asserts(c"outline accessibility exported", index_of(svg, c"<title id=\"mermaid-title\">Accessible outline</title>") >= 0)
+		for mm_primitive* item in scene.items:
+			asserts(c"metadata excluded from visible labels", index_of(item.text, c"accTitle:") < 0 && index_of(item.text, c"accDescr:") < 0)
+		free(svg)
+		mm_scene_free(scene)
+		mm_document_free(d)
+		string_free(source)
+	__w_list_free(cast(__w_list*, headers))

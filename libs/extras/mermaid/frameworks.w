@@ -27,6 +27,12 @@ void mm_outline_body(mm_parser* p):
 			char* comment = mm_line_text(p)
 			free(comment)
 			continue
+		if (mm_metadata(p)):
+			# Only consume horizontal whitespace here. The next loop iteration
+			# counts the next physical line's indentation before assigning parents.
+			mm_space(p)
+			if (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13): mm_error(p.doc, p.pos, c"expected end of accessibility metadata line")
+			continue
 		int depth = 0
 		while (depth < indents.length && indent > indents[depth]): depth = depth + 1
 		if (depth < indents.length && indents[depth] != indent): mm_error(p.doc, p.pos, c"inconsistent outline indentation")

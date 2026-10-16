@@ -122,3 +122,32 @@ void test_graph_family_source_mutations_preserve_failure_contract():
 			mm_document_free(d)
 		mm_document_free(original)
 	__w_list_free(cast(__w_list*, sources))
+
+void test_graph_hierarchy_accessibility_preserves_indentation():
+	list[char*] headers = list[char*]{c"mindmap", c"kanban"}
+	for char* header in headers:
+		string_builder* source = string_from(c"---\ntitle: Hierarchy title\n---\n")
+		string_append(source, header)
+		string_append(source, c"\r\naccTitle: Accessible hierarchy\r\nRoot\r\n  Child\r\naccDescr {\r\n  Detailed hierarchy\r\n}\r\n  Sibling\r\n")
+		mm_document* d = graph_family_parse(source.data)
+		assert_equal(3, d.nodes.length)
+		mm_node* sibling = d.nodes[2]
+		assert_equal(0, sibling.parent)
+		assert_strings_equal(c"Accessible hierarchy", d.accessibility_title)
+		assert_strings_equal(c"\n  Detailed hierarchy", d.accessibility_description)
+		mm_scene* scene = mm_render(d)
+		char* svg = mm_svg(scene)
+		asserts(c"hierarchy accessibility exported", index_of(svg, c"<title id=\"mermaid-title\">Accessible hierarchy</title>") >= 0)
+		int titles = 0
+		for mm_primitive* item in scene.items:
+			if (strcmp(item.text, c"Hierarchy title") == 0): titles = titles + 1
+		assert_equal(1, titles)
+		free(svg)
+		mm_scene_free(scene)
+		mm_document_free(d)
+		string_free(source)
+	__w_list_free(cast(__w_list*, headers))
+	char* invalid = c"mindmap\naccDescr {text} child\nRoot\n"
+	mm_document* bad = mm_parse(invalid, strlen(invalid))
+	asserts(c"inline metadata trailing content rejected", bad.error != 0)
+	mm_document_free(bad)

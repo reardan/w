@@ -161,6 +161,12 @@ void mm_hierarchy_body(mm_parser* p):
 			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"configuration directives are unsupported")
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
 			continue
+		if (mm_metadata(p)):
+			# Only consume horizontal whitespace here. The next loop iteration
+			# counts the next physical line's indentation before assigning parents.
+			mm_space(p)
+			if (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13): mm_error(p.doc, p.pos, c"expected end of accessibility metadata line")
+			continue
 		int depth = 0
 		while (depth < indents.length && indent > indents[depth]): depth = depth + 1
 		if (depth < indents.length && indent != indents[depth]): mm_error(p.doc, p.pos, c"indentation must match a previous level")
