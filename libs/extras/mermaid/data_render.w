@@ -91,6 +91,10 @@ void mm_data_quadrant_render(mm_document* d, mm_scene* s):
 			mm_draw(s, MM_CIRCLE, x - 4, y - 4, x + 4, y + 4, 1, c"")
 			mm_text(s, x + 8, y - 18, item.label)
 
+int mm_data_x_position(mm_data_chart* c, int index, int count, int width):
+	if (c.x_numeric && count > 1): return index * width / (count - 1)
+	return (index * 2 + 1) * width / (count * 2)
+
 void mm_data_xy_render(mm_document* d, mm_scene* s):
 	mm_data_chart* c = d.data
 	int count = 0
@@ -124,15 +128,19 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 	int category = 0
 	for mm_data_item* item in c.items:
 		if (item.kind != 1): continue
-		int position = (category * 2 + 1) * width / (count * 2)
+		int position = mm_data_x_position(c, category, count, width)
 		if (horizontal): mm_text(s, 10, top + position - 8, item.label)
 		else: mm_text(s, left + position - strlen(item.label) * 4, top + extent + 20, item.label)
 		category = category + 1
 	if (category == 0):
 		for i in range(count):
-			int position = (i * 2 + 1) * width / (count * 2)
-			if (horizontal): mm_data_value_text(s, 50, top + position - 8, (i + 1) * 1000)
-			else: mm_data_value_text(s, left + position - 4, top + extent + 20, (i + 1) * 1000)
+			int position = mm_data_x_position(c, i, count, width)
+			int value = (i + 1) * 1000
+			if (c.x_numeric):
+				value = c.x_low
+				if (count > 1): value = c.x_low + cast(int, cast(float, c.x_high - c.x_low) * cast(float, i) / cast(float, count - 1))
+			if (horizontal): mm_data_value_text(s, 50, top + position - 8, value)
+			else: mm_data_value_text(s, left + position - 4, top + extent + 20, value)
 	int bar_index = 0
 	int series_index = 0
 	for mm_data_item* item in c.items:
@@ -140,7 +148,7 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 		int last_x = 0
 		int last_y = 0
 		for i in range(count):
-			int position = (i * 2 + 1) * width / (count * 2)
+			int position = mm_data_x_position(c, i, count, width)
 			int value = mm_data_scale(item.values[i], c.low, c.high, extent)
 			int x = left + position
 			int y = top + extent - value
@@ -161,6 +169,9 @@ void mm_data_xy_render(mm_document* d, mm_scene* s):
 					high = value
 				if (horizontal): mm_draw(s, MM_BOX, left + low, top + start, left + high, top + end, 0, c"")
 				else: mm_draw(s, MM_BOX, left + start, top + extent - high, left + end, top + extent - low, 0, c"")
+			if (i < item.point_labels.length):
+				char* label = item.point_labels[i]
+				if (label[0] != 0): mm_text(s, x + 8, y - 20, label)
 			last_x = x
 			last_y = y
 		if (item.kind == 3): bar_index = bar_index + 1

@@ -15,9 +15,9 @@ the original source remains available for lossless writing and editing.
 | --- | --- | --- |
 | `pie` | Quoted labels, positive decimal values, `showData`, title; angular proportions and percentage labels | Themes, collision avoidance for many small slices |
 | `quadrantChart` | Title, two-ended x/y labels, four quadrant names, labeled points in `[0,1]²` | Point styles, classes, axis labels with unquoted hyphens |
-| `xychart-beta` | Categorical or inferred x axis, numeric y range, bar and line series, horizontal layout; signed values and zero baseline | Numeric x-axis ranges, configuration, styled multi-series legends |
+| `xychart-beta` | Categorical, numeric-range or inferred x axis, numeric y range, bar and line series with point annotations, horizontal layout; signed values and zero baseline | Configuration, styled multi-series legends |
 | `sankey-beta` | CSV source/target/value records, quoted commas and doubled quotes; DAG validation, node aggregation, proportional ribbon widths and longest-path columns | Multiline CSV fields, configuration, curved/crossing-optimized routing |
-| `radar-beta` | Named axes and curves, positional curve values, min/max, circle/polygon graticule, bounded ticks, legend | Keyed curve values, styles and smooth curves |
+| `radar-beta` | Named axes and curves, positional and keyed curve values, min/max, circle/polygon graticule, bounded ticks, legend | Styles and smooth curves; keyed values require previously declared axes |
 | `treemap-beta` | Indented quoted groups and positive valued leaves; recursive aggregate weights and alternating proportional rectangle subdivision | Styling/classes, squarified layout; labels in tiny cells use the accompanying hierarchy key |
 | `venn-beta` | One to three named/labeled sets and labeled two/three-set `union` intersections; equal-size circle geometry with only declared overlaps | Explicit sizes, text nodes, styles and more than three sets |
 | `packet` / `packet-beta` | Absolute inclusive bit ranges, individual bits, relative `+count`, title; 32-bit row wrapping and width proportional to bit count | Configurable word width, descending bit order and styles |

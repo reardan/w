@@ -25,6 +25,7 @@ mm_data_item* mm_data_add(mm_parser* p, int kind):
 	item.label = strclone(c"")
 	item.target = strclone(c"")
 	item.values = new list[int]
+	item.point_labels = new list[char*]
 	item.kind = kind
 	item.parent = -1
 	p.doc.data.items.push(item)
@@ -49,7 +50,7 @@ int mm_data_number(mm_parser* p):
 		n = n * 10 + mm_peek(p) - '0'
 		p.pos = p.pos + 1
 		digits = digits + 1
-	if (digits == 0): mm_error(p.doc, p.pos, c"expected decimal number")
+	if (digits == 0 && mm_peek(p) != '.'): mm_error(p.doc, p.pos, c"expected decimal number")
 	int fraction = 0
 	int scale = 100
 	if (mm_match(p, c".")):
@@ -94,6 +95,10 @@ void mm_data_values(mm_parser* p, mm_data_item* item, char* open, char* close):
 			mm_error(p.doc, p.pos, c"series point limit exceeded (256)")
 			return
 		item.values.push(mm_data_number(p))
+		mm_space(p)
+		if (item.kind == 2 || item.kind == 3):
+			if (mm_peek(p) == '"'): item.point_labels.push(mm_quoted(p))
+			else: item.point_labels.push(strclone(c""))
 		mm_space(p)
 		if (mm_match(p, close)): return
 		mm_data_expect(p, c",")
@@ -202,6 +207,14 @@ void mm_data_xy(mm_parser* p):
 		if (mm_peek(p) == '"'):
 			free(c.x_label)
 			c.x_label = mm_quoted(p)
+		mm_space(p)
+		if (mm_peek(p) != '['):
+			c.x_numeric = 1
+			c.x_low = mm_data_number(p)
+			mm_data_expect(p, c"-->")
+			c.x_high = mm_data_number(p)
+			if (c.x_high <= c.x_low): mm_error(p.doc, p.pos, c"numeric x-axis maximum must exceed minimum")
+			return
 		mm_data_expect(p, c"[")
 		while (p.doc.error == 0):
 			mm_data_item* item = mm_data_add(p, 1)
@@ -233,6 +246,41 @@ void mm_data_xy(mm_parser* p):
 		return
 	mm_error(p.doc, p.pos, c"expected XY x-axis categories, y-axis range, bar or line")
 
+void mm_data_radar_values(mm_parser* p, mm_data_item* item):
+	mm_data_expect(p, c"{")
+	mm_space(p)
+	int keyed = isalpha(mm_peek(p)) || mm_peek(p) == '_' || mm_peek(p) == '"' || mm_peek(p) >= 128
+	if (keyed):
+		for mm_data_item* axis in p.doc.data.items:
+			if (axis.kind == 1): item.values.push(-1000000001)
+	while (p.doc.error == 0):
+		if (keyed):
+			char* name = mm_identifier(p)
+			mm_data_expect(p, c":")
+			int value = mm_data_number(p)
+			int index = -1
+			int count = 0
+			for mm_data_item* axis in p.doc.data.items:
+				if (axis.kind != 1): continue
+				if (strcmp(axis.id, name) == 0): index = count
+				count = count + 1
+			free(name)
+			if (index < 0): mm_error(p.doc, p.pos, c"radar curve references an undeclared axis")
+			else:
+				if (item.values[index] != -1000000001): mm_error(p.doc, p.pos, c"duplicate radar axis value")
+				item.values[index] = value
+		else:
+			if (item.values.length >= 256):
+				mm_error(p.doc, p.pos, c"series point limit exceeded (256)")
+				return
+			item.values.push(mm_data_number(p))
+		mm_space(p)
+		if (mm_match(p, c"}")): break
+		mm_data_expect(p, c",")
+	if (keyed):
+		for int value in item.values:
+			if (value == -1000000001): mm_error(p.doc, p.pos, c"keyed radar curve must specify every axis")
+
 void mm_data_radar(mm_parser* p):
 	mm_data_chart* c = p.doc.data
 	int kind = 0
@@ -245,7 +293,7 @@ void mm_data_radar(mm_parser* p):
 			mm_data_named(p, item)
 			for mm_data_item* other in c.items:
 				if (other != item && other.kind == kind && strcmp(other.id, item.id) == 0): mm_error(p.doc, p.pos, c"duplicate radar axis or curve ID")
-			if (kind == 4): mm_data_values(p, item, c"{", c"}")
+			if (kind == 4): mm_data_radar_values(p, item)
 			mm_space(p)
 			if (mm_match(p, c",") == 0): return
 		return
@@ -395,6 +443,7 @@ void mm_data_validate(mm_parser* p):
 				for int value in item.values:
 					if (c.explicit_low == 0 && value < c.low): c.low = value
 					if (c.explicit_high == 0 && value > c.high): c.high = value
+		if (c.x_numeric && axes != 0): mm_error(p.doc, p.pos, c"x-axis cannot mix numeric range and categories")
 		if (series == 0 || (axes != 0 && axes != count)): mm_error(p.doc, p.pos, c"chart requires series matching the axis count")
 		if (p.doc.kind == MM_RADAR && (axes < 3 || axes > 32)): mm_error(p.doc, p.pos, c"radar requires 3..32 axes")
 		if (c.explicit_high == 0 && c.high == c.low): c.high = c.low + 1000

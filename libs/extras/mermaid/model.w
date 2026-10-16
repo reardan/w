@@ -28,6 +28,7 @@ struct mm_data_item:
 	int parent
 	int depth
 	list[int] values
+	list[char*] point_labels
 
 struct mm_data_chart:
 	char* title
@@ -41,6 +42,9 @@ struct mm_data_chart:
 	int explicit_low
 	int explicit_high
 	int horizontal
+	int x_numeric
+	int x_low
+	int x_high
 	int show_data
 	int ticks
 	int polygon
@@ -187,6 +191,8 @@ void mm_document_free(mm_document* d):
 			free(item.id)
 			free(item.label)
 			free(item.target)
+			for char* label in item.point_labels: free(label)
+			__w_list_free(cast(__w_list*, item.point_labels))
 			__w_list_free(cast(__w_list*, item.values))
 			free(item)
 		__w_list_free(cast(__w_list*, d.data.items))

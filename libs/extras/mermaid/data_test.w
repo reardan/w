@@ -233,3 +233,51 @@ void test_data_venn_only_declared_overlaps():
 	mm_data_item* item = d.data.items[0]
 	assert_strings_equal(c"title source", item.id)
 	mm_document_free(d)
+
+void test_data_numeric_xy_and_keyed_radar():
+	mm_document* d = data_parse(c"xychart-beta\nx-axis \"Year\" 2020 --> 2022\ny-axis 0 --> 10\nline [2 \"Start\",5,8 \"End\"]\n")
+	assert_equal(1, d.data.x_numeric)
+	assert_equal(2020000, d.data.x_low)
+	assert_equal(2022000, d.data.x_high)
+	mm_scene* s = mm_render(d)
+	int left = 0
+	int right = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_CIRCLE && p.x == 137): left = 1
+		if (p.kind == MM_CIRCLE && p.x == 737): right = 1
+	asserts(c"numeric x range spans endpoints", left && right)
+	char* svg = mm_svg(s)
+	asserts(c"numeric x tick labels", index_of(svg, c">2021</text>") >= 0)
+	asserts(c"XY point annotations", index_of(svg, c">Start</text>") >= 0 && index_of(svg, c">End</text>") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	d = data_parse(c"radar-beta\naxis a,b,c\ncurve sample{c:3, a:1, b:2}\n")
+	mm_data_item* curve = d.data.items[3]
+	assert_equal(1000, curve.values[0])
+	assert_equal(2000, curve.values[1])
+	assert_equal(3000, curve.values[2])
+	mm_document_free(d)
+	d = data_parse(c"quadrantChart\nA: [.5, .25]\n")
+	mm_document_free(d)
+	data_bad(c"xychart-beta\nx-axis 3 --> 1\nline [1,2]\n")
+	data_bad(c"xychart-beta\nx-axis [A,B]\nx-axis 1 --> 2\nline [1,2]\n")
+	data_bad(c"radar-beta\naxis a,b,c\ncurve x{a:1,b:2}\n")
+	data_bad(c"radar-beta\naxis a,b,c\ncurve x{a:1,b:2,c:3,a:1}\n")
+	data_bad(c"radar-beta\naxis a,b,c\ncurve x{a:1,b:2,d:3}\n")
+
+void test_data_entry_and_series_limits():
+	string_builder* text = string_from(c"pie\n")
+	for i in range(257):
+		string_append_char(text, '"')
+		string_append_int(text, i)
+		string_append(text, c"\":1\n")
+	data_bad(text.data)
+	string_free(text)
+	text = string_from(c"xychart-beta\nline [")
+	for i in range(257):
+		if (i != 0): string_append_char(text, ',')
+		string_append_char(text, '1')
+	string_append(text, c"]\n")
+	data_bad(text.data)
+	string_free(text)
