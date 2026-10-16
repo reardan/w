@@ -7,6 +7,45 @@ const int MM_FLOW = 1
 const int MM_ER = 2
 const int MM_CLASS = 3
 const int MM_STATE = 4
+const int MM_PIE = 40
+const int MM_QUADRANT = 41
+const int MM_XY = 42
+const int MM_SANKEY = 43
+const int MM_RADAR = 44
+const int MM_TREEMAP = 45
+const int MM_VENN = 46
+const int MM_PACKET = 47
+
+# Data chart values use signed fixed-point thousandths. Counts and bit indices
+# are plain integers; interpretation is determined by document and item kind.
+struct mm_data_item:
+	char* id
+	char* label
+	char* target
+	int kind
+	int a
+	int b
+	int parent
+	int depth
+	list[int] values
+
+struct mm_data_chart:
+	char* title
+	char* x_label
+	char* x_end
+	char* y_label
+	char* y_end
+	list[mm_data_item*] items
+	int low
+	int high
+	int explicit_low
+	int explicit_high
+	int horizontal
+	int show_data
+	int ticks
+	int polygon
+	int legend
+
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
@@ -69,6 +108,7 @@ struct mm_document:
 	char* accessibility_description
 	int source_start
 	int source_end
+	mm_data_chart* data
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -142,6 +182,20 @@ void mm_document_free(mm_document* d):
 		free(e)
 	__w_list_free(cast(__w_list*, d.nodes))
 	__w_list_free(cast(__w_list*, d.edges))
+	if (d.data != 0):
+		for mm_data_item* item in d.data.items:
+			free(item.id)
+			free(item.label)
+			free(item.target)
+			__w_list_free(cast(__w_list*, item.values))
+			free(item)
+		__w_list_free(cast(__w_list*, d.data.items))
+		free(d.data.title)
+		free(d.data.x_label)
+		free(d.data.x_end)
+		free(d.data.y_label)
+		free(d.data.y_end)
+		free(d.data)
 	free(d.source)
 	free(d.title)
 	free(d.accessibility_title)

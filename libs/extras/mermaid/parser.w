@@ -2,6 +2,7 @@
 import libs.extras.mermaid.parse_common
 import libs.extras.mermaid.uml
 import libs.extras.mermaid.source
+import libs.extras.mermaid.data_parse
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -246,13 +247,34 @@ mm_document* mm_parse_raw(char* source, int length):
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
 		mm_match(&p, c"-v2")
+	else if (strcmp(header, c"pie") == 0): d.kind = MM_PIE
+	else if (strcmp(header, c"quadrantChart") == 0): d.kind = MM_QUADRANT
+	else if (strcmp(header, c"xychart") == 0): d.kind = MM_XY
+	else if (strcmp(header, c"sankey") == 0): d.kind = MM_SANKEY
+	else if (strcmp(header, c"radar") == 0): d.kind = MM_RADAR
+	else if (strcmp(header, c"treemap") == 0): d.kind = MM_TREEMAP
+	else if (strcmp(header, c"venn") == 0): d.kind = MM_VENN
+	else if (strcmp(header, c"packet") == 0): d.kind = MM_PACKET
 	else: mm_error(d, 0, c"unsupported diagram type; supported: flowchart, graph, erDiagram, classDiagram, stateDiagram-v2")
 	free(header)
+	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
+		mm_data_chart* chart = mm_data_new(d)
+		if (d.kind != MM_PIE && d.kind != MM_QUADRANT): mm_match(&p, c"-beta")
+		mm_space(&p)
+		if (d.kind == MM_PIE): chart.show_data = mm_match(&p, c"showData")
+		if (d.kind == MM_XY): chart.horizontal = mm_match(&p, c"horizontal")
+		mm_space(&p)
+		if (mm_match(&p, c"title ")):
+			free(chart.title)
+			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
 	mm_separators(&p)
 	if (d.kind == MM_FLOW || d.kind == MM_ER):
 		mm_flow_body(&p, 0)
+		return d
+	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
+		mm_data_body(&p)
 		return d
 	if (d.kind == MM_CLASS || d.kind == MM_STATE):
 		mm_uml_body(&p, -1, 0)
