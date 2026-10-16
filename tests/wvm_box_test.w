@@ -21,7 +21,7 @@ void test_box_policy():
 	options.kernel = c"kernel with spaces"
 	options.initrd = c"root.cpio"
 	char** command = box_command(options, c"qemu")
-	asserts(c"KVM required", box_test_has(command, c"microvm,accel=kvm"))
+	asserts(c"KVM with in-kernel IOAPIC required", box_test_has(command, c"microvm,accel=kvm,kernel-irqchip=on,ioapic2=off"))
 	asserts(c"kernel argument preserved", box_test_has(command, options.kernel))
 	assert_equal(0, box_test_has(command, c"-netdev"))
 	assert_equal(0, box_test_has(command, c"-fsdev"))
