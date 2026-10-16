@@ -2711,6 +2711,12 @@ rollback, S2.3 re-parse, C3.1 recovery and `--all-errors` are unchanged.
   Now it records the rest of the buffered window when it reaches a byte
   the version has not recorded (`retained_source_window`). A refill
   records the whole window, and so does `ast_expression_refill`'s read.
+  Before that read, the refill records whatever of the bytes it keeps lies
+  past the recorded end (`retained_source_window_tail`): a diagnostic's
+  context line re-reads the file through `getchar` and can leave the
+  window ending past what was recorded, and recording the read at the
+  window's end would otherwise leave a zero-filled hole that a later
+  re-read reports as changed source.
   Bytes already recorded are compared, as before. Growth no longer
   zero-fills.
 - **Smaller costs.**

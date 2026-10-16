@@ -398,6 +398,9 @@ int ast_expression_refill(int start):
 		for i in range(kept): bytes[i] = bytes[index + i]
 	getchar_pos[file] = getchar_pos[file] - index
 	getchar_limit[file] = kept
+	# P1.2b: the read below is recorded at the window's end, so the kept
+	# bytes must already be recorded through it (retained_source_window_tail).
+	if (retained_source_window_tail(filename, getchar_kernel_pos[file] - kept, bytes, kept) == 0): error(c"source changed during retained AST traversal")
 	int count = read(file, bytes + kept, room)
 	if (count <= 0): return count
 	if (count > 2147483584 - getchar_kernel_pos[file]): error(c"expression source exceeds addressable offsets")

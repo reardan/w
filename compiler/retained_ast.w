@@ -837,6 +837,29 @@ int retained_source_window(char* path, int offset, char* bytes, int count):
 	return 1
 
 
+# Record the part of a buffered window, count bytes at file offset offset,
+# that lies past the version's recorded end. A window is normally recorded
+# through its end when it is read, but a reader that bypasses getc can
+# refill the descriptor and seek back into the new window: the diagnostic
+# context line (compiler/tokenizer.w, diag_context_collect) re-reads the
+# file from offset 0, which can leave the window aligned to a different
+# read boundary than the one the lexer recorded. getc still records such a
+# tail lazily when it reaches it, but ast_expression_refill appends a read
+# at the window's end and must first record what lies between, or the
+# version keeps a zero-filled hole there that a later re-read (a rotated
+# while loop's condition, a retained re-parse) mistakes for changed
+# source. Bytes already recorded were compared when they were read, so
+# only the tail is passed on. Returns 0 when a byte differs.
+int retained_source_window_tail(char* path, int offset, char* bytes, int count):
+	if (ast_retain_mode == 0): return 1
+	if ((path == 0) || (offset < 0) || (count <= 0)): return 1
+	if (retained_last_path != path): retained_source_id(path)
+	int skip = retained_last_record.length - offset
+	if (skip <= 0): return retained_source_window(path, offset, bytes, count)
+	if (skip >= count): return 1
+	return retained_source_window(path, offset + skip, bytes + skip, count - skip)
+
+
 int retained_enter_interned(int kind, char* path, int start, int line, int column, char* name):
 	if (ast_retain_mode == 0): return -1
 	int source = retained_source_id(path)
