@@ -547,6 +547,7 @@ int asm_entry_pending
 
 
 void be_function_define(int current_symbol, char* name):
+	wgrind_function_define(current_symbol, name)
 	if (asm_entry_pending && (asm_entry_symbol == current_symbol)):
 		asm_entry_pending = 0
 		return
@@ -603,6 +604,7 @@ void be_function_epilogue():
 void be_function_prologue():
 	be_frame_active = 0
 	int prologue_start = codepos
+	wgrind_function_enter()
 	if (target_isa == 2): wasm_function_begin()
 	elif (target_isa == 1):
 		# Sign x30 with the W stack pointer at entry; the framed return

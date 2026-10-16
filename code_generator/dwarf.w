@@ -110,6 +110,7 @@ void debug_line_note_in(char* source, int line, int stmt_stack_pos):
 	if (debug_line_count >= debug_line_capacity): return;
 
 	int file_index = debug_line_file_index_of(source)
+	wgrind_emit_request(5, file_index, line)
 
 	if (debug_line_count > 0):
 		int prev = debug_line_count - 1

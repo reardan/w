@@ -7,19 +7,52 @@ import lib.process
 int main(int argc, char** argv):
 	int first = 1
 	int native = 0
+	int execute = 0
 	if ((argc > 1) && (strcmp(argv[1], c"--native") == 0)):
 		native = 1
 		first = 2
+	elif ((argc > 1) && (strcmp(argv[1], c"--native-exec") == 0)):
+		execute = 1
+		first = 2
 	if ((argc <= first) || (strcmp(argv[first], c"--help") == 0)):
-		println2(c"usage: wgrind [--native] <executable> [arguments...]")
+		println2(c"usage: wgrind [--native|--native-exec] <executable> [arguments...]")
 		println2(c"default: Valgrind Memcheck, origins, leaks, error exit 99 (Linux x86/x64)")
 		println2(c"--native: guard pages and canaries, no Valgrind dependency")
+		println2(c"--native-exec: Linux x64 instruction checking (experimental; requires wgrind_native)")
+		println2(c"native-exec errors: 99; unsupported/incomplete checking: 100; no fallback")
 		if (argc > first): return 0
 		return 2
 	char* program = process_which(argv[first])
 	if (program == 0):
 		println2(c"wgrind: executable not found")
 		return 127
+	if (execute):
+		# Resolve beside this launcher first so a repository build does not
+		# require bin/ on PATH. An explicit PATH installation works too.
+		char* runner = 0
+		int slash = -1
+		for i in range(strlen(argv[0])):
+			if (argv[0][i] == '/'): slash = i
+		if (slash >= 0):
+			char* prefix = cast(char*, malloc(slash + 2))
+			for i in range(slash + 1): prefix[i] = argv[0][i]
+			prefix[slash + 1] = 0
+			char* candidate = strjoin(prefix, c"wgrind_native")
+			runner = process_which(candidate)
+			free(prefix)
+			free(candidate)
+		if (runner == 0): runner = process_which(c"wgrind_native")
+		if (runner == 0):
+			println2(c"wgrind: native executor not found; build with ./wbuild wgrind_native")
+			return 100
+		char** args = strv_new(argc - first + 2)
+		strv_set(args, 0, runner)
+		strv_set(args, 1, c"--")
+		strv_set(args, 2, program)
+		for i in range(first + 1, argc): strv_set(args, 2 + i - first, argv[i])
+		execve(runner, args, env_current())
+		println2(c"wgrind: cannot execute native checker")
+		return 100
 	char** envp = env_copy_with(env_current(), c"W_DEBUG_ALLOC", c"1")
 	if (native):
 		execve(program, argv + first * __word_size__, envp)
