@@ -76,13 +76,31 @@ void extension_fallthrough(refmut int* log):
 	defer extension_consume(pair, log)
 
 
+int extension_observe_deferred():
+	int log = 0
+	if extension_deferred(&log) != 5: return 1
+	if log != 51: return 2
+	return 0
+
+
+int extension_observe_paths():
+	int log = 0
+	if extension_defer_nested_return(&log, 0) != 0: return 16
+	if log != 7: return 17
+	log = 0
+	if extension_defer_nested_return(&log, 4) != 5: return 18
+	if log != 7: return 19
+	log = 0
+	extension_fallthrough(&log)
+	if log != 9: return 20
+	return 0
+
+
 int main():
 	int before = debug_alloc_report_leaks()
 	int tail = debug_quarantine_tail
 	int sequence = debug_alloc_sequence
-	int log = 0
-	if extension_deferred(&log) != 5: return 1
-	if log != 51: return 2
+	if extension_observe_deferred() != 0: return 1
 	if debug_alloc_sequence != sequence + 3: return 3
 	int link = debug_quarantine_head
 	if tail: link = debug_tbl_next[tail - 1]
@@ -100,13 +118,5 @@ int main():
 	if extension_nested_exits(2) != 3: return 13
 	if extension_nested_exits(4) != 17: return 14
 	if extension_nested_exits(5) != 17: return 15
-	log = 0
-	if extension_defer_nested_return(&log, 0) != 0: return 16
-	if log != 7: return 17
-	log = 0
-	if extension_defer_nested_return(&log, 4) != 5: return 18
-	if log != 7: return 19
-	log = 0
-	extension_fallthrough(&log)
-	if log != 9: return 20
+	if extension_observe_paths() != 0: return 21
 	return debug_alloc_report_leaks() - before

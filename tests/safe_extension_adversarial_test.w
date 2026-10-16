@@ -102,7 +102,7 @@ void test_safe_extension_range_backedges():
 	safe_extension_case(c"int main():\n\town int* p = new int\n\tref int* r = p\n\tfor i in range(2):\n\t\tint value = *r\n\t\t*p = value + 1\n\treturn 0\n", c"conflicting")
 	safe_extension_case(c"int main():\n\town int* p = new int\n\tint result\n\tfor i in range(0):\n\t\tresult = i\n\treturn result\n", c"uninitialized")
 	safe_extension_case(c"int main():\n\town int* p = new int\n\tfor i in range(1):\n\t\town int* moved = p\n\t\tbreak\n\treturn *p\n", c"moved value")
-	safe_extension_case(c"int main():\n\town int* p = new int\n\tint total = 0\n\tfor i in range(5, 0, -2):\n\t\town int* local = new int\n\t\t*local = i\n\t\ttotal = total + *local\n\treturn total - 9\n", 0)
+	safe_extension_case(c"int main():\n\town int* p = new int\n\tint total = 0\n\tfor i in range(1, 6, 2):\n\t\town int* local = new int\n\t\t*local = i\n\t\ttotal = total + *local\n\treturn total - 9\n", 0)
 
 
 void test_safe_extension_switch_order():
@@ -125,32 +125,32 @@ void test_safe_extension_defer_order():
 
 
 void test_safe_extension_defer_liveness():
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tref int* r = p\n\tdefer read(r)\n\t*p = 7\n\treturn 0\n", c"conflicting")
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer read(p)\n\town int* moved = p\n\treturn 0\n", c"moved value")
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nown int* bad():\n\town int* p = new int\n\tdefer read(p)\n\treturn p\nint main():\n\town int* p = bad()\n\treturn 0\n", c"moved value")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tref int* r = p\n\tdefer probe_read(r)\n\t*p = 7\n\treturn 0\n", c"conflicting")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer probe_read(p)\n\town int* moved = p\n\treturn 0\n", c"moved value")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nown int* bad():\n\town int* p = new int\n\tdefer probe_read(p)\n\treturn p\nint main():\n\town int* p = bad()\n\treturn 0\n", c"moved value")
 	safe_extension_case(c"int consume(own int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer consume(p)\n\tdefer consume(p)\n\treturn 0\n", c"moved value")
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint consume(own int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer read(p)\n\tdefer consume(p)\n\treturn 0\n", c"moved value")
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint consume(own int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer consume(p)\n\tdefer read(p)\n\treturn 0\n", 0)
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tif *p:\n\t\tdefer read(p)\n\treturn 0\n", c"safe:")
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tfor i in range(2):\n\t\tdefer read(p)\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint consume(own int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer probe_read(p)\n\tdefer consume(p)\n\treturn 0\n", c"moved value")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint consume(own int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer consume(p)\n\tdefer probe_read(p)\n\treturn 0\n", 0)
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tif *p:\n\t\tdefer probe_read(p)\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tfor i in range(2):\n\t\tdefer probe_read(p)\n\treturn 0\n", c"safe:")
 
 
 void test_safe_extension_optional_guards():
-	safe_extension_case(c"int read(optref int* p):\n\tif p == 0: return 0\n\treturn *p\nint main():\n\tint value = 7\n\toptref int* p = &value\n\treturn read(p) + read(0) - 7\n", 0)
-	safe_extension_case(c"int read(optref int* p):\n\tif p != 0: return *p\n\treturn 0\nint main():\n\tint value = 7\n\treturn read(&value) + read(0) - 7\n", 0)
-	safe_extension_case(c"int read(optref int* p):\n\tif !p: return 0\n\tref int* present = p\n\treturn *present\nint main():\n\tint value = 7\n\treturn read(&value) + read(0) - 7\n", 0)
-	safe_extension_case(c"int read(optref int* p):\n\tif p:\n\t\treturn *p\n\telse:\n\t\treturn 0\nint main():\n\tint value = 7\n\treturn read(&value) + read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p == 0: return 0\n\treturn *p\nint main():\n\tint value = 7\n\toptref int* p = &value\n\treturn probe_read(p) + probe_read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p != 0: return *p\n\treturn 0\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif !p: return 0\n\tref int* present = p\n\treturn *present\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p:\n\t\treturn *p\n\telse:\n\t\treturn 0\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0) - 7\n", 0)
 	safe_extension_case(c"optref int* maybe(ref int* p, int yes):\n\tif yes: return p\n\treturn 0\nint main():\n\tint value = 7\n\toptref int* p = maybe(&value, 0)\n\treturn *p\n", c"presence check")
-	safe_extension_case(c"int read(optref int* p):\n\tif p == 0: return *p\n\treturn 0\nint main():\n\treturn read(0)\n", c"presence check")
-	safe_extension_case(c"int read(ref int* p):\n\treturn *p\nint checked(optref int* p):\n\treturn read(p)\nint main():\n\treturn checked(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p == 0: return *p\n\treturn 0\nint main():\n\treturn probe_read(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint checked(optref int* p):\n\treturn probe_read(p)\nint main():\n\treturn checked(0)\n", c"presence check")
 
 
 void test_safe_extension_optional_joins():
-	safe_extension_case(c"int read(optref int* p, int n):\n\tif p:\n\t\tif n: p = 0\n\t\treturn *p\n\treturn 0\nint main():\n\treturn read(0, 1)\n", c"presence check")
-	safe_extension_case(c"int read(optref int* p):\n\tif p:\n\t\tp = 0\n\t\treturn *p\n\treturn 0\nint main():\n\treturn read(0)\n", c"presence check")
-	safe_extension_case(c"int read(optref int* p):\n\tif p:\n\t\tint n = 2\n\t\twhile n:\n\t\t\tint value = *p\n\t\t\tp = 0\n\t\t\tn = n - 1\n\treturn 0\nint main():\n\treturn read(0)\n", c"presence check")
-	safe_extension_case(c"int read(optref int* p):\n\tint result = 0\n\twhile p:\n\t\tresult = *p\n\t\tp = 0\n\treturn result\nint main():\n\tint value = 7\n\treturn read(&value) + read(0) - 7\n", 0)
-	safe_extension_case(c"int read(optref int* p):\n\tif p:\n\t\tint value = *p\n\treturn *p\nint main():\n\treturn read(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p, int n):\n\tif p:\n\t\tif n: p = 0\n\t\treturn *p\n\treturn 0\nint main():\n\treturn probe_read(0, 1)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p:\n\t\tp = 0\n\t\treturn *p\n\treturn 0\nint main():\n\treturn probe_read(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p:\n\t\tint n = 2\n\t\twhile n:\n\t\t\tint value = *p\n\t\t\tp = 0\n\t\t\tn = n - 1\n\treturn 0\nint main():\n\treturn probe_read(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p):\n\tint result = 0\n\twhile p:\n\t\tresult = *p\n\t\tp = 0\n\treturn result\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p:\n\t\tint value = *p\n\treturn *p\nint main():\n\treturn probe_read(0)\n", c"presence check")
 
 
 void test_safe_extension_optional_origins():
@@ -162,9 +162,9 @@ void test_safe_extension_optional_origins():
 
 void test_safe_extension_optional_mutability():
 	safe_extension_case(c"void update(optrefmut int* p):\n\tif p:\n\t\t*p = 7\nint main():\n\tint value = 0\n\tupdate(&value)\n\tupdate(0)\n\treturn value - 7\n", 0)
-	safe_extension_case(c"void update(optref int* p):\n\tif p:\n\t\t*p = 7\nint main():\n\treturn 0\n", c"shared reference")
+	safe_extension_case(c"void update(optref int* p):\n\tif p:\n\t\t*p = 7\nint main():\n\treturn 0\n", c"assignment to const")
 	safe_extension_case(c"int main():\n\tint value = 0\n\toptrefmut int* p = &value\n\toptref int* q = p\n\tif p:\n\t\t*p = 7\n\tif q: return *q\n\treturn 0\n", c"conflicting")
-	safe_extension_case(c"int main():\n\tint value = 0\n\toptref int* p = &value\n\tif p:\n\t\trefmut int* q = p\n\t\t*q = 7\n\treturn 0\n", c"shared")
+	safe_extension_case(c"int main():\n\tint value = 0\n\toptref int* p = &value\n\tif p:\n\t\trefmut int* q = p\n\t\t*q = 7\n\treturn 0\n", c"shared", 1)
 
 
 # A bounded interaction generator varies whether a loop reaches only continue,
@@ -189,3 +189,24 @@ void test_safe_extension_generated_exit_paths():
 		free(start)
 		free(result)
 		free(bound)
+
+void test_safe_extension_defer_returned_borrows():
+	safe_extension_case(c"void mutate(refmut int* p):\n\t*p = 7\nref int* view(refmut int* p):\n\tdefer mutate(p)\n\treturn p\nint main():\n\tint value = 3\n\tref int* p = view(&value)\n\treturn *p\n", c"conflicting")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nrefmut int* view(refmut int* p):\n\tdefer probe_read(p)\n\treturn p\nint main():\n\tint value = 3\n\trefmut int* p = view(&value)\n\treturn *p\n", c"conflicting")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nref int* view(ref int* p):\n\tdefer probe_read(p)\n\treturn p\nint main():\n\tint value = 3\n\tref int* p = view(&value)\n\treturn *p - 3\n", 0)
+
+
+void test_safe_extension_optional_conditions():
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p && *p == 7: return 7\n\treturn 0\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif !p || *p == 7: return 0\n\treturn 1\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0)\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p || *p == 7: return 0\n\treturn 1\nint main():\n\treturn probe_read(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif !p && *p == 7: return 0\n\treturn 1\nint main():\n\treturn probe_read(0)\n", c"presence check")
+	safe_extension_case(c"int probe_read(optref int* p):\n\treturn p ? *p : 0\nint main():\n\tint value = 7\n\treturn probe_read(&value) + probe_read(0) - 7\n", 0)
+	safe_extension_case(c"int probe_read(optref int* p):\n\treturn p ? 0 : *p\nint main():\n\treturn probe_read(0)\n", c"presence check")
+	safe_extension_case(c"int main():\n\toptref int* p = 0\n\tint n = 1\n\tif n:\n\t\tint local = 7\n\t\tp = &local\n\tif p: return *p\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\tint value = 7\n\toptref int* p = &value\n\toptref int* q = p\n\tp = 0\n\tif q: return *q - 7\n\treturn 1\n", 0)
+
+
+void test_safe_extension_optional_cleared_parent():
+	safe_extension_case(c"int main():\n\town int* p = new int\n\toptrefmut int* mutable = p\n\toptref int* shared = mutable\n\tmutable = 0\n\t*p = 7\n\tif shared: return *shared\n\treturn 0\n", c"conflicting")
+	safe_extension_case(c"int main():\n\town int* p = new int\n\t*p = 7\n\toptrefmut int* mutable = p\n\toptref int* shared = mutable\n\tmutable = 0\n\tint old = *p\n\tif shared: return old + *shared - 14\n\treturn 1\n", 0)
