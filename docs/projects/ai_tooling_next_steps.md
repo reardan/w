@@ -1384,3 +1384,11 @@ the cache assertions.
   block comment that closed inside what looks like prose (or the next
   "code" line starts with `-`/`#` text), add a related note pointing at
   the `*/` that closed it.
+## `check --json` arch label for arm64 (2026-10-16, stdlib parity P2.2)
+
+`./bin/wv2 arm64 check --json file.w` prints "Compiling in arm64 mode"
+and resolves `lib/__arch__/arm64/` imports, but each NDJSON diagnostic
+carries `"arch": "x64"`, so a consumer filtering or grouping diagnostics
+by target cannot tell an arm64 finding from an x64 one. Direction: emit
+the selected target name (`arm64`, `arm64_darwin`, ...) rather than the
+word-size family.
