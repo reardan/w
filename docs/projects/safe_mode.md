@@ -457,7 +457,7 @@ Whole-binding replacement drops the old owner exactly once. The checker joins
 old and new borrowed origins conservatively, including across loops; replacing
 an owner does not necessarily release its old external loans before its last
 use. Borrowing an owned child reserves the whole containing allocation.
-Reference-field/owned-field replacement, partial moves, optional borrowed
+Reference-field replacement, partial moves, optional borrowed
 fields, and whole mixed-owner `refmut Record*` views remain rejected
 pending their separate implementation gates. Shared whole-owner views are
 described below. Raw/unannotated mixed
@@ -501,6 +501,39 @@ expression does not read the old binding. Child views still prevent conflicting
 replacement. A replacement cannot borrow through the old owner or a view derived
 from it: that would create a cycle in borrow ancestry. Provenance joins remain
 conservative across replacement and loops.
+
+### Replacing an owned field
+
+A direct owned field of a named unique owner can be replaced:
+
+```w
+struct Pair:
+	own int* first
+	own int* second
+
+int main():
+	own Pair* pair = new Pair(new int, new int)
+	pair.first = new int
+	return 0
+```
+
+The destination address and replacement are evaluated once. The old field and
+its owned descendants are destroyed before the replacement is installed. The
+containing allocation stays reserved throughout evaluation, so an argument
+cannot consume it and leave a dangling destination. Existing child borrows
+still reserve the whole owner and prevent replacement.
+
+Replacing an owned child that carries external references joins its origins
+into the enclosing lifetime groups. A group retained by a sibling field remains
+reserved. A group belonging only to the replaced field can release its old loan
+during evaluation when the replacement does not read the containing owner.
+Origins join conservatively across branches and loops. A replacement cannot
+borrow its containing allocation or introduce a cycle through a view derived
+from that owner.
+
+Replacement through a borrowed receiver, a temporary, or a nested owned-field
+receiver remains rejected. Reference-field replacement, disjoint child borrows
+and partial moves have separate required gates under #695.
 
 ### Shared views of mixed owners
 
