@@ -186,3 +186,128 @@ void test_gaussian_scaled():
 	float stddev = 2.0
 	float scaled = rand_gaussian_scaled(&b, mean, stddev)
 	assert_equal_hex(float_bits(mean + stddev * plain), float_bits(scaled))
+
+
+# n zeroed words (8 bytes each covers both word sizes), caller frees.
+int* rand_test_zeros(int n):
+	int* p = cast(int*, malloc(n * 8))
+	for i in range(n): p[i] = 0
+	return p
+
+
+# rand_range goldens off seed 42 (range(-50, 51, 5)), captured on the
+# 32-bit target and identical on x64: a pure function of the next31 stream.
+void test_range_goldens():
+	rand_state r
+	rand_init(&r, 42)
+	assert_equal(40, rand_range(&r, -50, 51, 5))
+	assert_equal(20, rand_range(&r, -50, 51, 5))
+	assert_equal(-20, rand_range(&r, -50, 51, 5))
+	assert_equal(40, rand_range(&r, -50, 51, 5))
+	assert_equal(45, rand_range(&r, -50, 51, 5))
+	assert_equal(-35, rand_range(&r, -50, 51, 5))
+	assert_equal(-30, rand_range(&r, -50, 51, 5))
+	assert_equal(-25, rand_range(&r, -50, 51, 5))
+
+
+# Every draw lands on start + k*step, inside the half-open range, and
+# every member of a small range is hit (Python randrange semantics).
+void test_range_step_membership():
+	rand_state r
+	rand_init(&r, 11)
+	int* hits = rand_test_zeros(4)
+	for i in range(2000):
+		int v = rand_range(&r, 0, 10, 3)   # 0, 3, 6, 9
+		assert1((v >= 0) && (v < 10))
+		assert_equal(0, v % 3)
+		hits[v / 3] = hits[v / 3] + 1
+	for i in range(4): assert1(hits[i] > 350)
+
+	int* neg = rand_test_zeros(4)
+	for i in range(2000):
+		int w = rand_range(&r, 10, 0, -3)   # 10, 7, 4, 1
+		assert1((w > 0) && (w <= 10))
+		assert_equal(1, w % 3)
+		neg[(10 - w) / 3] = neg[(10 - w) / 3] + 1
+	for i in range(4): assert1(neg[i] > 350)
+	free(neg)
+	free(hits)
+
+	# Single-element ranges, including a step that overshoots stop.
+	for i in range(50):
+		assert_equal(5, rand_range(&r, 5, 6, 1))
+		assert_equal(-7, rand_range(&r, -7, -3, 100))
+		assert_equal(3, rand_range(&r, 3, 2, -1))
+
+
+void test_uniform_bounds():
+	rand_state r
+	rand_init(&r, 3)
+	for i in range(2000):
+		float x = rand_uniform(&r, -2.0, 6.0)
+		assert1((x >= -2.0) && (x <= 6.0))
+	# Reversed bounds draw from the same interval.
+	for i in range(500):
+		float y = rand_uniform(&r, 1.0, 0.5)
+		assert1((y >= 0.5) && (y <= 1.0))
+
+
+# Mean of Exp(lambd) is 1 / lambd; 20,000 draws at lambd = 2 should sit
+# well within 0.45 .. 0.55, and every draw is non-negative.
+void test_expovariate_mean():
+	rand_state r
+	rand_init(&r, 99)
+	float sum = 0.0
+	for i in range(20000):
+		float x = rand_expovariate(&r, 2.0)
+		assert1(x >= 0.0)
+		sum = sum + x
+	float mean = sum / 20000.0
+	assert1((mean > 0.45) && (mean < 0.55))
+	# Negative rate mirrors the distribution onto (-inf, 0].
+	for i in range(200): assert1(rand_expovariate(&r, -1.0) <= 0.0)
+
+
+void test_shuffle_golden_and_permutation():
+	rand_state r
+	rand_init(&r, 42)
+	int* v = rand_test_zeros(10)
+	for i in range(10): v[i] = i
+	rand_shuffle(&r, v, 10)
+	list[int] want = list[int]{7, 1, 9, 0, 8, 6, 4, 3, 5, 2}
+	for i in range(10): assert_equal(want[i], v[i])
+	free(v)
+
+	# n of 0 and 1 are no-ops and consume no draws.
+	rand_state a
+	rand_init(&a, 5)
+	rand_state b
+	rand_init(&b, 5)
+	int* one = rand_test_zeros(1)
+	one[0] = 77
+	rand_shuffle(&a, one, 1)
+	rand_shuffle(&a, one, 0)
+	assert_equal(77, one[0])
+	free(one)
+	assert_equal(rand_next31(&b), rand_next31(&a))
+
+
+# Each of the 6 orderings of three elements shows up in a 6000-shuffle
+# run roughly 1000 times (loose 800..1200 band).
+void test_shuffle_uniform_over_permutations():
+	rand_state r
+	rand_init(&r, 2024)
+	int* counts = rand_test_zeros(6)
+	int* v = rand_test_zeros(3)
+	for t in range(6000):
+		v[0] = 0
+		v[1] = 1
+		v[2] = 2
+		rand_shuffle(&r, v, 3)
+		# Encode the permutation as first*2 + (second > third).
+		int code = v[0] * 2
+		if (v[1] > v[2]): code = code + 1
+		counts[code] = counts[code] + 1
+	for i in range(6): assert1((counts[i] > 800) && (counts[i] < 1200))
+	free(v)
+	free(counts)
