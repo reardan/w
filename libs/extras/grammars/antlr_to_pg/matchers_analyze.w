@@ -624,7 +624,7 @@ void at_emit_nested_block_comment_function(char* fn_name, char* open, int open_l
 	string_append(g_matchers_out, c"\tint _start = index\n")
 	at_emit_lit_prefix_check(g_matchers_out, open, open_len, fail)
 	string_append(g_matchers_out, c"\tint depth = 1\n")
-	string_append(g_matchers_out, c"\twhile ((depth > 0) & (input[index] != 0)):\n")
+	string_append(g_matchers_out, c"\twhile ((depth > 0) && (input[index] != 0)):\n")
 	# nested open?
 	string_append(g_matchers_out, c"\t\tint is_open = 1\n")
 	int i = 0
