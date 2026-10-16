@@ -80,6 +80,7 @@ import lib.transport_tls
 # Explicit clients own at most one active stream. Separate instances can run
 # concurrently in tasks; one instance must be serialized by its caller.
 struct http_client:
+	tls_session_cache* sessions
 	void* active
 	int closed
 
@@ -450,6 +451,7 @@ void http_response_free(http_response* resp):
    insecure connection is never reused for a verifying request. A cached TLS
    connection keeps its tls_conn (keys live) and owning tls_config. */
 
+tls_session_cache* http_tls_sessions
 char* http_idle_host
 int http_idle_port
 int http_idle_fd
@@ -528,6 +530,10 @@ ConnectionContext* http_conn_new(int fd, int timeout_ms):
 # config). The config must outlive the tls_conn that borrows it.
 tls_config* http_build_tls_config(http_req* req):
 	tls_config* cfg = tls_config_new()
+	if (req.client != 0): cfg.session_cache = req.client.sessions
+	else:
+		if (http_tls_sessions == 0): http_tls_sessions = tls_session_cache_new()
+		cfg.session_cache = http_tls_sessions
 	cfg.trust_store_path = req.tls_trust_store_path
 	cfg.insecure_skip_verify = req.tls_insecure_skip_verify
 	if (req.tls_has_now_unix != 0):
@@ -1105,6 +1111,7 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 				if (remaining < 0): remaining = 0
 				if (req.tls_handshake_timeout_ms > 0 && req.tls_handshake_timeout_ms < remaining): remaining = req.tls_handshake_timeout_ms
 				tls_cfg = http_build_tls_config(req)
+				tls_cfg.server_port = u.port
 				checked = transport_tls_connect(fd, u.host, tls_cfg, remaining, &result)
 				char* detail = tls_last_error(tls_cfg)
 				tls_config_free(tls_cfg)
@@ -1138,6 +1145,7 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			socket_set_recv_timeout(fd, hs_timeout)
 			socket_set_send_timeout(fd, hs_timeout)
 			tls_cfg = http_build_tls_config(req)
+			tls_cfg.server_port = u.port
 			tls = tls_connect_timeout(fd, u.host, tls_cfg, hs_timeout)
 			if (tls == 0):
 				char* detail = tls_last_error(tls_cfg)
@@ -1394,7 +1402,7 @@ http_response* http_get(char* target):
 
 
 http_client* http_client_new():
-	return new http_client(0, 0)
+	return new http_client(tls_session_cache_new(), 0, 0)
 
 
 # Cancels/tears down the active connection. The caller still owns its
@@ -1408,9 +1416,11 @@ void http_client_close(http_client* client):
 		http_stream_release_conn(s)
 		s.owner = 0
 		client.active = 0
+	tls_session_cache_clear(client.sessions)
 
 
 void http_client_free(http_client* client):
 	if (client == 0): return
 	http_client_close(client)
+	tls_session_cache_free(client.sessions)
 	free(client)

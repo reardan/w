@@ -95,7 +95,10 @@ browser  --https/JSON-->  bin/wdbg_web (x64)  --pipes-->  bin/wdbg prog.w
   poll(2) loop over the listener, every connection and wdbg's pipes, and
   serves one request from whichever connection is readable. TLS
   handshakes still block, but only after the client has started one.
-  The pure-W handshake costs a few seconds of CPU, so keep-alive matters:
+  The pure-W full handshake costs a few seconds of CPU, so keep-alive matters.
+  HTTP also retains TLS 1.3 tickets for PSK resumption when a new connection is
+  needed (including deadline-bound requests); servers must issue and accept
+  tickets for that optimization:
   a page load is typically one or two handshakes.
 
 ## Not in v1 / next steps
