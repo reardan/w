@@ -93,11 +93,20 @@ int safe_unqualified(int type):
 	return type
 
 
+int safe_same_nominal(int a, int b):
+	a = safe_unqualified(a)
+	b = safe_unqualified(b)
+	if ((a < 0) || (b < 0)): return 0
+	retained_type* left = retained_types[a]
+	retained_type* right = retained_types[b]
+	return (strcmp(left.name, right.name) == 0) && (left.file_index == right.file_index) && (left.line == right.line) && (left.column == right.column)
+
+
 int safe_kind(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
-	if (kind == type_kind_safe_slice): return 2
+	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	return 0
 
@@ -110,6 +119,8 @@ int safe_contains_checked(int type, int depth):
 	if (safe_contains_checked(t.return_type, depth + 1)): return 1
 	for i in range(t.parameters.length):
 		if (safe_contains_checked(t.parameters[i], depth + 1)): return 1
+	for i in range(t.fields.length):
+		if (safe_contains_checked(t.fields[i].type, depth + 1)): return 1
 	return 0
 
 
@@ -123,6 +134,12 @@ int safe_inline_slice(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	return retained_types[type].kind == type_kind_safe_slice
+
+
+int safe_record(int type):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	return retained_types[type].kind == type_kind_safe_record
 
 
 int safe_borrow_kind(int type):
@@ -173,7 +190,34 @@ void safe_pointer_match(int id, int want, int got):
 		safe_error(id, c"safe: incompatible checked pointer types", -1)
 
 
+# The first aggregate contract has one shared lifetime group. Every field
+# carrying a reference must name that group; scalar fields have no lifetime.
+# The outer ref[a] Record annotation renames the group at each use site.
+int safe_record_shape(int type):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (record.fields.length == 0)): return 0
+	char* lifetime = 0
+	for i in range(record.fields.length):
+		int field = safe_unqualified(record.fields[i].type)
+		if (field < 0): return 0
+		retained_type* member = retained_types[field]
+		if (member.kind == type_kind_ref):
+			if (safe_plain(safe_pointee(field), 0) == 0): return 0
+			if (member.lifetime == 0): return 0
+			if (lifetime == 0): lifetime = member.lifetime
+			else if (strcmp(lifetime, member.lifetime) != 0): return 0
+		else:
+			if (safe_plain(field, 0) == 0): return 0
+			if ((member.fields.length > 0) || (member.kind == type_kind_array)): return 0
+	return lifetime != 0
+
+
 void safe_type_check(int id, int type):
+	if (safe_record(type)):
+		if (safe_record_shape(retained_types[safe_unqualified(type)].target)): return
+		safe_error(id, c"safe: borrowed aggregate requires scalar fields and one named shared-reference group", -1)
 	if (safe_kind(type) || safe_slice(type)):
 		if (safe_plain(safe_pointee(type), 0)): return
 	else if (safe_plain(type, 0)): return
@@ -384,6 +428,7 @@ void safe_access(int roots, int via, int write, int id, char* state):
 int safe_place(int id, char* state, int* via);
 int safe_eval(int id, char* state, int want);
 int safe_call(int id, retained_node* n, char* state, int* parent);
+int safe_borrow(int id, int want, char* state, int* parent);
 
 
 int safe_place(int id, char* state, int* via):
@@ -418,6 +463,43 @@ int safe_place(int id, char* state, int* via):
 	return -1
 
 
+int safe_record_construct(int id, retained_node* n, int want, char* state, int* parent):
+	if (n.high): safe_error(id, c"safe: borrowed aggregates require a value constructor", -1)
+	retained_type* record = retained_types[retained_types[safe_unqualified(want)].target]
+	char* initialized = safe_zero(record.fields.length, 1)
+	int roots = -1
+	int saved = safe_call_roots.length
+	int entry = safe_child(n, n.left)
+	while (entry >= 0):
+		retained_node field
+		retained_node_load(entry, &field)
+		int position = field.value
+		if ((position < 0) || (position >= record.fields.length)):
+			safe_error(entry, c"safe: invalid borrowed aggregate initializer", -1)
+		if (initialized[position]): safe_error(entry, c"safe: borrowed aggregate field initialized twice", -1)
+		initialized[position] = 1
+		int type = record.fields[position].type
+		int value = safe_child(&field, field.left)
+		if (safe_kind(type) == 2):
+			int via = -1
+			int root = safe_borrow(value, type, state, &via)
+			roots = safe_set_union(roots, root)
+			*parent = safe_set_union(*parent, via)
+			# Later scalar arguments may call functions. Keep every earlier
+			# reference reserved until the complete value has been constructed.
+			safe_call_roots.push(root)
+			safe_call_kinds.push(2)
+		else: safe_eval(value, state, type)
+		entry = safe_child(&field, field.next_arg)
+	for i in range(record.fields.length):
+		if (initialized[i] == 0): safe_error(id, c"safe: borrowed aggregate requires every field to be initialized", -1)
+	free(initialized)
+	while (safe_call_roots.length > saved):
+		safe_call_roots.pop()
+		safe_call_kinds.pop()
+	return roots
+
+
 int safe_borrow(int id, int want, char* state, int* parent):
 	int kind = safe_borrow_kind(want)
 	retained_node n
@@ -429,7 +511,16 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	int array_value = 0
 	int actual_type = safe_unqualified(n.semantic_type)
 	if (actual_type >= 0): array_value = retained_types[actual_type].kind == type_kind_array
-	if (inline_view):
+	if (safe_record(want)):
+		int got = actual_type
+		if (safe_record(got)): got = retained_types[got].target
+		else if (n.op != 'D'): safe_error(id, c"safe: borrowed aggregate requires a checked value or complete constructor", -1)
+		int target = retained_types[safe_unqualified(want)].target
+		if (safe_same_nominal(target, got) == 0):
+			safe_error(id, c"safe: incompatible borrowed aggregate types", -1)
+	else if (safe_record(n.semantic_type)):
+		safe_error(id, c"safe: borrowed aggregate representation mismatch", -1)
+	else if (inline_view):
 		if (n.op == 'Z'):
 			retained_node base
 			retained_node_load(safe_child(&n, n.left), &base)
@@ -445,14 +536,26 @@ int safe_borrow(int id, int want, char* state, int* parent):
 		# A view's descriptor may be local even when its elements outlive
 		# the function. Metadata also must not become writable via refmut.
 		if (place.op == 'B'): safe_error(id, c"safe: buffer metadata cannot be borrowed", -1)
+		if (place.op == '.'):
+			retained_node base
+			retained_node_load(safe_child(&place, place.left), &base)
+			if (safe_record(base.semantic_type)):
+				safe_error(id, c"safe: borrowed aggregate descriptor fields cannot be borrowed", -1)
 		int wanted = safe_unqualified(safe_pointee(want))
 		int actual = safe_unqualified(place.semantic_type)
 		if ((wanted < 0) || (actual < 0) || (strcmp(retained_types[wanted].name, retained_types[actual].name) != 0)):
 			safe_error(id, c"safe: incompatible checked pointer types", -1)
-	else: safe_pointer_match(id, want, n.semantic_type)
+	else if (safe_record(want) == 0): safe_pointer_match(id, want, n.semantic_type)
 	int root = -1
 	int via = -1
-	if (n.op == 'C'):
+	if ((n.op == 'D') && safe_record(want)):
+		root = safe_record_construct(id, &n, want, state, &via)
+	else if ((n.op == '.') && (safe_kind(n.semantic_type) == 2)):
+		retained_node base
+		retained_node_load(safe_child(&n, n.left), &base)
+		if (safe_record(base.semantic_type) == 0): safe_error(id, c"safe: unsupported reference-bearing projection", -1)
+		root = safe_place(id, state, &via)
+	else if (n.op == 'C'):
 		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
 			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
 		if ((kind == 3) && (safe_kind(n.semantic_type) == 2)):
@@ -515,6 +618,9 @@ int safe_same_contract_type(int a, int b):
 	if ((a < 0) || (b < 0)): return a == b
 	if (safe_kind(a) != safe_kind(b)): return 0
 	if (safe_inline_slice(a) != safe_inline_slice(b)): return 0
+	if (safe_record(a) != safe_record(b)): return 0
+	if (safe_record(a)):
+		return safe_same_nominal(retained_types[a].target, retained_types[b].target)
 	if (safe_kind(a)):
 		a = safe_unqualified(retained_types[a].target)
 		b = safe_unqualified(retained_types[b].target)
@@ -680,7 +786,11 @@ int safe_eval(int id, char* state, int want):
 		int lk = safe_borrow_kind(lhs.semantic_type)
 		int via = -1
 		int root = safe_place(left, state, &via)
-		if (lk >= 2): safe_error(id, c"safe: references cannot be reassigned", safe_birth[safe_index(lhs.binding)])
+		if (lk >= 2):
+			int related = -1
+			int named = safe_index(lhs.binding)
+			if (named >= 0): related = safe_birth[named]
+			safe_error(id, c"safe: references cannot be reassigned", related)
 		if ((lk == 1) && ((lhs.op != 'v') || n.value)): safe_error(id, c"safe: owner assignment requires a plain binding", -1)
 		if (n.value):
 			for i in range(safe_locals.length):
@@ -976,7 +1086,8 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
-					if (safe_contains_checked(t.fields[field].type, 0)): safe_error(id, c"safe: checked pointers in aggregates are not supported", -1)
+					if (safe_contains_checked(t.fields[field].type, 0) && (safe_record_shape(n.semantic_type) == 0) && (safe_record(n.semantic_type) == 0)):
+						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
 		if (checked):
 			int owner = n.parent
