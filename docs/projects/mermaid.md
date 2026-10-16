@@ -151,9 +151,9 @@ general YAML parser. Other structured values, YAML escapes and unsupported
 configuration fields produce diagnostics.
 
 `accTitle:` and `accDescr:` (including brace-delimited multiline descriptions)
-provide escaped SVG title/description metadata in the statement-based parsers.
-The indentation-based mindmap, Kanban, TreeView and Ishikawa parsers do not yet
-accept these body directives. Frontmatter titles are visible in native preview
+provide escaped SVG title/description metadata across families, including the
+indentation-based mindmap, Kanban, TreeView and Ishikawa parsers. Metadata does
+not alter hierarchy indentation. Frontmatter titles are visible in native preview
 across families. Source edits preserve metadata.
 
 ## Styles and themes

@@ -120,7 +120,7 @@ connectors or external systems.
 | Edit | Immutable UTF-8 byte-range edits, CLI replacement files, desktop source history and live reparsing | Structured model edits, direct diagram manipulation and richer source editing |
 | View/export | Deterministic native display lists, SVG export, desktop pan/zoom/fit; failed parses suppress preview | Dense-layout quality, text measurement/wrapping and upstream geometry parity |
 | Markdown/frontmatter | One Mermaid fence, surrounding prose preservation, original-source diagnostics, title and bounded themes | Multiple embedded diagrams, general YAML and arbitrary configuration |
-| Accessibility | Escaped SVG titles/descriptions in statement parsers; visible frontmatter titles across families | Body directives in indentation families and broader native accessibility interactions |
+| Accessibility | Escaped SVG titles/descriptions, including indentation families; visible frontmatter titles across families | Broader native accessibility interactions |
 | Node styling | Documented flow/ER/class/state style/class assignments, colors, transparent fill, stroke width and precedence | Per-family style parity, link styling, CSS, fonts and rich text |
 | Themes | Native default/base/dark/forest/neutral palettes; six base color variables; common native/SVG resolution | Upstream CSS/palette derivation, categorical colors, redux/neo and arbitrary theme variables |
 | Desktop/platforms | x64 Linux X11/OpenGL editor; x86/x64 library and CLI validation | Desktop qualification on other platforms, external-file change detection and longer editor paths |
