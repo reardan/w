@@ -1,0 +1,11 @@
+parser api_prediction
+mode antlr
+lexer stateful
+literal A "a"
+literal B "b"
+literal C "c"
+start provider
+rule provider = provider_ owned EOF
+rule provider_ = A
+rule owned = B owned_
+rule owned_ = C

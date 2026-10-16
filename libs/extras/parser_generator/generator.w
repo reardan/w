@@ -60,13 +60,32 @@ char* pg_c_literal(char* text):
 	return pg_source_take(literal)
 
 
+# Stateful entry points own parse_provider / parse_owned. Preserve rule names in
+# the AST while allocating a noncolliding internal function suffix. A grammar
+# may already declare provider_, so probe the entire declared rule namespace.
+char* pg_rule_function(pg_grammar* grammar, char* name):
+	char* suffix = strclone(name)
+	if (grammar.stateful && ((strcmp(name, c"provider") == 0) || (strcmp(name, c"owned") == 0))):
+		while (1):
+			char* previous = suffix
+			suffix = pg_take(f"{previous}_")
+			free(previous)
+			if (pg_grammar_find_rule(grammar, suffix) == 0): break
+	char* result = pg_take(f"{grammar.name}_parse_{suffix}")
+	free(suffix)
+	return result
+
+
 # "<g>_match_token(stream, <kind>, c"<name>")" for a token term, else
 # "<g>_parse_<name>(stream, diagnostics)". Caller frees.
 char* pg_term_call(pg_grammar* grammar, pg_term* term):
 	char* g = grammar.name
 	if (pg_grammar_is_token_term(grammar, term.name)):
 		return pg_take(f"{g}_match_token(stream, {g}_token_{term.name}, c\"{term.name}\")")
-	return pg_take(f"{g}_parse_{term.name}(stream, diagnostics)")
+	char* function = pg_rule_function(grammar, term.name)
+	char* call = pg_take(f"{function}(stream, diagnostics)")
+	free(function)
+	return call
 
 
 # Extra "import <dotted.path>" lines from the grammar's own "import"
@@ -341,7 +360,9 @@ void pg_emit_matcher_forward_declarations(pg_source_writer* writer, pg_grammar* 
 
 void pg_emit_rule_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
 	for pg_rule* rule in grammar.rules:
-		pg_line(writer, f"pg_ast_node* {grammar.name}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics);")
+		char* function = pg_rule_function(grammar, rule.name)
+		pg_line(writer, f"pg_ast_node* {function}(pg_token_stream* stream, pg_diagnostics* diagnostics);")
+		free(function)
 	pg_source_blank(writer)
 
 
@@ -1127,7 +1148,9 @@ void pg_emit_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* 
 
 
 void pg_emit_rule(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule):
-	pg_open(writer, f"pg_ast_node* {grammar.name}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+	char* function = pg_rule_function(grammar, rule.name)
+	pg_open(writer, f"pg_ast_node* {function}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+	free(function)
 	pg_source_line(writer, c"int mark = pg_token_stream_mark(stream)")
 	pg_source_line(writer, c"pg_ast_node* node = 0")
 	pg_source_line(writer, c"int failed = 0")
@@ -1145,7 +1168,9 @@ void pg_emit_parse_entry(pg_source_writer* writer, pg_grammar* grammar):
 	if (grammar.stateful):
 		pg_line(writer, f"pg_token_stream* stream = pg_token_stream_from_provider({g}_provider_new(input, strlen(input), filename), {g}_next, diagnostics)")
 	else: pg_line(writer, f"pg_token_stream* stream = {g}_lex(input, filename, diagnostics)")
-	pg_line(writer, f"pg_ast_node* root = {g}_parse_{grammar.start_rule}(stream, diagnostics)")
+	char* function = pg_rule_function(grammar, grammar.start_rule)
+	pg_line(writer, f"pg_ast_node* root = {function}(stream, diagnostics)")
+	free(function)
 	pg_line(writer, f"if (root == 0): pg_syntax_error(diagnostics, pg_token_stream_furthest(stream), c\"{grammar.start_rule}\")")
 	pg_source_line(writer, c"return root")
 	pg_source_dedent(writer)
@@ -1209,7 +1234,9 @@ void pg_emit_streaming_listener_new(pg_source_writer* writer, pg_grammar* gramma
 void pg_emit_streaming_rule_forward_declarations(pg_source_writer* writer, pg_grammar* grammar):
 	char* g = grammar.name
 	for pg_rule* rule in grammar.rules:
-		pg_line(writer, f"int {g}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics, {g}_listener* listener);")
+		char* function = pg_rule_function(grammar, rule.name)
+		pg_line(writer, f"int {function}(pg_token_stream* stream, pg_diagnostics* diagnostics, {g}_listener* listener);")
+		free(function)
 	pg_source_blank(writer)
 
 
@@ -1411,7 +1438,9 @@ void pg_emit_streaming_term(pg_source_writer* writer, pg_grammar* grammar, char*
 	char* error = pg_streaming_syntax_error(term.name)
 	if (term.modifier == 0):
 		if (pg_grammar_is_token_term(grammar, term.name) == 0):
-			pg_line(writer, f"if ({g}_parse_{term.name}(stream, diagnostics, listener) == 0): return 0")
+			char* function = pg_rule_function(grammar, term.name)
+			pg_line(writer, f"if ({function}(stream, diagnostics, listener) == 0): return 0")
+			free(function)
 		else:
 			if ((captures != 0) && (captures[term_index + 1] != 0)):
 				pg_line(writer, f"pg_token* action_arg_{alt_index}_{term_index} = pg_token_stream_peek(stream)")
@@ -1522,7 +1551,9 @@ void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_
 
 void pg_emit_streaming_rule(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* analysis, pg_rule* rule):
 	char* g = grammar.name
-	pg_open(writer, f"int {g}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics, {g}_listener* listener):")
+	char* function = pg_rule_function(grammar, rule.name)
+	pg_open(writer, f"int {function}(pg_token_stream* stream, pg_diagnostics* diagnostics, {g}_listener* listener):")
+	free(function)
 	pg_line(writer, f"if (listener.on_enter_{rule.name} != 0): listener.on_enter_{rule.name}(stream, listener.context)")
 	pg_emit_streaming_choice(writer, grammar, analysis, rule, 0, rule.alternatives.length, 0, c"first_kind")
 	pg_line(writer, f"if (listener.on_exit_{rule.name} != 0): listener.on_exit_{rule.name}(stream, listener.context)")
@@ -1539,7 +1570,9 @@ void pg_emit_streaming_parse_entry(pg_source_writer* writer, pg_grammar* grammar
 	char* g = grammar.name
 	pg_open(writer, f"int {g}_parse_streaming(char* input, char* filename, pg_diagnostics* diagnostics, {g}_listener* listener):")
 	pg_line(writer, f"pg_token_stream* stream = {g}_lex(input, filename, diagnostics)")
-	pg_line(writer, f"return {g}_parse_{grammar.start_rule}(stream, diagnostics, listener)")
+	char* function = pg_rule_function(grammar, grammar.start_rule)
+	pg_line(writer, f"return {function}(stream, diagnostics, listener)")
+	free(function)
 	pg_source_dedent(writer)
 	pg_source_blank(writer)
 
@@ -1683,7 +1716,9 @@ void pg_emit_prediction(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_dedent(writer)
 	pg_source_blank(writer)
 	for r, rule in grammar.rules:
-		pg_open(writer, f"pg_ast_node* {g}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+		char* function = pg_rule_function(grammar, rule.name)
+		pg_open(writer, f"pg_ast_node* {function}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+		free(function)
 		pg_line(writer, f"pg_prediction_program* program = {g}_prediction_program()")
 		pg_line(writer, f"pg_ast_node* node = pg_prediction_parse(program, {r}, stream, diagnostics)")
 		pg_source_line(writer, c"pg_prediction_free(program)")
@@ -2023,7 +2058,9 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 
 void pg_emit_stateful_rule(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule):
 	int goal = pg_grammar_rule_goal(grammar, rule.name)
-	pg_open(writer, f"pg_ast_node* {grammar.name}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+	char* function = pg_rule_function(grammar, rule.name)
+	pg_open(writer, f"pg_ast_node* {function}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+	free(function)
 	pg_source_line(writer, c"pg_stream_checkpoint* checkpoint = pg_token_stream_checkpoint(stream)")
 	if (goal >= 0):
 		pg_source_line(writer, c"int previous_goal = stream.provider.goal")
@@ -2081,7 +2118,9 @@ void pg_emit_owned_entry(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"pg_token_stream* stream = pg_token_stream_from_provider(state, next, diagnostics)")
 	pg_source_line(writer, c"pg_token_stream_own_ast(stream)")
 	pg_source_line(writer, c"pg_parse_result* result = pg_parse_result_new(stream, diagnostics)")
-	pg_line(writer, f"result.root = {g}_parse_{grammar.start_rule}(stream, diagnostics)")
+	char* function = pg_rule_function(grammar, grammar.start_rule)
+	pg_line(writer, f"result.root = {function}(stream, diagnostics)")
+	free(function)
 	pg_open_c(writer, c"if ((result.root == 0) || (pg_token_stream_done(stream) == 0)):")
 	pg_line(writer, f"pg_syntax_error(diagnostics, pg_token_stream_furthest(stream), c\"{grammar.start_rule}\")")
 	pg_source_dedent(writer)
