@@ -1363,3 +1363,14 @@ the cache assertions.
   once. Direction: have wtest build (or name) the generator targets a
   failing root needs, the way `./wbuild` builds the `generated`
   umbrella first.
+
+## Silent string-literal escapes (2026-10-16, P1.1b regex)
+
+- **`c"\f"` / `c"\v"` compile to plain `f` / `v` with no diagnostic.**
+  An unknown escape drops the backslash silently, so `re_escape`'s
+  special-character table (`... \r\v\f`) matched the letters `f` and `v`
+  until a table test caught it; `w check --json` was clean. Also seen:
+  a stray C-style `int enc[4]` declaration is reported as "';' expected,
+  found '['", which points at semicolons the language does not have.
+  Direction: support `\f` `\v` (and `\a` `\b`) or warn on unknown escapes
+  in `check`; suggest `int[4] enc` for the C array form.
