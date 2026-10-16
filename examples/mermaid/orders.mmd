@@ -1,0 +1,23 @@
+erDiagram
+    direction LR
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE_ITEM : contains
+    PRODUCT ||..o{ LINE_ITEM : describes
+    CUSTOMER {
+        int id PK
+        string name
+        string email UK "Contact address"
+    }
+    ORDER {
+        int id PK
+        int customer_id FK
+    }
+    LINE_ITEM {
+        int order_id PK, FK
+        int product_id PK, FK
+        int quantity
+    }
+    PRODUCT {
+        int id PK
+        string name
+    }
