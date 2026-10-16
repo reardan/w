@@ -1,0 +1,12 @@
+---
+title: Control register
+config:
+  packet:
+    bitsPerRow: 16
+    bitOrder: descending
+---
+packet
+    0-3: "Mode"
+    4: "Enable"
+    5-15: "Reserved"
+    +8: "Status"
