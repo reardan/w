@@ -343,9 +343,59 @@ ref[a] T* generic_view[T](ref[a] T* value):
 The result keeps the same backing roots as an ordinary reference-returning
 call. Generic syntax does not bypass the checker. Checked slices and inline
 borrowed records as generic type arguments remain excluded by the existing
-aggregate call limits. Generic method syntax, indirect calls and callbacks
-remain unsupported in checked code, as does the existing unsupported `new T`
-allocation syntax in generic definitions.
+aggregate call limits. Generic method syntax and capturing callbacks remain
+unsupported in checked code, as does the existing unsupported `new T`
+allocation syntax in generic definitions. Noncapturing function pointers use
+the explicit quantified contracts below.
+
+### Quantified function pointers
+
+A checked function type binds its lifetime labels explicitly:
+
+```w
+type View = fn[a](ref[a] int*) -> ref[a] int*
+
+ref[x] int* view(ref[x] int* value):
+	return value
+
+int main():
+	View* callback = view
+	int value = 7
+	ref int* result = callback(&value)
+	return *result - 7
+```
+
+Each invocation instantiates the contract independently. The result borrows
+from the inputs specified by that invocation; storing the function address
+does not capture any storage. `fn[]` marks a checked signature without named
+lifetimes. Unnamed borrowed results retain sole-input inference. An explicit
+`where a > b` clause follows the result type. Every named borrowed slot must
+be bound and every binder must be used. Nested function types bind their own
+labels independently.
+
+Values use the existing `View*` representation. Locals and parameters may
+hold them, ordinary functions may return them, and a returned callable may
+be invoked directly. Assignment and argument passing require exact contract
+agreement after consistent lifetime renaming, including nested signatures,
+mutability, optionality and normalized outlives relations. There is no
+function-contract subtyping. The implementation body is checked even when
+its address is never called. Forward and imported definitions use the same
+rules as direct calls.
+
+Indirect calls preserve argument evaluation order, backing roots, reborrow
+parents and owner transfers. An owning argument moves once; owning results
+participate in normal replacement and scope cleanup. Checked slices and the
+currently supported borrowed records keep their ordinary by-value ABI.
+
+Null, uninitialized, raw or cast-forged callables are rejected, as are raw
+escapes, global/aggregate callable storage and const-qualified callable
+forms. These contracts describe ordinary W entry points; generators, kernels,
+variadic entry points and unaudited foreign functions cannot become checked
+function values. Capturing or escaping closure environments remain a separate
+workstream. Signatures admit at most ten parameters; nested validation is
+bounded to depth 32 and 256 expanded type visits.
+
+### Argument effects
 
 Argument evaluation is included in checking: an earlier mutable argument
 cannot coexist with a later read of the same storage, including a read or
