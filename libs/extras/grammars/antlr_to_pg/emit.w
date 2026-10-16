@@ -282,7 +282,10 @@ void at_emit_stateful_lexer(string_builder* out):
 	if (g_at_exact_lexer): string_append(out, c"lexer_progress guarded\n")
 	if (g_at_token_identities != 0):
 		for char* name in g_at_token_identities:
-			if ((name in g_lexer_rules) == 0): string_append(out, cstr(f"token {name}\n"))
+			at_rule* source = g_lexer_rules.get(name, 0)
+			# A fragment does not declare a token, even when a tokens{} name
+			# shares its spelling and another rule emits that name with type().
+			if ((source == 0) || source.is_fragment): string_append(out, cstr(f"token {name}\n"))
 	for char* mode in g_at_modes:
 		string_append(out, cstr(f"lexer_mode {at_pg_mode_name(mode)}\n"))
 	# Implicit parser literals outrank explicit lexer rules on equal length.

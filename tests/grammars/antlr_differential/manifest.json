@@ -123,6 +123,14 @@
     {
       "path": "Unicode.g4",
       "sha256": "da6bf02355a64d3d141bcd1c3b01e4ba4aa31e1d5f138210e6231ade0a2c9bd5"
+    },
+    {
+      "path": "FragmentTokenLexer.g4",
+      "sha256": "a878a56931f73ada0ba27409317d2176ebaabaf0cd71f65ce1ccdaf1e25b7c93"
+    },
+    {
+      "path": "FragmentTokenParser.g4",
+      "sha256": "13644a15813d551d0f0244d27fdb9af578697b290ecea4b5b0d1d1d7ad0d21ac"
     }
   ],
   "cases": [
@@ -1279,6 +1287,47 @@
         },
         {
           "id": "input18",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "fragment_token",
+      "grammars": [
+        "FragmentTokenLexer.g4",
+        "FragmentTokenParser.g4"
+      ],
+      "lexer": "FragmentTokenLexer",
+      "parser": "FragmentTokenParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--strict",
+        "--exact-lexer",
+        "--prediction"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "abc"
+        },
+        {
+          "id": "input1",
+          "text": " abc "
+        },
+        {
+          "id": "input2",
+          "text": "abc def"
+        },
+        {
+          "id": "input3",
+          "text": "123"
+        },
+        {
+          "id": "input4",
           "text": ""
         }
       ]

@@ -198,9 +198,8 @@ int at_stateful_command_emittable(at_rule* rule, int index):
 	if (at_stateful_command_supported(command) == 0): return 0
 	if (strcmp(command.name, c"type") == 0):
 		at_rule* target = g_lexer_rules.get(command.argument, 0)
-		if (target == 0):
+		if ((target == 0) || target.is_fragment):
 			if (at_has_token_identity(command.argument) == 0): return 0
-		else if (target.is_fragment): return 0
 	for i in range(index):
 		at_command* previous = rule.commands[i]
 		if (at_stateful_command_supported(previous) == 0): continue

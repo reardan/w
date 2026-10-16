@@ -2085,6 +2085,99 @@
       }
     ]
   },
+  "fragment_token/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ID",
+        "start": 0,
+        "text": "abc"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "fragment_token/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ID",
+        "start": 1,
+        "text": "abc"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "fragment_token/input2": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ID",
+        "start": 0,
+        "text": "abc"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ID",
+        "start": 4,
+        "text": "def"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 7,
+        "text": ""
+      }
+    ]
+  },
+  "fragment_token/input3": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "fragment_token/input4": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
   "imports/input0": {
     "accepted": true,
     "rules": [

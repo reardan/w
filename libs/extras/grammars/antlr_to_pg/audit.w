@@ -352,8 +352,8 @@ int at_audit(list[at_rule*] rules):
 			if (g_at_stateful): supported = at_stateful_command_supported(cmd)
 			if (g_at_stateful && (strcmp(cmd.name, c"type") == 0) && (cmd.argument != 0)):
 				at_rule* target = g_at_rules.get(cmd.argument, 0)
-				if (target == 0): supported = at_has_token_identity(cmd.argument)
-				else if ((target.is_lexer == 0) || target.is_fragment): supported = 0
+				if ((target == 0) || target.is_fragment): supported = at_has_token_identity(cmd.argument)
+				else if (target.is_lexer == 0): supported = 0
 			if (supported == 0):
 				char* argument = cmd.argument
 				if (argument == 0): argument = c""
