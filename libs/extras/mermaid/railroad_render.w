@@ -142,7 +142,10 @@ mm_scene* mm_rail_render(mm_document* d):
 	s.nodes = new list[mm_bounds*]
 	s.width = 300
 	s.height = 200
-	mm_text(s, 40, 20, d.railroad.title)
+	char* title = d.title
+	if (title[0] == 0): title = d.railroad.title
+	mm_text(s, 40, 20, title)
+	s.has_title = title[0] != 0
 	int y = 80
 	for mm_rail_rule* rule in d.railroad.rules:
 		mm_rail_measure(d.railroad, rule.expression)

@@ -301,7 +301,8 @@ void mm_rail_body(mm_parser* p):
 	mm_rail_grammar* g = p.doc.railroad
 	mm_rail_space(p)
 	while (p.doc.error == 0 && mm_peek(p) != 0):
-		if (mm_match(p, c"title ")):
+		if (mm_metadata(p)): mm_space(p)
+		else if (mm_match(p, c"title ")):
 			mm_space(p)
 			free(g.title)
 			if (mm_peek(p) == '"' || mm_peek(p) == 39): g.title = mm_rail_literal(p)

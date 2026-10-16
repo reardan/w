@@ -150,3 +150,19 @@ void test_rail_truncated_prefixes_and_source_edits():
 		mm_document_free(edited)
 		mm_document_free(d)
 	__w_list_free(cast(__w_list*, sources))
+
+void test_railroad_document_metadata_and_title_precedence():
+	char* text = c"---\ntitle: Grammar overview\n---\nrailroad\ntitle Internal title\naccTitle: Accessible grammar\nword = terminal(\"yes\");\n"
+	mm_document* d = mm_parse(text, strlen(text))
+	asserts(c"railroad envelope parses", d.error == 0)
+	mm_scene* s = mm_render(d)
+	int titles = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Grammar overview") == 0): titles = titles + 1
+		asserts(c"frontmatter title takes precedence", strcmp(p.text, c"Internal title") != 0)
+	assert_equal(1, titles)
+	char* svg = mm_svg(s)
+	asserts(c"accessible title exported", index_of(svg, c"Accessible grammar") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)

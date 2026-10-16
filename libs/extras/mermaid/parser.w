@@ -411,6 +411,9 @@ mm_document* mm_parse(char* source, int length):
 	if (d.title[0] == 0 && d.data != 0):
 		free(d.title)
 		d.title = strclone(d.data.title)
+	if (d.title[0] == 0 && d.railroad != 0):
+		free(d.title)
+		d.title = strclone(d.railroad.title)
 	if (d.error != 0):
 		char* message = d.error
 		d.error = 0
