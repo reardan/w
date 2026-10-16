@@ -147,11 +147,13 @@ mm_scene* mm_cynefin_render(mm_document* d):
 		for j in range(n.members.length):
 			mm_member* m = n.members[j]
 			mm_text(s, b.x + 20, b.y + 60 + j * 28, m.text + 6)
+	s.has_title = d.title[0] != 0
 	mm_text(s, 40, 30, d.title)
 	return s
 
 mm_scene* mm_wardley_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
+	s.has_title = d.title[0] != 0
 	mm_text(s, 80, 24, d.title)
 	mm_text(s, 80, 52, c"Visibility")
 	mm_framework_arrow(s, 80, 650, 80, 90, 0)

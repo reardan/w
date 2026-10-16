@@ -27,6 +27,9 @@ int mm_arch_port(mm_parser* p):
 
 void mm_arch_body(mm_parser* p):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		char* word = mm_identifier(p)
 		if (mm_in_words(word, c"|service|group|junction|")):
 			int index = mm_system_node(p)
@@ -116,6 +119,9 @@ int mm_usecase_node(mm_parser* p, int parent, int declare):
 
 void mm_usecase_body(mm_parser* p, int scope):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		if (mm_keyword(p, c"end")):
 			if (scope < 0): mm_error(p.doc, p.pos, c"unexpected boundary end")
 			return

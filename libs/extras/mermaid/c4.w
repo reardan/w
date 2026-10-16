@@ -35,6 +35,9 @@ void mm_c4_body(mm_parser* p, int scope, int depth):
 		mm_error(p.doc, p.pos, c"C4 boundary nesting limit exceeded")
 		return
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		if (mm_match(p, c"}")):
 			if (scope < 0): mm_error(p.doc, p.pos, c"unexpected C4 closing boundary")
 			return

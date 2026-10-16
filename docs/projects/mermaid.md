@@ -10,7 +10,8 @@ the desktop target is x64 Linux. Other desktop platforms are not yet qualified.
 The goal is native support for **all Mermaid diagram types**, delivered in
 stages. This implementation supports defined subsets of **flowcharts, ER, class and
 state diagrams**, plus eight data families described in
-[Data diagrams](mermaid_data.md), not full Mermaid compatibility. Unsupported syntax/type diagnostics
+[Data diagrams](mermaid_data.md), and the graph/workflow families in
+[Graph diagrams](mermaid_graph_families.md). This is not full Mermaid compatibility. Unsupported syntax/type diagnostics
 prevent partial diagrams from appearing as successful renders. Unsupported
 documents remain readable, editable as source, and saveable without data loss.
 
@@ -91,7 +92,7 @@ parallel edges and long labels may overlap and need future routing work.
 
 Not yet supported: styling/classes, configuration, click actions, additional
 node/edge shapes and rich text. Class and state coverage is listed below;
-other diagram families are not yet implemented. Most unsupported syntax
+additional diagram families are covered in the linked compatibility documents. Most unsupported syntax
 is an explicit diagnostic; text inside accepted labels is always literal.
 
 ## Class and state compatibility (stage 2)

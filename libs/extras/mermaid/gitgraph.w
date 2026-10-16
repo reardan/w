@@ -37,6 +37,9 @@ void mm_git_body(mm_parser* p):
 	int lane = 1
 	int ordinal = 0
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		char* command = mm_uml_id(p)
 		if (strcmp(command, c"branch") == 0 || strcmp(command, c"checkout") == 0 || strcmp(command, c"switch") == 0):
 			char* name

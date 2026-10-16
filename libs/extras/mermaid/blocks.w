@@ -48,6 +48,9 @@ void mm_block_body(mm_parser* p, int parent, int depth):
 		return
 	mm_node* group = p.doc.nodes[parent]
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		if (mm_keyword(p, c"end")):
 			if (depth == 0): mm_error(p.doc, p.pos, c"unexpected block end")
 			return

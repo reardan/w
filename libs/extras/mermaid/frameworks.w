@@ -70,6 +70,9 @@ void mm_cynefin_body(mm_parser* p):
 	__w_list_free(cast(__w_list*, names))
 	int domain = -1
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		if (mm_peek(p) == '"'):
 			char* text = mm_quoted(p)
 			if (domain < 0): mm_error(p.doc, p.pos, c"Cynefin item needs a domain")
@@ -149,6 +152,9 @@ char* mm_wardley_name(mm_parser* p):
 
 void mm_wardley_body(mm_parser* p):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		if (mm_keyword(p, c"title")):
 			free(p.doc.title)
 			p.doc.title = mm_line_text(p)

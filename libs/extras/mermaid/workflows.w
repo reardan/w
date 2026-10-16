@@ -52,6 +52,9 @@ void mm_workflow_edge(mm_parser* p, int from, int to, char* label, int dashed, i
 void mm_swimlane_body(mm_parser* p):
 	int scope = -1
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		if (mm_keyword(p, c"subgraph")):
 			if (scope >= 0): mm_error(p.doc, p.pos, c"nested swimlanes are not yet supported")
 			int index = mm_workflow_node(p, -1)
@@ -112,6 +115,9 @@ void mm_event_body(mm_parser* p):
 	int previous = -1
 	int ordinal = 0
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		char* command = mm_identifier(p)
 		int reset = mm_in_words(command, c"|rf|resetframe|")
 		if (reset == 0 && mm_in_words(command, c"|tf|timeframe|") == 0): mm_error(p.doc, p.pos, c"expected timeframe or resetframe")
