@@ -1293,3 +1293,37 @@ Existing callable runtime fixture binaries are also byte-identical on x86/x64
 and execute successfully. Lifetime-group metadata is compile-time only.
 Mixed owned/borrowed fields, replacement and partial moves remain required
 under #695/#644; this step closes neither issue.
+
+### Owners carrying shared borrowed groups (Wave 1)
+
+Forty-two accepted/rejected cases exercise explicit owner lifetime groups,
+construction, aliases, forwards, direct/generic/quantified calls, nested owned
+children, shared borrowed records, replacement joins, scope exit, deferred return
+reservations and escape rejection. The matrix checks and compiles each program
+with and without `--safe` on x86/x64, runs accepted programs, and requires no
+artifact after rejection. Fresh multi-label generic arguments force speculative
+type storage to grow. A metadata test verifies independent owning labels after
+retained rollback and arena reuse.
+
+Validation passed 1,349 ordinary targets (full suite, both Linux fixpoints,
+Windows runtime and compiler benchmark), all 48 architecture/root checks,
+pinned-seed bootstrap and parser generation. Instrumented validation passed
+1,347 targets and all six compiler/API harnesses, with a COMPLETE receipt.
+Changed compiler-line coverage is 242/246 (98%). Compiler line coverage reaches
+95.6%; its floor rises to 94.8%. Existing branch floors remain unchanged.
+
+The runtime fixture covers imported factories, owner and slice callbacks,
+nested extraction, whole replacement and return/break/continue cleanup. It
+passes Linux optimization variants and Wine. Native guards and Memcheck on
+x86/x64 report 337 allocations/frees, no outstanding blocks and zero errors.
+
+Seven alternating compiles of the fixed `8abe5b62` corpus measure 1.69/1.68 s
+median and 113,152/113,376 KiB median peak RSS for baseline/new compilers. Compiler
+output is byte-identical, as are the prior callable runtime fixtures on x86/x64;
+all fixture binaries execute. These shared-host timings do not establish a
+general performance bound. No runtime layout or allocation changes are needed
+for external lifetime metadata.
+
+This step covers shared fields. Exclusive fields, whole-owner views, field
+replacement and partial moves retain their separate required gates under #695;
+#695 and #644 remain open.
