@@ -60,13 +60,23 @@ int main(int argc, char** argv):
 			char* small = cast(char*, malloc(33))
 			small[32] = 7
 			free(small)
-		int[9000] blocks
+		int[18000] blocks
 		for i in range(9000): blocks[i] = cast(int, malloc(16))
 		int before = debug_tbl_probes
 		for i in range(9000): free(cast(void*, blocks[i]))
 		asserts(c"indexed lookup stays near linear", debug_tbl_probes - before < 90000)
 		if (vg_active):
 			assert_equal(0, debug_quarantine_bytes)
+			assert_equal(4096, debug_history_count)
+			int capacity = debug_tbl_capacity
+			for round in range(3):
+				for i in range(9000): blocks[i] = cast(int, malloc(16))
+				for i in range(9000): free(cast(void*, blocks[i]))
+				assert_equal(capacity, debug_tbl_capacity)
+			# Force index growth after slots and addresses have been reused;
+			# the newest allocation may now occupy a lower-numbered slot.
+			for i in range(18000): blocks[i] = cast(int, malloc(16))
+			for i in range(18000): free(cast(void*, blocks[i]))
 			asserts(c"pooled allocations use less than two MiB", malloc_heap_total < 2097152)
 		char* empty = realloc(0, 17, 12)
 		free(empty)

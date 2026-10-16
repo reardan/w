@@ -297,6 +297,14 @@ suggesting that it behaves like pointer arithmetic.
   import diagnostics from missing files, and account for expected-failure compile
   steps when reporting closure failures; retain conservative test selection.
 
+- **`wtest archs --check` drops compile-step expectations and flags (2026-10-15).**
+  Checking `lib/memory_debug.w` reports the intentionally invalid
+  `check_generic_error_fixture.w` and `check_generic_struct_error_fixture.w` as
+  failures, and checks `library_shared_test.w` without its required `--link`
+  argument. These failures reproduce on main. Preserve the owning compile
+  step's flags and expected outcome, or distinguish unsupported checks from
+  regressions, so a runtime change can use this surface as an architecture gate.
+
 - **Color diagnostic fixtures inherit `NO_COLOR`.** Observed 2026-10-03
   while running the VM changes through `./wbuild tests`: the
   `did_you_mean_test` step sets `FORCE_COLOR=1` but fails when an agent

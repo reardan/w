@@ -26,10 +26,10 @@ free() first mprotects the payload PROT_NONE so a recent use-after-free
 still faults, then parks the block in a byte-budgeted quarantine. When
 quarantined bytes exceed the budget (or a fresh mmap fails), the oldest
 quarantined regions are munmap'd so long-running alloc/free churn does
-not exhaust address space. Double-free and invalid-free checks keep
-working after reclaim because the bookkeeping table entry stays; UAF on
-a reclaimed block still usually SIGSEGVs on the hole, but can miss if
-the address is remapped for a later allocation.
+not exhaust address space. Double-free checks apply while a block remains quarantined. After reclaim,
+its metadata slot is reusable and a dangling free reports an invalid
+pointer, unless that address has since been allocated again. UAF on a
+reclaimed block can miss if the address is remapped for another purpose.
 
 Native mode is deliberately wasteful while a block is quarantined (one
 page minimum per allocation). Prefix canaries detect nearby underflow
@@ -39,7 +39,7 @@ W_DEBUG_ALLOC=valgrind instead pools storage through the freelist with
 and undefined values as code executes, including instrumented C code.
 That mode requires Valgrind on Linux x86/x64 and avoids per-block VMAs.
 
-The bookkeeping table (one entry per live-or-freed block: pointer,
+The bookkeeping table (one entry per live or quarantined block: pointer,
 region, size) is what free()/realloc() need to find a block's region,
 since there is nowhere to put a header next to a payload that sits
 flush against its guard hole. As a side effect the same table is what
@@ -82,7 +82,13 @@ int debug_tbl_count
 int debug_tbl_capacity
 int debug_guard_warned     # already printed the guard-failure notice
 int debug_quarantine_bytes # sum of region sizes with freed == 1
-int debug_quarantine_cursor # next index to consider for reclaim
+int debug_quarantine_head   # FIFO links are slot + 1; zero means empty
+int debug_quarantine_tail
+int debug_history_count     # retained Memcheck frees (native uses byte budget)
+int debug_tbl_available     # reusable metadata slots, linked through next
+int* debug_tbl_next
+int* debug_tbl_sequence     # allocation identity, independent of slot reuse
+int debug_alloc_sequence
 int* debug_tbl_index       # open-addressed pointer -> newest slot + 1
 int debug_tbl_probes       # lookup work, for regression tests
 
@@ -96,7 +102,9 @@ void debug_tbl_index_add(int idx):
 	int bucket = debug_tbl_bucket(ptr)
 	while (debug_tbl_index[bucket] != 0):
 		int old = debug_tbl_index[bucket] - 1
-		if (debug_tbl_ptr[old] == ptr): break
+		if (debug_tbl_ptr[old] == ptr):
+			if (debug_tbl_sequence[old] > debug_tbl_sequence[idx]): return
+			break
 		bucket = (bucket + 1) & (debug_tbl_capacity * 2 - 1)
 	debug_tbl_index[bucket] = idx + 1
 
@@ -107,6 +115,47 @@ void debug_tbl_index_add(int idx):
 # that segfaults on first use with no diagnostic at all.
 int debug_tbl_mmap_failed(int addr):
 	return (addr < 0) && (addr > -4096)
+
+
+# Delete only this slot's index entry: a newer allocation may already own
+# the same address. Reinsert the following probe cluster so deletion
+# leaves no holes hiding colliding keys, and slot reuse leaves no stale
+# index entries referring to a different pointer.
+void debug_tbl_index_remove(int idx):
+	int ptr = debug_tbl_ptr[idx]
+	int bucket = debug_tbl_bucket(ptr)
+	while (debug_tbl_index[bucket] != 0):
+		if (debug_tbl_index[bucket] == idx + 1):
+			debug_tbl_index[bucket] = 0
+			bucket = (bucket + 1) & (debug_tbl_capacity * 2 - 1)
+			while (debug_tbl_index[bucket] != 0):
+				int displaced = debug_tbl_index[bucket] - 1
+				debug_tbl_index[bucket] = 0
+				debug_tbl_index_add(displaced)
+				bucket = (bucket + 1) & (debug_tbl_capacity * 2 - 1)
+			return
+		bucket = (bucket + 1) & (debug_tbl_capacity * 2 - 1)
+
+
+void debug_tbl_recycle(int idx):
+	debug_tbl_index_remove(idx)
+	debug_tbl_ptr[idx] = 0
+	debug_tbl_next[idx] = debug_tbl_available
+	debug_tbl_available = idx + 1
+
+
+void debug_quarantine_push(int idx):
+	debug_tbl_next[idx] = 0
+	if (debug_quarantine_tail): debug_tbl_next[debug_quarantine_tail - 1] = idx + 1
+	else: debug_quarantine_head = idx + 1
+	debug_quarantine_tail = idx + 1
+
+
+int debug_quarantine_pop():
+	int idx = debug_quarantine_head - 1
+	debug_quarantine_head = debug_tbl_next[idx]
+	if (debug_quarantine_head == 0): debug_quarantine_tail = 0
+	return idx
 
 
 void debug_tbl_ensure_capacity():
@@ -120,8 +169,10 @@ void debug_tbl_ensure_capacity():
 	int r_region_size = mmap(0, bytes, 3, flags)
 	int r_size = mmap(0, bytes, 3, flags)
 	int r_freed = mmap(0, bytes, 3, flags)
+	int r_next = mmap(0, bytes, 3, flags)
+	int r_sequence = mmap(0, bytes, 3, flags)
 	int r_index = mmap(0, bytes * 2, 3, flags)
-	if (debug_tbl_mmap_failed(r_ptr) | debug_tbl_mmap_failed(r_region) | debug_tbl_mmap_failed(r_region_size) | debug_tbl_mmap_failed(r_size) | debug_tbl_mmap_failed(r_freed) | debug_tbl_mmap_failed(r_index)):
+	if (debug_tbl_mmap_failed(r_ptr) | debug_tbl_mmap_failed(r_region) | debug_tbl_mmap_failed(r_region_size) | debug_tbl_mmap_failed(r_size) | debug_tbl_mmap_failed(r_freed) | debug_tbl_mmap_failed(r_next) | debug_tbl_mmap_failed(r_sequence) | debug_tbl_mmap_failed(r_index)):
 		st_write_cstr(c"memory_debug: out of memory (bookkeeping table mmap failed)\x0a")
 		exit(1)
 	int* new_ptr = cast(int*, r_ptr)
@@ -129,6 +180,8 @@ void debug_tbl_ensure_capacity():
 	int* new_region_size = cast(int*, r_region_size)
 	int* new_size = cast(int*, r_size)
 	int* new_freed = cast(int*, r_freed)
+	int* new_next = cast(int*, r_next)
+	int* new_sequence = cast(int*, r_sequence)
 	int i = 0
 	while (i < debug_tbl_count):
 		new_ptr[i] = debug_tbl_ptr[i]
@@ -136,6 +189,8 @@ void debug_tbl_ensure_capacity():
 		new_region_size[i] = debug_tbl_region_size[i]
 		new_size[i] = debug_tbl_size[i]
 		new_freed[i] = debug_tbl_freed[i]
+		new_next[i] = debug_tbl_next[i]
+		new_sequence[i] = debug_tbl_sequence[i]
 		i = i + 1
 	if (debug_tbl_capacity > 0):
 		int old_bytes = debug_tbl_capacity * __word_size__
@@ -144,12 +199,16 @@ void debug_tbl_ensure_capacity():
 		munmap(cast(int, debug_tbl_region_size), old_bytes)
 		munmap(cast(int, debug_tbl_size), old_bytes)
 		munmap(cast(int, debug_tbl_freed), old_bytes)
+		munmap(cast(int, debug_tbl_next), old_bytes)
+		munmap(cast(int, debug_tbl_sequence), old_bytes)
 		munmap(cast(int, debug_tbl_index), old_bytes * 2)
 	debug_tbl_ptr = new_ptr
 	debug_tbl_region = new_region
 	debug_tbl_region_size = new_region_size
 	debug_tbl_size = new_size
 	debug_tbl_freed = new_freed
+	debug_tbl_next = new_next
+	debug_tbl_sequence = new_sequence
 	debug_tbl_capacity = new_capacity
 	debug_tbl_index = cast(int*, r_index)
 	for j in range(debug_tbl_count):
@@ -157,19 +216,33 @@ void debug_tbl_ensure_capacity():
 
 
 void debug_tbl_append(int ptr, int region, int region_size, int size):
-	debug_tbl_ensure_capacity()
-	debug_tbl_ptr[debug_tbl_count] = ptr
-	debug_tbl_region[debug_tbl_count] = region
-	debug_tbl_region_size[debug_tbl_count] = region_size
-	debug_tbl_size[debug_tbl_count] = size
-	debug_tbl_freed[debug_tbl_count] = 0
-	debug_tbl_index_add(debug_tbl_count)
-	debug_tbl_count = debug_tbl_count + 1
+	# Fail explicitly instead of wrapping allocation identities and hiding
+	# leaks from tests which snapshot the sequence counter.
+	if (debug_alloc_sequence + 1 <= 0):
+		st_write_cstr(c"memory_debug: allocation sequence exhausted\x0a")
+		exit(1)
+	int idx
+	if (debug_tbl_available):
+		idx = debug_tbl_available - 1
+		debug_tbl_available = debug_tbl_next[idx]
+	else:
+		debug_tbl_ensure_capacity()
+		idx = debug_tbl_count
+		debug_tbl_count = debug_tbl_count + 1
+	debug_alloc_sequence = debug_alloc_sequence + 1
+	debug_tbl_sequence[idx] = debug_alloc_sequence
+	debug_tbl_ptr[idx] = ptr
+	debug_tbl_region[idx] = region
+	debug_tbl_region_size[idx] = region_size
+	debug_tbl_size[idx] = size
+	debug_tbl_freed[idx] = 0
+	debug_tbl_next[idx] = 0
+	debug_tbl_index_add(idx)
 
 
 # The index always names the newest allocation at a reused address.
-# Reclaimed entries with ptr == 0 remain probe-chain tombstones until
-# the next table growth rebuilds the index. Load stays below one half.
+# Recycled entries are removed from the probe chain before slot reuse.
+# Load stays below one half.
 int debug_tbl_find(int ptr):
 	if ((ptr == 0) || (debug_tbl_capacity == 0)): return -1
 	int bucket = debug_tbl_bucket(ptr)
@@ -181,22 +254,22 @@ int debug_tbl_find(int ptr):
 	return -1
 
 
-# Munmap the oldest quarantined regions until quarantined bytes are at
-# or under `budget`, or the table is exhausted. budget 0 drains all.
+# Free order is independent of allocation order. A FIFO keeps every
+# quarantined region reachable, even when older live blocks are freed
+# after newer allocations have already been reclaimed. budget 0 drains.
 void debug_quarantine_reclaim_to(int budget):
-	while ((debug_quarantine_bytes > budget) && (debug_quarantine_cursor < debug_tbl_count)):
-		int i = debug_quarantine_cursor
-		debug_quarantine_cursor = i + 1
-		if (debug_tbl_freed[i] == 1):
-			int span = debug_tbl_region_size[i]
-			if (os_android()): span = span + debug_page_size()
-			munmap(debug_tbl_region[i], span)
-			debug_quarantine_bytes = debug_quarantine_bytes - debug_tbl_region_size[i]
-			debug_tbl_freed[i] = 2
-			# Drop the payload address so a recycled mmap cannot alias
-			# this slot; double-free of a truly dangling pointer then
-			# reports "never returned" once the address is reused.
-			debug_tbl_ptr[i] = 0
+	if (vg_active): return
+	while ((debug_quarantine_bytes > budget) && debug_quarantine_head):
+		int i = debug_quarantine_head - 1
+		int span = debug_tbl_region_size[i]
+		if (os_android()): span = span + debug_page_size()
+		if (munmap(debug_tbl_region[i], span) != 0):
+			st_write_cstr(c"memory_debug: quarantine release failed\x0a")
+			exit(1)
+		debug_quarantine_pop()
+		debug_quarantine_bytes = debug_quarantine_bytes - debug_tbl_region_size[i]
+		debug_tbl_freed[i] = 2
+		debug_tbl_recycle(i)
 
 
 void debug_quarantine_reclaim_if_needed():
@@ -313,9 +386,19 @@ int debug_free(void* mem_address):
 		freelist_free(cast(void*, debug_tbl_region[idx]))
 		vg_request(vg_freelike, ptr, 16, 0, 0)
 		debug_tbl_freed[idx] = 2
+		# Keep recent invalid-free diagnostics without retaining every
+		# allocation ever made. Memcheck owns its own access history.
+		debug_quarantine_push(idx)
+		debug_history_count = debug_history_count + 1
+		if (debug_history_count > 4096):
+			debug_tbl_recycle(debug_quarantine_pop())
+			debug_history_count = debug_history_count - 1
 		return 1
-	mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0)
+	if (mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0) != 0):
+		st_write_cstr(c"memory_debug: cannot protect freed allocation\x0a")
+		exit(1)
 	debug_tbl_freed[idx] = 1
+	debug_quarantine_push(idx)
 	debug_quarantine_bytes = debug_quarantine_bytes + debug_tbl_region_size[idx]
 	debug_quarantine_reclaim_if_needed()
 	return 1

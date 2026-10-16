@@ -143,7 +143,7 @@ It does not automatically report leaks at exit; use the explicit report
 or `W_TEST_LEAKS=1` below. Freed addresses can eventually be reused in
 either mode, so stale pointers to a new live allocation can escape checks.
 
-Issue [#651](https://github.com/reardan/w/issues/651) implementation plan:
+The initial Valgrind integration for [#651](https://github.com/reardan/w/issues/651) implemented:
 
 1. Extend native checks with prefix canaries and replace linear pointer
    lookup with a hash index, retaining the existing tracking table for
@@ -156,9 +156,14 @@ Issue [#651](https://github.com/reardan/w/issues/651) implementation plan:
 
 `./wbuild wgrind_test` covers both x86 and x64. Native cases always run;
 Memcheck cases print an explicit skip if Valgrind is absent. Bookkeeping
-still grows with allocation history in both debug modes, and native
-guard pages still consume VMAs. A bounded history and a standalone
-shadow-memory engine are future work, not properties of this change.
+reuses released slots and retains only 4096 recent frees in Memcheck mode; native
+guard pages still consume one payload VMA per live allocation. Metadata capacity
+retains its peak live-plus-quarantined size, rather than growing with lifetime
+allocation count. Quarantine reclamation follows free order, including blocks
+freed after newer allocations have been reclaimed. A standalone execution
+checker remains unfinished; the [native checker plan](projects/wgrind_native.md)
+specifies both existing-binary and compiler-assisted paths and their acceptance
+gates.
 Threaded W programs use the existing serialized debug allocator hooks.
 Previously built executables must be rebuilt to include the annotations.
 

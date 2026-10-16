@@ -143,27 +143,29 @@ int testing_selected(char* name):
 	return 0
 
 
-/* Leak check. Reads lib/memory_debug.w's bookkeeping table directly:
-debug_alloc_report_leaks() prints every live block, which cannot tell
-a test's own leaks from blocks allocated before it started. Entries
-are appended in allocation order and never removed, so the blocks a
-test allocated are exactly the entries from its starting count on;
-any still marked live (freed == 0) when it returns are its leaks. */
+/* Leak checks use allocation sequence numbers, not table positions: the
+allocator reuses metadata slots after quarantine reclamation. The interval
+(first, last] identifies allocations made during the test even when a
+new allocation occupies a slot that predates the test. */
+
+int testing_leak_in_range(int i, int first, int last):
+	return (debug_tbl_freed[i] == 0) && (debug_tbl_sequence[i] > first) && (debug_tbl_sequence[i] <= last)
+
 
 int testing_live_between(int first, int last):
 	int n = 0
-	for i in range(first, last):
-		if (debug_tbl_freed[i] == 0): n = n + 1
+	for i in range(debug_tbl_count):
+		if (testing_leak_in_range(i, first, last)): n = n + 1
 	return n
 
 
-# last is the table length snapshotted when the test returned: printing
+# last is the allocation sequence when the test returned: printing
 # below allocates (itoa), and those blocks are not the test's.
 void testing_report_leaks(char* name, int first, int last):
 	int blocks = 0
 	int bytes = 0
-	for i in range(first, last):
-		if (debug_tbl_freed[i] == 0):
+	for i in range(debug_tbl_count):
+		if (testing_leak_in_range(i, first, last)):
 			blocks = blocks + 1
 			bytes = bytes + debug_tbl_size[i]
 	print(c"LEAK: '")
@@ -174,8 +176,8 @@ void testing_report_leaks(char* name, int first, int last):
 	print(itoa(bytes))
 	println(c" byte(s) still allocated:")
 	int shown = 0
-	for i in range(first, last):
-		if ((debug_tbl_freed[i] == 0) && (shown < 10)):
+	for i in range(debug_tbl_count):
+		if (testing_leak_in_range(i, first, last) && (shown < 10)):
 			print(c"  ")
 			print(itoa(debug_tbl_size[i]))
 			print(c" byte(s) at ")
@@ -215,13 +217,13 @@ void __w_run_tests(char* name, int fn):
 	println(c"")
 	print_hex(c"test_func: ", fn)
 
-	int first = debug_tbl_count
+	int first = debug_alloc_sequence
 	int* test_func = cast(int*, fn)
 	testing_current_test = name
 	test_func()
 	testing_current_test = 0
 
-	int last = debug_tbl_count
+	int last = debug_alloc_sequence
 	if (testing_leak_check && (testing_live_between(first, last) > 0)):
 		testing_report_leaks(name, first, last)
 		testing_note_leaker(name)
