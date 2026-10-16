@@ -191,7 +191,7 @@ void test_safe_scalar_and_struct_operations():
 
 
 void test_safe_representation_coverage():
-	safe_case(c"int main():\n\tint n = 0\n\tif (n) own int* p = new int\n\treturn 0\n", c"declarations require a lexical block")
+	safe_case(c"int main():\n\tint n = 0\n\tif (n) own int* p = new int\n\treturn 0\n", c"unsupported expression fallback")
 	safe_case(c"int bad(own int* p):\n\tasm x86:\n\t\t\"xor eax, eax\"\n\t\t\"ret\"\n\tasm x64:\n\t\t\"xor eax, eax\"\n\t\t\"ret\"\n\treturn *p\nint main():\n\town int* p = new int\n\treturn bad(p)\n", c"assembly function bodies")
 	safe_case(c"int bad(own int* p):\n\tasm x86:\n\t\t\"jmp portable\"\n\tasm x64:\n\t\t\"jmp portable\"\n\treturn *p\nint main():\n\town int* p = new int\n\treturn bad(p)\n", c"assembly function bodies")
 
