@@ -319,7 +319,8 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		int cstart = ui_text_buffer_line_start(&st.buf, st.caret_line)
 		float32 cx = origin_x + cast(float32, ui_text_prefix_width(&st.buf.data[cstart], st.caret_col, scale))
 		float32 cy = origin_y + cast(float32, st.caret_line) * line_h
-		ui_render_rect(ctx.rndr, ui_rect_new(cx, cy, 2.0, line_h), ctx.theme.text)
+		if (ui_text_preedit_showing(ctx, id) == 0):
+			ui_render_rect(ctx.rndr, ui_rect_new(cx, cy, 2.0, line_h), ctx.theme.text)
 		ui_text_preedit(ctx, id, view, cx, cy)
 
 	ui_scroll_end(ctx, &st.scroll)

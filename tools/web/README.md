@@ -80,7 +80,12 @@ orientation changes, and safe-area padding. W receives logical CSS-pixel
 window sizes and coordinates. The canvas backing buffer uses device pixel
 ratio, and the WebGL bridge scales `glViewport` and `glScissor`. This host
 convention applies to onscreen drawing: framebuffer/readback clients must
-account for device pixels separately. Applications must lay out against
+account for device pixels separately. `graphics.ui` lays out in logical
+pixels but reads `gfx_window_pixel_ratio` each frame (`ui_begin_window`)
+and rasterizes glyphs at the device size on the device-pixel grid, so
+text stays sharp at DPR 1.75 or 3 instead of being a magnified 1x strike;
+mask quads sample only their own texels, so stretched rounded corners do
+not show seams. Applications must lay out against
 `win.width` / `win.height`; resizing the host cannot make fixed widget
 coordinates responsive.
 
@@ -104,9 +109,14 @@ textarea provides the software keyboard and IME. Pointer handlers run one
 W frame synchronously before focusing it, preserving iOS's trusted-gesture
 requirement and avoiding a keyboard on ordinary button taps. Touch focuses
 on release only after a tap; swiping across a field does not open the keyboard. Committed
-Unicode scalar values become CHAR events; composition preedit stays in the
-browser and is committed once. A stable `focus_id` prevents a pending
-composition from being committed into a different field. Paste is queued across frames (32 characters and 8 navigation events
+Unicode scalar values become CHAR events; composition preedit is shown
+by the W field (caret after it) and committed once. Android keyboards
+(Samsung Keyboard, Gboard) compose every word until a space, so a press
+on the canvas first commits the pending word to the field it was typed
+in, in its own frame, then resets the sink, which ends Chrome's IME
+composition without a blur (a blur plus the release's focus hid the
+keyboard when moving between fields). A stable `focus_id` still keeps a
+composition from leaking into a field W focused without a press. Paste is queued across frames (32 characters and 8 navigation events
 per frame, matching the W UI buffers), so large pastes are not truncated.
 Backspace, forward delete, and line breaks use the existing editor events.
 Browser shortcuts with Ctrl/Command/Alt are left to the browser.
@@ -125,6 +135,8 @@ Host ABI additions (existing headless hosts may omit these callbacks):
   `host.textInput(...)`.
 - `gfx_host_pointer_mode(mode)` forwards to `host.pointerMode(mode)`;
   `1` keeps a widget's touch drag, `0` permits page-style touch panning.
+- `gfx_host_pixel_ratio_milli()` returns `host.pixelRatio()` times 1000
+  (1000 when the host has none); `gfx_window_pixel_ratio` on wasm.
 - Event kind `8` carries signed pixel scroll distance in `code` (positive
   down); kind `9` cancels the current pointer gesture.
 
@@ -167,7 +179,7 @@ use the Mac's LAN address from a phone on the same network. On Linux,
 This drives Unicode editing, long paste, the focused-field ABI, keyboard
 viewport shrink, exact pixel scrolling, gesture cancellation and scroll bounds
 through the compiled W widgets (18 frames), including the GL viewport
-following the clamped and keyboard-shrunk canvas, in addition to the 32
+following the clamped and keyboard-shrunk canvas, in addition to the 34
 JavaScript input-policy scenarios (Android's keyCode 229 / `Unidentified`
 keydowns among them). It is a headless integration check, not a substitute
 for physical device keyboard/IME testing.
@@ -182,9 +194,29 @@ horizontal overflow, canvas clamped to the phone width with a DPR-scaled
 backing store and matching GL viewport, a tap becoming button-1
 down/up at logical canvas coordinates and focusing the keyboard sink,
 IME commits, a keyCode-229 keydown plus text, Backspace, composition
-preedit versus commit, a one-finger pan becoming cancel plus exact pixel
+preedit versus commit, a mid-word tap into another field, a one-finger pan becoming cancel plus exact pixel
 scroll without page scroll, rotation to landscape, and a DPR-only change.
 `node tools/web/run_browser_mobile.mjs bin/graphics_ui_mobile.wasm out.png`
 also saves a phone screenshot. Chromium's emulation does not show a real
 software keyboard or run a real IME, so physical-device checks still
 apply.
+
+### Qualified on device (2026-10)
+
+Checked on a Samsung SM-S134DL phone (Android 13,
+Chrome 115, Samsung Keyboard, DPR 1.75, 412 CSS px wide) over `adb
+reverse` and the DevTools protocol, with real taps on the on-screen
+keyboard: the form fills the width without horizontal scroll; taps land
+on the right widgets; the keyboard opens on a field tap but not on a
+swipe or a button; composition (each Samsung word is composed until
+space), suggestion-bar picks, Backspace inside and outside a
+composition, Enter/Done, and `adb input text` all reach W once; the
+viewport shrinks with the keyboard and W scrolls the focused field into
+view, in portrait and landscape; one-finger pans scroll exactly; a
+long-press opens no context menu. Found and fixed there: a tap anywhere
+mid-word dropped the word and, between fields, hid the keyboard; the
+preedit hid the caret; text and pill buttons were a blurry 1.75x
+upscale with corner seams. Not covered: Samsung's re-editing of an
+already committed word (the sink holds no committed text, so the
+keyboard cannot reopen it), iOS Safari, and a press that starts a pan
+still moves W focus to a field without opening the keyboard.

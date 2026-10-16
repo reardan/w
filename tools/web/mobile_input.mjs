@@ -15,6 +15,7 @@ export function createInput({ canvas, editor, state, pushEvent,
   let pointer = null;
   let textActive = false;
   let composing = false;
+  let composition = '';
   let justComposed = null;
   let focusId = 0;
   let discardComposition = false;
@@ -51,6 +52,21 @@ export function createInput({ canvas, editor, state, pushEvent,
       else if (cp >= 32 && !(cp >= 0xd800 && cp <= 0xdfff)) emit(EVENT.CHAR, cp, e);
     }
   };
+  // End the IME's live word without a blur: Android keyboards compose every
+  // word until a space, so a tap on another field or a button would otherwise
+  // drop that word, and blur-then-focus inside one tap hides the keyboard.
+  // Replacing the sink's value makes Chrome finish the composition silently;
+  // any late composition events from other engines are ignored.
+  const endComposition = (keep) => {
+    if (!composing) return false;
+    preedit('', true);
+    if (keep) commit(composition);
+    composing = false;
+    discardComposition = true;
+    justComposed = null;
+    resetEditor();
+    return keep && composition !== '';
+  };
   const focus = () => {
     if (textActive) {
       if (doc.activeElement !== editor) {
@@ -75,6 +91,9 @@ export function createInput({ canvas, editor, state, pushEvent,
       y: e.clientY, lastY: e.clientY, panning: false, button: e.button };
     state.mouseButtons |= 1 << e.button;
     canvas.setPointerCapture(e.pointerId);
+    // The pending word belongs to the field the user typed it in: commit it
+    // there in its own frame, before W sees the press that moves focus.
+    if (endComposition(true)) flushFrame();
     emit(EVENT.DOWN, e.button + 1, e);
     // iOS requires focus within the trusted event stack. Process the W
     // click now so only a field that actually acquired focus opens the IME.
@@ -150,9 +169,21 @@ export function createInput({ canvas, editor, state, pushEvent,
     target.addEventListener('keydown', keydown);
     target.addEventListener('keyup', e => emit(EVENT.KEY_UP, e.keyCode, e));
   }
-  editor.addEventListener('compositionstart', () => { composing = true; justComposed = null; discardComposition = false; preedit(''); });
-  editor.addEventListener('compositionupdate', e => { if (!discardComposition) preedit(e.data); });
+  editor.addEventListener('compositionstart', () => {
+    composing = true; composition = ''; justComposed = null; discardComposition = false; preedit('');
+  });
+  editor.addEventListener('compositionupdate', e => {
+    if (discardComposition) return;
+    composition = e.data ?? '';
+    preedit(e.data);
+  });
   editor.addEventListener('compositionend', e => {
+    if (!composing && discardComposition) {
+      // A late end for a composition already committed or discarded.
+      justComposed = e.data;
+      resetEditor();
+      return;
+    }
     composing = false;
     if (!discardComposition) { preedit('', true); commit(e.data); }
     justComposed = e.data;
@@ -186,15 +217,10 @@ export function createInput({ canvas, editor, state, pushEvent,
   return {
     setPointerMode: mode => { pointerMode = mode; },
     setTextInput(active, multiline, x, y, width, height, nextFocusId = active) {
-      if (composing && (!active || focusId !== nextFocusId)) {
-        // Do not deliver an old field's pending preedit into a newly focused
-        // field. Blur ends native composition; ignore its trailing commit.
-        preedit('', true);
-        discardComposition = true;
-        editor.blur();
-        composing = false;
-        resetEditor();
-      }
+      // W moved focus without a pointer press (pointerdown has already
+      // committed the word): do not deliver the old field's pending preedit
+      // into the newly focused field.
+      if (!active || focusId !== nextFocusId) endComposition(false);
       focusId = nextFocusId;
       textActive = !!active;
       editor.setAttribute('aria-label', multiline ? 'W multiline text editor' : 'W text editor');

@@ -225,6 +225,22 @@ try {
   await frames(3);
   check(await evaluate(`__w.contains('héllo🙂日本')`), 'composition commit arrives once');
   check(!(await evaluate(`__w.contains('héllo🙂日本日本')`)), 'composition commit is not duplicated');
+  // Android keyboards compose every word until a space. Tapping the Email
+  // field mid-word keeps the word in Name, keeps the keyboard sink focused,
+  // and leaves Chrome's IME free to type into Email (seen on a Galaxy phone).
+  await send('Input.imeSetComposition', { text: 'wor', selectionStart: 3, selectionEnd: 3 });
+  await frames(2);
+  const nameField = (await evaluate('__w.textInput'))[6];
+  await tap(30, 270);
+  check(await evaluate(`__w.contains('héllo🙂日本wor')`), 'mid-word tap commits the word to its own field');
+  check(await evaluate('document.activeElement && document.activeElement.id') === 'text-input',
+    'moving between fields keeps the soft-keyboard sink focused');
+  const emailField = await evaluate('__w.textInput');
+  check(emailField[0] === 1 && emailField[6] !== nameField, `the tapped field took focus: ${emailField}`);
+  await send('Input.insertText', { text: 'mail@x' });
+  await frames(3);
+  check(await evaluate(`__w.contains('mail@x')`) && !(await evaluate(`__w.contains('héllo🙂日本wormail@x')`)),
+    'typing after the switch reaches the new field');
 
   // One-finger vertical pan: cancels the press, then pixel scroll deltas.
   await evaluate('__w.events.length = 0');

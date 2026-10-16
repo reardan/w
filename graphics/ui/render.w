@@ -131,6 +131,12 @@ struct ui_renderer:
 	# graphics.ui.font's atlas generation at the last texture upload;
 	# ui_render_begin re-uploads when a runtime font has grown the atlas.
 	int32 atlas_generation
+	# Device pixels per logical pixel of the target (1.0 on the desktop
+	# backends; a phone browser's devicePixelRatio). Geometry stays in
+	# logical pixels, but glyphs above 1.0 are rasterized at the device
+	# size and placed on the device-pixel grid, so text is not a blurry
+	# upscale of the logical strike. Set by ui_render_set_pixel_scale.
+	float32 pixel_scale
 
 
 # CPU-only init: the vertex batch works, every GL call is skipped
@@ -163,8 +169,16 @@ void ui_render_init_headless(ui_renderer* r):
 	r.layer = UI_LAYER_BASE
 	r.vp_w = 0
 	r.vp_h = 0
+	r.pixel_scale = 1.0
 	ui_font_uv_sync()
 	r.atlas_generation = ui_font_atlas_generation()
+
+
+# Device pixels per logical pixel (see ui_renderer.pixel_scale). Values
+# at or below 1 (or absurdly large) draw the logical strikes as before.
+void ui_render_set_pixel_scale(ui_renderer* r, float32 scale):
+	if ((scale <= 1.0) || (scale > 8.0)): scale = 1.0
+	r.pixel_scale = scale
 
 
 void ui_render_clear_image_commands(ui_renderer* r);
@@ -417,12 +431,17 @@ void ui_render_rect(ui_renderer* r, ui_rect rect, ui_color color):
 
 
 # One mask stretched over rect; flip_x/flip_y mirror the sample.
+# The UVs span the edge texels' centers, not their outer edges: a mask
+# drawn larger than its bake (a 24px pill radius on a 1.75x phone covers
+# 42 device pixels of a 32-texel corner) would otherwise blend its edge
+# with the atlas gap under LINEAR and show light seams where a rounded
+# rect's corner quads meet its fills.
 void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip_y, ui_color color):
 	ui_glyph m = ui_font_mask(mask)
-	float32 u0 = ui_render_u(m.x)
-	float32 u1 = ui_render_u(m.x + m.w)
-	float32 v0 = ui_render_v(m.y)
-	float32 v1 = ui_render_v(m.y + m.h)
+	float32 u0 = ui_render_u(m.x * 2 + 1) * 0.5
+	float32 u1 = ui_render_u(m.x * 2 + m.w * 2 - 1) * 0.5
+	float32 v0 = ui_render_v(m.y * 2 + 1) * 0.5
+	float32 v1 = ui_render_v(m.y * 2 + m.h * 2 - 1) * 0.5
 	if (flip_x):
 		float32 tu = u0
 		u0 = u1
@@ -434,11 +453,37 @@ void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip
 	ui_render_quad(r, rect, u0, v0, u1, v1, color)
 
 
+# The same glyph rasterized at the device size (strike ppem times
+# pixel_scale, from the glyph's own face so fallback glyphs stay
+# correct), with the pen and baseline rounded to device pixels. Layout
+# and the returned advance stay those of the logical strike. Returns 0
+# when no device glyph is available; the caller draws the logical one.
+int ui_render_glyph_device(ui_renderer* r, float32 x, float32 y_top, ui_glyph g, int strike, float32 skew, ui_color color):
+	float32 s = r.pixel_scale
+	int ppem = cast(int, cast(float32, ui_font_strike_ppem(strike)) * s + 0.5)
+	int device = ui_font_strike(g.face, ppem)
+	if (device < 0): return 0
+	ui_glyph d = ui_font_glyph_id(device, g.gid)
+	if (d.w <= 0): return 0
+	float32 baseline = gfx_floor((y_top + cast(float32, ui_font_strike_ascent(strike))) * s + 0.5)
+	float32 pen = gfx_floor(x * s + 0.5)
+	float32 gx = (pen + cast(float32, d.bearing_x)) / s
+	float32 gy = (baseline - cast(float32, d.bearing_top)) / s
+	float32 u0 = ui_render_u(d.x)
+	float32 v0 = ui_render_v(d.y)
+	float32 u1 = ui_render_u(d.x + d.w)
+	float32 v1 = ui_render_v(d.y + d.h)
+	ui_render_quad_sheared(r, ui_rect_new(gx, gy, cast(float32, d.w) / s, cast(float32, d.h) / s), u0, v0, u1, v1, color, skew, baseline / s)
+	return 1
+
+
 # One glyph (codepoint ch) of strike at pen x with the line box's
 # top at y_top, leaned by skew about the baseline (0.0 upright;
 # graphics.ui.text's italic passes ui_text_italic_skew()). Returns the
 # pen advance. Inkless glyphs (space) advance without pushing a quad.
 int ui_render_glyph_metrics(ui_renderer* r, float32 x, float32 y_top, ui_glyph g, int strike, float32 skew, ui_color color):
+	if ((g.w > 0) && (r.pixel_scale > 1.0) && (g.face >= 0)):
+		if (ui_render_glyph_device(r, x, y_top, g, strike, skew, color)): return g.advance
 	if (g.w > 0):
 		float32 baseline = y_top + cast(float32, ui_font_strike_ascent(strike))
 		float32 gx = x + cast(float32, g.bearing_x)

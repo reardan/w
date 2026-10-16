@@ -28,6 +28,11 @@ let instance;
 const wasi = new WASI({ version: 'preview1', args: [process.argv[2]], env: {},
   preopens: { '.': process.cwd() }, returnOnExit: true });
 const env = makeEnv({ memory: () => instance.exports.memory, gl, host });
+// graphics.ui asks for the device pixel ratio each frame and rasterizes
+// glyphs at it, so phone text is not a blurry upscale of the 1x strike.
+let ratioQueries = 0;
+const pixelRatioMilli = env.gfx_host_pixel_ratio_milli;
+env.gfx_host_pixel_ratio_milli = () => { ratioQueries++; return pixelRatioMilli(); };
 instance = await WebAssembly.instantiate(await WebAssembly.compile(await readFile(process.argv[2])),
   { ...wasi.getImportObject(), env });
 assert.equal(wasi.start(instance), 0);
@@ -97,4 +102,6 @@ assert.equal(textField[3], topY, 'scroll clamps at top');
 assert.ok(calls.drawArrays.length >= frames);
 assert.ok(calls.texImages.length > 0);
 assert.equal(bridges.length, frames, 'bridge reports exactly once per W frame');
+assert.equal(pixelRatioMilli(), 3000, 'host reports devicePixelRatio in thousandths');
+assert.equal(ratioQueries, frames, 'the form reads the pixel ratio every frame');
 console.log(`run_mobile_ui OK (${frames} frames: Unicode, paste, focus, keyboard resize, pan and clamp)`);

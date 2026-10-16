@@ -169,6 +169,7 @@ void ui_begin_window(ui_context* ctx, gfx_window* win):
 	while (gfx_window_next_event(win, &e)): ui_feed_event(ctx, &e)
 	ctx.input.mouse_x = win.mouse_x
 	ctx.input.mouse_y = win.mouse_y
+	ui_render_set_pixel_scale(ctx.rndr, gfx_window_pixel_ratio(win))
 	ui_begin(ctx, win.width, win.height)
 
 
@@ -278,11 +279,19 @@ ui_color ui_text_color(ui_context* ctx):
 	return ctx.theme.text
 
 
-# Draw a clipped, underlined IME preview at the insertion point. The
-# caller's buffer/selection remains untouched until committed CHARs arrive.
+# Whether field id is showing an IME preview this frame. Callers draw
+# their own caret only when it is not: the preview carries the caret.
+int ui_text_preedit_showing(ui_context* ctx, int id):
+	if ((ctx.focus != id) || (ctx.preedit_focus != id) || (ctx.preedit_active == 0)): return 0
+	if (ctx.disabled || ui_scope_blocked(ctx)): return 0
+	return 1
+
+
+# Draw a clipped, underlined IME preview at the insertion point, with the
+# caret after it as native fields show a composing word. The caller's
+# buffer/selection remains untouched until committed CHARs arrive.
 void ui_text_preedit(ui_context* ctx, int id, ui_rect clip, float32 x, float32 y):
-	if ((ctx.focus != id) || (ctx.preedit_focus != id) || (ctx.preedit_active == 0)): return
-	if (ctx.disabled || ui_scope_blocked(ctx)): return
+	if (ui_text_preedit_showing(ctx, id) == 0): return
 	ui_clip_push(ctx.rndr, clip)
 	int scale = ctx.theme.text_scale
 	int width = ui_text_width(&ctx.preedit[0], scale)
@@ -290,4 +299,5 @@ void ui_text_preedit(ui_context* ctx, int id, ui_rect clip, float32 x, float32 y
 	ui_render_rect(ctx.rndr, ui_rect_new(x, y, cast(float32, width), cast(float32, height)), ctx.theme.widget)
 	ui_draw_text(ctx.rndr, x, y, &ctx.preedit[0], scale, ctx.theme.text)
 	ui_render_rect(ctx.rndr, ui_rect_new(x, y + cast(float32, height - 1), cast(float32, width), 1.0), ctx.theme.focus)
+	ui_render_rect(ctx.rndr, ui_rect_new(x + cast(float32, width), y, 2.0, cast(float32, height)), ctx.theme.text)
 	ui_clip_pop(ctx.rndr)
