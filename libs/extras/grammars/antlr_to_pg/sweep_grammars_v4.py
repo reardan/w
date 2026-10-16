@@ -16,7 +16,21 @@ import time
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
+# Historical stages remain readable by schema-1 baselines and consumers.
 STAGES = ("translate", "generate", "compile", "strict")
+BUILD_STAGES = ("translate", "generate", "compile", "compiler_strict")
+CONFIGURATIONS = {
+    "default_permissive": (),
+    "default_strict": ("--strict",),
+    "stateful_permissive": ("--stateful",),
+    "stateful_strict": ("--strict", "--stateful"),
+}
+
+
+def empty_configurations(status="not_run", **detail):
+    return {name: {"stages": {stage: dict(status=status, **detail)
+                              for stage in BUILD_STAGES}, "dependency_inputs": []}
+            for name in CONFIGURATIONS}
 
 
 def sha256(path):
@@ -29,7 +43,7 @@ def git_output(root, *args):
 
 def load_manifest(path, corpus):
     manifest = json.loads(path.read_text())
-    if manifest.get("schema") != 1:
+    if manifest.get("schema") not in (1, 2):
         raise ValueError("unsupported sweep manifest schema")
     actual = git_output(corpus, "rev-parse", "HEAD")
     if actual != manifest["corpus_commit"]:
@@ -44,6 +58,9 @@ def load_manifest(path, corpus):
             raise ValueError(f"no pinned inputs for {name}")
         if set(case["expected_pass"]) - set(STAGES):
             raise ValueError(f"invalid baseline stage for {name}")
+        for configuration, stages in case.get("expected_configurations", {}).items():
+            if configuration not in CONFIGURATIONS or set(stages) - set(BUILD_STAGES):
+                raise ValueError(f"invalid configuration baseline for {name}: {configuration}")
         removed = set(case.get("recorded_pass", [])) - set(case["expected_pass"])
         for stage in removed:
             reason = case.get("reclassified", {}).get(stage, "")
@@ -109,49 +126,50 @@ def run_case(case, corpus, work, tools, timeout, repo=REPO):
               "historical_288": case.get("historical_288", False),
               "stages": {stage: {"status": "not_run"} for stage in STAGES},
               "runtime_smoke": "not_configured"}
-    stages = result["stages"]
-
-    def translate(strict=False):
-        prefix = "strict" if strict else "translate"
-        output_pg = directory / "strict.pg" if strict else pg
-        output_matchers = directory / "strict.matchers.w" if strict else matchers
-        args = [tools["translator"], *sources, "-o", output_pg,
-                "--parser-name", parser_name, "--matchers", output_matchers,
-                "--report", directory / (prefix + ".report"),
-                "--audit", directory / (prefix + ".audit"),
-                "--dependencies", directory / (prefix + ".inputs")]
-        if strict:
-            args.append("--strict")
-        status = run_stage(args, directory / (prefix + ".log"), timeout, repo)
-        require_outputs(status, [output_pg, output_matchers, directory / (prefix + ".inputs")])
-        return status
-
-    stages["translate"] = translate()
-    if stages["translate"]["status"] == "pass":
+    result["configurations"] = empty_configurations()
+    for configuration, flags in CONFIGURATIONS.items():
+        current = result["configurations"][configuration]
+        stages = current["stages"]
+        output = directory if configuration == "default_permissive" else directory / configuration
+        output.mkdir(exist_ok=True)
+        pg, matchers, generated = (output / name for name in ("grammar.pg", "matchers.w", "parser.w"))
+        loaded = output / "translate.inputs"
+        args = [tools["translator"], *sources, "-o", pg,
+                "--parser-name", parser_name, "--matchers", matchers,
+                "--report", output / "translate.report", "--audit", output / "translate.audit",
+                "--dependencies", loaded, *flags]
+        stages["translate"] = run_stage(args, output / "translate.log", timeout, repo)
+        require_outputs(stages["translate"], [pg, matchers, loaded])
+        # Every mode must prove the dependency closure, including strict failures.
+        if loaded.exists():
+            for value in loaded.read_text().splitlines():
+                path = (repo / value).resolve()
+                if not path.is_relative_to(corpus.resolve()):
+                    stages["translate"].update(status="error", error="dependency outside pinned corpus: " + value)
+                    break
+                current["dependency_inputs"].append({"path": str(path.relative_to(corpus.resolve())),
+                                                     "sha256": sha256(path)})
+        if stages["translate"]["status"] != "pass":
+            continue
         stages["generate"] = run_stage([tools["generator"], pg, "-o", generated],
-                                       directory / "generate.log", timeout, repo)
+                                       output / "generate.log", timeout, repo)
         require_outputs(stages["generate"], [generated])
-        if stages["generate"]["status"] == "pass":
-            program = directory / "compile.w"
-            program.write_bytes(tools["common_matchers"].read_bytes() + b"\n" +
-                                matchers.read_bytes() + b"\n" + generated.read_bytes() +
-                                b"\nint main():\n\treturn 0\n")
-            binary = directory / "parser.bin"
-            stages["compile"] = run_stage([tools["compiler"], program, "-o", binary],
-                                          directory / "compile.log", timeout, repo)
-            require_outputs(stages["compile"], [binary])
-    # Audit acceptance is an independent metric, including on failed translations.
-    stages["strict"] = translate(strict=True)
-    result["dependency_inputs"] = []
-    loaded = directory / "translate.inputs"
-    if loaded.exists():
-        for value in loaded.read_text().splitlines():
-            path = (repo / value).resolve()
-            if not path.is_relative_to(corpus.resolve()):
-                stages["translate"].update(status="error", error="dependency outside pinned corpus: " + value)
-                break
-            result["dependency_inputs"].append({"path": str(path.relative_to(corpus.resolve())),
-                                                 "sha256": sha256(path)})
+        if stages["generate"]["status"] != "pass":
+            continue
+        program = output / "compile.w"
+        program.write_bytes(tools["common_matchers"].read_bytes() + b"\n" +
+                            matchers.read_bytes() + b"\n" + generated.read_bytes() +
+                            b"\nint main():\n\treturn 0\n")
+        # Independent invocations: compiler warnings are a separate measurement.
+        for stage, compiler_flags in (("compile", ()), ("compiler_strict", ("--strict",))):
+            binary = output / (stage + ".bin")
+            stages[stage] = run_stage([tools["compiler"], program, *compiler_flags, "-o", binary],
+                                      output / (stage + ".log"), timeout, repo)
+            require_outputs(stages[stage], [binary])
+    default = result["configurations"]["default_permissive"]
+    result["stages"] = {stage: default["stages"][stage] for stage in STAGES if stage != "strict"}
+    result["stages"]["strict"] = result["configurations"]["default_strict"]["stages"]["translate"]
+    result["dependency_inputs"] = default["dependency_inputs"]
     return result
 
 
@@ -166,30 +184,47 @@ def compare(manifest, results):
             status = actual[case["name"]]["stages"][stage]["status"]
             if status != "pass":
                 regressions.append(f"{case['name']}: {stage} regressed to {status}")
+        for configuration, stages in case.get("expected_configurations", {}).items():
+            measured = actual[case["name"]].get("configurations", {}).get(configuration, {}).get("stages", {})
+            for stage in stages:
+                status = measured.get(stage, {}).get("status", "missing")
+                if status != "pass":
+                    regressions.append(f"{case['name']}: {configuration}/{stage} regressed to {status}")
     return regressions
 
 
 def write_results(work, manifest, results, provenance, csv_path=None):
     regressions = compare(manifest, results)
-    errors = list(provenance.get("infrastructure_errors", [])) + [f"{row['name']}: {stage} {value['status']}"
-              for row in results for stage, value in row["stages"].items()
-              if value["status"] in ("error", "timeout", "crash")]
+    errors = list(provenance.get("infrastructure_errors", []))
+    for row in results:
+        configurations = row.get("configurations", {"legacy": {"stages": row["stages"]}})
+        for configuration, current in configurations.items():
+            for stage, value in current["stages"].items():
+                if value["status"] in ("error", "timeout", "crash"):
+                    errors.append(f"{row['name']}: {configuration}/{stage} {value['status']}")
     totals = {stage: sum(row["stages"][stage]["status"] == "pass" for row in results)
               for stage in STAGES}
-    summary = {"cases": len(results), "passing": totals,
+    configuration_totals = {name: {stage: sum(
+        row.get("configurations", {}).get(name, {}).get("stages", {}).get(stage, {}).get("status") == "pass"
+        for row in results) for stage in BUILD_STAGES} for name in CONFIGURATIONS}
+    summary = {"cases": len(results), "passing": totals, "configurations": configuration_totals,
                "historical_288_compiled": sum(row["historical_288"] and
                    row["stages"]["compile"]["status"] == "pass" for row in results),
                "runtime_smoke": "not_configured", "regressions": regressions,
                "infrastructure_errors": errors}
-    (work / "results.json").write_text(json.dumps({"provenance": provenance,
+    (work / "results.json").write_text(json.dumps({"schema": 2, "provenance": provenance,
         "summary": summary, "cases": results}, indent=2) + "\n")
     with (csv_path or work / "results.csv").open("w", newline="") as output:
         writer = csv.writer(output)
-        writer.writerow(["name", "inputs", *STAGES, "runtime_smoke"])
+        columns = [(configuration, stage) for configuration in CONFIGURATIONS for stage in BUILD_STAGES]
+        writer.writerow(["name", "inputs", *STAGES, "runtime_smoke",
+                         *(configuration + "/" + stage for configuration, stage in columns)])
         for row in results:
             writer.writerow([row["name"], ";".join(item["path"] for item in row["inputs"]),
                              *(row["stages"][stage]["status"] for stage in STAGES),
-                             row["runtime_smoke"]])
+                             row["runtime_smoke"], *(row.get("configurations", {}).get(configuration, {})
+                             .get("stages", {}).get(stage, {}).get("status", "not_run")
+                             for configuration, stage in columns)])
     return summary
 
 
@@ -257,6 +292,7 @@ def main(argv=None):
                     result = {"name": case["name"], "inputs": case["inputs"],
                               "historical_288": case.get("historical_288", False),
                               "runtime_smoke": "not_configured",
+                              "configurations": empty_configurations("error", error=str(error)),
                               "stages": {stage: {"status": "error", "error": str(error)}
                                          for stage in STAGES}}
                 results.append(result)

@@ -42,6 +42,7 @@ class SweepTest(unittest.TestCase):
                 "if mode == 'timeout': time.sleep(5)\n"
                 "if mode == 'crash': os.kill(os.getpid(), signal.SIGTERM)\n"
                 "if mode == 'fail' or (mode == 'strict_fail' and '--strict' in args): sys.exit(7)\n"
+                "if mode == 'stateful_fail' and '--stateful' in args: sys.exit(8)\n"
                 "if mode == 'missing': sys.exit(0)\n"
                 "if name == 'compiler':\n"
                 "    program = pathlib.Path(args[0]).read_text()\n"
@@ -96,7 +97,7 @@ class SweepTest(unittest.TestCase):
         self.case["expected_pass"] = []
         summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
         self.assertEqual(summary["regressions"], [])
-        self.assertEqual(summary["infrastructure_errors"], ["fixture: generate timeout"])
+        self.assertEqual(summary["infrastructure_errors"], [f"fixture: {name}/generate timeout" for name in sweep.CONFIGURATIONS])
         self.assertIn("stage timeout", (self.work / "fixture/generate.log").read_text())
 
     def test_success_without_output_is_not_a_pass(self):
@@ -112,7 +113,7 @@ class SweepTest(unittest.TestCase):
         summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
         self.assertLess(result["stages"]["generate"]["exit_code"], 0)
         self.assertEqual(summary["regressions"], [])
-        self.assertEqual(summary["infrastructure_errors"], ["fixture: generate crash"])
+        self.assertEqual(summary["infrastructure_errors"], [f"fixture: {name}/generate crash" for name in sweep.CONFIGURATIONS])
 
     def test_per_case_regression_cannot_be_hidden_by_another_case_passing(self):
         self.mode("compiler", "fail")
@@ -162,6 +163,53 @@ class SweepTest(unittest.TestCase):
         path.write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError, "duplicate case"):
             sweep.load_manifest(path, self.corpus)
+
+    def test_all_configurations_build_their_own_outputs(self):
+        result = self.run_case()
+        programs = set()
+        for configuration, flags in sweep.CONFIGURATIONS.items():
+            stages = result["configurations"][configuration]["stages"]
+            self.assertEqual({v["status"] for v in stages.values()}, {"pass"})
+            self.assertEqual([arg for arg in stages["translate"]["argv"] if arg in ("--strict", "--stateful")], list(flags))
+            program = Path(stages["compile"]["argv"][1])
+            programs.add(program)
+            self.assertEqual(stages["compiler_strict"]["argv"][1], str(program))
+            self.assertIn("--strict", stages["compiler_strict"]["argv"])
+            self.assertNotIn("--strict", stages["compile"]["argv"])
+            self.assertEqual(result["configurations"][configuration]["dependency_inputs"], self.case["inputs"])
+        self.assertEqual(len(programs), 4)
+        self.assertEqual(result["stages"]["strict"], result["configurations"]["default_strict"]["stages"]["translate"])
+
+    def test_warning_failure_is_independent_of_ordinary_compilation(self):
+        self.mode("compiler", "strict_fail")
+        result = self.run_case()
+        for current in result["configurations"].values():
+            self.assertEqual(current["stages"]["compile"]["status"], "pass")
+            self.assertEqual(current["stages"]["compiler_strict"]["status"], "fail")
+        self.case["expected_configurations"] = {"stateful_strict": ["compiler_strict"]}
+        self.assertEqual(sweep.compare({"cases": [self.case]}, [result]),
+                         ["fixture: stateful_strict/compiler_strict regressed to fail"])
+
+    def test_stateful_failure_does_not_erase_default_results(self):
+        self.mode("translator", "stateful_fail")
+        result = self.run_case()
+        self.assertEqual({v["status"] for v in result["stages"].values()}, {"pass"})
+        for name in ("stateful_permissive", "stateful_strict"):
+            self.assertEqual(result["configurations"][name]["stages"]["translate"]["exit_code"], 8)
+            self.assertEqual(result["configurations"][name]["stages"]["compile"]["status"], "not_run")
+
+    def test_schema_two_roundtrip_preserves_historical_columns(self):
+        result = self.run_case()
+        summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
+        data = json.loads((self.work / "results.json").read_text())
+        self.assertEqual(data["schema"], 2)
+        self.assertEqual(summary["passing"], dict.fromkeys(sweep.STAGES, 1))
+        self.assertEqual(summary["configurations"]["default_strict"], dict.fromkeys(sweep.BUILD_STAGES, 1))
+        with (self.work / "results.csv").open() as source:
+            row = next(csv.DictReader(source))
+        self.assertEqual(row["compile"], "pass")
+        self.assertEqual(row["strict"], "pass")
+        self.assertEqual(row["default_strict/compiler_strict"], "pass")
 
     def test_committed_baseline_keeps_original_measurement(self):
         data = json.loads((sweep.HERE / "sweep_baseline.json").read_text())
