@@ -963,6 +963,23 @@ void safe_check_finish():
 		for j in range(retained_bindings.length):
 			if ((safe_function_for_binding[j] >= 0) && (strcmp(binding.name, retained_bindings[j].name) == 0)):
 				safe_function_for_binding[b] = safe_function_for_binding[j]
+	# A declaration carries a contract even when no call reaches it. Validate
+	# its result relationship and compare every completed forward signature.
+	for b in range(retained_bindings.length):
+		retained_binding* binding = retained_bindings[b]
+		if ((binding.return_type < 0) || safe_trusted(binding.source)): continue
+		int checked = safe_mode || safe_contains_checked(binding.return_type, 0)
+		for p in range(binding.parameters.length):
+			if (safe_contains_checked(binding.parameters[p], 0)): checked = 1
+		if (checked == 0): continue
+		int function = safe_function_for_binding[b]
+		int at = function
+		if (at < 0): at = retained_sources[binding.source].root
+		safe_return_parameter(at, binding)
+		if (function >= 0):
+			retained_binding* definition = retained_bindings[retained_record_at(function).binding]
+			if (safe_contract_matches(binding, definition) == 0):
+				safe_error(at, c"safe: forward declaration disagrees with its definition", function)
 	if (safe_mode):
 		for b in range(retained_bindings.length):
 			retained_binding* binding = retained_bindings[b]
