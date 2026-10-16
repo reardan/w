@@ -174,13 +174,54 @@ js_value* js_class_error(void* runtime, void* context, js_value* receiver, list[
 	error.prototype = cast(js_value*, context)
 	error.intrinsic_error_name = error.prototype.intrinsic_error_name
 	if (args.length > 0 && args[0].kind != 0):
-		js_text* text = js_runtime_primitive_text(rt, args[0])
+		js_text* text = js_runtime_string_text(rt, args[0])
 		if (text == 0):
 			js_runtime_fail(rt, 6, c"Error message object coercion is outside the runtime subset")
 			return rt.undefined_value
 		js_class_define(rt, error, c"message", js_runtime_string(rt, text), 1, 1)
 		js_text_free(text)
 	return error
+
+
+# Generic Error.prototype.toString: observable Get/ToString of name precedes
+# Get/ToString of message; defaults and empty strings avoid extra punctuation.
+js_value* js_class_error_to_string(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_runtime_object(receiver) == 0):
+		js_runtime_fail(rt, 2, c"Error.toString requires an object receiver")
+		return rt.undefined_value
+	if (rt.depth >= rt.max_depth || js_runtime_compat_step(rt) == 0):
+		js_runtime_fail(rt, 5, c"JavaScript error string depth limit")
+		return rt.undefined_value
+	rt.depth = rt.depth + 1
+	js_text* name = 0
+	js_text* message = 0
+	js_value* value = js_runtime_get(rt, receiver, c"name")
+	if (rt.completion.status == 0):
+		if (value.kind == 0): name = js_runtime_key(c"Error")
+		else: name = js_runtime_string_text(rt, value)
+	if (name != 0 && rt.completion.status == 0):
+		value = js_runtime_get(rt, receiver, c"message")
+		if (rt.completion.status == 0):
+			if (value.kind == 0): message = js_text_new()
+			else: message = js_runtime_string_text(rt, value)
+	js_value* result = rt.undefined_value
+	if (name != 0 && message != 0 && rt.completion.status == 0):
+		int separator = name.units.length > 0 && message.units.length > 0
+		int count = message.units.length + separator * 2
+		if (count > rt.max_properties - name.units.length): js_runtime_fail(rt, 5, c"Error string length limit")
+		else:
+			if (separator):
+				name.units.push(':')
+				name.units.push(' ')
+			for i in range(message.units.length):
+				if (js_runtime_compat_step(rt) == 0): break
+				name.units.push(message.units[i])
+			if (rt.completion.status == 0): result = js_runtime_string(rt, name)
+	js_text_free(name)
+	js_text_free(message)
+	rt.depth = rt.depth - 1
+	return result
 
 
 void js_class_install_error(js_runtime* rt, char* name, js_value* prototype):
@@ -201,6 +242,7 @@ void js_class_install_error(js_runtime* rt, char* name, js_value* prototype):
 void js_runtime_install_classes(js_runtime* rt):
 	rt.error_prototype = js_runtime_alloc(rt, 5)
 	js_class_install_error(rt, c"Error", rt.error_prototype)
+	js_builtin_method(rt, rt.error_prototype, c"toString", js_class_error_to_string, 0)
 	rt.reference_error_prototype = js_runtime_alloc(rt, 5)
 	rt.reference_error_prototype.prototype = rt.error_prototype
 	js_class_install_error(rt, c"ReferenceError", rt.reference_error_prototype)
