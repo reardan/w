@@ -62,6 +62,8 @@ const int MM_BLOCK = 68
 const int MM_ARCHITECTURE = 69
 const int MM_USECASE = 71
 const int MM_C4 = 70
+const int MM_SWIMLANE = 72
+const int MM_EVENT_MODEL = 73
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2

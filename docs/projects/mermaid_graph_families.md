@@ -74,3 +74,15 @@ x64, including the guard allocator's leak checks.
   interactions in C4Dynamic. Native cards preserve semantic type annotations;
   custom styling, directional relationship macros, named configuration
   arguments and upstream exact geometry remain unsupported.
+
+- **Swimlanes:** named responsibility lanes, five flow directions, rectangular,
+  rounded/stadium, circular and decision nodes; labelled solid/dashed edges and
+  chains, including handoffs and cycles. The layout aligns graph ranks across
+  full-length lanes rather than treating lanes as ordinary clustered graphs.
+  Nested lanes, styles and additional shapes remain unsupported.
+- **Event modeling:** compact/relaxed timeframe and resetframe declarations,
+  all five entity types, namespace-derived lanes, inferred predecessor links,
+  explicit `->>` inputs, unique numeric frame identifiers and simple inline
+  data. A dedicated source-order timeline spans typed responsibility lanes.
+  External data blocks, typed/nested data payloads, and other data annotations
+  remain unsupported.

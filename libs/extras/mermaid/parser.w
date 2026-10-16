@@ -9,6 +9,7 @@ import libs.extras.mermaid.gitgraph
 import libs.extras.mermaid.blocks
 import libs.extras.mermaid.systems
 import libs.extras.mermaid.c4
+import libs.extras.mermaid.workflows
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -286,6 +287,11 @@ mm_document* mm_parse_raw(char* source, int length):
 		if (strcmp(header, c"C4Component") == 0): d.graph_variant = 2
 		if (strcmp(header, c"C4Dynamic") == 0): d.graph_variant = 3
 		if (strcmp(header, c"C4Deployment") == 0): d.graph_variant = 4
+	else if (strcmp(header, c"swimlane") == 0):
+		d.kind = MM_SWIMLANE
+		mm_match(&p, c"-beta")
+		if (mm_end(&p) == 0): mm_direction(&p)
+	else if (strcmp(header, c"eventmodeling") == 0): d.kind = MM_EVENT_MODEL
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -324,6 +330,12 @@ mm_document* mm_parse_raw(char* source, int length):
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_body(&p)
+		return d
+	if (d.kind == MM_SWIMLANE):
+		mm_swimlane_body(&p)
+		return d
+	if (d.kind == MM_EVENT_MODEL):
+		mm_event_body(&p)
 		return d
 	if (d.kind == MM_C4):
 		mm_c4_body(&p, -1, 0)

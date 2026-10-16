@@ -102,6 +102,8 @@ modules:
 	lib.__arch__.syscalls
 	libs.extras.html.html
 	libs.extras.css.css
+	libs.extras.mermaid.workflows
+	libs.extras.mermaid.workflow_render
 	libs.extras.mermaid.c4
 	libs.extras.mermaid.systems
 	libs.extras.mermaid.blocks
