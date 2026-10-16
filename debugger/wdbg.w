@@ -45,6 +45,7 @@ Breakpoints (patched int3 bytes with the original byte remembered):
 	                  and log expressions when set); i w lists watchpoints
 
 Inspection:
+	inspect <path>   bounded read-only JSON inspection (name.field or name.*)
 	p / print <x>     local/arg/global by name, or compile and run any
 	                  W expression in-process (globals and calls work)
 	set <x> <v>       write a local, argument or global
@@ -107,6 +108,7 @@ import debugger.lines
 import debugger.frames
 import debugger.symbols
 import debugger.locals
+import debugger.inspect
 import debugger.breakpoints
 import debugger.watchpoints
 import debugger.eval
@@ -660,6 +662,7 @@ void dbg_help():
 	println(c"  d/delete [n]   d w [n]   i b / i w (list)")
 	println(c"inspection:")
 	println(c"  p/print <name | expression>   set <name> <value>")
+	println(c"  inspect <name.field | name.*> (bounded read-only JSON data display)")
 	println(c"  repl (full REPL entries at the stop: definitions persist, :end returns)")
 	println(c"  x <addr | name> [count]   bt/backtrace   st/stack")
 	println(c"  f/frame [n]   up   down   (select the frame p/set/x/info use)")
@@ -785,6 +788,8 @@ void wdbg_command_loop(int context, int stop_addr):
 			if (frame >= 0): dbg_frame_select(context, frame)
 		else if ((strcmp(command, c"p") == 0) | (strcmp(command, c"print") == 0)):
 			dbg_print_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
+		else if (strcmp(command, c"inspect") == 0):
+			dbg_inspect_command(arg, dbg_sel_pc(stop_addr), dbg_sel_esp(context))
 		else if (strcmp(command, c"repl") == 0):
 			dbg_repl_mode(dbg_sel_pc(stop_addr), dbg_sel_esp(context))
 		else if (strcmp(command, c"set") == 0):

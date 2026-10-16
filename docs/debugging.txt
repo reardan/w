@@ -100,6 +100,21 @@ Current state:
 	returns; unreadable addresses stay silent instead of stopping
 
 	inspection
+		inspect <path>  read-only structured data for graphical clients;
+		                path = name followed by .field or .* dereferences.
+		                Struct pointers permit .field directly. Uses the
+		                selected frame, never evaluates calls/assignments.
+		                Emits one `wdbg-data {JSON}` line before the prompt:
+		                version (1), path, value, children (up to 64),
+		                truncated, and optional error. Each value has name,
+		                path, type, address, value and expandable; pointers
+		                also have pointer. Addresses are hex strings.
+		                Invalid/PROT_NONE reads return errors, not signals.
+		                Scalars, structs and pointers only for now; floats
+		                and word-sized unsigned values use hex bits. Array
+		                indices and container-specific views are not supported.
+		                Clients retain paths and re-inspect at each stop.
+		                The attach command loop does not expose inspect yet.
 		p / print <x>   local/argument/global by name (typed: structs
 		                print field by field, char* previews the string),
 		                or any W expression compiled in-process and run
