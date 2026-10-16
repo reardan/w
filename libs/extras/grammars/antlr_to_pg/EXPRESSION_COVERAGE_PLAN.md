@@ -75,4 +75,3 @@ Validation: 24 focused targets, all 1,254 targets in `./wbuild tests`, and all
 `NO_COLOR` unset. Structured W checks are clean; vendored grammar bytes and
 hashes match the pinned corpus. Final results satisfy the strengthened per-case
 expectations.
-
