@@ -47,4 +47,16 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin', prefix='audit_json_') as dire
     driver.write_text(f'import {module}\nint main():\n\treturn 0\n')
     result = subprocess.run([str(ROOT / 'bin/wv2'), '--strict', str(driver), '-o', str(directory / 'driver')], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+    lexer = directory / 'EmptyLexer.g4'
+    parser = directory / 'EmptyParser.g4'
+    parser.write_text("parser grammar EmptyParser; options {tokenVocab=EmptyLexer;} root: A EOF;")
+    for commands in ("mode(DEFAULT_MODE), channel(HIDDEN)", "mode(NEXT)"):
+        lexer.write_text("lexer grammar EmptyLexer; A: 'a'; EMPTY: -> " + commands + "; mode NEXT; B: 'b';")
+        output.write_text('sentinel')
+        result = subprocess.run([str(ROOT / 'bin/antlr_to_pg'), str(lexer), str(parser),
+                                 '--strict', '--exact-lexer', '--prediction', '-o', str(output),
+                                 '--audit-json', str(audit)], capture_output=True, text=True)
+        assert result.returncode != 0, result.stderr
+        assert output.read_text() == 'sentinel'
+        assert any(f['code'] == 'AT_LEXER_EMPTY' for f in json.loads(audit.read_text())['findings'])
 print('structured ANTLR audit: passed')
