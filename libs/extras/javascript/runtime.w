@@ -209,6 +209,8 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
+int js_sequence_operator(char* operation);
+js_value* js_runtime_sequence(js_runtime* rt, js_node* root, js_value* env);
 js_value* js_numeric_bitwise(js_runtime* rt, char* operation, js_value* left, js_value* right);
 js_value* js_numeric_not(js_runtime* rt, js_value* value);
 js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
@@ -1567,14 +1569,11 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
 	if (js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")): return js_runtime_assign(rt, node, env)
 	if (js_kind(node, c"binary")):
+		if (js_sequence_operator(node.text)): return js_runtime_sequence(rt, node, env)
 		js_value* left = js_runtime_eval_node(rt, node.children[0], env)
 		if (rt.completion.status != 0): return rt.undefined_value
-		if (strcmp(node.text, c"&&") == 0 && js_runtime_truth(left) == 0): return left
-		if (strcmp(node.text, c"||") == 0 && js_runtime_truth(left)): return left
-		if (strcmp(node.text, c"??") == 0 && left.kind != 0 && left.kind != 1): return left
 		js_value* right = js_runtime_eval_node(rt, node.children[1], env)
 		if (rt.completion.status != 0): return rt.undefined_value
-		if (strcmp(node.text, c"&&") == 0 || strcmp(node.text, c"||") == 0 || strcmp(node.text, c"??") == 0 || strcmp(node.text, c",") == 0): return right
 		return js_runtime_binary(rt, node.text, left, right)
 	if (js_kind(node, c"unary")):
 		js_node* operand = node.children[0]
@@ -1851,3 +1850,5 @@ import libs.extras.javascript.runtime_array_some
 import libs.extras.javascript.runtime_addition
 
 import libs.extras.javascript.runtime_numeric
+
+import libs.extras.javascript.runtime_sequence
