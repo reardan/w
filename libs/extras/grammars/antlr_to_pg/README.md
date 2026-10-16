@@ -237,6 +237,16 @@ transforms or accepts the rule: a prefix-only rule, for example, is not a direct
 left-recursion candidate. An incomplete plan cannot authorize lowering. This first delivery
 does not enable any previously refused grammar or alter the six sweep baselines.
 
+The interfaces are `at_lr_plan_build(rule, work_limit)` and
+`at_progress_analyze(rules, limits)`. `at_lr_plan_free` releases owned descriptors
+without releasing borrowed source nodes. Progress defaults are 4,096 parser
+rules, 1,000,000 work units and depth 128; the diagnostic precedence pass shares
+one million work units across the original grammar. `at_progress_candidate_valid`
+requires complete analysis without structural issues or cycles. This is a token
+progress check, separate from host semantics, metadata, helper-name collisions
+and downstream grammar safety. A named token consumes a cursor slot even when
+its source span is empty; terminal `EOF` itself does not.
+
 The independent [left-recursion fixtures](../../../../tests/grammars/antlr_left_recursion/README.md)
 pin all 21 original grammars and 25 rules, plus minimized reference witnesses.
 Their inventory distinguishes ANTLR generation, Java compilation, reference

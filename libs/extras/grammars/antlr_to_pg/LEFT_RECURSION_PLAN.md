@@ -14,6 +14,24 @@ and the [compatibility capability ledger](COMPATIBILITY_PLAN.md). The planning P
 is stacked on #708 while that implementation remains open. Implementation branches
 must start from the accepted combined base, not an older parallel checkout.
 
+Wave 0 was measured on clean combined revision
+`e84dd7f21cb9d2f76e9d430e05f63ac2fd262946` in [PR #727](https://github.com/reardan/w/pull/727).
+The full suite passed **1,274 targets**. The complete 291-root, six-configuration
+sweep had zero regressions or infrastructure errors; its outcome CSV was
+byte-identical to `sweep_current_results.csv`, with tool hashes unchanged during
+measurement and the existing 90-second stage limit retained. No baseline was
+promoted. The existing live differential passed 170/170 inputs across 24 families;
+the lexer endpoint differential passed 7,104/7,104 cases.
+
+The independent new reference gate matches 34 original/minimized rule plans and
+490 alternatives, and pins 33 minimized runtime inputs. All 21 original roots
+generate with ANTLR 4.13.2; 15 compile with Java 17, six require missing host
+support, and no original upstream parser runtime is claimed. Original graph
+analysis completes for every root with no mutual cycles; the largest work count
+is GQL's 71,769 of 1,000,000. Instrumented refusals and output preservation are
+replayed for all 25 original rules. Nonnullable and nullable acceptance work is
+still reserved for deliveries 2 and 3 below.
+
 ## Baseline and outcome
 
 The clean implementation measurement is `b1887a858969ba341fb1449793dfd69ed4113677`,
