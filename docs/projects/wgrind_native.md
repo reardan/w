@@ -84,6 +84,7 @@ Implemented in `libs/wgrind/` with no Valgrind runtime dependency:
   address, access size, access/origin/allocation/free tokens and allocation-relative
   offset. Error attribution picks a containing retained object or the nearest
   edge within 64 bytes, preferring live objects over overlapping freed history.
+  Ties among freed objects select the latest free, not hash-table order.
   It does not claim that arbitrary distant addresses belong to an allocation.
 
 The engine allocates checker metadata from private mmap-backed 256 KiB slabs,

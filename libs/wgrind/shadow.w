@@ -248,22 +248,35 @@ wg_block* wg_block_find(wg_context* c, int address):
 # Error-only interval search: the execution fast path uses shadow pages.
 # Pick a containing object or an edge within 64 bytes. Do not attribute
 # an arbitrary unmapped address (for example null) to a distant object.
-# A live object wins ties against stale, overlapping freed history.
+# Live objects win ties; among overlapping freed objects, prefer the
+# newest lifetime, using the free-order list rather than hash order.
+int wg_block_distance(wg_block* p, int address):
+	if (wg_less(address, p.address)): return p.address - address
+	if (wg_less(address - p.address, p.size) == 0): return address - p.address - p.size + 1
+	return 0
+
+
 void wg_describe(wg_context* c, int address):
 	int nearest = 65
 	wg_block* found = 0
+	wg_block* p = c.newest
+	while (p != 0):
+		int distance = wg_block_distance(p, address)
+		if (wg_less(distance, nearest)):
+			found = p
+			nearest = distance
+		p = p.older
 	for b in range(WG_BUCKETS):
-		wg_block* p = cast(wg_block*, c.blocks[b])
+		p = cast(wg_block*, c.blocks[b])
 		while (p != 0):
-			int distance = 0
-			if (wg_less(address, p.address)): distance = p.address - address
-			elif (wg_less(address - p.address, p.size) == 0): distance = address - p.address - p.size + 1
-			int choose = wg_less(distance, nearest)
-			if ((distance == nearest) && (found != 0)):
-				if ((p.state == 1) && (found.state != 1)): choose = 1
-			if (choose):
-				found = p
-				nearest = distance
+			if (p.state == 1):
+				int distance = wg_block_distance(p, address)
+				int choose = wg_less(distance, nearest)
+				if ((distance == nearest) && (found != 0)):
+					if (found.state != 1): choose = 1
+				if (choose):
+					found = p
+					nearest = distance
 			p = p.hash_next
 	if (found != 0):
 		c.error_allocation = found.allocated_at

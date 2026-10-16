@@ -461,6 +461,11 @@ void check_calloc_and_attribution():
 	assert_equal(0, c.error_free)
 	wg_clear_error(c)
 	assert1(wg_deallocate(c, 65544, 6))
+	assert_equal(0, wg_access(c, 65545, 1, WG_READ, 7))
+	assert_equal(222, c.error_allocation)
+	assert_equal(6, c.error_free)
+	assert_equal(1, c.error_offset)
+	wg_clear_error(c)
 	int maximum = ~(1 << (__word_size__ * 8 - 1))
 	assert1(wg_callocate(c, 0, maximum, 2, 7)) # failed allocator event
 	assert_equal(0, wg_callocate(c, 131072, maximum, 2, 8))
