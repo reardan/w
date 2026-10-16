@@ -1,5 +1,6 @@
 # Graph layout and rendering; shared scene primitives live in scene.w.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.layout
 import libs.extras.mermaid.data_render
 import libs.extras.mermaid.hierarchy_render
 import libs.extras.mermaid.framework_render
@@ -10,6 +11,7 @@ import libs.extras.mermaid.workflow_render
 import libs.extras.mermaid.narrative_render
 import libs.extras.mermaid.railroad_render
 import libs.extras.mermaid.style_render
+import libs.extras.mermaid.uml_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -42,6 +44,8 @@ void mm_measure(mm_document* d, mm_scene* s):
 		if (d.kind == MM_ARCHITECTURE && n.group): b.w = b.w + strlen(n.annotation) * 8 + 24
 		if (n.shape == 10 || n.shape == 12): b.h = 110
 		if (n.shape == 11): b.h = 72
+		if (n.shape == 28):
+			b.h = 72
 		if (n.shape == 13):
 			b.w = 72
 			b.h = 72
@@ -122,11 +126,12 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
 		int size = b.h
 		if (horizontal): size = b.w
 		if (size > sizes[rank]): sizes[rank] = size
+	list[int] order = mm_layer_order(nodes, edges, max_rank)
 	for i in range(nodes.length):
-		mm_bounds* b = nodes[i]
+		mm_bounds* b = nodes[order[i]]
 		int lane = 60
 		for j in range(i):
-			mm_bounds* other = nodes[j]
+			mm_bounds* other = nodes[order[j]]
 			if (other.rank == b.rank):
 				if (horizontal): lane = lane + other.h + 100
 				else: lane = lane + other.w + 100
@@ -141,6 +146,7 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
 			b.x = lane
 			b.y = offset
 	__w_list_free(cast(__w_list*, sizes))
+	__w_list_free(cast(__w_list*, order))
 
 # Return the direct child of scope containing index, or -1 outside this scope.
 int mm_scope_child(mm_document* d, int index, int scope):
@@ -170,6 +176,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 			if (indices[i] == b): mapped.to_node = i
 		edges.push(mapped)
 	mm_place(nodes, edges, mm_scope_direction(d, scope))
+	if (d.layout_algorithm == 1): mm_force_place(nodes, edges)
 	if (scope >= 0):
 		mm_bounds* box = s.nodes[scope]
 		box.h = 100
@@ -280,6 +287,14 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		else:
 			ax = a.x + a.w * (out_index + 1) / (out_count + 1)
 			bx = b.x + b.w * (in_index + 1) / (in_count + 1)
+	mm_node* from_node = d.nodes[e.from_node]
+	mm_node* to_node = d.nodes[e.to_node]
+	if (from_node.shape == 28):
+		ax = a.x + a.w / 2 + dx * 12
+		ay = a.y + 16 + dy * 12
+	if (to_node.shape == 28):
+		bx = b.x + b.w / 2 - dx * 12
+		by = b.y + 16 - dy * 12
 	int mx = (ax + bx) / 2
 	int my = (ay + by) / 2
 	if (horizontal): mx = bx - dx * 45
@@ -307,11 +322,11 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
 		else: mm_marker(s, bx, by, 0 - dx, 0 - dy, e.right_card)
 	else if (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4 || d.kind == MM_USECASE):
-		mm_uml_marker(s, ax, ay, dx, dy, e.left_marker)
+		if (from_node.shape != 28): mm_uml_marker(s, ax, ay, dx, dy, e.left_marker)
 		int end_dx = 0 - dx
 		int end_dy = 0 - dy
 		if (e.from_node == e.to_node): end_dx = dx
-		mm_uml_marker(s, bx, by, end_dx, end_dy, e.right_marker)
+		if (to_node.shape != 28): mm_uml_marker(s, bx, by, end_dx, end_dy, e.right_marker)
 		if (e.left_label[0] != 0): mm_text(s, ax + dx * 30 + 8, ay + dy * 30 + 8, e.left_label)
 		if (e.right_label[0] != 0): mm_text(s, bx + end_dx * 30 + 8, by + end_dy * 30 + 8, e.right_label)
 	else if (d.kind == MM_AGENT && e.right_marker == 6):
@@ -392,7 +407,13 @@ mm_scene* mm_render_diagram(mm_document* d):
 	s.height = 160
 	mm_layout(d, s)
 	mm_render_groups(d, s, -1)
-	for mm_edge* e in d.edges: mm_render_edge(d, s, e)
+	for mm_edge* e in d.edges:
+		int start = s.items.length
+		mm_render_edge(d, s, e)
+		for i in range(start, s.items.length):
+			mm_primitive* primitive = s.items[i]
+			mm_style_merge(&primitive.style, &d.edge_style)
+			mm_style_merge(&primitive.style, &e.style)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
@@ -405,6 +426,12 @@ mm_scene* mm_render_diagram(mm_document* d):
 				if (n.shape == 5): mm_draw(s, MM_CIRCLE, b.x + 7, b.y + 7, b.x + b.w - 7, b.y + b.h - 7, 1, c"")
 			mm_style_node(d, s, n, style_start)
 			continue
+		if (n.shape == 28):
+			int cx = b.x + b.w / 2
+			mm_draw(s, MM_CIRCLE, cx - 12, b.y + 4, cx + 12, b.y + 28, 0, c"")
+			mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, b.y + 44, n.label)
+			mm_style_node(d, s, n, style_start)
+			continue
 		if (n.shape == 10):
 			mm_actor_draw(s, b)
 			mm_text(s, b.x + 12, b.y + 90, n.label)
@@ -415,7 +442,28 @@ mm_scene* mm_render_diagram(mm_document* d):
 			if (n.shape == 12): mm_text(s, b.x + 12, b.y + 86, n.label)
 			mm_style_node(d, s, n, style_start)
 			continue
-		if (n.shape == 3):
+		if (n.shape == 21 || n.shape == 22):
+			mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_primitive* box = s.items[s.items.length - 1]
+			if (n.shape == 21): box.dashed = 3
+			else:
+				mm_line(s, b.x + 10, b.y, b.x + 10, b.y + b.h, 0)
+				mm_line(s, b.x + b.w - 10, b.y, b.x + b.w - 10, b.y + b.h, 0)
+		else if (n.shape >= 23 && n.shape <= 27):
+			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_primitive* polygon = s.items[s.items.length - 1]
+			if (n.shape == 23): polygon.points = list[int]{b.x + 20, b.y, b.x + b.w - 20, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 20, b.y + b.h, b.x + 20, b.y + b.h, b.x, b.y + b.h / 2}
+			else:
+				int tl = 0
+				int tr = 0
+				int bl = 0
+				int br = 0
+				if (n.shape == 24 || n.shape == 26): tl = 20
+				if (n.shape == 25 || n.shape == 26): tr = 20
+				if (n.shape == 25 || n.shape == 27): bl = 20
+				if (n.shape == 24 || n.shape == 27): br = 20
+				polygon.points = list[int]{b.x + tl, b.y, b.x + b.w - tr, b.y, b.x + b.w - br, b.y + b.h, b.x + bl, b.y + b.h}
+		else if (n.shape == 3):
 			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
 			mm_primitive* diamond = s.items[s.items.length - 1]
 			diamond.points = list[int]{b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2}
@@ -433,7 +481,14 @@ mm_scene* mm_render_diagram(mm_document* d):
 				if (n.shape == 18): polygon.points = list[int]{b.x + 16, b.y, b.x + b.w, b.y, b.x + b.w - 16, b.y + b.h, b.x, b.y + b.h}
 				else: polygon.points = list[int]{b.x + 16, b.y, b.x + b.w - 16, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 16, b.y + b.h, b.x + 16, b.y + b.h, b.x, b.y + b.h / 2}
 		else if (n.shape == 2): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
-		else if (n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
+		else if (n.shape == 11):
+			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_primitive* oval = s.items[s.items.length - 1]
+			oval.points = new list[int]
+			for i in range(48):
+				float angle = cast(float, i) * 6.2831853 / 48.0
+				oval.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * cast(float, b.w) / 2.0))
+				oval.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * cast(float, b.h) / 2.0))
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int title_y = b.y + (b.h - 16) / 2
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
@@ -447,6 +502,7 @@ mm_scene* mm_render_diagram(mm_document* d):
 				mm_text(s, b.x + 12, y + 5, text)
 				free(text)
 		mm_style_node(d, s, n, style_start)
+	if (d.kind == MM_CLASS || d.kind == MM_STATE): mm_uml_notes(d, s)
 	return s
 
 # Apply document metadata once, after the family's own layout has completed.
