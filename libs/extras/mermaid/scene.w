@@ -188,6 +188,7 @@ char* mm_svg(mm_scene* scene):
 			mm_svg_number(out, c"width", p.x2 - p.x)
 			mm_svg_number(out, c"height", p.y2 - p.y)
 			if (p.dashed == 1): mm_svg_number(out, c"rx", 12)
+			if (p.dashed == 3): mm_svg_number(out, c"rx", (p.y2 - p.y) / 2)
 			string_append(out, c"/>\n")
 		else if (p.kind == MM_CIRCLE):
 			string_append(out, c"<circle")

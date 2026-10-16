@@ -21,17 +21,26 @@ Supported: `sequenceDiagram`, `title`, `participant` and `actor`, external `as`
 aliases, implicit participants, solid/dashed messages with `->`, `-->`, `->>`,
 `-->>`, `-x`, `--x`, `-)`, `--)`, `<<->>` and `<<-->>`; self messages; `Note`
 (or `note`) over one/two participants or left/right of one; `activate`,
-`deactivate` and message `+`/`-` shorthand; `autonumber`; nested `loop`, `alt`,
+`deactivate` and message `+`/`-` shorthand; `autonumber`, integer start/increment ranges, `autonumber off` and bare
+`autonumber` to resume; `create participant`/`create actor` (including aliases)
+and `destroy`; nested `loop`, `alt`,
 `opt`, `par`, `critical` and `break` fragments, their appropriate `else`, `and`
 and `option` branches, and `end`.
 
 The layout has ordered participant headers, actor figures, dashed lifelines,
 message arrowheads/crosses, activation bars, note boxes, numbered messages and
 nested fragment frames. Plaintext label width affects lane spacing. Unclosed
-activations extend to the diagram bottom; unmatched deactivation is an error.
+activations extend to the diagram bottom or participant destruction; unmatched
+deactivation is an error. Created participants enter at their creation message,
+and destroyed lifelines end with a cross. Lifecycle directives require the next
+event to be their message; creation targets the new participant, destruction
+involves the named participant, and later messages/notes/activations using a
+destroyed participant are errors. Numbering continues while hidden; restarting
+with an explicit integer sets a new range. Starts are 0–1,000,000 and increments
+are 1–1,000,000.
 
 Not yet supported: participant configuration objects/stereotypes, participant
-creation/destruction, boxes, rect highlighting, links, custom numbering ranges,
+configuration after creation, boxes, rect highlighting, links, fractional numbering,
 half-arrows, multiline/rich labels or browser styling. Arbitrary control
 keywords do not silently become participants.
 
@@ -72,18 +81,20 @@ Reference: <https://mermaid.js.org/syntax/gantt.html>.
 
 Supported: `gantt`, title, `dateFormat YYYY-MM-DD`, sections, task IDs, explicit
 start/end dates, positive integer day/week durations (`3d`, `2w`), sequential
-starts after the previous task, and `after taskID` dependencies on earlier tasks.
-The first task needs an explicit date. Calendar dates validate Gregorian leap
+starts after the previous task, and `after taskID` dependencies, including forward references and multiple
+space-separated IDs (the latest dependency end wins). `until taskID` ends at
+the referenced task start. The first task needs an explicit date or dependency. Calendar dates validate Gregorian leap
 years and accept years 1970–9999. `done`, `active`, `crit` and `milestone` tags
 are represented using completion lines, an active label, a double border and a
 diamond respectively; milestones can use `0d`.
 
 The preview uses a common calendar axis and proportional start positions/bar
 lengths. Date ticks maintain enough spacing to stay readable. Dependencies
-resolve deterministically and missing/forward references fail.
+resolve after parsing the complete chart; unknown references, dependency cycles,
+ends before starts, and schedules beyond year 9999 fail.
 
-Not yet supported: alternative date formats or sub-day time units, relative
-`until` ends, multiple dependencies, exclusions/weekends, timezone/today settings,
+Not yet supported: alternative date formats or sub-day time units,
+exclusions/weekends, timezone/today settings,
 axis formatting, interactive links, click handlers or configurable styles.
 Unsupported scheduling directives fail rather than producing an incorrect chart.
 
