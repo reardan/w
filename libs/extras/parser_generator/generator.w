@@ -1834,7 +1834,8 @@ void pg_emit_stateful_candidate(pg_source_writer* writer, pg_grammar* grammar, c
 	pg_source_line(writer, c"length = 0")
 	if (literal != 0):
 		char* spelling = pg_c_literal(literal.text)
-		pg_line(writer, f"if (starts_with(input + index, {spelling})): length = {strlen(literal.text)}")
+		if (grammar.guarded_progress): pg_line(writer, f"length = pg_lexer_literal_probe(input, index, state.length, {spelling})")
+		else: pg_line(writer, f"if (starts_with(input + index, {spelling})): length = {strlen(literal.text)}")
 		free(spelling)
 	else if (token.expression != 0): pg_line(writer, f"length = {grammar.name}_matcher_{name}(input, index)")
 	else: pg_line(writer, f"length = pg_lexer_matcher_{token.matcher}(input, index)")
@@ -1846,6 +1847,7 @@ void pg_emit_stateful_candidate(pg_source_writer* writer, pg_grammar* grammar, c
 		pg_source_line(writer, c"return 0")
 		pg_source_dedent(writer)
 		if (config.guard != 0): pg_line(writer, f"if (((length > 0) || (length == -4)) && (({config.guard}) == 0)): length = 0")
+		pg_source_line(writer, c"if ((length < -4) && (-length - 4 > failed_length)): failed_length = -length - 4")
 		pg_open_c(writer, c"if ((length == -4) && (best_rule < 0)):")
 		pg_line(writer, f"best_rule = {order}")
 		pg_source_dedent(writer)
@@ -1920,6 +1922,7 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	if (grammar.guarded_progress && has_more): pg_source_line(writer, c"first_attempt = 0")
 	pg_source_line(writer, c"int best_length = 0")
 	pg_source_line(writer, c"int best_rule = -1")
+	if (grammar.guarded_progress): pg_source_line(writer, c"int failed_length = 0")
 	pg_source_line(writer, c"int length = 0")
 	if (grammar.ordered_lexer):
 		for order, name in grammar.lexer_order: pg_emit_stateful_candidate(writer, grammar, name, order)
@@ -1968,6 +1971,7 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 		pg_source_line(writer, c"int unmatched_codepoint = 0")
 		pg_source_line(writer, c"int unmatched_width = utf8_scan(input + index, state.length - index, &unmatched_codepoint)")
 		pg_source_line(writer, c"if (unmatched_width > 0): best_length = unmatched_width")
+		pg_source_line(writer, c"if ((failed_length > best_length) && (failed_length <= state.length - index)): best_length = failed_length")
 	pg_source_line(writer, c"best_rule = -1")
 	pg_source_line(writer, c"channel = pg_token_hidden_channel")
 	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, c\"invalid token\", c\"lexer rule\", c\"unmatched byte\")")

@@ -4,6 +4,7 @@ line endings are LF, CR, CRLF (one newline), and UTF-8 U+2028/U+2029.
 Input and filename are copied. Host hooks must snapshot every mutable host
 field: restoring and replaying token actions must have no external effects.
 */
+import lib.utf8
 import libs.extras.parser_generator.token
 import libs.extras.parser_generator.diagnostics
 
@@ -178,3 +179,26 @@ void pg_lexer_state_free(pg_lexer_state* state):
 	free(state.input)
 	free(state.filename)
 	free(state)
+
+
+# Exact lexer probing preserves the failed prefix so recovery consumes the
+# character on which the whole token attempt failed, as ANTLR does. Lengths
+# remain byte counts; -2/-3/-4 are reserved for limit/UTF-8/empty success.
+int pg_lexer_literal_probe(char* input, int index, int length, char* spelling):
+	int offset = index
+	int expected = 0
+	int size = strlen(spelling)
+	while (expected < size):
+		if (offset >= length):
+			if (offset == index): return 0
+			return -4 - (offset - index)
+		int actual_point = 0
+		int expected_point = 0
+		int actual_width = utf8_scan(input + offset, length - offset, &actual_point)
+		int expected_width = utf8_scan(spelling + expected, size - expected, &expected_point)
+		if ((actual_width == 0) || (expected_width == 0)): return -3
+		offset = offset + actual_width
+		if (actual_point != expected_point): return -4 - (offset - index)
+		expected = expected + expected_width
+	if (offset == index): return -4
+	return offset - index

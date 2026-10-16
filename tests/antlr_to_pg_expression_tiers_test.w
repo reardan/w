@@ -1,7 +1,7 @@
 # wbuild: target=antlr_to_pg_expression_tiers_test tag=tests dep=antlr_to_pg
 # wbuild: step="bin/wv2 tests/antlr_to_pg_expression_tiers_test.w -o bin/antlr_to_pg_expression_tiers_test"
 # wbuild: step="bin/antlr_to_pg_expression_tiers_test"
-# wbuild: step="bin/antlr_to_pg --strict --stateful tests/grammars/antlr_expression_tiers/tiers.g4 -o bin/antlr_expression_tiers.pg --parser-name expression_tiers --matchers bin/antlr_expression_tiers_matchers.w"
+# wbuild: step="bin/antlr_to_pg --strict --stateful --prediction tests/grammars/antlr_expression_tiers/tiers.g4 -o bin/antlr_expression_tiers.pg --parser-name expression_tiers --matchers bin/antlr_expression_tiers_matchers.w"
 # wbuild: step="bin/parser_generator_grammars bin/antlr_expression_tiers.pg -o bin/antlr_expression_tiers_parser.w"
 # wbuild: step="bin/wv2 tests/grammars/antlr_expression_tiers/runtime.w -o bin/antlr_expression_tiers_runtime"
 # wbuild: step="bin/antlr_expression_tiers_runtime"

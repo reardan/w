@@ -11,8 +11,8 @@ void test_guarded_mode_and_named_eof():
 	pg_diagnostics_print(result.diagnostics)
 	assert_equal(1, result.success)
 	assert_equal(0, pg_diagnostics_count(result.diagnostics))
-	assert_equal(3, result.stream.tokens.length)
-	assert_equal(guarded_progress_token_END, result.stream.tokens[1].kind)
+	assert_equal(2, result.stream.tokens.length)
+	assert_equal(pg_token_eof_kind, result.stream.tokens[1].kind)
 	assert_equal(0, result.stream.tokens[1].length)
 	assert_equal(1, result.stream.tokens[1].offset)
 	pg_parse_result_free(result)
@@ -29,11 +29,9 @@ void test_guarded_matcher_failures_are_errors():
 
 void test_guarded_eof_snapshot_replays():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
-	pg_lexer_state* state = guarded_progress_provider_new(c"a", 1, c"replay")
-	pg_token* token = guarded_progress_next(state, diagnostics)
-	pg_token_free(token)
-	token = guarded_progress_next(state, diagnostics)
-	pg_token_free(token)
+	pg_lexer_state* state = guarded_progress_provider_new(c"", 0, c"replay")
+	state.mode = guarded_progress_mode_NEXT
+	pg_token* token = 0
 	pg_lexer_snapshot* saved = pg_lexer_save(state)
 	token = guarded_progress_next(state, diagnostics)
 	assert_equal(guarded_progress_token_END, token.kind)
@@ -48,3 +46,18 @@ void test_guarded_eof_snapshot_replays():
 	pg_lexer_snapshot_free(saved)
 	pg_lexer_state_free(state)
 	pg_diagnostics_free(diagnostics)
+
+void test_guarded_zero_width_cycle_is_bounded():
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = guarded_progress_lex(c"z", c"cycle", diagnostics)
+	assert1(pg_diagnostics_count(diagnostics) > 0)
+	assert1(stream.allocation_count < 260)
+	pg_token_stream_free(stream)
+	pg_diagnostics_free(diagnostics)
+
+void test_guarded_literal_failed_prefix_and_scalar_boundaries():
+	assert_equal(2, pg_lexer_literal_probe(c"ab!", 0, 3, c"ab"))
+	assert_equal(-6, pg_lexer_literal_probe(c"ac!", 0, 3, c"ab"))
+	assert_equal(-5, pg_lexer_literal_probe(c"a", 0, 1, c"ab"))
+	assert_equal(-7, pg_lexer_literal_probe(c"a\xc3\xa9!", 0, 4, c"ab"))
+	assert_equal(-3, pg_lexer_literal_probe(c"a\xc3!", 0, 3, c"ab"))

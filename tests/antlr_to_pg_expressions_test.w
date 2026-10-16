@@ -1,7 +1,7 @@
 # wbuild: target=antlr_to_pg_expressions_test tag=tests dep=antlr_to_pg
 # wbuild: step="bin/wv2 tests/antlr_to_pg_expressions_test.w -o bin/antlr_to_pg_expressions_test"
 # wbuild: step="bin/antlr_to_pg_expressions_test"
-# wbuild: step="bin/antlr_to_pg --strict --stateful tests/grammars/antlr_expressions/expressions.g4 -o bin/antlr_expressions.pg --parser-name expressions --matchers bin/antlr_expressions_matchers.w"
+# wbuild: step="bin/antlr_to_pg --strict --stateful --prediction tests/grammars/antlr_expressions/expressions.g4 -o bin/antlr_expressions.pg --parser-name expressions --matchers bin/antlr_expressions_matchers.w"
 # wbuild: step="bin/parser_generator_grammars bin/antlr_expressions.pg -o bin/antlr_expressions_parser.w"
 # wbuild: step="bin/wv2 tests/grammars/antlr_expressions/runtime.w -o bin/antlr_expressions_runtime"
 # wbuild: step="bin/antlr_expressions_runtime"

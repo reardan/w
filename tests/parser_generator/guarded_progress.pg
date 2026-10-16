@@ -9,7 +9,10 @@ lexer_command SWITCH mode NEXT
 lexer_command SWITCH skip
 token TEXT = "a"
 lexer_rule TEXT NEXT
+token CYCLE guarded_cycle
+lexer_rule CYCLE NEXT
+lexer_command CYCLE skip
 token END guarded_end
 lexer_rule END NEXT
 start program
-rule program = TEXT END EOF
+rule program = TEXT EOF
