@@ -1,0 +1,17 @@
+# wbuild: step="bin/wv2 --strict tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture"
+# wbuild: step="bin/wv2 --strict x64 tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture64"
+# wbuild: step="bin/wv2 --strict --no-regs --no-inline tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture"
+# wbuild: step="bin/wv2 --strict --inline tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture"
+# wbuild: step="bin/wv2 --strict x64 --no-regs --no-inline tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture64"
+# wbuild: step="bin/wv2 --strict x64 --inline tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture64"
+import lib.testing
+
+
+void test_checked_slice_runtime_is_exercised_by_steps():
+	assert1(1)
