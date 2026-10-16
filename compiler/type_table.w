@@ -615,7 +615,9 @@ int type_get_safe_record(int base, char* lifetime):
 	record.num_fields = source.num_fields
 	for field in range(source.num_fields):
 		int field_type = source.field_types[field]
-		if ((type_safe_kind(field_type) == 2) && (type_get_pointer_level(field_type) == 1)):
+		if (type_is_safe_slice(field_type)):
+			field_type = type_get_safe_slice(type_get_element_type(field_type), lifetime)
+		else if ((type_safe_kind(field_type) == 2) && (type_get_pointer_level(field_type) == 1)):
 			field_type = type_get_safe_lifetime(type_safe_target(field_type), 2, lifetime)
 		record.field_names.push(source.field_names[field])
 		record.field_types.push(field_type)

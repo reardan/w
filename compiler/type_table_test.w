@@ -360,6 +360,14 @@ void test_checked_record_types():
 	assert_equal(base, retained_types[retained_types[snapshot].target].origin)
 	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"outer"))
 
+	int slice_base = type_push(c"SliceHolder")
+	type_add_arg(slice_base, c"items", type_get_safe_slice(type_lookup(c"int"), c"inside"))
+	int slice_view = type_get_safe_record(slice_base, c"outside")
+	int slice_field = type_get_field_type(slice_view, c"items")
+	assert1(type_is_safe_slice(slice_field))
+	assert_equal(type_get_size(slice_base), type_get_size(slice_view))
+	assert_equal(0, strcmp(type_record(slice_field).safe_lifetime, c"outside"))
+
 
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
