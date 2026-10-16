@@ -120,7 +120,7 @@ void test_mutable_record_boundaries():
 	mutable_record_case(c"struct Holder:\n\trefmut[field] int* item\n\tint tag\nint main():\n\trefmut[a] Holder h\n\treturn 0\n", c"initialization")
 	mutable_record_case(c"struct Holder:\n\trefmut[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\trefmut[a] Holder h = Holder(item: &x)\n\treturn 0\n", c"every field")
 	mutable_record_case(c"struct Holder:\n\trefmut[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\trefmut[a] Holder h = Holder(&x, 3)\n\trefmut int* tag = &h.tag\n\treturn *tag\n", c"descriptor fields")
-	mutable_record_case(c"struct Holder:\n\trefmut[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\tint y = 9\n\trefmut[a] Holder h = Holder(&x, 3)\n\th.item = &y\n\treturn 0\n", c"cannot be reassigned")
+	mutable_record_case(c"struct Holder:\n\trefmut[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\tint y = 9\n\trefmut[a] Holder h = Holder(&x, 3)\n\th.item = &y\n\treturn 0\n", c"named unique owner")
 	mutable_record_case(c"struct Holder:\n\trefmut[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\trefmut[a] Holder h = Holder(&x, 3)\n\th = h\n\treturn 0\n", c"cannot be reassigned")
 	mutable_record_case(c"struct Pair:\n\trefmut[a] int* first\n\trefmut[a] int* second\nint main():\n\tint x = 7\n\trefmut[a] Pair h = Pair(&x, &x)\n\treturn 0\n", c"conflicting")
 	mutable_record_case(c"struct Pair:\n\trefmut[a] int* first\n\trefmut[b] int* second\nint main():\n\tint x = 7\n\tint y = 9\n\trefmut[a] Pair h = Pair(&x, &y)\n\treturn 0\n", c"safe:")
