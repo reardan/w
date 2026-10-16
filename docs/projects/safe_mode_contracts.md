@@ -298,7 +298,8 @@ ordinary call's ownership reservations and owner-slot clearing. Retained
 emission recovers the template identity from the concrete name without
 changing the published ownership contract. Qualified generic pointer
 signatures preserve their qualifier and optional lifetime label during
-capture and instantiation. Indirect calls and callbacks remain excluded.
+capture and instantiation. Quantified noncapturing indirect calls follow the
+callable rules above; capturing and escaping environments remain excluded.
 
 ## Target admission
 

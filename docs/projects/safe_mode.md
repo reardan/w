@@ -1102,3 +1102,38 @@ existing 47-case callable matrix pass. Native guards and Memcheck pass on
 x86/x64 with 153 allocations/frees and zero leaks/errors. Focused compiler
 instrumentation runs both callable matrices and reaches the single changed
 executable line (1/1, 100%); full aggregate coverage remains a CI gate.
+
+### Nested borrowed records (Wave 1)
+
+Twenty-seven accepted/rejected programs exercise nested construction, aliases,
+imports, renamed forward contracts, returned records, checked callbacks,
+shared/mutable projections, sibling origins, branch-selected returns, local
+escapes, descriptor addresses and shape bounds. Every case is checked and
+compiled on x86/x64 with and without `--safe`; accepted programs execute and
+rejections leave no executable.
+
+The full suite, both Linux fixpoints, Windows runtime and CI compiler benchmark
+passed together: 1,343 targets. All 48 manifest-selected architecture/root
+checks passed. The runtime fixture covers nested records and slices across
+returned temporaries, callback copying, stack clobbers, owner replacement and
+mutable loop reborrows. It passes the Linux optimization variants and Wine.
+Native guards and Memcheck pass on both Linux architectures with 102
+allocations/frees, no outstanding blocks and zero errors.
+
+Seven alternating compiles of the callable baseline `89bf96d2` produced
+byte-identical compiler output. Median elapsed time was 1.66 s for both
+compilers; median peak RSS was 112,032 KiB before and 112,256 KiB after.
+The existing checked callable runtime fixture also produced byte-identical
+x86/x64 executables, and both versions execute successfully. These shared-host
+measurements do not establish a general performance bound. Nested validation
+uses bounded compile-time recursion; application layout, allocation and
+cleanup are unchanged.
+
+This step implements nested single-group support. Multiple independent groups,
+mixed ownership, replacement and partial moves remain required under #695;
+this step does not close #695 or #644.
+
+Instrumented validation passed all 1,341 targets and every compiler/API harness
+with a COMPLETE receipt. Tests reached all 24/24 changed executable compiler
+lines (100%). The measured directory percentages and existing floors remain
+unchanged from the callable baseline.
