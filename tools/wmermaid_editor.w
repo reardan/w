@@ -36,38 +36,46 @@ int main(int argc, int argv):
 	if (path == 0):
 		println2(c"usage: wmermaid_editor FILE.mmd [--frames N] [--screenshot FILE.ppm]")
 		return 2
-	if (strlen(path) > 127):
-		println2(c"editor path field supports up to 127 UTF-8 bytes")
-		return 2
-	mm_document* input = mm_read(path)
-	if (input == 0 || strlen(input.source) != input.length):
+	mm_editor* e = mm_editor_open(path)
+	if (e == 0):
 		println2(c"cannot open source (I/O, size limit or embedded NUL)")
-		mm_document_free(input)
 		return 1
-	mm_editor* e = mm_editor_new(path, input.source)
-	mm_document_free(input)
 	ui_textarea_state area
 	ui_textarea_init(&area)
 	ui_textarea_set(&area, e.document.source)
-	ui_textbox_state filename
-	ui_textbox_init(&filename)
-	ui_textbox_set(&filename, path)
+	ui_textarea_state filename
+	ui_textarea_init(&filename)
+	ui_textarea_set(&filename, path)
+	ui_textbox_state node_id
+	ui_textbox_state node_label
+	ui_textbox_state edge_from
+	ui_textbox_state edge_to
+	ui_textbox_init(&node_id)
+	ui_textbox_init(&node_label)
+	ui_textbox_init(&edge_from)
+	ui_textbox_init(&edge_to)
 	gfx_window* win = gfx_window_open(c"W Mermaid", 1280, 800)
 	if (win == 0):
 		mm_editor_free(e)
 		ui_textarea_free(&area)
+		ui_textarea_free(&filename)
 		return 1
 	ui_renderer renderer
 	if (ui_render_init(&renderer) == 0):
 		gfx_window_destroy(win)
 		mm_editor_free(e)
 		ui_textarea_free(&area)
+		ui_textarea_free(&filename)
 		return 1
 	ui_theme theme
 	ui_theme_light(&theme)
 	ui_context ctx
 	ui_context_init(&ctx, &renderer, &theme)
-	char* status = c"Edit source on the left. Drag the preview to pan."
+	char* status = c"Ctrl+S save; Ctrl+Z undo; Ctrl+Y redo; Ctrl+L path; Ctrl+E source."
+	int focus_source = 1
+	int external = 0
+	int reloading = 0
+	int focus_inspector = 0
 	float32 zoom = 1.0
 	float32 pan_x = 0.0
 	float32 pan_y = 0.0
@@ -88,39 +96,64 @@ int main(int argc, int argv):
 			win.should_close = 0
 			closing = 1
 		ui_begin_window(&ctx, win)
+		if (frame % 60 == 0): external = mm_editor_external_change(e)
+		for i in range(ctx.char_count):
+			int key = ctx.chars[i]
+			if (ctx.char_mods[i] & (GFX_MOD_CTRL | GFX_MOD_SUPER)):
+				if (key >= 'A' && key <= 'Z'): key = key + 32
+				if (key > 0 && key < 27): key = key + 96
+				if (key == 's'):
+					if (mm_editor_save(e)):
+						status = c"Saved."
+						external = 0
+					else: status = c"Save failed or file changed externally. Reload or Save as a new path."
+				else if (key == 'z' || key == 'y'):
+					int redo = key == 'y' || (ctx.char_mods[i] & GFX_MOD_SHIFT) != 0
+					if (mm_editor_undo(e, redo)): ui_textarea_set(&area, e.document.source)
+				else if (key == 'l'): ctx.focus = ctx.next_id
+				else if (key == 'e'): focus_source = 1
+				else if (key >= '1' && key <= '4'): focus_inspector = key - '0'
+				else if (key == 'n'):
+					if (mm_editor_add_node(e, &node_id.text[0], &node_label.text[0])):
+						ui_textarea_set(&area, e.document.source)
+						fit = 1
+					else: status = c"Add node failed: requires a flowchart, unused ID and plain label."
+				else if (key == 'k'):
+					if (mm_editor_add_edge(e, &edge_from.text[0], &edge_to.text[0])):
+						ui_textarea_set(&area, e.document.source)
+						fit = 1
+					else: status = c"Connect requires two existing flowchart node IDs."
+				else if (key == '0'): fit = 1
+				else if (key == '+' || key == '='): zoom = zoom * 1.25
+				else if (key == '-'): zoom = zoom / 1.25
+				else: continue
+				ctx.chars[i] = 0
 		float32 width = cast(float32, win.width)
 		float32 height = cast(float32, win.height)
 		ui_region_push(&ctx, ui_rect_new(12.0, 10.0, width - 24.0, 34.0))
-		ui_textbox(&ctx, 400.0, &filename)
+		ui_textarea(&ctx, ui_layout_next(&ctx, 400.0, 34.0), &filename)
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Open")):
 			if (mm_editor_dirty(e)): status = c"Save changes before opening another file."
 			else:
-				mm_document* loaded = mm_read(&filename.text[0])
-				if (loaded == 0): status = c"Open failed: unreadable file or source limit."
-				else if (strlen(loaded.source) != loaded.length): status = c"Open failed: embedded NUL."
+				mm_editor* loaded = mm_editor_open(filename.buf.data)
+				if (loaded == 0): status = c"Open failed: unreadable file, embedded NUL or source limit."
 				else:
 					mm_editor_free(e)
-					e = mm_editor_new(&filename.text[0], loaded.source)
+					e = loaded
 					ui_textarea_set(&area, e.document.source)
 					status = c"Opened."
+					external = 0
+					reloading = 0
 					fit = 1
-				mm_document_free(loaded)
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Save")):
 			if (mm_editor_save(e)): status = c"Saved."
-			else: status = c"Save failed. Changes remain in the editor."
+			else: status = c"Save failed or file changed externally. Reload or Save as a new path."
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Save as")):
-			char* old_path = e.path
-			e.path = strclone(&filename.text[0])
-			if (mm_editor_save(e)):
-				free(old_path)
-				status = c"Saved to the path field."
-			else:
-				free(e.path)
-				e.path = old_path
-				status = c"Save as failed."
+			if (mm_editor_save_as(e, filename.buf.data)): status = c"Saved to the path field."
+			else: status = c"Save as failed: destination must be a new file."
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Undo")):
 			if (mm_editor_undo(e, 0)): ui_textarea_set(&area, e.document.source)
@@ -141,6 +174,26 @@ int main(int argc, int argv):
 				string_free(output)
 		ui_region_pop(&ctx)
 		ui_region_push(&ctx, ui_rect_new(12.0, 52.0, width - 24.0, 34.0))
+		if (ui_button(&ctx, c"Previous diagram")):
+			if (mm_editor_select(e, e.selected - 1)): fit = 1
+		ui_same_line(&ctx)
+		if (ui_button(&ctx, c"Next diagram")):
+			if (mm_editor_select(e, e.selected + 1)): fit = 1
+		ui_same_line(&ctx)
+		char* reload_label = c"Reload"
+		if (reloading): reload_label = c"Discard edits + reload"
+		if (ui_button(&ctx, reload_label)):
+			if (mm_editor_dirty(e) && reloading == 0):
+				reloading = 1
+				status = c"Click Discard edits + reload to replace unsaved edits with the file on disk."
+			else if (mm_editor_reload(e)):
+				ui_textarea_set(&area, e.document.source)
+				external = 0
+				reloading = 0
+				fit = 1
+				status = c"Reloaded from disk."
+			else: status = c"Reload failed."
+		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Fit")): fit = 1
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Zoom +")): zoom = zoom * 1.25
@@ -149,18 +202,65 @@ int main(int argc, int argv):
 		ui_same_line(&ctx)
 		if (ui_button(&ctx, c"Close")): closing = 1
 		ui_same_line(&ctx)
-		if (mm_editor_dirty(e)): ui_label(&ctx, c"Unsaved changes")
+		if (external): ui_label(&ctx, c"File changed externally")
+		else if (mm_editor_dirty(e)): ui_label(&ctx, c"Unsaved changes")
 		else: ui_label(&ctx, c"Saved")
+		ui_region_pop(&ctx)
+		ui_region_push(&ctx, ui_rect_new(12.0, 94.0, width - 24.0, 34.0))
+		ui_label(&ctx, c"Node ID")
+		ui_same_line(&ctx)
+		if (focus_inspector == 1):
+			ctx.focus = ctx.next_id
+			focus_inspector = 0
+		ui_textbox(&ctx, 100.0, &node_id)
+		ui_same_line(&ctx)
+		ui_label(&ctx, c"Label")
+		ui_same_line(&ctx)
+		if (focus_inspector == 2):
+			ctx.focus = ctx.next_id
+			focus_inspector = 0
+		ui_textbox(&ctx, 160.0, &node_label)
+		ui_same_line(&ctx)
+		if (ui_button(&ctx, c"Add node")):
+			if (mm_editor_add_node(e, &node_id.text[0], &node_label.text[0])):
+				ui_textarea_set(&area, e.document.source)
+				fit = 1
+				status = c"Node added; Ctrl+Z to undo."
+			else: status = c"Requires a valid flowchart, unused ID and label without quotes or controls."
+		ui_same_line(&ctx)
+		ui_label(&ctx, c"From")
+		ui_same_line(&ctx)
+		if (focus_inspector == 3):
+			ctx.focus = ctx.next_id
+			focus_inspector = 0
+		ui_textbox(&ctx, 100.0, &edge_from)
+		ui_same_line(&ctx)
+		ui_label(&ctx, c"To")
+		ui_same_line(&ctx)
+		if (focus_inspector == 4):
+			ctx.focus = ctx.next_id
+			focus_inspector = 0
+		ui_textbox(&ctx, 100.0, &edge_to)
+		ui_same_line(&ctx)
+		if (ui_button(&ctx, c"Connect")):
+			if (mm_editor_add_edge(e, &edge_from.text[0], &edge_to.text[0])):
+				ui_textarea_set(&area, e.document.source)
+				fit = 1
+				status = c"Connection added; Ctrl+Z to undo."
+			else: status = c"Connect requires two existing flowchart node IDs."
 		ui_region_pop(&ctx)
 		if (zoom < 0.05): zoom = 0.05
 		if (zoom > 4.0): zoom = 4.0
 		float32 split = width * 0.38
-		ui_rect source_rect = ui_rect_new(12.0, 100.0, split - 24.0, height - 178.0)
+		ui_rect source_rect = ui_rect_new(12.0, 142.0, split - 24.0, height - 220.0)
+		if (focus_source):
+			ctx.focus = ctx.next_id
+			focus_source = 0
 		if (ui_textarea(&ctx, source_rect, &area)):
 			if (mm_editor_change(e, area.buf.data) == 0):
 				ui_textarea_set(&area, e.document.source)
 				status = c"Edit exceeds the 1 MiB source limit."
-		ui_rect preview = ui_rect_new(split, 100.0, width - split - 12.0, height - 178.0)
+		ui_rect preview = ui_rect_new(split, 142.0, width - split - 12.0, height - 220.0)
 		ui_render_rect(&renderer, preview, theme.surface)
 		if (fit && e.scene != 0):
 			zoom = preview.w / cast(float32, e.scene.width)
@@ -171,6 +271,16 @@ int main(int argc, int argv):
 			pan_y = 0.0
 			fit = 0
 		if (ctx.input.mouse_pressed && ui_rect_contains(preview, ctx.input.mouse_x, ctx.input.mouse_y)):
+			int hit = mm_editor_hit(e, cast(int, (ctx.input.mouse_x - preview.x - pan_x) / zoom), cast(int, (ctx.input.mouse_y - preview.y - pan_y) / zoom))
+			if (hit >= 0):
+				mm_node* node = e.document.nodes[hit]
+				ui_textbox_set(&node_id, node.id)
+				ui_textbox_set(&node_label, node.label)
+				if (edge_from.length == 0 || edge_to.length > 0):
+					ui_textbox_set(&edge_from, node.id)
+					ui_textbox_set(&edge_to, c"")
+				else: ui_textbox_set(&edge_to, node.id)
+				status = c"Click another node, then Connect (Ctrl+K). Ctrl+1..4 focus structured fields; Ctrl+N adds a node."
 			dragging = 1
 			last_x = ctx.input.mouse_x
 			last_y = ctx.input.mouse_y
@@ -219,5 +329,6 @@ int main(int argc, int argv):
 	ui_render_destroy(&renderer)
 	gfx_window_destroy(win)
 	ui_textarea_free(&area)
+	ui_textarea_free(&filename)
 	mm_editor_free(e)
 	return exit_status

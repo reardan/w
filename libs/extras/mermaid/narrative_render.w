@@ -14,7 +14,7 @@ void mm_n_arrow(mm_scene* s, int x, int y, int direction, int kind):
 
 char* mm_n_label(mm_narrative_event* event, int number):
 	string_builder* out = string_new()
-	if (number > 0):
+	if (number >= 0):
 		string_append_int(out, number)
 		string_append(out, c". ")
 	string_append(out, event.label)
@@ -56,17 +56,30 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		mm_node* node = d.nodes[i]
 		mm_bounds* bounds = s.nodes[i]
 		int x = bounds.x + bounds.w / 2
+		int end_y = bottom
+		int dies = 0
+		for j in range(d.narrative.length):
+			mm_narrative_event* event = d.narrative[j]
+			if (event.from_node != i): continue
+			if (event.kind == MM_N_CREATE): bounds.y = 155 + j * 70
+			if (event.kind == MM_N_DESTROY):
+				end_y = 170 + event.end * 70
+				dies = 1
+		int shift = bounds.y - 65
 		if (node.shape == 1):
-			mm_draw(s, MM_CIRCLE, x - 9, 58, x + 9, 76, 0, c"")
-			mm_line(s, x, 76, x, 98, 0)
-			mm_line(s, x - 16, 84, x + 16, 84, 0)
-			mm_line(s, x, 98, x - 12, 110, 0)
-			mm_line(s, x, 98, x + 12, 110, 0)
-			mm_text(s, x - strlen(node.label) * 4, 115, node.label)
+			mm_draw(s, MM_CIRCLE, x - 9, 58 + shift, x + 9, 76 + shift, 0, c"")
+			mm_line(s, x, 76 + shift, x, 98 + shift, 0)
+			mm_line(s, x - 16, 84 + shift, x + 16, 84 + shift, 0)
+			mm_line(s, x, 98 + shift, x - 12, 110 + shift, 0)
+			mm_line(s, x, 98 + shift, x + 12, 110 + shift, 0)
+			mm_text(s, x - strlen(node.label) * 4, 115 + shift, node.label)
 		else:
 			mm_draw(s, MM_BOX, bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h, 0, c"")
-			mm_text(s, x - strlen(node.label) * 4, 83, node.label)
-		mm_line(s, x, 140, x, bottom, 1)
+			mm_text(s, x - strlen(node.label) * 4, 83 + shift, node.label)
+		mm_line(s, x, 140 + shift, x, end_y, 1)
+		if (dies):
+			mm_line(s, x - 9, end_y - 9, x + 9, end_y + 9, 0)
+			mm_line(s, x - 9, end_y + 9, x + 9, end_y - 9, 0)
 		# Draw outer activation bars first, so nested bars remain visible.
 		int depth = 0
 		for j in range(d.narrative.length):
@@ -75,20 +88,19 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			if (event.kind == MM_N_DEACTIVATE): depth = depth - 1
 			if (event.kind != MM_N_ACTIVATE): continue
 			int balance = 1
-			int end_y = bottom
+			int activation_end = end_y
 			for k in range(j + 1, d.narrative.length):
 				mm_narrative_event* later = d.narrative[k]
 				if (later.from_node != i): continue
 				if (later.kind == MM_N_ACTIVATE): balance = balance + 1
 				if (later.kind == MM_N_DEACTIVATE): balance = balance - 1
 				if (balance == 0):
-					end_y = 170 + k * 70
+					if (170 + k * 70 < activation_end): activation_end = 170 + k * 70
 					break
 			int ax = x - 6 + depth * 5
-			mm_draw(s, MM_BOX, ax, 170 + j * 70, ax + 12, end_y, 0, c"")
+			mm_draw(s, MM_BOX, ax, 170 + j * 70, ax + 12, activation_end, 0, c"")
 			depth = depth + 1
 
-	int number = 0
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
 		int y = 170 + i * 70
@@ -101,7 +113,6 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			mm_bounds* bounds = s.nodes[event.to_node]
 			to = bounds.x + bounds.w / 2
 		if (event.kind == MM_N_MESSAGE):
-			number = number + 1
 			int direction = 1
 			if (to < x): direction = -1
 			if (x == to):
@@ -113,8 +124,8 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_line(s, x, y, to, y, event.dashed)
 				mm_n_arrow(s, to, y, direction, event.arrow)
 				if (event.arrow == 4): mm_n_arrow(s, x, y, 0 - direction, event.arrow)
-			int shown = 0
-			if (d.narrative_numbered): shown = number
+			int shown = -1
+			if (event.start): shown = event.value
 			char* label = mm_n_label(event, shown)
 			if (x == to): mm_text(s, x + 8, y - 23, label)
 			else:
