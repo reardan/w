@@ -5,33 +5,33 @@
 Corpus commit: `89fd36482e8cb68a4e55df021a8adbc7541b52f2`.
 All columns measure the same 291 selected grammar cases:
 
-| Stage | Initial audit | PR #689 | Current implementation |
-| --- | ---: | ---: | ---: |
-| Translation | 196/291 | 205/291 | 215/291 |
-| Parser generation | 179/291 | 200/291 | 209/291 |
-| W compilation | 179/291 | 200/291 | **209/291** |
-| Strict translation audit | 10/291 | 13/291 | 14/291 |
+| Stage | Initial audit | PR #689 | PR #690 | Current implementation |
+| --- | ---: | ---: | ---: | ---: |
+| Translation | 196/291 | 205/291 | 215/291 | 218/291 |
+| Parser generation | 179/291 | 200/291 | 209/291 | 212/291 |
+| W compilation | 179/291 | 200/291 | 209/291 | **212/291** |
+| Strict translation audit | 10/291 | 13/291 | 14/291 | 15/291 |
 
-The original 288-directory-name cohort now compiles **207** cases at this
-revision. Historical 229/288 and 258/288 figures below used different inputs
-and are not directly comparable.
+The original 288-directory-name cohort now compiles **210** cases. Historical
+229/288 and 258/288 figures below used different inputs and are not directly
+comparable.
 
 Current per-case results: [`sweep_current_results.csv`](sweep_current_results.csv).
 [`sweep_baseline.json`](sweep_baseline.json) pins roots, preserves the initial
 `recorded_pass` stages, records measured tool/runner hashes, and protects every
 current `expected_pass` independently. The final sweep measured clean
-implementation commit `705674f0`. It had no regressions, crashes, timeouts,
-missing output artifacts, or tool changes. All #689 expectations are retained.
+implementation commit `6c1e7f69`. It had no regressions, crashes, timeouts,
+missing output artifacts, or tool changes. All #690 expectations are retained.
 
-This increment adds **nine compiling grammars**: arithmetic, c, cql, icon, ltl,
-microc, ocl, pmmn, and tinyc. PowerQuery additionally passes translation but
-still fails generation on unsupported lexer-derived `IDENTIFIER`/`LITERAL`
-tokens. PMMN gains strict acceptance. The implementation supports fixed-token
-expression operators/parentheses, consuming compound bases with disjoint first
-tokens, source-position unary precedence, delimiter-contained nested lists and
-postfix chains, and a sole empty list base. Overlapping/nullable ordered-choice
-forms remain refused. See [`COVERAGE_NEXT_PLAN.md`](COVERAGE_NEXT_PLAN.md).
+This increment adds **three compiling grammars: Lua, TNT, and V**. All three
+also gain translation; TNT gains strict acceptance. New support includes finite
+operator aliases, productive recursive expression bases, leading mixed postfix
+chains, and compound prefixes with proven token boundaries. Ambiguous choices
+and prefix continuations remain refused. See
+[`EXPRESSION_COVERAGE_PLAN.md`](EXPRESSION_COVERAGE_PLAN.md).
 
+PR #690 added nine compiling cases: arithmetic, c, cql, icon, ltl, microc, ocl,
+pmmn, and tinyc; PowerQuery gained translation and PMMN strict acceptance.
 PR #689 previously added 22 compiling cases: agc,
 amazon-states-language-intrinsic-functions, bencoding, css3, graphql,
 graphstream-dgs, html, ixml, less, lucene, plantUML, properties, romannumerals,
@@ -41,13 +41,14 @@ Its sole intentional lost compile/strict pass remains Lisp: the fragment
 rewrite invented a repetition language; the baseline retains the explicit
 reclassification reasons. This increment removes no expectations.
 
-**82 cases remain non-compiling:** 76 fail translation and six fail parser
+**79 cases remain non-compiling:** 73 fail translation and six fail parser
 generation (bison, informix, jpa, langium, lisp, powerquery). Of the translation
-failures, 71 report unsupported left recursion; the remaining cases include
+failures, 68 report unsupported left recursion; the others include
 zero-consumption hazards and unresolved dependency-provided symbols. Labels,
-ternaries, mixed binary/postfix expressions, and indirect operands remain
-outside the bounded normalization slice. Undefined upstream tokens and
-nonproductive lexer rules remain explicit failures.
+ternaries, indirect binary operands, and lower/interleaved postfix tiers remain
+outside the bounded normalization slice. Teal's overlapping `NAME` bases and
+PromQL's compound/optional operators need further ordered-choice and precedence
+work. Undefined upstream tokens and nonproductive lexer rules remain failures.
 
 Bison and Langium need continuation-aware lexer backtracking: Bison's comment
 and code fragments can consume a closing delimiter, while Langium's regex
@@ -56,20 +57,21 @@ helper's longest endpoint cannot implement those grammars. Merely admitting
 recursive helper calls would conceal this gap; no such relaxation was made.
 
 Compilation supplies an empty main and does not execute the generated parser.
-The new focused tests execute unmodified, hash-pinned TinyC, MicroC, and
-Arithmetic grammars as well as local expression/list fixtures. They assert
-normalized AST evaluation, operator binding, nesting, malformed inputs,
-complete consumption, and atomic normalization refusal. The generated parser's
-existing ordered-choice behavior still rejects some valid upstream constructs,
-including TinyC/MicroC assignments and comparison continuations; see the
-[runtime fixture notes](../../../../tests/grammars/antlr_coverage_next/README.md).
+New focused tests execute unmodified, hash-pinned Lua and TNT grammars and
+local expression fixtures, checking AST binding, association, mixed postfix
+chains, quantifier prefixes, malformed inputs, complete consumption, and atomic
+refusals. See the [runtime fixture notes](../../../../tests/grammars/antlr_expression_coverage/README.md).
+Lua still has host-code, Unicode, lexer, and ordered-choice semantic gaps;
+V has compile coverage only. Earlier TinyC/MicroC/Arithmetic runtime tests
+remain in the suite, with their documented ordered-choice limitations.
 Neither compile coverage nor strict acceptance claims full ANTLR equivalence.
 The corpus sweep continues to report runtime smoke as `not_configured`.
 
-Validation: 21 focused targets, all 1,251 targets in `./wbuild tests`, and all
+Validation: 24 focused targets, all 1,254 targets in `./wbuild tests`, and all
 10 offline sweep-harness tests passed. The full suite used Node 20.19.3 with
-`NO_COLOR` unset. The final corpus results also satisfy the strengthened
-per-case expectations.
+`NO_COLOR` unset. Structured W checks are clean; vendored grammar bytes and
+hashes match the pinned corpus. Final results satisfy the strengthened per-case
+expectations.
 
 ## Historical measurements
 

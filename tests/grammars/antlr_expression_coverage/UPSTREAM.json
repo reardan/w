@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/antlr/grammars-v4",
+  "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+  "note": "Unmodified inputs from the pinned compile coverage corpus. The Lua parser MIT and TNT BSD license notices are retained. Runtime tests cover selected normalized parser behavior, not full ANTLR equivalence.",
+  "files": [
+    {
+      "path": "LuaLexer.g4",
+      "upstream_path": "lua/LuaLexer.g4",
+      "sha256": "9cd7257a4480a5e36a9fc5bad96eee2ee732babbd540d250a49f82566a4f24fa"
+    },
+    {
+      "path": "LuaParser.g4",
+      "upstream_path": "lua/LuaParser.g4",
+      "sha256": "71e65e9dbf7405d89999574ec4c1a3f6a264dd06db59565ee4752a3e0a1e3df6"
+    },
+    {
+      "path": "tnt.g4",
+      "upstream_path": "tnt/tnt.g4",
+      "sha256": "9dbae2fb956d828c8b089e668c6a7af25e829104dab8cb9d3b488ef12ebf94d2"
+    }
+  ]
+}

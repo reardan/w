@@ -137,7 +137,7 @@ llvm-ir,llvm-ir/LLVMIR.g4,fail,not_run,not_run,fail,not_configured
 lpc,lpc/LPC.g4,fail,not_run,not_run,fail,not_configured
 lrc,lrc/lrcLexer.g4;lrc/lrcParser.g4,pass,pass,pass,fail,not_configured
 ltl,ltl/ltl.g4,pass,pass,pass,fail,not_configured
-lua,lua/LuaLexer.g4;lua/LuaParser.g4,fail,not_run,not_run,fail,not_configured
+lua,lua/LuaLexer.g4;lua/LuaParser.g4,pass,pass,pass,fail,not_configured
 lucene,lucene/LuceneLexer.g4;lucene/LuceneParser.g4,pass,pass,pass,fail,not_configured
 maml,maml/MAML.g4,pass,pass,pass,fail,not_configured
 matlab,matlab/matlab.g4,fail,not_run,not_run,fail,not_configured
@@ -258,7 +258,7 @@ tinymud,tinymud/tinymud.g4,pass,pass,pass,fail,not_configured
 tinyos_nesc,tinyos_nesc/TinyosLexer.g4;tinyos_nesc/TinyosParser.g4,fail,not_run,not_run,fail,not_configured
 tl,tl/tl.g4,fail,not_run,not_run,fail,not_configured
 tnsnames,tnsnames/tnsnamesLexer.g4;tnsnames/tnsnamesParser.g4,pass,pass,pass,fail,not_configured
-tnt,tnt/tnt.g4,fail,not_run,not_run,fail,not_configured
+tnt,tnt/tnt.g4,pass,pass,pass,pass,not_configured
 toml,toml/TomlLexer.g4;toml/TomlParser.g4,pass,pass,pass,fail,not_configured
 trac,trac/trac.g4,pass,pass,pass,pass,not_configured
 trapc,trapc/TrapCLexer.g4;trapc/TrapCParser.g4,fail,not_run,not_run,fail,not_configured
@@ -271,7 +271,7 @@ unreal_angelscript,unreal_angelscript/UnrealAngelscriptLexer.g4;unreal_angelscri
 upnp,upnp/Upnp.g4,fail,not_run,not_run,fail,not_configured
 url,url/url.g4,pass,pass,pass,fail,not_configured
 useragent,useragent/useragent.g4,pass,pass,pass,fail,not_configured
-v,v/V.g4,fail,not_run,not_run,fail,not_configured
+v,v/V.g4,pass,pass,pass,fail,not_configured
 vaxscan,vaxscan/vaxscan.g4,fail,not_run,not_run,fail,not_configured
 vb6,vb6/VisualBasic6Lexer.g4;vb6/VisualBasic6Parser.g4,fail,not_run,not_run,fail,not_configured
 velocity,velocity/VTLLexer.g4;velocity/VTLParser.g4,fail,not_run,not_run,fail,not_configured

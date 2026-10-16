@@ -52,7 +52,7 @@ grammars describe the two formats involved, run through
   compiles regular ANTLR lexer rules into W matcher functions (ASCII
   approximation of Unicode charsets, rule-shape analysis / refusals, and
   the emission engine, respectively; see `MATCHER_GENERATION_PLAN.md`).
-- `normalize.w`, `normalize_lists.w` — bounded expression and list/postfix
+- `normalize.w`, `normalize_operators.w`, `normalize_lists.w` — bounded expression and list/postfix
   recursion lowering before the structural safety audit. The supported shapes
   and normalized AST contracts are described below.
 - `testdata/antlr/` — small ANTLR4 grammars vendored from
@@ -211,17 +211,16 @@ with W commit `298246c6d6906650d4cd9c677e93933abd9bf619`: **196 translated,
 `SWEEP_RESULTS.md` used different upstream inputs and predates safety checks;
 those totals are not a direct regression comparison.
 
-The same pinned cases now produce **215 translations, 209 generated/compiled
-parsers, and 14 strict translations**, up from PR #689's 205/200/13. The
-historical 288-name subset compiles 207. This increment adds nine compiling
-cases (arithmetic, c, cql, icon, ltl, microc, ocl, pmmn, tinyc), a translation
-pass for powerquery, and strict acceptance for pmmn. Every prior expected pass
-is retained; `recorded_pass` still preserves the initial 179-compilation audit.
-The earlier Lisp reclassification remains: its `ATOM_PART` fragment has no
-productive base, so its old repetition rewrite was invalid. See
-[`SWEEP_RESULTS.md`](SWEEP_RESULTS.md),
+The same pinned cases now produce **218 translations, 212 generated/compiled
+parsers, and 15 strict translations**, up from PR #690's 215/209/14. The
+historical 288-name subset compiles 210. This increment adds Lua, TNT, and V
+translation/compile passes, plus strict acceptance for TNT. Every prior
+expected pass is retained; `recorded_pass` still preserves the initial
+179-compilation audit. The earlier Lisp reclassification remains: its
+`ATOM_PART` fragment has no productive base, so its old repetition rewrite
+was invalid. See [`SWEEP_RESULTS.md`](SWEEP_RESULTS.md),
 [`sweep_current_results.csv`](sweep_current_results.csv), and the
-[implementation plan and remaining gaps](COVERAGE_NEXT_PLAN.md).
+[implementation plan and remaining gaps](EXPRESSION_COVERAGE_PLAN.md).
 
 Run from the W checkout after obtaining the pinned corpus:
 
@@ -356,41 +355,54 @@ output preservation.
 
 ### Restricted expression precedence
 
-The expression pass admits direct binary alternatives `expr op expr`, where
-`op` is a literal, a token with one plain fixed literal spelling, or a group
-of distinct such operators. Earlier binary alternatives
-bind more tightly; operators grouped in one alternative share a tier. Default
+The expression pass admits direct binary alternatives `expr op expr`. Operators
+may be literals, finite lexer alternatives, parser aliases, or groups of these.
+Every alias alternative must contain exactly one mandatory atom; cycles,
+nullable aliases, commands, modes, options, and semantic annotations refuse.
+Operator analysis preserves the source references and AST nodes. Spellings and
+named token identities must be distinct across binary tiers. Earlier binary
+alternatives bind more tightly; grouped operators share a tier. Default
 association is left. A single leading `<assoc=left>` or `<assoc=right>` option
-on a binary alternative is recognized and lowered; other options remain audit
-blockers. This ordering follows ANTLR 4.13.2's
-[`LeftRecursiveRuleAnalyzer`](https://github.com/antlr/antlr4/blob/4.13.2/tool/src/org/antlr/v4/analysis/LeftRecursiveRuleAnalyzer.java)
-precedence and next-precedence calculations.
+on a binary alternative is recognized; other options remain audit blockers.
+This ordering follows ANTLR 4.13.2's
+[`LeftRecursiveRuleAnalyzer`](https://github.com/antlr/antlr4/blob/4.13.2/tool/src/org/antlr/v4/analysis/LeftRecursiveRuleAnalyzer.java).
 
-Prefix alternatives `op expr` retain their source-position binding power:
-operators in earlier binary alternatives bind inside the prefix operand; later
-ones bind outside it. Thus `-2^2` groups as `(-2)^2` when unary appears first,
-and as `-(2^2)` when exponentiation appears first. Bases may be consuming,
-nonrecursive sequences (including optional/repeated elements) or exact
-parenthesized expressions with literal or fixed-token delimiters. At least one
-nonrecursive base is required. Token operators/delimiters must be plain
-default-mode literal rules without commands, options, or semantic annotations.
-Compound bases must have provably distinct first tokens from other bases,
-prefix operators, and parentheses; ambiguous ordered choices remain refused.
-Ternaries, mixed binary/postfix forms, indirect expression operands, duplicate
-binary operator spellings across tiers, labels and host code remain excluded.
-Unsupported forms are left intact for the structural audit to refuse; this
-pass never disables the recursion check.
+Prefix alternatives retain their source-position binding power: recursive
+alternatives before the prefix bind inside its operand, later ones outside.
+Thus `-2^2` groups as `(-2)^2` when unary appears first, and as `-(2^2)` when
+exponentiation appears first. Compound prefixes must consume, have no hidden
+owner recursion, and end in a mandatory finite token boundary. Their parser
+aliases and groups also require disjoint FIRST sets and safe continuations:
+optional/repeated pieces cannot steal a following delimiter. For example,
+`'-' ':'? ':' expr` refuses rather than rejecting valid `-:1` at runtime.
+
+Bases may be consuming sequences, direct expressions enclosed in mandatory
+matching parentheses/brackets/braces, or indirect calls back to the expression
+through consuming parser rules. Indirect calls retain full-precedence semantics.
+The owner must have a productive derivation, and nullable-prefix recursion
+still refuses. Compound and recursive bases require distinct first tokens from
+other bases and prefixes; ambiguous ordered choices remain excluded.
+
+Postfix alternatives may precede all binary alternatives. These leading
+postfixes share one highest-binding repeated tier, allowing mixed member,
+index, and call chains. Their consuming tails require disjoint FIRST sets from
+other postfixes and binaries, with nested recursion guarded by delimiters.
+Postfixes after a binary tier and prefixes between postfix alternatives refuse.
+Ternaries, indirect binary operands, labels, and host code remain excluded.
+Unsupported forms stay intact for the final structural audit; normalization
+never disables the recursion check.
 
 The normalized AST retains the original `expr` node with a generated lowest
-precedence child. Helper names are `<owner>_primary` and `<owner>_precN`, with
-`N=0` the tightest binary tier; underscores avoid existing rule-name collisions.
-A tier node contains its tighter operand followed by generated operator/RHS
-nodes in input order. Left-associative tiers repeat these nodes; right-associative
-tiers contain at most one whose RHS recurses into the same tier. Primary nodes
-retain unary operator/operand, parenthesis/expression/parenthesis, or base
-children. A unary operand points to the tier selected by its source position. Grouped operators retain their normal generated group nodes. This
-explicit W AST contract supports evaluation and preserves grouping; it does
-not claim ANTLR parse-tree identity.
+precedence child. Helpers are `<owner>_primary` and `<owner>_precN`, with `N=0`
+the tightest tier (the shared postfix tier when present); underscores avoid
+existing rule-name collisions. Binary tiers contain their tighter operand
+followed by operator/RHS nodes in input order. Left-associative tiers repeat
+these nodes; right-associative tiers contain at most one whose RHS calls the
+same tier. Postfix tiers retain every tail element in mixed-chain order.
+Primary nodes preserve base and prefix children; the final prefix operand
+calls the tier selected by its source position. Operator aliases and groups
+retain their normal AST nodes. This W AST contract preserves grouping without
+claiming ANTLR parse-tree identity.
 
 The executable fixture verifies `1+2*3`, `8-3-1`, `2^3^2`, explicit parentheses,
 unary chains, complete input consumption, and malformed expressions. Lexer
@@ -404,3 +416,11 @@ unmodified pinned TinyC, MicroC, and Arithmetic grammars; its
 [fixture notes](../../../../tests/grammars/antlr_coverage_next/README.md) document
 remaining ordered-choice limitations. These runtime checks supplement compile
 coverage without claiming whole-grammar ANTLR equivalence.
+
+`antlr_to_pg_operators_test` exercises finite aliases, AST preservation, and
+atomic refusals. `antlr_to_pg_expression_tiers_test` covers mixed postfix chains,
+compound prefixes, nested bases, precedence, and unsafe continuation refusals.
+`antlr_to_pg_expression_coverage_test` executes unmodified pinned Lua and TNT
+grammars; its [fixture notes](../../../../tests/grammars/antlr_expression_coverage/README.md)
+document the tested subset and remaining semantic gaps. V has compile coverage
+only. See [the increment plan](EXPRESSION_COVERAGE_PLAN.md).

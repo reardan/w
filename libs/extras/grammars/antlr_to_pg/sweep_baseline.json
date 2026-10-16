@@ -2593,7 +2593,11 @@
           "sha256": "71e65e9dbf7405d89999574ec4c1a3f6a264dd06db59565ee4752a3e0a1e3df6"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -4870,7 +4874,12 @@
           "sha256": "9dbae2fb956d828c8b089e668c6a7af25e829104dab8cb9d3b488ef12ebf94d2"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
       "recorded_pass": []
     },
     {
@@ -5104,7 +5113,11 @@
           "sha256": "4a870f5ed45f18be73f533008521acf48f1d012d6bb4e5be0360ee19f3506d8b"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -5459,23 +5472,23 @@
     }
   ],
   "current_measurement": {
-    "source_state": "Clean implementation commit 705674f060bbeb95ea6f16630276fc73b26e087d",
+    "source_state": "Clean implementation commit 6c1e7f691774b4f87af6303c8e84010b2d2d9969",
     "passing": {
-      "translate": 215,
-      "generate": 209,
-      "compile": 209,
-      "strict": 14
+      "translate": 218,
+      "generate": 212,
+      "compile": 212,
+      "strict": 15
     },
-    "historical_288_compiled": 207,
+    "historical_288_compiled": 210,
     "runtime_smoke": "not_configured",
     "tools_sha256": {
-      "translator": "69778b310d48ec8fdac93788350364875b0d5ffe3575b1da3dfa37006f14228a",
+      "translator": "c5c1ba5c7f22d549348fbdadd7a9d355a70dfde2c50cb13d85b825427ea6f24a",
       "generator": "48dc944311f3590e483fa28cd43be2f4e3117b1a9cb965ff4fd77ff6d7d5842b",
       "compiler": "902dbb0b43fed6cc3e9bc622de3f3add9da1a7790c710ca79003e2d92a6e6ba1",
       "common_matchers": "6e98f879e7d8c1a4d9dd002cb0e5b2ea4440f61ea6e4356918b285fed2a99f09"
     },
     "runner_sha256": "cf0f5f4323f0177fe7ec55b1f9384ffcd7ad339b4f0a042f901715974eed7c3c",
     "results_csv": "sweep_current_results.csv",
-    "note": "Stacked increment over PR #689: 9 new compile passes, 10 new translations, and PMMN strict acceptance. No existing expectations removed; recorded_pass retains the initial audit. Focused runtime tests are separate from the compile-only sweep."
+    "note": "Stacked increment over PR #690: Lua, TNT, and V gain translation and compilation; TNT gains strict acceptance. No existing expectations removed; recorded_pass retains the initial audit. Focused runtime tests are separate from the compile-only sweep."
   }
 }
