@@ -46,6 +46,7 @@ adding another backend module (see lib/memory_debug.w for the
 guard-page debug backend) rather than editing this one.
 */
 import lib.linux
+import lib.valgrind
 
 
 # bin-head array (malloc_bin_count() words); 0 until first use
@@ -85,6 +86,9 @@ int malloc_size_bin(int size):
 # File a free block of `size` payload bytes into its size bin.
 void malloc_bin_push(int block, int size):
 	int b = malloc_size_bin(size)
+	# A split header may fall inside a previously freed Memcheck payload.
+	# Expose only allocator metadata; the rest stays poisoned until reuse.
+	if (vg_active): vg_request(vg_make_defined, block, 2 * __word_size__, 0, 0)
 	int* heads = cast(int*, malloc_bins)
 	int* w = cast(int*, block)
 	w[0] = size

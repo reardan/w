@@ -3,13 +3,13 @@ Guard-page debug allocator backend: debug_malloc, debug_free and
 debug_realloc.
 
 Selected instead of the free-list backend (lib/memory_freelist.w) when
-lib/memory.w's dispatcher is in debug mode. Every allocation gets its
+lib/memory.w's dispatcher is in debug mode. In native mode each allocation gets its
 own private mmap region sized in whole pages, with the payload
 right-aligned (to its size rounded up to 8, so pointers stay 8-byte
 aligned) against the end of the last resident page and the page
-immediately after unmapped: writing even one byte past the requested
-size lands in the hole and faults immediately, instead of silently
-corrupting the free-list allocator's next block header.
+immediately after unmapped. Overruns past the rounded size fault;
+up to seven alignment bytes and sixteen bytes before the payload are
+canaries checked on free, realloc and explicit leak reports.
 
 The trailing guard is created with munmap (not mprotect PROT_NONE) so
 each live block is a single VMA on ordinary Linux hosts. Android keeps
@@ -31,10 +31,13 @@ working after reclaim because the bookkeeping table entry stays; UAF on
 a reclaimed block still usually SIGSEGVs on the hole, but can miss if
 the address is remapped for a later allocation.
 
-This is deliberately wasteful while a block is quarantined (one page
-minimum per allocation) and only catches overflow past the end of a
-block, not underflow before its start -- it is a debugging aid for one
-process run, not a general-purpose allocator.
+Native mode is deliberately wasteful while a block is quarantined (one
+page minimum per allocation). Prefix canaries detect nearby underflow
+writes at check time, but cannot detect reads or writes that skip them.
+W_DEBUG_ALLOC=valgrind instead pools storage through the freelist with
+16-byte redzones and Memcheck client requests. Memcheck checks accesses
+and undefined values as code executes, including instrumented C code.
+That mode requires Valgrind on Linux x86/x64 and avoids per-block VMAs.
 
 The bookkeeping table (one entry per live-or-freed block: pointer,
 region, size) is what free()/realloc() need to find a block's region,
@@ -70,16 +73,32 @@ int debug_quarantine_budget():
 
 int* debug_tbl_ptr         # payload pointer, per entry
 int* debug_tbl_region      # mmap'd payload base, per entry
-int* debug_tbl_region_size # mapped payload length in bytes (no guard), per entry
+int* debug_tbl_region_size # native mapped length (no guard), or pooled span
 int* debug_tbl_size        # requested payload size, per entry
 # 0 = live, 1 = freed and still mapped (quarantined PROT_NONE),
-# 2 = freed and munmap'd (reclaimed from quarantine)
+# 2 = freed and released to the OS (native) or freelist (Memcheck)
 int* debug_tbl_freed
 int debug_tbl_count
 int debug_tbl_capacity
 int debug_guard_warned     # already printed the guard-failure notice
 int debug_quarantine_bytes # sum of region sizes with freed == 1
 int debug_quarantine_cursor # next index to consider for reclaim
+int* debug_tbl_index       # open-addressed pointer -> newest slot + 1
+int debug_tbl_probes       # lookup work, for regression tests
+
+
+int debug_tbl_bucket(int ptr):
+	return ((ptr >> 3) ^ (ptr >> 15)) & (debug_tbl_capacity * 2 - 1)
+
+
+void debug_tbl_index_add(int idx):
+	int ptr = debug_tbl_ptr[idx]
+	int bucket = debug_tbl_bucket(ptr)
+	while (debug_tbl_index[bucket] != 0):
+		int old = debug_tbl_index[bucket] - 1
+		if (debug_tbl_ptr[old] == ptr): break
+		bucket = (bucket + 1) & (debug_tbl_capacity * 2 - 1)
+	debug_tbl_index[bucket] = idx + 1
 
 
 # mmap reports failure as a small negative (errno-shaped) value, the same
@@ -101,7 +120,8 @@ void debug_tbl_ensure_capacity():
 	int r_region_size = mmap(0, bytes, 3, flags)
 	int r_size = mmap(0, bytes, 3, flags)
 	int r_freed = mmap(0, bytes, 3, flags)
-	if (debug_tbl_mmap_failed(r_ptr) | debug_tbl_mmap_failed(r_region) | debug_tbl_mmap_failed(r_region_size) | debug_tbl_mmap_failed(r_size) | debug_tbl_mmap_failed(r_freed)):
+	int r_index = mmap(0, bytes * 2, 3, flags)
+	if (debug_tbl_mmap_failed(r_ptr) | debug_tbl_mmap_failed(r_region) | debug_tbl_mmap_failed(r_region_size) | debug_tbl_mmap_failed(r_size) | debug_tbl_mmap_failed(r_freed) | debug_tbl_mmap_failed(r_index)):
 		st_write_cstr(c"memory_debug: out of memory (bookkeeping table mmap failed)\x0a")
 		exit(1)
 	int* new_ptr = cast(int*, r_ptr)
@@ -124,12 +144,16 @@ void debug_tbl_ensure_capacity():
 		munmap(cast(int, debug_tbl_region_size), old_bytes)
 		munmap(cast(int, debug_tbl_size), old_bytes)
 		munmap(cast(int, debug_tbl_freed), old_bytes)
+		munmap(cast(int, debug_tbl_index), old_bytes * 2)
 	debug_tbl_ptr = new_ptr
 	debug_tbl_region = new_region
 	debug_tbl_region_size = new_region_size
 	debug_tbl_size = new_size
 	debug_tbl_freed = new_freed
 	debug_tbl_capacity = new_capacity
+	debug_tbl_index = cast(int*, r_index)
+	for j in range(debug_tbl_count):
+		if (debug_tbl_ptr[j] != 0): debug_tbl_index_add(j)
 
 
 void debug_tbl_append(int ptr, int region, int region_size, int size):
@@ -139,20 +163,21 @@ void debug_tbl_append(int ptr, int region, int region_size, int size):
 	debug_tbl_region_size[debug_tbl_count] = region_size
 	debug_tbl_size[debug_tbl_count] = size
 	debug_tbl_freed[debug_tbl_count] = 0
+	debug_tbl_index_add(debug_tbl_count)
 	debug_tbl_count = debug_tbl_count + 1
 
 
-# Newest-first: after quarantine reclaim munmaps a region, mmap may
-# hand the same payload address to a later malloc. A oldest-first scan
-# would hit the reclaimed entry and mis-report the new block's free()
-# as a double free (and debug_fatal's own scratch malloc/free then
-# recurses). Prefer the most recent entry for that pointer.
+# The index always names the newest allocation at a reused address.
+# Reclaimed entries with ptr == 0 remain probe-chain tombstones until
+# the next table growth rebuilds the index. Load stays below one half.
 int debug_tbl_find(int ptr):
-	int i = debug_tbl_count - 1
-	while (i >= 0):
-		if (debug_tbl_ptr[i] == ptr):
-			return i
-		i = i - 1
+	if ((ptr == 0) || (debug_tbl_capacity == 0)): return -1
+	int bucket = debug_tbl_bucket(ptr)
+	while (debug_tbl_index[bucket] != 0):
+		debug_tbl_probes = debug_tbl_probes + 1
+		int i = debug_tbl_index[bucket] - 1
+		if (debug_tbl_ptr[i] == ptr): return i
+		bucket = (bucket + 1) & (debug_tbl_capacity * 2 - 1)
 	return -1
 
 
@@ -203,15 +228,25 @@ int debug_pages_for(int size):
 
 
 void* debug_malloc(int size):
-	if (size < 0): return cast(void*, 0)
+	# Leave room for redzones, rounding and two 64-KiB pages.
+	if ((size < 0) || (size + 196608 < 0)): return cast(void*, 0)
 	if (size < 1): size = 1
+	if (vg_active):
+		# Pool storage through the ordinary allocator, with 16-byte
+		# redzones on both sides. Headers remain outside the redzones.
+		int base = cast(int, freelist_malloc(size + 32))
+		if (base == 0): return cast(void*, 0)
+		int payload = base + 16
+		vg_request(vg_malloclike, payload, size, 16, 0)
+		debug_tbl_append(payload, base, size + 32, size)
+		return cast(void*, payload)
 	# The payload ends on an 8-byte boundary below the guard, so the
 	# pointer is 8-byte aligned like the free-list backend's (issue #530).
 	# An overflow into the up-to-7-byte rounding slack cannot fault; the
 	# slack holds a canary that free()/realloc() check instead.
 	int placed = ((size + 7) >> 3) << 3
 	int page = debug_page_size()
-	int payload_pages = debug_pages_for(placed)
+	int payload_pages = debug_pages_for(placed + 16)
 	int payload_size = payload_pages * page
 	int region_size = payload_size + page
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
@@ -240,6 +275,7 @@ void* debug_malloc(int size):
 			st_write_cstr(c"memory_debug: guard page setup failed; overflow may not fault\x0a")
 	int ptr = guard_addr - placed
 	char* slack = cast(char*, ptr)
+	for j in range(16): slack[j - 16] = debug_canary
 	int i = size
 	while (i < placed):
 		slack[i] = debug_canary
@@ -248,12 +284,14 @@ void* debug_malloc(int size):
 	return cast(void*, ptr)
 
 
-# A write into the rounding slack between the requested size and the
-# guard page (see debug_malloc) surfaces at free()/realloc().
+# Check both native redzones without reading the uninitialized payload.
 void debug_check_canary(int idx):
+	if (vg_active): return
 	int size = debug_tbl_size[idx]
 	int placed = ((size + 7) >> 3) << 3
 	char* p = cast(char*, debug_tbl_ptr[idx])
+	for j in range(16):
+		if (p[j - 16] != debug_canary): debug_fatal(c"heap buffer underflow: bytes before the start of a block were overwritten", debug_tbl_ptr[idx])
 	int i = size
 	while (i < placed):
 		if (p[i] != debug_canary): debug_fatal(c"heap buffer overflow: bytes past the end of a block were overwritten", debug_tbl_ptr[idx])
@@ -271,6 +309,11 @@ int debug_free(void* mem_address):
 	if (idx < 0): debug_fatal(c"free() called on a pointer the debug allocator never returned", ptr)
 	if (debug_tbl_freed[idx]): debug_fatal(c"double free() detected", ptr)
 	debug_check_canary(idx)
+	if (vg_active):
+		freelist_free(cast(void*, debug_tbl_region[idx]))
+		vg_request(vg_freelike, ptr, 16, 0, 0)
+		debug_tbl_freed[idx] = 2
+		return 1
 	mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0)
 	debug_tbl_freed[idx] = 1
 	debug_quarantine_bytes = debug_quarantine_bytes + debug_tbl_region_size[idx]
@@ -295,6 +338,7 @@ char* debug_realloc(void* old, int oldlen, int newlen):
 	char* grown = cast(char*, debug_malloc(newlen))
 	if (grown == 0): return grown
 	int n = oldlen
+	if (old == 0): n = 0
 	if (n > newlen): n = newlen
 	char* src = cast(char*, old)
 	for i in range(n): grown[i] = src[i]
@@ -318,6 +362,7 @@ int debug_alloc_report_leaks():
 	int n = debug_tbl_count
 	for i in range(n):
 		if (debug_tbl_freed[i] == 0):
+			debug_check_canary(i)
 			st_write_cstr(c"memory_debug: leaked ")
 			st_write_dec(debug_tbl_size[i])
 			st_write_cstr(c" byte(s) at ")

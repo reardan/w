@@ -109,12 +109,12 @@ jobs:
       - name: Set up cached W bootstrap
         uses: ./.github/actions/setup-w
 
-      - name: Install 32-bit runtime, Xvfb and Mesa
+      - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -199,12 +199,12 @@ jobs:
       - name: Set up cached W bootstrap
         uses: ./.github/actions/setup-w
 
-      - name: Install 32-bit runtime, Xvfb and Mesa
+      - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -360,12 +360,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/wcoverage"
           cp -a bin/coverage/. "$RUNNER_TEMP/wcoverage/"
 
-      - name: Install 32-bit runtime, Xvfb and Mesa
+      - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Allow debugger attach tests
         run: sudo sysctl --write kernel.yama.ptrace_scope=0
@@ -517,12 +517,12 @@ jobs:
       - name: Set up cached W bootstrap
         uses: ./.github/actions/setup-w
 
-      - name: Install 32-bit runtime, Xvfb and Mesa
+      - name: Install 32-bit runtime, Valgrind, Xvfb and Mesa
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            libc6:i386 xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
+            libc6:i386 valgrind xvfb xauth libgl1 libglx-mesa0 libgl1-mesa-dri
 
       - name: Enable KVM
         run: |
