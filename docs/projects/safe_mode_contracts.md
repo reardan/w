@@ -139,6 +139,17 @@ Raw struct storage, zero initialization, mutable fields, nested aggregates
 and multiple independent field groups remain rejected. Nominal identity
 includes the declaration location, not just its printed name.
 
+The exclusive inline form `refmut[a] Record` additionally admits mutable
+pointer fields in the same one-group template. Its type identity and field
+qualifiers remain distinct from the shared form. Constructor reservations
+use each field's shared/exclusive kind; later reborrows conservatively reserve
+the entire backing group. Copying, passing and returning wrappers preserve
+reborrow ancestry and suspend conflicting parent access. Mutable-field
+extraction requires a mutable wrapper; shared fields cannot be upgraded.
+Scalar metadata remains assignable, but wrapper/reference-field replacement
+and descriptor addresses are rejected. Optional fields, nested records,
+mixed owner fields and independent groups are not admitted.
+
 ## Owner-bearing aggregates
 
 Use the existing `own Record*` representation: one uniquely owned allocation
@@ -224,6 +235,16 @@ Receiver evaluation occurs before argument evaluation; synthesized receiver
 addresses retain the original binding and lifetime. Owner receivers and
 arguments use the same transfer clearing as direct calls. Method syntax
 does not grant an unsafe or unchecked boundary.
+
+Queued generic calls retain their concrete mangled callee identity, not only
+the template name. At checking, resolve it to the specialized function,
+compare the concrete signature (including normalized lifetime relationships),
+and analyze that implementation. Explicit and inferred arguments use the
+ordinary call's ownership reservations and owner-slot clearing. Retained
+emission recovers the template identity from the concrete name without
+changing the published ownership contract. Qualified generic pointer
+signatures preserve their qualifier and optional lifetime label during
+capture and instantiation. Indirect calls and callbacks remain excluded.
 
 ## Target admission
 

@@ -23,9 +23,11 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
+| `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
 
-Qualifiers are contextual: existing identifiers named `own`, `ref` or `refmut`
+Qualifiers are contextual: existing identifiers named `own`, `ref`, `refmut`,
+`optref` or `optrefmut`
 retain their meaning. Type aliases preserve qualifiers. A checked pointer has
 the same size and calling convention as a raw pointer. The pointee must be
 sized and contain no references, raw pointers, unions or containers, except
@@ -194,6 +196,39 @@ inline descriptors. Bind an extracted slice before indexing it; direct
 storage, heap construction, mutable-reference fields, nested aggregates and
 multiple independent field-lifetime groups remain unsupported in this form.
 
+### Mutable-reference structs
+
+`refmut[a] Record` extends the inline record form to mutable-reference fields.
+Its template may contain scalars, shared pointers, mutable pointers and shared
+checked slices, all reference fields using one common named group:
+
+```w
+struct ExclusiveView:
+	refmut[field] int* item
+	int amount
+
+refmut[a] ExclusiveView exclusive_view(refmut[a] int* value):
+	return ExclusiveView(value, 3)
+
+void increase(refmut ExclusiveView view):
+	int amount = view.amount
+	refmut int* item = view.item
+	*item += amount
+```
+
+Construction supplies every field and reserves each earlier reference while
+later arguments evaluate. Copying, passing or returning the wrapper creates
+a reborrow: the parent is suspended while a conflicting child remains live.
+The checker conservatively borrows the entire lifetime group, so different
+fields do not provide disjoint mutable access. Shared fields cannot become
+mutable references. An extracted field view keeps the group's backing values
+alive, independently of the wrapper's inline descriptor storage.
+
+Scalar metadata may be changed. Reference-field replacement, wrapper
+reassignment, descriptor-field addresses, optional fields, nested borrowed
+records, mixed owned/borrowed fields, multiple lifetime groups and partial
+moves remain rejected. These are separate roadmap items.
+
 ### Owned structs
 
 An owner can contain other owners. The struct must contain pointer-free
@@ -242,11 +277,26 @@ forward declarations and imported functions use the same signature contract;
 the implementation is checked even without `--safe`. Checked methods and UFCS
 calls use the receiver's explicit first-parameter contract and evaluate it
 before the remaining arguments. An owned receiver transfers ownership;
-shared/mutable receivers borrow with the ordinary call rules. Indirect calls,
-callbacks and unmodeled generic
-operations are rejected rather than treated as ordinary scalar calls.
+shared/mutable receivers borrow with the ordinary call rules.
 Forward declarations resolve to a checked implementation and must agree with
 its parameter and return contracts.
+
+Direct generic calls check their concrete specialized signature and body.
+Scalar and sized-pointer type arguments, including inferred whole-parameter
+types, preserve checked qualifiers; an `own` argument transfers exactly once. Pointer-qualified
+generic signatures also support named lifetimes:
+
+```w
+ref[a] T* generic_view[T](ref[a] T* value):
+	return value
+```
+
+The result keeps the same backing roots as an ordinary reference-returning
+call. Generic syntax does not bypass the checker. Checked slices and inline
+borrowed records as generic type arguments remain excluded by the existing
+aggregate call limits. Generic method syntax, indirect calls and callbacks
+remain unsupported in checked code, as does the existing unsupported `new T`
+allocation syntax in generic definitions.
 
 Argument evaluation is included in checking: an earlier mutable argument
 cannot coexist with a later read of the same storage, including a read or
