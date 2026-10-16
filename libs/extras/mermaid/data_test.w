@@ -205,3 +205,31 @@ void test_mermaid_data_envelope_metadata_and_title_precedence():
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
+
+void test_data_venn_only_declared_overlaps():
+	mm_document* d = data_parse(c"venn-beta\nset A\nset B\n")
+	mm_scene* s = mm_render(d)
+	int gap_left = 0
+	int gap_right = 0
+	for mm_primitive* p in s.items:
+		if (p.kind != MM_LINE): continue
+		if (p.x > 420 && p.x < 480): gap_left = gap_left + 1
+		if (p.x2 > 420 && p.x2 < 480): gap_right = gap_right + 1
+	assert_equal(0, gap_left)
+	assert_equal(0, gap_right)
+	mm_scene_free(s)
+	mm_document_free(d)
+	d = data_parse(c"venn-beta\nset A\nset B\nset C\nunion A,B[\"AB\"]\nunion B,C[\"BC\"]\n")
+	s = mm_render(d)
+	int ab_x = 0
+	int bc_x = 0
+	for mm_primitive* p in s.items:
+		if (strcmp(p.text, c"AB") == 0): ab_x = p.x
+		if (strcmp(p.text, c"BC") == 0): bc_x = p.x
+	asserts(c"chain intersections occupy distinct pairwise lenses", ab_x != bc_x)
+	mm_scene_free(s)
+	mm_document_free(d)
+	d = data_parse(c"sankey-beta\ntitle source,Destination,2\n")
+	mm_data_item* item = d.data.items[0]
+	assert_strings_equal(c"title source", item.id)
+	mm_document_free(d)

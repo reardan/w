@@ -285,31 +285,69 @@ void mm_data_packet_render(mm_document* d, mm_scene* s):
 			first = last + 1
 
 void mm_data_venn_render(mm_document* d, mm_scene* s):
+	list[int] ids = new list[int]
 	list[int] xs = new list[int]
 	list[int] ys = new list[int]
-	int count = 0
+	for i in range(d.data.items.length):
+		mm_data_item* item = d.data.items[i]
+		if (item.kind == 6): ids.push(i)
+		xs.push(0)
+		ys.push(260)
+	int count = ids.length
+	list[int] connected = new list[int]
+	for i in range(9): connected.push(0)
+	int triple = 0
 	for mm_data_item* item in d.data.items:
-		if (item.kind == 6): count = count + 1
-	int index = 0
-	for mm_data_item* item in d.data.items:
-		int x = 270
-		int y = 260
-		if (item.kind == 6):
-			if (count > 1 && index == 1): x = 440
-			if (index == 2):
-				x = 355
-				y = 400
-			mm_ellipse(s, x, y, 170, 170)
-			int tx = x - 110
-			int ty = y - 70
-			if (index == 1): tx = x + 70
-			if (index == 2):
-				tx = x - 20
-				ty = y + 105
-			mm_text(s, tx, ty, item.label)
-			index = index + 1
-		xs.push(x)
-		ys.push(y)
+		if (item.kind != 7): continue
+		if (item.values.length == 3): triple = 1
+		for int a in item.values:
+			for int b in item.values:
+				int ai = ids.index(a)
+				int bi = ids.index(b)
+				if (ai != bi): connected[ai * 3 + bi] = 1
+	int pairs = 0
+	for i in range(count):
+		for j in range(i + 1, count):
+			if (connected[i * 3 + j]): pairs = pairs + 1
+	for i in range(count): xs[ids[i]] = 250 + i * 400
+	if (count == 2 && pairs == 1):
+		xs[ids[0]] = 270
+		xs[ids[1]] = 440
+	if (count == 3 && pairs == 1):
+		for i in range(count):
+			for j in range(i + 1, count):
+				if (connected[i * 3 + j] == 0): continue
+				xs[ids[i]] = 270
+				xs[ids[j]] = 440
+				xs[ids[3 - i - j]] = 850
+	if (count == 3 && pairs == 2):
+		for i in range(count):
+			int degree = 0
+			for j in range(count): degree = degree + connected[i * 3 + j]
+			if (degree != 2): continue
+			xs[ids[i]] = 550
+			xs[ids[(i + 1) % 3]] = 280
+			xs[ids[(i + 2) % 3]] = 820
+	if (count == 3 && pairs == 3):
+		if (triple):
+			xs[ids[0]] = 270
+			xs[ids[1]] = 440
+			xs[ids[2]] = 355
+			ys[ids[2]] = 400
+		else:
+			# Pairwise intersections without a specified triple intersection.
+			xs[ids[0]] = 240
+			xs[ids[1]] = 550
+			xs[ids[2]] = 395
+			ys[ids[2]] = 528
+	for i in range(count):
+		mm_data_item* item = d.data.items[ids[i]]
+		int x = xs[ids[i]]
+		int y = ys[ids[i]]
+		mm_ellipse(s, x, y, 170, 170)
+		int ty = y - 115
+		if (count == 3 && pairs == 3 && i == 2): ty = y + 110
+		mm_text(s, x - strlen(item.label) * 4, ty, item.label)
 	for mm_data_item* item in d.data.items:
 		if (item.kind != 7): continue
 		int x = 0
@@ -319,10 +357,12 @@ void mm_data_venn_render(mm_document* d, mm_scene* s):
 			y = y + ys[i]
 		x = x / item.values.length
 		y = y / item.values.length
-		if (count == 3 && item.values.length == 2):
+		if (triple && item.values.length == 2):
 			x = 355 + (x - 355) * 2
 			y = 306 + (y - 306) * 2
 		mm_text(s, x - strlen(item.label) * 4, y - 8, item.label)
+	__w_list_free(cast(__w_list*, ids))
+	__w_list_free(cast(__w_list*, connected))
 	__w_list_free(cast(__w_list*, xs))
 	__w_list_free(cast(__w_list*, ys))
 

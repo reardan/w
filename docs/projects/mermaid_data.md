@@ -19,10 +19,10 @@ the original source remains available for lossless writing and editing.
 | `sankey-beta` | CSV source/target/value records, quoted commas and doubled quotes; DAG validation, node aggregation, proportional ribbon widths and longest-path columns | Multiline CSV fields, configuration, curved/crossing-optimized routing |
 | `radar-beta` | Named axes and curves, positional curve values, min/max, circle/polygon graticule, bounded ticks, legend | Keyed curve values, styles and smooth curves |
 | `treemap-beta` | Indented quoted groups and positive valued leaves; recursive aggregate weights and alternating proportional rectangle subdivision | Styling/classes, squarified layout; labels in tiny cells use the accompanying hierarchy key |
-| `venn-beta` | One to three named/labeled sets and labeled two/three-set `union` intersections; equal-size circle geometry | Explicit sizes, text nodes, styles and more than three sets |
+| `venn-beta` | One to three named/labeled sets and labeled two/three-set `union` intersections; equal-size circle geometry with only declared overlaps | Explicit sizes, text nodes, styles and more than three sets |
 | `packet` / `packet-beta` | Absolute inclusive bit ranges, individual bits, relative `+count`, title; 32-bit row wrapping and width proportional to bit count | Configurable word width, descending bit order and styles |
 
-Standalone title statements work in all families. Source comments and CRLF
+Standalone title statements work in all families except raw-CSV Sankey. Source comments and CRLF
 formatting are retained. The data engine uses decimal thousandths, supports
 values from -1,000,000 to 1,000,000 and at most three fractional digits, and
 rejects exponent notation, NaN and infinity. Pie, treemap and Sankey values must
