@@ -20,7 +20,8 @@
 #   only, and the argument warning also borrows its record; the retained
 #   node keeps a binding for that symbol (name_binding).
 # - message-bearing warnings carry their interned message text.
-# - generic calls ('G', 'W') name their definition, not its table index.
+# - generic calls ('G', 'W') retain their concrete mangled callee; its
+#   prefix before '$' identifies the definition without a table index.
 # Every other column is a group-local index, a decoded literal, an offset
 # into the retained text arena, a source offset, a type-table index (the
 # identity retained_types records as origin) or a lowering payload whose
@@ -111,7 +112,13 @@ void retained_emit_semantic_check(expression_ast* tree, retained_group* group):
 			expected = cast(int, payload)
 			if (value && (strcmp(cast(char*, value), payload) == 0)): expected = value
 		else if ((op == ast_warning) && ((high == 1) || (high == 2) || (high == 5))): expected = retained_emit_name(payload, name_binding)
-		else if ((op == 'G') || (op == 'W')): expected = generic_def_lookup(payload, 0)
+		else if ((op == 'G') || (op == 'W')):
+			char* template = strclone(payload)
+			int at = 0
+			while (template[at] && (template[at] != '$')): at = at + 1
+			template[at] = 0
+			expected = generic_def_lookup(template, 0)
+			free(template)
 		if (value != expected): retained_emit_check(value, expected, c"value")
 		int symbol = tree.symbol[i]
 		expected = symbol

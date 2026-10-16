@@ -550,13 +550,18 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 	if (op == 'W'):
 		int s = stack_pos
 		int argument = tree.left[id]
+		int position = 0
 		while (argument >= 0):
 			emit_expression_ast(tree, argument)
 			int got = promote(tree.result_type[argument])
 			if (tree.infer_coercion[argument] == 1): coerce(tree.infer_want[argument], got)
 			if (tree.infer_coercion[argument] == 2): coerce_call_argument(tree.infer_want[argument], got)
+			int want = type_function_param_type(tree.generic_signature[id], position)
+			if (tree.symbol[id] >= 0): want = sym_param_type(tree.symbol[id], position)
+			safe_owner_move(tree, argument, want)
 			push_call_argument(got)
 			argument = tree.next_arg[argument]
+			position = position + 1
 		int sym = tree.symbol[id]
 		if (sym >= 0):
 			int[8] types
@@ -619,6 +624,8 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			if (sym >= 0): want = sym_param_type(sym, count)
 			else: want = type_function_param_type(signature, count)
 			if (want >= 0): coerce_call_argument(want, got)
+			safe_owner_move(tree, arg, want)
+			if (type_is_safe_slice(want)): got = want
 			push_call_argument_at(s, got, stack_pos - arg_stack)
 			count = count + 1
 			arg = tree.next_arg[arg]

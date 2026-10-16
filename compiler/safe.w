@@ -361,6 +361,17 @@ int safe_child(retained_node* node, int child):
 	return node.parent + 1 + child
 
 
+# Queued generic calls have no raw symbol at their emission site. Their
+# retained mangled identity must resolve to the concrete checked body.
+int safe_call_binding(retained_node* node):
+	if (node.binding >= 0): return node.binding
+	if ((node.op != 'G') && (node.op != 'W')): return -1
+	if (node.payload_text == 0): return -1
+	for i in range(retained_bindings.length):
+		if ((safe_function_for_binding[i] >= 0) && (strcmp(retained_bindings[i].name, node.payload_text) == 0)): return i
+	return -1
+
+
 void safe_unsafe_check(int id):
 	retained_record* n = retained_record_at(id)
 	if (n.kind == retained_statement):
@@ -372,8 +383,11 @@ void safe_unsafe_check(int id):
 			retained_node expr
 			retained_node_load(id + 1 + i, &expr)
 			if (safe_contains_checked(expr.semantic_type)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
-			if ((expr.op == 'C') && (expr.binding >= 0)):
-				retained_binding* callee = retained_bindings[expr.binding]
+			if ((expr.op == 'C') || (expr.op == 'G') || (expr.op == 'W')):
+				int binding = safe_call_binding(&expr)
+				if ((binding < 0) && (expr.op != 'C')): safe_error(id, c"safe: generic calls require a concrete ownership contract", -1)
+				if (binding < 0): continue
+				retained_binding* callee = retained_bindings[binding]
 				for j in range(callee.parameters.length):
 					if (safe_contains_checked(callee.parameters[j])): safe_error(id, c"safe: checked calls must remain outside unsafe blocks", -1)
 	int child = safe_first[id]
@@ -921,7 +935,7 @@ int safe_borrow(int id, int want, char* state, int* parent):
 		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && safe_owned_shape(safe_pointee(base.semantic_type))):
 			root = safe_place(id, state, &via)
 		else: safe_error(id, c"safe: unsupported reference-bearing projection", -1)
-	else if (n.op == 'C'):
+	else if ((n.op == 'C') || (n.op == 'G') || (n.op == 'W')):
 		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
 			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
 		if ((kind == 3) && (safe_kind(n.semantic_type) == 2)):
@@ -1069,10 +1083,17 @@ int safe_return_from(retained_binding* binding, int inferred, int position):
 
 
 int safe_call(int id, retained_node* n, char* state, int* parent):
-	int binding = n.binding
+	int binding = safe_call_binding(n)
 	if ((binding < 0) || (retained_bindings[binding].return_type < 0)):
 		safe_error(id, c"safe: indirect calls require an ownership contract", -1)
 	retained_binding* callee = retained_bindings[binding]
+	if (((n.op == 'G') || (n.op == 'W')) && (n.generic_signature >= 0)):
+		retained_type* signature = retained_types[n.generic_signature]
+		retained_binding expected
+		expected.return_type = signature.return_type
+		expected.parameters = signature.parameters
+		if (safe_contract_matches(&expected, callee) == 0):
+			safe_error(id, c"safe: generic specialization disagrees with its concrete contract", -1)
 	int function = safe_function_for_binding[binding]
 	retained_binding* implementation = callee
 	if (function >= 0):
@@ -1142,7 +1163,7 @@ int safe_eval(int id, char* state, int want):
 		if (((op == 'N') || (op == 'D')) && safe_opaque(safe_pointee(want))):
 			safe_error(id, c"safe: opaque collections require an audited constructor", -1)
 		if ((op != 'N') && (kind != 1) && (constructed == 0)): safe_error(id, c"safe: owner requires new storage or an ownership transfer", -1)
-		if ((op != 'N') && (op != 'v') && (op != 'C') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
+		if ((op != 'N') && (op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
 	else if (kind && (op != '=')): safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	if (op == 'v'):
 		if (safe_has_array(n.semantic_type, 0)): safe_error(id, c"safe: array storage cannot be copied; pass a shared slice", -1)
@@ -1161,7 +1182,7 @@ int safe_eval(int id, char* state, int want):
 		if (wanted != 1): safe_error(id, c"safe: new storage must initialize an owner", -1)
 		if (safe_plain(safe_pointee(n.semantic_type), 0) == 0): safe_error(id, c"safe: allocation requires a pointer-free sized value", -1)
 		return -1
-	if (op == 'C'):
+	if ((op == 'C') || (op == 'G') || (op == 'W')):
 		int parent = -1
 		safe_call(id, &n, state, &parent)
 		return -1
@@ -1558,8 +1579,10 @@ void safe_check_finish():
 		retained_node_load(id, &n)
 		if (safe_trusted(n.source)): continue
 		int checked = safe_contains_checked(n.semantic_type)
-		if ((n.kind == retained_expression) && (n.binding >= 0)):
-			retained_binding* callee = retained_bindings[n.binding]
+		int call_binding = n.binding
+		if ((n.kind == retained_expression) && ((n.op == 'G') || (n.op == 'W'))): call_binding = safe_call_binding(&n)
+		if ((n.kind == retained_expression) && (call_binding >= 0)):
+			retained_binding* callee = retained_bindings[call_binding]
 			for p in range(callee.parameters.length):
 				if (safe_kind(callee.parameters[p])): checked = 1
 		if (n.kind == retained_declaration):

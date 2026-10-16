@@ -1352,6 +1352,16 @@ int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_
 	for j in range(node.stars):
 		type = ast_expression_pointer_type(tree, type, tree.generic_offset[id])
 		if (type < 0): return -1
+	if (node.safety):
+		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || type_is_gpu_pointer(type)): return -1
+		int lifetime = -1
+		if (node.lifetime != 0):
+			int length = strlen(node.lifetime) + 1
+			expression_ast_type_names_reserve(tree, length)
+			lifetime = tree.type_names_used
+			strcpy(tree.type_names + lifetime, node.lifetime)
+			tree.type_names_used = tree.type_names_used + length
+		type = ast_expression_safe_pointer_type(tree, type, node.safety, lifetime, tree.generic_offset[id])
 	return type
 
 
