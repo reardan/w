@@ -227,12 +227,13 @@ int safe_opaque(int type):
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
 	if ((record.kind != 0) || record.pointer_level || (safe_buffer_source(record.source) == 0)): return 0
-	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0) || (strcmp(record.name, c"WOwnedIntBuffer") == 0)
+	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0) || (strcmp(record.name, c"WOwnedIntBuffer") == 0) || (strcmp(record.name, c"WByteArena") == 0)
 
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
 	if (safe_buffer_source(binding.source)):
+		if ((strcmp(name, c"byte_arena_new") == 0) || (strcmp(name, c"byte_arena_length") == 0) || (strcmp(name, c"byte_arena_copy") == 0) || (strcmp(name, c"byte_arena_reset") == 0) || (strcmp(name, c"byte_arena_release") == 0)): return 1
 		if ((strcmp(name, c"owned_int_buffer_new") == 0) || (strcmp(name, c"owned_int_buffer_length") == 0) || (strcmp(name, c"owned_int_buffer_push") == 0) || (strcmp(name, c"owned_int_buffer_get") == 0) || (strcmp(name, c"owned_int_buffer_set") == 0) || (strcmp(name, c"owned_int_buffer_pop") == 0) || (strcmp(name, c"owned_int_buffer_clear") == 0)): return 1
 		return (strcmp(name, c"int_buffer_new") == 0) || (strcmp(name, c"int_buffer_length") == 0) || (strcmp(name, c"int_buffer_push") == 0) || (strcmp(name, c"int_buffer_get") == 0) || (strcmp(name, c"int_buffer_set") == 0) || (strcmp(name, c"int_buffer_pop") == 0) || (strcmp(name, c"int_buffer_clear") == 0) || (strcmp(name, c"int_buffer_view") == 0) || (strcmp(name, c"byte_string_new") == 0) || (strcmp(name, c"byte_string_length") == 0) || (strcmp(name, c"byte_string_push") == 0) || (strcmp(name, c"byte_string_get") == 0) || (strcmp(name, c"byte_string_set") == 0) || (strcmp(name, c"byte_string_pop") == 0) || (strcmp(name, c"byte_string_clear") == 0) || (strcmp(name, c"byte_string_view") == 0) || (strcmp(name, c"byte_string_append") == 0) || (strcmp(name, c"byte_string_from") == 0)
 	return (strcmp(name, c"put_char") == 0) || (strcmp(name, c"put_error") == 0) || (strcmp(name, c"exit") == 0)

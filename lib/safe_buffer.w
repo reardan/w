@@ -19,6 +19,11 @@ struct WOwnedIntBuffer:
 	int length
 	int** items
 
+struct WByteArena:
+	int capacity
+	int length
+	byte* items
+
 struct __w_safe_int_descriptor:
 	int* data
 	int length
@@ -279,3 +284,58 @@ own int* owned_int_buffer_pop(refmut WOwnedIntBuffer* borrowed):
 
 void owned_int_buffer_clear(refmut WOwnedIntBuffer* borrowed):
 	__w_owned_int_buffer_clear(cast(WOwnedIntBuffer*, borrowed))
+
+
+# Conservative checked arena: allocation, reset and release are exclusive.
+# A live returned view therefore prevents every operation that could
+# relocate, reuse or free its storage. Raw arena registration is unnecessary.
+own WByteArena* byte_arena_new():
+	WByteArena* arena = new WByteArena
+	arena.capacity = 0
+	arena.length = 0
+	arena.items = 0
+	return cast(own WByteArena*, arena)
+
+
+void __w_byte_arena_drop(WByteArena* arena):
+	free(arena.items)
+	free(arena)
+
+
+int byte_arena_length(ref WByteArena* borrowed):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	return arena.length
+
+
+ref[a] byte[] byte_arena_copy(refmut[a] WByteArena* borrowed, ref byte[] source):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	int needed = __w_size_add(arena.length, source.length)
+	if needed > arena.capacity:
+		int capacity = __w_grow_capacity(arena.capacity, needed)
+		if capacity < 8: capacity = 8
+		arena.items = cast(byte*, __w_realloc(arena.items, arena.capacity, capacity))
+		arena.capacity = capacity
+	int start = arena.length
+	int i = 0
+	while i < source.length:
+		arena.items[start + i] = source[i]
+		i = i + 1
+	arena.length = needed
+	__w_safe_byte_descriptor descriptor
+	descriptor.data = arena.items + start
+	descriptor.length = source.length
+	byte[] view = cast(byte[], &descriptor)
+	return view
+
+
+void byte_arena_reset(refmut WByteArena* borrowed):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	arena.length = 0
+
+
+void byte_arena_release(refmut WByteArena* borrowed):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	free(arena.items)
+	arena.items = 0
+	arena.capacity = 0
+	arena.length = 0

@@ -36,6 +36,7 @@ char* safe_owner_drop_helper(int element):
 	if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
 	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"
 	else if (strcmp(name, c"WOwnedIntBuffer") == 0): helper = c"__w_owned_int_buffer_drop"
+	else if (strcmp(name, c"WByteArena") == 0): helper = c"__w_byte_arena_drop"
 	if (helper == 0): return 0
 	int symbol = sym_lookup(helper)
 	if (symbol < 0): error(c"safe: audited destructor implementation is missing")
