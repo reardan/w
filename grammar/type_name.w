@@ -78,7 +78,7 @@ int safe_qualifier_ahead():
 	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
 	char* save = generic_reparse_save()
 	get_token()
-	int is_type = peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)
+	int is_type = peek(c"[") || peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	if (is_type): return kind
@@ -90,7 +90,15 @@ int type_name():
 	int is_const = 0
 	int is_gpu = 0
 	int safe_kind = safe_qualifier_ahead()
-	if (safe_kind): get_token()
+	char* lifetime = 0
+	if (safe_kind):
+		get_token()
+		if (accept(c"[")):
+			if (safe_kind == 1): error(c"lifetime labels require ref or refmut")
+			if (is_ident_start_byte(token[0]) == 0): error(c"lifetime label must be an identifier")
+			lifetime = strclone(token)
+			get_token()
+			expect(c"]")
 	pointer_indirection = 0
 	if (accept(c"const")): is_const = 1
 	if (gpu_qualifier_ahead()):
@@ -184,6 +192,7 @@ int type_name():
 		int element = type_lookup_previous_pointer(type)
 		if ((element < 0) || (type_get_size(element) <= 0)):
 			error(c"checked pointers require a sized pointee")
-		type = type_get_safe(type, safe_kind)
+		type = type_get_safe_lifetime(type, safe_kind, lifetime)
+		if (lifetime != 0): free(lifetime)
 
 	return type

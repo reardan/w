@@ -272,6 +272,36 @@ void test_checked_pointer_types():
 	assert_equal(0, types_compatible(owner, type_lookup_pointer(c"char", 1)))
 
 
+# Contract spelling is semantic metadata: no representation change, and
+# aliases/const wrappers must preserve it until the safety pass binds it.
+void test_checked_lifetime_types():
+	push_basic_types()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	int shared = type_get_safe(pointer_type, 2)
+	int first = type_get_safe_lifetime(pointer_type, 2, c"first")
+	int second = type_get_safe_lifetime(pointer_type, 2, c"second")
+	int mutable = type_get_safe_lifetime(pointer_type, 3, c"first")
+	assert1(first != shared)
+	assert1(first != second)
+	assert1(first != mutable)
+	assert_equal(first, type_get_safe_lifetime(pointer_type, 2, c"first"))
+	assert_equal(0, strcmp(type_record(first).safe_lifetime, c"first"))
+	assert_equal(0, strcmp(type_get_name(first), c"ref[first] int"))
+	assert_equal(0, strcmp(type_get_name(mutable), c"refmut[first] int"))
+	assert_equal(pointer_type, type_safe_target(first))
+	assert_equal(__word_size__, type_get_size(first))
+	assert1(types_compatible(first, second))
+	assert1(types_compatible(first, shared))
+	int alias = type_push_alias(c"borrowed_int", first)
+	assert_equal(first, type_unqualified(type_push_const(alias)))
+	int snapshot = retained_type_note(first)
+	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"first"))
+	assert_equal(snapshot, retained_type_note(first))
+	int alias_snapshot = retained_type_note(alias)
+	assert_equal(snapshot, retained_types[alias_snapshot].target)
+	assert1(retained_types[retained_type_note(shared)].lifetime == 0)
+
+
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"

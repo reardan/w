@@ -14,6 +14,7 @@
 # is the accessor function external callers use.
 struct type_rec:
 	char* name
+	char* safe_lifetime    # optional function-contract label; erased at runtime
 	int num_fields
 	int total_size
 	int pointer_level
@@ -485,19 +486,31 @@ int type_safe_target(int type_index):
 	return type_index
 
 
-int type_get_safe(int target, int kind):
+int type_get_safe_lifetime(int target, int kind, char* lifetime):
 	type_safe_used = 1
 	target = type_unqualified(target)
 	int i = 0
 	while (i < type_records.length):
 		type_rec* t = type_record(i)
-		if ((t.kind == kind + 20) && (t.alias_target == target)): return i
+		if ((t.kind == kind + 20) && (t.alias_target == target)):
+			if ((t.safe_lifetime == 0) && (lifetime == 0)): return i
+			if ((t.safe_lifetime != 0) && (lifetime != 0)):
+				if (strcmp(t.safe_lifetime, lifetime) == 0): return i
 		i = i + 1
 	char* prefix = c"own "
 	if (kind == 2): prefix = c"ref "
 	if (kind == 3): prefix = c"refmut "
 	type_rec* new_type = type_alloc()
-	new_type.name = strjoin(prefix, type_get_name(target))
+	if (lifetime != 0):
+		if (kind == 2): prefix = c"ref["
+		else: prefix = c"refmut["
+		char* named = strjoin(prefix, lifetime)
+		char* qualified = strjoin(named, c"] ")
+		new_type.name = strjoin(qualified, type_get_name(target))
+		new_type.safe_lifetime = strclone(lifetime)
+		free(named)
+		free(qualified)
+	else: new_type.name = strjoin(prefix, type_get_name(target))
 	new_type.total_size = word_size
 	new_type.pointer_level = type_get_pointer_level(target)
 	new_type.alias_target = target
@@ -508,6 +521,9 @@ int type_get_safe(int target, int kind):
 	type_records.push(cast(int, new_type))
 	return index
 
+
+int type_get_safe(int target, int kind):
+	return type_get_safe_lifetime(target, kind, 0)
 
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
 int type_is_gpu_object(int type_index):
