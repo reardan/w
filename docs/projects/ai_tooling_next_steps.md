@@ -1403,3 +1403,13 @@ word-size family.
   its element pointer type during call-site inference, and when
   inference does fail, print the argument's inferred type rather than
   'constant'.
+## Generic inference rejects `&p[i]` arguments (2026-10-16, P3.5)
+
+`mem_copy(&out[n], src, k)` with `char* out` fails `w check` with W0227
+"cannot infer type parameter 'T' from argument 1: expected a pointer, got
+'constant'", although `&out[n]` is a `char*` (binding it to a local first
+works). The message points at the comma and calls the operand a
+"constant", which sent the libs/standard/numeric/decimal.w work toward a
+hand-written byte loop instead. Direction: type `&x[i]` as `T*` during
+generic argument inference, or at least name the expression kind the
+inference saw.
