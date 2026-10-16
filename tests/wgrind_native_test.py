@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -190,6 +191,44 @@ with tempfile.TemporaryDirectory(prefix="wgrind-native-", dir=ROOT / "bin") as t
     summary = json.loads(result.stderr.splitlines()[0])
     assert summary["still-reachable"] == {"blocks": 2, "bytes": 4104}, summary
     assert summary["possibly-lost"]["blocks"] == 0, summary
+    for defines in ([], ["GS"], ["CWD"], ["GS", "CWD"]):
+        executable = folder / ("prefix_convert_" + "_".join(defines))
+        result = run("cc", "-nostdlib", "-static", "-no-pie",
+                     *("-D" + define for define in defines),
+                     "tests/wgrind_native/prefix_convert.S", "-o", str(executable))
+        assert result.returncode == 0, result.stderr
+        result = run(str(RUNNER), str(executable))
+        assert result.returncode == 100, (defines, result.returncode, result.stderr)
+        assert json.loads(result.stderr.splitlines()[0])["kind"] == "incomplete", result.stderr
+    for protect in (False, True):
+        executable = folder / ("execute_only_protect" if protect else "execute_only_map")
+        result = run("cc", "-nostdlib", "-static", "-no-pie",
+                     *(["-DPROTECT"] if protect else []),
+                     "tests/wgrind_native/execute_only.S", "-o", str(executable))
+        assert result.returncode == 0, result.stderr
+        # Prove the operation is valid on the actual CPU before checking
+        # that our narrower permission model reports its limitation.
+        result = run(str(executable))
+        assert result.returncode == 0, result.stderr
+        result = run(str(RUNNER), str(executable))
+        assert result.returncode == 100, result.stderr
+        assert json.loads(result.stderr.splitlines()[0])["kind"] == "incomplete", result.stderr
+    initial_execute_only = folder / "initial_execute_only"
+    contents = bytearray((folder / "clean").read_bytes())
+    phoff = struct.unpack_from("<Q", contents, 32)[0]
+    phentsize, phnum = struct.unpack_from("<HH", contents, 54)
+    for index in range(phnum):
+        at = phoff + index * phentsize
+        kind, flags = struct.unpack_from("<II", contents, at)
+        if kind == 1 and flags & 1:
+            struct.pack_into("<I", contents, at + 4, 1)
+    initial_execute_only.write_bytes(contents)
+    initial_execute_only.chmod(0o755)
+    result = run(str(initial_execute_only))
+    assert result.returncode == 0, result.stderr
+    result = run(str(RUNNER), str(initial_execute_only))
+    assert result.returncode == 100, result.stderr
+    assert json.loads(result.stderr.splitlines()[0])["kind"] == "incomplete", result.stderr
     # Incompatible and truncated files must be rejected before any process
     # executes; especially avoid unchecked reads of an ELF header's fields.
     for content in (b"", b"\x7fELF", b"#!/bin/sh\nexit 0\n"):

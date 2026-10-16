@@ -77,6 +77,13 @@ int wg_native_maps(wg_machine* m):
 		int permissions = 0
 		if (maps[pos] == 'r'): permissions = permissions | WG_READ
 		if (maps[pos + 1] == 'w'): permissions = permissions | WG_WRITE
+		# Instruction fetch currently uses readable shadow bytes. Reject
+		# execute-only application maps explicitly instead of misreporting
+		# a valid CPU instruction fetch as an invalid data read. The high
+		# kernel vsyscall mapping is not application executable memory.
+		if ((low >= 0) && (maps[pos + 2] == 'x') && ((permissions & WG_READ) == 0)):
+			free(maps)
+			return wg_native_incomplete(m)
 		# Kernel special mappings may reject PEEK. They are harmless until
 		# accessed, when the reader fails closed; map only user-readable ones.
 		if ((low <= m.raw[19]) && (m.raw[19] < high)):
@@ -175,6 +182,8 @@ int wg_native_syscall_pre(wg_native* n):
 		if (n.allocator_depth): return 1
 		return wg_io_vector_pre(c, &n.io, number == 19, n.arguments[1], n.arguments[2], 8, wg_native_reader, m.pid, site)
 	if ((number == 9) || (number == 10) || (number == 11)):
+		if (((number == 9) || (number == 10)) && (n.arguments[2] & 4) && ((n.arguments[2] & 1) == 0)):
+			return wg_native_incomplete(m)
 		if ((n.arguments[1] < 0) || (n.arguments[1] + 4095 < n.arguments[1])): return wg_native_incomplete(m)
 		if ((number == 9) && ((n.arguments[3] & 3) != 2)):
 			# Shared mappings need a model for writes from other processes.

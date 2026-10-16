@@ -63,7 +63,9 @@ because optimized W allocation entry points do not have the SysV ABI.
   independently guessing SF/OF. Undefined data may be copied without an error;
   consequential uses check its shadow.
 - Checked instruction fetch, stack growth/shrink and red zones; unsupported
-  encodings stop before execution. A short instruction at a mapping boundary does
+  encodings stop before execution. Execute-only mappings are explicitly incomplete
+  until instruction permissions are modeled separately from data permissions.
+  A short instruction at a mapping boundary does
   not require the following page to exist.
 - `/proc/PID/maps` and bounded ELF parsing discover mapped images, allocator
   symbols and writable ELF roots. ELF load bias includes split mappings. File

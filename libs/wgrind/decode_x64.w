@@ -90,6 +90,9 @@ int wg_decode_native(wg_machine* m):
 		at = at + 1
 	if (at >= count): return wg_native_incomplete(m)
 	int op = m.bytes[at] & 255
+	# The integer frontend models CWDE/CDQE and CDQ/CQO, not CBW/CWD.
+	# Check the parsed prefix state: FS/GS may precede the 0x66 byte.
+	if (operand_prefix && ((op == 0x98) || (op == 0x99))): return wg_native_incomplete(m)
 	if ((op == 0x67) || (op == 0x64) || (op == 0x65) || (op == 0xf2) || (op == 0xf3) || (op == 0xf0) || (op == 0x66) || ((op >= 0x40) && (op <= 0x4f))): return wg_native_incomplete(m)
 	# Relative-control decodes in the formatter allocate printable labels.
 	# Build these directly so the execution loop allocates no label strings.

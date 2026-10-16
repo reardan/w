@@ -21,8 +21,10 @@
 # Code-generator lines/branches reach 97.0/88.4%; raise those floors too.
 # Returned-reference and borrow-representation regressions raise compiler
 # branches to 85.0%; preserve the existing 0.7 point margin.
+# Native-checker compiler assistance tests measure compiler lines/branches
+# at 95.2/85.2%; retain those gains with the existing 0.8/0.7 margins.
 code_generator/ 96.1
-compiler/ 94.3
+compiler/ 94.4
 grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
@@ -30,7 +32,7 @@ repl.w 80.5
 w.w 99.0
 diagnostics 50.5
 branches:code_generator/ 87.8
-branches:compiler/ 84.3
+branches:compiler/ 84.5
 branches:grammar/ 84.6
 branches:repl/ 73.5
 branches:debugger/ 64.0
