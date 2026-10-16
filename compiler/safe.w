@@ -1024,6 +1024,16 @@ int safe_contract_slot(retained_binding* binding, int slot):
 	return binding.parameters[slot]
 
 
+# The parser retains transitive outlives constraints in signature-slot
+# space. A null relation is the original equality-only contract.
+int safe_contract_outlives(retained_binding* binding, int longer, int shorter):
+	if (binding.lifetime_order != 0): return (binding.lifetime_order[longer] & (1 << shorter)) != 0
+	char* left = safe_lifetime(safe_contract_slot(binding, longer))
+	char* right = safe_lifetime(safe_contract_slot(binding, shorter))
+	if ((left == 0) || (right == 0)): return 0
+	return strcmp(left, right) == 0
+
+
 # Lifetime spelling is local to a signature. Compare the equality relation
 # between annotated positions, so alpha-renaming cannot change a contract.
 int safe_contract_matches(retained_binding* left, retained_binding* right):
@@ -1036,6 +1046,8 @@ int safe_contract_matches(retained_binding* left, retained_binding* right):
 		char* bl = safe_lifetime(b)
 		if ((al == 0) != (bl == 0)): return 0
 		if (al == 0): continue
+		for j in range(left.parameters.length + 1):
+			if (safe_contract_outlives(left, i, j) != safe_contract_outlives(right, i, j)): return 0
 		for j in range(i):
 			char* earlier_a = safe_lifetime(safe_contract_slot(left, j))
 			char* earlier_b = safe_lifetime(safe_contract_slot(right, j))
@@ -1064,9 +1076,7 @@ int safe_return_parameter(int id, retained_binding* binding):
 	for p in range(binding.parameters.length):
 		if (safe_borrow_kind(binding.parameters[p]) < 2): continue
 		if (lifetime != 0):
-			char* input = safe_lifetime(binding.parameters[p])
-			if (input == 0): continue
-			if (strcmp(input, lifetime) != 0): continue
+			if (safe_contract_outlives(binding, p, binding.parameters.length) == 0): continue
 		else if (result >= 0): safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
 		result = p
 		if ((safe_kind(binding.return_type) == 3) && (safe_kind(binding.parameters[p]) != 3)):
@@ -1083,9 +1093,7 @@ int safe_return_parameter(int id, retained_binding* binding):
 int safe_return_from(retained_binding* binding, int inferred, int position):
 	char* lifetime = safe_lifetime(binding.return_type)
 	if (lifetime == 0): return inferred == position
-	char* input = safe_lifetime(binding.parameters[position])
-	if (input == 0): return 0
-	return strcmp(input, lifetime) == 0
+	return safe_contract_outlives(binding, position, binding.parameters.length)
 
 
 int safe_call(int id, retained_node* n, char* state, int* parent):
@@ -1096,6 +1104,7 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 	if (((n.op == 'G') || (n.op == 'W')) && (n.generic_signature >= 0)):
 		retained_type* signature = retained_types[n.generic_signature]
 		retained_binding expected
+		expected.lifetime_order = 0
 		expected.return_type = signature.return_type
 		expected.parameters = signature.parameters
 		if (safe_contract_matches(&expected, callee) == 0):

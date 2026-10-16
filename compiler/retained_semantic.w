@@ -62,6 +62,9 @@ struct retained_binding:
 	int key_file_index
 	# Selected assembly contains executable operations absent from the W tree.
 	int assembly_body
+	# Arena-owned transitive outlives rows, indexed by parameter/result slot.
+	# Null retains the ordinary named-label equality contract.
+	int* lifetime_order
 
 list[retained_type*] retained_types
 list[retained_binding*] retained_bindings

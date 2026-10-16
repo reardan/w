@@ -346,8 +346,56 @@ int param_default_record(int current_symbol, int param_count, int saw_default):
 # Parses "parameter-list ) [; | body]" for the function symbol at table
 # offset current_symbol; the opening "(" has already been consumed.
 # Shared by program() and the REPL's entry dispatcher.
-void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column);
+void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column, int* lifetime_order);
 void ast_script_main();
+
+
+# Outlives clauses are contextual: `where a > b, b > c`. Labels must
+# occur on borrowed parameter/result types. Normalize to a transitive
+# relation on signature positions so spellings and redundant edges do not
+# participate in declaration identity. Storage belongs to the retained arena.
+char* function_lifetime_label(int symbol, int result, int count, int slot):
+	int type = result
+	if (slot < count): type = sym_param_type(symbol, slot)
+	if (type_safe_kind(type) < 2): return 0
+	return type_record(type_unqualified(type)).safe_lifetime
+
+
+int function_lifetime_slot(int symbol, int result, int count):
+	if (is_ident_start_byte(token[0]) == 0): error(c"outlives clause requires a lifetime label")
+	for i in range(count + 1):
+		char* name = function_lifetime_label(symbol, result, count, i)
+		if ((name != 0) && (strcmp(name, token) == 0)):
+			get_token()
+			return i
+	error(c"outlives clause names no borrowed parameter or result lifetime")
+	return -1
+
+
+int* function_lifetime_order(int symbol, int result, int count):
+	if (accept(c"where") == 0): return 0
+	if ((ast_retain_mode == 0) || (retained_semantic_mode == 0) || (type_safe_entrypoint == 0)):
+		error(c"outlives clauses require the retained checked frontend")
+	if (generic_subst_block != 0): error(c"generic outlives clauses are not supported")
+	if (count > sym_max_param_slots): error(c"outlives clauses support at most 10 parameters")
+	int* order = cast(int*, retained_arena_alloc((count + 1) * __word_size__))
+	for i in range(count + 1):
+		order[i] = 0
+		char* left = function_lifetime_label(symbol, result, count, i)
+		if (left == 0): continue
+		for j in range(count + 1):
+			char* right = function_lifetime_label(symbol, result, count, j)
+			if ((right != 0) && (strcmp(left, right) == 0)): order[i] = order[i] | (1 << j)
+	while (1):
+		int longer = function_lifetime_slot(symbol, result, count)
+		expect(c">")
+		int shorter = function_lifetime_slot(symbol, result, count)
+		order[longer] = order[longer] | (1 << shorter)
+		if (accept(c",") == 0): break
+	for k in range(count + 1):
+		for i in range(count + 1):
+			if (order[i] & (1 << k)): order[i] = order[i] | order[k]
+	return order
 
 
 void function_definition(int current_symbol):
@@ -435,11 +483,12 @@ void function_definition(int current_symbol):
 	if (is_w_variadic): sym_set_w_variadic(current_symbol, param_count - 1)
 	else: sym_set_w_variadic(current_symbol, -1)
 
+	int* lifetime_order = function_lifetime_order(current_symbol, declared_return_type, param_count)
 	if (accept(c";")):
 		inline_definition_abandon()
 		if (ast_retain_mode):
 			int prototype = retained_enter(retained_function, filename, retained_start, retained_line, retained_column, last_global_declaration)
-			retained_function_prototype_parameters(current_symbol, written_return_type)
+			retained_function_prototype_parameters(current_symbol, written_return_type, lifetime_order)
 			retained_leave(prototype, token_start_offset)
 	else:
 		# 'asm <isa>:' blocks opening the body (grammar/asm_function.w): 1
@@ -463,7 +512,7 @@ void function_definition(int current_symbol):
 			regalloc_function_scan(current_symbol, is_w_variadic)
 			rg_asm_body = 0
 		if (asm_body == 1): save_int(table + current_symbol + 14, codepos - function_start)
-		else if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
+		else if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column, lifetime_order)
 		else:
 			be_function_define(current_symbol, last_global_declaration)
 			# On arm64 sign and push the return address (x30) onto the W stack
