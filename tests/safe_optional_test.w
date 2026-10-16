@@ -176,3 +176,13 @@ void test_optional_assignment_values():
 	optional_case(c"int main():\n\tint x = 7\n\toptref int* r = 0\n\tint address = (r = &x)\n\treturn address == 0\n", c"cannot escape", 1)
 	optional_case(c"int main():\n\tint x = 7\n\toptref int* r = 0\n\treturn (r = &x)\n", c"cannot escape", 1)
 	optional_case(c"int scalar(int address):\n\treturn address\nint main():\n\tint x = 7\n\toptref int* r = 0\n\treturn scalar(r = &x)\n", c"cannot escape", 1)
+
+
+void test_optional_jump_scope_exit():
+	optional_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\town int* local = new int\n\t\t\t*local = 7\n\t\t\tsaved = local\n\t\t\tbreak\n\tif saved: return *saved - 7\n\treturn 1\n", c"uninitialized or moved")
+	optional_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tint local = 7\n\t\t\tsaved = &local\n\t\t\tbreak\n\tif saved: return *saved - 7\n\treturn 1\n", c"uninitialized or moved")
+	optional_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tswitch 2:\n\t\t\t\tdefault:\n\t\t\t\t\town int* local = new int\n\t\t\t\t\tsaved = local\n\t\t\t\t\tbreak\n\t\t\tif saved: return *saved\n\treturn 0\n", c"uninitialized or moved")
+	optional_case(c"int main():\n\town int* owner = new int\n\t*owner = 7\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tsaved = owner\n\t\t\tbreak\n\tif saved: return *saved - 7\n\treturn 1\n", 0)
+	optional_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\town int* local = new int\n\t\t\tsaved = local\n\t\t\tsaved = 0\n\t\t\tbreak\n\tif saved: return 1\n\treturn 0\n", 0)
+	optional_case(c"int main():\n\toptref int* saved = 0\n\tfor i in range(1):\n\t\tsaved = &i\n\t\tbreak\n\tif saved: return *saved\n\treturn 1\n", 0)
+	optional_case(c"int main():\n\toptref int* saved = 0\n\tfor i in range(2):\n\t\town int* local = new int\n\t\tsaved = local\n\t\tswitch i:\n\t\t\tdefault: continue\n\tif saved: return *saved\n\treturn 0\n", c"uninitialized or moved")
