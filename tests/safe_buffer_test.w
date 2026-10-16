@@ -241,3 +241,8 @@ void test_checked_collection_mismatched_helper_prototypes():
 	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WIntBuffer* value = int_buffer_new()\n\treturn 0\nvoid __w_int_buffer_drop(own WIntBuffer* value);\nint main():\n\treturn dispose()\n", c"safe:")
 	buffer_case(c"import lib.safe_buffer\nvoid __w_byte_string_drop(own WByteString* value);\nint dispose():\n\town WByteString* value = byte_string_new()\n\treturn 0\nint main():\n\treturn dispose()\n", c"safe:")
 	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WByteString* value = byte_string_new()\n\treturn 0\nvoid __w_byte_string_drop(own WByteString* value);\nint main():\n\treturn dispose()\n", c"safe:")
+
+
+void test_checked_collection_raw_helper_signature_changes():
+	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WIntBuffer* value = int_buffer_new()\n\treturn 0\nvoid __w_int_buffer_drop(int* value);\nint main():\n\treturn dispose()\n", c"safe:")
+	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WByteString* value = byte_string_new()\n\treturn 0\nvoid __w_byte_string_drop(int* value);\nint main():\n\treturn dispose()\n", c"safe:")
