@@ -111,17 +111,25 @@ int safe_kind(int type):
 	return 0
 
 
-int safe_contains_checked(int type, int depth):
+int safe_contains_checked_walk(int type, int depth, int* path):
 	if ((type < 0) || (depth > 32)): return 0
 	if (safe_kind(type)): return 1
+	for i in range(depth):
+		if (path[i] == type): return 0
+	path[depth] = type
 	retained_type* t = retained_types[type]
-	if (safe_contains_checked(t.target, depth + 1)): return 1
-	if (safe_contains_checked(t.return_type, depth + 1)): return 1
+	if (safe_contains_checked_walk(t.target, depth + 1, path)): return 1
+	if (safe_contains_checked_walk(t.return_type, depth + 1, path)): return 1
 	for i in range(t.parameters.length):
-		if (safe_contains_checked(t.parameters[i], depth + 1)): return 1
+		if (safe_contains_checked_walk(t.parameters[i], depth + 1, path)): return 1
 	for i in range(t.fields.length):
-		if (safe_contains_checked(t.fields[i].type, depth + 1)): return 1
+		if (safe_contains_checked_walk(t.fields[i].type, depth + 1, path)): return 1
 	return 0
+
+
+int safe_contains_checked(int type, int depth):
+	int[33] path
+	return safe_contains_checked_walk(type, depth, &path[0])
 
 
 int safe_slice(int type):
@@ -554,7 +562,8 @@ int safe_borrow(int id, int want, char* state, int* parent):
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
 		if (safe_record(base.semantic_type) == 0): safe_error(id, c"safe: unsupported reference-bearing projection", -1)
-		root = safe_place(id, state, &via)
+		if (kind == 3): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+		root = safe_borrow(safe_child(&n, n.left), base.semantic_type, state, &via)
 	else if (n.op == 'C'):
 		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
 			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
