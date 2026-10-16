@@ -227,9 +227,9 @@ gen_db* gen_db_new():
 
 
 wstream* gen_open(char* path):
-	wstream* in = stream_open_read(path)
-	if (in == 0): gen_fail(c"cannot open (run from the repo root)", path)
-	return in
+	wstream* stream = stream_open_read(path)
+	if (stream == 0): gen_fail(c"cannot open (run from the repo root)", path)
+	return stream
 
 
 void gen_set_numeric(gen_db* db, int cp, char* value):
