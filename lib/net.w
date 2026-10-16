@@ -381,24 +381,25 @@ int net_wait_result_from_syscall(io_result* r, int rc):
 	return io_result_set(r, 0, net_wait_status_from_errno(0 - rc), 0 - rc)
 
 
-# Nonblocking TCP connect with an explicit error result. Returns the
-# connected fd (still nonblocking), or -1 with r holding the native
-# errno/category. Readiness is only a hint: SO_ERROR obtains the actual
-# asynchronous connection outcome. EINTR restarts the wait against the
-# original deadline.
-int net_connect_timeout_checked(int ip, int port, int timeout_ms, io_result* r):
+# Nonblocking TCP connect to a prepared sockaddr (family af_inet with a
+# sockaddr_in, or net_af_inet6() with a sockaddr_in6) with an explicit
+# error result. Returns the connected fd (still nonblocking), or -1
+# with r holding the native errno/category. Readiness is only a hint:
+# SO_ERROR obtains the actual asynchronous connection outcome. EINTR
+# restarts the wait against the original deadline.
+int net_connect_sockaddr_timeout_checked(int family, char* addr, int addrlen, int timeout_ms, io_result* r):
 	int cancelled = io_check()
 	if (cancelled < 0):
 		io_result_from_syscall(r, cancelled)
 		return -1
-	int fd = socket_tcp_ipv4()
+	int fd = sys_socket(family, sock_stream, 0)
 	if (fd < 0):
 		net_result_from_syscall(r, fd)
 		return -1
 	int wait_error = 0
 	int rc = socket_set_nonblocking(fd)
 	if (rc >= 0): rc = socket_set_nosigpipe(fd)
-	if (rc >= 0): rc = socket_connect_ipv4(fd, ip, port)
+	if (rc >= 0): rc = sys_connect(fd, cast(int, addr), addrlen)
 	if (rc == (0 - net_einprogress())):
 		int start = time_monotonic_ms()
 		while (1):
@@ -431,6 +432,13 @@ int net_connect_timeout_checked(int ip, int port, int timeout_ms, io_result* r):
 		return -1
 	io_result_set(r, 0, IO_OK, 0)
 	return fd
+
+
+# IPv4 form of net_connect_sockaddr_timeout_checked (host-order ip).
+int net_connect_timeout_checked(int ip, int port, int timeout_ms, io_result* r):
+	sockaddr_in addr
+	sockaddr_in_init(&addr, ip, port)
+	return net_connect_sockaddr_timeout_checked(af_inet, cast(char*, &addr), sockaddr_in_size, timeout_ms, r)
 
 
 # Compatibility wrapper: -2 on timeout, -1 on other errors.
@@ -521,3 +529,294 @@ int socket_peer_credentials_checked(int fd, net_peer_credentials* out, io_result
 int socket_shutdown_checked(int fd, int direction, io_result* r):
 	if (socket_identity_supported() == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
 	return net_result_from_syscall(r, socket_identity_shutdown(fd, direction))
+
+
+/* IPv6 (stdlib parity P3.10). Addresses cross this API as 16 bytes in
+network order (the packed form of libs/standard/net/ipaddress.w's
+ip_address_packed), so lib/ stays free of text parsing.
+
+W structs do not use C field layout (int16/int32 fields are padded),
+so sockaddr_in6 wraps a raw 28-byte buffer (declare it as a local or
+with new: a T[N] field has a runtime header that raw malloc'd memory
+lacks). Layout: family word at 0 (sin6_len +
+family on Darwin), port at 2 (network order), flowinfo at 4, address
+at 8, scope_id at 24 (native order). The syscalls take the same
+pointer on every target: x86 goes through socketcall, x64/arm64/Darwin
+call socket/bind/connect directly, and none of them care about the
+address family. */
+
+const int sockaddr_in6_size = 28
+
+
+struct sockaddr_in6:
+	char[28] raw
+
+
+int net_af_inet6():
+	return socket_abi_af_inet6()
+
+
+# Positive errno values meaning "no IPv6 on this host/network" (the
+# family is compiled out, ::1 is not configured, or no route).
+int net_eafnosupport():
+	return socket_abi_eafnosupport()
+
+
+int net_eaddrnotavail():
+	return socket_abi_eaddrnotavail()
+
+
+int net_enetunreach():
+	return socket_abi_enetunreach()
+
+
+# 1 when a negated errno from an IPv6 socket/bind/connect means the
+# host has no usable IPv6 rather than a peer-specific failure.
+int net_ipv6_unavailable_error(int rc):
+	int err = 0 - rc
+	return (err == net_eafnosupport()) || (err == net_eaddrnotavail()) || (err == net_enetunreach())
+
+
+char* sockaddr_in6_bytes(sockaddr_in6* addr):
+	return cast(char*, &addr.raw[0])
+
+
+# ip16 is 16 network-order bytes (0 means the unspecified address ::).
+# scope_id is the interface index for link-local addresses, else 0.
+void sockaddr_in6_init(sockaddr_in6* addr, char* ip16, int port, int scope_id):
+	char* raw = sockaddr_in6_bytes(addr)
+	for i in range(sockaddr_in6_size): raw[i] = 0
+	save_int16(raw, socket_abi_family_word_sized(net_af_inet6(), sockaddr_in6_size))
+	raw[2] = (port >> 8) & 255
+	raw[3] = port & 255
+	if (ip16 != 0):
+		for i in range(16): raw[8 + i] = ip16[i]
+	save_int32(raw + 24, scope_id)
+
+
+int sockaddr_in6_family(sockaddr_in6* addr):
+	return socket_abi_family_from_word(load_int16(sockaddr_in6_bytes(addr)))
+
+
+# Host-order port.
+int sockaddr_in6_port(sockaddr_in6* addr):
+	char* raw = sockaddr_in6_bytes(addr)
+	return ((raw[2] & 255) << 8) | (raw[3] & 255)
+
+
+# Copies the 16 network-order address bytes into out.
+void sockaddr_in6_address(sockaddr_in6* addr, char* out):
+	char* raw = sockaddr_in6_bytes(addr)
+	for i in range(16): out[i] = raw[8 + i]
+
+
+int sockaddr_in6_scope_id(sockaddr_in6* addr):
+	return load_int32(sockaddr_in6_bytes(addr) + 24)
+
+
+# Fills out (16 bytes) with ::1.
+void net_ipv6_loopback(char* out):
+	for i in range(15): out[i] = 0
+	out[15] = 1
+
+
+int socket_ipv6(int socket_type):
+	return sys_socket(net_af_inet6(), socket_type, 0)
+
+
+int socket_tcp_ipv6():
+	return socket_ipv6(sock_stream)
+
+
+int socket_udp_ipv6():
+	return socket_ipv6(sock_dgram)
+
+
+# IPV6_V6ONLY: 1 restricts an AF_INET6 socket to IPv6 peers, 0 also
+# accepts IPv4-mapped peers (::ffff:a.b.c.d) on a dual-stack listener.
+int socket_set_ipv6_only(int sockfd, int enabled):
+	int32 value = enabled != 0
+	return sys_setsockopt(sockfd, socket_abi_ipproto_ipv6(), socket_abi_ipv6_v6only(), cast(int, &value), 4)
+
+
+int socket_bind_ipv6(int sockfd, char* ip16, int port):
+	sockaddr_in6 addr
+	sockaddr_in6_init(&addr, ip16, port, 0)
+	return sys_bind(sockfd, cast(int, sockaddr_in6_bytes(&addr)), sockaddr_in6_size)
+
+
+int socket_connect_ipv6(int sockfd, char* ip16, int port):
+	sockaddr_in6 addr
+	sockaddr_in6_init(&addr, ip16, port, 0)
+	return sys_connect(sockfd, cast(int, sockaddr_in6_bytes(&addr)), sockaddr_in6_size)
+
+
+int socket_accept_connection_from_ipv6(int sockfd, sockaddr_in6* addr):
+	int32 addrlen = sockaddr_in6_size
+	return sys_accept(sockfd, cast(int, sockaddr_in6_bytes(addr)), cast(int, &addrlen))
+
+
+int socket_getsockname_ipv6(int sockfd, sockaddr_in6* addr):
+	int32 addrlen = sockaddr_in6_size
+	return sys_getsockname(sockfd, cast(int, sockaddr_in6_bytes(addr)), cast(int, &addrlen))
+
+
+int socket_send_to_ipv6(int sockfd, char* buf, int len, int flags, char* ip16, int port):
+	sockaddr_in6 addr
+	sockaddr_in6_init(&addr, ip16, port, 0)
+	return sys_sendto(sockfd, buf, len, flags, cast(int, sockaddr_in6_bytes(&addr)), sockaddr_in6_size)
+
+
+int socket_recv_from_ipv6(int sockfd, char* buf, int len, int flags, sockaddr_in6* addr):
+	int32 addrlen = sockaddr_in6_size
+	return sys_recvfrom(sockfd, buf, len, flags, cast(int, sockaddr_in6_bytes(addr)), cast(int, &addrlen))
+
+
+# IPv6 form of net_connect_timeout_checked.
+int net_connect6_timeout_checked(char* ip16, int port, int scope_id, int timeout_ms, io_result* r):
+	sockaddr_in6 addr
+	sockaddr_in6_init(&addr, ip16, port, scope_id)
+	return net_connect_sockaddr_timeout_checked(net_af_inet6(), sockaddr_in6_bytes(&addr), sockaddr_in6_size, timeout_ms, r)
+
+
+/* Family-tagged addresses and Happy-Eyeballs-lite connects (RFC 8305
+section 4 ordering, sequential attempts). A resolver fills an array of
+net_address; net_addresses_interleave alternates the families
+starting with IPv6; net_connect_addresses_timeout_checked tries each
+in turn. */
+
+# No T[N] fields: those carry a hidden runtime header that raw malloc'd
+# arrays of the struct would leave uninitialized, and resolvers hand
+# out malloc'd net_address arrays. The IPv6 bytes are packed big-endian
+# four to an int instead; use net_address_ipv6_bytes to read them.
+struct net_address:
+	int family          # af_inet or net_af_inet6()
+	int ipv4            # host order, when family == af_inet
+	int ipv6_0          # IPv6 bytes 0..3, big-endian packed
+	int ipv6_1
+	int ipv6_2
+	int ipv6_3
+	int scope_id        # IPv6 interface index, else 0
+
+
+int net_pack_be32(char* p):
+	return ((p[0] & 255) << 24) | ((p[1] & 255) << 16) | ((p[2] & 255) << 8) | (p[3] & 255)
+
+
+void net_unpack_be32(int value, char* p):
+	p[0] = (value >> 24) & 255
+	p[1] = (value >> 16) & 255
+	p[2] = (value >> 8) & 255
+	p[3] = value & 255
+
+
+void net_address_set_ipv4(net_address* a, int ip):
+	a.family = af_inet
+	a.ipv4 = ip
+	a.ipv6_0 = 0
+	a.ipv6_1 = 0
+	a.ipv6_2 = 0
+	a.ipv6_3 = 0
+	a.scope_id = 0
+
+
+# ip16: 16 network-order bytes.
+void net_address_set_ipv6(net_address* a, char* ip16, int scope_id):
+	a.family = net_af_inet6()
+	a.ipv4 = 0
+	a.ipv6_0 = net_pack_be32(ip16)
+	a.ipv6_1 = net_pack_be32(&ip16[4])
+	a.ipv6_2 = net_pack_be32(&ip16[8])
+	a.ipv6_3 = net_pack_be32(&ip16[12])
+	a.scope_id = scope_id
+
+
+# Writes the 16 network-order IPv6 bytes of a into out (zeros for IPv4).
+void net_address_ipv6_bytes(net_address* a, char* out):
+	net_unpack_be32(a.ipv6_0, out)
+	net_unpack_be32(a.ipv6_1, &out[4])
+	net_unpack_be32(a.ipv6_2, &out[8])
+	net_unpack_be32(a.ipv6_3, &out[12])
+
+
+int net_address_is_ipv6(net_address* a):
+	return a.family == net_af_inet6()
+
+
+int net_address_equal(net_address* a, net_address* b):
+	if (a.family != b.family): return 0
+	if (a.family == af_inet): return a.ipv4 == b.ipv4
+	if (a.scope_id != b.scope_id): return 0
+	return (a.ipv6_0 == b.ipv6_0) && (a.ipv6_1 == b.ipv6_1) && (a.ipv6_2 == b.ipv6_2) && (a.ipv6_3 == b.ipv6_3)
+
+
+void net_address_copy(net_address* from, net_address* to):
+	to.family = from.family
+	to.ipv4 = from.ipv4
+	to.ipv6_0 = from.ipv6_0
+	to.ipv6_1 = from.ipv6_1
+	to.ipv6_2 = from.ipv6_2
+	to.ipv6_3 = from.ipv6_3
+	to.scope_id = from.scope_id
+
+
+# Reorders addrs in place: IPv6, IPv4, IPv6, IPv4, ... keeping the
+# resolver's order within each family; leftovers of the longer family
+# go last. A list with one family is unchanged.
+void net_addresses_interleave(net_address* addrs, int count):
+	if (count <= 1): return
+	net_address* sorted = cast(net_address*, malloc(sizeof(net_address) * count))
+	int next6 = 0
+	int next4 = 0
+	int want6 = 1
+	for out in range(count):
+		while ((next6 < count) && (net_address_is_ipv6(&addrs[next6]) == 0)): next6 += 1
+		while ((next4 < count) && net_address_is_ipv6(&addrs[next4])): next4 += 1
+		int take6 = want6
+		if (next6 >= count): take6 = 0
+		if (next4 >= count): take6 = 1
+		if (take6):
+			net_address_copy(&addrs[next6], &sorted[out])
+			next6 += 1
+		else:
+			net_address_copy(&addrs[next4], &sorted[out])
+			next4 += 1
+		want6 = take6 == 0
+	for i in range(count): net_address_copy(&sorted[i], &addrs[i])
+	free(sorted)
+
+
+int net_connect_address_timeout_checked(net_address* a, int port, int timeout_ms, io_result* r):
+	if (net_address_is_ipv6(a)):
+		char* ip16 = cast(char*, malloc(16))
+		net_address_ipv6_bytes(a, ip16)
+		int fd = net_connect6_timeout_checked(ip16, port, a.scope_id, timeout_ms, r)
+		free(ip16)
+		return fd
+	return net_connect_timeout_checked(a.ipv4, port, timeout_ms, r)
+
+
+# Tries addrs[0..count) in order until one connects. Every attempt but
+# the last is capped at an even share of the remaining budget, so a
+# black-holed first address cannot starve the fallback; fast failures
+# (no IPv6, refused, unreachable) move on immediately. timeout_ms < 0
+# means unbounded attempts. Cancellation stops the walk. Returns the
+# connected nonblocking fd, or -1 with r from the last attempt.
+int net_connect_addresses_timeout_checked(net_address* addrs, int count, int port, int timeout_ms, io_result* r):
+	if (count <= 0):
+		io_result_set(r, 0, IO_UNSUPPORTED, 0)
+		return -1
+	int start = time_monotonic_ms()
+	for i in range(count):
+		int budget = timeout_ms
+		if (timeout_ms >= 0):
+			budget = timeout_ms - (time_monotonic_ms() - start)
+			if (budget <= 0):
+				io_result_set(r, 0, IO_TIMED_OUT, IO_ERRNO_ETIMEDOUT)
+				return -1
+			budget = budget / (count - i)
+			if (budget <= 0): budget = 1
+		int fd = net_connect_address_timeout_checked(&addrs[i], port, budget, r)
+		if (fd >= 0): return fd
+		if (r.status == IO_CANCELLED): return -1
+	return -1
