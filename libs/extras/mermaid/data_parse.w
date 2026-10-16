@@ -431,7 +431,8 @@ void mm_data_validate(mm_parser* p):
 void mm_data_body(mm_parser* p):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
 		int start = p.pos
-		if (mm_match(p, c"title ")):
+		if (mm_metadata(p)): mm_space(p)
+		else if (mm_match(p, c"title ")):
 			free(p.doc.data.title)
 			p.doc.data.title = mm_data_text(p, 10)
 		else if (p.doc.kind == MM_PIE): mm_data_pie(p)

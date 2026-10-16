@@ -188,3 +188,20 @@ void test_data_truncation_and_edit_ownership():
 		mm_document_free(edited)
 		mm_document_free(original)
 	__w_list_free(cast(__w_list*, sources))
+
+void test_mermaid_data_envelope_metadata_and_title_precedence():
+	char* source = c"# Report\n```mermaid\n---\ntitle: Overview\n---\npie title Old title\naccTitle: Pie & chart\naccDescr: Two categories\n\"A\": 1\n\"B\": 2\n```\n"
+	mm_document* d = mm_parse(source, strlen(source))
+	asserts(c"data envelope parses", d.error == 0)
+	assert_strings_equal(c"Overview", d.title)
+	mm_scene* s = mm_render(d)
+	int count = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Overview") == 0): count = count + 1
+		asserts(c"frontmatter overrides chart title", strcmp(p.text, c"Old title") != 0)
+	assert_equal(1, count)
+	char* svg = mm_svg(s)
+	asserts(c"accessible title escaped", index_of(svg, c"Pie &amp; chart") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)

@@ -416,7 +416,11 @@ mm_scene* mm_data_render(mm_document* d):
 	s.nodes = new list[mm_bounds*]
 	s.width = 400
 	s.height = 300
-	if (d.data.title[0] != 0): mm_text(s, 40, 20, d.data.title)
+	char* title = d.title
+	if (title[0] == 0): title = d.data.title
+	if (title[0] != 0):
+		mm_text(s, 40, 20, title)
+		s.has_title = 1
 	if (d.kind == MM_PIE): mm_data_pie_render(d, s)
 	else if (d.kind == MM_QUADRANT): mm_data_quadrant_render(d, s)
 	else if (d.kind == MM_XY): mm_data_xy_render(d, s)

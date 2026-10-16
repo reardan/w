@@ -303,6 +303,9 @@ mm_document* mm_parse(char* source, int length):
 	if (envelope.title[0] != 0):
 		free(d.title)
 		d.title = strclone(envelope.title)
+	if (d.title[0] == 0 && d.data != 0):
+		free(d.title)
+		d.title = strclone(d.data.title)
 	if (d.error != 0):
 		char* message = d.error
 		d.error = 0
