@@ -1222,7 +1222,7 @@ void help_deps():
 
 
 void help_symbols():
-	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+	println(c"usage: w symbols [--json] [--layout] [--all-errors] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 	println(c"")
 	println(c"Compile like 'w check', then dump the global symbol table and the")
 	println(c"user-declared types with their declaration locations.")
@@ -1237,6 +1237,10 @@ void help_symbols():
 	println(c"                        padding; union fields sit at 0); c_import types")
 	println(c"                        carry real C ABI padding as explicit __ci_* filler")
 	println(c"                        fields and print with the <c_import> file marker")
+	println(c"  --all-errors          recover at each statement like 'w check")
+	println(c"                        --all-errors' and dump what was declared even")
+	println(c"                        when the file has errors (exit status 1), so")
+	println(c"                        editors keep hover and completion mid-edit")
 	help_shared_options()
 	println(c"")
 	help_selectors()
@@ -2998,6 +3002,7 @@ int symbols_main(int argc, int argv):
 	int json = 0
 	int layout = 0
 	diag_json = 0
+	analysis_requested = 0
 	# Leading flags in any order, like 'w check'.
 	int scanning = 1
 	while (scanning & (i < argc)):
@@ -3009,6 +3014,16 @@ int symbols_main(int argc, int argv):
 		else if (strcmp(*arg, c"--layout") == 0):
 			layout = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--all-errors") == 0):
+			# The same in-process recovery as 'w check --all-errors' (and
+			# the same native-host restriction). Declarations before and
+			# after a failed statement stay in the table, so the dump below
+			# still runs; the errors precede it and set the exit status.
+			if (__target_isa__ == 2):
+				println2(c"--all-errors is not supported on wasm hosts")
+				return 1
+			analysis_requested = 1
+			i = i + 1
 		else if (import_root_arg_width(*arg) > 0):
 			i = i + import_root_arg_width(*arg)
 		else if (arg_is_help(*arg)):
@@ -3016,12 +3031,13 @@ int symbols_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+		println2(c"usage: w symbols [--json] [--layout] [--all-errors] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	if (layout): symbols_dump_layout(json)
 	else: symbols_dump(json)
+	if (analysis_errors > 0): return 1
 	return 0
 
 
