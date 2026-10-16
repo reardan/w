@@ -1728,14 +1728,14 @@ int safe_replaced_field_groups(int type, int offset):
 	return replaced & ~retained
 
 
-void safe_replace_owned_field(int id, retained_node* assignment, retained_node* field, int root, char* state):
+void safe_replace_checked_field(int id, retained_node* assignment, retained_node* field, int root, char* state):
 	retained_node owner
 	retained_node_load(safe_child(field, field.left), &owner)
 	if ((owner.op != 'v') || (safe_kind(owner.semantic_type) != 1)):
-		safe_error(id, c"safe: owned field replacement requires a named unique owner", -1)
+		safe_error(id, c"safe: checked field replacement requires a named unique owner", -1)
 	int index = safe_index(owner.binding)
 	if ((index < 0) || (root != index)):
-		safe_error(id, c"safe: owned field replacement requires a tracked owner", -1)
+		safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
 	# Preserve the destination descriptor through every RHS operand. Field
 	# moves remain separately gated; moving the parent cannot invalidate it.
 	int saved = safe_call_roots.length
@@ -1747,14 +1747,18 @@ void safe_replace_owned_field(int id, retained_node* assignment, retained_node* 
 	if (safe_assignment_reads_previous(assignment, safe_child(field, field.left), owner.binding) == 0):
 		safe_replacing_owner = index
 		safe_replacing_groups = safe_replaced_field_groups(owner.semantic_type, field.value)
-	safe_eval_groups(safe_child(assignment, assignment.right), state, field.semantic_type, &incoming)
+	if (safe_kind(field.semantic_type) == 1):
+		safe_eval_groups(safe_child(assignment, assignment.right), state, field.semantic_type, &incoming)
+	else:
+		int incoming_parent = -1
+		safe_borrow_groups(safe_child(assignment, assignment.right), field.semantic_type, state, &incoming_parent, &incoming, -1, 0)
 	safe_replacing_owner = previous_owner
 	safe_replacing_groups = previous_groups
 	while (safe_call_roots.length > saved):
 		safe_call_roots.pop()
 		safe_call_kinds.pop()
 	safe_access(root, -1, 1, id, state)
-	if (safe_owned_borrowed(field.semantic_type)):
+	if (safe_carries_borrow(field.semantic_type)):
 		safe_borrowed mapped
 		safe_borrowed_clear(&mapped)
 		int template = safe_pointee(owner.semantic_type)
@@ -1866,13 +1870,16 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			safe_origin_join(index, source, parent)
 			state[index] = 2 | presence
 			return -1
+		if ((lk >= 2) && (lhs.op == '.') && (n.value == 0)):
+			safe_replace_checked_field(id, &n, &lhs, root, state)
+			return -1
 		if (lk >= 2):
 			int related = -1
 			int named = safe_index(lhs.binding)
 			if (named >= 0): related = safe_birth[named]
 			safe_error(id, c"safe: references cannot be reassigned", related)
 		if ((lk == 1) && (lhs.op == '.') && (n.value == 0)):
-			safe_replace_owned_field(id, &n, &lhs, root, state)
+			safe_replace_checked_field(id, &n, &lhs, root, state)
 			return -1
 		if ((lk == 1) && ((lhs.op != 'v') || n.value)): safe_error(id, c"safe: owner assignment requires a plain binding", -1)
 		if (n.value):
