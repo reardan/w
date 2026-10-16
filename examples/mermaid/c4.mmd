@@ -1,0 +1,9 @@
+C4Container
+title Native diagram editor
+Person(user, "User", "Authors diagrams")
+System_Boundary(editor, "Desktop editor") {
+  Container(parser, "Parser", "W", "Builds semantic documents")
+  Container(renderer, "Renderer", "W", "Creates native scenes")
+}
+Rel(user, parser, "Edits source")
+Rel(parser, renderer, "Renders document")

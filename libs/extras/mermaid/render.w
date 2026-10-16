@@ -5,6 +5,7 @@ import libs.extras.mermaid.hierarchy_render
 import libs.extras.mermaid.framework_render
 import libs.extras.mermaid.gitgraph
 import libs.extras.mermaid.blocks
+import libs.extras.mermaid.systems
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -34,6 +35,11 @@ void mm_measure(mm_document* d, mm_scene* s):
 		b.w = strlen(n.label) * 8 + 40
 		if (b.w < 180): b.w = 180
 		b.h = 60
+		if (n.shape == 10 || n.shape == 12): b.h = 110
+		if (n.shape == 11): b.h = 72
+		if (n.shape == 13):
+			b.w = 72
+			b.h = 72
 		if (n.shape == 2): b.h = b.w
 		if (n.shape == 3):
 			b.w = b.w * 2
@@ -45,7 +51,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 				int width = strlen(text) * 8 + 32
 				if (width > b.w): b.w = width
 				free(text)
-		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT) && n.group == 0):
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4) && n.group == 0):
 			b.h = 80 + n.members.length * 26
 			if (n.annotation[0] != 0): b.h = b.h + 24
 			int width = strlen(n.annotation) * 8 + 64
@@ -218,10 +224,13 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 
 
 void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
+	if (d.kind == MM_ARCHITECTURE):
+		mm_arch_edge(s, e)
+		return
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
 	char* direction = d.direction
-	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT): direction = mm_scope_direction(d, e.scope)
+	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT || d.kind == MM_C4): direction = mm_scope_direction(d, e.scope)
 	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
 	int dx = 0
 	int dy = 1
@@ -292,7 +301,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
 		else: mm_marker(s, bx, by, 0 - dx, 0 - dy, e.right_card)
-	else if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT)):
+	else if (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4 || d.kind == MM_USECASE):
 		mm_uml_marker(s, ax, ay, dx, dy, e.left_marker)
 		int end_dx = 0 - dx
 		int end_dy = 0 - dy
@@ -371,17 +380,25 @@ mm_scene* mm_render_diagram(mm_document* d):
 				mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 4, c"")
 				if (n.shape == 5): mm_draw(s, MM_CIRCLE, b.x + 7, b.y + 7, b.x + b.w - 7, b.y + b.h - 7, 1, c"")
 			continue
+		if (n.shape == 10):
+			mm_actor_draw(s, b)
+			mm_text(s, b.x + 12, b.y + 90, n.label)
+			continue
+		if (n.shape == 12 || n.shape == 13):
+			mm_arch_icon(s, n, b)
+			if (n.shape == 12): mm_text(s, b.x + 12, b.y + 86, n.label)
+			continue
 		if (n.shape == 3):
 			mm_line(s, b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, 0)
 			mm_line(s, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, 0)
 			mm_line(s, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2, 0)
 			mm_line(s, b.x, b.y + b.h / 2, b.x + b.w / 2, b.y, 0)
-		else if (n.shape == 2): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
+		else if (n.shape == 2 || n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int title_y = b.y + (b.h - 16) / 2
-		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT)): title_y = b.y + 12
+		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
 		if (d.kind != MM_STATE || n.shape != 3): mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, title_y, n.label)
-		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT)): mm_render_class(s, n, b)
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b)
 		if (d.kind == MM_ER):
 			for j in range(n.attributes.length):
 				int y = b.y + 40 + j * 26

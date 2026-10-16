@@ -59,6 +59,9 @@ const int MM_CYNEFIN = 65
 const int MM_WARDLEY = 66
 const int MM_GITGRAPH = 67
 const int MM_BLOCK = 68
+const int MM_ARCHITECTURE = 69
+const int MM_USECASE = 71
+const int MM_C4 = 70
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
@@ -93,6 +96,8 @@ struct mm_node:
 
 struct mm_edge:
 	int from_node
+	int from_port
+	int to_port
 	int to_node
 	char* label
 	int dashed
@@ -111,6 +116,7 @@ struct mm_document:
 	char* title
 	int length
 	int kind
+	int graph_variant
 	char* direction
 	list[mm_node*] nodes
 	list[mm_edge*] edges

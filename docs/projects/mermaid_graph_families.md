@@ -56,3 +56,21 @@ x64, including the guard allocator's leak checks.
   Column widths grow by actual content, so one large label does not multiply
   across every column. Custom styles, block arrows and other shapes remain
   unsupported.
+
+- **Architecture:** services, nested groups, junctions, the five built-in icon
+  names, all sixteen source/target port pairs, arrowheads at either end, and
+  explicit containment/reference validation. Native icon geometry and port
+  routing share the graph scene backend. Icon packs, group-edge modifiers and
+  alignment directives remain unsupported. Placement currently uses the native
+  graph hierarchy; it does not solve upstream port-direction placement
+  constraints.
+- **Use case:** actors, oval/rectangular use cases, one-level system boundaries,
+  direction, directed/reversed/undirected associations, include/extend and
+  generalization. Endpoint types are validated after declarations. Metadata,
+  stereotypes, notes, styles, JSON nodes and rich labels remain unsupported.
+- **C4:** all five headers, typed person/system/container/component cards,
+  external/database/queue type annotations, nested boundaries and deployment
+  nodes, descriptions/technology, Rel/BiRel/Rel_Back, and source-ordered numbered
+  interactions in C4Dynamic. Native cards preserve semantic type annotations;
+  custom styling, directional relationship macros, named configuration
+  arguments and upstream exact geometry remain unsupported.
