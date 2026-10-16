@@ -540,7 +540,7 @@ int ast_expression_record_type(int type):
 	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
 	int base = type_unqualified(type)
 	int kind = type_get_kind(base)
-	if ((kind != 0) && (kind != type_kind_union) && (kind != type_kind_safe_record)): return 0
+	if ((kind != 0) && (kind != type_kind_union) && (kind != type_kind_safe_record) && (kind != type_kind_safe_recordmut)): return 0
 	return type_num_args(base) > 0
 
 

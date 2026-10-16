@@ -396,3 +396,29 @@ void test_checked_record_types():
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"
+
+
+void test_mutable_record_types():
+	push_basic_types()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	int base = type_push(c"MutableView")
+	type_add_arg(base, c"item", type_get_safe_lifetime(pointer_type, 3, c"inside"))
+	type_add_arg(base, c"tag", type_lookup(c"int"))
+	int view = type_get_safe_record_kind(base, c"outside", 3)
+	assert1(type_is_safe_record(view))
+	assert_equal(view, type_safe_target(view))
+	assert_equal(3, type_safe_kind(view))
+	assert_equal(type_get_size(base), type_get_size(view))
+	assert_equal(view, type_get_safe_record_kind(base, c"outside", 3))
+	assert_equal(0, strcmp(type_get_name(view), c"refmut[outside] MutableView"))
+	assert_equal(3, type_safe_kind(type_get_field_type(view, c"item")))
+	assert_equal(0, strcmp(type_record(type_get_field_type(view, c"item")).safe_lifetime, c"outside"))
+	assert1(view != type_get_safe_record(base, c"outside"))
+	int unnamed = type_get_safe_record_kind(base, 0, 3)
+	assert_equal(unnamed, type_get_safe_record_kind(base, 0, 3))
+	assert1(type_record(type_get_field_type(unnamed, c"item")).safe_lifetime == 0)
+	int alias = type_push_alias(c"ExclusiveView", view)
+	assert_equal(3, type_safe_kind(alias))
+	int snapshot = retained_type_note(view)
+	assert_equal(type_kind_safe_recordmut, retained_types[snapshot].kind)
+	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"outside"))
