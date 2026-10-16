@@ -1,14 +1,14 @@
 # wbuild: x64
 /*
-PBKDF2-HMAC against RFC 6070 (SHA-1, via libs/x/unsafe/sha1.w; the
-16777216-iteration case is left out for speed), RFC 7914 §11
-(PBKDF2-HMAC-SHA256, c = 1), and further SHA-256/384/512 vectors computed
+PBKDF2-HMAC against RFC 7914 §11 (PBKDF2-HMAC-SHA256, c = 1) and further SHA-256/384/512 vectors computed
 with Python's hashlib.pbkdf2_hmac: long keys hashed first, empty password
 and salt, multi-block and truncated outputs, a 100000-iteration run, and
-the error/default-dklen behaviour of the name-based API.
+the error/default-dklen behaviour of the name-based API. The SHA-1 (RFC
+6070) and MD5 cases need libs/x/unsafe, which libs/standard tests may not
+import (unsafe_import_test); they live in libs/x/unsafe/pbkdf2_sha1_test.w.
 
 No W_TEST_LEAKS step: under W_TEST_LEAKS=1 the only blocks reported are
-the first-use global caches of lib/sha256.w, sha2.w and sha1.w (round
+the first-use global caches of lib/sha256.w and sha2.w (round
 constants, IVs, the whash_register entry) in whichever test touches them
 first (docs/testing.md "Limits"); every other test passes the check.
 */
@@ -17,8 +17,6 @@ import lib.hex
 import lib.mem
 import libs.standard.crypto.sha2
 import libs.standard.crypto.pbkdf2
-import libs.x.unsafe.sha1
-import libs.x.unsafe.md5
 
 
 int pbt_len(char* s):
@@ -40,38 +38,6 @@ char* pbt_repeat(int c, int n):
 	mem_fill(s, cast(char, c), n)
 	s[n] = 0
 	return s
-
-
-void test_rfc6070_sha1():
-	int alg = WHASH_SHA1()
-	pbt_check(c"sha1", c"password", c"salt", 1, 20, c"0c60c80f961f0e71f3a9b524af6012062fe037a6")
-	pbt_check(c"sha1", c"password", c"salt", 2, 20, c"ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957")
-	pbt_check(c"sha1", c"password", c"salt", 4096, 20, c"4b007901b765489abead49d926f721d065a429c1")
-	pbt_check(c"SHA1", c"passwordPASSWORDpassword", c"saltSALTsaltSALTsaltSALTsaltSALTsalt", 4096, 25, c"3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038")
-	# "pass\0word" / "sa\0lt": embedded NULs through the by-id API.
-	char* pw = hex_bytes(c"7061737300776f7264")
-	char* salt = hex_bytes(c"7361006c74")
-	char* out = cast(char*, malloc(16))
-	assert_equal(1, pbkdf2_hmac_into(alg, pw, 9, salt, 5, 4096, out, 16))
-	char* got = hex_encode(out, 16)
-	assert_strings_equal(c"56fa6aa75548099dcc37d7f03425e0c3", got)
-	free(got)
-	free(out)
-	free(salt)
-	free(pw)
-
-
-# MD5 is a little-endian whash extension: covers the LE padding and
-# digest byte order of the pre-padded fast path.
-void test_md5_extension_by_id():
-	char* out = cast(char*, malloc(40))
-	assert_equal(1, pbkdf2_hmac_into(WHASH_MD5(), c"password", 8, c"salt", 4, 1000, out, 40))
-	char* got = hex_encode(out, 40)
-	assert_strings_equal(c"8d189946a32d883622a16ae18af0632f5791d5e7b1abb0ab1757d28ce34056140335105994495f91", got)
-	free(got)
-	free(out)
-	# Names stay limited to SHA-1/SHA-2: md5 is reachable only by id.
-	assert_equal(0, pbkdf2_hash_id(c"md5"))
 
 
 void test_rfc7914_sha256():
