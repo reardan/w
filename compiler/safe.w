@@ -1117,6 +1117,8 @@ int safe_eval(int id, char* state, int want):
 	int right = safe_child(&n, n.right)
 	int kind = safe_borrow_kind(n.semantic_type)
 	int wanted = safe_borrow_kind(want)
+	if (kind && (op == '=') && (want >= 0) && (wanted == 0)):
+		safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	int constructed = (op == 'D') && n.high && safe_owned_shape(safe_pointee(want))
 	if (wanted >= 2): safe_error(id, c"safe: reference assignment is not supported", -1)
 	if (wanted == 1):

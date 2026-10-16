@@ -170,3 +170,9 @@ void test_optional_absence_results():
 	optional_case(c"optref int* absent():\n\treturn 0\nint main():\n\toptref int* r = absent()\n\tif r: return 1\n\treturn 0\n", 0)
 	optional_case(c"optref int* invalid():\n\tint x = 7\n\treturn &x\nint main():\n\treturn 0\n", c"returned reference")
 	optional_case(c"optref[a] int* invalid():\n\treturn 0\nint main():\n\treturn 0\n", c"returned lifetime must name")
+
+
+void test_optional_assignment_values():
+	optional_case(c"int main():\n\tint x = 7\n\toptref int* r = 0\n\tint address = (r = &x)\n\treturn address == 0\n", c"cannot escape", 1)
+	optional_case(c"int main():\n\tint x = 7\n\toptref int* r = 0\n\treturn (r = &x)\n", c"cannot escape", 1)
+	optional_case(c"int scalar(int address):\n\treturn address\nint main():\n\tint x = 7\n\toptref int* r = 0\n\treturn scalar(r = &x)\n", c"cannot escape", 1)
