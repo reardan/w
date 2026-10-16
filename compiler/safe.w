@@ -430,7 +430,11 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	int actual_type = safe_unqualified(n.semantic_type)
 	if (actual_type >= 0): array_value = retained_types[actual_type].kind == type_kind_array
 	if (inline_view):
-		if (n.op == 'Z'): safe_error(id, c"safe: checked slice ranges require inline descriptor lowering", -1)
+		if (n.op == 'Z'):
+			retained_node base
+			retained_node_load(safe_child(&n, n.left), &base)
+			if (safe_inline_slice(base.semantic_type) == 0):
+				safe_error(id, c"safe: checked slice ranges require inline descriptor lowering", -1)
 		if ((safe_inline_slice(n.semantic_type) == 0) && (array_value == 0)):
 			safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
 	else if (safe_inline_slice(n.semantic_type) || (safe_slice(want) != slice_value)):
@@ -455,15 +459,26 @@ int safe_borrow(int id, int want, char* state, int* parent):
 			safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
 		root = safe_call(id, &n, state, &via)
 	else if (n.op == 'Z'):
-		root = safe_place(safe_child(&n, n.left), state, &via)
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
-		if (safe_slice(base.semantic_type)):
-			safe_read(root, id, state)
-			via = root
-			root = safe_origin[root]
+		if (safe_inline_slice(base.semantic_type)):
+			root = safe_borrow(safe_child(&n, n.left), base.semantic_type, state, &via)
+		else:
+			root = safe_place(safe_child(&n, n.left), state, &via)
+			if (safe_slice(base.semantic_type)):
+				safe_read(root, id, state)
+				via = root
+				root = safe_origin[root]
+		# The descriptor receiver is evaluated before its bounds. A
+		# temporary returned view must reserve its data through both bounds.
+		int saved = safe_call_roots.length
+		safe_call_roots.push(root)
+		safe_call_kinds.push(2)
 		safe_eval(safe_child(&n, n.right), state, -1)
 		safe_eval(safe_child(&n, n.high), state, -1)
+		while (safe_call_roots.length > saved):
+			safe_call_roots.pop()
+			safe_call_kinds.pop()
 	else if (n.op == 'r'): root = safe_place(safe_child(&n, n.left), state, &via)
 	else if (n.op == 'v'):
 		int index = safe_index(n.binding)
