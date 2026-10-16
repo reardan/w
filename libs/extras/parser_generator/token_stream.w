@@ -140,8 +140,10 @@ void pg_token_stream_scan(pg_token_stream* stream):
 		else:
 			stream.scan_count = stream.scan_count + 1
 			if (state.offset < state.length && state.input[state.offset] == 0):
-				token = pg_token_hide(pg_token_make(pg_token_invalid_kind(), state.input, start, 1, state.filename, state.line, state.column))
-				pg_lexer_advance(state, 1)
+				if (state.guarded_progress): state.terminal_failure = c"embedded NUL in exact lexer input"
+				else:
+					token = pg_token_hide(pg_token_make(pg_token_invalid_kind(), state.input, start, 1, state.filename, state.line, state.column))
+					pg_lexer_advance(state, 1)
 			else: token = stream.next_token(state, stream.diagnostics)
 		if (token == 0):
 			if (state.terminal_failure != 0): pg_token_stream_resource_error(stream, state.terminal_failure)

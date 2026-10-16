@@ -194,8 +194,13 @@ Without prediction, strict auditing now reports unproved parser continuations.
 Five formerly accepted corpus grammars have confirmed ANTLR/W counterexamples;
 [their recorded witnesses](../../../../tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json)
 explain the intentional strict reclassification. Strict acceptance remains an
-audit result, while the [runtime oracle](../../../../tests/grammars/antlr_differential/README.md)
-provides independent evidence for its explicitly configured inputs.
+audit result, not a complete ANTLR source-validity check (for example, some invalid
+combined-grammar token declarations can still be accepted). The [runtime oracle](../../../../tests/grammars/antlr_differential/README.md)
+provides independent evidence for its explicitly configured inputs. All 58
+historically stateful-strict cases remain accepted with both exact backends.
+The older stateful backend now conservatively refuses additional unproved parser
+continuations; [the review ledger](STRICT_CONTINUATION_REVIEW.json) distinguishes
+confirmed mismatches from cases without a demonstrated counterexample.
 
 `--audit-json FILE` writes schema-versioned findings even when strict translation
 refuses. Each finding has a stable code, stage, feature, classification, source

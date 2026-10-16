@@ -81,3 +81,15 @@ void test_guarded_failure_survives_rollback():
 		pg_token_stream_release(checkpoint)
 		pg_token_stream_free(stream)
 		pg_diagnostics_free(diagnostics)
+
+void test_guarded_embedded_nul_is_an_explicit_failure():
+	char* input = cast(char*, malloc(3))
+	input[0] = 'a'
+	input[1] = 0
+	input[2] = 0
+	pg_parse_result* result = guarded_progress_parse_owned(input, 2, c"nul")
+	assert_equal(0, result.success)
+	assert_equal(1, result.stream.resource_failed)
+	assert1(pg_diagnostics_count(result.diagnostics) > 0)
+	pg_parse_result_free(result)
+	free(input)
