@@ -1,0 +1,9 @@
+# wbuild: target=symbols_partial_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 symbols --json tests/symbols_partial_error_fixture.w" expect_status=1 expect_stdout="sym_partial_missing" reject_stdout="\"name\": \"sym_partial_before\""
+# wbuild: step="bin/wv2 symbols --json --all-errors tests/symbols_partial_error_fixture.w" expect_status=1 expect_stdout="\"severity\": \"error\"" expect_stdout="sym_partial_missing" expect_stdout="\"name\": \"sym_partial_before\", \"kind\": \"function\", \"type\": \"int\"" expect_stdout="\"name\": \"sym_partial_after\", \"kind\": \"function\", \"type\": \"int\"" expect_stdout="\"name\": \"main\", \"kind\": \"function\""
+# wbuild: step="bin/wv2 symbols --all-errors tests/symbols_partial_error_fixture.w" expect_status=1 expect_stdout="tests/symbols_partial_error_fixture.w:3:5: function sym_partial_before: int" expect_stdout="tests/symbols_partial_error_fixture.w:11:5: function sym_partial_after: int"
+# wbuild: step="bin/wv2 x64 symbols --json --all-errors tests/symbols_partial_error_fixture.w" expect_status=1 expect_stdout="\"name\": \"sym_partial_after\", \"kind\": \"function\", \"type\": \"int\"" expect_stdout="\"arch\": \"x64\""
+# wbuild: step="bin/wv2 symbols --json --all-errors tests/symbols_fixture.w" expect_stdout="\"name\": \"sym_fixture_add\", \"kind\": \"function\", \"type\": \"int\"" reject_stdout="\"severity\": \"error\""
+# wbuild: step="bin/wv2 symbols --help" expect_stdout="--all-errors          recover at each statement"
+# wbuild: step="bin/wv2 symbols" expect_status=1 expect_stderr="usage: w symbols [--json] [--layout] [--all-errors]" expect_stderr="run 'w symbols --help' for details"
+# wbuild: step="bin/wv2 symbols --json --all-errors" expect_status=1 expect_stderr="usage: w symbols [--json] [--layout] [--all-errors]" expect_stderr="run 'w symbols --help' for details"

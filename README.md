@@ -596,7 +596,10 @@ seeds — is `docs/release.md`.
   and unions also carry `total_size` and a `fields` array of
   `{name, type, offset, size}`). Omit `--json` for a human-readable
   `file:line:column: kind name: type` listing. Compiler-internal
-  declarations without a source location are skipped.
+  declarations without a source location are skipped. With `--all-errors`
+  the compile recovers like `w check --all-errors` and the dump still runs
+  when the file has errors (their diagnostics come first, and the exit
+  status is 1), so an editor keeps the declarations of a file mid-edit.
 - Use `./bin/wv2 symbols --layout file.w` to dump the struct layouts the
   compiler computed for the selected target without running a binary: only
   struct/union records print, each with its total size and one line (or,
