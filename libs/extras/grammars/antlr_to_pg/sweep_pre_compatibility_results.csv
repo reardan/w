@@ -1,0 +1,292 @@
+name,inputs,translate,generate,compile,strict,strict_stateful,strict_stateful_compile,strict_stateful_compiler_strict,default_strict_output_compiler_strict,permissive_output_compiler_strict,antlr_4_13_2_generation
+abb,abb/abbLexer.g4; abb/abbParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+abnf,abnf/Abnf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+acme,acme/acme.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+action,action/action.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+agc,agc/agc.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+alef,alef/alef.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+algol60,algol60/algol60.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+alloy,alloy/alloy.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+alpaca,alpaca/alpaca.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+amazon-states-language,amazon-states-language/ASLLexer.g4; amazon-states-language/ASLParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+amazon-states-language-intrinsic-functions,amazon-states-language-intrinsic-functions/ASLIntrinsicLexer.g4; amazon-states-language-intrinsic-functions/ASLIntrinsicParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+angelscript,angelscript/angelscript.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+apex,apex/apex.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+apt,apt/apt.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+aql,aql/ArangoDbLexer.g4; aql/ArangoDbParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+arden,arden/ArdenLexer.g4; arden/ArdenParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+argus,argus/argus.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+arithmetic,arithmetic/arithmetic.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+asl,asl/ASL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+aspectj,aspectj/AspectJLexer.g4; aspectj/AspectJParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,fail
+aterm,aterm/aterm.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+atl,atl/ATL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+awk,awk/awkLexer.g4; awk/awkParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+b,b/b.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+basic,basic/jvmBasic.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+bcl,bcl/bcl.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+bcpl,bcpl/bcplLexer.g4; bcpl/bcplParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+bdf,bdf/bdf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+bencoding,bencoding/BencodingLexer.g4; bencoding/BencodingParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+bibcode,bibcode/bibcode.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+bibtex,bibtex/BibTeXLexer.g4; bibtex/BibTeXParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+bicep,bicep/Bicep.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+bison,bison/BisonLexer.g4; bison/BisonParser.g4,pass,fail,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+blueprint,blueprint/blueprint.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+bnf,bnf/bnfLexer.g4; bnf/bnfParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+c,c/CLexer.g4; c/CParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+calculator,calculator/calculator.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+callable,callable/callable_.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+capnproto,capnproto/CapnProto.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+caql,caql/CaQL.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+cayenne,cayenne/cayenne.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+chip8,chip8/chip8.g4,pass,pass,pass,pass,pass,pass,pass,fail,fail,not_run
+clf,clf/clf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+clif,clif/CLIF.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+clojure,clojure/Clojure.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+clu,clu/clu.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+cmake,cmake/CMake.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+cobol85,cobol85/Cobol85.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+codeql,codeql/CodeQLLexer.g4; codeql/CodeQLParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+cookie,cookie/cookie.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+corundum,corundum/Corundum.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+cpp,cpp/CPP14Lexer.g4; cpp/CPP14Parser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+cql,cql/cql.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+cql3,cql3/CqlLexer.g4; cql3/CqlParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+creole,creole/creole.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+css3,css3/css3Lexer.g4; css3/css3Parser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+csv,csv/CSV.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+ctl,ctl/ctl.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+cto,cto/CtoLexer.g4; cto/CtoParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+cypher,cypher/CypherLexer.g4; cypher/CypherParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+d2,d2/D2.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+dart2,dart2/Dart2Lexer.g4; dart2/Dart2Parser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+databank,databank/databank.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+datalog,datalog/datalog.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+dcm,dcm/DCM_2_0_grammar.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+dice,dice/DiceNotationLexer.g4; dice/DiceNotationParser.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+dif,dif/dif.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+doiurl,doiurl/doiurl.g4,pass,pass,pass,pass,pass,pass,pass,fail,fail,not_run
+dot,dot/DOT.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+ebnf,ebnf/bnf.g4,pass,pass,pass,pass,pass,pass,pass,fail,fail,not_run
+edif300,edif300/EDIF300.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+edn,edn/edn.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+eiffel,eiffel/EiffelLexer.g4; eiffel/EiffelParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+elixir,elixir/ElixirLexer.g4; elixir/ElixirParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+erlang,erlang/Erlang.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+evm-bytecode,evm-bytecode/EVMBLexer.g4; evm-bytecode/EVMBParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+fasta,fasta/fasta.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+fdo91,fdo91/fdo91.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+fen,fen/fen.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+flatbuffers,flatbuffers/FlatBuffers.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+flowmatic,flowmatic/flowmatic.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+focal,focal/focal.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+fol,fol/fol.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+fusion-tables,fusion-tables/FusionTablesSql.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+gdscript,gdscript/GDScriptLexer.g4; gdscript/GDScriptParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+gedcom,gedcom/gedcom.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+geekcode,geekcode/geekcode.g4,pass,pass,pass,pass,fail,not_run,not_run,fail,fail,not_run
+gff3,gff3/gff3.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+glsl,glsl/GLSLLexer.g4; glsl/GLSLParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+gml,gml/gml.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+golang,golang/GoLexer.g4; golang/GoParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+gql,gql/GQL.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+graphql,graphql/GraphQL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+graphstream-dgs,graphstream-dgs/DGSLexer.g4; graphstream-dgs/DGSParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+gtin,gtin/gtin.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+guido,guido/guido.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+guitartab,guitartab/guitartab.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+gvpr,gvpr/gvprLexer.g4; gvpr/gvprParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+haskell,haskell/HaskellLexer.g4; haskell/HaskellParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+hexpat,hexpat/HexPat.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+html,html/HTMLLexer.g4; html/HTMLParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+http,http/http.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+hypertalk,hypertalk/HyperTalk.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+icalendar,icalendar/ICalendar.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+icon,icon/icon.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+idl,idl/IDL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+inf,inf/inf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+informix,informix/informix.g4,pass,fail,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+infosapient,infosapient/infosapient.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+iri,iri/IRI.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+iso8601,iso8601/iso8601.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+istc,istc/istc.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+itn,itn/itn.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+ixml,ixml/ixmlLexer.g4; ixml/ixmlParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+jam,jam/jam.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+janus,janus/janus.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+javacc,javacc/Javacc.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+javadoc,javadoc/JavadocLexer.g4; javadoc/JavadocParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+joss,joss/joss.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+jpa,jpa/JPA.g4,pass,fail,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+json,json/JSON.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+json5,json5/JSON5.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+karel,karel/karel.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+kirikiri-tjs,kirikiri-tjs/TJSLexer.g4; kirikiri-tjs/TJSParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+kquery,kquery/KQuery.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+kuka,kuka/krl.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+lambda,lambda/lambda.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+langium,langium/LangiumLexer.g4; langium/LangiumParser.g4,pass,fail,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+lark,lark/LarkLexer.g4; lark/LarkParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+lcc,lcc/lcc.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+less,less/LessLexer.g4; less/LessParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+limbo,limbo/limbo.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+lisa,lisa/lisa.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+lisp,lisp/lisp.g4,pass,fail,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+llvm-ir,llvm-ir/LLVMIR.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+lpc,lpc/LPC.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+lrc,lrc/lrcLexer.g4; lrc/lrcParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+ltl,ltl/ltl.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+lua,lua/LuaLexer.g4; lua/LuaParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+lucene,lucene/LuceneLexer.g4; lucene/LuceneParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+maml,maml/MAML.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+matlab,matlab/matlab.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+mckeeman-form,mckeeman-form/McKeemanForm.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+mdx,mdx/mdx.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+memcached_protocol,memcached_protocol/memcached_protocol.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+metamath,metamath/metamath.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+metric,metric/metric.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+microc,microc/microc.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+miniscript,miniscript/Miniscript.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+modelica,modelica/modelica.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+modula2pim4,modula2pim4/m2pim4.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+molecule,molecule/molecule.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+moo,moo/moo.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+morsecode,morsecode/morsecode.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+mps,mps/mps.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+muddb,muddb/muddb.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+mumath,mumath/mumath.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+mumps,mumps/mumps.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+muparser,muparser/MuParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+newick,newick/newick.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+oberon,oberon/oberon.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+objc,objc/ObjectiveCLexer.g4; objc/ObjectiveCParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+ocl,ocl/OCL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+odin,odin/odin.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+oncrpc,oncrpc/oncrpcv2.g4; oncrpc/xdr.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+orwell,orwell/orwell.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+p,p/p.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+parkingsign,parkingsign/parkingsign.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+pascal,pascal/pascal.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pbm,pbm/pbm.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+pcre,pcre/PCRE.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pddl,pddl/Pddl.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pdn,pdn/pdn.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pegen,pegen/pegen_v3_10Lexer.g4; pegen/pegen_v3_10Parser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+peoplecode,peoplecode/PeopleCode.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+pest,pest/PestLexer.g4; pest/PestParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+pf,pf/pf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pgn,pgn/PGN.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+php,php/PhpLexer.g4; php/PhpParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+pii,pii/pii.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+pike,pike/pike.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pl0,pl0/pl0.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+plantUML,plantUML/PlantUMLLexer.g4; plantUML/PlantUMLParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+plucid,plucid/plucid.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+ply,ply/ply.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+pmmn,pmmn/PMMN.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+postalcode,postalcode/postalcode.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+powerbuilder,powerbuilder/PowerBuilderLexer.g4; powerbuilder/PowerBuilderParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+powerbuilderdw,powerbuilderdw/PowerBuilderDWLexer.g4; powerbuilderdw/PowerBuilderDWParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+powerquery,powerquery/PowerQueryLexer.g4; powerquery/PowerQueryParser.g4,pass,fail,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+prolog,prolog/prolog.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+promql,promql/PromQLLexer.g4; promql/PromQLParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+propcalc,propcalc/propcalc.g4,pass,pass,pass,pass,pass,pass,pass,fail,fail,not_run
+properties,properties/PropertiesLexer.g4; properties/PropertiesParser.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+prov-n,prov-n/PROV_N.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+qif,qif/qifLexer.g4; qif/qifParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+quakemap,quakemap/quakemap.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+r,r/R.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+racket-bsl,racket-bsl/BSL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+racket-isl,racket-isl/ISL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+rcs,rcs/RCS.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+recfile,recfile/recfile.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+redcode,redcode/redcode.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+redis,redis/RedisLexer.g4; redis/RedisParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+refal,refal/refal.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+rego,rego/RegoLexer.g4; rego/RegoParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+restructuredtext,restructuredtext/ReStructuredText.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+rex,rex/rexLexer.g4; rex/rexParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+rexx,rexx/RexxLexer.g4; rexx/RexxParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+rfc1035,rfc1035/domain.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+rfc1960,rfc1960/filter.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+rfc3080,rfc3080/beep.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+robotwars,robotwars/robotwar.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+romannumerals,romannumerals/romannumerals.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+ron,ron/ron.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+rpn,rpn/rpn.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+ruleworks,ruleworks/ruleworks.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+rust,rust/RustLexer.g4; rust/RustParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+sapf,sapf/sapf.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+scotty,scotty/scotty.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+scss,scss/ScssLexer.g4; scss/ScssParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+sdl,sdl/sdl.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+semver,semver/SemanticVersionLexer.g4; semver/SemanticVersionParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+sexpression,sexpression/sexpression.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+sgf,sgf/sgf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+sharc,sharc/SHARCLexer.g4; sharc/SHARCParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+sici,sici/sici.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+sieve,sieve/sieve.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+smalltalk,smalltalk/Smalltalk.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+smiles,smiles/smiles.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+smtlibv2,smtlibv2/SMTLIBv2.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+snobol,snobol/snobol.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+solidity,solidity/SolidityLexer.g4; solidity/SolidityParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+sparql,sparql/SparqlLexer.g4; sparql/SparqlParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+spass,spass/SpassLexer.g4; spass/SpassParser.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+spl,spl/SPLLexer.g4; spl/SPLParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+squirrel,squirrel/Squirrel.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+srt,srt/srt.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+stacktrace,stacktrace/StackTrace.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+star,star/star.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+stellaris,stellaris/stellaris.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+stl,stl/STL.g4,pass,pass,pass,pass,fail,not_run,not_run,fail,fail,not_run
+stringtemplate,stringtemplate/STLexer.g4; stringtemplate/STParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+suokif,suokif/SUOKIF.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+swift-fin,swift-fin/SwiftFinLexer.g4; swift-fin/SwiftFinParser.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+sysml-v2,sysml-v2/SysMLv2Lexer.g4; sysml-v2/SysMLv2Parser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+szf,szf/szf.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+tcpheader,tcpheader/tcp.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+teal,teal/Teal.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+telephone,telephone/telephone.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+terraform,terraform/terraform.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+thrift,thrift/Thrift.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+tiny,tiny/tiny.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+tinybasic,tinybasic/tinybasic.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+tinyc,tinyc/tinyc.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+tinymud,tinymud/tinymud.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+tinyos_nesc,tinyos_nesc/TinyosLexer.g4; tinyos_nesc/TinyosParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+tl,tl/tl.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+tnsnames,tnsnames/tnsnamesLexer.g4; tnsnames/tnsnamesParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+tnt,tnt/tnt.g4,pass,pass,pass,pass,pass,pass,pass,pass,pass,not_run
+toml,toml/TomlLexer.g4; toml/TomlParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+trac,trac/trac.g4,pass,pass,pass,pass,pass,pass,pass,fail,fail,not_run
+trapc,trapc/TrapCLexer.g4; trapc/TrapCParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,fail
+tsv,tsv/tsv.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+ttm,ttm/ttm.g4,pass,pass,pass,pass,pass,pass,pass,fail,fail,not_run
+turing,turing/turing.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+turtle,turtle/TURTLE.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+turtle-doc,turtle-doc/turtle.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+unreal_angelscript,unreal_angelscript/UnrealAngelscriptLexer.g4; unreal_angelscript/UnrealAngelscriptParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+upnp,upnp/Upnp.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+url,url/url.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+useragent,useragent/useragent.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+v,v/V.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+vaxscan,vaxscan/vaxscan.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+vb6,vb6/VisualBasic6Lexer.g4; vb6/VisualBasic6Parser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+velocity,velocity/VTLLexer.g4; velocity/VTLParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+vmf,vmf/vmf.g4,pass,pass,pass,fail,pass,pass,pass,not_run,fail,not_run
+wat,wat/WatLexer.g4; wat/WatParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+wavefront,wavefront/WavefrontOBJ.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+webidl,webidl/WebIDL.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+wkt,wkt/wktLexer.g4; wkt/wktParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+wkt-crs-v1,wkt-crs-v1/wktcrsv1.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+wln,wln/wln.g4,pass,pass,pass,fail,pass,pass,pass,not_run,pass,not_run
+wren,wren/WrenLexer.g4; wren/WrenParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+xml,xml/XMLLexer.g4; xml/XMLParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+xsd-regex,xsd-regex/regexLexer.g4; xsd-regex/regexParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,pass,not_run
+xyz,xyz/xyz.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+yara,yara/YaraLexer.g4; yara/YaraParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+yini,yini/YiniLexer.g4; yini/YiniParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run
+z,z/ZLexer.g4; z/ZParser.g4,fail,not_run,not_run,fail,fail,not_run,not_run,not_run,not_run,pass
+zig,zig/ZigLexer.g4; zig/ZigParser.g4,pass,pass,pass,fail,fail,not_run,not_run,not_run,fail,not_run

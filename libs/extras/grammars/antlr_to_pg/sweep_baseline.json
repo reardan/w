@@ -6686,5 +6686,36 @@
     "runner_sha256": "cf0f5f4323f0177fe7ec55b1f9384ffcd7ad339b4f0a042f901715974eed7c3c",
     "results_csv": "sweep_current_results.csv",
     "note": "Stacked increment over PR #690: Lua, TNT, and V gain translation and compilation; TNT gains strict acceptance. No existing expectations removed; recorded_pass retains the initial audit. Focused runtime tests are separate from the compile-only sweep."
+  },
+  "pre_compatibility_measurement": {
+    "w_commit": "1763b6cf82a6d8d2da63552a2b95641c6c25aeb8",
+    "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+    "cases": 291,
+    "results_csv": "sweep_pre_compatibility_results.csv",
+    "results_sha256": "eddbcd44658e3500a954641268ecdc2f324acefe656ebb201cb60fa3660684b8",
+    "note": "Fixed preimplementation cohort. ANTLR generation was configured only for the 79 W compile misses; not_run is not success. No corpus runtime coverage is inferred.",
+    "provenance": {
+      "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+      "w_commit": "1763b6cf82a6d8d2da63552a2b95641c6c25aeb8",
+      "w_dirty": false,
+      "manifest_sha256": "21dee05f6ccaa0676bbe25e905d1c4be2118c9f42ae35d3c4b2eaff5c7a39d10",
+      "runner_sha256": "cf0f5f4323f0177fe7ec55b1f9384ffcd7ad339b4f0a042f901715974eed7c3c",
+      "tools_sha256": {
+        "translator": "c5c1ba5c7f22d549348fbdadd7a9d355a70dfde2c50cb13d85b825427ea6f24a",
+        "generator": "48dc944311f3590e483fa28cd43be2f4e3117b1a9cb965ff4fd77ff6d7d5842b",
+        "compiler": "902dbb0b43fed6cc3e9bc622de3f3add9da1a7790c710ca79003e2d92a6e6ba1",
+        "common_matchers": "6e98f879e7d8c1a4d9dd002cb0e5b2ea4440f61ea6e4356918b285fed2a99f09"
+      },
+      "selection": "all pinned cases",
+      "timeout_seconds": 90,
+      "compile_harness": "empty main; generated parser is not executed",
+      "tools_sha256_after": {
+        "translator": "c5c1ba5c7f22d549348fbdadd7a9d355a70dfde2c50cb13d85b825427ea6f24a",
+        "generator": "48dc944311f3590e483fa28cd43be2f4e3117b1a9cb965ff4fd77ff6d7d5842b",
+        "compiler": "902dbb0b43fed6cc3e9bc622de3f3add9da1a7790c710ca79003e2d92a6e6ba1",
+        "common_matchers": "6e98f879e7d8c1a4d9dd002cb0e5b2ea4440f61ea6e4356918b285fed2a99f09"
+      },
+      "infrastructure_errors": []
+    }
   }
 }
