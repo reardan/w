@@ -152,7 +152,7 @@ void test_rail_truncated_prefixes_and_source_edits():
 	__w_list_free(cast(__w_list*, sources))
 
 void test_railroad_document_metadata_and_title_precedence():
-	char* text = c"---\ntitle: Grammar overview\n---\nrailroad\ntitle Internal title\naccTitle: Accessible grammar\nword = terminal(\"yes\");\n"
+	char* text = c"---\ntitle: Grammar overview\n---\nrailroad-beta\ntitle Internal title\naccTitle: Accessible grammar\nword = terminal(\"yes\");\n"
 	mm_document* d = mm_parse(text, strlen(text))
 	asserts(c"railroad envelope parses", d.error == 0)
 	mm_scene* s = mm_render(d)
