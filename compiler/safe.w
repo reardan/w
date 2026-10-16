@@ -371,6 +371,89 @@ int safe_sequence(int first, int next, int break_to, int continue_to):
 	return safe_build(first, rest, break_to, continue_to)
 
 
+int safe_scalar_type(int type);
+
+
+void safe_control_scalar(int group):
+	retained_node value
+	retained_node_load(safe_expr_root(group), &value)
+	if (safe_scalar_type(value.semantic_type) == 0):
+		safe_error(group, c"safe: range and switch expressions require scalar values", -1)
+
+
+# Range slots capture the arguments once. The implicit index accesses are
+# real accesses: a borrow used after an increment must block that write.
+int safe_range(int id, int next):
+	int local = -1
+	int body = -1
+	list[int] arguments = new list[int]
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* n = retained_record_at(child)
+		if (n.kind == retained_local): local = safe_index(n.binding)
+		else if (n.kind == retained_expression_group):
+			safe_control_scalar(child)
+			arguments.push(child)
+		else if (n.kind == retained_statement): body = child
+		else: safe_error(child, c"safe: unsupported range representation", -1)
+		child = safe_next[child]
+	if ((local < 0) || (body < 0) || (arguments.length < 1) || (arguments.length > 3)):
+		safe_error(id, c"safe: unsupported range representation", -1)
+	int type = safe_unqualified(retained_bindings[safe_locals[local]].type)
+	if (strcmp(retained_types[type].name, c"int") != 0):
+		safe_error(id, c"safe: range variable must have type int", -1)
+	int guard = safe_add(id, -1, local, 5, -1, next)
+	int step = safe_add(id, -1, local, 6, guard, -1)
+	safe_graph[guard].next = safe_build(body, step, next, step)
+	int start = safe_add(id, -1, local, 6, guard, -1)
+	int i = arguments.length
+	while (i > 0):
+		i = i - 1
+		start = safe_add(arguments[i], safe_expr_root(arguments[i]), -1, 0, start, -1)
+	arguments.free()
+	return safe_add(id, -1, local, 4, start, -1)
+
+
+# Each clause owns its label expressions and body. Unmatched labels
+# continue to the next clause; matching one skips the remaining labels.
+int safe_switch_clause(int clause, int next, int continue_to):
+	if (clause < 0): return next
+	int unmatched = safe_switch_clause(safe_next[clause], next, continue_to)
+	retained_record* n = retained_record_at(clause)
+	if ((n.kind != retained_statement) || ((strcmp(n.name, c"case") != 0) && (strcmp(n.name, c"default") != 0))):
+		safe_error(clause, c"safe: unsupported switch representation", -1)
+	list[int] labels = new list[int]
+	int body = -1
+	int child = safe_first[clause]
+	while (child >= 0):
+		retained_record* part = retained_record_at(child)
+		if (part.kind == retained_expression_group):
+			safe_control_scalar(child)
+			labels.push(child)
+		else if (part.kind == retained_statement): body = child
+		else: safe_error(child, c"safe: unsupported switch representation", -1)
+		child = safe_next[child]
+	if (body < 0): safe_error(clause, c"safe: unsupported switch representation", -1)
+	int matched = safe_build(body, next, next, continue_to)
+	int start = unmatched
+	if (strcmp(n.name, c"default") == 0): start = matched
+	int i = labels.length
+	while (i > 0):
+		i = i - 1
+		start = safe_add(labels[i], safe_expr_root(labels[i]), -1, 0, matched, start)
+	labels.free()
+	return start
+
+
+int safe_switch(int id, int next, int continue_to):
+	int selector = safe_first[id]
+	if ((selector < 0) || (retained_record_at(selector).kind != retained_expression_group)):
+		safe_error(id, c"safe: unsupported switch representation", -1)
+	safe_control_scalar(selector)
+	int clauses = safe_switch_clause(safe_next[selector], next, continue_to)
+	return safe_add(selector, safe_expr_root(selector), -1, 0, clauses, -1)
+
+
 int safe_build(int id, int next, int break_to, int continue_to):
 	retained_record* n = retained_record_at(id)
 	if (n.kind == retained_local): return next
@@ -381,8 +464,10 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		safe_unsafe_check(id)
 		return next
 	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
-	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"switch") == 0) || (strcmp(name, c"for") == 0)):
+	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
+	if (strcmp(name, c"for range") == 0): return safe_range(id, next)
+	if (strcmp(name, c"switch") == 0): return safe_switch(id, next, continue_to)
 	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
 		int cleanup = safe_add(id, -1, -1, 3, next, -1)
 		return safe_sequence(safe_first[id], cleanup, break_to, continue_to)
@@ -1023,6 +1108,9 @@ void safe_transfer(int event, char* state):
 	else if (f.action == 3):
 		for i in range(safe_locals.length):
 			if (safe_within(safe_birth[i], f.node)): state[i] = 1
+	else if (f.action == 4): state[index] = 2
+	else if ((f.action == 5) || (f.action == 6)):
+		safe_access(index, -1, f.action == 6, f.node, state)
 	else: safe_eval(f.expression, state, -1)
 
 
@@ -1076,6 +1164,7 @@ void safe_function_check(int function):
 	# point handles loop backedges; no source-offset lifetime shortcuts.
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
+		if ((f.action == 5) || (f.action == 6)): f.uses[f.binding] = 1
 		if (f.expression < 0): continue
 		retained_node root
 		retained_node_load(f.expression, &root)
@@ -1093,7 +1182,7 @@ void safe_function_check(int function):
 			safe_flow* f = safe_graph[i]
 			for j in range(count):
 				int live = f.uses[j]
-				if ((f.action != 1) || (f.binding != j)):
+				if (((f.action != 1) && (f.action != 4)) || (f.binding != j)):
 					if (f.next >= 0): live = live | safe_graph[f.next].live[j]
 					if (f.alternate >= 0): live = live | safe_graph[f.alternate].live[j]
 				if (live != f.live[j]):
