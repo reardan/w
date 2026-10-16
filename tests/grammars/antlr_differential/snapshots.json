@@ -1122,6 +1122,273 @@
       }
     ]
   },
+  "imports/input0": {
+    "accepted": true,
+    "rules": [
+      {
+        "length": 1,
+        "name": "chosen",
+        "start": 0
+      },
+      {
+        "length": 1,
+        "name": "overridden",
+        "start": 1
+      },
+      {
+        "length": 1,
+        "name": "deep",
+        "start": 2
+      }
+    ],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "R",
+        "start": 1,
+        "text": "r"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 2,
+        "text": "c"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input1": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "B",
+        "start": 0,
+        "text": "b"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "R",
+        "start": 1,
+        "text": "r"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 2,
+        "text": "c"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input2": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "B",
+        "start": 1,
+        "text": "b"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 2,
+        "text": "c"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input3": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "R",
+        "start": 1,
+        "text": "r"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "D",
+        "start": 2,
+        "text": "d"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input4": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "D",
+        "start": 1,
+        "text": "d"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 2,
+        "text": "c"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input5": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "R",
+        "start": 1,
+        "text": "r"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input6": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "R",
+        "start": 1,
+        "text": "r"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 2,
+        "text": "c"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 3,
+        "text": "c"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "imports/input7": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
   "moreend/input0": {
     "accepted": false,
     "rules": [],

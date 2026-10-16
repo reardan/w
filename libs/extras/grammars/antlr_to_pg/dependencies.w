@@ -16,6 +16,7 @@ struct at_dependency_input:
 	int state               # 0 unread edges, 1 visiting, 2 complete
 	int failed
 	int imported
+	list[at_dependency_input*] imports
 	pg_ast_node* root
 
 
@@ -109,6 +110,7 @@ at_dependency_input* at_dependency_load(char* path):
 	input.key = key
 	input.source = source
 	input.root = root
+	input.imports = new list[at_dependency_input*]
 	int count = pg_ast_child_count(root) - 1
 	for i in range(count):
 		pg_ast_node* inner = pg_ast_child(pg_ast_child(root, i), 0)
@@ -180,6 +182,7 @@ int at_dependency_edge(at_dependency_input* input, char* name, int imported):
 			return at_dependency_fail(input.path, cstr(f"dependency {name} declares grammar {dependency.name}"))
 	if (imported):
 		dependency.imported = 1
+		input.imports.push(dependency)
 		if ((input.kind != 0) && (input.kind != dependency.kind)):
 			return at_dependency_fail(input.path, cstr(f"incompatible imported grammar {name}"))
 	else if (dependency.kind != 1):
@@ -255,6 +258,17 @@ int at_dependency_resolve(at_dependency_input* input):
 	return input.failed == 0
 
 
+# ANTLR merges root rules before depth-first imports, retaining the first
+# definition. Explicit dependency arguments locate files; they do not change
+# the grammar's declared import precedence. A visited set also handles diamonds.
+void at_dependency_collect_order(at_dependency_input* input, map[char*, int] seen, list[at_dependency_input*] ordered):
+	if (input.name in seen): return
+	seen[input.name] = 1
+	ordered.push(input)
+	for at_dependency_input* dependency in input.imports:
+		at_dependency_collect_order(dependency, seen, ordered)
+
+
 list[at_rule*] at_load_grammar_inputs(list[char*] paths):
 	g_at_inputs = new list[at_dependency_input*]
 	g_at_resolved_sites = new list[pg_token*]
@@ -271,24 +285,16 @@ list[at_rule*] at_load_grammar_inputs(list[char*] paths):
 	while (i < g_at_inputs.length):
 		at_dependency_resolve(g_at_inputs[i])
 		i = i + 1
-	map[char*, at_dependency_input*] owners = new map[char*, at_dependency_input*]
-	list[at_rule*] all_rules = new list[at_rule*]
+	list[at_dependency_input*] ordered = new list[at_dependency_input*]
+	map[char*, int] seen = new map[char*, int]
 	for at_dependency_input* input in g_at_inputs:
-		# Reject imported overrides before the legacy explicit-multi-input
-		# duplicate policy drops either definition. Import precedence is not
-		# implemented, so accepting one would silently change the language.
-		int count = pg_ast_child_count(input.root) - 1
-		for j in range(count):
-			pg_ast_node* inner = pg_ast_child(pg_ast_child(input.root, j), 0)
-			if (inner.kind != antlr4_ast_rule_def): continue
-			int index = 0
-			if (pg_ast_child(inner, 0).kind == antlr4_token_KW_FRAGMENT): index = 1
-			char* name = pg_ast_child(inner, index).text
-			at_dependency_input* previous = owners.get(name, 0)
-			if ((previous != 0) && (input.imported || previous.imported)):
-				at_dependency_fail(input.path, cstr(f"unsupported imported rule override {name} (also in {previous.path})"))
-			else:
-				owners[name] = input
+		if (input.imported == 0): at_dependency_collect_order(input, seen, ordered)
+	# Failed cyclic components still need their retained host declarations
+	# audited; resolution has already diagnosed the cycle before this walk.
+	for at_dependency_input* input in g_at_inputs:
+		at_dependency_collect_order(input, seen, ordered)
+	list[at_rule*] all_rules = new list[at_rule*]
+	for at_dependency_input* input in ordered:
 		g_at_source = input.source
 		list[at_rule*] rules = at_collect_rules(input.root)
 		for at_rule* rule in rules: all_rules.push(rule)

@@ -151,6 +151,7 @@ def main(argv=None):
     parser.add_argument("--oracle-only", action="store_true", help="verify committed snapshots without building W")
     parser.add_argument("--refresh-snapshots", action="store_true", help="explicitly regenerate snapshots with the live oracle")
     parser.add_argument("--require-compatible", action="store_true", help="require all witnesses to match; ignore known-mismatch allowances")
+    parser.add_argument("--exact", action="store_true", help="gate exact lexer + prediction against all snapshots without legacy mismatch allowances")
     parser.add_argument("--translator-flag", action="append", default=[], help="additional translator flag, e.g. --translator-flag=--prediction")
     parser.add_argument("--work", type=Path)
     parser.add_argument("--case", action="append")
@@ -161,6 +162,8 @@ def main(argv=None):
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
     data = load_manifest()
+    if args.exact:
+        args.translator_flag.extend(flag for flag in ("--exact-lexer", "--prediction") if flag not in args.translator_flag)
     if args.jar:
         args.jar = args.jar.resolve()
         if sweep.sha256(args.jar) != data["oracle"]["jar_sha256"]:
@@ -179,7 +182,7 @@ def main(argv=None):
     print(f"Artifacts: {work}", flush=True)
     provenance = {"oracle": data["oracle"], "manifest_sha256": sweep.sha256(FIXTURES / "manifest.json"),
                   "runner_sha256": sweep.sha256(Path(__file__)), "translator_flags": args.translator_flag,
-                  "live_oracle": bool(args.jar), "w_commit": sweep.git_output(ROOT, "rev-parse", "HEAD")}
+                  "live_oracle": bool(args.jar), "exact": args.exact, "w_commit": sweep.git_output(ROOT, "rev-parse", "HEAD")}
     if args.jar:
         provenance["java_version"] = subprocess.check_output(["java", "-version"], stderr=subprocess.STDOUT, text=True)
         provenance["javac_version"] = subprocess.check_output(["javac", "-version"], stderr=subprocess.STDOUT, text=True)
@@ -219,7 +222,7 @@ def main(argv=None):
                 if binary:
                     actual = observation(command([binary, source], directory, item["id"] + ".w", args.timeout, stages), case.get("skip_tokens", []), case.get("observe_rules", []), case.get("w_channels", {}))
                     observation_row["w"] = actual
-                    allowed = {} if args.require_compatible else item.get("known_mismatches", {})
+                    allowed = {} if args.require_compatible or args.exact else item.get("known_mismatches", {})
                     observation_row["differences"] = mismatch_fields(actual, expected)
                     try:
                         observation_row["known_mismatches"] = check_mismatches(actual, expected, allowed)

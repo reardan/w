@@ -41,6 +41,22 @@
       "sha256": "03e0f1485ae3cb949a472f31eb7164bb748c1869d153c3df337ac141c5016306"
     },
     {
+      "path": "ImportFirst.g4",
+      "sha256": "86ece2f5f6d2e477823e95bd7486af63d88c4fcd06f1c58f1ae1bfbb6f53d90d"
+    },
+    {
+      "path": "ImportNested.g4",
+      "sha256": "a45411b82c6b1d7c56723a3ba522a8663765d2ebdaf33f57040cbfbae141737b"
+    },
+    {
+      "path": "ImportRoot.g4",
+      "sha256": "7e86f84b2e1ac4804610fcbf57f53843433effd5ff69180d81bb16b6c8d43775"
+    },
+    {
+      "path": "ImportSecond.g4",
+      "sha256": "40a90b255c064590580550bdb365944410fd6836afc7a93ff258056357ab5ff9"
+    },
+    {
       "path": "MoreEndLexer.g4",
       "sha256": "3150bdc1ebf3c8e716150e129fd79470ff66ff030f112f135223639655ea3161"
     },
@@ -758,10 +774,7 @@
         },
         {
           "id": "input4",
-          "text": "#!a",
-          "known_mismatches": {
-            "tokens": "Malformed COMMENT prefix: ANTLR recovers after the failing transition; W recovers one scalar from token start. Both reject."
-          }
+          "text": "#!a"
         },
         {
           "id": "input5",
@@ -776,6 +789,65 @@
         "2": "COMMENTS",
         "3": "EXTRA"
       }
+    },
+    {
+      "name": "imports",
+      "grammars": [
+        "ImportSecond.g4",
+        "ImportRoot.g4",
+        "ImportFirst.g4",
+        "ImportNested.g4"
+      ],
+      "lexer": "ImportRootLexer",
+      "parser": "ImportRootParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--exact-lexer",
+        "--prediction"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [
+        "chosen",
+        "overridden",
+        "deep"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "arc"
+        },
+        {
+          "id": "input1",
+          "text": "brc"
+        },
+        {
+          "id": "input2",
+          "text": "abc"
+        },
+        {
+          "id": "input3",
+          "text": "ard"
+        },
+        {
+          "id": "input4",
+          "text": "adc"
+        },
+        {
+          "id": "input5",
+          "text": "ar"
+        },
+        {
+          "id": "input6",
+          "text": "arcc"
+        },
+        {
+          "id": "input7",
+          "text": ""
+        }
+      ]
     }
   ]
 }

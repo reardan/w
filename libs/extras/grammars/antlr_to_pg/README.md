@@ -44,8 +44,10 @@ grammars describe the two formats involved, run through
   and transitive plain grammar imports. Token vocabularies currently require a
   lexer grammar; combined grammars' implicit parser literals need separate work.
   Grammar names, cycles, missing inputs,
-  ambiguous supplied/sibling files, incompatible grammar kinds, and imported
-  rule overrides are checked before publishing outputs. Plain `tokens { NAME }`
+  ambiguous supplied/sibling files and incompatible grammar kinds are checked
+  before publishing outputs. Root rules override imported rules; imports merge
+  depth-first in declaration order, with the first definition winning. Explicit
+  dependency file arguments do not change that order. Plain `tokens { NAME }`
   declarations create token identities for commands such as `type(NAME)`;
   they do not invent matchers. `--dependencies FILE` records actual loaded paths.
 - `matchers_{ascii,analyze,emit}.w` — the generated-matcher emitter:

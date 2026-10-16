@@ -166,7 +166,7 @@
 			"name": "antlr_differential_test",
 			"tags": ["tests"],
 			"deps": ["antlr_to_pg"],
-			"steps": [{"cmd": ["python3", "tests/antlr_differential.py"]}]
+			"steps": [{"cmd": ["python3", "tests/antlr_differential.py"]}, {"cmd": ["python3", "tests/antlr_differential.py", "--exact"]}]
 		},
 		{
 			"name": "web_mobile_input_test",

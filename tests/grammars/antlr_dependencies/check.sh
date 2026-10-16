@@ -115,7 +115,23 @@ cat > "$work/override/Imported.g4" <<'EOF'
 grammar Imported;
 root: 'b' EOF;
 EOF
-reject override 'unsupported imported rule override' "$work/override/Override.g4"
+# Root wins even when its explicitly supplied imported grammar appears first.
+"$translator" "$work/override/Imported.g4" "$work/override/Override.g4" --parser-name override -o "$work/override.pg" --matchers "$work/override.matchers.w"
+"$generator" "$work/override.pg" -o "$work/override.w"
+cat libs/extras/grammars/matchers.w "$work/override.matchers.w" "$work/override.w" > "$work/override_run.w"
+cat >> "$work/override_run.w" <<'EOF'
+
+int main():
+	pg_diagnostics* good = pg_diagnostics_new()
+	pg_ast_node* root = override_parse(c"a", c"good", good)
+	if ((root == 0) || (pg_diagnostics_count(good) != 0)): return 1
+	pg_diagnostics* bad = pg_diagnostics_new()
+	root = override_parse(c"b", c"bad", bad)
+	if ((root != 0) && (pg_diagnostics_count(bad) == 0)): return 2
+	return 0
+EOF
+"$compiler" "$work/override_run.w" -o "$work/override_run"
+"$work/override_run"
 cat > "$work/imports/Host.g4" <<'EOF'
 parser grammar Host;
 options { tokenVocab = TokensLex; superClass = ForeignHost; }

@@ -32,7 +32,8 @@ No claim of full ANTLR context/listener API compatibility follows from this gate
 Known incompatibilities name the exact differing fields and their causes in the
 manifest. New differences fail, and an unexpected fix fails until the ledger is
 updated. A valid ANTLR input remains valid even when W currently rejects it.
-`--require-compatible` removes allowances; `--translator-flag=--prediction` and
+`--exact` enables both opt-in backends and requires every witness to match; the
+normal build target runs both legacy and exact paths. `--require-compatible` removes allowances; `--translator-flag=--prediction` and
 `--translator-flag=--exact-lexer` exercise opt-in backends. `--case NAME` limits a
 run to one or more grammar families.
 
@@ -49,5 +50,5 @@ Crashes, timeouts, unavailable tools and missing artifacts are failures.
 
 EOF fixtures check that a consuming match reaching EOF suppresses a later named
 EOF token, while a pending `more` sequence may still finish with an EOF rule in
-the same call. Malformed custom-channel input retains a documented recovery-token
-mismatch: both runtimes reject, but they resume lexing at different offsets.
+the same call. Malformed custom-channel input checks that recovery skips the failed transition
+endpoint before resuming tokenization.
