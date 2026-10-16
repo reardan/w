@@ -1,6 +1,5 @@
 # Internal arithmetic probes deliberately use raw runtime metadata. Public
 # checked clients cannot construct or modify these descriptors.
-# wbuild: x64
 # wbuild: step="bin/safe_buffer_limits_test negative" expect_fail expect_stderr="allocation size overflow: "
 # wbuild: step="bin/safe_buffer_limits_test addition" expect_fail expect_stderr="allocation size overflow: "
 # wbuild: step="bin/safe_buffer_limits_test multiplication" expect_fail expect_stderr="allocation size overflow: "
@@ -11,6 +10,15 @@ import lib.assert
 
 int buffer_fail_malloc(int size):
 	return 0
+
+# wbuild: target=safe_buffer_limits_64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/safe_buffer_limits_test.w -o bin/safe_buffer_limits_64_test"
+# wbuild: step="bin/safe_buffer_limits_64_test"
+# wbuild: step="bin/safe_buffer_limits_64_test negative" expect_fail expect_stderr="allocation size overflow: "
+# wbuild: step="bin/safe_buffer_limits_64_test addition" expect_fail expect_stderr="allocation size overflow: "
+# wbuild: step="bin/safe_buffer_limits_64_test multiplication" expect_fail expect_stderr="allocation size overflow: "
+# wbuild: step="bin/safe_buffer_limits_64_test bytes" expect_fail expect_stderr="allocation size overflow: "
+# wbuild: step="bin/safe_buffer_limits_64_test oom" expect_fail expect_stderr="out of memory: allocation of "
 
 
 int buffer_fail_realloc(int old, int old_length, int new_length):
