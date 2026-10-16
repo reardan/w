@@ -1412,3 +1412,29 @@ median and 113,824 KiB median peak RSS for both compilers. Compiler output and
 prior callable/mixed-owner runtime fixtures are byte-identical on x86/x64;
 all fixture binaries execute. These shared-host measurements do not establish
 a general performance bound. Shared views add no runtime allocation or layout.
+
+### Exclusive mixed-owner fields (Wave 1)
+
+Thirty-four accepted/rejected programs exercise per-group shared/exclusive
+access, nested owned children, mutable return contracts, callbacks, deferred
+work, moves, replacement, scope exits and reborrow-cycle rejection. Every case
+is checked and compiled on x86/x64 with and without `--safe`; accepted programs
+execute and rejected programs leave no executable. A type-table API regression
+reuses retained type IDs with changed field access kinds and verifies cache reset.
+
+The full suite, both Linux fixpoints, Windows runtime and compiler benchmark
+pass 1,355 targets. All 48 architecture/root checks pass. Instrumented validation
+passes 1,353 targets and all six compiler/API harnesses with a COMPLETE receipt;
+85/86 changed executable compiler lines are reached (98%). Compiler coverage is
+95.6/86.0% line/branch, preserving the existing 94.8/85.4% floors.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck on both
+Linux architectures report 232 allocations/frees, no outstanding blocks and
+zero errors. Seven alternating compiles of the fixed shared-view baseline
+sources produce byte-identical compiler output, with median time 1.94 s and
+peak RSS 113,824 KiB for both compilers. Previous callable and mixed-owner runtime
+fixtures are byte-identical on x86/x64 and execute successfully. Shared-host
+measurements do not establish a general performance bound.
+
+Field replacement, disjoint child borrowing and partial moves retain separate
+required gates under #695/#644; this step closes neither issue.
