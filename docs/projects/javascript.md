@@ -351,17 +351,20 @@ limits, and zero outstanding allocations after teardown.
 ## Promises and microtask checkpoints
 
 `js_runtime_new` installs `Promise`, `Promise.resolve`, `Promise.reject`,
-`Promise.prototype.then/catch`, and `queueMicrotask`. `new Promise(executor)`
+`Promise.prototype.then/catch/finally`, and `queueMicrotask`. `new Promise(executor)`
 calls its executor synchronously with resolve/reject functions. Settlement is
 first-call-wins, including adoption of a pending native promise. Reactions run
-as FIFO microtasks, propagate missing handlers, adopt returned native promises,
+as FIFO microtasks, propagate missing handlers, assimilate returned thenables,
 reject direct self-resolution, and turn handler/executor throws into rejections.
 
 Hosts create pending promises with `js_runtime_promise_new(rt)` and settle them
 with `js_runtime_promise_settle(rt, promise, value, rejected)`, where `rejected`
 is zero for resolution and nonzero for rejection. Both values must belong to
-that runtime. Host-retained pending promises need ordinary roots. Settlement
-never invokes JavaScript. Pending reactions, queued jobs, captured resolvers,
+that runtime. Host-retained pending promises need ordinary roots. Resolution synchronously reads an object’s `then` property; a JavaScript or
+host getter runs through the bounded property callback contract. The Promise is
+locked first, so reentrant settlement cannot win. A callable `then` runs later
+in a queued job with shared once-only resolving functions. A getter or `then`
+body throw rejects unless resolution already won. Pending reactions, queued jobs, captured resolvers,
 and settlement values participate in collection.
 
 Call `js_runtime_drain_microtasks(rt, budget)` at a host checkpoint, such as after
@@ -378,10 +381,11 @@ pending promise's reactions. Queue storage compacts consumed entries.
 `js_runtime_clear_microtasks(rt)` cancels queued jobs between executions; it does
 not remove reactions attached to still-pending promises.
 
-This is a native-promise subset: arbitrary thenable assimilation, Promise
-combinators/finally, subclass/species behavior, unhandled-rejection reporting,
-and general constructor semantics are not implemented. In particular,
-objects with a `then` property are currently fulfilled as ordinary objects.
+`finally` invokes its callable with no arguments, waits for its result (including
+a thenable), and preserves the original value/reason unless cleanup throws or
+rejects. Noncallable handlers pass through. Promise combinators, subclass/species
+behavior, unhandled-rejection reporting, and general constructor semantics remain
+unsupported. Objects with a noncallable `then` fulfill as ordinary values.
 Constructor syntax is lowered and printed as `construct` AST nodes, with tests
 for member callees and trailing method calls.
 
@@ -507,8 +511,8 @@ Async ordinary functions and arrows return native Promises. `await` genuinely
 suspends execution, including when given a primitive or fulfilled Promise;
 FIFO microtask checkpoints resume it. Throws reject the result Promise and
 `try`/`catch`/`finally` work across suspension. Async functions cannot be used as
-constructors. Async methods and generators remain unsupported. Await inherits
-the native-Promise subset above; arbitrary thenables are not assimilated.
+constructors. Async methods and generators remain unsupported. Await uses the Promise resolution machinery above, including thenable
+assimilation and throwing `then` getters.
 
 Each task uses a guarded 256 KiB W generator stack. Runtime defaults bound active
 tasks to 32, aggregate stacks to 8 MiB, and suspended root identities to 1,000,000.
