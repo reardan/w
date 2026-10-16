@@ -2828,6 +2828,242 @@
       }
     ]
   },
+  "token_sets/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'n'",
+        "start": 0,
+        "text": "n"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "NUMBER",
+        "start": 1,
+        "text": "123"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'n'",
+        "start": 0,
+        "text": "n"
+      },
+      {
+        "channel": 0,
+        "length": 7,
+        "name": "KEYWORD",
+        "start": 1,
+        "text": "keyword"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 8,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input2": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'n'",
+        "start": 0,
+        "text": "n"
+      },
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "WORD",
+        "start": 1,
+        "text": "word"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input3": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'n'",
+        "start": 0,
+        "text": "n"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "COMMA",
+        "start": 1,
+        "text": ","
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input4": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'w'",
+        "start": 0,
+        "text": "w"
+      },
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "WORD",
+        "start": 1,
+        "text": "word"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input5": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'w'",
+        "start": 0,
+        "text": "w"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "NUMBER",
+        "start": 1,
+        "text": "123"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input6": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'w'",
+        "start": 0,
+        "text": "w"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input7": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'l'",
+        "start": 0,
+        "text": "l"
+      },
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "WORD",
+        "start": 1,
+        "text": "word"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "token_sets/input8": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'l'",
+        "start": 0,
+        "text": "l"
+      },
+      {
+        "channel": 0,
+        "length": 7,
+        "name": "KEYWORD",
+        "start": 1,
+        "text": "keyword"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 8,
+        "text": ""
+      }
+    ]
+  },
   "tokens/fuzz0": {
     "accepted": true,
     "rules": [],

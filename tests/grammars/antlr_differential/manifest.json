@@ -115,6 +115,10 @@
     {
       "path": "runtime.w.in",
       "sha256": "2db4b6c7a916b746cd0727f1bd83ca34129d9a178d15c382b6cd8914a4964c6a"
+    },
+    {
+      "path": "TokenSets.g4",
+      "sha256": "72ab94f159e765557957aaa0f40704284ac67e6488d81bf1d9d9f4d3af810f38"
     }
   ],
   "cases": [
@@ -1115,6 +1119,67 @@
         {
           "id": "input2",
           "text": "f"
+        }
+      ]
+    },
+    {
+      "name": "token_sets",
+      "grammars": [
+        "TokenSets.g4"
+      ],
+      "lexer": "TokenSetsLexer",
+      "parser": "TokenSetsParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--strict",
+        "--prediction",
+        "--exact-lexer"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "w_token_names": {
+        "KW_N": "'n'",
+        "KW_W": "'w'",
+        "KW_L": "'l'"
+      },
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "n123"
+        },
+        {
+          "id": "input1",
+          "text": "nkeyword"
+        },
+        {
+          "id": "input2",
+          "text": "nword"
+        },
+        {
+          "id": "input3",
+          "text": "n,"
+        },
+        {
+          "id": "input4",
+          "text": "wword"
+        },
+        {
+          "id": "input5",
+          "text": "w123"
+        },
+        {
+          "id": "input6",
+          "text": "w"
+        },
+        {
+          "id": "input7",
+          "text": "lword"
+        },
+        {
+          "id": "input8",
+          "text": "lkeyword"
         }
       ]
     }
