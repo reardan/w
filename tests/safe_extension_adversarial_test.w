@@ -242,3 +242,43 @@ void test_safe_extension_method_interactions():
 	safe_extension_case(c"struct Point:\n\tint x\nint Point_take(own Point* p):\n\treturn p.x\nint main():\n\town Point* p = new Point(7)\n\tdefer p.take()\n\treturn p.x - 7\n", 0)
 	safe_extension_case(c"struct Point:\n\tint x\nint Point_take(own Point* p):\n\treturn p.x\nint main():\n\town Point* p = new Point(7)\n\tdefer p.take()\n\tint value = p.take()\n\treturn value - 7\n", c"moved value")
 	safe_extension_case(c"struct Point:\n\tint x\nvoid Point_set(refmut Point* p, int value):\n\tp.x = value\nint main():\n\town Point* owner = new Point(7)\n\toptref Point* p = owner\n\tif p: p.set(3)\n\treturn 0\n", c"shared")
+
+
+void test_safe_extension_optional_deferred_presence():
+	safe_extension_case(c"int probe_read(optref int* p):\n\tif p: return *p\n\treturn 0\nint main():\n\town int* p = new int\n\toptref int* r = p\n\tr = 0\n\town int* moved = p\n\treturn probe_read(r)\n", 0)
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\toptref int* r = p\n\tdefer probe_read(r)\n\tr = 0\n\treturn 0\n", c"presence check")
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nvoid observe(optref int* p):\n\tdefer p && probe_read(p)\nint main():\n\tint value = 7\n\tobserve(&value)\n\tobserve(0)\n\treturn 0\n", 0)
+	safe_extension_case(c"int probe_read(ref int* p):\n\treturn *p\nvoid observe(optref int* p):\n\tdefer p || probe_read(p)\nint main():\n\tobserve(0)\n\treturn 0\n", c"presence check")
+
+
+# A default-only switch has no unmatched edge: it exposes missing jump cleanup
+# that a loop zero-iteration edge can otherwise mask during state joins.
+void test_safe_extension_jump_scope_escape():
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\town int* local = new int\n\t\t\tsaved = local\n\t\t\tbreak\n\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tint local = 7\n\t\t\tsaved = &local\n\t\t\tbreak\n\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tif 1:\n\t\t\t\town int* local = new int\n\t\t\t\tsaved = local\n\t\t\t\tbreak\n\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tswitch 2:\n\t\t\t\tdefault:\n\t\t\t\t\town int* local = new int\n\t\t\t\t\tsaved = local\n\t\t\t\t\tbreak\n\t\t\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tint n = 2\n\twhile n:\n\t\tswitch 1:\n\t\t\tdefault:\n\t\t\t\town int* local = new int\n\t\t\t\tsaved = local\n\t\t\t\tbreak\n\t\tif saved: return *saved\n\t\tn = n - 1\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\town int* local = new int\n\t\t\tsaved = local\n\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\twhile 1:\n\t\town int* local = new int\n\t\tsaved = local\n\t\tbreak\n\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tint n = 2\n\twhile n:\n\t\tif saved: return *saved\n\t\tswitch 1:\n\t\t\tdefault:\n\t\t\t\town int* local = new int\n\t\t\t\tsaved = local\n\t\t\t\tn = n - 1\n\t\t\t\tcontinue\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tfor i in range(1):\n\t\t\t\tsaved = &i\n\t\t\t\tbreak\n\t\t\tbreak\n\tif saved: return *saved\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"optref int* bad(ref int* source):\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\town int* local = new int\n\t\t\tsaved = local\n\t\t\tbreak\n\treturn saved\nint main():\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\town int* owner = new int\n\t*owner = 7\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\tsaved = owner\n\t\t\tbreak\n\tif saved: return *saved - 7\n\treturn 1\n", 0)
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tswitch 1:\n\t\tdefault:\n\t\t\town int* owner = new int\n\t\t\t*owner = 7\n\t\t\tswitch 2:\n\t\t\t\tdefault:\n\t\t\t\t\tsaved = owner\n\t\t\t\t\tbreak\n\t\t\tif saved: return *saved - 7\n\treturn 1\n", 0)
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tfor i in range(1):\n\t\tsaved = &i\n\t\tbreak\n\tif saved: return *saved\n\treturn 1\n", 0)
+
+
+# Reusing a declaration in another iteration must not revive loans into its
+# previous allocation; descendants of an escaping optional need invalidation.
+void test_safe_extension_iteration_incarnations():
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tint n = 0\n\twhile n < 2:\n\t\town int* local = new int\n\t\tif saved: return *saved\n\t\tsaved = local\n\t\tn = n + 1\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tfor i in range(2):\n\t\town int* local = new int\n\t\tif saved: return *saved\n\t\tsaved = local\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tint n = 0\n\twhile n < 2:\n\t\tint local = n\n\t\tif saved: return *saved\n\t\tsaved = &local\n\t\tn = n + 1\n\t\tcontinue\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\toptref int* copied = 0\n\tint n = 0\n\twhile n < 2:\n\t\town int* local = new int\n\t\tif copied: return *copied\n\t\tsaved = local\n\t\tcopied = saved\n\t\tn = n + 1\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"ref int* view(ref int* p):\n\treturn p\nint main():\n\toptref int* saved = 0\n\tint n = 0\n\twhile n < 2:\n\t\town int* local = new int\n\t\tif saved: return *saved\n\t\tsaved = view(local)\n\t\tn = n + 1\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"optref int* view(ref int* p):\n\treturn p\nint main():\n\toptref int* saved = 0\n\tint n = 0\n\twhile n < 2:\n\t\town int* local = new int\n\t\tif saved: return *saved\n\t\tsaved = view(local)\n\t\tn = n + 1\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tfor i in range(2):\n\t\tswitch i:\n\t\t\tdefault:\n\t\t\t\town int* local = new int\n\t\t\t\tif saved: return *saved\n\t\t\t\tsaved = local\n\t\t\t\tbreak\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptrefmut int* saved = 0\n\tint n = 0\n\twhile n < 2:\n\t\town int* local = new int\n\t\tif saved: *saved = 7\n\t\tsaved = local\n\t\tn = n + 1\n\treturn 0\n", c"safe:")
+	safe_extension_case(c"int main():\n\toptref int* saved = 0\n\tint total = 0\n\tfor i in range(2):\n\t\town int* local = new int\n\t\t*local = 7\n\t\tsaved = local\n\t\tif saved: total = total + *saved\n\t\tsaved = 0\n\treturn total - 14\n", 0)
+	safe_extension_case(c"int main():\n\town int* owner = new int\n\t*owner = 7\n\toptref int* saved = 0\n\tint total = 0\n\tfor i in range(2):\n\t\tref int* local = owner\n\t\tsaved = local\n\t\tif saved: total = total + *saved\n\tif saved: return total + *saved - 21\n\treturn 1\n", 0)
