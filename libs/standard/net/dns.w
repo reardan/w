@@ -21,6 +21,8 @@
 #   int dns_query_server(int server_ip, int server_port, char* hostname,
 #                        int timeout_ms, int* out_ip)     1/0
 #   int dns_parse_ipv4_literal(char* text, int* out_ip)   1/0
+#   void dns_cache_clear()                    flush answers and files
+#   void dns_cache_set_enabled(int enabled)    opt out/in, flushing both
 #   int dns_hosts_lookup_text/file(...)                   1/0
 #   int dns_resolv_conf_nameservers_text/file(...)        count
 #   int dns_build_query(char* hostname, int query_id, char* out,
@@ -35,6 +37,8 @@ import lib.io_wait
 import lib.file
 import lib.time
 import lib.mem
+import lib.stat
+import lib.__arch__.budget_lock
 
 
 const int dns_port = 53
@@ -59,6 +63,10 @@ const int dns_class_in = 1
 const int dns_result_error = 0
 const int dns_result_ok = 1
 const int dns_result_truncated = 2
+const int dns_result_nxdomain = 3
+const int dns_cache_capacity = 64
+const int dns_cache_ttl_max = 300
+const int dns_cache_negative_ttl = 5
 
 
 int dns_lower_char(int c):
@@ -350,8 +358,11 @@ int dns_parse_fail(char* name, char* target):
 # followed in answer order within this message only, up to
 # dns_max_cname_depth(). Returns dns_result_ok() with the host-order
 # address in *out_ip, dns_result_truncated() when the TC bit demands a
-# TCP retry, or dns_result_error() for anything malformed.
-int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int* out_ip):
+# TCP retry, dns_result_nxdomain for a matching NXDOMAIN question, or
+# dns_result_error for anything malformed. out_ttl is capped and includes
+# every followed CNAME as well as the final A record.
+int dns_parse_response_ttl(char* msg, int msg_len, int query_id, char* hostname, int* out_ip, int* out_ttl):
+	*out_ttl = 0
 	if ((msg == 0) || (hostname == 0)):
 		return dns_result_error
 	if ((msg_len < 12) || (msg_len > 65535)):
@@ -367,8 +378,8 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 		return dns_result_error
 	if ((flags & 0x0200) != 0):
 		return dns_result_truncated
-	if ((flags & 15) != 0):
-		# Non-zero RCODE (NXDOMAIN, SERVFAIL, ...).
+	if (((flags & 15) != 0) && ((flags & 15) != 3)):
+		# Transient errors are never negatively cached.
 		return dns_result_error
 	if (load_be16(msg + 4) != 1):
 		return dns_result_error
@@ -388,7 +399,14 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 	if (load_be16(msg + pos + 2) != dns_class_in): return dns_parse_fail(name, target)
 	pos = pos + 4
 
+	if ((flags & 15) == 3):
+		free(name)
+		free(target)
+		*out_ttl = dns_cache_negative_ttl
+		return dns_result_nxdomain
+
 	int depth = 0
+	int ttl = dns_cache_ttl_max
 	for i in range(ancount):
 		if (dns_read_name(msg, msg_len, pos, name, dns_name_buffer_size, &pos) == 0):
 			return dns_parse_fail(name, target)
@@ -400,9 +418,15 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 		if (rdata + rdlength > msg_len): return dns_parse_fail(name, target)
 		if (rclass != dns_class_in): return dns_parse_fail(name, target)
 		if (dns_names_equal_ci(name, target) != 0):
+			# Clamp before arithmetic: wire TTL is unsigned even on x86.
+			int record_ttl = load_be16(msg + pos + 6)
+			if (load_be16(msg + pos + 4) != 0): record_ttl = dns_cache_ttl_max
+			if ((rtype == dns_type_a) || (rtype == dns_type_cname)):
+				if (record_ttl < ttl): ttl = record_ttl
 			if (rtype == dns_type_a):
 				if (rdlength != 4): return dns_parse_fail(name, target)
 				*out_ip = load_be32(msg + rdata)
+				*out_ttl = ttl
 				free(name)
 				free(target)
 				return dns_result_ok
@@ -419,6 +443,15 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 	free(name)
 	free(target)
 	return dns_result_error
+
+
+# Compatibility parser: callers that only need an address keep the original
+# result codes. The TTL variant additionally distinguishes validated NXDOMAIN.
+int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int* out_ip):
+	int ttl = 0
+	int result = dns_parse_response_ttl(msg, msg_len, query_id, hostname, out_ip, &ttl)
+	if (result == dns_result_nxdomain): return dns_result_error
+	return result
 
 
 # Reads exactly want bytes from a (nonblocking) TCP socket, polling
@@ -444,8 +477,8 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 # TCP retry after a truncated UDP response: RFC 1035 4.2.2 two-byte
 # length-prefixed messages over a connection to the same server. The
 # whole exchange (connect, send, receive) shares one timeout budget.
-# Returns 1 with the host-order address in *out_ip, else 0.
-int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
+# Returns dns_result_ok with the address/TTL, dns_result_nxdomain, or 0.
+int dns_query_server_tcp_ttl(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip, int* out_ttl):
 	char* query = cast(char*, malloc(2 + dns_udp_message_max))
 	int query_id = dns_random_id()
 	int query_len = dns_build_query(hostname, query_id, query + 2, dns_udp_message_max)
@@ -481,18 +514,19 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 		close(sock)
 		return 0
 	close(sock)
-	int parsed = dns_parse_response(response, response_len, query_id, hostname, out_ip)
+	int parsed = dns_parse_response_ttl(response, response_len, query_id, hostname, out_ip, out_ttl)
 	free(response)
-	if (parsed == dns_result_ok): return 1
+	if (parsed == dns_result_ok || parsed == dns_result_nxdomain): return parsed
 	return 0
 
 
 # One A/IN query against a single server (host-order address,
 # normally port 53): UDP first, TCP retry when the response is
 # truncated. The response must come from the queried server and
-# arrive within timeout_ms. Returns 1 with the host-order address in
-# *out_ip, else 0.
-int dns_query_server(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
+# arrive within timeout_ms. Returns dns_result_ok with address/TTL,
+# dns_result_nxdomain with the negative TTL, or 0.
+int dns_query_server_ttl(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip, int* out_ttl):
+	*out_ttl = 0
 	int deadline = time_monotonic_ms() + timeout_ms
 	if (timeout_ms <= 0 || io_check() < 0): return 0
 	char* query = cast(char*, malloc(dns_udp_message_max))
@@ -531,14 +565,25 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 	if (net_htons(from.port) != server_port):
 		free(response)
 		return 0
-	int parsed = dns_parse_response(response, received, query_id, hostname, out_ip)
+	int parsed = dns_parse_response_ttl(response, received, query_id, hostname, out_ip, out_ttl)
 	free(response)
-	if (parsed == dns_result_ok): return 1
+	if (parsed == dns_result_ok || parsed == dns_result_nxdomain): return parsed
 	if (parsed == dns_result_truncated):
 		int remaining = deadline - time_monotonic_ms()
 		if (remaining <= 0): return 0
-		return dns_query_server_tcp(server_ip, server_port, hostname, remaining, out_ip)
+		return dns_query_server_tcp_ttl(server_ip, server_port, hostname, remaining, out_ip, out_ttl)
 	return 0
+
+
+# Explicit-server queries intentionally bypass the process cache.
+int dns_query_server(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
+	int ttl = 0
+	return dns_query_server_ttl(server_ip, server_port, hostname, timeout_ms, out_ip, &ttl) == dns_result_ok
+
+
+int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
+	int ttl = 0
+	return dns_query_server_tcp_ttl(server_ip, server_port, hostname, timeout_ms, out_ip, &ttl) == dns_result_ok
 
 
 char* dns_hosts_path():
@@ -549,50 +594,270 @@ char* dns_resolv_conf_path():
 	return c"/etc/resolv.conf"
 
 
-# Resolves hostname to a host-order IPv4 address. Order: dotted-quad
-# literals short-circuit, then /etc/hosts, then each resolv.conf
-# nameserver over DNS with dns_default_timeout_ms() per server (TCP
-# retry on truncation). With no usable nameserver entries the
-# resolver falls back to 127.0.0.1, like libc resolvers. Returns 1
-# with the address in *out_ip, else 0.
-int dns_resolve_ipv4(char* hostname, int* out_ip):
-	if (hostname == 0): return 0
-	if (hostname[0] == 0): return 0
-	if (dns_parse_ipv4_literal(hostname, out_ip) != 0): return 1
-	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip) != 0): return 1
-	int* servers = cast(int*, malloc(dns_max_nameservers * __word_size__))
-	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers)
-	if (count == 0):
-		servers[0] = ip4_from_string(c"127.0.0.1")
-		count = 1
-	for i in range(count):
-		if (dns_query_server(servers[i], dns_port, hostname, dns_default_timeout_ms, out_ip) != 0):
-			free(servers)
-			return 1
-	free(servers)
+# Process-wide cache. The lock serializes ownership and config refresh;
+# it is never held across DNS network I/O. Like shared budgets, concurrent
+# callers are qualified on Linux x86/x64. Other hosts use the same serial API.
+struct dns_cache_entry:
+	char* name
+	int ip
+	int result
+	int expires
+	int created_seconds
+	int ttl_seconds
+	dns_cache_entry* next
+
+
+struct dns_config_cache:
+	char* path
+	char* text
+	int mtime
+	int mtime_ns
+	int size
+	int ino
+	int stamped
+	dns_cache_entry* hosts
+	int* servers
+	int count
+
+
+int dns_cache_lock = 0
+int dns_cache_enabled = 1
+int dns_cache_generation = 0
+int dns_cache_server_port = 0
+dns_cache_entry* dns_cache_answers = 0
+dns_config_cache* dns_cache_hosts = 0
+dns_config_cache* dns_cache_resolv = 0
+
+
+void dns_cache_entries_free(dns_cache_entry* entry):
+	while (entry != 0):
+		dns_cache_entry* next = entry.next
+		free(entry.name)
+		free(entry)
+		entry = next
+
+
+void dns_cache_answers_clear():
+	dns_cache_entries_free(dns_cache_answers)
+	dns_cache_answers = 0
+	dns_cache_generation += 1
+
+
+void dns_cache_config_free(dns_config_cache* config):
+	if (config == 0): return
+	free(config.path)
+	free(config.text)
+	free(config.servers)
+	dns_cache_entries_free(config.hosts)
+	free(config)
+
+
+# Flush both answer and parsed-file caches. In-flight lookups cannot
+# repopulate a cache flushed while their network exchange was running.
+void dns_cache_clear():
+	budget_lock_enter(&dns_cache_lock)
+	dns_cache_answers_clear()
+	dns_cache_config_free(dns_cache_hosts)
+	dns_cache_config_free(dns_cache_resolv)
+	dns_cache_hosts = 0
+	dns_cache_resolv = 0
+	budget_lock_leave(&dns_cache_lock)
+
+
+# Set to zero to opt out of both answer and parsed-file reuse. Flushes
+# on every transition, including re-enabling, so old answers never revive.
+void dns_cache_set_enabled(int enabled):
+	budget_lock_enter(&dns_cache_lock)
+	dns_cache_enabled = enabled != 0
+	dns_cache_answers_clear()
+	dns_cache_config_free(dns_cache_hosts)
+	dns_cache_config_free(dns_cache_resolv)
+	dns_cache_hosts = 0
+	dns_cache_resolv = 0
+	budget_lock_leave(&dns_cache_lock)
+
+
+# Parse all IPv4 aliases once, preserving first-match hosts-file order.
+dns_cache_entry* dns_cache_parse_hosts(char* text):
+	dns_cache_entry* head = 0
+	dns_cache_entry* tail = 0
+	int i = 0
+	while (text[i] != 0):
+		int end = i
+		while (text[end] != 0 && text[end] != 10): end += 1
+		int pos = i
+		int start = 0
+		int stop = 0
+		int ip = 0
+		if (dns_next_token(text, &pos, end, &start, &stop)):
+			if (dns_token_ipv4(text, start, stop, &ip)):
+				while (dns_next_token(text, &pos, end, &start, &stop)):
+					dns_cache_entry* entry = new dns_cache_entry()
+					entry.name = cast(char*, malloc(stop - start + 1))
+					mem_copy(entry.name, text + start, stop - start)
+					entry.name[stop - start] = 0
+					entry.ip = ip
+					if (tail == 0): head = entry
+					else: tail.next = entry
+					tail = entry
+		i = end
+		if (text[i] == 10): i += 1
+	return head
+
+
+# Called with the cache lock held. statx gives nanosecond mtime plus
+# inode/size, catching same-second rewrites and atomic file replacement.
+# On hosts whose statx wrapper is unavailable (currently Darwin), compare
+# freshly read text instead; answers still cache, and file edits stay visible.
+dns_config_cache* dns_cache_config_load(dns_config_cache* old, char* path, int hosts):
+	char* stamp = cast(char*, malloc(FILE_STATX_BUF_SIZE))
+	int stamped = statx(path, 0, FILE_STATX_BASIC_STATS, stamp) == 0
+	int mtime = 0
+	int mtime_ns = 0
+	int size = 0
+	int ino = 0
+	if (stamped):
+		mtime = load_word(stamp + FILE_STATX_MTIME_OFFSET)
+		mtime_ns = load_int(stamp + FILE_STATX_MTIME_OFFSET + 8)
+		size = load_word(stamp + FILE_STATX_SIZE_OFFSET)
+		ino = load_word(stamp + FILE_STATX_INO_OFFSET)
+	free(stamp)
+	int same_path = 0
+	if (old != 0): same_path = strcmp(old.path, path) == 0
+	if (dns_cache_enabled && same_path && stamped && old.stamped):
+		if (mtime == old.mtime && mtime_ns == old.mtime_ns && size == old.size && ino == old.ino): return old
+	char* text = file_read_text(path)
+	if (text == 0):
+		text = strclone(c"")
+		stamped = 0
+	if (dns_cache_enabled && same_path && strcmp(old.text, text) == 0):
+		free(text)
+	else:
+		dns_cache_answers_clear()
+		dns_cache_config_free(old)
+		old = new dns_config_cache()
+		old.path = strclone(path)
+		old.text = text
+		if (hosts): old.hosts = dns_cache_parse_hosts(text)
+		else:
+			old.servers = cast(int*, malloc(dns_max_nameservers * __word_size__))
+			old.count = dns_resolv_conf_nameservers_text(text, old.servers, dns_max_nameservers)
+			if (old.count == 0):
+				old.servers[0] = ip4_from_string(c"127.0.0.1")
+				old.count = 1
+	old.stamped = stamped
+	old.mtime = mtime
+	old.mtime_ns = mtime_ns
+	old.size = size
+	old.ino = ino
+	return old
+
+
+# Keep a seconds timestamp alongside precise millisecond expiry. The
+# millisecond counter wraps on x86: subtraction alone can make an entry
+# retained for over 24.8 days appear live again. The seconds age guard
+# rejects that entry, including after a complete millisecond wrap.
+int dns_cache_read_seconds(int* out_seconds):
+	timespec ts
+	if (sys_clock_gettime(clock_monotonic, cast(int, &ts)) < 0): return 0
+	*out_seconds = ts.seconds
+	return 1
+
+
+# Caller holds the cache lock. Clock reversal/seconds-counter wrap
+# conservatively invalidates entries; a clock failure bypasses caching.
+int dns_cache_find_at_time(char* hostname, int* out_ip, int now_ms, int now_seconds):
+	if (dns_cache_enabled == 0): return 0
+	dns_cache_entry* entry = dns_cache_answers
+	while (entry != 0):
+		if (now_seconds >= entry.created_seconds && now_seconds - entry.created_seconds <= entry.ttl_seconds):
+			if (dns_names_equal_ci(entry.name, hostname) && entry.expires - now_ms > 0):
+				if (entry.result == dns_result_ok): *out_ip = entry.ip
+				return entry.result
+		entry = entry.next
 	return 0
 
 
-# Resolution bounded across all configured servers, UDP and TCP fallback.
-# Caller distinguishes cancellation/deadline with io_check and its clock.
-int dns_resolve_ipv4_until(char* hostname, int* out_ip, int deadline_ms):
+int dns_cache_find_at(char* hostname, int* out_ip, int now_ms):
+	int now_seconds = 0
+	if (dns_cache_read_seconds(&now_seconds) == 0): return 0
+	return dns_cache_find_at_time(hostname, out_ip, now_ms, now_seconds)
+
+
+void dns_cache_store(char* hostname, int ip, int result, int ttl, int generation):
+	budget_lock_enter(&dns_cache_lock)
+	int now_seconds = 0
+	if (dns_cache_enabled && generation == dns_cache_generation && ttl > 0 && dns_cache_read_seconds(&now_seconds)):
+		if (ttl > dns_cache_ttl_max): ttl = dns_cache_ttl_max
+		dns_cache_entry* entry = new dns_cache_entry()
+		entry.name = strclone(hostname)
+		entry.ip = ip
+		entry.result = result
+		entry.created_seconds = now_seconds
+		entry.ttl_seconds = ttl
+		entry.expires = time_monotonic_ms() + ttl * 1000
+		entry.next = dns_cache_answers
+		dns_cache_answers = entry
+		# Bound memory independently of expired/duplicate keys.
+		for i in range(1, dns_cache_capacity):
+			if (entry.next == 0): break
+			entry = entry.next
+		dns_cache_entries_free(entry.next)
+		entry.next = 0
+	budget_lock_leave(&dns_cache_lock)
+
+
+# Resolver with explicit configuration files and DNS port, for embedders
+# and offline tests. Changing the configuration invalidates cached answers.
+# The ordinary entry points below use system files and port 53.
+int dns_resolve_ipv4_config_until(char* hostname, int* out_ip, int deadline_ms, char* hosts_path, char* resolv_path, int server_port):
 	if (hostname == 0): return 0
 	if (hostname[0] == 0 || io_check() < 0): return 0
 	if (deadline_ms - time_monotonic_ms() <= 0): return 0
 	if (dns_parse_ipv4_literal(hostname, out_ip)): return 1
-	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip)): return 1
 	int* servers = cast(int*, malloc(dns_max_nameservers * __word_size__))
-	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers)
-	if (count == 0):
-		servers[0] = ip4_from_string(c"127.0.0.1")
-		count = 1
-	int found = 0
+	budget_lock_enter(&dns_cache_lock)
+	dns_cache_hosts = dns_cache_config_load(dns_cache_hosts, hosts_path, 1)
+	dns_cache_resolv = dns_cache_config_load(dns_cache_resolv, resolv_path, 0)
+	if (server_port != dns_cache_server_port):
+		dns_cache_answers_clear()
+		dns_cache_server_port = server_port
+	int result = 0
+	dns_cache_entry* host = dns_cache_hosts.hosts
+	while (host != 0 && result == 0):
+		if (dns_names_equal_ci(host.name, hostname)):
+			*out_ip = host.ip
+			result = dns_result_ok
+		host = host.next
+	if (result == 0): result = dns_cache_find_at(hostname, out_ip, time_monotonic_ms())
+	int count = dns_cache_resolv.count
+	for i in range(count): servers[i] = dns_cache_resolv.servers[i]
+	int generation = dns_cache_generation
+	budget_lock_leave(&dns_cache_lock)
+	int ttl = 0
+	int ip = 0
 	int i = 0
-	while (i < count && found == 0):
+	while (i < count && result == 0):
 		int remaining = deadline_ms - time_monotonic_ms()
 		if (remaining <= 0 || io_check() < 0): break
 		if (remaining > dns_default_timeout_ms): remaining = dns_default_timeout_ms
-		found = dns_query_server(servers[i], dns_port, hostname, remaining, out_ip)
+		result = dns_query_server_ttl(servers[i], server_port, hostname, remaining, &ip, &ttl)
+		if (result == dns_result_ok): *out_ip = ip
+		if (result != 0): dns_cache_store(hostname, ip, result, ttl, generation)
 		i += 1
 	free(servers)
-	return found
+	if (deadline_ms - time_monotonic_ms() <= 0 || io_check() < 0): return 0
+	return result == dns_result_ok
+
+
+# Literals, parsed /etc/hosts, cached DNS answers, then nameservers in
+# /etc/resolv.conf. Positive answers use the minimum CNAME/A TTL capped
+# to 300s; validated NXDOMAIN uses 5s. Errors and TTL zero never cache.
+int dns_resolve_ipv4(char* hostname, int* out_ip):
+	return dns_resolve_ipv4_config_until(hostname, out_ip, time_monotonic_ms() + dns_max_nameservers * dns_default_timeout_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)
+
+
+# Resolution bounded across configured servers, UDP and TCP fallback.
+# Cancellation/deadline are checked even when an answer is already cached.
+int dns_resolve_ipv4_until(char* hostname, int* out_ip, int deadline_ms):
+	return dns_resolve_ipv4_config_until(hostname, out_ip, deadline_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)

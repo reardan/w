@@ -508,3 +508,261 @@ void test_dns_resolve_ipv4_literal_short_circuit():
 	assert_strings_equal(c"0xc0000201", hex(ip))
 	assert_equal(0, dns_resolve_ipv4(c"", &ip))
 	assert_equal(0, dns_resolve_ipv4(0, &ip))
+
+
+# Separate x86/x64 fixtures because wbuild runs the twins concurrently.
+char* dns_cache_test_hosts_path():
+	if (__word_size__ == 8): return c"bin/dns_cache_hosts64.txt"
+	return c"bin/dns_cache_hosts32.txt"
+
+
+char* dns_cache_test_resolv_path():
+	if (__word_size__ == 8): return c"bin/dns_cache_resolv64.txt"
+	return c"bin/dns_cache_resolv32.txt"
+
+
+void dns_cache_test_files():
+	dns_cache_clear()
+	assert_equal(1, file_write_text(dns_cache_test_hosts_path(), c"# empty hosts\x0a"))
+	assert_equal(1, file_write_text(dns_cache_test_resolv_path(), c"nameserver 127.0.0.1\x0a"))
+
+
+int dns_cache_test_resolve(char* name, int port, int* ip):
+	return dns_resolve_ipv4_config_until(name, ip, time_monotonic_ms() + 1000, dns_cache_test_hosts_path(), dns_cache_test_resolv_path(), port)
+
+
+# Bounded child: later positive answers carry different addresses, so an
+# accidental extra query cannot masquerade as a cache hit. first_rcode
+# applies only to the first response, exposing negative-cache mistakes.
+int dns_cache_test_server(int ttl, int first_rcode, int queries, int* out_fd, int* out_port):
+	int server = socket_udp_ipv4()
+	net_test_assert_ok(c"cache UDP socket", server)
+	net_test_assert_ok(c"cache UDP bind", socket_bind_ipv4(server, 0x7f000001, 0))
+	sockaddr_in bound
+	net_test_assert_ok(c"cache getsockname", socket_getsockname_ipv4(server, &bound))
+	*out_fd = server
+	*out_port = net_htons(bound.port)
+	int pid = fork()
+	asserts(c"cache fork failed", pid >= 0)
+	if (pid != 0): return pid
+	char* buf = cast(char*, malloc(512))
+	for i in range(queries):
+		if (io_poll(server, poll_in, 3000) <= 0): exit(1)
+		sockaddr_in from
+		int received = socket_recv_from_ipv4(server, buf, 496, 0, &from)
+		if (received < 12): exit(2)
+		int length = dns_test_mock_answer(buf, received)
+		store_be32(buf + received + 6, ttl)
+		buf[length - 1] = 42 + i
+		if (i == 0 && first_rcode != 0):
+			buf[3] = 128 | first_rcode
+			store_be16(buf + 6, 0)
+			length = received
+		if (socket_send_to_ipv4(server, buf, length, 0, net_htonl(from.ip_address), net_htons(from.port)) != length): exit(3)
+	free(buf)
+	close(server)
+	exit(0)
+	return 0
+
+
+void dns_cache_test_join(int pid, int server):
+	int status = 0
+	assert_equal(pid, wait4(pid, &status, 0, 0))
+	assert_equal(0, status)
+	close(server)
+	dns_cache_clear()
+
+
+void test_dns_cache_hit_and_ttl_expiry():
+	dns_cache_test_files()
+	int server = 0
+	int port = 0
+	int pid = dns_cache_test_server(1, 0, 2, &server, &port)
+	int ip = 0
+	assert_equal(1, dns_cache_test_resolve(c"cache.example", port, &ip))
+	assert_equal_hex(0x7f00002a, ip)
+	assert_equal(1, dns_cache_test_resolve(c"CACHE.EXAMPLE.", port, &ip))
+	assert_equal_hex(0x7f00002a, ip)
+	# An expired deadline must fail even though an answer is cached.
+	assert_equal(0, dns_resolve_ipv4_config_until(c"cache.example", &ip, time_monotonic_ms() - 1, dns_cache_test_hosts_path(), dns_cache_test_resolv_path(), port))
+	sleep_ms(1100)
+	assert_equal(1, dns_cache_test_resolve(c"cache.example", port, &ip))
+	assert_equal_hex(0x7f00002b, ip)
+	dns_cache_test_join(pid, server)
+
+
+void test_dns_cache_zero_ttl_and_transient_errors():
+	for mode in range(2):
+		dns_cache_test_files()
+		int server = 0
+		int port = 0
+		int rcode = mode * 2
+		int pid = dns_cache_test_server(0, rcode, 2, &server, &port)
+		int ip = 0
+		assert_equal(1 - mode, dns_cache_test_resolve(c"zero.example", port, &ip))
+		asserts(c"zero TTL or SERVFAIL cached", dns_cache_answers == 0)
+		assert_equal(1, dns_cache_test_resolve(c"zero.example", port, &ip))
+		assert_equal_hex(0x7f00002b, ip)
+		dns_cache_test_join(pid, server)
+
+
+void test_dns_cache_nxdomain_and_expiry():
+	dns_cache_test_files()
+	int server = 0
+	int port = 0
+	int pid = dns_cache_test_server(60, 3, 2, &server, &port)
+	int ip = 123
+	assert_equal(0, dns_cache_test_resolve(c"absent.example", port, &ip))
+	assert_equal(123, ip)
+	asserts(c"NXDOMAIN not cached", dns_cache_answers != 0)
+	assert_equal(dns_result_nxdomain, dns_cache_answers.result)
+	asserts(c"negative lifetime too long", dns_cache_answers.expires - time_monotonic_ms() <= dns_cache_negative_ttl * 1000)
+	assert_equal(0, dns_cache_test_resolve(c"ABSENT.EXAMPLE.", port, &ip))
+	# Advance only this entry past expiry, without a five-second sleep.
+	dns_cache_answers.expires = time_monotonic_ms() - 1
+	assert_equal(1, dns_cache_test_resolve(c"absent.example", port, &ip))
+	assert_equal_hex(0x7f00002b, ip)
+	dns_cache_test_join(pid, server)
+
+
+void test_dns_cache_flush_and_opt_out():
+	for mode in range(2):
+		dns_cache_test_files()
+		int server = 0
+		int port = 0
+		int pid = dns_cache_test_server(60, 0, 2, &server, &port)
+		int ip = 0
+		if (mode == 1): dns_cache_set_enabled(0)
+		assert_equal(1, dns_cache_test_resolve(c"flush.example", port, &ip))
+		assert_equal_hex(0x7f00002a, ip)
+		if (mode == 0): dns_cache_clear()
+		assert_equal(1, dns_cache_test_resolve(c"flush.example", port, &ip))
+		assert_equal_hex(0x7f00002b, ip)
+		if (mode == 1):
+			asserts(c"disabled answer cache populated", dns_cache_answers == 0)
+			dns_cache_set_enabled(1)
+		dns_cache_test_join(pid, server)
+
+
+void test_dns_cache_config_reload():
+	dns_cache_test_files()
+	int server = 0
+	int port = 0
+	int pid = dns_cache_test_server(60, 0, 2, &server, &port)
+	int ip = 0
+	assert_equal(1, dns_cache_test_resolve(c"reload.example", port, &ip))
+	assert_equal_hex(0x7f00002a, ip)
+	# Hosts take priority over a positive DNS entry after a rewrite.
+	assert_equal(1, file_write_text(dns_cache_test_hosts_path(), c"10.0.0.1 reload.example alias.example\x0a"))
+	assert_equal(1, dns_cache_test_resolve(c"reload.example", port, &ip))
+	assert_equal_hex(0x0a000001, ip)
+	# Same-size same-second rewrite: nanosecond mtime must invalidate.
+	sleep_ms(2)
+	assert_equal(1, file_write_text(dns_cache_test_hosts_path(), c"10.0.0.2 reload.example alias.example\x0a"))
+	assert_equal(1, dns_cache_test_resolve(c"ALIAS.EXAMPLE.", port, &ip))
+	assert_equal_hex(0x0a000002, ip)
+	assert_equal(0, unlink(dns_cache_test_hosts_path()))
+	# DNS must query again after removing the hosts override.
+	assert_equal(1, dns_cache_test_resolve(c"reload.example", port, &ip))
+	assert_equal_hex(0x7f00002b, ip)
+	# Config changes clear the positive cache even if hosts resolves first.
+	assert_equal(1, file_write_text(dns_cache_test_hosts_path(), c"10.0.0.3 hosts.example\x0a"))
+	assert_equal(1, file_write_text(dns_cache_test_resolv_path(), c"nameserver 127.0.0.2\x0a"))
+	assert_equal(1, dns_cache_test_resolve(c"hosts.example", port, &ip))
+	assert_equal_hex(0x7f000002, dns_cache_resolv.servers[0])
+	asserts(c"config reload retained answers", dns_cache_answers == 0)
+	dns_cache_test_join(pid, server)
+
+
+void test_dns_cache_ttl_parser_and_negative_validation():
+	int length = 0
+	char* msg = dns_test_response_a(&length)
+	int ip = 0
+	int ttl = 0
+	assert_equal(dns_result_ok, dns_parse_response_ttl(msg, length, 0x1234, c"example.com", &ip, &ttl))
+	assert_equal(60, ttl)
+	store_be32(msg + length - 10, -1)
+	assert_equal(dns_result_ok, dns_parse_response_ttl(msg, length, 0x1234, c"example.com", &ip, &ttl))
+	assert_equal(300, ttl)
+	free(msg)
+	msg = dns_test_build_cname_chain(1, &length)
+	# First CNAME has a shorter lifetime than the final A record.
+	store_be32(msg + 26, 2)
+	assert_equal(dns_result_ok, dns_parse_response_ttl(msg, length, 0x1234, c"a", &ip, &ttl))
+	assert_equal(2, ttl)
+	store_be32(msg + 26, 0)
+	assert_equal(dns_result_ok, dns_parse_response_ttl(msg, length, 0x1234, c"a", &ip, &ttl))
+	assert_equal(0, ttl)
+	free(msg)
+	msg = hex_decode_loose(c"12 34 81 83 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	assert_equal(dns_result_nxdomain, dns_parse_response_ttl(msg, length, 0x1234, c"example.com", &ip, &ttl))
+	assert_equal(dns_result_error, dns_parse_response_ttl(msg, length, 0x1234, c"other.example", &ip, &ttl))
+	assert_equal(dns_result_error, dns_parse_response_ttl(msg, 12, 0x1234, c"example.com", &ip, &ttl))
+	free(msg)
+
+
+void test_dns_cache_capacity_and_flush_generation():
+	dns_cache_clear()
+	int generation = dns_cache_generation
+	for i in range(dns_cache_capacity + 10):
+		dns_cache_store(c"bounded.example", i, dns_result_ok, 60, generation)
+	int count = 0
+	dns_cache_entry* entry = dns_cache_answers
+	while (entry != 0):
+		count += 1
+		entry = entry.next
+	assert_equal(dns_cache_capacity, count)
+	dns_cache_clear()
+	dns_cache_store(c"stale.example", 1, dns_result_ok, 60, generation)
+	asserts(c"in-flight lookup survived flush", dns_cache_answers == 0)
+
+
+
+void test_dns_cache_monotonic_signed_wrap():
+	dns_cache_clear()
+	dns_cache_store(c"wrap.example", 42, dns_result_ok, 60, dns_cache_generation)
+	int before = 2147483600
+	# Runtime addition wraps on x86; x64 also proves ordinary deadlines.
+	dns_cache_answers.expires = before + 1000
+	int ip = 0
+	assert_equal(dns_result_ok, dns_cache_find_at(c"wrap.example", &ip, before + 500))
+	assert_equal(42, ip)
+	assert_equal(0, dns_cache_find_at(c"wrap.example", &ip, before + 1000))
+	assert_equal(0, dns_cache_find_at(c"wrap.example", &ip, before + 1100))
+	dns_cache_clear()
+
+
+
+void test_dns_cache_hosts_reload_overrides_negative():
+	dns_cache_test_files()
+	int server = 0
+	int port = 0
+	int pid = dns_cache_test_server(60, 3, 1, &server, &port)
+	int ip = 0
+	assert_equal(0, dns_cache_test_resolve(c"new.example", port, &ip))
+	assert_equal(1, file_write_text(dns_cache_test_hosts_path(), c"10.1.2.3 new.example\x0a"))
+	assert_equal(1, dns_cache_test_resolve(c"new.example", port, &ip))
+	assert_equal_hex(0x0a010203, ip)
+	asserts(c"hosts reload retained NXDOMAIN", dns_cache_answers == 0)
+	dns_cache_test_join(pid, server)
+
+
+
+void test_dns_cache_long_idle_does_not_revive_expired_entries():
+	dns_cache_clear()
+	dns_cache_store(c"idle.example", 42, dns_result_ok, 60, dns_cache_generation)
+	dns_cache_answers.created_seconds = 100
+	dns_cache_answers.expires = 160000
+	int ip = 0
+	assert_equal(dns_result_ok, dns_cache_find_at_time(c"idle.example", &ip, 159999, 159))
+	assert_equal(0, dns_cache_find_at_time(c"idle.example", &ip, 160000, 160))
+	for mode in range(2):
+		int elapsed = 25 * 24 * 60 * 60
+		# Also cover one complete 32-bit millisecond wrap, about 49.7 days.
+		if (mode == 1): elapsed = 4294968
+		int now_seconds = 100 + elapsed
+		int now_ms = now_seconds * 1000
+		if (__word_size__ == 4):
+			asserts(c"fixture did not expose millisecond expiry revival", dns_cache_answers.expires - now_ms > 0)
+		assert_equal(0, dns_cache_find_at_time(c"idle.example", &ip, now_ms, now_seconds))
+	dns_cache_clear()
