@@ -28,3 +28,18 @@ positioned diagnostic and suppresses the preview.
 Tests cover semantic structures, geometry, lossless writing, forward references,
 errors, and every byte-prefix of representative inputs. Tests run on x86 and
 x64, including the guard allocator's leak checks.
+
+- **TreeView:** indentation-based forests, quoted or plain Unicode labels,
+  source-order rows and orthogonal ancestry connectors. Tree-command prefixes,
+  icons, classes and description annotations remain unsupported.
+- **Ishikawa:** problem head, first-level cause branches alternating around a
+  spine, indented subcauses with ancestry connectors. Physical indentation
+  carries hierarchy; input and nesting are bounded.
+- **Cynefin:** all five domain regions, quoted items, optional title and labelled
+  domain transitions. Confusion occupies the centre between quadrant rows.
+  Native regions use rectangular boundaries instead of upstream organic curves.
+- **Wardley:** anchors/components at validated visibility/evolution coordinates,
+  a title, forward-resolved dependencies and four labelled evolution stages.
+  Coordinates use bounded thousandths. Decorators, evolution arrows, notes,
+  pipelines, alternative flow syntax and custom axis configuration remain
+  unsupported and produce diagnostics.

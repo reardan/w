@@ -53,6 +53,10 @@ struct mm_data_chart:
 const int MM_REQUIREMENT = 60
 const int MM_MINDMAP = 61
 const int MM_KANBAN = 62
+const int MM_TREEVIEW = 63
+const int MM_ISHIKAWA = 64
+const int MM_CYNEFIN = 65
+const int MM_WARDLEY = 66
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
@@ -78,6 +82,8 @@ struct mm_node:
 	list[mm_attribute*] attributes
 	list[mm_member*] members
 	char* annotation
+	int value_x
+	int value_y
 	int parent
 	int group
 	int declared
@@ -100,6 +106,7 @@ struct mm_edge:
 
 struct mm_document:
 	char* source
+	char* title
 	int length
 	int kind
 	char* direction

@@ -2,6 +2,7 @@
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.data_render
 import libs.extras.mermaid.hierarchy_render
+import libs.extras.mermaid.framework_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -340,6 +341,11 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
 
 # Failed parses cannot produce a misleading partial preview.
 mm_scene* mm_render_diagram(mm_document* d):
+	if (d.error != 0): return 0
+	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
+	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
+	if (d.kind == MM_CYNEFIN): return mm_cynefin_render(d)
+	if (d.kind == MM_WARDLEY): return mm_wardley_render(d)
 	if (d.error == 0 && (d.kind == MM_MINDMAP || d.kind == MM_KANBAN)): return mm_hierarchy_render(d)
 	if (d.error != 0): return 0
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET): return mm_data_render(d)

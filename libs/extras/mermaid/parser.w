@@ -4,6 +4,7 @@ import libs.extras.mermaid.uml
 import libs.extras.mermaid.source
 import libs.extras.mermaid.data_parse
 import libs.extras.mermaid.graph_families
+import libs.extras.mermaid.frameworks
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -247,6 +248,18 @@ mm_document* mm_parse_raw(char* source, int length):
 	else if (strcmp(header, c"requirementDiagram") == 0): d.kind = MM_REQUIREMENT
 	else if (strcmp(header, c"mindmap") == 0): d.kind = MM_MINDMAP
 	else if (strcmp(header, c"kanban") == 0): d.kind = MM_KANBAN
+	else if (strcmp(header, c"treeView") == 0):
+		d.kind = MM_TREEVIEW
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"ishikawa") == 0):
+		d.kind = MM_ISHIKAWA
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"cynefin") == 0):
+		d.kind = MM_CYNEFIN
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"wardley") == 0):
+		d.kind = MM_WARDLEY
+		mm_match(&p, c"-beta")
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -273,6 +286,9 @@ mm_document* mm_parse_raw(char* source, int length):
 			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
+	if (d.kind == MM_TREEVIEW || d.kind == MM_ISHIKAWA):
+		mm_outline_body(&p)
+		return d
 	if (d.kind == MM_MINDMAP || d.kind == MM_KANBAN):
 		mm_hierarchy_body(&p)
 		return d
@@ -282,6 +298,12 @@ mm_document* mm_parse_raw(char* source, int length):
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_body(&p)
+		return d
+	if (d.kind == MM_CYNEFIN):
+		mm_cynefin_body(&p)
+		return d
+	if (d.kind == MM_WARDLEY):
+		mm_wardley_body(&p)
 		return d
 	if (d.kind == MM_REQUIREMENT):
 		mm_requirement_body(&p)
