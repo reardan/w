@@ -1,63 +1,20 @@
-# Safe mode implementation status
+# Safe mode checkpoint (superseded)
 
-The paused checkpoint in PR #648 is now a working experimental implementation
-of the bounded Linux x86/x64 subset described in
-[safe_mode.md](safe_mode.md). The missing checker and broken owner-assignment
-lowering have been replaced and integrated. The broader roadmap in
-[issue #644](https://github.com/reardan/w/issues/644) and
-[PR #645](https://github.com/reardan/w/pull/645) remains open.
+The paused draft checkpoint from PR #648 has been implemented and merged.
+It is not an active resume plan. The experimental subset has since gained
+named lifetimes, returned slices, aggregates and audited storage through
+PRs #663 and #674, followed by the extensions tracked in issue #644.
 
-## Implemented
+Use [safe_mode.md](safe_mode.md) for current syntax, targets, guarantees,
+restrictions and measured validation. Use
+[safe_mode_roadmap.md](safe_mode_roadmap.md) for remaining work and
+[safe_mode_contracts.md](safe_mode_contracts.md) for implementation contracts.
 
-- Contextual `own`, `ref` and `refmut` contracts, with the same ownership
-  semantics whether or not `--safe` is present.
-- Resolved control-flow analysis for initialization, moves, last-use borrow
-  lifetimes, reborrows, branches, loops, calls and forward declarations.
-- Owner transfer and conditional destruction on replacement, scope exit,
-  return, break and continue, including inferred owner declarations and
-  owned parameters.
-- Bounds-checked arrays and immutable slices with backing-storage lifetime
-  tracking; explicit unsafe blocks for raw operations.
-- Audited runtime source pins, scalar formatting in `lib.safe`, structured
-  diagnostics, compiler-session resets and option-cache fingerprints.
-- Explicit rejection of unmodeled operations, unsupported targets and
-  in-process entry points. Checked functions retain their cleanup and
-  transfer behavior under the default optimizer.
+The [tracking issue](https://github.com/reardan/w/issues/644) remains open
+for the broader roadmap. A completed bounded subset does not establish a
+soundness proof or make arbitrary legacy W programs memory-safe.
 
-The implementation has been integrated with main's optimizer and Android
-changes. Runtime pins include the new page-size and platform helpers;
-checked pointers remain limited to Linux x86/x64.
-
-## Validation
-
-Use the repository's normal workflow:
-
-```sh
-bin/wv2 check --json w.w
-bin/wtest changed origin/main..HEAD
-bin/wtest archs compiler/safe.w --check
-env -u NO_COLOR ./wbuild tests
-env -u NO_COLOR ./wbuild compiler_coverage
-git diff -U0 origin/main...HEAD > bin/safe_changed.diff
-bin/coverage/wcoverage changed bin/safe_changed.diff bin/coverage/lcov.info
-```
-
-`NO_COLOR` is removed because this environment sets it globally and the
-color-diagnostic fixture explicitly tests `FORCE_COLOR` behavior. Run coverage
-without concurrent builds or `bin/wtest` processes: its harness temporarily
-replaces compiler/tool binaries and restores them afterwards.
-
-The positive/negative matrix compiles and executes accepted programs under
-both architectures, with and without `--safe`. Runtime fixtures use the guard
-allocator to check destruction and leaks, including optimized and unoptimized
-emission. The full suite includes the parser-generator syntax check and
-self-hosting fixpoints. Cost measurements and limitations are recorded in
-[safe_mode.md](safe_mode.md).
-
-## Deliberate limits
-
-This PR completes the checkpoint's bounded implementation, not the entire
-safe-language roadmap. Optional or escaping references, reference-bearing
-aggregates and containers, arbitrary control flow, deferred cleanup and
-additional platforms still need contracts and analysis before they can be
-admitted. They are rejected in checked code rather than silently accepted.
+Validation continues to use structured checks, manifest-selected tests,
+architecture/root checks, self-host fixpoints, the full suite and compiler
+coverage. Run instrumented coverage without concurrent builds or `bin/wtest`
+processes because its harness temporarily replaces compiler/tool binaries.

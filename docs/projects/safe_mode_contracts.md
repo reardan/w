@@ -8,7 +8,10 @@ authorize unchecked implementations of later milestones.
 
 ## Signature lifetimes
 
-Use the contextual qualifiers `ref[a] T*` and `refmut[a] T*`. Labels are
+Use the contextual qualifiers `ref[a] T*`, `refmut[a] T*`,
+`optref[a] T*` and `optrefmut[a] T*`. Optional forms use zero for absence;
+presence refinement is required before dereference or nonoptional use.
+Labels are
 identifiers bound implicitly by a function signature, not global lifetimes,
 runtime values or generic type arguments. Unannotated results retain the
 existing exactly-one-borrowed-input inference rule.
@@ -180,6 +183,56 @@ Borrowed views constrain the whole owner, so every mutation is exclusive,
 including operations that would not move storage in a particular execution.
 Byte strings preserve arbitrary bytes, including NULs; UTF-8 validation is
 outside this contract. Empty pop traps and self-append is rejected.
+
+`WOwnedIntBuffer` stores uniquely owned integer allocations. Push and indexed
+replacement consume the argument, clear its checked parameter home, and
+store its pointer in raw owned storage. Replacement destroys the old element
+after argument evaluation. Pop removes and clears the last raw slot before
+returning its owner; clear destroys elements in reverse order. Growth moves
+pointer slots without duplicating ownership. An element view borrows the
+whole buffer; all mutation requires exclusive access. Generic owner elements
+and legacy containers are outside this contract.
+
+`WByteArena` copies initialized byte views into opaque growable storage.
+Its result lifetime names only the mutable arena input, not the source view.
+The runtime checks size addition and growth, then returns an inline checked
+descriptor. Empty views may have zero data addresses but cannot be indexed.
+Copy, reset and release require exclusive access, including copies that fit
+existing capacity. Reset retains capacity; release frees payload storage and
+zeros all storage metadata. Final destruction releases the payload and
+metadata. General typed allocations and attached budgets are not admitted.
+
+## Control flow and deferred cleanup
+
+Range loops model their bounds, induction binding and backedge. Scalar
+switches model case alternatives and the default path. Every `break` or
+`continue` invalidates all exited lexical bindings before joining its
+destination; `continue` crosses a switch to reach the enclosing loop.
+The range induction binding remains initialized inside its loop. Emitted
+cleanup and analysis must agree even when a reference is stored in an outer
+optional binding before jumping out of its owner's scope.
+
+Deferred expressions may be registered only in the outer function block.
+Each is evaluated at function exit in reverse registration order, after
+return-expression evaluation and before automatic destruction. Their uses
+participate in exit liveness, including return-value borrow reservations.
+Conditional/nested registrations and deferred control-flow statements remain
+rejected until a matching registration-state model is implemented.
+
+Checked methods normalize into direct calls with an explicit receiver.
+Receiver evaluation occurs before argument evaluation; synthesized receiver
+addresses retain the original binding and lifetime. Owner receivers and
+arguments use the same transfer clearing as direct calls. Method syntax
+does not grant an unsafe or unchecked boundary.
+
+## Target admission
+
+Checked programs are supported on Linux x86/x64 and win64. The win64
+audited runtime includes its own pinned allocation/syscall implementations;
+the guard allocator protects holes with `mprotect` because Windows cannot
+release a suffix of an allocation. Entrypoint selection requires a defined
+symbol, not a nonzero unresolved-prototype backpatch chain. Other targets
+remain rejected until runtime and cleanup parity are validated.
 
 ## Integration and review
 

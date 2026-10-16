@@ -1,6 +1,6 @@
 # Experimental ownership and borrowing checks
 
-The compiler accepts `--safe` on Linux x86 and x64:
+The compiler accepts `--safe` on Linux x86/x64 and Windows x64 (`win64`):
 
 ```sh
 ./bin/wv2 --safe app.w -o app
@@ -10,7 +10,7 @@ The compiler accepts `--safe` on Linux x86 and x64:
 This is a bounded, single-threaded subset, tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
-design, including broader lifetime contracts, is
+design, including richer aggregates and broader lifetime contracts, is
 tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 
 ## Pointer contracts
@@ -20,6 +20,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
+| `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
@@ -52,8 +53,8 @@ int main():
 `new T` zero-initializes its allocation and traps on allocation failure. It
 must initialize an owner in checked code. Owners and references require
 initializers. Checked references cannot be null or fabricated by casts, pointer
-arithmetic, raw-pointer conversion or an integer. Optional references are not
-part of this subset; use ordinary control flow instead of a nullable reference.
+arithmetic, raw-pointer conversion or an integer. Explicit optional references
+use `optref` or `optrefmut`, described below; ordinary references remain non-null.
 
 An owner's declaration, move and destruction have the same meaning without
 `--safe`. Any function that uses a checked type is analyzed, together with its
@@ -68,7 +69,8 @@ cannot erase earlier binding identities.
 A shared or mutable reference can borrow a named owner, another reference, or
 an initialized stack place (`ref int* r = &value`). A reborrow suspends
 conflicting access through its parent until the child reference's last use.
-Nonoptional reference bindings cannot be reassigned. Optional reference bindings support replacement as described below.
+Nonoptional reference bindings cannot be reassigned. Optional reference
+bindings support replacement as described below.
 
 Reference liveness follows branches and loop backedges. Ownership state must
 be valid on every incoming path where a value is used. An early return does
@@ -237,8 +239,11 @@ compiler work.
 
 Owned returns must transfer an owner on every normal path. Recursion,
 forward declarations and imported functions use the same signature contract;
-the implementation is checked even without `--safe`. Indirect calls,
-callbacks, methods and unmodeled generic
+the implementation is checked even without `--safe`. Checked methods and UFCS
+calls use the receiver's explicit first-parameter contract and evaluate it
+before the remaining arguments. An owned receiver transfers ownership;
+shared/mutable receivers borrow with the ordinary call rules. Indirect calls,
+callbacks and unmodeled generic
 operations are rejected rather than treated as ordinary scalar calls.
 Forward declarations resolve to a checked implementation and must agree with
 its parameter and return contracts.
@@ -337,10 +342,13 @@ unsupported. Slice elements must be pointer-free sized values. To obtain a
 checked subrange of a fixed array, first bind a checked full view; slicing
 the array directly still produces the legacy representation.
 
-The supported control flow is blocks, `if`/`else`, `while`, `break`, `continue`,
-returns, short-circuit Boolean expressions and scalar conditional expressions.
-`for`, `switch`, generators, arbitrary `goto`, GPU operations and legacy
-container operations remain unsupported. The audited concrete storage APIs
+The supported control flow is blocks, `if`/`else`, `while`, range `for`, scalar
+`switch`, `break`, `continue`, returns, short-circuit Boolean expressions and
+scalar conditional expressions. Range bounds and step evaluate once in source
+order; `continue` reaches the implicit index update. Switch labels retain
+their evaluation order and W's no-fallthrough behavior. Container iteration,
+generators, arbitrary `goto`, GPU operations and legacy container operations
+remain unsupported. The audited concrete storage APIs
 below are the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
@@ -396,7 +404,48 @@ failure trap. Growth checks arithmetic before allocation and reads only the
 initialized prefix. The exact library source is pinned by the compiler;
 changed implementations do not inherit its audited contract. Generic
 buffers, owned-element containers, maps, sets and concurrent access remain
-future extensions.
+future extensions, except for the concrete owned-element buffer below.
+
+### Buffers of owned integers
+
+`own WOwnedIntBuffer*` owns its `own int*` elements. Construct it with
+`owned_int_buffer_new()`. `owned_int_buffer_push(buffer, owner)` consumes an
+owner; `owned_int_buffer_set(buffer, index, owner)` consumes the replacement
+and destroys the previous element. `owned_int_buffer_pop(buffer)` transfers
+the last owner to the caller and traps on an empty buffer.
+
+`owned_int_buffer_get(buffer, index)` returns a shared `ref int*` tied to the
+buffer. Every mutation, move, replacement and destruction is forbidden while
+that view remains live. After popping an owner, that allocation is independent
+of the buffer and survives its clear, replacement or destruction.
+`owned_int_buffer_length` reads the length; `owned_int_buffer_clear` destroys
+remaining elements in reverse order. Automatic buffer destruction clears the
+elements, frees slot storage, then frees metadata. Owned records may contain
+this buffer. Metadata and raw slot helpers remain inaccessible.
+
+This concrete API does not yet provide arbitrary element types, generic
+collection wrappers, maps, sets or escaping iterators.
+
+### Checked byte arena
+
+`own WByteArena*` is a separate, opaque arena with compiler-checked reset and
+destruction lifetimes. `byte_arena_new()` creates an empty owner.
+`byte_arena_copy(arena, source)` copies a `ref byte[]` and returns a shared
+view whose lifetime is tied to the arena, independently of the source. The
+source may therefore be a local array or temporary view. Empty copies and
+embedded NUL bytes are supported; no UTF-8 invariant is imposed.
+
+Copying into the arena requires exclusive access, even when no growth would
+occur. A live returned view prevents another copy, `byte_arena_reset`,
+`byte_arena_release`, owner movement, replacement or destruction. Reset
+retains capacity and resets the used length; release also frees storage.
+`byte_arena_length` reports the used byte count. The owner remains usable
+after reset or release, and normal owner cleanup frees it automatically.
+
+This API uses ordinary lifetime contracts and audited copying; it does not
+trust manual borrow-registration counters in the legacy `lib.arena` API.
+Typed arena allocation, attached budgets, nonmoving concurrent allocation,
+and general raw/foreign-to-checked conversions remain separate work.
 
 ## Cleanup and unsafe boundaries
 
@@ -409,9 +458,15 @@ its stack slot; cleanup tests the slot before freeing it. This accounts for
 branch-dependent transfers without reference counting or garbage collection.
 There is no cleanup promise after process termination or a trap.
 
-Exit-time `defer` is rejected in checked functions. Its existing deferred
-reads and arbitrary control flow have not been integrated into borrow
-liveness, and it cannot be used to manually free an owner a second time.
+Checked `defer` registrations must appear directly in the outer function
+block. The return expression is evaluated and transferred first, deferred
+expressions run in LIFO order against their exit-time bindings, then remaining
+owners are destroyed. Deferred reads keep their backing storage borrowed;
+a deferred move cannot consume an owner already transferred by the return.
+Returned references remain protected while deferred work runs. Nested loop,
+branch or block registrations remain rejected; this extension does not give
+W's static registration rules dynamic per-iteration semantics. Nested exits
+after an outer registration still execute the registered work at function exit.
 
 An explicit boundary permits raw operations:
 
@@ -445,7 +500,8 @@ grant permission to call arbitrary raw interfaces.
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Other targets and in-process REPL/debugger
+pointers, with or without `--safe`. Targets other than Linux x86/x64 and win64,
+and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same
 analysis before an output file is published.
@@ -614,8 +670,9 @@ fixpoints and the benchmark gate. Its instrumented full suite passed all
 lines (97%). Compiler line/branch coverage is 95.3% / 85.5%; code-generator
 coverage is 97.0% / 88.5%. Coverage floors retain the measured gains.
 Compiler checks pass for x86, x64, win64, arm64 and arm64_darwin, along with
-six manifest-selected architecture/root checks. These check compiler
-portability; checked application support remains Linux x86/x64.
+six manifest-selected architecture/root checks. These checked compiler
+portability; that release supported checked applications only on Linux
+x86/x64. The follow-on implementation adds win64 as described above.
 Independent review found an evaluation-order lifetime hole in
 projected stores and indices; temporary backing-storage reservations and
 15 positive/negative regression cases cover the fix. These results remain
