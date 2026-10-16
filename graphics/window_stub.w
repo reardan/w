@@ -40,5 +40,11 @@ void gfx_window_swap(gfx_window* win):
 	return
 
 
+# Device pixels per logical window pixel, for graphics.ui's crisp text
+# (ui_render_set_pixel_scale). This backend draws 1:1.
+float32 gfx_window_pixel_ratio(gfx_window* win):
+	return 1.0
+
+
 void gfx_window_destroy(gfx_window* win):
 	return

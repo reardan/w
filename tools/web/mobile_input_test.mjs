@@ -170,6 +170,9 @@ assert.deepEqual(viewportSize({ width: 390, height: 300, requestedWidth: 640,
   env.gfx_host_text_input(1, 0, 5, 10, 20, 30, 42);
   env.gfx_host_pointer_mode(1);
   assert.deepEqual(calls, [[0, 0, 780, 600], [10, 20, 40, 60], [1, 0, 5, 10, 20, 30, 42], 1]);
+  assert.equal(env.gfx_host_pixel_ratio_milli(), 2000, 'W reads the ratio for device-size glyphs');
+  assert.equal(makeEnv({ memory: () => memory, gl: {}, host: {} }).gfx_host_pixel_ratio_milli(), 1000,
+    'hosts without pixelRatio draw 1:1');
 }
 // Composition completion may be followed by its input in a later task.
 {
@@ -346,6 +349,74 @@ for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
   assert.deepEqual(h.chars(), [97, 233, 8, 13]);
   assert.deepEqual(h.events.filter(e => e.kind === EVENT.KEY_DOWN).map(e => e.code), [229, 229, 229, 229]);
 }
+// Samsung Keyboard (and Gboard) compose every word until a space or
+// suggestion. Tapping another field mid-word (seen on a Galaxy, Chrome 115)
+// must commit the word to the field it was typed in, in a frame before the
+// press moves focus, and must not blur the sink: blur plus the release's
+// focus() hid the keyboard. Chrome ends the IME composition silently when
+// the sink is reset; a late compositionend from other engines is ignored.
+{
+  const h = setup();
+  h.editor.value = '\u200b';
+  const frames = [];
+  let focused = 1;
+  h.frame(() => {
+    const seen = h.events.splice(0);
+    frames.push(seen);
+    if (seen.some(e => e.kind === EVENT.DOWN && e.y > 100)) focused = 2;
+    h.input.setTextInput(1, 0, 0, focused * 60, 200, 48, focused);
+  });
+  h.canvas.fire('pointerdown');
+  h.canvas.fire('pointerup');
+  assert.equal(h.doc.activeElement, h.editor);
+  frames.length = 0;
+  h.editor.fire('compositionstart');
+  h.editor.fire('compositionupdate', { data: 'ca' });
+  h.editor.fire('compositionupdate', { data: 'cab' });
+  h.editor.value = '\u200bcab';
+  h.events.length = 0;
+  h.doc.activeElement = h.editor;
+  let blurred = false;
+  h.editor.blur = () => { blurred = true; h.doc.activeElement = null; };
+  h.canvas.fire('pointerdown', { clientY: 140 });
+  assert.equal(frames.length, 2, 'commit frame, then the press frame');
+  assert.deepEqual(frames[0].map(e => [e.kind, e.code]), [[EVENT.PREEDIT_END, 0],
+    [EVENT.CHAR, 99], [EVENT.CHAR, 97], [EVENT.CHAR, 98]]);
+  assert.equal(frames[0][0].x, 1, 'preedit end names the old field');
+  assert.deepEqual(frames[1].map(e => e.kind), [EVENT.DOWN]);
+  assert.equal(h.editor.value, '\u200b', 'sink reset ends the native composition');
+  h.canvas.fire('pointerup', { clientY: 140 });
+  assert.equal(blurred, false, 'keyboard stays up while moving between fields');
+  assert.equal(h.doc.activeElement, h.editor);
+  h.editor.fire('compositionend', { data: 'cab' });
+  h.editor.fire('input', { inputType: 'insertFromComposition', data: 'cab' });
+  assert.equal(frames.flat().concat(h.events).filter(e => e.kind === EVENT.CHAR).length, 3,
+    'late end of the finished word is not committed twice');
+  h.events.length = 0;
+  h.editor.fire('compositionstart');
+  h.editor.fire('compositionupdate', { data: 'd' });
+  h.editor.fire('compositionend', { data: 'd' });
+  assert.deepEqual(h.chars(), [100], 'next word composes normally in the new field');
+}
+// A mid-word tap on a button keeps the word too, then hides the keyboard.
+{
+  const h = setup();
+  let active = 1;
+  h.frame(() => {
+    if (h.events.some(e => e.kind === EVENT.DOWN)) active = 0;
+    h.input.setTextInput(active, 0, 0, 60, 200, 48, active ? 4 : 0);
+  });
+  h.canvas.fire('pointerdown');
+  h.canvas.fire('pointerup');
+  h.events.length = 0;
+  h.editor.fire('compositionstart');
+  h.editor.fire('compositionupdate', { data: 'John' });
+  h.canvas.fire('pointerdown', { clientY: 300 });
+  h.canvas.fire('pointerup', { clientY: 300 });
+  assert.deepEqual(h.chars(), [...'John'].map(c => c.codePointAt(0)));
+  assert.ok(h.events.findIndex(e => e.kind === EVENT.CHAR) < h.events.findIndex(e => e.kind === EVENT.DOWN));
+  assert.equal(h.doc.activeElement, h.canvas, 'non-text press dismisses the keyboard');
+}
 // Touch long-press cannot open the browser menu; mouse right-click can.
 {
   const h = setup();
@@ -354,4 +425,4 @@ for (const kind of [EVENT.CHAR, EVENT.DOWN, EVENT.UP]) {
   h.canvas.fire('pointerup');
   assert.equal(h.canvas.fire('contextmenu', { pointerType: 'mouse' }).prevented, undefined);
 }
-console.log('mobile_input_test OK (32 scenarios)');
+console.log('mobile_input_test OK (34 scenarios)');

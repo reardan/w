@@ -86,6 +86,57 @@ void test_rrect_quad_counts():
 	ui_render_destroy(&r)
 
 
+# A stretched mask samples only its own texels: the quad's edges map to
+# the edge texels' centers, so LINEAR filtering never blends in the
+# atlas gap (the seam a 24px pill showed on a 1.75x phone).
+void test_mask_uvs_stay_inside_their_texels():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_render_begin(&r, 320, 240)
+	ui_draw_rrect(&r, ui_rect_new(0.0, 0.0, 84.0, 84.0), 42.0, ui_gray(0.5))
+	ui_glyph m = ui_font_mask(ui_mask_corner)
+	float32 half_u = ui_render_u(1) * 0.5
+	float32 half_v = ui_render_v(1) * 0.5
+	float32* v = r.layer_verts[UI_LAYER_BASE]
+	asserts(c"u0 is the first texel center", v[2] == ui_render_u(m.x) + half_u)
+	asserts(c"v0 is the first texel center", v[3] == ui_render_v(m.y) + half_v)
+	asserts(c"u1 is the last texel center", v[18] == ui_render_u(m.x + m.w) - half_u)
+	asserts(c"v1 is the last texel center", v[19] == ui_render_v(m.y + m.h) - half_v)
+	ui_render_destroy(&r)
+
+
+# On a 1.75x phone canvas the glyph comes from the device-size strike,
+# sized back to logical units and placed on the device-pixel grid; the
+# pen still advances by the logical strike's metrics.
+void test_pixel_scale_draws_device_glyphs():
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_render_set_pixel_scale(&r, 1.75)
+	ui_render_begin(&r, 320, 240)
+	int advance = ui_render_glyph(&r, 10.3, 20.0, 'A', 2, ui_gray(0.0))
+	ui_glyph g = ui_font_glyph(0, 'A')
+	assert_equal(g.advance, advance)
+	int device = ui_font_strike(ui_font_strike_face(0), 28)
+	ui_glyph d = ui_font_glyph_id(device, g.gid)
+	asserts(c"device glyph is larger", d.w > g.w)
+	float32* v = r.layer_verts[UI_LAYER_BASE]
+	float32 x0 = v[0] * 1.75
+	float32 y0 = v[1] * 1.75
+	asserts(c"device-pixel width", (v[16] - v[0]) * 1.75 > cast(float32, d.w) - 0.01)
+	asserts(c"device-pixel width", (v[16] - v[0]) * 1.75 < cast(float32, d.w) + 0.01)
+	asserts(c"x on the device grid", x0 - gfx_floor(x0 + 0.5) < 0.01)
+	asserts(c"x on the device grid", gfx_floor(x0 + 0.5) - x0 < 0.01)
+	asserts(c"y on the device grid", y0 - gfx_floor(y0 + 0.5) < 0.01)
+	asserts(c"y on the device grid", gfx_floor(y0 + 0.5) - y0 < 0.01)
+	asserts(c"device UVs", v[2] == ui_render_u(d.x))
+	# Scale 1 (and nonsense) keeps the logical strike.
+	ui_render_set_pixel_scale(&r, 0.0)
+	ui_render_begin(&r, 320, 240)
+	ui_render_glyph(&r, 10.0, 20.0, 'A', 2, ui_gray(0.0))
+	asserts(c"logical UVs", r.layer_verts[UI_LAYER_BASE][2] == ui_render_u(g.x))
+	ui_render_destroy(&r)
+
+
 void test_corner_mask_mirrors():
 	ui_renderer r
 	ui_render_init_headless(&r)

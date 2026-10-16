@@ -257,6 +257,7 @@ export function makeEnv({ memory, gl, host, log = console.error }) {
     gfx_host_text_input: (active, multiline, x, y, width, height, focusId) =>
       host.textInput?.(active, multiline, x, y, width, height, focusId),
     gfx_host_pointer_mode: mode => host.pointerMode?.(mode),
+    gfx_host_pixel_ratio_milli: () => Math.round((host.pixelRatio?.() ?? 1) * 1000),
     gfx_host_set_frame_callback: (tableIndex) => host.setFrameCallback(tableIndex),
     gfx_host_next_event: (ptr) => {
       const e = host.nextEvent ? host.nextEvent() : null;
