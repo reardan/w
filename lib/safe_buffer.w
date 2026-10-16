@@ -58,6 +58,9 @@ void __w_byte_string_drop(WByteString* value):
 
 own WIntBuffer* int_buffer_new():
 	WIntBuffer* buffer = new WIntBuffer
+	buffer.capacity = 0
+	buffer.length = 0
+	buffer.items = 0
 	return cast(own WIntBuffer*, buffer)
 
 
@@ -110,6 +113,9 @@ ref[a] int[] int_buffer_view(ref[a] WIntBuffer* value):
 
 own WByteString* byte_string_new():
 	WByteString* value = new WByteString
+	value.capacity = 0
+	value.length = 0
+	value.items = 0
 	return cast(own WByteString*, value)
 
 
@@ -174,6 +180,9 @@ void byte_string_append(refmut WByteString* borrowed, ref byte[] view):
 
 own WByteString* byte_string_from(ref byte[] view):
 	WByteString* value = new WByteString
+	value.capacity = 0
+	value.length = 0
+	value.items = 0
 	__w_byte_string_ensure(value, view.length)
 	int i = 0
 	while (i < view.length):
