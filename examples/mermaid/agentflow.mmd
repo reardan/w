@@ -1,0 +1,18 @@
+agentflow-beta LR
+accTitle: Review workflow
+accDescr: A task analyzes input, runs a tool, and decides whether to publish.
+global
+  guide["Team guide"]@{shape: refdoc}
+end
+flow reviewer["Review agent"]
+  changes["Changes"]@{shape: input}
+  analyze["Analyze"]@{shape: task, model: local, instruction: "Review the changes"}
+  lint["Run linter"]@{shape: tool, connectorRef: "checks.lint"}
+  clean["Clean?"]@{shape: decision}
+  changes --> analyze --> lint --> clean
+  analyze -.- guide
+end
+publish["Publish"]@{shape: action}
+clean -- yes --> publish
+clean --x analyze
+connector checks["Checks API"]@{protocol: http, endpoint: "https://example.invalid/checks"}

@@ -209,6 +209,7 @@ void emit_typed_local_storage(int type, int has_initializer):
 	else if (type_has_array_field(type)):
 		lea_eax_esp_plus(0)
 		init_array_field_descriptors(type)
+	elif (has_initializer == 0): wgrind_emit_request(6, size * word_size, 0)
 	return
 
 

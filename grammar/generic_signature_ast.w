@@ -1,4 +1,6 @@
 int safe_qualifier_ahead();  # grammar/type_name.w
+char* generic_reparse_save();
+void generic_reparse_restore(char* save);
 
 # Unbound generic signature syntax. Capture never looks up or interns a
 # type: definitions can mention parameters and types declared later.
@@ -6,6 +8,8 @@ int safe_qualifier_ahead();  # grammar/type_name.w
 struct generic_type_ast:
 	char* name
 	int stars
+	int safety
+	char* lifetime
 	int application  # 0 named/builtin, 1 generic struct, 2 slice
 	generic_type_ast* first
 	generic_type_ast* second
@@ -22,6 +26,8 @@ generic_type_ast* generic_type_ast_new(char* name, int stars):
 	generic_type_ast* node = new generic_type_ast
 	node.name = strclone(name)
 	node.stars = stars
+	node.safety = 0
+	node.lifetime = 0
 	node.application = 0
 	node.first = 0
 	node.second = 0
@@ -35,6 +41,7 @@ void generic_type_ast_free(generic_type_ast* node):
 	generic_type_ast_free(node.second)
 	generic_type_ast_free(node.next)
 	free(node.name)
+	if (node.lifetime != 0): free(node.lifetime)
 	free(cast(char*, node))
 
 
@@ -66,10 +73,50 @@ int generic_type_ast_accept(int* brackets, char* spelling):
 	return 1
 
 
+# A template parameter is not a registered type yet. Recognize the
+# pointer-qualified spelling while preserving a parameter named ref/own.
+int generic_signature_qualifier():
+	int kind = safe_qualifier_ahead()
+	if (kind): return kind
+	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
+	if (peek(c"own")): kind = 1
+	if (peek(c"ref")): kind = 2
+	if (peek(c"refmut")): kind = 3
+	if (peek(c"optref")): kind = 6
+	if (peek(c"optrefmut")): kind = 7
+	if (kind == 0): return 0
+	char* save = generic_reparse_save()
+	get_token()
+	int pointer = is_ident_start_byte(token[0]) && (nextc == '*')
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	if (pointer): return kind
+	return 0
+
+
 generic_type_ast* generic_type_ast_capture_at(int depth, int* brackets, int with_suffix):
 	if (depth > 32): return 0
 	if (is_ident_start_byte(token[0]) == 0): return 0
-	if (peek(c"const") || peek(c"gpu") || safe_qualifier_ahead()): return 0
+	if (peek(c"const") || peek(c"gpu")): return 0
+	int safety = generic_signature_qualifier()
+	if (safety):
+		generic_type_ast_advance(brackets)
+		char* lifetime = 0
+		if (generic_type_ast_accept(brackets, c"[")):
+			if ((safety == 1) || (is_ident_start_byte(token[0]) == 0)): return 0
+			lifetime = strclone(token)
+			generic_type_ast_advance(brackets)
+			if (generic_type_ast_accept(brackets, c"]") == 0):
+				free(lifetime)
+				return 0
+		generic_type_ast* qualified = generic_type_ast_capture_at(depth + 1, brackets, with_suffix)
+		if ((qualified == 0) || qualified.safety):
+			generic_type_ast_free(qualified)
+			if (lifetime != 0): free(lifetime)
+			return 0
+		qualified.safety = safety
+		qualified.lifetime = lifetime
+		return qualified
 	int container = 0
 	if (nextc == '['):
 		container = 3

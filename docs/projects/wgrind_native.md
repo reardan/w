@@ -19,12 +19,82 @@ allocation/free/origin diagnostics and exit-time leak reporting. Both launch pat
 must exercise the same checking semantics. Compiler assistance must not be a
 prerequisite for checking a supported prebuilt binary.
 
-This is a multi-stage implementation. Stage 1 and the shared event-driven shadow
-engine described in stage 2 are implemented. Neither execution frontend is wired
-to that engine yet: automatic native uninitialized-value checking and
-precompiled-library checking remain unimplemented. `wgrind --native` still means
-the guard allocator. The new engine is internal infrastructure, not a claim that
-existing programs are now checked at instruction level.
+The shared engine now has a Linux x64 ptrace execution frontend, compiler
+assistance, OS event handling, serialized thread execution, and reachability-based
+leak reports. These are working integrations, but **full Valgrind parity is not
+implemented**. The supported scalar subset runs through the real CPU one instruction
+at a time. Unsupported instructions, syscalls, signals, resource limits, and unsafe
+allocator boundaries terminate with an explicit incomplete result. General glibc
+loader execution, optimized SIMD libraries, signal delivery, blocking thread
+synchronization, and practical application-scale performance remain completion
+requirements. Do not interpret the small precompiled-library fixtures as support
+for arbitrary system libraries or GL drivers.
+
+### Run the native checker
+
+```sh
+./wbuild wgrind wgrind_native
+bin/wgrind --native-exec ./existing-linux-x64-program argument
+bin/wv2 x64 --wgrind program.w -o bin/checked-program
+bin/wgrind --native-exec bin/checked-program argument
+```
+
+`--native-exec` uses `wgrind_native`, with no Valgrind subprocess and no fallback
+to an unchecked run. Status 99 means a detected error or lost allocation; 100
+means incomplete checking. A clean run preserves the target's exit status, so
+99/100 are reserved checker statuses. Diagnostics are JSON on stderr. Existing
+`--native` still selects the guard allocator; the default remains the Valgrind
+launcher. Running a `--wgrind` binary directly stops on its UD2 handshake before
+program startup.
+
+The current platform is Linux x64, with ptrace permission. Prebuilt ELF images may
+be ET_EXEC or ET_DYN; compiler-assisted W images must be non-PIE and cannot use
+streaming, register promotion, or the expression register stack. Instrumented W
+uses a stable stack argument ABI and disables inlining. Ordinary instructions in
+both paths use the same shadow engine, including instructions in precompiled C
+objects and discovered shared images. Unassisted W executables are rejected
+because optimized W allocation entry points do not have the SysV ABI.
+
+### Implemented execution coverage
+
+- Scalar loads/stores, integer aliases, arithmetic, bitwise operations, comparisons,
+  shifts, conditional moves/sets/branches, calls/returns and modeled multiply/divide
+  operations. Flags retain joint possibilities for signed comparisons, rather than
+  independently guessing SF/OF. Undefined data may be copied without an error;
+  consequential uses check its shadow.
+- Checked instruction fetch, stack growth/shrink and red zones; unsupported
+  encodings stop before execution. Execute-only mappings are explicitly incomplete
+  until instruction permissions are modeled separately from data permissions.
+  A short instruction at a mapping boundary does
+  not require the following page to exist.
+- `/proc/PID/maps` and bounded ELF parsing discover mapped images, allocator
+  symbols and writable ELF roots. ELF load bias includes split mappings. File
+  identity is validated, and malformed or unsupported metadata fails explicitly.
+- SysV `malloc`, `calloc`, `realloc` and `free` symbols establish heap lifetimes.
+  The modeled allocator may execute only within its own bounded symbol body;
+  calls and indirect branches inside it are rejected. This is deliberately
+  insufficient for general libc allocator internals. Compiler requests identify W's
+  allocator and its distinct realloc copy-length and zero-size semantics. W
+  allocator hooks are rejected before callbacks execute.
+- Kernel input buffers are checked; only actual successful output bytes are
+  defined. Scalar/vectored I/O, mappings/protection/unmapping, program break,
+  supported identity calls, FS/GS TLS loads/stores and restricted clone/clone3 thread creation are
+  modeled. Shared/device mappings and unknown calls are incomplete.
+- Threads execute one checked instruction at a time with shared memory shadow and
+  separate register/flag/stack state. Supported TLS and TID writes update shadow.
+  Blocking multi-thread syscalls, futexes, signals and unmodeled clone flags remain
+  incomplete; this is neither a POSIX thread implementation nor race detection.
+- Exit-time graph traversal distinguishes definitely lost, indirectly lost,
+  possibly lost (interior pointers), and still reachable allocations. Roots come
+  from defined registers, live stacks (including red zones and malloc-backed stacks)
+  and writable ELF segments, excluding checker
+  metadata and anonymous allocator arenas. Graph/scanning limits fail explicitly.
+
+The ptrace frontend is a correctness reference. It has a fixed instruction budget
+and substantial per-instruction overhead; it is not a translation cache or a
+performance replacement for Memcheck. It checks normal pooled allocator payloads
+without requiring the guard allocator's per-block mmap, but shadow memory and
+origin storage still need compression and benchmarking.
 
 ## 1. Correct and bound existing allocator bookkeeping
 
@@ -78,8 +148,8 @@ Implemented in `libs/wgrind/` with no Valgrind runtime dependency:
   report incomplete.
 - `registers.w`: separate frontend-owned integer register files with byte
   origins, partial-register updates and explicit clearing of upper bits for
-  x64 EAX-style writes. This models integer aliases; it is not thread scheduling
-  or SIMD/flags support.
+  x64 EAX-style writes. This models integer aliases; `flags.w` and the execution frontend add
+  integer flags and separate thread state. SIMD is not supported.
 - `report.w`: deterministic JSON diagnostics with error kind/code, failing
   address, access size, access/origin/allocation/free tokens and allocation-relative
   offset. Error attribution picks a containing retained object or the nearest
@@ -129,16 +199,43 @@ cannot be cleared because resource failures can leave partially installed state;
 the frontend must terminate that checking run. These are engine error codes,
 not new `wgrind` command-line exit codes.
 
-Contexts are single-owner/externally synchronized. Each application thread needs
-its own register file; shared-memory event synchronization remains frontend work.
+Contexts are single-owner/externally synchronized. The execution frontend serializes
+thread steps and maintains a separate register file for each live thread.
 Origins are stable opaque tokens, not yet interned stack traces. Each scalar
 `wg_value` carries one representative origin: combining bytes from distinct
 origins can lose precise attribution even though definedness is preserved.
-Source symbolization, full instruction/flag/SIMD semantics, automatic mappings,
-stack and syscall events, and reachability-based leak classification remain open.
-The `live_blocks`/`live_bytes` counters count unfreed allocations, not proven leaks.
+Full instruction/SIMD semantics and complete stack-trace symbolization remain open.
+Automatic mappings, stack/syscall events and reachability classification are supplied
+by the frontend. The raw `live_blocks`/`live_bytes` counters count unfreed allocations,
+not proven leaks; `leaks.w` performs the graph analysis.
 
 ### Validation
+
+`wgrind_native_test` executes standalone C, separately compiled PIC shared
+code, symbol-intercepted allocation, short/truncated instruction fetches,
+syscall outputs, mappings and actual clone/TLS fixtures. `wgrind_compiler_test`
+executes automatically instrumented W heap/stack cases, including zero-size
+allocation, partial-copy realloc and callback rejection. `wgrind_source_test`
+checks bounded DWARF attribution. Source locations are supplemental JSON records
+with roles for access, origin, allocation and free; unsupported debug metadata
+leaves the machine-address diagnostic intact.
+
+`wgrind_flags_test` compares joint flag state and AF against an independent
+concrete-value oracle. `wgrind_integer_test`, `wgrind_os_test`,
+`wgrind_images_test`, `wgrind_symbols_test` and `wgrind_leaks_test` cover
+instruction effects, OS contracts, bounded malformed ELF handling and leak graphs.
+The graph oracle includes independent small graphs and a long iterative chain.
+
+For an optional external oracle, install Valgrind and run:
+
+```sh
+./wbuild wgrind_native
+python3 tests/wgrind_differential.py
+```
+
+This compares clean, undefined-branch, masked-value and invalid-read C fixtures
+against Memcheck, including the failing instruction address. It does not yet
+provide differential coverage for every supported operation or OS boundary.
 
 `wgrind_shadow_test` and its x64 twin cover cross-page/wide accesses, partial
 stores, use after free, invalid/double frees, address reuse, overlapping moves,
@@ -157,7 +254,7 @@ failure. A manually instrumented real-allocation consumer tests copied undefined
 data, masking and invalid access/free attribution. It is explicitly **not** an
 automatic compiler or binary execution test. The x64 engine/diagnostic tests also
 run clean under Memcheck as a development check; full differential testing of
-both execution frontends remains a later acceptance requirement.
+all supported frontend operations remains a later acceptance requirement.
 
 ### Remaining semantic requirements
 
@@ -185,7 +282,7 @@ allocation/free sites and undefined-value origin. Include deterministic error
 codes and a machine-readable format. Unsupported operations must produce an
 incomplete-check result distinct from a clean execution and a detected error.
 
-## 3. Native execution of existing binaries
+## 3. Native execution completion requirements
 
 Implement a Linux x64 execution frontend with instrumented basic blocks and a
 translation cache. The existing `libs/asm` decoder is useful infrastructure but
@@ -212,12 +309,16 @@ fixtures; it is not an acceptable performance solution for allocation-heavy
 applications. No subprocess invocation of Valgrind or another checker may supply
 the production result.
 
-## 4. Compiler-assisted W path
+## 4. Compiler-assisted W completion requirements
 
-Add a whole-program checking flag and a versioned instrumentation manifest.
-Compile loads, stores, value operations, control-flow uses and runtime helpers
-against the same shadow semantics as the binary frontend. Carry allocation and
-source metadata directly from the compiler where possible.
+The implemented `--wgrind` flag emits versioned lifetime/source requests.
+Loads, stores, value operations and control-flow uses run through the shared binary
+frontend; the flag is not a standalone compiler sanitizer. Each request is a
+24-byte UD2/WGRD record (version, event, two 64-bit payloads), consumed without
+changing CPU registers or flags. Events cover startup, allocator entry/return,
+source location, undefined stack locals and unsupported allocator hooks. Allocation
+entry also carries its hook-cell address, so direct hook-global writes cannot
+bypass the callback restriction.
 
 Audit **all** emission paths, including streaming and retained ASTs, optimized
 addressing modes, register promotion, increments, struct copies, bitfields,
@@ -230,7 +331,7 @@ Crossing from instrumented W into precompiled C transfers to the binary frontend
 with the same shadow memory. Returning restores register/value shadow state.
 Compiler-inserted checks alone cannot certify a precompiled library.
 
-## 5. OS boundaries, threads and leaks
+## 5. OS, threads, leaks and performance completion requirements
 
 Model syscall inputs and outputs, including partial reads, vectored I/O,
 failed calls, mapping operations, signal frames, thread creation and TLS.
@@ -241,11 +342,9 @@ as unsupported until their memory contracts are modeled.
 Keep thread state isolated, synchronize shared shadow updates, and test signals,
 fork/exec and allocator reentrancy. Access checking is not race detection.
 
-At process exit classify live allocations by reachability from application
-roots, excluding checker tables from those roots. Report direct and indirect
-leaks, interior-pointer ambiguity and reachable blocks separately. Keep strict
-all-live-block reporting as an explicit policy rather than conflating it with
-unreachable leaks.
+The implemented exit scan classifies live allocations from application roots and
+uses strongly connected components to identify indirect loss. Continue validation
+against real application root layouts; never conflate all live blocks with leaks.
 
 After access checks are reliable, pool native payload storage and use software
 redzones plus a bounded quarantine. Measure payload, shadow, origins, translation

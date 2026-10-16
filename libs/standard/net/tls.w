@@ -6,7 +6,7 @@ TLS 1.3 client and server (RFC 8446) for the pure-W HTTPS stack: plan 11
 Scope (matches the plan's "keep the surface minimal"):
   - TLS 1.3: ChaCha20-Poly1305/SHA-256, AES-128-GCM/SHA-256 and
     AES-256-GCM/SHA-384; X25519 and P-256 ECDH with HelloRetryRequest.
-    No PSK/0-RTT/resumption;
+    PSK ticket resumption with fresh DHE; no 0-RTT;
     optional/required client certificates (ECDSA P-256). ALPN (RFC 7301)
     is optional: see below. Server signature verification supports RSA
     SHA-256/SHA-384 and ECDSA P-256/SHA-256 or P-384/SHA-384.
@@ -23,7 +23,7 @@ Scope (matches the plan's "keep the surface minimal"):
     transcript with the server finished key), client Finished, switch to
     application keys.
   - Post-handshake: tls_read/tls_write over application_data, KeyUpdate
-    (respond when update_requested), NewSessionTicket accepted+ignored,
+    (respond when update_requested), NewSessionTicket cached for resumption,
     close_notify on tls_close and on receiving one.
   - Alerts parsed and surfaced; any fatal alert or malformed message tears
     down with a clear error.
@@ -38,6 +38,14 @@ hostname matching -- the CertificateVerify handshake signature and the
 Finished MAC are always checked.
 
 Public API:
+  tls_session_cache* tls_session_cache_new()
+  void        tls_session_cache_clear(tls_session_cache* cache)
+  void        tls_session_cache_free(tls_session_cache* cache)
+              Set cfg.session_cache (borrowed) and cfg.server_port to enable.
+              Cache must outlive connections; serialize access. At most 16
+              single-use tickets; trust contents/ALPN/SNI/port are isolated.
+              Insecure, injected-time and client-auth configurations do not
+              resume. conn.resumed reports server acceptance; no early data.
   tls_config* tls_config_new()
   void        tls_config_free(tls_config* cfg)
   char*       tls_last_error(tls_config* cfg)
@@ -168,6 +176,8 @@ const int TLS_EXT_SUPPORTED_GROUPS = 0x000a
 const int TLS_EXT_SIGNATURE_ALGORITHMS = 0x000d
 const int TLS_EXT_SIGNATURE_ALGORITHMS_CERT = 0x0032
 const int TLS_EXT_SUPPORTED_VERSIONS = 0x002b
+const int TLS_EXT_PRE_SHARED_KEY = 41
+const int TLS_EXT_PSK_MODES = 45
 const int TLS_EXT_COOKIE = 0x002c
 const int TLS_EXT_KEY_SHARE = 0x0033
 
@@ -246,7 +256,61 @@ const int TLS_CLIENT_AUTH_REQUIRED = 2
 
 # ---- configuration ------------------------------------------------------------
 
+# Owned, bounded, in-memory ticket store. Serialize access with its connections.
+# Entries are consumed on offer; eviction/free wipe PSKs and opaque tickets.
+struct tls_session:
+	char* server_name
+	int port
+	char* context
+	char* ticket
+	int ticket_len
+	char* nonce
+	int nonce_len
+	int lifetime
+	int age_add
+	int received_ms
+	int received_unix
+	int hash_alg
+	char* psk
+	char* peer_certificate_sha256
+
+
+struct tls_session_cache:
+	list[tls_session*] entries
+
+
+tls_session_cache* tls_session_cache_new():
+	return new tls_session_cache(new list[tls_session*])
+
+
+void tls_session_free(tls_session* s):
+	if (s == 0): return
+	tls_wipe(s.psk, 48)
+	tls_wipe(s.ticket, s.ticket_len)
+	free(s.psk)
+	free(s.ticket)
+	free(s.nonce)
+	free(s.context)
+	free(s.server_name)
+	if (s.peer_certificate_sha256 != 0): free(s.peer_certificate_sha256)
+	free(s)
+
+
+void tls_session_cache_clear(tls_session_cache* cache):
+	if (cache == 0): return
+	while (cache.entries.length): tls_session_free(cache.entries.pop())
+
+
+void tls_session_cache_free(tls_session_cache* cache):
+	if (cache == 0): return
+	tls_session_cache_clear(cache)
+	list_free[tls_session*](cache.entries)
+	free(cache)
+
+
 struct tls_config:
+	tls_session_cache* session_cache # borrowed; must outlive all connections
+	int server_port                 # required for resumption; 0 disables it
 	char* client_cert_chain_path # borrowed leaf-first PEM chain, optional
 	char* client_key_path        # borrowed ECDSA P-256 PKCS#8/SEC1 PEM path
 	int require_client_auth      # fail if server omits CertificateRequest
@@ -267,6 +331,8 @@ struct tls_config:
 
 tls_config* tls_config_new():
 	tls_config* c = new tls_config()
+	c.session_cache = 0
+	c.server_port = 0
 	c.client_cert_chain_path = 0
 	c.client_key_path = 0
 	c.require_client_auth = 0
@@ -463,6 +529,16 @@ char* tls_server_last_error(tls_server_config* c):
 # ---- connection ---------------------------------------------------------------
 
 struct tls_conn:
+	tls_session_cache* session_cache # snapshot, independent of config lifetime
+	tls_session* offered_session    # owned, removed from cache before offering
+	char* session_server_name
+	int session_port
+	char* session_context
+	x509_trust_store* session_trust # owned exact snapshot hashed into context
+	int resumed                    # server selected our PSK
+	char* resumption_master
+	char* master_secret
+	int resumption_ready
 	int fd                # socket fd, or -1 for the in-memory harness
 	int use_mem
 	string_builder* mem_in          # in-memory input (server bytes), for tests
@@ -535,6 +611,9 @@ struct tls_conn:
 
 
 int tls_auth_fail(tls_conn* c, int alert, char* message);
+int tls_verify_server_finished(tls_conn* c, int htype, char* msg, int mlen, char* th_cv, char* th_ch_sf);
+int tls_hello_extensions(char* msg, int len);
+int tls_extensions_valid(char* msg, int len, int start);
 int tls_group_size(int group);
 int tls_hello_has_group(char* msg, int len, int group);
 void tls_set_peer_certificate(tls_conn* c, x509_cert* leaf);
@@ -549,6 +628,18 @@ void tls_free_cert_list(list[x509_cert*] certs);
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	tls_conn* c = new tls_conn()
 	c.fd = fd
+	c.session_cache = 0
+	c.offered_session = 0
+	c.session_server_name = 0
+	c.session_port = 0
+	c.session_context = 0
+	c.session_trust = 0
+	c.resumed = 0
+	c.resumption_ready = 0
+	c.resumption_master = cast(char*, malloc(48))
+	c.master_secret = cast(char*, malloc(48))
+	tls_wipe(c.master_secret, 48)
+	tls_wipe(c.resumption_master, 48)
 	c.use_mem = use_mem
 	c.io_timeout_ms = 0 - 1
 	c.has_io_deadline = 0
@@ -619,6 +710,14 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 # Wipe every key/secret buffer and release the connection. Safe on 0.
 void tls_conn_free(tls_conn* c):
 	if (c == 0): return
+	tls_session_free(c.offered_session)
+	x509_store_free(c.session_trust)
+	if (c.session_server_name != 0): free(c.session_server_name)
+	if (c.session_context != 0): free(c.session_context)
+	tls_wipe(c.resumption_master, 48)
+	tls_wipe(c.master_secret, 48)
+	free(c.resumption_master)
+	free(c.master_secret)
 	aes_gcm_key_free(c.r_aes)
 	aes_gcm_key_free(c.w_aes)
 	string_free(c.hello)
@@ -937,6 +1036,15 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 			return 1
 
 		else:
+			# Once read keys are installed every handshake/alert is protected.
+			# In particular an unauthenticated plaintext ticket must never enter
+			# the session cache. CCS compatibility records are handled above.
+			if (c.r_active):
+				free(hdr)
+				free(body)
+				tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
+				tls_fail(c, c"tls: plaintext record after keys")
+				return 0
 			# Plaintext record (ServerHello, or an early alert).
 			if (rtype == TLS_CT_APPLICATION_DATA):
 				free(hdr)
@@ -1014,6 +1122,188 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 			tls_fail(c, c"tls: unexpected record during handshake")
 			return 0
 	return 0
+
+
+# Snapshot the effective trusted certificates and ALPN offer. Content hashing
+# prevents tickets bypassing CA replacement at the same path or SSL_CERT_FILE.
+# Insecure, injected-time and client-certificate sessions deliberately never
+# resume: their verification/authentication policy must run each handshake.
+void tls_session_prepare(tls_conn* c, char* server_name):
+	tls_config* cfg = c.cfg
+	if (cfg == 0 || cfg.session_cache == 0 || cfg.server_port <= 0 || cfg.server_port > 65535): return
+	if (server_name == 0 || server_name[0] == 0): return
+	if (cfg.insecure_skip_verify || cfg.has_now_unix || cfg.require_client_auth): return
+	if (cfg.client_cert_chain_path != 0 || cfg.client_key_path != 0 || cfg.test_client_hello != 0 || cfg.test_priv != 0): return
+	x509_trust_store* trust = x509_load_trust_store(cfg.trust_store_path)
+	if (trust == 0): return
+	whash* h = whash_new(WHASH_SHA256)
+	char[4] size
+	for x509_cert* cert in trust.certs:
+		store_be32(size, cert.der_len)
+		whash_update(h, size, 4)
+		whash_update(h, cert.der, cert.der_len)
+	store_be32(size, cfg.alpn_len)
+	whash_update(h, size, 4)
+	if (cfg.alpn_len): whash_update(h, cfg.alpn, cfg.alpn_len)
+	c.session_context = cast(char*, malloc(32))
+	whash_final(h, c.session_context)
+	whash_free(h)
+	c.session_trust = trust
+	c.session_cache = cfg.session_cache
+	c.session_server_name = strclone(server_name)
+	c.session_port = cfg.server_port
+	int i = 0
+	while (i < c.session_cache.entries.length):
+		tls_session* session = c.session_cache.entries[i]
+		int age = time_now() - session.received_unix
+		int elapsed_ms = time_monotonic_ms() - session.received_ms
+		int expired = age < 0 || age >= session.lifetime || elapsed_ms < 0 || elapsed_ms >= session.lifetime * 1000
+		int match = session.port == c.session_port && strcmp(session.server_name, server_name) == 0 && mem_eq(session.context, c.session_context, 32)
+		if (expired || match):
+			tls_session* last = c.session_cache.entries.pop()
+			if (i < c.session_cache.entries.length): c.session_cache.entries[i] = last
+			if (expired): tls_session_free(session)
+			else:
+				c.offered_session = session
+				return
+		else: i += 1
+
+
+# Validate the complete NewSessionTicket even if caching is disabled.
+# Unknown extensions are allowed, duplicate extensions are forbidden.
+int tls_session_ticket(tls_conn* c, char* msg, int len):
+	if (c.is_server || len < 17 || load_be24(msg + 1) != len - 4): return 0
+	int lifetime = load_be32(msg + 4)
+	int nonce_len = msg[12] & 255
+	int pos = 13 + nonce_len
+	if (pos + 2 > len): return 0
+	int ticket_len = load_be16(msg + pos)
+	pos += 2
+	if (ticket_len == 0 || ticket_len > len - pos - 2): return 0
+	int ticket_start = pos
+	pos += ticket_len
+	int extensions = load_be16(msg + pos)
+	pos += 2
+	if (extensions != len - pos): return 0
+	if (tls_extensions_valid(msg, len, pos) == 0): return 0
+	while (pos < len):
+		if (len - pos < 4): return 0
+		int kind = load_be16(msg + pos)
+		int n = load_be16(msg + pos + 2)
+		if (n > len - pos - 4): return 0
+		if (kind == 42 && n != 4): return 0
+		pos += 4 + n
+	# RFC 8446: discard zero and over-seven-day lifetimes, not the connection.
+	if (lifetime <= 0 || lifetime > 604800): return 1
+	# Bound cache memory and leave space for the remaining ClientHello fields
+	# in its single plaintext record. Larger tickets may be ignored safely.
+	if (ticket_len > 8192): return 1
+	if (c.session_cache == 0 || c.resumption_ready == 0 || c.peer_verified == 0): return 1
+	tls_session* session = new tls_session()
+	session.server_name = strclone(c.session_server_name)
+	session.port = c.session_port
+	session.context = mem_dup(c.session_context, 32)
+	session.ticket = mem_dup(msg + ticket_start, ticket_len)
+	session.ticket_len = ticket_len
+	session.nonce = mem_dup(msg + 13, nonce_len)
+	session.nonce_len = nonce_len
+	session.lifetime = lifetime
+	session.age_add = load_be32(msg + 8)
+	session.received_ms = time_monotonic_ms()
+	session.received_unix = time_now()
+	session.hash_alg = c.hash_alg
+	session.psk = cast(char*, malloc(48))
+	tls_wipe(session.psk, 48)
+	tls13_hkdf_expand_label(c.hash_alg, c.resumption_master, c"resumption", 10, msg + 13, nonce_len, session.psk, c.digest_size)
+	session.peer_certificate_sha256 = 0
+	if (c.peer_certificate_sha256 != 0): session.peer_certificate_sha256 = strclone(c.peer_certificate_sha256)
+	# One fresh ticket per origin/context, bounded to 16 origins overall.
+	int i = 0
+	while (i < c.session_cache.entries.length):
+		tls_session* old = c.session_cache.entries[i]
+		if (old.port == session.port && strcmp(old.server_name, session.server_name) == 0 && mem_eq(old.context, session.context, 32)):
+			tls_session_free(old)
+			c.session_cache.entries[i] = session
+			return 1
+		i += 1
+	if (c.session_cache.entries.length >= 16): tls_session_free(c.session_cache.entries.pop())
+	c.session_cache.entries.push(session)
+	return 1
+
+
+# Append psk_dhe_ke then the final pre_shared_key extension. Input already
+# has final non-PSK extensions (including an HRR cookie). All encoded lengths
+# include binders, while the MAC transcript excludes the binder vector.
+char* tls_session_client_hello(tls_conn* c, char* hello, int* len):
+	tls_session* session = c.offered_session
+	if (session == 0):
+		if (c.session_cache == 0 || c.retry_seen): return hello
+		int extpos = tls_hello_extensions(hello, *len)
+		char* modes = cast(char*, malloc(*len + 6))
+		mem_copy(modes, hello, *len)
+		store_be16(modes + *len, TLS_EXT_PSK_MODES)
+		store_be16(modes + *len + 2, 2)
+		modes[*len + 4] = 1
+		modes[*len + 5] = 1
+		*len += 6
+		store_be16(modes + extpos, *len - extpos - 2)
+		store_be24(modes + 1, *len - 4)
+		free(hello)
+		return modes
+	int alg = session.hash_alg
+	int ds = whash_digest_size(alg)
+	# A retry selecting another hash must drop the incompatible PSK.
+	if (c.retry_seen && alg != c.hash_alg):
+		tls_session_free(c.offered_session)
+		c.offered_session = 0
+		return hello
+	int ext = tls_hello_extensions(hello, *len)
+	string_builder* b = string_new()
+	string_append_bytes(b, hello, *len)
+	free(hello)
+	if (c.retry_seen == 0):
+		string_append_be16(b, TLS_EXT_PSK_MODES)
+		string_append_be16(b, 2)
+		string_append_char(b, 1)
+		string_append_char(b, 1)
+	string_append_be16(b, TLS_EXT_PRE_SHARED_KEY)
+	string_append_be16(b, session.ticket_len + 11 + ds)
+	string_append_be16(b, session.ticket_len + 6)
+	string_append_be16(b, session.ticket_len)
+	string_append_bytes(b, session.ticket, session.ticket_len)
+	char[4] age
+	store_be32(age, time_monotonic_ms() - session.received_ms + session.age_add)
+	string_append_bytes(b, age, 4)
+	int truncated = b.length
+	string_append_be16(b, ds + 1)
+	string_append_char(b, ds)
+	char[48] zeros
+	mem_fill(cast(char*, zeros), 0, 48)
+	string_append_bytes(b, zeros, ds)
+	store_be16(b.data + ext, b.length - ext - 2)
+	store_be24(b.data + 1, b.length - 4)
+	whash* h = whash_new(alg)
+	if (c.retry_seen):
+		whash_free(h)
+		h = whash_clone(c.transcript)
+	whash_update(h, b.data, truncated)
+	char[48] digest
+	char[48] early
+	char[48] binder
+	char[48] finished
+	whash_final(h, digest)
+	whash_free(h)
+	hkdf_extract(alg, c"", 0, session.psk, ds, early)
+	tls13_derive_secret(alg, early, c"res binder", 10, c"", 0, binder)
+	tls_finished_key(alg, binder, finished)
+	hmac_compute(alg, finished, ds, digest, ds, b.data + truncated + 3)
+	tls_wipe(early, 48)
+	tls_wipe(binder, 48)
+	tls_wipe(finished, 48)
+	*len = b.length
+	char* result = b.data
+	free(b)
+	return result
 
 
 # ---- ClientHello --------------------------------------------------------------
@@ -1193,6 +1483,7 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 	int group = 0
 	int cookie_start = 0
 	int cookie_len = 0
+	int selected_psk = 0
 	while (pos < len):
 		if (len - pos < 4): return 0
 		int kind = load_be16(msg + pos)
@@ -1213,6 +1504,12 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 			else:
 				if (group != c.key_group || n != size + 4 || load_be16(msg + pos + 2) != size): return 0
 				mem_copy(out_pub, msg + pos + 4, size)
+		else if (kind == TLS_EXT_PRE_SHARED_KEY):
+			if (retry || selected_psk || n != 2 || load_be16(msg + pos) != 0 || c.offered_session == 0): return 0
+			int alg = WHASH_SHA256
+			if (suite == TLS_SUITE_AES_256_GCM_SHA384): alg = WHASH_SHA384
+			if (alg != c.offered_session.hash_alg): return 0
+			selected_psk = 1
 		else if (kind == TLS_EXT_COOKIE && retry):
 			if (cookie_start || n < 3 || load_be16(msg + pos) != n - 2): return 0
 			cookie_start = pos
@@ -1228,6 +1525,7 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 		if (cookie_start): string_append_bytes(c.retry_cookie, msg + cookie_start, cookie_len)
 	else if (group == 0): return 0
 	tls_set_suite(c, suite)
+	c.resumed = selected_psk
 	if (retry): return 2
 	return 1
 
@@ -1324,7 +1622,8 @@ void tls_derive_handshake(tls_conn* c, char* ecdhe, char* th_ch_sh, char* out_hs
 	tls_wipe(zeros, ds)
 
 	char* early = cast(char*, malloc(ds))
-	hkdf_extract(alg, c"", 0, zeros, ds, early)
+	if (c.resumed): hkdf_extract(alg, c"", 0, c.offered_session.psk, ds, early)
+	else: hkdf_extract(alg, c"", 0, zeros, ds, early)
 
 	char* derived1 = cast(char*, malloc(ds))
 	tls13_derive_secret(alg, early, c"derived", 7, c"", 0, derived1)
@@ -1352,6 +1651,7 @@ void tls_derive_application(tls_conn* c, char* hs_secret, char* th_ch_sf):
 	tls13_derive_secret(alg, hs_secret, c"derived", 7, c"", 0, derived2)
 	char* master = cast(char*, malloc(ds))
 	hkdf_extract(alg, derived2, ds, zeros, ds, master)
+	mem_copy(c.master_secret, master, ds)
 	tls13_hkdf_expand_label(alg, master, c"c ap traffic", 12, th_ch_sf, ds, c.c_ap_secret, ds)
 	tls13_hkdf_expand_label(alg, master, c"s ap traffic", 12, th_ch_sf, ds, c.s_ap_secret, ds)
 	tls_wipe(zeros, ds)
@@ -1428,7 +1728,11 @@ int tls_check_chain(tls_conn* c, list[x509_cert*] certs, char* server_name):
 	if (have_now == 0): now_unix = tls_now_unix()
 	char* store_path = 0
 	if (c.cfg != 0): store_path = c.cfg.trust_store_path
-	x509_trust_store* store = x509_load_trust_store(store_path)
+	# Consume the same trust snapshot used to label cached sessions. A CA
+	# file replacement while the peer is handshaking cannot relabel trust.
+	x509_trust_store* store = c.session_trust
+	c.session_trust = 0
+	if (store == 0): store = x509_load_trust_store(store_path)
 	if (store == 0):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_INTERNAL_ERROR)
 		tls_fail(c, c"tls: cannot load trust store")
@@ -1483,6 +1787,8 @@ int tls_client_parse_ee(tls_conn* c, char* msg, int len):
 			tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 			tls_fail(c, c"tls: malformed EncryptedExtensions")
 			return 0
+		if (etype == 42):
+			return tls_auth_fail(c, TLS_ALERT_UNSUPPORTED_EXTENSION, c"tls: unsolicited early_data")
 		if (etype == TLS_EXT_ALPN):
 			char* offered = 0
 			int offered_len = 0
@@ -1532,6 +1838,17 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		return 0
 	if (tls_client_parse_ee(c, msg, mlen) == 0): return 0
 	whash_update(c.transcript, msg, mlen)
+
+	if (c.resumed):
+		char* th = cast(char*, malloc(ds))
+		whash_final(c.transcript, th)
+		if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
+			free(th)
+			return 0
+		int ok = tls_verify_server_finished(c, htype, msg, mlen, th, th_ch_sf)
+		if (ok && c.offered_session.peer_certificate_sha256 != 0):
+			c.peer_certificate_sha256 = strclone(c.offered_session.peer_certificate_sha256)
+		return ok
 
 	# Optional CertificateRequest precedes the server Certificate.
 	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
@@ -1608,10 +1925,14 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 
 	tls_free_cert_list(certs)
 
-	# server Finished: HMAC(server_finished_key, TH(CH..CertificateVerify)).
 	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
 		free(th_cv)
 		return 0
+	return tls_verify_server_finished(c, htype, msg, mlen, th_cv, th_ch_sf)
+
+
+int tls_verify_server_finished(tls_conn* c, int htype, char* msg, int mlen, char* th_cv, char* th_ch_sf):
+	int ds = c.digest_size
 	if (htype != TLS_HS_FINISHED):
 		free(th_cv)
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
@@ -1642,7 +1963,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	whash_update(c.transcript, msg, mlen)
 	# Snapshot CH..serverFinished for the application secrets + client Finished.
 	whash_final(c.transcript, th_ch_sf)
-	if (skip == 0): c.peer_verified = 1
+	if (c.cfg == 0 || c.cfg.insecure_skip_verify == 0): c.peer_verified = 1
 	return 1
 
 
@@ -1786,7 +2107,7 @@ char* tls_retry_client_hello(char* first, int len, int group, char* pub, string_
 			string_append_be16(b, group)
 			string_append_be16(b, size)
 			string_append_bytes(b, pub, size)
-		else if (kind != TLS_EXT_COOKIE): string_append_bytes(b, first + pos, n + 4)
+		else if (kind != TLS_EXT_COOKIE && kind != TLS_EXT_PRE_SHARED_KEY): string_append_bytes(b, first + pos, n + 4)
 		pos += n + 4
 	if (cookie.length):
 		string_append_be16(b, TLS_EXT_COOKIE)
@@ -1836,6 +2157,7 @@ int tls_client_key_exchange(tls_conn* c, char* server_name, char* shared):
 			if (random_ok == 0):
 				tls_fail(c, c"tls: RNG failure")
 				break
+		ch = tls_session_client_hello(c, ch, &ch_len)
 		string_append_bytes(c.hello, ch, ch_len)
 		whash_update(c.transcript, ch, ch_len)
 		if (tls_send_record(c, TLS_CT_HANDSHAKE, ch, ch_len, 0) == 0):
@@ -1860,6 +2182,7 @@ int tls_client_key_exchange(tls_conn* c, char* server_name, char* shared):
 			if (ch == 0):
 				tls_auth_fail(c, TLS_ALERT_ILLEGAL_PARAMETER, c"tls: cannot construct second ClientHello")
 				break
+			ch = tls_session_client_hello(c, ch, &ch_len)
 			c.hello.length = 0
 			string_append_bytes(c.hello, ch, ch_len)
 			whash_update(c.transcript, ch, ch_len)
@@ -1907,6 +2230,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 			tls_fail(c, c"tls: no server name to verify")
 			return 0
 
+	tls_session_prepare(c, server_name)
 	char* ecdhe = cast(char*, malloc(32))
 	if (tls_client_key_exchange(c, server_name, ecdhe) == 0):
 		tls_wipe(ecdhe, 32)
@@ -1930,6 +2254,11 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 		free(hs_secret)
 		free(th_ch_sf)
 		return 0
+
+	# Resumption verified the ticket against this snapshot but needed no
+	# certificate path. Full handshakes consumed it in tls_check_chain.
+	x509_store_free(c.session_trust)
+	c.session_trust = 0
 
 	# Client Finished: HMAC(client_finished_key, TH(CH..serverFinished)),
 	# sent under the client handshake write keys.
@@ -1957,6 +2286,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 	mem_copy(fin + 4, cvd, ds)
 	free(cvd)
 	int fsent = tls_send_record(c, TLS_CT_HANDSHAKE, fin, 4 + ds, 1)
+	whash_update(c.transcript, fin, 4 + ds)
 	free(fin)
 	if (fsent == 0):
 		tls_wipe(hs_secret, ds)
@@ -1967,6 +2297,11 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 
 	# Derive application traffic secrets and switch both directions.
 	tls_derive_application(c, hs_secret, th_ch_sf)
+	char[48] res_hash
+	whash_final(c.transcript, res_hash)
+	tls13_hkdf_expand_label(c.hash_alg, c.master_secret, c"res master", 10, res_hash, ds, c.resumption_master, ds)
+	tls_wipe(c.master_secret, 48)
+	c.resumption_ready = 1
 	tls_wipe(hs_secret, ds)
 	free(hs_secret)
 	free(th_ch_sf)
@@ -2032,15 +2367,21 @@ void tls_update_secret(int alg, char* secret, int ds):
 	free(next)
 
 
-# Handle a post-handshake handshake message (NewSessionTicket ignored,
+# Handle a post-handshake handshake message (NewSessionTicket cached,
 # KeyUpdate re-keys the read side and answers when requested). Symmetric
 # across roles: the read side re-keys the PEER's application secret and, when
 # update_requested, our own write side re-keys OUR application secret. For a
 # client our write secret is c_ap and read is s_ap; for a server it is the
 # mirror image (is_server flips them).
-void tls_post_handshake(tls_conn* c, char* data, int dlen):
+void tls_post_handshake_message(tls_conn* c, char* data, int dlen):
 	if (dlen < 4): return
 	int mt = data[0] & 255
+	if (mt == TLS_HS_NEW_SESSION_TICKET):
+		if (tls_session_ticket(c, data, dlen) == 0): tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: malformed NewSessionTicket")
+		return
+	if (mt != TLS_HS_KEY_UPDATE || dlen != 5 || (data[4] & 255) > 1):
+		tls_auth_fail(c, TLS_ALERT_UNEXPECTED_MESSAGE, c"tls: invalid post-handshake message")
+		return
 	if (mt == TLS_HS_KEY_UPDATE):
 		int req = 0
 		if (dlen >= 5): req = data[4] & 255
@@ -2062,6 +2403,29 @@ void tls_post_handshake(tls_conn* c, char* data, int dlen):
 			free(ku)
 			tls_update_secret(c.hash_alg, write_secret, c.digest_size)
 			tls_install_write_keys(c, write_secret)
+
+
+# hs_buf is also the bounded post-handshake reassembly buffer.
+void tls_post_handshake(tls_conn* c, char* data, int dlen):
+	if (c.hs_pos > 0):
+		int remaining = c.hs_buf.length - c.hs_pos
+		if (remaining > 0): mem_copy(c.hs_buf.data, c.hs_buf.data + c.hs_pos, remaining)
+		c.hs_buf.length = remaining
+		c.hs_pos = 0
+	if (dlen > TLS_MAX_HANDSHAKE - c.hs_buf.length):
+		tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: oversized post-handshake message")
+		return
+	string_append_bytes(c.hs_buf, data, dlen)
+	while (c.hs_buf.length - c.hs_pos >= 4):
+		char* msg = c.hs_buf.data + c.hs_pos
+		int size = load_be24(msg + 1) + 4
+		if (size > TLS_MAX_HANDSHAKE):
+			tls_auth_fail(c, TLS_ALERT_DECODE_ERROR, c"tls: oversized post-handshake message")
+			return
+		if (size > c.hs_buf.length - c.hs_pos): return
+		tls_post_handshake_message(c, msg, size)
+		c.hs_pos += size
+		if (c.broken): return
 
 
 # Read up to len application-data bytes. Returns the number read (>0), 0 at
@@ -2093,6 +2457,10 @@ int tls_read(tls_conn* c, char* buf, int len):
 			if (c.at_eof != 0): return 0
 			return 0 - 1
 		if (rtype == TLS_CT_APPLICATION_DATA):
+			if (c.hs_buf.length > c.hs_pos):
+				free(data)
+				tls_auth_fail(c, TLS_ALERT_UNEXPECTED_MESSAGE, c"tls: application data interrupts handshake message")
+				return 0 - 1
 			if (dlen == 0):
 				free(data)
 				# empty record: keep reading
@@ -2119,6 +2487,7 @@ int tls_read(tls_conn* c, char* buf, int len):
 		else if (rtype == TLS_CT_HANDSHAKE):
 			tls_post_handshake(c, data, dlen)
 			free(data)
+			if (c.broken): return 0 - 1
 		else: free(data)
 	return 0 - 1
 
@@ -2239,6 +2608,7 @@ int tls_parse_client_hello_options(char* msg, int len, char* out_random, char* o
 		int kind = load_be16(msg + pos)
 		int n = load_be16(msg + pos + 2)
 		pos += 4
+		if (kind == TLS_EXT_PRE_SHARED_KEY && pos + n != len): return 0
 		if (kind == TLS_EXT_SUPPORTED_VERSIONS):
 			if (n < 3 || (msg[pos] & 255) != n - 1 || ((n - 1) & 1)): return 0
 			for i in range(1, n, 2):
@@ -2563,7 +2933,8 @@ int tls_server_select_alpn(tls_conn* c, char* msg, int len):
 
 # Normalize a retried hello for comparison: key_share is the only extension
 # our server asks to change; padding may also change per RFC 8446 4.1.2.
-# PSK/early_data are outside this implementation's retry contract.
+# This server never accepts PSKs. Ignore their updated binders/removal so
+# an offered ticket can fall back to a full handshake after HRR.
 char* tls_retry_invariant(char* msg, int len, int* out_len):
 	int ext = tls_hello_extensions(msg, len)
 	if (ext < 0 || tls_extensions_valid(msg, len, ext + 2) == 0): return 0
@@ -2573,10 +2944,10 @@ char* tls_retry_invariant(char* msg, int len, int* out_len):
 	while (pos < len):
 		int kind = load_be16(msg + pos)
 		int n = load_be16(msg + pos + 2)
-		if (kind == 41 || kind == 42 || kind == TLS_EXT_COOKIE):
+		if (kind == 42 || kind == TLS_EXT_COOKIE):
 			string_free(b)
 			return 0
-		if (kind != TLS_EXT_KEY_SHARE && kind != 21): string_append_bytes(b, msg + pos, n + 4)
+		if (kind != TLS_EXT_KEY_SHARE && kind != 21 && kind != TLS_EXT_PRE_SHARED_KEY): string_append_bytes(b, msg + pos, n + 4)
 		pos += n + 4
 	*out_len = b.length
 	char* out = b.data

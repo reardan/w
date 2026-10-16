@@ -32,7 +32,8 @@ transcript and reject repeated retries or changed retry parameters. The
 server checks that CH2 preserves CH1 except for the requested share and
 padding. The server can constrain negotiation with
 `tls_server_config.cipher_suite` and `key_exchange_group` (zero selects
-automatically). This implementation does not support PSK/resumption/0-RTT.
+automatically). Client PSK ticket resumption is supported; 0-RTT remains
+unsupported.
 
 P-256 ECDH validates scalars and peer points and reuses the existing fixed
 scalar schedule. Its bignum arithmetic remains variable-time, as in P-256
@@ -44,6 +45,39 @@ Validation includes NIST CAVP AES-GCM vectors, RFC 5903 P-256 ECDH, the
 actual RFC 8448 AES-GCM record, offline retry and KeyUpdate tests, and
 `./wbuild openssl_interop_test`. That optional target tests all three suites
 with X25519, direct P-256 and P-256 retry, in both roles on x86 and x64.
+
+## Client ticket resumption (#693)
+
+A caller can retain a `tls_session_cache_new()` object across connections and
+set `cfg.session_cache` plus `cfg.server_port`. The cache must outlive every
+connection that uses it; serialize its use and release it with
+`tls_session_cache_free()`. `tls_session_cache_clear()` explicitly invalidates
+stored tickets. `conn.resumed` reports whether the server accepted the PSK.
+
+The bounded in-memory cache keeps one fresh ticket per server name, port and
+security context, up to 16 entries (tickets over 8 KiB are ignored). Tickets are consumed when offered and
+expire after their server lifetime (at most seven days). The context hashes
+the effective trusted certificate contents and ALPN offer; replacing a CA
+bundle at the same path invalidates the match. Insecure verification, injected
+certificate time, test key/hello injection, and client-certificate policies
+use full handshakes. Resumption preserves the authenticated peer fingerprint.
+
+`tls_read` validates and reassembles NewSessionTicket messages, including
+fragmented/coalesced records, and derives their PSKs from the transcript
+through client Finished. ClientHello offers `psk_dhe_ke` and places
+`pre_shared_key` last, with SHA-256/SHA-384 binders including the HRR transcript
+when needed. Servers may reject tickets and complete a normal certificate
+handshake. There is no early data and no production server ticket issuance.
+
+HTTP keeps a cache per owned `http_client` and a bounded shared cache for
+legacy requests, including requests with total deadlines. Closing an idle TCP
+connection preserves tickets so a subsequent connection can resume. Closing or destroying an owned
+client wipes its tickets. Cache access follows the existing
+client serialization contract.
+
+Offline unit and loopback tests run in the normal suite. Optional OpenSSL
+interop checks all supported suites and groups, including HRR, successful
+resumption and rejected-ticket fallback.
 
 The remaining sections retain the original implementation plan.
 
@@ -283,9 +317,25 @@ Homegrown TLS is a real risk and we accept it deliberately:
 
 `net/dns.w`
 
-- `int dns_resolve_ipv4(char* hostname, int* out_ip)` — `/etc/hosts`, then
-  resolv.conf servers, 2s timeout per server, ID randomized from
-  `crypto.random`.
+- `int dns_resolve_ipv4(char* hostname, int* out_ip)` — literals, then
+  `/etc/hosts`, then cached DNS answers or resolv.conf servers (2s per server).
+  `dns_resolve_ipv4_until` also accepts an overall monotonic deadline.
+- The process-wide answer cache holds at most 64 entries, matches hostnames
+  case-insensitively with an optional trailing dot, and expires positive
+  answers at the minimum CNAME/A TTL, capped to 300 seconds. TTL zero and
+  transient failures are not cached; validated NXDOMAIN expires after 5 seconds.
+  Expiry uses `time_monotonic_ms()` with wrap-safe relative comparisons.
+- `void dns_cache_clear()` flushes answers and parsed configuration files;
+  `void dns_cache_set_enabled(int enabled)` flushes and disables/enables reuse.
+  Configuration content changes invalidate both positive and negative answers.
+  Linux checks nanosecond mtime, inode and size before reusing parsed files.
+  Where `statx` is unavailable (currently Darwin), each lookup rereads the
+  files and compares contents before reusing the parsed data.
+- `dns_resolve_ipv4_config_until(hostname, out_ip, deadline_ms, hosts_path,
+  resolv_path, server_port)` provides explicit configuration for embedders and
+  offline loopback tests. The `dns_query_server` APIs always bypass the cache.
+  Shared-cache locking is qualified on Linux x86/x64; other targets support
+  serial callers, matching the existing shared-budget synchronization layer.
 
 ## Implementation phases
 

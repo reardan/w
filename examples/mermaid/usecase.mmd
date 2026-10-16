@@ -1,0 +1,9 @@
+usecase-beta
+direction LR
+actor Customer
+systemBoundary Store[Order system]
+  Checkout(Place order)
+  Payment(Pay)
+end
+Customer --> Checkout
+Checkout ..> : include Payment

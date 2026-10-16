@@ -4462,6 +4462,7 @@ void ret():
 		a64(op(0xd6, 0x5f03c0))   # ret
 	else:
 		if (ers_count != 0): ers_assert_none()
+		wgrind_function_return()
 		emit(1, c"\xc3") /* ret */
 
 # Framed arm64 return: x28 = x29 drops the body's words, the pair pop

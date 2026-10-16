@@ -68,6 +68,7 @@ void x64_emit_rebase_table():
 
 void elf_start_64():
 	elf_image_headers(62, 1)
+	wgrind_emit_request(0, 8, 0)
 	if (elf_pie && (elf_shared == 0)): x64_entry_rebase_stub()
 
 	/* setup command line args */

@@ -153,6 +153,7 @@ int switch_statement():
 
 	while ((tab_level > switch_tab_level) && (token[0] != 0)):
 		int label_tab_level = tab_level
+		int clause = retained_enter(retained_statement, filename, token_start_offset, diag_token_line, diag_token_column, token)
 		if (seen_default): error(c"'default' must be the last clause in a switch")
 
 		# Region for jumps past this case while its values do not match
@@ -171,6 +172,7 @@ int switch_statement():
 		enclosing_tab_level = label_tab_level
 		statement()
 		if (flow_terminates == 0): every_case_terminates = 0
+		retained_leave(clause, token_start_offset)
 
 		# Implicit break: leave the switch after the body (no fallthrough)
 		be_br(switch_break_chain)

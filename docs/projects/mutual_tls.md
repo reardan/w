@@ -4,8 +4,12 @@
 certificate authentication during the initial handshake. Existing server-only
 TLS remains the default. The TLS layer negotiates ChaCha20-Poly1305 or
 AES-128/256-GCM, with X25519 or P-256 exchange (including HelloRetryRequest).
-Client credentials remain ECDSA P-256. Post-handshake authentication and session resumption are not
-implemented.
+Client credentials remain ECDSA P-256. Post-handshake authentication is not
+implemented. Client PSK ticket resumption is available for server-only TLS;
+configuring client credentials or `require_client_auth` disables resumption
+so each connection repeats the requested certificate authentication. See
+[the TLS plan](../../libs/standard/plans/11_native_http_tls.md#client-ticket-resumption-693)
+for session-cache ownership and policy isolation.
 
 Configure the client with borrowed PEM paths in `tls_config`:
 

@@ -1,0 +1,17 @@
+stateDiagram-v2
+    direction LR
+    [*] --> Draft
+    state "Preparing order" as Draft
+    Draft --> Processing : submit
+    state Processing {
+        direction TB
+        [*] --> Validate
+        state Decision <<choice>>
+        Validate --> Decision
+        Decision --> Accepted : valid
+        Decision --> Rejected : invalid
+        Accepted --> [*]
+        Rejected --> [*]
+    }
+    Processing --> Shipped : complete
+    Shipped --> [*]

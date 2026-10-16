@@ -907,6 +907,9 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--ast-opt") == 0):
 		if (apply): ast_opt_mode = 1
 		return 1
+	if (strcmp(arg, c"--wgrind") == 0):
+		if (apply): wgrind_generate_mode = 1
+		return 1
 	# P1 (docs/projects/register_allocation_pgo.md §3.2): instrumented
 	# execution counters per function and loop head, flushed at exit to
 	# $W_PROFILE_OUT, with a <output>.wprofmap sidecar keyed by defhash
@@ -960,6 +963,7 @@ int link_option(char* arg, int apply):
 			ivopt_disabled = 1
 		return 1
 	if (strcmp(arg, c"--regs") == 0):
+		if (apply && wgrind_generate_mode): target_option_error(c"--wgrind cannot be combined with --regs")
 		if (apply): regalloc_disabled = 0
 		return 1
 	# Direct calls (docs/projects/codegen_gap_plan.md §2.4, unit A4) are
@@ -991,6 +995,7 @@ int link_option(char* arg, int apply):
 		if (apply): ers_disabled = 1
 		return 1
 	if (strcmp(arg, c"--expr-regs") == 0):
+		if (apply && wgrind_generate_mode): target_option_error(c"--wgrind cannot be combined with --expr-regs")
 		if (apply): ers_disabled = 0
 		return 1
 	# The x86-32 register budget (docs/projects/codegen_gap_plan.md §2.7,
@@ -1100,6 +1105,7 @@ void help_shared_options():
 	println(c"  --ast-opt             fold constant if/while conditions and drop the dead arms")
 	# P1
 	println(c"  --coverage            count executable statement lines; report with wcoverage lines")
+	println(c"  --wgrind              x64 Linux: emit native-checker lifetime/source requests (requires wgrind --native-exec)")
 	println(c"  --profile-generate    count function entries and loop heads at run time; needs -o,")
 	println(c"                        writes <output>.wprofmap; the program appends to $W_PROFILE_OUT")
 	# P2
@@ -1216,7 +1222,7 @@ void help_deps():
 
 
 void help_symbols():
-	println(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+	println(c"usage: w symbols [--json] [--layout] [--all-errors] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 	println(c"")
 	println(c"Compile like 'w check', then dump the global symbol table and the")
 	println(c"user-declared types with their declaration locations.")
@@ -1231,6 +1237,10 @@ void help_symbols():
 	println(c"                        padding; union fields sit at 0); c_import types")
 	println(c"                        carry real C ABI padding as explicit __ci_* filler")
 	println(c"                        fields and print with the <c_import> file marker")
+	println(c"  --all-errors          recover at each statement like 'w check")
+	println(c"                        --all-errors' and dump what was declared even")
+	println(c"                        when the file has errors (exit status 1), so")
+	println(c"                        editors keep hover and completion mid-edit")
 	help_shared_options()
 	println(c"")
 	help_selectors()
@@ -1404,6 +1414,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	wasm_export_count = 0
 	x64_syscall_abi = 0
 	x64_hypercall_count = 0
+	wgrind_generate_mode = 0
+	wgrind_allocator_kind = 0
 	arm64_pac = 1
 	bounds_mode = 1
 	strict_mode = 0
@@ -1615,9 +1627,22 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if ((strcmp(*flag_arg, c"--inline") == 0) || (strcmp(*flag_arg, c"--no-inline") == 0)): link_option(*flag_arg, 1)
 			# P1: counters cover the runtime closure too (profile_counters.w).
 			if ((strcmp(*flag_arg, c"--profile-generate") == 0) || (strcmp(*flag_arg, c"--coverage") == 0)): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--wgrind") == 0): link_option(*flag_arg, 1)
 			# P2: so does the profile the optimizer reads (profile_use.w).
 			if (starts_with(*flag_arg, c"--profile-use=")): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
+	if (wgrind_generate_mode):
+		if ((word_size != 8) || (target_isa != 0) || (target_os != 0)):
+			target_option_error(c"--wgrind requires the x64 Linux target")
+		if (elf_static || elf_shared || elf_pie || x64_syscall_abi):
+			target_option_error(c"--wgrind requires a native non-PIE executable")
+		if (streaming_flag): streaming_conflict_error(c"--wgrind")
+		# Requests expose the W stack ABI and stack-local lifetimes. Keep
+		# that ABI stable and prevent inlining an allocator past its request.
+		regalloc_disabled = 1
+		reg_args_disabled = 1
+		inline_disabled = 1
+		ers_disabled = 1
 	if (safe_mode):
 		if (unsafe_bounds_flag): target_option_error(c"--safe cannot be combined with --bounds=off")
 		if (streaming_flag): streaming_conflict_error(c"--safe")
@@ -2977,6 +3002,7 @@ int symbols_main(int argc, int argv):
 	int json = 0
 	int layout = 0
 	diag_json = 0
+	analysis_requested = 0
 	# Leading flags in any order, like 'w check'.
 	int scanning = 1
 	while (scanning & (i < argc)):
@@ -2988,6 +3014,16 @@ int symbols_main(int argc, int argv):
 		else if (strcmp(*arg, c"--layout") == 0):
 			layout = 1
 			i = i + 1
+		else if (strcmp(*arg, c"--all-errors") == 0):
+			# The same in-process recovery as 'w check --all-errors' (and
+			# the same native-host restriction). Declarations before and
+			# after a failed statement stay in the table, so the dump below
+			# still runs; the errors precede it and set the exit status.
+			if (__target_isa__ == 2):
+				println2(c"--all-errors is not supported on wasm hosts")
+				return 1
+			analysis_requested = 1
+			i = i + 1
 		else if (import_root_arg_width(*arg) > 0):
 			i = i + import_root_arg_width(*arg)
 		else if (arg_is_help(*arg)):
@@ -2995,12 +3031,13 @@ int symbols_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
+		println2(c"usage: w symbols [--json] [--layout] [--all-errors] [x64|arm64|arm64_android|arm64_darwin|arm64_ios|arm64_ios_sim|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--safe]")
 		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)
 	if (layout): symbols_dump_layout(json)
 	else: symbols_dump(json)
+	if (analysis_errors > 0): return 1
 	return 0
 
 

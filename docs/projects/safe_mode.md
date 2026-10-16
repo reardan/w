@@ -1,6 +1,6 @@
 # Experimental ownership and borrowing checks
 
-The compiler accepts `--safe` on Linux x86 and x64:
+The compiler accepts `--safe` on Linux x86/x64 and Windows x64 (`win64`):
 
 ```sh
 ./bin/wv2 --safe app.w -o app
@@ -10,7 +10,7 @@ The compiler accepts `--safe` on Linux x86 and x64:
 This is a bounded, single-threaded subset, tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
-design, including optional references and broader lifetime contracts, is
+design, including richer aggregates and broader lifetime contracts, is
 tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 
 ## Pointer contracts
@@ -20,11 +20,14 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
+| `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
+| `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
 
-Qualifiers are contextual: existing identifiers named `own`, `ref` or `refmut`
+Qualifiers are contextual: existing identifiers named `own`, `ref`, `refmut`,
+`optref` or `optrefmut`
 retain their meaning. Type aliases preserve qualifiers. A checked pointer has
 the same size and calling convention as a raw pointer. The pointee must be
 sized and contain no references, raw pointers, unions or containers, except
@@ -52,8 +55,8 @@ int main():
 `new T` zero-initializes its allocation and traps on allocation failure. It
 must initialize an owner in checked code. Owners and references require
 initializers. Checked references cannot be null or fabricated by casts, pointer
-arithmetic, raw-pointer conversion or an integer. Optional references are not
-part of this subset; use ordinary control flow instead of a nullable reference.
+arithmetic, raw-pointer conversion or an integer. Explicit optional references
+use `optref` or `optrefmut`, described below; ordinary references remain non-null.
 
 An owner's declaration, move and destruction have the same meaning without
 `--safe`. Any function that uses a checked type is analyzed, together with its
@@ -68,7 +71,8 @@ cannot erase earlier binding identities.
 A shared or mutable reference can borrow a named owner, another reference, or
 an initialized stack place (`ref int* r = &value`). A reborrow suspends
 conflicting access through its parent until the child reference's last use.
-Reference bindings cannot be reassigned in this release.
+Nonoptional reference bindings cannot be reassigned. Optional reference
+bindings support replacement as described below.
 
 Reference liveness follows branches and loop backedges. Ownership state must
 be valid on every incoming path where a value is used. An early return does
@@ -105,7 +109,7 @@ calls, and reborrow references. Callers retain the original backing storage
 and reborrow ancestry, so a live result prevents conflicting access, moves,
 replacement or destruction. Projections still borrow the whole backing
 value. Bind a result before dereferencing it; direct dereference of a call
-result remains unsupported. References cannot be reassigned or fabricated
+result remains unsupported. Nonoptional references cannot be reassigned or fabricated
 from a temporary owner. Multiple borrowed inputs require the named lifetime
 contracts described below. Returned slices use the explicit checked slice
 type described under arrays and slices.
@@ -120,7 +124,7 @@ named `length` follow the usual field-borrow rules.
 ### Named lifetime contracts
 
 Annotate a reference with `ref[a] T*` or `refmut[a] T*` to name its lifetime
-relationship within a function signature. The result's label must occur on
+relationship within a function signature. Without an outlives clause, the result's label must occur on
 at least one borrowed input. The result may borrow from any input with that
 label, and the caller conservatively keeps **all** those inputs borrowed
 until the result's last use. Inputs with other labels do not contribute to
@@ -154,8 +158,57 @@ convention. They are local to each signature: a forward declaration can
 rename labels if it preserves the same relationships between result and
 parameters. Aliases preserve labels. Annotating a local reference does not
 extend its backing storage's lifetime. Ordinary references stay non-null;
-`own` does not take a lifetime label. General outlives clauses remain a
-future extension.
+`own` does not take a lifetime label.
+
+### Explicit outlives clauses
+
+Direct and concrete generic function signatures may add `where a > b` after the parameter list.
+The clause says lifetime `a` outlives `b`; it permits a result labeled `b`
+to borrow from an input labeled `a`. Separate multiple relationships with
+commas. Relationships are transitive, and every label must occur on a borrowed
+parameter or result. A result-only label is valid when an input outlives it.
+
+```w
+ref[shorter] int* shorten(ref[longer] int* value) where longer > shorter:
+	return value
+
+ref[c] int* choose_shorter(ref[a] int* left, ref[b] int* right, int first) where a > b, b > c:
+	if first: return left
+	return right
+```
+
+The caller retains **all** possible backing inputs whose labels outlive the
+result, including transitive predecessors, until the result's last use.
+The body cannot return an unrelated input or local storage. Mutable results
+still require every contributing input to be mutable; the clause does not
+change pointee types or permit mutation through shared references. Slices,
+optional references and the existing single-group borrowed records use the
+same result-provenance rule.
+
+Forward declarations may consistently rename labels, reorder clauses and
+add redundant transitive edges. The normalized relationship between signature
+positions must agree, including on unused and later declarations. Self-edges
+are redundant; cycles require both directions and do not extend any actual
+storage lifetime. Contracts apply with or without `--safe`.
+
+Direct functions and concrete generic specializations support at most ten
+parameters. For example:
+
+```w
+ref[b] T* generic_shorten[T](ref[a] T* value) where a > b:
+	return value
+```
+
+Explicit calls (`generic_shorten[int](input)`) and calls inferred from a typed
+checked reference (`generic_shorten(input)`) preserve the same contract. An
+untyped address expression alone does not infer `T`; use a named checked
+reference or explicit type arguments. Each instantiated body and its retained
+call signature must agree, including through aliases, imports and recursion.
+Unused generic templates retain the ordinary deferred-instantiation behavior.
+The existing generic parameter/result shape restrictions still apply.
+Higher-ranked function values and independent aggregate lifetime groups remain
+rejected pending their own implementation gates.
+No runtime representation, allocation or destruction order changes.
 
 ### Shared-reference structs
 
@@ -191,6 +244,39 @@ inline descriptors. Bind an extracted slice before indexing it; direct
 `record.values[0]` is not yet supported. Field mutation, wrapper reassignment, unqualified record
 storage, heap construction, mutable-reference fields, nested aggregates and
 multiple independent field-lifetime groups remain unsupported in this form.
+
+### Mutable-reference structs
+
+`refmut[a] Record` extends the inline record form to mutable-reference fields.
+Its template may contain scalars, shared pointers, mutable pointers and shared
+checked slices, all reference fields using one common named group:
+
+```w
+struct ExclusiveView:
+	refmut[field] int* item
+	int amount
+
+refmut[a] ExclusiveView exclusive_view(refmut[a] int* value):
+	return ExclusiveView(value, 3)
+
+void increase(refmut ExclusiveView view):
+	int amount = view.amount
+	refmut int* item = view.item
+	*item += amount
+```
+
+Construction supplies every field and reserves each earlier reference while
+later arguments evaluate. Copying, passing or returning the wrapper creates
+a reborrow: the parent is suspended while a conflicting child remains live.
+The checker conservatively borrows the entire lifetime group, so different
+fields do not provide disjoint mutable access. Shared fields cannot become
+mutable references. An extracted field view keeps the group's backing values
+alive, independently of the wrapper's inline descriptor storage.
+
+Scalar metadata may be changed. Reference-field replacement, wrapper
+reassignment, descriptor-field addresses, optional fields, nested borrowed
+records, mixed owned/borrowed fields, multiple lifetime groups and partial
+moves remain rejected. These are separate roadmap items.
 
 ### Owned structs
 
@@ -237,11 +323,79 @@ compiler work.
 
 Owned returns must transfer an owner on every normal path. Recursion,
 forward declarations and imported functions use the same signature contract;
-the implementation is checked even without `--safe`. Indirect calls,
-callbacks, methods and unmodeled generic
-operations are rejected rather than treated as ordinary scalar calls.
+the implementation is checked even without `--safe`. Checked methods and UFCS
+calls use the receiver's explicit first-parameter contract and evaluate it
+before the remaining arguments. An owned receiver transfers ownership;
+shared/mutable receivers borrow with the ordinary call rules.
 Forward declarations resolve to a checked implementation and must agree with
 its parameter and return contracts.
+
+Direct generic calls check their concrete specialized signature and body.
+Scalar and sized-pointer type arguments, including inferred whole-parameter
+types, preserve checked qualifiers; an `own` argument transfers exactly once. Pointer-qualified
+generic signatures also support named lifetimes:
+
+```w
+ref[a] T* generic_view[T](ref[a] T* value):
+	return value
+```
+
+The result keeps the same backing roots as an ordinary reference-returning
+call. Generic syntax does not bypass the checker. Checked slices and inline
+borrowed records as generic type arguments remain excluded by the existing
+aggregate call limits. Generic method syntax and capturing callbacks remain
+unsupported in checked code, as does the existing unsupported `new T`
+allocation syntax in generic definitions. Noncapturing function pointers use
+the explicit quantified contracts below.
+
+### Quantified function pointers
+
+A checked function type binds its lifetime labels explicitly:
+
+```w
+type View = fn[a](ref[a] int*) -> ref[a] int*
+
+ref[x] int* view(ref[x] int* value):
+	return value
+
+int main():
+	View* callback = view
+	int value = 7
+	ref int* result = callback(&value)
+	return *result - 7
+```
+
+Each invocation instantiates the contract independently. The result borrows
+from the inputs specified by that invocation; storing the function address
+does not capture any storage. `fn[]` marks a checked signature without named
+lifetimes. Unnamed borrowed results retain sole-input inference. An explicit
+`where a > b` clause follows the result type. Every named borrowed slot must
+be bound and every binder must be used. Nested function types bind their own
+labels independently.
+
+Values use the existing `View*` representation. Locals and parameters may
+hold them, ordinary functions may return them, and a returned callable may
+be invoked directly. Assignment and argument passing require exact contract
+agreement after consistent lifetime renaming, including nested signatures,
+mutability, optionality and normalized outlives relations. There is no
+function-contract subtyping. The implementation body is checked even when
+its address is never called. Forward and imported definitions use the same
+rules as direct calls.
+
+Indirect calls preserve argument evaluation order, backing roots, reborrow
+parents and owner transfers. An owning argument moves once; owning results
+participate in normal replacement and scope cleanup. Checked slices and the
+currently supported borrowed records keep their ordinary by-value ABI.
+
+Null, uninitialized, raw or cast-forged callables are rejected, as are raw
+escapes, global/aggregate callable storage and const-qualified callable
+forms. These contracts describe ordinary W entry points; generators, kernels,
+variadic entry points and unaudited foreign functions cannot become checked
+function values. Capturing or escaping closure environments remain a separate
+workstream. Signatures admit at most ten parameters; nested validation is
+bounded to depth 32 and 256 expanded type visits.
+
+### Argument effects
 
 Argument evaluation is included in checking: an earlier mutable argument
 cannot coexist with a later read of the same storage, including a read or
@@ -250,6 +404,50 @@ borrowed while evaluating the right-hand expression; indexing likewise keeps
 the receiver borrowed while evaluating the index. Nested moves, replacement
 or mutation of that backing storage are rejected. Reading the same storage
 for an update, or replacing an owner in a separate statement, remains valid.
+
+## Optional references
+
+`optref T*` and `optrefmut T*` are nullable shared and mutable references.
+They have the same one-pointer representation as `ref T*` and `refmut T*`,
+with the integer literal `0` representing absence. Ordinary references remain
+non-null. Optional references accept the same named lifetime spelling:
+`optref[a] T*` and `optrefmut[a] T*`.
+
+```w
+int optional_value(optref int* value):
+	if value == 0: return 0
+	return *value
+
+optref int* maybe_value(ref int* value, int present):
+	if present: return value
+	return 0
+```
+
+Dereferencing, projecting a field or passing an optional value to a nonoptional
+reference parameter requires proof of presence. Initializing with an address or
+nonoptional reference establishes that proof. Tests `value`, `!value`,
+`value == 0` and `value != 0` refine the appropriate branch, including an early
+return and a `while` guard. Short-circuit `&&`/`||` and scalar ternaries preserve
+these proofs. Bitwise `&`/`|` do not. Branch joins and loop backedges retain all
+possible absence states; an assignment invalidates the previous proof. Compound
+tests containing optional assignments conservatively do not establish a final
+branch proof.
+
+An initialized optional local can be assigned `0`, a compatible checked pointer,
+or a borrowed call result. Origins and reborrow parents conservatively include
+all values ever assigned in that function. This can retain a borrow longer than
+necessary, but replacement cannot discard a backing-storage obligation. Clearing
+a parent does not clear a copied child's borrow. Replacements that create a
+reborrow ancestry cycle are rejected. Nonoptional locals, slices and aggregate
+wrappers retain their existing reassignment restrictions.
+
+Optional parameters and results use the existing inferred or named lifetime
+contracts. Returning `0` is permitted; returning a view of local storage is not.
+A returned optional view conservatively borrows every candidate input even when
+the callee may choose absence. An unannotated optional result without borrowed inputs may return absence only;
+its body still cannot return a view of local or owned storage. Optional aggregate fields, optional slices,
+reference fabrication through casts and arbitrary pointer arithmetic remain
+unsupported. All these rules apply with or without `--safe`.
 
 ## Arrays, slices and control flow
 
@@ -293,10 +491,13 @@ unsupported. Slice elements must be pointer-free sized values. To obtain a
 checked subrange of a fixed array, first bind a checked full view; slicing
 the array directly still produces the legacy representation.
 
-The supported control flow is blocks, `if`/`else`, `while`, `break`, `continue`,
-returns, short-circuit Boolean expressions and scalar conditional expressions.
-`for`, `switch`, generators, arbitrary `goto`, GPU operations and legacy
-container operations remain unsupported. The audited concrete storage APIs
+The supported control flow is blocks, `if`/`else`, `while`, range `for`, scalar
+`switch`, `break`, `continue`, returns, short-circuit Boolean expressions and
+scalar conditional expressions. Range bounds and step evaluate once in source
+order; `continue` reaches the implicit index update. Switch labels retain
+their evaluation order and W's no-fallthrough behavior. Container iteration,
+generators, arbitrary `goto`, GPU operations and legacy container operations
+remain unsupported. The audited concrete storage APIs
 below are the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
@@ -352,7 +553,48 @@ failure trap. Growth checks arithmetic before allocation and reads only the
 initialized prefix. The exact library source is pinned by the compiler;
 changed implementations do not inherit its audited contract. Generic
 buffers, owned-element containers, maps, sets and concurrent access remain
-future extensions.
+future extensions, except for the concrete owned-element buffer below.
+
+### Buffers of owned integers
+
+`own WOwnedIntBuffer*` owns its `own int*` elements. Construct it with
+`owned_int_buffer_new()`. `owned_int_buffer_push(buffer, owner)` consumes an
+owner; `owned_int_buffer_set(buffer, index, owner)` consumes the replacement
+and destroys the previous element. `owned_int_buffer_pop(buffer)` transfers
+the last owner to the caller and traps on an empty buffer.
+
+`owned_int_buffer_get(buffer, index)` returns a shared `ref int*` tied to the
+buffer. Every mutation, move, replacement and destruction is forbidden while
+that view remains live. After popping an owner, that allocation is independent
+of the buffer and survives its clear, replacement or destruction.
+`owned_int_buffer_length` reads the length; `owned_int_buffer_clear` destroys
+remaining elements in reverse order. Automatic buffer destruction clears the
+elements, frees slot storage, then frees metadata. Owned records may contain
+this buffer. Metadata and raw slot helpers remain inaccessible.
+
+This concrete API does not yet provide arbitrary element types, generic
+collection wrappers, maps, sets or escaping iterators.
+
+### Checked byte arena
+
+`own WByteArena*` is a separate, opaque arena with compiler-checked reset and
+destruction lifetimes. `byte_arena_new()` creates an empty owner.
+`byte_arena_copy(arena, source)` copies a `ref byte[]` and returns a shared
+view whose lifetime is tied to the arena, independently of the source. The
+source may therefore be a local array or temporary view. Empty copies and
+embedded NUL bytes are supported; no UTF-8 invariant is imposed.
+
+Copying into the arena requires exclusive access, even when no growth would
+occur. A live returned view prevents another copy, `byte_arena_reset`,
+`byte_arena_release`, owner movement, replacement or destruction. Reset
+retains capacity and resets the used length; release also frees storage.
+`byte_arena_length` reports the used byte count. The owner remains usable
+after reset or release, and normal owner cleanup frees it automatically.
+
+This API uses ordinary lifetime contracts and audited copying; it does not
+trust manual borrow-registration counters in the legacy `lib.arena` API.
+Typed arena allocation, attached budgets, nonmoving concurrent allocation,
+and general raw/foreign-to-checked conversions remain separate work.
 
 ## Cleanup and unsafe boundaries
 
@@ -365,9 +607,15 @@ its stack slot; cleanup tests the slot before freeing it. This accounts for
 branch-dependent transfers without reference counting or garbage collection.
 There is no cleanup promise after process termination or a trap.
 
-Exit-time `defer` is rejected in checked functions. Its existing deferred
-reads and arbitrary control flow have not been integrated into borrow
-liveness, and it cannot be used to manually free an owner a second time.
+Checked `defer` registrations must appear directly in the outer function
+block. The return expression is evaluated and transferred first, deferred
+expressions run in LIFO order against their exit-time bindings, then remaining
+owners are destroyed. Deferred reads keep their backing storage borrowed;
+a deferred move cannot consume an owner already transferred by the return.
+Returned references remain protected while deferred work runs. Nested loop,
+branch or block registrations remain rejected; this extension does not give
+W's static registration rules dynamic per-iteration semantics. Nested exits
+after an outer registration still execute the registered work at function exit.
 
 An explicit boundary permits raw operations:
 
@@ -401,7 +649,8 @@ grant permission to call arbitrary raw interfaces.
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Other targets and in-process REPL/debugger
+pointers, with or without `--safe`. Targets other than Linux x86/x64 and win64,
+and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same
 analysis before an output file is published.
@@ -570,8 +819,9 @@ fixpoints and the benchmark gate. Its instrumented full suite passed all
 lines (97%). Compiler line/branch coverage is 95.3% / 85.5%; code-generator
 coverage is 97.0% / 88.5%. Coverage floors retain the measured gains.
 Compiler checks pass for x86, x64, win64, arm64 and arm64_darwin, along with
-six manifest-selected architecture/root checks. These check compiler
-portability; checked application support remains Linux x86/x64.
+six manifest-selected architecture/root checks. These checked compiler
+portability; that release supported checked applications only on Linux
+x86/x64. The follow-on implementation adds win64 as described above.
 Independent review found an evaluation-order lifetime hole in
 projected stores and indices; temporary backing-storage reservations and
 15 positive/negative regression cases cover the fix. These results remain
@@ -584,3 +834,186 @@ Buffer and collection runtime tests explicitly compile with `--ast-required`
 in the ordinary suite too. Parser regressions cover both compiler hosts and
 target architectures, contextual qualifier names, nested aliases, lifetime
 arena growth, and unsafe casts that must still reach the safe-mode checker.
+
+### Follow-on extension validation
+
+The combined optional-reference, control-flow, defer, method, generic,
+mutable-record, owned-buffer, arena and win64 changes passed 1,288 targets
+from `tests`, `verify_x64`, `wbench_compare` and the six explicit safe-mode
+win64 runtime targets. This includes both self-host fixpoints and the
+performance regression gate. All 48 manifest-selected architecture/root
+checks passed, along with direct win64 and ARM64 compiler checks. Compiler
+portability checks do not admit checked applications on unsupported targets.
+The separate `tests_win64` suite also passed all 20 targets under Wine,
+including its self-host fixpoint.
+
+The isolated instrumented `tests` suite passed all 1,281 targets and every
+compiler/API harness, with a COMPLETE receipt. Changed executable compiler
+coverage from the follow-on baseline `666ccd52` was 477/497 lines (95%, above
+the 80% gate); the complete branch diff against `origin/main` reached
+521/541 lines (96%). Compiler line/branch
+coverage reached 95.4% / 85.8%, code-generator coverage 97.1% / 88.7%, and
+diagnostic-site coverage 51.5%. Coverage floors were raised to retain those
+gains. The ordinary 1,288-target run additionally includes the performance
+gate and six win64 runtime targets, accounting for the count difference.
+
+The new source matrices exercise compilation and structured checking on
+x86/x64 with and without `--safe`; accepted cases execute, and rejected cases
+must leave no output artifact. The mutable-record matrix includes 43 cases,
+the generic matrix 20 cases, and a separate 12-case generic interaction
+matrix checks aliasing, argument order, recursive calls and optional results.
+Required-AST and optimization variants cover the admitted paths.
+
+Independent review found two interaction defects during implementation:
+`break` could bypass checker scope invalidation, and a new loop iteration
+could revive a stale reference by reinitializing its backing binding. Jump
+paths now invalidate every exited lexical scope, and ending a backing
+lifetime invalidates surviving borrowed values before that binding can be
+reused. Permanent tests cover copied references, helper returns, nested
+switches, range/while loops, mutable reborrows and valid cleared-reference
+controls.
+
+Eight rebuilt runtime fixtures ran on both Linux architectures through
+`wgrind --native` with explicit leak reports and through Memcheck: 32 runs,
+zero errors or outstanding blocks, and 1,894 allocations matched by 1,894
+frees in the 16 Memcheck runs. Win64 guard-allocator tests run under Wine
+with default, register-disabled/inlining-disabled and inline modes where
+applicable. These results cover the documented bounded subset; issue #644
+remains open for the remaining roadmap.
+
+#### Follow-on measured costs
+
+Fixed-point x86 compilers from baseline `666ccd52` and the implementation
+at `aac4ceaf` were compared after one warmup using seven alternating measured
+runs. No team builds or tests ran during the measurement window; unrelated
+shared-host load was still possible. Times include process startup/output,
+and peak RSS is from `/usr/bin/time`.
+
+| Input / emitted target | Baseline time | Current time | Baseline peak RSS | Current peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Manual cleanup / x86 | 40.52 ms | 39.11 ms | 4,896 KiB | 5,120 KiB |
+| Manual cleanup / x64 | 47.04 ms | 44.90 ms | 5,120 KiB | 4,896 KiB |
+| Checked cleanup / x86 | 50.80 ms | 51.68 ms | 6,892 KiB | 6,688 KiB |
+| Checked cleanup / x64 | 58.71 ms | 56.65 ms | 6,688 KiB | 6,688 KiB |
+| `w.w` / x86 | 1,119.48 ms | 1,117.04 ms | 110,400 KiB | 110,624 KiB |
+
+Manual cleanup and `w.w` use the same current source corpus. The checked
+fixture source is unchanged, but each compiler uses its own checkout's
+audited runtime: the baseline correctly rejects the updated guard allocator
+because its implementation hash differs. Consequently the checked columns
+are not a byte-equivalence comparison. Both manual executables are identical
+across compilers, at 123,200 bytes on x86 and 144,000 on x64. Checked binaries
+have those same file sizes, and all eight fixture executables run correctly.
+
+The compiler input shows about 0.2% less elapsed time and 0.2% more peak
+memory in this sample; this does not establish a general performance bound.
+These existing cost fixtures measure compatibility and basic owner cleanup,
+not the throughput of every new container or generic workload.
+
+### Direct outlives contracts (Wave 1)
+
+The first step of [#695](https://github.com/reardan/w/issues/695) adds 35
+accepted/rejected cases to the lifetime matrix, checked and compiled on
+x86/x64 with and without `--safe`. Accepted programs execute; rejected
+programs leave no executable. Cases cover transitive constraints, cycles,
+result-only labels, aliases, renamed/reordered/redundant forward contracts,
+unused and later declarations, imports, recursion, optional/mutable results,
+loop liveness and conflicting mutations or moves.
+
+The ordinary suite, Linux x86/x64 self-host checks, Windows runtime fixture
+and benchmark gate passed together: 1,330 targets. The inherited `NO_COLOR`
+setting was removed for color-diagnostic tests; Windows execution used an
+isolated Wine prefix because the host's shared prefix lacked a repository
+drive mapping. All 48 manifest-selected architecture/root checks passed.
+
+The instrumented full suite passed 1,328 targets and every compiler/API
+harness, with a COMPLETE receipt. Tests reached 54/56 changed executable
+compiler lines (96%); existing directory coverage floors passed unchanged.
+
+The new aggregate/slice runtime fixture preserves owner replacement and
+cleanup across 100 iterations. Native guard checks and Memcheck passed on
+both Linux architectures with explicit leak reports; each Memcheck run
+observed three allocations and three frees, zero outstanding blocks and
+zero errors. The same fixture passed under Wine.
+
+Seven alternating runs compared the pinned-seed-built baseline compiler at
+`46b096f1` with the updated compiler, both compiling that baseline's `w.w`
+from the same checkout. Median elapsed time was 1.62 s before and 1.63 s
+after; median peak RSS was 111,504 KiB before and 111,584 KiB after. Emitted
+binaries were byte-identical. These `/usr/bin/time` measurements include
+startup/output and overlapped shared-host test activity; they establish
+neither a speedup nor a general performance bound. Outlives clauses add
+compiler metadata only, with no new runtime allocation or representation.
+
+This step does not complete #695 or the broader #644 roadmap. Higher-ranked
+contracts and richer aggregate ownership retain their separate implementation
+gates. The following step extends these clauses through concrete generics.
+
+### Generic outlives contracts (Wave 1)
+
+Concrete specialization extends the direct contract rules through explicit,
+inferred, imported, nested and recursive generic calls. Nineteen additional
+accepted/rejected lifetime cases exercise these paths on x86/x64, checking and
+compiling with and without `--safe`. A metadata regression checks independent
+snapshots after raw-contract changes and retained-arena rollback/reuse.
+The imported generic runtime fixture also preserves replacement and cleanup
+under default, disabled and enabled optimization, including Windows execution.
+
+Native guards and Memcheck pass on both Linux architectures. Each Memcheck
+run observes three allocations and three frees, no outstanding blocks and
+zero errors. This uses `wgrind` to expose W allocator operations to Memcheck.
+
+Seven alternating compiles of baseline `d35422c7` produced byte-identical
+binaries with the baseline and current compilers. Median elapsed time was
+3.57 s before and 3.01 s after; median peak RSS was 111,584 KiB for both.
+These runs overlapped other shared-host workloads, so the timing difference
+is not evidence of a speedup. Raw and retained type descriptors each gain a
+metadata pointer; constrained signatures additionally own their normalized
+rows, and retained snapshots copy them. Constrained generic headers use the
+retained-source reparse path. Application ABI, allocation and cleanup are
+unchanged. Higher-ranked contracts and the remaining #695 deliverables are
+still required.
+
+### Quantified callable contracts (Wave 1)
+
+The callable extension adds 47 accepted/rejected programs. The matrix checks
+and compiles each with and without `--safe` on x86/x64, executes accepted
+programs and verifies rejected programs leave no executable. It covers
+independent nested scopes, alpha-equivalent aliases and forwards, imported
+factories, outlives bounds, initialization, raw escapes, conflicting arguments,
+owner transfers and checked slice/record calling conventions.
+
+Ordinary validation passed 1,340 targets: the full suite, both Linux fixpoints,
+the Windows runtime fixture and the CI compiler benchmark gate. All 48
+manifest-selected architecture/root checks passed. The runtime fixture also
+passes default, disabled and enabled optimization modes. Native heap guards
+and Memcheck pass on x86/x64 with 153 allocations/frees, no outstanding blocks
+and zero errors; the fixture also executes under Wine.
+
+Seven alternating compiles of baseline `792fefbb` produced byte-identical
+binaries with both compilers. Median elapsed time was 1.65 s before and 1.71 s
+after; median peak RSS was 111,360 and 111,584 KiB. Shared-host timing is
+diagnostic, not a general performance bound.
+
+The additional program benchmark's self-compile rows exceed its older
+`tests/bench/baseline.txt` limits on both baseline main and this change. Main's
+x86/x64 self compiles measured 17,142,654/9,237,500 kIr and emitted
+2,867,908/3,376,520 bytes; this change measured 17,766,652/9,591,969 kIr and
+2,876,100/3,384,712 bytes. Thus this step adds about 3.6%/3.8% instructions and
+0.3%/0.2% output size to that workload. Every application workload passed.
+The separate CI compiler benchmark (`wbench_compare`) passed its committed
+limits. The older program baseline remains unchanged; its existing self
+regression still needs investigation in the performance workstream.
+
+A raw callable signature and each retained snapshot store normalized relation
+rows; retained binding metadata gains an entry-protocol flag. Function values
+remain ordinary code pointers, with no closure environment, reference counting
+or per-call allocation. Owners use the existing move/drop protocol, and
+checked slices and records keep their inline ABI. Capturing environments and
+the remaining aggregate work retain separate gates under #695/#696/#644.
+
+Instrumented validation passed 1,338 targets and every compiler/API harness
+with a COMPLETE receipt. Tests reached 172/176 changed executable compiler
+lines (97%). Compiler branch coverage increased from 85.8% to 86.0%; its
+floor rose from 85.1% to 85.3%, preserving the existing margin. Other
+directory floors remain unchanged.

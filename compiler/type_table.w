@@ -15,6 +15,7 @@
 struct type_rec:
 	char* name
 	char* safe_lifetime    # optional function-contract label; erased at runtime
+	int* fn_lifetime_order  # type-record-owned rows for a concrete generic contract
 	int num_fields
 	int total_size
 	int pointer_level
@@ -134,6 +135,7 @@ type_rec* type_alloc():
 	# descriptors that only 'new' initializes; it also zeroes the record.
 	type_rec* new_type = new type_rec
 	new_type.safe_lifetime = 0
+	new_type.fn_lifetime_order = 0
 	new_type.field_names = new list[char*]
 	new_type.field_types = new list[int]
 	new_type.decl_file_index = -1
@@ -473,6 +475,9 @@ const int type_kind_ref = 22
 const int type_kind_refmut = 23
 const int type_kind_safe_slice = 24
 const int type_kind_safe_record = 25
+const int type_kind_optref = 26
+const int type_kind_optrefmut = 27
+const int type_kind_safe_recordmut = 28
 
 
 int type_safe_kind(int type_index):
@@ -480,7 +485,9 @@ int type_safe_kind(int type_index):
 	if (type_index < 0): return 0
 	int kind = type_record(type_index).kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
+	if (kind == type_kind_safe_recordmut): return 3
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
+	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
 	return 0
 
 
@@ -488,7 +495,7 @@ int type_safe_target(int type_index):
 	type_index = type_unqualified(type_index)
 	if (type_index >= 0):
 		int kind = type_get_kind(type_index)
-		if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return type_index
+		if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)): return type_index
 	if (type_safe_kind(type_index)): return type_record(type_index).alias_target
 	return type_index
 
@@ -507,10 +514,14 @@ int type_get_safe_lifetime(int target, int kind, char* lifetime):
 	char* prefix = c"own "
 	if (kind == 2): prefix = c"ref "
 	if (kind == 3): prefix = c"refmut "
+	if (kind == 6): prefix = c"optref "
+	if (kind == 7): prefix = c"optrefmut "
 	type_rec* new_type = type_alloc()
 	if (lifetime != 0):
 		if (kind == 2): prefix = c"ref["
 		else: prefix = c"refmut["
+		if (kind == 6): prefix = c"optref["
+		if (kind == 7): prefix = c"optrefmut["
 		char* named = strjoin(prefix, lifetime)
 		char* qualified = strjoin(named, c"] ")
 		new_type.name = strjoin(qualified, type_get_name(target))
@@ -579,34 +590,40 @@ int type_get_safe_slice(int element, char* lifetime):
 
 
 int type_is_safe_record(int type):
-	return type_get_kind(type_unqualified(type)) == type_kind_safe_record
+	int kind = type_get_kind(type_unqualified(type))
+	return (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)
 
 
 # A borrowed aggregate is a nominal struct with one bound lifetime group.
 # Field copies keep their layout but bind shared references to the outer
 # label. The safety pass checks the template and complete construction.
-int type_get_safe_record(int base, char* lifetime):
+int type_get_safe_record_kind(int base, char* lifetime, int kind):
 	type_safe_used = 1
+	int record_kind = type_kind_safe_record
+	if (kind == 3): record_kind = type_kind_safe_recordmut
 	base = type_unqualified(base)
 	for i in range(type_records.length):
 		type_rec* old = type_record(i)
-		if ((old.kind == type_kind_safe_record) && (old.alias_target == base)):
+		if ((old.kind == record_kind) && (old.alias_target == base)):
 			if ((old.safe_lifetime == 0) && (lifetime == 0)): return i
 			if ((old.safe_lifetime != 0) && (lifetime != 0)):
 				if (strcmp(old.safe_lifetime, lifetime) == 0): return i
 	type_rec* source = type_record(base)
 	type_rec* record = type_alloc()
 	char* prefix = c"ref "
+	if (kind == 3): prefix = c"refmut "
 	char* named = 0
 	if (lifetime != 0):
-		named = strjoin(c"ref[", lifetime)
+		char* label_prefix = c"ref["
+		if (kind == 3): label_prefix = c"refmut["
+		named = strjoin(label_prefix, lifetime)
 		prefix = strjoin(named, c"] ")
 		record.safe_lifetime = strclone(lifetime)
 	record.name = strjoin(prefix, type_get_name(base))
 	if (named != 0):
 		free(named)
 		free(prefix)
-	record.kind = type_kind_safe_record
+	record.kind = record_kind
 	record.pointer_level = 0
 	record.total_size = source.total_size
 	record.alias_target = base
@@ -617,13 +634,18 @@ int type_get_safe_record(int base, char* lifetime):
 		int field_type = source.field_types[field]
 		if (type_is_safe_slice(field_type)):
 			field_type = type_get_safe_slice(type_get_element_type(field_type), lifetime)
-		else if ((type_safe_kind(field_type) == 2) && (type_get_pointer_level(field_type) == 1)):
-			field_type = type_get_safe_lifetime(type_safe_target(field_type), 2, lifetime)
+		else if ((type_safe_kind(field_type) >= 2) && (type_get_pointer_level(field_type) == 1)):
+			int field_kind = type_get_kind(type_unqualified(field_type)) - 20
+			field_type = type_get_safe_lifetime(type_safe_target(field_type), field_kind, lifetime)
 		record.field_names.push(source.field_names[field])
 		record.field_types.push(field_type)
 	int result = type_records.length
 	type_records.push(cast(int, record))
 	return result
+
+
+int type_get_safe_record(int base, char* lifetime):
+	return type_get_safe_record_kind(base, lifetime, 2)
 
 
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
@@ -818,6 +840,15 @@ int type_function_pointer_signature(int type_index):
 	if (type_is_function_signature(base_type)):
 		return base_type
 	return -1
+
+
+int type_checked_function_signature(int type_index):
+	type_index = type_real(type_index)
+	if (type_index < 0): return -1
+	int signature = type_function_pointer_signature(type_index)
+	if (signature < 0): return -1
+	if (type_record(signature).fn_lifetime_order == 0): return -1
+	return signature
 
 
 int type_is_const(int type_index):
@@ -1094,6 +1125,7 @@ int types_compatible(int want, int got):
 		if (type_is_safe_record(want)): want_record = type_record(want).alias_target
 		if (type_is_safe_record(got)): got_record = type_record(got).alias_target
 		return want_record == got_record
+	if ((type_checked_function_signature(want) >= 0) && (type_checked_function_signature(got) >= 0)): return 1
 	if (got == 3): return 1
 	if (got == 4): return 0
 	if (want == got): return 1

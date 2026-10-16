@@ -15,6 +15,7 @@ struct retained_type:
 	int source
 	char* name
 	char* lifetime
+	int* lifetime_order  # arena-owned concrete function contract
 	char* file
 	int line
 	int column
@@ -62,6 +63,10 @@ struct retained_binding:
 	int key_file_index
 	# Selected assembly contains executable operations absent from the W tree.
 	int assembly_body
+	int callable_excluded  # generator/kernel/variadic entry protocols
+	# Arena-owned transitive outlives rows, indexed by parameter/result slot.
+	# Null retains the ordinary named-label equality contract.
+	int* lifetime_order
 
 list[retained_type*] retained_types
 list[retained_binding*] retained_bindings

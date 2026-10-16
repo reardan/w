@@ -1,5 +1,6 @@
 # wbuild: x64
 # wbuild: deps=tests/safe_lifetime_import_fixture.w
+# wbuild: deps=tests/safe_outlives_import_fixture.w
 # Every contract is checked and compiled with and without --safe. Rejections
 # must prevent publication of an executable, including with nonfatal warnings.
 import lib.testing
@@ -240,3 +241,71 @@ void test_generated_lifetime_interactions():
 		lifetime_source_append(&source, c"\treturn *r\n")
 		lifetime_case(source, diagnostic, 0, seed)
 		free(source)
+
+
+void test_outlives_basics():
+	lifetime_case(c"ref[b] int* shorten(ref[a] int* p) where a > b:\n\treturn p\nint main():\n\tint x = 7\n\tref int* r = shorten(&x)\n\treturn *r - 7\n", 0)
+	lifetime_case(c"ref[b] int* choose_long(ref[a] int* p, ref[b] int* q, int first) where a > b:\n\tif first: return p\n\treturn q\nint main():\n\tint x = 4\n\tint y = 8\n\tref int* a = choose_long(&x, &y, 1)\n\tref int* b = choose_long(&x, &y, 0)\n\treturn *a + *b - 12\n", 0)
+	lifetime_case(c"ref[c] int* chain(ref[a] int* p, ref[b] int* q, ref[c] int* r) where a > b, b > c:\n\treturn p\nint main():\n\tint x = 4\n\tint y = 8\n\tint z = 12\n\tref int* r = chain(&x, &y, &z)\n\treturn *r - 4\n", 0)
+	lifetime_case(c"type View = ref[a] int*\nref[b] int* alias(View p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* result = alias(&x)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"ref[b] int[] view(ref[a] int[] p) where a > b:\n\treturn p\nint main():\n\tint[2] xs\n\txs[0] = 3\n\tref int[] r = view(xs)\n\treturn r[0] - 3\n", 0)
+	lifetime_case(c"optref[b] int* maybe(ref[a] int* p, int yes) where a > b:\n\tif yes: return p\n\treturn 0\nint main():\n\tint x = 3\n\toptref int* r = maybe(&x, 1)\n\tif r: return *r - 3\n\treturn 1\n", 0)
+	lifetime_case(c"refmut[b] int* edit(refmut[a] int* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\trefmut int* r = edit(&x)\n\t*r = 7\n\treturn x - 7\n", 0)
+	lifetime_case(c"ref[b] int* recursive(ref[a] int* p, int n) where a > b:\n\tif n: return recursive(p, n - 1)\n\treturn p\nint main():\n\tint x = 3\n\tref int* result = recursive(&x, 3)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"int where(int x):\n\treturn x\nint main():\n\treturn where(3) - 3\n", 0)
+
+
+void test_outlives_origins():
+	lifetime_case(c"ref[b] int* choose_long(ref[a] int* p, ref[b] int* q, int first) where a > b:\n\tif first: return p\n\treturn q\nint main():\n\tint x = 4\n\tint y = 8\n\tref int* r = choose_long(&x, &y, 0)\n\tx = 9\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[b] int* choose_long(ref[a] int* p, ref[b] int* q, int first) where a > b:\n\tif first: return p\n\treturn q\nint main():\n\tint x = 4\n\tint y = 8\n\tref int* r = choose_long(&x, &y, 1)\n\ty = 9\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[c] int* chain(ref[a] int* p, ref[b] int* q, ref[c] int* r) where a > b, b > c:\n\treturn p\nint main():\n\tint x = 4\n\tint y = 8\n\tint z = 12\n\tref int* r = chain(&x, &y, &z)\n\tx = 3\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[b] int* shorten(ref[a] int* p) where a > b:\n\treturn p\nint main():\n\town int* x = new int\n\tref int* r = shorten(x)\n\town int* moved = x\n\treturn *r\n", c"moved value")
+	lifetime_case(c"ref[b] int* shorten(ref[a] int* p) where a > b:\n\treturn p\nint main():\n\tint x = 4\n\trefmut int* parent = &x\n\tref int* r = shorten(parent)\n\t*parent = 3\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[b] int* shorten(ref[a] int* p) where a > b:\n\treturn p\nint main():\n\tint x = 4\n\trefmut int* parent = &x\n\tref int* r = shorten(parent)\n\tint old = *r\n\t*parent = 3\n\treturn x + old - 7\n", 0)
+	lifetime_case(c"ref[b] int* shorten(ref[a] int* p) where a > b:\n\treturn p\nint main():\n\tint x = 4\n\tref int* r = shorten(&x)\n\tint n = 2\n\twhile n:\n\t\tint old = *r\n\t\tx = old\n\t\tn = n - 1\n\treturn 0\n", c"conflicting")
+	lifetime_case(c"ref[b] int* shorten(ref[a] int* p) where a > b:\n\treturn p\nref[a] int* bad(ref[a] int* p):\n\tint local = 3\n\treturn shorten(&local)\nint main():\n\treturn 0\n", c"must borrow from")
+	lifetime_case(c"ref[b] int* bad(ref[a] int* p, ref[c] int* q) where a > b:\n\treturn q\nint main():\n\treturn 0\n", c"must borrow from")
+	lifetime_case(c"ref[a] int* bad(ref[b] int* p) where a > b:\n\treturn p\nint main():\n\treturn 0\n", c"returned lifetime")
+	lifetime_case(c"refmut[b] int* bad(ref[a] int* p) where a > b:\n\treturn p\nint main():\n\treturn 0\n", c"mutable reference return requires")
+
+
+void test_outlives_identity():
+	lifetime_case(c"ref[b] int* later(ref[a] int* p) where a > b;\nint main():\n\tint x = 3\n\tref int* result = later(&x)\n\treturn *result - 3\nref[y] int* later(ref[z] int* p) where z > y:\n\treturn p\n", 0)
+	lifetime_case(c"ref[c] int* later(ref[a] int* p, ref[b] int* q) where a > b, b > c;\nref[z] int* later(ref[x] int* p, ref[y] int* q) where y > z, x > z, x > y:\n\treturn p\nint main():\n\tint x = 3\n\tint y = 4\n\tref int* result = later(&x, &y)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"ref[b] int* later(ref[a] int* p, ref[b] int* q) where a > b;\nref[y] int* later(ref[x] int* p, ref[y] int* q):\n\treturn q\nint main():\n\treturn 0\n", c"forward declaration")
+	lifetime_case(c"ref[b] int* later(ref[a] int* p, ref[b] int* q) where a > b:\n\treturn p\nref[y] int* later(ref[x] int* p, ref[y] int* q);\nint main():\n\treturn 0\n", c"forward declaration")
+	lifetime_case(c"ref[b] int* later(ref[a] int* p) where a > b:\n\treturn p\nref[y] int* later(ref[x] int* p) where x > y;\nint main():\n\tint x = 3\n\tref int* result = later(&x)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"ref[a] int* same(ref[a] int* p) where a > a;\nref[b] int* same(ref[b] int* p):\n\treturn p\nint main():\n\tint x = 3\n\tref int* result = same(&x)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"ref[b] int* cycle(ref[a] int* p, ref[b] int* q) where a > b, b > a:\n\treturn p\nint main():\n\tint x = 3\n\tint y = 4\n\tref int* result = cycle(&x, &y)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"import tests.safe_outlives_import_fixture\nint main():\n\tint x = 3\n\tref int* result = outlives_import(&x)\n\treturn *result - 3\n", 0)
+	lifetime_case(c"import tests.safe_outlives_import_fixture\nint main():\n\tint x = 3\n\tref int* r = outlives_import(&x)\n\tx = 4\n\treturn *r\n", c"conflicting")
+
+
+void test_outlives_fail_closed():
+	lifetime_case(c"ref[b] int* bad(ref[a] int* p) where missing > b:\n\treturn p\nint main():\n\treturn 0\n", c"outlives clause names no")
+	lifetime_case(c"ref[b] int* bad(ref[a] int* p) where a > missing:\n\treturn p\nint main():\n\treturn 0\n", c"outlives clause names no")
+	lifetime_case(c"ref[b] int* bad(ref[a] int* p) where 1 > b:\n\treturn p\nint main():\n\treturn 0\n", c"outlives clause requires")
+	lifetime_case(c"ref[b] int* bad(ref[a] int* p) where a > b,:\n\treturn p\nint main():\n\treturn 0\n", c"outlives clause requires")
+	lifetime_case(c"int bad(int x) where a > b:\n\treturn x\nint main():\n\treturn 0\n", c"outlives clause names no")
+
+
+void test_generic_outlives():
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* r = shorten[int](&x)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* r = shorten[int](&x)\n\tx = 4\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* input = &x\n\tref int* r = shorten(input)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* input = &x\n\tref int* r = shorten(input)\n\tx = 4\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* r = shorten[int](&x)\n\tint old = *r\n\tx = 4\n\tref int* again = shorten[int](&x)\n\treturn old + *again - 7\n", 0)
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\town int* x = new int\n\tref int* r = shorten[int](x)\n\town int* moved = x\n\treturn *r\n", c"moved value")
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 4\n\trefmut int* parent = &x\n\tref int* r = shorten[int](parent)\n\t*parent = 3\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"ref[c] T* chain[T](ref[a] T* p, ref[b] T* q) where a > b, b > c:\n\treturn p\nint main():\n\tint x = 3\n\tint y = 4\n\tref int* r = chain[int](&x, &y)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"ref[c] T* chain[T](ref[a] T* p, ref[b] T* q) where a > b, b > c:\n\treturn p\nint main():\n\tint x = 3\n\tint y = 4\n\tref int* input = &x\n\tref int* other = &y\n\tref int* r = chain(input, other)\n\ty = 9\n\treturn *r\n", c"conflicting")
+	lifetime_case(c"refmut[b] T* edit[T](refmut[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\trefmut int* r = edit[int](&x)\n\t*r = 7\n\treturn x - 7\n", 0)
+	lifetime_case(c"refmut[b] T* edit[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\trefmut int* r = edit[int](&x)\n\treturn *r\n", c"mutable reference return requires")
+	lifetime_case(c"ref[b] T* recurse[T](ref[a] T* p, int n) where a > b:\n\tif n: return recurse[T](p, n - 1)\n\treturn p\nint main():\n\tint x = 3\n\tref int* r = recurse[int](&x, 2)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"ref[b] T* bad[T](ref[a] T* p) where missing > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* r = bad[int](&x)\n\treturn *r\n", c"outlives clause names no")
+	lifetime_case(c"ref[b] T* bad[T](ref[a] T* p) where a > b:\n\tT local = 3\n\treturn &local\nint main():\n\tint x = 3\n\tref int* r = bad[int](&x)\n\treturn *r\n", c"must borrow from")
+	lifetime_case(c"type Input = ref[a] int*\nref[b] T* alias[T](Input p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tref int* r = alias[int](&x)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nref[y] T* outer[T](ref[x] T* p) where x > y:\n\treturn shorten[T](p)\nint main():\n\tint x = 3\n\tref int* r = outer[int](&x)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"ref[b] T* shorten[T](ref[a] T* p) where a > b:\n\treturn p\nint main():\n\tint x = 3\n\tchar ch = 65\n\tref int* r = shorten[int](&x)\n\tref char* c = shorten[char](&ch)\n\treturn *r + cast(int, *c) - 68\n", 0)
+	lifetime_case(c"import tests.safe_outlives_import_fixture\nint main():\n\tint x = 3\n\tref int* r = generic_outlives_import[int](&x)\n\treturn *r - 3\n", 0)
+	lifetime_case(c"import tests.safe_outlives_import_fixture\nint main():\n\tint x = 3\n\tref int* input = &x\n\tref int* r = generic_outlives_import(input)\n\tx = 4\n\treturn *r - 3\n", c"conflicting")

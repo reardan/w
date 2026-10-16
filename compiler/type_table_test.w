@@ -302,6 +302,30 @@ void test_checked_lifetime_types():
 	assert1(retained_types[retained_type_note(shared)].lifetime == 0)
 
 
+void test_optional_reference_types():
+	push_basic_types()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	for kind in range(6, 8):
+		int optional = type_get_safe_lifetime(pointer_type, kind, c"a")
+		int unnamed = type_get_safe(pointer_type, kind)
+		assert_equal(optional, type_get_safe_lifetime(pointer_type, kind, c"a"))
+		assert_equal(unnamed, type_get_safe(pointer_type, kind))
+		assert1(optional != unnamed)
+		assert_equal(kind - 4, type_safe_kind(optional))
+		assert_equal(pointer_type, type_safe_target(optional))
+		assert_equal(__word_size__, type_get_size(optional))
+		assert_equal(1, type_get_pointer_level(optional))
+		int alias = type_push_alias(c"MaybeReference", optional)
+		assert_equal(kind - 4, type_safe_kind(alias))
+		int snapshot = retained_type_note(alias)
+		int target = retained_types[snapshot].target
+		assert_equal(kind + 20, retained_types[target].kind)
+		assert_equal(0, strcmp(retained_types[target].lifetime, c"a"))
+		assert1(types_compatible(optional, pointer_type))
+	assert_equal(0, strcmp(type_get_name(type_get_safe(pointer_type, 6)), c"optref int"))
+	assert_equal(0, strcmp(type_get_name(type_get_safe_lifetime(pointer_type, 7, c"a")), c"optrefmut[a] int"))
+
+
 void test_checked_slice_types():
 	push_basic_types()
 	int element = type_lookup(c"int")
@@ -372,3 +396,71 @@ void test_checked_record_types():
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"
+
+
+void test_mutable_record_types():
+	push_basic_types()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	int base = type_push(c"MutableView")
+	type_add_arg(base, c"item", type_get_safe_lifetime(pointer_type, 3, c"inside"))
+	type_add_arg(base, c"tag", type_lookup(c"int"))
+	int view = type_get_safe_record_kind(base, c"outside", 3)
+	assert1(type_is_safe_record(view))
+	assert_equal(view, type_safe_target(view))
+	assert_equal(3, type_safe_kind(view))
+	assert_equal(type_get_size(base), type_get_size(view))
+	assert_equal(view, type_get_safe_record_kind(base, c"outside", 3))
+	assert_equal(0, strcmp(type_get_name(view), c"refmut[outside] MutableView"))
+	assert_equal(3, type_safe_kind(type_get_field_type(view, c"item")))
+	assert_equal(0, strcmp(type_record(type_get_field_type(view, c"item")).safe_lifetime, c"outside"))
+	assert1(view != type_get_safe_record(base, c"outside"))
+	int unnamed = type_get_safe_record_kind(base, 0, 3)
+	assert_equal(unnamed, type_get_safe_record_kind(base, 0, 3))
+	assert1(type_record(type_get_field_type(unnamed, c"item")).safe_lifetime == 0)
+	int alias = type_push_alias(c"ExclusiveView", view)
+	assert_equal(3, type_safe_kind(alias))
+	int snapshot = retained_type_note(view)
+	assert_equal(type_kind_safe_recordmut, retained_types[snapshot].kind)
+	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"outside"))
+
+
+void test_generic_contract_snapshot_survives_rollback():
+	push_basic_types()
+	retained_clear()
+	retained_init()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	if (pointer_type < 0): pointer_type = type_push_pointer(c"int", word_size, 1)
+	int parameter = type_get_safe_lifetime(pointer_type, 2, c"a")
+	int result = type_get_safe_lifetime(pointer_type, 2, c"b")
+	int signature = type_push_function(c"contract snapshot", result, 1, cast(int, &parameter))
+	int* rows = cast(int*, malloc(2 * __word_size__))
+	rows[0] = 3
+	rows[1] = 2
+	type_record(signature).fn_lifetime_order = rows
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	int first = retained_type_note(signature)
+	assert1(retained_types[first].lifetime_order != rows)
+	assert_equal(3, retained_types[first].lifetime_order[0])
+	assert_equal(first, retained_type_note(signature))
+	# Mutating raw metadata must neither rewrite nor reuse an old snapshot.
+	rows[0] = 1
+	int second = retained_type_note(signature)
+	assert1(first != second)
+	assert_equal(3, retained_types[first].lifetime_order[0])
+	assert_equal(1, retained_types[second].lifetime_order[0])
+	retained_rollback(&checkpoint)
+	# Reuse the reclaimed arena before taking another snapshot. The raw
+	# relation must still exist independently of the discarded snapshots.
+	int* reused = cast(int*, retained_arena_alloc(2 * __word_size__))
+	reused[0] = 0
+	reused[1] = 0
+	int restored = retained_type_note(signature)
+	assert_equal(1, retained_types[restored].lifetime_order[0])
+	assert_equal(2, retained_types[restored].lifetime_order[1])
+	type_record(signature).fn_lifetime_order = 0
+	int plain = retained_type_note(signature)
+	assert1(plain != restored)
+	assert1(retained_types[plain].lifetime_order == 0)
+	free(rows)
+	retained_clear()

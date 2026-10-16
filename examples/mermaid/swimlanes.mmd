@@ -1,0 +1,12 @@
+swimlane-beta LR
+subgraph Customer
+  request([Request])
+  receive[Receive result]
+end
+subgraph Engineering
+  work[Implement]
+  check{Verified?}
+end
+request --> work --> check
+check -->|Yes| receive
+check -->|Retry| work

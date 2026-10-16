@@ -8,12 +8,16 @@ authorize unchecked implementations of later milestones.
 
 ## Signature lifetimes
 
-Use the contextual qualifiers `ref[a] T*` and `refmut[a] T*`. Labels are
+Use the contextual qualifiers `ref[a] T*`, `refmut[a] T*`,
+`optref[a] T*` and `optrefmut[a] T*`. Optional forms use zero for absence;
+presence refinement is required before dereference or nonoptional use.
+Labels are
 identifiers bound implicitly by a function signature, not global lifetimes,
 runtime values or generic type arguments. Unannotated results retain the
 existing exactly-one-borrowed-input inference rule.
 
-For a named result, collect every borrowed input with its label. Require a
+For a named result, collect every borrowed input with its label or a label
+that transitively outlives it under an explicit `where a > b` clause. Require a
 nonempty set. The body may return a view of any member, but may not return
 local storage, an owned parameter or a different input. At a call, the result
 keeps every member's backing storage borrowed. This computes a conservative
@@ -22,8 +26,8 @@ which branch the function takes. A mutable result requires all candidate
 inputs to supply mutable references.
 
 Names are erased at runtime. A prototype and definition agree if their
-types and label equality relationships agree across all parameter/result
-positions. Renaming labels consistently is valid; adding, removing or
+types, label equality relationships and transitive outlives relationships
+agree across all parameter/result positions. Renaming labels consistently is valid; adding, removing or
 regrouping labels is not. Preserve the written result and parameter types
 from each declaration together; combining a prototype's result label with a
 definition's renamed inputs creates an invalid signature snapshot.
@@ -34,9 +38,51 @@ every declaration resolving an audited storage function, including private
 destructors. An identical redeclaration preserves the existing definition.
 
 Aliases preserve annotations. Local annotations never extend storage
-lifetime. General outlives clauses, higher-ranked function contracts and
-multiple independent aggregate lifetime groups are not inferred from this
-syntax; they need separate implementation and rejection tests.
+lifetime. Direct and concrete generic signatures can express outlives clauses after the parameter
+list (`where a > b, b > c`). Every endpoint must name a borrowed parameter or
+result. Normalize to a transitive relation on signature slots, including equal
+labels, and retain it with each declaration's independent snapshot. Clause
+order and redundant edges do not affect identity. The bounded representation
+admits at most ten parameters, matching the raw symbol's parameter-type slots.
+The relation is stored in the retained arena, so session destruction and
+checkpoint rollback reclaim it with the declaration; it is never published
+into a global label namespace. Body return validation and caller provenance
+use the same relation. A relation never erases a root or reborrow parent.
+
+Concrete generic signatures own normalized relation rows in their raw function
+type; each retained type snapshot copies the rows into its arena. This prevents
+raw signatures from referencing rolled-back arena storage during recovery. The call checks that
+snapshot against the instantiated declaration before using its origins.
+Constrained headers are reparsed from retained source under the concrete type
+substitution, so aliases resolve before labels are normalized; unconstrained
+headers keep the existing retained-tree fast path. No template label enters a
+global lifetime namespace. Multiple independent aggregate lifetime groups
+still require their own implementation and rejection tests before admission.
+
+## Universally quantified callable contracts
+
+`type View = fn[a](ref[a] T*) -> ref[a] T*` binds names within one signature.
+Use `View*` for a checked code address, and `fn[]` for a checked contract with
+no named slots. Bind every named top-level borrowed slot, reject unused or
+duplicate binders, and normalize optional outlives clauses exactly as for
+direct signatures. Nested callable aliases own independent scopes.
+
+Raw function types own the normalized rows; retained snapshots copy them.
+A non-null relation marks the checked contract even when all slots are scalar.
+Preliminary ABI matching ignores lifetime spelling. Before publishing code,
+the retained pass proves exact recursive contract equivalence and checks the
+implementation body, including functions whose addresses are never invoked.
+No casts, null values, raw escapes or uninitialized reads can manufacture a
+checked callable. Generators, kernels and variadics have different entry
+protocols and are excluded explicitly in retained binding metadata.
+
+Evaluate an indirect callee once before reserving its arguments. Apply the
+same origin-set, reborrow and move rules used for direct calls; code addresses
+have no captured environment. Emission must clear transferred owner slots and
+push coerced slice descriptors at their full width. Keep callable recognition
+aligned with the emitter's pointer/alias shape; const-qualified forms remain
+rejected. Validate nested types with depth 32/work 256 bounds. Captures and
+aggregate-stored callback environments require separate ownership contracts.
 
 ## Provenance and reborrows
 
@@ -57,8 +103,13 @@ singletons preserving existing binding indices. Union interning avoids
 allocating the same set on repeated dataflow passes; function completion
 releases the sets. Parent traversal must terminate even for malformed
 self-referential initializers that definite-initialization checking rejects.
-Reference reassignment stays unsupported, so accepted reborrow dependencies
-remain acyclic. Reassignment would require flow-sensitive provenance joins.
+Nonoptional reference reassignment remains unsupported. Optional-reference
+replacement uses flow-sensitive presence states and conservative unions of every
+assigned origin and parent. The origin/parent fixed point participates in graph
+convergence. Reborrow cycles are rejected; absence removes a copied value's
+backing-storage obligation without removing a live child's obligations. A
+replacement may release its old loan before RHS evaluation only when no RHS
+operand reads that old value.
 
 A projected store reserves its backing roots across right-hand evaluation;
 an indexed projection reserves its receiver across index evaluation. Final
@@ -131,6 +182,17 @@ Raw struct storage, zero initialization, mutable fields, nested aggregates
 and multiple independent field groups remain rejected. Nominal identity
 includes the declaration location, not just its printed name.
 
+The exclusive inline form `refmut[a] Record` additionally admits mutable
+pointer fields in the same one-group template. Its type identity and field
+qualifiers remain distinct from the shared form. Constructor reservations
+use each field's shared/exclusive kind; later reborrows conservatively reserve
+the entire backing group. Copying, passing and returning wrappers preserve
+reborrow ancestry and suspend conflicting parent access. Mutable-field
+extraction requires a mutable wrapper; shared fields cannot be upgraded.
+Scalar metadata remains assignable, but wrapper/reference-field replacement
+and descriptor addresses are rejected. Optional fields, nested records,
+mixed owner fields and independent groups are not admitted.
+
 ## Owner-bearing aggregates
 
 Use the existing `own Record*` representation: one uniquely owned allocation
@@ -175,6 +237,66 @@ Borrowed views constrain the whole owner, so every mutation is exclusive,
 including operations that would not move storage in a particular execution.
 Byte strings preserve arbitrary bytes, including NULs; UTF-8 validation is
 outside this contract. Empty pop traps and self-append is rejected.
+
+`WOwnedIntBuffer` stores uniquely owned integer allocations. Push and indexed
+replacement consume the argument, clear its checked parameter home, and
+store its pointer in raw owned storage. Replacement destroys the old element
+after argument evaluation. Pop removes and clears the last raw slot before
+returning its owner; clear destroys elements in reverse order. Growth moves
+pointer slots without duplicating ownership. An element view borrows the
+whole buffer; all mutation requires exclusive access. Generic owner elements
+and legacy containers are outside this contract.
+
+`WByteArena` copies initialized byte views into opaque growable storage.
+Its result lifetime names only the mutable arena input, not the source view.
+The runtime checks size addition and growth, then returns an inline checked
+descriptor. Empty views may have zero data addresses but cannot be indexed.
+Copy, reset and release require exclusive access, including copies that fit
+existing capacity. Reset retains capacity; release frees payload storage and
+zeros all storage metadata. Final destruction releases the payload and
+metadata. General typed allocations and attached budgets are not admitted.
+
+## Control flow and deferred cleanup
+
+Range loops model their bounds, induction binding and backedge. Scalar
+switches model case alternatives and the default path. Every `break` or
+`continue` invalidates all exited lexical bindings before joining its
+destination; `continue` crosses a switch to reach the enclosing loop.
+The range induction binding remains initialized inside its loop. Emitted
+cleanup and analysis must agree even when a reference is stored in an outer
+optional binding before jumping out of its owner's scope.
+
+Deferred expressions may be registered only in the outer function block.
+Each is evaluated at function exit in reverse registration order, after
+return-expression evaluation and before automatic destruction. Their uses
+participate in exit liveness, including return-value borrow reservations.
+Conditional/nested registrations and deferred control-flow statements remain
+rejected until a matching registration-state model is implemented.
+
+Checked methods normalize into direct calls with an explicit receiver.
+Receiver evaluation occurs before argument evaluation; synthesized receiver
+addresses retain the original binding and lifetime. Owner receivers and
+arguments use the same transfer clearing as direct calls. Method syntax
+does not grant an unsafe or unchecked boundary.
+
+Queued generic calls retain their concrete mangled callee identity, not only
+the template name. At checking, resolve it to the specialized function,
+compare the concrete signature (including normalized lifetime relationships),
+and analyze that implementation. Explicit and inferred arguments use the
+ordinary call's ownership reservations and owner-slot clearing. Retained
+emission recovers the template identity from the concrete name without
+changing the published ownership contract. Qualified generic pointer
+signatures preserve their qualifier and optional lifetime label during
+capture and instantiation. Indirect calls and callbacks remain excluded.
+
+## Target admission
+
+Checked programs are supported on Linux x86/x64 and win64. The win64
+audited runtime includes its own pinned allocation/syscall implementations;
+the guard allocator protects holes with `mprotect` because Windows cannot
+release a suffix of an allocation. Entrypoint selection requires a defined
+symbol, not a nonzero unresolved-prototype backpatch chain. Other targets
+remain rejected until runtime and cleanup parity are validated.
 
 ## Integration and review
 

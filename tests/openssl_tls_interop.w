@@ -28,6 +28,10 @@ direct P-256, and P-256 via HelloRetryRequest, in both roles:
      connection, exchange one line each way through the client's
      stdin/stdout pipes.
 
+Each client suite/group also runs a three-connection resumption sequence:
+a full verified handshake, a resumed handshake, and rejected-ticket
+fallback. This includes SHA-384 and recomputed binders after HRR.
+
 Every wait is bounded, which is the #236 lesson: the prototype interop
 harness could wedge forever in a blocking recv when its openssl peer was
 never going to answer (port collision between concurrently running arch
@@ -184,6 +188,98 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key, int suite, ch
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
 	return 1
+
+
+# One connection in the resumption sequence. Reading the echo also drains
+# the NewSessionTicket records OpenSSL sends before application data.
+int osl_resume_round(tls_config* cfg, int port, int suite, int mode, int resumed):
+	int fd = osl_connect_retry(port)
+	if (fd < 0): return osl_fail(0, c"resumption: connect failed", 0)
+	socket_set_recv_timeout(fd, osl_io_timeout_ms())
+	socket_set_send_timeout(fd, osl_io_timeout_ms())
+	tls_conn* conn = tls_connect(fd, c"localhost", cfg)
+	if (conn == 0):
+		close(fd)
+		return osl_fail(0, c"resumption: tls_connect failed", tls_last_error(cfg))
+	int ok = 1
+	if (conn.resumed != resumed || conn.cipher_suite != suite || conn.retry_seen != cast(int, mode == 2) || conn.key_group != osl_group(mode)):
+		ok = osl_fail(0, c"resumption: wrong negotiation", 0)
+	char* ping = c"ticket\x0a"
+	if (ok != 0 && tls_write(conn, ping, strlen(ping)) != strlen(ping)):
+		ok = osl_fail(0, c"resumption: tls_write failed", 0)
+	if (ok != 0):
+		char* buf = cast(char*, malloc(64))
+		char* want = c"tekcit\x0a"
+		int got = tls_read(conn, buf, 64)
+		if (got != strlen(want)):
+			ok = osl_fail(0, c"resumption: missing echo", 0)
+		else:
+			if (osl_bytes_equal(buf, want, got) == 0): ok = osl_fail(0, c"resumption: bad echo", 0)
+		free(buf)
+	tls_close(conn)
+	close(fd)
+	if (ok != 0 && cfg.session_cache.entries.length == 0):
+		ok = osl_fail(0, c"resumption: no cached NewSessionTicket", 0)
+	return ok
+
+
+# Keep one OpenSSL process and one caller-owned cache across three
+# connections: a verified full handshake, actual PSK-DHE resumption, then
+# graceful full-handshake fallback when the server rejects a ticket.
+int osl_resumption_direction(char* openssl_bin, char* cert, char* key, int suite, char* suite_name, int mode):
+	int port = osl_free_port()
+	if (port <= 0): return osl_fail(0, c"resumption: no free port", 0)
+	char** sargv = strv_new(18)
+	strv_set(sargv, 0, c"openssl")
+	strv_set(sargv, 1, c"s_server")
+	strv_set(sargv, 2, c"-accept")
+	char* port_text = itoa(port)
+	strv_set(sargv, 3, port_text)
+	strv_set(sargv, 4, c"-cert")
+	strv_set(sargv, 5, cert)
+	strv_set(sargv, 6, c"-key")
+	strv_set(sargv, 7, key)
+	strv_set(sargv, 8, c"-naccept")
+	strv_set(sargv, 9, c"3")
+	strv_set(sargv, 10, c"-rev")
+	strv_set(sargv, 11, c"-quiet")
+	strv_set(sargv, 12, c"-ciphersuites")
+	strv_set(sargv, 13, suite_name)
+	strv_set(sargv, 14, c"-groups")
+	strv_set(sargv, 15, c"X25519")
+	if (mode != 0): strv_set(sargv, 15, c"P-256")
+	strv_set(sargv, 16, c"-num_tickets")
+	strv_set(sargv, 17, c"1")
+	spawn_options* opts = spawn_options_new()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
+	process* p = process_spawn(openssl_bin, sargv, opts)
+	free(opts)
+	free(port_text)
+	free(cast(void*, sargv))
+	if (p == 0): return osl_fail(0, c"resumption: spawn s_server failed", 0)
+
+	tls_session_cache* cache = tls_session_cache_new()
+	tls_config* cfg = tls_config_new()
+	cfg.trust_store_path = cert
+	cfg.server_port = port
+	cfg.session_cache = cache
+	if (mode == 1): cfg.key_share_group = TLS_GROUP_SECP256R1
+	int ok = osl_resume_round(cfg, port, suite, mode, 0)
+	if (ok != 0): ok = osl_resume_round(cfg, port, suite, mode, 1)
+	if (ok != 0):
+		# Corrupt the opaque identity, not the PSK: the server cannot
+		# decrypt this ticket and must select a fresh full handshake.
+		for session in cache.entries:
+			if (session.ticket_len > 0): session.ticket[0] = session.ticket[0] ^ 1
+		ok = osl_resume_round(cfg, port, suite, mode, 0)
+	tls_config_free(cfg)
+	tls_session_cache_free(cache)
+	process_kill(p, sigterm)
+	process_wait_or_kill(p, osl_io_timeout_ms())
+	process_free(p)
+	return ok
 
 
 # Direction 2: our tls_accept server against `openssl s_client`.
@@ -371,6 +467,7 @@ int main():
 		for mode in range(3):
 			if (ok != 0): ok = osl_client_direction(openssl_bin, cert, key, suite, suite_name, mode)
 			if (ok != 0): ok = osl_server_direction(openssl_bin, cert, key, suite, suite_name, mode)
+			if (ok != 0): ok = osl_resumption_direction(openssl_bin, cert, key, suite, suite_name, mode)
 
 	# P-384 exercises both X.509 signatures and TLS CertificateVerify.
 	if (ok != 0): ok = osl_generate_cert(openssl_bin, cert, key, c"ec_paramgen_curve:P-384")

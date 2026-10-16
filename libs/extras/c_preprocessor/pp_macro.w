@@ -224,13 +224,13 @@ void cpp_stringize_append_escaped(string_builder* out, char* text):
 cpp_token* cpp_stringize_arg(cpp_token* arg):
 	string_builder* out = string_new()
 	string_append_char(out, '"')
-	int need_space = 0
 	while (arg != 0):
 		if (arg.kind == cpp_token_eof()): break
-		if (arg.has_space | need_space):
-			if (out.data[out.length - 1] != '"'): string_append_char(out, ' ')
+		# Leading whitespace is dropped; any other preceding space becomes
+		# one space, even after an argument token that is itself a string
+		# literal (`"a" ;` stringizes as "\"a\" ;").
+		if (arg.has_space && (out.length > 1)): string_append_char(out, ' ')
 		cpp_stringize_append_escaped(out, arg.text)
-		need_space = 0
 		arg = arg.next
 	string_append_char(out, '"')
 	cpp_token* token = cpp_token_new(cpp_token_string, out.data, c"<macro>", 0, 0, 0)
@@ -242,6 +242,11 @@ int cpp_token_is_param(cpp_macro* macro, cpp_token* token):
 	if (token == 0): return 0
 	if (token.kind != cpp_token_ident()): return 0
 	return cpp_macro_param_index(macro, token.text) >= 0
+
+
+int cpp_token_is_variadic_param(cpp_macro* macro, cpp_token* token):
+	if ((macro.is_variadic == 0) || (token == 0) || (token.kind != cpp_token_ident())): return 0
+	return strcmp(token.text, macro.params[macro.params.length - 1]) == 0
 
 
 cpp_token* cpp_param_replacement(map[char*, cpp_macro*] macros, cpp_macro* macro, cpp_macro_args* args, cpp_token* token, int raw):
@@ -263,7 +268,24 @@ cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro,
 		if (cpp_token_is_punct(token, c"#") & cpp_token_is_param(macro, token.next)):
 			int index = cpp_macro_param_index(macro, token.next.text)
 			tail.next = cpp_stringize_arg(cpp_arg_token(args.items, index))
+			tail.next.has_space = token.has_space
 			tail = tail.next
+			token = token.next.next
+			last_was_paste = 0
+		else if (cpp_token_is_punct(token, c"##") && cpp_token_is_variadic_param(macro, token.next) && (tail != &head) && (strcmp(tail.text, c",") == 0)):
+			# GNU comma paste: `, ## __VA_ARGS__` (or `, ## args` for a
+			# named variadic parameter `args...`) deletes the comma when the
+			# variable arguments are empty; otherwise the comma stays and
+			# the arguments follow unexpanded, with no paste.
+			int index = cpp_macro_param_index(macro, token.next.text)
+			cpp_token* arg = cpp_arg_token(args.items, index)
+			if (cpp_arg_has_tokens(arg) == 0):
+				cpp_remove_last_token(&head)
+				tail = cpp_token_last(&head)
+				if (tail == 0): tail = &head
+			else:
+				tail.next = cpp_token_list_without_eof(arg)
+				tail = cpp_token_last(tail.next)
 			token = token.next.next
 			last_was_paste = 0
 		else if (cpp_token_is_punct(token, c"##") & cpp_token_is_param(macro, token.next)):
@@ -289,6 +311,11 @@ cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro,
 			if (cpp_token_is_punct(token.next, c"##") | last_was_paste): raw = 1
 			cpp_token* replacement = cpp_param_replacement(macros, macro, args, token, raw)
 			if (replacement != 0):
+				# As in GCC, a substituted argument starts with the
+				# parameter's own spacing, not the call site's, so
+				# `.quad sym` stringizes as ".quad x", not ".quadx".
+				# (A `##` operand keeps its own: the paste decides.)
+				if (raw == 0): replacement.has_space = token.has_space
 				tail.next = replacement
 				tail = cpp_token_last(tail.next)
 			token = token.next

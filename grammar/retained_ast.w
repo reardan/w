@@ -25,12 +25,16 @@ int retained_file_source(int index):
 # Exact record comparison also detects forward records completed in the same source.
 int retained_type_matches(retained_type* type, type_rec* original):
 	if (type.building): return 1
+	if ((type.lifetime_order == 0) != (original.fn_lifetime_order == 0)): return 0
 	if (strcmp(type.name, original.name) != 0): return 0
 	if (type.file_index != retained_file_key(original.decl_file_index)): return 0
 	if ((type.line != original.decl_line) || (type.column != original.decl_column)): return 0
 	if ((type.kind != original.kind) || (type.size != original.total_size) || (type.pointer_level != original.pointer_level)): return 0
 	if ((type.origin_target != original.alias_target) || (type.origin_return != original.fn_return_type) || (type.origin_parameters != original.fn_param_count)): return 0
 	if (type.fields.length != original.num_fields): return 0
+	if (type.lifetime_order != 0):
+		for i in range(original.fn_param_count + 1):
+			if (type.lifetime_order[i] != original.fn_lifetime_order[i]): return 0
 	for i in range(original.num_fields):
 		retained_field* field = type.fields[i]
 		if (strcmp(field.name, original.field_names[i]) != 0): return 0
@@ -63,6 +67,11 @@ int retained_type_note(int index):
 	retained_type* type = new retained_type
 	type.name = retained_intern(original.name)
 	type.lifetime = 0
+	type.lifetime_order = 0
+	if (original.fn_lifetime_order != 0):
+		int bytes = (original.fn_param_count + 1) * __word_size__
+		type.lifetime_order = cast(int*, retained_arena_alloc(bytes))
+		for i in range(original.fn_param_count + 1): type.lifetime_order[i] = original.fn_lifetime_order[i]
 	if (original.safe_lifetime != 0): type.lifetime = retained_intern(original.safe_lifetime)
 	type.file = retained_intern(debug_file_name(original.decl_file_index))
 	type.file_index = retained_file_key(original.decl_file_index)
@@ -157,6 +166,10 @@ int retained_binding_is(retained_binding* binding, int source, int owner, int sc
 	return strcmp(binding.name, name) == 0
 
 
+int retained_callable_excluded(int symbol):
+	return sym_is_generator(symbol) || sym_is_kernel(symbol) || (sym_variadic_fixed_args(symbol) >= 0) || (sym_w_variadic_fixed_args(symbol) >= 0)
+
+
 int retained_binding_note(int sym, int owner):
 	if (sym < 0): return -1
 	sym_index_sync()
@@ -242,6 +255,8 @@ int retained_binding_note(int sym, int owner):
 			binding.line = node.line
 			binding.column = node.column
 	binding.assembly_body = 0
+	binding.callable_excluded = 0
+	binding.lifetime_order = 0
 	binding.scope = scope
 	binding.slot = load_int(table + sym + 2)
 	binding.source = source
@@ -266,6 +281,7 @@ int retained_binding_note(int sym, int owner):
 	binding.return_type = -1
 	binding.parameters = new list[int]
 	if (load_int(table + sym + 10) == 2):
+		binding.callable_excluded = retained_callable_excluded(sym)
 		binding.return_type = binding.type
 		int count = load_int(table + sym + 22)
 		for i in range(count): binding.parameters.push(retained_type_note(sym_param_type(sym, i)))
@@ -345,6 +361,9 @@ void retained_expression_note(expression_ast* tree, int root):
 # semantic result, signature, receiver and inference types, the binding and
 # name binding, the payload text, and the result type's spelling, size and
 # pointer level (the columns retained_node_load reads).
+char* ast_expression_generic_callee(expression_ast* tree, int id);
+
+
 void retained_expression_semantics(expression_ast* tree, retained_group* group):
 	int count = group.count
 	int* s = cast(int*, retained_arena_alloc(retained_semantic_columns * count * __word_size__))
@@ -370,7 +389,10 @@ void retained_expression_semantics(expression_ast* tree, retained_group* group):
 		# overload the same slot with type/format/diagnostic information.
 		int op = tree.op[i]
 		int high = tree.high[i]
-		if ((op == 'G') || (op == 'W')): payload = retained_intern(generic_def_name(tree.value[i]))
+		if ((op == 'G') || (op == 'W')):
+			char* callee = ast_expression_generic_callee(tree, i)
+			payload = retained_intern(callee)
+			free(callee)
 		if (op == ast_warning):
 			if ((high == 0) || (high == 6) || (high == 7) || (high == 8)): payload = retained_intern(cast(char*, tree.value[i]))
 			if ((high == 1) || (high == 2) || (high == 5)):
@@ -504,10 +526,14 @@ void retained_local_note(int sym):
 		parent.column = column
 
 
-void retained_function_parameters(int binding):
+void retained_function_parameters(int binding, int* lifetime_order):
 	if (ast_retain_mode == 0): return
 	if ((retained_parent >= 0) && retained_semantic_mode):
-		retained_record_at(retained_parent).binding = retained_binding_note(binding, retained_parent)
+		int noted = retained_binding_note(binding, retained_parent)
+		retained_record_at(retained_parent).binding = noted
+		if (noted >= 0):
+			retained_bindings[noted].lifetime_order = lifetime_order
+			retained_bindings[noted].callable_excluded = retained_callable_excluded(binding)
 	sym_index_sync()
 	# The index is sorted by offset: start at the first symbol after binding.
 	int low = 0
@@ -525,9 +551,9 @@ void retained_function_parameters(int binding):
 # body. Snapshot this declaration at its own source location so a changed
 # contract cannot disappear behind the definition's binding-cache entry.
 # Restore the live symbol metadata used by diagnostics and generated calls.
-void retained_function_prototype_parameters(int binding, int return_type):
+void retained_function_prototype_parameters(int binding, int return_type, int* lifetime_order):
 	if ((ast_retain_mode == 0) || (retained_parent < 0) || (retained_semantic_mode == 0) || (table[binding + 1] != 'D')):
-		retained_function_parameters(binding)
+		retained_function_parameters(binding, lifetime_order)
 		return
 	int previous = retained_binding_note(binding, retained_parent)
 	int file_index = load_int(table + binding + 66)
@@ -539,7 +565,7 @@ void retained_function_prototype_parameters(int binding, int return_type):
 	save_int(table + binding + 70, node.line)
 	save_int(table + binding + 74, node.column)
 	save_int(table + binding + 6, return_type)
-	retained_function_parameters(binding)
+	retained_function_parameters(binding, lifetime_order)
 	if ((previous >= 0) && (node.binding >= 0)):
 		retained_bindings[node.binding].linkage = retained_bindings[previous].linkage
 	save_int(table + binding + 66, file_index)
