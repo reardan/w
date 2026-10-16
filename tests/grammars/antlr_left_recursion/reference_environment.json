@@ -1,0 +1,19 @@
+{
+  "oracle": {
+    "version": "4.13.2",
+    "jar_sha256": "eae2dfa119a64327444672aff63e9ec35a20180dc5b8090b7a6ab85125df4d76",
+    "java_major": 17,
+    "javac_major": 17
+  },
+  "versions": {
+    "java": "openjdk version \"17.0.20.1\" 2026-08-18\nOpenJDK Runtime Environment (build 17.0.20.1+1-1-24.04-Ubuntu)\nOpenJDK 64-Bit Server VM (build 17.0.20.1+1-1-24.04-Ubuntu, mixed mode, sharing)\n",
+    "javac": "javac 17.0.20.1\n"
+  },
+  "commands": [
+    "javac -cp JAR -d PROBE Inspect.java TreeOracle.java",
+    "java -cp PROBE:JAR Inspect RULE_NAMES -Dlanguage=Java -o . GRAMMAR_FILES",
+    "javac -encoding UTF-8 -cp PROBE:JAR GENERATED_JAVA",
+    "java -cp CASE:PROBE:JAR TreeOracle MINIMAL_GRAMMAR start INPUT"
+  ],
+  "generation_is_runtime_evidence": false
+}
