@@ -471,18 +471,21 @@ const int type_kind_gpu = 20
 const int type_kind_own = 21
 const int type_kind_ref = 22
 const int type_kind_refmut = 23
+const int type_kind_safe_slice = 24
 
 
 int type_safe_kind(int type_index):
 	type_index = type_unqualified(type_index)
 	if (type_index < 0): return 0
 	int kind = type_record(type_index).kind
+	if (kind == type_kind_safe_slice): return 2
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	return 0
 
 
 int type_safe_target(int type_index):
 	type_index = type_unqualified(type_index)
+	if ((type_index >= 0) && (type_get_kind(type_index) == type_kind_safe_slice)): return type_index
 	if (type_safe_kind(type_index)): return type_record(type_index).alias_target
 	return type_index
 
@@ -525,6 +528,52 @@ int type_get_safe_lifetime(int target, int kind, char* lifetime):
 
 int type_get_safe(int target, int kind):
 	return type_get_safe_lifetime(target, kind, 0)
+
+int type_is_safe_slice(int type):
+	return type_get_kind(type_unqualified(type)) == type_kind_safe_slice
+
+
+# Checked slices own their inline descriptor, never the backing allocation.
+# The two fields use the ordinary by-value/hidden-result aggregate ABI.
+int type_get_safe_slice(int element, char* lifetime):
+	type_safe_used = 1
+	element = type_unqualified(element)
+	for i in range(type_records.length):
+		type_rec* old = type_record(i)
+		if ((old.kind == type_kind_safe_slice) && (old.alias_target == element)):
+			if ((old.safe_lifetime == 0) && (lifetime == 0)): return i
+			if ((old.safe_lifetime != 0) && (lifetime != 0)):
+				if (strcmp(old.safe_lifetime, lifetime) == 0): return i
+	type_rec* record = type_alloc()
+	char* prefix = c"ref "
+	char* named = 0
+	if (lifetime != 0):
+		named = strjoin(c"ref[", lifetime)
+		prefix = strjoin(named, c"] ")
+		record.safe_lifetime = strclone(lifetime)
+	char* base = strjoin(prefix, type_get_name(element))
+	record.name = strjoin(base, c"[]")
+	free(base)
+	if (named != 0):
+		free(named)
+		free(prefix)
+	record.kind = type_kind_safe_slice
+	record.pointer_level = 0
+	record.total_size = 2 * word_size
+	record.alias_target = element
+	record.fn_return_type = -1
+	record.fn_param_count = -1
+	record.num_fields = 2
+	int slice_pointer = type_lookup_pointer(type_get_name(element), 1)
+	if (slice_pointer < 0): slice_pointer = type_push_pointer(type_get_name(element), word_size, 1)
+	record.field_names.push(c"data")
+	record.field_types.push(slice_pointer)
+	record.field_names.push(c"length")
+	record.field_types.push(type_lookup(c"int"))
+	int result = type_records.length
+	type_records.push(cast(int, record))
+	return result
+
 
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
 int type_is_gpu_object(int type_index):
@@ -647,7 +696,7 @@ int type_is_array(int type_index):
 
 int type_is_slice(int type_index):
 	int kind = type_get_kind(type_index)
-	return (kind == type_kind_slice) | (kind == type_kind_slice_value)
+	return (kind == type_kind_slice) | (kind == type_kind_slice_value) | (kind == type_kind_safe_slice)
 
 
 int type_is_string(int type_index):

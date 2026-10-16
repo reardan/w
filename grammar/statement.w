@@ -186,7 +186,7 @@ void return_statement_tail(int return_line_number, int return_diag_line, int ret
 		return_type = promote(return_type)
 		int declared_type = load_int(table + current_function_symbol + 6)
 		return_mismatch_note(declared_type, return_type)
-		if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
+		if (type_is_safe_slice(declared_type) || ((type_num_args(declared_type) > 0) && (type_num_args(return_type) > 0))):
 			if (types_compatible_with_expression(declared_type, return_type) == 0):
 				warn_type_mismatch(c"return", declared_type, return_type)
 			copy_struct_return_value(declared_type)

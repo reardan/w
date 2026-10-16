@@ -302,6 +302,34 @@ void test_checked_lifetime_types():
 	assert1(retained_types[retained_type_note(shared)].lifetime == 0)
 
 
+void test_checked_slice_types():
+	push_basic_types()
+	int element = type_lookup(c"int")
+	int view = type_get_safe_slice(element, c"data")
+	int plain_view = type_get_safe_slice(element, 0)
+	assert_equal(view, type_get_safe_slice(element, c"data"))
+	assert_equal(plain_view, type_get_safe_slice(element, 0))
+	assert1(view != plain_view)
+	assert1(type_is_safe_slice(view))
+	assert1(type_is_slice(view))
+	assert_equal(2, type_safe_kind(view))
+	assert_equal(view, type_safe_target(view))
+	assert_equal(element, type_get_element_type(view))
+	assert_equal(2 * __word_size__, type_get_size(view))
+	assert_equal(2, type_stack_words(view))
+	assert_equal(2, type_num_args(view))
+	assert_equal(0, type_get_field_offset(view, c"data"))
+	assert_equal(__word_size__, type_get_field_offset(view, c"length"))
+	assert_equal(0, strcmp(type_get_name(view), c"ref[data] int[]"))
+	int alias = type_push_alias(c"checked_slice", view)
+	assert1(type_is_safe_slice(alias))
+	assert_equal(view, type_unqualified(alias))
+	int snapshot = retained_type_note(view)
+	assert_equal(type_kind_safe_slice, retained_types[snapshot].kind)
+	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"data"))
+	assert_equal(element, retained_types[retained_types[snapshot].target].origin)
+
+
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"

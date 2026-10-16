@@ -224,6 +224,7 @@ void parse_fixed_call_argument(int s, int callee_sym, int signature_type, char* 
 		if (callee_sym >= 0): param_type = sym_param_type(callee_sym, arg_index)
 		if (signature_type >= 0): param_type = type_function_param_type(signature_type, arg_index)
 		if (param_type >= 0): coerce_call_argument(param_type, arg_type)
+		if (type_is_safe_slice(param_type)): arg_type = param_type
 	push_call_argument_at(s, arg_type, stack_pos - entry_stack_pos)
 
 

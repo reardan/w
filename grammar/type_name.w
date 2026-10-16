@@ -186,13 +186,20 @@ int type_name():
 	if (safe_kind):
 		if (type_safe_entrypoint == 0): error(c"checked pointers are not supported by in-process sessions")
 		if (ast_retain_mode == 0): error(c"checked pointers require the retained frontend")
-		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || type_is_slice(type)):
-			error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")
-		if (is_gpu || type_is_gpu_pointer(type)): error(c"checked GPU pointers are not supported")
-		int element = type_lookup_previous_pointer(type)
-		if ((element < 0) || (type_get_size(element) <= 0)):
-			error(c"checked pointers require a sized pointee")
-		type = type_get_safe_lifetime(type, safe_kind, lifetime)
+		if (type_is_slice(type)):
+			if (safe_kind != 2): error(c"checked slices require the immutable ref qualifier")
+			int element = type_get_element_type(type)
+			if ((element < 0) || (type_get_size(element) <= 0)):
+				error(c"checked slices require a sized element")
+			type = type_get_safe_slice(element, lifetime)
+		else:
+			if ((type_get_pointer_level(type) != 1) || type_is_array(type)):
+				error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")
+			if (is_gpu || type_is_gpu_pointer(type)): error(c"checked GPU pointers are not supported")
+			int element = type_lookup_previous_pointer(type)
+			if ((element < 0) || (type_get_size(element) <= 0)):
+				error(c"checked pointers require a sized pointee")
+			type = type_get_safe_lifetime(type, safe_kind, lifetime)
 		if (lifetime != 0): free(lifetime)
 
 	return type

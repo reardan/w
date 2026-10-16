@@ -142,7 +142,9 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 		if (is_tail):
 			push_slot()
 			variadic_values = variadic_values + 1
-		else: push_call_argument_at(s, got, stack_pos - arg_stack)
+		else:
+			if (type_is_safe_slice(param_type)): got = param_type
+			push_call_argument_at(s, got, stack_pos - arg_stack)
 		count = count + 1
 		arg = tree.next_arg[arg]
 	if (variadic >= 0): finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
