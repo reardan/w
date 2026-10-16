@@ -71,6 +71,8 @@ grammars describe the two formats involved, run through
   (written against an earlier layout, so its paths are historical).
 - [`COMPATIBILITY_PLAN.md`](COMPATIBILITY_PLAN.md) — the implementation plan and
   capability ledger for the exact lexer and imported parser prediction engines.
+- [`LEFT_RECURSION_PLAN.md`](LEFT_RECURSION_PLAN.md) — the next implementation plan,
+  with parallel agent ownership and validation gates for 21 grammars / 25 rules.
 
 ## Why w, not a scripting language
 
