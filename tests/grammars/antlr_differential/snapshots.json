@@ -4554,5 +4554,159 @@
         "text": ""
       }
     ]
+  },
+  "unicode_ranges/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "BYTE_RANGE",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "unicode_ranges/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "BYTE_RANGE",
+        "start": 0,
+        "text": "\u00ff"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "unicode_ranges/input2": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "unicode_ranges/input3": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
+  "unicode_ranges/input4": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 5,
+        "name": "IRI_RANGE",
+        "start": 0,
+        "text": "<a/b>"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "unicode_ranges/input5": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 6,
+        "name": "IRI_RANGE",
+        "start": 0,
+        "text": "<\ud83d\ude00>"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 6,
+        "text": ""
+      }
+    ]
+  },
+  "unicode_ranges/input6": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "BYTE_RANGE",
+        "start": 0,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "BYTE_RANGE",
+        "start": 1,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "BYTE_RANGE",
+        "start": 2,
+        "text": " "
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "BYTE_RANGE",
+        "start": 3,
+        "text": "b"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "BYTE_RANGE",
+        "start": 4,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
   }
 }

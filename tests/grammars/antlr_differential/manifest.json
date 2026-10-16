@@ -131,6 +131,10 @@
     {
       "path": "FragmentTokenParser.g4",
       "sha256": "13644a15813d551d0f0244d27fdb9af578697b290ecea4b5b0d1d1d7ad0d21ac"
+    },
+    {
+      "path": "UnicodeRanges.g4",
+      "sha256": "e20049cc0be59fa93c16084be0e1d5f64d3c330582e86cd994572744e44ed8c7"
     }
   ],
   "cases": [
@@ -1329,6 +1333,51 @@
         {
           "id": "input4",
           "text": ""
+        }
+      ]
+    },
+    {
+      "name": "unicode_ranges",
+      "grammars": [
+        "UnicodeRanges.g4"
+      ],
+      "lexer": "UnicodeRangesLexer",
+      "parser": "UnicodeRangesParser",
+      "start": "root",
+      "w_start": "root",
+      "flags": [
+        "--strict",
+        "--exact-lexer",
+        "--prediction"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a"
+        },
+        {
+          "id": "input1",
+          "text": "\u00ff"
+        },
+        {
+          "id": "input2",
+          "text": "\u0100"
+        },
+        {
+          "id": "input3",
+          "text": ""
+        },
+        {
+          "id": "input4",
+          "text": "<a/b>"
+        },
+        {
+          "id": "input5",
+          "text": "<\ud83d\ude00>"
+        },
+        {
+          "id": "input6",
+          "text": "<a b>"
         }
       ]
     }
