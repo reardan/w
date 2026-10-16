@@ -10,11 +10,11 @@ Reference syntax: [flowcharts](https://mermaid.js.org/syntax/flowchart.html),
 
 ## Diagram statements
 
-Flowchart, ER, class and state diagrams accept `style ID properties` and
+Flowchart, ER, class, state, requirement and use-case diagrams accept `style ID properties` and
 `classDef NAME properties`. `style` and `classDef` can target comma-separated
 names. Flowchart, ER and state diagrams accept `class ID,ID NAME`; class diagrams
 use `cssClass "ID,ID" NAME` so `class` remains a class declaration. `cssClass`
-works in all four families. Flowchart/ER nodes and class declarations accept
+works in these families. Flowchart/ER nodes and class declarations accept
 inline `:::NAME` assignment. Style classes may be defined after they are used;
 a missing definition produces a diagnostic. Existing graph groups can be styled.
 
@@ -41,7 +41,11 @@ classes and groups use the resolved palette. Semantic filled endpoint symbols
 continue to use the stroke color. Transparent fills preserve the native preview
 behind their outlines. Stroke widths and colors are carried by the display list,
 so native rendering and SVG use the same values. Node styles do not recolor the
-relationship connecting two nodes; link styles are a separate future feature.
+relationship connecting two nodes. `linkStyle default stroke:blue` supplies edge
+defaults; `linkStyle 0,2 stroke:red,stroke-width:4,color:green` overrides source-order
+edge indices. Indices must refer to already declared edges. Link styles accept
+`stroke`, `stroke-width` and label `color`; explicit edge values override defaults.
+They apply to the shared graph renderer, including arrows and endpoint markers.
 
 ## Frontmatter themes
 
@@ -76,8 +80,8 @@ produce a diagnostic. Field order does not affect the resolved palette.
 
 The source remains byte-for-byte saveable, including unsupported styles. Invalid
 styles suppress the preview. The current implementation does not support
-`linkStyle`, custom CSS, `stroke-dasharray`, opacity, font overrides, inline init
-directives, diagram-specific configuration blocks, the upstream redux/neo themes,
+custom CSS, `stroke-dasharray`, opacity, font overrides, inline init
+directives, arbitrary diagram configuration, the upstream redux/neo themes,
 or external stylesheets. Classes refer to existing node identifiers; quoted ER
 display aliases are not style identifiers.
 

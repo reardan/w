@@ -48,3 +48,33 @@ void test_mermaid_native_transparent_interior():
 		asserts(c"transparent interior not painted", v[0] < 25.0 || v[0] > 115.0 || v[1] < 25.0 || v[1] > 115.0)
 	ui_render_destroy(&r)
 	mm_scene_free(scene)
+
+void test_mermaid_native_concave_polygon_preserves_gap():
+	mm_scene* scene = new mm_scene()
+	scene.items = new list[mm_primitive*]
+	scene.nodes = new list[mm_bounds*]
+	mm_draw(scene, MM_POLYGON, 20, 20, 80, 80, 0, c"")
+	mm_primitive* p = scene.items[0]
+	p.points = list[int]{20, 20, 40, 20, 40, 60, 60, 60, 60, 20, 80, 20, 80, 80, 20, 80}
+	p.style.mask = MM_STYLE_FILL | MM_STYLE_STROKE
+	p.style.fill = 0xff0000
+	p.style.stroke = -1
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_render_begin(&r, 100, 100)
+	mm_ui_render(&r, scene, ui_rect_new(0.0, 0.0, 100.0, 100.0), 1.0, 0.0, 0.0)
+	int left = 0
+	int right = 0
+	for i in range(0, r.layer_vert_count[0], 3):
+		float32* a = &r.layer_verts[0][i * 8]
+		float32* b = &r.layer_verts[0][(i + 1) * 8]
+		float32* c = &r.layer_verts[0][(i + 2) * 8]
+		if (a[1] >= 25.0 && a[1] < 50.0):
+			int on_left = a[0] <= 40.0 && b[0] <= 40.0 && c[0] <= 40.0
+			int on_right = a[0] >= 60.0 && b[0] >= 60.0 && c[0] >= 60.0
+			asserts(c"concave gap is not bridged", on_left || on_right)
+			left = left + on_left
+			right = right + on_right
+	asserts(c"both filled spans visible", left > 0 && right > 0)
+	ui_render_destroy(&r)
+	mm_scene_free(scene)
