@@ -543,9 +543,10 @@ Host native callables may set `host_construct = 2` for a constructor that requir
 call path, so this permission does not leak to nested ordinary calls.
 
 The pinned Test262 addition reference-error cases now pass both script variants
-through `instanceof ReferenceError` (43 PASS, 10 UNSUPPORTED in the existing
-53-variant selection); this is a measured feature gain, not a full-conformance
-claim. The adapter's unsupported-syntax self-test now uses a class accessor,
+through `instanceof ReferenceError`. The expanded pinned runtime selection now
+reports 90 PASS and 23 explicit UNSUPPORTED across 113 variants, with no FAIL or
+ERROR; see its [manifest/profile](../../tests/javascript/test262/README.md).
+These are measured feature gains, not a full-conformance claim. The adapter's unsupported-syntax self-test now uses a class accessor,
 which remains unsupported, instead of a now-supported empty class.
 
 
