@@ -25,12 +25,16 @@ int retained_file_source(int index):
 # Exact record comparison also detects forward records completed in the same source.
 int retained_type_matches(retained_type* type, type_rec* original):
 	if (type.building): return 1
+	if ((type.lifetime_order == 0) != (original.fn_lifetime_order == 0)): return 0
 	if (strcmp(type.name, original.name) != 0): return 0
 	if (type.file_index != retained_file_key(original.decl_file_index)): return 0
 	if ((type.line != original.decl_line) || (type.column != original.decl_column)): return 0
 	if ((type.kind != original.kind) || (type.size != original.total_size) || (type.pointer_level != original.pointer_level)): return 0
 	if ((type.origin_target != original.alias_target) || (type.origin_return != original.fn_return_type) || (type.origin_parameters != original.fn_param_count)): return 0
 	if (type.fields.length != original.num_fields): return 0
+	if (type.lifetime_order != 0):
+		for i in range(original.fn_param_count + 1):
+			if (type.lifetime_order[i] != original.fn_lifetime_order[i]): return 0
 	for i in range(original.num_fields):
 		retained_field* field = type.fields[i]
 		if (strcmp(field.name, original.field_names[i]) != 0): return 0
@@ -63,6 +67,11 @@ int retained_type_note(int index):
 	retained_type* type = new retained_type
 	type.name = retained_intern(original.name)
 	type.lifetime = 0
+	type.lifetime_order = 0
+	if (original.fn_lifetime_order != 0):
+		int bytes = (original.fn_param_count + 1) * __word_size__
+		type.lifetime_order = cast(int*, retained_arena_alloc(bytes))
+		for i in range(original.fn_param_count + 1): type.lifetime_order[i] = original.fn_lifetime_order[i]
 	if (original.safe_lifetime != 0): type.lifetime = retained_intern(original.safe_lifetime)
 	type.file = retained_intern(debug_file_name(original.decl_file_index))
 	type.file_index = retained_file_key(original.decl_file_index)

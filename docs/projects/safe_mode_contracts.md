@@ -38,7 +38,7 @@ every declaration resolving an audited storage function, including private
 destructors. An identical redeclaration preserves the existing definition.
 
 Aliases preserve annotations. Local annotations never extend storage
-lifetime. Direct signatures can express outlives clauses after the parameter
+lifetime. Direct and concrete generic signatures can express outlives clauses after the parameter
 list (`where a > b, b > c`). Every endpoint must name a borrowed parameter or
 result. Normalize to a transitive relation on signature slots, including equal
 labels, and retain it with each declaration's independent snapshot. Clause
@@ -49,9 +49,16 @@ checkpoint rollback reclaim it with the declaration; it is never published
 into a global label namespace. Body return validation and caller provenance
 use the same relation. A relation never erases a root or reborrow parent.
 
-This establishes direct-call outlives contracts only. Generic outlives clauses,
-higher-ranked function contracts and multiple independent aggregate lifetime
-groups need separate implementation and rejection tests before admission.
+Concrete generic signatures own normalized relation rows in their raw function
+type; each retained type snapshot copies the rows into its arena. This prevents
+raw signatures from referencing rolled-back arena storage during recovery. The call checks that
+snapshot against the instantiated declaration before using its origins.
+Constrained headers are reparsed from retained source under the concrete type
+substitution, so aliases resolve before labels are normalized; unconstrained
+headers keep the existing retained-tree fast path. No template label enters a
+global lifetime namespace. Higher-ranked function contracts and multiple
+independent aggregate lifetime groups still require their own implementation
+and rejection tests before admission.
 
 ## Provenance and reborrows
 
