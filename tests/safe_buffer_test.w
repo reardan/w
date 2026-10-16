@@ -246,3 +246,22 @@ void test_checked_collection_mismatched_helper_prototypes():
 void test_checked_collection_raw_helper_signature_changes():
 	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WIntBuffer* value = int_buffer_new()\n\treturn 0\nvoid __w_int_buffer_drop(int* value);\nint main():\n\treturn dispose()\n", c"safe:")
 	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WByteString* value = byte_string_new()\n\treturn 0\nvoid __w_byte_string_drop(int* value);\nint main():\n\treturn dispose()\n", c"safe:")
+
+
+void test_checked_owned_element_buffer():
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\town int* p = new int\n\t*p = 7\n\towned_int_buffer_push(b, p)\n\tref int* view = owned_int_buffer_get(b, 0)\n\tint n = *view\n\town int* q = owned_int_buffer_pop(b)\n\treturn *q - n\n", 0)
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\town int* p = new int\n\towned_int_buffer_push(b, p)\n\treturn *p\n", c"moved value")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\town int* p = new int\n\towned_int_buffer_push(b, p)\n\towned_int_buffer_push(b, p)\n\treturn 0\n", c"moved value")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\towned_int_buffer_clear(b)\n\treturn *view\n", c"conflicting")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\towned_int_buffer_set(b, 0, new int)\n\treturn *view\n", c"conflicting")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\town int* p = owned_int_buffer_pop(b)\n\treturn *view\n", c"conflicting")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\towned_int_buffer_push(b, new int)\n\treturn *view\n", c"conflicting")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\town WOwnedIntBuffer* moved = b\n\treturn *view\n", c"moved value")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\tb = owned_int_buffer_new()\n\treturn *view\n", c"conflicting")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* view = owned_int_buffer_get(b, 0)\n\t*view = 7\n\treturn 0\n", c"shared reference")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = new WOwnedIntBuffer\n\treturn 0\n", c"audited constructor")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\treturn b.length\n", c"opaque")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\t__w_owned_int_buffer_clear(b)\n\treturn 0\n", c"runtime call")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\town int* p = owned_int_buffer_pop(b)\n\treturn *p\n", 0, 0, c"empty checked owned buffer")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tref int* p = owned_int_buffer_get(b, 1)\n\treturn *p\n", 0, 0, c"owned buffer index out of range")
+	buffer_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_set(b, -1, new int)\n\treturn 0\n", 0, 0, c"owned buffer index out of range")
