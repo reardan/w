@@ -307,6 +307,7 @@ int safe_build(int id, int next, int break_to, int continue_to):
 	if (strcmp(name, c"unsafe block") == 0):
 		safe_unsafe_check(id)
 		return next
+	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
 	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"switch") == 0) || (strcmp(name, c"for") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
 	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
@@ -904,6 +905,7 @@ void safe_transfer(int event, char* state):
 void safe_function_check(int function):
 	safe_function = function
 	retained_record* fn = retained_record_at(function)
+	if (fn.expression_fallback): safe_error(function, c"safe: unsupported expression fallback", -1)
 	if (retained_bindings[fn.binding].assembly_body): safe_error(function, c"safe: assembly function bodies are not supported", -1)
 	safe_return_type = retained_bindings[fn.binding].return_type
 	safe_type_check(function, safe_return_type)
