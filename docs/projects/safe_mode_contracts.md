@@ -16,7 +16,8 @@ identifiers bound implicitly by a function signature, not global lifetimes,
 runtime values or generic type arguments. Unannotated results retain the
 existing exactly-one-borrowed-input inference rule.
 
-For a named result, collect every borrowed input with its label. Require a
+For a named result, collect every borrowed input with its label or a label
+that transitively outlives it under an explicit `where a > b` clause. Require a
 nonempty set. The body may return a view of any member, but may not return
 local storage, an owned parameter or a different input. At a call, the result
 keeps every member's backing storage borrowed. This computes a conservative
@@ -25,8 +26,8 @@ which branch the function takes. A mutable result requires all candidate
 inputs to supply mutable references.
 
 Names are erased at runtime. A prototype and definition agree if their
-types and label equality relationships agree across all parameter/result
-positions. Renaming labels consistently is valid; adding, removing or
+types, label equality relationships and transitive outlives relationships
+agree across all parameter/result positions. Renaming labels consistently is valid; adding, removing or
 regrouping labels is not. Preserve the written result and parameter types
 from each declaration together; combining a prototype's result label with a
 definition's renamed inputs creates an invalid signature snapshot.
@@ -37,9 +38,20 @@ every declaration resolving an audited storage function, including private
 destructors. An identical redeclaration preserves the existing definition.
 
 Aliases preserve annotations. Local annotations never extend storage
-lifetime. General outlives clauses, higher-ranked function contracts and
-multiple independent aggregate lifetime groups are not inferred from this
-syntax; they need separate implementation and rejection tests.
+lifetime. Direct signatures can express outlives clauses after the parameter
+list (`where a > b, b > c`). Every endpoint must name a borrowed parameter or
+result. Normalize to a transitive relation on signature slots, including equal
+labels, and retain it with each declaration's independent snapshot. Clause
+order and redundant edges do not affect identity. The bounded representation
+admits at most ten parameters, matching the raw symbol's parameter-type slots.
+The relation is stored in the retained arena, so session destruction and
+checkpoint rollback reclaim it with the declaration; it is never published
+into a global label namespace. Body return validation and caller provenance
+use the same relation. A relation never erases a root or reborrow parent.
+
+This establishes direct-call outlives contracts only. Generic outlives clauses,
+higher-ranked function contracts and multiple independent aggregate lifetime
+groups need separate implementation and rejection tests before admission.
 
 ## Provenance and reborrows
 

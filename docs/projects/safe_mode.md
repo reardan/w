@@ -124,7 +124,7 @@ named `length` follow the usual field-borrow rules.
 ### Named lifetime contracts
 
 Annotate a reference with `ref[a] T*` or `refmut[a] T*` to name its lifetime
-relationship within a function signature. The result's label must occur on
+relationship within a function signature. Without an outlives clause, the result's label must occur on
 at least one borrowed input. The result may borrow from any input with that
 label, and the caller conservatively keeps **all** those inputs borrowed
 until the result's last use. Inputs with other labels do not contribute to
@@ -158,8 +158,43 @@ convention. They are local to each signature: a forward declaration can
 rename labels if it preserves the same relationships between result and
 parameters. Aliases preserve labels. Annotating a local reference does not
 extend its backing storage's lifetime. Ordinary references stay non-null;
-`own` does not take a lifetime label. General outlives clauses remain a
-future extension.
+`own` does not take a lifetime label.
+
+### Explicit outlives clauses
+
+Direct function signatures may add `where a > b` after the parameter list.
+The clause says lifetime `a` outlives `b`; it permits a result labeled `b`
+to borrow from an input labeled `a`. Separate multiple relationships with
+commas. Relationships are transitive, and every label must occur on a borrowed
+parameter or result. A result-only label is valid when an input outlives it.
+
+```w
+ref[shorter] int* shorten(ref[longer] int* value) where longer > shorter:
+	return value
+
+ref[c] int* choose_shorter(ref[a] int* left, ref[b] int* right, int first) where a > b, b > c:
+	if first: return left
+	return right
+```
+
+The caller retains **all** possible backing inputs whose labels outlive the
+result, including transitive predecessors, until the result's last use.
+The body cannot return an unrelated input or local storage. Mutable results
+still require every contributing input to be mutable; the clause does not
+change pointee types or permit mutation through shared references. Slices,
+optional references and the existing single-group borrowed records use the
+same result-provenance rule.
+
+Forward declarations may consistently rename labels, reorder clauses and
+add redundant transitive edges. The normalized relationship between signature
+positions must agree, including on unused and later declarations. Self-edges
+are redundant; cycles require both directions and do not extend any actual
+storage lifetime. Contracts apply with or without `--safe`.
+
+This step supports direct functions with at most ten parameters. Generic
+outlives clauses, higher-ranked function values and independent aggregate
+lifetime groups remain rejected pending their own implementation gates.
+No runtime representation, allocation or destruction order changes.
 
 ### Shared-reference structs
 
@@ -810,3 +845,42 @@ The compiler input shows about 0.2% less elapsed time and 0.2% more peak
 memory in this sample; this does not establish a general performance bound.
 These existing cost fixtures measure compatibility and basic owner cleanup,
 not the throughput of every new container or generic workload.
+
+### Direct outlives contracts (Wave 1)
+
+The first step of [#695](https://github.com/reardan/w/issues/695) adds 35
+accepted/rejected cases to the lifetime matrix, checked and compiled on
+x86/x64 with and without `--safe`. Accepted programs execute; rejected
+programs leave no executable. Cases cover transitive constraints, cycles,
+result-only labels, aliases, renamed/reordered/redundant forward contracts,
+unused and later declarations, imports, recursion, optional/mutable results,
+loop liveness and conflicting mutations or moves.
+
+The ordinary suite, Linux x86/x64 self-host checks, Windows runtime fixture
+and benchmark gate passed together: 1,330 targets. The inherited `NO_COLOR`
+setting was removed for color-diagnostic tests; Windows execution used an
+isolated Wine prefix because the host's shared prefix lacked a repository
+drive mapping. All 48 manifest-selected architecture/root checks passed.
+
+The instrumented full suite passed 1,328 targets and every compiler/API
+harness, with a COMPLETE receipt. Tests reached 54/56 changed executable
+compiler lines (96%); existing directory coverage floors passed unchanged.
+
+The new aggregate/slice runtime fixture preserves owner replacement and
+cleanup across 100 iterations. Native guard checks and Memcheck passed on
+both Linux architectures with explicit leak reports; each Memcheck run
+observed three allocations and three frees, zero outstanding blocks and
+zero errors. The same fixture passed under Wine.
+
+Seven alternating runs compared the pinned-seed-built baseline compiler at
+`46b096f1` with the updated compiler, both compiling that baseline's `w.w`
+from the same checkout. Median elapsed time was 1.62 s before and 1.63 s
+after; median peak RSS was 111,504 KiB before and 111,584 KiB after. Emitted
+binaries were byte-identical. These `/usr/bin/time` measurements include
+startup/output and overlapped shared-host test activity; they establish
+neither a speedup nor a general performance bound. Outlives clauses add
+compiler metadata only, with no new runtime allocation or representation.
+
+This step does not complete #695 or the broader #644 roadmap. Higher-ranked
+contracts, generic outlives clauses and richer aggregate ownership retain
+their separate implementation gates.

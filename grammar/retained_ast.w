@@ -242,6 +242,7 @@ int retained_binding_note(int sym, int owner):
 			binding.line = node.line
 			binding.column = node.column
 	binding.assembly_body = 0
+	binding.lifetime_order = 0
 	binding.scope = scope
 	binding.slot = load_int(table + sym + 2)
 	binding.source = source
@@ -510,10 +511,12 @@ void retained_local_note(int sym):
 		parent.column = column
 
 
-void retained_function_parameters(int binding):
+void retained_function_parameters(int binding, int* lifetime_order):
 	if (ast_retain_mode == 0): return
 	if ((retained_parent >= 0) && retained_semantic_mode):
-		retained_record_at(retained_parent).binding = retained_binding_note(binding, retained_parent)
+		int noted = retained_binding_note(binding, retained_parent)
+		retained_record_at(retained_parent).binding = noted
+		if (noted >= 0): retained_bindings[noted].lifetime_order = lifetime_order
 	sym_index_sync()
 	# The index is sorted by offset: start at the first symbol after binding.
 	int low = 0
@@ -531,9 +534,9 @@ void retained_function_parameters(int binding):
 # body. Snapshot this declaration at its own source location so a changed
 # contract cannot disappear behind the definition's binding-cache entry.
 # Restore the live symbol metadata used by diagnostics and generated calls.
-void retained_function_prototype_parameters(int binding, int return_type):
+void retained_function_prototype_parameters(int binding, int return_type, int* lifetime_order):
 	if ((ast_retain_mode == 0) || (retained_parent < 0) || (retained_semantic_mode == 0) || (table[binding + 1] != 'D')):
-		retained_function_parameters(binding)
+		retained_function_parameters(binding, lifetime_order)
 		return
 	int previous = retained_binding_note(binding, retained_parent)
 	int file_index = load_int(table + binding + 66)
@@ -545,7 +548,7 @@ void retained_function_prototype_parameters(int binding, int return_type):
 	save_int(table + binding + 70, node.line)
 	save_int(table + binding + 74, node.column)
 	save_int(table + binding + 6, return_type)
-	retained_function_parameters(binding)
+	retained_function_parameters(binding, lifetime_order)
 	if ((previous >= 0) && (node.binding >= 0)):
 		retained_bindings[node.binding].linkage = retained_bindings[previous].linkage
 	save_int(table + binding + 66, file_index)

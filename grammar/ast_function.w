@@ -1,6 +1,6 @@
 # Parameter declarations remain semantic input to the ordinary function
 # rule. Its completed signature feeds these resolved body-boundary nodes.
-void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column):
+void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column, int* lifetime_order):
 	function_ast node
 	node.kind = kind
 	node.binding = binding
@@ -12,7 +12,7 @@ void ast_function_body(int binding, int code_start, int kind, int written_return
 	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
 	ast_body_layout_begin(retained, stack_pos)
-	retained_function_parameters(binding)
+	retained_function_parameters(binding, lifetime_order)
 	current_function_symbol = binding
 	if (kind == ast_function_generator): in_generator_body = 1
 	enclosing_tab_level = 0

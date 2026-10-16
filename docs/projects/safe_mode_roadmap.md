@@ -9,7 +9,8 @@ The [safe-mode reference](safe_mode.md) describes the supported syntax,
 guarantees, restrictions and measured costs. This document preserves the
 remaining design from [PR #645](https://github.com/reardan/w/pull/645) and
 turns it into the implementation plan below. The bounded first delivery is
-implemented as described below. The follow-on implementation adds bounded
+implemented as described below. [PR #681](https://github.com/reardan/w/pull/681),
+merged on 2026-10-16, adds bounded
 optional references, range loops and scalar switches, outer-function
 deferred expressions, single-group mutable-reference records,
 checked methods and concrete generic calls,
@@ -35,7 +36,7 @@ implementation rather than introduce a second ownership model.
 | Area | Available behavior | Remaining scope |
 | --- | --- | --- |
 | Compiler interface | `--safe`, structured diagnostics, deterministic option conflicts, unsupported-target errors | More targets and in-process execution |
-| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, optional references with presence refinement, aliases and explicit contracts without `--safe` | General outlives clauses and higher-ranked contracts |
+| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, direct outlives clauses, optional references with presence refinement, aliases and explicit contracts without `--safe` | Generic outlives and higher-ranked contracts |
 | Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins, range loops and scalar switches | Container iteration and more precise projections |
 | Calls | Direct/imported/recursive calls, checked methods and concrete generic calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Indirect calls, callbacks and unmodeled generic operations |
 | Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction and outer-function `defer` | Nested defer registration, partial moves and mixed borrowed/owned aggregate fields |
@@ -49,15 +50,42 @@ ownership graphs are allocated only when checking is needed. Analysis runs
 before an output artifact is published. Future emission changes must preserve
 that gate and every transfer, cleanup and diagnostic obligation.
 
-## Implementation sequence and parallel agents
+## Remaining workstreams and execution waves
+
+Waves define execution order; linked issues own deliverables and completion
+gates. Each issue may contain several PR-sized steps. The historical milestone
+IDs below identify feature requirements, not a second execution schedule.
+
+| Workstream | Issue | Execution order |
+| --- | --- | --- |
+| Lifetime contracts and aggregate ownership | [#695](https://github.com/reardan/w/issues/695) | Wave 1: lifetime contracts, richer aggregates, then disjoint fields/partial moves |
+| Deferred work, generics and callbacks | [#696](https://github.com/reardan/w/issues/696) | Wave 2, after the required lifetime and aggregate contracts |
+| Generic containers and checked iteration | [#697](https://github.com/reardan/w/issues/697) | Wave 3, after element ownership and checked generic/callback contracts |
+| Foreign boundaries and typed arenas | [#698](https://github.com/reardan/w/issues/698) | Foreign-boundary contracts in Wave 2 when ready; typed arenas in Wave 3 |
+| Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites |
+| Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize |
+
+Split #700 into separate target, session and performance child issues when
+implementation begins. Their acceptance gates are independent; one component's
+validation cannot complete another. Do not delay dependency-ready work merely
+to align those components with a numbered wave.
+
+Keep [#644](https://github.com/reardan/w/issues/644) open until all required
+child issues are complete. Before closing the umbrella with an intentional
+deferral, record the capability, reason, remaining restrictions and follow-up
+destination explicitly on #644. Creating a linked issue alone is not completion.
+This reorganization does not defer any remaining capability.
+
+## Foundation delivery and milestone requirements
 
 The first implementation follows D0, L1–L3, a bounded A1/A2, and concrete
 C1/C2. [Contract decisions](safe_mode_contracts.md) record the chosen
 representations and trust boundaries. The [usage guide](safe_mode.md) records
 the accepted syntax and validation evidence. In particular:
 
-- Named labels express shared result/input lifetime relationships; general
-  outlives clauses remain unimplemented.
+- Named labels express shared result/input lifetime relationships; direct
+  signatures also admit explicit transitive outlives clauses. Higher-ranked
+  and generic outlives contracts remain unimplemented.
 - Borrowed structs carry one lifetime group across shared or mutable pointer
   fields and shared checked-slice fields. Mutable-reference fields require
   an exclusive `refmut Record` wrapper; copies are reborrows. Multiple
@@ -82,7 +110,10 @@ cleanup, a growable buffer of pointer-free elements, and owned byte strings
 with borrowed views. It is not a Rust-equivalence or soundness certification.
 Thread safety, general callbacks and additional targets have separate gates.
 
-Each row below is a proposed PR boundary. Split a row further if its parser,
+Each row below records a milestone from the original delivery plan; the
+implemented-foundation table above describes what has shipped. Remaining
+portions belong to the six workstreams above. Each row is a possible PR
+boundary. Split a row further if its parser,
 checker and lowering work cannot be reviewed together; do not enable its
 surface syntax until body checking, caller checking and emission agree.
 Dependencies mean merged prerequisites, not concurrent edits against an
@@ -109,27 +140,14 @@ design requirements for these PRs.
 | T1 | Transfer/share type rules and an audited concurrency subset, in separate rule/runtime PRs | A2, F3, U1 | Cross-thread ownership and shared access validated; unsupported payloads rejected; runtime synchronization and cleanup reviewed |
 | P1 | Additional targets, persistent compiler sessions and ownership-preserving optimizations, each independently gated | Required feature contracts above | Target/runtime parity, failed-entry rollback, cache invalidation and optimized/unoptimized differential tests |
 
-O1, F1 and adversarial testing can progress while aggregate work proceeds.
-The first delivery target requires D0, L1–L3, A1–A2 and C1–C2; it can use
-direct calls, existing `while` loops and trapping bounds/allocation failures.
-Optional returns, generic collection wrappers and callbacks are not hidden
-prerequisites for that bounded release. C3 should not delay that release.
+### Integration discipline
 
-### Agent ownership and integration order
-
-Use one integrating agent and up to three implementation subagents. Start
-each wave from the same reviewed base, with separate worktrees and separate
-`bin/` outputs. Agents return commits, assumptions, test commands/results and
-remaining restrictions. The integrator merges prerequisites in dependency
-order and runs the combined gates; passing isolated branches is insufficient.
-
-| Wave | Subagent A: contracts and analysis | Subagent B: storage and libraries | Subagent C: adversarial validation | Integrator |
-| --- | --- | --- | --- | --- |
-| 0 | D0 lifetime/provenance proposal | D0 descriptor, construction and library-effect proposal | Audit current rejects; assemble interaction matrix and minimized fixtures | Resolve representation/syntax decisions; merge D0 |
-| 1 | L1, then L2 | Audit slice allocation/return paths for L3; prototype runtime contracts without enabling calls | Extend import, branch, loop, alias and reborrow cases | Merge schema changes first; review every new accepted path |
-| 2 | A1, then A2 | L3, then C1 runtime work against agreed interfaces | Slice/aggregate destruction and invalidation tests; prepare F1 graph cases | Serialize shared checker/emitter edits and integrate L3 before C1 |
-| 3 | O1 or F1/F2, one checker owner at a time | C1, then C2 public APIs and fixtures | End-to-end examples, heap checks, differential and mutation tests | Publish the bounded release after its complete acceptance matrix |
-| Later | A3/F3, then transfer/share rules | C3, U1 and concurrency runtime after prerequisites | Boundary, concurrency, target and session audits | Schedule T1/P1 as separate feature releases |
+Start each step from merged prerequisites. Keep parser, retained semantics,
+body/caller checking, lowering, cleanup and runtime contracts aligned before
+admitting an operation. Independently review accepted and rejected interactions
+and integrate validation evidence with each PR. If implementation is delegated,
+use isolated worktrees and separate `bin/` outputs; passing isolated branches
+is insufficient for the combined gates.
 
 The integrating agent assigns a single writer for shared
 `compiler/safe.w`, `compiler/retained_semantic.w`, `compiler/type_table.w`,
@@ -141,7 +159,7 @@ Runtime allowlist/hash changes in `compiler/safe_runtime.w` follow the same
 rule. Do not rebuild a shared compiler/test binary while another agent uses
 it; worktree isolation includes generated manifests and caches.
 
-### Decisions that D0 must settle
+### Foundation decisions to preserve and extend
 
 - Define lifetime syntax and normalized parameter identities before parser
   work. Keep the current sole-borrowed-input rule as an inferred shorthand;
@@ -191,8 +209,9 @@ ancestry through nested, recursive and imported calls. Mutable results require
 a mutable borrowed input. This rule applies with or without `--safe` and
 supports references into pointer-free structs and array/slice elements.
 
-Named lifetime relationships between multiple borrowed inputs and results
-and explicit inline slice returns are now implemented. Unannotated ambiguous
+Named lifetime relationships between multiple borrowed inputs and results,
+direct-function transitive outlives clauses and explicit inline slice returns
+are implemented. Unannotated ambiguous
 reference-return signatures remain rejected. A returned reference
 must not outlive a stack local, owner or temporary that backs it; admitting
 additional contracts must preserve body and caller checks against the same
