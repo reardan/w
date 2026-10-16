@@ -24,6 +24,37 @@ int socket_abi_family_from_word(int word):
 	return (word >> 8) & 255
 
 
+# IPv6 (stdlib parity P3.10): AF_INET6 is 30 on Darwin (Linux 10).
+int socket_abi_af_inet6():
+	return 30
+
+
+# Leading 16-bit field of a sockaddr of size bytes: sin6_len for a
+# 28-byte sockaddr_in6, then the family byte.
+int socket_abi_family_word_sized(int family, int size):
+	return ((family & 255) << 8) | (size & 255)
+
+
+int socket_abi_ipproto_ipv6():
+	return 41
+
+
+int socket_abi_ipv6_v6only():
+	return 27
+
+
+int socket_abi_eafnosupport():
+	return 47
+
+
+int socket_abi_eaddrnotavail():
+	return 49
+
+
+int socket_abi_enetunreach():
+	return 51
+
+
 # SOL_SOCKET is 0xffff on Darwin, not Linux's 1.
 int socket_abi_sol_socket():
 	return 65535

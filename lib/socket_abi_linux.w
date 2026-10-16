@@ -69,3 +69,36 @@ int socket_abi_so_error():
 # Normalize only for portable status classification; retain raw errno.
 int socket_abi_status_errno(int err):
 	return err
+
+
+# IPv6 (stdlib parity P3.10). AF_INET6 differs between Linux (10) and
+# Darwin (30); IPPROTO_IPV6 is 41 on both, IPV6_V6ONLY is not.
+int socket_abi_af_inet6():
+	return 10
+
+
+# Leading 16-bit field of a sockaddr of size bytes (sockaddr_in6 is 28).
+# Linux has no length byte, so the size is unused.
+int socket_abi_family_word_sized(int family, int size):
+	return family
+
+
+int socket_abi_ipproto_ipv6():
+	return 41
+
+
+int socket_abi_ipv6_v6only():
+	return 26
+
+
+# errno values for "this host has no IPv6" (socket or bind/connect).
+int socket_abi_eafnosupport():
+	return 97
+
+
+int socket_abi_eaddrnotavail():
+	return 99
+
+
+int socket_abi_enetunreach():
+	return 101

@@ -1,7 +1,8 @@
 # DNS resolver for the pure-W HTTP stack (plan 11, issue #198, part of
-# #155): A records over UDP port 53 with a TCP retry when the server
-# sets the TC (truncation) bit. IPv4 only for now (lib/net.w sockets
-# are IPv4-only), but nothing here designs AAAA out.
+# #155): A and AAAA records over UDP port 53 with a TCP retry when the
+# server sets the TC (truncation) bit. Nameservers are reached over
+# IPv4; AAAA answers and IPv6 /etc/hosts lines feed lib/net.w's
+# AF_INET6 connects (stdlib parity P3.10).
 #
 # Resolution order in dns_resolve_ipv4: dotted-quad literals
 # short-circuit, then /etc/hosts, then the /etc/resolv.conf
@@ -29,6 +30,17 @@
 #                       int out_cap)                      length or 0
 #   int dns_parse_response(char* msg, int msg_len, int query_id,
 #                          char* hostname, int* out_ip)   dns_result_*
+# IPv6 / dual stack (16-byte network-order addresses):
+#   int dns_resolve_addresses(char* hostname, net_address* out, int max)
+#       count; IPv6-first interleaved (also _until, _config_until)
+#   int dns_resolve_ipv6(char* hostname, char* out16)     1/0 (also _until)
+#   int dns_query_server_aaaa(int server_ip, int server_port,
+#       char* hostname, int timeout_ms, char* out16)      1/0
+#   int dns_parse_ipv6_literal(char* text, char* out16)   "::1" or "[::1]"
+#   int dns_hosts_lookup_ipv6_text(char* text, char* hostname, char* out16)
+#   int dns_build_query_type(hostname, qtype, query_id, out, out_cap)
+#   int dns_parse_response_aaaa(msg, msg_len, query_id, hostname,
+#       char* out16, int* out_ttl)    dns_result_* incl. dns_result_nodata
 import lib.lib
 import lib.bytes
 import lib.net
@@ -39,6 +51,7 @@ import lib.time
 import lib.mem
 import lib.stat
 import lib.__arch__.budget_lock
+import libs.standard.net.ipaddress
 
 
 const int dns_port = 53
@@ -56,6 +69,7 @@ const int dns_max_pointer_hops = 32
 const int dns_max_answers = 64
 const int dns_type_a = 1
 const int dns_type_cname = 5
+const int dns_type_aaaa = 28
 const int dns_class_in = 1
 
 
@@ -64,9 +78,18 @@ const int dns_result_error = 0
 const int dns_result_ok = 1
 const int dns_result_truncated = 2
 const int dns_result_nxdomain = 3
+# The name exists but has no record of the queried type (NOERROR with
+# no matching answer). Only the typed parsers return it; the A-only
+# compatibility parsers report it as dns_result_error as before.
+const int dns_result_nodata = 4
 const int dns_cache_capacity = 64
 const int dns_cache_ttl_max = 300
 const int dns_cache_negative_ttl = 5
+
+
+int dns_build_query_type(char* hostname, int qtype, int query_id, char* out, int out_cap);
+int dns_parse_response_rdata(char* msg, int msg_len, int query_id, char* hostname, int qtype, char* out_rdata, int* out_ttl);
+void dns_cache_store_typed(char* hostname, int qtype, int ip, char* ip6, int result, int ttl, int generation);
 
 
 int dns_lower_char(int c):
@@ -261,6 +284,11 @@ int dns_random_id():
 # label over 63 bytes, encoded name over 255 bytes) or out_cap is too
 # small.
 int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
+	return dns_build_query_type(hostname, dns_type_a, query_id, out, out_cap)
+
+
+# dns_build_query for any qtype (dns_type_a, dns_type_aaaa, ...).
+int dns_build_query_type(char* hostname, int qtype, int query_id, char* out, int out_cap):
 	if (hostname == 0): return 0
 	if ((hostname[0] == 0) || (out_cap < 17)): return 0
 	store_be16(out, query_id)
@@ -295,8 +323,8 @@ int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
 			# Skip the separator; a single trailing dot ends the loop.
 			i = i + 1
 	out[pos] = 0
-	out[pos + 1] = 0
-	out[pos + 2] = dns_type_a
+	out[pos + 1] = (qtype >> 8) & 255
+	out[pos + 2] = qtype & 255
 	out[pos + 3] = 0
 	out[pos + 4] = dns_class_in
 	return pos + 5
@@ -362,6 +390,28 @@ int dns_parse_fail(char* name, char* target):
 # dns_result_error for anything malformed. out_ttl is capped and includes
 # every followed CNAME as well as the final A record.
 int dns_parse_response_ttl(char* msg, int msg_len, int query_id, char* hostname, int* out_ip, int* out_ttl):
+	char* rdata = cast(char*, malloc(4))
+	int result = dns_parse_response_rdata(msg, msg_len, query_id, hostname, dns_type_a, rdata, out_ttl)
+	if (result == dns_result_ok): *out_ip = load_be32(rdata)
+	free(rdata)
+	if (result == dns_result_nodata):
+		*out_ttl = 0
+		return dns_result_error
+	return result
+
+
+# Record data length for the address types this resolver answers.
+int dns_rdata_length(int qtype):
+	if (qtype == dns_type_aaaa): return 16
+	return 4
+
+
+# Typed core of dns_parse_response_ttl: validates a response to a
+# qtype/IN query and copies the first matching record's rdata
+# (dns_rdata_length(qtype) bytes, network order) into out_rdata.
+# Additionally returns dns_result_nodata (with the negative TTL) when a
+# NOERROR response holds no record of that type for the name.
+int dns_parse_response_rdata(char* msg, int msg_len, int query_id, char* hostname, int qtype, char* out_rdata, int* out_ttl):
 	*out_ttl = 0
 	if ((msg == 0) || (hostname == 0)):
 		return dns_result_error
@@ -387,7 +437,7 @@ int dns_parse_response_ttl(char* msg, int msg_len, int query_id, char* hostname,
 	if (ancount > dns_max_answers):
 		return dns_result_error
 
-	# Echoed question must be our A/IN question for hostname.
+	# Echoed question must be our qtype/IN question for hostname.
 	char* name = cast(char*, malloc(dns_name_buffer_size))
 	char* target = strclone(hostname)
 	int pos = 0
@@ -395,7 +445,7 @@ int dns_parse_response_ttl(char* msg, int msg_len, int query_id, char* hostname,
 		return dns_parse_fail(name, target)
 	if (dns_names_equal_ci(name, target) == 0): return dns_parse_fail(name, target)
 	if (pos + 4 > msg_len): return dns_parse_fail(name, target)
-	if (load_be16(msg + pos) != dns_type_a): return dns_parse_fail(name, target)
+	if (load_be16(msg + pos) != qtype): return dns_parse_fail(name, target)
 	if (load_be16(msg + pos + 2) != dns_class_in): return dns_parse_fail(name, target)
 	pos = pos + 4
 
@@ -421,11 +471,11 @@ int dns_parse_response_ttl(char* msg, int msg_len, int query_id, char* hostname,
 			# Clamp before arithmetic: wire TTL is unsigned even on x86.
 			int record_ttl = load_be16(msg + pos + 6)
 			if (load_be16(msg + pos + 4) != 0): record_ttl = dns_cache_ttl_max
-			if ((rtype == dns_type_a) || (rtype == dns_type_cname)):
+			if ((rtype == qtype) || (rtype == dns_type_cname)):
 				if (record_ttl < ttl): ttl = record_ttl
-			if (rtype == dns_type_a):
-				if (rdlength != 4): return dns_parse_fail(name, target)
-				*out_ip = load_be32(msg + rdata)
+			if (rtype == qtype):
+				if (rdlength != dns_rdata_length(qtype)): return dns_parse_fail(name, target)
+				for j in range(rdlength): out_rdata[j] = msg[rdata + j]
 				*out_ttl = ttl
 				free(name)
 				free(target)
@@ -442,7 +492,17 @@ int dns_parse_response_ttl(char* msg, int msg_len, int query_id, char* hostname,
 		pos = rdata + rdlength
 	free(name)
 	free(target)
-	return dns_result_error
+	# Every answer parsed, none for the name and type: NODATA (any
+	# authority/additional sections, such as the SOA, are not read).
+	*out_ttl = dns_cache_negative_ttl
+	return dns_result_nodata
+
+
+# AAAA form of dns_parse_response_ttl: out16 gets the 16 network-order
+# address bytes. Returns dns_result_ok, _nodata, _nxdomain, _truncated
+# or _error.
+int dns_parse_response_aaaa(char* msg, int msg_len, int query_id, char* hostname, char* out16, int* out_ttl):
+	return dns_parse_response_rdata(msg, msg_len, query_id, hostname, dns_type_aaaa, out16, out_ttl)
 
 
 # Compatibility parser: callers that only need an address keep the original
@@ -478,10 +538,12 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 # length-prefixed messages over a connection to the same server. The
 # whole exchange (connect, send, receive) shares one timeout budget.
 # Returns dns_result_ok with the address/TTL, dns_result_nxdomain, or 0.
-int dns_query_server_tcp_ttl(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip, int* out_ttl):
+# Typed core: qtype's rdata lands in out_rdata; also returns
+# dns_result_nodata.
+int dns_query_server_tcp_rdata(int server_ip, int server_port, char* hostname, int qtype, int timeout_ms, char* out_rdata, int* out_ttl):
 	char* query = cast(char*, malloc(2 + dns_udp_message_max))
 	int query_id = dns_random_id()
-	int query_len = dns_build_query(hostname, query_id, query + 2, dns_udp_message_max)
+	int query_len = dns_build_query_type(hostname, qtype, query_id, query + 2, dns_udp_message_max)
 	if (query_len == 0):
 		free(query)
 		return 0
@@ -514,24 +576,41 @@ int dns_query_server_tcp_ttl(int server_ip, int server_port, char* hostname, int
 		close(sock)
 		return 0
 	close(sock)
-	int parsed = dns_parse_response_ttl(response, response_len, query_id, hostname, out_ip, out_ttl)
+	int parsed = dns_parse_response_rdata(response, response_len, query_id, hostname, qtype, out_rdata, out_ttl)
 	free(response)
-	if (parsed == dns_result_ok || parsed == dns_result_nxdomain): return parsed
+	if (parsed == dns_result_ok || parsed == dns_result_nxdomain || parsed == dns_result_nodata): return parsed
 	return 0
 
 
-# One A/IN query against a single server (host-order address,
+# Maps a typed A result back to the int-address API (NODATA was never
+# reported there; it stays a plain failure).
+int dns_result_ipv4(int result, char* rdata, int* out_ip, int* out_ttl):
+	if (result == dns_result_ok): *out_ip = load_be32(rdata)
+	free(rdata)
+	if (result == dns_result_nodata):
+		*out_ttl = 0
+		return 0
+	return result
+
+
+int dns_query_server_tcp_ttl(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip, int* out_ttl):
+	char* rdata = cast(char*, malloc(4))
+	int result = dns_query_server_tcp_rdata(server_ip, server_port, hostname, dns_type_a, timeout_ms, rdata, out_ttl)
+	return dns_result_ipv4(result, rdata, out_ip, out_ttl)
+
+
+# One qtype/IN query against a single server (host-order address,
 # normally port 53): UDP first, TCP retry when the response is
 # truncated. The response must come from the queried server and
 # arrive within timeout_ms. Returns dns_result_ok with address/TTL,
 # dns_result_nxdomain with the negative TTL, or 0.
-int dns_query_server_ttl(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip, int* out_ttl):
+int dns_query_server_rdata(int server_ip, int server_port, char* hostname, int qtype, int timeout_ms, char* out_rdata, int* out_ttl):
 	*out_ttl = 0
 	int deadline = time_monotonic_ms() + timeout_ms
 	if (timeout_ms <= 0 || io_check() < 0): return 0
 	char* query = cast(char*, malloc(dns_udp_message_max))
 	int query_id = dns_random_id()
-	int query_len = dns_build_query(hostname, query_id, query, dns_udp_message_max)
+	int query_len = dns_build_query_type(hostname, qtype, query_id, query, dns_udp_message_max)
 	if (query_len == 0):
 		free(query)
 		return 0
@@ -565,14 +644,21 @@ int dns_query_server_ttl(int server_ip, int server_port, char* hostname, int tim
 	if (net_htons(from.port) != server_port):
 		free(response)
 		return 0
-	int parsed = dns_parse_response_ttl(response, received, query_id, hostname, out_ip, out_ttl)
+	int parsed = dns_parse_response_rdata(response, received, query_id, hostname, qtype, out_rdata, out_ttl)
 	free(response)
-	if (parsed == dns_result_ok || parsed == dns_result_nxdomain): return parsed
+	if (parsed == dns_result_ok || parsed == dns_result_nxdomain || parsed == dns_result_nodata): return parsed
 	if (parsed == dns_result_truncated):
 		int remaining = deadline - time_monotonic_ms()
 		if (remaining <= 0): return 0
-		return dns_query_server_tcp_ttl(server_ip, server_port, hostname, remaining, out_ip, out_ttl)
+		return dns_query_server_tcp_rdata(server_ip, server_port, hostname, qtype, remaining, out_rdata, out_ttl)
 	return 0
+
+
+# One A/IN query (see dns_query_server_rdata).
+int dns_query_server_ttl(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip, int* out_ttl):
+	char* rdata = cast(char*, malloc(4))
+	int result = dns_query_server_rdata(server_ip, server_port, hostname, dns_type_a, timeout_ms, rdata, out_ttl)
+	return dns_result_ipv4(result, rdata, out_ip, out_ttl)
 
 
 # Explicit-server queries intentionally bypass the process cache.
@@ -584,6 +670,13 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
 	int ttl = 0
 	return dns_query_server_tcp_ttl(server_ip, server_port, hostname, timeout_ms, out_ip, &ttl) == dns_result_ok
+
+
+# One AAAA/IN query (UDP, TCP on truncation); out16 gets the address in
+# network order. Bypasses the cache. Returns 1/0.
+int dns_query_server_aaaa(int server_ip, int server_port, char* hostname, int timeout_ms, char* out16):
+	int ttl = 0
+	return dns_query_server_rdata(server_ip, server_port, hostname, dns_type_aaaa, timeout_ms, out16, &ttl) == dns_result_ok
 
 
 char* dns_hosts_path():
@@ -600,6 +693,8 @@ char* dns_resolv_conf_path():
 struct dns_cache_entry:
 	char* name
 	int ip
+	int qtype           # dns_type_a or dns_type_aaaa
+	char* ip6           # 16 network-order bytes for AAAA entries, else 0
 	int result
 	int expires
 	int created_seconds
@@ -633,6 +728,7 @@ void dns_cache_entries_free(dns_cache_entry* entry):
 	while (entry != 0):
 		dns_cache_entry* next = entry.next
 		free(entry.name)
+		if (entry.ip6 != 0): free(entry.ip6)
 		free(entry)
 		entry = next
 
@@ -677,7 +773,16 @@ void dns_cache_set_enabled(int enabled):
 	budget_lock_leave(&dns_cache_lock)
 
 
-# Parse all IPv4 aliases once, preserving first-match hosts-file order.
+# Parses text[start, end) as an IPv6 address without a zone into 16
+# network-order bytes at out16. Returns 1/0.
+int dns_token_ipv6(char* text, int start, int end, char* out16):
+	ip_address address
+	if (ipv6_parse_range(text, start, end, &address) == 0): return 0
+	ip_address_packed(&address, out16)
+	return 1
+
+
+# Parse all IPv4 and IPv6 aliases once, preserving hosts-file order.
 dns_cache_entry* dns_cache_parse_hosts(char* text):
 	dns_cache_entry* head = 0
 	dns_cache_entry* tail = 0
@@ -689,17 +794,26 @@ dns_cache_entry* dns_cache_parse_hosts(char* text):
 		int start = 0
 		int stop = 0
 		int ip = 0
+		char* ip6 = cast(char*, malloc(16))
 		if (dns_next_token(text, &pos, end, &start, &stop)):
-			if (dns_token_ipv4(text, start, stop, &ip)):
+			int qtype = 0
+			if (dns_token_ipv4(text, start, stop, &ip)): qtype = dns_type_a
+			else if (dns_token_ipv6(text, start, stop, ip6)): qtype = dns_type_aaaa
+			if (qtype != 0):
 				while (dns_next_token(text, &pos, end, &start, &stop)):
 					dns_cache_entry* entry = new dns_cache_entry()
 					entry.name = cast(char*, malloc(stop - start + 1))
 					mem_copy(entry.name, text + start, stop - start)
 					entry.name[stop - start] = 0
 					entry.ip = ip
+					entry.qtype = qtype
+					if (qtype == dns_type_aaaa):
+						entry.ip6 = cast(char*, malloc(16))
+						mem_copy(entry.ip6, ip6, 16)
 					if (tail == 0): head = entry
 					else: tail.next = entry
 					tail = entry
+		free(ip6)
 		i = end
 		if (text[i] == 10): i += 1
 	return head
@@ -766,16 +880,22 @@ int dns_cache_read_seconds(int* out_seconds):
 
 # Caller holds the cache lock. Clock reversal/seconds-counter wrap
 # conservatively invalidates entries; a clock failure bypasses caching.
-int dns_cache_find_at_time(char* hostname, int* out_ip, int now_ms, int now_seconds):
+int dns_cache_find_typed_at_time(char* hostname, int qtype, int* out_ip, char* out_ip6, int now_ms, int now_seconds):
 	if (dns_cache_enabled == 0): return 0
 	dns_cache_entry* entry = dns_cache_answers
 	while (entry != 0):
 		if (now_seconds >= entry.created_seconds && now_seconds - entry.created_seconds <= entry.ttl_seconds):
-			if (dns_names_equal_ci(entry.name, hostname) && entry.expires - now_ms > 0):
-				if (entry.result == dns_result_ok): *out_ip = entry.ip
+			if (entry.qtype == qtype && dns_names_equal_ci(entry.name, hostname) && entry.expires - now_ms > 0):
+				if (entry.result == dns_result_ok):
+					if (qtype == dns_type_aaaa): mem_copy(out_ip6, entry.ip6, 16)
+					else: *out_ip = entry.ip
 				return entry.result
 		entry = entry.next
 	return 0
+
+
+int dns_cache_find_at_time(char* hostname, int* out_ip, int now_ms, int now_seconds):
+	return dns_cache_find_typed_at_time(hostname, dns_type_a, out_ip, 0, now_ms, now_seconds)
 
 
 int dns_cache_find_at(char* hostname, int* out_ip, int now_ms):
@@ -785,6 +905,11 @@ int dns_cache_find_at(char* hostname, int* out_ip, int now_ms):
 
 
 void dns_cache_store(char* hostname, int ip, int result, int ttl, int generation):
+	dns_cache_store_typed(hostname, dns_type_a, ip, 0, result, ttl, generation)
+
+
+# ip6: 16 network-order bytes for an ok AAAA answer, else 0.
+void dns_cache_store_typed(char* hostname, int qtype, int ip, char* ip6, int result, int ttl, int generation):
 	budget_lock_enter(&dns_cache_lock)
 	int now_seconds = 0
 	if (dns_cache_enabled && generation == dns_cache_generation && ttl > 0 && dns_cache_read_seconds(&now_seconds)):
@@ -792,6 +917,10 @@ void dns_cache_store(char* hostname, int ip, int result, int ttl, int generation
 		dns_cache_entry* entry = new dns_cache_entry()
 		entry.name = strclone(hostname)
 		entry.ip = ip
+		entry.qtype = qtype
+		if (ip6 != 0):
+			entry.ip6 = cast(char*, malloc(16))
+			mem_copy(entry.ip6, ip6, 16)
 		entry.result = result
 		entry.created_seconds = now_seconds
 		entry.ttl_seconds = ttl
@@ -825,7 +954,7 @@ int dns_resolve_ipv4_config_until(char* hostname, int* out_ip, int deadline_ms, 
 	int result = 0
 	dns_cache_entry* host = dns_cache_hosts.hosts
 	while (host != 0 && result == 0):
-		if (dns_names_equal_ci(host.name, hostname)):
+		if (host.qtype == dns_type_a && dns_names_equal_ci(host.name, hostname)):
 			*out_ip = host.ip
 			result = dns_result_ok
 		host = host.next
@@ -861,3 +990,168 @@ int dns_resolve_ipv4(char* hostname, int* out_ip):
 # Cancellation/deadline are checked even when an answer is already cached.
 int dns_resolve_ipv4_until(char* hostname, int* out_ip, int deadline_ms):
 	return dns_resolve_ipv4_config_until(hostname, out_ip, deadline_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)
+
+
+/* AAAA resolution and dual-stack address lists (stdlib parity P3.10).
+IPv6 addresses cross this API as 16 network-order bytes (the packed
+form of ipaddress.w), ready for lib/net.w's sockaddr_in6 helpers. */
+
+# How long the AAAA lookup may still run once the A lookup has already
+# produced an address: a resolver that drops AAAA queries must not make
+# IPv4-only names noticeably slower than before IPv6 support.
+const int dns_aaaa_after_a_ms = 1000
+const int dns_max_addresses = 16
+
+
+# IPv6 literal, bare ("::1") or bracketed as in URLs ("[::1]"); zone ids
+# are rejected. Returns 1 with the network-order bytes in out16, or 0.
+int dns_parse_ipv6_literal(char* text, char* out16):
+	if (text == 0): return 0
+	int length = strlen(text)
+	int start = 0
+	int end = length
+	if (length > 0 && text[0] == '['):
+		if (text[length - 1] != ']'): return 0
+		start = 1
+		end = length - 1
+	ip_address address
+	if (ipv6_parse_range(text, start, end, &address) == 0): return 0
+	ip_address_packed(&address, out16)
+	return 1
+
+
+# hosts(5) lookup of the first IPv6 entry for hostname (case-insensitive).
+int dns_hosts_lookup_ipv6_text(char* text, char* hostname, char* out16):
+	if ((text == 0) || (hostname == 0)): return 0
+	dns_cache_entry* entries = dns_cache_parse_hosts(text)
+	int found = 0
+	dns_cache_entry* entry = entries
+	while (entry != 0 && found == 0):
+		if (entry.qtype == dns_type_aaaa && dns_names_equal_ci(entry.name, hostname)):
+			mem_copy(out16, entry.ip6, 16)
+			found = 1
+		entry = entry.next
+	dns_cache_entries_free(entries)
+	return found
+
+
+# AAAA counterpart of dns_resolve_ipv4_config_until: IPv6 literal,
+# /etc/hosts IPv6 entries, cached answers (NODATA/NXDOMAIN cache for
+# dns_cache_negative_ttl), then the nameservers. Returns 1/0.
+int dns_resolve_ipv6_config_until(char* hostname, char* out16, int deadline_ms, char* hosts_path, char* resolv_path, int server_port):
+	if (hostname == 0): return 0
+	if (hostname[0] == 0 || io_check() < 0): return 0
+	if (deadline_ms - time_monotonic_ms() <= 0): return 0
+	if (dns_parse_ipv6_literal(hostname, out16)): return 1
+	int unused_ip = 0
+	if (dns_parse_ipv4_literal(hostname, &unused_ip)): return 0
+	int* servers = cast(int*, malloc(dns_max_nameservers * __word_size__))
+	budget_lock_enter(&dns_cache_lock)
+	dns_cache_hosts = dns_cache_config_load(dns_cache_hosts, hosts_path, 1)
+	dns_cache_resolv = dns_cache_config_load(dns_cache_resolv, resolv_path, 0)
+	if (server_port != dns_cache_server_port):
+		dns_cache_answers_clear()
+		dns_cache_server_port = server_port
+	int result = 0
+	dns_cache_entry* host = dns_cache_hosts.hosts
+	while (host != 0 && result == 0):
+		if (host.qtype == dns_type_aaaa && dns_names_equal_ci(host.name, hostname)):
+			mem_copy(out16, host.ip6, 16)
+			result = dns_result_ok
+		host = host.next
+	if (result == 0):
+		int now_seconds = 0
+		if (dns_cache_read_seconds(&now_seconds)):
+			result = dns_cache_find_typed_at_time(hostname, dns_type_aaaa, &unused_ip, out16, time_monotonic_ms(), now_seconds)
+	int count = dns_cache_resolv.count
+	for i in range(count): servers[i] = dns_cache_resolv.servers[i]
+	int generation = dns_cache_generation
+	budget_lock_leave(&dns_cache_lock)
+	char* answer = cast(char*, malloc(16))
+	int ttl = 0
+	int i = 0
+	while (i < count && result == 0):
+		int remaining = deadline_ms - time_monotonic_ms()
+		if (remaining <= 0 || io_check() < 0): break
+		if (remaining > dns_default_timeout_ms): remaining = dns_default_timeout_ms
+		result = dns_query_server_rdata(servers[i], server_port, hostname, dns_type_aaaa, remaining, answer, &ttl)
+		if (result == dns_result_ok):
+			mem_copy(out16, answer, 16)
+			dns_cache_store_typed(hostname, dns_type_aaaa, 0, answer, result, ttl, generation)
+		else if (result != 0): dns_cache_store_typed(hostname, dns_type_aaaa, 0, 0, result, ttl, generation)
+		i += 1
+	free(answer)
+	free(servers)
+	if (deadline_ms - time_monotonic_ms() <= 0 || io_check() < 0): return 0
+	return result == dns_result_ok
+
+
+int dns_resolve_ipv6(char* hostname, char* out16):
+	return dns_resolve_ipv6_config_until(hostname, out16, time_monotonic_ms() + dns_max_nameservers * dns_default_timeout_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)
+
+
+int dns_resolve_ipv6_until(char* hostname, char* out16, int deadline_ms):
+	return dns_resolve_ipv6_config_until(hostname, out16, deadline_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)
+
+
+# Dual-stack resolution for connecting clients. Fills out[0..max) and
+# returns the count (0 on failure), in Happy-Eyeballs-lite order
+# (net_addresses_interleave: IPv6 first, then alternating):
+#   - an IPv4 or IPv6 literal (bare or "[...]") gives that one address;
+#   - /etc/hosts entries of either family, when any match, are the
+#     whole answer (as with glibc's files-before-dns);
+#   - otherwise the A lookup runs first, then AAAA; once A has an
+#     answer, AAAA gets at most dns_aaaa_after_a_ms more, so IPv4-only
+#     names keep their old latency. One address per family from DNS.
+int dns_resolve_addresses_config_until(char* hostname, net_address* out, int max, int deadline_ms, char* hosts_path, char* resolv_path, int server_port):
+	if (hostname == 0 || max <= 0): return 0
+	if (hostname[0] == 0 || io_check() < 0): return 0
+	if (deadline_ms - time_monotonic_ms() <= 0): return 0
+	int ip = 0
+	char* ip6 = cast(char*, malloc(16))
+	int count = 0
+	if (dns_parse_ipv4_literal(hostname, &ip)):
+		net_address_set_ipv4(&out[0], ip)
+		count = 1
+	else if (dns_parse_ipv6_literal(hostname, ip6)):
+		net_address_set_ipv6(&out[0], ip6, 0)
+		count = 1
+	if (count > 0):
+		free(ip6)
+		return count
+	budget_lock_enter(&dns_cache_lock)
+	dns_cache_hosts = dns_cache_config_load(dns_cache_hosts, hosts_path, 1)
+	dns_cache_entry* host = dns_cache_hosts.hosts
+	while (host != 0 && count < max):
+		if (dns_names_equal_ci(host.name, hostname)):
+			if (host.qtype == dns_type_aaaa): net_address_set_ipv6(&out[count], host.ip6, 0)
+			else: net_address_set_ipv4(&out[count], host.ip)
+			count += 1
+		host = host.next
+	budget_lock_leave(&dns_cache_lock)
+	if (count == 0):
+		int have4 = dns_resolve_ipv4_config_until(hostname, &ip, deadline_ms, hosts_path, resolv_path, server_port)
+		int deadline6 = deadline_ms
+		if (have4):
+			int capped = time_monotonic_ms() + dns_aaaa_after_a_ms
+			if (capped - deadline6 < 0): deadline6 = capped
+		int have6 = 0
+		if (io_check() >= 0): have6 = dns_resolve_ipv6_config_until(hostname, ip6, deadline6, hosts_path, resolv_path, server_port)
+		if (have6):
+			net_address_set_ipv6(&out[count], ip6, 0)
+			count += 1
+		if (have4 && count < max):
+			net_address_set_ipv4(&out[count], ip)
+			count += 1
+	free(ip6)
+	if (io_check() < 0): return 0
+	net_addresses_interleave(out, count)
+	return count
+
+
+int dns_resolve_addresses(char* hostname, net_address* out, int max):
+	return dns_resolve_addresses_config_until(hostname, out, max, time_monotonic_ms() + dns_max_nameservers * dns_default_timeout_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)
+
+
+int dns_resolve_addresses_until(char* hostname, net_address* out, int max, int deadline_ms):
+	return dns_resolve_addresses_config_until(hostname, out, max, deadline_ms, dns_hosts_path(), dns_resolv_conf_path(), dns_port)

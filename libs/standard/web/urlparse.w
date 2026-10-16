@@ -29,6 +29,7 @@ import lib.lib
 import lib.str
 import structures.string
 import lib.hex
+import libs.standard.net.ipaddress
 
 
 # Parsed absolute URL. Every char* field is malloc'd, owned by the URL,
@@ -69,109 +70,18 @@ char* url_substring_lower(char* text, int start, int end):
 	return result
 
 
-# Parse eight 16-bit groups, including a terminal dotted IPv4 address.
-# The caller supplies eight zeroed words. No zones or IPvFuture syntax.
-int url_ipv6_words(char* text, int start, int end, list[int] words):
-	int count = 0
-	int compressed = -1
-	int i = start
-	if (i == end): return 0
-	if (text[i] == ':'):
-		if (i + 1 >= end || text[i + 1] != ':'): return 0
-		compressed = 0
-		i += 2
-	while (i < end):
-		if (count == 8): return 0
-		int segment_end = i
-		int dotted = 0
-		while (segment_end < end && text[segment_end] != ':'):
-			if (text[segment_end] == '.'): dotted = 1
-			segment_end += 1
-		if (dotted):
-			if (segment_end != end || count > 6): return 0
-			int pair = 0
-			for octet in range(4):
-				int first = i
-				int value = 0
-				while (i < end && text[i] >= '0' && text[i] <= '9'):
-					value = value * 10 + text[i] - '0'
-					i += 1
-					if (value > 255 || i - first > 3): return 0
-				if (i == first || (i - first > 1 && text[first] == '0')): return 0
-				pair = pair * 256 + value
-				if (octet == 1 || octet == 3):
-					words[count] = pair
-					count += 1
-					pair = 0
-				if (octet < 3):
-					if (i == end || text[i] != '.'): return 0
-					i += 1
-			if (i != end): return 0
-		else:
-			if (segment_end == i || segment_end - i > 4): return 0
-			int value = 0
-			while (i < segment_end):
-				int digit = hex_decode_char(text[i] & 255)
-				if (digit < 0): return 0
-				value = value * 16 + digit
-				i += 1
-			words[count] = value
-			count += 1
-		if (i < end):
-			i += 1
-			if (i < end && text[i] == ':'):
-				if (compressed >= 0): return 0
-				compressed = count
-				i += 1
-			else if (i == end): return 0
-	if (compressed < 0): return count == 8
-	if (count == 8): return 0
-	int gap = 8 - count
-	int j = count - 1
-	while (j >= compressed):
-		words[j + gap] = words[j]
-		j -= 1
-	for k in range(gap): words[compressed + k] = 0
-	return 1
-
-
-# An owned bracketed canonical host, or null on invalid input. RFC 5952
-# zero compression uses the first longest run of at least two zero groups.
-# Dotted IPv4 tails serialize as hex groups, giving all spellings one origin.
+# An owned bracketed canonical host, or null on invalid input. Parsing
+# and RFC 5952 compression come from libs/standard/net/ipaddress.w;
+# dotted IPv4 tails serialize as hex groups, giving all spellings one origin.
 char* url_ipv6_normalize(char* text, int start, int end):
-	list[int] words = list[int]{}
-	for i in range(8): words.push(0)
-	if (url_ipv6_words(text, start, end, words) == 0):
-		words.free()
-		return 0
-	int best_start = -1
-	int best_length = 1
-	int i = 0
-	while (i < 8):
-		if (words[i] != 0): i += 1
-		else:
-			int first = i
-			while (i < 8 && words[i] == 0): i += 1
-			if (i - first > best_length):
-				best_start = first
-				best_length = i - first
+	ip_address address
+	if (ipv6_parse_range(text, start, end, &address) == 0): return 0
+	char* hex = ipv6_format_hex(&address)
 	string_builder* out = string_new()
 	string_append_char(out, '[')
-	i = 0
-	while (i < 8):
-		if (i == best_start):
-			string_append(out, c"::")
-			i += best_length
-		else:
-			if (i > 0 && i != best_start + best_length): string_append_char(out, ':')
-			int shift = 12
-			while (shift > 0 && ((words[i] >> shift) & 15) == 0): shift -= 4
-			while (shift >= 0):
-				string_append_char(out, hex_digit((words[i] >> shift) & 15))
-				shift -= 4
-			i += 1
+	string_append(out, hex)
 	string_append_char(out, ']')
-	words.free()
+	free(hex)
 	char* result = out.data
 	free(out)
 	return result
