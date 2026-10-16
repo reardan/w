@@ -452,6 +452,18 @@ int safe_mixed_owned_shape(int type):
 	return safe_mixed_owned_shape_walk(type, 0, &path[0], &remaining)
 
 
+# A shared view retains the descriptor allocation and every external group.
+# One conservative lifetime is sufficient because it never lends mutable data.
+int safe_shared_mixed_view(int type):
+	if ((safe_kind(type) != 2) || safe_optional(type) || safe_slice(type) || safe_record(type)): return 0
+	int target = safe_pointee(type)
+	if (safe_mixed_owned_shape(target) == 0): return 0
+	list[char*] groups = safe_record_groups(target)
+	int count = groups.length
+	groups.free()
+	return count > 0
+
+
 void safe_type_check_at(int id, int type, int depth, int* remaining):
 	*remaining = *remaining - 1
 	if ((depth > 32) || (*remaining < 0)): safe_error(id, c"safe: callable contract is too deeply nested", -1)
@@ -482,6 +494,7 @@ void safe_type_check_at(int id, int type, int depth, int* remaining):
 	if (safe_kind(type) || safe_slice(type)):
 		if (safe_plain(safe_pointee(type), 0)): return
 		if ((safe_slice(type) == 0) && safe_owned_shape(safe_pointee(type))): return
+		if (safe_shared_mixed_view(type)): return
 	else if (safe_plain(type, 0)): return
 	safe_error(id, c"safe: unsupported type or reference-bearing aggregate", -1)
 
@@ -1027,6 +1040,13 @@ int safe_owner_provenance(int id, char* state, safe_borrowed* components):
 	int left = safe_child(&node, node.left)
 	retained_node base
 	retained_node_load(left, &base)
+	if (safe_shared_mixed_view(base.semantic_type)):
+		int parent = -1
+		int roots = safe_borrow(left, base.semantic_type, state, &parent)
+		for component in range(safe_lifetime_count(node.semantic_type)):
+			components.roots[component] = roots
+			components.parents[component] = parent
+		return parent
 	int template = safe_pointee(base.semantic_type)
 	if ((template < 0) || (safe_owned_borrowed(base.semantic_type) == 0)):
 		safe_error(id, c"safe: owner projection requires a lifetime contract", -1)
@@ -1233,6 +1253,12 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 					components.parents[component] = base_components.parents[group]
 					root = safe_set_union(root, components.roots[component])
 					via = safe_set_union(via, components.parents[component])
+		else if (safe_shared_mixed_view(base.semantic_type) && (safe_kind(n.semantic_type) >= 2)):
+			if (kind == 3): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+			root = safe_borrow(safe_child(&n, n.left), base.semantic_type, state, &via)
+			for component in range(safe_lifetime_count(want)):
+				components.roots[component] = root
+				components.parents[component] = via
 		else if (safe_owned_borrowed(base.semantic_type) && (safe_kind(n.semantic_type) >= 2)):
 			if ((kind == 3) || safe_optional(n.semantic_type)): safe_error(id, c"safe: mixed owners expose only shared borrowed fields", -1)
 			int template = safe_pointee(base.semantic_type)
@@ -1251,8 +1277,12 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 					components.parents[component] = owner.parents[group]
 					root = safe_set_union(root, owner.roots[group])
 					via = safe_set_union(via, owner.parents[group])
-		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && (safe_owned_shape(safe_pointee(base.semantic_type)) || safe_owned_borrowed(base.semantic_type))):
+		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && (safe_owned_shape(safe_pointee(base.semantic_type)) || safe_owned_borrowed(base.semantic_type) || safe_shared_mixed_view(base.semantic_type))):
 			root = safe_place(id, state, &via)
+			if (safe_owned_borrowed(n.semantic_type) && safe_shared_mixed_view(want)):
+				safe_borrowed external
+				safe_owner_provenance(id, state, &external)
+				root = safe_set_union(root, safe_borrowed_roots(&external, safe_lifetime_count(n.semantic_type), &via))
 		else: safe_error(id, c"safe: unsupported reference-bearing projection", -1)
 	else if ((n.op == 'C') || (n.op == 'G') || (n.op == 'W') || (n.op == 'F')):
 		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
@@ -1288,6 +1318,9 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 			safe_error(id, c"safe: reference requires an address or checked pointer", -1)
 		safe_read(index, id, state)
 		root = index
+		if (safe_owned_borrowed(n.semantic_type) && safe_shared_mixed_view(want)):
+			root = safe_set_union(root, safe_origin[index])
+			via = index
 		if (safe_local_kind(index) >= 2):
 			via = index
 			root = -1

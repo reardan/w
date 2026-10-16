@@ -248,7 +248,8 @@ replacement remain unsupported. Mixed owners use the explicit contract below.
 an explicit label vector of exact arity, including for a single group. Admit
 shared pointer/slice/borrowed-record fields and recursively supported owned
 children; reject exclusive and optional borrowed fields. Keep ordinary
-`own Record*` and whole-owner reference shape validation unchanged.
+`own Record*` shape validation unchanged; shared whole-owner views use the
+combined contract below.
 
 Separate the allocation root from every external component, including component
 zero. Synthetic external roots for parameters must follow real local binding
@@ -276,9 +277,25 @@ growth rebases both levels. Committed types clone the labels, and retained
 snapshots own independent arena metadata. Keep this bookkeeping compile-time
 only: no runtime layout or cleanup changes are needed for shared borrowed fields.
 
-Whole mixed-owner borrowing, exclusive/optional fields, field replacement and
-partial moves retain separate required gates. Do not infer completion of A2/A3
+Exclusive whole mixed-owner borrowing, exclusive/optional fields, field
+replacement and partial moves retain separate required gates. Do not infer completion of A2/A3
 from this shared-field step.
+
+### Shared mixed-owner views
+
+Admit a nonoptional shared pointer to a mixed owner by folding its allocation
+root and all external component origins into one conservative borrow. Never use
+only the owner's external components: that would allow replacement/destruction
+while a pointer into its descriptor remains live. Each field extracted through
+this view inherits the complete union, including every component of a nested
+borrowed record. Retain the shared parent so no projection can upgrade access.
+
+For an annotated owned child reached through a shared view, its external
+provenance inherits the parent's whole union. For a child reached through an
+owning binding, combine the containing allocation and mapped external roots when
+creating a shared whole-child view. Calls and returns use ordinary single-group
+reference contracts over this combined set. No new runtime representation or
+emission path is required. Mutable and optional mixed-owner views remain gated.
 
 ## Audited concrete storage
 

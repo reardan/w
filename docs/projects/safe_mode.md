@@ -457,13 +457,37 @@ old and new borrowed origins conservatively, including across loops; replacing
 an owner does not necessarily release its old external loans before its last
 use. Borrowing an owned child reserves the whole containing allocation.
 Reference-field/owned-field replacement, partial moves, exclusive or optional
-borrowed fields, and whole mixed-owner `ref Record*`/`refmut Record*` views remain
-rejected pending their separate implementation gates. Raw/unannotated mixed
+borrowed fields, and whole mixed-owner `refmut Record*` views remain rejected
+pending their separate implementation gates. Shared whole-owner views are
+described below. Raw/unannotated mixed
 owner forms, self-reference and checked globals remain rejected too.
 
 The runtime pointer layout, recursive cleanup order, allocation-failure policy
 and depth/work bounds are unchanged. Borrowed fields require no extra allocation
 or destruction; their component metadata exists only during compilation.
+
+### Shared views of mixed owners
+
+`ref[a] Record*` can borrow a mixed owner whose fields meet the shared-field
+rules above. Helpers can inspect an owner without consuming it:
+
+```w
+ref[a] int[] inspect_data(ref[a] StoredView* view):
+	return view.data
+```
+
+The single view lifetime conservatively retains the descriptor allocation and
+all external data groups. Copies, calls, returned views and nested owned-child
+projections preserve that union. An extracted field through this shared view
+keeps the descriptor alive too, including when the field itself points to
+external data. Moving or replacing the owner, or changing any retained backing
+data, fails while the extracted view remains live. A direct extraction through
+an owning binding can still retain just its external field group.
+
+Shared views cannot lend mutable fields or owned children. Returning the whole
+view of a local/consumed owner remains an escape error even if its external data
+outlives the call. `refmut Record*` and optional whole mixed-owner views remain
+unsupported. There is no new runtime descriptor, allocation or cleanup work.
 
 ### Call checking
 
