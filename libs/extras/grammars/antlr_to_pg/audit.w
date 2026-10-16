@@ -318,6 +318,24 @@ void at_audit_prepare_rules(list[at_rule*] rules):
 			i = i + 1
 
 
+# A zero-byte fallback may change mode without producing a visible token.
+# Guarded providers bound cycles; arbitrary empty visible rules stay refused.
+int at_audit_mode_only_progress(at_rule* rule):
+	if (at_exact_supported(rule) == 0): return 0
+	int changes_mode = 0
+	int hidden = 0
+	for at_command* command in rule.commands:
+		if ((strcmp(command.name, c"mode") == 0) && (command.argument != 0)):
+			if (strcmp(command.argument, rule.mode) == 0): return 0
+			changes_mode++
+		else if (strcmp(command.name, c"skip") == 0): hidden++
+		else if ((strcmp(command.name, c"channel") == 0) && (command.argument != 0)):
+			if (strcmp(command.argument, c"HIDDEN") != 0): return 0
+			hidden++
+		else: return 0
+	return (changes_mode == 1) && (hidden == 1)
+
+
 # Returns 1 for structural hazards that must also stop best-effort generation.
 int at_audit(list[at_rule*] rules):
 	g_at_loss_lines = new list[char*]
@@ -339,7 +357,7 @@ int at_audit(list[at_rule*] rules):
 		if (at_audit_left_path(rule.alts, rule.name, new map[char*, int])):
 			at_loss_code(rule.first, rule.name, c"AT_LEFT_RECURSION", c"left_recursion", c"unsupported", c"unsupported left recursion (including nullable prefixes)")
 			unsafe = 1
-		if (rule.is_lexer && (rule.is_fragment == 0) && (rule.name in g_at_nullable) && ((at_exact_supported(rule) == 0) || (rule.name in g_at_nullable_without_eof))):
+		if (rule.is_lexer && (rule.is_fragment == 0) && (rule.name in g_at_nullable) && ((at_exact_supported(rule) == 0) || (rule.name in g_at_nullable_without_eof)) && (at_audit_mode_only_progress(rule) == 0)):
 			at_loss_code(rule.first, rule.name, c"AT_LEXER_EMPTY", c"lexer_progress", c"unsupported", c"zero-consumption lexer rule")
 			unsafe = 1
 		if ((g_at_stateful == 0) && (rule.is_fragment == 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)): at_loss_code(rule.first, rule.name, c"AT_LEXER_MODE", c"lexer_mode", c"unsupported", cstr(f"lexer mode {rule.mode} is not lowered"))
