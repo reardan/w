@@ -1,5 +1,5 @@
 # Source envelopes preserve original bytes and report original-document offsets.
-# One Mermaid Markdown fence; bounded title and theme configuration frontmatter.
+# Selectable Mermaid Markdown fences; bounded title and theme configuration frontmatter.
 import libs.extras.mermaid.model
 import libs.extras.mermaid.style
 import lib.utf8
@@ -14,10 +14,11 @@ char* mm_source_trim(mm_document* d, int start, int end):
 	while (end > start && (d.source[end - 1] == 32 || d.source[end - 1] == 9 || d.source[end - 1] == 13)): end = end - 1
 	return str_copy_range(d.source, start, end)
 
-void mm_source_fence(mm_document* d):
+int mm_source_fence_selected(mm_document* d, int selected):
 	int fence = 0
 	int fence_count = 0
 	int mermaid = 0
+	int mermaid_open = 0
 	int found = 0
 	int pos = d.source_start
 	while (pos < d.length):
@@ -36,17 +37,20 @@ void mm_source_fence(mm_document* d):
 				fence_count = count
 				mermaid = strcmp(suffix, c"mermaid") == 0
 				if (mermaid):
-					if (found): mm_error(d, pos, c"multiple Mermaid fences; open one diagram at a time")
-					found = 1
-					d.source_start = end
-					if (end < d.length): d.source_start = end + 1
+					mermaid_open = pos
+					if (found == selected):
+						d.source_start = end
+						if (end < d.length): d.source_start = end + 1
+					found = found + 1
 			else if (symbol == fence && count >= fence_count && suffix[0] == 0):
-				if (mermaid): d.source_end = pos
+				if (mermaid && found - 1 == selected): d.source_end = pos
 				fence = 0
 				mermaid = 0
 			free(suffix)
 		pos = end + 1
-	if (fence && mermaid): mm_error(d, d.source_start, c"unterminated Mermaid fence")
+	if (fence && mermaid): mm_error(d, mermaid_open, c"unterminated Mermaid fence")
+	if (selected < 0 || (found > 0 && selected >= found) || (found == 0 && selected != 0)): mm_error(d, 0, c"Mermaid diagram index out of range")
+	return found
 
 char* mm_source_title(mm_document* d, int start, int end):
 	char* value = mm_source_trim(d, start, end)
@@ -84,6 +88,11 @@ void mm_source_frontmatter(mm_document* d):
 	int variables_seen = 0
 	int config = 0
 	int variables = 0
+	int packet = 0
+	int packet_seen = 0
+	int bits_seen = 0
+	int order_seen = 0
+	int layout_seen = 0
 	mm_style custom
 	custom.mask = 0
 	custom.fill = 0
@@ -113,6 +122,7 @@ void mm_source_frontmatter(mm_document* d):
 			if (indent == 0 && index_of(line, c"title:") == 0):
 				config = 0
 				variables = 0
+				packet = 0
 				if (title_seen): mm_error(d, pos, c"duplicate frontmatter title")
 				title_seen = 1
 				free(d.title)
@@ -124,12 +134,54 @@ void mm_source_frontmatter(mm_document* d):
 				mm_style_theme(d, c"default")
 			else if (config && indent == 2 && index_of(line, c"theme:") == 0):
 				variables = 0
+				packet = 0
 				if (theme_seen): mm_error(d, pos, c"duplicate theme setting")
 				theme_seen = 1
 				char* value = mm_source_title(d, at + 6, end)
 				if (mm_style_theme(d, value) == 0): mm_error(d, pos, c"unsupported theme; supported: default, base, dark, forest, neutral")
 				free(value)
+			else if (config && indent == 2 && index_of(line, c"layout:") == 0):
+				variables = 0
+				packet = 0
+				if (layout_seen): mm_error(d, pos, c"duplicate layout setting")
+				layout_seen = 1
+				char* value = mm_source_title(d, at + 7, end)
+				if (strcmp(value, c"force") == 0): d.layout_algorithm = 1
+				else if (strcmp(value, c"dagre") != 0): mm_error(d, pos, c"supported native layouts: dagre, force")
+				free(value)
+			else if (config && indent == 2 && strcmp(line, c"packet:") == 0):
+				variables = 0
+				if (packet_seen): mm_error(d, pos, c"duplicate packet configuration")
+				packet_seen = 1
+				packet = 1
+			else if (config && packet && indent == 4):
+				int colon = index_of(line, c":")
+				if (colon < 0): mm_error(d, pos, c"packet setting requires colon")
+				else:
+					char* key = str_copy_range(line, 0, colon)
+					char* value = mm_source_title(d, at + colon + 1, end)
+					if (strcmp(key, c"bitsPerRow") == 0):
+						if (bits_seen): mm_error(d, pos, c"duplicate bitsPerRow")
+						bits_seen = 1
+						int bits = 0
+						if (strlen(value) == 0 || strlen(value) > 3): mm_error(d, pos, c"bitsPerRow must be 1..128")
+						for i in range(strlen(value)):
+							if (value[i] < '0' || value[i] > '9' || bits > 128):
+								mm_error(d, pos, c"bitsPerRow must be 1..128")
+								break
+							bits = bits * 10 + value[i] - '0'
+						if (bits < 1 || bits > 128): mm_error(d, pos, c"bitsPerRow must be 1..128")
+						if (d.error == 0): d.packet_bits = bits
+					else if (strcmp(key, c"bitOrder") == 0):
+						if (order_seen): mm_error(d, pos, c"duplicate bitOrder")
+						order_seen = 1
+						if (strcmp(value, c"descending") == 0): d.packet_msb = 1
+						else if (strcmp(value, c"ascending") != 0): mm_error(d, pos, c"bitOrder must be ascending or descending")
+					else: mm_error(d, pos, c"unsupported packet setting")
+					free(key)
+					free(value)
 			else if (config && indent == 2 && strcmp(line, c"themeVariables:") == 0):
+				packet = 0
 				if (variables_seen): mm_error(d, pos, c"duplicate themeVariables setting")
 				variables_seen = 1
 				variables = 1
@@ -161,7 +213,7 @@ void mm_source_frontmatter(mm_document* d):
 		pos = end + 1
 	mm_error(d, d.source_start, c"unterminated frontmatter")
 
-mm_document* mm_source_prepare(char* source, int length):
+mm_document* mm_source_prepare_selected(char* source, int length, int selected):
 	mm_document* d = mm_document_new()
 	if (length < 0 || length > MM_MAX_SOURCE || (source == 0 && length != 0)):
 		mm_error(d, 0, c"invalid input or source limit exceeded")
@@ -179,6 +231,23 @@ mm_document* mm_source_prepare(char* source, int length):
 			mm_error(d, i, c"embedded NUL or unsupported control character")
 			return d
 	if (length >= 3 && (source[0] & 255) == 239 && (source[1] & 255) == 187 && (source[2] & 255) == 191): d.source_start = 3
-	mm_source_fence(d)
+	mm_source_fence_selected(d, selected)
 	if (d.error == 0): mm_source_frontmatter(d)
 	return d
+
+mm_document* mm_source_prepare(char* source, int length):
+	return mm_source_prepare_selected(source, length, 0)
+
+# Count Mermaid fences; a raw Mermaid source is one editable diagram.
+int mm_source_diagram_count(char* source, int length):
+	if (length < 0 || length > MM_MAX_SOURCE || source == 0): return 0
+	mm_document* d = mm_document_new()
+	free(d.source)
+	d.source = str_copy_range(source, 0, length)
+	d.length = length
+	d.source_end = length
+	if (length >= 3 && (source[0] & 255) == 239 && (source[1] & 255) == 187 && (source[2] & 255) == 191): d.source_start = 3
+	int count = mm_source_fence_selected(d, 0)
+	if (count == 0): count = 1
+	mm_document_free(d)
+	return count
