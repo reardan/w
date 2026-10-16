@@ -541,7 +541,16 @@ int safe_place(int id, char* state, int* via):
 			root = safe_place(left, state, via)
 		if ((n.op == 'i') || (n.op == 'I')):
 			if (safe_kind(base.semantic_type) && (safe_inline_slice(base.semantic_type) == 0)): safe_error(id, c"safe: checked pointer indexing is not supported; use a bounds-checked array", -1)
+			# The receiver address is already evaluated before the index.
+			# Keep its storage alive even if an index expression replaces
+			# or consumes an owner and later restores that binding.
+			int saved = safe_call_roots.length
+			safe_call_roots.push(root)
+			safe_call_kinds.push(2)
 			safe_eval(safe_child(&n, n.right), state, -1)
+			while (safe_call_roots.length > saved):
+				safe_call_roots.pop()
+				safe_call_kinds.pop()
 		return root
 	safe_error(id, c"safe: unsupported storage projection", -1)
 	return -1
@@ -911,7 +920,16 @@ int safe_eval(int id, char* state, int want):
 		if (n.value):
 			for i in range(safe_locals.length):
 				if (safe_set_has(root, i)): safe_read(i, id, state)
+		# A projected destination holds an address through RHS evaluation.
+		# A plain binding's slot stays valid when its owned payload moves.
+		int saved = safe_call_roots.length
+		if (lhs.op != 'v'):
+			safe_call_roots.push(root)
+			safe_call_kinds.push(2)
 		safe_eval(right, state, lhs.semantic_type)
+		while (safe_call_roots.length > saved):
+			safe_call_roots.pop()
+			safe_call_kinds.pop()
 		# Replacement of a moved/uninitialized scalar is valid. A write
 		# still conflicts with live borrows of its storage.
 		if (lhs.op == 'v'): state[root] = 2
