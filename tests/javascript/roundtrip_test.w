@@ -124,6 +124,7 @@ void js_test_new_spans_and_limits():
 
 int main(int argc, int argv):
 	args_init(argc, argv)
+	js_test_roundtrip(c"async function f(x){return await x;} const g=async x=>await f(x); const h=async function named(){await 1;};", 0)
 	js_test_roundtrip(c"class A { constructor(x){ this.x=x; } f(){return this.x;} static answer(){return 42;} } class B extends A { constructor(x){super(x);} } const C=class Named extends B {};", 0)
 	if (argc > 1): malloc_force_debug_mode()
 	js_test_roundtrip(c"new Promise((resolve, reject) => { resolve(3); }).then(value => value); new A.B(1); new A[method](); new new A();", 0)

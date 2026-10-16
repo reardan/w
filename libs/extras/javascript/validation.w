@@ -110,6 +110,7 @@ struct js_validation_context:
 	int top_level
 	int new_target_allowed
 	int in_parameters
+	int top_level_await
 
 
 int js_is_function(pg_ast_node* node):
@@ -164,7 +165,7 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 	if (here.in_parameters && js_cst_is(node, c"unary") && js_cst_child(node, c"KW_AWAIT") != 0): js_validation_error(diagnostics, node, c"await expression in formal parameters")
 	if (js_cst_is(node, c"return_statement") && here.function_depth == 0): js_validation_error(diagnostics, node, c"return outside function")
 	if (js_cst_is(node, c"yield_expression") && here.generator == 0): js_validation_error(diagnostics, node, c"yield outside generator")
-	if (js_cst_is(node, c"unary") && js_cst_child(node, c"KW_AWAIT") != 0 && here.async_function == 0): js_validation_error(diagnostics, node, c"await outside async function (ES2020)")
+	if (js_cst_is(node, c"unary") && js_cst_child(node, c"KW_AWAIT") != 0 && here.async_function == 0 && (here.top_level_await == 0 || here.module == 0 || here.function_depth != 0)): js_validation_error(diagnostics, node, c"await outside async function (ES2020)")
 	if (js_cst_is(node, c"with_statement") && here.strict): js_validation_error(diagnostics, node, c"with statement in strict code")
 	if (js_cst_is(node, c"new_expression") && js_cst_child(node, c"KW_TARGET") != 0 && here.new_target_allowed == 0): js_validation_error(diagnostics, node, c"new.target outside function")
 	if (js_cst_is(node, c"dynamic_import") && js_cst_child(node, c"DOT") != 0):
@@ -248,7 +249,7 @@ void js_validate_node(pg_ast_node* node, js_validation_context* context, pg_diag
 	for i in range(node.children.length): js_validate_node(node.children[i], &here, diagnostics)
 
 
-void js_validate(pg_parse_result* result, int module):
+void js_validate_profile(pg_parse_result* result, int module, int top_level_await):
 	if (result.success == 0): return
 	js_validation_context context
 	context.module = module
@@ -261,5 +262,10 @@ void js_validate(pg_parse_result* result, int module):
 	context.top_level = 1
 	context.new_target_allowed = 0
 	context.in_parameters = 0
+	context.top_level_await = top_level_await
 	js_validate_node(result.root, &context, result.diagnostics)
 	if (pg_diagnostics_count(result.diagnostics) != 0): result.success = 0
+
+
+void js_validate(pg_parse_result* result, int module):
+	js_validate_profile(result, module, 0)

@@ -125,6 +125,13 @@ struct js_runtime:
 	js_value* promise_constructor
 	int max_binary_bytes
 	int binary_bytes_used
+	list[void*] async_tasks
+	void* active_async
+	int max_async_tasks
+	int max_async_stack_bytes
+	int async_stack_bytes
+	int max_async_roots
+	int async_root_count
 
 
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
@@ -141,6 +148,11 @@ int js_runtime_compat_step(js_runtime* rt);
 js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index);
 void js_runtime_arguments(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments);
 js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* skipped, js_value** receiver);
+void js_runtime_async_mark(js_runtime* rt, list[js_value*] pending);
+int js_runtime_async_cancel(js_runtime* rt);
+js_value* js_runtime_async_call(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args);
+js_value* js_runtime_await(js_runtime* rt, js_value* value);
+void js_runtime_install_json(js_runtime* rt);
 void js_runtime_install_classes(js_runtime* rt);
 void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode);
 void js_class_reference_error(js_runtime* rt);
@@ -353,6 +365,13 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message):
 
 js_runtime* js_runtime_new():
 	js_runtime* rt = new js_runtime()
+	rt.async_tasks = new list[void*]
+	rt.active_async = 0
+	rt.max_async_tasks = 32
+	rt.max_async_stack_bytes = 8388608
+	rt.async_stack_bytes = 0
+	rt.max_async_roots = 1000000
+	rt.async_root_count = 0
 	rt.microtasks = new list[js_value*]
 	rt.microtask_head = 0
 	rt.max_microtasks = 10000
@@ -399,6 +418,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_builtins(rt)
 	js_runtime_install_bigint(rt)
 	js_runtime_install_classes(rt)
+	js_runtime_install_json(rt)
 	return rt
 
 
@@ -455,6 +475,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
 	for i in range(rt.roots.length): js_runtime_mark(pending, rt.roots[i])
+	js_runtime_async_mark(rt, pending)
 	while (pending.length > 0):
 		js_value* value = pending.pop()
 		js_runtime_mark(pending, value.promise_result)
@@ -488,6 +509,8 @@ int js_runtime_collect(js_runtime* rt):
 
 void js_runtime_free(js_runtime* rt):
 	if (rt == 0): return
+	js_runtime_async_cancel(rt)
+	__w_list_free(cast(__w_list*, rt.async_tasks))
 	for i in range(rt.heap.length): js_runtime_value_free(rt.heap[i])
 	for i in range(rt.scripts.length): js_node_free(rt.scripts[i])
 	__w_list_free(cast(__w_list*, rt.microtasks))
@@ -1008,6 +1031,7 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 	if (callable.class_kind != 0):
 		js_runtime_fail(rt, 2, c"class constructor requires new")
 		return rt.undefined_value
+	if (callable.code.async_function): return js_runtime_async_call(rt, callable, receiver, args)
 	return js_runtime_call_body(rt, callable, receiver, args, 0)
 
 
@@ -1295,6 +1319,7 @@ js_value* js_runtime_template(js_runtime* rt, js_node* node, js_value* env):
 
 
 js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
+	if (js_kind(node, c"unary") && strcmp(node.text, c"await") == 0): return js_runtime_await(rt, js_runtime_eval_node(rt, node.children[0], env))
 	if (js_kind(node, c"bigint")): return js_bigint_literal(rt, node.text)
 	int count = node.children.length
 	if (js_kind(node, c"label")):
@@ -1573,7 +1598,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				else if (callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
 				else if (callable.host_construct): result = js_runtime_call_native(rt, callable, rt.undefined_value, arguments)
 				else if (callable.kind != 7 && callable.kind != 9): js_runtime_fail(rt, 2, c"value is not a constructor")
-				else if (callable.code != 0 && (js_kind(callable.code, c"method") || js_kind(callable.code, c"static_method") || js_kind(callable.code, c"arrow"))): js_runtime_fail(rt, 2, c"value is not a constructor")
+				else if (callable.code != 0 && (callable.code.async_function || js_kind(callable.code, c"method") || js_kind(callable.code, c"static_method") || js_kind(callable.code, c"arrow"))): js_runtime_fail(rt, 2, c"value is not a constructor")
 				else: js_runtime_fail(rt, 6, c"unsupported native constructor")
 			else: result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
@@ -1612,7 +1637,7 @@ int js_runtime_supported(js_node* node):
 		if (consumed != strlen(node.text)): return 0
 		if (node.text[0] == '0' && node.text[1] >= '0' && node.text[1] <= '9'): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
-	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"~") != 0): return 0
+	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"~") != 0 && strcmp(node.text, c"await") != 0): return 0
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
@@ -1668,6 +1693,7 @@ js_completion* js_runtime_invoke_receiver(js_runtime* rt, js_value* callable, js
 	rt.running = 1
 	js_value* value = js_runtime_call_receiver(rt, callable, receiver, arguments)
 	rt.running = 0
+	if (rt.completion.status >= 5): js_runtime_async_cancel(rt)
 	rt.depth = 0
 	if (rt.completion.status == 0): rt.completion.value = value
 	return rt.completion
@@ -1697,6 +1723,7 @@ js_completion* js_runtime_eval(js_runtime* rt, char* source, int length, int bud
 	rt.running = 1
 	js_value* value = js_runtime_eval_node(rt, tree, rt.global)
 	rt.running = 0
+	if (rt.completion.status >= 5): js_runtime_async_cancel(rt)
 	if (rt.completion.status == 0): rt.completion.value = value
 	return rt.completion
 
@@ -1724,3 +1751,7 @@ import libs.extras.javascript.bigint
 import libs.extras.javascript.classes
 
 import libs.extras.javascript.runtime_compile
+
+import libs.extras.javascript.async
+
+import libs.extras.javascript.runtime_json

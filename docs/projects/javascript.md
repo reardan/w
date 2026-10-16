@@ -85,7 +85,7 @@ updates, calls/members, dense arrays, ordinary named/string-keyed
 objects (including distinct shorthand properties), templates, simple imports,
 and exported declarations. Lowering preserves escaped non-directive strings so
 printing cannot accidentally introduce a strict-mode directive. Parsing is
-broader: lowering intentionally rejects classes, async/generator functions,
+broader: lowering intentionally rejects generator functions and unsupported class forms,
 computed object keys and richer module declarations. Runtime-oriented lowering
 also supports binding patterns, rest/default parameters, `new`, optional chains,
 spread and object methods. These newer nodes are not yet supported by every
@@ -235,7 +235,7 @@ The initial semantic subset is deliberately explicit:
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, classes, generators/async, regex execution, tagged
+through the script API, generators, regex execution, tagged
 templates, prototype-literal `__proto__`, loose equality and additional numeric
 operators. Custom iterators, implicit operator coercions and exotic property-key
 conversions remain outside this subset. Destructuring assignment, computed binding
@@ -262,7 +262,7 @@ arbitrary-precision behavior. Arithmetic follows the applicable algorithms in
 task queue or browser authority is installed by the runtime. The separate
 [module API](javascript_modules.md) provides bounded acyclic graph loading with
 named const/function exports and live read-only imports. Browser module loading
-does not yet support top-level await.
+supports top-level await through its explicit asynchronous evaluation API.
 
 Scope conflicts are checked before installing bindings, so a rejected script
 does not leave its otherwise fresh declarations in the temporal dead zone.
@@ -380,7 +380,7 @@ not remove reactions attached to still-pending promises.
 
 This is a native-promise subset: arbitrary thenable assimilation, Promise
 combinators/finally, subclass/species behavior, unhandled-rejection reporting,
-async/await, and general constructor semantics are not implemented. In particular,
+and general constructor semantics are not implemented. In particular,
 objects with a `then` property are currently fulfilled as ordinary objects.
 Constructor syntax is lowered and printed as `construct` AST nodes, with tests
 for member callees and trailing method calls.
@@ -499,3 +499,35 @@ through `instanceof ReferenceError` (43 PASS, 10 UNSUPPORTED in the existing
 53-variant selection); this is a measured feature gain, not a full-conformance
 claim. The adapter's unsupported-syntax self-test now uses a class accessor,
 which remains unsupported, instead of a now-supported empty class.
+
+
+## Bounded asynchronous evaluation
+
+Async ordinary functions and arrows return native Promises. `await` genuinely
+suspends execution, including when given a primitive or fulfilled Promise;
+FIFO microtask checkpoints resume it. Throws reject the result Promise and
+`try`/`catch`/`finally` work across suspension. Async functions cannot be used as
+constructors. Async methods and generators remain unsupported. Await inherits
+the native-Promise subset above; arbitrary thenables are not assimilated.
+
+Each task uses a guarded 256 KiB W generator stack. Runtime defaults bound active
+tasks to 32, aggregate stacks to 8 MiB, and suspended root identities to 1,000,000.
+Each task retains its original remaining execution budget across checkpoints;
+a fresh checkpoint cannot replenish an infinite asynchronous loop. Checkpoint
+fuel also bounds the aggregate work resumed by that checkpoint.
+
+The first implementation conservatively snapshots all runtime heap identities
+at each suspension to retain evaluator temporaries safely. GC traces these roots,
+including duplicates held by different tasks; unrelated garbage can remain live
+until those tasks finish or cancel. Heap limits and `max_async_roots` bound this
+retention. Source ASTs remain runtime-owned. No GC scans native stack words.
+
+`js_runtime_async_cancel(rt)` cancels every suspended task, while
+`js_runtime_async_cancel_owner(rt, owner)` restricts cancellation to a host owner.
+Both run only outside active execution. Cancellation resumes with an uncatchable
+terminal completion to release native evaluator temporaries before freeing the
+stack; JavaScript catch/finally bodies are not run during terminal cancellation.
+Durable reaction tokens are invalidated, so later settlement cannot resume freed
+frames. Runtime teardown and clearing microtasks cancel tasks first. A terminal
+execution limit also cancels all suspended tasks. Hosts must cancel before
+releasing native objects referenced by their JavaScript callbacks.

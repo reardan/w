@@ -130,7 +130,8 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 		js_node* parameters = node.children[0]
 		for i in range(parameters.children.length):
 			if (js_kind(parameters.children[i], c"identifier") == 0 || js_print_identifier_valid(parameters.children[i].text, 1) == 0): return js_print_error(diagnostics, parameters)
-		string_append(out, c"((")
+		if (node.async_function): string_append(out, c"(async (")
+		else: string_append(out, c"((")
 		if (js_print_expression_list(out, parameters, 0, diagnostics) == 0): return 0
 		string_append(out, c") => ")
 		if (js_kind(node.children[1], c"block")):
@@ -179,7 +180,7 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 	if (js_kind(node, c"unary") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")):
 		if (count != 1): return js_print_error(diagnostics, node)
 		if (js_kind(node, c"unary")):
-			if (strcmp(node.text, c"!") != 0 && strcmp(node.text, c"~") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"delete") != 0): return js_print_error(diagnostics, node)
+			if (strcmp(node.text, c"!") != 0 && strcmp(node.text, c"~") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"delete") != 0 && strcmp(node.text, c"await") != 0): return js_print_error(diagnostics, node)
 		else:
 			if (js_print_assignable(node.children[0]) == 0): return js_print_error(diagnostics, node)
 			if (strcmp(node.text, c"++") != 0 && strcmp(node.text, c"--") != 0): return js_print_error(diagnostics, node)
@@ -355,6 +356,7 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 			if (js_kind(node, c"function_expression") == 0): return js_print_error(diagnostics, node)
 		else if (js_print_identifier_valid(node.text, 1) == 0): return js_print_error(diagnostics, node)
 		if (js_kind(node.children[0], c"parameters") == 0 || js_kind(node.children[1], c"block") == 0): return js_print_error(diagnostics, node)
+		if (node.async_function): string_append(out, c"async ")
 		string_append(out, c"function ")
 		string_append(out, node.text)
 		string_append(out, c"(")

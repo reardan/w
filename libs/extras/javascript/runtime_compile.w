@@ -24,7 +24,7 @@ js_value* js_runtime_compile_function(js_runtime* rt, char* source, int length):
 		shape = js_kind(statement, c"expression_statement") && statement.children.length == 1
 		if (shape):
 			expression = statement.children[0]
-			shape = js_kind(expression, c"function_expression")
+			shape = js_kind(expression, c"function_expression") && expression.async_function == 0
 	if (shape == 0 || js_runtime_supported(tree) == 0):
 		js_node_free(tree)
 		js_runtime_fail(rt, 6, c"host function compilation requires a supported function expression")

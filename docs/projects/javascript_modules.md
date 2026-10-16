@@ -25,7 +25,7 @@ mutable properties, and exported functions retain their closure environments.
 This is not general ECMAScript module support.
 
 Default/namespace imports, default/star exports, `export ... from`, cycles,
-dynamic import, import metadata, top-level await, and unsupported body syntax
+dynamic import, import metadata, and unsupported body syntax
 produce explicit failures. No source rewriting or synchronous approximation of
 `await` is performed.
 
@@ -45,6 +45,7 @@ type js_module_resolver = fn(void*, char*, char*) -> js_module_source*
 
 js_modules* js_modules_new(js_runtime* runtime, js_module_resolver* resolver, void* context)
 js_module* js_modules_evaluate(js_modules* modules, char* specifier, char* referrer, int budget)
+js_module* js_modules_evaluate_async(js_modules* modules, char* specifier, char* referrer, int budget)
 js_value* js_modules_export(js_modules* modules, js_module* entry, char* name)
 void js_modules_free(js_modules* modules)
 ```
@@ -118,8 +119,33 @@ concurrency to three cancellable loaders. Source/graph failures are currently
 sticky for the document's module context; there are no import maps or CORS module
 fetches. Its integration test executes the unchanged `webgl_env.mjs`,
 `accessibility.mjs`, and `mobile_input.mjs`, including `makeEnv` and the event queue.
-The original `tools/web/index.html` still needs top-level await; the original
+Top-level await is available through asynchronous evaluation; the original
 `wasi_lite.mjs` now loads unchanged: its derived Error class, `super` call,
 `instanceof` catch and exact BigInt clock multiplication are exercised together
 by `javascript_modules_test`. Passing module preflight does not imply every API used by an uncalled
 export (for example `Map` or DOM accessibility operations) is available.
+
+
+## Asynchronous module evaluation
+
+`js_modules_evaluate_async` opts into validated top-level await and returns a
+borrowed module record while its body may still be suspended. The synchronous
+API retains the default ES2020 parser profile and rejects top-level await.
+Parser clients can explicitly set `js_parse_limits.top_level_await = 1` for a
+module; ordinary-function and formal-parameter await early errors remain active.
+
+An asynchronous record exposes `evaluation_promise`, with `state` 2 while
+pending, 3 after successful execution, and 4 after failure. Drive existing
+`js_runtime_drain_microtasks` checkpoints and inspect the Promise's result.
+A rejected module Promise does not itself throw out of a checkpoint. Subsequent
+requests for a failed cached module restore its cached error completion.
+Exports become available after state 3. Dependencies finish before importer
+bodies run, and concurrent roots share a pending dependency's evaluation.
+Cycles remain unsupported. The budget covers initial graph loading/execution;
+each suspended task preserves its remaining fuel across all later checkpoints.
+
+The loader owns its asynchronous module tasks and tasks spawned during those
+bodies. `js_modules_free` cancels them before releasing module records. Cancelled
+reactions may remain on a host Promise but their cleared tokens cannot access
+freed records. See `javascript.md` for bounded stack/root retention and terminal
+cancellation semantics.

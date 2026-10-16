@@ -17,6 +17,7 @@ struct js_node:
 	list[js_node*] children
 	int offset
 	int length
+	int async_function
 
 
 type js_node_visitor = fn(js_node*) -> void
@@ -30,6 +31,7 @@ js_node* js_node_new(char* kind, char* text):
 	node.string_units = 0
 	node.offset = -1
 	node.length = 0
+	node.async_function = 0
 	return node
 
 
@@ -92,6 +94,7 @@ int js_node_equal(js_node* left, js_node* right):
 	if (left == 0 || right == 0): return left == right
 	if (strcmp(left.kind, right.kind) != 0 || strcmp(left.text, right.text) != 0): return 0
 	if (js_text_equal(left.string_units, right.string_units) == 0): return 0
+	if (left.async_function != right.async_function): return 0
 	if (left.children.length != right.children.length): return 0
 	for i in range(left.children.length):
 		if (js_node_equal(left.children[i], right.children[i]) == 0): return 0

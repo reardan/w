@@ -305,7 +305,6 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 	if (js_cst_is(node, c"unary")):
 		if (count == 1): return js_lower_node(node.children[0], diagnostics)
 		pg_ast_node* op = node.children[0]
-		if (js_cst_is(op, c"KW_AWAIT")): return js_lower_error(node, diagnostics)
 		char* kind = c"unary"
 		if (strcmp(op.first_token.text, c"++") == 0 || strcmp(op.first_token.text, c"--") == 0): kind = c"update_prefix"
 		js_node* result = js_node_new(kind, op.first_token.text)
@@ -386,9 +385,9 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		return result
 	if (js_cst_is(node, c"parameters")): return js_lower_parameters(node, diagnostics)
 	if (js_cst_is(node, c"arrow_function")):
-		if (js_cst_child(node, c"async_modifier") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* parameter = js_cst_child(node, c"arrow_parameters").children[0]
 		js_node* result = js_node_new(c"arrow", c"")
+		result.async_function = js_cst_child(node, c"async_modifier") != 0
 		if (js_cst_is(parameter, c"binding_identifier")):
 			js_node* parameters = js_node_new(c"parameters", c"")
 			js_node_add(parameters, js_lower_identifier(parameter))
@@ -437,7 +436,7 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 				return 0
 		return result
 	if (js_cst_is(node, c"function_decl") || js_cst_is(node, c"function_expr")):
-		if (js_cst_child(node, c"async_modifier") != 0 || js_cst_child(node, c"STAR") != 0): return js_lower_error(node, diagnostics)
+		if (js_cst_child(node, c"STAR") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* binding = js_cst_child(node, c"binding_identifier")
 		char* name = strclone(c"")
 		if (binding != 0):
@@ -446,6 +445,7 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		char* kind = c"function"
 		if (js_cst_is(node, c"function_expr")): kind = c"function_expression"
 		js_node* result = js_node_new(kind, name)
+		result.async_function = js_cst_child(node, c"async_modifier") != 0
 		free(name)
 		if (js_lower_add(result, js_cst_child(node, c"parameters"), diagnostics) == 0 || js_lower_add(result, js_cst_child(node, c"block"), diagnostics) == 0):
 			js_node_free(result)

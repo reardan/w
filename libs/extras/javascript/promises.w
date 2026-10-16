@@ -161,6 +161,7 @@ js_value* js_runtime_promise_construct(js_runtime* rt, list[js_value*] args):
 
 void js_runtime_clear_microtasks(js_runtime* rt):
 	if (rt.running): return
+	js_runtime_async_cancel(rt)
 	while (rt.microtasks.length > 0): rt.microtasks.pop()
 	rt.microtask_head = 0
 
@@ -220,4 +221,5 @@ js_completion* js_runtime_drain_microtasks(js_runtime* rt, int budget):
 		while (rt.microtasks.length > 0): rt.microtasks.pop()
 		rt.microtask_head = 0
 	rt.running = 0
+	if (rt.completion.status >= 5): js_runtime_async_cancel(rt)
 	return rt.completion
