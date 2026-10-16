@@ -146,7 +146,39 @@ int mm_style_keyword(mm_parser* p, char* word):
 	mm_space(p)
 	return 1
 
+# Link indices refer to already declared edges, matching their source order.
+int mm_style_links(mm_parser* p):
+	if (mm_style_keyword(p, c"linkStyle") == 0): return 0
+	int start = p.pos
+	while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 32 && mm_peek(p) != 9 && mm_peek(p) != ';'): p.pos = p.pos + 1
+	char* targets = str_copy_range(p.doc.source, start, p.pos)
+	mm_space(p)
+	mm_style style = mm_style_parse(p)
+	if (style.mask & MM_STYLE_FILL): mm_error(p.doc, start, c"linkStyle supports stroke, color and stroke-width")
+	if (strcmp(targets, c"default") == 0): mm_style_merge(&p.doc.edge_style, &style)
+	else:
+		int index = 0
+		int digits = 0
+		for i in range(strlen(targets) + 1):
+			int c = targets[i]
+			if (c == ',' || c == 0):
+				if (digits == 0 || index >= p.doc.edges.length): mm_error(p.doc, start, c"linkStyle requires an existing edge index")
+				else:
+					mm_edge* edge = p.doc.edges[index]
+					mm_style_merge(&edge.style, &style)
+				index = 0
+				digits = 0
+			else if (c < '0' || c > '9' || index >= MM_MAX_ITEMS):
+				mm_error(p.doc, start, c"invalid linkStyle index")
+				break
+			else:
+				index = index * 10 + c - '0'
+				digits = digits + 1
+	free(targets)
+	return 1
+
 int mm_style_statement(mm_parser* p):
+	if (mm_style_links(p)): return 1
 	int kind = 0
 	if (mm_style_keyword(p, c"style")): kind = 1
 	else if (mm_style_keyword(p, c"classDef")): kind = 2
