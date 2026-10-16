@@ -89,6 +89,7 @@ const int MM_USECASE = 71
 const int MM_C4 = 70
 const int MM_SWIMLANE = 72
 const int MM_EVENT_MODEL = 73
+const int MM_AGENT = 110
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
@@ -139,6 +140,10 @@ struct mm_member:
 	char* text
 	int method
 
+struct mm_property:
+	char* key
+	char* value
+
 struct mm_node:
 	char* id
 	char* label
@@ -154,6 +159,9 @@ struct mm_node:
 	char* direction
 	mm_style style
 	char* style_classes
+	char* role
+	int global_node
+	list[mm_property*] metadata
 
 struct mm_edge:
 	int from_node
@@ -246,6 +254,8 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	n.annotation = strclone(c"")
 	n.direction = strclone(c"")
 	n.style_classes = strclone(c"")
+	n.role = strclone(c"")
+	n.metadata = new list[mm_property*]
 	n.parent = -1
 	d.nodes.push(n)
 	return d.nodes.length - 1
@@ -265,6 +275,12 @@ void mm_document_free(mm_document* d):
 			free(m)
 		__w_list_free(cast(__w_list*, n.members))
 		free(n.style_classes)
+		for mm_property* property in n.metadata:
+			free(property.key)
+			free(property.value)
+			free(property)
+		__w_list_free(cast(__w_list*, n.metadata))
+		free(n.role)
 		free(n.annotation)
 		free(n.direction)
 		free(n.id)

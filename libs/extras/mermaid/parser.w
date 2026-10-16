@@ -12,6 +12,7 @@ import libs.extras.mermaid.c4
 import libs.extras.mermaid.workflows
 import libs.extras.mermaid.narrative
 import libs.extras.mermaid.railroad_parse
+import libs.extras.mermaid.agentflow
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -25,7 +26,10 @@ int mm_node_parse(mm_parser* p):
 	free(id)
 	if (index < 0 || p.doc.error != 0): return -1
 	mm_node* n = p.doc.nodes[index]
-	if ((p.doc.kind == MM_FLOW || p.doc.kind == MM_ER) && p.scope >= 0 && n.group == 0):
+	if (p.doc.kind == MM_AGENT && p.global_nodes):
+		n.global_node = 1
+		n.parent = -1
+	if ((p.doc.kind == MM_FLOW || p.doc.kind == MM_ER || p.doc.kind == MM_AGENT) && p.scope >= 0 && n.group == 0 && n.global_node == 0):
 		if (previous < 0 || n.parent < 0): n.parent = p.scope
 	mm_space(p)
 	int close = 0
@@ -33,7 +37,7 @@ int mm_node_parse(mm_parser* p):
 	if (mm_match(p, c"[")):
 		close = ']'
 		n.shape = 0
-	else if (p.doc.kind == MM_FLOW):
+	else if (p.doc.kind == MM_FLOW || p.doc.kind == MM_AGENT):
 		if (mm_match(p, c"((")):
 			close = ')'
 			doubled = 1
@@ -51,6 +55,7 @@ int mm_node_parse(mm_parser* p):
 		if (doubled):
 			if (mm_peek(p) != close): mm_error(p.doc, p.pos, c"expected second closing parenthesis")
 			else: p.pos = p.pos + 1
+	if (p.doc.kind == MM_AGENT): mm_agent_metadata(p, n)
 	mm_space(p)
 	if (mm_match(p, c":::")): mm_style_inline(p, n)
 	return index
@@ -146,10 +151,27 @@ void mm_statement(mm_parser* p):
 			e.right_card = mm_card(p, 0)
 		else:
 			if (mm_match(p, c"-->")): e.arrow = 1
+			else if (p.doc.kind == MM_AGENT && mm_match(p, c"--x")): e.right_marker = 6
 			else if (mm_match(p, c"-.->")):
 				e.arrow = 1
 				e.dashed = 1
-			else if (mm_match(p, c"---") == 0): mm_error(p.doc, p.pos, c"unsupported flowchart edge; expected -->, --- or -.->")
+			else if (p.doc.kind == MM_AGENT && mm_match(p, c"-.-")): e.dashed = 1
+			else if (mm_match(p, c"---")): e.arrow = 0
+			else if (mm_match(p, c"--")):
+				mm_space(p)
+				int start = p.pos
+				while (mm_end(p) == 0):
+					int at = p.pos
+					if (mm_match(p, c"-->")):
+						e.arrow = 1
+						int end = at
+						while (end > start && (p.doc.source[end - 1] & 255) <= 32): end = end - 1
+						free(e.label)
+						e.label = str_copy_range(p.doc.source, start, end)
+						break
+					p.pos = p.pos + 1
+				if (e.arrow == 0): mm_error(p.doc, p.pos, c"expected --> after inline edge label")
+			else: mm_error(p.doc, p.pos, c"unsupported flowchart edge")
 			mm_space(p)
 			if (mm_match(p, c"|")):
 				free(e.label)
@@ -184,7 +206,25 @@ void mm_flow_body(mm_parser* p, int depth):
 		int start = p.pos
 		if (mm_metadata(p)): mm_space(p)
 		else if (mm_style_statement(p)): mm_space(p)
-		else if (mm_keyword(p, c"subgraph")):
+		else if (p.doc.kind == MM_AGENT && mm_keyword(p, c"global")):
+			if (depth >= 32):
+				mm_error(p.doc, p.pos, c"agentflow nesting limit exceeded")
+				return
+			if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"global block takes no label or metadata")
+			int outer = p.scope
+			int globals = p.global_nodes
+			p.scope = -1
+			p.global_nodes = 1
+			mm_flow_body(p, depth + 1)
+			p.scope = outer
+			p.global_nodes = globals
+		else if (p.doc.kind == MM_AGENT && mm_keyword(p, c"connector")):
+			int index = mm_node_parse(p)
+			if (index >= 0):
+				mm_node* n = p.doc.nodes[index]
+				free(n.role)
+				n.role = strclone(c"connector")
+		else if ((p.doc.kind != MM_AGENT && mm_keyword(p, c"subgraph")) || (p.doc.kind == MM_AGENT && mm_keyword(p, c"flow"))):
 			mm_space(p)
 			int label_start = p.pos
 			char* id = mm_identifier(p)
@@ -192,7 +232,7 @@ void mm_flow_body(mm_parser* p, int depth):
 			char* label
 			if (mm_match(p, c"[")): label = mm_until(p, ']')
 			else:
-				while (mm_end(p) == 0): p.pos = p.pos + 1
+				while (mm_end(p) == 0 && (p.doc.kind != MM_AGENT || mm_peek(p) != '@')): p.pos = p.pos + 1
 				int end = p.pos
 				while (end > label_start && (p.doc.source[end - 1] & 255) <= 32): end = end - 1
 				label = str_copy_range(p.doc.source, label_start, end)
@@ -202,15 +242,25 @@ void mm_flow_body(mm_parser* p, int depth):
 				mm_node* n = p.doc.nodes[index]
 				if (n.group || n.parent >= 0 || n.shape != 0): mm_error(p.doc, start, c"duplicate or conflicting subgraph")
 				n.group = 1
+				if (p.doc.kind == MM_AGENT):
+					free(n.role)
+					n.role = strclone(c"flow")
 				n.parent = p.scope
+				if (p.doc.kind == MM_AGENT && p.global_nodes):
+					n.global_node = 1
+					n.parent = -1
 				free(n.label)
 				n.label = strclone(label)
+				if (p.doc.kind == MM_AGENT): mm_agent_metadata(p, n)
 				if (depth >= 32): mm_error(p.doc, start, c"subgraph nesting limit exceeded")
 				if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"expected end of subgraph header")
 				int outer = p.scope
+				int globals = p.global_nodes
 				p.scope = index
+				p.global_nodes = 0
 				if (p.doc.error == 0): mm_flow_body(p, depth + 1)
 				p.scope = outer
+				p.global_nodes = globals
 			free(label)
 		else if (mm_keyword(p, c"direction")):
 			if (p.scope < 0): mm_direction(p)
@@ -250,6 +300,7 @@ mm_document* mm_parse_raw(char* source, int length):
 	p.doc = d
 	p.pos = 0
 	p.scope = -1
+	p.global_nodes = 0
 	if (length >= 3 && (source[0] & 255) == 239 && (source[1] & 255) == 187 && (source[2] & 255) == 191): p.pos = 3
 	mm_separators(&p)
 	char* header = mm_identifier(&p)
@@ -302,6 +353,9 @@ mm_document* mm_parse_raw(char* source, int length):
 	else if (strcmp(header, c"timeline") == 0): d.kind = MM_TIMELINE
 	else if (strcmp(header, c"gantt") == 0): d.kind = MM_GANTT
 	else if (strcmp(header, c"zenuml") == 0): d.kind = MM_ZENUML
+	else if (strcmp(header, c"agentflow") == 0):
+		d.kind = MM_AGENT
+		if (mm_match(&p, c"-beta") == 0): mm_error(d, p.pos, c"expected agentflow-beta")
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -334,6 +388,7 @@ mm_document* mm_parse_raw(char* source, int length):
 			free(chart.title)
 			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
+	if (d.kind == MM_AGENT && mm_end(&p) == 0): mm_direction(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
 	if (d.kind == MM_TREEVIEW || d.kind == MM_ISHIKAWA):
 		mm_outline_body(&p)
@@ -345,7 +400,7 @@ mm_document* mm_parse_raw(char* source, int length):
 		mm_rail_body(&p)
 		return d
 	mm_separators(&p)
-	if (d.kind == MM_FLOW || d.kind == MM_ER):
+	if (d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_AGENT):
 		mm_flow_body(&p, 0)
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):

@@ -117,6 +117,7 @@ modules:
 	libs.extras.mermaid.narrative
 	libs.extras.mermaid.narrative_render
 	libs.extras.mermaid.uml
+	libs.extras.mermaid.agentflow
 	libs.extras.mermaid.source
 	libs.extras.mermaid.railroad_parse
 	libs.extras.mermaid.railroad_render

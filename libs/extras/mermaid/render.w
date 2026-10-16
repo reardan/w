@@ -235,7 +235,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
 	char* direction = d.direction
-	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT || d.kind == MM_C4): direction = mm_scope_direction(d, e.scope)
+	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT || d.kind == MM_C4 || d.kind == MM_AGENT): direction = mm_scope_direction(d, e.scope)
 	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
 	int dx = 0
 	int dy = 1
@@ -314,6 +314,12 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mm_uml_marker(s, bx, by, end_dx, end_dy, e.right_marker)
 		if (e.left_label[0] != 0): mm_text(s, ax + dx * 30 + 8, ay + dy * 30 + 8, e.left_label)
 		if (e.right_label[0] != 0): mm_text(s, bx + end_dx * 30 + 8, by + end_dy * 30 + 8, e.right_label)
+	else if (d.kind == MM_AGENT && e.right_marker == 6):
+		int mark_x = bx - dx * 10
+		int mark_y = by - dy * 10
+		if (e.from_node == e.to_node): mark_x = bx + 10
+		mm_line(s, mark_x - 6, mark_y - 6, mark_x + 6, mark_y + 6, 0)
+		mm_line(s, mark_x - 6, mark_y + 6, mark_x + 6, mark_y - 6, 0)
 	else if (e.arrow):
 		int end_dx = 0 - dx
 		int end_dy = 0 - dy
@@ -413,6 +419,19 @@ mm_scene* mm_render_diagram(mm_document* d):
 			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
 			mm_primitive* diamond = s.items[s.items.length - 1]
 			diamond.points = list[int]{b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2}
+		else if (d.kind == MM_AGENT && n.shape >= 17):
+			if (n.shape == 17 || n.shape == 19):
+				mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+				if (n.shape == 17):
+					mm_line(s, b.x + 10, b.y, b.x + 10, b.y + b.h, 0)
+					mm_line(s, b.x + b.w - 10, b.y, b.x + b.w - 10, b.y + b.h, 0)
+				else:
+					mm_line(s, b.x + 8, b.y + b.h - 8, b.x + b.w - 8, b.y + b.h - 8, 0)
+			else:
+				mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+				mm_primitive* polygon = s.items[s.items.length - 1]
+				if (n.shape == 18): polygon.points = list[int]{b.x + 16, b.y, b.x + b.w, b.y, b.x + b.w - 16, b.y + b.h, b.x, b.y + b.h}
+				else: polygon.points = list[int]{b.x + 16, b.y, b.x + b.w - 16, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - 16, b.y + b.h, b.x + 16, b.y + b.h, b.x, b.y + b.h / 2}
 		else if (n.shape == 2): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
 		else if (n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
