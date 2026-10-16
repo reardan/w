@@ -159,3 +159,10 @@ void test_named_lifetime_fail_closed():
 	lifetime_case(c"ref[a] char* bad(ref[a] int* p):\n\treturn p\nint main():\n\treturn 0\n", c"incompatible checked pointer", 1)
 	lifetime_case(c"ref[a] int* bad(ref[a] int* p):\n\treturn cast(ref[a] int*, 1)\nint main():\n\treturn 0\n", c"safe:", 1)
 	lifetime_case(c"ref[a] int* bad(ref[a] int* p):\n\tunsafe:\n\t\treturn p\nint main():\n\treturn 0\n", c"cannot transfer control", 1)
+
+
+void test_named_lifetime_unused_declarations():
+	lifetime_case(c"ref[a] int* unused(ref[a] int* left, ref[b] int* right);\nref[z] int* unused(ref[z] int* p, ref[y] int* q):\n\treturn p\nint main():\n\treturn 0\n", 0)
+	lifetime_case(c"ref[a] int* unused(ref[a] int* left, ref[b] int* right);\nref[z] int* unused(ref[y] int* p, ref[z] int* q):\n\treturn q\nint main():\n\treturn 0\n", c"forward declaration")
+	lifetime_case(c"ref[a] int* unused(ref[a] int* left, ref[a] int* right);\nref[z] int* unused(ref[z] int* p, ref[y] int* q):\n\treturn p\nint main():\n\treturn 0\n", c"forward declaration")
+	lifetime_case(c"ref[missing] int* unused(ref[a] int* p);\nint main():\n\treturn 0\n", c"returned lifetime")
