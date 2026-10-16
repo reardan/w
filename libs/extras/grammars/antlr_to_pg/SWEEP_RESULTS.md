@@ -2,76 +2,168 @@
 
 ## Current pinned measurement
 
-Corpus commit: `89fd36482e8cb68a4e55df021a8adbc7541b52f2`.
-All columns measure the same 291 selected grammar cases:
+Measured clean W implementation commit `b1887a858969ba341fb1449793dfd69ed4113677`
+against corpus commit `89fd36482e8cb68a4e55df021a8adbc7541b52f2`.
+The same 291 roots and original grammar bytes are used in every configuration.
 
-| Stage | Initial audit | PR #689 | PR #690 | Current implementation |
+| Configuration | Translation | Generation | W compile | W compile `--strict` |
 | --- | ---: | ---: | ---: | ---: |
-| Translation | 196/291 | 205/291 | 215/291 | 218/291 |
-| Parser generation | 179/291 | 200/291 | 209/291 | 212/291 |
-| W compilation | 179/291 | 200/291 | 209/291 | **212/291** |
-| Strict translation audit | 10/291 | 13/291 | 14/291 | 15/291 |
+| Default permissive | 218 | 214 | **214** | **214** |
+| Default translator `--strict` | 10 | 10 | 10 | 10 |
+| Stateful permissive | 218 | 214 | 214 | 214 |
+| Stateful translator `--strict` | 28 | 28 | 28 | 28 |
+| Exact permissive | 267 | 267 | **267** | **267** |
+| Exact translator `--strict` | 218 | 218 | **218** | **218** |
 
-The original 288-directory-name cohort now compiles **210** cases. Historical
-229/288 and 258/288 figures below used different inputs and are not directly
-comparable.
+Every cell is out of 291. Exact means `--exact-lexer --prediction`; stateful
+means `--stateful`. Translator `--strict` refuses reported semantic gaps.
+W compiler `--strict` separately rejects warnings in generated W. The sweep
+passes an empty main; compilation does not demonstrate runtime equivalence.
 
-Current per-case results: [`sweep_current_results.csv`](sweep_current_results.csv).
-[`sweep_baseline.json`](sweep_baseline.json) pins roots, preserves the initial
-`recorded_pass` stages, records measured tool/runner hashes, and protects every
-current `expected_pass` independently. The final sweep measured clean
-implementation commit `6c1e7f69`. It had no regressions, crashes, timeouts,
-missing output artifacts, or tool changes. All #690 expectations are retained.
+The merged #689 → #690 → #692 baseline compiled 212 cases, of which only 49
+passed W compiler `--strict`. All original 212 now compile without warnings.
+Default compilation adds Informix and JPA through explicitly reported inferred
+token identities; their undefined token matchers still prevent strict acceptance.
+Exact mode adds **55 of the original 79 compile misses**, reaching 267/291
+(91.8%). Exact strict accepts all original 15 default strict cases and **203 of
+the original 276 strict misses**, reaching 218/291 (74.9%). No exact-mode case
+is lost between successful translation and strict W compilation.
 
-This increment adds **three compiling grammars: Lua, TNT, and V**. All three
-also gain translation; TNT gains strict acceptance. New support includes finite
-operator aliases, productive recursive expression bases, leading mixed postfix
-chains, and compound prefixes with proven token boundaries. Ambiguous choices
-and prefix continuations remain refused. See
-[`EXPRESSION_COVERAGE_PLAN.md`](EXPRESSION_COVERAGE_PLAN.md).
+All six configurations completed with **zero infrastructure errors and zero
+regressions against the reviewed baseline**. The longest measured stage was
+7.176 seconds. The historical 288-name subset now compiles 212 cases in default
+mode; this is a separate denominator from the current 291-root matrix.
 
-PR #690 added nine compiling cases: arithmetic, c, cql, icon, ltl, microc, ocl,
-pmmn, and tinyc; PowerQuery gained translation and PMMN strict acceptance.
-PR #689 previously added 22 compiling cases: agc,
-amazon-states-language-intrinsic-functions, bencoding, css3, graphql,
-graphstream-dgs, html, ixml, less, lucene, plantUML, properties, romannumerals,
-scss, stringtemplate, swift-fin, tiny, tnsnames, toml, wkt, xml, and xsd-regex.
-Its sole intentional lost compile/strict pass remains Lisp: the fragment
-`ATOM_PART: (LETTER | NUMBER) ATOM_PART;` has no productive base. The old
-rewrite invented a repetition language; the baseline retains the explicit
-reclassification reasons. This increment removes no expectations.
+Per-case stages and diagnostic counts are in
+[sweep_current_results.csv](sweep_current_results.csv). The machine-readable
+[sweep_remaining.json](sweep_remaining.json) records all 291 cases, original and
+current outcomes, first failed stages, and deduplicated findings with source
+locations. [sweep_baseline.json](sweep_baseline.json) preserves original
+`recorded_pass` and `pre_compatibility_expected_pass`, pins input and tool hashes,
+and independently protects the measured stages of all six configurations.
+The complete pre-implementation matrix is retained in
+[sweep_pre_compatibility_results.csv](sweep_pre_compatibility_results.csv).
 
-**79 cases remain non-compiling:** 73 fail translation and six fail parser
-generation (bison, informix, jpa, langium, lisp, powerquery). Of the translation
-failures, 68 report unsupported left recursion; the others include
-zero-consumption hazards and unresolved dependency-provided symbols. Labels,
-ternaries, indirect binary operands, and lower/interleaved postfix tiers remain
-outside the bounded normalization slice. Teal's overlapping `NAME` bases and
-PromQL's compound/optional operators need further ordered-choice and precedence
-work. Undefined upstream tokens and nonproductive lexer rules remain failures.
+## Strict reclassifications
 
-Bison and Langium need continuation-aware lexer backtracking: Bison's comment
-and code fragments can consume a closing delimiter, while Langium's regex
-character fragments can consume the enclosing `]` or `/`. Returning only a
-helper's longest endpoint cannot implement those grammars. Merely admitting
-recursive helper calls would conceal this gap; no such relaxation was made.
+Default strict acceptance is intentionally **15 → 10**. PMMN, PropCalc, Roman
+numerals, SPASS, and EBNF had executable cases where ANTLR accepted input that the
+old ordered-choice parser rejected. Their unmodified upstream grammars, hashes,
+entry rules, and witnesses are maintained in
+[STRICT_RECLASSIFICATIONS.json](../../../../tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json).
+All five pass exact strict now. SPASS's witness uses its public `term` entry.
 
-Compilation supplies an empty main and does not execute the generated parser.
-New focused tests execute unmodified, hash-pinned Lua and TNT grammars and
-local expression fixtures, checking AST binding, association, mixed postfix
-chains, quantifier prefixes, malformed inputs, complete consumption, and atomic
-refusals. See the [runtime fixture notes](../../../../tests/grammars/antlr_expression_coverage/README.md).
-Lua still has host-code, Unicode, lexer, and ordered-choice semantic gaps;
-V has compile coverage only. Earlier TinyC/MicroC/Arithmetic runtime tests
-remain in the suite, with their documented ordered-choice limitations.
-Neither compile coverage nor strict acceptance claims full ANTLR equivalence.
-The corpus sweep continues to report runtime smoke as `not_configured`.
+Historical stateful strict acceptance is **58 → 28** with the added parser
+continuation audit. Of the 30 refusals, five have the witnesses above; the other
+25 are conservative unproven cases, not demonstrated runtime bugs. All original
+58 pass every exact-strict stage and default permissive W compilation with
+`--strict`. [STRICT_CONTINUATION_REVIEW.json](STRICT_CONTINUATION_REVIEW.json)
+records each decision and final pipeline confirmation. Optional proofs have
+explicit grammar-size and work limits; exhausted proofs refuse acceptance.
 
-Validation: 24 focused targets, all 1,254 targets in `./wbuild tests`, and all
-10 offline sweep-harness tests passed. The full suite used Node 20.19.3 with
-`NO_COLOR` unset. Structured W checks are clean; vendored grammar bytes and
-hashes match the pinned corpus. Final results satisfy the strengthened per-case
-expectations.
+## Remaining compile coverage
+
+All **24 exact compile misses** fail during translation. There are no remaining
+exact generator failures or generated-W warning failures in this pinned corpus.
+Twenty-one grammars contain unsupported left-recursion shapes:
+
+| Grammar | Refused rules |
+| --- | --- |
+| alef | `setlist`, `zelist` |
+| alloy | `expr` |
+| awk | `non_unary_expr`, `non_unary_print_expr` |
+| cayenne | `expr` |
+| clu | `primary` |
+| eiffel | `expression` |
+| elixir | `expression` |
+| gql | `valueType` |
+| gvpr | `expr` |
+| hypertalk | `chunk` |
+| kirikiri-tjs | `expression` |
+| peoplecode | `expr` |
+| plucid | `expression` |
+| refal | `program` |
+| rust | `expression` |
+| sapf | `expression` |
+| semver | `build`, `preRelease` |
+| spl | `expression` |
+| tl | `proposition` |
+| vb6 | `valueStmt` |
+| z | `expression`, `predicate` |
+
+The other three are:
+
+| Grammar | Blocking condition |
+| --- | --- |
+| AspectJ | Unresolved Java lexer/parser imports in the selected input/dependency closure |
+| TrapC | Unresolved `OverridesLexer`, `CLexer`, `OverridesParser`, and `CParser` dependencies |
+| SHARC | `StringLiteral` and `CharLiteral` can emit visible tokens without consuming input |
+
+Some grammars have additional host-code or token findings; these are overlapping
+causes, not additional cases. Direct precedence, ternaries, labeled alternatives,
+compound operators, and postfix levels are supported within the implemented
+normalization. Arbitrary indirect or nullable-prefix left recursion remains
+outside that support. Lisp now compiles by retaining its nonproductive fragment
+as an actual failing call; no productive base is invented.
+
+## Remaining strict coverage
+
+**73 cases fail exact strict translation**, including the 24 compile misses.
+The 49 additional cases compile permissively but have reported semantic gaps.
+The most frequent finding classes among refused cases are:
+
+| Finding | Grammars affected |
+| --- | ---: |
+| Host actions, predicates, or element options (`AT_HOST_SITE`) | 34 |
+| Unsupported declarations/dependencies (`AT_DECLARATION`) | 27 |
+| Unsupported left recursion | 21 |
+| Nongreedy constructs requiring adaptation | 13 |
+| Case-insensitive parser literals requiring explicit lexer rules | 5 |
+| Unsupported lexer commands | 5 |
+| Inferred token identities | 3 |
+| Declared tokens without lexer matchers | 3 |
+
+Counts overlap. The remaining less frequent findings include missing dependencies,
+undefined symbols, command conflicts, unsupported exact lexer shapes, Unicode,
+token ambiguity/remapping, nonproductivity, and empty tokens. The per-case ledger
+contains every reported code, rule, reason, and source location. Strict translation
+is a compatibility audit, not a complete validator of ANTLR source legality.
+
+## Runtime evidence and limits
+
+The implemented lexer keeps fragment endpoints and enclosing continuations,
+ordered greedy/nongreedy behavior, token priority, Unicode scalar matching,
+lexer modes, custom channels, and EOF/`more` state. The parser uses bounded
+complete-input continuation search with delayed AST replay and source metadata.
+It does not implement ANTLR ALL(*) or its context/listener APIs, and has no DFA
+cache. Search can be exponential up to its explicit work budget. Resource and
+provider failures are sticky across backtracking. The input domain is valid UTF-8
+without embedded NUL; malformed UTF-8 and embedded NUL fail explicitly.
+
+The separate runtime differential covers **24 families / 170 inputs**, including
+expression results and labels, lexer state, Unicode, token sets, fragment remaps,
+strict reclassification witnesses, and deterministic mutations. The live ANTLR
+4.13.2 oracle has **zero mismatches** in exact mode. An independent lexer endpoint
+oracle compares **7,104 cases**, also with zero mismatches. Unicode tables and CI
+use Java 17. These bounded suites do not establish runtime conformance for every
+compiling corpus grammar. The 291-case sweep therefore continues to report
+`runtime_smoke: not_configured`.
+
+See the [runtime fixtures](../../../../tests/grammars/antlr_differential/README.md),
+[endpoint oracle](../../../../tests/grammars/antlr_exact_lexer/README.md), and
+[implementation plan and capability ledger](COMPATIBILITY_PLAN.md) for contracts,
+reference-system comparisons, reproduction commands, and remaining limits.
+
+## Validation
+
+- Full `env -u NO_COLOR ./wbuild tests`: **1,270 targets passed**, including
+  self-host fixpoint and architecture checks.
+- Six configurations × 291 roots: zero crashes, timeouts, missing artifacts,
+  regressions, or tool changes; every successful exact translation passes W `--strict`.
+- Live ANTLR differential: **170/170**; endpoint oracle: **7,104/7,104**.
+- Offline sweep harness: **17 tests**; runtime differential harness: **11 tests**.
+- Structured W checks and generated-parser checks pass. Original corpus bytes,
+  root selections, hashes, and historical baseline evidence are preserved.
 
 ## Historical measurements
 

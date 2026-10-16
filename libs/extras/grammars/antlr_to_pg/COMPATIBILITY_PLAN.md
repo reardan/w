@@ -8,9 +8,11 @@ retain their ordered-choice behavior.
 
 This plan follows merged PRs #689, #690, and #692. It replaces the earlier
 increment plans as the forward work plan; their implementation histories remain
-unchanged. The architecture prototypes below are required gates before broad
-parser or lexer acceptance is enabled. Implementation is in progress; final measurements and remaining limitations will
-be recorded alongside the implementation before completion.
+unchanged. The architecture gates and implementation waves are complete within the bounded
+contracts below. The final pinned sweep reaches 267/291 exact compilations and
+218/291 exact strict translations, with remaining cases recorded in
+[SWEEP_RESULTS.md](SWEEP_RESULTS.md). The original plan below is retained to
+explain sequencing, acceptance criteria, and deliberately deferred capabilities.
 
 ## Implemented capabilities
 

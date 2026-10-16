@@ -14,7 +14,14 @@
     "pipeline_evidence_w_commit": "8bb5b5f71d8a5a7935914727085090357f5ee005",
     "pipeline_evidence_results_sha256": "535dd187af3051548aea87e43e0c94c2f7cc6cac6a4044e2c9662d699458bd40",
     "pipeline_evidence_note": "Complete four-stage frozen six-configuration sweep. Current strict translation was independently rerun after the absorption proof; exact/permissive pipeline observations retain their stated earlier commit.",
-    "witness_ledger_sha256": "17aa9a913df2d7530aa6415f2a8288d83de676e463941514f63dbab4a546eb60"
+    "witness_ledger_sha256": "17aa9a913df2d7530aa6415f2a8288d83de676e463941514f63dbab4a546eb60",
+    "final_pipeline_confirmation": {
+      "w_commit": "b1887a858969ba341fb1449793dfd69ed4113677",
+      "raw_results_sha256": "685e3c03ad3889c338ad5f0b0d378e22d5d063252eadeef7344524e9cc32af26",
+      "historical_cases": 58,
+      "exact_strict_all_stages_pass": 58,
+      "default_permissive_all_stages_pass": 58
+    }
   },
   "summary": {
     "historical_stateful_strict_translate_pass": 58,
