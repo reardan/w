@@ -498,7 +498,9 @@ later arguments. Deferred work cannot read or write an exclusive returned group;
 it can still read an unrelated shared group. Whole-owner replacement may release
 the overwritten loan before evaluating its replacement only when the right-hand
 expression does not read the old binding. Child views still prevent conflicting
-replacement. Provenance joins remain conservative across replacement and loops.
+replacement. A replacement cannot borrow through the old owner or a view derived
+from it: that would create a cycle in borrow ancestry. Provenance joins remain
+conservative across replacement and loops.
 
 ### Shared views of mixed owners
 

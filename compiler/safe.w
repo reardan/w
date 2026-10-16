@@ -1813,6 +1813,8 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			safe_replacing = previous
 			int parent = -1
 			int external = safe_borrowed_roots(&incoming, safe_lifetime_count(lhs.semantic_type), &parent)
+			if (safe_validate && safe_ancestor(root, parent)):
+				safe_error(id, c"safe: owner replacement cannot create a reborrow cycle", safe_birth[root])
 			safe_components_join(root, &incoming, safe_lifetime_count(lhs.semantic_type))
 			safe_origin_join(root, external, parent)
 		else: safe_eval(right, state, lhs.semantic_type)
