@@ -61,6 +61,7 @@ struct wwasm:
 	int stack_limit
 	int valid
 	int op_count
+	int max_ops
 	int grow_hook
 	void* grow_context
 
@@ -198,7 +199,7 @@ void wwasm_decode(wwasm* m, wwasm_function* f):
 	int root_ended = 0
 	while (m.pos < m.end && m.error == 0):
 		m.op_count = m.op_count + 1
-		if (m.op_count > 524288):
+		if (m.op_count > m.max_ops):
 			wwasm_fail(m, c"decoded instruction limit")
 			break
 		wwasm_op* op = new wwasm_op()
@@ -417,7 +418,9 @@ void wwasm_validate_function(wwasm* m, wwasm_function* f):
 	__w_list_free(cast(__w_list*, controls))
 	__w_list_free(cast(__w_list*, stack))
 
-wwasm* wwasm_load(char* bytes, int length):
+# Source byte allowance is host-selected; decoded vectors, memory, stack and
+# instruction limits remain independently enforced. Configuration is bounded.
+wwasm* wwasm_load_bounded(char* bytes, int length, int max_source_bytes, int max_instructions):
 	wwasm* m = new wwasm()
 	m.types = new list[wwasm_type*]
 	m.functions = new list[wwasm_function*]
@@ -428,7 +431,8 @@ wwasm* wwasm_load(char* bytes, int length):
 	m.start = -1
 	m.max_depth = 128
 	m.stack_limit = 4096
-	if (length < 8 || length > 1048576 || bytes == 0):
+	m.max_ops = max_instructions
+	if (max_instructions < 1 || max_instructions > 2097152 || max_source_bytes < 8 || max_source_bytes > 67108864 || length < 8 || length > max_source_bytes || bytes == 0):
 		wwasm_fail(m, c"WebAssembly module size limit")
 		return m
 	m.bytes = cast(char*, malloc(length))
@@ -559,6 +563,9 @@ wwasm* wwasm_load(char* bytes, int length):
 		for i in range(m.imports, m.functions.length): wwasm_validate_function(m, m.functions[i])
 	m.valid = m.error == 0
 	return m
+
+wwasm* wwasm_load(char* bytes, int length):
+	return wwasm_load_bounded(bytes, length, 1048576, 524288)
 
 void wwasm_free(wwasm* m):
 	if (m == 0): return
