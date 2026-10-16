@@ -137,7 +137,7 @@ int wg_leak_scan(wg_leaks* l, int address, int size, int source):
 		# Separate address spaces can legitimately reuse checker addresses.
 		if (l.exclude_checker): readable = wg_leak_checker_address(c, at) == 0
 		# Heap contents are graph edges, never unconditional root memory.
-		if ((source < 0) && (wg_leak_target(l, at) >= 0)): readable = 0
+		if ((source == -1) && (wg_leak_target(l, at) >= 0)): readable = 0
 		for i in range(width):
 			wg_page* page = wg_page_find(c, at + i)
 			if (page == 0): readable = 0
@@ -210,6 +210,23 @@ int wg_leaks_root_range(wg_leaks* l, int address, int size):
 	if (l.context.error): return 0
 	if (l.phase != 1): return wg_error(l.context, WG_INCOMPLETE, address, size, 0, 0)
 	return wg_leak_scan(l, address, size, -1)
+
+
+# Only the execution frontend's validated live-stack extent may use
+# this entry point. Unlike generic roots, a live malloc-backed stack is
+# itself reachable and its active pointer slots are unconditional roots.
+# Checker-memory exclusion still applies to both payloads and owners.
+int wg_leaks_stack_range(wg_leaks* l, int address, int size):
+	wg_context* c = l.context
+	if (c.error): return 0
+	if ((l.phase != 1) || (wg_range(address, size) == 0)): return wg_error(c, WG_INCOMPLETE, address, size, 0, 0)
+	if (size == 0): return 1
+	for i in range(l.count):
+		wg_block* block = l.nodes[i].block
+		if (l.exclude_checker && wg_leak_checker_address(c, block.address)): continue
+		if (wg_less(address - block.address, block.size) || wg_less(block.address - address, size)):
+			if (wg_leak_enqueue(l, i, WG_LEAK_REACHABLE) == 0): return 0
+	return wg_leak_scan(l, address, size, -2)
 
 
 int wg_leaks_finish(wg_leaks* l):

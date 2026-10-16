@@ -30,6 +30,10 @@ parent:
     mov $231, %eax
     syscall
 child:
+#ifdef REDZONE
+    mov %r12, -8(%rsp)
+    xor %r12d, %r12d
+#endif
 #ifdef LOST
     xor %r12d, %r12d
 #endif

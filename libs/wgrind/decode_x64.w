@@ -12,6 +12,7 @@ struct wg_machine:
 	asm_insn instruction
 	char[16] bytes
 	int rex
+	int segment
 	int condition
 	int pid
 	int[27] raw
@@ -71,10 +72,18 @@ int wg_decode_native(wg_machine* m):
 		return 1
 	int at = 0
 	m.rex = 0
+	m.segment = 0
 	m.condition = -1
 	int operand_prefix = 0
-	if (m.bytes[at] == 0x66):
-		operand_prefix = 1
+	while (at < count):
+		int prefix = m.bytes[at] & 255
+		if (prefix == 0x66):
+			if (operand_prefix): return wg_native_incomplete(m)
+			operand_prefix = 1
+		elif ((prefix == 0x64) || (prefix == 0x65)):
+			if (m.segment): return wg_native_incomplete(m)
+			m.segment = prefix
+		else: break
 		at = at + 1
 	if ((at < count) && (m.bytes[at] >= 0x40) && (m.bytes[at] <= 0x4f)):
 		m.rex = m.bytes[at]
@@ -196,6 +205,14 @@ int wg_native_address(wg_machine* m, asm_operand* op, int consequential, wg_valu
 	if (wg_binary(m.context, WG_ADD, 8, &base, &index, out) == 0): return 0
 	wg_value_set(&base, op.disp, 0, 0)
 	if (wg_binary(m.context, WG_ADD, 8, out, &base, out) == 0): return 0
+	# FS/GS base is added only for memory accesses; LEA ignores segments.
+	# The kernel register snapshot is per-thread, and modeled arch_prctl
+	# and clone TLS arguments have already passed definedness checks.
+	if (consequential && m.segment):
+		int slot = 21
+		if (m.segment == 0x65): slot = 22
+		wg_value_set(&base, m.raw[slot], 0, 0)
+		if (wg_binary(m.context, WG_ADD, 8, out, &base, out) == 0): return 0
 	if (consequential): return wg_use(m.context, out, m.raw[16])
 	return 1
 

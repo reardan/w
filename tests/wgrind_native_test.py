@@ -136,6 +136,14 @@ with tempfile.TemporaryDirectory(prefix="wgrind-native-", dir=ROOT / "bin") as t
         assert result.returncode == (99 if name == "thread_undefined" else 0), (name, result.returncode, result.stderr)
         if name == "thread_undefined":
             assert json.loads(result.stderr.splitlines()[0])["kind"] == "undefined-value", result.stderr
+    for define, kind in (("UNDEFINED", "undefined-value"), ("INVALID", "invalid-read")):
+        tls_bad = folder / ("tls_" + define)
+        result = run("cc", "-nostdlib", "-static", "-no-pie", "-D" + define,
+                     "tests/wgrind_native/thread_tls.S", "-o", str(tls_bad))
+        assert result.returncode == 0, result.stderr
+        result = run(str(RUNNER), str(tls_bad))
+        assert result.returncode == 99, result.stderr
+        assert json.loads(result.stderr.splitlines()[0])["kind"] == kind, result.stderr
     for fixture, cases in (("readv_entry", ((None, 0, None), ("TAIL", 99, "undefined-value"), ("FAILED", 99, "undefined-value"))),
                            ("protect_entry", (("CLEAN", 0, None), (None, 99, "undefined-value"), ("NOACCESS", 99, "invalid-read")))):
         for define, expected, kind in cases:
@@ -161,14 +169,27 @@ with tempfile.TemporaryDirectory(prefix="wgrind-native-", dir=ROOT / "bin") as t
     assert result.returncode == 0, result.stderr
     # Both objects are reachable through a register/stack in another TID,
     # even when its mmap stack VMA merges with a preceding heap mapping.
-    thread_leaks = folder / "thread_leaks"
+    for define in (None, "LOST", "REDZONE"):
+        lost = define == "LOST"
+        thread_leaks = folder / ("thread_" + (define or "reachable"))
+        result = run("cc", "-nostdlib", "-static", "-no-pie",
+                     *(["-D" + define] if define else []),
+                     "tests/wgrind_native/thread_leaks.S", str(allocator), "-o", str(thread_leaks))
+        assert result.returncode == 0, result.stderr
+        result = run(str(RUNNER), str(thread_leaks))
+        assert result.returncode == (99 if lost else 0), result.stderr
+        summary = json.loads(result.stderr.splitlines()[0])
+        category = "definitely-lost" if lost else "still-reachable"
+        assert summary[category] == {"blocks": 1, "bytes": 8}, summary
+    heap_stack = folder / "heap_stack"
     result = run("cc", "-nostdlib", "-static", "-no-pie",
-                 "tests/wgrind_native/thread_leaks.S", str(allocator), "-o", str(thread_leaks))
+                 "tests/wgrind_native/heap_stack.S", "-o", str(heap_stack))
     assert result.returncode == 0, result.stderr
-    result = run(str(RUNNER), str(thread_leaks))
+    result = run(str(RUNNER), str(heap_stack))
     assert result.returncode == 0, result.stderr
     summary = json.loads(result.stderr.splitlines()[0])
-    assert summary["still-reachable"]["blocks"] > 0, summary
+    assert summary["still-reachable"] == {"blocks": 2, "bytes": 4104}, summary
+    assert summary["possibly-lost"]["blocks"] == 0, summary
     # Incompatible and truncated files must be rejected before any process
     # executes; especially avoid unchecked reads of an ELF header's fields.
     for content in (b"", b"\x7fELF", b"#!/bin/sh\nexit 0\n"):

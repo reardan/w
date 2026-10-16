@@ -339,7 +339,10 @@ int wg_threads_roots(wg_threads* threads, wg_machine* current, wg_leaks* leaks):
 		for reg in range(16):
 			if (machine.registers.undefined[reg] == 0):
 				if (wg_leaks_root_value(leaks, machine.registers.values[reg]) == 0): return 0
-		if (wg_leaks_root_range(leaks, machine.raw[19], machine.stack_high - machine.raw[19]) == 0): return 0
+		# The x64 ABI red zone contains live leaf-function locals too.
+		int bottom = machine.raw[19] - 128
+		if ((bottom < machine.stack_low) || (machine.raw[19] > machine.stack_high)): return wg_native_incomplete(machine)
+		if (wg_leaks_stack_range(leaks, bottom, machine.stack_high - bottom) == 0): return 0
 	return 1
 
 

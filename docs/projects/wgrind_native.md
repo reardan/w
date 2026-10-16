@@ -76,7 +76,7 @@ because optimized W allocation entry points do not have the SysV ABI.
   allocator hooks are rejected before callbacks execute.
 - Kernel input buffers are checked; only actual successful output bytes are
   defined. Scalar/vectored I/O, mappings/protection/unmapping, program break,
-  supported identity calls, TLS and restricted clone/clone3 thread creation are
+  supported identity calls, FS/GS TLS loads/stores and restricted clone/clone3 thread creation are
   modeled. Shared/device mappings and unknown calls are incomplete.
 - Threads execute one checked instruction at a time with shared memory shadow and
   separate register/flag/stack state. Supported TLS and TID writes update shadow.
@@ -84,7 +84,8 @@ because optimized W allocation entry points do not have the SysV ABI.
   incomplete; this is neither a POSIX thread implementation nor race detection.
 - Exit-time graph traversal distinguishes definitely lost, indirectly lost,
   possibly lost (interior pointers), and still reachable allocations. Roots come
-  from defined registers, live stacks and writable ELF segments, excluding checker
+  from defined registers, live stacks (including red zones and malloc-backed stacks)
+  and writable ELF segments, excluding checker
   metadata and anonymous allocator arenas. Graph/scanning limits fail explicitly.
 
 The ptrace frontend is a correctness reference. It has a fixed instruction budget

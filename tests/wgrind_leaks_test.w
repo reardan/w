@@ -138,6 +138,37 @@ void leak_chain_and_limits():
 	wg_destroy(c)
 
 
+void heap_stack_roots():
+	leak_reset()
+	wg_context* c = wg_create(8, 8, 2)
+	assert1(c != 0)
+	assert1(wg_allocate(c, leak_at(0), __word_size__ * 2, 1, 1))
+	assert1(wg_allocate(c, leak_at(4), __word_size__ * 2, 1, 2))
+	leak_memory[8] = leak_at(0)
+	wg_leaks* l = wg_leaks_create(c, 8, 8, 100, __word_size__, &leak_reader, 17)
+	assert1(l != 0)
+	# Generic mapped-memory roots must not treat heap contents as roots.
+	assert1(wg_leaks_begin(l))
+	assert1(wg_leaks_root_range(l, leak_at(4), __word_size__ * 2))
+	assert1(wg_leaks_finish(l))
+	assert_equal(0, l.blocks[WG_LEAK_REACHABLE])
+	# A frontend-proven live stack roots both its backing allocation and
+	# the object referred to only by a stack slot (not a register).
+	assert1(wg_leaks_begin(l))
+	assert1(wg_leaks_stack_range(l, leak_at(4), __word_size__ * 2))
+	assert1(wg_leaks_finish(l))
+	assert_equal(2, l.blocks[WG_LEAK_REACHABLE])
+	assert_equal(0, wg_leaks_found(l))
+	# The explicit stack path still never scans checker-owned metadata.
+	l.exclude_checker = 1
+	assert1(wg_mark(c, cast(int, c), __word_size__, 3, 0, 0))
+	assert1(wg_leaks_begin(l))
+	assert1(wg_leaks_stack_range(l, cast(int, c), __word_size__))
+	assert1(wg_leaks_finish(l))
+	assert_equal(0, l.blocks[WG_LEAK_REACHABLE])
+	wg_destroy(c)
+
+
 void exhaustive_small_graphs():
 	# Independent transitive-closure oracle for all 512 directed graphs
 	# on three allocations, including self edges and every cycle shape.
@@ -247,6 +278,7 @@ int main():
 	leak_classification()
 	leak_root_rules()
 	leak_chain_and_limits()
+	heap_stack_roots()
 	exhaustive_small_graphs()
 	local_reader_check()
 	leak_reports()
