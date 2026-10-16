@@ -1,0 +1,11 @@
+parser stateful_more_eof
+lexer stateful
+lexer_priority ordered
+lexer_eof any_mode
+lexer_mode BODY
+literal OPEN "["
+lexer_command OPEN pushMode BODY
+lexer_command OPEN more
+token TEXT = [a-z]+
+lexer_rule TEXT BODY
+rule root = TEXT EOF

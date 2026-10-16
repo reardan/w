@@ -21,7 +21,7 @@ antlr_to_pg: best-effort translator from ANTLR4 grammars to the
 ParserGenerator .pg DSL (libs/extras/grammars/antlr_to_pg/README.md).
 
 	bin/antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME]
-		[--report FILE] [--matchers FILE] [--strict] [--audit FILE]
+		[--report FILE] [--matchers FILE] [--strict] [--stateful] [--audit FILE]
 
 `./wbuild antlr_to_pg` generates the antlr4.pg and pg.pg parsers into bin/
 and builds bin/antlr_to_pg; antlr_to_pg_test re-translates the vendored
@@ -33,7 +33,9 @@ import bin.generated_antlr4_parser
 import bin.generated_pg_parser
 import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.ast
+import libs.extras.grammars.antlr_to_pg.dependencies
 import libs.extras.grammars.antlr_to_pg.audit
+import libs.extras.grammars.antlr_to_pg.normalize
 import libs.extras.grammars.antlr_to_pg.charsets
 import libs.extras.grammars.antlr_to_pg.classify
 import libs.extras.grammars.antlr_to_pg.emit
@@ -48,13 +50,16 @@ import libs.extras.parser_generator.analysis
 # CLI entry point
 # ---------------------------------------------------------------------------
 void at_usage():
-	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--audit FILE]")
+	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--audit FILE] [--dependencies FILE]")
 
 
 int main(int argc, int argv):
 	args_init(argc, argv)
 	int strict = args_has_bool_flag(c"strict")
+	int stateful = args_has_bool_flag(c"stateful")
 	g_at_dependencies = new list[at_site*]
+	g_at_declared_modes = new list[char*]
+	g_at_token_identities = new list[char*]
 	g_fragments = new map[char*, at_rule*]
 	g_lexer_rules = new map[char*, at_rule*]
 	g_all_rule_names = new map[char*, int]
@@ -98,27 +103,22 @@ int main(int argc, int argv):
 	char* report_path = args_value(c"report")
 	char* matchers_path = args_value(c"matchers")
 
-	list[at_rule*] all_rules = new list[at_rule*]
+	list[char*] input_paths = new list[char*]
 	int fi = 0
 	while (fi < file_count):
-		char* path = args_positional(fi)
-		char* source = file_read_text(path)
-		if (source == 0):
-			println2(cstr(f"antlr_to_pg: could not read {path}"))
-			return 1
-		pg_diagnostics* diagnostics = pg_diagnostics_new()
-		pg_ast_node* root = antlr4_parse(source, path, diagnostics)
-		if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)):
-			println2(cstr(f"antlr_to_pg: failed to parse {path}"))
-			pg_diagnostics_print(diagnostics)
-			return 1
-		g_at_source = source
-		list[at_rule*] rules = at_collect_rules(root)
-		int ri = 0
-		while (ri < rules.length):
-			all_rules.push(rules[ri])
-			ri = ri + 1
+		input_paths.push(args_positional(fi))
 		fi = fi + 1
+	list[at_rule*] all_rules = at_load_grammar_inputs(input_paths)
+	char* dependencies_path = args_value(c"dependencies")
+	if (dependencies_path != 0):
+		string_builder* dependencies = string_new()
+		for at_dependency_input* input in g_at_inputs:
+			string_append(dependencies, input.path)
+			string_append_char(dependencies, 10)
+		if (file_write_text(dependencies_path, dependencies.data) == 0):
+			println2(cstr(f"antlr_to_pg: could not write {dependencies_path}"))
+			return 1
+	if (all_rules == 0): return 1
 
 	char* parser_name = name_override
 	if (parser_name == 0):
@@ -137,7 +137,10 @@ int main(int argc, int argv):
 			g_lexer_rules[r.name] = r
 		i = i + 1
 
+	at_prepare_stateful(all_rules, stateful)
+	at_normalize_parser_lists(all_rules)
 	int unsafe = at_audit(all_rules)
+	if (g_at_dependency_error): unsafe = 1
 	at_collect_parser_refs(all_rules)
 	at_audit_lexer_contract(all_rules)
 	at_print_audit(args_value(c"audit"))

@@ -1,0 +1,27 @@
+parser stateful_more
+lexer stateful
+lexer_priority ordered
+lexer_mode BODY
+token TEXT
+token NUMBER digits
+literal BANG "!"
+literal OPEN "["
+lexer_command OPEN pushMode BODY
+lexer_command OPEN more
+token BODY_TEXT = [a-z\r\n]+
+lexer_rule BODY_TEXT BODY
+lexer_command BODY_TEXT more
+literal CLOSE "]"
+lexer_rule CLOSE BODY
+lexer_command CLOSE popMode
+lexer_command CLOSE type TEXT
+literal DROP ";"
+lexer_rule DROP BODY
+lexer_command DROP popMode
+lexer_command DROP skip
+literal HIDE "^"
+lexer_command HIDE channel hidden
+lexer_command HIDE more
+skip WS = [ \t\r\n]+
+start root
+rule root = TEXT BANG EOF | TEXT EOF | NUMBER EOF | EOF

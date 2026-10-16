@@ -169,6 +169,7 @@ struct pg_grammar:
 	int mode
 	int stateful
 	int ordered_lexer
+	int allow_mode_eof
 	list[char*] lexer_modes
 	list[char*] lexer_order
 	list[pg_lexer_rule_config*] lexer_rules
@@ -189,6 +190,7 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.mode = pg_grammar_mode_ast()
 	grammar.stateful = 0
 	grammar.ordered_lexer = 0
+	grammar.allow_mode_eof = 0
 	grammar.lexer_modes = new list[char*]
 	grammar.lexer_modes.push(strclone(c"DEFAULT"))
 	grammar.lexer_order = new list[char*]
@@ -316,6 +318,14 @@ pg_token_def* pg_grammar_add_token(pg_grammar* grammar, char* name, char* matche
 	pg_token_def* token = pg_token_def_new(name, matcher, grammar.tokens.length + grammar.literals.length + 1)
 	grammar.tokens.push(token)
 	grammar.lexer_order.push(strclone(name))
+	return token
+
+
+# A token kind that can only be produced by remapping another lexer rule.
+# It has no matching candidate and therefore no entry in lexer_order.
+pg_token_def* pg_grammar_add_token_identity(pg_grammar* grammar, char* name):
+	pg_token_def* token = pg_token_def_new(name, 0, grammar.tokens.length + grammar.literals.length + 1)
+	grammar.tokens.push(token)
 	return token
 
 

@@ -2,6 +2,7 @@
 # Diagnostics have input/rule locations and deterministic input order. The
 # legacy report is left stable; these losses are printed separately on stderr.
 import libs.extras.grammars.antlr_to_pg.types
+import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import lib.utf8
 
 list[char*] g_at_loss_lines
@@ -92,6 +93,144 @@ int at_audit_unicode(char* text):
 	return 0
 
 
+void at_audit_stateful_parser_literal(at_rule* owner, at_element* element):
+	int matches = 0
+	for at_rule* candidate in g_at_source_rules:
+		if ((candidate.is_lexer == 0) || candidate.is_fragment): continue
+		if ((candidate.alts.length != 1) || (candidate.alts[0].elements.length != 1)): continue
+		at_element* literal = candidate.alts[0].elements[0]
+		if ((literal.kind != 0) || (literal.suffix != 0)): continue
+		if (strcmp(literal.text, element.text) != 0): continue
+		matches++
+		for at_command* command in candidate.commands:
+			if ((strcmp(command.name, c"type") == 0) || (strcmp(command.name, c"more") == 0)):
+				at_loss(element.first, owner.name, c"parser literal aliases a remapped or accumulated lexer rule")
+	if (matches > 1): at_loss(element.first, owner.name, c"parser literal has ambiguous lexer token identities")
+
+
+int at_stateful_fixed_width_alts(list[at_alt*] alts, int depth);
+int at_stateful_atom_width(at_element* element, int depth);
+
+
+int at_stateful_fixed_width(at_element* element, int depth):
+	if ((depth > 32) || (element.suffix != 0)): return -1
+	return at_stateful_atom_width(element, depth)
+
+
+int at_stateful_atom_width(at_element* element, int depth):
+	if (depth > 32): return -1
+	if (element.kind == 0): return strlen(element.text)
+	if ((element.kind == 1) || (element.kind == 4) || (element.kind == 5)): return 1
+	if (element.kind == 3): return at_stateful_fixed_width_alts(element.group_alts, depth + 1)
+	if (element.kind == 2):
+		at_rule* referenced = g_at_rules.get(element.text, 0)
+		if (referenced != 0): return at_stateful_fixed_width_alts(referenced.alts, depth + 1)
+	return -1
+
+
+int at_stateful_fixed_width_alts(list[at_alt*] alts, int depth):
+	int width = -1
+	for at_alt* alt in alts:
+		int total = 0
+		for at_element* element in alt.elements:
+			int part = at_stateful_fixed_width(element, depth)
+			if (part < 0): return -1
+			total = total + part
+		if ((width >= 0) && (width != total)): return -1
+		width = total
+	return width
+
+
+int at_stateful_charset_contains(at_element* element, int value):
+	if (((element.kind != 1) && (element.kind != 5)) || (element.text == 0)): return -1
+	char* charset = element.text
+	int negated = element.kind == 5
+	int index = 1
+	if (charset[index] == '^'):
+		negated = negated == 0
+		index++
+	int end = strlen(charset) - 1
+	int contains = 0
+	while (index < end):
+		int advance = 1
+		int low = cast(int, charset[index]) & 255
+		if (low == 92): low = at_parse_charset_escape(charset, index, end, &advance)
+		if ((low < 0) || (advance <= 0)): return -1
+		index = index + advance
+		int high = low
+		if ((index + 1 < end) && (charset[index] == '-')):
+			index++
+			advance = 1
+			high = cast(int, charset[index]) & 255
+			if (high == 92): high = at_parse_charset_escape(charset, index, end, &advance)
+			if ((high < 0) || (advance <= 0)): return -1
+			index = index + advance
+		if ((value >= low) && (value <= high)): contains = 1
+	if (negated): return contains == 0
+	return contains
+
+
+int at_stateful_alts_start_byte(list[at_alt*] alts, int value, int depth);
+
+
+int at_stateful_atom_starts_byte(at_element* element, int value, int depth):
+	if (depth > 32): return 1
+	if (element.kind == 0):
+		if (strlen(element.text) == 0): return 0
+		return (cast(int, element.text[0]) & 255) == value
+	if ((element.kind == 1) || (element.kind == 5)):
+		return at_stateful_charset_contains(element, value) != 0
+	if (element.kind == 3): return at_stateful_alts_start_byte(element.group_alts, value, depth + 1)
+	if (element.kind == 2):
+		at_rule* rule = g_at_rules.get(element.text, 0)
+		if (rule != 0): return at_stateful_alts_start_byte(rule.alts, value, depth + 1)
+	return 1
+
+
+int at_stateful_alt_starts_byte(at_alt* alt, int value, int depth):
+	for at_element* element in alt.elements:
+		if (at_stateful_atom_starts_byte(element, value, depth)): return 1
+		if (at_audit_element_nullable(element) == 0): return 0
+	return 0
+
+
+int at_stateful_alts_start_byte(list[at_alt*] alts, int value, int depth):
+	for at_alt* alt in alts:
+		if (at_stateful_alt_starts_byte(alt, value, depth)): return 1
+	return 0
+
+
+# A repeated body is safe when it has a fixed width, or each alternative
+# has a fixed width and their first-byte sets are disjoint. The latter
+# admits escaped-character versus plain-character string bodies without
+# guessing which of two overlapping variable-length alternatives to take.
+int at_stateful_prefix_free_body(at_element* element):
+	if (at_stateful_atom_width(element, 0) >= 0): return 1
+	list[at_alt*] alts = 0
+	if (element.kind == 3): alts = element.group_alts
+	else if (element.kind == 2):
+		at_rule* rule = g_at_rules.get(element.text, 0)
+		if (rule != 0): alts = rule.alts
+	if (alts == 0): return 0
+	for i, alt in alts:
+		for at_element* part in alt.elements:
+			if (at_stateful_fixed_width(part, 0) < 0): return 0
+		for j in range(i):
+			for value in range(1, 256):
+				if (at_stateful_alt_starts_byte(alt, value, 0) && at_stateful_alt_starts_byte(alts[j], value, 0)): return 0
+	return 1
+
+
+# A prefix-free repeated body cannot consume a delimiter absent from its
+# first-byte set. This proves common quoted strings and optional CR + LF.
+int at_stateful_disjoint_delimiter(at_element* element, at_element* following):
+	if ((element.suffix == 0) || (following.kind != 0) || (following.suffix != 0)): return 0
+	if (strlen(following.text) == 0): return 0
+	if (at_stateful_prefix_free_body(element) == 0): return 0
+	int delimiter = cast(int, following.text[0]) & 255
+	return at_stateful_atom_starts_byte(element, delimiter, 0) == 0
+
+
 void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 	int ai = 0
 	while (ai < alts.length):
@@ -105,6 +244,16 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 		int ei = 0
 		while (ei < alt.elements.length):
 			at_element* e = alt.elements[ei]
+			if (g_at_stateful && rule.is_lexer && ((e.suffix == '*') || (e.suffix == '+'))):
+				if (at_stateful_prefix_free_body(e) == 0):
+					at_loss(e.first, rule.name, c"variable-width lexer repetition requires a prefix-free body proof")
+			if (g_at_stateful && rule.is_lexer && (ei + 1 < alt.elements.length)):
+				if ((at_stateful_fixed_width(e, 0) < 0) && (at_stateful_disjoint_delimiter(e, alt.elements[ei + 1]) == 0)):
+					at_loss(e.first, rule.name, c"variable-width lexer continuation requires a backtracking proof")
+			if (g_at_stateful && (rule.is_lexer == 0) && (e.kind == 0)):
+				at_audit_stateful_parser_literal(rule, e)
+			if (g_at_stateful && (rule.is_lexer == 0) && ((e.kind == 4) || (e.kind == 5))):
+				at_loss(e.first, rule.name, c"parser wildcard/token negation requires token-level lowering")
 			if (e.sites != 0):
 				int si = 0
 				while (si < e.sites.length):
@@ -112,7 +261,7 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 					at_loss(site.first, rule.name, cstr(f"unmapped {site.kind}: {site.raw}"))
 					si = si + 1
 			if ((e.kind == 2) && (strcmp(e.text, c"EOF") != 0)):
-				if ((e.text in g_at_rules) == 0): at_loss(e.first, rule.name, cstr(f"unresolved rule/token reference {e.text}"))
+				if (((e.text in g_at_rules) == 0) && (at_has_token_identity(e.text) == 0)): at_loss(e.first, rule.name, cstr(f"unresolved rule/token reference {e.text}"))
 			if (e.nongreedy): at_loss(e.first, rule.name, c"non-greedy matching requires an explicit adaptation")
 			char* raw_atom = e.text
 			if ((e.kind == 0) && (e.first != 0)): raw_atom = e.first.text
@@ -125,11 +274,9 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 		ai = ai + 1
 
 
-# Returns 1 for structural hazards that must also stop best-effort generation.
-int at_audit(list[at_rule*] rules):
-	g_at_loss_lines = new list[char*]
-	g_at_semantic_losses = 0
-	g_at_structural_hazard = 0
+# Shared fixed-point facts for conservative normalization and the final audit.
+# Normalization must rerun the audit after changing the IR.
+void at_audit_prepare_rules(list[at_rule*] rules):
 	g_at_nullable = new map[char*, int]
 	g_at_rules = new map[char*, at_rule*]
 	int i = 0
@@ -146,11 +293,21 @@ int at_audit(list[at_rule*] rules):
 				g_at_nullable[rule.name] = 1
 				changed = 1
 			i = i + 1
+
+
+# Returns 1 for structural hazards that must also stop best-effort generation.
+int at_audit(list[at_rule*] rules):
+	g_at_loss_lines = new list[char*]
+	g_at_semantic_losses = 0
+	g_at_structural_hazard = 0
+	at_audit_prepare_rules(rules)
+	int i = 0
 	int unsafe = 0
 	i = 0
 	while (i < g_at_dependencies.length):
 		at_site* site = g_at_dependencies[i]
-		at_loss(site.first, c"<grammar>", cstr(f"unresolved {site.kind}: {site.raw}"))
+		if ((site.resolved == 0) && ((g_at_stateful == 0) || (strcmp(site.kind, c"mode declaration") != 0))):
+			at_loss(site.first, c"<grammar>", cstr(f"unresolved {site.kind}: {site.raw}"))
 		i = i + 1
 	i = 0
 	while (i < rules.length):
@@ -158,20 +315,36 @@ int at_audit(list[at_rule*] rules):
 		if (at_audit_left_path(rule.alts, rule.name, new map[char*, int])):
 			at_loss(rule.first, rule.name, c"unsupported left recursion (including nullable prefixes)")
 			unsafe = 1
-		if (rule.is_lexer && (rule.name in g_at_nullable)):
+		if (rule.is_lexer && (rule.is_fragment == 0) && (rule.name in g_at_nullable)):
 			at_loss(rule.first, rule.name, c"zero-consumption lexer rule")
 			unsafe = 1
-		if ((rule.is_fragment == 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)): at_loss(rule.first, rule.name, cstr(f"lexer mode {rule.mode} is not lowered"))
+		if ((g_at_stateful == 0) && (rule.is_fragment == 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)): at_loss(rule.first, rule.name, cstr(f"lexer mode {rule.mode} is not lowered"))
 		int ci = 0
 		while (ci < rule.commands.length):
 			at_command* cmd = rule.commands[ci]
 			int supported = strcmp(cmd.name, c"skip") == 0
 			if ((strcmp(cmd.name, c"channel") == 0) && (cmd.argument != 0)):
 				supported = strcmp(cmd.argument, c"HIDDEN") == 0
+			if (g_at_stateful): supported = at_stateful_command_supported(cmd)
+			if (g_at_stateful && (strcmp(cmd.name, c"type") == 0) && (cmd.argument != 0)):
+				at_rule* target = g_at_rules.get(cmd.argument, 0)
+				if (target == 0): supported = at_has_token_identity(cmd.argument)
+				else if ((target.is_lexer == 0) || target.is_fragment): supported = 0
 			if (supported == 0):
 				char* argument = cmd.argument
 				if (argument == 0): argument = c""
 				at_loss(cmd.first, rule.name, cstr(f"unsupported command {cmd.name}({argument})"))
+			if (g_at_stateful):
+				int cj = 0
+				while (cj < ci):
+					char* previous = rule.commands[cj].name
+					int duplicate = strcmp(previous, cmd.name) == 0
+					int output_before = (strcmp(previous, c"skip") == 0) || (strcmp(previous, c"channel") == 0)
+					int output_now = (strcmp(cmd.name, c"skip") == 0) || (strcmp(cmd.name, c"channel") == 0)
+					int more_conflict = ((strcmp(previous, c"more") == 0) && ((strcmp(cmd.name, c"type") == 0) || (strcmp(cmd.name, c"skip") == 0))) || ((strcmp(cmd.name, c"more") == 0) && ((strcmp(previous, c"type") == 0) || (strcmp(previous, c"skip") == 0)))
+					if (duplicate || (output_before && output_now) || more_conflict):
+						at_loss(cmd.first, rule.name, c"conflicting or repeated lexer commands")
+					cj = cj + 1
 			ci = ci + 1
 		ci = 0
 		while (ci < rule.options.length):

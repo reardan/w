@@ -1687,13 +1687,39 @@ char* pg_generate_ast_parser(pg_grammar* grammar):
 
 # Stateful generation deliberately avoids FIRST guards and left factoring:
 # these optimizations cannot observe a token before entering its lexical goal.
+int pg_stateful_unique_name(map[char*, int] names, char* name):
+	if (name in names):
+		print2(c"parser_generator: duplicate lexer declaration ")
+		println2(name)
+		return 0
+	names[name] = 1
+	return 1
+
+
 int pg_stateful_validate(pg_grammar* grammar):
 	int errors = 0
 	if (grammar.stateful == 0):
-		if ((grammar.lexer_rules.length > 0) || (grammar.goals.length > 0) || (grammar.lexer_modes.length > 1) || grammar.ordered_lexer):
+		for pg_token_def* token in grammar.tokens:
+			if ((token.expression == 0) && (token.matcher == 0)):
+				println2(c"parser_generator: symbolic tokens require 'lexer stateful'")
+				return 1
+		if ((grammar.lexer_rules.length > 0) || (grammar.goals.length > 0) || (grammar.lexer_modes.length > 1) || grammar.ordered_lexer || grammar.allow_mode_eof):
 			println2(c"parser_generator: lexer metadata requires 'lexer stateful'")
 			return 1
 		return 0
+	# A symbolic kind must never shadow a matching declaration: lookup would
+	# otherwise return its absent matcher while lexer_order names a candidate.
+	map[char*, int] names = new map[char*, int]
+	names[c"EOF"] = 1
+	for pg_token_def* token in grammar.tokens:
+		if (pg_stateful_unique_name(names, token.name) == 0): errors++
+	for pg_token_def* skip in grammar.skips:
+		if (pg_stateful_unique_name(names, skip.name) == 0): errors++
+	for pg_literal_def* literal in grammar.literals:
+		if (pg_stateful_unique_name(names, literal.name) == 0): errors++
+	for pg_fragment_def* fragment in grammar.fragments:
+		if (pg_stateful_unique_name(names, fragment.name) == 0): errors++
+	names.free()
 	if (grammar.mode != pg_grammar_mode_ast()):
 		println2(c"parser_generator: stateful lexer currently requires AST mode")
 		errors++
@@ -1720,6 +1746,8 @@ int pg_stateful_validate(pg_grammar* grammar):
 			errors++
 		int typed = 0
 		int channeled = 0
+		int skipped = 0
+		int continued = 0
 		for pg_lexer_command* command in config.commands:
 			if ((strcmp(command.name, c"mode") == 0) || (strcmp(command.name, c"pushMode") == 0)):
 				if (pg_grammar_lexer_mode(grammar, command.argument) < 0):
@@ -1736,15 +1764,28 @@ int pg_stateful_validate(pg_grammar* grammar):
 					println2(c"parser_generator: invalid or repeated lexer channel command")
 					errors++
 			else if (strcmp(command.name, c"skip") == 0):
+				skipped++
 				channeled++
 				if (channeled > 1):
 					println2(c"parser_generator: skip conflicts with channel command")
 					errors++
+			else if (strcmp(command.name, c"more") == 0):
+				continued++
 			else if (strcmp(command.name, c"popMode") != 0):
 				print2(c"parser_generator: unsupported lexer command ")
 				println2(command.name)
 				errors++
+		if ((continued > 1) || ((continued > 0) && ((typed > 0) || (skipped > 0)))):
+			println2(c"parser_generator: more conflicts with type, skip, or another more command")
+			errors++
 	return errors
+
+
+int pg_stateful_has_more(pg_grammar* grammar):
+	for pg_lexer_rule_config* config in grammar.lexer_rules:
+		for pg_lexer_command* command in config.commands:
+			if (strcmp(command.name, c"more") == 0): return 1
+	return 0
 
 
 pg_token_def* pg_stateful_find_matcher(pg_grammar* grammar, char* name):
@@ -1794,6 +1835,7 @@ void pg_emit_stateful_winner(pg_source_writer* writer, pg_grammar* grammar, char
 		else if (strcmp(command.name, c"popMode") == 0): pg_source_line(writer, c"pg_lexer_pop_mode(state, diagnostics)")
 		else if (strcmp(command.name, c"type") == 0): pg_line(writer, f"kind = {pg_grammar_token_kind(grammar, command.argument)}")
 		else if (strcmp(command.name, c"skip") == 0): pg_source_line(writer, c"channel = pg_token_hidden_channel")
+		else if (strcmp(command.name, c"more") == 0): pg_source_line(writer, c"continued = 1")
 		else if (strcmp(command.name, c"channel") == 0):
 			int channel = 0
 			if (strcmp(command.argument, c"hidden") == 0): channel = 1
@@ -1805,15 +1847,32 @@ void pg_emit_stateful_winner(pg_source_writer* writer, pg_grammar* grammar, char
 
 void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	char* g = grammar.name
+	int has_more = pg_stateful_has_more(grammar)
 	for i, mode in grammar.lexer_modes: pg_line(writer, f"const int {g}_mode_{mode} = {i}")
 	pg_source_blank(writer)
 	pg_open(writer, f"pg_token* {g}_next(pg_lexer_state* state, pg_diagnostics* diagnostics):")
 	pg_source_line(writer, c"char* input = state.input")
+	if (has_more):
+		# A provider call is atomic: checkpoints only need the existing lexer
+		# state, while an unfinished token's origin stays local to this call.
+		pg_source_line(writer, c"int token_start = state.offset")
+		pg_source_line(writer, c"int token_line = state.line")
+		pg_source_line(writer, c"int token_column = state.column")
+		pg_source_line(writer, c"int channel = pg_token_default_channel")
+		pg_open_c(writer, c"while (1):")
 	pg_source_line(writer, c"int index = state.offset")
 	pg_open_c(writer, c"if (index >= state.length):")
-	pg_open_c(writer, c"if ((state.mode != 0) || (state.modes.length > 0)):")
-	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, c\"unterminated lexer mode\", c\"closing delimiter\", c\"EOF\")")
-	pg_source_dedent(writer)
+	if (has_more):
+		pg_open_c(writer, c"if (index > token_start):")
+		pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, token_line, token_column, c\"unterminated lexer more sequence\", c\"terminating token\", c\"EOF\")")
+		pg_source_line(writer, c"pg_token* unfinished = pg_token_make(pg_token_invalid_kind(), input, token_start, index - token_start, state.filename, token_line, token_column)")
+		pg_source_line(writer, c"unfinished.channel = pg_token_hidden_channel")
+		pg_source_line(writer, c"return unfinished")
+		pg_source_dedent(writer)
+	if (grammar.allow_mode_eof == 0):
+		pg_open_c(writer, c"if ((state.mode != 0) || (state.modes.length > 0)):")
+		pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, c\"unterminated lexer mode\", c\"closing delimiter\", c\"EOF\")")
+		pg_source_dedent(writer)
 	pg_source_line(writer, c"return pg_token_eof(index, state.filename, state.line, state.column)")
 	pg_source_dedent(writer)
 	pg_source_line(writer, c"int best_length = 0")
@@ -1833,7 +1892,8 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 			for order, name in grammar.lexer_order:
 				if (strcmp(name, literal.name) == 0): pg_emit_stateful_candidate(writer, grammar, name, order)
 	pg_source_line(writer, c"int kind = pg_token_invalid_kind()")
-	pg_source_line(writer, c"int channel = pg_token_default_channel")
+	if (has_more): pg_source_line(writer, c"int continued = 0")
+	else: pg_source_line(writer, c"int channel = pg_token_default_channel")
 	pg_open_c(writer, c"if ((best_length <= 0) || (best_length > state.length - index)):")
 	pg_source_line(writer, c"best_length = 1")
 	pg_source_line(writer, c"best_rule = -1")
@@ -1842,13 +1902,23 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_dedent(writer)
 	pg_source_line(writer, c"length = best_length")
 	for order, name in grammar.lexer_order: pg_emit_stateful_winner(writer, grammar, name, order)
-	pg_source_line(writer, c"pg_token* token = pg_token_make(kind, input, index, best_length, state.filename, state.line, state.column)")
+	if (has_more):
+		pg_open_c(writer, c"if (continued):")
+		pg_source_line(writer, c"pg_lexer_advance(state, best_length)")
+		pg_source_line(writer, c"continue")
+		pg_source_dedent(writer)
+		pg_source_line(writer, c"pg_token* token = pg_token_make(kind, input, token_start, index + best_length - token_start, state.filename, token_line, token_column)")
+	else:
+		pg_source_line(writer, c"pg_token* token = pg_token_make(kind, input, index, best_length, state.filename, state.line, state.column)")
 	pg_source_line(writer, c"token.channel = channel")
 	pg_open_c(writer, c"if (channel == 2):")
 	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, c\"error-channel token\", c\"valid token\", token.text)")
 	pg_source_dedent(writer)
 	pg_source_line(writer, c"pg_lexer_advance(state, best_length)")
 	pg_source_line(writer, c"return token")
+	if (has_more):
+		pg_source_dedent(writer)
+		pg_source_line(writer, c"return 0")
 	pg_source_dedent(writer)
 	pg_source_blank(writer)
 	pg_open(writer, f"pg_lexer_state* {g}_provider_new(char* input, int length, char* filename):")

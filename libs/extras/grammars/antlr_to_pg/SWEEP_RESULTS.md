@@ -1,7 +1,68 @@
 # Sweep across antlr/grammars-v4
 
-> Recorded against an earlier layout; paths below are historical (see
-> `README.md` for the current layout).
+## Current pinned measurement
+
+Corpus commit: `89fd36482e8cb68a4e55df021a8adbc7541b52f2`.
+The same 291 selected grammar cases were measured before and after this work:
+
+| Stage | Initial audit | Current implementation |
+| --- | ---: | ---: |
+| Translation | 196/291 | 205/291 |
+| Parser generation | 179/291 | 200/291 |
+| W compilation | 179/291 | **200/291** |
+| Strict translation audit | 10/291 | 13/291 |
+
+The original 288-directory-name cohort improved from 178 to **198 compiling**
+at this corpus revision. The legacy 229/288 and 258/288 figures below use other
+inputs and are not directly comparable to the current pinned measurement.
+
+Current per-case results: [`sweep_current_results.csv`](sweep_current_results.csv).
+[`sweep_baseline.json`](sweep_baseline.json) pins roots, preserves the initial
+`recorded_pass` stages, records the measured tool/runner hashes, and protects every
+current `expected_pass` independently. The complete run had no crashes, timeouts,
+missing output artifacts, or tool changes during measurement.
+
+There are **22 newly compiling grammars**: agc,
+amazon-states-language-intrinsic-functions, bencoding, css3, graphql,
+graphstream-dgs, html, ixml, less, lucene, plantUML, properties, romannumerals,
+scss, stringtemplate, swift-fin, tiny, tnsnames, toml, wkt, xml, and xsd-regex.
+
+The sole lost compile/strict pass is intentional: Lisp defines
+`fragment ATOM_PART: (LETTER | NUMBER) ATOM_PART;` without a productive base.
+The previous matcher rewrite invented a repetition language. The corrected
+translator refuses that recursive fragment rather than claiming to implement it;
+the baseline includes explicit generation/compilation/strict reclassification
+reasons for this case. All other initial passing cases retain their stages.
+
+**91 cases still do not compile:** 84 stop at safety checks, two need dependencies
+outside the selected sibling inputs (aspectj's `JavaLexer`, trapc's `CLexer`), and
+five fail parser generation (bison, informix, jpa, langium, lisp). These include
+unsupported recursion and upstream missing token definitions; none are hidden
+from the denominator. Resolving imports does not translate foreign actions or
+superclasses, and strict acceptance remains much smaller than compile coverage.
+
+Compilation supplies an empty main and does not execute the generated parser.
+Targeted tests cover the new lexer commands, imported token identities, recursion
+normalization, positive/negative parsing, and failure atomicity; they are not a
+claim that all 200 compiled grammars preserve ANTLR semantics. The corpus sweep
+reports runtime smoke as `not_configured`.
+
+## Historical measurements
+
+> Historical results, retained for comparison with the original coverage ticket.
+> Paths and inputs below predate the current layout and safety audit. The original
+> compile harness also omitted `main`; its recorded totals are not a reproducible
+> current baseline. Use `sweep_baseline.json` and the instructions in `README.md`
+> for the pinned 291-case sweep and per-grammar regression gate.
+
+The corrected initial audit at corpus commit
+`89fd36482e8cb68a4e55df021a8adbc7541b52f2` and W commit
+`298246c6d6906650d4cd9c677e93933abd9bf619` measured **179/291 compiling** and
+**10/291 strict translations**. There were 94 safety rejections, 17 generator
+failures, and one input without parser rules. Compilation supplies an empty main;
+it does not demonstrate parser runtime behavior or ANTLR semantic equivalence.
+The historical 288-name subset compiles 178 cases at those revisions. Current
+run artifacts report stages and provenance independently of this historical table.
 
 `sweep_grammars_v4.sh` ran `bin/antlr_to_pg` against every top-level
 grammar directory in `antlr/grammars-v4` (288 grammars with `.g4` files
@@ -16,8 +77,8 @@ Raw results: `sweep_results.csv` (one row per grammar).
   Only empty-grammar inputs (`v`, `trapc`) still refuse to write an
   empty `.pg`.
 - **258/288 (89.6%)** compile clean end-to-end (`bin/parser_generator` +
-  `bin/wv2`) — up from **229/288** after #7/#8. These are real, working
-  parsers; demos remain green for
+  `bin/wv2`) — up from **229/288** after #7/#8. This was a compile-only
+  measurement; separate demos remained green for
   `abnf`/`dot`/`graphql`/`json`/`csv`/`sql`.
 
   Full green list is in `sweep_results.csv` (`wv2_exit=0`); newly green
