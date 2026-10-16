@@ -62,6 +62,7 @@ int retained_type_note(int index):
 	if (retained_types == 0): retained_types = new list[retained_type*]
 	retained_type* type = new retained_type
 	type.name = retained_intern(original.name)
+	type.lifetime = 0
 	if (original.safe_lifetime != 0): type.lifetime = retained_intern(original.safe_lifetime)
 	type.file = retained_intern(debug_file_name(original.decl_file_index))
 	type.file_index = retained_file_key(original.decl_file_index)
