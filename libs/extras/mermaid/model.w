@@ -117,6 +117,18 @@ struct mm_narrative_event:
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
 
+# Explicit mask bits distinguish an unspecified color from RGB black.
+struct mm_style:
+	int mask
+	int fill
+	int stroke
+	int text
+	int width
+
+struct mm_style_class:
+	char* name
+	mm_style style
+
 struct mm_attribute:
 	char* type_name
 	char* name
@@ -140,6 +152,8 @@ struct mm_node:
 	int group
 	int declared
 	char* direction
+	mm_style style
+	char* style_classes
 
 struct mm_edge:
 	int from_node
@@ -180,6 +194,12 @@ struct mm_document:
 	list[mm_narrative_event*] narrative
 	int narrative_numbered
 	mm_rail_grammar* railroad
+	list[mm_style_class*] style_definitions
+	mm_style palette
+	int theme
+	int background
+	int palette_line
+	int palette_label
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -189,6 +209,7 @@ mm_document* mm_document_new():
 	d.accessibility_description = strclone(c"")
 	d.direction = strclone(c"TB")
 	d.narrative = new list[mm_narrative_event*]
+	d.style_definitions = new list[mm_style_class*]
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
 	return d
@@ -224,6 +245,7 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	n.members = new list[mm_member*]
 	n.annotation = strclone(c"")
 	n.direction = strclone(c"")
+	n.style_classes = strclone(c"")
 	n.parent = -1
 	d.nodes.push(n)
 	return d.nodes.length - 1
@@ -242,6 +264,7 @@ void mm_document_free(mm_document* d):
 			free(m.text)
 			free(m)
 		__w_list_free(cast(__w_list*, n.members))
+		free(n.style_classes)
 		free(n.annotation)
 		free(n.direction)
 		free(n.id)
@@ -288,6 +311,10 @@ void mm_document_free(mm_document* d):
 		free(event.section)
 		free(event)
 	__w_list_free(cast(__w_list*, d.narrative))
+	for mm_style_class* definition in d.style_definitions:
+		free(definition.name)
+		free(definition)
+	__w_list_free(cast(__w_list*, d.style_definitions))
 	free(d.source)
 	free(d.title)
 	free(d.accessibility_title)

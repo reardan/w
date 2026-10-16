@@ -18,6 +18,8 @@ struct mm_primitive:
 	int dashed
 	char* text
 	list[int] points
+	mm_style style
+	int node_style
 
 struct mm_bounds:
 	int x
@@ -34,9 +36,18 @@ struct mm_scene:
 	char* accessibility_title
 	char* accessibility_description
 	int has_title
+	int has_background
+	int background
 
 void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, char* text):
-	mm_primitive* p = new mm_primitive(kind, x, y, x2, y2, dashed, strclone(text), 0)
+	mm_primitive* p = new mm_primitive()
+	p.kind = kind
+	p.x = x
+	p.y = y
+	p.x2 = x2
+	p.y2 = y2
+	p.dashed = dashed
+	p.text = strclone(text)
 	s.items.push(p)
 	if (kind == MM_TEXT): x2 = x + strlen(text) * 8
 	if (kind == MM_TEXT): y2 = y + 16
@@ -106,6 +117,42 @@ void mm_svg_number(string_builder* out, char* name, int value):
 	string_append_int(out, value)
 	string_append_char(out, '"')
 
+int mm_paint_stroke(mm_primitive* p):
+	if (p.style.mask & 2): return p.style.stroke
+	return 0x334155
+
+int mm_paint_width(mm_primitive* p):
+	if (p.style.mask & 8): return p.style.width
+	return 2
+
+int mm_paint_fill(mm_primitive* p):
+	if (p.kind == MM_TEXT):
+		if (p.style.mask & 4): return p.style.text
+		return 0x0f172a
+	if (p.kind == MM_LINE): return -1
+	if ((p.kind == MM_BOX && p.dashed == 2) || ((p.kind == MM_CIRCLE || p.kind == MM_POLYGON) && p.dashed)): return mm_paint_stroke(p)
+	if (p.style.mask & 1): return p.style.fill
+	if (p.kind == MM_BOX): return 0xf8fafc
+	return 0xffffff
+
+void mm_svg_color(string_builder* out, char* name, int color):
+	string_append_char(out, ' ')
+	string_append(out, name)
+	string_append(out, c"=\"")
+	if (color < 0): string_append(out, c"none")
+	else:
+		string_append_char(out, '#')
+		char* digits = c"0123456789abcdef"
+		for i in range(6): string_append_char(out, digits[(color >> ((5 - i) * 4)) & 15])
+	string_append_char(out, '"')
+
+void mm_svg_paint(string_builder* out, mm_primitive* p):
+	mm_svg_color(out, c"fill", mm_paint_fill(p))
+	int stroke = mm_paint_stroke(p)
+	if (p.kind == MM_TEXT): stroke = -1
+	mm_svg_color(out, c"stroke", stroke)
+	mm_svg_number(out, c"stroke-width", mm_paint_width(p))
+
 char* mm_svg(mm_scene* scene):
 	if (scene == 0): return 0
 	string_builder* out = string_from(c"<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-labelledby=\"mermaid-title mermaid-description\" viewBox=\"0 0 ")
@@ -117,10 +164,16 @@ char* mm_svg(mm_scene* scene):
 	else: string_append(out, c"Mermaid diagram")
 	string_append(out, c"</title><desc id=\"mermaid-description\">")
 	if (scene.accessibility_description != 0): mm_xml(out, scene.accessibility_description)
-	string_append(out, c"</desc>\n<g stroke=\"#334155\" stroke-width=\"2\" fill=\"none\">\n")
+	string_append(out, c"</desc>\n")
+	if (scene.has_background):
+		string_append(out, c"<rect width=\"100%\" height=\"100%\"")
+		mm_svg_color(out, c"fill", scene.background)
+		string_append(out, c"/>\n")
+	string_append(out, c"<g>\n")
 	for mm_primitive* p in scene.items:
 		if (p.kind == MM_LINE):
 			string_append(out, c"<line")
+			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x1", p.x)
 			mm_svg_number(out, c"y1", p.y)
 			mm_svg_number(out, c"x2", p.x2)
@@ -128,8 +181,8 @@ char* mm_svg(mm_scene* scene):
 			if (p.dashed): string_append(out, c" stroke-dasharray=\"6 4\"")
 			string_append(out, c"/>\n")
 		else if (p.kind == MM_BOX):
-			if (p.dashed == 2): string_append(out, c"<rect fill=\"#334155\"")
-			else: string_append(out, c"<rect fill=\"#f8fafc\"")
+			string_append(out, c"<rect")
+			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x", p.x)
 			mm_svg_number(out, c"y", p.y)
 			mm_svg_number(out, c"width", p.x2 - p.x)
@@ -137,22 +190,24 @@ char* mm_svg(mm_scene* scene):
 			if (p.dashed == 1): mm_svg_number(out, c"rx", 12)
 			string_append(out, c"/>\n")
 		else if (p.kind == MM_CIRCLE):
-			if (p.dashed): string_append(out, c"<circle fill=\"#334155\"")
-			else: string_append(out, c"<circle fill=\"white\"")
+			string_append(out, c"<circle")
+			mm_svg_paint(out, p)
 			mm_svg_number(out, c"cx", (p.x + p.x2) / 2)
 			mm_svg_number(out, c"cy", (p.y + p.y2) / 2)
 			mm_svg_number(out, c"r", (p.x2 - p.x) / 2)
 			string_append(out, c"/>\n")
 		else if (p.kind == MM_POLYGON):
-			if (p.dashed): string_append(out, c"<polygon fill=\"#334155\" points=\"")
-			else: string_append(out, c"<polygon fill=\"white\" points=\"")
+			string_append(out, c"<polygon")
+			mm_svg_paint(out, p)
+			string_append(out, c" points=\"")
 			for i in range(p.points.length):
 				string_append_int(out, p.points[i])
 				if (i % 2 == 0): string_append_char(out, ',')
 				else: string_append_char(out, ' ')
 			string_append(out, c"\"/>\n")
 		else:
-			string_append(out, c"<text stroke=\"none\" fill=\"#0f172a\" font-family=\"monospace\" font-size=\"13\"")
+			string_append(out, c"<text font-family=\"monospace\" font-size=\"13\"")
+			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x", p.x)
 			mm_svg_number(out, c"y", p.y + 13)
 			string_append_char(out, '>')

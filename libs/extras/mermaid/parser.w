@@ -51,6 +51,8 @@ int mm_node_parse(mm_parser* p):
 		if (doubled):
 			if (mm_peek(p) != close): mm_error(p.doc, p.pos, c"expected second closing parenthesis")
 			else: p.pos = p.pos + 1
+	mm_space(p)
+	if (mm_match(p, c":::")): mm_style_inline(p, n)
 	return index
 
 int mm_card_alias(mm_parser* p, char* text):
@@ -181,6 +183,7 @@ void mm_flow_body(mm_parser* p, int depth):
 			return
 		int start = p.pos
 		if (mm_metadata(p)): mm_space(p)
+		else if (mm_style_statement(p)): mm_space(p)
 		else if (mm_keyword(p, c"subgraph")):
 			mm_space(p)
 			int label_start = p.pos
@@ -399,6 +402,12 @@ mm_document* mm_parse(char* source, int length):
 	if (envelope.error != 0): return envelope
 	int start = envelope.source_start
 	mm_document* d = mm_parse_raw(envelope.source + start, envelope.source_end - start)
+	mm_style_validate(d)
+	d.palette = envelope.palette
+	d.background = envelope.background
+	d.palette_line = envelope.palette_line
+	d.palette_label = envelope.palette_label
+	d.theme = envelope.theme
 	free(d.source)
 	d.source = envelope.source
 	envelope.source = 0

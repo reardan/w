@@ -1,6 +1,7 @@
 # Source envelopes preserve original bytes and report original-document offsets.
-# One Mermaid Markdown fence per document; frontmatter accepts a plain title.
+# One Mermaid Markdown fence; bounded title and theme configuration frontmatter.
 import libs.extras.mermaid.model
+import libs.extras.mermaid.style
 import lib.utf8
 
 int mm_source_line_end(mm_document* d, int start, int limit):
@@ -78,23 +79,84 @@ void mm_source_frontmatter(mm_document* d):
 	if (present == 0): return
 	pos = end + 1
 	int title_seen = 0
+	int config_seen = 0
+	int theme_seen = 0
+	int variables_seen = 0
+	int config = 0
+	int variables = 0
+	mm_style custom
+	custom.mask = 0
+	custom.fill = 0
+	custom.stroke = 0
+	custom.text = 0
+	custom.width = 0
+	int line_color = -2
+	int label_color = -2
+	int background = -2
 	while (pos < d.source_end):
 		end = mm_source_line_end(d, pos, d.source_end)
 		line = mm_source_trim(d, pos, end)
 		if (strcmp(line, c"---") == 0):
 			free(line)
+			if (variables_seen && d.theme != 2): mm_error(d, pos, c"themeVariables require theme: base")
+			mm_style_merge(&d.palette, &custom)
+			if (line_color != -2): d.palette_line = line_color
+			if (label_color != -2): d.palette_label = label_color
+			if (background != -2): d.background = background
 			d.source_start = end
 			if (end < d.source_end): d.source_start = end + 1
 			return
 		if (line[0] != 0 && line[0] != '#'):
 			int at = pos
-			while (at < end && (d.source[at] == 32 || d.source[at] == 9)): at = at + 1
-			if (index_of(line, c"title:") == 0):
+			while (at < end && d.source[at] == 32): at = at + 1
+			int indent = at - pos
+			if (indent == 0 && index_of(line, c"title:") == 0):
+				config = 0
+				variables = 0
 				if (title_seen): mm_error(d, pos, c"duplicate frontmatter title")
 				title_seen = 1
 				free(d.title)
 				d.title = mm_source_title(d, at + 6, end)
-			else: mm_error(d, pos, c"unsupported frontmatter field; native frontmatter currently supports title")
+			else if (indent == 0 && strcmp(line, c"config:") == 0):
+				if (config_seen): mm_error(d, pos, c"duplicate frontmatter config")
+				config_seen = 1
+				config = 1
+				mm_style_theme(d, c"default")
+			else if (config && indent == 2 && index_of(line, c"theme:") == 0):
+				variables = 0
+				if (theme_seen): mm_error(d, pos, c"duplicate theme setting")
+				theme_seen = 1
+				char* value = mm_source_title(d, at + 6, end)
+				if (mm_style_theme(d, value) == 0): mm_error(d, pos, c"unsupported theme; supported: default, base, dark, forest, neutral")
+				free(value)
+			else if (config && indent == 2 && strcmp(line, c"themeVariables:") == 0):
+				if (variables_seen): mm_error(d, pos, c"duplicate themeVariables setting")
+				variables_seen = 1
+				variables = 1
+			else if (config && variables && indent == 4):
+				int colon = index_of(line, c":")
+				if (colon < 0): mm_error(d, pos, c"theme variable requires colon")
+				else:
+					char* key = str_copy_range(line, 0, colon)
+					char* value = mm_source_title(d, at + colon + 1, end)
+					int color = mm_style_color(value)
+					if (value[0] != '#' || color < 0): mm_error(d, pos, c"theme variables require quoted #RGB or #RRGGBB colors")
+					if (strcmp(key, c"primaryColor") == 0):
+						custom.mask = custom.mask | 1
+						custom.fill = color
+					else if (strcmp(key, c"primaryBorderColor") == 0):
+						custom.mask = custom.mask | 2
+						custom.stroke = color
+					else if (strcmp(key, c"primaryTextColor") == 0):
+						custom.mask = custom.mask | 4
+						custom.text = color
+					else if (strcmp(key, c"lineColor") == 0): line_color = color
+					else if (strcmp(key, c"textColor") == 0): label_color = color
+					else if (strcmp(key, c"background") == 0): background = color
+					else: mm_error(d, pos, c"unsupported theme variable")
+					free(key)
+					free(value)
+			else: mm_error(d, pos, c"unsupported frontmatter field or indentation")
 		free(line)
 		pos = end + 1
 	mm_error(d, d.source_start, c"unterminated frontmatter")
