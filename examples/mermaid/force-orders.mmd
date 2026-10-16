@@ -1,0 +1,13 @@
+---
+title: Order relationships
+config:
+  layout: force
+---
+erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE_ITEM : contains
+    PRODUCT ||--o{ LINE_ITEM : identifies
+    CUSTOMER ||--o{ ADDRESS : uses
+    ORDER }o--|| ADDRESS : ships_to
+    style CUSTOMER fill:#dbeafe,stroke:#2563eb
+    linkStyle default stroke:#64748b

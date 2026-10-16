@@ -43,6 +43,14 @@ shell completion work, while the compiled test binary reached its ordinary
 assertion. The stale debugger binary may contribute; qualify generated test
 runner calls in the debugger and detect stale tooling builds before use.
 
+- **Checked runtime failures cannot yet use the standard debugger loop.**
+  `bin/wdbg bin/callable_case32_38.w --break_start` rejects quantified
+  callable syntax with “checked function contracts require the retained
+  checked frontend” before any breakpoint can run. Observed while debugging
+  indirect checked-slice argument lowering. Provide an out-of-process compiled
+  binary path or complete the checked in-process frontend/session contract
+  before recommending wdbg for these programs.
+
 ## Fixed-array pointer arithmetic (2026-10-10)
 
 While implementing AES-GCM, `char[16] block` followed by `block + 4`

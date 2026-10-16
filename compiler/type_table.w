@@ -842,6 +842,15 @@ int type_function_pointer_signature(int type_index):
 	return -1
 
 
+int type_checked_function_signature(int type_index):
+	type_index = type_real(type_index)
+	if (type_index < 0): return -1
+	int signature = type_function_pointer_signature(type_index)
+	if (signature < 0): return -1
+	if (type_record(signature).fn_lifetime_order == 0): return -1
+	return signature
+
+
 int type_is_const(int type_index):
 	type_index = type_canonical(type_index)
 	if (type_get_kind(type_index) == type_kind_const): return 1
@@ -1116,6 +1125,7 @@ int types_compatible(int want, int got):
 		if (type_is_safe_record(want)): want_record = type_record(want).alias_target
 		if (type_is_safe_record(got)): got_record = type_record(got).alias_target
 		return want_record == got_record
+	if ((type_checked_function_signature(want) >= 0) && (type_checked_function_signature(got) >= 0)): return 1
 	if (got == 3): return 1
 	if (got == 4): return 0
 	if (want == got): return 1
