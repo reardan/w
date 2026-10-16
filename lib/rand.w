@@ -152,3 +152,54 @@ float rand_gaussian(rand_state* r):
 # without hand-writing the affine transform.
 float rand_gaussian_scaled(rand_state* r, float mean, float stddev):
 	return mean + stddev * rand_gaussian(r)
+
+
+# Python randrange(start, stop, step): a uniform pick from
+# start, start + step, start + 2*step, ... strictly short of stop (above
+# it for a negative step). Fatal assert when step is 0, when the range
+# is empty, or when it holds more than 2^31 - 1 values (the most
+# rand_below can draw unbiased on every target). Plain
+# randrange(stop) is rand_range(r, 0, stop, 1). The span stop - start is
+# computed in the host word, so on the 32-bit target a span wider than
+# 2^31 - 1 wraps and is reported as empty rather than drawn from.
+int rand_range(rand_state* r, int start, int stop, int step):
+	asserts(c"rand_range: step must be nonzero", step != 0)
+	int width = stop - start
+	int n = 0
+	if (step > 0): n = (width + step - 1) / step
+	else: n = (width + step + 1) / step
+	asserts(c"rand_range: empty range", n > 0)
+	asserts(c"rand_range: range too wide", n <= rand_mask31())
+	return start + step * rand_below(r, n)
+
+
+# Uniform float in [a, b) (Python uniform(a, b); like Python, rounding
+# can land exactly on b, and a > b draws from (b, a]).
+float rand_uniform(rand_state* r, float a, float b):
+	return a + (b - a) * rand_float(r)
+
+
+# Exponential distribution with rate lambd (mean 1 / lambd), Python
+# expovariate: -ln(1 - u) / lambd with u = rand_float(r). 1 - u is
+# exactly representable and lies in (0, 1], so flog never sees 0. A
+# negative lambd yields values in (-inf, 0], as in Python. Fatal assert
+# when lambd is 0.
+float rand_expovariate(rand_state* r, float lambd):
+	asserts(c"rand_expovariate: lambd must be nonzero", lambd != 0.0)
+	float one = 1.0
+	float u = one - rand_float(r)
+	return (0.0 - flog(u)) / lambd
+
+
+# In-place Fisher-Yates shuffle of values[0..n): every one of the n!
+# orderings is equally likely because each swap index comes from the
+# unbiased rand_below. n <= 1 leaves values untouched. Works for any
+# word-sized element (ints or pointers stored as int).
+void rand_shuffle(rand_state* r, int* values, int n):
+	int i = n - 1
+	while (i > 0):
+		int j = rand_below(r, i + 1)
+		int t = values[i]
+		values[i] = values[j]
+		values[j] = t
+		i = i - 1
