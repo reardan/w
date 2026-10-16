@@ -1189,3 +1189,33 @@ Instrumented validation passed all 1,341 targets and every compiler/API harness
 with a COMPLETE receipt. Tests reached all 24/24 changed executable compiler
 lines (100%). The measured directory percentages and existing floors remain
 unchanged from the callable baseline.
+
+### Independent borrowed-record groups (Wave 1)
+
+Forty accepted/rejected programs exercise positional groups, disjoint mutable
+fields, shared extraction through mutable wrappers, named-result selection,
+wrong-group returns, nested/repeated mappings, aliases, forwards, quantified
+callbacks, optional results, branch joins, loops and expanded-slot bounds.
+Each is checked and compiled with and without `--safe` on x86/x64; accepted
+programs run and rejected programs leave no executable. A compiler API test
+mutates the last expanded relation row, rolls back and reuses the retained
+arena, and verifies that raw labels/rows and prior snapshots stay independent.
+
+Validation passed 1,346 ordinary targets (full suite, both Linux fixpoints,
+Windows runtime and compiler benchmark), all 48 architecture/root checks, and
+1,344 instrumented targets plus all six compiler/API harnesses. The receipt is
+COMPLETE; 320/321 changed executable compiler lines are reached (99%). Compiler
+line/branch coverage rises to 95.5/86.1%, with floors raised to 94.7/85.4%.
+
+The runtime fixture covers imported factories, multi-group callback copies,
+owned allocation replacement and nested disjoint mutable access across Linux
+optimization modes and Wine. Native guards and Memcheck on both Linux targets
+report 103 allocations/frees, zero outstanding blocks and zero errors.
+
+Seven alternating compiles of the same `c74f3152` corpus produce byte-identical
+compiler output. Median time is 1.67/1.70 s and median peak RSS is
+112,224/112,400 KiB before/after; shared-host timing is not a general bound.
+Existing callable runtime fixture binaries are also byte-identical on x86/x64
+and execute successfully. Lifetime-group metadata is compile-time only.
+Mixed owned/borrowed fields, replacement and partial moves remain required
+under #695/#644; this step closes neither issue.
