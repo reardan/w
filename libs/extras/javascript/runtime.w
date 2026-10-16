@@ -209,6 +209,8 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
+js_value* js_numeric_bitwise(js_runtime* rt, char* operation, js_value* left, js_value* right);
+js_value* js_numeric_not(js_runtime* rt, js_value* value);
 js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_some(js_runtime* rt);
 void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args);
@@ -755,13 +757,13 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	if (strcmp(op, c"===") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b))
 	if (strcmp(op, c"!==") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b) == 0)
 	if (strcmp(op, c"+") == 0): return js_runtime_add(rt, a, b)
+	if (js_runtime_bit_operator(op)): return js_numeric_bitwise(rt, op, a, b)
 	if (a.kind == 10 || b.kind == 10): return js_bigint_binary(rt, op, a, b)
 	if (a.kind != 3 || b.kind != 3):
 		js_runtime_fail(rt, 6, c"implicit coercion is outside the runtime subset")
 		return rt.undefined_value
 	float64 x = a.number
 	float64 y = b.number
-	if (js_runtime_bit_operator(op)): return js_runtime_bit_binary(rt, op, x, y)
 	if (strcmp(op, c"-") == 0): return js_runtime_number(rt, x - y)
 	if (strcmp(op, c"*") == 0): return js_runtime_number(rt, x * y)
 	if (strcmp(op, c"/") == 0): return js_runtime_number(rt, x / y)
@@ -1594,6 +1596,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			return result
 		if (strcmp(node.text, c"!") == 0): return js_runtime_boolean(rt, js_runtime_truth(value) == 0)
 		if (strcmp(node.text, c"void") == 0): return rt.undefined_value
+		if (strcmp(node.text, c"~") == 0): return js_numeric_not(rt, value)
 		if (value.kind == 10):
 			if (strcmp(node.text, c"-") == 0): return js_bigint_negate(rt, value)
 			js_runtime_fail(rt, 2, c"BigInt cannot implicitly convert to Number")
@@ -1601,7 +1604,6 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (value.kind != 3):
 			js_runtime_fail(rt, 6, c"implicit numeric conversion is outside the runtime subset")
 			return rt.undefined_value
-		if (strcmp(node.text, c"~") == 0): return js_runtime_number(rt, cast(float64, ~js_runtime_int32(value.number)))
 		if (strcmp(node.text, c"-") == 0): return js_runtime_number(rt, -value.number)
 		return value
 	if (js_kind(node, c"optional_chain")):
@@ -1847,3 +1849,5 @@ import libs.extras.javascript.runtime_array_like
 import libs.extras.javascript.runtime_array_some
 
 import libs.extras.javascript.runtime_addition
+
+import libs.extras.javascript.runtime_numeric
