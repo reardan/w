@@ -1195,7 +1195,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		if (type_safe_kind(left_type) == 1):
 			int left = tree.left[id]
 			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
-				error(c"safe owner assignment requires a plain local or parameter")
+				error(c"safe: owner assignment requires a plain local or parameter")
 			regalloc_note_take()
 			int slot = 0 - tree.binding_offset[left]
 			emit_expression_ast(tree, tree.right[id])
