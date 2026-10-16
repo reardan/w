@@ -1392,3 +1392,14 @@ carries `"arch": "x64"`, so a consumer filtering or grouping diagnostics
 by target cannot tell an arm64 finding from an x64 one. Direction: emit
 the selected target name (`arm64`, `arm64_darwin`, ...) rather than the
 word-size family.
+## Generic inference on `&p[i]` arguments (2026-10-16, stdlib P3.11)
+
+- **`mem_copy(&out[offset], src, n)` fails to infer `T`.** `w check`
+  reports W0227 "cannot infer type parameter 'T' from argument 1:
+  expected a pointer, got 'constant'" although `&out[offset]` is a
+  `char*` (CLAUDE.md recommends exactly this `&p[n]` form). The message
+  names the wrong kind, so the fix is not obvious; `out + offset` (or an
+  explicit `mem_copy[char](...)`) works. Direction: give `&lvalue[i]`
+  its element pointer type during call-site inference, and when
+  inference does fail, print the argument's inferred type rather than
+  'constant'.
