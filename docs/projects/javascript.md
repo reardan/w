@@ -458,3 +458,13 @@ Generic infrastructure and restrictions are documented in
 AST predicates must be pure, custom host state must participate in snapshots,
 and stateful recovery/streaming and ANTLR `more` remain unsupported. Existing
 eager grammars retain their generation behavior.
+
+`js_runtime_compile_function(rt, source, length)` compiles a complete ordinary
+function expression during an active host callback, for example
+`(function(event) { return this.value; })`. It consumes the current budget,
+respects source/parser/retained-script limits, stores the owned AST in the realm,
+and returns a global-environment closure without executing its body. It does not
+reset execution state or permit arbitrary nested script evaluation. Failures use
+the existing completion; hosts must root a retained callback across collection.
+`String(value)` now converts supported primitives (and `String()` returns the
+empty string); wrapper construction and object coercion remain unsupported.

@@ -1637,3 +1637,5 @@ import libs.extras.javascript.runtime_builtins
 import libs.extras.javascript.runtime_collections
 
 import libs.extras.javascript.bigint
+
+import libs.extras.javascript.runtime_compile

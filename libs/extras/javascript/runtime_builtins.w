@@ -186,7 +186,22 @@ void js_builtin_method(js_runtime* rt, js_value* object, char* name, js_host_rec
 	js_text_free(key)
 
 
+js_value* js_builtin_string(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
+	js_text* text = 0
+	if (args.length == 0): text = js_text_new()
+	else: text = js_runtime_primitive_text(rt, args[0])
+	if (text == 0):
+		js_runtime_fail(rt, 6, c"String object coercion is outside the runtime subset")
+		return rt.undefined_value
+	js_value* result = js_runtime_string(rt, text)
+	js_text_free(text)
+	return result
+
+
 void js_runtime_install_builtins(js_runtime* rt):
+	js_runtime_set(rt, rt.global, c"String", js_runtime_host_callable(rt, 0, js_builtin_string))
 	js_value* math = js_runtime_alloc(rt, 5)
 	js_builtin_method(rt, math, c"round", js_builtin_math, 1)
 	js_builtin_method(rt, math, c"floor", js_builtin_math, 2)
