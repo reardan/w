@@ -50,6 +50,20 @@ struct mm_data_chart:
 	int polygon
 	int legend
 
+const int MM_REQUIREMENT = 60
+const int MM_MINDMAP = 61
+const int MM_KANBAN = 62
+const int MM_TREEVIEW = 63
+const int MM_ISHIKAWA = 64
+const int MM_CYNEFIN = 65
+const int MM_WARDLEY = 66
+const int MM_GITGRAPH = 67
+const int MM_BLOCK = 68
+const int MM_ARCHITECTURE = 69
+const int MM_USECASE = 71
+const int MM_C4 = 70
+const int MM_SWIMLANE = 72
+const int MM_EVENT_MODEL = 73
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
@@ -75,6 +89,8 @@ struct mm_node:
 	list[mm_attribute*] attributes
 	list[mm_member*] members
 	char* annotation
+	int value_x
+	int value_y
 	int parent
 	int group
 	int declared
@@ -82,6 +98,8 @@ struct mm_node:
 
 struct mm_edge:
 	int from_node
+	int from_port
+	int to_port
 	int to_node
 	char* label
 	int dashed
@@ -99,6 +117,7 @@ struct mm_document:
 	char* source
 	int length
 	int kind
+	int graph_variant
 	char* direction
 	list[mm_node*] nodes
 	list[mm_edge*] edges

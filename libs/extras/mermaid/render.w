@@ -1,6 +1,12 @@
 # Graph layout and rendering; shared scene primitives live in scene.w.
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.data_render
+import libs.extras.mermaid.hierarchy_render
+import libs.extras.mermaid.framework_render
+import libs.extras.mermaid.gitgraph
+import libs.extras.mermaid.blocks
+import libs.extras.mermaid.systems
+import libs.extras.mermaid.workflow_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -30,6 +36,12 @@ void mm_measure(mm_document* d, mm_scene* s):
 		b.w = strlen(n.label) * 8 + 40
 		if (b.w < 180): b.w = 180
 		b.h = 60
+		if (d.kind == MM_ARCHITECTURE && n.group): b.w = b.w + strlen(n.annotation) * 8 + 24
+		if (n.shape == 10 || n.shape == 12): b.h = 110
+		if (n.shape == 11): b.h = 72
+		if (n.shape == 13):
+			b.w = 72
+			b.h = 72
 		if (n.shape == 2): b.h = b.w
 		if (n.shape == 3):
 			b.w = b.w * 2
@@ -41,7 +53,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 				int width = strlen(text) * 8 + 32
 				if (width > b.w): b.w = width
 				free(text)
-		if (d.kind == MM_CLASS && n.group == 0):
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4) && n.group == 0):
 			b.h = 80 + n.members.length * 26
 			if (n.annotation[0] != 0): b.h = b.h + 24
 			int width = strlen(n.annotation) * 8 + 64
@@ -186,6 +198,13 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 	if (kind == 0): return
 	int px = 0 - dy
 	int py = dx
+	if (kind == 5):
+		int cx = x + dx * 8
+		int cy = y + dy * 8
+		mm_draw(s, MM_CIRCLE, cx - 7, cy - 7, cx + 7, cy + 7, 0, c"")
+		mm_line(s, cx - 5, cy, cx + 5, cy, 0)
+		mm_line(s, cx, cy - 5, cx, cy + 5, 0)
+		return
 	if (kind == MM_ARROW):
 		mm_line(s, x, y, x + dx * 12 + px * 6, y + dy * 12 + py * 6, 0)
 		mm_line(s, x, y, x + dx * 12 - px * 6, y + dy * 12 - py * 6, 0)
@@ -207,10 +226,13 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 
 
 void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
+	if (d.kind == MM_ARCHITECTURE):
+		mm_arch_edge(s, e)
+		return
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
 	char* direction = d.direction
-	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER): direction = mm_scope_direction(d, e.scope)
+	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT || d.kind == MM_C4): direction = mm_scope_direction(d, e.scope)
 	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
 	int dx = 0
 	int dy = 1
@@ -281,7 +303,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
 		else: mm_marker(s, bx, by, 0 - dx, 0 - dy, e.right_card)
-	else if (d.kind == MM_CLASS):
+	else if (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4 || d.kind == MM_USECASE):
 		mm_uml_marker(s, ax, ay, dx, dy, e.left_marker)
 		int end_dx = 0 - dx
 		int end_dy = 0 - dy
@@ -306,7 +328,14 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		if (n.group == 0 || n.parent != scope): continue
 		mm_bounds* b = s.nodes[i]
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
-		mm_text(s, b.x + 16, b.y + 12, n.label)
+		if (d.kind == MM_ARCHITECTURE && n.annotation[0] != 0):
+			string_builder* label = string_from(c"[")
+			string_append(label, n.annotation)
+			string_append(label, c"] ")
+			string_append(label, n.label)
+			mm_text(s, b.x + 16, b.y + 12, label.data)
+			string_free(label)
+		else: mm_text(s, b.x + 16, b.y + 12, n.label)
 		mm_line(s, b.x, b.y + 40, b.x + b.w, b.y + 40, 0)
 		mm_render_groups(d, s, i)
 
@@ -333,6 +362,15 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
 # Failed parses cannot produce a misleading partial preview.
 mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error != 0): return 0
+	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
+	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
+	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
+	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
+	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
+	if (d.kind == MM_CYNEFIN): return mm_cynefin_render(d)
+	if (d.kind == MM_WARDLEY): return mm_wardley_render(d)
+	if (d.error == 0 && (d.kind == MM_MINDMAP || d.kind == MM_KANBAN)): return mm_hierarchy_render(d)
+	if (d.error != 0): return 0
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET): return mm_data_render(d)
 	mm_scene* s = new mm_scene()
 	s.items = new list[mm_primitive*]
@@ -352,17 +390,25 @@ mm_scene* mm_render_diagram(mm_document* d):
 				mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 4, c"")
 				if (n.shape == 5): mm_draw(s, MM_CIRCLE, b.x + 7, b.y + 7, b.x + b.w - 7, b.y + b.h - 7, 1, c"")
 			continue
+		if (n.shape == 10):
+			mm_actor_draw(s, b)
+			mm_text(s, b.x + 12, b.y + 90, n.label)
+			continue
+		if (n.shape == 12 || n.shape == 13):
+			mm_arch_icon(s, n, b)
+			if (n.shape == 12): mm_text(s, b.x + 12, b.y + 86, n.label)
+			continue
 		if (n.shape == 3):
 			mm_line(s, b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, 0)
 			mm_line(s, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, 0)
 			mm_line(s, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2, 0)
 			mm_line(s, b.x, b.y + b.h / 2, b.x + b.w / 2, b.y, 0)
-		else if (n.shape == 2): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
+		else if (n.shape == 2 || n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int title_y = b.y + (b.h - 16) / 2
-		if (d.kind == MM_ER || d.kind == MM_CLASS): title_y = b.y + 12
+		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
 		if (d.kind != MM_STATE || n.shape != 3): mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, title_y, n.label)
-		if (d.kind == MM_CLASS): mm_render_class(s, n, b)
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b)
 		if (d.kind == MM_ER):
 			for j in range(n.attributes.length):
 				int y = b.y + 40 + j * 26

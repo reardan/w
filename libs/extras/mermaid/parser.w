@@ -3,6 +3,13 @@ import libs.extras.mermaid.parse_common
 import libs.extras.mermaid.uml
 import libs.extras.mermaid.source
 import libs.extras.mermaid.data_parse
+import libs.extras.mermaid.graph_families
+import libs.extras.mermaid.frameworks
+import libs.extras.mermaid.gitgraph
+import libs.extras.mermaid.blocks
+import libs.extras.mermaid.systems
+import libs.extras.mermaid.c4
+import libs.extras.mermaid.workflows
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -243,6 +250,48 @@ mm_document* mm_parse_raw(char* source, int length):
 	char* header = mm_identifier(&p)
 	if (strcmp(header, c"erDiagram") == 0): d.kind = MM_ER
 	else if (strcmp(header, c"flowchart") == 0 || strcmp(header, c"graph") == 0): d.kind = MM_FLOW
+	else if (strcmp(header, c"requirementDiagram") == 0): d.kind = MM_REQUIREMENT
+	else if (strcmp(header, c"mindmap") == 0): d.kind = MM_MINDMAP
+	else if (strcmp(header, c"kanban") == 0): d.kind = MM_KANBAN
+	else if (strcmp(header, c"treeView") == 0):
+		d.kind = MM_TREEVIEW
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"ishikawa") == 0):
+		d.kind = MM_ISHIKAWA
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"cynefin") == 0):
+		d.kind = MM_CYNEFIN
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"wardley") == 0):
+		d.kind = MM_WARDLEY
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"gitGraph") == 0):
+		d.kind = MM_GITGRAPH
+		free(d.direction)
+		d.direction = strclone(c"LR")
+		mm_space(&p)
+		if (mm_match(&p, c"LR")): mm_space(&p)
+		mm_match(&p, c":")
+	else if (strcmp(header, c"block") == 0):
+		d.kind = MM_BLOCK
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"architecture") == 0):
+		d.kind = MM_ARCHITECTURE
+		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"usecase") == 0):
+		d.kind = MM_USECASE
+		mm_match(&p, c"-beta")
+	else if (mm_in_words(header, c"|C4Context|C4Container|C4Component|C4Dynamic|C4Deployment|")):
+		d.kind = MM_C4
+		if (strcmp(header, c"C4Container") == 0): d.graph_variant = 1
+		if (strcmp(header, c"C4Component") == 0): d.graph_variant = 2
+		if (strcmp(header, c"C4Dynamic") == 0): d.graph_variant = 3
+		if (strcmp(header, c"C4Deployment") == 0): d.graph_variant = 4
+	else if (strcmp(header, c"swimlane") == 0):
+		d.kind = MM_SWIMLANE
+		mm_match(&p, c"-beta")
+		if (mm_end(&p) == 0): mm_direction(&p)
+	else if (strcmp(header, c"eventmodeling") == 0): d.kind = MM_EVENT_MODEL
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -269,12 +318,48 @@ mm_document* mm_parse_raw(char* source, int length):
 			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
+	if (d.kind == MM_TREEVIEW || d.kind == MM_ISHIKAWA):
+		mm_outline_body(&p)
+		return d
+	if (d.kind == MM_MINDMAP || d.kind == MM_KANBAN):
+		mm_hierarchy_body(&p)
+		return d
 	mm_separators(&p)
 	if (d.kind == MM_FLOW || d.kind == MM_ER):
 		mm_flow_body(&p, 0)
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_body(&p)
+		return d
+	if (d.kind == MM_SWIMLANE):
+		mm_swimlane_body(&p)
+		return d
+	if (d.kind == MM_EVENT_MODEL):
+		mm_event_body(&p)
+		return d
+	if (d.kind == MM_C4):
+		mm_c4_body(&p, -1, 0)
+		return d
+	if (d.kind == MM_ARCHITECTURE):
+		mm_arch_body(&p)
+		return d
+	if (d.kind == MM_USECASE):
+		mm_usecase_body(&p, -1)
+		return d
+	if (d.kind == MM_BLOCK):
+		mm_blocks_parse(&p)
+		return d
+	if (d.kind == MM_GITGRAPH):
+		mm_git_body(&p)
+		return d
+	if (d.kind == MM_CYNEFIN):
+		mm_cynefin_body(&p)
+		return d
+	if (d.kind == MM_WARDLEY):
+		mm_wardley_body(&p)
+		return d
+	if (d.kind == MM_REQUIREMENT):
+		mm_requirement_body(&p)
 		return d
 	if (d.kind == MM_CLASS || d.kind == MM_STATE):
 		mm_uml_body(&p, -1, 0)

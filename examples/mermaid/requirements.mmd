@@ -1,0 +1,12 @@
+requirementDiagram
+requirement reliable {
+  id: 1
+  text: Orders must be durable
+  risk: high
+  verifymethod: test
+}
+element storage {
+  type: database
+  docref: storage-design
+}
+storage - satisfies -> reliable
