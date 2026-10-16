@@ -143,6 +143,7 @@ void test_thenable_limits():
 # preserving every semantic case and asserting zero leaks for each group.
 int main(int argc, int argv):
 	args_init(argc, argv)
+	assert1(argc == 1 || strcmp(args_get(1), c"memory-order") == 0 || strcmp(args_get(1), c"memory-await") == 0 || strcmp(args_get(1), c"memory-finally") == 0 || strcmp(args_get(1), c"memory-getters") == 0 || strcmp(args_get(1), c"memory-pending") == 0 || strcmp(args_get(1), c"memory-limits") == 0)
 	if (argc > 1): malloc_force_debug_mode()
 	if (argc == 1 || strcmp(args_get(1), c"memory-order") == 0): test_thenable_order()
 	if (argc == 1 || strcmp(args_get(1), c"memory-await") == 0): test_thenable_await()

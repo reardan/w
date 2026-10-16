@@ -383,9 +383,15 @@ not remove reactions attached to still-pending promises.
 
 `finally` invokes its callable with no arguments, waits for its result (including
 a thenable), and preserves the original value/reason unless cleanup throws or
-rejects. Noncallable handlers pass through. Promise combinators, subclass/species
-behavior, unhandled-rejection reporting, and general constructor semantics remain
-unsupported. Objects with a noncallable `then` fulfill as ordinary values.
+rejects. Noncallable handlers pass through. `Promise.all`, `race`, and
+`allSettled` accept the runtime’s supported iterables (arrays and strings),
+preserve input order where applicable, and handle empty inputs, rejected
+elements, sparse arrays, and thenables. Each combinator captures the intrinsic
+constructor’s current `resolve` method once and observes each result’s `then`.
+Iteration charges fuel and is capped by `max_properties`; callbacks and partial
+result arrays remain traced across GC. Custom iterator protocols, generic
+constructor/subclass/species behavior, `Promise.any`, unhandled-rejection
+reporting, and general constructor semantics remain unsupported. Objects with a noncallable `then` fulfill as ordinary values.
 Constructor syntax is lowered and printed as `construct` AST nodes, with tests
 for member callees and trailing method calls.
 

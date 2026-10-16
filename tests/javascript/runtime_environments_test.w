@@ -2,7 +2,9 @@
 # wbuild: target=javascript_runtime_environments_test tag=tests dep=javascript_parser
 # wbuild: step="bin/wv2 x64 tests/javascript/runtime_environments_test.w -o bin/javascript_runtime_environments_test"
 # wbuild: step="bin/javascript_runtime_environments_test" expect_stdout="javascript_runtime_environments_test: OK"
-# wbuild: step="bin/javascript_runtime_environments_test memory" expect_stdout="javascript_runtime_environments_test: OK"
+# wbuild: step="bin/javascript_runtime_environments_test memory-bindings" expect_stdout="javascript_runtime_environments_test: OK"
+# wbuild: step="bin/javascript_runtime_environments_test memory-independent" expect_stdout="javascript_runtime_environments_test: OK"
+# wbuild: step="bin/javascript_runtime_environments_test memory-named" expect_stdout="javascript_runtime_environments_test: OK"
 import lib.assert
 import lib.args
 import libs.extras.javascript.runtime
@@ -26,17 +28,9 @@ void test_environments():
 	js_runtime* rt = js_runtime_new()
 	environment_number(rt, c"var repeated = 42; var repeated; repeated;", 42.0)
 	environment_number(rt, c"var repeated = 7; repeated;", 7.0)
-	environment_number(rt, c"function parameter(a) { var a; return a; } parameter(13);", 13.0)
-	environment_number(rt, c"function scope(a) { { var a = 11; } return a; } scope(2);", 11.0)
-	environment_number(rt, c"function hoist() { if (false) { var x = 1; } return typeof x === 'undefined' ? 1 : 0; } hoist();", 1.0)
-	environment_number(rt, c"function hidden() { function inner() { var noLeak = 2; } return typeof noLeak === 'undefined' ? 1 : 0; } hidden();", 1.0)
-	environment_number(rt, c"(() => { var arrowLocal = 42; }); let arrowLocal = 7; arrowLocal;", 7.0)
 	environment_number(rt, c"function duplicate() { return 1; } function duplicate() { return 2; } duplicate();", 2.0)
 	environment_number(rt, c"function duplicate() { return 3; } duplicate();", 3.0)
-	environment_number(rt, c"function replace(a) { function a() { return 5; } var a; return a(); } replace(1);", 5.0)
-	environment_number(rt, c"function shadow() { var n = 6; { let n = 1; n++; } return n; } shadow();", 6.0)
 	environment_number(rt, c"let callbacks = []; for (var i = 0; i < 3; i++) { callbacks[i] = function() { return i; }; } callbacks[0]() + callbacks[2]();", 6.0)
-	environment_number(rt, c"var caught; try { throw 8; } catch (caught) { var caught = 9; } typeof caught === 'undefined' ? 1 : 0;", 1.0)
 	assert_equal(2, environment_eval(rt, c"let repeated = 1;").status)
 	assert_equal(0, environment_eval(rt, c"const immutable = 1;").status)
 	assert_equal(2, environment_eval(rt, c"let untouched = 0; var immutable;").status)
@@ -48,9 +42,10 @@ void test_environments():
 	assert_equal(0, result.status)
 	assert1(js_runtime_key_is(result.value.text, c"function"))
 	js_runtime_free(rt)
-	# The named-function cases are independent of the preceding bindings.
-	# Give their retained ASTs a separate realm to bound debug allocator VMAs.
-	rt = js_runtime_new()
+
+
+void test_named_environments():
+	js_runtime* rt = js_runtime_new()
 	environment_number(rt, c"(function self() { self = 1; return typeof self === 'function' ? 1 : 0; })();", 1.0)
 	environment_number(rt, c"(function self() { self = 1; return 6; })();", 6.0)
 	assert_equal(2, environment_eval(rt, c"(function self() { 'use strict'; self = 1; })();").status)
@@ -58,7 +53,7 @@ void test_environments():
 	assert_equal(2, environment_eval(rt, c"'use strict'; (function self() { self = 1; })();").status)
 	environment_number(rt, c"(function self() { self = 1; return 7; })();", 7.0)
 	js_runtime_collect(rt)
-	result = environment_eval(rt, c"typeof absent;")
+	js_completion* result = environment_eval(rt, c"typeof absent;")
 	assert_equal(0, result.status)
 	assert1(js_runtime_key_is(result.value.text, c"undefined"))
 	result = environment_eval(rt, c"try { typeof tdz; let tdz; } catch (e) { e.name; }")
@@ -67,10 +62,26 @@ void test_environments():
 	js_runtime_free(rt)
 
 
+void test_independent_environments():
+	js_runtime* rt = js_runtime_new()
+	environment_number(rt, c"function parameter(a) { var a; return a; } parameter(13);", 13.0)
+	environment_number(rt, c"function scope(a) { { var a = 11; } return a; } scope(2);", 11.0)
+	environment_number(rt, c"function hoist() { if (false) { var x = 1; } return typeof x === 'undefined' ? 1 : 0; } hoist();", 1.0)
+	environment_number(rt, c"function hidden() { function inner() { var noLeak = 2; } return typeof noLeak === 'undefined' ? 1 : 0; } hidden();", 1.0)
+	environment_number(rt, c"(() => { var arrowLocal = 42; }); let arrowLocal = 7; arrowLocal;", 7.0)
+	environment_number(rt, c"function replace(a) { function a() { return 5; } var a; return a(); } replace(1);", 5.0)
+	environment_number(rt, c"function shadow() { var n = 6; { let n = 1; n++; } return n; } shadow();", 6.0)
+	environment_number(rt, c"var caught; try { throw 8; } catch (caught) { var caught = 9; } typeof caught === 'undefined' ? 1 : 0;", 1.0)
+	js_runtime_free(rt)
+
+
 int main(int argc, int argv):
 	args_init(argc, argv)
+	assert1(argc == 1 || strcmp(args_get(1), c"memory-bindings") == 0 || strcmp(args_get(1), c"memory-independent") == 0 || strcmp(args_get(1), c"memory-named") == 0)
 	if (argc > 1): malloc_force_debug_mode()
-	test_environments()
+	if (argc == 1 || strcmp(args_get(1), c"memory-bindings") == 0): test_environments()
+	if (argc == 1 || strcmp(args_get(1), c"memory-independent") == 0): test_independent_environments()
+	if (argc == 1 || strcmp(args_get(1), c"memory-named") == 0): test_named_environments()
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_environments_test: OK")
 	return 0
