@@ -114,7 +114,7 @@
     },
     {
       "path": "runtime.w.in",
-      "sha256": "2db4b6c7a916b746cd0727f1bd83ca34129d9a178d15c382b6cd8914a4964c6a"
+      "sha256": "3bf32bc3c11565cbaa67b33f5780a550bda12981170a9af96517458efdba2f18"
     },
     {
       "path": "TokenSets.g4",
@@ -135,6 +135,14 @@
     {
       "path": "UnicodeRanges.g4",
       "sha256": "e20049cc0be59fa93c16084be0e1d5f64d3c330582e86cd994572744e44ed8c7"
+    },
+    {
+      "path": "GoModesLexer.g4",
+      "sha256": "3c8ff98d3c8ca7d3b7533005732549c7f8f4f332f59c4ac8a2e1e56ec0deb2ee"
+    },
+    {
+      "path": "GoModesParser.g4",
+      "sha256": "25e99d07345f7fdd2c29ea8939bc56adbf0a584c8ef010e0e654ea9e4ee0db53"
     }
   ],
   "cases": [
@@ -1378,6 +1386,71 @@
         {
           "id": "input6",
           "text": "<a b>"
+        }
+      ]
+    },
+    {
+      "name": "go_mode_fallback",
+      "grammars": [
+        "GoModesLexer.g4",
+        "GoModesParser.g4"
+      ],
+      "lexer": "GoModesLexer",
+      "parser": "GoModesParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--strict",
+        "--exact-lexer",
+        "--prediction"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "x"
+        },
+        {
+          "id": "input1",
+          "text": "x+x"
+        },
+        {
+          "id": "input2",
+          "text": "x\n+x"
+        },
+        {
+          "id": "input3",
+          "text": "x\r\n+x"
+        },
+        {
+          "id": "input4",
+          "text": "x\n"
+        },
+        {
+          "id": "input5",
+          "text": "x +x"
+        },
+        {
+          "id": "input6",
+          "text": "x?x"
+        },
+        {
+          "id": "input7",
+          "text": "x x"
+        },
+        {
+          "id": "input8",
+          "text": ""
+        },
+        {
+          "id": "input9",
+          "text": "+"
+        },
+        {
+          "id": "input10",
+          "text": "x+"
         }
       ]
     }

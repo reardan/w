@@ -21,6 +21,10 @@ int main(int argc, char** argv):
 	if (source == 0): return 2
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_token_stream* stream = oracle_lex(source, c"input", diagnostics)
+	char* reconstructed = pg_token_stream_source(stream)
+	int lossless = strcmp(source, reconstructed) == 0
+	free(reconstructed)
+	if (lossless == 0): return 3
 	# Observe the independent complete token stream before prediction rewinds it.
 	for pg_token* token in stream.all_tokens:
 		if (token.kind < 0): continue

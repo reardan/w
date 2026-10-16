@@ -2178,6 +2178,352 @@
       }
     ]
   },
+  "go_mode_fallback/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 1,
+        "length": 0,
+        "name": "OTHER",
+        "start": 1,
+        "text": ""
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "PLUS",
+        "start": 1,
+        "text": "+"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 2,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input10": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 1,
+        "length": 0,
+        "name": "OTHER",
+        "start": 1,
+        "text": ""
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "PLUS",
+        "start": 1,
+        "text": "+"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "EOS",
+        "start": 1,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "PLUS",
+        "start": 2,
+        "text": "+"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 3,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input3": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "EOS",
+        "start": 1,
+        "text": "\r\n"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "PLUS",
+        "start": 3,
+        "text": "+"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 4,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input4": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "EOS",
+        "start": 1,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input5": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 1,
+        "length": 0,
+        "name": "OTHER",
+        "start": 1,
+        "text": ""
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "PLUS",
+        "start": 2,
+        "text": "+"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 3,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input6": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 1,
+        "length": 0,
+        "name": "OTHER",
+        "start": 1,
+        "text": ""
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 2,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input7": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 0,
+        "text": "x"
+      },
+      {
+        "channel": 1,
+        "length": 0,
+        "name": "OTHER",
+        "start": 1,
+        "text": ""
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "ID",
+        "start": 2,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input8": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
+  "go_mode_fallback/input9": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "PLUS",
+        "start": 0,
+        "text": "+"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
   "imports/input0": {
     "accepted": true,
     "rules": [
