@@ -209,6 +209,7 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
+void js_runtime_install_some(js_runtime* rt);
 void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args);
 js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
 
@@ -458,6 +459,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_binary(rt)
 	js_runtime_install_collections(rt)
 	js_runtime_install_array(rt)
+	js_runtime_install_some(rt)
 	js_runtime_install_regexp(rt)
 	js_runtime_install_builtins(rt)
 	js_runtime_install_number_parse(rt)
@@ -1846,3 +1848,4 @@ import libs.extras.javascript.runtime_function
 import libs.extras.javascript.runtime_string_case
 import libs.extras.javascript.runtime_arguments
 import libs.extras.javascript.runtime_array_like
+import libs.extras.javascript.runtime_array_some
