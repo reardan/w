@@ -372,11 +372,7 @@ int function_lifetime_slot(int* parameters, int result, int count):
 	return -1
 
 
-int* function_lifetime_order_types(int* parameters, int result, int count):
-	if (accept(c"where") == 0): return 0
-	if ((ast_retain_mode == 0) || (retained_semantic_mode == 0) || (type_safe_entrypoint == 0)):
-		error(c"outlives clauses require the retained checked frontend")
-	if (count > sym_max_param_slots): error(c"outlives clauses support at most 10 parameters")
+int* function_lifetime_identity(int* parameters, int result, int count):
 	int* order = cast(int*, retained_arena_alloc((count + 1) * __word_size__))
 	for i in range(count + 1):
 		order[i] = 0
@@ -385,6 +381,15 @@ int* function_lifetime_order_types(int* parameters, int result, int count):
 		for j in range(count + 1):
 			char* right = function_lifetime_label(parameters, result, count, j)
 			if ((right != 0) && (strcmp(left, right) == 0)): order[i] = order[i] | (1 << j)
+	return order
+
+
+int* function_lifetime_order_types(int* parameters, int result, int count):
+	if (accept(c"where") == 0): return 0
+	if ((ast_retain_mode == 0) || (retained_semantic_mode == 0) || (type_safe_entrypoint == 0)):
+		error(c"outlives clauses require the retained checked frontend")
+	if (count > sym_max_param_slots): error(c"outlives clauses support at most 10 parameters")
+	int* order = function_lifetime_identity(parameters, result, count)
 	while (1):
 		int longer = function_lifetime_slot(parameters, result, count)
 		expect(c">")
