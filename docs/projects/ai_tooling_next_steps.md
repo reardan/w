@@ -1422,3 +1422,16 @@ pointer offsets and `mem_copy(v, src, n)` infers fine. Workaround: spell the
 type argument (`mem_copy[int](&v[w], src, n)`). Direction: type `&a[i]` as
 `T*` during generic argument inference, or at least name the address-of
 expression instead of "constant" in the diagnostic.
+## Content-scan targets missed by `wtest changed` (2026-10-16, stdlib P3.8)
+
+- **`unsafe_import_test` is never selected** for a new file under
+  `libs/standard/`, although it is exactly the target such a file can
+  break: its step is a `git grep` over `:(glob)libs/standard/**/*.w`,
+  which is neither a literal file reference nor an import closure, so
+  `git diff --name-only ... | bin/wtest changed` omits it. Adding
+  libs/standard/formats/uuid.w (whose header comment showed
+  `import libs.x.unsafe.md5` as usage) passed every listed target and
+  only failed when the scan was run by hand. Direction: let wtest treat
+  `:(glob)` pathspecs in step commands as path rules (match changed
+  paths against them), or add a test_map residue rule for
+  `libs/standard/**/*.w` -> `unsafe_import_test`.
