@@ -35,6 +35,86 @@ void mm_git_parent(mm_parser* p, int parent, int child):
 	e.label = strclone(c"")
 	p.doc.edges.push(e)
 
+void mm_git_cherry(mm_parser* p, int current, int ordinal):
+	char* original = strclone(c"")
+	char* parent = strclone(c"")
+	char* tag = strclone(c"")
+	int seen = 0
+	while (mm_end(p) == 0 && p.doc.error == 0):
+		char* key = mm_identifier(p)
+		mm_space(p)
+		if (mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"expected cherry-pick property colon")
+		mm_space(p)
+		if (mm_peek(p) != '"'): mm_error(p.doc, p.pos, c"cherry-pick values must be quoted")
+		char* value = mm_quoted(p)
+		int bit = 0
+		if (strcmp(key, c"id") == 0):
+			bit = 1
+			free(original)
+			original = strclone(value)
+		else if (strcmp(key, c"parent") == 0):
+			bit = 2
+			free(parent)
+			parent = strclone(value)
+		else if (strcmp(key, c"tag") == 0):
+			bit = 4
+			free(tag)
+			tag = strclone(value)
+		else: mm_error(p.doc, p.pos, c"unsupported cherry-pick property")
+		if (seen & bit): mm_error(p.doc, p.pos, c"duplicate cherry-pick property")
+		seen = seen | bit
+		free(value)
+		free(key)
+	int source = mm_find_node(p.doc, original)
+	mm_node* branch = p.doc.nodes[current]
+	if (source < 0 || original[0] == 0): mm_error(p.doc, p.pos, c"cherry-pick requires an existing commit id")
+	else:
+		mm_node* origin = p.doc.nodes[source]
+		if (origin.group || origin.parent == current): mm_error(p.doc, p.pos, c"cherry-pick requires a commit from another branch")
+		int parents = 0
+		int valid_parent = 0
+		for mm_edge* e in p.doc.edges:
+			if (e.to_node == source):
+				parents = parents + 1
+				mm_node* ancestor = p.doc.nodes[e.from_node]
+				if (strcmp(ancestor.id, parent) == 0): valid_parent = 1
+		if (parents > 1 && parent[0] == 0): mm_error(p.doc, p.pos, c"cherry-pick of merge requires a parent id")
+		if (parent[0] != 0 && valid_parent == 0): mm_error(p.doc, p.pos, c"cherry-pick parent must be an immediate parent")
+	if (branch.value_x < 0): mm_error(p.doc, p.pos, c"cherry-pick requires a current branch commit")
+	if (p.doc.error == 0):
+		string_builder* id = string_from(c"cherry-pick-")
+		string_append_int(id, ordinal)
+		if (mm_find_node(p.doc, id.data) >= 0): mm_error(p.doc, p.pos, c"generated cherry-pick id conflicts with existing commit")
+		int index = -1
+		if (p.doc.error == 0): index = mm_add_node(p.doc, id.data, p.pos)
+		string_free(id)
+		if (index >= 0):
+			mm_node* n = p.doc.nodes[index]
+			n.parent = current
+			n.value_x = ordinal
+			n.shape = 4
+			free(n.label)
+			n.label = strclone(original)
+			free(n.annotation)
+			n.annotation = strclone(tag)
+			mm_property* metadata = new mm_property()
+			metadata.key = strclone(c"cherry-pick")
+			metadata.value = strclone(original)
+			n.metadata.push(metadata)
+			mm_git_parent(p, branch.value_x, index)
+			branch.value_x = index
+	free(original)
+	free(parent)
+	free(tag)
+
+# Unspecified orders precede specified orders; equal values retain source order.
+int mm_git_lane(mm_document* d, mm_node* branch):
+	int lane = 0
+	for mm_node* other in d.nodes:
+		if (other.group == 0 || other == branch): continue
+		if (other.declared < branch.declared || (other.declared == branch.declared && other.value_y < branch.value_y)): lane = lane + 1
+	return lane
+
 void mm_git_body(mm_parser* p):
 	int current = mm_git_branch(p, c"main", 1, -1, 0)
 	int lane = 1
@@ -44,7 +124,10 @@ void mm_git_body(mm_parser* p):
 			mm_separators(p)
 			continue
 		char* command = mm_uml_id(p)
-		if (strcmp(command, c"branch") == 0 || strcmp(command, c"checkout") == 0 || strcmp(command, c"switch") == 0):
+		if (strcmp(command, c"cherry-pick") == 0):
+			mm_git_cherry(p, current, ordinal)
+			ordinal = ordinal + 1
+		else if (strcmp(command, c"branch") == 0 || strcmp(command, c"checkout") == 0 || strcmp(command, c"switch") == 0):
 			char* name
 			mm_space(p)
 			if (mm_peek(p) == '"'): name = mm_quoted(p)
@@ -54,6 +137,23 @@ void mm_git_body(mm_parser* p):
 			int next = mm_git_branch(p, name, create, prior.value_x, lane)
 			if (create): lane = lane + 1
 			if (next >= 0): current = next
+			mm_space(p)
+			if (create && mm_keyword(p, c"order")):
+				mm_space(p)
+				if (mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"expected branch order colon")
+				char* value = mm_identifier(p)
+				int order = 0
+				if (value[0] == 0): mm_error(p.doc, p.pos, c"branch order must be 0..1000000")
+				for i in range(strlen(value)):
+					if (value[i] < '0' || value[i] > '9' || order > 100000):
+						mm_error(p.doc, p.pos, c"branch order must be 0..1000000")
+						break
+					order = order * 10 + value[i] - '0'
+				if (order > 1000000): mm_error(p.doc, p.pos, c"branch order must be 0..1000000")
+				if (next >= 0):
+					mm_node* branch = p.doc.nodes[next]
+					branch.declared = order + 1
+				free(value)
 			free(name)
 		else if (strcmp(command, c"commit") == 0 || strcmp(command, c"merge") == 0):
 			int other = -1
@@ -127,31 +227,59 @@ void mm_git_body(mm_parser* p):
 
 mm_scene* mm_git_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
+	int vertical = strcmp(d.direction, c"LR") != 0
+	int reverse = strcmp(d.direction, c"BT") == 0
 	int time = 200
 	int label_width = 120
 	for mm_node* n in d.nodes:
 		if (n.group && strlen(n.label) * 8 + 40 > label_width): label_width = strlen(n.label) * 8 + 40
+	list[int] lane_sizes = new list[int]
+	for mm_node* n in d.nodes:
+		if (n.group): lane_sizes.push(130)
+	for mm_node* n in d.nodes:
+		mm_node* branch = n
+		if (n.group == 0): branch = d.nodes[n.parent]
+		int lane = mm_git_lane(d, branch)
+		int width = strlen(n.label) * 8 + 60
+		if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
+		if (width > lane_sizes[lane]): lane_sizes[lane] = width
+	if (vertical): label_width = 100
 	time = label_width + 60
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
+		mm_node* branch = n
+		if (n.group == 0): branch = d.nodes[n.parent]
+		int lane = mm_git_lane(d, branch)
+		int offset = 80
+		for j in range(lane):
+			if (vertical): offset = offset + lane_sizes[j]
+			else: offset = offset + 130
+		b.y = offset
 		if (n.group):
 			b.x = 40
-			b.y = 80 + n.value_y * 130
 		else:
-			mm_node* branch = d.nodes[n.parent]
 			b.x = time
-			b.y = 80 + branch.value_y * 130
 			int width = strlen(n.label) * 8 + 60
 			if (strlen(n.annotation) * 8 + 60 > width): width = strlen(n.annotation) * 8 + 60
 			if (width < 100): width = 100
 			time = time + width
+	__w_list_free(cast(__w_list*, lane_sizes))
+	if (vertical):
+		for mm_bounds* b in s.nodes:
+			int x = b.x
+			b.x = b.y
+			b.y = x
+			if (reverse): b.y = time + 40 - x
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group == 0): continue
 		mm_bounds* b = s.nodes[i]
 		mm_text(s, b.x, b.y - 8, n.label)
-		mm_line(s, label_width, b.y, time, b.y, 1)
+		if (vertical):
+			if (reverse): mm_line(s, b.x, 40, b.x, time + 40 - label_width, 1)
+			else: mm_line(s, b.x, label_width, b.x, time, 1)
+		else: mm_line(s, label_width, b.y, time, b.y, 1)
 	for mm_edge* e in d.edges:
 		mm_bounds* a = s.nodes[e.from_node]
 		mm_bounds* b = s.nodes[e.to_node]
@@ -162,6 +290,10 @@ mm_scene* mm_git_render(mm_document* d):
 		mm_bounds* b = s.nodes[i]
 		if (n.shape == 2): mm_draw(s, MM_BOX, b.x - 12, b.y - 12, b.x + 12, b.y + 12, 0, c"")
 		else: mm_draw(s, MM_CIRCLE, b.x - 9, b.y - 9, b.x + 9, b.y + 9, n.shape == 3, c"")
+		if (n.shape == 4):
+			mm_draw(s, MM_CIRCLE, b.x + 1, b.y - 9, b.x + 19, b.y + 9, 0, c"")
+			mm_line(s, b.x, b.y - 9, b.x + 10, b.y - 20, 0)
+			mm_line(s, b.x + 10, b.y - 9, b.x + 10, b.y - 20, 0)
 		if (n.shape == 1):
 			mm_line(s, b.x - 6, b.y - 6, b.x + 6, b.y + 6, 0)
 			mm_line(s, b.x + 6, b.y - 6, b.x - 6, b.y + 6, 0)
