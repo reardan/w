@@ -1,0 +1,9 @@
+gitGraph BT:
+    commit id: "initial"
+    branch development order: 2
+    commit id: "feature" tag: "candidate"
+    checkout main
+    commit id: "maintenance"
+    cherry-pick id: "feature" tag: "backport"
+    branch release order: 1
+    commit id: "published" type: HIGHLIGHT
