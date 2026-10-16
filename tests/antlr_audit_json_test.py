@@ -47,6 +47,14 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin', prefix='audit_json_') as dire
     driver.write_text(f'import {module}\nint main():\n\treturn 0\n')
     result = subprocess.run([str(ROOT / 'bin/wv2'), '--strict', str(driver), '-o', str(directory / 'driver')], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+    source.write_text("grammar Proof; root: item EOF; item: other 'a' | 'b'; other: item;")
+    output.write_text('sentinel')
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode != 0
+    assert output.read_text() == 'sentinel'
+    codes = {f['code'] for f in json.loads(audit.read_text())['findings']}
+    assert 'AT_LEFT_RECURSION' in codes
+    assert 'AT_PARSER_CONTINUATION' not in codes  # no decision proof on unsafe recursion
     lexer = directory / 'EmptyLexer.g4'
     parser = directory / 'EmptyParser.g4'
     parser.write_text("parser grammar EmptyParser; options {tokenVocab=EmptyLexer;} root: A EOF;")

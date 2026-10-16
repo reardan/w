@@ -157,7 +157,9 @@ int main(int argc, int argv):
 	at_source_prepare(all_rules)
 	at_normalize_parser_lists(all_rules)
 	int unsafe = at_audit(all_rules)
-	at_audit_prediction(all_rules)
+	# Structural refusal already prevents emission; decision proofs require a
+	# safe normalized grammar and can be expensive on unlowered recursion.
+	if ((unsafe == 0) && (g_at_dependency_error == 0)): at_audit_prediction(all_rules)
 	if (g_at_dependency_error): unsafe = 1
 	at_collect_parser_refs(all_rules)
 	at_audit_token_identities()
