@@ -54,6 +54,20 @@ Python's pattern.search(text, pos): `^`, `\A` and `\b` still see the
 whole text, so findall/sub/split loops can resume at a previous end.
 A result borrows the text pointer (re_group reads it), so keep the
 text alive while using the result.
+
+Multi-match operations (P1.1b) walk matches with Python 3.7+'s
+empty-match rule (see the section below) and mirror Python's names:
+
+  re_iter* it = re_iter_new(p, text, -1)  # p.finditer; re_iter_next
+  list[re_result*] all = re_finditer(p, text)        # re_results_free
+  list[char*] words = re_findall(p, text)            # re_strings_free
+  list[list[char*]] rows = re_findall_rows(p, text)  # tuples; re_rows_free
+  char* s = re_sub(p, c"\\2 \\g<1>", text)  # also re_subn, count limit
+  char* t = re_sub_fn(p, callback, context, text, 0, &n)
+  list[char*] parts = re_split(p, text, maxsplit)    # groups included
+  re_escape(s); re_expand(p, m, template); re_template_error(p, repl)
+  re_search_str / re_sub_str / re_findall_str / re_split_str compile
+  a pattern string, run once and free it (Python's module functions).
 */
 import lib.lib
 import lib.memory
@@ -1241,6 +1255,9 @@ int re_group_count(re_pattern* p):
 	return p.groups
 
 
+const int RE_MUST_ADVANCE = 4
+
+
 # ---- Pike VM -----------------------------------------------------------------
 
 struct re_vm:
@@ -1344,9 +1361,13 @@ int re_class_has(re_pattern* p, int index, int c):
 	return (p.classes[index * 8 + (c >> 5)] >> (c & 31)) & 1
 
 
-# mode: 0 search, 1 match (anchored at start), 2 fullmatch.
+# mode: 0 search, 1 match (anchored at start), 2 fullmatch; plus
+# RE_MUST_ADVANCE to reject an empty match at start (CPython's
+# state->must_advance, which findall/sub/split set after an empty match).
 re_result* re_exec(re_pattern* p, char* text, int len, int start, int mode):
 	if ((p == 0) || (p.error != 0)): return cast(re_result*, 0)
+	int must_advance = mode & RE_MUST_ADVANCE
+	mode = mode & 3
 	if (len < 0): len = 0
 	if (start < 0): start = 0
 	if (start > len): start = len
@@ -1386,6 +1407,7 @@ re_result* re_exec(re_pattern* p, char* text, int len, int start, int mode):
 			int op = prog[3 * pc]
 			if (op == RE_OP_MATCH):
 				if ((mode == 2) && (pos != len)): continue
+				if (must_advance && (pos == start)): continue
 				for k in range(nslots): best[k] = caps[k]
 				matched = 1
 				break
@@ -1490,3 +1512,496 @@ char* re_group(re_result* m, int g):
 	for k in range(e - s): out[k] = m.text[s + k]
 	out[e - s] = 0
 	return out
+
+
+# ---- iteration, findall, sub, split (P1.1b) ----------------------------------
+#
+# Every multi-match operation walks matches the way CPython 3.7+ does:
+# each search resumes at the previous match's end, and after an EMPTY
+# match the next one may start at the same position but may not be empty
+# there. So empty matches can sit right after non-empty ones:
+# sub("x*", "-", "abxd") == "-a-b--d-", and split(r"\b", "a b") ==
+# ["", "a", " ", "b", ""].
+
+struct re_iter:
+	re_pattern* p
+	char* text       # borrowed
+	int len
+	int pos
+	int must_advance
+	int done
+
+
+# Iterator over the successive matches of p in text[0..len) (Python
+# p.finditer(text)); len < 0 means strlen(text). Free with re_iter_free.
+re_iter* re_iter_new(re_pattern* p, char* text, int len):
+	re_iter* it = new re_iter()
+	it.p = p
+	it.text = text
+	if (len < 0): len = strlen(text)
+	it.len = len
+	it.pos = 0
+	it.must_advance = 0
+	it.done = (p == 0) || (p.error != 0)
+	return it
+
+
+# The next match (caller frees it with re_result_free), or 0 when there
+# are no more.
+re_result* re_iter_next(re_iter* it):
+	if (it.done): return cast(re_result*, 0)
+	int mode = 0
+	if (it.must_advance): mode = RE_MUST_ADVANCE
+	re_result* m = re_exec(it.p, it.text, it.len, it.pos, mode)
+	if (m == 0):
+		it.done = 1
+		return m
+	it.must_advance = re_end(m, 0) == re_start(m, 0)
+	it.pos = re_end(m, 0)
+	return m
+
+
+void re_iter_free(re_iter* it):
+	if (it == 0): return
+	free(it)
+
+
+# Every match as a list of results (Python list(p.finditer(text))).
+# Free with re_results_free.
+list[re_result*] re_finditer(re_pattern* p, char* text):
+	list[re_result*] out = new list[re_result*]
+	re_iter* it = re_iter_new(p, text, -1)
+	while (1):
+		re_result* m = re_iter_next(it)
+		if (m == 0): break
+		out.push(m)
+	re_iter_free(it)
+	return out
+
+
+void re_results_free(list[re_result*] results):
+	if (results == 0): return
+	for i in range(results.length): re_result_free(results[i])
+	results.free()
+
+
+# Frees every string in a list from re_findall / re_split (0 entries are
+# skipped) and the list itself.
+void re_strings_free(list[char*] strings):
+	if (strings == 0): return
+	for i in range(strings.length):
+		if (strings[i] != 0): free(strings[i])
+	strings.free()
+
+
+void re_rows_free(list[list[char*]] rows):
+	if (rows == 0): return
+	for i in range(rows.length): re_strings_free(rows[i])
+	rows.free()
+
+
+char* re_slice(char* text, int s, int e):
+	char* out = cast(char*, malloc(e - s + 1))
+	for k in range(e - s): out[k] = text[s + k]
+	out[e - s] = 0
+	return out
+
+
+# Group g of m as a new string, "" when it did not participate (how
+# Python's findall reports unmatched groups).
+char* re_group_or_empty(re_result* m, int g):
+	char* s = re_group(m, g)
+	if (s == 0): s = re_slice(c"", 0, 0)
+	return s
+
+
+# Python p.findall(text) for patterns with zero or one group: the whole
+# match per match with no groups, group 1 with exactly one (unmatched ->
+# ""). With n >= 2 groups Python returns n-tuples; here they come
+# flattened, n strings per match in group order (re_findall_rows keeps
+# them apart). Free with re_strings_free. Empty list on a bad pattern.
+list[char*] re_findall(re_pattern* p, char* text):
+	list[char*] out = new list[char*]
+	re_iter* it = re_iter_new(p, text, -1)
+	while (1):
+		re_result* m = re_iter_next(it)
+		if (m == 0): break
+		int groups = re_groups(m)
+		if (groups == 0): out.push(re_group_or_empty(m, 0))
+		for g in range(groups): out.push(re_group_or_empty(m, g + 1))
+		re_result_free(m)
+	re_iter_free(it)
+	return out
+
+
+# Python p.findall(text) with the tuple shape kept: one row per match,
+# holding groups 1..n ("" when unmatched), or just the whole match when
+# the pattern has no groups. Free with re_rows_free.
+list[list[char*]] re_findall_rows(re_pattern* p, char* text):
+	list[list[char*]] out = new list[list[char*]]
+	re_iter* it = re_iter_new(p, text, -1)
+	while (1):
+		re_result* m = re_iter_next(it)
+		if (m == 0): break
+		list[char*] row = new list[char*]
+		int groups = re_groups(m)
+		if (groups == 0): row.push(re_group_or_empty(m, 0))
+		for g in range(groups): row.push(re_group_or_empty(m, g + 1))
+		out.push(row)
+		re_result_free(m)
+	re_iter_free(it)
+	return out
+
+
+# ---- growable output buffer --------------------------------------------------
+
+struct re_buf:
+	char* data
+	int length
+	int capacity
+
+
+re_buf* re_buf_new():
+	re_buf* b = new re_buf()
+	b.capacity = 64
+	b.length = 0
+	b.data = cast(char*, malloc(b.capacity))
+	return b
+
+
+void re_buf_add(re_buf* b, char* s, int n):
+	if (b.length + n + 1 > b.capacity):
+		int grown = b.capacity * 2
+		while (b.length + n + 1 > grown): grown = grown * 2
+		b.data = cast(char*, realloc(b.data, b.capacity, grown))
+		b.capacity = grown
+	for k in range(n): b.data[b.length + k] = s[k]
+	b.length = b.length + n
+
+
+void re_buf_add_char(re_buf* b, int c):
+	char one = c
+	re_buf_add(b, &one, 1)
+
+
+# Appends codepoint cp as UTF-8.
+void re_buf_add_codepoint(re_buf* b, int cp):
+	int[4] enc
+	re_utf8_encode(cp, &enc[0])
+	for k in range(re_utf8_length(cp)): re_buf_add_char(b, enc[k])
+
+
+# Finishes the buffer as a NUL-terminated string the caller frees.
+char* re_buf_take(re_buf* b):
+	b.data[b.length] = 0
+	char* out = b.data
+	free(b)
+	return out
+
+
+# ---- replacement templates ---------------------------------------------------
+#
+# Python's repl-string syntax: \1..\99 and \g<n> (\g<0> is the whole
+# match) insert a group, "" when it did not participate; \0, \0o, \0oo
+# and three-digit \ooo are octal character escapes (written as UTF-8);
+# \a \b \f \n \r \t \v \\ are the usual characters; a backslash before
+# an ASCII letter is an error; before anything else it is kept along
+# with that character (r"\-" stays "\-"). Named groups are not
+# supported (re_compile rejects them), so \g<name> is an error.
+
+int re_is_octal(int c):
+	return (c >= '0') && (c <= '7')
+
+
+# Parses template into a vec of items: (-1, codepoint) for a literal
+# character, (-2, byte) for a raw byte, (g, 0) for group g. Returns 0
+# and sets *error to a static message (Python's wording) on a bad
+# template.
+re_vec* re_template_parse(re_pattern* p, char* repl, char** error):
+	*error = cast(char*, 0)
+	re_vec* items = re_vec_new()
+	int groups = 0
+	if (p != 0): groups = p.groups
+	int i = 0
+	while (repl[i] != 0):
+		int c = repl[i] & 255
+		if (c != '\\'):
+			re_vec_push(items, -2)
+			re_vec_push(items, c)
+			i = i + 1
+			continue
+		int d = repl[i + 1] & 255
+		int group = -1
+		if (d == 0):
+			*error = c"bad escape (end of pattern)"
+		else if (d == 'g'):
+			if (repl[i + 2] != '<'):
+				*error = c"missing <"
+			else:
+				int j = i + 3
+				while ((repl[j] != 0) && (repl[j] != '>')): j = j + 1
+				if (j == i + 3): *error = c"missing group name"
+				else if (repl[j] == 0): *error = c"missing >, unterminated name"
+				else:
+					# digits are a group number; an identifier would be a
+					# group name (unsupported); anything else is malformed
+					int digits = 1
+					int identifier = re_is_digit(repl[i + 3] & 255) == 0
+					group = 0
+					for k in range(j - (i + 3)):
+						int ch = repl[i + 3 + k] & 255
+						if (re_is_digit(ch) == 0): digits = 0
+						if ((re_is_word(ch) == 0) && (ch < 128)): identifier = 0
+						if (digits && (group <= RE_MAX_REPEAT)): group = group * 10 + (ch - '0')
+					if (digits == 0):
+						group = -1
+						if (identifier): *error = c"unknown group name"
+						else: *error = c"bad character in group name"
+					i = j + 1
+		else if (d == '0'):
+			int value = 0
+			int j = i + 2
+			if (re_is_octal(repl[j] & 255)):
+				value = (repl[j] & 255) - '0'
+				j = j + 1
+				if (re_is_octal(repl[j] & 255)):
+					value = value * 8 + (repl[j] & 255) - '0'
+					j = j + 1
+			re_vec_push(items, -1)
+			re_vec_push(items, value)
+			i = j
+		else if (re_is_digit(d)):
+			int e = repl[i + 2] & 255
+			if (re_is_digit(e)):
+				int f = repl[i + 3] & 255
+				if (re_is_octal(d) && re_is_octal(e) && re_is_octal(f)):
+					int value = ((d - '0') * 8 + (e - '0')) * 8 + (f - '0')
+					if (value > 255): *error = c"octal escape value outside of range 0-0o377"
+					else:
+						re_vec_push(items, -1)
+						re_vec_push(items, value)
+					i = i + 4
+				else:
+					group = (d - '0') * 10 + (e - '0')
+					i = i + 3
+			else:
+				group = d - '0'
+				i = i + 2
+		else:
+			int value = -1
+			if (d == 'a'): value = 7
+			else if (d == 'b'): value = 8
+			else if (d == 'f'): value = 12
+			else if (d == 'n'): value = 10
+			else if (d == 'r'): value = 13
+			else if (d == 't'): value = 9
+			else if (d == 'v'): value = 11
+			else if (d == '\\'): value = 92
+			if (value >= 0):
+				re_vec_push(items, -2)
+				re_vec_push(items, value)
+			else if (((d >= 'a') && (d <= 'z')) || ((d >= 'A') && (d <= 'Z'))):
+				*error = c"bad escape"
+			else:
+				re_vec_push(items, -2)
+				re_vec_push(items, '\\')
+			i = i + 2
+			if ((value < 0) && (*error == 0)):
+				# keep the escaped byte (and the rest of its UTF-8 sequence
+				# is copied by the literal path that follows)
+				re_vec_push(items, -2)
+				re_vec_push(items, d)
+		if ((*error == 0) && (group >= 0) && (group > groups)):
+			*error = c"invalid group reference"
+		if (*error != 0):
+			re_vec_free(items)
+			return cast(re_vec*, 0)
+		if (group >= 0):
+			re_vec_push(items, group)
+			re_vec_push(items, 0)
+	return items
+
+
+# 0 when repl is a valid replacement template for p, else the error
+# message (static; do not free).
+char* re_template_error(re_pattern* p, char* repl):
+	char* error = 0
+	re_vec* items = re_template_parse(p, repl, &error)
+	re_vec_free(items)
+	return error
+
+
+void re_template_apply(re_buf* b, re_vec* items, re_result* m):
+	int i = 0
+	while (i < items.length):
+		int kind = items.data[i]
+		int value = items.data[i + 1]
+		if (kind == -2): re_buf_add_char(b, value)
+		else if (kind == -1): re_buf_add_codepoint(b, value)
+		else:
+			int s = re_start(m, kind)
+			int e = re_end(m, kind)
+			if ((s >= 0) && (e >= 0)): re_buf_add(b, &m.text[s], e - s)
+		i = i + 2
+
+
+# Python m.expand(template): the template with its group references
+# filled in from m. 0 on a bad template.
+char* re_expand(re_pattern* p, re_result* m, char* template):
+	char* error = 0
+	re_vec* items = re_template_parse(p, template, &error)
+	if (items == 0): return cast(char*, 0)
+	re_buf* b = re_buf_new()
+	re_template_apply(b, items, m)
+	re_vec_free(items)
+	return re_buf_take(b)
+
+
+# ---- sub ---------------------------------------------------------------------
+
+# Callback replacement (Python re.sub with a function): returns a new
+# malloc'd string for match m, which re_sub_fn frees after copying.
+# Returning 0 inserts nothing.
+type re_sub_callback = fn(re_result*, void*) -> char*
+
+
+# Shared sub loop: either items (a parsed template) or callback is set.
+char* re_sub_run(re_pattern* p, re_vec* items, re_sub_callback* callback, void* context, char* text, int count, int* nsubs):
+	re_buf* b = re_buf_new()
+	int len = strlen(text)
+	int last = 0
+	int n = 0
+	re_iter* it = re_iter_new(p, text, len)
+	while ((count == 0) || (n < count)):
+		re_result* m = re_iter_next(it)
+		if (m == 0): break
+		re_buf_add(b, &text[last], re_start(m, 0) - last)
+		if (items != 0): re_template_apply(b, items, m)
+		else:
+			char* piece = callback(m, context)
+			if (piece != 0):
+				re_buf_add(b, piece, strlen(piece))
+				free(piece)
+		last = re_end(m, 0)
+		n = n + 1
+		re_result_free(m)
+	re_iter_free(it)
+	re_buf_add(b, &text[last], len - last)
+	if (nsubs != 0): *nsubs = n
+	return re_buf_take(b)
+
+
+# Python p.subn(repl, text, count): text with the first count matches
+# replaced by the template repl (all when count is 0, none when it is
+# negative, as in Python); *nsubs (when not 0) gets the number of
+# replacements. Returns a new string, or 0 when
+# p failed to compile or repl is a bad template (re_template_error says
+# why), checked before any matching as Python does.
+char* re_subn(re_pattern* p, char* repl, char* text, int count, int* nsubs):
+	if (nsubs != 0): *nsubs = 0
+	if ((p == 0) || (p.error != 0)): return cast(char*, 0)
+	char* error = 0
+	re_vec* items = re_template_parse(p, repl, &error)
+	if (items == 0): return cast(char*, 0)
+	char* out = re_sub_run(p, items, cast(re_sub_callback*, 0), cast(void*, 0), text, count, nsubs)
+	re_vec_free(items)
+	return out
+
+
+# Python p.sub(repl, text, count); see re_subn.
+char* re_sub(re_pattern* p, char* repl, char* text, int count = 0):
+	return re_subn(p, repl, text, count, cast(int*, 0))
+
+
+# Python p.sub(function, text, count): each match is replaced by what
+# callback(m, context) returns. nsubs may be 0.
+char* re_sub_fn(re_pattern* p, re_sub_callback* callback, void* context, char* text, int count, int* nsubs):
+	if (nsubs != 0): *nsubs = 0
+	if ((p == 0) || (p.error != 0)): return cast(char*, 0)
+	return re_sub_run(p, cast(re_vec*, 0), callback, context, text, count, nsubs)
+
+
+# ---- split -------------------------------------------------------------------
+
+# Python p.split(text, maxsplit): the pieces between matches, with the
+# text of every capturing group inserted after each piece (0 for a group
+# that did not participate, Python's None). At most maxsplit splits when
+# maxsplit > 0, none when it is negative (as in Python). Free with
+# re_strings_free. Empty list on a bad pattern.
+list[char*] re_split(re_pattern* p, char* text, int maxsplit = 0):
+	list[char*] out = new list[char*]
+	if ((p == 0) || (p.error != 0)): return out
+	int len = strlen(text)
+	int last = 0
+	int n = 0
+	re_iter* it = re_iter_new(p, text, len)
+	while ((maxsplit == 0) || (n < maxsplit)):
+		re_result* m = re_iter_next(it)
+		if (m == 0): break
+		out.push(re_slice(text, last, re_start(m, 0)))
+		for g in range(re_groups(m)): out.push(re_group(m, g + 1))
+		last = re_end(m, 0)
+		n = n + 1
+		re_result_free(m)
+	re_iter_free(it)
+	out.push(re_slice(text, last, len))
+	return out
+
+
+# ---- string conveniences -----------------------------------------------------
+
+# Text of the first match of p in text (new string), or 0 when none.
+char* re_search_text(re_pattern* p, char* text):
+	re_result* m = re_search(p, text)
+	if (m == 0): return cast(char*, 0)
+	char* out = re_group(m, 0)
+	re_result_free(m)
+	return out
+
+
+# One-shot forms that compile pattern with flags, run, and free it
+# (Python's module-level re.search / re.sub / re.findall / re.split).
+# A pattern that fails to compile gives 0 (an empty list for the list
+# forms); compile once with re_compile to see the error.
+char* re_search_str(char* pattern, char* text, int flags = 0):
+	re_pattern* p = re_compile(pattern, flags)
+	char* out = re_search_text(p, text)
+	re_free(p)
+	return out
+
+
+char* re_sub_str(char* pattern, char* repl, char* text, int count = 0, int flags = 0):
+	re_pattern* p = re_compile(pattern, flags)
+	char* out = re_sub(p, repl, text, count)
+	re_free(p)
+	return out
+
+
+list[char*] re_findall_str(char* pattern, char* text, int flags = 0):
+	re_pattern* p = re_compile(pattern, flags)
+	list[char*] out = re_findall(p, text)
+	re_free(p)
+	return out
+
+
+list[char*] re_split_str(char* pattern, char* text, int maxsplit = 0, int flags = 0):
+	re_pattern* p = re_compile(pattern, flags)
+	list[char*] out = re_split(p, text, maxsplit)
+	re_free(p)
+	return out
+
+
+# Python re.escape(s): a backslash before every character that is
+# special in a pattern, so re_compile(re_escape(s)) matches s literally.
+char* re_escape(char* s):
+	re_buf* b = re_buf_new()
+	char* special = c"()[]{}?*+-|^$\\.&~# \t\n\r\x0b\x0c"
+	int i = 0
+	while (s[i] != 0):
+		int c = s[i] & 255
+		int j = 0
+		while ((special[j] != 0) && ((special[j] & 255) != c)): j = j + 1
+		if (special[j] != 0): re_buf_add_char(b, '\\')
+		re_buf_add_char(b, c)
+		i = i + 1
+	return re_buf_take(b)
