@@ -46,17 +46,24 @@ void expression_refused(char* source):
 	assert1(expression.alts == before)
 
 
+void expression_allowed(char* source):
+	list[at_rule*] rules = expression_rules(source)
+	at_audit_prepare_rules(rules)
+	assert_equal(1, at_normalize_expression(rules[0], rules))
+	assert_equal(0, at_audit(rules))
+
+
 int main():
 	# Token aliases must not conceal duplicate operator spellings or lexer
 	# behavior that changes token identity. Refusal leaves the source intact.
 	expression_refused(c"grammar Bad; expr: expr PLUS expr | expr '+' expr | NUMBER; PLUS: '+'; NUMBER: [0-9]+;")
 	expression_refused(c"grammar Bad; expr: expr PLUS expr | NUMBER; fragment PLUS: '+'; NUMBER: [0-9]+;")
-	expression_refused(c"grammar Bad; expr: expr op expr | NUMBER; op: '+'; NUMBER: [0-9]+;")
-	expression_refused(c"grammar Bad; expr: expr OP expr | NUMBER; OP: '+' | '-'; NUMBER: [0-9]+;")
+	expression_allowed(c"grammar Aliases; expr: expr op expr | NUMBER; op: '+'; NUMBER: [0-9]+;")
+	expression_allowed(c"grammar Aliases; expr: expr OP expr | NUMBER; OP: '+' | '-'; NUMBER: [0-9]+;")
 	expression_refused(c"grammar Bad; expr: expr PLUS expr | NUMBER; PLUS: '+' -> skip; NUMBER: [0-9]+;")
 	expression_refused(c"grammar Bad; expr: expr PLUS expr | NUMBER; PLUS: '+' -> type(OTHER); OTHER: '-'; NUMBER: [0-9]+;")
 	expression_refused(c"grammar Bad; expr: expr '+' expr | PLUS expr | PLUS; PLUS: '+';")
-	expression_refused(c"grammar Bad; expr: expr '+' expr | LEFT expr RIGHT | NUMBER; LEFT: '['; RIGHT: ']'; NUMBER: [0-9]+;")
+	expression_allowed(c"grammar Delimited; expr: expr '+' expr | LEFT expr RIGHT | NUMBER; LEFT: '['; RIGHT: ']'; NUMBER: [0-9]+;")
 	expression_refused(c"grammar Bad; expr: expr '+' expr | NUMBER?; NUMBER: [0-9]+;")
 	expression_refused(c"grammar Bad; expr: expr '+' expr | '-'? indirect; indirect: expr;")
 	expression_refused(c"grammar Bad; expr: expr '+' expr | NUMBER {act();}; NUMBER: [0-9]+;")
