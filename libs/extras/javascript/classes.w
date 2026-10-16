@@ -28,6 +28,7 @@ void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode):
 
 
 int js_class_is_constructor(js_value* value):
+	if (value.bound_target != 0): return value.host_construct != 0
 	return value.class_kind != 0 || value.error_constructor || (value.kind == 7 && value.code != 0 && value.code.async_function == 0 && (js_kind(value.code, c"function") || js_kind(value.code, c"function_expression")))
 
 
@@ -62,6 +63,7 @@ js_value* js_class_evaluate(js_runtime* rt, js_node* node, js_value* env):
 	if (rt.completion.status != 0): return rt.undefined_value
 	constructor.parent = scope
 	constructor.prototype = base
+	if (base == 0): constructor.prototype = rt.function_prototype
 	constructor.strict = 1
 	constructor.class_kind = 1 + derived
 	for i in range(1, node.children.length):
@@ -96,6 +98,7 @@ js_value* js_class_evaluate(js_runtime* rt, js_node* node, js_value* env):
 
 
 js_value* js_class_construct(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target):
+	if (callable != 0 && callable.bound_target != 0): return js_function_bound(rt, callable, args, new_target)
 	if (js_runtime_compat_step(rt) == 0): return rt.undefined_value
 	if (rt.depth >= rt.max_depth):
 		js_runtime_fail(rt, 5, c"JavaScript constructor depth limit")
@@ -145,6 +148,13 @@ js_value* js_class_super(js_runtime* rt, js_node* node, js_value* env):
 
 
 js_value* js_class_instanceof(js_runtime* rt, js_value* object, js_value* callable):
+	int bound_depth = 0
+	while (callable.bound_target != 0):
+		if (bound_depth >= rt.max_depth || js_runtime_compat_step(rt) == 0):
+			js_runtime_fail(rt, 5, c"bound instanceof depth limit")
+			return rt.undefined_value
+		bound_depth = bound_depth + 1
+		callable = callable.bound_target
 	if (callable.kind != 7 && callable.kind != 9):
 		js_runtime_fail(rt, 2, c"instanceof requires a callable right operand")
 		return rt.undefined_value

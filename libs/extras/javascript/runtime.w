@@ -42,6 +42,9 @@ struct js_value:
 	int host_get
 	int host_set
 	int host_has
+	js_value* bound_target
+	js_value* bound_receiver
+	list[js_value*] bound_arguments
 	int host_receiver
 	js_value* this_value
 	int variable_scope
@@ -102,6 +105,7 @@ struct js_runtime:
 	js_value* regexp_prototype
 	int regexp_units
 	js_value* array_prototype
+	js_value* function_prototype
 	js_value* error_prototype
 	js_value* reference_error_prototype
 	js_value* string_prototype
@@ -142,6 +146,9 @@ struct js_runtime:
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
 void js_runtime_install_array(js_runtime* rt);
+void js_runtime_install_function(js_runtime* rt);
+js_value* js_function_bound(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
+js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
 void js_runtime_install_regexp(js_runtime* rt);
 void js_regexp_free(void* raw);
 js_value* js_regexp_literal(js_runtime* rt, char* raw);
@@ -228,6 +235,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.initialized = 1
 	value.prototype = 0
 	if (kind == 6): value.prototype = rt.array_prototype
+	if (kind == 7 || kind == 9): value.prototype = rt.function_prototype
 	value.getter = 0
 	value.setter = 0
 	value.accessor = 0
@@ -238,6 +246,9 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.host_get = 0
 	value.host_set = 0
 	value.host_has = 0
+	value.bound_target = 0
+	value.bound_receiver = 0
+	value.bound_arguments = 0
 	value.host_receiver = 0
 	value.this_value = 0
 	value.variable_scope = 0
@@ -394,6 +405,7 @@ js_runtime* js_runtime_new():
 	rt.microtask_head = 0
 	rt.max_microtasks = 10000
 	rt.promise_prototype = 0
+	rt.function_prototype = 0
 	rt.error_prototype = 0
 	rt.reference_error_prototype = 0
 	rt.promise_constructor = 0
@@ -430,6 +442,7 @@ js_runtime* js_runtime_new():
 	for i in range(rt.global.properties.length):
 		rt.global.properties[i].immutable = 1
 		rt.global.properties[i].lexical_binding = 1
+	js_runtime_install_function(rt)
 	js_runtime_install_promises(rt)
 	js_runtime_install_binary(rt)
 	js_runtime_install_collections(rt)
@@ -461,6 +474,7 @@ void js_runtime_unroot(js_runtime* rt, js_value* value):
 
 void js_runtime_value_free(js_value* value):
 	js_regexp_free(value.regexp)
+	if (value.bound_arguments != 0): __w_list_free(cast(__w_list*, value.bound_arguments))
 	if (value.binary_owned):
 		js_runtime* rt = cast(js_runtime*, value.owner)
 		rt.binary_bytes_used = rt.binary_bytes_used - value.binary_length
@@ -492,6 +506,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.promise_prototype)
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.array_prototype)
+	js_runtime_mark(pending, rt.function_prototype)
 	js_runtime_mark(pending, rt.string_prototype)
 	js_runtime_mark(pending, rt.regexp_prototype)
 	js_runtime_mark(pending, rt.global)
@@ -502,6 +517,10 @@ int js_runtime_collect(js_runtime* rt):
 	while (pending.length > 0):
 		js_value* value = pending.pop()
 		js_runtime_mark(pending, value.promise_result)
+		js_runtime_mark(pending, value.bound_target)
+		js_runtime_mark(pending, value.bound_receiver)
+		if (value.bound_arguments != 0):
+			for i in range(value.bound_arguments.length): js_runtime_mark(pending, value.bound_arguments[i])
 		js_runtime_mark(pending, value.binary_buffer)
 		js_runtime_mark(pending, value.getter)
 		js_runtime_mark(pending, value.setter)
@@ -1068,6 +1087,7 @@ js_value* js_runtime_call_native(js_runtime* rt, js_value* callable, js_value* r
 
 
 js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args):
+	if (callable.bound_target != 0): return js_function_bound(rt, callable, args, 0)
 	if (callable.kind == 9):
 		if (callable.host_construct == 2):
 			js_runtime_fail(rt, 2, c"native constructor requires new")
@@ -1642,14 +1662,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_runtime_arguments(rt, node, env, arguments)
 		js_value* result = rt.undefined_value
 		if (rt.completion.status == 0):
-			if (js_kind(node, c"construct")):
-				if (js_class_is_constructor(callable)): result = js_class_construct(rt, callable, arguments, callable)
-				else if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
-				else if (callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
-				else if (callable.host_construct): result = js_runtime_call_native(rt, callable, rt.undefined_value, arguments)
-				else if (callable.kind != 7 && callable.kind != 9): js_runtime_fail(rt, 2, c"value is not a constructor")
-				else if (callable.code != 0 && (callable.code.async_function || js_kind(callable.code, c"method") || js_kind(callable.code, c"static_method") || js_kind(callable.code, c"arrow"))): js_runtime_fail(rt, 2, c"value is not a constructor")
-				else: js_runtime_fail(rt, 6, c"unsupported native constructor")
+			if (js_kind(node, c"construct")): result = js_runtime_construct(rt, callable, arguments, callable)
 			else: result = js_runtime_call_receiver(rt, callable, receiver, arguments)
 		__w_list_free(cast(__w_list*, arguments))
 		return result
@@ -1815,3 +1828,5 @@ import libs.extras.javascript.runtime_equality
 import libs.extras.javascript.runtime_has
 
 import libs.extras.javascript.runtime_array
+
+import libs.extras.javascript.runtime_function
