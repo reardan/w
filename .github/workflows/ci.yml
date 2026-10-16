@@ -29,13 +29,10 @@ concurrency:
 env:
   W_CI_NO_SKIP: "1"
 
-# CI_RUNS_ON can temporarily route unprivileged jobs to ["self-hosted","w-local"].
-# Fork PRs and jobs requiring host configuration keep GitHub-hosted runners.
-# Delete the variable to restore hosted routing for new runs.
 jobs:
   javascript:
     name: JavaScript compatibility
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out repository
@@ -56,7 +53,7 @@ jobs:
 
   performance:
     name: Performance regressions
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -290,7 +287,7 @@ jobs:
     name: Full test suite
     needs: [tests]
     if: always()
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Require all test shards
         env:
@@ -301,7 +298,7 @@ jobs:
     name: Required AST test suite
     needs: [ast_tests]
     if: always()
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Require all test shards
         env:
@@ -312,7 +309,7 @@ jobs:
   # logs and merged completeness report. All shards use one exact set of maps.
   coverage_prepare:
     name: Prepare compiler coverage
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     continue-on-error: true
     steps:
@@ -416,7 +413,7 @@ jobs:
     name: Compiler coverage
     needs: [coverage_prepare, coverage_shards]
     if: always()
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     continue-on-error: true
     steps:
@@ -625,7 +622,7 @@ jobs:
 
   wasm:
     name: wasm32 (node)
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
@@ -668,7 +665,7 @@ jobs:
   # tools/mac/run_darwin_tests.sh runs (Linux only cross-compiles them).
   darwin_cross:
     name: darwin cross-compile
-    runs-on: ${{ fromJSON((github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     steps:
