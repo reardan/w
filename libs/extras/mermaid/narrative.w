@@ -11,6 +11,8 @@ const int MM_N_DEACTIVATE = 7
 const int MM_N_TASK = 8
 const int MM_N_PERIOD = 9
 const int MM_N_EVENT = 10
+const int MM_N_CREATE = 11
+const int MM_N_DESTROY = 12
 
 char* mm_n_trim(char* text):
 	int a = 0
@@ -202,10 +204,87 @@ void mm_n_note(mm_parser* p, char* text):
 	event.to_node = to
 	event.value = side
 
-void mm_n_sequence(mm_parser* p, char* text, list[int] blocks):
+void mm_n_lifecycle(mm_parser* p, char* text, int create):
+	int actor = -1
+	if (create):
+		int count = p.doc.nodes.length
+		if (mm_n_prefix(text, c"participant ")): mm_n_declare(p, text + 12, 0)
+		else if (mm_n_prefix(text, c"actor ")): mm_n_declare(p, text + 6, 1)
+		else: mm_error(p.doc, p.pos, c"create requires participant or actor declaration")
+		if (p.doc.nodes.length != count + 1): mm_error(p.doc, p.pos, c"created participant must not already exist")
+		else: actor = count
+	else:
+		char* id = mm_n_trim(text)
+		for i in range(p.doc.nodes.length):
+			mm_node* node = p.doc.nodes[i]
+			if (strcmp(node.id, id) == 0): actor = i
+		free(id)
+		if (actor < 0): mm_error(p.doc, p.pos, c"destroy requires an existing participant")
+	if (p.doc.error != 0): return
+	int kind = MM_N_DESTROY
+	if (create): kind = MM_N_CREATE
+	mm_narrative_event* event = mm_n_event(p, kind, c"", c"")
+	if (event != 0): event.from_node = actor
+
+void mm_n_validate_lifetimes(mm_parser* p):
+	list[int] destroyed = new list[int]
+	for i in range(p.doc.nodes.length): destroyed.push(0)
+	mm_narrative_event* pending = 0
+	for i in range(p.doc.narrative.length):
+		mm_narrative_event* event = p.doc.narrative[i]
+		if (pending != 0):
+			if (event.kind != MM_N_MESSAGE):
+				mm_error(p.doc, p.pos, c"participant create/destroy must be followed by its message")
+				break
+			int actor = pending.from_node
+			if (pending.kind == MM_N_CREATE):
+				if (event.to_node != actor || event.from_node == actor): mm_error(p.doc, p.pos, c"creation message must target the new participant")
+			else:
+				if (event.to_node != actor && event.from_node != actor): mm_error(p.doc, p.pos, c"destruction message must involve the destroyed participant")
+			pending.end = i
+		if (event.from_node >= 0 && destroyed[event.from_node] && event.kind != MM_N_DEACTIVATE): mm_error(p.doc, p.pos, c"participant used after destruction")
+		if (event.to_node >= 0 && destroyed[event.to_node]): mm_error(p.doc, p.pos, c"participant used after destruction")
+		if (pending != 0):
+			if (pending.kind == MM_N_DESTROY): destroyed[pending.from_node] = 1
+			pending = 0
+		if (event.kind == MM_N_CREATE || event.kind == MM_N_DESTROY): pending = event
+		if (p.doc.error != 0): break
+	if (pending != 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"participant create/destroy requires a following message")
+	__w_list_free(cast(__w_list*, destroyed))
+
+void mm_n_autonumber(mm_parser* p, char* text, list[int] numbering):
+	if (strcmp(text, c"autonumber off") == 0):
+		numbering[0] = 0
+		return
+	if (strcmp(text, c"autonumber") == 0):
+		p.doc.narrative_numbered = 1
+		numbering[0] = 1
+		return
+	char* tail = mm_n_trim(text + 10)
+	int start = 1
+	int step = 1
+	if (tail[0] != 0):
+		int at = 0
+		while (tail[at] != 0 && tail[at] != 32 && tail[at] != 9): at = at + 1
+		char* first = mm_n_part(tail, 0, at)
+		start = mm_n_number(first, 1000000)
+		free(first)
+		char* rest = mm_n_trim(tail + at)
+		if (rest[0] != 0): step = mm_n_number(rest, 1000000)
+		free(rest)
+	free(tail)
+	if (start < 0 || step <= 0): mm_error(p.doc, p.pos, c"autonumber requires a nonnegative start and positive increment")
+	numbering[0] = 1
+	numbering[1] = start
+	numbering[2] = step
+	p.doc.narrative_numbered = 1
+
+void mm_n_sequence(mm_parser* p, char* text, list[int] blocks, list[int] numbering):
 	if (mm_n_prefix(text, c"participant ")): mm_n_declare(p, text + 12, 0)
 	else if (mm_n_prefix(text, c"actor ")): mm_n_declare(p, text + 6, 1)
-	else if (strcmp(text, c"autonumber") == 0): p.doc.narrative_numbered = 1
+	else if (mm_n_prefix(text, c"create ")): mm_n_lifecycle(p, text + 7, 1)
+	else if (mm_n_prefix(text, c"destroy ")): mm_n_lifecycle(p, text + 8, 0)
+	else if (strcmp(text, c"autonumber") == 0 || mm_n_prefix(text, c"autonumber ")): mm_n_autonumber(p, text, numbering)
 	else if (mm_n_prefix(text, c"activate ") || mm_n_prefix(text, c"deactivate ")):
 		int active = mm_n_prefix(text, c"activate ")
 		int start = 11
@@ -327,7 +406,83 @@ int mm_n_duration(char* text):
 	if (result <= 0): return -1
 	return result * multiplier
 
-void mm_n_gantt(mm_parser* p, char* text, char* section):
+# Temporary scheduling records live only during parsing; events retain resolved dates.
+struct mm_n_schedule:
+	mm_narrative_event* task
+	char* dependencies
+	char* until
+	list[int] dependency_indices
+	int until_index
+	int previous
+	int duration
+	int offset
+
+int mm_n_dependency_index(mm_parser* p, char* id, int offset):
+	for i in range(p.doc.narrative.length):
+		mm_narrative_event* task = p.doc.narrative[i]
+		if (task.detail[0] != 0 && strcmp(task.detail, id) == 0): return i
+	mm_error(p.doc, offset, c"unknown Gantt dependency")
+	return -1
+
+# Resolve names once, so reverse dependency chains do not repeatedly scan IDs.
+void mm_n_schedule_indices(mm_parser* p, list[mm_n_schedule*] schedules):
+	for mm_n_schedule* item in schedules:
+		int at = 0
+		while (item.dependencies[at] != 0):
+			while (item.dependencies[at] == 32 || item.dependencies[at] == 9): at = at + 1
+			int start = at
+			while (item.dependencies[at] != 0 && item.dependencies[at] != 32 && item.dependencies[at] != 9): at = at + 1
+			if (at == start): break
+			char* id = str_copy_range(item.dependencies, start, at)
+			int index = mm_n_dependency_index(p, id, item.offset)
+			free(id)
+			if (index >= 0): item.dependency_indices.push(index)
+		if (item.until[0] != 0): item.until_index = mm_n_dependency_index(p, item.until, item.offset)
+
+void mm_n_resolve_gantt(mm_parser* p, list[mm_n_schedule*] schedules):
+	# Resolve starts and ends independently: an until edge needs only a start.
+	mm_n_schedule_indices(p, schedules)
+	if (p.doc.error != 0): return
+	int last_day = mm_n_date(c"9999-12-31")
+	for pass in range(schedules.length * 2 + 1):
+		int changed = 0
+		int unresolved = 0
+		for mm_n_schedule* item in schedules:
+			mm_narrative_event* task = item.task
+			if (task.start < 0):
+				int begin = -1
+				if (item.previous >= 0):
+					mm_narrative_event* previous = p.doc.narrative[item.previous]
+					begin = previous.end
+				else:
+					int ready = 1
+					for int index in item.dependency_indices:
+						mm_narrative_event* dependency = p.doc.narrative[index]
+						int end = dependency.end
+						if (end < 0): ready = 0
+						if (end > begin): begin = end
+					if (ready == 0): begin = -1
+				if (begin >= 0):
+					task.start = begin
+					changed = 1
+			if (task.end < 0):
+				int finish = -1
+				if (item.until_index >= 0):
+					mm_narrative_event* dependency = p.doc.narrative[item.until_index]
+					finish = dependency.start
+				else if (task.start >= 0): finish = task.start + item.duration
+				if (finish >= 0):
+					task.end = finish
+					changed = 1
+			if (task.start < 0 || task.end < 0): unresolved = unresolved + 1
+			else if (task.end < task.start || task.end > last_day):
+				mm_error(p.doc, item.offset, c"Gantt end precedes start or exceeds supported calendar")
+		if (p.doc.error != 0 || unresolved == 0): return
+		if (changed == 0):
+			mm_error(p.doc, p.pos, c"cyclic Gantt dependencies")
+			return
+
+void mm_n_gantt(mm_parser* p, char* text, char* section, list[mm_n_schedule*] schedules):
 	int colon = index_of(text, c":")
 	if (colon < 1):
 		mm_error(p.doc, p.pos, c"unsupported Gantt directive or missing task colon")
@@ -354,7 +509,7 @@ void mm_n_gantt(mm_parser* p, char* text, char* section):
 		else: break
 		at = at + 1
 	char* id = strclone(c"")
-	if (at < fields.length && mm_n_date(fields[at]) < 0 && mm_n_duration(fields[at]) < 0 && mm_n_prefix(fields[at], c"after ") == 0):
+	if (at < fields.length && mm_n_date(fields[at]) < 0 && mm_n_duration(fields[at]) < 0 && mm_n_prefix(fields[at], c"after ") == 0 && mm_n_prefix(fields[at], c"until ") == 0 && strcmp(fields[at], c"0d") != 0):
 		free(id)
 		id = strclone(fields[at])
 		if (mm_n_actor(p, id) >= 0):
@@ -362,33 +517,32 @@ void mm_n_gantt(mm_parser* p, char* text, char* section):
 				if (strcmp(previous.detail, id) == 0): mm_error(p.doc, p.pos, c"duplicate Gantt task id")
 		at = at + 1
 	int begin = -1
+	char* dependencies = strclone(c"")
+	int previous = -1
+	if (fields.length - at >= 2):
+		begin = mm_n_date(fields[at])
+		if (begin < 0 && mm_n_prefix(fields[at], c"after ")):
+			free(dependencies)
+			dependencies = mm_n_trim(fields[at] + 6)
+			if (dependencies[0] == 0): mm_error(p.doc, p.pos, c"Gantt after requires task identifiers")
+		else if (begin < 0): mm_error(p.doc, p.pos, c"Gantt requires YYYY-MM-DD start or after dependencies")
+		at = at + 1
+	else:
+		previous = p.doc.narrative.length - 1
+		if (previous < 0): mm_error(p.doc, p.pos, c"first Gantt task requires an explicit start or dependencies")
 	int finish = -1
-	if (at < fields.length):
-		if (fields.length - at == 1 && p.doc.narrative.length > 0):
-			# A sole date/duration denotes the end of a sequential task.
-			mm_narrative_event* previous = p.doc.narrative[p.doc.narrative.length - 1]
-			begin = previous.end
-		else:
-			begin = mm_n_date(fields[at])
-			if (begin >= 0): at = at + 1
-			else if (mm_n_prefix(fields[at], c"after ")):
-				char* dependency = fields[at] + 6
-				for mm_narrative_event* previous in p.doc.narrative:
-					if (previous.detail[0] != 0 && strcmp(previous.detail, dependency) == 0): begin = previous.end
-				if (begin < 0): mm_error(p.doc, p.pos, c"Gantt dependency must name an earlier task")
-				at = at + 1
-			else if (p.doc.narrative.length > 0):
-				mm_narrative_event* previous = p.doc.narrative[p.doc.narrative.length - 1]
-				begin = previous.end
-
+	int duration = -1
+	char* until = strclone(c"")
 	if (at < fields.length):
 		finish = mm_n_date(fields[at])
 		if (finish < 0):
-			int duration = mm_n_duration(fields[at])
-			if (duration > 0 && begin >= 0): finish = begin + duration
-			if ((status & 8) != 0 && strcmp(fields[at], c"0d") == 0): finish = begin
+			duration = mm_n_duration(fields[at])
+			if ((status & 8) != 0 && strcmp(fields[at], c"0d") == 0): duration = 0
+			if (mm_n_prefix(fields[at], c"until ")):
+				free(until)
+				until = mm_n_trim(fields[at] + 6)
 		at = at + 1
-	if (begin < 0 || finish < begin || at != fields.length): mm_error(p.doc, p.pos, c"Gantt requires YYYY-MM-DD start (or earlier dependency) and end date or positive d/w duration")
+	if ((finish < 0 && duration < 0 && until[0] == 0) || at != fields.length): mm_error(p.doc, p.pos, c"Gantt requires end date, until task or positive d/w duration")
 	if (p.doc.error == 0):
 		mm_narrative_event* event = mm_n_event(p, MM_N_TASK, label, section)
 		if (event != 0):
@@ -397,6 +551,18 @@ void mm_n_gantt(mm_parser* p, char* text, char* section):
 			event.value = status
 			free(event.detail)
 			event.detail = strclone(id)
+			mm_n_schedule* schedule = new mm_n_schedule()
+			schedule.task = event
+			schedule.dependencies = strclone(dependencies)
+			schedule.until = strclone(until)
+			schedule.dependency_indices = new list[int]
+			schedule.until_index = -1
+			schedule.previous = previous
+			schedule.duration = duration
+			schedule.offset = p.pos
+			schedules.push(schedule)
+	free(dependencies)
+	free(until)
 	free(id)
 	free(label)
 	for char* field in fields: free(field)
@@ -524,6 +690,8 @@ void mm_narrative_body(mm_parser* p):
 	char* section = strclone(c"")
 	list[int] blocks = new list[int]
 	list[int] callers = new list[int]
+	list[mm_n_schedule*] schedules = new list[mm_n_schedule*]
+	list[int] numbering = list[int]{0, 1, 1}
 	while (mm_peek(p) != 0 && p.doc.error == 0):
 		if (mm_metadata(p)):
 			mm_separators(p)
@@ -536,7 +704,15 @@ void mm_narrative_body(mm_parser* p):
 			free(section)
 			section = mm_n_trim(text + 8)
 			if (section[0] == 0): mm_error(p.doc, p.pos, c"section requires a title")
-		else if (p.doc.kind == MM_SEQUENCE): mm_n_sequence(p, text, blocks)
+		else if (p.doc.kind == MM_SEQUENCE):
+			int first = p.doc.narrative.length
+			mm_n_sequence(p, text, blocks, numbering)
+			for i in range(first, p.doc.narrative.length):
+				mm_narrative_event* event = p.doc.narrative[i]
+				if (event.kind == MM_N_MESSAGE):
+					event.start = numbering[0]
+					event.value = numbering[1]
+					numbering[1] = numbering[1] + numbering[2]
 		else if (p.doc.kind == MM_JOURNEY): mm_n_journey(p, text, section)
 		else if (p.doc.kind == MM_TIMELINE): mm_n_timeline(p, text, section)
 		else if (p.doc.kind == MM_ZENUML): mm_n_zen(p, text, blocks, callers)
@@ -545,10 +721,19 @@ void mm_narrative_body(mm_parser* p):
 				char* format = mm_n_trim(text + 11)
 				if (strcmp(format, c"YYYY-MM-DD") != 0): mm_error(p.doc, p.pos, c"native Gantt currently requires dateFormat YYYY-MM-DD")
 				free(format)
-			else: mm_n_gantt(p, text, section)
+			else: mm_n_gantt(p, text, section, schedules)
 		free(text)
 		mm_separators(p)
 	if (blocks.length != 0): mm_error(p.doc, p.pos, c"unterminated narrative fragment or synchronous call")
+	if (p.doc.error == 0 && p.doc.kind == MM_SEQUENCE): mm_n_validate_lifetimes(p)
+	if (p.doc.error == 0 && p.doc.kind == MM_GANTT): mm_n_resolve_gantt(p, schedules)
+	for mm_n_schedule* item in schedules:
+		free(item.dependencies)
+		free(item.until)
+		__w_list_free(cast(__w_list*, item.dependency_indices))
+		free(item)
+	__w_list_free(cast(__w_list*, schedules))
+	__w_list_free(cast(__w_list*, numbering))
 	free(section)
 	__w_list_free(cast(__w_list*, blocks))
 	__w_list_free(cast(__w_list*, callers))
