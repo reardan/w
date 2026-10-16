@@ -6,6 +6,7 @@ struct mm_parser:
 	mm_document* doc
 	int pos
 	int scope
+	int global_nodes
 
 int mm_peek(mm_parser* p):
 	if (p.pos >= p.doc.length): return 0
