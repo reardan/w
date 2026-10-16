@@ -79,3 +79,12 @@ void test_exact_resource_limits_and_metrics():
 	assert_equal(-4, at_lex_match(code.data, 3, 0, c"", 0))
 	string_free(input)
 	string_free(code)
+
+
+void test_exact_nonproductive_fragment_preserves_failed_prefix():
+	# The recursive fragment never accepts; do not invent a base case.
+	assert_equal(1, pg_lexer_matcher_g_at_exact_DEAD_OPTION(c"dbbb!", 0))
+	assert_equal(2, pg_lexer_matcher_g_at_exact_DEAD_CONT(c"cx", 0))
+	# Retain its consuming transitions for ANTLR's invalid-token recovery.
+	assert_equal(-9, pg_lexer_matcher_g_at_exact_DEAD_CONT(c"cbbb!", 0))
+	assert_equal(-8, pg_lexer_matcher_g_at_exact_DEAD_CONT(c"cbbx", 0))

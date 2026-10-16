@@ -15,3 +15,6 @@ NG_SUFFIX: 's' .*? 'a' 'b';
 NG_OPTIONAL: 'u' 'a'?? 'a';
 NG_PLUS: 'p' 'a'+? 'a';
 MIXED: 'm' (.*? 'a' | 'aaaa');
+DEAD_OPTION: 'd' DEAD?;
+DEAD_CONT: 'c' DEAD? 'x';
+fragment DEAD: 'b' DEAD;

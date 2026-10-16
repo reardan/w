@@ -22,7 +22,11 @@ an acceptance; lower-priority configurations that crossed a nongreedy decision
 are pruned. This is stronger than selecting a fragment's longest endpoint.
 A recursive call stores an interned return context, so its caller's remaining
 input participates in matching. Nullable-prefix recursion remains rejected by
-the translator's structural audit. Nonproductive rules are not rewritten.
+the translator's structural audit. Nonproductive public token rules are refused.
+Nonproductive fragments retain their actual recursive transitions: optional calls
+can appear inside productive rules, and a failed call must preserve how far ANTLR
+inspected input during invalid-token recovery. No accepting base case is invented.
+Such calls remain subject to the same explicit resource limits.
 
 The bytecode consists of immutable six-field little-endian records, independent
 of target word size. Range transitions consume Unicode scalar values; reported

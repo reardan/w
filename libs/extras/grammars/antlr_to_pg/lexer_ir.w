@@ -98,7 +98,7 @@ char* at_exact_reason_alts(list[at_alt*] alts, map[char*, int] visited):
 				if (strcmp(e.text, c"EOF") == 0): continue
 				at_rule* target = g_lexer_rules.get(e.text, 0)
 				if (target == 0): return c"unknown lexer rule or fragment"
-				if ((e.text in g_at_exact_productive) == 0): return c"nonproductive lexer rule or fragment"
+				if ((target.is_fragment == 0) && ((e.text in g_at_exact_productive) == 0)): return c"nonproductive lexer rule or fragment"
 				if ((e.text in visited) == 0):
 					visited[e.text] = 1
 					char* reason = at_exact_reason_alts(target.alts, visited)
@@ -125,7 +125,7 @@ void at_exact_prepare(list[at_rule*] rules):
 	for at_rule* rule in rules:
 		if (rule.is_lexer == 0): continue
 		char* reason = 0
-		if ((rule.name in g_at_exact_productive) == 0): reason = c"nonproductive lexer rule or fragment"
+		if ((rule.is_fragment == 0) && ((rule.name in g_at_exact_productive) == 0)): reason = c"nonproductive lexer rule or fragment"
 		else:
 			map[char*, int] visited = new map[char*, int]
 			visited[rule.name] = 1
