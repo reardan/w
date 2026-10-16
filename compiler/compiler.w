@@ -1,4 +1,5 @@
 import lib.lib
+import lib.path
 import compiler.tokenizer
 import compiler.analysis
 import codegen
@@ -176,16 +177,7 @@ void path_normalize_sep(char* p):
 		p = p + 1
 
 
-# Return 1 if the path is absolute: starts with '/' (Unix) or with a
-# Windows drive letter and colon (e.g. 'C:\', 'C:/', 'c:').
-int path_is_absolute(char* p):
-	if (p[0] == 47): return 1
-	# Windows drive letter: an ASCII letter at [0], colon at [1]. The
-	# letter check keeps ':' in ordinary Unix filenames from matching
-	# (and never reads p[1] when the string is empty).
-	int first = p[0] | 32
-	if ((first >= 'a') && (first <= 'z') && (p[1] == 58)): return 1
-	return 0
+# path_is_absolute lives in lib/path.w.
 
 
 int compile_joined(char* cwd, char* filename):
