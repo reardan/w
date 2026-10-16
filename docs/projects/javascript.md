@@ -114,8 +114,9 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | `string_utf16` | empty | none; value in `string_units` |
 
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
-source-backed nodes preserve byte spans. `for-in`, assignment-target/`var` for-of bindings and
-catch destructuring remain explicit lowering failures. The printer handles
+source-backed nodes preserve byte spans. Bounded `for-in` lowering and execution
+are described in [enumeration](javascript_for_in.md). Assignment-target/`var`
+for-of bindings and catch destructuring remain explicit lowering failures. The printer handles
 loop bodies and label wrappers when protecting against a dangling `else`.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
@@ -199,9 +200,13 @@ Labelled function declarations remain unsupported (Annex B semantics).
 The initial semantic subset is deliberately explicit:
 
 - Undefined, null, booleans, binary64 decimal/hex/binary/octal numbers, UTF-16 strings; truthiness,
-  strict equality (including NaN), numeric `+ - * /` and comparisons, string
-  concatenation, `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary.
-  Bitwise `& | ^ ~ << >> >>>` use 32-bit JavaScript integer semantics.
+  strict equality (including NaN), bounded [abstract equality](javascript_equality.md),
+  numeric `- * /` and comparisons, and [addition](javascript_addition.md) with
+  ordinary ToPrimitive conversion, string concatenation and numeric conversion.
+  `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary work.
+  Bitwise `& | ^ ~ << >> >>>` apply [ordinary numeric coercion](javascript_numeric_coercion.md)
+  and 32-bit JavaScript integer semantics. Other numeric operators do not acquire
+  that broader coercion contract.
   `typeof` returns `undefined` for missing names while preserving TDZ failures.
 - Function/global `var` hoisting and redeclaration, parameter/var sharing, and
   duplicate body function declarations with the last declaration winning.
@@ -216,17 +221,31 @@ The initial semantic subset is deliberately explicit:
   objects, shorthand properties and methods, dot/computed property access,
   optional chains and mutation. Array/call spread accepts arrays and strings;
   object spread copies enumerable own properties. Shared non-enumerable array
-  methods include `push`, `shift`, `slice`, `splice`, and `includes`; string
-  methods include `slice`, `codePointAt`, `startsWith`, and `indexOf`.
+  methods include `push`, `shift`, generic [slice](javascript_arguments.md),
+  generic [some](javascript_array_some.md), `splice`, and `includes`.
+  [Array/Array.isArray](javascript_array.md) provide bounded construction and brand
+  checks. String methods include `slice`, `codePointAt`, `startsWith`, `indexOf`,
+  and Unicode 12.1 [toLowerCase/toUpperCase](javascript_string_case.md), including
+  full default mappings and contextual final sigma; locale casing is unsupported.
   String length/indexing use UTF-16 code units. Host-installed prototypes, data
   descriptors and accessors participate in property reads/writes; inherited
   accessors receive the original receiver. Read-only writes are ignored in
   sloppy code and throw in strict code. Function values expose `name`/`length`.
   Method calls pass `this`; arrows retain their enclosing receiver.
+  [Ordinary function construction](javascript_function_construction.md) provides
+  lazy prototype identity and constructor receiver/return behavior. Shared
+  [call/apply/bind](javascript_function_methods.md) forward receivers/arguments,
+  support generic array-like apply and retain bound values across GC. Dynamic
+  Function source construction and sloppy receiver boxing remain unsupported.
+  Strict/non-simple functions have deferred [unmapped arguments](javascript_arguments.md);
+  sloppy simple-parameter mapped arguments remain unsupported.
 - Lexical `for (let/const pattern of value)` over arrays and strings. Arrays read
   their live length each iteration; holes yield undefined. Strings iterate Unicode
   code points, preserving lone surrogates. Each iteration creates a fresh binding
   for captured closures; the iterable expression sees the binding in its TDZ.
+- [For-in](javascript_for_in.md) enumerates bounded ordinary own/prototype keys;
+  [in](javascript_has.md) tests property presence without invoking getters,
+  including hosts implementing the native HasProperty hook.
 - Cooked templates normalize raw CR/CRLF, decode escapes into UTF-16, and
   interpolate undefined, null, booleans, numbers and strings. Number spelling uses
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
@@ -235,14 +254,24 @@ The initial semantic subset is deliberately explicit:
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, generators, regex execution, tagged
-templates, prototype-literal `__proto__`, loose equality and additional numeric
-operators. Custom iterators, implicit operator coercions and exotic property-key
-conversions remain outside this subset. Destructuring assignment, computed binding
-keys and catch patterns remain unsupported. Global `this`, sloppy receiver
-substitution/boxing, `super` property access and ordinary functions' implicit `arguments` object
-are not implemented; accessing these receiver/arguments features reports
-unsupported status. Explicit `arguments` parameters remain ordinary bindings.
+through the script API, generators, tagged templates and prototype-literal
+`__proto__`. Numeric object-literal keys and array literal elisions are not yet
+lowered, although the runtime supports sparse arrays created through Array/length
+and indexed writes. Destructuring assignment, computed binding keys, catch
+patterns, custom iterators, Symbol hooks and exotic property-key conversions
+remain unsupported. Regex literals and bounded execution follow the separate
+[RegExp/string replace contract](javascript_regexp.md), not full RegExp coverage.
+Global `this`, sloppy receiver substitution/boxing and `super` property access
+remain unsupported. Explicit `arguments` parameters are ordinary bindings;
+non-simple parameters with a body lexical/function declaration named `arguments`
+remain unsupported because parameter/body environments are not split.
+
+Binary and conditional expressions use a bounded [iterative evaluator](javascript_expression_chains.md),
+with explicit saved-operand GC roots across await and cancellation. `if` branch
+tails and expression-statement wrappers reuse their evaluator frame. Original
+AST grouping, ordering, short circuiting, empty completions and per-node fuel
+remain intact; function recursion still uses the configured depth bound. This
+is not ECMAScript proper-tail-call support.
 
 Native Promise, binary buffers/views and text-codec constructors are supported;
 other constructor capabilities depend on installed host hooks. The runtime also
@@ -253,15 +282,17 @@ comparisons, compound assignments and increment/decrement within the existing
 `[-2^63, 2^64-1]` range. Division truncates toward zero; division by zero and
 results outside that range throw `RangeError`, and mixed Number/BigInt arithmetic
 throws `TypeError`. The WASI clock's millisecond-to-nanosecond multiplication and
-DataView roundtrip never convert a BigInt operand or result to Number. General
-BigInt coercion, mixed-type comparison, remainder, exponentiation and bitwise
-operators remain unsupported; arbitrary-precision arithmetic is not implemented.
+DataView roundtrip never convert a BigInt operand or result to Number. Ordinary addition/abstract-equality conversions support the documented bounded
+BigInt cases; mixed-type ordered comparison, remainder, exponentiation and
+BigInt bitwise operators remain unsupported; arbitrary-precision arithmetic is not implemented.
 These bounded range failures are implementation limits, not ECMAScript's
 arbitrary-precision behavior. Arithmetic follows the applicable algorithms in
 [ECMA-262 BigInt operations](https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-bigint-multiply). No DOM, timer
 task queue or browser authority is installed by the runtime. The separate
 [module API](javascript_modules.md) provides bounded acyclic graph loading with
-named const/function exports and live read-only imports. Browser module loading
+[mutable named exports](javascript_mutable_modules.md) and live read-only imports.
+Default exports, namespace imports, direct re-exports and cyclic graphs remain
+unsupported. Browser module loading
 supports top-level await through its explicit asynchronous evaluation API.
 
 Scope conflicts are checked before installing bindings, so a rejected script
