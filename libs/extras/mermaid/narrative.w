@@ -364,17 +364,23 @@ void mm_n_gantt(mm_parser* p, char* text, char* section):
 	int begin = -1
 	int finish = -1
 	if (at < fields.length):
-		begin = mm_n_date(fields[at])
-		if (begin >= 0): at = at + 1
-		else if (mm_n_prefix(fields[at], c"after ")):
-			char* dependency = fields[at] + 6
-			for mm_narrative_event* previous in p.doc.narrative:
-				if (previous.detail[0] != 0 && strcmp(previous.detail, dependency) == 0): begin = previous.end
-			if (begin < 0): mm_error(p.doc, p.pos, c"Gantt dependency must name an earlier task")
-			at = at + 1
-		else if (p.doc.narrative.length > 0):
+		if (fields.length - at == 1 && p.doc.narrative.length > 0):
+			# A sole date/duration denotes the end of a sequential task.
 			mm_narrative_event* previous = p.doc.narrative[p.doc.narrative.length - 1]
 			begin = previous.end
+		else:
+			begin = mm_n_date(fields[at])
+			if (begin >= 0): at = at + 1
+			else if (mm_n_prefix(fields[at], c"after ")):
+				char* dependency = fields[at] + 6
+				for mm_narrative_event* previous in p.doc.narrative:
+					if (previous.detail[0] != 0 && strcmp(previous.detail, dependency) == 0): begin = previous.end
+				if (begin < 0): mm_error(p.doc, p.pos, c"Gantt dependency must name an earlier task")
+				at = at + 1
+			else if (p.doc.narrative.length > 0):
+				mm_narrative_event* previous = p.doc.narrative[p.doc.narrative.length - 1]
+				begin = previous.end
+
 	if (at < fields.length):
 		finish = mm_n_date(fields[at])
 		if (finish < 0):

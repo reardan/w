@@ -268,6 +268,7 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		int x = left + (task.start - earliest) * unit
 		int w = (task.end - task.start) * unit
 		if ((task.value & 8) != 0):
+			x = x + w / 2
 			mm_line(s, x, y + 3, x + 12, y + 15, 0)
 			mm_line(s, x + 12, y + 15, x, y + 27, 0)
 			mm_line(s, x, y + 27, x - 12, y + 15, 0)
@@ -275,8 +276,8 @@ void mm_n_gantt_scene(mm_document* d, mm_scene* s):
 		else:
 			if (w < 2): w = 2
 			mm_draw(s, MM_BOX, x, y, x + w, y + 30, 0, c"")
-			if ((task.value & 1) != 0): mm_line(s, x, y + 15, x + w, y + 15, 0)
 			if ((task.value & 4) != 0 && w > 5): mm_draw(s, MM_BOX, x + 2, y + 3, x + w - 2, y + 27, 0, c"")
+			if ((task.value & 1) != 0): mm_line(s, x, y + 15, x + w, y + 15, 0)
 			if ((task.value & 2) != 0): mm_text(s, x + w + 8, y + 7, c"active")
 		s.nodes.push(new mm_bounds(x, y, w, 30, 0))
 	mm_line(s, left, 100, left + width, 100, 0)

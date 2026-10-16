@@ -204,3 +204,16 @@ void test_narrative_limits_and_long_label_geometry():
 	asserts(c"event limit enforced", d.error != 0)
 	mm_document_free(d)
 	string_free(text)
+
+void test_narrative_gantt_sequential_end_date_and_milestone_midpoint():
+	mm_document* d = narrative_parse(c"gantt\nA: 2024-01-01, 2d\nB: 2024-01-07\nMiddle: milestone, 2024-01-01, 4d\n")
+	mm_narrative_event* first = d.narrative[0]
+	mm_narrative_event* next = d.narrative[1]
+	assert_equal(first.end, next.start)
+	assert_equal(mm_n_date(c"2024-01-07"), next.end)
+	mm_scene* scene = mm_render(d)
+	mm_bounds* bar = scene.nodes[0]
+	mm_bounds* point = scene.nodes[2]
+	assert_equal(bar.x + bar.w, point.x)
+	mm_scene_free(scene)
+	mm_document_free(d)
