@@ -476,8 +476,15 @@ respects source/parser/retained-script limits, stores the owned AST in the realm
 and returns a global-environment closure without executing its body. It does not
 reset execution state or permit arbitrary nested script evaluation. Failures use
 the existing completion; hosts must root a retained callback across collection.
-`String(value)` now converts supported primitives (and `String()` returns the
-empty string); wrapper construction and object coercion remain unsupported.
+`String(value)` converts supported primitives and ordinary objects through the
+bounded [string coercion contract](javascript_string_coercion.md); `String()`
+returns the empty string. Wrapper construction and Symbol hooks are unsupported.
+`parseFloat` and `Number.parseFloat` share a native function that converts through
+that contract and parses the longest valid decimal prefix after ECMAScript
+whitespace. It preserves signed zero, accepts signed `Infinity`, rounds decimal
+values to binary64, and handles overflow/subnormal values. The input is bounded
+by the runtime string limit and charged to the current execution budget. This
+does not add general numeric coercion or `parseInt`.
 
 
 The bounded class subset supports declarations and expressions, identifier-named
@@ -496,7 +503,7 @@ async/generator methods, fields, private names, `super` property access,
 `new.target`, ordinary-function or other built-in subclassing, inferred anonymous
 class names, and Symbol.hasInstance hooks remain outside the runtime subset.
 `Error` and `ReferenceError` support calls/construction and primitive messages, but not options/cause,
-stack traces or object message coercion. Runtime-generated reference errors use ReferenceError.prototype; other runtime
+stack traces. Ordinary object messages use the bounded string coercion contract. Runtime-generated reference errors use ReferenceError.prototype; other runtime
 errors share Error.prototype while retaining their existing explicit names. Class evaluation and
 construction follow the applicable [ECMA-262 class algorithms](https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-classdefinitionevaluation).
 
