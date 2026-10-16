@@ -440,7 +440,27 @@ policy retains skip/token ordering and literal priority on equal lengths.
 - `type TOKEN` remaps the selected token kind.
 - `channel default`, `channel hidden`, or `channel error` selects its channel.
   Error-channel tokens add diagnostics; non-default channels stay in `all_tokens`.
-- `skip` retains the token as hidden trivia. `more` is rejected.
+- `skip` retains the token as hidden trivia.
+- `more` accumulates the matched text and continues lexing, including mode
+  transitions, until a rule without `more` finishes the token. The finishing
+  rule supplies its kind (including `type` remapping); channel changes persist
+  across fragments. The resulting token retains the first fragment's source
+  location and the complete accumulated text. A finishing `skip` hides that
+  entire span. `more` cannot share a rule with `skip`, `type`, or another `more`.
+
+An accumulating provider call is atomic: rollback restores the lexer state
+before the whole token and replays all fragments. Unmatched input and EOF during
+accumulation produce diagnostics and retain the consumed text as hidden invalid
+tokens; every iteration must consume input.
+
+`token NAME` on its own line declares a symbolic token kind, with no matching
+rule, for a `type NAME` command to produce. This requires a stateful lexer.
+Symbolic kinds cannot appear inside matcher expressions or own lexer commands.
+
+The default `lexer_eof closed_modes` policy reports EOF with an active mode or
+nonempty mode stack. `lexer_eof any_mode` permits completed tokens to leave a
+mode active at EOF, as ANTLR grammars such as properties files expect. Both
+policies diagnose an unfinished `more` sequence.
 
 `lexer_guard TOKEN { expression }` is a pure candidate guard. It runs only for
 a positive-length candidate and can read `state`, `input`, `index` (the source

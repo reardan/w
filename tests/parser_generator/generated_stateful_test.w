@@ -113,7 +113,7 @@ void test_grammar_safety_diagnostics():
 	assert1(stateful_generation_rejected(c"parser bad\ntoken ID letters\nrule root = empty? root ID | ID\nrule empty =\n"))
 	assert1(stateful_generation_rejected(c"parser bad\ntoken ID letters\nrule root = second ID | ID\nrule second = root |\n"))
 	assert1(stateful_generation_rejected(c"parser bad\ntoken ID letters\nrule root = empty* EOF\nrule empty = ID?\n"))
-	assert1(stateful_generation_rejected(c"parser bad\nlexer stateful\nliteral X \"x\"\nlexer_command X more\nrule root = X EOF\n"))
+	assert1(stateful_generation_rejected(c"parser bad\nlexer stateful\nliteral X \"x\"\nlexer_command X more\nlexer_command X skip\nrule root = X EOF\n"))
 	assert1(stateful_generation_rejected(c"parser bad\nlexer stateful\nliteral X \"x\"\nlexer_rule X UNDECLARED\nrule root = X EOF\n"))
 	assert1(stateful_generation_rejected(c"parser bad\nlexer stateful\nliteral X \"x\"\nlexer_command X type UNKNOWN\nrule root = X EOF\n"))
 	assert1(stateful_generation_rejected(c"parser bad\nliteral X \"x\"\ngoal root 1\nrule root = X EOF\n"))

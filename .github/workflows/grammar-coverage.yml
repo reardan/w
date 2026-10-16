@@ -1,0 +1,74 @@
+name: ANTLR grammar compile coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grammar-coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pinned-corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out W
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
+      - name: Build translator and test sweep harness
+        run: ./wbuild antlr_to_pg antlr_sweep_harness_test
+      - name: Fetch the pinned corpus
+        env:
+          GV4: ${{ runner.temp }}/grammars-v4
+        run: |
+          revision=$(python3 -c 'import json; print(json.load(open("libs/extras/grammars/antlr_to_pg/sweep_baseline.json"))["corpus_commit"])')
+          git init "$GV4"
+          git -C "$GV4" remote add origin https://github.com/antlr/grammars-v4.git
+          git -C "$GV4" config core.sparseCheckout true
+          printf '/*/*.g4\n' > "$GV4/.git/info/sparse-checkout"
+          git -C "$GV4" -c protocol.version=2 fetch --depth=1 --filter=blob:none origin "$revision"
+          git -C "$GV4" checkout --detach FETCH_HEAD
+      - name: Compare every pinned grammar and stage
+        env:
+          GV4: ${{ runner.temp }}/grammars-v4
+          WORK: ${{ github.workspace }}/bin/grammar_coverage_ci
+        run: libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90
+      - name: Report stage coverage
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          results = Path('bin/grammar_coverage_ci/results.json')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              if not results.exists():
+                  summary.write('Corpus sweep did not finish; inspect job logs and artifacts.\n')
+              else:
+                  data = json.loads(results.read_text())['summary']
+                  summary.write('Stage | Passing / cases\n--- | ---\n')
+                  for stage, count in data['passing'].items():
+                      summary.write(f'{stage} | {count}/{data["cases"]}\n')
+                  summary.write('\nCompilation uses an empty main. Generated parsers are not executed by this sweep.\n\n')
+                  for error in data['regressions'] + data['infrastructure_errors']:
+                      summary.write(f'- {error}\n')
+          PY
+      - name: Upload results and complete diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: grammar-coverage
+          path: |
+            bin/grammar_coverage_ci/results.*
+            bin/grammar_coverage_ci/**/*.log
+            bin/grammar_coverage_ci/**/*.audit
+            bin/grammar_coverage_ci/**/*.report
+            bin/grammar_coverage_ci/**/*.pg
+            bin/grammar_coverage_ci/**/*.inputs
+          retention-days: 14
