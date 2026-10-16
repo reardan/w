@@ -149,6 +149,7 @@ void js_runtime_install_array(js_runtime* rt);
 void js_runtime_install_function(js_runtime* rt);
 js_value* js_function_bound(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
 js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
+void js_runtime_install_string_case(js_runtime* rt);
 void js_runtime_install_regexp(js_runtime* rt);
 void js_regexp_free(void* raw);
 js_value* js_regexp_literal(js_runtime* rt, char* raw);
@@ -452,6 +453,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_number_parse(rt)
 	js_runtime_install_bigint(rt)
 	js_runtime_install_classes(rt)
+	js_runtime_install_string_case(rt)
 	js_runtime_install_json(rt)
 	return rt
 
@@ -1830,3 +1832,4 @@ import libs.extras.javascript.runtime_has
 import libs.extras.javascript.runtime_array
 
 import libs.extras.javascript.runtime_function
+import libs.extras.javascript.runtime_string_case
