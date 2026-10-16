@@ -10,8 +10,5 @@
 # wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture64"
 # wbuild: step="bin/wv2 --strict x64 --inline tests/safe_slice_runtime_fixture.w -o bin/safe_slice_runtime_fixture64"
 # wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_slice_runtime_fixture64"
-import lib.testing
-
-
-void test_checked_slice_runtime_is_exercised_by_steps():
-	assert1(1)
+int main():
+	return 0

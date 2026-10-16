@@ -31,7 +31,10 @@ int slice_runtime_exercise():
 	int remaining = 10000
 	int total = 0
 	while remaining > 0:
-		ref int[] local = slice_runtime_copy(slice_runtime_copy(a))
+		ref int[] full = a
+		ref int[] local = slice_runtime_copy(slice_runtime_copy(full)[0:1])
+		ref int[] empty = local[0:0]
+		if empty.length != 0: return 2
 		ref int* element = slice_runtime_element(local)
 		total = total + *element
 		remaining = remaining - 1

@@ -27,7 +27,7 @@ void slice_lifetime_result(process_result* result, char* diagnostic, int checkin
 		assert_contains(message, diagnostic)
 
 
-void slice_lifetime_case(char* source, char* diagnostic, int relaxed = 0):
+void slice_lifetime_case(char* source, char* diagnostic, int relaxed = 0, char* runtime_diagnostic = 0):
 	slice_lifetime_case_number = slice_lifetime_case_number + 1
 	char* number = itoa(slice_lifetime_case_number)
 	char* prefix = c"bin/slice_lifetime_case32_"
@@ -78,7 +78,10 @@ void slice_lifetime_case(char* source, char* diagnostic, int relaxed = 0):
 			strv_set(run, 0, output)
 			process_result* executed = process_run(output, run, 0, 0, 30000)
 			assert1(executed != 0)
-			assert_equal(0, executed.status)
+			if (runtime_diagnostic):
+				assert_equal(1, executed.status)
+				assert_contains(executed.stderr_text, runtime_diagnostic)
+			else: assert_equal(0, executed.status)
 			process_result_free(executed)
 			free(cast(void*, run))
 		unlink(output)
@@ -132,7 +135,31 @@ void test_checked_slice_boundaries():
 	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[1] values\n\tint[] raw = values[0:1]\n\tref int[] s = view(raw)\n\treturn s.length\n", c"safe:", 1)
 	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values\n\tint[] raw = s\n\treturn raw.length\n", c"safe:", 1)
 	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values[0:1]\n\treturn s.length\n", c"safe:", 1)
-	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values\n\tref int[] t = s[0:1]\n\treturn t.length\n", c"safe:", 1)
+	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values\n\tref int[] t = s[0:1]\n\treturn t.length - 1\n", 0)
 	slice_lifetime_case(c"int main():\n\tint n = 0\n\tref int* p = &n\n\tref int[] s = p\n\treturn s.length\n", c"safe:", 1)
 	slice_lifetime_case(c"int main():\n\tref int[] s\n\treturn 0\n", c"initialization")
 	slice_lifetime_case(c"int main():\n\tint[1] a\n\tint[1] b\n\tref int[] s = a\n\ts = b\n\treturn s.length\n", c"cannot be reassigned")
+
+
+void test_checked_slice_ranges():
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[1:3]\n\treturn t[0] + t[1] + t.length - 14\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[0:0]\n\treturn t.length\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[s.length:s.length]\n\treturn t.length\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[:2]\n\treturn t[0] + t[1] + t.length - 10\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[1:]\n\treturn t[0] + t[1] + t.length - 14\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[:]\n\treturn t[0] + t[2] + t.length - 13\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[1:3][0:1]\n\treturn t[0] + t.length - 6\n", 0)
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = view(s)[1:3]\n\treturn t[0] + t.length - 7\n", 0)
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = view(s[1:3])\n\treturn t[0] + t.length - 7\n", 0)
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = view(view(s)[1:3][0:1])\n\treturn t[0] + t.length - 6\n", 0)
+	slice_lifetime_case(c"ref[a] int[] tail(ref[a] int[] values):\n\treturn values[1:]\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = tail(tail(s))\n\treturn t[0] + t.length - 8\n", 0)
+	slice_lifetime_case(c"ref[a] int[] empty(ref[a] int[] values):\n\treturn values[0:0]\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = empty(s)\n\treturn t.length\n", 0)
+	slice_lifetime_case(c"ref[a] int* second(ref[a] int[] values):\n\tref int[] tail = values[1:]\n\treturn &tail[0]\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int* p = second(s)\n\treturn *p - 5\n", 0)
+	slice_lifetime_case(c"ref[a] char[] tail(ref[a] char[] values):\n\treturn values[1:]\nint main():\n\tchar[3] values\n\tvalues[0] = 65\n\tvalues[1] = 0\n\tvalues[2] = 66\n\tref char[] s = values\n\tref char[] t = tail(s)\n\treturn cast(int, t[0]) + cast(int, t[1]) + t.length - 68\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[1:3]\n\tvalues[0] = 9\n\treturn t[0]\n", c"conflicting")
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = view(s)[1:3]\n\tvalues[0] = 9\n\treturn t[0]\n", c"conflicting")
+	slice_lifetime_case(c"int lower(refmut int* calls):\n\t*calls = *calls + 1\n\treturn 1\nint upper(refmut int* calls):\n\t*calls = *calls + 1\n\treturn 3\nint main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tint calls = 0\n\tref int[] t = s[lower(&calls):upper(&calls)]\n\treturn t[0] + t.length + calls - 9\n", 0)
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tint low = -1\n\tref int[] t = s[low:2]\n\treturn t.length\n", 0, 0, c"index out of range: index -1, length 3")
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tint high = 4\n\tref int[] t = s[0:high]\n\treturn t.length\n", 0, 0, c"index out of range: index 4, length 3")
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tint low = 2\n\tref int[] t = s[low:1]\n\treturn t.length\n", 0, 0, c"index out of range: index 2, length 1")
+	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[0:0]\n\treturn t[0]\n", 0, 0, c"index out of range: index 0, length 0")
