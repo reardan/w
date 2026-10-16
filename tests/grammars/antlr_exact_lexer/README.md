@@ -6,7 +6,8 @@ unmapped predicates/actions exact. The initial supported grammar subset includes
 Unicode scalar sets, properties, complements, literals, wildcard,
 sequences, alternatives, optional/repeated atoms, nongreedy decisions, and
 productive lexer rule/fragment calls. Unicode escape/range/property lowering and grammar/rule case options use pinned
-ANTLR/Java 17 data; see `tools/antlr_unicode/README.md`. Implicit case-insensitive
+ANTLR/Java 17 data; see `tools/antlr_unicode/README.md`. Rule-level case options
+apply only to lexer rules; parser-rule options remain unsupported. Implicit case-insensitive
 parser literals still require explicit token rules. Malformed/unknown properties
 and unsupported host code remain strict failures.
 

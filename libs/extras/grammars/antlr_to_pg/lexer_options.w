@@ -48,7 +48,9 @@ void at_exact_prepare_cases(list[at_rule*] rules):
 	for at_rule* rule in rules:
 		int value = 0
 		if (rule.first != 0): value = g_at_exact_case_defaults.get(rule.first.filename, 0)
-		for at_site* site in rule.options: at_exact_case_option(site, &value, 0)
+		# ANTLR only recognizes this rule option on lexer rules.
+		if (rule.is_lexer):
+			for at_site* site in rule.options: at_exact_case_option(site, &value, 0)
 		g_at_exact_cases[rule.name] = value
 
 

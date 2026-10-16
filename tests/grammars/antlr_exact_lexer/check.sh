@@ -44,7 +44,12 @@ root: expression EOF;
 expression: expression 'or' expression | 'yes';
 WS: [ \t\r\n]+ -> skip;
 GRAMMAR
-for name in property nonproductive host implicit implicit_expression escape nul; do
+cat > "$work/parser_case.g4" <<'GRAMMAR'
+grammar ParserCase;
+options { caseInsensitive=true; }
+root options { caseInsensitive=false; }: 'a' EOF;
+GRAMMAR
+for name in property nonproductive host implicit implicit_expression parser_case escape nul; do
     if bin/antlr_to_pg --strict --exact-lexer "$work/$name.g4" -o "$work/output.pg" --matchers "$work/matchers.w" 2> "$work/$name.stderr"; then
         echo "expected exact strict refusal: $name" >&2
         exit 1
