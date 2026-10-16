@@ -246,9 +246,10 @@ int safe_record_shape(int type):
 	return lifetime != 0
 
 
-int safe_owned_shape_walk(int type, int depth, int* path):
+int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	type = safe_unqualified(type)
-	if ((type < 0) || (depth > 32)): return 0
+	if ((type < 0) || (depth > 32) || (*remaining <= 0)): return 0
+	*remaining = *remaining - 1
 	if (safe_plain(type, 0) || safe_opaque(type)): return 1
 	for i in range(depth):
 		if (path[i] == type): return 0
@@ -258,14 +259,16 @@ int safe_owned_shape_walk(int type, int depth, int* path):
 	for i in range(record.fields.length):
 		int field = record.fields[i].type
 		if (safe_kind(field) == 1):
-			if (safe_owned_shape_walk(safe_pointee(field), depth + 1, path) == 0): return 0
+			if (safe_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
 		else if (safe_plain(field, 0) == 0): return 0
 	return 1
 
 
 int safe_owned_shape(int type):
 	int[33] path
-	return safe_owned_shape_walk(type, 0, &path[0])
+	# Bound repeated expansion of acyclic owner-field graphs as well as depth.
+	int remaining = 256
+	return safe_owned_shape_walk(type, 0, &path[0], &remaining)
 
 
 void safe_type_check(int id, int type):
