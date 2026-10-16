@@ -163,3 +163,10 @@ void test_checked_slice_ranges():
 	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tint high = 4\n\tref int[] t = s[0:high]\n\treturn t.length\n", 0, 0, c"index out of range: index 4, length 3")
 	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tint low = 2\n\tref int[] t = s[low:1]\n\treturn t.length\n", 0, 0, c"index out of range: index 2, length 1")
 	slice_lifetime_case(c"int main():\n\tint[3] values\n\tvalues[0] = 3\n\tvalues[1] = 5\n\tvalues[2] = 7\n\tref int[] s = values\n\tref int[] t = s[0:0]\n\treturn t[0]\n", 0, 0, c"index out of range: index 0, length 0")
+
+
+void test_checked_slice_temporary_boundaries():
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint change(refmut int* p):\n\t*p = 9\n\treturn 0\nint main():\n\tint[2] values\n\tref int[] s = view(values)[change(&values[0]):1]\n\treturn s[0]\n", c"conflicting")
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint change(refmut int* p):\n\t*p = 9\n\treturn 1\nint main():\n\tint[2] values\n\tref int[] s = view(values)[0:change(&values[0])]\n\treturn s[0]\n", c"conflicting")
+	slice_lifetime_case(c"int consume(int n):\n\treturn n\nint main():\n\tint[3] values\n\tref int[] s = values\n\treturn consume(s[1:3].length)\n", c"named checked pointer")
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[3] values\n\tref int[] s = values\n\treturn view(s)[0]\n", c"named checked pointer")

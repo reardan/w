@@ -28,7 +28,7 @@ int slice_runtime_exercise():
 	int[2] b
 	a[0] = 7
 	b[0] = 9
-	int remaining = 10000
+	int remaining = 100000
 	int total = 0
 	while remaining > 0:
 		ref int[] full = a
@@ -45,5 +45,5 @@ int slice_runtime_exercise():
 
 int main():
 	int before = debug_alloc_report_leaks()
-	if slice_runtime_exercise() != 70016: return 1
+	if slice_runtime_exercise() != 700016: return 1
 	return debug_alloc_report_leaks() - before
