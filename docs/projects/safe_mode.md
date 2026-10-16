@@ -563,9 +563,9 @@ heap allocations. The
 growable storage, returned views, borrowed slice fields, whole-owner moves
 and recursive destruction in one program.
 
-The final merged implementation passes all 1,237 targets from
+The pre-CI-fix implementation at `b28642e4` passed all 1,237 targets from
 `./wbuild -j 6 tests verify_x64 wbench_compare`, including both self-host
-fixpoints and the benchmark gate. The instrumented full suite passes all
+fixpoints and the benchmark gate. Its instrumented full suite passed all
 1,236 of its targets and reaches 636 of 653 changed executable compiler
 lines (97%). Compiler line/branch coverage is 95.3% / 85.5%; code-generator
 coverage is 97.0% / 88.5%. Coverage floors retain the measured gains.
@@ -576,3 +576,11 @@ Independent review found an evaluation-order lifetime hole in
 projected stores and indices; temporary backing-storage reservations and
 15 positive/negative regression cases cover the fix. These results remain
 regression evidence, not a proof of soundness or Rust-level maturity.
+
+The separate required-AST CI suite exposed missing parsing for checked-pointer
+casts and legacy slice-descriptor casts in the audited runtime. The AST parser
+now handles these types transactionally, including lifetime-label storage.
+Buffer and collection runtime tests explicitly compile with `--ast-required`
+in the ordinary suite too. Parser regressions cover both compiler hosts and
+target architectures, contextual qualifier names, nested aliases, lifetime
+arena growth, and unsafe casts that must still reach the safe-mode checker.

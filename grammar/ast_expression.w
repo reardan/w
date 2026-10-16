@@ -2094,6 +2094,24 @@ int ast_expression_postfix(expression_ast* tree, int depth);
 # without marking symbol uses or producing diagnostics.
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 1000): return -1
+	int safe_kind = 0
+	int lifetime = -1
+	if (peek(c"own")): safe_kind = 1
+	if (peek(c"ref")): safe_kind = 2
+	if (peek(c"refmut")): safe_kind = 3
+	if (safe_kind && ((nextc == '.') || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0) || (sym_probe(token) >= 0))): safe_kind = 0
+	if (safe_kind):
+		if ((type_safe_entrypoint == 0) || (ast_retain_mode == 0)): return -1
+		ast_expression_advance(tree)
+		if (ast_expression_accept(tree, c"[")):
+			if ((safe_kind == 1) || (is_ident_start_byte(token[0]) == 0)): return -1
+			int length = strlen(token) + 1
+			expression_ast_type_names_reserve(tree, length)
+			lifetime = tree.type_names_used
+			strcpy(tree.type_names + lifetime, token)
+			tree.type_names_used = tree.type_names_used + length
+			ast_expression_advance(tree)
+			if (ast_expression_accept(tree, c"]") == 0): return -1
 	int is_const = ast_expression_accept(tree, c"const")
 	int is_gpu = 0
 	if (peek(c"gpu") && (type_lookup(c"gpu") < 0) && (sym_probe(c"gpu") < 0)):
@@ -2165,7 +2183,16 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		if (ast_expression_accept(tree, c"]") == 0): return -1
 		type = ast_expression_composite_type(tree, type_kind_slice, type, -1, token_start_offset)
 		if (type < 0): return -1
-	if (scalar && (ast_expression_scalar_type(type) == 0)): return -1
+	if (safe_kind):
+		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || is_gpu || type_is_gpu_pointer(type)): return -1
+		int raw = type_canonical(type_safe_target(type))
+		int element = type_lookup_pointer(type_get_name(raw), type_get_pointer_level(raw) - 1)
+		if ((element < 0) || (type_get_size(element) <= 0)): return -1
+		type = ast_expression_safe_pointer_type(tree, type, safe_kind, lifetime, token_start_offset)
+		if (type < 0): return -1
+	# A legacy slice cast produces its one-word descriptor pointer. Inline
+	# checked slices still require their dedicated value/borrow conversion.
+	if (scalar && (ast_expression_scalar_type(type) == 0) && (type_get_kind(type_unqualified(type)) != type_kind_slice)): return -1
 	return type
 
 
