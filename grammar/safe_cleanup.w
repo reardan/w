@@ -24,6 +24,32 @@ void safe_owner_clear_slot(int slot):
 	pop_eax_slot()
 
 
+# Generated destructor calls have no source expression for the safety pass
+# to resolve. Match the sealed type and the already-defined helper against
+# the same audited source; safe_audit_runtime also verifies its content hash.
+char* safe_owner_drop_helper(int element):
+	element = type_unqualified(element)
+	char* source = debug_file_name(type_decl_file_index(element))
+	if (ends_with(source, c"/lib/safe_buffer.w") == 0): return 0
+	char* name = type_get_name(element)
+	char* helper = 0
+	if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
+	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"
+	if (helper == 0): return 0
+	int symbol = sym_lookup(helper)
+	if (symbol < 0): error(c"safe: audited destructor implementation is missing")
+	if ((table[symbol + 1] != 'D') || (strcmp(debug_file_name(sym_decl_file_index(symbol)), source) != 0)):
+		error(c"safe: audited destructor resolved to a different implementation")
+	if ((sym_num_args(symbol) != 1) || (load_int(table + symbol + 6) != type_lookup(c"void"))):
+		error(c"safe: audited destructor signature differs from its contract")
+	int parameter = type_unqualified(sym_param_type(symbol, 0))
+	if ((type_safe_kind(parameter) != 0) || (type_get_pointer_level(parameter) != 1)):
+		error(c"safe: audited destructor signature differs from its contract")
+	if (type_unqualified(type_lookup_previous_pointer(parameter)) != element):
+		error(c"safe: audited destructor signature differs from its contract")
+	return helper
+
+
 # Drop owned fields in reverse declaration order, then the allocation.
 # The descriptor is held in a stack slot across nested allocator calls.
 # Emission is bounded before the semantic pass runs: recursive type graphs
@@ -34,6 +60,14 @@ void safe_owner_drop_value(int type, int depth):
 	be_br_zero(done)
 	int object_slot = push_slot()
 	int element = type_lookup_previous_pointer(type)
+	char* helper = safe_owner_drop_helper(element)
+	if (helper != 0):
+		int helper_stack = rt_call_begin(helper)
+		push_slot_copy(object_slot)
+		rt_call_end(helper_stack)
+		drop_slots(1)
+		be_ctrl_end(done)
+		return
 	int field = type_num_args(element)
 	while (field > 0):
 		field = field - 1
