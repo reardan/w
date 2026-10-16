@@ -7,7 +7,7 @@ The native engine supports all four railroad headers from the pinned
 
 The parser stores an owned grammar syntax tree in `mm_document.railroad`.
 Terminals, references, sequences, alternatives, optional paths, repetitions,
-ABNF numeric literals and PEG predicates retain distinct semantics. The
+ABNF numeric literals and PEG predicates, character classes, and EBNF exceptions retain distinct semantics. The
 renderer draws rule entry/exit markers, rounded terminals, square references,
 branch rails, optional bypasses and backwards repetition loops. PEG alternatives
 are numbered in evaluation order. Predicates are explicitly labeled as
@@ -17,16 +17,21 @@ the grammar or creating exponential numbers of boxes.
 | Notation | Supported | Remaining syntax |
 | --- | --- | --- |
 | IR | All eight documented constructors: terminal, nonterminal, special, sequence, choice, optional, zeroOrMore, oneOrMore; nested and multiline constructors | Configuration and custom styling |
-| EBNF | `=` / `::=`, single/double quoted terminals, references, adjacent/comma sequences, `|`, grouping, `?` / `*` / `+`, `[optional]`, `{repetition}`, `? special ?`, `/* */` and `(* *)` comments | Exception operator `A - B`, extended literal escape syntax |
-| ABNF | `=`, references including hyphens, `/`, grouping, optional groups, prefix `*`, `1*`, `2*4`, exact counts, `%x` / `%d` / `%b` numeric values/ranges/sequences, line comments | Incremental `=/` rules, RFC 7405 explicit `%s` / `%i` strings, case-insensitive rule-name folding |
-| PEG | `<-`, quoted terminals, references, ordered `/`, sequences, `?` / `*` / `+`, `&` and `!` predicates, wildcard `.`, grouping, `#` comments | Character classes and extended literal escapes |
+| EBNF | `=` / `::=`, single/double quoted terminals, references, adjacent/comma sequences, `|`, grouping, `?` / `*` / `+`, `[optional]`, `{repetition}`, `? special ?`, `/* */` and `(* *)` comments, exception operator `A - B` | Extended literal escape syntax |
+| ABNF | `=`, references including hyphens, `/`, grouping, optional groups, prefix `*`, `1*`, `2*4`, exact counts, `%x` / `%d` / `%b` numeric values/ranges/sequences, line comments, incremental `=/` rules, RFC 7405 explicit `%s` / `%i` strings, case-insensitive rule-name folding | Extended literal escape syntax |
+| PEG | `<-`, quoted terminals, references, ordered `/`, sequences, `?` / `*` / `+`, `&` and `!` predicates, wildcard `.`, grouping, `#` comments, character classes with ranges and escaped brackets/backslashes/`n`/`r`/`t` | Extended literal escapes |
 
 All rules require a terminating semicolon. In ABNF it also begins the trailing
 line comment; write each rule on its own line. The optional `title` statement
 accepts a quoted or unquoted title. `%%` source comments work in every notation.
 Quoted literals accept escaped matching quotes and backslashes; other escapes
 are rejected. Rule references are not expanded and may refer to external/core
-grammar rules. ABNF quoted strings are visibly marked case-insensitive.
+grammar rules. ABNF quoted strings are visibly marked case-insensitive unless prefixed with `%s`.
+Incremental rules extend an earlier definition and fold rule/reference names to
+lowercase. EBNF exceptions bind more tightly than concatenation and display both
+the included and excluded expression in an explicitly labeled frame; they are
+not rendered as alternatives. PEG character classes consume a single character;
+empty classes, reversed ranges and unterminated escapes are diagnosed.
 
 Limits are 256 rules, 1024 expression nodes, 32 recursive parser levels, and
 repeat bounds up to 1,000,000. Numeric ABNF values must fall in 0–0x10FFFF, with

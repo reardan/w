@@ -110,7 +110,7 @@ void test_rail_geometry_bypasses_loops_and_zero_count():
 void test_rail_errors_limits_and_escaping():
 	rail_bad(c"railroad-ebnf-beta\nr = \"a\"\n")
 	rail_bad(c"railroad-ebnf-beta\nr = \"a\";\nr = \"b\";\n")
-	rail_bad(c"railroad-ebnf-beta\nr = A - B;\n")
+	rail_bad(c"railroad-ebnf-beta\nr = A - ;\n")
 	rail_bad(c"railroad-ebnf-beta\n/* missing\n")
 	rail_bad(c"railroad-ebnf-beta\n")
 	string_builder* text = string_from(c"railroad-ebnf-beta\nr = ")
@@ -134,7 +134,7 @@ void test_rail_errors_limits_and_escaping():
 	mm_document_free(d)
 
 void test_rail_truncated_prefixes_and_source_edits():
-	list[char*] sources = list[char*]{c"railroad-beta\nr = sequence(terminal(\"a\"),optional(nonterminal(\"b\")));\n", c"railroad-ebnf-beta\nr = (\"a\" | 'b')+ [C] {D};\n", c"railroad-abnf-beta\nr = 2*4(A / %x30-39) ;\n", c"railroad-peg-beta\nr <- !A (\"b\" / .)*;\n"}
+	list[char*] sources = list[char*]{c"railroad-beta\nr = sequence(terminal(\"a\"),optional(nonterminal(\"b\")));\n", c"railroad-ebnf-beta\nr = (\"a\" | 'b')+ [C] {D};\n", c"railroad-abnf-beta\nr = 2*4(A / %x30-39) ;\n", c"railroad-peg-beta\nr <- !A (\"b\" / .)*;\n", c"railroad-abnf-beta\nR = %s\"a\";\nr =/ %i\"b\";\n", c"railroad-peg-beta\nr <- [a-z\\]];\n", c"railroad-ebnf-beta\nr = A - B;\n"}
 	for char* source in sources:
 		for length in range(strlen(source) + 1):
 			mm_document* d = mm_parse(source, length)
@@ -165,4 +165,49 @@ void test_railroad_document_metadata_and_title_precedence():
 	asserts(c"accessible title exported", index_of(svg, c"Accessible grammar") >= 0)
 	free(svg)
 	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_rail_abnf_incremental_case_and_explicit_strings():
+	mm_document* d = rail_parse(c"railroad-abnf-beta\nToken = %s\"Exact\" ;\ntOKEN =/ %i\"Fold\" ;\nROOT = TOKEN ;\n")
+	assert_equal(2, d.railroad.rules.length)
+	mm_rail_rule* token = d.railroad.rules[0]
+	assert_strings_equal(c"token", token.name)
+	mm_rail_expr* choice = d.railroad.expressions[token.expression]
+	assert_equal(MM_RAIL_CHOICE, choice.kind)
+	assert_equal(2, choice.children.length)
+	mm_rail_expr* exact = d.railroad.expressions[choice.children[0]]
+	assert_strings_equal(c"Exact", exact.text)
+	mm_rail_rule* root = d.railroad.rules[1]
+	mm_rail_expr* ref = d.railroad.expressions[root.expression]
+	assert_strings_equal(c"token", ref.text)
+	mm_scene* scene = mm_render(d)
+	char* svg = mm_svg(scene)
+	asserts(c"explicit insensitive string labeled", index_of(svg, c"Fold (case-insensitive)") >= 0)
+	free(svg)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	rail_bad(c"railroad-abnf-beta\nr =/ \"x\" ;\n")
+	rail_bad(c"railroad-abnf-beta\nR = \"x\" ;\nr = \"y\" ;\n")
+	rail_bad(c"railroad-abnf-beta\nr = %sword ;\n")
+
+void test_rail_character_classes_and_exceptions():
+	mm_document* d = rail_parse(c"railroad-peg-beta\nword <- [a-zA-Z_][a-z0-9_-]* / [\\n\\t\\]] ;\n")
+	assert_equal(3, rail_count(d, MM_RAIL_CLASS))
+	mm_scene* scene = mm_render(d)
+	char* svg = mm_svg(scene)
+	asserts(c"class rendered as consuming terminal", index_of(svg, c"[a-zA-Z_]") >= 0)
+	free(svg)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	rail_bad(c"railroad-peg-beta\nr <- [] ;\n")
+	rail_bad(c"railroad-peg-beta\nr <- [z-a] ;\n")
+	rail_bad(c"railroad-peg-beta\nr <- [a ;\n")
+	d = rail_parse(c"railroad-ebnf-beta\nr = (letter - keyword), digit ;\n")
+	assert_equal(1, rail_count(d, MM_RAIL_EXCEPT))
+	assert_equal(1, rail_count(d, MM_RAIL_SEQUENCE))
+	scene = mm_render(d)
+	svg = mm_svg(scene)
+	asserts(c"exception is explicit rather than alternative", index_of(svg, c">except</text>") >= 0)
+	free(svg)
+	mm_scene_free(scene)
 	mm_document_free(d)
