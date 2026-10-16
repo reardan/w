@@ -129,3 +129,7 @@ void test_checked_generic_pointer_contracts():
 	specialization_case(c"ref[a] T* choose[T](ref[a] T* p, ref[a] T* q, int first):\n\tif first: return p\n\treturn q\nint main():\n\tint x = 7\n\tint y = 3\n\tref int* r = choose[int](&x, &y, 0)\n\tx = 4\n\treturn *r\n", c"conflicting")
 	# named invalid return
 	specialization_case(c"ref[a] T* bad[T](ref[a] T* p):\n\tT local = *p\n\treturn &local\nint main():\n\tint x = 7\n\tref int* r = bad[int](&x)\n\treturn *r\n", c"must borrow from")
+
+
+void test_checked_generic_preserves_unsafe_callbacks():
+	specialization_case(c"type Callback = fn(int) -> int\nint increment(int value): return value + 1\nint main():\n\town int* p = new int\n\t*p = 7\n\tint result = 0\n\tunsafe:\n\t\tCallback* callback = increment\n\t\tresult = callback(6)\n\treturn result - *p\n", 0)
