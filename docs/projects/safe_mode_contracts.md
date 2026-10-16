@@ -56,9 +56,33 @@ snapshot against the instantiated declaration before using its origins.
 Constrained headers are reparsed from retained source under the concrete type
 substitution, so aliases resolve before labels are normalized; unconstrained
 headers keep the existing retained-tree fast path. No template label enters a
-global lifetime namespace. Higher-ranked function contracts and multiple
-independent aggregate lifetime groups still require their own implementation
-and rejection tests before admission.
+global lifetime namespace. Multiple independent aggregate lifetime groups
+still require their own implementation and rejection tests before admission.
+
+## Universally quantified callable contracts
+
+`type View = fn[a](ref[a] T*) -> ref[a] T*` binds names within one signature.
+Use `View*` for a checked code address, and `fn[]` for a checked contract with
+no named slots. Bind every named top-level borrowed slot, reject unused or
+duplicate binders, and normalize optional outlives clauses exactly as for
+direct signatures. Nested callable aliases own independent scopes.
+
+Raw function types own the normalized rows; retained snapshots copy them.
+A non-null relation marks the checked contract even when all slots are scalar.
+Preliminary ABI matching ignores lifetime spelling. Before publishing code,
+the retained pass proves exact recursive contract equivalence and checks the
+implementation body, including functions whose addresses are never invoked.
+No casts, null values, raw escapes or uninitialized reads can manufacture a
+checked callable. Generators, kernels and variadics have different entry
+protocols and are excluded explicitly in retained binding metadata.
+
+Evaluate an indirect callee once before reserving its arguments. Apply the
+same origin-set, reborrow and move rules used for direct calls; code addresses
+have no captured environment. Emission must clear transferred owner slots and
+push coerced slice descriptors at their full width. Keep callable recognition
+aligned with the emitter's pointer/alias shape; const-qualified forms remain
+rejected. Validate nested types with depth 32/work 256 bounds. Captures and
+aggregate-stored callback environments require separate ownership contracts.
 
 ## Provenance and reborrows
 
