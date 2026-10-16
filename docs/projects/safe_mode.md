@@ -18,7 +18,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | Type | Meaning |
 | --- | --- |
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
-| `own[a,b] Record*` | A unique allocation carrying shared borrowed fields; labels bind their external data groups. |
+| `own[a,b] Record*` | A unique allocation carrying borrowed fields; labels bind their external data groups. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
@@ -407,8 +407,8 @@ then frees the containing allocation. Moved source slots are skipped.
 Borrowing a child owner borrows the whole containing owner. `ref Pair*` and
 `refmut Pair*` parameters can lend child payloads; a shared parent cannot
 supply an exclusive child borrow. Partial field moves and owner-field
-assignment remain rejected. Recursive ownership type cycles and mutable-reference
-fields are not supported. Shared borrowed fields use the labeled form below. Allocation failure
+assignment remain rejected. Recursive ownership type cycles are not supported.
+Borrowed fields use the labeled form below. Allocation failure
 and other traps terminate the process; cleanup during termination is not
 promised.
 
@@ -416,13 +416,13 @@ Owned type graphs are bounded to depth 32 and at most 256 allocation nodes
 per expanded destructor. Larger graphs produce errors instead of unbounded
 compiler work.
 
-### Owners carrying shared borrowed fields
+### Owners carrying borrowed fields
 
-`own[a,b] Record*` owns its allocation and retains the shared data named by
+`own[a,b] Record*` owns its allocation and retains the borrowed data named by
 its field groups. Each label binds one template group, ordered by first
 occurrence, just as for borrowed records. Even a one-group mixed owner must
 supply its label explicitly. Its fields may be plain values, supported owned
-children, shared pointers/slices or nested shared borrowed records. An owned
+children, shared/exclusive pointers, shared slices or nested borrowed records. An owned
 child with borrowed data carries its own mapped labels.
 
 ```w
@@ -443,7 +443,8 @@ earlier borrowed data while evaluating later arguments. The owner moves through
 bindings, direct/generic/quantified calls and returns; each external component
 keeps its origins and reborrow parents. Every returned component must satisfy
 the declared input contract. Local data cannot escape inside a returned owner.
-A live owner prevents writes or invalidation of its borrowed data.
+A live owner prevents writes or invalidation of its shared data and reserves
+exclusive groups against other reads too.
 
 `take_data` consumes and destroys the descriptor and its owned child, but the
 returned slice keeps the external data alive. Its inline descriptor is copied
@@ -456,8 +457,8 @@ Whole-binding replacement drops the old owner exactly once. The checker joins
 old and new borrowed origins conservatively, including across loops; replacing
 an owner does not necessarily release its old external loans before its last
 use. Borrowing an owned child reserves the whole containing allocation.
-Reference-field/owned-field replacement, partial moves, exclusive or optional
-borrowed fields, and whole mixed-owner `refmut Record*` views remain rejected
+Reference-field/owned-field replacement, partial moves, optional borrowed
+fields, and whole mixed-owner `refmut Record*` views remain rejected
 pending their separate implementation gates. Shared whole-owner views are
 described below. Raw/unannotated mixed
 owner forms, self-reference and checked globals remain rejected too.
@@ -466,10 +467,42 @@ The runtime pointer layout, recursive cleanup order, allocation-failure policy
 and depth/work bounds are unchanged. Borrowed fields require no extra allocation
 or destruction; their component metadata exists only during compilation.
 
+### Exclusive fields in mixed owners
+
+An owner may carry `refmut[group] T*` or `refmut[group] Record` fields. A group
+containing any exclusive field retains exclusive access; other groups can remain
+shared. Nested owned children map their access kinds into the enclosing groups.
+Borrowed exclusive wrappers retain their existing conservative access rules.
+
+```w
+struct Editor:
+	own int* scratch
+	refmut[item] int* item
+	ref[context] int* context
+
+own[a,b] Editor* editor(refmut[a] int* item, ref[b] int* context):
+	return new Editor(new int, item, context)
+
+refmut[a] int* take_item(own[a,b] Editor* editor):
+	return editor.item
+```
+
+Moving this owner transfers its exclusive data loans. The move fails if a child
+view of an exclusive group remains live: a callee could mutate that data. A
+returned mutable field can outlive destruction of its descriptor, but its
+contract must come from an exclusive input group. Shared fields cannot be
+upgraded, including through aliases, callbacks and shared whole-owner views.
+
+Constructors and calls reserve shared/exclusive groups separately while evaluating
+later arguments. Deferred work cannot read or write an exclusive returned group;
+it can still read an unrelated shared group. Whole-owner replacement may release
+the overwritten loan before evaluating its replacement only when the right-hand
+expression does not read the old binding. Child views still prevent conflicting
+replacement. Provenance joins remain conservative across replacement and loops.
+
 ### Shared views of mixed owners
 
-`ref[a] Record*` can borrow a mixed owner whose fields meet the shared-field
-rules above. Helpers can inspect an owner without consuming it:
+`ref[a] Record*` can borrow a mixed owner whose fields meet the rules above. Helpers can inspect an owner without consuming it:
 
 ```w
 ref[a] int[] inspect_data(ref[a] StoredView* view):

@@ -244,19 +244,18 @@ replacement remain unsupported. Mixed owners use the explicit contract below.
 
 ### Mixed owner provenance
 
-`own[a,b] Record*` binds the shared external-data groups of its pointee. Require
+`own[a,b] Record*` binds the external-data groups of its pointee. Require
 an explicit label vector of exact arity, including for a single group. Admit
-shared pointer/slice/borrowed-record fields and recursively supported owned
-children; reject exclusive and optional borrowed fields. Keep ordinary
+shared/exclusive pointer and borrowed-record fields, shared slices, and
+recursively supported owned children; reject optional borrowed fields. Keep ordinary
 `own Record*` shape validation unchanged; shared whole-owner views use the
 combined contract below.
 
 Separate the allocation root from every external component, including component
 zero. Synthetic external roots for parameters must follow real local binding
 indices, never replace them. Moves preserve component origins/parents while
-consuming only the allocation binding. A labeled owner is a shared loan of its
-external data for access/liveness analysis, while retaining unique ownership of
-its allocation. Scope exit invalidates an owner whose borrowed data expires.
+consuming only the allocation binding. A labeled owner retains shared or exclusive loans of its external groups
+for access/liveness analysis, while retaining unique ownership of its allocation. Scope exit invalidates an owner whose borrowed data expires.
 
 Constructors evaluate fields once, preserve group mappings, consume owned fields
 and reserve prior shared origins during later arguments. Calls propagate external
@@ -277,9 +276,30 @@ growth rebases both levels. Committed types clone the labels, and retained
 snapshots own independent arena metadata. Keep this bookkeeping compile-time
 only: no runtime layout or cleanup changes are needed for shared borrowed fields.
 
-Exclusive whole mixed-owner borrowing, exclusive/optional fields, field
-replacement and partial moves retain separate required gates. Do not infer completion of A2/A3
+Exclusive whole mixed-owner borrowing, optional fields, field replacement
+and partial moves retain separate required gates. Do not infer completion of A2/A3
 from this shared-field step.
+
+### Exclusive mixed-owner groups
+
+Cache an access-kind mask for each retained owner type, with bounded recursive
+mapping through owned children. A group is exclusive when any mapped field is
+exclusive; unrelated shared groups retain shared access. Reset the cache with
+compiler safety state so retained type identities reused by another compilation
+cannot inherit old access kinds.
+
+Reads conflict only with live exclusive component origins; writes conflict with
+all live origins. Moving an owner must also check its exclusive external roots
+before consuming the allocation, since live child views cannot survive a move
+that could grant a callee mutable access. A mutable returned component requires
+an exclusive input component as well as the normalized outlives relation.
+
+Reserve shared and exclusive sets separately through constructor/call argument
+evaluation and deferred return processing. Keep the returned exclusive roots on
+the return flow node; deferred reads of independent shared groups stay valid.
+Whole replacement can suspend the old owner's loan while evaluating its RHS only
+when the expression contains no other use of that binding. Existing child loans
+still constrain access, and old/new component origins continue to join.
 
 ### Shared mixed-owner views
 
