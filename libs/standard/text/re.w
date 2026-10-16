@@ -78,6 +78,10 @@ const int RE_MULTILINE = 8
 const int RE_DOTALL = 16
 const int RE_VERBOSE = 64
 const int RE_ASCII = 256
+# Byte patterns (Python's re over bytes): the pattern and text are raw
+# bytes, not UTF-8, so `.`, classes and \xhh match single bytes 0..255
+# and \u / \U are bad escapes. lib/regex.w compiles with it.
+const int RE_BYTES = 4096
 
 # Largest compiled program (instructions); counted repetition expands.
 const int RE_MAX_PROGRAM = 200000
@@ -247,7 +251,7 @@ int re_hex_value(int c):
 int re_next_codepoint(re_parser* ps):
 	int start = ps.pos
 	int c = re_peek(ps, 0)
-	if (c < 128):
+	if ((c < 128) || (ps.flags & RE_BYTES)):
 		ps.pos = ps.pos + 1
 		return c
 	int need = 0
@@ -331,6 +335,8 @@ int re_parse_escape(re_parser* ps, int in_class, int* out):
 		out[0] = 7
 		return RE_ESC_CP
 	if ((c == 'x') || (c == 'u') || (c == 'U')):
+		# Python byte patterns have \xhh but no \u / \U.
+		if ((c != 'x') && (ps.flags & RE_BYTES)): return re_fail(ps, c"bad escape", start)
 		int count = 2
 		if (c == 'u'): count = 4
 		if (c == 'U'): count = 8
@@ -474,6 +480,16 @@ int re_set_node(re_parser* ps, re_vec* raw, int negate):
 		final = re_vec_new()
 		re_ranges_complement(raw, final)
 		re_vec_free(raw)
+	if (ps.flags & RE_BYTES):
+		# Byte patterns: clip every range to 0..255.
+		int kept = 0
+		for k in range(final.length / 2):
+			if (final.data[2 * k] <= 255):
+				final.data[2 * kept] = final.data[2 * k]
+				final.data[2 * kept + 1] = final.data[2 * k + 1]
+				if (final.data[2 * kept + 1] > 255): final.data[2 * kept + 1] = 255
+				kept = kept + 1
+		final.length = kept * 2
 	int offset = ps.ranges.length / 2
 	for k in range(final.length): re_vec_push(ps.ranges, final.data[k])
 	int n = re_node(ps, RE_NK_SET, offset, final.length / 2, 0)
@@ -934,9 +950,10 @@ void re_utf8_split(re_vec* out, int lo, int hi):
 void re_compile_node(re_compiler* cc, int n);
 
 
-# Emits one instruction matching the ASCII part of the ranges r: CHAR
-# for a single byte, else CLASS with a 256-bit map.
-void re_emit_ascii(re_compiler* cc, int* r, int count, int ascii_count, int single):
+# Emits one instruction matching the bytes 0..top of the ranges r: CHAR
+# for a single byte, else CLASS with a 256-bit map. top is 127 (the
+# ASCII part) or 255 (RE_BYTES).
+void re_emit_ascii(re_compiler* cc, int* r, int count, int ascii_count, int single, int top):
 	if (ascii_count == 1):
 		re_emit(cc, RE_OP_CHAR, single, 0)
 		return
@@ -945,7 +962,7 @@ void re_emit_ascii(re_compiler* cc, int* r, int count, int ascii_count, int sing
 	for k in range(count):
 		int lo = r[2 * k]
 		int hi = r[2 * k + 1]
-		if (hi > 127): hi = 127
+		if (hi > top): hi = top
 		int ch = lo
 		while (ch <= hi):
 			int slot = index * 8 + (ch >> 5)
@@ -956,6 +973,13 @@ void re_emit_ascii(re_compiler* cc, int* r, int count, int ascii_count, int sing
 
 void re_compile_set(re_compiler* cc, int offset, int count):
 	int* r = &cc.ps.ranges.data[offset * 2]
+	if (cc.ps.flags & RE_BYTES):
+		# Ranges are already clipped to 0..255: one byte instruction.
+		int total = 0
+		for k in range(count): total = total + r[2 * k + 1] - r[2 * k] + 1
+		if (total == 0): re_emit(cc, RE_OP_FAIL, 0, 0)
+		else: re_emit_ascii(cc, r, count, total, r[0], 255)
+		return
 	int ascii_count = 0
 	int single = -1
 	for k in range(count):
@@ -967,7 +991,7 @@ void re_compile_set(re_compiler* cc, int offset, int count):
 			single = lo
 	# Ranges are sorted, so the last one says whether any is non-ASCII.
 	if ((ascii_count > 0) && (r[2 * count - 1] < 128)):
-		re_emit_ascii(cc, r, count, ascii_count, single)
+		re_emit_ascii(cc, r, count, ascii_count, single, 127)
 		return
 	re_vec* seqs = re_vec_new()
 	int nseq = 0
@@ -993,7 +1017,7 @@ void re_compile_set(re_compiler* cc, int offset, int count):
 	if (ascii_count > 0):
 		int split = -1
 		if (alternatives > 1): split = re_emit(cc, RE_OP_SPLIT, re_pc(cc) + 1, 0)
-		re_emit_ascii(cc, r, count, ascii_count, single)
+		re_emit_ascii(cc, r, count, ascii_count, single, 127)
 		done = done + 1
 		if (split >= 0):
 			re_vec_push(jumps, re_emit(cc, RE_OP_JMP, 0, 0))
