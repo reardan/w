@@ -1532,10 +1532,6 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			js_runtime_pattern_bind(rt, declaration.children[0], value, env)
 		rt.empty = 1
 		return rt.undefined_value
-	if (js_kind(node, c"expression_statement")):
-		js_value* value = js_runtime_eval_node(rt, node.children[0], env)
-		rt.empty = 0
-		return value
 	if (js_kind(node, c"return") || js_kind(node, c"throw")):
 		js_value* value = rt.undefined_value
 		if (count > 0): value = js_runtime_eval_node(rt, node.children[0], env)
@@ -1561,14 +1557,6 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		rt.empty = 1
 		return rt.undefined_value
 	if (js_kind(node, c"conditional")): return js_runtime_sequence(rt, node, env)
-	if (js_kind(node, c"if")):
-		js_value* condition = js_runtime_eval_node(rt, node.children[0], env)
-		if (rt.completion.status != 0): return rt.undefined_value
-		js_value* value = rt.undefined_value
-		if (js_runtime_truth(condition)): value = js_runtime_eval_node(rt, node.children[1], env)
-		else if (count == 3): value = js_runtime_eval_node(rt, node.children[2], env)
-		rt.empty = 0
-		return value
 	if (js_kind(node, c"for_of")): return js_runtime_for_of(rt, node, env)
 	if (js_kind(node, c"for_in")): return js_runtime_for_in(rt, node, env)
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
@@ -1686,12 +1674,30 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 	if (rt.remaining <= 0 || rt.depth >= rt.max_depth):
 		js_runtime_fail(rt, 5, c"JavaScript execution limit")
 		return rt.undefined_value
-	rt.remaining = rt.remaining - 1
-	rt.completion.steps = rt.completion.steps + 1
 	rt.depth = rt.depth + 1
-	rt.empty = 0
-	js_value* value = js_runtime_eval_impl(rt, node, env)
+	js_value* value = rt.undefined_value
+	int nonempty = 0
+	# Branch tails and expression wrappers need no native recursive frame.
+	# Charge every visited AST node and preserve their UpdateEmpty behavior.
+	while (rt.completion.status == 0):
+		if (js_runtime_compat_step(rt) == 0): break
+		rt.empty = 0
+		if (js_kind(node, c"expression_statement")):
+			nonempty = 1
+			node = node.children[0]
+			continue
+		if (js_kind(node, c"if")):
+			js_value* condition = js_runtime_eval_node(rt, node.children[0], env)
+			if (rt.completion.status != 0): break
+			nonempty = 1
+			if (js_runtime_truth(condition)): node = node.children[1]
+			else if (node.children.length == 3): node = node.children[2]
+			else: break
+			continue
+		value = js_runtime_eval_impl(rt, node, env)
+		break
 	rt.depth = rt.depth - 1
+	if (nonempty): rt.empty = 0
 	return value
 
 

@@ -43,3 +43,13 @@ vnode factory with 985878 fuel remaining. Iteration now includes ordinary binary
 operands, preserving original AST grouping and evaluating both operands before
 operator coercion. Tests cover coercion order, abrupt right operands, arithmetic
 grouping, deep trees, suspended left operands across GC, and cancellation cleanup.
+
+The remaining settings-render limit was inside Preact's `q` function, at depth
+128 with 985554 fuel remaining. `if` branch tails and expression-statement
+wrappers now reuse their evaluator frame in a loop. Conditions still run once,
+branches retain lexical/block evaluation, and every visited statement/expression
+consumes the original fuel step. Empty completions, return/throw, labelled
+break/continue, async suspension and cancellation retain their previous behavior.
+This is an interpreter stack optimization, not JavaScript proper tail calls:
+recursive function calls still exhaust the existing depth bound. The unchanged
+native settings-route dispatch succeeds with that bound unchanged.
