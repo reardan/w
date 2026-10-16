@@ -26,6 +26,9 @@ Linux-first syscalls, no package manager today, no closures, and tests driven by
 
 ## Plan index
 
+Execution order, PR-sized chunks and parallel waves across these plans:
+`docs/projects/stdlib_python_parity.md`.
+
 1. `01_package_ecosystem.md` - package metadata, module discovery, virtual roots.
 2. `02_text_processing.md` - regex, diffs, text wrapping, Unicode data, codecs.
 3. `03_numeric_data.md` - math, random, decimal/fractions/statistics, algorithms.
