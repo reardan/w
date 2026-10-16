@@ -413,7 +413,8 @@ mm_scene* mm_render_diagram(mm_document* d):
 			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
 			mm_primitive* diamond = s.items[s.items.length - 1]
 			diamond.points = list[int]{b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2}
-		else if (n.shape == 2 || n.shape == 11): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		else if (n.shape == 2): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		else if (n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int title_y = b.y + (b.h - 16) / 2
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
