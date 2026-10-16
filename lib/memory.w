@@ -14,12 +14,14 @@ process:
     Freed blocks stay PROT_NONE in a bounded quarantine, then munmap,
     so long-running tools under W_DEBUG_ALLOC do not OOM.
 
-Debug mode is opt-in: set W_DEBUG_ALLOC to any non-empty value before
+Debug mode is opt-in: set W_DEBUG_ALLOC before
 the program starts, or call malloc_force_debug_mode() before the first
 allocation of the process. Adding another backend later (say a
 bounds-checking allocator tuned for one arch) means adding another
 module and another branch below -- callers of malloc/free/realloc never
-need to change.
+need to change. The special value 'valgrind' uses pooled storage with
+Memcheck annotations (Linux x86/x64); launch with bin/wgrind. Other
+values retain native guard pages, now with prefix canaries as well.
 
 This file is part of the container runtime (structures/hash_table.w,
 structures/w_list.w) that the compiler auto-imports into every program,
@@ -41,6 +43,7 @@ malloc_force_debug_mode() still works everywhere.
 void* malloc(int size);
 int free(void* mem_address);
 char* realloc(void* old, int oldlen, int newlen);
+void malloc_init_mode();
 
 import lib.linux
 import lib.memory_freelist
@@ -55,12 +58,14 @@ int malloc_debug_mode      /* 0 = freelist backend, 1 = debug backend */
 # called before the first malloc/free/realloc of the process -- the
 # backend choice is fixed on first use and never revisited.
 void malloc_force_debug_mode():
-	malloc_mode_determined = 1
+	# Honor an explicitly requested Memcheck backend before forcing
+	# debug allocation (also used by W_TEST_LEAKS).
+	malloc_init_mode()
 	malloc_debug_mode = 1
 
 
-# Best-effort W_DEBUG_ALLOC check: true when some environment entry
-# starts with "W_DEBUG_ALLOC=". Reads /proc/self/environ directly (see
+# Best-effort W_DEBUG_ALLOC check: 1 for native guards, 2 for the exact
+# value 'valgrind', 0 when absent. Reads /proc/self/environ directly (see
 # the file header for why) using the freelist backend's own allocator
 # for the scratch buffer, never the dispatcher, to keep this out of the
 # mode-selection path it is itself deciding.
@@ -83,7 +88,14 @@ int malloc_debug_env_check():
 			int matches = 1
 			for j in range(needle_len):
 				if (buf[i + j] != needle[j]): matches = 0
-			if (matches): found = 1
+			if (matches):
+				found = 1
+				char* mode = c"valgrind"
+				if (i + needle_len + 8 < n):
+					int same = 1
+					for k in range(8):
+						if (buf[i + needle_len + k] != mode[k]): same = 0
+					if (same && (buf[i + needle_len + 8] == 0)): found = 2
 		while ((i < n) && (buf[i] != 0)): i = i + 1
 		i = i + 1
 	freelist_free(buf)
@@ -93,7 +105,12 @@ int malloc_debug_env_check():
 void malloc_init_mode():
 	if (malloc_mode_determined == 0):
 		malloc_mode_determined = 1
-		if (malloc_debug_env_check()): malloc_debug_mode = 1
+		int mode = malloc_debug_env_check()
+		if (mode): malloc_debug_mode = 1
+		if (mode == 2):
+			if (vg_init() == 0):
+				st_write_cstr(c"memory_debug: valgrind mode requires Valgrind on x86/x64\x0a")
+				exit(1)
 
 
 # Thread hooks (lib/thread_heap.w, docs/projects/thread_local.md

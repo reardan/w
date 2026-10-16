@@ -91,6 +91,77 @@ The `ast_expression_test` build target schedules eight such shards,
 `ast_expression_test_prepare` builds the test binary and its REPLs. Its
 scratch files use process IDs, so those runners can safely overlap.
 
+### Heap checking with wgrind
+
+Build the runner and rebuild the program with the current compiler:
+
+```sh
+./wbuild wgrind
+bin/wv2 x64 my_program.w -o bin/my_program
+bin/wgrind bin/my_program arg1 arg2
+bin/wgrind --native bin/my_program arg1 arg2
+```
+
+The default runs Valgrind Memcheck on Linux x86/x64 with allocation
+origins and full leak checking. It selects `W_DEBUG_ALLOC=valgrind` in
+the child. W registers each requested allocation size and free with
+Memcheck, which checks both reads and writes around 16-byte redzones,
+use-after-free, and uses of uninitialized values. A moving `realloc`
+preserves the copied bytes' initialization state and leaves growth
+uninitialized. `new` retains its normal zero initialization.
+
+Memcheck also instruments supported native C libraries in the process,
+including their own allocations; it is not restricted to W's allocator.
+GPU/device memory, unsupported driver operations and custom C allocators
+without annotations remain outside that guarantee. See the
+[Memcheck manual](https://valgrind.org/docs/manual/mc-manual.html).
+W buffers obtained directly through `mmap` are not registered as heap
+allocations either; the annotations cover the malloc/free/realloc API.
+Diagnostics include W source file/line information; function names may
+appear as `???` with the current ELF symbol metadata.
+
+Memcheck errors and leaks produce exit status **99**; otherwise the runner
+preserves the program's exit status (including native allocator errors
+and fatal signals). All leak kinds, including reachable
+blocks, count: W's bookkeeping itself retains live allocation pointers,
+so Memcheck's reachability classification cannot establish ownership.
+Intentional process-lifetime caches will therefore be reported too.
+For custom options or suppressions, invoke Valgrind directly:
+
+```sh
+W_DEBUG_ALLOC=valgrind valgrind --tool=memcheck --track-origins=yes \
+  --leak-check=full --show-leak-kinds=all bin/my_program
+```
+
+`--native` needs no Valgrind. It selects the existing guard-page backend
+with added 16-byte prefix canaries. Overruns beyond the rounded payload
+and recent use-after-free accesses fault; prefix writes and writes into
+the up-to-seven-byte alignment tail are diagnosed on `free`, `realloc`,
+or `debug_alloc_report_leaks()`. Native mode cannot detect uninitialized
+reads, underflow reads, writes that skip the prefix, or C-owned blocks.
+It does not automatically report leaks at exit; use the explicit report
+or `W_TEST_LEAKS=1` below. Freed addresses can eventually be reused in
+either mode, so stale pointers to a new live allocation can escape checks.
+
+Issue [#651](https://github.com/reardan/w/issues/651) implementation plan:
+
+1. Extend native checks with prefix canaries and replace linear pointer
+   lookup with a hash index, retaining the existing tracking table for
+   test leak snapshots.
+2. Add opt-in Memcheck client requests and pool payload storage through
+   the freelist backend. This removes the one-mmap-per-block cost in
+   Memcheck mode; it does not remove Valgrind's execution overhead.
+3. Add the runner and regressions for native checks, initialization
+   propagation, reuse/splitting, leaks, libc allocations and exit status.
+
+`./wbuild wgrind_test` covers both x86 and x64. Native cases always run;
+Memcheck cases print an explicit skip if Valgrind is absent. Bookkeeping
+still grows with allocation history in both debug modes, and native
+guard pages still consume VMAs. A bounded history and a standalone
+shadow-memory engine are future work, not properties of this change.
+Threaded W programs use the existing serialized debug allocator hooks.
+Previously built executables must be rebuilt to include the annotations.
+
 ### Leak checks
 
 With `W_TEST_LEAKS=1`, the runner switches to the guard-page debug
