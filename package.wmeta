@@ -102,6 +102,8 @@ modules:
 	lib.__arch__.syscalls
 	libs.extras.html.html
 	libs.extras.css.css
+	libs.extras.mermaid.blocks
+	libs.extras.mermaid.gitgraph
 	libs.extras.mermaid.frameworks
 	libs.extras.mermaid.framework_render
 	libs.extras.mermaid.graph_families

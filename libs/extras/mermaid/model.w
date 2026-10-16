@@ -57,6 +57,8 @@ const int MM_TREEVIEW = 63
 const int MM_ISHIKAWA = 64
 const int MM_CYNEFIN = 65
 const int MM_WARDLEY = 66
+const int MM_GITGRAPH = 67
+const int MM_BLOCK = 68
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2

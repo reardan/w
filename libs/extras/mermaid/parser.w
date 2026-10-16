@@ -5,6 +5,8 @@ import libs.extras.mermaid.source
 import libs.extras.mermaid.data_parse
 import libs.extras.mermaid.graph_families
 import libs.extras.mermaid.frameworks
+import libs.extras.mermaid.gitgraph
+import libs.extras.mermaid.blocks
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -260,6 +262,16 @@ mm_document* mm_parse_raw(char* source, int length):
 	else if (strcmp(header, c"wardley") == 0):
 		d.kind = MM_WARDLEY
 		mm_match(&p, c"-beta")
+	else if (strcmp(header, c"gitGraph") == 0):
+		d.kind = MM_GITGRAPH
+		free(d.direction)
+		d.direction = strclone(c"LR")
+		mm_space(&p)
+		if (mm_match(&p, c"LR")): mm_space(&p)
+		mm_match(&p, c":")
+	else if (strcmp(header, c"block") == 0):
+		d.kind = MM_BLOCK
+		mm_match(&p, c"-beta")
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -298,6 +310,12 @@ mm_document* mm_parse_raw(char* source, int length):
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_body(&p)
+		return d
+	if (d.kind == MM_BLOCK):
+		mm_blocks_parse(&p)
+		return d
+	if (d.kind == MM_GITGRAPH):
+		mm_git_body(&p)
 		return d
 	if (d.kind == MM_CYNEFIN):
 		mm_cynefin_body(&p)

@@ -43,3 +43,16 @@ x64, including the guard allocator's leak checks.
   Coordinates use bounded thousandths. Decorators, evolution arrows, notes,
   pipelines, alternative flow syntax and custom axis configuration remain
   unsupported and produce diagnostics.
+
+- **GitGraph:** commit IDs, normal/reverse/highlight shapes, tags, branch
+  creation, checkout/switch and merge commits with two parents. Branch heads
+  determine commit ancestry; a dedicated time/lane layout shows history.
+  Duplicate IDs/branches, unknown checkouts, empty/self/same-head merges fail.
+  The current layout supports LR; cherry-pick, branch order and custom branch
+  configuration are not yet supported.
+- **Block:** source-ordered grids, up to 64 columns, column spans, empty spaces,
+  rectangle/rounded/circle nodes, nested composites (up to 32 levels) and
+  labelled solid links. Span overflow and malformed blocks fail explicitly.
+  Column widths grow by actual content, so one large label does not multiply
+  across every column. Custom styles, block arrows and other shapes remain
+  unsupported.
