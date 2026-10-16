@@ -228,16 +228,39 @@ void warn_type_mismatch(char* context, int want, int got):
 	else: warning(c"'")
 
 
+# Lifetime spelling is erased by ABI checks; the retained safety pass
+# proves normalized contracts before an executable can be published.
+int function_contract_abi_type(int want, int got):
+	want = type_unqualified(want)
+	got = type_unqualified(got)
+	if ((type_get_kind(want) == type_kind_safe_slice) || (type_get_kind(got) == type_kind_safe_slice)):
+		if (type_get_kind(want) != type_get_kind(got)): return 0
+		return type_record(want).alias_target == type_record(got).alias_target
+	if (type_is_safe_record(want)): want = type_record(want).alias_target
+	if (type_is_safe_record(got)): got = type_record(got).alias_target
+	want = type_unqualified(type_safe_target(want))
+	got = type_unqualified(type_safe_target(got))
+	if ((type_checked_function_signature(want) >= 0) && (type_checked_function_signature(got) >= 0)): return 1
+	return want == got
+
+
 int function_signature_matches_record(int signature_type, int symbol):
 	if (symbol < 0): return 0
 	if (load_int(table + symbol + 10) != 2): return 0
-	if (type_unqualified(type_function_return(signature_type)) != type_unqualified(load_int(table + symbol + 6))):
-		return 0
+	int checked = type_record(signature_type).fn_lifetime_order != 0
+	int want = type_function_return(signature_type)
+	int got = load_int(table + symbol + 6)
+	if (checked):
+		if (function_contract_abi_type(want, got) == 0): return 0
+	else if (type_unqualified(want) != type_unqualified(got)): return 0
 	int expected_args = type_function_param_count(signature_type)
 	if (sym_num_args(symbol) != expected_args): return 0
 	for i in range(expected_args):
-		if (type_unqualified(type_function_param_type(signature_type, i)) != type_unqualified(sym_param_type(symbol, i))):
-			return 0
+		want = type_function_param_type(signature_type, i)
+		got = sym_param_type(symbol, i)
+		if (checked):
+			if (function_contract_abi_type(want, got) == 0): return 0
+		else if (type_unqualified(want) != type_unqualified(got)): return 0
 	return 1
 
 
