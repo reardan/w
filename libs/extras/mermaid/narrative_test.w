@@ -232,3 +232,16 @@ void test_narrative_document_metadata_title_once():
 	free(svg)
 	mm_scene_free(s)
 	mm_document_free(d)
+
+void test_narrative_long_reverse_message_stays_in_viewbox():
+	string_builder* text = string_from(c"sequenceDiagram\nparticipant A\nparticipant B\nB->>A: ")
+	for i in range(1000): string_append_char(text, 'x')
+	mm_document* d = narrative_parse(text.data)
+	mm_scene* scene = mm_render(d)
+	for mm_primitive* item in scene.items:
+		if (item.kind == MM_TEXT):
+			asserts(c"text starts inside SVG viewbox", item.x >= 0)
+			asserts(c"text fits measured scene width", item.x + strlen(item.text) * 8 <= scene.width)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	string_free(text)

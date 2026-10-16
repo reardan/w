@@ -117,7 +117,10 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			if (d.narrative_numbered): shown = number
 			char* label = mm_n_label(event, shown)
 			if (x == to): mm_text(s, x + 8, y - 23, label)
-			else: mm_text(s, (x + to) / 2 - strlen(label) * 4, y - 23, label)
+			else:
+				int label_x = (x + to) / 2 - strlen(label) * 4
+				if (label_x < 10): label_x = 10
+				mm_text(s, label_x, y - 23, label)
 			free(label)
 		else if (event.kind == MM_N_NOTE):
 			int w = strlen(event.label) * 8 + 24
