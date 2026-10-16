@@ -1351,3 +1351,29 @@ for external lifetime metadata.
 This step covers shared fields. Exclusive fields, whole-owner views, field
 replacement and partial moves retain their separate required gates under #695;
 #695 and #644 remain open.
+
+### Shared mixed-owner views (Wave 1)
+
+Twenty-three additional accepted/rejected cases validate nonconsuming mixed-owner
+views, direct/generic/quantified calls, nested owned children, multi-group inline
+records, loop liveness and descriptor/data escape rejection on x86/x64 with and
+without `--safe`. Moving or replacing a viewed owner, mutating retained backing
+data, or upgrading shared access is rejected without producing an executable.
+
+Validation passed 1,352 ordinary targets (full suite, both Linux fixpoints,
+Windows runtime and compiler benchmark), all 48 architecture/root checks,
+pinned-seed bootstrap and parser generation. Instrumented validation passed
+1,350 targets and all six compiler/API harnesses with a COMPLETE receipt.
+Changed compiler-line coverage is 29/29 (100%). Directory coverage and floors
+remain unchanged, including the inherited 94.8% compiler line floor.
+
+The runtime fixture checks imported shared helpers, callbacks, once-only
+receiver evaluation, nested extraction and replacement after views expire. Linux
+optimization variants and Wine pass. Native guards and Memcheck on x86/x64
+report 406 allocations/frees, zero errors and no outstanding blocks.
+
+Seven alternating compiles of the fixed `c5d27a6f` source corpus measure 1.68 s
+median and 113,824 KiB median peak RSS for both compilers. Compiler output and
+prior callable/mixed-owner runtime fixtures are byte-identical on x86/x64;
+all fixture binaries execute. These shared-host measurements do not establish
+a general performance bound. Shared views add no runtime allocation or layout.
