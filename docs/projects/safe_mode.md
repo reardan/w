@@ -242,8 +242,9 @@ local storage has a different lifetime from the data its references borrow.
 Checked slice fields (`ref[item] T[]`) use the same group and copy their
 inline descriptors. Bind an extracted slice before indexing it; direct
 `record.values[0]` is not yet supported. Field mutation, wrapper reassignment, unqualified record
-storage, heap construction, mutable-reference fields, nested aggregates and
-multiple independent field-lifetime groups remain unsupported in this form.
+storage, heap construction, mutable-reference fields and multiple independent
+field-lifetime groups remain unsupported in this form. Nested shared wrappers
+use the same group as described below.
 
 ### Mutable-reference structs
 
@@ -274,9 +275,52 @@ mutable references. An extracted field view keeps the group's backing values
 alive, independently of the wrapper's inline descriptor storage.
 
 Scalar metadata may be changed. Reference-field replacement, wrapper
-reassignment, descriptor-field addresses, optional fields, nested borrowed
-records, mixed owned/borrowed fields, multiple lifetime groups and partial
-moves remain rejected. These are separate roadmap items.
+reassignment, descriptor-field addresses, optional fields, mixed owned/borrowed
+fields, multiple lifetime groups and partial moves remain rejected. These are
+separate roadmap items.
+
+### Nested borrowed structs
+
+A borrowed field may itself be an inline borrowed record:
+
+```w
+struct Cell:
+	ref[item] int* value
+	int tag
+
+struct View:
+	ref[group] Cell cell
+	int tag
+
+ref[a] View make_view(ref[a] int* value):
+	return View(Cell(value, 3), 5)
+```
+
+The nested wrapper renames its inner group into the enclosing group. Here
+`Cell` owns the label `item`, its field in `View` uses `group`, and `ref[a] View`
+binds that outer group to `a`. Every reference-bearing field at each level
+must still share one label. This does not introduce independent groups.
+
+Construct every field at every level. Copies, imported functions, returned
+records and quantified callbacks preserve the complete union of backing roots
+and reborrow parents. `view.cell.value` can initialize a reference, and
+`view.cell.tag` reads inline scalar metadata. Bind an extracted pointer or
+slice before dereferencing or indexing it. Nested descriptor-field addresses
+cannot escape, including addresses of scalar metadata.
+
+Shared wrappers admit shared nested wrappers. Mutable wrappers additionally
+admit mutable nested wrappers; a shared outer value cannot expose exclusive
+inner access. Extracting any view conservatively keeps the whole enclosing
+group borrowed, including sibling fields. Mutable scalar metadata projection
+uses the containing place; it does not create a new exclusive data borrow
+merely to read metadata. Reference-field replacement and wrapper reassignment
+remain rejected.
+
+Nested shapes are bounded to depth 32 and 256 expanded record nodes. Cyclic
+or larger shapes fail validation. Plain unwrapped nested records, optional
+fields, mixed ownership and multiple independent groups remain outside this
+step. Layout and calling conventions are unchanged; nesting introduces no
+runtime allocation or destructor.
 
 ### Owned structs
 
