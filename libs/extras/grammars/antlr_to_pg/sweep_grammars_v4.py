@@ -16,7 +16,27 @@ import time
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[3]
+# Historical stages remain readable by schema-1 baselines and consumers.
 STAGES = ("translate", "generate", "compile", "strict")
+BUILD_STAGES = ("translate", "generate", "compile", "compiler_strict")
+CONFIGURATIONS = {
+    "default_permissive": (),
+    "default_strict": ("--strict",),
+    "stateful_permissive": ("--stateful",),
+    "stateful_strict": ("--strict", "--stateful"),
+}
+
+
+EXTENDED_CONFIGURATIONS = {
+    "exact_permissive": ("--exact-lexer", "--prediction"),
+    "exact_strict": ("--strict", "--exact-lexer", "--prediction"),
+}
+
+
+def empty_configurations(status="not_run", configurations=None, **detail):
+    return {name: {"stages": {stage: dict(status=status, **detail)
+                              for stage in BUILD_STAGES}, "dependency_inputs": []}
+            for name in (configurations if configurations is not None else CONFIGURATIONS)}
 
 
 def sha256(path):
@@ -29,7 +49,7 @@ def git_output(root, *args):
 
 def load_manifest(path, corpus):
     manifest = json.loads(path.read_text())
-    if manifest.get("schema") != 1:
+    if manifest.get("schema") not in (1, 2):
         raise ValueError("unsupported sweep manifest schema")
     actual = git_output(corpus, "rev-parse", "HEAD")
     if actual != manifest["corpus_commit"]:
@@ -44,6 +64,9 @@ def load_manifest(path, corpus):
             raise ValueError(f"no pinned inputs for {name}")
         if set(case["expected_pass"]) - set(STAGES):
             raise ValueError(f"invalid baseline stage for {name}")
+        for configuration, stages in case.get("expected_configurations", {}).items():
+            if configuration not in (CONFIGURATIONS | EXTENDED_CONFIGURATIONS) or set(stages) - set(BUILD_STAGES):
+                raise ValueError(f"invalid configuration baseline for {name}: {configuration}")
         removed = set(case.get("recorded_pass", [])) - set(case["expected_pass"])
         for stage in removed:
             reason = case.get("reclassified", {}).get(stage, "")
@@ -97,7 +120,24 @@ def require_outputs(stage, paths):
             stage.update(status="error", error="missing output: " + ", ".join(missing))
 
 
-def run_case(case, corpus, work, tools, timeout, repo=REPO):
+def read_findings(path):
+    document = json.loads(path.read_text())
+    if not isinstance(document, dict) or document.get("schema_version") != 1 or not isinstance(document.get("findings"), list):
+        raise ValueError("unsupported structured audit schema")
+    for finding in document["findings"]:
+        if not isinstance(finding, dict):
+            raise ValueError("structured audit finding must be an object")
+        for field in ("code", "stage", "feature", "classification", "file", "rule", "reason"):
+            if not isinstance(finding.get(field), str) or not finding[field]:
+                raise ValueError("structured audit missing string field: " + field)
+        for field in ("line", "column"):
+            if type(finding.get(field)) is not int or finding[field] < 1:
+                raise ValueError("structured audit invalid source location: " + field)
+    return document["findings"]
+
+
+def run_case(case, corpus, work, tools, timeout, repo=REPO, configurations=None):
+    configurations = configurations if configurations is not None else CONFIGURATIONS
     directory = work / case["name"]
     directory.mkdir()  # An existing case must never reuse stale outputs.
     parser_name = "sweep_" + re.sub(r"[^a-zA-Z0-9]", "_", case["name"])
@@ -109,49 +149,56 @@ def run_case(case, corpus, work, tools, timeout, repo=REPO):
               "historical_288": case.get("historical_288", False),
               "stages": {stage: {"status": "not_run"} for stage in STAGES},
               "runtime_smoke": "not_configured"}
-    stages = result["stages"]
-
-    def translate(strict=False):
-        prefix = "strict" if strict else "translate"
-        output_pg = directory / "strict.pg" if strict else pg
-        output_matchers = directory / "strict.matchers.w" if strict else matchers
-        args = [tools["translator"], *sources, "-o", output_pg,
-                "--parser-name", parser_name, "--matchers", output_matchers,
-                "--report", directory / (prefix + ".report"),
-                "--audit", directory / (prefix + ".audit"),
-                "--dependencies", directory / (prefix + ".inputs")]
-        if strict:
-            args.append("--strict")
-        status = run_stage(args, directory / (prefix + ".log"), timeout, repo)
-        require_outputs(status, [output_pg, output_matchers, directory / (prefix + ".inputs")])
-        return status
-
-    stages["translate"] = translate()
-    if stages["translate"]["status"] == "pass":
+    result["configurations"] = empty_configurations(configurations=configurations)
+    for configuration, flags in configurations.items():
+        current = result["configurations"][configuration]
+        stages = current["stages"]
+        output = directory if configuration == "default_permissive" else directory / configuration
+        output.mkdir(exist_ok=True)
+        pg, matchers, generated = (output / name for name in ("grammar.pg", "matchers.w", "parser.w"))
+        loaded = output / "translate.inputs"
+        args = [tools["translator"], *sources, "-o", pg,
+                "--parser-name", parser_name, "--matchers", matchers,
+                "--report", output / "translate.report", "--audit", output / "translate.audit",
+                "--dependencies", loaded, "--audit-json", output / "translate.audit.json", *flags]
+        stages["translate"] = run_stage(args, output / "translate.log", timeout, repo)
+        require_outputs(stages["translate"], [pg, matchers, loaded])
+        try:
+            current["findings"] = read_findings(output / "translate.audit.json")
+        except (OSError, ValueError) as error:
+            # A crash/timeout remains its original infrastructure failure.
+            if stages["translate"]["status"] in ("pass", "fail"):
+                stages["translate"].update(status="error", error="structured audit: " + str(error))
+        # Every mode must prove the dependency closure, including strict failures.
+        if loaded.exists():
+            for value in loaded.read_text().splitlines():
+                path = (repo / value).resolve()
+                if not path.is_relative_to(corpus.resolve()):
+                    stages["translate"].update(status="error", error="dependency outside pinned corpus: " + value)
+                    break
+                current["dependency_inputs"].append({"path": str(path.relative_to(corpus.resolve())),
+                                                     "sha256": sha256(path)})
+        if stages["translate"]["status"] != "pass":
+            continue
         stages["generate"] = run_stage([tools["generator"], pg, "-o", generated],
-                                       directory / "generate.log", timeout, repo)
+                                       output / "generate.log", timeout, repo)
         require_outputs(stages["generate"], [generated])
-        if stages["generate"]["status"] == "pass":
-            program = directory / "compile.w"
-            program.write_bytes(tools["common_matchers"].read_bytes() + b"\n" +
-                                matchers.read_bytes() + b"\n" + generated.read_bytes() +
-                                b"\nint main():\n\treturn 0\n")
-            binary = directory / "parser.bin"
-            stages["compile"] = run_stage([tools["compiler"], program, "-o", binary],
-                                          directory / "compile.log", timeout, repo)
-            require_outputs(stages["compile"], [binary])
-    # Audit acceptance is an independent metric, including on failed translations.
-    stages["strict"] = translate(strict=True)
-    result["dependency_inputs"] = []
-    loaded = directory / "translate.inputs"
-    if loaded.exists():
-        for value in loaded.read_text().splitlines():
-            path = (repo / value).resolve()
-            if not path.is_relative_to(corpus.resolve()):
-                stages["translate"].update(status="error", error="dependency outside pinned corpus: " + value)
-                break
-            result["dependency_inputs"].append({"path": str(path.relative_to(corpus.resolve())),
-                                                 "sha256": sha256(path)})
+        if stages["generate"]["status"] != "pass":
+            continue
+        program = output / "compile.w"
+        program.write_bytes(tools["common_matchers"].read_bytes() + b"\n" +
+                            matchers.read_bytes() + b"\n" + generated.read_bytes() +
+                            b"\nint main():\n\treturn 0\n")
+        # Independent invocations: compiler warnings are a separate measurement.
+        for stage, compiler_flags in (("compile", ()), ("compiler_strict", ("--strict",))):
+            binary = output / (stage + ".bin")
+            stages[stage] = run_stage([tools["compiler"], program, *compiler_flags, "-o", binary],
+                                      output / (stage + ".log"), timeout, repo)
+            require_outputs(stages[stage], [binary])
+    default = result["configurations"]["default_permissive"]
+    result["stages"] = {stage: default["stages"][stage] for stage in STAGES if stage != "strict"}
+    result["stages"]["strict"] = result["configurations"]["default_strict"]["stages"]["translate"]
+    result["dependency_inputs"] = default["dependency_inputs"]
     return result
 
 
@@ -166,30 +213,54 @@ def compare(manifest, results):
             status = actual[case["name"]]["stages"][stage]["status"]
             if status != "pass":
                 regressions.append(f"{case['name']}: {stage} regressed to {status}")
+        for configuration, stages in case.get("expected_configurations", {}).items():
+            measured = actual[case["name"]].get("configurations", {}).get(configuration, {}).get("stages", {})
+            for stage in stages:
+                status = measured.get(stage, {}).get("status", "missing")
+                if status != "pass":
+                    regressions.append(f"{case['name']}: {configuration}/{stage} regressed to {status}")
     return regressions
 
 
 def write_results(work, manifest, results, provenance, csv_path=None):
     regressions = compare(manifest, results)
-    errors = list(provenance.get("infrastructure_errors", [])) + [f"{row['name']}: {stage} {value['status']}"
-              for row in results for stage, value in row["stages"].items()
-              if value["status"] in ("error", "timeout", "crash")]
+    errors = list(provenance.get("infrastructure_errors", []))
+    for row in results:
+        configurations = row.get("configurations", {"legacy": {"stages": row["stages"]}})
+        for configuration, current in configurations.items():
+            for stage, value in current["stages"].items():
+                if value["status"] in ("error", "timeout", "crash"):
+                    errors.append(f"{row['name']}: {configuration}/{stage} {value['status']}")
     totals = {stage: sum(row["stages"][stage]["status"] == "pass" for row in results)
               for stage in STAGES}
-    summary = {"cases": len(results), "passing": totals,
+    configurations = list(dict.fromkeys(name for row in results for name in row.get("configurations", {})))
+    configuration_totals = {name: {stage: sum(
+        row.get("configurations", {}).get(name, {}).get("stages", {}).get(stage, {}).get("status") == "pass"
+        for row in results) for stage in BUILD_STAGES} for name in configurations}
+    finding_counts = {name: {} for name in configurations}
+    for row in results:
+        for name, current in row.get("configurations", {}).items():
+            for code in {finding["code"] for finding in current.get("findings", [])}:
+                finding_counts[name][code] = finding_counts[name].get(code, 0) + 1
+    summary = {"cases": len(results), "passing": totals, "configurations": configuration_totals,
+               "finding_grammar_counts": finding_counts,
                "historical_288_compiled": sum(row["historical_288"] and
                    row["stages"]["compile"]["status"] == "pass" for row in results),
                "runtime_smoke": "not_configured", "regressions": regressions,
                "infrastructure_errors": errors}
-    (work / "results.json").write_text(json.dumps({"provenance": provenance,
+    (work / "results.json").write_text(json.dumps({"schema": 2, "provenance": provenance,
         "summary": summary, "cases": results}, indent=2) + "\n")
     with (csv_path or work / "results.csv").open("w", newline="") as output:
         writer = csv.writer(output)
-        writer.writerow(["name", "inputs", *STAGES, "runtime_smoke"])
+        columns = [(configuration, stage) for configuration in configurations for stage in BUILD_STAGES]
+        writer.writerow(["name", "inputs", *STAGES, "runtime_smoke",
+                         *(configuration + "/" + stage for configuration, stage in columns)])
         for row in results:
             writer.writerow([row["name"], ";".join(item["path"] for item in row["inputs"]),
                              *(row["stages"][stage]["status"] for stage in STAGES),
-                             row["runtime_smoke"]])
+                             row["runtime_smoke"], *(row.get("configurations", {}).get(configuration, {})
+                             .get("stages", {}).get(stage, {}).get("status", "not_run")
+                             for configuration, stage in columns)])
     return summary
 
 
@@ -203,12 +274,17 @@ def main(argv=None):
     parser.add_argument("--jobs", type=int, default=os.environ.get("JOBS", 4))
     parser.add_argument("--timeout", type=float, default=90, help="seconds per stage")
     parser.add_argument("--case", action="append", help="run selected pinned case(s)")
+    parser.add_argument("--extended-configurations", action="store_true",
+                        help="also measure opt-in exact lexer + continuation prediction (permissive/strict)")
     args = parser.parse_args(argv)
     if args.corpus is None:
         parser.error("set GV4 or pass --corpus (see README.md for pinned checkout)")
     if args.jobs < 1 or args.timeout <= 0:
         parser.error("jobs and timeout must be positive")
     try:
+        configurations = dict(CONFIGURATIONS)
+        if args.extended_configurations:
+            configurations.update(EXTENDED_CONFIGURATIONS)
         corpus = args.corpus.resolve()
         manifest = load_manifest(args.manifest, corpus)
         if args.case:
@@ -240,12 +316,13 @@ def main(argv=None):
                       "runner_sha256": sha256(Path(__file__)),
                       "tools_sha256": {name: sha256(path) for name, path in tools.items()},
                       "selection": args.case or "all pinned cases",
+                      "configurations": {name: list(flags) for name, flags in configurations.items()},
                       "timeout_seconds": args.timeout,
                       "compile_harness": "empty main; generated parser is not executed"}
         print(f"Artifacts: {work}", flush=True)
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            futures = {executor.submit(run_case, case, corpus, work, tools, args.timeout): case
+            futures = {executor.submit(run_case, case, corpus, work, tools, args.timeout, REPO, configurations): case
                        for case in manifest["cases"]}
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -257,6 +334,7 @@ def main(argv=None):
                     result = {"name": case["name"], "inputs": case["inputs"],
                               "historical_288": case.get("historical_288", False),
                               "runtime_smoke": "not_configured",
+                              "configurations": empty_configurations("error", configurations=configurations, error=str(error)),
                               "stages": {stage: {"status": "error", "error": str(error)}
                                          for stage in STAGES}}
                 results.append(result)

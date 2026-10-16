@@ -2,6 +2,7 @@
 # lexer rule shape classification
 # ---------------------------------------------------------------------------
 import libs.extras.grammars.antlr_to_pg.types
+import libs.extras.grammars.antlr_to_pg.audit_json
 import libs.extras.grammars.antlr_to_pg.charsets
 
 at_classification* at_make_classification(int kind, char* payload):
@@ -322,6 +323,7 @@ void at_report(char* prefix, char* rule_name, char* payload):
 
 
 void at_report_plain(char* rule_name, char* message):
+	at_lowering_finding(rule_name, c"AT_PARSER_LOWERING", c"parser_atom", message)
 	string_builder* b = string_new()
 	string_append(b, c"rule ")
 	string_append(b, rule_name)
@@ -520,6 +522,9 @@ void at_fold_negated_token_refs(list[at_rule*] rules):
 	int i = 0
 	while (i < rules.length):
 		at_rule* r = rules[i]
+		if (g_at_prediction && (r.is_lexer == 0)):
+			i = i + 1
+			continue
 		int ai = 0
 		while (ai < r.alts.length):
 			at_alt* alt = r.alts[ai]
@@ -578,7 +583,8 @@ void at_classify_all_lexer_rules(list[at_rule*] rules):
 				if ((r.alts.length == 1) && (r.alts[0].elements.length == 1)):
 					at_element* element = r.alts[0].elements[0]
 					if ((element.kind == 0) && (element.suffix == 0)):
-						lowered.literal = strclone(element.text)
+						if (at_exact_case(r) == 0): lowered.literal = strclone(element.text)
+						else if ((element.text in g_text_to_name) == 0): g_text_to_name[element.text] = r.name
 				if (lowered.literal != 0):
 					g_literal_order.push(strclone(r.name))
 					g_literal_text[r.name] = lowered.literal
@@ -697,20 +703,20 @@ void at_audit_lexer_contract(list[at_rule*] rules):
 			at_classification* c = at_classify_lexer_rule(rule)
 			if (at_exact_implicit_trivia(rule)): trivia = 1
 			if ((c.kind == 0) && preceding_matcher):
-				at_loss(rule.first, rule.name, c"literal priority over an earlier matcher requires an overlap/order adaptation")
+				at_loss_code(rule.first, rule.name, c"AT_LEXER_PRIORITY", c"lexer_priority", c"unproven", c"literal priority over an earlier matcher requires an overlap/order adaptation")
 			if (((c.kind == 1) || (c.kind == 2) || (c.kind == 4)) && (at_exact_implicit_trivia(rule) == 0)):
 				preceding_matcher = 1
 			if ((c.kind == 1) || (c.kind == 2)):
-				at_loss(rule.first, rule.name, c"heuristic built-in matcher requires an exact reviewed adaptation")
+				at_loss_code(rule.first, rule.name, c"AT_HEURISTIC_MATCHER", c"lexer_matcher", c"unproven", c"heuristic built-in matcher requires an exact reviewed adaptation")
 			else if (c.kind == 0):
 				at_alt* alt = rule.alts[0]
 				if ((alt.elements.length != 1) || (alt.elements[0].kind != 0)):
-					at_loss(rule.first, rule.name, c"case-fragment keyword folding loses matching alternatives")
-				if (rule.commands.length > 0): at_loss(rule.first, rule.name, c"literal classification does not preserve lexer commands")
+					at_loss_code(rule.first, rule.name, c"AT_CASE_FOLDING", c"case_insensitive", c"unproven", c"case-fragment keyword folding loses matching alternatives")
+				if (rule.commands.length > 0): at_loss_code(rule.first, rule.name, c"AT_LITERAL_COMMAND", c"lexer_command", c"unproven", c"literal classification does not preserve lexer commands")
 			else if ((c.kind == 3) && (at_exact_implicit_trivia(rule) == 0)):
-				at_loss(rule.first, rule.name, c"dropped lexer rule is not exact implicit trivia")
+				at_loss_code(rule.first, rule.name, c"AT_DROPPED_LEXER", c"lexer_rule", c"unproven", c"dropped lexer rule is not exact implicit trivia")
 			i = i + 1
 		else:
 			i = i + 1
 	if ((trivia == 0) && (rules.length > 0)):
-		at_loss(rules[0].first, c"<grammar>", c"legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule")
+		at_loss_code(rules[0].first, c"<grammar>", c"AT_IMPLICIT_TRIVIA", c"lexer_trivia", c"unproven", c"legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule")

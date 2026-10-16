@@ -23,7 +23,7 @@ jobs:
       - name: Set up cached W bootstrap
         uses: ./.github/actions/setup-w
       - name: Build translator and test sweep harness
-        run: ./wbuild antlr_to_pg antlr_sweep_harness_test
+        run: ./wbuild antlr_to_pg antlr_sweep_harness_test antlr_differential_harness_test antlr_differential_test
       - name: Fetch the pinned corpus
         env:
           GV4: ${{ runner.temp }}/grammars-v4
@@ -39,7 +39,7 @@ jobs:
         env:
           GV4: ${{ runner.temp }}/grammars-v4
           WORK: ${{ github.workspace }}/bin/grammar_coverage_ci
-        run: libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90
+        run: libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90 --extended-configurations
       - name: Report stage coverage
         if: always()
         run: |
@@ -55,6 +55,9 @@ jobs:
                   summary.write('Stage | Passing / cases\n--- | ---\n')
                   for stage, count in data['passing'].items():
                       summary.write(f'{stage} | {count}/{data["cases"]}\n')
+                  for configuration, stages in data.get('configurations', {}).items():
+                      for stage, count in stages.items():
+                          summary.write(f'{configuration}/{stage} | {count}/{data["cases"]}\n')
                   summary.write('\nCompilation uses an empty main. Generated parsers are not executed by this sweep.\n\n')
                   for error in data['regressions'] + data['infrastructure_errors']:
                       summary.write(f'- {error}\n')
@@ -68,7 +71,43 @@ jobs:
             bin/grammar_coverage_ci/results.*
             bin/grammar_coverage_ci/**/*.log
             bin/grammar_coverage_ci/**/*.audit
+            bin/grammar_coverage_ci/**/*.audit.json
             bin/grammar_coverage_ci/**/*.report
             bin/grammar_coverage_ci/**/*.pg
             bin/grammar_coverage_ci/**/*.inputs
+          retention-days: 14
+
+  pinned-runtime-oracle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out W
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select the reference Java major
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          "$JAVA_HOME_17_X64/bin/java" -version
+      - name: Fetch checksum-pinned ANTLR reference tool
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, json, pathlib, urllib.request
+          pin = json.load(open('tests/grammars/antlr_differential/manifest.json'))['oracle']
+          data = urllib.request.urlopen(pin['jar_url'], timeout=60).read()
+          if hashlib.sha256(data).hexdigest() != pin['jar_sha256']:
+              raise SystemExit('ANTLR jar checksum mismatch')
+          pathlib.Path('bin').mkdir(exist_ok=True)
+          pathlib.Path('bin/antlr-reference.jar').write_bytes(data)
+          PYCODE
+      - name: Regenerate and verify reference runtime observations
+        run: python3 tests/antlr_differential.py --jar bin/antlr-reference.jar --oracle-only --work bin/antlr_oracle_ci
+      - name: Upload reference generation, compilation and execution evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: grammar-runtime-oracle
+          path: |
+            bin/antlr_oracle_ci/results.json
+            bin/antlr_oracle_ci/**/*.log
+            bin/antlr_oracle_ci/**/*.txt
           retention-days: 14

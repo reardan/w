@@ -154,6 +154,8 @@ int pg_reader_is_lexer_directive(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()): return 0
 	if (strcmp(reader.token, c"lexer") == 0): return 1
 	if (strcmp(reader.token, c"lexer_priority") == 0): return 1
+	if (strcmp(reader.token, c"lexer_progress") == 0): return 1
+	if (strcmp(reader.token, c"lexer_channel") == 0): return 1
 	if (strcmp(reader.token, c"lexer_eof") == 0): return 1
 	if (strcmp(reader.token, c"lexer_mode") == 0): return 1
 	if (strcmp(reader.token, c"lexer_rule") == 0): return 1
@@ -169,6 +171,8 @@ int pg_reader_is_top_level(pg_grammar_reader* reader):
 	if (strcmp(reader.token, c"goal") == 0): return 1
 	if (strcmp(reader.token, c"parser") == 0): return 1
 	if (strcmp(reader.token, c"mode") == 0): return 1
+	if (strcmp(reader.token, c"node_meta") == 0): return 1
+	if (strcmp(reader.token, c"term_meta") == 0): return 1
 	if (strcmp(reader.token, c"import") == 0): return 1
 	if (strcmp(reader.token, c"token") == 0): return 1
 	if (strcmp(reader.token, c"skip") == 0): return 1
@@ -644,6 +648,16 @@ int pg_reader_stateful_directive(pg_grammar_reader* reader, pg_grammar* grammar)
 			pg_reader_error(reader, c"unknown lexer priority", c"ordered or legacy")
 			return 0
 		grammar.ordered_lexer = strcmp(name, c"ordered") == 0
+	else if (strcmp(directive, c"lexer_progress") == 0):
+		if (strcmp(name, c"guarded") != 0):
+			pg_reader_error(reader, c"unknown lexer progress policy", c"guarded")
+			return 0
+		grammar.guarded_progress = 1
+	else if (strcmp(directive, c"lexer_channel") == 0):
+		if (pg_grammar_lexer_channel(grammar, name) >= 0):
+			pg_reader_error(reader, c"duplicate lexer channel", c"new channel name")
+			return 0
+		grammar.lexer_channels.push(strclone(name))
 	else if (strcmp(directive, c"lexer_eof") == 0):
 		if ((strcmp(name, c"any_mode") != 0) && (strcmp(name, c"closed_modes") != 0)):
 			pg_reader_error(reader, c"unknown lexer EOF policy", c"any_mode or closed_modes")
@@ -705,6 +719,63 @@ int pg_reader_stateful_directive(pg_grammar_reader* reader, pg_grammar* grammar)
 	return 1
 
 
+# Metadata uses quoted decimal fields so the directive has an unambiguous
+# fixed arity without changing the PG lexical token set.
+int pg_reader_metadata_integer(pg_grammar_reader* reader):
+	char* text = pg_reader_take_string(reader)
+	if (text == 0): return -1
+	int value = 0
+	if (strlen(text) == 0): value = -1
+	for i in range(strlen(text)):
+		int digit = cast(int, text[i]) - '0'
+		if ((digit < 0) || (digit > 9) || (value > 10000000)):
+			value = -1
+			break
+		value = value * 10 + digit
+	free(text)
+	if (value < 0): pg_reader_error(reader, c"invalid metadata integer", c"quoted nonnegative integer")
+	return value
+
+
+int pg_reader_metadata(pg_grammar_reader* reader, pg_grammar* grammar):
+	int term = strcmp(reader.token, c"term_meta") == 0
+	pg_reader_next(reader)
+	char* name = pg_reader_take_name(reader)
+	if (name == 0): return 0
+	pg_rule* rule = pg_grammar_find_rule(grammar, name)
+	free(name)
+	int alternative = pg_reader_metadata_integer(reader) - 1
+	if ((grammar.mode != pg_grammar_mode_antlr()) || (rule == 0) || (alternative < 0)):
+		pg_reader_error(reader, c"metadata requires an existing antlr-mode alternative", c"rule and alternative")
+		return 0
+	if (alternative >= rule.alternatives.length):
+		pg_reader_error(reader, c"metadata alternative out of range", c"existing alternative")
+		return 0
+	pg_alternative* alt = rule.alternatives[alternative]
+	map[char*, int] values = alt.metadata
+	if (term):
+		int index = pg_reader_metadata_integer(reader) - 1
+		if ((index < 0) || (index >= alt.terms.length)):
+			pg_reader_error(reader, c"metadata term out of range", c"existing term")
+			return 0
+		if (alt.terms[index].metadata == 0): alt.terms[index].metadata = new map[char*, int]
+		values = alt.terms[index].metadata
+	else:
+		if (alt.metadata == 0): alt.metadata = new map[char*, int]
+		values = alt.metadata
+	char* key = pg_reader_take_string(reader)
+	if (key == 0): return 0
+	int value = pg_reader_metadata_integer(reader)
+	if (value < 0): return 0
+	if (key in values):
+		pg_reader_error(reader, c"duplicate metadata key", c"unique key per node or term")
+		free(key)
+		return 0
+	values[key] = value
+	free(key)
+	return 1
+
+
 pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnostics):
 	pg_grammar_reader* reader = pg_reader_new(input, filename, diagnostics)
 	pg_reader_next(reader)
@@ -716,7 +787,9 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 	if (parser_name == 0): return 0
 	pg_grammar* grammar = pg_grammar_new(parser_name)
 	while (reader.token_kind != pg_reader_token_eof()):
-		if (pg_reader_is_lexer_directive(reader) || pg_reader_is_name(reader, c"goal")):
+		if (pg_reader_is_name(reader, c"node_meta") || pg_reader_is_name(reader, c"term_meta")):
+			if (pg_reader_metadata(reader, grammar) == 0): return 0
+		else if (pg_reader_is_lexer_directive(reader) || pg_reader_is_name(reader, c"goal")):
 			if (pg_reader_stateful_directive(reader, grammar) == 0): return 0
 		else if (pg_reader_is_name(reader, c"mode")):
 			pg_reader_next(reader)
@@ -724,8 +797,9 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			if (name == 0): return 0
 			if (strcmp(name, c"streaming") == 0): grammar.mode = pg_grammar_mode_streaming()
 			else if (strcmp(name, c"ast") == 0): grammar.mode = pg_grammar_mode_ast()
+			else if (strcmp(name, c"antlr") == 0): grammar.mode = pg_grammar_mode_antlr()
 			else:
-				pg_reader_error(reader, c"unknown parser mode", c"streaming or ast")
+				pg_reader_error(reader, c"unknown parser mode", c"streaming, ast or antlr")
 				free(name)
 				return 0
 			free(name)

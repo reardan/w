@@ -101,10 +101,12 @@ struct pg_term:
 	int modifier
 	int kind
 	char* code
+	map[char*, int] metadata
 
 
 struct pg_alternative:
 	list[pg_term*] terms
+	map[char*, int] metadata
 
 
 struct pg_rule:
@@ -140,6 +142,11 @@ int pg_grammar_mode_streaming():
 	return 1
 
 
+# Explicit pure-grammar continuation prediction for imported ANTLR grammars.
+int pg_grammar_mode_antlr():
+	return 2
+
+
 # tokens/skips are separate lists sharing the same element type: tokens
 # produce default-channel tokens, skips hidden-channel ones (see
 # pg_grammar_add_skip's negative kind numbering).
@@ -169,7 +176,9 @@ struct pg_grammar:
 	int mode
 	int stateful
 	int ordered_lexer
+	int guarded_progress
 	int allow_mode_eof
+	list[char*] lexer_channels
 	list[char*] lexer_modes
 	list[char*] lexer_order
 	list[pg_lexer_rule_config*] lexer_rules
@@ -190,7 +199,9 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.mode = pg_grammar_mode_ast()
 	grammar.stateful = 0
 	grammar.ordered_lexer = 0
+	grammar.guarded_progress = 0
 	grammar.allow_mode_eof = 0
+	grammar.lexer_channels = new list[char*]
 	grammar.lexer_modes = new list[char*]
 	grammar.lexer_modes.push(strclone(c"DEFAULT"))
 	grammar.lexer_order = new list[char*]
@@ -276,6 +287,7 @@ pg_rule* pg_rule_new(char* name, int kind):
 pg_alternative* pg_alternative_new():
 	pg_alternative* alternative = new pg_alternative()
 	alternative.terms = new list[pg_term*]
+	alternative.metadata = 0
 	return alternative
 
 
@@ -285,6 +297,7 @@ pg_term* pg_term_new(char* name, int modifier):
 	term.modifier = modifier
 	term.kind = pg_term_kind_normal()
 	term.code = 0
+	term.metadata = 0
 	return term
 
 
@@ -294,6 +307,7 @@ pg_term* pg_term_new_action(char* code):
 	term.modifier = 0
 	term.kind = pg_term_kind_action()
 	term.code = strclone(code)
+	term.metadata = 0
 	return term
 
 
@@ -303,6 +317,7 @@ pg_term* pg_term_new_predicate(char* code):
 	term.modifier = 0
 	term.kind = pg_term_kind_predicate()
 	term.code = strclone(code)
+	term.metadata = 0
 	return term
 
 
@@ -460,6 +475,7 @@ int pg_grammar_token_kind(pg_grammar* grammar, char* name):
 void pg_term_free(pg_term* term):
 	free(term.name)
 	if (term.code != 0): free(term.code)
+	if (term.metadata != 0): term.metadata.free()
 	free(term)
 
 
@@ -469,6 +485,7 @@ void pg_alternative_free(pg_alternative* alternative):
 		pg_term_free(alternative.terms[i])
 		i = i + 1
 	list_free[pg_term*](alternative.terms)
+	if (alternative.metadata != 0): alternative.metadata.free()
 	free(alternative)
 
 
@@ -554,6 +571,7 @@ void pg_grammar_free(pg_grammar* grammar):
 	while (i < grammar.imports.length):
 		free(grammar.imports[i])
 		i = i + 1
+	for char* entry in grammar.lexer_channels: free(entry)
 	for char* entry in grammar.lexer_modes: free(entry)
 	for char* entry in grammar.lexer_order: free(entry)
 	for pg_lexer_rule_config* config in grammar.lexer_rules:
@@ -570,6 +588,7 @@ void pg_grammar_free(pg_grammar* grammar):
 	for pg_goal_def* goal in grammar.goals:
 		free(goal.rule_name)
 		free(goal)
+	list_free[char*](grammar.lexer_channels)
 	list_free[char*](grammar.lexer_modes)
 	list_free[char*](grammar.lexer_order)
 	list_free[pg_lexer_rule_config*](grammar.lexer_rules)
@@ -608,4 +627,15 @@ int pg_grammar_lexer_mode(pg_grammar* grammar, char* name):
 int pg_grammar_rule_goal(pg_grammar* grammar, char* name):
 	for pg_goal_def* goal in grammar.goals:
 		if (strcmp(goal.rule_name, name) == 0): return goal.goal
+	return -1
+
+
+# Keep the native error channel (2) separate from imported user channels.
+int pg_grammar_lexer_channel(pg_grammar* grammar, char* name):
+	if (name == 0): return -1
+	if (strcmp(name, c"default") == 0): return 0
+	if (strcmp(name, c"hidden") == 0): return 1
+	if (strcmp(name, c"error") == 0): return 2
+	for i, channel in grammar.lexer_channels:
+		if (strcmp(name, channel) == 0): return i + 3
 	return -1

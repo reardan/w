@@ -1,0 +1,10 @@
+grammar ImportRoot;
+import ImportFirst, ImportSecond;
+start: chosen overridden deep EOF;
+overridden: R;
+A: 'a';
+B: 'b';
+C: 'c';
+D: 'd';
+R: 'r';
+WS: [ \t\r\n]+ -> skip;

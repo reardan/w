@@ -1,6 +1,3 @@
-libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:38:1: semantic loss [<grammar>]: unresolved grammar dependency: channels {
-    ERROR
-}
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:42:1: semantic loss [<grammar>]: unresolved grammar dependency: options {
     superClass = JavaScriptLexerBase;
 }
@@ -50,7 +47,6 @@ libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:21
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:218:30: semantic loss [HtmlComment]: non-greedy matching requires an explicit adaptation
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:219:35: semantic loss [CDataComment]: variable-width lexer continuation requires a backtracking proof
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:219:35: semantic loss [CDataComment]: non-greedy matching requires an explicit adaptation
-libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:220:48: semantic loss [UnexpectedCharacter]: unsupported command channel(ERROR)
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:225:38: semantic loss [TemplateStringStartExpression]: unmapped action at atom position 1: {this.ProcessTemplateOpenBrace();}
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:259:33: semantic loss [LineContinuation]: Unicode escape/property or non-ASCII matching is not verified
 libs/extras/grammars/antlr_to_pg/testdata/antlr/javascript/JavaScriptLexer.g4:265:29: semantic loss [ExponentPart]: variable-width lexer continuation requires a backtracking proof

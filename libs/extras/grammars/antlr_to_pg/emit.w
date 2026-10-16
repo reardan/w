@@ -1,6 +1,7 @@
 # .pg text emission for parsed and classified ANTLR rules.
 import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.classify
+import libs.extras.grammars.antlr_to_pg.source_metadata
 
 
 # w's pg.pg (unlike the real grammar_reader.w) models parser/token/skip/
@@ -24,6 +25,8 @@ int at_is_pg_reserved(char* name):
 	if (strcmp(name, c"recover") == 0):
 		return 1
 	if (strcmp(name, c"mode") == 0): return 1
+	if (strcmp(name, c"node_meta") == 0): return 1
+	if (strcmp(name, c"term_meta") == 0): return 1
 	if (strcmp(name, c"import") == 0): return 1
 	if (strcmp(name, c"fragment") == 0): return 1
 	if (strcmp(name, c"lexer") == 0): return 1
@@ -33,6 +36,8 @@ int at_is_pg_reserved(char* name):
 	if (strcmp(name, c"lexer_action") == 0): return 1
 	if (strcmp(name, c"lexer_command") == 0): return 1
 	if (strcmp(name, c"lexer_priority") == 0): return 1
+	if (strcmp(name, c"lexer_progress") == 0): return 1
+	if (strcmp(name, c"lexer_channel") == 0): return 1
 	if (strcmp(name, c"lexer_eof") == 0): return 1
 	if (strcmp(name, c"goal") == 0): return 1
 	return 0
@@ -103,9 +108,67 @@ char* at_next_group_name(char* owning_rule):
 list[list[at_term*]] at_translate_altlist(char* owning_rule, list[at_alt*] alts);
 
 
+char* at_translate_parser_set(char* owner, at_element* element):
+	if (g_at_parser_sets == 0): g_at_parser_sets = new list[at_parser_set*]
+	at_parser_set* pending = new at_parser_set()
+	pending.helper = at_next_group_name(owner)
+	pending.excluded = new map[char*, int]
+	if (element.kind == 5):
+		for at_alt* alternative in element.group_alts:
+			at_element* excluded = alternative.elements[0]
+			char* name = excluded.text
+			if (excluded.kind == 0):
+				name = g_text_to_name.get(excluded.text, 0)
+				if (name == 0):
+					name = at_synth_literal_name(excluded.text)
+					at_register_literal(name, excluded.text)
+			pending.excluded[name] = 1
+	g_at_parser_sets.push(pending)
+	return pending.helper
+
+
+void at_finish_parser_sets():
+	if (g_at_parser_sets == 0): return
+	map[char*, int] kinds = new map[char*, int]
+	for char* name in g_literal_order: kinds[name] = 1
+	for char* name in g_token_names: kinds[name] = 1
+	for char* name in g_at_token_identities: kinds[name] = 1
+	for at_parser_set* pending in g_at_parser_sets:
+		list[at_alt*] alternatives = new list[at_alt*]
+		for char* name in kinds:
+			if (name in pending.excluded): continue
+			at_alt* alternative = new at_alt()
+			alternative.elements = new list[at_element*]
+			at_element* atom = new at_element()
+			atom.kind = 2
+			atom.text = name
+			alternative.elements.push(atom)
+			alternatives.push(alternative)
+		if (alternatives.length == 0):
+			# An empty complement is a valid never-matching token set.
+			char* never = at_next_group_name(pending.helper)
+			g_at_token_identities.push(never)
+			at_mark_used(never)
+			at_alt* alternative = new at_alt()
+			alternative.elements = new list[at_element*]
+			at_element* atom = new at_element()
+			atom.kind = 2
+			atom.text = never
+			alternative.elements.push(atom)
+			alternatives.push(alternative)
+		g_parser_rule_names.push(pending.helper)
+		g_rule_alts[pending.helper] = at_translate_altlist(pending.helper, alternatives)
+	kinds.free()
+
+
 at_term* at_translate_element(char* owning_rule, at_element* e):
 	at_term* term = new at_term()
 	term.suffix = e.suffix
+	if (g_at_prediction && ((e.kind == 4) || (e.kind == 5)) && at_parser_set_supported(e)):
+		term.name = at_translate_parser_set(owning_rule, e)
+		term.label = e.label
+		return term
+	term.label = e.label
 	if (e.kind == 2):
 		char* resolved = at_resolve_parser_rule_name(e.text)
 		if (strcmp(e.text, c"EOF") != 0):
@@ -161,6 +224,7 @@ list[at_term*] at_translate_alt(char* owning_rule, at_alt* alt):
 
 list[list[at_term*]] at_translate_altlist(char* owning_rule, list[at_alt*] alts):
 	list[list[at_term*]] out = new list[list[at_term*]]
+	if (g_at_prediction): g_at_source_alts[owning_rule] = alts
 	int i = 0
 	while (i < alts.length):
 		at_alt* alt = alts[i]
@@ -178,6 +242,7 @@ void at_translate_all_parser_rules(list[at_rule*] rules):
 			g_parser_rule_names.push(strclone(final_name))
 			g_rule_alts[final_name] = at_translate_altlist(final_name, r.alts)
 		i = i + 1
+	at_finish_parser_sets()
 
 
 # ---------------------------------------------------------------------------
@@ -212,9 +277,15 @@ char* at_pg_mode_name(char* mode):
 
 void at_emit_stateful_lexer(string_builder* out):
 	string_append(out, c"lexer stateful\nlexer_priority ordered\nlexer_eof any_mode\n")
+	if (g_at_channels != 0):
+		for char* channel in g_at_channels: string_append(out, cstr(f"lexer_channel AT_CHANNEL_{channel}\n"))
+	if (g_at_exact_lexer): string_append(out, c"lexer_progress guarded\n")
 	if (g_at_token_identities != 0):
 		for char* name in g_at_token_identities:
-			if ((name in g_lexer_rules) == 0): string_append(out, cstr(f"token {name}\n"))
+			at_rule* source = g_lexer_rules.get(name, 0)
+			# A fragment does not declare a token, even when a tokens{} name
+			# shares its spelling and another rule emits that name with type().
+			if ((source == 0) || source.is_fragment): string_append(out, cstr(f"token {name}\n"))
 	for char* mode in g_at_modes:
 		string_append(out, cstr(f"lexer_mode {at_pg_mode_name(mode)}\n"))
 	# Implicit parser literals outrank explicit lexer rules on equal length.
@@ -243,6 +314,7 @@ void at_emit_stateful_lexer(string_builder* out):
 				else if (strcmp(command.name, c"channel") == 0):
 					if (strcmp(argument, c"HIDDEN") == 0): argument = c"hidden"
 					else if (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0): argument = c"default"
+					else if (at_custom_channel(argument)): argument = cstr(f"AT_CHANNEL_{argument}")
 				string_append(out, cstr(f" {argument}"))
 			string_append_char(out, 10)
 	# Legacy parser wildcard/negated-set fallbacks are retained in best-effort
@@ -257,6 +329,7 @@ void at_emit(string_builder* out, char* parser_name):
 	string_append(out, c"parser ")
 	string_append(out, parser_name)
 	string_append(out, c"\n\n")
+	if (g_at_prediction): string_append(out, c"mode antlr\n\n")
 	int i = 0
 	if (g_at_stateful):
 		at_emit_stateful_lexer(out)
@@ -329,6 +402,8 @@ void at_emit(string_builder* out, char* parser_name):
 			j = j + 1
 		string_append_char(out, 10)
 		i = i + 1
+
+	at_source_emit(out)
 
 	if (g_report_lines.length > 0):
 		string_append(out, c"\n# --- translation report (see build log / --report for details) ---\n")

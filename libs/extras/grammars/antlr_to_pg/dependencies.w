@@ -2,6 +2,7 @@
 # Only plain imports, tokenVocab, and tokens{} have resolved semantics here;
 # all other dependency blocks remain visible to the conservative audit.
 import libs.extras.grammars.antlr_to_pg.ast
+import libs.extras.grammars.antlr_to_pg.audit_json
 import lib.path
 import lib.utf8
 
@@ -15,6 +16,7 @@ struct at_dependency_input:
 	int state               # 0 unread edges, 1 visiting, 2 complete
 	int failed
 	int imported
+	list[at_dependency_input*] imports
 	pg_ast_node* root
 
 
@@ -25,6 +27,7 @@ int g_at_dependency_error
 
 
 int at_dependency_fail(char* path, char* reason):
+	at_finding(c"AT_DEPENDENCY", c"dependencies", c"grammar_dependency", c"dependency", path, 1, 1, c"<grammar>", reason)
 	println2(cstr(f"antlr_to_pg: dependency error in {path}: {reason}"))
 	g_at_dependency_error = g_at_dependency_error + 1
 	return 0
@@ -107,6 +110,7 @@ at_dependency_input* at_dependency_load(char* path):
 	input.key = key
 	input.source = source
 	input.root = root
+	input.imports = new list[at_dependency_input*]
 	int count = pg_ast_child_count(root) - 1
 	for i in range(count):
 		pg_ast_node* inner = pg_ast_child(pg_ast_child(root, i), 0)
@@ -140,6 +144,24 @@ at_dependency_input* at_dependency_load(char* path):
 	return input
 
 
+int at_dependency_channels(at_dependency_input* input, pg_ast_node* node):
+	if (input.kind != 1): return at_dependency_fail(input.path, c"channels declaration requires a lexer grammar")
+	list[char*] words = at_dependency_words(pg_ast_child(node, 1).text)
+	if ((words == 0) || (words.length < 2)): return at_dependency_fail(input.path, c"malformed channels declaration")
+	if (g_at_channels == 0): g_at_channels = new list[char*]
+	int i = 1
+	while (i < words.length - 1):
+		char* name = words[i]
+		if ((at_dependency_identifier(name) == 0) || (strcmp(name, c"HIDDEN") == 0) || (strcmp(name, c"DEFAULT_TOKEN_CHANNEL") == 0) || at_custom_channel(name)):
+			return at_dependency_fail(input.path, c"invalid or repeated channel name")
+		g_at_channels.push(strclone(name))
+		i = i + 1
+		if (i < words.length - 1):
+			if (strcmp(words[i], c",") != 0): return at_dependency_fail(input.path, c"malformed channels declaration")
+			i = i + 1
+	return 1
+
+
 int at_dependency_resolve(at_dependency_input* input);
 
 
@@ -160,6 +182,7 @@ int at_dependency_edge(at_dependency_input* input, char* name, int imported):
 			return at_dependency_fail(input.path, cstr(f"dependency {name} declares grammar {dependency.name}"))
 	if (imported):
 		dependency.imported = 1
+		input.imports.push(dependency)
 		if ((input.kind != 0) && (input.kind != dependency.kind)):
 			return at_dependency_fail(input.path, cstr(f"incompatible imported grammar {name}"))
 	else if (dependency.kind != 1):
@@ -228,10 +251,22 @@ int at_dependency_resolve(at_dependency_input* input):
 			char* marker = pg_ast_child(inner, 0).text
 			if (strcmp(marker, c"options") == 0): resolved = at_dependency_options(input, inner)
 			else if (strcmp(marker, c"tokens") == 0): resolved = at_dependency_tokens(input, inner)
+			else if (strcmp(marker, c"channels") == 0): resolved = at_dependency_channels(input, inner)
 		if (resolved): g_at_resolved_sites.push(inner.first_token)
 	input.state = 2
 	input.failed = g_at_dependency_error != errors_before
 	return input.failed == 0
+
+
+# ANTLR merges root rules before depth-first imports, retaining the first
+# definition. Explicit dependency arguments locate files; they do not change
+# the grammar's declared import precedence. A visited set also handles diamonds.
+void at_dependency_collect_order(at_dependency_input* input, map[char*, int] seen, list[at_dependency_input*] ordered):
+	if (input.name in seen): return
+	seen[input.name] = 1
+	ordered.push(input)
+	for at_dependency_input* dependency in input.imports:
+		at_dependency_collect_order(dependency, seen, ordered)
 
 
 list[at_rule*] at_load_grammar_inputs(list[char*] paths):
@@ -250,24 +285,16 @@ list[at_rule*] at_load_grammar_inputs(list[char*] paths):
 	while (i < g_at_inputs.length):
 		at_dependency_resolve(g_at_inputs[i])
 		i = i + 1
-	map[char*, at_dependency_input*] owners = new map[char*, at_dependency_input*]
-	list[at_rule*] all_rules = new list[at_rule*]
+	list[at_dependency_input*] ordered = new list[at_dependency_input*]
+	map[char*, int] seen = new map[char*, int]
 	for at_dependency_input* input in g_at_inputs:
-		# Reject imported overrides before the legacy explicit-multi-input
-		# duplicate policy drops either definition. Import precedence is not
-		# implemented, so accepting one would silently change the language.
-		int count = pg_ast_child_count(input.root) - 1
-		for j in range(count):
-			pg_ast_node* inner = pg_ast_child(pg_ast_child(input.root, j), 0)
-			if (inner.kind != antlr4_ast_rule_def): continue
-			int index = 0
-			if (pg_ast_child(inner, 0).kind == antlr4_token_KW_FRAGMENT): index = 1
-			char* name = pg_ast_child(inner, index).text
-			at_dependency_input* previous = owners.get(name, 0)
-			if ((previous != 0) && (input.imported || previous.imported)):
-				at_dependency_fail(input.path, cstr(f"unsupported imported rule override {name} (also in {previous.path})"))
-			else:
-				owners[name] = input
+		if (input.imported == 0): at_dependency_collect_order(input, seen, ordered)
+	# Failed cyclic components still need their retained host declarations
+	# audited; resolution has already diagnosed the cycle before this walk.
+	for at_dependency_input* input in g_at_inputs:
+		at_dependency_collect_order(input, seen, ordered)
+	list[at_rule*] all_rules = new list[at_rule*]
+	for at_dependency_input* input in ordered:
 		g_at_source = input.source
 		list[at_rule*] rules = at_collect_rules(input.root)
 		for at_rule* rule in rules: all_rules.push(rule)

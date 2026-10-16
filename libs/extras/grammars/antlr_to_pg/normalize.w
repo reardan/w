@@ -1,5 +1,6 @@
 # Bounded parser recursion normalization.
 import libs.extras.grammars.antlr_to_pg.normalize_operators
+import libs.extras.grammars.antlr_to_pg.normalize_prediction
 
 
 int at_normalize_expression(at_rule* rule, list[at_rule*] rules);
@@ -13,6 +14,8 @@ int at_normalize_parser_lists(list[at_rule*] rules):
 	while (i < source_count):
 		at_rule* rule = rules[i]
 		if (at_normalize_expression(rule, rules)): count = count + 1
+		else if (g_at_prediction && at_normalize_prediction_expression(rule, rules)): count = count + 1
+		else if (g_at_prediction && at_normalize_prediction_list(rule)): count = count + 1
 		else: count = count + at_normalize_parser_list(rule)
 		i = i + 1
 	return count
@@ -56,6 +59,7 @@ at_rule* at_expression_helper(at_rule* owner, char* suffix):
 		name = strclone(cstr(f"{name}_"))
 	at_rule* helper = new at_rule()
 	helper.name = name
+	helper.precedence_helper = 1
 	helper.first = owner.first
 	helper.last = owner.last
 	helper.mode = c"DEFAULT_MODE"
@@ -243,6 +247,7 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules):
 				# Lower postfix tiers would need a precedence-climbing parser.
 				if ((binaries > 0) || postfix_prefix_seen): return 0
 				at_alt* suffix = new at_alt()
+				at_source_copy(suffix, alt)
 				suffix.elements = new list[at_element*]
 				int si = 1
 				while (si < alt.elements.length):
@@ -310,6 +315,7 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules):
 	int pi = 0
 	for at_alt* alt in primary_alts:
 		at_alt* copy = new at_alt()
+		at_source_copy(copy, alt)
 		copy.elements = at_clone_elements_prefix(alt.elements, alt.elements.length)
 		int precedence = primary_precedence[pi]
 		if (precedence >= 0):
@@ -326,6 +332,7 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules):
 		at_rule* tier = tiers[i]
 		at_alt* source = recursive_alts[i]
 		at_alt* tail = new at_alt()
+		at_source_copy(tail, source)
 		tail.elements = new list[at_element*]
 		int end = source.elements.length
 		if (binary_kinds[i]): end = end - 1
@@ -346,6 +353,7 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules):
 		else:
 			for at_alt* suffix in postfix_tails:
 				at_alt* copy = new at_alt()
+				at_source_copy(copy, suffix)
 				copy.elements = at_clone_elements_prefix(suffix.elements, suffix.elements.length)
 				loop.group_alts.push(copy)
 		loop.first = rule.first

@@ -44,8 +44,10 @@ grammars describe the two formats involved, run through
   and transitive plain grammar imports. Token vocabularies currently require a
   lexer grammar; combined grammars' implicit parser literals need separate work.
   Grammar names, cycles, missing inputs,
-  ambiguous supplied/sibling files, incompatible grammar kinds, and imported
-  rule overrides are checked before publishing outputs. Plain `tokens { NAME }`
+  ambiguous supplied/sibling files and incompatible grammar kinds are checked
+  before publishing outputs. Root rules override imported rules; imports merge
+  depth-first in declaration order, with the first definition winning. Explicit
+  dependency file arguments do not change that order. Plain `tokens { NAME }`
   declarations create token identities for commands such as `type(NAME)`;
   they do not invent matchers. `--dependencies FILE` records actual loaded paths.
 - `matchers_{ascii,analyze,emit}.w` — the generated-matcher emitter:
@@ -67,6 +69,10 @@ grammars describe the two formats involved, run through
   `SWEEP_RESULTS.md` also retains the historical `sweep_results.csv` measurement.
 - `MATCHER_GENERATION_PLAN.md` — design notes for the matcher generator
   (written against an earlier layout, so its paths are historical).
+- [`COMPATIBILITY_PLAN.md`](COMPATIBILITY_PLAN.md) — the implementation plan and
+  capability ledger for the exact lexer and imported parser prediction engines.
+- [`LEFT_RECURSION_PLAN.md`](LEFT_RECURSION_PLAN.md) — the next implementation plan,
+  with parallel agent ownership and validation gates for 21 grammars / 25 rules.
 
 ## Why w, not a scripting language
 
@@ -77,7 +83,7 @@ this repo (and `w` itself, which is self-hosting): the ANTLR-parsing part
 is no longer bespoke code to maintain, it's just another `.pg` grammar
 validated the same way every other grammar here is.
 
-## What it does and doesn't handle
+## Default lowering
 
 Lexer rules are first matched against a fixed set of shapes and mapped to
 the closest existing `libs/extras/parser_generator/lexer.w` matcher
@@ -136,6 +142,76 @@ refuse.
 path groups skips, tokens and literals separately and resolves literal-vs-token
 ties in the literal's favor. Stateful lowering below preserves source priority.
 
+## Exact lexer and complete-input prediction
+
+Use both opt-in backends for the supported compatibility subset:
+
+```sh
+bin/antlr_to_pg Grammar.g4 --strict --exact-lexer --prediction \
+  --matchers bin/grammar_matchers.w --audit-json bin/grammar_audit.json \
+  -o bin/grammar.pg
+bin/parser_generator bin/grammar.pg -o bin/grammar_parser.w
+```
+
+`--exact-lexer` implies stateful lowering. Its instruction graph retains lexer
+continuations, so fragments and recursive rules can return alternative endpoints
+to their caller. Matching uses longest token length, then declaration priority;
+nongreedy decisions preserve their source ordering. Supported constructs include
+productive recursive rules, groups/repetition, modes, remapping, `more`, named
+EOF, custom channels, Unicode ranges/complements/properties, wildcard scalars,
+and grammar/rule `caseInsensitive` options. Unicode/property and simple case data
+are pinned to the ANTLR 4.13.2 / Java 17 reference; see
+[the reproducible extractor](../../../../tools/antlr_unicode/README.md).
+
+Input is valid UTF-8 without embedded NUL. Positions are byte offsets/columns.
+Malformed UTF-8 and resource exhaustion produce explicit terminal failures that
+survive parser rollback. Empty matcher transitions have a finite progress cap;
+nonproductive recursion and nullable repetition are refused. Case-insensitive
+parser literals currently require explicit lexer token rules. Foreign host code,
+predicates, and unsupported options remain audited and strict-refused.
+
+`--prediction` emits `mode antlr`, a pure complete-input parser using bounded
+continuation search. It retains the full caller stack, source-order alternatives,
+and greedy term priority, then builds only the selected AST. It is not ANTLR's
+ALL(*) algorithm: ambiguity can take exponential work, limited by an explicit
+step budget (one million by default). Exhaustion is a sticky resource error.
+Every public rule entry requires complete input; native `.pg` partial parsing,
+ordered choice, and streaming remain separate modes. Prediction refuses host
+callbacks, lexical goals, recovery, parser actions/predicates, and unsupported
+parser nongreedy decisions.
+
+The expression fallback supports direct-recursive ternaries, compound/optional
+operators, interleaved postfix levels, labels, and proved keyword-delimited
+lists. Existing safe normalization runs first to preserve established AST shapes.
+Arbitrary indirect/hidden left recursion remains unsupported. Parser wildcard
+and token complements operate on whole token identities, exclude EOF, and include
+implicit literals; they do not manufacture character matchers in prediction mode.
+
+`node_meta` and `term_meta` preserve source rule/alternative coordinates and labels
+through generated helpers. `antlr_rule:<name>`, `antlr_alt:<label>`,
+`antlr_label:<name>=`/`+=`, and `antlr_lhs_label:<name>=` describe the normalized W
+AST; they do not recreate ANTLR's generated context/listener API. See
+[the prediction contract and examples](../../../../tests/grammars/antlr_prediction/README.md).
+
+Without prediction, strict auditing now reports unproved parser continuations.
+Five formerly accepted corpus grammars have confirmed ANTLR/W counterexamples;
+[their recorded witnesses](../../../../tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json)
+explain the intentional strict reclassification. Strict acceptance remains an
+audit result, not a complete ANTLR source-validity check (for example, some invalid
+combined-grammar token declarations can still be accepted). The [runtime oracle](../../../../tests/grammars/antlr_differential/README.md)
+provides independent evidence for its explicitly configured inputs. All 58
+historically stateful-strict cases remain accepted with both exact backends.
+The older stateful backend now conservatively refuses additional unproved parser
+continuations; [the review ledger](STRICT_CONTINUATION_REVIEW.json) distinguishes
+confirmed mismatches from cases without a demonstrated counterexample.
+
+`--audit-json FILE` writes schema-versioned findings even when strict translation
+refuses. Each finding has a stable code, stage, feature, classification, source
+location, rule, and reason. Parser/matcher outputs remain untouched on refusal.
+The human `--audit FILE` output is retained. Dependency resolution is ordered and
+records loaded hashes; missing host semantics or grammar files are not silently
+replaced by guessed implementations.
+
 ## Stateful lexer lowering
 
 Grammars with modes, token-only declarations, remaps, or accumulation commands
@@ -149,18 +225,21 @@ identities, including across modes. Parser literals that ambiguously alias
 multiple identities or an accumulated/remapped rule remain strict blockers.
 
 Supported commands are `mode`, `pushMode`, `popMode`, `type`, `skip`, `more`,
-`channel(HIDDEN)`, and `channel(DEFAULT_TOKEN_CHANNEL)`. Commands execute in
+`channel(HIDDEN)`, `channel(DEFAULT_TOKEN_CHANNEL)`, and declared custom channels.
+Custom identities use PG channel numbers above its reserved error channel; oracle
+observations compare declared names rather than incompatible numeric IDs. Commands execute in
 source order after selecting the winner. `more` accumulates text across mode
 changes until a terminal rule chooses the token kind. ANTLR permits EOF in a
 nondefault mode, so translated grammars explicitly emit `lexer_eof any_mode`;
-pending `more` at EOF is still diagnosed conservatively. Skip and hidden-channel
+pending `more` may finish through a named EOF rule in guarded exact mode. A
+consuming match that reaches EOF suppresses a later separate named EOF token,
+matching ANTLR's EOF boundary behavior. Skip and hidden-channel
 tokens are retained as hidden trivia for complete source reconstruction.
-Custom channels, malformed command arguments, and repeated/conflicting commands
-remain semantic losses. Best-effort emission omits commands the runtime cannot
+Malformed command arguments and repeated/conflicting commands remain semantic losses. Best-effort emission omits commands the runtime cannot
 represent; strict mode refuses before publishing output.
 
-Generated matchers do not generally backtrack from a greedy subexpression into
-its following continuation. Strict stateful auditing therefore refuses
+Without `--exact-lexer`, generated matchers do not generally backtrack from a
+greedy subexpression into its following continuation. Strict stateful auditing therefore refuses
 variable-width pieces before another atom unless a narrow disjoint-delimiter
 proof applies (for example optional CR before LF, or `~["]*` before `"`).
 Repeated variable-width bodies require a prefix-free proof: fixed-width
@@ -211,16 +290,11 @@ with W commit `298246c6d6906650d4cd9c677e93933abd9bf619`: **196 translated,
 `SWEEP_RESULTS.md` used different upstream inputs and predates safety checks;
 those totals are not a direct regression comparison.
 
-The same pinned cases now produce **218 translations, 212 generated/compiled
-parsers, and 15 strict translations**, up from PR #690's 215/209/14. The
-historical 288-name subset compiles 210. This increment adds Lua, TNT, and V
-translation/compile passes, plus strict acceptance for TNT. Every prior
-expected pass is retained; `recorded_pass` still preserves the initial
-179-compilation audit. The earlier Lisp reclassification remains: its
-`ATOM_PART` fragment has no productive base, so its old repetition rewrite
-was invalid. See [`SWEEP_RESULTS.md`](SWEEP_RESULTS.md),
-[`sweep_current_results.csv`](sweep_current_results.csv), and the
-[implementation plan and remaining gaps](EXPRESSION_COVERAGE_PLAN.md).
+Current measurements are in [SWEEP_RESULTS.md](SWEEP_RESULTS.md) and the
+per-case [CSV](sweep_current_results.csv). They distinguish translator strict
+acceptance from compiling generated W with `--strict`, and protect six independent
+configurations. The original `recorded_pass` observations remain unchanged.
+Correctness-driven reclassifications link executable ANTLR counterexamples.
 
 Run from the W checkout after obtaining the pinned corpus:
 
@@ -230,9 +304,11 @@ git -C /tmp/grammars-v4 sparse-checkout init --no-cone
 git -C /tmp/grammars-v4 sparse-checkout set '/*/*.g4'
 git -C /tmp/grammars-v4 checkout --detach 89fd36482e8cb68a4e55df021a8adbc7541b52f2
 ./wbuild antlr_to_pg antlr_sweep_harness_test
-GV4=/tmp/grammars-v4 libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90
+GV4=/tmp/grammars-v4 libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90 --extended-configurations
 ```
 
+`--extended-configurations` is required for the complete six-configuration
+baseline gate; omitting a protected configuration is not counted as a pass.
 `--case json --case csv` selects a focused subset. `--work DIR` (or `WORK`) must
 name a new or empty directory; the default creates `bin/grammar_sweep/run-*`.
 `GV4`, `WORK`, `JOBS`, and `OUT_CSV` remain supported. CSV now has explicit stage

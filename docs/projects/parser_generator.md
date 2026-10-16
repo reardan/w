@@ -529,3 +529,26 @@ policies, mid-rule predicates with optional/repeated/shared-prefix terms,
 invalid commands, unterminated modes, underflow, and nullable recursion. Existing
 sample, matcher, action, streaming, C and W grammar generated outputs remain
 byte-identical when stateful features are not requested.
+
+
+## Imported grammar prediction
+
+`mode antlr` explicitly selects pure complete-input continuation prediction.
+It preserves caller continuations across ordered alternatives and greedy terms,
+then replays the chosen derivation into an owned AST. The default step budget is
+one million; `pg_prediction_parse_limit` permits a caller budget. Resource
+failure is terminal across rollback. This bounded search is not ALL(*) and may
+require exponential work on ambiguous inputs. Native modes retain their existing
+ordered choice, partial-entry, and streaming contracts.
+
+`node_meta`/`term_meta` attach validated provenance to selected alternatives and
+children. They are available only in prediction mode. Host actions, lexical
+goals, callbacks, and recovery are refused there. See the
+[prediction fixtures and metadata contract](../../tests/grammars/antlr_prediction/README.md).
+
+Stateful providers may opt into `lexer_progress guarded` for explicit empty
+matches and named EOF rules. Zero-width transitions are bounded, and provider
+terminal failures remain sticky across snapshots. User-defined `lexer_channel`
+identities are distinct from the reserved hidden and error channels. These are
+used by the translator's opt-in exact lexer, whose contract is documented in
+[antlr_to_pg](../../libs/extras/grammars/antlr_to_pg/README.md).

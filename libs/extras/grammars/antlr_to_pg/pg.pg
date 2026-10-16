@@ -11,6 +11,8 @@ token NUMBER digits
 token ACTION brace_block
 token CHARSET bracket_charset
 
+literal KW_NODE_META "node_meta"
+literal KW_TERM_META "term_meta"
 literal KW_MODE "mode"
 literal KW_IMPORT "import"
 literal KW_FRAGMENT "fragment"
@@ -21,6 +23,8 @@ literal KW_LEXER_GUARD "lexer_guard"
 literal KW_LEXER_ACTION "lexer_action"
 literal KW_LEXER_COMMAND "lexer_command"
 literal KW_LEXER_PRIORITY "lexer_priority"
+literal KW_LEXER_PROGRESS "lexer_progress"
+literal KW_LEXER_CHANNEL "lexer_channel"
 literal KW_LEXER_EOF "lexer_eof"
 literal KW_GOAL "goal"
 literal AMP "&"
@@ -44,7 +48,7 @@ literal PLUS "+"
 start pg_file
 
 rule pg_file = directive* EOF
-rule directive = parser_decl | token_decl | skip_decl | literal_decl | start_decl | recover_decl | rule_decl | mode_decl | import_decl | fragment_decl | lexer_decl | lexer_mode_decl | lexer_rule_decl | lexer_guard_decl | lexer_action_decl | lexer_command_decl | lexer_priority_decl | lexer_eof_decl | goal_decl
+rule directive = node_meta_decl | term_meta_decl | parser_decl | token_decl | skip_decl | literal_decl | start_decl | recover_decl | rule_decl | mode_decl | import_decl | fragment_decl | lexer_decl | lexer_mode_decl | lexer_rule_decl | lexer_guard_decl | lexer_action_decl | lexer_command_decl | lexer_priority_decl | lexer_eof_decl | lexer_progress_decl | lexer_channel_decl | goal_decl
 rule parser_decl = KW_PARSER IDENT
 rule token_decl = KW_TOKEN IDENT IDENT | KW_TOKEN IDENT ASSIGN matcher_expr | KW_TOKEN IDENT
 rule skip_decl = KW_SKIP IDENT IDENT | KW_SKIP IDENT ASSIGN matcher_expr
@@ -78,3 +82,8 @@ rule matcher_tail = PIPE matcher_sequence
 rule matcher_sequence = matcher_primary+
 rule matcher_primary = matcher_atom term_suffix?
 rule matcher_atom = IDENT | STRINGLIT | CHARSET | LPAREN matcher_expr RPAREN
+
+rule lexer_progress_decl = KW_LEXER_PROGRESS IDENT
+rule lexer_channel_decl = KW_LEXER_CHANNEL IDENT
+rule node_meta_decl = KW_NODE_META IDENT STRINGLIT STRINGLIT STRINGLIT
+rule term_meta_decl = KW_TERM_META IDENT STRINGLIT STRINGLIT STRINGLIT STRINGLIT

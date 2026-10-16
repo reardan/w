@@ -33,15 +33,19 @@ class SweepTest(unittest.TestCase):
         for name in ("translator", "generator", "compiler"):
             tool = self.root / name
             tool.write_text("#!" + sys.executable + "\n" +
-                "import os, pathlib, signal, sys, time\n"
+                "import json, os, pathlib, signal, sys, time\n"
                 "args = sys.argv[1:]\n"
                 "name = pathlib.Path(sys.argv[0]).name\n"
                 "mode = pathlib.Path(sys.argv[0]).with_suffix('.mode')\n"
                 "mode = mode.read_text() if mode.exists() else ''\n"
                 "print(name + ': complete log, including commas and \\\"quotes\\\"', flush=True)\n"
+                "if '--audit-json' in args and mode != 'missing':\n"
+                "    finding = dict(code='AT_FIXTURE', stage='translate', feature='fixture', classification='unproven', file=args[0], line=1, column=2, rule='root', reason='fixture reason')\n"
+                "    pathlib.Path(args[args.index('--audit-json')+1]).write_text(json.dumps(dict(schema_version=1, findings=[finding])))\n"
                 "if mode == 'timeout': time.sleep(5)\n"
                 "if mode == 'crash': os.kill(os.getpid(), signal.SIGTERM)\n"
                 "if mode == 'fail' or (mode == 'strict_fail' and '--strict' in args): sys.exit(7)\n"
+                "if mode == 'stateful_fail' and '--stateful' in args: sys.exit(8)\n"
                 "if mode == 'missing': sys.exit(0)\n"
                 "if name == 'compiler':\n"
                 "    program = pathlib.Path(args[0]).read_text()\n"
@@ -96,7 +100,7 @@ class SweepTest(unittest.TestCase):
         self.case["expected_pass"] = []
         summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
         self.assertEqual(summary["regressions"], [])
-        self.assertEqual(summary["infrastructure_errors"], ["fixture: generate timeout"])
+        self.assertEqual(summary["infrastructure_errors"], [f"fixture: {name}/generate timeout" for name in sweep.CONFIGURATIONS])
         self.assertIn("stage timeout", (self.work / "fixture/generate.log").read_text())
 
     def test_success_without_output_is_not_a_pass(self):
@@ -112,7 +116,7 @@ class SweepTest(unittest.TestCase):
         summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
         self.assertLess(result["stages"]["generate"]["exit_code"], 0)
         self.assertEqual(summary["regressions"], [])
-        self.assertEqual(summary["infrastructure_errors"], ["fixture: generate crash"])
+        self.assertEqual(summary["infrastructure_errors"], [f"fixture: {name}/generate crash" for name in sweep.CONFIGURATIONS])
 
     def test_per_case_regression_cannot_be_hidden_by_another_case_passing(self):
         self.mode("compiler", "fail")
@@ -162,6 +166,82 @@ class SweepTest(unittest.TestCase):
         path.write_text(json.dumps(manifest))
         with self.assertRaisesRegex(ValueError, "duplicate case"):
             sweep.load_manifest(path, self.corpus)
+
+    def test_all_configurations_build_their_own_outputs(self):
+        result = self.run_case()
+        programs = set()
+        for configuration, flags in sweep.CONFIGURATIONS.items():
+            stages = result["configurations"][configuration]["stages"]
+            self.assertEqual({v["status"] for v in stages.values()}, {"pass"})
+            self.assertEqual([arg for arg in stages["translate"]["argv"] if arg in ("--strict", "--stateful")], list(flags))
+            program = Path(stages["compile"]["argv"][1])
+            programs.add(program)
+            self.assertEqual(stages["compiler_strict"]["argv"][1], str(program))
+            self.assertIn("--strict", stages["compiler_strict"]["argv"])
+            self.assertNotIn("--strict", stages["compile"]["argv"])
+            self.assertEqual(result["configurations"][configuration]["dependency_inputs"], self.case["inputs"])
+        self.assertEqual(len(programs), 4)
+        self.assertEqual(result["stages"]["strict"], result["configurations"]["default_strict"]["stages"]["translate"])
+
+    def test_warning_failure_is_independent_of_ordinary_compilation(self):
+        self.mode("compiler", "strict_fail")
+        result = self.run_case()
+        for current in result["configurations"].values():
+            self.assertEqual(current["stages"]["compile"]["status"], "pass")
+            self.assertEqual(current["stages"]["compiler_strict"]["status"], "fail")
+        self.case["expected_configurations"] = {"stateful_strict": ["compiler_strict"]}
+        self.assertEqual(sweep.compare({"cases": [self.case]}, [result]),
+                         ["fixture: stateful_strict/compiler_strict regressed to fail"])
+
+    def test_stateful_failure_does_not_erase_default_results(self):
+        self.mode("translator", "stateful_fail")
+        result = self.run_case()
+        self.assertEqual({v["status"] for v in result["stages"].values()}, {"pass"})
+        for name in ("stateful_permissive", "stateful_strict"):
+            self.assertEqual(result["configurations"][name]["stages"]["translate"]["exit_code"], 8)
+            self.assertEqual(result["configurations"][name]["stages"]["compile"]["status"], "not_run")
+
+    def test_schema_two_roundtrip_preserves_historical_columns(self):
+        result = self.run_case()
+        summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
+        data = json.loads((self.work / "results.json").read_text())
+        self.assertEqual(data["schema"], 2)
+        self.assertEqual(summary["passing"], dict.fromkeys(sweep.STAGES, 1))
+        self.assertEqual(summary["configurations"]["default_strict"], dict.fromkeys(sweep.BUILD_STAGES, 1))
+        with (self.work / "results.csv").open() as source:
+            row = next(csv.DictReader(source))
+        self.assertEqual(row["compile"], "pass")
+        self.assertEqual(row["strict"], "pass")
+        self.assertEqual(row["default_strict/compiler_strict"], "pass")
+
+    def test_extended_backends_are_opt_in_and_have_distinct_artifacts(self):
+        configurations = sweep.CONFIGURATIONS | sweep.EXTENDED_CONFIGURATIONS
+        result = sweep.run_case(self.case, self.corpus, self.work, self.tools, 5, self.root, configurations)
+        self.assertEqual(set(result["configurations"]), set(configurations))
+        stages = result["configurations"]["exact_strict"]["stages"]
+        for flag in ("--strict", "--exact-lexer", "--prediction"):
+            self.assertIn(flag, stages["translate"]["argv"])
+        self.assertIn("exact_strict", stages["compile"]["argv"][1])
+        summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
+        self.assertEqual(summary["configurations"]["exact_strict"]["compiler_strict"], 1)
+        self.assertEqual(result["stages"]["strict"], result["configurations"]["default_strict"]["stages"]["translate"])
+
+    def test_structured_findings_are_preserved_and_count_grammars(self):
+        result = self.run_case()
+        findings = result["configurations"]["default_strict"]["findings"]
+        self.assertEqual(findings[0]["code"], "AT_FIXTURE")
+        self.assertEqual(findings[0]["column"], 2)
+        findings.append(dict(findings[0], line=2))
+        summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
+        self.assertEqual(summary["finding_grammar_counts"]["default_strict"]["AT_FIXTURE"], 1)
+
+    def test_malformed_structured_audit_is_not_a_semantic_refusal(self):
+        path = self.root / "bad.audit.json"
+        for document in ({}, {"schema_version": 1, "findings": ["bad"]},
+                         {"schema_version": 1, "findings": [{"code": "AT_BAD"}]}):
+            path.write_text(json.dumps(document))
+            with self.assertRaises(ValueError):
+                sweep.read_findings(path)
 
     def test_committed_baseline_keeps_original_measurement(self):
         data = json.loads((sweep.HERE / "sweep_baseline.json").read_text())

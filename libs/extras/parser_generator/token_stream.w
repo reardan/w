@@ -126,18 +126,28 @@ void pg_token_stream_scan(pg_token_stream* stream):
 	while (1):
 		pg_token* token = 0
 		int start = state.offset
-		if (stream.allocation_count >= stream.token_limit):
+		int previous_zero_count = 0
+		if (state.zero_width_offset == start): previous_zero_count = state.zero_width_count
+		if (stream.resource_failed || state.terminal_failure != 0):
+			if (state.terminal_failure != 0): pg_token_stream_resource_error(stream, state.terminal_failure)
+			else: pg_token_stream_report_resource(stream)
+			token = pg_token_eof(start, state.filename, state.line, state.column)
+			stream.exhausted = 1
+		else if (stream.allocation_count >= stream.token_limit):
 			pg_token_stream_resource_error(stream, c"lexer token resource limit exceeded")
 			token = pg_token_eof(start, state.filename, state.line, state.column)
 			stream.exhausted = 1
 		else:
 			stream.scan_count = stream.scan_count + 1
 			if (state.offset < state.length && state.input[state.offset] == 0):
-				token = pg_token_hide(pg_token_make(pg_token_invalid_kind(), state.input, start, 1, state.filename, state.line, state.column))
-				pg_lexer_advance(state, 1)
+				if (state.guarded_progress): state.terminal_failure = c"embedded NUL in exact lexer input"
+				else:
+					token = pg_token_hide(pg_token_make(pg_token_invalid_kind(), state.input, start, 1, state.filename, state.line, state.column))
+					pg_lexer_advance(state, 1)
 			else: token = stream.next_token(state, stream.diagnostics)
 		if (token == 0):
-			pg_diagnostics_add(stream.diagnostics, state.filename, state.line, state.column, c"lexer provider failed", c"token", c"")
+			if (state.terminal_failure != 0): pg_token_stream_resource_error(stream, state.terminal_failure)
+			else: pg_token_stream_resource_error(stream, c"lexer provider failed")
 			token = pg_token_eof(start, state.filename, state.line, state.column)
 			stream.exhausted = 1
 		if (token.kind == pg_token_eof_kind):
@@ -146,7 +156,8 @@ void pg_token_stream_scan(pg_token_stream* stream):
 			stream.exhausted = 1
 			token.channel = pg_token_default_channel
 		else:
-			if (state.offset <= start || state.offset > state.length || token.offset != start || token.length != state.offset - start):
+			int guarded_empty = state.guarded_progress && (state.offset == start) && (state.zero_width_offset == start) && (state.zero_width_count > previous_zero_count) && (state.zero_width_count <= 256)
+			if ((state.offset <= start && guarded_empty == 0) || state.offset > state.length || token.offset != start || token.length != state.offset - start):
 				pg_diagnostics_add(stream.diagnostics, state.filename, state.line, state.column, c"lexer provider emitted an inconsistent token span", c"nonempty contiguous input span", token.text)
 				pg_token_free(token)
 				token = pg_token_eof(start, state.filename, state.line, state.column)

@@ -45,6 +45,7 @@ struct at_rule:
 	char* name
 	int is_fragment
 	int is_lexer
+	int precedence_helper
 	list[at_alt*] alts       # alternatives
 	char* command          # legacy classifier summary; full ordered list below
 	list[at_command*] commands
@@ -71,6 +72,10 @@ struct at_alt:
 	list[at_element*] elements   # matching atoms
 	list[at_site*] sites
 	char* label
+	char* source_rule
+	int source_alternative
+	pg_token* source_first
+	char* source_lhs_label
 
 
 struct at_classification:
@@ -89,6 +94,7 @@ struct at_lowered_lexer:
 struct at_term:
 	char* name
 	int suffix
+	char* label
 
 
 map[char*, at_rule*] g_fragments
@@ -97,6 +103,7 @@ map[char*, int] g_all_rule_names
 map[char*, int] g_used_names
 map[char*, char*] g_text_to_name
 map[char*, char*] g_literal_text
+map[char*, list[at_alt*]] g_at_source_alts
 map[char*, list[list[at_term*]]] g_rule_alts
 map[char*, int] g_group_counter
 map[char*, char*] g_name_remap
@@ -117,7 +124,9 @@ int g_negset_counter
 # Called from modules that come before their definitions in the import
 # order (tools/antlr_to_pg.w): classify.w defines at_report, matchers_emit.w
 # the other two.
+void at_lowering_finding(char* rule_name, char* code, char* feature, char* reason);
 void at_report(char* prefix, char* rule_name, char* payload);
+void at_loss_code(pg_token* location, char* rule_name, char* code, char* feature, char* classification, char* reason);
 void at_loss(pg_token* location, char* rule_name, char* reason);
 char* at_try_generate_matcher(at_rule* rule);
 void at_emit_c_char_literal(string_builder* out, int c);
@@ -130,7 +139,15 @@ char* g_at_source
 list[at_site*] g_at_dependencies
 int g_at_semantic_losses
 int g_at_stateful
+int g_at_exact_lexer
+
+int at_exact_supported(at_rule* rule);
+int g_at_prediction
+int at_exact_case(at_rule* rule);
+void at_exact_audit_rule(at_rule* rule);
+int at_exact_unicode_atom(at_rule* rule, at_element* element);
 list[char*] g_at_modes
+list[char*] g_at_channels
 list[char*] g_at_declared_modes
 list[at_lowered_lexer*] g_at_lowered_lexer
 list[char*] g_at_token_identities
@@ -141,6 +158,13 @@ int at_has_token_identity(char* name):
 	if (g_at_token_identities == 0): return 0
 	for char* identity in g_at_token_identities:
 		if (strcmp(identity, name) == 0): return 1
+	return 0
+
+
+int at_custom_channel(char* name):
+	if ((name == 0) || (g_at_channels == 0)): return 0
+	for char* channel in g_at_channels:
+		if (strcmp(name, channel) == 0): return 1
 	return 0
 
 
@@ -163,7 +187,7 @@ int at_stateful_command_supported(at_command* command):
 	if (strcmp(name, c"type") == 0):
 		return argument != 0
 	if ((strcmp(name, c"channel") == 0) && (argument != 0)):
-		return (strcmp(argument, c"HIDDEN") == 0) || (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0)
+		return (strcmp(argument, c"HIDDEN") == 0) || (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0) || at_custom_channel(argument)
 	return 0
 
 
@@ -174,9 +198,8 @@ int at_stateful_command_emittable(at_rule* rule, int index):
 	if (at_stateful_command_supported(command) == 0): return 0
 	if (strcmp(command.name, c"type") == 0):
 		at_rule* target = g_lexer_rules.get(command.argument, 0)
-		if (target == 0):
+		if ((target == 0) || target.is_fragment):
 			if (at_has_token_identity(command.argument) == 0): return 0
-		else if (target.is_fragment): return 0
 	for i in range(index):
 		at_command* previous = rule.commands[i]
 		if (at_stateful_command_supported(previous) == 0): continue
