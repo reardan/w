@@ -2783,6 +2783,7 @@ int ast_expression_slice(expression_ast* tree, int receiver, int start, int dept
 	else if (type_is_string(type) == 0):
 		if (ast_expression_prepare_value(tree, type_real(type), token_start_offset) == 0): return -1
 		result = type_lookup_slice_value(buffer_element_type(type))
+		if (type_is_safe_slice(type)): result = type_unqualified(type)
 		if (result < 0): return -1
 	ast_expression_advance(tree)
 	int id = expression_ast_add(tree, op, receiver, start)
