@@ -1556,7 +1556,8 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 					while (js_kind(rt.jump_target, c"label")): rt.jump_target = rt.jump_target.children[0]
 		rt.empty = 1
 		return rt.undefined_value
-	if (js_kind(node, c"if") || js_kind(node, c"conditional")):
+	if (js_kind(node, c"conditional")): return js_runtime_sequence(rt, node, env)
+	if (js_kind(node, c"if")):
 		js_value* condition = js_runtime_eval_node(rt, node.children[0], env)
 		if (rt.completion.status != 0): return rt.undefined_value
 		js_value* value = rt.undefined_value

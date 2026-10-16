@@ -6,6 +6,9 @@
 # wbuild: step="bin/javascript_runtime_sequence_test memory-async" expect_stdout="javascript_runtime_sequence_test: OK"
 # wbuild: step="bin/javascript_runtime_sequence_test memory-limits" expect_stdout="javascript_runtime_sequence_test: OK"
 # wbuild: step="bin/javascript_runtime_sequence_test memory-mixed" expect_stdout="javascript_runtime_sequence_test: OK"
+# wbuild: step="bin/javascript_runtime_sequence_test memory-conditional" expect_stdout="javascript_runtime_sequence_test: OK"
+# wbuild: step="bin/javascript_runtime_sequence_test memory-conditional-depth" expect_stdout="javascript_runtime_sequence_test: OK"
+# wbuild: step="bin/javascript_runtime_sequence_test memory-conditional-async" expect_stdout="javascript_runtime_sequence_test: OK"
 import lib.assert
 import lib.args
 import libs.extras.javascript.runtime
@@ -94,6 +97,44 @@ void test_sequence_mixed():
 	string_free(source)
 	js_runtime_free(rt)
 
+void test_sequence_conditional():
+	js_runtime* rt = js_runtime_new()
+	sequence_eval(rt, c"let calls='';function mark(s,v){calls+=s;return v;}let object={};true;", 0)
+	sequence_eval(rt, c"let value=mark('a',true)?mark('b',object):mark('c',0);value===object && calls==='ab';", 0)
+	sequence_eval(rt, c"calls='';let other=mark('a',false)?mark('b',0):(mark('c',false)||mark('d',object));other===object && calls==='acd';", 0)
+	sequence_eval(rt, c"calls='';let caught=0;function fail(){throw 7;}try{(true?fail():mark('x',1),mark('y',1));}catch(e){caught=e;}caught===7 && calls==='';", 0)
+	sequence_eval(rt, c"true?true:false;", 0)
+	assert_equal(5, rt.completion.steps)
+	sequence_eval(rt, c"false?false:true;", 0)
+	assert_equal(5, rt.completion.steps)
+	js_runtime_free(rt)
+
+void test_sequence_conditional_depth():
+	js_runtime* rt = js_runtime_new()
+	rt.max_depth = 8
+	string_builder* source = string_new()
+	for i in range(20): string_append(source, c"true?(")
+	string_append(source, c"true")
+	for i in range(20): string_append(source, c"):false")
+	string_append(source, c";")
+	sequence_eval(rt, source.data, 0)
+	string_clear(source)
+	for i in range(20): string_append(source, c"false?false:")
+	string_append(source, c"true;")
+	sequence_eval(rt, source.data, 0)
+	string_free(source)
+	js_runtime_free(rt)
+
+void test_sequence_conditional_async():
+	js_runtime* rt = js_runtime_new()
+	sequence_eval(rt, c"let object={};true;", 0)
+	sequence_eval(rt, c"let resolve;let p=new Promise(r=>{resolve=r;});let result=0;async function wait(){return (await p)?(false||object):null;}wait().then(v=>{result=v;});true;", 0)
+	js_runtime_collect(rt)
+	sequence_eval(rt, c"resolve(true);true;", 0)
+	assert_equal(0, js_runtime_drain_microtasks(rt, 20000).status)
+	sequence_eval(rt, c"result===object;", 0)
+	js_runtime_free(rt)
+
 int main(int argc, int argv):
 	args_init(argc, argv)
 	if (argc > 1): malloc_force_debug_mode()
@@ -101,6 +142,9 @@ int main(int argc, int argv):
 	if (argc == 1 || strcmp(args_get(1), c"memory-async") == 0): test_sequence_async()
 	if (argc == 1 || strcmp(args_get(1), c"memory-limits") == 0): test_sequence_limits()
 	if (argc == 1 || strcmp(args_get(1), c"memory-mixed") == 0): test_sequence_mixed()
+	if (argc == 1 || strcmp(args_get(1), c"memory-conditional") == 0): test_sequence_conditional()
+	if (argc == 1 || strcmp(args_get(1), c"memory-conditional-depth") == 0): test_sequence_conditional_depth()
+	if (argc == 1 || strcmp(args_get(1), c"memory-conditional-async") == 0): test_sequence_conditional_async()
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_sequence_test: OK")
 	return 0
