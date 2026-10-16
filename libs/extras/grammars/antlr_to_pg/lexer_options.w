@@ -2,6 +2,7 @@ import libs.extras.grammars.antlr_to_pg.dependencies
 
 
 map[char*, int] g_at_exact_cases
+map[char*, int] g_at_exact_case_defaults
 
 
 # Only fully understood option blocks are resolved. Foreign host options
@@ -39,19 +40,22 @@ int at_exact_case_option(at_site* site, int* value, int allow_vocab):
 
 void at_exact_prepare_cases(list[at_rule*] rules):
 	g_at_exact_cases = new map[char*, int]
-	map[char*, int] defaults = new map[char*, int]
+	g_at_exact_case_defaults = new map[char*, int]
 	for at_site* site in g_at_dependencies:
 		if ((site.first == 0) || (starts_with(site.raw, c"options") == 0)): continue
 		int value = 0
-		if (at_exact_case_option(site, &value, 1)): defaults[site.first.filename] = value
+		if (at_exact_case_option(site, &value, 1)): g_at_exact_case_defaults[site.first.filename] = value
 	for at_rule* rule in rules:
 		int value = 0
-		if (rule.first != 0): value = defaults.get(rule.first.filename, 0)
+		if (rule.first != 0): value = g_at_exact_case_defaults.get(rule.first.filename, 0)
 		for at_site* site in rule.options: at_exact_case_option(site, &value, 0)
 		g_at_exact_cases[rule.name] = value
-	defaults.free()
 
 
 int at_exact_case(at_rule* rule):
 	if (g_at_exact_lexer == 0): return 0
-	return g_at_exact_cases.get(rule.name, 0)
+	# Normalization creates parser helpers after the original rule map.
+	# Helpers retain their owner's source location and grammar option scope.
+	int fallback = 0
+	if (rule.first != 0): fallback = g_at_exact_case_defaults.get(rule.first.filename, 0)
+	return g_at_exact_cases.get(rule.name, fallback)
