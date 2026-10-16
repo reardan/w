@@ -329,7 +329,9 @@ publication and store-buffer/fence stress with concurrent forked workers sharing
 normal memory, independently of the W thread runtime, in all three compilation
 modes. It records hardware/OS/compiler settings and checks alignment and full
 64-bit values. See [native ARM64 qualification](arm64_qualification.md) for
-commands, the recorded Apple Silicon pass, and pending native Linux evidence.
+commands and the recorded Apple Silicon and Android ARM64 Linux passes. The
+Android run executes Linux `arm64` binaries directly with `--pac=off` on a
+Cortex-A53 device; it does not use native-bridge translation.
 Thread creation and mutex/condvar ports on ARM64 remain separate work: existing
 runtime flags rely on x86 TSO until those ports adopt explicit acquire/release
 operations.

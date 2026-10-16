@@ -16,6 +16,31 @@ hardware with at least two available cores; do not present virtual-machine,
 QEMU, Rosetta, or cross-compilation results as native qualification. Retain the
 JSON report and note any container/cpuset restrictions alongside it.
 
+For an attached physical Android ARM64 device, build on the host and execute
+the Linux `arm64` binaries directly through ADB:
+
+```sh
+./wbuild build
+adb devices -l
+python3 tools/qualify_native.py --suite atomic --adb SERIAL --pac off --rounds 20 --output bin/atomic-native-android.json
+```
+
+Replace `SERIAL` with the device listed by ADB. `--pac off` is required on CPUs
+without pointer authentication, including the Cortex-A53 device below. This
+uses the Linux `arm64` target and its direct syscalls, not `arm64_android`,
+Bionic, or a native-bridge translation runner. Compilation occurs on the host;
+the concurrent litmus executions occur on the device. The runner rejects
+non-ARM64 kernels, emulator/native-bridge properties, and fewer than two online
+CPUs in the shell's allowed CPU set. Use physical hardware: these checks alone
+cannot prove the absence of virtualization.
+
+ADB mode supports only `--suite atomic`. It verifies the pushed executable's
+SHA256, records device hardware/OS/CPU restrictions separately from the build
+host, and records each repetition's exit status and elapsed time (including ADB
+overhead). Each trial has a device-side watchdog and a separate process group;
+success, assertion failure, and timeout all clean up any remaining workers.
+Temporary device files are removed after the run. No root access is required.
+
 `tests/atomic_native_fixture.w` uses independent forked workers and an anonymous
 `MAP_SHARED` mapping. These are genuinely concurrent processes sharing the same
 normal memory, with no W thread runtime, mutexes, scheduler hooks, or C atomic
@@ -49,17 +74,63 @@ and virtualization status if not fully described in the report.
 
 | Target | Current evidence | Native acceptance |
 |---|---|---|
-| ARM64 Linux | All three modes cross-compile | Pending real ARM64 Linux run |
+| ARM64 Linux | All three modes pass 20 native repetitions on SM-S134DL/Android 13, Linux 4.19, `--pac=off` | Passed on the recorded configuration below |
 | ARM64 Darwin | All three modes pass 20 native repetitions on M3 Pro/macOS 26.3 | Passed on the recorded configuration below |
 | Linux x64 | All three modes execute the harness successfully | Supplementary only |
 
-The original implementation session ran on Linux x86_64. The Darwin follow-up
-below supplies native Apple Silicon evidence; #607 remains open for real ARM64
-Linux qualification. Supplementary commands are part of `./wbuild tests`:
+The original implementation session ran on Linux x86_64. The recorded runs
+below supply native Linux and Apple Silicon ordered-memory evidence for #607.
+Supplementary commands are part of `./wbuild tests`:
 
 ```sh
 ./wbuild native_qualification_cross_test native_qualification_host_test
 ```
+
+## Android ARM64 Linux result (2026-10-16 UTC)
+
+The [recorded JSON report](arm64_qualification_sm_s134dl.json) passed on the
+attached physical Samsung SM-S134DL, MediaTek MT6765V/CB, with eight ARM
+Cortex-A53 cores (implementer `0x41`, part `0xd03`, revision 4), Android 13,
+and Linux `4.19.191-26242230-abS134DLUDS6DWF1`. All eight CPUs (`0-7`) were
+online and available to the ADB shell. The report records its cgroups and
+SELinux shell identity; execution used no container or translation wrapper.
+`ro.kernel.qemu=0`, `ro.dalvik.vm.native.bridge=0`, and the kernel reported
+`aarch64`. The page size was 4096 bytes.
+
+Compiler sources were `298246c6d6906650d4cd9c677e93933abd9bf619`; only the
+qualification driver and documentation changed. The host's `bin/wv2`
+cross-compiled the unchanged `tests/atomic_native_fixture.w` for `arm64`.
+The default `--pac=ret` executable exited with illegal instruction (132) on
+this CPU without PAC. Explicit `--pac=off` passed; no compiler or ordered-memory
+lowering change was required. The recorded command was:
+
+```sh
+python3 tools/qualify_native.py --suite atomic --adb R9WW506BEKR --pac off --rounds 20 --output bin/atomic-native-sm-s134dl.json
+```
+
+Streaming (`--streaming`), retained (`--ast-required --ast-retain`) and optimized
+retained (`--ast-required --ast-retain --ast-opt`) each completed 20 repetitions
+of 100,000 publication rounds and 100,000 store-buffer/fence rounds: **6 million
+rounds per litmus across the three modes, with zero failures**. Every execution
+also passed the eight-byte word, 128-byte slot alignment, and values-above-2^32
+assertions. All three compilation modes produced byte-identical executables;
+their device hashes matched the host output hashes.
+
+Separate device probes confirmed that assertion-style failure (exit 7) and a
+one-second watchdog timeout (exit 137) both cleaned up an orphaned sleeping
+worker. A temporary streaming negative control with both worker fences removed
+passed five repetitions without exposing the forbidden both-zero outcome.
+That control is inconclusive on this hardware; the positive stress result is
+statistical evidence, not proof that every possible weak-memory execution was
+explored. The unchanged fixture and all three positive modes were used for the
+saved qualification report.
+
+Supplementary validation passed `./wbuild build`, the cross-compilation and
+x64 runtime harness targets, and the full suite: `env -u NO_COLOR ./wbuild tests`
+completed **1,243 targets** successfully, including the compiler fixpoint.
+The first full-suite invocation stopped at `did_you_mean_test` because the
+session's inherited `NO_COLOR=1` overrode that test's `FORCE_COLOR=1`; removing
+that environment variable fixed the test without a source change.
 
 ## Apple Silicon result (2026-10-10 UTC)
 
