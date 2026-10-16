@@ -133,3 +133,9 @@ void test_checked_generic_pointer_contracts():
 
 void test_checked_generic_preserves_unsafe_callbacks():
 	specialization_case(c"type Callback = fn(int) -> int\nint increment(int value): return value + 1\nint main():\n\town int* p = new int\n\t*p = 7\n\tint result = 0\n\tunsafe:\n\t\tCallback* callback = increment\n\t\tresult = callback(6)\n\treturn result - *p\n", 0)
+
+
+void test_checked_generic_representation_boundaries():
+	specialization_case(c"T identity[T](T p):\n\treturn p\nstruct View:\n\tref[a] int* item\nint main():\n\tint x = 7\n\tref View p = View(&x)\n\tref View q = identity(p)\n\treturn *q.item - 7\n", c"inferred call returns a struct by value")
+	specialization_case(c"T identity[T](T p):\n\treturn p\nint main():\n\tint[2] data\n\tdata[0] = 7\n\tref int[] p = data\n\tref int[] q = identity(p)\n\treturn q[0] - 7\n", c"inferred call returns a struct by value")
+	specialization_case(c"T identity[T](T p):\n\treturn p\nint main():\n\tbyte[2] data\n\tdata[0] = cast(byte, 7)\n\tref byte[] p = data\n\tref byte[] q = identity[ref byte[]](p)\n\treturn cast(int, q[0]) - 7\n", c"safe: unsupported expression fallback")
