@@ -1,0 +1,22 @@
+# wbuild: step="bin/wv2 --ast-required --strict tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_mutable_record_runtime_fixture"
+# wbuild: step="bin/wv2 --ast-required --strict x64 tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_mutable_record_runtime_fixture64"
+# wbuild: step="bin/wv2 --ast-required --strict --no-regs --no-inline tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_mutable_record_runtime_fixture"
+# wbuild: step="bin/wv2 --ast-required --strict --inline tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_mutable_record_runtime_fixture"
+# wbuild: step="bin/wv2 --ast-required --strict x64 --no-regs --no-inline tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_mutable_record_runtime_fixture64"
+# wbuild: step="bin/wv2 --ast-required --strict x64 --inline tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_mutable_record_runtime_fixture64"
+# wbuild: step="bin/wv2 win64 --ast-required --strict tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_cross.exe"
+# wbuild: target=safe_mutable_record_win64_runtime_test tag=tests_win64 dep=wv2
+# wbuild: step="bin/wv2 win64 --ast-required --strict tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture.exe"
+# wbuild: step="wine bin/safe_mutable_record_runtime_fixture.exe"
+# wbuild: step="bin/wv2 win64 --ast-required --strict --no-regs --no-inline tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture.exe"
+# wbuild: step="wine bin/safe_mutable_record_runtime_fixture.exe"
+# wbuild: step="bin/wv2 win64 --ast-required --strict --inline tests/safe_mutable_record_runtime_fixture.w -o bin/safe_mutable_record_runtime_fixture.exe"
+# wbuild: step="wine bin/safe_mutable_record_runtime_fixture.exe"
+int main():
+	return 0

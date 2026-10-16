@@ -122,7 +122,7 @@ void test_safe_arrays_slices_and_boundaries():
 	safe_case(c"int main():\n\town int* p = new int\n\tint[3] a\n\tint[] s = a[0:2]\n\ts[0] = 3\n\treturn 0\n", c"shared reference")
 	safe_case(c"int main():\n\town int* p = new int\n\tunsafe:\n\t\tint n = 3\n\t\tint* q = &n\n\t\t*q = 4\n\treturn *p\n", 0)
 	safe_case(c"int main():\n\town int* p = new int\n\tunsafe:\n\t\t*p = 3\n\treturn 0\n", c"cannot manipulate checked")
-	safe_case(c"int main():\n\town int* p = new int\n\tdefer free(p)\n\treturn 0\n", c"unsupported control flow")
+	safe_case(c"int main():\n\town int* p = new int\n\tdefer free(p)\n\treturn 0\n", c"runtime call has no audited ownership contract")
 	safe_case(c"struct Box:\n\town int* p\nint main():\n\treturn 0\n", 0)
 	safe_case(c"type Owner = own int*\nint main():\n\tOwner p = new int\n\tOwner q = p\n\treturn *p\n", c"moved value")
 

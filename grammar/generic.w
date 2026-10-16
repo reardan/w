@@ -661,6 +661,7 @@ int generic_tree_storage_ok(int element_type, int is_list):
 # types up, never creates one.
 int generic_tree_valid(generic_type_ast* node, int storage):
 	if (node == 0): return 0
+	if (node.safety && ((node.application != 0) || (node.first != 0) || (node.stars != 1))): return 0
 	if (node.application == 2):
 		generic_type_ast* element = node.first
 		# 'name[]' with name a generic struct: type_name() reads an
@@ -696,6 +697,7 @@ int generic_tree_valid(generic_type_ast* node, int storage):
 		if (type < 0): return 0
 		int checked = type_unqualified(type)
 		if ((word_size != 8) && ((checked == float64_type) || (checked == int64_type) || (checked == uint64_type))): return 0
+	if (node.safety && ((type_get_pointer_level(type) != 0) || (type_get_size(type) <= 0) || type_safe_kind(type))): return 0
 	if (storage && (node.stars == 0)): return generic_tree_storage_ok(type, storage == 1)
 	return 1
 
@@ -743,6 +745,7 @@ int generic_tree_resolve(generic_type_ast* node):
 		int pointer_type = type_lookup_pointer(base_name, next_level)
 		if (pointer_type < 0): pointer_type = type_push_pointer(base_name, word_size, next_level)
 		type = pointer_type
+	if (node.safety): type = type_get_safe_lifetime(type, node.safety, node.lifetime)
 	return type
 
 
@@ -930,6 +933,25 @@ int generic_declaration_scan_generic_return():
 	return 0
 
 
+# Qualified generic results need the same tentative header scan as generic
+# struct results; ordinary checked functions rewind into type_name().
+int generic_declaration_scan_checked_return():
+	int first_offset = token_start_offset
+	int first_line = diag_token_line
+	int first_column = diag_token_column
+	char* save = generic_reparse_save()
+	generic_type_ast* result = generic_type_ast_capture_return()
+	if ((result != 0) && is_ident_start_byte(token[0]) && (nextc == '[')):
+		free(cast(char*, load_ptr(save + 11 * __word_size__)))
+		free(save)
+		generic_register_definition(first_offset, first_line, first_column, result)
+		return 1
+	generic_type_ast_free(result)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	return 0
+
+
 int generic_declaration_scan():
 	generic_scanned_type = -1
 	generic_scan_warnings = warning_count
@@ -940,7 +962,8 @@ int generic_declaration_scan():
 	# type_name) cannot start a generic function definition; neither can
 	# a 'gpu'-qualified pointer type (grammar/type_name.w)
 	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")): return 0
-	if (gpu_qualifier_ahead() || safe_qualifier_ahead()): return 0
+	if (gpu_qualifier_ahead()): return 0
+	if (generic_signature_qualifier()): return generic_declaration_scan_checked_return()
 	# An import alias's qualified type ('alias.T name') is never a
 	# generic definition; leave it for type_name()'s alias branch
 	if (nextc == '.'):

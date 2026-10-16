@@ -14,6 +14,16 @@ struct WByteString:
 	int length
 	byte* items
 
+struct WOwnedIntBuffer:
+	int capacity
+	int length
+	int** items
+
+struct WByteArena:
+	int capacity
+	int length
+	byte* items
+
 struct __w_safe_int_descriptor:
 	int* data
 	int length
@@ -190,3 +200,142 @@ own WByteString* byte_string_from(ref byte[] view):
 		i = i + 1
 	value.length = view.length
 	return cast(own WByteString*, value)
+
+
+# Concrete owner-element storage. Raw slots belong exclusively to this
+# audited runtime: callers cannot byte-copy, project or construct them.
+void __w_owned_int_buffer_ensure(WOwnedIntBuffer* buffer):
+	int needed = __w_size_add(buffer.length, 1)
+	if needed <= buffer.capacity: return
+	int capacity = __w_grow_capacity(buffer.capacity, needed)
+	if capacity < 8: capacity = 8
+	int old_size = __w_size_mul(buffer.capacity, __word_size__)
+	int new_size = __w_size_mul(capacity, __word_size__)
+	buffer.items = cast(int**, __w_realloc(cast(void*, buffer.items), old_size, new_size))
+	buffer.capacity = capacity
+
+
+void __w_owned_int_buffer_clear(WOwnedIntBuffer* buffer):
+	# Reverse order matches aggregate destruction. Remove each slot before
+	# destruction; no callback or normal continuation sees a duplicate owner.
+	while buffer.length > 0:
+		buffer.length = buffer.length - 1
+		int* element = buffer.items[buffer.length]
+		buffer.items[buffer.length] = cast(int*, 0)
+		free(element)
+
+
+void __w_owned_int_buffer_drop(WOwnedIntBuffer* buffer):
+	__w_owned_int_buffer_clear(buffer)
+	free(cast(void*, buffer.items))
+	free(buffer)
+
+
+own WOwnedIntBuffer* owned_int_buffer_new():
+	WOwnedIntBuffer* buffer = new WOwnedIntBuffer
+	buffer.capacity = 0
+	buffer.length = 0
+	buffer.items = 0
+	return cast(own WOwnedIntBuffer*, buffer)
+
+
+int owned_int_buffer_length(ref WOwnedIntBuffer* borrowed):
+	WOwnedIntBuffer* buffer = cast(WOwnedIntBuffer*, borrowed)
+	return buffer.length
+
+
+void owned_int_buffer_push(refmut WOwnedIntBuffer* borrowed, own int* element):
+	WOwnedIntBuffer* buffer = cast(WOwnedIntBuffer*, borrowed)
+	__w_owned_int_buffer_ensure(buffer)
+	buffer.items[buffer.length] = cast(int*, element)
+	buffer.length = buffer.length + 1
+	# The raw slot now owns the allocation. Clear the checked parameter's
+	# home so generated scope cleanup cannot destroy the transferred value.
+	int** transferred = cast(int**, &element)
+	*transferred = cast(int*, 0)
+
+
+ref[a] int* owned_int_buffer_get(ref[a] WOwnedIntBuffer* borrowed, int index):
+	WOwnedIntBuffer* buffer = cast(WOwnedIntBuffer*, borrowed)
+	if ((index < 0) || (index >= buffer.length)):
+		__w_list_index_trap(c"owned buffer index out of range", index, buffer.length)
+	return cast(ref[a] int*, buffer.items[index])
+
+
+void owned_int_buffer_set(refmut WOwnedIntBuffer* borrowed, int index, own int* element):
+	WOwnedIntBuffer* buffer = cast(WOwnedIntBuffer*, borrowed)
+	if ((index < 0) || (index >= buffer.length)):
+		__w_list_index_trap(c"owned buffer index out of range", index, buffer.length)
+	int* previous = buffer.items[index]
+	buffer.items[index] = cast(int*, element)
+	int** transferred = cast(int**, &element)
+	*transferred = cast(int*, 0)
+	free(previous)
+
+
+own int* owned_int_buffer_pop(refmut WOwnedIntBuffer* borrowed):
+	WOwnedIntBuffer* buffer = cast(WOwnedIntBuffer*, borrowed)
+	if buffer.length == 0: __w_trap(c"pop from empty checked owned buffer")
+	buffer.length = buffer.length - 1
+	int* element = buffer.items[buffer.length]
+	buffer.items[buffer.length] = cast(int*, 0)
+	return cast(own int*, element)
+
+
+void owned_int_buffer_clear(refmut WOwnedIntBuffer* borrowed):
+	__w_owned_int_buffer_clear(cast(WOwnedIntBuffer*, borrowed))
+
+
+# Conservative checked arena: allocation, reset and release are exclusive.
+# A live returned view therefore prevents every operation that could
+# relocate, reuse or free its storage. Raw arena registration is unnecessary.
+own WByteArena* byte_arena_new():
+	WByteArena* arena = new WByteArena
+	arena.capacity = 0
+	arena.length = 0
+	arena.items = 0
+	return cast(own WByteArena*, arena)
+
+
+void __w_byte_arena_drop(WByteArena* arena):
+	free(arena.items)
+	free(arena)
+
+
+int byte_arena_length(ref WByteArena* borrowed):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	return arena.length
+
+
+ref[a] byte[] byte_arena_copy(refmut[a] WByteArena* borrowed, ref byte[] source):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	int needed = __w_size_add(arena.length, source.length)
+	if needed > arena.capacity:
+		int capacity = __w_grow_capacity(arena.capacity, needed)
+		if capacity < 8: capacity = 8
+		arena.items = cast(byte*, __w_realloc(arena.items, arena.capacity, capacity))
+		arena.capacity = capacity
+	int start = arena.length
+	int i = 0
+	while i < source.length:
+		arena.items[start + i] = source[i]
+		i = i + 1
+	arena.length = needed
+	__w_safe_byte_descriptor descriptor
+	descriptor.data = arena.items + start
+	descriptor.length = source.length
+	byte[] view = cast(byte[], &descriptor)
+	return view
+
+
+void byte_arena_reset(refmut WByteArena* borrowed):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	arena.length = 0
+
+
+void byte_arena_release(refmut WByteArena* borrowed):
+	WByteArena* arena = cast(WByteArena*, borrowed)
+	free(arena.items)
+	arena.items = 0
+	arena.capacity = 0
+	arena.length = 0

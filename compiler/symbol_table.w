@@ -338,6 +338,15 @@ int sym_address(char *s):
 	return load_int(table + t + 2)
 
 
+# An unresolved prototype contains a backpatch chain, not an address.
+# Runtime entry selection must not choose a startup stub on that basis.
+int sym_defined_address(char* s):
+	int t = sym_lookup(s)
+	if (t < 0): return 0
+	if (table[t + 1] != 'D'): return 0
+	return load_int(table + t + 2)
+
+
 int sym_symtype(char *s):
 	int t = sym_lookup(s)
 	if (t < 0): return 0
