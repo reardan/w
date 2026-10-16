@@ -1,4 +1,5 @@
 # wbuild: x64
+# wbuild: deps=lib/safe_buffer.w
 # Every contract is checked and compiled with and without --safe. Rejections
 # must prevent publication of an executable, including with nonfatal warnings.
 import lib.testing
@@ -210,3 +211,34 @@ void test_safe_extension_optional_conditions():
 void test_safe_extension_optional_cleared_parent():
 	safe_extension_case(c"int main():\n\town int* p = new int\n\toptrefmut int* mutable = p\n\toptref int* shared = mutable\n\tmutable = 0\n\t*p = 7\n\tif shared: return *shared\n\treturn 0\n", c"conflicting")
 	safe_extension_case(c"int main():\n\town int* p = new int\n\t*p = 7\n\toptrefmut int* mutable = p\n\toptref int* shared = mutable\n\tmutable = 0\n\tint old = *p\n\tif shared: return old + *shared - 14\n\treturn 1\n", 0)
+
+
+void test_safe_extension_owned_buffer_interactions():
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* source = owned_int_buffer_new()\n\town WOwnedIntBuffer* destination = owned_int_buffer_new()\n\town int* p = new int\n\t*p = 7\n\towned_int_buffer_push(source, p)\n\towned_int_buffer_push(destination, owned_int_buffer_pop(source))\n\tref int* view = owned_int_buffer_get(destination, 0)\n\treturn *view + owned_int_buffer_length(source) - 7\n", 0)
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\towned_int_buffer_push(b, owned_int_buffer_pop(b))\n\treturn 0\n", c"conflicting")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\town int* p = new int\n\t*p = 7\n\towned_int_buffer_push(b, p)\n\town int* q = owned_int_buffer_pop(b)\n\tb = owned_int_buffer_new()\n\treturn *q - 7\n", 0)
+	safe_extension_case(c"import lib.safe_buffer\nint fill(refmut WOwnedIntBuffer* b, own int* p):\n\tdefer owned_int_buffer_push(b, p)\n\treturn *p\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\town int* p = new int\n\t*p = 7\n\tint saved = fill(b, p)\n\tref int* view = owned_int_buffer_get(b, 0)\n\treturn saved + *view - 14\n", 0)
+	safe_extension_case(c"import lib.safe_buffer\nint fill(refmut WOwnedIntBuffer* b, own int* p):\n\tdefer owned_int_buffer_push(b, p)\n\towned_int_buffer_push(b, p)\n\treturn 0\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\treturn fill(b, new int)\n", c"moved value")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\tdefer owned_int_buffer_pop(b)\n\treturn 0\n", c"checked pointers")
+	safe_extension_case(c"import lib.safe_buffer\nref[a] int* choose(ref[a] WOwnedIntBuffer* left, ref[a] WOwnedIntBuffer* right, int n):\n\tif n: return owned_int_buffer_get(left, 0)\n\treturn owned_int_buffer_get(right, 0)\nint main():\n\town WOwnedIntBuffer* left = owned_int_buffer_new()\n\town WOwnedIntBuffer* right = owned_int_buffer_new()\n\towned_int_buffer_push(left, new int)\n\towned_int_buffer_push(right, new int)\n\tref int* view = choose(left, right, 1)\n\towned_int_buffer_clear(right)\n\treturn *view\n", c"conflicting")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\toptref int* view = owned_int_buffer_get(b, 0)\n\towned_int_buffer_clear(b)\n\tif view: return *view\n\treturn 0\n", c"conflicting")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WOwnedIntBuffer* b = owned_int_buffer_new()\n\towned_int_buffer_push(b, new int)\n\toptref int* view = owned_int_buffer_get(b, 0)\n\tview = 0\n\towned_int_buffer_clear(b)\n\treturn owned_int_buffer_length(b)\n", 0)
+
+
+void test_safe_extension_arena_interactions():
+	safe_extension_case(c"import lib.safe_buffer\nref[a] byte[] copied(refmut[a] WByteArena* arena):\n\tbyte[2] source\n\tsource[0] = cast(byte, 7)\n\treturn byte_arena_copy(arena, source)\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tref byte[] view = copied(arena)\n\treturn cast(int, view[0]) - 7\n", 0)
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tbyte[2] source\n\tsource[0] = cast(byte, 7)\n\tref byte[] view = byte_arena_copy(arena, source)\n\tsource[0] = cast(byte, 3)\n\treturn cast(int, view[0]) + cast(int, source[0]) - 10\n", 0)
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tbyte[2] source\n\tref byte[] view = byte_arena_copy(arena, source)\n\tref byte[] duplicate = byte_arena_copy(arena, view)\n\treturn duplicate.length\n", c"conflicting")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tbyte[2] source\n\tref byte[] view = byte_arena_copy(arena, source)\n\tref int* length = &view.length\n\tbyte_arena_release(arena)\n\treturn *length\n", c"metadata")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tbyte[2] source\n\tref byte[] view = byte_arena_copy(arena, source)\n\tref byte* first = &view[0]\n\tbyte_arena_reset(arena)\n\treturn cast(int, *first)\n", c"conflicting")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tbyte[2] source\n\tref byte[] view = byte_arena_copy(arena, source)\n\tref byte[] nested = view[0:1]\n\tarena = byte_arena_new()\n\treturn cast(int, nested[0])\n", c"conflicting")
+	safe_extension_case(c"import lib.safe_buffer\nint main():\n\town WByteArena* arena = byte_arena_new()\n\tbyte[2] source\n\tref byte[] original = source\n\tref byte[] view = byte_arena_copy(arena, original[0:0])\n\tint length = view.length\n\tbyte_arena_release(arena)\n\tref byte[] again = byte_arena_copy(arena, source)\n\treturn length + again.length - 2\n", 0)
+
+
+void test_safe_extension_method_interactions():
+	safe_extension_case(c"struct Point:\n\tint x\nint Point_value(ref Point* p):\n\treturn p.x\nint main():\n\toptref Point* p = 0\n\treturn p.value()\n", c"presence check")
+	safe_extension_case(c"struct Point:\n\tint x\nint Point_value(ref Point* p):\n\treturn p.x\nint main():\n\town Point* owner = new Point(7)\n\toptref Point* p = owner\n\tif p: return p.value() - 7\n\treturn 1\n", 0)
+	safe_extension_case(c"struct Point:\n\tint x\nref int* Point_view(ref Point* p):\n\treturn &p.x\nref int* bad(Point local, ref int* source):\n\treturn local.view()\nint main():\n\treturn 0\n", c"must borrow from")
+	safe_extension_case(c"struct Point:\n\tint x\nint Point_take(own Point* p):\n\treturn p.x\nint main():\n\town Point* p = new Point(7)\n\tdefer p.take()\n\treturn p.x - 7\n", 0)
+	safe_extension_case(c"struct Point:\n\tint x\nint Point_take(own Point* p):\n\treturn p.x\nint main():\n\town Point* p = new Point(7)\n\tdefer p.take()\n\tint value = p.take()\n\treturn value - 7\n", c"moved value")
+	safe_extension_case(c"struct Point:\n\tint x\nvoid Point_set(refmut Point* p, int value):\n\tp.x = value\nint main():\n\town Point* owner = new Point(7)\n\toptref Point* p = owner\n\tif p: p.set(3)\n\treturn 0\n", c"shared")

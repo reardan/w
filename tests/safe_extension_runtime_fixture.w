@@ -1,6 +1,7 @@
 # The unchecked observer inspects exactly-once drops around checked functions.
 # It also makes premature cleanup before a deferred read fault under guards.
 import lib.memory_debug
+import lib.safe_buffer
 
 
 struct ExtensionOwnedPair:
@@ -96,6 +97,51 @@ int extension_observe_paths():
 	return 0
 
 
+int extension_deferred_push():
+	own WOwnedIntBuffer* buffer = owned_int_buffer_new()
+	own int* item = new int
+	*item = 9
+	defer owned_int_buffer_push(buffer, item)
+	return *item - 9
+
+
+int extension_buffer_transfers():
+	own WOwnedIntBuffer* source = owned_int_buffer_new()
+	own WOwnedIntBuffer* destination = owned_int_buffer_new()
+	for i in range(65):
+		own int* item = new int
+		*item = i
+		owned_int_buffer_push(source, item)
+	while owned_int_buffer_length(source):
+		owned_int_buffer_push(destination, owned_int_buffer_pop(source))
+	ref int* first = owned_int_buffer_get(destination, 0)
+	if *first != 64: return 1
+	own int* last = owned_int_buffer_pop(destination)
+	source = owned_int_buffer_new()
+	destination = owned_int_buffer_new()
+	return *last
+
+
+int extension_arena_paths():
+	own WByteArena* arena = byte_arena_new()
+	int total = 0
+	for i in range(20):
+		byte[32] source
+		source[0] = cast(byte, i)
+		ref byte[] view = byte_arena_copy(arena, source)
+		source[0] = cast(byte, 0)
+		total = total + cast(int, view[0])
+	byte_arena_reset(arena)
+	if byte_arena_length(arena) != 0: return 1
+	byte[1] source
+	ref byte[] original = source
+	ref byte[] empty = byte_arena_copy(arena, original[0:0])
+	if empty.length != 0: return 2
+	byte_arena_release(arena)
+	ref byte[] final_view = byte_arena_copy(arena, source)
+	return total + final_view.length - 191
+
+
 int main():
 	int before = debug_alloc_report_leaks()
 	int tail = debug_quarantine_tail
@@ -119,4 +165,7 @@ int main():
 	if extension_nested_exits(4) != 17: return 14
 	if extension_nested_exits(5) != 17: return 15
 	if extension_observe_paths() != 0: return 21
+	if extension_deferred_push() != 0: return 22
+	if extension_buffer_transfers() != 0: return 23
+	if extension_arena_paths() != 0: return 24
 	return debug_alloc_report_leaks() - before
