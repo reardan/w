@@ -14,6 +14,7 @@ struct retained_constant:
 struct retained_type:
 	int source
 	char* name
+	char* lifetime
 	char* file
 	int line
 	int column

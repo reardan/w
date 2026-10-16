@@ -62,6 +62,8 @@ int retained_type_note(int index):
 	if (retained_types == 0): retained_types = new list[retained_type*]
 	retained_type* type = new retained_type
 	type.name = retained_intern(original.name)
+	type.lifetime = 0
+	if (original.safe_lifetime != 0): type.lifetime = retained_intern(original.safe_lifetime)
 	type.file = retained_intern(debug_file_name(original.decl_file_index))
 	type.file_index = retained_file_key(original.decl_file_index)
 	type.source = retained_file_source(original.decl_file_index)
@@ -517,3 +519,30 @@ void retained_function_parameters(int binding):
 	for i in range(low, sym_index_count):
 		int sym = sym_index_offset(i)
 		if (table[sym + 1] == 'A'): retained_local_note(sym)
+
+
+# A later prototype reuses a defined symbol, whose location still names its
+# body. Snapshot this declaration at its own source location so a changed
+# contract cannot disappear behind the definition's binding-cache entry.
+# Restore the live symbol metadata used by diagnostics and generated calls.
+void retained_function_prototype_parameters(int binding, int return_type):
+	if ((ast_retain_mode == 0) || (retained_parent < 0) || (retained_semantic_mode == 0) || (table[binding + 1] != 'D')):
+		retained_function_parameters(binding)
+		return
+	int previous = retained_binding_note(binding, retained_parent)
+	int file_index = load_int(table + binding + 66)
+	int line = load_int(table + binding + 70)
+	int column = load_int(table + binding + 74)
+	int original_type = load_int(table + binding + 6)
+	retained_record* node = retained_record_at(retained_parent)
+	save_int(table + binding + 66, decl_file_index())
+	save_int(table + binding + 70, node.line)
+	save_int(table + binding + 74, node.column)
+	save_int(table + binding + 6, return_type)
+	retained_function_parameters(binding)
+	if ((previous >= 0) && (node.binding >= 0)):
+		retained_bindings[node.binding].linkage = retained_bindings[previous].linkage
+	save_int(table + binding + 66, file_index)
+	save_int(table + binding + 70, line)
+	save_int(table + binding + 74, column)
+	save_int(table + binding + 6, original_type)

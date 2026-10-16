@@ -14,6 +14,7 @@
 # is the accessor function external callers use.
 struct type_rec:
 	char* name
+	char* safe_lifetime    # optional function-contract label; erased at runtime
 	int num_fields
 	int total_size
 	int pointer_level
@@ -132,6 +133,7 @@ type_rec* type_alloc():
 	# 'new' (not malloc) because the record's array fields carry
 	# descriptors that only 'new' initializes; it also zeroes the record.
 	type_rec* new_type = new type_rec
+	new_type.safe_lifetime = 0
 	new_type.field_names = new list[char*]
 	new_type.field_types = new list[int]
 	new_type.decl_file_index = -1
@@ -469,35 +471,53 @@ const int type_kind_gpu = 20
 const int type_kind_own = 21
 const int type_kind_ref = 22
 const int type_kind_refmut = 23
+const int type_kind_safe_slice = 24
+const int type_kind_safe_record = 25
 
 
 int type_safe_kind(int type_index):
 	type_index = type_unqualified(type_index)
 	if (type_index < 0): return 0
 	int kind = type_record(type_index).kind
+	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	return 0
 
 
 int type_safe_target(int type_index):
 	type_index = type_unqualified(type_index)
+	if (type_index >= 0):
+		int kind = type_get_kind(type_index)
+		if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return type_index
 	if (type_safe_kind(type_index)): return type_record(type_index).alias_target
 	return type_index
 
 
-int type_get_safe(int target, int kind):
+int type_get_safe_lifetime(int target, int kind, char* lifetime):
 	type_safe_used = 1
 	target = type_unqualified(target)
 	int i = 0
 	while (i < type_records.length):
 		type_rec* t = type_record(i)
-		if ((t.kind == kind + 20) && (t.alias_target == target)): return i
+		if ((t.kind == kind + 20) && (t.alias_target == target)):
+			if ((t.safe_lifetime == 0) && (lifetime == 0)): return i
+			if ((t.safe_lifetime != 0) && (lifetime != 0)):
+				if (strcmp(t.safe_lifetime, lifetime) == 0): return i
 		i = i + 1
 	char* prefix = c"own "
 	if (kind == 2): prefix = c"ref "
 	if (kind == 3): prefix = c"refmut "
 	type_rec* new_type = type_alloc()
-	new_type.name = strjoin(prefix, type_get_name(target))
+	if (lifetime != 0):
+		if (kind == 2): prefix = c"ref["
+		else: prefix = c"refmut["
+		char* named = strjoin(prefix, lifetime)
+		char* qualified = strjoin(named, c"] ")
+		new_type.name = strjoin(qualified, type_get_name(target))
+		new_type.safe_lifetime = strclone(lifetime)
+		free(named)
+		free(qualified)
+	else: new_type.name = strjoin(prefix, type_get_name(target))
 	new_type.total_size = word_size
 	new_type.pointer_level = type_get_pointer_level(target)
 	new_type.alias_target = target
@@ -507,6 +527,103 @@ int type_get_safe(int target, int kind):
 	int index = type_records.length
 	type_records.push(cast(int, new_type))
 	return index
+
+
+int type_get_safe(int target, int kind):
+	return type_get_safe_lifetime(target, kind, 0)
+
+int type_is_safe_slice(int type):
+	return type_get_kind(type_unqualified(type)) == type_kind_safe_slice
+
+
+# Checked slices own their inline descriptor, never the backing allocation.
+# The two fields use the ordinary by-value/hidden-result aggregate ABI.
+int type_get_safe_slice(int element, char* lifetime):
+	type_safe_used = 1
+	element = type_unqualified(element)
+	for i in range(type_records.length):
+		type_rec* old = type_record(i)
+		if ((old.kind == type_kind_safe_slice) && (old.alias_target == element)):
+			if ((old.safe_lifetime == 0) && (lifetime == 0)): return i
+			if ((old.safe_lifetime != 0) && (lifetime != 0)):
+				if (strcmp(old.safe_lifetime, lifetime) == 0): return i
+	type_rec* record = type_alloc()
+	char* prefix = c"ref "
+	char* named = 0
+	if (lifetime != 0):
+		named = strjoin(c"ref[", lifetime)
+		prefix = strjoin(named, c"] ")
+		record.safe_lifetime = strclone(lifetime)
+	char* base = strjoin(prefix, type_get_name(element))
+	record.name = strjoin(base, c"[]")
+	free(base)
+	if (named != 0):
+		free(named)
+		free(prefix)
+	record.kind = type_kind_safe_slice
+	record.pointer_level = 0
+	record.total_size = 2 * word_size
+	record.alias_target = element
+	record.fn_return_type = -1
+	record.fn_param_count = -1
+	record.num_fields = 2
+	int slice_pointer = type_lookup_pointer(type_get_name(element), 1)
+	if (slice_pointer < 0): slice_pointer = type_push_pointer(type_get_name(element), word_size, 1)
+	record.field_names.push(c"data")
+	record.field_types.push(slice_pointer)
+	record.field_names.push(c"length")
+	record.field_types.push(type_lookup(c"int"))
+	int result = type_records.length
+	type_records.push(cast(int, record))
+	return result
+
+
+int type_is_safe_record(int type):
+	return type_get_kind(type_unqualified(type)) == type_kind_safe_record
+
+
+# A borrowed aggregate is a nominal struct with one bound lifetime group.
+# Field copies keep their layout but bind shared references to the outer
+# label. The safety pass checks the template and complete construction.
+int type_get_safe_record(int base, char* lifetime):
+	type_safe_used = 1
+	base = type_unqualified(base)
+	for i in range(type_records.length):
+		type_rec* old = type_record(i)
+		if ((old.kind == type_kind_safe_record) && (old.alias_target == base)):
+			if ((old.safe_lifetime == 0) && (lifetime == 0)): return i
+			if ((old.safe_lifetime != 0) && (lifetime != 0)):
+				if (strcmp(old.safe_lifetime, lifetime) == 0): return i
+	type_rec* source = type_record(base)
+	type_rec* record = type_alloc()
+	char* prefix = c"ref "
+	char* named = 0
+	if (lifetime != 0):
+		named = strjoin(c"ref[", lifetime)
+		prefix = strjoin(named, c"] ")
+		record.safe_lifetime = strclone(lifetime)
+	record.name = strjoin(prefix, type_get_name(base))
+	if (named != 0):
+		free(named)
+		free(prefix)
+	record.kind = type_kind_safe_record
+	record.pointer_level = 0
+	record.total_size = source.total_size
+	record.alias_target = base
+	record.fn_return_type = -1
+	record.fn_param_count = -1
+	record.num_fields = source.num_fields
+	for field in range(source.num_fields):
+		int field_type = source.field_types[field]
+		if (type_is_safe_slice(field_type)):
+			field_type = type_get_safe_slice(type_get_element_type(field_type), lifetime)
+		else if ((type_safe_kind(field_type) == 2) && (type_get_pointer_level(field_type) == 1)):
+			field_type = type_get_safe_lifetime(type_safe_target(field_type), 2, lifetime)
+		record.field_names.push(source.field_names[field])
+		record.field_types.push(field_type)
+	int result = type_records.length
+	type_records.push(cast(int, record))
+	return result
 
 
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
@@ -630,7 +747,7 @@ int type_is_array(int type_index):
 
 int type_is_slice(int type_index):
 	int kind = type_get_kind(type_index)
-	return (kind == type_kind_slice) | (kind == type_kind_slice_value)
+	return (kind == type_kind_slice) | (kind == type_kind_slice_value) | (kind == type_kind_safe_slice)
 
 
 int type_is_string(int type_index):
@@ -971,6 +1088,12 @@ int types_compatible(int want, int got):
 	# rejects raw escapes/adoption; the ABI-level conversion is identical.
 	want = type_safe_target(want)
 	got = type_safe_target(got)
+	if (type_is_safe_record(want) || type_is_safe_record(got)):
+		int want_record = want
+		int got_record = got
+		if (type_is_safe_record(want)): want_record = type_record(want).alias_target
+		if (type_is_safe_record(got)): got_record = type_record(got).alias_target
+		return want_record == got_record
 	if (got == 3): return 1
 	if (got == 4): return 0
 	if (want == got): return 1
