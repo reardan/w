@@ -4,20 +4,6 @@
   "sites": [
     {
       "file": "JavaScriptLexer.g4",
-      "line": 38,
-      "column": 1,
-      "offset": 1935,
-      "rule": "<grammar>",
-      "expected": "channels {\n    ERROR\n}",
-      "blocker": "unresolved grammar dependency: channels {\n    ERROR\n}",
-      "status": "adapted-subset",
-      "native_files": [
-        "libs/extras/grammars/javascript.pg"
-      ],
-      "adaptation": "Explicit native imports and channels replace foreign runtime inheritance; upstream dependency text is retained as provenance."
-    },
-    {
-      "file": "JavaScriptLexer.g4",
       "line": 42,
       "column": 1,
       "offset": 1959,
@@ -576,18 +562,6 @@
       "rule": "CDataComment",
       "expected": ".*?",
       "blocker": "non-greedy matching requires an explicit adaptation",
-      "status": "deferred",
-      "native_files": [],
-      "adaptation": "Not claimed by the initial JavaScript compatibility subset."
-    },
-    {
-      "file": "JavaScriptLexer.g4",
-      "line": 220,
-      "column": 48,
-      "offset": 7460,
-      "rule": "UnexpectedCharacter",
-      "expected": "channel(ERROR)",
-      "blocker": "unsupported command channel(ERROR)",
       "status": "deferred",
       "native_files": [],
       "adaptation": "Not claimed by the initial JavaScript compatibility subset."
@@ -1158,6 +1132,36 @@
         "libs/extras/grammars/javascript.pg"
       ],
       "adaptation": "Pure predicates inspect source trivia and statement context."
+    }
+  ],
+  "resolved_sites": [
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 38,
+      "column": 1,
+      "offset": 1935,
+      "rule": "<grammar>",
+      "expected": "channels {\n    ERROR\n}",
+      "blocker": "unresolved grammar dependency: channels {\n    ERROR\n}",
+      "status": "adapted-subset",
+      "native_files": [
+        "libs/extras/grammars/javascript.pg"
+      ],
+      "adaptation": "Explicit native imports and channels replace foreign runtime inheritance; upstream dependency text is retained as provenance.",
+      "resolution": "The generic translator now preserves declared custom channel identities and channel(ERROR) commands. Covered by antlr_channels_test and the Channels differential fixture; native JavaScript ERROR-channel behavior remains separately scoped."
+    },
+    {
+      "file": "JavaScriptLexer.g4",
+      "line": 220,
+      "column": 48,
+      "offset": 7460,
+      "rule": "UnexpectedCharacter",
+      "expected": "channel(ERROR)",
+      "blocker": "unsupported command channel(ERROR)",
+      "status": "deferred",
+      "native_files": [],
+      "adaptation": "Not claimed by the initial JavaScript compatibility subset.",
+      "resolution": "The generic translator now preserves declared custom channel identities and channel(ERROR) commands. Covered by antlr_channels_test and the Channels differential fixture; native JavaScript ERROR-channel behavior remains separately scoped."
     }
   ]
 }

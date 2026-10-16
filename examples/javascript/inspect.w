@@ -2,6 +2,8 @@
 # wbuild: step="bin/wv2 examples/javascript/inspect.w -o bin/javascript_inspect"
 # wbuild: target=javascript_compatibility dep=javascript_inspect dep=javascript_build_example dep=javascript_transform
 # wbuild: step="python3 tools/javascript_compatibility.py"
+# wbuild: target=javascript_adaptation_inventory_test tag=tests
+# wbuild: step="python3 tests/javascript_adaptation_inventory_test.py"
 # Inspect declarations or validate a JavaScript file with --check.
 import lib.args
 import lib.stream
