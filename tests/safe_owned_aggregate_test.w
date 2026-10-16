@@ -164,3 +164,23 @@ void test_owned_contract_after_definition():
 void test_owned_contract_cannot_be_erased_after_definition():
 	owned_aggregate_case(c"int consume(own int* value):\n\treturn 0\nown int* produce():\n\treturn new int\nint consume(int* value);\nint main():\n\treturn 0\n", c"forward declaration disagrees")
 	owned_aggregate_case(c"int consume(own int* value):\n\treturn 0\nown int* produce():\n\treturn new int\nint* produce();\nint main():\n\treturn 0\n", c"forward declaration disagrees")
+
+
+# Keep evaluated storage alive until index/RHS evaluation completes.
+# Separate replacement and value-only reads remain valid.
+void test_owned_evaluation_order():
+	owned_aggregate_case(c"struct Box:\n\tint value\nint main():\n\town Box* p = new Box\n\tp.value = (p = new Box) != 0\n\treturn 0\n", c"conflicting")
+	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint main():\n\town Box* p = new Box\n\treturn p.values[(p = new Box) != 0]\n", c"conflicting")
+	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint main():\n\town Box* p = new Box\n\tp.values[(p = new Box) != 0] = 9\n\treturn 0\n", c"conflicting")
+	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint main():\n\town Box* p = new Box\n\tp.values[0] = (p = new Box) != 0\n\treturn 0\n", c"conflicting")
+	owned_aggregate_case(c"int main():\n\town int* p = new int\n\t*p += (p = new int) != 0\n\treturn 0\n", c"conflicting")
+	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint consume(own Box* p):\n\treturn 0\nint main():\n\town Box* p = new Box\n\treturn p.values[consume(p) + ((p = new Box) != 0)]\n", c"conflicting")
+	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint main():\n\town Box* p = new Box\n\tref int* child = &p.values[(p = new Box) != 0]\n\treturn *child\n", c"conflicting")
+	owned_aggregate_case(c"int consume(ref int* p, int n):\n\treturn *p + n\nint main():\n\town int* p = new int\n\treturn consume(p, (p = new int) != 0)\n", c"conflicting")
+	owned_aggregate_case(c"struct Holder:\n\tref[a] int* p\n\tint value\nint main():\n\town int* p = new int\n\tref Holder h = Holder(p, (p = new int) != 0)\n\treturn h.value\n", c"conflicting")
+	owned_aggregate_case(c"int main():\n\town int* p = new int\n\t*p = (p = new int) != 0\n\treturn 0\n", c"conflicting")
+	owned_aggregate_case(c"int main():\n\town int* p = new int\n\t*p = 3\n\t*p = *p + 4\n\t*p += *p\n\treturn *p - 14\n", 0)
+	owned_aggregate_case(c"int main():\n\town int* p = new int\n\t*p = 3\n\tp = new int\n\t*p = 7\n\treturn *p - 7\n", 0)
+	owned_aggregate_case(c"own int* identity(own int* p):\n\treturn p\nint main():\n\town int* p = new int\n\t*p = 7\n\tp = identity(p)\n\treturn *p - 7\n", 0)
+	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint main():\n\town Box* p = new Box\n\tp.values[0] = 1\n\tp.values[p.values[0]] = 7\n\treturn p.values[1] - 7\n", 0)
+	owned_aggregate_case(c"struct Box:\n\town int* item\n\tint tag\nint main():\n\town int* p = new int\n\t*p = 7\n\town Box* b = new Box(p, (p = new int) != 0)\n\tref int* child = b.item\n\treturn *child - 7\n", 0)
