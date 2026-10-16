@@ -40,6 +40,15 @@ void progress_cycle_tests():
 	assert_equal(3, result.facts[c"a"].mutual_cycle.path.length)
 	assert_equal(0, strcmp(result.facts[c"a"].mutual_cycle.path[1], c"b"))
 	assert_equal(0, at_progress_candidate_valid(result))
+	at_progress_result* reordered = progress_analyze(c"grammar G; b: a | 'z'; a: a 'x' | b | 'y';")
+	for at_progress_fact* fact in result.order:
+		at_progress_fact* other = reordered.facts[fact.rule.name]
+		assert_equal(fact.nullable, other.nullable)
+		assert_equal(fact.productive, other.productive)
+		assert1(other.mutual_cycle != 0)
+		assert_equal(fact.mutual_cycle.path.length, other.mutual_cycle.path.length)
+		for i, name in fact.mutual_cycle.path:
+			assert_equal(0, strcmp(name, other.mutual_cycle.path[i]))
 	result = progress_analyze(c"grammar G; a: guard b | 'x'; guard: ; b: (a) | 'y';")
 	assert1(result.facts[c"a"].mutual_cycle != 0)
 	assert1(result.facts[c"guard"].nullable)
@@ -110,6 +119,12 @@ void progress_limit_tests():
 	assert_equal(0, at_progress_candidate_valid(result))
 	assert1(rules[0].alts == original)
 	assert_equal(2, rules.length)
+	list[at_rule*] duplicates = new list[at_rule*]
+	duplicates.push(rules[0])
+	duplicates.push(rules[0])
+	result = at_progress_analyze(duplicates, at_progress_default_limits())
+	assert1(progress_has_issue(result, c"duplicate_rule"))
+	assert_equal(0, at_progress_candidate_valid(result))
 	limits = at_progress_default_limits()
 	limits.max_work = 3
 	result = at_progress_analyze(rules, limits)
