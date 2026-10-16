@@ -5,7 +5,11 @@ left-recursion shapes, using three parallel worker agents and one integrator.
 Implement an explicit precedence plan and validate its progress before publishing
 normalized rules. Measure grammar compilation and runtime compatibility separately.
 
-Status: planned, not implemented. This follows [PR #708](https://github.com/reardan/w/pull/708)
+Status: Wave 0 diagnostics, analysis interfaces, and pinned reference evidence are
+implemented. Nonnullable and nullable lowering remain planned; acceptance and
+the six configuration baselines are unchanged. See the
+[Wave 0 fixtures and commands](../../../../tests/grammars/antlr_left_recursion/README.md).
+This follows [PR #708](https://github.com/reardan/w/pull/708)
 and the [compatibility capability ledger](COMPATIBILITY_PLAN.md). The planning PR
 is stacked on #708 while that implementation remains open. Implementation branches
 must start from the accepted combined base, not an older parallel checkout.

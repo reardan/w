@@ -14,11 +14,12 @@ void at_lr_diagnostic_location(json_value* item, pg_token* location):
 
 json_value* at_lr_diagnostic_plan(at_lr_plan* plan):
 	json_value* value = json_object()
+	json_object_set(value, c"scope", json_string(c"antlr_4_13_2_candidate_analysis"))
 	json_object_set(value, c"complete", json_bool(plan.complete))
 	json_object_set(value, c"reason_code", json_string(plan.reason))
 	json_object_set(value, c"work", json_int(plan.work))
 	json_object_set(value, c"work_limit", json_int(plan.work_limit))
-	json_object_set(value, c"direct_recursive", json_bool(plan.direct_recursive))
+	if (plan.complete): json_object_set(value, c"direct_recursive", json_bool(plan.direct_recursive))
 	json_value* alternatives = json_array()
 	# Incomplete descriptors are never presented as semantic conclusions.
 	if (plan.complete):

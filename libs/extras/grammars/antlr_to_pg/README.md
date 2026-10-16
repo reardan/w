@@ -232,7 +232,9 @@ Paths alternate zero-based element and group-alternative indices; each occurrenc
 also retains enclosing suffixes, its label and source location. Primary and
 operator decisions have separate one-based priority indices. Plans borrow source
 nodes and must be treated as immutable; the diagnostic snapshot is taken before
-normalization. An incomplete plan cannot authorize lowering. This first delivery
+normalization. `complete` means candidate analysis finished, not that ANTLR
+transforms or accepts the rule: a prefix-only rule, for example, is not a direct
+left-recursion candidate. An incomplete plan cannot authorize lowering. This first delivery
 does not enable any previously refused grammar or alter the six sweep baselines.
 
 The independent [left-recursion fixtures](../../../../tests/grammars/antlr_left_recursion/README.md)

@@ -68,3 +68,13 @@ void test_partial_graph_reports_exhaustion_for_uncollected_rule():
 	at_lr_diagnostics_remaining(other)
 	assert1((late.name in g_at_lr_source_details) == 0)
 	assert1((late.name in g_at_normalization_guards) == 0)
+	# An incomplete plan cannot claim that recursion is absent.
+	at_alt* alt = new at_alt()
+	alt.elements = new list[at_element*]
+	late.alts.push(alt)
+	at_lr_plan* plan = at_lr_plan_build(late, 0)
+	json_value* partial = at_lr_diagnostic_plan(plan)
+	assert_equal(0, json_object_get(partial, c"complete").int_value)
+	assert1(json_object_get(partial, c"direct_recursive") == 0)
+	assert_equal(0, json_array_length(json_object_get(partial, c"alternatives")))
+	at_lr_plan_free(plan)
