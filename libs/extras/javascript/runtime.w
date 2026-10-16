@@ -169,6 +169,7 @@ void js_runtime_install_classes(js_runtime* rt);
 void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode);
 void js_class_reference_error(js_runtime* rt);
 js_value* js_class_evaluate(js_runtime* rt, js_node* node, js_value* env);
+int js_class_is_constructor(js_value* value);
 js_value* js_class_construct(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
 js_value* js_class_super(js_runtime* rt, js_node* node, js_value* env);
 js_value* js_class_instanceof(js_runtime* rt, js_value* object, js_value* callable);
@@ -604,6 +605,15 @@ int js_runtime_strict_body(js_node* body):
 	return 0
 
 
+int js_runtime_function_length(js_node* node):
+	int length = 0
+	js_node* parameters = node.children[0]
+	while (length < parameters.children.length):
+		if (js_kind(parameters.children[length], c"default_pattern") || js_kind(parameters.children[length], c"rest")): break
+		length = length + 1
+	return length
+
+
 js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	js_value* callable = js_runtime_alloc(rt, 7)
 	if (callable == rt.undefined_value): return callable
@@ -617,8 +627,17 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 	js_runtime_define_data(rt, callable, name, name_value, 0, 0, 1)
 	js_text_free(name)
 	name = js_runtime_key(c"length")
-	js_runtime_define_data(rt, callable, name, js_runtime_number(rt, cast(float64, node.children[0].children.length)), 0, 0, 1)
+	js_runtime_define_data(rt, callable, name, js_runtime_number(rt, cast(float64, js_runtime_function_length(node))), 0, 0, 1)
 	js_text_free(name)
+	if (node.async_function == 0 && (js_kind(node, c"function") || js_kind(node, c"function_expression"))):
+		js_value* prototype = js_runtime_alloc(rt, 5)
+		if (rt.completion.status != 0): return rt.undefined_value
+		name = js_runtime_key(c"constructor")
+		js_runtime_define_data(rt, prototype, name, callable, 1, 0, 1)
+		js_text_free(name)
+		name = js_runtime_key(c"prototype")
+		js_runtime_define_data(rt, callable, name, prototype, 1, 0, 0)
+		js_text_free(name)
 	if (js_kind(node, c"function_expression") && strlen(node.text) > 0):
 		callable.parent = js_runtime_environment(rt, env)
 		js_runtime_set(rt, callable.parent, node.text, callable)
@@ -1624,7 +1643,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		js_value* result = rt.undefined_value
 		if (rt.completion.status == 0):
 			if (js_kind(node, c"construct")):
-				if (callable.class_kind != 0 || callable.error_constructor): result = js_class_construct(rt, callable, arguments, callable)
+				if (js_class_is_constructor(callable)): result = js_class_construct(rt, callable, arguments, callable)
 				else if (callable == rt.promise_constructor): result = js_runtime_promise_construct(rt, arguments)
 				else if (callable.binary_constructor != 0): result = js_runtime_binary_construct(rt, callable.binary_constructor, arguments)
 				else if (callable.host_construct): result = js_runtime_call_native(rt, callable, rt.undefined_value, arguments)

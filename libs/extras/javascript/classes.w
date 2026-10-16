@@ -28,7 +28,7 @@ void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode):
 
 
 int js_class_is_constructor(js_value* value):
-	return value.class_kind != 0 || value.error_constructor
+	return value.class_kind != 0 || value.error_constructor || (value.kind == 7 && value.code != 0 && value.code.async_function == 0 && (js_kind(value.code, c"function") || js_kind(value.code, c"function_expression")))
 
 
 js_value* js_class_evaluate(js_runtime* rt, js_node* node, js_value* env):
@@ -114,7 +114,7 @@ js_value* js_class_construct(js_runtime* rt, js_value* callable, list[js_value*]
 		result = js_class_construct(rt, callable.prototype, args, new_target)
 	else:
 		js_value* receiver = rt.undefined_value
-		if (callable.class_kind == 1):
+		if (callable.class_kind != 2):
 			receiver = js_runtime_alloc(rt, 5)
 			js_value* prototype = js_runtime_get(rt, new_target, c"prototype")
 			if (js_runtime_object(prototype)): receiver.prototype = prototype
