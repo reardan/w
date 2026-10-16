@@ -209,6 +209,7 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
+js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_some(js_runtime* rt);
 void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args);
 js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
@@ -753,15 +754,7 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	if (strcmp(op, c"!=") == 0): return js_runtime_loose_equal(rt, a, b, 1)
 	if (strcmp(op, c"===") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b))
 	if (strcmp(op, c"!==") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b) == 0)
-	if (strcmp(op, c"+") == 0 && a.kind == 4 && b.kind == 4):
-		if (a.text.units.length > rt.max_properties - b.text.units.length):
-			js_runtime_fail(rt, 5, c"JavaScript string length limit")
-			return rt.undefined_value
-		js_text* joined = js_text_clone(a.text)
-		for i in range(b.text.units.length): joined.units.push(b.text.units[i])
-		js_value* result = js_runtime_string(rt, joined)
-		js_text_free(joined)
-		return result
+	if (strcmp(op, c"+") == 0): return js_runtime_add(rt, a, b)
 	if (a.kind == 10 || b.kind == 10): return js_bigint_binary(rt, op, a, b)
 	if (a.kind != 3 || b.kind != 3):
 		js_runtime_fail(rt, 6, c"implicit coercion is outside the runtime subset")
@@ -769,7 +762,6 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	float64 x = a.number
 	float64 y = b.number
 	if (js_runtime_bit_operator(op)): return js_runtime_bit_binary(rt, op, x, y)
-	if (strcmp(op, c"+") == 0): return js_runtime_number(rt, x + y)
 	if (strcmp(op, c"-") == 0): return js_runtime_number(rt, x - y)
 	if (strcmp(op, c"*") == 0): return js_runtime_number(rt, x * y)
 	if (strcmp(op, c"/") == 0): return js_runtime_number(rt, x / y)
@@ -1062,6 +1054,10 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	js_value* value = rt.undefined_value
 	if (rt.completion.status == 0):
 		if (update):
+			if (old.kind != 3 && old.kind != 10):
+				js_runtime_fail(rt, 6, c"implicit numeric update conversion is outside the runtime subset")
+				js_text_free(key)
+				return rt.undefined_value
 			char* op = c"+"
 			if (strcmp(node.text, c"--") == 0): op = c"-"
 			js_value* one = js_runtime_number(rt, 1.0)
@@ -1849,3 +1845,5 @@ import libs.extras.javascript.runtime_string_case
 import libs.extras.javascript.runtime_arguments
 import libs.extras.javascript.runtime_array_like
 import libs.extras.javascript.runtime_array_some
+
+import libs.extras.javascript.runtime_addition
