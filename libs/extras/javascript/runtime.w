@@ -45,6 +45,8 @@ struct js_value:
 	js_value* bound_target
 	js_value* bound_receiver
 	list[js_value*] bound_arguments
+	list[js_value*] call_arguments
+	int arguments_pending
 	int host_receiver
 	js_value* this_value
 	int variable_scope
@@ -106,6 +108,7 @@ struct js_runtime:
 	int regexp_units
 	js_value* array_prototype
 	js_value* function_prototype
+	js_value* arguments_thrower
 	js_value* error_prototype
 	js_value* reference_error_prototype
 	js_value* string_prototype
@@ -206,6 +209,10 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
+void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args);
+js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
+
+
 void js_runtime_fail(js_runtime* rt, int status, char* message):
 	if (rt.completion.status != 0): return
 	rt.completion.status = status
@@ -250,6 +257,8 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.bound_target = 0
 	value.bound_receiver = 0
 	value.bound_arguments = 0
+	value.call_arguments = 0
+	value.arguments_pending = 0
 	value.host_receiver = 0
 	value.this_value = 0
 	value.variable_scope = 0
@@ -407,6 +416,7 @@ js_runtime* js_runtime_new():
 	rt.max_microtasks = 10000
 	rt.promise_prototype = 0
 	rt.function_prototype = 0
+	rt.arguments_thrower = 0
 	rt.error_prototype = 0
 	rt.reference_error_prototype = 0
 	rt.promise_constructor = 0
@@ -477,6 +487,7 @@ void js_runtime_unroot(js_runtime* rt, js_value* value):
 void js_runtime_value_free(js_value* value):
 	js_regexp_free(value.regexp)
 	if (value.bound_arguments != 0): __w_list_free(cast(__w_list*, value.bound_arguments))
+	if (value.call_arguments != 0): __w_list_free(cast(__w_list*, value.call_arguments))
 	if (value.binary_owned):
 		js_runtime* rt = cast(js_runtime*, value.owner)
 		rt.binary_bytes_used = rt.binary_bytes_used - value.binary_length
@@ -509,6 +520,7 @@ int js_runtime_collect(js_runtime* rt):
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.array_prototype)
 	js_runtime_mark(pending, rt.function_prototype)
+	js_runtime_mark(pending, rt.arguments_thrower)
 	js_runtime_mark(pending, rt.string_prototype)
 	js_runtime_mark(pending, rt.regexp_prototype)
 	js_runtime_mark(pending, rt.global)
@@ -523,6 +535,8 @@ int js_runtime_collect(js_runtime* rt):
 		js_runtime_mark(pending, value.bound_receiver)
 		if (value.bound_arguments != 0):
 			for i in range(value.bound_arguments.length): js_runtime_mark(pending, value.bound_arguments[i])
+		if (value.call_arguments != 0):
+			for i in range(value.call_arguments.length): js_runtime_mark(pending, value.call_arguments[i])
 		js_runtime_mark(pending, value.binary_buffer)
 		js_runtime_mark(pending, value.getter)
 		js_runtime_mark(pending, value.setter)
@@ -599,10 +613,6 @@ js_value* js_runtime_binding(js_value* env, char* name):
 		if (property != 0):
 			js_text_free(key)
 			return property
-		if (strcmp(name, c"arguments") == 0 && env.code != 0 && js_kind(env.code, c"arrow") == 0):
-			js_text_free(key)
-			js_runtime_fail(cast(js_runtime*, env.owner), 6, c"implicit arguments object is outside the runtime subset")
-			return 0
 		env = env.parent
 	js_text_free(key)
 	return 0
@@ -1118,6 +1128,7 @@ js_value* js_runtime_call_body(js_runtime* rt, js_value* callable, js_value* rec
 			env.this_uninitialized = callable.class_kind == 2
 	js_node* parameters = callable.code.children[0]
 	for i in range(parameters.children.length): js_runtime_pattern_declare(rt, parameters.children[i], env, 4, 0)
+	if (rt.completion.status == 0): js_arguments_prepare(rt, env, args)
 	for i in range(parameters.children.length):
 		if (rt.completion.status != 0): break
 		js_node* parameter = parameters.children[i]
@@ -1833,3 +1844,5 @@ import libs.extras.javascript.runtime_array
 
 import libs.extras.javascript.runtime_function
 import libs.extras.javascript.runtime_string_case
+import libs.extras.javascript.runtime_arguments
+import libs.extras.javascript.runtime_array_like
