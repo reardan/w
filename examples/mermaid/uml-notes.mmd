@@ -1,0 +1,12 @@
+classDiagram
+    direction LR
+    namespace Service.Storage["Storage"] {
+        class Cache~Key~ {
+            +get(key) Value
+        }
+        class Repository
+    }
+    Cache --> Repository : reads
+    Repository --() Persistence
+    note for Cache "One entry per key\nEvict after expiry"
+    note "Interfaces have separate identities"

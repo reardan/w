@@ -29,7 +29,7 @@ char* mm_property_value(mm_parser* p):
 
 void mm_requirement_body(mm_parser* p):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
-		if (mm_metadata(p)):
+		if (mm_metadata(p) || mm_style_statement(p)):
 			mm_separators(p)
 			continue
 		char* word = mm_identifier(p)
