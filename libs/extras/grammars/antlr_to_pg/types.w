@@ -71,6 +71,10 @@ struct at_alt:
 	list[at_element*] elements   # matching atoms
 	list[at_site*] sites
 	char* label
+	char* source_rule
+	int source_alternative
+	pg_token* source_first
+	char* source_lhs_label
 
 
 struct at_classification:
@@ -89,6 +93,7 @@ struct at_lowered_lexer:
 struct at_term:
 	char* name
 	int suffix
+	char* label
 
 
 map[char*, at_rule*] g_fragments
@@ -97,6 +102,7 @@ map[char*, int] g_all_rule_names
 map[char*, int] g_used_names
 map[char*, char*] g_text_to_name
 map[char*, char*] g_literal_text
+map[char*, list[at_alt*]] g_at_source_alts
 map[char*, list[list[at_term*]]] g_rule_alts
 map[char*, int] g_group_counter
 map[char*, char*] g_name_remap

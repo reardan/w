@@ -1,6 +1,7 @@
 # .pg text emission for parsed and classified ANTLR rules.
 import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.classify
+import libs.extras.grammars.antlr_to_pg.source_metadata
 
 
 # w's pg.pg (unlike the real grammar_reader.w) models parser/token/skip/
@@ -24,6 +25,8 @@ int at_is_pg_reserved(char* name):
 	if (strcmp(name, c"recover") == 0):
 		return 1
 	if (strcmp(name, c"mode") == 0): return 1
+	if (strcmp(name, c"node_meta") == 0): return 1
+	if (strcmp(name, c"term_meta") == 0): return 1
 	if (strcmp(name, c"import") == 0): return 1
 	if (strcmp(name, c"fragment") == 0): return 1
 	if (strcmp(name, c"lexer") == 0): return 1
@@ -108,6 +111,7 @@ list[list[at_term*]] at_translate_altlist(char* owning_rule, list[at_alt*] alts)
 at_term* at_translate_element(char* owning_rule, at_element* e):
 	at_term* term = new at_term()
 	term.suffix = e.suffix
+	term.label = e.label
 	if (e.kind == 2):
 		char* resolved = at_resolve_parser_rule_name(e.text)
 		if (strcmp(e.text, c"EOF") != 0):
@@ -163,6 +167,7 @@ list[at_term*] at_translate_alt(char* owning_rule, at_alt* alt):
 
 list[list[at_term*]] at_translate_altlist(char* owning_rule, list[at_alt*] alts):
 	list[list[at_term*]] out = new list[list[at_term*]]
+	if (g_at_prediction): g_at_source_alts[owning_rule] = alts
 	int i = 0
 	while (i < alts.length):
 		at_alt* alt = alts[i]
@@ -336,6 +341,8 @@ void at_emit(string_builder* out, char* parser_name):
 			j = j + 1
 		string_append_char(out, 10)
 		i = i + 1
+
+	at_source_emit(out)
 
 	if (g_report_lines.length > 0):
 		string_append(out, c"\n# --- translation report (see build log / --report for details) ---\n")

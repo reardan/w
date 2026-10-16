@@ -39,7 +39,7 @@ pg_prediction_program* pg_prediction_new():
 
 
 # Kinds: 0 accept, 1 token, 2 call, 3 return, 4 choice, 5 enter,
-# 6 leave, 7 jump. Call value is the callee entry; enter value is AST kind
+# 6 leave, 7 jump, 8 node metadata, 9 child metadata. Call value is the callee entry; enter value is AST kind
 # and other is the one-based alternative identity.
 int pg_prediction_add(pg_prediction_program* program, int kind, int next, int other, int value, char* name):
 	pg_prediction_op* op = new pg_prediction_op()
@@ -79,6 +79,11 @@ pg_ast_node* pg_prediction_replay(pg_prediction_program* program, list[int] even
 		pg_prediction_op* op = program.ops[events[i]]
 		int position = events[i + 1]
 		i = i + 2
+		if ((op.kind == 8) || (op.kind == 9)):
+			pg_ast_node* node = parents[parents.length - 1]
+			if (op.kind == 9): node = node.children[node.children.length - 1]
+			pg_ast_set_metadata(node, op.name, op.value)
+			continue
 		if (op.kind == 6):
 			pg_ast_node* node = parents.pop()
 			if (parents.length > 0): pg_ast_add(parents[parents.length - 1], node)
@@ -166,7 +171,7 @@ pg_ast_node* pg_prediction_parse_limit(pg_prediction_program* program, int entry
 			pc = frames[frame]
 			frame = frames[frame + 1]
 			continue
-		if ((op.kind == 5) || (op.kind == 6)):
+		if ((op.kind == 5) || (op.kind == 6) || (op.kind == 8) || (op.kind == 9)):
 			events.push(pc)
 			events.push(position)
 			pc = op.next

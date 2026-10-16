@@ -101,10 +101,12 @@ struct pg_term:
 	int modifier
 	int kind
 	char* code
+	map[char*, int] metadata
 
 
 struct pg_alternative:
 	list[pg_term*] terms
+	map[char*, int] metadata
 
 
 struct pg_rule:
@@ -285,6 +287,7 @@ pg_rule* pg_rule_new(char* name, int kind):
 pg_alternative* pg_alternative_new():
 	pg_alternative* alternative = new pg_alternative()
 	alternative.terms = new list[pg_term*]
+	alternative.metadata = 0
 	return alternative
 
 
@@ -294,6 +297,7 @@ pg_term* pg_term_new(char* name, int modifier):
 	term.modifier = modifier
 	term.kind = pg_term_kind_normal()
 	term.code = 0
+	term.metadata = 0
 	return term
 
 
@@ -303,6 +307,7 @@ pg_term* pg_term_new_action(char* code):
 	term.modifier = 0
 	term.kind = pg_term_kind_action()
 	term.code = strclone(code)
+	term.metadata = 0
 	return term
 
 
@@ -312,6 +317,7 @@ pg_term* pg_term_new_predicate(char* code):
 	term.modifier = 0
 	term.kind = pg_term_kind_predicate()
 	term.code = strclone(code)
+	term.metadata = 0
 	return term
 
 
@@ -469,6 +475,7 @@ int pg_grammar_token_kind(pg_grammar* grammar, char* name):
 void pg_term_free(pg_term* term):
 	free(term.name)
 	if (term.code != 0): free(term.code)
+	if (term.metadata != 0): term.metadata.free()
 	free(term)
 
 
@@ -478,6 +485,7 @@ void pg_alternative_free(pg_alternative* alternative):
 		pg_term_free(alternative.terms[i])
 		i = i + 1
 	list_free[pg_term*](alternative.terms)
+	if (alternative.metadata != 0): alternative.metadata.free()
 	free(alternative)
 
 

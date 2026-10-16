@@ -151,6 +151,7 @@ int main(int argc, int argv):
 	if (g_at_exact_lexer):
 		at_exact_prepare(all_rules)
 		string_append(g_matchers_out, c"import libs.extras.grammars.antlr_to_pg.lexer_vm\n")
+	at_source_prepare(all_rules)
 	at_normalize_parser_lists(all_rules)
 	int unsafe = at_audit(all_rules)
 	at_audit_prediction(all_rules)

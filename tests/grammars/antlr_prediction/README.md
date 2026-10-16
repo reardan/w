@@ -39,3 +39,34 @@ are bounded by the budget, but unresolved ambiguity can require exponential
 work. This implementation deliberately has no DFA cache or unbounded fallback.
 It is appropriate for the demonstrated subset; broader promotion requires the
 independent differential corpus and resource measurements.
+
+`antlr_to_pg_prediction_precedence_test` additionally checks binding-power loops
+for previously refused direct-recursive shapes: compound operators with optional
+clauses, right-associative ternaries, and postfix operations interleaved with
+binary levels. Its 17 accepted/rejected expression examples were evaluated
+against the live reference. `Labels.g4` checks source-alternative provenance,
+labeled left/right operands, and list labels against the reference's labeled
+contexts. `Lists.g4` checks nullable lists whose named statement rule guards
+nested recursion with `begin`/`end`; it does not guess arbitrary keyword pairs.
+All unsafe rewrites remain atomic, and the final nullable-prefix audit still runs.
+The old normalizer runs first to preserve existing supported grammar AST layouts.
+
+Prediction output adds `node_meta` and `term_meta` directives after rule
+emission. These directives are available only in `mode antlr` and validate the
+referenced rule/alternative/term and unique metadata key before generation.
+Metadata is replayed onto the selected tree:
+
+- `antlr_rule:<original-name>` stores the original one-based alternative index.
+- `antlr_alt:<label>` identifies an ANTLR alternative label.
+- `antlr_source_line` and `antlr_source_column` locate the original alternative.
+- `antlr_label:<name>=` marks a labeled matched child; `<name>+=` marks each
+  list-labeled child, preserving encounter order rather than overwriting a list.
+- `antlr_lhs_label:<name>=` on a normalized suffix identifies the prior
+  accumulated expression/list value as the original labeled left operand.
+
+Group alternatives retain their original owner and source coordinates. Helper
+nodes expose provenance rather than pretending to be original ANTLR contexts.
+Clients folding the normalized AST must interpret `antlr_lhs_label` as the
+previous accumulated value. Unsupported host actions/predicates remain refused.
+EOF-producing lexer references are treated as consuming tokens in the new
+parser-level nullability proofs, independently of their byte-level lexer width.

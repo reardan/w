@@ -29,6 +29,9 @@ int pg_prediction_rule_index(pg_grammar* grammar, char* name):
 
 
 int pg_prediction_atom(pg_prediction_program* program, pg_grammar* grammar, pg_term* term, int next):
+	if (term.metadata != 0):
+		for char* key in term.metadata:
+			next = pg_prediction_add(program, 9, next, 0, term.metadata[key], key)
 	if (pg_grammar_is_token_term(grammar, term.name)):
 		return pg_prediction_add(program, 1, next, 0, pg_grammar_token_kind(grammar, term.name), term.name)
 	return pg_prediction_add(program, 2, next, 0, pg_prediction_rule_index(grammar, term.name), c"")
@@ -59,6 +62,9 @@ pg_prediction_program* pg_prediction_build(pg_grammar* grammar):
 					if (term.modifier == '+'): next = atom
 				else: next = pg_prediction_atom(program, grammar, term, next)
 				t--
+			if (alternative.metadata != 0):
+				for char* key in alternative.metadata:
+					next = pg_prediction_add(program, 8, next, 0, alternative.metadata[key], key)
 			int enter = pg_prediction_add(program, 5, next, a + 1, rule.kind, rule.name)
 			if (choice < 0): choice = enter
 			else: choice = pg_prediction_add(program, 4, enter, choice, 0, c"")
