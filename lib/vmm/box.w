@@ -89,8 +89,18 @@ char** box_command(vm_box_options* options, char* qemu):
 	int count = 0
 	box_arg(args, &count, qemu)
 	box_arg(args, &count, c"-machine")
-	if (options.memory_fd >= 0): box_arg(args, &count, c"microvm,accel=kvm,memory-backend=microvm.ram")
-	else: box_arg(args, &count, c"microvm,accel=kvm")
+	# Keep the IOAPIC in KVM (microvm defaults to a split irqchip with
+	# QEMU-emulated IOAPICs). Under a split irqchip a guest EOI of a
+	# level-triggered virtio-mmio interrupt reaches QEMU only as a deferred
+	# KVM exit; when "stop" interrupts the vCPU first, that exit is still
+	# pending inside KVM, so the snapshot records Remote IRR set for an
+	# interrupt the guest already completed. Every clone of such a snapshot
+	# then never receives another virtio-serial interrupt and its command
+	# channel hangs (about 1 snapshot in 2000 under load). The in-kernel
+	# IOAPIC retires EOIs synchronously, so captured state stays
+	# consistent. ioapic2 is QEMU-only, so virtio lines use GSIs 16-23.
+	if (options.memory_fd >= 0): box_arg(args, &count, c"microvm,accel=kvm,kernel-irqchip=on,ioapic2=off,memory-backend=microvm.ram")
+	else: box_arg(args, &count, c"microvm,accel=kvm,kernel-irqchip=on,ioapic2=off")
 	box_arg(args, &count, c"-cpu")
 	box_arg(args, &count, c"host")
 	string_builder* value = string_new()

@@ -480,7 +480,9 @@ The fixed anonymous-mapping arena still limits repeated stack allocation.
 ```
 
 Boxes use the installed `qemu-system-x86_64` microvm machine with KVM
-acceleration and the host CPU. They require Linux x64, accessible
+acceleration, the host CPU and KVM's in-kernel irqchip (`kernel-irqchip=on,
+ioapic2=off`: microvm's default split irqchip can snapshot a stale IOAPIC
+Remote IRR that leaves every restored clone deaf to virtio interrupts). They require Linux x64, accessible
 `/dev/kvm`, a compatible x64 Linux kernel, and a supplied initramfs with
 an executable `/init`. There is no runtime download or emulation fallback.
 QEMU provides Linux boot and virtio devices; the cell backend remains W's
