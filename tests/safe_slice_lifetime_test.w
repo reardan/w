@@ -95,7 +95,7 @@ void test_checked_slice_values():
 	slice_lifetime_case(c"ref int[] inferred(ref int[] values):\n\treturn values\nint main():\n\tint[1] values\n\tvalues[0] = 7\n\tref int[] s = inferred(values)\n\treturn s[0] - 7\n", 0)
 	slice_lifetime_case(c"type View = ref[a] int[]\nView identity(View values):\n\treturn values\nint main():\n\tint[1] values\n\tvalues[0] = 7\n\tView s = identity(values)\n\treturn s[0] - 7\n", 0)
 	slice_lifetime_case(c"ref[a] char[] bytes(ref[a] char[] values):\n\treturn values\nint main():\n\tchar[3] values\n\tvalues[0] = 65\n\tvalues[1] = 0\n\tvalues[2] = 66\n\tref char[] s = bytes(values)\n\treturn cast(int, s[0]) + cast(int, s[1]) + cast(int, s[2]) + s.length - 134\n", 0)
-	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[0] values\n\tref int[] s = view(values)\n\treturn s.length\n", 0)
+	slice_lifetime_case(c"ref[a] int[] view(ref[a] int[] values):\n\treturn values\nint main():\n\tint[0] values\n\tref int[] s = view(values)\n\treturn s.length\n", c"array length must be positive")
 
 
 void test_checked_slice_return_storage():
