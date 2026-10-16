@@ -10,7 +10,7 @@ The compiler accepts `--safe` on Linux x86 and x64:
 This is a bounded, single-threaded subset, tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
-design, including optional references and escaping lifetime contracts, is
+design, including optional references and broader lifetime contracts, is
 tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 
 ## Pointer contracts
@@ -20,13 +20,16 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
+| `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
+| `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
 
 Qualifiers are contextual: existing identifiers named `own`, `ref` or `refmut`
 retain their meaning. Type aliases preserve qualifiers. A checked pointer has
 the same size and calling convention as a raw pointer. The pointee must be
-sized and contain no references, raw pointers, unions or containers. Partial
-moves and checked pointers stored in aggregates or globals are rejected.
+sized and contain no references, raw pointers, unions or containers, except
+for the explicitly supported aggregate forms below. Partial moves and
+checked pointers stored in globals are rejected.
 
 ```w
 int read_value(ref int* p):
@@ -74,8 +77,8 @@ conservatively borrow their whole backing value; this release does not prove
 that different fields or indices are disjoint.
 
 Function parameters express the call contract: `own` consumes an allocation,
-`ref` reads it, and `refmut` may mutate it. A function returning `ref` or
-`refmut` must have exactly one borrowed parameter (`ref`, `refmut`, or a
+`ref` reads it, and `refmut` may mutate it. A function returning an unannotated
+`ref` or `refmut` must have exactly one borrowed parameter (`ref`, `refmut`, or a
 slice). Its result borrows from that parameter's backing storage. This
 signature rule supplies an implicit lifetime contract; scalar and owned
 parameters do not contribute a lifetime. A mutable result requires a
@@ -103,8 +106,9 @@ and reborrow ancestry, so a live result prevents conflicting access, moves,
 replacement or destruction. Projections still borrow the whole backing
 value. Bind a result before dereferencing it; direct dereference of a call
 result remains unsupported. References cannot be reassigned or fabricated
-from a temporary owner. Multiple borrowed inputs require named lifetime
-contracts, which are not yet supported. Slice returns remain unsupported.
+from a temporary owner. Multiple borrowed inputs require the named lifetime
+contracts described below. Returned slices use the explicit checked slice
+type described under arrays and slices.
 Borrow initialization cannot interchange slice and scalar-reference
 representations, even when ordinary warnings are nonfatal.
 Buffer metadata (`.length` and `.data`) cannot be borrowed: a slice descriptor
@@ -112,6 +116,123 @@ can be local even when its elements outlive the function, and mutable access
 to length metadata could invalidate bounds checks. Reading `.length` as a
 scalar and borrowing slice elements remain supported. Ordinary struct fields
 named `length` follow the usual field-borrow rules.
+
+### Named lifetime contracts
+
+Annotate a reference with `ref[a] T*` or `refmut[a] T*` to name its lifetime
+relationship within a function signature. The result's label must occur on
+at least one borrowed input. The result may borrow from any input with that
+label, and the caller conservatively keeps **all** those inputs borrowed
+until the result's last use. Inputs with other labels do not contribute to
+the result's lifetime.
+
+```w
+ref[a] int* choose(ref[a] int* left, ref[a] int* right, int first):
+	if first: return left
+	return right
+
+int main():
+	own int* left = new int
+	own int* right = new int
+	*left = 7
+	*right = 9
+	ref int* selected = choose(left, right, 1)
+	int value = *selected
+	# Both owners can be changed after the selected view's last use.
+	*right = 10
+	return value - 7
+```
+
+Moving, replacing or mutating either owner before `*selected` is read fails,
+even when a particular call's scalar argument makes its result predictable.
+A named mutable result requires every input sharing its result label to be
+`refmut`; a shared input cannot supply exclusive access. A body returning
+an input with another label, an owned parameter or local storage fails.
+
+Labels are compile-time contracts and do not change pointer size or calling
+convention. They are local to each signature: a forward declaration can
+rename labels if it preserves the same relationships between result and
+parameters. Aliases preserve labels. Annotating a local reference does not
+extend its backing storage's lifetime. Ordinary references stay non-null;
+`own` does not take a lifetime label. General outlives clauses remain a
+future extension.
+
+### Shared-reference structs
+
+A struct may declare scalar fields and shared pointer fields bearing one
+common lifetime label. `ref[a] Record` binds that group at each use site;
+it is an inline value with the ordinary struct layout, not a pointer to the
+record. Complete construction is required:
+
+```w
+struct Tagged:
+	ref[item] int* value
+	int tag
+
+ref[a] Tagged tagged(ref[a] int* value):
+	return Tagged(value, 7)
+
+ref[a] int* contents(ref[a] Tagged item):
+	return item.value
+```
+
+Copies and returned values preserve the borrowed data's lifetime. If several
+fields borrow different values, the checker conservatively keeps every value
+borrowed for every extracted reference. Earlier constructor arguments remain
+borrowed while later arguments evaluate. Positional and named constructors
+must initialize each field exactly once; null references and omitted fields
+fail.
+
+Shared-reference fields can be extracted from named values or returned
+temporaries. Addresses of the inline record's fields cannot escape: its
+local storage has a different lifetime from the data its references borrow.
+Checked slice fields (`ref[item] T[]`) use the same group and copy their
+inline descriptors. Bind an extracted slice before indexing it; direct
+`record.values[0]` is not yet supported. Field mutation, wrapper reassignment, unqualified record
+storage, heap construction, mutable-reference fields, nested aggregates and
+multiple independent field-lifetime groups remain unsupported in this form.
+
+### Owned structs
+
+An owner can contain other owners. The struct must contain pointer-free
+fields and `own T*` fields whose pointees recursively meet the same rule.
+Audited buffer and byte-string owners are also permitted as fields.
+
+```w
+struct Pair:
+	own int* first
+	own int* second
+	int tag
+
+own Pair* make_pair():
+	own int* first = new int
+	own int* second = new int
+	*first = 7
+	*second = 9
+	return new Pair(first, second, 3)
+```
+
+Each constructor must initialize every field once. Moving an owner argument
+clears its source slot immediately; later arguments cannot reuse it. Bare
+`new Pair`, missing fields, null owners and raw `Pair` value copies fail.
+Whole owners can move through bindings, calls and returns. Replacement
+evaluates the new value, destroys the old value, then installs the new one.
+Destruction recursively drops owned fields in reverse declaration order,
+then frees the containing allocation. Moved source slots are skipped.
+
+Borrowing a child owner borrows the whole containing owner. `ref Pair*` and
+`refmut Pair*` parameters can lend child payloads; a shared parent cannot
+supply an exclusive child borrow. Partial field moves and owner-field
+assignment remain rejected. Recursive ownership type cycles, mixed borrowed
+fields and mutable-reference fields are not supported. Allocation failure
+and other traps terminate the process; cleanup during termination is not
+promised.
+
+Owned type graphs are bounded to depth 32 and at most 256 allocation nodes
+per expanded destructor. Larger graphs produce errors instead of unbounded
+compiler work.
+
+### Call checking
 
 Owned returns must transfer an owner on every normal path. Recursion,
 forward declarations and imported functions use the same signature contract;
@@ -134,13 +255,99 @@ retain the original backing storage's lifetime. A slice parameter borrows for
 the call. Array storage cannot be copied or returned by value; pass a slice.
 Raw `.data` access requires an unsafe boundary.
 
+Use `ref T[]` for a checked slice whose descriptor is stored inline. It can
+borrow a fixed array or another checked slice. Functions return these views
+using `ref[a] T[]` with the same named lifetime rules as reference returns:
+
+```w
+ref[a] int[] view(ref[a] int[] values):
+	ref int[] local = values
+	return local
+
+int main():
+	int[3] values
+	values[0] = 7
+	ref int[] result = view(values)
+	return result[0] - 7
+```
+
+Checked descriptors are copied by value into parameters, local storage and
+the caller's result buffer. Copying or returning a descriptor does not
+allocate or copy the backing elements. The data must outlive every derived
+view. Ranges of checked slices also use inline descriptors:
+`ref int[] tail = result[1:]`, `result[:]` and `result[0:0]` are supported.
+Their bounds are evaluated once, checked at runtime and included in borrow
+checking. A bound expression cannot invalidate the data being sliced. Bind
+a temporary view before indexing it or reading its length; direct scalar
+projections from unnamed temporaries remain rejected.
+
+Ordinary `T[]` keeps its legacy pointer-to-descriptor ABI; implicit
+mixing with the inline checked representation is rejected. Mutable checked
+slices, descriptor construction, metadata borrowing and reassignment remain
+unsupported. Slice elements must be pointer-free sized values. To obtain a
+checked subrange of a fixed array, first bind a checked full view; slicing
+the array directly still produces the legacy representation.
+
 The supported control flow is blocks, `if`/`else`, `while`, `break`, `continue`,
 returns, short-circuit Boolean expressions and scalar conditional expressions.
-`for`, `switch`, generators, arbitrary `goto`, GPU operations and container
-operations remain unsupported. This restriction includes container growth,
-clear and removal: these cannot silently invalidate a checked reference.
+`for`, `switch`, generators, arbitrary `goto`, GPU operations and legacy
+container operations remain unsupported. The audited concrete storage APIs
+below are the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
+
+## Checked buffers and byte strings
+
+Import `lib.safe_buffer` for two concrete, opaque owner types:
+`own WIntBuffer*` holds word-sized integers and `own WByteString*` holds
+bytes. These are distinct from legacy `list[T]` and string-builder values.
+Metadata, raw allocation, casts and private runtime helpers are unavailable
+to checked callers.
+
+| Operation | Integer buffer | Byte string |
+| --- | --- | --- |
+| Construct empty owner | `int_buffer_new()` | `byte_string_new()` |
+| Length | `int_buffer_length(value)` | `byte_string_length(value)` |
+| Push an element | `int_buffer_push(value, element)` | `byte_string_push(value, element)` |
+| Indexed read | `int_buffer_get(value, index)` | `byte_string_get(value, index)` |
+| Indexed replacement | `int_buffer_set(value, index, element)` | `byte_string_set(value, index, element)` |
+| Pop by value | `int_buffer_pop(value)` | `byte_string_pop(value)` |
+| Clear | `int_buffer_clear(value)` | `byte_string_clear(value)` |
+| Shared view | `int_buffer_view(value)` → `ref int[]` | `byte_string_view(value)` → `ref byte[]` |
+
+Read operations borrow shared; every mutation borrows exclusive access to
+the whole container, even when spare capacity would avoid relocation. A
+live view prevents push, set, pop, clear, replacement, moves and destruction.
+Mutation is available again after the view's last use. Views returned from
+other functions or stored in borrowed structs preserve this relationship.
+Drop is automatic; there is no public manual-free function.
+
+```w
+import lib.safe_buffer
+
+int main():
+	own WIntBuffer* values = int_buffer_new()
+	int_buffer_push(values, 7)
+	ref int[] view = int_buffer_view(values)
+	int first = view[0]
+	# Moving this push before view[0] would fail the borrow check.
+	int_buffer_push(values, 9)
+	return first - 7
+```
+
+`byte_string_from(view)` copies a `ref byte[]` into a new owner.
+`byte_string_append(destination, view)` copies a bounded view onto an
+existing string. Ordinary self-append is rejected because the shared view
+conflicts with the exclusive destination borrow. Strings have explicit
+lengths, preserve embedded NUL bytes and impose no UTF-8 or terminator
+invariant. Empty strings and empty views are supported.
+
+Negative or out-of-range indices, empty pop, size overflow and allocation
+failure trap. Growth checks arithmetic before allocation and reads only the
+initialized prefix. The exact library source is pinned by the compiler;
+changed implementations do not inherit its audited contract. Generic
+buffers, owned-element containers, maps, sets and concurrent access remain
+future extensions.
 
 ## Cleanup and unsafe boundaries
 
@@ -176,8 +383,9 @@ work. Raw interoperation therefore does not bypass the compiler's owner
 transfer and cleanup rules. It also cannot establish that a previously
 uninitialized checked binding is initialized.
 
-The audited runtime exposes scalar `put_char`, `put_error` and `exit` calls
-and compiler-generated allocation, destruction and bounds operations. Import
+The audited runtime exposes scalar `put_char`, `put_error` and `exit` calls,
+the concrete storage APIs above, and compiler-generated allocation,
+destruction and bounds operations. Import
 `lib.safe` for checked `safe_print_int` and `safe_println_int` formatting.
 Other runtime calls need an unsafe boundary. Source
 hashes in `compiler/safe_runtime.w` bind these contracts to their resolved
@@ -268,6 +476,33 @@ four binaries execute successfully. The benchmark regression gate also
 passes. These measurements cover the existing corpus; broader returned-view
 workloads still need measurement.
 
+### Named lifetimes, aggregates and storage
+
+The following measurement compares the fixed-point x86 `wv3` compiler from
+`origin/main` at `e44be9c7` with this extension. Both compilers compiled the
+same current source corpus with default optimization. After one warmup,
+five alternating baseline/current runs supplied the medians below. Elapsed
+time includes process-launch measurement overhead; `/usr/bin/time` supplied
+peak RSS. Team builds and tests were paused during this measurement window.
+
+| Corpus / emitted target | Baseline time | Current time | Baseline peak RSS | Current peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Manual cleanup / x86 | 46.61 ms | 48.37 ms | 5,120 KiB | 5,120 KiB |
+| Manual cleanup / x64 | 50.51 ms | 49.52 ms | 5,120 KiB | 5,120 KiB |
+| Checked cleanup / x86 | 61.42 ms | 60.65 ms | 6,912 KiB | 6,688 KiB |
+| Checked cleanup / x64 | 62.86 ms | 68.51 ms | 6,688 KiB | 6,688 KiB |
+| `w.w` / x86 | 1,255.44 ms | 1,277.01 ms | 107,712 KiB | 108,608 KiB |
+
+On `w.w`, this sample is about 1.7% slower with 0.8% more peak memory.
+Short-fixture timing remains noisy and does not establish a general overhead
+bound. Both manual and checked fixtures produce byte-identical executables
+across the two compilers on each architecture: 123,200 bytes on x86 and
+144,000 bytes on x64. All eight binaries execute successfully. The plain
+owner cleanup path preserves its previous instruction sequence; aggregate
+destruction and growable storage incur their explicit allocation/drop costs.
+These existing fixtures do not characterize every new aggregate or
+collection workload.
+
 ## Validation
 
 `safe_mode_test` exercises accepted and rejected programs on x86 and x64,
@@ -301,3 +536,23 @@ checks and the benchmark gate. The instrumented suite also passes all
 Compiler line/branch coverage is 95.1% / 85.0%; the compiler branch floor
 was raised from 84.2% to 84.3%. These are regression measurements, not a proof
 of soundness or Rust-level language coverage.
+
+The lifetime/aggregate/storage extension adds matrices for 84 named-lifetime
+programs (including 24 deterministically generated interactions), 61 slice
+programs, 65 borrowed-aggregate programs, 48 owning-aggregate programs and
+69 collection programs. They run on x86 and x64 through compilation and
+structured checking, with and without `--safe`; rejected cases must leave
+no output artifact. Additional tests cover runtime source pins, erased or
+mismatched declarations, large raw type graphs and allocation arithmetic.
+
+The runtime fixtures include 100,000 repeated view/record copies, returned
+and nested views, empty views, byte strings with embedded NULs, constructor
+argument ordering, reverse field destruction and replacement/exit paths.
+Twenty-six guard-allocator runs cover default, inline and register-disabled
+configurations where applicable. Ten Memcheck runs cover the five runtime
+fixtures on both architectures: zero errors, zero outstanding blocks, and
+130 allocations matched by 130 frees. Slice descriptor stress performs no
+heap allocations. The
+[collection example](../../tests/safe_collection_runtime_fixture.w) combines
+growable storage, returned views, borrowed slice fields, whole-owner moves
+and recursive destruction in one program.

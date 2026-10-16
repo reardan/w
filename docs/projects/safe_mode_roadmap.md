@@ -8,8 +8,8 @@ The broader work remains tracked by
 The [safe-mode reference](safe_mode.md) describes the supported syntax,
 guarantees, restrictions and measured costs. This document preserves the
 remaining design from [PR #645](https://github.com/reardan/w/pull/645) and
-turns it into the implementation plan below. All remaining milestones are
-proposals, not additional supported features.
+turns it into the implementation plan below. The bounded first delivery is
+implemented as described below; later milestones remain proposals.
 
 The goal remains to prevent dangling references, use after move or
 destruction, double destruction and conflicting reference access in checked
@@ -30,11 +30,11 @@ implementation rather than introduce a second ownership model.
 | Area | Available behavior | Remaining scope |
 | --- | --- | --- |
 | Compiler interface | `--safe`, structured diagnostics, deterministic option conflicts, unsupported-target errors | More targets and in-process execution |
-| Pointer contracts | Contextual `own T*`, `ref T*`, `refmut T*`; qualifiers survive aliases; ownership semantics also apply without `--safe` | Optional references, named lifetime contracts and reference-bearing aggregates |
-| Analysis | Resolved binding identities, initialization/move state, borrow provenance, last-use liveness, reborrows, branch joins and loop backedges | More control-flow forms and more precise projections |
-| Calls | Direct, imported and recursive calls; forward declarations checked against implementations; owned returns; reference returns tied to a sole borrowed input | Named lifetime contracts, slice returns, indirect calls, callbacks, methods and unmodeled generic operations |
-| Cleanup | Reverse-order destruction on scope exit, return, break and continue; replacement, parameters and inferred owner moves | Deferred expressions, partial construction and aggregate destruction rules |
-| Storage and libraries | Pointer-free values, fixed arrays, immutable slices, audited allocation/destruction/bounds operations and scalar output | Safe containers, strings, arena lifetimes and richer raw interoperation |
+| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, aliases and explicit contracts without `--safe` | Optional references, general outlives clauses and higher-ranked contracts |
+| Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins and loop backedges | More control-flow forms and more precise projections |
+| Calls | Direct/imported/recursive calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Indirect calls, callbacks, methods and unmodeled generic operations |
+| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves and recursive owner-bearing struct destruction | Deferred expressions, partial moves and mixed borrowed/owned aggregate fields |
+| Storage and libraries | Fixed arrays, inline checked slices, single-group shared-reference structs, owned structs, opaque integer buffers and byte strings | Generic/owned-element containers, maps/sets, arena lifetimes and richer raw interoperation |
 | Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
 
 The checker in [compiler/safe.w](../../compiler/safe.w) uses resolved
@@ -45,6 +45,29 @@ before an output artifact is published. Future emission changes must preserve
 that gate and every transfer, cleanup and diagnostic obligation.
 
 ## Implementation sequence and parallel agents
+
+The first implementation follows D0, L1–L3, a bounded A1/A2, and concrete
+C1/C2. [Contract decisions](safe_mode_contracts.md) record the chosen
+representations and trust boundaries. The [usage guide](safe_mode.md) records
+the accepted syntax and validation evidence. In particular:
+
+- Named labels express shared result/input lifetime relationships; general
+  outlives clauses remain unimplemented.
+- Borrowed structs carry one shared lifetime group across pointer and checked
+  slice fields. Multiple independent groups and nested borrowed structs
+  remain rejected.
+- Owned structs use `own Record*`, complete heap constructors and acyclic
+  recursive destruction. Mutable-reference fields, mixed lifetime-bearing
+  owner fields, partial field moves and unwinding remain outside this stage.
+- C1 exposes a concrete integer buffer; C2 exposes arbitrary byte strings.
+  Both use direct functions, opaque metadata and shared views. General
+  element types, UTF-8 invariants, optional pop and self-append are not added.
+
+The remaining A2 scope and A3/O1/F1–F3/C3/U1/T1/P1 retain the gates below.
+The parallel agents implemented syntax/emission, analysis and independent
+adversarial tests in isolated worktrees; the integrator combined them and
+added the concrete runtime, arithmetic checks, documentation and release
+gates. This does not establish Rust-equivalent coverage or prove soundness.
 
 The first delivery target is useful **single-threaded** checked programming:
 functions with explicit lifetime contracts, borrowed fields, owned aggregate
@@ -150,16 +173,16 @@ before dereferencing an optional reference. Ordinary `ref` and `refmut`
 remain initialized, aligned, non-null references to valid values. Do not
 make null a valid value of an existing checked reference type.
 
-Reference returns now use a bounded signature contract: exactly one borrowed
-input supplies the result's backing-storage lifetime. Bodies must return a
+Unannotated reference returns use a bounded signature contract: exactly one
+borrowed input supplies the result's backing-storage lifetime. Bodies must return a
 reference derived from that input; callers preserve provenance and reborrow
 ancestry through nested, recursive and imported calls. Mutable results require
 a mutable borrowed input. This rule applies with or without `--safe` and
 supports references into pointer-free structs and array/slice elements.
 
-Extend this to named lifetime relationships between multiple borrowed inputs
-and results, and specify other permitted backing storage. Slice returns and
-ambiguous reference-return signatures remain rejected. A returned reference
+Named lifetime relationships between multiple borrowed inputs and results
+and explicit inline slice returns are now implemented. Unannotated ambiguous
+reference-return signatures remain rejected. A returned reference
 must not outlive a stack local, owner or temporary that backs it; admitting
 additional contracts must preserve body and caller checks against the same
 signature, including recursion and imported declarations.
