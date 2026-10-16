@@ -119,6 +119,10 @@
     {
       "path": "TokenSets.g4",
       "sha256": "72ab94f159e765557957aaa0f40704284ac67e6488d81bf1d9d9f4d3af810f38"
+    },
+    {
+      "path": "Unicode.g4",
+      "sha256": "da6bf02355a64d3d141bcd1c3b01e4ba4aa31e1d5f138210e6231ade0a2c9bd5"
     }
   ],
   "cases": [
@@ -1180,6 +1184,102 @@
         {
           "id": "input8",
           "text": "lkeyword"
+        }
+      ]
+    },
+    {
+      "name": "unicode",
+      "grammars": [
+        "Unicode.g4"
+      ],
+      "lexer": "UnicodeLexer",
+      "parser": "UnicodeParser",
+      "start": "root",
+      "w_start": "root",
+      "flags": [
+        "--strict",
+        "--exact-lexer",
+        "--prediction"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "\u00e9\u00c9"
+        },
+        {
+          "id": "input1",
+          "text": "\ud83d\ude00"
+        },
+        {
+          "id": "input2",
+          "text": "\u00e9\u03a9\u5b57"
+        },
+        {
+          "id": "input3",
+          "text": "\u03c9\u03a9"
+        },
+        {
+          "id": "input4",
+          "text": "\u0101"
+        },
+        {
+          "id": "input5",
+          "text": "^^"
+        },
+        {
+          "id": "input6",
+          "text": "~x\u03a9"
+        },
+        {
+          "id": "input7",
+          "text": "~\u03c9"
+        },
+        {
+          "id": "input8",
+          "text": "~\u03b1"
+        },
+        {
+          "id": "input9",
+          "text": "/\u03a9"
+        },
+        {
+          "id": "input10",
+          "text": "/\u0391"
+        },
+        {
+          "id": "input11",
+          "text": "/\u03b2"
+        },
+        {
+          "id": "input12",
+          "text": "/^"
+        },
+        {
+          "id": "input13",
+          "text": "/["
+        },
+        {
+          "id": "input14",
+          "text": "abc"
+        },
+        {
+          "id": "input15",
+          "text": "ABC"
+        },
+        {
+          "id": "input16",
+          "text": "!a_Z"
+        },
+        {
+          "id": "input17",
+          "text": "\u00e9\u00c9 \ud83d\ude00 \u00e9\u03a9\u5b57 \u03c9\u03a9 \u0101 ^^"
+        },
+        {
+          "id": "input18",
+          "text": ""
         }
       ]
     }

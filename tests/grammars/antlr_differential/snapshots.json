@@ -4081,5 +4081,385 @@
         "text": ""
       }
     ]
+  },
+  "unicode/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "ACCENT",
+        "start": 0,
+        "text": "\u00e9\u00c9"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "SCALAR",
+        "start": 0,
+        "text": "\ud83d\ude00"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input10": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input11": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "NOT_GROUP",
+        "start": 0,
+        "text": "/\u03b2"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input12": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input13": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input14": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "LETTER",
+        "start": 0,
+        "text": "abc"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input15": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "LETTER",
+        "start": 0,
+        "text": "ABC"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input16": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "MIXED_RANGE",
+        "start": 0,
+        "text": "!a_Z"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input17": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "ACCENT",
+        "start": 0,
+        "text": "\u00e9\u00c9"
+      },
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "SCALAR",
+        "start": 5,
+        "text": "\ud83d\ude00"
+      },
+      {
+        "channel": 0,
+        "length": 7,
+        "name": "LETTER",
+        "start": 10,
+        "text": "\u00e9\u03a9\u5b57"
+      },
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "LETTER",
+        "start": 18,
+        "text": "\u03c9\u03a9"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "LETTER",
+        "start": 23,
+        "text": "\u0101"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "CARET",
+        "start": 26,
+        "text": "^^"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 28,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input18": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 7,
+        "name": "LETTER",
+        "start": 0,
+        "text": "\u00e9\u03a9\u5b57"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 7,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input3": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "LETTER",
+        "start": 0,
+        "text": "\u03c9\u03a9"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input4": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "LETTER",
+        "start": 0,
+        "text": "\u0101"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input5": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "CARET",
+        "start": 0,
+        "text": "^^"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input6": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "NEGATED",
+        "start": 0,
+        "text": "~x"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "LETTER",
+        "start": 2,
+        "text": "\u03a9"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input7": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input8": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "NOT_LITERAL",
+        "start": 0,
+        "text": "~\u03b1"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "unicode/input9": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
   }
 }
