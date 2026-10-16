@@ -156,3 +156,50 @@ void test_shared_aggregate_constructor_boundaries():
 	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nref[a] int* bad(ref[a] int* p):\n\treturn &make(p).tag\nint main():\n\treturn 0\n", c"safe:")
 	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nref[a] int* bad(ref[a] int* p):\n\treturn &make(p).item\nint main():\n\treturn 0\n", c"safe:", 1)
 	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] int* bad(ref[a] Holder h):\n\treturn &h.item\nint main():\n\treturn 0\n", c"descriptor fields", 1)
+
+
+void test_shared_aggregate_slice_fields():
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref[a] SliceRecord h = SliceRecord(values, 3)\n\tref int[] s = h.values\n\treturn s[0] + s[1] + s.length + h.tag - 21\n", 0)
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nref[a] SliceRecord make(ref[a] int[] values, int tag):\n\treturn SliceRecord(values, tag)\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref[a] SliceRecord h = make(values, 3)\n\tref int[] s = h.values\n\treturn s[0] + s[1] + s.length + h.tag - 21\n", 0)
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nref[a] SliceRecord make(ref[a] int[] values, int tag):\n\treturn SliceRecord(values, tag)\nref[a] int[] extract(ref[a] SliceRecord h):\n\treturn h.values\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref int[] s = extract(make(values, 3))\n\treturn s[0] + s[1] + s.length - 18\n", 0)
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nref[a] SliceRecord make(ref[a] int[] values, int tag):\n\treturn SliceRecord(values, tag)\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref int[] s = make(values, 3).values\n\treturn s[0] + s.length - 9\n", 0)
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nref[a] SliceRecord make(ref[a] int[] values, int tag):\n\treturn SliceRecord(values, tag)\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref int[] s = make(values, 3).values[1:]\n\treturn s[0] + s.length - 10\n", 0)
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nref[a] SliceRecord make(ref[a] int[] values, int tag):\n\treturn SliceRecord(values, tag)\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref int[] s = make(values, 3).values\n\tvalues[0] = 5\n\treturn s[0]\n", c"conflicting")
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nref[a] SliceRecord bad(ref[a] int[] input):\n\tint[2] local\n\treturn SliceRecord(local, 3)\nint main():\n\treturn 0\n", c"must borrow from")
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref[a] SliceRecord h = SliceRecord(values, 3)\n\tref int[] s = h.values\n\ts[0] = 5\n\treturn 0\n", c"shared reference")
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref[a] SliceRecord h = SliceRecord(values, 3)\n\th.values = values\n\treturn 0\n", c"safe:")
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\ntype View = ref[a] SliceRecord\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tView h = View(values, 3)\n\tref int[] s = h.values\n\treturn s[0] + s.length - 9\n", 0)
+	aggregate_lifetime_case(c"struct MixedView:\n\tref[field] int* item\n\tref[field] int[] values\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tint x = 3\n\tref[a] MixedView h = MixedView(&x, values)\n\tref int[] s = h.values\n\tx = 5\n\treturn s[0]\n", c"conflicting")
+	aggregate_lifetime_case(c"struct MixedView:\n\tref[field] int* item\n\tref[field] int[] values\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tint x = 3\n\tref[a] MixedView h = MixedView(&x, values)\n\tref int* r = h.item\n\tvalues[0] = 5\n\treturn *r\n", c"conflicting")
+	aggregate_lifetime_case(c"struct SliceRecord:\n\tref[field] int[] values\n\tint tag\nint main():\n\tint[2] values\n\tvalues[0] = 7\n\tvalues[1] = 9\n\tref[a] SliceRecord h = SliceRecord(values, 3)\n\treturn h.values[0]\n", c"safe:")
+
+
+void test_deep_aggregate_types_do_not_hide_checked_fields():
+	char* source = strclone(c"struct DeepLeaf:\n\tref[field] int* item\n")
+	char* previous = strclone(c"DeepLeaf")
+	for depth in range(40):
+		char* number = itoa(depth)
+		char* name = strjoin(c"DeepLayer", number)
+		free(number)
+		char* declaration = strjoin(c"struct ", name)
+		char* body = strjoin(declaration, c":\n\t")
+		free(declaration)
+		declaration = strjoin(body, previous)
+		free(body)
+		body = strjoin(declaration, c" inner\n")
+		free(declaration)
+		declaration = strjoin(source, body)
+		free(body)
+		free(source)
+		source = declaration
+		free(previous)
+		previous = name
+	char* body = strjoin(c"int main():\n\t", previous)
+	free(previous)
+	char* ending = strjoin(body, c" value\n\treturn 0\n")
+	free(body)
+	char* complete = strjoin(source, ending)
+	free(source)
+	free(ending)
+	aggregate_lifetime_case(complete, c"safe:")
+	free(complete)
