@@ -235,7 +235,7 @@ int safe_record_shape(int type):
 		int field = safe_unqualified(record.fields[i].type)
 		if (field < 0): return 0
 		retained_type* member = retained_types[field]
-		if (member.kind == type_kind_ref):
+		if ((member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice)):
 			if (safe_plain(safe_pointee(field), 0) == 0): return 0
 			if (member.lifetime == 0): return 0
 			if (lifetime == 0): lifetime = member.lifetime
