@@ -102,6 +102,12 @@ modules:
 	lib.__arch__.syscalls
 	libs.extras.html.html
 	libs.extras.css.css
+	libs.extras.mermaid.model
+	libs.extras.mermaid.parser
+	libs.extras.mermaid.render
+	libs.extras.mermaid.io
+	libs.extras.mermaid.editor
+	graphics.mermaid
 	libs.extras.javascript.parser
 	libs.extras.javascript.ast
 	libs.extras.javascript.lower

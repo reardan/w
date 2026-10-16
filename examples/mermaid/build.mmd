@@ -1,0 +1,7 @@
+%% A native Mermaid flowchart
+flowchart TB
+    source["W source"] --> check{"Valid?"}
+    check -->|"yes"| build("Compile")
+    check -.->|"no"| edit["Edit source"]
+    edit --> source
+    build --> done(("Done"))

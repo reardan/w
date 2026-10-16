@@ -79,6 +79,7 @@ Other useful targets:
 ./wbuild wsh         # standalone W shell: bin/wsh or bin/wsh -c 'echo hello | wc -c'
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
+./wbuild wmermaid wmermaid_editor # native Mermaid tools: docs/projects/mermaid.md
 ./wbuild wgrind      # heap checker: bin/wgrind [--native] bin/program [args...]
 ./wbuild wgrind_native # experimental Linux x64: bin/wgrind --native-exec bin/program
 ./wbuild wllvm       # optional scalar-subset LLVM IR emitter (bin/wllvm file.w -o file.ll)
