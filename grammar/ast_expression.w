@@ -3674,7 +3674,7 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 # returns a decoded root in the caller-owned arena, or -1 for fallback;
 # it emits no expression code. Symbols/types and source diagnostics
 # commit only after the probe succeeds.
-int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole):
+int ast_expression_prepare_probe(expression_ast* tree, int group_offset, int whole):
 	if (ast_expressions_mode == 0): return -1
 	# Keep the streaming parser's pending lvalue/call/statement machinery
 	# out of this first island. Expanding that boundary needs its own
@@ -3762,6 +3762,22 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(tree, i)
 	ast_expression_capture_stack_bindings(tree)
 	ast_body_expression_layout(tree)
+	return root
+
+
+# A declined complete parse can still let streaming subexpressions retain
+# smaller trees. Preserve the missing outer semantics on the enclosing
+# statement so a safety pass cannot certify those fragments as the whole.
+int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole):
+	int root = ast_expression_prepare_probe(tree, group_offset, whole)
+	if ((root < 0) && ast_retain_mode):
+		int parent = retained_parent
+		while (parent >= 0):
+			retained_record* node = retained_record_at(parent)
+			if ((node.kind == retained_statement) || (node.kind == retained_function)):
+				node.expression_fallback = 1
+				break
+			parent = node.parent
 	return root
 
 
