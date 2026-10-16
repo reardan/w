@@ -37,6 +37,7 @@ import libs.extras.grammars.antlr_to_pg.dependencies
 import libs.extras.grammars.antlr_to_pg.lexer_emit
 import libs.extras.grammars.antlr_to_pg.audit
 import libs.extras.grammars.antlr_to_pg.normalize
+import libs.extras.grammars.antlr_to_pg.prediction_audit
 import libs.extras.grammars.antlr_to_pg.charsets
 import libs.extras.grammars.antlr_to_pg.classify
 import libs.extras.grammars.antlr_to_pg.emit
@@ -150,6 +151,7 @@ int main(int argc, int argv):
 		string_append(g_matchers_out, c"import libs.extras.grammars.antlr_to_pg.lexer_vm\n")
 	at_normalize_parser_lists(all_rules)
 	int unsafe = at_audit(all_rules)
+	at_audit_prediction(all_rules)
 	if (g_at_dependency_error): unsafe = 1
 	at_collect_parser_refs(all_rules)
 	at_audit_lexer_contract(all_rules)
