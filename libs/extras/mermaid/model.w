@@ -7,6 +7,31 @@ const int MM_FLOW = 1
 const int MM_ER = 2
 const int MM_CLASS = 3
 const int MM_STATE = 4
+const int MM_RAIL_IR = 100
+const int MM_RAIL_EBNF = 101
+const int MM_RAIL_ABNF = 102
+const int MM_RAIL_PEG = 103
+
+# Railroad syntax tree nodes form an owned acyclic tree by index. Repetition
+# bounds are annotations on a dedicated loop, never expanded exponentially.
+struct mm_rail_expr:
+	int kind
+	char* text
+	list[int] children
+	int minimum
+	int maximum
+	int width
+	int height
+
+struct mm_rail_rule:
+	char* name
+	int expression
+
+struct mm_rail_grammar:
+	char* title
+	list[mm_rail_expr*] expressions
+	list[mm_rail_rule*] rules
+
 const int MM_PIE = 40
 const int MM_QUADRANT = 41
 const int MM_XY = 42
@@ -154,6 +179,7 @@ struct mm_document:
 	mm_data_chart* data
 	list[mm_narrative_event*] narrative
 	int narrative_numbered
+	mm_rail_grammar* railroad
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -228,6 +254,18 @@ void mm_document_free(mm_document* d):
 		free(e)
 	__w_list_free(cast(__w_list*, d.nodes))
 	__w_list_free(cast(__w_list*, d.edges))
+	if (d.railroad != 0):
+		for mm_rail_expr* expr in d.railroad.expressions:
+			free(expr.text)
+			__w_list_free(cast(__w_list*, expr.children))
+			free(expr)
+		for mm_rail_rule* rule in d.railroad.rules:
+			free(rule.name)
+			free(rule)
+		free(d.railroad.title)
+		__w_list_free(cast(__w_list*, d.railroad.expressions))
+		__w_list_free(cast(__w_list*, d.railroad.rules))
+		free(d.railroad)
 	if (d.data != 0):
 		for mm_data_item* item in d.data.items:
 			free(item.id)

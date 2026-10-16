@@ -118,6 +118,8 @@ modules:
 	libs.extras.mermaid.narrative_render
 	libs.extras.mermaid.uml
 	libs.extras.mermaid.source
+	libs.extras.mermaid.railroad_parse
+	libs.extras.mermaid.railroad_render
 	libs.extras.mermaid.data_parse
 	libs.extras.mermaid.data_render
 	libs.extras.mermaid.parser

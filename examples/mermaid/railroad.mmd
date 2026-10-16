@@ -1,0 +1,4 @@
+railroad-beta
+title Optional list
+list = sequence(terminal("["), optional(sequence(nonterminal("item"), zeroOrMore(sequence(terminal(","), nonterminal("item"))))), terminal("]"));
+item = choice(terminal("true"), terminal("false"), special("number"));
