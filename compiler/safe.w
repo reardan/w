@@ -385,6 +385,22 @@ void safe_unsafe_check(int id):
 int safe_build(int id, int next, int break_to, int continue_to);
 
 
+# Emitted jumps destroy locals in every exited lexical block. Mirror that
+# invalidation before the control-flow edge, including a continue crossing
+# a switch. Range indices belong to their surrounding block and stay live.
+int safe_jump_cleanup(int id, int target, int continuing):
+	int scope = retained_record_at(id).parent
+	if (scope < 0): return target
+	retained_record* node = retained_record_at(scope)
+	char* name = node.name
+	if ((strcmp(name, c"while") == 0) || (strcmp(name, c"for range") == 0) || (strcmp(name, c"for") == 0)): return target
+	if ((continuing == 0) && (strcmp(name, c"switch") == 0)): return target
+	int rest = safe_jump_cleanup(scope, target, continuing)
+	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
+		return safe_add(scope, -1, -1, 3, rest, -1)
+	return rest
+
+
 int safe_sequence(int first, int next, int break_to, int continue_to):
 	if (first < 0): return next
 	int rest = safe_sequence(safe_next[first], next, break_to, continue_to)
@@ -531,8 +547,8 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		int cleanup = safe_add(id, -1, -1, 3, next, -1)
 		return safe_sequence(safe_first[id], cleanup, break_to, continue_to)
 	if ((strcmp(name, c"pass") == 0) || (strcmp(name, c"debugger") == 0)): return next
-	if (strcmp(name, c"break") == 0): return safe_add(id, -1, -1, 0, break_to, -1)
-	if (strcmp(name, c"continue") == 0): return safe_add(id, -1, -1, 0, continue_to, -1)
+	if (strcmp(name, c"break") == 0): return safe_add(id, -1, -1, 0, safe_jump_cleanup(id, break_to, 0), -1)
+	if (strcmp(name, c"continue") == 0): return safe_add(id, -1, -1, 0, safe_jump_cleanup(id, continue_to, 1), -1)
 	int group = -1
 	int local = -1
 	int first_body = -1
