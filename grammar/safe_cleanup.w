@@ -87,7 +87,23 @@ void safe_owner_drop_value(int type, int depth):
 # A transferred owner has a cleared source slot; cleanup is idempotent on
 # that path, including when an aggregate's child owner moved into its fields.
 void safe_owner_drop_slot(int slot, int type):
+	int element = type_lookup_previous_pointer(type)
+	int recursive = safe_owner_drop_helper(element) != 0
+	for field in range(type_num_args(element)):
+		if (type_safe_kind(type_get_field_type_at(element, field)) == 1): recursive = 1
 	load_slot(slot)
+	# Plain allocations retain the original cleanup sequence: the owner
+	# slot itself preserves the pointer across free, without a second slot.
+	if (recursive == 0):
+		int done = be_ctrl_block()
+		be_br_zero(done)
+		int call_stack = rt_call_begin(c"free")
+		push_slot_copy(slot)
+		rt_call_end(call_stack)
+		mov_eax_int(0)
+		store_stack_var((stack_pos - slot) << word_size_log2)
+		be_ctrl_end(done)
+		return
 	safe_owner_drop_value(type, 0)
 	mov_eax_int(0)
 	store_stack_var((stack_pos - slot) << word_size_log2)
