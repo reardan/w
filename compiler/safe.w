@@ -10,6 +10,9 @@ int* safe_first
 int* safe_next
 int* safe_function_for_binding
 int* safe_checked_functions
+int* safe_contains_seen
+int safe_contains_generation
+list[int] safe_contains_pending
 
 struct safe_flow:
 	int node
@@ -55,6 +58,11 @@ void safe_reset():
 	safe_bounds_disabled = 0
 	if (safe_trusted_sources != 0): safe_trusted_sources.free()
 	safe_trusted_sources = 0
+	if (safe_contains_seen != 0): free(cast(char*, safe_contains_seen))
+	safe_contains_seen = 0
+	safe_contains_generation = 0
+	if (safe_contains_pending != 0): safe_contains_pending.free()
+	safe_contains_pending = 0
 
 
 void safe_trust_sources(int first):
@@ -111,32 +119,42 @@ int safe_kind(int type):
 	return 0
 
 
-int safe_contains_checked_walk(int type, int depth, int* visited, int* count):
+void safe_contains_enqueue(int type):
+	if (type < 0): return
+	if (safe_contains_seen[type] == safe_contains_generation): return
+	safe_contains_seen[type] = safe_contains_generation
+	safe_contains_pending.push(type)
+
+
+int safe_contains_checked(int type):
 	if (type < 0): return 0
-	# Exhausting the analysis bound is not evidence that a type is plain.
-	if (depth > 32): return 1
 	if (safe_kind(type)): return 1
-	# A repeated type has already contributed every reachable branch to this
-	# scan. Share visits across siblings, not just the current recursive path.
-	for i in range(*count):
-		if (visited[i] == type): return 0
-	if (*count >= 256): return 1
-	visited[*count] = type
-	*count = *count + 1
-	retained_type* t = retained_types[type]
-	if (safe_contains_checked_walk(t.target, depth + 1, visited, count)): return 1
-	if (safe_contains_checked_walk(t.return_type, depth + 1, visited, count)): return 1
-	for i in range(t.parameters.length):
-		if (safe_contains_checked_walk(t.parameters[i], depth + 1, visited, count)): return 1
-	for i in range(t.fields.length):
-		if (safe_contains_checked_walk(t.fields[i].type, depth + 1, visited, count)): return 1
-	return 0
-
-
-int safe_contains_checked(int type, int depth):
-	int[256] visited
-	int count = 0
-	return safe_contains_checked_walk(type, depth, &visited[0], &count)
+	if (safe_contains_seen == 0):
+		safe_contains_seen = cast(int*, safe_zero(retained_types.length, __word_size__))
+		safe_contains_pending = new list[int]
+	if (safe_contains_generation == 2147483647):
+		for i in range(retained_types.length): safe_contains_seen[i] = 0
+		safe_contains_generation = 0
+	safe_contains_generation = safe_contains_generation + 1
+	# Each retained type enters the queue once, including cycles and shared
+	# branches. Large raw graphs remain raw without a depth or size cutoff.
+	safe_contains_pending.clear()
+	safe_contains_enqueue(type)
+	int position = 0
+	int checked = 0
+	while (position < safe_contains_pending.length):
+		int current = safe_contains_pending[position]
+		position = position + 1
+		if (safe_kind(current)):
+			checked = 1
+			break
+		retained_type* t = retained_types[current]
+		safe_contains_enqueue(t.target)
+		safe_contains_enqueue(t.return_type)
+		for i in range(t.parameters.length): safe_contains_enqueue(t.parameters[i])
+		for i in range(t.fields.length): safe_contains_enqueue(t.fields[i].type)
+	safe_contains_pending.clear()
+	return checked
 
 
 int safe_slice(int type):
@@ -328,16 +346,16 @@ void safe_unsafe_check(int id):
 	if (n.kind == retained_statement):
 		if ((strcmp(n.name, c"return") == 0) || (strcmp(n.name, c"break") == 0) || (strcmp(n.name, c"continue") == 0) || (strcmp(n.name, c"defer") == 0) || (strcmp(n.name, c"goto") == 0) || (strcmp(n.name, c"yield") == 0)):
 			safe_error(id, c"safe: unsafe blocks cannot transfer control or defer work", -1)
-	if (safe_contains_checked(n.semantic_type, 0)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
+	if (safe_contains_checked(n.semantic_type)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
 	if (n.kind == retained_expression_group):
 		for i in range(n.group.count):
 			retained_node expr
 			retained_node_load(id + 1 + i, &expr)
-			if (safe_contains_checked(expr.semantic_type, 0)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
+			if (safe_contains_checked(expr.semantic_type)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
 			if ((expr.op == 'C') && (expr.binding >= 0)):
 				retained_binding* callee = retained_bindings[expr.binding]
 				for j in range(callee.parameters.length):
-					if (safe_contains_checked(callee.parameters[j], 0)): safe_error(id, c"safe: checked calls must remain outside unsafe blocks", -1)
+					if (safe_contains_checked(callee.parameters[j])): safe_error(id, c"safe: checked calls must remain outside unsafe blocks", -1)
 	int child = safe_first[id]
 	while (child >= 0):
 		safe_unsafe_check(child)
@@ -1171,7 +1189,7 @@ void safe_check_finish():
 		retained_node n
 		retained_node_load(id, &n)
 		if (safe_trusted(n.source)): continue
-		int checked = safe_contains_checked(n.semantic_type, 0)
+		int checked = safe_contains_checked(n.semantic_type)
 		if ((n.kind == retained_expression) && (n.binding >= 0)):
 			retained_binding* callee = retained_bindings[n.binding]
 			for p in range(callee.parameters.length):
@@ -1186,7 +1204,7 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
-					if (safe_contains_checked(t.fields[field].type, 0) && (safe_record_shape(n.semantic_type) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
+					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
 						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
 		if (checked):
@@ -1210,17 +1228,17 @@ void safe_check_finish():
 	for b in range(retained_bindings.length):
 		retained_binding* binding = retained_bindings[b]
 		if ((binding.return_type < 0) || safe_trusted(binding.source)): continue
-		int checked = safe_mode || safe_contains_checked(binding.return_type, 0)
+		int checked = safe_mode || safe_contains_checked(binding.return_type)
 		for p in range(binding.parameters.length):
-			if (safe_contains_checked(binding.parameters[p], 0)): checked = 1
+			if (safe_contains_checked(binding.parameters[p])): checked = 1
 		int function = safe_function_for_binding[b]
 		if (function >= 0):
 			retained_binding* implementation = retained_bindings[retained_record_at(function).binding]
 			# Erasing every qualifier in an unused prototype must not erase
 			# the completed implementation's checked or audited contract.
-			if (safe_buffer_source(implementation.source) || safe_contains_checked(implementation.return_type, 0)): checked = 1
+			if (safe_buffer_source(implementation.source) || safe_contains_checked(implementation.return_type)): checked = 1
 			for p in range(implementation.parameters.length):
-				if (safe_contains_checked(implementation.parameters[p], 0)): checked = 1
+				if (safe_contains_checked(implementation.parameters[p])): checked = 1
 		if (checked == 0): continue
 		int at = function
 		if (at < 0): at = retained_sources[binding.source].root
@@ -1250,3 +1268,8 @@ void safe_check_finish():
 	free(cast(char*, safe_next))
 	free(cast(char*, safe_checked_functions))
 	free(cast(char*, safe_function_for_binding))
+	if (safe_contains_seen != 0): free(cast(char*, safe_contains_seen))
+	safe_contains_seen = 0
+	safe_contains_generation = 0
+	if (safe_contains_pending != 0): safe_contains_pending.free()
+	safe_contains_pending = 0
