@@ -21,7 +21,7 @@ void mm_ui_line(ui_renderer* r, float32 x, float32 y, float32 x2, float32 y2, in
 		float32 t = cast(float32, i) / cast(float32, steps)
 		ui_render_rect(r, ui_rect_new(x + dx * t - half, y + dy * t - half, width, width), ink)
 
-# Scan-convert small convex UML endpoint polygons. Clip before iterating so
+# Scan-convert polygons with even-odd spans, including concave chart sectors. Clip before iterating so
 # zoomed or offscreen diagrams cannot turn coordinate size into unbounded work.
 void mm_ui_polygon(ui_renderer* r, mm_primitive* p, float32 ox, float32 oy, float32 zoom, ui_color ink, ui_color paper):
 	ui_rect clip = ui_clip_current(r)
@@ -35,13 +35,13 @@ void mm_ui_polygon(ui_renderer* r, mm_primitive* p, float32 ox, float32 oy, floa
 	if (top < clip.y): top = clip.y
 	if (bottom > clip.y + clip.h): bottom = clip.y + clip.h
 	ui_color fill = paper
+	list[float32] crossings = new list[float32]
+	for i in range(count): crossings.push(0.0)
 
 	int rows = cast(int, bottom - top) + 1
 	if (rows > 16384): rows = 16384
 	for row in range(rows):
 		float32 y = top + cast(float32, row) + 0.5
-		float32 left = clip.x + clip.w
-		float32 right = clip.x
 		int hits = 0
 		for i in range(count):
 			int j = (i + 1) % count
@@ -51,10 +51,21 @@ void mm_ui_polygon(ui_renderer* r, mm_primitive* p, float32 ox, float32 oy, floa
 			float32 by = oy + cast(float32, p.points[j * 2 + 1]) * zoom
 			if ((ay <= y && by > y) || (by <= y && ay > y)):
 				float32 x = ax + (bx - ax) * (y - ay) / (by - ay)
-				if (x < left): left = x
-				if (x > right): right = x
+				crossings[hits] = x
 				hits = hits + 1
-		if (hits >= 2 && fill.a != 0.0): ui_render_rect(r, ui_rect_new(left, y - 0.5, right - left, 1.0), fill)
+		if (fill.a != 0.0):
+			for i in range(1, hits):
+				int j = i
+				while (j > 0 && crossings[j] < crossings[j - 1]):
+					float32 value = crossings[j]
+					crossings[j] = crossings[j - 1]
+					crossings[j - 1] = value
+					j = j - 1
+			for i in range(0, hits - 1, 2):
+				float32 left = crossings[i]
+				float32 right = crossings[i + 1]
+				ui_render_rect(r, ui_rect_new(left, y - 0.5, right - left, 1.0), fill)
+	__w_list_free(cast(__w_list*, crossings))
 	for i in range(count):
 		int j = (i + 1) % count
 		mm_ui_line(r, ox + cast(float32, p.points[i * 2]) * zoom, oy + cast(float32, p.points[i * 2 + 1]) * zoom, ox + cast(float32, p.points[j * 2]) * zoom, oy + cast(float32, p.points[j * 2 + 1]) * zoom, 0, ink, cast(float32, mm_paint_width(p)) * zoom)
@@ -108,6 +119,7 @@ void mm_ui_render(ui_renderer* r, mm_scene* scene, ui_rect viewport, float32 zoo
 			ui_rect box = ui_rect_new(x, y, x2 - x, y2 - y)
 			float32 radius = 0.0
 			if (p.kind == MM_BOX && p.dashed == 1): radius = 12.0 * zoom
+			if (p.kind == MM_BOX && p.dashed == 3): radius = box.h * 0.5
 			if (p.kind == MM_CIRCLE): radius = box.w * 0.5
 			if (paper.a != 0.0): ui_draw_rrect(r, box, radius, paper)
 			mm_ui_outline(r, box, radius, ink, stroke)
