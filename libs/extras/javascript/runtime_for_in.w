@@ -90,7 +90,7 @@ js_value* js_runtime_for_in(js_runtime* rt, js_node* node, js_value* env):
 		if (levels > rt.max_depth):
 			js_runtime_fail(rt, 5, c"JavaScript enumeration prototype limit")
 			break
-		if (object.host_get != 0 || object.host_set != 0 || object.binary_kind != 0):
+		if (object.host_get != 0 || object.host_set != 0 || object.host_has != 0 || object.binary_kind != 0):
 			js_runtime_fail(rt, 6, c"native exotic enumeration is unsupported")
 			break
 		list[js_text*] keys = new list[js_text*]

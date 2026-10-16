@@ -41,6 +41,7 @@ struct js_value:
 	void* host_context
 	int host_get
 	int host_set
+	int host_has
 	int host_receiver
 	js_value* this_value
 	int variable_scope
@@ -77,6 +78,7 @@ type js_host_function = fn(void*, list[js_value*]) -> js_value*
 # Negative setter result signals rejection. Keys/context are borrowed.
 type js_host_getter = fn(void*, void*, js_value*, js_text*) -> js_value*
 type js_host_setter = fn(void*, void*, js_value*, js_text*, js_value*) -> int
+type js_host_has = fn(void*, void*, js_value*, js_text*) -> int
 type js_host_receiver_function = fn(void*, void*, js_value*, list[js_value*]) -> js_value*
 
 
@@ -156,6 +158,7 @@ void js_runtime_arguments(js_runtime* rt, js_node* node, js_value* env, list[js_
 js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* skipped, js_value** receiver);
 js_value* js_runtime_for_in(js_runtime* rt, js_node* node, js_value* env);
 js_value* js_runtime_loose_equal(js_runtime* rt, js_value* a, js_value* b, int negate);
+js_value* js_runtime_in(js_runtime* rt, js_value* key_value, js_value* object);
 void js_runtime_async_mark(js_runtime* rt, list[js_value*] pending);
 int js_runtime_async_cancel(js_runtime* rt);
 js_value* js_runtime_async_call(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args);
@@ -232,6 +235,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.host_context = 0
 	value.host_get = 0
 	value.host_set = 0
+	value.host_has = 0
 	value.host_receiver = 0
 	value.this_value = 0
 	value.variable_scope = 0
@@ -689,6 +693,7 @@ int js_runtime_equal(js_value* a, js_value* b):
 
 
 js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
+	if (strcmp(op, c"in") == 0): return js_runtime_in(rt, a, b)
 	if (strcmp(op, c"instanceof") == 0): return js_class_instanceof(rt, a, b)
 	if (strcmp(op, c"==") == 0): return js_runtime_loose_equal(rt, a, b, 0)
 	if (strcmp(op, c"!=") == 0): return js_runtime_loose_equal(rt, a, b, 1)
@@ -1665,7 +1670,7 @@ int js_runtime_supported(js_node* node):
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
-		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"==") != 0 && strcmp(op, c"!=") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && strcmp(op, c"instanceof") != 0 && js_runtime_bit_operator(op) == 0): return 0
+		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"==") != 0 && strcmp(op, c"!=") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && strcmp(op, c"instanceof") != 0 && strcmp(op, c"in") != 0 && js_runtime_bit_operator(op) == 0): return 0
 	for i in range(node.children.length):
 		if (js_runtime_supported(node.children[i]) == 0): return 0
 	return 1
@@ -1785,3 +1790,5 @@ import libs.extras.javascript.runtime_regexp
 import libs.extras.javascript.runtime_for_in
 
 import libs.extras.javascript.runtime_equality
+
+import libs.extras.javascript.runtime_has
