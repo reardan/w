@@ -548,7 +548,14 @@ int retained_statement_count():
 	int total = retained_node_count()
 	int count = 0
 	for i in range(total):
-		if (retained_node_kind(i) == retained_statement): count = count + 1
+		if (retained_node_kind(i) != retained_statement): continue
+		retained_record* node = retained_record_at(i)
+		# Semantic exit/clause groups are not dispatcher-entered statements
+		# and have no independent lowering to count as immediate emission.
+		if (strcmp(node.name, c"deferred exit") == 0): continue
+		if ((strcmp(node.name, c"case") == 0) || (strcmp(node.name, c"default") == 0)):
+			if ((node.parent >= 0) && (strcmp(retained_record_at(node.parent).name, c"switch") == 0)): continue
+		count = count + 1
 	return count
 
 # ---------------------------------------------------------------------------
