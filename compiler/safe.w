@@ -1334,6 +1334,17 @@ void safe_transfer(int event, char* state):
 						safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[i])
 		else: safe_eval(f.expression, state, safe_return_type)
 	else if (f.action == 3):
+		# A loop reuses a binding for each allocation/stack lifetime. Kill
+		# surviving loans as well as the ended roots so the next iteration
+		# cannot revive a pointer into an earlier incarnation of that root.
+		for root in range(safe_locals.length):
+			if (safe_within(safe_birth[root], f.node) == 0): continue
+			for borrower in range(safe_locals.length):
+				if (safe_local_kind(borrower) < 2): continue
+				if (safe_set_has(safe_origin[borrower], root) == 0): continue
+				if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
+				state[borrower] = (state[borrower] & 48) | 4
+				safe_moved_at[borrower] = f.node
 		for i in range(safe_locals.length):
 			if (safe_within(safe_birth[i], f.node)): state[i] = 1
 	else if (f.action == 4): state[index] = 2
