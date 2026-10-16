@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/antlr/grammars-v4",
+  "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+  "note": "Unmodified pinned sweep inputs. BSD notices are retained in each grammar. Runtime fixtures exercise the normalized W AST, not ANTLR context objects.",
+  "files": [
+    {
+      "path": "tinyc.g4",
+      "upstream_path": "tinyc/tinyc.g4",
+      "sha256": "9491fa3c3b324d6f6f3c3094eb1cd9b12c4bd76b736bd879d0896bf1a5c92007"
+    },
+    {
+      "path": "microc.g4",
+      "upstream_path": "microc/microc.g4",
+      "sha256": "b0ab61a044c839c78e376e0d3428583ff1ae69c58ed1aeedffe8d9e89dc470f0"
+    },
+    {
+      "path": "arithmetic.g4",
+      "upstream_path": "arithmetic/arithmetic.g4",
+      "sha256": "084c5f41b4becf1bb3de2da155b500751c3c473332f89bc973d240349aacc812"
+    }
+  ]
+}

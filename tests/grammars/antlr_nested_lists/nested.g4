@@ -1,0 +1,10 @@
+grammar NestedLists;
+root: expr EOF;
+expr: expr '+' term | expr '-' term | term;
+term: postfix;
+postfix: postfix '.' ID | atom;
+atom: ID | LP expr RP | '[' expr ']' | '{' expr '}';
+LP: '(';
+RP: ')';
+ID: 'a' | 'b' | 'c' | 'd' | 'e';
+WS: [ \t\r\n]+ -> skip;
