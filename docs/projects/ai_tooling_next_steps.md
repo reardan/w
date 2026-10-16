@@ -643,6 +643,7 @@ suggesting that it behaves like pointer arithmetic.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
+
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all
@@ -1374,6 +1375,7 @@ the cache assertions.
   found '['", which points at semicolons the language does not have.
   Direction: support `\f` `\v` (and `\a` `\b`) or warn on unknown escapes
   in `check`; suggest `int[4] enc` for the C array form.
+
 ## Block comments closed early (2026-10-16, stdlib P2.1 glob)
 
 - **A `*/` inside a `/* ... */` header comment** (here the glob example
@@ -1384,6 +1386,7 @@ the cache assertions.
   block comment that closed inside what looks like prose (or the next
   "code" line starts with `-`/`#` text), add a related note pointing at
   the `*/` that closed it.
+
 ## `check --json` arch label for arm64 (2026-10-16, stdlib parity P2.2)
 
 `./bin/wv2 arm64 check --json file.w` prints "Compiling in arm64 mode"
@@ -1392,6 +1395,7 @@ carries `"arch": "x64"`, so a consumer filtering or grouping diagnostics
 by target cannot tell an arm64 finding from an x64 one. Direction: emit
 the selected target name (`arm64`, `arm64_darwin`, ...) rather than the
 word-size family.
+
 ## Generic inference on `&p[i]` arguments (2026-10-16, stdlib P3.11)
 
 - **`mem_copy(&out[offset], src, n)` fails to infer `T`.** `w check`
@@ -1403,6 +1407,7 @@ word-size family.
   its element pointer type during call-site inference, and when
   inference does fail, print the argument's inferred type rather than
   'constant'.
+
 ## Generic inference rejects `&p[i]` arguments (2026-10-16, P3.5)
 
 `mem_copy(&out[n], src, k)` with `char* out` fails `w check` with W0227
@@ -1413,6 +1418,7 @@ works). The message points at the comma and calls the operand a
 hand-written byte loop instead. Direction: type `&x[i]` as `T*` during
 generic argument inference, or at least name the expression kind the
 inference saw.
+
 ## Generic inference rejects `&p[n]` arguments (2026-10-16, stdlib P3.7b)
 
 `mem_copy(&v[w], src, n)` with `int* v` fails `w check` with W0227
@@ -1422,6 +1428,7 @@ pointer offsets and `mem_copy(v, src, n)` infers fine. Workaround: spell the
 type argument (`mem_copy[int](&v[w], src, n)`). Direction: type `&a[i]` as
 `T*` during generic argument inference, or at least name the address-of
 expression instead of "constant" in the diagnostic.
+
 ## Content-scan targets missed by `wtest changed` (2026-10-16, stdlib P3.8)
 
 - **`unsafe_import_test` is never selected** for a new file under
