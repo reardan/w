@@ -192,10 +192,32 @@ int safe_pointee(int type):
 	return retained_types[type].target
 
 
+int safe_buffer_source(int source):
+	if ((source < 0) || (safe_trusted(source) == 0)): return 0
+	return ends_with(retained_sources[source].path, c"/lib/safe_buffer.w")
+
+
+int safe_opaque(int type):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (safe_buffer_source(record.source) == 0)): return 0
+	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0)
+
+
+int safe_runtime_call(retained_binding* binding):
+	char* name = binding.name
+	if (safe_buffer_source(binding.source)):
+		return (strcmp(name, c"int_buffer_new") == 0) || (strcmp(name, c"int_buffer_length") == 0) || (strcmp(name, c"int_buffer_push") == 0) || (strcmp(name, c"int_buffer_get") == 0) || (strcmp(name, c"int_buffer_set") == 0) || (strcmp(name, c"int_buffer_pop") == 0) || (strcmp(name, c"int_buffer_clear") == 0) || (strcmp(name, c"int_buffer_view") == 0) || (strcmp(name, c"byte_string_new") == 0) || (strcmp(name, c"byte_string_length") == 0) || (strcmp(name, c"byte_string_push") == 0) || (strcmp(name, c"byte_string_get") == 0) || (strcmp(name, c"byte_string_set") == 0) || (strcmp(name, c"byte_string_pop") == 0) || (strcmp(name, c"byte_string_clear") == 0) || (strcmp(name, c"byte_string_view") == 0) || (strcmp(name, c"byte_string_append") == 0) || (strcmp(name, c"byte_string_from") == 0)
+	return (strcmp(name, c"put_char") == 0) || (strcmp(name, c"put_error") == 0) || (strcmp(name, c"exit") == 0)
+
+
 void safe_pointer_match(int id, int want, int got):
 	int w = safe_unqualified(safe_pointee(want))
 	int g = safe_unqualified(safe_pointee(got))
 	if ((w < 0) || (g < 0)): safe_error(id, c"safe: incompatible checked pointer types", -1)
+	if ((safe_opaque(w) || safe_opaque(g)) && (safe_same_nominal(w, g) == 0)):
+		safe_error(id, c"safe: incompatible opaque collection types", -1)
 	if (strcmp(retained_types[w].name, retained_types[g].name) != 0):
 		safe_error(id, c"safe: incompatible checked pointer types", -1)
 
@@ -227,7 +249,7 @@ int safe_record_shape(int type):
 int safe_owned_shape_walk(int type, int depth, int* path):
 	type = safe_unqualified(type)
 	if ((type < 0) || (depth > 32)): return 0
-	if (safe_plain(type, 0)): return 1
+	if (safe_plain(type, 0) || safe_opaque(type)): return 1
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
@@ -479,6 +501,8 @@ int safe_place(int id, char* state, int* via):
 		int root = -1
 		int index = safe_index(base.binding)
 		if (safe_borrow_kind(base.semantic_type)):
+			if (safe_opaque(safe_pointee(base.semantic_type))):
+				safe_error(id, c"safe: opaque collection metadata is not accessible", -1)
 			if (index < 0): safe_error(id, c"safe: dereference requires a named checked pointer", -1)
 			safe_read(index, id, state)
 			root = index
@@ -757,16 +781,18 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 		safe_error(id, c"safe: indirect calls require an ownership contract", -1)
 	retained_binding* callee = retained_bindings[binding]
 	int function = safe_function_for_binding[binding]
-	if (safe_trusted(callee.source)):
-		# Only scalar output and termination cross the runtime boundary.
-		if ((strcmp(callee.name, c"put_char") != 0) && (strcmp(callee.name, c"put_error") != 0) && (strcmp(callee.name, c"exit") != 0)):
+	retained_binding* implementation = callee
+	if (function >= 0):
+		implementation = retained_bindings[retained_record_at(function).binding]
+		if (safe_contract_matches(callee, implementation) == 0):
+			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
+	if (safe_trusted(implementation.source)):
+		if (safe_runtime_call(implementation) == 0):
 			safe_error(id, c"safe: runtime call has no audited ownership contract", -1)
 	else:
 		if (function < 0): safe_error(id, c"safe: call has no checked implementation", -1)
-		retained_binding* definition = retained_bindings[retained_record_at(function).binding]
-		if (safe_contract_matches(callee, definition) == 0):
-			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
 		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
+
 	int return_parameter = safe_return_parameter(id, callee)
 	int return_root = -1
 	int arg = safe_child(n, n.left)
@@ -818,6 +844,8 @@ int safe_eval(int id, char* state, int want):
 	if (wanted >= 2): safe_error(id, c"safe: reference assignment is not supported", -1)
 	if (wanted == 1):
 		safe_pointer_match(id, want, n.semantic_type)
+		if (((op == 'N') || (op == 'D')) && safe_opaque(safe_pointee(want))):
+			safe_error(id, c"safe: opaque collections require an audited constructor", -1)
 		if ((op != 'N') && (kind != 1) && (constructed == 0)): safe_error(id, c"safe: owner requires new storage or an ownership transfer", -1)
 		if ((op != 'N') && (op != 'v') && (op != 'C') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
 	else if (kind && (op != '=')): safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
@@ -1128,12 +1156,13 @@ void safe_check_finish():
 			safe_first[n.parent] = i
 		if ((n.kind == retained_function) && (n.binding >= 0) && safe_has_body(i)):
 			safe_function_for_binding[n.binding] = i
-			if ((safe_mode && (safe_trusted(n.source) == 0)) || safe_kind(retained_bindings[n.binding].return_type)): safe_checked_functions[i] = 1
-		if ((n.kind == retained_local) && safe_kind(n.semantic_type)):
+			if ((safe_trusted(n.source) == 0) && (safe_mode || safe_kind(retained_bindings[n.binding].return_type))): safe_checked_functions[i] = 1
+		if ((n.kind == retained_local) && (safe_trusted(n.source) == 0) && safe_kind(n.semantic_type)):
 			safe_checked_functions[retained_bindings[n.binding].owner] = 1
 	for id in range(count):
 		retained_node n
 		retained_node_load(id, &n)
+		if (safe_trusted(n.source)): continue
 		int checked = safe_contains_checked(n.semantic_type, 0)
 		if ((n.kind == retained_expression) && (n.binding >= 0)):
 			retained_binding* callee = retained_bindings[n.binding]
