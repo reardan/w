@@ -9,7 +9,8 @@ the desktop target is x64 Linux. Other desktop platforms are not yet qualified.
 
 The goal is native support for **all Mermaid diagram types**, delivered in
 stages. This implementation supports defined subsets of **flowcharts, ER, class and
-state diagrams**, not full Mermaid compatibility. Unsupported syntax/type diagnostics
+state diagrams**, plus eight data families described in
+[Data diagrams](mermaid_data.md), not full Mermaid compatibility. Unsupported syntax/type diagnostics
 prevent partial diagrams from appearing as successful renders. Unsupported
 documents remain readable, editable as source, and saveable without data loss.
 
@@ -200,8 +201,9 @@ be marked supported. Recognizing a header alone does not count as support.
    routing, ports and compound layout for these families.
 3. **Ordered narratives:** sequence, user journey, Gantt, timeline and ZenUML.
    Add lifelines, time scales, nested interactions and scheduling semantics.
-4. **Data diagrams:** pie, quadrant, XY, Sankey, radar, treemap, Venn and packet.
-   Add axes, numeric/date validation, area/flow layouts and legends.
+4. **Data diagrams (core delivered):** pie, quadrant, XY, Sankey, radar, treemap,
+   Venn and packet have numeric validation and family-specific layouts. See
+   [the compatibility table](mermaid_data.md) for syntax and rendering gaps.
 5. **Hierarchical/workflow families:** mindmap, Kanban, event modeling,
    Ishikawa, Wardley, Cynefin and tree view. Maintain the inventory against a
    pinned upstream release and explicitly register new families.
