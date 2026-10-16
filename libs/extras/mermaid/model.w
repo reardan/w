@@ -115,7 +115,6 @@ struct mm_edge:
 
 struct mm_document:
 	char* source
-	char* title
 	int length
 	int kind
 	int graph_variant
