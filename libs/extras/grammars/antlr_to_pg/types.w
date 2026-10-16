@@ -45,6 +45,7 @@ struct at_rule:
 	char* name
 	int is_fragment
 	int is_lexer
+	int precedence_helper
 	list[at_alt*] alts       # alternatives
 	char* command          # legacy classifier summary; full ordered list below
 	list[at_command*] commands

@@ -39,5 +39,13 @@ int main():
 	assert_equal(0, prediction_losses(c"grammar G; start: item 'b' EOF; item: 'a'*;", 0))
 	# EOF-producing lexer rules still produce tokens in parser FIRST/FOLLOW.
 	assert_equal(0, prediction_losses(c"grammar G; start: END 'a' EOF; END: EOF;", 0))
+	# Sharing a prefix is safe when mandatory suffix tokens distinguish it.
+	assert_equal(0, prediction_losses(c"grammar G; start: item EOF; item: short | long; short: 'a' 'b'; long: 'a' 'c';", 0))
+	assert_equal(0, prediction_losses(c"grammar G; start: item EOF; item: number | variable; number: 's'* '0'; variable: 's'* ('a'|'b') 'q'*;", 0))
+	assert_equal(0, prediction_losses(c"grammar G; start: 'a' EOF?;", 0))
+	# Prefix cancellation must not assume a greedy common prefix leaves its
+	# suffix intact, nor discharge a shorter/longer accepting alternative.
+	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a'? 'a' 'b' | 'a'? 'a' 'c';", 0) > 0)
+	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a' | 'a' 'b';", 0) > 0)
 	println(c"parser continuation audit tracks alternatives and caller FOLLOW sets")
 	return 0

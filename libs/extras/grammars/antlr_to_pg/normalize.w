@@ -59,6 +59,7 @@ at_rule* at_expression_helper(at_rule* owner, char* suffix):
 		name = strclone(cstr(f"{name}_"))
 	at_rule* helper = new at_rule()
 	helper.name = name
+	helper.precedence_helper = 1
 	helper.first = owner.first
 	helper.last = owner.last
 	helper.mode = c"DEFAULT_MODE"
