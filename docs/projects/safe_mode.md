@@ -973,3 +973,47 @@ rows, and retained snapshots copy them. Constrained generic headers use the
 retained-source reparse path. Application ABI, allocation and cleanup are
 unchanged. Higher-ranked contracts and the remaining #695 deliverables are
 still required.
+
+### Quantified callable contracts (Wave 1)
+
+The callable extension adds 47 accepted/rejected programs. The matrix checks
+and compiles each with and without `--safe` on x86/x64, executes accepted
+programs and verifies rejected programs leave no executable. It covers
+independent nested scopes, alpha-equivalent aliases and forwards, imported
+factories, outlives bounds, initialization, raw escapes, conflicting arguments,
+owner transfers and checked slice/record calling conventions.
+
+Ordinary validation passed 1,340 targets: the full suite, both Linux fixpoints,
+the Windows runtime fixture and the CI compiler benchmark gate. All 48
+manifest-selected architecture/root checks passed. The runtime fixture also
+passes default, disabled and enabled optimization modes. Native heap guards
+and Memcheck pass on x86/x64 with 153 allocations/frees, no outstanding blocks
+and zero errors; the fixture also executes under Wine.
+
+Seven alternating compiles of baseline `792fefbb` produced byte-identical
+binaries with both compilers. Median elapsed time was 1.65 s before and 1.71 s
+after; median peak RSS was 111,360 and 111,584 KiB. Shared-host timing is
+diagnostic, not a general performance bound.
+
+The additional program benchmark's self-compile rows exceed its older
+`tests/bench/baseline.txt` limits on both baseline main and this change. Main's
+x86/x64 self compiles measured 17,142,654/9,237,500 kIr and emitted
+2,867,908/3,376,520 bytes; this change measured 17,766,652/9,591,969 kIr and
+2,876,100/3,384,712 bytes. Thus this step adds about 3.6%/3.8% instructions and
+0.3%/0.2% output size to that workload. Every application workload passed.
+The separate CI compiler benchmark (`wbench_compare`) passed its committed
+limits. The older program baseline remains unchanged; its existing self
+regression still needs investigation in the performance workstream.
+
+A raw callable signature and each retained snapshot store normalized relation
+rows; retained binding metadata gains an entry-protocol flag. Function values
+remain ordinary code pointers, with no closure environment, reference counting
+or per-call allocation. Owners use the existing move/drop protocol, and
+checked slices and records keep their inline ABI. Capturing environments and
+the remaining aggregate work retain separate gates under #695/#696/#644.
+
+Instrumented validation passed 1,338 targets and every compiler/API harness
+with a COMPLETE receipt. Tests reached 172/176 changed executable compiler
+lines (97%). Compiler branch coverage increased from 85.8% to 86.0%; its
+floor rose from 85.1% to 85.3%, preserving the existing margin. Other
+directory floors remain unchanged.
