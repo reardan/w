@@ -49,6 +49,8 @@ js_value* js_runtime_promise_reaction(js_runtime* rt, js_value* source, js_value
 # complete fanout before changing state so limits cannot partially deliver it.
 int js_runtime_promise_finish(js_runtime* rt, js_value* promise, js_value* value, int rejected):
 	if (promise.reactions.length > rt.max_microtasks - (rt.microtasks.length - rt.microtask_head)):
+		# No result or delivery was committed: host settlement may retry.
+		promise.promise_state = 1
 		js_runtime_fail(rt, 5, c"JavaScript microtask queue limit")
 		return 0
 	promise.promise_state = 2
@@ -67,6 +69,11 @@ int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value
 		js_runtime_fail(rt, 2, c"invalid promise settlement")
 		return 0
 	if (promise.promise_state != 1): return 1
+	# Reserve fanout before observable lookup or locking. Host transports retain
+	# and retry pending settlement when a checkpoint queue is saturated.
+	if (promise.reactions.length > rt.max_microtasks - (rt.microtasks.length - rt.microtask_head)):
+		js_runtime_fail(rt, 5, c"JavaScript microtask queue limit")
+		return 0
 	promise.promise_state = 4
 	if (rejected == 0 && value == promise):
 		value = js_runtime_error_value(rt, c"promise resolution cycle")
@@ -79,17 +86,25 @@ int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value
 			rt.completion.status = 0
 			rt.completion.value = rt.undefined_value
 			rt.completion.message = c""
-		elif (rt.completion.status != 0): return 0
+		elif (rt.completion.status != 0):
+			promise.promise_state = 1
+			return 0
 		elif (js_runtime_callable(then)):
 			js_value* job = js_runtime_alloc(rt, 5)
-			if (rt.completion.status != 0): return 0
+			if (rt.completion.status != 0):
+				promise.promise_state = 1
+				return 0
 			# Private job tag: ordinary reaction jobs always have number zero.
 			job.number = 1.0
 			job.parent = value
 			job.getter = then
 			job.this_value = promise
 			promise.promise_result = value
-			return js_runtime_enqueue_microtask(rt, job)
+			if (js_runtime_enqueue_microtask(rt, job)): return 1
+			# The job was not queued; release the lock for an explicit host retry.
+			promise.promise_state = 1
+			promise.promise_result = rt.undefined_value
+			return 0
 	return js_runtime_promise_finish(rt, promise, value, rejected)
 
 
