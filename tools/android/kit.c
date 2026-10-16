@@ -14,7 +14,8 @@ enum {
     OP_SCREEN = 32, OP_POP, OP_CLEAR, OP_DEPTH, OP_ACTION, OP_TAB, OP_TAB_SELECT, OP_ROW, OP_ROW_END,
     OP_LIST, OP_LIST_CLEAR, OP_LIST_ADD, OP_LIST_SET, OP_TEXT_VIEW, OP_TEXT_AREA, OP_TEXT_SET,
     OP_TEXT_APPEND, OP_ENABLE, OP_SHOW, OP_STYLE, OP_FOCUS, OP_KEYBOARD_HIDE, OP_DIALOG, OP_CHOOSE,
-    OP_TOAST, OP_TIMER, OP_TIMER_CANCEL, OP_HTTP, OP_SECURE_PUT, OP_SECURE_DELETE, OP_LOG
+    OP_TOAST, OP_TIMER, OP_TIMER_CANCEL, OP_HTTP, OP_SECURE_PUT, OP_SECURE_DELETE, OP_LOG,
+    OP_NOTIFY, OP_NOTIFY_CANCEL, OP_PERMISSION, OP_BACKGROUND
 };
 enum { GET_TEXT = 1, GET_SECURE = 2, GET_URI = 3 };
 
@@ -128,3 +129,9 @@ intptr_t wandroid_secure_get(const char *key, char *buffer, intptr_t capacity) {
 void wandroid_secure_delete(const char *key) { call(OP_SECURE_DELETE, 0, 0, key, 0, 0, 0); }
 intptr_t wandroid_intent_uri(char *buffer, intptr_t capacity) { return query(GET_URI, 0, 0, buffer, capacity); }
 void wandroid_log(const char *text) { call(OP_LOG, 0, 0, text, 0, 0, 0); }
+intptr_t wandroid_notify(intptr_t id, const char *title, const char *text) {
+    return call(OP_NOTIFY, id, 0, title, text ? text : "", 0, 0);
+}
+void wandroid_notify_cancel(intptr_t id) { call(OP_NOTIFY_CANCEL, id, 0, 0, 0, 0, 0); }
+intptr_t wandroid_permission(const char *name) { return call(OP_PERMISSION, 0, 0, name, 0, 0, 0); }
+intptr_t wandroid_background(const char *text) { return call(OP_BACKGROUND, 0, 0, text ? text : "", 0, 0, 0); }

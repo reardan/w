@@ -4,7 +4,8 @@
 No Gradle project or package download is needed. Output and a development
 signing key live under bin/android. This is a debug APK, not a release build.
 Other repositories can package their own W app with --package, --label,
---icon, --scheme, --internet, --import-root and a shared --keystore.
+--icon, --scheme, --internet, --notifications, --import-root and a shared
+--keystore.
 """
 import argparse
 import json
@@ -73,10 +74,26 @@ def manifest(args, path, resources):
     # The Java package stays fixed: host.c's JNI symbols name org.wlang.androiddemo.WActivity.
     activity.set(android + "name", "org.wlang.androiddemo.WActivity")
     if args.icon:
-        application.set(android + "icon", "@drawable/w_app_icon")
-        drawables = resources / "drawable-nodpi"
-        drawables.mkdir(parents=True)
-        shutil.copyfile(Path(args.icon).expanduser(), drawables / "w_app_icon.png")
+        # Density mipmaps, an adaptive icon with a themed (monochrome) layer and
+        # a notification glyph, generated from one PNG with the JDK.
+        java = shutil.which("java", path=str(Path(os.environ["JAVA_HOME"]) / "bin")) if os.environ.get("JAVA_HOME") else None
+        java = java or shutil.which("java")
+        if not java:
+            raise RuntimeError("--icon needs a JDK `java` (JAVA_HOME or PATH)")
+        command = [java, "-Djava.awt.headless=true", ROOT / "tools/android/icon/WIcon.java",
+                   Path(args.icon).expanduser().resolve(), resources]
+        run(*command, *([args.icon_background] if args.icon_background else []))
+        application.set(android + "icon", "@mipmap/w_app_icon")
+        application.set(android + "roundIcon", "@mipmap/w_app_icon")
+    if args.notifications:
+        # Local notifications (POST_NOTIFICATIONS is a runtime permission on API 33+)
+        # and WService, the foreground service behind wandroid_background.
+        for name in ("POST_NOTIFICATIONS", "FOREGROUND_SERVICE", "FOREGROUND_SERVICE_DATA_SYNC"):
+            permission = ET.Element("uses-permission", {android + "name": "android.permission." + name})
+            root.insert(list(root).index(application), permission)
+        ET.SubElement(application, "service", {android + "name": "org.wlang.androiddemo.WService",
+                                               android + "exported": "false",
+                                               android + "foregroundServiceType": "dataSync"})
     if args.internet:
         permission = ET.Element("uses-permission", {android + "name": "android.permission.INTERNET"})
         root.insert(list(root).index(application), permission)
@@ -100,12 +117,15 @@ def main():
     parser.add_argument("source", nargs="?", default="graphics/android/demo.w")
     parser.add_argument("--package", default="org.wlang.androiddemo", help="application id")
     parser.add_argument("--label", default="W on Android", help="launcher label")
-    parser.add_argument("--icon", help="launcher icon PNG")
+    parser.add_argument("--icon", help="launcher icon PNG (mipmaps and an adaptive icon are generated)")
+    parser.add_argument("--icon-background", help="adaptive icon background #RRGGBB (default: detected)")
     parser.add_argument("--theme", choices=sorted(THEMES), default="light")
     parser.add_argument("--min-sdk", type=int, default=28)
     parser.add_argument("--scheme", action="append", default=[], help="deep-link URI scheme (repeatable)")
     parser.add_argument("--internet", action="store_true",
                         help="INTERNET permission; cleartext HTTP only to 127.0.0.1/localhost")
+    parser.add_argument("--notifications", action="store_true",
+                        help="local notifications and the background-work foreground service")
     parser.add_argument("--import-root", help="extra W import root for the app source")
     parser.add_argument("--keystore", default=os.environ.get("W_ANDROID_KEYSTORE", "bin/android/debug.keystore"),
                         help="development signing keystore, created if missing (share one across apps)")

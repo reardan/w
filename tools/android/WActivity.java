@@ -164,6 +164,7 @@ public final class WActivity extends Activity {
             }
         }
         nativeSetup();
+        kit.launched(getIntent(), state != null);
         if (getIntent().getBooleanExtra("w_smoke", false)) form.post(this::smoke);
     }
 
@@ -189,9 +190,33 @@ public final class WActivity extends Activity {
     View kitView(long handle) { return handle > 0 && handle <= controls.size() ? controls.get((int) handle - 1) : null; }
     void kitTarget(LinearLayout container) { form = container; section = null; }
     void kitEvent(long handle, long kind, byte[] value) { nativeEvent(handle, kind, value); }
-    @Override public void onBackPressed() { if (!kit.back()) super.onBackPressed(); }
     @Override protected void onNewIntent(android.content.Intent intent) { super.onNewIntent(intent); setIntent(intent); kit.newIntent(intent); }
     @Override protected void onDestroy() { kit.destroy(); super.onDestroy(); }
+    @Override public void onRequestPermissionsResult(int request, String[] names, int[] results) { kit.permissionResult(request, results); }
+    @Override protected void onRestoreInstanceState(Bundle state) { super.onRestoreInstanceState(state); kit.restore(state); }
+
+    // Back: Android 13+ dispatches it to an OnBackInvokedCallback, registered only
+    // while W owns Back (two or more kit screens) so predictive back-to-home still
+    // works from a root screen. Android 9-12 use the onBackPressed fallback.
+    private Object backCallback;
+    void kitBackEnabled(boolean enabled) {
+        if (android.os.Build.VERSION.SDK_INT < 33 || enabled == (backCallback != null)) return;
+        backCallback = Back33.set(this, backCallback, enabled, kit);
+    }
+    private static final class Back33 {
+        static Object set(Activity activity, Object current, boolean enabled, WKit kit) {
+            android.window.OnBackInvokedDispatcher dispatcher = activity.getOnBackInvokedDispatcher();
+            if (!enabled) {
+                dispatcher.unregisterOnBackInvokedCallback((android.window.OnBackInvokedCallback) current);
+                return null;
+            }
+            android.window.OnBackInvokedCallback callback = kit::back;
+            dispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return callback;
+        }
+    }
+    @SuppressWarnings("deprecation")
+    @Override public void onBackPressed() { if (!kit.back()) super.onBackPressed(); }
 
     @Override protected void onResume() {
         super.onResume();
@@ -205,6 +230,7 @@ public final class WActivity extends Activity {
 
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("w_smoke_recreated", smokeRecreated);
+        kit.save(state);
         super.onSaveInstanceState(state);
     }
 

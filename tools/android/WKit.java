@@ -1,6 +1,10 @@
 package org.wlang.androiddemo;
 
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -20,12 +24,15 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.Layout;
+import android.text.Selection;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
@@ -41,6 +48,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -79,11 +87,14 @@ import javax.crypto.spec.GCMParameterSpec;
  * W reaches it through tools/android/kit.c. Everything runs on the UI thread;
  * HTTP alone uses worker threads and posts results back. Operation codes and
  * event kinds start at 32, leaving lower numbers to the basic control API.
+ * Scroll positions, selections and focus of the screen stack are saved with
+ * the Activity state and reapplied when W rebuilds the same screens in setup.
  */
 final class WKit {
     // Event kinds delivered through wandroid_event; 1 (click) and 2 (text) are shared.
     static final int EVENT_CLICK = 1, EVENT_TEXT = 2, EVENT_BACK = 32, EVENT_ITEM = 33,
-        EVENT_DIALOG = 34, EVENT_TIMER = 35, EVENT_HTTP = 36, EVENT_URI = 37;
+        EVENT_DIALOG = 34, EVENT_TIMER = 35, EVENT_HTTP = 36, EVENT_URI = 37, EVENT_NOTIFICATION = 38,
+        EVENT_PERMISSION = 39;
     // Keep in sync with kit.c.
     static final int OP_SCREEN = 32, OP_POP = 33, OP_CLEAR = 34, OP_DEPTH = 35, OP_ACTION = 36,
         OP_TAB = 37, OP_TAB_SELECT = 38, OP_ROW = 39, OP_ROW_END = 40, OP_LIST = 41,
@@ -91,7 +102,8 @@ final class WKit {
         OP_TEXT_AREA = 46, OP_TEXT_SET = 47, OP_TEXT_APPEND = 48, OP_ENABLE = 49, OP_SHOW = 50,
         OP_STYLE = 51, OP_FOCUS = 52, OP_KEYBOARD_HIDE = 53, OP_DIALOG = 54, OP_CHOOSE = 55,
         OP_TOAST = 56, OP_TIMER = 57, OP_TIMER_CANCEL = 58, OP_HTTP = 59, OP_SECURE_PUT = 60,
-        OP_SECURE_DELETE = 61, OP_LOG = 62;
+        OP_SECURE_DELETE = 61, OP_LOG = 62, OP_NOTIFY = 63, OP_NOTIFY_CANCEL = 64, OP_PERMISSION = 65,
+        OP_BACKGROUND = 66;
     static final int GET_TEXT = 1, GET_SECURE = 2, GET_URI = 3;
     // Flags and roles, mirrored in graphics/android/kit.w.
     static final int SCREEN_SCROLL = 1;
@@ -100,7 +112,10 @@ final class WKit {
     static final int ROLE_BODY = 1, ROLE_TITLE = 2, ROLE_SECONDARY = 3, ROLE_ERROR = 4,
         ROLE_MONOSPACE = 5, ROLE_PRIMARY = 6, ROLE_DESTRUCTIVE = 7, ROLE_URL = 8, ROLE_SECRET = 9,
         ROLE_HEADING = 10;
-    private static final int LOG_LIMIT = 200000, HTTP_LIMIT = 8 << 20;
+    private static final int LOG_LIMIT = 200000, HTTP_LIMIT = 16 << 20;
+    // Notification tags keep W's ids apart from the background service's notification.
+    static final String NOTIFY_TAG = "w", ALERTS = "w_alerts", EXTRA_NOTIFICATION = "w_notification";
+    static final int PERMISSION_REQUEST = 0x5741;
     private static final String SECURE_ALIAS = "w_secure_v1", SECURE_PREFS = "w_secure";
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -114,7 +129,8 @@ final class WKit {
     private boolean installed, destroyed;
     private int background, ink, muted, accent, error, divider, added, removed, addedText, removedText;
     private boolean dark;
-    private LinearLayout root, bar, actions, tabs;
+    private LinearLayout root, tabs;
+    private Bar bar;
     private FrameLayout stage;
     private TextView title;
     private ImageButton up;
@@ -153,6 +169,9 @@ final class WKit {
     private final class ListPart extends Part {
         final ArrayList<String[]> items = new ArrayList<>();
         BaseAdapter adapter;
+        // Saved first row and offset, applied once the rows exist (W may fill them later).
+        int restoreFirst = -1, restoreTop;
+        long restoreUntil;
     }
 
     private final class TextPart extends Part {
@@ -206,6 +225,9 @@ final class WKit {
 
     int dp(float value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }
 
+    /** Short windows (a phone in landscape) get a lower top bar and tabs. */
+    private boolean compact() { return activity.getResources().getConfiguration().screenHeightDp < 480; }
+
     private static String str(byte[] bytes) { return bytes == null ? "" : new String(bytes, StandardCharsets.UTF_8); }
 
     // ---- Entry points from kit.c (synchronous, UI thread) ----
@@ -243,6 +265,10 @@ final class WKit {
             case OP_SECURE_PUT: return securePut(str(s), t == null ? new byte[0] : t) ? 1 : 0;
             case OP_SECURE_DELETE: prefs().edit().remove(str(s)).apply(); return 0;
             case OP_LOG: Log.i("WAndroid", str(s)); return 0;
+            case OP_NOTIFY: return notify((int) a, str(s), str(t)) ? 1 : 0;
+            case OP_NOTIFY_CANCEL: notifications().cancel(NOTIFY_TAG, (int) a); return 0;
+            case OP_PERMISSION: return permission(str(s));
+            case OP_BACKGROUND: return background(str(s)) ? 1 : 0;
             default: throw new IllegalArgumentException("Unknown W kit operation " + op);
         }
     }
@@ -272,6 +298,142 @@ final class WKit {
     void newIntent(Intent intent) {
         Uri data = intent == null ? null : intent.getData();
         if (data != null) event(0, EVENT_URI, data.toString().getBytes(StandardCharsets.UTF_8));
+        notificationOpened(intent);
+    }
+
+    /** After setup: a notification tap that launched (not recreated) the Activity. */
+    void launched(Intent intent, boolean recreated) {
+        if (!recreated) notificationOpened(intent);
+        else if (intent != null) intent.removeExtra(EXTRA_NOTIFICATION);
+    }
+
+    private void notificationOpened(Intent intent) {
+        if (intent == null || !intent.hasExtra(EXTRA_NOTIFICATION)) return;
+        int id = intent.getIntExtra(EXTRA_NOTIFICATION, 0);
+        intent.removeExtra(EXTRA_NOTIFICATION);
+        event(0, EVENT_NOTIFICATION, Integer.toString(id).getBytes(StandardCharsets.UTF_8));
+    }
+
+    void permissionResult(int request, int[] results) {
+        if (request != PERMISSION_REQUEST) return;
+        boolean granted = results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        event(0, EVENT_PERMISSION, (granted ? "1" : "0").getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ---- Activity state: scroll, selection and focus, by screen and part position ----
+
+    /** Offset of view's top within ancestor's content. */
+    private static int topWithin(View view, View ancestor) {
+        int top = 0;
+        for (View at = view; at != null && at != ancestor; at = at.getParent() instanceof View ? (View) at.getParent() : null)
+            top += at.getTop();
+        return top;
+    }
+
+    void save(Bundle state) {
+        if (!installed) return;
+        Bundle out = new Bundle();
+        out.putInt("screens", screens.size());
+        View focused = activity.getCurrentFocus();
+        for (int i = 0; i < screens.size(); i++) {
+            Screen screen = screens.get(i);
+            out.putString("title" + i, screen.title);
+            if (screen.view instanceof ScrollView) out.putInt("scroll" + i, screen.view.getScrollY());
+            for (int j = 0; j < screen.parts.size(); j++) {
+                Part part = parts.get(screen.parts.get(j));
+                if (part == null) continue;
+                String key = i + "." + j;
+                if (part.inner == focused) out.putString("focus", key);
+                if (part instanceof ListPart) {
+                    ListView list = (ListView) part.inner;
+                    View first = list.getChildAt(0);
+                    out.putIntArray("list" + key, new int[]{list.getFirstVisiblePosition(),
+                        first == null ? 0 : first.getTop() - list.getPaddingTop()});
+                } else if (part instanceof TextPart) {
+                    TextView text = (TextView) part.inner;
+                    ScrollView scroll = ((TextPart) part).scroll;
+                    Layout layout = text.getLayout();
+                    int offset = 0, end = 0, sideways = 0;
+                    if (layout != null && scroll != null) {
+                        int y = scroll.getScrollY() - topWithin(text, scroll) - text.getTotalPaddingTop();
+                        offset = layout.getLineStart(layout.getLineForVertical(Math.max(0, y)));
+                        View content = scroll.getChildAt(0);
+                        end = content != null && scroll.getScrollY() + scroll.getHeight() >= content.getHeight() - dp(8) ? 1 : 0;
+                    } else if (layout != null && text instanceof EditText)
+                        offset = layout.getLineStart(layout.getLineForVertical(text.getScrollY()));
+                    if (text.getParent() instanceof HorizontalScrollView) sideways = ((View) text.getParent()).getScrollX();
+                    out.putIntArray("text" + key, new int[]{offset, end, sideways,
+                        text.getSelectionStart(), text.getSelectionEnd()});
+                }
+            }
+        }
+        state.putBundle("w_kit", out);
+    }
+
+    /** Reapplies saved positions to screens W rebuilt in setup with the same titles. */
+    void restore(Bundle state) {
+        Bundle in = state == null ? null : state.getBundle("w_kit");
+        if (in == null || !installed) return;
+        String focus = in.getString("focus");
+        int count = Math.min(in.getInt("screens"), screens.size());
+        for (int i = 0; i < count; i++) {
+            Screen screen = screens.get(i);
+            if (!TextUtils.equals(screen.title, in.getString("title" + i))) break;
+            if (screen.view instanceof ScrollView && in.containsKey("scroll" + i)) {
+                View view = screen.view;
+                int y = in.getInt("scroll" + i);
+                view.post(() -> view.scrollTo(0, y));
+            }
+            for (int j = 0; j < screen.parts.size(); j++) {
+                Part part = parts.get(screen.parts.get(j));
+                if (part == null) continue;
+                String key = i + "." + j;
+                int[] list = in.getIntArray("list" + key);
+                int[] text = in.getIntArray("text" + key);
+                if (list != null && part instanceof ListPart) {
+                    ListPart rows = (ListPart) part;
+                    rows.restoreFirst = list[0];
+                    rows.restoreTop = list[1];
+                    rows.restoreUntil = android.os.SystemClock.uptimeMillis() + 15000;
+                    listRestore(rows);
+                } else if (text != null && part instanceof TextPart) textRestore((TextPart) part, text);
+                if (key.equals(focus) && part.inner.isFocusable()) part.inner.requestFocus();
+            }
+        }
+    }
+
+    private void listRestore(ListPart part) {
+        if (part.restoreFirst < 0) return;
+        if (android.os.SystemClock.uptimeMillis() > part.restoreUntil) { part.restoreFirst = -1; return; }
+        if (part.items.size() <= part.restoreFirst) return;
+        int first = part.restoreFirst, top = part.restoreTop;
+        part.restoreFirst = -1;
+        ListView list = (ListView) part.inner;
+        list.post(() -> list.setSelectionFromTop(first, top));
+    }
+
+    private void textRestore(TextPart part, int[] saved) {
+        TextView text = (TextView) part.inner;
+        // After the first layout; earlier posts (e.g. tail-following appends) run first.
+        text.post(() -> {
+            int length = text.length(), start = saved[3], end = saved[4];
+            if (start >= 0 && end >= 0 && start <= length && end <= length) {
+                if (text instanceof EditText) ((EditText) text).setSelection(start, end);
+                else if (start != end && text.getText() instanceof Spannable)
+                    Selection.setSelection((Spannable) text.getText(), start, end);
+            }
+            Layout layout = text.getLayout();
+            if (layout != null) {
+                int y = layout.getLineTop(layout.getLineForOffset(Math.min(saved[0], length)));
+                if (part.scroll != null)
+                    part.scroll.scrollTo(0, saved[1] != 0 ? Integer.MAX_VALUE >> 2
+                        : y + topWithin(text, part.scroll) + text.getTotalPaddingTop());
+                else if (text instanceof EditText)
+                    text.scrollTo(0, Math.max(0, Math.min(y, layout.getHeight() - text.getHeight()
+                        + text.getTotalPaddingTop() + text.getTotalPaddingBottom())));
+            }
+            if (text.getParent() instanceof HorizontalScrollView) ((View) text.getParent()).scrollTo(saved[2], 0);
+        });
     }
 
     void destroy() {
@@ -281,6 +443,68 @@ final class WKit {
         for (AlertDialog dialog : dialogs.values()) dialog.dismiss();
         dialogs.clear();
         if (current == this) current = null;
+    }
+
+    // ---- Notifications, permissions and background work ----
+
+    private NotificationManager notifications() {
+        return (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE);
+    }
+
+    /** Small icon: the packaged w_notification drawable (build.py --notifications), else the app icon. */
+    static int notificationIcon(Context context) {
+        int icon = context.getResources().getIdentifier("w_notification", "drawable", context.getPackageName());
+        if (icon == 0) icon = context.getApplicationInfo().icon;
+        return icon != 0 ? icon : android.R.drawable.stat_notify_more;
+    }
+
+    /** Opens (or brings back) the Activity; id >= 0 is reported as android_event_notification. */
+    static PendingIntent openApp(Context context, int id) {
+        Intent intent = new Intent(context, WActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        if (id >= 0) intent.putExtra(EXTRA_NOTIFICATION, id);
+        return PendingIntent.getActivity(context, id < 0 ? -1 : id, intent,
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    private boolean notify(int id, String heading, String text) {
+        NotificationManager manager = notifications();
+        if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) return false;
+        if (id < 0 || !manager.areNotificationsEnabled()) return false;
+        manager.createNotificationChannel(new NotificationChannel(ALERTS, "Alerts", NotificationManager.IMPORTANCE_HIGH));
+        Notification.Builder builder = new Notification.Builder(activity, ALERTS)
+            .setSmallIcon(notificationIcon(activity))
+            .setContentTitle(heading)
+            .setContentText(text)
+            .setStyle(new Notification.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(openApp(activity, id));
+        manager.notify(NOTIFY_TAG, id, builder.build());
+        return true;
+    }
+
+    /** 1 granted, -1 requested (android_event_permission follows), 0 unavailable. */
+    private long permission(String name) {
+        if (name.isEmpty()) return 0;
+        if (Build.VERSION.SDK_INT < 33 && name.equals("android.permission.POST_NOTIFICATIONS"))
+            return notifications().areNotificationsEnabled() ? 1 : 0;
+        if (activity.checkSelfPermission(name) == android.content.pm.PackageManager.PERMISSION_GRANTED) return 1;
+        activity.requestPermissions(new String[]{name}, PERMISSION_REQUEST);
+        return -1;
+    }
+
+    /** Non-empty text keeps the process in a foreground service (build.py --notifications); "" stops it. */
+    private boolean background(String text) {
+        Intent intent = new Intent(activity, WService.class);
+        if (text.isEmpty()) { activity.stopService(intent); return true; }
+        intent.putExtra(WService.EXTRA_TEXT, text);
+        try {
+            return activity.startForegroundService(intent) != null;
+        } catch (RuntimeException failure) { // Not declared, or Android refused a background start.
+            Log.w("WAndroid", "background work refused: " + failure);
+            return false;
+        }
     }
 
     private void event(long handle, int kind, byte[] value) {
@@ -343,10 +567,7 @@ final class WKit {
         root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(background);
-        bar = new LinearLayout(activity);
-        bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setMinimumHeight(dp(64));
+        bar = new Bar();
         bar.setBackgroundColor(background);
         up = new ImageButton(activity);
         up.setImageDrawable(new Arrow(ink, dp(2), dp(24)));
@@ -355,7 +576,7 @@ final class WKit {
         up.setBackground(attrDrawable(android.R.attr.selectableItemBackgroundBorderless));
         up.setContentDescription("Navigate up");
         up.setOnClickListener(view -> back());
-        bar.addView(up, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        bar.addView(up);
         title = new TextView(activity);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         title.setTextColor(ink);
@@ -363,18 +584,17 @@ final class WKit {
         title.setSingleLine(true);
         title.setEllipsize(TextUtils.TruncateAt.END);
         title.setAccessibilityHeading(true);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(0, -2, 1);
-        titleParams.setMarginStart(dp(4));
-        bar.addView(title, titleParams);
-        actions = new LinearLayout(activity);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-        bar.addView(actions, new LinearLayout.LayoutParams(-2, -2));
+        bar.addView(title);
         bar.setPadding(dp(4), 0, dp(4), 0);
         root.addView(bar, new LinearLayout.LayoutParams(-1, -2));
         stage = new FrameLayout(activity);
         root.addView(stage, new LinearLayout.LayoutParams(-1, 0, 1));
-        tabs = new LinearLayout(activity);
+        tabs = new LinearLayout(activity) {
+            @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(info);
+                info.setCollectionInfo(AccessibilityNodeInfo.CollectionInfo.obtain(1, getChildCount(), false));
+            }
+        };
         tabs.setOrientation(LinearLayout.HORIZONTAL);
         tabs.setBackgroundColor(background);
         View rule = new View(activity);
@@ -464,9 +684,105 @@ final class WKit {
         Screen top = screens.isEmpty() ? null : screens.get(screens.size() - 1);
         title.setText(top == null ? "" : top.title);
         up.setVisibility(screens.size() > 1 ? View.VISIBLE : View.GONE);
-        title.setPadding(screens.size() > 1 ? 0 : dp(12), 0, 0, 0);
-        actions.removeAllViews();
-        if (top != null) for (View action : top.actions) actions.addView(action, new LinearLayout.LayoutParams(-2, dp(48)));
+        title.setPadding(screens.size() > 1 ? dp(4) : dp(12), 0, 0, 0);
+        bar.removeViews(2, bar.getChildCount() - 2);
+        if (top != null) for (View action : top.actions) bar.addView(action);
+        // With stacked screens W decides what Back does (android_event_back).
+        activity.kitBackEnabled(screens.size() > 1);
+    }
+
+    /**
+     * Top bar: Up, title, then text actions on the same line while the title keeps
+     * a useful width; otherwise (large fonts, narrow screens) the actions wrap onto
+     * right-aligned lines below the title. Children: up, title, actions...
+     */
+    private final class Bar extends ViewGroup {
+        Bar() { super(activity); }
+
+        private int line() { return dp(compact() ? 52 : 64); }
+
+        @Override protected void onMeasure(int widthSpec, int heightSpec) {
+            int width = MeasureSpec.getSize(widthSpec);
+            int inner = Math.max(0, width - getPaddingLeft() - getPaddingRight());
+            int unspecified = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            int upWidth = 0;
+            if (up.getVisibility() != GONE) {
+                up.measure(MeasureSpec.makeMeasureSpec(dp(48), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(48), MeasureSpec.EXACTLY));
+                upWidth = dp(48);
+            }
+            int actionsWidth = 0, actionsHeight = 0;
+            for (int i = 2; i < getChildCount(); i++) {
+                View action = getChildAt(i);
+                action.measure(MeasureSpec.makeMeasureSpec(inner, MeasureSpec.AT_MOST), unspecified);
+                actionsWidth += action.getMeasuredWidth();
+                actionsHeight = Math.max(actionsHeight, Math.max(dp(48), action.getMeasuredHeight()));
+            }
+            title.measure(unspecified, unspecified);
+            int wanted = Math.min(title.getMeasuredWidth(), dp(120));
+            boolean wrap = upWidth + wanted + actionsWidth > inner;
+            int titleWidth = Math.max(0, inner - upWidth - (wrap ? 0 : actionsWidth));
+            title.measure(MeasureSpec.makeMeasureSpec(titleWidth, MeasureSpec.EXACTLY), unspecified);
+            int height = Math.max(line(), Math.max(title.getMeasuredHeight() + dp(16), wrap ? 0 : actionsHeight));
+            if (wrap) {
+                int x = 0, row = 0;
+                for (int i = 2; i < getChildCount(); i++) {
+                    int w = getChildAt(i).getMeasuredWidth();
+                    if (x > 0 && x + w > inner) { height += row; x = 0; row = 0; }
+                    x += w;
+                    row = Math.max(row, Math.max(dp(48), getChildAt(i).getMeasuredHeight()));
+                }
+                height += row + dp(4);
+            }
+            setMeasuredDimension(width, height + getPaddingTop() + getPaddingBottom());
+        }
+
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            int left = getPaddingLeft(), top = getPaddingTop(), right = r - l - getPaddingRight();
+            int inner = right - left;
+            int actionsWidth = 0;
+            for (int i = 2; i < getChildCount(); i++) actionsWidth += getChildAt(i).getMeasuredWidth();
+            int upWidth = up.getVisibility() != GONE ? dp(48) : 0;
+            boolean wrap = upWidth + title.getMeasuredWidth() + actionsWidth > inner;
+            int first = Math.max(line(), title.getMeasuredHeight() + dp(16));
+            if (!wrap) for (int i = 2; i < getChildCount(); i++) first = Math.max(first, getChildAt(i).getMeasuredHeight());
+            boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
+            int x = 0;
+            if (upWidth > 0) { place(up, x, top + (first - dp(48)) / 2, rtl, left, right); x += upWidth; }
+            place(title, x, top + (first - title.getMeasuredHeight()) / 2, rtl, left, right);
+            if (!wrap) {
+                x = inner - actionsWidth;
+                for (int i = 2; i < getChildCount(); i++) {
+                    View action = getChildAt(i);
+                    place(action, x, top + (first - action.getMeasuredHeight()) / 2, rtl, left, right);
+                    x += action.getMeasuredWidth();
+                }
+                return;
+            }
+            // Wrapped: fill lines in order, each line aligned to the end edge.
+            int y = top + first, i = 2;
+            while (i < getChildCount()) {
+                int width = 0, height = dp(48), j = i;
+                while (j < getChildCount() && (j == i || width + getChildAt(j).getMeasuredWidth() <= inner)) {
+                    width += getChildAt(j).getMeasuredWidth();
+                    height = Math.max(height, getChildAt(j).getMeasuredHeight());
+                    j++;
+                }
+                x = Math.max(0, inner - width);
+                for (int k = i; k < j; k++) {
+                    View action = getChildAt(k);
+                    place(action, x, y + (height - action.getMeasuredHeight()) / 2, rtl, left, right);
+                    x += action.getMeasuredWidth();
+                }
+                y += height;
+                i = j;
+            }
+        }
+
+        private void place(View child, int x, int y, boolean rtl, int left, int right) {
+            int w = child.getMeasuredWidth(), h = child.getMeasuredHeight();
+            int start = rtl ? right - x - w : left + x;
+            child.layout(start, y, start + w, y + h);
+        }
     }
 
     // ---- Screens ----
@@ -540,11 +856,14 @@ final class WKit {
         Button button = new Button(activity, null, android.R.attr.borderlessButtonStyle);
         button.setText(text);
         button.setAllCaps(false);
-        button.setTextColor(accent);
+        button.setTextColor(new ColorStateList(new int[][]{{-android.R.attr.state_enabled}, {}},
+            new int[]{mix(ink, 0x61), accent}));
         button.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         button.setMinWidth(dp(48));
         button.setMinimumWidth(dp(48));
+        button.setMinHeight(dp(48));
+        button.setMinimumHeight(dp(48));
         button.setPadding(dp(12), 0, dp(12), 0);
         return button;
     }
@@ -569,13 +888,24 @@ final class WKit {
         label.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         label.setTextColor(muted);
         label.setGravity(Gravity.CENTER);
-        label.setPadding(dp(16), dp(6), dp(16), dp(6));
+        label.setPadding(dp(8), dp(6), dp(8), dp(6));
         label.setSingleLine(true);
         cell.addView(label, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         long handle = activity.kitRegister(label);
         cell.setOnClickListener(view -> event(handle, EVENT_CLICK, new byte[0]));
         cell.setContentDescription(text);
-        tabs.addView(cell, new LinearLayout.LayoutParams(0, dp(64), 1));
+        cell.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.setClassName("android.app.ActionBar$Tab"); // TalkBack: "Tab", plus "Selected".
+                int index = tabs.indexOfChild(host);
+                info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(0, 1, Math.max(0, index), 1,
+                    false, host.isSelected()));
+            }
+        });
+        // Grows with the font scale; 64 dp at the default size (48 dp in short windows).
+        cell.setMinimumHeight(dp(compact() ? 48 : 64));
+        tabs.addView(cell, new LinearLayout.LayoutParams(0, -2, 1));
         tabLabels.add(label);
         root.requestApplyInsets();
         return handle;
@@ -696,6 +1026,7 @@ final class WKit {
         else if (index < items.size()) items.set(index, item);
         else return -1;
         ((ListPart) part).adapter.notifyDataSetChanged();
+        listRestore((ListPart) part);
         return index;
     }
 
@@ -807,7 +1138,9 @@ final class WKit {
         if (part instanceof TextPart) ((TextPart) part).muted = true;
         try {
             ((TextView) view).setText(text);
-            if (view instanceof EditText) ((EditText) view).setSelection(((EditText) view).length());
+            // Inputs continue at the end; a fill area (an editor) starts at the top.
+            if (view instanceof EditText)
+                ((EditText) view).setSelection(part != null && part.fill ? 0 : ((EditText) view).length());
         } finally {
             if (part instanceof TextPart) ((TextPart) part).muted = false;
         }
@@ -935,6 +1268,7 @@ final class WKit {
             else if (role == ROLE_SECRET) {
                 field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
                 field.setTypeface(Typeface.MONOSPACE);
+                field.setSaveEnabled(false); // Keep secrets out of the saved Activity state.
             } else if (role == ROLE_MONOSPACE) field.setTypeface(Typeface.MONOSPACE);
             return;
         }
@@ -1055,8 +1389,9 @@ final class WKit {
                 }
                 status = connection.getResponseCode();
                 InputStream input = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
-                payload = read(input);
-                if (payload == null) { status = 0; payload = "Response exceeds 8 MiB".getBytes(StandardCharsets.UTF_8); }
+                payload = read(input, (status + "\n").getBytes(StandardCharsets.UTF_8));
+                if (payload == null) { status = 0; payload = "Response exceeds 16 MiB".getBytes(StandardCharsets.UTF_8); }
+                else status = -1; // payload already carries the status line
             } catch (IOException | RuntimeException failure) {
                 status = 0;
                 String message = failure.getMessage();
@@ -1064,23 +1399,29 @@ final class WKit {
             } finally {
                 if (connection != null) connection.disconnect();
             }
-            byte[] prefix = (status + "\n").getBytes(StandardCharsets.UTF_8);
-            byte[] value = new byte[prefix.length + payload.length];
-            System.arraycopy(prefix, 0, value, 0, prefix.length);
-            System.arraycopy(payload, 0, value, prefix.length, payload.length);
-            MAIN.post(() -> deliver(id, EVENT_HTTP, value));
+            byte[] value = payload;
+            if (status >= 0) {
+                byte[] prefix = (status + "\n").getBytes(StandardCharsets.UTF_8);
+                value = new byte[prefix.length + payload.length];
+                System.arraycopy(prefix, 0, value, 0, prefix.length);
+                System.arraycopy(payload, 0, value, prefix.length, payload.length);
+            }
+            byte[] result = value;
+            MAIN.post(() -> deliver(id, EVENT_HTTP, result));
         });
         return id;
     }
 
-    private static byte[] read(InputStream input) throws IOException {
-        if (input == null) return new byte[0];
+    /** prefix followed by the body, or null beyond HTTP_LIMIT. */
+    private static byte[] read(InputStream input, byte[] prefix) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(prefix);
+        if (input == null) return out.toByteArray();
         try (InputStream in = input) {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[16384];
             int count;
             while ((count = in.read(buffer)) != -1) {
-                if (out.size() + count > HTTP_LIMIT) return null;
+                if (out.size() - prefix.length + count > HTTP_LIMIT) return null;
                 out.write(buffer, 0, count);
             }
             return out.toByteArray();
