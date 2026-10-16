@@ -1374,3 +1374,13 @@ the cache assertions.
   found '['", which points at semicolons the language does not have.
   Direction: support `\f` `\v` (and `\a` `\b`) or warn on unknown escapes
   in `check`; suggest `int[4] enc` for the C array form.
+## Block comments closed early (2026-10-16, stdlib P2.1 glob)
+
+- **A `*/` inside a `/* ... */` header comment** (here the glob example
+  `"**/**"`) silently ends the comment; `w check` then reports W0032
+  "Could not find a valid primary expression, token: ]" ~120 lines
+  later, at the first line whose text no longer parses as code, with no
+  hint that a comment ended. Direction: when a parse error follows a
+  block comment that closed inside what looks like prose (or the next
+  "code" line starts with `-`/`#` text), add a related note pointing at
+  the `*/` that closed it.
