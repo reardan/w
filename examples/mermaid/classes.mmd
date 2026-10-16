@@ -1,0 +1,19 @@
+classDiagram
+    direction LR
+    namespace Domain {
+        class Record {
+            <<abstract>>
+            +int id
+            +validate() bool
+        }
+        class Invoice {
+            +decimal total
+            +send() bool
+        }
+        Record <|-- Invoice
+    }
+    class Customer["Customer account"] {
+        +String name
+        +pay() bool
+    }
+    Customer "1" o-- "0..*" Invoice : owns

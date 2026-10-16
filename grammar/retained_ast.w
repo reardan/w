@@ -345,6 +345,9 @@ void retained_expression_note(expression_ast* tree, int root):
 # semantic result, signature, receiver and inference types, the binding and
 # name binding, the payload text, and the result type's spelling, size and
 # pointer level (the columns retained_node_load reads).
+char* ast_expression_generic_callee(expression_ast* tree, int id);
+
+
 void retained_expression_semantics(expression_ast* tree, retained_group* group):
 	int count = group.count
 	int* s = cast(int*, retained_arena_alloc(retained_semantic_columns * count * __word_size__))
@@ -370,7 +373,10 @@ void retained_expression_semantics(expression_ast* tree, retained_group* group):
 		# overload the same slot with type/format/diagnostic information.
 		int op = tree.op[i]
 		int high = tree.high[i]
-		if ((op == 'G') || (op == 'W')): payload = retained_intern(generic_def_name(tree.value[i]))
+		if ((op == 'G') || (op == 'W')):
+			char* callee = ast_expression_generic_callee(tree, i)
+			payload = retained_intern(callee)
+			free(callee)
 		if (op == ast_warning):
 			if ((high == 0) || (high == 6) || (high == 7) || (high == 8)): payload = retained_intern(cast(char*, tree.value[i]))
 			if ((high == 1) || (high == 2) || (high == 5)):

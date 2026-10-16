@@ -154,6 +154,7 @@ int pg_reader_is_lexer_directive(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()): return 0
 	if (strcmp(reader.token, c"lexer") == 0): return 1
 	if (strcmp(reader.token, c"lexer_priority") == 0): return 1
+	if (strcmp(reader.token, c"lexer_eof") == 0): return 1
 	if (strcmp(reader.token, c"lexer_mode") == 0): return 1
 	if (strcmp(reader.token, c"lexer_rule") == 0): return 1
 	if (strcmp(reader.token, c"lexer_guard") == 0): return 1
@@ -482,6 +483,9 @@ int pg_reader_matcher_nullable(pg_grammar_reader* reader, pg_grammar* grammar, p
 			return -1
 		pg_token_def* token = pg_grammar_find_token(grammar, expression.text)
 		if (token != 0):
+			if ((token.expression == 0) && (token.matcher == 0)):
+				pg_diagnostics_add(reader.diagnostics, reader.filename, expression.line, expression.column, c"symbolic token has no matcher", c"matching token or fragment", expression.text)
+				return -1
 			if (token.expression == 0): return 0
 			path.push(token.name)
 			int nullable = pg_reader_matcher_nullable(reader, grammar, token.expression, path)
@@ -640,6 +644,11 @@ int pg_reader_stateful_directive(pg_grammar_reader* reader, pg_grammar* grammar)
 			pg_reader_error(reader, c"unknown lexer priority", c"ordered or legacy")
 			return 0
 		grammar.ordered_lexer = strcmp(name, c"ordered") == 0
+	else if (strcmp(directive, c"lexer_eof") == 0):
+		if ((strcmp(name, c"any_mode") != 0) && (strcmp(name, c"closed_modes") != 0)):
+			pg_reader_error(reader, c"unknown lexer EOF policy", c"any_mode or closed_modes")
+			return 0
+		grammar.allow_mode_eof = strcmp(name, c"any_mode") == 0
 	else if (strcmp(directive, c"lexer_mode") == 0):
 		if (pg_grammar_lexer_mode(grammar, name) >= 0):
 			pg_reader_error(reader, c"duplicate lexer mode", c"new mode name")
@@ -727,10 +736,13 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			pg_grammar_add_import(grammar, path)
 			free(path)
 		else if (pg_reader_is_name(reader, c"token")):
+			int declaration_line = reader.token_line
 			pg_reader_next(reader)
 			char* name = pg_reader_take_name(reader)
 			if (name == 0): return 0
-			if ((reader.token_kind == pg_reader_token_symbol()) & (strcmp(reader.token, c"=") == 0)):
+			if ((reader.token_kind == pg_reader_token_eof()) || (reader.token_line != declaration_line)):
+				pg_grammar_add_token_identity(grammar, name)
+			else if ((reader.token_kind == pg_reader_token_symbol()) & (strcmp(reader.token, c"=") == 0)):
 				int line = reader.token_line
 				pg_reader_next(reader)
 				pg_match_expr* expression = pg_reader_parse_matcher(reader, line)

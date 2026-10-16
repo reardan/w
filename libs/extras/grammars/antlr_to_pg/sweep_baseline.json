@@ -1,0 +1,5494 @@
+{
+  "schema": 1,
+  "corpus_repository": "https://github.com/antlr/grammars-v4",
+  "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+  "baseline_w_commit": "298246c6d6906650d4cd9c677e93933abd9bf619",
+  "baseline_note": "Corrected empty-main compile harness; 179/291 compile, 10/291 strict translation. Historical directory-name subset: 178/288 compile. Compilation does not execute the generated parser.",
+  "selection_note": "Frozen historical sweep roots: shortest matching *Lexer.g4 + *Parser.g4 pair, otherwise directory-named grammar, otherwise all top-level .g4. Original audit did not resolve imports. Current runner records automatic dependency closure hashes and requires a clean pinned corpus. Changing selected roots requires reviewing hashes and affected stage expectations.",
+  "cases": [
+    {
+      "name": "abb",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "abb/abbLexer.g4",
+          "sha256": "d68b644ea95a62264050b9e2770d9047ae0e87b4831b52c1687f87f2dba47411"
+        },
+        {
+          "path": "abb/abbParser.g4",
+          "sha256": "e7e870687ac79b78b36943c9d5ef569960e3367a11181f16b92665176eafd0b8"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "abnf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "abnf/Abnf.g4",
+          "sha256": "d04738ccc1c86d88f11f878cc39336c5d0a05a86445118b6927c1e817a6446da"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "acme",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "acme/acme.g4",
+          "sha256": "9d04e11ae71888c70c7be1ec7e4dbfff4282f21538e034b7406e60995c97e37a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "action",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "action/action.g4",
+          "sha256": "2db46288b7a6078b4df7b5e87bc80b933ee608c6527004cf2eae062128f395d8"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "agc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "agc/agc.g4",
+          "sha256": "85df84543d8680860154a0acc4978e80b4ed96491a18e087bb261e8c2c43ceee"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "alef",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "alef/alef.g4",
+          "sha256": "e30544413212af3043ac9d941611d28bd99c628140822fe8758c5caa200d6862"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "algol60",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "algol60/algol60.g4",
+          "sha256": "1b0952312af48d67f3317312dbf909d6667350f8771d2c89e03f9fcebf9573bd"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "alloy",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "alloy/alloy.g4",
+          "sha256": "590771f05073bdb93fd211d0cf0fef8d3304ce26c01169a32322c6f733261a07"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "alpaca",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "alpaca/alpaca.g4",
+          "sha256": "9f23496a37e64b9978ac58802abd6a145f5a02b6be12f2f004dbc2ebf630ac3e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "amazon-states-language",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "amazon-states-language/ASLLexer.g4",
+          "sha256": "e15219c4318064595a6edd5b461a9a874bdc817af0d34802b73cdd754d73c505"
+        },
+        {
+          "path": "amazon-states-language/ASLParser.g4",
+          "sha256": "f58be03750db0e51a83cc5e1ffeeb4adac7aa2e9eb2520fc70802b3301ab9f19"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "amazon-states-language-intrinsic-functions",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "amazon-states-language-intrinsic-functions/ASLIntrinsicLexer.g4",
+          "sha256": "eb1e1a420c566bf371bd130f29865ee89cf0d258004b42a84593afff6f2289c4"
+        },
+        {
+          "path": "amazon-states-language-intrinsic-functions/ASLIntrinsicParser.g4",
+          "sha256": "788126c6c9b418ba027e7fc64a7da2c6ad3caa57ff8523d88cfca7fa31216890"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "angelscript",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "angelscript/angelscript.g4",
+          "sha256": "6be1e88ac5bfe7fe9600d27c2e98a9e065c41f652f7b6d4acf5a095b6ee69538"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "apex",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "apex/apex.g4",
+          "sha256": "dfd65613c40c8d9bc276d5cd1693a4c04bb83a83ccd527bf923928c905457b5b"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "apt",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "apt/apt.g4",
+          "sha256": "95dad9f654cbb5c4c1daac30c489f8700e04692a3e3421ceeb061805d1ddffe2"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "aql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "aql/ArangoDbLexer.g4",
+          "sha256": "200f018bc6bcbbe6ba33047b5cf7496dea4e2cd67799324a117c0c992d5e8c69"
+        },
+        {
+          "path": "aql/ArangoDbParser.g4",
+          "sha256": "0b9fd008d2218a298c6cc31eec1d53c2ec5b3577ce6c8ae523e65f867ea6d937"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "arden",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "arden/ArdenLexer.g4",
+          "sha256": "ba46aa76331724b0399d6d80b5d21b1c65877293951fedce41eb135b7311f549"
+        },
+        {
+          "path": "arden/ArdenParser.g4",
+          "sha256": "75a8458880511e355ca76d5cbcaa656e34ab62f0b821a456450f5e35f1d16aa3"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "argus",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "argus/argus.g4",
+          "sha256": "3fea12f0cbfdfba15575f571b004e2ab4b75c448d844620bf880e3b7cfa71086"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "arithmetic",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "arithmetic/arithmetic.g4",
+          "sha256": "084c5f41b4becf1bb3de2da155b500751c3c473332f89bc973d240349aacc812"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "asl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "asl/ASL.g4",
+          "sha256": "082a081fea2a4e1ab51aacc81ddd98f7b33fa34827930587fb296632655483c2"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "aspectj",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "aspectj/AspectJLexer.g4",
+          "sha256": "bd1f2704ce0403222b9cd0413ce6c9dea59086b72135e44f42574a87361a5c97"
+        },
+        {
+          "path": "aspectj/AspectJParser.g4",
+          "sha256": "cb761409510f4e6101147d8372e9e36806d58946b6a612e3c6acb5a00690670d"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "aterm",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "aterm/aterm.g4",
+          "sha256": "b2e86e301de60d457710616ee2dad9fe91a5a718a2ed815583cf90cdf1d75316"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "atl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "atl/ATL.g4",
+          "sha256": "cf27fe060f85de606c18d3304e57ea529af1f3aacc47eb307b08ef1ec88d52ed"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "awk",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "awk/awkLexer.g4",
+          "sha256": "1af3cb226555b082ac7d284ed66d48d8de0f043d05d037f0f527a8b72a8b1482"
+        },
+        {
+          "path": "awk/awkParser.g4",
+          "sha256": "18c25614a9eea9b02c5c42b7d071faae6eccecc6152189efdc7ae4adc009d60a"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "b",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "b/b.g4",
+          "sha256": "0cec1a9293999808af151b011e7f9fff782c9d32d100db023bab168f903c6e57"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "basic",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "basic/jvmBasic.g4",
+          "sha256": "2f8140f1211de516df2f85e4615ed6611ebebea840e9dd2e5de820aba4efe55a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "bcl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bcl/bcl.g4",
+          "sha256": "517ba532acd1f8203fab14eac17709f83de2339ca0b51823d0df8cdde57442d6"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "bcpl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bcpl/bcplLexer.g4",
+          "sha256": "d938deb7871581bdf157a78e63bd18ce5db8df3001d8488928cabe71d43b7c3b"
+        },
+        {
+          "path": "bcpl/bcplParser.g4",
+          "sha256": "685cad668cd45dc571593bb9209e198dc27ea6ffd15c578daccc199d645bc148"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "bdf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bdf/bdf.g4",
+          "sha256": "6d9c028f0682c38b44b78e3e7dceff73f8ff5648bca945b6785c856125d86a9b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "bencoding",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bencoding/BencodingLexer.g4",
+          "sha256": "545a56b9af7a8fdf035f9cfb77e91ecb02ac1aca2cacad387f0e6d4be82d9b1e"
+        },
+        {
+          "path": "bencoding/BencodingParser.g4",
+          "sha256": "821c92ef8ccaa263fe8f999b2e446ca5a24202d52cf684a1a08b7e142b9d9073"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "bibcode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bibcode/bibcode.g4",
+          "sha256": "16da94713b8f915880496415c776319d11fbfd3d1a6577f156e95d04790f7dc4"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "bibtex",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bibtex/BibTeXLexer.g4",
+          "sha256": "e7cd78d3fb878c88ef7b23fd993c10668dbaffe0e61e16f6022469080e335a5f"
+        },
+        {
+          "path": "bibtex/BibTeXParser.g4",
+          "sha256": "63e91976a3ae0b99625fea9f870c21275b6051c71b621b2442bf7cf92a20829c"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "bicep",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bicep/Bicep.g4",
+          "sha256": "8805536baa01af375492b8d27470b17a6e981eaf9b92c861817bcfe0060796fd"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "bison",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bison/BisonLexer.g4",
+          "sha256": "4fb17146fabd3d358d587fe776485d71d690caca334fa5113d4d35ea1a3191c0"
+        },
+        {
+          "path": "bison/BisonParser.g4",
+          "sha256": "2262a0741ade4dd26c5dfb8b876eb510bab07e4448b034a06976afe3b19b30a7"
+        }
+      ],
+      "expected_pass": [
+        "translate"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "blueprint",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "blueprint/blueprint.g4",
+          "sha256": "6e30f4e433eb3e3f79e9683798010c3fe6bc982469269536c4702db1ec578912"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "bnf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "bnf/bnfLexer.g4",
+          "sha256": "b6184fe8e492de56d81158861e4387a09fa0bfc1215a3bde8e52df2c2d68aee6"
+        },
+        {
+          "path": "bnf/bnfParser.g4",
+          "sha256": "aefc583c26bff9820f9ea9d5211831bea2e4ac681087a61401caa4d60ecf3656"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "c",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "c/CLexer.g4",
+          "sha256": "baf1ce4845f0c17ec069a8ff4197c04c7aab3120882528838951ed288379e0da"
+        },
+        {
+          "path": "c/CParser.g4",
+          "sha256": "3622a26210847910d2cf1f6c9080d2726313d44602eba52de9d4069a8ba05c04"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "calculator",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "calculator/calculator.g4",
+          "sha256": "25b6e3d448b5567d1230c10eff4f2fee1b6aabbc718e521e5513047f64a8c548"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "callable",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "callable/callable_.g4",
+          "sha256": "d3e25d06f76ec06d731896d11d4f2194d6744e5052bca79df77c79e7d6d7d3be"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "capnproto",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "capnproto/CapnProto.g4",
+          "sha256": "ff9d10135961d20286cb6bef1af0c9354b985ef0f3a0b2ad1b525f6e35156295"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "caql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "caql/CaQL.g4",
+          "sha256": "f87775a4749fef167ec20453196115128b7343b78263c41b56746d844c922f5c"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "cayenne",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cayenne/cayenne.g4",
+          "sha256": "ead90c709bd80a35ee83367ba2610a1424b3f067a40480d6bf330efc40b4b21f"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "chip8",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "chip8/chip8.g4",
+          "sha256": "c624cd833c4a418b37e5227a3a9b97a7a65c1d83549095a2c34951bf1c399746"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "clf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "clf/clf.g4",
+          "sha256": "0bde52b71c37eb9a42927d87178cc4086bad18bceaed0c2350b6e3c229caf6ae"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "clif",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "clif/CLIF.g4",
+          "sha256": "4e5e1a352b920b604fe340c9d4d965d4e41d45cb99f9cd84c7d59e306096303a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "clojure",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "clojure/Clojure.g4",
+          "sha256": "a4228668de153f7c7e3bd38cd13dd3982fcd75150b9bc358bc24922adeaa4c9a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "clu",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "clu/clu.g4",
+          "sha256": "2015ad08ce55043e3ebdf19be2778c7826bb940fe3f77eae0b43cd59db0f0e7d"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "cmake",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cmake/CMake.g4",
+          "sha256": "e9fe6cbd7f363984739a95847cbaf9212612db50171a71df12b2e221e8532b3f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "cobol85",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cobol85/Cobol85.g4",
+          "sha256": "c338bff84b5a7d89113dacdff69764593688fd0915f24fba2f07a5fec2063e35"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "codeql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "codeql/CodeQLLexer.g4",
+          "sha256": "24161ca5e19546906db0a7bb8beb23d6a807f39b386b2077c3c13360b1d80582"
+        },
+        {
+          "path": "codeql/CodeQLParser.g4",
+          "sha256": "d00a9722a3ae73d05efaf0b5542ca204b2dbee1c848ddefc39b9b65fe054e90c"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "cookie",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cookie/cookie.g4",
+          "sha256": "4523936b158dcc99ee6546b43957a3a63a71d2470ad8e01c301ef19cbbbd87f7"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "corundum",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "corundum/Corundum.g4",
+          "sha256": "85cbf17922e76472f21c6fca4c9b99616bc9e8aae0a7faaa873656c2aabaddb4"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "cpp",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cpp/CPP14Lexer.g4",
+          "sha256": "739a8782e05279318dccab76bf05af1ff5e3ff9e43f1b5b0d04e14d91d4fff47"
+        },
+        {
+          "path": "cpp/CPP14Parser.g4",
+          "sha256": "628062e9f75710ba1d1436ced8bd7d9d8f2f08c31a6e962c175e06b28994ff27"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "cql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cql/cql.g4",
+          "sha256": "2ab83eb1baf2e095dda45f11adfb723cfae864b73cbd845da423be7699ed0e9e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "cql3",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cql3/CqlLexer.g4",
+          "sha256": "c8620be23cfcdbeaf8c8eda22a0d2f98ed1c9a6593f178f0cd39b0a2374d046d"
+        },
+        {
+          "path": "cql3/CqlParser.g4",
+          "sha256": "1f5128fe05c7076f320199695ebd23fb5ffc2b13af11e5e07f6be3eb947b0373"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "creole",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "creole/creole.g4",
+          "sha256": "5dbd4fb2d1962632497c1c681055434be8bb75755bc943dc607f387fb0cea7d9"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "css3",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "css3/css3Lexer.g4",
+          "sha256": "188eb4549e7cd2ca1a9c7b4105190643188c3545d5a7bec997c7ffe54bec3435"
+        },
+        {
+          "path": "css3/css3Parser.g4",
+          "sha256": "80aa5cdb0c032189dd24715b8ca2c1c5e695ac239166479761373444226c452e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "csv",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "csv/CSV.g4",
+          "sha256": "d1cd4a08cbd0b42d3639edd54407b55c871914c1945bdc508541b70266591d8d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "ctl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ctl/ctl.g4",
+          "sha256": "a0d5278516e62e7036aad3c3aa8bd6e57735148f329700097357f847a751b80f"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "cto",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cto/CtoLexer.g4",
+          "sha256": "ff51ec0c6172806398c0912f5f1db2a32d5689c33f2400cba59d6dc01c41baca"
+        },
+        {
+          "path": "cto/CtoParser.g4",
+          "sha256": "958253d54f1187b5fbed3071eeaeb5f25b0dc8efdd34e7f12cf9ae4a1616f613"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "cypher",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "cypher/CypherLexer.g4",
+          "sha256": "2bfa961bfa289f43eac17788190014df97bde8daf9eab11008b0ee5941b36b8e"
+        },
+        {
+          "path": "cypher/CypherParser.g4",
+          "sha256": "6babb754c5fd2883a7cadac3caf5a01aec8eab116a871e718506a291e999e37c"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "d2",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "d2/D2.g4",
+          "sha256": "e12125515a481b09df012f62d667f8720c7100cd2138fb4bc8664c6fc27d5a75"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "dart2",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "dart2/Dart2Lexer.g4",
+          "sha256": "f36b51b08b1cea36dbcceacd52a4692689368b01c723c52984fc9096b113bb09"
+        },
+        {
+          "path": "dart2/Dart2Parser.g4",
+          "sha256": "1dfe3a9b3a9c5a1eaae7965635962364a744417690bd08725256294b0541f456"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "databank",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "databank/databank.g4",
+          "sha256": "0970b788cf50d8993e325656ae6b89cbed042d62844215e2ea764b8e4db9e688"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "datalog",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "datalog/datalog.g4",
+          "sha256": "54461574bcf699b10c6739d3080c013ec51c77901cbbfff11e48166f7c1f1f17"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "dcm",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "dcm/DCM_2_0_grammar.g4",
+          "sha256": "a5fa6566da739f0f64fdc4ee30f941495c73053b2bc4836a2052aa1aa872fab1"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "dice",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "dice/DiceNotationLexer.g4",
+          "sha256": "a84fc6840a629e7792136aae06e6b84075b3472b0acd1a2fbd7b6036bc2199f2"
+        },
+        {
+          "path": "dice/DiceNotationParser.g4",
+          "sha256": "8573d74ae267f7614819e5b450a40e3bbec7cdc764b31a950ea79f988020035b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "dif",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "dif/dif.g4",
+          "sha256": "1896a2bdf517d52d4ee646378f0c21be41593384172b0ca9a4590c07e9657fe3"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "doiurl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "doiurl/doiurl.g4",
+          "sha256": "8786822c529cc51f76e5fe552976709945ebb2f437280bd72f7fefabad70166f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "dot",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "dot/DOT.g4",
+          "sha256": "8af8ff4af7cdd70213bbb9031b3729fccc36963b88ea4762df37f1655ce19c8b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "ebnf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ebnf/bnf.g4",
+          "sha256": "fa7dc58af824fcde3494a3ccbb2c1926669ffecfa06be37f51a66ee0fbf70f13"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "edif300",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "edif300/EDIF300.g4",
+          "sha256": "b990434ea086f589931c200913cced0a3a3040341bdfccaca4d6a5099451673c"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "edn",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "edn/edn.g4",
+          "sha256": "b8667f3ab7b723342e37d60f05620e250ce8f570dbaef189ec0a7d984377e41d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "eiffel",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "eiffel/EiffelLexer.g4",
+          "sha256": "de0b00f69f2166cccd8cb24650b0a12ca758cf97d9bc0d09707a64b5c5d88f47"
+        },
+        {
+          "path": "eiffel/EiffelParser.g4",
+          "sha256": "0985e782fe3dc892e0275780f513f3353da012e530a0265c46fb59d5bb2bd720"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "elixir",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "elixir/ElixirLexer.g4",
+          "sha256": "54c708bec7b4640ca364c2effa320624699403fbfb5a22cf41c3d6d8fc91ed12"
+        },
+        {
+          "path": "elixir/ElixirParser.g4",
+          "sha256": "114e718cf798d5d4c3a1d996ef926ac622ff171f0fcf36464cbee590cf5e4e2c"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "erlang",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "erlang/Erlang.g4",
+          "sha256": "21c7ebc31d76aaf4e257e9a822afcc01f4484a213b7a5720b5c9cd8e10a57e8f"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "evm-bytecode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "evm-bytecode/EVMBLexer.g4",
+          "sha256": "09321abaa7fc1e5d40ba84175b53be8399c60aea5e4422a9f9a86864b48d77c2"
+        },
+        {
+          "path": "evm-bytecode/EVMBParser.g4",
+          "sha256": "e6bbb00fad590e4978cc7eef605f76371c1bd6ef3f45176437bdcd5ecafdde50"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "fasta",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "fasta/fasta.g4",
+          "sha256": "57fc8272dec06f659587566e084e9e9fe7bb3c2ee1265427da3169fdc122adbe"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "fdo91",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "fdo91/fdo91.g4",
+          "sha256": "28f923d9a9374330b30d25d5c33e89381ee6b011baa39174cb0a65d934eb2b45"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "fen",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "fen/fen.g4",
+          "sha256": "9f5df7301ce98eda8bfb44612545b61e508ba6f5c255d5311e578e980aa41be5"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "flatbuffers",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "flatbuffers/FlatBuffers.g4",
+          "sha256": "e3af312fa97a9f7021e0ca1374c2699e726be50d9e59c81b88d11cad5749bf51"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "flowmatic",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "flowmatic/flowmatic.g4",
+          "sha256": "1b77135483d72d240fd580e2845909f1a0d8f444863646ed96e46ee244ae692d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "focal",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "focal/focal.g4",
+          "sha256": "74f19b39c93fad6fb3fdefb96cc7de6b509e4ef35557ef6882b21d8551705019"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "fol",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "fol/fol.g4",
+          "sha256": "f4b24052d8d5b017153955d67745e1e64bb3c558545721782b802e7c214a0292"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "fusion-tables",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "fusion-tables/FusionTablesSql.g4",
+          "sha256": "40c9cd763730da393e941716ca8f25da5c183099611a9f0f6c0cd85236e8094e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "gdscript",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gdscript/GDScriptLexer.g4",
+          "sha256": "b13fcda303ad4bb108137b66575e9e40afd7eab884b9845591acb0eb836730b2"
+        },
+        {
+          "path": "gdscript/GDScriptParser.g4",
+          "sha256": "242e325178f8d45d717e6c44116bbb7b00f8d43b3f4e7f593218c82078bb3e6d"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "gedcom",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gedcom/gedcom.g4",
+          "sha256": "660047183716d2c4008b1a6084d9e69356f018a5e5929b45d18a0740ca5526b1"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "geekcode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "geekcode/geekcode.g4",
+          "sha256": "ed88318ca33b5f873fbf3be1e5fd810854bb2eb5d0607ca1fffe2a2c418d12e4"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "gff3",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gff3/gff3.g4",
+          "sha256": "a8e80d5e9edc99195c3033d42ca5e56f31424cce2e12b0ac85e3dce6b83396cf"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "glsl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "glsl/GLSLLexer.g4",
+          "sha256": "38fb35b85083a91ae4a913e09cfb63e799ec5b6f83521e573079838a3a305a3c"
+        },
+        {
+          "path": "glsl/GLSLParser.g4",
+          "sha256": "27cd368e209312e2bbb8d761454733eac1c634548f104eda38b3dde5b621562c"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "gml",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gml/gml.g4",
+          "sha256": "aa74e5683008f2705ac2545ecbb468bdcf8282385f86b3edae88cd3689dbbaed"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "golang",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "golang/GoLexer.g4",
+          "sha256": "f97d4dcf1b219cf45788d0be0963ca84a1f57337bbd58dc70f08b152649a29f6"
+        },
+        {
+          "path": "golang/GoParser.g4",
+          "sha256": "b0306f3c9b003dbf503c956aa917a9f574bd3e33a0d90ae6edf1f5bf2951a175"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "gql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gql/GQL.g4",
+          "sha256": "e1b4a24c6b88dedddc0a1fff97df0fc30bf118cea51539e26d71c717cb737bbf"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "graphql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "graphql/GraphQL.g4",
+          "sha256": "ef9d52cfeacc7b1274565c1e9875a54765ccb71e087f3364b14f2e5430cc48df"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "graphstream-dgs",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "graphstream-dgs/DGSLexer.g4",
+          "sha256": "7721c5021cae92f6c7d094bc5aa648ef12f43133f89a32098bc77d4a90350dcc"
+        },
+        {
+          "path": "graphstream-dgs/DGSParser.g4",
+          "sha256": "ceabb61a3ea79a99892cfdcae49bebcdbfc281010a21fca68f86607685104293"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "gtin",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gtin/gtin.g4",
+          "sha256": "e25483d6123e1c7ff85b778debc7847744d4abc11d2e5c0f0b75044a8451fcfe"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "guido",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "guido/guido.g4",
+          "sha256": "6116f0e6846a1cf9c4004d57de5b6e3098591a555ff1944d01d988379e89121a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "guitartab",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "guitartab/guitartab.g4",
+          "sha256": "d9df4346a9bba78b1db2ad94cb902a84d13583a4337fd0d83279411cdec37b47"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "gvpr",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "gvpr/gvprLexer.g4",
+          "sha256": "f672492047c95f9afb8466ea1cebc7d8725e00a90b8b3fc651d715819a2de891"
+        },
+        {
+          "path": "gvpr/gvprParser.g4",
+          "sha256": "77933a7e8a4aade78718005fb2d7be814df9095fd6f2632332214c46624945a3"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "haskell",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "haskell/HaskellLexer.g4",
+          "sha256": "77c016c9d9991628295b792eaab1745dbdc673ea4ace52b6f6e2884b4ff7f301"
+        },
+        {
+          "path": "haskell/HaskellParser.g4",
+          "sha256": "869b40518d32ef289b98ad6db02f0a1959f8dc35da9062559778a417215d5e13"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "hexpat",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "hexpat/HexPat.g4",
+          "sha256": "2b87bafa7af18ee125910b2f2fab3122186e6a7ce124c8b6645baffde758f6e3"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "html",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "html/HTMLLexer.g4",
+          "sha256": "7e970ef3245a0a785912929568c59067c8646e0740497303ae15ec45a0f385a5"
+        },
+        {
+          "path": "html/HTMLParser.g4",
+          "sha256": "a382e6b84b875bd1470cfc2031316c4d9525a1def09fa5225962611b11ef517a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "http",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "http/http.g4",
+          "sha256": "cf40d18b77b5b85726eec256126d5de0f7698178f1c0f18a3171bc9dee1ad6a9"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "hypertalk",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "hypertalk/HyperTalk.g4",
+          "sha256": "ed77c3c27149519a48c980c30ab731572c8113827735dd57a24353c9044a7541"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "icalendar",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "icalendar/ICalendar.g4",
+          "sha256": "9cb37ace3af5b5957f0b40e1f0652cd57e407ab85ac21683c79af15999023af2"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "icon",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "icon/icon.g4",
+          "sha256": "6f49ce6f7612114e87b4cadc9a8b647656d098941b108a6f872aee90b1a28adf"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "idl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "idl/IDL.g4",
+          "sha256": "7d2fb819b65f9a6de470a87590cf49ebb1754bd5e4361945d7311438c5638d10"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "inf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "inf/inf.g4",
+          "sha256": "3ee7797d0b9ed63b10998cc6707992f0154bdcfcf69d84d8db69ab5944dcfa28"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "informix",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "informix/informix.g4",
+          "sha256": "5edfddbad550c35afa0108f41fdccf47afa2f97014f3cf750bbd92b7e996bcbe"
+        }
+      ],
+      "expected_pass": [
+        "translate"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "infosapient",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "infosapient/infosapient.g4",
+          "sha256": "020ee4f4c010c259c0a0f94d390089125705bfed76ebde1d864b0a8681c5fcfb"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "iri",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "iri/IRI.g4",
+          "sha256": "275dd69b300e3b902def34e2fd90e2f582b4adee97a07ca13f1ac86e2f872e47"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "iso8601",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "iso8601/iso8601.g4",
+          "sha256": "8427db2f59c99154c6e8b9c16541e280b53346df4dd7f89d1983a88218148255"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "istc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "istc/istc.g4",
+          "sha256": "2ab0310b0c6adb617fde91cb5b93848a661e7dbf51f284ea406786ed720f1a9a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "itn",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "itn/itn.g4",
+          "sha256": "40c8f9337b83d4be9a3eff8767dee2ee9cc47e03fe2981e5d77ad4f1d254d7fb"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "ixml",
+      "historical_288": false,
+      "inputs": [
+        {
+          "path": "ixml/ixmlLexer.g4",
+          "sha256": "0c489d7923459afd5338a6c3f004b9f53cde1b9db3c02359ddcc5367e17e39a6"
+        },
+        {
+          "path": "ixml/ixmlParser.g4",
+          "sha256": "d8ede11dc2a2c87ebce268aab393b174cbbf46cf2d4a7a9250a30e186fc628cf"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "jam",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "jam/jam.g4",
+          "sha256": "c6d7f2e9425dbea5d7e89835a82bf73f31bb5f5d4eca76cc724c282d2b58926a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "janus",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "janus/janus.g4",
+          "sha256": "426e1cb45c9bcfc189e8da251c5896e12080f67eec5466286432a104b895d54d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "javacc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "javacc/Javacc.g4",
+          "sha256": "1d88029073eecf3cd96359e9e803c016ea388a425d6a81ba99267b3bc2319bec"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "javadoc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "javadoc/JavadocLexer.g4",
+          "sha256": "5c5fea257c31799d6a3c7387fe5a9b604b48d90391f918640d722d20668a25c7"
+        },
+        {
+          "path": "javadoc/JavadocParser.g4",
+          "sha256": "d304c34100f42446529697d4ded52c00f122a2096b045be71f2ecdb875f40e42"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "joss",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "joss/joss.g4",
+          "sha256": "52a1939afcc5a62bb565cbbde71fc99e48a4be5f22369b9b12ec76b6069a543d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "jpa",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "jpa/JPA.g4",
+          "sha256": "d12cac0d2794cc2cae67aa113fe57fcd756482eb45cd277675a57e2d1d08caa4"
+        }
+      ],
+      "expected_pass": [
+        "translate"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "json",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "json/JSON.g4",
+          "sha256": "1ec0e422caf2855be3497efaeb5e23f91adc6a65068757e2dcf83467119986f4"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "json5",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "json5/JSON5.g4",
+          "sha256": "c96f953b87e76b108e91767dc26cdb45b877e54f4b74c6f2d115f0d0f74feb6b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "karel",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "karel/karel.g4",
+          "sha256": "b5356a055fb3bc2f857a4987bf157049bd70aec685463fefdfed7ba1999e2439"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "kirikiri-tjs",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "kirikiri-tjs/TJSLexer.g4",
+          "sha256": "67389695f5d770fa7db25ae16af27f8f2b8a6cdddd3689ab1d53b7cd19d647e7"
+        },
+        {
+          "path": "kirikiri-tjs/TJSParser.g4",
+          "sha256": "1d882904ec19b2938ab8e5b47fbd6bbd689c4a689e7e291b766004c62ded3a95"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "kquery",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "kquery/KQuery.g4",
+          "sha256": "63d58af8db52df30004310b158ae00000ba4ea6e7b04ad99bfe1038da6700a06"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "kuka",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "kuka/krl.g4",
+          "sha256": "b4797b2480bcf9ebe35c55338dfe4935ba759112600f77e3c7a5bce18f037d9e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "lambda",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lambda/lambda.g4",
+          "sha256": "bb7054fab20c6d7f5f5143e52ef688a89ff81afd14a323fb5e6335fef468a199"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "langium",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "langium/LangiumLexer.g4",
+          "sha256": "67fa995376acdaef2bc6df8f45c3320081d715083ffea372e3515fb23c5044b7"
+        },
+        {
+          "path": "langium/LangiumParser.g4",
+          "sha256": "9c3db9e63dfef5b0af22c5b15d4d36c75fc3a845e13fdaa5ede8af2cd3fb2607"
+        }
+      ],
+      "expected_pass": [
+        "translate"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "lark",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lark/LarkLexer.g4",
+          "sha256": "2641eedd0ed61c5436fdd4493598c3649fada626f62e8405767a78c8700037c6"
+        },
+        {
+          "path": "lark/LarkParser.g4",
+          "sha256": "ca6cf703aa44b36fe894f5e6a55c1aef177277064091e5f3bafc8a42cc16ccdb"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "lcc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lcc/lcc.g4",
+          "sha256": "a3c845ec39bee483e4104b243830f7bd6eaf83fa45b40fff861ef36ab04020c8"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "less",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "less/LessLexer.g4",
+          "sha256": "634629ad5e522ca364ddfbc734e09324e8029703265112b8cb1ec2199f901cf2"
+        },
+        {
+          "path": "less/LessParser.g4",
+          "sha256": "ac67623b277e4ca95a44fceb5149e000ae155986fc73d697c77531b8a4b7d5be"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "limbo",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "limbo/limbo.g4",
+          "sha256": "e14bd7db758ba344f5a125750b7b0acfd7b9876d5d303a271bd7f16ae11a1eb7"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "lisa",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lisa/lisa.g4",
+          "sha256": "f3ccc668bbb888bb3333d1a2b4a2bd4fb5a887edd82fbf0949d695c88c07ffc0"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "lisp",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lisp/lisp.g4",
+          "sha256": "b1b5139fb853094db3709612d7e60cb52ed587b28ec78b6315ccb9928f1c438d"
+        }
+      ],
+      "expected_pass": [
+        "translate"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "reclassified": {
+        "generate": "ATOM_PART: (LETTER | NUMBER) ATOM_PART has no productive base. The previous rewrite invented a repetition language; the corrected matcher refuses this unsupported recursive fragment, leaving ATOMIC_SYMBOL unresolved.",
+        "compile": "ATOM_PART: (LETTER | NUMBER) ATOM_PART has no productive base. The previous rewrite invented a repetition language; the corrected matcher refuses this unsupported recursive fragment, leaving ATOMIC_SYMBOL unresolved.",
+        "strict": "ATOM_PART: (LETTER | NUMBER) ATOM_PART has no productive base. The previous rewrite invented a repetition language; the corrected matcher refuses this unsupported recursive fragment, leaving ATOMIC_SYMBOL unresolved."
+      }
+    },
+    {
+      "name": "llvm-ir",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "llvm-ir/LLVMIR.g4",
+          "sha256": "095bbfa54e4e60504e12a1ef21375d8b09c53c8a9e51c5ad67470dc182c70398"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "lpc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lpc/LPC.g4",
+          "sha256": "2a08e507d83a943c6708bd4f4ddd501a12263fb1f7c7872ebc6444237746434c"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "lrc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lrc/lrcLexer.g4",
+          "sha256": "f7af6d22efcf5d044d463362a59499bcdc7b23706100e4c7cc74bb75361b9dc7"
+        },
+        {
+          "path": "lrc/lrcParser.g4",
+          "sha256": "dd90518813e93b6e1522e195348a0ed78f6844a9616792e31ab6be2b49d70a65"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "ltl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ltl/ltl.g4",
+          "sha256": "7ff0e2809b2d22595413051ad320745b7ed294e08270a697b0c8b073fe37861f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "lua",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lua/LuaLexer.g4",
+          "sha256": "9cd7257a4480a5e36a9fc5bad96eee2ee732babbd540d250a49f82566a4f24fa"
+        },
+        {
+          "path": "lua/LuaParser.g4",
+          "sha256": "71e65e9dbf7405d89999574ec4c1a3f6a264dd06db59565ee4752a3e0a1e3df6"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "lucene",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "lucene/LuceneLexer.g4",
+          "sha256": "b9f688782344b6fe3e3e5da43e8888f2c40cf624c8b591ce3b87546b6dcc4b4f"
+        },
+        {
+          "path": "lucene/LuceneParser.g4",
+          "sha256": "d0ceb67ac7953815e32cda51c9a08dbe29e543e0846d7792653eca7b88dfc507"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "maml",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "maml/MAML.g4",
+          "sha256": "f216c062d5f6852897b9c0616aadca6594ee7e3d170ce59bb922d8ea8c7048f2"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "matlab",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "matlab/matlab.g4",
+          "sha256": "1320c8e2db025ae4f381cc2619b8dbddfee4227cf5cf87c8f970e41e9e73868b"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "mckeeman-form",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "mckeeman-form/McKeemanForm.g4",
+          "sha256": "8e40d7ca882369e6dd75c2292facbe9df11c2c0dee6bae201608175fa7f591e1"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "mdx",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "mdx/mdx.g4",
+          "sha256": "71294d056a9ea85f3617fc81eb4b0d2083340b325ad5558da0156de9570ee041"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "memcached_protocol",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "memcached_protocol/memcached_protocol.g4",
+          "sha256": "7b47bf83a7bd6e8e9f7b1d40f5ca0894e4389d694b58b4c31915f32eaf2b270a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "metamath",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "metamath/metamath.g4",
+          "sha256": "a4e76ead703f3f220914ab798ebfe460fdbbb70bce9f7aac2c2d8b2f9c0eb79e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "metric",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "metric/metric.g4",
+          "sha256": "6841b5ad75d004738373b723de84fd29afb44deb21135a9aadf14890db4eadba"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "microc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "microc/microc.g4",
+          "sha256": "b0ab61a044c839c78e376e0d3428583ff1ae69c58ed1aeedffe8d9e89dc470f0"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "miniscript",
+      "historical_288": false,
+      "inputs": [
+        {
+          "path": "miniscript/Miniscript.g4",
+          "sha256": "f18037acfbc25c227d6d839059d83e481f58396f0c1fe91b061850cd3f6dc079"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "modelica",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "modelica/modelica.g4",
+          "sha256": "f8ba6356d56c2f07bc8274a8ec5bc2246c83b10f68957090e17a077c2b5e5973"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "modula2pim4",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "modula2pim4/m2pim4.g4",
+          "sha256": "d2640db47c7aaf7b38cd33bdf773e5bbf35e5fd39c1e5d105dc66b02f41fdf32"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "molecule",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "molecule/molecule.g4",
+          "sha256": "de29fc645f8ae4e82412839609d9c6ef27d66fe7b66947bb07e3ef34c88ed2d5"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "moo",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "moo/moo.g4",
+          "sha256": "0038ae74426d33b6b99c91545dbbe6d1bad1f241eb546d4f5a258ea94dda7075"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "morsecode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "morsecode/morsecode.g4",
+          "sha256": "afe0e5e93284979aec62afca8f11839bd441e658f71b36da00fde0008b4a67ba"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "mps",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "mps/mps.g4",
+          "sha256": "4f91591c0d3def23693220acb509e385e0d9ad4705e38c5de4068fa789cd4ba8"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "muddb",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "muddb/muddb.g4",
+          "sha256": "649c8d22cff7f46f22fd674779208e576ccc80ab02e397343fe6e552de809609"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "mumath",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "mumath/mumath.g4",
+          "sha256": "08318d7a746dffdda749d9156f5c2b1b00e739eb0a6a72c36ece863e83231b00"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "mumps",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "mumps/mumps.g4",
+          "sha256": "738bee7969ac99dd52ad9a7f0e5c604433a6960927bd1dfd92c32f25de14920d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "muparser",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "muparser/MuParser.g4",
+          "sha256": "fda5faa5079e21660a237fab5add64545c6147d61bf5063891fa739faed0bff7"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "newick",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "newick/newick.g4",
+          "sha256": "5bb5e68257d18ed8ef3ab1fc1a3cbae175892c7e757c2303836d18902c99fd5b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "oberon",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "oberon/oberon.g4",
+          "sha256": "e84d2ebe16547f9bb2c14ef617d45c5cedeac4c075fa1e666fe08bd3a8855ad6"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "objc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "objc/ObjectiveCLexer.g4",
+          "sha256": "37c4a319d1ba9e5cae8885e9f9892185cc02358fc7fb0b39e49141e85d253dfc"
+        },
+        {
+          "path": "objc/ObjectiveCParser.g4",
+          "sha256": "379f16b61a04c63b0d842a787411c7a06692fe28303d49826a7738221119cfdd"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "ocl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ocl/OCL.g4",
+          "sha256": "7f3bafb0781e6af7a70a604106cd3116fc8d0d93cd7ab0a41099c6f0f886d823"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "odin",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "odin/odin.g4",
+          "sha256": "17c78bee7a0f398896f04da21a7d10a2f687e42015ff3e38a5f1210c71c87936"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "oncrpc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "oncrpc/oncrpcv2.g4",
+          "sha256": "3af07fa21bc7f7533770b56a4865529b23e506fbbd6cf4bcfacc465758005283"
+        },
+        {
+          "path": "oncrpc/xdr.g4",
+          "sha256": "7005c2625f154ba8be6f941cc6c10220a4fa1b2029f4015ebed2ffb325e709ae"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "orwell",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "orwell/orwell.g4",
+          "sha256": "fad231800204100bc2f84e258cb1974c3fb80f2ee8d7c250130a587d9831d897"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "p",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "p/p.g4",
+          "sha256": "dee968fe255d3fe3434bc6ebe6b2fa7698c27e5d61c2b0e770986a8d145fcc2f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "parkingsign",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "parkingsign/parkingsign.g4",
+          "sha256": "1c35d78c2bb7c27a9189e21e036de5ef511be71b8e8ee11047347c0696ed2b3d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pascal",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pascal/pascal.g4",
+          "sha256": "2b1c791d80868343c1bacb554b51167639f38d817cd9296aacc37d474cdc6358"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pbm",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pbm/pbm.g4",
+          "sha256": "c91c57d948710401252acb77a6fbd95426ba929f55399a728a3242b4f3d3d3a1"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pcre",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pcre/PCRE.g4",
+          "sha256": "3362eb35ecc848d6c9b44f0d40fbf612d22e5b982cb6fcedfe1cd37a9178661e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pddl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pddl/Pddl.g4",
+          "sha256": "33f9068f3c5636c2e005f1ba0ae0ab663016e81f03ac3fb81eea93d5fdaebe81"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pdn",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pdn/pdn.g4",
+          "sha256": "fdb8dabef0c67a49e563bba2a0fbe26000ef85ef4e9765d437c4b7483da5553f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pegen",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pegen/pegen_v3_10Lexer.g4",
+          "sha256": "a046fa235250d6d2ede64f5c1fc26a74914034b87e12973d8ef99a14e8d3cf8d"
+        },
+        {
+          "path": "pegen/pegen_v3_10Parser.g4",
+          "sha256": "83c1845a986aafeb497df865b8bf461fcd6abe34b1e8ccfe4ade536a6a4e97c7"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "peoplecode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "peoplecode/PeopleCode.g4",
+          "sha256": "5f110ad58a772b92d7e8bf0aa6aacbe797941a22510c17a473dbec72e452aec3"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "pest",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pest/PestLexer.g4",
+          "sha256": "0bf2120f20298c16674a36e0a2c5ffd6ea4d6a90c0253eadb586902768deff48"
+        },
+        {
+          "path": "pest/PestParser.g4",
+          "sha256": "0a452b731dcee13346618d773cacf1e026c1b6679fbf0752ed01172110a25d42"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pf/pf.g4",
+          "sha256": "f1f84db27aeabff8f991f35ea5a3865772ec3a457bb22971515250894bf895ae"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pgn",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pgn/PGN.g4",
+          "sha256": "28073600be0fbec34a546ac1eca71b0a1e1f437663c0cb6d40a85cba26105ed9"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "php",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "php/PhpLexer.g4",
+          "sha256": "021434f3762d7f6a931f2f060dc9d57c6513eb009bb16b046db90673895c83ec"
+        },
+        {
+          "path": "php/PhpParser.g4",
+          "sha256": "8e52ff1b34efb771b50ad2fb695f75c71c0612aa35db656f6f112710f85fcef5"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "pii",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pii/pii.g4",
+          "sha256": "e6db3c225ef9c4f046be21864c57b23af45103f93ef4d1314d91da6f087ffa7b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pike",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pike/pike.g4",
+          "sha256": "7d251809779dbd318c619f989290f92698e4e018bcb60ace1761726457de1169"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pl0",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pl0/pl0.g4",
+          "sha256": "3ff7d1067624aa3d41c8a7163759593da9f6cd58cf50c90fae27417265868d27"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "plantUML",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "plantUML/PlantUMLLexer.g4",
+          "sha256": "000db3b49e1d65db6208319e481123739f21e2ad89b48285ab6ff4ec8aac9ef9"
+        },
+        {
+          "path": "plantUML/PlantUMLParser.g4",
+          "sha256": "0ba312534ef550f3268360b228b9b88b7cc8f9aadbf9f1ec56433421faa91ec8"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "plucid",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "plucid/plucid.g4",
+          "sha256": "427b527584599babc93fd1efe59467e863b5a9d07eb7ecdc48fe9c3ec55e5a4a"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "ply",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ply/ply.g4",
+          "sha256": "8d40770ea62b09342bec7f8535b169076d0a203063a9ca4008f8f2e99c8d1425"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "pmmn",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "pmmn/PMMN.g4",
+          "sha256": "bdce72a53eba8c972634cd972e887aec3bb4039576b631770c08a6206231a249"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "postalcode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "postalcode/postalcode.g4",
+          "sha256": "d357e2524ca950c28dcd7062395028c085710bf7372d01b865fe70ace205d7c6"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "powerbuilder",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "powerbuilder/PowerBuilderLexer.g4",
+          "sha256": "05699e3b4919e40b35aa73c4480d1e756d1afffcdf96c329a94d8d50472962bd"
+        },
+        {
+          "path": "powerbuilder/PowerBuilderParser.g4",
+          "sha256": "8fad4ad5b8ff467432eae92250dc34df6ae209ecf082591f9e734d0c593250a9"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "powerbuilderdw",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "powerbuilderdw/PowerBuilderDWLexer.g4",
+          "sha256": "c1eded90e69d85f7fc8469d34daea560889a556b6f263a7d9e324ef5467a6027"
+        },
+        {
+          "path": "powerbuilderdw/PowerBuilderDWParser.g4",
+          "sha256": "e182e2c44c834f76113c0e5080607caebdcf25669f083808bcc26fa24fd1d23e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "powerquery",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "powerquery/PowerQueryLexer.g4",
+          "sha256": "fd6eb87b4c89e06114850cc1eaa56554ca50994313ea94cc997277b851b633e9"
+        },
+        {
+          "path": "powerquery/PowerQueryParser.g4",
+          "sha256": "164a65614b9d1da5cfe5e154894976a069ec44896804a2661e2a0270da2c02df"
+        }
+      ],
+      "expected_pass": [
+        "translate"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "prolog",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "prolog/prolog.g4",
+          "sha256": "31cbbe6c6018c116c0c72f9cfdcead9fa6719383ab56162fab4a7c4e855f7c75"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "promql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "promql/PromQLLexer.g4",
+          "sha256": "7cbbe9da02a3ae22161cc294dc585e3109323cfbf035035f439ce4cd34d8f24d"
+        },
+        {
+          "path": "promql/PromQLParser.g4",
+          "sha256": "26ac88411f6578b7368c3f97ffe7c8b961037fb92e7d222d4948c933ba05b826"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "propcalc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "propcalc/propcalc.g4",
+          "sha256": "96ae2fdb938553b672d5d730bda0a8219a26c07ead497f1c282d81d629cdc879"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "properties",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "properties/PropertiesLexer.g4",
+          "sha256": "90ba05861239c7386e54a6b21df0d6ace6ea81c059eade9f4edc3751ae2ca01e"
+        },
+        {
+          "path": "properties/PropertiesParser.g4",
+          "sha256": "0ba2de69ac8ea7c5023f304297789676e9d8a4789742595239784f3a84fe64ae"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "prov-n",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "prov-n/PROV_N.g4",
+          "sha256": "43973bc63a9c60f9a976fc85bdcd12b7c33e657c317540d8da5ae9581a56992f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "qif",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "qif/qifLexer.g4",
+          "sha256": "4def8efcf33f174fb8d0d6d8beeb890ea799b520f389449158125b85717404c4"
+        },
+        {
+          "path": "qif/qifParser.g4",
+          "sha256": "414eda5b3ea7ac75ee72ca73f985d8cb43a4acf93e511e43a79223dc4048b723"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "quakemap",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "quakemap/quakemap.g4",
+          "sha256": "2e7d432c523222695094f1f39bedbe5008dd41939b8a71ca411c200213efbd7d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "r",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "r/R.g4",
+          "sha256": "b2bb6bdbc8cd648b4918f9fc3bb6e06d95a4e531b3da3acbbe0f8faafe7b6ff2"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "racket-bsl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "racket-bsl/BSL.g4",
+          "sha256": "0d8b559184a7beb09290af8e5654d52981759357b9b235d143851baea5457cae"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "racket-isl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "racket-isl/ISL.g4",
+          "sha256": "f9254b37258b90f2b0dff88b6674946ef4cfe11f67a9be4538f5d3660790f60e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "rcs",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rcs/RCS.g4",
+          "sha256": "383a1be21f92cfc89c0f748172df20ed38b2c6093b030cf9155524808ac62301"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "recfile",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "recfile/recfile.g4",
+          "sha256": "c05861fc376bc0d4f4f6f4dea1496bb986baed05e387330b4f2c559f813380e4"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "redcode",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "redcode/redcode.g4",
+          "sha256": "157dd9b529365735bdbe6b888ac6a7feacfa4c63fabec30bfbf802bc39f31246"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "redis",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "redis/RedisLexer.g4",
+          "sha256": "880032ce514a41af25369e77f41849d16e0ff67cfa5845f3543e8b0d7cc1cd7a"
+        },
+        {
+          "path": "redis/RedisParser.g4",
+          "sha256": "48e7410437fcbf2ec66f4b42296b8c38928d349df783b498f9602dbe1fcdc192"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "refal",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "refal/refal.g4",
+          "sha256": "5e8c0eb786292fb0f7bc2dc3c3e63156d9fdec3eef5faab0ba21531bcc1c8489"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "rego",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rego/RegoLexer.g4",
+          "sha256": "b1b50c8aa40ab72a0a533414cbe46213fa9f5d3405bf08c6a8273f3bb06158f6"
+        },
+        {
+          "path": "rego/RegoParser.g4",
+          "sha256": "4b3a2679df8d0aa26290af5bc239771da7f0f090da52432e3fd1eb527a904d4e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "restructuredtext",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "restructuredtext/ReStructuredText.g4",
+          "sha256": "e48f81bd0b038b0d7d74974a0277b687f5b1158862c3d44b6bd42c960772ebc3"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "rex",
+      "historical_288": false,
+      "inputs": [
+        {
+          "path": "rex/rexLexer.g4",
+          "sha256": "dc0cfc80c0996a11abbf215894a4bd4af1eec390ed47698ee14a7e7de5a54c35"
+        },
+        {
+          "path": "rex/rexParser.g4",
+          "sha256": "0f03c231ff1156027d4eee41df781cd164f1c1c169e481f87989cad31f4621c4"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "rexx",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rexx/RexxLexer.g4",
+          "sha256": "02a4dad299b9a44d885ce52419a70434d1287ddcacf5de09d1b75a5eb42fcc21"
+        },
+        {
+          "path": "rexx/RexxParser.g4",
+          "sha256": "017cc311d0be5e8534cfc2d9be59b78ebc0f5ee1ccb5fac22682c43a03b3a6ea"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "rfc1035",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rfc1035/domain.g4",
+          "sha256": "033849834cd5e8f1d3a9b7dc3c27667f128e3074de0382e31bc2af054066508e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "rfc1960",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rfc1960/filter.g4",
+          "sha256": "1f9fa71b260bd5372fbdcf72442583c8bbbf5cfb5edf54897380b331e777d1f2"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "rfc3080",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rfc3080/beep.g4",
+          "sha256": "9259503737175e1a1ce11c544bac731e4e688e2b2b8fcd1d5adda7f68fe0a33f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "robotwars",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "robotwars/robotwar.g4",
+          "sha256": "468001ccaf1acfc285bca7b07ffdb630e31abbdcce393d8498cfa778d6a79620"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "romannumerals",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "romannumerals/romannumerals.g4",
+          "sha256": "2e14d619c2f7bebad278675eb8dd1f382b085c81798550dd0191368e47504356"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "ron",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ron/ron.g4",
+          "sha256": "70f8c79d2d1f58f1f47f2bfa46c5876031db3bfe9d77f46d0af2a26ec3d17a9a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "rpn",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rpn/rpn.g4",
+          "sha256": "f7eb838e9e75cfb75eada713ebff175992ce4947dfd61b1606933b81ccb0ac47"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "ruleworks",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ruleworks/ruleworks.g4",
+          "sha256": "25ec2044b71d9cb7f3f67b95601efdde8f2abea3a632a7e4cb2a37402811ac12"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "rust",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "rust/RustLexer.g4",
+          "sha256": "22a0e797c642a9f8a920fd5e7b6eb86a0176a7968906adc0553b1997a041857c"
+        },
+        {
+          "path": "rust/RustParser.g4",
+          "sha256": "2addda9f60ebf9b8887e962328ee8a12c1dc945a58bce0f1de7034c00be7aae1"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "sapf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sapf/sapf.g4",
+          "sha256": "9d6118eb7a936221844b046c3acd1f19520c7213c539d2fb0653468a56df5616"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "scotty",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "scotty/scotty.g4",
+          "sha256": "bbb79062684cacd34db81bbbd0a3caf0c6fa46b12f86da572a1c902aead16d9e"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "scss",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "scss/ScssLexer.g4",
+          "sha256": "d8a7b25ae7b71590b6872a1e1f03eb306dcf9cc8a43dc725c0c9e8e8b4e3a3b2"
+        },
+        {
+          "path": "scss/ScssParser.g4",
+          "sha256": "c76422d259e4eb11d5ee05f03ef9ef9d3d56d794bde42cce1e7e68b905d2b748"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "sdl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sdl/sdl.g4",
+          "sha256": "1eef44fc7523fc80f0b64e1cefabb75af2f6e44bfeba86fbf23d3839c7d039cf"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "semver",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "semver/SemanticVersionLexer.g4",
+          "sha256": "31cb467a6c68b636ccbae5c394fec105a48bcd729a17600631ba201fdb193adb"
+        },
+        {
+          "path": "semver/SemanticVersionParser.g4",
+          "sha256": "206479166a65155520e632ad251d8a2f1e3b05b4b75785a46db9ecd6970ba64a"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "sexpression",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sexpression/sexpression.g4",
+          "sha256": "ec80f6db4f969613308c9e878d193da7a171b3dc1bb466ee7fb5f53d4b7fa77c"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "sgf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sgf/sgf.g4",
+          "sha256": "0f0b159c0b79cf71c51e3bbdd968d3ad4343e69e114d61ae7c459273fc80a081"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "sharc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sharc/SHARCLexer.g4",
+          "sha256": "2a154c6c474a746719ee988d07eb7d1bbde81f83ee9afed82d29f544c2f2d023"
+        },
+        {
+          "path": "sharc/SHARCParser.g4",
+          "sha256": "c50fb076c2cd1317a492817f10e3b29252d57459418d56bce56d1e1a5b3aa8f8"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "sici",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sici/sici.g4",
+          "sha256": "ab708ebe2a7ff16451bb65d8d1f9f5a2cd98898a97f7e3e524492ee12fd1f6f8"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "sieve",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sieve/sieve.g4",
+          "sha256": "44566ebb96666806327e99475ab410f958dab95897c4e3e437f4e9184b0ff74a"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "smalltalk",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "smalltalk/Smalltalk.g4",
+          "sha256": "4b47b5ade5d8348d040dd5b5ff0545b77b45da5163d284cb6823d18411f2107d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "smiles",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "smiles/smiles.g4",
+          "sha256": "4ea6f8ad1e249a3db266f034e59fa77cecfb2ad3b50bccc84b3f46ad4e2ca459"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "smtlibv2",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "smtlibv2/SMTLIBv2.g4",
+          "sha256": "396982eda2ea0209d867261ed13da3a123183a9e30fe8ddd65961a135477cd94"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "snobol",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "snobol/snobol.g4",
+          "sha256": "2df0a4c40da99e4c25132586e0f47e932470a5e8564769dff373400b7d748319"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "solidity",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "solidity/SolidityLexer.g4",
+          "sha256": "19981ad40c42e59ef33bea7a5513bd4ba84936eb9488c2e4ba66fb698f1142a2"
+        },
+        {
+          "path": "solidity/SolidityParser.g4",
+          "sha256": "fd6ef162cde6810acdb6c69a39c5348ec0309ca5ae71e50e9af77e01c94104be"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "sparql",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sparql/SparqlLexer.g4",
+          "sha256": "94ee0a755d330ec391cb8ea4015dd2b131f16c6667543b46c4f3959eb8cf9dd9"
+        },
+        {
+          "path": "sparql/SparqlParser.g4",
+          "sha256": "5c1a0acd8f1e5355171b8193d7c691c56e1f0a5f28c0c2cb2762a3300c8ca658"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "spass",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "spass/SpassLexer.g4",
+          "sha256": "b86d8b825da4c6e0cd4a68c803140c43c28cf567c402cedff17afdef558c7dfa"
+        },
+        {
+          "path": "spass/SpassParser.g4",
+          "sha256": "8d562cf16a3770da418225338768d8925866b2de465e859c7dcad86fe63bef86"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "spl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "spl/SPLLexer.g4",
+          "sha256": "7bf246f9fed11ba25533142eb97af79b3cea8f1134bd586db2ab7f22076fe99b"
+        },
+        {
+          "path": "spl/SPLParser.g4",
+          "sha256": "07ddd440c7b855033ada7d2d80bfdef89cfcad61ff13e89116bd2a87d54b50ad"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "squirrel",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "squirrel/Squirrel.g4",
+          "sha256": "54becd3c0768220ccd6ce967e789cf9dd3b5fc2f71a1160ffc687027f22f7db9"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "srt",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "srt/srt.g4",
+          "sha256": "2a419a62ff60729c72f1c959de85e64b06e3040a849fda85364caea9148c6ea3"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "stacktrace",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "stacktrace/StackTrace.g4",
+          "sha256": "bde6baf5a2ce355599c9696ad7512d43155bdddcdf2ca502b7eb194405298527"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "star",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "star/star.g4",
+          "sha256": "6d48e9f857bd5c5974792d2399836a04744f4ccee7a9321c2969b6b8a0fd325b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "stellaris",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "stellaris/stellaris.g4",
+          "sha256": "54c2bb99e2e837fe11d42d977fc6018c9db0a478cfc1e2753e55db1bb1293d58"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "stl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "stl/STL.g4",
+          "sha256": "3ea7d9314d8ba7c93be0b26d0d9af9de711073289c9a3ce4ffa8dae453c48fd6"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "stringtemplate",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "stringtemplate/STLexer.g4",
+          "sha256": "2a1b29e577309ca5de82d2d7dba50309b8ebdce522f6ee9c3068eacf75be83d9"
+        },
+        {
+          "path": "stringtemplate/STParser.g4",
+          "sha256": "f49899908e6dcb9f8236bcadae295908b5a2a44ff2c4ebd2f4440cbda8f3e00d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "suokif",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "suokif/SUOKIF.g4",
+          "sha256": "f93c37608fbfeb27bdff9d96b0a37bc5a28ba6c8cdceca0741471e51e118ce2d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "swift-fin",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "swift-fin/SwiftFinLexer.g4",
+          "sha256": "45fe7e980ff13e8644eb78ee1a028c427e8666c311042ce736b0a96b36459210"
+        },
+        {
+          "path": "swift-fin/SwiftFinParser.g4",
+          "sha256": "ed8d6927279f27a498b8b22ef9ac5880dac665727f28c1375697c47a5f51c9b9"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "sysml-v2",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "sysml-v2/SysMLv2Lexer.g4",
+          "sha256": "33c32bb8ba9f1a29342631f4cd0a4fbb679835dd2b2448b0966bf7cbe33a9584"
+        },
+        {
+          "path": "sysml-v2/SysMLv2Parser.g4",
+          "sha256": "c62ac5fe9fc9734dd7a5379c5a802cfcaab07a4dc2dc380f2dc6113a74c04000"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "szf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "szf/szf.g4",
+          "sha256": "a92662b2038ccbe9b8a5c157f0feaa159fc0faf5df824e801bdd042bf6b970a5"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "tcpheader",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tcpheader/tcp.g4",
+          "sha256": "ae730cc1ff67d680c688a1012779efcea9539e660ac53e01fe4b69c8ada4e304"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "teal",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "teal/Teal.g4",
+          "sha256": "ab67aeda99a4cb255c482cab147517f088ad5630658c37132942f8f7e6d89bfe"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "telephone",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "telephone/telephone.g4",
+          "sha256": "acbb4e4970f5ac9004f7807dc87e58ca94a866c5e3facc13f22ca4353a241e09"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "terraform",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "terraform/terraform.g4",
+          "sha256": "1e213b7e704cf01f118852ddcc1a55fda9ebb180f71e59e2ceb61dce07985968"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "thrift",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "thrift/Thrift.g4",
+          "sha256": "25fc521baa8594505101805810e3bb8c5befaf956db22dfc7051bd48bb225dc9"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "tiny",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tiny/tiny.g4",
+          "sha256": "006e825ce8ef85dcdf6a3e002ba561e427f4ae15cdbbed4f3d40755ee9798771"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "tinybasic",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tinybasic/tinybasic.g4",
+          "sha256": "c82659a96f09d488d4e80244c7f979ae961e8f5fee42e1d09b7ba5e9ea971ee4"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "tinyc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tinyc/tinyc.g4",
+          "sha256": "9491fa3c3b324d6f6f3c3094eb1cd9b12c4bd76b736bd879d0896bf1a5c92007"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "tinymud",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tinymud/tinymud.g4",
+          "sha256": "ab971c1ed7362fdf5e4acbe18f745e3a1a0b8ec3dc33b1d71eebaa64e91c3b61"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "tinyos_nesc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tinyos_nesc/TinyosLexer.g4",
+          "sha256": "e5468d180ecee7e58142d2c45cfee3d62025bbaf68d7e04eff75626f1cfd7489"
+        },
+        {
+          "path": "tinyos_nesc/TinyosParser.g4",
+          "sha256": "d81b239cc6339cc1c9bec8ce6a626636930a50ec764cc6bdf367d0c0e1fa2ff5"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "tl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tl/tl.g4",
+          "sha256": "a47651aa1b08cc3c7f429754f2f3b0f0e0e15cfa8407fa1342a0b48b0596fb66"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "tnsnames",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tnsnames/tnsnamesLexer.g4",
+          "sha256": "e76c7522350e92a690df655620cf1a3bc2f96ad47830d298cc6d38af4e8a247f"
+        },
+        {
+          "path": "tnsnames/tnsnamesParser.g4",
+          "sha256": "7caa686777c122bbf0fb6bc641ef1faff8d261ac22257ab34806643720f852c8"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "tnt",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tnt/tnt.g4",
+          "sha256": "9dbae2fb956d828c8b089e668c6a7af25e829104dab8cb9d3b488ef12ebf94d2"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "toml",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "toml/TomlLexer.g4",
+          "sha256": "5710e71183ef8c06148164cec50bbe77f4ec03097c56bc58423ba66023f03728"
+        },
+        {
+          "path": "toml/TomlParser.g4",
+          "sha256": "8e84314e0be43532a083d3ac02ebdf2de515de3cf74559d9d0b75d2321091248"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "trac",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "trac/trac.g4",
+          "sha256": "caca1d675e12ecf33b8e45833f3866e36fdf3458a276f0a2cd92250d67bc38df"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "trapc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "trapc/TrapCLexer.g4",
+          "sha256": "ca14f6bbe28ca8c4cfb26b87ed8daeb9ad1e43dcdce2a2d87079a79939d1a29e"
+        },
+        {
+          "path": "trapc/TrapCParser.g4",
+          "sha256": "11fcd4f253358dc290eb362d9e0e60075d9dd7a3147e3e613836f64659c6af25"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "tsv",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "tsv/tsv.g4",
+          "sha256": "3c5148803594a32693354bc42694cc53a8d5dea74c720ca6fcb9be8951bbac4c"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "ttm",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "ttm/ttm.g4",
+          "sha256": "874bae5beaf3899e3b9ed7b042515dea0ac56f4d35da9d26dcf10fc5792fe295"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
+    },
+    {
+      "name": "turing",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "turing/turing.g4",
+          "sha256": "7a6e893db2a7ad1e23a37cd4c679c895b62b10891390a0b02e2315166de847fb"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "turtle",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "turtle/TURTLE.g4",
+          "sha256": "afa908a94adc5dcb5eaa93a847e438c9687e91d2e5a6e15127007f412dc2e734"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "turtle-doc",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "turtle-doc/turtle.g4",
+          "sha256": "1349b3276030b600428788de9d6303d0a5e17e963b01eacac2642a83e34fbccd"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "unreal_angelscript",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "unreal_angelscript/UnrealAngelscriptLexer.g4",
+          "sha256": "9d01f14da73f59e85f5d334808365c367deba3906211a97d05ad909e8d606c4e"
+        },
+        {
+          "path": "unreal_angelscript/UnrealAngelscriptParser.g4",
+          "sha256": "073ccb1a85533cab07dffb762c5647c23995535ad640e2ebd403b8358c427c75"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "upnp",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "upnp/Upnp.g4",
+          "sha256": "c8a896ecab621825136d18282165c78bbc2a55253bb9665aa619e320aeca6284"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "url",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "url/url.g4",
+          "sha256": "0508587f46e32f133c56a32a970456b80b68d05ecd7c2b3f74a9b8e6fef28424"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "useragent",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "useragent/useragent.g4",
+          "sha256": "4ee484c181aff4ecd9cee0c0944d635cae35d954e0a9442543d588097eb6b73d"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "v",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "v/V.g4",
+          "sha256": "4a870f5ed45f18be73f533008521acf48f1d012d6bb4e5be0360ee19f3506d8b"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": []
+    },
+    {
+      "name": "vaxscan",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "vaxscan/vaxscan.g4",
+          "sha256": "25a479c51b821ec867c0593fdcdea47f11ce5d792be1e3341bb88892c127c8bf"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "vb6",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "vb6/VisualBasic6Lexer.g4",
+          "sha256": "eba344e6cb3f94f180b6b0296647a2e4a5ed272d2cd6cf20ce4bac97b34f75a5"
+        },
+        {
+          "path": "vb6/VisualBasic6Parser.g4",
+          "sha256": "727042c85556c8f90921ec0222a9282b67e539dbc7675f9ac2aa5d9a900b4884"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "velocity",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "velocity/VTLLexer.g4",
+          "sha256": "fc1e62f4752aa5b541d23c4b57ad4b59589a9a442c492823404c5290812020d8"
+        },
+        {
+          "path": "velocity/VTLParser.g4",
+          "sha256": "1cd0f970f9b33db73b12b7c7c2470fc6742a9f7b6ec2f340b89036de224eea29"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "vmf",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "vmf/vmf.g4",
+          "sha256": "e027627ae41534c3f05ea019434ba72b5a576c6004ef3642c93f41d622a92a63"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "wat",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "wat/WatLexer.g4",
+          "sha256": "5bdd852372ed4798136ecdaacf5c044cee5d8c1ac72722f8b3154d49b1dcfee1"
+        },
+        {
+          "path": "wat/WatParser.g4",
+          "sha256": "46a097aa33c8461309f9f564be6f02af6c4253df1e2633dd7e7d56f4580ed8a1"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "wavefront",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "wavefront/WavefrontOBJ.g4",
+          "sha256": "8c4158ad3ad81829b6b42811e67ef7058f2f5fcc7523d3bcca311e0bde8959f1"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "webidl",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "webidl/WebIDL.g4",
+          "sha256": "87c02acb6957848041e6712f28ff5585182e337eff6f2ab46b13728d89a160bc"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "wkt",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "wkt/wktLexer.g4",
+          "sha256": "bdf56e74b8c991e74c20dbd4a9e91b6af43230214715a4f2df9c56d77091111d"
+        },
+        {
+          "path": "wkt/wktParser.g4",
+          "sha256": "13e3ded2acae34886bb1ef65041af0fe85d187b2e4101482f2bab52bdc547034"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "wkt-crs-v1",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "wkt-crs-v1/wktcrsv1.g4",
+          "sha256": "08ce5c3df176e9dab771ab2baa14d1dacaafc5498dd34c8c96ce7f91654e803f"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "wln",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "wln/wln.g4",
+          "sha256": "bf0106f0f1663a930161030a08ba723882f346e916684f48e00a45db19f15b65"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "wren",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "wren/WrenLexer.g4",
+          "sha256": "9f8f10e56298497daf2e6dbcb73d8237a36fec3911a434aea0d67da10e68e64b"
+        },
+        {
+          "path": "wren/WrenParser.g4",
+          "sha256": "13c14eb2f3a7a40f8f1f267094ba4a883e2d6e736de8eff2e284876c3bf2472f"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "xml",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "xml/XMLLexer.g4",
+          "sha256": "2d14f11025d66bec1d881caa5a3b15fde81bd35846c05c306694f742897b8762"
+        },
+        {
+          "path": "xml/XMLParser.g4",
+          "sha256": "3ad2a88464138a73e821b47bfd6236f456e090e8961b5a91014b4cf31410b5f7"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "xsd-regex",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "xsd-regex/regexLexer.g4",
+          "sha256": "b55dbdcec3f6f6847a5ffa37f3db8604781f7c384213a4bf6b8484ab10c9ffa6"
+        },
+        {
+          "path": "xsd-regex/regexParser.g4",
+          "sha256": "82691e556c535fa6919658c6518ee5efc74f49a243187505fa43197a5869f4cd"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate"
+      ]
+    },
+    {
+      "name": "xyz",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "xyz/xyz.g4",
+          "sha256": "bef082e49e84430cb1adb97d70d19c70bfa67937f19b01ff04f02c65ab1fa1dc"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "yara",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "yara/YaraLexer.g4",
+          "sha256": "4c93865e9ce535aee8edb650a5cbdf0c91fb50014f16cac55512e8679d05afca"
+        },
+        {
+          "path": "yara/YaraParser.g4",
+          "sha256": "7b6a9b85e380514c1dfbd17bf7f3e9203cdf5cf2b7504cfc8c10f4a927bf8e97"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "yini",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "yini/YiniLexer.g4",
+          "sha256": "a81721e0b84386a49e3ae2033a0d5c76d012fccc47a63def3f99f2fea4345579"
+        },
+        {
+          "path": "yini/YiniParser.g4",
+          "sha256": "132c336561c9231ac0df376e95d0670e532469e97876d9352934487f3f384731"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    },
+    {
+      "name": "z",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "z/ZLexer.g4",
+          "sha256": "e86672ff2b153e97e383edea7919e62b0aeb96000fa5abce8775b3b6534a5d1a"
+        },
+        {
+          "path": "z/ZParser.g4",
+          "sha256": "7d3151affb560786765d27b94d249ecc3d9d8c748476c1182b4373948d84ceb6"
+        }
+      ],
+      "expected_pass": [],
+      "recorded_pass": []
+    },
+    {
+      "name": "zig",
+      "historical_288": true,
+      "inputs": [
+        {
+          "path": "zig/ZigLexer.g4",
+          "sha256": "93d7ae8d967e33009bb65593b90e9a883bd271460b22ede01675415c8c4abc74"
+        },
+        {
+          "path": "zig/ZigParser.g4",
+          "sha256": "5454945ca44664a1d134d4b3579cb0c07f10b4ef5b88f7be7f33eb44af82e8cd"
+        }
+      ],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
+    }
+  ],
+  "current_measurement": {
+    "source_state": "Clean implementation commit 6c1e7f691774b4f87af6303c8e84010b2d2d9969",
+    "passing": {
+      "translate": 218,
+      "generate": 212,
+      "compile": 212,
+      "strict": 15
+    },
+    "historical_288_compiled": 210,
+    "runtime_smoke": "not_configured",
+    "tools_sha256": {
+      "translator": "c5c1ba5c7f22d549348fbdadd7a9d355a70dfde2c50cb13d85b825427ea6f24a",
+      "generator": "48dc944311f3590e483fa28cd43be2f4e3117b1a9cb965ff4fd77ff6d7d5842b",
+      "compiler": "902dbb0b43fed6cc3e9bc622de3f3add9da1a7790c710ca79003e2d92a6e6ba1",
+      "common_matchers": "6e98f879e7d8c1a4d9dd002cb0e5b2ea4440f61ea6e4356918b285fed2a99f09"
+    },
+    "runner_sha256": "cf0f5f4323f0177fe7ec55b1f9384ffcd7ad339b4f0a042f901715974eed7c3c",
+    "results_csv": "sweep_current_results.csv",
+    "note": "Stacked increment over PR #690: Lua, TNT, and V gain translation and compilation; TNT gains strict acceptance. No existing expectations removed; recorded_pass retains the initial audit. Focused runtime tests are separate from the compile-only sweep."
+  }
+}

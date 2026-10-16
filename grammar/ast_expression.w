@@ -540,7 +540,7 @@ int ast_expression_record_type(int type):
 	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
 	int base = type_unqualified(type)
 	int kind = type_get_kind(base)
-	if ((kind != 0) && (kind != type_kind_union) && (kind != type_kind_safe_record)): return 0
+	if ((kind != 0) && (kind != type_kind_union) && (kind != type_kind_safe_record) && (kind != type_kind_safe_recordmut)): return 0
 	return type_num_args(base) > 0
 
 
@@ -982,8 +982,12 @@ int ast_expression_ufcs_probe(char* name):
 	return callee
 
 
+int safe_check_requested();
+
+
 int ast_expression_method_call(expression_ast* tree, int receiver, int record, int depth):
 	if (nextc != '('): return -1
+	if ((record >= 0) && type_safe_kind(tree.result_type[receiver])): record = type_unqualified(record)
 	int callee = -1
 	int name_offset = -1
 	if (record >= 0):
@@ -1023,7 +1027,24 @@ int ast_expression_method_call(expression_ast* tree, int receiver, int record, i
 	# The receiver's check_call_argument (ufcs_call, the method sugar).
 	# Call setup is emitted before it, so no literal note is current.
 	if (ast_expression_conversion(tree, c"call argument", name_offset, 0, want, got, -1) == 0): return -1
-	return ast_expression_call(tree, id, depth)
+	int call = ast_expression_call(tree, id, depth)
+	if (call < 0): return -1
+	# Checked method sugar must use the same ordered argument evaluation,
+	# owner transfer and retained contract as its spelled-out direct call.
+	# A value record contributes its address; pointer/scalar UFCS receivers
+	# already have the argument representation the direct call expects.
+	if (safe_check_requested()):
+		int argument = receiver
+		if ((record >= 0) && (type_get_pointer_level(tree.result_type[receiver]) == 0)):
+			argument = expression_ast_add(tree, 'r', receiver, -1)
+			if (argument < 0): return -1
+			tree.result_type[argument] = type_value(got)
+			tree.offset[argument] = tree.offset[receiver]
+		tree.next_arg[argument] = tree.left[id]
+		tree.left[id] = argument
+		tree.right[id] = -1
+		tree.op[id] = 'C'
+	return call
 
 
 int ast_expression_print(expression_ast* tree, int depth):
@@ -1331,6 +1352,16 @@ int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_
 	for j in range(node.stars):
 		type = ast_expression_pointer_type(tree, type, tree.generic_offset[id])
 		if (type < 0): return -1
+	if (node.safety):
+		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || type_is_gpu_pointer(type)): return -1
+		int lifetime = -1
+		if (node.lifetime != 0):
+			int length = strlen(node.lifetime) + 1
+			expression_ast_type_names_reserve(tree, length)
+			lifetime = tree.type_names_used
+			strcpy(tree.type_names + lifetime, node.lifetime)
+			tree.type_names_used = tree.type_names_used + length
+		type = ast_expression_safe_pointer_type(tree, type, node.safety, lifetime, tree.generic_offset[id])
 	return type
 
 
@@ -2099,6 +2130,8 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (peek(c"own")): safe_kind = 1
 	if (peek(c"ref")): safe_kind = 2
 	if (peek(c"refmut")): safe_kind = 3
+	if (peek(c"optref")): safe_kind = 6
+	if (peek(c"optrefmut")): safe_kind = 7
 	if (safe_kind && ((nextc == '.') || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0) || (sym_probe(token) >= 0))): safe_kind = 0
 	if (safe_kind):
 		if ((type_safe_entrypoint == 0) || (ast_retain_mode == 0)): return -1

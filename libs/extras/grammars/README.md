@@ -106,7 +106,9 @@ alternative — the same pattern `w.pg`/`c.pg` use throughout).
 
 SQL is the first hand-written grammar; JSON/CSV/ABNF/DOT/GraphQL are
 machine-translated demos (see `tools/README.md`). The grammars-v4 sweep
-now compiles ~189/288 end-to-end with generated matchers — pick another
-green grammar with an `examples/` dir and add `<lang>.pg` plus
+now compiles **200/291 pinned cases** with generated matchers (see
+[`antlr_to_pg/SWEEP_RESULTS.md`](antlr_to_pg/SWEEP_RESULTS.md)). Compilation alone
+does not establish runtime behavior or ANTLR semantic equivalence. Pick a
+compiling grammar with an `examples/` dir and add `<lang>.pg` plus
 `tests/grammars/<lang>_demo.w` (copy an existing demo's `# wbuild:`
 header) following this layout.

@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="mermaid-", dir="bin") as temp:
     assert source.read_bytes() == original
     run("write", source, source)
     assert source.read_bytes() == original
-    invalid = b"sequenceDiagram\nA->>B: hello\n"
+    invalid = b"unknownDiagram\nA->>B: hello\n"
     source.write_bytes(invalid)
     assert b"unsupported diagram type" in run("check", source, ok=False).stderr
     run("write", source, copy)
@@ -53,9 +53,32 @@ with tempfile.TemporaryDirectory(prefix="mermaid-", dir="bin") as temp:
     assert run("read", source).stdout == source.read_bytes()
     run("check", root / "missing.mmd", ok=False)
     run("nonsense", source, ok=False)
-    for example in Path("examples/mermaid").glob("*.mmd"):
+    for example in Path("examples/mermaid").iterdir():
+        if example.suffix not in {".mmd", ".md"}:
+            continue
         run("check", example)
+        assert run("read", example).stdout == example.read_bytes()
+        run("write", example, copy)
+        assert copy.read_bytes() == example.read_bytes()
         run("svg", example, svg)
         ET.parse(svg)
+        # The same document envelope/theme must survive every family dispatcher.
+        raw = example.read_bytes()
+        if example.suffix == ".mmd" and not raw.startswith(b"---"):
+            title = b"All-family integration"
+            source.write_bytes(
+                b"---\ntitle: " + title + b"\nconfig:\n  theme: dark\n---\n" + raw
+            )
+            run("check", source)
+            run("svg", source, svg)
+            root_svg = ET.parse(svg).getroot()
+            visible = root_svg.findall(".//{http://www.w3.org/2000/svg}text")
+            assert sum(item.text == title.decode() for item in visible) == 1, example
+            assert root_svg.find("{http://www.w3.org/2000/svg}rect").get("fill") == "#0f172a", example
+            replacement.write_text("Edited family title")
+            at = source.read_bytes().index(title)
+            run("edit", source, at, at + len(title), replacement, copy)
+            run("check", copy)
+            assert copy.read_bytes().endswith(raw), example
 
 print("Mermaid CLI integration passed")

@@ -1,0 +1,22 @@
+# wbuild: step="bin/wv2 --strict tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_generic_runtime_fixture"
+# wbuild: step="bin/wv2 --strict x64 tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_generic_runtime_fixture64"
+# wbuild: step="bin/wv2 --strict --no-regs --no-inline tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_generic_runtime_fixture"
+# wbuild: step="bin/wv2 --strict --inline tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_generic_runtime_fixture"
+# wbuild: step="bin/wv2 --strict x64 --no-regs --no-inline tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_generic_runtime_fixture64"
+# wbuild: step="bin/wv2 --strict x64 --inline tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_generic_runtime_fixture64"
+# wbuild: step="bin/wv2 --strict win64 tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture.exe"
+# wbuild: target=safe_generic_win64_runtime_test tag=tests_win64 dep=wv2
+# wbuild: step="bin/wv2 --strict win64 tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_fixture.exe"
+# wbuild: step="wine bin/safe_generic_runtime_fixture.exe"
+# wbuild: step="bin/wv2 --strict win64 --no-regs --no-inline tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_plain.exe"
+# wbuild: step="wine bin/safe_generic_runtime_plain.exe"
+# wbuild: step="bin/wv2 --strict win64 --inline tests/safe_generic_runtime_fixture.w -o bin/safe_generic_runtime_inline.exe"
+# wbuild: step="wine bin/safe_generic_runtime_inline.exe"
+int main():
+	return 0

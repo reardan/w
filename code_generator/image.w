@@ -5,6 +5,7 @@ import code_generator.code_emitter
 
 
 int sym_address(char *s);  /* compiler/symbol_table.w */
+int sym_defined_address(char* s);
 
 
 # Image layout shared by the file writers: code and symbols linked at
@@ -29,9 +30,9 @@ void image_begin(int base):
 # output is discarded.
 int entry_symbol(char* runtime_start):
 	int t = 0
-	if ((runtime_start != 0) && (sym_address(c"_main") != 0)): t = sym_address(runtime_start)
-	if (t == 0): t = sym_address(c"_main")
-	if (t == 0): t = sym_address(c"main")
+	if ((runtime_start != 0) && (sym_defined_address(c"_main") != 0)): t = sym_defined_address(runtime_start)
+	if (t == 0): t = sym_defined_address(c"_main")
+	if (t == 0): t = sym_defined_address(c"main")
 	if ((t == 0) && (entry_optional == 0)):
 		error(c"Failed to find a _main() function. Did you import lib/testing?")
 	return t

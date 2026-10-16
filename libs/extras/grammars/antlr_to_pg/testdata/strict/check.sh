@@ -14,8 +14,8 @@ if "$translator" --strict "$fixtures/semantic.g4" -o "$work/out.pg" --matchers "
 fi
 cmp "$work/out.pg" "$work/expected.pg"
 cmp "$work/matchers.w" "$work/expected.w"
-grep -q 'unsupported command type(A)' "$work/audit"
-grep -q 'unsupported command popMode()' "$work/audit"
+grep -q 'unresolved grammar dependency' "$work/audit"
+grep -q 'unmapped action' "$work/audit"
 grep -q 'unmapped predicate at atom position 1' "$work/audit"
 grep -q 'assoc=right' "$work/audit"
 if "$translator" --strict "$fixtures/semantic.g4" -o "$work/out.pg" --audit "$work/audit-again" 2> "$work/stderr-again"; then

@@ -1,0 +1,15 @@
+zenuml
+title Native call hierarchy
+@Actor Client
+Service as Order Service
+Client->Service.checkout() {
+  Repository.save() {
+    return order
+  }
+  if(accepted) {
+    Service->Client: Confirmation
+  } else {
+    Service->Client: Rejected
+  }
+  return result
+}

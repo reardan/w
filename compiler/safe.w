@@ -21,6 +21,8 @@ struct safe_flow:
 	int action
 	int next
 	int alternate
+	int returning
+	int return_roots
 	int reached
 	char* state
 	char* live
@@ -38,10 +40,16 @@ int safe_return_type
 int safe_return_root
 list[char*] safe_sets
 int safe_validate
+int safe_origins_changed
+int safe_replacing
 int safe_event
 int safe_position
 list[int] safe_call_roots
 list[int] safe_call_kinds
+
+
+int safe_check_requested():
+	return safe_mode || type_safe_used
 
 
 char* safe_zero(int count, int width):
@@ -115,8 +123,17 @@ int safe_kind(int type):
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
+	if (kind == type_kind_safe_recordmut): return 3
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
+	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
 	return 0
+
+
+int safe_optional(int type):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	int kind = retained_types[type].kind
+	return (kind == type_kind_optref) || (kind == type_kind_optrefmut)
 
 
 void safe_contains_enqueue(int type):
@@ -172,7 +189,8 @@ int safe_inline_slice(int type):
 int safe_record(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return retained_types[type].kind == type_kind_safe_record
+	int kind = retained_types[type].kind
+	return (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)
 
 
 int safe_borrow_kind(int type):
@@ -225,12 +243,14 @@ int safe_opaque(int type):
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
 	if ((record.kind != 0) || record.pointer_level || (safe_buffer_source(record.source) == 0)): return 0
-	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0)
+	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0) || (strcmp(record.name, c"WOwnedIntBuffer") == 0) || (strcmp(record.name, c"WByteArena") == 0)
 
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
 	if (safe_buffer_source(binding.source)):
+		if ((strcmp(name, c"byte_arena_new") == 0) || (strcmp(name, c"byte_arena_length") == 0) || (strcmp(name, c"byte_arena_copy") == 0) || (strcmp(name, c"byte_arena_reset") == 0) || (strcmp(name, c"byte_arena_release") == 0)): return 1
+		if ((strcmp(name, c"owned_int_buffer_new") == 0) || (strcmp(name, c"owned_int_buffer_length") == 0) || (strcmp(name, c"owned_int_buffer_push") == 0) || (strcmp(name, c"owned_int_buffer_get") == 0) || (strcmp(name, c"owned_int_buffer_set") == 0) || (strcmp(name, c"owned_int_buffer_pop") == 0) || (strcmp(name, c"owned_int_buffer_clear") == 0)): return 1
 		return (strcmp(name, c"int_buffer_new") == 0) || (strcmp(name, c"int_buffer_length") == 0) || (strcmp(name, c"int_buffer_push") == 0) || (strcmp(name, c"int_buffer_get") == 0) || (strcmp(name, c"int_buffer_set") == 0) || (strcmp(name, c"int_buffer_pop") == 0) || (strcmp(name, c"int_buffer_clear") == 0) || (strcmp(name, c"int_buffer_view") == 0) || (strcmp(name, c"byte_string_new") == 0) || (strcmp(name, c"byte_string_length") == 0) || (strcmp(name, c"byte_string_push") == 0) || (strcmp(name, c"byte_string_get") == 0) || (strcmp(name, c"byte_string_set") == 0) || (strcmp(name, c"byte_string_pop") == 0) || (strcmp(name, c"byte_string_clear") == 0) || (strcmp(name, c"byte_string_view") == 0) || (strcmp(name, c"byte_string_append") == 0) || (strcmp(name, c"byte_string_from") == 0)
 	return (strcmp(name, c"put_char") == 0) || (strcmp(name, c"put_error") == 0) || (strcmp(name, c"exit") == 0)
 
@@ -245,10 +265,10 @@ void safe_pointer_match(int id, int want, int got):
 		safe_error(id, c"safe: incompatible checked pointer types", -1)
 
 
-# The first aggregate contract has one shared lifetime group. Every field
-# carrying a reference must name that group; scalar fields have no lifetime.
-# The outer ref[a] Record annotation renames the group at each use site.
-int safe_record_shape(int type):
+# Borrowed aggregates have one lifetime group. Every reference field names
+# that group; scalar fields have no lifetime. Mutable wrappers also admit
+# exclusive fields and reserve the complete group when reborrowed.
+int safe_record_shape(int type, int kind):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
@@ -258,7 +278,7 @@ int safe_record_shape(int type):
 		int field = safe_unqualified(record.fields[i].type)
 		if (field < 0): return 0
 		retained_type* member = retained_types[field]
-		if ((member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice)):
+		if ((member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && (member.kind == type_kind_refmut))):
 			if (safe_plain(safe_pointee(field), 0) == 0): return 0
 			if (member.lifetime == 0): return 0
 			if (lifetime == 0): lifetime = member.lifetime
@@ -296,7 +316,8 @@ int safe_owned_shape(int type):
 
 void safe_type_check(int id, int type):
 	if (safe_record(type)):
-		if (safe_record_shape(retained_types[safe_unqualified(type)].target)): return
+		if (safe_record_shape(retained_types[safe_unqualified(type)].target, safe_kind(type))): return
+		if (safe_kind(type) == 3): safe_error(id, c"safe: mutable borrowed aggregate requires scalar fields and one named reference group", -1)
 		safe_error(id, c"safe: borrowed aggregate requires scalar fields and one named shared-reference group", -1)
 	if (safe_kind(type) || safe_slice(type)):
 		if (safe_plain(safe_pointee(type), 0)): return
@@ -321,6 +342,8 @@ int safe_add(int node, int expression, int binding, int action, int next, int al
 	f.action = action
 	f.next = next
 	f.alternate = alternate
+	f.returning = -1
+	f.return_roots = -1
 	f.reached = 0
 	f.state = cast(char*, safe_zero(safe_locals.length, 1))
 	f.live = cast(char*, safe_zero(safe_locals.length, 1))
@@ -341,6 +364,17 @@ int safe_child(retained_node* node, int child):
 	return node.parent + 1 + child
 
 
+# Queued generic calls have no raw symbol at their emission site. Their
+# retained mangled identity must resolve to the concrete checked body.
+int safe_call_binding(retained_node* node):
+	if (node.binding >= 0): return node.binding
+	if ((node.op != 'G') && (node.op != 'W')): return -1
+	if (node.payload_text == 0): return -1
+	for i in range(retained_bindings.length):
+		if ((safe_function_for_binding[i] >= 0) && (strcmp(retained_bindings[i].name, node.payload_text) == 0)): return i
+	return -1
+
+
 void safe_unsafe_check(int id):
 	retained_record* n = retained_record_at(id)
 	if (n.kind == retained_statement):
@@ -352,8 +386,11 @@ void safe_unsafe_check(int id):
 			retained_node expr
 			retained_node_load(id + 1 + i, &expr)
 			if (safe_contains_checked(expr.semantic_type)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
-			if ((expr.op == 'C') && (expr.binding >= 0)):
-				retained_binding* callee = retained_bindings[expr.binding]
+			if ((expr.op == 'C') || (expr.op == 'G') || (expr.op == 'W')):
+				int binding = safe_call_binding(&expr)
+				if ((binding < 0) && (expr.op != 'C')): safe_error(id, c"safe: generic calls require a concrete ownership contract", -1)
+				if (binding < 0): continue
+				retained_binding* callee = retained_bindings[binding]
 				for j in range(callee.parameters.length):
 					if (safe_contains_checked(callee.parameters[j])): safe_error(id, c"safe: checked calls must remain outside unsafe blocks", -1)
 	int child = safe_first[id]
@@ -365,10 +402,145 @@ void safe_unsafe_check(int id):
 int safe_build(int id, int next, int break_to, int continue_to);
 
 
+# Emitted jumps destroy locals in every exited lexical block. Mirror that
+# invalidation before the control-flow edge, including a continue crossing
+# a switch. Range indices belong to their surrounding block and stay live.
+int safe_jump_cleanup(int id, int target, int continuing):
+	int scope = retained_record_at(id).parent
+	if (scope < 0): return target
+	retained_record* node = retained_record_at(scope)
+	char* name = node.name
+	if ((strcmp(name, c"while") == 0) || (strcmp(name, c"for range") == 0) || (strcmp(name, c"for") == 0)): return target
+	if ((continuing == 0) && (strcmp(name, c"switch") == 0)): return target
+	int rest = safe_jump_cleanup(scope, target, continuing)
+	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
+		return safe_add(scope, -1, -1, 3, rest, -1)
+	return rest
+
+
 int safe_sequence(int first, int next, int break_to, int continue_to):
 	if (first < 0): return next
 	int rest = safe_sequence(safe_next[first], next, break_to, continue_to)
 	return safe_build(first, rest, break_to, continue_to)
+
+
+int safe_scalar_type(int type);
+
+
+void safe_control_scalar(int group):
+	retained_node value
+	retained_node_load(safe_expr_root(group), &value)
+	if (safe_scalar_type(value.semantic_type) == 0):
+		safe_error(group, c"safe: range and switch expressions require scalar values", -1)
+
+
+# Range slots capture the arguments once. The implicit index accesses are
+# real accesses: a borrow used after an increment must block that write.
+int safe_range(int id, int next):
+	int local = -1
+	int body = -1
+	list[int] arguments = new list[int]
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* n = retained_record_at(child)
+		if (n.kind == retained_local): local = safe_index(n.binding)
+		else if (n.kind == retained_expression_group):
+			safe_control_scalar(child)
+			arguments.push(child)
+		else if (n.kind == retained_statement): body = child
+		else: safe_error(child, c"safe: unsupported range representation", -1)
+		child = safe_next[child]
+	if ((local < 0) || (body < 0) || (arguments.length < 1) || (arguments.length > 3)):
+		safe_error(id, c"safe: unsupported range representation", -1)
+	int type = safe_unqualified(retained_bindings[safe_locals[local]].type)
+	if (strcmp(retained_types[type].name, c"int") != 0):
+		safe_error(id, c"safe: range variable must have type int", -1)
+	int guard = safe_add(id, -1, local, 5, -1, next)
+	int step = safe_add(id, -1, local, 6, guard, -1)
+	safe_graph[guard].next = safe_build(body, step, next, step)
+	int start = safe_add(id, -1, local, 6, guard, -1)
+	int i = arguments.length
+	while (i > 0):
+		i = i - 1
+		start = safe_add(arguments[i], safe_expr_root(arguments[i]), -1, 0, start, -1)
+	arguments.free()
+	return safe_add(id, -1, local, 4, start, -1)
+
+
+# Each clause owns its label expressions and body. Unmatched labels
+# continue to the next clause; matching one skips the remaining labels.
+int safe_switch_clause(int clause, int next, int continue_to):
+	if (clause < 0): return next
+	int unmatched = safe_switch_clause(safe_next[clause], next, continue_to)
+	retained_record* n = retained_record_at(clause)
+	if ((n.kind != retained_statement) || ((strcmp(n.name, c"case") != 0) && (strcmp(n.name, c"default") != 0))):
+		safe_error(clause, c"safe: unsupported switch representation", -1)
+	list[int] labels = new list[int]
+	int body = -1
+	int child = safe_first[clause]
+	while (child >= 0):
+		retained_record* part = retained_record_at(child)
+		if (part.kind == retained_expression_group):
+			safe_control_scalar(child)
+			labels.push(child)
+		else if (part.kind == retained_statement): body = child
+		else: safe_error(child, c"safe: unsupported switch representation", -1)
+		child = safe_next[child]
+	if (body < 0): safe_error(clause, c"safe: unsupported switch representation", -1)
+	int matched = safe_build(body, next, next, continue_to)
+	int start = unmatched
+	if (strcmp(n.name, c"default") == 0): start = matched
+	int i = labels.length
+	while (i > 0):
+		i = i - 1
+		start = safe_add(labels[i], safe_expr_root(labels[i]), -1, 0, matched, start)
+	labels.free()
+	return start
+
+
+int safe_switch(int id, int next, int continue_to):
+	int selector = safe_first[id]
+	if ((selector < 0) || (retained_record_at(selector).kind != retained_expression_group)):
+		safe_error(id, c"safe: unsupported switch representation", -1)
+	safe_control_scalar(selector)
+	int clauses = safe_switch_clause(safe_next[selector], next, continue_to)
+	return safe_add(selector, safe_expr_root(selector), -1, 0, clauses, -1)
+
+
+int safe_deferred(int id, int next, int returning):
+	int group = safe_first[id]
+	if ((group < 0) || (retained_record_at(group).kind != retained_expression_group) || (safe_next[group] >= 0)):
+		safe_error(id, c"safe: unsupported deferred expression representation", -1)
+	if (retained_record_at(id).expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
+	int event = safe_add(id, safe_expr_root(group), -1, 7, next, -1)
+	safe_graph[event].returning = returning
+	return event
+
+
+# Return capture precedes deferred evaluation. Keeping these events on the
+# same graph makes deferred reads extend liveness and deferred moves visible
+# to later LIFO calls, while a captured borrowed result stays protected.
+int safe_return(int id):
+	int expression = -1
+	list[int] deferred = new list[int]
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* n = retained_record_at(child)
+		if (n.kind == retained_expression_group):
+			if (expression >= 0): safe_error(id, c"safe: unsupported multiple-expression statement", -1)
+			expression = safe_expr_root(child)
+		else if ((n.kind == retained_statement) && (strcmp(n.name, c"deferred exit") == 0)): deferred.push(child)
+		else: safe_error(child, c"safe: unsupported return representation", -1)
+		child = safe_next[child]
+	int capture = safe_add(id, expression, -1, 2, -1, -1)
+	int next = -1
+	int i = deferred.length
+	while (i > 0):
+		i = i - 1
+		next = safe_deferred(deferred[i], next, capture)
+	deferred.free()
+	safe_graph[capture].next = next
+	return capture
 
 
 int safe_build(int id, int next, int break_to, int continue_to):
@@ -381,14 +553,19 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		safe_unsafe_check(id)
 		return next
 	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
-	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"switch") == 0) || (strcmp(name, c"for") == 0)):
+	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
+	if (strcmp(name, c"defer") == 0): return next
+	if (strcmp(name, c"deferred exit") == 0): return safe_deferred(id, next, -1)
+	if (strcmp(name, c"return") == 0): return safe_return(id)
+	if (strcmp(name, c"for range") == 0): return safe_range(id, next)
+	if (strcmp(name, c"switch") == 0): return safe_switch(id, next, continue_to)
 	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
 		int cleanup = safe_add(id, -1, -1, 3, next, -1)
 		return safe_sequence(safe_first[id], cleanup, break_to, continue_to)
 	if ((strcmp(name, c"pass") == 0) || (strcmp(name, c"debugger") == 0)): return next
-	if (strcmp(name, c"break") == 0): return safe_add(id, -1, -1, 0, break_to, -1)
-	if (strcmp(name, c"continue") == 0): return safe_add(id, -1, -1, 0, continue_to, -1)
+	if (strcmp(name, c"break") == 0): return safe_add(id, -1, -1, 0, safe_jump_cleanup(id, break_to, 0), -1)
+	if (strcmp(name, c"continue") == 0): return safe_add(id, -1, -1, 0, safe_jump_cleanup(id, continue_to, 1), -1)
 	int group = -1
 	int local = -1
 	int first_body = -1
@@ -415,7 +592,6 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		int guard = safe_add(id, safe_expr_root(group), -1, 0, -1, next)
 		safe_graph[guard].next = safe_build(first_body, guard, next, guard)
 		return guard
-	if (strcmp(name, c"return") == 0): return safe_add(id, safe_expr_root(group), -1, 2, -1, -1)
 	if (local >= 0):
 		char* scope = retained_record_at(n.parent).name
 		if ((strcmp(scope, c":") != 0) && (strcmp(scope, c"{") != 0)):
@@ -427,7 +603,7 @@ int safe_build(int id, int next, int break_to, int continue_to):
 
 
 void safe_read(int index, int id, char* state):
-	if ((index >= 0) && safe_validate && (state[index] != 2)):
+	if ((index >= 0) && safe_validate && ((state[index] & 7) != 2)):
 		int cause = safe_birth[index]
 		if ((state[index] & 4) && (safe_moved_at[index] >= 0)): cause = safe_moved_at[index]
 		safe_error(id, c"safe: use of uninitialized or moved value", cause)
@@ -497,12 +673,98 @@ void safe_access(int roots, int via, int write, int id, char* state):
 			safe_error(id, c"safe: conflicting access during call argument evaluation", -1)
 	safe_flow* event = safe_graph[safe_event]
 	for i in range(safe_locals.length):
-		if ((safe_local_kind(i) < 2) || (state[i] != 2)): continue
+		if ((safe_local_kind(i) < 2) || ((state[i] & 7) != 2)): continue
+		if (i == safe_replacing): continue
+		if (safe_optional(retained_bindings[safe_locals[i]].type) && ((state[i] & 48) == 16)): continue
 		if (safe_set_overlap(safe_origin[i], roots) == 0): continue
 		if (safe_ancestor(i, via)): continue
 		if ((event.live[i] == 0) && (event.uses[i] == 0)): continue
 		if (write || (safe_local_kind(i) == 3)):
 			safe_error(id, c"safe: conflicting access while a borrow is live", safe_birth[i])
+
+
+# Presence is a separate lattice in the initialized-state byte: 16 absent,
+# 32 present, 48 either. Joins union possibilities, assignments replace them.
+int safe_null(int id):
+	if (id < 0): return 0
+	retained_node n
+	retained_node_load(id, &n)
+	return (n.op == 0) && (n.value == 0)
+
+
+int safe_presence(int id, char* state):
+	if (safe_null(id)): return 16
+	retained_node n
+	retained_node_load(id, &n)
+	if (safe_optional(n.semantic_type) == 0): return 32
+	if (n.op == 'v'):
+		int index = safe_index(n.binding)
+		if (index >= 0): return state[index] & 48
+	return 48
+
+
+void safe_require_present(int id, char* state):
+	if (safe_validate && (safe_presence(id, state) != 32)):
+		safe_error(id, c"safe: optional reference requires a presence check", -1)
+
+
+# Detect only identity-preserving tests, never integer casts or arithmetic.
+int safe_presence_test(int id, int* present):
+	if (id < 0): return -1
+	retained_node n
+	retained_node_load(id, &n)
+	int left = safe_child(&n, n.left)
+	int right = safe_child(&n, n.right)
+	if ((n.op == 'v') && safe_optional(n.semantic_type)): return safe_index(n.binding)
+	if (n.op == '!'):
+		*present = 1 - *present
+		return safe_presence_test(left, present)
+	if ((n.op == 0x94) || (n.op == 0x95)):
+		int value = -1
+		if (safe_null(left)): value = right
+		if (safe_null(right)): value = left
+		if (value < 0): return -1
+		retained_node operand
+		retained_node_load(value, &operand)
+		if ((operand.op != 'v') || (safe_optional(operand.semantic_type) == 0)): return -1
+		if (n.op == 0x94): *present = 1 - *present
+		return safe_index(operand.binding)
+	return -1
+
+
+void safe_refine(int id, char* state, int truth):
+	if (id < 0): return
+	int present = truth
+	int index = safe_presence_test(id, &present)
+	if (index >= 0):
+		int presence = 16
+		if (present): presence = 32
+		state[index] = (state[index] & 7) | presence
+		return
+	retained_node n
+	retained_node_load(id, &n)
+	if (n.op == '!'):
+		safe_refine(safe_child(&n, n.left), state, 1 - truth)
+	else if (((n.op == 'a') && truth) || ((n.op == 'o') && (truth == 0))):
+		retained_group* group = retained_record_at(n.parent).group
+		for i in range(group.count):
+			retained_node child
+			retained_node_load(n.parent + 1 + i, &child)
+			if ((child.op == '=') && safe_optional(child.semantic_type)): return
+		int at = safe_child(&n, n.left)
+		while (at >= 0):
+			safe_refine(at, state, truth)
+			retained_node child
+			retained_node_load(at, &child)
+			at = safe_child(&child, child.next_arg)
+
+
+void safe_origin_join(int index, int root, int parent):
+	int origins = safe_set_union(safe_origin[index], root)
+	int parents = safe_set_union(safe_parent_ref[index], parent)
+	if ((origins != safe_origin[index]) || (parents != safe_parent_ref[index])): safe_origins_changed = 1
+	safe_origin[index] = origins
+	safe_parent_ref[index] = parents
 
 
 # Locate the backing binding, keeping the reference used to access it.
@@ -511,6 +773,7 @@ int safe_place(int id, char* state, int* via);
 int safe_eval(int id, char* state, int want);
 int safe_call(int id, retained_node* n, char* state, int* parent);
 int safe_borrow(int id, int want, char* state, int* parent);
+void safe_condition(int id, char* state);
 
 
 int safe_place(int id, char* state, int* via):
@@ -531,6 +794,7 @@ int safe_place(int id, char* state, int* via):
 				safe_error(id, c"safe: opaque collection metadata is not accessible", -1)
 			if (index < 0): safe_error(id, c"safe: dereference requires a named checked pointer", -1)
 			safe_read(index, id, state)
+			if (safe_optional(base.semantic_type)): safe_require_present(left, state)
 			root = index
 			if (safe_local_kind(index) >= 2):
 				root = safe_origin[index]
@@ -573,7 +837,7 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 		initialized[position] = 1
 		int type = record.fields[position].type
 		int value = safe_child(&field, field.left)
-		if (safe_kind(type) == 2):
+		if (safe_kind(type) >= 2):
 			int via = -1
 			int root = safe_borrow(value, type, state, &via)
 			roots = safe_set_union(roots, root)
@@ -581,7 +845,7 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 			# Later scalar arguments may call functions. Keep every earlier
 			# reference reserved until the complete value has been constructed.
 			safe_call_roots.push(root)
-			safe_call_kinds.push(2)
+			safe_call_kinds.push(safe_kind(type))
 		else: safe_eval(value, state, type)
 		entry = safe_child(&field, field.next_arg)
 	for i in range(record.fields.length):
@@ -614,9 +878,11 @@ void safe_owner_construct(int id, retained_node* n, int want, char* state):
 
 
 int safe_borrow(int id, int want, char* state, int* parent):
+	if (safe_optional(want) && safe_null(id)): return -1
 	int kind = safe_borrow_kind(want)
 	retained_node n
 	retained_node_load(id, &n)
+	if (safe_optional(n.semantic_type) && (safe_optional(want) == 0)): safe_require_present(id, state)
 	# Slice expressions retain their base array type in the semantic AST.
 	# Match their actual representation before comparing element types.
 	int slice_value = safe_slice(n.semantic_type) || (n.op == 'Z')
@@ -626,7 +892,10 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	if (actual_type >= 0): array_value = retained_types[actual_type].kind == type_kind_array
 	if (safe_record(want)):
 		int got = actual_type
-		if (safe_record(got)): got = retained_types[got].target
+		if (safe_record(got)):
+			if ((kind == 3) && (safe_kind(got) == 2)):
+				safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+			got = retained_types[got].target
 		else if (n.op != 'D'): safe_error(id, c"safe: borrowed aggregate requires a checked value or complete constructor", -1)
 		int target = retained_types[safe_unqualified(want)].target
 		if (safe_same_nominal(target, got) == 0):
@@ -667,12 +936,12 @@ int safe_borrow(int id, int want, char* state, int* parent):
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
 		if (safe_record(base.semantic_type)):
-			if (kind == 3): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+			if ((kind == 3) && ((safe_kind(base.semantic_type) == 2) || (safe_kind(n.semantic_type) == 2))): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
 			root = safe_borrow(safe_child(&n, n.left), base.semantic_type, state, &via)
 		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && safe_owned_shape(safe_pointee(base.semantic_type))):
 			root = safe_place(id, state, &via)
 		else: safe_error(id, c"safe: unsupported reference-bearing projection", -1)
-	else if (n.op == 'C'):
+	else if ((n.op == 'C') || (n.op == 'G') || (n.op == 'W')):
 		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
 			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
 		if ((kind == 3) && (safe_kind(n.semantic_type) == 2)):
@@ -713,6 +982,11 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	int shared = safe_shared_parent(via)
 	if ((shared >= 0) && (kind == 3)):
 		safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", safe_birth[shared])
+	# A proven-absent value has no backing-storage obligation. Do not
+	# resurrect its conservative former origins when it is copied/passed.
+	if (safe_optional(n.semantic_type) && (safe_presence(id, state) == 16)):
+		root = -1
+		via = -1
 	safe_access(root, via, kind == 3, id, state)
 	*parent = via
 	return root
@@ -734,6 +1008,7 @@ int safe_same_contract_type(int a, int b):
 	b = safe_unqualified(b)
 	if ((a < 0) || (b < 0)): return a == b
 	if (safe_kind(a) != safe_kind(b)): return 0
+	if (safe_optional(a) != safe_optional(b)): return 0
 	if (safe_inline_slice(a) != safe_inline_slice(b)): return 0
 	if (safe_record(a) != safe_record(b)): return 0
 	if (safe_record(a)):
@@ -798,6 +1073,9 @@ int safe_return_parameter(int id, retained_binding* binding):
 			safe_error(id, c"safe: mutable reference return requires a mutable borrowed parameter", -1)
 	if (result < 0):
 		if (lifetime != 0): safe_error(id, c"safe: returned lifetime must name a borrowed parameter", -1)
+		# With no borrowed inputs an optional result has no legal origins;
+		# body validation therefore permits absence, never local storage.
+		if (safe_optional(binding.return_type)): return -1
 		safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
 	return result
 
@@ -811,10 +1089,17 @@ int safe_return_from(retained_binding* binding, int inferred, int position):
 
 
 int safe_call(int id, retained_node* n, char* state, int* parent):
-	int binding = n.binding
+	int binding = safe_call_binding(n)
 	if ((binding < 0) || (retained_bindings[binding].return_type < 0)):
 		safe_error(id, c"safe: indirect calls require an ownership contract", -1)
 	retained_binding* callee = retained_bindings[binding]
+	if (((n.op == 'G') || (n.op == 'W')) && (n.generic_signature >= 0)):
+		retained_type* signature = retained_types[n.generic_signature]
+		retained_binding expected
+		expected.return_type = signature.return_type
+		expected.parameters = signature.parameters
+		if (safe_contract_matches(&expected, callee) == 0):
+			safe_error(id, c"safe: generic specialization disagrees with its concrete contract", -1)
 	int function = safe_function_for_binding[binding]
 	retained_binding* implementation = callee
 	if (function >= 0):
@@ -875,6 +1160,8 @@ int safe_eval(int id, char* state, int want):
 	int right = safe_child(&n, n.right)
 	int kind = safe_borrow_kind(n.semantic_type)
 	int wanted = safe_borrow_kind(want)
+	if (kind && (op == '=') && (want >= 0) && (wanted == 0)):
+		safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	int constructed = (op == 'D') && n.high && safe_owned_shape(safe_pointee(want))
 	if (wanted >= 2): safe_error(id, c"safe: reference assignment is not supported", -1)
 	if (wanted == 1):
@@ -882,7 +1169,7 @@ int safe_eval(int id, char* state, int want):
 		if (((op == 'N') || (op == 'D')) && safe_opaque(safe_pointee(want))):
 			safe_error(id, c"safe: opaque collections require an audited constructor", -1)
 		if ((op != 'N') && (kind != 1) && (constructed == 0)): safe_error(id, c"safe: owner requires new storage or an ownership transfer", -1)
-		if ((op != 'N') && (op != 'v') && (op != 'C') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
+		if ((op != 'N') && (op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
 	else if (kind && (op != '=')): safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	if (op == 'v'):
 		if (safe_has_array(n.semantic_type, 0)): safe_error(id, c"safe: array storage cannot be copied; pass a shared slice", -1)
@@ -901,7 +1188,7 @@ int safe_eval(int id, char* state, int want):
 		if (wanted != 1): safe_error(id, c"safe: new storage must initialize an owner", -1)
 		if (safe_plain(safe_pointee(n.semantic_type), 0) == 0): safe_error(id, c"safe: allocation requires a pointer-free sized value", -1)
 		return -1
-	if (op == 'C'):
+	if ((op == 'C') || (op == 'G') || (op == 'W')):
 		int parent = -1
 		safe_call(id, &n, state, &parent)
 		return -1
@@ -911,6 +1198,29 @@ int safe_eval(int id, char* state, int want):
 		int lk = safe_borrow_kind(lhs.semantic_type)
 		int via = -1
 		int root = safe_place(left, state, &via)
+		if (safe_optional(lhs.semantic_type) && (lhs.op == 'v') && (n.value == 0)):
+			int index = safe_index(lhs.binding)
+			int parent = -1
+			int previous = safe_replacing
+			# The overwritten loan can end before RHS evaluation only if
+			# no later operand reads its old value. Otherwise a call could
+			# invalidate it, then pass the stale pointer as a later argument.
+			int reads_previous = 0
+			retained_group* group = retained_record_at(n.parent).group
+			for i in range(group.count):
+				int child_id = n.parent + 1 + i
+				retained_node child
+				retained_node_load(child_id, &child)
+				if ((child_id != left) && (child.op == 'v') && (child.binding == lhs.binding)): reads_previous = 1
+			if (reads_previous == 0): safe_replacing = index
+			int source = safe_borrow(right, lhs.semantic_type, state, &parent)
+			safe_replacing = previous
+			if (safe_validate && safe_ancestor(index, parent)):
+				safe_error(id, c"safe: optional replacement cannot create a reborrow cycle", safe_birth[index])
+			int presence = safe_presence(right, state)
+			safe_origin_join(index, source, parent)
+			state[index] = 2 | presence
+			return -1
 		if (lk >= 2):
 			int related = -1
 			int named = safe_index(lhs.binding)
@@ -942,24 +1252,36 @@ int safe_eval(int id, char* state, int want):
 		safe_type_check(id, n.semantic_type)
 		return -1
 	if ((op == 0) || (op == 'c') || (op == 'h') || (op == 'f')): return -1
+	int tested_presence = 1
+	int tested = safe_presence_test(id, &tested_presence)
+	if ((tested >= 0) && (op != 'v')):
+		safe_read(tested, id, state)
+		return -1
 	if ((op == 'a') || (op == 'o')):
-		safe_eval(left, state, -1)
-		retained_node child
-		retained_node_load(left, &child)
-		int at = safe_child(&child, child.next_arg)
-		char* branch = cast(char*, malloc(safe_locals.length + 1))
+		char* continuing = safe_zero(safe_locals.length, 1)
+		char* finished = safe_zero(safe_locals.length, 1)
+		for i in range(safe_locals.length): continuing[i] = state[i]
+		int at = left
+		int continue_truth = op == 'a'
 		while (at >= 0):
-			for i in range(safe_locals.length): branch[i] = state[i]
-			safe_eval(at, branch, -1)
-			for i in range(safe_locals.length): state[i] = state[i] | branch[i]
+			safe_condition(at, continuing)
+			for i in range(safe_locals.length): state[i] = continuing[i]
+			safe_refine(at, state, 1 - continue_truth)
+			for i in range(safe_locals.length): finished[i] = finished[i] | state[i]
+			safe_refine(at, continuing, continue_truth)
+			retained_node child
 			retained_node_load(at, &child)
 			at = safe_child(&child, child.next_arg)
-		free(branch)
+		for i in range(safe_locals.length): state[i] = finished[i] | continuing[i]
+		free(continuing)
+		free(finished)
 		return -1
 	if (op == '?'):
-		safe_eval(left, state, -1)
+		safe_condition(left, state)
 		char* other = cast(char*, malloc(safe_locals.length + 1))
 		for i in range(safe_locals.length): other[i] = state[i]
+		safe_refine(left, state, 1)
+		safe_refine(left, other, 0)
 		safe_eval(right, state, want)
 		safe_eval(safe_child(&n, n.high), other, want)
 		for i in range(safe_locals.length): state[i] = state[i] | other[i]
@@ -987,11 +1309,26 @@ int safe_eval(int id, char* state, int want):
 	return -1
 
 
+void safe_condition(int id, char* state):
+	int present = 1
+	int index = safe_presence_test(id, &present)
+	if (index >= 0):
+		safe_read(index, id, state)
+		return
+	safe_eval(id, state, -1)
+
+
 int safe_within(int node, int scope):
 	while (node >= 0):
 		if (node == scope): return 1
 		node = retained_record_at(node).parent
 	return 0
+
+
+int safe_condition_flow(safe_flow* f):
+	if (f.alternate < 0): return 0
+	char* name = retained_record_at(f.node).name
+	return (strcmp(name, c"if") == 0) || (strcmp(name, c"while") == 0)
 
 
 void safe_transfer(int event, char* state):
@@ -1004,30 +1341,59 @@ void safe_transfer(int event, char* state):
 		if (safe_borrow_kind(type) >= 2):
 			if (f.expression < 0): safe_error(f.node, c"safe: references require initialization", -1)
 			int parent = -1
-			safe_origin[index] = safe_borrow(f.expression, type, state, &parent)
-			safe_parent_ref[index] = parent
+			int root = safe_borrow(f.expression, type, state, &parent)
+			safe_origin_join(index, root, parent)
 		else: safe_eval(f.expression, state, type)
+		int presence = 0
+		if (safe_optional(type) && (f.expression >= 0)): presence = safe_presence(f.expression, state)
 		state[index] = 1
-		if ((f.expression >= 0) || (retained_types[type].kind == type_kind_array)): state[index] = 2
+		if ((f.expression >= 0) || (retained_types[type].kind == type_kind_array)): state[index] = 2 | presence
 		if ((f.expression < 0) && safe_kind(type)): safe_error(f.node, c"safe: checked pointers require initialization", -1)
 	else if (f.action == 2):
 		if (safe_borrow_kind(safe_return_type) >= 2):
 			if (f.expression < 0): safe_error(f.node, c"safe: reference return requires a value", -1)
 			int parent = -1
 			int root = safe_borrow(f.expression, safe_return_type, state, &parent)
+			f.return_roots = root
 			if (safe_validate):
 				for i in range(safe_locals.length):
 					if (safe_set_has(root, i) && (safe_set_has(safe_return_root, i) == 0)):
 						safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[i])
 		else: safe_eval(f.expression, state, safe_return_type)
 	else if (f.action == 3):
+		# A loop reuses a binding for each allocation/stack lifetime. Kill
+		# surviving loans as well as the ended roots so the next iteration
+		# cannot revive a pointer into an earlier incarnation of that root.
+		for root in range(safe_locals.length):
+			if (safe_within(safe_birth[root], f.node) == 0): continue
+			for borrower in range(safe_locals.length):
+				if (safe_local_kind(borrower) < 2): continue
+				if (safe_set_has(safe_origin[borrower], root) == 0): continue
+				if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
+				state[borrower] = (state[borrower] & 48) | 4
+				safe_moved_at[borrower] = f.node
 		for i in range(safe_locals.length):
 			if (safe_within(safe_birth[i], f.node)): state[i] = 1
+	else if (f.action == 4): state[index] = 2
+	else if ((f.action == 5) || (f.action == 6)):
+		safe_access(index, -1, f.action == 6, f.node, state)
+	else if (f.action == 7):
+		int roots = -1
+		if (f.returning >= 0): roots = safe_graph[f.returning].return_roots
+		if (roots >= 0):
+			safe_call_roots.push(roots)
+			safe_call_kinds.push(safe_borrow_kind(safe_return_type))
+		safe_eval(f.expression, state, -1)
+		if (roots >= 0):
+			safe_call_roots.pop()
+			safe_call_kinds.pop()
+	else if (safe_condition_flow(f)): safe_condition(f.expression, state)
 	else: safe_eval(f.expression, state, -1)
 
 
 void safe_function_check(int function):
 	safe_function = function
+	safe_replacing = -1
 	retained_record* fn = retained_record_at(function)
 	if (fn.expression_fallback): safe_error(function, c"safe: unsupported expression fallback", -1)
 	if (retained_bindings[fn.binding].assembly_body): safe_error(function, c"safe: assembly function bodies are not supported", -1)
@@ -1049,7 +1415,9 @@ void safe_function_check(int function):
 		if (retained_node_table[id] & 1): continue
 		retained_record* n = retained_record_at(id)
 		if ((n.kind == retained_statement) && (strcmp(n.name, c"defer") == 0) && safe_within(id, function)):
-			safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
+			int block = n.parent
+			if ((block < 0) || (retained_record_at(block).parent != function)):
+				safe_error(id, c"safe: defer requires the function's outer lexical block", -1)
 	int count = safe_locals.length
 	safe_sets = new list[char*]
 	for i in range(count):
@@ -1061,7 +1429,7 @@ void safe_function_check(int function):
 	safe_birth = cast(int*, malloc((count + 1) * __word_size__))
 	safe_moved_at = cast(int*, malloc((count + 1) * __word_size__))
 	for i in range(count):
-		safe_origin[i] = i
+		safe_origin[i] = -1
 		safe_moved_at[i] = -1
 		safe_parent_ref[i] = -1
 	for id in range(retained_node_count()):
@@ -1076,6 +1444,7 @@ void safe_function_check(int function):
 	# point handles loop backedges; no source-offset lifetime shortcuts.
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
+		if ((f.action == 5) || (f.action == 6)): f.uses[f.binding] = 1
 		if (f.expression < 0): continue
 		retained_node root
 		retained_node_load(f.expression, &root)
@@ -1093,7 +1462,7 @@ void safe_function_check(int function):
 			safe_flow* f = safe_graph[i]
 			for j in range(count):
 				int live = f.uses[j]
-				if ((f.action != 1) || (f.binding != j)):
+				if (((f.action != 1) && (f.action != 4)) || (f.binding != j)):
 					if (f.next >= 0): live = live | safe_graph[f.next].live[j]
 					if (f.alternate >= 0): live = live | safe_graph[f.alternate].live[j]
 				if (live != f.live[j]):
@@ -1109,8 +1478,11 @@ void safe_function_check(int function):
 			parameter = parameter + 1
 			safe_type_check(safe_birth[i], retained_bindings[safe_locals[i]].type)
 			initial[i] = 2
+			safe_origin[i] = i
+			if (safe_optional(retained_bindings[safe_locals[i]].type)): initial[i] = 50
 	safe_graph[start].reached = 1
 	char* state = cast(char*, malloc(count + 1))
+	char* refined = cast(char*, malloc(count + 1))
 	safe_validate = 0
 	changed = 1
 	while (changed):
@@ -1119,7 +1491,9 @@ void safe_function_check(int function):
 			safe_flow* f = safe_graph[i]
 			if (f.reached == 0): continue
 			for j in range(count): state[j] = f.state[j]
+			safe_origins_changed = 0
 			safe_transfer(i, state)
+			if (safe_origins_changed): changed = 1
 			for edge in range(2):
 				int target = f.next
 				if (edge): target = f.alternate
@@ -1128,8 +1502,10 @@ void safe_function_check(int function):
 				if (to.reached == 0):
 					to.reached = 1
 					changed = 1
+				for j in range(count): refined[j] = state[j]
+				if (safe_condition_flow(f)): safe_refine(f.expression, refined, edge == 0)
 				for j in range(count):
-					int joined = to.state[j] | state[j]
+					int joined = to.state[j] | refined[j]
 					if (joined != to.state[j]):
 						to.state[j] = joined
 						changed = 1
@@ -1141,6 +1517,7 @@ void safe_function_check(int function):
 			for j in range(count): state[j] = safe_graph[i].state[j]
 			safe_transfer(i, state)
 	free(state)
+	free(refined)
 	for i in range(safe_graph.length):
 		free(safe_graph[i].state)
 		free(safe_graph[i].live)
@@ -1179,7 +1556,7 @@ void safe_audit_runtime():
 void safe_check_finish():
 	if ((safe_mode == 0) && (type_safe_used == 0)): return
 	if (safe_bounds_disabled): error(c"safe: checked pointers require bounds checks")
-	if ((target_isa != 0) || (target_os != 0)): error(c"safe: only Linux x86 and x64 targets are supported")
+	if ((target_isa != 0) || ((target_os != 0) && (target_os != 2))): error(c"safe: only Linux x86 and x64, and win64 targets are supported")
 	safe_audit_runtime()
 	int count = retained_node_count()
 	safe_first = cast(int*, malloc(count * __word_size__))
@@ -1208,8 +1585,10 @@ void safe_check_finish():
 		retained_node_load(id, &n)
 		if (safe_trusted(n.source)): continue
 		int checked = safe_contains_checked(n.semantic_type)
-		if ((n.kind == retained_expression) && (n.binding >= 0)):
-			retained_binding* callee = retained_bindings[n.binding]
+		int call_binding = n.binding
+		if ((n.kind == retained_expression) && ((n.op == 'G') || (n.op == 'W'))): call_binding = safe_call_binding(&n)
+		if ((n.kind == retained_expression) && (call_binding >= 0)):
+			retained_binding* callee = retained_bindings[call_binding]
 			for p in range(callee.parameters.length):
 				if (safe_kind(callee.parameters[p])): checked = 1
 		if (n.kind == retained_declaration):
@@ -1222,7 +1601,7 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
-					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
+					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type, 3) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
 						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
 		if (checked):

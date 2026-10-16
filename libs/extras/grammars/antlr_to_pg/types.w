@@ -31,6 +31,7 @@ struct at_site:
 	pg_token* first
 	pg_token* last
 	int position
+	int resolved
 
 
 struct at_command:
@@ -77,6 +78,14 @@ struct at_classification:
 	char* payload
 
 
+# Stateful lowering preserves one entry per source lexer rule. Literal text
+# is not an identity: two modes may assign different token kinds to it.
+struct at_lowered_lexer:
+	at_rule* source
+	char* literal
+	char* matcher
+
+
 struct at_term:
 	char* name
 	int suffix
@@ -120,3 +129,84 @@ void at_emit_c_char_literal(string_builder* out, int c);
 char* g_at_source
 list[at_site*] g_at_dependencies
 int g_at_semantic_losses
+int g_at_stateful
+list[char*] g_at_modes
+list[char*] g_at_declared_modes
+list[at_lowered_lexer*] g_at_lowered_lexer
+list[char*] g_at_token_identities
+list[at_rule*] g_at_source_rules
+
+
+int at_has_token_identity(char* name):
+	if (g_at_token_identities == 0): return 0
+	for char* identity in g_at_token_identities:
+		if (strcmp(identity, name) == 0): return 1
+	return 0
+
+
+int at_stateful_has_mode(char* name):
+	if (name == 0): return 0
+	if (strcmp(name, c"DEFAULT_MODE") == 0): return 1
+	if (g_at_modes == 0): return 0
+	for char* mode in g_at_modes:
+		if (strcmp(mode, name) == 0): return 1
+	return 0
+
+
+int at_stateful_command_supported(at_command* command):
+	char* name = command.name
+	char* argument = command.argument
+	if ((strcmp(name, c"skip") == 0) || (strcmp(name, c"popMode") == 0) || (strcmp(name, c"more") == 0)):
+		return argument == 0
+	if ((strcmp(name, c"mode") == 0) || (strcmp(name, c"pushMode") == 0)):
+		return at_stateful_has_mode(argument)
+	if (strcmp(name, c"type") == 0):
+		return argument != 0
+	if ((strcmp(name, c"channel") == 0) && (argument != 0)):
+		return (strcmp(argument, c"HIDDEN") == 0) || (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0)
+	return 0
+
+
+# Best-effort emission may omit a loss already recorded by the audit, but
+# must not emit a command the downstream .pg validator cannot represent.
+int at_stateful_command_emittable(at_rule* rule, int index):
+	at_command* command = rule.commands[index]
+	if (at_stateful_command_supported(command) == 0): return 0
+	if (strcmp(command.name, c"type") == 0):
+		at_rule* target = g_lexer_rules.get(command.argument, 0)
+		if (target == 0):
+			if (at_has_token_identity(command.argument) == 0): return 0
+		else if (target.is_fragment): return 0
+	for i in range(index):
+		at_command* previous = rule.commands[i]
+		if (at_stateful_command_supported(previous) == 0): continue
+		if (strcmp(previous.name, command.name) == 0): return 0
+		int output_before = (strcmp(previous.name, c"skip") == 0) || (strcmp(previous.name, c"channel") == 0)
+		int output_now = (strcmp(command.name, c"skip") == 0) || (strcmp(command.name, c"channel") == 0)
+		if (output_before && output_now): return 0
+		if ((strcmp(previous.name, c"more") == 0) && ((strcmp(command.name, c"type") == 0) || (strcmp(command.name, c"skip") == 0))): return 0
+		if ((strcmp(command.name, c"more") == 0) && ((strcmp(previous.name, c"type") == 0) || (strcmp(previous.name, c"skip") == 0))): return 0
+	return 1
+
+
+void at_prepare_stateful(list[at_rule*] rules, int requested):
+	g_at_source_rules = rules
+	g_at_stateful = requested
+	g_at_modes = new list[char*]
+	g_at_lowered_lexer = new list[at_lowered_lexer*]
+	if (g_at_token_identities != 0):
+		if (g_at_token_identities.length > 0): g_at_stateful = 1
+	if (g_at_declared_modes != 0):
+		for char* mode in g_at_declared_modes:
+			if (at_stateful_has_mode(mode) == 0): g_at_modes.push(mode)
+		if (g_at_declared_modes.length > 0): g_at_stateful = 1
+	for at_rule* rule in rules:
+		if (rule.is_lexer == 0): continue
+		if ((rule.mode != 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)):
+			g_at_stateful = 1
+			if (at_stateful_has_mode(rule.mode) == 0): g_at_modes.push(rule.mode)
+		for at_command* command in rule.commands:
+			if ((strcmp(command.name, c"skip") != 0) && (strcmp(command.name, c"channel") != 0)):
+				g_at_stateful = 1
+			if ((strcmp(command.name, c"channel") == 0) && (command.argument != 0)):
+				if (strcmp(command.argument, c"HIDDEN") != 0): g_at_stateful = 1

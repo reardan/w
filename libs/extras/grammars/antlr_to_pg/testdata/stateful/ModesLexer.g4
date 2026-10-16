@@ -1,0 +1,14 @@
+lexer grammar ModesLexer;
+IDENT: [a-z]+;
+LATE: 'if';
+OPEN: '`' -> pushMode(TEXT_MODE);
+WS: [ \t\r\n]+ -> skip;
+COMMENT: '#' [a-z]+ -> channel(HIDDEN);
+ENTER: '<' -> mode(ALT_MODE);
+mode TEXT_MODE;
+CLOSE: '`' -> type(OPEN), popMode;
+TEXT_VALUE: [a-z ]+;
+LINE: '\n';
+mode ALT_MODE;
+EXIT: '>' -> mode(DEFAULT_MODE);
+ALT_VALUE: [a-z]+ -> type(IDENT), channel(DEFAULT_TOKEN_CHANNEL);

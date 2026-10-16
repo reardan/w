@@ -58,6 +58,13 @@
 		},
 		"tool_targets": [
 			{
+				"name": "antlr_sweep_harness_test",
+				"tags": ["tests"],
+				"steps": [
+					{"cmd": ["python3", "tests/antlr_sweep_harness_test.py"]}
+				]
+			},
+			{
 				"name": "wvm_image_test",
 				"tags": ["tests"],
 				"steps": [

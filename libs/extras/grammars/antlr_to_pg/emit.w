@@ -33,6 +33,7 @@ int at_is_pg_reserved(char* name):
 	if (strcmp(name, c"lexer_action") == 0): return 1
 	if (strcmp(name, c"lexer_command") == 0): return 1
 	if (strcmp(name, c"lexer_priority") == 0): return 1
+	if (strcmp(name, c"lexer_eof") == 0): return 1
 	if (strcmp(name, c"goal") == 0): return 1
 	return 0
 
@@ -88,14 +89,15 @@ void at_collect_rule_names(list[at_rule*] rules):
 
 char* at_next_group_name(char* owning_rule):
 	int n = g_group_counter.get(owning_rule, 0) + 1
-	g_group_counter[owning_rule] = n
-	string_builder* b = string_new()
-	string_append(b, owning_rule)
-	string_append(b, c"_g")
-	string_append_int(b, n)
-	char* name = strclone(b.data)
-	string_free(b)
-	return name
+	while (1):
+		char* name = strclone(cstr(f"{owning_rule}_g{n}"))
+		if (((name in g_all_rule_names) == 0) && ((name in g_used_names) == 0)):
+			g_group_counter[owning_rule] = n
+			g_all_rule_names[name] = 1
+			return name
+		free(name)
+		n = n + 1
+	return 0
 
 
 list[list[at_term*]] at_translate_altlist(char* owning_rule, list[at_alt*] alts);
@@ -203,47 +205,99 @@ void at_append_pg_string_literal(string_builder* out, char* text):
 	string_append_char(out, '"')
 
 
+char* at_pg_mode_name(char* mode):
+	if (strcmp(mode, c"DEFAULT_MODE") == 0): return c"DEFAULT"
+	return cstr(f"AT_MODE_{mode}")
+
+
+void at_emit_stateful_lexer(string_builder* out):
+	string_append(out, c"lexer stateful\nlexer_priority ordered\nlexer_eof any_mode\n")
+	if (g_at_token_identities != 0):
+		for char* name in g_at_token_identities:
+			if ((name in g_lexer_rules) == 0): string_append(out, cstr(f"token {name}\n"))
+	for char* mode in g_at_modes:
+		string_append(out, cstr(f"lexer_mode {at_pg_mode_name(mode)}\n"))
+	# Implicit parser literals outrank explicit lexer rules on equal length.
+	# Explicit literals are emitted below, in original lexer declaration order.
+	for char* name in g_literal_order:
+		if (name in g_lexer_rules): continue
+		string_append(out, cstr(f"literal {name} "))
+		at_append_pg_string_literal(out, g_literal_text[name])
+		string_append_char(out, 10)
+	for at_lowered_lexer* lowered in g_at_lowered_lexer:
+		at_rule* source = lowered.source
+		if (lowered.literal != 0):
+			string_append(out, cstr(f"literal {source.name} "))
+			at_append_pg_string_literal(out, lowered.literal)
+			string_append_char(out, 10)
+		else:
+			string_append(out, cstr(f"token {source.name} {lowered.matcher}\n"))
+		string_append(out, cstr(f"lexer_rule {source.name} {at_pg_mode_name(source.mode)}\n"))
+		for ci, command in source.commands:
+			if (at_stateful_command_emittable(source, ci) == 0): continue
+			string_append(out, cstr(f"lexer_command {source.name} {command.name}"))
+			if (command.argument != 0):
+				char* argument = command.argument
+				if ((strcmp(command.name, c"mode") == 0) || (strcmp(command.name, c"pushMode") == 0)):
+					argument = at_pg_mode_name(argument)
+				else if (strcmp(command.name, c"channel") == 0):
+					if (strcmp(argument, c"HIDDEN") == 0): argument = c"hidden"
+					else if (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0): argument = c"default"
+				string_append(out, cstr(f" {argument}"))
+			string_append_char(out, 10)
+	# Legacy parser wildcard/negated-set fallbacks are retained in best-effort
+	# mode, after the explicit rules. The semantic audit rejects them strictly.
+	for i, name in g_token_names:
+		if (name in g_lexer_rules): continue
+		string_append(out, cstr(f"token {name} {g_token_matchers[i]}\n"))
+	string_append_char(out, 10)
+
+
 void at_emit(string_builder* out, char* parser_name):
 	string_append(out, c"parser ")
 	string_append(out, parser_name)
 	string_append(out, c"\n\n")
-	# Always-emitted skips use reserved names so source lexer rules named
-	# NEWLINE/TAB (common keyword literals, or visible tab tokens) don't
-	# collide with the generated `*_token_NEWLINE` / `*_token_TAB` symbols.
-	string_append(out, c"# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.\n")
-	string_append(out, c"skip PG_SKIP_NEWLINE newline\n")
-	string_append(out, c"skip PG_SKIP_TAB tabs\n")
 	int i = 0
-	while (i < g_skip_names.length):
-		string_append(out, c"skip ")
-		string_append(out, g_skip_names[i])
-		string_append_char(out, ' ')
-		string_append(out, g_skip_matchers[i])
+	if (g_at_stateful):
+		at_emit_stateful_lexer(out)
+	else:
+		# Always-emitted skips use reserved names so source lexer rules named
+		# NEWLINE/TAB (common keyword literals, or visible tab tokens) don't
+		# collide with the generated `*_token_NEWLINE` / `*_token_TAB` symbols.
+		string_append(out, c"# Always present: the pg lexer only auto-skips inline space/CR, not tabs or newlines.\n")
+		string_append(out, c"skip PG_SKIP_NEWLINE newline\n")
+		string_append(out, c"skip PG_SKIP_TAB tabs\n")
+		i = 0
+		while (i < g_skip_names.length):
+			string_append(out, c"skip ")
+			string_append(out, g_skip_names[i])
+			string_append_char(out, ' ')
+			string_append(out, g_skip_matchers[i])
+			string_append_char(out, 10)
+			i = i + 1
 		string_append_char(out, 10)
-		i = i + 1
-	string_append_char(out, 10)
 
-	i = 0
-	while (i < g_token_names.length):
-		string_append(out, c"token ")
-		string_append(out, g_token_names[i])
-		string_append_char(out, ' ')
-		string_append(out, g_token_matchers[i])
+		i = 0
+		while (i < g_token_names.length):
+			string_append(out, c"token ")
+			string_append(out, g_token_names[i])
+			string_append_char(out, ' ')
+			string_append(out, g_token_matchers[i])
+			string_append_char(out, 10)
+			i = i + 1
 		string_append_char(out, 10)
-		i = i + 1
-	string_append_char(out, 10)
 
-	i = 0
-	while (i < g_literal_order.length):
-		char* name = g_literal_order[i]
-		char* text = g_literal_text.get(name, 0)
-		string_append(out, c"literal ")
-		string_append(out, name)
-		string_append_char(out, ' ')
-		at_append_pg_string_literal(out, text)
+		i = 0
+		while (i < g_literal_order.length):
+			char* name = g_literal_order[i]
+			char* text = g_literal_text.get(name, 0)
+			string_append(out, c"literal ")
+			string_append(out, name)
+			string_append_char(out, ' ')
+			at_append_pg_string_literal(out, text)
+			string_append_char(out, 10)
+			i = i + 1
 		string_append_char(out, 10)
-		i = i + 1
-	string_append_char(out, 10)
 
 	if (g_parser_rule_names.length > 0):
 		string_append(out, c"start ")

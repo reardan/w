@@ -1,0 +1,16 @@
+sequenceDiagram
+title Checkout interaction
+autonumber
+actor Customer
+participant API as Shop API
+participant DB as Database
+Customer->>+API: Place order
+API->>+DB: Save order
+DB-->>-API: Order ID
+alt accepted
+API-->>Customer: Confirmed
+else rejected
+API--xCustomer: Declined
+end
+Note over Customer,API: Source editable in the native desktop
+API->>-Customer: Done

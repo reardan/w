@@ -102,8 +102,31 @@ modules:
 	lib.__arch__.syscalls
 	libs.extras.html.html
 	libs.extras.css.css
+	libs.extras.mermaid.workflows
+	libs.extras.mermaid.workflow_render
+	libs.extras.mermaid.c4
+	libs.extras.mermaid.systems
+	libs.extras.mermaid.blocks
+	libs.extras.mermaid.gitgraph
+	libs.extras.mermaid.frameworks
+	libs.extras.mermaid.framework_render
+	libs.extras.mermaid.graph_families
+	libs.extras.mermaid.hierarchy_render
 	libs.extras.mermaid.model
+	libs.extras.mermaid.parse_common
+	libs.extras.mermaid.narrative
+	libs.extras.mermaid.narrative_render
+	libs.extras.mermaid.uml
+	libs.extras.mermaid.agentflow
+	libs.extras.mermaid.source
+	libs.extras.mermaid.railroad_parse
+	libs.extras.mermaid.railroad_render
+	libs.extras.mermaid.data_parse
+	libs.extras.mermaid.data_render
 	libs.extras.mermaid.parser
+	libs.extras.mermaid.style
+	libs.extras.mermaid.style_render
+	libs.extras.mermaid.scene
 	libs.extras.mermaid.render
 	libs.extras.mermaid.io
 	libs.extras.mermaid.editor

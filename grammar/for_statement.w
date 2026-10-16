@@ -906,6 +906,7 @@ int for_statement():
 
 	expect(c"in")
 	if (accept(c"range")):
+		if (retained_parent >= 0): retained_record_at(retained_parent).name = retained_intern(c"for range")
 		if (value_var != 0): error(c"range iteration takes one loop variable")
 		# An inferred range loop variable is always int
 		if (infer_name != 0): for_infer_declare(infer_name, for_var, type_lookup(c"int"))

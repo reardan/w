@@ -7,6 +7,9 @@ import libs.extras.grammars.antlr_to_pg.matchers_ascii
 int at_command_is_refused(char* command):
 	if (command == 0):
 		return 0
+	# Stateful metadata executes commands after choosing a match. Their
+	# full ordered list is validated separately by the semantic audit.
+	if (g_at_stateful): return 0
 	if (strcmp(command, c"skip") == 0):
 		return 0
 	if (strcmp(command, c"channel") == 0):
@@ -115,6 +118,11 @@ at_element* at_clone_element(at_element* e):
 	c.text = e.text
 	c.group_alts = e.group_alts
 	c.suffix = e.suffix
+	c.sites = e.sites
+	c.label = e.label
+	c.nongreedy = e.nongreedy
+	c.first = e.first
+	c.last = e.last
 	return c
 
 
@@ -127,30 +135,161 @@ list[at_element*] at_clone_elements_prefix(list[at_element*] elements, int n):
 	return out
 
 
+# Rewrites must not erase actions, predicates, labels, or matching options.
+int at_rewrite_plain_alts(list[at_alt*] alts):
+	int ai = 0
+	while (ai < alts.length):
+		at_alt* alt = alts[ai]
+		if ((alt.label != 0) || ((alt.sites != 0) && (alt.sites.length > 0))): return 0
+		int ei = 0
+		while (ei < alt.elements.length):
+			at_element* e = alt.elements[ei]
+			if ((e.label != 0) || e.nongreedy): return 0
+			if ((e.sites != 0) && (e.sites.length > 0)): return 0
+			if ((e.kind == 3) && (at_rewrite_plain_alts(e.group_alts) == 0)): return 0
+			ei = ei + 1
+		ai = ai + 1
+	return 1
+
+
+int at_rewrite_consuming_alts(list[at_alt*] alts, int depth);
+
+# A bounded proof, not an assumption that an unknown/cyclic reference consumes.
+int at_rewrite_consuming_elements(list[at_element*] elements, int begin, int end, int depth):
+	if (depth > 32): return 0
+	int i = begin
+	while (i < end):
+		at_element* e = elements[i]
+		if ((e.suffix != '?') && (e.suffix != '*')):
+			if ((e.kind == 0) && (strlen(e.text) > 0)): return 1
+			if ((e.kind == 1) || (e.kind == 4) || (e.kind == 5)): return 1
+			if ((e.kind == 3) && at_rewrite_consuming_alts(e.group_alts, depth + 1)): return 1
+			if (e.kind == 2):
+				at_rule* piece = at_lookup_lexer_piece(e.text)
+				if ((piece != 0) && at_rewrite_consuming_alts(piece.alts, depth + 1)): return 1
+		i = i + 1
+	return 0
+
+
+int at_rewrite_consuming_alts(list[at_alt*] alts, int depth):
+	if ((depth > 32) || (alts.length == 0)): return 0
+	int i = 0
+	while (i < alts.length):
+		if (at_rewrite_consuming_elements(alts[i].elements, 0, alts[i].elements.length, depth + 1) == 0): return 0
+		i = i + 1
+	return 1
+
+
+# A right-recursion loop must not greedily swallow the beginning of its
+# required base. Compute conservative ASCII first sets; unknown/recursive
+# starts refuse. Nullable prefixes contribute their set and the next element.
+int at_rewrite_first_alts(list[at_alt*] alts, char* initial, int depth);
+
+# The general legacy decoder falls back to literal letters for unknown
+# escapes. That is not a proof: admit only unambiguous ASCII escapes here.
+int at_rewrite_ascii_escape(char* raw, int i, int end, int* advance):
+	if (i + 1 >= end): return -1
+	int c = raw[i + 1]
+	if ((c != 't') && (c != 'n') && (c != 'r') && (c != 92) && (c != ']') && (c != '-') && (c != '^')): return -1
+	return at_parse_charset_escape(raw, i, end, advance)
+
+
+int at_rewrite_first_element(at_element* e, char* initial, int depth):
+	if (depth > 32): return 0
+	if (e.kind == 0):
+		if (strlen(e.text) == 0): return 1
+		int c = cast(int, e.text[0]) & 255
+		if (c > 127): return 0
+		initial[c] = 1
+		return 1
+	if (e.kind == 3): return at_rewrite_first_alts(e.group_alts, initial, depth + 1)
+	if (e.kind == 2):
+		at_rule* piece = at_lookup_lexer_piece(e.text)
+		if (piece != 0): return at_rewrite_first_alts(piece.alts, initial, depth + 1)
+		return 0
+	if ((e.kind != 1) || (e.text == 0) || at_charset_negated(e.text)): return 0
+	int end = strlen(e.text) - 1
+	if ((end < 1) || (e.text[0] != '[') || (e.text[end] != ']')): return 0
+	int i = 1
+	while (i < end):
+		int advance = 1
+		int low = cast(int, e.text[i]) & 255
+		if (low == 92): low = at_rewrite_ascii_escape(e.text, i, end, &advance)
+		if ((low < 0) || (low > 127) || (advance <= 0)): return 0
+		i = i + advance
+		int high = low
+		if ((i + 1 < end) && (e.text[i] == '-')):
+			i = i + 1
+			advance = 1
+			high = cast(int, e.text[i]) & 255
+			if (high == 92): high = at_rewrite_ascii_escape(e.text, i, end, &advance)
+			if ((high < low) || (high > 127) || (advance <= 0)): return 0
+			i = i + advance
+		while (low <= high):
+			initial[low] = 1
+			low = low + 1
+	return 1
+
+
+int at_rewrite_first_elements(list[at_element*] elements, int end, char* initial, int depth):
+	if (depth > 32): return 0
+	int i = 0
+	while (i < end):
+		if (at_rewrite_first_element(elements[i], initial, depth + 1) == 0): return 0
+		if (at_rewrite_consuming_elements(elements, i, i + 1, 0)): return 1
+		i = i + 1
+	return 1
+
+
+int at_rewrite_first_alts(list[at_alt*] alts, char* initial, int depth):
+	if ((depth > 32) || (alts.length == 0)): return 0
+	for at_alt* alt in alts:
+		if (at_rewrite_first_elements(alt.elements, alt.elements.length, initial, depth + 1) == 0): return 0
+	return 1
+
+
+int at_rewrite_disjoint_initials(at_alt* prefix, at_alt* base):
+	char* prefix_set = cast(char*, malloc(128))
+	char* base_set = cast(char*, malloc(128))
+	for i in range(128):
+		prefix_set[i] = 0
+		base_set[i] = 0
+	int known = at_rewrite_first_elements(prefix.elements, prefix.elements.length - 1, prefix_set, 0)
+	known = known && at_rewrite_first_elements(base.elements, base.elements.length, base_set, 0)
+	int i = 0
+	while (i < 128):
+		if (prefix_set[i] && base_set[i]): known = 0
+		i = i + 1
+	free(prefix_set)
+	free(base_set)
+	return known
+
+
 # Rewrite regular right-/left-recursive lexer shapes into loops:
 #   X: PREFIX X?          → PREFIX+
-#   X: PREFIX X           → PREFIX+   (no base alt; intended +)
 #   X: BASE | PREFIX X    → PREFIX* BASE
 #   X: BASE | X SUFFIX    → BASE SUFFIX*
 #   X: PREFIX (MID X)*    → PREFIX (MID PREFIX)*
-#   X: PREFIX (MID X)?    → PREFIX (MID PREFIX)?
+#   X: PREFIX (MID X)?    → PREFIX (MID PREFIX)*
 # Returns 1 if the rule was rewritten.
 int at_unroll_right_recursion(at_rule* rule):
 	if (rule == 0):
 		return 0
 	if (rule.alts == 0):
 		return 0
+	if ((rule.options != 0) && (rule.options.length > 0)): return 0
+	if (at_rewrite_plain_alts(rule.alts) == 0): return 0
 	char* name = rule.name
-	# --- Shape: single alt, PREFIX then trailing self-ref (? or required) ---
+	# --- Shape: single alt, PREFIX then optional trailing self-ref ---
 	if (rule.alts.length == 1):
 		at_alt* alt = rule.alts[0]
 		if (alt.elements.length >= 2):
 			at_element* last = alt.elements[alt.elements.length - 1]
 			if ((last.kind == 2) && (last.text != 0)):
 				if (strcmp(last.text, name) == 0):
-					if ((last.suffix == '?') || (last.suffix == 0)):
+					if (last.suffix == '?'):
 						# PREFIX must not itself mention name.
-						int ok = 1
+						int ok = at_rewrite_consuming_elements(alt.elements, 0, alt.elements.length - 1, 0)
 						int i = 0
 						while (i < alt.elements.length - 1):
 							if (at_element_refs_name(alt.elements[i], name)):
@@ -179,13 +318,13 @@ int at_unroll_right_recursion(at_rule* rule):
 							elems2.push(grp)
 							alt.elements = elems2
 							return 1
-		# --- Shape: PREFIX (MID X)* SUFFIX?  or PREFIX (MID X)? SUFFIX? ---
-		# The recursive group need not be last (vb6 INTEGERLITERAL has a
-		# trailing optional type-suffix after ('E' INTEGERLITERAL)*).
+		# --- Shape: PREFIX (MID X)* or PREFIX (MID X)? ---
+		# A suffix after the recursive group would occur at every nesting
+		# depth; flattening it to one trailing suffix changes the language.
 		int gi = 0
 		while (gi < alt.elements.length):
 			at_element* ge = alt.elements[gi]
-			if ((ge.kind == 3) && ((ge.suffix == '*') || (ge.suffix == '?'))):
+			if ((gi == alt.elements.length - 1) && (ge.kind == 3) && ((ge.suffix == '*') || (ge.suffix == '?'))):
 				if (ge.group_alts != 0):
 					if (ge.group_alts.length == 1):
 						at_alt* galt = ge.group_alts[0]
@@ -195,7 +334,7 @@ int at_unroll_right_recursion(at_rule* rule):
 								if (strcmp(gself.text, name) == 0):
 									# PREFIX (elems before gi), MID, and SUFFIX
 									# (elems after gi) must not mention name.
-									int ok = 1
+									int ok = at_rewrite_consuming_elements(alt.elements, 0, gi, 0)
 									int i = 0
 									while (i < alt.elements.length):
 										if (i != gi):
@@ -221,6 +360,7 @@ int at_unroll_right_recursion(at_rule* rule):
 											new_g.push(at_clone_element(alt.elements[i]))
 											i = i + 1
 										galt.elements = new_g
+										ge.suffix = '*'
 										return 1
 			gi = gi + 1
 	# --- Shape: BASE | PREFIX X  (right-recursive alt) ---
@@ -266,7 +406,10 @@ int at_unroll_right_recursion(at_rule* rule):
 		if ((base_i >= 0) && (rec_i >= 0) && (base_i != rec_i)):
 			at_alt* base = rule.alts[base_i]
 			at_alt* rec = rule.alts[rec_i]
+			if (at_rewrite_consuming_elements(base.elements, 0, base.elements.length, 0) == 0): return 0
 			if (right_rec):
+				if (at_rewrite_consuming_elements(rec.elements, 0, rec.elements.length - 1, 0) == 0): return 0
+				if (at_rewrite_disjoint_initials(rec, base) == 0): return 0
 				# PREFIX* BASE
 				at_element* loop = new at_element()
 				loop.kind = 3
@@ -289,6 +432,7 @@ int at_unroll_right_recursion(at_rule* rule):
 				rule.alts = alts
 				return 1
 			if (left_rec):
+				if (at_rewrite_consuming_elements(rec.elements, 1, rec.elements.length, 0) == 0): return 0
 				# BASE SUFFIX*
 				list[at_element*] elems = new list[at_element*]
 				int bi = 0

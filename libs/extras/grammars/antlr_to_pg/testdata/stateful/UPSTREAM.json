@@ -1,0 +1,26 @@
+{
+  "repository": "https://github.com/antlr/grammars-v4",
+  "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+  "files": [
+    {
+      "path": "SwiftFinLexer.g4",
+      "upstream_path": "swift-fin/SwiftFinLexer.g4",
+      "sha256": "45fe7e980ff13e8644eb78ee1a028c427e8666c311042ce736b0a96b36459210"
+    },
+    {
+      "path": "SwiftFinParser.g4",
+      "upstream_path": "swift-fin/SwiftFinParser.g4",
+      "sha256": "ed8d6927279f27a498b8b22ef9ac5880dac665727f28c1375697c47a5f51c9b9"
+    },
+    {
+      "path": "PropertiesLexer.g4",
+      "upstream_path": "properties/PropertiesLexer.g4",
+      "sha256": "90ba05861239c7386e54a6b21df0d6ace6ea81c059eade9f4edc3751ae2ca01e"
+    },
+    {
+      "path": "PropertiesParser.g4",
+      "upstream_path": "properties/PropertiesParser.g4",
+      "sha256": "0ba2de69ac8ea7c5023f304297789676e9d8a4789742595239784f3a84fe64ae"
+    }
+  ]
+}

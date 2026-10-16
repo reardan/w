@@ -9,7 +9,12 @@ The [safe-mode reference](safe_mode.md) describes the supported syntax,
 guarantees, restrictions and measured costs. This document preserves the
 remaining design from [PR #645](https://github.com/reardan/w/pull/645) and
 turns it into the implementation plan below. The bounded first delivery is
-implemented as described below; later milestones remain proposals.
+implemented as described below. The follow-on implementation adds bounded
+optional references, range loops and scalar switches, outer-function
+deferred expressions, single-group mutable-reference records,
+checked methods and concrete generic calls,
+owned-integer buffers, byte arenas
+and win64 support. The remaining requirements below are not all delivered.
 
 The goal remains to prevent dangling references, use after move or
 destruction, double destruction and conflicting reference access in checked
@@ -30,11 +35,11 @@ implementation rather than introduce a second ownership model.
 | Area | Available behavior | Remaining scope |
 | --- | --- | --- |
 | Compiler interface | `--safe`, structured diagnostics, deterministic option conflicts, unsupported-target errors | More targets and in-process execution |
-| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, aliases and explicit contracts without `--safe` | Optional references, general outlives clauses and higher-ranked contracts |
-| Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins and loop backedges | More control-flow forms and more precise projections |
-| Calls | Direct/imported/recursive calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Indirect calls, callbacks, methods and unmodeled generic operations |
-| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves and recursive owner-bearing struct destruction | Deferred expressions, partial moves and mixed borrowed/owned aggregate fields |
-| Storage and libraries | Fixed arrays, inline checked slices, single-group shared-reference structs, owned structs, opaque integer buffers and byte strings | Generic/owned-element containers, maps/sets, arena lifetimes and richer raw interoperation |
+| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, optional references with presence refinement, aliases and explicit contracts without `--safe` | General outlives clauses and higher-ranked contracts |
+| Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins, range loops and scalar switches | Container iteration and more precise projections |
+| Calls | Direct/imported/recursive calls, checked methods and concrete generic calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Indirect calls, callbacks and unmodeled generic operations |
+| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction and outer-function `defer` | Nested defer registration, partial moves and mixed borrowed/owned aggregate fields |
+| Storage and libraries | Fixed arrays, inline checked slices, single-group shared/exclusive borrowed structs, owned structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
 | Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
 
 The checker in [compiler/safe.w](../../compiler/safe.w) uses resolved
@@ -53,17 +58,19 @@ the accepted syntax and validation evidence. In particular:
 
 - Named labels express shared result/input lifetime relationships; general
   outlives clauses remain unimplemented.
-- Borrowed structs carry one shared lifetime group across pointer and checked
-  slice fields. Multiple independent groups and nested borrowed structs
+- Borrowed structs carry one lifetime group across shared or mutable pointer
+  fields and shared checked-slice fields. Mutable-reference fields require
+  an exclusive `refmut Record` wrapper; copies are reborrows. Multiple
+  independent groups and nested borrowed structs
   remain rejected.
 - Owned structs use `own Record*`, complete heap constructors and acyclic
-  recursive destruction. Mutable-reference fields, mixed lifetime-bearing
-  owner fields, partial field moves and unwinding remain outside this stage.
+  recursive destruction. Mixed lifetime-bearing owner fields, partial field
+  moves and unwinding remain outside this stage.
 - C1 exposes a concrete integer buffer; C2 exposes arbitrary byte strings.
   Both use direct functions, opaque metadata and shared views. General
   element types, UTF-8 invariants, optional pop and self-append are not added.
 
-The remaining A2 scope and A3/O1/F1–F3/C3/U1/T1/P1 retain the gates below.
+The remaining A2/A3/F2/F3/C3/U1/T1/P1 scope retains the gates below.
 The parallel agents implemented syntax/emission, analysis and independent
 adversarial tests in isolated worktrees; the integrator combined them and
 added the concrete runtime, arithmetic checks, documentation and release
@@ -168,8 +175,12 @@ it; worktree isolation includes generated manifests and caches.
 
 ### 1. Optional references and escaping lifetime contracts
 
-Specify an explicit absence representation and require a presence check
-before dereferencing an optional reference. Ordinary `ref` and `refmut`
+`optref[a] T*` and `optrefmut[a] T*` use pointer-sized zero for absence.
+Flow-sensitive presence checks are required before access; joins, loop
+backedges, reassignment and lexical exits invalidate stale evidence.
+Replacement conservatively retains possible origins and reborrow ancestry.
+Optional aggregate fields and optional owned values are not supported.
+Ordinary `ref` and `refmut`
 remain initialized, aligned, non-null references to valid values. Do not
 make null a valid value of an existing checked reference type.
 
@@ -217,9 +228,12 @@ storage. Strings and views need backing-storage provenance even when their
 runtime representation already carries a length. Raw `.data` fields must
 not bypass these rules.
 
-The [arena API](../../lib/arena.w) currently relies on callers registering
-borrows. Design a checked contract connecting those borrows to reset and
-destruction; runtime registration alone is not a compiler lifetime proof.
+The legacy [arena API](../../lib/arena.w) relies on callers registering
+borrows. The separate checked `WByteArena` in `lib.safe_buffer` now ties
+copied byte views to its owner and requires exclusive access for copy,
+reset and release. General arena allocation, typed objects and attached
+budgets still require contracts; runtime registration alone is not a
+compiler lifetime proof.
 
 Extend the existing allocation, destruction, bounds and output interfaces
 incrementally. Keep audited contracts tied to their resolved implementations
@@ -244,7 +258,11 @@ does not recursively destroy owned values. C3 therefore needs generated or
 audited element move/drop operations, including valid ownership state after
 failed insertion, before it can accept owners as elements. Start maps with
 a closed set of key/value operations; user hashing/equality and escaping
-iterators need their own checked contracts.
+iterators need their own checked contracts. The bounded C3 implementation
+uses a separate opaque `WOwnedIntBuffer`: push and replacement consume an
+`own int*`, pop transfers it, shared element views constrain the whole
+buffer, and clear/destruction drop every retained element. This does not
+change the legacy containers or implement generic element operations.
 
 For C2, define byte indexing and embedded-NUL behavior; UTF-8 validity is a
 separate invariant unless the API explicitly enforces it. Append takes a
@@ -269,9 +287,9 @@ cannot inherit an old audited contract.
 
 Extend the resolved analysis graph for each new construct, including its
 implicit reads, writes, calls, transfers and cleanup edges. Complete analysis
-coverage is required for every admitted function. Unsupported `for`,
-`switch`, generators and arbitrary `goto` paths must continue to fail until
-their rules are implemented.
+coverage is required for every admitted function. Container iteration,
+generators and arbitrary `goto` paths must continue to fail until their
+rules are implemented. Range loops and scalar switches are implemented.
 
 Bound F1 initially to range `for` and scalar `switch`; container iteration
 comes with container invalidation contracts. Check that range arguments and
@@ -287,8 +305,9 @@ existing emitter behaves differently. Reject a deferred free that would
 duplicate automatic cleanup. Cleanup is still not promised after termination
 or a trap.
 
-Indirect calls, callbacks, methods and generic specialization need contracts
-that survive resolution and instantiation. Generator suspension, GPU memory,
+Methods and concrete generic specialization now use the same checked call
+contracts after resolution and instantiation. Indirect calls and callbacks
+still need explicit contracts. Generator suspension, GPU memory,
 shared mutable globals and cross-thread ownership transfer each need their
 own lifetime and aliasing rules; support for one does not imply the others.
 

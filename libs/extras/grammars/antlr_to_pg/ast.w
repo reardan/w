@@ -399,6 +399,7 @@ list[at_rule*] at_collect_rules(pg_ast_node* root):
 				rules.push(rule)
 		else if (inner.kind == antlr4_ast_mode_decl):
 			active_mode = pg_ast_child(inner, 1).text
+			if (g_at_declared_modes != 0): g_at_declared_modes.push(strclone(active_mode))
 			g_at_dependencies.push(at_build_site(inner, c"mode declaration", 0))
 		else if ((inner.kind == antlr4_ast_bare_marker) || (inner.kind == antlr4_ast_at_action) || (inner.kind == antlr4_ast_import_decl)):
 			g_at_dependencies.push(at_build_site(inner, c"grammar dependency", 0))

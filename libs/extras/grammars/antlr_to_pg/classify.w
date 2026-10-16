@@ -564,10 +564,39 @@ void at_collect_parser_refs(list[at_rule*] rules):
 
 
 void at_classify_all_lexer_rules(list[at_rule*] rules):
+	if (g_at_stateful && (g_at_token_identities != 0)):
+		for char* name in g_at_token_identities: at_mark_used(name)
 	int i = 0
 	while (i < rules.length):
 		at_rule* r = rules[i]
 		if ((r.is_fragment == 0) && (r.is_lexer == 1)):
+			if (g_at_stateful):
+				at_lowered_lexer* lowered = new at_lowered_lexer()
+				lowered.source = r
+				lowered.literal = 0
+				lowered.matcher = 0
+				if ((r.alts.length == 1) && (r.alts[0].elements.length == 1)):
+					at_element* element = r.alts[0].elements[0]
+					if ((element.kind == 0) && (element.suffix == 0)):
+						lowered.literal = strclone(element.text)
+				if (lowered.literal != 0):
+					g_literal_order.push(strclone(r.name))
+					g_literal_text[r.name] = lowered.literal
+					# Parser literals reference the declared token identity,
+					# including its mode transition. Ambiguous spellings and
+					# type/more remaps are reported by the source audit.
+					if ((lowered.literal in g_text_to_name) == 0): g_text_to_name[lowered.literal] = r.name
+				else:
+					lowered.matcher = at_try_generate_matcher(r)
+					if (lowered.matcher != 0):
+						g_token_names.push(strclone(r.name))
+						g_token_matchers.push(lowered.matcher)
+						at_report(c"GENERATED matcher for ", r.name, lowered.matcher)
+				if ((lowered.literal != 0) || (lowered.matcher != 0)):
+					g_at_lowered_lexer.push(lowered)
+					at_mark_used(r.name)
+				i = i + 1
+				continue
 			at_classification* c = at_classify_lexer_rule(r)
 			if (c.kind == 0):
 				at_register_literal(r.name, c.payload)
@@ -655,6 +684,10 @@ int at_exact_implicit_trivia(at_rule* rule):
 # constitute a proof that an imported rule accepts exactly the same language.
 # Keep these diagnostics out of legacy output goldens, but never hide them.
 void at_audit_lexer_contract(list[at_rule*] rules):
+	# The stateful path uses source-order exact literals and generated
+	# matchers, with explicit trivia and commands; none of these legacy
+	# heuristic substitutions apply. Source semantic sites stay audited.
+	if (g_at_stateful): return
 	int trivia = 0
 	int preceding_matcher = 0
 	int i = 0
