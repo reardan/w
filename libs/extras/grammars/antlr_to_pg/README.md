@@ -211,16 +211,17 @@ with W commit `298246c6d6906650d4cd9c677e93933abd9bf619`: **196 translated,
 `SWEEP_RESULTS.md` used different upstream inputs and predates safety checks;
 those totals are not a direct regression comparison.
 
-After the safety, stateful lexer, dependency, and bounded recursion work, the
-same pinned cases produce **205 translations, 200 generated/compiled parsers,
-and 13 strict translations**. The historical 288-name subset compiles 198.
-The per-case gate now protects these passes; `recorded_pass` retains the initial
-179-compilation measurement. There are 22 newly compiling cases and one
-intentional loss: Lisp's fragment `ATOM_PART: (LETTER | NUMBER) ATOM_PART` has no
-productive base, and its previous rewrite incorrectly invented one. See
-[`SWEEP_RESULTS.md`](SWEEP_RESULTS.md) and
-[`sweep_current_results.csv`](sweep_current_results.csv) for the current results
-and remaining blockers. Coverage is still incomplete.
+The same pinned cases now produce **215 translations, 209 generated/compiled
+parsers, and 14 strict translations**, up from PR #689's 205/200/13. The
+historical 288-name subset compiles 207. This increment adds nine compiling
+cases (arithmetic, c, cql, icon, ltl, microc, ocl, pmmn, tinyc), a translation
+pass for powerquery, and strict acceptance for pmmn. Every prior expected pass
+is retained; `recorded_pass` still preserves the initial 179-compilation audit.
+The earlier Lisp reclassification remains: its `ATOM_PART` fragment has no
+productive base, so its old repetition rewrite was invalid. See
+[`SWEEP_RESULTS.md`](SWEEP_RESULTS.md),
+[`sweep_current_results.csv`](sweep_current_results.csv), and the
+[implementation plan and remaining gaps](COVERAGE_NEXT_PLAN.md).
 
 Run from the W checkout after obtaining the pinned corpus:
 

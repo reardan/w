@@ -53,3 +53,70 @@ offline sweep harness tests, and `./wbuild tests`. Preserve original
 `recorded_pass` data and refresh current measurement provenance. Open a stacked
 PR targeting `codex/grammar-compile-coverage`, reporting measured gains and
 remaining limitations.
+
+## Implemented outcome
+
+The finalized sweep reaches **209/291 compiled** (+9), **215 translated** (+10),
+and **14 strict translations** (+1), with no regressions or infrastructure
+errors. The original 200 compile expectations and every other stage expectation
+from #689 remain protected. New compiles are arithmetic, c, cql, icon, ltl,
+microc, ocl, pmmn, and tinyc; PowerQuery gains translation only. PMMN gains
+strict acceptance.
+
+Agents A/B implemented expression and list normalization in separate modules.
+Agent C established that Bison/Langium need continuation-aware lexer matching,
+then added executable, unmodified pinned TinyC/MicroC/Arithmetic fixtures.
+Cross-review identified greedy-choice counterexamples and added refusals:
+
+- Nullable list bases are supported only as one syntactically empty alternative.
+  `a: a 'x' 'y' | 'x'?` cannot become greedy `x? (xy)*` without losing `xy`.
+  Competing empty/nonempty bases remain unsupported for the same reason.
+- Compound expression bases need disjoint first tokens from other bases, prefix
+  operators, and parenthesized expressions. A successful short prefix must not
+  conceal a longer valid base; literal, group, optional-prefix, and alias forms
+  all receive regression coverage.
+- Nested list recursion requires mandatory matching `()`, `[]`, or `{}` around
+  re-entry. Consuming an operator alone does not justify lowering an indirect
+  expression operand. The final nullable-prefix safety audit remains mandatory.
+
+The new runtime tests evaluate ASTs, check unary binding at three source
+positions and binary association, parse nested/postfix/empty lists, and reject
+malformed or trailing input. Atomic refusal tests retain the original IR when
+a shape is unsupported. All three vendored grammars match the existing corpus
+hashes; none of the 291 selected inputs changed.
+
+## Remaining work after this increment
+
+There are 82 non-compiling cases: 76 translation failures (71 report left
+recursion) and six generator failures. Future work should address:
+
+1. Label/context-preserving normalization, ternaries, mixed binary/postfix
+   expressions, multi-token operators, and indirect expression operands. These
+   require an explicit AST contract and precedence tests, not disabling the
+   recursion audit.
+2. Continuation-aware lexer matching for Bison/Langium and PowerQuery's remaining
+   lexer-derived symbols. Bison's overlapping fallback/comment/code alternatives
+   and Langium's enclosing regex delimiters require shorter match endpoints
+   after a greedy helper succeeds; consuming recursion alone is insufficient.
+3. Upstream undefined tokens in Informix/JPA, Lisp's nonproductive fragment, and
+   dependency-provided symbols outside the selected sibling closure. Keep these
+   visible in the denominator and review any future input/dependency changes.
+4. Generated-parser ordered-choice limitations. The pinned TinyC/MicroC tests
+   exposed valid assignments/comparisons that an earlier successful alternative
+   hides, and TinyC's analogous `else` limitation. The fixture README records
+   these; the tests do not misclassify known valid programs as negative cases.
+5. Additional strict adaptations and runtime coverage. Compile success remains
+   separate from Unicode, host actions/predicates, lexer priority, and complete
+   ANTLR semantic equivalence.
+
+## Completed validation
+
+- 21 focused targets passed, including all three new targets and existing ANTLR
+  safety, strict, stateful, dependency, golden, and generated-W-grammar checks.
+- `./wbuild tests` passed all 1,251 targets with `NO_COLOR` unset and the
+  repository-required Node 20.19.3 on `PATH`.
+- All 10 offline sweep-harness tests passed.
+- The complete 291-case sweep passed at clean implementation commit `705674f0`,
+  with no regressions or infrastructure errors; its results also satisfy the
+  strengthened per-case baseline. Corpus hashes and historical results are
+  unchanged.

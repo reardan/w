@@ -16,7 +16,7 @@ apt,apt/apt.g4,pass,pass,pass,fail,not_configured
 aql,aql/ArangoDbLexer.g4;aql/ArangoDbParser.g4,fail,not_run,not_run,fail,not_configured
 arden,arden/ArdenLexer.g4;arden/ArdenParser.g4,fail,not_run,not_run,fail,not_configured
 argus,argus/argus.g4,fail,not_run,not_run,fail,not_configured
-arithmetic,arithmetic/arithmetic.g4,fail,not_run,not_run,fail,not_configured
+arithmetic,arithmetic/arithmetic.g4,pass,pass,pass,fail,not_configured
 asl,asl/ASL.g4,pass,pass,pass,fail,not_configured
 aspectj,aspectj/AspectJLexer.g4;aspectj/AspectJParser.g4,fail,not_run,not_run,fail,not_configured
 aterm,aterm/aterm.g4,pass,pass,pass,fail,not_configured
@@ -34,7 +34,7 @@ bicep,bicep/Bicep.g4,fail,not_run,not_run,fail,not_configured
 bison,bison/BisonLexer.g4;bison/BisonParser.g4,pass,fail,not_run,fail,not_configured
 blueprint,blueprint/blueprint.g4,pass,pass,pass,fail,not_configured
 bnf,bnf/bnfLexer.g4;bnf/bnfParser.g4,pass,pass,pass,fail,not_configured
-c,c/CLexer.g4;c/CParser.g4,fail,not_run,not_run,fail,not_configured
+c,c/CLexer.g4;c/CParser.g4,pass,pass,pass,fail,not_configured
 calculator,calculator/calculator.g4,pass,pass,pass,fail,not_configured
 callable,callable/callable_.g4,pass,pass,pass,fail,not_configured
 capnproto,capnproto/CapnProto.g4,pass,pass,pass,fail,not_configured
@@ -51,7 +51,7 @@ codeql,codeql/CodeQLLexer.g4;codeql/CodeQLParser.g4,fail,not_run,not_run,fail,no
 cookie,cookie/cookie.g4,pass,pass,pass,fail,not_configured
 corundum,corundum/Corundum.g4,fail,not_run,not_run,fail,not_configured
 cpp,cpp/CPP14Lexer.g4;cpp/CPP14Parser.g4,fail,not_run,not_run,fail,not_configured
-cql,cql/cql.g4,fail,not_run,not_run,fail,not_configured
+cql,cql/cql.g4,pass,pass,pass,fail,not_configured
 cql3,cql3/CqlLexer.g4;cql3/CqlParser.g4,pass,pass,pass,fail,not_configured
 creole,creole/creole.g4,fail,not_run,not_run,fail,not_configured
 css3,css3/css3Lexer.g4;css3/css3Parser.g4,pass,pass,pass,fail,not_configured
@@ -103,7 +103,7 @@ html,html/HTMLLexer.g4;html/HTMLParser.g4,pass,pass,pass,fail,not_configured
 http,http/http.g4,pass,pass,pass,fail,not_configured
 hypertalk,hypertalk/HyperTalk.g4,fail,not_run,not_run,fail,not_configured
 icalendar,icalendar/ICalendar.g4,pass,pass,pass,fail,not_configured
-icon,icon/icon.g4,fail,not_run,not_run,fail,not_configured
+icon,icon/icon.g4,pass,pass,pass,fail,not_configured
 idl,idl/IDL.g4,pass,pass,pass,fail,not_configured
 inf,inf/inf.g4,pass,pass,pass,fail,not_configured
 informix,informix/informix.g4,pass,fail,not_run,fail,not_configured
@@ -136,7 +136,7 @@ lisp,lisp/lisp.g4,pass,fail,not_run,fail,not_configured
 llvm-ir,llvm-ir/LLVMIR.g4,fail,not_run,not_run,fail,not_configured
 lpc,lpc/LPC.g4,fail,not_run,not_run,fail,not_configured
 lrc,lrc/lrcLexer.g4;lrc/lrcParser.g4,pass,pass,pass,fail,not_configured
-ltl,ltl/ltl.g4,fail,not_run,not_run,fail,not_configured
+ltl,ltl/ltl.g4,pass,pass,pass,fail,not_configured
 lua,lua/LuaLexer.g4;lua/LuaParser.g4,fail,not_run,not_run,fail,not_configured
 lucene,lucene/LuceneLexer.g4;lucene/LuceneParser.g4,pass,pass,pass,fail,not_configured
 maml,maml/MAML.g4,pass,pass,pass,fail,not_configured
@@ -146,7 +146,7 @@ mdx,mdx/mdx.g4,pass,pass,pass,fail,not_configured
 memcached_protocol,memcached_protocol/memcached_protocol.g4,pass,pass,pass,fail,not_configured
 metamath,metamath/metamath.g4,pass,pass,pass,fail,not_configured
 metric,metric/metric.g4,pass,pass,pass,fail,not_configured
-microc,microc/microc.g4,fail,not_run,not_run,fail,not_configured
+microc,microc/microc.g4,pass,pass,pass,fail,not_configured
 miniscript,miniscript/Miniscript.g4,pass,pass,pass,fail,not_configured
 modelica,modelica/modelica.g4,pass,pass,pass,fail,not_configured
 modula2pim4,modula2pim4/m2pim4.g4,pass,pass,pass,fail,not_configured
@@ -161,7 +161,7 @@ muparser,muparser/MuParser.g4,fail,not_run,not_run,fail,not_configured
 newick,newick/newick.g4,pass,pass,pass,fail,not_configured
 oberon,oberon/oberon.g4,pass,pass,pass,fail,not_configured
 objc,objc/ObjectiveCLexer.g4;objc/ObjectiveCParser.g4,fail,not_run,not_run,fail,not_configured
-ocl,ocl/OCL.g4,fail,not_run,not_run,fail,not_configured
+ocl,ocl/OCL.g4,pass,pass,pass,fail,not_configured
 odin,odin/odin.g4,fail,not_run,not_run,fail,not_configured
 oncrpc,oncrpc/oncrpcv2.g4;oncrpc/xdr.g4,pass,pass,pass,fail,not_configured
 orwell,orwell/orwell.g4,pass,pass,pass,fail,not_configured
@@ -184,11 +184,11 @@ pl0,pl0/pl0.g4,pass,pass,pass,fail,not_configured
 plantUML,plantUML/PlantUMLLexer.g4;plantUML/PlantUMLParser.g4,pass,pass,pass,fail,not_configured
 plucid,plucid/plucid.g4,fail,not_run,not_run,fail,not_configured
 ply,ply/ply.g4,pass,pass,pass,fail,not_configured
-pmmn,pmmn/PMMN.g4,fail,not_run,not_run,fail,not_configured
+pmmn,pmmn/PMMN.g4,pass,pass,pass,pass,not_configured
 postalcode,postalcode/postalcode.g4,pass,pass,pass,fail,not_configured
 powerbuilder,powerbuilder/PowerBuilderLexer.g4;powerbuilder/PowerBuilderParser.g4,fail,not_run,not_run,fail,not_configured
 powerbuilderdw,powerbuilderdw/PowerBuilderDWLexer.g4;powerbuilderdw/PowerBuilderDWParser.g4,pass,pass,pass,fail,not_configured
-powerquery,powerquery/PowerQueryLexer.g4;powerquery/PowerQueryParser.g4,fail,not_run,not_run,fail,not_configured
+powerquery,powerquery/PowerQueryLexer.g4;powerquery/PowerQueryParser.g4,pass,fail,not_run,fail,not_configured
 prolog,prolog/prolog.g4,fail,not_run,not_run,fail,not_configured
 promql,promql/PromQLLexer.g4;promql/PromQLParser.g4,fail,not_run,not_run,fail,not_configured
 propcalc,propcalc/propcalc.g4,pass,pass,pass,pass,not_configured
@@ -253,7 +253,7 @@ terraform,terraform/terraform.g4,fail,not_run,not_run,fail,not_configured
 thrift,thrift/Thrift.g4,pass,pass,pass,fail,not_configured
 tiny,tiny/tiny.g4,pass,pass,pass,fail,not_configured
 tinybasic,tinybasic/tinybasic.g4,pass,pass,pass,fail,not_configured
-tinyc,tinyc/tinyc.g4,fail,not_run,not_run,fail,not_configured
+tinyc,tinyc/tinyc.g4,pass,pass,pass,fail,not_configured
 tinymud,tinymud/tinymud.g4,pass,pass,pass,fail,not_configured
 tinyos_nesc,tinyos_nesc/TinyosLexer.g4;tinyos_nesc/TinyosParser.g4,fail,not_run,not_run,fail,not_configured
 tl,tl/tl.g4,fail,not_run,not_run,fail,not_configured
