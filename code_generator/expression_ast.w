@@ -1188,7 +1188,11 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			int arg_stack = stack_pos
 			emit_expression_ast(tree, arg)
 			int got = promote(tree.result_type[arg])
-			if (signature >= 0): coerce_call_argument(type_function_param_type(signature, count), got)
+			if (signature >= 0):
+				int parameter = type_function_param_type(signature, count)
+				coerce_call_argument(parameter, got)
+				safe_owner_move(tree, arg, parameter)
+				if (type_is_safe_slice(parameter)): got = parameter
 			push_call_argument_compact(got, stack_pos - arg_stack)
 			count = count + 1
 			arg = tree.next_arg[arg]
