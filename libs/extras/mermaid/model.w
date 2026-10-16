@@ -41,6 +41,14 @@ const int MM_TREEMAP = 45
 const int MM_VENN = 46
 const int MM_PACKET = 47
 
+# Explicit mask bits distinguish an unspecified color from RGB black.
+struct mm_style:
+	int mask
+	int fill
+	int stroke
+	int text
+	int width
+
 # Data chart values use signed fixed-point thousandths. Counts and bit indices
 # are plain integers; interpretation is determined by document and item kind.
 struct mm_data_item:
@@ -54,6 +62,8 @@ struct mm_data_item:
 	int depth
 	list[int] values
 	list[char*] point_labels
+	mm_style style
+	int radius
 
 struct mm_data_chart:
 	char* title
@@ -95,6 +105,7 @@ const int MM_ARROW = 1
 const int MM_TRIANGLE = 2
 const int MM_COMPOSITION = 3
 const int MM_AGGREGATION = 4
+const int MM_LOLLIPOP = 7
 const int MM_SEQUENCE = 20
 const int MM_JOURNEY = 21
 const int MM_TIMELINE = 22
@@ -117,14 +128,6 @@ struct mm_narrative_event:
 
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
-
-# Explicit mask bits distinguish an unspecified color from RGB black.
-struct mm_style:
-	int mask
-	int fill
-	int stroke
-	int text
-	int width
 
 struct mm_style_class:
 	char* name
@@ -179,8 +182,16 @@ struct mm_edge:
 	char* left_label
 	char* right_label
 	int scope
+	mm_style style
+
+# UML notes are annotations, not graph vertices.
+struct mm_note:
+	int node
+	int side
+	char* text
 
 struct mm_document:
+	list[mm_note*] notes
 	char* source
 	int length
 	int kind
@@ -198,6 +209,7 @@ struct mm_document:
 	char* accessibility_description
 	int source_start
 	int source_end
+	int diagram_index
 	mm_data_chart* data
 	list[mm_narrative_event*] narrative
 	int narrative_numbered
@@ -208,14 +220,21 @@ struct mm_document:
 	int background
 	int palette_line
 	int palette_label
+	mm_style edge_style
+	# Native layout selection: 0 layered, 1 deterministic force-directed.
+	int layout_algorithm
+	int packet_bits
+	int packet_msb
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
+	d.notes = new list[mm_note*]
 	d.source = strclone(c"")
 	d.title = strclone(c"")
 	d.accessibility_title = strclone(c"")
 	d.accessibility_description = strclone(c"")
 	d.direction = strclone(c"TB")
+	d.packet_bits = 32
 	d.narrative = new list[mm_narrative_event*]
 	d.style_definitions = new list[mm_style_class*]
 	d.nodes = new list[mm_node*]
@@ -262,6 +281,10 @@ int mm_add_node(mm_document* d, char* id, int offset):
 
 void mm_document_free(mm_document* d):
 	if (d == 0): return
+	for mm_note* note in d.notes:
+		free(note.text)
+		free(note)
+	__w_list_free(cast(__w_list*, d.notes))
 	for mm_node* n in d.nodes:
 		for mm_attribute* a in n.attributes:
 			free(a.type_name)
