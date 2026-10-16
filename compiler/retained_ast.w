@@ -172,6 +172,7 @@ struct retained_record:
 	int semantic_type
 	int binding
 	int statement_walk
+	int expression_fallback
 	# Declarations: the declared kind's spelling.
 	char* result_type
 	int import_source
@@ -488,6 +489,7 @@ int retained_line_at(int source, int start):
 retained_record* retained_record_new(int kind, int parent, int source, int start, int line, int column, char* name):
 	retained_record* node = cast(retained_record*, retained_arena_alloc(sizeof(retained_record)))
 	node.kind = kind
+	node.expression_fallback = 0
 	node.parent = parent
 	node.source = source
 	node.start = start

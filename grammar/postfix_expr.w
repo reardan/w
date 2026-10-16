@@ -20,6 +20,7 @@ int buffer_element_type(int type):
 
 
 int buffer_result_type(int type):
+	if (type_is_safe_slice(type)): return type_unqualified(type)
 	if (type_is_string(type)):
 		return string_value_type
 	return type_get_slice_value(buffer_element_type(type))
@@ -91,6 +92,28 @@ void buffer_range_bounds_check():
 void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	int element_type = buffer_element_type(base_type)
 	int element_size = type_get_size(element_type)
+	# A checked range owns an inline stack descriptor. Consume the three
+	# input words and leave two result words; call argument compaction and
+	# lexical stack unwinding already account for aggregate temporaries.
+	if (type_is_safe_slice(base_type)):
+		mov_eax_esp_plus(word_size)
+		if (element_size > 1): imul_eax_int32(element_size)
+		mov_ebx_esp_plus(2 * word_size)
+		promote_ebx()
+		alu_add()
+		store_stack_var(2 * word_size)
+		mov_eax_esp_plus(word_size)
+		mov_ebx_esp()
+		alu_sub()
+		store_stack_var(0)
+		mov_eax_esp_plus(2 * word_size)
+		store_stack_var(word_size)
+		mov_eax_esp_plus(0)
+		store_stack_var(2 * word_size)
+		drop_slots(1)
+		lea_eax_esp_plus(0)
+		return
+	# Legacy ranges retain their existing descriptor-pointer ABI.
 	# stack top before this helper: end, start, descriptor
 	sym_get_value(c"malloc")
 	push_slot()
@@ -224,6 +247,7 @@ void parse_fixed_call_argument(int s, int callee_sym, int signature_type, char* 
 		if (callee_sym >= 0): param_type = sym_param_type(callee_sym, arg_index)
 		if (signature_type >= 0): param_type = type_function_param_type(signature_type, arg_index)
 		if (param_type >= 0): coerce_call_argument(param_type, arg_type)
+		if (type_is_safe_slice(param_type)): arg_type = param_type
 	push_call_argument_at(s, arg_type, stack_pos - entry_stack_pos)
 
 

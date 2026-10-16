@@ -142,7 +142,9 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 		if (is_tail):
 			push_slot()
 			variadic_values = variadic_values + 1
-		else: push_call_argument_at(s, got, stack_pos - arg_stack)
+		else:
+			if (type_is_safe_slice(param_type)): got = param_type
+			push_call_argument_at(s, got, stack_pos - arg_stack)
 		count = count + 1
 		arg = tree.next_arg[arg]
 	if (variadic >= 0): finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
@@ -826,6 +828,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 				emit_expression_ast(tree, argument)
 				int got = promote(tree.result_type[argument])
 				new_store_field(base, tree.value[entry], got, stack_pos - entry_stack)
+				safe_owner_move(tree, argument, type_get_field_type_at(base, tree.value[entry]))
 				if (stack_pos > entry_stack): pop_to(entry_stack)
 				entry = tree.next_arg[entry]
 			pop_eax_slot()
@@ -1192,7 +1195,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		if (type_safe_kind(left_type) == 1):
 			int left = tree.left[id]
 			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
-				error(c"safe owner assignment requires a plain local or parameter")
+				error(c"safe: owner assignment requires a plain local or parameter")
 			regalloc_note_take()
 			int slot = 0 - tree.binding_offset[left]
 			emit_expression_ast(tree, tree.right[id])
@@ -1200,7 +1203,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			coerce(left_type, got)
 			safe_owner_move(tree, tree.right[id], left_type)
 			push_slot()
-			safe_owner_drop_slot(slot)
+			safe_owner_drop_slot(slot, left_type)
 			pop_eax_slot()
 			store_stack_var((stack_pos - slot) << word_size_log2)
 			return

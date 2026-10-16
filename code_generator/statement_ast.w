@@ -46,7 +46,7 @@ void emit_statement_ast_value(statement_ast* node):
 		ast_expression_note_root(node.expression_tree, node.expression_root)
 		coerce_checked(node.declared_type, type, c"yield")
 		const_note_override = 0
-	else if ((type_num_args(node.declared_type) > 0) && (type_num_args(type) > 0)):
+	else if (type_is_safe_slice(node.declared_type) || ((type_num_args(node.declared_type) > 0) && (type_num_args(type) > 0))):
 		if (types_compatible_with_expression(node.declared_type, type) == 0):
 			warn_type_mismatch(c"return", node.declared_type, type)
 		copy_struct_return_value(node.declared_type)

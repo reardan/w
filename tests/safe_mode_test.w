@@ -123,7 +123,7 @@ void test_safe_arrays_slices_and_boundaries():
 	safe_case(c"int main():\n\town int* p = new int\n\tunsafe:\n\t\tint n = 3\n\t\tint* q = &n\n\t\t*q = 4\n\treturn *p\n", 0)
 	safe_case(c"int main():\n\town int* p = new int\n\tunsafe:\n\t\t*p = 3\n\treturn 0\n", c"cannot manipulate checked")
 	safe_case(c"int main():\n\town int* p = new int\n\tdefer free(p)\n\treturn 0\n", c"unsupported control flow")
-	safe_case(c"struct Box:\n\town int* p\nint main():\n\treturn 0\n", c"checked pointers in aggregates")
+	safe_case(c"struct Box:\n\town int* p\nint main():\n\treturn 0\n", 0)
 	safe_case(c"type Owner = own int*\nint main():\n\tOwner p = new int\n\tOwner q = p\n\treturn *p\n", c"moved value")
 
 
@@ -191,7 +191,7 @@ void test_safe_scalar_and_struct_operations():
 
 
 void test_safe_representation_coverage():
-	safe_case(c"int main():\n\tint n = 0\n\tif (n) own int* p = new int\n\treturn 0\n", c"declarations require a lexical block")
+	safe_case(c"int main():\n\tint n = 0\n\tif (n) own int* p = new int\n\treturn 0\n", c"unsupported expression fallback")
 	safe_case(c"int bad(own int* p):\n\tasm x86:\n\t\t\"xor eax, eax\"\n\t\t\"ret\"\n\tasm x64:\n\t\t\"xor eax, eax\"\n\t\t\"ret\"\n\treturn *p\nint main():\n\town int* p = new int\n\treturn bad(p)\n", c"assembly function bodies")
 	safe_case(c"int bad(own int* p):\n\tasm x86:\n\t\t\"jmp portable\"\n\tasm x64:\n\t\t\"jmp portable\"\n\treturn *p\nint main():\n\town int* p = new int\n\treturn bad(p)\n", c"assembly function bodies")
 

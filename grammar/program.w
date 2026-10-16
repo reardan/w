@@ -361,6 +361,12 @@ void function_definition(int current_symbol):
 	number_of_args = 0
 	int declared_return_type = load_int(table + current_symbol + 6)
 	int written_return_type = flow_written_return_type(current_symbol)
+	# A definition's labels are scoped to its own signature. Preserve the
+	# already-retained prototype, but capture this written result alongside
+	# the new parameter types instead of mixing two label namespaces.
+	if (type_safe_kind(declared_return_type) || type_safe_kind(written_return_type)):
+		declared_return_type = written_return_type
+		save_int(table + current_symbol + 6, declared_return_type)
 	if (type_num_args(declared_return_type) > 0): number_of_args = 1
 	int param_count = 0
 	int saw_default = 0
@@ -433,7 +439,7 @@ void function_definition(int current_symbol):
 		inline_definition_abandon()
 		if (ast_retain_mode):
 			int prototype = retained_enter(retained_function, filename, retained_start, retained_line, retained_column, last_global_declaration)
-			retained_function_parameters(current_symbol)
+			retained_function_prototype_parameters(current_symbol, written_return_type)
 			retained_leave(prototype, token_start_offset)
 	else:
 		# 'asm <isa>:' blocks opening the body (grammar/asm_function.w): 1

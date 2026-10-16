@@ -24,19 +24,93 @@ void safe_owner_clear_slot(int slot):
 	pop_eax_slot()
 
 
-# Drop only live owners, so allocator hooks also observe exactly one free
-# per allocation. Every admitted owner currently owns one plain allocation;
-# reference-bearing aggregates are rejected by the checker.
-void safe_owner_drop_slot(int slot):
-	load_slot(slot)
+# Generated destructor calls have no source expression for the safety pass
+# to resolve. Match the sealed type and the already-defined helper against
+# the same audited source; safe_audit_runtime also verifies its content hash.
+char* safe_owner_drop_helper(int element):
+	element = type_unqualified(element)
+	char* source = debug_file_name(type_decl_file_index(element))
+	if (ends_with(source, c"/lib/safe_buffer.w") == 0): return 0
+	char* name = type_get_name(element)
+	char* helper = 0
+	if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
+	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"
+	if (helper == 0): return 0
+	int symbol = sym_lookup(helper)
+	if (symbol < 0): error(c"safe: audited destructor implementation is missing")
+	if ((table[symbol + 1] != 'D') || (strcmp(debug_file_name(sym_decl_file_index(symbol)), source) != 0)):
+		error(c"safe: audited destructor resolved to a different implementation")
+	if ((sym_num_args(symbol) != 1) || (load_int(table + symbol + 6) != type_lookup(c"void"))):
+		error(c"safe: audited destructor signature differs from its contract")
+	int parameter = type_unqualified(sym_param_type(symbol, 0))
+	if ((type_safe_kind(parameter) != 0) || (type_get_pointer_level(parameter) != 1)):
+		error(c"safe: audited destructor signature differs from its contract")
+	if (type_unqualified(type_lookup_previous_pointer(parameter)) != element):
+		error(c"safe: audited destructor signature differs from its contract")
+	return helper
+
+
+# Drop owned fields in reverse declaration order, then the allocation.
+# The descriptor is held in a stack slot across nested allocator calls.
+# Emission is bounded before the semantic pass runs: recursive type graphs
+# cannot make the compiler recurse forever while building the destructor.
+# A shared node budget also bounds repeated expansion of acyclic DAGs.
+void safe_owner_drop_value(int type, int depth, int* remaining):
+	if (*remaining <= 0): error(c"safe: owned aggregate destruction exceeds 256 expanded allocations")
+	*remaining = *remaining - 1
+	if (depth > 32): error(c"safe: recursive owned aggregate destruction is not supported")
 	int done = be_ctrl_block()
 	be_br_zero(done)
+	int object_slot = push_slot()
+	int element = type_lookup_previous_pointer(type)
+	char* helper = safe_owner_drop_helper(element)
+	if (helper != 0):
+		int helper_stack = rt_call_begin(helper)
+		push_slot_copy(object_slot)
+		rt_call_end(helper_stack)
+		drop_slots(1)
+		be_ctrl_end(done)
+		return
+	int field = type_num_args(element)
+	while (field > 0):
+		field = field - 1
+		int field_type = type_get_field_type_at(element, field)
+		if (type_safe_kind(field_type) == 1):
+			load_slot(object_slot)
+			add_eax_int32(type_get_field_offset_at(element, field))
+			promote(field_type)
+			safe_owner_drop_value(field_type, depth + 1, remaining)
 	int call_stack = rt_call_begin(c"free")
-	push_slot_copy(slot)
+	push_slot_copy(object_slot)
 	rt_call_end(call_stack)
+	drop_slots(1)
+	be_ctrl_end(done)
+
+
+# A transferred owner has a cleared source slot; cleanup is idempotent on
+# that path, including when an aggregate's child owner moved into its fields.
+void safe_owner_drop_slot(int slot, int type):
+	int element = type_lookup_previous_pointer(type)
+	int recursive = safe_owner_drop_helper(element) != 0
+	for field in range(type_num_args(element)):
+		if (type_safe_kind(type_get_field_type_at(element, field)) == 1): recursive = 1
+	load_slot(slot)
+	# Plain allocations retain the original cleanup sequence: the owner
+	# slot itself preserves the pointer across free, without a second slot.
+	if (recursive == 0):
+		int done = be_ctrl_block()
+		be_br_zero(done)
+		int call_stack = rt_call_begin(c"free")
+		push_slot_copy(slot)
+		rt_call_end(call_stack)
+		mov_eax_int(0)
+		store_stack_var((stack_pos - slot) << word_size_log2)
+		be_ctrl_end(done)
+		return
+	int remaining = 256
+	safe_owner_drop_value(type, 0, &remaining)
 	mov_eax_int(0)
 	store_stack_var((stack_pos - slot) << word_size_log2)
-	be_ctrl_end(done)
 
 
 # min_binding selects a lexical scope; min_depth selects a jump's unwind
@@ -55,7 +129,7 @@ void safe_owner_cleanup(int min_binding, int min_depth, int parameters):
 		if (table[symbol + 1] == 'A'):
 			if (parameters == 0): continue
 		else if (load_int(table + symbol + 2) < min_depth): continue
-		safe_owner_drop_slot(safe_owner_slot(symbol))
+		safe_owner_drop_slot(safe_owner_slot(symbol), load_int(table + symbol + 6))
 
 
 void safe_owner_cleanup_returning():

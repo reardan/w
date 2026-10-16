@@ -78,7 +78,7 @@ int safe_qualifier_ahead():
 	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
 	char* save = generic_reparse_save()
 	get_token()
-	int is_type = peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)
+	int is_type = peek(c"[") || peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	if (is_type): return kind
@@ -90,7 +90,15 @@ int type_name():
 	int is_const = 0
 	int is_gpu = 0
 	int safe_kind = safe_qualifier_ahead()
-	if (safe_kind): get_token()
+	char* lifetime = 0
+	if (safe_kind):
+		get_token()
+		if (accept(c"[")):
+			if (safe_kind == 1): error(c"lifetime labels require ref or refmut")
+			if (is_ident_start_byte(token[0]) == 0): error(c"lifetime label must be an identifier")
+			lifetime = strclone(token)
+			get_token()
+			expect(c"]")
 	pointer_indirection = 0
 	if (accept(c"const")): is_const = 1
 	if (gpu_qualifier_ahead()):
@@ -178,12 +186,24 @@ int type_name():
 	if (safe_kind):
 		if (type_safe_entrypoint == 0): error(c"checked pointers are not supported by in-process sessions")
 		if (ast_retain_mode == 0): error(c"checked pointers require the retained frontend")
-		if ((type_get_pointer_level(type) != 1) || type_is_array(type) || type_is_slice(type)):
-			error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")
-		if (is_gpu || type_is_gpu_pointer(type)): error(c"checked GPU pointers are not supported")
-		int element = type_lookup_previous_pointer(type)
-		if ((element < 0) || (type_get_size(element) <= 0)):
-			error(c"checked pointers require a sized pointee")
-		type = type_get_safe(type, safe_kind)
+		if (type_is_slice(type)):
+			if (safe_kind != 2): error(c"checked slices require the immutable ref qualifier")
+			int element = type_get_element_type(type)
+			if ((element < 0) || (type_get_size(element) <= 0)):
+				error(c"checked slices require a sized element")
+			type = type_get_safe_slice(element, lifetime)
+		else if ((type_get_pointer_level(type) == 0) && (type_num_args(type) > 0) && (type_is_array(type) == 0)):
+			if (safe_kind != 2): error(c"borrowed structs require the immutable ref qualifier")
+			if (type_safe_kind(type)): error(c"borrowed struct qualifier requires a plain struct template")
+			type = type_get_safe_record(type, lifetime)
+		else:
+			if ((type_get_pointer_level(type) != 1) || type_is_array(type)):
+				error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")
+			if (is_gpu || type_is_gpu_pointer(type)): error(c"checked GPU pointers are not supported")
+			int element = type_lookup_previous_pointer(type)
+			if ((element < 0) || (type_get_size(element) <= 0)):
+				error(c"checked pointers require a sized pointee")
+			type = type_get_safe_lifetime(type, safe_kind, lifetime)
+		if (lifetime != 0): free(lifetime)
 
 	return type

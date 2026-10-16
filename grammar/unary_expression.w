@@ -39,7 +39,7 @@ void new_store_field(int base_type, int field_index, int arg_type, int leaked_wo
 	if (leaked_words > 0): mov_ebx_esp_plus(leaked_words << word_size_log2)
 	else: mov_ebx_esp()
 	add_ebx_int32(type_get_field_offset_at(base_type, field_index))
-	if ((type_num_args(field_type) > 0) & (type_num_args(arg_type) > 0)):
+	if (type_is_safe_slice(field_type) || ((type_num_args(field_type) > 0) && (type_num_args(arg_type) > 0))):
 		assign_store_struct(field_type)
 		return;
 	int field_size = type_get_size(field_type)

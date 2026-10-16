@@ -349,6 +349,8 @@ void expression_ast_type_names_reserve(expression_ast* tree, int extra):
 		type_rec* rec = &tree.pointer_types[i]
 		int offset = cast(int, rec.name) - cast(int, old)
 		if ((offset >= 0) && (offset < tree.type_names_used)): rec.name = grown + offset
+		offset = cast(int, rec.safe_lifetime) - cast(int, old)
+		if (rec.safe_lifetime && (offset >= 0) && (offset < tree.type_names_used)): rec.safe_lifetime = grown + offset
 	if (old): free(old)
 	slab.type_names = grown
 	slab.type_names_capacity = room
@@ -512,6 +514,7 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
+	rec.safe_lifetime = 0
 	rec.name = type_get_name(type_canonical(base))
 	if (type_is_gpu_object(base)): rec.name = type_get_name(base)
 	rec.num_fields = 0
@@ -544,6 +547,7 @@ int ast_expression_const_type(expression_ast* tree, int base, int offset):
 	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
+	rec.safe_lifetime = 0
 	rec.name = &tree.type_names[tree.type_names_used]
 	strcpy(rec.name, c"const ")
 	strcpy(rec.name + 6, type_get_name(base))
@@ -579,6 +583,7 @@ int ast_expression_gpu_type(expression_ast* tree, int base, int offset):
 	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
+	rec.safe_lifetime = 0
 	type_rec* source = type_record(base)
 	rec.name = &tree.type_names[tree.type_names_used]
 	strcpy(rec.name, c"gpu ")
@@ -589,6 +594,58 @@ int ast_expression_gpu_type(expression_ast* tree, int base, int offset):
 	rec.pointer_level = source.pointer_level
 	rec.alias_target = base
 	rec.kind = type_kind_gpu
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
+
+
+# Checked pointer wrappers must stay speculative until expression emission,
+# including their lifetime labels and the type_safe_used side effect.
+int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, int lifetime, int offset):
+	base = type_unqualified(base)
+	for index in range(type_count()):
+		type_rec* existing = type_record(index)
+		if ((existing.kind != kind + 20) || (existing.alias_target != base)): continue
+		if ((existing.safe_lifetime == 0) && (lifetime < 0)): return index
+		if ((existing.safe_lifetime != 0) && (lifetime >= 0)):
+			if (strcmp(existing.safe_lifetime, tree.type_names + lifetime) == 0): return index
+	if (tree.pending_buffer_types): return -1
+	char* prefix = c"own "
+	if (kind == 2): prefix = c"ref "
+	if (kind == 3): prefix = c"refmut "
+	char* name = 0
+	if (lifetime >= 0):
+		prefix = c"ref["
+		if (kind == 3): prefix = c"refmut["
+		char* labeled = strjoin(prefix, tree.type_names + lifetime)
+		char* qualified = strjoin(labeled, c"] ")
+		name = strjoin(qualified, type_get_name(base))
+		free(labeled)
+		free(qualified)
+	else: name = strjoin(prefix, type_get_name(base))
+	int length = strlen(name) + 1
+	expression_ast_type_names_reserve(tree, length)
+	expression_ast_type_reserve(tree)
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = tree.type_names + tree.type_names_used
+	strcpy(rec.name, name)
+	free(name)
+	tree.type_names_used = tree.type_names_used + length
+	rec.safe_lifetime = 0
+	if (lifetime >= 0): rec.safe_lifetime = tree.type_names + lifetime
+	rec.num_fields = 0
+	rec.total_size = word_size
+	rec.pointer_level = 1
+	rec.alias_target = base
+	rec.kind = kind + 20
 	rec.fn_return_type = -1
 	rec.fn_param_count = -1
 	rec.decl_file_index = -1
@@ -613,6 +670,7 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	if (rec.kind == type_kind_function): return
 	int actual
 	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
+	else if ((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
 	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
 	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
 	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)
@@ -666,6 +724,7 @@ int ast_expression_reserve_signature(expression_ast* tree, int id, int result, i
 	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
+	rec.safe_lifetime = 0
 	rec.name = c""
 	rec.num_fields = 0
 	rec.total_size = word_size
@@ -706,6 +765,7 @@ int ast_expression_composite_type(expression_ast* tree, int kind, int element, i
 	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
+	rec.safe_lifetime = 0
 	rec.name = &tree.type_names[tree.type_names_used]
 	strcpy(rec.name, name)
 	free(name)
