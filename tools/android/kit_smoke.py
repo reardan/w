@@ -69,7 +69,7 @@ def main():
                 screenshot.parent.mkdir(parents=True, exist_ok=True)
                 with screenshot.open("wb") as output:
                     run("exec-out", "screencap", "-p", stdout=output)
-                print(f"Android kit screens, lists, text, secrets, timer, HTTP, back, dialog, deep link: OK ({args.serial})")
+                print(f"Android kit screens, lists, text, secrets, timer, HTTP, back, dialog, deep link, permission: OK ({args.serial})")
                 print(screenshot)
                 return
             for marker, command in steps.items():

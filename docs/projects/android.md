@@ -139,6 +139,16 @@ python3 tools/android/build.py /path/to/app.w --import-root /path/to/repo \
     --out /path/to/repo/bin/android --apk-name Example.apk
 ```
 
+`--icon` generates the launcher icon at build time with the JDK
+(`tools/android/icon/WIcon.java`, no downloads): density mipmaps (mdpi to
+xxxhdpi), an adaptive icon with a themed (monochrome) layer, and a white
+notification glyph. A "tile" icon, an opaque one-color shape around a glyph,
+becomes that color behind the glyph; other artwork is scaled into the safe
+zone over white. `--icon-background #RRGGBB` overrides the detected color.
+`--notifications` adds `POST_NOTIFICATIONS` (a runtime permission on API
+33+), the foreground-service permissions and `WService` for
+`wandroid_notify` and `wandroid_background`.
+
 `--theme daynight` uses the device's DayNight theme without an action bar
 (API 29+); `light` remains the default. `--internet` adds the INTERNET
 permission and a network security configuration that allows cleartext HTTP
@@ -165,14 +175,31 @@ New control and event numbers start at 32.
   lists, text views and fill areas the free height; `android_screen_scroll`
   scrolls form content. `wandroid_screen_pop`/`_clear`/`_depth` manage the
   stack. With two or more screens, Back and Up send `android_event_back`, and
-  W decides whether to pop. `wandroid_tab` adds persistent bottom tabs.
+  W decides whether to pop. Android 13+ delivers Back through an
+  `OnBackInvokedCallback` registered only while W owns it (the manifest opts
+  in to `enableOnBackInvokedCallback`), so predictive back-to-home still
+  works from a root screen; Android 9-12 use `onBackPressed`. Top-bar
+  actions move to right-aligned lines under the title when it would be
+  squeezed (large fonts, narrow windows); short windows get a lower bar and
+  tabs. `wandroid_tab` adds persistent bottom tabs, announced to TalkBack as
+  tabs with their position and selection.
   `wandroid_row` ... `wandroid_row_end` lays out controls side by side.
+- **Recreation:** rotation, theme and font-scale changes recreate the
+  Activity and reset handles, but the library and W state stay loaded.
+  Screen scroll positions, list rows, text-view and area selections and
+  scroll, and focus are saved with the Activity state and reapplied, by
+  screen and control position, to screens that setup rebuilds with the same
+  titles and controls in the same order. List positions are applied when the
+  rows arrive within 15 s. Text areas do not save their text (it can exceed
+  the Binder limit, and secret fields stay out of saved state); W receives
+  every edit and sets it again. State is not restored after process death.
 - **Lists:** `wandroid_list` with two-line rows (`_add`, `_set`, `_clear`);
   a tap sends `android_event_item` with the decimal row index.
 - **Text:** `wandroid_text_view(text, flags)` is read-only and selectable:
   monospace (or proportional), optionally wrapped, with unified-diff colors
   or tail-following `wandroid_text_append` styled by role. `wandroid_text_area`
-  is multi-line input that reports `android_event_text`. `wandroid_text_set`,
+  is multi-line input that reports `android_event_text` (a fill area, used as
+  an editor, places the cursor at the start when W sets its text). `wandroid_text_set`,
   `_get`, `wandroid_style`, `wandroid_enable`, `wandroid_show` and
   `wandroid_focus` work on any handle that supports them.
 - **Dialogs:** `wandroid_dialog(title, message, "Allow\nDeny\nAlways")` and
@@ -182,12 +209,22 @@ New control and event numbers start at 32.
 - **HTTP:** `wandroid_http(method, url, headers, body)` runs
   `HttpURLConnection` on a worker thread. `android_event_http` delivers
   `"STATUS\nBODY"` on the UI thread; status 0 reports a transport failure.
-  Redirects are not followed and bodies are limited to 8 MiB.
+  Redirects are not followed and bodies are limited to 16 MiB.
 - **Secrets:** `wandroid_secure_put/get/delete` encrypt values with an
   AES-GCM key held in AndroidKeyStore and keep only ciphertext in private
   SharedPreferences.
 - **Deep links:** `wandroid_intent_uri` reads the launching URI; later links
   arrive as `android_event_uri`.
+- **Notifications:** `wandroid_permission(name)` returns 1 when granted, or
+  -1 after asking (the answer arrives as `android_event_permission`, "1" or
+  "0"). `wandroid_notify(id, title, text)` posts or replaces a notification;
+  tapping it opens the app and sends `android_event_notification` with the
+  id. `wandroid_background(text)` starts a `dataSync` foreground service
+  with an ongoing notification so timers and HTTP keep running while the app
+  is in the background (call it while the Activity is still visible, e.g. in
+  lifecycle phase 2); `""` stops it. Both need `build.py --notifications`
+  and return 0 otherwise. Android 15 limits that service type to six hours a
+  day.
 
 Timer, dialog and HTTP ids are a separate number space from control handles;
 the event kind identifies them. Timers and dialogs end with their Activity.
@@ -210,9 +247,13 @@ which checks that every W `extern` has a C definition with the same arity and
 that `kit.c`, `WKit.java`, `kit.w` and `WActivity` agree on operation codes,
 event kinds and JNI signatures. On a device, `tools/android/kit_smoke.py`
 exercises screens, lists, text, secrets, a timer, HTTP through `adb reverse`,
-Back, a dialog and a deep link (see its usage text for the build command). It
-passed on the Samsung SM-S134DL (Android 13, 4 KB pages) with the DayNight
-theme, as did the Wide companion's end-to-end test built on these controls.
+Back, a dialog, a deep link and the permission/background fallbacks (see its
+usage text for the build command). It passed on the Samsung SM-S134DL
+(Android 13, 4 KB pages) with the DayNight theme, and on an Android 16
+emulator image with 16 KB pages, where Back goes through
+`OnBackInvokedCallback`. The Wide companion's end-to-end test, built on these
+controls (recreation, notifications, background work, large fonts,
+landscape and a tablet-sized display), passed on both.
 
 The optional device probes test exported integer/float arguments, stack
 spills, relocated data, and a W compiler running inside Android's app sandbox:

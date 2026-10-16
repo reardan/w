@@ -70,6 +70,9 @@ void kit_open(int index):
 	wandroid_label(c"Back or the arrow returns to the list.")
 	free(title)
 
+void kit_smoke_done():
+	if (kit_failed == 0): wandroid_log(c"kit smoke: ok")
+
 # Synchronous checks, then a timer starts the asynchronous chain.
 void kit_smoke_begin():
 	kit_check(wandroid_screen_depth() == 1, c"initial depth")
@@ -120,7 +123,16 @@ void kit_smoke_event(int handle, int kind, char* value):
 		wandroid_log(c"kit smoke: send deep link")
 	else if (kind == android_event_uri):
 		kit_check(strcmp(value, c"wkit:ping") == 0, c"deep link")
-		if (kit_failed == 0): wandroid_log(c"kit smoke: ok")
+		# Built without --notifications: no service to start, and an undeclared
+		# permission is refused through android_event_permission.
+		kit_check(wandroid_background(c"Working") == 0, c"background work needs the service")
+		wandroid_background(c"")
+		int asked = wandroid_permission(c"android.permission.CAMERA")
+		kit_check(asked != 1, c"undeclared permission is not granted")
+		if (asked == 0): kit_smoke_done()
+	else if (kind == android_event_permission):
+		kit_check(strcmp(value, c"0") == 0, c"undeclared permission refused")
+		kit_smoke_done()
 
 export void wandroid_setup():
 	kit_message = strclone(c"")

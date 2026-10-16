@@ -11,6 +11,10 @@ c_lib "libwandroid.so"
 # wandroid_label/button/text_field. Fixed screens (flags 0) give lists, text
 # views and fill areas the free height; android_screen_scroll scrolls a form.
 # The result is the title's label handle (wandroid_label_set renames it).
+# Scroll positions, selections and focus are saved with the Activity state and
+# reapplied after recreation (rotation, theme) to the screens that setup
+# rebuilds with the same titles and controls in the same order. Lists filled
+# within 15 s of the rebuild still return to their saved row.
 extern int wandroid_screen(char* title, int flags)
 extern void wandroid_screen_pop()
 extern void wandroid_screen_clear()
@@ -38,7 +42,8 @@ extern int wandroid_text_view(char* text, int flags)
 # Multi-line editable text; edits send android_event_text with the content.
 extern int wandroid_text_area(char* hint, int flags)
 # Works on labels, buttons, fields, text views and areas. Setting an area's
-# text programmatically does not echo a text event.
+# text programmatically does not echo a text event; the cursor goes to the
+# end, or to the start for android_area_fill (editor) areas.
 extern void wandroid_text_set(int handle, char* text)
 # Text views only; role is 0 or an android_role_* emphasis (heading, title,
 # secondary, error). Older text is trimmed beyond about 200,000 characters.
@@ -80,12 +85,29 @@ extern void wandroid_secure_delete(char* key)
 # arrive as android_event_uri. Recreation reports the original URI again.
 extern int wandroid_intent_uri(char* buffer, int capacity)
 
+# Local notification (build.py --notifications adds the permission and icon).
+# id >= 0 replaces an earlier one with the same id; tapping it opens the app and
+# sends android_event_notification with the id. Returns 0 when not permitted.
+extern int wandroid_notify(int id, char* title, char* text)
+extern void wandroid_notify_cancel(int id)
+# Runtime permission such as "android.permission.POST_NOTIFICATIONS": 1 when
+# granted, -1 when Android asks the user (android_event_permission then
+# carries "1" or "0"), 0 when it cannot be granted.
+extern int wandroid_permission(char* name)
+# Non-empty text starts a foreground service with that ongoing notification,
+# which keeps timers and HTTP running while the app is in the background; ""
+# stops it. Start it while the Activity is visible (e.g. in lifecycle phase 2).
+# Returns 0 when unavailable (not declared, or refused by Android).
+extern int wandroid_background(char* text)
+
 const int android_event_back = 32
 const int android_event_item = 33
 const int android_event_dialog = 34
 const int android_event_timer = 35
 const int android_event_http = 36
 const int android_event_uri = 37
+const int android_event_notification = 38
+const int android_event_permission = 39
 
 const int android_screen_scroll = 1
 const int android_text_wrap = 1
