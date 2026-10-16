@@ -130,3 +130,76 @@ void test_navigation_then_typing_uses_updated_caret():
 	assert_equal(2, st.caret)
 	gfx_input_queue_free(&queue)
 	ui_render_destroy(&fx.r)
+
+
+# Solid 2px-wide quads (u0 == u1) on the base layer: the drawn carets.
+# Glyph quads sample a texture span and the preedit underline is 1px tall.
+int caret_quads(ui_renderer* r, float32* out_x):
+	int found = 0
+	float32* v = r.layer_verts[UI_LAYER_BASE]
+	int quad = 0
+	while (quad * 6 < r.layer_vert_count[UI_LAYER_BASE]):
+		float32* q = &v[quad * 48]
+		float32 w = q[8] - q[0]
+		float32 h = q[17] - q[1]
+		if ((w == 2.0) && (h > 1.0) && (q[2] == q[10])):
+			out_x[0] = q[0]
+			found = found + 1
+		quad = quad + 1
+	return found
+
+
+# The preedit underline: a solid 1px-tall quad; returns its right edge.
+float32 underline_end(ui_renderer* r):
+	float32* v = r.layer_verts[UI_LAYER_BASE]
+	int quad = 0
+	while (quad * 6 < r.layer_vert_count[UI_LAYER_BASE]):
+		float32* q = &v[quad * 48]
+		if (((q[17] - q[1]) == 1.0) && (q[2] == q[10]) && (q[8] > q[0])): return q[8]
+		quad = quad + 1
+	return 0.0 - 1.0
+
+
+# A composing word shows one caret, after the preview (as Android and iOS
+# fields do), not a stale caret under its first letter.
+void test_preedit_carries_the_caret():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_textbox_state st
+	ui_textbox_init(&st)
+	ui_textbox_set(&st, c"a")
+	ctx.focus = 1
+	float32 x = 0.0
+	ui_begin(ctx, 320, 200)
+	ui_textbox(ctx, 200.0, &st)
+	ui_end(ctx)
+	assert_equal(1, caret_quads(&fx.r, &x))
+	float32 committed_x = x
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_BEGIN, 0, 1, 0, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 'x', 1, 0, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 'y', 1, 0, 0)
+	ui_begin(ctx, 320, 200)
+	ui_textbox(ctx, 200.0, &st)
+	ui_end(ctx)
+	assert_equal(1, caret_quads(&fx.r, &x))
+	asserts(c"textbox caret follows the preedit", x > committed_x + 4.0)
+	asserts(c"textbox caret at the preedit end", x == underline_end(&fx.r))
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_END, 0, 1, 0, 0)
+	ui_begin(ctx, 320, 200)
+	ui_textbox(ctx, 200.0, &st)
+	ui_end(ctx)
+	assert_equal(1, caret_quads(&fx.r, &x))
+	asserts(c"caret returns once the preedit ends", x == committed_x)
+	ui_textarea_state ta
+	ui_textarea_init(&ta)
+	ui_textarea_set(&ta, c"a")
+	ui_rect area = ui_rect_new(0.0, 0.0, 300.0, 120.0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_BEGIN, 0, 1, 0, 0)
+	ui_test_event(ctx, GFX_EVENT_PREEDIT_TEXT, 'x', 1, 0, 0)
+	ui_begin(ctx, 320, 200)
+	ui_textarea(ctx, area, &ta)
+	ui_end(ctx)
+	assert_equal(1, caret_quads(&fx.r, &x))
+	asserts(c"textarea caret at the preedit end", x == underline_end(&fx.r))
+	ui_textarea_free(&ta)
+	ui_render_destroy(&fx.r)

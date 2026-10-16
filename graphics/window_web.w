@@ -77,6 +77,9 @@ extern int gfx_host_next_event(int32* out)
 # Focused editor declaration in logical canvas pixels, once per frame.
 extern void gfx_host_text_input(int active, int multiline, int x, int y, int width, int height, int focus_id)
 extern void gfx_host_pointer_mode(int mode)
+# devicePixelRatio times 1000 (an int keeps the import i32-only); 0 or
+# below 1000 means 1:1.
+extern int gfx_host_pixel_ratio_milli()
 
 
 void gfx_text_input(int active, int multiline, int x, int y, int width, int height, int focus_id):
@@ -153,6 +156,15 @@ int gfx_window_next_event(gfx_window* win, gfx_event* out):
 # there is no buffer swap to issue.
 void gfx_window_swap(gfx_window* win):
 	return
+
+
+# Device pixels per logical (CSS) pixel of the canvas: the host scales
+# glViewport/glScissor by it, and graphics.ui rasterizes glyphs at it
+# (ui_render_set_pixel_scale) so phone text is not a blurry upscale.
+float32 gfx_window_pixel_ratio(gfx_window* win):
+	int milli = gfx_host_pixel_ratio_milli()
+	if (milli <= 1000): return 1.0
+	return cast(float32, milli) / 1000.0
 
 
 # Hand the frame function to the host: it is called once per animation

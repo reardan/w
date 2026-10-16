@@ -159,7 +159,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	int shown = ui_text_fit_strike(&st.text[0], ui_font_strike_from_scale(scale), fit_w)
 	ui_draw_text_n(ctx.rndr, text_x, ty, &st.text[0], shown, scale, ui_text_color(ctx))
-	if (ctx.focus == id):
+	if ((ctx.focus == id) && (ui_text_preedit_showing(ctx, id) == 0)):
 		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
 		if (caret_w > fit_w): caret_w = fit_w
 		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_w) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
