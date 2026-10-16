@@ -213,7 +213,8 @@ own Pair* make_pair():
 ```
 
 Each constructor must initialize every field once. Moving an owner argument
-clears its source slot immediately; later arguments cannot reuse it. Bare
+clears its source slot immediately; later arguments cannot read the moved
+allocation. They may reinitialize the source binding with a new owner. Bare
 `new Pair`, missing fields, null owners and raw `Pair` value copies fail.
 Whole owners can move through bindings, calls and returns. Replacement
 evaluates the new value, destroys the old value, then installs the new one.
@@ -244,7 +245,11 @@ its parameter and return contracts.
 
 Argument evaluation is included in checking: an earlier mutable argument
 cannot coexist with a later read of the same storage, including a read or
-write hidden inside a nested call.
+write hidden inside a nested call. A projected store keeps its destination
+borrowed while evaluating the right-hand expression; indexing likewise keeps
+the receiver borrowed while evaluating the index. Nested moves, replacement
+or mutation of that backing storage are rejected. Reading the same storage
+for an update, or replacing an owner in a separate statement, remains valid.
 
 ## Arrays, slices and control flow
 
@@ -539,7 +544,7 @@ of soundness or Rust-level language coverage.
 
 The lifetime/aggregate/storage extension adds matrices for 84 named-lifetime
 programs (including 24 deterministically generated interactions), 61 slice
-programs, 65 borrowed-aggregate programs, 48 owning-aggregate programs and
+programs, 65 borrowed-aggregate programs, 63 owning-aggregate programs and
 69 collection programs. They run on x86 and x64 through compilation and
 structured checking, with and without `--safe`; rejected cases must leave
 no output artifact. Additional tests cover runtime source pins, erased or

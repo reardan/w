@@ -46,7 +46,8 @@ Do not collapse either set to one representative. For every access:
 
 1. Require all possible roots to be initialized and unmoved.
 2. Compare against every overlapping live loan and every reservation made
-   by an earlier argument of the same call.
+   by an earlier argument of the same call or an already evaluated storage
+   projection.
 3. Permit access through a loan's descendant subject to shared/exclusive
    access rules; do not thereby permit access through its suspended parent.
 4. Retain all possible roots and ancestry through another call or reborrow.
@@ -58,6 +59,14 @@ releases the sets. Parent traversal must terminate even for malformed
 self-referential initializers that definite-initialization checking rejects.
 Reference reassignment stays unsupported, so accepted reborrow dependencies
 remain acyclic. Reassignment would require flow-sensitive provenance joins.
+
+A projected store reserves its backing roots across right-hand evaluation;
+an indexed projection reserves its receiver across index evaluation. Final
+initialization state alone is insufficient: moving or replacing an owner may
+free an already evaluated address, then restore the binding to a live state.
+Use shared reservations so value reads remain possible, and release each
+reservation before validating the final access. Plain binding assignment
+does not hold a payload address and retains ordinary move/replacement rules.
 
 Detect checked fields through the complete retained type graph using an
 iterative queue and generation-marked visited types. Visit each type once
