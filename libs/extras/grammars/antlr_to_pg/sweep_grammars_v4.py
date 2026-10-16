@@ -27,10 +27,16 @@ CONFIGURATIONS = {
 }
 
 
-def empty_configurations(status="not_run", **detail):
+EXTENDED_CONFIGURATIONS = {
+    "exact_permissive": ("--exact-lexer", "--prediction"),
+    "exact_strict": ("--strict", "--exact-lexer", "--prediction"),
+}
+
+
+def empty_configurations(status="not_run", configurations=None, **detail):
     return {name: {"stages": {stage: dict(status=status, **detail)
                               for stage in BUILD_STAGES}, "dependency_inputs": []}
-            for name in CONFIGURATIONS}
+            for name in (configurations if configurations is not None else CONFIGURATIONS)}
 
 
 def sha256(path):
@@ -59,7 +65,7 @@ def load_manifest(path, corpus):
         if set(case["expected_pass"]) - set(STAGES):
             raise ValueError(f"invalid baseline stage for {name}")
         for configuration, stages in case.get("expected_configurations", {}).items():
-            if configuration not in CONFIGURATIONS or set(stages) - set(BUILD_STAGES):
+            if configuration not in (CONFIGURATIONS | EXTENDED_CONFIGURATIONS) or set(stages) - set(BUILD_STAGES):
                 raise ValueError(f"invalid configuration baseline for {name}: {configuration}")
         removed = set(case.get("recorded_pass", [])) - set(case["expected_pass"])
         for stage in removed:
@@ -114,7 +120,8 @@ def require_outputs(stage, paths):
             stage.update(status="error", error="missing output: " + ", ".join(missing))
 
 
-def run_case(case, corpus, work, tools, timeout, repo=REPO):
+def run_case(case, corpus, work, tools, timeout, repo=REPO, configurations=None):
+    configurations = configurations if configurations is not None else CONFIGURATIONS
     directory = work / case["name"]
     directory.mkdir()  # An existing case must never reuse stale outputs.
     parser_name = "sweep_" + re.sub(r"[^a-zA-Z0-9]", "_", case["name"])
@@ -126,8 +133,8 @@ def run_case(case, corpus, work, tools, timeout, repo=REPO):
               "historical_288": case.get("historical_288", False),
               "stages": {stage: {"status": "not_run"} for stage in STAGES},
               "runtime_smoke": "not_configured"}
-    result["configurations"] = empty_configurations()
-    for configuration, flags in CONFIGURATIONS.items():
+    result["configurations"] = empty_configurations(configurations=configurations)
+    for configuration, flags in configurations.items():
         current = result["configurations"][configuration]
         stages = current["stages"]
         output = directory if configuration == "default_permissive" else directory / configuration
@@ -204,9 +211,10 @@ def write_results(work, manifest, results, provenance, csv_path=None):
                     errors.append(f"{row['name']}: {configuration}/{stage} {value['status']}")
     totals = {stage: sum(row["stages"][stage]["status"] == "pass" for row in results)
               for stage in STAGES}
+    configurations = list(dict.fromkeys(name for row in results for name in row.get("configurations", {})))
     configuration_totals = {name: {stage: sum(
         row.get("configurations", {}).get(name, {}).get("stages", {}).get(stage, {}).get("status") == "pass"
-        for row in results) for stage in BUILD_STAGES} for name in CONFIGURATIONS}
+        for row in results) for stage in BUILD_STAGES} for name in configurations}
     summary = {"cases": len(results), "passing": totals, "configurations": configuration_totals,
                "historical_288_compiled": sum(row["historical_288"] and
                    row["stages"]["compile"]["status"] == "pass" for row in results),
@@ -216,7 +224,7 @@ def write_results(work, manifest, results, provenance, csv_path=None):
         "summary": summary, "cases": results}, indent=2) + "\n")
     with (csv_path or work / "results.csv").open("w", newline="") as output:
         writer = csv.writer(output)
-        columns = [(configuration, stage) for configuration in CONFIGURATIONS for stage in BUILD_STAGES]
+        columns = [(configuration, stage) for configuration in configurations for stage in BUILD_STAGES]
         writer.writerow(["name", "inputs", *STAGES, "runtime_smoke",
                          *(configuration + "/" + stage for configuration, stage in columns)])
         for row in results:
@@ -238,12 +246,17 @@ def main(argv=None):
     parser.add_argument("--jobs", type=int, default=os.environ.get("JOBS", 4))
     parser.add_argument("--timeout", type=float, default=90, help="seconds per stage")
     parser.add_argument("--case", action="append", help="run selected pinned case(s)")
+    parser.add_argument("--extended-configurations", action="store_true",
+                        help="also measure opt-in exact lexer + continuation prediction (permissive/strict)")
     args = parser.parse_args(argv)
     if args.corpus is None:
         parser.error("set GV4 or pass --corpus (see README.md for pinned checkout)")
     if args.jobs < 1 or args.timeout <= 0:
         parser.error("jobs and timeout must be positive")
     try:
+        configurations = dict(CONFIGURATIONS)
+        if args.extended_configurations:
+            configurations.update(EXTENDED_CONFIGURATIONS)
         corpus = args.corpus.resolve()
         manifest = load_manifest(args.manifest, corpus)
         if args.case:
@@ -275,12 +288,13 @@ def main(argv=None):
                       "runner_sha256": sha256(Path(__file__)),
                       "tools_sha256": {name: sha256(path) for name, path in tools.items()},
                       "selection": args.case or "all pinned cases",
+                      "configurations": {name: list(flags) for name, flags in configurations.items()},
                       "timeout_seconds": args.timeout,
                       "compile_harness": "empty main; generated parser is not executed"}
         print(f"Artifacts: {work}", flush=True)
         results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            futures = {executor.submit(run_case, case, corpus, work, tools, args.timeout): case
+            futures = {executor.submit(run_case, case, corpus, work, tools, args.timeout, REPO, configurations): case
                        for case in manifest["cases"]}
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -292,7 +306,7 @@ def main(argv=None):
                     result = {"name": case["name"], "inputs": case["inputs"],
                               "historical_288": case.get("historical_288", False),
                               "runtime_smoke": "not_configured",
-                              "configurations": empty_configurations("error", error=str(error)),
+                              "configurations": empty_configurations("error", configurations=configurations, error=str(error)),
                               "stages": {stage: {"status": "error", "error": str(error)}
                                          for stage in STAGES}}
                 results.append(result)

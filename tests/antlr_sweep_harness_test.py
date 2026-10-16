@@ -211,6 +211,18 @@ class SweepTest(unittest.TestCase):
         self.assertEqual(row["strict"], "pass")
         self.assertEqual(row["default_strict/compiler_strict"], "pass")
 
+    def test_extended_backends_are_opt_in_and_have_distinct_artifacts(self):
+        configurations = sweep.CONFIGURATIONS | sweep.EXTENDED_CONFIGURATIONS
+        result = sweep.run_case(self.case, self.corpus, self.work, self.tools, 5, self.root, configurations)
+        self.assertEqual(set(result["configurations"]), set(configurations))
+        stages = result["configurations"]["exact_strict"]["stages"]
+        for flag in ("--strict", "--exact-lexer", "--prediction"):
+            self.assertIn(flag, stages["translate"]["argv"])
+        self.assertIn("exact_strict", stages["compile"]["argv"][1])
+        summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
+        self.assertEqual(summary["configurations"]["exact_strict"]["compiler_strict"], 1)
+        self.assertEqual(result["stages"]["strict"], result["configurations"]["default_strict"]["stages"]["translate"])
+
     def test_committed_baseline_keeps_original_measurement(self):
         data = json.loads((sweep.HERE / "sweep_baseline.json").read_text())
         self.assertEqual(len(data["cases"]), 291)
