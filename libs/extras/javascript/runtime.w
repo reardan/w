@@ -155,6 +155,7 @@ js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index);
 void js_runtime_arguments(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments);
 js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* skipped, js_value** receiver);
 js_value* js_runtime_for_in(js_runtime* rt, js_node* node, js_value* env);
+js_value* js_runtime_loose_equal(js_runtime* rt, js_value* a, js_value* b, int negate);
 void js_runtime_async_mark(js_runtime* rt, list[js_value*] pending);
 int js_runtime_async_cancel(js_runtime* rt);
 js_value* js_runtime_async_call(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args);
@@ -689,6 +690,8 @@ int js_runtime_equal(js_value* a, js_value* b):
 
 js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	if (strcmp(op, c"instanceof") == 0): return js_class_instanceof(rt, a, b)
+	if (strcmp(op, c"==") == 0): return js_runtime_loose_equal(rt, a, b, 0)
+	if (strcmp(op, c"!=") == 0): return js_runtime_loose_equal(rt, a, b, 1)
 	if (strcmp(op, c"===") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b))
 	if (strcmp(op, c"!==") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b) == 0)
 	if (strcmp(op, c"+") == 0 && a.kind == 4 && b.kind == 4):
@@ -1662,7 +1665,7 @@ int js_runtime_supported(js_node* node):
 	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
-		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && strcmp(op, c"instanceof") != 0 && js_runtime_bit_operator(op) == 0): return 0
+		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"==") != 0 && strcmp(op, c"!=") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && strcmp(op, c"instanceof") != 0 && js_runtime_bit_operator(op) == 0): return 0
 	for i in range(node.children.length):
 		if (js_runtime_supported(node.children[i]) == 0): return 0
 	return 1
@@ -1780,3 +1783,5 @@ import libs.extras.javascript.runtime_json
 import libs.extras.javascript.runtime_regexp
 
 import libs.extras.javascript.runtime_for_in
+
+import libs.extras.javascript.runtime_equality
