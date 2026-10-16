@@ -120,6 +120,22 @@ def require_outputs(stage, paths):
             stage.update(status="error", error="missing output: " + ", ".join(missing))
 
 
+def read_findings(path):
+    document = json.loads(path.read_text())
+    if not isinstance(document, dict) or document.get("schema_version") != 1 or not isinstance(document.get("findings"), list):
+        raise ValueError("unsupported structured audit schema")
+    for finding in document["findings"]:
+        if not isinstance(finding, dict):
+            raise ValueError("structured audit finding must be an object")
+        for field in ("code", "stage", "feature", "classification", "file", "rule", "reason"):
+            if not isinstance(finding.get(field), str) or not finding[field]:
+                raise ValueError("structured audit missing string field: " + field)
+        for field in ("line", "column"):
+            if type(finding.get(field)) is not int or finding[field] < 1:
+                raise ValueError("structured audit invalid source location: " + field)
+    return document["findings"]
+
+
 def run_case(case, corpus, work, tools, timeout, repo=REPO, configurations=None):
     configurations = configurations if configurations is not None else CONFIGURATIONS
     directory = work / case["name"]
@@ -144,9 +160,15 @@ def run_case(case, corpus, work, tools, timeout, repo=REPO, configurations=None)
         args = [tools["translator"], *sources, "-o", pg,
                 "--parser-name", parser_name, "--matchers", matchers,
                 "--report", output / "translate.report", "--audit", output / "translate.audit",
-                "--dependencies", loaded, *flags]
+                "--dependencies", loaded, "--audit-json", output / "translate.audit.json", *flags]
         stages["translate"] = run_stage(args, output / "translate.log", timeout, repo)
         require_outputs(stages["translate"], [pg, matchers, loaded])
+        try:
+            current["findings"] = read_findings(output / "translate.audit.json")
+        except (OSError, ValueError) as error:
+            # A crash/timeout remains its original infrastructure failure.
+            if stages["translate"]["status"] in ("pass", "fail"):
+                stages["translate"].update(status="error", error="structured audit: " + str(error))
         # Every mode must prove the dependency closure, including strict failures.
         if loaded.exists():
             for value in loaded.read_text().splitlines():
@@ -215,7 +237,13 @@ def write_results(work, manifest, results, provenance, csv_path=None):
     configuration_totals = {name: {stage: sum(
         row.get("configurations", {}).get(name, {}).get("stages", {}).get(stage, {}).get("status") == "pass"
         for row in results) for stage in BUILD_STAGES} for name in configurations}
+    finding_counts = {name: {} for name in configurations}
+    for row in results:
+        for name, current in row.get("configurations", {}).items():
+            for code in {finding["code"] for finding in current.get("findings", [])}:
+                finding_counts[name][code] = finding_counts[name].get(code, 0) + 1
     summary = {"cases": len(results), "passing": totals, "configurations": configuration_totals,
+               "finding_grammar_counts": finding_counts,
                "historical_288_compiled": sum(row["historical_288"] and
                    row["stages"]["compile"]["status"] == "pass" for row in results),
                "runtime_smoke": "not_configured", "regressions": regressions,

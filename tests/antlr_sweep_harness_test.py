@@ -33,12 +33,15 @@ class SweepTest(unittest.TestCase):
         for name in ("translator", "generator", "compiler"):
             tool = self.root / name
             tool.write_text("#!" + sys.executable + "\n" +
-                "import os, pathlib, signal, sys, time\n"
+                "import json, os, pathlib, signal, sys, time\n"
                 "args = sys.argv[1:]\n"
                 "name = pathlib.Path(sys.argv[0]).name\n"
                 "mode = pathlib.Path(sys.argv[0]).with_suffix('.mode')\n"
                 "mode = mode.read_text() if mode.exists() else ''\n"
                 "print(name + ': complete log, including commas and \\\"quotes\\\"', flush=True)\n"
+                "if '--audit-json' in args and mode != 'missing':\n"
+                "    finding = dict(code='AT_FIXTURE', stage='translate', feature='fixture', classification='unproven', file=args[0], line=1, column=2, rule='root', reason='fixture reason')\n"
+                "    pathlib.Path(args[args.index('--audit-json')+1]).write_text(json.dumps(dict(schema_version=1, findings=[finding])))\n"
                 "if mode == 'timeout': time.sleep(5)\n"
                 "if mode == 'crash': os.kill(os.getpid(), signal.SIGTERM)\n"
                 "if mode == 'fail' or (mode == 'strict_fail' and '--strict' in args): sys.exit(7)\n"
@@ -222,6 +225,23 @@ class SweepTest(unittest.TestCase):
         summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
         self.assertEqual(summary["configurations"]["exact_strict"]["compiler_strict"], 1)
         self.assertEqual(result["stages"]["strict"], result["configurations"]["default_strict"]["stages"]["translate"])
+
+    def test_structured_findings_are_preserved_and_count_grammars(self):
+        result = self.run_case()
+        findings = result["configurations"]["default_strict"]["findings"]
+        self.assertEqual(findings[0]["code"], "AT_FIXTURE")
+        self.assertEqual(findings[0]["column"], 2)
+        findings.append(dict(findings[0], line=2))
+        summary = sweep.write_results(self.work, {"cases": [self.case]}, [result], {})
+        self.assertEqual(summary["finding_grammar_counts"]["default_strict"]["AT_FIXTURE"], 1)
+
+    def test_malformed_structured_audit_is_not_a_semantic_refusal(self):
+        path = self.root / "bad.audit.json"
+        for document in ({}, {"schema_version": 1, "findings": ["bad"]},
+                         {"schema_version": 1, "findings": [{"code": "AT_BAD"}]}):
+            path.write_text(json.dumps(document))
+            with self.assertRaises(ValueError):
+                sweep.read_findings(path)
 
     def test_committed_baseline_keeps_original_measurement(self):
         data = json.loads((sweep.HERE / "sweep_baseline.json").read_text())

@@ -39,7 +39,7 @@ jobs:
         env:
           GV4: ${{ runner.temp }}/grammars-v4
           WORK: ${{ github.workspace }}/bin/grammar_coverage_ci
-        run: libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90
+        run: libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90 --extended-configurations
       - name: Report stage coverage
         if: always()
         run: |
@@ -71,6 +71,7 @@ jobs:
             bin/grammar_coverage_ci/results.*
             bin/grammar_coverage_ci/**/*.log
             bin/grammar_coverage_ci/**/*.audit
+            bin/grammar_coverage_ci/**/*.audit.json
             bin/grammar_coverage_ci/**/*.report
             bin/grammar_coverage_ci/**/*.pg
             bin/grammar_coverage_ci/**/*.inputs
