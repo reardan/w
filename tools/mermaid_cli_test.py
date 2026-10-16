@@ -53,6 +53,43 @@ with tempfile.TemporaryDirectory(prefix="mermaid-", dir="bin") as temp:
     assert run("read", source).stdout == source.read_bytes()
     run("check", root / "missing.mmd", ok=False)
     run("nonsense", source, ok=False)
+    # A selected Markdown diagram renders independently while round trips and
+    # byte-range edits retain every other diagram and Markdown byte.
+    markdown = (
+        b"# Many diagrams\r\n```mermaid\r\nflowchart LR\r\nA[First]\r\n```\r\n"
+        b"Between\n~~~mermaid\nflowchart TD\nB[Second]\n~~~\nAfter\n"
+    )
+    source.write_bytes(markdown)
+    run("check", source)
+    run("check", source, "--diagram", 1)
+    run("svg", source, svg, "--diagram", 1)
+    text = "".join(ET.parse(svg).getroot().itertext())
+    assert "Second" in text and "First" not in text
+    run("check", source, "--diagram", 2, ok=False)
+    run("check", source, "--diagram", "-1", ok=False)
+    run("check", source, "--diagram", "oops", ok=False)
+    assert run("read", source, "--diagram", 1).stdout == markdown
+    replacement.write_text("Edited")
+    at = markdown.index(b"Second")
+    run("edit", source, at, at + 6, replacement, copy, "--diagram", 1)
+    assert copy.read_bytes() == markdown.replace(b"Second", b"Edited")
+    run("canonical", copy, source, "--diagram", 1)
+    assert b"Edited" in source.read_bytes() and b"First" not in source.read_bytes()
+    run("check", source)
+    run("canonical", source, copy)
+    assert copy.read_bytes() == source.read_bytes()
+    source.write_text('pie\n"A": 1\n')
+    before = copy.read_bytes()
+    run("canonical", source, copy, ok=False)
+    assert copy.read_bytes() == before
+    # Paths longer than the former native editor's 127-byte field limit.
+    deep = root / ("long-directory-" + "x" * 100) / ("nested-" + "y" * 80)
+    deep.mkdir(parents=True)
+    long_source = deep / "diagram.mmd"
+    long_source.write_bytes(markdown)
+    run("check", long_source, "--diagram", 1)
+    run("write", long_source, deep / "copy.mmd")
+    assert (deep / "copy.mmd").read_bytes() == markdown
     for example in Path("examples/mermaid").iterdir():
         if example.suffix not in {".mmd", ".md"}:
             continue
