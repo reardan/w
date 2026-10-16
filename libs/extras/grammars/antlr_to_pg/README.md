@@ -175,7 +175,8 @@ ALL(*) algorithm: ambiguity can take exponential work, limited by an explicit
 step budget (one million by default). Exhaustion is a sticky resource error.
 Every public rule entry requires complete input; native `.pg` partial parsing,
 ordered choice, and streaming remain separate modes. Prediction refuses host
-callbacks, lexical goals, recovery, and parser actions/predicates.
+callbacks, lexical goals, recovery, parser actions/predicates, and unsupported
+parser nongreedy decisions.
 
 The expression fallback supports direct-recursive ternaries, compound/optional
 operators, interleaved postfix levels, labels, and proved keyword-delimited
@@ -235,8 +236,8 @@ tokens are retained as hidden trivia for complete source reconstruction.
 Malformed command arguments and repeated/conflicting commands remain semantic losses. Best-effort emission omits commands the runtime cannot
 represent; strict mode refuses before publishing output.
 
-Generated matchers do not generally backtrack from a greedy subexpression into
-its following continuation. Strict stateful auditing therefore refuses
+Without `--exact-lexer`, generated matchers do not generally backtrack from a
+greedy subexpression into its following continuation. Strict stateful auditing therefore refuses
 variable-width pieces before another atom unless a narrow disjoint-delimiter
 proof applies (for example optional CR before LF, or `~["]*` before `"`).
 Repeated variable-width bodies require a prefix-free proof: fixed-width
@@ -304,6 +305,8 @@ git -C /tmp/grammars-v4 checkout --detach 89fd36482e8cb68a4e55df021a8adbc7541b52
 GV4=/tmp/grammars-v4 libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.sh --jobs 4 --timeout 90 --extended-configurations
 ```
 
+`--extended-configurations` is required for the complete six-configuration
+baseline gate; omitting a protected configuration is not counted as a pass.
 `--case json --case csv` selects a focused subset. `--work DIR` (or `WORK`) must
 name a new or empty directory; the default creates `bin/grammar_sweep/run-*`.
 `GV4`, `WORK`, `JOBS`, and `OUT_CSV` remain supported. CSV now has explicit stage

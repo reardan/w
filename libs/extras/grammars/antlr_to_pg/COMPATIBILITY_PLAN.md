@@ -12,6 +12,53 @@ unchanged. The architecture prototypes below are required gates before broad
 parser or lexer acceptance is enabled. Implementation is in progress; final measurements and remaining limitations will
 be recorded alongside the implementation before completion.
 
+## Implemented capabilities
+
+The implementation retains the opt-in rollout described below. The final stage
+matrix, original-cohort comparison, and per-grammar remaining causes live in
+[SWEEP_RESULTS.md](SWEEP_RESULTS.md); the original baseline below remains historical.
+
+| Workstream | Implementation and executable evidence |
+| --- | --- |
+| Measurement and diagnostics | Six independent configurations, four build stages, schema-versioned findings, input/dependency/tool hashes, stage-isolation harness, and per-case CI expectations |
+| Warning-free generated code | Logical boolean emission and matcher-depth guards; every default compiling case now also compiles with W `--strict` |
+| Lexer continuations | `lexer_ir.w`, `lexer_lower.w`, `lexer_emit.w`, and `lexer_vm.w`; longest-match/source priority, ordered nongreedy paths, productive recursive rules, and explicit budgets; 7,104 reference endpoint witnesses |
+| Prediction | `mode antlr` continuation interpreter with delayed AST replay, full-input public entries, source-order choices, greedy continuations, and sticky resource failures; native `.pg` behavior remains independently tested |
+| Expressions and metadata | General direct-precedence fallback, ternaries/compound operators/postfix levels, guarded recursive lists, source alternative/label metadata, and validated metadata replay; evaluated expressions and labeled contexts checked against ANTLR |
+| Unicode | Java 17 / ANTLR 4.13.2 pinned property and simple-case data, scalar complements/ranges, astral literals, malformed-input refusal, zero-valued range endpoints, and rule-level lexer case overrides |
+| Lexer state and token identity | Custom channels, named EOF and `more` boundaries, hidden mode-only transitions, bounded empty progress, snapshot safety, token-level parser sets, and fragment/type-remap identities |
+| Dependencies | Declaration-ordered imports, root overrides, diamond deduplication, token-vocabulary identity handling, and explicit missing-import/host-semantic refusals |
+| Runtime promotion | Offline snapshots plus a separately pinned live Java oracle, 24 grammar families / 170 inputs, deterministic mutation cases, lossless source reconstruction, and documented legacy mismatches |
+
+The chosen parser is bounded continuation search, not ALL(*). It has no DFA cache
+and can take exponential work up to its execution budget. Its normalized W AST
+exposes source provenance and labels; ANTLR context/listener API identity remains
+outside scope. Foreign host actions, predicates, superclass semantics, arbitrary
+indirect/hidden left recursion, and incomplete upstream definitions remain named
+refusals rather than guessed implementations. The existing JavaScript adaptation
+ledger remains the explicit host-adaptation path.
+
+Nonproductive lexer fragments are retained as real calls when an enclosing rule
+is productive, preserving inspected failure spans; nonproductive public token
+roots remain refused. This allows Lisp's optional fragment without inventing a
+productive base. Mode-only progress is limited to explicit mode changes that
+produce hidden/skip trivia; arbitrary empty visible tokens remain refused.
+
+Strict auditing is conservative and is not a complete ANTLR source validator.
+[STRICT_CONTINUATION_REVIEW.json](STRICT_CONTINUATION_REVIEW.json) preserves all
+58 historical stateful-strict observations: all pass the new exact strict path;
+the older path has five witnessed mismatches and 25 additional unproved cases.
+Those 25 are not described as demonstrated runtime bugs. The independent default
+strict baseline removes only the five witness-backed claims. Bounded absorption
+proofs restore Geekcode, SwiftFin, and SRT where sound; Geekcode's legacy audit
+currently costs roughly six seconds / 400 MB. Prediction mode bypasses that
+legacy decision-proof work.
+
+The supported exact input domain is valid UTF-8 without embedded NUL. Invalid
+encoding, NUL, and resource exhaustion are explicit terminal failures surviving
+rollback. Case-insensitive implicit parser literals require explicit lexer rules.
+Source generation/compilation and runtime conformance remain separate claims.
+
 ## Baseline and scope
 
 The audit at W commit `1763b6cf82a6d8d2da63552a2b95641c6c25aeb8` used grammars-v4
