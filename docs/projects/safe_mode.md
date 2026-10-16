@@ -206,8 +206,8 @@ reference or explicit type arguments. Each instantiated body and its retained
 call signature must agree, including through aliases, imports and recursion.
 Unused generic templates retain the ordinary deferred-instantiation behavior.
 The existing generic parameter/result shape restrictions still apply.
-Higher-ranked function values and independent aggregate lifetime groups remain
-rejected pending their own implementation gates.
+Quantified function values and aggregate lifetime groups follow the contracts
+described below; generic aggregate signature shapes remain separately gated.
 No runtime representation, allocation or destruction order changes.
 
 ### Shared-reference structs
@@ -242,9 +242,8 @@ local storage has a different lifetime from the data its references borrow.
 Checked slice fields (`ref[item] T[]`) use the same group and copy their
 inline descriptors. Bind an extracted slice before indexing it; direct
 `record.values[0]` is not yet supported. Field mutation, wrapper reassignment, unqualified record
-storage, heap construction, mutable-reference fields and multiple independent
-field-lifetime groups remain unsupported in this form. Nested shared wrappers
-use the same group as described below.
+storage, heap construction and mutable-reference fields remain unsupported in
+this shared form. Nested wrappers and independent groups are described below.
 
 ### Mutable-reference structs
 
@@ -276,8 +275,8 @@ alive, independently of the wrapper's inline descriptor storage.
 
 Scalar metadata may be changed. Reference-field replacement, wrapper
 reassignment, descriptor-field addresses, optional fields, mixed owned/borrowed
-fields, multiple lifetime groups and partial moves remain rejected. These are
-separate roadmap items.
+fields and partial moves remain rejected. Independent groups use the explicit
+multi-label form described below.
 
 ### Nested borrowed structs
 
@@ -298,8 +297,8 @@ ref[a] View make_view(ref[a] int* value):
 
 The nested wrapper renames its inner group into the enclosing group. Here
 `Cell` owns the label `item`, its field in `View` uses `group`, and `ref[a] View`
-binds that outer group to `a`. Every reference-bearing field at each level
-must still share one label. This does not introduce independent groups.
+binds that outer group to `a`. Fields sharing a template label remain one
+conservative group. Multiple labels introduce independent groups as below.
 
 Construct every field at every level. Copies, imported functions, returned
 records and quantified callbacks preserve the complete union of backing roots
@@ -318,9 +317,62 @@ remain rejected.
 
 Nested shapes are bounded to depth 32 and 256 expanded record nodes. Cyclic
 or larger shapes fail validation. Plain unwrapped nested records, optional
-fields, mixed ownership and multiple independent groups remain outside this
-step. Layout and calling conventions are unchanged; nesting introduces no
+fields and mixed ownership remain unsupported. Layout and calling conventions
+are unchanged; nesting introduces no
 runtime allocation or destructor.
+
+### Independent aggregate lifetime groups
+
+A borrowed record may declare several groups. Bind them with `ref[a,b] Record`
+or `refmut[a,b] Record`, in the order their labels first occur in the template's
+fields:
+
+```w
+struct Pair:
+	refmut[left] int* first
+	refmut[right] int* second
+
+refmut[a] int* first(refmut[a,b] Pair pair):
+	return pair.first
+
+int main():
+	int x = 3
+	int y = 4
+	refmut[a,b] Pair pair = Pair(&x, &y)
+	refmut int* p = first(pair)
+	y = 9
+	*p = 5
+	return x + y - 14
+```
+
+The result keeps only the first group's origins alive. Returning `pair.second`
+under this contract fails checking. Borrowing both fields through the same
+mutable wrapper permits disjoint access; fields with the same template label
+still retain their combined origins. Whole-record use reserves all groups.
+A wrapper that remains live for later whole-value use can therefore keep every
+group borrowed, even after one field has been extracted.
+
+Nested annotations map the inner template's groups into the containing
+record. For example, a field `ref[x,y] Pair pair` contributes `x` and `y` to
+its enclosing template; `ref[x,x] Pair pair` deliberately combines both into
+one enclosing group. Renaming at a use site does not change field layout or
+component identity. Repeated labels in a function contract constrain every
+corresponding input/output position; the caller retains all possible origins.
+
+Every multi-group wrapper needs exactly one explicit label per template group.
+The one-group form retains its existing omitted-label inference. Pointer and
+slice types still take one label. Quantified signatures and explicit
+outlives clauses retain their ten-parameter limit. Checked contracts allow at
+most 32 expanded slots, counting one for each aggregate group and one for each
+other parameter or result. Outlives clauses,
+forward declarations and quantified callbacks use these expanded positions.
+Each borrowed result component must derive from its permitted input components.
+
+Construction evaluates each field once, preserving argument reservations.
+Copies, control-flow joins, calls and returns retain every origin and ancestor
+within each group. Borrowed wrapper reassignment, reference-field replacement,
+mixed owned/borrowed fields and partial moves remain separate requirements.
+There is no new runtime representation or allocation for group metadata.
 
 ### Owned structs
 

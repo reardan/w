@@ -33,7 +33,7 @@ int retained_type_matches(retained_type* type, type_rec* original):
 	if ((type.origin_target != original.alias_target) || (type.origin_return != original.fn_return_type) || (type.origin_parameters != original.fn_param_count)): return 0
 	if (type.fields.length != original.num_fields): return 0
 	if (type.lifetime_order != 0):
-		for i in range(original.fn_param_count + 1):
+		for i in range(type_contract_slots(&original.fn_param_types[0], original.fn_return_type, original.fn_param_count)):
 			if (type.lifetime_order[i] != original.fn_lifetime_order[i]): return 0
 	for i in range(original.num_fields):
 		retained_field* field = type.fields[i]
@@ -67,11 +67,17 @@ int retained_type_note(int index):
 	retained_type* type = new retained_type
 	type.name = retained_intern(original.name)
 	type.lifetime = 0
+	type.lifetime_labels = 0
+	if (original.safe_labels != 0):
+		int count = type_lifetime_count(index)
+		type.lifetime_labels = cast(char**, retained_arena_alloc((count + 1) * __word_size__))
+		for i in range(count): type.lifetime_labels[i] = retained_intern(original.safe_labels[i])
+		type.lifetime_labels[count] = 0
 	type.lifetime_order = 0
 	if (original.fn_lifetime_order != 0):
-		int bytes = (original.fn_param_count + 1) * __word_size__
+		int bytes = type_contract_slots(&original.fn_param_types[0], original.fn_return_type, original.fn_param_count) * __word_size__
 		type.lifetime_order = cast(int*, retained_arena_alloc(bytes))
-		for i in range(original.fn_param_count + 1): type.lifetime_order[i] = original.fn_lifetime_order[i]
+		for i in range(type_contract_slots(&original.fn_param_types[0], original.fn_return_type, original.fn_param_count)): type.lifetime_order[i] = original.fn_lifetime_order[i]
 	if (original.safe_lifetime != 0): type.lifetime = retained_intern(original.safe_lifetime)
 	type.file = retained_intern(debug_file_name(original.decl_file_index))
 	type.file_index = retained_file_key(original.decl_file_index)

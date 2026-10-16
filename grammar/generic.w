@@ -1070,9 +1070,10 @@ int generic_inst_signature(int inst):
 	if (lifetime_order != 0):
 		# Raw types can survive retained rollback during diagnostic recovery.
 		# Own these rows with the raw signature, just like its parameter data.
-		int bytes = (param_count + 1) * __word_size__
+		int slots = type_contract_slots(cast(int*, param_types), return_type, param_count)
+		int bytes = slots * __word_size__
 		type_record(sig).fn_lifetime_order = cast(int*, malloc(bytes))
-		for i in range(param_count + 1): type_record(sig).fn_lifetime_order[i] = lifetime_order[i]
+		for i in range(slots): type_record(sig).fn_lifetime_order[i] = lifetime_order[i]
 	free(param_types)
 	generic_insts[inst].signature = sig
 	return sig

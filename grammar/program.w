@@ -355,15 +355,17 @@ void ast_script_main();
 # relation on signature positions so spellings and redundant edges do not
 # participate in declaration identity. Storage belongs to the retained arena.
 char* function_lifetime_label(int* parameters, int result, int count, int slot):
-	int type = result
-	if (slot < count): type = parameters[slot]
-	if (type_safe_kind(type) < 2): return 0
-	return type_record(type_unqualified(type)).safe_lifetime
+	for i in range(count):
+		int width = type_lifetime_count(parameters[i])
+		if (slot < width): return type_lifetime_at(parameters[i], slot)
+		slot = slot - width
+	return type_lifetime_at(result, slot)
 
 
 int function_lifetime_slot(int* parameters, int result, int count):
+	int slots = type_contract_slots(parameters, result, count)
 	if (is_ident_start_byte(token[0]) == 0): error(c"outlives clause requires a lifetime label")
-	for i in range(count + 1):
+	for i in range(slots):
 		char* name = function_lifetime_label(parameters, result, count, i)
 		if ((name != 0) && (strcmp(name, token) == 0)):
 			get_token()
@@ -373,12 +375,14 @@ int function_lifetime_slot(int* parameters, int result, int count):
 
 
 int* function_lifetime_identity(int* parameters, int result, int count):
-	int* order = cast(int*, retained_arena_alloc((count + 1) * __word_size__))
-	for i in range(count + 1):
+	int slots = type_contract_slots(parameters, result, count)
+	if (slots > 32): error(c"checked contracts support at most 32 expanded lifetime slots")
+	int* order = cast(int*, retained_arena_alloc(slots * __word_size__))
+	for i in range(slots):
 		order[i] = 0
 		char* left = function_lifetime_label(parameters, result, count, i)
 		if (left == 0): continue
-		for j in range(count + 1):
+		for j in range(slots):
 			char* right = function_lifetime_label(parameters, result, count, j)
 			if ((right != 0) && (strcmp(left, right) == 0)): order[i] = order[i] | (1 << j)
 	return order
@@ -389,6 +393,7 @@ int* function_lifetime_order_types(int* parameters, int result, int count):
 	if ((ast_retain_mode == 0) || (retained_semantic_mode == 0) || (type_safe_entrypoint == 0)):
 		error(c"outlives clauses require the retained checked frontend")
 	if (count > sym_max_param_slots): error(c"outlives clauses support at most 10 parameters")
+	int slots = type_contract_slots(parameters, result, count)
 	int* order = function_lifetime_identity(parameters, result, count)
 	while (1):
 		int longer = function_lifetime_slot(parameters, result, count)
@@ -396,8 +401,8 @@ int* function_lifetime_order_types(int* parameters, int result, int count):
 		int shorter = function_lifetime_slot(parameters, result, count)
 		order[longer] = order[longer] | (1 << shorter)
 		if (accept(c",") == 0): break
-	for k in range(count + 1):
-		for i in range(count + 1):
+	for k in range(slots):
+		for i in range(slots):
 			if (order[i] & (1 << k)): order[i] = order[i] | order[k]
 	return order
 

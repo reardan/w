@@ -515,6 +515,7 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.safe_lifetime = 0
+	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	rec.name = type_get_name(type_canonical(base))
 	if (type_is_gpu_object(base)): rec.name = type_get_name(base)
@@ -549,6 +550,7 @@ int ast_expression_const_type(expression_ast* tree, int base, int offset):
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.safe_lifetime = 0
+	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	rec.name = &tree.type_names[tree.type_names_used]
 	strcpy(rec.name, c"const ")
@@ -586,6 +588,7 @@ int ast_expression_gpu_type(expression_ast* tree, int base, int offset):
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.safe_lifetime = 0
+	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	type_rec* source = type_record(base)
 	rec.name = &tree.type_names[tree.type_names_used]
@@ -647,6 +650,7 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	free(name)
 	tree.type_names_used = tree.type_names_used + length
 	rec.safe_lifetime = 0
+	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	if (lifetime >= 0): rec.safe_lifetime = tree.type_names + lifetime
 	rec.num_fields = 0
@@ -733,6 +737,7 @@ int ast_expression_reserve_signature(expression_ast* tree, int id, int result, i
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.safe_lifetime = 0
+	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	rec.name = c""
 	rec.num_fields = 0
@@ -775,6 +780,7 @@ int ast_expression_composite_type(expression_ast* tree, int kind, int element, i
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.safe_lifetime = 0
+	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	rec.name = &tree.type_names[tree.type_names_used]
 	strcpy(rec.name, name)
