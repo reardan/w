@@ -1355,3 +1355,13 @@ the cache assertions.
   once. Direction: have wtest build (or name) the generator targets a
   failing root needs, the way `./wbuild` builds the `generated`
   umbrella first.
+
+## Generic inference rejects `&p[n]` arguments (2026-10-16, stdlib P3.7b)
+
+`mem_copy(&v[w], src, n)` with `int* v` fails `w check` with W0227
+"cannot infer type parameter 'T' from argument 1: expected a pointer, got
+'constant'", although `&p[n]` is the idiom CLAUDE.md recommends for
+pointer offsets and `mem_copy(v, src, n)` infers fine. Workaround: spell the
+type argument (`mem_copy[int](&v[w], src, n)`). Direction: type `&a[i]` as
+`T*` during generic argument inference, or at least name the address-of
+expression instead of "constant" in the diagnostic.
