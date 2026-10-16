@@ -19,9 +19,12 @@ allocation/free/origin diagnostics and exit-time leak reporting. Both launch pat
 must exercise the same checking semantics. Compiler assistance must not be a
 prerequisite for checking a supported prebuilt binary.
 
-This is a multi-stage implementation. Only stage 1 below is implemented in this
-change. Native uninitialized-value checking and precompiled-library checking
-remain unimplemented; `wgrind --native` still means the guard allocator.
+This is a multi-stage implementation. Stage 1 and the shared event-driven shadow
+engine described in stage 2 are implemented. Neither execution frontend is wired
+to that engine yet: automatic native uninitialized-value checking and
+precompiled-library checking remain unimplemented. `wgrind --native` still means
+the guard allocator. The new engine is internal infrastructure, not a claim that
+existing programs are now checked at instruction level.
 
 ## 1. Correct and bound existing allocator bookkeeping
 
@@ -56,12 +59,110 @@ covers both workloads on x86 and x64.
 
 ## 2. Shared shadow state and diagnostics
 
-Build a runtime independent of the application allocator. Sparse shadow pages
-record addressability, bit-level definedness, and interned origin IDs; register
-shadow state is per thread. Keep mappings, allocation objects, and value origins
-separate. Application allocations must not recursively allocate checker metadata.
+Implemented in `libs/wgrind/` with no Valgrind runtime dependency:
 
-Required transitions:
+- `shadow.w`: sparse 4 KiB shadow pages, byte read/write permissions, eight
+  undefined bits per application byte, and an origin token per byte. Unknown
+  addresses are inaccessible. Loads and copies propagate undefined bits without
+  reporting a consequential use. Whole-range checks precede shadow stores/copies.
+- `heap.w`: allocation, checked calloc sizing, free and realloc events; an AVL
+  index detects live overlap, an exact-address hash identifies frees, and a
+  bounded free-order history retains allocation/free sites. Failed realloc keeps
+  the original state; moved and in-place realloc preserve prefix definedness and
+  give new tail bytes the resize origin.
+- `values.w`: word-sized bitwise, addition/subtraction, equality, shifts and
+  truth-value propagation. Known bits can eliminate uncertainty (`x & 0`,
+  `x | -1`, a known differing comparison bit). Addition/subtraction propagate
+  possible carry bits; shifts merge all possible normalized counts rather than
+  reporting a mere use of an undefined count. Unsupported operations and widths
+  report incomplete.
+- `registers.w`: separate frontend-owned integer register files with byte
+  origins, partial-register updates and explicit clearing of upper bits for
+  x64 EAX-style writes. This models integer aliases; it is not thread scheduling
+  or SIMD/flags support.
+- `report.w`: deterministic JSON diagnostics with error kind/code, failing
+  address, access size, access/origin/allocation/free tokens and allocation-relative
+  offset. Error attribution picks a containing retained object or the nearest
+  edge within 64 bytes, preferring live objects over overlapping freed history.
+  Ties among freed objects select the latest free, not hash-table order.
+  It does not claim that arbitrary distant addresses belong to an allocation.
+
+The engine allocates checker metadata from private mmap-backed 256 KiB slabs,
+without calling the application allocator. Pages and allocation records are
+reused. Callers set page, allocation-record and freed-history limits in
+`wg_create`; exhaustion produces `WG_INCOMPLETE`, never silently unchecked
+execution. Reserved storage retains its high-water mark until `wg_destroy`.
+The straightforward shadow representation currently costs six bytes per tracked
+application byte on x86 and ten on x64, plus tables/slab overhead; compression
+and performance work remain necessary.
+
+### Event API contract
+
+Check both the pointer returned by `wg_create` and its `error` field before use.
+The caller supplies real application addresses and stable site/origin tokens;
+the engine never dereferences application data. `wg_load` fills only definedness
+and origin; the frontend supplies the actual `wg_value.value`. Access checks must
+run **before** the corresponding machine access. Calling `wg_use` reports a
+consequential use (branch, computed address, etc.), not a mere copy.
+For truth-value branches, first apply `wg_nonzero`: a value with undefined bits
+can still have a defined truth value when a known bit is one. Zero site/origin
+tokens indicate unavailable attribution; frontends must supply or attach their
+current instruction/source location when an operation reports an error.
+
+`wg_allocate`/`wg_callocate` describe successful allocator events. A null result
+is ignored. `wg_reallocate` takes an explicit success bit so failed realloc and
+a successful zero-size free cannot be confused. Heap backing mappings/redzones
+must remain inaccessible to application accesses except for allocated payloads:
+marking a whole allocator arena addressable would hide bounds errors. Frontends
+must distinguish allocator-internal accesses from application accesses. The event
+engine alone neither intercepts allocator calls nor establishes those policies.
+
+`wg_mark` supplies mapping/stack transitions. `wg_kernel_read` checks a kernel
+input buffer for addressability and definedness; `wg_kernel_write` defines only
+the actual successful output byte count, leaving tails and failed calls unchanged.
+These helpers are not a syscall decoder or syscall interception layer.
+
+Return zero means checking failed; inspect `error`. Codes 1–6 are memory/value
+errors and 100 means checking is incomplete. The first error is sticky; an
+explicit `wg_clear_error` can resume after ordinary errors. Incomplete errors
+cannot be cleared because resource failures can leave partially installed state;
+the frontend must terminate that checking run. These are engine error codes,
+not new `wgrind` command-line exit codes.
+
+Contexts are single-owner/externally synchronized. Each application thread needs
+its own register file; shared-memory event synchronization remains frontend work.
+Origins are stable opaque tokens, not yet interned stack traces. Each scalar
+`wg_value` carries one representative origin: combining bytes from distinct
+origins can lose precise attribution even though definedness is preserved.
+Source symbolization, full instruction/flag/SIMD semantics, automatic mappings,
+stack and syscall events, and reachability-based leak classification remain open.
+The `live_blocks`/`live_bytes` counters count unfreed allocations, not proven leaks.
+
+### Validation
+
+`wgrind_shadow_test` and its x64 twin cover cross-page/wide accesses, partial
+stores, use after free, invalid/double frees, address reuse, overlapping moves,
+calloc overflow, failed/moved/in-place realloc, short/failed kernel output,
+bounded churn and explicit resource exhaustion. An independent concrete-value
+oracle exhaustively checks all pairs of four-bit abstract values (81 states per
+operand) for six binary operations, including carry propagation into higher bits.
+Another exhaustive oracle checks shifts with both undefined data and counts,
+including sign-bit extension and results that become defined independently of
+the count.
+Word-sized cases exercise high-bit shifts and register aliases/thread isolation.
+
+`wgrind_report_test` and its x64 twin parse diagnostics as JSON, check deterministic
+output, full-width hexadecimal addresses, signed integer extremes and output
+failure. A manually instrumented real-allocation consumer tests copied undefined
+data, masking and invalid access/free attribution. It is explicitly **not** an
+automatic compiler or binary execution test. The x64 engine/diagnostic tests also
+run clean under Memcheck as a development check; full differential testing of
+both execution frontends remains a later acceptance requirement.
+
+### Remaining semantic requirements
+
+The complete engine and frontends must support these transitions:
+
 
 - `malloc`: addressable payload, undefined values, inaccessible redzones.
 - `calloc`: defined zero payload; check size multiplication overflow.
