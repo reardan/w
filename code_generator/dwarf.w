@@ -25,13 +25,16 @@ char* debug_line_stack_pos
 # Registered source files (cloned names; index = DWARF file number - 1).
 char* debug_files
 int debug_file_count
+int debug_file_capacity
 int debug_last_file
 
 
 # The file registry is also used for declaration locations (symbol/type
 # tables), which can be recorded before the first debug_line_note().
 void debug_files_ensure():
-	if (debug_files == 0): debug_files = cast(char*, malloc(256 * __word_size__))
+	if (debug_files == 0):
+		debug_file_capacity = 256
+		debug_files = cast(char*, malloc(debug_file_capacity * __word_size__))
 
 
 char* debug_file_name(int index):
@@ -53,7 +56,12 @@ int debug_line_file_index_of(char* source):
 			debug_last_file = i
 			return i
 		i = i + 1
-	if (debug_file_count >= 256): return 0
+	# Large import closures must retain distinct source locations. Returning
+	# file zero here silently corrupts diagnostics, debugging and coverage.
+	if (debug_file_count >= debug_file_capacity):
+		int old_size = debug_file_capacity * __word_size__
+		debug_file_capacity = debug_file_capacity * 2
+		debug_files = realloc(debug_files, old_size, debug_file_capacity * __word_size__)
 	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(source)))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
