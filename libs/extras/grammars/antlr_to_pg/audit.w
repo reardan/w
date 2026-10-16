@@ -250,10 +250,10 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 		int ei = 0
 		while (ei < alt.elements.length):
 			at_element* e = alt.elements[ei]
-			if (g_at_stateful && rule.is_lexer && ((e.suffix == '*') || (e.suffix == '+'))):
+			if (g_at_stateful && (at_exact_supported(rule) == 0) && rule.is_lexer && ((e.suffix == '*') || (e.suffix == '+'))):
 				if (at_stateful_prefix_free_body(e) == 0):
 					at_loss_code(e.first, rule.name, c"AT_LEXER_REPEAT", c"lexer_repetition", c"unproven", c"variable-width lexer repetition requires a prefix-free body proof")
-			if (g_at_stateful && rule.is_lexer && (ei + 1 < alt.elements.length)):
+			if (g_at_stateful && (at_exact_supported(rule) == 0) && rule.is_lexer && (ei + 1 < alt.elements.length)):
 				if ((at_stateful_fixed_width(e, 0) < 0) && (at_stateful_disjoint_delimiter(e, alt.elements[ei + 1]) == 0)):
 					at_loss_code(e.first, rule.name, c"AT_LEXER_CONTINUATION", c"lexer_continuation", c"unproven", c"variable-width lexer continuation requires a backtracking proof")
 			if (g_at_stateful && (rule.is_lexer == 0) && (e.kind == 0)):
@@ -268,7 +268,7 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 					si = si + 1
 			if ((e.kind == 2) && (strcmp(e.text, c"EOF") != 0)):
 				if (((e.text in g_at_rules) == 0) && (at_has_token_identity(e.text) == 0)): at_loss_code(e.first, rule.name, c"AT_UNDEFINED_SYMBOL", c"token_identity", c"unsupported", cstr(f"unresolved rule/token reference {e.text}"))
-			if (e.nongreedy): at_loss_code(e.first, rule.name, c"AT_NONGREEDY", c"nongreedy", c"unsupported", c"non-greedy matching requires an explicit adaptation")
+			if (e.nongreedy && (at_exact_supported(rule) == 0)): at_loss_code(e.first, rule.name, c"AT_NONGREEDY", c"nongreedy", c"unsupported", c"non-greedy matching requires an explicit adaptation")
 			char* raw_atom = e.text
 			if ((e.kind == 0) && (e.first != 0)): raw_atom = e.first.text
 			if (at_audit_unicode(raw_atom)): at_loss_code(e.first, rule.name, c"AT_UNICODE", c"unicode", c"unproven", c"Unicode escape/property or non-ASCII matching is not verified")

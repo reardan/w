@@ -1,0 +1,17 @@
+grammar Exact;
+root: (WORD | REPEAT | OPTIONAL | NESTED | NON_GREEDY | GREEDY | FRAGMENT | WIDE | ORDERED | NG_SUFFIX | NG_OPTIONAL | NG_PLUS | MIXED)* EOF;
+WORD: [a-z]+ 'x';
+REPEAT: ('aa' | 'aaa')+;
+OPTIONAL: 'o' 'x'? 'x';
+NESTED: '[' (NESTED | ~[[\]])* ']';
+NON_GREEDY: '<' .*? '>';
+GREEDY: '{' .* '}';
+FRAGMENT: 'f' PIECE 'x';
+fragment PIECE: 'a' | 'ab';
+WIDE: 'w' . 'x';
+WS: [ \t\r\n]+ -> skip;
+ORDERED: 'n' .*? ('a' | 'ab');
+NG_SUFFIX: 's' .*? 'a' 'b';
+NG_OPTIONAL: 'u' 'a'?? 'a';
+NG_PLUS: 'p' 'a'+? 'a';
+MIXED: 'm' (.*? 'a' | 'aaaa');

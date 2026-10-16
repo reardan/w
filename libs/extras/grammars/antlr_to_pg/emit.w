@@ -216,6 +216,7 @@ void at_emit_stateful_lexer(string_builder* out):
 	string_append(out, c"lexer stateful\nlexer_priority ordered\nlexer_eof any_mode\n")
 	if (g_at_channels != 0):
 		for char* channel in g_at_channels: string_append(out, cstr(f"lexer_channel AT_CHANNEL_{channel}\n"))
+	if (g_at_exact_lexer): string_append(out, c"lexer_progress guarded\n")
 	if (g_at_token_identities != 0):
 		for char* name in g_at_token_identities:
 			if ((name in g_lexer_rules) == 0): string_append(out, cstr(f"token {name}\n"))

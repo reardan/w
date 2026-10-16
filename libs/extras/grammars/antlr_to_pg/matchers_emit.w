@@ -492,6 +492,7 @@ void at_emit_token_matcher(at_rule* rule, char* short_name):
 
 # Returns short matcher name on success, or 0 (with report) on refuse.
 char* at_try_generate_matcher(at_rule* rule):
+	if (g_at_exact_lexer): return at_exact_generate_matcher(rule)
 	g_ascii_approx_flag = 0
 	char* reason = at_refuse_reason_rule(rule)
 	if (reason != 0):
