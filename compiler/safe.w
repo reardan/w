@@ -111,27 +111,32 @@ int safe_kind(int type):
 	return 0
 
 
-int safe_contains_checked_walk(int type, int depth, int* path):
+int safe_contains_checked_walk(int type, int depth, int* visited, int* count):
 	if (type < 0): return 0
 	# Exhausting the analysis bound is not evidence that a type is plain.
 	if (depth > 32): return 1
 	if (safe_kind(type)): return 1
-	for i in range(depth):
-		if (path[i] == type): return 0
-	path[depth] = type
+	# A repeated type has already contributed every reachable branch to this
+	# scan. Share visits across siblings, not just the current recursive path.
+	for i in range(*count):
+		if (visited[i] == type): return 0
+	if (*count >= 256): return 1
+	visited[*count] = type
+	*count = *count + 1
 	retained_type* t = retained_types[type]
-	if (safe_contains_checked_walk(t.target, depth + 1, path)): return 1
-	if (safe_contains_checked_walk(t.return_type, depth + 1, path)): return 1
+	if (safe_contains_checked_walk(t.target, depth + 1, visited, count)): return 1
+	if (safe_contains_checked_walk(t.return_type, depth + 1, visited, count)): return 1
 	for i in range(t.parameters.length):
-		if (safe_contains_checked_walk(t.parameters[i], depth + 1, path)): return 1
+		if (safe_contains_checked_walk(t.parameters[i], depth + 1, visited, count)): return 1
 	for i in range(t.fields.length):
-		if (safe_contains_checked_walk(t.fields[i].type, depth + 1, path)): return 1
+		if (safe_contains_checked_walk(t.fields[i].type, depth + 1, visited, count)): return 1
 	return 0
 
 
 int safe_contains_checked(int type, int depth):
-	int[33] path
-	return safe_contains_checked_walk(type, depth, &path[0])
+	int[256] visited
+	int count = 0
+	return safe_contains_checked_walk(type, depth, &visited[0], &count)
 
 
 int safe_slice(int type):
