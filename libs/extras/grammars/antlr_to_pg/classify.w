@@ -322,6 +322,7 @@ void at_report(char* prefix, char* rule_name, char* payload):
 
 
 void at_report_plain(char* rule_name, char* message):
+	at_lowering_finding(rule_name, c"AT_PARSER_LOWERING", c"parser_atom", message)
 	string_builder* b = string_new()
 	string_append(b, c"rule ")
 	string_append(b, rule_name)

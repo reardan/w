@@ -13,6 +13,7 @@ void at_lex_emit_word(string_builder* out, int value):
 char* at_exact_generate_matcher(at_rule* rule):
 	char* reason = g_at_exact_reasons.get(rule.name, c"unprepared exact lexer rule")
 	if (reason != 0):
+		at_lowering_finding(rule.name, c"AT_LEXER_LOWERING", c"lexer_matcher", reason)
 		at_report(c"UNRECOGNIZED lexer rule ", rule.name, reason)
 		return 0
 	at_lex_program* p = new at_lex_program()
@@ -20,6 +21,7 @@ char* at_exact_generate_matcher(at_rule* rule):
 	p.entries = new map[char*, int]
 	int entry = at_lex_lower_rule(p, rule)
 	if (p.states.length > 32767):
+		at_lowering_finding(rule.name, c"AT_LEXER_LIMIT", c"lexer_matcher", c"exact lexer program exceeds state limit")
 		at_report(c"UNRECOGNIZED lexer rule ", rule.name, c"exact lexer program exceeds state limit")
 		at_lex_program_free(p)
 		return 0

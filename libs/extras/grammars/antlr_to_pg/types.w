@@ -117,6 +117,7 @@ int g_negset_counter
 # Called from modules that come before their definitions in the import
 # order (tools/antlr_to_pg.w): classify.w defines at_report, matchers_emit.w
 # the other two.
+void at_lowering_finding(char* rule_name, char* code, char* feature, char* reason);
 void at_report(char* prefix, char* rule_name, char* payload);
 void at_loss_code(pg_token* location, char* rule_name, char* code, char* feature, char* classification, char* reason);
 void at_loss(pg_token* location, char* rule_name, char* reason);

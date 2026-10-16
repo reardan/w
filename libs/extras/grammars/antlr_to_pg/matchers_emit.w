@@ -496,6 +496,7 @@ char* at_try_generate_matcher(at_rule* rule):
 	g_ascii_approx_flag = 0
 	char* reason = at_refuse_reason_rule(rule)
 	if (reason != 0):
+		at_lowering_finding(rule.name, c"AT_LEXER_LOWERING", c"lexer_matcher", reason)
 		at_report(c"UNRECOGNIZED lexer rule ", rule.name, reason)
 		return 0
 	string_builder* short_b = string_new()

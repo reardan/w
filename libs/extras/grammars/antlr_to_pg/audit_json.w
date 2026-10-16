@@ -31,3 +31,16 @@ int at_write_audit_json(char* path):
 	json_free(document)
 	if (ok == 0): println2(cstr(f"antlr_to_pg: could not write {path}"))
 	return ok
+
+
+void at_lowering_finding(char* rule_name, char* code, char* feature, char* reason):
+	char* filename = c"<grammar>"
+	int line = 1
+	int column = 1
+	if (g_at_source_rules != 0):
+		for at_rule* rule in g_at_source_rules:
+			if ((strcmp(rule.name, rule_name) == 0) && (rule.first != 0)):
+				filename = rule.first.filename
+				line = rule.first.line
+				column = rule.first.column
+	at_finding(code, c"lower", feature, c"unsupported", filename, line, column, rule_name, reason)

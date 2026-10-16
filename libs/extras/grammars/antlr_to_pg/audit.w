@@ -8,6 +8,7 @@ import libs.extras.grammars.antlr_to_pg.audit_json
 
 list[char*] g_at_loss_lines
 map[char*, int] g_at_nullable
+map[char*, int] g_at_nullable_without_eof
 map[char*, at_rule*] g_at_rules
 int g_at_structural_hazard
 
@@ -29,39 +30,49 @@ void at_loss(pg_token* location, char* rule_name, char* reason):
 	at_loss_code(location, rule_name, c"AT_UNMAPPED", c"lowering", c"unproven", reason)
 
 
-int at_audit_alts_nullable(list[at_alt*] alts);
+# Context 0 counts parser tokens, 1 lexer bytes, 2 lexer bytes without EOF.
+int at_audit_alts_nullable_in(list[at_alt*] alts, int context);
 
-int at_audit_atom_nullable(at_element* e):
-	if (e.kind == 3): return at_audit_alts_nullable(e.group_alts)
+int at_audit_atom_nullable_in(at_element* e, int context):
+	if (e.kind == 3): return at_audit_alts_nullable_in(e.group_alts, context)
 	if (e.kind == 2):
-		if (strcmp(e.text, c"EOF") == 0): return 1
+		if (strcmp(e.text, c"EOF") == 0): return context != 2
+		at_rule* target = g_at_rules.get(e.text, 0)
+		if ((context == 0) && (target != 0) && target.is_lexer): return 0
+		if (context == 2): return e.text in g_at_nullable_without_eof
 		return e.text in g_at_nullable
 	if ((e.kind == 0) && (e.text != 0)): return strlen(e.text) == 0
 	return 0
 
+int at_audit_element_nullable_in(at_element* e, int context):
+	if ((e.suffix == '?') || (e.suffix == '*')): return 1
+	return at_audit_atom_nullable_in(e, context)
+
+int at_audit_alts_nullable_in(list[at_alt*] alts, int context):
+	for at_alt* alt in alts:
+		int nullable = 1
+		for at_element* element in alt.elements:
+			if (at_audit_element_nullable_in(element, context) == 0): nullable = 0
+		if (nullable): return 1
+	return 0
+
+# Normalization is parser-only: a lexer rule reference consumes one token,
+# even when that token matches EOF and has a zero-byte source span.
+int at_audit_atom_nullable(at_element* e):
+	return at_audit_atom_nullable_in(e, 0)
 
 int at_audit_element_nullable(at_element* e):
-	if ((e.suffix == '?') || (e.suffix == '*')): return 1
-	return at_audit_atom_nullable(e)
-
+	return at_audit_element_nullable_in(e, 0)
 
 int at_audit_alts_nullable(list[at_alt*] alts):
-	int ai = 0
-	while (ai < alts.length):
-		at_alt* alt = alts[ai]
-		int nullable = 1
-		int ei = 0
-		while (ei < alt.elements.length):
-			if (at_audit_element_nullable(alt.elements[ei]) == 0): nullable = 0
-			ei = ei + 1
-		if (nullable): return 1
-		ai = ai + 1
-	return 0
+	return at_audit_alts_nullable_in(alts, 0)
 
 
 # Follow only nullable prefixes. Each DFS has its own visited set, so cycles
 # involving nullable siblings cannot recurse indefinitely during the audit.
 int at_audit_left_path(list[at_alt*] alts, char* target, map[char*, int] visited):
+	int context = 0
+	if (target in g_at_rules): context = g_at_rules[target].is_lexer
 	int ai = 0
 	while (ai < alts.length):
 		at_alt* alt = alts[ai]
@@ -70,12 +81,12 @@ int at_audit_left_path(list[at_alt*] alts, char* target, map[char*, int] visited
 			at_element* e = alt.elements[ei]
 			if (e.kind == 2):
 				if (strcmp(e.text, target) == 0): return 1
-				if ((e.text in g_at_rules) && ((e.text in visited) == 0)):
+				if ((e.text in g_at_rules) && ((e.text in visited) == 0) && (context || (g_at_rules[e.text].is_lexer == 0))):
 					visited[e.text] = 1
 					if (at_audit_left_path(g_at_rules[e.text].alts, target, visited)): return 1
 			else if (e.kind == 3):
 				if (at_audit_left_path(e.group_alts, target, visited)): return 1
-			if (at_audit_element_nullable(e) == 0): break
+			if (at_audit_element_nullable_in(e, context) == 0): break
 			ei = ei + 1
 		ai = ai + 1
 	return 0
@@ -196,7 +207,7 @@ int at_stateful_atom_starts_byte(at_element* element, int value, int depth):
 int at_stateful_alt_starts_byte(at_alt* alt, int value, int depth):
 	for at_element* element in alt.elements:
 		if (at_stateful_atom_starts_byte(element, value, depth)): return 1
-		if (at_audit_element_nullable(element) == 0): return 0
+		if (at_audit_element_nullable_in(element, 1) == 0): return 0
 	return 0
 
 
@@ -272,7 +283,7 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 			char* raw_atom = e.text
 			if ((e.kind == 0) && (e.first != 0)): raw_atom = e.first.text
 			if (at_audit_unicode(raw_atom)): at_loss_code(e.first, rule.name, c"AT_UNICODE", c"unicode", c"unproven", c"Unicode escape/property or non-ASCII matching is not verified")
-			if (((e.suffix == '*') || (e.suffix == '+')) && at_audit_atom_nullable(e)):
+			if (((e.suffix == '*') || (e.suffix == '+')) && at_audit_atom_nullable_in(e, rule.is_lexer)):
 				at_loss_code(e.first, rule.name, c"AT_NULLABLE_REPEAT", c"nullable_repetition", c"invalid", c"zero-consumption repetition")
 				g_at_structural_hazard = 1
 			if (e.group_alts != 0): at_audit_alts(rule, e.group_alts)
@@ -284,6 +295,7 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 # Normalization must rerun the audit after changing the IR.
 void at_audit_prepare_rules(list[at_rule*] rules):
 	g_at_nullable = new map[char*, int]
+	g_at_nullable_without_eof = new map[char*, int]
 	g_at_rules = new map[char*, at_rule*]
 	int i = 0
 	while (i < rules.length):
@@ -295,7 +307,10 @@ void at_audit_prepare_rules(list[at_rule*] rules):
 		i = 0
 		while (i < rules.length):
 			at_rule* rule = rules[i]
-			if (((rule.name in g_at_nullable) == 0) && at_audit_alts_nullable(rule.alts)):
+			if (rule.is_lexer && ((rule.name in g_at_nullable_without_eof) == 0) && at_audit_alts_nullable_in(rule.alts, 2)):
+				g_at_nullable_without_eof[rule.name] = 1
+				changed = 1
+			if (((rule.name in g_at_nullable) == 0) && at_audit_alts_nullable_in(rule.alts, rule.is_lexer)):
 				g_at_nullable[rule.name] = 1
 				changed = 1
 			i = i + 1
@@ -321,7 +336,7 @@ int at_audit(list[at_rule*] rules):
 		if (at_audit_left_path(rule.alts, rule.name, new map[char*, int])):
 			at_loss_code(rule.first, rule.name, c"AT_LEFT_RECURSION", c"left_recursion", c"unsupported", c"unsupported left recursion (including nullable prefixes)")
 			unsafe = 1
-		if (rule.is_lexer && (rule.is_fragment == 0) && (rule.name in g_at_nullable)):
+		if (rule.is_lexer && (rule.is_fragment == 0) && (rule.name in g_at_nullable) && ((at_exact_supported(rule) == 0) || (rule.name in g_at_nullable_without_eof))):
 			at_loss_code(rule.first, rule.name, c"AT_LEXER_EMPTY", c"lexer_progress", c"unsupported", c"zero-consumption lexer rule")
 			unsafe = 1
 		if ((g_at_stateful == 0) && (rule.is_fragment == 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)): at_loss_code(rule.first, rule.name, c"AT_LEXER_MODE", c"lexer_mode", c"unsupported", cstr(f"lexer mode {rule.mode} is not lowered"))

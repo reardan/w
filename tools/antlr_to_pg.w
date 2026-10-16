@@ -166,6 +166,7 @@ int main(int argc, int argv):
 	at_fold_negated_token_refs(all_rules)
 	at_classify_all_lexer_rules(all_rules)
 	at_translate_all_parser_rules(all_rules)
+	if (at_write_audit_json(args_value(c"audit-json")) == 0): return 1
 
 	# Every legacy lowering warning is a strict failure, except informative
 	# generated-matcher notices. No parser/matcher output has been published.
