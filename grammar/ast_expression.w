@@ -982,8 +982,12 @@ int ast_expression_ufcs_probe(char* name):
 	return callee
 
 
+int safe_check_requested();
+
+
 int ast_expression_method_call(expression_ast* tree, int receiver, int record, int depth):
 	if (nextc != '('): return -1
+	if ((record >= 0) && type_safe_kind(tree.result_type[receiver])): record = type_unqualified(record)
 	int callee = -1
 	int name_offset = -1
 	if (record >= 0):
@@ -1023,7 +1027,24 @@ int ast_expression_method_call(expression_ast* tree, int receiver, int record, i
 	# The receiver's check_call_argument (ufcs_call, the method sugar).
 	# Call setup is emitted before it, so no literal note is current.
 	if (ast_expression_conversion(tree, c"call argument", name_offset, 0, want, got, -1) == 0): return -1
-	return ast_expression_call(tree, id, depth)
+	int call = ast_expression_call(tree, id, depth)
+	if (call < 0): return -1
+	# Checked method sugar must use the same ordered argument evaluation,
+	# owner transfer and retained contract as its spelled-out direct call.
+	# A value record contributes its address; pointer/scalar UFCS receivers
+	# already have the argument representation the direct call expects.
+	if (safe_check_requested()):
+		int argument = receiver
+		if ((record >= 0) && (type_get_pointer_level(tree.result_type[receiver]) == 0)):
+			argument = expression_ast_add(tree, 'r', receiver, -1)
+			if (argument < 0): return -1
+			tree.result_type[argument] = type_value(got)
+			tree.offset[argument] = tree.offset[receiver]
+		tree.next_arg[argument] = tree.left[id]
+		tree.left[id] = argument
+		tree.right[id] = -1
+		tree.op[id] = 'C'
+	return call
 
 
 int ast_expression_print(expression_ast* tree, int depth):

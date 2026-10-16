@@ -48,6 +48,10 @@ list[int] safe_call_roots
 list[int] safe_call_kinds
 
 
+int safe_check_requested():
+	return safe_mode || type_safe_used
+
+
 char* safe_zero(int count, int width):
 	int size = count * width
 	char* result = cast(char*, malloc(size + 1))
