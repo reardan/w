@@ -123,6 +123,7 @@ int safe_kind(int type):
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
+	if (kind == type_kind_safe_recordmut): return 3
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
 	return 0
@@ -188,7 +189,8 @@ int safe_inline_slice(int type):
 int safe_record(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return retained_types[type].kind == type_kind_safe_record
+	int kind = retained_types[type].kind
+	return (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)
 
 
 int safe_borrow_kind(int type):
@@ -263,10 +265,10 @@ void safe_pointer_match(int id, int want, int got):
 		safe_error(id, c"safe: incompatible checked pointer types", -1)
 
 
-# The first aggregate contract has one shared lifetime group. Every field
-# carrying a reference must name that group; scalar fields have no lifetime.
-# The outer ref[a] Record annotation renames the group at each use site.
-int safe_record_shape(int type):
+# Borrowed aggregates have one lifetime group. Every reference field names
+# that group; scalar fields have no lifetime. Mutable wrappers also admit
+# exclusive fields and reserve the complete group when reborrowed.
+int safe_record_shape(int type, int kind):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
@@ -276,7 +278,7 @@ int safe_record_shape(int type):
 		int field = safe_unqualified(record.fields[i].type)
 		if (field < 0): return 0
 		retained_type* member = retained_types[field]
-		if ((member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice)):
+		if ((member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && (member.kind == type_kind_refmut))):
 			if (safe_plain(safe_pointee(field), 0) == 0): return 0
 			if (member.lifetime == 0): return 0
 			if (lifetime == 0): lifetime = member.lifetime
@@ -314,7 +316,8 @@ int safe_owned_shape(int type):
 
 void safe_type_check(int id, int type):
 	if (safe_record(type)):
-		if (safe_record_shape(retained_types[safe_unqualified(type)].target)): return
+		if (safe_record_shape(retained_types[safe_unqualified(type)].target, safe_kind(type))): return
+		if (safe_kind(type) == 3): safe_error(id, c"safe: mutable borrowed aggregate requires scalar fields and one named reference group", -1)
 		safe_error(id, c"safe: borrowed aggregate requires scalar fields and one named shared-reference group", -1)
 	if (safe_kind(type) || safe_slice(type)):
 		if (safe_plain(safe_pointee(type), 0)): return
@@ -834,7 +837,7 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 		initialized[position] = 1
 		int type = record.fields[position].type
 		int value = safe_child(&field, field.left)
-		if (safe_kind(type) == 2):
+		if (safe_kind(type) >= 2):
 			int via = -1
 			int root = safe_borrow(value, type, state, &via)
 			roots = safe_set_union(roots, root)
@@ -842,7 +845,7 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 			# Later scalar arguments may call functions. Keep every earlier
 			# reference reserved until the complete value has been constructed.
 			safe_call_roots.push(root)
-			safe_call_kinds.push(2)
+			safe_call_kinds.push(safe_kind(type))
 		else: safe_eval(value, state, type)
 		entry = safe_child(&field, field.next_arg)
 	for i in range(record.fields.length):
@@ -889,7 +892,10 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	if (actual_type >= 0): array_value = retained_types[actual_type].kind == type_kind_array
 	if (safe_record(want)):
 		int got = actual_type
-		if (safe_record(got)): got = retained_types[got].target
+		if (safe_record(got)):
+			if ((kind == 3) && (safe_kind(got) == 2)):
+				safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+			got = retained_types[got].target
 		else if (n.op != 'D'): safe_error(id, c"safe: borrowed aggregate requires a checked value or complete constructor", -1)
 		int target = retained_types[safe_unqualified(want)].target
 		if (safe_same_nominal(target, got) == 0):
@@ -930,7 +936,7 @@ int safe_borrow(int id, int want, char* state, int* parent):
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
 		if (safe_record(base.semantic_type)):
-			if (kind == 3): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+			if ((kind == 3) && ((safe_kind(base.semantic_type) == 2) || (safe_kind(n.semantic_type) == 2))): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
 			root = safe_borrow(safe_child(&n, n.left), base.semantic_type, state, &via)
 		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && safe_owned_shape(safe_pointee(base.semantic_type))):
 			root = safe_place(id, state, &via)
@@ -1595,7 +1601,7 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
-					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
+					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type, 3) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
 						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
 		if (checked):
