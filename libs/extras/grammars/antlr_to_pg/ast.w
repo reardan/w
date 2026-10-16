@@ -2,6 +2,7 @@
 # AST -> at_rule/at_alt/at_element
 # ---------------------------------------------------------------------------
 import libs.extras.grammars.antlr_to_pg.types
+import libs.extras.grammars.antlr_to_pg.lexer_unicode
 import bin.generated_antlr4_parser
 
 
@@ -20,6 +21,9 @@ at_site* at_build_site(pg_ast_node* node, char* kind, int position):
 
 
 char* at_unescape_antlr_string(char* raw):
+	if (g_at_exact_lexer):
+		char* decoded = at_unicode_literal(raw)
+		if (decoded != 0): return decoded
 	string_builder* out = string_new()
 	int n = strlen(raw) - 1
 	int i = 1
@@ -81,6 +85,10 @@ at_element* at_build_atom(pg_ast_node* node):
 	# a charset so the matcher generator / classifier see one atom.
 	if (pg_ast_child_count(node) == 4):
 		if ((child.kind == antlr4_token_STRINGLIT) & (pg_ast_child(node, 1).kind == antlr4_token_DOT) & (pg_ast_child(node, 2).kind == antlr4_token_DOT) & (pg_ast_child(node, 3).kind == antlr4_token_STRINGLIT)):
+			if (g_at_exact_lexer):
+				elem.kind = 1
+				elem.text = at_unicode_range_literal(child.text, pg_ast_child(node, 3).text)
+				return elem
 			char* lo = at_unescape_antlr_string(child.text)
 			char* hi = at_unescape_antlr_string(pg_ast_child(node, 3).text)
 			if ((strlen(lo) == 1) & (strlen(hi) == 1)):
@@ -121,6 +129,11 @@ at_element* at_build_atom(pg_ast_node* node):
 			return elem
 		if (pg_ast_child_count(negated_atom) > 0):
 			pg_ast_node* negated_inner = pg_ast_child(negated_atom, 0)
+			if (g_at_exact_lexer && (negated_inner.kind == antlr4_token_STRINGLIT)):
+				char* right = negated_inner.text
+				if (pg_ast_child_count(negated_atom) == 4): right = pg_ast_child(negated_atom, 3).text
+				elem.text = at_unicode_range_literal(negated_inner.text, right)
+				return elem
 			if (negated_inner.kind == antlr4_token_CHARSET):
 				elem.text = strclone(negated_inner.text)
 			else if (negated_inner.kind == antlr4_token_STRINGLIT):
@@ -153,6 +166,9 @@ at_element* at_build_atom(pg_ast_node* node):
 				# tables); here we fold literals/charsets/ranges only.
 				pg_ast_node* galtlist = at_group_altlist_node(negated_inner)
 				list[at_alt*] galts = at_build_altlist(galtlist)
+				if (g_at_exact_lexer):
+					elem.group_alts = galts
+					return elem
 				string_builder* cs = string_new()
 				string_append_char(cs, '[')
 				int ok = 1
@@ -194,7 +210,7 @@ at_element* at_build_atom(pg_ast_node* node):
 				string_append_char(cs, ']')
 				if (ok):
 					elem.text = strclone(cs.data)
-				else if (saw_token_ref):
+				else if (saw_token_ref || g_at_exact_lexer):
 					# Keep the group so a later pass can resolve token refs
 					# to single-char literals (cpp/icalendar/objc).
 					elem.group_alts = galts

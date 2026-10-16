@@ -6,6 +6,7 @@ import libs.extras.grammars.antlr_to_pg.charsets
 import libs.extras.grammars.antlr_to_pg.classify
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import libs.extras.grammars.antlr_to_pg.matchers_analyze
+import libs.extras.grammars.antlr_to_pg.lexer_emit
 
 void at_emit_indent(string_builder* out, int indent):
 	int i = 0

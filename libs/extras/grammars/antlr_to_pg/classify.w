@@ -583,7 +583,8 @@ void at_classify_all_lexer_rules(list[at_rule*] rules):
 				if ((r.alts.length == 1) && (r.alts[0].elements.length == 1)):
 					at_element* element = r.alts[0].elements[0]
 					if ((element.kind == 0) && (element.suffix == 0)):
-						lowered.literal = strclone(element.text)
+						if (at_exact_case(r) == 0): lowered.literal = strclone(element.text)
+						else if ((element.text in g_text_to_name) == 0): g_text_to_name[element.text] = r.name
 				if (lowered.literal != 0):
 					g_literal_order.push(strclone(r.name))
 					g_literal_text[r.name] = lowered.literal

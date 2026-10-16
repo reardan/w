@@ -3,6 +3,8 @@
 import libs.extras.grammars.antlr_to_pg.types
 import lib.utf8
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
+import libs.extras.grammars.antlr_to_pg.lexer_unicode
+import libs.extras.grammars.antlr_to_pg.lexer_options
 
 
 struct at_lex_state:
@@ -17,6 +19,7 @@ struct at_lex_state:
 struct at_lex_program:
 	list[at_lex_state*] states
 	map[char*, int] entries
+	int case_insensitive
 
 
 map[char*, char*] g_at_exact_reasons
@@ -36,14 +39,61 @@ int at_exact_productive_alts(list[at_alt*] alts):
 	return 0
 
 
+list[int] at_exact_atom_ranges(at_element* e, int case_insensitive, int depth);
+
+
+list[int] at_exact_alt_ranges(list[at_alt*] alts, int case_insensitive, int depth):
+	list[int] union = new list[int]
+	for at_alt* alt in alts:
+		if (alt.elements.length != 1):
+			union.free()
+			return 0
+		list[int] ranges = at_exact_atom_ranges(alt.elements[0], case_insensitive, depth + 1)
+		if (ranges == 0):
+			union.free()
+			return 0
+		for int value in ranges: union.push(value)
+		ranges.free()
+	return at_unicode_normalize(union, 0)
+
+
+list[int] at_exact_atom_ranges(at_element* e, int case_insensitive, int depth):
+	if ((depth > 64) || (e.suffix != 0)): return 0
+	if ((e.kind == 1) || ((e.kind == 5) && (e.text != 0))):
+		return at_unicode_charset(e.text, e.kind == 5, case_insensitive)
+	if (e.kind == 0):
+		int codepoint = 0
+		int length = strlen(e.text)
+		if ((length == 0) || (utf8_scan(e.text, length, &codepoint) != length)): return 0
+		list[int] ranges = new list[int]
+		at_unicode_add(ranges, codepoint, codepoint, case_insensitive)
+		return ranges
+	if ((e.kind == 3) || ((e.kind == 5) && (e.group_alts != 0))):
+		list[int] ranges = at_exact_alt_ranges(e.group_alts, case_insensitive, depth + 1)
+		if (ranges == 0): return 0
+		return at_unicode_normalize(ranges, e.kind == 5)
+	if (e.kind == 2):
+		at_rule* rule = g_lexer_rules.get(e.text, 0)
+		if (rule != 0): return at_exact_alt_ranges(rule.alts, at_exact_case(rule), depth + 1)
+	return 0
+
+
 char* at_exact_reason_alts(list[at_alt*] alts, map[char*, int] visited):
 	for at_alt* alt in alts:
 		for at_element* e in alt.elements:
 			if (e.kind == 0):
 				if (utf8_validate_bytes(e.text, strlen(e.text)) == 0): return c"invalid UTF-8 lexer literal"
+				if ((e.first != 0) && (e.first.text[0] == 39)):
+					char* decoded = at_unicode_literal(e.first.text)
+					if (decoded == 0): return c"invalid or unrepresentable lexer literal escape"
+					free(decoded)
 			else if ((e.kind == 1) || (e.kind == 5)):
-				if (e.text == 0): return c"exact matcher needs a normalized charset"
-				if (at_charset_has_non_ascii(e.text)): return c"exact Unicode charset lowering is not implemented"
+				int saved_suffix = e.suffix
+				e.suffix = 0
+				list[int] ranges = at_exact_atom_ranges(e, 0, 0)
+				e.suffix = saved_suffix
+				if (ranges == 0): return c"invalid Unicode charset, range, or property"
+				ranges.free()
 			else if (e.kind == 2):
 				if (strcmp(e.text, c"EOF") == 0): continue
 				at_rule* target = g_lexer_rules.get(e.text, 0)
@@ -61,6 +111,7 @@ char* at_exact_reason_alts(list[at_alt*] alts, map[char*, int] visited):
 
 
 void at_exact_prepare(list[at_rule*] rules):
+	at_exact_prepare_cases(rules)
 	g_at_exact_reasons = new map[char*, char*]
 	g_at_exact_productive = new map[char*, int]
 	int changed = 1
@@ -106,3 +157,38 @@ void at_lex_program_free(at_lex_program* p):
 	p.states.free()
 	p.entries.free()
 	free(p)
+
+
+int at_exact_unicode_atom(at_rule* rule, at_element* element):
+	if (at_exact_supported(rule)): return 1
+	if (g_at_exact_lexer && (element.kind == 0) && (element.first != 0)):
+		char* decoded = at_unicode_literal(element.first.text)
+		if (decoded != 0):
+			free(decoded)
+			return 1
+	return 0
+
+
+void at_exact_audit_case_literals(at_rule* rule, list[at_alt*] alts):
+	for at_alt* alt in alts:
+		for at_element* element in alt.elements:
+			if (element.kind == 0):
+				int declared = 0
+				for at_rule* candidate in g_at_source_rules:
+					if (candidate.is_lexer && (candidate.is_fragment == 0) && (candidate.alts.length == 1)):
+						at_alt* body = candidate.alts[0]
+						if ((body.elements.length == 1) && (body.elements[0].kind == 0) && (body.elements[0].suffix == 0)):
+							if (strcmp(body.elements[0].text, element.text) == 0): declared = 1
+				if (declared == 0): at_loss(element.first, rule.name, c"case-insensitive parser literals require explicit lexer token rules")
+			if (element.group_alts != 0): at_exact_audit_case_literals(rule, element.group_alts)
+
+
+void at_exact_audit_rule(at_rule* rule):
+	if (g_at_exact_lexer == 0): return
+	if (rule.is_lexer):
+		char* reason = g_at_exact_reasons.get(rule.name, c"unprepared exact lexer rule")
+		if (reason != 0): at_loss(rule.first, rule.name, reason)
+	else if (at_exact_case(rule)):
+		# Implicit literal tokens are still emitted by the PG literal path.
+		# Until synthesized as case-aware lexer rules, refuse this shape.
+		at_exact_audit_case_literals(rule, rule.alts)

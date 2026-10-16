@@ -284,7 +284,7 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 			if (e.nongreedy && (at_exact_supported(rule) == 0)): at_loss_code(e.first, rule.name, c"AT_NONGREEDY", c"nongreedy", c"unsupported", c"non-greedy matching requires an explicit adaptation")
 			char* raw_atom = e.text
 			if ((e.kind == 0) && (e.first != 0)): raw_atom = e.first.text
-			if (at_audit_unicode(raw_atom)): at_loss_code(e.first, rule.name, c"AT_UNICODE", c"unicode", c"unproven", c"Unicode escape/property or non-ASCII matching is not verified")
+			if (at_audit_unicode(raw_atom) && (at_exact_unicode_atom(rule, e) == 0)): at_loss_code(e.first, rule.name, c"AT_UNICODE", c"unicode", c"unproven", c"Unicode escape/property or non-ASCII matching is not verified")
 			if (((e.suffix == '*') || (e.suffix == '+')) && at_audit_atom_nullable_in(e, rule.is_lexer)):
 				at_loss_code(e.first, rule.name, c"AT_NULLABLE_REPEAT", c"nullable_repetition", c"invalid", c"zero-consumption repetition")
 				g_at_structural_hazard = 1
@@ -335,6 +335,7 @@ int at_audit(list[at_rule*] rules):
 	i = 0
 	while (i < rules.length):
 		at_rule* rule = rules[i]
+		at_exact_audit_rule(rule)
 		if (at_audit_left_path(rule.alts, rule.name, new map[char*, int])):
 			at_loss_code(rule.first, rule.name, c"AT_LEFT_RECURSION", c"left_recursion", c"unsupported", c"unsupported left recursion (including nullable prefixes)")
 			unsafe = 1
@@ -372,7 +373,7 @@ int at_audit(list[at_rule*] rules):
 		ci = 0
 		while (ci < rule.options.length):
 			at_site* site = rule.options[ci]
-			at_loss_code(site.first, rule.name, c"AT_RULE_OPTION", c"rule_option", c"unsupported", cstr(f"unmapped rule option: {site.raw}"))
+			if (site.resolved == 0): at_loss_code(site.first, rule.name, c"AT_RULE_OPTION", c"rule_option", c"unsupported", cstr(f"unmapped rule option: {site.raw}"))
 			ci = ci + 1
 		at_audit_alts(rule, rule.alts)
 		i = i + 1

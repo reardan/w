@@ -10,48 +10,35 @@ int at_lex_lower_rule(at_lex_program* p, at_rule* rule):
 	int entry = at_lex_add(p, 3, 0, 0, 0, 0, 0)
 	p.entries[rule.name] = entry
 	int ret = at_lex_add(p, 5, 0, 0, 0, 0, 0)
+	int previous_case = p.case_insensitive
+	p.case_insensitive = at_exact_case(rule)
 	p.states[entry].next = at_lex_lower_alts(p, rule.alts, ret)
+	p.case_insensitive = previous_case
 	return entry
 
 
-# ASCII sets are normalized to disjoint scalar ranges; a negated ASCII set
-# includes non-ASCII scalar values, rather than truncating them to bytes.
+int at_lex_lower_ranges(at_lex_program* p, list[int] ranges, int next):
+	ranges = at_unicode_normalize(ranges, 0)
+	int entry = 0
+	if (ranges.length == 0): entry = at_lex_add(p, 1, next, 0, 1, 0, 0)
+	else if (ranges.length == 2): entry = at_lex_add(p, 1, next, 0, ranges[0], ranges[1], 0)
+	else:
+		# Range data is contiguous and sorted. One consuming configuration
+		# binary-searches the set instead of spawning a thread per interval.
+		int first = p.states.length
+		for index in range(0, ranges.length, 2):
+			at_lex_add(p, 0, 0, 0, ranges[index], ranges[index + 1], 0)
+		entry = at_lex_add(p, 7, next, 0, first, ranges.length / 2, 0)
+	ranges.free()
+	return entry
+
+
 int at_lex_lower_charset(at_lex_program* p, at_element* e, int next):
-	int[128] included
-	for i in range(128): included[i] = 0
-	char* raw = e.text
-	int negated = e.kind == 5
-	int index = 1
-	if (at_charset_negated(raw)):
-		negated = negated == 0
-		index = 2
-	int end = strlen(raw) - 1
-	while (index < end):
-		int width = 1
-		int low = cast(int, raw[index]) & 255
-		if (raw[index] == 92): low = at_parse_charset_escape(raw, index, end, &width)
-		index = index + width
-		int high = low
-		if ((index + 1 < end) && (raw[index] == '-')):
-			index++
-			width = 1
-			high = cast(int, raw[index]) & 255
-			if (raw[index] == 92): high = at_parse_charset_escape(raw, index, end, &width)
-			index = index + width
-		for codepoint in range(low, high + 1): included[codepoint] = 1
-	int entry = -1
-	if (negated): entry = at_lex_add(p, 1, next, 0, 128, 1114111, 0)
-	int codepoint = 127
-	while (codepoint >= 0):
-		if (included[codepoint] != negated):
-			int high = codepoint
-			while ((codepoint > 0) && (included[codepoint - 1] != negated)): codepoint--
-			int branch = at_lex_add(p, 1, next, 0, codepoint, high, 0)
-			if (entry < 0): entry = branch
-			else: entry = at_lex_add(p, 2, branch, entry, 0, 0, 0)
-		codepoint--
-	if (entry < 0): entry = at_lex_add(p, 1, next, 0, 1, 0, 0)
-	return entry
+	int saved_suffix = e.suffix
+	e.suffix = 0
+	list[int] ranges = at_exact_atom_ranges(e, p.case_insensitive, 0)
+	e.suffix = saved_suffix
+	return at_lex_lower_ranges(p, ranges, next)
 
 
 int at_lex_lower_atom(at_lex_program* p, at_element* e, int next):
@@ -65,7 +52,9 @@ int at_lex_lower_atom(at_lex_program* p, at_element* e, int next):
 			points.push(codepoint)
 		while (points.length > 0):
 			int codepoint = points.pop()
-			next = at_lex_add(p, 1, next, 0, codepoint, codepoint, 0)
+			list[int] ranges = new list[int]
+			at_unicode_add(ranges, codepoint, codepoint, p.case_insensitive)
+			next = at_lex_lower_ranges(p, ranges, next)
 		points.free()
 		return next
 	if ((e.kind == 1) || (e.kind == 5)): return at_lex_lower_charset(p, e, next)

@@ -172,7 +172,7 @@ int main(int argc, int argv):
 	at_collect_parser_refs(all_rules)
 	# Resolve ~(TokenA|TokenB|...) to charsets before matcher/classify so
 	# PG_NEGSET generation and lexer refuse see folded text.
-	at_fold_negated_token_refs(all_rules)
+	if (g_at_exact_lexer == 0): at_fold_negated_token_refs(all_rules)
 	at_classify_all_lexer_rules(all_rules)
 	at_translate_all_parser_rules(all_rules)
 	if (at_write_audit_json(args_value(c"audit-json")) == 0): return 1

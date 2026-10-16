@@ -142,6 +142,9 @@ int g_at_exact_lexer
 
 int at_exact_supported(at_rule* rule);
 int g_at_prediction
+int at_exact_case(at_rule* rule);
+void at_exact_audit_rule(at_rule* rule);
+int at_exact_unicode_atom(at_rule* rule, at_element* element);
 list[char*] g_at_modes
 list[char*] g_at_channels
 list[char*] g_at_declared_modes

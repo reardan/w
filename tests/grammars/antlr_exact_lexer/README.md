@@ -3,10 +3,12 @@
 `--exact-lexer` opts into a continuation-preserving, prioritized lexer VM and
 implies `--stateful`. It does not change native `.pg` choice semantics or make
 unmapped predicates/actions exact. The initial supported grammar subset includes
-ASCII character sets, Unicode scalar wildcard/negated ASCII sets, literal text,
+Unicode scalar sets, properties, complements, literals, wildcard,
 sequences, alternatives, optional/repeated atoms, nongreedy decisions, and
-productive lexer rule/fragment calls. Unsupported Unicode escapes/properties
-remain audited until their lowering is implemented.
+productive lexer rule/fragment calls. Unicode escape/range/property lowering and grammar/rule case options use pinned
+ANTLR/Java 17 data; see `tools/antlr_unicode/README.md`. Implicit case-insensitive
+parser literals still require explicit token rules. Malformed/unknown properties
+and unsupported host code remain strict failures.
 
 `Exact.g4` and `tests/antlr_exact_lexer_test.w` cover delimiter continuation,
 overlapping repetition, productive nested calls, greedy/nongreedy priority,
@@ -36,4 +38,12 @@ stack count. Limits are one million closure visits per match, 32,767 states,
 a grammar rejection. The long-input fixture proves linear closure growth for a
 simple regular repetition; it is not a claim that recursive/ambiguous grammars
 have linear complexity. Each execution frees all temporary configurations and
-contexts, with no global cache or speculative command execution.
+contexts, with no global cache or speculative command execution. Large Unicode
+sets use a single consuming configuration with binary-searched intervals.
+
+The input domain is valid UTF-8 without embedded NUL, matching the provider's
+NUL-terminated matcher ABI. Embedded NUL and invalid encodings are explicit
+input errors. Escaped NUL literals, unpaired surrogate literals and out-of-range
+escapes are strict translation failures, never silently truncated strings.
+Scalar ranges/properties may contain U+0000 mathematically, but no input in the
+provider's supported domain contains it.
