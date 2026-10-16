@@ -80,6 +80,7 @@ Other useful targets:
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
 ./wbuild wgrind      # heap checker: bin/wgrind [--native] bin/program [args...]
+./wbuild wgrind_native # experimental Linux x64: bin/wgrind --native-exec bin/program
 ./wbuild wllvm       # optional scalar-subset LLVM IR emitter (bin/wllvm file.w -o file.ll)
 ./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
 ./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
