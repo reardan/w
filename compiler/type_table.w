@@ -1125,7 +1125,6 @@ int types_compatible(int want, int got):
 		if (type_is_safe_record(want)): want_record = type_record(want).alias_target
 		if (type_is_safe_record(got)): got_record = type_record(got).alias_target
 		return want_record == got_record
-	if ((type_checked_function_signature(want) >= 0) && (type_checked_function_signature(got) >= 0)): return 1
 	if (got == 3): return 1
 	if (got == 4): return 0
 	if (want == got): return 1
@@ -1171,6 +1170,9 @@ int types_compatible(int want, int got):
 	if (strcmp(type_get_name(want), c"void") == 0): return 1
 	if (strcmp(type_get_name(got), c"void") == 0): return 1
 	if (strcmp(type_get_name(want), type_get_name(got)) == 0): return 1
+	# Distinct checked callable aliases need contract-aware compatibility.
+	# Ordinary equal/scalar/pointer conversions have already returned.
+	if ((type_checked_function_signature(want) >= 0) && (type_checked_function_signature(got) >= 0)): return 1
 	# Pointer entries store the base type's name; aliases of the same base
 	# (e.g. FILE* vs _IO_FILE*) must stay interchangeable.
 	int want_base = type_lookup(type_get_name(want))
