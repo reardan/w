@@ -1,7 +1,7 @@
 # Conservative parser-decision audit, separate from byte-level lexer analysis.
 # FIRST/FOLLOW overlap is an unproven continuation, not a claimed counterexample.
 import libs.extras.grammars.antlr_to_pg.normalize_operators
-import libs.extras.grammars.antlr_to_pg.prediction_prefix
+import libs.extras.grammars.antlr_to_pg.prediction_absorption
 
 
 struct at_prediction_facts:
@@ -114,7 +114,7 @@ int at_prediction_follow(list[at_alt*] alts, map[char*, int] following):
 	return changed
 
 
-void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int] following):
+void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int] following, list[at_element*] outer):
 	for i, alt in alts:
 		map[char*, int] first = at_prediction_first_alt(alt)
 		for j in range(i + 1, alts.length):
@@ -130,12 +130,14 @@ void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int
 			at_element* element = alt.elements[e]
 			map[char*, int] atom_first = at_prediction_first_atom(element)
 			int optional_eof = (element.kind == 2) && (strcmp(element.text, c"EOF") == 0) && (element.suffix == '?')
-			if ((element.suffix != 0) && (optional_eof == 0) && (owner.precedence_helper == 0) && at_prediction_overlap(atom_first, next)):
+			list[at_element*] tail = at_abs_tail(alt, e, outer, 1)
+			if ((element.suffix != 0) && (optional_eof == 0) && (owner.precedence_helper == 0) && at_prediction_overlap(atom_first, next) && (at_prediction_absorption(owner, element, tail) == 0)):
 				at_loss_code(element.first, owner.name, c"AT_PARSER_CONTINUATION", c"parser_prediction", c"unproven", cstr(f"unproven parser continuation: greedy term {e + 1} overlaps its caller/following input; use --prediction or a reviewed adaptation"))
 			map[char*, int] inside = new map[char*, int]
 			at_prediction_union(inside, next)
 			if ((element.suffix == '*') || (element.suffix == '+')): at_prediction_union(inside, atom_first)
-			if (element.kind == 3): at_prediction_find_risks(owner, element.group_alts, inside)
+			if (element.kind == 3): at_prediction_find_risks(owner, element.group_alts, inside, tail)
+			at_abs_free_tail(tail, element, 1)
 			map[char*, int] before = new map[char*, int]
 			at_prediction_union(before, atom_first)
 			if ((element.suffix == '?') || (element.suffix == '*') || at_prediction_atom_nullable(element)):
@@ -175,4 +177,4 @@ void at_audit_prediction(list[at_rule*] rules):
 			if (rule.is_lexer): continue
 			if (at_prediction_follow(rule.alts, g_at_prediction_facts[rule.name].follow)): changed = 1
 	for at_rule* rule in rules:
-		if (rule.is_lexer == 0): at_prediction_find_risks(rule, rule.alts, g_at_prediction_facts[rule.name].follow)
+		if (rule.is_lexer == 0): at_prediction_find_risks(rule, rule.alts, g_at_prediction_facts[rule.name].follow, new list[at_element*])

@@ -70,3 +70,15 @@ Clients folding the normalized AST must interpret `antlr_lhs_label` as the
 previous accumulated value. Unsupported host actions/predicates remain refused.
 EOF-producing lexer references are treated as consuming tokens in the new
 parser-level nullability proofs, independently of their byte-level lexer width.
+
+The default ordered-choice audit can prove greedy continuation absorption for
+regular fragments: for each concrete caller suffix `C` and greedy atom `A`, it
+checks the language inclusion `A^-1 C <= C`. This includes nested token runs and
+delimiter-terminated lines without treating every nullable suffix as safe. Inner
+alternatives and repetitions are still audited independently. A mandatory boundary
+whose FIRST set is disjoint from every token in `A` permits a fresh sentinel for
+the remaining suffix. Unknown recursion and exhausted proof limits retain the
+unproven diagnostic. Limits are 24 expansion levels, 512 NFA states, 4,096 product
+states per inclusion job, and 65,536 shared caller/context/product work steps per
+decision. On the pinned Geekcode grammar this proof takes approximately six seconds
+and 400 MB in the 32-bit translator; SwiftFin completes in under a tenth of a second.

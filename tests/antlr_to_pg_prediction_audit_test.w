@@ -51,5 +51,19 @@ int main():
 	# lengths. A delimiter admitted by the body must keep the risk visible.
 	assert_equal(0, prediction_losses(c"grammar G; start: item EOF; item: 'a'+ 'b'* ';' | 'a'* 'b'+ ';';", 0))
 	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a' ';' | 'a' (';' 'a')+ ';';", 0) > 0)
+	# Nullable continuation is not enough: a token stolen from an optional
+	# compound body can still prevent complete-input acceptance.
+	assert1(prediction_losses(c"grammar G; start: 'a'* ('a' 'b')? EOF;", 0) > 0)
+	assert1(prediction_losses(c"grammar G; start: inner ('a' 'b')? EOF; inner: 'a'+;", 0) > 0)
+	assert1(prediction_losses(c"grammar G; start: inner 'a'+ EOF; inner: ('a'|'b')+;", 0) > 0)
+	# Repeated pure runs can absorb optional caller runs without stealing a
+	# required token; proof follows aliases and nested caller continuations.
+	assert_equal(0, prediction_losses(c"grammar G; start: item+ EOF; item: 'x' run*; run: ('a'|'b')+;", 0))
+	assert_equal(0, prediction_losses(c"grammar G; start: 's' run? flag* (':' run? flag*)* flag* EOF; run: ('a'|'b')+; flag: '?'|'!';", 0))
+	# A complete delimiter-terminated line can absorb a following item only
+	# when its remaining continuation still accepts the same suffix.
+	assert_equal(0, prediction_losses(c"grammar G; start: item+ 'z' EOF; item: ':' 'v'+ ':' line+; line: 'v'+ ';' | 'v'+ ':' ('v'|':')* ';' | ':' ':'+ ('v'|':')* ';' | ':'+ 'v'+ ':'* ';';", 0))
+	# A mandatory final run must not be mistaken for optional absorption.
+	assert1(prediction_losses(c"grammar G; start: item+ 'a' EOF; item: 'x' run*; run: ('a'|'b')+;", 0) > 0)
 	println(c"parser continuation audit tracks alternatives and caller FOLLOW sets")
 	return 0
