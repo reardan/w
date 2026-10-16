@@ -1,0 +1,623 @@
+{
+  "schema": 1,
+  "oracle": {
+    "version": "4.13.2",
+    "jar_sha256": "eae2dfa119a64327444672aff63e9ec35a20180dc5b8090b7a6ab85125df4d76",
+    "jar_url": "https://www.antlr.org/download/antlr-4.13.2-complete.jar",
+    "minimum_java_major": 17,
+    "ci_java_major": 17
+  },
+  "files": [
+    {
+      "path": "Ambiguity.g4",
+      "sha256": "3ba079c6c4cea20190bf5d8e930640b0e4a90ada40fe17f4998a6d379110dfe4"
+    },
+    {
+      "path": "Caller.g4",
+      "sha256": "4c91789e8e701a605a9d0e6321cfeecb0c00814e7d7c79cc8773ea39e2fc138e"
+    },
+    {
+      "path": "Choice.g4",
+      "sha256": "300b39ebfac9bc555620844afb085b9d3f348e7aca8a53997fd213924a749248"
+    },
+    {
+      "path": "Continuation.g4",
+      "sha256": "4cc6e97feb4c078248ae9367a6ca85fb577bdcaa2146270e31d3cb1e6b7cac7d"
+    },
+    {
+      "path": "DanglingElse.g4",
+      "sha256": "f867bb4cb9032d53f08a3baa0507b0ad0739a5598bcab307481b76a501446190"
+    },
+    {
+      "path": "NoEof.g4",
+      "sha256": "10d531c03fc02b1fd151b9b63afd7a28dcf51b8722c4f2d70ad8799f5149058d"
+    },
+    {
+      "path": "Optional.g4",
+      "sha256": "a9e41cb42c5ba39b2d1ce041d1581e62848d485c0329736b4db3572a95e4f3af"
+    },
+    {
+      "path": "Repeat.g4",
+      "sha256": "000816fc87b2657018a77690c8c585a1139a8a3b7123c10165f5bb1469547267"
+    },
+    {
+      "path": "RequiredRepeat.g4",
+      "sha256": "d433aeae76b1db7099ceb243d9f4d758b8ecd516221240f9fba8bea8aaf9cb9d"
+    },
+    {
+      "path": "Tokens.g4",
+      "sha256": "4c90c920cb401068b3e0f662cbd1d44558220286ffafa11322efa77b595de94c"
+    },
+    {
+      "path": "Oracle.java",
+      "sha256": "1278e8710f6c2051933807fb0a1c49efc96c2bf2b2a009ef5862bc1df90764e1"
+    },
+    {
+      "path": "runtime.w.in",
+      "sha256": "2db4b6c7a916b746cd0727f1bd83ca34129d9a178d15c382b6cd8914a4964c6a"
+    }
+  ],
+  "cases": [
+    {
+      "name": "choice",
+      "grammars": [
+        "Choice.g4"
+      ],
+      "lexer": "ChoiceLexer",
+      "parser": "ChoiceParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a"
+        },
+        {
+          "id": "input1",
+          "text": "ab",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "a b",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input3",
+          "text": "abb"
+        },
+        {
+          "id": "input4",
+          "text": "b"
+        },
+        {
+          "id": "input5",
+          "text": ""
+        },
+        {
+          "id": "input6",
+          "text": "a?"
+        }
+      ]
+    },
+    {
+      "name": "tokens",
+      "grammars": [
+        "Tokens.g4"
+      ],
+      "lexer": "TokensLexer",
+      "parser": "TokensParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "if iff abc 123"
+        },
+        {
+          "id": "input1",
+          "text": "#hello\nif"
+        },
+        {
+          "id": "input2",
+          "text": "if #x\n abc"
+        },
+        {
+          "id": "input3",
+          "text": "IF"
+        },
+        {
+          "id": "input4",
+          "text": "12a"
+        },
+        {
+          "id": "input5",
+          "text": ""
+        },
+        {
+          "id": "unicode_hidden",
+          "text": "#\ud83d\ude42\nif"
+        },
+        {
+          "id": "unicode_invalid",
+          "text": "if \u00e9"
+        },
+        {
+          "id": "fuzz0",
+          "text": "#\ud83d\ude42\n if 0"
+        },
+        {
+          "id": "fuzz1",
+          "text": "#\ud83d\ude42\n 0 123 ?"
+        },
+        {
+          "id": "fuzz2",
+          "text": "0 #comment\n iff 0"
+        },
+        {
+          "id": "fuzz3",
+          "text": "iff"
+        },
+        {
+          "id": "fuzz4",
+          "text": "if iff abc"
+        },
+        {
+          "id": "fuzz5",
+          "text": "#\ud83d\ude42\n"
+        },
+        {
+          "id": "fuzz6",
+          "text": "0 iff"
+        },
+        {
+          "id": "fuzz7",
+          "text": "0 if abc if"
+        },
+        {
+          "id": "fuzz8",
+          "text": "0 123 #\ud83d\ude42\n if #comment\n 0"
+        },
+        {
+          "id": "fuzz9",
+          "text": "0 #comment\n"
+        },
+        {
+          "id": "fuzz10",
+          "text": "if abc #comment\n iff if"
+        },
+        {
+          "id": "fuzz11",
+          "text": "? iff ? if"
+        },
+        {
+          "id": "fuzz12",
+          "text": "123 abc iff ? if #comment\n"
+        },
+        {
+          "id": "fuzz13",
+          "text": "if iff"
+        },
+        {
+          "id": "fuzz14",
+          "text": "0"
+        },
+        {
+          "id": "fuzz15",
+          "text": "0 if #comment\n abc abc"
+        },
+        {
+          "id": "fuzz16",
+          "text": "abc iff #\ud83d\ude42\n 123 #comment\n abc"
+        },
+        {
+          "id": "fuzz17",
+          "text": "iff"
+        },
+        {
+          "id": "fuzz18",
+          "text": "if 123 123 #\ud83d\ude42\n"
+        },
+        {
+          "id": "fuzz19",
+          "text": "123"
+        },
+        {
+          "id": "fuzz20",
+          "text": "#\ud83d\ude42\n iff 0"
+        },
+        {
+          "id": "fuzz21",
+          "text": "? #\ud83d\ude42\n ?"
+        },
+        {
+          "id": "fuzz22",
+          "text": "abc #comment\n"
+        },
+        {
+          "id": "fuzz23",
+          "text": "iff #comment\n 123 iff iff"
+        }
+      ],
+      "fuzz": {
+        "algorithm": "tokens-v1",
+        "seed": 689690692,
+        "count": 24
+      }
+    },
+    {
+      "name": "continuation",
+      "grammars": [
+        "Continuation.g4"
+      ],
+      "lexer": "ContinuationLexer",
+      "parser": "ContinuationParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "ax",
+          "known_mismatches": {
+            "accepted": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter",
+            "tokens": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "xx",
+          "known_mismatches": {
+            "accepted": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter",
+            "tokens": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "abx",
+          "known_mismatches": {
+            "accepted": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter",
+            "tokens": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter"
+          }
+        },
+        {
+          "id": "input3",
+          "text": "x"
+        },
+        {
+          "id": "input4",
+          "text": "abc"
+        },
+        {
+          "id": "input5",
+          "text": "ax ax",
+          "known_mismatches": {
+            "tokens": "Single-endpoint generated lexer consumes a prefix needed by its following delimiter"
+          }
+        },
+        {
+          "id": "input6",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "caller",
+      "grammars": [
+        "Caller.g4"
+      ],
+      "lexer": "CallerLexer",
+      "parser": "CallerParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "ab",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "abb"
+        },
+        {
+          "id": "input2",
+          "text": "a"
+        },
+        {
+          "id": "input3",
+          "text": "abbb"
+        },
+        {
+          "id": "input4",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "optional",
+      "grammars": [
+        "Optional.g4"
+      ],
+      "lexer": "OptionalLexer",
+      "parser": "OptionalParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "aa"
+        },
+        {
+          "id": "input2",
+          "text": "aaa"
+        },
+        {
+          "id": "input3",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "repeat",
+      "grammars": [
+        "Repeat.g4"
+      ],
+      "lexer": "RepeatLexer",
+      "parser": "RepeatParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "aa",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "aaa",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input3",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "requiredrepeat",
+      "grammars": [
+        "RequiredRepeat.g4"
+      ],
+      "lexer": "RequiredRepeatLexer",
+      "parser": "RequiredRepeatParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a"
+        },
+        {
+          "id": "input1",
+          "text": "aa",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "aaa",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation"
+          }
+        },
+        {
+          "id": "input3",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "ambiguity",
+      "grammars": [
+        "Ambiguity.g4"
+      ],
+      "lexer": "AmbiguityLexer",
+      "parser": "AmbiguityParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [
+        "first",
+        "second"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a"
+        },
+        {
+          "id": "input1",
+          "text": "aa"
+        },
+        {
+          "id": "input2",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "danglingelse",
+      "grammars": [
+        "DanglingElse.g4"
+      ],
+      "lexer": "DanglingElseLexer",
+      "parser": "DanglingElseParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "observe_rules": [
+        "statement"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a"
+        },
+        {
+          "id": "input1",
+          "text": "if a"
+        },
+        {
+          "id": "input2",
+          "text": "if a else a",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation",
+            "rules": "Rejected valid continuation has no accepted statement tree"
+          }
+        },
+        {
+          "id": "input3",
+          "text": "if if a else a",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation",
+            "rules": "Rejected valid continuation has no accepted statement tree"
+          }
+        },
+        {
+          "id": "input4",
+          "text": "if if a else a else a",
+          "known_mismatches": {
+            "accepted": "Ordered-choice parser does not revisit a successful prefix for the caller continuation",
+            "rules": "Rejected valid continuation has no accepted statement tree"
+          }
+        },
+        {
+          "id": "input5",
+          "text": "if a else"
+        },
+        {
+          "id": "input6",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "name": "noeof",
+      "grammars": [
+        "NoEof.g4"
+      ],
+      "lexer": "NoEofLexer",
+      "parser": "NoEofParser",
+      "start": "start",
+      "w_start": "start_",
+      "flags": [
+        "--stateful"
+      ],
+      "skip_tokens": [
+        "WS"
+      ],
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a"
+        },
+        {
+          "id": "input1",
+          "text": "ab",
+          "known_mismatches": {
+            "accepted": "Successful shorter entry is not reconsidered to consume the full input"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "abb"
+        },
+        {
+          "id": "input3",
+          "text": ""
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+import lib.file
+
+void differential_hex(char* value):
+	char* digits = c"0123456789abcdef"
+	for i in range(strlen(value)):
+		int unit = cast(int, value[i]) & 255
+		write(1, digits + (unit >> 4), 1)
+		write(1, digits + (unit & 15), 1)
+
+void differential_rules(pg_ast_node* node):
+	if (node == 0): return
+	if ((node.token == 0) && (node.first_token != 0) && (node.last_token != 0)):
+		int start = node.first_token.offset
+		int length = node.last_token.offset + node.last_token.length - start
+		println(f"RULE\t{node.name}\t{start}\t{length}")
+	for pg_ast_node* child in node.children: differential_rules(child)
+
+int main(int argc, char** argv):
+	if (argc != 2): return 2
+	char* source = file_read_text(argv[1])
+	if (source == 0): return 2
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_token_stream* stream = oracle_lex(source, c"input", diagnostics)
+	# Observe the independent complete token stream before prediction rewinds it.
+	for pg_token* token in stream.all_tokens:
+		if (token.kind < 0): continue
+		print(f"TOKEN\t{oracle_token_name(token.kind)}\t{token.channel}\t{token.offset}\t{token.length}\t")
+		differential_hex(token.text)
+		println(c"")
+	pg_ast_node* root = oracle_parse_START_RULE(stream, diagnostics)
+	int accepted = (root != 0) && (pg_diagnostics_count(diagnostics) == 0) && pg_token_stream_done(stream)
+	println(f"ACCEPT\t{accepted}")
+	if (accepted): differential_rules(root)
+	return 0

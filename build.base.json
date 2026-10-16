@@ -58,6 +58,11 @@
 		},
 		"tool_targets": [
 			{
+				"name": "antlr_differential_harness_test",
+				"tags": ["tests"],
+				"steps": [{"cmd": ["python3", "tests/antlr_differential_harness_test.py"]}]
+			},
+			{
 				"name": "antlr_sweep_harness_test",
 				"tags": ["tests"],
 				"steps": [
@@ -157,6 +162,12 @@
 		]
 	},
 	"targets": [
+		{
+			"name": "antlr_differential_test",
+			"tags": ["tests"],
+			"deps": ["antlr_to_pg"],
+			"steps": [{"cmd": ["python3", "tests/antlr_differential.py"]}]
+		},
 		{
 			"name": "web_mobile_input_test",
 			"tags": ["tests_wasm"],
