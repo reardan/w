@@ -166,6 +166,9 @@ int safe_contains_checked(int type):
 			checked = 1
 			break
 		retained_type* t = retained_types[current]
+		if ((t.kind == type_kind_function) && (t.lifetime_order != 0)):
+			checked = 1
+			break
 		safe_contains_enqueue(t.target)
 		safe_contains_enqueue(t.return_type)
 		for i in range(t.parameters.length): safe_contains_enqueue(t.parameters[i])
@@ -196,6 +199,30 @@ int safe_record(int type):
 int safe_borrow_kind(int type):
 	if (safe_slice(type)): return 2
 	return safe_kind(type)
+
+
+int safe_callable_signature(int type):
+	# Mirror the emitter's typed-function-pointer shape. In particular,
+	# stripping const here would admit a callee the emitter sees as raw.
+	while ((type >= 0) && (retained_types[type].kind == type_kind_alias)): type = retained_types[type].target
+	if (type < 0): return -1
+	if ((retained_types[type].kind != 0) || (retained_types[type].pointer_level != 1)): return -1
+	int signature = retained_types[type].target
+	while ((signature >= 0) && (retained_types[signature].kind == type_kind_alias)): signature = retained_types[signature].target
+	if (signature < 0): return -1
+	retained_type* target = retained_types[signature]
+	if ((target.kind != type_kind_function) || (target.lifetime_order == 0)): return -1
+	return signature
+
+
+void safe_signature_binding(retained_binding* binding, int signature):
+	retained_type* type = retained_types[signature]
+	binding.lifetime_order = type.lifetime_order
+	binding.return_type = type.return_type
+	binding.parameters = type.parameters
+
+
+int safe_return_parameter(int id, retained_binding* binding);
 
 
 int safe_plain(int type, int depth):
@@ -314,7 +341,17 @@ int safe_owned_shape(int type):
 	return safe_owned_shape_walk(type, 0, &path[0], &remaining)
 
 
-void safe_type_check(int id, int type):
+void safe_type_check_at(int id, int type, int depth, int* remaining):
+	*remaining = *remaining - 1
+	if ((depth > 32) || (*remaining < 0)): safe_error(id, c"safe: callable contract is too deeply nested", -1)
+	int callable = safe_callable_signature(type)
+	if (callable >= 0):
+		retained_binding contract
+		safe_signature_binding(&contract, callable)
+		safe_return_parameter(id, &contract)
+		for int parameter in contract.parameters: safe_type_check_at(id, parameter, depth + 1, remaining)
+		safe_type_check_at(id, contract.return_type, depth + 1, remaining)
+		return
 	if (safe_record(type)):
 		if (safe_record_shape(retained_types[safe_unqualified(type)].target, safe_kind(type))): return
 		if (safe_kind(type) == 3): safe_error(id, c"safe: mutable borrowed aggregate requires scalar fields and one named reference group", -1)
@@ -324,6 +361,11 @@ void safe_type_check(int id, int type):
 		if ((safe_slice(type) == 0) && safe_owned_shape(safe_pointee(type))): return
 	else if (safe_plain(type, 0)): return
 	safe_error(id, c"safe: unsupported type or reference-bearing aggregate", -1)
+
+
+void safe_type_check(int id, int type):
+	int remaining = 256
+	safe_type_check_at(id, type, 0, &remaining)
 
 
 int safe_index(int binding):
@@ -941,7 +983,7 @@ int safe_borrow(int id, int want, char* state, int* parent):
 		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && safe_owned_shape(safe_pointee(base.semantic_type))):
 			root = safe_place(id, state, &via)
 		else: safe_error(id, c"safe: unsupported reference-bearing projection", -1)
-	else if ((n.op == 'C') || (n.op == 'G') || (n.op == 'W')):
+	else if ((n.op == 'C') || (n.op == 'G') || (n.op == 'W') || (n.op == 'F')):
 		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
 			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
 		if ((kind == 3) && (safe_kind(n.semantic_type) == 2)):
@@ -1003,10 +1045,24 @@ char* safe_lifetime(int type):
 	return retained_types[type].lifetime
 
 
-int safe_same_contract_type(int a, int b):
+int safe_contract_matches_at(retained_binding* left, retained_binding* right, int depth, int* remaining);
+
+
+int safe_same_contract_type_at(int a, int b, int depth, int* remaining):
+	*remaining = *remaining - 1
+	if ((depth > 32) || (*remaining < 0)): return 0
 	a = safe_unqualified(a)
 	b = safe_unqualified(b)
 	if ((a < 0) || (b < 0)): return a == b
+	int left_callable = safe_callable_signature(a)
+	int right_callable = safe_callable_signature(b)
+	if ((left_callable >= 0) || (right_callable >= 0)):
+		if ((left_callable < 0) || (right_callable < 0)): return 0
+		retained_binding left
+		retained_binding right
+		safe_signature_binding(&left, left_callable)
+		safe_signature_binding(&right, right_callable)
+		return safe_contract_matches_at(&left, &right, depth + 1, remaining)
 	if (safe_kind(a) != safe_kind(b)): return 0
 	if (safe_optional(a) != safe_optional(b)): return 0
 	if (safe_inline_slice(a) != safe_inline_slice(b)): return 0
@@ -1036,12 +1092,12 @@ int safe_contract_outlives(retained_binding* binding, int longer, int shorter):
 
 # Lifetime spelling is local to a signature. Compare the equality relation
 # between annotated positions, so alpha-renaming cannot change a contract.
-int safe_contract_matches(retained_binding* left, retained_binding* right):
+int safe_contract_matches_at(retained_binding* left, retained_binding* right, int depth, int* remaining):
 	if (left.parameters.length != right.parameters.length): return 0
 	for i in range(left.parameters.length + 1):
 		int a = safe_contract_slot(left, i)
 		int b = safe_contract_slot(right, i)
-		if (safe_same_contract_type(a, b) == 0): return 0
+		if (safe_same_contract_type_at(a, b, depth, remaining) == 0): return 0
 		char* al = safe_lifetime(a)
 		char* bl = safe_lifetime(b)
 		if ((al == 0) != (bl == 0)): return 0
@@ -1054,6 +1110,16 @@ int safe_contract_matches(retained_binding* left, retained_binding* right):
 			if ((earlier_a == 0) || (earlier_b == 0)): continue
 			if ((strcmp(al, earlier_a) == 0) != (strcmp(bl, earlier_b) == 0)): return 0
 	return 1
+
+
+int safe_contract_matches(retained_binding* left, retained_binding* right):
+	int remaining = 256
+	return safe_contract_matches_at(left, right, 0, &remaining)
+
+
+int safe_same_contract_type(int a, int b):
+	int remaining = 256
+	return safe_same_contract_type_at(a, b, 0, &remaining)
 
 
 int safe_has_body(int function):
@@ -1096,11 +1162,42 @@ int safe_return_from(retained_binding* binding, int inferred, int position):
 	return safe_contract_outlives(binding, position, binding.parameters.length)
 
 
-int safe_call(int id, retained_node* n, char* state, int* parent):
-	int binding = safe_call_binding(n)
-	if ((binding < 0) || (retained_bindings[binding].return_type < 0)):
-		safe_error(id, c"safe: indirect calls require an ownership contract", -1)
+void safe_implementation_check(int id, int binding, int callable):
 	retained_binding* callee = retained_bindings[binding]
+	int function = safe_function_for_binding[binding]
+	retained_binding* implementation = callee
+	if (function >= 0):
+		implementation = retained_bindings[retained_record_at(function).binding]
+		if (safe_contract_matches(callee, implementation) == 0):
+			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
+	if (callable && implementation.callable_excluded):
+		safe_error(id, c"safe: checked function values require ordinary W functions", -1)
+	if (safe_trusted(implementation.source)):
+		if (safe_runtime_call(implementation) == 0):
+			safe_error(id, c"safe: runtime call has no audited ownership contract", -1)
+	else:
+		if (function < 0): safe_error(id, c"safe: call has no checked implementation", -1)
+		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
+
+
+int safe_call(int id, retained_node* n, char* state, int* parent):
+	int binding = -1
+	retained_binding indirect
+	retained_binding* callee = 0
+	if (n.op == 'F'):
+		int expression = safe_child(n, n.left)
+		retained_node target
+		retained_node_load(expression, &target)
+		int signature = safe_callable_signature(target.semantic_type)
+		if (signature < 0): safe_error(id, c"safe: indirect calls require a quantified fn[...] contract", -1)
+		safe_eval(expression, state, target.semantic_type)
+		safe_signature_binding(&indirect, signature)
+		callee = &indirect
+	else:
+		binding = safe_call_binding(n)
+		if ((binding < 0) || (retained_bindings[binding].return_type < 0)):
+			safe_error(id, c"safe: indirect calls require an ownership contract", -1)
+		callee = retained_bindings[binding]
 	if (((n.op == 'G') || (n.op == 'W')) && (n.generic_signature >= 0)):
 		retained_type* signature = retained_types[n.generic_signature]
 		retained_binding expected
@@ -1109,22 +1206,12 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 		expected.parameters = signature.parameters
 		if (safe_contract_matches(&expected, callee) == 0):
 			safe_error(id, c"safe: generic specialization disagrees with its concrete contract", -1)
-	int function = safe_function_for_binding[binding]
-	retained_binding* implementation = callee
-	if (function >= 0):
-		implementation = retained_bindings[retained_record_at(function).binding]
-		if (safe_contract_matches(callee, implementation) == 0):
-			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
-	if (safe_trusted(implementation.source)):
-		if (safe_runtime_call(implementation) == 0):
-			safe_error(id, c"safe: runtime call has no audited ownership contract", -1)
-	else:
-		if (function < 0): safe_error(id, c"safe: call has no checked implementation", -1)
-		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
+	if (n.op != 'F'): safe_implementation_check(id, binding, 0)
 
 	int return_parameter = safe_return_parameter(id, callee)
 	int return_root = -1
 	int arg = safe_child(n, n.left)
+	if (n.op == 'F'): arg = safe_child(n, n.right)
 	int position = 0
 	int saved = safe_call_roots.length
 	while (arg >= 0):
@@ -1169,6 +1256,22 @@ int safe_eval(int id, char* state, int want):
 	int right = safe_child(&n, n.right)
 	int kind = safe_borrow_kind(n.semantic_type)
 	int wanted = safe_borrow_kind(want)
+	int callable_want = safe_callable_signature(want)
+	int callable_got = safe_callable_signature(n.semantic_type)
+	if ((callable_got >= 0) && (callable_want < 0) && ((want >= 0) || (op != '='))):
+		safe_error(id, c"safe: checked function values cannot escape into raw or scalar values", -1)
+	if (callable_want >= 0):
+		if ((op == 'v') && (n.binding >= 0) && (retained_bindings[n.binding].return_type >= 0)):
+			retained_binding contract
+			safe_signature_binding(&contract, callable_want)
+			if (safe_contract_matches(&contract, retained_bindings[n.binding]) == 0):
+				safe_error(id, c"safe: function value disagrees with its quantified contract", -1)
+			safe_implementation_check(id, n.binding, 1)
+			return -1
+		if ((callable_got < 0) || (safe_same_contract_type(want, n.semantic_type) == 0)):
+			safe_error(id, c"safe: function value requires a matching quantified contract", -1)
+		if ((op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (op != '?') && (op != '=')):
+			safe_error(id, c"safe: unsupported checked function value", -1)
 	if (kind && (op == '=') && (want >= 0) && (wanted == 0)):
 		safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	int constructed = (op == 'D') && n.high && safe_owned_shape(safe_pointee(want))
@@ -1178,7 +1281,7 @@ int safe_eval(int id, char* state, int want):
 		if (((op == 'N') || (op == 'D')) && safe_opaque(safe_pointee(want))):
 			safe_error(id, c"safe: opaque collections require an audited constructor", -1)
 		if ((op != 'N') && (kind != 1) && (constructed == 0)): safe_error(id, c"safe: owner requires new storage or an ownership transfer", -1)
-		if ((op != 'N') && (op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
+		if ((op != 'N') && (op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
 	else if (kind && (op != '=')): safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	if (op == 'v'):
 		if (safe_has_array(n.semantic_type, 0)): safe_error(id, c"safe: array storage cannot be copied; pass a shared slice", -1)
@@ -1197,7 +1300,7 @@ int safe_eval(int id, char* state, int want):
 		if (wanted != 1): safe_error(id, c"safe: new storage must initialize an owner", -1)
 		if (safe_plain(safe_pointee(n.semantic_type), 0) == 0): safe_error(id, c"safe: allocation requires a pointer-free sized value", -1)
 		return -1
-	if ((op == 'C') || (op == 'G') || (op == 'W')):
+	if ((op == 'C') || (op == 'G') || (op == 'W') || (op == 'F')):
 		int parent = -1
 		safe_call(id, &n, state, &parent)
 		return -1

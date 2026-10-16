@@ -94,7 +94,7 @@ void test_mermaid_envelope_original_diagnostics_and_edits():
 	asserts(c"prose retained", index_of(fixed.source, c"Footer") >= 0)
 	mm_document_free(d)
 	mm_document_free(fixed)
-	list[char*] invalid = list[char*]{c"```mermaid\nflowchart LR\nA", c"```mermaid\nflowchart LR\nA\n```\n```mermaid\nflowchart LR\nB\n```", c"---\ntitle: x\nflowchart LR\nA", c"---\nconfig: {}\n---\nflowchart LR\nA", c"---\ntitle: |\n---\nflowchart LR\nA", c"flowchart LR\naccDescr { never closed"}
+	list[char*] invalid = list[char*]{c"```mermaid\nflowchart LR\nA", c"---\ntitle: x\nflowchart LR\nA", c"---\nconfig: {}\n---\nflowchart LR\nA", c"---\ntitle: |\n---\nflowchart LR\nA", c"flowchart LR\naccDescr { never closed"}
 	for char* input in invalid:
 		d = mm_parse(input, strlen(input))
 		asserts(c"malformed envelope rejected", d.error != 0)
@@ -110,4 +110,13 @@ void test_mermaid_fences_ignore_other_languages_and_allow_long_delimiters():
 	mm_document* d = mm_parse(source, strlen(source))
 	asserts(c"ignore nested apparent Mermaid fence inside other-language block", d.error == 0)
 	assert_equal(2, d.nodes.length)
+	mm_document_free(d)
+
+void test_mermaid_multiple_fences_default_to_first():
+	char* source = c"```mermaid\nflowchart LR\nA\n```\n```mermaid\nflowchart LR\nB\n```"
+	mm_document* d = mm_parse(source, strlen(source))
+	asserts(c"multiple fences accepted", d.error == 0)
+	assert_equal(1, d.nodes.length)
+	assert_strings_equal(c"A", d.nodes[0].id)
+	assert_strings_equal(source, d.source)
 	mm_document_free(d)

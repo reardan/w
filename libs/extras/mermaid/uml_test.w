@@ -165,7 +165,7 @@ void test_uml_edit_roundtrip_and_failed_parse():
 	mm_document_free(d)
 
 void test_uml_unsupported_and_malformed_syntax():
-	list[char*] cases = list[char*]{c"classDiagram\nclass A {", c"classDiagram\nnamespace N {\nclass A", c"classDiagram\nA ()-- B", c"classDiagram\nclass A~T~", c"classDiagram\nclass A:::red", c"classDiagram\nstyle A font-size:99px", c"classDiagram\nclass A {\n<<>>\n}", c"classDiagram\nclass A {\n<<service\n}", c"classDiagram\nA == B", c"classDiagram\nnamespace A {\nnamespace A {\n}\n}", c"stateDiagram-v2\nstate A {\nB --> C", c"stateDiagram-v2\nstate A {\nB --> C\n}\nB --> D", c"stateDiagram-v2\nstate A <<unknown>>", c"stateDiagram-v2\nA -.-> B", c"stateDiagram-v2\n[*]", c"stateDiagram-v2\nstate A {\n--\n}", c"stateDiagram-v2\n}", c"stateDiagram-v2\nstate \"label\" A"}
+	list[char*] cases = list[char*]{c"classDiagram\nclass A {", c"classDiagram\nnamespace N {\nclass A", c"classDiagram\nA ()== B", c"classDiagram\nclass A~T", c"classDiagram\nclass A:::red", c"classDiagram\nstyle A font-size:99px", c"classDiagram\nclass A {\n<<>>\n}", c"classDiagram\nclass A {\n<<service\n}", c"classDiagram\nA == B", c"classDiagram\nclass A\nnamespace A {\n}", c"stateDiagram-v2\nstate A {\nB --> C", c"stateDiagram-v2\nstate A {\nstate B\n}\nstate B", c"stateDiagram-v2\nstate A <<unknown>>", c"stateDiagram-v2\nA -.-> B", c"stateDiagram-v2\n[*]", c"stateDiagram-v2\nstate A {\n--\n}", c"stateDiagram-v2\n}", c"stateDiagram-v2\nstate \"label\" A"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported UML diagnosed", d.error != 0)
@@ -209,5 +209,75 @@ void test_uml_truncated_source_and_boundary_edits():
 				asserts(c"diagnostic offset inside source", d.error_offset >= 0 && d.error_offset <= d.length)
 			else: asserts(c"valid prefixes render", s != 0)
 			mm_scene_free(s)
+			mm_document_free(d)
+	__w_list_free(cast(__w_list*, sources))
+
+void test_uml_generic_backtick_and_dotted_namespace_semantics():
+	mm_document* d = uml_parse(c"classDiagram\nnamespace Company.Engineering[\"Engineering team\"] {\nclass `API Gateway`~List~T~~ {\n+send()\n}\n}\nnamespace Company.Engineering {\nclass Worker\n}\n`API Gateway` --> Worker\n")
+	int company = mm_find_node(d, c"Company")
+	int engineering = mm_find_node(d, c"Company.Engineering")
+	int gateway = mm_find_node(d, c"API Gateway")
+	asserts(c"dotted namespaces create ancestors", company >= 0 && engineering >= 0)
+	mm_node* node = d.nodes[engineering]
+	assert_equal(company, node.parent)
+	assert_strings_equal(c"Engineering team", node.label)
+	node = d.nodes[gateway]
+	assert_equal(engineering, node.parent)
+	assert_strings_equal(c"API Gateway<List<T>>", node.label)
+	mm_edge* edge = d.edges[0]
+	assert_equal(gateway, edge.from_node)
+	assert_equal(engineering, edge.scope)
+	mm_scene* scene = mm_render(d)
+	uml_assert_containment(d, scene)
+	mm_scene_free(scene)
+	mm_document_free(d)
+
+void test_uml_cross_scope_forward_state_transitions():
+	mm_document* d = uml_parse(c"stateDiagram-v2\nA --> B: across\nstate Left {\nstate A\n}\nstate Right {\nstate B\n}\n")
+	mm_scene* scene = mm_render(d)
+	uml_assert_containment(d, scene)
+	mm_edge* edge = d.edges[0]
+	assert_equal(-1, edge.scope)
+	mm_node* a = d.nodes[edge.from_node]
+	mm_node* b = d.nodes[edge.to_node]
+	asserts(c"forward declarations own states", a.parent != b.parent)
+	mm_scene_free(scene)
+	mm_document_free(d)
+
+void test_uml_lollipop_interfaces_are_unique():
+	mm_document* d = uml_parse(c"classDiagram\nclass Service\nService --() I\nOther --() I\nI ()-- Third\n")
+	assert_equal(3, d.edges.length)
+	mm_edge* first = d.edges[0]
+	mm_edge* second = d.edges[1]
+	mm_edge* third = d.edges[2]
+	assert_equal(MM_LOLLIPOP, first.right_marker)
+	assert_equal(MM_LOLLIPOP, third.left_marker)
+	asserts(c"same named interfaces are distinct", first.to_node != second.to_node && second.to_node != third.from_node)
+	mm_node* interface_node = d.nodes[first.to_node]
+	assert_equal(28, interface_node.shape)
+	assert_strings_equal(c"I", interface_node.label)
+	mm_scene* scene = mm_render(d)
+	asserts(c"interface circles rendered", uml_count(scene, MM_CIRCLE) >= 3)
+	mm_scene_free(scene)
+	mm_document_free(d)
+
+void test_uml_attached_standalone_and_multiline_notes():
+	list[char*] sources = list[char*]{c"classDiagram\nclass A\nnote for A \"First\\nSecond\"\nnote \"Standalone\"\n", c"stateDiagram-v2\nA --> B\nnote left of A\nFirst\nSecond\nend note\nnote right of B : Right\n"}
+	for char* source in sources:
+		mm_document* d = uml_parse(source)
+		assert_equal(2, d.notes.length)
+		mm_scene* scene = mm_render(d)
+		assert_equal(d.nodes.length, scene.nodes.length)
+		mm_document_free(d)
+		char* svg = mm_svg(scene)
+		asserts(c"first note line rendered", index_of(svg, c">First</text>") >= 0)
+		asserts(c"second note line rendered", index_of(svg, c">Second</text>") >= 0)
+		free(svg)
+		mm_scene_free(scene)
+		for length in range(strlen(source) + 1):
+			d = mm_parse(source, length)
+			scene = mm_render(d)
+			if (d.error != 0): asserts(c"incomplete note suppresses scene", scene == 0)
+			mm_scene_free(scene)
 			mm_document_free(d)
 	__w_list_free(cast(__w_list*, sources))
