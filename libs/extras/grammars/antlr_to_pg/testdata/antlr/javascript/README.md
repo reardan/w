@@ -28,6 +28,13 @@ anchor and hash before running cases; an upstream edit requires an explicit
 ledger update. This profile does not paste foreign actions into W or silently
 turn unknown actions into no-ops.
 
+The active `sites` inventory matches the current audit. `resolved_sites` retains
+the source anchors and native-adaptation history of findings removed by reviewed
+generic translator improvements. The compatibility runner still verifies these
+anchors and requires a resolution explanation. Custom channel declarations and
+`channel(ERROR)` are now supported by the translator; this does not establish
+native JavaScript ERROR-channel equivalence.
+
 The native grammar uses parser-directed regex goals rather than the upstream
 base class's previous-token heuristic. It uses checkpointed template/brace
 state, explicit contextual keyword alternatives, pure newline predicates,

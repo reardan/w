@@ -44,7 +44,12 @@ def verify_pins(manifest: dict) -> int:
     blockers = (UPSTREAM / "BLOCKERS.txt").read_text()
     records = re.findall(r"^libs/", blockers, re.M)
     require(len(records) == len(profile["sites"]), "adaptation site inventory changed")
-    for site in profile["sites"]:
+    # Resolved generic-translator blockers retain their reviewed source anchors.
+    # They are no longer in BLOCKERS.txt, but must not escape provenance checks.
+    resolved = profile.get("resolved_sites", [])
+    for site in resolved:
+        require(bool(site.get("resolution")), "resolved adaptation lacks a resolution")
+    for site in profile["sites"] + resolved:
         data = (UPSTREAM / site["file"]).read_bytes()
         expected = site["expected"].encode()
         require(data[site["offset"]:site["offset"] + len(expected)] == expected,
@@ -60,7 +65,7 @@ def verify_pins(manifest: dict) -> int:
         pin = json.loads(pin_path.read_text())
         for item in pin["files"]:
             verify_hash(pin_path.parent / item["path"], item["sha256"])
-    return len(profile["sites"])
+    return len(profile["sites"]) + len(resolved)
 
 
 def metadata(source: str) -> tuple[list[str], str | None]:
