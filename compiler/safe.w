@@ -1213,8 +1213,15 @@ void safe_check_finish():
 		int checked = safe_mode || safe_contains_checked(binding.return_type, 0)
 		for p in range(binding.parameters.length):
 			if (safe_contains_checked(binding.parameters[p], 0)): checked = 1
-		if (checked == 0): continue
 		int function = safe_function_for_binding[b]
+		if (function >= 0):
+			retained_binding* implementation = retained_bindings[retained_record_at(function).binding]
+			# Erasing every qualifier in an unused prototype must not erase
+			# the completed implementation's checked or audited contract.
+			if (safe_buffer_source(implementation.source) || safe_contains_checked(implementation.return_type, 0)): checked = 1
+			for p in range(implementation.parameters.length):
+				if (safe_contains_checked(implementation.parameters[p], 0)): checked = 1
+		if (checked == 0): continue
 		int at = function
 		if (at < 0): at = retained_sources[binding.source].root
 		safe_return_parameter(at, binding)
