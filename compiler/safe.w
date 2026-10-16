@@ -1104,7 +1104,7 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 	if (((n.op == 'G') || (n.op == 'W')) && (n.generic_signature >= 0)):
 		retained_type* signature = retained_types[n.generic_signature]
 		retained_binding expected
-		expected.lifetime_order = 0
+		expected.lifetime_order = signature.lifetime_order
 		expected.return_type = signature.return_type
 		expected.parameters = signature.parameters
 		if (safe_contract_matches(&expected, callee) == 0):

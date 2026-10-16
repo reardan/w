@@ -422,3 +422,45 @@ void test_mutable_record_types():
 	int snapshot = retained_type_note(view)
 	assert_equal(type_kind_safe_recordmut, retained_types[snapshot].kind)
 	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"outside"))
+
+
+void test_generic_contract_snapshot_survives_rollback():
+	push_basic_types()
+	retained_clear()
+	retained_init()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	if (pointer_type < 0): pointer_type = type_push_pointer(c"int", word_size, 1)
+	int parameter = type_get_safe_lifetime(pointer_type, 2, c"a")
+	int result = type_get_safe_lifetime(pointer_type, 2, c"b")
+	int signature = type_push_function(c"contract snapshot", result, 1, cast(int, &parameter))
+	int* rows = cast(int*, malloc(2 * __word_size__))
+	rows[0] = 3
+	rows[1] = 2
+	type_record(signature).fn_lifetime_order = rows
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	int first = retained_type_note(signature)
+	assert1(retained_types[first].lifetime_order != rows)
+	assert_equal(3, retained_types[first].lifetime_order[0])
+	assert_equal(first, retained_type_note(signature))
+	# Mutating raw metadata must neither rewrite nor reuse an old snapshot.
+	rows[0] = 1
+	int second = retained_type_note(signature)
+	assert1(first != second)
+	assert_equal(3, retained_types[first].lifetime_order[0])
+	assert_equal(1, retained_types[second].lifetime_order[0])
+	retained_rollback(&checkpoint)
+	# Reuse the reclaimed arena before taking another snapshot. The raw
+	# relation must still exist independently of the discarded snapshots.
+	int* reused = cast(int*, retained_arena_alloc(2 * __word_size__))
+	reused[0] = 0
+	reused[1] = 0
+	int restored = retained_type_note(signature)
+	assert_equal(1, retained_types[restored].lifetime_order[0])
+	assert_equal(2, retained_types[restored].lifetime_order[1])
+	type_record(signature).fn_lifetime_order = 0
+	int plain = retained_type_note(signature)
+	assert1(plain != restored)
+	assert1(retained_types[plain].lifetime_order == 0)
+	free(rows)
+	retained_clear()

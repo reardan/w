@@ -1,5 +1,6 @@
 # Outlives contracts preserve descriptor provenance and ordinary cleanup.
 import lib.memory_debug
+import tests.safe_outlives_import_fixture
 
 
 struct OutlivesView:
@@ -32,7 +33,8 @@ int outlives_exercise():
 		ref OutlivesView view = outlives_record(first)
 		ref int* value = outlives_field(view, second, i % 2)
 		ref int[] slice = outlives_slice(values)
-		total = total + *value + slice[0] + slice[1]
+		ref int* generic_value = generic_outlives_import[int](value)
+		total = total + *generic_value + slice[0] + slice[1]
 	first = new int
 	return total
 

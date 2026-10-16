@@ -15,6 +15,7 @@
 struct type_rec:
 	char* name
 	char* safe_lifetime    # optional function-contract label; erased at runtime
+	int* fn_lifetime_order  # type-record-owned rows for a concrete generic contract
 	int num_fields
 	int total_size
 	int pointer_level
@@ -134,6 +135,7 @@ type_rec* type_alloc():
 	# descriptors that only 'new' initializes; it also zeroes the record.
 	type_rec* new_type = new type_rec
 	new_type.safe_lifetime = 0
+	new_type.fn_lifetime_order = 0
 	new_type.field_names = new list[char*]
 	new_type.field_types = new list[int]
 	new_type.decl_file_index = -1

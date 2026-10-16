@@ -15,6 +15,7 @@ struct retained_type:
 	int source
 	char* name
 	char* lifetime
+	int* lifetime_order  # arena-owned concrete function contract
 	char* file
 	int line
 	int column

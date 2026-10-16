@@ -162,7 +162,7 @@ extend its backing storage's lifetime. Ordinary references stay non-null;
 
 ### Explicit outlives clauses
 
-Direct function signatures may add `where a > b` after the parameter list.
+Direct and concrete generic function signatures may add `where a > b` after the parameter list.
 The clause says lifetime `a` outlives `b`; it permits a result labeled `b`
 to borrow from an input labeled `a`. Separate multiple relationships with
 commas. Relationships are transitive, and every label must occur on a borrowed
@@ -191,9 +191,23 @@ positions must agree, including on unused and later declarations. Self-edges
 are redundant; cycles require both directions and do not extend any actual
 storage lifetime. Contracts apply with or without `--safe`.
 
-This step supports direct functions with at most ten parameters. Generic
-outlives clauses, higher-ranked function values and independent aggregate
-lifetime groups remain rejected pending their own implementation gates.
+Direct functions and concrete generic specializations support at most ten
+parameters. For example:
+
+```w
+ref[b] T* generic_shorten[T](ref[a] T* value) where a > b:
+	return value
+```
+
+Explicit calls (`generic_shorten[int](input)`) and calls inferred from a typed
+checked reference (`generic_shorten(input)`) preserve the same contract. An
+untyped address expression alone does not infer `T`; use a named checked
+reference or explicit type arguments. Each instantiated body and its retained
+call signature must agree, including through aliases, imports and recursion.
+Unused generic templates retain the ordinary deferred-instantiation behavior.
+The existing generic parameter/result shape restrictions still apply.
+Higher-ranked function values and independent aggregate lifetime groups remain
+rejected pending their own implementation gates.
 No runtime representation, allocation or destruction order changes.
 
 ### Shared-reference structs
@@ -882,5 +896,30 @@ neither a speedup nor a general performance bound. Outlives clauses add
 compiler metadata only, with no new runtime allocation or representation.
 
 This step does not complete #695 or the broader #644 roadmap. Higher-ranked
-contracts, generic outlives clauses and richer aggregate ownership retain
-their separate implementation gates.
+contracts and richer aggregate ownership retain their separate implementation
+gates. The following step extends these clauses through concrete generics.
+
+### Generic outlives contracts (Wave 1)
+
+Concrete specialization extends the direct contract rules through explicit,
+inferred, imported, nested and recursive generic calls. Nineteen additional
+accepted/rejected lifetime cases exercise these paths on x86/x64, checking and
+compiling with and without `--safe`. A metadata regression checks independent
+snapshots after raw-contract changes and retained-arena rollback/reuse.
+The imported generic runtime fixture also preserves replacement and cleanup
+under default, disabled and enabled optimization, including Windows execution.
+
+Native guards and Memcheck pass on both Linux architectures. Each Memcheck
+run observes three allocations and three frees, no outstanding blocks and
+zero errors. This uses `wgrind` to expose W allocator operations to Memcheck.
+
+Seven alternating compiles of baseline `d35422c7` produced byte-identical
+binaries with the baseline and current compilers. Median elapsed time was
+3.57 s before and 3.01 s after; median peak RSS was 111,584 KiB for both.
+These runs overlapped other shared-host workloads, so the timing difference
+is not evidence of a speedup. Raw and retained type descriptors each gain a
+metadata pointer; constrained signatures additionally own their normalized
+rows, and retained snapshots copy them. Constrained generic headers use the
+retained-source reparse path. Application ABI, allocation and cleanup are
+unchanged. Higher-ranked contracts and the remaining #695 deliverables are
+still required.

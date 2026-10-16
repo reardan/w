@@ -59,6 +59,7 @@ int safe_qualifier_ahead();  /* grammar/type_name.w */
 int gpu_qualifier_ahead();   /* grammar/type_name.w */
 int type_name_array_suffix(int type);
 void function_definition(int current_symbol);
+int* function_lifetime_order_types(int* parameters, int result, int count);
 int import_alias_lookup(char* name);
 int expression();
 void push_call_argument(int arg_type);
@@ -894,7 +895,9 @@ void generic_register_definition(int first_offset, int first_line, int first_col
 	generic_defs[def].signature_ast = generic_signature_ast_capture_result(result)
 	# S2.3: a header whose lexing printed nothing may be walked instead
 	# of re-parsed (a re-parse would print it again)
-	if (warning_count == generic_scan_warnings): generic_defs[def].header_captured = 1
+	# A constrained header is reparsed under its concrete substitution so
+	# aliases and parameter types resolve before its labels are normalized.
+	if ((warning_count == generic_scan_warnings) && (peek(c"where") == 0)): generic_defs[def].header_captured = 1
 	generic_skip_definition()
 	if (token[0] != 0): generic_defs[def].follow = token_start_offset
 	# defhash coverage (wave plan C task 4f): same span the definition
@@ -1026,6 +1029,7 @@ int generic_inst_signature(int inst):
 	char* param_types = cast(char*, malloc(10 * __word_size__))
 	int param_count = 0
 	int return_type = -1
+	int* lifetime_order = 0
 	if (generic_header_tree_ready(def)):
 		# S2.3: walk the captured header under the substitution
 		generic_signature_ast* signature = generic_defs[def].signature_ast
@@ -1055,11 +1059,18 @@ int generic_inst_signature(int inst):
 			if (param_count < 10): save_ptr(param_types + param_count * __word_size__, param_type)
 			param_count = param_count + 1
 			accept(c",")
+		lifetime_order = function_lifetime_order_types(cast(int*, param_types), return_type, param_count)
 		retained_source_reparse_close(file)
 		generic_reparse_restore(save)
 	free(generic_subst_swap(old_subst))
 	char* sig_name = strjoin(generic_inst_mangled(inst), c" sig")
 	sig = type_push_function(sig_name, return_type, param_count, cast(int, param_types))
+	if (lifetime_order != 0):
+		# Raw types can survive retained rollback during diagnostic recovery.
+		# Own these rows with the raw signature, just like its parameter data.
+		int bytes = (param_count + 1) * __word_size__
+		type_record(sig).fn_lifetime_order = cast(int*, malloc(bytes))
+		for i in range(param_count + 1): type_record(sig).fn_lifetime_order[i] = lifetime_order[i]
 	free(param_types)
 	generic_insts[inst].signature = sig
 	return sig
