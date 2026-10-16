@@ -1471,3 +1471,32 @@ measurements do not establish a general performance bound.
 
 Field replacement, disjoint child borrowing and partial moves retain separate
 required gates under #695/#644; this step closes neither issue.
+
+### Direct owned-field replacement (Wave 1)
+
+Thirty-one accepted/rejected programs exercise direct replacement, named owner
+requirements, child borrows, callbacks, generics, mixed-child group mapping,
+loops, local escapes, containing-owner self-reference and reborrow cycles.
+Every case is checked and compiled on x86/x64 with and without `--safe`;
+accepted programs execute and rejected programs leave no executable.
+
+The full suite, both Linux fixpoints, Windows runtime and compiler benchmark
+pass 1,358 targets. All 48 architecture/root checks pass. Instrumented validation
+passes 1,356 targets plus all six compiler/API harnesses with a COMPLETE receipt;
+85/86 changed executable compiler lines are reached (98%). Existing compiler
+and code-generator line/branch floors remain satisfied, with unchanged rounded
+directory percentages from the exclusive-owner baseline.
+
+The imported runtime fixture covers repeated recursive and opaque-buffer drops,
+once-only factories, callback results, source-owner transfers, shared/exclusive
+mixed children, return, break and continue. Linux optimization variants and
+Wine pass. Native guards and Memcheck on both Linux architectures report 537
+allocations/frees, no outstanding blocks and zero errors.
+
+Seven alternating compiles of the fixed `69d5ed0a` compiler sources produce
+byte-identical output. Median elapsed time is 1.72/1.68 s and peak RSS is
+113,728/114,048 KiB before/after. Previous callable and mixed-owner runtime
+fixtures are byte-identical on x86/x64 and execute successfully. Shared-host
+measurements do not establish a general performance bound. Borrowed-field
+replacement, disjoint borrowing and partial moves retain separate required
+gates; this step closes neither #695 nor #644.
