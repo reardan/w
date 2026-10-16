@@ -28,6 +28,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -45,6 +50,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -68,6 +78,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -80,7 +95,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "agc",
@@ -96,7 +112,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "alef",
@@ -108,7 +129,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "algol60",
@@ -120,7 +142,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "alloy",
@@ -132,7 +155,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "alpaca",
@@ -149,6 +173,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -176,6 +205,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -196,7 +230,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "angelscript",
@@ -216,6 +255,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -228,7 +272,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "apt",
@@ -248,6 +293,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -264,7 +314,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "arden",
@@ -280,7 +331,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "argus",
@@ -292,7 +344,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "arithmetic",
@@ -308,7 +361,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "asl",
@@ -328,6 +386,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -344,7 +407,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "aterm",
@@ -361,6 +425,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -384,6 +453,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -400,7 +474,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "b",
@@ -417,6 +492,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -437,6 +517,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -462,6 +547,12 @@
         "generate",
         "compile",
         "strict"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -478,7 +569,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "bdf",
@@ -495,6 +587,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -520,6 +617,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -537,6 +639,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -564,6 +671,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -576,7 +688,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "bison",
@@ -594,7 +707,10 @@
       "expected_pass": [
         "translate"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate"
+      ]
     },
     {
       "name": "blueprint",
@@ -611,6 +727,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -638,6 +759,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -658,7 +784,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "calculator",
@@ -675,6 +806,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -698,6 +834,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -718,6 +859,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -730,7 +876,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "cayenne",
@@ -742,7 +889,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "chip8",
@@ -760,6 +908,12 @@
         "strict"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile",
@@ -784,6 +938,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -801,6 +960,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -824,6 +988,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -836,7 +1005,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "cmake",
@@ -853,6 +1023,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -876,6 +1051,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -892,7 +1072,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "cookie",
@@ -912,6 +1093,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -924,7 +1110,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "cpp",
@@ -940,7 +1127,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "cql",
@@ -956,7 +1144,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "cql3",
@@ -980,6 +1173,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -992,7 +1190,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "css3",
@@ -1012,7 +1211,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "csv",
@@ -1032,6 +1236,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1044,7 +1253,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "cto",
@@ -1065,6 +1275,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1092,6 +1307,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1112,6 +1332,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1128,7 +1353,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "databank",
@@ -1145,6 +1371,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1168,6 +1399,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1185,6 +1421,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1212,6 +1453,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1229,6 +1475,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1254,6 +1505,12 @@
         "generate",
         "compile",
         "strict"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -1274,6 +1531,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1288,15 +1550,23 @@
       "expected_pass": [
         "translate",
         "generate",
-        "compile",
-        "strict"
+        "compile"
       ],
       "recorded_pass": [
         "translate",
         "generate",
         "compile",
         "strict"
-      ]
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "reclassified": {
+        "strict": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation. Confirmed with ANTLR 4.13.2; see tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json, corpus_ebnf. Historical acceptance retained in pre_compatibility_expected_pass."
+      }
     },
     {
       "name": "edif300",
@@ -1313,6 +1583,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1336,6 +1611,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1352,7 +1632,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "elixir",
@@ -1368,7 +1649,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "erlang",
@@ -1380,7 +1662,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "evm-bytecode",
@@ -1404,6 +1687,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1421,6 +1709,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1444,6 +1737,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1461,6 +1759,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1484,6 +1787,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1501,6 +1809,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1524,6 +1837,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1536,7 +1854,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "fusion-tables",
@@ -1556,6 +1875,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1572,7 +1896,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "gedcom",
@@ -1589,6 +1914,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1614,6 +1944,12 @@
         "generate",
         "compile",
         "strict"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -1634,6 +1970,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1650,7 +1991,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "gml",
@@ -1670,6 +2012,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1686,7 +2033,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "gql",
@@ -1698,7 +2046,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "graphql",
@@ -1714,7 +2063,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "graphstream-dgs",
@@ -1736,6 +2090,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1753,6 +2112,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1776,6 +2140,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1796,6 +2165,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1812,7 +2186,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "haskell",
@@ -1836,6 +2211,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1848,7 +2228,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "html",
@@ -1870,6 +2251,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1890,6 +2276,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1902,7 +2293,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "icalendar",
@@ -1922,6 +2314,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1938,7 +2335,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "idl",
@@ -1955,6 +2357,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -1978,6 +2385,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -1993,6 +2405,9 @@
         "translate"
       ],
       "recorded_pass": [
+        "translate"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate"
       ]
     },
@@ -2011,6 +2426,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2034,6 +2454,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2051,6 +2476,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2074,6 +2504,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2091,6 +2526,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2116,6 +2556,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2133,6 +2578,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2156,6 +2606,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2173,6 +2628,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2200,6 +2660,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2220,6 +2685,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2235,6 +2705,9 @@
         "translate"
       ],
       "recorded_pass": [
+        "translate"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate"
       ]
     },
@@ -2253,6 +2726,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2276,6 +2754,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2296,6 +2779,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2312,7 +2800,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "kquery",
@@ -2329,6 +2818,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2352,6 +2846,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2369,6 +2868,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2391,6 +2895,9 @@
         "translate"
       ],
       "recorded_pass": [
+        "translate"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate"
       ]
     },
@@ -2416,6 +2923,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2433,6 +2945,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2458,6 +2975,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2470,7 +2992,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "lisa",
@@ -2487,6 +3010,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2514,7 +3042,10 @@
         "generate": "ATOM_PART: (LETTER | NUMBER) ATOM_PART has no productive base. The previous rewrite invented a repetition language; the corrected matcher refuses this unsupported recursive fragment, leaving ATOMIC_SYMBOL unresolved.",
         "compile": "ATOM_PART: (LETTER | NUMBER) ATOM_PART has no productive base. The previous rewrite invented a repetition language; the corrected matcher refuses this unsupported recursive fragment, leaving ATOMIC_SYMBOL unresolved.",
         "strict": "ATOM_PART: (LETTER | NUMBER) ATOM_PART has no productive base. The previous rewrite invented a repetition language; the corrected matcher refuses this unsupported recursive fragment, leaving ATOMIC_SYMBOL unresolved."
-      }
+      },
+      "pre_compatibility_expected_pass": [
+        "translate"
+      ]
     },
     {
       "name": "llvm-ir",
@@ -2526,7 +3057,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "lpc",
@@ -2538,7 +3070,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "lrc",
@@ -2562,6 +3095,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2578,7 +3116,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "lua",
@@ -2598,7 +3141,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "lucene",
@@ -2618,7 +3166,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "maml",
@@ -2638,6 +3191,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2650,7 +3208,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "mckeeman-form",
@@ -2667,6 +3226,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2690,6 +3254,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2707,6 +3276,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2730,6 +3304,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2750,6 +3329,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2766,7 +3350,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "miniscript",
@@ -2783,6 +3372,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2806,6 +3400,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2823,6 +3422,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2846,6 +3450,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2863,6 +3472,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2886,6 +3500,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2903,6 +3522,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2926,6 +3550,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2943,6 +3572,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -2966,6 +3600,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -2978,7 +3617,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "newick",
@@ -2995,6 +3635,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3018,6 +3663,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3034,7 +3684,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "ocl",
@@ -3050,7 +3701,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "odin",
@@ -3062,7 +3718,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "oncrpc",
@@ -3086,6 +3743,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3103,6 +3765,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3126,6 +3793,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3143,6 +3815,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3166,6 +3843,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3183,6 +3865,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3206,6 +3893,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3223,6 +3915,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3246,6 +3943,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3262,7 +3964,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "peoplecode",
@@ -3274,7 +3977,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "pest",
@@ -3298,6 +4002,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3315,6 +4024,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3338,6 +4052,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3354,7 +4073,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "pii",
@@ -3371,6 +4091,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3394,6 +4119,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3411,6 +4141,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3436,6 +4171,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3448,7 +4188,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "ply",
@@ -3468,6 +4209,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3482,10 +4228,18 @@
       "expected_pass": [
         "translate",
         "generate",
+        "compile"
+      ],
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
         "compile",
         "strict"
       ],
-      "recorded_pass": []
+      "reclassified": {
+        "strict": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation. Confirmed with ANTLR 4.13.2; see tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json, corpus_pmmn. Historical acceptance retained in pre_compatibility_expected_pass."
+      }
     },
     {
       "name": "postalcode",
@@ -3505,6 +4259,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3521,7 +4280,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "powerbuilderdw",
@@ -3545,6 +4305,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3563,7 +4328,10 @@
       "expected_pass": [
         "translate"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate"
+      ]
     },
     {
       "name": "prolog",
@@ -3575,7 +4343,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "promql",
@@ -3591,7 +4360,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "propcalc",
@@ -3605,15 +4375,23 @@
       "expected_pass": [
         "translate",
         "generate",
-        "compile",
-        "strict"
+        "compile"
       ],
       "recorded_pass": [
         "translate",
         "generate",
         "compile",
         "strict"
-      ]
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "reclassified": {
+        "strict": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation. Confirmed with ANTLR 4.13.2; see tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json, corpus_propcalc. Historical acceptance retained in pre_compatibility_expected_pass."
+      }
     },
     {
       "name": "properties",
@@ -3636,6 +4414,12 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -3653,6 +4437,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3680,6 +4469,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3700,6 +4494,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3712,7 +4511,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "racket-bsl",
@@ -3729,6 +4529,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3752,6 +4557,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3769,6 +4579,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3792,6 +4607,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3809,6 +4629,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3836,6 +4661,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3848,7 +4678,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "rego",
@@ -3872,6 +4703,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3892,6 +4728,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3908,7 +4749,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "rexx",
@@ -3932,6 +4774,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3949,6 +4796,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -3972,6 +4824,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -3989,6 +4846,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4012,6 +4874,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4026,10 +4893,18 @@
       "expected_pass": [
         "translate",
         "generate",
+        "compile"
+      ],
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
         "compile",
         "strict"
       ],
-      "recorded_pass": []
+      "reclassified": {
+        "strict": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation. Confirmed with ANTLR 4.13.2; see tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json, corpus_romannumerals. Historical acceptance retained in pre_compatibility_expected_pass."
+      }
     },
     {
       "name": "ron",
@@ -4046,6 +4921,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4069,6 +4949,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4081,7 +4966,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "rust",
@@ -4097,7 +4983,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "sapf",
@@ -4109,7 +4996,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "scotty",
@@ -4126,6 +5014,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4149,7 +5042,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "sdl",
@@ -4161,7 +5059,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "semver",
@@ -4177,7 +5076,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "sexpression",
@@ -4194,6 +5094,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4217,6 +5122,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4233,7 +5143,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "sici",
@@ -4250,6 +5161,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4273,6 +5189,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4290,6 +5211,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4313,6 +5239,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4330,6 +5261,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4353,6 +5289,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4369,7 +5310,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "sparql",
@@ -4393,6 +5335,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4411,14 +5358,22 @@
       "expected_pass": [
         "translate",
         "generate",
-        "compile",
-        "strict"
+        "compile"
       ],
       "recorded_pass": [
         "translate",
         "generate",
         "compile"
-      ]
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "reclassified": {
+        "strict": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation. Confirmed with ANTLR 4.13.2; see tests/grammars/antlr_differential/STRICT_RECLASSIFICATIONS.json, corpus_spass. Historical acceptance retained in pre_compatibility_expected_pass."
+      }
     },
     {
       "name": "spl",
@@ -4434,7 +5389,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "squirrel",
@@ -4451,6 +5407,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4474,6 +5435,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4491,6 +5457,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4514,6 +5485,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4531,6 +5507,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4552,6 +5533,12 @@
         "strict"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile",
@@ -4578,6 +5565,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4595,6 +5587,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4621,6 +5618,12 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -4637,7 +5640,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "szf",
@@ -4654,6 +5658,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4677,6 +5686,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4689,7 +5703,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "telephone",
@@ -4709,6 +5724,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4721,7 +5741,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "thrift",
@@ -4741,6 +5762,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4757,7 +5783,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "tinybasic",
@@ -4777,6 +5808,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4793,7 +5829,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "tinymud",
@@ -4813,6 +5854,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4829,7 +5875,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "tl",
@@ -4841,7 +5888,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "tnsnames",
@@ -4863,6 +5911,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4880,7 +5933,13 @@
         "compile",
         "strict"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ]
     },
     {
       "name": "toml",
@@ -4902,6 +5961,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -4924,6 +5988,12 @@
         "generate",
         "compile",
         "strict"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -4940,7 +6010,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "tsv",
@@ -4957,6 +6028,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -4982,6 +6058,12 @@
         "generate",
         "compile",
         "strict"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
       ]
     },
     {
@@ -4994,7 +6076,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "turtle",
@@ -5011,6 +6094,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -5034,6 +6122,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5050,7 +6143,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "upnp",
@@ -5062,7 +6156,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "url",
@@ -5079,6 +6174,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -5102,6 +6202,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5118,7 +6223,12 @@
         "generate",
         "compile"
       ],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ]
     },
     {
       "name": "vaxscan",
@@ -5130,7 +6240,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "vb6",
@@ -5146,7 +6257,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "velocity",
@@ -5162,7 +6274,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "vmf",
@@ -5179,6 +6292,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -5206,6 +6324,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5226,6 +6349,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5243,6 +6371,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -5268,6 +6401,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5285,6 +6423,11 @@
         "compile"
       ],
       "recorded_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
+      "pre_compatibility_expected_pass": [
         "translate",
         "generate",
         "compile"
@@ -5308,6 +6451,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5324,7 +6472,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "xml",
@@ -5346,6 +6495,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5368,6 +6522,11 @@
       ],
       "recorded_pass": [
         "translate"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5388,6 +6547,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5404,7 +6568,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "yini",
@@ -5428,6 +6593,11 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     },
     {
@@ -5444,7 +6614,8 @@
         }
       ],
       "expected_pass": [],
-      "recorded_pass": []
+      "recorded_pass": [],
+      "pre_compatibility_expected_pass": []
     },
     {
       "name": "zig",
@@ -5468,10 +6639,35 @@
         "translate",
         "generate",
         "compile"
+      ],
+      "pre_compatibility_expected_pass": [
+        "translate",
+        "generate",
+        "compile"
       ]
     }
   ],
   "current_measurement": {
+    "source_state": "Clean implementation commit 6c1e7f691774b4f87af6303c8e84010b2d2d9969",
+    "passing": {
+      "translate": 218,
+      "generate": 212,
+      "compile": 212,
+      "strict": 15
+    },
+    "historical_288_compiled": 210,
+    "runtime_smoke": "not_configured",
+    "tools_sha256": {
+      "translator": "c5c1ba5c7f22d549348fbdadd7a9d355a70dfde2c50cb13d85b825427ea6f24a",
+      "generator": "48dc944311f3590e483fa28cd43be2f4e3117b1a9cb965ff4fd77ff6d7d5842b",
+      "compiler": "902dbb0b43fed6cc3e9bc622de3f3add9da1a7790c710ca79003e2d92a6e6ba1",
+      "common_matchers": "6e98f879e7d8c1a4d9dd002cb0e5b2ea4440f61ea6e4356918b285fed2a99f09"
+    },
+    "runner_sha256": "cf0f5f4323f0177fe7ec55b1f9384ffcd7ad339b4f0a042f901715974eed7c3c",
+    "results_csv": "sweep_current_results.csv",
+    "note": "Stacked increment over PR #690: Lua, TNT, and V gain translation and compilation; TNT gains strict acceptance. No existing expectations removed; recorded_pass retains the initial audit. Focused runtime tests are separate from the compile-only sweep."
+  },
+  "previous_measurement": {
     "source_state": "Clean implementation commit 6c1e7f691774b4f87af6303c8e84010b2d2d9969",
     "passing": {
       "translate": 218,
