@@ -119,7 +119,7 @@ int mm_usecase_node(mm_parser* p, int parent, int declare):
 
 void mm_usecase_body(mm_parser* p, int scope):
 	while (mm_peek(p) != 0 && p.doc.error == 0):
-		if (mm_metadata(p)):
+		if (mm_metadata(p) || mm_style_statement(p)):
 			mm_separators(p)
 			continue
 		if (mm_keyword(p, c"end")):
