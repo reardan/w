@@ -303,7 +303,11 @@
           "sha256": "084c5f41b4becf1bb3de2da155b500751c3c473332f89bc973d240349aacc812"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -649,7 +653,11 @@
           "sha256": "3622a26210847910d2cf1f6c9080d2726313d44602eba52de9d4069a8ba05c04"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -943,7 +951,11 @@
           "sha256": "2ab83eb1baf2e095dda45f11adfb723cfae864b73cbd845da423be7699ed0e9e"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -1921,7 +1933,11 @@
           "sha256": "6f49ce6f7612114e87b4cadc9a8b647656d098941b108a6f872aee90b1a28adf"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -2557,7 +2573,11 @@
           "sha256": "7ff0e2809b2d22595413051ad320745b7ed294e08270a697b0c8b073fe37861f"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -2737,7 +2757,11 @@
           "sha256": "b0ab61a044c839c78e376e0d3428583ff1ae69c58ed1aeedffe8d9e89dc470f0"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -3017,7 +3041,11 @@
           "sha256": "7f3bafb0781e6af7a70a604106cd3116fc8d0d93cd7ab0a41099c6f0f886d823"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -3447,7 +3475,12 @@
           "sha256": "bdce72a53eba8c972634cd972e887aec3bb4039576b631770c08a6206231a249"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile",
+        "strict"
+      ],
       "recorded_pass": []
     },
     {
@@ -3523,7 +3556,9 @@
           "sha256": "164a65614b9d1da5cfe5e154894976a069ec44896804a2661e2a0270da2c02df"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate"
+      ],
       "recorded_pass": []
     },
     {
@@ -4749,7 +4784,11 @@
           "sha256": "9491fa3c3b324d6f6f3c3094eb1cd9b12c4bd76b736bd879d0896bf1a5c92007"
         }
       ],
-      "expected_pass": [],
+      "expected_pass": [
+        "translate",
+        "generate",
+        "compile"
+      ],
       "recorded_pass": []
     },
     {
@@ -5420,23 +5459,23 @@
     }
   ],
   "current_measurement": {
-    "source_state": "Implementation worktree based on 298246c6d6906650d4cd9c677e93933abd9bf619",
+    "source_state": "Clean implementation commit 705674f060bbeb95ea6f16630276fc73b26e087d",
     "passing": {
-      "translate": 205,
-      "generate": 200,
-      "compile": 200,
-      "strict": 13
+      "translate": 215,
+      "generate": 209,
+      "compile": 209,
+      "strict": 14
     },
-    "historical_288_compiled": 198,
+    "historical_288_compiled": 207,
     "runtime_smoke": "not_configured",
     "tools_sha256": {
-      "translator": "4beb11775b82d5e1bb0144c9035bd60312f29e03deba8e3574126cf38f05985e",
+      "translator": "69778b310d48ec8fdac93788350364875b0d5ffe3575b1da3dfa37006f14228a",
       "generator": "48dc944311f3590e483fa28cd43be2f4e3117b1a9cb965ff4fd77ff6d7d5842b",
       "compiler": "902dbb0b43fed6cc3e9bc622de3f3add9da1a7790c710ca79003e2d92a6e6ba1",
       "common_matchers": "6e98f879e7d8c1a4d9dd002cb0e5b2ea4440f61ea6e4356918b285fed2a99f09"
     },
     "runner_sha256": "cf0f5f4323f0177fe7ec55b1f9384ffcd7ad339b4f0a042f901715974eed7c3c",
     "results_csv": "sweep_current_results.csv",
-    "note": "Per-case expected_pass ratcheted from the complete pinned run after reviewing the sole Lisp false-green reclassification. recorded_pass retains the initial audit."
+    "note": "Stacked increment over PR #689: 9 new compile passes, 10 new translations, and PMMN strict acceptance. No existing expectations removed; recorded_pass retains the initial audit. Focused runtime tests are separate from the compile-only sweep."
   }
 }

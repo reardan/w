@@ -3,49 +3,73 @@
 ## Current pinned measurement
 
 Corpus commit: `89fd36482e8cb68a4e55df021a8adbc7541b52f2`.
-The same 291 selected grammar cases were measured before and after this work:
+All columns measure the same 291 selected grammar cases:
 
-| Stage | Initial audit | Current implementation |
-| --- | ---: | ---: |
-| Translation | 196/291 | 205/291 |
-| Parser generation | 179/291 | 200/291 |
-| W compilation | 179/291 | **200/291** |
-| Strict translation audit | 10/291 | 13/291 |
+| Stage | Initial audit | PR #689 | Current implementation |
+| --- | ---: | ---: | ---: |
+| Translation | 196/291 | 205/291 | 215/291 |
+| Parser generation | 179/291 | 200/291 | 209/291 |
+| W compilation | 179/291 | 200/291 | **209/291** |
+| Strict translation audit | 10/291 | 13/291 | 14/291 |
 
-The original 288-directory-name cohort improved from 178 to **198 compiling**
-at this corpus revision. The legacy 229/288 and 258/288 figures below use other
-inputs and are not directly comparable to the current pinned measurement.
+The original 288-directory-name cohort now compiles **207** cases at this
+revision. Historical 229/288 and 258/288 figures below used different inputs
+and are not directly comparable.
 
 Current per-case results: [`sweep_current_results.csv`](sweep_current_results.csv).
 [`sweep_baseline.json`](sweep_baseline.json) pins roots, preserves the initial
-`recorded_pass` stages, records the measured tool/runner hashes, and protects every
-current `expected_pass` independently. The complete run had no crashes, timeouts,
-missing output artifacts, or tool changes during measurement.
+`recorded_pass` stages, records measured tool/runner hashes, and protects every
+current `expected_pass` independently. The final sweep measured clean
+implementation commit `705674f0`. It had no regressions, crashes, timeouts,
+missing output artifacts, or tool changes. All #689 expectations are retained.
 
-There are **22 newly compiling grammars**: agc,
+This increment adds **nine compiling grammars**: arithmetic, c, cql, icon, ltl,
+microc, ocl, pmmn, and tinyc. PowerQuery additionally passes translation but
+still fails generation on unsupported lexer-derived `IDENTIFIER`/`LITERAL`
+tokens. PMMN gains strict acceptance. The implementation supports fixed-token
+expression operators/parentheses, consuming compound bases with disjoint first
+tokens, source-position unary precedence, delimiter-contained nested lists and
+postfix chains, and a sole empty list base. Overlapping/nullable ordered-choice
+forms remain refused. See [`COVERAGE_NEXT_PLAN.md`](COVERAGE_NEXT_PLAN.md).
+
+PR #689 previously added 22 compiling cases: agc,
 amazon-states-language-intrinsic-functions, bencoding, css3, graphql,
 graphstream-dgs, html, ixml, less, lucene, plantUML, properties, romannumerals,
 scss, stringtemplate, swift-fin, tiny, tnsnames, toml, wkt, xml, and xsd-regex.
+Its sole intentional lost compile/strict pass remains Lisp: the fragment
+`ATOM_PART: (LETTER | NUMBER) ATOM_PART;` has no productive base. The old
+rewrite invented a repetition language; the baseline retains the explicit
+reclassification reasons. This increment removes no expectations.
 
-The sole lost compile/strict pass is intentional: Lisp defines
-`fragment ATOM_PART: (LETTER | NUMBER) ATOM_PART;` without a productive base.
-The previous matcher rewrite invented a repetition language. The corrected
-translator refuses that recursive fragment rather than claiming to implement it;
-the baseline includes explicit generation/compilation/strict reclassification
-reasons for this case. All other initial passing cases retain their stages.
+**82 cases remain non-compiling:** 76 fail translation and six fail parser
+generation (bison, informix, jpa, langium, lisp, powerquery). Of the translation
+failures, 71 report unsupported left recursion; the remaining cases include
+zero-consumption hazards and unresolved dependency-provided symbols. Labels,
+ternaries, mixed binary/postfix expressions, and indirect operands remain
+outside the bounded normalization slice. Undefined upstream tokens and
+nonproductive lexer rules remain explicit failures.
 
-**91 cases still do not compile:** 84 stop at safety checks, two need dependencies
-outside the selected sibling inputs (aspectj's `JavaLexer`, trapc's `CLexer`), and
-five fail parser generation (bison, informix, jpa, langium, lisp). These include
-unsupported recursion and upstream missing token definitions; none are hidden
-from the denominator. Resolving imports does not translate foreign actions or
-superclasses, and strict acceptance remains much smaller than compile coverage.
+Bison and Langium need continuation-aware lexer backtracking: Bison's comment
+and code fragments can consume a closing delimiter, while Langium's regex
+character fragments can consume the enclosing `]` or `/`. Returning only a
+helper's longest endpoint cannot implement those grammars. Merely admitting
+recursive helper calls would conceal this gap; no such relaxation was made.
 
 Compilation supplies an empty main and does not execute the generated parser.
-Targeted tests cover the new lexer commands, imported token identities, recursion
-normalization, positive/negative parsing, and failure atomicity; they are not a
-claim that all 200 compiled grammars preserve ANTLR semantics. The corpus sweep
-reports runtime smoke as `not_configured`.
+The new focused tests execute unmodified, hash-pinned TinyC, MicroC, and
+Arithmetic grammars as well as local expression/list fixtures. They assert
+normalized AST evaluation, operator binding, nesting, malformed inputs,
+complete consumption, and atomic normalization refusal. The generated parser's
+existing ordered-choice behavior still rejects some valid upstream constructs,
+including TinyC/MicroC assignments and comparison continuations; see the
+[runtime fixture notes](../../../../tests/grammars/antlr_coverage_next/README.md).
+Neither compile coverage nor strict acceptance claims full ANTLR equivalence.
+The corpus sweep continues to report runtime smoke as `not_configured`.
+
+Validation: 21 focused targets, all 1,251 targets in `./wbuild tests`, and all
+10 offline sweep-harness tests passed. The full suite used Node 20.19.3 with
+`NO_COLOR` unset. The final corpus results also satisfy the strengthened
+per-case expectations.
 
 ## Historical measurements
 
