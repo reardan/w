@@ -1845,10 +1845,11 @@ void pg_emit_stateful_candidate(pg_source_writer* writer, pg_grammar* grammar, c
 		pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, reason, c\"valid bounded match\", c\"\")")
 		pg_source_line(writer, c"return 0")
 		pg_source_dedent(writer)
+		if (config.guard != 0): pg_line(writer, f"if (((length > 0) || (length == -4)) && (({config.guard}) == 0)): length = 0")
 		pg_open_c(writer, c"if ((length == -4) && (best_rule < 0)):")
 		pg_line(writer, f"best_rule = {order}")
 		pg_source_dedent(writer)
-	if (config.guard != 0): pg_line(writer, f"if ((length > 0) && (({config.guard}) == 0)): length = 0")
+	if ((config.guard != 0) && (grammar.guarded_progress == 0)): pg_line(writer, f"if ((length > 0) && (({config.guard}) == 0)): length = 0")
 	char* comparison = c">"
 	if ((grammar.ordered_lexer == 0) && (literal != 0)): comparison = c">="
 	pg_open(writer, f"if ((length > 0) && (length {comparison} best_length)):")
@@ -1960,6 +1961,10 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	if (grammar.guarded_progress): pg_open_c(writer, c"if ((best_rule < 0) || (best_length > state.length - index)):")
 	else: pg_open_c(writer, c"if ((best_length <= 0) || (best_length > state.length - index)):")
 	pg_source_line(writer, c"best_length = 1")
+	if (grammar.guarded_progress):
+		pg_source_line(writer, c"int unmatched_codepoint = 0")
+		pg_source_line(writer, c"int unmatched_width = utf8_scan(input + index, state.length - index, &unmatched_codepoint)")
+		pg_source_line(writer, c"if (unmatched_width > 0): best_length = unmatched_width")
 	pg_source_line(writer, c"best_rule = -1")
 	pg_source_line(writer, c"channel = pg_token_hidden_channel")
 	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, c\"invalid token\", c\"lexer rule\", c\"unmatched byte\")")
