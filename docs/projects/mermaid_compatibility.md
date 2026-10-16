@@ -118,13 +118,13 @@ connectors or external systems.
 | Surface | Current behavior | Remaining work |
 | --- | --- | --- |
 | Read/write | Lossless original UTF-8 source; separate canonical flow/ER model serializer | Canonical model serialization for families beyond flow/ER and themed/configured documents |
-| Edit | Immutable UTF-8 byte-range edits, selected-diagram CLI operations, desktop source history, flowchart node/edge additions and hit testing | Dragging/deletion, richer source editing and structured editing across remaining families |
-| View/export | Deterministic display lists, SVG export, layered crossing reduction, optional native force layout and desktop pan/zoom/fit | Dense-layout quality, text measurement/wrapping and upstream geometry parity |
+| Edit | Flow/ER node and edge selection, label editing, node/edge deletion, creation/connections, top-level dragging, click-to-place and keyboard movement; transactional undo/redo, grouped source typing and stable viewport | Group/nested-node movement, multi-selection, resizing, richer edge/attribute inspectors and graphical editing beyond flow/ER |
+| View/export | Deterministic display lists, SVG export, layered crossing reduction, optional force layout, persisted flow/ER node positions, live edge updates and cursor-anchored zoom | Dense-layout quality, text measurement/wrapping and upstream geometry parity |
 | Markdown/frontmatter | Selectable Mermaid fences, surrounding prose preservation, original-source diagnostics, title, bounded themes and layout/packet configuration | General YAML and arbitrary configuration |
-| Accessibility | Escaped SVG titles/descriptions, visible frontmatter titles and editor keyboard shortcuts | Screen-reader integration and broader native accessibility interactions |
+| Accessibility | Escaped SVG titles/descriptions, visible titles, visible canvas selection, keyboard navigation/editing and non-drag move controls | Screen-reader integration and broader native accessibility interactions |
 | Node styling | Flow/ER/class/state/requirement/use-case node classes and link styles, quadrant point classes, colors, transparent fill and precedence | Per-family style parity, CSS, fonts and rich text |
 | Themes | Native default/base/dark/forest/neutral palettes, six base color variables and fixed chart series colors | Upstream CSS/palette derivation, configurable categorical colors, redux/neo and arbitrary theme variables |
-| Desktop/platforms | x64 Linux X11/OpenGL editor, dynamic paths, external-change detection/reload and exclusive Save As; x86/x64 library/CLI | Desktop qualification on other platforms and atomic concurrent-write conflict handling |
+| Desktop/platforms | Linux X11 real-event editor workflow; Windows WGL cross-compile and Wine render smoke; macOS ARM64 Cocoa cross-compile; dynamic paths and guarded saves | Native Windows/macOS input/DPI/filesystem qualification, assistive technology testing and atomic concurrent-write conflict handling |
 | Bounds | 1 MiB source limit plus family-specific node, edge, depth, metadata, data and grammar budgets | Larger workloads require explicit budget/layout work, not removal of checks |
 
 See [Use and library ownership](mermaid.md) for command syntax, UTF-8 edit rules,
@@ -149,5 +149,15 @@ flowchart additions, conflict-aware editor saves, force layout, crossing reducti
 expanded graph/UML/grammar/scheduling syntax, and data-chart geometry/styling.
 The rows above describe the resulting supported subsets. The tracking issue
 remains open: broader per-family semantics, rich labels, themes/configuration,
-direct graphical manipulation, precise text metrics and additional desktop
-platform qualification are still required.
+precise text metrics and native desktop-platform qualification remain.
+
+The graphical-editing workstream adds flow/ER canvas selection, top-level node
+dragging, keyboard nudges and click-to-place, label edits, node/edge deletion, ER
+creation/connections, grouped typing undo and source-preserving edit transactions.
+Manual coordinates survive save/reopen and SVG export. Its real-window workflow
+exercises drag/cancel, rename/delete, undo/redo and save/reopen. Windows/macOS
+compile targets now run in the suite; Wine rendering is smoke-tested separately.
+Graphical editing is still bounded to flow/ER: group/nested-node movement,
+multi-selection, resize, rich relationship/attribute inspectors and other-family
+editing remain. These are narrower than the original blanket dragging/deletion
+gap; they must not be represented as full graphical-editor completion.

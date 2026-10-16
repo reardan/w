@@ -253,7 +253,12 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
-			if (ui_utf8_is_text(ch) && ui_char_is_typing(ctx.char_mods[i])):
+			int mods = ctx.char_mods[i]
+			if ((mods & (GFX_MOD_CTRL | GFX_MOD_SUPER)) && (mods & GFX_MOD_ALT) == 0 && (ch == 1 || ch == 'a' || ch == 'A')):
+				st.sel_anchor = 0
+				ui_textarea_set_caret(st, st.buf.length)
+				st.caret_goal_col = st.caret_col
+			else if (ui_utf8_is_text(ch) && ui_char_is_typing(mods)):
 				ui_textarea_type(st, ch)
 				changed = 1
 			else if (ch == 9):

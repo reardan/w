@@ -305,6 +305,15 @@ suggesting that it behaves like pointer arithmetic.
   import diagnostics from missing files, and account for expected-failure compile
   steps when reporting closure failures; retain conservative test selection.
 
+- **`wtest archs` can silently select no roots for an imported module (2026-10-16).**
+  During Mermaid editor work, `bin/wtest archs graphics/ui/widgets/textarea.w
+  --check` exited 0 with no check rows, while live `wv2 x64 deps
+  graphics/ui/widgets/textarea_test.w` included that module and `wtest why x64
+  graphics/ui/widgets/textarea_test.w` reported a valid cached closure. Audit
+  transitive matching and report zero selected roots explicitly so success is
+  not mistaken for architecture coverage. Direct editor x64/win64/arm64_darwin
+  checks and the owning textarea test supplied the verification here.
+
 - **`wtest archs --check` drops compile-step expectations and flags (2026-10-15).**
   Checking `lib/memory_debug.w` reports the intentionally invalid
   `check_generic_error_fixture.w` and `check_generic_struct_error_fixture.w` as

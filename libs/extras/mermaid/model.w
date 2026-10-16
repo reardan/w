@@ -210,6 +210,8 @@ struct mm_document:
 	int source_start
 	int source_end
 	int diagram_index
+	# Half-open ranges consumed as real comments by the parser, never label text.
+	list[int] comment_ranges
 	mm_data_chart* data
 	list[mm_narrative_event*] narrative
 	int narrative_numbered
@@ -281,6 +283,7 @@ int mm_add_node(mm_document* d, char* id, int offset):
 
 void mm_document_free(mm_document* d):
 	if (d == 0): return
+	if (d.comment_ranges != 0): __w_list_free(cast(__w_list*, d.comment_ranges))
 	for mm_note* note in d.notes:
 		free(note.text)
 		free(note)

@@ -32,8 +32,14 @@ void mm_separators(mm_parser* p):
 	while (1):
 		mm_space(p)
 		if (mm_match(p, c"%%")):
+			int start = p.pos - 2
 			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"Mermaid configuration directives are not supported in the native renderer")
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
+			if (p.doc.comment_ranges == 0): p.doc.comment_ranges = new list[int]
+			list[int] ranges = p.doc.comment_ranges
+			if (ranges.length == 0 || ranges[ranges.length - 2] < start):
+				ranges.push(start)
+				ranges.push(p.pos)
 		else if (mm_peek(p) == 10 || mm_peek(p) == ';'): p.pos = p.pos + 1
 		else: return
 

@@ -24,6 +24,34 @@ int area_frame(ui_context* ctx, ui_textarea_state* st):
 	return changed
 
 
+void test_select_all_replaces_multiline_unicode_with_native_shortcuts():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	ui_textarea_state st
+	ui_textarea_init(&st)
+	list[int] codes = list[int]{1, 'a', 'A'}
+	list[int] modifiers = list[int]{GFX_MOD_CTRL, GFX_MOD_CTRL, GFX_MOD_SUPER}
+	for i in range(codes.length):
+		ui_textarea_set(&st, c"Alpha\nCafé")
+		ctx.focus = 1
+		ui_test_event(ctx, GFX_EVENT_CHAR, codes[i], 0, 0, modifiers[i])
+		assert_equal(0, area_frame(ctx, &st))
+		assert_equal(0, ui_textarea_sel_start(&st))
+		assert_equal(st.buf.length, ui_textarea_sel_end(&st))
+		ui_test_char(ctx, 'X')
+		assert_equal(1, area_frame(ctx, &st))
+		assert_strings_equal(c"X", st.buf.data)
+	ui_textarea_set(&st, c"Keep")
+	ctx.focus = 0
+	ui_test_event(ctx, GFX_EVENT_CHAR, 1, 0, 0, GFX_MOD_CTRL)
+	assert_equal(0, area_frame(ctx, &st))
+	assert_equal(0, ui_textarea_has_selection(&st))
+	__w_list_free(cast(__w_list*, codes))
+	__w_list_free(cast(__w_list*, modifiers))
+	ui_textarea_free(&st)
+	ui_render_destroy(&fx.r)
+
+
 # Click inside the field to focus it, leaving the caret at 0,0.
 void focus(ui_context* ctx, ui_textarea_state* st):
 	ui_test_click(ctx, 20, 20)
