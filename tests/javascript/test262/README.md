@@ -14,13 +14,22 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The initial corpus contains 28 upstream files expanded into 53 variants:
-**41 PASS, 0 FAIL, 12 UNSUPPORTED, 0 ERROR**. Of those passes, 32 reach runtime
+The selected corpus contains 58 upstream files expanded into 113 variants:
+**90 PASS, 0 FAIL, 23 UNSUPPORTED, 0 ERROR**. Of those passes, 81 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. The positive cases execute 194 assertions across strict/sloppy
-variants. These numbers describe this small selected corpus, **not full Test262
-coverage or a browser standards pass rate**. The unsupported examples remain in
-the report rather than being removed to improve the result.
+syntax errors. Positive cases execute 243 native assertions across strict/sloppy
+variants; older upstream cases also use conditional throwing checks. These
+numbers describe this selected corpus, **not full Test262 coverage or a browser
+standards pass rate**. Unsupported examples remain in the report.
+
+The modern-browser expansion adds Array construction/identity and `isArray`,
+`some` callback arguments/short circuiting/mutation, function `call`/`apply`/`bind`,
+addition and bitwise operand/coercion order, and conditional branch behavior.
+Adjacent cases explicitly retain unsupported numeric object-literal property
+names, array literal elisions, sloppy mapped arguments, Object reflection,
+Reflect/new.target, and the broad BigInt feature tag. Runtime tests separately
+exercise supported generic slice/array-like operations through the embedding
+API; the pinned slice case here requires the unavailable Object global.
 
 ## Provenance
 
@@ -49,17 +58,16 @@ outside this profile. Constructor syntax now lowers, allowing unreachable
 `new Test262Error` branches in the two newly passing short-circuit variants;
 executing that constructor remains unsupported.
 
-Manifest version 2 records built-in requirements for three hash-pinned addition
-cases: `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
-`Number` and `isNaN`. The adapter capability inventory does not yet advertise
-these complete capabilities (the bounded Number helpers do not provide the
-required Number constants or global `isNaN`), so those six variants report an explicit metadata UNSUPPORTED
-reason before execution. This is a declared capability boundary, not an exception
-filter: unknown identifiers and direct uses of missing built-ins still throw
-ReferenceError and classify as FAIL. A regression test advertises all three
-capabilities and verifies that execution exposes all six failures. Source bytes
-and hashes are unchanged. The separate `instanceof` case remains unsupported
-by runtime preflight.
+Manifest version 2 records built-in requirements for four hash-pinned cases:
+addition `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
+`Number` and `isNaN`; slice `create-non-array` needs `Object` reflection. The
+adapter does not advertise these complete capabilities (bounded Number helpers
+lack the required constants/global `isNaN`), so eight variants report explicit
+metadata UNSUPPORTED reasons. This is a declared capability boundary, not an
+exception filter: unknown identifiers and direct uses of missing built-ins
+still throw ReferenceError and classify as FAIL. A regression test advertises
+all four capabilities and verifies that execution exposes all eight failures.
+Source bytes and hashes remain unchanged.
 
 The native callbacks count real assertion invocations. Contract tests verify
 both passing and failing assertion paths, signed zero, NaN, boolean strictness,

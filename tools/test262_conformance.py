@@ -19,7 +19,7 @@ FLAGS = {'onlyStrict', 'noStrict', 'raw', 'module', 'async', 'generated', 'CanBl
 FEATURES = {'coalesce-expression'}
 # Explicit capability inventory for requirements declared by hash-pinned cases.
 # Promote only alongside runtime implementation and executable contract checks.
-KNOWN_BUILTINS = {'eval', 'Number', 'isNaN'}
+KNOWN_BUILTINS = {'eval', 'Number', 'isNaN', 'Object'}
 BUILTINS = set()
 DOC_FIELDS = {'description', 'info', 'esid', 'es5id', 'es6id', 'author'}
 

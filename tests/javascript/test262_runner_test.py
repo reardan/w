@@ -27,10 +27,10 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 43, 'FAIL': 0, 'UNSUPPORTED': 10, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 34)
-        self.assertEqual(report['assertions'], 194)
-        self.assertEqual(report['variants'], 53)
+        self.assertEqual(report['counts'], {'PASS': 90, 'FAIL': 0, 'UNSUPPORTED': 23, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 81)
+        self.assertEqual(report['assertions'], 243)
+        self.assertEqual(report['variants'], 113)
         self.assertEqual(report['baseline_changes'], [])
 
     def test_pass_regressing_to_unsupported_fails_gate(self):
@@ -47,14 +47,14 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 42, 'FAIL': 0, 'UNSUPPORTED': 11, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 89, 'FAIL': 0, 'UNSUPPORTED': 24, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
 
     def test_new_support_requires_baseline_review(self):
-        # All remaining unsupported cases are rejected by metadata. Model an
-        # older status baseline for a case which the real executor now passes.
+        # Model an older status baseline for a case which the real executor
+        # now passes; newly available support still requires explicit review.
         manifest, sources = adapter.load_manifest(adapter.MANIFEST)
         manifest = copy.deepcopy(manifest)
         case_id = next(key for key, value in manifest['baseline'].items()
@@ -63,7 +63,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'load_manifest', return_value=(manifest, sources)):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 43, 'FAIL': 0, 'UNSUPPORTED': 10, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 90, 'FAIL': 0, 'UNSUPPORTED': 23, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
@@ -71,7 +71,7 @@ class AdapterContract(unittest.TestCase):
     def test_pinned_builtin_requirements_do_not_mask_runtime_failures(self):
         manifest, _ = adapter.load_manifest(adapter.MANIFEST)
         requirements = manifest['builtins_required']
-        self.assertEqual(len(requirements), 3)
+        self.assertEqual(len(requirements), 4)
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
         for result in report['results']:
@@ -93,8 +93,8 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'BUILTINS', adapter.KNOWN_BUILTINS):
             promoted, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(promoted['counts']['FAIL'], 6)
-        self.assertEqual(len(promoted['baseline_changes']), 6)
+        self.assertEqual(promoted['counts']['FAIL'], 8)
+        self.assertEqual(len(promoted['baseline_changes']), 8)
 
     def test_assertions_execute_and_reject_truthy_values(self):
         for source in ['assert(true);', 'assert.sameValue(NaN, NaN);', 'assert.notSameValue(0, -0);', 'assert.sameValue();']:
