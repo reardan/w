@@ -66,6 +66,8 @@ pg_ast_node* at_group_altlist_node(pg_ast_node* group_node):
 	return pg_ast_child(group_node, 0)
 
 
+int g_at_building_parser
+
 at_element* at_build_atom(pg_ast_node* node):
 	pg_ast_node* child = pg_ast_child(node, 0)
 	at_element* elem = new at_element()
@@ -107,6 +109,16 @@ at_element* at_build_atom(pg_ast_node* node):
 	else if (child.kind == antlr4_ast_negated_atom):
 		elem.kind = 5
 		pg_ast_node* negated_atom = pg_ast_child(child, 1)
+		if (g_at_prediction && g_at_building_parser):
+			at_element* excluded = at_build_atom(negated_atom)
+			if (excluded.kind == 3): elem.group_alts = excluded.group_alts
+			else:
+				elem.group_alts = new list[at_alt*]
+				at_alt* alternative = new at_alt()
+				alternative.elements = new list[at_element*]
+				alternative.elements.push(excluded)
+				elem.group_alts.push(alternative)
+			return elem
 		if (pg_ast_child_count(negated_atom) > 0):
 			pg_ast_node* negated_inner = pg_ast_child(negated_atom, 0)
 			if (negated_inner.kind == antlr4_token_CHARSET):
@@ -362,6 +374,7 @@ at_rule* at_build_rule(pg_ast_node* node):
 	rule.name = strclone(name)
 	rule.is_fragment = is_fragment
 	rule.is_lexer = at_is_upper_first(name)
+	g_at_building_parser = rule.is_lexer == 0
 	rule.alts = at_build_altlist(altlist_node)
 	rule.command = command
 	rule.commands = commands

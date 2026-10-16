@@ -3,6 +3,7 @@
 # legacy report is left stable; these losses are printed separately on stderr.
 import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.lexer_ir
+import libs.extras.grammars.antlr_to_pg.parser_sets
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import lib.utf8
 import libs.extras.grammars.antlr_to_pg.audit_json
@@ -270,7 +271,7 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 					at_loss_code(e.first, rule.name, c"AT_LEXER_CONTINUATION", c"lexer_continuation", c"unproven", c"variable-width lexer continuation requires a backtracking proof")
 			if (g_at_stateful && (rule.is_lexer == 0) && (e.kind == 0)):
 				at_audit_stateful_parser_literal(rule, e)
-			if (g_at_stateful && (rule.is_lexer == 0) && ((e.kind == 4) || (e.kind == 5))):
+			if (g_at_stateful && (rule.is_lexer == 0) && ((e.kind == 4) || (e.kind == 5)) && ((g_at_prediction == 0) || (at_parser_set_supported(e) == 0))):
 				at_loss_code(e.first, rule.name, c"AT_PARSER_TOKEN_SET", c"parser_token_set", c"unsupported", c"parser wildcard/token negation requires token-level lowering")
 			if (e.sites != 0):
 				int si = 0

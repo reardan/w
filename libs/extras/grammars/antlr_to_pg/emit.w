@@ -108,9 +108,66 @@ char* at_next_group_name(char* owning_rule):
 list[list[at_term*]] at_translate_altlist(char* owning_rule, list[at_alt*] alts);
 
 
+char* at_translate_parser_set(char* owner, at_element* element):
+	if (g_at_parser_sets == 0): g_at_parser_sets = new list[at_parser_set*]
+	at_parser_set* pending = new at_parser_set()
+	pending.helper = at_next_group_name(owner)
+	pending.excluded = new map[char*, int]
+	if (element.kind == 5):
+		for at_alt* alternative in element.group_alts:
+			at_element* excluded = alternative.elements[0]
+			char* name = excluded.text
+			if (excluded.kind == 0):
+				name = g_text_to_name.get(excluded.text, 0)
+				if (name == 0):
+					name = at_synth_literal_name(excluded.text)
+					at_register_literal(name, excluded.text)
+			pending.excluded[name] = 1
+	g_at_parser_sets.push(pending)
+	return pending.helper
+
+
+void at_finish_parser_sets():
+	if (g_at_parser_sets == 0): return
+	map[char*, int] kinds = new map[char*, int]
+	for char* name in g_literal_order: kinds[name] = 1
+	for char* name in g_token_names: kinds[name] = 1
+	for char* name in g_at_token_identities: kinds[name] = 1
+	for at_parser_set* pending in g_at_parser_sets:
+		list[at_alt*] alternatives = new list[at_alt*]
+		for char* name in kinds:
+			if (name in pending.excluded): continue
+			at_alt* alternative = new at_alt()
+			alternative.elements = new list[at_element*]
+			at_element* atom = new at_element()
+			atom.kind = 2
+			atom.text = name
+			alternative.elements.push(atom)
+			alternatives.push(alternative)
+		if (alternatives.length == 0):
+			# An empty complement is a valid never-matching token set.
+			char* never = at_next_group_name(pending.helper)
+			g_at_token_identities.push(never)
+			at_mark_used(never)
+			at_alt* alternative = new at_alt()
+			alternative.elements = new list[at_element*]
+			at_element* atom = new at_element()
+			atom.kind = 2
+			atom.text = never
+			alternative.elements.push(atom)
+			alternatives.push(alternative)
+		g_parser_rule_names.push(pending.helper)
+		g_rule_alts[pending.helper] = at_translate_altlist(pending.helper, alternatives)
+	kinds.free()
+
+
 at_term* at_translate_element(char* owning_rule, at_element* e):
 	at_term* term = new at_term()
 	term.suffix = e.suffix
+	if (g_at_prediction && ((e.kind == 4) || (e.kind == 5)) && at_parser_set_supported(e)):
+		term.name = at_translate_parser_set(owning_rule, e)
+		term.label = e.label
+		return term
 	term.label = e.label
 	if (e.kind == 2):
 		char* resolved = at_resolve_parser_rule_name(e.text)
@@ -185,6 +242,7 @@ void at_translate_all_parser_rules(list[at_rule*] rules):
 			g_parser_rule_names.push(strclone(final_name))
 			g_rule_alts[final_name] = at_translate_altlist(final_name, r.alts)
 		i = i + 1
+	at_finish_parser_sets()
 
 
 # ---------------------------------------------------------------------------

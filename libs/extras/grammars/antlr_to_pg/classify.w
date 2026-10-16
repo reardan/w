@@ -522,6 +522,9 @@ void at_fold_negated_token_refs(list[at_rule*] rules):
 	int i = 0
 	while (i < rules.length):
 		at_rule* r = rules[i]
+		if (g_at_prediction && (r.is_lexer == 0)):
+			i = i + 1
+			continue
 		int ai = 0
 		while (ai < r.alts.length):
 			at_alt* alt = r.alts[ai]

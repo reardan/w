@@ -147,6 +147,9 @@ int main(int argc, int argv):
 		i = i + 1
 
 	at_infer_token_identities(all_rules)
+	if (g_at_prediction):
+		for at_rule* rule in all_rules:
+			if ((rule.is_lexer == 0) && at_parser_has_set(rule.alts)): stateful = 1
 	at_prepare_stateful(all_rules, stateful)
 	if (g_at_exact_lexer):
 		at_exact_prepare(all_rules)
