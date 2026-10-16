@@ -47,3 +47,18 @@ input errors. Escaped NUL literals, unpaired surrogate literals and out-of-range
 escapes are strict translation failures, never silently truncated strings.
 Scalar ranges/properties may contain U+0000 mathematically, but no input in the
 provider's supported domain contains it.
+
+The optional exhaustive endpoint gate compares 7,104 bounded strings, including
+invalid/truncated inputs, against a generated ANTLR lexer rule in isolation:
+
+```sh
+./wbuild antlr_to_pg
+python3 tests/grammars/antlr_exact_lexer/differential.py \
+  --antlr-jar /path/to/antlr-4.13.2-complete.jar \
+  --java-home /usr/lib/jvm/java-17-openjdk-amd64
+```
+
+`bin/exact_endpoint_oracle/results.json` records tool provenance, the complete
+case denominator, elapsed time, and any counterexamples. This tests individual
+match endpoints; whole-lexer priority/recovery and parser compatibility are
+separate conformance gates.
