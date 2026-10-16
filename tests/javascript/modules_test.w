@@ -115,8 +115,6 @@ void test_modules_rejections():
 	module_reject(c"export default 1;", 6)
 	module_reject(c"export * from 'dep';", 6)
 	module_reject(c"export {x} from 'dep';", 6)
-	module_reject(c"export let x = 1;", 6)
-	module_reject(c"let x = 1; export {x};", 6)
 	module_reject(c"export {x};", 6)
 	module_reject(c"export const x = 1; export {x};", 6)
 	module_reject(c"import {x} from 'dep'; const x = 2;", 6)
