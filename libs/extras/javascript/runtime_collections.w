@@ -159,7 +159,7 @@ js_value* js_runtime_string_method(void* runtime, void* context, js_value* recei
 	return js_runtime_number(rt, -1.0)
 
 void js_runtime_install_collections(js_runtime* rt):
-	rt.array_prototype = js_runtime_alloc(rt, 5)
+	rt.array_prototype = js_runtime_alloc(rt, 6)
 	rt.string_prototype = js_runtime_alloc(rt, 5)
 	js_runtime_collection_method(rt, rt.array_prototype, c"push", 1, js_runtime_array_method)
 	js_runtime_collection_method(rt, rt.array_prototype, c"shift", 2, js_runtime_array_method)

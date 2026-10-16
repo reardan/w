@@ -141,6 +141,7 @@ struct js_runtime:
 
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
+void js_runtime_install_array(js_runtime* rt);
 void js_runtime_install_regexp(js_runtime* rt);
 void js_regexp_free(void* raw);
 js_value* js_regexp_literal(js_runtime* rt, char* raw);
@@ -431,6 +432,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_promises(rt)
 	js_runtime_install_binary(rt)
 	js_runtime_install_collections(rt)
+	js_runtime_install_array(rt)
 	js_runtime_install_regexp(rt)
 	js_runtime_install_builtins(rt)
 	js_runtime_install_number_parse(rt)
@@ -1792,3 +1794,5 @@ import libs.extras.javascript.runtime_for_in
 import libs.extras.javascript.runtime_equality
 
 import libs.extras.javascript.runtime_has
+
+import libs.extras.javascript.runtime_array
