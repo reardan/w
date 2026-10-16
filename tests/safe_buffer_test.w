@@ -163,8 +163,8 @@ void test_checked_collection_helper_name_collisions():
 	buffer_case(c"import lib.safe_buffer\nvoid __w_int_buffer_drop(WIntBuffer* value):\n\treturn\nint main():\n\town WIntBuffer* b = int_buffer_new()\n\treturn 0\n", c"")
 	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WIntBuffer* b = int_buffer_new()\n\treturn 0\nvoid __w_int_buffer_drop(WIntBuffer* value):\n\treturn\nint main():\n\treturn dispose()\n", c"")
 	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WByteString* s = byte_string_new()\n\treturn 0\nvoid __w_byte_string_drop(WByteString* value):\n\treturn\nint main():\n\treturn dispose()\n", c"")
-	buffer_case(c"import lib.safe_buffer\nvoid __w_int_buffer_drop(WIntBuffer* value);\nint main():\n\town WIntBuffer* b = int_buffer_new()\n\treturn 0\n", c"")
-	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WIntBuffer* b = int_buffer_new()\n\treturn 0\nvoid __w_int_buffer_drop(WIntBuffer* value);\nint main():\n\treturn dispose()\n", c"")
+	buffer_case(c"import lib.safe_buffer\nvoid __w_int_buffer_drop(WIntBuffer* value);\nint main():\n\town WIntBuffer* b = int_buffer_new()\n\treturn 0\n", 0)
+	buffer_case(c"import lib.safe_buffer\nint dispose():\n\town WIntBuffer* b = int_buffer_new()\n\treturn 0\nvoid __w_int_buffer_drop(WIntBuffer* value);\nint main():\n\treturn dispose()\n", 0)
 
 
 void test_checked_collection_runtime_pin():
