@@ -138,3 +138,21 @@ void test_shared_aggregate_fail_closed():
 	aggregate_lifetime_case(c"struct Bad:\n\tref int* item\nint main():\n\tint x = 0\n\tref[a] Bad b = Bad(&x)\n\treturn 0\n", c"safe:")
 	aggregate_lifetime_case(c"struct Bad:\n\town int* item\nint main():\n\town int* x = new int\n\tref[a] Bad b = Bad(x)\n\treturn 0\n", c"safe:")
 	aggregate_lifetime_case(c"struct Bad:\n\trefmut[x] int* item\nint main():\n\tint x = 0\n\tref[a] Bad b = Bad(&x)\n\treturn 0\n", c"safe:")
+
+
+void test_shared_aggregate_constructor_boundaries():
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\tHolder h = Holder(&x, 3)\n\treturn h.tag\n", c"safe:")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\ntype View = ref[a] Holder\nint main():\n\tint x = 7\n\tView h = View(&x, 3)\n\tref int* r = h.item\n\treturn *r + h.tag - 10\n", 0)
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\tref[a] Holder h = Holder(tag: 3, item: &x)\n\tref int* r = h.item\n\treturn *r + h.tag - 10\n", 0)
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\tref[a] Holder h = Holder(item: &x)\n\treturn h.tag\n", c"every field")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint main():\n\tint x = 7\n\tref[a] Holder h = Holder(item: &x, item: &x)\n\treturn h.tag\n", c"initialized twice")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint main():\n\tref[a] Holder h = Holder()\n\treturn h.tag\n", c"every field")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint change(refmut int* p):\n\t*p = 9\n\treturn 3\nint main():\n\tint x = 7\n\tref[a] Holder h = Holder(&x, change(&x))\n\treturn h.tag\n", c"conflicting")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nint change(refmut int* p):\n\t*p = 9\n\treturn 3\nint main():\n\tint x = 7\n\tref[a] Holder h = Holder(tag: change(&x), item: &x)\n\tref int* r = h.item\n\treturn *r + h.tag - 12\n", 0)
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nown int* make_owner():\n\town int* p = new int\n\treturn p\nint main():\n\tref[a] Holder h = Holder(make_owner(), 3)\n\treturn h.tag\n", c"borrowed return contract")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nint main():\n\tint x = 7\n\tref int* r = make(&x).item\n\treturn *r - 7\n", 0)
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nint main():\n\tint x = 7\n\tref int* r = make(&x).item\n\tx = 9\n\treturn *r\n", c"conflicting")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nint main():\n\tint x = 7\n\trefmut int* r = make(&x).item\n\treturn *r\n", c"mutable borrow from a shared")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nref[a] int* bad(ref[a] int* p):\n\treturn &make(p).tag\nint main():\n\treturn 0\n", c"descriptor fields")
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] Holder make(ref[a] int* p):\n\treturn Holder(p, 3)\nref[a] int* bad(ref[a] int* p):\n\treturn &make(p).item\nint main():\n\treturn 0\n", c"descriptor fields", 1)
+	aggregate_lifetime_case(c"struct Holder:\n\tref[field] int* item\n\tint tag\nref[a] int* bad(ref[a] Holder h):\n\treturn &h.item\nint main():\n\treturn 0\n", c"descriptor fields", 1)
