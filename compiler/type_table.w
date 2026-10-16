@@ -473,6 +473,8 @@ const int type_kind_ref = 22
 const int type_kind_refmut = 23
 const int type_kind_safe_slice = 24
 const int type_kind_safe_record = 25
+const int type_kind_optref = 26
+const int type_kind_optrefmut = 27
 
 
 int type_safe_kind(int type_index):
@@ -481,6 +483,7 @@ int type_safe_kind(int type_index):
 	int kind = type_record(type_index).kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
+	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
 	return 0
 
 
@@ -507,10 +510,14 @@ int type_get_safe_lifetime(int target, int kind, char* lifetime):
 	char* prefix = c"own "
 	if (kind == 2): prefix = c"ref "
 	if (kind == 3): prefix = c"refmut "
+	if (kind == 6): prefix = c"optref "
+	if (kind == 7): prefix = c"optrefmut "
 	type_rec* new_type = type_alloc()
 	if (lifetime != 0):
 		if (kind == 2): prefix = c"ref["
 		else: prefix = c"refmut["
+		if (kind == 6): prefix = c"optref["
+		if (kind == 7): prefix = c"optrefmut["
 		char* named = strjoin(prefix, lifetime)
 		char* qualified = strjoin(named, c"] ")
 		new_type.name = strjoin(qualified, type_get_name(target))

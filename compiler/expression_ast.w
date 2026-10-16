@@ -620,10 +620,14 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	char* prefix = c"own "
 	if (kind == 2): prefix = c"ref "
 	if (kind == 3): prefix = c"refmut "
+	if (kind == 6): prefix = c"optref "
+	if (kind == 7): prefix = c"optrefmut "
 	char* name = 0
 	if (lifetime >= 0):
 		prefix = c"ref["
 		if (kind == 3): prefix = c"refmut["
+		if (kind == 6): prefix = c"optref["
+		if (kind == 7): prefix = c"optrefmut["
 		char* labeled = strjoin(prefix, tree.type_names + lifetime)
 		char* qualified = strjoin(labeled, c"] ")
 		name = strjoin(qualified, type_get_name(base))
@@ -670,7 +674,7 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	if (rec.kind == type_kind_function): return
 	int actual
 	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
-	else if ((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
+	else if (((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)) || (rec.kind == type_kind_optref) || (rec.kind == type_kind_optrefmut)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
 	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
 	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
 	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)

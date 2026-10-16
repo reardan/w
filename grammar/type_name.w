@@ -74,6 +74,8 @@ int safe_qualifier_ahead():
 	if (peek(c"own")): kind = 1
 	if (peek(c"ref")): kind = 2
 	if (peek(c"refmut")): kind = 3
+	if (peek(c"optref")): kind = 6
+	if (peek(c"optrefmut")): kind = 7
 	if (kind == 0): return 0
 	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
 	char* save = generic_reparse_save()

@@ -302,6 +302,30 @@ void test_checked_lifetime_types():
 	assert1(retained_types[retained_type_note(shared)].lifetime == 0)
 
 
+void test_optional_reference_types():
+	push_basic_types()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	for kind in range(6, 8):
+		int optional = type_get_safe_lifetime(pointer_type, kind, c"a")
+		int unnamed = type_get_safe(pointer_type, kind)
+		assert_equal(optional, type_get_safe_lifetime(pointer_type, kind, c"a"))
+		assert_equal(unnamed, type_get_safe(pointer_type, kind))
+		assert1(optional != unnamed)
+		assert_equal(kind - 4, type_safe_kind(optional))
+		assert_equal(pointer_type, type_safe_target(optional))
+		assert_equal(__word_size__, type_get_size(optional))
+		assert_equal(1, type_get_pointer_level(optional))
+		int alias = type_push_alias(c"MaybeReference", optional)
+		assert_equal(kind - 4, type_safe_kind(alias))
+		int snapshot = retained_type_note(alias)
+		int target = retained_types[snapshot].target
+		assert_equal(kind + 20, retained_types[target].kind)
+		assert_equal(0, strcmp(retained_types[target].lifetime, c"a"))
+		assert1(types_compatible(optional, pointer_type))
+	assert_equal(0, strcmp(type_get_name(type_get_safe(pointer_type, 6)), c"optref int"))
+	assert_equal(0, strcmp(type_get_name(type_get_safe_lifetime(pointer_type, 7, c"a")), c"optrefmut[a] int"))
+
+
 void test_checked_slice_types():
 	push_basic_types()
 	int element = type_lookup(c"int")

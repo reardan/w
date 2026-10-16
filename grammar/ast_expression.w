@@ -2099,6 +2099,8 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (peek(c"own")): safe_kind = 1
 	if (peek(c"ref")): safe_kind = 2
 	if (peek(c"refmut")): safe_kind = 3
+	if (peek(c"optref")): safe_kind = 6
+	if (peek(c"optrefmut")): safe_kind = 7
 	if (safe_kind && ((nextc == '.') || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0) || (sym_probe(token) >= 0))): safe_kind = 0
 	if (safe_kind):
 		if ((type_safe_entrypoint == 0) || (ast_retain_mode == 0)): return -1
