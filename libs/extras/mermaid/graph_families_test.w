@@ -84,3 +84,17 @@ void test_graph_family_rejections_and_truncations():
 			mm_scene_free(s)
 			mm_document_free(d)
 	__w_list_free(cast(__w_list*, sources))
+
+void test_graph_accessible_metadata_and_title_once():
+	char* text = c"---\ntitle: Components\n---\narchitecture-beta\naccTitle: Accessible architecture\nservice A(server)[Worker]\n"
+	mm_document* d = graph_family_parse(text)
+	mm_scene* s = mm_render(d)
+	int titles = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Components") == 0): titles = titles + 1
+	assert_equal(1, titles)
+	char* svg = mm_svg(s)
+	asserts(c"accessible title exported", index_of(svg, c"Accessible architecture") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
