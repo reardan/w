@@ -28,6 +28,7 @@ int methods_runtime_run():
 
 
 int main():
+	malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if methods_runtime_run(): return 1
 	return debug_alloc_report_leaks() - before

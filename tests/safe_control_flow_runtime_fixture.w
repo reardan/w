@@ -54,6 +54,7 @@ int control_flow_defer_run():
 
 
 int main():
+	malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if control_flow_cleanup(1) != 3: return 1
 	if control_flow_cleanup(0) != 14: return 2

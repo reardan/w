@@ -53,6 +53,7 @@ int optional_exit():
 
 
 int main():
+	malloc_force_debug_mode()
 	int baseline = debug_alloc_report_leaks()
 	if optional_exercise(0) != 9: return 1
 	if optional_exercise(1) != 16: return 2

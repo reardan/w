@@ -10,7 +10,9 @@ ref[a] byte[] arena_local_copy(refmut[a] WByteArena* arena):
 
 int arena_exercise():
 	own WByteArena* arena = byte_arena_new()
-	byte[0] empty
+	byte[1] empty_storage
+	ref byte[] storage = empty_storage
+	ref byte[] empty = storage[0:0]
 	ref byte[] nothing = byte_arena_copy(arena, empty)
 	if nothing.length != 0: return 1
 	ref byte[] local = arena_local_copy(arena)
