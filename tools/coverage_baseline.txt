@@ -29,8 +29,10 @@
 # 88.5%, and REPL branches at 74.4%. Preserve their existing 0.8/0.7,
 # 0.6 and 0.8 point margins. Code-generator lines remain at 97.0%, so
 # retain that floor; the grammar measurements and floors are unchanged.
+# Missing-input symbols CLI tests raise compiler lines to 95.4%; retain
+# the existing 0.8 point margin.
 code_generator/ 96.1
-compiler/ 94.5
+compiler/ 94.6
 grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
