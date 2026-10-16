@@ -245,3 +245,117 @@ void test_narrative_long_reverse_message_stays_in_viewbox():
 	mm_scene_free(scene)
 	mm_document_free(d)
 	string_free(text)
+
+void test_narrative_numbering_ranges_toggle_and_restart():
+	mm_document* d = narrative_parse(c"sequenceDiagram\nautonumber 10 5\nA->>B: first\nautonumber off\nB->>A: hidden\nautonumber\nA->>B: resumed\nautonumber 2\nB->>A: reset\n")
+	assert_equal(4, d.narrative.length)
+	mm_narrative_event* event = d.narrative[0]
+	assert_equal(10, event.value)
+	event = d.narrative[1]
+	assert_equal(0, event.start)
+	event = d.narrative[2]
+	assert_equal(20, event.value)
+	narrative_export(d, c"20. resumed")
+	narrative_export(d, c"2. reset")
+	mm_scene* scene = mm_render(d)
+	char* svg = mm_svg(scene)
+	asserts(c"hidden message has no number", index_of(svg, c">hidden</text>") >= 0)
+	free(svg)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	list[char*] invalid = list[char*]{c"sequenceDiagram\nautonumber 1 0", c"sequenceDiagram\nautonumber -1", c"sequenceDiagram\nautonumber 1 2 3", c"sequenceDiagram\nautonumber 999999999999999999"}
+	for char* source in invalid:
+		d = mm_parse(source, strlen(source))
+		asserts(c"invalid numbering diagnosed", d.error != 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, invalid))
+
+void test_narrative_gantt_forward_multiple_and_until_dependencies():
+	mm_document* d = narrative_parse(c"gantt\nDeploy: deploy, after build check, 1d\nFollow: 2d\nBuild: build, 2024-01-01, 2d\nCheck: check, 2024-01-02, 4d\nWait: wait, 2024-01-01, until deploy\n")
+	mm_narrative_event* deploy = d.narrative[0]
+	mm_narrative_event* follow = d.narrative[1]
+	mm_narrative_event* check = d.narrative[3]
+	mm_narrative_event* wait = d.narrative[4]
+	assert_equal(check.end, deploy.start)
+	assert_equal(deploy.end, follow.start)
+	assert_equal(deploy.start, wait.end)
+	assert_equal(mm_n_date(c"2024-01-09"), follow.end)
+	narrative_export(d, c"Deploy")
+	mm_document_free(d)
+	list[char*] invalid = list[char*]{c"gantt\nA: a, after b, 1d\nB: b, after a, 1d", c"gantt\nA: a, 2024-01-01, until absent", c"gantt\nA: a, after b missing, 1d\nB: b, 2024-01-01, 1d", c"gantt\nA: 9999-12-31, 1d", c"gantt\nA: a, 2024-01-05, until b\nB: b, 2024-01-01, 1d"}
+	for char* source in invalid:
+		d = mm_parse(source, strlen(source))
+		asserts(c"invalid schedule diagnosed", d.error != 0)
+		asserts(c"invalid schedule suppresses preview", mm_render(d) == 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, invalid))
+
+void test_narrative_sequence_creation_and_destruction_geometry():
+	char* source = c"sequenceDiagram\nparticipant A\nA->>A: ready\ncreate actor B as Worker\nA->>B: create\nB->>A: working\ndestroy B\nA-xB: stop\n"
+	mm_document* d = narrative_parse(source)
+	mm_narrative_event* created = d.narrative[1]
+	mm_narrative_event* destroyed = d.narrative[4]
+	assert_equal(MM_N_CREATE, created.kind)
+	assert_equal(2, created.end)
+	assert_equal(MM_N_DESTROY, destroyed.kind)
+	assert_equal(5, destroyed.end)
+	mm_scene* scene = mm_render(d)
+	mm_bounds* original = scene.nodes[0]
+	mm_bounds* worker = scene.nodes[1]
+	asserts(c"created participant header begins later", worker.y > original.y)
+	int cx = worker.x + worker.w / 2
+	int lifeline = 0
+	for mm_primitive* item in scene.items:
+		if (item.kind == MM_LINE && item.dashed == 1 && item.x == cx && item.x2 == cx):
+			lifeline = 1
+			assert_equal(worker.y + 75, item.y)
+			assert_equal(170 + destroyed.end * 70, item.y2)
+	asserts(c"created lifeline exists and ends at destruction", lifeline)
+	mm_scene_free(scene)
+	narrative_export(d, c"Worker")
+	mm_document_free(d)
+	for length in range(strlen(source) + 1):
+		d = mm_parse(source, length)
+		scene = mm_render(d)
+		if (d.error != 0): asserts(c"incomplete lifecycle suppresses scene", scene == 0)
+		mm_scene_free(scene)
+		mm_document_free(d)
+	list[char*] invalid = list[char*]{c"sequenceDiagram\ncreate participant A", c"sequenceDiagram\nparticipant A\ncreate participant A\nB->>A: hi", c"sequenceDiagram\ncreate participant B\nB->>A: wrong", c"sequenceDiagram\ndestroy A", c"sequenceDiagram\nA->>B: hi\ndestroy B\nA->>B: bye\nB->>A: late", c"sequenceDiagram\nA->>B: hi\ndestroy B\nA->>A: wrong"}
+	for char* text in invalid:
+		d = mm_parse(text, strlen(text))
+		asserts(c"invalid lifecycle diagnosed", d.error != 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, invalid))
+
+void test_narrative_destroy_clips_active_bar_and_zero_number():
+	mm_document* d = narrative_parse(c"sequenceDiagram\nautonumber 0 2\nA->>+B: first\ndestroy B\nB-->>-A: last\n")
+	narrative_export(d, c"0. first")
+	mm_scene* scene = mm_render(d)
+	int destroy_y = 170 + 3 * 70
+	int bars = 0
+	for mm_primitive* item in scene.items:
+		if (item.kind == MM_BOX && item.x2 - item.x == 12):
+			bars = bars + 1
+			assert_equal(destroy_y, item.y2)
+	assert_equal(1, bars)
+	mm_scene_free(scene)
+	mm_document_free(d)
+
+void test_narrative_gantt_maximum_reverse_dependency_chain():
+	string_builder* source = string_from(c"gantt\n")
+	for i in range(MM_MAX_ITEMS):
+		string_append(source, c"Task: t")
+		string_append_int(source, i)
+		if (i + 1 == MM_MAX_ITEMS): string_append(source, c",2024-01-01,1d\n")
+		else:
+			string_append(source, c",after t")
+			string_append_int(source, i + 1)
+			string_append(source, c",1d\n")
+	mm_document* d = narrative_parse(source.data)
+	assert_equal(MM_MAX_ITEMS, d.narrative.length)
+	mm_narrative_event* first = d.narrative[0]
+	mm_narrative_event* last = d.narrative[MM_MAX_ITEMS - 1]
+	assert_equal(last.start + MM_MAX_ITEMS - 1, first.start)
+	assert_equal(last.start + MM_MAX_ITEMS, first.end)
+	mm_document_free(d)
+	string_free(source)
