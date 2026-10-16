@@ -97,6 +97,7 @@ int safe_kind(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
+	if (kind == type_kind_safe_slice): return 2
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	return 0
 
@@ -115,7 +116,13 @@ int safe_contains_checked(int type, int depth):
 int safe_slice(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return retained_types[type].kind == type_kind_slice
+	return (retained_types[type].kind == type_kind_slice) || (retained_types[type].kind == type_kind_safe_slice)
+
+
+int safe_inline_slice(int type):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	return retained_types[type].kind == type_kind_safe_slice
 
 
 int safe_borrow_kind(int type):
@@ -404,7 +411,7 @@ int safe_place(int id, char* state, int* via):
 				safe_error(id, c"safe: raw pointer access requires an unsafe interface", -1)
 			root = safe_place(left, state, via)
 		if ((n.op == 'i') || (n.op == 'I')):
-			if (safe_kind(base.semantic_type)): safe_error(id, c"safe: checked pointer indexing is not supported; use a bounds-checked array", -1)
+			if (safe_kind(base.semantic_type) && (safe_inline_slice(base.semantic_type) == 0)): safe_error(id, c"safe: checked pointer indexing is not supported; use a bounds-checked array", -1)
 			safe_eval(safe_child(&n, n.right), state, -1)
 		return root
 	safe_error(id, c"safe: unsupported storage projection", -1)
@@ -418,7 +425,15 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	# Slice expressions retain their base array type in the semantic AST.
 	# Match their actual representation before comparing element types.
 	int slice_value = safe_slice(n.semantic_type) || (n.op == 'Z')
-	if (safe_slice(want) != slice_value):
+	int inline_view = safe_inline_slice(want)
+	int array_value = 0
+	int actual_type = safe_unqualified(n.semantic_type)
+	if (actual_type >= 0): array_value = retained_types[actual_type].kind == type_kind_array
+	if (inline_view):
+		if (n.op == 'Z'): safe_error(id, c"safe: checked slice ranges require inline descriptor lowering", -1)
+		if ((safe_inline_slice(n.semantic_type) == 0) && (array_value == 0)):
+			safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
+	else if (safe_inline_slice(n.semantic_type) || (safe_slice(want) != slice_value)):
 		safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
 	if (n.op == 'r'):
 		retained_node place
@@ -434,7 +449,7 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	int root = -1
 	int via = -1
 	if (n.op == 'C'):
-		if ((safe_kind(n.semantic_type) < 2) || safe_slice(want)):
+		if ((safe_kind(n.semantic_type) < 2) || (safe_slice(want) && (inline_view == 0))):
 			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
 		if ((kind == 3) && (safe_kind(n.semantic_type) == 2)):
 			safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
@@ -452,7 +467,7 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	else if (n.op == 'r'): root = safe_place(safe_child(&n, n.left), state, &via)
 	else if (n.op == 'v'):
 		int index = safe_index(n.binding)
-		if ((index < 0) || (safe_borrow_kind(n.semantic_type) == 0)):
+		if ((index < 0) || ((safe_borrow_kind(n.semantic_type) == 0) && ((inline_view == 0) || (array_value == 0)))):
 			safe_error(id, c"safe: reference requires an address or checked pointer", -1)
 		safe_read(index, id, state)
 		root = index
@@ -484,6 +499,7 @@ int safe_same_contract_type(int a, int b):
 	b = safe_unqualified(b)
 	if ((a < 0) || (b < 0)): return a == b
 	if (safe_kind(a) != safe_kind(b)): return 0
+	if (safe_inline_slice(a) != safe_inline_slice(b)): return 0
 	if (safe_kind(a)):
 		a = safe_unqualified(retained_types[a].target)
 		b = safe_unqualified(retained_types[b].target)
@@ -528,7 +544,7 @@ int safe_has_body(int function):
 # all those origins, and the body may return a view derived from any of them.
 int safe_return_parameter(int id, retained_binding* binding):
 	if (safe_borrow_kind(binding.return_type) < 2): return -1
-	if (safe_slice(binding.return_type)):
+	if (safe_slice(binding.return_type) && (safe_inline_slice(binding.return_type) == 0)):
 		safe_error(id, c"safe: returning slices requires an explicit lifetime contract", -1)
 	char* lifetime = safe_lifetime(binding.return_type)
 	int result = -1
