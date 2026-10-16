@@ -140,6 +140,7 @@ js_value* js_runtime_bigint_u64(js_runtime* rt, int bits);
 js_value* js_runtime_bigint_convert(js_runtime* rt, js_value* value, int allow_number);
 js_value* js_bigint_literal(js_runtime* rt, char* raw);
 js_value* js_bigint_negate(js_runtime* rt, js_value* value);
+js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b);
 char* js_bigint_text(js_value* value);
 void js_runtime_install_builtins(js_runtime* rt);
 void js_runtime_install_binary(js_runtime* rt);
@@ -625,6 +626,7 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 		js_value* result = js_runtime_string(rt, joined)
 		js_text_free(joined)
 		return result
+	if (a.kind == 10 || b.kind == 10): return js_bigint_binary(rt, op, a, b)
 	if (a.kind != 3 || b.kind != 3):
 		js_runtime_fail(rt, 6, c"implicit coercion is outside the runtime subset")
 		return rt.undefined_value
@@ -926,7 +928,9 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		if (update):
 			char* op = c"+"
 			if (strcmp(node.text, c"--") == 0): op = c"-"
-			value = js_runtime_binary(rt, op, old, js_runtime_number(rt, 1.0))
+			js_value* one = js_runtime_number(rt, 1.0)
+			if (old.kind == 10): one = js_runtime_bigint_i64(rt, 1)
+			value = js_runtime_binary(rt, op, old, one)
 		else:
 			value = js_runtime_eval_node(rt, node.children[1], env)
 			if (read && rt.completion.status == 0):

@@ -119,6 +119,6 @@ sticky for the document's module context; there are no import maps or CORS modul
 fetches. Its integration test executes the unchanged `webgl_env.mjs`,
 `accessibility.mjs`, and `mobile_input.mjs`, including `makeEnv` and the event queue.
 The original `tools/web/index.html` still needs top-level await; the original
-`wasi_lite.mjs` additionally needs classes, `super`, `instanceof`, and BigInt
-arithmetic. Passing module preflight does not imply every API used by an uncalled
+`wasi_lite.mjs` additionally needs classes, `super`, and `instanceof`. Its
+BigInt clock multiplication now executes with exact bounded integer arithmetic. Passing module preflight does not imply every API used by an uncalled
 export (for example `Map` or DOM accessibility operations) is available.

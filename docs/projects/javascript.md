@@ -248,7 +248,17 @@ Native Promise, binary buffers/views and text-codec constructors are supported;
 other constructor capabilities depend on installed host hooks. The runtime also
 installs bounded Number, Math and Date operations; this is not a complete standard
 library. BigInt literals lower to a distinct node for the bounded binary-boundary
-implementation; arbitrary-precision arithmetic is not implemented. No DOM, timer
+implementation. It supports exact `+`, `-`, `*`, `/`, ordered BigInt-to-BigInt
+comparisons, compound assignments and increment/decrement within the existing
+`[-2^63, 2^64-1]` range. Division truncates toward zero; division by zero and
+results outside that range throw `RangeError`, and mixed Number/BigInt arithmetic
+throws `TypeError`. The WASI clock's millisecond-to-nanosecond multiplication and
+DataView roundtrip never convert a BigInt operand or result to Number. General
+BigInt coercion, mixed-type comparison, remainder, exponentiation and bitwise
+operators remain unsupported; arbitrary-precision arithmetic is not implemented.
+These bounded range failures are implementation limits, not ECMAScript's
+arbitrary-precision behavior. Arithmetic follows the applicable algorithms in
+[ECMA-262 BigInt operations](https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-bigint-multiply). No DOM, timer
 task queue or browser authority is installed by the runtime. The separate
 [module API](javascript_modules.md) provides bounded acyclic graph loading with
 named const/function exports and live read-only imports. Browser module loading
