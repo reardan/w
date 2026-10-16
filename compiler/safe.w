@@ -33,6 +33,7 @@ int* safe_moved_at
 int safe_function
 int safe_return_type
 int safe_return_root
+list[char*] safe_sets
 int safe_validate
 int safe_event
 int safe_position
@@ -299,25 +300,66 @@ void safe_read(int index, int id, char* state):
 		safe_error(id, c"safe: use of uninitialized or moved value", cause)
 
 
-int safe_ancestor(int ancestor, int child):
-	while (child >= 0):
-		if (child == ancestor): return 1
-		child = safe_parent_ref[child]
+# Provenance and reborrow ancestry are sets of local identities. The first
+# set for each local is its singleton; union sets are interned per function.
+# This keeps all possible backing values alive when a call may return either
+# of several borrowed inputs, without assigning one arbitrary representative.
+int safe_set_has(int set, int member):
+	if ((set < 0) || (member < 0)): return 0
+	return safe_sets[set][member] != 0
+
+
+int safe_set_union(int left, int right):
+	if (left < 0): return right
+	if ((right < 0) || (left == right)): return left
+	for set in range(safe_sets.length):
+		int equal = 1
+		for i in range(safe_locals.length):
+			if (safe_sets[set][i] != (safe_sets[left][i] | safe_sets[right][i])): equal = 0
+		if (equal): return set
+	char* merged = safe_zero(safe_locals.length, 1)
+	for i in range(safe_locals.length): merged[i] = safe_sets[left][i] | safe_sets[right][i]
+	int result = safe_sets.length
+	safe_sets.push(merged)
+	return result
+
+
+int safe_set_overlap(int left, int right):
+	if ((left < 0) || (right < 0)): return 0
+	for i in range(safe_locals.length):
+		if (safe_sets[left][i] && safe_sets[right][i]): return 1
 	return 0
 
 
-void safe_access(int root, int via, int write, int id, char* state):
-	if ((root < 0) || (safe_validate == 0)): return
-	safe_read(root, id, state)
-	if ((via >= 0) && write && (safe_local_kind(via) == 2)):
-		safe_error(id, c"safe: write through a shared reference", safe_birth[via])
+int safe_ancestor(int ancestor, int children):
+	if (children < 0): return 0
+	if (safe_set_has(children, ancestor)): return 1
+	for child in range(safe_locals.length):
+		if (safe_set_has(children, child)):
+			if (safe_ancestor(ancestor, safe_parent_ref[child])): return 1
+	return 0
+
+
+int safe_shared_parent(int parents):
+	for i in range(safe_locals.length):
+		if (safe_set_has(parents, i) && (safe_local_kind(i) == 2)): return i
+	return -1
+
+
+void safe_access(int roots, int via, int write, int id, char* state):
+	if ((roots < 0) || (safe_validate == 0)): return
+	for root in range(safe_locals.length):
+		if (safe_set_has(roots, root)): safe_read(root, id, state)
+	int shared = safe_shared_parent(via)
+	if ((shared >= 0) && write):
+		safe_error(id, c"safe: write through a shared reference", safe_birth[shared])
 	for i in range(safe_call_roots.length):
-		if ((safe_call_roots[i] == root) && (write || (safe_call_kinds[i] != 2))):
+		if (safe_set_overlap(safe_call_roots[i], roots) && (write || (safe_call_kinds[i] != 2))):
 			safe_error(id, c"safe: conflicting access during call argument evaluation", -1)
 	safe_flow* event = safe_graph[safe_event]
 	for i in range(safe_locals.length):
 		if ((safe_local_kind(i) < 2) || (state[i] != 2)): continue
-		if (safe_origin[i] != root): continue
+		if (safe_set_overlap(safe_origin[i], roots) == 0): continue
 		if (safe_ancestor(i, via)): continue
 		if ((event.live[i] == 0) && (event.uses[i] == 0)): continue
 		if (write || (safe_local_kind(i) == 3)):
@@ -412,8 +454,9 @@ int safe_borrow(int id, int want, char* state, int* parent):
 			via = index
 			root = safe_origin[index]
 	else: safe_error(id, c"safe: reference requires a stable place", -1)
-	if ((via >= 0) && (kind == 3) && (safe_local_kind(via) == 2)):
-		safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", safe_birth[via])
+	int shared = safe_shared_parent(via)
+	if ((shared >= 0) && (kind == 3)):
+		safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", safe_birth[shared])
 	safe_access(root, via, kind == 3, id, state)
 	*parent = via
 	return root
@@ -499,7 +542,7 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 		# storage reserved while later arguments are evaluated.
 		if ((root >= 0) && kind):
 			for i in range(saved, safe_call_roots.length):
-				if ((safe_call_roots[i] == root) && ((kind != 2) || (safe_call_kinds[i] != 2))):
+				if (safe_set_overlap(safe_call_roots[i], root) && ((kind != 2) || (safe_call_kinds[i] != 2))):
 					safe_error(arg, c"safe: conflicting call arguments", -1)
 			safe_call_roots.push(root)
 			safe_call_kinds.push(kind)
@@ -554,16 +597,16 @@ int safe_eval(int id, char* state, int want):
 		int lk = safe_borrow_kind(lhs.semantic_type)
 		int via = -1
 		int root = safe_place(left, state, &via)
-		if (lk >= 2): safe_error(id, c"safe: references cannot be reassigned", safe_birth[root])
+		if (lk >= 2): safe_error(id, c"safe: references cannot be reassigned", safe_birth[safe_index(lhs.binding)])
 		if ((lk == 1) && ((lhs.op != 'v') || n.value)): safe_error(id, c"safe: owner assignment requires a plain binding", -1)
-		if (n.value): safe_read(root, id, state)
+		if (n.value):
+			for i in range(safe_locals.length):
+				if (safe_set_has(root, i)): safe_read(i, id, state)
 		safe_eval(right, state, lhs.semantic_type)
 		# Replacement of a moved/uninitialized scalar is valid. A write
 		# still conflicts with live borrows of its storage.
-		int old = state[root]
-		state[root] = 2
+		if (lhs.op == 'v'): state[root] = 2
 		safe_access(root, via, 1, id, state)
-		if (lhs.op != 'v'): state[root] = old
 		return -1
 	if ((op == 'd') || (op == '.') || (op == 'i') || (op == 'I') || (op == 'B')):
 		int via = -1
@@ -645,8 +688,10 @@ void safe_transfer(int event, char* state):
 			if (f.expression < 0): safe_error(f.node, c"safe: reference return requires a value", -1)
 			int parent = -1
 			int root = safe_borrow(f.expression, safe_return_type, state, &parent)
-			if (safe_validate && (root != safe_return_root)):
-				safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[root])
+			if (safe_validate):
+				for i in range(safe_locals.length):
+					if (safe_set_has(root, i) && (safe_set_has(safe_return_root, i) == 0)):
+						safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[i])
 		else: safe_eval(f.expression, state, safe_return_type)
 	else if (f.action == 3):
 		for i in range(safe_locals.length):
@@ -678,6 +723,11 @@ void safe_function_check(int function):
 		if ((n.kind == retained_statement) && (strcmp(n.name, c"defer") == 0) && safe_within(id, function)):
 			safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
 	int count = safe_locals.length
+	safe_sets = new list[char*]
+	for i in range(count):
+		char* singleton = safe_zero(count, 1)
+		singleton[i] = 1
+		safe_sets.push(singleton)
 	safe_origin = cast(int*, malloc((count + 1) * __word_size__))
 	safe_parent_ref = cast(int*, malloc((count + 1) * __word_size__))
 	safe_birth = cast(int*, malloc((count + 1) * __word_size__))
@@ -768,6 +818,8 @@ void safe_function_check(int function):
 		free(safe_graph[i].uses)
 		free(safe_graph[i])
 	safe_graph.free()
+	for i in range(safe_sets.length): free(safe_sets[i])
+	safe_sets.free()
 	safe_locals.free()
 	safe_local_index.free()
 	free(cast(char*, safe_origin))
