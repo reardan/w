@@ -44,6 +44,9 @@ struct safe_borrowed:
 list[safe_borrowed*] safe_components
 safe_borrowed* safe_return_components
 int safe_real_locals
+list[int] safe_path_parent
+list[int] safe_path_offset
+list[int] safe_path_type
 int* safe_origin
 int* safe_parent_ref
 int* safe_birth
@@ -839,7 +842,45 @@ int safe_build(int id, int next, int break_to, int continue_to):
 	return safe_add(id, safe_expr_root(group), -1, 0, next, -1)
 
 
+# Each owned child has a distinct allocation identity. Ancestors still overlap
+# descendants, so moving/destroying a parent conflicts with every child loan.
+# Unknown projections keep their original root and remain conservative.
+void safe_add_owned_paths(int parent, int type, int depth, int* remaining):
+	if ((depth > 32) || (*remaining <= 0)): return
+	if (safe_borrow_kind(type) == 0): return
+	if (safe_slice(type) || safe_record(type)): return
+	int element = safe_pointee(type)
+	if (element < 0): return
+	retained_type* record = retained_types[element]
+	for i in range(record.fields.length):
+		int field = record.fields[i].type
+		if (safe_kind(field) != 1): continue
+		if (*remaining <= 0): return
+		*remaining = *remaining - 1
+		int child = safe_locals.length
+		safe_locals.push(safe_locals[parent])
+		safe_path_parent.push(parent)
+		safe_path_offset.push(record.fields[i].offset)
+		safe_path_type.push(field)
+		safe_add_owned_paths(child, field, depth + 1, remaining)
+
+
+int safe_path_within(int child, int parent):
+	while (child >= 0):
+		if (child == parent): return 1
+		child = safe_path_parent[child]
+	return 0
+
+
+void safe_paths_initialize(int parent, char* state):
+	for i in range(safe_real_locals, safe_locals.length):
+		if (safe_path_within(i, parent)): state[i] = 2
+
+
 void safe_read(int index, int id, char* state):
+	if (index >= 0):
+		int parent = safe_path_parent[index]
+		if (parent >= 0): safe_read(parent, id, state)
 	if ((index >= 0) && safe_validate && ((state[index] & 7) != 2)):
 		int cause = safe_birth[index]
 		if ((state[index] & 4) && (safe_moved_at[index] >= 0)): cause = safe_moved_at[index]
@@ -873,7 +914,36 @@ int safe_set_union(int left, int right):
 int safe_set_overlap(int left, int right):
 	if ((left < 0) || (right < 0)): return 0
 	for i in range(safe_locals.length):
-		if (safe_sets[left][i] && safe_sets[right][i]): return 1
+		if (safe_sets[left][i]):
+			int parent = i
+			while (parent >= 0):
+				if (safe_sets[right][parent]): return 1
+				parent = safe_path_parent[parent]
+		if (safe_sets[right][i]):
+			int parent = i
+			while (parent >= 0):
+				if (safe_sets[left][parent]): return 1
+				parent = safe_path_parent[parent]
+	return 0
+
+
+int safe_project_owned(int roots, int offset, int type):
+	int result = -1
+	for root in range(safe_locals.length):
+		if (safe_set_has(roots, root) == 0): continue
+		int found = -1
+		if (safe_same_nominal(safe_pointee(type), safe_pointee(safe_path_type[root]))):
+			for child in range(safe_real_locals, safe_locals.length):
+				if ((safe_path_parent[child] == root) && (safe_path_offset[child] == offset)): found = child
+		if (found < 0): found = root
+		result = safe_set_union(result, found)
+	return result
+
+
+int safe_return_path_allowed(int allowed, int root):
+	while (root >= 0):
+		if (safe_set_has(allowed, root)): return 1
+		root = safe_path_parent[root]
 	return 0
 
 
@@ -1092,6 +1162,8 @@ int safe_place(int id, char* state, int* via):
 			while (safe_call_roots.length > saved):
 				safe_call_roots.pop()
 				safe_call_kinds.pop()
+		if ((n.op == '.') && (safe_kind(n.semantic_type) == 1)):
+			root = safe_project_owned(root, n.value, base.semantic_type)
 		return root
 	safe_error(id, c"safe: unsupported storage projection", -1)
 	return -1
@@ -1734,12 +1806,13 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 	if ((owner.op != 'v') || (safe_kind(owner.semantic_type) != 1)):
 		safe_error(id, c"safe: checked field replacement requires a named unique owner", -1)
 	int index = safe_index(owner.binding)
-	if ((index < 0) || (root != index)):
+	if (index < 0): safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
+	if ((root != index) && (safe_path_parent[root] != index)):
 		safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
 	# Preserve the destination descriptor through every RHS operand. Field
 	# moves remain separately gated; moving the parent cannot invalidate it.
 	int saved = safe_call_roots.length
-	safe_call_roots.push(root)
+	safe_call_roots.push(index)
 	safe_call_kinds.push(2)
 	safe_borrowed incoming
 	int previous_owner = safe_replacing_owner
@@ -1769,7 +1842,7 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 			mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
 		int parent = -1
 		int external = safe_borrowed_roots(&incoming, safe_lifetime_count(field.semantic_type), &parent)
-		if (safe_set_has(external, index)):
+		if (safe_set_overlap(external, index)):
 			safe_error(id, c"safe: owned fields cannot borrow their containing owner", -1)
 		if (safe_validate && safe_ancestor(index, parent)):
 			safe_error(id, c"safe: owned field replacement cannot create a reborrow cycle", safe_birth[index])
@@ -1909,7 +1982,9 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			safe_call_kinds.pop()
 		# Replacement of a moved/uninitialized scalar is valid. A write
 		# still conflicts with live borrows of its storage.
-		if (lhs.op == 'v'): state[root] = 2
+		if (lhs.op == 'v'):
+			state[root] = 2
+			safe_paths_initialize(root, state)
 		safe_access(root, via, 1, id, state)
 		return -1
 	if ((op == 'd') || (op == '.') || (op == 'i') || (op == 'I') || (op == 'B')):
@@ -2023,7 +2098,9 @@ void safe_transfer(int event, char* state):
 		int presence = 0
 		if (safe_optional(type) && (f.expression >= 0)): presence = safe_presence(f.expression, state)
 		state[index] = 1
-		if ((f.expression >= 0) || (retained_types[type].kind == type_kind_array)): state[index] = 2 | presence
+		if ((f.expression >= 0) || (retained_types[type].kind == type_kind_array)):
+			state[index] = 2 | presence
+			safe_paths_initialize(index, state)
 		if ((f.expression < 0) && safe_kind(type)): safe_error(f.node, c"safe: checked pointers require initialization", -1)
 	else if (f.action == 2):
 		if (safe_carries_borrow(safe_return_type)):
@@ -2040,7 +2117,7 @@ void safe_transfer(int event, char* state):
 			if (safe_validate):
 				for group in range(safe_lifetime_count(safe_return_type)):
 					for i in range(safe_locals.length):
-						if (safe_set_has(components.roots[group], i) && (safe_set_has(safe_return_components.roots[group], i) == 0)):
+						if (safe_set_has(components.roots[group], i) && (safe_return_path_allowed(safe_return_components.roots[group], i) == 0)):
 							safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[i])
 		else: safe_eval(f.expression, state, safe_return_type)
 	else if (f.action == 3):
@@ -2124,6 +2201,16 @@ void safe_function_check(int function):
 			for group in range(first_group, safe_lifetime_count(binding.type)):
 				components.roots[group] = safe_locals.length
 				safe_locals.push(safe_locals[i])
+	safe_path_parent = new list[int]
+	safe_path_offset = new list[int]
+	safe_path_type = new list[int]
+	for i in range(safe_locals.length):
+		safe_path_parent.push(-1)
+		safe_path_offset.push(-1)
+		safe_path_type.push(retained_bindings[safe_locals[i]].type)
+	for i in range(safe_real_locals):
+		int remaining = 256
+		safe_add_owned_paths(i, retained_bindings[safe_locals[i]].type, 0, &remaining)
 	safe_return_components = new safe_borrowed
 	safe_borrowed_clear(safe_return_components)
 	int count = safe_locals.length
@@ -2247,6 +2334,9 @@ void safe_function_check(int function):
 	safe_components.free()
 	free(safe_return_components)
 	safe_locals.free()
+	safe_path_parent.free()
+	safe_path_offset.free()
+	safe_path_type.free()
 	safe_local_index.free()
 	free(cast(char*, safe_origin))
 	free(cast(char*, safe_parent_ref))
