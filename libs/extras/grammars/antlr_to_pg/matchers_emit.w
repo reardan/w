@@ -78,16 +78,14 @@ void at_emit_charset_pred(string_builder* out, char* raw, char* var_name, int fo
 				c2 = raw[i]
 				i = i + 1
 		if (first == 0):
-			if (g_at_stateful): string_append(mem, c" || ")
-			else: string_append(mem, c" | ")
+			string_append(mem, c" || ")
 		first = 0
 		if (has_range):
 			string_append_char(mem, '(')
 			string_append(mem, var_name)
 			string_append(mem, c" >= ")
 			at_emit_c_char_literal(mem, c)
-			if (g_at_stateful): string_append(mem, c") && (")
-			else: string_append(mem, c") & (")
+			string_append(mem, c") && (")
 			string_append(mem, var_name)
 			string_append(mem, c" <= ")
 			at_emit_c_char_literal(mem, c2)
@@ -103,8 +101,7 @@ void at_emit_charset_pred(string_builder* out, char* raw, char* var_name, int fo
 	if (negated):
 		string_append(out, c"(((")
 		string_append(out, mem.data)
-		if (g_at_stateful): string_append(out, c") == 0) && (")
-		else: string_append(out, c") == 0) & (")
+		string_append(out, c") == 0) && (")
 		string_append(out, var_name)
 		string_append(out, c" != 0))")
 	else:
@@ -204,8 +201,7 @@ void at_emit_match_element(string_builder* out, at_element* e, int indent):
 		int i = 0
 		while (i < lit_len):
 			if (i > 0):
-				if (g_at_stateful): string_append(out, c" || ")
-				else: string_append(out, c" | ")
+				string_append(out, c" || ")
 			string_append(out, c"(input[index + ")
 			string_append_int(out, i)
 			string_append(out, c"] != ")

@@ -169,7 +169,9 @@ struct pg_grammar:
 	int mode
 	int stateful
 	int ordered_lexer
+	int guarded_progress
 	int allow_mode_eof
+	list[char*] lexer_channels
 	list[char*] lexer_modes
 	list[char*] lexer_order
 	list[pg_lexer_rule_config*] lexer_rules
@@ -190,7 +192,9 @@ pg_grammar* pg_grammar_new(char* name):
 	grammar.mode = pg_grammar_mode_ast()
 	grammar.stateful = 0
 	grammar.ordered_lexer = 0
+	grammar.guarded_progress = 0
 	grammar.allow_mode_eof = 0
+	grammar.lexer_channels = new list[char*]
 	grammar.lexer_modes = new list[char*]
 	grammar.lexer_modes.push(strclone(c"DEFAULT"))
 	grammar.lexer_order = new list[char*]
@@ -554,6 +558,7 @@ void pg_grammar_free(pg_grammar* grammar):
 	while (i < grammar.imports.length):
 		free(grammar.imports[i])
 		i = i + 1
+	for char* entry in grammar.lexer_channels: free(entry)
 	for char* entry in grammar.lexer_modes: free(entry)
 	for char* entry in grammar.lexer_order: free(entry)
 	for pg_lexer_rule_config* config in grammar.lexer_rules:
@@ -570,6 +575,7 @@ void pg_grammar_free(pg_grammar* grammar):
 	for pg_goal_def* goal in grammar.goals:
 		free(goal.rule_name)
 		free(goal)
+	list_free[char*](grammar.lexer_channels)
 	list_free[char*](grammar.lexer_modes)
 	list_free[char*](grammar.lexer_order)
 	list_free[pg_lexer_rule_config*](grammar.lexer_rules)
@@ -608,4 +614,15 @@ int pg_grammar_lexer_mode(pg_grammar* grammar, char* name):
 int pg_grammar_rule_goal(pg_grammar* grammar, char* name):
 	for pg_goal_def* goal in grammar.goals:
 		if (strcmp(goal.rule_name, name) == 0): return goal.goal
+	return -1
+
+
+# Keep the native error channel (2) separate from imported user channels.
+int pg_grammar_lexer_channel(pg_grammar* grammar, char* name):
+	if (name == 0): return -1
+	if (strcmp(name, c"default") == 0): return 0
+	if (strcmp(name, c"hidden") == 0): return 1
+	if (strcmp(name, c"error") == 0): return 2
+	for i, channel in grammar.lexer_channels:
+		if (strcmp(name, channel) == 0): return i + 3
 	return -1

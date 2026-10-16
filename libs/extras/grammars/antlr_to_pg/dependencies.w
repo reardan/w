@@ -2,6 +2,7 @@
 # Only plain imports, tokenVocab, and tokens{} have resolved semantics here;
 # all other dependency blocks remain visible to the conservative audit.
 import libs.extras.grammars.antlr_to_pg.ast
+import libs.extras.grammars.antlr_to_pg.audit_json
 import lib.path
 import lib.utf8
 
@@ -25,6 +26,7 @@ int g_at_dependency_error
 
 
 int at_dependency_fail(char* path, char* reason):
+	at_finding(c"AT_DEPENDENCY", c"dependencies", c"grammar_dependency", c"dependency", path, 1, 1, c"<grammar>", reason)
 	println2(cstr(f"antlr_to_pg: dependency error in {path}: {reason}"))
 	g_at_dependency_error = g_at_dependency_error + 1
 	return 0
@@ -140,6 +142,24 @@ at_dependency_input* at_dependency_load(char* path):
 	return input
 
 
+int at_dependency_channels(at_dependency_input* input, pg_ast_node* node):
+	if (input.kind != 1): return at_dependency_fail(input.path, c"channels declaration requires a lexer grammar")
+	list[char*] words = at_dependency_words(pg_ast_child(node, 1).text)
+	if ((words == 0) || (words.length < 2)): return at_dependency_fail(input.path, c"malformed channels declaration")
+	if (g_at_channels == 0): g_at_channels = new list[char*]
+	int i = 1
+	while (i < words.length - 1):
+		char* name = words[i]
+		if ((at_dependency_identifier(name) == 0) || (strcmp(name, c"HIDDEN") == 0) || (strcmp(name, c"DEFAULT_TOKEN_CHANNEL") == 0) || at_custom_channel(name)):
+			return at_dependency_fail(input.path, c"invalid or repeated channel name")
+		g_at_channels.push(strclone(name))
+		i = i + 1
+		if (i < words.length - 1):
+			if (strcmp(words[i], c",") != 0): return at_dependency_fail(input.path, c"malformed channels declaration")
+			i = i + 1
+	return 1
+
+
 int at_dependency_resolve(at_dependency_input* input);
 
 
@@ -228,6 +248,7 @@ int at_dependency_resolve(at_dependency_input* input):
 			char* marker = pg_ast_child(inner, 0).text
 			if (strcmp(marker, c"options") == 0): resolved = at_dependency_options(input, inner)
 			else if (strcmp(marker, c"tokens") == 0): resolved = at_dependency_tokens(input, inner)
+			else if (strcmp(marker, c"channels") == 0): resolved = at_dependency_channels(input, inner)
 		if (resolved): g_at_resolved_sites.push(inner.first_token)
 	input.state = 2
 	input.failed = g_at_dependency_error != errors_before

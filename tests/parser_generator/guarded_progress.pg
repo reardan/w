@@ -1,0 +1,15 @@
+parser guarded_progress
+lexer stateful
+lexer_progress guarded
+lexer_eof any_mode
+import tests.parser_generator.guarded_progress_support
+lexer_mode NEXT
+token SWITCH guarded_switch
+lexer_command SWITCH mode NEXT
+lexer_command SWITCH skip
+token TEXT = "a"
+lexer_rule TEXT NEXT
+token END guarded_end
+lexer_rule END NEXT
+start program
+rule program = TEXT END EOF

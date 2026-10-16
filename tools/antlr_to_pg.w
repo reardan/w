@@ -21,7 +21,7 @@ antlr_to_pg: best-effort translator from ANTLR4 grammars to the
 ParserGenerator .pg DSL (libs/extras/grammars/antlr_to_pg/README.md).
 
 	bin/antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME]
-		[--report FILE] [--matchers FILE] [--strict] [--stateful] [--audit FILE]
+		[--report FILE] [--matchers FILE] [--strict] [--stateful] [--audit FILE] [--audit-json FILE]
 
 `./wbuild antlr_to_pg` generates the antlr4.pg and pg.pg parsers into bin/
 and builds bin/antlr_to_pg; antlr_to_pg_test re-translates the vendored
@@ -50,7 +50,7 @@ import libs.extras.parser_generator.analysis
 # CLI entry point
 # ---------------------------------------------------------------------------
 void at_usage():
-	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--audit FILE] [--dependencies FILE]")
+	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--audit FILE] [--audit-json FILE] [--dependencies FILE]")
 
 
 int main(int argc, int argv):
@@ -58,6 +58,7 @@ int main(int argc, int argv):
 	int strict = args_has_bool_flag(c"strict")
 	int stateful = args_has_bool_flag(c"stateful")
 	g_at_dependencies = new list[at_site*]
+	g_at_channels = new list[char*]
 	g_at_declared_modes = new list[char*]
 	g_at_token_identities = new list[char*]
 	g_fragments = new map[char*, at_rule*]
@@ -118,7 +119,9 @@ int main(int argc, int argv):
 		if (file_write_text(dependencies_path, dependencies.data) == 0):
 			println2(cstr(f"antlr_to_pg: could not write {dependencies_path}"))
 			return 1
-	if (all_rules == 0): return 1
+	if (all_rules == 0):
+		at_write_audit_json(args_value(c"audit-json"))
+		return 1
 
 	char* parser_name = name_override
 	if (parser_name == 0):
@@ -144,6 +147,7 @@ int main(int argc, int argv):
 	at_collect_parser_refs(all_rules)
 	at_audit_lexer_contract(all_rules)
 	at_print_audit(args_value(c"audit"))
+	if (at_write_audit_json(args_value(c"audit-json")) == 0): return 1
 	if (unsafe || (strict && (g_at_semantic_losses > 0))):
 		println2(c"antlr_to_pg: semantic audit failed; output files left unchanged")
 		return 1

@@ -154,6 +154,8 @@ int pg_reader_is_lexer_directive(pg_grammar_reader* reader):
 	if (reader.token_kind != pg_reader_token_name()): return 0
 	if (strcmp(reader.token, c"lexer") == 0): return 1
 	if (strcmp(reader.token, c"lexer_priority") == 0): return 1
+	if (strcmp(reader.token, c"lexer_progress") == 0): return 1
+	if (strcmp(reader.token, c"lexer_channel") == 0): return 1
 	if (strcmp(reader.token, c"lexer_eof") == 0): return 1
 	if (strcmp(reader.token, c"lexer_mode") == 0): return 1
 	if (strcmp(reader.token, c"lexer_rule") == 0): return 1
@@ -644,6 +646,16 @@ int pg_reader_stateful_directive(pg_grammar_reader* reader, pg_grammar* grammar)
 			pg_reader_error(reader, c"unknown lexer priority", c"ordered or legacy")
 			return 0
 		grammar.ordered_lexer = strcmp(name, c"ordered") == 0
+	else if (strcmp(directive, c"lexer_progress") == 0):
+		if (strcmp(name, c"guarded") != 0):
+			pg_reader_error(reader, c"unknown lexer progress policy", c"guarded")
+			return 0
+		grammar.guarded_progress = 1
+	else if (strcmp(directive, c"lexer_channel") == 0):
+		if (pg_grammar_lexer_channel(grammar, name) >= 0):
+			pg_reader_error(reader, c"duplicate lexer channel", c"new channel name")
+			return 0
+		grammar.lexer_channels.push(strclone(name))
 	else if (strcmp(directive, c"lexer_eof") == 0):
 		if ((strcmp(name, c"any_mode") != 0) && (strcmp(name, c"closed_modes") != 0)):
 			pg_reader_error(reader, c"unknown lexer EOF policy", c"any_mode or closed_modes")

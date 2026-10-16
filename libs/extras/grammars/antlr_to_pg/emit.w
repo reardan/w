@@ -33,6 +33,8 @@ int at_is_pg_reserved(char* name):
 	if (strcmp(name, c"lexer_action") == 0): return 1
 	if (strcmp(name, c"lexer_command") == 0): return 1
 	if (strcmp(name, c"lexer_priority") == 0): return 1
+	if (strcmp(name, c"lexer_progress") == 0): return 1
+	if (strcmp(name, c"lexer_channel") == 0): return 1
 	if (strcmp(name, c"lexer_eof") == 0): return 1
 	if (strcmp(name, c"goal") == 0): return 1
 	return 0
@@ -212,6 +214,8 @@ char* at_pg_mode_name(char* mode):
 
 void at_emit_stateful_lexer(string_builder* out):
 	string_append(out, c"lexer stateful\nlexer_priority ordered\nlexer_eof any_mode\n")
+	if (g_at_channels != 0):
+		for char* channel in g_at_channels: string_append(out, cstr(f"lexer_channel AT_CHANNEL_{channel}\n"))
 	if (g_at_token_identities != 0):
 		for char* name in g_at_token_identities:
 			if ((name in g_lexer_rules) == 0): string_append(out, cstr(f"token {name}\n"))
@@ -243,6 +247,7 @@ void at_emit_stateful_lexer(string_builder* out):
 				else if (strcmp(command.name, c"channel") == 0):
 					if (strcmp(argument, c"HIDDEN") == 0): argument = c"hidden"
 					else if (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0): argument = c"default"
+					else if (at_custom_channel(argument)): argument = cstr(f"AT_CHANNEL_{argument}")
 				string_append(out, cstr(f" {argument}"))
 			string_append_char(out, 10)
 	# Legacy parser wildcard/negated-set fallbacks are retained in best-effort

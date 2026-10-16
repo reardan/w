@@ -118,6 +118,7 @@ int g_negset_counter
 # order (tools/antlr_to_pg.w): classify.w defines at_report, matchers_emit.w
 # the other two.
 void at_report(char* prefix, char* rule_name, char* payload);
+void at_loss_code(pg_token* location, char* rule_name, char* code, char* feature, char* classification, char* reason);
 void at_loss(pg_token* location, char* rule_name, char* reason);
 char* at_try_generate_matcher(at_rule* rule);
 void at_emit_c_char_literal(string_builder* out, int c);
@@ -131,6 +132,7 @@ list[at_site*] g_at_dependencies
 int g_at_semantic_losses
 int g_at_stateful
 list[char*] g_at_modes
+list[char*] g_at_channels
 list[char*] g_at_declared_modes
 list[at_lowered_lexer*] g_at_lowered_lexer
 list[char*] g_at_token_identities
@@ -141,6 +143,13 @@ int at_has_token_identity(char* name):
 	if (g_at_token_identities == 0): return 0
 	for char* identity in g_at_token_identities:
 		if (strcmp(identity, name) == 0): return 1
+	return 0
+
+
+int at_custom_channel(char* name):
+	if ((name == 0) || (g_at_channels == 0)): return 0
+	for char* channel in g_at_channels:
+		if (strcmp(name, channel) == 0): return 1
 	return 0
 
 
@@ -163,7 +172,7 @@ int at_stateful_command_supported(at_command* command):
 	if (strcmp(name, c"type") == 0):
 		return argument != 0
 	if ((strcmp(name, c"channel") == 0) && (argument != 0)):
-		return (strcmp(argument, c"HIDDEN") == 0) || (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0)
+		return (strcmp(argument, c"HIDDEN") == 0) || (strcmp(argument, c"DEFAULT_TOKEN_CHANNEL") == 0) || at_custom_channel(argument)
 	return 0
 
 

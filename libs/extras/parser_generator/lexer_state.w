@@ -22,6 +22,10 @@ struct pg_lexer_state:
 	int column
 	int goal
 	int mode
+	int guarded_progress
+	int zero_width_count
+	int zero_width_offset
+	int eof_rule_done
 	list[int] modes
 	list[int] context
 	void* host
@@ -40,6 +44,10 @@ struct pg_lexer_snapshot:
 	int column
 	int goal
 	int mode
+	int guarded_progress
+	int zero_width_count
+	int zero_width_offset
+	int eof_rule_done
 	list[int] modes
 	list[int] context
 	void* host
@@ -57,6 +65,10 @@ pg_lexer_state* pg_lexer_state_new(char* input, int length, char* filename):
 	state.column = 1
 	state.goal = 0
 	state.mode = 0
+	state.guarded_progress = 0
+	state.zero_width_count = 0
+	state.zero_width_offset = -1
+	state.eof_rule_done = 0
 	state.modes = new list[int]
 	state.context = new list[int]
 	state.host = 0
@@ -117,6 +129,10 @@ pg_lexer_snapshot* pg_lexer_save(pg_lexer_state* state):
 	saved.column = state.column
 	saved.goal = state.goal
 	saved.mode = state.mode
+	saved.guarded_progress = state.guarded_progress
+	saved.zero_width_count = state.zero_width_count
+	saved.zero_width_offset = state.zero_width_offset
+	saved.eof_rule_done = state.eof_rule_done
 	saved.modes = new list[int]
 	saved.context = new list[int]
 	for i in range(state.modes.length): saved.modes.push(state.modes[i])
@@ -133,6 +149,10 @@ void pg_lexer_restore(pg_lexer_state* state, pg_lexer_snapshot* saved):
 	state.column = saved.column
 	state.goal = saved.goal
 	state.mode = saved.mode
+	state.guarded_progress = saved.guarded_progress
+	state.zero_width_count = saved.zero_width_count
+	state.zero_width_offset = saved.zero_width_offset
+	state.eof_rule_done = saved.eof_rule_done
 	__w_list* modes = cast(__w_list*, state.modes)
 	__w_list* context = cast(__w_list*, state.context)
 	modes.length = 0

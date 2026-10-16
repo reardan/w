@@ -4,13 +4,14 @@
 import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import lib.utf8
+import libs.extras.grammars.antlr_to_pg.audit_json
 
 list[char*] g_at_loss_lines
 map[char*, int] g_at_nullable
 map[char*, at_rule*] g_at_rules
 int g_at_structural_hazard
 
-void at_loss(pg_token* location, char* rule_name, char* reason):
+void at_loss_code(pg_token* location, char* rule_name, char* code, char* feature, char* classification, char* reason):
 	char* filename = c"<grammar>"
 	int line = 1
 	int column = 1
@@ -18,9 +19,14 @@ void at_loss(pg_token* location, char* rule_name, char* reason):
 		filename = location.filename
 		line = location.line
 		column = location.column
+	at_finding(code, c"translate", feature, classification, filename, line, column, rule_name, reason)
 	char* message = strclone(cstr(f"{filename}:{line}:{column}: semantic loss [{rule_name}]: {reason}"))
 	g_at_loss_lines.push(message)
 	g_at_semantic_losses = g_at_semantic_losses + 1
+
+
+void at_loss(pg_token* location, char* rule_name, char* reason):
+	at_loss_code(location, rule_name, c"AT_UNMAPPED", c"lowering", c"unproven", reason)
 
 
 int at_audit_alts_nullable(list[at_alt*] alts);
@@ -104,8 +110,8 @@ void at_audit_stateful_parser_literal(at_rule* owner, at_element* element):
 		matches++
 		for at_command* command in candidate.commands:
 			if ((strcmp(command.name, c"type") == 0) || (strcmp(command.name, c"more") == 0)):
-				at_loss(element.first, owner.name, c"parser literal aliases a remapped or accumulated lexer rule")
-	if (matches > 1): at_loss(element.first, owner.name, c"parser literal has ambiguous lexer token identities")
+				at_loss_code(element.first, owner.name, c"AT_TOKEN_REMAP", c"token_identity", c"unproven", c"parser literal aliases a remapped or accumulated lexer rule")
+	if (matches > 1): at_loss_code(element.first, owner.name, c"AT_TOKEN_AMBIGUITY", c"token_identity", c"unproven", c"parser literal has ambiguous lexer token identities")
 
 
 int at_stateful_fixed_width_alts(list[at_alt*] alts, int depth);
@@ -239,35 +245,35 @@ void at_audit_alts(at_rule* rule, list[at_alt*] alts):
 			int si = 0
 			while (si < alt.sites.length):
 				at_site* site = alt.sites[si]
-				at_loss(site.first, rule.name, cstr(f"unmapped {site.kind} at atom position {site.position}: {site.raw}"))
+				at_loss_code(site.first, rule.name, c"AT_HOST_SITE", c"host_code", c"unsupported", cstr(f"unmapped {site.kind} at atom position {site.position}: {site.raw}"))
 				si = si + 1
 		int ei = 0
 		while (ei < alt.elements.length):
 			at_element* e = alt.elements[ei]
 			if (g_at_stateful && rule.is_lexer && ((e.suffix == '*') || (e.suffix == '+'))):
 				if (at_stateful_prefix_free_body(e) == 0):
-					at_loss(e.first, rule.name, c"variable-width lexer repetition requires a prefix-free body proof")
+					at_loss_code(e.first, rule.name, c"AT_LEXER_REPEAT", c"lexer_repetition", c"unproven", c"variable-width lexer repetition requires a prefix-free body proof")
 			if (g_at_stateful && rule.is_lexer && (ei + 1 < alt.elements.length)):
 				if ((at_stateful_fixed_width(e, 0) < 0) && (at_stateful_disjoint_delimiter(e, alt.elements[ei + 1]) == 0)):
-					at_loss(e.first, rule.name, c"variable-width lexer continuation requires a backtracking proof")
+					at_loss_code(e.first, rule.name, c"AT_LEXER_CONTINUATION", c"lexer_continuation", c"unproven", c"variable-width lexer continuation requires a backtracking proof")
 			if (g_at_stateful && (rule.is_lexer == 0) && (e.kind == 0)):
 				at_audit_stateful_parser_literal(rule, e)
 			if (g_at_stateful && (rule.is_lexer == 0) && ((e.kind == 4) || (e.kind == 5))):
-				at_loss(e.first, rule.name, c"parser wildcard/token negation requires token-level lowering")
+				at_loss_code(e.first, rule.name, c"AT_PARSER_TOKEN_SET", c"parser_token_set", c"unsupported", c"parser wildcard/token negation requires token-level lowering")
 			if (e.sites != 0):
 				int si = 0
 				while (si < e.sites.length):
 					at_site* site = e.sites[si]
-					at_loss(site.first, rule.name, cstr(f"unmapped {site.kind}: {site.raw}"))
+					at_loss_code(site.first, rule.name, c"AT_HOST_SITE", c"host_code", c"unsupported", cstr(f"unmapped {site.kind}: {site.raw}"))
 					si = si + 1
 			if ((e.kind == 2) && (strcmp(e.text, c"EOF") != 0)):
-				if (((e.text in g_at_rules) == 0) && (at_has_token_identity(e.text) == 0)): at_loss(e.first, rule.name, cstr(f"unresolved rule/token reference {e.text}"))
-			if (e.nongreedy): at_loss(e.first, rule.name, c"non-greedy matching requires an explicit adaptation")
+				if (((e.text in g_at_rules) == 0) && (at_has_token_identity(e.text) == 0)): at_loss_code(e.first, rule.name, c"AT_UNDEFINED_SYMBOL", c"token_identity", c"unsupported", cstr(f"unresolved rule/token reference {e.text}"))
+			if (e.nongreedy): at_loss_code(e.first, rule.name, c"AT_NONGREEDY", c"nongreedy", c"unsupported", c"non-greedy matching requires an explicit adaptation")
 			char* raw_atom = e.text
 			if ((e.kind == 0) && (e.first != 0)): raw_atom = e.first.text
-			if (at_audit_unicode(raw_atom)): at_loss(e.first, rule.name, c"Unicode escape/property or non-ASCII matching is not verified")
+			if (at_audit_unicode(raw_atom)): at_loss_code(e.first, rule.name, c"AT_UNICODE", c"unicode", c"unproven", c"Unicode escape/property or non-ASCII matching is not verified")
 			if (((e.suffix == '*') || (e.suffix == '+')) && at_audit_atom_nullable(e)):
-				at_loss(e.first, rule.name, c"zero-consumption repetition")
+				at_loss_code(e.first, rule.name, c"AT_NULLABLE_REPEAT", c"nullable_repetition", c"invalid", c"zero-consumption repetition")
 				g_at_structural_hazard = 1
 			if (e.group_alts != 0): at_audit_alts(rule, e.group_alts)
 			ei = ei + 1
@@ -307,18 +313,18 @@ int at_audit(list[at_rule*] rules):
 	while (i < g_at_dependencies.length):
 		at_site* site = g_at_dependencies[i]
 		if ((site.resolved == 0) && ((g_at_stateful == 0) || (strcmp(site.kind, c"mode declaration") != 0))):
-			at_loss(site.first, c"<grammar>", cstr(f"unresolved {site.kind}: {site.raw}"))
+			at_loss_code(site.first, c"<grammar>", c"AT_DECLARATION", c"declaration", c"unsupported", cstr(f"unresolved {site.kind}: {site.raw}"))
 		i = i + 1
 	i = 0
 	while (i < rules.length):
 		at_rule* rule = rules[i]
 		if (at_audit_left_path(rule.alts, rule.name, new map[char*, int])):
-			at_loss(rule.first, rule.name, c"unsupported left recursion (including nullable prefixes)")
+			at_loss_code(rule.first, rule.name, c"AT_LEFT_RECURSION", c"left_recursion", c"unsupported", c"unsupported left recursion (including nullable prefixes)")
 			unsafe = 1
 		if (rule.is_lexer && (rule.is_fragment == 0) && (rule.name in g_at_nullable)):
-			at_loss(rule.first, rule.name, c"zero-consumption lexer rule")
+			at_loss_code(rule.first, rule.name, c"AT_LEXER_EMPTY", c"lexer_progress", c"unsupported", c"zero-consumption lexer rule")
 			unsafe = 1
-		if ((g_at_stateful == 0) && (rule.is_fragment == 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)): at_loss(rule.first, rule.name, cstr(f"lexer mode {rule.mode} is not lowered"))
+		if ((g_at_stateful == 0) && (rule.is_fragment == 0) && (strcmp(rule.mode, c"DEFAULT_MODE") != 0)): at_loss_code(rule.first, rule.name, c"AT_LEXER_MODE", c"lexer_mode", c"unsupported", cstr(f"lexer mode {rule.mode} is not lowered"))
 		int ci = 0
 		while (ci < rule.commands.length):
 			at_command* cmd = rule.commands[ci]
@@ -333,7 +339,7 @@ int at_audit(list[at_rule*] rules):
 			if (supported == 0):
 				char* argument = cmd.argument
 				if (argument == 0): argument = c""
-				at_loss(cmd.first, rule.name, cstr(f"unsupported command {cmd.name}({argument})"))
+				at_loss_code(cmd.first, rule.name, c"AT_LEXER_COMMAND", c"lexer_command", c"unsupported", cstr(f"unsupported command {cmd.name}({argument})"))
 			if (g_at_stateful):
 				int cj = 0
 				while (cj < ci):
@@ -343,13 +349,13 @@ int at_audit(list[at_rule*] rules):
 					int output_now = (strcmp(cmd.name, c"skip") == 0) || (strcmp(cmd.name, c"channel") == 0)
 					int more_conflict = ((strcmp(previous, c"more") == 0) && ((strcmp(cmd.name, c"type") == 0) || (strcmp(cmd.name, c"skip") == 0))) || ((strcmp(cmd.name, c"more") == 0) && ((strcmp(previous, c"type") == 0) || (strcmp(previous, c"skip") == 0)))
 					if (duplicate || (output_before && output_now) || more_conflict):
-						at_loss(cmd.first, rule.name, c"conflicting or repeated lexer commands")
+						at_loss_code(cmd.first, rule.name, c"AT_LEXER_COMMAND_CONFLICT", c"lexer_command", c"invalid", c"conflicting or repeated lexer commands")
 					cj = cj + 1
 			ci = ci + 1
 		ci = 0
 		while (ci < rule.options.length):
 			at_site* site = rule.options[ci]
-			at_loss(site.first, rule.name, cstr(f"unmapped rule option: {site.raw}"))
+			at_loss_code(site.first, rule.name, c"AT_RULE_OPTION", c"rule_option", c"unsupported", cstr(f"unmapped rule option: {site.raw}"))
 			ci = ci + 1
 		at_audit_alts(rule, rule.alts)
 		i = i + 1

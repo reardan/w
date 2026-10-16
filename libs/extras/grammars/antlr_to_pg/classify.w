@@ -697,20 +697,20 @@ void at_audit_lexer_contract(list[at_rule*] rules):
 			at_classification* c = at_classify_lexer_rule(rule)
 			if (at_exact_implicit_trivia(rule)): trivia = 1
 			if ((c.kind == 0) && preceding_matcher):
-				at_loss(rule.first, rule.name, c"literal priority over an earlier matcher requires an overlap/order adaptation")
+				at_loss_code(rule.first, rule.name, c"AT_LEXER_PRIORITY", c"lexer_priority", c"unproven", c"literal priority over an earlier matcher requires an overlap/order adaptation")
 			if (((c.kind == 1) || (c.kind == 2) || (c.kind == 4)) && (at_exact_implicit_trivia(rule) == 0)):
 				preceding_matcher = 1
 			if ((c.kind == 1) || (c.kind == 2)):
-				at_loss(rule.first, rule.name, c"heuristic built-in matcher requires an exact reviewed adaptation")
+				at_loss_code(rule.first, rule.name, c"AT_HEURISTIC_MATCHER", c"lexer_matcher", c"unproven", c"heuristic built-in matcher requires an exact reviewed adaptation")
 			else if (c.kind == 0):
 				at_alt* alt = rule.alts[0]
 				if ((alt.elements.length != 1) || (alt.elements[0].kind != 0)):
-					at_loss(rule.first, rule.name, c"case-fragment keyword folding loses matching alternatives")
-				if (rule.commands.length > 0): at_loss(rule.first, rule.name, c"literal classification does not preserve lexer commands")
+					at_loss_code(rule.first, rule.name, c"AT_CASE_FOLDING", c"case_insensitive", c"unproven", c"case-fragment keyword folding loses matching alternatives")
+				if (rule.commands.length > 0): at_loss_code(rule.first, rule.name, c"AT_LITERAL_COMMAND", c"lexer_command", c"unproven", c"literal classification does not preserve lexer commands")
 			else if ((c.kind == 3) && (at_exact_implicit_trivia(rule) == 0)):
-				at_loss(rule.first, rule.name, c"dropped lexer rule is not exact implicit trivia")
+				at_loss_code(rule.first, rule.name, c"AT_DROPPED_LEXER", c"lexer_rule", c"unproven", c"dropped lexer rule is not exact implicit trivia")
 			i = i + 1
 		else:
 			i = i + 1
 	if ((trivia == 0) && (rules.length > 0)):
-		at_loss(rules[0].first, c"<grammar>", c"legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule")
+		at_loss_code(rules[0].first, c"<grammar>", c"AT_IMPLICIT_TRIVIA", c"lexer_trivia", c"unproven", c"legacy implicit space/tab/CR/LF skipping is not declared by an exact trivia rule")
