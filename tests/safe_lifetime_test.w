@@ -27,13 +27,20 @@ void lifetime_result(process_result* result, char* diagnostic, int checking, cha
 		assert_contains(message, diagnostic)
 
 
-void lifetime_case(char* source, char* diagnostic, int relaxed = 0):
+void lifetime_case(char* source, char* diagnostic, int relaxed = 0, int seed = -1):
 	lifetime_case_number = lifetime_case_number + 1
 	char* number = itoa(lifetime_case_number)
 	char* prefix = c"bin/lifetime_case32_"
 	if (__word_size__ == 8): prefix = c"bin/lifetime_case64_"
 	char* path = strjoin(prefix, number)
 	free(number)
+	if (seed >= 0):
+		char* seed_number = itoa(seed)
+		char* tagged = strjoin(path, c"_seed_")
+		free(path)
+		path = strjoin(tagged, seed_number)
+		free(tagged)
+		free(seed_number)
 	char* full = strjoin(path, c".w")
 	free(path)
 	char* output = strjoin(full, c".out")
@@ -166,3 +173,70 @@ void test_named_lifetime_unused_declarations():
 	lifetime_case(c"ref[a] int* unused(ref[a] int* left, ref[b] int* right);\nref[z] int* unused(ref[y] int* p, ref[z] int* q):\n\treturn q\nint main():\n\treturn 0\n", c"forward declaration")
 	lifetime_case(c"ref[a] int* unused(ref[a] int* left, ref[a] int* right);\nref[z] int* unused(ref[z] int* p, ref[y] int* q):\n\treturn p\nint main():\n\treturn 0\n", c"forward declaration")
 	lifetime_case(c"ref[missing] int* unused(ref[a] int* p);\nint main():\n\treturn 0\n", c"returned lifetime")
+
+
+void lifetime_source_append(char** source, char* text):
+	char* before = *source
+	*source = strjoin(before, text)
+	free(before)
+
+
+void test_generated_lifetime_interactions():
+	# Twelve deterministic seeds cross each backing root, either nested-call
+	# position, both branch results and reversed owner construction order.
+	# Each seed permits a shared read but rejects a later move or parent write.
+	# Failed fixture paths include the seed and leave the source for replay.
+	for seed in range(12):
+		char* source = strclone(c"ref[a] int* choose(ref[a] int* x, ref[a] int* y, int first):\n\tif first: return x\n\treturn y\nint main():\n")
+		if (seed % 2):
+			lifetime_source_append(&source, c"\town int* z = new int\n\town int* y = new int\n\town int* x = new int\n")
+		else:
+			lifetime_source_append(&source, c"\town int* x = new int\n\town int* y = new int\n\town int* z = new int\n")
+		lifetime_source_append(&source, c"\t*x = 2\n\t*y = 3\n\t*z = 5\n\trefmut int* rx = x\n\trefmut int* ry = y\n\trefmut int* rz = z\n")
+		int first = (seed / 3) % 2
+		int expected = 2
+		if (seed < 6):
+			if (first): lifetime_source_append(&source, c"\tref int* r = choose(choose(rx, ry, 1), rz, 1)\n")
+			else:
+				lifetime_source_append(&source, c"\tref int* r = choose(choose(rx, ry, 0), rz, 1)\n")
+				expected = 3
+		else:
+			if (first):
+				lifetime_source_append(&source, c"\tref int* r = choose(rx, choose(ry, rz, 1), 0)\n")
+				expected = 3
+			else:
+				lifetime_source_append(&source, c"\tref int* r = choose(rx, choose(ry, rz, 0), 0)\n")
+				expected = 5
+		char* root = c"x"
+		char* parent = c"rx"
+		int observed = 2
+		if (seed % 3 == 1):
+			root = c"y"
+			parent = c"ry"
+			observed = 3
+		elif (seed % 3 == 2):
+			root = c"z"
+			parent = c"rz"
+			observed = 5
+		char* accepted = strjoin(source, c"\tint observed = *")
+		lifetime_source_append(&accepted, parent)
+		lifetime_source_append(&accepted, c"\n\treturn *r + observed - ")
+		char* total = itoa(expected + observed)
+		lifetime_source_append(&accepted, total)
+		free(total)
+		lifetime_source_append(&accepted, c"\n")
+		lifetime_case(accepted, 0, 0, seed)
+		free(accepted)
+		char* diagnostic = c"conflicting"
+		if (seed % 2):
+			lifetime_source_append(&source, c"\t*")
+			lifetime_source_append(&source, parent)
+			lifetime_source_append(&source, c" = 9\n")
+		else:
+			lifetime_source_append(&source, c"\town int* moved = ")
+			lifetime_source_append(&source, root)
+			lifetime_source_append(&source, c"\n")
+			diagnostic = c"moved value"
+		lifetime_source_append(&source, c"\treturn *r\n")
+		lifetime_case(source, diagnostic, 0, seed)
+		free(source)
