@@ -13,6 +13,8 @@ const int MM_RAIL_AND = 9
 const int MM_RAIL_NOT = 10
 const int MM_RAIL_NUMERIC = 11
 const int MM_RAIL_REPEAT = 12
+const int MM_RAIL_CLASS = 13
+const int MM_RAIL_EXCEPT = 14
 
 mm_rail_grammar* mm_rail_new(mm_document* d):
 	mm_rail_grammar* g = new mm_rail_grammar()
@@ -55,7 +57,11 @@ char* mm_rail_identifier(mm_parser* p):
 	while (mm_id_char(mm_peek(p)) || mm_peek(p) == '-'):
 		if (mm_peek(p) == '-' && p.pos + 1 < p.doc.length && p.doc.source[p.pos + 1] == '>'): break
 		p.pos = p.pos + 1
-	return str_copy_range(p.doc.source, start, p.pos)
+	char* name = str_copy_range(p.doc.source, start, p.pos)
+	if (p.doc.kind == MM_RAIL_ABNF):
+		for i in range(strlen(name)):
+			if (name[i] >= 'A' && name[i] <= 'Z'): name[i] = cast(char, name[i] + 32)
+	return name
 
 int mm_rail_add(mm_parser* p, int kind, char* text):
 	if (p.doc.railroad.expressions.length >= 1024):
@@ -180,9 +186,9 @@ int mm_rail_numeric(mm_parser* p):
 	int start = p.pos
 	p.pos = p.pos + 1
 	int base = 0
-	if (mm_match(p, c"x")): base = 16
-	else if (mm_match(p, c"d")): base = 10
-	else if (mm_match(p, c"b")): base = 2
+	if (mm_match(p, c"x") || mm_match(p, c"X")): base = 16
+	else if (mm_match(p, c"d") || mm_match(p, c"D")): base = 10
+	else if (mm_match(p, c"b") || mm_match(p, c"B")): base = 2
 	if (base == 0):
 		mm_error(p.doc, p.pos, c"expected ABNF %x, %d or %b value")
 		return -1
@@ -194,6 +200,44 @@ int mm_rail_numeric(mm_parser* p):
 		while (p.doc.error == 0 && mm_match(p, c".")): mm_rail_numeric_value(p, base)
 	char* text = str_copy_range(p.doc.source, start, p.pos)
 	int result = mm_rail_add(p, MM_RAIL_NUMERIC, text)
+	free(text)
+	return result
+
+# Preserve the bracket spelling while validating consuming character ranges.
+int mm_rail_class_char(mm_parser* p):
+	int c = mm_peek(p)
+	if (c == 0 || c == 10 || c == ']'):
+		mm_error(p.doc, p.pos, c"expected PEG class character")
+		return -1
+	p.pos = p.pos + 1
+	if (c != 92): return c
+	c = mm_peek(p)
+	if (c == 0 || c == 10):
+		mm_error(p.doc, p.pos, c"unterminated PEG class escape")
+		return -1
+	p.pos = p.pos + 1
+	if (c == 'n'): return 10
+	if (c == 'r'): return 13
+	if (c == 't'): return 9
+	if (c != 92 && c != ']' && c != '[' && c != '-'):
+		mm_error(p.doc, p.pos, c"unsupported PEG class escape")
+	return c
+
+int mm_rail_class(mm_parser* p):
+	int start = p.pos
+	p.pos = p.pos + 1
+	int count = 0
+	while (p.doc.error == 0 && mm_peek(p) != ']'):
+		int low = mm_rail_class_char(p)
+		count = count + 1
+		if (mm_peek(p) == '-' && p.pos + 1 < p.doc.length && p.doc.source[p.pos + 1] != ']'):
+			p.pos = p.pos + 1
+			int high = mm_rail_class_char(p)
+			if (high < low): mm_error(p.doc, p.pos, c"PEG character range is reversed")
+	if (count == 0): mm_error(p.doc, p.pos, c"empty PEG character class")
+	mm_rail_expect(p, c"]")
+	char* text = str_copy_range(p.doc.source, start, p.pos)
+	int result = mm_rail_add(p, MM_RAIL_CLASS, text)
 	free(text)
 	return result
 
@@ -226,9 +270,14 @@ int mm_rail_atom(mm_parser* p, int depth):
 		p.pos = p.pos + 1
 		return mm_rail_wrap(p, kind, mm_rail_atom(p, depth + 1))
 	int result = -1
+	int explicit_case = 0
+	if (p.doc.kind == MM_RAIL_ABNF):
+		if (mm_match(p, c"%s") || mm_match(p, c"%S")): explicit_case = 1
+		else if (mm_match(p, c"%i") || mm_match(p, c"%I")): explicit_case = 2
+		if (explicit_case && mm_peek(p) != '"'): mm_error(p.doc, p.pos, c"ABNF %s/%i requires a double-quoted string")
 	if (mm_peek(p) == '"' || mm_peek(p) == 39):
 		char* text = mm_rail_literal(p)
-		if (p.doc.kind == MM_RAIL_ABNF):
+		if (p.doc.kind == MM_RAIL_ABNF && explicit_case != 1):
 			string_builder* label = string_from(text)
 			string_append(label, c" (case-insensitive)")
 			char* insensitive = strclone(label.data)
@@ -237,6 +286,7 @@ int mm_rail_atom(mm_parser* p, int depth):
 			text = insensitive
 		result = mm_rail_add(p, MM_RAIL_TERMINAL, text)
 		free(text)
+	else if (p.doc.kind == MM_RAIL_PEG && mm_peek(p) == '['): result = mm_rail_class(p)
 	else if (p.doc.kind == MM_RAIL_ABNF && mm_peek(p) == '%'): result = mm_rail_numeric(p)
 	else if (mm_match(p, c"(")):
 		result = mm_rail_expression(p, depth + 1)
@@ -266,8 +316,19 @@ int mm_rail_atom(mm_parser* p, int depth):
 		else if (mm_match(p, c"+")): result = mm_rail_wrap(p, MM_RAIL_ONE, result)
 	return result
 
+int mm_rail_term(mm_parser* p, int depth):
+	int first = mm_rail_atom(p, depth)
+	mm_rail_space(p)
+	while (p.doc.error == 0 && p.doc.kind == MM_RAIL_EBNF && mm_match(p, c"-")):
+		int parent = mm_rail_add(p, MM_RAIL_EXCEPT, c"")
+		mm_rail_child(p, parent, first)
+		mm_rail_child(p, parent, mm_rail_atom(p, depth))
+		first = parent
+		mm_rail_space(p)
+	return first
+
 int mm_rail_sequence(mm_parser* p, int depth):
-	int first = mm_rail_atom(p, depth + 1)
+	int first = mm_rail_term(p, depth + 1)
 	int parent = -1
 	while (p.doc.error == 0):
 		mm_rail_space(p)
@@ -277,7 +338,7 @@ int mm_rail_sequence(mm_parser* p, int depth):
 		if (parent < 0):
 			parent = mm_rail_add(p, MM_RAIL_SEQUENCE, c"")
 			mm_rail_child(p, parent, first)
-		mm_rail_child(p, parent, mm_rail_atom(p, depth + 1))
+		mm_rail_child(p, parent, mm_rail_term(p, depth + 1))
 	if (parent >= 0): return parent
 	return first
 
@@ -319,15 +380,26 @@ void mm_rail_body(mm_parser* p):
 				mm_error(p.doc, p.pos, c"railroad rule limit exceeded (256)")
 				return
 			char* name = mm_rail_identifier(p)
+			mm_rail_rule* existing = 0
 			for mm_rail_rule* other in g.rules:
-				if (strcmp(other.name, name) == 0): mm_error(p.doc, p.pos, c"duplicate grammar rule")
-			mm_rail_rule* rule = new mm_rail_rule(name, -1)
-			g.rules.push(rule)
+				if (strcmp(other.name, name) == 0): existing = other
 			mm_rail_space(p)
-			if (p.doc.kind == MM_RAIL_PEG): mm_rail_expect(p, c"<-")
-			else if (mm_match(p, c"::=") == 0): mm_rail_expect(p, c"=")
-			if (p.doc.kind == MM_RAIL_IR): rule.expression = mm_rail_atom(p, 0)
-			else: rule.expression = mm_rail_expression(p, 0)
+			int incremental = p.doc.kind == MM_RAIL_ABNF && mm_match(p, c"=/")
+			if (incremental == 0):
+				if (p.doc.kind == MM_RAIL_PEG): mm_rail_expect(p, c"<-")
+				else if (mm_match(p, c"::=") == 0): mm_rail_expect(p, c"=")
+			if (incremental && existing == 0): mm_error(p.doc, p.pos, c"incremental ABNF rule requires an earlier definition")
+			if (incremental == 0 && existing != 0): mm_error(p.doc, p.pos, c"duplicate grammar rule")
+			int expression = -1
+			if (p.doc.kind == MM_RAIL_IR): expression = mm_rail_atom(p, 0)
+			else: expression = mm_rail_expression(p, 0)
+			if (incremental && existing != 0):
+				int choice = mm_rail_add(p, MM_RAIL_CHOICE, c"")
+				mm_rail_child(p, choice, existing.expression)
+				mm_rail_child(p, choice, expression)
+				existing.expression = choice
+				free(name)
+			else: g.rules.push(new mm_rail_rule(name, expression))
 			mm_rail_expect(p, c";")
 			if (p.doc.kind == MM_RAIL_ABNF):
 				while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1

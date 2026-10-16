@@ -13,8 +13,8 @@ positioned diagnostic and suppresses the preview.
   relationship kinds in either arrow direction; forward references validated
   against declarations. Requirement fields render in compartments with type
   annotations. Containment uses a circle-plus endpoint and other relationships
-  use labelled dashed dependency arrows. Styles and rich Markdown are not yet
-  supported.
+  use labelled dashed dependency arrows. Node styles/classes and link styles are
+  supported; rich Markdown and broader configuration remain incomplete.
 - **Mindmaps:** a single indentation-based tree with plain text, rectangular,
   rounded, and circular labels. A dedicated subtree-height layout keeps sibling
   branches separate. Nesting is bounded to 64 levels. Icons, classes, cloud,
@@ -48,8 +48,13 @@ x64, including the guard allocator's leak checks.
   creation, checkout/switch and merge commits with two parents. Branch heads
   determine commit ancestry; a dedicated time/lane layout shows history.
   Duplicate IDs/branches, unknown checkouts, empty/self/same-head merges fail.
-  The current layout supports LR; cherry-pick, branch order and custom branch
-  configuration are not yet supported.
+  The layout supports LR, TB and BT. `branch name order: N` sorts explicitly
+  ordered branches after unspecified branches, with stable ties. `cherry-pick
+  id: "source"` creates a new commit on the current branch and retains source
+  metadata without introducing false merge ancestry. Merge picks require an
+  immediate `parent: "id"`; tags are supported. Missing/same-branch source
+  commits and invalid merge parents are diagnosed. Custom branch configuration
+  remains unsupported.
 - **Block:** source-ordered grids, up to 64 columns, column spans, empty spaces,
   rectangle/rounded/circle nodes, nested composites (up to 32 levels) and
   labelled solid links. Span overflow and malformed blocks fail explicitly.
@@ -67,7 +72,8 @@ x64, including the guard allocator's leak checks.
 - **Use case:** actors, oval/rectangular use cases, one-level system boundaries,
   direction, directed/reversed/undirected associations, include/extend and
   generalization. Endpoint types are validated after declarations. Metadata,
-  stereotypes, notes, styles, JSON nodes and rich labels remain unsupported.
+  stereotypes, notes, JSON nodes and rich labels remain unsupported. Node
+  styles/classes and link styles are supported, including filled oval cases.
 - **C4:** all five headers, typed person/system/container/component cards,
   external/database/queue type annotations, nested boundaries and deployment
   nodes, descriptions/technology, Rel/BiRel/Rel_Back, and source-ordered numbered

@@ -1,8 +1,10 @@
 # Native data diagrams. Numeric input is bounded fixed-point, never host atof.
 import libs.extras.mermaid.parse_common
+import libs.extras.mermaid.style
 
 # Item kinds: value/point/packet/leaf = 0; axis = 1; line = 2; bar = 3;
 # radar curve = 4; treemap group = 5; Venn set = 6; Venn intersection = 7.
+# quadrant label = 8; quadrant class = 9; Venn text = 10.
 mm_data_chart* mm_data_new(mm_document* d):
 	mm_data_chart* c = new mm_data_chart()
 	c.title = strclone(c"")
@@ -151,15 +153,84 @@ void mm_data_packet(mm_parser* p):
 	free(item.label)
 	item.label = mm_data_text(p, 10)
 
+# An axis delimiter is the complete arrow; ordinary hyphens belong to labels.
+char* mm_data_axis_start(mm_parser* p):
+	mm_space(p)
+	if (mm_peek(p) == '"'): return mm_quoted(p)
+	int start = p.pos
+	while (mm_end(p) == 0):
+		if (p.pos + 2 < p.doc.length && p.doc.source[p.pos] == '-' && p.doc.source[p.pos + 1] == '-' && p.doc.source[p.pos + 2] == '>'): break
+		p.pos = p.pos + 1
+	int end = p.pos
+	while (end > start && (p.doc.source[end - 1] == ' ' || p.doc.source[end - 1] == 9)): end = end - 1
+	if (end == start): mm_error(p.doc, start, c"expected data label")
+	return str_copy_range(p.doc.source, start, end)
+
+# Quadrant point CSS differs from node CSS: color is the point fill.
+void mm_data_quadrant_style(mm_parser* p, mm_data_item* item):
+	int count = 0
+	while (mm_end(p) == 0 && p.doc.error == 0):
+		int start = p.pos
+		while (mm_end(p) == 0 && mm_peek(p) != ':' && mm_peek(p) != ','): p.pos = p.pos + 1
+		char* key = mm_style_trim(p.doc.source, start, p.pos)
+		mm_data_expect(p, c":")
+		start = p.pos
+		while (mm_end(p) == 0 && mm_peek(p) != ','): p.pos = p.pos + 1
+		char* value = mm_style_trim(p.doc.source, start, p.pos)
+		if (strcmp(key, c"radius") == 0):
+			int radius = 0
+			int length = strlen(value)
+			if (length == 0 || length > 2): radius = -1
+			for i in range(length):
+				if (isdigit(value[i]) == 0): radius = -1
+				if (radius >= 0): radius = radius * 10 + value[i] - '0'
+			if (radius < 1 || radius > 64): mm_error(p.doc, start, c"quadrant radius must be an integer in 1..64")
+			else: item.radius = radius
+		else if (strcmp(key, c"color") == 0): mm_style_property(p.doc, &item.style, c"fill", value, start)
+		else if (strcmp(key, c"stroke-color") == 0): mm_style_property(p.doc, &item.style, c"stroke", value, start)
+		else if (strcmp(key, c"stroke-width") == 0): mm_style_property(p.doc, &item.style, c"stroke-width", value, start)
+		else: mm_error(p.doc, start, c"quadrant point style supports color, radius, stroke-color and stroke-width")
+		free(key)
+		free(value)
+		count = count + 1
+		if (count > 16): mm_error(p.doc, p.pos, c"style property limit exceeded")
+		if (mm_match(p, c",") && mm_end(p)): mm_error(p.doc, p.pos, c"trailing style comma")
+
+void mm_data_quadrant_resolve(mm_parser* p):
+	for mm_data_item* item in p.doc.data.items:
+		if (item.kind != 0 || item.target[0] == 0): continue
+		mm_data_item* definition = 0
+		for mm_data_item* candidate in p.doc.data.items:
+			if (candidate.kind == 9 && strcmp(candidate.id, item.target) == 0): definition = candidate
+		if (definition == 0): mm_error(p.doc, p.pos, c"unknown quadrant point class")
+		else:
+			mm_style resolved = definition.style
+			mm_style_merge(&resolved, &item.style)
+			item.style = resolved
+			if (item.radius == 0): item.radius = definition.radius
+
 void mm_data_quadrant(mm_parser* p):
 	mm_data_chart* c = p.doc.data
+	if (mm_match(p, c"classDef ")):
+		mm_data_item* definition = mm_data_add(p, 9)
+		if (definition == 0): return
+		free(definition.id)
+		definition.id = mm_identifier(p)
+		for mm_data_item* previous in c.items:
+			if (previous != definition && previous.kind == 9 && strcmp(previous.id, definition.id) == 0): mm_error(p.doc, p.pos, c"duplicate quadrant class")
+		if (mm_end(p)): mm_error(p.doc, p.pos, c"expected quadrant class properties")
+		mm_data_quadrant_style(p, definition)
+		return
 	int axis = 0
 	if (mm_match(p, c"x-axis ")): axis = 1
 	else if (mm_match(p, c"y-axis ")): axis = 2
 	if (axis):
-		char* first = mm_data_text(p, '-')
-		mm_data_expect(p, c"-->")
-		char* last = mm_data_text(p, 10)
+		char* first = mm_data_axis_start(p)
+		mm_space(p)
+		char* last = strclone(c"")
+		if (mm_match(p, c"-->")):
+			free(last)
+			last = mm_data_text(p, 10)
 		if (axis == 1):
 			free(c.x_label)
 			free(c.x_end)
@@ -182,8 +253,12 @@ void mm_data_quadrant(mm_parser* p):
 	else:
 		free(item.label)
 		item.label = mm_data_text(p, ':')
+		if (mm_match(p, c":::")):
+			free(item.target)
+			item.target = mm_identifier(p)
 		mm_data_expect(p, c":")
 		mm_data_values(p, item, c"[", c"]")
+		mm_data_quadrant_style(p, item)
 		if (item.values.length != 2): mm_error(p.doc, p.pos, c"quadrant point requires exactly two coordinates")
 		for int v in item.values:
 			if (v < 0 || v > 1000): mm_error(p.doc, p.pos, c"quadrant coordinates must be between 0 and 1")
@@ -250,36 +325,36 @@ void mm_data_radar_values(mm_parser* p, mm_data_item* item):
 	mm_data_expect(p, c"{")
 	mm_space(p)
 	int keyed = isalpha(mm_peek(p)) || mm_peek(p) == '_' || mm_peek(p) == '"' || mm_peek(p) >= 128
-	if (keyed):
-		for mm_data_item* axis in p.doc.data.items:
-			if (axis.kind == 1): item.values.push(-1000000001)
 	while (p.doc.error == 0):
+		if (item.values.length >= 256):
+			mm_error(p.doc, p.pos, c"series point limit exceeded (256)")
+			return
 		if (keyed):
 			char* name = mm_identifier(p)
+			for char* previous in item.point_labels:
+				if (strcmp(previous, name) == 0): mm_error(p.doc, p.pos, c"duplicate radar axis value")
+			item.point_labels.push(name)
 			mm_data_expect(p, c":")
-			int value = mm_data_number(p)
-			int index = -1
-			int count = 0
-			for mm_data_item* axis in p.doc.data.items:
-				if (axis.kind != 1): continue
-				if (strcmp(axis.id, name) == 0): index = count
-				count = count + 1
-			free(name)
-			if (index < 0): mm_error(p.doc, p.pos, c"radar curve references an undeclared axis")
-			else:
-				if (item.values[index] != -1000000001): mm_error(p.doc, p.pos, c"duplicate radar axis value")
-				item.values[index] = value
-		else:
-			if (item.values.length >= 256):
-				mm_error(p.doc, p.pos, c"series point limit exceeded (256)")
-				return
-			item.values.push(mm_data_number(p))
+		item.values.push(mm_data_number(p))
 		mm_space(p)
 		if (mm_match(p, c"}")): break
 		mm_data_expect(p, c",")
-	if (keyed):
-		for int value in item.values:
-			if (value == -1000000001): mm_error(p.doc, p.pos, c"keyed radar curve must specify every axis")
+
+# Resolve keyed curves after the complete body, allowing axes in either order.
+void mm_data_radar_resolve(mm_parser* p):
+	for mm_data_item* curve in p.doc.data.items:
+		if (curve.kind != 4 || curve.point_labels.length == 0): continue
+		list[int] ordered = new list[int]
+		for mm_data_item* axis in p.doc.data.items:
+			if (axis.kind != 1): continue
+			int index = -1
+			for i in range(curve.point_labels.length):
+				if (strcmp(curve.point_labels[i], axis.id) == 0): index = i
+			if (index < 0): mm_error(p.doc, p.pos, c"keyed radar curve must specify every axis")
+			else: ordered.push(curve.values[index])
+		if (ordered.length != curve.values.length): mm_error(p.doc, p.pos, c"radar curve references an undeclared axis")
+		__w_list_free(cast(__w_list*, curve.values))
+		curve.values = ordered
 
 void mm_data_radar(mm_parser* p):
 	mm_data_chart* c = p.doc.data
@@ -315,13 +390,13 @@ void mm_data_radar(mm_parser* p):
 		else: mm_error(p.doc, p.pos, c"expected true or false")
 	else: mm_error(p.doc, p.pos, c"unsupported radar statement")
 
-# CSV fields implement doubled quote escaping; records cannot span lines.
+# Quoted CSV fields retain embedded line breaks and doubled quote escaping.
 char* mm_data_csv(mm_parser* p):
 	mm_space(p)
 	if (mm_peek(p) != '"'): return mm_data_text(p, ',')
 	p.pos = p.pos + 1
 	string_builder* s = string_new()
-	while (mm_peek(p) != 0 && mm_peek(p) != 10):
+	while (mm_peek(p) != 0):
 		if (mm_match(p, c"\"")):
 			if (mm_match(p, c"\"")): string_append_char(s, '"')
 			else:
@@ -391,20 +466,36 @@ void mm_data_tree(mm_parser* p):
 		if (level > 16): mm_error(p.doc, p.pos, c"treemap nesting limit exceeded (16)")
 
 void mm_data_venn(mm_parser* p):
+	if (mm_match(p, c"text ")):
+		int parent = -1
+		for i in range(p.doc.data.items.length):
+			mm_data_item* region = p.doc.data.items[i]
+			if (region.kind == 6 || region.kind == 7): parent = i
+		if (parent < 0):
+			mm_error(p.doc, p.pos, c"Venn text requires a preceding set or union")
+			return
+		mm_data_item* item = mm_data_add(p, 10)
+		if (item == 0): return
+		item.parent = parent
+		mm_data_named(p, item)
+		for mm_data_item* other in p.doc.data.items:
+			if (other != item && (other.kind == 6 || other.kind == 10) && strcmp(other.id, item.id) == 0): mm_error(p.doc, p.pos, c"duplicate Venn set or text identifier")
+		return
 	int kind = 0
 	if (mm_match(p, c"set ")): kind = 6
 	else if (mm_match(p, c"union ")): kind = 7
 	else:
-		mm_error(p.doc, p.pos, c"expected Venn set or union")
+		mm_error(p.doc, p.pos, c"expected Venn set, union or text")
 		return
 	mm_data_item* item = mm_data_add(p, kind)
 	if (item == 0): return
 	if (kind == 6):
+		item.a = 10000
 		mm_data_named(p, item)
 		int count = 0
 		for mm_data_item* other in p.doc.data.items:
 			if (other.kind == 6): count = count + 1
-			if (other != item && other.kind == 6 && strcmp(other.id, item.id) == 0): mm_error(p.doc, p.pos, c"duplicate Venn set")
+			if (other != item && (other.kind == 6 || other.kind == 10) && strcmp(other.id, item.id) == 0): mm_error(p.doc, p.pos, c"duplicate Venn set or text identifier")
 		if (count > 3): mm_error(p.doc, p.pos, c"native Venn diagrams support up to three sets")
 	else:
 		while (p.doc.error == 0):
@@ -424,12 +515,40 @@ void mm_data_venn(mm_parser* p):
 		mm_data_expect(p, c"[")
 		free(item.label)
 		item.label = mm_until(p, ']')
+		item.a = 10000 / (item.values.length * item.values.length)
+	mm_space(p)
+	if (mm_match(p, c":")):
+		item.a = mm_data_number(p)
+		item.b = 1
+		if (item.a <= 0): mm_error(p.doc, p.pos, c"Venn sizes must be positive")
+
+void mm_data_venn_validate(mm_parser* p):
+	int count = 0
+	int sized = 0
+	for mm_data_item* item in p.doc.data.items:
+		if (item.kind == 6): count = count + 1
+		if ((item.kind == 6 || item.kind == 7) && item.b): sized = 1
+		if (item.kind != 7): continue
+		for mm_data_item* other in p.doc.data.items:
+			if (other == item || other.kind != 7 || other.values.length != item.values.length): continue
+			int same = 1
+			for int index in item.values:
+				if (other.values.index(index) < 0): same = 0
+			if (same): mm_error(p.doc, p.pos, c"duplicate Venn intersection")
+		for int index in item.values:
+			mm_data_item* set_item = p.doc.data.items[index]
+			if (item.a > set_item.a): mm_error(p.doc, p.pos, c"Venn intersection size cannot exceed a member set")
+	if (sized && count > 2): mm_error(p.doc, p.pos, c"explicit Venn sizes support at most two sets")
 
 void mm_data_validate(mm_parser* p):
 	mm_data_chart* c = p.doc.data
-	if (c.items.length == 0):
+	if (c.items.length == 0 && p.doc.kind != MM_QUADRANT):
 		mm_error(p.doc, p.pos, c"data diagram needs at least one item")
 		return
+	if (p.doc.kind == MM_VENN): mm_data_venn_validate(p)
+	if (p.doc.kind == MM_QUADRANT): mm_data_quadrant_resolve(p)
+	if (p.doc.kind == MM_RADAR): mm_data_radar_resolve(p)
+	if (p.doc.error != 0): return
 	if (p.doc.kind == MM_XY || p.doc.kind == MM_RADAR):
 		int axes = 0
 		int series = 0
