@@ -148,6 +148,7 @@ void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int
 
 void at_audit_prediction(list[at_rule*] rules):
 	if (g_at_prediction): return
+	at_abs_reset(rules)
 	g_at_prediction_facts = new map[char*, at_prediction_facts*]
 	for at_rule* rule in rules:
 		if (rule.is_lexer): continue

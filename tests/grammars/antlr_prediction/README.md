@@ -80,5 +80,15 @@ whose FIRST set is disjoint from every token in `A` permits a fresh sentinel for
 the remaining suffix. Unknown recursion and exhausted proof limits retain the
 unproven diagnostic. Limits are 24 expansion levels, 512 NFA states, 4,096 product
 states per inclusion job, and 65,536 shared caller/context/product work steps per
-decision. On the pinned Geekcode grammar this proof takes approximately six seconds
+decision. Optional absorption expansion is attempted only for grammars with at
+most 128 parser rules, 4,096 parser atoms, and 24 nested group levels; larger inputs
+retain the ordinary FIRST/FOLLOW findings. A separate **750,000,000-operation
+budget is shared by the entire grammar audit**, charging NFA construction, closure
+and transition state/edge visits, subset keys, and caller-context traversal.
+Exhaustion is sticky and preserves an unproven finding, including when a partial
+state set would otherwise appear empty. The limit provides roughly 29% headroom
+above the measured 582,950,818 operations for pinned Geekcode. On the pinned Geekcode grammar this proof takes approximately six seconds
 and 400 MB in the 32-bit translator; SwiftFin completes in under a tenth of a second.
+
+With the structural gate, pinned Cobol85 default translation completes in about
+two seconds instead of exhausting the 90-second corpus-stage timeout.

@@ -5,6 +5,50 @@ import libs.extras.grammars.antlr_to_pg.prediction_prefix
 
 
 int g_at_abs_remaining
+int g_at_abs_grammar_remaining
+int g_at_abs_operations
+
+
+# Optional proof has an aggregate grammar budget, in addition to per-job caps.
+# Large grammars retain the ordinary FIRST/FOLLOW findings without attempting
+# regular expansion. Exhaustion is sticky until the next grammar audit.
+int at_abs_charge(int cost):
+	if ((cost < 0) || (cost > g_at_abs_grammar_remaining)):
+		g_at_abs_operations = g_at_abs_operations + g_at_abs_grammar_remaining
+		g_at_abs_grammar_remaining = 0
+		return 0
+	g_at_abs_operations = g_at_abs_operations + cost
+	g_at_abs_grammar_remaining = g_at_abs_grammar_remaining - cost
+	return g_at_abs_grammar_remaining > 0
+
+
+int at_abs_count_atoms(list[at_alt*] alts, int depth):
+	if (depth > 24): return 4097
+	int count = 0
+	for at_alt* alt in alts:
+		for at_element* element in alt.elements:
+			count++
+			if (element.kind == 3): count = count + at_abs_count_atoms(element.group_alts, depth + 1)
+			if (count > 4096): return count
+	return count
+
+
+void at_abs_reset(list[at_rule*] rules):
+	g_at_abs_operations = 0
+	g_at_abs_grammar_remaining = 750000000
+	int parsers = 0
+	int atoms = 0
+	for at_rule* rule in rules:
+		if (rule.is_lexer): continue
+		parsers++
+		if (parsers > 128):
+			g_at_abs_grammar_remaining = 0
+			return
+		atoms = atoms + at_abs_count_atoms(rule.alts, 0)
+		if (atoms > 4096):
+			g_at_abs_grammar_remaining = 0
+			return
+
 
 
 struct at_abs_edge:
@@ -24,7 +68,7 @@ struct at_abs_pair:
 
 
 int at_abs_state(at_abs_nfa* nfa):
-	if (nfa.edges.length >= 512):
+	if (nfa.failed || (nfa.edges.length >= 512) || (at_abs_charge(1) == 0)):
 		nfa.failed = 1
 		return 0
 	int result = nfa.edges.length
@@ -33,6 +77,9 @@ int at_abs_state(at_abs_nfa* nfa):
 
 
 void at_abs_edge_add(at_abs_nfa* nfa, int from, int to, char* token):
+	if (nfa.failed || (at_abs_charge(1) == 0)):
+		nfa.failed = 1
+		return
 	at_abs_edge* edge = new at_abs_edge()
 	edge.target = to
 	edge.token = token
@@ -41,7 +88,7 @@ void at_abs_edge_add(at_abs_nfa* nfa, int from, int to, char* token):
 
 int at_abs_alphabet(at_element* element, map[char*, int] alphabet, int depth):
 	g_at_abs_remaining--
-	if ((depth > 24) || (g_at_abs_remaining <= 0)): return 0
+	if ((depth > 24) || (g_at_abs_remaining <= 0) || (at_abs_charge(1) == 0)): return 0
 	if (at_prediction_is_token(element)):
 		map[char*, int] first = at_prediction_first_atom(element)
 		for char* token in first: alphabet[token] = 1
@@ -75,6 +122,7 @@ void at_abs_compile_term(at_abs_nfa* nfa, at_element* element, int from, int to,
 void at_abs_compile_sequence(at_abs_nfa* nfa, list[at_element*] elements, int from, int to, int depth):
 	int current = from
 	for at_element* element in elements:
+		if (nfa.failed): return
 		int next = at_abs_state(nfa)
 		at_abs_compile_term(nfa, element, current, next, depth)
 		current = next
@@ -99,7 +147,9 @@ void at_abs_compile_atom(at_abs_nfa* nfa, at_element* element, int from, int to,
 	if (alts == 0):
 		nfa.failed = 1
 		return
-	for at_alt* alt in alts: at_abs_compile_sequence(nfa, alt.elements, from, to, depth + 1)
+	for at_alt* alt in alts:
+		if (nfa.failed): return
+		at_abs_compile_sequence(nfa, alt.elements, from, to, depth + 1)
 
 
 at_abs_nfa* at_abs_new():
@@ -112,6 +162,9 @@ at_abs_nfa* at_abs_new():
 
 
 list[int] at_abs_closure(at_abs_nfa* nfa, list[int] seeds):
+	if (nfa.failed || (at_abs_charge(nfa.edges.length * 2 + seeds.length) == 0)):
+		nfa.failed = 1
+		return new list[int]
 	list[int] present = new list[int]
 	int slot = 0
 	while (slot < nfa.edges.length):
@@ -124,6 +177,9 @@ list[int] at_abs_closure(at_abs_nfa* nfa, list[int] seeds):
 			work.push(seed)
 	int i = 0
 	while (i < work.length):
+		if (at_abs_charge(1 + nfa.edges[work[i]].length) == 0):
+			nfa.failed = 1
+			break
 		for at_abs_edge* edge in nfa.edges[work[i]]:
 			if ((edge.token == 0) && (present[edge.target] == 0)):
 				present[edge.target] = 1
@@ -150,6 +206,9 @@ list[int] at_abs_start(at_abs_nfa* nfa):
 list[int] at_abs_move(at_abs_nfa* nfa, list[int] states, char* token):
 	list[int] seeds = new list[int]
 	for int state in states:
+		if (nfa.failed || (at_abs_charge(1 + nfa.edges[state].length) == 0)):
+			nfa.failed = 1
+			break
 		for at_abs_edge* edge in nfa.edges[state]:
 			if ((edge.token != 0) && (strcmp(edge.token, token) == 0)): seeds.push(edge.target)
 	list[int] result = at_abs_closure(nfa, seeds)
@@ -158,6 +217,9 @@ list[int] at_abs_move(at_abs_nfa* nfa, list[int] states, char* token):
 
 
 int at_abs_accepts(at_abs_nfa* nfa, list[int] states):
+	if (nfa.failed || (at_abs_charge(states.length) == 0)):
+		nfa.failed = 1
+		return 0
 	for int state in states:
 		if (state == nfa.accept): return 1
 	return 0
@@ -165,6 +227,9 @@ int at_abs_accepts(at_abs_nfa* nfa, list[int] states):
 
 void at_abs_tokens(at_abs_nfa* nfa, list[int] states, map[char*, int] tokens):
 	for int state in states:
+		if (nfa.failed || (at_abs_charge(1 + nfa.edges[state].length) == 0)):
+			nfa.failed = 1
+			break
 		for at_abs_edge* edge in nfa.edges[state]:
 			if (edge.token != 0): tokens[edge.token] = 1
 
@@ -193,6 +258,10 @@ char* at_abs_pair_key(list[int] left, list[int] right):
 
 
 void at_abs_push(list[at_abs_pair*] work, map[char*, int] seen, list[int] left, list[int] right):
+	if (at_abs_charge(1 + left.length + right.length) == 0):
+		__w_list_free(cast(__w_list*, left))
+		__w_list_free(cast(__w_list*, right))
+		return
 	char* key = at_abs_pair_key(left, right)
 	if (key in seen):
 		free(key)
@@ -236,7 +305,7 @@ int at_abs_subset(at_abs_nfa* nfa, list[int] residual, int* budget):
 	while (i < work.length):
 		*budget = *budget - 1
 		g_at_abs_remaining--
-		if ((*budget <= 0) || (g_at_abs_remaining <= 0)):
+		if ((*budget <= 0) || (g_at_abs_remaining <= 0) || nfa.failed || (at_abs_charge(1) == 0)):
 			result = 0
 			break
 		at_abs_pair* pair = work[i]
@@ -249,6 +318,7 @@ int at_abs_subset(at_abs_nfa* nfa, list[int] residual, int* budget):
 			at_abs_push(work, seen, at_abs_move(nfa, pair.left, token), at_abs_move(nfa, pair.right, token))
 		__w_map_free(cast(__w_hash_table*, tokens))
 		i++
+	if (nfa.failed || (g_at_abs_grammar_remaining <= 0)): result = 0
 	at_abs_free_work(work, seen)
 	return result
 
@@ -273,7 +343,7 @@ int at_abs_quotient(at_element* atom, list[at_element*] continuation):
 	while (i < work.length):
 		budget--
 		g_at_abs_remaining--
-		if ((budget <= 0) || (g_at_abs_remaining <= 0)):
+		if ((budget <= 0) || (g_at_abs_remaining <= 0) || a.failed || c.failed || (at_abs_charge(1) == 0)):
 			result = 0
 			break
 		at_abs_pair* pair = work[i]
@@ -294,6 +364,7 @@ int at_abs_quotient(at_element* atom, list[at_element*] continuation):
 		i++
 	__w_map_free(cast(__w_hash_table*, proven))
 	__w_list_free(cast(__w_list*, empty))
+	if (a.failed || c.failed || (g_at_abs_grammar_remaining <= 0)): result = 0
 	at_abs_free_work(work, seen)
 	at_abs_free_nfa(a)
 	at_abs_free_nfa(c)
@@ -302,6 +373,7 @@ int at_abs_quotient(at_element* atom, list[at_element*] continuation):
 
 list[at_element*] at_abs_concat(list[at_element*] left, list[at_element*] right):
 	list[at_element*] result = new list[at_element*]
+	if (at_abs_charge(left.length + right.length) == 0): return result
 	for at_element* element in left: result.push(element)
 	for at_element* element in right: result.push(element)
 	return result
@@ -332,6 +404,9 @@ void at_abs_free_tail(list[at_element*] tail, at_element* element, int repeat):
 list[at_element*] at_abs_bounded_tail(list[at_element*] tail, map[char*, int] alphabet):
 	list[at_element*] result = new list[at_element*]
 	for at_element* element in tail:
+		if (at_abs_charge(1) == 0):
+			__w_list_free(cast(__w_list*, result))
+			return 0
 		int nullable = (element.suffix == '?') || (element.suffix == '*') || at_prediction_atom_nullable(element)
 		if ((nullable == 0) && (at_prediction_overlap(at_prediction_first_atom(element), alphabet) == 0)):
 			at_element* marker = new at_element()
@@ -352,7 +427,7 @@ int at_abs_calls(at_rule* caller, list[at_alt*] alts, list[at_element*] outer, a
 	for at_alt* alt in alts:
 		for i, element in alt.elements:
 			g_at_abs_remaining--
-			if (g_at_abs_remaining <= 0): return 0
+			if ((g_at_abs_remaining <= 0) || (at_abs_charge(1) == 0)): return 0
 			int call = (element.kind == 2) && (strcmp(element.text, owner.name) == 0)
 			if ((call == 0) && (element.kind != 3)): continue
 			list[at_element*] after = at_abs_tail(alt, i, outer, 1)
@@ -376,7 +451,7 @@ int at_abs_check_bounded(at_element* atom, list[at_element*] bounded):
 
 int at_abs_context(at_rule* owner, at_element* atom, list[at_element*] tail, map[char*, int] alphabet, map[char*, int] visiting, int depth):
 	g_at_abs_remaining--
-	if ((depth > 24) || (g_at_abs_remaining <= 0)): return 0
+	if ((depth > 24) || (g_at_abs_remaining <= 0) || (at_abs_charge(1) == 0)): return 0
 	list[at_element*] bounded = at_abs_bounded_tail(tail, alphabet)
 	if (bounded != 0): return at_abs_check_bounded(atom, bounded)
 	# Every public entry also has a standalone complete-input continuation.
@@ -395,6 +470,9 @@ int at_abs_context(at_rule* owner, at_element* atom, list[at_element*] tail, map
 	if ((owner.name in visiting) && visiting[owner.name]): return 0
 	visiting[owner.name] = 1
 	for char* name in g_at_rules:
+		if (at_abs_charge(1) == 0):
+			visiting[owner.name] = 0
+			return 0
 		at_rule* caller = g_at_rules[name]
 		if (caller.is_lexer): continue
 		list[at_element*] empty = new list[at_element*]
@@ -408,6 +486,7 @@ int at_abs_context(at_rule* owner, at_element* atom, list[at_element*] tail, map
 
 
 int at_prediction_absorption(at_rule* owner, at_element* atom, list[at_element*] tail):
+	if (g_at_abs_grammar_remaining <= 0): return 0
 	g_at_abs_remaining = 65536
 	map[char*, int] alphabet = new map[char*, int]
 	map[char*, int] visiting = new map[char*, int]
@@ -416,4 +495,4 @@ int at_prediction_absorption(at_rule* owner, at_element* atom, list[at_element*]
 		result = at_abs_context(owner, atom, tail, alphabet, visiting, 0)
 	__w_map_free(cast(__w_hash_table*, alphabet))
 	__w_map_free(cast(__w_hash_table*, visiting))
-	return result
+	return result && (g_at_abs_grammar_remaining > 0)

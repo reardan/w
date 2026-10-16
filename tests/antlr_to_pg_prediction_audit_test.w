@@ -28,6 +28,49 @@ int prediction_losses(char* source, int enabled):
 	return g_at_semantic_losses
 
 
+void prediction_proof_budget_test():
+	list[at_rule*] rules = new list[at_rule*]
+	at_abs_reset(rules)
+	assert_equal(750000000, g_at_abs_grammar_remaining)
+	# Charge inner epsilon-edge scans, not merely outer DFA iterations.
+	at_abs_nfa* nfa = at_abs_new()
+	at_abs_edge_add(nfa, 0, nfa.accept, 0)
+	list[int] seeds = new list[int]
+	seeds.push(0)
+	g_at_abs_grammar_remaining = 6
+	list[int] partial = at_abs_closure(nfa, seeds)
+	assert1(nfa.failed)
+	assert_equal(0, g_at_abs_grammar_remaining)
+	assert_equal(0, at_abs_subset(nfa, partial, &g_at_abs_remaining))
+	assert_equal(0, g_at_abs_grammar_remaining)
+	__w_list_free(cast(__w_list*, partial))
+	__w_list_free(cast(__w_list*, seeds))
+	at_abs_free_nfa(nfa)
+	# A new grammar gets a new aggregate budget; individual decisions do not.
+	at_abs_reset(rules)
+	assert1(at_abs_charge(7))
+	assert_equal(749999993, g_at_abs_grammar_remaining)
+	assert1(at_abs_charge(9))
+	assert_equal(749999984, g_at_abs_grammar_remaining)
+	# Eligibility limits apply to structure, never grammar names.
+	at_rule* rule = new at_rule()
+	rule.is_lexer = 0
+	rule.alts = new list[at_alt*]
+	for int ignored in range(129): rules.push(rule)
+	at_abs_reset(rules)
+	assert_equal(0, g_at_abs_grammar_remaining)
+	assert_equal(0, g_at_abs_operations)
+	rules = new list[at_rule*]
+	rules.push(rule)
+	at_alt* alt = new at_alt()
+	alt.elements = new list[at_element*]
+	for int ignored in range(4097): alt.elements.push(new at_element())
+	rule.alts.push(alt)
+	at_abs_reset(rules)
+	assert_equal(0, g_at_abs_grammar_remaining)
+	assert_equal(0, g_at_abs_operations)
+
+
 int main():
 	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a' | 'a' 'b';", 0) > 0)
 	assert_equal(0, prediction_losses(c"grammar G; start: item EOF; item: 'a' | 'a' 'b';", 1))
@@ -65,5 +108,6 @@ int main():
 	assert_equal(0, prediction_losses(c"grammar G; start: item+ 'z' EOF; item: ':' 'v'+ ':' line+; line: 'v'+ ';' | 'v'+ ':' ('v'|':')* ';' | ':' ':'+ ('v'|':')* ';' | ':'+ 'v'+ ':'* ';';", 0))
 	# A mandatory final run must not be mistaken for optional absorption.
 	assert1(prediction_losses(c"grammar G; start: item+ 'a' EOF; item: 'x' run*; run: ('a'|'b')+;", 0) > 0)
+	prediction_proof_budget_test()
 	println(c"parser continuation audit tracks alternatives and caller FOLLOW sets")
 	return 0
