@@ -3,8 +3,9 @@
 `./wbuild antlr_differential_test antlr_differential_harness_test` runs W against
 committed ANTLR 4.13.2 observations without Java or network access. The manifest
 pins grammar and driver bytes, the reference jar checksum, start rules, explicit
-stateful translation, and input text. All grammars here are small original
-regression witnesses, not modified upstream sources.
+stateful translation, and input text. Small original regression grammars are supplemented by unmodified pinned
+upstream corpora; each corpus case records its upstream paths and hashes and
+retains its original license header.
 
 The separate `pinned-runtime-oracle` CI job uses Java 17 and a checksum-verified
 ANTLR jar to generate and compile Java and execute every input against the
@@ -52,3 +53,12 @@ EOF fixtures check that a consuming match reaching EOF suppresses a later named
 EOF token, while a pending `more` sequence may still finish with an EOF rule in
 the same call. Malformed custom-channel input checks that recovery skips the failed transition
 endpoint before resuming tokenization.
+
+`STRICT_RECLASSIFICATIONS.json` records five historically strict-accepted grammars
+with confirmed counterexamples. Their unmodified pinned sources, entry rules,
+inputs and snapshots are checked offline and against the live Java oracle.
+SPASS deliberately exercises its public `term` entry; the other four use their
+original grammar entry. Explicit implicit-literal name mappings reconcile W's
+`KW_IF` spelling with ANTLR's `'if'` vocabulary identity without hiding token
+text, channel or span differences. These records support per-case baseline
+review; they do not automatically remove historical sweep expectations.

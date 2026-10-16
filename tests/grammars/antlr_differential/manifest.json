@@ -73,6 +73,10 @@
       "sha256": "a9e41cb42c5ba39b2d1ce041d1581e62848d485c0329736b4db3572a95e4f3af"
     },
     {
+      "path": "PMMN.g4",
+      "sha256": "bdce72a53eba8c972634cd972e887aec3bb4039576b631770c08a6206231a249"
+    },
+    {
       "path": "Repeat.g4",
       "sha256": "000816fc87b2657018a77690c8c585a1139a8a3b7123c10165f5bb1469547267"
     },
@@ -81,8 +85,28 @@
       "sha256": "d433aeae76b1db7099ceb243d9f4d758b8ecd516221240f9fba8bea8aaf9cb9d"
     },
     {
+      "path": "SpassLexer.g4",
+      "sha256": "b86d8b825da4c6e0cd4a68c803140c43c28cf567c402cedff17afdef558c7dfa"
+    },
+    {
+      "path": "SpassParser.g4",
+      "sha256": "8d562cf16a3770da418225338768d8925866b2de465e859c7dcad86fe63bef86"
+    },
+    {
       "path": "Tokens.g4",
       "sha256": "4c90c920cb401068b3e0f662cbd1d44558220286ffafa11322efa77b595de94c"
+    },
+    {
+      "path": "bnf.g4",
+      "sha256": "fa7dc58af824fcde3494a3ccbb2c1926669ffecfa06be37f51a66ee0fbf70f13"
+    },
+    {
+      "path": "propcalc.g4",
+      "sha256": "96ae2fdb938553b672d5d730bda0a8219a26c07ead497f1c282d81d629cdc879"
+    },
+    {
+      "path": "romannumerals.g4",
+      "sha256": "2e14d619c2f7bebad278675eb8dd1f382b085c81798550dd0191368e47504356"
     },
     {
       "path": "Oracle.java",
@@ -846,6 +870,251 @@
         {
           "id": "input7",
           "text": ""
+        }
+      ]
+    },
+    {
+      "name": "corpus_pmmn",
+      "grammars": [
+        "PMMN.g4"
+      ],
+      "lexer": "PMMNLexer",
+      "parser": "PMMNParser",
+      "start": "file_",
+      "w_start": "file_",
+      "flags": [],
+      "skip_tokens": [
+        "WS"
+      ],
+      "upstream": {
+        "repository": "https://github.com/antlr/grammars-v4",
+        "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+        "inputs": [
+          {
+            "path": "pmmn/PMMN.g4",
+            "sha256": "bdce72a53eba8c972634cd972e887aec3bb4039576b631770c08a6206231a249"
+          }
+        ]
+      },
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "if(dec(1)){inc(1);}else{inc(2);}",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "if(dec(1)){inc(1);}"
+        },
+        {
+          "id": "input2",
+          "text": "inc(1);"
+        }
+      ],
+      "w_token_names": {
+        "LBRACE": "'{'",
+        "RBRACE": "'}'",
+        "KW_INC": "'inc'",
+        "LPAREN": "'('",
+        "RPAREN": "')'",
+        "SEMI": "';'",
+        "KW_IF": "'if'",
+        "KW_ELSE": "'else'",
+        "KW_WHILE": "'while'",
+        "KW_DEC": "'dec'"
+      }
+    },
+    {
+      "name": "corpus_propcalc",
+      "grammars": [
+        "propcalc.g4"
+      ],
+      "lexer": "propcalcLexer",
+      "parser": "propcalcParser",
+      "start": "proposition",
+      "w_start": "proposition",
+      "flags": [],
+      "skip_tokens": [
+        "WS"
+      ],
+      "upstream": {
+        "repository": "https://github.com/antlr/grammars-v4",
+        "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+        "inputs": [
+          {
+            "path": "propcalc/propcalc.g4",
+            "sha256": "96ae2fdb938553b672d5d730bda0a8219a26c07ead497f1c282d81d629cdc879"
+          }
+        ]
+      },
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "a->b|-b",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "a<->b|-a",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "a|-a"
+        }
+      ]
+    },
+    {
+      "name": "corpus_romannumerals",
+      "grammars": [
+        "romannumerals.g4"
+      ],
+      "lexer": "romannumeralsLexer",
+      "parser": "romannumeralsParser",
+      "start": "expression",
+      "w_start": "expression",
+      "flags": [],
+      "skip_tokens": [
+        "WS"
+      ],
+      "upstream": {
+        "repository": "https://github.com/antlr/grammars-v4",
+        "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+        "inputs": [
+          {
+            "path": "romannumerals/romannumerals.g4",
+            "sha256": "2e14d619c2f7bebad278675eb8dd1f382b085c81798550dd0191368e47504356"
+          }
+        ]
+      },
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "DC",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "VI",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "MDC",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input3",
+          "text": "D"
+        },
+        {
+          "id": "input4",
+          "text": "V"
+        }
+      ]
+    },
+    {
+      "name": "corpus_ebnf",
+      "grammars": [
+        "bnf.g4"
+      ],
+      "lexer": "bnfLexer",
+      "parser": "bnfParser",
+      "start": "rulelist",
+      "w_start": "rulelist",
+      "flags": [],
+      "skip_tokens": [
+        "WS"
+      ],
+      "upstream": {
+        "repository": "https://github.com/antlr/grammars-v4",
+        "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+        "inputs": [
+          {
+            "path": "ebnf/bnf.g4",
+            "sha256": "fa7dc58af824fcde3494a3ccbb2c1926669ffecfa06be37f51a66ee0fbf70f13"
+          }
+        ]
+      },
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "<aa>::=xx<bb>::=yy",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "<aa>::=<bb><bb>::=yy",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "<aa>::=xx"
+        }
+      ]
+    },
+    {
+      "name": "corpus_spass",
+      "grammars": [
+        "SpassLexer.g4",
+        "SpassParser.g4"
+      ],
+      "lexer": "SpassLexer",
+      "parser": "SpassParser",
+      "start": "term",
+      "w_start": "term",
+      "flags": [],
+      "skip_tokens": [
+        "WS"
+      ],
+      "upstream": {
+        "repository": "https://github.com/antlr/grammars-v4",
+        "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+        "inputs": [
+          {
+            "path": "spass/SpassLexer.g4",
+            "sha256": "b86d8b825da4c6e0cd4a68c803140c43c28cf567c402cedff17afdef558c7dfa"
+          },
+          {
+            "path": "spass/SpassParser.g4",
+            "sha256": "8d562cf16a3770da418225338768d8925866b2de465e859c7dcad86fe63bef86"
+          }
+        ]
+      },
+      "inputs": [
+        {
+          "id": "input0",
+          "text": "f(a)",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input1",
+          "text": "forall([x],f(x))",
+          "known_mismatches": {
+            "accepted": "Pinned grammar has a successful shorter alternative or greedy repetition that requires caller-continuation prediction"
+          }
+        },
+        {
+          "id": "input2",
+          "text": "f"
         }
       ]
     }

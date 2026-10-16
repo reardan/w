@@ -35,6 +35,28 @@ class DifferentialTest(unittest.TestCase):
                          differential.observation(native, channel_map={"3": "COMMENTS"}))
         self.assertNotEqual(differential.observation(oracle), differential.observation(native))
 
+    def test_explicit_literal_identity_mapping_preserves_other_tokens(self):
+        output = "TOKEN\tKW_IF\t0\t0\t2\t6966\nTOKEN\tEOF\t0\t2\t0\t\nACCEPT\t1\n"
+        observed = differential.observation(output, token_names={"KW_IF": "'if'"})
+        self.assertEqual(observed["tokens"][0]["name"], "'if'")
+        self.assertEqual(observed["tokens"][1]["name"], "EOF")
+
+    def test_reclassifications_have_pinned_upstream_and_live_oracle_witnesses(self):
+        manifest = differential.load_manifest()
+        cases = {case["name"]: case for case in manifest["cases"]}
+        snapshots = json.loads((differential.FIXTURES / "snapshots.json").read_text())
+        records = json.loads((differential.FIXTURES / "STRICT_RECLASSIFICATIONS.json").read_text())
+        for record in records["cases"]:
+            case = cases[record["fixture_case"]]
+            self.assertEqual(record["entry_rule"], case["start"])
+            self.assertEqual(record["inputs"], case["upstream"]["inputs"])
+            for witness in record["witnesses"]:
+                item = next(item for item in case["inputs"] if item["text"] == witness["input"])
+                self.assertIn("accepted", item["known_mismatches"])
+                self.assertTrue(snapshots[case["name"] + "/" + item["id"]]["accepted"])
+                self.assertTrue(witness["antlr_accepts"])
+                self.assertFalse(witness["legacy_w_accepts"])
+
     def test_partial_or_malformed_output_is_infrastructure_failure(self):
         for output in ("", "ACCEPT\t1\n", "TOKEN\tEOF\t0\t0\t0\t\n", "arbitrary stdout\n",
                        "TOKEN\tEOF\t0\t0\t0\t\nACCEPT\t1\nACCEPT\t0\n",

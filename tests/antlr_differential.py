@@ -27,7 +27,7 @@ sweep = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sweep)
 
 
-def observation(output, skip_tokens=(), observe_rules=(), channel_map=None):
+def observation(output, skip_tokens=(), observe_rules=(), channel_map=None, token_names=None):
     result = {"tokens": [], "rules": []}
     for line in output.splitlines():
         parts = line.split("\t")
@@ -44,6 +44,7 @@ def observation(output, skip_tokens=(), observe_rules=(), channel_map=None):
                 continue
             raw = bytes.fromhex(encoded)
             normalized_channel = (channel_map or {}).get(channel, int(channel))
+            name = (token_names or {}).get(name, name)
             token = {"name": name, "channel": normalized_channel, "start": int(start),
                      "length": int(length), "text": raw.decode("utf-8")}
             if token["length"] != len(raw) or token["start"] < 0:
@@ -220,7 +221,7 @@ def main(argv=None):
                         raise ValueError(key + ": live ANTLR differs from pinned snapshot")
                     observation_row["oracle"] = live
                 if binary:
-                    actual = observation(command([binary, source], directory, item["id"] + ".w", args.timeout, stages), case.get("skip_tokens", []), case.get("observe_rules", []), case.get("w_channels", {}))
+                    actual = observation(command([binary, source], directory, item["id"] + ".w", args.timeout, stages), case.get("skip_tokens", []), case.get("observe_rules", []), case.get("w_channels", {}), case.get("w_token_names", {}))
                     observation_row["w"] = actual
                     allowed = {} if args.require_compatible or args.exact else item.get("known_mismatches", {})
                     observation_row["differences"] = mismatch_fields(actual, expected)

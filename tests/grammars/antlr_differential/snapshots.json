@@ -635,6 +635,969 @@
       }
     ]
   },
+  "corpus_ebnf/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Less_Than_Sign",
+        "start": 0,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 1,
+        "text": "aa"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Greater_Than_Sign",
+        "start": 3,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ASSIGN",
+        "start": 4,
+        "text": "::="
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 7,
+        "text": "xx"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Less_Than_Sign",
+        "start": 9,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 10,
+        "text": "bb"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Greater_Than_Sign",
+        "start": 12,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ASSIGN",
+        "start": 13,
+        "text": "::="
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 16,
+        "text": "yy"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 18,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_ebnf/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Less_Than_Sign",
+        "start": 0,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 1,
+        "text": "aa"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Greater_Than_Sign",
+        "start": 3,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ASSIGN",
+        "start": 4,
+        "text": "::="
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Less_Than_Sign",
+        "start": 7,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 8,
+        "text": "bb"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Greater_Than_Sign",
+        "start": 10,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Less_Than_Sign",
+        "start": 11,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 12,
+        "text": "bb"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Greater_Than_Sign",
+        "start": 14,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ASSIGN",
+        "start": 15,
+        "text": "::="
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 18,
+        "text": "yy"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 20,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_ebnf/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Less_Than_Sign",
+        "start": 0,
+        "text": "<"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 1,
+        "text": "aa"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Greater_Than_Sign",
+        "start": 3,
+        "text": ">"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "ASSIGN",
+        "start": 4,
+        "text": "::="
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "ID",
+        "start": 7,
+        "text": "xx"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 9,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_pmmn/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "'if'",
+        "start": 0,
+        "text": "if"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 2,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "'dec'",
+        "start": 3,
+        "text": "dec"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 6,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "DIGIT",
+        "start": 7,
+        "text": "1"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 8,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 9,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'{'",
+        "start": 10,
+        "text": "{"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "'inc'",
+        "start": 11,
+        "text": "inc"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 14,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "DIGIT",
+        "start": 15,
+        "text": "1"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 16,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "';'",
+        "start": 17,
+        "text": ";"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'}'",
+        "start": 18,
+        "text": "}"
+      },
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "'else'",
+        "start": 19,
+        "text": "else"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'{'",
+        "start": 23,
+        "text": "{"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "'inc'",
+        "start": 24,
+        "text": "inc"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 27,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "DIGIT",
+        "start": 28,
+        "text": "2"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 29,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "';'",
+        "start": 30,
+        "text": ";"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'}'",
+        "start": 31,
+        "text": "}"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 32,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_pmmn/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "'if'",
+        "start": 0,
+        "text": "if"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 2,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "'dec'",
+        "start": 3,
+        "text": "dec"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 6,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "DIGIT",
+        "start": 7,
+        "text": "1"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 8,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 9,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'{'",
+        "start": 10,
+        "text": "{"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "'inc'",
+        "start": 11,
+        "text": "inc"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 14,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "DIGIT",
+        "start": 15,
+        "text": "1"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 16,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "';'",
+        "start": 17,
+        "text": ";"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'}'",
+        "start": 18,
+        "text": "}"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 19,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_pmmn/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "'inc'",
+        "start": 0,
+        "text": "inc"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "'('",
+        "start": 3,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "DIGIT",
+        "start": 4,
+        "text": "1"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "')'",
+        "start": 5,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "';'",
+        "start": 6,
+        "text": ";"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 7,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_propcalc/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "IMPLIES",
+        "start": 1,
+        "text": "->"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 3,
+        "text": "b"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "THEREFORE",
+        "start": 4,
+        "text": "|-"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 6,
+        "text": "b"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 7,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_propcalc/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 3,
+        "name": "EQUIV",
+        "start": 1,
+        "text": "<->"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 4,
+        "text": "b"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "THEREFORE",
+        "start": 5,
+        "text": "|-"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 7,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 8,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_propcalc/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 2,
+        "name": "THEREFORE",
+        "start": 1,
+        "text": "|-"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "LETTER",
+        "start": 3,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_romannumerals/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "D",
+        "start": 0,
+        "text": "D"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 1,
+        "text": "C"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_romannumerals/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "V",
+        "start": 0,
+        "text": "V"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "I",
+        "start": 1,
+        "text": "I"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_romannumerals/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "M",
+        "start": 0,
+        "text": "M"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "D",
+        "start": 1,
+        "text": "D"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "C",
+        "start": 2,
+        "text": "C"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_romannumerals/input3": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "D",
+        "start": 0,
+        "text": "D"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_romannumerals/input4": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "V",
+        "start": 0,
+        "text": "V"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_spass/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Identifier",
+        "start": 0,
+        "text": "f"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "OpenP",
+        "start": 1,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Identifier",
+        "start": 2,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CloseP",
+        "start": 3,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_spass/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 6,
+        "name": "Forall",
+        "start": 0,
+        "text": "forall"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "OpenP",
+        "start": 6,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "OpenB",
+        "start": 7,
+        "text": "["
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Identifier",
+        "start": 8,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CloseB",
+        "start": 9,
+        "text": "]"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Comma",
+        "start": 10,
+        "text": ","
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Identifier",
+        "start": 11,
+        "text": "f"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "OpenP",
+        "start": 12,
+        "text": "("
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Identifier",
+        "start": 13,
+        "text": "x"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CloseP",
+        "start": 14,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CloseP",
+        "start": 15,
+        "text": ")"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 16,
+        "text": ""
+      }
+    ]
+  },
+  "corpus_spass/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "Identifier",
+        "start": 0,
+        "text": "f"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
   "danglingelse/input0": {
     "accepted": true,
     "rules": [

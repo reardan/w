@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "reference": "ANTLR 4.13.2, generated Java compiled and executed",
+  "legacy_w_commit": "39e94b88",
+  "cases": [
+    {
+      "name": "pmmn",
+      "stage": "strict",
+      "reason": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation.",
+      "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+      "inputs": [
+        {
+          "path": "pmmn/PMMN.g4",
+          "sha256": "bdce72a53eba8c972634cd972e887aec3bb4039576b631770c08a6206231a249"
+        }
+      ],
+      "entry_rule": "file_",
+      "entry_note": "Original grammar entry rule",
+      "fixture_case": "corpus_pmmn",
+      "witnesses": [
+        {
+          "input": "if(dec(1)){inc(1);}else{inc(2);}",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        }
+      ]
+    },
+    {
+      "name": "propcalc",
+      "stage": "strict",
+      "reason": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation.",
+      "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+      "inputs": [
+        {
+          "path": "propcalc/propcalc.g4",
+          "sha256": "96ae2fdb938553b672d5d730bda0a8219a26c07ead497f1c282d81d629cdc879"
+        }
+      ],
+      "entry_rule": "proposition",
+      "entry_note": "Original grammar entry rule",
+      "fixture_case": "corpus_propcalc",
+      "witnesses": [
+        {
+          "input": "a->b|-b",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        },
+        {
+          "input": "a<->b|-a",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        }
+      ]
+    },
+    {
+      "name": "romannumerals",
+      "stage": "strict",
+      "reason": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation.",
+      "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+      "inputs": [
+        {
+          "path": "romannumerals/romannumerals.g4",
+          "sha256": "2e14d619c2f7bebad278675eb8dd1f382b085c81798550dd0191368e47504356"
+        }
+      ],
+      "entry_rule": "expression",
+      "entry_note": "Original grammar entry rule",
+      "fixture_case": "corpus_romannumerals",
+      "witnesses": [
+        {
+          "input": "DC",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        },
+        {
+          "input": "VI",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        },
+        {
+          "input": "MDC",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        }
+      ]
+    },
+    {
+      "name": "ebnf",
+      "stage": "strict",
+      "reason": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation.",
+      "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+      "inputs": [
+        {
+          "path": "ebnf/bnf.g4",
+          "sha256": "fa7dc58af824fcde3494a3ccbb2c1926669ffecfa06be37f51a66ee0fbf70f13"
+        }
+      ],
+      "entry_rule": "rulelist",
+      "entry_note": "Original grammar entry rule",
+      "fixture_case": "corpus_ebnf",
+      "witnesses": [
+        {
+          "input": "<aa>::=xx<bb>::=yy",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        },
+        {
+          "input": "<aa>::=<bb><bb>::=yy",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        }
+      ]
+    },
+    {
+      "name": "spass",
+      "stage": "strict",
+      "reason": "Default ordered-choice prediction is unsound for this pinned source; opt-in --prediction preserves the witnessed continuation.",
+      "corpus_commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+      "inputs": [
+        {
+          "path": "spass/SpassLexer.g4",
+          "sha256": "b86d8b825da4c6e0cd4a68c803140c43c28cf567c402cedff17afdef558c7dfa"
+        },
+        {
+          "path": "spass/SpassParser.g4",
+          "sha256": "8d562cf16a3770da418225338768d8925866b2de465e859c7dcad86fe63bef86"
+        }
+      ],
+      "entry_rule": "term",
+      "entry_note": "Public term rule, not the full document entry",
+      "fixture_case": "corpus_spass",
+      "witnesses": [
+        {
+          "input": "f(a)",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        },
+        {
+          "input": "forall([x],f(x))",
+          "antlr_accepts": true,
+          "legacy_w_accepts": false
+        }
+      ]
+    }
+  ]
+}
