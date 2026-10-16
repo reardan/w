@@ -211,17 +211,16 @@ with W commit `298246c6d6906650d4cd9c677e93933abd9bf619`: **196 translated,
 `SWEEP_RESULTS.md` used different upstream inputs and predates safety checks;
 those totals are not a direct regression comparison.
 
-The same pinned cases now produce **215 translations, 209 generated/compiled
-parsers, and 14 strict translations**, up from PR #689's 205/200/13. The
-historical 288-name subset compiles 207. This increment adds nine compiling
-cases (arithmetic, c, cql, icon, ltl, microc, ocl, pmmn, tinyc), a translation
-pass for powerquery, and strict acceptance for pmmn. Every prior expected pass
-is retained; `recorded_pass` still preserves the initial 179-compilation audit.
-The earlier Lisp reclassification remains: its `ATOM_PART` fragment has no
-productive base, so its old repetition rewrite was invalid. See
-[`SWEEP_RESULTS.md`](SWEEP_RESULTS.md),
+The same pinned cases now produce **218 translations, 212 generated/compiled
+parsers, and 15 strict translations**, up from PR #690's 215/209/14. The
+historical 288-name subset compiles 210. This increment adds Lua, TNT, and V
+translation/compile passes, plus strict acceptance for TNT. Every prior
+expected pass is retained; `recorded_pass` still preserves the initial
+179-compilation audit. The earlier Lisp reclassification remains: its
+`ATOM_PART` fragment has no productive base, so its old repetition rewrite
+was invalid. See [`SWEEP_RESULTS.md`](SWEEP_RESULTS.md),
 [`sweep_current_results.csv`](sweep_current_results.csv), and the
-[implementation plan and remaining gaps](COVERAGE_NEXT_PLAN.md).
+[implementation plan and remaining gaps](EXPRESSION_COVERAGE_PLAN.md).
 
 Run from the W checkout after obtaining the pinned corpus:
 

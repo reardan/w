@@ -38,3 +38,41 @@ against `codex/grammar-coverage-next`.
 Labels/context adapters, foreign actions, general indirect left recursion,
 upstream missing tokens, and continuation-aware lexer matching remain separate
 work. Compilation and strict acceptance are not complete ANTLR equivalence.
+
+## Implemented outcome
+
+The three parallel tasks delivered finite operator analysis in
+`normalize_operators.w`, expression-tier lowering in `normalize.w`, and
+independent pinned Lua/TNT runtime coverage. Local fixtures cover alias AST
+preservation, source-order unary/binary binding, mixed leading postfix chains,
+compound prefixes, productive recursive bases, and atomic refusal.
+
+The clean implementation at `6c1e7f69` measures **218/291 translations,
+212/291 generated and compiled parsers, and 15/291 strict translations**.
+Lua, TNT, and V gain translation/compilation; TNT gains strict acceptance.
+All earlier expectations and input hashes remain unchanged. The historical
+288-name cohort now compiles 210 cases. The sweep has no regressions or
+infrastructure errors; compilation remains separate from runtime conformance.
+
+Review tightened the planned scope: postfix alternatives must precede every
+binary alternative and share one highest-binding loop. Compound prefixes need
+a mandatory finite-token boundary plus disjoint optional/repeated continuations
+through parser aliases. Regressions cover operand stealing (`'-' NUMBER? e`),
+delimiter stealing (`'-' ':'? ':' e`), hidden trailing loops, and overlapping
+recursive bases. The final structural recursion audit remains mandatory.
+
+Teal remains blocked by overlapping `NAME` bases (`NAME 'is' typ` versus
+`prefixexp`). PromQL uses optional group clauses in operators and overlapping
+UNLESS tiers, beyond finite single-token aliases. Labels/context adapters,
+ternaries, lower postfix tiers, indirect binary operands, and continuation-aware
+lexer matching remain future work. Of 79 non-compiling cases, 73 fail
+translation (68 report unsupported left recursion), and six fail generation.
+Pinned Lua/TNT runtime checks demonstrate selected behavior; V remains
+compile-only, and the fixture notes describe remaining semantic gaps.
+
+Validation: 24 focused targets, all 1,254 targets in `./wbuild tests`, and all
+10 offline sweep-harness tests passed. The full suite used Node 20.19.3 with
+`NO_COLOR` unset. Structured W checks are clean; vendored grammar bytes and
+hashes match the pinned corpus. Final results satisfy the strengthened per-case
+expectations.
+
