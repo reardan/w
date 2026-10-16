@@ -23,6 +23,9 @@ void mm_rail_measure(mm_rail_grammar* g, int index):
 	if (e.kind == MM_RAIL_SEQUENCE):
 		e.width = sum_width - 30
 		e.height = max_height
+	else if (e.kind == MM_RAIL_EXCEPT):
+		e.width = max_width + 80
+		e.height = sum_height + 60
 	else if (e.kind == MM_RAIL_CHOICE):
 		e.width = max_width + 100
 		e.height = sum_height - 20
@@ -62,7 +65,7 @@ void mm_rail_draw_expr(mm_document* d, mm_scene* s, int index, int x, int y):
 	mm_rail_expr* e = g.expressions[index]
 	int baseline = y + 20
 	if (e.children.length == 0):
-		int round = e.kind == MM_RAIL_TERMINAL || e.kind == MM_RAIL_NUMERIC
+		int round = e.kind == MM_RAIL_TERMINAL || e.kind == MM_RAIL_NUMERIC || e.kind == MM_RAIL_CLASS
 		mm_draw(s, MM_BOX, x, y + 2, x + e.width, y + 38, round, c"")
 		mm_text(s, x + 16, y + 12, e.text)
 		return
@@ -95,6 +98,16 @@ void mm_rail_draw_expr(mm_document* d, mm_scene* s, int index, int x, int y):
 				string_free(label)
 			yy = yy + c.height + 20
 			order = order + 1
+		return
+	if (e.kind == MM_RAIL_EXCEPT):
+		mm_draw(s, MM_BOX, x + 10, y, x + e.width - 10, y + e.height, 0, c"")
+		mm_line(s, x, baseline, x + 10, baseline, 0)
+		mm_line(s, x + e.width - 10, baseline, x + e.width, baseline, 0)
+		mm_text(s, x + 20, y + 5, c"match")
+		mm_rail_expr* included = g.expressions[e.children[0]]
+		mm_rail_draw_expr(d, s, e.children[0], x + 40, y + 30)
+		mm_text(s, x + 20, y + included.height + 40, c"except")
+		mm_rail_draw_expr(d, s, e.children[1], x + 40, y + included.height + 65)
 		return
 	mm_rail_expr* c = g.expressions[e.children[0]]
 	int xx = x + (e.width - c.width) / 2

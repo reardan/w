@@ -60,6 +60,8 @@ int gpu_qualifier_ahead();   /* grammar/type_name.w */
 int type_name_array_suffix(int type);
 void function_definition(int current_symbol);
 int* function_lifetime_order_types(int* parameters, int result, int count);
+int* function_lifetime_identity(int* parameters, int result, int count);
+char* function_lifetime_label(int* parameters, int result, int count, int slot);
 int import_alias_lookup(char* name);
 int expression();
 void push_call_argument(int arg_type);
