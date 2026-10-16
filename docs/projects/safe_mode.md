@@ -10,7 +10,7 @@ The compiler accepts `--safe` on Linux x86 and x64:
 This is a bounded, single-threaded subset, tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
-design, including optional references and broader lifetime contracts, is
+design, including broader lifetime contracts, is
 tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 
 ## Pointer contracts
@@ -68,7 +68,7 @@ cannot erase earlier binding identities.
 A shared or mutable reference can borrow a named owner, another reference, or
 an initialized stack place (`ref int* r = &value`). A reborrow suspends
 conflicting access through its parent until the child reference's last use.
-Reference bindings cannot be reassigned in this release.
+Nonoptional reference bindings cannot be reassigned. Optional reference bindings support replacement as described below.
 
 Reference liveness follows branches and loop backedges. Ownership state must
 be valid on every incoming path where a value is used. An early return does
@@ -105,7 +105,7 @@ calls, and reborrow references. Callers retain the original backing storage
 and reborrow ancestry, so a live result prevents conflicting access, moves,
 replacement or destruction. Projections still borrow the whole backing
 value. Bind a result before dereferencing it; direct dereference of a call
-result remains unsupported. References cannot be reassigned or fabricated
+result remains unsupported. Nonoptional references cannot be reassigned or fabricated
 from a temporary owner. Multiple borrowed inputs require the named lifetime
 contracts described below. Returned slices use the explicit checked slice
 type described under arrays and slices.
@@ -250,6 +250,50 @@ borrowed while evaluating the right-hand expression; indexing likewise keeps
 the receiver borrowed while evaluating the index. Nested moves, replacement
 or mutation of that backing storage are rejected. Reading the same storage
 for an update, or replacing an owner in a separate statement, remains valid.
+
+## Optional references
+
+`optref T*` and `optrefmut T*` are nullable shared and mutable references.
+They have the same one-pointer representation as `ref T*` and `refmut T*`,
+with the integer literal `0` representing absence. Ordinary references remain
+non-null. Optional references accept the same named lifetime spelling:
+`optref[a] T*` and `optrefmut[a] T*`.
+
+```w
+int optional_value(optref int* value):
+	if value == 0: return 0
+	return *value
+
+optref int* maybe_value(ref int* value, int present):
+	if present: return value
+	return 0
+```
+
+Dereferencing, projecting a field or passing an optional value to a nonoptional
+reference parameter requires proof of presence. Initializing with an address or
+nonoptional reference establishes that proof. Tests `value`, `!value`,
+`value == 0` and `value != 0` refine the appropriate branch, including an early
+return and a `while` guard. Short-circuit `&&`/`||` and scalar ternaries preserve
+these proofs. Bitwise `&`/`|` do not. Branch joins and loop backedges retain all
+possible absence states; an assignment invalidates the previous proof. Compound
+tests containing optional assignments conservatively do not establish a final
+branch proof.
+
+An initialized optional local can be assigned `0`, a compatible checked pointer,
+or a borrowed call result. Origins and reborrow parents conservatively include
+all values ever assigned in that function. This can retain a borrow longer than
+necessary, but replacement cannot discard a backing-storage obligation. Clearing
+a parent does not clear a copied child's borrow. Replacements that create a
+reborrow ancestry cycle are rejected. Nonoptional locals, slices and aggregate
+wrappers retain their existing reassignment restrictions.
+
+Optional parameters and results use the existing inferred or named lifetime
+contracts. Returning `0` is permitted; returning a view of local storage is not.
+A returned optional view conservatively borrows every candidate input even when
+the callee may choose absence. An unannotated optional result without borrowed inputs may return absence only;
+its body still cannot return a view of local or owned storage. Optional aggregate fields, optional slices,
+reference fabrication through casts and arbitrary pointer arithmetic remain
+unsupported. All these rules apply with or without `--safe`.
 
 ## Arrays, slices and control flow
 

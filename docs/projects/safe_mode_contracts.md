@@ -57,8 +57,13 @@ singletons preserving existing binding indices. Union interning avoids
 allocating the same set on repeated dataflow passes; function completion
 releases the sets. Parent traversal must terminate even for malformed
 self-referential initializers that definite-initialization checking rejects.
-Reference reassignment stays unsupported, so accepted reborrow dependencies
-remain acyclic. Reassignment would require flow-sensitive provenance joins.
+Nonoptional reference reassignment remains unsupported. Optional-reference
+replacement uses flow-sensitive presence states and conservative unions of every
+assigned origin and parent. The origin/parent fixed point participates in graph
+convergence. Reborrow cycles are rejected; absence removes a copied value's
+backing-storage obligation without removing a live child's obligations. A
+replacement may release its old loan before RHS evaluation only when no RHS
+operand reads that old value.
 
 A projected store reserves its backing roots across right-hand evaluation;
 an indexed projection reserves its receiver across index evaluation. Final
