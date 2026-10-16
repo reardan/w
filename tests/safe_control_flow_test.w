@@ -114,3 +114,28 @@ void test_checked_control_flow():
 	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tfor char i in range(2):\n\t\tpass\n\treturn 0\n", c"range variable must")
 	# empty switch
 	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tint x = 4\n\tswitch x:\n\treturn x - 4\n", 0)
+
+
+void test_checked_defer():
+	# defer return capture
+	control_flow_case(c"int change(refmut int* p):\n\t*p = 9\n\treturn 0\nint captured(refmut int* p):\n\tdefer change(p)\n\treturn *p\nint main():\n\tint x = 2\n\tint old = captured(&x)\n\treturn old + x - 11\n", 0)
+	# defer LIFO
+	control_flow_case(c"void digit(refmut int* p, int n):\n\t*p = *p * 10 + n\nvoid run(refmut int* p):\n\tdefer digit(p, 1)\n\tdefer digit(p, 2)\nint main():\n\tint x = 0\n\trun(&x)\n\treturn x - 21\n", 0)
+	# defer fallthrough owner
+	control_flow_case(c"void consume(own int* p):\n\tpass\nvoid run():\n\town int* p = new int\n\tdefer consume(p)\nint main():\n\trun()\n\treturn 0\n", 0)
+	# defer captured owner
+	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nown int* run():\n\town int* p = new int\n\tdefer read_value(p)\n\treturn p\nint main():\n\town int* p = run()\n\treturn *p\n", c"moved value")
+	# defer duplicate move
+	control_flow_case(c"void consume(own int* p):\n\tpass\nint main():\n\town int* p = new int\n\tdefer consume(p)\n\tdefer consume(p)\n\treturn 0\n", c"moved value")
+	# defer borrower liveness
+	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tref int* r = p\n\tdefer read_value(r)\n\tp = new int\n\treturn 0\n", c"conflicting")
+	# defer borrowed result protection
+	control_flow_case(c"int change(refmut int* p):\n\t*p = 9\n\treturn 0\nref int* run(refmut int* p):\n\tdefer change(p)\n\treturn p\nint main():\n\tint x = 0\n\tref int* p = run(&x)\n\treturn *p\n", c"conflicting")
+	# defer returned shared read
+	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nref int* run(ref int* p):\n\tdefer read_value(p)\n\treturn p\nint main():\n\tint x = 0\n\tref int* p = run(&x)\n\treturn *p\n", 0)
+	# nested defer rejected
+	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nint main():\n\tint x = 0\n\tref int* p = &x\n\tif x:\n\t\tdefer read_value(p)\n\treturn 0\n", c"outer lexical block")
+	# defer later binding
+	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nint main():\n\tdefer read_value(p)\n\town int* p = new int\n\treturn 0\n", 0)
+	# defer before declaration initialization
+	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer read_value(p)\n\tif *p:\n\t\town int* q = p\n\t\treturn 0\n\treturn 0\n", c"moved value")

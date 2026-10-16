@@ -21,6 +21,8 @@ struct safe_flow:
 	int action
 	int next
 	int alternate
+	int returning
+	int return_roots
 	int reached
 	char* state
 	char* live
@@ -321,6 +323,8 @@ int safe_add(int node, int expression, int binding, int action, int next, int al
 	f.action = action
 	f.next = next
 	f.alternate = alternate
+	f.returning = -1
+	f.return_roots = -1
 	f.reached = 0
 	f.state = cast(char*, safe_zero(safe_locals.length, 1))
 	f.live = cast(char*, safe_zero(safe_locals.length, 1))
@@ -454,6 +458,42 @@ int safe_switch(int id, int next, int continue_to):
 	return safe_add(selector, safe_expr_root(selector), -1, 0, clauses, -1)
 
 
+int safe_deferred(int id, int next, int returning):
+	int group = safe_first[id]
+	if ((group < 0) || (retained_record_at(group).kind != retained_expression_group) || (safe_next[group] >= 0)):
+		safe_error(id, c"safe: unsupported deferred expression representation", -1)
+	if (retained_record_at(id).expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
+	int event = safe_add(id, safe_expr_root(group), -1, 7, next, -1)
+	safe_graph[event].returning = returning
+	return event
+
+
+# Return capture precedes deferred evaluation. Keeping these events on the
+# same graph makes deferred reads extend liveness and deferred moves visible
+# to later LIFO calls, while a captured borrowed result stays protected.
+int safe_return(int id):
+	int expression = -1
+	list[int] deferred = new list[int]
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* n = retained_record_at(child)
+		if (n.kind == retained_expression_group):
+			if (expression >= 0): safe_error(id, c"safe: unsupported multiple-expression statement", -1)
+			expression = safe_expr_root(child)
+		else if ((n.kind == retained_statement) && (strcmp(n.name, c"deferred exit") == 0)): deferred.push(child)
+		else: safe_error(child, c"safe: unsupported return representation", -1)
+		child = safe_next[child]
+	int capture = safe_add(id, expression, -1, 2, -1, -1)
+	int next = -1
+	int i = deferred.length
+	while (i > 0):
+		i = i - 1
+		next = safe_deferred(deferred[i], next, capture)
+	deferred.free()
+	safe_graph[capture].next = next
+	return capture
+
+
 int safe_build(int id, int next, int break_to, int continue_to):
 	retained_record* n = retained_record_at(id)
 	if (n.kind == retained_local): return next
@@ -464,8 +504,11 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		safe_unsafe_check(id)
 		return next
 	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
-	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
+	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
+	if (strcmp(name, c"defer") == 0): return next
+	if (strcmp(name, c"deferred exit") == 0): return safe_deferred(id, next, -1)
+	if (strcmp(name, c"return") == 0): return safe_return(id)
 	if (strcmp(name, c"for range") == 0): return safe_range(id, next)
 	if (strcmp(name, c"switch") == 0): return safe_switch(id, next, continue_to)
 	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
@@ -500,7 +543,6 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		int guard = safe_add(id, safe_expr_root(group), -1, 0, -1, next)
 		safe_graph[guard].next = safe_build(first_body, guard, next, guard)
 		return guard
-	if (strcmp(name, c"return") == 0): return safe_add(id, safe_expr_root(group), -1, 2, -1, -1)
 	if (local >= 0):
 		char* scope = retained_record_at(n.parent).name
 		if ((strcmp(scope, c":") != 0) && (strcmp(scope, c"{") != 0)):
@@ -1100,6 +1142,7 @@ void safe_transfer(int event, char* state):
 			if (f.expression < 0): safe_error(f.node, c"safe: reference return requires a value", -1)
 			int parent = -1
 			int root = safe_borrow(f.expression, safe_return_type, state, &parent)
+			f.return_roots = root
 			if (safe_validate):
 				for i in range(safe_locals.length):
 					if (safe_set_has(root, i) && (safe_set_has(safe_return_root, i) == 0)):
@@ -1111,6 +1154,16 @@ void safe_transfer(int event, char* state):
 	else if (f.action == 4): state[index] = 2
 	else if ((f.action == 5) || (f.action == 6)):
 		safe_access(index, -1, f.action == 6, f.node, state)
+	else if (f.action == 7):
+		int roots = -1
+		if (f.returning >= 0): roots = safe_graph[f.returning].return_roots
+		if (roots >= 0):
+			safe_call_roots.push(roots)
+			safe_call_kinds.push(safe_borrow_kind(safe_return_type))
+		safe_eval(f.expression, state, -1)
+		if (roots >= 0):
+			safe_call_roots.pop()
+			safe_call_kinds.pop()
 	else: safe_eval(f.expression, state, -1)
 
 
@@ -1137,7 +1190,9 @@ void safe_function_check(int function):
 		if (retained_node_table[id] & 1): continue
 		retained_record* n = retained_record_at(id)
 		if ((n.kind == retained_statement) && (strcmp(n.name, c"defer") == 0) && safe_within(id, function)):
-			safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
+			int block = n.parent
+			if ((block < 0) || (retained_record_at(block).parent != function)):
+				safe_error(id, c"safe: defer requires the function's outer lexical block", -1)
 	int count = safe_locals.length
 	safe_sets = new list[char*]
 	for i in range(count):

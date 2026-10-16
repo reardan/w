@@ -187,7 +187,12 @@ void defer_emit_all():
 	int i = defer_count()
 	while (i > 0):
 		i = i - 1
-		if (defer_tree_emit(i)): continue
+		# Preserve the actual exit-site binding and evaluation order for
+		# ownership analysis, separately from the return's own expression.
+		int deferred = retained_enter(retained_statement, defer_spans[i].file, defer_spans[i].offset, defer_spans[i].line + 1, defer_spans[i].column + 1, c"deferred exit")
+		if (defer_tree_emit(i)):
+			retained_leave(deferred, token_start_offset)
+			continue
 		defer_reparse_exits = defer_reparse_exits + 1
 		char* save = generic_reparse_save()
 		defer_reparse_start(i)
@@ -195,6 +200,7 @@ void defer_emit_all():
 		expect_or_newline(c";")
 		retained_source_reparse_close(file)
 		generic_reparse_restore(save)
+		retained_leave(deferred, token_start_offset)
 
 
 # Exit path for 'return': the pending return value is already in eax
