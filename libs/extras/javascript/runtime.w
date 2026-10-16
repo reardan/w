@@ -176,6 +176,7 @@ js_value* js_bigint_negate(js_runtime* rt, js_value* value);
 js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b);
 char* js_bigint_text(js_value* value);
 void js_runtime_install_builtins(js_runtime* rt);
+void js_runtime_install_number_parse(js_runtime* rt);
 void js_runtime_install_binary(js_runtime* rt);
 js_value* js_runtime_binary_construct(js_runtime* rt, int kind, list[js_value*] args);
 void js_runtime_install_promises(js_runtime* rt);
@@ -426,6 +427,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_collections(rt)
 	js_runtime_install_regexp(rt)
 	js_runtime_install_builtins(rt)
+	js_runtime_install_number_parse(rt)
 	js_runtime_install_bigint(rt)
 	js_runtime_install_classes(rt)
 	js_runtime_install_json(rt)
@@ -1756,6 +1758,7 @@ import libs.extras.javascript.binary
 import libs.extras.javascript.runtime_compat
 
 import libs.extras.javascript.runtime_builtins
+import libs.extras.javascript.runtime_number_parse
 
 import libs.extras.javascript.runtime_collections
 
