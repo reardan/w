@@ -50,7 +50,13 @@ def main():
         if len(actual) != len(chunk) or len(expected) != len(chunk):
             raise SystemExit('incomplete endpoint observations')
         failures.extend({'rule': case[0], 'input': case[1], 'w': got, 'antlr': want} for case, got, want in zip(chunk, actual, expected) if got != want)
-    report = {'antlr_jar_sha256': JAR_SHA256, 'java_version': version.strip(), 'cases': len(cases), 'mismatches': failures, 'seconds': round(time.monotonic() - started, 3)}
+    tools = {name: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+             for name, path in {'translator': 'bin/antlr_to_pg', 'compiler': 'bin/wv2',
+                                'grammar': 'tests/grammars/antlr_exact_lexer/Exact.g4',
+                                'reference_driver': 'tests/grammars/antlr_exact_lexer/OracleProbe.java'}.items()}
+    report = {'antlr_jar_sha256': JAR_SHA256, 'java_version': version.strip(),
+              'tools_and_inputs_sha256': tools, 'cases': len(cases), 'mismatches': failures,
+              'seconds': round(time.monotonic() - started, 3)}
     (work / 'results.json').write_text(json.dumps(report, indent=2) + '\n')
     print(f'{len(cases)} endpoint cases, {len(failures)} mismatches')
     if failures: raise SystemExit(1)
