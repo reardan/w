@@ -17,7 +17,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/lib.w")): return c"daf4b14f5e2158d41c808a6b5da1729df00fffad23e2a4d544f305d7d5c23be3"
 	if (ends_with(path, c"/lib/linux.w")): return c"e0ba57f22d74e271a6a6db7c55cef38a2943b7fe75a446ba152f766ef36b4cf6"
 	if (ends_with(path, c"/lib/memory.w")): return c"82f5225c2eeff87f429a0268de52c84458c3c40e39918b3e384ca391c386b981"
-	if (ends_with(path, c"/lib/memory_debug.w")): return c"d673ad97c1170068c74892af8c171d88a636d2e502e1749cc0d110a9dc8111cc"
+	if (ends_with(path, c"/lib/memory_debug.w")): return c"28ae88caad2b68c2b74cc43af7c4317f08edd648bf09e2922d4085f8f2c48ca0"
 	if (ends_with(path, c"/lib/memory_freelist.w")): return c"3914deeecbd1076336d7d71c7ef948d437b5f2784de641b5e9b73134acdfd317"
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
