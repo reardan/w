@@ -53,7 +53,9 @@ with tempfile.TemporaryDirectory(prefix="mermaid-", dir="bin") as temp:
     assert run("read", source).stdout == source.read_bytes()
     run("check", root / "missing.mmd", ok=False)
     run("nonsense", source, ok=False)
-    for example in Path("examples/mermaid").glob("*.mmd"):
+    for example in Path("examples/mermaid").iterdir():
+        if example.suffix not in {".mmd", ".md"}:
+            continue
         run("check", example)
         assert run("read", example).stdout == example.read_bytes()
         run("write", example, copy)

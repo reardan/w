@@ -67,13 +67,14 @@ These describe upstream syntax; the table below defines the implemented subset.
 
 | Area | Implemented |
 | --- | --- |
-| Input | Raw UTF-8 `.mmd` source, BOM, LF/CRLF, `%%` comments, semicolon separators |
+| Input | Raw UTF-8 `.mmd` source or one Mermaid Markdown fence, BOM, LF/CRLF, `%%` comments, semicolon separators |
 | Flow header | `flowchart` or `graph`, followed by `TB`, `TD`, `BT`, `LR`, or `RL` |
 | Flow nodes | Bare IDs, rectangle `[label]`, rounded `(label)`, circle `((label))`, diamond `{label}`; quoted labels |
 | Flow edges | `-->`, `---`, `-.->`, optional `|label|`, chains, cycles, self edges |
 | ER entities | Bare/quoted names, standalone entities, `[alias]`, attribute blocks |
 | ER attributes | `type name`, `PK`/`FK`/`UK` and comma-separated combinations, quoted comments, array/parenthesized/nullable types, `*` primary-key name spelling |
-| ER relationships | All 16 combinations of symbolic cardinalities, `--` identifying and `..` non-identifying, required `: label` |
+| ER relationships | All 16 symbolic cardinality combinations plus textual aliases (`only one`, `zero or many`, etc.); `--` / `to` identifying and `..` / `optionally to` non-identifying; required `: label` |
+| Grouping | Nested `subgraph ID[label] ... end` in flowcharts and ER; scoped directions and compound bounds |
 | ER direction | `direction TB`, `BT`, `LR`, or `RL` |
 | Rendering | Entity attribute rows, relationship text, crow's feet, optional circles, one bars, dashed/solid edges; shared scene for native and SVG output |
 
@@ -87,9 +88,8 @@ resizable columns. Layout uses longest-path ranks with deterministic cycle
 breaking and orthogonal connectors. It is not Dagre/ELK: complex cycles,
 parallel edges and long labels may overlap and need future routing work.
 
-Not yet supported: subgraphs, styling/classes, frontmatter/configuration,
-click actions, additional node/edge shapes, textual cardinality aliases,
-Markdown fences and rich text. Class and state coverage is listed below;
+Not yet supported: styling/classes, configuration, click actions, additional
+node/edge shapes and rich text. Class and state coverage is listed below;
 other diagram families are not yet implemented. Most unsupported syntax
 is an explicit diagnostic; text inside accepted labels is always literal.
 
@@ -127,6 +127,20 @@ or abstract suffixes do not add font styling. Unsupported structures fail parsin
 and clear the preview while preserving editable source. Automatic routing can
 still overlap connectors or labels, particularly across namespace boundaries.
 
+## Markdown, titles and accessibility
+
+A source document can contain one backtick or tilde Mermaid fence. The parser
+ignores fences in other languages and preserves all surrounding prose and original
+line endings. Multiple Mermaid fences are diagnosed rather than displaying only
+part of the document. Parse diagnostics and byte-range edits refer to the original
+complete source. See `examples/mermaid/document.md`.
+
+Plain `title:` frontmatter is supported inside or outside a fence. Quoted scalar
+titles are accepted; YAML escapes, structured values and configuration fields are
+explicitly unsupported. `accTitle:` and `accDescr:` (including brace-delimited
+multiline descriptions) provide escaped SVG title/description metadata. Frontmatter
+titles are also visible in the native preview. Source edits preserve metadata.
+
 ## W library
 
 ```w
@@ -146,6 +160,8 @@ mm_document_free(doc)
 
 - `model`: `mm_document`, nodes, attributes and edges; `mm_write(doc)` returns
   owned source text; `mm_document_free` frees the complete document.
+- `source`: lossless Markdown/frontmatter envelopes and original-document offsets.
+- `scene`: owned backend-independent primitives and escaped SVG metadata.
 - `parse_common` / `uml`: bounded lexical helpers and class/state parsers.
 - `parser`: `mm_parse(bytes, length)` copies input and returns an owned result,
   including failures. `error == 0` means successful subset parsing.
@@ -207,4 +223,7 @@ writes, edits, invalid source preservation, both examples and well-formed XML.
 namespace ownership, compound bounds, scoped initial/final states, directions,
 source edits, unsupported syntax and nesting/member limits. The native editor
 tests also verify clipping for UML polygons and compound diagrams.
+`compatibility_test` and `compatibility_64_test` cover compound flow/ER layouts,
+all textual ER alias combinations, source envelopes, diagnostic offsets, source
+edits and accessible SVG metadata.
 These source-owned targets join `./wbuild tests` automatically.

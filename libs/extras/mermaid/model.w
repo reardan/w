@@ -64,10 +64,18 @@ struct mm_document:
 	int error_line
 	int error_column
 	int attribute_count
+	char* title
+	char* accessibility_title
+	char* accessibility_description
+	int source_start
+	int source_end
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
 	d.source = strclone(c"")
+	d.title = strclone(c"")
+	d.accessibility_title = strclone(c"")
+	d.accessibility_description = strclone(c"")
 	d.direction = strclone(c"TB")
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
@@ -135,6 +143,9 @@ void mm_document_free(mm_document* d):
 	__w_list_free(cast(__w_list*, d.nodes))
 	__w_list_free(cast(__w_list*, d.edges))
 	free(d.source)
+	free(d.title)
+	free(d.accessibility_title)
+	free(d.accessibility_description)
 	free(d.direction)
 	free(d.error)
 	free(d)
