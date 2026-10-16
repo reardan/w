@@ -332,11 +332,17 @@ int safe_set_overlap(int left, int right):
 
 
 int safe_ancestor(int ancestor, int children):
-	if (children < 0): return 0
-	if (safe_set_has(children, ancestor)): return 1
-	for child in range(safe_locals.length):
-		if (safe_set_has(children, child)):
-			if (safe_ancestor(ancestor, safe_parent_ref[child])): return 1
+	# Invalid initializers can introduce a self edge before definite-init
+	# validation. Set closure terminates even for those malformed cycles.
+	int ancestors = children
+	int changed = 1
+	while (changed):
+		if (safe_set_has(ancestors, ancestor)): return 1
+		int previous = ancestors
+		for child in range(safe_locals.length):
+			if (safe_set_has(ancestors, child)):
+				ancestors = safe_set_union(ancestors, safe_parent_ref[child])
+		changed = ancestors != previous
 	return 0
 
 
@@ -467,11 +473,46 @@ int safe_scalar_type(int type):
 	return safe_plain(type, 0) && (retained_types[type].fields.length == 0) && (retained_types[type].kind != type_kind_array)
 
 
+char* safe_lifetime(int type):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	return retained_types[type].lifetime
+
+
 int safe_same_contract_type(int a, int b):
 	a = safe_unqualified(a)
 	b = safe_unqualified(b)
 	if ((a < 0) || (b < 0)): return a == b
+	if (safe_kind(a) != safe_kind(b)): return 0
+	if (safe_kind(a)):
+		a = safe_unqualified(retained_types[a].target)
+		b = safe_unqualified(retained_types[b].target)
 	return strcmp(retained_types[a].name, retained_types[b].name) == 0
+
+
+int safe_contract_slot(retained_binding* binding, int slot):
+	if (slot == binding.parameters.length): return binding.return_type
+	return binding.parameters[slot]
+
+
+# Lifetime spelling is local to a signature. Compare the equality relation
+# between annotated positions, so alpha-renaming cannot change a contract.
+int safe_contract_matches(retained_binding* left, retained_binding* right):
+	if (left.parameters.length != right.parameters.length): return 0
+	for i in range(left.parameters.length + 1):
+		int a = safe_contract_slot(left, i)
+		int b = safe_contract_slot(right, i)
+		if (safe_same_contract_type(a, b) == 0): return 0
+		char* al = safe_lifetime(a)
+		char* bl = safe_lifetime(b)
+		if ((al == 0) != (bl == 0)): return 0
+		if (al == 0): continue
+		for j in range(i):
+			char* earlier_a = safe_lifetime(safe_contract_slot(left, j))
+			char* earlier_b = safe_lifetime(safe_contract_slot(right, j))
+			if ((earlier_a == 0) || (earlier_b == 0)): continue
+			if ((strcmp(al, earlier_a) == 0) != (strcmp(bl, earlier_b) == 0)): return 0
+	return 1
 
 
 int safe_has_body(int function):
@@ -482,22 +523,37 @@ int safe_has_body(int function):
 	return 0
 
 
-# A returned reference inherits the sole borrowed parameter's lifetime.
-# This signature-only rule is identical for callers, definitions, imports
-# and recursion. Ambiguous signatures need future named lifetime syntax.
+# Unannotated results retain sole-input inference. An explicit result label
+# denotes the intersection of every input carrying that label: callers retain
+# all those origins, and the body may return a view derived from any of them.
 int safe_return_parameter(int id, retained_binding* binding):
 	if (safe_borrow_kind(binding.return_type) < 2): return -1
 	if (safe_slice(binding.return_type)):
 		safe_error(id, c"safe: returning slices requires an explicit lifetime contract", -1)
+	char* lifetime = safe_lifetime(binding.return_type)
 	int result = -1
 	for p in range(binding.parameters.length):
-		if (safe_borrow_kind(binding.parameters[p]) >= 2):
-			if (result >= 0): safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
-			result = p
-	if (result < 0): safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
-	if ((safe_kind(binding.return_type) == 3) && (safe_kind(binding.parameters[result]) != 3)):
-		safe_error(id, c"safe: mutable reference return requires a mutable borrowed parameter", -1)
+		if (safe_borrow_kind(binding.parameters[p]) < 2): continue
+		if (lifetime != 0):
+			char* input = safe_lifetime(binding.parameters[p])
+			if (input == 0): continue
+			if (strcmp(input, lifetime) != 0): continue
+		else if (result >= 0): safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
+		result = p
+		if ((safe_kind(binding.return_type) == 3) && (safe_kind(binding.parameters[p]) != 3)):
+			safe_error(id, c"safe: mutable reference return requires a mutable borrowed parameter", -1)
+	if (result < 0):
+		if (lifetime != 0): safe_error(id, c"safe: returned lifetime must name a borrowed parameter", -1)
+		safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
 	return result
+
+
+int safe_return_from(retained_binding* binding, int inferred, int position):
+	char* lifetime = safe_lifetime(binding.return_type)
+	if (lifetime == 0): return inferred == position
+	char* input = safe_lifetime(binding.parameters[position])
+	if (input == 0): return 0
+	return strcmp(input, lifetime) == 0
 
 
 int safe_call(int id, retained_node* n, char* state, int* parent):
@@ -513,12 +569,8 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 	else:
 		if (function < 0): safe_error(id, c"safe: call has no checked implementation", -1)
 		retained_binding* definition = retained_bindings[retained_record_at(function).binding]
-		int matches = safe_same_contract_type(callee.return_type, definition.return_type)
-		if (callee.parameters.length != definition.parameters.length): matches = 0
-		else:
-			for p in range(callee.parameters.length):
-				if (safe_same_contract_type(callee.parameters[p], definition.parameters[p]) == 0): matches = 0
-		if (matches == 0): safe_error(id, c"safe: forward declaration disagrees with its definition", function)
+		if (safe_contract_matches(callee, definition) == 0):
+			safe_error(id, c"safe: forward declaration disagrees with its definition", function)
 		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
 	int return_parameter = safe_return_parameter(id, callee)
 	int return_root = -1
@@ -534,9 +586,9 @@ int safe_call(int id, retained_node* n, char* state, int* parent):
 		if (kind >= 2):
 			int via = -1
 			root = safe_borrow(arg, want, state, &via)
-			if (position == return_parameter):
-				return_root = root
-				*parent = via
+			if (safe_return_from(callee, return_parameter, position)):
+				return_root = safe_set_union(return_root, root)
+				*parent = safe_set_union(*parent, via)
 		else: root = safe_eval(arg, state, want)
 		# Scalar arguments copy their value; only pointer contracts keep
 		# storage reserved while later arguments are evaluated.
@@ -776,7 +828,8 @@ void safe_function_check(int function):
 	for i in range(count):
 		initial[i] = 1
 		if (retained_bindings[safe_locals[i]].scope == 'A'):
-			if (parameter == return_parameter): safe_return_root = i
+			if (safe_return_from(retained_bindings[fn.binding], return_parameter, parameter)):
+				safe_return_root = safe_set_union(safe_return_root, i)
 			parameter = parameter + 1
 			safe_type_check(safe_birth[i], retained_bindings[safe_locals[i]].type)
 			initial[i] = 2
