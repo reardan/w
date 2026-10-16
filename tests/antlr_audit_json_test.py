@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-with tempfile.TemporaryDirectory(dir=ROOT / 'bin', prefix='audit-json-') as directory:
+with tempfile.TemporaryDirectory(dir=ROOT / 'bin', prefix='audit_json_') as directory:
     directory = pathlib.Path(directory)
     source = directory / 'Proof.g4'
     output = directory / 'out.pg'
@@ -31,4 +31,20 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin', prefix='audit-json-') as dire
     result = subprocess.run(command, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert json.loads(audit.read_text())['findings'] == []
+    source.write_text("grammar Proof; root: MISSING EOF; A: 'a';")
+    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.returncode != 0
+    codes = {f['code'] for f in json.loads(audit.read_text())['findings']}
+    assert {'AT_INFERRED_TOKEN', 'AT_TOKEN_NO_LEXER'} <= codes
+    permissive = [arg for arg in command if arg != '--strict']
+    result = subprocess.run(permissive, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    generated = directory / 'generated.w'
+    result = subprocess.run([str(ROOT / 'bin/parser_generator_grammars'), str(output), '-o', str(generated)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    driver = directory / 'driver.w'
+    module = '.'.join(generated.relative_to(ROOT).with_suffix('').parts)
+    driver.write_text(f'import {module}\nint main():\n\treturn 0\n')
+    result = subprocess.run([str(ROOT / 'bin/wv2'), '--strict', str(driver), '-o', str(directory / 'driver')], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
 print('structured ANTLR audit: passed')

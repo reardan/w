@@ -2,6 +2,7 @@
 # Diagnostics have input/rule locations and deterministic input order. The
 # legacy report is left stable; these losses are printed separately on stderr.
 import libs.extras.grammars.antlr_to_pg.types
+import libs.extras.grammars.antlr_to_pg.lexer_ir
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import lib.utf8
 import libs.extras.grammars.antlr_to_pg.audit_json

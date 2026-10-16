@@ -1,6 +1,7 @@
 # Translator-owned continuation IR. Source rules remain untouched: unlike the
 # legacy matcher path, no ASCII approximation or recursive rewrite is applied.
 import libs.extras.grammars.antlr_to_pg.types
+import lib.utf8
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
 
 

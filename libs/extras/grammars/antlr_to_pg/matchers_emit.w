@@ -1,6 +1,7 @@
 # Matcher emission engine: charset predicates, element/altlist matchers,
 # fragment helpers, and the at_try_generate_matcher driver.
 import libs.extras.grammars.antlr_to_pg.types
+import libs.extras.grammars.antlr_to_pg.lexer_emit
 import libs.extras.grammars.antlr_to_pg.charsets
 import libs.extras.grammars.antlr_to_pg.classify
 import libs.extras.grammars.antlr_to_pg.matchers_ascii

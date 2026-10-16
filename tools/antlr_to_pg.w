@@ -35,6 +35,7 @@ import libs.extras.grammars.antlr_to_pg.types
 import libs.extras.grammars.antlr_to_pg.ast
 import libs.extras.grammars.antlr_to_pg.dependencies
 import libs.extras.grammars.antlr_to_pg.lexer_emit
+import libs.extras.grammars.antlr_to_pg.token_identities
 import libs.extras.grammars.antlr_to_pg.audit
 import libs.extras.grammars.antlr_to_pg.normalize
 import libs.extras.grammars.antlr_to_pg.prediction_audit
@@ -145,6 +146,7 @@ int main(int argc, int argv):
 			g_lexer_rules[r.name] = r
 		i = i + 1
 
+	at_infer_token_identities(all_rules)
 	at_prepare_stateful(all_rules, stateful)
 	if (g_at_exact_lexer):
 		at_exact_prepare(all_rules)
@@ -154,6 +156,7 @@ int main(int argc, int argv):
 	at_audit_prediction(all_rules)
 	if (g_at_dependency_error): unsafe = 1
 	at_collect_parser_refs(all_rules)
+	at_audit_token_identities()
 	at_audit_lexer_contract(all_rules)
 	at_print_audit(args_value(c"audit"))
 	if (at_write_audit_json(args_value(c"audit-json")) == 0): return 1

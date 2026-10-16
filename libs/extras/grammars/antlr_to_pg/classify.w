@@ -2,6 +2,7 @@
 # lexer rule shape classification
 # ---------------------------------------------------------------------------
 import libs.extras.grammars.antlr_to_pg.types
+import libs.extras.grammars.antlr_to_pg.audit_json
 import libs.extras.grammars.antlr_to_pg.charsets
 
 at_classification* at_make_classification(int kind, char* payload):

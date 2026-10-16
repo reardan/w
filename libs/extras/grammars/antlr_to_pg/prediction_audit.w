@@ -121,7 +121,7 @@ void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int
 			if (at_prediction_alt_nullable(alt)): overlap = 1
 			if (at_prediction_alt_nullable(alts[j]) && at_prediction_overlap(first, following)): overlap = 1
 			if (overlap):
-				at_loss(owner.first, owner.name, cstr(f"unproven parser continuation: alternatives {i + 1} and {j + 1} overlap or precede a nullable fallback; use --prediction or a reviewed adaptation"))
+				at_loss_code(owner.first, owner.name, c"AT_PARSER_CONTINUATION", c"parser_prediction", c"unproven", cstr(f"unproven parser continuation: alternatives {i + 1} and {j + 1} overlap or precede a nullable fallback; use --prediction or a reviewed adaptation"))
 		map[char*, int] next = new map[char*, int]
 		at_prediction_union(next, following)
 		int e = alt.elements.length - 1
@@ -129,7 +129,7 @@ void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int
 			at_element* element = alt.elements[e]
 			map[char*, int] atom_first = at_prediction_first_atom(element)
 			if ((element.suffix != 0) && at_prediction_overlap(atom_first, next)):
-				at_loss(element.first, owner.name, cstr(f"unproven parser continuation: greedy term {e + 1} overlaps its caller/following input; use --prediction or a reviewed adaptation"))
+				at_loss_code(element.first, owner.name, c"AT_PARSER_CONTINUATION", c"parser_prediction", c"unproven", cstr(f"unproven parser continuation: greedy term {e + 1} overlaps its caller/following input; use --prediction or a reviewed adaptation"))
 			map[char*, int] inside = new map[char*, int]
 			at_prediction_union(inside, next)
 			if ((element.suffix == '*') || (element.suffix == '+')): at_prediction_union(inside, atom_first)
