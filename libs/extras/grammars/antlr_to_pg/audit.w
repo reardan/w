@@ -7,6 +7,7 @@ import libs.extras.grammars.antlr_to_pg.parser_sets
 import libs.extras.grammars.antlr_to_pg.matchers_ascii
 import lib.utf8
 import libs.extras.grammars.antlr_to_pg.audit_json
+import libs.extras.grammars.antlr_to_pg.recursion_diagnostics
 
 list[char*] g_at_loss_lines
 map[char*, int] g_at_nullable
@@ -342,6 +343,7 @@ int at_audit(list[at_rule*] rules):
 	g_at_semantic_losses = 0
 	g_at_structural_hazard = 0
 	at_audit_prepare_rules(rules)
+	at_lr_diagnostics_remaining(rules)
 	int i = 0
 	int unsafe = 0
 	i = 0

@@ -7,7 +7,9 @@ int at_normalize_expression(at_rule* rule, list[at_rule*] rules);
 
 
 int at_normalize_parser_lists(list[at_rule*] rules):
+	g_at_normalization_guards = new map[char*, json_value*]
 	at_audit_prepare_rules(rules)
+	at_lr_diagnostics_source(rules)
 	int count = 0
 	int source_count = rules.length
 	int i = 0

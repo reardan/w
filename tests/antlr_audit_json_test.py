@@ -55,6 +55,45 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin', prefix='audit_json_') as dire
     codes = {f['code'] for f in json.loads(audit.read_text())['findings']}
     assert 'AT_LEFT_RECURSION' in codes
     assert 'AT_PARSER_CONTINUATION' not in codes  # no decision proof on unsafe recursion
+    # The first implementation wave adds evidence without admitting new shapes.
+    # Guard failures and actual remaining call cycles are separate observations.
+    exact = [*command, '--exact-lexer', '--prediction']
+    report = directory / 'out.report'
+    matchers = directory / 'out_matchers.w'
+    exact += ['--report', str(report), '--matchers', str(matchers)]
+    cases = [
+        ("root: expr EOF; expr: expr expr | 'x';", 'expr',
+         'operator_prefix_not_proven', ['expr', 'expr'], False),
+        ("root: expr EOF; expr: expr ','? expr | 'x';", 'expr',
+         'operator_prefix_not_proven', ['expr', 'expr'], False),
+        ("root: expr EOF; expr: expr '+' expr | ;", 'expr',
+         'empty_alternative', ['expr', 'expr'], False),
+        ("root: item EOF; item: other 'a' | 'b'; other: item;", 'item',
+         'primary_nullable_prefix_cycle', ['item', 'other', 'item'], True),
+    ]
+    for grammar, owner, guard_code, cycle, mutual in cases:
+        source.write_text('grammar Proof; ' + grammar)
+        for path in (output, report, matchers):
+            path.write_text('sentinel')
+        result = subprocess.run(exact, capture_output=True, text=True)
+        assert result.returncode != 0, (grammar, result.stderr)
+        assert all(path.read_text() == 'sentinel' for path in (output, report, matchers))
+        findings = json.loads(audit.read_text())['findings']
+        finding = next(f for f in findings if f['code'] == 'AT_LEFT_RECURSION' and f['rule'] == owner)
+        details = finding['details']
+        guard = next(g for g in details['normalization_guards'] if g['normalizer'] == 'prediction_expression')
+        assert guard['reason_code'] == guard_code, (grammar, details)
+        graph = details['remaining_graph']
+        assert graph['complete'] and graph['cycles'], details
+        assert any(c['path'] == cycle and c['mutual'] == mutual for c in graph['cycles']), details
+        assert details['source']['plan']['complete'], details
+        if not mutual:
+            plan = details['source']['plan']
+            binary = plan['alternatives'][0]
+            assert binary['kind'] == 'binary', plan
+            assert binary['precedence'] == 2, plan
+            assert binary['occurrences'][-1]['binding'] == 3, plan
+            assert not any(c['mutual'] for c in details['source']['graph']['cycles']), details
     lexer = directory / 'EmptyLexer.g4'
     parser = directory / 'EmptyParser.g4'
     parser.write_text("parser grammar EmptyParser; options {tokenVocab=EmptyLexer;} root: A EOF;")
