@@ -279,7 +279,7 @@ int js_print_block(string_builder* out, js_node* node, int depth, pg_diagnostics
 
 
 int js_print_dangling_else(js_node* node):
-	if ((js_kind(node, c"label") || js_kind(node, c"while") || js_kind(node, c"for") || js_kind(node, c"for_of")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
+	if ((js_kind(node, c"label") || js_kind(node, c"while") || js_kind(node, c"for") || js_kind(node, c"for_of") || js_kind(node, c"for_in")) && node.children.length > 0): return js_print_dangling_else(node.children[node.children.length - 1])
 	if (js_kind(node, c"if") == 0): return 0
 	if (node.children.length == 2): return 1
 	if (node.children.length == 3): return js_print_dangling_else(node.children[2])
@@ -417,6 +417,19 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 			return 1
 		string_append(out, c" ")
 		return js_print_statement(out, node.children[1], depth, diagnostics)
+	if (js_kind(node, c"for_in")):
+		if (count != 3): return js_print_error(diagnostics, node)
+		if (node.text[0] != 0 && strcmp(node.text, c"var") != 0 && strcmp(node.text, c"let") != 0 && strcmp(node.text, c"const") != 0): return js_print_error(diagnostics, node)
+		if (js_print_assignable(node.children[0]) == 0): return js_print_error(diagnostics, node)
+		string_append(out, c"for (")
+		if (node.text[0] != 0):
+			string_append(out, node.text)
+			string_append(out, c" ")
+		if (js_print_expression(out, node.children[0], diagnostics) == 0): return 0
+		string_append(out, c" in (")
+		if (js_print_expression(out, node.children[1], diagnostics) == 0): return 0
+		string_append(out, c")) ")
+		return js_print_statement(out, node.children[2], depth, diagnostics)
 	if (js_kind(node, c"for_of")):
 		if (count != 3 || (strcmp(node.text, c"let") != 0 && strcmp(node.text, c"const") != 0)): return js_print_error(diagnostics, node)
 		if (js_kind(node.children[0], c"identifier") == 0 || js_print_identifier_valid(node.children[0].text, 1) == 0): return js_print_error(diagnostics, node)

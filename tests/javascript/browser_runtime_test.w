@@ -74,7 +74,7 @@ void browser_semantics():
 	assert_equal(2, browser_eval(rt, c"for (const x of [1]) x = 2;").status)
 	assert_equal(2, browser_eval(rt, c"let shadowed = [1]; for (let shadowed of shadowed) {}").status)
 	assert_equal(6, browser_eval(rt, c"for (const x of {}) {}").status)
-	assert_equal(6, browser_eval(rt, c"for (const x in {}) {}").status)
+	assert_equal(6, browser_eval(rt, c"for (const [x] in {}) {}").status)
 	assert_equal(6, browser_eval(rt, c"function* unsupported(){}").status)
 	browser_number(rt, c"((x = 1) => x)();", 1.0)
 	browser_number(rt, c"const receiver = {answer: 42, method: function() { return () => this.answer; }}; const captured = receiver.method(); captured();", 42.0)

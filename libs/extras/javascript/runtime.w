@@ -154,6 +154,7 @@ int js_runtime_compat_step(js_runtime* rt);
 js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index);
 void js_runtime_arguments(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments);
 js_value* js_runtime_chain(js_runtime* rt, js_node* node, js_value* env, int* skipped, js_value** receiver);
+js_value* js_runtime_for_in(js_runtime* rt, js_node* node, js_value* env);
 void js_runtime_async_mark(js_runtime* rt, list[js_value*] pending);
 int js_runtime_async_cancel(js_runtime* rt);
 js_value* js_runtime_async_call(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args);
@@ -626,6 +627,10 @@ js_value* js_runtime_function(js_runtime* rt, js_node* node, js_value* env):
 void js_runtime_var_declare(js_runtime* rt, js_node* node, js_value* env, int install):
 	if (rt.completion.status != 0): return
 	if (js_kind(node, c"class") || js_kind(node, c"class_expression") || js_kind(node, c"method") || js_kind(node, c"static_method") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return
+	if (js_kind(node, c"for_in") && strcmp(node.text, c"var") == 0):
+		int mode = 2
+		if (install): mode = 3
+		js_runtime_pattern_declare(rt, node.children[0], env, mode, 0)
 	if (js_kind(node, c"variable")):
 		if (strcmp(node.text, c"var") != 0): return
 		for i in range(node.children.length):
@@ -1496,6 +1501,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		rt.empty = 0
 		return value
 	if (js_kind(node, c"for_of")): return js_runtime_for_of(rt, node, env)
+	if (js_kind(node, c"for_in")): return js_runtime_for_in(rt, node, env)
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
 	if (js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")): return js_runtime_assign(rt, node, env)
 	if (js_kind(node, c"binary")):
@@ -1640,7 +1646,7 @@ js_value* js_runtime_eval_node(js_runtime* rt, js_node* node, js_value* env):
 # syntax before execution, so unsupported syntax cannot leave partial effects.
 int js_runtime_supported(js_node* node):
 	char* kind = node.kind
-	int supported = js_kind(node, c"regex") || js_kind(node, c"class") || js_kind(node, c"class_expression") || js_kind(node, c"method") || js_kind(node, c"static_method") || js_kind(node, c"bigint") || js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
+	int supported = js_kind(node, c"regex") || js_kind(node, c"class") || js_kind(node, c"class_expression") || js_kind(node, c"method") || js_kind(node, c"static_method") || js_kind(node, c"bigint") || js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"for_in") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
 	if (supported == 0): return 0
 	if ((js_kind(node, c"member") || js_kind(node, c"computed_member")) && js_kind(node.children[0], c"literal") && strcmp(node.children[0].text, c"super") == 0): return 0
@@ -1772,3 +1778,5 @@ import libs.extras.javascript.async
 
 import libs.extras.javascript.runtime_json
 import libs.extras.javascript.runtime_regexp
+
+import libs.extras.javascript.runtime_for_in

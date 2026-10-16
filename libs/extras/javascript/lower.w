@@ -518,15 +518,24 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		if (js_cst_child(node, c"KW_AWAIT") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* binding = js_cst_child(header, c"for_binding")
 		if (binding != 0):
-			# The facade supports lexical identifier bindings, not destructuring,
-			# assignment targets, var or the different enumeration semantics of in.
-			if (strcmp(header.children[1].first_token.text, c"of") != 0 || binding.children.length != 2): return js_lower_error(node, diagnostics)
-			char* kind = binding.children[0].first_token.text
-			if (strcmp(kind, c"let") != 0 && strcmp(kind, c"const") != 0): return js_lower_error(node, diagnostics)
+			int enumeration = strcmp(header.children[1].first_token.text, c"in") == 0
+			char* kind = c""
+			pg_ast_node* target = binding.children[0]
+			if (binding.children.length == 2):
+				kind = binding.children[0].first_token.text
+				target = binding.children[1]
+			if (enumeration == 0 && (strcmp(kind, c"let") != 0 && strcmp(kind, c"const") != 0)): return js_lower_error(node, diagnostics)
 			js_node* result = js_node_new(c"for_of", kind)
-			if (js_lower_add(result, binding.children[1], diagnostics) == 0 || js_lower_add(result, header.children[2], diagnostics) == 0 || js_lower_add(result, node.children[count - 1], diagnostics) == 0):
+			if (enumeration):
+				free(result.kind)
+				result.kind = strclone(c"for_in")
+			if (js_lower_add(result, target, diagnostics) == 0 || js_lower_add(result, header.children[2], diagnostics) == 0 || js_lower_add(result, node.children[count - 1], diagnostics) == 0):
 				js_node_free(result)
 				return 0
+			js_node* pattern = result.children[0]
+			if (enumeration && strcmp(pattern.kind, c"identifier") != 0 && (kind[0] != 0 || (strcmp(pattern.kind, c"member") != 0 && strcmp(pattern.kind, c"computed_member") != 0))):
+				js_node_free(result)
+				return js_lower_error(node, diagnostics)
 			return result
 		js_node* result = js_node_new(c"for", c"")
 		for i in range(3): js_node_add(result, js_node_new(c"empty", c""))
