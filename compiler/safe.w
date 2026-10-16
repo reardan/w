@@ -32,6 +32,7 @@ int* safe_birth
 int* safe_moved_at
 int safe_function
 int safe_return_type
+int safe_return_root
 int safe_validate
 int safe_event
 int safe_position
@@ -327,6 +328,7 @@ void safe_access(int root, int via, int write, int id, char* state):
 # Projections conservatively share their whole root, including array indices.
 int safe_place(int id, char* state, int* via);
 int safe_eval(int id, char* state, int want);
+int safe_call(int id, retained_node* n, char* state, int* parent);
 
 
 int safe_place(int id, char* state, int* via):
@@ -365,9 +367,17 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	int kind = safe_borrow_kind(want)
 	retained_node n
 	retained_node_load(id, &n)
+	# Slice expressions retain their base array type in the semantic AST.
+	# Match their actual representation before comparing element types.
+	int slice_value = safe_slice(n.semantic_type) || (n.op == 'Z')
+	if (safe_slice(want) != slice_value):
+		safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
 	if (n.op == 'r'):
 		retained_node place
 		retained_node_load(safe_child(&n, n.left), &place)
+		# A view's descriptor may be local even when its elements outlive
+		# the function. Metadata also must not become writable via refmut.
+		if (place.op == 'B'): safe_error(id, c"safe: buffer metadata cannot be borrowed", -1)
 		int wanted = safe_unqualified(safe_pointee(want))
 		int actual = safe_unqualified(place.semantic_type)
 		if ((wanted < 0) || (actual < 0) || (strcmp(retained_types[wanted].name, retained_types[actual].name) != 0)):
@@ -375,7 +385,13 @@ int safe_borrow(int id, int want, char* state, int* parent):
 	else: safe_pointer_match(id, want, n.semantic_type)
 	int root = -1
 	int via = -1
-	if (n.op == 'Z'):
+	if (n.op == 'C'):
+		if ((safe_kind(n.semantic_type) < 2) || safe_slice(want)):
+			safe_error(id, c"safe: reference requires a borrowed return contract", -1)
+		if ((kind == 3) && (safe_kind(n.semantic_type) == 2)):
+			safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
+		root = safe_call(id, &n, state, &via)
+	else if (n.op == 'Z'):
 		root = safe_place(safe_child(&n, n.left), state, &via)
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
@@ -423,7 +439,25 @@ int safe_has_body(int function):
 	return 0
 
 
-int safe_call(int id, retained_node* n, char* state):
+# A returned reference inherits the sole borrowed parameter's lifetime.
+# This signature-only rule is identical for callers, definitions, imports
+# and recursion. Ambiguous signatures need future named lifetime syntax.
+int safe_return_parameter(int id, retained_binding* binding):
+	if (safe_borrow_kind(binding.return_type) < 2): return -1
+	if (safe_slice(binding.return_type)):
+		safe_error(id, c"safe: returning slices requires an explicit lifetime contract", -1)
+	int result = -1
+	for p in range(binding.parameters.length):
+		if (safe_borrow_kind(binding.parameters[p]) >= 2):
+			if (result >= 0): safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
+			result = p
+	if (result < 0): safe_error(id, c"safe: returning references requires exactly one borrowed parameter", -1)
+	if ((safe_kind(binding.return_type) == 3) && (safe_kind(binding.parameters[result]) != 3)):
+		safe_error(id, c"safe: mutable reference return requires a mutable borrowed parameter", -1)
+	return result
+
+
+int safe_call(int id, retained_node* n, char* state, int* parent):
 	int binding = n.binding
 	if ((binding < 0) || (retained_bindings[binding].return_type < 0)):
 		safe_error(id, c"safe: indirect calls require an ownership contract", -1)
@@ -443,6 +477,8 @@ int safe_call(int id, retained_node* n, char* state):
 				if (safe_same_contract_type(callee.parameters[p], definition.parameters[p]) == 0): matches = 0
 		if (matches == 0): safe_error(id, c"safe: forward declaration disagrees with its definition", function)
 		if (safe_checked_functions[function] == 0): safe_checked_functions[function] = 1
+	int return_parameter = safe_return_parameter(id, callee)
+	int return_root = -1
 	int arg = safe_child(n, n.left)
 	int position = 0
 	int saved = safe_call_roots.length
@@ -453,8 +489,11 @@ int safe_call(int id, retained_node* n, char* state):
 		int kind = safe_borrow_kind(want)
 		int root = -1
 		if (kind >= 2):
-			int parent = -1
-			root = safe_borrow(arg, want, state, &parent)
+			int via = -1
+			root = safe_borrow(arg, want, state, &via)
+			if (position == return_parameter):
+				return_root = root
+				*parent = via
 		else: root = safe_eval(arg, state, want)
 		# Scalar arguments copy their value; only pointer contracts keep
 		# storage reserved while later arguments are evaluated.
@@ -472,9 +511,8 @@ int safe_call(int id, retained_node* n, char* state):
 		safe_call_roots.pop()
 		safe_call_kinds.pop()
 	if (position != callee.parameters.length): safe_error(id, c"safe: call arity must match its contract", -1)
-	if (safe_borrow_kind(callee.return_type) >= 2): safe_error(id, c"safe: returning references requires an explicit lifetime contract", -1)
 	safe_type_check(id, callee.return_type)
-	return -1
+	return return_root
 
 
 int safe_eval(int id, char* state, int want):
@@ -507,7 +545,8 @@ int safe_eval(int id, char* state, int want):
 		if (safe_plain(safe_pointee(n.semantic_type), 0) == 0): safe_error(id, c"safe: allocation requires a pointer-free sized value", -1)
 		return -1
 	if (op == 'C'):
-		safe_call(id, &n, state)
+		int parent = -1
+		safe_call(id, &n, state, &parent)
 		return -1
 	if (op == '='):
 		retained_node lhs
@@ -602,8 +641,13 @@ void safe_transfer(int event, char* state):
 		if ((f.expression >= 0) || (retained_types[type].kind == type_kind_array)): state[index] = 2
 		if ((f.expression < 0) && safe_kind(type)): safe_error(f.node, c"safe: checked pointers require initialization", -1)
 	else if (f.action == 2):
-		if (safe_borrow_kind(safe_return_type) >= 2): safe_error(f.node, c"safe: returning references requires an explicit lifetime contract", -1)
-		safe_eval(f.expression, state, safe_return_type)
+		if (safe_borrow_kind(safe_return_type) >= 2):
+			if (f.expression < 0): safe_error(f.node, c"safe: reference return requires a value", -1)
+			int parent = -1
+			int root = safe_borrow(f.expression, safe_return_type, state, &parent)
+			if (safe_validate && (root != safe_return_root)):
+				safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[root])
+		else: safe_eval(f.expression, state, safe_return_type)
 	else if (f.action == 3):
 		for i in range(safe_locals.length):
 			if (safe_within(safe_birth[i], f.node)): state[i] = 1
@@ -616,7 +660,8 @@ void safe_function_check(int function):
 	if (retained_bindings[fn.binding].assembly_body): safe_error(function, c"safe: assembly function bodies are not supported", -1)
 	safe_return_type = retained_bindings[fn.binding].return_type
 	safe_type_check(function, safe_return_type)
-	if (safe_borrow_kind(safe_return_type) >= 2): safe_error(function, c"safe: returning references requires an explicit lifetime contract", -1)
+	int return_parameter = safe_return_parameter(function, retained_bindings[fn.binding])
+	safe_return_root = -1
 	if (safe_has_array(safe_return_type, 0)): safe_error(function, c"safe: array storage cannot escape by value", -1)
 	safe_graph = new list[safe_flow*]
 	safe_locals = new list[int]
@@ -677,9 +722,12 @@ void safe_function_check(int function):
 					f.live[j] = live
 					changed = 1
 	char* initial = safe_graph[start].state
+	int parameter = 0
 	for i in range(count):
 		initial[i] = 1
 		if (retained_bindings[safe_locals[i]].scope == 'A'):
+			if (parameter == return_parameter): safe_return_root = i
+			parameter = parameter + 1
 			safe_type_check(safe_birth[i], retained_bindings[safe_locals[i]].type)
 			initial[i] = 2
 	safe_graph[start].reached = 1
@@ -707,6 +755,7 @@ void safe_function_check(int function):
 						to.state[j] = joined
 						changed = 1
 	if (safe_graph[end].reached && (safe_kind(safe_return_type) == 1)): safe_error(function, c"safe: owner-returning function must return an owner on every path", -1)
+	if (safe_graph[end].reached && (safe_borrow_kind(safe_return_type) >= 2)): safe_error(function, c"safe: reference-returning function must return a reference on every path", -1)
 	safe_validate = 1
 	for i in range(safe_graph.length):
 		if (safe_graph[i].reached):
