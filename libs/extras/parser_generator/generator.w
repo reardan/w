@@ -15,6 +15,7 @@ import libs.extras.parser_generator.grammar_model
 import libs.extras.parser_generator.analysis
 import libs.extras.parser_generator.lexer
 import libs.extras.parser_generator.source_writer
+import libs.extras.parser_generator.prediction_build
 
 
 # Detach an f-string's NUL-terminated bytes from its descriptor.
@@ -1666,6 +1667,32 @@ char* pg_generate_streaming_parser(pg_grammar* grammar):
 	return pg_source_take(writer)
 
 
+# Serialize the verified graph without introducing a runtime grammar reader.
+void pg_emit_prediction(pg_source_writer* writer, pg_grammar* grammar):
+	pg_prediction_program* program = pg_prediction_build(grammar)
+	char* g = grammar.name
+	pg_source_line(writer, c"import libs.extras.parser_generator.prediction")
+	pg_source_blank(writer)
+	pg_open(writer, f"pg_prediction_program* {g}_prediction_program():")
+	pg_source_line(writer, c"pg_prediction_program* program = pg_prediction_new()")
+	for pg_prediction_op* op in program.ops:
+		char* name = pg_c_literal(op.name)
+		pg_line(writer, f"pg_prediction_add(program, {op.kind}, {op.next}, {op.other}, {op.value}, {name})")
+		free(name)
+	pg_source_line(writer, c"return program")
+	pg_source_dedent(writer)
+	pg_source_blank(writer)
+	for r, rule in grammar.rules:
+		pg_open(writer, f"pg_ast_node* {g}_parse_{rule.name}(pg_token_stream* stream, pg_diagnostics* diagnostics):")
+		pg_line(writer, f"pg_prediction_program* program = {g}_prediction_program()")
+		pg_line(writer, f"pg_ast_node* node = pg_prediction_parse(program, {r}, stream, diagnostics)")
+		pg_source_line(writer, c"pg_prediction_free(program)")
+		pg_source_line(writer, c"return node")
+		pg_source_dedent(writer)
+		pg_source_blank(writer)
+	pg_prediction_free(program)
+
+
 char* pg_generate_ast_parser(pg_grammar* grammar):
 	if ((pg_action_safety_check(grammar) > 0) || (pg_validate_action_bindings(grammar) > 0)): return 0
 	pg_analysis* analysis = pg_analyze_grammar(grammar)
@@ -1677,7 +1704,9 @@ char* pg_generate_ast_parser(pg_grammar* grammar):
 	pg_emit_advance_position(writer, grammar)
 	pg_emit_lexer(writer, grammar)
 	pg_emit_match_token(writer, grammar)
-	for pg_rule* rule in grammar.rules: pg_emit_rule(writer, grammar, analysis, rule)
+	if (grammar.mode == pg_grammar_mode_antlr()): pg_emit_prediction(writer, grammar)
+	else:
+		for pg_rule* rule in grammar.rules: pg_emit_rule(writer, grammar, analysis, rule)
 	pg_emit_parse_entry(writer, grammar)
 	pg_analysis_free(analysis)
 	return pg_source_take(writer)
@@ -1720,7 +1749,7 @@ int pg_stateful_validate(pg_grammar* grammar):
 	for pg_fragment_def* fragment in grammar.fragments:
 		if (pg_stateful_unique_name(names, fragment.name) == 0): errors++
 	names.free()
-	if (grammar.mode != pg_grammar_mode_ast()):
+	if (grammar.mode == pg_grammar_mode_streaming()):
 		println2(c"parser_generator: stateful lexer currently requires AST mode")
 		errors++
 	if (grammar.recovers.length > 0):
@@ -2059,7 +2088,9 @@ char* pg_generate_stateful_parser(pg_grammar* grammar):
 	pg_emit_expression_matchers(writer, grammar)
 	pg_emit_stateful_lexer(writer, grammar)
 	pg_emit_match_token(writer, grammar)
-	for pg_rule* rule in grammar.rules: pg_emit_stateful_rule(writer, grammar, rule)
+	if (grammar.mode == pg_grammar_mode_antlr()): pg_emit_prediction(writer, grammar)
+	else:
+		for pg_rule* rule in grammar.rules: pg_emit_stateful_rule(writer, grammar, rule)
 	pg_emit_parse_entry(writer, grammar)
 	pg_emit_owned_entry(writer, grammar)
 	return pg_source_take(writer)
@@ -2068,6 +2099,8 @@ char* pg_generate_stateful_parser(pg_grammar* grammar):
 char* pg_generate_parser(pg_grammar* grammar):
 	if (pg_grammar_safety_check(grammar) > 0): return 0
 	if (pg_stateful_validate(grammar) > 0): return 0
+	if (grammar.mode == pg_grammar_mode_antlr()):
+		if (pg_prediction_check(grammar) > 0): return 0
 	if (grammar.stateful): return pg_generate_stateful_parser(grammar)
 	if (grammar.mode == pg_grammar_mode_streaming()): return pg_generate_streaming_parser(grammar)
 	return pg_generate_ast_parser(grammar)

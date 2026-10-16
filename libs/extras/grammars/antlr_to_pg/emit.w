@@ -263,6 +263,7 @@ void at_emit(string_builder* out, char* parser_name):
 	string_append(out, c"parser ")
 	string_append(out, parser_name)
 	string_append(out, c"\n\n")
+	if (g_at_prediction): string_append(out, c"mode antlr\n\n")
 	int i = 0
 	if (g_at_stateful):
 		at_emit_stateful_lexer(out)

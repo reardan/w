@@ -140,6 +140,11 @@ int pg_grammar_mode_streaming():
 	return 1
 
 
+# Explicit pure-grammar continuation prediction for imported ANTLR grammars.
+int pg_grammar_mode_antlr():
+	return 2
+
+
 # tokens/skips are separate lists sharing the same element type: tokens
 # produce default-channel tokens, skips hidden-channel ones (see
 # pg_grammar_add_skip's negative kind numbering).

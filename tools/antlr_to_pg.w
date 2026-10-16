@@ -21,7 +21,7 @@ antlr_to_pg: best-effort translator from ANTLR4 grammars to the
 ParserGenerator .pg DSL (libs/extras/grammars/antlr_to_pg/README.md).
 
 	bin/antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME]
-		[--report FILE] [--matchers FILE] [--strict] [--stateful] [--exact-lexer] [--audit FILE] [--audit-json FILE]
+		[--report FILE] [--matchers FILE] [--strict] [--stateful] [--prediction] [--exact-lexer] [--audit FILE] [--audit-json FILE]
 
 `./wbuild antlr_to_pg` generates the antlr4.pg and pg.pg parsers into bin/
 and builds bin/antlr_to_pg; antlr_to_pg_test re-translates the vendored
@@ -51,7 +51,7 @@ import libs.extras.parser_generator.analysis
 # CLI entry point
 # ---------------------------------------------------------------------------
 void at_usage():
-	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--exact-lexer] [--audit FILE] [--audit-json FILE] [--dependencies FILE]")
+	println2(c"usage: antlr_to_pg GRAMMAR.g4 [GRAMMAR2.g4 ...] -o out.pg [--parser-name NAME] [--report FILE] [--matchers FILE] [--strict] [--stateful] [--prediction] [--exact-lexer] [--audit FILE] [--audit-json FILE] [--dependencies FILE]")
 
 
 int main(int argc, int argv):
@@ -60,6 +60,7 @@ int main(int argc, int argv):
 	int stateful = args_has_bool_flag(c"stateful")
 	g_at_exact_lexer = args_has_bool_flag(c"exact-lexer")
 	if (g_at_exact_lexer): stateful = 1
+	g_at_prediction = args_has_bool_flag(c"prediction")
 	g_at_dependencies = new list[at_site*]
 	g_at_channels = new list[char*]
 	g_at_declared_modes = new list[char*]

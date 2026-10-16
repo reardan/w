@@ -134,6 +134,7 @@ int g_at_stateful
 int g_at_exact_lexer
 
 int at_exact_supported(at_rule* rule);
+int g_at_prediction
 list[char*] g_at_modes
 list[char*] g_at_channels
 list[char*] g_at_declared_modes

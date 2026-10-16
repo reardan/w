@@ -736,8 +736,9 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 			if (name == 0): return 0
 			if (strcmp(name, c"streaming") == 0): grammar.mode = pg_grammar_mode_streaming()
 			else if (strcmp(name, c"ast") == 0): grammar.mode = pg_grammar_mode_ast()
+			else if (strcmp(name, c"antlr") == 0): grammar.mode = pg_grammar_mode_antlr()
 			else:
-				pg_reader_error(reader, c"unknown parser mode", c"streaming or ast")
+				pg_reader_error(reader, c"unknown parser mode", c"streaming, ast or antlr")
 				free(name)
 				return 0
 			free(name)
