@@ -54,7 +54,10 @@ char* safe_owner_drop_helper(int element):
 # The descriptor is held in a stack slot across nested allocator calls.
 # Emission is bounded before the semantic pass runs: recursive type graphs
 # cannot make the compiler recurse forever while building the destructor.
-void safe_owner_drop_value(int type, int depth):
+# A shared node budget also bounds repeated expansion of acyclic DAGs.
+void safe_owner_drop_value(int type, int depth, int* remaining):
+	if (*remaining <= 0): error(c"safe: owned aggregate destruction exceeds 256 expanded allocations")
+	*remaining = *remaining - 1
 	if (depth > 32): error(c"safe: recursive owned aggregate destruction is not supported")
 	int done = be_ctrl_block()
 	be_br_zero(done)
@@ -76,7 +79,7 @@ void safe_owner_drop_value(int type, int depth):
 			load_slot(object_slot)
 			add_eax_int32(type_get_field_offset_at(element, field))
 			promote(field_type)
-			safe_owner_drop_value(field_type, depth + 1)
+			safe_owner_drop_value(field_type, depth + 1, remaining)
 	int call_stack = rt_call_begin(c"free")
 	push_slot_copy(object_slot)
 	rt_call_end(call_stack)
@@ -104,7 +107,8 @@ void safe_owner_drop_slot(int slot, int type):
 		store_stack_var((stack_pos - slot) << word_size_log2)
 		be_ctrl_end(done)
 		return
-	safe_owner_drop_value(type, 0)
+	int remaining = 256
+	safe_owner_drop_value(type, 0, &remaining)
 	mov_eax_int(0)
 	store_stack_var((stack_pos - slot) << word_size_log2)
 
