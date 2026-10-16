@@ -192,6 +192,10 @@ int type_name():
 			if ((element < 0) || (type_get_size(element) <= 0)):
 				error(c"checked slices require a sized element")
 			type = type_get_safe_slice(element, lifetime)
+		else if ((type_get_pointer_level(type) == 0) && (type_num_args(type) > 0) && (type_is_array(type) == 0)):
+			if (safe_kind != 2): error(c"borrowed structs require the immutable ref qualifier")
+			if (type_safe_kind(type)): error(c"borrowed struct qualifier requires a plain struct template")
+			type = type_get_safe_record(type, lifetime)
 		else:
 			if ((type_get_pointer_level(type) != 1) || type_is_array(type)):
 				error(c"checked pointers require a single pointer: own T*, ref T*, or refmut T*")

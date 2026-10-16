@@ -330,6 +330,37 @@ void test_checked_slice_types():
 	assert_equal(element, retained_types[retained_types[snapshot].target].origin)
 
 
+void test_checked_record_types():
+	push_basic_types()
+	int pointer_type = type_lookup_pointer(c"int", 1)
+	int field_type = type_get_safe_lifetime(pointer_type, 2, c"inner")
+	int base = type_push(c"Holder")
+	type_add_arg(base, c"item", field_type)
+	type_add_arg(base, c"tag", type_lookup(c"int"))
+	int view = type_get_safe_record(base, c"outer")
+	assert_equal(view, type_get_safe_record(base, c"outer"))
+	assert1(type_is_safe_record(view))
+	assert_equal(2, type_safe_kind(view))
+	assert_equal(view, type_safe_target(view))
+	assert_equal(base, type_record(view).alias_target)
+	assert_equal(type_get_size(base), type_get_size(view))
+	assert_equal(type_num_args(base), type_num_args(view))
+	int field = type_get_field_type(view, c"item")
+	assert_equal(0, strcmp(type_record(field).safe_lifetime, c"outer"))
+	assert_equal(0, strcmp(type_record(type_get_field_type(base, c"item")).safe_lifetime, c"inner"))
+	assert_equal(0, strcmp(type_get_name(view), c"ref[outer] Holder"))
+	assert1(types_compatible(view, base))
+	assert1(types_compatible(view, type_get_safe_record(base, c"other")))
+	assert_equal(0, types_compatible(view, type_push(c"Unrelated")))
+	int plain_view = type_get_safe_record(base, 0)
+	assert_equal(plain_view, type_get_safe_record(base, 0))
+	assert1(type_record(type_get_field_type(plain_view, c"item")).safe_lifetime == 0)
+	int snapshot = retained_type_note(view)
+	assert_equal(type_kind_safe_record, retained_types[snapshot].kind)
+	assert_equal(base, retained_types[retained_types[snapshot].target].origin)
+	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"outer"))
+
+
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"
