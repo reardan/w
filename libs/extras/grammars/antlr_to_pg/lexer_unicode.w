@@ -206,20 +206,25 @@ list[int] at_unicode_charset(char* raw, int negate, int case_insensitive):
 	return at_unicode_normalize(ranges, negate)
 
 
+# Range endpoints are scalars, not NUL-terminated strings. U+0000 is valid
+# in a mathematical set even though the matcher input domain excludes NUL.
+int at_unicode_scalar_literal(char* raw):
+	int end = strlen(raw) - 1
+	if ((end < 1) || (raw[0] != 39) || (raw[end] != 39)): return -1
+	int position = 1
+	int cp = at_unicode_character(raw, &position, end, 0)
+	if ((cp >= 55296) && (cp <= 56319)):
+		int tail = at_unicode_character(raw, &position, end, 0)
+		if ((tail < 56320) || (tail > 57343)): return -1
+		cp = 65536 + (cp - 55296) * 1024 + tail - 56320
+	if ((position != end) || ((cp >= 55296) && (cp <= 57343))): return -1
+	return cp
+
+
 char* at_unicode_range_literal(char* left, char* right):
-	char* lo = at_unicode_literal(left)
-	char* hi = at_unicode_literal(right)
-	int low = 0
-	int high = 0
-	int valid = (lo != 0) && (hi != 0)
-	if (valid):
-		valid = (strlen(lo) > 0) && (strlen(hi) > 0)
-		if (utf8_scan(lo, strlen(lo), &low) != strlen(lo)): valid = 0
-		if (utf8_scan(hi, strlen(hi), &high) != strlen(hi)): valid = 0
-		if (high < low): valid = 0
-	if (lo != 0): free(lo)
-	if (hi != 0): free(hi)
-	if (valid == 0): return 0
+	int low = at_unicode_scalar_literal(left)
+	int high = at_unicode_scalar_literal(right)
+	if ((low < 0) || (high < low)): return 0
 	string_builder* out = string_new()
 	string_append(out, c"[\\u{")
 	char* hex = c"0123456789abcdef"

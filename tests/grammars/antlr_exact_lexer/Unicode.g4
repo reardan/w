@@ -13,3 +13,5 @@ WS: [ \t\r\n]+ -> skip;
 RANGE: '\u0100'..'\u0104';
 NOT_LITERAL: '~' ~'\u03a9';
 NOT_GROUP: '/' ~('\u03a9' | '\u03b1' | '^' | '[' | ']');
+BYTE_RANGE options { caseInsensitive=false; }: '\u0000'..'\u00FF';
+IRI_RANGE: '<' ~('<' | '>' | '"' | '{' | '}' | '|' | '^' | '\\' | '`' | '\u0000'..'\u0020')* '>';

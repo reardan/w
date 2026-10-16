@@ -57,3 +57,17 @@ void test_exact_large_property_repetition():
 	for i in range(2000): string_append(input, c"α")
 	assert_equal(4000, pg_lexer_matcher_g_at_unicode_LETTER(input.data, 0))
 	string_free(input)
+
+
+void test_exact_zero_endpoint_ranges_and_complements():
+	assert_equal(1, pg_lexer_matcher_g_at_unicode_BYTE_RANGE(c"a", 0))
+	assert_equal(2, pg_lexer_matcher_g_at_unicode_BYTE_RANGE(c"ÿ", 0))
+	assert_equal(-6, pg_lexer_matcher_g_at_unicode_BYTE_RANGE(c"Ā", 0))
+	assert_equal(0, pg_lexer_matcher_g_at_unicode_BYTE_RANGE(c"", 0))
+	assert_equal(5, pg_lexer_matcher_g_at_unicode_IRI_RANGE(c"<a/b>", 0))
+	assert_equal(6, pg_lexer_matcher_g_at_unicode_IRI_RANGE(c"<😀>", 0))
+	assert_equal(-7, pg_lexer_matcher_g_at_unicode_IRI_RANGE(c"<a b>", 0))
+	assert_equal(0, at_unicode_scalar_literal(c"'\\u0000'"))
+	assert_equal(-1, at_unicode_scalar_literal(c"'ab'"))
+	assert_equal(-1, at_unicode_scalar_literal(c"'\\uD800'"))
+	assert_equal(128512, at_unicode_scalar_literal(c"'\\uD83D\\uDE00'"))
