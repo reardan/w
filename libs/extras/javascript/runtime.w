@@ -139,6 +139,7 @@ struct js_runtime:
 	int binary_bytes_used
 	list[void*] async_tasks
 	void* active_async
+	void* expression_roots
 	int max_async_tasks
 	int max_async_stack_bytes
 	int async_stack_bytes
@@ -209,6 +210,7 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message);
 int js_runtime_define_data(js_runtime* rt, js_value* object, js_text* key, js_value* value, int writable, int enumerable, int configurable);
 
 
+void js_sequence_mark(js_runtime* rt, list[js_value*] pending);
 int js_sequence_operator(char* operation);
 js_value* js_runtime_sequence(js_runtime* rt, js_node* root, js_value* env);
 js_value* js_numeric_bitwise(js_runtime* rt, char* operation, js_value* left, js_value* right);
@@ -410,6 +412,7 @@ js_runtime* js_runtime_new():
 	js_runtime* rt = new js_runtime()
 	rt.async_tasks = new list[void*]
 	rt.active_async = 0
+	rt.expression_roots = 0
 	rt.max_async_tasks = 32
 	rt.max_async_stack_bytes = 8388608
 	rt.async_stack_bytes = 0
@@ -535,6 +538,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.completion.value)
 	for i in range(rt.roots.length): js_runtime_mark(pending, rt.roots[i])
 	js_runtime_async_mark(rt, pending)
+	js_sequence_mark(rt, pending)
 	while (pending.length > 0):
 		js_value* value = pending.pop()
 		js_runtime_mark(pending, value.promise_result)
@@ -1569,13 +1573,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"for_in")): return js_runtime_for_in(rt, node, env)
 	if (js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for")): return js_runtime_loop(rt, node, env)
 	if (js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix")): return js_runtime_assign(rt, node, env)
-	if (js_kind(node, c"binary")):
-		if (js_sequence_operator(node.text)): return js_runtime_sequence(rt, node, env)
-		js_value* left = js_runtime_eval_node(rt, node.children[0], env)
-		if (rt.completion.status != 0): return rt.undefined_value
-		js_value* right = js_runtime_eval_node(rt, node.children[1], env)
-		if (rt.completion.status != 0): return rt.undefined_value
-		return js_runtime_binary(rt, node.text, left, right)
+	if (js_kind(node, c"binary")): return js_runtime_sequence(rt, node, env)
 	if (js_kind(node, c"unary")):
 		js_node* operand = node.children[0]
 		js_value* value = rt.undefined_value
