@@ -7,15 +7,22 @@ import lib.testing
 import bin.antlr_end_matchers
 import bin.antlr_end_parser
 
-void test_named_eof_counts_as_parser_token():
+void test_consuming_token_at_eof_does_not_invent_a_named_eof_token():
+	# ANTLR marks EOF after A consumes the last input character. A later
+	# nextToken call emits built-in EOF without running the CR: EOF rule.
 	pg_parse_result* result = antlr_end_parse_owned(c"a", 1, c"end")
-	pg_diagnostics_print(result.diagnostics)
+	assert_equal(0, result.success)
+	assert_equal(2, result.stream.tokens.length)
+	assert_equal(pg_token_eof_kind, result.stream.tokens[1].kind)
+	pg_parse_result_free(result)
+	result = antlr_end_parse_owned(c"a\n", 2, c"newline")
 	assert_equal(1, result.success)
 	assert_equal(0, pg_diagnostics_count(result.diagnostics))
 	assert_equal(3, result.stream.tokens.length)
 	assert_equal(antlr_end_token_CR, result.stream.tokens[1].kind)
-	assert_equal(0, result.stream.tokens[1].length)
+	assert_equal(1, result.stream.tokens[1].length)
 	pg_parse_result_free(result)
+
 
 void test_named_eof_not_repeated():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()

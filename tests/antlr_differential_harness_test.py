@@ -28,6 +28,13 @@ class DifferentialTest(unittest.TestCase):
         self.assertEqual([token["name"] for token in observed["tokens"]], ["COMMENT", "EOF"])
         self.assertEqual(observed["tokens"][0]["channel"], 1)
 
+    def test_user_channel_numbers_normalize_without_aliasing_native_error_channel(self):
+        oracle = "TOKEN\tCOMMENT\t2\t0\t1\t23\nTOKEN\tEOF\t0\t1\t0\t\nACCEPT\t1\n"
+        native = oracle.replace("COMMENT\t2", "COMMENT\t3")
+        self.assertEqual(differential.observation(oracle, channel_map={"2": "COMMENTS"}),
+                         differential.observation(native, channel_map={"3": "COMMENTS"}))
+        self.assertNotEqual(differential.observation(oracle), differential.observation(native))
+
     def test_partial_or_malformed_output_is_infrastructure_failure(self):
         for output in ("", "ACCEPT\t1\n", "TOKEN\tEOF\t0\t0\t0\t\n", "arbitrary stdout\n",
                        "TOKEN\tEOF\t0\t0\t0\t\nACCEPT\t1\nACCEPT\t0\n",

@@ -20,7 +20,10 @@ runs cannot change snapshots. Reviewed snapshot regeneration requires both
 `--jar` and `--oracle-only --refresh-snapshots`.
 
 Observations compare zero-error recognition with complete input consumption,
-symbolic token names, UTF-8 byte spans, token text and channels. W's retained
+symbolic token names, UTF-8 byte spans, source spelling and channels.
+Zero-span named EOF tokens normalize ANTLR's synthetic `<EOF>` text to empty
+source spelling. User channels normalize to their declared names, preserving
+PG's distinct reserved error-channel number. W's retained
 `skip` trivia is removed by explicitly named token identities; hidden-channel
 comments remain observable. Selected AST rule names and spans check ambiguity
 selection and dangling-else grouping, without comparing generated helper trees.
@@ -43,3 +46,8 @@ Every run creates a fresh artifact directory under `bin/antlr_differential/`
 and completed inputs, known mismatches, generation/compilation/execution stages,
 reference provenance and tool hashes. Logs include per-input wire observations.
 Crashes, timeouts, unavailable tools and missing artifacts are failures.
+
+EOF fixtures check that a consuming match reaching EOF suppresses a later named
+EOF token, while a pending `more` sequence may still finish with an EOF rule in
+the same call. Malformed custom-channel input retains a documented recovery-token
+mismatch: both runtimes reject, but they resume lexing at different offsets.

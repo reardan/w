@@ -45,7 +45,7 @@ public final class Oracle {
             int start = byteOffset(input, token.getStartIndex());
             int end = eof ? start : byteOffset(input, token.getStopIndex() + 1);
             System.out.printf("TOKEN\t%s\t%d\t%d\t%d\t%s%n", name, token.getChannel(), start,
-                end - start, eof ? "" : hex(token.getText()));
+                end - start, end == start ? "" : hex(token.getText()));
         }
         tokens.seek(0);
         Parser parser = (Parser) Class.forName(args[1]).getConstructor(TokenStream.class).newInstance(tokens);

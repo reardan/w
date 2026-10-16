@@ -200,6 +200,154 @@
       }
     ]
   },
+  "channels/input0": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "channels/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": "COMMENTS",
+        "length": 8,
+        "name": "COMMENT",
+        "start": 0,
+        "text": "#comment"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 9,
+        "text": "a"
+      },
+      {
+        "channel": "EXTRA",
+        "length": 1,
+        "name": "NOTE",
+        "start": 10,
+        "text": "!"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 11,
+        "text": ""
+      }
+    ]
+  },
+  "channels/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": "EXTRA",
+        "length": 1,
+        "name": "NOTE",
+        "start": 0,
+        "text": "!"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 1,
+        "text": "a"
+      },
+      {
+        "channel": "COMMENTS",
+        "length": 8,
+        "name": "COMMENT",
+        "start": 2,
+        "text": "#comment"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 10,
+        "text": ""
+      }
+    ]
+  },
+  "channels/input3": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": "EXTRA",
+        "length": 1,
+        "name": "NOTE",
+        "start": 2,
+        "text": "!"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "channels/input4": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 2,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "channels/input5": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
   "choice/input0": {
     "accepted": true,
     "rules": [],
@@ -808,6 +956,268 @@
         "length": 0,
         "name": "EOF",
         "start": 0,
+        "text": ""
+      }
+    ]
+  },
+  "end/input0": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "CR",
+        "start": 0,
+        "text": ""
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
+  "end/input1": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "end/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CR",
+        "start": 1,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 2,
+        "text": ""
+      }
+    ]
+  },
+  "end/input3": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CR",
+        "start": 1,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 2,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 3,
+        "text": ""
+      }
+    ]
+  },
+  "end/input4": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 0,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CR",
+        "start": 1,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "A",
+        "start": 2,
+        "text": "a"
+      },
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CR",
+        "start": 3,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "end/input5": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "CR",
+        "start": 0,
+        "text": "\n"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "moreend/input0": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 0,
+        "text": ""
+      }
+    ]
+  },
+  "moreend/input1": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 1,
+        "name": "WORD",
+        "start": 0,
+        "text": "\""
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 1,
+        "text": ""
+      }
+    ]
+  },
+  "moreend/input2": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 4,
+        "name": "WORD",
+        "start": 0,
+        "text": "\"abc"
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 4,
+        "text": ""
+      }
+    ]
+  },
+  "moreend/input3": {
+    "accepted": true,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 5,
+        "name": "WORD",
+        "start": 0,
+        "text": "\"abc\""
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 5,
+        "text": ""
+      }
+    ]
+  },
+  "moreend/input4": {
+    "accepted": false,
+    "rules": [],
+    "tokens": [
+      {
+        "channel": 0,
+        "length": 5,
+        "name": "WORD",
+        "start": 0,
+        "text": "\"abc\""
+      },
+      {
+        "channel": 0,
+        "length": 5,
+        "name": "WORD",
+        "start": 5,
+        "text": "\"def\""
+      },
+      {
+        "channel": 0,
+        "length": 0,
+        "name": "EOF",
+        "start": 10,
         "text": ""
       }
     ]

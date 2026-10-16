@@ -1898,9 +1898,11 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 		pg_source_line(writer, c"int token_line = state.line")
 		pg_source_line(writer, c"int token_column = state.column")
 		pg_source_line(writer, c"int channel = pg_token_default_channel")
+		if (grammar.guarded_progress): pg_source_line(writer, c"int first_attempt = 1")
 		pg_open_c(writer, c"while (1):")
 	pg_source_line(writer, c"int index = state.offset")
-	if (grammar.guarded_progress): pg_open_c(writer, c"if ((index >= state.length) && state.eof_rule_done):")
+	if (grammar.guarded_progress && has_more): pg_open_c(writer, c"if ((index >= state.length) && state.eof_rule_done && first_attempt):")
+	else if (grammar.guarded_progress): pg_open_c(writer, c"if ((index >= state.length) && state.eof_rule_done):")
 	else: pg_open_c(writer, c"if (index >= state.length):")
 	if (has_more):
 		pg_open_c(writer, c"if (index > token_start):")
@@ -1915,6 +1917,7 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 		pg_source_dedent(writer)
 	pg_source_line(writer, c"return pg_token_eof(index, state.filename, state.line, state.column)")
 	pg_source_dedent(writer)
+	if (grammar.guarded_progress && has_more): pg_source_line(writer, c"first_attempt = 0")
 	pg_source_line(writer, c"int best_length = 0")
 	pg_source_line(writer, c"int best_rule = -1")
 	pg_source_line(writer, c"int length = 0")
@@ -1974,6 +1977,7 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	if (has_more):
 		pg_open_c(writer, c"if (continued):")
 		pg_source_line(writer, c"pg_lexer_advance(state, best_length)")
+		if (grammar.guarded_progress): pg_source_line(writer, c"if (state.offset >= state.length): state.eof_rule_done = 1")
 		pg_source_line(writer, c"continue")
 		pg_source_dedent(writer)
 		pg_source_line(writer, c"pg_token* token = pg_token_make(kind, input, token_start, index + best_length - token_start, state.filename, token_line, token_column)")
@@ -1984,6 +1988,9 @@ void pg_emit_stateful_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, state.filename, state.line, state.column, c\"error-channel token\", c\"valid token\", token.text)")
 	pg_source_dedent(writer)
 	pg_source_line(writer, c"pg_lexer_advance(state, best_length)")
+	# ANTLR remembers EOF reached by a consuming match. Only a pending more
+	# sequence in this provider call may still match an explicit EOF rule.
+	if (grammar.guarded_progress): pg_source_line(writer, c"if (state.offset >= state.length): state.eof_rule_done = 1")
 	pg_source_line(writer, c"return token")
 	if (has_more):
 		pg_source_dedent(writer)

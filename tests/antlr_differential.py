@@ -27,7 +27,7 @@ sweep = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sweep)
 
 
-def observation(output, skip_tokens=(), observe_rules=()):
+def observation(output, skip_tokens=(), observe_rules=(), channel_map=None):
     result = {"tokens": [], "rules": []}
     for line in output.splitlines():
         parts = line.split("\t")
@@ -43,7 +43,8 @@ def observation(output, skip_tokens=(), observe_rules=()):
             if name in skip_tokens:
                 continue
             raw = bytes.fromhex(encoded)
-            token = {"name": name, "channel": int(channel), "start": int(start),
+            normalized_channel = (channel_map or {}).get(channel, int(channel))
+            token = {"name": name, "channel": normalized_channel, "start": int(start),
                      "length": int(length), "text": raw.decode("utf-8")}
             if token["length"] != len(raw) or token["start"] < 0:
                 raise ValueError("invalid UTF-8 byte span")
@@ -208,7 +209,7 @@ def main(argv=None):
                 if expected is None and not args.refresh_snapshots:
                     raise ValueError("missing oracle snapshot: " + key)
                 if java:
-                    live = observation(command([*java, source], directory, item["id"] + ".java", args.timeout, stages), observe_rules=case.get("observe_rules", []))
+                    live = observation(command([*java, source], directory, item["id"] + ".java", args.timeout, stages), observe_rules=case.get("observe_rules", []), channel_map=case.get("oracle_channels", {}))
                     new_snapshots[key] = live
                     if args.refresh_snapshots:
                         expected = live
@@ -216,7 +217,7 @@ def main(argv=None):
                         raise ValueError(key + ": live ANTLR differs from pinned snapshot")
                     observation_row["oracle"] = live
                 if binary:
-                    actual = observation(command([binary, source], directory, item["id"] + ".w", args.timeout, stages), case.get("skip_tokens", []), case.get("observe_rules", []))
+                    actual = observation(command([binary, source], directory, item["id"] + ".w", args.timeout, stages), case.get("skip_tokens", []), case.get("observe_rules", []), case.get("w_channels", {}))
                     observation_row["w"] = actual
                     allowed = {} if args.require_compatible else item.get("known_mismatches", {})
                     observation_row["differences"] = mismatch_fields(actual, expected)
