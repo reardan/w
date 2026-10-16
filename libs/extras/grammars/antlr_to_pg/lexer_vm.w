@@ -1,6 +1,8 @@
 # Continuation lexer VM. Immutable bytecode uses six little-endian 32-bit
 # fields per state: opcode, next, alternate/call-return, low, high, nongreedy.
-# 1 range, 2 ordered split, 3 jump, 4 call, 5 return, 6 EOF anchor.
+# 1 range, 2 ordered split, 3 jump, 4 call, 5 return, 6 EOF anchor,
+# 7 sorted range set (low = first data state, high = number of ranges).
+# Opcode 0 records contain range data and are never executed.
 # Calls use interned persistent stacks; configurations retain branch order.
 # The nongreedy pruning rule follows ANTLR 4.13.2 LexerATNSimulator.closure:
 # after an accept, lower-priority configs that crossed a nongreedy decision
@@ -10,6 +12,7 @@ import lib.lib
 
 struct at_lex_result:
 	int length
+	int failure_length
 	int status             # 0 mismatch, 1 match, -2 limit, -3 invalid UTF-8
 	int steps
 	int peak_configs
@@ -75,7 +78,7 @@ void at_lex_closure(at_lex_run* run, int initial, int at_eof):
 		int op = at_lex_field(run.program, state, 0)
 		int next = at_lex_field(run.program, state, 1)
 		if (at_lex_field(run.program, state, 5)): nongreedy = 1
-		if (op == 1):
+		if ((op == 1) || (op == 7)):
 			run.reached.push(at_lex_config(run, state, stack, nongreedy))
 		else if (op == 2):
 			int other = at_lex_field(run.program, state, 2)
@@ -98,6 +101,23 @@ void at_lex_closure(at_lex_run* run, int initial, int at_eof):
 # Input is NUL-terminated like the existing generated matcher ABI. Reads
 # only through the first NUL; token providers separately reject embedded NULs.
 # Byte lengths/spans are preserved while consuming Unicode scalar values.
+int at_lex_contains(char* program, int state, int codepoint):
+	int low = at_lex_field(program, state, 3)
+	int high = at_lex_field(program, state, 4)
+	if (at_lex_field(program, state, 0) == 1): return (codepoint >= low) && (codepoint <= high)
+	int first = low
+	int begin = 0
+	int end = high
+	while (begin < end):
+		int middle = begin + (end - begin) / 2
+		int lo = at_lex_field(program, first + middle, 3)
+		int hi = at_lex_field(program, first + middle, 4)
+		if (codepoint < lo): end = middle
+		else if (codepoint > hi): begin = middle + 1
+		else: return 1
+	return 0
+
+
 at_lex_result* at_lex_execute(char* program, int states, int start, char* input, int index, int limit):
 	at_lex_result* result = new at_lex_result()
 	if ((states <= 0) || (states > 32767) || (limit <= 0)):
@@ -138,9 +158,7 @@ at_lex_result* at_lex_execute(char* program, int states, int start, char* input,
 			if (run.accepted && nongreedy): continue
 			int state = (config / 2) % states
 			int stack = (config / 2) / states
-			int low = at_lex_field(program, state, 3)
-			int high = at_lex_field(program, state, 4)
-			if ((codepoint >= low) && (codepoint <= high)):
+			if (at_lex_contains(program, state, codepoint)):
 				int next = at_lex_field(program, state, 1)
 				at_lex_closure(run, at_lex_config(run, next, stack, nongreedy), input[position + width] == 0)
 				if (run.failed): break
@@ -149,6 +167,7 @@ at_lex_result* at_lex_execute(char* program, int states, int start, char* input,
 		if (run.accepted):
 			result.status = 1
 			result.length = position - index
+	if (result.status == 0): result.failure_length = position - index
 	if (run.failed): result.status = run.failed
 	result.steps = run.steps
 	result.peak_configs = run.peak_configs
@@ -173,5 +192,6 @@ int at_lex_match(char* program, int states, int start, char* input, int index):
 		length = result.length
 		if (length == 0): length = -4
 	else if (result.status < 0): length = result.status
+	else if (result.failure_length > 0): length = -4 - result.failure_length
 	free(result)
 	return length

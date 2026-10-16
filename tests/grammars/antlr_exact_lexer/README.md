@@ -25,11 +25,12 @@ the translator's structural audit. Nonproductive rules are not rewritten.
 The bytecode consists of immutable six-field little-endian records, independent
 of target word size. Range transitions consume Unicode scalar values; reported
 lengths remain byte lengths. Programs are trusted compiler output. Matchers
-return positive lengths, `0` for no match, `-2` for resource exhaustion, `-3` for
-invalid UTF-8 and `-4` for successful zero-width matches. The generated stateful
+return positive lengths, `-2` for resource exhaustion, `-3` for invalid UTF-8,
+`-4` for successful zero-width matches, and `-4 - failure_length` for a
+failed match that inspected input. `0` is a no-match without inspected input. The generated stateful
 provider must propagate these statuses with guarded progress enabled.
 
-`at_lex_execute` additionally reports steps, peak configurations and interned
+`at_lex_execute` additionally reports failure length, steps, peak configurations and interned
 stack count. Limits are one million closure visits per match, 32,767 states,
 16,384 interned stacks and 512 call depth. Exhaustion is an explicit error, not
 a grammar rejection. The long-input fixture proves linear closure growth for a

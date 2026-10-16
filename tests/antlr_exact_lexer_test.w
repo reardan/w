@@ -9,26 +9,26 @@ import bin.at_exact_matchers
 
 void test_exact_greedy_continuations():
 	assert_equal(4, pg_lexer_matcher_g_at_exact_WORD(c"abxx!", 0))
-	assert_equal(0, pg_lexer_matcher_g_at_exact_WORD(c"abc!", 0))
+	assert_equal(-8, pg_lexer_matcher_g_at_exact_WORD(c"abc!", 0))
 	assert_equal(5, pg_lexer_matcher_g_at_exact_REPEAT(c"aaaaa!", 0))
 	assert_equal(7, pg_lexer_matcher_g_at_exact_REPEAT(c"aaaaaaa!", 0))
 	assert_equal(2, pg_lexer_matcher_g_at_exact_OPTIONAL(c"ox!", 0))
 	assert_equal(3, pg_lexer_matcher_g_at_exact_OPTIONAL(c"oxx!", 0))
 	assert_equal(4, pg_lexer_matcher_g_at_exact_FRAGMENT(c"fabx!", 0))
 	assert_equal(3, pg_lexer_matcher_g_at_exact_FRAGMENT(c"fax!", 0))
-	assert_equal(0, pg_lexer_matcher_g_at_exact_FRAGMENT(c"fab!", 0))
+	assert_equal(-8, pg_lexer_matcher_g_at_exact_FRAGMENT(c"fab!", 0))
 
 
 void test_exact_priority_and_nongreedy():
 	assert_equal(3, pg_lexer_matcher_g_at_exact_NON_GREEDY(c"<a><b>", 0))
 	assert_equal(6, pg_lexer_matcher_g_at_exact_GREEDY(c"{a}{b}", 0))
-	assert_equal(0, pg_lexer_matcher_g_at_exact_NON_GREEDY(c"<a", 0))
+	assert_equal(-6, pg_lexer_matcher_g_at_exact_NON_GREEDY(c"<a", 0))
 	assert_equal(3, pg_lexer_matcher_g_at_exact_NON_GREEDY(c"!<a>", 1))
 
 
 void test_exact_productive_recursive_fragments():
 	assert_equal(9, pg_lexer_matcher_g_at_exact_NESTED(c"[a[b]c[]]", 0))
-	assert_equal(0, pg_lexer_matcher_g_at_exact_NESTED(c"[a[b]c[", 0))
+	assert_equal(-11, pg_lexer_matcher_g_at_exact_NESTED(c"[a[b]c[", 0))
 	assert_equal(2, pg_lexer_matcher_g_at_exact_NESTED(c"[][]", 0))
 
 
