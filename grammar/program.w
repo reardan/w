@@ -439,7 +439,7 @@ void function_definition(int current_symbol):
 		inline_definition_abandon()
 		if (ast_retain_mode):
 			int prototype = retained_enter(retained_function, filename, retained_start, retained_line, retained_column, last_global_declaration)
-			retained_function_parameters(current_symbol)
+			retained_function_prototype_parameters(current_symbol, written_return_type)
 			retained_leave(prototype, token_start_offset)
 	else:
 		# 'asm <isa>:' blocks opening the body (grammar/asm_function.w): 1

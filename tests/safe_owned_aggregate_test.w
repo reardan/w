@@ -154,3 +154,8 @@ void test_owned_aggregate_expansion_bound():
 void test_owned_aggregate_borrowed_shape_budget():
 	owned_aggregate_case(c"struct BudgetNode1:\n\town int* left\n\town int* right\nstruct BudgetNode2:\n\town BudgetNode1* left\n\town BudgetNode1* right\nstruct BudgetNode3:\n\town BudgetNode2* left\n\town BudgetNode2* right\nstruct BudgetNode4:\n\town BudgetNode3* left\n\town BudgetNode3* right\nstruct BudgetNode5:\n\town BudgetNode4* left\n\town BudgetNode4* right\nstruct BudgetNode6:\n\town BudgetNode5* left\n\town BudgetNode5* right\nstruct BudgetNode7:\n\town BudgetNode6* left\n\town BudgetNode6* right\nint inspect(ref BudgetNode7* node):\n\treturn 0\nint main():\n\treturn 0\n", 0)
 	owned_aggregate_case(c"struct BudgetNode1:\n\town int* left\n\town int* right\nstruct BudgetNode2:\n\town BudgetNode1* left\n\town BudgetNode1* right\nstruct BudgetNode3:\n\town BudgetNode2* left\n\town BudgetNode2* right\nstruct BudgetNode4:\n\town BudgetNode3* left\n\town BudgetNode3* right\nstruct BudgetNode5:\n\town BudgetNode4* left\n\town BudgetNode4* right\nstruct BudgetNode6:\n\town BudgetNode5* left\n\town BudgetNode5* right\nstruct BudgetNode7:\n\town BudgetNode6* left\n\town BudgetNode6* right\nstruct BudgetNode8:\n\town BudgetNode7* left\n\town BudgetNode7* right\nint inspect(ref BudgetNode8* node):\n\treturn 0\nint main():\n\treturn 0\n", c"safe:")
+
+
+void test_owned_contract_after_definition():
+	owned_aggregate_case(c"int consume(own int* value):\n\treturn 0\nint consume(own int* value);\nint main():\n\treturn consume(new int)\n", 0)
+	owned_aggregate_case(c"int consume(own int* value):\n\treturn 0\nint consume(ref int* value);\nint main():\n\treturn 0\n", c"forward declaration disagrees")
