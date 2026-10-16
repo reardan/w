@@ -1,10 +1,17 @@
-# Native Mermaid stage 1. Owned documents, source spans and bounded source edits.
+# Owned Mermaid documents and bounded source edits.
 import lib.lib
 import lib.str
 import structures.string
 
 const int MM_FLOW = 1
 const int MM_ER = 2
+const int MM_CLASS = 3
+const int MM_STATE = 4
+# UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
+const int MM_ARROW = 1
+const int MM_TRIANGLE = 2
+const int MM_COMPOSITION = 3
+const int MM_AGGREGATION = 4
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
 
@@ -14,11 +21,21 @@ struct mm_attribute:
 	char* keys
 	char* comment
 
+struct mm_member:
+	char* text
+	int method
+
 struct mm_node:
 	char* id
 	char* label
 	int shape
 	list[mm_attribute*] attributes
+	list[mm_member*] members
+	char* annotation
+	int parent
+	int group
+	int declared
+	char* direction
 
 struct mm_edge:
 	int from_node
@@ -29,6 +46,11 @@ struct mm_edge:
 	# Cardinality: 0 = zero/one, 1 = one, 2 = zero/many, 3 = one/many.
 	int left_card
 	int right_card
+	int left_marker
+	int right_marker
+	char* left_label
+	char* right_label
+	int scope
 
 struct mm_document:
 	char* source
@@ -79,6 +101,10 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	n.id = strclone(id)
 	n.label = strclone(id)
 	n.attributes = new list[mm_attribute*]
+	n.members = new list[mm_member*]
+	n.annotation = strclone(c"")
+	n.direction = strclone(c"")
+	n.parent = -1
 	d.nodes.push(n)
 	return d.nodes.length - 1
 
@@ -92,11 +118,19 @@ void mm_document_free(mm_document* d):
 			free(a.comment)
 			free(a)
 		__w_list_free(cast(__w_list*, n.attributes))
+		for mm_member* m in n.members:
+			free(m.text)
+			free(m)
+		__w_list_free(cast(__w_list*, n.members))
+		free(n.annotation)
+		free(n.direction)
 		free(n.id)
 		free(n.label)
 		free(n)
 	for mm_edge* e in d.edges:
 		free(e.label)
+		free(e.left_label)
+		free(e.right_label)
 		free(e)
 	__w_list_free(cast(__w_list*, d.nodes))
 	__w_list_free(cast(__w_list*, d.edges))

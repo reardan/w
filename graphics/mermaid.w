@@ -19,6 +19,44 @@ void mm_ui_line(ui_renderer* r, float32 x, float32 y, float32 x2, float32 y2, in
 		float32 t = cast(float32, i) / cast(float32, steps)
 		ui_render_rect(r, ui_rect_new(x + dx * t - 0.75, y + dy * t - 0.75, 1.5, 1.5), ink)
 
+# Scan-convert small convex UML endpoint polygons. Clip before iterating so
+# zoomed or offscreen diagrams cannot turn coordinate size into unbounded work.
+void mm_ui_polygon(ui_renderer* r, mm_primitive* p, float32 ox, float32 oy, float32 zoom, ui_color ink, ui_color paper):
+	ui_rect clip = ui_clip_current(r)
+	float32 top = clip.y + clip.h
+	float32 bottom = clip.y
+	int count = p.points.length / 2
+	for i in range(count):
+		float32 y = oy + cast(float32, p.points[i * 2 + 1]) * zoom
+		if (y < top): top = y
+		if (y > bottom): bottom = y
+	if (top < clip.y): top = clip.y
+	if (bottom > clip.y + clip.h): bottom = clip.y + clip.h
+	ui_color fill = paper
+	if (p.dashed): fill = ink
+	int rows = cast(int, bottom - top) + 1
+	if (rows > 16384): rows = 16384
+	for row in range(rows):
+		float32 y = top + cast(float32, row) + 0.5
+		float32 left = clip.x + clip.w
+		float32 right = clip.x
+		int hits = 0
+		for i in range(count):
+			int j = (i + 1) % count
+			float32 ax = ox + cast(float32, p.points[i * 2]) * zoom
+			float32 ay = oy + cast(float32, p.points[i * 2 + 1]) * zoom
+			float32 bx = ox + cast(float32, p.points[j * 2]) * zoom
+			float32 by = oy + cast(float32, p.points[j * 2 + 1]) * zoom
+			if ((ay <= y && by > y) || (by <= y && ay > y)):
+				float32 x = ax + (bx - ax) * (y - ay) / (by - ay)
+				if (x < left): left = x
+				if (x > right): right = x
+				hits = hits + 1
+		if (hits >= 2): ui_render_rect(r, ui_rect_new(left, y - 0.5, right - left, 1.0), fill)
+	for i in range(count):
+		int j = (i + 1) % count
+		mm_ui_line(r, ox + cast(float32, p.points[i * 2]) * zoom, oy + cast(float32, p.points[i * 2 + 1]) * zoom, ox + cast(float32, p.points[j * 2]) * zoom, oy + cast(float32, p.points[j * 2 + 1]) * zoom, 0, ink)
+
 void mm_ui_render(ui_renderer* r, mm_scene* scene, ui_rect viewport, float32 zoom, float32 pan_x, float32 pan_y):
 	if (scene == 0 || zoom <= 0.0): return
 	if (r.clip_depth[r.layer] >= ui_render_clip_depth): return
@@ -35,13 +73,14 @@ void mm_ui_render(ui_renderer* r, mm_scene* scene, ui_rect viewport, float32 zoo
 		else if (p.kind == MM_BOX):
 			ui_rect box = ui_rect_new(x, y, x2 - x, y2 - y)
 			float32 radius = 0.0
-			if (p.dashed): radius = 12.0 * zoom
+			if (p.dashed == 1): radius = 12.0 * zoom
 			ui_draw_rrect(r, box, radius, ink)
-			ui_draw_rrect(r, ui_rect_inset(box, 1.5), radius, paper)
+			if (p.dashed != 2): ui_draw_rrect(r, ui_rect_inset(box, 1.5), radius, paper)
 		else if (p.kind == MM_CIRCLE):
 			ui_rect box = ui_rect_new(x, y, x2 - x, y2 - y)
 			ui_draw_rrect(r, box, box.w * 0.5, ink)
-			ui_draw_rrect(r, ui_rect_inset(box, 1.5), box.w * 0.5, paper)
+			if (p.dashed == 0): ui_draw_rrect(r, ui_rect_inset(box, 1.5), box.w * 0.5, paper)
+		else if (p.kind == MM_POLYGON): mm_ui_polygon(r, p, viewport.x + pan_x, viewport.y + pan_y, zoom, ink, paper)
 		else:
 			# Text and glyph positions scale together, using a temporary batch
 			# transform so the UI's font API need not quantize preview zoom.

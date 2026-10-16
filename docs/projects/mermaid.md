@@ -1,6 +1,6 @@
 # Native Mermaid diagrams
 
-Stage 1 provides a W parser, owned document model, lossless source writer,
+The native engine provides a W parser, owned document model, lossless source writer,
 source-edit API, deterministic layout, SVG exporter, CLI, and native Linux
 desktop source editor with live preview. It has no Mermaid JavaScript, Node,
 browser, network, or external layout dependency. The desktop uses the existing
@@ -8,8 +8,8 @@ browser, network, or external layout dependency. The desktop uses the existing
 the desktop target is x64 Linux. Other desktop platforms are not yet qualified.
 
 The goal is native support for **all Mermaid diagram types**, delivered in
-stages. This implementation supports a defined subset of **flowcharts and ER
-diagrams**, not full Mermaid compatibility. Unsupported syntax/type diagnostics
+stages. This implementation supports defined subsets of **flowcharts, ER, class and
+state diagrams**, not full Mermaid compatibility. Unsupported syntax/type diagnostics
 prevent partial diagrams from appearing as successful renders. Unsupported
 documents remain readable, editable as source, and saveable without data loss.
 
@@ -22,6 +22,8 @@ bin/wmermaid read examples/mermaid/orders.mmd
 bin/wmermaid write examples/mermaid/orders.mmd bin/orders.mmd
 bin/wmermaid svg bin/orders.mmd bin/orders.svg
 bin/wmermaid_editor bin/orders.mmd
+bin/wmermaid_editor examples/mermaid/classes.mmd
+bin/wmermaid_editor examples/mermaid/states.mmd
 ```
 
 `write` preserves the original bytes, including comments and CRLF. It is not a
@@ -57,7 +59,7 @@ xvfb-run -a bin/wmermaid_editor examples/mermaid/orders.mmd \
 python3 tools/ppm_to_png.py bin/mermaid.ppm bin/mermaid.png
 ```
 
-## Stage 1 compatibility
+## Flowchart and ER compatibility
 
 Syntax references: [Mermaid flowcharts](https://mermaid.js.org/syntax/flowchart.html)
 and [Mermaid ER diagrams](https://mermaid.js.org/syntax/entityRelationshipDiagram.html).
@@ -87,8 +89,43 @@ parallel edges and long labels may overlap and need future routing work.
 
 Not yet supported: subgraphs, styling/classes, frontmatter/configuration,
 click actions, additional node/edge shapes, textual cardinality aliases,
-Markdown fences, rich text, and other diagram families. Most unsupported syntax
+Markdown fences and rich text. Class and state coverage is listed below;
+other diagram families are not yet implemented. Most unsupported syntax
 is an explicit diagnostic; text inside accepted labels is always literal.
+
+## Class and state compatibility (stage 2)
+
+The UML syntax baseline is pinned to Mermaid **12.2.0**:
+[class syntax](https://github.com/mermaid-js/mermaid/blob/mermaid%4012.2.0/packages/mermaid/src/docs/syntax/classDiagram.md),
+[state syntax](https://github.com/mermaid-js/mermaid/blob/mermaid%4012.2.0/packages/mermaid/src/docs/syntax/stateDiagram.md).
+This is subset coverage, not a claim of upstream rendering or syntax parity.
+
+| Family | Implemented |
+| --- | --- |
+| Class declarations | `classDiagram`, `class ID`, `class ID["label"]`, member blocks, `ID : member`, `<<annotation>>` in blocks, before IDs, or after declarations |
+| Class members | Literal visibility/type/signature text, separated into attribute and operation compartments by the presence of `(`; input order is retained within each compartment |
+| Class relationships | Solid `--` and dashed `..`; optional open arrow, hollow triangle, filled composition diamond or hollow aggregation diamond at either end; quoted multiplicities and `: label` |
+| Class grouping | Nested `namespace Name { ... }`, globally unique class IDs, relations across namespaces, declarations that assign previously referenced classes to their namespace |
+| State declarations | `stateDiagram` / `stateDiagram-v2`, bare IDs, `state "label" as ID`, `ID : description` |
+| State transitions | `-->`, optional `: label`, cycles/self transitions, scope-local `[*]` initial and final nodes |
+| State structures | Nested `state ID { ... }`, transitions to/from composites, `<<choice>>`, `<<fork>>`, `<<join>>` |
+| Direction | Top-level and group-local `direction TB`, `TD`, `BT`, `LR`, `RL`; children inherit their containing group's direction |
+| Output and editing | Shared native/SVG geometry, lossless read/write and source edits, editor preview/history/save for both families |
+
+Groups reserve space for their children before the containing graph is laid out.
+Namespaces render as labeled containers; composite states render with their own
+initial/final nodes. Class relationships retain separate endpoint types and
+multiplicity labels. Names are globally unique; state transitions across scopes
+are rejected. A group may contain at most 32 nested group levels. Class members
+share the 4,096-document / 1,024-node attribute budget.
+
+Not yet supported in UML: generic class declarations, escaped class identifiers,
+namespace display labels/dotted shorthand, lollipop interfaces, notes, concurrent
+state regions, styling/classes, click actions, configuration, accessibility
+statements and rich text. Signatures and annotations display literally; static
+or abstract suffixes do not add font styling. Unsupported structures fail parsing
+and clear the preview while preserving editable source. Automatic routing can
+still overlap connectors or labels, particularly across namespace boundaries.
 
 ## W library
 
@@ -109,6 +146,7 @@ mm_document_free(doc)
 
 - `model`: `mm_document`, nodes, attributes and edges; `mm_write(doc)` returns
   owned source text; `mm_document_free` frees the complete document.
+- `parse_common` / `uml`: bounded lexical helpers and class/state parsers.
 - `parser`: `mm_parse(bytes, length)` copies input and returns an owned result,
   including failures. `error == 0` means successful subset parsing.
   `mm_edit(doc, start, end, replacement, length)` returns an independent reparsed
@@ -125,7 +163,8 @@ mm_document_free(doc)
   zoom and pan using an existing `ui_renderer`.
 
 The source limit is 1 MiB, with at most 1,024 nodes, 1,024 edges, 1,024
-attributes per entity and 4,096 attributes overall. Parsing rejects invalid
+attributes/members per node and 4,096 attributes/members overall, with at most
+32 group levels. Parsing rejects invalid
 UTF-8, embedded NUL and non-whitespace ASCII controls. Source bytes remain
 available on syntax failure. A scene owns its strings and geometry independently
 of the document. Callers own every returned object/string and must free them.
@@ -139,8 +178,10 @@ be marked supported. Recognizing a header alone does not count as support.
 1. **Delivered foundation:** flowchart and ER core, document/scene lifetimes,
    file I/O, source editing, CLI and desktop preview. Close their syntax gaps
    above before claiming parity for either family; add routing and text metrics.
-2. **Related graph families:** class, state, requirement, use-case, block,
-   architecture, C4, GitGraph, swimlanes. Add grouping, ports and compound layout.
+2. **Related graph families (in progress):** class and state core, UML markers,
+   namespaces and composite layout are delivered. Remaining: their syntax gaps,
+   requirement, use-case, block, architecture, C4, GitGraph and swimlanes; expand
+   routing, ports and compound layout for these families.
 3. **Ordered narratives:** sequence, user journey, Gantt, timeline and ZenUML.
    Add lifelines, time scales, nested interactions and scheduling semantics.
 4. **Data diagrams:** pie, quadrant, XY, Sankey, radar, treemap, Venn and packet.
@@ -162,4 +203,8 @@ cycles and shared-child ranking. `mermaid_editor_test` covers undo/redo, dirty
 state, failed saves, history bounds and clipped native drawing without a display.
 `mermaid_cli_test` exercises executable exit codes, lossless and in-place file
 writes, edits, invalid source preservation, both examples and well-formed XML.
+`uml_test` and `uml_64_test` cover endpoint combinations, member compartments,
+namespace ownership, compound bounds, scoped initial/final states, directions,
+source edits, unsupported syntax and nesting/member limits. The native editor
+tests also verify clipping for UML polygons and compound diagrams.
 These source-owned targets join `./wbuild tests` automatically.

@@ -55,6 +55,9 @@ with tempfile.TemporaryDirectory(prefix="mermaid-", dir="bin") as temp:
     run("nonsense", source, ok=False)
     for example in Path("examples/mermaid").glob("*.mmd"):
         run("check", example)
+        assert run("read", example).stdout == example.read_bytes()
+        run("write", example, copy)
+        assert copy.read_bytes() == example.read_bytes()
         run("svg", example, svg)
         ET.parse(svg)
 
