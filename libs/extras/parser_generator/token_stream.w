@@ -128,7 +128,12 @@ void pg_token_stream_scan(pg_token_stream* stream):
 		int start = state.offset
 		int previous_zero_count = 0
 		if (state.zero_width_offset == start): previous_zero_count = state.zero_width_count
-		if (stream.allocation_count >= stream.token_limit):
+		if (stream.resource_failed || state.terminal_failure != 0):
+			if (state.terminal_failure != 0): pg_token_stream_resource_error(stream, state.terminal_failure)
+			else: pg_token_stream_report_resource(stream)
+			token = pg_token_eof(start, state.filename, state.line, state.column)
+			stream.exhausted = 1
+		else if (stream.allocation_count >= stream.token_limit):
 			pg_token_stream_resource_error(stream, c"lexer token resource limit exceeded")
 			token = pg_token_eof(start, state.filename, state.line, state.column)
 			stream.exhausted = 1
@@ -139,7 +144,8 @@ void pg_token_stream_scan(pg_token_stream* stream):
 				pg_lexer_advance(state, 1)
 			else: token = stream.next_token(state, stream.diagnostics)
 		if (token == 0):
-			pg_diagnostics_add(stream.diagnostics, state.filename, state.line, state.column, c"lexer provider failed", c"token", c"")
+			if (state.terminal_failure != 0): pg_token_stream_resource_error(stream, state.terminal_failure)
+			else: pg_token_stream_resource_error(stream, c"lexer provider failed")
 			token = pg_token_eof(start, state.filename, state.line, state.column)
 			stream.exhausted = 1
 		if (token.kind == pg_token_eof_kind):

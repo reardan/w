@@ -27,6 +27,8 @@ struct pg_lexer_state:
 	int zero_width_count
 	int zero_width_offset
 	int eof_rule_done
+	# Terminal failures remain sticky across lexer snapshots.
+	char* terminal_failure
 	list[int] modes
 	list[int] context
 	void* host
@@ -70,6 +72,7 @@ pg_lexer_state* pg_lexer_state_new(char* input, int length, char* filename):
 	state.zero_width_count = 0
 	state.zero_width_offset = -1
 	state.eof_rule_done = 0
+	state.terminal_failure = 0
 	state.modes = new list[int]
 	state.context = new list[int]
 	state.host = 0

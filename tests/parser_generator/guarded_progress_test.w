@@ -61,3 +61,23 @@ void test_guarded_literal_failed_prefix_and_scalar_boundaries():
 	assert_equal(-5, pg_lexer_literal_probe(c"a", 0, 1, c"ab"))
 	assert_equal(-7, pg_lexer_literal_probe(c"a\xc3\xa9!", 0, 4, c"ab"))
 	assert_equal(-3, pg_lexer_literal_probe(c"a\xc3!", 0, 3, c"ab"))
+
+void test_guarded_failure_survives_rollback():
+	for index in range(3):
+		char* input = c"x"
+		if (index == 1): input = c"y"
+		if (index == 2): input = c"z"
+		pg_diagnostics* diagnostics = pg_diagnostics_new()
+		pg_lexer_state* state = guarded_progress_provider_new(input, 1, c"rollback")
+		pg_token_stream* stream = pg_token_stream_from_provider(state, guarded_progress_next, diagnostics)
+		pg_stream_checkpoint* checkpoint = pg_token_stream_checkpoint(stream)
+		pg_token_stream_peek(stream)
+		assert_equal(1, stream.resource_failed)
+		int scans = stream.scan_count
+		pg_token_stream_restore(stream, checkpoint)
+		pg_token_stream_peek(stream)
+		assert_equal(scans, stream.scan_count)
+		assert_equal(1, pg_diagnostics_count(diagnostics))
+		pg_token_stream_release(checkpoint)
+		pg_token_stream_free(stream)
+		pg_diagnostics_free(diagnostics)
