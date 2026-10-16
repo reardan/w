@@ -13,6 +13,8 @@ while/do_while = condition, body; for = init, condition, update, body;
 omitted for clauses = empty; break/continue have optional target text and no children;
 label = decoded label text with one statement child;
 function_expression(optional name) = parameters, block;
+class/class_expression(optional name) = superclass-or-empty, methods...;
+method/static_method(name) = parameters, block;
 arrow = parameters, expression-or-block; for_of(let/const) = identifier, iterable, body;
 try = block, catch-or-empty, finally-block-or-empty; catch(name) = block;
 string_utf16 owns explicit code units in string_units;
@@ -139,7 +141,7 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 			string_append(out, c")")
 		string_append(out, c")")
 		return 1
-	if (js_kind(node, c"function_expression")):
+	if (js_kind(node, c"function_expression") || js_kind(node, c"class_expression")):
 		string_append(out, c"(")
 		if (js_print_statement(out, node, 0, diagnostics) == 0): return 0
 		string_append(out, c")")
@@ -152,7 +154,7 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 		if (count != 0 || strlen(node.text) == 0): return js_print_error(diagnostics, node)
 		if (js_kind(node, c"number") && pg_lexer_matcher_js_number(node.text, 0) != strlen(node.text)): return js_print_error(diagnostics, node)
 		if (js_kind(node, c"regex") && pg_lexer_matcher_js_regex(node.text, 0) != strlen(node.text)): return js_print_error(diagnostics, node)
-		if (js_kind(node, c"literal") && strcmp(node.text, c"true") != 0 && strcmp(node.text, c"false") != 0 && strcmp(node.text, c"null") != 0 && strcmp(node.text, c"this") != 0): return js_print_error(diagnostics, node)
+		if (js_kind(node, c"literal") && strcmp(node.text, c"true") != 0 && strcmp(node.text, c"false") != 0 && strcmp(node.text, c"null") != 0 && strcmp(node.text, c"this") != 0 && strcmp(node.text, c"super") != 0): return js_print_error(diagnostics, node)
 		string_append(out, node.text)
 		return 1
 	if (js_kind(node, c"string_non_directive")):
@@ -319,6 +321,33 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 				string_append(out, c" = ")
 				if (js_print_expression(out, binding.children[1], diagnostics) == 0): return 0
 		string_append(out, c";")
+		return 1
+	if (js_kind(node, c"class") || js_kind(node, c"class_expression")):
+		if (count < 1): return js_print_error(diagnostics, node)
+		if (strlen(node.text) == 0):
+			if (js_kind(node, c"class_expression") == 0): return js_print_error(diagnostics, node)
+		else if (js_print_identifier_valid(node.text, 1) == 0): return js_print_error(diagnostics, node)
+		string_append(out, c"class ")
+		string_append(out, node.text)
+		if (js_kind(node.children[0], c"empty") == 0):
+			string_append(out, c" extends ")
+			if (js_print_expression(out, node.children[0], diagnostics) == 0): return 0
+		string_append(out, c" {\n")
+		for i in range(1, count):
+			js_node* method = node.children[i]
+			if (method.children.length != 2 || (js_kind(method, c"method") == 0 && js_kind(method, c"static_method") == 0)): return js_print_error(diagnostics, method)
+			if (strlen(method.text) == 0 || pg_lexer_matcher_js_identifier(method.text, 0) != strlen(method.text)): return js_print_error(diagnostics, method)
+			if (js_kind(method.children[0], c"parameters") == 0 || js_kind(method.children[1], c"block") == 0): return js_print_error(diagnostics, method)
+			js_print_indent(out, depth + 1)
+			if (js_kind(method, c"static_method")): string_append(out, c"static ")
+			string_append(out, method.text)
+			string_append(out, c"(")
+			if (js_print_expression_list(out, method.children[0], 0, diagnostics) == 0): return 0
+			string_append(out, c") ")
+			if (js_print_block(out, method.children[1], depth + 1, diagnostics) == 0): return 0
+			string_append(out, c"\n")
+		js_print_indent(out, depth)
+		string_append(out, c"}")
 		return 1
 	if (js_kind(node, c"function") || js_kind(node, c"function_expression")):
 		if (count != 2): return js_print_error(diagnostics, node)

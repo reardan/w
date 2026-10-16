@@ -45,7 +45,7 @@ class RunnerTests(unittest.TestCase):
     def test_phase_boundaries_and_limit(self):
         for source, phase, outcome in [('let = ;', 'parse', 'error'),
                                         ('let x; let x;', 'early', 'error'),
-                                        ('class C {}', 'lower', 'unsupported'),
+                                        ('class C {get x(){return 1;}}', 'lower', 'unsupported'),
                                         ('while(true) {}', 'execute', 'limit')]:
             self.source.write_text(source)
             actual = runner.execute(self.binary, self.source, dict(self.case, budget=20), 10)

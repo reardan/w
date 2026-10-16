@@ -9,6 +9,9 @@ import libs.extras.javascript.runtime
 
 
 js_completion* environment_eval(js_runtime* rt, char* source):
+	# Independent evaluations are host GC safepoints; retained globals/closures
+	# must survive while temporary values need not consume debug guard mappings.
+	js_runtime_collect(rt)
 	return js_runtime_eval(rt, source, strlen(source), 10000)
 
 
@@ -39,6 +42,15 @@ void test_environments():
 	assert_equal(2, environment_eval(rt, c"let untouched = 0; var immutable;").status)
 	environment_number(rt, c"let untouched = 42; untouched;", 42.0)
 	assert_equal(2, environment_eval(rt, c"function immutable() {}").status)
+	js_runtime_collect(rt)
+	environment_number(rt, c"callbacks[1]();", 3.0)
+	js_completion* result = environment_eval(rt, c"typeof duplicate;")
+	assert_equal(0, result.status)
+	assert1(js_runtime_key_is(result.value.text, c"function"))
+	js_runtime_free(rt)
+	# The named-function cases are independent of the preceding bindings.
+	# Give their retained ASTs a separate realm to bound debug allocator VMAs.
+	rt = js_runtime_new()
 	environment_number(rt, c"(function self() { self = 1; return typeof self === 'function' ? 1 : 0; })();", 1.0)
 	environment_number(rt, c"(function self() { self = 1; return 6; })();", 6.0)
 	assert_equal(2, environment_eval(rt, c"(function self() { 'use strict'; self = 1; })();").status)
@@ -46,16 +58,12 @@ void test_environments():
 	assert_equal(2, environment_eval(rt, c"'use strict'; (function self() { self = 1; })();").status)
 	environment_number(rt, c"(function self() { self = 1; return 7; })();", 7.0)
 	js_runtime_collect(rt)
-	environment_number(rt, c"callbacks[1]();", 3.0)
-	js_completion* result = environment_eval(rt, c"typeof absent;")
+	result = environment_eval(rt, c"typeof absent;")
 	assert_equal(0, result.status)
 	assert1(js_runtime_key_is(result.value.text, c"undefined"))
 	result = environment_eval(rt, c"try { typeof tdz; let tdz; } catch (e) { e.name; }")
 	assert_equal(0, result.status)
 	assert1(js_runtime_key_is(result.value.text, c"ReferenceError"))
-	result = environment_eval(rt, c"typeof duplicate;")
-	assert_equal(0, result.status)
-	assert1(js_runtime_key_is(result.value.text, c"function"))
 	js_runtime_free(rt)
 
 

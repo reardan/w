@@ -240,7 +240,7 @@ templates, prototype-literal `__proto__`, loose equality and additional numeric
 operators. Custom iterators, implicit operator coercions and exotic property-key
 conversions remain outside this subset. Destructuring assignment, computed binding
 keys and catch patterns remain unsupported. Global `this`, sloppy receiver
-substitution/boxing, `super` and ordinary functions' implicit `arguments` object
+substitution/boxing, `super` property access and ordinary functions' implicit `arguments` object
 are not implemented; accessing these receiver/arguments features reports
 unsupported status. Explicit `arguments` parameters remain ordinary bindings.
 
@@ -468,3 +468,34 @@ reset execution state or permit arbitrary nested script evaluation. Failures use
 the existing completion; hosts must root a retained callback across collection.
 `String(value)` now converts supported primitives (and `String()` returns the
 empty string); wrapper construction and object coercion remain unsupported.
+
+
+The bounded class subset supports declarations and expressions, identifier-named
+instance/static methods, constructors, default constructors, class-to-class and
+`Error` inheritance, `super(...)`, and ordinary `instanceof` prototype walks.
+Classes require `new`; methods execute strictly. Class lexical bindings have a
+TDZ, the inner class-name binding is immutable, derived `this` is unavailable
+until `super` initializes it once, and constructor object/primitive return rules
+are enforced. Class prototypes/methods use nonenumerable descriptors; retained
+constructor frames, lexical `this` closures and intrinsic Error prototypes remain
+traced across collection. The unchanged `tools/web/wasi_lite.mjs` now loads and
+runs both `proc_exit`/`runStart` and its BigInt clock operation in the module test.
+
+This is not full class support: computed/string method names, accessors,
+async/generator methods, fields, private names, `super` property access,
+`new.target`, ordinary-function or other built-in subclassing, inferred anonymous
+class names, and Symbol.hasInstance hooks remain outside the runtime subset.
+`Error` and `ReferenceError` support calls/construction and primitive messages, but not options/cause,
+stack traces or object message coercion. Runtime-generated reference errors use ReferenceError.prototype; other runtime
+errors share Error.prototype while retaining their existing explicit names. Class evaluation and
+construction follow the applicable [ECMA-262 class algorithms](https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-classdefinitionevaluation).
+
+Host native callables may set `host_construct = 2` for a constructor that requires
+`new`; `1` continues to allow both forms. Construction uses a separate native
+call path, so this permission does not leak to nested ordinary calls.
+
+The pinned Test262 addition reference-error cases now pass both script variants
+through `instanceof ReferenceError` (43 PASS, 10 UNSUPPORTED in the existing
+53-variant selection); this is a measured feature gain, not a full-conformance
+claim. The adapter's unsupported-syntax self-test now uses a class accessor,
+which remains unsupported, instead of a now-supported empty class.

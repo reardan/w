@@ -3,6 +3,7 @@
 # wbuild: step="bin/wv2 x64 tests/javascript/modules_test.w -o bin/javascript_modules_test"
 # wbuild: step="bin/javascript_modules_test" expect_stdout="javascript_modules_test: OK"
 import lib.assert
+import lib.stream
 import libs.extras.javascript.modules
 
 struct module_fixture:
@@ -122,7 +123,7 @@ void test_modules_rejections():
 	module_reject(c"import('dep');", 6)
 	module_reject(c"import 'de\\u0000p';", 6)
 	module_reject(c"await 1;", 6)
-	module_reject(c"import {x} from 'dep'; class Unsupported {}", 6)
+	module_reject(c"import {x} from 'dep'; class Unsupported { get x(){ return 1; } }", 6)
 
 void test_modules_cached_failure():
 	module_fixture* fixture = module_fixture_new()
@@ -232,7 +233,31 @@ void test_modules_function_exports():
 	js_runtime_free(rt)
 	module_fixture_free(fixture)
 
+# Exercise the original shim, never a rewritten compatibility copy.
+void test_modules_original_wasi():
+	wstream* input = stream_open_read(c"tools/web/wasi_lite.mjs")
+	assert1(input != 0)
+	string_builder* source = string_new()
+	io_result read_result
+	assert_equal(IO_OK, stream_read_all_checked(input, source, &read_result))
+	stream_close(input)
+	module_fixture* fixture = module_fixture_new()
+	module_fixture_add(fixture, c"wasi", source.data)
+	module_fixture_add(fixture, c"root", c"import {makeWasi} from 'wasi'; const memory={buffer:new ArrayBuffer(16)}; const wasi=makeWasi({memory:()=>memory}); const code=wasi.runStart({exports:{_start:()=>wasi.imports.proc_exit(7)}}); wasi.imports.clock_time_get(0,0n,0); export const pass=code===7 && wasi.exitCode()===7 && new DataView(memory.buffer).getBigUint64(0,true)>0n;")
+	js_runtime* rt = js_runtime_new()
+	js_modules* modules = js_modules_new(rt, module_resolve, fixture)
+	js_module* root = js_modules_evaluate(modules, c"root", c"", 10000)
+	if (rt.completion.status != 0): println(rt.completion.message)
+	assert1(root != 0)
+	assert_equal(0, rt.completion.status)
+	assert1(js_modules_export(modules, root, c"pass").number == 1.0)
+	js_modules_free(modules)
+	js_runtime_free(rt)
+	module_fixture_free(fixture)
+	string_free(source)
+
 int main():
+	test_modules_original_wasi()
 	test_modules_function_exports()
 	test_modules_graph()
 	test_modules_rejections()

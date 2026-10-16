@@ -307,12 +307,10 @@
       "reason": "unsupported required built-ins: eval"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
       "status": "UNSUPPORTED",
