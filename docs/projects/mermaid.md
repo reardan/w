@@ -44,19 +44,36 @@ SVG export validates before touching its destination.
 
 The desktop opens the named source. Edit text on the left to update the preview.
 The path field and **Open** load another file; **Save** saves the current file,
-and **Save as** uses the path field. **Undo/Redo** retain 32 source snapshots.
-**Export SVG** writes `CURRENT_FILE.svg`. **Fit**, zoom buttons, and dragging in
-the preview control the view. The editor asks to save/discard/cancel on close
-with unsaved changes. Opening a different file requires saving the current
-changes first. Errors clear the preview and appear below the source; the text
-remains editable and saveable. This is source editing, not drag-to-change-model
-editing. The path field is limited to 127 UTF-8 bytes.
+and **Save as** creates a new file at the path field (existing destinations are
+refused). **Undo/Redo** retain 32 source snapshots. **Previous/Next diagram**
+select a Mermaid fence while keeping the complete Markdown source editable.
+The dynamic path field supports paths beyond the former 127-byte limit.
 
-The core file layer uses `lib.fs` atomic durable replacement, including when
-input and output paths are identical. Save failure preserves editor dirty
-state. Filesystem changes made by another program are not currently detected;
-reload before editing a file shared with another editor. The existing filesystem
-module's post-publication directory-sync failure semantics also apply.
+For flowcharts, the node/connection inspector adds nodes and edges as undoable,
+source-preserving edits. Clicking a preview node fills a connection endpoint.
+This does not yet provide dragging, deletion, or graphical editing for all
+families. **Export SVG** writes `CURRENT_FILE.svg`. **Fit**, zoom buttons, and
+preview dragging control the view. Ctrl+S saves, Ctrl+Z/Ctrl+Y undo/redo,
+Ctrl+L/Ctrl+E focus path/source, Ctrl+1..4 focus inspector fields, Ctrl+N adds a
+node, Ctrl+K connects nodes, and Ctrl+0/plus/minus control the view.
+
+The editor asks to save/discard/cancel on close with unsaved changes. Opening
+another file requires saving changes first. External content changes are detected
+and saving refuses to overwrite a changed, deleted, or unreadable disk file.
+**Reload** refreshes the disk version, with a discard confirmation for local
+changes. The check is optimistic, not an atomic compare-and-swap against a writer
+racing the final save. The core file layer uses `lib.fs` atomic durable replacement;
+Save As uses exclusive creation. Save failure preserves editor dirty state.
+The filesystem module's post-publication directory-sync failure semantics apply.
+Errors clear the preview while leaving the original text editable and saveable.
+
+`--diagram N` selects a zero-based Mermaid fence in CLI check/read/write/edit/svg
+and canonical operations (default 0). Read/write/edit preserve the complete source;
+check/svg operate on the selected diagram. `canonical INPUT OUTPUT` emits a
+standalone flowchart or ER diagram from its semantic model, including groups,
+styles, attributes and relationships. It deliberately replaces comments and
+formatting. Unsupported families, themes/force configuration, or unrepresentable
+model values fail explicitly. Lossless `write` behavior is unchanged.
 
 For a reproducible native preview on a headless Linux host with Xvfb:
 
@@ -74,9 +91,9 @@ These describe upstream syntax; the table below defines the implemented subset.
 
 | Area | Implemented |
 | --- | --- |
-| Input | Raw UTF-8 `.mmd` source or one Mermaid Markdown fence, BOM, LF/CRLF, `%%` comments, semicolon separators |
+| Input | Raw UTF-8 `.mmd` source or a selected Mermaid Markdown fence, BOM, LF/CRLF, `%%` comments, semicolon separators |
 | Flow header | `flowchart` or `graph`, followed by `TB`, `TD`, `BT`, `LR`, or `RL` |
-| Flow nodes | Bare IDs, rectangle `[label]`, rounded `(label)`, circle `((label))`, diamond `{label}`; quoted labels |
+| Flow nodes | Bare IDs, rectangle `[label]`, rounded `(label)`, circle `((label))`, diamond `{label}`, stadium `([label])`, subroutine `[[label]]`, hexagon `{{label}}`, parallelograms and trapezoids; quoted labels |
 | Flow edges | `-->`, `---`, `-.->`, optional `|label|`, chains, cycles, self edges |
 | ER entities | Bare/quoted names, standalone entities, `[alias]`, attribute blocks |
 | ER attributes | `type name`, `PK`/`FK`/`UK` and comma-separated combinations, quoted comments, array/parenthesized/nullable types, `*` primary-key name spelling |
@@ -92,14 +109,37 @@ UI font system; SVG uses the viewer's monospace font. Label sizing uses an
 8-pixel-per-UTF-8-byte estimate, so multilingual text can reserve extra width.
 ER attributes show type, name, keys and comment in each row rather than separate
 resizable columns. Layout uses longest-path ranks with deterministic cycle
-breaking and orthogonal connectors. It is not Dagre/ELK: complex cycles,
+breaking, stable barycentric crossing-reduction sweeps and orthogonal connectors.
+It is not upstream Dagre/ELK: complex cycles,
 parallel edges and long labels may overlap and need future routing work.
 
 Node styles/classes and a bounded frontmatter theme subset are implemented;
-see [Styles and themes](mermaid_styling.md). Remaining gaps include link styling,
+see [Styles and themes](mermaid_styling.md). Remaining gaps include
 most configuration options, click actions, additional node/edge shapes and rich
 text. Class and state coverage is listed below; other families are listed in the
 [compatibility matrix](mermaid_compatibility.md).
+
+## Native graph layout selection
+
+The default layered layout also accepts frontmatter `config.layout: dagre` as
+an input alias; this selects the W implementation, not the upstream Dagre engine.
+The native extension `config.layout: force` selects deterministic force-directed
+placement for flow, ER, class, state, requirement, C4, architecture, use-case and
+agentflow graphs. Each group is laid out independently and sized around its
+children. Fixed iteration budgets and a final collision pass keep sibling boxes
+disjoint and repeated exports reproducible. Dense edge routing and labels can
+still overlap. Unsupported layout names and force layout on other families are
+diagnosed rather than silently ignored.
+
+```mermaid
+---
+config:
+  layout: force
+---
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--o{ ITEM : contains
+```
 
 ## Class and state compatibility
 
@@ -123,28 +163,35 @@ This is subset coverage, not a claim of upstream rendering or syntax parity.
 Groups reserve space for their children before the containing graph is laid out.
 Namespaces render as labeled containers; composite states render with their own
 initial/final nodes. Class relationships retain separate endpoint types and
-multiplicity labels. Names are globally unique; state transitions across scopes
-are rejected. A group may contain at most 32 nested group levels. Class members
+multiplicity labels. Class names remain globally unique; state transitions across
+scopes route through their nearest common containing group. A group may contain at most 32 nested group levels. Class members
 share the 4,096-document / 1,024-node attribute budget.
 
-Not yet supported in UML: generic class declarations, escaped class identifiers,
-namespace display labels/dotted shorthand, lollipop interfaces, notes, concurrent
-state regions, click actions, configuration beyond the documented theme subset,
-and rich text. Node styles/classes and accessibility statements are supported.
-Signatures and annotations display literally; static
-or abstract suffixes do not add font styling. Unsupported structures fail parsing
-and clear the preview while preserving editable source. Automatic routing can
-still overlap connectors or labels, particularly across namespace boundaries.
+Class declarations additionally support nested generic parameters, backtick IDs,
+dotted namespaces with labels, unique lollipop interfaces and notes. State
+transitions support forward declarations across composite boundaries, plus
+left/right multiline notes. See [UML additions and limits](mermaid_uml.md) for
+exact identity, ownership and placement rules.
+
+Concurrent state regions, interactive links, rich text, comma-separated generic
+parameters and full configuration remain unsupported. Node styles/classes and
+accessibility statements are supported. Signatures and annotations display
+literally; static or abstract suffixes do not add font styling. Unsupported
+structures fail parsing and clear the preview while preserving editable source.
+Automatic routing can still overlap connectors or labels across boundaries.
 
 ## Markdown, titles and accessibility
 
-A source document can contain one backtick or tilde Mermaid fence. The parser
-ignores fences in other languages and preserves all surrounding prose and original
-line endings. Multiple Mermaid fences are diagnosed rather than displaying only
-part of the document. Parse diagnostics and byte-range edits refer to the original
-complete source. See `examples/mermaid/document.md`.
+A source document can contain multiple backtick or tilde Mermaid fences. The
+parser ignores other-language fences, defaults to the first Mermaid diagram,
+and preserves all surrounding prose and line endings. Select another diagram
+with `mm_parse_selected`, CLI `--diagram N`, or the editor's previous/next buttons.
+Out-of-range selections and unterminated fences produce diagnostics. Parse
+locations and byte-range edits refer to the original complete source; immutable
+edits retain the selected diagram index. See `examples/mermaid/document.md`.
 
-Plain `title:` frontmatter is supported inside or outside a fence. Quoted scalar
+Plain `title:` frontmatter is supported at the beginning of a raw diagram or
+inside the selected fence. Quoted scalar
 titles are accepted. The frontmatter parser also accepts the bounded `config`
 theme subset described in [Styles and themes](mermaid_styling.md); it is not a
 general YAML parser. Other structured values, YAML escapes and unsupported
@@ -165,7 +212,7 @@ The five frontmatter theme names `default`, `base`, `dark`, `forest` and `neutra
 select native palettes. With `base`, six quoted-hex `themeVariables` are supported.
 [The styling reference](mermaid_styling.md) defines precedence, accepted names,
 limits and exact indentation. This does not provide general CSS, upstream theme
-parity, `linkStyle`, font overrides or arbitrary diagram configuration.
+parity, font overrides or arbitrary diagram configuration.
 
 ## W library
 
@@ -198,13 +245,17 @@ mm_document_free(doc)
   `mm_edit(doc, start, end, replacement, length)` returns an independent reparsed
   document; null means invalid range/budget or a split UTF-8 codepoint. The old
   document is unchanged. Fields are inspectable; edit source and reparse to keep
-  the model and lossless writer consistent. Direct AST mutation is not serialized.
+  the model and lossless writer consistent. `mm_write` always returns original bytes.
+  `mm_parse_selected(bytes, length, index)` selects a zero-based Markdown diagram.
+- `serialize`: `mm_serialize(doc)` returns canonical standalone flow/ER source from
+  the model, or null if the model cannot be represented without dropping semantics.
 - `render`: `mm_render(doc)` returns an owned display list, or null for a failed
   parse; `mm_svg(scene)` returns owned escaped XML. `mm_scene_free` releases it.
 - `io`: `mm_read(path)` returns an owned document, or null for I/O/budget failure;
   `mm_save(doc, path, io_result*)` returns an `IO_*` status. `mm_diagnostic` returns
   an owned location/message string.
-- `editor`: UI-independent source history, dirty state, preview and save state.
+- `editor`: UI-independent source history, diagram selection, structured flowchart
+  additions, hit testing, dirty state, conflict checking, reload and save state.
 - `graphics.mermaid`: `mm_ui_render` draws a scene into a clipped viewport with
   zoom and pan using an existing `ui_renderer`.
 
@@ -234,13 +285,21 @@ Remaining compatibility and editing work:
    links, fonts and rich labels without losing the native engine constraint.
 3. Improve text measurement, wrapping, edge routing, port placement and dense
    chart layout. Native geometry does not reproduce Dagre/ELK or browser layout.
-4. Add structured model-to-source edits and direct diagram manipulation. The
+4. Extend canonical serialization and structured editing beyond flow/ER; add
+   direct diagram manipulation across families. The
    current editor edits source with a live preview; mutating the AST does not
    update the lossless writer.
-5. Qualify desktop platforms beyond x64 Linux and address external file-change
-   detection, path limits and broader accessibility interactions.
+5. Qualify desktop platforms beyond x64 Linux and add broader accessibility
+   interactions and atomic concurrent-write conflict handling.
 6. Expand the pinned upstream conformance corpus, malformed-input fuzzing and
    cross-family integration tests before claiming syntax or rendering parity.
+
+Examples of the follow-up features:
+
+- [Force-directed ER relationships](../../examples/mermaid/force-orders.mmd)
+- [Vertical GitGraph with a cherry-pick](../../examples/mermaid/git-backport.mmd)
+- [Descending 16-bit packet rows](../../examples/mermaid/packet-register.mmd)
+- [Generic classes, interfaces and notes](../../examples/mermaid/uml-notes.mmd)
 
 ## Validation
 
@@ -266,3 +325,10 @@ layout bounds, source ownership, byte-prefix truncations and malformed edits.
 The examples support CLI check/export and headless native preview checks.
 These source-owned targets join `./wbuild tests` automatically. Passing these
 checks establishes the documented subsets, not full upstream conformance.
+
+The #706 follow-up tests add canonical model serialization, selected Markdown
+edits, stale-file save guards, native concave-polygon filling, force-layout
+repeatability/collision checks, layered crossing reduction, extended shapes/link
+styles, vertical GitGraph lane bounds, and the semantic cases described in each
+family reference. Native and SVG consume the same display lists; geometry tests
+do not claim browser pixel parity or additional desktop-platform qualification.
