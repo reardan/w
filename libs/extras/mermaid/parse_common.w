@@ -5,6 +5,7 @@ import lib.utf8
 struct mm_parser:
 	mm_document* doc
 	int pos
+	int scope
 
 int mm_peek(mm_parser* p):
 	if (p.pos >= p.doc.length): return 0
@@ -100,3 +101,41 @@ int mm_direction(mm_parser* p):
 		free(dir)
 		mm_error(p.doc, p.pos, c"expected direction TB, TD, BT, LR or RL")
 	return ok
+
+# Accessible metadata shared by statement-based diagram parsers.
+int mm_metadata(mm_parser* p):
+	int start = p.pos
+	int description = 0
+	if (mm_match(p, c"accTitle")):
+		if (mm_id_char(mm_peek(p))):
+			p.pos = start
+			return 0
+	else if (mm_match(p, c"accDescr")):
+		if (mm_id_char(mm_peek(p))):
+			p.pos = start
+			return 0
+		description = 1
+	else: return 0
+	mm_space(p)
+	int block = 0
+	if (description && mm_match(p, c"{")): block = 1
+	else if (mm_match(p, c":") == 0):
+		mm_error(p.doc, p.pos, c"expected accessibility colon or description block")
+		return 1
+	mm_space(p)
+	start = p.pos
+	while (mm_peek(p) != 0):
+		if (block && mm_peek(p) == '}'): break
+		if (block == 0 && (mm_peek(p) == 10 || mm_peek(p) == ';')): break
+		p.pos = p.pos + 1
+	int end = p.pos
+	while (end > start && (p.doc.source[end - 1] & 255) <= 32): end = end - 1
+	char* value = str_copy_range(p.doc.source, start, end)
+	if (description):
+		free(p.doc.accessibility_description)
+		p.doc.accessibility_description = value
+	else:
+		free(p.doc.accessibility_title)
+		p.doc.accessibility_title = value
+	if (block && mm_match(p, c"}") == 0): mm_error(p.doc, p.pos, c"unterminated accessibility description")
+	return 1

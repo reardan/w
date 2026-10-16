@@ -76,7 +76,7 @@ void test_mermaid_lossless_write_and_immutable_edit():
 	mm_document_free(d)
 
 void test_mermaid_invalid_and_unsupported():
-	list[char*] cases = list[char*]{c"sequenceDiagram\nA->>B: hello", c"erDiagram\nA {\nint id", c"erDiagram\nA ||--o{ B", c"erDiagram\nA ||--o{ B :", c"erDiagram\nA |!--o{ B : bad", c"flowchart ZZ\nA", c"flowchart LR\nA[broken", c"flowchart LR\nsubgraph X\nend", c"flowchart LR\nA ==> B", c"erDiagram\nA {\nint id PK,\n}"}
+	list[char*] cases = list[char*]{c"sequenceDiagram\nA->>B: hello", c"erDiagram\nA {\nint id", c"erDiagram\nA ||--o{ B", c"erDiagram\nA ||--o{ B :", c"erDiagram\nA |!--o{ B : bad", c"flowchart ZZ\nA", c"flowchart LR\nA[broken", c"flowchart LR\nsubgraph X\nA", c"flowchart LR\nA ==> B", c"erDiagram\nA {\nint id PK,\n}"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"invalid input diagnosed", d.error != 0)

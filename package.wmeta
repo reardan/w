@@ -105,6 +105,7 @@ modules:
 	libs.extras.mermaid.model
 	libs.extras.mermaid.parse_common
 	libs.extras.mermaid.uml
+	libs.extras.mermaid.source
 	libs.extras.mermaid.parser
 	libs.extras.mermaid.scene
 	libs.extras.mermaid.render

@@ -261,7 +261,8 @@ void mm_uml_body(mm_parser* p, int scope, int depth):
 			if (scope < 0): mm_error(p.doc, p.pos - 1, c"unexpected closing group brace")
 			return
 		int start = p.pos
-		if (mm_keyword(p, c"direction")):
+		if (mm_metadata(p)): mm_space(p)
+		else if (mm_keyword(p, c"direction")):
 			if (scope < 0): mm_direction(p)
 			else:
 				char* outer = p.doc.direction

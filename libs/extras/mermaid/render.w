@@ -209,7 +209,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
 	char* direction = d.direction
-	if (d.kind == MM_CLASS || d.kind == MM_STATE): direction = mm_scope_direction(d, e.scope)
+	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER): direction = mm_scope_direction(d, e.scope)
 	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
 	int dx = 0
 	int dy = 1
@@ -330,7 +330,7 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
 		if (method == 0): mm_line(s, b.x, y, b.x + b.w, y, 0)
 
 # Failed parses cannot produce a misleading partial preview.
-mm_scene* mm_render(mm_document* d):
+mm_scene* mm_render_diagram(mm_document* d):
 	if (d.error != 0): return 0
 	mm_scene* s = new mm_scene()
 	s.items = new list[mm_primitive*]
@@ -368,4 +368,26 @@ mm_scene* mm_render(mm_document* d):
 				char* text = mm_attribute_text(n.attributes[j])
 				mm_text(s, b.x + 12, y + 5, text)
 				free(text)
+	return s
+
+# Apply document metadata once, after the family's own layout has completed.
+mm_scene* mm_render(mm_document* d):
+	mm_scene* s = mm_render_diagram(d)
+	if (s == 0): return 0
+	if (d.title[0] != 0 && s.has_title == 0):
+		for mm_primitive* p in s.items:
+			p.y = p.y + 40
+			p.y2 = p.y2 + 40
+			if (p.points != 0):
+				for i in range(p.points.length):
+					if (i % 2): p.points[i] = p.points[i] + 40
+		for mm_bounds* b in s.nodes: b.y = b.y + 40
+		s.height = s.height + 40
+		mm_text(s, 40, 12, d.title)
+		s.has_title = 1
+	s.accessibility_title = strclone(d.accessibility_title)
+	if (s.accessibility_title[0] == 0):
+		free(s.accessibility_title)
+		s.accessibility_title = strclone(d.title)
+	s.accessibility_description = strclone(d.accessibility_description)
 	return s

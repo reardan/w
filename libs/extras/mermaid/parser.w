@@ -1,6 +1,7 @@
 # Diagram dispatch and flowchart / ER parsing.
 import libs.extras.mermaid.parse_common
 import libs.extras.mermaid.uml
+import libs.extras.mermaid.source
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -9,10 +10,13 @@ int mm_node_parse(mm_parser* p):
 	# These statements need dedicated semantics in subsequent stages.
 	if (strcmp(id, c"subgraph") == 0 || strcmp(id, c"end") == 0 || strcmp(id, c"style") == 0 || strcmp(id, c"classDef") == 0 || strcmp(id, c"class") == 0 || strcmp(id, c"click") == 0 || strcmp(id, c"linkStyle") == 0):
 		mm_error(p.doc, offset, c"unsupported Mermaid statement in native stage 1")
+	int previous = mm_find_node(p.doc, id)
 	int index = mm_add_node(p.doc, id, offset)
 	free(id)
 	if (index < 0 || p.doc.error != 0): return -1
 	mm_node* n = p.doc.nodes[index]
+	if ((p.doc.kind == MM_FLOW || p.doc.kind == MM_ER) && p.scope >= 0 && n.group == 0):
+		if (previous < 0 || n.parent < 0): n.parent = p.scope
 	mm_space(p)
 	int close = 0
 	int doubled = 0
@@ -39,7 +43,20 @@ int mm_node_parse(mm_parser* p):
 			else: p.pos = p.pos + 1
 	return index
 
+int mm_card_alias(mm_parser* p, char* text):
+	int start = p.pos
+	if (mm_match(p, text) == 0): return 0
+	if (mm_id_char(mm_peek(p)) || mm_peek(p) == '+'):
+		p.pos = start
+		return 0
+	return 1
+
 int mm_card(mm_parser* p, int left):
+	mm_space(p)
+	if (mm_card_alias(p, c"one or zero") || mm_card_alias(p, c"zero or one")): return 0
+	if (mm_card_alias(p, c"one or more") || mm_card_alias(p, c"one or many") || mm_card_alias(p, c"many(1)") || mm_card_alias(p, c"1+")): return 3
+	if (mm_card_alias(p, c"zero or more") || mm_card_alias(p, c"zero or many") || mm_card_alias(p, c"many(0)") || mm_card_alias(p, c"0+")): return 2
+	if (mm_card_alias(p, c"only one") || mm_card_alias(p, c"1")): return 1
 	if (mm_match(p, c"||")): return 1
 	if (left):
 		if (mm_match(p, c"|o")): return 0
@@ -106,12 +123,14 @@ void mm_statement(mm_parser* p):
 			return
 		mm_edge* e = new mm_edge()
 		e.from_node = left
+		e.scope = p.scope
 		e.label = strclone(c"")
 		p.doc.edges.push(e)
 		if (p.doc.kind == MM_ER):
 			e.left_card = mm_card(p, 1)
-			if (mm_match(p, c"..")): e.dashed = 1
-			else if (mm_match(p, c"--") == 0): mm_error(p.doc, p.pos, c"expected identifying -- or non-identifying .. relationship")
+			mm_space(p)
+			if (mm_match(p, c"..") || mm_keyword(p, c"optionally to")): e.dashed = 1
+			else if (mm_match(p, c"--") == 0 && mm_keyword(p, c"to") == 0): mm_error(p.doc, p.pos, c"expected identifying -- or non-identifying .. relationship")
 			e.right_card = mm_card(p, 0)
 		else:
 			if (mm_match(p, c"-->")): e.arrow = 1
@@ -144,7 +163,59 @@ void mm_statement(mm_parser* p):
 			return
 		left = e.to_node
 
-mm_document* mm_parse(char* source, int length):
+void mm_flow_body(mm_parser* p, int depth):
+	mm_separators(p)
+	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_keyword(p, c"end")):
+			if (depth == 0): mm_error(p.doc, p.pos - 3, c"unexpected subgraph end")
+			return
+		int start = p.pos
+		if (mm_metadata(p)): mm_space(p)
+		else if (mm_keyword(p, c"subgraph")):
+			mm_space(p)
+			int label_start = p.pos
+			char* id = mm_identifier(p)
+			mm_space(p)
+			char* label
+			if (mm_match(p, c"[")): label = mm_until(p, ']')
+			else:
+				while (mm_end(p) == 0): p.pos = p.pos + 1
+				int end = p.pos
+				while (end > label_start && (p.doc.source[end - 1] & 255) <= 32): end = end - 1
+				label = str_copy_range(p.doc.source, label_start, end)
+			int index = mm_add_node(p.doc, id, start)
+			free(id)
+			if (index >= 0):
+				mm_node* n = p.doc.nodes[index]
+				if (n.group || n.parent >= 0 || n.shape != 0): mm_error(p.doc, start, c"duplicate or conflicting subgraph")
+				n.group = 1
+				n.parent = p.scope
+				free(n.label)
+				n.label = strclone(label)
+				if (depth >= 32): mm_error(p.doc, start, c"subgraph nesting limit exceeded")
+				if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"expected end of subgraph header")
+				int outer = p.scope
+				p.scope = index
+				if (p.doc.error == 0): mm_flow_body(p, depth + 1)
+				p.scope = outer
+			free(label)
+		else if (mm_keyword(p, c"direction")):
+			if (p.scope < 0): mm_direction(p)
+			else:
+				char* outer = p.doc.direction
+				p.doc.direction = strclone(outer)
+				mm_direction(p)
+				mm_node* n = p.doc.nodes[p.scope]
+				free(n.direction)
+				n.direction = p.doc.direction
+				p.doc.direction = outer
+		else: mm_statement(p)
+		if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"unsupported syntax or missing statement separator")
+		mm_separators(p)
+		if (p.pos == start): mm_error(p.doc, start, c"expected flowchart statement")
+	if (depth > 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"unterminated subgraph")
+
+mm_document* mm_parse_raw(char* source, int length):
 	mm_document* d = mm_document_new()
 	if (length < 0 || length > MM_MAX_SOURCE || (source == 0 && length != 0)):
 		mm_error(d, 0, c"invalid input or source limit exceeded")
@@ -165,6 +236,7 @@ mm_document* mm_parse(char* source, int length):
 	mm_parser p
 	p.doc = d
 	p.pos = 0
+	p.scope = -1
 	if (length >= 3 && (source[0] & 255) == 239 && (source[1] & 255) == 187 && (source[2] & 255) == 191): p.pos = 3
 	mm_separators(&p)
 	char* header = mm_identifier(&p)
@@ -179,6 +251,9 @@ mm_document* mm_parse(char* source, int length):
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
 	mm_separators(&p)
+	if (d.kind == MM_FLOW || d.kind == MM_ER):
+		mm_flow_body(&p, 0)
+		return d
 	if (d.kind == MM_CLASS || d.kind == MM_STATE):
 		mm_uml_body(&p, -1, 0)
 		return d
@@ -189,6 +264,29 @@ mm_document* mm_parse(char* source, int length):
 		if (mm_end(&p) == 0): mm_error(d, p.pos, c"unsupported syntax or missing statement separator")
 		mm_separators(&p)
 		if (p.pos == start): mm_error(d, start, c"expected Mermaid statement")
+	return d
+
+# Parse an optional Markdown/frontmatter envelope without losing its bytes.
+mm_document* mm_parse(char* source, int length):
+	mm_document* envelope = mm_source_prepare(source, length)
+	if (envelope.error != 0): return envelope
+	int start = envelope.source_start
+	mm_document* d = mm_parse_raw(envelope.source + start, envelope.source_end - start)
+	free(d.source)
+	d.source = envelope.source
+	envelope.source = 0
+	d.length = envelope.length
+	d.source_start = start
+	d.source_end = envelope.source_end
+	if (envelope.title[0] != 0):
+		free(d.title)
+		d.title = strclone(envelope.title)
+	if (d.error != 0):
+		char* message = d.error
+		d.error = 0
+		mm_error(d, start + d.error_offset, message)
+		free(message)
+	mm_document_free(envelope)
 	return d
 
 # Immutable edit: result owns a reparsed copy; original is always unchanged.

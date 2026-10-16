@@ -31,6 +31,9 @@ struct mm_scene:
 	list[mm_bounds*] nodes
 	int width
 	int height
+	char* accessibility_title
+	char* accessibility_description
+	int has_title
 
 void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, char* text):
 	mm_primitive* p = new mm_primitive(kind, x, y, x2, y2, dashed, strclone(text), 0)
@@ -81,6 +84,8 @@ void mm_scene_free(mm_scene* s):
 	for mm_bounds* b in s.nodes: free(b)
 	__w_list_free(cast(__w_list*, s.items))
 	__w_list_free(cast(__w_list*, s.nodes))
+	free(s.accessibility_title)
+	free(s.accessibility_description)
 	free(s)
 
 void mm_xml(string_builder* out, char* text):
@@ -103,11 +108,16 @@ void mm_svg_number(string_builder* out, char* name, int value):
 
 char* mm_svg(mm_scene* scene):
 	if (scene == 0): return 0
-	string_builder* out = string_from(c"<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" viewBox=\"0 0 ")
+	string_builder* out = string_from(c"<svg xmlns=\"http://www.w3.org/2000/svg\" role=\"img\" aria-labelledby=\"mermaid-title mermaid-description\" viewBox=\"0 0 ")
 	string_append_int(out, scene.width)
 	string_append_char(out, ' ')
 	string_append_int(out, scene.height)
-	string_append(out, c"\"><title>Mermaid diagram</title>\n<g stroke=\"#334155\" stroke-width=\"2\" fill=\"none\">\n")
+	string_append(out, c"\"><title id=\"mermaid-title\">")
+	if (scene.accessibility_title != 0 && scene.accessibility_title[0] != 0): mm_xml(out, scene.accessibility_title)
+	else: string_append(out, c"Mermaid diagram")
+	string_append(out, c"</title><desc id=\"mermaid-description\">")
+	if (scene.accessibility_description != 0): mm_xml(out, scene.accessibility_description)
+	string_append(out, c"</desc>\n<g stroke=\"#334155\" stroke-width=\"2\" fill=\"none\">\n")
 	for mm_primitive* p in scene.items:
 		if (p.kind == MM_LINE):
 			string_append(out, c"<line")
