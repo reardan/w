@@ -166,6 +166,10 @@ int retained_binding_is(retained_binding* binding, int source, int owner, int sc
 	return strcmp(binding.name, name) == 0
 
 
+int retained_callable_excluded(int symbol):
+	return sym_is_generator(symbol) || sym_is_kernel(symbol) || (sym_variadic_fixed_args(symbol) >= 0) || (sym_w_variadic_fixed_args(symbol) >= 0)
+
+
 int retained_binding_note(int sym, int owner):
 	if (sym < 0): return -1
 	sym_index_sync()
@@ -251,6 +255,7 @@ int retained_binding_note(int sym, int owner):
 			binding.line = node.line
 			binding.column = node.column
 	binding.assembly_body = 0
+	binding.callable_excluded = 0
 	binding.lifetime_order = 0
 	binding.scope = scope
 	binding.slot = load_int(table + sym + 2)
@@ -276,6 +281,7 @@ int retained_binding_note(int sym, int owner):
 	binding.return_type = -1
 	binding.parameters = new list[int]
 	if (load_int(table + sym + 10) == 2):
+		binding.callable_excluded = retained_callable_excluded(sym)
 		binding.return_type = binding.type
 		int count = load_int(table + sym + 22)
 		for i in range(count): binding.parameters.push(retained_type_note(sym_param_type(sym, i)))
@@ -525,7 +531,9 @@ void retained_function_parameters(int binding, int* lifetime_order):
 	if ((retained_parent >= 0) && retained_semantic_mode):
 		int noted = retained_binding_note(binding, retained_parent)
 		retained_record_at(retained_parent).binding = noted
-		if (noted >= 0): retained_bindings[noted].lifetime_order = lifetime_order
+		if (noted >= 0):
+			retained_bindings[noted].lifetime_order = lifetime_order
+			retained_bindings[noted].callable_excluded = retained_callable_excluded(binding)
 	sym_index_sync()
 	# The index is sorted by offset: start at the first symbol after binding.
 	int low = 0
