@@ -337,9 +337,10 @@ void* debug_malloc(int size):
 	# over mprotect(PROT_NONE): mprotect splits one mapping into two
 	# VMAs and burns max_map_count twice as fast.
 	int guard_result
-	if (os_android()):
+	if (os_android() || os_windows()):
 		# Reserve the guard: Android native translation may reuse an
 		# unmapped guest hole while creating its own mappings.
+		# Windows VirtualFree cannot release a suffix of an allocation.
 		guard_result = mprotect(guard_addr, page, 0)
 	else: guard_result = munmap(guard_addr, page)
 	if (guard_result != 0):

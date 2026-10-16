@@ -5,6 +5,9 @@
 import lib.sha256
 
 char* safe_runtime_digest(char* path):
+	if (ends_with(path, c"/lib/__arch__/win64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
+	if (ends_with(path, c"/lib/__arch__/win64/context.w")): return c"f046288e32fb6135d7b485b97a13beae0b44e22cd8306f9b86957c1234326c81"
+	if (ends_with(path, c"/lib/__arch__/win64/syscalls.w")): return c"546c896edff94904739f5b8ac252f248f6b19cf9ddcae11ebd0dac2a28ca13e2"
 	if (ends_with(path, c"/code_generator/integer.w")): return c"fc29beab52cc9fc74d3db3e3bcdc99e299514b590ce1450626270e924f594bbb"
 	if (ends_with(path, c"/lib/__arch__/x64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/x64/context.w")): return c"ee3c5d5dc3c91bc1b7c13cf690bf1da4eda806216ee600b2981d5fe793fda032"
@@ -17,7 +20,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/lib.w")): return c"daf4b14f5e2158d41c808a6b5da1729df00fffad23e2a4d544f305d7d5c23be3"
 	if (ends_with(path, c"/lib/linux.w")): return c"e0ba57f22d74e271a6a6db7c55cef38a2943b7fe75a446ba152f766ef36b4cf6"
 	if (ends_with(path, c"/lib/memory.w")): return c"82f5225c2eeff87f429a0268de52c84458c3c40e39918b3e384ca391c386b981"
-	if (ends_with(path, c"/lib/memory_debug.w")): return c"28ae88caad2b68c2b74cc43af7c4317f08edd648bf09e2922d4085f8f2c48ca0"
+	if (ends_with(path, c"/lib/memory_debug.w")): return c"cb9d16f42f4adee7a6980e44102ae054b222126dcb424740a22771808c24e4a0"
 	if (ends_with(path, c"/lib/memory_freelist.w")): return c"3914deeecbd1076336d7d71c7ef948d437b5f2784de641b5e9b73134acdfd317"
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
