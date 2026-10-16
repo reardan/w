@@ -1,5 +1,6 @@
 # Class and state syntax, referenced against Mermaid 12.2.0.
 import libs.extras.mermaid.parse_common
+import libs.extras.mermaid.style
 
 int mm_keyword(mm_parser* p, char* word):
 	int save = p.pos
@@ -198,8 +199,10 @@ void mm_class_statement(mm_parser* p, int scope, int depth):
 			free(n.annotation)
 			n.annotation = mm_annotation(p)
 			mm_space(p)
+		if (mm_match(p, c":::")): mm_style_inline(p, n)
+		mm_space(p)
 		if (mm_match(p, c"{")): mm_class_body(p, index)
-	else if (mm_match(p, c":::")): mm_error(p.doc, p.pos, c"class styling is not supported")
+	else if (mm_match(p, c":::")): mm_style_inline(p, n)
 	else if (mm_match(p, c":")): mm_class_member(p, index)
 	else: mm_class_relation(p, index, scope)
 
@@ -262,6 +265,7 @@ void mm_uml_body(mm_parser* p, int scope, int depth):
 			return
 		int start = p.pos
 		if (mm_metadata(p)): mm_space(p)
+		else if (mm_style_statement(p)): mm_space(p)
 		else if (mm_keyword(p, c"direction")):
 			if (scope < 0): mm_direction(p)
 			else:

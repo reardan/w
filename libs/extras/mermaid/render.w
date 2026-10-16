@@ -9,6 +9,7 @@ import libs.extras.mermaid.systems
 import libs.extras.mermaid.workflow_render
 import libs.extras.mermaid.narrative_render
 import libs.extras.mermaid.railroad_render
+import libs.extras.mermaid.style_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -329,6 +330,7 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		mm_node* n = d.nodes[i]
 		if (n.group == 0 || n.parent != scope): continue
 		mm_bounds* b = s.nodes[i]
+		int style_start = s.items.length
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
 		if (d.kind == MM_ARCHITECTURE && n.annotation[0] != 0):
 			string_builder* label = string_from(c"[")
@@ -339,6 +341,7 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 			string_free(label)
 		else: mm_text(s, b.x + 16, b.y + 12, n.label)
 		mm_line(s, b.x, b.y + 40, b.x + b.w, b.y + 40, 0)
+		mm_style_node(d, s, n, style_start)
 		mm_render_groups(d, s, i)
 
 void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
@@ -388,26 +391,30 @@ mm_scene* mm_render_diagram(mm_document* d):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
 		if (n.group): continue
+		int style_start = s.items.length
 		if (d.kind == MM_STATE && n.shape >= 4):
 			if (n.shape == 6): mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 2, c"")
 			else:
 				mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 4, c"")
 				if (n.shape == 5): mm_draw(s, MM_CIRCLE, b.x + 7, b.y + 7, b.x + b.w - 7, b.y + b.h - 7, 1, c"")
+			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 10):
 			mm_actor_draw(s, b)
 			mm_text(s, b.x + 12, b.y + 90, n.label)
+			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 12 || n.shape == 13):
 			mm_arch_icon(s, n, b)
 			if (n.shape == 12): mm_text(s, b.x + 12, b.y + 86, n.label)
+			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 3):
-			mm_line(s, b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, 0)
-			mm_line(s, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, 0)
-			mm_line(s, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2, 0)
-			mm_line(s, b.x, b.y + b.h / 2, b.x + b.w / 2, b.y, 0)
-		else if (n.shape == 2 || n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
+			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_primitive* diamond = s.items[s.items.length - 1]
+			diamond.points = list[int]{b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2}
+		else if (n.shape == 2): mm_draw(s, MM_CIRCLE, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+		else if (n.shape == 11): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int title_y = b.y + (b.h - 16) / 2
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
@@ -420,6 +427,7 @@ mm_scene* mm_render_diagram(mm_document* d):
 				char* text = mm_attribute_text(n.attributes[j])
 				mm_text(s, b.x + 12, y + 5, text)
 				free(text)
+		mm_style_node(d, s, n, style_start)
 	return s
 
 # Apply document metadata once, after the family's own layout has completed.
@@ -442,4 +450,5 @@ mm_scene* mm_render(mm_document* d):
 		free(s.accessibility_title)
 		s.accessibility_title = strclone(d.title)
 	s.accessibility_description = strclone(d.accessibility_description)
+	mm_style_scene(d, s)
 	return s

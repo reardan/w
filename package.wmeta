@@ -123,6 +123,8 @@ modules:
 	libs.extras.mermaid.data_parse
 	libs.extras.mermaid.data_render
 	libs.extras.mermaid.parser
+	libs.extras.mermaid.style
+	libs.extras.mermaid.style_render
 	libs.extras.mermaid.scene
 	libs.extras.mermaid.render
 	libs.extras.mermaid.io

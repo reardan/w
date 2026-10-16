@@ -1,0 +1,14 @@
+---
+title: Native styles
+config:
+  theme: dark
+---
+flowchart LR
+subgraph Build
+  Source[Source]:::input --> Compile{Compile}:::action
+  Compile --> Ready((Ready)):::success
+end
+classDef input fill:#1d4ed8,stroke:#93c5fd,color:white
+classDef action fill:#7c3aed,stroke:#ddd6fe,color:white,stroke-width:3
+classDef success fill:#15803d,stroke:#86efac,color:white
+style Build fill:#1e293b,stroke:#64748b,color:#e2e8f0
