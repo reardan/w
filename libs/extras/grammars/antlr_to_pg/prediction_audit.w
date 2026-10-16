@@ -121,7 +121,7 @@ void at_prediction_find_risks(at_rule* owner, list[at_alt*] alts, map[char*, int
 			int overlap = at_prediction_overlap(first, at_prediction_first_alt(alts[j]))
 			if (at_prediction_alt_nullable(alt)): overlap = 1
 			if (at_prediction_alt_nullable(alts[j]) && at_prediction_overlap(first, following)): overlap = 1
-			if (overlap && (at_prediction_prefix_disjoint(alt, alts[j]) == 0)):
+			if (overlap && (at_prediction_prefix_disjoint(alt, alts[j]) == 0) && (at_prediction_common_terminator(alt, alts[j]) == 0)):
 				at_loss_code(owner.first, owner.name, c"AT_PARSER_CONTINUATION", c"parser_prediction", c"unproven", cstr(f"unproven parser continuation: alternatives {i + 1} and {j + 1} overlap or precede a nullable fallback; use --prediction or a reviewed adaptation"))
 		map[char*, int] next = new map[char*, int]
 		at_prediction_union(next, following)

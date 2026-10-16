@@ -47,5 +47,9 @@ int main():
 	# suffix intact, nor discharge a shorter/longer accepting alternative.
 	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a'? 'a' 'b' | 'a'? 'a' 'c';", 0) > 0)
 	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a' | 'a' 'b';", 0) > 0)
+	# Delimiter termination proves prefix freedom even with different body
+	# lengths. A delimiter admitted by the body must keep the risk visible.
+	assert_equal(0, prediction_losses(c"grammar G; start: item EOF; item: 'a'+ 'b'* ';' | 'a'* 'b'+ ';';", 0))
+	assert1(prediction_losses(c"grammar G; start: item EOF; item: 'a' ';' | 'a' (';' 'a')+ ';';", 0) > 0)
 	println(c"parser continuation audit tracks alternatives and caller FOLLOW sets")
 	return 0

@@ -84,3 +84,35 @@ int at_prediction_prefix_disjoint(at_alt* left, at_alt* right):
 			if (at_prediction_overlap(xf, at_prediction_first_sequence(a))): return 0
 			if (at_prediction_overlap(yf, at_prediction_first_sequence(b))): return 0
 	return 0
+
+
+# A mandatory common terminator makes alternatives prefix-free when no body
+# can contain that token. Nested parser choices are still audited separately.
+int at_prediction_body_excludes(list[at_element*] elements, int end, map[char*, int] terminator, int depth):
+	if (depth > 24): return 0
+	for i in range(end):
+		at_element* element = elements[i]
+		if (at_prediction_is_token(element)):
+			if (at_prediction_overlap(at_prediction_first_atom(element), terminator)): return 0
+		else:
+			list[at_alt*] alts = 0
+			if (element.kind == 3): alts = element.group_alts
+			else if ((element.kind == 2) && (element.text in g_at_rules)): alts = g_at_rules[element.text].alts
+			if (alts == 0): return 0
+			for at_alt* alt in alts:
+				if (at_prediction_body_excludes(alt.elements, alt.elements.length, terminator, depth + 1) == 0): return 0
+	return 1
+
+
+int at_prediction_common_terminator(at_alt* left, at_alt* right):
+	if ((left.elements.length == 0) || (right.elements.length == 0)): return 0
+	int a = left.elements.length - 1
+	int b = right.elements.length - 1
+	at_element* x = left.elements[a]
+	at_element* y = right.elements[b]
+	if ((x.suffix != 0) || (y.suffix != 0)): return 0
+	if ((at_prediction_is_token(x) == 0) || (at_prediction_is_token(y) == 0)): return 0
+	map[char*, int] xf = at_prediction_first_atom(x)
+	map[char*, int] yf = at_prediction_first_atom(y)
+	if ((xf.length != 1) || (yf.length != 1) || (at_prediction_overlap(xf, yf) == 0)): return 0
+	return at_prediction_body_excludes(left.elements, a, xf, 0) && at_prediction_body_excludes(right.elements, b, xf, 0)

@@ -90,6 +90,36 @@ void prediction_linear():
 	free(text)
 
 
+void prediction_metadata():
+	char* source = c"parser metadata\nmode antlr\nliteral A \"a\"\nstart start\nrule start = item EOF\nrule item = A\nnode_meta item \"1\" \"origin\" \"7\"\nterm_meta item \"1\" \"1\" \"argument\" \"1\"\n"
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_grammar* grammar = pg_grammar_read(source, c"metadata.pg", diagnostics)
+	assert1(grammar != 0)
+	assert_equal(0, diagnostics.items.length)
+	pg_prediction_program* program = pg_prediction_build(grammar)
+	pg_token_stream* stream = prediction_tokens(c"a")
+	pg_ast_node* root = pg_prediction_parse(program, 0, stream, diagnostics)
+	assert1(root != 0)
+	pg_prediction_free(program)
+	pg_grammar_free(grammar)
+	# Keys belong to the AST maps after the temporary program is freed.
+	assert_equal(7, pg_ast_get_metadata(root.children[0], c"origin", 0))
+	assert_equal(1, pg_ast_get_metadata(root.children[0].children[0], c"argument", 0))
+	pg_ast_free(root)
+	pg_token_stream_free(stream)
+	pg_diagnostics_free(diagnostics)
+	diagnostics = pg_diagnostics_new()
+	grammar = pg_grammar_read(c"parser bad\nmode antlr\nliteral A \"a\"\nstart item\nrule item = A\nterm_meta item \"1\" \"2\" \"bad\" \"1\"\n", c"bad.pg", diagnostics)
+	assert1(grammar == 0)
+	assert1(diagnostics.items.length > 0)
+	pg_diagnostics_free(diagnostics)
+	diagnostics = pg_diagnostics_new()
+	grammar = pg_grammar_read(c"parser bad\nliteral A \"a\"\nstart item\nrule item = A\nnode_meta item \"1\" \"bad\" \"1\"\n", c"bad.pg", diagnostics)
+	assert1(grammar == 0)
+	assert1(diagnostics.items.length > 0)
+	pg_diagnostics_free(diagnostics)
+
+
 int main():
 	prediction_case(c"rule start = item\nrule item = A | A B\n", c"ab", 1, 2)
 	prediction_case(c"rule start = item\nrule item = A | A B\n", c"aba", 0, 0)
@@ -117,6 +147,7 @@ int main():
 	pg_grammar_free(grammar)
 	pg_token_stream_free(stream)
 	pg_diagnostics_free(diagnostics)
+	prediction_metadata()
 	prediction_adversarial()
 	prediction_linear()
 	println(c"continuation prediction, priority, rollback and bounded failure passed")
