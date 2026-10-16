@@ -525,6 +525,9 @@ void mm_narrative_body(mm_parser* p):
 	list[int] blocks = new list[int]
 	list[int] callers = new list[int]
 	while (mm_peek(p) != 0 && p.doc.error == 0):
+		if (mm_metadata(p)):
+			mm_separators(p)
+			continue
 		char* text = mm_n_line(p)
 		if (mm_n_prefix(text, c"title ")):
 			free(p.doc.title)

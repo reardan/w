@@ -217,3 +217,18 @@ void test_narrative_gantt_sequential_end_date_and_milestone_midpoint():
 	assert_equal(bar.x + bar.w, point.x)
 	mm_scene_free(scene)
 	mm_document_free(d)
+
+void test_narrative_document_metadata_title_once():
+	char* text = c"```mermaid\n---\ntitle: Narrative report\n---\nsequenceDiagram\naccTitle: Accessible sequence\nA->>B: Message\n```\n"
+	mm_document* d = mm_parse(text, strlen(text))
+	asserts(c"metadata and envelope parse", d.error == 0)
+	mm_scene* s = mm_render(d)
+	int titles = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Narrative report") == 0): titles = titles + 1
+	assert_equal(1, titles)
+	char* svg = mm_svg(s)
+	asserts(c"accessible title exported", index_of(svg, c"Accessible sequence") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)

@@ -288,7 +288,9 @@ mm_scene* mm_narrative_render(mm_document* d):
 	scene.nodes = new list[mm_bounds*]
 	scene.width = 240
 	scene.height = 160
-	if (d.title[0] != 0): mm_text(scene, 30, 20, d.title)
+	if (d.title[0] != 0):
+		mm_text(scene, 30, 20, d.title)
+		scene.has_title = 1
 	if (d.kind == MM_SEQUENCE || d.kind == MM_ZENUML): mm_n_lifelines(d, scene)
 	else if (d.kind == MM_JOURNEY): mm_n_journey_scene(d, scene)
 	else if (d.kind == MM_TIMELINE): mm_n_timeline_scene(d, scene)
