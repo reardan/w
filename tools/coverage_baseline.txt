@@ -29,16 +29,20 @@
 # 88.5%, and REPL branches at 74.4%. Preserve their existing 0.8/0.7,
 # 0.6 and 0.8 point margins. Code-generator lines remain at 97.0%, so
 # retain that floor; the grammar measurements and floors are unchanged.
-code_generator/ 96.1
-compiler/ 94.5
+# Optional-reference, control-flow, generic and mutable-record regressions
+# measure compiler lines/branches at 95.4/85.8%, code-generator at 97.1/88.7%,
+# and diagnostic sites at 51.5%. Preserve the existing 0.8/0.7, 0.9/0.6
+# and 0.7 point margins. Other directory measurements retain their floors.
+code_generator/ 96.2
+compiler/ 94.6
 grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
 repl.w 80.5
 w.w 99.0
-diagnostics 50.5
-branches:code_generator/ 87.9
-branches:compiler/ 84.8
+diagnostics 50.8
+branches:code_generator/ 88.1
+branches:compiler/ 85.1
 branches:grammar/ 84.6
 branches:repl/ 73.6
 branches:debugger/ 64.0

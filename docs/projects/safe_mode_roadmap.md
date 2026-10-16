@@ -39,7 +39,7 @@ implementation rather than introduce a second ownership model.
 | Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins, range loops and scalar switches | Container iteration and more precise projections |
 | Calls | Direct/imported/recursive calls, checked methods and concrete generic calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Indirect calls, callbacks and unmodeled generic operations |
 | Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction and outer-function `defer` | Nested defer registration, partial moves and mixed borrowed/owned aggregate fields |
-| Storage and libraries | Fixed arrays, inline checked slices, single-group shared-reference structs, owned structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
+| Storage and libraries | Fixed arrays, inline checked slices, single-group shared/exclusive borrowed structs, owned structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
 | Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
 
 The checker in [compiler/safe.w](../../compiler/safe.w) uses resolved

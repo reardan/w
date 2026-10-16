@@ -735,3 +735,78 @@ Buffer and collection runtime tests explicitly compile with `--ast-required`
 in the ordinary suite too. Parser regressions cover both compiler hosts and
 target architectures, contextual qualifier names, nested aliases, lifetime
 arena growth, and unsafe casts that must still reach the safe-mode checker.
+
+### Follow-on extension validation
+
+The combined optional-reference, control-flow, defer, method, generic,
+mutable-record, owned-buffer, arena and win64 changes passed 1,288 targets
+from `tests`, `verify_x64`, `wbench_compare` and the six explicit safe-mode
+win64 runtime targets. This includes both self-host fixpoints and the
+performance regression gate. All 48 manifest-selected architecture/root
+checks passed, along with direct win64 and ARM64 compiler checks. Compiler
+portability checks do not admit checked applications on unsupported targets.
+The separate `tests_win64` suite also passed all 20 targets under Wine,
+including its self-host fixpoint.
+
+The isolated instrumented `tests` suite passed all 1,281 targets and every
+compiler/API harness, with a COMPLETE receipt. Changed executable compiler
+coverage from the follow-on baseline `666ccd52` was 477/497 lines (95%, above
+the 80% gate); the complete branch diff against `origin/main` reached
+521/541 lines (96%). Compiler line/branch
+coverage reached 95.4% / 85.8%, code-generator coverage 97.1% / 88.7%, and
+diagnostic-site coverage 51.5%. Coverage floors were raised to retain those
+gains. The ordinary 1,288-target run additionally includes the performance
+gate and six win64 runtime targets, accounting for the count difference.
+
+The new source matrices exercise compilation and structured checking on
+x86/x64 with and without `--safe`; accepted cases execute, and rejected cases
+must leave no output artifact. The mutable-record matrix includes 43 cases,
+the generic matrix 20 cases, and a separate 12-case generic interaction
+matrix checks aliasing, argument order, recursive calls and optional results.
+Required-AST and optimization variants cover the admitted paths.
+
+Independent review found two interaction defects during implementation:
+`break` could bypass checker scope invalidation, and a new loop iteration
+could revive a stale reference by reinitializing its backing binding. Jump
+paths now invalidate every exited lexical scope, and ending a backing
+lifetime invalidates surviving borrowed values before that binding can be
+reused. Permanent tests cover copied references, helper returns, nested
+switches, range/while loops, mutable reborrows and valid cleared-reference
+controls.
+
+Eight rebuilt runtime fixtures ran on both Linux architectures through
+`wgrind --native` with explicit leak reports and through Memcheck: 32 runs,
+zero errors or outstanding blocks, and 1,894 allocations matched by 1,894
+frees in the 16 Memcheck runs. Win64 guard-allocator tests run under Wine
+with default, register-disabled/inlining-disabled and inline modes where
+applicable. These results cover the documented bounded subset; issue #644
+remains open for the remaining roadmap.
+
+#### Follow-on measured costs
+
+Fixed-point x86 compilers from baseline `666ccd52` and the implementation
+at `aac4ceaf` were compared after one warmup using seven alternating measured
+runs. No team builds or tests ran during the measurement window; unrelated
+shared-host load was still possible. Times include process startup/output,
+and peak RSS is from `/usr/bin/time`.
+
+| Input / emitted target | Baseline time | Current time | Baseline peak RSS | Current peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Manual cleanup / x86 | 40.52 ms | 39.11 ms | 4,896 KiB | 5,120 KiB |
+| Manual cleanup / x64 | 47.04 ms | 44.90 ms | 5,120 KiB | 4,896 KiB |
+| Checked cleanup / x86 | 50.80 ms | 51.68 ms | 6,892 KiB | 6,688 KiB |
+| Checked cleanup / x64 | 58.71 ms | 56.65 ms | 6,688 KiB | 6,688 KiB |
+| `w.w` / x86 | 1,119.48 ms | 1,117.04 ms | 110,400 KiB | 110,624 KiB |
+
+Manual cleanup and `w.w` use the same current source corpus. The checked
+fixture source is unchanged, but each compiler uses its own checkout's
+audited runtime: the baseline correctly rejects the updated guard allocator
+because its implementation hash differs. Consequently the checked columns
+are not a byte-equivalence comparison. Both manual executables are identical
+across compilers, at 123,200 bytes on x86 and 144,000 on x64. Checked binaries
+have those same file sizes, and all eight fixture executables run correctly.
+
+The compiler input shows about 0.2% less elapsed time and 0.2% more peak
+memory in this sample; this does not establish a general performance bound.
+These existing cost fixtures measure compatibility and basic owner cleanup,
+not the throughput of every new container or generic workload.
