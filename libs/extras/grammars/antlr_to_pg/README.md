@@ -67,6 +67,9 @@ grammars describe the two formats involved, run through
   `SWEEP_RESULTS.md` also retains the historical `sweep_results.csv` measurement.
 - `MATCHER_GENERATION_PLAN.md` — design notes for the matcher generator
   (written against an earlier layout, so its paths are historical).
+- [`COMPATIBILITY_PLAN.md`](COMPATIBILITY_PLAN.md) — the next implementation
+  plan after PRs #689, #690, and #692, with parallel ownership, separate compile
+  and semantic gates, exact lexer work, and imported-ANTLR parser prediction.
 
 ## Why w, not a scripting language
 
