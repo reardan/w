@@ -1,4 +1,5 @@
 import code_generator.integer
+import code_generator.word_size
 
 
 char *code
@@ -27,8 +28,6 @@ int datapos
 int data_offset
 int data_split
 
-int word_size
-int word_size_log2
 
 # Target instruction-set family: 0 = x86/x86-64, 1 = arm64 (AArch64).
 # word_size still distinguishes 32- vs 64-bit pointers; target_isa selects

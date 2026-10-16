@@ -2,7 +2,7 @@
 Predefined macro setup.
 */
 import lib.lib
-import code_generator.code_emitter
+import code_generator.word_size
 import libs.extras.c_preprocessor.pp_token
 import libs.extras.c_preprocessor.pp_lexer
 import libs.extras.c_preprocessor.pp_macro
