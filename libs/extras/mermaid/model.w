@@ -50,6 +50,9 @@ struct mm_data_chart:
 	int polygon
 	int legend
 
+const int MM_REQUIREMENT = 60
+const int MM_MINDMAP = 61
+const int MM_KANBAN = 62
 # UML endpoints: open arrow, hollow triangle, filled/hollow diamond.
 const int MM_ARROW = 1
 const int MM_TRIANGLE = 2

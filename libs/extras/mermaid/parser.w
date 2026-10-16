@@ -3,6 +3,7 @@ import libs.extras.mermaid.parse_common
 import libs.extras.mermaid.uml
 import libs.extras.mermaid.source
 import libs.extras.mermaid.data_parse
+import libs.extras.mermaid.graph_families
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -243,6 +244,9 @@ mm_document* mm_parse_raw(char* source, int length):
 	char* header = mm_identifier(&p)
 	if (strcmp(header, c"erDiagram") == 0): d.kind = MM_ER
 	else if (strcmp(header, c"flowchart") == 0 || strcmp(header, c"graph") == 0): d.kind = MM_FLOW
+	else if (strcmp(header, c"requirementDiagram") == 0): d.kind = MM_REQUIREMENT
+	else if (strcmp(header, c"mindmap") == 0): d.kind = MM_MINDMAP
+	else if (strcmp(header, c"kanban") == 0): d.kind = MM_KANBAN
 	else if (strcmp(header, c"classDiagram") == 0): d.kind = MM_CLASS
 	else if (strcmp(header, c"stateDiagram") == 0):
 		d.kind = MM_STATE
@@ -269,12 +273,18 @@ mm_document* mm_parse_raw(char* source, int length):
 			chart.title = mm_data_text(&p, 10)
 	if (d.kind == MM_FLOW): mm_direction(&p)
 	if (mm_end(&p) == 0): mm_error(d, p.pos, c"expected end of diagram header")
+	if (d.kind == MM_MINDMAP || d.kind == MM_KANBAN):
+		mm_hierarchy_body(&p)
+		return d
 	mm_separators(&p)
 	if (d.kind == MM_FLOW || d.kind == MM_ER):
 		mm_flow_body(&p, 0)
 		return d
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET):
 		mm_data_body(&p)
+		return d
+	if (d.kind == MM_REQUIREMENT):
+		mm_requirement_body(&p)
 		return d
 	if (d.kind == MM_CLASS || d.kind == MM_STATE):
 		mm_uml_body(&p, -1, 0)

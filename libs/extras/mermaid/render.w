@@ -1,6 +1,7 @@
 # Graph layout and rendering; shared scene primitives live in scene.w.
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.data_render
+import libs.extras.mermaid.hierarchy_render
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -41,7 +42,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 				int width = strlen(text) * 8 + 32
 				if (width > b.w): b.w = width
 				free(text)
-		if (d.kind == MM_CLASS && n.group == 0):
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT) && n.group == 0):
 			b.h = 80 + n.members.length * 26
 			if (n.annotation[0] != 0): b.h = b.h + 24
 			int width = strlen(n.annotation) * 8 + 64
@@ -186,6 +187,13 @@ void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
 	if (kind == 0): return
 	int px = 0 - dy
 	int py = dx
+	if (kind == 5):
+		int cx = x + dx * 8
+		int cy = y + dy * 8
+		mm_draw(s, MM_CIRCLE, cx - 7, cy - 7, cx + 7, cy + 7, 0, c"")
+		mm_line(s, cx - 5, cy, cx + 5, cy, 0)
+		mm_line(s, cx, cy - 5, cx, cy + 5, 0)
+		return
 	if (kind == MM_ARROW):
 		mm_line(s, x, y, x + dx * 12 + px * 6, y + dy * 12 + py * 6, 0)
 		mm_line(s, x, y, x + dx * 12 - px * 6, y + dy * 12 - py * 6, 0)
@@ -210,7 +218,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 	mm_bounds* a = s.nodes[e.from_node]
 	mm_bounds* b = s.nodes[e.to_node]
 	char* direction = d.direction
-	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER): direction = mm_scope_direction(d, e.scope)
+	if (d.kind == MM_CLASS || d.kind == MM_STATE || d.kind == MM_FLOW || d.kind == MM_ER || d.kind == MM_REQUIREMENT): direction = mm_scope_direction(d, e.scope)
 	int horizontal = strcmp(direction, c"LR") == 0 || strcmp(direction, c"RL") == 0
 	int dx = 0
 	int dy = 1
@@ -281,7 +289,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
 		else: mm_marker(s, bx, by, 0 - dx, 0 - dy, e.right_card)
-	else if (d.kind == MM_CLASS):
+	else if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT)):
 		mm_uml_marker(s, ax, ay, dx, dy, e.left_marker)
 		int end_dx = 0 - dx
 		int end_dy = 0 - dy
@@ -332,6 +340,7 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
 
 # Failed parses cannot produce a misleading partial preview.
 mm_scene* mm_render_diagram(mm_document* d):
+	if (d.error == 0 && (d.kind == MM_MINDMAP || d.kind == MM_KANBAN)): return mm_hierarchy_render(d)
 	if (d.error != 0): return 0
 	if (d.kind >= MM_PIE && d.kind <= MM_PACKET): return mm_data_render(d)
 	mm_scene* s = new mm_scene()
@@ -360,9 +369,9 @@ mm_scene* mm_render_diagram(mm_document* d):
 		else if (n.shape == 2): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int title_y = b.y + (b.h - 16) / 2
-		if (d.kind == MM_ER || d.kind == MM_CLASS): title_y = b.y + 12
+		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT)): title_y = b.y + 12
 		if (d.kind != MM_STATE || n.shape != 3): mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, title_y, n.label)
-		if (d.kind == MM_CLASS): mm_render_class(s, n, b)
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT)): mm_render_class(s, n, b)
 		if (d.kind == MM_ER):
 			for j in range(n.attributes.length):
 				int y = b.y + 40 + j * 26
