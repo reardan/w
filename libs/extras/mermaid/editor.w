@@ -12,6 +12,12 @@ struct mm_editor:
 	int selected
 	int disk_present
 	char* disk_source
+	int moving
+	int move_index
+	int move_start_x
+	int move_start_y
+
+void mm_editor_move_cancel(mm_editor* e);
 
 # Treat unreadable paths as occupied; only ENOENT means absent.
 int mm_editor_path_present(char* path):
@@ -24,6 +30,7 @@ int mm_editor_path_present(char* path):
 mm_editor* mm_editor_new(char* path, char* source):
 	if (path == 0 || source == 0 || strlen(source) > MM_MAX_SOURCE): return 0
 	mm_editor* e = new mm_editor()
+	e.move_index = -1
 	e.path = strclone(path)
 	e.saved_source = strclone(source)
 	e.disk_present = mm_editor_path_present(path)
@@ -54,6 +61,8 @@ int mm_editor_dirty(mm_editor* e):
 	return strcmp(e.document.source, e.saved_source) != 0
 
 void mm_editor_load(mm_editor* e, char* source):
+	e.moving = 0
+	e.move_index = -1
 	mm_document* next = mm_parse_selected(source, strlen(source), e.selected)
 	mm_scene_free(e.scene)
 	mm_document_free(e.document)
@@ -61,6 +70,7 @@ void mm_editor_load(mm_editor* e, char* source):
 	e.scene = mm_render(next)
 
 int mm_editor_change(mm_editor* e, char* source):
+	mm_editor_move_cancel(e)
 	if (source == 0): return 0
 	if (strlen(source) > MM_MAX_SOURCE): return 0
 	if (strcmp(e.document.source, source) == 0): return 1
@@ -78,7 +88,21 @@ int mm_editor_change(mm_editor* e, char* source):
 	mm_editor_load(e, copy)
 	return 1
 
+# The UI owns the idle deadline and gesture boundaries. Coalescing may replace
+# only the latest unsaved typing snapshot; a saved state remains an undo stop.
+int mm_editor_change_typing(mm_editor* e, char* source, int continue_group):
+	mm_editor_move_cancel(e)
+	if (source == 0 || strlen(source) > MM_MAX_SOURCE): return 0
+	if (strcmp(e.document.source, source) == 0): return 1
+	if (continue_group == 0 || e.position == 0 || e.position + 1 != e.history.length || strcmp(e.document.source, e.saved_source) == 0): return mm_editor_change(e, source)
+	char* copy = strclone(source)
+	free(e.history[e.position])
+	e.history[e.position] = copy
+	mm_editor_load(e, copy)
+	return 1
+
 int mm_editor_undo(mm_editor* e, int redo):
+	mm_editor_move_cancel(e)
 	int next = e.position - 1
 	if (redo): next = e.position + 1
 	if (next < 0 || next >= e.history.length): return 0
@@ -213,12 +237,117 @@ int mm_editor_add_edge(mm_editor* e, char* from_id, char* to_id):
 
 # Hit testing uses scene coordinates; callers reverse preview zoom and pan.
 int mm_editor_hit(mm_editor* e, int x, int y):
-	if (e.scene == 0 || e.document.kind != MM_FLOW): return -1
+	if (e.scene == 0 || (e.document.kind != MM_FLOW && e.document.kind != MM_ER)): return -1
 	int hit = -1
 	for i in range(e.scene.nodes.length):
 		mm_bounds* b = e.scene.nodes[i]
 		if (e.document.nodes[i].group == 0 && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h): hit = i
 	return hit
+
+# Canvas gestures retain the parsed document and measured layout. A pointer
+# update only rebuilds primitives, so edges follow their current node bounds.
+int mm_editor_can_move(mm_editor* e, int index):
+	if (e.scene == 0 || index < 0 || index >= e.scene.nodes.length): return 0
+	return mm_position_supported(e.document, index)
+
+int mm_editor_move_begin(mm_editor* e, int index):
+	if (mm_editor_can_move(e, index) == 0): return 0
+	mm_editor_move_cancel(e)
+	e.moving = 1
+	e.move_index = index
+	e.move_start_x = e.scene.nodes[index].x
+	e.move_start_y = e.scene.nodes[index].y
+	return 1
+
+int mm_editor_move_preview(mm_editor* e, int x, int y):
+	if (e.moving == 0 || mm_editor_can_move(e, e.move_index) == 0): return 0
+	int offset = mm_position_title_offset(e.document)
+	if (x < 0 || x > MM_POSITION_LIMIT || y < offset || y > MM_POSITION_LIMIT + offset): return 0
+	mm_bounds* b = e.scene.nodes[e.move_index]
+	if (b.x == x && b.y == y): return 1
+	b.x = x
+	b.y = y
+	mm_render_graph_refresh(e.document, e.scene)
+	return 1
+
+void mm_editor_move_cancel(mm_editor* e):
+	if (e.moving == 0): return
+	int index = e.move_index
+	e.moving = 0
+	e.move_index = -1
+	if (mm_editor_can_move(e, index) == 0): return
+	mm_bounds* b = e.scene.nodes[index]
+	if (b.x == e.move_start_x && b.y == e.move_start_y): return
+	b.x = e.move_start_x
+	b.y = e.move_start_y
+	mm_render_graph_refresh(e.document, e.scene)
+
+int mm_editor_move_commit(mm_editor* e):
+	if (e.moving == 0 || mm_editor_can_move(e, e.move_index) == 0): return 0
+	mm_bounds* b = e.scene.nodes[e.move_index]
+	if (b.x == e.move_start_x && b.y == e.move_start_y):
+		mm_editor_move_cancel(e)
+		return 1
+	char* source = mm_position_source(e.document, e.move_index, b.x, b.y - mm_position_title_offset(e.document))
+	if (source == 0):
+		mm_editor_move_cancel(e)
+		return 0
+	if (strlen(source) > MM_MAX_SOURCE):
+		free(source)
+		mm_editor_move_cancel(e)
+		return 0
+	# Only now create one undo snapshot; preview frames never enter history.
+	e.moving = 0
+	e.move_index = -1
+	int ok = mm_editor_change(e, source)
+	free(source)
+	return ok
+
+# Keyboard nudges and pointer drags share the same transactional command.
+int mm_editor_move_node(mm_editor* e, int index, int x, int y):
+	if (mm_editor_move_begin(e, index) == 0): return 0
+	if (mm_editor_move_preview(e, x, y) == 0):
+		mm_editor_move_cancel(e)
+		return 0
+	return mm_editor_move_commit(e)
+
+# Only standalone comments that currently affect layout enable Auto layout.
+int mm_editor_has_positions(mm_editor* e):
+	mm_document* d = e.document
+	if (d.error != 0 || d.comment_ranges == 0): return 0
+	for i in range(d.comment_ranges.length / 2):
+		int start = d.comment_ranges[i * 2]
+		int end = d.comment_ranges[i * 2 + 1]
+		int before = start - 1
+		while (before >= d.source_start && mm_position_space(d.source[before])): before = before - 1
+		if (before >= d.source_start && d.source[before] != 10): continue
+		int x = 0
+		int y = 0
+		if (mm_position_record(d, start, end, &x, &y) >= 0): return 1
+	return 0
+
+# Restore automatic layout in one undoable edit. Malformed hints, inaccessible
+# metadata-looking text and other diagrams remain byte-for-byte intact.
+int mm_editor_reset_positions(mm_editor* e):
+	mm_editor_move_cancel(e)
+	if (e.document.error != 0 || (e.document.kind != MM_FLOW && e.document.kind != MM_ER)): return 0
+	if (mm_editor_has_positions(e) == 0): return 1
+	mm_document* d = e.document
+	string_builder* source = string_new()
+	string_append_bytes(source, d.source, d.source_start)
+	int at = d.source_start
+	while (at < d.source_end):
+		int end = mm_position_line_end(d, at)
+		int after = end
+		if (after < d.source_end): after = after + 1
+		int x = 0
+		int y = 0
+		if (mm_position_record(d, at, end, &x, &y) < 0): string_append_bytes(source, d.source + at, after - at)
+		at = after
+	string_append_bytes(source, d.source + d.source_end, d.length - d.source_end)
+	int ok = mm_editor_change(e, source.data)
+	string_free(source)
+	return ok
 
 void mm_editor_free(mm_editor* e):
 	mm_scene_free(e.scene)

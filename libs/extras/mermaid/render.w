@@ -1,6 +1,7 @@
 # Graph layout and rendering; shared scene primitives live in scene.w.
 import libs.extras.mermaid.scene
 import libs.extras.mermaid.layout
+import libs.extras.mermaid.positions
 import libs.extras.mermaid.data_render
 import libs.extras.mermaid.hierarchy_render
 import libs.extras.mermaid.framework_render
@@ -385,27 +386,8 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
 		if (count == 0): y = y + 18
 		if (method == 0): mm_line(s, b.x, y, b.x + b.w, y, 0)
 
-# Failed parses cannot produce a misleading partial preview.
-mm_scene* mm_render_diagram(mm_document* d):
-	if (d.error == 0 && d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML): return mm_narrative_render(d)
-	if (d.error != 0): return 0
-	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
-	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
-	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
-	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
-	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
-	if (d.kind == MM_CYNEFIN): return mm_cynefin_render(d)
-	if (d.kind == MM_WARDLEY): return mm_wardley_render(d)
-	if (d.error == 0 && (d.kind == MM_MINDMAP || d.kind == MM_KANBAN)): return mm_hierarchy_render(d)
-	if (d.error != 0): return 0
-	if (d.kind >= MM_PIE && d.kind <= MM_PACKET): return mm_data_render(d)
-	if (d.kind >= MM_RAIL_IR && d.kind <= MM_RAIL_PEG): return mm_rail_render(d)
-	mm_scene* s = new mm_scene()
-	s.items = new list[mm_primitive*]
-	s.nodes = new list[mm_bounds*]
-	s.width = 240
-	s.height = 160
-	mm_layout(d, s)
+# Rebuild primitives from existing bounds; pointer-motion previews skip parsing and layout.
+void mm_render_graph(mm_document* d, mm_scene* s):
 	mm_render_groups(d, s, -1)
 	for mm_edge* e in d.edges:
 		int start = s.items.length
@@ -503,12 +485,34 @@ mm_scene* mm_render_diagram(mm_document* d):
 				free(text)
 		mm_style_node(d, s, n, style_start)
 	if (d.kind == MM_CLASS || d.kind == MM_STATE): mm_uml_notes(d, s)
+
+# Failed parses cannot produce a misleading partial preview.
+mm_scene* mm_render_diagram(mm_document* d):
+	if (d.error == 0 && d.kind >= MM_SEQUENCE && d.kind <= MM_ZENUML): return mm_narrative_render(d)
+	if (d.error != 0): return 0
+	if (d.kind == MM_SWIMLANE || d.kind == MM_EVENT_MODEL): return mm_workflow_render(d)
+	if (d.kind == MM_BLOCK): return mm_blocks_render(d)
+	if (d.kind == MM_GITGRAPH): return mm_git_render(d)
+	if (d.kind == MM_TREEVIEW): return mm_treeview_render(d)
+	if (d.kind == MM_ISHIKAWA): return mm_ishikawa_render(d)
+	if (d.kind == MM_CYNEFIN): return mm_cynefin_render(d)
+	if (d.kind == MM_WARDLEY): return mm_wardley_render(d)
+	if (d.error == 0 && (d.kind == MM_MINDMAP || d.kind == MM_KANBAN)): return mm_hierarchy_render(d)
+	if (d.error != 0): return 0
+	if (d.kind >= MM_PIE && d.kind <= MM_PACKET): return mm_data_render(d)
+	if (d.kind >= MM_RAIL_IR && d.kind <= MM_RAIL_PEG): return mm_rail_render(d)
+	mm_scene* s = new mm_scene()
+	s.items = new list[mm_primitive*]
+	s.nodes = new list[mm_bounds*]
+	s.width = 240
+	s.height = 160
+	mm_layout(d, s)
+	mm_positions_apply(d, s)
+	mm_render_graph(d, s)
 	return s
 
 # Apply document metadata once, after the family's own layout has completed.
-mm_scene* mm_render(mm_document* d):
-	mm_scene* s = mm_render_diagram(d)
-	if (s == 0): return 0
+void mm_render_metadata(mm_document* d, mm_scene* s):
 	if (d.title[0] != 0 && s.has_title == 0):
 		for mm_primitive* p in s.items:
 			p.y = p.y + 40
@@ -526,4 +530,29 @@ mm_scene* mm_render(mm_document* d):
 		s.accessibility_title = strclone(d.title)
 	s.accessibility_description = strclone(d.accessibility_description)
 	mm_style_scene(d, s)
+
+mm_scene* mm_render(mm_document* d):
+	mm_scene* s = mm_render_diagram(d)
+	if (s != 0): mm_render_metadata(d, s)
 	return s
+
+# Scene bounds use final coordinates, including the optional title gutter.
+void mm_render_graph_refresh(mm_document* d, mm_scene* s):
+	for mm_primitive* p in s.items:
+		if (p.points != 0): __w_list_free(cast(__w_list*, p.points))
+		free(p.text)
+		free(p)
+	while (s.items.length > 0): s.items.pop()
+	free(s.accessibility_title)
+	free(s.accessibility_description)
+	s.accessibility_title = 0
+	s.accessibility_description = 0
+	int offset = mm_position_title_offset(d)
+	for mm_bounds* b in s.nodes: b.y = b.y - offset
+	s.width = 240
+	s.height = 160
+	s.has_title = 0
+	s.has_background = 0
+	s.background = 0
+	mm_render_graph(d, s)
+	mm_render_metadata(d, s)
