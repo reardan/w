@@ -1406,8 +1406,10 @@ int ast_expression_generic_resolve(expression_ast* tree, int id, int args, int c
 			arity = type_function_param_count(signature)
 			result = type_function_return(signature)
 		else:
-			# Repeated calls in one tree share the same reserved signature.
-			for previous in range(id):
+			# A nested inferred call resolves before its outer node, even
+			# though its arena index is later. Share any completed signature.
+			for previous in range(tree.count):
+				if (previous == id): continue
 				if (((tree.op[previous] == 'G') || (tree.op[previous] == 'W')) && (tree.generic_signature[previous] >= 0) && ast_expression_generic_same(tree, previous, id)):
 					tree.generic_signature[id] = tree.generic_signature[previous]
 					tree.generic_parameters[id] = tree.generic_parameters[previous]
@@ -1594,7 +1596,6 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 		tail = argument
 	tree.generic_offset[id] = token_start_offset
 	if (ast_expression_generic_resolve(tree, id, cast(int, &types[0]), arity) != count): return -1
-	if (type_num_args(tree.high[id]) > 0): return -1
 	int argument = tree.left[id]
 	for i in range(count):
 		if (kinds[i] == -2):

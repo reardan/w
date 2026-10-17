@@ -487,3 +487,15 @@ unused template whose bare borrowed parameter/result requires a record;
 concrete specializations still check every body and contract. Other unused
 templates keep their existing scalar witness. Inferred aggregate results and
 generic methods remain separate required steps under #696.
+
+
+## Inferred aggregate result buffers
+
+A retained inferred call binds its concrete signature before emission. Aggregate
+results reserve the ordinary caller-owned return buffer before arguments and
+pass its address as the hidden first argument. Nested argument temporaries are
+compacted after their value is copied, preserving evaluation order and the
+callee layout. Inference shares a completed signature with a nested call even
+when the nested node has a later arena index. Whole-parameter inference retains
+checked qualifiers and lifetime groups in specialization identity; owner moves
+and result provenance use the same retained contract as explicit calls.

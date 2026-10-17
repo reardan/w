@@ -548,10 +548,17 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			else: alu_rotr32()
 		return
 	if (op == 'W'):
+		# Inference resolved the complete layout before emission, so
+		# reserve aggregate storage before evaluating any argument.
+		int has_return_buffer = emit_ast_return_buffer(tree.high[id])
 		int s = stack_pos
+		if (has_return_buffer):
+			lea_slot(s)
+			push_slot()
 		int argument = tree.left[id]
 		int position = 0
 		while (argument >= 0):
+			int arg_stack = stack_pos
 			emit_expression_ast(tree, argument)
 			int got = promote(tree.result_type[argument])
 			if (tree.infer_coercion[argument] == 1): coerce(tree.infer_want[argument], got)
@@ -559,7 +566,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			int want = type_function_param_type(tree.generic_signature[id], position)
 			if (tree.symbol[id] >= 0): want = sym_param_type(tree.symbol[id], position)
 			safe_owner_move(tree, argument, want)
-			push_call_argument(got)
+			push_call_argument_compact(got, stack_pos - arg_stack)
 			argument = tree.next_arg[argument]
 			position = position + 1
 		int sym = tree.symbol[id]
@@ -578,6 +585,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			generic_inst_emit_callee(tree.generic_instance[id])
 			call_eax()
 		pop_to(s)
+		if (has_return_buffer): lea_eax_esp_plus(0)
 		last_call_return_type = tree.high[id]
 		last_call_end = codepos
 		return

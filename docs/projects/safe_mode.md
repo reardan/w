@@ -257,8 +257,13 @@ ref[a] T[] tail[T](ref[a] T[] values, int start):
 Pass a checked slice for a subrange expression; raw-array slicing retains its
 existing restriction. Complete construction, presence checks, lifetime groups,
 return reservations and mutable reborrow rules apply as for direct calls.
-Aggregate result inference and generic-method syntax retain their separate
-implementation gates under #696.
+Inferred whole-parameter calls such as `echo(value)` where `T echo[T](T value)`
+now preserve checked aggregate arguments and return their concrete layouts.
+The retained emitter reserves the result buffer before evaluating arguments,
+compacts nested argument temporaries, and reuses signatures across nested calls.
+The streaming emitter retains its explicit-type-argument requirement for aggregate
+results. Inferring through qualified `ref T` / `ref T[]` shapes and generic-method
+syntax retain separate implementation gates under #696.
 
 Check mode keeps its synthetic `int` instantiation for unused scalar, pointer
 and slice templates. A bare `ref T` or `refmut T` constraint requires a record,
