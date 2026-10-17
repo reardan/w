@@ -1282,6 +1282,36 @@ This extends the sequential-container deliverable in #697. Maps/sets and
 checked iteration retain their independent implementation and merge gates;
 #697 and #644 remain open.
 
+### Checked generic maps and sets
+
+`lib.safe_hash` supplies opaque `WMap[K, V]` and `WSet[K]` owners. Keys are
+`int`, `uint`, `byte`, `char`, `bool`, or enums (including aliases). Map values
+are sized, pointer-free scalars or records without fixed arrays. Raw/checked
+pointer keys and values, borrowed records, floats as keys, and user hashing or
+equality are rejected by this initial closed contract. Owned-value maps and
+checked user operations have separate implementation gates under #697.
+
+`map_new[K,V]`/`set_new[K]` construct owners. Length, contains, map get/get-or,
+and snapshots borrow shared; set/add, remove and clear require an exclusive
+receiver. Replacement copies pointer-free values. Missing `map_get` keys trap;
+`map_get_or` copies the fallback. `map_find` returns `optref[a] V*` tied to its
+receiver's lifetime and requires a presence check before access. A live result
+blocks every invalidating mutation, including insertion with spare capacity.
+Mutation resumes after its last use. All metadata stays private; ordinary
+`new`, field access and raw container aliases cannot create checked identity.
+
+`map_keys`, `map_values` and `set_values` return owned `WBuffer` snapshots.
+Their elements are copies, so they survive clearing or destroying the original.
+Range loops over their checked slices are available; direct checked container
+iteration remains a separate step. Snapshot order follows the table and has no
+stability guarantee. Scope exits, owner replacement and recursive destruction
+free the wrapper and table exactly once, including maps nested in owned buffers.
+
+The audited implementation and destructor are source-pinned. Changed/shadowed
+runtime sources cannot inherit the contract. Allocation follows the existing
+fatal-out-of-memory table policy; recoverable insertion is not claimed for
+this API. Legacy `map[K,V]`/`set[K]` retain their raw aliasing semantics.
+
 ## Synchronous foreign byte I/O
 
 `import lib.safe_foreign` exposes two audited entry points:

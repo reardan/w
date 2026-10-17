@@ -425,11 +425,35 @@ int safe_owned_buffer_element(int type):
 int safe_owned_shape(int type);
 
 
+int safe_hash_key(int type):
+	type = safe_unqualified(type)
+	if type < 0: return 0
+	retained_type* key = retained_types[type]
+	if key.pointer_level || safe_kind(type): return 0
+	return (key.kind == type_kind_enum) || (strcmp(key.name, c"int") == 0) || (strcmp(key.name, c"uint") == 0) || (strcmp(key.name, c"byte") == 0) || (strcmp(key.name, c"char") == 0) || (strcmp(key.name, c"bool") == 0)
+
+
+int safe_hash_opaque(int type):
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 1): return 0
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return 0
+	if (ends_with(retained_sources[record.source].path, c"/lib/safe_hash.w") == 0): return 0
+	int storage = safe_unqualified(record.fields[0].type)
+	if storage < 0: return 0
+	retained_type* table = retained_types[storage]
+	if (safe_hash_key(table.target) == 0): return 0
+	if starts_with(record.name, c"WSet$"): return table.kind == type_kind_set
+	if ((starts_with(record.name, c"WMap$") == 0) || (table.kind != type_kind_map)): return 0
+	int value = safe_unqualified(table.return_type)
+	return (value >= 0) && (retained_types[value].size > 0) && safe_plain(value, 0) && (safe_has_array(value, 0) == 0)
+
+
 int safe_opaque(int type):
 	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
+	if (safe_hash_opaque(type)): return 1
 	if (safe_owned_buffer_element(type) >= 0): return safe_owned_shape(type)
 	if ((record.kind != 0) || record.pointer_level): return 0
 	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
@@ -442,6 +466,8 @@ int safe_opaque(int type):
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_hash.w")):
+		return starts_with(name, c"map_new$") || starts_with(name, c"map_length$") || starts_with(name, c"map_contains$") || starts_with(name, c"map_set$") || starts_with(name, c"map_get$") || starts_with(name, c"map_get_or$") || starts_with(name, c"map_find$") || starts_with(name, c"map_remove$") || starts_with(name, c"map_clear$") || starts_with(name, c"map_keys$") || starts_with(name, c"map_values$") || starts_with(name, c"set_new$") || starts_with(name, c"set_length$") || starts_with(name, c"set_contains$") || starts_with(name, c"set_add$") || starts_with(name, c"set_remove$") || starts_with(name, c"set_clear$") || starts_with(name, c"set_values$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_owned_vector.w")):
 		return starts_with(name, c"owned_buffer_new$") || starts_with(name, c"owned_buffer_length$") || starts_with(name, c"owned_buffer_push$") || starts_with(name, c"owned_buffer_try_push$") || starts_with(name, c"owned_buffer_get$") || starts_with(name, c"owned_buffer_set$") || starts_with(name, c"owned_buffer_pop$") || starts_with(name, c"owned_buffer_clear$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_vector.w")):

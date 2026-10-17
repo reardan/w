@@ -54,6 +54,11 @@ char* safe_owner_drop_helper(int element):
 		if (starts_with(name, c"WOwnedBuffer$")):
 			helper = c"__w_owned_buffer_drop"
 			pointee = type_lookup(c"void")
+	# Checked maps/sets wrap one legacy table pointer; one helper frees it.
+	else if (ends_with(source, c"/lib/safe_hash.w")):
+		if (starts_with(name, c"WMap$") || starts_with(name, c"WSet$")):
+			helper = c"__w_checked_hash_drop"
+			pointee = type_lookup(c"void")
 	else if (ends_with(source, c"/lib/safe_buffer.w") == 0): return 0
 	else if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
 	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"
