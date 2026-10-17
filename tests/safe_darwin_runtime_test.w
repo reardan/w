@@ -87,5 +87,8 @@
 # wbuild: step="bin/wv2 arm64_darwin --strict --no-regs --no-inline tests/safe_win64_runtime_fixture.w -o bin/safe_win64_plain_darwin_test"
 # wbuild: step="bin/wv2 arm64_darwin --strict --inline tests/safe_win64_runtime_fixture.w -o bin/safe_win64_inline_darwin_test"
 # wbuild: step="bin/wv2 arm64_darwin --strict --safe tests/safe_win64_runtime_fixture.w -o bin/safe_explicit_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin --strict tests/safe_mutable_view_runtime_fixture.w -o bin/safe_mutable_view_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin --strict --no-regs --no-inline tests/safe_mutable_view_runtime_fixture.w -o bin/safe_mutable_view_plain_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin --strict --inline tests/safe_mutable_view_runtime_fixture.w -o bin/safe_mutable_view_inline_darwin_test"
 int main():
 	return 0
