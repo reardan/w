@@ -2128,6 +2128,7 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	int safe_kind = 0
 	int lifetime = -1
 	if (peek(c"own")): safe_kind = 1
+	if (peek(c"optown")): safe_kind = 9
 	if (peek(c"ref")): safe_kind = 2
 	if (peek(c"refmut")): safe_kind = 3
 	if (peek(c"optref")): safe_kind = 6

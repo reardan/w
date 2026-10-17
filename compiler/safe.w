@@ -145,6 +145,7 @@ int safe_kind(int type):
 	int kind = retained_types[type].kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
 	if (kind == type_kind_safe_recordmut): return 3
+	if (kind == type_kind_optown): return 1
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
 	return 0
@@ -154,7 +155,7 @@ int safe_optional(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
-	return (kind == type_kind_optref) || (kind == type_kind_optrefmut)
+	return (kind == type_kind_optref) || (kind == type_kind_optrefmut) || (kind == type_kind_optown)
 
 
 void safe_contains_enqueue(int type):
@@ -1159,6 +1160,7 @@ int safe_place(int id, char* state, int* via):
 		int root = -1
 		int index = safe_index(base.binding)
 		if (safe_borrow_kind(base.semantic_type)):
+			if (safe_optional(base.semantic_type)): safe_require_present(left, state)
 			if (safe_opaque(safe_pointee(base.semantic_type))):
 				safe_error(id, c"safe: opaque collection metadata is not accessible", -1)
 			if ((index < 0) && (base.op == '.') && (safe_kind(base.semantic_type) == 1)):
@@ -1173,7 +1175,6 @@ int safe_place(int id, char* state, int* via):
 			else:
 				if (index < 0): safe_error(id, c"safe: dereference requires a named checked pointer", -1)
 				safe_read(index, id, state)
-				if (safe_optional(base.semantic_type)): safe_require_present(left, state)
 				root = index
 				if (safe_local_kind(index) >= 2):
 					root = safe_origin[index]
@@ -2017,6 +2018,8 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 	int constructed = (op == 'D') && n.high && (safe_owned_shape(safe_pointee(want)) || safe_owned_borrowed(want))
 	if (wanted >= 2): safe_error(id, c"safe: reference assignment is not supported", -1)
 	if (wanted == 1):
+		if (safe_optional(want) && safe_null(id)): return -1
+		if (safe_optional(n.semantic_type) && (safe_optional(want) == 0)): safe_require_present(id, state)
 		safe_pointer_match(id, want, n.semantic_type)
 		if (((op == 'N') || (op == 'D')) && safe_opaque(safe_pointee(want))):
 			safe_error(id, c"safe: opaque collections require an audited constructor", -1)
@@ -2031,10 +2034,12 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		safe_access(index, -1, wanted == 1, id, state)
 		if (wanted == 1):
 			safe_read_whole(index, id, state)
-			if (safe_owned_borrowed(want)):
+			# A proven-absent owner transfers no external loans. Keep its
+			# presence bits after the move so the destination can refine.
+			if (safe_owned_borrowed(want) && (safe_presence(id, state) != 16)):
 				safe_access(safe_exclusive_roots(want, safe_components[index]), index, 1, id, state)
 				safe_borrowed_copy(components, safe_components[index], safe_lifetime_count(want))
-			state[index] = 4
+			state[index] = 4 | (state[index] & 48)
 			safe_moved_at[index] = id
 		return index
 	if ((op == '.') && (wanted == 1)):
@@ -2052,7 +2057,7 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			safe_owner_provenance(id, state, &borrowed)
 			safe_access(safe_exclusive_roots(want, &borrowed), parent_index, 1, id, state)
 			safe_borrowed_copy(components, &borrowed, safe_lifetime_count(want))
-		state[root] = 4
+		state[root] = 4 | (state[root] & 48)
 		safe_moved_at[root] = id
 		return root
 	if ((op == 'D') && (wanted == 1)):
@@ -2076,7 +2081,7 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		int lk = safe_borrow_kind(lhs.semantic_type)
 		int via = -1
 		int root = safe_place(left, state, &via)
-		if (safe_optional(lhs.semantic_type) && (lhs.op == 'v') && (n.value == 0)):
+		if ((lk >= 2) && safe_optional(lhs.semantic_type) && (lhs.op == 'v') && (n.value == 0)):
 			int index = safe_index(lhs.binding)
 			int parent = -1
 			int previous = safe_replacing
@@ -2141,7 +2146,9 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		# Replacement of a moved/uninitialized scalar is valid. A write
 		# still conflicts with live borrows of its storage.
 		if (lhs.op == 'v'):
-			state[root] = 2
+			int presence = 0
+			if (safe_optional(lhs.semantic_type)): presence = safe_presence(right, state)
+			state[root] = 2 | presence
 			safe_paths_initialize(root, state)
 		safe_access(root, via, 1, id, state)
 		return -1

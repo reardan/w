@@ -80,6 +80,7 @@ int generic_signature_qualifier():
 	if (kind): return kind
 	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
 	if (peek(c"own")): kind = 1
+	if (peek(c"optown")): kind = 9
 	if (peek(c"ref")): kind = 2
 	if (peek(c"refmut")): kind = 3
 	if (peek(c"optref")): kind = 6

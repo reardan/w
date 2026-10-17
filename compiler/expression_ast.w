@@ -717,7 +717,7 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	if (rec.kind == type_kind_function): return
 	int actual
 	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
-	else if (((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)) || (rec.kind == type_kind_optref) || (rec.kind == type_kind_optrefmut)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
+	else if (((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)) || (rec.kind == type_kind_optref) || (rec.kind == type_kind_optrefmut) || (rec.kind == type_kind_optown)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
 	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
 	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
 	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)

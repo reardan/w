@@ -436,3 +436,22 @@ stack clobbering, argument positions, different element widths, empty views,
 reference-to-element returns, and attempts to forge bounds. The full suite,
 both self-host fixpoints, changed-line coverage and measured costs are gates,
 not evidence of a formal soundness proof.
+
+
+## Optional owner representation and construction
+
+`optown T*` is a distinct canonical qualifier over the existing pointer ABI.
+Zero is absence; `own` remains non-null. Named bindings carry a separate
+presence lattice while initialization/move state continues to reject reading
+or testing a transferred source. Transfer preserves presence for the receiving
+binding and clears the source runtime slot. Present-only access and narrowing
+to `own`/required references use the existing identity-preserving refinements.
+Replacement and scope cleanup reuse the conditional owner destructor, including
+recursive optional owned fields and audited opaque payloads.
+
+Every optional owned field must be supplied in a complete constructor. Field
+presence is conservatively unknown until extraction into a named optional
+owner. This prevents accessing a nullable child through an unchecked projection.
+External lifetime groups on `optown[a,b]` follow the same contract as `own[a,b]`;
+a known-absent transfer does not carry conservative former external loans.
+Optional inline records and slices retain a separate representation gate.

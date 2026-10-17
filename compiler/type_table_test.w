@@ -326,6 +326,23 @@ void test_optional_reference_types():
 	assert_equal(0, strcmp(type_get_name(type_get_safe_lifetime(pointer_type, 7, c"a")), c"optrefmut[a] int"))
 
 
+void test_optional_owner_type():
+	push_basic_types()
+	int pointer = type_lookup_pointer(c"int", 1)
+	int optional = type_get_safe(pointer, 9)
+	assert_equal(optional, type_get_safe(pointer, 9))
+	assert1(optional != type_get_safe(pointer, 1))
+	assert_equal(1, type_safe_kind(optional))
+	assert_equal(pointer, type_safe_target(optional))
+	assert_equal(__word_size__, type_get_size(optional))
+	assert_equal(0, strcmp(type_get_name(optional), c"optown int"))
+	int alias = type_push_alias(c"OptionalOwner", optional)
+	assert_equal(1, type_safe_kind(alias))
+	int snapshot = retained_type_note(alias)
+	assert_equal(type_kind_optown, retained_types[retained_types[snapshot].target].kind)
+	assert1(types_compatible(optional, pointer))
+
+
 void test_checked_slice_types():
 	push_basic_types()
 	int element = type_lookup(c"int")

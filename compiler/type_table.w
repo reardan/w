@@ -480,6 +480,7 @@ const int type_kind_safe_record = 25
 const int type_kind_optref = 26
 const int type_kind_optrefmut = 27
 const int type_kind_safe_recordmut = 28
+const int type_kind_optown = 29
 
 
 int type_safe_kind(int type_index):
@@ -488,6 +489,7 @@ int type_safe_kind(int type_index):
 	int kind = type_record(type_index).kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
 	if (kind == type_kind_safe_recordmut): return 3
+	if (kind == type_kind_optown): return 1
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
 	return 0
@@ -568,12 +570,12 @@ list[char*] type_record_groups(int base):
 
 
 int type_get_safe_lifetime(int target, int kind, char* lifetime):
-	if ((lifetime != 0) && (kind != 1)):
+	if ((lifetime != 0) && ((kind != 1) && (kind != 9))):
 		for i in range(strlen(lifetime)):
 			if (lifetime[i] == ','): error(c"multiple lifetime labels require a borrowed aggregate")
 	type_safe_used = 1
 	target = type_unqualified(target)
-	if ((kind == 1) && (lifetime != 0)):
+	if (((kind == 1) || (kind == 9)) && (lifetime != 0)):
 		int element = type_lookup_previous_pointer(target)
 		if (element < 0): error(c"safe: owner lifetimes require a record with borrowed fields")
 		list[char*] groups = type_record_groups(element)
@@ -596,6 +598,7 @@ int type_get_safe_lifetime(int target, int kind, char* lifetime):
 	if (kind == 3): prefix = c"refmut "
 	if (kind == 6): prefix = c"optref "
 	if (kind == 7): prefix = c"optrefmut "
+	if (kind == 9): prefix = c"optown "
 	type_rec* new_type = type_alloc()
 	if (lifetime != 0):
 		if (kind == 2): prefix = c"ref["
@@ -603,11 +606,12 @@ int type_get_safe_lifetime(int target, int kind, char* lifetime):
 		if (kind == 1): prefix = c"own["
 		if (kind == 6): prefix = c"optref["
 		if (kind == 7): prefix = c"optrefmut["
+		if (kind == 9): prefix = c"optown["
 		char* named = strjoin(prefix, lifetime)
 		char* qualified = strjoin(named, c"] ")
 		new_type.name = strjoin(qualified, type_get_name(target))
 		new_type.safe_lifetime = strclone(lifetime)
-		if (kind == 1): new_type.safe_labels = type_lifetime_labels(lifetime)
+		if ((kind == 1) || (kind == 9)): new_type.safe_labels = type_lifetime_labels(lifetime)
 		free(named)
 		free(qualified)
 	else: new_type.name = strjoin(prefix, type_get_name(target))

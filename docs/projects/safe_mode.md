@@ -18,6 +18,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | Type | Meaning |
 | --- | --- |
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
+| `optown T*`, `optown[a,b] Record*` | An optional unique owner; zero is absence, and a present value transfers and drops like `own`. |
 | `own[a,b] Record*` | A unique allocation carrying borrowed fields; labels bind their external data groups. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
@@ -27,13 +28,13 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
 
-Qualifiers are contextual: existing identifiers named `own`, `ref`, `refmut`,
+Qualifiers are contextual: existing identifiers named `own`, `optown`, `ref`, `refmut`,
 `optref` or `optrefmut`
 retain their meaning. Type aliases preserve qualifiers. A checked pointer has
 the same size and calling convention as a raw pointer. The pointee must be
 sized and contain no references, raw pointers, unions or containers, except
-for the explicitly supported aggregate forms below. Partial moves and
-checked pointers stored in globals are rejected.
+for the explicitly supported aggregate forms below. Owned-field partial moves follow the initialization rules below; checked
+pointers stored in globals remain rejected.
 
 ```w
 int read_value(ref int* p):
@@ -66,6 +67,41 @@ using a moved owner or mutating a live shared borrow. Unannotated legacy
 functions retain their existing behavior by default. Application semantic
 records are retained before parsing, so a later imported ownership contract
 cannot erase earlier binding identities.
+
+### Optional owners
+
+`optown T*` uses one pointer word and zero for absence. It must be explicitly
+initialized with zero, new storage or an ownership transfer. Ordinary `own`
+remains non-null. A named optional owner may be tested directly, with `!`,
+or against zero; dereference, field access and conversion to non-null `own`
+or `ref`/`refmut` require a proven-present value. New storage is known present;
+nullable call results require a test. Joins, loops and replacement invalidate
+stale presence evidence.
+
+Copy-looking assignment, arguments and returns transfer an optional owner,
+including an absent one: the source becomes moved and cannot be read or tested.
+The destination retains the value's presence state. Reassignment evaluates the
+replacement once, clears a transferred source slot, destroys any previous
+payload and installs the replacement. Assigning zero ends ownership and its
+external loans; existing independently extracted borrows still prevent a
+conflicting destruction. Cleanup skips absent or moved slots on every supported
+exit. No tag word, allocation or reference count is added to this representation.
+
+Owned records may contain optional owner fields. Complete constructors must
+supply those fields explicitly, including zero for absence. Extract an optional
+child into a named owner before testing it; projected fields have no presence
+refinement. Nested projection through an unproven optional child is rejected.
+Partial moves and replacement use the same tracked field paths and recursive
+conditional destruction as non-null owners. `optown[a,b] Record*` carries the
+same external lifetime groups as its non-null counterpart. A proven-absent
+transfer carries no external loans, even when the binding previously held a
+borrowed payload. Imports, concrete generics and quantified callbacks preserve
+the optional/required distinction.
+
+Optional inline borrowed-record wrappers and optional checked slices remain
+unsupported. Admitting them would require a separate representation and
+construction contract; the pointer-sized optional contracts above do not
+imply optional inline values.
 
 ## Lifetimes and calls
 
