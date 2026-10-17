@@ -682,8 +682,29 @@ an owning binding can still retain just its external field group.
 
 Shared views cannot lend mutable fields or owned children. Returning the whole
 view of a local/consumed owner remains an escape error even if its external data
-outlives the call. `refmut Record*` and optional whole mixed-owner views remain
-unsupported. There is no new runtime descriptor, allocation or cleanup work.
+outlives the call. Mutable whole-owner views follow the rules below; optional
+whole mixed-owner views remain unsupported. There is no new runtime descriptor,
+allocation or cleanup work.
+
+### Mutable views of mixed owners
+
+`refmut[a] Record*` can borrow a mixed owner without consuming it. The view
+conservatively retains the descriptor allocation and every external group under
+one lifetime. Checked helpers, concrete generics and quantified callbacks may
+receive or return that mutable view. Returning a view of a local or consumed
+owner remains an escape error.
+
+Scalar fields may be mutated, and owned children or mutable-reference fields
+may lend mutable views. Shared fields remain shared even through a mutable
+receiver. A shared view cannot be promoted to a mutable view. Shared projections
+through nested owned children preserve shared access, so multiple shared views
+can coexist; conflicting mutable access remains rejected. Borrowing the whole
+mixed owner remains conservative across its external groups.
+
+Field rebinding and partial moves still require a stable unique owning path;
+a mutable borrowed receiver does not transfer ownership or replace its stored
+lifetime contract. Optional whole-owner views retain a separate admission gate.
+No pointer layout, descriptor, allocation or cleanup representation changes.
 
 ### Replacement through nested unique owners
 
