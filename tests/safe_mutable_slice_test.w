@@ -206,3 +206,24 @@ void test_mutable_slice_35():
 
 void test_mutable_slice_36():
 	mutable_slice_case(c"struct Pair:\n\trefmut[left] int[] first\n\trefmut[right] int[] second\n\nint main():\n\tint[3] values\n\tvalues[0] = 7\n\tvalues[1] = 8\n\tvalues[2] = 9\n\tint[2] other\n\trefmut[a,b] Pair pair = Pair(values, other)\n\trefmut int[] first = pair.first\n\tother[0] = 9\n\tfirst[0] = 11\n\treturn values[0] + other[0] - 20\n", 0)
+
+void test_mutable_slice_37():
+	mutable_slice_case(c"int read_values(ref int[] values): return values[0]\nint main():\n\tbyte[3] values\n\treturn read_values(values)\n", c"incompatible", 1)
+
+void test_mutable_slice_38():
+	mutable_slice_case(c"void write_values(refmut int[] values): values[0] = 7\nint main():\n\tbyte[3] values\n\twrite_values(values)\n\treturn 0\n", c"incompatible", 1)
+
+void test_mutable_slice_39():
+	mutable_slice_case(c"void write_values(refmut byte[] values): values[0] = cast(byte, 7)\nint main():\n\tint[3] values\n\tvalues[0] = 7\n\tvalues[1] = 8\n\tvalues[2] = 9\n\twrite_values(values)\n\treturn 0\n", c"incompatible", 1)
+
+void test_mutable_slice_40():
+	mutable_slice_case(c"int main():\n\tbyte[3] values\n\tref int[] view = values\n\treturn view[0]\n", c"incompatible", 1)
+
+void test_mutable_slice_41():
+	mutable_slice_case(c"int main():\n\tint[3] values\n\tvalues[0] = 7\n\tvalues[1] = 8\n\tvalues[2] = 9\n\tref int[] source = values\n\tref byte[] view = source\n\treturn cast(int, view[0])\n", c"incompatible", 1)
+
+void test_mutable_slice_42():
+	mutable_slice_case(c"int read_values[T](ref T[] values): return cast(int, values[0])\nint main():\n\tbyte[3] values\n\treturn read_values[int](values)\n", c"incompatible", 1)
+
+void test_mutable_slice_43():
+	mutable_slice_case(c"struct First:\n\tint value\nstruct Second:\n\tint value\nint read_values(ref First[] values): return 0\nint main():\n\tSecond[3] values\n\treturn read_values(values)\n", c"incompatible", 1)

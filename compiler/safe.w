@@ -1434,6 +1434,9 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 				safe_error(id, c"safe: checked slice ranges require inline descriptor lowering", -1)
 		if ((safe_inline_slice(n.semantic_type) == 0) && (array_value == 0)):
 			safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
+		# Frontend type warnings may be nonfatal. Descriptor conversion must
+		# never reinterpret a different element width or nominal record type.
+		safe_pointer_match(id, want, n.semantic_type)
 	else if (safe_inline_slice(n.semantic_type) || (safe_slice(want) != slice_value)):
 		safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
 	if (n.op == 'r'):
