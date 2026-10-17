@@ -54,6 +54,12 @@ char* safe_owner_drop_helper(int element):
 		if (starts_with(name, c"WOwnedBuffer$")):
 			helper = c"__w_owned_buffer_drop"
 			pointee = type_lookup(c"void")
+	# Typed arenas record their object destructor like owned buffers; one
+	# helper drops the live objects, skipping holes, and the slot storage.
+	else if (ends_with(source, c"/lib/safe_typed_arena.w")):
+		if (starts_with(name, c"WTypedArena$")):
+			helper = c"__w_typed_arena_drop"
+			pointee = type_lookup(c"void")
 	# Keyed maps record their key destructor; one helper drops keys and slots.
 	else if (ends_with(source, c"/lib/safe_keyed_map.w")):
 		if (starts_with(name, c"WKeyedMap$")):

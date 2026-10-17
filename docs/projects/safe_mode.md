@@ -1476,6 +1476,53 @@ seconds and 116,704/116,704 KiB peak RSS. Compiler output and prior checked fixt
 bytes are identical. Every tracked W source stayed identical across the rebase
 onto the prerequisite's final proof commit. Existing coverage floors pass.
 
+## Typed object arenas
+
+`lib.safe_typed_arena` supplies opaque `own WTypedArena[T]*` owners. An arena
+owns individually allocated, nonmoving objects and a growable array of their
+addresses. `T` may be a sized plain value or a supported recursive owner shape,
+including owned buffers, nested arenas and checked callback capture records.
+Raw pointers, external borrowed fields and recursive ownership cycles are not
+accepted element shapes. Arena metadata and generated destructor pointers are
+private to the audited implementation.
+
+| Operation | Contract |
+| --- | --- |
+| `typed_arena_new[T](maximum)` | Create an empty arena; `-1` allows unlimited slots, `0` refuses insertion. |
+| `typed_arena_alloc[T](arena, initial)` | Allocate and initialize a plain `T`; return an exclusive reference borrowing the arena. |
+| `typed_arena_insert[T](arena, owner)` | Consume an object owner and return its position. |
+| `typed_arena_try_insert[T](arena, owner)` | Consume the input; return absent on success or the original owner on capacity, overflow or allocation failure. |
+| `typed_arena_length[T](arena)` / `typed_arena_slots[T](arena)` | Count live objects / positions assigned since the last reset. |
+| `typed_arena_get[T](arena, index)` / `typed_arena_get_mut[T](arena, index)` | Return an optional shared / exclusive reference; out-of-range or destroyed positions return absent. |
+| `typed_arena_destroy[T](arena, index)` | Destroy that object recursively once; return one for a live object, zero otherwise. |
+| `typed_arena_reset[T](arena)` | Destroy every remaining object and retain the slot allocation for reuse. |
+| `typed_arena_release[T](arena)` | Destroy every remaining object and free slot storage; the arena stays usable. |
+
+All allocating or mutating operations require exclusive borrowing, even when
+there is spare slot capacity. Live object references therefore block insertion,
+allocation, per-object destruction, reset, release and arena transfer/drop.
+Mutation resumes after the last dependent use. Shared/exclusive returns and
+saved field references retain the arena's lifetime through ordinary functions,
+generics, branches and loops, with the same checking without `--safe`.
+
+Destroyed positions become holes; other positions remain stable until reset or
+release. Holes do not restore the `maximum` slot allowance. Positions are
+indices, not identity tokens across reset or between arenas. The maximum is a
+slot quota, not a byte budget. Attached-budget ownership and lifetimes retain
+their own implementation gate under #698. Allocation with live views remains
+rejected by this initial conservative contract.
+
+Each live object has one generated destructor. Reset, release, early returns,
+lexical defer and arena destruction free nested owners exactly once. Failed
+`try_insert` preserves the input owner and existing slots. Infallible insertion
+and plain-value allocation trap on failure. There is no object relocation,
+implicit reference count or garbage collector. Costs are one allocation per
+object, a six-word arena descriptor and geometrically grown pointer slots;
+reset retains only those slots. Trust binds to resolved source content, so a
+changed or shadowed implementation cannot inherit the contract. Arenas are not
+iterable: destroyed positions are holes, so loops index with
+`typed_arena_slots` and `typed_arena_get`.
+
 ## Cleanup and unsafe boundaries
 
 Every live owner is destroyed in reverse declaration order at its normal

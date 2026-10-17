@@ -410,18 +410,36 @@ int safe_guard_drop(int type):
 
 
 # A sealed descriptor exposes only its element type to recursive validation.
-# The walk below shares its cycle/depth budget across nested owned buffers.
-int safe_owned_buffer_element(int type):
+# The walk below shares its cycle/depth budget across nested owning storage.
+# Both audited containers keep their T** slot array in field 3.
+int safe_storage_element(int type, char* path, char* prefix, int fields):
 	type = safe_unqualified(type)
 	if type < 0: return -1
 	retained_type* record = retained_types[type]
-	if record.kind || record.pointer_level || (record.fields.length != 5): return -1
+	if record.kind || record.pointer_level || (record.fields.length != fields): return -1
 	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return -1
-	if (ends_with(retained_sources[record.source].path, c"/lib/safe_owned_vector.w") == 0): return -1
-	if (starts_with(record.name, c"WOwnedBuffer$") == 0): return -1
+	if (ends_with(retained_sources[record.source].path, path) == 0): return -1
+	if (starts_with(record.name, prefix) == 0): return -1
 	int element = safe_pointee(safe_pointee(record.fields[3].type))
 	if ((element < 0) || (retained_types[element].size <= 0)): return -1
 	return element
+
+
+# WOwnedBuffer[T]: dense, so it is also iterable (safe_owned_iteration_type).
+int safe_owned_buffer_element(int type):
+	return safe_storage_element(type, c"/lib/safe_owned_vector.w", c"WOwnedBuffer$", 5)
+
+
+# WTypedArena[T]: destroyed objects leave holes, so it is never iterable.
+int safe_typed_arena_element(int type):
+	return safe_storage_element(type, c"/lib/safe_typed_arena.w", c"WTypedArena$", 6)
+
+
+# Either owning container, for the shape, opaque and thread rules.
+int safe_owned_storage_element(int type):
+	int element = safe_owned_buffer_element(type)
+	if element >= 0: return element
+	return safe_typed_arena_element(type)
 
 
 int safe_owned_shape(int type);
@@ -475,7 +493,7 @@ int safe_opaque(int type):
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
 	if (safe_hash_opaque(type)): return 1
-	if (safe_owned_buffer_element(type) >= 0): return safe_owned_shape(type)
+	if (safe_owned_storage_element(type) >= 0): return safe_owned_shape(type)
 	if (safe_keyed_map_key(type) >= 0): return safe_owned_shape(type)
 	if ((record.kind != 0) || record.pointer_level): return 0
 	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
@@ -488,6 +506,11 @@ int safe_opaque(int type):
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_typed_arena.w")):
+		if (starts_with(name, c"typed_arena_alloc$")):
+			int element = binding.parameters[1]
+			return safe_plain(element, 0) && (safe_has_array(element, 0) == 0)
+		return starts_with(name, c"typed_arena_new$") || starts_with(name, c"typed_arena_length$") || starts_with(name, c"typed_arena_slots$") || starts_with(name, c"typed_arena_try_insert$") || starts_with(name, c"typed_arena_insert$") || starts_with(name, c"typed_arena_get$") || starts_with(name, c"typed_arena_get_mut$") || starts_with(name, c"typed_arena_destroy$") || starts_with(name, c"typed_arena_reset$") || starts_with(name, c"typed_arena_release$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_keyed_map.w")):
 		return starts_with(name, c"keyed_map_new$") || starts_with(name, c"keyed_map_length$") || starts_with(name, c"keyed_map_contains$") || starts_with(name, c"keyed_map_insert$") || starts_with(name, c"keyed_map_get$") || starts_with(name, c"keyed_map_get_or$") || starts_with(name, c"keyed_map_find$") || starts_with(name, c"keyed_map_take$") || starts_with(name, c"keyed_map_remove$") || starts_with(name, c"keyed_map_clear$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_hash.w")):
@@ -515,7 +538,7 @@ int safe_thread_sealed(int type):
 	if (safe_opaque(type) == 0): return 0
 	# Owning storage is sealed metadata around owned elements, which cross
 	# threads with it; safe_thread_reason inspects the element graph.
-	if ((safe_owned_buffer_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
+	if ((safe_owned_storage_element(type) >= 0) || (safe_keyed_map_key(type) >= 0)): return 0
 	int sync = safe_sync_record(type)
 	return (sync == 0) || (sync == 3)
 
@@ -553,7 +576,7 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	# A guard must unlock on the thread that locked it, and its data view
 	# is exclusive to that holder; mutexes and atomics are opaque below.
 	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
-	int stored = safe_owned_buffer_element(type)
+	int stored = safe_owned_storage_element(type)
 	if (stored < 0): stored = safe_keyed_map_key(type)
 	if (stored >= 0):
 		if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
@@ -747,7 +770,7 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
-	int element = safe_owned_buffer_element(type)
+	int element = safe_owned_storage_element(type)
 	if element >= 0: return safe_owned_shape_walk(element, depth + 1, path, remaining)
 	int key = safe_keyed_map_key(type)
 	if key >= 0:

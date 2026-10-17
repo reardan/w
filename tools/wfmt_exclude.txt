@@ -47,6 +47,7 @@ lib/safe_buffer.w
 lib/safe_foreign.w
 lib/safe_hash.w
 lib/safe_keyed_map.w
+lib/safe_typed_arena.w
 lib/safe_owned_vector.w
 lib/safe_thread.w
 lib/safe_vector.w
