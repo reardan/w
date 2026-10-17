@@ -18,6 +18,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | Type | Meaning |
 | --- | --- |
 | `own T*` | A non-null, uniquely owned allocation; assignment, arguments and return transfer ownership. |
+| `optown T*`, `optown[a,b] Record*` | An optional unique owner; zero is absence, and a present value transfers and drops like `own`. |
 | `own[a,b] Record*` | A unique allocation carrying borrowed fields; labels bind their external data groups. |
 | `ref T*` | A non-null shared borrow; readers may coexist. |
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
@@ -27,13 +28,13 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
 
-Qualifiers are contextual: existing identifiers named `own`, `ref`, `refmut`,
+Qualifiers are contextual: existing identifiers named `own`, `optown`, `ref`, `refmut`,
 `optref` or `optrefmut`
 retain their meaning. Type aliases preserve qualifiers. A checked pointer has
 the same size and calling convention as a raw pointer. The pointee must be
 sized and contain no references, raw pointers, unions or containers, except
-for the explicitly supported aggregate forms below. Partial moves and
-checked pointers stored in globals are rejected.
+for the explicitly supported aggregate forms below. Owned-field partial moves follow the initialization rules below; checked
+pointers stored in globals remain rejected.
 
 ```w
 int read_value(ref int* p):
@@ -66,6 +67,41 @@ using a moved owner or mutating a live shared borrow. Unannotated legacy
 functions retain their existing behavior by default. Application semantic
 records are retained before parsing, so a later imported ownership contract
 cannot erase earlier binding identities.
+
+### Optional owners
+
+`optown T*` uses one pointer word and zero for absence. It must be explicitly
+initialized with zero, new storage or an ownership transfer. Ordinary `own`
+remains non-null. A named optional owner may be tested directly, with `!`,
+or against zero; dereference, field access and conversion to non-null `own`
+or `ref`/`refmut` require a proven-present value. New storage is known present;
+nullable call results require a test. Joins, loops and replacement invalidate
+stale presence evidence.
+
+Copy-looking assignment, arguments and returns transfer an optional owner,
+including an absent one: the source becomes moved and cannot be read or tested.
+The destination retains the value's presence state. Reassignment evaluates the
+replacement once, clears a transferred source slot, destroys any previous
+payload and installs the replacement. Assigning zero ends ownership and its
+external loans; existing independently extracted borrows still prevent a
+conflicting destruction. Cleanup skips absent or moved slots on every supported
+exit. No tag word, allocation or reference count is added to this representation.
+
+Owned records may contain optional owner fields. Complete constructors must
+supply those fields explicitly, including zero for absence. Extract an optional
+child into a named owner before testing it; projected fields have no presence
+refinement. Nested projection through an unproven optional child is rejected.
+Partial moves and replacement use the same tracked field paths and recursive
+conditional destruction as non-null owners. `optown[a,b] Record*` carries the
+same external lifetime groups as its non-null counterpart. A proven-absent
+transfer carries no external loans, even when the binding previously held a
+borrowed payload. Imports, concrete generics and quantified callbacks preserve
+the optional/required distinction.
+
+Optional inline borrowed-record wrappers and optional checked slices remain
+unsupported. Admitting them would require a separate representation and
+construction contract; the pointer-sized optional contracts above do not
+imply optional inline values.
 
 ## Lifetimes and calls
 
@@ -1910,3 +1946,18 @@ Validation: 27 accepted/rejected cases on x86/x64, check/compile with and withou
 ### Optional reference-field validation
 
 Validation: 32 accepted/rejected cases on x86/x64 with and without `--safe`, check/compile parity, accepted execution and rejected-artifact suppression. The full suite, both Linux fixpoints, Wine and benchmark passed 1,385 targets; all 48 architecture/root checks passed. Instrumented validation passed 1,383 targets and all six API harnesses with a COMPLETE receipt, reaching 2/2 changed compiler lines (100%). Compiler line/branch coverage remains 95.6/86.2%, preserving existing floors. Linux optimization variants and Wine passed. Native guards/Memcheck reported 12 allocations/frees and zero errors/leaks per Linux target. Seven alternating compiles of fixed `9f4bead3` measured 1.70/1.70 s and 114,432 KiB median peak RSS before/after; compiler and prior checked fixture binaries were byte-identical. The implementation rebased unchanged onto the optional-view validation commit.
+
+
+### Optional unique-owner validation
+
+Optional unique owners use pointer-sized zero for absence. `optown T*` supports presence-checked access, transfer into required owners, complete optional owned-field construction and recursive cleanup. Move state remains separate from presence, including for known-zero transfers. Mixed optional owners retain every external lifetime group; known-absent transfers do not retain former loans. Nullable inline records and slices remain outside this pointer representation contract.
+
+Speculative optional-owner type names now preserve their qualifier and lifetime labels through commit. A type-table regression compares generic argument identities before and after commit, preventing optional owners from colliding with required owners.
+
+Validation: 52 accepted/rejected cases on x86/x64 with and without `--safe`, check/compile parity, accepted execution and rejected-artifact suppression. Final full ordinary validation passed 1,410 targets, both Linux fixpoints, Wine and the benchmark gate. Architecture validation passed all 48 root/target checks. Selected integration passed 19 targets, including three ARM64 runtime cross-compiles. The final instrumented run passed 1,408 targets and six API harnesses with a COMPLETE receipt, reaching 24/24 changed compiler lines (100%). Compiler line/branch coverage is 95.6/86.2%; the branch floor rises to 85.7%.
+
+An earlier instrumented run failed the existing VM socket-close cancellation test (guest exit status 1). Its isolated rerun and subsequent complete instrumented runs passed; the final complete run supplies the coverage evidence.
+
+Linux optimization variants and Wine pass. Native guards/Memcheck report 113 allocations/frees and zero errors/leaks per Linux target. Seven alternating compiles of fixed `ac74928d` sources measured 1.65/1.64 s and 114,464/114,688 KiB median peak RSS before/after. Compiler and prior callable/mixed-owner fixture binaries are byte-identical. These measurements describe that corpus on the shared host, not a general performance guarantee.
+
+This implements the optional-owner representation step under #695/#644. The issues remain open until their required PRs merge. No listed capability is deferred.

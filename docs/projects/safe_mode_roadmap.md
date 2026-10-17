@@ -39,10 +39,10 @@ implementation rather than introduce a second ownership model.
 | Area | Available behavior | Remaining scope |
 | --- | --- | --- |
 | Compiler interface | `--safe`, structured diagnostics, deterministic option conflicts, unsupported-target errors | More targets and in-process execution |
-| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, direct/concrete generic outlives clauses, optional references with presence refinement, aliases, quantified function pointers, independent aggregate groups, labeled owners carrying shared/exclusive borrowed data and explicit contracts without `--safe` | Nullable owners and broader generic element types |
+| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, direct/concrete generic outlives clauses, optional references/owners with presence refinement, aliases, quantified function pointers, independent aggregate groups, labeled owners carrying shared/exclusive borrowed data and explicit contracts without `--safe` | Broader generic element types |
 | Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins, range loops and scalar switches | Container iteration and more precise projections |
 | Calls | Direct/imported/recursive calls, checked methods, concrete generic and quantified indirect calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Capturing/escaping callbacks and unmodeled generic operations |
-| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction, tracked field partial moves/replacement and outer-function `defer` | Nested defer registration |
+| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction, nullable owners, tracked field partial moves/replacement and outer-function `defer` | Nested defer registration |
 | Storage and libraries | Fixed arrays, inline checked slices, shared/exclusive borrowed structs with independent groups, mixed owned/reference structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
 | Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
 
@@ -207,9 +207,10 @@ it; worktree isolation includes generated manifests and caches.
 Flow-sensitive presence checks are required before access; joins, loop
 backedges, reassignment and lexical exits invalidate stale evidence.
 Replacement conservatively retains possible origins and reborrow ancestry.
-Optional pointer-reference fields require complete explicit construction,
-including zero for absence. Optional owners and optional inline wrappers or
-slices require separate representation contracts before admission.
+Optional reference/owner fields require complete explicit construction.
+`optown T*` uses pointer-sized absence with transfer and conditional destruction;
+optional inline wrappers and optional checked slices remain unsupported and
+need a separate representation contract before admission.
 Ordinary `ref` and `refmut`
 remain initialized, aligned, non-null references to valid values. Do not
 make null a valid value of an existing checked reference type.

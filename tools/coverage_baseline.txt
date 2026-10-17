@@ -11,6 +11,8 @@
 # retain a 0.6 point margin with an 85.5% branch floor.
 # Disjoint scalar fields and plain constructors raise compiler branches to
 # 86.2%; retain the 0.6 point margin with an 85.6% branch floor.
+# Optional unique-owner presence and transfer tests measure compiler branches
+# at 86.3%; preserve the 0.6 point margin with an 85.7% branch floor.
 # Raise a floor in the PR that adds the tests; lower one only with
 # a reason in the commit message.
 # Owned scalar recording and tile-plan API harnesses (2026-10-09) raise
@@ -52,7 +54,7 @@ repl.w 80.5
 w.w 99.0
 diagnostics 50.8
 branches:code_generator/ 88.1
-branches:compiler/ 85.6
+branches:compiler/ 85.7
 branches:grammar/ 84.6
 branches:repl/ 73.6
 branches:debugger/ 64.0

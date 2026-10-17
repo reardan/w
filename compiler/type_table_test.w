@@ -326,6 +326,23 @@ void test_optional_reference_types():
 	assert_equal(0, strcmp(type_get_name(type_get_safe_lifetime(pointer_type, 7, c"a")), c"optrefmut[a] int"))
 
 
+void test_optional_owner_type():
+	push_basic_types()
+	int pointer = type_lookup_pointer(c"int", 1)
+	int optional = type_get_safe(pointer, 9)
+	assert_equal(optional, type_get_safe(pointer, 9))
+	assert1(optional != type_get_safe(pointer, 1))
+	assert_equal(1, type_safe_kind(optional))
+	assert_equal(pointer, type_safe_target(optional))
+	assert_equal(__word_size__, type_get_size(optional))
+	assert_equal(0, strcmp(type_get_name(optional), c"optown int"))
+	int alias = type_push_alias(c"OptionalOwner", optional)
+	assert_equal(1, type_safe_kind(alias))
+	int snapshot = retained_type_note(alias)
+	assert_equal(type_kind_optown, retained_types[retained_types[snapshot].target].kind)
+	assert1(types_compatible(optional, pointer))
+
+
 void test_checked_slice_types():
 	push_basic_types()
 	int element = type_lookup(c"int")
@@ -573,3 +590,41 @@ void test_owner_group_access_resets_with_retained_types():
 		assert_equal(0, safe_group_exclusive(owner, 1 - exclusive_group))
 	safe_reset()
 	retained_clear()
+
+
+# Speculation and commit must give the same generic specialization identity.
+# A nullable owner must not temporarily use the required owner's name.
+void test_optional_owner_speculative_identity():
+	word_size = __word_size__
+	push_basic_types()
+	int pointer = type_push_pointer(c"int", word_size, 1)
+	int record = type_push_size(c"OptionalIdentityRecord", 0)
+	type_add_arg(record, c"first", type_get_safe_lifetime(pointer, 2, c"left"))
+	type_add_arg(record, c"second", type_get_safe_lifetime(pointer, 2, c"right"))
+	int record_pointer = type_push_pointer(c"OptionalIdentityRecord", word_size, 1)
+	expression_ast tree
+	expression_ast_bind(&tree)
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 0
+	tree.pending_buffer_types = 0
+	int optional = ast_expression_safe_pointer_type(&tree, pointer, 9, -1, 10)
+	char* optional_name = generic_mangle_arg(optional)
+	expression_ast_type_names_reserve(&tree, 4)
+	int label = tree.type_names_used
+	strcpy(tree.type_names + label, c"a,b")
+	tree.type_names_used = label + 4
+	int mixed = ast_expression_safe_pointer_type(&tree, record_pointer, 9, label, 11)
+	char* mixed_name = generic_mangle_arg(mixed)
+	ast_expression_restore_types(&tree)
+	for i in range(tree.types_count): ast_expression_commit_pointer(&tree, i)
+	char* committed_optional = generic_mangle_arg(optional)
+	char* committed_mixed = generic_mangle_arg(mixed)
+	assert_strings_equal(committed_optional, optional_name)
+	assert_strings_equal(committed_mixed, mixed_name)
+	assert_equal(type_kind_optown, type_get_kind(optional))
+	assert_equal(type_kind_optown, type_get_kind(mixed))
+	free(optional_name)
+	free(mixed_name)
+	free(committed_optional)
+	free(committed_mixed)
