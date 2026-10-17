@@ -136,6 +136,6 @@ void test_checked_generic_preserves_unsafe_callbacks():
 
 
 void test_checked_generic_representation_boundaries():
-	specialization_case(c"T identity[T](T p):\n\treturn p\nstruct View:\n\tref[a] int* item\nint main():\n\tint x = 7\n\tref View p = View(&x)\n\tref View q = identity(p)\n\treturn *q.item - 7\n", c"inferred call returns a struct by value")
-	specialization_case(c"T identity[T](T p):\n\treturn p\nint main():\n\tint[2] data\n\tdata[0] = 7\n\tref int[] p = data\n\tref int[] q = identity(p)\n\treturn q[0] - 7\n", c"inferred call returns a struct by value")
+	specialization_case(c"T identity[T](T p):\n\treturn p\nstruct View:\n\tref[a] int* item\nint main():\n\tint x = 7\n\tref View p = View(&x)\n\tref View q = identity(p)\n\tref int* view = q.item\n\treturn *view - 7\n", 0)
+	specialization_case(c"T identity[T](T p):\n\treturn p\nint main():\n\tint[2] data\n\tdata[0] = 7\n\tref int[] p = data\n\tref int[] q = identity(p)\n\treturn q[0] - 7\n", 0)
 	specialization_case(c"T identity[T](T p):\n\treturn p\nint main():\n\tbyte[2] data\n\tdata[0] = cast(byte, 7)\n\tref byte[] p = data\n\tref byte[] q = identity[ref byte[]](p)\n\treturn cast(int, q[0]) - 7\n", 0)
