@@ -1861,3 +1861,8 @@ byte-identical and execute on x86/x64. Median time is 2.11/1.71 s and peak RSS
 114,656/114,432 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Optional whole-owner views and nullable
 fields retain separate gates; neither #695 nor #644 closes.
+
+
+### Optional mixed-owner view validation
+
+Validation: 27 accepted/rejected cases on x86/x64, check/compile with and without `--safe`, accepted execution and rejected-artifact suppression. The ordinary suite, both Linux fixpoints, Wine and benchmark passed 1,382 targets; all 48 architecture/root checks passed. Instrumented validation passed 1,380 targets and all six API harnesses with a COMPLETE receipt; changed compiler coverage is 2/2 lines (100%), and existing floors pass. Linux optimization variants and Wine passed. Native guards/Memcheck reported six allocations/frees and zero errors/leaks per Linux architecture. Seven alternating compiles of the fixed `80828260` source corpus measured 1.72/1.72 s and 114,432 KiB peak RSS before/after. Compiler output and prior checked runtime fixture binaries were byte-identical. The implementation rebased unchanged onto the prerequisite validation commit.
