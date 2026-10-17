@@ -825,3 +825,11 @@ void test_http_streaming_matches_buffered():
 	http_response_free(buffered)
 	free(target)
 	web_test_finish(pid, listener)
+
+
+# IPv6 literal hosts (stdlib parity P3.10) reach the connect step as
+# addresses, not DNS names: [::1]:9 fails as a connect error whether
+# this host has IPv6 (refused) or not (EAFNOSUPPORT), never as a DNS
+# error. The IPv4 fallback itself is covered by lib/net_ipv6_test.w.
+void test_http_ipv6_literal_host_connects():
+	http_test_expect_error(http_get(c"http://[::1]:9/"), http_error_connect)

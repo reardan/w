@@ -1,6 +1,8 @@
 # wbuild: x64
+# wbuild: step="bin/time_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
 import lib.testing
 import lib.time
+import lib.bytes
 
 
 void assert_epoch(date_time* dt, int year, int month, int day, int hour, int minute, int second, int weekday, int year_day):
@@ -191,3 +193,37 @@ void test_time_unix_from_utc():
 	dt.minute = 45
 	dt.second = 52
 	assert_equal(0 - 2147483647 - 1, time_unix_from_utc(&dt))
+
+
+# The 2038-safe clock: succeeds, reports hi == 0 until 2106, and agrees
+# with time(2) to within a second (time(2) may lag a coarse tick).
+void test_time_now_parts_agrees_with_time():
+	int before = time_now()
+	int hi = 0 - 7
+	int lo = 0 - 7
+	int ns = 0 - 7
+	assert_equal(0, time_now_parts_ns(&hi, &lo, &ns))
+	int after = time_now()
+	assert_equal(0, hi)
+	assert_equal(1, lo >= before - 1)
+	assert_equal(1, lo <= after + 1)
+	assert_equal(1, ns >= 0)
+	assert_equal(1, ns < 1000000000)
+
+	int joined = 0
+	assert_equal(1, bytes_join64(hi, lo, &joined))
+	assert_equal(lo, joined)
+
+
+void test_time_now_parts_is_monotone_enough():
+	int hi1 = 0
+	int lo1 = 0
+	assert_equal(0, time_now_parts(&hi1, &lo1))
+	int hi2 = 0
+	int lo2 = 0
+	assert_equal(0, time_now_parts(&hi2, &lo2))
+	assert_equal(hi1, hi2)
+	assert_equal(1, lo2 - lo1 >= 0 - 1)
+	assert_equal(1, lo2 - lo1 <= 1)
+	# Well past 2001-09-09 (1e9 s): rules out a zeroed or garbage timespec.
+	assert_equal(1, lo1 > 1000000000)
