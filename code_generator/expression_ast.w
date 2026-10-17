@@ -1205,6 +1205,25 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		int subop = tree.value[id]
 		if (type_safe_kind(left_type) == 1):
 			int left = tree.left[id]
+			if ((subop == 0) && (tree.op[left] == '.')):
+				# Keep the already evaluated field address across the RHS and
+				# recursive drop. Neither receiver nor replacement is replayed.
+				regalloc_note_take()
+				int address = push_slot()
+				emit_expression_ast(tree, tree.right[id])
+				int got = promote(tree.result_type[tree.right[id]])
+				coerce(left_type, got)
+				safe_owner_move(tree, tree.right[id], left_type)
+				int replacement = push_slot()
+				load_slot(address)
+				promote(left_type)
+				int remaining = 256
+				safe_owner_drop_value(left_type, 0, &remaining)
+				load_slot(replacement)
+				mov_ebx_esp_plus((stack_pos - address) << word_size_log2)
+				assign_store(left_type)
+				drop_slots(2)
+				return
 			if ((subop != 0) || (tree.op[left] != 'v') || (tree.binding_name[left] < 0)):
 				error(c"safe: owner assignment requires a plain local or parameter")
 			regalloc_note_take()

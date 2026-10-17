@@ -54,6 +54,8 @@ list[char*] safe_sets
 int safe_validate
 int safe_origins_changed
 int safe_replacing
+int safe_replacing_owner
+int safe_replacing_groups
 int safe_event
 int safe_position
 list[int] safe_call_roots
@@ -875,11 +877,15 @@ int safe_set_overlap(int left, int right):
 	return 0
 
 
-int safe_exclusive_roots(int type, safe_borrowed* components):
+int safe_exclusive_roots_selected(int type, safe_borrowed* components, int selected):
 	int roots = -1
 	for group in range(safe_lifetime_count(type)):
-		if (safe_group_exclusive(type, group)): roots = safe_set_union(roots, components.roots[group])
+		if ((selected & (1 << group)) && safe_group_exclusive(type, group)): roots = safe_set_union(roots, components.roots[group])
 	return roots
+
+
+int safe_exclusive_roots(int type, safe_borrowed* components):
+	return safe_exclusive_roots_selected(type, components, -1)
 
 
 int safe_ancestor(int ancestor, int children):
@@ -918,13 +924,20 @@ void safe_access(int roots, int via, int write, int id, char* state):
 		if ((safe_local_loan(i) < 2) || ((state[i] & 7) != 2)): continue
 		if (i == safe_replacing): continue
 		if (safe_optional(retained_bindings[safe_locals[i]].type) && ((state[i] & 48) == 16)): continue
-		if (safe_set_overlap(safe_origin[i], roots) == 0): continue
+		int origins = safe_origin[i]
+		int selected = -1
+		if (i == safe_replacing_owner):
+			selected = ~safe_replacing_groups
+			origins = -1
+			for group in range(safe_lifetime_count(retained_bindings[safe_locals[i]].type)):
+				if (selected & (1 << group)): origins = safe_set_union(origins, safe_components[i].roots[group])
+		if (safe_set_overlap(origins, roots) == 0): continue
 		if (safe_ancestor(i, via)): continue
 		if ((event.live[i] == 0) && (event.uses[i] == 0)): continue
 		int exclusive = safe_local_kind(i) == 3
 		if ((safe_local_kind(i) == 1) && (write == 0)):
 			int type = retained_bindings[safe_locals[i]].type
-			exclusive = safe_set_overlap(safe_exclusive_roots(type, safe_components[i]), roots)
+			exclusive = safe_set_overlap(safe_exclusive_roots_selected(type, safe_components[i], selected), roots)
 		if (write || exclusive):
 			safe_error(id, c"safe: conflicting access while a borrow is live", safe_birth[i])
 
@@ -1697,6 +1710,69 @@ int safe_assignment_reads_previous(retained_node* assignment, int left, int bind
 	return 0
 
 
+# A field can end only groups that no sibling field also retains. Group
+# provenance remains conservative when several fields share one label.
+int safe_replaced_field_groups(int type, int offset):
+	int template = safe_pointee(type)
+	retained_type* record = retained_types[template]
+	int replaced = 0
+	int retained = 0
+	for i in range(record.fields.length):
+		int field = record.fields[i].type
+		if (safe_carries_borrow(field) == 0): continue
+		for component in range(safe_lifetime_count(field)):
+			int group = safe_field_group(template, field, component)
+			if (group < 0): continue
+			if (record.fields[i].offset == offset): replaced = replaced | (1 << group)
+			else: retained = retained | (1 << group)
+	return replaced & ~retained
+
+
+void safe_replace_owned_field(int id, retained_node* assignment, retained_node* field, int root, char* state):
+	retained_node owner
+	retained_node_load(safe_child(field, field.left), &owner)
+	if ((owner.op != 'v') || (safe_kind(owner.semantic_type) != 1)):
+		safe_error(id, c"safe: owned field replacement requires a named unique owner", -1)
+	int index = safe_index(owner.binding)
+	if ((index < 0) || (root != index)):
+		safe_error(id, c"safe: owned field replacement requires a tracked owner", -1)
+	# Preserve the destination descriptor through every RHS operand. Field
+	# moves remain separately gated; moving the parent cannot invalidate it.
+	int saved = safe_call_roots.length
+	safe_call_roots.push(root)
+	safe_call_kinds.push(2)
+	safe_borrowed incoming
+	int previous_owner = safe_replacing_owner
+	int previous_groups = safe_replacing_groups
+	if (safe_assignment_reads_previous(assignment, safe_child(field, field.left), owner.binding) == 0):
+		safe_replacing_owner = index
+		safe_replacing_groups = safe_replaced_field_groups(owner.semantic_type, field.value)
+	safe_eval_groups(safe_child(assignment, assignment.right), state, field.semantic_type, &incoming)
+	safe_replacing_owner = previous_owner
+	safe_replacing_groups = previous_groups
+	while (safe_call_roots.length > saved):
+		safe_call_roots.pop()
+		safe_call_kinds.pop()
+	safe_access(root, -1, 1, id, state)
+	if (safe_owned_borrowed(field.semantic_type)):
+		safe_borrowed mapped
+		safe_borrowed_clear(&mapped)
+		int template = safe_pointee(owner.semantic_type)
+		for component in range(safe_lifetime_count(field.semantic_type)):
+			int group = safe_field_group(template, field.semantic_type, component)
+			if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
+			mapped.roots[group] = safe_set_union(mapped.roots[group], incoming.roots[component])
+			mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
+		int parent = -1
+		int external = safe_borrowed_roots(&incoming, safe_lifetime_count(field.semantic_type), &parent)
+		if (safe_set_has(external, index)):
+			safe_error(id, c"safe: owned fields cannot borrow their containing owner", -1)
+		if (safe_validate && safe_ancestor(index, parent)):
+			safe_error(id, c"safe: owned field replacement cannot create a reborrow cycle", safe_birth[index])
+		safe_components_join(index, &mapped, safe_lifetime_count(owner.semantic_type))
+		safe_origin_join(index, external, parent)
+
+
 int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 	if (components != 0): safe_borrowed_clear(components)
 	if (id < 0): return -1
@@ -1795,6 +1871,9 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			int named = safe_index(lhs.binding)
 			if (named >= 0): related = safe_birth[named]
 			safe_error(id, c"safe: references cannot be reassigned", related)
+		if ((lk == 1) && (lhs.op == '.') && (n.value == 0)):
+			safe_replace_owned_field(id, &n, &lhs, root, state)
+			return -1
 		if ((lk == 1) && ((lhs.op != 'v') || n.value)): safe_error(id, c"safe: owner assignment requires a plain binding", -1)
 		if (n.value):
 			for i in range(safe_locals.length):
@@ -1996,6 +2075,8 @@ void safe_transfer(int event, char* state):
 void safe_function_check(int function):
 	safe_function = function
 	safe_replacing = -1
+	safe_replacing_owner = -1
+	safe_replacing_groups = 0
 	retained_record* fn = retained_record_at(function)
 	if (fn.expression_fallback): safe_error(function, c"safe: unsupported expression fallback", -1)
 	if (retained_bindings[fn.binding].assembly_body): safe_error(function, c"safe: assembly function bodies are not supported", -1)
