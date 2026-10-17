@@ -1017,3 +1017,44 @@ with a COMPLETE receipt. Tests reached 172/176 changed executable compiler
 lines (97%). Compiler branch coverage increased from 85.8% to 86.0%; its
 floor rose from 85.1% to 85.3%, preserving the existing margin. Other
 directory floors remain unchanged.
+
+
+### Callable compatibility fast paths (#714)
+
+Quantified-callable alias matching now follows the existing equal-type,
+scalar, pointer-depth, GPU-domain and ordinary pointer-name fast paths.
+Distinct checked callable aliases still reach contract-aware matching;
+the retained safety pass still proves the exact normalized contract before
+publishing code. This changes compiler work, not application semantics.
+
+A fixed corpus at `89bf96d2` compares the original compiler with this change.
+Both compilers emit byte-identical `w.w` binaries: 2,876,100 bytes on x86 and
+3,384,712 on x64. Fresh paired Callgrind runs measured 17,753,467 versus
+17,053,777 kIr on x86 and 9,588,565 versus 9,224,395 kIr on x64, reductions
+of about 3.9% and 3.8%. Seven alternating native compiles measured median
+elapsed time of 1.67 s versus 1.66 s and median peak RSS of 112,256 KiB for
+both. Shared-host wall time does not establish a general speedup.
+
+The checked/manual allocation corpus and callable owner/slice/record fixture
+also emit byte-identical binaries for both Linux architectures under default,
+`--no-regs --no-inline`, and `--inline` modes: 18 before/after comparisons.
+Every binary executes successfully. Five alternating default-mode runs give
+these median times; identical machine code makes the small differences noise,
+not an application optimization claim:
+
+| Fixture | x86 before/after (ms) | x64 before/after (ms) |
+| --- | --- | --- |
+| Checked allocation | 33.23 / 32.34 | 32.94 / 31.30 |
+| Manual allocation | 32.30 / 32.47 | 31.80 / 31.30 |
+| Callable runtime | 0.23 / 0.26 | 0.18 / 0.17 |
+
+This is one bounded step under #714/#700. Retention costs, the accumulated
+self-compile baseline gap and broader ownership-preserving optimization
+remain required. No benchmark baseline is refreshed by this change.
+
+The full suite, both Linux fixpoints, Windows runtime and CI compiler benchmark
+passed together: 1,340 targets. All 48 architecture/root checks and the
+existing 47-case callable matrix pass. Native guards and Memcheck pass on
+x86/x64 with 153 allocations/frees and zero leaks/errors. Focused compiler
+instrumentation runs both callable matrices and reaches the single changed
+executable line (1/1, 100%); full aggregate coverage remains a CI gate.

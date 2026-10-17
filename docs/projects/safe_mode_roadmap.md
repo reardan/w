@@ -65,10 +65,14 @@ IDs below identify feature requirements, not a second execution schedule.
 | Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites |
 | Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize |
 
-Split #700 into separate target, session and performance child issues when
-implementation begins. Their acceptance gates are independent; one component's
-validation cannot complete another. Do not delay dependency-ready work merely
-to align those components with a numbered wave.
+Workstream #700 was split at implementation kickoff into
+[additional checked targets (#712)](https://github.com/reardan/w/issues/712),
+[persistent REPL/debugger ownership (#713)](https://github.com/reardan/w/issues/713)
+and [compile costs/ownership-preserving optimization (#714)](https://github.com/reardan/w/issues/714).
+Their acceptance gates are independent; one component's validation cannot
+complete another. Do not delay dependency-ready work merely to align those
+components with a numbered wave. Keep #700 open until its required children
+are complete.
 
 Keep [#644](https://github.com/reardan/w/issues/644) open until all required
 child issues are complete. Before closing the umbrella with an intentional
