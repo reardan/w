@@ -2059,3 +2059,28 @@ that corpus on the shared host.
 
 Depends on #783. Part of #696/#644; qualified inference, generic methods,
 capturing callback storage and later work remain separately gated.
+
+
+### Qualified generic inference validation
+
+Generic parameters under `ref T`, `refmut T` and checked-slice wrappers infer
+the underlying record or element type. Whole `T` inference retains the full
+qualifier. The resolved concrete signature then checks access and lifetime
+effects; array arguments lower to inline descriptors using the inferred
+parameter representation.
+
+Validation passed 35 contract cases on x86/x64 with and without `--safe`,
+all 48 architecture/root checks and 1,422 ordinary targets including both
+Linux fixpoints, Wine runtime and benchmark. Instrumented validation passed
+1,420 targets plus six API harnesses with a COMPLETE receipt, reaching 24/25
+changed executable lines (96%). Existing coverage floors pass unchanged.
+Native guards and Memcheck report 30 allocations/frees and no errors/leaks
+per Linux architecture. Optimization variants and Wine execute, with three
+ARM64 variants cross-compiled and runtime-gated in CI.
+
+Seven alternating compiles of the fixed #784 parent corpus measured
+1.68/1.69 seconds and 116,256/115,944 KiB median peak RSS before/after.
+Compiler and prior checked fixture output bytes are identical. Measurements
+are specific to that corpus on the shared host. The implementation rebased
+unchanged onto the prerequisite validation commit. #696/#644 remain open
+for subsequent generic-method, callback-storage and remaining gates.
