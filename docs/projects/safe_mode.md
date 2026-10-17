@@ -2161,3 +2161,30 @@ Compiler and prior checked fixture output bytes are identical. Measurements
 are specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 for capturing callback storage and subsequent gates.
+
+
+### Captured callback storage validation
+
+An owned record can store quantified callable fields beside its owned or
+borrowed environment. Code and environment retain distinct field identities;
+projection, replacement, partial environment moves and invocation preserve
+the callable signature and captured lifetimes. Complete construction and
+recursive owner cleanup govern escaping owned captures. Borrowed captures
+cannot outlive their backing roots. This representation uses explicit records
+and callable fields; it does not introduce closure-expression syntax.
+
+Validation passed 33 contract cases on x86/x64 with and without `--safe`, all
+48 architecture/root checks and 1,428 ordinary targets including both Linux
+fixpoints, Wine runtime and benchmark. Instrumented validation passed 1,426
+targets plus six API harnesses with a COMPLETE receipt and reached all six
+changed executable lines. Existing coverage floors pass unchanged. Linux
+guard allocation and Memcheck report 360 allocations/frees and zero errors
+or leaks on each width. Optimization variants and Wine execute; ARM64
+variants cross-compile with runtime execution gates in CI.
+
+Seven alternating compiles of the fixed #787 parent corpus measured
+1.70/1.69 seconds and 116,032/116,256 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements are
+specific to that corpus on the shared host. The implementation rebased
+unchanged onto the prerequisite validation commit. #696/#644 remain open
+until the dependent merges and integrated completion gates pass.
