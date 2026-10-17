@@ -387,7 +387,7 @@ int safe_record_shape_walk(int type, int kind, int depth, int* path, int* remain
 		retained_type* member = retained_types[field]
 		int nested = safe_record(field)
 		if (nested && (safe_kind(field) == 3) && (kind != 3)): return 0
-		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && (member.kind == type_kind_refmut))):
+		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_optref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && ((member.kind == type_kind_refmut) || (member.kind == type_kind_optrefmut)))):
 			if (nested):
 				if (safe_record_shape_walk(member.target, safe_kind(field), depth + 1, path, remaining) == 0): return 0
 			else if (safe_plain(safe_pointee(field), 0) == 0): return 0
@@ -449,7 +449,7 @@ int safe_mixed_owned_shape_walk(int type, int depth, int* path, int* remaining):
 				if ((count == 0) || (count != safe_lifetime_count(field))): return 0
 				if (safe_mixed_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
 			else if (safe_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
-		else if ((safe_kind(field) >= 2) && (safe_optional(field) == 0)):
+		else if (safe_kind(field) >= 2):
 			if (safe_lifetime_at(field, 0) == 0): return 0
 			if (safe_record(field)):
 				if (safe_record_shape_walk(retained_types[safe_unqualified(field)].target, safe_kind(field), depth + 1, path, remaining) == 0): return 0

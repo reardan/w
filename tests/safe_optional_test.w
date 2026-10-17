@@ -138,7 +138,7 @@ void test_optional_surface_boundaries():
 	optional_case(c"int main():\n\toptref int* r\n\treturn 0\n", c"references require initialization")
 	optional_case(c"int main():\n\tint optref = 3\n\tint optrefmut = 4\n\treturn optref + optrefmut - 7\n", 0)
 	optional_case(c"optref int* identity(optref int* p);\nref int* identity(optref int* p):\n\tif p: return p\n\treturn p\nint main():\n\treturn 0\n", c"safe:")
-	optional_case(c"struct Holder:\n\toptref[a] int* item\nint main():\n\tint x = 3\n\tref[a] Holder h = Holder(&x)\n\treturn 0\n", c"safe:")
+	optional_case(c"struct Holder:\n\toptref[a] int* item\nint main():\n\tint x = 3\n\tref[a] Holder h = Holder(&x)\n\treturn 0\n", 0)
 
 
 void test_optional_ancestry():
