@@ -36,6 +36,9 @@ if [ -z "$tests" ]; then
 	tests="$tests bin/lib_darwin_test bin/hash_table_darwin_test bin/map_set_builtin_darwin_test bin/generator_darwin_test bin/compound_assign_darwin_test bin/limb_builtin_darwin_test"
 	# ARM64 optimizer regression binaries (the generated Darwin twins).
 	tests="$tests bin/arm64_load_fold_test_darwin bin/arm64_cmp_imm_test_darwin bin/local_load_fold_test_darwin bin/comparison_branch_test_darwin bin/const_fold_test_darwin bin/unsigned_compare_test_darwin"
+	# Checked ownership and borrowing: cross-built matrix host plus runtime variants.
+	tests="$tests bin/safe_darwin_contract_native_test"
+	for checked in bin/safe_*_darwin_test; do tests="$tests $checked"; done
 	# arm64e corruption fixtures (./wbuild pac_darwin): pointer authentication
 	# is enforced natively, so these MUST die by signal before reaching
 	# their NOT REACHED print.
@@ -52,10 +55,15 @@ for t in $tests; do
 		continue
 	fi
 	cp "$t" "$t.run"
-	if "./$t.run"; then
+	case "$t" in
+	bin/safe_darwin_contract_native_test) W_SAFE_DARWIN_RUN=1 "./$t.run" && result=0 || result=$? ;;
+	bin/safe_*_darwin_test) W_DEBUG_ALLOC=1 "./$t.run" && result=0 || result=$? ;;
+	*) "./$t.run" && result=0 || result=$? ;;
+	esac
+	if [ "$result" -eq 0 ]; then
 		echo "run_darwin_tests: PASS $t"
 	else
-		echo "run_darwin_tests: FAIL $t (exit $?)" >&2
+		echo "run_darwin_tests: FAIL $t (exit $result)" >&2
 		fail=1
 	fi
 	rm -f "$t.run"

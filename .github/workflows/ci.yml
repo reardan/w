@@ -678,7 +678,8 @@ jobs:
       - name: Cross-compile the bootstrap and the darwin test binaries
         run: |
           ./wbuild wv2 arm64_darwin_smoke_test crash_darwin graphics_darwin \
-            graphics_cocoa_input_darwin net_darwin pac_darwin
+            graphics_cocoa_input_darwin net_darwin pac_darwin \
+            safe_darwin_contract_test safe_darwin_contract_native_compile_test safe_darwin_runtime_compile_test
           ./bin/wv2 arm64_darwin w.w -o bin/wv2_darwin_bootstrap
           # tar keeps the executable bits that upload-artifact drops.
           tar -czf darwin_bins.tgz bin/wv2_darwin_bootstrap bin/*darwin*test \

@@ -1812,3 +1812,29 @@ byte-identical and execute on x86/x64. Median time is 1.70/1.71 s and peak RSS
 114,208/114,432 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Broader mixed-owner views and optional
 fields retain separate gates; neither #695 nor #644 closes.
+
+
+### ARM64 Darwin admission
+
+The macOS target (`arm64_darwin`) uses the checked pointer, borrowed aggregate
+and inline-slice representations of Linux ARM64. Admission requires the macOS
+platform discriminator, so the separate iOS device and simulator targets keep
+their own gates. Bounds checks remain mandatory and explicit contracts apply
+without `--safe`.
+
+Five runtime pins bind the Darwin arch shims, AArch64 context wrapper and XNU
+syscall implementation. The allocator falls back from unsupported `brk` to
+anonymous `mmap`; the Darwin wrapper translates mapping flags, and page-size
+probing supplies the guard allocator's alignment. No additional raw syscall
+becomes callable from checked application code. Runtime changes or shadowed
+imports invalidate the audit.
+
+`safe_darwin_contract_test` checks and cross-compiles accepted/rejected
+contracts with both flag modes, verifies Mach-O headers and rejection without
+artifacts, and exercises changed-runtime rejection. Its cross-built native
+host reruns the matrix with the self-hosted Darwin compiler and executes
+accepted programs on Apple Silicon. `safe_darwin_runtime_compile_test` builds
+88 ownership/borrow/cleanup variants, including an explicit `--safe` variant.
+The Darwin CI job executes them with the guard allocator and verifies the
+Darwin compiler fixpoint. Native execution is a required completion gate for
+#712; Linux cross-compilation alone does not complete that deliverable.
