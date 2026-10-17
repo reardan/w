@@ -485,8 +485,8 @@ reparse remains available when a captured signature cannot be resolved by the
 retained header walker. Check mode does not fabricate an `int` witness for an
 unused template whose bare borrowed parameter/result requires a record;
 concrete specializations still check every body and contract. Other unused
-templates keep their existing scalar witness. Inferred aggregate results and
-generic methods remain separate required steps under #696.
+templates keep their existing scalar witness. The inferred result and method
+contracts are described below.
 
 
 ## Inferred aggregate result buffers
@@ -511,5 +511,19 @@ then every inverted shape is checked against its concrete specialized
 signature. Array-to-slice coercion runs at the argument's evaluation position
 and pushes the checked descriptor layout. No raw pointer gains a slice length,
 no shared input gains exclusive access, and inferred labels do not extend
-backing storage lifetimes. Generic struct applications and checked generic
-method syntax retain their subsequent implementation gates under #696.
+backing storage lifetimes. Generic struct applications retain their subsequent
+implementation gate under #696.
+
+
+## Checked generic receivers
+
+Explicit and inferred generic method calls lower to the same retained call
+nodes and signatures as their direct equivalents. The receiver is the first
+argument and is evaluated once. A record's address is synthesized only for a
+pointer parameter; borrowed wrappers otherwise retain their inline layout.
+Owned receivers move once, and result loans retain the receiver's backing roots.
+Concrete pointer types used in captured signatures can be staged without
+committing metadata during probing. Record-prefixed definitions take precedence;
+ordinary definitions retain precedence for inferred syntax, while explicit type
+arguments select generic definitions. Built-in operations and fields keep their
+existing lookup rules. Unsupported streaming forms still fail explicitly.

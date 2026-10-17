@@ -94,60 +94,47 @@ re-parse**, mirroring what `compile_save()` already does for imports:
 
 ## Type-argument inference
 
-When a registered generic *function* name is followed directly by `(`
-instead of `[`, the type arguments are inferred from the call's argument
-types (`generic_call_infer_expr()` in `grammar/generic.w`):
+A registered generic function called as `name(...)` infers type arguments
+from the argument types. `T` and pointer-depth shapes such as `T*` bind the
+corresponding concrete type. Untyped scalar literals bind `int` when unbound
+and coerce to a previous binding; incompatible typed bindings are errors.
+Whole-parameter `T` inference preserves checked qualifiers and lifetime groups.
 
-1. **Parameter shapes.** The definition's header is re-parsed once per
-   definition (the same header-only nested re-parse the signature uses)
-   with every type parameter bound to a distinct word-sized *placeholder*
-   type instead of a concrete one. Placeholder names start with `@`,
-   which cannot appear in a source identifier or in any
-   compiler-generated type name, so a parsed parameter type provably
-   depends on a placeholder iff its name mentions `@`. Each parameter
-   classifies as a **type-parameter reference** with a pointer depth
-   (`T` = depth 0, `T**` = depth 2 — pointer records store the base
-   type's name, so the chain reduces by name), a **concrete** type, or
-   **opaque** (mentions a placeholder in a position v1 cannot invert:
-   `list[T]`, `T[]`, `pair[T]*`, `const T*`). The shapes are cached per
-   definition.
-2. **Binding.** Arguments are parsed (and pushed) left to right. A
-   type-parameter shape strips its pointer depth from the argument's
-   promoted type (a non-pointer argument for a `T*` parameter is a
-   compile error) and binds the parameter; the first binding wins and a
-   conflicting later binding is a compile error naming the parameter and
-   both types. Untyped constants (integer/char literals, `&` addresses)
-   bind `int` when the parameter is still unbound, and coerce to the
-   existing binding otherwise (`max(1.5, 2)` works like
-   `max[float32](1.5, 2)`; `max(2, 1.5)` binds `int` first and then
-   errors). Value pseudo-types map back to their storage types
-   (`string value` binds `string`, a slice value binds `T[]` itself —
-   binding never digs into container element types). Concrete shapes
-   constrain nothing and get the ordinary argument check and coercion;
-   opaque shapes are checked against the instantiated signature
-   afterwards. Every type parameter must end up bound, else a compile
-   error suggests the explicit syntax.
-3. **Call emission.** After binding, the call proceeds exactly like an
-   explicit instantiation — mangle, intern (so `max(3, 5)` and
-   `max[int](3, 5)` share one `max$int`), signature parse, argument-count
-   check, and the same mov-imm backpatch chain, drained by
-   `generic_finish_instantiations()`. Because the arguments were parsed
-   before the callee was known, the callee's mov-imm slot is emitted
-   after them (no callee word on the stack) and no struct return buffer
-   can be pushed below the arguments: inferred calls whose instantiation
-   returns a struct by value are rejected with a hint to use explicit
-   type arguments, the same restriction forward calls have.
+The retained parser resolves the concrete signature before emitting code.
+Aggregate results reserve their caller-owned return buffer before argument
+evaluation. Arguments evaluate left to right, and temporary aggregate buffers
+are compacted after copying their values. Explicit and inferred calls share
+specialization identity, ownership effects and lifetime checks.
 
-Inference limits (v1): the definition must appear before the call site —
-an unregistered name followed by `(` is an ordinary unknown symbol, so
-forward calls keep requiring explicit `name[T](...)` (mirroring the
-forward-call restriction above); inference covers generic *functions*
-only (generic struct constructors keep explicit arguments); parameters
-whose shape only mentions a type parameter inside another type
-(`pair[T]*`, `list[T]`, `T[]`) do not bind it, so a parameter used only
-in such positions (or only in the return type) needs explicit arguments;
-generic definitions cannot have defaults or variadics (already rejected),
-so those interactions do not arise.
+Checked `ref[a,b] T` and `refmut[a] T` shapes infer a plain record template from
+a borrowed wrapper. `ref[a] T[]` infers the element of a checked slice or fixed
+array, then performs the ordinary checked descriptor conversion. Concrete
+parameters and opaque shapes are checked against the specialized signature.
+A parameter used only in an opaque shape or return type still needs explicit
+type arguments. Generic struct applications, raw container shapes and generic
+struct constructors retain their existing inference restrictions.
+
+Definitions must precede inferred calls. Forward generic calls still require
+explicit arguments and cannot return aggregates. The streaming emitter retains
+its explicit-type-argument requirement for aggregate results and does not admit
+the new checked shape or method forms.
+
+## Generic method calls
+
+The retained parser accepts `receiver.function[T](arguments)` and
+`receiver.function(arguments)`, passing the receiver as the first argument of
+the ordinary specialized function. The latter form includes the receiver in
+inference. A record value is addressed when the first parameter requires a
+pointer; borrowed inline wrappers otherwise retain their value representation.
+The receiver evaluates once, before the remaining arguments. Checked receiver
+loans, transfers, return provenance and cleanup match the direct call.
+
+A matching record-prefixed definition (`Record_function`) takes precedence
+over unprefixed function syntax. Without explicit type arguments, an ordinary
+prefixed definition wins over a generic one, and an ordinary unprefixed function
+wins over an unprefixed generic definition. Explicit type arguments select a
+generic definition. Fields and built-in container operations retain their
+existing precedence. Methods must be defined before use.
 
 ## Name mangling
 
@@ -191,9 +178,9 @@ in two files compiles once.
 ## Limitations (v1)
 
 - **Inference limits.** See "Type-argument inference" above: definition
-  before the call site, functions only, no struct-by-value returns on
-  inferred calls, and only `T`-with-pointer-depth parameter shapes bind
-  (not `pair[T]*` / `list[T]` / `T[]` / `const T*`).
+  before the call site and functions only. Raw composite parameter shapes
+  remain opaque; retained checked borrowed shapes have the rules above.
+  The streaming emitter still requires explicit aggregate-return calls.
 - Generic definitions must be at the top level (not nested in functions),
   and a generic function/struct cannot share a name with another generic
   of the same kind (one definition per name; no overloading on parameter
@@ -203,7 +190,7 @@ in two files compiles once.
   checking.
 - `for x in xs` with an *inferred* loop variable does not see the
   substitution; declare the element type explicitly (`for T x in xs`).
-- Generic methods, generic type aliases, variadic generic functions and
+- Generic type aliases, variadic generic functions and
   default parameter values on generic functions are not supported
   (the latter two are rejected with clear errors).
 - Type checking happens per instantiation (like C++ templates): a type
@@ -232,8 +219,8 @@ Asserted by the `generics_test` / `generics_inference_test` targets
 - `generic function 'f': cannot infer type parameter 'T' from argument 1:
   expected a pointer, got 'int'` — a non-pointer argument against a `T*`
   shape.
-- `generic function 'f': inferred call returns a struct by value; use
-  explicit type arguments, e.g. 'f[int](...)'`.
+- In streaming mode: `generic function 'f': inferred call returns a struct
+  by value; use explicit type arguments, e.g. 'f[int](...)'`.
 - `Cannot find symbol: 'f'` — an inferred (bracket-less) call before the
   definition; forward calls need explicit `f[int](...)`.
 - `generic function 'f' is not defined (called at file:line)` — a forward
