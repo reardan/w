@@ -641,10 +641,27 @@ external data through a moved child's old path fails, including nested
 projections. Whole-owner provenance remains conservative: moving one child does
 not discard backing-storage obligations retained by the parent metadata.
 
-This step supports direct children of named unique owners. Borrowed receivers,
-unnamed nested receivers, uncertain indices and untracked paths cannot transfer
-ownership. A nested owner can first be moved to a named binding, then its child
-can be transferred. Broader replacement forms remain required under #695.
+Transfers support direct children and stable nested ownership paths rooted in
+named unique owners. Borrowed receivers, effectful receivers, uncertain indices
+and untracked paths cannot transfer ownership. Broader replacement forms remain
+required under #695.
+
+### Nested owned-child transfers
+
+`own int* item = outer.left.first` transfers a nested owned child when every
+intermediate receiver is owned and the chain starts at a named unique owner.
+The checker tracks the selected path and every ancestor. Initialized siblings
+remain usable; moving or borrowing any entire ancestor requires all of its
+owned descendants to be initialized. Passing a partially moved child to a
+helper is rejected even when the helper would otherwise accept that type.
+
+The emitter preserves the transferred value, recomputes the stable field
+address, and clears that slot before cleanup. Only named variables and owned
+field projections are admitted in this chain, so address recomputation has no
+user effects. Nested constructors, calls, generic transfers, returns and mixed
+external lifetime groups preserve the same ownership and cleanup obligations.
+A direct replacement of an ancestor restores its subtree. Rebinding a field
+through a nested receiver retains its separate replacement gate.
 
 ### Shared views of mixed owners
 
@@ -1723,3 +1740,27 @@ byte-identical and execute on x86/x64. Median time is 1.73/1.72 s and peak RSS
 114,208 KiB for both compilers on the shared host. These measurements do not
 establish a general performance bound. Nested moves and replacement retain
 separate gates; neither #695 nor #644 closes.
+
+### Nested owned-child partial moves (Wave 1)
+
+Twenty-three accepted/rejected programs cover stable nested extraction,
+initialized siblings, whole-child and parent borrows, callbacks, generics,
+external groups, branches, loops and cleanup exits. Each case is checked and
+compiled on x86/x64 with and without `--safe`; accepted programs execute and
+rejections leave no executable. Whole-child borrowing verifies all descendants,
+so a missing grandchild cannot be hidden behind a borrowed child pointer.
+
+Validation passes 1,373 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,371 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+21/23 changed executable compiler lines are reached (91%). Existing coverage
+floors pass, including the preceding 85.6% compiler branch floor.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+332 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `9200791f` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 2.90/2.96 s and peak RSS
+114,208 KiB for both compilers on the shared host. These measurements do not
+establish a general performance bound. Nested replacement and broader views
+retain separate gates; neither #695 nor #644 closes.
