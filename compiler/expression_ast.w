@@ -767,8 +767,10 @@ int ast_expression_safe_shape_at(expression_ast* tree, int base, int kind, int l
 	if (tree.pending_buffer_types || (depth > 32) || (*remaining <= 0)): return -1
 	*remaining = *remaining - 1
 	base = type_unqualified(base)
-	if (type_safe_kind(base) || type_is_gpu_object(base) || type_is_array(base)): return -1
+	if (type_is_gpu_object(base) || type_is_array(base)): return -1
+	# Pointer qualifiers preserve the existing alias/requalification rules.
 	if (type_get_pointer_level(base) == 1): return ast_expression_safe_pointer_type(tree, base, kind, lifetime, offset)
+	if (type_safe_kind(base)): return -1
 	if ((type_get_pointer_level(base) != 0) || ((kind != 2) && (kind != 3))): return -1
 	int slice = type_get_kind(base) == type_kind_slice
 	int shape_kind = 5
