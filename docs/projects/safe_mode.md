@@ -1036,11 +1036,27 @@ build results when a contract, implementation or compiler changes.
 
 Ownership graphs and borrow state are allocated only when checking is needed.
 Application semantic retention also runs in ordinary retained compilation to
-support flag-independent qualifier semantics. Runtime costs include
+support flag-independent qualifier semantics. Its symbol lookup keeps a
+bounded cache of 4,096 symbol-index positions. Each hint is checked against
+the synchronized live table before reading the current name; source version,
+owner, scope, name and declaration location still determine binding identity.
+Scope rollback and reset cannot turn a recycled raw slot into an old binding.
+The cache costs 16 KiB on x86 or 32 KiB on x64 per compiler session and is
+released with retained semantic state. Runtime costs include
 allocation, bounds checks and conditional destruction; moved slots are
 cleared. Checked pointers add no reference counts or extra pointer words.
 Functions with checked pointer parameters, results or locals are excluded
 from the current inliner so optimization cannot erase a transfer or cleanup.
+
+### Retained symbol-position cache validation
+
+Retained semantic binding repeatedly searches the symbol table for an unchanged declaration position. Cache validated positions in a bounded 4,096-entry table, checking bounds and offsets after synchronization and retaining fresh name lookup and identity checks. Reset and release the cache with its owning state.
+
+Production retained-AST regressions cover 24 functions with differing parameter lengths, error rollback and reset. Full validation passed 1,362 ordinary targets and 1,361 instrumented targets plus six compiler/API harnesses. Both Linux fixpoints, 48 architecture/root checks, native allocator guards and existing coverage floors pass. The coverage receipt is COMPLETE; all 14 changed executable compiler lines ran.
+
+Seven alternating compiles of fixed `6b450a80` sources measured 1.62/1.62 seconds and 112,480 KiB median peak RSS before/after. Compiler output and prior callable/Windows-contract fixtures were byte-identical and executed on x86/x64. Fixed-corpus Callgrind instruction counts fell from 17,153,421,073 to 17,084,245,179 on x86 (0.40%) and 9,267,476,404 to 9,217,102,517 on x64 (0.54%). Both baseline and candidate used the same allocator fallback under Callgrind. The bounded cache reserves 16 KiB on x86 and 32 KiB on x64; these measurements establish only this corpus's result, not a general performance guarantee.
+
+Part of #714 under #700/#644. Those issues remain open for their remaining acceptance gates.
 
 ### Measured costs
 
