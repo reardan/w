@@ -538,7 +538,7 @@ int type_lifetime_count(int type):
 
 char* type_lifetime_at(int type, int group):
 	type = type_unqualified(type)
-	if ((type < 0) || (type_safe_kind(type) < 2)): return 0
+	if ((type < 0) || (type_safe_kind(type) < 1)): return 0
 	type_rec* record = type_record(type)
 	if (record.safe_labels == 0): return record.safe_lifetime
 	return record.safe_labels[group]
@@ -568,11 +568,21 @@ list[char*] type_record_groups(int base):
 
 
 int type_get_safe_lifetime(int target, int kind, char* lifetime):
-	if (lifetime != 0):
+	if ((lifetime != 0) && (kind != 1)):
 		for i in range(strlen(lifetime)):
 			if (lifetime[i] == ','): error(c"multiple lifetime labels require a borrowed aggregate")
 	type_safe_used = 1
 	target = type_unqualified(target)
+	if ((kind == 1) && (lifetime != 0)):
+		int element = type_lookup_previous_pointer(target)
+		if (element < 0): error(c"safe: owner lifetimes require a record with borrowed fields")
+		list[char*] groups = type_record_groups(element)
+		int count = 1
+		for i in range(strlen(lifetime)):
+			if (lifetime[i] == ','): count = count + 1
+		int expected = groups.length
+		groups.free()
+		if ((expected == 0) || (count != expected)): error(c"safe: owner lifetime arity must match its borrowed field groups")
 	int i = 0
 	while (i < type_records.length):
 		type_rec* t = type_record(i)
@@ -590,12 +600,14 @@ int type_get_safe_lifetime(int target, int kind, char* lifetime):
 	if (lifetime != 0):
 		if (kind == 2): prefix = c"ref["
 		else: prefix = c"refmut["
+		if (kind == 1): prefix = c"own["
 		if (kind == 6): prefix = c"optref["
 		if (kind == 7): prefix = c"optrefmut["
 		char* named = strjoin(prefix, lifetime)
 		char* qualified = strjoin(named, c"] ")
 		new_type.name = strjoin(qualified, type_get_name(target))
 		new_type.safe_lifetime = strclone(lifetime)
+		if (kind == 1): new_type.safe_labels = type_lifetime_labels(lifetime)
 		free(named)
 		free(qualified)
 	else: new_type.name = strjoin(prefix, type_get_name(target))

@@ -2137,13 +2137,23 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		if ((type_safe_entrypoint == 0) || (ast_retain_mode == 0)): return -1
 		ast_expression_advance(tree)
 		if (ast_expression_accept(tree, c"[")):
-			if ((safe_kind == 1) || (is_ident_start_byte(token[0]) == 0)): return -1
+			if (is_ident_start_byte(token[0]) == 0): return -1
 			int length = strlen(token) + 1
 			expression_ast_type_names_reserve(tree, length)
 			lifetime = tree.type_names_used
 			strcpy(tree.type_names + lifetime, token)
 			tree.type_names_used = tree.type_names_used + length
 			ast_expression_advance(tree)
+			int groups = 1
+			while (ast_expression_accept(tree, c",")):
+				if ((groups == 32) || (is_ident_start_byte(token[0]) == 0)): return -1
+				length = strlen(token) + 1
+				expression_ast_type_names_reserve(tree, length)
+				tree.type_names[tree.type_names_used - 1] = ','
+				strcpy(tree.type_names + tree.type_names_used, token)
+				tree.type_names_used = tree.type_names_used + length
+				groups = groups + 1
+				ast_expression_advance(tree)
 			if (ast_expression_accept(tree, c"]") == 0): return -1
 	int is_const = ast_expression_accept(tree, c"const")
 	int is_gpu = 0

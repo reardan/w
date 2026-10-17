@@ -39,10 +39,10 @@ implementation rather than introduce a second ownership model.
 | Area | Available behavior | Remaining scope |
 | --- | --- | --- |
 | Compiler interface | `--safe`, structured diagnostics, deterministic option conflicts, unsupported-target errors | More targets and in-process execution |
-| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, direct/concrete generic outlives clauses, optional references with presence refinement, aliases, quantified function pointers, independent aggregate groups and explicit contracts without `--safe` | Mixed owned/borrowed fields and partial moves |
+| Pointer contracts | Contextual ownership qualifiers, named reference lifetimes, direct/concrete generic outlives clauses, optional references with presence refinement, aliases, quantified function pointers, independent aggregate groups, labeled owners carrying shared borrowed data and explicit contracts without `--safe` | Exclusive mixed fields, field replacement and partial moves |
 | Analysis | Resolved identities, initialization/moves, sets of backing roots and reborrow parents, last-use liveness, branch joins, range loops and scalar switches | Container iteration and more precise projections |
 | Calls | Direct/imported/recursive calls, checked methods, concrete generic and quantified indirect calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Capturing/escaping callbacks and unmodeled generic operations |
-| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction and outer-function `defer` | Nested defer registration, partial moves and mixed borrowed/owned aggregate fields |
+| Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction and outer-function `defer` | Nested defer registration, partial moves and exclusive mixed aggregate fields |
 | Storage and libraries | Fixed arrays, inline checked slices, single-group shared/exclusive borrowed structs with nested wrappers, owned structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
 | Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
 
@@ -97,11 +97,13 @@ the accepted syntax and validation evidence. In particular:
 - Borrowed structs carry one lifetime group across shared or mutable pointer
   fields and shared checked-slice fields. Mutable-reference fields require
   an exclusive `refmut Record` wrapper; copies are reborrows. Multiple
-  independent groups remain rejected. Nested wrappers rename inner groups
-  into the enclosing group and preserve its complete origin/parent union.
+  independent groups use explicit positional labels. Nested wrappers map inner
+  groups into enclosing groups and preserve their complete origin/parent unions.
 - Owned structs use `own Record*`, complete heap constructors and acyclic
-  recursive destruction. Mixed lifetime-bearing owner fields, partial field
-  moves and unwinding remain outside this stage.
+  recursive destruction. Explicit `own[a,b] Record*` additionally carries shared
+  borrowed fields, keeping external data distinct from the owned allocation.
+  Exclusive mixed fields, field replacement, partial moves and unwinding remain
+  outside this stage.
 - C1 exposes a concrete integer buffer; C2 exposes arbitrary byte strings.
   Both use direct functions, opaque metadata and shared views. General
   element types, UTF-8 invariants, optional pop and self-append are not added.

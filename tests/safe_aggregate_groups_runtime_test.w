@@ -11,8 +11,15 @@
 # wbuild: step="bin/wv2 x64 --strict --inline tests/safe_aggregate_groups_runtime_fixture.w -o bin/safe_aggregate_groups_runtime64"
 # wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_aggregate_groups_runtime64"
 # wbuild: step="bin/wv2 win64 --strict tests/safe_aggregate_groups_runtime_fixture.w -o bin/safe_aggregate_groups_cross.exe"
+# wbuild: step="bin/wv2 arm64 --strict tests/safe_aggregate_groups_runtime_fixture.w -o bin/safe_aggregate_groups_arm64"
+# wbuild: step="bin/wv2 arm64 --strict --no-regs --no-inline tests/safe_aggregate_groups_runtime_fixture.w -o bin/safe_aggregate_groups_arm64_plain"
+# wbuild: step="bin/wv2 arm64 --strict --inline tests/safe_aggregate_groups_runtime_fixture.w -o bin/safe_aggregate_groups_arm64_inline"
 # wbuild: target=safe_aggregate_groups_win64_runtime_test tag=tests_win64 dep=wv2
 # wbuild: step="bin/wv2 win64 --strict tests/safe_aggregate_groups_runtime_fixture.w -o bin/safe_aggregate_groups_runtime.exe"
 # wbuild: step="wine bin/safe_aggregate_groups_runtime.exe"
+# wbuild: target=safe_aggregate_groups_arm64_runtime_test tag=tests_arm64 dep=safe_aggregate_groups_runtime_test dep=wrun
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/wrun arm64 bin/safe_aggregate_groups_arm64"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/wrun arm64 bin/safe_aggregate_groups_arm64_plain"
+# wbuild: step="env W_DEBUG_ALLOC=1 bin/wrun arm64 bin/safe_aggregate_groups_arm64_inline"
 int main():
 	return 0

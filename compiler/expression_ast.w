@@ -351,6 +351,14 @@ void expression_ast_type_names_reserve(expression_ast* tree, int extra):
 		if ((offset >= 0) && (offset < tree.type_names_used)): rec.name = grown + offset
 		offset = cast(int, rec.safe_lifetime) - cast(int, old)
 		if (rec.safe_lifetime && (offset >= 0) && (offset < tree.type_names_used)): rec.safe_lifetime = grown + offset
+		offset = cast(int, rec.safe_labels) - cast(int, old)
+		if (rec.safe_labels && (offset >= 0) && (offset < tree.type_names_used)):
+			rec.safe_labels = cast(char**, grown + offset)
+			int label = 0
+			while (rec.safe_labels[label] != 0):
+				int position = cast(int, rec.safe_labels[label]) - cast(int, old)
+				rec.safe_labels[label] = grown + position
+				label = label + 1
 	if (old): free(old)
 	slab.type_names = grown
 	slab.type_names_capacity = room
@@ -628,9 +636,17 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	if (kind == 3): prefix = c"refmut "
 	if (kind == 6): prefix = c"optref "
 	if (kind == 7): prefix = c"optrefmut "
+	int groups = 1
+	int label_length = 0
+	if (lifetime >= 0):
+		label_length = strlen(tree.type_names + lifetime) + 1
+		for j in range(label_length):
+			if (tree.type_names[lifetime + j] == ','): groups = groups + 1
+		if (groups > 32): return -1
 	char* name = 0
 	if (lifetime >= 0):
 		prefix = c"ref["
+		if (kind == 1): prefix = c"own["
 		if (kind == 3): prefix = c"refmut["
 		if (kind == 6): prefix = c"optref["
 		if (kind == 7): prefix = c"optrefmut["
@@ -641,7 +657,9 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 		free(qualified)
 	else: name = strjoin(prefix, type_get_name(base))
 	int length = strlen(name) + 1
-	expression_ast_type_names_reserve(tree, length)
+	int extra = length
+	if (groups > 1): extra = extra + label_length + (groups + 2) * __word_size__
+	expression_ast_type_names_reserve(tree, extra)
 	expression_ast_type_reserve(tree)
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
@@ -653,6 +671,23 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	rec.safe_labels = 0
 	rec.fn_lifetime_order = 0
 	if (lifetime >= 0): rec.safe_lifetime = tree.type_names + lifetime
+	if (groups > 1):
+		# The speculative vector and its strings live in the type-name
+		# slab. Reallocation rebases both; committed raw types clone them.
+		char* labels = tree.type_names + tree.type_names_used
+		strcpy(labels, rec.safe_lifetime)
+		int at = tree.type_names_used + label_length
+		at = (at + __word_size__ - 1) / __word_size__ * __word_size__
+		rec.safe_labels = cast(char**, tree.type_names + at)
+		rec.safe_labels[0] = labels
+		int group = 1
+		for j in range(label_length):
+			if (labels[j] == ','):
+				labels[j] = 0
+				rec.safe_labels[group] = labels + j + 1
+				group = group + 1
+		rec.safe_labels[groups] = 0
+		tree.type_names_used = at + (groups + 1) * __word_size__
 	rec.num_fields = 0
 	rec.total_size = word_size
 	rec.pointer_level = 1

@@ -268,6 +268,24 @@ void safe_borrowed_clear(safe_borrowed* value):
 		value.parents[i] = -1
 
 
+# Labeled owners retain external shared data in addition to their allocation.
+# Their allocation root must never stand in for one of these components.
+int safe_owned_borrowed(int type):
+	if (safe_kind(type) != 1): return 0
+	return retained_types[safe_unqualified(type)].lifetime != 0
+
+
+int safe_carries_borrow(int type):
+	return (safe_borrow_kind(type) >= 2) || safe_owned_borrowed(type)
+
+
+void safe_borrowed_copy(safe_borrowed* target, safe_borrowed* source, int count):
+	if (target == 0): return
+	for i in range(count):
+		target.roots[i] = source.roots[i]
+		target.parents[i] = source.parents[i]
+
+
 int safe_return_parameter(int id, retained_binding* binding);
 
 
@@ -400,9 +418,50 @@ int safe_owned_shape(int type):
 	return safe_owned_shape_walk(type, 0, &path[0], &remaining)
 
 
+int safe_mixed_owned_shape_walk(int type, int depth, int* path, int* remaining):
+	type = safe_unqualified(type)
+	if ((type < 0) || (depth > 32) || (*remaining <= 0)): return 0
+	*remaining = *remaining - 1
+	for i in range(depth):
+		if (path[i] == type): return 0
+	path[depth] = type
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (record.fields.length == 0)): return 0
+	for i in range(record.fields.length):
+		int field = record.fields[i].type
+		if (safe_kind(field) == 1):
+			if (safe_owned_borrowed(field)):
+				list[char*] groups = safe_record_groups(safe_pointee(field))
+				int count = groups.length
+				groups.free()
+				if ((count == 0) || (count != safe_lifetime_count(field))): return 0
+				if (safe_mixed_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
+			else if (safe_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
+		else if ((safe_kind(field) == 2) && (safe_optional(field) == 0)):
+			if (safe_lifetime_at(field, 0) == 0): return 0
+			if (safe_record(field)):
+				if (safe_record_shape_walk(retained_types[safe_unqualified(field)].target, 2, depth + 1, path, remaining) == 0): return 0
+			else if (safe_plain(safe_pointee(field), 0) == 0): return 0
+		else if (safe_plain(field, 0) == 0): return 0
+	return 1
+
+
+int safe_mixed_owned_shape(int type):
+	int[33] path
+	int remaining = 256
+	return safe_mixed_owned_shape_walk(type, 0, &path[0], &remaining)
+
+
 void safe_type_check_at(int id, int type, int depth, int* remaining):
 	*remaining = *remaining - 1
 	if ((depth > 32) || (*remaining < 0)): safe_error(id, c"safe: callable contract is too deeply nested", -1)
+	if (safe_owned_borrowed(type)):
+		int target = safe_pointee(type)
+		list[char*] groups = safe_record_groups(target)
+		int count = groups.length
+		groups.free()
+		if ((count > 0) && (count == safe_lifetime_count(type)) && safe_mixed_owned_shape(target)): return
+		safe_error(id, c"safe: labeled owner requires shared borrowed field groups and supported owned fields", -1)
 	int callable = safe_callable_signature(type)
 	if (callable >= 0):
 		retained_binding contract
@@ -439,6 +498,12 @@ int safe_index(int binding):
 int safe_local_kind(int index):
 	if (index >= safe_real_locals): return 0
 	return safe_borrow_kind(retained_bindings[safe_locals[index]].type)
+
+
+int safe_local_loan(int index):
+	int kind = safe_local_kind(index)
+	if ((kind == 1) && safe_owned_borrowed(retained_bindings[safe_locals[index]].type)): return 2
+	return kind
 
 
 int safe_add(int node, int expression, int binding, int action, int next, int alternate):
@@ -780,13 +845,13 @@ void safe_access(int roots, int via, int write, int id, char* state):
 			safe_error(id, c"safe: conflicting access during call argument evaluation", -1)
 	safe_flow* event = safe_graph[safe_event]
 	for i in range(safe_locals.length):
-		if ((safe_local_kind(i) < 2) || ((state[i] & 7) != 2)): continue
+		if ((safe_local_loan(i) < 2) || ((state[i] & 7) != 2)): continue
 		if (i == safe_replacing): continue
 		if (safe_optional(retained_bindings[safe_locals[i]].type) && ((state[i] & 48) == 16)): continue
 		if (safe_set_overlap(safe_origin[i], roots) == 0): continue
 		if (safe_ancestor(i, via)): continue
 		if ((event.live[i] == 0) && (event.uses[i] == 0)): continue
-		if (write || (safe_local_kind(i) == 3)):
+		if (write || (safe_local_loan(i) == 3)):
 			safe_error(id, c"safe: conflicting access while a borrow is live", safe_birth[i])
 
 
@@ -887,6 +952,7 @@ void safe_origin_join(int index, int root, int parent):
 # Projections conservatively share their whole root, including array indices.
 int safe_place(int id, char* state, int* via);
 int safe_eval(int id, char* state, int want);
+int safe_eval_groups(int id, char* state, int want, safe_borrowed* components);
 int safe_call(int id, retained_node* n, char* state, int* parent);
 int safe_borrow(int id, int want, char* state, int* parent);
 int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed* components, int mask, int access_kind);
@@ -944,6 +1010,49 @@ int safe_place(int id, char* state, int* via):
 	return -1
 
 
+int safe_owner_provenance(int id, char* state, safe_borrowed* components):
+	safe_borrowed_clear(components)
+	retained_node node
+	retained_node_load(id, &node)
+	if (safe_owned_borrowed(node.semantic_type) == 0): safe_error(id, c"safe: external owner data requires a lifetime contract", -1)
+	if (node.op == 'v'):
+		int index = safe_index(node.binding)
+		if (index < 0): safe_error(id, c"safe: owner projection requires a local or parameter", -1)
+		safe_read(index, id, state)
+		safe_borrowed_copy(components, safe_components[index], safe_lifetime_count(node.semantic_type))
+		for i in range(safe_lifetime_count(node.semantic_type)):
+			components.parents[i] = safe_set_union(components.parents[i], index)
+		return index
+	if (node.op != '.'): safe_error(id, c"safe: borrowed owner field requires a named owner", -1)
+	int left = safe_child(&node, node.left)
+	retained_node base
+	retained_node_load(left, &base)
+	int template = safe_pointee(base.semantic_type)
+	if ((template < 0) || (safe_owned_borrowed(base.semantic_type) == 0)):
+		safe_error(id, c"safe: owner projection requires a lifetime contract", -1)
+	int field = -1
+	retained_type* record = retained_types[template]
+	for i in range(record.fields.length):
+		if (record.fields[i].offset == node.value): field = record.fields[i].type
+	if (field < 0): safe_error(id, c"safe: invalid owner projection", -1)
+	safe_borrowed parent
+	int root = safe_owner_provenance(left, state, &parent)
+	for component in range(safe_lifetime_count(node.semantic_type)):
+		int group = safe_field_group(template, field, component)
+		if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
+		components.roots[component] = parent.roots[group]
+		components.parents[component] = parent.parents[group]
+	return root
+
+
+int safe_borrowed_roots(safe_borrowed* components, int count, int* parents):
+	int roots = -1
+	for i in range(count):
+		roots = safe_set_union(roots, components.roots[i])
+		*parents = safe_set_union(*parents, components.parents[i])
+	return roots
+
+
 int safe_record_construct(int id, retained_node* n, int want, char* state, int* parent, safe_borrowed* components):
 	if (n.high): safe_error(id, c"safe: borrowed aggregates require a value constructor", -1)
 	retained_type* record = retained_types[retained_types[safe_unqualified(want)].target]
@@ -987,10 +1096,12 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 	return roots
 
 
-void safe_owner_construct(int id, retained_node* n, int want, char* state):
+void safe_owner_construct(int id, retained_node* n, int want, char* state, safe_borrowed* components):
 	if (n.high == 0): safe_error(id, c"safe: owned aggregate requires a heap constructor", -1)
-	retained_type* record = retained_types[safe_unqualified(safe_pointee(want))]
+	int template = safe_unqualified(safe_pointee(want))
+	retained_type* record = retained_types[template]
 	char* initialized = safe_zero(record.fields.length, 1)
+	int saved = safe_call_roots.length
 	int entry = safe_child(n, n.left)
 	while (entry >= 0):
 		retained_node field
@@ -1000,11 +1111,34 @@ void safe_owner_construct(int id, retained_node* n, int want, char* state):
 			safe_error(entry, c"safe: invalid owned aggregate initializer", -1)
 		if (initialized[position]): safe_error(entry, c"safe: owned aggregate field initialized twice", -1)
 		initialized[position] = 1
-		safe_eval(safe_child(&field, field.left), state, record.fields[position].type)
+		int type = record.fields[position].type
+		int value = safe_child(&field, field.left)
+		safe_borrowed incoming
+		int via = -1
+		int roots = -1
+		if (safe_borrow_kind(type) >= 2): roots = safe_borrow_groups(value, type, state, &via, &incoming, -1, 0)
+		else:
+			safe_eval_groups(value, state, type, &incoming)
+			if (safe_owned_borrowed(type)): roots = safe_borrowed_roots(&incoming, safe_lifetime_count(type), &via)
+		if (safe_carries_borrow(type)):
+			if (components != 0):
+				for component in range(safe_lifetime_count(type)):
+					int group = safe_field_group(template, type, component)
+					if (group < 0): safe_error(entry, c"safe: unnamed owner field group", -1)
+					components.roots[group] = safe_set_union(components.roots[group], incoming.roots[component])
+					components.parents[group] = safe_set_union(components.parents[group], incoming.parents[component])
+			# Moving an owner reserves its borrowed data independently of
+			# the allocation that was transferred into the new parent.
+			safe_access(roots, via, 0, value, state)
+			safe_call_roots.push(roots)
+			safe_call_kinds.push(2)
 		entry = safe_child(&field, field.next_arg)
 	for i in range(record.fields.length):
 		if (initialized[i] == 0): safe_error(id, c"safe: owned aggregate requires every field to be initialized", -1)
 	free(initialized)
+	while (safe_call_roots.length > saved):
+		safe_call_roots.pop()
+		safe_call_kinds.pop()
 
 
 int safe_borrow(int id, int want, char* state, int* parent):
@@ -1099,7 +1233,25 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 					components.parents[component] = base_components.parents[group]
 					root = safe_set_union(root, components.roots[component])
 					via = safe_set_union(via, components.parents[component])
-		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && safe_owned_shape(safe_pointee(base.semantic_type))):
+		else if (safe_owned_borrowed(base.semantic_type) && (safe_kind(n.semantic_type) >= 2)):
+			if ((kind == 3) || safe_optional(n.semantic_type)): safe_error(id, c"safe: mixed owners expose only shared borrowed fields", -1)
+			int template = safe_pointee(base.semantic_type)
+			retained_type* record = retained_types[template]
+			int field = -1
+			for i in range(record.fields.length):
+				if (record.fields[i].offset == n.value): field = record.fields[i].type
+			if (field < 0): safe_error(id, c"safe: invalid owner projection", -1)
+			safe_borrowed owner
+			safe_owner_provenance(safe_child(&n, n.left), state, &owner)
+			for component in range(safe_lifetime_count(want)):
+				if (mask & (1 << component)):
+					int group = safe_field_group(template, field, component)
+					if (group < 0): safe_error(id, c"safe: unnamed owner field group", -1)
+					components.roots[component] = owner.roots[group]
+					components.parents[component] = owner.parents[group]
+					root = safe_set_union(root, owner.roots[group])
+					via = safe_set_union(via, owner.parents[group])
+		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && (safe_owned_shape(safe_pointee(base.semantic_type)) || safe_owned_borrowed(base.semantic_type))):
 			root = safe_place(id, state, &via)
 		else: safe_error(id, c"safe: unsupported reference-bearing projection", -1)
 	else if ((n.op == 'C') || (n.op == 'G') || (n.op == 'W') || (n.op == 'F')):
@@ -1292,14 +1444,14 @@ int safe_has_body(int function):
 # denotes the intersection of every input carrying that label: callers retain
 # all those origins, and the body may return a view derived from any of them.
 int safe_return_parameter_group(int id, retained_binding* binding, int group):
-	if (safe_borrow_kind(binding.return_type) < 2): return -1
+	if (safe_carries_borrow(binding.return_type) == 0): return -1
 	if (safe_slice(binding.return_type) && (safe_inline_slice(binding.return_type) == 0)):
 		safe_error(id, c"safe: returning slices requires an explicit lifetime contract", -1)
 	char* lifetime = safe_lifetime_at(binding.return_type, group)
 	int result = -1
 	int output = safe_contract_offset(binding, binding.parameters.length) + group
 	for p in range(binding.parameters.length):
-		if (safe_borrow_kind(binding.parameters[p]) < 2): continue
+		if (safe_carries_borrow(binding.parameters[p]) == 0): continue
 		for component in range(safe_lifetime_count(binding.parameters[p])):
 			int slot = safe_contract_offset(binding, p) + component
 			if (lifetime != 0):
@@ -1326,7 +1478,7 @@ int safe_return_parameter(int id, retained_binding* binding):
 
 
 int safe_return_from(retained_binding* binding, int inferred, int slot, int group):
-	if (safe_borrow_kind(binding.return_type) < 2): return 0
+	if (safe_carries_borrow(binding.return_type) == 0): return 0
 	if (safe_lifetime_at(binding.return_type, group) == 0): return inferred == slot
 	return safe_contract_outlives(binding, slot, safe_contract_offset(binding, binding.parameters.length) + group)
 
@@ -1395,10 +1547,12 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		safe_type_check(id, want)
 		int kind = safe_borrow_kind(want)
 		int root = -1
-		if (kind >= 2):
-			int via = -1
-			safe_borrowed argument
-			root = safe_borrow_groups(arg, want, state, &via, &argument, -1, 0)
+		int via = -1
+		safe_borrowed argument
+		if (kind >= 2): root = safe_borrow_groups(arg, want, state, &via, &argument, -1, 0)
+		else if (safe_owned_borrowed(want)): root = safe_eval_groups(arg, state, want, &argument)
+		else: root = safe_eval(arg, state, want)
+		if (safe_carries_borrow(want)):
 			for component in range(safe_lifetime_count(want)):
 				int slot = safe_contract_offset(callee, position) + component
 				for group in range(safe_lifetime_count(callee.return_type)):
@@ -1407,7 +1561,11 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 						components.parents[group] = safe_set_union(components.parents[group], argument.parents[component])
 						return_root = safe_set_union(return_root, argument.roots[component])
 						*parent = safe_set_union(*parent, argument.parents[component])
-		else: root = safe_eval(arg, state, want)
+		if (safe_owned_borrowed(want)):
+			int external = safe_borrowed_roots(&argument, safe_lifetime_count(want), &via)
+			safe_access(external, via, 0, arg, state)
+			safe_call_roots.push(external)
+			safe_call_kinds.push(2)
 		# Scalar arguments copy their value; only pointer contracts keep
 		# storage reserved while later arguments are evaluated.
 		if ((root >= 0) && kind):
@@ -1429,6 +1587,11 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 
 
 int safe_eval(int id, char* state, int want):
+	return safe_eval_groups(id, state, want, 0)
+
+
+int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
+	if (components != 0): safe_borrowed_clear(components)
 	if (id < 0): return -1
 	retained_node n
 	retained_node_load(id, &n)
@@ -1455,7 +1618,7 @@ int safe_eval(int id, char* state, int want):
 			safe_error(id, c"safe: unsupported checked function value", -1)
 	if (kind && (op == '=') && (want >= 0) && (wanted == 0)):
 		safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
-	int constructed = (op == 'D') && n.high && safe_owned_shape(safe_pointee(want))
+	int constructed = (op == 'D') && n.high && (safe_owned_shape(safe_pointee(want)) || safe_owned_borrowed(want))
 	if (wanted >= 2): safe_error(id, c"safe: reference assignment is not supported", -1)
 	if (wanted == 1):
 		safe_pointer_match(id, want, n.semantic_type)
@@ -1471,11 +1634,12 @@ int safe_eval(int id, char* state, int want):
 		safe_read(index, id, state)
 		safe_access(index, -1, wanted == 1, id, state)
 		if (wanted == 1):
+			if (safe_owned_borrowed(want)): safe_borrowed_copy(components, safe_components[index], safe_lifetime_count(want))
 			state[index] = 4
 			safe_moved_at[index] = id
 		return index
 	if ((op == 'D') && (wanted == 1)):
-		safe_owner_construct(id, &n, want, state)
+		safe_owner_construct(id, &n, want, state, components)
 		return -1
 	if (op == 'N'):
 		if (wanted != 1): safe_error(id, c"safe: new storage must initialize an owner", -1)
@@ -1483,7 +1647,8 @@ int safe_eval(int id, char* state, int want):
 		return -1
 	if ((op == 'C') || (op == 'G') || (op == 'W') || (op == 'F')):
 		int parent = -1
-		safe_call(id, &n, state, &parent)
+		if (components == 0): safe_call(id, &n, state, &parent)
+		else: safe_call_groups(id, &n, state, &parent, components)
 		return -1
 	if (op == '='):
 		retained_node lhs
@@ -1531,7 +1696,14 @@ int safe_eval(int id, char* state, int want):
 		if (lhs.op != 'v'):
 			safe_call_roots.push(root)
 			safe_call_kinds.push(2)
-		safe_eval(right, state, lhs.semantic_type)
+		if (safe_owned_borrowed(lhs.semantic_type)):
+			safe_borrowed incoming
+			safe_eval_groups(right, state, lhs.semantic_type, &incoming)
+			int parent = -1
+			int external = safe_borrowed_roots(&incoming, safe_lifetime_count(lhs.semantic_type), &parent)
+			safe_components_join(root, &incoming, safe_lifetime_count(lhs.semantic_type))
+			safe_origin_join(root, external, parent)
+		else: safe_eval(right, state, lhs.semantic_type)
 		while (safe_call_roots.length > saved):
 			safe_call_roots.pop()
 			safe_call_kinds.pop()
@@ -1640,6 +1812,13 @@ void safe_transfer(int event, char* state):
 			int root = safe_borrow_groups(f.expression, type, state, &parent, &components, -1, 0)
 			safe_components_join(index, &components, safe_lifetime_count(type))
 			safe_origin_join(index, root, parent)
+		else if (safe_owned_borrowed(type)):
+			safe_borrowed components
+			safe_eval_groups(f.expression, state, type, &components)
+			int parent = -1
+			int roots = safe_borrowed_roots(&components, safe_lifetime_count(type), &parent)
+			safe_components_join(index, &components, safe_lifetime_count(type))
+			safe_origin_join(index, roots, parent)
 		else: safe_eval(f.expression, state, type)
 		int presence = 0
 		if (safe_optional(type) && (f.expression >= 0)): presence = safe_presence(f.expression, state)
@@ -1647,11 +1826,15 @@ void safe_transfer(int event, char* state):
 		if ((f.expression >= 0) || (retained_types[type].kind == type_kind_array)): state[index] = 2 | presence
 		if ((f.expression < 0) && safe_kind(type)): safe_error(f.node, c"safe: checked pointers require initialization", -1)
 	else if (f.action == 2):
-		if (safe_borrow_kind(safe_return_type) >= 2):
+		if (safe_carries_borrow(safe_return_type)):
 			if (f.expression < 0): safe_error(f.node, c"safe: reference return requires a value", -1)
 			int parent = -1
 			safe_borrowed components
-			int root = safe_borrow_groups(f.expression, safe_return_type, state, &parent, &components, -1, 0)
+			int root = -1
+			if (safe_owned_borrowed(safe_return_type)):
+				safe_eval_groups(f.expression, state, safe_return_type, &components)
+				root = safe_borrowed_roots(&components, safe_lifetime_count(safe_return_type), &parent)
+			else: root = safe_borrow_groups(f.expression, safe_return_type, state, &parent, &components, -1, 0)
 			f.return_roots = root
 			if (safe_validate):
 				for group in range(safe_lifetime_count(safe_return_type)):
@@ -1666,7 +1849,7 @@ void safe_transfer(int event, char* state):
 		for root in range(safe_locals.length):
 			if (safe_within(safe_birth[root], f.node) == 0): continue
 			for borrower in range(safe_locals.length):
-				if (safe_local_kind(borrower) < 2): continue
+				if (safe_local_loan(borrower) < 2): continue
 				if (safe_set_has(safe_origin[borrower], root) == 0): continue
 				if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
 				state[borrower] = (state[borrower] & 48) | 4
@@ -1681,7 +1864,9 @@ void safe_transfer(int event, char* state):
 		if (f.returning >= 0): roots = safe_graph[f.returning].return_roots
 		if (roots >= 0):
 			safe_call_roots.push(roots)
-			safe_call_kinds.push(safe_borrow_kind(safe_return_type))
+			int kind = safe_borrow_kind(safe_return_type)
+			if (safe_owned_borrowed(safe_return_type)): kind = 2
+			safe_call_kinds.push(kind)
 		safe_eval(f.expression, state, -1)
 		if (roots >= 0):
 			safe_call_roots.pop()
@@ -1728,7 +1913,9 @@ void safe_function_check(int function):
 		retained_binding* binding = retained_bindings[safe_locals[i]]
 		if (binding.scope == 'A'):
 			components.roots[0] = i
-			for group in range(1, safe_lifetime_count(binding.type)):
+			int first_group = 1
+			if (safe_owned_borrowed(binding.type)): first_group = 0
+			for group in range(first_group, safe_lifetime_count(binding.type)):
 				components.roots[group] = safe_locals.length
 				safe_locals.push(safe_locals[i])
 	safe_return_components = new safe_borrowed
@@ -1928,7 +2115,7 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
-					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type, 3) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0)):
+					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type, 3) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0) && (safe_mixed_owned_shape(n.semantic_type) == 0)):
 						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
 		if (checked):

@@ -103,9 +103,18 @@ generic_type_ast* generic_type_ast_capture_at(int depth, int* brackets, int with
 		generic_type_ast_advance(brackets)
 		char* lifetime = 0
 		if (generic_type_ast_accept(brackets, c"[")):
-			if ((safety == 1) || (is_ident_start_byte(token[0]) == 0)): return 0
+			if (is_ident_start_byte(token[0]) == 0): return 0
 			lifetime = strclone(token)
 			generic_type_ast_advance(brackets)
+			while (generic_type_ast_accept(brackets, c",")):
+				if (is_ident_start_byte(token[0]) == 0):
+					free(lifetime)
+					return 0
+				char* prefix = strjoin(lifetime, c",")
+				free(lifetime)
+				lifetime = strjoin(prefix, token)
+				free(prefix)
+				generic_type_ast_advance(brackets)
 			if (generic_type_ast_accept(brackets, c"]") == 0):
 				free(lifetime)
 				return 0

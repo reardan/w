@@ -37,8 +37,10 @@
 # preserve the existing 0.7 point margin. Other measured floors are unchanged.
 # Independent aggregate groups raise compiler lines/branches to 95.5/86.1%;
 # preserve the existing 0.8/0.7 point margins.
+# Mixed-owner regressions raise compiler line coverage to 95.6%; preserve
+# the 0.8 point margin. Branch floors remain unchanged.
 code_generator/ 96.2
-compiler/ 94.7
+compiler/ 94.8
 grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
