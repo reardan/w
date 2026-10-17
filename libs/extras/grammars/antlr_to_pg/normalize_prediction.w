@@ -64,48 +64,48 @@ int at_precedence_plain(list[at_alt*] alts):
 
 int at_normalize_prediction_expression(at_rule* rule, list[at_rule*] rules):
 	if (rule.is_lexer || rule.is_fragment): return 0
-	if ((rule.options != 0) && (rule.options.length > 0)): return 0
+	if ((rule.options != 0) && (rule.options.length > 0)): return at_normalization_guard(rule, c"prediction_expression", 0, c"rule_options")
 	list[at_precedence_operator*] operators = new list[at_precedence_operator*]
 	list[at_alt*] primaries = new list[at_alt*]
 	list[int] prefix_binding = new list[int]
-	for at_alt* alt in rule.alts:
-		if (alt.elements.length == 0): return 0
+	for ai, alt in rule.alts:
+		if (alt.elements.length == 0): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"empty_alternative")
 		at_alt* plain = new at_alt()
 		plain.elements = alt.elements
 		list[at_alt*] singleton = new list[at_alt*]
 		singleton.push(plain)
-		if (at_precedence_plain(singleton) == 0): return 0
+		if (at_precedence_plain(singleton) == 0): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"element_semantics")
 		int last = alt.elements.length - 1
 		if (at_expression_self(alt.elements[0], rule.name)):
-			if (last < 1): return 0
+			if (last < 1): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"self_only_alternative")
 			int assoc = at_expression_associativity(alt)
-			if (assoc < 0): return 0
+			if (assoc < 0): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"alternative_options")
 			int operand = -1
 			if (at_expression_self(alt.elements[last], rule.name)): operand = last
 			int first_operand = 1
 			while (first_operand < alt.elements.length):
 				if (at_expression_self(alt.elements[first_operand], rule.name)): break
 				first_operand++
-			if (at_precedence_prefix_safe(alt, 1, first_operand, rule.name) == 0): return 0
+			if (at_precedence_prefix_safe(alt, 1, first_operand, rule.name) == 0): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"operator_prefix_not_proven")
 			at_precedence_operator* op = new at_precedence_operator()
 			op.source = alt
 			op.right_operand = operand
 			op.right_associative = assoc
 			operators.push(op)
 		else:
-			if ((alt.sites != 0) && (alt.sites.length > 0)): return 0
+			if ((alt.sites != 0) && (alt.sites.length > 0)): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"primary_semantics")
 			int binding = -1
 			if ((last > 0) && at_expression_self(alt.elements[last], rule.name)):
-				if (at_precedence_prefix_safe(alt, 0, last, rule.name) == 0): return 0
+				if (at_precedence_prefix_safe(alt, 0, last, rule.name) == 0): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"primary_prefix_not_proven")
 				binding = operators.length
 			else:
-				if (at_precedence_alts_nullable(singleton)): return 0
-				if (at_expression_base_direct(singleton, rule.name) == 0): return 0
-				if (at_audit_left_path(singleton, rule.name, new map[char*, int])): return 0
+				if (at_precedence_alts_nullable(singleton)): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"nullable_primary")
+				if (at_expression_base_direct(singleton, rule.name) == 0): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"primary_owner_not_delimited")
+				if (at_audit_left_path(singleton, rule.name, new map[char*, int])): return at_normalization_guard(rule, c"prediction_expression", ai + 1, c"primary_nullable_prefix_cycle")
 			primaries.push(alt)
 			prefix_binding.push(binding)
-	if ((operators.length == 0) || (primaries.length == 0)): return 0
-	if (at_expression_productive(rule.name) == 0): return 0
+	if ((operators.length == 0) || (primaries.length == 0)): return at_normalization_guard(rule, c"prediction_expression", 0, c"missing_operator_or_primary")
+	if (at_expression_productive(rule.name) == 0): return at_normalization_guard(rule, c"prediction_expression", 0, c"base_not_proven_productive")
 	# All refusals precede helper registration and source mutation.
 	at_rule* primary = at_expression_helper(rule, c"primary")
 	list[at_rule*] tiers = new list[at_rule*]
@@ -167,12 +167,12 @@ int at_normalize_prediction_expression(at_rule* rule, list[at_rule*] rules):
 # are left to precedence lowering, not flattened into list semantics.
 int at_normalize_prediction_list(at_rule* rule):
 	if (rule.is_lexer || rule.is_fragment): return 0
-	if ((rule.options != 0) && (rule.options.length > 0)): return 0
-	if (at_precedence_plain(rule.alts) == 0): return 0
+	if ((rule.options != 0) && (rule.options.length > 0)): return at_normalization_guard(rule, c"prediction_list", 0, c"rule_options")
+	if (at_precedence_plain(rule.alts) == 0): return at_normalization_guard(rule, c"prediction_list", 0, c"element_semantics")
 	list[at_alt*] bases = new list[at_alt*]
 	list[at_alt*] tails = new list[at_alt*]
 	int nullable = 0
-	for at_alt* alt in rule.alts:
+	for ai, alt in rule.alts:
 		int recursive = 0
 		if (alt.elements.length > 0): recursive = at_expression_self(alt.elements[0], rule.name)
 		at_alt* part = new at_alt()
@@ -185,16 +185,16 @@ int at_normalize_prediction_list(at_rule* rule):
 		for i in range(begin, alt.elements.length): part.elements.push(at_clone_element(alt.elements[i]))
 		list[at_alt*] singleton = new list[at_alt*]
 		singleton.push(part)
-		if (at_audit_left_path(singleton, rule.name, new map[char*, int])): return 0
+		if (at_audit_left_path(singleton, rule.name, new map[char*, int])): return at_normalization_guard(rule, c"prediction_list", ai + 1, c"tail_nullable_prefix_cycle")
 		if (recursive):
-			if (at_precedence_alts_nullable(singleton)): return 0
-			if (at_expression_base_direct(singleton, rule.name) == 0): return 0
+			if (at_precedence_alts_nullable(singleton)): return at_normalization_guard(rule, c"prediction_list", ai + 1, c"nullable_tail")
+			if (at_expression_base_direct(singleton, rule.name) == 0): return at_normalization_guard(rule, c"prediction_list", ai + 1, c"tail_owner_not_delimited")
 			tails.push(part)
 		else:
 			if (at_precedence_alts_nullable(singleton)): nullable = 1
 			bases.push(part)
-	if ((nullable == 0) || (bases.length == 0) || (tails.length == 0)): return 0
-	if (at_expression_productive(rule.name) == 0): return 0
+	if ((nullable == 0) || (bases.length == 0) || (tails.length == 0)): return at_normalization_guard(rule, c"prediction_list", 0, c"missing_nullable_base_or_tail")
+	if (at_expression_productive(rule.name) == 0): return at_normalization_guard(rule, c"prediction_list", 0, c"base_not_proven_productive")
 	at_alt* normalized = new at_alt()
 	normalized.elements = new list[at_element*]
 	at_element* base = new at_element()
