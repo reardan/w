@@ -1871,26 +1871,82 @@ int safe_replaced_field_groups(int type, int offset):
 	return replaced & ~retained
 
 
-void safe_replace_checked_field(int id, retained_node* assignment, retained_node* field, int root, char* state):
+int safe_parent_field_group(int id, int component):
 	retained_node owner
-	retained_node_load(safe_child(field, field.left), &owner)
-	if ((owner.op != 'v') || (safe_kind(owner.semantic_type) != 1)):
-		safe_error(id, c"safe: checked field replacement requires a named unique owner", -1)
-	int index = safe_index(owner.binding)
-	if (index < 0): safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
-	if ((root != index) && (safe_path_parent[root] != index)):
+	retained_node_load(id, &owner)
+	retained_node parent
+	retained_node_load(safe_child(&owner, owner.left), &parent)
+	int template = safe_pointee(parent.semantic_type)
+	retained_type* record = retained_types[template]
+	for i in range(record.fields.length):
+		if (record.fields[i].offset == owner.value):
+			int group = safe_field_group(template, record.fields[i].type, component)
+			if (group >= 0): return group
+	safe_error(id, c"safe: unnamed nested owner field group", -1)
+	return -1
+
+
+# Map the selected receiver's groups through each enclosing owned field.
+# Siblings at every level retain their loans, even when labels are repeated.
+int safe_replacement_groups_at_root(int id, int selected):
+	retained_node owner
+	retained_node_load(id, &owner)
+	if (owner.op == 'v'): return selected
+	int mapped = 0
+	for component in range(safe_lifetime_count(owner.semantic_type)):
+		if (selected & (1 << component)):
+			mapped = mapped | (1 << safe_parent_field_group(id, component))
+	int left = safe_child(&owner, owner.left)
+	retained_node parent
+	retained_node_load(left, &parent)
+	mapped = mapped & safe_replaced_field_groups(parent.semantic_type, owner.value)
+	return safe_replacement_groups_at_root(left, mapped)
+
+
+void safe_replacement_components_at_root(int id, safe_borrowed* incoming, safe_borrowed* result):
+	retained_node owner
+	retained_node_load(id, &owner)
+	if (owner.op == 'v'):
+		safe_borrowed_copy(result, incoming, safe_lifetime_count(owner.semantic_type))
+		return
+	safe_borrowed mapped
+	safe_borrowed_clear(&mapped)
+	for component in range(safe_lifetime_count(owner.semantic_type)):
+		int group = safe_parent_field_group(id, component)
+		mapped.roots[group] = safe_set_union(mapped.roots[group], incoming.roots[component])
+		mapped.parents[group] = safe_set_union(mapped.parents[group], incoming.parents[component])
+	safe_replacement_components_at_root(safe_child(&owner, owner.left), &mapped, result)
+
+
+void safe_replace_checked_field(int id, retained_node* assignment, retained_node* field, int root, char* state):
+	int owner_id = safe_child(field, field.left)
+	retained_node owner
+	retained_node_load(owner_id, &owner)
+	int index = safe_unique_owner_root(owner_id)
+	if (index < 0): safe_error(id, c"safe: checked field replacement requires a stable unique owner path", -1)
+	int via = -1
+	int receiver = safe_place(owner_id, state, &via)
+	if ((receiver < 0) || (receiver >= safe_locals.length) || (safe_path_within(receiver, index) == 0)):
 		safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
+	if ((root != receiver) && (safe_path_parent[root] != receiver)):
+		safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
+	int root_node = owner_id
+	retained_node root_owner
+	retained_node_load(root_node, &root_owner)
+	while (root_owner.op == '.'):
+		root_node = safe_child(&root_owner, root_owner.left)
+		retained_node_load(root_node, &root_owner)
 	# Preserve the destination descriptor through every RHS operand. Field
 	# moves of children preserve this address; moving the parent cannot.
 	int saved = safe_call_roots.length
-	safe_call_roots.push(index)
+	safe_call_roots.push(receiver)
 	safe_call_kinds.push(4)
 	safe_borrowed incoming
 	int previous_owner = safe_replacing_owner
 	int previous_groups = safe_replacing_groups
-	if (safe_assignment_reads_previous(assignment, safe_child(field, field.left), owner.binding) == 0):
+	if (safe_assignment_reads_previous(assignment, root_node, root_owner.binding) == 0):
 		safe_replacing_owner = index
-		safe_replacing_groups = safe_replaced_field_groups(owner.semantic_type, field.value)
+		safe_replacing_groups = safe_replacement_groups_at_root(owner_id, safe_replaced_field_groups(owner.semantic_type, field.value))
 	if (safe_kind(field.semantic_type) == 1):
 		safe_eval_groups(safe_child(assignment, assignment.right), state, field.semantic_type, &incoming)
 	else:
@@ -1901,7 +1957,7 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 	while (safe_call_roots.length > saved):
 		safe_call_roots.pop()
 		safe_call_kinds.pop()
-	if ((safe_kind(field.semantic_type) == 1) && (root != index)):
+	if ((safe_kind(field.semantic_type) == 1) && (root != receiver)):
 		state[root] = 2
 		safe_paths_initialize(root, state)
 	safe_access(root, -1, 1, id, state)
@@ -1920,7 +1976,10 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 			safe_error(id, c"safe: owned fields cannot borrow their containing owner", -1)
 		if (safe_validate && safe_ancestor(index, parent)):
 			safe_error(id, c"safe: owned field replacement cannot create a reborrow cycle", safe_birth[index])
-		safe_components_join(index, &mapped, safe_lifetime_count(owner.semantic_type))
+		safe_borrowed enclosing
+		safe_borrowed_clear(&enclosing)
+		safe_replacement_components_at_root(owner_id, &mapped, &enclosing)
+		safe_components_join(index, &enclosing, safe_lifetime_count(root_owner.semantic_type))
 		safe_origin_join(index, external, parent)
 
 

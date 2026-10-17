@@ -685,6 +685,30 @@ view of a local/consumed owner remains an escape error even if its external data
 outlives the call. `refmut Record*` and optional whole mixed-owner views remain
 unsupported. There is no new runtime descriptor, allocation or cleanup work.
 
+### Replacement through nested unique owners
+
+A checked field may be replaced through a stable chain of owned fields rooted
+in a named unique owner, for example `outer.middle.child = new Child(...)` or
+`outer.middle.child.view = data`. Every receiver along the chain must remain
+initialized. Calls, indexed receivers and borrowed receivers do not establish
+this unique path and remain rejected.
+
+The destination is evaluated once before the right-hand side. Its receiver and
+ancestors cannot be moved or destroyed during that evaluation; separate sibling
+owners may move. Assigning a moved owned child restores only that child's
+initialization state. Siblings that remain moved still prevent a whole-owner
+borrow or transfer. Self-assignment transfers and clears the old source slot
+before installing the value, with no duplicate destruction.
+
+External lifetime components map through the declared field labels at every
+ownership level. Only groups held exclusively by the replaced field may be
+suspended during right-hand-side evaluation; siblings at every ancestor retain
+their obligations. Incoming and historical origins remain conservatively joined
+at the containing owner. Local escapes, incompatible return lifetimes,
+self-reference and reborrow cycles remain rejected. This adds no allocation or
+new descriptor representation; existing field-assignment lowering handles
+recursive and opaque destruction.
+
 ### Call checking
 
 Owned returns must transfer an owner on every normal path. Recursion,
@@ -1764,3 +1788,27 @@ byte-identical and execute on x86/x64. Median time is 2.90/2.96 s and peak RSS
 114,208 KiB for both compilers on the shared host. These measurements do not
 establish a general performance bound. Nested replacement and broader views
 retain separate gates; neither #695 nor #644 closes.
+
+### Nested checked-field replacement (Wave 1)
+
+Thirty-one accepted/rejected programs cover nested owned and borrowed fields,
+restored grandchildren, sibling borrows and moves, receiver invalidation,
+reordered lifetime labels, ancestor sibling obligations, local escapes,
+return contracts, loops and defer. Every case is checked and compiled on
+x86/x64 with and without `--safe`; accepted programs execute and rejections
+leave no executable.
+
+Validation passes 1,376 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,374 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+56/59 changed executable compiler lines are reached (94%). Existing directory
+line/branch floors pass.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+242 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `de24c72e` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 1.70/1.71 s and peak RSS
+114,208/114,432 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Broader mixed-owner views and optional
+fields retain separate gates; neither #695 nor #644 closes.
