@@ -1930,3 +1930,18 @@ Validation: 27 accepted/rejected cases on x86/x64, check/compile with and withou
 ### Optional reference-field validation
 
 Validation: 32 accepted/rejected cases on x86/x64 with and without `--safe`, check/compile parity, accepted execution and rejected-artifact suppression. The full suite, both Linux fixpoints, Wine and benchmark passed 1,385 targets; all 48 architecture/root checks passed. Instrumented validation passed 1,383 targets and all six API harnesses with a COMPLETE receipt, reaching 2/2 changed compiler lines (100%). Compiler line/branch coverage remains 95.6/86.2%, preserving existing floors. Linux optimization variants and Wine passed. Native guards/Memcheck reported 12 allocations/frees and zero errors/leaks per Linux target. Seven alternating compiles of fixed `9f4bead3` measured 1.70/1.70 s and 114,432 KiB median peak RSS before/after; compiler and prior checked fixture binaries were byte-identical. The implementation rebased unchanged onto the optional-view validation commit.
+
+
+### Optional unique-owner validation
+
+Optional unique owners use pointer-sized zero for absence. `optown T*` supports presence-checked access, transfer into required owners, complete optional owned-field construction and recursive cleanup. Move state remains separate from presence, including for known-zero transfers. Mixed optional owners retain every external lifetime group; known-absent transfers do not retain former loans. Nullable inline records and slices remain outside this pointer representation contract.
+
+Speculative optional-owner type names now preserve their qualifier and lifetime labels through commit. A type-table regression compares generic argument identities before and after commit, preventing optional owners from colliding with required owners.
+
+Validation: 52 accepted/rejected cases on x86/x64 with and without `--safe`, check/compile parity, accepted execution and rejected-artifact suppression. Final full ordinary validation passed 1,410 targets, both Linux fixpoints, Wine and the benchmark gate. Architecture validation passed all 48 root/target checks. Selected integration passed 19 targets, including three ARM64 runtime cross-compiles. The final instrumented run passed 1,408 targets and six API harnesses with a COMPLETE receipt, reaching 24/24 changed compiler lines (100%). Compiler line/branch coverage is 95.6/86.2%; the branch floor rises to 85.7%.
+
+An earlier instrumented run failed the existing VM socket-close cancellation test (guest exit status 1). Its isolated rerun and subsequent complete instrumented runs passed; the final complete run supplies the coverage evidence.
+
+Linux optimization variants and Wine pass. Native guards/Memcheck report 113 allocations/frees and zero errors/leaks per Linux target. Seven alternating compiles of fixed `ac74928d` sources measured 1.65/1.64 s and 114,464/114,688 KiB median peak RSS before/after. Compiler and prior callable/mixed-owner fixture binaries are byte-identical. These measurements describe that corpus on the shared host, not a general performance guarantee.
+
+This implements the optional-owner representation step under #695/#644. The issues remain open until their required PRs merge. No listed capability is deferred.
