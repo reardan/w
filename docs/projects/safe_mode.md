@@ -682,8 +682,7 @@ an owning binding can still retain just its external field group.
 
 Shared views cannot lend mutable fields or owned children. Returning the whole
 view of a local/consumed owner remains an escape error even if its external data
-outlives the call. Mutable whole-owner views follow the rules below; optional
-whole mixed-owner views remain unsupported. There is no new runtime descriptor,
+outlives the call. Mutable and optional whole-owner views follow the rules below. There is no new runtime descriptor,
 allocation or cleanup work.
 
 ### Mutable views of mixed owners
@@ -703,8 +702,28 @@ mixed owner remains conservative across its external groups.
 
 Field rebinding and partial moves still require a stable unique owning path;
 a mutable borrowed receiver does not transfer ownership or replace its stored
-lifetime contract. Optional whole-owner views retain a separate admission gate.
+lifetime contract. Optional whole-owner views require the presence rules below.
 No pointer layout, descriptor, allocation or cleanup representation changes.
+
+### Optional mixed-owner views
+
+`optref Record*` and `optrefmut Record*` use the existing nullable checked-pointer
+representation to view a mixed owner. A present view retains the allocation and
+all external groups, just like a nonoptional whole-owner view. A proven-absent
+view carries no live storage obligation. Copies, assignments, generic calls,
+quantified callbacks and returned views preserve the existing optional contract.
+
+A dominating presence check is required before every scalar, owned-child or
+borrowed-field projection. Assignments, branch joins and loop edges invalidate
+stale presence proofs. Making the optional view absent does not release a field
+view that was previously extracted from it; that field view keeps its own
+origins and reborrow ancestry. Mutable promotion from shared views, local-owner
+escapes and reborrow cycles remain errors.
+
+This does not admit optional owners, optional aggregate fields or optional
+inline borrowed-record representations. Those require separate construction
+and cleanup rules; this step reuses the existing nullable pointer and adds no
+allocation, runtime descriptor or cleanup representation.
 
 ### Replacement through nested unique owners
 
@@ -1858,3 +1877,8 @@ byte-identical and execute on x86/x64. Median time is 2.11/1.71 s and peak RSS
 114,656/114,432 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Optional whole-owner views and nullable
 fields retain separate gates; neither #695 nor #644 closes.
+
+
+### Optional mixed-owner view validation
+
+Validation: 27 accepted/rejected cases on x86/x64, check/compile with and without `--safe`, accepted execution and rejected-artifact suppression. The ordinary suite, both Linux fixpoints, Wine and benchmark passed 1,382 targets; all 48 architecture/root checks passed. Instrumented validation passed 1,380 targets and all six API harnesses with a COMPLETE receipt; changed compiler coverage is 2/2 lines (100%), and existing floors pass. Linux optimization variants and Wine passed. Native guards/Memcheck reported six allocations/frees and zero errors/leaks per Linux architecture. Seven alternating compiles of the fixed `80828260` source corpus measured 1.72/1.72 s and 114,432 KiB peak RSS before/after. Compiler output and prior checked runtime fixture binaries were byte-identical. The implementation rebased unchanged onto the prerequisite validation commit.

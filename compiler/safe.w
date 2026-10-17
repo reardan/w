@@ -509,7 +509,7 @@ int safe_group_exclusive(int type, int group):
 # A mixed-owner view retains the descriptor and every external group.
 # One conservative lifetime keeps all reachable data tied to the receiver.
 int safe_mixed_view(int type):
-	if ((safe_kind(type) < 2) || safe_optional(type) || safe_slice(type) || safe_record(type)): return 0
+	if ((safe_kind(type) < 2) || safe_slice(type) || safe_record(type)): return 0
 	int target = safe_pointee(type)
 	if (safe_mixed_owned_shape(target) == 0): return 0
 	list[char*] groups = safe_record_groups(target)
@@ -1439,6 +1439,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 	else if ((n.op == '.') && safe_kind(n.semantic_type)):
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
+		if (safe_optional(base.semantic_type)): safe_require_present(safe_child(&n, n.left), state)
 		if (safe_record(base.semantic_type)):
 			if ((kind == 3) && ((safe_kind(base.semantic_type) == 2) || (safe_kind(n.semantic_type) == 2))): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
 			int template = retained_types[safe_unqualified(base.semantic_type)].target
