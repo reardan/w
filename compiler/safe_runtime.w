@@ -5,6 +5,14 @@
 import lib.sha256
 
 char* safe_runtime_digest(char* path):
+	if (ends_with(path, c"/lib/__arch__/arm64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
+	if (ends_with(path, c"/lib/__arch__/arm64/context.w")): return c"4a3249682fcff806dcc692c06388800598401f230dba49dc8deb231c28009438"
+	if (ends_with(path, c"/lib/__arch__/arm64/syscalls.w")): return c"e4832ebe92ac88c25e42727364730a0b5fb1bde92409dad527047663ede683fa"
+	if (ends_with(path, c"/lib/arm64/android_stat.w")): return c"01e04f94d5c3e5219a3e566c2acbd50146476f7d9ad4e009bdc642d437c1f483"
+	if (ends_with(path, c"/lib/arm64/context.w")): return c"bdfaef1c545673869c21dea6e56c94fb161ffc2f00ea465e8149e472268f18f3"
+	if (ends_with(path, c"/lib/arm64/syscalls.w")): return c"ed4eb5b28f5f92d6d8b9bbabd43002eada6f57f375295913c48a0d937c2c2514"
+	if (ends_with(path, c"/lib/context_aarch64.w")): return c"fc896005c22d77c26b4e6f0a96aa744a6a8d854a69c2e6eebfb4542291a48fae"
+	if (ends_with(path, c"/lib/fs_flags_arm64.w")): return c"fd653201b5973344f8bffe4dadf750c7f48d54c7b8e5c43e8a4ebc5a3b274fc6"
 	if (ends_with(path, c"/lib/__arch__/win64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/win64/context.w")): return c"f046288e32fb6135d7b485b97a13beae0b44e22cd8306f9b86957c1234326c81"
 	if (ends_with(path, c"/lib/__arch__/win64/syscalls.w")): return c"546c896edff94904739f5b8ac252f248f6b19cf9ddcae11ebd0dac2a28ca13e2"

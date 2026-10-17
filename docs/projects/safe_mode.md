@@ -742,10 +742,34 @@ implementations. A changed runtime or shadow import fails checking until its
 contract is reviewed and its pin updated. Merely importing a library does not
 grant permission to call arbitrary raw interfaces.
 
+## Linux ARM64 runtime contract
+
+Linux `arm64` accepts the same checked contracts as x86/x64 and win64.
+Sized references remain one pointer word; checked slices retain their inline
+pointer/length descriptor. Owner transfers clear source slots, and normal
+exits use the same conditional recursive cleanup as the other targets.
+
+The audited runtime pins the ARM64 architecture shims, Linux syscall and
+stat implementations, AArch64 context layout and filesystem flags. The
+syscall boundary uses Linux AArch64 argument/result registers and signed
+error returns. Allocation uses the existing page-size discovery and guard
+allocator; page size is not assumed to be 4 KiB. These pins do not expose
+additional raw calls to checked application code. Modified or shadowed
+runtime implementations fail the audit.
+
+`safe_arm64_contract_test` checks and cross-compiles accepted/rejected
+programs with and without `--safe`, validates ELF machine headers, and
+checks unsupported targets and runtime-pin invalidation. The ordinary suite
+also cross-compiles the cleanup/lifetime runtime corpus in three optimization
+modes. `./wbuild tests_arm64` executes the accepted matrix and runtime corpus
+through `wrun` under QEMU, including guard-allocator runs. Runtime execution
+is a required target-admission gate. Android, Darwin, iOS and WebAssembly
+checked applications remain rejected.
+
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64 and win64,
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64 and win64,
 and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same
