@@ -5,6 +5,7 @@
 import lib.sha256
 
 char* safe_runtime_digest(char* path):
+	if (ends_with(path, c"/lib/safe_owned_vector.w")): return c"a2c00bac9caea4e5ad93e427ea794f80603fcd6ca610963c5ad210915e9a2630"
 	if (ends_with(path, c"/lib/safe_vector.w")): return c"d430d21aaa3f39358a4ca381f6d519ae5f2ec90de9ed7aa3cfabba1db6c76757"
 	if (ends_with(path, c"/lib/__arch__/arm64_darwin/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/arm64_darwin/context.w")): return c"23abb972c712b19cdb7de44245451521ed6c6786039b51e5f4cb378f32e25547"

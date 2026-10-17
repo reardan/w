@@ -45,6 +45,7 @@ lib/not_android.w
 lib/page_size.w
 lib/safe_buffer.w
 lib/safe_foreign.w
+lib/safe_owned_vector.w
 lib/safe_thread.w
 lib/safe_vector.w
 lib/signal.w

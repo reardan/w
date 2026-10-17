@@ -407,11 +407,30 @@ int safe_guard_drop(int type):
 	return safe_guard_drop_walk(type, 0, &remaining)
 
 
+# A sealed descriptor exposes only its element type to recursive validation.
+# The walk below shares its cycle/depth budget across nested owned buffers.
+int safe_owned_buffer_element(int type):
+	type = safe_unqualified(type)
+	if type < 0: return -1
+	retained_type* record = retained_types[type]
+	if record.kind || record.pointer_level || (record.fields.length != 5): return -1
+	if ((record.source < 0) || (safe_trusted(record.source) == 0)): return -1
+	if (ends_with(retained_sources[record.source].path, c"/lib/safe_owned_vector.w") == 0): return -1
+	if (starts_with(record.name, c"WOwnedBuffer$") == 0): return -1
+	int element = safe_pointee(safe_pointee(record.fields[3].type))
+	if ((element < 0) || (retained_types[element].size <= 0)): return -1
+	return element
+
+
+int safe_owned_shape(int type);
+
+
 int safe_opaque(int type):
 	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
+	if (safe_owned_buffer_element(type) >= 0): return safe_owned_shape(type)
 	if ((record.kind != 0) || record.pointer_level): return 0
 	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
 		if (starts_with(record.name, c"WBuffer$") && (record.fields.length == 3)):
@@ -423,6 +442,8 @@ int safe_opaque(int type):
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_owned_vector.w")):
+		return starts_with(name, c"owned_buffer_new$") || starts_with(name, c"owned_buffer_length$") || starts_with(name, c"owned_buffer_push$") || starts_with(name, c"owned_buffer_try_push$") || starts_with(name, c"owned_buffer_get$") || starts_with(name, c"owned_buffer_set$") || starts_with(name, c"owned_buffer_pop$") || starts_with(name, c"owned_buffer_clear$")
 	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_vector.w")):
 		return starts_with(name, c"buffer_new$") || starts_with(name, c"buffer_length$") || starts_with(name, c"buffer_push$") || starts_with(name, c"buffer_get$") || starts_with(name, c"buffer_set$") || starts_with(name, c"buffer_pop$") || starts_with(name, c"buffer_clear$") || starts_with(name, c"buffer_view$") || starts_with(name, c"buffer_view_mut$")
 	if (safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_foreign.w")):
@@ -664,11 +685,13 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	type = safe_unqualified(type)
 	if ((type < 0) || (depth > 32) || (*remaining <= 0)): return 0
 	*remaining = *remaining - 1
-	# A guard always carries its mutex's lifetime: own[a] WSafeGuard*.
-	if (safe_plain(type, 0) || (safe_opaque(type) && (safe_sync_record(type) != 2))): return 1
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
+	int element = safe_owned_buffer_element(type)
+	if element >= 0: return safe_owned_shape_walk(element, depth + 1, path, remaining)
+	# A guard always carries its mutex's lifetime: own[a] WSafeGuard*.
+	if (safe_plain(type, 0) || (safe_opaque(type) && (safe_sync_record(type) != 2))): return 1
 	retained_type* record = retained_types[type]
 	if ((record.kind != 0) || record.pointer_level || (record.fields.length == 0)): return 0
 	for i in range(record.fields.length):

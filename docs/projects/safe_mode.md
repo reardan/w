@@ -1238,6 +1238,43 @@ This step covers pointer-free sequential storage in #697. Owned-element
 storage, maps/sets, checked iteration and fallible insertion remain required;
 it does not close #697 or #644.
 
+### Generic owned-element buffers
+
+`import lib.safe_owned_vector` provides `own WOwnedBuffer[T]*`, an opaque
+container of unique `own T*` elements. `owned_buffer_new[T](maximum)` uses
+`-1` for unbounded storage or a nonnegative insertion limit. `T` can contain
+other unique owners, fixed arrays and checked callable fields. Recursive
+type cycles and externally borrowed fields remain rejected. Nested owned
+buffers preserve the generated destructor for each element specialization.
+
+`owned_buffer_push[T]` consumes an element; `owned_buffer_set[T]` consumes
+its replacement and destroys the old value recursively. `owned_buffer_pop[T]`
+returns ownership. `owned_buffer_clear[T]` and scope-exit destruction release
+elements in reverse order. `owned_buffer_get[T]` returns a shared reference
+tied to the buffer; a live reference blocks every exclusive operation,
+including insertion with spare capacity or an insertion that would fail.
+`owned_buffer_length[T]` borrows shared. Element addresses remain private.
+
+`owned_buffer_try_push[T]` consumes the argument and returns `optown T*`:
+absence means insertion succeeded, and presence returns the original element
+on limit, overflow or allocation failure. A failed growth preserves all
+existing elements, length, capacity and storage. The returned owner can be
+retried or destroyed by its scope. Bind and handle this result; discarding
+an owner-valued call is rejected by the existing checked-call contract.
+Infallible push traps on failure; new descriptor allocation and out-of-range
+get/set/pop also trap.
+
+The exact resolved runtime implementation is pinned. Private raw slots are
+cleared at every transfer, including the failed-insertion return path, and
+a per-specialization destructor uses generated recursive owner cleanup.
+User code cannot access metadata, forge the destructor or call private
+runtime helpers through a checked contract. These guarantees also hold
+without `--safe`.
+
+This extends the sequential-container deliverable in #697. Maps/sets and
+checked iteration retain their independent implementation and merge gates;
+#697 and #644 remain open.
+
 ## Synchronous foreign byte I/O
 
 `import lib.safe_foreign` exposes two audited entry points:
