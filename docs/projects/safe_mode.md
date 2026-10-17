@@ -1639,3 +1639,28 @@ byte-identical and execute on x86/x64. Median time is 3.79/3.56 s and peak RSS
 114,048/113,888 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Partial moves and scalar field paths
 retain separate gates; neither #695 nor #644 closes.
+
+### Direct owned-child partial moves (Wave 1)
+
+Forty-three accepted/rejected programs cover direct child extraction, missing
+children, branches, loops, callbacks, generic calls, replacement, parent borrows
+and moves, mixed-group provenance and cleanup exits. Every case is checked and
+compiled on x86/x64 with and without `--safe`; accepted programs execute and
+rejections leave no executable. The emitted move clears its source slot before
+cleanup can observe it; initialized siblings retain their separate state.
+
+Validation passes 1,367 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,365 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+61/62 changed executable compiler lines are reached (98%). Rounded directory
+coverage is unchanged from the disjoint-field prerequisite and retains its
+raised compiler branch floor.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+21 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `37477e19` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 3.26/3.19 s and peak RSS
+113,888/113,984 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Scalar disjointness and nested moves
+retain separate gates; neither #695 nor #644 closes.
