@@ -1333,3 +1333,13 @@ for external lifetime metadata.
 This step covers shared fields. Exclusive fields, whole-owner views, field
 replacement and partial moves retain their separate required gates under #695;
 #695 and #644 remain open.
+
+### Retained symbol-position cache validation
+
+Retained semantic binding repeatedly searches the symbol table for an unchanged declaration position. Cache validated positions in a bounded 4,096-entry table, checking bounds and offsets after synchronization and retaining fresh name lookup and identity checks. Reset and release the cache with its owning state.
+
+Production retained-AST regressions cover 24 functions with differing parameter lengths, error rollback and reset. Full validation passed 1,362 ordinary targets and 1,361 instrumented targets plus six compiler/API harnesses. Both Linux fixpoints, 48 architecture/root checks, native allocator guards and existing coverage floors pass. The coverage receipt is COMPLETE; all 14 changed executable compiler lines ran.
+
+Seven alternating compiles of fixed `6b450a80` sources measured 1.62/1.62 seconds and 112,480 KiB median peak RSS before/after. Compiler output and prior callable/Windows-contract fixtures were byte-identical and executed on x86/x64. Fixed-corpus Callgrind instruction counts fell from 17,153,421,073 to 17,084,245,179 on x86 (0.40%) and 9,267,476,404 to 9,217,102,517 on x64 (0.54%). Both baseline and candidate used the same allocator fallback under Callgrind. The bounded cache reserves 16 KiB on x86 and 32 KiB on x64; these measurements establish only this corpus's result, not a general performance guarantee.
+
+Part of #714 under #700/#644. Those issues remain open for their remaining acceptance gates.
