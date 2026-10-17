@@ -573,7 +573,8 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		if (element_size > 1): imul_eax_int32(element_size)
 		pop_ebx_slot()
 		alu_add()
-		extracted_type = promote(element_type)
+		if (capture_slice && (type_num_args(element_type) > 0)): extracted_type = loop_var_type
+		else: extracted_type = promote(element_type)
 	if (extracted_type != -1): coerce(loop_var_type, extracted_type)
 	for_store_loop_var(for_var)
 
@@ -691,10 +692,15 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 # this path too, because promote() decays them to slice values.
 void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int container_type):
 	int element_type = type_unqualified(type_get_element_type(container_type))
+	int yielded_type = element_type
 	if (type_num_args(element_type) > 0):
-		error(c"slice iteration requires scalar or pointer elements")
-	if (types_compatible_with_expression(loop_var_type, element_type) == 0):
-		warn_type_mismatch(c"for loop variable", loop_var_type, element_type)
+		if (type_is_safe_slice(container_type) == 0): error(c"slice iteration requires scalar or pointer elements")
+		yielded_type = type_get_safe(type_get_next_pointer(element_type), 2)
+		if ((type_safe_kind(loop_var_type) != 2) || (type_get_pointer_level(loop_var_type) != 1)):
+			error(c"safe: record slice iteration requires a shared reference variable")
+	if (types_compatible_with_expression(loop_var_type, yielded_type) == 0):
+		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)): error(c"safe: incompatible record slice iteration variable type")
+		warn_type_mismatch(c"for loop variable", loop_var_type, yielded_type)
 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			0, 0, 0, 0, 0,
@@ -761,7 +767,10 @@ int for_infer_var_type(int container_type):
 		if (type_num_args(element_type) > 0): return type_get_next_pointer(element_type)
 		return element_type
 	if (type_is_slice(container_type)):
-		return type_unqualified(type_get_element_type(container_type))
+		int element_type = type_unqualified(type_get_element_type(container_type))
+		if (type_is_safe_slice(container_type) && (type_num_args(element_type) > 0)):
+			return type_get_safe(type_get_next_pointer(element_type), 2)
+		return element_type
 	if (type_is_string(container_type)): return type_lookup(c"int")
 	if (type_get_pointer_level(container_type) == 1):
 		if (for_iter_generic_split(type_get_name(container_type)) >= 0):

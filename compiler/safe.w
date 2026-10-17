@@ -24,6 +24,7 @@ struct safe_flow:
 	int next
 	int alternate
 	int returning
+	int iterator
 	int return_roots
 	int return_exclusive_roots
 	int reached
@@ -898,6 +899,7 @@ int safe_add(int node, int expression, int binding, int action, int next, int al
 	f.next = next
 	f.alternate = alternate
 	f.returning = -1
+	f.iterator = -1
 	f.return_roots = -1
 	f.return_exclusive_roots = -1
 	f.reached = 0
@@ -1043,13 +1045,21 @@ int safe_iteration(int id, int next):
 		child = safe_next[child]
 	if ((local < 0) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
 	int type = retained_bindings[safe_locals[local]].type
-	if (safe_scalar_type(type) == 0): safe_error(id, c"safe: slice iteration requires a scalar loop variable", -1)
+	int borrowed = safe_kind(type) == 2
+	if ((safe_scalar_type(type) == 0) && (borrowed == 0)): safe_error(id, c"safe: slice iteration requires a scalar or shared reference variable", -1)
+	safe_type_check(id, type)
 	int guard = safe_add(id, -1, iterator, 8, -1, next)
-	int write = safe_add(id, -1, local, 6, -1, -1)
+	int action = 6
+	if (borrowed): action = 9
+	int write = safe_add(id, -1, local, action, -1, -1)
+	safe_graph[write].iterator = iterator
 	safe_graph[write].next = safe_build(body, guard, next, guard)
 	safe_graph[guard].next = write
 	int capture = safe_add(id, expression, iterator, 1, guard, -1)
-	return safe_add(id, -1, local, 4, capture, -1)
+	# A reference exists only on the body edge, never on an empty loop.
+	int initialize = 4
+	if (borrowed): initialize = 10
+	return safe_add(id, -1, local, initialize, capture, -1)
 
 
 # Each clause owns its label expressions and body. Unmatched labels
@@ -2705,6 +2715,18 @@ void safe_transfer(int event, char* state):
 		for i in range(safe_locals.length):
 			if (safe_within(safe_birth[i], f.node)): state[i] = 1
 	else if (f.action == 4): state[index] = 2
+	else if (f.action == 10): state[index] = 1
+	else if (f.action == 9):
+		int iterator = f.iterator
+		safe_read(iterator, f.node, state)
+		safe_access(safe_origin[iterator], iterator, 0, f.node, state)
+		safe_borrowed components
+		safe_borrowed_clear(&components)
+		components.roots[0] = safe_origin[iterator]
+		components.parents[0] = iterator
+		safe_components_join(index, &components, 1)
+		safe_origin_join(index, safe_origin[iterator], iterator)
+		state[index] = 2
 	else if ((f.action == 5) || (f.action == 6)):
 		safe_access(index, -1, f.action == 6, f.node, state)
 	else if (f.action == 8):
@@ -2847,6 +2869,7 @@ void safe_function_check(int function):
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
 		if ((f.action == 5) || (f.action == 6) || (f.action == 8)): f.uses[f.binding] = 1
+		if (f.action == 9): f.uses[f.iterator] = 1
 		# A guard is used where it is dropped: its block's exit, any
 		# return, and the end of the function.
 		for j in range(safe_real_locals):
@@ -2869,7 +2892,7 @@ void safe_function_check(int function):
 			safe_flow* f = safe_graph[i]
 			for j in range(count):
 				int live = f.uses[j]
-				if (((f.action != 1) && (f.action != 4)) || (f.binding != j)):
+				if (((f.action != 1) && (f.action != 4) && (f.action != 9) && (f.action != 10)) || (f.binding != j)):
 					if (f.next >= 0): live = live | safe_graph[f.next].live[j]
 					if (f.alternate >= 0): live = live | safe_graph[f.alternate].live[j]
 				if (live != f.live[j]):

@@ -1126,10 +1126,25 @@ return and ordinary completion release the loop's slots and run the existing
 lexical defer/owner cleanup for exited scopes. Mutation resumes after the last
 possible iterator read, including on a path that immediately breaks.
 
+For a plain record element, `for item in view` infers `ref Record*`;
+`for ref Record* item in view` states the same contract explicitly. Each
+iteration borrows the stored record at its element stride without copying it.
+The reference and any borrowed fields retain the backing slice's origins.
+They can be saved or returned subject to the ordinary lifetime contract;
+reallocation, clearing and owner transfer are rejected while a saved reference
+is live. Record fields cannot be mutated through the shared reference.
+
+A record loop variable becomes initialized only on entry to the body. Reading
+it after the loop is rejected because the slice may be empty. Use an optional
+reference initialized before the loop when retaining an element across the
+loop. Nested loops, subranges, generic calls and lexical defer preserve these
+same rules. A reference to a previous element remains valid when the cursor
+advances because it points into the nonmutated backing storage.
+
 A checked mutable slice must first be reborrowed as a shared slice. Direct
-iteration of mutable slices, records or owned elements, opaque container
-owners, and user cursor protocols still have separate gates under #697.
-Legacy raw iteration retains its existing behavior outside checked functions.
+iteration of mutable slices or owned elements, opaque container owners, and
+user cursor protocols still have separate gates under #697. Legacy raw
+iteration retains its existing behavior outside checked functions.
 
 ## Checked buffers and byte strings
 

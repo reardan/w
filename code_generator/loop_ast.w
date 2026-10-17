@@ -127,7 +127,8 @@ int* emit_cursor_loop_ast_begin(loop_ast* node):
 		if (element_size > 1): imul_eax_int32(element_size)
 		pop_ebx_slot()
 		alu_add()
-		extracted_type = promote(node.element_type)
+		if (node.capture_slice && (type_num_args(node.element_type) > 0)): extracted_type = node.variable_type
+		else: extracted_type = promote(node.element_type)
 	if (extracted_type != -1): coerce(node.variable_type, extracted_type)
 	for_store_loop_var(node.variable_slot)
 

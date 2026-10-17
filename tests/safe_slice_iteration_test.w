@@ -185,7 +185,7 @@ void test_slice_iteration_28():
 	slice_iteration_case(c"import lib.safe_vector\nint main():\n\town WBuffer[float32]* values = buffer_new[float32]()\n\tbuffer_push[float32](values, cast(float32, 1.5))\n\tfloat32 total = cast(float32, 0)\n\tfor item in buffer_view[float32](values): total += item\n\treturn total != cast(float32, 1.5)\n", 0, 0)
 
 void test_slice_iteration_29():
-	slice_iteration_case(c"import lib.safe_vector\nstruct Pair:\n\tint left\n\tint right\nint main():\n\town WBuffer[Pair]* values = buffer_new[Pair]()\n\tfor item in buffer_view[Pair](values): pass\n\treturn 0\n", c"scalar or pointer elements", 0)
+	slice_iteration_case(c"import lib.safe_vector\nstruct Pair:\n\tint left\n\tint right\nint main():\n\town WBuffer[Pair]* values = buffer_new[Pair]()\n\tfor item in buffer_view[Pair](values): pass\n\treturn 0\n", 0, 0)
 
 void test_slice_iteration_30():
 	slice_iteration_case(c"import lib.safe_vector\nref[a] int[] counted(ref[a] WBuffer[int]* values, refmut int* calls):\n\t*calls += 1\n\treturn buffer_view[int](values)\nint main():\n\town WBuffer[int]* values = buffer_new[int]()\n\tfor i in range(4): buffer_push[int](values, i + 1)\n\town int* calls = new int\n\tint total = 0\n\tfor item in counted(values, calls): total += item\n\treturn total + *calls - 11\n", 0, 0)
