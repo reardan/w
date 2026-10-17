@@ -267,7 +267,10 @@ parameters. Borrowed records supply their plain template and checked slices
 or fixed arrays supply their element type. The concrete signature rechecks
 qualifiers, group arity, outlives relationships and argument conflicts. A bare
 `T` parameter retains the entire checked type instead of stripping its wrapper.
-Generic-method syntax retains its separate implementation gate under #696.
+Checked generic method calls support both `receiver.function[T](...)` and
+`receiver.function(...)`. The receiver is the first argument of the specialized
+call, evaluated once before the remaining arguments. Record-prefixed definitions
+retain precedence; see [generic methods](generics.md#generic-method-calls).
 
 Check mode keeps its synthetic `int` instantiation for unused scalar, pointer
 and slice templates. A bare `ref T` or `refmut T` constraint requires a record,
@@ -859,12 +862,12 @@ ref[a] T* generic_view[T](ref[a] T* value):
 ```
 
 The result keeps the same backing roots as an ordinary reference-returning
-call. Generic syntax does not bypass the checker. Checked slices and inline
-borrowed records as generic type arguments remain excluded by the existing
-aggregate call limits. Generic method syntax and capturing callbacks remain
-unsupported in checked code, as does the existing unsupported `new T`
-allocation syntax in generic definitions. Noncapturing function pointers use
-the explicit quantified contracts below.
+call. Generic syntax does not bypass the checker. Checked slices and borrowed
+records retain their concrete layouts and contracts in explicit and inferred
+calls, including generic method syntax. Capturing callbacks and the existing
+unsupported `new T` allocation syntax in generic definitions retain their
+subsequent implementation gates. Noncapturing function pointers use the
+explicit quantified contracts below.
 
 ### Quantified function pointers
 

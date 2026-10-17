@@ -985,8 +985,30 @@ int ast_expression_ufcs_probe(char* name):
 int safe_check_requested();
 
 
+int ast_expression_generic_call_bound(expression_ast* tree, int depth, int def, int receiver, int record);
+int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def, int receiver, int record);
+
+
 int ast_expression_method_call(expression_ast* tree, int receiver, int record, int depth):
-	if (nextc != '('): return -1
+	if ((nextc != '(') && (nextc != '[')): return -1
+	# Generic method syntax lowers to a specialized call with the receiver
+	# first. A record-prefixed ordinary definition keeps its precedence.
+	int generic_def = -1
+	int prefixed_symbol = -1
+	if (record >= 0):
+		int nominal = type_unqualified(record)
+		if (type_is_safe_record(nominal)): nominal = type_record(nominal).alias_target
+		char* prefix = strjoin(type_get_name(nominal), c"_")
+		char* name = strjoin(prefix, token)
+		free(prefix)
+		prefixed_symbol = sym_probe(name)
+		if ((nextc == '[') || (prefixed_symbol < 0)): generic_def = generic_def_lookup(name, 0)
+		free(name)
+	if ((generic_def < 0) && ((nextc == '[') || ((prefixed_symbol < 0) && (ast_expression_ufcs_probe(token) < 0)))): generic_def = generic_def_lookup(token, 0)
+	if (generic_def >= 0):
+		if (nextc == '['): return ast_expression_generic_call_bound(tree, depth, generic_def, receiver, record)
+		return ast_expression_generic_infer_bound(tree, depth, generic_def, receiver, record)
+	if (nextc == '['): return -1
 	if ((record >= 0) && type_safe_kind(tree.result_type[receiver])): record = type_unqualified(record)
 	int callee = -1
 	int name_offset = -1
@@ -1444,9 +1466,8 @@ int ast_expression_generic_resolve(expression_ast* tree, int id, int args, int c
 	return arity
 
 
-int ast_expression_generic_call(expression_ast* tree, int depth):
+int ast_expression_generic_call_bound(expression_ast* tree, int depth, int def, int receiver, int record):
 	if (nextc != '['): return -1
-	int def = generic_def_lookup(token, 0)
 	int id = expression_ast_add(tree, 'G', -1, -1)
 	if (id < 0): return -1
 	tree.value[id] = def
@@ -1479,6 +1500,24 @@ int ast_expression_generic_call(expression_ast* tree, int depth):
 	if (token_newline || (ast_expression_accept(tree, c"(") == 0)): return -1
 	count = 0
 	tail = -1
+	if (receiver >= 0):
+		if (arity < 1): return -1
+		int want = ast_expression_generic_parameter(tree, id, 0)
+		int got = tree.result_type[receiver]
+		if ((record >= 0) && (type_get_pointer_level(want) == 1) && (type_get_pointer_level(got) == 0)):
+			int address_type = ast_expression_pointer_type(tree, type_real(got), tree.offset[receiver])
+			if (address_type < 0): return -1
+			int address = expression_ast_add(tree, 'r', receiver, -1)
+			if (address < 0): return -1
+			tree.result_type[address] = type_value(address_type)
+			tree.offset[address] = tree.offset[receiver]
+			receiver = address
+		if (ast_expression_data_value(want) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, receiver) == 0): return -1
+		if (ast_expression_conversion(tree, c"call argument", -3 - id, 0, want, ast_expression_promoted_type(tree.result_type[receiver]), receiver) == 0): return -1
+		tree.left[id] = receiver
+		tail = receiver
+		count = 1
 	while (peek(c")") == 0):
 		if (count >= arity): return -1
 		int want = ast_expression_generic_parameter(tree, id, count)
@@ -1500,16 +1539,36 @@ int ast_expression_generic_call(expression_ast* tree, int depth):
 	return id
 
 
+int ast_expression_generic_call(expression_ast* tree, int depth):
+	return ast_expression_generic_call_bound(tree, depth, generic_def_lookup(token, 0), -1, -1)
+
+
+# A captured concrete pointer parameter need not have been interned yet.
+# Stage its ordinary shape transactionally before receiver inference.
+int ast_expression_generic_shape(expression_ast* tree, int def, generic_type_ast* node, int* data):
+	int kind = generic_infer_ast_shape(def, node, data)
+	if (kind != -3): return kind
+	if ((node == 0) || node.application || (node.first != 0) || (node.stars == 0)): return -3
+	int type = type_lookup(node.name)
+	if (type < 0): return -3
+	int base = type_unqualified(type)
+	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -3
+	for i in range(node.stars):
+		type = ast_expression_pointer_type(tree, type, token_start_offset)
+		if (type < 0): return -3
+	*data = type
+	return -1
+
+
 # Inference over captured signatures is transactional. Each value
 # argument records the coercion performed at its own binding point, rather
 # than re-coercing it against the final signature after all arguments.
-int ast_expression_generic_infer(expression_ast* tree, int depth):
+int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def, int receiver, int record):
 	if (nextc != '('): return -1
-	int def = generic_def_lookup(token, 0)
 	generic_signature_ast* syntax = generic_defs[def].signature_ast
 	if ((syntax == 0) || (syntax.count > 10)): return -1
 	int data = 0
-	if (generic_infer_ast_shape(def, syntax.result, &data) == -3): return -1
+	if (ast_expression_generic_shape(tree, def, syntax.result, &data) == -3): return -1
 	int[10] kinds
 	int[10] shapes
 	# Invert only the admitted borrowed record/slice wrapper. The
@@ -1518,7 +1577,7 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 	generic_type_ast* parameter = syntax.parameters
 	int count = 0
 	while (parameter != 0):
-		int kind = generic_infer_ast_shape(def, parameter, &data)
+		int kind = ast_expression_generic_shape(tree, def, parameter, &data)
 		if ((kind == -3) || (count == 10)): return -1
 		borrowed_shapes[count] = 0
 		if ((parameter.safety == 2) || (parameter.safety == 3)):
@@ -1535,6 +1594,15 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 		shapes[count] = data
 		count = count + 1
 		parameter = parameter.next
+	if ((receiver >= 0) && (syntax.count == 0)): return -1
+	if ((receiver >= 0) && (record >= 0) && ((syntax.parameters.stars == 1) || ((kinds[0] == -1) && (type_get_pointer_level(shapes[0]) == 1))) && (type_get_pointer_level(tree.result_type[receiver]) == 0)):
+		int address_type = ast_expression_pointer_type(tree, type_real(tree.result_type[receiver]), tree.offset[receiver])
+		if (address_type < 0): return -1
+		int address = expression_ast_add(tree, 'r', receiver, -1)
+		if (address < 0): return -1
+		tree.result_type[address] = type_value(address_type)
+		tree.offset[address] = tree.offset[receiver]
+		receiver = address
 	int id = expression_ast_add(tree, 'W', -1, -1)
 	if (id < 0): return -1
 	tree.value[id] = def
@@ -1549,9 +1617,12 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	count = 0
 	int tail = -1
-	while (peek(c")") == 0):
+	while ((receiver >= 0) || (peek(c")") == 0)):
 		if (count >= syntax.count): return -1
-		int argument = ast_expression_assignment(tree, depth + 1)
+		int receiver_argument = receiver >= 0
+		int argument = receiver
+		if (receiver_argument): receiver = -1
+		else: argument = ast_expression_assignment(tree, depth + 1)
 		if (argument < 0): return -1
 		int type = tree.result_type[argument]
 		if (ast_expression_data_value(type) == 0): return -1
@@ -1603,6 +1674,7 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 		else: tree.next_arg[tail] = argument
 		tail = argument
 		count = count + 1
+		if (receiver_argument): continue
 		if (ast_expression_accept(tree, c",") == 0): break
 		if (peek(c")")): return -1
 	if ((count != syntax.count) || (peek(c")") == 0)): return -1
@@ -1631,6 +1703,10 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 		argument = tree.next_arg[argument]
 	ast_expression_advance(tree)
 	return id
+
+
+int ast_expression_generic_infer(expression_ast* tree, int depth):
+	return ast_expression_generic_infer_bound(tree, depth, generic_def_lookup(token, 0), -1, -1)
 
 
 # All speculative records have been removed before this runs. Ordinary
