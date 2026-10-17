@@ -1724,3 +1724,27 @@ byte-identical and execute on x86/x64. Median time is 1.73/1.72 s and peak RSS
 114,208 KiB for both compilers on the shared host. These measurements do not
 establish a general performance bound. Nested moves and replacement retain
 separate gates; neither #695 nor #644 closes.
+
+### Nested owned-child partial moves (Wave 1)
+
+Twenty-three accepted/rejected programs cover stable nested extraction,
+initialized siblings, whole-child and parent borrows, callbacks, generics,
+external groups, branches, loops and cleanup exits. Each case is checked and
+compiled on x86/x64 with and without `--safe`; accepted programs execute and
+rejections leave no executable. Whole-child borrowing verifies all descendants,
+so a missing grandchild cannot be hidden behind a borrowed child pointer.
+
+Validation passes 1,373 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,371 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+21/23 changed executable compiler lines are reached (91%). Existing coverage
+floors pass, including the preceding 85.6% compiler branch floor.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+332 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `9200791f` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 2.90/2.96 s and peak RSS
+114,208 KiB for both compilers on the shared host. These measurements do not
+establish a general performance bound. Nested replacement and broader views
+retain separate gates; neither #695 nor #644 closes.
