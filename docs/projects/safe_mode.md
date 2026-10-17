@@ -1,6 +1,7 @@
 # Experimental ownership and borrowing checks
 
-The compiler accepts `--safe` on Linux x86/x64 and Windows x64 (`win64`):
+The compiler accepts `--safe` on Linux x86/x64/ARM64, Windows x64 (`win64`)
+and macOS ARM64 (`arm64_darwin`):
 
 ```sh
 ./bin/wv2 --safe app.w -o app
@@ -1156,13 +1157,38 @@ checks unsupported targets and runtime-pin invalidation. The ordinary suite
 also cross-compiles the cleanup/lifetime runtime corpus in three optimization
 modes. `./wbuild tests_arm64` executes the accepted matrix and runtime corpus
 through `wrun` under QEMU, including guard-allocator runs. Runtime execution
-is a required target-admission gate. Android, Darwin, iOS and WebAssembly
+is a required target-admission gate. Android, iOS and WebAssembly
 checked applications remain rejected.
+
+## ARM64 Darwin runtime contract
+
+The macOS target (`arm64_darwin`) uses the checked pointer, borrowed aggregate
+and inline-slice representations of Linux ARM64. Admission requires the macOS
+platform discriminator, so the separate iOS device and simulator targets keep
+their own gates. Bounds checks remain mandatory and explicit contracts apply
+without `--safe`.
+
+Five runtime pins bind the Darwin arch shims, AArch64 context wrapper and XNU
+syscall implementation. The allocator falls back from unsupported `brk` to
+anonymous `mmap`; the Darwin wrapper translates mapping flags, and page-size
+probing supplies the guard allocator's alignment. No additional raw syscall
+becomes callable from checked application code. Runtime changes or shadowed
+imports invalidate the audit.
+
+`safe_darwin_contract_test` checks and cross-compiles accepted/rejected
+contracts with both flag modes, verifies Mach-O headers and rejection without
+artifacts, and exercises changed-runtime rejection. Its cross-built native
+host reruns the matrix with the self-hosted Darwin compiler and executes
+accepted programs on Apple Silicon. `safe_darwin_runtime_compile_test` builds
+91 ownership/borrow/cleanup variants, including an explicit `--safe` variant.
+The Darwin CI job executes them with the guard allocator and verifies the
+Darwin compiler fixpoint. Native execution is a required completion gate for
+#712; Linux cross-compilation alone does not complete that deliverable.
 
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64 and win64,
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64, win64 and arm64_darwin,
 and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same

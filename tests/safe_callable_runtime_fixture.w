@@ -74,6 +74,8 @@ int callable_multiword():
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if callable_exercise() != 800: return 1
 	if callable_early(1) != 7: return 2

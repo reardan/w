@@ -64,6 +64,8 @@ int nested_replacement_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if nested_replacement_exercise() != 106: return 1
 	if nested_replacement_views() != 13: return 2

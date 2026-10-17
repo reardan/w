@@ -52,6 +52,8 @@ int disjoint_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if disjoint_exercise() != 38: return 1
 	if disjoint_exits(1) != 0: return 2

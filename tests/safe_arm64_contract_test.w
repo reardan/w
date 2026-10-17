@@ -141,7 +141,6 @@ void test_arm64_contract_3():
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn mmap(0, 4096, 3, 34)\n", c"runtime call has no audited ownership contract")
 
 void test_arm64_contract_unsupported_targets():
-	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_darwin")
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_android")
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_ios")
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_ios_sim")

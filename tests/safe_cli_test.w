@@ -23,7 +23,7 @@
 # wbuild: step="bin/wv2 --bounds=off tests/safe_runtime_fixture.w --bounds=on" expect_fail expect_stderr="checked pointers require bounds checks"
 # wbuild: step="bin/wv2 --streaming tests/safe_runtime_fixture.w" expect_fail expect_stderr="checked pointers require the retained frontend"
 # wbuild: step="bin/wv2 check --json --safe arm64 tests/safe_cli_fixture.w"
-# wbuild: step="bin/wv2 check --json --safe arm64_darwin tests/safe_cli_fixture.w" expect_fail expect_stdout="only Linux x86, x64 and arm64"
+# wbuild: step="bin/wv2 check --json --safe arm64_darwin tests/safe_cli_fixture.w"
 import lib.testing
 import lib.process
 import lib.file
