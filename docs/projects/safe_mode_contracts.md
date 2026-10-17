@@ -178,8 +178,8 @@ inherits the whole union. Copies preserve that union. Taking the address of
 a descriptor field is forbidden, even for scalar fields: the inline value's
 storage must not inherit the longer lifetime of its borrowed data.
 
-Raw struct storage, zero initialization, mutable fields, nested aggregates
-and multiple independent field groups remain rejected. Nominal identity
+Raw struct storage, zero initialization, mutable fields and multiple independent
+field groups remain rejected. Nominal identity
 includes the declaration location, not just its printed name.
 
 The exclusive inline form `refmut[a] Record` additionally admits mutable
@@ -190,8 +190,19 @@ the entire backing group. Copying, passing and returning wrappers preserve
 reborrow ancestry and suspend conflicting parent access. Mutable-field
 extraction requires a mutable wrapper; shared fields cannot be upgraded.
 Scalar metadata remains assignable, but wrapper/reference-field replacement
-and descriptor addresses are rejected. Optional fields, nested records,
-mixed owner fields and independent groups are not admitted.
+and descriptor addresses are rejected. Optional fields, mixed owner fields
+and independent groups are not admitted.
+
+Nested borrowed wrappers recursively rename each inner group into the
+containing field's group. Validate every level with a path-cycle check, depth
+32 and expanded-work 256 bounds. Shared outer wrappers cannot contain mutable
+inner wrappers. Constructors recursively validate completeness and preserve
+every root, parent and earlier-argument reservation; field extraction keeps
+the complete enclosing union, including siblings. Inline scalar projections
+follow the containing place without acquiring a fresh exclusive data borrow.
+Returned-value projections evaluate their source once. Addresses of nested
+descriptor fields remain forbidden. The ordinary nested record layout and
+by-value ABI provide storage; no new runtime representation is introduced.
 
 ## Owner-bearing aggregates
 
@@ -287,7 +298,8 @@ ordinary call's ownership reservations and owner-slot clearing. Retained
 emission recovers the template identity from the concrete name without
 changing the published ownership contract. Qualified generic pointer
 signatures preserve their qualifier and optional lifetime label during
-capture and instantiation. Indirect calls and callbacks remain excluded.
+capture and instantiation. Quantified noncapturing indirect calls follow the
+callable rules above; capturing and escaping environments remain excluded.
 
 ## Target admission
 

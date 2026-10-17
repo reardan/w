@@ -292,12 +292,16 @@ void safe_pointer_match(int id, int want, int got):
 		safe_error(id, c"safe: incompatible checked pointer types", -1)
 
 
-# Borrowed aggregates have one lifetime group. Every reference field names
-# that group; scalar fields have no lifetime. Mutable wrappers also admit
-# exclusive fields and reserve the complete group when reborrowed.
-int safe_record_shape(int type, int kind):
+# Borrowed aggregates have one outer lifetime group. A nested wrapper
+# renames its own group into that outer group. Bound recursive validation
+# so repeated child types cannot expand compiler work without limit.
+int safe_record_shape_walk(int type, int kind, int depth, int* path, int* remaining):
 	type = safe_unqualified(type)
-	if (type < 0): return 0
+	if ((type < 0) || (depth > 32) || (*remaining <= 0)): return 0
+	*remaining = *remaining - 1
+	for i in range(depth):
+		if (path[i] == type): return 0
+	path[depth] = type
 	retained_type* record = retained_types[type]
 	if ((record.kind != 0) || record.pointer_level || (record.fields.length == 0)): return 0
 	char* lifetime = 0
@@ -305,8 +309,12 @@ int safe_record_shape(int type, int kind):
 		int field = safe_unqualified(record.fields[i].type)
 		if (field < 0): return 0
 		retained_type* member = retained_types[field]
-		if ((member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && (member.kind == type_kind_refmut))):
-			if (safe_plain(safe_pointee(field), 0) == 0): return 0
+		int nested = safe_record(field)
+		if (nested && (safe_kind(field) == 3) && (kind != 3)): return 0
+		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && (member.kind == type_kind_refmut))):
+			if (nested):
+				if (safe_record_shape_walk(member.target, safe_kind(field), depth + 1, path, remaining) == 0): return 0
+			else if (safe_plain(safe_pointee(field), 0) == 0): return 0
 			if (member.lifetime == 0): return 0
 			if (lifetime == 0): lifetime = member.lifetime
 			else if (strcmp(lifetime, member.lifetime) != 0): return 0
@@ -314,6 +322,12 @@ int safe_record_shape(int type, int kind):
 			if (safe_plain(field, 0) == 0): return 0
 			if ((member.fields.length > 0) || (member.kind == type_kind_array)): return 0
 	return lifetime != 0
+
+
+int safe_record_shape(int type, int kind):
+	int[33] path
+	int remaining = 256
+	return safe_record_shape_walk(type, kind, 0, &path[0], &remaining)
 
 
 int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
@@ -834,13 +848,19 @@ int safe_place(int id, char* state, int* via):
 		if (safe_borrow_kind(base.semantic_type)):
 			if (safe_opaque(safe_pointee(base.semantic_type))):
 				safe_error(id, c"safe: opaque collection metadata is not accessible", -1)
-			if (index < 0): safe_error(id, c"safe: dereference requires a named checked pointer", -1)
-			safe_read(index, id, state)
-			if (safe_optional(base.semantic_type)): safe_require_present(left, state)
-			root = index
-			if (safe_local_kind(index) >= 2):
-				root = safe_origin[index]
-				*via = index
+			if ((index < 0) && safe_record(base.semantic_type)):
+				# Project inline metadata through the containing place. Reading
+				# a nested scalar must not acquire a new exclusive data borrow.
+				if (base.op == '.'): root = safe_place(left, state, via)
+				else: root = safe_borrow(left, base.semantic_type, state, via)
+			else:
+				if (index < 0): safe_error(id, c"safe: dereference requires a named checked pointer", -1)
+				safe_read(index, id, state)
+				if (safe_optional(base.semantic_type)): safe_require_present(left, state)
+				root = index
+				if (safe_local_kind(index) >= 2):
+					root = safe_origin[index]
+					*via = index
 		else:
 			if ((n.op == 'd') || (retained_types[base.semantic_type].pointer_level > 0)):
 				safe_error(id, c"safe: raw pointer access requires an unsafe interface", -1)
