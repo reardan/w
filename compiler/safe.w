@@ -842,19 +842,25 @@ int safe_build(int id, int next, int break_to, int continue_to):
 	return safe_add(id, safe_expr_root(group), -1, 0, next, -1)
 
 
-# Each owned child has a distinct allocation identity. Ancestors still overlap
-# descendants, so moving/destroying a parent conflicts with every child loan.
+# Known fields have distinct storage identities. Ancestors still overlap
+# descendants, so moving/destroying a parent conflicts with every field loan.
 # Unknown projections keep their original root and remain conservative.
+int safe_path_record(int type):
+	type = safe_unqualified(type)
+	if ((type < 0) || safe_slice(type) || safe_record(type)): return -1
+	if (safe_kind(type)): return safe_pointee(type)
+	if (retained_types[type].pointer_level): return -1
+	return type
+
+
 void safe_add_owned_paths(int parent, int type, int depth, int* remaining):
 	if ((depth > 32) || (*remaining <= 0)): return
-	if (safe_borrow_kind(type) == 0): return
-	if (safe_slice(type) || safe_record(type)): return
-	int element = safe_pointee(type)
+	int element = safe_path_record(type)
 	if (element < 0): return
 	retained_type* record = retained_types[element]
 	for i in range(record.fields.length):
 		int field = record.fields[i].type
-		if (safe_kind(field) != 1): continue
+		if ((safe_kind(field) != 1) && (safe_plain(field, 0) == 0)): continue
 		if (*remaining <= 0): return
 		*remaining = *remaining - 1
 		int child = safe_locals.length
@@ -950,7 +956,7 @@ int safe_project_owned(int roots, int offset, int type):
 	for root in range(safe_locals.length):
 		if (safe_set_has(roots, root) == 0): continue
 		int found = -1
-		if (safe_same_nominal(safe_pointee(type), safe_pointee(safe_path_type[root]))):
+		if (safe_same_nominal(safe_path_record(type), safe_path_record(safe_path_type[root]))):
 			for child in range(safe_real_locals, safe_locals.length):
 				if ((safe_path_parent[child] == root) && (safe_path_offset[child] == offset)): found = child
 		if (found < 0): found = root
@@ -1188,7 +1194,7 @@ int safe_place(int id, char* state, int* via):
 			while (safe_call_roots.length > saved):
 				safe_call_roots.pop()
 				safe_call_kinds.pop()
-		if ((n.op == '.') && (safe_kind(n.semantic_type) == 1)):
+		if ((n.op == '.') && ((safe_kind(n.semantic_type) == 1) || safe_plain(n.semantic_type, 0))):
 			root = safe_project_owned(root, n.value, base.semantic_type)
 		return root
 	safe_error(id, c"safe: unsupported storage projection", -1)
@@ -1302,6 +1308,27 @@ int safe_record_construct(int id, retained_node* n, int want, char* state, int* 
 		safe_call_roots.pop()
 		safe_call_kinds.pop()
 	return roots
+
+
+void safe_plain_construct(int id, retained_node* n, int want, char* state):
+	if ((want >= 0) && (safe_same_nominal(want, n.semantic_type) == 0)):
+		safe_error(id, c"safe: incompatible plain aggregate types", -1)
+	retained_type* record = retained_types[safe_unqualified(n.semantic_type)]
+	char* initialized = safe_zero(record.fields.length, 1)
+	int entry = safe_child(n, n.left)
+	while (entry >= 0):
+		retained_node field
+		retained_node_load(entry, &field)
+		int position = field.value
+		if ((position < 0) || (position >= record.fields.length)):
+			safe_error(entry, c"safe: invalid plain aggregate initializer", -1)
+		if (initialized[position]): safe_error(entry, c"safe: plain aggregate field initialized twice", -1)
+		initialized[position] = 1
+		safe_eval(safe_child(&field, field.left), state, record.fields[position].type)
+		entry = safe_child(&field, field.next_arg)
+	for i in range(record.fields.length):
+		if (initialized[i] == 0): safe_error(id, c"safe: plain aggregate requires every field to be initialized", -1)
+	free(initialized)
 
 
 void safe_owner_construct(int id, retained_node* n, int want, char* state, safe_borrowed* components):
@@ -1957,6 +1984,9 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		return root
 	if ((op == 'D') && (wanted == 1)):
 		safe_owner_construct(id, &n, want, state, components)
+		return -1
+	if ((op == 'D') && (n.high == 0) && safe_plain(n.semantic_type, 0)):
+		safe_plain_construct(id, &n, want, state)
 		return -1
 	if (op == 'N'):
 		if (wanted != 1): safe_error(id, c"safe: new storage must initialize an owner", -1)

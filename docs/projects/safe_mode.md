@@ -581,12 +581,33 @@ sites, the declared result contract remains conservative about which child a
 helper selects. A local or consumed owner's child cannot escape under an
 unrelated borrowed-input label.
 
-Only known owned-child fields gain disjoint identities in this step. Scalar
-fields and uncertain array indices retain whole-root overlap. Expansion is
+Known owned-child and pointer-free scalar fields have disjoint identities.
+Uncertain array indices retain overlap within their containing array. Expansion is
 bounded to 32 levels and 256 children per binding; a projection beyond the bound
 keeps its containing root. This fallback may reject a disjoint access but never
 assumes it is independent. Partial moves require an explicit tracked child
 identity and follow the initialization rules below.
+
+### Disjoint scalar fields and plain record values
+
+Known scalar fields, nested pointer-free records and distinct array fields have
+separate storage identities too. A borrow of `pair.first` can coexist with a
+write or mutable borrow of `pair.second`. Whole-record access still overlaps
+both. Two indices into the same array remain conservative even when their
+source expressions differ; distinct array fields can be borrowed separately.
+
+Pointer-free record value constructors are checked for complete initialization,
+duplicate fields and nominal type agreement. Fields evaluate once in source
+order, including named arguments. The same rules cover stack records, nested
+record values and returned records. Their ordinary by-value representation is
+unchanged. Raw-pointer or borrowed fields require their existing checked wrapper
+contracts; this plain-value form cannot bypass those contracts.
+
+Field projection preserves every possible root after aliases and control-flow
+joins. Returned field references may use their borrowed parameter's contract;
+callers still retain the whole input group unless a more precise contract is
+available. Bounded path expansion falls back to the containing root, and partial
+moves still apply only to tracked owned fields.
 
 ### Partial moves of owned children
 
@@ -623,8 +644,7 @@ not discard backing-storage obligations retained by the parent metadata.
 This step supports direct children of named unique owners. Borrowed receivers,
 unnamed nested receivers, uncertain indices and untracked paths cannot transfer
 ownership. A nested owner can first be moved to a named binding, then its child
-can be transferred. More precise scalar-field borrowing and broader replacement
-forms remain required under #695.
+can be transferred. Broader replacement forms remain required under #695.
 
 ### Shared views of mixed owners
 
