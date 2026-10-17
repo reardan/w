@@ -2026,3 +2026,32 @@ These measurements describe that corpus on the shared host.
 Depends on #782. This completes the explicit borrowed-shape step of #696;
 inferred results, qualified inference, generic methods and capturing callback
 storage have separate implementation and merge gates. #696/#644 remain open.
+
+
+### Inferred aggregate result validation
+
+Inferred generic calls reserve aggregate result storage before evaluating their
+arguments, copy expanded arguments without overwriting an enclosing call's
+state, and return the caller-owned descriptor or record. Completed signatures
+are shared across nested explicit/inferred calls regardless of tree order.
+Checked qualifiers, lifetime groups and owner transfers remain intact.
+
+Validation passed 27 contract cases on x86/x64, both compile/check modes with
+and without `--safe`, all 48 architecture/root checks and 1,419 ordinary targets
+including both Linux fixpoints, Wine and benchmark. Retained AST modes 2/3/4
+also check, compile and execute ignored and nested aggregate results with both
+compiler host widths; the streaming emitter still explicitly rejects them.
+The instrumented run passed 1,417 targets plus six API harnesses with a COMPLETE
+receipt. Tests reach 9/9 changed executable lines (100%); existing coverage
+floors pass without changes.
+
+Linux optimization variants and Wine pass. Three ARM64 variants cross-compile
+and have guard-allocator execution gates in CI. Native guards and Memcheck
+report 30 allocations/frees with zero errors/leaks on both Linux widths. Seven
+alternating compiles of fixed `a407a1f4` sources measure 1.68/1.68 seconds and
+116,256 KiB median peak RSS for both compilers; compiler and prior callable/
+mixed-owner fixture output is byte-identical. These measurements describe
+that corpus on the shared host.
+
+Depends on #783. Part of #696/#644; qualified inference, generic methods,
+capturing callback storage and later work remain separately gated.
