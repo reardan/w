@@ -682,8 +682,7 @@ an owning binding can still retain just its external field group.
 
 Shared views cannot lend mutable fields or owned children. Returning the whole
 view of a local/consumed owner remains an escape error even if its external data
-outlives the call. Mutable whole-owner views follow the rules below; optional
-whole mixed-owner views remain unsupported. There is no new runtime descriptor,
+outlives the call. Mutable and optional whole-owner views follow the rules below. There is no new runtime descriptor,
 allocation or cleanup work.
 
 ### Mutable views of mixed owners
@@ -703,8 +702,28 @@ mixed owner remains conservative across its external groups.
 
 Field rebinding and partial moves still require a stable unique owning path;
 a mutable borrowed receiver does not transfer ownership or replace its stored
-lifetime contract. Optional whole-owner views retain a separate admission gate.
+lifetime contract. Optional whole-owner views require the presence rules below.
 No pointer layout, descriptor, allocation or cleanup representation changes.
+
+### Optional mixed-owner views
+
+`optref Record*` and `optrefmut Record*` use the existing nullable checked-pointer
+representation to view a mixed owner. A present view retains the allocation and
+all external groups, just like a nonoptional whole-owner view. A proven-absent
+view carries no live storage obligation. Copies, assignments, generic calls,
+quantified callbacks and returned views preserve the existing optional contract.
+
+A dominating presence check is required before every scalar, owned-child or
+borrowed-field projection. Assignments, branch joins and loop edges invalidate
+stale presence proofs. Making the optional view absent does not release a field
+view that was previously extracted from it; that field view keeps its own
+origins and reborrow ancestry. Mutable promotion from shared views, local-owner
+escapes and reborrow cycles remain errors.
+
+This does not admit optional owners, optional aggregate fields or optional
+inline borrowed-record representations. Those require separate construction
+and cleanup rules; this step reuses the existing nullable pointer and adds no
+allocation, runtime descriptor or cleanup representation.
 
 ### Replacement through nested unique owners
 
