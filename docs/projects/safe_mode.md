@@ -2087,3 +2087,27 @@ Compiler and prior checked fixture output bytes are identical. Measurements
 are specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 for subsequent generic-method, callback-storage and remaining gates.
+
+
+### Checked generic method validation
+
+Explicit and inferred generic methods pass the checked receiver before explicit
+arguments. Borrowed nominal wrappers resolve against their underlying record;
+completed signatures enforce the same lifetime and ownership contracts as free
+calls. Resolution preserves existing ordinary-method and UFCS precedence.
+
+Validation passed 78 contract cases on both Linux widths with and without
+`--safe`, all 48 architecture/root checks and 1,425 ordinary targets including
+both fixpoints, Wine runtime and benchmark. Instrumented validation passed
+1,423 targets plus six API harnesses with a COMPLETE receipt and reached all
+66 changed executable lines. Existing coverage floors pass unchanged. Native
+guards and Memcheck report 30 allocations/frees and zero errors/leaks on each
+Linux width. Optimization variants and Wine execute; three ARM64 variants
+cross-compile with runtime gates in CI.
+
+Seven alternating compiles of the fixed #786 parent corpus measured
+1.68/1.69 seconds and 116,160/116,032 KiB median peak RSS before/after.
+Compiler and prior checked fixture output bytes are identical. Measurements
+are specific to that corpus on the shared host. The implementation rebased
+unchanged onto the prerequisite validation commit. #696/#644 remain open
+for capturing callback storage and subsequent gates.
