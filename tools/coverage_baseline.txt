@@ -35,8 +35,10 @@
 # and 0.7 point margins. Other directory measurements retain their floors.
 # Quantified callable contracts raise compiler branch coverage to 86.0%;
 # preserve the existing 0.7 point margin. Other measured floors are unchanged.
+# Independent aggregate groups raise compiler lines/branches to 95.5/86.1%;
+# preserve the existing 0.8/0.7 point margins.
 code_generator/ 96.2
-compiler/ 94.6
+compiler/ 94.7
 grammar/ 96.1
 repl/ 91.5
 debugger/ 77.5
@@ -44,7 +46,7 @@ repl.w 80.5
 w.w 99.0
 diagnostics 50.8
 branches:code_generator/ 88.1
-branches:compiler/ 85.3
+branches:compiler/ 85.4
 branches:grammar/ 84.6
 branches:repl/ 73.6
 branches:debugger/ 64.0

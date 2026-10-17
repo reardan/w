@@ -178,8 +178,8 @@ inherits the whole union. Copies preserve that union. Taking the address of
 a descriptor field is forbidden, even for scalar fields: the inline value's
 storage must not inherit the longer lifetime of its borrowed data.
 
-Raw struct storage, zero initialization, mutable fields and multiple independent
-field groups remain rejected. Nominal identity
+Raw struct storage, zero initialization and mutable fields in the shared form
+remain rejected. Nominal identity
 includes the declaration location, not just its printed name.
 
 The exclusive inline form `refmut[a] Record` additionally admits mutable
@@ -191,7 +191,7 @@ reborrow ancestry and suspend conflicting parent access. Mutable-field
 extraction requires a mutable wrapper; shared fields cannot be upgraded.
 Scalar metadata remains assignable, but wrapper/reference-field replacement
 and descriptor addresses are rejected. Optional fields, mixed owner fields
-and independent groups are not admitted.
+are not admitted; independent groups use the explicit multi-label extension.
 
 Nested borrowed wrappers recursively rename each inner group into the
 containing field's group. Validate every level with a path-cycle check, depth
@@ -203,6 +203,24 @@ follow the containing place without acquiring a fresh exclusive data borrow.
 Returned-value projections evaluate their source once. Addresses of nested
 descriptor fields remain forbidden. The ordinary nested record layout and
 by-value ABI provide storage; no new runtime representation is introduced.
+
+Independent groups extend the wrapper with a positional label vector, ordered
+by first occurrence in the template fields. Nested wrappers contribute their
+mapped labels. Require exact arity and explicit multi-group annotations;
+duplicate enclosing field labels deliberately union the corresponding inner
+components. A projection selects its template group before checking access to
+a named mutable wrapper, so unrelated live children do not conflict.
+
+Track component origin/parent sets as well as whole-value unions. Give each
+parameter component a distinct abstract root: a whole-parameter root would
+incorrectly accept a return from the wrong field. Component joins participate
+in fixed-point convergence. Calls evaluate each argument once and propagate
+every applicable component through expanded normalized contract slots.
+Validate each returned component independently, including optional pointer
+results and results from quantified callbacks. Keep at most 32 expanded slots; quantified signatures and explicit outlives
+clauses also retain their ten-parameter bound. Raw signatures own their rows and retained
+snapshots copy them into the retained arena. Multi-label spelling components
+are owned by raw records and copied/interned for retained snapshots.
 
 ## Owner-bearing aggregates
 

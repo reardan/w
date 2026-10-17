@@ -14,7 +14,8 @@
 # is the accessor function external callers use.
 struct type_rec:
 	char* name
-	char* safe_lifetime    # optional function-contract label; erased at runtime
+	char* safe_lifetime    # optional contract spelling; erased at runtime
+	char** safe_labels     # owned null-terminated components, only for multiple labels
 	int* fn_lifetime_order  # type-record-owned rows for a concrete generic contract
 	int num_fields
 	int total_size
@@ -135,6 +136,7 @@ type_rec* type_alloc():
 	# descriptors that only 'new' initializes; it also zeroes the record.
 	type_rec* new_type = new type_rec
 	new_type.safe_lifetime = 0
+	new_type.safe_labels = 0
 	new_type.fn_lifetime_order = 0
 	new_type.field_names = new list[char*]
 	new_type.field_types = new list[int]
@@ -500,7 +502,75 @@ int type_safe_target(int type_index):
 	return type_index
 
 
+# Single labels use their existing spelling without allocating a vector.
+# Multi-label records own their component strings for the raw type lifetime.
+char** type_lifetime_labels(char* spelling):
+	int count = 1
+	if (spelling == 0): return 0
+	for i in range(strlen(spelling)):
+		if (spelling[i] == ','): count = count + 1
+	if (count == 1): return 0
+	if (count > 32): error(c"borrowed aggregates support at most 32 lifetime groups")
+	char** labels = cast(char**, malloc((count + 1) * __word_size__))
+	int start = 0
+	int at = 0
+	for i in range(strlen(spelling) + 1):
+		if ((spelling[i] == ',') || (spelling[i] == 0)):
+			char* label = cast(char*, malloc(i - start + 1))
+			for j in range(i - start): label[j] = spelling[start + j]
+			label[i - start] = 0
+			labels[at] = label
+			at = at + 1
+			start = i + 1
+	labels[count] = 0
+	return labels
+
+
+int type_lifetime_count(int type):
+	type = type_unqualified(type)
+	if (type < 0): return 1
+	char** labels = type_record(type).safe_labels
+	if (labels == 0): return 1
+	int count = 0
+	while (labels[count] != 0): count = count + 1
+	return count
+
+
+char* type_lifetime_at(int type, int group):
+	type = type_unqualified(type)
+	if ((type < 0) || (type_safe_kind(type) < 2)): return 0
+	type_rec* record = type_record(type)
+	if (record.safe_labels == 0): return record.safe_lifetime
+	return record.safe_labels[group]
+
+
+int type_contract_slots(int* parameters, int result, int count):
+	int slots = type_lifetime_count(result)
+	for i in range(count): slots = slots + type_lifetime_count(parameters[i])
+	return slots
+
+
+# A template's groups are ordered by first occurrence in its immediate fields.
+# Nested wrappers expose their declared mapping, not their inner template names.
+list[char*] type_record_groups(int base):
+	list[char*] groups = new list[char*]
+	type_rec* record = type_record(type_unqualified(base))
+	for i in range(record.num_fields):
+		int field = record.field_types[i]
+		for group in range(type_lifetime_count(field)):
+			char* label = type_lifetime_at(field, group)
+			if (label == 0): continue
+			int found = 0
+			for char* previous in groups:
+				if (strcmp(previous, label) == 0): found = 1
+			if (found == 0): groups.push(label)
+	return groups
+
+
 int type_get_safe_lifetime(int target, int kind, char* lifetime):
+	if (lifetime != 0):
+		for i in range(strlen(lifetime)):
+			if (lifetime[i] == ','): error(c"multiple lifetime labels require a borrowed aggregate")
 	type_safe_used = 1
 	target = type_unqualified(target)
 	int i = 0
@@ -550,6 +620,9 @@ int type_is_safe_slice(int type):
 # Checked slices own their inline descriptor, never the backing allocation.
 # The two fields use the ordinary by-value/hidden-result aggregate ABI.
 int type_get_safe_slice(int element, char* lifetime):
+	if (lifetime != 0):
+		for i in range(strlen(lifetime)):
+			if (lifetime[i] == ','): error(c"multiple lifetime labels require a borrowed aggregate")
 	type_safe_used = 1
 	element = type_unqualified(element)
 	for i in range(type_records.length):
@@ -594,10 +667,12 @@ int type_is_safe_record(int type):
 	return (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)
 
 
-# A borrowed aggregate is a nominal struct with one bound lifetime group.
-# Field copies keep their layout but bind shared references to the outer
-# label. The safety pass checks the template and complete construction.
-int type_get_safe_record_kind(int base, char* lifetime, int kind):
+# A borrowed aggregate binds template groups positionally. Field copies
+# retain their layout and carry the outer labels for semantic projections.
+# The safety pass checks the template and complete construction.
+int type_get_safe_record_kind_at(int base, char* lifetime, int kind, int depth, int* remaining):
+	*remaining = *remaining - 1
+	if ((depth > 32) || (*remaining < 0)): error(c"safe: borrowed aggregate shape is too deeply nested")
 	type_safe_used = 1
 	int record_kind = type_kind_safe_record
 	if (kind == 3): record_kind = type_kind_safe_recordmut
@@ -610,6 +685,14 @@ int type_get_safe_record_kind(int base, char* lifetime, int kind):
 				if (strcmp(old.safe_lifetime, lifetime) == 0): return i
 	type_rec* source = type_record(base)
 	type_rec* record = type_alloc()
+	record.safe_labels = type_lifetime_labels(lifetime)
+	list[char*] groups = type_record_groups(base)
+	int count = 1
+	if (record.safe_labels != 0):
+		count = 0
+		while (record.safe_labels[count] != 0): count = count + 1
+	if ((groups.length > 1) || (count > 1)):
+		if ((lifetime == 0) || (count != groups.length)): error(c"safe: borrowed aggregate lifetime arity must match its named reference groups")
 	char* prefix = c"ref "
 	if (kind == 3): prefix = c"refmut "
 	char* named = 0
@@ -632,16 +715,40 @@ int type_get_safe_record_kind(int base, char* lifetime, int kind):
 	record.num_fields = source.num_fields
 	for field in range(source.num_fields):
 		int field_type = source.field_types[field]
-		if (type_is_safe_slice(field_type)):
-			field_type = type_get_safe_slice(type_get_element_type(field_type), lifetime)
+		char* mapped = 0
+		if (type_safe_kind(field_type) >= 2):
+			for component in range(type_lifetime_count(field_type)):
+				char* label = type_lifetime_at(field_type, component)
+				char* outer = lifetime
+				if ((record.safe_labels != 0) && (label != 0)):
+					for group in range(groups.length):
+						if (strcmp(label, groups[group]) == 0): outer = record.safe_labels[group]
+				if (outer != 0):
+					if (mapped == 0): mapped = strclone(outer)
+					else:
+						char* prefix = strjoin(mapped, c",")
+						free(mapped)
+						mapped = strjoin(prefix, outer)
+						free(prefix)
+		if (type_is_safe_record(field_type)):
+			field_type = type_get_safe_record_kind_at(type_record(type_unqualified(field_type)).alias_target, mapped, type_safe_kind(field_type), depth + 1, remaining)
+		else if (type_is_safe_slice(field_type)):
+			field_type = type_get_safe_slice(type_get_element_type(field_type), mapped)
 		else if ((type_safe_kind(field_type) >= 2) && (type_get_pointer_level(field_type) == 1)):
 			int field_kind = type_get_kind(type_unqualified(field_type)) - 20
-			field_type = type_get_safe_lifetime(type_safe_target(field_type), field_kind, lifetime)
+			field_type = type_get_safe_lifetime(type_safe_target(field_type), field_kind, mapped)
+		if (mapped != 0): free(mapped)
 		record.field_names.push(source.field_names[field])
 		record.field_types.push(field_type)
+	groups.free()
 	int result = type_records.length
 	type_records.push(cast(int, record))
 	return result
+
+
+int type_get_safe_record_kind(int base, char* lifetime, int kind):
+	int remaining = 256
+	return type_get_safe_record_kind_at(base, lifetime, kind, 0, &remaining)
 
 
 int type_get_safe_record(int base, char* lifetime):

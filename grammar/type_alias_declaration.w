@@ -7,7 +7,9 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 # Quantifiers belong to this function signature, independently of aliases
 # used as nested callable parameter/result types.
 void function_contract_binders(list[char*] names, int* parameters, int result, int count):
-	for i in range(count + 1):
+	int slots = type_contract_slots(parameters, result, count)
+	if (slots > 32): error(c"checked contracts support at most 32 expanded lifetime slots")
+	for i in range(slots):
 		char* label = function_lifetime_label(parameters, result, count, i)
 		if (label == 0): continue
 		int bound = 0
@@ -16,7 +18,7 @@ void function_contract_binders(list[char*] names, int* parameters, int result, i
 		if (bound == 0): error(c"checked function lifetime must be quantified by fn[...]")
 	for char* name in names:
 		int used = 0
-		for i in range(count + 1):
+		for i in range(slots):
 			char* label = function_lifetime_label(parameters, result, count, i)
 			if ((label != 0) && (strcmp(name, label) == 0)): used = 1
 		if (used == 0): error(c"quantified function lifetime names no borrowed parameter or result")
@@ -68,8 +70,9 @@ int type_alias_declaration():
 				function_contract_binders(binders, cast(int*, params), return_type, param_count)
 				int* order = function_lifetime_order_types(cast(int*, params), return_type, param_count)
 				if (order == 0): order = function_lifetime_identity(cast(int*, params), return_type, param_count)
-				type_record(target).fn_lifetime_order = cast(int*, malloc((param_count + 1) * __word_size__))
-				for i in range(param_count + 1): type_record(target).fn_lifetime_order[i] = order[i]
+				int slots = type_contract_slots(cast(int*, params), return_type, param_count)
+				type_record(target).fn_lifetime_order = cast(int*, malloc(slots * __word_size__))
+				for i in range(slots): type_record(target).fn_lifetime_order[i] = order[i]
 				for char* name in binders: free(name)
 				binders.free()
 			free(params)

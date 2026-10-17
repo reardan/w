@@ -464,3 +464,50 @@ void test_generic_contract_snapshot_survives_rollback():
 	assert1(retained_types[plain].lifetime_order == 0)
 	free(rows)
 	retained_clear()
+
+
+void test_aggregate_group_snapshot_survives_rollback():
+	push_basic_types()
+	retained_clear()
+	retained_init()
+	int pointer = type_lookup_pointer(c"int", 1)
+	int base = type_push(c"GroupedPair")
+	type_add_arg(base, c"left", type_get_safe_lifetime(pointer, 2, c"left"))
+	type_add_arg(base, c"right", type_get_safe_lifetime(pointer, 2, c"right"))
+	int input = type_get_safe_record(base, c"a,b")
+	int output = type_get_safe_record(base, c"c,d")
+	assert_equal(2, type_lifetime_count(input))
+	assert_equal(0, strcmp(type_lifetime_at(input, 1), c"b"))
+	assert_equal(0, strcmp(type_record(type_get_field_type(input, c"right")).safe_lifetime, c"b"))
+	assert_equal(0, strcmp(type_record(type_get_field_type(base, c"right")).safe_lifetime, c"right"))
+	assert_equal(input, type_get_safe_record(base, c"a,b"))
+	assert_equal(4, type_contract_slots(&input, output, 1))
+	int signature = type_push_function(c"group snapshot", output, 1, cast(int, &input))
+	int* rows = cast(int*, malloc(4 * __word_size__))
+	for i in range(4): rows[i] = 1 << i
+	rows[0] = rows[0] | 4
+	rows[1] = rows[1] | 8
+	type_record(signature).fn_lifetime_order = rows
+	retained_checkpoint checkpoint
+	retained_capture(&checkpoint)
+	int first = retained_type_note(signature)
+	int argument = retained_types[first].parameters[0]
+	assert1(retained_types[argument].lifetime_labels != type_record(input).safe_labels)
+	assert_equal(0, strcmp(retained_types[argument].lifetime_labels[1], c"b"))
+	assert_equal(8, retained_types[first].lifetime_order[3])
+	rows[3] = 12
+	int second = retained_type_note(signature)
+	assert1(first != second)
+	assert_equal(8, retained_types[first].lifetime_order[3])
+	assert_equal(12, retained_types[second].lifetime_order[3])
+	retained_rollback(&checkpoint)
+	int* reused = cast(int*, retained_arena_alloc(128))
+	for i in range(128 / __word_size__): reused[i] = 0
+	int restored = retained_type_note(signature)
+	assert_equal(12, retained_types[restored].lifetime_order[3])
+	int result = retained_types[restored].return_type
+	assert_equal(0, strcmp(retained_types[result].lifetime_labels[0], c"c"))
+	assert_equal(0, strcmp(retained_types[result].lifetime_labels[1], c"d"))
+	type_record(signature).fn_lifetime_order = 0
+	free(rows)
+	retained_clear()

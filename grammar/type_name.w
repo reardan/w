@@ -100,6 +100,13 @@ int type_name():
 			if (is_ident_start_byte(token[0]) == 0): error(c"lifetime label must be an identifier")
 			lifetime = strclone(token)
 			get_token()
+			while (accept(c",")):
+				if (is_ident_start_byte(token[0]) == 0): error(c"lifetime label must be an identifier")
+				char* prefix = strjoin(lifetime, c",")
+				free(lifetime)
+				lifetime = strjoin(prefix, token)
+				free(prefix)
+				get_token()
 			expect(c"]")
 	pointer_indirection = 0
 	if (accept(c"const")): is_const = 1
