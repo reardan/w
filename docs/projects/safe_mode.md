@@ -242,10 +242,30 @@ untyped address expression alone does not infer `T`; use a named checked
 reference or explicit type arguments. Each instantiated body and its retained
 call signature must agree, including through aliases, imports and recursion.
 Unused generic templates retain the ordinary deferred-instantiation behavior.
-The existing generic parameter/result shape restrictions still apply.
-Quantified function values and aggregate lifetime groups follow the contracts
-described below; generic aggregate signature shapes remain separately gated.
-No runtime representation, allocation or destruction order changes.
+Explicit generic specializations also accept borrowed record and slice
+arguments/results. Signatures can use `ref[a,b] T`, `refmut[a] T` or
+`ref[a] T[]`, and an explicit type argument can itself be a checked aggregate
+or an alias. Concrete fields, labels, ownership effects and the ordinary
+aggregate calling convention are preserved; the specialized body is checked
+against that concrete contract. For example:
+
+```w
+ref[a] T[] tail[T](ref[a] T[] values, int start):
+	return values[start:]
+```
+
+Pass a checked slice for a subrange expression; raw-array slicing retains its
+existing restriction. Complete construction, presence checks, lifetime groups,
+return reservations and mutable reborrow rules apply as for direct calls.
+Aggregate result inference and generic-method syntax retain their separate
+implementation gates under #696.
+
+Check mode keeps its synthetic `int` instantiation for unused scalar, pointer
+and slice templates. A bare `ref T` or `refmut T` constraint requires a record,
+so an unused template with that constraint waits for concrete specialization
+instead of being checked against an invalid `int` substitute. Every used
+specialization is checked. Runtime representation, allocation and destruction
+order are unchanged.
 
 ### Shared-reference structs
 

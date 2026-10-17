@@ -667,3 +667,89 @@ void test_ast_container_probe_records_are_transactional():
 	ast_expression_restore_types(&tree)
 	assert_equal(tree.types_base, type_count())
 	assert_equal(-1, type_lookup_list(third))
+
+
+void test_ast_checked_aggregate_shapes_survive_growth_and_commit():
+	word_size = __word_size__
+	push_basic_types()
+	int integer = type_lookup(c"int")
+	int element_pointer = type_lookup_pointer(c"int", 1)
+	if (element_pointer < 0): element_pointer = type_push_pointer(c"int", word_size, 1)
+	int base = type_push_size(c"GenericShapeScratch", 0)
+	type_add_arg(base, c"value", type_get_safe_lifetime(element_pointer, 2, c"left"))
+	type_add_arg(base, c"data", type_get_safe_slice(integer, c"right"))
+	int outer = type_push_size(c"GenericShapeScratchOuter", 0)
+	type_add_arg(outer, c"child", type_get_safe_record_kind(base, c"first,second", 2))
+	type_add_arg(outer, c"tag", integer)
+	expression_ast tree
+	expression_ast_bind(&tree)
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 0
+	tree.pending_buffer_types = 0
+	int[80] shapes
+	for i in range(80):
+		char* number = itoa(i)
+		char* first = strjoin(c"first", number)
+		char* second = strjoin(c",second", number)
+		char* labels = strjoin(first, second)
+		free(number)
+		free(first)
+		free(second)
+		int length = strlen(labels) + 1
+		expression_ast_type_names_reserve(&tree, length)
+		int label = tree.type_names_used
+		strcpy(tree.type_names + label, labels)
+		tree.type_names_used = label + length
+		free(labels)
+		shapes[i] = ast_expression_safe_shape_type(&tree, outer, 2, label, 10 + i)
+		assert1(shapes[i] >= 0)
+		assert_equal(shapes[i], ast_expression_safe_shape_type(&tree, outer, 2, label, 100 + i))
+	for i in range(80):
+		int shape = shapes[i]
+		int child = type_get_field_type_at(shape, 0)
+		int value = type_get_field_type_at(child, 0)
+		int data = type_get_field_type_at(child, 1)
+		assert_equal(type_kind_safe_record, type_get_kind(shape))
+		assert_equal(type_kind_safe_slice, type_get_kind(data))
+		assert_equal(outer, type_record(shape).alias_target)
+		assert_strings_equal(type_lifetime_at(shape, 0), type_lifetime_at(value, 0))
+		assert_strings_equal(type_lifetime_at(shape, 1), type_lifetime_at(data, 0))
+		assert_equal(element_pointer, type_get_field_type_at(data, 0))
+		assert_equal(integer, type_get_field_type_at(data, 1))
+		assert_strings_equal(c"data", type_record(data).field_names[0])
+		assert_strings_equal(c"length", type_record(data).field_names[1])
+	char* first_name = generic_mangle_arg(shapes[0])
+	char* last_name = generic_mangle_arg(shapes[79])
+	ast_expression_restore_types(&tree)
+	assert_equal(tree.types_base, type_count())
+	for i in range(tree.types_count): ast_expression_commit_pointer(&tree, i)
+	# Committed descriptors, field types and labels own their storage.
+	for i in range(tree.type_names_used): tree.type_names[i] = 'x'
+	char* committed_first = generic_mangle_arg(shapes[0])
+	char* committed_last = generic_mangle_arg(shapes[79])
+	assert_strings_equal(first_name, committed_first)
+	assert_strings_equal(last_name, committed_last)
+	for i in range(80):
+		int child = type_get_field_type_at(shapes[i], 0)
+		int data = type_get_field_type_at(child, 1)
+		assert_strings_equal(type_lifetime_at(shapes[i], 1), type_lifetime_at(data, 0))
+		assert_strings_equal(c"length", type_record(data).field_names[1])
+	free(first_name)
+	free(last_name)
+	free(committed_first)
+	free(committed_last)
+
+	int saved = type_count()
+	tree.types_base = saved
+	tree.types_count = 0
+	tree.type_names_used = 0
+	expression_ast_type_names_reserve(&tree, 15)
+	strcpy(tree.type_names, c"rollback,other")
+	tree.type_names_used = 15
+	assert1(ast_expression_safe_shape_type(&tree, outer, 2, 0, 200) >= saved)
+	ast_expression_restore_types(&tree)
+	assert_equal(saved, type_count())
+	assert_equal(-1, type_lookup(c"ref[rollback,other] GenericShapeScratchOuter"))
+	for i in range(tree.type_names_used): tree.type_names[i] = 'y'
+	assert_strings_equal(c"first0", type_lifetime_at(shapes[0], 0))

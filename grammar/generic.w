@@ -1854,6 +1854,29 @@ int generic_def_used(int def):
 	return 0
 
 
+# A bare borrowed template parameter requires a record, so int cannot be
+# its synthetic check-mode witness. Its body is checked when specialized;
+# ordinary scalar/pointer/slice templates retain their int probe.
+int generic_check_record_parameter(int def, generic_type_ast* node):
+	if (node == 0): return 0
+	if ((node.safety != 2) && (node.safety != 3)): return 0
+	if (node.stars || node.application || (node.first != 0)): return 0
+	for i in range(generic_def_param_count(def)):
+		if (strcmp(node.name, generic_def_param_name(def, i)) == 0): return 1
+	return 0
+
+
+int generic_check_needs_record(int def):
+	generic_signature_ast* signature = generic_defs[def].signature_ast
+	if (signature == 0): return 0
+	if (generic_check_record_parameter(def, signature.result)): return 1
+	generic_type_ast* parameter = signature.parameters
+	while (parameter != 0):
+		if (generic_check_record_parameter(def, parameter)): return 1
+		parameter = parameter.next
+	return 0
+
+
 # Called by link_impl at the top-level boundary, after every user file
 # has compiled (so all definitions are registered and all symbols their
 # bodies may reference exist) and before the drain that compiles the
@@ -1863,7 +1886,7 @@ void generic_check_instantiate_all():
 	int int_type = type_lookup(c"int")
 	int d = 0
 	while (d < generic_def_count()):
-		if (generic_def_used(d) == 0):
+		if ((generic_def_used(d) == 0) && (generic_check_needs_record(d) == 0)):
 			int n = generic_def_param_count(d)
 			int args = cast(int, malloc(generic_max_params * __word_size__))
 			for i in range(n): save_ptr(args + i * __word_size__, int_type)
