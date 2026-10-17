@@ -7,6 +7,8 @@
 # branches 88.1/83.6/85.1 for code_generator/compiler/grammar respectively;
 # diagnostic sites reached 51.2%. Their floors retain a 0.6-0.9 point
 # margin. Unrelated REPL/debugger floors retain the prior baseline.
+# Disjoint owned-child path tests raise compiler branches to 86.1%;
+# retain a 0.6 point margin with an 85.5% branch floor.
 # Raise a floor in the PR that adds the tests; lower one only with
 # a reason in the commit message.
 # Owned scalar recording and tile-plan API harnesses (2026-10-09) raise
@@ -48,7 +50,7 @@ repl.w 80.5
 w.w 99.0
 diagnostics 50.8
 branches:code_generator/ 88.1
-branches:compiler/ 85.4
+branches:compiler/ 85.5
 branches:grammar/ 84.6
 branches:repl/ 73.6
 branches:debugger/ 64.0

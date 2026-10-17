@@ -456,7 +456,9 @@ children, imports and aliases.
 Whole-binding replacement drops the old owner exactly once. The checker joins
 old and new borrowed origins conservatively, including across loops; replacing
 an owner does not necessarily release its old external loans before its last
-use. Borrowing an owned child reserves the whole containing allocation.
+use. Borrowing an owned child prevents moves and destruction of its containing
+allocation; distinct owned children can be borrowed independently as described
+below.
 Partial moves, optional borrowed fields, and whole mixed-owner `refmut Record*` views remain rejected
 pending their separate implementation gates. Shared whole-owner views are
 described below. Raw/unannotated mixed
@@ -519,8 +521,8 @@ int main():
 The destination address and replacement are evaluated once. The old field and
 its owned descendants are destroyed before the replacement is installed. The
 containing allocation stays reserved throughout evaluation, so an argument
-cannot consume it and leave a dangling destination. Existing child borrows
-still reserve the whole owner and prevent replacement.
+cannot consume it and leave a dangling destination. A live borrow of the replaced child or whole owner prevents replacement.
+A borrow of a distinct owned sibling can remain live.
 
 Replacing an owned child that carries external references joins its origins
 into the enclosing lifetime groups. A group retained by a sibling field remains
@@ -531,8 +533,8 @@ borrow its containing allocation or introduce a cycle through a view derived
 from that owner.
 
 Replacement through a borrowed receiver, a temporary, or a nested owned-field
-receiver remains rejected. Disjoint child borrows and partial moves have
-separate required gates under #695.
+receiver remains rejected. Partial moves retain their separate required gate
+under #695.
 
 ### Replacing a borrowed field in an owner
 
@@ -556,6 +558,36 @@ nested receivers, optional fields and standalone borrowed-wrapper reassignment
 remain separate required capabilities. This restriction prevents a helper from
 silently changing a caller's backing-storage obligations through a borrowed
 receiver without an effect contract.
+
+### Disjoint owned-child borrows
+
+Distinct owned children have separate checked allocation identities:
+
+```w
+refmut int* first = pair.first
+refmut int* second = pair.second
+*first = 7
+*second = 8
+```
+
+A live child view blocks a whole-parent move, replacement, borrow, or destruction
+when the accesses conflict. Reborrowing the same child conflicts too. A child can
+be replaced while a distinct sibling is borrowed; the containing allocation
+remains reserved during replacement evaluation.
+
+Projection preserves all possible roots through aliases, calls, branch joins
+and nested named child views. Inside a function, an owned-child projection from
+a borrowed parameter can be returned under that parameter's lifetime. At call
+sites, the declared result contract remains conservative about which child a
+helper selects. A local or consumed owner's child cannot escape under an
+unrelated borrowed-input label.
+
+Only known owned-child fields gain disjoint identities in this step. Scalar
+fields and uncertain array indices retain whole-root overlap. Expansion is
+bounded to 32 levels and 256 children per binding; a projection beyond the bound
+keeps its containing root. This fallback may reject a disjoint access but never
+assumes it is independent. Partial moves remain rejected until their separate
+initialization and cleanup gate is complete.
 
 ### Shared views of mixed owners
 
@@ -1547,3 +1579,26 @@ fixtures are also byte-identical and execute on x86/x64. Median time is
 2.18/1.87 s and peak RSS is 113,824/114,048 KiB before/after. These shared-host
 measurements are not a general performance bound. Disjoint borrowing and partial
 moves retain separate required gates; this step closes neither #695 nor #644.
+
+### Disjoint owned-child paths (Wave 1)
+
+Twenty-six accepted/rejected cases cover sibling child borrows and replacement,
+ancestor conflicts, shared and exclusive views, callbacks, loops, cleanup,
+opaque collection siblings and conservative fallback. Every case is checked
+and compiled on x86/x64 with and without `--safe`; accepted programs execute
+and rejected programs leave no executable.
+
+Validation passes 1,364 ordinary targets, both Linux fixpoints, Wine and the
+compiler benchmark, all 48 architecture/root checks, and 1,362 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+76/76 changed executable compiler lines are reached (100%). Compiler branch
+coverage rises to 86.1%; its floor rises from 85.4% to 85.5% to preserve the gain.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+119 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `4dcda820` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 3.79/3.56 s and peak RSS
+114,048/113,888 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Partial moves and scalar field paths
+retain separate gates; neither #695 nor #644 closes.
