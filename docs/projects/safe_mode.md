@@ -864,10 +864,12 @@ ref[a] T* generic_view[T](ref[a] T* value):
 The result keeps the same backing roots as an ordinary reference-returning
 call. Generic syntax does not bypass the checker. Checked slices and borrowed
 records retain their concrete layouts and contracts in explicit and inferred
-calls, including generic method syntax. The existing unsupported `new T`
-allocation syntax in generic definitions retains its subsequent implementation
-gate. Function pointers use explicit quantified contracts; owned callback
-objects can pair them with an environment as described below.
+calls, including generic method syntax. Inside a specialization, `new T` and
+`new T(arguments)` resolve `T` through its active type substitution. Default
+allocation still requires a pointer-free sized value; record construction
+checks every concrete field, transfers owners once and preserves borrowed
+field lifetimes. Function pointers use explicit quantified contracts; owned
+callback objects can pair them with an environment as described below.
 
 ### Quantified function pointers
 

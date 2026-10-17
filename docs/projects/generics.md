@@ -159,6 +159,11 @@ in two files compiles once.
   inside other generic structs (`box[T]` inside `wrapped[T]`).
 - Generics calling generics (`largest3[T]` calls `max[T]`); recursive
   instantiation resolves through the drain fixpoint.
+- `new T` and `new T(arguments)` resolve the active type parameter in both
+  retained and streaming emitters. Substitutions take precedence over an
+  unrelated global type with the same name. Checked factories preserve
+  concrete constructor arity, field contracts, ownership transfers and cleanup;
+  specialization does not permit default allocation of pointer-bearing records.
 - Instantiation before or after the definition in file order.
 - Type-argument inference at call sites (`tests/generics_inference_test.w`):
   literals, `int`/`char`/`bool` variables, pointer arguments against `T*`
