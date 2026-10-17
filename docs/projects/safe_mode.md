@@ -1,6 +1,7 @@
 # Experimental ownership and borrowing checks
 
-The compiler accepts `--safe` on Linux x86/x64 and Windows x64 (`win64`):
+The compiler accepts `--safe` on Linux x86/x64/ARM64, Windows x64 (`win64`)
+and macOS ARM64 (`arm64_darwin`):
 
 ```sh
 ./bin/wv2 --safe app.w -o app
@@ -1057,13 +1058,13 @@ checks unsupported targets and runtime-pin invalidation. The ordinary suite
 also cross-compiles the cleanup/lifetime runtime corpus in three optimization
 modes. `./wbuild tests_arm64` executes the accepted matrix and runtime corpus
 through `wrun` under QEMU, including guard-allocator runs. Runtime execution
-is a required target-admission gate. Android, Darwin, iOS and WebAssembly
+is a required target-admission gate. Android, iOS and WebAssembly
 checked applications remain rejected.
 
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64 and win64,
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64, win64 and arm64_darwin,
 and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same
