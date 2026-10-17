@@ -179,14 +179,20 @@ int retained_callable_excluded(int symbol):
 int retained_binding_note(int sym, int owner):
 	if (sym < 0): return -1
 	sym_index_sync()
-	int low = 0
-	int high = sym_index_count
-	while (low < high):
-		int mid = (low + high) / 2
-		if (sym_index_offset(mid) < sym): low = mid + 1
-		else: high = mid
-	if (low >= sym_index_count): return -1
-	if (sym_index_offset(low) != sym): return -1
+	if (retained_binding_front == 0):
+		retained_binding_front = cast(int*, malloc(retained_binding_slots * __word_size__))
+		retained_binding_positions = cast(int*, malloc(retained_binding_slots * __word_size__))
+		for i in range(retained_binding_slots):
+			retained_binding_front[i] = -1
+			retained_binding_positions[i] = -1
+	int front = (sym >> 2) & (retained_binding_slots - 1)
+	int low = retained_binding_positions[front]
+	# Scope exit and recovery can recycle both positions and raw offsets.
+	# A hint supplies only the name lookup position, never binding identity.
+	if ((low < 0) || (low >= sym_index_count) || (sym_index_offset(low) != sym)):
+		low = sym_index_find(sym)
+		if (low < 0): return -1
+		retained_binding_positions[front] = low
 	char* name = table + sym_index_name_start(low)
 	int scope = table[sym + 1]
 	int file_index = load_int(table + sym + 66)
@@ -201,10 +207,6 @@ int retained_binding_note(int sym, int owner):
 	# S2.5: a binding whose key fields all match is the one the key map
 	# would return (keys are unique), so try the front cache and then the
 	# raw symbol's own chain before spelling the key.
-	if (retained_binding_front == 0):
-		retained_binding_front = cast(int*, malloc(retained_binding_slots * __word_size__))
-		for i in range(retained_binding_slots): retained_binding_front[i] = -1
-	int front = (sym >> 2) & (retained_binding_slots - 1)
 	int candidate = retained_binding_front[front]
 	if ((candidate >= 0) && (candidate < retained_bindings.length)):
 		if (retained_binding_is(retained_bindings[candidate], source, owner, scope, line, column, file_index, name)): return candidate

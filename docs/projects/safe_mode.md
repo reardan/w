@@ -833,7 +833,13 @@ build results when a contract, implementation or compiler changes.
 
 Ownership graphs and borrow state are allocated only when checking is needed.
 Application semantic retention also runs in ordinary retained compilation to
-support flag-independent qualifier semantics. Runtime costs include
+support flag-independent qualifier semantics. Its symbol lookup keeps a
+bounded cache of 4,096 symbol-index positions. Each hint is checked against
+the synchronized live table before reading the current name; source version,
+owner, scope, name and declaration location still determine binding identity.
+Scope rollback and reset cannot turn a recycled raw slot into an old binding.
+The cache costs 16 KiB on x86 or 32 KiB on x64 per compiler session and is
+released with retained semantic state. Runtime costs include
 allocation, bounds checks and conditional destruction; moved slots are
 cleared. Checked pointers add no reference counts or extra pointer words.
 Functions with checked pointer parameters, results or locals are excluded
