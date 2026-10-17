@@ -47,6 +47,8 @@
 # the 0.8 point margin. Branch floors remain unchanged.
 # Scoped lexical defer raises compiler lines/branches to 95.7/86.3%;
 # retain both gains without lowering any existing floor.
+# Checked aggregate shape specialization raises grammar branches to 85.3%;
+# preserve the existing 0.6 point margin.
 code_generator/ 96.2
 compiler/ 94.9
 grammar/ 96.1
@@ -57,6 +59,6 @@ w.w 99.0
 diagnostics 50.8
 branches:code_generator/ 88.1
 branches:compiler/ 85.8
-branches:grammar/ 84.6
+branches:grammar/ 84.7
 branches:repl/ 73.6
 branches:debugger/ 64.0

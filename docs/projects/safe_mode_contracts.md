@@ -467,3 +467,23 @@ owner. This prevents accessing a nullable child through an unchecked projection.
 External lifetime groups on `optown[a,b]` follow the same contract as `own[a,b]`;
 a known-absent transfer does not carry conservative former external loans.
 Optional inline records and slices retain a separate representation gate.
+
+
+## Explicit generic borrowed aggregate shapes
+
+Borrowed records and checked slice descriptors retain their concrete layouts
+and lifetime mappings in explicit generic signatures and type arguments.
+Speculative expression types carry immutable field descriptors in the scratch
+name slab; growth relocates both descriptor and item pointers. Nested mapped
+field types are staged before their enclosing wrapper, matching committed
+registration order. Rollback discards borrowed table entries, and commitment
+reconstructs independently owned metadata before scratch reuse.
+
+Generic definition scanning recognizes unlabeled `ref T` / `ref T[]` shapes
+without consuming a template parameter named `ref`. Existing ordinary header
+reparse remains available when a captured signature cannot be resolved by the
+retained header walker. Check mode does not fabricate an `int` witness for an
+unused template whose bare borrowed parameter/result requires a record;
+concrete specializations still check every body and contract. Other unused
+templates keep their existing scalar witness. Inferred aggregate results and
+generic methods remain separate required steps under #696.

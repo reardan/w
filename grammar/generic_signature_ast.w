@@ -88,10 +88,18 @@ int generic_signature_qualifier():
 	if (kind == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
-	int pointer = is_ident_start_byte(token[0]) && (nextc == '*')
+	int qualified_shape = is_ident_start_byte(token[0]) && (nextc == '*')
+	# An unknown template type can also be an inline borrowed record or
+	# slice. A parameter named ref/own still has no following type/name.
+	if (is_ident_start_byte(token[0]) && ((kind == 2) || (kind == 3))):
+		get_token()
+		if (is_ident_start_byte(token[0])): qualified_shape = 1
+		else if (peek(c"[")):
+			get_token()
+			if (peek(c"]")): qualified_shape = 1
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
-	if (pointer): return kind
+	if (qualified_shape): return kind
 	return 0
 
 

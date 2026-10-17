@@ -314,9 +314,9 @@ void expression_ast_text_reserve(expression_ast* tree, int extra):
 	tree.text = grown
 
 
-# Probe type records never use nested descriptors: only their scalar
-# prefix is initialized/read. Rebind the borrowed table entries when
-# growing that array, before any subsequent type query can observe it.
+# Probe records live in the type arena; checked aggregate field descriptors
+# live in the name arena. Rebind borrowed table entries after record growth
+# before any subsequent type query can observe them.
 void expression_ast_type_reserve(expression_ast* tree):
 	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
 	if (tree.types_count < slab.types_capacity): return
@@ -359,6 +359,17 @@ void expression_ast_type_names_reserve(expression_ast* tree, int extra):
 				int position = cast(int, rec.safe_labels[label]) - cast(int, old)
 				rec.safe_labels[label] = grown + position
 				label = label + 1
+		if ((rec.kind == type_kind_safe_slice) || (rec.kind == type_kind_safe_record) || (rec.kind == type_kind_safe_recordmut)):
+			for field in range(2):
+				int address = cast(int, rec.field_types)
+				if (field == 0): address = cast(int, rec.field_names)
+				int position = address - cast(int, old)
+				if (address && (position >= 0) && (position < tree.type_names_used)):
+					__w_list* values = cast(__w_list*, grown + position)
+					values.items = grown + (cast(int, values.items) - cast(int, old))
+					if (field == 0): rec.field_names = cast(list[char*], values)
+					else: rec.field_types = cast(list[int], values)
+
 	if (old): free(old)
 	slab.type_names = grown
 	slab.type_names_capacity = room
@@ -632,8 +643,8 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 			if (strcmp(existing.safe_lifetime, tree.type_names + lifetime) == 0): return index
 	if (tree.pending_buffer_types): return -1
 	char* prefix = c"own "
-	if (kind == 2): prefix = c"ref "
-	if (kind == 3): prefix = c"refmut "
+	if ((kind == 2) || (kind == 4) || (kind == 5)): prefix = c"ref "
+	if ((kind == 3) || (kind == 8)): prefix = c"refmut "
 	if (kind == 6): prefix = c"optref "
 	if (kind == 7): prefix = c"optrefmut "
 	if (kind == 9): prefix = c"optown "
@@ -648,7 +659,7 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	if (lifetime >= 0):
 		prefix = c"ref["
 		if (kind == 1): prefix = c"own["
-		if (kind == 3): prefix = c"refmut["
+		if ((kind == 3) || (kind == 8)): prefix = c"refmut["
 		if (kind == 6): prefix = c"optref["
 		if (kind == 7): prefix = c"optrefmut["
 		if (kind == 9): prefix = c"optown["
@@ -707,6 +718,154 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	return result
 
 
+int ast_expression_composite_type(expression_ast* tree, int kind, int element, int extra, int offset);
+int ast_expression_safe_shape_at(expression_ast* tree, int base, int kind, int lifetime, int offset, int depth, int* remaining);
+
+
+# Map a borrowed field's template labels to the wrapper's use-site labels.
+# The result is an arena offset, which remains valid across nested growth.
+int ast_expression_shape_labels(expression_ast* tree, int field, list[char*] groups, char* lifetime, char** labels):
+	char* mapped = 0
+	for component in range(type_lifetime_count(field)):
+		char* label = type_lifetime_at(field, component)
+		char* outer = lifetime
+		if ((labels != 0) && (label != 0)):
+			for group in range(groups.length):
+				if (strcmp(label, groups[group]) == 0): outer = labels[group]
+		if (outer != 0):
+			if (mapped == 0): mapped = strclone(outer)
+			else:
+				char* prefix = strjoin(mapped, c",")
+				free(mapped)
+				mapped = strjoin(prefix, outer)
+				free(prefix)
+	if (mapped == 0): return -1
+	int length = strlen(mapped) + 1
+	expression_ast_type_names_reserve(tree, length)
+	int result = tree.type_names_used
+	strcpy(tree.type_names + result, mapped)
+	tree.type_names_used = result + length
+	free(mapped)
+	return result
+
+
+# A descriptor and its immutable entries live in the same scratch slab as
+# names. Slab growth rebases descriptors/items; restoring types drops only
+# borrowed table entries, and commit reconstructs ordinary owned metadata.
+__w_list* ast_expression_shape_list(expression_ast* tree, int count):
+	int start = (tree.type_names_used + __word_size__ - 1) / __word_size__ * __word_size__
+	__w_list* values = cast(__w_list*, tree.type_names + start)
+	values.capacity = count
+	values.length = count
+	values.element_size = __word_size__
+	values.items = tree.type_names + start + sizeof(__w_list)
+	tree.type_names_used = start + sizeof(__w_list) + count * __word_size__
+	return values
+
+
+int ast_expression_safe_shape_at(expression_ast* tree, int base, int kind, int lifetime, int offset, int depth, int* remaining):
+	if (tree.pending_buffer_types || (depth > 32) || (*remaining <= 0)): return -1
+	*remaining = *remaining - 1
+	base = type_unqualified(base)
+	if (type_is_gpu_object(base) || type_is_array(base)): return -1
+	# Pointer qualifiers preserve the existing alias/requalification rules.
+	if (type_get_pointer_level(base) == 1): return ast_expression_safe_pointer_type(tree, base, kind, lifetime, offset)
+	if (type_safe_kind(base)): return -1
+	if ((type_get_pointer_level(base) != 0) || ((kind != 2) && (kind != 3))): return -1
+	int slice = type_get_kind(base) == type_kind_slice
+	int shape_kind = 5
+	if (kind == 3): shape_kind = 8
+	int target = base
+	if (slice):
+		if (kind != 2): return -1
+		shape_kind = 4
+		target = type_get_element_type(base)
+	else if (type_num_args(base) == 0): return -1
+	for index in range(type_count()):
+		type_rec* old = type_record(index)
+		if ((old.kind != shape_kind + 20) || (old.alias_target != target)): continue
+		if ((old.safe_lifetime == 0) && (lifetime < 0)): return index
+		if ((old.safe_lifetime != 0) && (lifetime >= 0)):
+			if (strcmp(old.safe_lifetime, tree.type_names + lifetime) == 0): return index
+	int count = 2
+	if (slice == 0): count = type_num_args(base)
+	int* fields = cast(int*, malloc(count * __word_size__))
+	int valid = 1
+	if (slice):
+		if (lifetime >= 0):
+			for i in range(strlen(tree.type_names + lifetime)):
+				if (tree.type_names[lifetime + i] == ','): valid = 0
+		fields[0] = ast_expression_pointer_type(tree, target, offset)
+		fields[1] = type_lookup(c"int")
+		if (fields[0] < 0): valid = 0
+	else:
+		list[char*] groups = type_record_groups(base)
+		char* spelling = 0
+		if (lifetime >= 0): spelling = strclone(tree.type_names + lifetime)
+		int label_count = 1
+		if (spelling):
+			for i in range(strlen(spelling)):
+				if (spelling[i] == ','): label_count = label_count + 1
+		if (label_count > 32): valid = 0
+		if ((groups.length > 1) || (label_count > 1)):
+			if ((spelling == 0) || (label_count != groups.length)): valid = 0
+		char** labels = 0
+		if (valid): labels = type_lifetime_labels(spelling)
+		for field in range(count):
+			int type = type_get_field_type_at(base, field)
+			if (valid && (type_safe_kind(type) >= 2)):
+				int mapped = ast_expression_shape_labels(tree, type, groups, spelling, labels)
+				int raw = type_safe_target(type)
+				int qualifier = type_get_kind(type_unqualified(type)) - 20
+				if (type_is_safe_record(type)):
+					raw = type_record(type_unqualified(type)).alias_target
+					qualifier = type_safe_kind(type)
+				else if (type_is_safe_slice(type)):
+					raw = ast_expression_composite_type(tree, type_kind_slice, type_get_element_type(type), -1, offset)
+					qualifier = 2
+				if (raw < 0): type = -1
+				else: type = ast_expression_safe_shape_at(tree, raw, qualifier, mapped, offset, depth + 1, remaining)
+				if (type < 0): valid = 0
+			fields[field] = type
+		if (labels):
+			for i in range(label_count): free(labels[i])
+			free(cast(void*, labels))
+		if (spelling): free(spelling)
+		groups.free()
+	if (valid == 0):
+		free(cast(void*, fields))
+		return -1
+	int result = ast_expression_safe_pointer_type(tree, base, shape_kind, lifetime, offset)
+	if (result < 0):
+		free(cast(void*, fields))
+		return -1
+	type_rec* record = type_record(result)
+	record.field_names = 0
+	record.field_types = 0
+	record.pointer_level = 0
+	record.alias_target = target
+	record.num_fields = count
+	record.total_size = 2 * word_size
+	if (slice == 0): record.total_size = type_get_size(base)
+	expression_ast_type_names_reserve(tree, 2 * sizeof(__w_list) + (2 * count + 2) * __word_size__)
+	__w_list* values = ast_expression_shape_list(tree, count)
+	for i in range(count): save_ptr(values.items + i * __word_size__, fields[i])
+	record.field_types = cast(list[int], values)
+	if (slice):
+		__w_list* names = ast_expression_shape_list(tree, 2)
+		save_ptr(names.items, cast(int, c"data"))
+		save_ptr(names.items + __word_size__, cast(int, c"length"))
+		record.field_names = cast(list[char*], names)
+	else: record.field_names = type_record(base).field_names
+	free(cast(void*, fields))
+	return result
+
+
+int ast_expression_safe_shape_type(expression_ast* tree, int base, int kind, int lifetime, int offset):
+	int remaining = 256
+	return ast_expression_safe_shape_at(tree, base, kind, lifetime, offset, 0, &remaining)
+
+
 void ast_expression_restore_types(expression_ast* tree):
 	if (tree.types_count == 0): return
 	type_table_truncate(tree.types_base)
@@ -720,6 +879,9 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	int actual
 	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
 	else if (((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)) || (rec.kind == type_kind_optref) || (rec.kind == type_kind_optrefmut) || (rec.kind == type_kind_optown)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
+	else if (rec.kind == type_kind_safe_slice): actual = type_get_safe_slice(rec.alias_target, rec.safe_lifetime)
+	else if (rec.kind == type_kind_safe_record): actual = type_get_safe_record_kind(rec.alias_target, rec.safe_lifetime, 2)
+	else if (rec.kind == type_kind_safe_recordmut): actual = type_get_safe_record_kind(rec.alias_target, rec.safe_lifetime, 3)
 	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
 	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
 	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)
