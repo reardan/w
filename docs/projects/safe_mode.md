@@ -864,10 +864,12 @@ ref[a] T* generic_view[T](ref[a] T* value):
 The result keeps the same backing roots as an ordinary reference-returning
 call. Generic syntax does not bypass the checker. Checked slices and borrowed
 records retain their concrete layouts and contracts in explicit and inferred
-calls, including generic method syntax. The existing unsupported `new T`
-allocation syntax in generic definitions retains its subsequent implementation
-gate. Function pointers use explicit quantified contracts; owned callback
-objects can pair them with an environment as described below.
+calls, including generic method syntax. Inside a specialization, `new T` and
+`new T(arguments)` resolve `T` through its active type substitution. Default
+allocation still requires a pointer-free sized value; record construction
+checks every concrete field, transfers owners once and preserves borrowed
+field lifetimes. Function pointers use explicit quantified contracts; owned
+callback objects can pair them with an environment as described below.
 
 ### Quantified function pointers
 
@@ -2188,3 +2190,26 @@ Compiler and prior checked fixture bytes are identical. Measurements are
 specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 until the dependent merges and integrated completion gates pass.
+
+
+### Generic allocation validation
+
+`new T` resolves the active template substitution before ordinary type lookup
+in both compiler paths. The resulting concrete allocation retains sized-value,
+initialization and checked-owner requirements. This does not admit construction
+of opaque runtime metadata or add a `new Generic[T]` application form.
+
+Validation passed 20 contract cases on both Linux widths with and without
+`--safe`, all 48 architecture/root checks and 1,431 ordinary targets including
+both fixpoints, Wine runtime and benchmark. Instrumented validation passed
+1,429 targets plus six API harnesses with a COMPLETE receipt and reached all
+four changed executable lines. Existing floors pass unchanged. Linux guard
+allocation and Memcheck report 180 allocations/frees and zero errors/leaks
+per width. Optimization variants and Wine execute, with ARM64 runtime gates
+in CI.
+
+Seven alternating compiles of the fixed #788 parent corpus measured
+1.68/1.68 seconds and 116,480/116,160 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements describe
+that corpus on the shared host. The implementation rebased unchanged onto
+the prerequisite validation commit; #696/#644 retain their completion gates.

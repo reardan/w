@@ -355,7 +355,8 @@ int unary_expression_operand():
 			int new_alias = import_alias_lookup(token)
 			if (new_alias >= 0): base = import_alias_type_member(new_alias)
 		if (base < 0):
-			base = type_lookup(token)
+			base = generic_subst_lookup(token)
+			if (base < 0): base = type_lookup(token)
 			if (base < 0):
 				type_suggest_names(token)
 				error3(c"unknown type after new: '", token, c"'")
