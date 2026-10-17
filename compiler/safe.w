@@ -144,7 +144,7 @@ int safe_kind(int type):
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
-	if (kind == type_kind_safe_recordmut): return 3
+	if ((kind == type_kind_safe_recordmut) || (kind == type_kind_safe_slicemut)): return 3
 	if (kind == type_kind_optown): return 1
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
@@ -202,13 +202,13 @@ int safe_contains_checked(int type):
 int safe_slice(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return (retained_types[type].kind == type_kind_slice) || (retained_types[type].kind == type_kind_safe_slice)
+	return (retained_types[type].kind == type_kind_slice) || (retained_types[type].kind == type_kind_safe_slice) || (retained_types[type].kind == type_kind_safe_slicemut)
 
 
 int safe_inline_slice(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return retained_types[type].kind == type_kind_safe_slice
+	return (retained_types[type].kind == type_kind_safe_slice) || (retained_types[type].kind == type_kind_safe_slicemut)
 
 
 int safe_record(int type):
@@ -219,7 +219,7 @@ int safe_record(int type):
 
 
 int safe_borrow_kind(int type):
-	if (safe_slice(type)): return 2
+	if (safe_slice(type) && (safe_kind(type) != 3)): return 2
 	return safe_kind(type)
 
 
@@ -388,7 +388,7 @@ int safe_record_shape_walk(int type, int kind, int depth, int* path, int* remain
 		retained_type* member = retained_types[field]
 		int nested = safe_record(field)
 		if (nested && (safe_kind(field) == 3) && (kind != 3)): return 0
-		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_optref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && ((member.kind == type_kind_refmut) || (member.kind == type_kind_optrefmut)))):
+		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_optref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && ((member.kind == type_kind_refmut) || (member.kind == type_kind_optrefmut) || (member.kind == type_kind_safe_slicemut)))):
 			if (nested):
 				if (safe_record_shape_walk(member.target, safe_kind(field), depth + 1, path, remaining) == 0): return 0
 			else if (safe_plain(safe_pointee(field), 0) == 0): return 0

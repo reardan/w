@@ -24,6 +24,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
+| `refmut T[]` | An exclusive checked slice with writable elements and an inline descriptor. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
 | `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
@@ -1057,10 +1058,19 @@ checking. A bound expression cannot invalidate the data being sliced. Bind
 a temporary view before indexing it or reading its length; direct scalar
 projections from unnamed temporaries remain rejected.
 
+`refmut T[]` uses the same inline descriptor ABI and borrows the backing
+storage exclusively. Its elements may be read and written. A shared reborrow
+temporarily freezes mutation until the shared view's last use; a shared slice
+cannot be upgraded to a mutable slice. Mutable subranges keep the complete
+backing-storage loan, so even nonoverlapping ranges do not establish disjoint
+access. Named return contracts, quantified callbacks and explicit/inferred
+generic calls preserve the access kind and lifetime. Borrowed mutable records
+may contain mutable-slice fields under the existing group rules.
+
 Ordinary `T[]` keeps its legacy pointer-to-descriptor ABI; implicit
-mixing with the inline checked representation is rejected. Mutable checked
-slices, descriptor construction, metadata borrowing and reassignment remain
-unsupported. Slice elements must be pointer-free sized values. To obtain a
+mixing with the inline checked representation is rejected. Explicit descriptor
+construction, metadata borrowing and reassignment remain unsupported.
+Slice elements must be pointer-free sized values. To obtain a
 checked subrange of a fixed array, first bind a checked full view; slicing
 the array directly still produces the legacy representation.
 

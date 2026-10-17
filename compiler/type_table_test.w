@@ -344,6 +344,11 @@ void test_optional_owner_type():
 
 
 void test_checked_slice_types():
+	int saved_word_size = word_size
+	int saved_word_size_log2 = word_size_log2
+	word_size = __word_size__
+	word_size_log2 = 2
+	if (__word_size__ == 8): word_size_log2 = 3
 	push_basic_types()
 	int element = type_lookup(c"int")
 	int view = type_get_safe_slice(element, c"data")
@@ -369,6 +374,22 @@ void test_checked_slice_types():
 	assert_equal(type_kind_safe_slice, retained_types[snapshot].kind)
 	assert_equal(0, strcmp(retained_types[snapshot].lifetime, c"data"))
 	assert_equal(element, retained_types[retained_types[snapshot].target].origin)
+	int mutable = type_get_safe_slice(element, c"data", 3)
+	assert1(mutable != view)
+	assert_equal(mutable, type_get_safe_slice(element, c"data", 3))
+	assert1(type_is_safe_slice(mutable))
+	assert1(type_is_slice(mutable))
+	assert_equal(3, type_safe_kind(mutable))
+	assert_equal(mutable, type_safe_target(mutable))
+	assert_equal(element, type_get_element_type(mutable))
+	assert_equal(2 * __word_size__, type_get_size(mutable))
+	assert_strings_equal(c"refmut[data] int[]", type_get_name(mutable))
+	assert_strings_equal(c"refmut int[]", type_get_name(type_get_safe_slice(element, 0, 3)))
+	int mutable_snapshot = retained_type_note(mutable)
+	assert_equal(type_kind_safe_slicemut, retained_types[mutable_snapshot].kind)
+	assert_equal(element, retained_types[retained_types[mutable_snapshot].target].origin)
+	word_size = saved_word_size
+	word_size_log2 = saved_word_size_log2
 
 
 void test_checked_record_types():
@@ -413,6 +434,11 @@ void test_checked_record_types():
 # wbuild: target=type_table_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
 # wbuild: step="bin/type_table_test"
+# The earlier layout tests explicitly exercise a 32-bit target. This twin
+# selects the slice ABI contract and initializes its target to the host width.
+# wbuild: target=type_table_slice_64_test tag=tests tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 compiler/type_table_test.w -o bin/type_table_slice_64_test"
+# wbuild: step="bin/type_table_slice_64_test --filter test_checked_slice_types"
 
 
 void test_mutable_record_types():
