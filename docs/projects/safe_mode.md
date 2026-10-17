@@ -1817,3 +1817,28 @@ byte-identical and execute on x86/x64. Median time is 1.70/1.71 s and peak RSS
 114,208/114,432 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Broader mixed-owner views and optional
 fields retain separate gates; neither #695 nor #644 closes.
+
+### Mutable mixed-owner views (Wave 1)
+
+Thirty-one accepted/rejected programs cover mutable whole-owner views, shared
+and exclusive fields, nested child projections, alias conflicts, escaped
+allocations, generic and quantified calls, returned references, loops and defer.
+Every case is checked and compiled on x86/x64 with and without `--safe`;
+accepted programs execute and rejected programs leave no executable. A nested
+shared-projection regression ensures provenance lookup preserves shared access
+instead of reacquiring an exclusive receiver borrow.
+
+Validation passes 1,379 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,377 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+15/15 changed executable compiler lines are reached (100%). Existing directory
+line/branch floors pass.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+nine allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `3dc9c312` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 2.11/1.71 s and peak RSS
+114,656/114,432 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Optional whole-owner views and nullable
+fields retain separate gates; neither #695 nor #644 closes.
