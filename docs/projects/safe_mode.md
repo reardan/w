@@ -682,8 +682,29 @@ an owning binding can still retain just its external field group.
 
 Shared views cannot lend mutable fields or owned children. Returning the whole
 view of a local/consumed owner remains an escape error even if its external data
-outlives the call. `refmut Record*` and optional whole mixed-owner views remain
-unsupported. There is no new runtime descriptor, allocation or cleanup work.
+outlives the call. Mutable whole-owner views follow the rules below; optional
+whole mixed-owner views remain unsupported. There is no new runtime descriptor,
+allocation or cleanup work.
+
+### Mutable views of mixed owners
+
+`refmut[a] Record*` can borrow a mixed owner without consuming it. The view
+conservatively retains the descriptor allocation and every external group under
+one lifetime. Checked helpers, concrete generics and quantified callbacks may
+receive or return that mutable view. Returning a view of a local or consumed
+owner remains an escape error.
+
+Scalar fields may be mutated, and owned children or mutable-reference fields
+may lend mutable views. Shared fields remain shared even through a mutable
+receiver. A shared view cannot be promoted to a mutable view. Shared projections
+through nested owned children preserve shared access, so multiple shared views
+can coexist; conflicting mutable access remains rejected. Borrowing the whole
+mixed owner remains conservative across its external groups.
+
+Field rebinding and partial moves still require a stable unique owning path;
+a mutable borrowed receiver does not transfer ownership or replace its stored
+lifetime contract. Optional whole-owner views retain a separate admission gate.
+No pointer layout, descriptor, allocation or cleanup representation changes.
 
 ### Replacement through nested unique owners
 
@@ -1811,4 +1832,29 @@ byte-identical compiler output; prior callable and mixed-owner fixtures are
 byte-identical and execute on x86/x64. Median time is 1.70/1.71 s and peak RSS
 114,208/114,432 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Broader mixed-owner views and optional
+fields retain separate gates; neither #695 nor #644 closes.
+
+### Mutable mixed-owner views (Wave 1)
+
+Thirty-one accepted/rejected programs cover mutable whole-owner views, shared
+and exclusive fields, nested child projections, alias conflicts, escaped
+allocations, generic and quantified calls, returned references, loops and defer.
+Every case is checked and compiled on x86/x64 with and without `--safe`;
+accepted programs execute and rejected programs leave no executable. A nested
+shared-projection regression ensures provenance lookup preserves shared access
+instead of reacquiring an exclusive receiver borrow.
+
+Validation passes 1,379 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,377 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+15/15 changed executable compiler lines are reached (100%). Existing directory
+line/branch floors pass.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+nine allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `3dc9c312` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 2.11/1.71 s and peak RSS
+114,656/114,432 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Optional whole-owner views and nullable
 fields retain separate gates; neither #695 nor #644 closes.
