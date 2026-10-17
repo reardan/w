@@ -420,7 +420,7 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 		int field = record.fields[i].type
 		if (safe_kind(field) == 1):
 			if (safe_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
-		else if (safe_plain(field, 0) == 0): return 0
+		else if ((safe_plain(field, 0) == 0) && (safe_callable_signature(field) < 0)): return 0
 	return 1
 
 
@@ -455,7 +455,7 @@ int safe_mixed_owned_shape_walk(int type, int depth, int* path, int* remaining):
 			if (safe_record(field)):
 				if (safe_record_shape_walk(retained_types[safe_unqualified(field)].target, safe_kind(field), depth + 1, path, remaining) == 0): return 0
 			else if (safe_plain(safe_pointee(field), 0) == 0): return 0
-		else if (safe_plain(field, 0) == 0): return 0
+		else if ((safe_plain(field, 0) == 0) && (safe_callable_signature(field) < 0)): return 0
 	return 1
 
 
@@ -880,7 +880,7 @@ void safe_add_owned_paths(int parent, int type, int depth, int* remaining):
 	retained_type* record = retained_types[element]
 	for i in range(record.fields.length):
 		int field = record.fields[i].type
-		if ((safe_kind(field) != 1) && (safe_plain(field, 0) == 0)): continue
+		if ((safe_kind(field) != 1) && (safe_plain(field, 0) == 0) && (safe_callable_signature(field) < 0)): continue
 		if (*remaining <= 0): return
 		*remaining = *remaining - 1
 		int child = safe_locals.length
@@ -1214,7 +1214,7 @@ int safe_place(int id, char* state, int* via):
 			while (safe_call_roots.length > saved):
 				safe_call_roots.pop()
 				safe_call_kinds.pop()
-		if ((n.op == '.') && ((safe_kind(n.semantic_type) == 1) || safe_plain(n.semantic_type, 0))):
+		if ((n.op == '.') && ((safe_kind(n.semantic_type) == 1) || safe_plain(n.semantic_type, 0) || (safe_callable_signature(n.semantic_type) >= 0))):
 			root = safe_project_owned(root, n.value, base.semantic_type)
 		return root
 	safe_error(id, c"safe: unsupported storage projection", -1)
@@ -2030,7 +2030,7 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			return -1
 		if ((callable_got < 0) || (safe_same_contract_type(want, n.semantic_type) == 0)):
 			safe_error(id, c"safe: function value requires a matching quantified contract", -1)
-		if ((op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (op != '?') && (op != '=')):
+		if ((op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (op != '?') && (op != '=') && (op != '.')):
 			safe_error(id, c"safe: unsupported checked function value", -1)
 	if (kind && (op == '=') && (want >= 0) && (wanted == 0)):
 		safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
@@ -2596,6 +2596,7 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
+					if (safe_callable_signature(t.fields[field].type) >= 0): safe_type_check(id, t.fields[field].type)
 					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type, 3) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0) && (safe_mixed_owned_shape(n.semantic_type) == 0)):
 						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
