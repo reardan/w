@@ -636,6 +636,7 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	if (kind == 3): prefix = c"refmut "
 	if (kind == 6): prefix = c"optref "
 	if (kind == 7): prefix = c"optrefmut "
+	if (kind == 9): prefix = c"optown "
 	int groups = 1
 	int label_length = 0
 	if (lifetime >= 0):
@@ -650,6 +651,7 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 		if (kind == 3): prefix = c"refmut["
 		if (kind == 6): prefix = c"optref["
 		if (kind == 7): prefix = c"optrefmut["
+		if (kind == 9): prefix = c"optown["
 		char* labeled = strjoin(prefix, tree.type_names + lifetime)
 		char* qualified = strjoin(labeled, c"] ")
 		name = strjoin(qualified, type_get_name(base))
