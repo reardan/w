@@ -1579,3 +1579,26 @@ fixtures are also byte-identical and execute on x86/x64. Median time is
 2.18/1.87 s and peak RSS is 113,824/114,048 KiB before/after. These shared-host
 measurements are not a general performance bound. Disjoint borrowing and partial
 moves retain separate required gates; this step closes neither #695 nor #644.
+
+### Disjoint owned-child paths (Wave 1)
+
+Twenty-six accepted/rejected cases cover sibling child borrows and replacement,
+ancestor conflicts, shared and exclusive views, callbacks, loops, cleanup,
+opaque collection siblings and conservative fallback. Every case is checked
+and compiled on x86/x64 with and without `--safe`; accepted programs execute
+and rejected programs leave no executable.
+
+Validation passes 1,364 ordinary targets, both Linux fixpoints, Wine and the
+compiler benchmark, all 48 architecture/root checks, and 1,362 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+76/76 changed executable compiler lines are reached (100%). Compiler branch
+coverage rises to 86.1%; its floor rises from 85.4% to 85.5% to preserve the gain.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+119 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `4dcda820` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 3.79/3.56 s and peak RSS
+114,048/113,888 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Partial moves and scalar field paths
+retain separate gates; neither #695 nor #644 closes.
