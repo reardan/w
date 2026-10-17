@@ -1522,3 +1522,28 @@ fixtures are byte-identical on x86/x64 and execute successfully. Shared-host
 measurements do not establish a general performance bound. Borrowed-field
 replacement, disjoint borrowing and partial moves retain separate required
 gates; this step closes neither #695 nor #644.
+
+### Borrowed-field replacement through unique owners (Wave 1)
+
+Thirty-three accepted/rejected programs cover shared/exclusive pointers, slices,
+inline borrowed records, independent and repeated groups, aliases, generic and
+indirect calls, branches, loops, deferred returns, local escapes, parent moves,
+sibling obligations and reborrow cycles. Each case is checked and compiled on
+x86/x64 with and without `--safe`; accepted programs execute and rejected ones
+leave no executable. Older mixed-owner and borrowed-wrapper tests assert the
+new acceptance boundary and retained unique-owner requirement.
+
+Validation passes 1,361 ordinary targets (full suite, both Linux fixpoints,
+Windows runtime and compiler benchmark), all 48 architecture/root checks, and
+1,359 instrumented targets plus all six compiler/API harnesses. The coverage
+receipt is COMPLETE; 10/11 changed executable compiler lines are reached (90%).
+Compiler coverage remains 95.6/86.0% line/branch and existing floors pass.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck on both
+Linux architectures report six allocations/frees, no outstanding blocks and
+zero errors. Seven alternating compiles of fixed `2d1e82d3` sources produce
+byte-identical compiler output; previous callable and mixed-owner runtime
+fixtures are also byte-identical and execute on x86/x64. Median time is
+2.18/1.87 s and peak RSS is 113,824/114,048 KiB before/after. These shared-host
+measurements are not a general performance bound. Disjoint borrowing and partial
+moves retain separate required gates; this step closes neither #695 nor #644.
