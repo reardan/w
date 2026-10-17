@@ -371,8 +371,8 @@ Each borrowed result component must derive from its permitted input components.
 
 Construction evaluates each field once, preserving argument reservations.
 Copies, control-flow joins, calls and returns retain every origin and ancestor
-within each group. Borrowed wrapper reassignment, reference-field replacement,
-mixed records containing exclusive borrows and partial moves remain separate requirements.
+within each group. Mixed owners and direct field replacement are described
+below. Borrowed wrapper reassignment and partial moves remain separate requirements.
 There is no new runtime representation or allocation for group metadata.
 
 ### Owned structs
@@ -457,8 +457,7 @@ Whole-binding replacement drops the old owner exactly once. The checker joins
 old and new borrowed origins conservatively, including across loops; replacing
 an owner does not necessarily release its old external loans before its last
 use. Borrowing an owned child reserves the whole containing allocation.
-Reference-field replacement, partial moves, optional borrowed
-fields, and whole mixed-owner `refmut Record*` views remain rejected
+Partial moves, optional borrowed fields, and whole mixed-owner `refmut Record*` views remain rejected
 pending their separate implementation gates. Shared whole-owner views are
 described below. Raw/unannotated mixed
 owner forms, self-reference and checked globals remain rejected too.
@@ -532,8 +531,31 @@ borrow its containing allocation or introduce a cycle through a view derived
 from that owner.
 
 Replacement through a borrowed receiver, a temporary, or a nested owned-field
-receiver remains rejected. Reference-field replacement, disjoint child borrows
-and partial moves have separate required gates under #695.
+receiver remains rejected. Disjoint child borrows and partial moves have
+separate required gates under #695.
+
+### Replacing a borrowed field in an owner
+
+A direct `ref` or `refmut` pointer, slice, or borrowed-record field of a named
+unique owner can be replaced. Slice and record descriptors are copied by value;
+no allocation or destruction is added. The replacement must match the field's
+access kind and every lifetime component. Shared references cannot initialize
+an exclusive field.
+
+The containing allocation stays reserved during evaluation. New external origins
+join the owner's groups, with the same conservative sibling and loop rules as
+owned-field replacement. Replacing a shared external pointer does not invalidate
+an existing view of its old backing data; that view retains its own lifetime
+obligation. A live view of the containing allocation still prevents mutation.
+Replacements cannot borrow their containing allocation or create reborrow cycles.
+Returned owners and extracted fields must continue to meet their declared input
+contracts, including reservations for deferred work.
+
+Only a direct field of a named unique owner can be rebound. Borrowed receivers,
+nested receivers, optional fields and standalone borrowed-wrapper reassignment
+remain separate required capabilities. This restriction prevents a helper from
+silently changing a caller's backing-storage obligations through a borrowed
+receiver without an effect contract.
 
 ### Shared views of mixed owners
 
@@ -1500,3 +1522,28 @@ fixtures are byte-identical on x86/x64 and execute successfully. Shared-host
 measurements do not establish a general performance bound. Borrowed-field
 replacement, disjoint borrowing and partial moves retain separate required
 gates; this step closes neither #695 nor #644.
+
+### Borrowed-field replacement through unique owners (Wave 1)
+
+Thirty-three accepted/rejected programs cover shared/exclusive pointers, slices,
+inline borrowed records, independent and repeated groups, aliases, generic and
+indirect calls, branches, loops, deferred returns, local escapes, parent moves,
+sibling obligations and reborrow cycles. Each case is checked and compiled on
+x86/x64 with and without `--safe`; accepted programs execute and rejected ones
+leave no executable. Older mixed-owner and borrowed-wrapper tests assert the
+new acceptance boundary and retained unique-owner requirement.
+
+Validation passes 1,361 ordinary targets (full suite, both Linux fixpoints,
+Windows runtime and compiler benchmark), all 48 architecture/root checks, and
+1,359 instrumented targets plus all six compiler/API harnesses. The coverage
+receipt is COMPLETE; 10/11 changed executable compiler lines are reached (90%).
+Compiler coverage remains 95.6/86.0% line/branch and existing floors pass.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck on both
+Linux architectures report six allocations/frees, no outstanding blocks and
+zero errors. Seven alternating compiles of fixed `2d1e82d3` sources produce
+byte-identical compiler output; previous callable and mixed-owner runtime
+fixtures are also byte-identical and execute on x86/x64. Median time is
+2.18/1.87 s and peak RSS is 113,824/114,048 KiB before/after. These shared-host
+measurements are not a general performance bound. Disjoint borrowing and partial
+moves retain separate required gates; this step closes neither #695 nor #644.
