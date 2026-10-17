@@ -1772,3 +1772,27 @@ byte-identical and execute on x86/x64. Median time is 2.90/2.96 s and peak RSS
 114,208 KiB for both compilers on the shared host. These measurements do not
 establish a general performance bound. Nested replacement and broader views
 retain separate gates; neither #695 nor #644 closes.
+
+### Nested checked-field replacement (Wave 1)
+
+Thirty-one accepted/rejected programs cover nested owned and borrowed fields,
+restored grandchildren, sibling borrows and moves, receiver invalidation,
+reordered lifetime labels, ancestor sibling obligations, local escapes,
+return contracts, loops and defer. Every case is checked and compiled on
+x86/x64 with and without `--safe`; accepted programs execute and rejections
+leave no executable.
+
+Validation passes 1,376 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,374 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+56/59 changed executable compiler lines are reached (94%). Existing directory
+line/branch floors pass.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+242 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `de24c72e` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 1.70/1.71 s and peak RSS
+114,208/114,432 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Broader mixed-owner views and optional
+fields retain separate gates; neither #695 nor #644 closes.
