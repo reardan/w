@@ -190,7 +190,7 @@ void test_generic_shape_30():
 	generic_shape_case(c"ref[a] T record_only[T](ref[a] T value):\n\treturn value\n\nint main():\n\tint n = 1\n\treturn record_only[int](n)\n", c"checked pointers require a single pointer")
 
 void test_generic_shape_31():
-	generic_shape_case(c"refmut[a] T[] invalid[T](refmut[a] T[] value):\n\treturn value\n\nint main():\n\tint[2] values\n\tref int[] view = invalid[int](values)\n\treturn 0\n", c"immutable ref qualifier")
+	generic_shape_case(c"refmut[a] T[] invalid[T](refmut[a] T[] value):\n\treturn value\n\nint main():\n\tint[2] values\n\tref int[] view = invalid[int](values)\n\treturn 0\n", 0)
 
 void test_generic_shape_32():
 	generic_shape_case(c"struct OptionalRecord:\n\toptref[data] int* value\n\nref[a] T identity[T](ref[a] T value):\n\treturn value\n\nint main():\n\tint n = 7\n\tref[b] OptionalRecord value = OptionalRecord(&n)\n\tref[c] OptionalRecord result = identity[OptionalRecord](value)\n\toptref int* view = result.value\n\tif (view): return *view - 7\n\treturn 1\n", 0)

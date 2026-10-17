@@ -24,6 +24,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
+| `refmut T[]` | An exclusive checked slice with writable elements and an inline descriptor. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
 | `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
@@ -1057,10 +1058,19 @@ checking. A bound expression cannot invalidate the data being sliced. Bind
 a temporary view before indexing it or reading its length; direct scalar
 projections from unnamed temporaries remain rejected.
 
+`refmut T[]` uses the same inline descriptor ABI and borrows the backing
+storage exclusively. Its elements may be read and written. A shared reborrow
+temporarily freezes mutation until the shared view's last use; a shared slice
+cannot be upgraded to a mutable slice. Mutable subranges keep the complete
+backing-storage loan, so even nonoverlapping ranges do not establish disjoint
+access. Named return contracts, quantified callbacks and explicit/inferred
+generic calls preserve the access kind and lifetime. Borrowed mutable records
+may contain mutable-slice fields under the existing group rules.
+
 Ordinary `T[]` keeps its legacy pointer-to-descriptor ABI; implicit
-mixing with the inline checked representation is rejected. Mutable checked
-slices, descriptor construction, metadata borrowing and reassignment remain
-unsupported. Slice elements must be pointer-free sized values. To obtain a
+mixing with the inline checked representation is rejected. Explicit descriptor
+construction, metadata borrowing and reassignment remain unsupported.
+Slice elements must be pointer-free sized values. To obtain a
 checked subrange of a fixed array, first bind a checked full view; slicing
 the array directly still produces the legacy representation.
 
@@ -2213,3 +2223,33 @@ Seven alternating compiles of the fixed #788 parent corpus measured
 Compiler and prior checked fixture bytes are identical. Measurements describe
 that corpus on the shared host. The implementation rebased unchanged onto
 the prerequisite validation commit; #696/#644 retain their completion gates.
+
+
+### Checked mutable-slice validation
+
+`refmut T[]` retains exclusive access and its backing lifetime through local
+bindings, subranges, generic calls, methods and quantified callbacks. Shared
+reborrowing uses `ref T[]`; shared input cannot become mutable. The inline
+pointer/length representation stays distinct from legacy slices. Incompatible
+element or descriptor conversions are fatal even when warnings are nonfatal.
+
+Validation passed 44 accepted/rejected contract cases on x86/x64 with and
+without `--safe`, 1,435 ordinary targets including both Linux fixpoints,
+Windows runtime and benchmark, and all 60 distinct architecture/root checks
+selected by the complete change. Instrumented validation passed 1,433 targets
+plus six compiler/API harnesses with a COMPLETE receipt; all 47 changed
+executable compiler lines were reached. Existing coverage floors pass.
+
+Linux optimization variants and Wine execute the runtime fixture; three ARM64
+variants cross-compile locally and have required runtime CI gates. Native guards
+and Memcheck report 30 allocations/frees and zero errors/leaks on each Linux
+target. Seven alternating compiles of fixed parent `53c6fe88` sources measured
+1.66/1.66 seconds and 116,384/116,480 KiB median peak RSS before/after. Compiler
+output and prior callable/mixed-owner fixture binaries are byte-identical and
+execute. These measurements describe this corpus on the shared host.
+
+The first full run exposed one stale diagnostic assertion after slice conversion
+errors moved earlier; its updated rejection test and the subsequent complete
+ordinary/instrumented runs pass. Every tracked W source is identical before
+and after rebasing onto the prerequisite's final validation commit. This step
+supports #697/#698 under #644; their remaining deliverables stay open.
