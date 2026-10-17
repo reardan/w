@@ -194,6 +194,11 @@ int primary_expr():
 	# builds the value in a stack temp (grammar/unary_expression.w)
 	else if (struct_value_ctor_ready()): type = struct_value_ctor_expr()
 
+	# An inferred generic alias call may return a value-encoded type
+	# (negative), so it cannot use identifier()'s nonnegative sentinel.
+	else if ((nextc == '.') && (import_alias_lookup(token) >= 0)):
+		type = import_alias_member(import_alias_lookup(token))
+
 	# Identifier
 	else if ((new_type = identifier()) >= 0) {
 		type = new_type

@@ -2123,6 +2123,10 @@ int ast_expression_name(expression_ast* tree, int depth):
 					ast_expression_advance(tree)
 					return ast_expression_constructor(tree, base, 0, depth)
 			int sym = sym_probe(token)
+			if ((nextc == '[') || (sym < 0)):
+				if (import_alias_module_generic(alias, token) >= 0):
+					if (nextc == '['): return ast_expression_generic_call(tree, depth)
+					if (nextc == '('): return ast_expression_generic_infer(tree, depth)
 			if (sym < 0): return -1
 			int source = sym_decl_file_index(sym)
 			if (source < 0): return -1

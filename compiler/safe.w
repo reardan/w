@@ -412,12 +412,19 @@ int safe_opaque(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
-	if ((record.kind != 0) || record.pointer_level || (safe_buffer_source(record.source) == 0)): return 0
+	if ((record.kind != 0) || record.pointer_level): return 0
+	if ((record.source >= 0) && safe_trusted(record.source) && ends_with(retained_sources[record.source].path, c"/lib/safe_vector.w")):
+		if (starts_with(record.name, c"WBuffer$") && (record.fields.length == 3)):
+			int element = safe_unqualified(safe_pointee(record.fields[2].type))
+			return (element >= 0) && (retained_types[element].size > 0) && safe_plain(element, 0) && (safe_has_array(element, 0) == 0)
+	if (safe_buffer_source(record.source) == 0): return 0
 	return (strcmp(record.name, c"WIntBuffer") == 0) || (strcmp(record.name, c"WByteString") == 0) || (strcmp(record.name, c"WOwnedIntBuffer") == 0) || (strcmp(record.name, c"WByteArena") == 0)
 
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if ((binding.source >= 0) && safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_vector.w")):
+		return starts_with(name, c"buffer_new$") || starts_with(name, c"buffer_length$") || starts_with(name, c"buffer_push$") || starts_with(name, c"buffer_get$") || starts_with(name, c"buffer_set$") || starts_with(name, c"buffer_pop$") || starts_with(name, c"buffer_clear$") || starts_with(name, c"buffer_view$") || starts_with(name, c"buffer_view_mut$")
 	if (safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_foreign.w")):
 		return (strcmp(name, c"foreign_read") == 0) || (strcmp(name, c"foreign_write") == 0)
 	if (safe_buffer_source(binding.source)):

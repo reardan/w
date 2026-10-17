@@ -189,7 +189,7 @@ void import_warn_unqualified(char* name):
 	int t = sym_lookup(name)
 	if (t < 0): return
 	int file_index = sym_decl_file_index(t)
-	if (file_index < 0): return
+	if ((file_index < 0) || (file_index == decl_file_index())): return
 	char* file_path = debug_file_name(file_index)
 	int i = import_alias_base
 	while (i < import_alias_count):
@@ -372,6 +372,15 @@ int import_alias_type_member(int alias_index):
 	return -1
 
 
+# Generic declarations have no ordinary symbol before specialization. Bind
+# aliases to their captured declaration source, not merely the global name.
+int import_alias_module_generic(int alias_index, char* name):
+	int def = generic_def_lookup(name, 0)
+	if (def < 0): return -1
+	if (import_path_matches_file(import_alias_path(alias_index), generic_def_file(def)) == 0): return -1
+	return def
+
+
 # Qualified access through an import alias. The caller has just seen the
 # alias identifier with '.' as the next character. Consumes ".member",
 # checks the member was declared in the aliased module's file, and then
@@ -384,6 +393,8 @@ int import_alias_member(int alias_index):
 	if (is_name == 0):
 		error3(c"identifier expected after import alias '", import_alias_name(alias_index), c"'")
 	int t = sym_lookup(token)
+	if ((nextc == '[') || (t < 0)):
+		if (import_alias_module_generic(alias_index, token) >= 0): return generic_call_expr()
 	int in_module = 0
 	if (t >= 0):
 		int file_index = sym_decl_file_index(t)
