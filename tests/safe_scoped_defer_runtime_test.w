@@ -1,3 +1,4 @@
+# wbuild: tool=tools/wfixture.w
 # wbuild: step="bin/wfixture bin/wv2 tests/safe_scoped_defer_streaming_error_fixture.w"
 # wbuild: step="bin/wv2 --strict tests/safe_scoped_defer_runtime_fixture.w -o bin/safe_scoped_defer_runtime"
 # wbuild: step="env W_DEBUG_ALLOC=1 bin/safe_scoped_defer_runtime"
