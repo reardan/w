@@ -1684,3 +1684,26 @@ byte-identical and execute on x86/x64. Median time is 3.26/3.19 s and peak RSS
 113,888/113,984 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Scalar disjointness and nested moves
 retain separate gates; neither #695 nor #644 closes.
+
+### Disjoint scalar fields and plain construction (Wave 1)
+
+Twenty-seven accepted/rejected programs plus an explicit nonfatal-warning
+nominal-type rejection cover scalar and inline-record siblings, arrays,
+ancestors, mutable borrows, callbacks, loops and complete pointer-free record
+construction. Every matrix case is checked and compiled on x86/x64 with and
+without `--safe`; accepted programs execute and rejections leave no executable.
+
+Validation passes 1,370 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,368 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+29/30 changed executable compiler lines are reached (96%). Compiler branch
+coverage rises to 86.2%; the floor rises to 85.6%, preserving the prior margin.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+six allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `ada3ddb9` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 1.73/1.72 s and peak RSS
+114,208 KiB for both compilers on the shared host. These measurements do not
+establish a general performance bound. Nested moves and replacement retain
+separate gates; neither #695 nor #644 closes.
