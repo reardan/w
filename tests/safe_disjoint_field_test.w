@@ -128,4 +128,4 @@ void test_disjoint_field_2():
 
 void test_disjoint_field_3():
 	disjoint_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nrefmut[a] Pair* choose(refmut[a] Pair* first, refmut[a] Pair* second, int flag):\n\tif (flag): return first\n\treturn second\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town Pair* other = new Pair(new int, new int, 4)\n\trefmut Pair* whole = choose(pair, other, 1)\n\trefmut int* p = whole.first\n\trefmut int* q = whole.second\n\t*p = 7\n\t*q = 8\n\treturn *p + *q - 15\n", 0)
-	disjoint_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* moved = pair.first\n\treturn 0\n", c"owner transfer")
+	disjoint_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* moved = pair.first\n\t*moved = 8\n\treturn *moved - 8\n", 0)

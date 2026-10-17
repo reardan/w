@@ -107,7 +107,7 @@ void test_owned_field_0():
 
 void test_owned_field_1():
 	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* value = new int\n\tpair.first = value\n\treturn *value\n", c"moved")
-	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* value = pair.first\n\treturn 0\n", c"safe:")
+	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\town int* value = pair.first\n\t*value = 8\n\treturn *value - 8\n", 0)
 	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\tpair.first = 0\n\treturn 0\n", c"safe:")
 	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nown Pair* change(own Pair* pair):\n\tpair.first = new int\n\trefmut int* p = pair.first\n\t*p = 8\n\treturn pair\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\tpair = change(pair)\n\tref int* p = pair.first\n\treturn *p - 8\n", 0)
 	owned_field_case(c"struct Pair:\n\town int* first\n\town int* second\n\tint tag\nown int* make_value(int value):\n\town int* result = new int\n\t*result = value\n\treturn result\ntype Make = fn[](int) -> own int*\nint main():\n\town Pair* pair = new Pair(new int, new int, 3)\n\tMake* make = make_value\n\tpair.first = make(9)\n\tref int* p = pair.first\n\treturn *p - 9\n", 0)

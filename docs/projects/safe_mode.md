@@ -372,7 +372,7 @@ Each borrowed result component must derive from its permitted input components.
 Construction evaluates each field once, preserving argument reservations.
 Copies, control-flow joins, calls and returns retain every origin and ancestor
 within each group. Mixed owners and direct field replacement are described
-below. Borrowed wrapper reassignment and partial moves remain separate requirements.
+below. Borrowed wrapper reassignment remains a separate requirement.
 There is no new runtime representation or allocation for group metadata.
 
 ### Owned structs
@@ -459,7 +459,7 @@ an owner does not necessarily release its old external loans before its last
 use. Borrowing an owned child prevents moves and destruction of its containing
 allocation; distinct owned children can be borrowed independently as described
 below.
-Partial moves, optional borrowed fields, and whole mixed-owner `refmut Record*` views remain rejected
+Optional borrowed fields, and whole mixed-owner `refmut Record*` views remain rejected
 pending their separate implementation gates. Shared whole-owner views are
 described below. Raw/unannotated mixed
 owner forms, self-reference and checked globals remain rejected too.
@@ -533,8 +533,7 @@ borrow its containing allocation or introduce a cycle through a view derived
 from that owner.
 
 Replacement through a borrowed receiver, a temporary, or a nested owned-field
-receiver remains rejected. Partial moves retain their separate required gate
-under #695.
+receiver remains rejected; direct partial moves are described below.
 
 ### Replacing a borrowed field in an owner
 
@@ -586,8 +585,46 @@ Only known owned-child fields gain disjoint identities in this step. Scalar
 fields and uncertain array indices retain whole-root overlap. Expansion is
 bounded to 32 levels and 256 children per binding; a projection beyond the bound
 keeps its containing root. This fallback may reject a disjoint access but never
-assumes it is independent. Partial moves remain rejected until their separate
-initialization and cleanup gate is complete.
+assumes it is independent. Partial moves require an explicit tracked child
+identity and follow the initialization rules below.
+
+### Partial moves of owned children
+
+A direct owned child of a named unique owner can be transferred:
+
+```w
+own int* first = pair.first
+refmut int* second = pair.second
+*second = 8
+pair.first = first
+own Pair* complete = pair
+```
+
+Moving a child leaves that field uninitialized. Its initialized siblings and
+scalar descriptor fields remain usable. Reading or moving that child again
+fails until it is replaced. A whole-owner move, return, or borrow requires all
+owned descendants to be initialized on every incoming control-flow path.
+Reinitializing the moved field restores its subtree; whole-owner replacement
+restores all children. Branch and loop joins retain possible moved states.
+
+The emitter clears exactly the transferred child slot while preserving its
+value. Recursive cleanup already skips null slots, so scope exit, early return,
+break, continue, parent replacement and destruction drop only the remaining
+children. No runtime ownership table or allocation is added. Field replacement
+reserves the destination allocation while allowing transfers between its child
+slots, including self-replacement. Consuming the parent during RHS evaluation
+still fails because it would invalidate that saved address.
+
+Transfers retain mixed-child external lifetime groups and access kinds. Reading
+external data through a moved child's old path fails, including nested
+projections. Whole-owner provenance remains conservative: moving one child does
+not discard backing-storage obligations retained by the parent metadata.
+
+This step supports direct children of named unique owners. Borrowed receivers,
+unnamed nested receivers, uncertain indices and untracked paths cannot transfer
+ownership. A nested owner can first be moved to a named binding, then its child
+can be transferred. More precise scalar-field borrowing and broader replacement
+forms remain required under #695.
 
 ### Shared views of mixed owners
 
@@ -1601,4 +1638,29 @@ byte-identical compiler output; prior callable and mixed-owner fixtures are
 byte-identical and execute on x86/x64. Median time is 3.79/3.56 s and peak RSS
 114,048/113,888 KiB before/after on the shared host. These measurements do not
 establish a general performance bound. Partial moves and scalar field paths
+retain separate gates; neither #695 nor #644 closes.
+
+### Direct owned-child partial moves (Wave 1)
+
+Forty-three accepted/rejected programs cover direct child extraction, missing
+children, branches, loops, callbacks, generic calls, replacement, parent borrows
+and moves, mixed-group provenance and cleanup exits. Every case is checked and
+compiled on x86/x64 with and without `--safe`; accepted programs execute and
+rejections leave no executable. The emitted move clears its source slot before
+cleanup can observe it; initialized siblings retain their separate state.
+
+Validation passes 1,367 ordinary targets, both Linux fixpoints, Windows runtime
+and compiler benchmark, all 48 architecture/root checks, and 1,365 instrumented
+targets plus six compiler/API harnesses. The coverage receipt is COMPLETE;
+61/62 changed executable compiler lines are reached (98%). Rounded directory
+coverage is unchanged from the disjoint-field prerequisite and retains its
+raised compiler branch floor.
+
+Linux optimization variants and Wine pass. Native guards and Memcheck report
+21 allocations/frees with zero errors or outstanding blocks on both Linux
+architectures. Seven alternating compiles of fixed `37477e19` sources produce
+byte-identical compiler output; prior callable and mixed-owner fixtures are
+byte-identical and execute on x86/x64. Median time is 3.26/3.19 s and peak RSS
+113,888/113,984 KiB before/after on the shared host. These measurements do not
+establish a general performance bound. Scalar disjointness and nested moves
 retain separate gates; neither #695 nor #644 closes.

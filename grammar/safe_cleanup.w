@@ -147,6 +147,21 @@ void safe_owner_move(expression_ast* tree, int root, int destination):
 	if (type_safe_kind(destination) != 1): return
 	if ((tree == 0) || (root < 0)): return
 	if (type_safe_kind(tree.result_type[root]) != 1): return
+	if (tree.op[root] == '.'):
+		int base = tree.left[root]
+		if ((base < 0) || (tree.op[base] != 'v') || (tree.binding_name[base] < 0)):
+			error(c"safe: partial move requires a named unique owner")
+		# The stable named receiver has no effects to replay. Preserve the
+		# transferred pointer, then clear exactly its source child slot.
+		push_slot()
+		load_slot(0 - tree.binding_offset[base])
+		add_eax_int32(tree.value[root])
+		push_slot()
+		pop_ebx_slot()
+		mov_eax_int(0)
+		assign_store(destination)
+		pop_eax_slot()
+		return
 	if (tree.op[root] != 'v'): return
 	if (tree.binding_name[root] < 0): return
 	safe_owner_clear_slot(0 - tree.binding_offset[root])

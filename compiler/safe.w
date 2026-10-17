@@ -887,6 +887,14 @@ void safe_read(int index, int id, char* state):
 		safe_error(id, c"safe: use of uninitialized or moved value", cause)
 
 
+# A whole owner cannot escape with a moved child. Projection reads only its
+# selected path, so initialized siblings remain usable after a partial move.
+void safe_read_whole(int index, int id, char* state):
+	safe_read(index, id, state)
+	for child in range(safe_real_locals, safe_locals.length):
+		if (safe_path_within(child, index)): safe_read(child, id, state)
+
+
 # Provenance and reborrow ancestry are sets of local identities. The first
 # set for each local is its singleton; union sets are interned per function.
 # This keeps all possible backing values alive when a call may return either
@@ -924,6 +932,16 @@ int safe_set_overlap(int left, int right):
 			while (parent >= 0):
 				if (safe_sets[left][parent]): return 1
 				parent = safe_path_parent[parent]
+	return 0
+
+
+int safe_paths_cover(int roots, int places):
+	for place in range(safe_locals.length):
+		if (safe_set_has(places, place) == 0): continue
+		int parent = place
+		while (parent >= 0):
+			if (safe_set_has(roots, parent)): return 1
+			parent = safe_path_parent[parent]
 	return 0
 
 
@@ -987,7 +1005,11 @@ void safe_access(int roots, int via, int write, int id, char* state):
 	if ((shared >= 0) && write):
 		safe_error(id, c"safe: write through a shared reference", safe_birth[shared])
 	for i in range(safe_call_roots.length):
-		if (safe_set_overlap(safe_call_roots[i], roots) && (write || (safe_call_kinds[i] != 2))):
+		int conflict = safe_set_overlap(safe_call_roots[i], roots) && (write || (safe_call_kinds[i] != 2))
+		# Kind 4 reserves only the destination allocation. Child transfers
+		# cannot invalidate that saved address, but a parent move can.
+		if (safe_call_kinds[i] == 4): conflict = write && safe_paths_cover(roots, safe_call_roots[i])
+		if (conflict):
 			safe_error(id, c"safe: conflicting access during call argument evaluation", -1)
 	safe_flow* event = safe_graph[safe_event]
 	for i in range(safe_locals.length):
@@ -1133,7 +1155,11 @@ int safe_place(int id, char* state, int* via):
 		if (safe_borrow_kind(base.semantic_type)):
 			if (safe_opaque(safe_pointee(base.semantic_type))):
 				safe_error(id, c"safe: opaque collection metadata is not accessible", -1)
-			if ((index < 0) && safe_record(base.semantic_type)):
+			if ((index < 0) && (base.op == '.') && (safe_kind(base.semantic_type) == 1)):
+				root = safe_place(left, state, via)
+				for path in range(safe_locals.length):
+					if (safe_set_has(root, path)): safe_read(path, id, state)
+			else if ((index < 0) && safe_record(base.semantic_type)):
 				# Project inline metadata through the containing place. Reading
 				# a nested scalar must not acquire a new exclusive data borrow.
 				if (base.op == '.'): root = safe_place(left, state, via)
@@ -1183,6 +1209,10 @@ int safe_owner_provenance(int id, char* state, safe_borrowed* components):
 			components.parents[i] = safe_set_union(components.parents[i], index)
 		return index
 	if (node.op != '.'): safe_error(id, c"safe: borrowed owner field requires a named owner", -1)
+	int place_via = -1
+	int place_roots = safe_place(id, state, &place_via)
+	for place in range(safe_locals.length):
+		if (safe_set_has(place_roots, place)): safe_read(place, id, state)
 	int left = safe_child(&node, node.left)
 	retained_node base
 	retained_node_load(left, &base)
@@ -1469,6 +1499,7 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 		if ((index < 0) || ((safe_borrow_kind(n.semantic_type) == 0) && ((inline_view == 0) || (array_value == 0)))):
 			safe_error(id, c"safe: reference requires an address or checked pointer", -1)
 		safe_read(index, id, state)
+		if (safe_kind(n.semantic_type) == 1): safe_read_whole(index, id, state)
 		root = index
 		if (safe_owned_borrowed(n.semantic_type) && safe_shared_mixed_view(want)):
 			root = safe_set_union(root, safe_origin[index])
@@ -1810,10 +1841,10 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 	if ((root != index) && (safe_path_parent[root] != index)):
 		safe_error(id, c"safe: checked field replacement requires a tracked owner", -1)
 	# Preserve the destination descriptor through every RHS operand. Field
-	# moves remain separately gated; moving the parent cannot invalidate it.
+	# moves of children preserve this address; moving the parent cannot.
 	int saved = safe_call_roots.length
 	safe_call_roots.push(index)
-	safe_call_kinds.push(2)
+	safe_call_kinds.push(4)
 	safe_borrowed incoming
 	int previous_owner = safe_replacing_owner
 	int previous_groups = safe_replacing_groups
@@ -1830,6 +1861,9 @@ void safe_replace_checked_field(int id, retained_node* assignment, retained_node
 	while (safe_call_roots.length > saved):
 		safe_call_roots.pop()
 		safe_call_kinds.pop()
+	if ((safe_kind(field.semantic_type) == 1) && (root != index)):
+		state[root] = 2
+		safe_paths_initialize(root, state)
 	safe_access(root, -1, 1, id, state)
 	if (safe_carries_borrow(field.semantic_type)):
 		safe_borrowed mapped
@@ -1885,7 +1919,7 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		if (((op == 'N') || (op == 'D')) && safe_opaque(safe_pointee(want))):
 			safe_error(id, c"safe: opaque collections require an audited constructor", -1)
 		if ((op != 'N') && (kind != 1) && (constructed == 0)): safe_error(id, c"safe: owner requires new storage or an ownership transfer", -1)
-		if ((op != 'N') && (op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
+		if ((op != 'N') && (op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (op != '.') && (constructed == 0)): safe_error(id, c"safe: unsupported owner transfer", -1)
 	else if (kind && (op != '=')): safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	if (op == 'v'):
 		if (safe_has_array(n.semantic_type, 0)): safe_error(id, c"safe: array storage cannot be copied; pass a shared slice", -1)
@@ -1894,12 +1928,33 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		safe_read(index, id, state)
 		safe_access(index, -1, wanted == 1, id, state)
 		if (wanted == 1):
+			safe_read_whole(index, id, state)
 			if (safe_owned_borrowed(want)):
 				safe_access(safe_exclusive_roots(want, safe_components[index]), index, 1, id, state)
 				safe_borrowed_copy(components, safe_components[index], safe_lifetime_count(want))
 			state[index] = 4
 			safe_moved_at[index] = id
 		return index
+	if ((op == '.') && (wanted == 1)):
+		retained_node owner
+		retained_node_load(left, &owner)
+		if ((owner.op != 'v') || (safe_kind(owner.semantic_type) != 1)):
+			safe_error(id, c"safe: partial move requires a named unique owner", -1)
+		int parent_index = safe_index(owner.binding)
+		int via = -1
+		int root = safe_place(id, state, &via)
+		if ((root < 0) || (root >= safe_locals.length) || (safe_path_parent[root] != parent_index)):
+			safe_error(id, c"safe: partial move requires a tracked owned-child path", -1)
+		safe_read_whole(root, id, state)
+		safe_access(root, -1, 1, id, state)
+		if (safe_owned_borrowed(want)):
+			safe_borrowed borrowed
+			safe_owner_provenance(id, state, &borrowed)
+			safe_access(safe_exclusive_roots(want, &borrowed), parent_index, 1, id, state)
+			safe_borrowed_copy(components, &borrowed, safe_lifetime_count(want))
+		state[root] = 4
+		safe_moved_at[root] = id
+		return root
 	if ((op == 'D') && (wanted == 1)):
 		safe_owner_construct(id, &n, want, state, components)
 		return -1
