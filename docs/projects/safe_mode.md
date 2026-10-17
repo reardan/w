@@ -1991,3 +1991,33 @@ Validation passed 1,413 ordinary targets including both Linux fixpoints, Wine ru
 Linux optimization variants and Wine execute the runtime fixture; three ARM64 variants cross-compile and have required guard-allocator execution gates in CI. Native guards and Memcheck report 17 allocations/frees and zero errors/leaks on both Linux architectures. Seven alternating compiles of fixed `b4588eb0` sources measure 1.65/1.65 seconds and 114,688/115,136 KiB median peak RSS before/after. Compiler output and prior callable/mixed-owner fixture bytes are identical. The measurements describe this corpus on the shared host, not a general performance guarantee.
 
 Depends on #780. Part of #696 under #644; those issues remain open for broader generic and capturing-callback work. No listed capability is deferred.
+
+
+### Explicit generic borrowed-shape validation
+
+Explicit specialization preserves borrowed-record and checked-slice layouts,
+qualifiers and lifetime groups. Speculative derived records live in the
+expression arena until commit; metadata survives arena growth and is rebuilt
+with independent ownership when committed. Pointer alias requalification keeps
+its existing behavior, including `sizeof(ref Alias)` when Alias is already a
+checked pointer alias.
+
+Validation passed 33 contract cases on x86/x64 with and without `--safe`,
+transactional metadata growth/commit/rollback API regressions, all 48
+architecture/root checks and 1,416 ordinary targets including both Linux
+fixpoints, Wine runtime and benchmark. The instrumented run passed 1,414
+targets plus six API harnesses with a COMPLETE receipt; 168/171 changed
+executable lines were reached (98%). Grammar branch coverage rises from
+85.2% to 85.3%, retained by raising its floor to 84.7%. No floor is lowered.
+
+Linux optimization variants and Wine execute the runtime fixture; three ARM64
+variants cross-compile and have guard-allocator execution gates in CI. Native
+guards and Memcheck report 30 allocations/frees and zero errors/leaks on both
+Linux architectures. Seven alternating compiles of fixed `1aac2c8e` sources
+measure 1.68/1.68 seconds and 114,880/114,912 KiB median peak RSS before/after.
+Compiler output and prior callable/mixed-owner fixture bytes are identical.
+These measurements describe that corpus on the shared host.
+
+Depends on #782. This completes the explicit borrowed-shape step of #696;
+inferred results, qualified inference, generic methods and capturing callback
+storage have separate implementation and merge gates. #696/#644 remain open.
