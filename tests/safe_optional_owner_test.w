@@ -161,3 +161,9 @@ void test_optional_owner_5():
 	optional_owner_case(c"struct Outer:\n\toptown int* child\nint main():\n\toptown Outer* outer = 0\n\touter.child = new int\n\treturn 0\n", c"presence check")
 	optional_owner_case(c"int consume(optown int* value):\n\treturn 0\nint main():\n\toptown int* value = new int\n\tdefer consume(value)\n\town int* moved = value\n\treturn *moved\n", c"moved")
 	optional_owner_case(c"void consume(optown int* value, refmut int* out):\n\tif (value): *out = *value\nvoid inner(refmut int* out):\n\toptown int* value = new int\n\t*value = 7\n\tdefer consume(value, out)\nint main():\n\tint out = 0\n\tinner(&out)\n\treturn out - 7\n", 0)
+
+void test_optional_owner_6():
+	optional_owner_case(c"type Sink = fn[](optown int*) -> int\nint required(own int* value):\n\treturn *value\nint main():\n\tSink* call = required\n\treturn 0\n", c"disagrees")
+	optional_owner_case(c"type Make = fn[]() -> own int*\noptown int* absent():\n\treturn 0\nint main():\n\tMake* call = absent\n\treturn 0\n", c"disagrees")
+	optional_owner_case(c"int main():\n\toptown int* value = new int\n\tnext := value\n\t*next = 7\n\treturn *next - 7\n", 0)
+	optional_owner_case(c"int main():\n\toptown int* value = new int\n\tnext := value\n\treturn *value\n", c"moved")
