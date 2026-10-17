@@ -1209,6 +1209,18 @@ with the same spelling receives no special privilege. General foreign
 adoption, ownership transfer, assembly contracts and typed arenas retain their
 separate acceptance gates in #698.
 
+Validation: 16 positive/rejection contracts plus implementation-integrity tests
+pass on x86/x64 with and without `--safe`. The complete run passes 1,438 ordinary
+targets and 1,436 instrumented targets plus six API harnesses, with a COMPLETE
+receipt and 3/3 changed compiler lines reached. All 56 distinct architecture/root
+checks pass. Linux optimization variants and Wine execute the fixture; three
+ARM64 variants cross-compile locally and require runtime CI. Native guard and
+Memcheck runs report 30 allocations/frees and zero errors/leaks per Linux target.
+Seven alternating compiles of fixed parent `8a3a0c79` measure median 1.66/1.67
+seconds and 116,704/116,704 KiB peak RSS. Compiler output and prior checked fixture
+bytes are identical. Every tracked W source stayed identical across the rebase
+onto the prerequisite's final proof commit. Existing coverage floors pass.
+
 ## Cleanup and unsafe boundaries
 
 Every live owner is destroyed in reverse declaration order at its normal
