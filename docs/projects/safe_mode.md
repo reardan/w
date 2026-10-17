@@ -275,8 +275,9 @@ mutable references. An extracted field view keeps the group's backing values
 alive, independently of the wrapper's inline descriptor storage.
 
 Scalar metadata may be changed. Reference-field replacement, wrapper
-reassignment, descriptor-field addresses, optional fields, mixed owned/borrowed
-fields and partial moves remain rejected. Independent groups use the explicit
+reassignment, descriptor-field addresses, mixed owned/borrowed
+fields and partial moves remain rejected for these borrowed wrappers. Nullable
+reference fields follow the explicit construction rules below. Independent groups use the explicit
 multi-label form described below.
 
 ### Nested borrowed structs
@@ -552,9 +553,9 @@ Replacements cannot borrow their containing allocation or create reborrow cycles
 Returned owners and extracted fields must continue to meet their declared input
 contracts, including reservations for deferred work.
 
-Only a direct field of a named unique owner can be rebound. Borrowed receivers,
-nested receivers, optional fields and standalone borrowed-wrapper reassignment
-remain separate required capabilities. This restriction prevents a helper from
+A checked field can be rebound through a stable unique owning path, including
+the nested paths described below. Borrowed receivers and standalone borrowed
+wrapper reassignment remain rejected. This restriction prevents a helper from
 silently changing a caller's backing-storage obligations through a borrowed
 receiver without an effect contract.
 
@@ -720,10 +721,32 @@ view that was previously extracted from it; that field view keeps its own
 origins and reborrow ancestry. Mutable promotion from shared views, local-owner
 escapes and reborrow cycles remain errors.
 
-This does not admit optional owners, optional aggregate fields or optional
-inline borrowed-record representations. Those require separate construction
-and cleanup rules; this step reuses the existing nullable pointer and adds no
-allocation, runtime descriptor or cleanup representation.
+Optional owners and optional inline borrowed-record wrappers remain rejected.
+Nullable reference fields follow the construction rules below. Whole-owner
+views reuse the existing nullable pointer and add no allocation, runtime
+descriptor or cleanup representation.
+
+### Nullable reference fields
+
+Borrowed records and mixed owners may declare named `optref[group] T*` or
+`optrefmut[group] T*` fields with pointer-free pointees. An exclusive field
+requires an exclusive borrowed wrapper or an owning record. Every constructor
+must still initialize every field explicitly; use `0` to initialize absence.
+An absent pointer contributes no backing root. Present pointers preserve the
+field's declared lifetime group and ordinary shared/exclusive reservations.
+
+Read a nullable field into a named optional local, then test that local before
+dereferencing it. Presence refinement currently tracks named bindings, so a
+condition on a projected field does not establish a reusable field proof.
+Copies, nested group mapping, checked callbacks and returns retain optionality.
+A mutable receiver cannot promote a shared nullable field to exclusive access.
+
+Unique owning paths may replace nullable fields with a compatible view or `0`.
+Historical origins remain conservatively joined, and previously extracted views
+keep their own backing-storage obligations after replacement. Borrowed-wrapper
+field rebinding remains rejected. Optional owners, optional inline record
+wrappers and optional slice descriptors require separate representation rules;
+this extension uses ordinary nullable pointer fields and adds no drop action.
 
 ### Replacement through nested unique owners
 
@@ -875,7 +898,7 @@ Optional parameters and results use the existing inferred or named lifetime
 contracts. Returning `0` is permitted; returning a view of local storage is not.
 A returned optional view conservatively borrows every candidate input even when
 the callee may choose absence. An unannotated optional result without borrowed inputs may return absence only;
-its body still cannot return a view of local or owned storage. Optional aggregate fields, optional slices,
+its body still cannot return a view of local or owned storage. Optional slices,
 reference fabrication through casts and arbitrary pointer arithmetic remain
 unsupported. All these rules apply with or without `--safe`.
 
@@ -1882,3 +1905,8 @@ fields retain separate gates; neither #695 nor #644 closes.
 ### Optional mixed-owner view validation
 
 Validation: 27 accepted/rejected cases on x86/x64, check/compile with and without `--safe`, accepted execution and rejected-artifact suppression. The ordinary suite, both Linux fixpoints, Wine and benchmark passed 1,382 targets; all 48 architecture/root checks passed. Instrumented validation passed 1,380 targets and all six API harnesses with a COMPLETE receipt; changed compiler coverage is 2/2 lines (100%), and existing floors pass. Linux optimization variants and Wine passed. Native guards/Memcheck reported six allocations/frees and zero errors/leaks per Linux architecture. Seven alternating compiles of the fixed `80828260` source corpus measured 1.72/1.72 s and 114,432 KiB peak RSS before/after. Compiler output and prior checked runtime fixture binaries were byte-identical. The implementation rebased unchanged onto the prerequisite validation commit.
+
+
+### Optional reference-field validation
+
+Validation: 32 accepted/rejected cases on x86/x64 with and without `--safe`, check/compile parity, accepted execution and rejected-artifact suppression. The full suite, both Linux fixpoints, Wine and benchmark passed 1,385 targets; all 48 architecture/root checks passed. Instrumented validation passed 1,383 targets and all six API harnesses with a COMPLETE receipt, reaching 2/2 changed compiler lines (100%). Compiler line/branch coverage remains 95.6/86.2%, preserving existing floors. Linux optimization variants and Wine passed. Native guards/Memcheck reported 12 allocations/frees and zero errors/leaks per Linux target. Seven alternating compiles of fixed `9f4bead3` measured 1.70/1.70 s and 114,432 KiB median peak RSS before/after; compiler and prior checked fixture binaries were byte-identical. The implementation rebased unchanged onto the optional-view validation commit.
