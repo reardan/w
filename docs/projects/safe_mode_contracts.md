@@ -291,12 +291,25 @@ capture and instantiation. Indirect calls and callbacks remain excluded.
 
 ## Target admission
 
-Checked programs are supported on Linux x86/x64 and win64. The win64
+Checked programs are supported on Linux x86/x64/arm64 and win64. The win64
 audited runtime includes its own pinned allocation/syscall implementations;
 the guard allocator protects holes with `mprotect` because Windows cannot
 release a suffix of an allocation. Entrypoint selection requires a defined
 symbol, not a nonzero unresolved-prototype backpatch chain. Other targets
 remain rejected until runtime and cleanup parity are validated.
+
+Linux ARM64 admission pins the architecture wrappers, Linux syscall/stat
+implementations, filesystem flags and AArch64 context code. Review covers
+Linux syscall argument/result registers and signed errors, mmap/munmap/
+mprotect behavior, context register slots (including the W stack register),
+and the existing runtime page-size discovery. No raw-call allowlist expands.
+The target matrix checks flag-independent contracts, rejected-program
+artifact suppression, unsupported neighboring targets and changed runtime
+pins. The runtime corpus exercises ownership, slices, aggregates, optional
+references, control flow, generic/method/callback calls, buffers and arenas
+under default, unallocated-register and inline compilation. QEMU execution
+and guard allocation in `tests_arm64` are required in addition to host-side
+cross-compilation.
 
 ## Integration and review
 

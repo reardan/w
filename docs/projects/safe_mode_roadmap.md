@@ -15,7 +15,10 @@ optional references, range loops and scalar switches, outer-function
 deferred expressions, single-group mutable-reference records,
 checked methods and concrete generic calls,
 owned-integer buffers, byte arenas
-and win64 support. The remaining requirements below are not all delivered.
+and win64 support. Linux ARM64 target admission extends the same bounded
+contracts with audited runtime pins and a QEMU execution gate. Other targets
+and persistent sessions remain under #712/#713. The remaining requirements
+below are not all delivered.
 
 The goal remains to prevent dangling references, use after move or
 destruction, double destruction and conflicting reference access in checked

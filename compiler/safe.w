@@ -1668,7 +1668,7 @@ void safe_audit_runtime():
 void safe_check_finish():
 	if ((safe_mode == 0) && (type_safe_used == 0)): return
 	if (safe_bounds_disabled): error(c"safe: checked pointers require bounds checks")
-	if ((target_isa != 0) || ((target_os != 0) && (target_os != 2))): error(c"safe: only Linux x86 and x64, and win64 targets are supported")
+	if (((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, and win64 targets are supported")
 	safe_audit_runtime()
 	int count = retained_node_count()
 	safe_first = cast(int*, malloc(count * __word_size__))
