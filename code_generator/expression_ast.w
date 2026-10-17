@@ -566,6 +566,7 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			int want = type_function_param_type(tree.generic_signature[id], position)
 			if (tree.symbol[id] >= 0): want = sym_param_type(tree.symbol[id], position)
 			safe_owner_move(tree, argument, want)
+			if (type_is_safe_slice(want)): got = want
 			push_call_argument_compact(got, stack_pos - arg_stack)
 			argument = tree.next_arg[argument]
 			position = position + 1
