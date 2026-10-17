@@ -641,10 +641,27 @@ external data through a moved child's old path fails, including nested
 projections. Whole-owner provenance remains conservative: moving one child does
 not discard backing-storage obligations retained by the parent metadata.
 
-This step supports direct children of named unique owners. Borrowed receivers,
-unnamed nested receivers, uncertain indices and untracked paths cannot transfer
-ownership. A nested owner can first be moved to a named binding, then its child
-can be transferred. Broader replacement forms remain required under #695.
+Transfers support direct children and stable nested ownership paths rooted in
+named unique owners. Borrowed receivers, effectful receivers, uncertain indices
+and untracked paths cannot transfer ownership. Broader replacement forms remain
+required under #695.
+
+### Nested owned-child transfers
+
+`own int* item = outer.left.first` transfers a nested owned child when every
+intermediate receiver is owned and the chain starts at a named unique owner.
+The checker tracks the selected path and every ancestor. Initialized siblings
+remain usable; moving or borrowing any entire ancestor requires all of its
+owned descendants to be initialized. Passing a partially moved child to a
+helper is rejected even when the helper would otherwise accept that type.
+
+The emitter preserves the transferred value, recomputes the stable field
+address, and clears that slot before cleanup. Only named variables and owned
+field projections are admitted in this chain, so address recomputation has no
+user effects. Nested constructors, calls, generic transfers, returns and mixed
+external lifetime groups preserve the same ownership and cleanup obligations.
+A direct replacement of an ancestor restores its subtree. Rebinding a field
+through a nested receiver retains its separate replacement gate.
 
 ### Shared views of mixed owners
 

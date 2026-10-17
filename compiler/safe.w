@@ -1488,6 +1488,8 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 					via = safe_set_union(via, owner.parents[group])
 		else if (safe_kind(base.semantic_type) && (safe_kind(n.semantic_type) == 1) && (safe_owned_shape(safe_pointee(base.semantic_type)) || safe_owned_borrowed(base.semantic_type) || safe_shared_mixed_view(base.semantic_type))):
 			root = safe_place(id, state, &via)
+			for path in range(safe_locals.length):
+				if (safe_set_has(root, path)): safe_read_whole(path, id, state)
 			if (safe_owned_borrowed(n.semantic_type) && safe_shared_mixed_view(want)):
 				safe_borrowed external
 				safe_owner_provenance(id, state, &external)
@@ -1830,6 +1832,17 @@ int safe_eval(int id, char* state, int want):
 	return safe_eval_groups(id, state, want, 0)
 
 
+# A stable ownership path contains only owned-field projections rooted in
+# a named unique owner. No call, index or borrowed receiver can be replayed.
+int safe_unique_owner_root(int id):
+	retained_node node
+	retained_node_load(id, &node)
+	if (safe_kind(node.semantic_type) != 1): return -1
+	if (node.op == 'v'): return safe_index(node.binding)
+	if (node.op != '.'): return -1
+	return safe_unique_owner_root(safe_child(&node, node.left))
+
+
 int safe_assignment_reads_previous(retained_node* assignment, int left, int binding):
 	retained_group* group = retained_record_at(assignment.parent).group
 	for i in range(group.count):
@@ -1963,14 +1976,12 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			safe_moved_at[index] = id
 		return index
 	if ((op == '.') && (wanted == 1)):
-		retained_node owner
-		retained_node_load(left, &owner)
-		if ((owner.op != 'v') || (safe_kind(owner.semantic_type) != 1)):
-			safe_error(id, c"safe: partial move requires a named unique owner", -1)
-		int parent_index = safe_index(owner.binding)
+		int parent_index = safe_unique_owner_root(left)
+		if (parent_index < 0):
+			safe_error(id, c"safe: partial move requires a stable unique owner path", -1)
 		int via = -1
 		int root = safe_place(id, state, &via)
-		if ((root < 0) || (root >= safe_locals.length) || (safe_path_parent[root] != parent_index)):
+		if ((root < 0) || (root >= safe_locals.length) || (root == parent_index) || (safe_path_within(root, parent_index) == 0)):
 			safe_error(id, c"safe: partial move requires a tracked owned-child path", -1)
 		safe_read_whole(root, id, state)
 		safe_access(root, -1, 1, id, state)

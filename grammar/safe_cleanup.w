@@ -141,6 +141,21 @@ void safe_owner_cleanup_returning():
 	pop_eax_slot()
 
 
+# Produce the address of an owned field along a stable projection chain.
+# The semantic pass enforces the same unique-owner path and initialization.
+void safe_owner_field_address(expression_ast* tree, int root):
+	int base = tree.left[root]
+	if ((base < 0) || (type_safe_kind(tree.result_type[base]) != 1)):
+		error(c"safe: partial move requires a stable unique owner path")
+	if ((tree.op[base] == 'v') && (tree.binding_name[base] >= 0)):
+		load_slot(0 - tree.binding_offset[base])
+	else if (tree.op[base] == '.'):
+		safe_owner_field_address(tree, base)
+		promote(tree.result_type[base])
+	else: error(c"safe: partial move requires a stable unique owner path")
+	add_eax_int32(tree.value[root])
+
+
 # Called after promotion while eax holds the transferred pointer. The
 # expression's captured frame offset survives retained-tree emission.
 void safe_owner_move(expression_ast* tree, int root, int destination):
@@ -148,14 +163,10 @@ void safe_owner_move(expression_ast* tree, int root, int destination):
 	if ((tree == 0) || (root < 0)): return
 	if (type_safe_kind(tree.result_type[root]) != 1): return
 	if (tree.op[root] == '.'):
-		int base = tree.left[root]
-		if ((base < 0) || (tree.op[base] != 'v') || (tree.binding_name[base] < 0)):
-			error(c"safe: partial move requires a named unique owner")
-		# The stable named receiver has no effects to replay. Preserve the
-		# transferred pointer, then clear exactly its source child slot.
+		# Preserve the transferred pointer before replaying the effect-free
+		# named ownership path and clearing exactly its source slot.
 		push_slot()
-		load_slot(0 - tree.binding_offset[base])
-		add_eax_int32(tree.value[root])
+		safe_owner_field_address(tree, root)
 		push_slot()
 		pop_ebx_slot()
 		mov_eax_int(0)
