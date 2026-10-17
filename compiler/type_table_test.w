@@ -545,3 +545,31 @@ void test_aggregate_group_snapshot_survives_rollback():
 	type_record(signature).fn_lifetime_order = 0
 	free(rows)
 	retained_clear()
+
+
+void test_owner_group_access_resets_with_retained_types():
+	# Reuse retained type identities with a different field-access contract.
+	# A prior compilation's cached group kinds must not survive the reset.
+	int previous = -1
+	for exclusive_group in range(2):
+		safe_reset()
+		retained_clear()
+		retained_init()
+		push_basic_types()
+		int pointer = type_lookup_pointer(c"int", 1)
+		int base = type_push(c"AccessPair")
+		int first = 2
+		int second = 3
+		if (exclusive_group == 0):
+			first = 3
+			second = 2
+		type_add_arg(base, c"first", type_get_safe_lifetime(pointer, first, c"first"))
+		type_add_arg(base, c"second", type_get_safe_lifetime(pointer, second, c"second"))
+		int raw = type_push_pointer(c"AccessPair", word_size, 1)
+		int owner = retained_type_note(type_get_safe_lifetime(raw, 1, c"a,b"))
+		if (previous >= 0): assert_equal(previous, owner)
+		previous = owner
+		assert_equal(1, safe_group_exclusive(owner, exclusive_group))
+		assert_equal(0, safe_group_exclusive(owner, 1 - exclusive_group))
+	safe_reset()
+	retained_clear()
