@@ -79,6 +79,8 @@ int collection_drop_nested():
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int baseline = debug_alloc_report_leaks()
 	if collection_exercise() != 0: return 1
 	if debug_alloc_report_leaks() != baseline: return 2

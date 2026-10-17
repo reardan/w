@@ -53,6 +53,8 @@ int mixed_view_nested_exercise():
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if mixed_view_exercise() != 1500: return 1
 	if mixed_view_nested_exercise() != 11: return 2

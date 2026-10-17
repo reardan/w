@@ -70,6 +70,8 @@ int field_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if field_exercise() != 307: return 1
 	if field_mixed() != 11: return 2

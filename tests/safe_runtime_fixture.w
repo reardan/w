@@ -42,6 +42,8 @@ int safe_multiple_arguments():
 	return safe_pair(1, p, q, 2)
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if safe_returned_borrow_cleanup() != 7: return 5
 	if safe_multiple_arguments() != 12: return 4
