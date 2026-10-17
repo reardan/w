@@ -1,6 +1,6 @@
 # `defer` statements
 
-Go-style `defer` for W (v1). Implemented in `grammar/defer.w`, parsed in
+Function-scoped legacy `defer` and explicit checked lexical `defer:` for W. Implemented in `grammar/defer.w`, parsed in
 `grammar/statement.w`, tested by `tests/defer_test.w` and the
 `tests/defer_*_error_fixture.w` compile-error fixtures (`./wbuild defer_test`,
 `./wbuild defer_64_test`).
@@ -14,7 +14,41 @@ int first_byte_of(char* path):
 	# ... every return below runs close(fd) first
 ```
 
-## Semantics (v1, deliberate)
+## Checked lexical registration
+
+`defer: expression` registers a single expression on the same line for the
+exit of its enclosing lexical block. For example:
+
+```w
+void count(refmut int* result):
+	for i in range(3):
+		defer: *result = *result + 1
+		if (i == 1): continue
+```
+
+The body cleanup executes on every iteration, including `continue` and
+`break`. Conditional blocks execute their cleanup only when entered. `return`
+evaluates its result first, executes active deferred expressions in LIFO
+order, then destroys remaining owners. Normal block exit and loop jumps run
+scoped cleanup before destroying the owners in those exited scopes. A jump
+leaving several scopes runs their defers from inner to outer. Function-scoped
+legacy defers are not run by loop jumps.
+
+Arguments and names are resolved at exit time, as with legacy defer; this is
+not capture-at-registration. Later declarations and shadowing therefore affect
+the deferred expression. A name unavailable at any compiled exit is an error.
+The checker includes the emitted expressions in liveness, transfer and return
+analysis, so a deferred borrow cannot observe freed storage or conflict with
+a captured returned reference.
+
+This explicit form selects checked analysis without `--safe`, requires the
+retained emitter, and follows checked target/runtime contracts. Declarations,
+control transfer, nested defer bodies and multiline bodies are rejected.
+Generators, `goto`, registration inside `unsafe`, traps and process termination
+have no scoped-defer cleanup contract. It uses inline exit code and a compile-time
+registry: no runtime thunk, capture allocation or registration list is created.
+
+## Legacy semantics (v1, deliberate)
 
 - `defer <simple-statement>` defers a single expression statement,
   typically a call. There is no block form.
@@ -106,5 +140,5 @@ machinery's span-capture pattern (`docs/projects/generics.md`,
 ## Possible future work
 
 - Defer-time argument capture (Go semantics) via a runtime thunk list.
-- Block-scoped defers or a `defer:` block form.
+- Multiline deferred bodies (the explicit lexical form currently takes one expression).
 - Running defers on `exit()`/panic paths.

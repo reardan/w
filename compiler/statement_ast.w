@@ -64,6 +64,7 @@ struct statement_ast:
 	char* callee_name
 	int argument_index
 	int control_kind
+	int scope_node
 	void* control_record
 
 

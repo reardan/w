@@ -11,6 +11,7 @@ void emit_simple_statement_ast(statement_ast* node):
 	if (node.valid_jump == 0):
 		if (node.kind == ast_stmt_break): error(c"'break' outside of a loop or switch")
 		else: error(c"'continue' outside of a loop")
+	defer_emit_jump(node.scope_node, node.kind == ast_stmt_continue)
 	safe_owner_cleanup(0, stack_pos - node.unwind_slots, 0)
 	if (node.unwind_slots > 0): be_pop(node.unwind_slots)
 	int target = node.target
@@ -359,7 +360,7 @@ void emit_if_ast_end(statement_ast* node):
 
 
 void emit_block_ast_deferred(statement_ast* node):
-	if (node.function_body): defer_emit_all()
+	defer_emit_block(node.scope_node, node.function_body)
 	safe_owner_cleanup(node.binding, node.stack_depth, 0)
 	if (node.function_body): safe_owner_cleanup(0, stack_pos, 1)
 

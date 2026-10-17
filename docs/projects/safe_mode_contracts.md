@@ -370,12 +370,24 @@ The range induction binding remains initialized inside its loop. Emitted
 cleanup and analysis must agree even when a reference is stored in an outer
 optional binding before jumping out of its owner's scope.
 
-Deferred expressions may be registered only in the outer function block.
-Each is evaluated at function exit in reverse registration order, after
-return-expression evaluation and before automatic destruction. Their uses
-participate in exit liveness, including return-value borrow reservations.
-Conditional/nested registrations and deferred control-flow statements remain
-rejected until a matching registration-state model is implemented.
+Legacy `defer expression` may be registered only in the outer function block
+of a checked function. Explicit `defer: expression` is a lexical checked
+registration, with one expression on the same line. The retained registration
+records its enclosing block identity. Normal block departure retires only that
+block's registrations; return emits all active entries in reverse order;
+loop jumps emit scoped entries only for the lexical blocks they leave.
+`continue` crosses switches, and block identity distinguishes empty scopes
+that share a stack depth. No runtime registration allocation is needed.
+
+Return expressions are evaluated and transferred before deferred work;
+deferred expressions precede automatic destruction. The emitted exit nodes
+participate in liveness and move analysis, including return-value borrow
+reservations and jump cleanup. Names and arguments retain exit-time binding,
+so later declarations and shadowing are observed and missing exit bindings
+are rejected. The colon form opts its function into checking without
+`--safe`, requires retained emission, and rejects unsafe registration,
+generators, goto and deferred control-flow statements. Legacy raw defer
+semantics do not change.
 
 Checked methods normalize into direct calls with an explicit receiver.
 Receiver evaluation occurs before argument evaluation; synthesized receiver

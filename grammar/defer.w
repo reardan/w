@@ -35,6 +35,7 @@ syntax here.
 int expression();
 int ast_deferred_expression();
 int ast_defer_registration();
+int ast_scoped_defer_enabled();
 int retained_source_next_line_token(int source, int offset);
 int defer_tree_capture();
 int defer_tree_emit(int index);
@@ -56,6 +57,7 @@ struct defer_span_record:
 	int column    # 0-based
 	int source    # retained source version holding the span, or -1 (S2.3)
 	int tree      # owned unbound deferred-call syntax, 0 for fallback
+	int scope     # -1 legacy function defer, -2 retired, otherwise lexical node
 
 
 list[defer_span_record] defer_spans
@@ -127,6 +129,10 @@ void defer_record_span(char* path, int offset, int line, int column):
 	rec.line = line
 	rec.column = column
 	rec.tree = 0
+	rec.scope = -1
+	if (retained_parent >= 0):
+		retained_record* registration = retained_record_at(retained_parent)
+		if (strcmp(registration.name, c"scoped defer") == 0): rec.scope = registration.parent
 	rec.source = -1
 	if (ast_retain_mode): rec.source = retained_source_find(path)
 	defer_spans.push(rec)
@@ -144,6 +150,16 @@ void defer_skip_statement():
 # --ast-emit-retained the statement's walk registers the span once the
 # line is skipped (ast_defer_registration, grammar/ast_declaration.w).
 void defer_register():
+	if (accept(c":")):
+		if ((ast_scoped_defer_enabled() == 0) || (retained_parent < 0)): error(c"scoped defer requires retained statement emission")
+		retained_record* registration = retained_record_at(retained_parent)
+		int scope = registration.parent
+		if (scope < 0): error(c"scoped defer requires a lexical block")
+		char* name = retained_record_at(scope).name
+		if ((strcmp(name, c":") != 0) && (strcmp(name, c"{") != 0)): error(c"scoped defer requires a lexical block")
+		registration.name = retained_intern(c"scoped defer")
+		# This explicit contract selects checking even without --safe.
+		type_safe_used = 1
 	defer_check_form()
 	if (ast_defer_registration()): return
 	defer_record_span(strclone(filename), token_start_offset, diag_token_line - 1, diag_token_column - 1)
@@ -183,24 +199,65 @@ void defer_reparse_start(int i):
 # Emit every registered deferred statement in LIFO order at the current
 # code position. Each span is re-parsed with the outer tokenizer state
 # saved and restored around it, so the outer parse resumes untouched.
+void defer_emit_one(int i):
+	# Record the actual exit binding for ownership analysis and liveness.
+	int deferred = retained_enter(retained_statement, defer_spans[i].file, defer_spans[i].offset, defer_spans[i].line + 1, defer_spans[i].column + 1, c"deferred exit")
+	if (defer_tree_emit(i)):
+		retained_leave(deferred, token_start_offset)
+		return
+	defer_reparse_exits = defer_reparse_exits + 1
+	char* save = generic_reparse_save()
+	defer_reparse_start(i)
+	if (ast_deferred_expression() == 0): expression()
+	expect_or_newline(c";")
+	retained_source_reparse_close(file)
+	generic_reparse_restore(save)
+	retained_leave(deferred, token_start_offset)
+
+
 void defer_emit_all():
 	int i = defer_count()
 	while (i > 0):
 		i = i - 1
-		# Preserve the actual exit-site binding and evaluation order for
-		# ownership analysis, separately from the return's own expression.
-		int deferred = retained_enter(retained_statement, defer_spans[i].file, defer_spans[i].offset, defer_spans[i].line + 1, defer_spans[i].column + 1, c"deferred exit")
-		if (defer_tree_emit(i)):
-			retained_leave(deferred, token_start_offset)
-			continue
-		defer_reparse_exits = defer_reparse_exits + 1
-		char* save = generic_reparse_save()
-		defer_reparse_start(i)
-		if (ast_deferred_expression() == 0): expression()
-		expect_or_newline(c";")
-		retained_source_reparse_close(file)
-		generic_reparse_restore(save)
-		retained_leave(deferred, token_start_offset)
+		if (defer_spans[i].scope != -2): defer_emit_one(i)
+
+
+# The enclosing block consumes scoped registrations after fall-through
+# emission. A loop's emitted cleanup executes on each iteration; no runtime
+# list or registration allocation is needed. Legacy registrations survive.
+void defer_emit_block(int scope, int function_body):
+	int i = defer_count()
+	while (i > 0):
+		i = i - 1
+		int owner = defer_spans[i].scope
+		if ((owner >= 0) && (owner == scope)):
+			defer_emit_one(i)
+			defer_spans[i].scope = -2
+		else if (function_body && (owner == -1)): defer_emit_one(i)
+
+
+# Lexical identity, rather than stack depth, distinguishes empty scopes.
+# Continue crosses switches; break stops at the first switch or loop.
+int defer_scope_exited(int scope, int jump, int continuing):
+	int parent = retained_record_at(jump).parent
+	while (parent >= 0):
+		retained_record* record = retained_record_at(parent)
+		char* name = record.name
+		if ((strcmp(name, c"while") == 0) || (strcmp(name, c"for range") == 0) || (strcmp(name, c"for") == 0)): return 0
+		if ((continuing == 0) && (strcmp(name, c"switch") == 0)): return 0
+		if (parent == scope): return 1
+		if (record.kind == retained_function): return 0
+		parent = record.parent
+	return 0
+
+
+void defer_emit_jump(int node, int continuing):
+	if (node < 0): return
+	int i = defer_count()
+	while (i > 0):
+		i = i - 1
+		int scope = defer_spans[i].scope
+		if ((scope >= 0) && defer_scope_exited(scope, node, continuing)): defer_emit_one(i)
 
 
 # Exit path for 'return': the pending return value is already in eax

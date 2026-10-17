@@ -1096,15 +1096,28 @@ its stack slot; cleanup tests the slot before freeing it. This accounts for
 branch-dependent transfers without reference counting or garbage collection.
 There is no cleanup promise after process termination or a trap.
 
-Checked `defer` registrations must appear directly in the outer function
-block. The return expression is evaluated and transferred first, deferred
-expressions run in LIFO order against their exit-time bindings, then remaining
-owners are destroyed. Deferred reads keep their backing storage borrowed;
-a deferred move cannot consume an owner already transferred by the return.
-Returned references remain protected while deferred work runs. Nested loop,
-branch or block registrations remain rejected; this extension does not give
-W's static registration rules dynamic per-iteration semantics. Nested exits
-after an outer registration still execute the registered work at function exit.
+Checked `defer expression` registrations remain restricted to the outer
+function block. `defer: expression` is an explicit checked, lexical registration:
+it runs on departure from its enclosing block, including fall-through,
+`return`, `break` and `continue`. A conditional block registers work only on the
+path entering that block; a loop body runs its cleanup on each iteration.
+Both forms accept one simple expression on the same source line and evaluate
+it against exit-time bindings, including later declarations and shadowing.
+They do not capture argument values at registration.
+
+Deferred expressions run in reverse registration order before automatic owner
+destruction. A return evaluates and transfers its result first; scoped defers
+in exited inner blocks and outer function defers then execute in LIFO order.
+A loop jump runs only scoped defers in the blocks it exits (`continue` crosses
+an intervening switch); it does not run outer function defers. Deferred reads
+extend borrow liveness, deferred moves cannot reuse transferred owners, and
+returned references remain protected while deferred work runs.
+
+The colon form selects checked analysis even without `--safe` and requires the
+default retained emitter. It does not admit raw operations, unsafe-block
+registration, `goto`, generators, multi-statement defer bodies or deferred
+control transfer. Legacy unqualified function-scoped registration semantics
+are unchanged. There is no guarantee of cleanup after a trap or process exit.
 
 An explicit boundary permits raw operations:
 

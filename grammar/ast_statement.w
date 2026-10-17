@@ -116,6 +116,7 @@ int ast_statement_simple(int* jumps):
 	node.end_offset = token_start_offset + token_i
 	node.target = 0
 	node.unwind_slots = 0
+	node.scope_node = retained_parent
 	node.valid_jump = 1
 	if (kind == ast_stmt_break):
 		*jumps = 1
@@ -573,6 +574,7 @@ int ast_statement_block():
 	int block_tab_level = enclosing_tab_level
 	get_token()
 	node.binding = table_pos
+	node.scope_node = retained_parent
 	ast_block_layout(node, ast_body_depth())
 	int walk = retained_walk_begin(cast(int, emit_block_ast_walk), node)
 	if (walk >= 0): retained_walk_phase(walk, ast_walk_block_begin)

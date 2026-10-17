@@ -136,3 +136,7 @@ int ast_defer_registration():
 	retained_emit_statement(retained_walks[walk].node)
 	defer_spans[defer_count() - 1].tree = tree
 	return 1
+
+
+int ast_scoped_defer_enabled():
+	return ast_emit_retained_mode
