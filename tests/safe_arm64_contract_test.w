@@ -196,3 +196,7 @@ void test_arm64_runtime_pin_rejects_changed_implementation():
 	unlink(source)
 	free(original)
 	free(modified)
+
+
+void test_arm64_context_runtime_contract():
+	arm64_contract_case(c"import lib.lib\nint main():\n\town int* value = new int\n\treturn *value\n", 0)
