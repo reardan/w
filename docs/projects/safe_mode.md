@@ -1179,6 +1179,48 @@ trust manual borrow-registration counters in the legacy `lib.arena` API.
 Typed arena allocation, attached budgets, nonmoving concurrent allocation,
 and general raw/foreign-to-checked conversions remain separate work.
 
+## Synchronous foreign byte I/O
+
+`import lib.safe_foreign` exposes two audited entry points:
+
+```w
+int foreign_read(int descriptor, refmut byte[] destination)
+int foreign_write(int descriptor, ref byte[] source)
+```
+
+Both calls borrow initialized storage for the duration of the synchronous OS
+operation. `foreign_read` requires exclusive access; `foreign_write` permits
+shared reads. The wrappers neither retain a pointer nor transfer ownership.
+The descriptor remains the caller's responsibility. Results preserve the
+underlying byte count, EOF and error behavior, including partial transfers;
+callers must check the returned count. Empty slices return zero without
+accessing their data pointer or calling the OS, even for an invalid descriptor.
+
+Checked subslices preserve their bounds and backing lifetime across these
+calls. Live shared views reject a write into their backing storage; live
+exclusive views reject access through another path. After the last use of a
+borrow, the owner can be used again. Element conversions require exactly the
+same byte type, including when warnings are nonfatal and without `--safe`.
+Quantified callback signatures preserve the same mutable/shared contract.
+
+Trust binds to the resolved implementation and the pinned runtime closure.
+A changed or shadowed `safe_foreign.w` fails the runtime audit; a user wrapper
+with the same spelling receives no special privilege. General foreign
+adoption, ownership transfer, assembly contracts and typed arenas retain their
+separate acceptance gates in #698.
+
+Validation: 16 positive/rejection contracts plus implementation-integrity tests
+pass on x86/x64 with and without `--safe`. The complete run passes 1,438 ordinary
+targets and 1,436 instrumented targets plus six API harnesses, with a COMPLETE
+receipt and 3/3 changed compiler lines reached. All 56 distinct architecture/root
+checks pass. Linux optimization variants and Wine execute the fixture; three
+ARM64 variants cross-compile locally and require runtime CI. Native guard and
+Memcheck runs report 30 allocations/frees and zero errors/leaks per Linux target.
+Seven alternating compiles of fixed parent `8a3a0c79` measure median 1.66/1.67
+seconds and 116,704/116,704 KiB peak RSS. Compiler output and prior checked fixture
+bytes are identical. Every tracked W source stayed identical across the rebase
+onto the prerequisite's final proof commit. Existing coverage floors pass.
+
 ## Cleanup and unsafe boundaries
 
 Every live owner is destroyed in reverse declaration order at its normal
