@@ -1102,12 +1102,34 @@ The supported control flow is blocks, `if`/`else`, `while`, range `for`, scalar
 `switch`, `break`, `continue`, returns, short-circuit Boolean expressions and
 scalar conditional expressions. Range bounds and step evaluate once in source
 order; `continue` reaches the implicit index update. Switch labels retain
-their evaluation order and W's no-fallthrough behavior. Container iteration,
+their evaluation order and W's no-fallthrough behavior. Shared checked slices
+support scalar iteration as described below. Other container iteration,
 generators, arbitrary `goto`, GPU operations and legacy container operations
 remain unsupported. The audited concrete storage APIs
 below are the supported growable-container interface.
 Declarations require a lexical block, including inside conditionals and
 loops. Executable assembly bodies are rejected.
+
+### Checked slice iteration
+
+`for item in view` and `for int item in view` accept `ref T[]` with scalar
+elements. The iterable can be a local, borrowed record field, checked subrange
+or a function/generic call. It evaluates exactly once; the loop captures its
+inline data/length descriptor by value and copies one element into the loop
+variable per iteration. Neither capture nor traversal allocates heap storage.
+
+The checker keeps a synthetic loan for implicit condition and element reads,
+so invalidating the backing owner is rejected even when the body never names
+the slice. Implicit loop-variable writes also participate in borrow checking.
+Nested loops keep independent loans. `continue` advances the cursor; `break`,
+return and ordinary completion release the loop's slots and run the existing
+lexical defer/owner cleanup for exited scopes. Mutation resumes after the last
+possible iterator read, including on a path that immediately breaks.
+
+A checked mutable slice must first be reborrowed as a shared slice. Direct
+iteration of mutable slices, records or owned elements, opaque container
+owners, and user cursor protocols still have separate gates under #697.
+Legacy raw iteration retains its existing behavior outside checked functions.
 
 ## Checked buffers and byte strings
 

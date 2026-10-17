@@ -34,6 +34,7 @@ struct safe_flow:
 list[safe_flow*] safe_graph
 list[int] safe_locals
 map[int, int] safe_local_index
+map[int, int] safe_iterator_locals
 
 # Component sets preserve group independence; whole-value unions still drive
 # access checks, scope invalidation and reborrow ancestry.
@@ -1022,6 +1023,35 @@ int safe_range(int id, int next):
 	return safe_add(id, -1, local, 4, start, -1)
 
 
+# The iterable is evaluated once into the cursor's hidden descriptor slot.
+# A synthetic loan preserves backing storage
+# until the final implicit loop read, independently of uses in the body.
+int safe_iteration(int id, int next):
+	int iterator = safe_iterator_locals.get(id, -1)
+	if (iterator < 0): safe_error(id, c"safe: iteration requires a checked shared slice", -1)
+	int local = -1
+	int body = -1
+	int expression = -1
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* n = retained_record_at(child)
+		if (n.kind == retained_local):
+			if (local >= 0): safe_error(id, c"safe: checked slice iteration takes one variable", -1)
+			local = safe_index(n.binding)
+		else if (n.kind == retained_expression_group): expression = safe_expr_root(child)
+		else if (n.kind == retained_statement): body = child
+		child = safe_next[child]
+	if ((local < 0) || (body < 0) || (expression < 0)): safe_error(id, c"safe: unsupported iteration representation", -1)
+	int type = retained_bindings[safe_locals[local]].type
+	if (safe_scalar_type(type) == 0): safe_error(id, c"safe: slice iteration requires a scalar loop variable", -1)
+	int guard = safe_add(id, -1, iterator, 8, -1, next)
+	int write = safe_add(id, -1, local, 6, -1, -1)
+	safe_graph[write].next = safe_build(body, guard, next, guard)
+	safe_graph[guard].next = write
+	int capture = safe_add(id, expression, iterator, 1, guard, -1)
+	return safe_add(id, -1, local, 4, capture, -1)
+
+
 # Each clause owns its label expressions and body. Unmatched labels
 # continue to the next clause; matching one skips the remaining labels.
 int safe_switch_clause(int clause, int next, int continue_to):
@@ -1127,12 +1157,13 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		safe_unsafe_check(id)
 		return next
 	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
-	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
+	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
 	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"scoped defer") == 0)): return next
 	if (strcmp(name, c"deferred exit") == 0): return safe_deferred(id, next, -1)
 	if (strcmp(name, c"return") == 0): return safe_return(id)
 	if (strcmp(name, c"for range") == 0): return safe_range(id, next)
+	if (strcmp(name, c"for") == 0): return safe_iteration(id, next)
 	if (strcmp(name, c"switch") == 0): return safe_switch(id, next, continue_to)
 	if ((strcmp(name, c":") == 0) || (strcmp(name, c"{") == 0)):
 		int cleanup = safe_add(id, -1, -1, 3, next, -1)
@@ -2676,6 +2707,9 @@ void safe_transfer(int event, char* state):
 	else if (f.action == 4): state[index] = 2
 	else if ((f.action == 5) || (f.action == 6)):
 		safe_access(index, -1, f.action == 6, f.node, state)
+	else if (f.action == 8):
+		safe_read(index, f.node, state)
+		safe_access(safe_origin[index], index, 0, f.node, state)
 	else if (f.action == 7):
 		int roots = -1
 		if (f.returning >= 0): roots = safe_graph[f.returning].return_roots
@@ -2723,6 +2757,36 @@ void safe_function_check(int function):
 			int block = n.parent
 			if ((block < 0) || (retained_record_at(block).parent != function)):
 				safe_error(id, c"safe: defer requires the function's outer lexical block", -1)
+	int saved_bindings = retained_bindings.length
+	safe_iterator_locals = new map[int, int]
+	list[int] iterator_nodes = new list[int]
+	for id in range(retained_node_count()):
+		if (retained_node_table[id] & 1): continue
+		retained_record* n = retained_record_at(id)
+		if ((n.kind != retained_statement) || (strcmp(n.name, c"for") != 0) || (safe_within(id, function) == 0)): continue
+		int child = safe_first[id]
+		while (child >= 0):
+			retained_record* part = retained_record_at(child)
+			if (part.kind == retained_expression_group):
+				retained_node value
+				retained_node_load(safe_expr_root(child), &value)
+				int type = safe_unqualified(value.semantic_type)
+				if ((type >= 0) && (retained_types[type].kind == type_kind_safe_slice)):
+					retained_binding* binding = new retained_binding
+					binding.name = retained_intern(c"<iterator>")
+					binding.key = strclone(c"<checked iterator>")
+					binding.origin = -1
+					binding.origin_previous = -1
+					binding.type = type
+					binding.scope = 'L'
+					binding.owner = function
+					binding.parameters = new list[int]
+					safe_local_index[retained_bindings.length] = safe_locals.length
+					safe_iterator_locals[id] = safe_locals.length
+					safe_locals.push(retained_bindings.length)
+					retained_bindings.push(binding)
+					iterator_nodes.push(id)
+			child = safe_next[child]
 	# Additional abstract parameter roots are not variable bindings or loans.
 	# Keep them after real locals, without overwriting safe_local_index; their
 	# state/birth still participates in the ordinary root and scope checks.
@@ -2772,6 +2836,7 @@ void safe_function_check(int function):
 		if (n.kind == retained_local):
 			int index = safe_index(n.binding)
 			if (index >= 0): safe_birth[index] = id
+	for i in range(iterator_nodes.length): safe_birth[safe_iterator_locals[iterator_nodes[i]]] = iterator_nodes[i]
 	for i in range(safe_real_locals, count): safe_birth[i] = safe_birth[safe_index(safe_locals[i])]
 	safe_guard_locals = safe_zero(count, 1)
 	for i in range(safe_real_locals): safe_guard_locals[i] = safe_guard_drop(retained_bindings[safe_locals[i]].type)
@@ -2781,7 +2846,7 @@ void safe_function_check(int function):
 	# point handles loop backedges; no source-offset lifetime shortcuts.
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
-		if ((f.action == 5) || (f.action == 6)): f.uses[f.binding] = 1
+		if ((f.action == 5) || (f.action == 6) || (f.action == 8)): f.uses[f.binding] = 1
 		# A guard is used where it is dropped: its block's exit, any
 		# return, and the end of the function.
 		for j in range(safe_real_locals):
@@ -2887,6 +2952,13 @@ void safe_function_check(int function):
 	safe_path_offset.free()
 	safe_path_type.free()
 	safe_local_index.free()
+	safe_iterator_locals.free()
+	iterator_nodes.free()
+	while (retained_bindings.length > saved_bindings):
+		retained_binding* binding = retained_bindings.pop()
+		free(binding.key)
+		binding.parameters.free()
+		free(binding)
 	free(cast(char*, safe_origin))
 	free(cast(char*, safe_parent_ref))
 	free(cast(char*, safe_birth))

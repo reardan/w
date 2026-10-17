@@ -116,7 +116,7 @@ void ast_for_range_loop(int for_var, int for_tab_level):
 void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
 		int element_type, int value_coerce_type,
-		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type):
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type, int capture_slice):
 	loop_ast local_node
 	loop_ast* node = cast(loop_ast*, retained_parse_record(&local_node, sizeof(loop_ast)))
 	node.kind = ast_loop_cursor
@@ -133,6 +133,7 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	node.next_fn = retained_parse_name(next_fn)
 	node.free_fn = retained_parse_name(free_fn)
 	node.value2_fn = retained_parse_name(value2_fn)
+	node.capture_slice = capture_slice
 	node.element_type = element_type
 	node.value_coerce_type = value_coerce_type
 	node.value_var = value_var

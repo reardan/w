@@ -477,6 +477,20 @@ void for_cleanup_emit_returning():
 	pop_eax_slot()
 
 
+# Freeze an inline checked descriptor by value. Its address may refer to a
+# mutable local, a field, or a temporary call result; the iterator retains
+# its own data/length pair even when another expression overwrites that home.
+void for_capture_slice():
+	int original = push_slot()
+	promote_eax()
+	push_slot()
+	load_slot(original)
+	add_eax_int32(word_size)
+	promote_eax()
+	store_stack_var(word_size)
+	lea_eax_esp_plus(0)
+
+
 # Emit the cursor-loop scaffold shared by every for-in container shape:
 # hidden container and cursor slots, break/continue context, done-check,
 # loop-variable extraction, body, advance, back-jump, chain patching.
@@ -502,20 +516,21 @@ void for_cleanup_emit_returning():
 void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
 		int element_type, int value_coerce_type,
-		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type);
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type, int capture_slice);
 
 
 void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
 		int element_type, int value_coerce_type,
-		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type):
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type, int capture_slice):
 	if (ast_expressions_mode >= 2):
 		ast_for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			begin_fn, done_fn, value_fn, next_fn, free_fn,
-			element_type, value_coerce_type, value_var, value_var_type, value2_fn, value2_coerce_type)
+			element_type, value_coerce_type, value_var, value_var_type, value2_fn, value2_coerce_type, capture_slice)
 		return
 	# The bottom test of a rotated loop belongs to the header's line
 	int header_line = diag_token_line
+	if (capture_slice): for_capture_slice()
 	# hidden slot: the container pointer
 	int container_slot = push_slot()
 
@@ -605,7 +620,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	loop_leave(outer)
 
 	# Discard the hidden container and cursor slots (the loop variable stays)
-	drop_slots(2)
+	drop_slots(2 + capture_slice * 2)
 
 
 # value_var is 0 for the one-variable form; otherwise it anchors the
@@ -632,7 +647,7 @@ void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, 
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			c"__w_map_iter_begin", c"__w_map_iter_done", c"__w_map_iter_key", c"__w_map_iter_next", 0,
 			-1, key_type,
-			value_var, value_var_type, value_call, loop_value_type)
+			value_var, value_var_type, value_call, loop_value_type, 0)
 
 
 # value_var is 0 for the one-variable form; otherwise "for i, x in l"
@@ -658,7 +673,7 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 		for_cursor_loop(for_var, for_tab_level, loop_var_type,
 				c"__w_list_iter_begin", c"__w_list_iter_done", c"__w_list_iter_index", c"__w_list_iter_next", 0,
 				-1, type_lookup(c"int"),
-				value_var, value_var_type, value_call, loop_value_type)
+				value_var, value_var_type, value_call, loop_value_type, 0)
 		return;
 
 	if (types_compatible_with_expression(loop_var_type, loop_value_type) == 0):
@@ -667,7 +682,7 @@ void for_list_loop(int for_var, int for_tab_level, int loop_var_type, int contai
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			c"__w_list_iter_begin", c"__w_list_iter_done", value_call, c"__w_list_iter_next", 0,
 			-1, loop_value_type,
-			0, -1, 0, -1)
+			0, -1, 0, -1, 0)
 
 
 # Iterate a slice (T[] descriptor): hidden slots hold the descriptor
@@ -684,7 +699,7 @@ void for_slice_loop(int for_var, int for_tab_level, int loop_var_type, int conta
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			0, 0, 0, 0, 0,
 			element_type, -1,
-			0, -1, 0, -1)
+			0, -1, 0, -1, type_is_safe_slice(container_type))
 
 
 void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
@@ -698,7 +713,7 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			0, 0, c"utf8_decode", c"utf8_next", 0,
 			-1, type_lookup(c"int"),
-			0, -1, 0, -1)
+			0, -1, 0, -1, 0)
 
 
 # Inferred loop variable, first half: 'for name in ...' with the type
@@ -862,7 +877,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	for_cursor_loop(for_var, for_tab_level, loop_var_type,
 			begin_name, done_name, value_name, next_name, free_name,
 			-1, -1,
-			0, -1, 0, -1)
+			0, -1, 0, -1, 0)
 
 	free(begin_name)
 	free(done_name)

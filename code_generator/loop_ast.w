@@ -82,6 +82,7 @@ void emit_range_loop_ast_end(loop_ast* node):
 int* emit_cursor_loop_ast_begin(loop_ast* node):
 	assert1(node.layout_ready)
 	assert1(stack_pos == node.entry_depth)
+	if (node.capture_slice): for_capture_slice()
 	# hidden slot: the container pointer
 	assert1(push_slot() == node.container_slot)
 
