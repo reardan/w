@@ -707,7 +707,33 @@ void test_ast_inferred_generic_calls_are_required():
 	ast_test_store_diagnostics(c"T f[T](T a, T b): return a\nint main(): return f(1, 1.5)\n")
 	ast_test_store_diagnostics(c"T* f[T](T* value): return value\nint main(): return f(1)\n")
 	ast_test_store_diagnostics(c"int f[T](int value): return value\nint main(): return f(1)\n")
-	ast_test_store_diagnostics(c"T f[T](T value): return value\nstruct R:\n\tint x\nint main():\n\tR r = R(1)\n\tf(r)\n\treturn 0\n")
+	# Retained calls now reserve aggregate result storage; the streaming
+	# emitter still rejects inferred aggregate results. Test that deliberate
+	# difference instead of requiring their old rejection to match.
+	char* aggregate_source = ast_test_path(c".w")
+	char* aggregate_output = ast_test_path(c".out")
+	assert1(file_write_text(aggregate_source, c"T f[T](T value): return value\nstruct R:\n\tint x\nint main():\n\tR r = R(1)\n\tf(r)\n\tR result = f(f(r))\n\treturn result.x - 1\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		for checking in range(2):
+			process_result* legacy = ast_test_compile(compiler, c"x64", aggregate_source, aggregate_output, 0, checking, 0)
+			assert_equal(1, legacy.status)
+			process_result_free(legacy)
+			for mode in range(2, 5):
+				process_result* result = ast_test_compile(compiler, c"x64", aggregate_source, aggregate_output, mode, checking, 0)
+				assert_equal(0, result.status)
+				process_result_free(result)
+				if (checking == 0):
+					char** run = strv_new(1)
+					strv_set(run, 0, aggregate_output)
+					result = ast_test_run(run, 0)
+					assert_equal(0, result.status)
+					process_result_free(result)
+	unlink(aggregate_source)
+	unlink(aggregate_output)
+	free(aggregate_source)
+	free(aggregate_output)
 	ast_test_store_diagnostics(c"T f[T](T value): return value\nint g(): return 1\nint main(): return f(g)\n")
 
 	ast_test_store_diagnostics(c"T f[T](T value, list[T] items): return value\nint main(): return f(1, list[char]{'a'})\n")
