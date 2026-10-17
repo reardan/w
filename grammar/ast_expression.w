@@ -1512,11 +1512,25 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 	if (generic_infer_ast_shape(def, syntax.result, &data) == -3): return -1
 	int[10] kinds
 	int[10] shapes
+	# Invert only the admitted borrowed record/slice wrapper. The
+	# final concrete signature still checks access and lifetime effects.
+	int[10] borrowed_shapes
 	generic_type_ast* parameter = syntax.parameters
 	int count = 0
 	while (parameter != 0):
 		int kind = generic_infer_ast_shape(def, parameter, &data)
 		if ((kind == -3) || (count == 10)): return -1
+		borrowed_shapes[count] = 0
+		if ((parameter.safety == 2) || (parameter.safety == 3)):
+			if ((kind >= 0) && (parameter.stars == 0)):
+				borrowed_shapes[count] = 1
+			else if ((parameter.application == 2) && (parameter.first != 0)):
+				int element_depth = 0
+				int element_kind = generic_infer_ast_shape(def, parameter.first, &element_depth)
+				if ((element_kind >= 0) && (element_depth == 0)):
+					kind = element_kind
+					data = 0
+					borrowed_shapes[count] = 2
 		kinds[count] = kind
 		shapes[count] = data
 		count = count + 1
@@ -1556,7 +1570,14 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 			else:
 				if (got == 4): return -1
 				int inferred = got
-				if ((got == string_value_type) || (got == string_literal_type)): inferred = string_type
+				if (borrowed_shapes[count] == 1):
+					if (type_is_safe_record(got) == 0): return -1
+					inferred = type_record(type_unqualified(got)).alias_target
+				else if (borrowed_shapes[count] == 2):
+					if (type_is_safe_slice(got)): inferred = type_get_element_type(got)
+					else if (type_is_array(type_real(type))): inferred = type_get_element_type(type_real(type))
+					else: return -1
+				else if ((got == string_value_type) || (got == string_literal_type)): inferred = string_type
 				else if (got == var_value_type): inferred = var_type
 				else if (got == float32_value_type): inferred = float32_type
 				else if (got == float64_value_type): inferred = float64_type
@@ -1598,12 +1619,15 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 	if (ast_expression_generic_resolve(tree, id, cast(int, &types[0]), arity) != count): return -1
 	int argument = tree.left[id]
 	for i in range(count):
-		if (kinds[i] == -2):
+		if ((kinds[i] == -2) || borrowed_shapes[i]):
 			int want = ast_expression_generic_parameter(tree, id, i)
 			if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
 			# generic_call_infer_expr's post-binding check_call_argument;
 			# the pushed arguments leave no literal note current
 			if (ast_expression_conversion(tree, c"call argument", -3 - id, i, want, ast_expression_promoted_type(tree.result_type[argument]), -1) == 0): return -1
+			if (borrowed_shapes[i]):
+				tree.infer_coercion[argument] = 2
+				tree.infer_want[argument] = want
 		argument = tree.next_arg[argument]
 	ast_expression_advance(tree)
 	return id

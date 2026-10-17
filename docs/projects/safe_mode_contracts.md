@@ -499,3 +499,17 @@ callee layout. Inference shares a completed signature with a nested call even
 when the nested node has a later arena index. Whole-parameter inference retains
 checked qualifiers and lifetime groups in specialization identity; owner moves
 and result provenance use the same retained contract as explicit calls.
+
+
+## Inferring borrowed shapes
+
+A qualified borrowed-record parameter binds its template parameter to the
+argument wrapper's plain record template; a qualified slice parameter binds
+its element from a checked slice or fixed array. Whole-parameter inference
+continues to retain the entire argument type. Repeated bindings must agree,
+then every inverted shape is checked against its concrete specialized
+signature. Array-to-slice coercion runs at the argument's evaluation position
+and pushes the checked descriptor layout. No raw pointer gains a slice length,
+no shared input gains exclusive access, and inferred labels do not extend
+backing storage lifetimes. Generic struct applications and checked generic
+method syntax retain their subsequent implementation gates under #696.

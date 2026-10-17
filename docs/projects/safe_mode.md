@@ -262,8 +262,12 @@ now preserve checked aggregate arguments and return their concrete layouts.
 The retained emitter reserves the result buffer before evaluating arguments,
 compacts nested argument temporaries, and reuses signatures across nested calls.
 The streaming emitter retains its explicit-type-argument requirement for aggregate
-results. Inferring through qualified `ref T` / `ref T[]` shapes and generic-method
-syntax retain separate implementation gates under #696.
+results. Inference also inverts `ref[a,b] T`, `refmut[a] T` and `ref[a] T[]`
+parameters. Borrowed records supply their plain template and checked slices
+or fixed arrays supply their element type. The concrete signature rechecks
+qualifiers, group arity, outlives relationships and argument conflicts. A bare
+`T` parameter retains the entire checked type instead of stripping its wrapper.
+Generic-method syntax retains its separate implementation gate under #696.
 
 Check mode keeps its synthetic `int` instantiation for unused scalar, pointer
 and slice templates. A bare `ref T` or `refmut T` constraint requires a record,
