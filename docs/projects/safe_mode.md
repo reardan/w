@@ -2190,3 +2190,26 @@ Compiler and prior checked fixture bytes are identical. Measurements are
 specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 until the dependent merges and integrated completion gates pass.
+
+
+### Generic allocation validation
+
+`new T` resolves the active template substitution before ordinary type lookup
+in both compiler paths. The resulting concrete allocation retains sized-value,
+initialization and checked-owner requirements. This does not admit construction
+of opaque runtime metadata or add a `new Generic[T]` application form.
+
+Validation passed 20 contract cases on both Linux widths with and without
+`--safe`, all 48 architecture/root checks and 1,431 ordinary targets including
+both fixpoints, Wine runtime and benchmark. Instrumented validation passed
+1,429 targets plus six API harnesses with a COMPLETE receipt and reached all
+four changed executable lines. Existing floors pass unchanged. Linux guard
+allocation and Memcheck report 180 allocations/frees and zero errors/leaks
+per width. Optimization variants and Wine execute, with ARM64 runtime gates
+in CI.
+
+Seven alternating compiles of the fixed #788 parent corpus measured
+1.68/1.68 seconds and 116,480/116,160 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements describe
+that corpus on the shared host. The implementation rebased unchanged onto
+the prerequisite validation commit; #696/#644 retain their completion gates.
