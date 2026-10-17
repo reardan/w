@@ -619,7 +619,7 @@ int safe_call_binding(retained_node* node):
 void safe_unsafe_check(int id):
 	retained_record* n = retained_record_at(id)
 	if (n.kind == retained_statement):
-		if ((strcmp(n.name, c"return") == 0) || (strcmp(n.name, c"break") == 0) || (strcmp(n.name, c"continue") == 0) || (strcmp(n.name, c"defer") == 0) || (strcmp(n.name, c"goto") == 0) || (strcmp(n.name, c"yield") == 0)):
+		if ((strcmp(n.name, c"return") == 0) || (strcmp(n.name, c"break") == 0) || (strcmp(n.name, c"continue") == 0) || (strcmp(n.name, c"defer") == 0) || (strcmp(n.name, c"scoped defer") == 0) || (strcmp(n.name, c"goto") == 0) || (strcmp(n.name, c"yield") == 0)):
 			safe_error(id, c"safe: unsafe blocks cannot transfer control or defer work", -1)
 	if (safe_contains_checked(n.semantic_type)): safe_error(id, c"safe: unsafe blocks cannot manipulate checked pointers", -1)
 	if (n.kind == retained_expression_group):
@@ -758,6 +758,25 @@ int safe_deferred(int id, int next, int returning):
 	return event
 
 
+int safe_deferred_jump(int id, int target, int continuing):
+	int next = safe_jump_cleanup(id, target, continuing)
+	if (safe_first[id] < 0): return safe_add(id, -1, -1, 0, next, -1)
+	list[int] deferred = new list[int]
+	int child = safe_first[id]
+	while (child >= 0):
+		retained_record* record = retained_record_at(child)
+		if ((record.kind != retained_statement) || (strcmp(record.name, c"deferred exit") != 0)):
+			safe_error(child, c"safe: unsupported jump representation", -1)
+		deferred.push(child)
+		child = safe_next[child]
+	int i = deferred.length
+	while (i > 0):
+		i = i - 1
+		next = safe_deferred(deferred[i], next, -1)
+	deferred.free()
+	return safe_add(id, -1, -1, 0, next, -1)
+
+
 # Return capture precedes deferred evaluation. Keeping these events on the
 # same graph makes deferred reads extend liveness and deferred moves visible
 # to later LIFO calls, while a captured borrowed result stays protected.
@@ -796,7 +815,7 @@ int safe_build(int id, int next, int break_to, int continue_to):
 	if (n.expression_fallback): safe_error(id, c"safe: unsupported expression fallback", -1)
 	if ((strcmp(name, c"yield") == 0) || (strcmp(name, c"goto") == 0) || (strcmp(name, c"asm") == 0) || (strcmp(name, c"for") == 0)):
 		safe_error(id, c"safe: unsupported control flow or deferred operation", -1)
-	if (strcmp(name, c"defer") == 0): return next
+	if ((strcmp(name, c"defer") == 0) || (strcmp(name, c"scoped defer") == 0)): return next
 	if (strcmp(name, c"deferred exit") == 0): return safe_deferred(id, next, -1)
 	if (strcmp(name, c"return") == 0): return safe_return(id)
 	if (strcmp(name, c"for range") == 0): return safe_range(id, next)
@@ -805,8 +824,8 @@ int safe_build(int id, int next, int break_to, int continue_to):
 		int cleanup = safe_add(id, -1, -1, 3, next, -1)
 		return safe_sequence(safe_first[id], cleanup, break_to, continue_to)
 	if ((strcmp(name, c"pass") == 0) || (strcmp(name, c"debugger") == 0)): return next
-	if (strcmp(name, c"break") == 0): return safe_add(id, -1, -1, 0, safe_jump_cleanup(id, break_to, 0), -1)
-	if (strcmp(name, c"continue") == 0): return safe_add(id, -1, -1, 0, safe_jump_cleanup(id, continue_to, 1), -1)
+	if (strcmp(name, c"break") == 0): return safe_deferred_jump(id, break_to, 0)
+	if (strcmp(name, c"continue") == 0): return safe_deferred_jump(id, continue_to, 1)
 	int group = -1
 	int local = -1
 	int first_body = -1
@@ -2560,6 +2579,7 @@ void safe_check_finish():
 		retained_node_load(id, &n)
 		if (safe_trusted(n.source)): continue
 		int checked = safe_contains_checked(n.semantic_type)
+		if ((n.kind == retained_statement) && (strcmp(n.name, c"scoped defer") == 0)): checked = 1
 		int call_binding = n.binding
 		if ((n.kind == retained_expression) && ((n.op == 'G') || (n.op == 'W'))): call_binding = safe_call_binding(&n)
 		if ((n.kind == retained_expression) && (call_binding >= 0)):

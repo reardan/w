@@ -295,7 +295,7 @@ rule for_binding = type_ref IDENT | IDENT
 rule for_binding_tail = COMMA for_binding | 
 rule return_stmt = KW_RETURN expression_opt
 rule yield_stmt = KW_YIELD expression
-rule defer_stmt = KW_DEFER base_statement
+rule defer_stmt = KW_DEFER COLON? base_statement
 rule break_stmt = KW_BREAK
 rule continue_stmt = KW_CONTINUE
 # goto and its target label (grammar/goto_statement.w, issue #435)

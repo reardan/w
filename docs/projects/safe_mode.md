@@ -1096,15 +1096,28 @@ its stack slot; cleanup tests the slot before freeing it. This accounts for
 branch-dependent transfers without reference counting or garbage collection.
 There is no cleanup promise after process termination or a trap.
 
-Checked `defer` registrations must appear directly in the outer function
-block. The return expression is evaluated and transferred first, deferred
-expressions run in LIFO order against their exit-time bindings, then remaining
-owners are destroyed. Deferred reads keep their backing storage borrowed;
-a deferred move cannot consume an owner already transferred by the return.
-Returned references remain protected while deferred work runs. Nested loop,
-branch or block registrations remain rejected; this extension does not give
-W's static registration rules dynamic per-iteration semantics. Nested exits
-after an outer registration still execute the registered work at function exit.
+Checked `defer expression` registrations remain restricted to the outer
+function block. `defer: expression` is an explicit checked, lexical registration:
+it runs on departure from its enclosing block, including fall-through,
+`return`, `break` and `continue`. A conditional block registers work only on the
+path entering that block; a loop body runs its cleanup on each iteration.
+Both forms accept one simple expression on the same source line and evaluate
+it against exit-time bindings, including later declarations and shadowing.
+They do not capture argument values at registration.
+
+Deferred expressions run in reverse registration order before automatic owner
+destruction. A return evaluates and transfers its result first; scoped defers
+in exited inner blocks and outer function defers then execute in LIFO order.
+A loop jump runs only scoped defers in the blocks it exits (`continue` crosses
+an intervening switch); it does not run outer function defers. Deferred reads
+extend borrow liveness, deferred moves cannot reuse transferred owners, and
+returned references remain protected while deferred work runs.
+
+The colon form selects checked analysis even without `--safe` and requires the
+default retained emitter. It does not admit raw operations, unsafe-block
+registration, `goto`, generators, multi-statement defer bodies or deferred
+control transfer. Legacy unqualified function-scoped registration semantics
+are unchanged. There is no guarantee of cleanup after a trap or process exit.
 
 An explicit boundary permits raw operations:
 
@@ -1961,3 +1974,16 @@ An earlier instrumented run failed the existing VM socket-close cancellation tes
 Linux optimization variants and Wine pass. Native guards/Memcheck report 113 allocations/frees and zero errors/leaks per Linux target. Seven alternating compiles of fixed `ac74928d` sources measured 1.65/1.64 s and 114,464/114,688 KiB median peak RSS before/after. Compiler and prior callable/mixed-owner fixture binaries are byte-identical. These measurements describe that corpus on the shared host, not a general performance guarantee.
 
 This implements the optional-owner representation step under #695/#644. The issues remain open until their required PRs merge. No listed capability is deferred.
+
+
+### Checked lexical defer validation
+
+Checked `defer: expression` registers one lexical deferred expression. Conditional and nested registrations run in LIFO order on the exits that leave their scope, including break, continue and return. Return values are evaluated and transferred before deferred expressions, then automatic owner cleanup runs. Deferred expressions use exit-time bindings, and their reads/moves participate in liveness checks. Legacy `defer expression` retains its existing behavior. The new form requires the retained emitter and selects checked semantics without `--safe`.
+
+The 36-case contract matrix covers nested/conditional scopes, loops, switch exits, returned values, owner cleanup, conflicting loans/moves, generic deferred calls, later declarations and shadowing. Compile/check outcomes agree on x86/x64 with and without `--safe`, and rejected programs leave no executable. The parser-generator grammar includes the lexical form.
+
+Validation passed 1,413 ordinary targets including both Linux fixpoints, Wine runtime and benchmark, all 48 architecture/root checks, and 1,411 instrumented targets plus six compiler/API harnesses. The coverage receipt is COMPLETE; tests reach 74/76 changed executable compiler lines (97%). Compiler line/branch coverage is 95.7/86.3%; their floors rise to 94.9/85.8%.
+
+Linux optimization variants and Wine execute the runtime fixture; three ARM64 variants cross-compile and have required guard-allocator execution gates in CI. Native guards and Memcheck report 17 allocations/frees and zero errors/leaks on both Linux architectures. Seven alternating compiles of fixed `b4588eb0` sources measure 1.65/1.65 seconds and 114,688/115,136 KiB median peak RSS before/after. Compiler output and prior callable/mixed-owner fixture bytes are identical. The measurements describe this corpus on the shared host, not a general performance guarantee.
+
+Depends on #780. Part of #696 under #644; those issues remain open for broader generic and capturing-callback work. No listed capability is deferred.
