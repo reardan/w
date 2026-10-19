@@ -27,14 +27,15 @@ Leading PI nodes can precede the doctype and HTML element; consumers must locate
 HTML by kind/name. Existing initial/comment/head and other insertion-mode gaps
 remain independent mandatory work.
 
-The full development result is **120 PASS / 4 FAIL / 0 ERROR** (240 passing and
-7 failing variants). No dependency case is skipped:
+The original PI implementation result was **120 PASS / 4 FAIL / 0 ERROR**
+(240 passing and 7 failing variants). With explicit document scripting mode and
+in-head noscript implemented, fresh execution is **121 PASS / 3 FAIL / 0 ERROR**
+(241 passing and 6 failing variants). No dependency case is skipped:
 
 | Original case | Remaining dependency |
 | --- | --- |
 | 111 | Table insertion must create an implicit tbody for tr |
 | 120 | Template child nodes need a real template-content DocumentFragment |
-| 123 | Scripting-off in-head noscript insertion mode and document scripting flag |
 | 124 | Template head placement plus real template-content ownership |
 
 The serializer does not invent a `content` marker for ordinary template children.
@@ -47,7 +48,7 @@ DOM/Web IDL exposure are separate integration work, not established by this audi
 python3 libs/extras/html/fragment_upstream.py bin/html_after_body_fixture --profile modern-pi --report bin/html-pi-upstream.json
 ```
 
-The second command returns 1 for the current four failures. `--gate full-corpus`
+The second command returns 1 for the current three failures. `--gate full-corpus`
 also rejects NOT_RUN. The registered historical upstream target runs all adapter
 negative contracts, including full 124-case/247-variant preservation on a missing
 binary and cross-pin inventory rejection. Reports freeze exact HEADs, hashes and

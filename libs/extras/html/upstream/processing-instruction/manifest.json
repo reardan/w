@@ -31,5 +31,5 @@
     "parsing-main-afterbody",
     "the-after-after-body-insertion-mode"
   ],
-  "scope": "Entire unchanged processing-instructions.dat; table/template/noscript dependency failures retained. Native tree comparison, not browser WPT execution; upstream parse errors not asserted."
+  "scope": "Entire unchanged processing-instructions.dat; table/template dependency failures retained. Native tree comparison, not browser WPT execution; upstream parse errors not asserted."
 }
