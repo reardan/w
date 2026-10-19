@@ -22,8 +22,10 @@ container remains allocated until document teardown and counts against limits.
 The div/body/head and scripting-disabled noscript contexts provide the existing
 bounded HTML tree recovery without document wrappers, with adjacent text
 coalescing, ignored document tags/doctypes and optional p/list-item closure.
-They do not establish full in-body/in-head algorithm coverage. Unsupported
-contexts (including tables, select, template and foreign names) return
+They do not establish full in-body/in-head algorithm coverage. The select context
+uses the modern in-body algorithm with explicit fragment select/input checks; see
+[the separate modern profile](upstream/modern/README.md). Unsupported
+contexts (including tables, template and foreign names) return
 `failed=1` and a diagnostic. Full insertion modes, foster parenting, formatting
 reconstruction/adoption agency, templates, namespaces and exact parse-error
 recovery remain mandatory implementation work. Depth/node/token/input caps are

@@ -26,6 +26,8 @@ def execute(command, expected, timeout=10):
         errors = run.stderr.decode("utf-8")
     except UnicodeDecodeError as error:
         return "ERROR", f"malformed native UTF-8 output: {error}", True
+    if run.returncode == 4:
+        return "UNSUPPORTED", "native fragment context is not implemented", True
     if run.returncode or output != expected:
         return "FAIL", (f"exit={run.returncode}, expected={expected!r}, "
                         f"actual={output!r}, stderr={errors!r}"), True
@@ -36,15 +38,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
     parser.add_argument("--timeout", type=float, default=10)
+    parser.add_argument("--profile", choices=("historical", "modern-select"), default="historical")
+    parser.add_argument("--gate", choices=("selected", "select-context", "full-corpus"), default="selected")
     parser.add_argument("--report", type=Path, default=Path("bin/html-fragment-upstream.json"))
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("timeout must be positive")
-    manifest_bytes = (ROOT / "upstream/manifest.json").read_bytes()
-    inventory_bytes = (ROOT / "upstream/inventory.json").read_bytes()
+    if args.gate == "select-context" and args.profile != "modern-select":
+        parser.error("select-context gate requires modern-select profile")
+    prefix = "modern/" if args.profile == "modern-select" else ""
+    manifest_name = prefix + "manifest.json"
+    inventory_name = prefix + "inventory.json"
+    manifest_bytes = (ROOT / "upstream" / manifest_name).read_bytes()
+    inventory_bytes = (ROOT / "upstream" / inventory_name).read_bytes()
     manifest = json.loads(manifest_bytes)
     inventory = json.loads(inventory_bytes)
-    frozen_files = {"manifest.json": manifest_bytes, "inventory.json": inventory_bytes}
+    frozen_files = {manifest_name: manifest_bytes, inventory_name: inventory_bytes}
     for name, record in manifest["files"].items():
         data = (ROOT / "upstream" / name).read_bytes()
         frozen_files[name] = data
@@ -104,8 +113,11 @@ def main():
     for name, expected in (("html.w", evidence["parser_sha256"]),
                            ("fragment_fixture.w", evidence["driver_source_sha256"]),
                            ("fragment_upstream.py", evidence["adapter_sha256"])):
-        if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != expected:
-            changed.append(name)
+        try:
+            if hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != expected:
+                changed.append(name)
+        except OSError:
+            changed.append(name + " disappeared")
     if revision(w_root) != evidence["w_revision"] or revision(w_root.parent) != evidence["application_revision"]:
         changed.append("repository HEAD")
     if driver_hash is not None:
@@ -131,7 +143,9 @@ def main():
                 variant["status"] = "ERROR"
                 variant["reason"] = result["reason"]
     unexecuted = [record for record in inventory["files"] if record["execution"] == "NOT_RUN"]
-    report = {"upstream": manifest["revision"], "total": inventory["total_cases"],
+    report = {"upstream": manifest["revision"], "repository": manifest["repository"],
+              "execution_kind": "native-tree-comparison", "browser_wpt_execution": False,
+              "total": inventory["total_cases"],
               "selected": len(results), "not_run": sum(r["cases"] for r in unexecuted),
               "executed": sum(r["executed"] for r in results),
               "counts": {s: sum(r["status"] == s for r in results) for s in STATUSES},
@@ -146,11 +160,22 @@ def main():
     report["selected_variants"] = len(variants)
     report["executed_variants"] = sum(v["executed"] for v in variants)
     report["evidence"] = evidence
+    gated = results
+    if args.gate == "select-context":
+        gated = [r for r in results if r["context"] == manifest["gate_context"]]
+        if len(gated) != manifest["gate_cases"]:
+            raise SystemExit("select context gate denominator changed")
+    passed = all(r["status"] == "PASS" for r in gated)
+    if args.gate == "full-corpus" and report["not_run"]:
+        passed = False
+    report["profile"] = args.profile
+    report["gate"] = {"name": args.gate, "cases": len(gated), "passed": passed,
+                      "scope": "Gate never removes other selected case results or mandatory NOT_RUN cases"}
     output = json.dumps(report, indent=2) + "\n"
     print(output, end="")
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(output)
-    return int(any(report["counts"][s] for s in ("FAIL", "ERROR", "TIMEOUT")))
+    return int(not report["gate"]["passed"])
 
 
 if __name__ == "__main__":

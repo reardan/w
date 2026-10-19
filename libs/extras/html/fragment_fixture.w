@@ -1,3 +1,6 @@
+# wbuild: target=html_select_upstream_test tag=tests dep=build
+# wbuild: step="bin/wv2 x64 --strict libs/extras/html/fragment_fixture.w -o bin/html_select_fixture"
+# wbuild: step="python3 libs/extras/html/fragment_upstream.py bin/html_select_fixture --profile modern-select --gate select-context --report bin/html-select-upstream.json"
 # Native bridge for unchanged html5lib tree fixtures. The caller compares output.
 import libs.extras.html.html
 
@@ -52,7 +55,9 @@ int main(int argc, char** argv):
 	if (argc == 4): scripting = strcmp(argv[3], c"0") != 0
 	html_document* doc = 0
 	if (strcmp(argv[1], c"#document") == 0): doc = html_parse(argv[2], strlen(argv[2]))
-	else: doc = html_parse_fragment(argv[2], strlen(argv[2]), argv[1], scripting)
+	else:
+		if (!html_fragment_context_supported(argv[1])): return 4
+		doc = html_parse_fragment(argv[2], strlen(argv[2]), argv[1], scripting)
 	if (doc.failed):
 		html_document_free(doc)
 		return 3
