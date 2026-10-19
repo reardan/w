@@ -347,9 +347,15 @@ void mm_data_tree_render_level(mm_data_chart* c, mm_scene* s, int parent, int x,
 				ww = x + cast(int, (used + weight) / row_weight * cast(float, width)) - xx
 				if (j + 1 == end): ww = x + width - xx
 				hh = strip
+			int style_start = s.items.length
 			mm_draw(s, MM_BOX, xx, yy, xx + ww, yy + hh, 0, c"")
 			# Labels in tiny cells go to a legend rather than crossing boundaries.
 			if (ww > strlen(item.label) * 8 + 12 && hh > 26): mm_text(s, xx + 6, yy + 6, item.label)
+			# classDef styles resolved at validation; they outrank the theme.
+			for k in range(style_start, s.items.length):
+				mm_primitive* cell = s.items[k]
+				if (item.style.mask != 0): cell.node_style = 1
+				mm_style_merge(&cell.style, &item.style)
 			if (item.kind == 5):
 				if (ww > 20 && hh > 40): mm_data_tree_render_level(c, s, index, xx + 4, yy + 26, ww - 8, hh - 30, depth + 1)
 			used = used + weight

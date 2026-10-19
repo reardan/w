@@ -22,16 +22,28 @@ positioned diagnostic and suppresses the preview.
   existing level; the upstream ambiguous-indentation heuristic is not applied.
 - **Kanban:** indentation-based columns and cards, explicit or generated IDs,
   assigned/ticket/priority metadata, validated priorities. Columns contain their
-  cards and metadata in a dedicated column layout. Nested cards, metadata on
-  columns, ticket links and custom configuration are not yet supported.
+  cards and metadata in a dedicated column layout. Frontmatter
+  `config: kanban: ticketBaseUrl: 'https://…/#TICKET#'` turns each card's
+  `ticket:` line into an SVG `<a href>` link: the first `#TICKET#` is
+  replaced by the percent-encoded ticket (a base without the marker is used
+  as is), and only `http://`/`https://` bases are accepted. Deeper indented
+  lines are cards of the enclosing column, as upstream `getSection` flattens
+  them; there are no subcards. Metadata on columns, other `kanban` settings
+  (`sectionWidth`, …) and rendering cards without their metadata are not yet
+  supported; unknown `kanban` settings are diagnosed.
 
 Tests cover semantic structures, geometry, lossless writing, forward references,
 errors, and every byte-prefix of representative inputs. Tests run on x86 and
 x64, including the guard allocator's leak checks.
 
 - **TreeView:** indentation-based forests, quoted or plain Unicode labels,
-  source-order rows and orthogonal ancestry connectors. Tree-command prefixes,
-  icons, classes and description annotations remain unsupported.
+  source-order rows and orthogonal ancestry connectors. Lines pasted from the
+  `tree` command (`├── `, `└── `, `│   `, with plain or NBSP padding, mixed
+  freely with indented lines) take their depth from the branch glyph's column
+  plus four; bare `│` lines are ignored and a glyph prefix without a branch
+  marker is diagnosed. `label ## description` attaches a description that
+  renders muted after the label. Icons and `:::` classes remain unsupported
+  and produce diagnostics.
 - **Ishikawa:** problem head, first-level cause branches alternating around a
   spine, indented subcauses with ancestry connectors. Physical indentation
   carries hierarchy; input and nesting are bounded.
@@ -40,8 +52,20 @@ x64, including the guard allocator's leak checks.
   Native regions use rectangular boundaries instead of upstream organic curves.
 - **Wardley:** anchors/components at validated visibility/evolution coordinates,
   a title, forward-resolved dependencies and four labelled evolution stages.
-  Coordinates use bounded thousandths. Decorators, evolution arrows, notes,
-  pipelines, alternative flow syntax and custom axis configuration remain
+  Coordinates use bounded thousandths. `evolution A -> B -> C -> D` renames
+  the four stages (exactly four). After a component's `[visibility,
+  evolution]`, any order of `label [dx, dy]` (integers within ±999),
+  `(build)`/`(buy)`/`(outsource)` (a shaded halo) and `inertia`/`(inertia)`
+  (a bar on the evolution side) is accepted; repeats are diagnosed.
+  `evolve Name 0.8` draws a red dashed arrow to a red ghost of the component
+  at the new evolution. `note "text" [v, e]` (or unquoted text) places a free
+  label. `pipeline Name [low, high]` and/or a following `{ component Child
+  [evolution] … }` block (brace on the same or next line) draws a band under
+  the component and places sub-components at its visibility; a range is
+  inferred from the children when omitted and children outside an explicit
+  range fail. Pipelines must belong to a top-level component. `evolve A->B`
+  renaming, OnlineWardleyMaps flows (`+>`, `+<>`, `limited by`), `market`/
+  `ecosystem`/`submap` types, annotations, `size` and `accelerator` remain
   unsupported and produce diagnostics.
 
 - **GitGraph:** commit IDs, normal/reverse/highlight shapes, tags, branch
@@ -56,11 +80,19 @@ x64, including the guard allocator's leak checks.
   commits and invalid merge parents are diagnosed. Custom branch configuration
   remains unsupported.
 - **Block:** source-ordered grids, up to 64 columns, column spans, empty spaces,
-  rectangle/rounded/circle nodes, nested composites (up to 32 levels) and
-  labelled solid links. Span overflow and malformed blocks fail explicitly.
-  Column widths grow by actual content, so one large label does not multiply
-  across every column. Custom styles, block arrows and other shapes remain
-  unsupported.
+  nested composites (up to 32 levels) and labelled solid links. Node shapes:
+  rectangle `[ ]`, rounded `( )`, stadium `([ ])`, subroutine `[[ ]]`,
+  cylinder `[( )]`, circle `(( ))`, double circle `((( )))`, asymmetric
+  `> ]`, rhombus `{ }`, hexagon `{{ }}`, parallelograms `[/ /]`/`[\ \]` and
+  trapezoids `[/ \]`/`[\ /]`. Block arrows `id<["label"]>(dir)` accept
+  `right`, `left`, `up`, `down`, `x` (both horizontal) and `y` (both
+  vertical) and take spans like other blocks. `style`, `classDef`, `class`
+  and inline `:::class` use the shared style subset (fill, stroke, color,
+  stroke-width) on blocks and composites, and `linkStyle` on links; styling
+  an undeclared block fails. Span overflow and malformed blocks fail
+  explicitly. Column widths grow by actual content, so one large label does
+  not multiply across every column. Dotted/thick links and block-arrow
+  geometry beyond the six directions remain unsupported.
 
 - **Architecture:** services, nested groups, junctions, the five built-in icon
   names, all sixteen source/target port pairs, arrowheads at either end, and
