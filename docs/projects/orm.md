@@ -136,3 +136,4 @@ landed units are listed here as they merge.
 | U3.2 sessions, API tokens, CSRF, throttle | [u3_2](orm/u3_2.md) | landed |
 | U3.3 trigger-based history | [u3_3](orm/u3_3.md) | landed |
 | U3.4 serializers, filters, pagination | [u3_4](orm/u3_4.md) | landed |
+| U4.2 OpenAPI generation | [u4_2](orm/u4_2.md) | landed |
