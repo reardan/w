@@ -27,9 +27,9 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 118, 'FAIL': 0, 'UNSUPPORTED': 33, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 109)
-        self.assertEqual(report['assertions'], 325)
+        self.assertEqual(report['counts'], {'PASS': 124, 'FAIL': 0, 'UNSUPPORTED': 27, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 115)
+        self.assertEqual(report['assertions'], 333)
         self.assertEqual(report['variants'], 151)
         self.assertEqual(report['baseline_changes'], [])
 
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 117, 'FAIL': 0, 'UNSUPPORTED': 34, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 123, 'FAIL': 0, 'UNSUPPORTED': 28, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -63,7 +63,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'load_manifest', return_value=(manifest, sources)):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 118, 'FAIL': 0, 'UNSUPPORTED': 33, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 124, 'FAIL': 0, 'UNSUPPORTED': 27, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
@@ -194,6 +194,64 @@ class AdapterContract(unittest.TestCase):
         self.assertEqual(inventory['counts']['candidate_test_files_excluding_fixtures'], 53616)
         self.assertEqual(inventory['unselected_files'], 53616 - len(manifest['cases']))
         self.assertIsNone(inventory['runnable_variants'])
+
+    def test_original_upstream_assertions_execute_without_native_replacement(self):
+        _, sources = adapter.load_manifest(adapter.MANIFEST)
+        setup, reason = adapter.prepare_harness(sources, [])
+        self.assertIsNone(reason)
+        with tempfile.TemporaryDirectory() as directory:
+            harness = Path(directory) / 'harness.js'
+            source = Path(directory) / 'test.js'
+            harness.write_text(setup)
+            for text, expected in [
+                ('assert.sameValue(1,1);assert.throws(TypeError,function(){null.x;});', 'normal'),
+                ('assert.sameValue(1,2);', 'throw'),
+                ('Promise.resolve().then(function(){assert.sameValue(1,1);$DONE();});', 'normal'),
+            ]:
+                source.write_text(text)
+                actual = adapter.execute(BINARY, source, 'sloppy', 5, 100000,
+                                         asynchronous='Promise' in text, harness_path=harness)
+                self.assertEqual(actual['outcome'], expected, actual)
+                self.assertEqual(actual['phase'], 'execute')
+                self.assertFalse(actual['native_assertion_counter'])
+            # Harness startup is a different phase, never evidence for a test's
+            # runtime-negative expectation. Strict directives stay on the test.
+            harness.write_text('missingHarnessGlobal;')
+            source.write_text('throw new ReferenceError();')
+            actual = adapter.execute(BINARY, source, 'sloppy', 5, 100000, harness_path=harness)
+            self.assertEqual(actual['phase'], 'harness')
+            self.assertEqual(adapter.classify({'negative': {'phase': 'runtime', 'type': 'ReferenceError'}}, actual), 'ERROR')
+            harness.write_text(setup)
+            source.write_text('"use strict"; var o={};Object.defineProperty(o,"x",{value:1});assert.throws(TypeError,function(){o.x=2;});')
+            actual = adapter.execute(BINARY, source, 'strict', 5, 100000, harness_path=harness)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+
+    def test_original_include_resolution_rejects_missing_cycles_and_capability_gaps(self):
+        _, sources = adapter.load_manifest(adapter.MANIFEST)
+        source, reason = adapter.prepare_harness(sources, ['propertyHelper.js'])
+        self.assertIsNone(reason)
+        self.assertIn(sources['upstream/harness/propertyHelper.js'], source)
+        _, reason = adapter.prepare_harness(sources, ['isConstructor.js'])
+        self.assertIn('Reflect.construct', reason)
+        for includes in [['missing.js'], ['../assert.js']]:
+            with self.assertRaises(ValueError):
+                adapter.prepare_harness(sources, includes)
+        def fixture(includes, body):
+            return '/*---\ndescription: dependency contract\nincludes: [' + includes + ']\n---*/\n' + body
+        sources['upstream/harness/a.js'] = fixture('b.js', 'var afterDependency = 1;')
+        sources['upstream/harness/b.js'] = fixture('', 'var beforeDependent = 1;')
+        source, reason = adapter.prepare_harness(sources, ['a.js', 'b.js'])
+        self.assertIsNone(reason)
+        self.assertLess(source.index('var beforeDependent'), source.index('var afterDependency'))
+        self.assertEqual(source.count('var beforeDependent'), 1)
+        sources['upstream/harness/b.js'] = fixture('a.js', '')
+        with self.assertRaises(ValueError):
+            adapter.prepare_harness(sources, ['a.js'])
+
+    def test_duplicate_and_nonfinite_protocol_fields_are_rejected(self):
+        for text in ['{"outcome":"throw","outcome":"normal"}', '{"steps":NaN}', '{"steps":Infinity}']:
+            with self.assertRaises(ValueError):
+                adapter.strict_json(text)
 
     def test_metadata_and_variants(self):
         def meta(fields):

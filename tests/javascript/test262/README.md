@@ -15,9 +15,9 @@ report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
 The selected corpus contains 77 upstream files expanded into 151 variants:
-**118 PASS, 0 FAIL, 33 UNSUPPORTED, 0 ERROR**. Of those passes, 109 reach runtime
+**124 PASS, 0 FAIL, 27 UNSUPPORTED, 0 ERROR**. Of those passes, 115 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. Positive cases execute 325 native assertions across strict/sloppy
+syntax errors. Positive cases execute 333 native assertions across strict/sloppy
 variants; older upstream cases also use conditional throwing checks. These
 numbers describe this selected corpus, **not full Test262 coverage or a browser
 standards pass rate**. Unsupported examples remain in the report.
@@ -142,8 +142,8 @@ of complete Promise semantics.
 The selected corpus now adds all three upstream empty-input Promise.all tests
 (A2.3_T1–T3) unchanged. The existing array slice Object-descriptor requirement
 is promoted only after its real execution passes with A's Object implementation.
-Current selected expectation is 77 files / 151 variants: 118 PASS and 33
-UNSUPPORTED (109 runtime passes, 325 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
+Current selected expectation is 77 files / 151 variants: 124 PASS and 27
+UNSUPPORTED (115 runtime passes, 333 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
 results; `--require-all` remains nonzero until they are implemented.
 
 `inventory.json` records the complete pinned upstream archive: 57,013 regular
@@ -174,3 +174,37 @@ all source files still remain in the report. The normal selected regression
 profile stays separate. The application tool `win/tests/wpt_inventory.py` can
 reproduce the archive and full sorted file/hash index; `inventory.json` pins both
 archive and index hashes. Ordinary runs remain offline.
+
+
+## Experimental original upstream harness
+
+`--harness upstream` evaluates the pinned original `sta.js`, `assert.js` and
+requested includes in dependency order, in the same native realm as the test.
+The setup is evaluated separately so a test's strict directive remains effective
+and harness startup exceptions cannot satisfy runtime-negative expectations.
+The default native profile remains the reviewed regression gate. This explicit
+experimental profile has no expected-status mask; `assertions` is null because
+native assertion counting cannot observe calls inside upstream JavaScript.
+Its assertion failure/success, real async completion, setup-failure phase and
+strict assignment contracts execute against the unchanged original harness.
+
+Includes must be hash-pinned (or come from the hash-pinned complete archive).
+Missing files, cycles and escaping names are ERROR. Transitive feature
+requirements remain explicit UNSUPPORTED: `isConstructor.js` needs
+`Reflect.construct`, otherwise its own catch would mistake a missing builtin
+for a non-constructor. Original `propertyHelper.js` is pinned and executed;
+after the Math.pow/join runtime slice it initializes, but verifyProperty still
+reports UNSUPPORTED for mapped sloppy arguments. A fresh complete Object.is
+family run in this original-harness profile records 28 PASS/14 UNSUPPORTED and
+zero FAIL/ERROR across all 21 files/42 variants; the remaining six descriptor
+variants need mapped arguments, six need Symbols, and two need Reflect.construct. No helper is replaced with a passing stub.
+
+Run `python3 tools/test262_conformance.py --harness upstream --require-all`
+for the selected corpus, or combine with `--archive` and `--family` for a
+complete family. Ordinary runs remain offline.
+
+Additional reviewed selected-baseline promotions are both variants of
+`forEach/15.4.4.18-7-2.js` after real delete semantics, and both variants of
+`some/15.4.4.17-2-1.js` and `some/15.4.4.17-7-c-i-3.js` after numeric property-key
+lowering. The unchanged tests execute their assertions; no source or expected
+failure has been hidden. Default profile counts above include these promotions.

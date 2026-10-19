@@ -123,6 +123,16 @@ void test262_install(js_runtime* rt, int asynchronous):
 	js_runtime_set(rt, rt.global, c"$262", host)
 
 
+void test262_install_upstream(js_runtime* rt, int asynchronous):
+	# Assertions and Test262Error come exclusively from pinned upstream source.
+	if (asynchronous): js_runtime_bind(rt, c"$DONE", test262_done)
+	else: js_runtime_bind(rt, c"$DONE", test262_unsupported)
+	js_runtime_bind(rt, c"print", test262_unsupported)
+	js_value* host = js_runtime_alloc(rt, 5)
+	js_runtime_set_host_hooks(rt, host, 0, test262_missing_helper, 0)
+	js_runtime_set(rt, rt.global, c"$262", host)
+
+
 json_value* test262_result(char* phase, char* outcome):
 	json_value* result = json_object()
 	json_object_set(result, c"protocol", json_int(1))
@@ -163,7 +173,7 @@ json_value* test262_value(js_value* value):
 	return result
 
 
-json_value* test262_run(char* source, char* filename, int module, int budget, int raw, int asynchronous):
+json_value* test262_run(char* source, char* filename, int module, int budget, int raw, int asynchronous, char* harness_source):
 	# Use the same generated grammar and validator sequence as js_parse, with
 	# an observation boundary before early-error validation. No syntax is
 	# reimplemented here. Runtime evaluation still goes through the public API.
@@ -198,9 +208,19 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	pg_parse_result_free(parsed)
 	if (result != 0): return result
 	js_runtime* rt = js_runtime_new()
-	if (raw == 0): test262_install(rt, asynchronous)
-	js_completion* completion = js_runtime_eval(rt, source, strlen(source), budget)
-	int total_steps = completion.steps
+	if (raw == 0):
+		if (harness_source == 0): test262_install(rt, asynchronous)
+		else: test262_install_upstream(rt, asynchronous)
+	js_completion* completion = 0
+	int total_steps = 0
+	char* execution_phase = c"execute"
+	if (harness_source != 0):
+		completion = js_runtime_eval(rt, harness_source, strlen(harness_source), budget)
+		total_steps = completion.steps
+		if (completion.status != 0): execution_phase = c"harness"
+	if (strcmp(execution_phase, c"execute") == 0):
+		completion = js_runtime_eval(rt, source, strlen(source), budget - total_steps)
+		total_steps = total_steps + completion.steps
 	if (asynchronous && completion.status == 0):
 		completion = js_runtime_drain_microtasks(rt, budget - total_steps)
 		total_steps = total_steps + completion.steps
@@ -211,8 +231,9 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	if (completion.status == 5): outcome = c"limit"
 	if (completion.status == 6): outcome = c"unsupported"
 	if (completion.status != 0 && completion.status != 2 && completion.status != 5 && completion.status != 6): outcome = c"invalid_completion"
-	result = test262_result(c"execute", outcome)
+	result = test262_result(execution_phase, outcome)
 	json_object_set(result, c"assertions", json_int(test262_assertions))
+	json_object_set(result, c"native_assertion_counter", json_bool(harness_source == 0))
 	json_object_set(result, c"done_calls", json_int(test262_done_calls))
 	if (completion.status == 2 && completion.value.intrinsic_error_name[0] != 0): json_object_set(result, c"error_type", json_string(completion.value.intrinsic_error_name))
 	json_object_set(result, c"steps", json_int(total_steps))
@@ -224,8 +245,8 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 
 int main(int argc, int argv):
 	args_init(argc, argv)
-	if (argc != 5):
-		println(c"usage: test262_runtime_runner FILE script|module BUDGET harness|async|raw")
+	if (argc != 5 && argc != 6):
+		println(c"usage: test262_runtime_runner FILE script|module BUDGET harness|async|raw [UPSTREAM_HARNESS]")
 		return 2
 	if (strcmp(args_get(4), c"raw") != 0 && strcmp(args_get(4), c"harness") != 0 && strcmp(args_get(4), c"async") != 0): return 2
 	char* goal = args_get(2)
@@ -238,7 +259,17 @@ int main(int argc, int argv):
 	if (budget <= 0 || budget > 10000000): return 2
 	char* source = file_read_text(args_get(1))
 	if (source == 0): return 2
-	json_value* result = test262_run(source, args_get(1), strcmp(goal, c"module") == 0, budget, strcmp(args_get(4), c"raw") == 0, strcmp(args_get(4), c"async") == 0)
+	char* harness_source = 0
+	if (argc == 6):
+		if (strcmp(args_get(4), c"raw") == 0):
+			free(source)
+			return 2
+		harness_source = file_read_text(args_get(5))
+		if (harness_source == 0):
+			free(source)
+			return 2
+	json_value* result = test262_run(source, args_get(1), strcmp(goal, c"module") == 0, budget, strcmp(args_get(4), c"raw") == 0, strcmp(args_get(4), c"async") == 0, harness_source)
+	free(harness_source)
 	char* output = json_stringify(result)
 	println(output)
 	free(output)

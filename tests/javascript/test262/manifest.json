@@ -410,6 +410,16 @@
       "path": "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js",
       "upstream_path": "test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js",
       "sha256": "40d10d9a4a73cab268bcaca6ddd62db4167a0223a84a2e56733ccbfa8f129361"
+    },
+    {
+      "path": "upstream/harness/propertyHelper.js",
+      "upstream_path": "harness/propertyHelper.js",
+      "sha256": "08bc29114d804c4f24f906bac950ee4dc9c93c659d93258e7b44a54283ba9bb8"
+    },
+    {
+      "path": "upstream/harness/isConstructor.js",
+      "upstream_path": "harness/isConstructor.js",
+      "sha256": "68e1a3e4565a8d33ea7fc918627fbbf446bcf14d7a939777616b2b545a5e7d32"
     }
   ],
   "cases": [
@@ -693,20 +703,16 @@
       "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-2-1.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Numeric object-literal property names are not lowered"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-2-1.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "Numeric object-literal property names are not lowered"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Numeric object-literal property names are not lowered"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "Numeric object-literal property names are not lowered"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-iii-8.js#sloppy": {
       "status": "PASS"
@@ -915,12 +921,10 @@
       "reason": "Array literal elisions remain outside the semantic lowering profile."
     },
     "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Property deletion remains outside the runtime profile."
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "Property deletion remains outside the runtime profile."
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js#sloppy": {
       "status": "UNSUPPORTED",
