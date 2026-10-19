@@ -214,7 +214,6 @@ void mm_hierarchy_body(mm_parser* p):
 		while (depth < indents.length && indent > indents[depth]): depth = depth + 1
 		if (depth < indents.length && indent != indents[depth]): mm_error(p.doc, p.pos, c"indentation must match a previous level")
 		if (depth >= 64): mm_error(p.doc, p.pos, c"hierarchy nesting limit exceeded")
-		if (p.doc.kind == MM_KANBAN && depth > 1): mm_error(p.doc, p.pos, c"Kanban cards cannot contain nested cards")
 		if (p.doc.kind == MM_MINDMAP && p.doc.nodes.length > 0 && depth == 0): mm_error(p.doc, p.pos, c"mindmap requires one root")
 		int start = p.pos
 		while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13 && mm_peek(p) != '[' && mm_peek(p) != '(' && mm_peek(p) != ')' && mm_peek(p) != '{' && mm_peek(p) != '@' && mm_peek(p) != ':'): p.pos = p.pos + 1
@@ -235,6 +234,9 @@ void mm_hierarchy_body(mm_parser* p):
 		free(n.label)
 		n.label = raw
 		if (depth > 0): n.parent = parents[depth - 1]
+		# Upstream Kanban (kanbanDb getSection) attaches every deeper item to
+		# the enclosing column: indented cards are siblings, not subcards.
+		if (p.doc.kind == MM_KANBAN && depth > 1): n.parent = parents[0]
 		if (depth == indents.length):
 			indents.push(indent)
 			parents.push(index)

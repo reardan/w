@@ -24,6 +24,27 @@ void mm_mindmap_outline(mm_scene* s, mm_node* n, mm_bounds* b):
 		polygon.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * scale * cast(float, b.w) / 2.0))
 		polygon.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * scale * cast(float, b.h) / 2.0))
 
+# Upstream replaces the first `#TICKET#` in kanban.ticketBaseUrl with the
+# card's ticket; the ticket is percent-encoded so it cannot alter the URL.
+char* mm_kanban_ticket_url(char* base, char* ticket):
+	string_builder* url = string_new()
+	int marker = index_of(base, c"#TICKET#")
+	if (marker < 0): string_append(url, base)
+	else:
+		string_append_bytes(url, base, marker)
+		char* digits = c"0123456789ABCDEF"
+		for i in range(strlen(ticket)):
+			int c = ticket[i] & 255
+			if (isalnum(c) || c == '-' || c == '.' || c == '_' || c == '~'): string_append_char(url, c)
+			else:
+				string_append_char(url, '%')
+				string_append_char(url, digits[c >> 4])
+				string_append_char(url, digits[c & 15])
+		string_append(url, base + marker + 8)
+	char* result = strclone(url.data)
+	string_free(url)
+	return result
+
 mm_scene* mm_hierarchy_render(mm_document* d):
 	mm_scene* s = new mm_scene()
 	s.items = new list[mm_primitive*]
@@ -122,6 +143,9 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 		y = y + 24
 		for mm_member* m in n.members:
 			mm_text(s, b.x + 20, y, m.text)
+			if (d.kind == MM_KANBAN && d.ticket_base_url != 0 && index_of(m.text, c"ticket: ") == 0):
+				mm_primitive* link = s.items[s.items.length - 1]
+				link.href = mm_kanban_ticket_url(d.ticket_base_url, m.text + 8)
 			y = y + 24
 	__w_list_free(cast(__w_list*, heights))
 	return s

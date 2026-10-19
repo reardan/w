@@ -229,6 +229,8 @@ struct mm_document:
 	int layout_algorithm
 	int packet_bits
 	int packet_msb
+	# Frontmatter `config: kanban: ticketBaseUrl:`; null when not configured.
+	char* ticket_base_url
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -372,6 +374,7 @@ void mm_document_free(mm_document* d):
 	free(d.accessibility_description)
 	free(d.direction)
 	free(d.error)
+	if (d.ticket_base_url != 0): free(d.ticket_base_url)
 	free(d)
 
 # Lossless writer, including comments and formatting, even for invalid documents.

@@ -445,10 +445,17 @@ void mm_data_tree(mm_parser* p):
 	free(item.label)
 	item.label = mm_data_text(p, ':')
 	mm_space(p)
-	if (mm_match(p, c":")):
+	int styled = mm_match(p, c":::")
+	if (styled == 0 && mm_match(p, c":")):
 		item.kind = 0
 		item.a = mm_data_number(p)
 		if (item.a <= 0): mm_error(p.doc, p.pos, c"treemap leaf values must be positive")
+		mm_space(p)
+		styled = mm_match(p, c":::")
+	# `:::class` names a classDef; it is resolved into item.style on validation.
+	if (styled):
+		free(item.target)
+		item.target = mm_identifier(p)
 	int i = p.doc.data.items.length - 2
 	while (i >= 0):
 		mm_data_item* previous = p.doc.data.items[i]
@@ -573,6 +580,10 @@ void mm_data_validate(mm_parser* p):
 	if (p.doc.kind == MM_TREEMAP):
 		for i in range(c.items.length):
 			mm_data_item* item = c.items[i]
+			if (item.target[0] != 0):
+				mm_style_class* definition = mm_style_find(p.doc, item.target)
+				if (definition == 0): mm_error(p.doc, p.pos, c"assigned style class has no classDef")
+				else: mm_style_merge(&item.style, &definition.style)
 			if (item.kind != 5): continue
 			int children = 0
 			for mm_data_item* child in c.items:
@@ -608,6 +619,9 @@ void mm_data_body(mm_parser* p):
 		else if (p.doc.kind == MM_XY): mm_data_xy(p)
 		else if (p.doc.kind == MM_SANKEY): mm_data_sankey(p)
 		else if (p.doc.kind == MM_RADAR): mm_data_radar(p)
+		else if (p.doc.kind == MM_TREEMAP && mm_match(p, c"classDef ")):
+			p.pos = p.pos - 9
+			mm_style_statement(p)
 		else if (p.doc.kind == MM_TREEMAP): mm_data_tree(p)
 		else if (p.doc.kind == MM_VENN): mm_data_venn(p)
 		else: mm_data_packet(p)

@@ -108,8 +108,58 @@ void test_graph_kanban_columns_cards_and_metadata():
 	mm_scene_free(s)
 	mm_document_free(d)
 
+void test_graph_kanban_ticket_links_and_flattened_nesting():
+	char* source = c"---\nconfig:\n  theme: default\n  kanban:\n    ticketBaseUrl: 'https://tracker.example/browse/#TICKET#?view=1'\n---\nkanban\nTodo\n  a[Implement]@{ ticket: W-42 }\n    b[Nested]@{ ticket: 'A B&C' }\n      c[Deeper]\n  d[Plain]@{ assigned: me }\nDone\n"
+	mm_document* d = graph_family_parse(source)
+	assert_strings_equal(c"https://tracker.example/browse/#TICKET#?view=1", d.ticket_base_url)
+	assert_equal(6, d.nodes.length)
+	for i in range(1, 5):
+		mm_node* card = d.nodes[i]
+		assert_equal(0, card.parent)
+	mm_node* done = d.nodes[5]
+	assert_equal(-1, done.parent)
+	mm_scene* s = mm_render(d)
+	mm_bounds* column = s.nodes[0]
+	mm_bounds* first = s.nodes[1]
+	mm_bounds* nested = s.nodes[2]
+	asserts(c"nested card flattened into its column", nested.x == first.x && nested.y > first.y + first.h && nested.y + nested.h < column.y + column.h)
+	char* svg = mm_svg(s)
+	asserts(c"ticket linked", index_of(svg, c"<a href=\"https://tracker.example/browse/W-42?view=1\"><text") >= 0)
+	asserts(c"ticket encoded and escaped", index_of(svg, c"<a href=\"https://tracker.example/browse/A%20B%26C?view=1\">") >= 0)
+	asserts(c"link closed", index_of(svg, c"ticket: W-42</text></a>") >= 0)
+	asserts(c"assigned metadata is not a link", index_of(svg, c"<a href=\"https://tracker.example/browse/me") < 0)
+	free(svg)
+	char* saved = mm_write(d)
+	assert_strings_equal(source, saved)
+	free(saved)
+	mm_scene_free(s)
+	mm_document_free(d)
+	d = graph_family_parse(c"kanban\nTodo\n  a[Implement]@{ ticket: W-42 }\n")
+	assert_equal(0, cast(int, d.ticket_base_url))
+	s = mm_render(d)
+	svg = mm_svg(s)
+	asserts(c"no base URL, no link", index_of(svg, c"<a ") < 0 && index_of(svg, c"ticket: W-42") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	list[char*] bad = list[char*]{c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'javascript:alert(1)'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    sectionWidth: 200\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl: 'https://a/#TICKET#'\n    ticketBaseUrl: 'https://b/#TICKET#'\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n  kanban:\n---\nkanban\nA\n", c"---\nconfig:\n  kanban:\n    ticketBaseUrl\n---\nkanban\nA\n", c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n  theme: default\n    ticketBaseUrl: 'https://a/'\n---\nkanban\nA\n"}
+	list[char*] messages = list[char*]{c"ticketBaseUrl must be an http or https URL", c"unsupported kanban setting; supported: ticketBaseUrl", c"duplicate ticketBaseUrl", c"duplicate kanban configuration", c"kanban setting requires colon", c"unsupported frontmatter field or indentation"}
+	for i in range(bad.length):
+		mm_document* invalid = mm_parse(bad[i], strlen(bad[i]))
+		assert_strings_equal(messages[i], invalid.error)
+		asserts(c"invalid kanban configuration has no preview", mm_render(invalid) == 0)
+		mm_document_free(invalid)
+	__w_list_free(cast(__w_list*, bad))
+	__w_list_free(cast(__w_list*, messages))
+	for size in range(strlen(source) + 1):
+		mm_document* prefix = mm_parse(source, size)
+		mm_scene* scene = mm_render(prefix)
+		asserts(c"kanban prefix parse and render agree", (prefix.error == 0 && scene != 0) || (prefix.error != 0 && scene == 0))
+		mm_scene_free(scene)
+		mm_document_free(prefix)
+
 void test_graph_family_rejections_and_truncations():
-	list[char*] bad = list[char*]{c"mindmap\nA\nB", c"mindmap\nA\n  B\n C", c"mindmap\n::icon(fa)", c"mindmap\nA\n  ::icon()", c"mindmap\nA\n  ::icon(a)\n  ::icon(b)", c"mindmap\nA\n  :::", c"mindmap\nA\n  ::shape(x)", c"mindmap\nA))bang(", c"mindmap\nA{{hex}", c"mindmap\nA:::bad!name", c"kanban\nA\n  B\n    C", c"kanban\nA\n  b[B]@{priority:'urgent'}", c"requirementDiagram\nrequirement R {\nrisk: unknown\n}", c"requirementDiagram\nA - verifies -> B", c"requirementDiagram\nelement E {\nid: 1\n}", c"requirementDiagram\nrequirement R {\nid: 1\nid: 2\n}"}
+	list[char*] bad = list[char*]{c"mindmap\nA\nB", c"mindmap\nA\n  B\n C", c"mindmap\n::icon(fa)", c"mindmap\nA\n  ::icon()", c"mindmap\nA\n  ::icon(a)\n  ::icon(b)", c"mindmap\nA\n  :::", c"mindmap\nA\n  ::shape(x)", c"mindmap\nA))bang(", c"mindmap\nA{{hex}", c"mindmap\nA:::bad!name", c"kanban\nA\n    B\n  C", c"kanban\nA\n  b[B]@{priority:'urgent'}", c"requirementDiagram\nrequirement R {\nrisk: unknown\n}", c"requirementDiagram\nA - verifies -> B", c"requirementDiagram\nelement E {\nid: 1\n}", c"requirementDiagram\nrequirement R {\nid: 1\nid: 2\n}"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid syntax rejected", d.error != 0)

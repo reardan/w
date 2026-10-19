@@ -1,6 +1,9 @@
 block
 columns 3
 source[Source] parser[Native parser]:2
-space scene[Display list] desktop[Desktop]
+space scene[("Display list")] desktop(["Desktop"])
+flow<["Render"]>(right) check{"Valid?"} svg[/"SVG"/]
 parser --> scene
 scene --> desktop
+classDef output fill:#dbeafe,stroke:#1d4ed8
+class desktop,svg output
