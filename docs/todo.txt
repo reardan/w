@@ -96,9 +96,9 @@ current state:
 			TestFloat-derived conformance vectors cover float32 (both
 				targets) and float64 (x64) rounding/edge cases (issue #17,
 				docs/projects/float_testing.md)
-			float16 storage/conversion works on the x86 family (F16C
-				hardware instructions; design: docs/projects/float.md)
-			bfloat16, float16 on arm64/wasm/gpu, and debugger float display remain future work
+			float16/bfloat16 storage and conversions work on every backend
+				(float16 still requires F16C on x86; docs/projects/float.md)
+			REPL/debugger numeric float display includes both 16-bit formats
 		built-in map/set:
 			map[K, V] and set[K] types
 			new map/set allocation, typed literals, indexing, assignment and in-membership
@@ -612,7 +612,7 @@ current state:
 		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
 		asm function bodies, stage 2: stdlib bodies (strlen/strcpy/strcmp, SipHash, list addr, sha256) once SEEDS carries the syntax
 		asm blocks naming W symbols (calls, globals); A64 immediate shifts/rotates for an arm64 sha256 body
-		bfloat16; float16 on arm64/wasm (design: docs/projects/float.md)
+		native half/bfloat arithmetic and tensor-core operations (storage conversions implemented)
 		type <=> protobuf
 		global default values
 

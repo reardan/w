@@ -39,6 +39,7 @@ holds the value, as for a stack local.
 import debugger.symbols
 import debugger.registers
 import debugger.frames
+import lib.float_text
 
 
 # Frame description for the current stop, filled by dbg_frame_compute.
@@ -188,6 +189,44 @@ void dbg_print_int_value(int v):
 	print(c")")
 
 
+# Decode a stored half with integer operations. Inspecting a half must
+# not depend on F16C or on the debuggee's floating-point environment.
+int dbg_float16_bits(int bits):
+	int sign = (bits & 0x8000) << 16
+	int exponent = (bits >> 10) & 31
+	int fraction = bits & 1023
+	if (exponent == 31): return sign | 0x7f800000 | (fraction << 13)
+	if (exponent): return sign | ((exponent + 112) << 23) | (fraction << 13)
+	if (fraction == 0): return sign
+	exponent = 113
+	while ((fraction & 1024) == 0):
+		fraction = fraction << 1
+		exponent = exponent - 1
+	return sign | (exponent << 23) | ((fraction & 1023) << 13)
+
+
+# Raw storage bits to owned numeric text; never execute debuggee code.
+# Narrow floats widen exactly to float32 before decimal formatting.
+char* dbg_float_text(int bits, int type):
+	int base = type_unqualified(type)
+	if (base == float16_type): bits = dbg_float16_bits(bits)
+	else if (base == bfloat16_type): bits = (bits & 0xffff) << 16
+	int width = 32
+	if (type_float_kind(type) == 2): width = 64
+	return float_text_shortest(bits, width)
+
+
+void dbg_print_float_value(int bits, int type):
+	char* text = dbg_float_text(bits, type)
+	print(text)
+	free(text)
+	print(c" (")
+	char* raw = hex_fixed(bits, type_get_size(type) * 2)
+	print(raw)
+	free(raw)
+	print(c")")
+
+
 # 1 when the type is char* (one level of pointer over char).
 int dbg_type_is_string(int type):
 	if (type_get_pointer_level(type) != 1): return 0
@@ -198,7 +237,10 @@ int dbg_type_is_string(int type):
 # values field by field, everything else as one word, with a string
 # preview for char*.
 void dbg_print_typed_value(int addr, int type):
-	if (dbg_mem_readable(addr, __word_size__) == 0):
+	int kind = type_float_kind(type)
+	int read_width = __word_size__
+	if (kind): read_width = type_get_size(type)
+	if (dbg_mem_readable(addr, read_width) == 0):
 		print(c"<unreadable at ")
 		dbg_print_hex(addr)
 		print(c">")
@@ -217,11 +259,14 @@ void dbg_print_typed_value(int addr, int type):
 			int width = type_get_size(field_type)
 			if (width > __word_size__): width = __word_size__
 			int offset = type_get_field_offset_at(type, i)
-			dbg_print_int_value(dbg_mem_read(addr + offset, width))
+			int bits = dbg_mem_read(addr + offset, width)
+			if (type_float_kind(field_type)): dbg_print_float_value(bits, field_type)
+			else: dbg_print_int_value(bits)
 		print(c"}")
 		return;
-	int v = dbg_mem_read_word(addr)
-	dbg_print_int_value(v)
+	int v = dbg_mem_read(addr, read_width)
+	if (kind): dbg_print_float_value(v, type)
+	else: dbg_print_int_value(v)
 	if (dbg_type_is_string(type)): dbg_print_string_preview(v)
 
 

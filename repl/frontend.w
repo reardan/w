@@ -292,13 +292,13 @@ int repl_read_entry():
 # ---------------------------------------------------------------------------
 # Echoing expression results.
 
-# A float variable's echoed type is its declared type (float, float32,
-# float64), not the value pseudo-type an arithmetic result carries, but
-# the word holds the same bits; echo it as the value type.
+# A float variable's echoed type is its declared type, not the value
+# pseudo-type an arithmetic result carries. Half storage has already
+# widened to float32 in the evaluated expression, including call results.
 int repl_echo_type(int type):
 	if (type <= 0): return type
 	int t = type_unqualified(type)
-	if ((t == float32_type) || (t == float_type)): return float32_value_type
+	if (type_float_kind(t) == 1): return float32_value_type
 	if (t == float64_type): return float64_value_type
 	return type
 

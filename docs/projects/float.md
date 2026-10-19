@@ -1,419 +1,143 @@
-# Floating Point Support (float32 / float64 / float16)
+# Floating point: float32, float64, float16 and bfloat16
 
-IEEE-754 floating point in W: what ships today, per target, and the design
-record of how it was built. Issue #17 tracks the remaining gaps.
+W supports full float32/float64 arithmetic and two 16-bit storage formats.
+This document describes the current contract for issue #17; the original
+implementation milestones have been replaced by the supported behavior.
 
-## Status
+## Target support
 
-**float32 and float64 are landed and covered by `./wbuild tests`.** float32
-is a full arithmetic type on every backend; float64 is a full arithmetic type
-on every 64-bit-word target and a clean compile error ("float64 requires the
-x64 target") on the 32-bit ones. float16 is a storage-only type on the x86
-family. bfloat16 is not implemented (see "Still open" below).
+| Target | float32 / float | float64 | float16 storage | bfloat16 storage |
+| --- | --- | --- | --- | --- |
+| x86 (default 32-bit) | yes | compile error | F16C | integer conversion |
+| x64 Linux, win64 | yes | yes | F16C | integer conversion |
+| arm64 Linux, arm64_darwin, arm64_android | yes | yes | native scalar conversion | integer conversion |
+| wasm32 | yes | compile error | software conversion | integer conversion |
+| gpu (PTX kernel bodies) | yes | yes | native PTX conversion | integer conversion |
 
-| Target | float32 | float64 | float16 |
-| --- | --- | --- | --- |
-| x86 (default 32-bit) | yes | compile error | yes (F16C) |
-| x64 Linux, win64 | yes | yes | yes (F16C) |
-| arm64 Linux, arm64_darwin | yes | yes | compile error |
-| wasm32 | yes | compile error | compile error |
-| gpu (PTX kernel bodies) | yes | yes | compile error |
+The float64 gate is the target word size, not its instruction set. The
+32-bit diagnostic still says "float64 requires the x64 target".
 
-The float64 gate is the word size (`grammar/type_name.w`), not the ISA; the
-float16 gate is the ISA (`code_generator/sse.w` rejects it on arm64, wasm and
-gpu with "`<target>`: float16 is not implemented").
+On x86/x64/win64, float16 requires an **F16C-capable CPU** (Ivy Bridge/Zen or
+newer); there is no runtime feature check or software fallback on these
+backends. ARM64 uses the base scalar half/single conversion instructions,
+not the optional half-precision arithmetic extension. Wasm needs no
+half-precision extension. Bfloat16 requires no AVX512_BF16, ARM BF16, or
+native PTX bfloat instruction support.
 
-What works on the supported targets:
+## Storage and computation
 
-- Literals: decimal literals with exponent forms (`1e5`, `1.5e-3`, `2E+10`),
-  parsed exactly with integer-only bignum arithmetic (`compiler/bignum.w`,
-  `grammar/float_literal.w`). A bare literal is float64 on 8-byte-word
-  targets and float32 on 4-byte-word targets.
-- Arithmetic (`+ - * /`), comparisons, unary minus, compound assignment, and
-  int<->float and float32<->float64 coercions at assignment, declaration,
-  return, argument and constructor sites.
-- Float params and returns, struct fields, pointers and arrays, `map[K,
-  float]` values and `m.add` accumulation, JSON codec fields.
-- Floating-point ABI for imported C functions (`extern` and `c_import`):
-  xmm argument/return registers on x64, x87 `st(0)` returns on x86, the
-  AAPCS64 s/d registers on arm64, and float32->float64 promotion for
-  variadic calls (`printf("%f", x)`). See `code_generator/ffi.w`.
-- Text conversion: `lib/float_text.w` parses decimal text correctly
-  rounded (`parse_float` in `lib/format.w`, `parse_float64` in
-  `lib/float64_format.w`; strtod rules, subnormals, overflow to inf) and
-  formats the shortest round-trip spelling (`ftoa`, `f64toa`, bare
-  f-string `{x}`, `print`, JSON) or a correctly rounded fixed precision
-  (`ftoa_fixed`, `f64toa_fixed`, `{x:.N}`), working on bit patterns so
-  float32 conversion runs on every target (`float_text_test`).
-- Libraries: `lib/fmath.w` (float32) and `lib/fmath64.w` (float64) provide bit casts,
-  `fabs`, `ffloor`, `fsqrt`, and the exp/log/pow/trig family with measured
-  ulp bounds against glibc goldens.
-- float16 on the x86 family (gated on `target_isa == 0`): variable,
-  struct-field and array storage; load widens to float32 (F16C `vcvtph2ps`,
-  zero-extended so bit patterns above 0x7FFF survive) and store narrows from
-  float32 (F16C `vcvtps2ph`, round-to-nearest-even); all arithmetic and
-  comparisons happen on the widened float32 value. Requires an F16C-capable
-  CPU (Ivy Bridge/Zen or newer, 2012+), with no software fallback.
+`float16` is IEEE binary16: 1 sign bit, 5 exponent bits, 10 fraction bits.
+`bfloat16` has 1 sign bit, 8 exponent bits, and 7 fraction bits, sharing
+float32's exponent range at lower precision. Both occupy two bytes in
+arrays and structs.
 
-Test contract (x86 and x64 unless noted, all in the `tests` umbrella):
+Loading either format widens it to a float32 value. Arithmetic and
+comparisons then follow the usual float32/float64 promotion rules;
+storing to a 16-bit destination narrows it again. W function parameters
+and returns, typed function pointers, aliases, fields, and array elements
+use the same conversions. Returned half values are widened before they
+participate in an expression, including a direct assignment to float32.
 
-- `float_test`, `float_literal_test`, `x64_float_test`: literals (including
-  exact bit patterns), arithmetic, comparisons, conversions, calls, fields.
-- `float_reference_test`: differential check against a C reference program
-  for float32 and float64.
-- `float_conformance_test` / `float_conformance_64_test` (float32) and
-  `x64_float64_conformance_test` (float64): TestFloat-derived edge-case
-  vectors for NaN propagation, signed zeros, subnormals, infinities,
-  rounding at precision boundaries, exact-comparison semantics and
-  int<->float conversion edges. See `docs/projects/float_testing.md`.
-- `float16_test` / `float16_64_test`: exact round-trips (including max normal
-  65504.0 and smallest normal 2^-14), round-to-nearest-even on
-  non-representable and tie values, overflow to infinity, subnormals, signed
-  zero, +-inf, quiet-NaN bit preservation, fields, arrays, conversions and
-  comparisons.
-- `fmath_test` / `fmath_64_test`, `x64_fmath64_test`: the math libraries.
-- `float_abi_test` (plus `float_abi_test_x64`, `varargs_test`): the C ABI.
-- `map_float_test`, `x64_map_float64_test`, `x64_json_float64_test`:
-  container and JSON coverage.
-- `gpu_ptx_emit_test`: the PTX float32/float64 lowering, checked by
-  inspecting the emitted module (no GPU needed).
+```w
+float16 half_identity(float16 x): return x
 
-Outside the default umbrella: `float_abi_test_arm64` and
-`float_nan_compare_test` run arm64 binaries under qemu, and
-`wasm_smoke_test` runs `float_test` under a WASI runtime. The conformance vectors themselves are only run on x86
-and x64, because several of them pin x86-specific results (see "Target
-differences" below).
-
-Still open (issue #17):
-
-- `float16` on arm64, wasm and gpu (compile error today).
-- `bfloat16`, whose scope is tied to the GPU/PTX track (issue #28).
-- Debugger float display. Neither `wdbg` (x86) nor `wdbg64` (x64) decodes
-  float values today; the `f` stack-decode command sketched in Milestone 7
-  was never built (`f` is bound to `frame`). This is not blocked on a
-  debugger port, since `wdbg64` exists.
-
-## Core design: float bits ride the existing integer pipeline
-
-The compiler is a single-pass stack machine where `eax` holds every value and
-spills go through `push` (`grammar/promote.w`, `grammar/binary_op.w`). Rather
-than introduce XMM-centric evaluation (the big refactor `docs/projects/cuda.md`
-calls Option A2), float values travel as raw IEEE-754 bit patterns in
-`eax`/`rax` and on the stack. XMM registers are used only *inside* each
-operation:
-
-```mermaid
-flowchart LR
-    lit["float literal / variable load"] -->|"bits in eax"| pushOp["push eax (existing spill)"]
-    pushOp --> binop["float binary op"]
-    binop -->|"movd xmm0/xmm1 from ebx/eax"| sse["addss / mulss / ucomiss ..."]
-    sse -->|"movd eax, xmm0"| result["bits back in eax"]
+int main():
+	float16 h = 1.5
+	float32 exact = half_identity(h)   # 1.5, not the half bits read as float32
+	bfloat16 compact = exact
+	float32 restored = compact
+	return cast(int, restored) - 1
 ```
 
-This keeps `push_eax`/`pop_ebx`, stack slots, the all-on-stack calling
-convention, and `eax` returns completely unchanged. Float function args,
-returns, struct fields, and `float*` indexing work with no ABI changes. Unary
-minus is a sign-bit flip on the integer bits (`xor eax, 0x80000000` for
-float32, `btc rax, 63` for float64).
+Inputs first convert to float32; the subsequent store uses round-to-nearest,
+ties-to-even in the default floating-point environment. A float64 input can
+therefore double-round near a midpoint (see the semantic differences below).
+Float16 narrowing explicitly selects nearest-even on x86
+and PTX; Wasm and bfloat16 conversions implement it with integer logic.
+ARM64's native float16 conversion follows FPCR, so foreign code that
+changes FPCR also changes those conversions, as it does ordinary ARM64
+floating arithmetic. The supported default is nearest-even with gradual
+underflow, without flush-to-zero or default-NaN mode.
 
-The other backends reuse the same shape through the dispatching helpers in
-`code_generator/sse.w`: arm64 moves the bits into `s0`/`s1` or `d0`/`d1` with
-`fmov` and uses the scalar FP instructions, wasm reinterprets the bits as
-`f32` (`f32.reinterpret_i32`) around each operation, and the gpu target lowers
-to PTX `.f32`/`.f64` registers.
+Signed zero, infinities, subnormals, and overflow to signed infinity are
+supported. Bfloat16 narrowing preserves the available sign/payload bits
+and quiets NaNs without rounding a NaN into infinity. Native float16 NaN
+payload behavior is backend-specific; portable code should test the NaN
+class rather than require an x86 payload on a GPU.
 
-## Bootstrap constraint (shaped several milestones)
+These are storage types, not native 16-bit arithmetic or tensor-core APIs.
+By-value 16-bit `extern` parameters/returns are rejected: use a float32 C
+wrapper or a pointer to explicitly agreed raw storage. C float/double ABI
+support remains available. JSON codec fields and map `.add` accumulation
+continue to reject the 16-bit types explicitly.
 
-When float support was built, the compiler's own sources were compiled by a
-seed binary `./w` with no float support, so nothing in the compiler's import graph (`w.w` ->
-`compiler.compiler` -> `codegen` + `grammar` + `lib.lib` + ...) may use float
-syntax or float math. Literal parsing therefore uses integer-only arithmetic,
-and the compiler always runs as a **32-bit process** (`./bin/wv2` is 32-bit
-even when targeting x64 with the `x64` flag), so `int` is 4 bytes inside the
-compiler regardless of target. Both still hold today: the compiler source
-uses no float syntax, and literal parsing stays integer-only. Test files, the
-debugger, and lib modules outside `w.w`'s import graph are compiled by the
-freshly built `wv2`, so they use float freely.
+## Literals, libraries and tools
 
-## Implementation record
+- Decimal literals support exponent forms (`1e5`, `1.5e-3`, `2E+10`).
+  Integer-only bignum parsing produces exact float32 or float64 bits. Bare
+  literals are float64 on 8-byte-word targets and float32 on 4-byte ones.
+- Arithmetic (`+ - * /`), comparisons, unary minus, compound assignment,
+  int/float and float-width coercions work at declarations, assignments,
+  arguments, returns, and constructor fields. `%` on floats is an error.
+- Imported C float/double calls use the target ABI, including float32 to
+  float64 promotion for variadic arguments. See `code_generator/ffi.w`.
+- `lib/float_text.w` parses correctly rounded decimal text and formats
+  shortest round-trip or fixed-precision strings from raw bits. Public
+  helpers include `parse_float`, `parse_float64`, `ftoa`, `f64toa`,
+  `ftoa_fixed`, and `f64toa_fixed`; printing, f-strings and JSON use them.
+- `lib/fmath.w` and `lib/fmath64.w` provide bit casts, classification,
+  rounding, roots, exp/log/pow and trigonometric functions, with measured
+  ulp bounds against glibc goldens.
+- The REPL echoes both 16-bit types as numeric values in text and JSON
+  mode. `wdbg` and `wdbg64` print typed float locals/globals/fields as
+  numeric text followed by storage bits. Structured `inspect` values
+  have numeric `value` and hexadecimal `bits` strings, including `nan`,
+  `inf`, and signed zero. Float64 inspection requires `wdbg64`.
+  Untyped register/stack dumps remain raw bits; `f` still means `frame`.
 
-The milestones below are the plan float support was built from, kept as the
-design record. All of them landed as described except where a note says
-otherwise; the "Status" section above is the current contract.
+## Implementation
 
+Float values travel through W's integer evaluation pipeline as raw bits.
+The accumulator and existing stack slots hold float32 or float64 words;
+backend floating registers are temporary operands inside each operation.
+This preserves the ordinary W calling convention. Narrow call results
+still contain storage bits, so value promotion must widen them just as
+it widens a memory load.
 
-## Milestone 1 — Type table (`compiler/type_table.w`)
+- `compiler/type_table.w`: format types, float kind, narrow-storage kind.
+- `grammar/promote.w`: loads, raw call-result widening, and store coercions;
+  `grammar/ast_expression.w` mirrors these result types for retained code.
+- `code_generator/sse.w`: arithmetic and float16 target dispatch.
+- `code_generator/wasm_half.w`: Wasm binary16 conversion.
+- `code_generator/bfloat.w`: portable bfloat16 conversion emitters.
+- `grammar/float_literal.w` and `compiler/bignum.w`: literal parsing.
+- `debugger/locals.w`, `debugger/inspect.w`: formatting stored bits without
+  executing debuggee code or requiring F16C merely to inspect a value.
 
-- In `push_basic_types()`: register `float32` (size 4), `float64` (size 8),
-  `float16` (size 2), and `float` (size 4, an alias of float32 by kind); add
-  `float*`/`float32*` to the common pre-registered pointer types.
-- Register two **value pseudo-types** (like the existing `constant`=3 /
-  `function`=4 convention where `eax` already holds the value, size 0): one
-  for "float32 value in eax", one for "float64 value in rax". Give them names
-  containing a space (e.g. `"float32 value"`) so no source token can ever
-  look them up via `type_lookup`.
-- Record all the new indices in globals (`float32_type`, `float64_type`,
-  `float16_type`, `float_type`, `float32_value_type`, `float64_value_type`)
-  set during registration; add `type_is_float(t)` / `type_is_float64(t)`
-  helpers that compare indices. Pointer types get their own indices, so
-  `float*` correctly reads as a non-float scalar (pointer) everywhere.
-- `types_compatible()` likely needs **no change**: scalars (pointer level 0,
-  no fields) already inter-convert silently, which covers float ↔ int and
-  the size-0 pseudo-types, and float ↔ pointer already warns via the
-  pointer-level check. Verify with the warning fixtures instead of editing.
-  One consequence of the alias-by-kind approach: `float*` vs `float32*` have
-  different base names, so mixing them warns (documented limitation).
-- Do **not** fix the pre-existing `word_size` shadowing note near
-  `push_basic_types` (unrelated; float sizes are hardcoded 4/8/2).
+Compiler modules stay compatible with the pinned seed. The compiler's
+conversion emitters and debugger formatting do not use the new bfloat16
+syntax in their own implementation.
 
-## Milestone 2 — SSE encoder (new `code_generator/sse.w`)
+## Tests and remaining extensions
 
-New module imported from `codegen.w`, same hardcoded-byte style as `x86.w`
-(fixed registers, no general ModRM encoder). All operations are reg-reg, so
-no memory forms. Needed encodings:
+The ordinary `./wbuild tests` suite includes float32/float64 literals,
+arithmetic, C-reference differential tests, ABI tests, math libraries,
+text conversion, and deterministic TestFloat-inspired edge vectors.
+`float16_test` and `bfloat16_test` (with x64 twins) check bit patterns,
+rounding, exceptional values, storage, and function-result conversions.
+`debug_float_test` checks numeric text and raw bits in both debuggers;
+the REPL fixtures cover text and JSON echoes.
 
-- Transfers: `movd xmm0, eax` (`66 0F 6E C0`), `movd xmm0, ebx`,
-  `movd xmm1, eax`, `movd eax, xmm0`; x64: `movq xmm0/xmm1, rax/rbx`,
-  `movq rax, xmm0` (same bytes with a REX.W prefix).
-- Arithmetic: `addss/subss/mulss/divss xmm0, xmm1`
-  (`F3 0F 58/5C/59/5E C1`); `sd` variants with `F2` prefix (x64 only).
-- Compare: `ucomiss xmm0, xmm1` (`0F 2E C1`), `ucomisd` (`66 0F 2E C1`).
-- Conversions: `cvtsi2ss/sd xmm, r32` (both the eax and ebx source forms —
-  mixed int/float operands need to convert whichever side is the integer),
-  `cvttss2si`/`cvttsd2si eax, xmm0`, `cvtss2sd`, `cvtsd2ss`.
-- float16 conversions (F16C, VEX-encoded fixed-byte sequences):
-  `vcvtph2ps xmm0, xmm0` (`C4 E2 79 13 C0`) and
-  `vcvtps2ph xmm0, xmm0, 4` (`C4 E3 79 1D C0 04`, round-to-nearest); plus a
-  `movzx eax, word [eax]`-style 16-bit **zero-extend** load helper — the
-  existing size-2 load path (`promote_int16_eax`) sign-extends, which would
-  corrupt half bit patterns above 0x7FFF.
-- Sign flip: `xor eax, imm32` helper in `x86.w` for float32;
-  `btc rax, 63` (`48 0F BA F8 3F`) for float64.
-- 64-bit literal immediate: `mov rax, imm64` **taking the immediate as two
-  32-bit halves** (`48 B8` + `emit_int32(lo)` + `emit_int32(hi)`). The
-  existing `mov_rax_int64(int v)` cannot carry float64 bit patterns because
-  the compiler is a 32-bit process: its `int` is 4 bytes and `emit_int64`
-  sign-extends the low word.
+Cross-backend tests compile the narrow formats for ARM64, Wasm and PTX.
+Runtime qualification uses an ARM64 runner/emulator, Node/WASI, or CUDA
+where available; GPU emit checks also run without a GPU. The older
+float32/float64 conformance vectors intentionally pin several x86-specific
+results, so they are not a cross-backend oracle.
 
-No new store helper is needed: `grammar/expression.w` sizes stores from the
-left-hand side's declared type and any size other than 1/2/4 falls through to
-`store_ebx_word()`, which already emits the REX.W 8-byte store on x64 — and
-float64 is x64-only, so size-8 stores only ever happen there. Hardware note:
-float16 requires an F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+); SSE2
-is implied by x86-64 and universal on 32-bit-capable hardware this project
-targets.
-
-## Milestone 3 — Tokenizer: float literal tokens with exponents
-
-`compiler/tokenizer.w` `get_token()` changes, guarded by the token
-**starting with a digit** (so `import grammar.promote` and `pt.x` stay
-untouched; identifiers cannot start with digits):
-
-- If `nextc == '.'` after the alnum scan, consume the dot and rescan alnum,
-  producing one token like `3.25` (the existing loop already merges trailing
-  letters/digits, so `1e5` is one token today, and `3.25e7` merges fully).
-- If the token now ends in `e`/`E`, does **not** start with `0x` (hex guard:
-  `0xe+1` must stay three tokens), and `nextc` is `+` or `-`, consume the
-  sign and the following digits — this completes `1.5e-3` and `1e-5` into
-  single tokens.
-
-Result: `3.25`, `1e5`, `1.5e-3`, `2E+10` each arrive at the grammar as one
-token. Safety check done: every digit-followed-by-dot sequence in the current
-tree sits inside comments or string literals, which the tokenizer scans
-separately, so no existing source re-tokenizes differently. `.5`-style
-literals (no leading digit) are not supported.
-
-## Milestone 4 — Exact literal parsing (integer-only bignum)
-
-The compiler is compiled by the float-less seed binary and runs as a 32-bit
-process, so literal parsing must use **32-bit integer math only**. Exact
-decimal-to-binary conversion needs wide arithmetic, so:
-
-- New `compiler/bignum.w`: a small fixed-width big integer on **16-bit limbs
-  stored in ints** (limb × 10 + carry never overflows 32-bit signed math;
-  ~80 limbs covers the 10^±308 float64 range). Operations: multiply-by-10
-  with carry, shift left/right, compare, subtract — enough for
-  shift-and-subtract long division. Unit-tested like
-  `compiler/type_table_test.w`.
-- New `grammar/float_literal.w`, called from `primary_expr()` **before**
-  `int_literal()` when the token contains `.` or is a digit-leading `e` form
-  (it must intercept first: `int_literal`'s digit loop would fold the `.`
-  character into the value). AlgorithmM-style conversion — mantissa digits
-  into a bignum, apply the decimal exponent as bignum ×10^k or a bignum
-  denominator, binary-scale until the quotient lands in the target mantissa
-  range, extract mantissa bits with round-to-nearest-even from the
-  remainder. Parameterized by mantissa width/bias so the same code produces
-  **exact float32 (24-bit)** and **exact float64 (53-bit)** patterns;
-  float64 bits come out as two 32-bit halves, emitted via the new
-  two-halves `mov rax, imm64` helper.
-- Literal type follows the target, like C's double-by-default: on x64,
-  literals are **float64** returning the float64-value pseudo-type; on the
-  32-bit target they are **float32** parsed directly to exact float32 bits
-  (no float64 detour, no double rounding). Narrowing/widening to the
-  variable's declared type happens at the coerce sites (Milestone 6), e.g.
-  `float x = 1.5` on x64 emits `cvtsd2ss`.
-- The literal itself is unsigned; `-1.5` reaches the float path through
-  unary minus (Milestone 5), whose float dispatch flips the sign bit —
-  `neg_eax` (two's complement) would corrupt float bits.
-
-## Milestone 5 — Expression codegen dispatch
-
-- `promote()` in `grammar/promote.w`: early-return for the two float value
-  pseudo-types (like types 3/4). Loads of float32/float64 variables already
-  work via the size-based paths (float64 uses the existing REX.W word load,
-  x64 only; on x64 the size-4 load sign-extends via `movsxd`, which is
-  harmless because every float32 consumer reads only the low 32 bits).
-  **float16 gets a special load path, dispatched by type index before the
-  size-based paths** (the size-2 path sign-extends): 16-bit zero-extend,
-  then `vcvtph2ps`, yielding a float32 value in `eax` — after the load it
-  behaves exactly like float32 everywhere ("storage-only").
-- Restructure the operator sites so the right operand's type is known before
-  choosing opcode bytes (today `binary2_finish_pop()` returns 3
-  unconditionally), then dispatch on `type_is_float(left) |
-  type_is_float(right)`:
-  - `grammar/additive_expr.w`, `grammar/multiplicative_expr.w`: float path
-    pops into `ebx` (left operand; note integer `/` and `%` currently use the
-    self-popping `binary2_finish` path, so the float restructure changes
-    that), moves left to `xmm0` and right to `xmm1` (converting an int side
-    with `cvtsi2ss/sd` first), emits `addss/subss/mulss/divss`, moves result
-    bits back to `eax`, returns the float value pseudo-type. Operand order
-    matters for sub/div: `subss xmm0, xmm1` computes left − right. `%` on
-    floats is a compile error.
-  - `grammar/relational_expr.w`, `grammar/equality_expr.w`:
-    `ucomiss/ucomisd` + `seta/setae/sete/setne` (unsigned condition codes,
-    because ucomis sets flags like an unsigned compare; operand order
-    swapped for `<`/`<=`); result is int 0/1, type 3. NaN semantics
-    simplified for the MVP (ucomis reports unordered as ZF=1, so
-    `nan == nan` is true; noted in a code comment).
-  - `grammar/unary_expression.w`: unary `-` on a float value = sign-bit
-    flip; unary `+` unchanged; `!`/`!!`/conditions keep the integer
-    `test eax, eax` (bit-pattern truthiness; `-0.0` is truthy — documented
-    quirk).
-- **Call sites must propagate float return types** (`grammar/postfix_expr.w`
-  currently types every call result as 3/constant, which would make
-  `coerce()` treat float bits returned from a call as an integer): when the
-  callee symbol is known, read its declared return type from the symbol
-  table (the same `table + sym + 6` slot the return-statement check uses)
-  and return the float value pseudo-type for float-returning callees. Calls
-  through untyped function pointers still yield 3 — a documented limitation.
-- float64 gate: when a `float64` variable/field/param is declared and
-  `word_size == 4`, `error("float64 requires the x64 target")` — at
-  `type_name()`/declaration time.
-
-## Milestone 6 — Conversions at store sites
-
-Add a helper `coerce(want_type, got_type)` that emits `cvtsi2ss/sd`
-(int→float), `cvttss2si`/`cvttsd2si` (float→int), `cvtss2sd`/`cvtsd2ss`
-(width change), or `vcvtps2ph` (float16 narrowing; the existing size-2
-16-bit store then writes the half) when the sides differ. Type 3 (constant)
-is treated as **int** — that is what makes `float x = 3` convert; it is also
-why Milestone 5 must type float-returning calls with the pseudo-type instead
-of 3. `coerce` only touches `eax`/xmm scratch, so it can run before or after
-the `pop_ebx` at each site. Call it from:
-
-- assignment in `grammar/expression.w` (before the store-width selection;
-  the existing width selection already handles size 8 via
-  `store_ebx_word()` on x64),
-- variable declaration initializers (`grammar/variable_declaration.w`),
-- `return` in `grammar/statement.w` (the declared return type is already
-  loaded there for the mismatch warning),
-- `new_store_field()` constructor args (`grammar/unary_expression.w`) and
-  call arguments in `grammar/postfix_expr.w` (declared param types are
-  already available via `sym_param_type` for the warning path).
-
-For implemented widths, this makes `float x = 3`, `int n = f`, and `x + 2` do
-the right thing; the analogous `float16 h = 1.5` path (narrowing at the
-`coerce()` call sites above via `vcvtps2ph`) is implemented too and covered
-by `tests/float16_test.w`, on the x86 family.
-
-## Milestone 7 — Debugger float formatting + `ftoa`
-
-The bits-in-`eax` design means float values live in ordinary registers and
-stack slots — no XMM state to dump. The debugger just needs to *decode*
-words on request:
-
-- `lib/format.w` (or a new `lib/float_format.w`): `ftoa(float f)` /
-  `f64toa` producing decimal strings via repeated ×10 digit extraction, plus
-  `inf`/`nan` cases. These run in programs compiled by the new `wv2`, so
-  they can freely use float arithmetic (see Bootstrap constraint;
-  `lib.format` is not in the compiler's import graph).
-- `debugger/debugger.w`: extend `wdbg_print_registers` / `wdbg_print_stack`
-  output with a float32 decoding column (hex bits stay primary), or add an
-  `f` command that re-prints the 16 stack words decoded as float32. Covered
-  by `debug_test`'s expected-output check.
-
-**Not landed:** only the `ftoa`/`f64toa` half of this milestone shipped.
-`debugger/` has no float decoding on any target, and `f` is bound to
-`frame`. The x64 debugger (`bin/wdbg64`, `debug_test_x64`) now exists, so
-float32 and float64 display are both unblocked; see "Still open" above.
-
-## Milestone 8 — Tests and library
-
-- `lib/assert.w`: add an `assert_float_equal(int want_bits, float got)`-style
-  helper (bit compare) plus an epsilon variant built on the new float ops.
-- `compiler/bignum_test.w`: limb ops, ×10 carry chains, long-division edge
-  cases.
-- `tests/float_test.w` (32-bit, `lib.testing` style): literals including
-  **exact-bit-pattern checks** (e.g. `0.1` → `0x3DCCCCCD`) and exponent
-  forms (`1e5`, `1.5e-3`, `2E+10`), `+ - * /`, comparisons, unary minus,
-  int↔float conversion, float params/returns (both directions through the
-  call-site return-type propagation), float struct fields, `float*`
-  indexing.
-- `tests/float16_test.w` (`# wbuild: x64` twin, `lib.testing` style, x86
-  family only): float16 store/load round-trips with golden bit patterns
-  (1.0, -2.5, 0.5, max normal 65504.0, smallest normal 2^-14),
-  round-to-nearest-even on non-representable and exact-tie values,
-  overflow to infinity, subnormals, signed zero, +-inf, quiet-NaN bit
-  preservation, struct fields, array elements, int<->float16 conversion,
-  and comparisons/unary minus. Landed as its own file rather than inside
-  `float_test.w` as originally sketched here.
-- Compile-only error fixture for "float64 requires the x64 target"
-  (pattern: `warning_test` in `build.json`).
-- `tests/x64_float_test.w`: float64 smoke test in the style of
-  `tests/x64_test.w` (exit code / printed output), including exact float64
-  literal bits (e.g. `0.1` → `0x3FB999999999999A` checked as two 32-bit
-  halves), since `lib.testing`'s ELF-symtab discovery hardcoded the 32-bit
-  base address and did not work on the x64 backend at the time this
-  milestone landed. **Stale as of the issue #17 conformance pass**:
-  `lib.testing` discovery was rewritten to be compiler-synthesized rather
-  than binary introspection (`compiler/test_registry.w`, issue #147,
-  landed alongside the wasm backend work) and now works identically on
-  x64 — `tests/float16_test.w`'s `# wbuild: x64` twin and
-  `tests/float_conformance_test.w` both use plain `lib.testing` on x64
-  today. The plain-`main()` + `expect_stdout` style is kept for
-  `x64_float_test.w`/`x64_fmath64_test.w`/`x64_map_float64_test.w` for
-  continuity with their existing hand-written `build.base.json` targets,
-  not because it is still required; float64-only new tests may use
-  either style (see `tests/x64_float64_conformance_test.w` for a
-  `lib.testing`-based example with a hand-written base target, since
-  float64 has no 32-bit twin to generate from a `# wbuild: x64`
-  directive).
-- build.json: `float_test`, `bignum_test`, `x64_float_test` targets, added to
-  the `tests:` umbrella.
-
-## Milestone 9 — Verify, docs, commit (done)
-
-- `./wbuild build verify tests` — the self-host fixpoint (`wv3 == wv4 == wv5`)
-  must still hold since the compiler source itself uses no float syntax
-  (bignum is pure integer code); all existing tests plus the new float
-  targets green. Fix and re-run until clean. `./wbuild verify_x64` must also
-  stay green (it is part of `tests` via `tests_x64`).
-- Docs bookkeeping per repo convention: update the `float` line in
-  `docs/todo.txt`, add an entry to `docs/done.txt`, note the float64/x64
-  restriction and the F16C hardware requirement for float16.
-- Land in logical commits (type table, SSE encoder, tokenizer+bignum+
-  literals, dispatch, conversions, debugger, tests) once everything is
-  verified.
-
-## GPU backend
-
-`float32`/`float64`/`float16` names and the `type_is_float` kind helper map
-1:1 onto PTX `.f32`/`.f64`/`.f16`. `code_generator/ptx.w` has since landed
-(`docs/projects/cuda.md`), and kernel bodies support float32 and float64
-arithmetic, conversions and ordered compares, plus `atomic_add` on
-`float32*`. float16 is still a compile error there. float16's storage-only,
-compute-in-float32 semantics match PTX's common `.f16` usage pattern, and
-`bfloat16` scope is tied to this backend (issue #28).
+Larger generated/random TestFloat batches remain an optional extension,
+as described in [float_testing.md](float_testing.md). Native half/bfloat
+arithmetic, tensor-core operations, a 16-bit C ABI, and changes to the
+existing IEEE semantic differences below are separate work.
 
 ## Known MVP semantic differences (documented, not blocking)
 
@@ -458,12 +182,11 @@ behave differently.
   default non-trapping behavior — but there is no way to opt into
   trapping or to read sticky exception flags.
 - **Bare decimal float literals change width across targets, and that
-  width sticks unless something coerces it back down.** Per Milestone
-  4, an untyped literal like `1.0` is float64 on 8-byte-word targets
+  width sticks unless something coerces it back down.** An untyped literal like `1.0` is float64 on 8-byte-word targets
   (x64, win64, arm64) but float32 on the default target and wasm ("literal type follows the target, like C's
   double-by-default"). `coerce()` narrows a float64 result back to a
   variable's declared float32 width at assignment, declaration, return
-  and call-argument sites (Milestone 6) — but comparison operators are
+  and call-argument sites — but comparison operators are
   not a coerce() site. So for a `float a`, an inline expression like
   `(a + 1.0) == a` can evaluate *differently* on the default target
   (the literal stays float32, no widening, ties-to-even rounds the sum
@@ -502,16 +225,17 @@ behave differently.
   double rounding differs from direct decimal→float32 only in pathological
   halfway cases.
 - `float*` and `float32*` are distinct pointer types, so mixing them warns.
-- `float16` requires an F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+);
+- On the x86 family, `float16` requires an F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+);
   there is no software fallback, and no runtime feature check is emitted.
   (`vcvtph2ps`/`vcvtps2ph`, `code_generator/sse.w` — hardware
   instructions, not a software conversion routine, so this is a hard
   requirement, not just a performance note; see also the README.md
   floating-point bullet.)
-- `float16` is a clean compile error on arm64, wasm and gpu (no
-  F16C-equivalent port yet); see "Status" at the top of this document.
-- `bfloat16` is not implemented (scope tied to the GPU track, issue #28);
-  no hex-float syntax; no `.5`-style literals without a leading digit.
+- No hex-float syntax or `.5`-style literals without a leading digit.
+- On 64-bit-word targets, a float64 stored in either 16-bit format first
+  narrows to float32. This storage-oriented conversion can double-round
+  a value extremely close to a halfway boundary. Use explicit float32
+  intermediates when comparing targets.
 
 ### Target differences
 
@@ -540,25 +264,3 @@ NaN differs in sign: x86 produces the negative "QNaN floating-point
 indefinite", arm64 the positive default NaN, and the wasm spec leaves the
 sign and payload of a generated NaN to the host, so the conformance vectors
 that pin these bits only run on x86 and x64.
-
-## Library gap found via this testing (since fixed)
-
-`itoa(int n)` (`lib/lib.w`) used to print the wrong string for the minimum
-representable integer (`INT_MIN`, `0x80000000` on the default target,
-`0x8000000000000000` on x64): `itoa` negates via `n = 0 - n`, which
-overflows back to the same negative value for `INT_MIN` in two's
-complement, so the digit-extraction loop never runs and the output is
-just `"-"`. This surfaced while testing float→int conversion edges,
-since `cvttss2si`/`cvttsd2si` return exactly this bit pattern (the
-"integer indefinite" sentinel) on overflow — printing that result via
-`itoa` for a debug message reproduces the bug. It is a pre-existing,
-target-width-independent library bug unrelated to float codegen (the
-comparison-based logic in `lib/assert.w`'s `assert_equal` is unaffected
-since it compares with `!=`, not by printing); logged in
-`docs/projects/ai_tooling_next_steps.md` rather than fixed in that pass.
-`itoa` now extracts digits from the still-negative value instead of
-negating it first, so `INT_MIN` prints correctly on both word sizes. The
-conformance tests still route around it by asserting bit patterns via
-`assert_equal_hex` (which uses `hex()`, unaffected) instead of
-`itoa()`-based assertions wherever an `INT_MIN`-shaped value is in
-play.

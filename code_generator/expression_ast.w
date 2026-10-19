@@ -667,13 +667,15 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 			char* set_name = ndarray_accessor_name_for(tree.value[index], tree.high[index], c"_set")
 			sym_lookup(set_name)
 			int subop = tree.value[id]
+			int loaded = tree.result_type[index]
 			if (subop):
 				park_call(park, get_name, 0)
+				loaded = promote(type_value(loaded))
 				ers_slot()
 			int right = tree.right[id]
 			emit_expression_ast(tree, right)
 			int got = promote(tree.result_type[right])
-			if (subop): got = compound_assign_apply(subop, tree.result_type[index], got)
+			if (subop): got = compound_assign_apply(subop, loaded, got)
 			coerce(tree.high[id], got)
 			int value_slot = push_slot()
 			park_store(park, set_name, value_slot, tree.high[id])
@@ -699,13 +701,15 @@ void emit_expression_ast_node(expression_ast* tree, int id, int left_ready):
 		if (op == 'w'):
 			expression_is_assignment = 1
 			int subop = tree.value[id]
+			int loaded = type_value(element)
 			if (subop):
 				emit_ast_map_call(c"__w_map_get", map_slot, key_slot, 0)
+				loaded = promote(loaded)
 				ers_slot()
 			int right = tree.right[id]
 			emit_expression_ast(tree, right)
 			int got = promote(tree.result_type[right])
-			if (subop): got = compound_assign_apply(subop, type_value(element), got)
+			if (subop): got = compound_assign_apply(subop, loaded, got)
 			coerce(element, got)
 			int value_slot = push_slot()
 			char* helper = c"__w_map_set"

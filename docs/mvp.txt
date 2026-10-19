@@ -46,12 +46,11 @@ Compiler
 		Template strings, default parameter values, W variadics, dynamic var
 
 		Map get/remove/defaults and list insert/remove
-		Float16 storage type (x86 family)
+		Float16/bfloat16 storage types (all backends)
 		C import bit-field layout
 
 	Remaining
 		Generic inference for forward calls, struct constructors and container shapes
-		bfloat16
 		Formatter (w check --fix only rewrites whitespace)
 
 Net

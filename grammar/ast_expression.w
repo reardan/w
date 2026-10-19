@@ -517,9 +517,6 @@ int ast_expression_scalar_type(int type):
 	if ((kind == type_kind_string) || (kind == type_kind_var)): return 1
 	if (ci_is_bit_field_access(base)): return ci_bit_field_unit_size(base) > 0
 	if ((kind == type_kind_map) || (kind == type_kind_set) || (kind == type_kind_list)): return 1
-	# Half loads/conversions can diagnose unsupported backends during
-	# emission. Keep their diagnostic order with the streaming parser.
-	if ((base == float16_type) && (target_isa != 0)): return 0
 	if (type_num_args(base) > 0): return 0
 	if ((kind != 0) && (kind != type_kind_enum) && (kind != type_kind_function)): return 0
 	int size = type_get_size(base)
@@ -568,7 +565,10 @@ int ast_expression_storage_type(int type):
 int ast_expression_promoted_type(int type):
 	if (type == string_type): return string_value_type
 	if (type == var_type): return var_value_type
-	if (type_is_value(type)): return type_strip_gpu(type_real(type))
+	if (type_is_value(type)):
+		int value = type_strip_gpu(type_real(type))
+		if (type_is_narrow_float(value)): return float32_value_type
+		return value
 	if (type_is_gpu_object(type)): return ast_expression_promoted_type(type_strip_gpu(type))
 	if (ci_is_bit_field_access(type)): return type_lookup(c"int")
 	if (type_is_array(type) || (type_get_kind(type) == type_kind_slice)):
@@ -2861,7 +2861,7 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 		value_type = type_map_value_type(container)
 		if ((method != 17) && (ast_expression_data_value(value_type) == 0)): return -1
 	if (method == 18):
-		if ((type_num_args(value_type) > 0) || (type_canonical(value_type) == float16_type)): return -1
+		if ((type_num_args(value_type) > 0) || type_is_narrow_float(value_type)): return -1
 	int id = expression_ast_add(tree, 'M', receiver, -1)
 	if (id < 0): return -1
 	tree.high[id] = key_type

@@ -213,8 +213,10 @@ can occur inside an accepted candidate. Argument mismatches and incorrect
 arity decline the candidate so diagnostics retain their original positions
 and order. Defaults that need insertion, variadics, indirect/foreign calls,
 generics, builtins, constructors, generators, aggregate/void results and GPU
-objects remain with the streaming parser. Unsupported float16 backends also
-fall back before replay. Member/index/dereference syntax can surround an
+objects remain with the streaming parser. The former unsupported-float16
+backend fallback was removed when all backends gained storage conversions
+(issue #17); returned float16/bfloat16 values promote to float32 in both
+frontends. Member/index/dereference syntax can surround an
 accepted group but is still parsed by the streaming grammar.
 
 The differential tests cover nested calls and argument side effects, scalar
@@ -222,7 +224,8 @@ coercion, forward references, pointer results and sub-word dereferences,
 float32/float64 and native float16 operands, signed zero, decimal rounding,
 subnormals, malformed literals/calls, fallback diagnostics and REPL redefinition
 and recovery. The common scalar fixture joins the six-target image comparison
-matrix; float16 executes only on x86/x64 and float64-only cases on x64.
+matrix; this original fixture runs float16 on x86/x64 and float64-only
+cases on x64. Dedicated narrow-float tests now also cover ARM64, Wasm and PTX.
 Both compiler host widths retain AST-enabled byte-identical self-host gates.
 
 ## Task 8: comparisons, short-circuit logic and postfix access

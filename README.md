@@ -251,11 +251,14 @@ Implemented and covered by tests:
   with exponent forms, arithmetic/comparisons, int<->float coercions,
   function parameters/returns, fields/pointers, the C float ABI, `ftoa`,
   `f64toa`, and the `lib/fmath.w`/`lib/fmath64.w` math libraries, checked
-  by TestFloat-derived conformance vectors on x86 and x64; `float16` as a
-  2-byte storage/conversion type (load widens to float32, store narrows)
-  on the x86 family (default 32-bit target, x64, win64), which requires an
-  F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+; no software fallback)
-  and is a compile error on arm64/wasm/gpu. `bfloat16` is not implemented.
+  by TestFloat-derived conformance vectors on x86 and x64. `float16` and
+  `bfloat16` are 2-byte storage types on every backend: loads and W
+  function results widen to float32, stores narrow with nearest-even
+  rounding in the default FP environment. Float16 on x86/x64/win64
+  requires F16C (Ivy Bridge/Zen or newer; no software fallback); ARM64
+  and PTX use native conversions and Wasm uses software conversion.
+  Bfloat16 uses integer conversions without a special CPU requirement.
+  The REPL and debuggers display both formats numerically.
   See `docs/projects/float.md`, including its per-target support table and
   "Known MVP semantic differences" section (NaN comparisons, signed zeros,
   int-conversion overflow, a literal-width cross-target gotcha, and where

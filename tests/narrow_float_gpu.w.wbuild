@@ -1,0 +1,10 @@
+# wbuild: target=narrow_float_ptx_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/narrow_float_gpu.w -o bin/narrow_float_ptx"
+# wbuild: step="bin/narrow_float_ptx --ptx" expect_stdout=".visible .entry narrow_float_convert(" expect_stdout=".visible .entry narrow_float_storage(" expect_stdout=".visible .entry narrow_float_parameters(" expect_stdout=".visible .entry __w_gpu_kernel_0(" expect_stdout="st.u64 [%bp+-24], %cx;" expect_stdout="cvt.rn.f16.f32 %half, %fa;" expect_stdout="cvt.f32.f16 %fa, %half;" expect_stdout="st.u16"
+# wbuild: step="bin/wv2 --streaming x64 tests/narrow_float_gpu.w -o bin/narrow_float_streaming_ptx"
+# wbuild: step="bin/narrow_float_streaming_ptx --ptx" expect_stdout=".visible .entry __w_gpu_kernel_0(" expect_stdout="st.u64 [%bp+-24], %cx;" expect_stdout="cvt.f32.f16 %fa, %half;"
+# wbuild: target=narrow_float_gpu_test tag=tests_gpu dep=wv2
+# wbuild: step="bin/wv2 x64 tests/narrow_float_gpu.w -o bin/narrow_float_gpu"
+# wbuild: step="bin/narrow_float_gpu" expect_stdout="narrow float gpu OK"
+# wbuild: step="bin/wv2 --streaming x64 tests/narrow_float_gpu.w -o bin/narrow_float_streaming_gpu"
+# wbuild: step="bin/narrow_float_streaming_gpu" expect_stdout="narrow float gpu OK"

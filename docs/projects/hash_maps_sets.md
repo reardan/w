@@ -134,9 +134,10 @@ value type in `grammar/hash_builtin.w`:
   `"map add requires an integer or float value type"`
   (`tests/map_add_error_fixture.w`) and `float16` values with
   `"map add does not support float16 values"`
-  (`tests/map_add_float16_error_fixture.w`) — float16 slots hold raw
-  half-precision bits that the float emitters cannot add directly, and
-  every float16 operation would round-trip through float32 anyway.
+  (`tests/map_add_float16_error_fixture.w`). `bfloat16` has the analogous
+  rejection (`tests/bfloat16_map_add_fixture.w`). The `.add` helper does
+  not implement narrow-storage conversion; use ordinary indexing and
+  `m[key] += delta` for these formats (the key must already exist).
 
 The delta defaults to 1 (converted to `1.0` for float values); an
 integer delta on a float map converts like any other int-to-float

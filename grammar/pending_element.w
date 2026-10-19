@@ -57,7 +57,8 @@ int park_compound(int* park, int op, int value_type, char* context, char* get_fn
 	park_call(park, get_fn, 0)
 	# Same shape the scalar path feeds compound_assign_apply: loaded
 	# left value on top of the stack, promoted right value in eax.
-	int result_type = compound_assign_rhs(op, type_value(value_type))
+	int left_type = promote(type_value(value_type))
+	int result_type = compound_assign_rhs(op, left_type)
 	coerce_checked(value_type, result_type, context)
 	int value_slot = push_slot()
 	return park_store(park, set_fn, value_slot, value_type)

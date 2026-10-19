@@ -53,7 +53,7 @@ which is garbage in the same family as the method-chain
 silent-ignore that `docs/projects/struct_methods.md` fixed.
 
 Two mangling details keep the exact-match rule portable. `float`,
-`float32` and `float16` parameters all mangle to `float`, so
+`float32`, `float16` and `bfloat16` parameters all mangle to `float`, so
 definitions differing only in those spellings collide via the
 ordinary symbol-redefinition error — intended, they are one overload.
 `float64` mangles apart; because x64 float literals are float64, a

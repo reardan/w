@@ -110,13 +110,18 @@ Current state:
 		                path, type, address, value and expandable; pointers
 		                also have pointer. Addresses are hex strings.
 		                Invalid/PROT_NONE reads return errors, not signals.
-		                Scalars, structs and pointers only for now; floats
-		                and word-sized unsigned values use hex bits. Array
+		                Scalars, structs and pointers only for now. Floats
+		                have numeric value text plus a hexadecimal bits field
+		                of the original storage width. This includes float16,
+		                bfloat16, float32, and float64 with wdbg64; signed zero,
+		                infinities and NaNs retain their numeric spelling.
+		                Word-sized unsigned values use hex bits. Array
 		                indices and container-specific views are not supported.
 		                Clients retain paths and re-inspect at each stop.
 		                The attach command loop does not expose inspect yet.
 		p / print <x>   local/argument/global by name (typed: structs
-		                print field by field, char* previews the string),
+		                print field by field, char* previews the string,
+		                floats show decimal plus original storage bits),
 		                or any W expression compiled in-process and run
 		                against the live debuggee; globals, calls and
 		                the locals/args visible at the stop all work

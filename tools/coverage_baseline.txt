@@ -72,16 +72,21 @@
 # 74.5. The debugger floors rise by the measured gains with their prior
 # 2.7 point margin; the compiler/grammar floors are unchanged
 # (measurements held).
+# Narrow-float conversion, container, GPU capture, REPL and debugger tests
+# measure lines at 97.7/97.1/97.8/92.4/84.3% and branches at
+# 89.7/87.4/86.3/75.0/70.3% for code_generator/compiler/grammar/repl/debugger.
+# Preserve the measured gains and existing margins; compiler branches
+# retain their existing floor, and code-generator lines are unchanged.
 code_generator/ 96.8
-compiler/ 96.2
-grammar/ 96.8
-repl/ 91.5
-debugger/ 80.8
+compiler/ 96.3
+grammar/ 97.0
+repl/ 92.0
+debugger/ 81.6
 repl.w 80.5
 w.w 99.0
 diagnostics 50.8
-branches:code_generator/ 89.0
+branches:code_generator/ 89.1
 branches:compiler/ 87.0
-branches:grammar/ 85.5
-branches:repl/ 73.6
-branches:debugger/ 66.9
+branches:grammar/ 85.7
+branches:repl/ 74.1
+branches:debugger/ 67.6

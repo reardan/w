@@ -298,6 +298,30 @@ void coerce_cstr_to_string_call_arg():
 	coerce_cstr_to_string()
 
 
+# Narrow floats are storage formats. A loaded value and a raw call result
+# both enter expressions as float32, including arguments to another call.
+int promote_narrow_float(int type):
+	int base = type_unqualified(type)
+	if (base == float16_type):
+		movd_xmm0_eax()
+		vcvtph2ps_xmm0()
+		movd_eax_xmm0()
+		return float32_value_type
+	if (base == bfloat16_type):
+		bfloat16_to_float32_eax()
+		return float32_value_type
+	return type
+
+
+void coerce_narrow_float(int want):
+	int base = type_unqualified(want)
+	if (base == float16_type):
+		movd_xmm0_eax()
+		vcvtps2ph_xmm0()
+		movd_eax_xmm0()
+	if (base == bfloat16_type): float32_to_bfloat16_eax()
+
+
 /*
 Convert the lvalue address in eax into an rvalue, sized by its type.
 
@@ -310,8 +334,8 @@ int promote(int type):
 	# A condition chain left pending (grammar/cond_branch.w) is being
 	# read as a value: give it its value form first
 	if (cond_pending): cond_pending_materialize()
-	if (hash_index_pending): return hash_finish_pending_read()
-	if (nd_index_pending): return nd_finish_pending_read()
+	if (hash_index_pending): return promote(hash_finish_pending_read())
+	if (nd_index_pending): return promote(nd_finish_pending_read())
 	if (verbosity >= 1):
 		print2(itoa(line_number))
 		print2(c": promote(")
@@ -331,7 +355,7 @@ int promote(int type):
 		peep_rollback(inline_const_note_start)
 		mov_eax_int(inline_const_note_value)
 		return type
-	if (type_is_value(type)): return type_strip_gpu(type_real(type))
+	if (type_is_value(type)): return promote_narrow_float(type_strip_gpu(type_real(type)))
 	# An lvalue in device global memory ('gpu T*' element): diagnosed in
 	# host code; on device the load itself becomes ld.global
 	# (code_generator/ptx.w, ptx_global_access).
@@ -388,12 +412,9 @@ int promote(int type):
 		if (unsigned_fixed): promote_uint8_eax()
 		else: promote_int8_eax()
 	else if (size == 2):
-		if (type == float16_type):
+		if (type_is_narrow_float(type)):
 			promote_uint16_eax()
-			movd_xmm0_eax()
-			vcvtph2ps_xmm0()
-			movd_eax_xmm0()
-			return float32_value_type
+			return promote_narrow_float(type)
 		else if (unsigned_fixed): promote_uint16_eax()
 		else: promote_int16_eax()
 	else if (size == 4):
@@ -435,10 +456,7 @@ void coerce(int want, int got):
 		if (type_is_char_pointer(got)): coerce_cstr_to_string()
 		return;
 	if (want_kind == got_kind):
-		if ((want == float16_type) && (got != float16_type)):
-			movd_xmm0_eax()
-			vcvtps2ph_xmm0()
-			movd_eax_xmm0()
+		if (type_is_narrow_float(want) && (type_unqualified(want) != type_unqualified(got))): coerce_narrow_float(want)
 		return;
 
 	if (want_kind == 1):
@@ -449,10 +467,7 @@ void coerce(int want, int got):
 		else:
 			cvtsi2ss_xmm0_eax()
 			movd_eax_xmm0()
-		if (want == float16_type):
-			movd_xmm0_eax()
-			vcvtps2ph_xmm0()
-			movd_eax_xmm0()
+		coerce_narrow_float(want)
 		return;
 
 	if (want_kind == 2):

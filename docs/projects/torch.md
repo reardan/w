@@ -211,8 +211,9 @@ Deliberately not here:
   and local promotion (step 2, a further ~5–12x; see the status
   section above). The full grammar-contract A2 is retired: kernel
   bodies now carry no `.local` traffic to eliminate.
-- float16/bf16 storage (`.f16` loads widening to f32 math — W already
-  has storage-only float16 on the host).
+- Tensor storage dtypes for float16/bfloat16. W supports both formats in
+  host and kernel storage, widening to float32 computation; the tensor
+  library still needs dtype-aware allocation, indexing and kernels.
 
 ## Stage 5 — autograd + layers (implemented, acceptance met)
 

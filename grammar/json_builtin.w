@@ -24,7 +24,7 @@ targets (structures/json.w numbers carry full float64 precision there;
 on 4-byte words the type itself is a compile error), nested structs
 (by value), list[T] of the above, and map[K, V] with char* or string
 keys and any supported V (including nested structs, lists and maps).
-float16, sets, arrays, slices, unions, non-string map keys, and
+float16/bfloat16, sets, arrays, slices, unions, non-string map keys, and
 pointer fields are rejected at compile time.
 
 Call sites must have 'import structures.json' in scope: the builtins
@@ -101,8 +101,8 @@ int json_codec_kind(int t):
 	if (type_float_kind(t)):
 		# float32 everywhere; float64 where the word is 8 bytes, so
 		# structures/json.w numbers carry full float64 precision
-		# (elsewhere the type is already a compile error). float16
-		# stays rejected: it is storage-only (docs/projects/float.md).
+		# (elsewhere the type is already a compile error). Narrow floats
+		# stay rejected: it is storage-only (docs/projects/float.md).
 		if ((type_float_kind(t) == 1) && (type_get_size(t) == 4)): return 7
 		if ((type_float_kind(t) == 2) && (word_size == 8)): return 9
 		json_codec_unsupported(t)

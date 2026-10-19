@@ -179,7 +179,9 @@ int gpu_for_statement():
 	# order; the range operands already sit at base+1..), then launch.
 	int k = 1 + has_start
 	while (k < gpu_capture_count):
-		promote(sym_get_value(gpu_capture_name(k)))
+		int type = sym_get_value(gpu_capture_name(k))
+		int got = promote(type)
+		if (type_is_narrow_float(type)): coerce(type, got)
 		push_slot()
 		k = k + 1
 	gpu_for_emit_runtime_call(launch_name, base, gpu_capture_count, has_start)

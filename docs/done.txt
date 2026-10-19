@@ -138,8 +138,9 @@ done:
 		exact decimal literals and exponent forms...complete!
 		C reference differential tests...complete!
 		ftoa/f64toa helpers...complete!
-		float16 storage/conversion (x86 family, F16C hardware)...complete!
-		bfloat16 and float16 on arm64/wasm...not complete!
+		float16 storage/conversion (x86 F16C, arm64, wasm, gpu)...complete!
+		bfloat16 storage/conversion on every backend...complete!
+		16-bit W function-result promotion and REPL/debugger display...complete!
 		TestFloat-derived conformance vectors (issue #17)...complete!
 	arrays slices strings...complete!
 		local/global/struct fixed arrays...complete!

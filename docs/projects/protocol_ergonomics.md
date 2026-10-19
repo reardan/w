@@ -119,7 +119,7 @@ JSON integer for a float or float64 field, converting it — JavaScript's
 `JSON.stringify` writes whole doubles with no fraction part — while the
 reverse (a fractional number into an int field) stays a strict failure.
 
-Rejected at compile time with a diagnostic: `float16` (storage-only),
+Rejected at compile time with a diagnostic: `float16`/`bfloat16` (storage-only),
 `float64` on 4-byte-word targets (where the type itself is a compile
 error), maps with non-string keys (JSON object keys are strings),
 `set` (JSON has no set shape), arrays, slices, unions, enums-as-enums

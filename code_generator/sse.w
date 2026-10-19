@@ -5,9 +5,9 @@ the compiler's integer pipeline as raw IEEE-754 bits in eax/rax; XMM
 registers are used only inside a single operation, so every encoding here
 is reg-reg. Convention: xmm0 holds the left operand, xmm1 the right.
 
-float16 conversions use F16C (VEX-encoded vcvtph2ps/vcvtps2ph), which
-requires an Ivy Bridge/Zen or newer CPU (2012+); there is no software
-fallback.
+On x86, float16 conversions use F16C (VEX-encoded vcvtph2ps/vcvtps2ph),
+which requires an Ivy Bridge/Zen or newer CPU (2012+). ARM64 and PTX
+use their native half conversions; Wasm uses software rounding.
 */
 
 
@@ -229,18 +229,24 @@ void cvtsd2ss_xmm0():
 
 /* vcvtph2ps xmm0, xmm0: widen the half in the low 16 bits to float32 */
 void vcvtph2ps_xmm0():
-	if (target_isa == 3): error(c"gpu: float16 is not implemented")
-	elif (target_isa == 2): error(c"wasm: float16 is not implemented")
-	elif (target_isa == 1): error(c"arm64: float16 is not implemented")
+	if (target_isa == 3):
+		ptx_line(c"mov.b32 %w0, %fa;")
+		ptx_line(c"cvt.u16.u32 %half, %w0;")
+		ptx_line(c"cvt.f32.f16 %fa, %half;")
+	elif (target_isa == 2): wasm_half_to_single()
+	elif (target_isa == 1): a64(op(0x1e, 0xe24000))   # fcvt s0, h0 (base ARMv8)
 	else: emit(5, c"\xc4\xe2\x79\x13\xc0")
 
 
-/* vcvtps2ph xmm0, xmm0, 4: narrow float32 to half, round-to-nearest-even */
+/* Narrow float32 to half, round-to-nearest-even (x86 immediate 0). */
 void vcvtps2ph_xmm0():
-	if (target_isa == 3): error(c"gpu: float16 is not implemented")
-	elif (target_isa == 2): error(c"wasm: float16 is not implemented")
-	elif (target_isa == 1): error(c"arm64: float16 is not implemented")
-	else: emit(6, c"\xc4\xe3\x79\x1d\xc0\x04")
+	if (target_isa == 3):
+		ptx_line(c"cvt.rn.f16.f32 %half, %fa;")
+		ptx_line(c"cvt.u32.u16 %w0, %half;")
+		ptx_line(c"mov.b32 %fa, %w0;")
+	elif (target_isa == 2): wasm_single_to_half()
+	elif (target_isa == 1): a64(op(0x1e, 0x23c000))   # fcvt h0, s0 (base ARMv8)
+	else: emit(6, c"\xc4\xe3\x79\x1d\xc0\x00")
 
 
 ############################### sign flips ###################################

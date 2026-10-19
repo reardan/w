@@ -1,14 +1,8 @@
-# wbuild: x64
+# wbuild: x64 group=arm64_smoke_test@arm64 group=wasm_smoke_test@wasm
 # Coverage for the float16 storage/conversion path (issue #17): a 2-byte
-# IEEE-754 half is a declarable type on the x86 family (target_isa == 0,
-# both the default 32-bit target and x64 via the twin above); all math
-# happens in float32, so loading a float16 widens it (F16C vcvtph2ps) and
-# storing narrows it (vcvtps2ph, round-to-nearest-even). See
+# IEEE-754 half is a storage type; all math happens in float32, so loading
+# a float16 widens it and storing narrows it with round-to-nearest-even. See
 # docs/projects/float.md and code_generator/sse.w.
-#
-# float16 is a compile error on arm64 and wasm ("<target>: float16 is not
-# implemented", code_generator/sse.w) - not exercised here since this file
-# only builds for the x86 family; see the doc for the arm64/wasm gap.
 import lib.testing
 import lib.fmath
 
@@ -166,3 +160,77 @@ void test_float16_comparisons_and_unary_minus():
 
 	float16 negated = -a
 	assert_float16_bits(0xbc00, negated)
+
+
+float16 half_identity(float16 value):
+	return value
+
+
+float16 half_sum(float16 left, float16 right):
+	return left + right
+
+
+void test_float16_returned_values():
+	float16 value = 1.5
+	float32 widened = half_identity(value)
+	assert_float32_bits(0x3fc00000, widened)
+	assert_float32_bits(0x3fc00000, half_identity(half_identity(value)))
+	assert_float16_bits(0x3e00, half_identity(value))
+	assert_float32_bits(0x40400000, half_sum(half_identity(value), value))
+	assert_float32_bits(0x40600000, half_identity(value) + 2.0)
+	assert_float32_bits(0x40600000, 2.0 + half_identity(value))
+	assert_float32_bits(cast(int, 0xbfc00000), -half_identity(value))
+	assert_equal(1, half_identity(value) > 1.0)
+	int truncated = half_identity(value)
+	assert_equal(1, truncated)
+	float16 stored = half_identity(value)
+	assert_float16_bits(0x3e00, stored)
+	stored = 2.5
+	float32 assigned = (stored = half_identity(value))
+	assert_float32_bits(0x3fc00000, assigned)
+	float32 selected = 1 ? half_identity(value) : half_identity(stored)
+	assert_float32_bits(0x3fc00000, selected)
+
+
+void test_float16_rounding_boundaries():
+	# Underflow ties, subnormal-to-normal carry, and finite-to-infinity carry.
+	float16 underflow_tie = float_from_bits(0x33000000)
+	assert_float16_bits(0, underflow_tie)
+	float16 above_underflow_tie = float_from_bits(0x33000001)
+	assert_float16_bits(1, above_underflow_tie)
+	float16 subnormal_tie = float_from_bits(0x33c00000)
+	assert_float16_bits(2, subnormal_tie)
+	float16 normal_tie = float_from_bits(0x387fe000)
+	assert_float16_bits(0x400, normal_tie)
+	float16 below_overflow_tie = float_from_bits(0x477fefff)
+	assert_float16_bits(0x7bff, below_overflow_tie)
+	float16 overflow_tie = float_from_bits(0x477ff000)
+	assert_float16_bits(0x7c00, overflow_tie)
+	float16 negative_tie = float_from_bits(cast(int, 0xb3000000))
+	assert_float16_bits(0x8000, negative_tie)
+	# A NaN payload entirely in discarded bits must not become infinity.
+	float16 tiny_nan_payload = float_from_bits(0x7f800001)
+	assert_float16_bits(0x7e00, tiny_nan_payload)
+
+
+void test_float16_all_finite_encodings():
+	# Every finite storage bit pattern is an exactly representable float32.
+	# This reaches every subnormal normalization and both signs without
+	# reproducing the conversion algorithm in the test.
+	float16 value
+	int bits = 0
+	while (bits < 65536):
+		if ((bits & 0x7c00) != 0x7c00):
+			uint16* raw = cast(uint16*, &value)
+			*raw = bits
+			float32 widened = value
+			float16 back = widened
+			assert_equal_hex(bits, load_int16(&back))
+		bits = bits + 1
+
+
+# wbuild: target=narrow_float_cross_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 arm64 tests/float16_test.w -o bin/narrow_float16_arm64"
+# wbuild: step="bin/wv2 wasm tests/float16_test.w -o bin/narrow_float16.wasm"
+# wbuild: step="bin/wv2 arm64 tests/bfloat16_test.w -o bin/narrow_bfloat16_arm64"
+# wbuild: step="bin/wv2 wasm tests/bfloat16_test.w -o bin/narrow_bfloat16.wasm"

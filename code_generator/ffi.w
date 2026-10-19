@@ -57,6 +57,7 @@ void push_eax();
 void a64(int w);
 int op(int msb, int low);
 void arm64_ldr_reg_wsp(int rt, int k);
+int type_is_narrow_float(int type);
 
 
 # ABI class of a parameter or return type: 0 = integer/pointer word,
@@ -65,6 +66,7 @@ void arm64_ldr_reg_wsp(int rt, int k);
 int ffi_type_class(int type):
 	if (type < 0): return 0
 	if (type_get_pointer_level(type) > 0): return 0
+	if (type_is_narrow_float(type)): error(c"float16 and bfloat16 are not supported by value in external ABIs; use float32 or pointers")
 	return type_float_kind(type)
 
 
