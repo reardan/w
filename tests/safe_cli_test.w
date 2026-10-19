@@ -24,6 +24,10 @@
 # wbuild: step="bin/wv2 --streaming tests/safe_runtime_fixture.w" expect_fail expect_stderr="checked pointers require the retained frontend"
 # wbuild: step="bin/wv2 check --json --safe arm64 tests/safe_cli_fixture.w"
 # wbuild: step="bin/wv2 check --json --safe arm64_darwin tests/safe_cli_fixture.w"
+# A main with only a prototype fails safe mode's entrypoint check
+# (compiler/safe.w safe_check_finish); without --safe the same source
+# compiles (the dead helper's call is resolved at link time).
+# wbuild: step="bin/wv2 --safe tests/safe_main_proto_fixture.w -o bin/safe_main_proto_fixture" expect_fail expect_stderr="safe: main requires a checked implementation"
 import lib.testing
 import lib.process
 import lib.file
