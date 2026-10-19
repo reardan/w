@@ -86,6 +86,8 @@ map[int, int] retained_binding_origins
 # offset -> binding ID. A hit is confirmed against the binding's key fields.
 const int retained_binding_slots = 4096
 int* retained_binding_front
+# Symbol-index hints are validated against the live table after synchronization.
+int* retained_binding_positions
 
 # Scratch lookup key for retained_binding_note; a new binding owns a copy.
 char* retained_key_buffer
@@ -241,6 +243,8 @@ void retained_semantic_clear():
 	retained_type_cache_capacity = 0
 	if (retained_binding_front != 0): free(cast(char*, retained_binding_front))
 	retained_binding_front = 0
+	if (retained_binding_positions != 0): free(cast(char*, retained_binding_positions))
+	retained_binding_positions = 0
 	retained_types = 0
 	retained_bindings = 0
 	retained_binding_cache = 0

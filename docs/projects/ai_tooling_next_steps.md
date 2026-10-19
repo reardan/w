@@ -305,6 +305,15 @@ suggesting that it behaves like pointer arithmetic.
   import diagnostics from missing files, and account for expected-failure compile
   steps when reporting closure failures; retain conservative test selection.
 
+- **`wtest archs` can silently select no roots for an imported module (2026-10-16).**
+  During Mermaid editor work, `bin/wtest archs graphics/ui/widgets/textarea.w
+  --check` exited 0 with no check rows, while live `wv2 x64 deps
+  graphics/ui/widgets/textarea_test.w` included that module and `wtest why x64
+  graphics/ui/widgets/textarea_test.w` reported a valid cached closure. Audit
+  transitive matching and report zero selected roots explicitly so success is
+  not mistaken for architecture coverage. Direct editor x64/win64/arm64_darwin
+  checks and the owning textarea test supplied the verification here.
+
 - **`wtest archs --check` drops compile-step expectations and flags (2026-10-15).**
   Checking `lib/memory_debug.w` reports the intentionally invalid
   `check_generic_error_fixture.w` and `check_generic_struct_error_fixture.w` as
@@ -643,6 +652,7 @@ suggesting that it behaves like pointer arithmetic.
   rewrites test sources en masse, grep the touched files for their own
   paths first; longer term, self-referential assertions should read a
   dedicated fixture instead of the test's own source.
+
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all
@@ -1363,3 +1373,115 @@ the cache assertions.
   once. Direction: have wtest build (or name) the generator targets a
   failing root needs, the way `./wbuild` builds the `generated`
   umbrella first.
+
+## Silent string-literal escapes (2026-10-16, P1.1b regex)
+
+- **`c"\f"` / `c"\v"` compile to plain `f` / `v` with no diagnostic.**
+  An unknown escape drops the backslash silently, so `re_escape`'s
+  special-character table (`... \r\v\f`) matched the letters `f` and `v`
+  until a table test caught it; `w check --json` was clean. Also seen:
+  a stray C-style `int enc[4]` declaration is reported as "';' expected,
+  found '['", which points at semicolons the language does not have.
+  Direction: support `\f` `\v` (and `\a` `\b`) or warn on unknown escapes
+  in `check`; suggest `int[4] enc` for the C array form.
+
+## Block comments closed early (2026-10-16, stdlib P2.1 glob)
+
+- **A `*/` inside a `/* ... */` header comment** (here the glob example
+  `"**/**"`) silently ends the comment; `w check` then reports W0032
+  "Could not find a valid primary expression, token: ]" ~120 lines
+  later, at the first line whose text no longer parses as code, with no
+  hint that a comment ended. Direction: when a parse error follows a
+  block comment that closed inside what looks like prose (or the next
+  "code" line starts with `-`/`#` text), add a related note pointing at
+  the `*/` that closed it.
+
+## `check --json` arch label for arm64 (2026-10-16, stdlib parity P2.2)
+
+`./bin/wv2 arm64 check --json file.w` prints "Compiling in arm64 mode"
+and resolves `lib/__arch__/arm64/` imports, but each NDJSON diagnostic
+carries `"arch": "x64"`, so a consumer filtering or grouping diagnostics
+by target cannot tell an arm64 finding from an x64 one. Direction: emit
+the selected target name (`arm64`, `arm64_darwin`, ...) rather than the
+word-size family.
+
+## Generic inference on `&p[i]` arguments (2026-10-16, stdlib P3.11)
+
+- **`mem_copy(&out[offset], src, n)` fails to infer `T`.** `w check`
+  reports W0227 "cannot infer type parameter 'T' from argument 1:
+  expected a pointer, got 'constant'" although `&out[offset]` is a
+  `char*` (CLAUDE.md recommends exactly this `&p[n]` form). The message
+  names the wrong kind, so the fix is not obvious; `out + offset` (or an
+  explicit `mem_copy[char](...)`) works. Direction: give `&lvalue[i]`
+  its element pointer type during call-site inference, and when
+  inference does fail, print the argument's inferred type rather than
+  'constant'.
+
+## Generic inference rejects `&p[i]` arguments (2026-10-16, P3.5)
+
+`mem_copy(&out[n], src, k)` with `char* out` fails `w check` with W0227
+"cannot infer type parameter 'T' from argument 1: expected a pointer, got
+'constant'", although `&out[n]` is a `char*` (binding it to a local first
+works). The message points at the comma and calls the operand a
+"constant", which sent the libs/standard/numeric/decimal.w work toward a
+hand-written byte loop instead. Direction: type `&x[i]` as `T*` during
+generic argument inference, or at least name the expression kind the
+inference saw.
+
+## Generic inference rejects `&p[n]` arguments (2026-10-16, stdlib P3.7b)
+
+`mem_copy(&v[w], src, n)` with `int* v` fails `w check` with W0227
+"cannot infer type parameter 'T' from argument 1: expected a pointer, got
+'constant'", although `&p[n]` is the idiom CLAUDE.md recommends for
+pointer offsets and `mem_copy(v, src, n)` infers fine. Workaround: spell the
+type argument (`mem_copy[int](&v[w], src, n)`). Direction: type `&a[i]` as
+`T*` during generic argument inference, or at least name the address-of
+expression instead of "constant" in the diagnostic.
+
+## Content-scan targets missed by `wtest changed` (2026-10-16, stdlib P3.8)
+
+- **`unsafe_import_test` is never selected** for a new file under
+  `libs/standard/`, although it is exactly the target such a file can
+  break: its step is a `git grep` over `:(glob)libs/standard/**/*.w`,
+  which is neither a literal file reference nor an import closure, so
+  `git diff --name-only ... | bin/wtest changed` omits it. Adding
+  libs/standard/formats/uuid.w (whose header comment showed
+  `import libs.x.unsafe.md5` as usage) passed every listed target and
+  only failed when the scan was run by hand. Direction: let wtest treat
+  `:(glob)` pathspecs in step commands as path rules (match changed
+  paths against them), or add a test_map residue rule for
+  `libs/standard/**/*.w` -> `unsafe_import_test`.
+
+## No selector word for the default target (2026-10-19, safe wasm W1)
+
+- **`w check --json x86 file.w` treats `x86` as a second source file**
+  and fails, although `check --json` labels default-target diagnostics
+  `"arch": "x86"` and every other target has a selector word (`x64`,
+  `arm64`, `wasm`, ...). A cross-target parity harness
+  (tests/safe_wasm_contract_test.w) therefore has to special-case the
+  default target by omitting the selector. Direction: accept `x86` as an
+  explicit no-op selector so per-target command lines stay uniform.
+
+## `test_changed` on a stacked branch (2026-10-19, safe sessions S1)
+
+- **`./wbuild test_changed` after a commit selects from the merge-base
+  with `origin/main`**, so on a branch stacked on an integration branch
+  it selects every target the whole integration branch touched, not the
+  branch's own diff. The workaround was piping
+  `git diff --name-only <integration-branch>` into `bin/wtest changed`
+  and running the printed targets by hand. Direction: accept a
+  `--base <rev>` (or honor `WTEST_BASE`) in `test_changed`.
+- **REPL-engine API clients inherit REPL defaults through error
+  recovery.** repl/incremental.w configures modes itself; recovery code
+  that restored a REPL-chosen default silently flipped its option
+  fingerprint. Recovery now restores the mode each entry started with.
+
+## `--quiet` does not silence the x64 selector banner (2026-10-19, --emit=obj)
+
+`bin/wv2 x64 --quiet file.w` and `bin/wv2 --quiet x64 file.w` both still
+print "Compiling in x64 mode" to stderr: the banner comes from
+`target_selector_apply` in the selector pre-scan, which runs before
+`--quiet` is parsed. Scripts that diff or grep compiler stderr (the
+object_file_test diagnostic checks, for example) see an extra line.
+Direction: scan `--quiet` before applying selectors, or drop the banner
+when stderr is not a terminal.

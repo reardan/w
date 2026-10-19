@@ -139,3 +139,14 @@ void test_checked_defer():
 	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nint main():\n\tdefer read_value(p)\n\town int* p = new int\n\treturn 0\n", 0)
 	# defer before declaration initialization
 	control_flow_case(c"int read_value(ref int* p):\n\treturn *p\nint main():\n\town int* p = new int\n\tdefer read_value(p)\n\tif *p:\n\t\town int* q = p\n\t\treturn 0\n\treturn 0\n", c"moved value")
+
+
+# Coverage-drive additions (docs/projects/line_coverage.md): these pin
+# the safe checker's container-iteration and selector rejections, which
+# no earlier case exercised.
+void test_unsupported_iteration_and_selectors():
+	# container iteration is named 'for' in the retained tree: rejected
+	# by the control-flow guard (compiler/safe.w safe_build)
+	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tlist[int] xs\n\txs.push(1)\n\tfor x in xs:\n\t\tpass\n\treturn 0\n", c"safe: unsupported control flow or deferred operation")
+	# a pointer selector is not scalar (compiler/safe.w safe_control_scalar)
+	control_flow_case(c"void checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tchar* msg = \"x\"\n\tswitch msg:\n\t\tdefault: return 1\n\treturn 0\n", c"safe: range and switch expressions require scalar values")

@@ -69,6 +69,14 @@ void x64_emit_rebase_table():
 void elf_start_64():
 	elf_image_headers(62, 1)
 	wgrind_emit_request(0, 8, 0)
+	# --emit=obj: the headers above are scratch (elf_object_write writes
+	# its own); .text starts at a 16-byte boundary after them, with no
+	# entry or rebase stub -- the system linker owns process startup.
+	if (elf_object):
+		while ((codepos % 16) != 0): emit_int8(0)
+		elf_object_text_start = codepos
+		define_asm_functions_x64()
+		return
 	if (elf_pie && (elf_shared == 0)): x64_entry_rebase_stub()
 
 	/* setup command line args */

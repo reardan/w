@@ -1,11 +1,13 @@
 # Native Mermaid diagrams
 
 The native engine provides a W parser, owned document model, lossless source writer,
-source-edit API, deterministic layout, SVG exporter, CLI, and native Linux
-desktop source editor with live preview. It has no Mermaid JavaScript, Node,
+source-edit API, deterministic layout, SVG exporter, CLI, and native desktop
+editor with live preview and flowchart/ER canvas editing. It has no Mermaid JavaScript, Node,
 browser, network, or external layout dependency. The desktop uses the existing
-`graphics.ui` / X11 / OpenGL stack. The library and CLI run on x86 and x64;
-the desktop target is x64 Linux. Other desktop platforms are not yet qualified.
+`graphics.ui` and native OpenGL stack. The library and CLI run on x86 and x64;
+the desktop has Linux X11 workflow tests, Windows cross-compilation and Wine
+smoke coverage, and macOS ARM64 cross-compilation. Native Windows/macOS desktop
+qualification remains outstanding; see the platform table below.
 
 The family-coverage milestone is implemented: every authoring family in the
 pinned Mermaid **12.2.0** registry has a bounded native core, including all five
@@ -45,17 +47,62 @@ SVG export validates before touching its destination.
 The desktop opens the named source. Edit text on the left to update the preview.
 The path field and **Open** load another file; **Save** saves the current file,
 and **Save as** creates a new file at the path field (existing destinations are
-refused). **Undo/Redo** retain 32 source snapshots. **Previous/Next diagram**
+refused). **Undo/Redo** retain 32 source snapshots; consecutive source typing is grouped
+until a 500 ms pause or editing boundary. **Previous/Next diagram**
 select a Mermaid fence while keeping the complete Markdown source editable.
 The dynamic path field supports paths beyond the former 127-byte limit.
 
-For flowcharts, the node/connection inspector adds nodes and edges as undoable,
-source-preserving edits. Clicking a preview node fills a connection endpoint.
-This does not yet provide dragging, deletion, or graphical editing for all
-families. **Export SVG** writes `CURRENT_FILE.svg`. **Fit**, zoom buttons, and
-preview dragging control the view. Ctrl+S saves, Ctrl+Z/Ctrl+Y undo/redo,
-Ctrl+L/Ctrl+E focus path/source, Ctrl+1..4 focus inspector fields, Ctrl+N adds a
-node, Ctrl+K connects nodes, and Ctrl+0/plus/minus control the view.
+For flowcharts and ER diagrams, clicking a node selects it and populates the
+inspector. **Apply** changes its displayed label; **Delete** removes the node
+and its incident connections. Clicking a connection selects it for deletion.
+Edits preserve unrelated source, comments, styles, configuration and other
+Markdown fences; deleting edges also updates indexed `linkStyle` assignments.
+Each graphical operation is one undo step, and failed edits leave the document
+unchanged. Group containers remain source-edited.
+
+Drag a top-level node to reposition it; edges follow live. Release commits one
+undo step, while Escape restores the starting position. Small pointer jitter
+selects without moving. **Move here** followed by a destination click provides
+a non-drag alternative. Arrow keys move the selected node by one layout pixel,
+or ten with Shift. Background dragging pans the view. Wheel zoom stays anchored
+under the pointer, **Fit** centers the diagram, and edits retain the camera.
+**Auto layout** clears the selected diagram's saved positions in one undoable
+action and fits the result. The source/canvas divider is resizable. Nested nodes can be selected and relabelled
+or deleted, but moving them or their containing groups is not yet supported.
+
+**Add** creates a flowchart node or ER entity from the inspector fields.
+**Link to** then a destination click adds a flowchart arrow or a default ER
+relationship; edit relationship cardinality and labels in source.
+**SVG** writes `CURRENT_FILE.svg` using the saved manual positions too.
+
+| Shortcut | Action |
+| --- | --- |
+| Ctrl+S | Save |
+| Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y | Undo / redo / redo |
+| Ctrl+D / Ctrl+E / Ctrl+L / Ctrl+R | Focus canvas / source / path / label |
+| Ctrl+Enter, with label focus | Apply the selected node's label |
+| Ctrl+N | Start adding a new node/entity |
+| Tab / Shift+Tab, with canvas focus | Select next / previous node |
+| Arrows / Shift+arrows, with canvas focus | Move selected node 1 / 10 pixels |
+| Delete, with canvas focus | Delete selected node or connection |
+| Escape | Cancel a drag, placement, connection or close prompt |
+| Ctrl+0 / Ctrl+plus / Ctrl+minus | Fit / zoom in / zoom out |
+| Ctrl+Q | Close with the unsaved-change prompt |
+
+Canvas navigation and Delete are scoped to canvas focus, so editing text does
+not delete diagram objects. Command chords are also accepted where the native
+backend reports them. Controls for unsupported operations are disabled.
+The interaction choices follow [W3C's non-drag alternative guidance](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements)
+and [GNOME's guidance on reversible actions](https://developer.gnome.org/hig/principles).
+This does not claim full accessibility conformance or screen-reader integration.
+
+Manual positions use ordinary comments such as `%% @w-position "A" 100 120`
+inside the selected diagram. Coordinates are nonnegative layout pixels bounded
+at 100,000 per axis, before the title gutter. Only real comment statements are
+interpreted; similar text in labels or accessibility descriptions is not metadata.
+Other Mermaid implementations ignore these comments and use their own layout.
+Lossless save/reopen retains positions; canonical output deliberately discards
+comments, including these position hints.
 
 The editor asks to save/discard/cancel on close with unsaved changes. Opening
 another file requires saving changes first. External content changes are detected
@@ -81,6 +128,31 @@ For a reproducible native preview on a headless Linux host with Xvfb:
 xvfb-run -a bin/wmermaid_editor examples/mermaid/orders.mmd \
   --frames 3 --screenshot bin/mermaid.ppm
 python3 tools/ppm_to_png.py bin/mermaid.ppm bin/mermaid.png
+```
+
+## Desktop validation by platform
+
+| Platform | Checked here | Still needed |
+| --- | --- | --- |
+| Linux x64 / X11 | Native editor workflow with real pointer/key events under Xvfb; screenshot/export and save/reopen | Physical display, input-method and assistive-technology qualification |
+| Windows x64 / WGL | PE cross-compile and Wine/Xvfb startup/render/screenshot smoke | Native Windows input, clipboard, DPI and filesystem qualification |
+| macOS ARM64 / Cocoa | Mach-O cross-compile | Native Mac execution, input, clipboard, Retina and filesystem qualification |
+
+`./wbuild mermaid_editor_platforms` cross-compiles both desktop binaries and is
+part of the full suite. `./wbuild mermaid_editor_ui_test` runs the Linux workflow
+and requires Xvfb plus the X11/XTest shared libraries. It fails if the display or
+editor cannot start; it does not silently count a skipped GUI run as a pass.
+The normal suite also includes display-independent canvas, edit-command and
+position-persistence tests on x86/x64.
+
+```sh
+# Windows smoke on a Linux host with Wine and Xvfb; use an isolated Wine prefix.
+xvfb-run -a env WINEPREFIX="$PWD/bin/mermaid-wine-prefix" WINEARCH=win64 \
+  wine bin/wmermaid_editor_win.exe examples/mermaid/build.mmd \
+  --frames 3 --screenshot bin/mermaid-windows.ppm
+# Execute on an Apple Silicon Mac after cross-compiling:
+bin/wmermaid_editor_darwin examples/mermaid/build.mmd --frames 3 \
+  --screenshot bin/mermaid-macos.ppm
 ```
 
 ## Flowchart and ER compatibility
@@ -255,7 +327,10 @@ mm_document_free(doc)
   `mm_save(doc, path, io_result*)` returns an `IO_*` status. `mm_diagnostic` returns
   an owned location/message string.
 - `editor`: UI-independent source history, diagram selection, structured flowchart
-  additions, hit testing, dirty state, conflict checking, reload and save state.
+  additions, hit testing, dirty state, conflict checking, reload, save and gesture state.
+- `edit_commands`: transactional label/delete commands and ER additions.
+- `positions`: bounded source position hints applied before rendering connections.
+- `canvas`: display-independent selection, movement, navigation and connection state.
 - `graphics.mermaid`: `mm_ui_render` draws a scene into a clipped viewport with
   zoom and pan using an existing `ui_renderer`.
 
@@ -285,11 +360,11 @@ Remaining compatibility and editing work:
    links, fonts and rich labels without losing the native engine constraint.
 3. Improve text measurement, wrapping, edge routing, port placement and dense
    chart layout. Native geometry does not reproduce Dagre/ELK or browser layout.
-4. Extend canonical serialization and structured editing beyond flow/ER; add
-   direct diagram manipulation across families. The
-   current editor edits source with a live preview; mutating the AST does not
-   update the lossless writer.
-5. Qualify desktop platforms beyond x64 Linux and add broader accessibility
+4. Extend canonical serialization and graphical editing beyond flow/ER; add
+   group movement, multi-selection, resize and richer edge/attribute inspectors.
+   Use editor commands to keep source/history synchronized; mutating the AST
+   directly still does not update the lossless writer.
+5. Complete native Windows/macOS desktop qualification and add broader accessibility
    interactions and atomic concurrent-write conflict handling.
 6. Expand the pinned upstream conformance corpus, malformed-input fuzzing and
    cross-family integration tests before claiming syntax or rendering parity.

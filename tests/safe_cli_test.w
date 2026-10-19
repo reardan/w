@@ -14,16 +14,20 @@
 # wbuild: step="bin/wv2 check --json --safe --bounds=off tests/safe_cli_fixture.w" expect_fail expect_stdout="<command-line>"
 # wbuild: step="bin/wv2 check --json --streaming tests/safe_cli_fixture.w --safe" expect_fail expect_stdout="<command-line>"
 # wbuild: step="bin/wv2 repl.w -o bin/safe_cli_repl"
-# wbuild: step="bin/safe_cli_repl" stdin="own int* p = new int\n:quit\n" expect_stderr="checked pointers are not supported by in-process sessions"
+# wbuild: step="bin/safe_cli_repl" stdin="own int* p = new int\n*p = 5\n*p\n:quit\n" expect_stdout="5"
 # wbuild: step="bin/safe_cli_repl --safe" expect_fail expect_stderr="--safe is not supported by in-process REPL or debugger sessions"
 # wbuild: step="bin/wv2 debugger/debugger.w -o bin/safe_cli_wdbg"
-# wbuild: step="bin/safe_cli_wdbg tests/safe_syntax_fixture.w" expect_fail expect_stderr="checked pointers are not supported by in-process sessions"
+# wbuild: step="bin/safe_cli_wdbg tests/safe_syntax_fixture.w" expect_stdout="debuggee main returned 0"
 # wbuild: step="bin/safe_cli_wdbg --safe tests/safe_cli_fixture.w" expect_fail expect_stderr="--safe is not supported by in-process REPL or debugger sessions"
 # wbuild: step="bin/wv2 --bounds=off tests/safe_runtime_fixture.w" expect_fail expect_stderr="checked pointers require bounds checks"
 # wbuild: step="bin/wv2 --bounds=off tests/safe_runtime_fixture.w --bounds=on" expect_fail expect_stderr="checked pointers require bounds checks"
 # wbuild: step="bin/wv2 --streaming tests/safe_runtime_fixture.w" expect_fail expect_stderr="checked pointers require the retained frontend"
 # wbuild: step="bin/wv2 check --json --safe arm64 tests/safe_cli_fixture.w"
-# wbuild: step="bin/wv2 check --json --safe arm64_darwin tests/safe_cli_fixture.w" expect_fail expect_stdout="only Linux x86, x64 and arm64"
+# wbuild: step="bin/wv2 check --json --safe arm64_darwin tests/safe_cli_fixture.w"
+# A main with only a prototype fails safe mode's entrypoint check
+# (compiler/safe.w safe_check_finish); without --safe the same source
+# compiles (the dead helper's call is resolved at link time).
+# wbuild: step="bin/wv2 --safe tests/safe_main_proto_fixture.w -o bin/safe_main_proto_fixture" expect_fail expect_stderr="safe: main requires a checked implementation"
 import lib.testing
 import lib.process
 import lib.file

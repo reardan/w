@@ -1,4 +1,5 @@
 import lib.lib
+import lib.path
 import compiler.tokenizer
 import compiler.analysis
 import codegen
@@ -7,6 +8,7 @@ import compiler.profile_use
 import lib.assert
 import compiler.type_table
 import compiler.symbol_table
+import code_generator.elf_object
 # Register promotion pre-scan and decision (reads the symbol and type
 # tables; the grammar's function rule calls it)
 import compiler.regalloc_scan
@@ -114,6 +116,9 @@ int compile_attempt(char* fn):
 		int source = retained_source_begin(filename)
 		if (retained_pending_import != 0): retained_sources[source].import_key = strclone(retained_pending_import)
 	if (deps_mode): deps_record(filename)
+	if (object_root_pending):
+		object_note_root(filename)
+		object_root_pending = 0
 	lint_note_open(filename)
 	getchar_reset(file)
 	line_number = 0
@@ -169,6 +174,7 @@ int compile_attempt(char* fn):
 # of the path logic uses '/' uniformly so cross-platform paths just work.
 # Only active on Windows: on Unix a backslash is an ordinary filename
 # character and must be left alone.
+# coverage: exempt Windows-only normalization; no Windows host runs the coverage suite
 void path_normalize_sep(char* p):
 	if (os_windows() == 0): return
 	while (p[0] != 0):
@@ -176,16 +182,7 @@ void path_normalize_sep(char* p):
 		p = p + 1
 
 
-# Return 1 if the path is absolute: starts with '/' (Unix) or with a
-# Windows drive letter and colon (e.g. 'C:\', 'C:/', 'c:').
-int path_is_absolute(char* p):
-	if (p[0] == 47): return 1
-	# Windows drive letter: an ASCII letter at [0], colon at [1]. The
-	# letter check keeps ':' in ordinary Unix filenames from matching
-	# (and never reads p[1] when the string is empty).
-	int first = p[0] | 32
-	if ((first >= 'a') && (first <= 'z') && (p[1] == 58)): return 1
-	return 0
+# path_is_absolute lives in lib/path.w.
 
 
 int compile_joined(char* cwd, char* filename):
@@ -850,6 +847,8 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--pie") == 0): return 1
 	if (strcmp(arg, c"--shared") == 0): return 1
 	if (strcmp(arg, c"--static") == 0): return 1
+	if (strcmp(arg, c"--emit=obj") == 0): return 1
+	if (strcmp(arg, c"--freestanding") == 0): return 1
 	if (starts_with(arg, c"--link=")): return 1
 	if (strcmp(arg, c"--syscall-abi=vmcall") == 0 || strcmp(arg, c"--syscall-abi=linux") == 0): return 1
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
@@ -1115,6 +1114,8 @@ void help_shared_options():
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --static              emit an x64 W compiled static library (.wa)")
+	println(c"  --emit=obj            emit an x64 ELF relocatable object (.o) for a system linker")
+	println(c"  --freestanding        with --emit=obj: no W runtime (containers, allocator, startup)")
 	println(c"  --shared              emit an x64/arm64 ELF shared library (export functions)")
 	println(c"  --link=<path>         link a shared library, repeatable")
 	println(c"  --pie                 emit an x64/arm64 ELF position-independent executable")
@@ -1410,6 +1411,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	elf_shared = 0
 	elf_soname = 0
 	elf_static = 0
+	elf_object = 0
+	elf_object_text_start = 0
+	global_address_cells = 0
+	global_address_symbols = 0
+	freestanding_mode = 0
 	static_address_count = 0
 	wasm_export_count = 0
 	x64_syscall_abi = 0
@@ -1559,6 +1565,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	int flag_scan = i
 	int streaming_flag = 0
 	int unsafe_bounds_flag = 0
+	int static_flag = 0
 	char* ast_only_flag = 0
 	while (flag_scan < argc):
 		char** flag_arg = argv + flag_scan * __word_size__
@@ -1578,6 +1585,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		else if (strcmp(*flag_arg, c"--static") == 0):
 			elf_static = 1
 			elf_pie = 1
+			static_flag = 1
+		else if (strcmp(*flag_arg, c"--emit=obj") == 0):
+			# A relocatable object is a static library in an ELF
+			# container: the same text/data relocation records, PIE's
+			# RIP-relative code and pointer cells (elf_object.w).
+			elf_object = 1
+			elf_static = 1
+			elf_pie = 1
+		else if (strcmp(*flag_arg, c"--freestanding") == 0): freestanding_mode = 1
 		else if (strcmp(*flag_arg, c"--shared") == 0):
 			elf_shared = 1
 			elf_pie = 1
@@ -1661,6 +1677,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		ast_emit_retained_mode = 0
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
+	if (elf_object):
+		if (static_flag): target_option_error(c"--emit=obj and --static are mutually exclusive")
+		if (elf_shared): target_option_error(c"--emit=obj and --shared are mutually exclusive")
+		if ((word_size != 8) || (target_isa != 0) || (target_os != 0) || x64_syscall_abi):
+			target_option_error(c"--emit=obj requires the x64 Linux target")
+		if (profile_generate_mode): target_option_error(c"--emit=obj does not support profiling instrumentation")
+	if (freestanding_mode && (elf_object == 0)): target_option_error(c"--freestanding requires --emit=obj")
 	if (elf_shared && elf_static): target_option_error(c"--shared and --static are mutually exclusive")
 	if (elf_static && ((word_size != 8) || (target_isa != 0) || (target_os != 0))):
 		target_option_error(c"--static requires the x64 Linux target")
@@ -1711,8 +1734,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	int bool_ops_check_saved = check_bool_ops_mode
 	check_imports_mode = 0
 	check_bool_ops_mode = 0
-	import_module(c"structures.hash_table")
-	import_module(c"structures.w_list")
+	# --freestanding: no container runtime, allocator or startup code;
+	# a feature that needs one is rejected where it is used.
+	if (freestanding_mode == 0):
+		import_module(c"structures.hash_table")
+		import_module(c"structures.w_list")
 	# P1: the counter flush runtime, only under --profile-generate.
 	if (profile_generate_mode): profile_import_runtime()
 	check_imports_mode = import_check_saved
@@ -1797,7 +1823,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 					print_error(c"compiling '")
 					print_error(input)
 					print_error(c"'\x0a")
+				object_root_pending = elf_object
 				compile_input_file(input)
+				object_root_pending = 0
 				lint_skip_root_open = 0
 		i = i + 1
 
@@ -1849,7 +1877,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# may legitimately prototype functions whose bodies live in modules
 	# only the program's entry file imports. Linking the whole program
 	# is where the missing body becomes a real error.
-	if (check_mode == 0): undefined_function_check()
+	if (check_mode == 0):
+		undefined_function_check()
+		global_address_finish()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with
@@ -1908,7 +1938,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	profile_finish(output_path, check_mode)
 	if (elf_shared || elf_static): elf_emit_export_wrappers()
 	if (elf_static):
-		static_library_write()
+		if (elf_object): elf_object_write()
+		else: static_library_write()
 		if ((output_path != 0) || check_mode): close(output_fd)
 		partial_output_path = 0
 		return 0

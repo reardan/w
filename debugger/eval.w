@@ -30,6 +30,7 @@ its own.
 */
 import debugger.breakpoints
 import repl.core
+import compiler.safe_session
 
 
 int dbg_eval_ok /* set by dbg_eval_call: 0 = the expression failed to compile (or faulted) */
@@ -66,6 +67,66 @@ void dbg_eval_copy(int from, int to, int n):
 	for i in range(n): dst[i] = src[i]
 
 
+# Checked programs (#713): run the checker over the stopped function once
+# per eval, when a visible local has a checked type, so the entry may read
+# exactly the checked locals that are definitely initialized -- and, for
+# borrows, still live -- at the stop. Returns 1 when the probe ran, 0 when
+# the stop is not in an analyzed function of the current frame (the caller
+# then hides every checked local).
+int dbg_eval_probe(int stop_addr):
+	int rel = stop_addr - code_offset
+	int checked = 0
+	for i in range(debug_local_count):
+		if (dbg_local_visible(i, rel) && safe_session_type_checked(dbg_local_type(i), 0)): checked = 1
+	if (checked == 0): return 0
+	# An outer frame is stopped inside a call its statement makes, after
+	# the statement's moves; only the innermost frame has a known state.
+	if ((dbg_fr_sel > 0) && (dbg_fr_sel < dbg_fr_count)): return 0
+	int entry = dbg_find_line(rel)
+	if (entry < 0): return 0
+	int line = dbg_line_line(entry)
+	int function = safe_session_find_function(dbg_function_name(stop_addr), dbg_file_name(dbg_line_file(entry)), line)
+	if (function < 0): return 0
+	safe_session_probe(function, line)
+	return 1
+
+
+# Present local i to the entry's checker. A checked owner or borrow that
+# the probe found usable becomes a read-only shared borrow; any other
+# checked local is hidden with the reason a reference reports. Plain
+# locals pass by value when their type can be spelled.
+void dbg_eval_present(int i, int probed):
+	char* name = dbg_local_name_at(i)
+	int type = dbg_local_type(i)
+	if (safe_session_type_checked(type, 0) == 0):
+		char* spelling = safe_session_spell(type)
+		if (spelling != 0): safe_session_view(name, type, spelling)
+		return;
+	if (probed == 0):
+		safe_session_hide(name, c"safe: checked locals are only available in the innermost frame of an analyzed function at a debugger stop")
+		return;
+	int bare = type_unqualified(type)
+	int kind = type_get_kind(bare)
+	char* target = 0
+	if ((kind >= type_kind_own) && (kind <= type_kind_refmut) && (type_record(bare).safe_lifetime == 0) && (type_get_pointer_level(bare) == 1)):
+		target = safe_session_spell(type_safe_target(bare))
+	if (target == 0):
+		safe_session_hide(name, c"safe: only checked owner and reference pointers without lifetime labels can be viewed at a debugger stop")
+		return;
+	# Parameters are unique in their function; locals match by declaration
+	# line too, so a shadowed outer declaration is never mistaken for one.
+	int line = -1
+	if (dbg_local_kind(i) != 'A'):
+		int entry = dbg_find_line(dbg_local_decl(i))
+		if (entry >= 0): line = dbg_line_line(entry)
+	if (safe_session_probe_alive(name, line)):
+		safe_session_view(name, type_get_safe(type_safe_target(bare), 2), strjoin(c"ref ", target))
+		free(target)
+		return;
+	free(target)
+	safe_session_hide(name, c"safe: this checked local is not definitely initialized and live at this debugger stop")
+
+
 # Bind every local and argument visible at the stop as a defined global
 # object pointing at a scratch copy of its value. Later declarations win
 # in sym_lookup, so inner shadowing declarations take precedence over
@@ -83,6 +144,8 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 		dbg_eval_bound_size = cast(char*, malloc(dbg_eval_bound_max * 4))
 		dbg_eval_bound_sym = cast(char*, malloc(dbg_eval_bound_max * 4))
 	int rel = stop_addr - code_offset
+	int probed = 0
+	if (safe_check_requested()): probed = dbg_eval_probe(stop_addr)
 	int saved_indirection = pointer_indirection
 	int used = 0
 	int i = 0
@@ -107,6 +170,7 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 					used = used + size
 					pointer_indirection = type_get_pointer_level(type)
 					sym_declare(dbg_local_name_at(i), type, 'D', slot, 1)
+					if (safe_check_requested()): dbg_eval_present(i, probed)
 		i = i + 1
 	pointer_indirection = saved_indirection
 

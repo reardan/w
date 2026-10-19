@@ -1,5 +1,5 @@
 /*
-lib.regex: a small backtracking pattern matcher over C strings — the
+lib.regex: a small POSIX-ish pattern matcher over C strings — the
 reusable pattern-matching core that shell-mode grep (issue #335) and
 future shell-mode find/sed build on (docs/projects/repl_shell_mode.md
 section 6.3). Matching is byte-oriented like lib/str.w: multi-byte
@@ -34,21 +34,19 @@ Malformed patterns fail cleanly, never trap: an unclosed class
 regex_valid return 0, regex_match return 0, and regex_search /
 regex_match_length return -1.
 
-Pathological backtracking (`a*a*a*a*b` against a long run of `a`s) is
-bounded by a fixed step budget per public call (RX_STEP_BUDGET
-below). When the budget runs out the call gives up and reports
-no-match (0 / -1) instead of running for exponential time; realistic
-patterns never come near the limit. Backtracking is iterative per
-quantifier, so recursion depth is bounded by the pattern length —
-adversarial input cannot blow the stack. No allocation anywhere.
+Matching runs on libs/standard/text/re.w's Pike VM (issue: stdlib
+parity plan P1.1c): regex_valid checks the syntax above, rx_translate
+rewrites the pattern into re.w syntax (every literal as \xHH, `^`/`$`
+as \A/\Z) and the RE_BYTES flag keeps matching byte-oriented. Spans
+are the leftmost match with greedy, backtracking-order preference, the
+same answers the old backtracker gave. Every call is linear in
+len(text) * len(pattern), so pathological patterns (`a*a*a*a*b`
+against a long run of `a`s) get the right answer instead of the old
+step-budget cut-off, and no step budget is needed. Each call compiles
+the pattern and allocates (and frees) its working memory.
 */
 import lib.lib
-
-
-# Step budget shared by one public call (see the header): every
-# matcher step and every backtracking retry spends one unit.
-int RX_STEP_BUDGET():
-	return 1048576
+import libs.standard.text.re
 
 
 int rx_is_quantifier(int c):
@@ -114,42 +112,6 @@ int rx_class_end(char* pattern, int pp):
 	return -1
 
 
-# Does the (already validated) class whose `[` is at pattern[pp]
-# match byte c? Walks the same member/range structure as
-# rx_class_end.
-int rx_class_matches(char* pattern, int pp, int c):
-	int i = pp + 1
-	int negate = 0
-	if (pattern[i] == '^'):
-		negate = 1
-		i = i + 1
-	int found = 0
-	int first = 1
-	while (1):
-		if ((pattern[i] == 0) || ((pattern[i] == ']') && (first == 0))):
-			if (negate): return 1 - found
-			return found
-		first = 0
-		int lo = 0
-		if (pattern[i] == '\\'):
-			lo = rx_escape_char(pattern, i)
-			i = i + 2
-		else:
-			lo = pattern[i] & 255
-			i = i + 1
-		int hi = lo
-		if ((pattern[i] == '-') && (pattern[i + 1] != ']') && (pattern[i + 1] != 0)):
-			i = i + 1
-			if (pattern[i] == '\\'):
-				hi = rx_escape_char(pattern, i)
-				i = i + 2
-			else:
-				hi = pattern[i] & 255
-				i = i + 1
-		if ((c >= lo) && (c <= hi)): found = 1
-	return 0
-
-
 # Length in pattern bytes of the single element starting at
 # pattern[pp] (a literal, `.`, an escape, or a whole class), or -1
 # when the element is malformed.
@@ -163,57 +125,6 @@ int rx_element_length(char* pattern, int pp):
 		if (rx_escape_char(pattern, pp) < 0): return -1
 		return 2
 	return 1
-
-
-# Does the single element at pattern[pp] match byte c (1..255)?
-int rx_element_matches(char* pattern, int pp, int c):
-	int pc = pattern[pp] & 255
-	if (pc == '['): return rx_class_matches(pattern, pp, c)
-	if (pc == '\\'):
-		return c == rx_escape_char(pattern, pp)
-	if (pc == '.'): return c != 10
-	return c == pc
-
-
-# Match the pattern from element position pp against text from byte
-# tp. Returns the number of text bytes matched (>= 0) or -1 for no
-# match. must_end requires the match to reach the end of the text
-# (regex_match semantics). steps is the shared backtracking budget;
-# once it hits 0 every frame reports no-match and the whole call
-# unwinds quickly.
-int rx_here(char* pattern, int pp, char* text, int tp, int must_end, int* steps):
-	if (steps[0] <= 0): return -1
-	steps[0] = steps[0] - 1
-	if (pattern[pp] == 0):
-		if ((must_end != 0) && (text[tp] != 0)): return -1
-		return 0
-	if ((pattern[pp] == '$') && (pattern[pp + 1] == 0)):
-		if (text[tp] == 0): return 0
-		return -1
-	int el = rx_element_length(pattern, pp)
-	int q = pattern[pp + el] & 255
-	if (rx_is_quantifier(q)):
-		# Greedy: count how many repetitions fit, then try the rest
-		# of the pattern after each count from longest to shortest.
-		int max_count = 0
-		while ((text[tp + max_count] != 0) && rx_element_matches(pattern, pp, text[tp + max_count] & 255)):
-			max_count = max_count + 1
-			steps[0] = steps[0] - 1
-			if ((steps[0] <= 0) || ((q == '?') && (max_count == 1))): break
-		if (steps[0] <= 0): return -1
-		int min_count = 0
-		if (q == '+'): min_count = 1
-		int count = max_count
-		while (count >= min_count):
-			int rest = rx_here(pattern, pp + el + 1, text, tp + count, must_end, steps)
-			if (rest >= 0): return count + rest
-			if (steps[0] <= 0): return -1
-			count = count - 1
-		return -1
-	if ((text[tp] != 0) && rx_element_matches(pattern, pp, text[tp] & 255)):
-		int rest = rx_here(pattern, pp + el, text, tp + 1, must_end, steps)
-		if (rest >= 0): return rest + 1
-	return -1
 
 
 # Is the pattern well-formed under the syntax in the header? 1/0.
@@ -241,58 +152,145 @@ int regex_valid(char* pattern):
 	return 1
 
 
+# Appends byte value v to out[at] as the escape \xHH; returns the new
+# length.
+int rx_put_byte(char* out, int at, int v):
+	char* digits = c"0123456789abcdef"
+	out[at] = 92
+	out[at + 1] = 'x'
+	out[at + 2] = digits[(v >> 4) & 15]
+	out[at + 3] = digits[v & 15]
+	return at + 4
+
+
+# Value of one class endpoint at pattern[i] (a byte or an escape) and
+# its length, via *len.
+int rx_class_endpoint(char* pattern, int i, int* len):
+	if (pattern[i] == 92):
+		len[0] = 2
+		return rx_escape_char(pattern, i)
+	len[0] = 1
+	return pattern[i] & 255
+
+
+# Translates a VALID lib/regex.w pattern into the equivalent
+# libs/standard/text/re.w RE_BYTES pattern (malloc'd, caller frees).
+# Every literal, escape and class endpoint becomes \xHH, so the old
+# syntax's ordinary `( ) | { }` can never turn into groups, braces or
+# alternation; `^` / `$` at the pattern's ends become \A / \Z (the old
+# `$` never matched before a trailing newline, unlike Python's).
+char* rx_translate(char* pattern):
+	char* out = cast(char*, malloc(4 * strlen(pattern) + 8))
+	int at = 0
+	int i = 0
+	if (pattern[0] == '^'):
+		out[0] = 92
+		out[1] = 'A'
+		at = 2
+		i = 1
+	while (pattern[i] != 0):
+		int c = pattern[i] & 255
+		if (rx_is_quantifier(c)):
+			out[at] = c
+			at = at + 1
+			i = i + 1
+		else if ((c == '$') && (pattern[i + 1] == 0)):
+			out[at] = 92
+			out[at + 1] = 'Z'
+			at = at + 2
+			i = i + 1
+		else if (c == '.'):
+			out[at] = '.'
+			at = at + 1
+			i = i + 1
+		else if (c == '['):
+			int end = rx_class_end(pattern, i)
+			out[at] = '['
+			at = at + 1
+			int j = i + 1
+			if (pattern[j] == '^'):
+				out[at] = '^'
+				at = at + 1
+				j = j + 1
+			int len = 0
+			while (j < end):
+				at = rx_put_byte(out, at, rx_class_endpoint(pattern, j, &len))
+				j = j + len
+				if ((pattern[j] == '-') && (j + 1 < end)):
+					out[at] = '-'
+					at = at + 1
+					at = rx_put_byte(out, at, rx_class_endpoint(pattern, j + 1, &len))
+					j = j + 1 + len
+			out[at] = ']'
+			at = at + 1
+			i = end + 1
+		else if (c == 92):
+			at = rx_put_byte(out, at, rx_escape_char(pattern, i))
+			i = i + 2
+		else:
+			at = rx_put_byte(out, at, c)
+			i = i + 1
+	out[at] = 0
+	return out
+
+
+# Compiles a lib/regex.w pattern for the re.w engine, or 0 when it is
+# malformed. Caller frees with re_free.
+re_pattern* rx_compile(char* pattern):
+	if (regex_valid(pattern) == 0): return cast(re_pattern*, 0)
+	char* translated = rx_translate(pattern)
+	re_pattern* p = re_compile(translated, RE_BYTES)
+	free(translated)
+	if (re_error(p) != 0):
+		re_free(p)
+		return cast(re_pattern*, 0)
+	return p
+
+
 # Does the pattern match the ENTIRE text? 1/0. A malformed pattern
-# (or an exhausted step budget) reports 0.
+# reports 0.
 int regex_match(char* pattern, char* text):
-	if (regex_valid(pattern) == 0): return 0
-	int pp = 0
-	if (pattern[0] == '^'): pp = 1
-	int steps = RX_STEP_BUDGET()
-	int length = rx_here(pattern, pp, text, 0, 1, &steps)
-	if (length < 0): return 0
+	re_pattern* p = rx_compile(pattern)
+	if (p == 0): return 0
+	re_result* m = re_fullmatch(p, text)
+	re_free(p)
+	if (m == 0): return 0
+	re_result_free(m)
 	return 1
 
 
 # Byte index of the leftmost match of the pattern anywhere in the
-# text, or -1 when there is none (or the pattern is malformed, or the
-# budget ran out). An empty or empty-matching pattern matches at 0.
-# Combine with regex_match_length to recover the full span.
+# text, or -1 when there is none (or the pattern is malformed). An
+# empty or empty-matching pattern matches at 0. Combine with
+# regex_match_length to recover the full span.
 int regex_search(char* pattern, char* text):
-	if (regex_valid(pattern) == 0): return -1
-	int anchored = 0
-	int pp = 0
-	if (pattern[0] == '^'):
-		anchored = 1
-		pp = 1
-	int steps = RX_STEP_BUDGET()
-	int tp = 0
-	while (1):
-		int length = rx_here(pattern, pp, text, tp, 0, &steps)
-		if (length >= 0):
-			return tp
-		if (steps <= 0): return -1
-		if (anchored): return -1
-		if (text[tp] == 0): return -1
-		tp = tp + 1
-	return -1
+	re_pattern* p = rx_compile(pattern)
+	if (p == 0): return -1
+	re_result* m = re_search(p, text)
+	re_free(p)
+	if (m == 0): return -1
+	int at = re_start(m, 0)
+	re_result_free(m)
+	return at
 
 
 # Number of text bytes the pattern matches starting exactly at byte
 # `start` (greedy, so the span a grep would print), or -1 when it
-# does not match there — also for a malformed pattern, an
-# out-of-range start, or an exhausted budget. A `^` pattern only
-# matches at start 0. regex_search + regex_match_length together
-# yield the leftmost matching span.
+# does not match there — also for a malformed pattern or an
+# out-of-range start. A `^` pattern only matches at start 0.
+# regex_search + regex_match_length together yield the leftmost
+# matching span.
 int regex_match_length(char* pattern, char* text, int start):
 	if (start < 0): return -1
-	if (regex_valid(pattern) == 0): return -1
-	int pp = 0
-	if (pattern[0] == '^'):
-		if (start != 0): return -1
-		pp = 1
 	# Bounds-check start without assuming it is <= strlen(text).
 	int i = 0
 	while ((i < start) && (text[i] != 0)): i = i + 1
 	if (i < start): return -1
-	int steps = RX_STEP_BUDGET()
-	return rx_here(pattern, pp, text, start, 0, &steps)
+	re_pattern* p = rx_compile(pattern)
+	if (p == 0): return -1
+	re_result* m = re_match_at(p, text, strlen(text), start)
+	re_free(p)
+	if (m == 0): return -1
+	int length = re_end(m, 0) - start
+	re_result_free(m)
+	return length

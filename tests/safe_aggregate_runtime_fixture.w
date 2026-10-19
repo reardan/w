@@ -38,6 +38,8 @@ int aggregate_runtime_exercise():
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if aggregate_runtime_exercise() != 1000009: return 1
 	return debug_alloc_report_leaks() - before

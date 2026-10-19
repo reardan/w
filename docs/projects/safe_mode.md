@@ -1,13 +1,16 @@
 # Experimental ownership and borrowing checks
 
-The compiler accepts `--safe` on Linux x86/x64 and Windows x64 (`win64`):
+The compiler accepts `--safe` on Linux x86/x64/ARM64, Windows x64 (`win64`)
+and macOS ARM64 (`arm64_darwin`):
 
 ```sh
 ./bin/wv2 --safe app.w -o app
 ./bin/wv2 check --json --safe app.w
 ```
 
-This is a bounded, single-threaded subset, tracked by
+This is a bounded subset whose only concurrency is the audited
+[spawn/join API](#thread-transfer-and-spawnjoin) with its
+[guarded mutexes and atomics](#synchronization-guarded-mutexes-and-atomics), tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
 design, including richer aggregates and broader lifetime contracts, is
@@ -1305,17 +1308,491 @@ checks unsupported targets and runtime-pin invalidation. The ordinary suite
 also cross-compiles the cleanup/lifetime runtime corpus in three optimization
 modes. `./wbuild tests_arm64` executes the accepted matrix and runtime corpus
 through `wrun` under QEMU, including guard-allocator runs. Runtime execution
-is a required target-admission gate. Android, Darwin, iOS and WebAssembly
-checked applications remain rejected.
+is a required target-admission gate. Android and iOS checked applications
+remain rejected.
+
+## ARM64 Darwin runtime contract
+
+The macOS target (`arm64_darwin`) uses the checked pointer, borrowed aggregate
+and inline-slice representations of Linux ARM64. Admission requires the macOS
+platform discriminator, so the separate iOS device and simulator targets keep
+their own gates. Bounds checks remain mandatory and explicit contracts apply
+without `--safe`.
+
+Five runtime pins bind the Darwin arch shims, AArch64 context wrapper and XNU
+syscall implementation. The allocator falls back from unsupported `brk` to
+anonymous `mmap`; the Darwin wrapper translates mapping flags, and page-size
+probing supplies the guard allocator's alignment. No additional raw syscall
+becomes callable from checked application code. Runtime changes or shadowed
+imports invalidate the audit.
+
+`safe_darwin_contract_test` checks and cross-compiles accepted/rejected
+contracts with both flag modes, verifies Mach-O headers and rejection without
+artifacts, and exercises changed-runtime rejection. Its cross-built native
+host reruns the matrix with the self-hosted Darwin compiler and executes
+accepted programs on Apple Silicon. `safe_darwin_runtime_compile_test` builds
+91 ownership/borrow/cleanup variants, including an explicit `--safe` variant.
+The Darwin CI job executes them with the guard allocator and verifies the
+Darwin compiler fixpoint. Native execution is a required completion gate for
+#712; Linux cross-compilation alone does not complete that deliverable.
+
+## WebAssembly runtime contract
+
+The `wasm` target (wasm32 + WASI preview1) accepts the same checked
+contracts as Linux x86. It shares that target's checked representation:
+4-byte words, one-word sized references and the two-word inline
+pointer/length slice descriptor. Owner transfers clear source slots and
+normal exits run the same conditional recursive cleanup. Bounds checks stay
+mandatory and trap through the existing `index out of range` path; explicit
+contracts apply without `--safe`. Callable contracts, captured callback
+storage, buffers and byte arenas need no wasm-specific rules: function
+values are table indices called through `call_indirect`, whose null slot
+traps, and arenas allocate through the ordinary heap.
+
+Three runtime pins bind `lib/__arch__/wasm/{android,context,syscalls}.w`.
+The syscall module implements the W runtime surface on the fixed WASI import
+set. `brk` returns 0, so the allocator switches to `mmap`, which bump-allocates
+linear memory above the data segment and shadow stack, rounding mappings to
+4 KiB and growing memory in 64 KiB wasm pages; a failed `memory.grow`
+returns -1, the allocator's out-of-memory path.
+`munmap` is a no-op, so released memory is never handed back to the host or
+reused by `mmap`; the free-list backend still reuses blocks. Iovec and
+out-parameter scratch lives at fixed addresses in the reserved low page and
+assumes the target's single thread. `exit` is WASI `proc_exit`, which, like
+Linux `exit_group`, runs no cleanup. The WASI import stubs (`wasi_*`) are not
+on the checked call allowlist, and no other raw call becomes callable from
+checked code. Modified or shadowed runtime implementations fail the audit.
+
+Linear memory has no unmapped pages and no page protection, so the guard
+allocator cannot fault. Its wasm substitute in `lib/memory_debug.w` keeps the
+bookkeeping table (leak reports, double-free and invalid-free detection) and
+turns faults into deferred checks. The guard page stays resident and is
+filled with canaries. A freed payload is filled with the poison byte `0x6b`
+instead of being protected. Canary and poison checks run on free, realloc,
+quarantine release and every leak report. Stray writes past a block, before
+it or into a freed block are therefore reported at the next check, not at the
+faulting instruction. Reads of freed memory are not detected; they observe
+poison rather than stale data. Address 0 is in the reserved low kilobyte, so
+an unchecked null dereference reads zeros instead of faulting. Checked code
+reaches optional references only after a presence check, and owners are
+never null after a successful allocation.
+
+`safe_wasm_contract_test` checks and compiles accepted and rejected
+contracts for `wasm` with both flag modes. It requires the same first
+diagnostic as the default x86 target and verifies the wasm module header.
+It also checks that rejection leaves no artifact, that WASI import stubs are
+rejected, that Android and iOS stay rejected, and that a changed runtime pin
+fails the audit. `safe_wasm_runtime_compile_test` builds every checked
+runtime fixture in default, `--no-regs --no-inline` and `--inline` modes,
+plus one explicit `--safe` variant. `tests_wasm` executes the contract
+matrix (`safe_wasm_contract_runtime_test`), that corpus
+(`safe_wasm_runtime_test`) and the guard substitute's positive and fault
+scenarios (`safe_wasm_guard_test`) under `bin/wrun wasm` (wasmtime, else
+node's WASI). Execution under a WASI host is a required admission gate;
+cross-compilation alone does not admit the target.
+
+## Thread transfer and spawn/join
+
+Checked code can move owned work to another thread and lend borrows to a
+thread that is joined before the call returns. Import `lib.safe_thread`;
+like `lib/thread.w` underneath, it supports Linux x86 and x64 only, and other
+targets fail to compile it. This is part of
+[issue #699](https://github.com/reardan/w/issues/699). Shared mutation
+goes only through the [synchronized types](#synchronization-guarded-mutexes-and-atomics).
+
+### Transfer and share eligibility
+
+W has no `Send`/`Sync` traits. The compiler derives eligibility from the
+shape of the type. A value is **transferable** if it may move to another
+thread. A value is **shareable** if two threads may read it through shared
+references at the same time.
+
+| Reachable part | Transferable | Shareable |
+| --- | --- | --- |
+| Scalars, enums and pointer-free records/arrays | yes | yes |
+| `own T*` / `optown T*` | if `T` is | if `T` is |
+| `own[a] Record*`, `optown[a]`: owner carrying borrowed groups | only to scoped work, if the record is | if the record is |
+| `ref T*`, `ref T[]`, `ref[a] Record` | only to scoped work, if `T` is shareable | if `T` is |
+| `refmut T*`, `refmut[a] Record` | only to scoped work, if `T` is transferable | if `T` is |
+| Quantified `fn[...]` pointers (static code addresses) | yes | yes |
+| Audited buffers, strings, arenas and `WSafeThread` handles | yes | yes |
+| Fields of type `WThreadAffine` | no | no |
+| Fields of type `WThreadUnshared` | yes | no |
+| Raw pointers, unions, containers, unaudited resources | no | no |
+
+The rules apply to every field, nested owned child and array element.
+Ownership alone does not make a value transferable. For example, an
+`own[a] Job*` whose record holds `ref[a] int*` still borrows external
+storage, so it cannot go to detached work. A shared reference to stack data
+can never become a detached payload. The two marker records are plain data,
+so a struct can opt out of transfer or sharing without changing its checked
+layout. The current audited types offer no way to mutate through a shared
+reference. `WThreadUnshared` reserves that case (interior mutation) for
+future synchronized types. Analysis is bounded at 32 levels and 256 expanded
+records or arrays; scalar fields do not count toward that limit.
+
+### Detached spawn and join
+
+```w
+import lib.safe_thread
+
+struct Job:
+	own int* value
+	int scale
+
+type Worker = fn[](own Job*) -> int
+
+int run_job(own Job* job):
+	ref int* value = job.value
+	return *value * job.scale
+
+int main():
+	own int* value = new int
+	*value = 6
+	Worker* entry = run_job
+	optown WSafeThread* thread = safe_thread_spawn(entry, new Job(value, 7))
+	if (!thread): return 1
+	own WSafeThread* started = thread
+	return safe_thread_join(started) - 42
+```
+
+`safe_thread_spawn[E, T](E* entry, own T* payload)` requires a transferable `T`.
+It also requires `E` to be exactly `fn[](own T*) -> int`. A bare function name
+has no value type for inference, so either bind it to a typed local first or
+supply both type arguments (`safe_thread_spawn[Worker, Job](run_job, job)`).
+
+- **Spawn** always consumes the payload; the source binding becomes moved.
+- **Success** returns a present handle. The child passes the payload to
+  `entry` exactly once, and `entry`'s parameter cleanup destroys it on the
+  child.
+- **Failure** returns an absent handle. This happens when 64 checked threads
+  are already live (spawned but not joined) or when `clone` fails. The
+  payload never reached a thread; the runtime destroys it before returning.
+  The handle must be tested before it can be joined.
+- **Join** (`safe_thread_join(own WSafeThread*)`) consumes the handle, waits for
+  the child to finish and returns `entry`'s result.
+- **Dropping a present handle** waits for the child; this includes scope
+  exit, replacement and an early return. No checked thread outlives every
+  owner of its handle. Handles are transferable, so another checked
+  thread may join one.
+
+Handles are opaque. Checked code cannot construct them, read their fields or
+call the runtime's raw helpers.
+
+### Scoped fork-join
+
+```w
+struct Chunk:
+	int start
+	int total
+
+type Sum = fn[](refmut Chunk*) -> int
+
+int fill(refmut Chunk* chunk):
+	chunk.total = chunk.start + 1
+	return chunk.total
+
+int split(refmut Chunk* first, refmut Chunk* second):
+	Sum* entry = fill
+	return safe_thread_fork_join(entry, first, second)
+```
+
+`safe_thread_fork_join[E, T](E* entry, T left, T right)` runs `entry(left)` on
+a new thread and `entry(right)` on the caller. It joins the child before
+returning the sum of both results. `T` must be a non-optional `ref` or `refmut`
+pointer, and `E` must be `fn[](T) -> int`. The borrows last for the whole call,
+so the lent storage outlives the child. This is the scoped-borrowing contract:
+the join is proven before the backing storage expires. The left argument must
+satisfy the scoped rules in the table, which permit borrowed lifetimes.
+Ordinary call checking rejects lending the same exclusive storage twice and
+conflicts with a live view. If no thread can be started, both entries run on
+the caller in order and the result is the same.
+
+### Limits
+
+- Shared mutation only through `WSafeMutex` guards and `WSafeAtomic`
+  operations (below). There are no condition variables, and globals keep
+  their separate gate. Checked code
+  running on a thread is checked like any other function. However, legacy
+  code that a checked thread calls under an `unsafe:` boundary can race,
+  and that remains unsafe code's responsibility.
+- Results are a single `int`. Other data comes back through `refmut`
+  arguments of fork-join; detached payloads are consumed by the child.
+- Diagnostics: `thread payload [field 'path'] ...` (detached),
+  `scoped thread argument [field 'path'] ...` (fork-join),
+  `thread entry must be fn[](own T*) -> int ...` and
+  `fork-join entry must be fn[](T) -> int ...`. All use family `W0413`.
+
+## Synchronization: guarded mutexes and atomics
+
+`lib.safe_thread` also provides the only checked shared mutation: a mutex
+whose payload is reachable only while a guard is held, and an atomic integer
+whose every operation names its memory ordering. Both use the same Linux
+x86/x64 runtime as spawn/join. The memory-ordering argument is in
+[the contracts document](safe_mode_contracts.md#synchronization-and-memory-ordering).
+
+### Mutexes and guards
+
+```w
+import lib.safe_thread
+
+type Count = fn[](ref WSafeMutex*) -> int
+
+int count(ref WSafeMutex* mutex):
+	for i in range(1000):
+		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+		refmut int* value = safe_guard_value(guard)
+		*value = *value + 1
+	return 0
+
+int main():
+	own int* start = new int
+	own WSafeMutex* mutex = safe_mutex_new(start)
+	ref WSafeMutex* shared = mutex
+	Count* entry = count
+	safe_thread_fork_join(entry, shared, shared)
+	own[a] WSafeGuard* guard = safe_mutex_lock(shared)
+	refmut int* value = safe_guard_value(guard)
+	return *value - 2000
+```
+
+| Call | Contract |
+| --- | --- |
+| `safe_mutex_new(own int* value) -> own WSafeMutex*` | Consumes the payload. Dropping the mutex destroys the payload once, then the mutex. |
+| `safe_mutex_lock(ref[a] WSafeMutex*) -> own[a] WSafeGuard*` | Blocks until the mutex is free. |
+| `safe_mutex_try_lock(ref[a] WSafeMutex*) -> optown[a] WSafeGuard*` | Returns an absent guard when the mutex is held. |
+| `safe_guard_value(refmut[a] WSafeGuard*) -> refmut[a] int*` | The payload view; it borrows the guard. |
+| `safe_guard_unlock(own[a] WSafeGuard*)` | Consumes the guard and releases the mutex early. |
+
+The lifetimes do the work:
+
+- **The guard borrows the mutex.** `own[a] WSafeGuard*` carries the shared
+  borrow `a` of the mutex. A guard owner must name it; plain
+  `own WSafeGuard*` is rejected. The mutex cannot be moved, consumed,
+  replaced or dropped while a guard may still exist, and a guard of a local
+  mutex cannot be returned, even inside another owner.
+- **Dropping the guard unlocks.** This happens at scope exit, `return`,
+  `break`, `continue`, replacement, early unlock and optional-owner cleanup.
+  The checker counts each drop as a use of the guard's borrow. A guard
+  released on only some paths still pins the mutex until its scope ends. A
+  guard cannot leave the block in which its mutex is declared
+  (`lock guard outlives the mutex it borrows`).
+- **The view borrows the guard.** A `refmut int*` from `safe_guard_value`
+  ends before the guard can be unlocked, moved or dropped. Using it after
+  `safe_guard_unlock` or after the guard's block is a use of a moved value.
+  A shared `ref WSafeGuard*` cannot open the view, and two live views of
+  one guard conflict.
+- **A guard stays on its locking thread.** It is neither transferable nor
+  shareable, at any depth of a payload or lent argument. Unlocking always
+  happens on the thread that locked.
+- **The mutex is opaque.** There is no field access, partial move or
+  checked allocation outside `safe_mutex_new`, and no plain construction.
+
+### Atomics
+
+```w
+int publish(ref WSafeAtomic* data, ref WSafeAtomic* ready):
+	safe_atomic_store(data, 42, memory_order_relaxed)
+	safe_atomic_store(ready, 1, memory_order_release)
+	return 0
+
+int consume(ref WSafeAtomic* data, ref WSafeAtomic* ready):
+	while (safe_atomic_load(ready, memory_order_acquire) == 0): pass
+	return safe_atomic_load(data, memory_order_relaxed)
+```
+
+`safe_atomic_new(int) -> own WSafeAtomic*` allocates a word. Every access
+goes through one of these calls, with a `WMemoryOrder` argument:
+
+| Operation | Admitted orders |
+| --- | --- |
+| `safe_atomic_load(ref WSafeAtomic*, order) -> int` | `relaxed`, `acquire`, `seq_cst` |
+| `safe_atomic_store(ref WSafeAtomic*, int value, order)` | `relaxed`, `release`, `seq_cst` |
+| `safe_atomic_fetch_add(ref WSafeAtomic*, int delta, order) -> int` (old value) | all five |
+| `safe_atomic_compare_exchange(ref WSafeAtomic*, int expected, int desired, success, failure) -> int` (observed value) | success: all five; failure: `relaxed`, `acquire`, `seq_cst` |
+
+Orders are spelled `memory_order_relaxed`, `memory_order_acquire`,
+`memory_order_release`, `memory_order_acq_rel` and `memory_order_seq_cst`,
+with C++11 meanings. The argument must be one of those constants, so every
+call's ordering is known when it is compiled. A runtime `WMemoryOrder`
+value or a cast integer is rejected, as is an order that the operation
+cannot have. The compare-exchange succeeded exactly when its result equals
+`expected`. There is no separate fence operation.
+
+### Thread rules
+
+| Type | Transferable | Shareable |
+| --- | --- | --- |
+| `own WSafeMutex*` | if its payload is | if its payload is transferable |
+| `own[a] WSafeGuard*` | no | no |
+| `own WSafeAtomic*` | yes | yes |
+
+A mutex is shareable even though its payload is only transferable: the lock
+lends the payload to one thread at a time. Pass `ref WSafeMutex*` or
+`ref WSafeAtomic*` (or a record holding them) to fork-join for concurrent
+use. Move the owner into a spawn payload to hand it over. Detached threads
+cannot share one mutex or atomic: there is no shared ownership.
+
+### Limits and costs
+
+- The payload is a single `int` (an `own int*`). Generic `WSafeMutex[T]`
+  waits for checked generic records (#696). The thread rule above is
+  structural, so it already describes such payloads.
+- Locking the same mutex twice on one thread, or locking two mutexes in
+  opposite orders on two threads, deadlocks. Deadlock is not memory
+  unsafety, and the checker does not prevent it.
+- A guard adds no allocation: its owner is the mutex's address. Lock and
+  unlock are one `lock` instruction each when uncontended. Waiting uses
+  futexes. Each atomic call is a function call around one instruction. A
+  `seq_cst` store adds a fence.
+- New diagnostics (family `W0413`): `lock guard outlives the mutex it
+  borrows`, `a lock guard owner must name its mutex lifetime`,
+  `... is a lock guard bound to its locking thread`,
+  `atomic memory order must be a memory_order_* constant`,
+  `atomic load cannot use release or acq_rel ordering`,
+  `atomic store cannot use acquire or acq_rel ordering` and
+  `compare-exchange failure ordering cannot be release or acq_rel`.
+
+`tests/safe_sync_test.w` checks the accepted and rejected contracts on x86
+and x64. `tests/safe_sync_runtime_test.w` covers lock release on every exit
+path, exact counts under fork-join and spawned-thread contention,
+release/acquire publication, and exactly-once cleanup with `W_DEBUG_ALLOC=1`.
+
+## Persistent REPL and debugger sessions
+
+The REPL (`repl.w`) and wdbg (`debugger/debugger.w`) run checked code in
+process (#713). A loaded file (`repl file.w`, `:load`, the wdbg debuggee)
+runs the ordinary whole-program analysis before any of its code executes,
+including the redefinition rule below. Every prompt entry is checked before
+it runs; the session logic lives in `compiler/safe_session.w`.
+
+**Session transcript.** Top-level persistent declarations and statements
+execute as before, but the checker sees them through a transcript: one
+function, `__w_repl_session`, that replays every committed entry item that
+names a checked session binding, in order, followed by the pending entry.
+Each declaration becomes a local renamed `name__wsN` (one generation per
+declaration), so ownership, initialization, moves, borrows and reborrow
+ancestry carry across entries exactly as they do between statements of one
+function. Plain persistent variables an item reads become parameters of the
+transcript function (their spelling comes from the declaration, or from the
+type when it can be spelled back). Items that name no checked binding are
+checked as separate functions and are not replayed. The transcript is
+compiled after the entry, checked, and rolled back; it never executes. A
+transcript diagnostic carries a note mapping its line back to the entry
+file and line.
+
+**State and end of an entry.** After the check, the flow state at the end
+of the transcript's outer block is recorded per generation. A checked owner
+must be held or moved on every path of the entry (`safe: a checked session
+owner must be held or moved on every path of an entry`). A successful entry
+commits: the moved owners' globals are cleared, and the new generations and
+states become the session state the next entry starts from.
+
+**Replacement.** Redeclaring a checked name in a later entry retires the
+old generation. If it still held an owner, the transcript destroys it at the
+redeclaration (so a live borrow of it conflicts like a drop in a function),
+and commit destroys it once at run time. Redeclaring a checked name twice in
+the same entry is rejected. Redefining a function whose signature mentions a
+checked type with a different checked contract is rejected (`safe:
+redefinition changes a checked function contract that existing callers rely
+on`), at the prompt or from a loaded file, because existing callers were
+checked against the old contract.
+
+**Cross-entry borrows.** A `ref`/`refmut` declared at the prompt borrows a
+session owner exactly as a local would: the owner cannot be moved,
+replaced or mutated incompatibly while a later entry still uses the
+borrow, and a borrow cannot be used after its owner moved. Functions,
+templates and nested forms cannot capture a checked session binding (`safe:
+functions, templates and nested forms cannot use a checked session binding;
+pass it as an argument`); the binding has to be passed as an argument.
+
+**Failure and rollback.** An entry that fails to compile or to check rolls
+back like any REPL error: no new generation, state change or replayed item
+is published, and dangling loans or stale contracts never reach the next
+entry. Checker caches keyed by retained type IDs are cleared before each
+check, and trusted-runtime records are truncated with their sources on
+rollback, so success-failure-success sequences check against the committed
+state only. An entry that faults at run time is rolled back as well; the
+checked bindings it replaced or whose state its analysis changes on some
+path are discarded (`note: checked session bindings were discarded after
+the fault; their owners are leaked, not dropped`), and later uses report
+`safe: this checked session binding was discarded after a runtime fault`.
+Other checked bindings keep their committed state. A leak is the safe
+outcome: the session can no longer prove which of the owner's moves ran.
+
+**Session end.** `:quit`, end of input, `-c`/`-e` exits and `:reset`
+destroy every held session owner once, newest first, through the same
+destructor `cleanup` emits (owned records recursively; the audited helper
+for runtime-owned records). Moved, discarded and already-replaced owners are
+not destroyed again. `:reset` then forgets all session state, so the next
+entry starts from an empty transcript and re-imports re-read their sources:
+an edited imported module is checked afresh, including its new contracts.
+Options and the target are fixed for the life of a process, so there is no
+option-change path to invalidate.
+
+**Unsupported forms.** These fail explicitly instead of being
+approximated: `--safe` on in-process entry points; checked declarations in
+an entry that does not run (`:type`, `safe: an entry that is not run cannot
+declare checked session bindings`); declaring, replacing or naming a checked
+session binding from a nested entry (a stop inside a running entry, or any
+debugger evaluation); `return`, `goto`, `defer` and `yield` in an item that
+names a checked session binding; and session bindings with lifetime-labeled
+checked types such as `own[a] WSafeGuard*` lock guards (`safe: session
+bindings cannot have lifetime-labeled checked types ...`), whose loans tie
+them to another value. Owner assignment to an existing persistent binding
+is rejected by the existing `owner assignment requires a plain local or
+parameter` rule; declare a new generation instead.
+
+**Debugger evaluation.** wdbg checks its debuggee before running it. At a
+stop, `print`, breakpoint conditions, logpoints and `repl` entries are the
+same in-process entries, so they follow the same rules (breakpoint and
+evaluation parity). When the stopped frame has checked locals, the checker
+re-analyzes the stopped function and reads the flow state at the stop's
+statement:
+
+- a checked owner or borrow that is definitely initialized there (and, for
+  a borrow, still used later by the program, so its loan is valid) is
+  presented as a read-only `ref T*` view, a parameter of the entry's own
+  check that never joins the replayed session;
+- other checked locals are hidden; naming one reports why (`safe: this
+  checked local is not definitely initialized and live at this debugger
+  stop`, or that only owner and reference pointers without lifetime labels
+  can be viewed);
+- assigning a view (`safe: checked debugger locals are read-only views at a
+  stop; assign them in the program`) or moving out of it (`safe: owner
+  requires new storage or an ownership transfer`) is rejected, and frame
+  writes of checked locals are never copied back;
+- outer frames (`up`) have no known state mid-call, so their checked locals
+  are hidden (`safe: checked locals are only available in the innermost
+  frame of an analyzed function at a debugger stop`);
+- `set` refuses checked locals and globals (`set: checked variables cannot
+  be written by the debugger; their ownership state would go stale`), in
+  process and in attach mode.
+
+Plain locals are presented by value as before and still write back.
+Attach mode (`--attach`) evaluates with its own read-only interpreter over
+ptrace and runs no checked code in the target.
+
+The hook into the checker is one optional callback,
+`safe_function_end_hook`, which `compiler/safe.w` calls with each analyzed
+function before releasing its flow graph; it is zero outside sessions.
+`tests/safe_repl_session_test.w` and `tests/safe_session_debugger_test.w`
+(each with an x64 twin) cover persistence, replacement, reset and exit
+destruction counted under `W_DEBUG_ALLOC=1`, success-failure-success,
+diagnostic recovery, fault discards, every unsupported form above, an
+imported-source edit across `:reset`, and the debugger views, conditions
+and rejections.
 
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64 and win64,
-and in-process REPL/debugger
-execution reject checked pointers. A requested `--safe` is also rejected by
-in-process entry points. Compilation and structured checking run the same
-analysis before an output file is published.
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64,
+win64, arm64_darwin and wasm reject checked pointers. The in-process REPL
+and debugger admit them under the session rules in "Persistent REPL and
+debugger sessions" below; a requested `--safe` is still rejected by
+in-process entry points, and the incremental compile API admits only scalar
+functions. Compilation and structured checking run the same analysis before
+an output file is published.
 
 Ownership errors use diagnostic family `W0413`, with source spans and related
 ownership/borrow locations. Safety errors do not depend on `--strict`.
@@ -1325,11 +1802,27 @@ build results when a contract, implementation or compiler changes.
 
 Ownership graphs and borrow state are allocated only when checking is needed.
 Application semantic retention also runs in ordinary retained compilation to
-support flag-independent qualifier semantics. Runtime costs include
+support flag-independent qualifier semantics. Its symbol lookup keeps a
+bounded cache of 4,096 symbol-index positions. Each hint is checked against
+the synchronized live table before reading the current name; source version,
+owner, scope, name and declaration location still determine binding identity.
+Scope rollback and reset cannot turn a recycled raw slot into an old binding.
+The cache costs 16 KiB on x86 or 32 KiB on x64 per compiler session and is
+released with retained semantic state. Runtime costs include
 allocation, bounds checks and conditional destruction; moved slots are
 cleared. Checked pointers add no reference counts or extra pointer words.
 Functions with checked pointer parameters, results or locals are excluded
 from the current inliner so optimization cannot erase a transfer or cleanup.
+
+### Retained symbol-position cache validation
+
+Retained semantic binding repeatedly searches the symbol table for an unchanged declaration position. Cache validated positions in a bounded 4,096-entry table, checking bounds and offsets after synchronization and retaining fresh name lookup and identity checks. Reset and release the cache with its owning state.
+
+Production retained-AST regressions cover 24 functions with differing parameter lengths, error rollback and reset. Full validation passed 1,362 ordinary targets and 1,361 instrumented targets plus six compiler/API harnesses. Both Linux fixpoints, 48 architecture/root checks, native allocator guards and existing coverage floors pass. The coverage receipt is COMPLETE; all 14 changed executable compiler lines ran.
+
+Seven alternating compiles of fixed `6b450a80` sources measured 1.62/1.62 seconds and 112,480 KiB median peak RSS before/after. Compiler output and prior callable/Windows-contract fixtures were byte-identical and executed on x86/x64. Fixed-corpus Callgrind instruction counts fell from 17,153,421,073 to 17,084,245,179 on x86 (0.40%) and 9,267,476,404 to 9,217,102,517 on x64 (0.54%). Both baseline and candidate used the same allocator fallback under Callgrind. The bounded cache reserves 16 KiB on x86 and 32 KiB on x64; these measurements establish only this corpus's result, not a general performance guarantee.
+
+Part of #714 under #700/#644. Those issues remain open for their remaining acceptance gates.
 
 ### Measured costs
 
@@ -1427,7 +1920,7 @@ with and without the flag. `safe_runtime_test` uses the guard allocator to
 observe leaks and duplicate destruction across transfer, replacement,
 parameters, return, break, continue and fall-through cleanup.
 `safe_cli_test` covers option order, structured conflicts and in-process
-rejection. The parser-generator grammar includes the contextual qualifiers
+`--safe` rejection. The parser-generator grammar includes the contextual qualifiers
 and unsafe blocks. Self-host fixpoints, the full suite, cross-architecture
 compiler checks and changed-line coverage remain the release gates.
 
@@ -2243,6 +2736,81 @@ specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 until the dependent merges and integrated completion gates pass.
 
+
+### Ownership-preserving optimization validation (#714)
+
+`safe_opt_diff_test` (x86) and its `safe_opt_diff_64_test` twin (x64)
+compare every optimization configuration the x86/x64 back ends offer
+against an unoptimized reference. Each program is compiled with
+`-O0 --no-inline` as the reference and again with the defaults, `-O0`,
+each single opt-out (`--no-regs`, `--no-inline`, `--no-cond-branch`,
+`--no-loop-rotate`, `--no-expr-regs`, `--no-addr-modes`,
+`--no-direct-calls`, `--no-narrow-regs`, plus `--no-x86-budget` on x86 or
+`--no-ivopts`/`--no-reg-args` on x64), all opt-outs together, `--inline`,
+`--ast-opt`, and `--inline` with a `--profile-use` profile marking every
+function of the program hot. The profile is synthesized from
+`bin/wv2 defhash`, because `--profile-generate` cannot instrument a checked
+program: the injected `lib/profile.w` has no audited runtime contract.
+Every binary runs under `W_DEBUG_ALLOC=1`. Exit status, stdout and stderr
+(stack-trace frames removed, since inlining removes frames) must equal the
+reference.
+
+The corpus is every `tests/safe_*runtime_fixture.w` (39 programs, found by
+listing `tests/`; each must be declared as a `deps=` input so wtest and the
+build cache see edits), plus three new programs:
+
+- `tests/safe_opt_order_fixture.w` covers reverse-declaration drops, early
+  return with function and scoped defers, per-iteration owners with
+  `continue`/`break`, transfer into calls and out of returns, replacement,
+  nested owners, branch-dependent moves, a hot owner-per-iteration loop and
+  checked slice reads. `tests/safe_opt_log.w` hooks `free` and prints
+  `drop n` for each tagged owner it destroys and `mark n` at transfer points
+  and deferred actions. Stdout therefore records the exact order of drops,
+  deferred work and transfers. This program also compiles with `--safe`, and
+  the `--safe`, `--safe -O0 --no-inline` and `--safe --inline` hot builds must
+  print the plain reference's log.
+- `tests/safe_opt_order_manual_fixture.w` does the same work with raw
+  pointers, explicit `free()` and hand-ordered deferred calls. Under every
+  configuration it must print the checked program's reference log, including
+  the leak count. Hand-written and checked cleanup are observably identical.
+- `tests/safe_opt_bounds_fixture.w` selects one of six out-of-range accesses
+  through `SAFE_OPT_CASE`: a hot `for` loop over a checked slice, a
+  checked-slice accessor, a subslice, a fixed-array fill loop, a descending
+  `while` reaching index -1 and an inlinable scalar leaf. Each case must exit
+  nonzero with `index out of range` after the same marks and drops. Owners
+  still live at the trap are not destroyed, as documented. Case 0 runs every
+  access in range and must exit 0.
+
+The test also checks the inliner restriction directly from
+`-v -v -v --inline` output with the hot profile. Every function with an
+`own`, `ref` or `refmut` parameter, an `own` result, or a checked local
+declaration is refused (`inline_body_end(..., ok=0`) and never inlined. The
+manual twin's raw versions of the same functions are recorded. Parameter
+and result types are refused in `compiler/inline_table.w`. Checked
+declarations count as inlining hazards in `code_generator/statement_ast.w`.
+`--streaming`, which has no such hazard, is rejected for checked programs.
+
+Bodies whose only checked operations are temporaries remain inlinable. Two
+examples are a scalar wrapper that moves `opt_box(n)` straight into
+`opt_consume(...)` and a scalar leaf indexing its own fixed array. The test
+asserts that both are actually inlined under the hot profile. The transfer
+and drop remain inside the refused callees, and the inlined copy keeps its
+bounds check. Logs match the reference. The restriction was not relaxed.
+
+At the first full run, the x86 run made 745 comparisons and the x64 run
+made 793, with no mismatch. These figures come from 42 compiled programs:
+39 existing fixtures, the logging and bounds fixtures, and the manual twin.
+Exploratory probes also found no divergence in bounds checks inside
+`--ivopts` loops on x86/x64. The same held for `--ast-opt` on checked
+programs and hot-inlined bodies that pass fresh owners or borrowed locals
+across calls. No optimization pass was found to erase or reorder a check,
+transfer, deferred action or drop.
+
+A mutation check that swapped two `free()` calls in the manual twin produced
+16 reported mismatches. These are regression results for the passes and
+fixtures listed above, not a proof. ARM64 and win64 optimization variants
+remain covered by each runtime fixture's own cross-compile and execution
+targets, not by this harness.
 
 ### Generic allocation validation
 

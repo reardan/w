@@ -1,10 +1,23 @@
 # UTC date/time helpers.
 #
-# On the 32-bit x86 target, time_now() uses Linux time(2), whose i386 time_t is
-# 32 bits. It will report negative values after 2038-01-19 03:14:07 UTC. The
-# future fix is to use clock_gettime64 (syscall 403) on x86.
+# The year-2038 situation. W's int is the target word: 32 bits on x86, 64
+# on every other native target. Word-sized Unix seconds therefore stop at
+# 2038-01-19 03:14:07 UTC on x86: time_now() (Linux time(2), whose i386
+# time_t is 32 bits), time_unix_from_utc and every API here that takes or
+# returns a timestamp as an int wrap negative past that instant there.
+#
+# time_now_parts / time_now_parts_ns are the 2038-safe clock on every
+# target: they report the seconds as a (hi, lo) pair of masked 32-bit
+# words, the lib/bytes.w 64-bit parts convention (bytes_join64 rebuilds a
+# word where it fits; libs/standard/distributed/u64.w's u64_set_parts
+# takes them as-is). On x86 they use clock_gettime64 (syscall 403, Linux
+# 5.1+), falling back to the 32-bit clock_gettime on older kernels, which
+# is exact only until 2038; the per-target code is in
+# lib/__arch__/<arch>/realtime.w. The word-sized APIs stay as they are
+# until W has a 64-bit integer type on x86.
 import lib.lib
 import lib.assert
+import lib.__arch__.realtime
 
 
 struct date_time:
@@ -19,9 +32,25 @@ struct date_time:
 
 
 # Seconds since 1970-01-01 00:00:00 UTC, as reported by Linux time(2).
+# Wraps negative after 2038-01-19 03:14:07 UTC on x86 (see the top of
+# this file); time_now_parts does not.
 int time_now():
 	int* out = 0
 	return linux_time(out)
+
+
+# Seconds since 1970-01-01 00:00:00 UTC as 64-bit (hi, lo) masked 32-bit
+# halves (lib/bytes.w convention), correct past 2038 on every target
+# (on wasm32 the WASI stub keeps only the low 32 bits: until 2106).
+# Returns 0, or -errno with hi and lo untouched.
+int time_now_parts(int* hi, int* lo):
+	int nanoseconds = 0
+	return time_arch_realtime(hi, lo, &nanoseconds)
+
+
+# time_now_parts plus the nanoseconds (0..999999999) within the second.
+int time_now_parts_ns(int* hi, int* lo, int* nanoseconds):
+	return time_arch_realtime(hi, lo, nanoseconds)
 
 
 # Matches the kernel timespec on both targets: two words (long seconds,

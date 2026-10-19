@@ -44,7 +44,12 @@ below is that grounding, shared by both sections.
   representation to serialize, cache, or hand to another tool — by the
   time a function's closing statement is parsed, its machine code is
   already written into the output buffer.
-- **No object files, no linker.** Every compile re-parses its *entire*
+- **No object files of W's own, no linker.** (Since this was written,
+  x64 Linux can also write an ELF relocatable object for a *system*
+  linker: `--emit=obj`, `docs/projects/object_files.md`. It is an output
+  format for linking W into C programs, not separate compilation of W:
+  the object is still produced by one whole-program compile, and nothing
+  below about W-to-W reuse changes.) Every compile re-parses its *entire*
   transitive import closure from source text, every invocation
   (`docs/projects/wbuildd.md` §1.2 measures this precisely: `w check`/
   `wv2 deps` on `w.w`'s closure cost ~7.1s on every single call, cold or
@@ -106,9 +111,12 @@ external symbols and relocation records, and a linker resolves them and
 assigns final addresses only when the archive is actually linked into a
 program. W has none of the three pieces that sentence depends on:
 
-- No relocatable object emission — `code_generator/*.w` always emits
-  final, absolute-or-PC-relative bytes into one continuous buffer for
-  one whole program (`docs/projects/build_system_next.md`'s §4d, on why
+- No relocatable object emission for W-to-W linking — `code_generator/*.w`
+  always emits final, absolute-or-PC-relative bytes into one continuous
+  buffer for one whole program (x64's `--emit=obj` relabels those bytes
+  as one ELF `ET_REL` object for a C linker after the fact,
+  `docs/projects/object_files.md`; it does not make a module a separately
+  compiled unit) (`docs/projects/build_system_next.md`'s §4d, on why
   *incremental* recompilation is hard, states the identical fact for a
   narrower goal: "single-pass direct byte emission means every
   definition's address depends on everything emitted before it").
@@ -259,7 +267,7 @@ warm-state builds) without touching the compilation model at all.
    additive to the existing per-target-writer pattern (`wx_split.md`'s
    template) rather than a new compilation phase, but PIC codegen and
    an ABI-stability story are large enough to need their own sizing.
-4. **Do not schedule (b)** — relocatable objects, an archive format, a
+4. **Do not schedule (b)** — W-to-W relocatable objects, an archive format, a
    linker — without an explicit maintainer decision made with full
    knowledge of the cost: it changes the single-pass emission model
    itself, and `build_system_next.md` §4d already priced out and

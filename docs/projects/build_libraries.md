@@ -87,6 +87,12 @@ storage and `extern` data objects. Native library output is limited to
 x64 Linux with its Linux syscall ABI. Static libraries cannot be linked
 into `--syscall-abi=vmcall` programs. Other target backends keep their existing executable output.
 
+## Objects for a system linker
+
+`--emit=obj` writes the same exports as an ELF relocatable object that
+`cc` or `ld` links into a C program, optionally `--freestanding`
+(without W's runtime). See `docs/projects/object_files.md`.
+
 ## Source-owned build targets
 
 Put a library declaration in its source, or in its `.w.wbuild` sidecar:

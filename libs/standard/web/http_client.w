@@ -1086,11 +1086,17 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 				if (io_wait_available()): socket_set_nonblocking(fd)
 				else: socket_set_blocking(fd)
 	if (fd < 0):
-		int ip = 0
+		# Happy-Eyeballs-lite (stdlib parity P3.10): every A/AAAA/hosts
+		# address, IPv6 first and alternating families; each attempt but
+		# the last gets an even share of the connect budget, and fast
+		# failures (no IPv6, refused) fall through to the next address.
+		# "[v6]" URL hosts resolve as IPv6 literals.
+		net_address* addrs = cast(net_address*, malloc(sizeof(net_address) * dns_max_addresses))
 		int resolved = 0
-		if (s.has_deadline): resolved = dns_resolve_ipv4_until(u.host, &ip, s.deadline_ms)
-		else: resolved = dns_resolve_ipv4(u.host, &ip)
+		if (s.has_deadline): resolved = dns_resolve_addresses_until(u.host, addrs, dns_max_addresses, s.deadline_ms)
+		else: resolved = dns_resolve_addresses(u.host, addrs, dns_max_addresses)
 		if (resolved == 0):
+			free(addrs)
 			int failure = http_error_dns
 			if (s.has_deadline && s.deadline_ms - time_monotonic_ms() <= 0): failure = http_error_timeout
 			if (io_check() == 0 - IO_ERRNO_ECANCELED): failure = http_error_cancelled
@@ -1099,10 +1105,12 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 		if (s.has_deadline):
 			int remaining = s.deadline_ms - time_monotonic_ms()
 			if (remaining <= 0):
+				free(addrs)
 				http_stream_fail(s, http_error_timeout)
 				return 0
 			io_result result
-			fd = net_connect_timeout_checked(ip, u.port, remaining, &result)
+			fd = net_connect_addresses_timeout_checked(addrs, resolved, u.port, remaining, &result)
+			free(addrs)
 			if (fd < 0):
 				http_stream_fail(s, http_checked_error(result.status, http_error_connect))
 				return 0
@@ -1122,7 +1130,12 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 					return 0
 			else: checked = transport_from_socket(fd, u.host, 1)
 			transport_set_deadline(checked, s.deadline_ms)
-		else: fd = net_connect_timeout(ip, u.port, timeout)
+		else:
+			io_result connect_result
+			fd = net_connect_addresses_timeout_checked(addrs, resolved, u.port, timeout, &connect_result)
+			free(addrs)
+			# -2 keeps the old net_connect_timeout timeout signal.
+			if (fd < 0 && connect_result.status == IO_TIMED_OUT): fd = -2
 		if (fd < 0):
 			http_stream_fail(s, fd == -2 ? http_error_timeout : http_error_connect)
 			return 0

@@ -114,6 +114,8 @@ int type_name():
 		get_token()
 		is_gpu = 1
 		if (accept(c"const")): is_const = 1
+	if (freestanding_mode && (peek(c"map") | peek(c"set") | peek(c"list")) && (nextc == '[')):
+		error3(c"'", token, c"' types need the W container runtime, which --freestanding excludes")
 	if (peek(c"map") & (nextc == '[')):
 		get_token()
 		expect(c"[")

@@ -184,3 +184,12 @@ void test_owned_evaluation_order():
 	owned_aggregate_case(c"own int* identity(own int* p):\n\treturn p\nint main():\n\town int* p = new int\n\t*p = 7\n\tp = identity(p)\n\treturn *p - 7\n", 0)
 	owned_aggregate_case(c"struct Box:\n\tint[2] values\nint main():\n\town Box* p = new Box\n\tp.values[0] = 1\n\tp.values[p.values[0]] = 7\n\treturn p.values[1] - 7\n", 0)
 	owned_aggregate_case(c"struct Box:\n\town int* item\n\tint tag\nint main():\n\town int* p = new int\n\t*p = 7\n\town Box* b = new Box(p, (p = new int) != 0)\n\tref int* child = b.item\n\treturn *child - 7\n", 0)
+
+
+# Coverage-drive additions: duplicate named initialization for plain and
+# owned aggregates, and a forward declaration whose definition's
+# contract changed under a call (compiler/safe.w safe_implementation_check).
+void test_aggregate_duplicate_initializers():
+	owned_aggregate_case(c"struct P2:\n\tint a\n\tint b\nvoid checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tP2 p = P2(a: 1, a: 2)\n\treturn 0\n", c"safe: plain aggregate field initialized twice")
+	owned_aggregate_case(c"struct N2:\n\tint value\n\tint weight\nvoid checked(ref int* p):\n\tpass\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\town N2* n = new N2(value: 1, value: 2)\n\treturn 0\n", c"safe: owned aggregate field initialized twice")
+	owned_aggregate_case(c"ref int* view(ref int* p);\n\nvoid checked(ref int* p):\n\tpass\n\nint main():\n\tint anchor = 0\n\tref int* checked_anchor = &anchor\n\tint x = 5\n\tref int* p = view(&anchor)\n\treturn *p\n\nown int* view(ref int* p):\n\treturn 0\n", c"safe: forward declaration disagrees with its definition")

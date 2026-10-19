@@ -85,6 +85,30 @@ void test_retained_production_lifetimes():
 			literals = literals + 1
 	assert_equal(1, literals)
 
+	for i in range(24):
+		# Function-local records disappear while persistent declarations
+		# grow. Vary the name lengths so recycled offsets and positions
+		# cannot stand in for a declaration's owned binding identity.
+		char* parameter = c"short_name"
+		if (i & 1): parameter = c"longer_parameter_name"
+		char* source = cstr(f"int cached_position_{i}(int {parameter}):\n\tint local = {parameter} + {i}\n\treturn local + {parameter}\n")
+		repl_result result = repl_eval(source)
+		free(source)
+		assert_equal(1, result.status)
+		int nodes = retained_node_count()
+		int sources = retained_sources.length
+		source = cstr(f"int failed_position_{i}(int value):\n\tint local = value + 1\n\treturn local + absent_position_name\n")
+		result = repl_eval(source)
+		free(source)
+		assert_equal(0, result.status)
+		assert_equal(nodes, retained_node_count())
+		assert_equal(sources, retained_sources.length)
+		source = cstr(f"cached_position_{i}(7)")
+		result = repl_eval(source)
+		free(source)
+		assert_equal(1, result.status)
+		assert_equal(14 + i, result.value)
+
 	# Reset uses the same checkpoint path as the debugger's evaluator.
 	repl_genesis_checkpoint()
 	nodes = retained_node_count()

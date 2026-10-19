@@ -54,6 +54,8 @@ int scalar_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if scalar_exercise() != 248: return 1
 	if scalar_arrays() != 15: return 2

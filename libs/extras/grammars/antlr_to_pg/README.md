@@ -57,6 +57,10 @@ grammars describe the two formats involved, run through
 - `normalize.w`, `normalize_operators.w`, `normalize_lists.w` — bounded expression and list/postfix
   recursion lowering before the structural safety audit. The supported shapes
   and normalized AST contracts are described below.
+- `precedence_plan.w`, `parser_progress.w`, `recursion_diagnostics.w` — read-only
+  precedence descriptors, bounded token-progress/cycle analysis, and structured
+  evidence for recursion refusals. These are the first delivery from
+  `LEFT_RECURSION_PLAN.md`; the existing lowering still decides acceptance.
 - `testdata/antlr/` — small ANTLR4 grammars vendored from
   `antlr/grammars-v4` (see its own `README.md`) so the translator has
   something to run against without a network fetch. `antlr_to_pg_test`
@@ -211,6 +215,43 @@ location, rule, and reason. Parser/matcher outputs remain untouched on refusal.
 The human `--audit FILE` output is retained. Dependency resolution is ordered and
 records loaded hashes; missing host semantics or grammar files are not silently
 replaced by guessed implementations.
+
+`AT_LEFT_RECURSION` also carries additive `details`. `normalization_guards`
+records each attempted prediction normalizer's first guard refusal, with a
+stable `reason_code` and one-based `source_alternative` (zero means rule-wide).
+For example, `operator_prefix_not_proven` describes the current requirement for
+consumption before an operand; it does not establish mutual recursion.
+`source.graph` records the original rule's nullability, productivity and concrete
+cycle paths; `remaining_graph` analyzes the combined graph after normalization.
+Self cycles and mutual cycles are distinguished. Graph facts are valid only when
+`complete` is true; exhaustion has an explicit reason and work count.
+
+`source.plan` preserves original alternative order, ANTLR classification,
+precedence, transformed decision priority and recursive occurrence paths/bindings.
+Paths alternate zero-based element and group-alternative indices; each occurrence
+also retains enclosing suffixes, its label and source location. Primary and
+operator decisions have separate one-based priority indices. Plans borrow source
+nodes and must be treated as immutable; the diagnostic snapshot is taken before
+normalization. `complete` means candidate analysis finished, not that ANTLR
+transforms or accepts the rule: a prefix-only rule, for example, is not a direct
+left-recursion candidate. An incomplete plan cannot authorize lowering. This first delivery
+does not enable any previously refused grammar or alter the six sweep baselines.
+
+The interfaces are `at_lr_plan_build(rule, work_limit)` and
+`at_progress_analyze(rules, limits)`. `at_lr_plan_free` releases owned descriptors
+without releasing borrowed source nodes. Progress defaults are 4,096 parser
+rules, 1,000,000 work units and depth 128; the diagnostic precedence pass shares
+one million work units across the original grammar. `at_progress_candidate_valid`
+requires complete analysis without structural issues or cycles. This is a token
+progress check, separate from host semantics, metadata, helper-name collisions
+and downstream grammar safety. A named token consumes a cursor slot even when
+its source span is empty; terminal `EOF` itself does not.
+
+The independent [left-recursion fixtures](../../../../tests/grammars/antlr_left_recursion/README.md)
+pin all 21 original grammars and 25 rules, plus minimized reference witnesses.
+Their inventory distinguishes ANTLR generation, Java compilation, reference
+runtime observations, W normalization guards and W call-graph evidence.
+Unexecuted upstream runtime cases are explicitly recorded.
 
 ## Stateful lexer lowering
 

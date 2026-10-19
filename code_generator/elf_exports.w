@@ -51,10 +51,12 @@ void elf_emit_arm64_export(int address, int n, char* classes, int ret_kind):
 
 void elf_emit_export_wrappers():
 	if (tls_size > 0):
+		if (elf_object): error(c"--emit=obj does not support thread_local storage")
 		if (elf_static): error(c"--static does not support thread_local storage")
 		error(c"--shared does not support thread_local storage")
+	# An object's extern data resolves at static link time (elf_object.w).
 	for i in range(dyn_import_count):
-		if (dyn_import_get_symtype(i) == 1): error(c"--shared does not support extern data")
+		if ((dyn_import_get_symtype(i) == 1) && (elf_object == 0)): error(c"--shared does not support extern data")
 	elf_export_addresses = cast(char*, malloc(wasm_export_count * __word_size__ + 1))
 	for e in range(wasm_export_count):
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))

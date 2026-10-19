@@ -513,6 +513,8 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	envelope.source = 0
 	d.length = envelope.length
 	d.source_start = start
+	if (d.comment_ranges != 0):
+		for i in range(d.comment_ranges.length): d.comment_ranges[i] = d.comment_ranges[i] + start
 	d.source_end = envelope.source_end
 	d.diagram_index = selected
 	if (envelope.title[0] != 0):

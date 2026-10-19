@@ -1,10 +1,11 @@
-# bench regex_backtrack: lib/regex.w's recursive backtracking matcher
+# bench regex_backtrack: lib/regex.w's former recursive backtracking
+# matcher, kept as tests/bench/regex_backtrack_matcher.w
 # (rx_here was 74% of regex_test, docs/projects/register_allocation_pgo.md
 # §1.2). Each round runs one pathological match that exhausts the step
 # budget (a*a*a*a*b against a run of a's) and a handful of ordinary
 # searches over a generated 16 KB text; size = rounds. The checksum
 # folds every result. C twin: tests/bench/c/regex_backtrack.c, a port of
-# lib/regex.w.
+# the same matcher.
 # wbuild: target=bench_regex_backtrack tag=bench dep=wv2
 # wbuild: step="bin/wv2 tests/bench/regex_backtrack.w -o bin/bench_regex_backtrack"
 # wbuild: step="bin/bench_regex_backtrack" expect_stdout="regex_backtrack size=24 checksum=ceddedd0"
@@ -16,7 +17,7 @@
 # wbuild: step="bin/wv2 x64 tests/bench/regex_backtrack.w -o bin/bench_regex_backtrack_smoke_64"
 # wbuild: step="bin/bench_regex_backtrack_smoke_64 1" expect_stdout="regex_backtrack size=1 checksum=1514b1fe"
 import lib.lib
-import lib.regex
+import tests.bench.regex_backtrack_matcher
 import tests.bench.bench_lib
 
 

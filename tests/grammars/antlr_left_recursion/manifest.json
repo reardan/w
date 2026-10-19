@@ -1,0 +1,1665 @@
+{
+  "schema": 1,
+  "corpus": {
+    "repository": "https://github.com/antlr/grammars-v4",
+    "commit": "89fd36482e8cb68a4e55df021a8adbc7541b52f2",
+    "baseline_w_commit": "b1887a858969ba341fb1449793dfd69ed4113677",
+    "license_policy": "Upstream grammar bytes including embedded license notices are preserved verbatim. Files without a notice retain their original absence; no replacement license is asserted."
+  },
+  "oracle": {
+    "version": "4.13.2",
+    "jar_sha256": "eae2dfa119a64327444672aff63e9ec35a20180dc5b8090b7a6ab85125df4d76",
+    "java_major": 17,
+    "javac_major": 17
+  },
+  "cases": [
+    {
+      "name": "alef",
+      "inputs": [
+        {
+          "path": "alef/alef.g4",
+          "sha256": "e30544413212af3043ac9d941611d28bd99c628140822fe8758c5caa200d6862"
+        }
+      ],
+      "rules": [
+        {
+          "name": "setlist",
+          "shape_hypothesis": "nullable_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "alef/alef.g4",
+            "line": 95,
+            "column": 1,
+            "rule": "setlist",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "setlist",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 2
+        },
+        {
+          "name": "zelist",
+          "shape_hypothesis": "nullable_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "alef/alef.g4",
+            "line": 125,
+            "column": 1,
+            "rule": "zelist",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "zelist",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 6
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "alloy",
+      "inputs": [
+        {
+          "path": "alloy/alloy.g4",
+          "sha256": "590771f05073bdb93fd211d0cf0fef8d3304ce26c01169a32322c6f733261a07"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expr",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "alloy/alloy.g4",
+            "line": 108,
+            "column": 1,
+            "rule": "expr",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expr",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 15
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "awk",
+      "inputs": [
+        {
+          "path": "awk/awkLexer.g4",
+          "sha256": "1af3cb226555b082ac7d284ed66d48d8de0f043d05d037f0f527a8b72a8b1482"
+        },
+        {
+          "path": "awk/awkParser.g4",
+          "sha256": "18c25614a9eea9b02c5c42b7d071faae6eccecc6152189efdc7ae4adc009d60a"
+        }
+      ],
+      "rules": [
+        {
+          "name": "non_unary_expr",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "awk/awkParser.g4",
+            "line": 178,
+            "column": 1,
+            "rule": "non_unary_expr",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "non_unary_expr",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 23
+        },
+        {
+          "name": "non_unary_print_expr",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "awk/awkParser.g4",
+            "line": 238,
+            "column": 1,
+            "rule": "non_unary_print_expr",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "non_unary_print_expr",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 20
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "awk/awkLexer.g4",
+          "line": 30,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options { superClass = awkLexerBase; }"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkLexer.g4",
+          "line": 222,
+          "column": 7,
+          "rule": "ERE",
+          "reason": "unmapped predicate at atom position 0: {this.IsNotAfterExpr()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkParser.g4",
+          "line": 181,
+          "column": 7,
+          "rule": "non_unary_expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkParser.g4",
+          "line": 191,
+          "column": 7,
+          "rule": "non_unary_expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkParser.g4",
+          "line": 197,
+          "column": 7,
+          "rule": "non_unary_expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkParser.g4",
+          "line": 241,
+          "column": 7,
+          "rule": "non_unary_print_expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkParser.g4",
+          "line": 250,
+          "column": 7,
+          "rule": "non_unary_print_expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "awk/awkParser.g4",
+          "line": 256,
+          "column": 7,
+          "rule": "non_unary_print_expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        }
+      ],
+      "java_compilation_expected": "fail"
+    },
+    {
+      "name": "cayenne",
+      "inputs": [
+        {
+          "path": "cayenne/cayenne.g4",
+          "sha256": "ead90c709bd80a35ee83367ba2610a1424b3f067a40480d6bf330efc40b4b21f"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expr",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "cayenne/cayenne.g4",
+            "line": 37,
+            "column": 1,
+            "rule": "expr",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expr",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 11
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "clu",
+      "inputs": [
+        {
+          "path": "clu/clu.g4",
+          "sha256": "2015ad08ce55043e3ebdf19be2778c7826bb940fe3f77eae0b43cd59db0f0e7d"
+        }
+      ],
+      "rules": [
+        {
+          "name": "primary",
+          "shape_hypothesis": "complex_suffix_or_option",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "clu/clu.g4",
+            "line": 222,
+            "column": 1,
+            "rule": "primary",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "primary",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 11
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "eiffel",
+      "inputs": [
+        {
+          "path": "eiffel/EiffelLexer.g4",
+          "sha256": "de0b00f69f2166cccd8cb24650b0a12ca758cf97d9bc0d09707a64b5c5d88f47"
+        },
+        {
+          "path": "eiffel/EiffelParser.g4",
+          "sha256": "0985e782fe3dc892e0275780f513f3353da012e530a0265c46fb59d5bb2bd720"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "guarded_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "eiffel/EiffelParser.g4",
+            "line": 457,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 29
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelLexer.g4",
+          "line": 44,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options {\n    caseInsensitive = true;\n    superClass = EiffelLexerBase;\n}"
+        },
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelParser.g4",
+          "line": 44,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options {\n    tokenVocab = EiffelLexer;\n    superClass = EiffelParserBase;\n}"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelLexer.g4",
+          "line": 173,
+          "column": 4,
+          "rule": "FreeOperator",
+          "reason": "unmapped predicate at atom position 1: {this.IsFreeOperator()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelParser.g4",
+          "line": 125,
+          "column": 18,
+          "rule": "non_conformance",
+          "reason": "unmapped predicate at atom position 0: {this.IsNone()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelParser.g4",
+          "line": 282,
+          "column": 13,
+          "rule": "tuple_type",
+          "reason": "unmapped predicate at atom position 0: {this.IsTuple()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelParser.g4",
+          "line": 387,
+          "column": 24,
+          "rule": "create_passive_region",
+          "reason": "unmapped predicate at atom position 0: {this.IsNone()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "eiffel/EiffelParser.g4",
+          "line": 461,
+          "column": 6,
+          "rule": "expression",
+          "reason": "unmapped element option at atom position 0: <assoc=right>"
+        }
+      ],
+      "java_compilation_expected": "fail"
+    },
+    {
+      "name": "elixir",
+      "inputs": [
+        {
+          "path": "elixir/ElixirLexer.g4",
+          "sha256": "54c708bec7b4640ca364c2effa320624699403fbfb5a22cf41c3d6d8fc91ed12"
+        },
+        {
+          "path": "elixir/ElixirParser.g4",
+          "sha256": "114e718cf798d5d4c3a1d996ef926ac622ff171f0fcf36464cbee590cf5e4e2c"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "nested_owner_reference",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "elixir/ElixirParser.g4",
+            "line": 22,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 61
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "gql",
+      "inputs": [
+        {
+          "path": "gql/GQL.g4",
+          "sha256": "e1b4a24c6b88dedddc0a1fff97df0fc30bf118cea51539e26d71c717cb737bbf"
+        }
+      ],
+      "rules": [
+        {
+          "name": "valueType",
+          "shape_hypothesis": "nested_owner_reference",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "gql/GQL.g4",
+            "line": 1719,
+            "column": 1,
+            "rule": "valueType",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "valueType",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 10
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "gvpr",
+      "inputs": [
+        {
+          "path": "gvpr/gvprLexer.g4",
+          "sha256": "f672492047c95f9afb8466ea1cebc7d8725e00a90b8b3fc651d715819a2de891"
+        },
+        {
+          "path": "gvpr/gvprParser.g4",
+          "sha256": "77933a7e8a4aade78718005fb2d7be814df9095fd6f2632332214c46624945a3"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expr",
+          "shape_hypothesis": "nested_owner_reference",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "gvpr/gvprParser.g4",
+            "line": 107,
+            "column": 1,
+            "rule": "expr",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expr",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 33
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "gvpr/gvprLexer.g4",
+          "line": 7,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options {\n    superClass = GvprLexerBase;\n}"
+        },
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "gvpr/gvprParser.g4",
+          "line": 6,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options {\n    tokenVocab = gvprLexer;\n    superClass = GvprParserBase;\n}"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "gvpr/gvprLexer.g4",
+          "line": 15,
+          "column": 30,
+          "rule": "SHELLCOMMENT",
+          "reason": "unmapped predicate at atom position 1: { this.IsColumnZero() }?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "gvpr/gvprParser.g4",
+          "line": 39,
+          "column": 20,
+          "rule": "statement_list",
+          "reason": "unmapped predicate at atom position 0: { this.IsSemiRequired() }?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "gvpr/gvprParser.g4",
+          "line": 39,
+          "column": 53,
+          "rule": "statement_list",
+          "reason": "unmapped predicate at atom position 0: { this.IsSemiNotRequired() }?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "gvpr/gvprParser.g4",
+          "line": 123,
+          "column": 7,
+          "rule": "expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        }
+      ],
+      "java_compilation_expected": "fail"
+    },
+    {
+      "name": "hypertalk",
+      "inputs": [
+        {
+          "path": "hypertalk/HyperTalk.g4",
+          "sha256": "ed77c3c27149519a48c980c30ab731572c8113827735dd57a24353c9044a7541"
+        }
+      ],
+      "rules": [
+        {
+          "name": "chunk",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "hypertalk/HyperTalk.g4",
+            "line": 314,
+            "column": 1,
+            "rule": "chunk",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "chunk",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 13
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "kirikiri-tjs",
+      "inputs": [
+        {
+          "path": "kirikiri-tjs/TJSLexer.g4",
+          "sha256": "67389695f5d770fa7db25ae16af27f8f2b8a6cdddd3689ab1d53b7cd19d647e7"
+        },
+        {
+          "path": "kirikiri-tjs/TJSParser.g4",
+          "sha256": "1d882904ec19b2938ab8e5b47fbd6bbd689c4a689e7e291b766004c62ded3a95"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "guarded_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "kirikiri-tjs/TJSParser.g4",
+            "line": 184,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 48
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "kirikiri-tjs/TJSLexer.g4",
+          "line": 11,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options {\n    superClass = TJSBaseLexer;\n}"
+        },
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "kirikiri-tjs/TJSParser.g4",
+          "line": 6,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options {\n    tokenVocab = TJSLexer;\n    superClass = TJSBaseParser;\n}"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "kirikiri-tjs/TJSLexer.g4",
+          "line": 17,
+          "column": 5,
+          "rule": "RegularExpressionLiteral",
+          "reason": "unmapped predicate at atom position 0: {this.IsRegexPossible()}?"
+        }
+      ],
+      "java_compilation_expected": "fail"
+    },
+    {
+      "name": "peoplecode",
+      "inputs": [
+        {
+          "path": "peoplecode/PeopleCode.g4",
+          "sha256": "5f110ad58a772b92d7e8bf0aa6aacbe797941a22510c17a473dbec72e452aec3"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expr",
+          "shape_hypothesis": "complex_suffix_or_option",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "peoplecode/PeopleCode.g4",
+            "line": 67,
+            "column": 1,
+            "rule": "expr",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expr",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 16
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "peoplecode/PeopleCode.g4",
+          "line": 82,
+          "column": 13,
+          "rule": "expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "peoplecode/PeopleCode.g4",
+          "line": 82,
+          "column": 41,
+          "rule": "expr",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        }
+      ],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "plucid",
+      "inputs": [
+        {
+          "path": "plucid/plucid.g4",
+          "sha256": "427b527584599babc93fd1efe59467e863b5a9d07eb7ecdc48fe9c3ec55e5a4a"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "guarded_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "plucid/plucid.g4",
+            "line": 42,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 15
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "refal",
+      "inputs": [
+        {
+          "path": "refal/refal.g4",
+          "sha256": "5e8c0eb786292fb0f7bc2dc3c3e63156d9fdec3eef5faab0ba21531bcc1c8489"
+        }
+      ],
+      "rules": [
+        {
+          "name": "program",
+          "shape_hypothesis": "guarded_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "refal/refal.g4",
+            "line": 42,
+            "column": 1,
+            "rule": "program",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "program",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 3
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "rust",
+      "inputs": [
+        {
+          "path": "rust/RustLexer.g4",
+          "sha256": "22a0e797c642a9f8a920fd5e7b6eb86a0176a7968906adc0553b1997a041857c"
+        },
+        {
+          "path": "rust/RustParser.g4",
+          "sha256": "2addda9f60ebf9b8887e962328ee8a12c1dc945a58bce0f1de7034c00be7aae1"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "nested_owner_reference",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "rust/RustParser.g4",
+            "line": 440,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 40
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "rust/RustLexer.g4",
+          "line": 27,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options\n{\n    superClass = RustLexerBase;\n}"
+        },
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "rust/RustParser.g4",
+          "line": 26,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: options\n{\n    tokenVocab = RustLexer;\n    superClass = RustParserBase;\n}"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "rust/RustLexer.g4",
+          "line": 136,
+          "column": 10,
+          "rule": "SHEBANG",
+          "reason": "unmapped predicate at atom position 0: {this.SOF()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "rust/RustLexer.g4",
+          "line": 184,
+          "column": 5,
+          "rule": "FLOAT_LITERAL",
+          "reason": "unmapped predicate at atom position 0: {this.FloatLiteralPossible()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "rust/RustLexer.g4",
+          "line": 186,
+          "column": 25,
+          "rule": "FLOAT_LITERAL",
+          "reason": "unmapped predicate at atom position 2: {this.FloatDotPossible()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "rust/RustParser.g4",
+          "line": 1193,
+          "column": 10,
+          "rule": "shl",
+          "reason": "unmapped predicate at atom position 1: {this.NextLT()}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "rust/RustParser.g4",
+          "line": 1197,
+          "column": 10,
+          "rule": "shr",
+          "reason": "unmapped predicate at atom position 1: {this.NextGT()}?"
+        }
+      ],
+      "java_compilation_expected": "fail"
+    },
+    {
+      "name": "sapf",
+      "inputs": [
+        {
+          "path": "sapf/sapf.g4",
+          "sha256": "9d6118eb7a936221844b046c3acd1f19520c7213c539d2fb0653468a56df5616"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "complex_suffix_or_option",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "sapf/sapf.g4",
+            "line": 48,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 3
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "semver",
+      "inputs": [
+        {
+          "path": "semver/SemanticVersionLexer.g4",
+          "sha256": "31cb467a6c68b636ccbae5c394fec105a48bcd729a17600631ba201fdb193adb"
+        },
+        {
+          "path": "semver/SemanticVersionParser.g4",
+          "sha256": "206479166a65155520e632ad251d8a2f1e3b05b4b75785a46db9ecd6970ba64a"
+        }
+      ],
+      "rules": [
+        {
+          "name": "build",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "semver/SemanticVersionParser.g4",
+            "line": 25,
+            "column": 1,
+            "rule": "build",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "build",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 5
+        },
+        {
+          "name": "preRelease",
+          "shape_hypothesis": "adjacent_or_optional_separator",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "semver/SemanticVersionParser.g4",
+            "line": 33,
+            "column": 1,
+            "rule": "preRelease",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "preRelease",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 5
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "spl",
+      "inputs": [
+        {
+          "path": "spl/SPLLexer.g4",
+          "sha256": "7bf246f9fed11ba25533142eb97af79b3cea8f1134bd586db2ab7f22076fe99b"
+        },
+        {
+          "path": "spl/SPLParser.g4",
+          "sha256": "07ddd440c7b855033ada7d2d80bfdef89cfcad61ff13e89116bd2a87d54b50ad"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "guarded_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "spl/SPLParser.g4",
+            "line": 65,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 12
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "spl/SPLParser.g4",
+          "line": 68,
+          "column": 7,
+          "rule": "expression",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        }
+      ],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "tl",
+      "inputs": [
+        {
+          "path": "tl/tl.g4",
+          "sha256": "a47651aa1b08cc3c7f429754f2f3b0f0e0e15cfa8407fa1342a0b48b0596fb66"
+        }
+      ],
+      "rules": [
+        {
+          "name": "proposition",
+          "shape_hypothesis": "nullable_primary",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "tl/tl.g4",
+            "line": 44,
+            "column": 1,
+            "rule": "proposition",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "proposition",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 7
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "vb6",
+      "inputs": [
+        {
+          "path": "vb6/VisualBasic6Lexer.g4",
+          "sha256": "eba344e6cb3f94f180b6b0296647a2e4a5ed272d2cd6cf20ce4bac97b34f75a5"
+        },
+        {
+          "path": "vb6/VisualBasic6Parser.g4",
+          "sha256": "727042c85556c8f90921ec0222a9282b67e539dbc7675f9ac2aa5d9a900b4884"
+        }
+      ],
+      "rules": [
+        {
+          "name": "valueStmt",
+          "shape_hypothesis": "nested_owner_reference",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "vb6/VisualBasic6Parser.g4",
+            "line": 610,
+            "column": 1,
+            "rule": "valueStmt",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "valueStmt",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 22
+        }
+      ],
+      "host_findings": [],
+      "java_compilation_expected": "pass"
+    },
+    {
+      "name": "z",
+      "inputs": [
+        {
+          "path": "z/ZLexer.g4",
+          "sha256": "e86672ff2b153e97e383edea7919e62b0aeb96000fa5abce8775b3b6534a5d1a"
+        },
+        {
+          "path": "z/ZParser.g4",
+          "sha256": "7d3151affb560786765d27b94d249ecc3d9d8c748476c1182b4373948d84ceb6"
+        }
+      ],
+      "rules": [
+        {
+          "name": "expression",
+          "shape_hypothesis": "complex_suffix_or_option",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "z/ZParser.g4",
+            "line": 92,
+            "column": 1,
+            "rule": "expression",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "expression",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 44
+        },
+        {
+          "name": "predicate",
+          "shape_hypothesis": "complex_suffix_or_option",
+          "normalization_observed": {
+            "code": "AT_LEFT_RECURSION",
+            "stage": "translate",
+            "feature": "left_recursion",
+            "classification": "unsupported",
+            "file": "z/ZParser.g4",
+            "line": 74,
+            "column": 1,
+            "rule": "predicate",
+            "reason": "unsupported left recursion (including nullable prefixes)"
+          },
+          "cause_status": "generic refusal observed; shape hypothesis is not a proven refusal cause",
+          "witness_entry": "predicate",
+          "runtime_status": "not_run; generation and Java compilation are not upstream runtime evidence",
+          "source_alternative_count": 15
+        }
+      ],
+      "host_findings": [
+        {
+          "code": "AT_DECLARATION",
+          "stage": "translate",
+          "feature": "declaration",
+          "classification": "unsupported",
+          "file": "z/ZLexer.g4",
+          "line": 35,
+          "column": 1,
+          "rule": "<grammar>",
+          "reason": "unresolved grammar dependency: @lexer::members {\n\tpublic static final Integer[] BOTH_VALUES = new Integer[] { ELSE, FUNCTION, GENERIC, LEFTASSOC, PARENTS, RELATION, RIGHTASSOC, SECTION, THEN, FREE_EQUALS, VERTICAL_LINE, LEFT_DOUBLE_ANGLE_BRACKET, RIGHT_DOUBLE_ANGLE_BRACKET, AMPERSAND, RIGHT_TACK, LIST, LOGICAL_AND, LOGICAL_OR, RIGHTWARDS_DOUBLE_ARROW, LEFT_RIGHT_DOUBLE_ARROW, MULTIPLICATION_SIGN, SOLIDUS, EQUALS_SIGN, ELEMENT_OF, DEFINE_EQUAL, COLON, SEMICOLON, COMMA, FULL_STOP, SPOT, BIG_REVERSE_SOLIDUS, SCHEMA_PROJECTION, SCHEMA_COMPOSITION, SCHEMA_PIPING };\n\tpublic static final Integer[] AFTER_VALUES = new Integer[] { IF, LET, PRE_KEY, LEFT_SQUARE_BRACKET, ARGUMENT, NOT_SIGN, FOR_ALL, THERE_EXISTS, POWERSET, LEFT_PARENTHESIS, LEFT_CURLY_BRACKET, LEFT_BINDING_BRACKET, GREEK_SMALL_LETTER_LAMBDA, GREEK_SMALL_LETTER_MU, GREEK_SMALL_LETTER_THETA, ZED, AX, SCH /*GENAX GENSCH*/};\n\tpublic static final Integer[] BEFORE_VALUES = new Integer[] { RIGHT_SQUARE_BRACKET, RIGHT_PARENTHESIS, RIGHT_CURLY_BRACKET, RIGHT_BINDING_BRACKET, END};\n\t\n\tpublic static final java.util.Set<Integer> BOTH = new java.util.HashSet<Integer>(java.util.Arrays.asList(BOTH_VALUES));\n\tpublic static final java.util.Set<Integer> AFTER = new java.util.HashSet<Integer>(java.util.Arrays.asList(AFTER_VALUES));\n\tpublic static final java.util.Set<Integer> BEFORE = new java.util.HashSet<Integer>(java.util.Arrays.asList(BEFORE_VALUES));\n\t\n\tint lastTokenType = 0;\n\tpublic void emit(Token token) {\n \t   super.emit(token);\n \t   lastTokenType = token.getType();\n\t}\n\t\n\tpublic boolean shouldNL(int nextToken) {\n\t\tif(BOTH.contains(lastTokenType)) {\n\t\t\treturn false;\n\t\t} else if(AFTER.contains(lastTokenType)) {\n\t\t\treturn false;\n\t\t} else if(BEFORE.contains(nextToken)) {\n\t\t\treturn false;\n\t\t}\n\n\t\treturn true;\n\t}\n}"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZLexer.g4",
+          "line": 111,
+          "column": 15,
+          "rule": "NL",
+          "reason": "unmapped predicate at atom position 1: {shouldNL(_input.LA(1))}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZParser.g4",
+          "line": 116,
+          "column": 18,
+          "rule": "expression",
+          "reason": "unmapped predicate at atom position 1: {ZSupport.isLeftAssociative(_input)}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZParser.g4",
+          "line": 117,
+          "column": 7,
+          "rule": "expression",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZParser.g4",
+          "line": 291,
+          "column": 18,
+          "rule": "infixRel",
+          "reason": "unmapped predicate at atom position 1: {ZSupport.isLeftAssociative(_input)}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZParser.g4",
+          "line": 292,
+          "column": 7,
+          "rule": "infixRel",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZParser.g4",
+          "line": 293,
+          "column": 18,
+          "rule": "infixRel",
+          "reason": "unmapped predicate at atom position 1: {ZSupport.isLeftAssociative(_input)}?"
+        },
+        {
+          "code": "AT_HOST_SITE",
+          "stage": "translate",
+          "feature": "host_code",
+          "classification": "unsupported",
+          "file": "z/ZParser.g4",
+          "line": 297,
+          "column": 7,
+          "rule": "infixRel",
+          "reason": "unmapped element option at atom position 0: <assoc = right>"
+        }
+      ],
+      "java_compilation_expected": "fail"
+    }
+  ],
+  "minimal": [
+    {
+      "name": "Adjacent",
+      "grammar": "Adjacent.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "adjacent_or_optional_separator",
+      "generation_expected": "pass",
+      "inputs": [
+        "a",
+        "a b",
+        "a b c",
+        "a ?"
+      ]
+    },
+    {
+      "name": "OptionalSeparator",
+      "grammar": "OptionalSeparator.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "adjacent_or_optional_separator",
+      "generation_expected": "pass",
+      "inputs": [
+        "a",
+        "a b",
+        "a,b,c",
+        "a,"
+      ]
+    },
+    {
+      "name": "GroupedOwner",
+      "grammar": "GroupedOwner.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "nested_owner_reference",
+      "generation_expected": "pass",
+      "inputs": [
+        "a",
+        "a[b,c]",
+        "a[b[c]]",
+        "a["
+      ]
+    },
+    {
+      "name": "GuardedPrimary",
+      "grammar": "GuardedPrimary.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "guarded_primary",
+      "generation_expected": "pass",
+      "inputs": [
+        "a+a+a",
+        "if a then b end+a",
+        "if a then b+a end",
+        "if a then"
+      ]
+    },
+    {
+      "name": "ComplexSuffix",
+      "grammar": "ComplexSuffix.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "complex_suffix_or_option",
+      "generation_expected": "pass",
+      "inputs": [
+        "a(b)+c",
+        "a+b(c)",
+        "a(b(c))",
+        "a("
+      ]
+    },
+    {
+      "name": "NestedAssoc",
+      "grammar": "NestedAssoc.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "complex_suffix_or_option",
+      "generation_expected": "pass",
+      "inputs": [
+        "a=b=c",
+        "a:=b=c",
+        "a="
+      ]
+    },
+    {
+      "name": "NullablePrimary",
+      "grammar": "NullablePrimary.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "nullable_primary",
+      "generation_expected": "pass",
+      "inputs": [
+        "",
+        "a",
+        ",a",
+        ",a,b",
+        ","
+      ]
+    },
+    {
+      "name": "NullableAdjacent",
+      "grammar": "NullableAdjacent.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "zero_progress",
+      "generation_expected": "fail",
+      "inputs": []
+    },
+    {
+      "name": "MutualCycle",
+      "grammar": "MutualCycle.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "mutual_cycle",
+      "generation_expected": "fail",
+      "inputs": []
+    },
+    {
+      "name": "DirectCycle",
+      "grammar": "DirectCycle.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "zero_progress",
+      "generation_expected": "fail",
+      "inputs": []
+    },
+    {
+      "name": "MisplacedAssoc",
+      "grammar": "MisplacedAssoc.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "complex_suffix_or_option",
+      "generation_expected": "pass",
+      "inputs": [
+        "a=b=c"
+      ]
+    },
+    {
+      "name": "AttachedAssoc",
+      "grammar": "AttachedAssoc.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "complex_suffix_or_option",
+      "generation_expected": "fail",
+      "inputs": []
+    },
+    {
+      "name": "RightAssoc",
+      "grammar": "RightAssoc.g4",
+      "rules": [
+        "expr"
+      ],
+      "start": "start",
+      "shape": "complex_suffix_or_option",
+      "generation_expected": "pass",
+      "inputs": [
+        "a^b^c",
+        "-a^b",
+        "a^-b",
+        "a^"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "Adjacent.g4",
+      "sha256": "3acd55f9cfbf8d5d90ee008821036135f316d2d74ffa90722f5bcc959c8f2f12"
+    },
+    {
+      "path": "AttachedAssoc.g4",
+      "sha256": "0b833c01fe3734466bb6f96a450c69d535b5dcfc6cbbcc3fb29eba13b6b210c4"
+    },
+    {
+      "path": "ComplexSuffix.g4",
+      "sha256": "75a063fca87a5b8053f3b66ba9973e7407b2eb5ce3caa782204f61fd78594382"
+    },
+    {
+      "path": "DirectCycle.g4",
+      "sha256": "5be1611164f90f9a02bd2f376f3ecbe06b44fca74f2d2a190a6f17e57354c1ce"
+    },
+    {
+      "path": "GroupedOwner.g4",
+      "sha256": "205480d62f43ff8a1111d142869783317465881781b36f6a9f43f3e8793f650d"
+    },
+    {
+      "path": "GuardedPrimary.g4",
+      "sha256": "6a196f35620b663eed0a9de50c7ee65774726762f30e7ef613cac05926ea8764"
+    },
+    {
+      "path": "Inspect.java",
+      "sha256": "9fb58b06a1ebfbed62bae4c61331660e0500c8a2b6e5c9a82a38d9f3b18e2515"
+    },
+    {
+      "path": "MisplacedAssoc.g4",
+      "sha256": "47ddda1a6851fa62ac9c92d2884db9f69add960821f1f5caa28c370f0098d0d4"
+    },
+    {
+      "path": "MutualCycle.g4",
+      "sha256": "c53d52a02119f7865d4b2b164a395c5d5e1232debf196421bc0521aa66472d81"
+    },
+    {
+      "path": "NestedAssoc.g4",
+      "sha256": "43bc59316224ffd7c6a96cae40c27370efc6b2d7ca4c04e67432d1ce91580f58"
+    },
+    {
+      "path": "NullableAdjacent.g4",
+      "sha256": "15c68d6353a56823272cf94496aae2ea49a888fa22772b86c689c318171a35f0"
+    },
+    {
+      "path": "NullablePrimary.g4",
+      "sha256": "8c4c58fc14825f97b11e559d715f3fe8c1569f361a9011d12d0def5b13aba398"
+    },
+    {
+      "path": "OptionalSeparator.g4",
+      "sha256": "923704b652b414eb01c5f8c4534c1b9ce23d40ba7009f3442f55fffee3d0d0cf"
+    },
+    {
+      "path": "README.md",
+      "sha256": "53ad174a367d8fd0d8ac55589df3b942577f551f3a0a74714003b8bf95e9c028"
+    },
+    {
+      "path": "RightAssoc.g4",
+      "sha256": "28061f8b5a192c074a94b3854bf84de9d184440ee229561183e04ba1ffa15ba0"
+    },
+    {
+      "path": "TreeOracle.java",
+      "sha256": "bf232d9ca119b675df241cd9412766d3da743c2ecbd34fa34a06fc0eb23bed10"
+    },
+    {
+      "path": "current_refusals.json",
+      "sha256": "dc84ad90e7c270b68c012dce5437b256bbc4d2e5fffe4ace02467c5b1635a715"
+    },
+    {
+      "path": "original_graph.json",
+      "sha256": "929bc58c8263d5b175084c263423ebc47ae6502c4851b3a7e81a2f0b41825d8b"
+    },
+    {
+      "path": "reference_environment.json",
+      "sha256": "c4ee5da6a5e52e537c4185de0c197d778f7cfba96896f767a4741e6cadcea28b"
+    },
+    {
+      "path": "upstream/alef/alef.g4",
+      "sha256": "e30544413212af3043ac9d941611d28bd99c628140822fe8758c5caa200d6862"
+    },
+    {
+      "path": "upstream/alloy/alloy.g4",
+      "sha256": "590771f05073bdb93fd211d0cf0fef8d3304ce26c01169a32322c6f733261a07"
+    },
+    {
+      "path": "upstream/awk/awkLexer.g4",
+      "sha256": "1af3cb226555b082ac7d284ed66d48d8de0f043d05d037f0f527a8b72a8b1482"
+    },
+    {
+      "path": "upstream/awk/awkParser.g4",
+      "sha256": "18c25614a9eea9b02c5c42b7d071faae6eccecc6152189efdc7ae4adc009d60a"
+    },
+    {
+      "path": "upstream/cayenne/cayenne.g4",
+      "sha256": "ead90c709bd80a35ee83367ba2610a1424b3f067a40480d6bf330efc40b4b21f"
+    },
+    {
+      "path": "upstream/clu/clu.g4",
+      "sha256": "2015ad08ce55043e3ebdf19be2778c7826bb940fe3f77eae0b43cd59db0f0e7d"
+    },
+    {
+      "path": "upstream/eiffel/EiffelLexer.g4",
+      "sha256": "de0b00f69f2166cccd8cb24650b0a12ca758cf97d9bc0d09707a64b5c5d88f47"
+    },
+    {
+      "path": "upstream/eiffel/EiffelParser.g4",
+      "sha256": "0985e782fe3dc892e0275780f513f3353da012e530a0265c46fb59d5bb2bd720"
+    },
+    {
+      "path": "upstream/elixir/ElixirLexer.g4",
+      "sha256": "54c708bec7b4640ca364c2effa320624699403fbfb5a22cf41c3d6d8fc91ed12"
+    },
+    {
+      "path": "upstream/elixir/ElixirParser.g4",
+      "sha256": "114e718cf798d5d4c3a1d996ef926ac622ff171f0fcf36464cbee590cf5e4e2c"
+    },
+    {
+      "path": "upstream/gql/GQL.g4",
+      "sha256": "e1b4a24c6b88dedddc0a1fff97df0fc30bf118cea51539e26d71c717cb737bbf"
+    },
+    {
+      "path": "upstream/gvpr/gvprLexer.g4",
+      "sha256": "f672492047c95f9afb8466ea1cebc7d8725e00a90b8b3fc651d715819a2de891"
+    },
+    {
+      "path": "upstream/gvpr/gvprParser.g4",
+      "sha256": "77933a7e8a4aade78718005fb2d7be814df9095fd6f2632332214c46624945a3"
+    },
+    {
+      "path": "upstream/hypertalk/HyperTalk.g4",
+      "sha256": "ed77c3c27149519a48c980c30ab731572c8113827735dd57a24353c9044a7541"
+    },
+    {
+      "path": "upstream/kirikiri-tjs/TJSLexer.g4",
+      "sha256": "67389695f5d770fa7db25ae16af27f8f2b8a6cdddd3689ab1d53b7cd19d647e7"
+    },
+    {
+      "path": "upstream/kirikiri-tjs/TJSParser.g4",
+      "sha256": "1d882904ec19b2938ab8e5b47fbd6bbd689c4a689e7e291b766004c62ded3a95"
+    },
+    {
+      "path": "upstream/peoplecode/PeopleCode.g4",
+      "sha256": "5f110ad58a772b92d7e8bf0aa6aacbe797941a22510c17a473dbec72e452aec3"
+    },
+    {
+      "path": "upstream/plucid/plucid.g4",
+      "sha256": "427b527584599babc93fd1efe59467e863b5a9d07eb7ecdc48fe9c3ec55e5a4a"
+    },
+    {
+      "path": "upstream/refal/refal.g4",
+      "sha256": "5e8c0eb786292fb0f7bc2dc3c3e63156d9fdec3eef5faab0ba21531bcc1c8489"
+    },
+    {
+      "path": "upstream/rust/RustLexer.g4",
+      "sha256": "22a0e797c642a9f8a920fd5e7b6eb86a0176a7968906adc0553b1997a041857c"
+    },
+    {
+      "path": "upstream/rust/RustParser.g4",
+      "sha256": "2addda9f60ebf9b8887e962328ee8a12c1dc945a58bce0f1de7034c00be7aae1"
+    },
+    {
+      "path": "upstream/sapf/sapf.g4",
+      "sha256": "9d6118eb7a936221844b046c3acd1f19520c7213c539d2fb0653468a56df5616"
+    },
+    {
+      "path": "upstream/semver/SemanticVersionLexer.g4",
+      "sha256": "31cb467a6c68b636ccbae5c394fec105a48bcd729a17600631ba201fdb193adb"
+    },
+    {
+      "path": "upstream/semver/SemanticVersionParser.g4",
+      "sha256": "206479166a65155520e632ad251d8a2f1e3b05b4b75785a46db9ecd6970ba64a"
+    },
+    {
+      "path": "upstream/spl/SPLLexer.g4",
+      "sha256": "7bf246f9fed11ba25533142eb97af79b3cea8f1134bd586db2ab7f22076fe99b"
+    },
+    {
+      "path": "upstream/spl/SPLParser.g4",
+      "sha256": "07ddd440c7b855033ada7d2d80bfdef89cfcad61ff13e89116bd2a87d54b50ad"
+    },
+    {
+      "path": "upstream/tl/tl.g4",
+      "sha256": "a47651aa1b08cc3c7f429754f2f3b0f0e0e15cfa8407fa1342a0b48b0596fb66"
+    },
+    {
+      "path": "upstream/vb6/VisualBasic6Lexer.g4",
+      "sha256": "eba344e6cb3f94f180b6b0296647a2e4a5ed272d2cd6cf20ce4bac97b34f75a5"
+    },
+    {
+      "path": "upstream/vb6/VisualBasic6Parser.g4",
+      "sha256": "727042c85556c8f90921ec0222a9282b67e539dbc7675f9ac2aa5d9a900b4884"
+    },
+    {
+      "path": "upstream/z/ZLexer.g4",
+      "sha256": "e86672ff2b153e97e383edea7919e62b0aeb96000fa5abce8775b3b6534a5d1a"
+    },
+    {
+      "path": "upstream/z/ZParser.g4",
+      "sha256": "7d3151affb560786765d27b94d249ecc3d9d8c748476c1182b4373948d84ceb6"
+    }
+  ],
+  "snapshots_sha256": "d49a7afa46507fae9450b1ac26da4188ef3ac9e6d52e3ea92b7f2228d55b2eeb"
+}

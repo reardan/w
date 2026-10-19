@@ -27,6 +27,7 @@ log/*.core
 # Generated sources (issue #323): build outputs of the "generated"
 # umbrella, which every ./wbuild run builds first.
 /lib/grapheme_data.w
+/libs/standard/text/unicodedata_data.w
 /graphics/ui/font_data.w
 /libs/extras/protobuf/generated_proto_parser.w
 /tests/protobuf/common_pb.w
