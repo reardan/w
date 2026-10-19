@@ -141,8 +141,8 @@ int js_equality_bigint_number(js_value* value, float64 number):
 	return bits == value.bigint_bits && high == value.bigint_unsigned
 
 # Ordinary default-hint conversion uses valueOf, then toString. No Symbol or
-# exotic @@toPrimitive hooks exist in the current value model. Missing shared
-# Object/Array/Function intrinsic defaults are explicit unsupported operations.
+# exotic @@toPrimitive hooks exist in the current value model. Absent or
+# noncallable methods are skipped; exhausting both methods throws TypeError.
 js_value* js_equality_primitive(js_runtime* rt, js_value* value):
 	if (value.binary_kind != 0 || value.regexp != 0 || value.reactions != 0 || value.host_get != 0 || value.host_set != 0 || value.text_codec != 0):
 		js_runtime_fail(rt, 6, c"exotic equality coercion is outside the runtime subset")
@@ -159,24 +159,6 @@ js_value* js_equality_primitive(js_runtime* rt, js_value* value):
 		if (i == 1): name = c"toString"
 		js_value* method = js_runtime_get(rt, value, name)
 		if (rt.completion.status != 0): break
-		if (i == 1 && method.kind == 0):
-			js_text* key = js_runtime_key(name)
-			js_value* current = value
-			int present = 0
-			int depth = 0
-			while (current != 0):
-				if (depth >= rt.max_depth || js_runtime_compat_step(rt) == 0):
-					js_runtime_fail(rt, 5, c"JavaScript equality prototype depth limit")
-					break
-				if (js_runtime_property(current, key) != 0):
-					present = 1
-					break
-				current = current.prototype
-				depth = depth + 1
-			js_text_free(key)
-			if (present == 0):
-				js_runtime_fail(rt, 6, c"implicit prototype equality coercion is outside the runtime subset")
-				break
 		if (method.kind != 7 && method.kind != 9): continue
 		list[js_value*] args = new list[js_value*]
 		result = js_runtime_call_receiver(rt, method, value, args)

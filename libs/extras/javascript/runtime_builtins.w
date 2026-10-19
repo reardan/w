@@ -207,24 +207,6 @@ js_text* js_runtime_string_text(js_runtime* rt, js_value* value):
 		if (i == 1): name = c"valueOf"
 		js_value* method = js_runtime_get(rt, value, name)
 		if (rt.completion.status != 0): break
-		if (i == 0 && method.kind == 0):
-			# Explicit undefined must skip the method, but an absent default
-			# Object.prototype.toString must not silently change precedence.
-			js_text* key = js_runtime_key(name)
-			js_value* current = value
-			int present = 0
-			int depth = 0
-			while (current != 0 && depth < rt.max_depth):
-				if (js_runtime_compat_step(rt) == 0): break
-				if (js_runtime_property(current, key) != 0):
-					present = 1
-					break
-				current = current.prototype
-				depth = depth + 1
-			js_text_free(key)
-			if (present == 0):
-				js_runtime_fail(rt, 6, c"implicit prototype String coercion is outside the runtime subset")
-				break
 		if (method.kind != 7 && method.kind != 9): continue
 		attempted = 1
 		list[js_value*] args = new list[js_value*]
