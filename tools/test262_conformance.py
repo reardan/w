@@ -280,6 +280,7 @@ def suite_inventory(manifest_path, manifest):
 
 def run(manifest_path, binary, timeout=10, budget=100000, loaded=None, upstream_harness=False):
     manifest, sources = load_manifest(manifest_path) if loaded is None else loaded
+    execution_evidence = provenance(binary)
     results = []
     profile = {'name': 'upstream-harness-experimental-v1' if upstream_harness else 'native-assertions-async-v2',
                'features': sorted(FEATURES), 'builtins': sorted(BUILTINS), 'step_budget': budget, 'wall_timeout_seconds': timeout}
@@ -326,7 +327,7 @@ def run(manifest_path, binary, timeout=10, budget=100000, loaded=None, upstream_
     observed = Counter(item['status'] for item in results)
     counts = {status: observed[status] for status in STATUSES}
     report = {'protocol': 1, 'suite': manifest['suite'], 'upstream': manifest['upstream'], 'profile': 'upstream-harness-experimental-v1' if upstream_harness else 'native-assertions-async-v2',
-              'evidence': provenance(binary), 'profile_contract': profile,
+              'evidence': execution_evidence, 'profile_contract': profile,
               'profile_sha256': hashlib.sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest(),
               'source_index_sha256': source_index_hash,
               'harness_sources': {name: digest for name, digest in source_index.items() if name.startswith('upstream/harness/')}, 'inventory': suite_inventory(manifest_path, manifest), 'baseline_reviewed': manifest['baseline'] is not None and not upstream_harness,
