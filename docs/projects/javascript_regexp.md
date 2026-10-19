@@ -111,8 +111,11 @@ exceptions, UTF-16 offsets, quotas, foreign values and collection ownership.
 `javascript_runtime_regexp_split_test` checks capture insertion, empty matches,
 limits, UTF-16, coercion/access order, preserved separator state, exceptions,
 foreign values, GC and resource exhaustion; `javascript_runtime_string_split_test`
-checks the string-separator path. The split implementation's 162-case reference
-comparison (18 patterns by 9 inputs) matched pinned Node 20.19.3. These focused
+checks the string-separator path. A fresh explicit-path reference refresh at
+W `4a948ab3` confirmed the retained split comparison's 162 cases (18 patterns by
+9 inputs) against Node 20.19.3, recording `process.execPath` and `process.version`.
+Earlier runs did not retain enough executable provenance to attribute their
+Node version independently. These focused
 tests passed normally and in their guard allocator paths. Complete upstream
 String.split audits still contain failures and unsupported cases; full pinned
 RegExp-family conformance remains unverified.
