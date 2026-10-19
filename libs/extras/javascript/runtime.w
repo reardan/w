@@ -51,6 +51,7 @@ struct js_value:
 	int arguments_object
 	js_value* boxed_value
 	int boxed_constructor
+	int join_active
 	int host_receiver
 	js_value* this_value
 	int variable_scope
@@ -163,6 +164,9 @@ js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
 void js_runtime_install_object(js_runtime* rt);
 void js_runtime_install_boxed(js_runtime* rt);
+void js_runtime_install_harness_math(js_runtime* rt);
+void js_runtime_install_array_join(js_runtime* rt);
+js_value* js_object_prototype_method(void* runtime, void* context, js_value* receiver, list[js_value*] args);
 int js_object_ordinary(js_runtime* rt, js_value* object);
 js_value* js_object_argument(js_runtime* rt, list[js_value*] args, int index);
 void js_object_method(js_runtime* rt, js_value* object, char* name, js_host_receiver_function* callback, int code, int length);
@@ -302,6 +306,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.arguments_object = 0
 	value.boxed_value = 0
 	value.boxed_constructor = 0
+	value.join_active = 0
 	value.host_receiver = 0
 	value.this_value = 0
 	value.variable_scope = 0
@@ -527,6 +532,8 @@ js_runtime* js_runtime_new():
 	js_runtime_install_json(rt)
 	js_runtime_install_object(rt)
 	js_runtime_install_boxed(rt)
+	js_runtime_install_harness_math(rt)
+	js_runtime_install_array_join(rt)
 	return rt
 
 
@@ -1970,3 +1977,6 @@ import libs.extras.javascript.runtime_switch
 import libs.extras.javascript.runtime_delete
 
 import libs.extras.javascript.runtime_boxed
+
+import libs.extras.javascript.runtime_harness_math
+import libs.extras.javascript.runtime_array_join
