@@ -281,3 +281,64 @@ void test_uml_attached_standalone_and_multiline_notes():
 			mm_scene_free(scene)
 			mm_document_free(d)
 	__w_list_free(cast(__w_list*, sources))
+
+void test_uml_comma_separated_generic_parameters():
+	mm_document* d = uml_parse(c"classDiagram\nclass Map~K, List~V~~\nclass Pair~A,B~\nMap --> Pair\n")
+	mm_node* n = d.nodes[0]
+	assert_strings_equal(c"Map<K, List<V>>", n.label)
+	n = d.nodes[1]
+	assert_strings_equal(c"Pair<A, B>", n.label)
+	mm_document_free(d)
+	list[char*] invalid = list[char*]{c"classDiagram\nclass A~K,~", c"classDiagram\nclass A~K, V", c"classDiagram\nclass A~,K~"}
+	for char* source in invalid:
+		d = mm_parse(source, strlen(source))
+		asserts(c"malformed generic list diagnosed", d.error != 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, invalid))
+
+int uml_region_count(mm_document* d, int parent):
+	int count = 0
+	for mm_node* n in d.nodes:
+		if (n.parent == parent && index_of(n.id, c"@region:") == 0): count = count + 1
+	return count
+
+void test_uml_state_concurrent_regions():
+	char* source = c"stateDiagram-v2\n[*] --> Active\nstate Active {\n[*] --> NumLockOff\nNumLockOff --> NumLockOn : press\n--\n[*] --> CapsOff\nCapsOff --> CapsOn\n--\n[*] --> Idle\n}\nActive --> [*]\n"
+	mm_document* d = uml_parse(source)
+	int active = mm_find_node(d, c"Active")
+	assert_equal(3, uml_region_count(d, active))
+	mm_node* num = d.nodes[mm_find_node(d, c"NumLockOff")]
+	mm_node* caps = d.nodes[mm_find_node(d, c"CapsOff")]
+	mm_node* idle = d.nodes[mm_find_node(d, c"Idle")]
+	asserts(c"regions partition the composite", num.parent != caps.parent && caps.parent != idle.parent && num.parent != idle.parent)
+	mm_node* region = d.nodes[num.parent]
+	assert_equal(active, region.parent)
+	assert_equal(1, region.group)
+	int starts = 0
+	for mm_node* n in d.nodes:
+		if (n.shape == 4): starts = starts + 1
+	assert_equal(4, starts)
+	mm_scene* s = mm_render(d)
+	uml_assert_containment(d, s)
+	mm_bounds* first = s.nodes[num.parent]
+	mm_bounds* second = s.nodes[caps.parent]
+	int separate = first.x + first.w <= second.x || second.x + second.w <= first.x || first.y + first.h <= second.y || second.y + second.h <= first.y
+	asserts(c"region boxes do not overlap", separate)
+	char* svg = mm_svg(s)
+	asserts(c"region states rendered", index_of(svg, c">CapsOn</text>") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	for length in range(strlen(source) + 1):
+		mm_document* prefix = mm_parse(source, length)
+		s = mm_render(prefix)
+		asserts(c"error or render", (prefix.error != 0 && s == 0) || (prefix.error == 0 && s != 0))
+		mm_scene_free(s)
+		mm_document_free(prefix)
+	mm_document_free(d)
+	list[char*] invalid = list[char*]{c"stateDiagram-v2\n--\nA --> B", c"stateDiagram-v2\nstate A {\nB\n--\n--\nC\n}", c"stateDiagram-v2\nstate A {\nB\n--\n}", c"stateDiagram-v2\nstate A {\n--\nB\n}"}
+	for char* text in invalid:
+		d = mm_parse(text, strlen(text))
+		asserts(c"invalid region diagnosed", d.error != 0)
+		asserts(c"no partial preview", mm_render(d) == 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, invalid))

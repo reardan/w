@@ -332,7 +332,9 @@ int unary_expression_operand():
 		expect(c")")
 		mov_eax_int(type_get_size(sized))
 		return 3
-	else if (accept(c"new")):
+	else if (peek(c"new")):
+		if (freestanding_mode): error(c"'new' needs the W runtime allocator, which --freestanding excludes")
+		get_token()
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from
 		# the arguments in declaration order.
@@ -355,7 +357,8 @@ int unary_expression_operand():
 			int new_alias = import_alias_lookup(token)
 			if (new_alias >= 0): base = import_alias_type_member(new_alias)
 		if (base < 0):
-			base = type_lookup(token)
+			base = generic_subst_lookup(token)
+			if (base < 0): base = type_lookup(token)
 			if (base < 0):
 				type_suggest_names(token)
 				error3(c"unknown type after new: '", token, c"'")

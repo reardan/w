@@ -1,6 +1,7 @@
 # Experimental ownership and borrowing checks
 
-The compiler accepts `--safe` on Linux x86/x64 and Windows x64 (`win64`):
+The compiler accepts `--safe` on Linux x86/x64/ARM64, Windows x64 (`win64`)
+and macOS ARM64 (`arm64_darwin`):
 
 ```sh
 ./bin/wv2 --safe app.w -o app
@@ -24,6 +25,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
+| `refmut T[]` | An exclusive checked slice with writable elements and an inline descriptor. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
 | `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
@@ -864,10 +866,12 @@ ref[a] T* generic_view[T](ref[a] T* value):
 The result keeps the same backing roots as an ordinary reference-returning
 call. Generic syntax does not bypass the checker. Checked slices and borrowed
 records retain their concrete layouts and contracts in explicit and inferred
-calls, including generic method syntax. Capturing callbacks and the existing
-unsupported `new T` allocation syntax in generic definitions retain their
-subsequent implementation gates. Noncapturing function pointers use the
-explicit quantified contracts below.
+calls, including generic method syntax. Inside a specialization, `new T` and
+`new T(arguments)` resolve `T` through its active type substitution. Default
+allocation still requires a pointer-free sized value; record construction
+checks every concrete field, transfers owners once and preserves borrowed
+field lifetimes. Function pointers use explicit quantified contracts; owned
+callback objects can pair them with an environment as described below.
 
 ### Quantified function pointers
 
@@ -909,12 +913,62 @@ participate in normal replacement and scope cleanup. Checked slices and the
 currently supported borrowed records keep their ordinary by-value ABI.
 
 Null, uninitialized, raw or cast-forged callables are rejected, as are raw
-escapes, global/aggregate callable storage and const-qualified callable
+escapes, global callable storage and const-qualified callable
 forms. These contracts describe ordinary W entry points; generators, kernels,
 variadic entry points and unaudited foreign functions cannot become checked
-function values. Capturing or escaping closure environments remain a separate
-workstream. Signatures admit at most ten parameters; nested validation is
+function values. Signatures admit at most ten parameters; nested validation is
 bounded to depth 32 and 256 expanded type visits.
+
+### Owned callback environments
+
+An owned record may store quantified function pointers alongside its owned
+environment. Construction supplies every field explicitly; default, missing,
+null, forged and incompatible callable fields are rejected. A callback object
+uses ordinary record syntax rather than an implicit environment or lambda:
+
+```w
+struct Environment:
+	own int* value
+
+type Invoke = fn[](ref Environment*, int) -> int
+
+struct Callback:
+	Invoke* code
+	own Environment* environment
+
+int invoke(ref Environment* environment, int extra):
+	ref int* value = environment.value
+	return *value + extra
+
+own Callback* capture(int number):
+	own int* value = new int
+	*value = number
+	own Environment* environment = new Environment(value)
+	return new Callback(invoke, environment)
+```
+
+The returned owner can escape its construction scope. Invoke it by borrowing
+its environment and passing that borrow to its `code` field. The function
+pointer is a static code address and may be copied independently; the
+environment remains governed by its own owner or borrow. Lifetime-bearing
+results keep the invocation's backing roots, so a live returned view prevents
+replacement or destruction of its environment. A shared receiver does not
+permit mutation through an incompatible mutable callback contract.
+
+Environment fields may themselves borrow external storage using the existing
+named ownership groups. Such a callback cannot outlive those external roots.
+Moving a callback transfers its owned environment once; replacing it or leaving
+scope, including an early failure return, recursively destroys initialized
+owned fields. Moving the environment out leaves the code field readable and
+prevents a second destruction of that environment. Replacement of the code
+field requires the same quantified contract.
+
+This representation adds no hidden environment allocation or reference count:
+the source chooses its ordinary owned records and allocations. Callable fields
+do not make a record pointer-free, so zero initialization, unqualified stack
+aggregate storage and unchecked copying do not become admissible. Raw function
+fields, erased signatures, implicit captures and anonymous lambda syntax are
+not part of this storage form.
 
 ### Argument effects
 
@@ -1005,10 +1059,19 @@ checking. A bound expression cannot invalidate the data being sliced. Bind
 a temporary view before indexing it or reading its length; direct scalar
 projections from unnamed temporaries remain rejected.
 
+`refmut T[]` uses the same inline descriptor ABI and borrows the backing
+storage exclusively. Its elements may be read and written. A shared reborrow
+temporarily freezes mutation until the shared view's last use; a shared slice
+cannot be upgraded to a mutable slice. Mutable subranges keep the complete
+backing-storage loan, so even nonoverlapping ranges do not establish disjoint
+access. Named return contracts, quantified callbacks and explicit/inferred
+generic calls preserve the access kind and lifetime. Borrowed mutable records
+may contain mutable-slice fields under the existing group rules.
+
 Ordinary `T[]` keeps its legacy pointer-to-descriptor ABI; implicit
-mixing with the inline checked representation is rejected. Mutable checked
-slices, descriptor construction, metadata borrowing and reassignment remain
-unsupported. Slice elements must be pointer-free sized values. To obtain a
+mixing with the inline checked representation is rejected. Explicit descriptor
+construction, metadata borrowing and reassignment remain unsupported.
+Slice elements must be pointer-free sized values. To obtain a
 checked subrange of a fixed array, first bind a checked full view; slicing
 the array directly still produces the legacy representation.
 
@@ -1201,13 +1264,38 @@ checks unsupported targets and runtime-pin invalidation. The ordinary suite
 also cross-compiles the cleanup/lifetime runtime corpus in three optimization
 modes. `./wbuild tests_arm64` executes the accepted matrix and runtime corpus
 through `wrun` under QEMU, including guard-allocator runs. Runtime execution
-is a required target-admission gate. Android, Darwin, iOS and WebAssembly
+is a required target-admission gate. Android, iOS and WebAssembly
 checked applications remain rejected.
+
+## ARM64 Darwin runtime contract
+
+The macOS target (`arm64_darwin`) uses the checked pointer, borrowed aggregate
+and inline-slice representations of Linux ARM64. Admission requires the macOS
+platform discriminator, so the separate iOS device and simulator targets keep
+their own gates. Bounds checks remain mandatory and explicit contracts apply
+without `--safe`.
+
+Five runtime pins bind the Darwin arch shims, AArch64 context wrapper and XNU
+syscall implementation. The allocator falls back from unsupported `brk` to
+anonymous `mmap`; the Darwin wrapper translates mapping flags, and page-size
+probing supplies the guard allocator's alignment. No additional raw syscall
+becomes callable from checked application code. Runtime changes or shadowed
+imports invalidate the audit.
+
+`safe_darwin_contract_test` checks and cross-compiles accepted/rejected
+contracts with both flag modes, verifies Mach-O headers and rejection without
+artifacts, and exercises changed-runtime rejection. Its cross-built native
+host reruns the matrix with the self-hosted Darwin compiler and executes
+accepted programs on Apple Silicon. `safe_darwin_runtime_compile_test` builds
+91 ownership/borrow/cleanup variants, including an explicit `--safe` variant.
+The Darwin CI job executes them with the guard allocator and verifies the
+Darwin compiler fixpoint. Native execution is a required completion gate for
+#712; Linux cross-compilation alone does not complete that deliverable.
 
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64 and win64,
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64, win64 and arm64_darwin,
 and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same
@@ -2127,3 +2215,83 @@ Compiler and prior checked fixture output bytes are identical. Measurements
 are specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 for capturing callback storage and subsequent gates.
+
+
+### Captured callback storage validation
+
+An owned record can store quantified callable fields beside its owned or
+borrowed environment. Code and environment retain distinct field identities;
+projection, replacement, partial environment moves and invocation preserve
+the callable signature and captured lifetimes. Complete construction and
+recursive owner cleanup govern escaping owned captures. Borrowed captures
+cannot outlive their backing roots. This representation uses explicit records
+and callable fields; it does not introduce closure-expression syntax.
+
+Validation passed 33 contract cases on x86/x64 with and without `--safe`, all
+48 architecture/root checks and 1,428 ordinary targets including both Linux
+fixpoints, Wine runtime and benchmark. Instrumented validation passed 1,426
+targets plus six API harnesses with a COMPLETE receipt and reached all six
+changed executable lines. Existing coverage floors pass unchanged. Linux
+guard allocation and Memcheck report 360 allocations/frees and zero errors
+or leaks on each width. Optimization variants and Wine execute; ARM64
+variants cross-compile with runtime execution gates in CI.
+
+Seven alternating compiles of the fixed #787 parent corpus measured
+1.70/1.69 seconds and 116,032/116,256 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements are
+specific to that corpus on the shared host. The implementation rebased
+unchanged onto the prerequisite validation commit. #696/#644 remain open
+until the dependent merges and integrated completion gates pass.
+
+
+### Generic allocation validation
+
+`new T` resolves the active template substitution before ordinary type lookup
+in both compiler paths. The resulting concrete allocation retains sized-value,
+initialization and checked-owner requirements. This does not admit construction
+of opaque runtime metadata or add a `new Generic[T]` application form.
+
+Validation passed 20 contract cases on both Linux widths with and without
+`--safe`, all 48 architecture/root checks and 1,431 ordinary targets including
+both fixpoints, Wine runtime and benchmark. Instrumented validation passed
+1,429 targets plus six API harnesses with a COMPLETE receipt and reached all
+four changed executable lines. Existing floors pass unchanged. Linux guard
+allocation and Memcheck report 180 allocations/frees and zero errors/leaks
+per width. Optimization variants and Wine execute, with ARM64 runtime gates
+in CI.
+
+Seven alternating compiles of the fixed #788 parent corpus measured
+1.68/1.68 seconds and 116,480/116,160 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements describe
+that corpus on the shared host. The implementation rebased unchanged onto
+the prerequisite validation commit; #696/#644 retain their completion gates.
+
+
+### Checked mutable-slice validation
+
+`refmut T[]` retains exclusive access and its backing lifetime through local
+bindings, subranges, generic calls, methods and quantified callbacks. Shared
+reborrowing uses `ref T[]`; shared input cannot become mutable. The inline
+pointer/length representation stays distinct from legacy slices. Incompatible
+element or descriptor conversions are fatal even when warnings are nonfatal.
+
+Validation passed 44 accepted/rejected contract cases on x86/x64 with and
+without `--safe`, 1,435 ordinary targets including both Linux fixpoints,
+Windows runtime and benchmark, and all 60 distinct architecture/root checks
+selected by the complete change. Instrumented validation passed 1,433 targets
+plus six compiler/API harnesses with a COMPLETE receipt; all 47 changed
+executable compiler lines were reached. Existing coverage floors pass.
+
+Linux optimization variants and Wine execute the runtime fixture; three ARM64
+variants cross-compile locally and have required runtime CI gates. Native guards
+and Memcheck report 30 allocations/frees and zero errors/leaks on each Linux
+target. Seven alternating compiles of fixed parent `53c6fe88` sources measured
+1.66/1.66 seconds and 116,384/116,480 KiB median peak RSS before/after. Compiler
+output and prior callable/mixed-owner fixture binaries are byte-identical and
+execute. These measurements describe this corpus on the shared host.
+
+The first full run exposed one stale diagnostic assertion after slice conversion
+errors moved earlier; its updated rejection test and the subsequent complete
+ordinary/instrumented runs pass. Every tracked W source is identical before
+and after rebasing onto the prerequisite's final validation commit. This step
+supports #697/#698 under #644; their remaining deliverables stay open.

@@ -233,7 +233,7 @@ void warn_type_mismatch(char* context, int want, int got):
 int function_contract_abi_type(int want, int got):
 	want = type_unqualified(want)
 	got = type_unqualified(got)
-	if ((type_get_kind(want) == type_kind_safe_slice) || (type_get_kind(got) == type_kind_safe_slice)):
+	if (type_is_safe_slice(want) || type_is_safe_slice(got)):
 		if (type_get_kind(want) != type_get_kind(got)): return 0
 		return type_record(want).alias_target == type_record(got).alias_target
 	if (type_is_safe_record(want)): want = type_record(want).alias_target

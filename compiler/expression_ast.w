@@ -359,7 +359,7 @@ void expression_ast_type_names_reserve(expression_ast* tree, int extra):
 				int position = cast(int, rec.safe_labels[label]) - cast(int, old)
 				rec.safe_labels[label] = grown + position
 				label = label + 1
-		if ((rec.kind == type_kind_safe_slice) || (rec.kind == type_kind_safe_record) || (rec.kind == type_kind_safe_recordmut)):
+		if ((rec.kind == type_kind_safe_slice) || (rec.kind == type_kind_safe_slicemut) || (rec.kind == type_kind_safe_record) || (rec.kind == type_kind_safe_recordmut)):
 			for field in range(2):
 				int address = cast(int, rec.field_types)
 				if (field == 0): address = cast(int, rec.field_names)
@@ -644,7 +644,7 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	if (tree.pending_buffer_types): return -1
 	char* prefix = c"own "
 	if ((kind == 2) || (kind == 4) || (kind == 5)): prefix = c"ref "
-	if ((kind == 3) || (kind == 8)): prefix = c"refmut "
+	if ((kind == 3) || (kind == 8) || (kind == 10)): prefix = c"refmut "
 	if (kind == 6): prefix = c"optref "
 	if (kind == 7): prefix = c"optrefmut "
 	if (kind == 9): prefix = c"optown "
@@ -659,7 +659,7 @@ int ast_expression_safe_pointer_type(expression_ast* tree, int base, int kind, i
 	if (lifetime >= 0):
 		prefix = c"ref["
 		if (kind == 1): prefix = c"own["
-		if ((kind == 3) || (kind == 8)): prefix = c"refmut["
+		if ((kind == 3) || (kind == 8) || (kind == 10)): prefix = c"refmut["
 		if (kind == 6): prefix = c"optref["
 		if (kind == 7): prefix = c"optrefmut["
 		if (kind == 9): prefix = c"optown["
@@ -777,8 +777,8 @@ int ast_expression_safe_shape_at(expression_ast* tree, int base, int kind, int l
 	if (kind == 3): shape_kind = 8
 	int target = base
 	if (slice):
-		if (kind != 2): return -1
 		shape_kind = 4
+		if (kind == 3): shape_kind = 10
 		target = type_get_element_type(base)
 	else if (type_num_args(base) == 0): return -1
 	for index in range(type_count()):
@@ -822,7 +822,7 @@ int ast_expression_safe_shape_at(expression_ast* tree, int base, int kind, int l
 					qualifier = type_safe_kind(type)
 				else if (type_is_safe_slice(type)):
 					raw = ast_expression_composite_type(tree, type_kind_slice, type_get_element_type(type), -1, offset)
-					qualifier = 2
+					qualifier = type_safe_kind(type)
 				if (raw < 0): type = -1
 				else: type = ast_expression_safe_shape_at(tree, raw, qualifier, mapped, offset, depth + 1, remaining)
 				if (type < 0): valid = 0
@@ -879,7 +879,10 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	int actual
 	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
 	else if (((rec.kind >= type_kind_own) && (rec.kind <= type_kind_refmut)) || (rec.kind == type_kind_optref) || (rec.kind == type_kind_optrefmut) || (rec.kind == type_kind_optown)): actual = type_get_safe_lifetime(rec.alias_target, rec.kind - 20, rec.safe_lifetime)
-	else if (rec.kind == type_kind_safe_slice): actual = type_get_safe_slice(rec.alias_target, rec.safe_lifetime)
+	else if ((rec.kind == type_kind_safe_slice) || (rec.kind == type_kind_safe_slicemut)):
+		int slice_kind = 2
+		if (rec.kind == type_kind_safe_slicemut): slice_kind = 3
+		actual = type_get_safe_slice(rec.alias_target, rec.safe_lifetime, slice_kind)
 	else if (rec.kind == type_kind_safe_record): actual = type_get_safe_record_kind(rec.alias_target, rec.safe_lifetime, 2)
 	else if (rec.kind == type_kind_safe_recordmut): actual = type_get_safe_record_kind(rec.alias_target, rec.safe_lifetime, 3)
 	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)

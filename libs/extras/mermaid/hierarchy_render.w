@@ -1,5 +1,28 @@
 # Dedicated column and tree layouts; parent means ancestry, never a cluster box.
 import libs.extras.mermaid.scene
+import lib.fmath
+
+# Mindmap cloud (3) and bang (4) outlines are 48-point polygons: lobes bulge
+# outward for clouds and alternate as spikes for bangs. Hexagon is shape 5.
+void mm_mindmap_outline(mm_scene* s, mm_node* n, mm_bounds* b):
+	mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+	mm_primitive* polygon = s.items[s.items.length - 1]
+	if (n.shape == 5):
+		int inset = b.h / 2
+		if (inset > b.w / 4): inset = b.w / 4
+		polygon.points = list[int]{b.x + inset, b.y, b.x + b.w - inset, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w - inset, b.y + b.h, b.x + inset, b.y + b.h, b.x, b.y + b.h / 2}
+		return
+	polygon.points = new list[int]
+	for i in range(48):
+		float angle = cast(float, i) * 6.2831853 / 48.0
+		float scale = 1.0
+		if (n.shape == 3):
+			float lobe = fsin(angle * 8.0)
+			if (lobe < 0.0): lobe = 0.0 - lobe
+			scale = 0.86 + 0.14 * lobe
+		else if (i % 2 == 1): scale = 0.72
+		polygon.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * scale * cast(float, b.w) / 2.0))
+		polygon.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * scale * cast(float, b.h) / 2.0))
 
 mm_scene* mm_hierarchy_render(mm_document* d):
 	mm_scene* s = new mm_scene()
@@ -14,6 +37,13 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 		for mm_member* m in n.members:
 			if (strlen(m.text) * 8 + 40 > b.w): b.w = strlen(m.text) * 8 + 40
 		if (n.shape == 2): b.h = b.w
+		if (n.annotation[0] != 0):
+			b.h = b.h + 24
+			if (strlen(n.annotation) * 8 + 64 > b.w): b.w = strlen(n.annotation) * 8 + 64
+		# Clouds and bangs lose their corners, so reserve room for the label.
+		if (d.kind == MM_MINDMAP && (n.shape == 3 || n.shape == 4)):
+			b.w = b.w + 40
+			b.h = b.h + 30
 		s.nodes.push(b)
 		heights.push(b.h + 40)
 	if (d.kind == MM_KANBAN):
@@ -70,10 +100,25 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 		mm_bounds* b = s.nodes[i]
 		int shape = MM_BOX
 		if (n.shape == 2): shape = MM_CIRCLE
-		mm_draw(s, shape, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
+		if (d.kind == MM_MINDMAP && n.shape >= 3): mm_mindmap_outline(s, n, b)
+		else: mm_draw(s, shape, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		int y = b.y + 20
+		int x = b.x + 20
+		# Mindmap outlines are centred shapes, so centre the label block in them.
+		if (d.kind == MM_MINDMAP):
+			int content = 16
+			if (n.annotation[0] != 0): content = content + 24
+			y = b.y + (b.h - content) / 2
+			x = b.x + (b.w - strlen(n.label) * 8) / 2
+		# Icon fonts are not bundled; the icon name is shown as a badge row.
+		if (n.annotation[0] != 0):
+			int badge = x
+			if (d.kind == MM_MINDMAP): badge = b.x + (b.w - strlen(n.annotation) * 8 - 20) / 2
+			mm_draw(s, MM_CIRCLE, badge, y + 2, badge + 12, y + 14, 0, c"")
+			mm_text(s, badge + 20, y, n.annotation)
+			y = y + 24
 		if (d.kind == MM_KANBAN && n.parent < 0): mm_line(s, b.x, b.y + 60, b.x + b.w, b.y + 60, 0)
-		mm_text(s, b.x + 20, y, n.label)
+		mm_text(s, x, y, n.label)
 		y = y + 24
 		for mm_member* m in n.members:
 			mm_text(s, b.x + 20, y, m.text)

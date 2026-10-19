@@ -1,0 +1,5 @@
+# wbuild: target=struct_self_embed_crash_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 tests/struct_self_embed_crash_fixture.w -o bin/struct_self_embed_fixture" expect_fail expect_stderr="recursive struct type: a field embeds the struct by value"
+# wbuild: step="bin/wv2 tests/struct_self_embed_pointer_fixture.w -o bin/struct_self_embed_pointer_fixture" expect_stderr="compiling "
+# wbuild: target=struct_self_embed_crash_x64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/struct_self_embed_crash_fixture.w -o bin/struct_self_embed_fixture64" expect_fail expect_stderr="recursive struct type: a field embeds the struct by value"

@@ -63,6 +63,9 @@ int entry_optional
 # (e.g. reserving extra program headers for dynamic linking), so the finish
 # pass patches these recorded positions instead of hardcoded constants.
 int elf_static /* W x64 compiled static library */
+int elf_object /* --emit=obj: x64 ELF ET_REL object (implies elf_static) */
+int elf_object_text_start /* code offset where an object's .text begins */
+int freestanding_mode /* --freestanding: no auto-imported W runtime */
 int elf_shared /* ELF shared object with explicit native exports */
 char* elf_soname /* Android shared object basename, set before finish */
 int elf_pie   /* ELF PIE; mandatory for Android */

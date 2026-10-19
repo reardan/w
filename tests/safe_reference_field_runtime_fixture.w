@@ -47,6 +47,8 @@ int reference_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if reference_exercise() != 129: return 1
 	if reference_exits(1) != 0: return 2

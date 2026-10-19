@@ -66,6 +66,8 @@ int exclusive_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if exclusive_exercise() != 5050: return 1
 	if exclusive_replace() != 19: return 2

@@ -1,5 +1,5 @@
 # wbuild: binary=wfuzz
-# wbuild: target=wfuzz_test tag=tests dep=wfuzz data=tests/wcoverage/fuzz_target_fixture.w data=tests/wcoverage/fuzz_seeds/seed.w data=tests/wcoverage/fuzz_crash_input.w
+# wbuild: target=wfuzz_test tag=tests dep=wfuzz data=tests/wcoverage/fuzz_target_fixture.w data=tests/wcoverage/fuzz_seeds/seed.w data=tests/wcoverage/fuzz_seeds_diff/ data=tests/wcoverage/fuzz_crash_input.w
 # wbuild: step="bin/wv2 --coverage tests/wcoverage/fuzz_target_fixture.w -o bin/wfuzz_fixture"
 # wbuild: step="rm -rf bin/wfuzz_test bin/wfuzz_test_again bin/wfuzz_test_min"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --corpus tests/wcoverage/fuzz_seeds --out bin/wfuzz_test --seed 3 --cases 400" expect_stdout="cases: 400 (" expect_stdout="coverage grew: yes" expect_stdout="crashes: 1" expect_stdout="crash status 139 SIGSEGV: 1 inputs" expect_stdout="hangs: 0" timeout=120000
@@ -8,10 +8,13 @@
 # wbuild: step="diff -r bin/wfuzz_test/crashes bin/wfuzz_test_again/crashes"
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --out bin/wfuzz_test_min --minimize tests/wcoverage/fuzz_crash_input.w" expect_stdout="minimized: 11 bytes, status 139" expect_stdout="if (while ("
 # wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --cases 1" expect_fail expect_stderr="wfuzz: --out is required"
+# wbuild: step="rm -rf bin/wfuzz_test_diff bin/wfuzz_test_expect"
+# wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --corpus tests/wcoverage/fuzz_seeds_diff --out bin/wfuzz_test_diff --seed 3 --cases 0 --diff bin/wv2 --diff-arg {} --diff-arg -o --diff-arg {out}" expect_stdout="seed diffs: 1" timeout=120000
+# wbuild: step="bin/wfuzz --binary bin/wfuzz_fixture --corpus tests/wcoverage/fuzz_seeds_diff --out bin/wfuzz_test_expect --seed 3 --cases 0 --diff bin/wv2 --diff-arg {} --diff-arg -o --diff-arg {out} --diff-expect compiling" expect_stdout="expected diffs: 1" reject_stdout="seed diffs" timeout=120000
 # wbuild: target=wfuzz_compiler dep=wfuzz
 # wbuild: step="mkdir -p bin/wfuzz_compiler"
 # wbuild: step="bin/wv2 --coverage w.w -o bin/wfuzz_compiler/compiler_cov"
-# wbuild: step="bin/wfuzz --binary bin/wfuzz_compiler/compiler_cov --arg {} --arg -o --arg {out} --diff bin/wv2 --diff-arg --streaming --diff-arg {} --diff-arg -o --diff-arg {out} --corpus tests --max-len 4096 --out bin/wfuzz_compiler/out" timeout=3600000
+# wbuild: step="bin/wfuzz --binary bin/wfuzz_compiler/compiler_cov --arg {} --arg -o --arg {out} --diff bin/wv2 --diff-arg --streaming --diff-arg {} --diff-arg -o --diff-arg {out} --diff-expect 'checked pointers require the retained frontend' --diff-expect 'outlives clauses require the retained checked frontend' --diff-expect 'checked function contracts require the retained checked frontend' --diff-expect 'scoped defer requires retained statement emission' --corpus tests --max-len 4096 --out bin/wfuzz_compiler/out" timeout=3600000
 /*
 wfuzz: coverage-guided fuzzer over --coverage builds
 (docs/projects/line_coverage.md, "Fuzzing"; issue #440).
@@ -19,7 +22,7 @@ wfuzz: coverage-guided fuzzer over --coverage builds
 Usage:
   wfuzz --binary <exe> --out <dir> [--arg <a>]... [--seed N]
         [--cases N] [--seconds N] [--corpus <dir>] [--timeout-ms N]
-        [--max-len N] [--diff <exe> [--diff-arg <a>]...]
+        [--max-len N] [--diff <exe> [--diff-arg <a>]... [--diff-expect <text>]]
         [--fail-on-findings]
   wfuzz --binary <exe> --out <dir> [--arg <a>]... --minimize <file>
 
@@ -46,7 +49,13 @@ status, stdout or '{out}' file is saved to <out>/diffs/ (the two
 '{out}' files as <sha256>.out and .out_ref). A seed that
 already differs is saved there too but counted apart ("seed diffs"),
 and the cases mutated from it skip the oracle, so a known divergence
-does not resurface in every descendant.
+does not resurface in every descendant. --diff-expect <text> (repeatable,
+any marker counts) filters an expected difference: a differing
+reference run whose stderr contains a marker (say, a front end that
+rejects a feature by design) is not saved to <out>/diffs and not
+counted as a finding — the summary tallies it as "expected diffs"
+instead — and inputs that only expect differently keep the oracle, so
+real findings behind the expected rejection still land.
 
 The initial corpus is every .w file under --corpus (at most --max-len
 bytes, default 16384; a seed that adds no coverage is dropped), or
@@ -70,6 +79,7 @@ import lib.env
 import lib.file
 import lib.path
 import lib.process
+import lib.str
 import structures.string
 import tools.fuzz.core
 
@@ -86,6 +96,7 @@ struct wfz_state:
 	list[char*] args
 	char* diff_binary
 	list[char*] diff_args
+	list[char*] diff_expects
 	char* out
 	char* work
 	char* case_path
@@ -103,6 +114,7 @@ struct wfz_state:
 	int base_differs   # the current case mutates such an entry: no oracle
 	int last_differs   # the last wfz_case failed the oracle
 	int seed_diffs
+	int expected   # reference differences matching --diff-expect (not findings)
 	list[char*] found   # hashes of saved findings and corpus entries
 	int crashes
 	int hangs
@@ -293,7 +305,21 @@ int wfz_case(wfz_state* st, int case_id, char* text):
 		if ((run.status == 0) && (st.diff_binary != 0) && (st.base_differs == 0)):
 			unlink(st.diff_out_path)
 			wfz_run* ref = wfz_exec(st, st.diff_binary, st.diff_args, st.diff_out_path, 0)
-			if (wfz_differs(st, run, ref)):
+			int refs_expected = 0
+			int e = 0
+			while ((refs_expected == 0) && (e < st.diff_expects.length)):
+				if (contains(ref.stderr_text, st.diff_expects[e])): refs_expected = 1
+				e = e + 1
+			int unexpected = wfz_differs(st, run, ref)
+			if ((unexpected != 0) && (refs_expected != 0)):
+				# An expected difference: the reference run's stderr carries a
+				# --diff-expect marker, a divergence by design (say, a
+				# front end rejecting a feature the binary supports). Not a
+				# finding, not saved; the input stays an ordinary corpus
+				# citizen, so mutants keep the oracle.
+				unexpected = 0
+				st.expected = st.expected + 1
+			if (unexpected != 0):
 				st.last_differs = 1
 				if (wfz_known(st, hash) == 0):
 					st.found.push(hash)
@@ -473,6 +499,7 @@ wfz_state* wfz_state_new(char* binary, char* out):
 	st.args = new list[char*]
 	st.diff_binary = 0
 	st.diff_args = new list[char*]
+	st.diff_expects = new list[char*]
 	st.out = out
 	st.timeout_ms = 10000
 	st.max_len = 16384
@@ -481,6 +508,7 @@ wfz_state* wfz_state_new(char* binary, char* out):
 	st.base_differs = 0
 	st.last_differs = 0
 	st.seed_diffs = 0
+	st.expected = 0
 	st.found = new list[char*]
 	st.crash_statuses = new list[int]
 	st.crash_counts = new list[int]
@@ -591,6 +619,7 @@ void wfz_summary(wfz_state* st, int cases, int seeds_covered, int elapsed_ms):
 	string_append(b, f"hangs: {st.hangs}\n")
 	string_append(b, f"diffs: {st.diffs}\n")
 	if (st.seed_diffs > 0): string_append(b, f"seed diffs: {st.seed_diffs} (corpus inputs that already differ; their mutants skip the oracle)\n")
+	if (st.diff_expects.length > 0): string_append(b, f"expected diffs: {st.expected} (reference rejections matching a --diff-expect)\n")
 	print(b.data)
 	wf_write(f"{st.out}/summary.txt", b.data)
 	string_free(b)
@@ -609,6 +638,7 @@ int main(int argc, int argv):
 	list[char*] args = new list[char*]
 	list[char*] diff_args = new list[char*]
 	char* diff_binary = 0
+	list[char*] diff_expects = new list[char*]
 	int timeout_ms = 10000
 	int max_len = 16384
 	int i = 1
@@ -633,6 +663,7 @@ int main(int argc, int argv):
 		elif (strcmp(a, c"--max-len") == 0): max_len = atoi(v)
 		elif (strcmp(a, c"--diff") == 0): diff_binary = v
 		elif (strcmp(a, c"--diff-arg") == 0): diff_args.push(v)
+		elif (strcmp(a, c"--diff-expect") == 0): diff_expects.push(v)
 		elif (strcmp(a, c"--minimize") == 0): minimize = v
 		else: wfz_fail(f"unknown option {a}")
 		i = i + 1 + takes
@@ -645,6 +676,7 @@ int main(int argc, int argv):
 	st.diff_binary = diff_binary
 	st.diff_args = diff_args
 	if ((diff_binary != 0) && (diff_args.length == 0)): st.diff_args = args
+	st.diff_expects = diff_expects
 	wfz_prepare(st)
 	if (minimize != 0): return wfz_minimize(st, minimize)
 	if ((cases < 0) && (seconds < 0)):

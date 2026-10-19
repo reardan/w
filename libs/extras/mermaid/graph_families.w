@@ -143,6 +143,46 @@ void mm_kanban_metadata(mm_parser* p, mm_node* n):
 	__w_list_free(cast(__w_list*, keys))
 	if (mm_match(p, c"}") == 0): mm_error(p.doc, p.pos, c"expected metadata closing brace")
 
+# Mindmap classes name external CSS; there is no classDef in this family, so
+# the names are retained in the owned model without a native style lookup.
+void mm_mindmap_classes(mm_parser* p, mm_node* n):
+	string_builder* joined = string_from(n.style_classes)
+	while (p.doc.error == 0):
+		mm_space(p)
+		int start = p.pos
+		while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13 && mm_peek(p) != 32 && mm_peek(p) != 9): p.pos = p.pos + 1
+		if (p.pos == start): break
+		char* name = str_copy_range(p.doc.source, start, p.pos)
+		if (mm_style_name(name) == 0): mm_error(p.doc, start, c"invalid mindmap class name")
+		if (joined.length + strlen(name) > 4096): mm_error(p.doc, start, c"node class assignment limit exceeded")
+		if (joined.length != 0): string_append_char(joined, ',')
+		string_append(joined, name)
+		free(name)
+	if (joined.length == strlen(n.style_classes)): mm_error(p.doc, p.pos, c"expected mindmap class names")
+	free(n.style_classes)
+	n.style_classes = strclone(joined.data)
+	string_free(joined)
+
+# A decoration line applies `::icon(name)` or `:::classes` to the previous node.
+void mm_mindmap_decoration(mm_parser* p):
+	int start = p.pos
+	if (p.doc.nodes.length == 0):
+		mm_error(p.doc, start, c"mindmap decoration requires a preceding node")
+		return
+	mm_node* n = p.doc.nodes[p.doc.nodes.length - 1]
+	if (mm_match(p, c"::icon(")):
+		if (n.annotation[0] != 0): mm_error(p.doc, start, c"duplicate mindmap icon")
+		int open = p.pos
+		while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != ')'): p.pos = p.pos + 1
+		char* name = mm_style_trim(p.doc.source, open, p.pos)
+		if (mm_match(p, c")") == 0 || name[0] == 0): mm_error(p.doc, open, c"expected nonempty mindmap icon name")
+		free(n.annotation)
+		n.annotation = name
+	else if (mm_match(p, c":::")): mm_mindmap_classes(p, n)
+	else: mm_error(p.doc, start, c"unsupported mindmap decoration")
+	mm_space(p)
+	if (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13): mm_error(p.doc, p.pos, c"expected end of mindmap decoration line")
+
 # Physical indentation remains meaningful; do not use mm_separators here.
 void mm_hierarchy_body(mm_parser* p):
 	list[int] indents = new list[int]
@@ -160,6 +200,9 @@ void mm_hierarchy_body(mm_parser* p):
 		if (mm_match(p, c"%%")):
 			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"configuration directives are unsupported")
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
+			continue
+		if (p.doc.kind == MM_MINDMAP && mm_peek(p) == ':'):
+			mm_mindmap_decoration(p)
 			continue
 		if (mm_metadata(p)):
 			# Only consume horizontal whitespace here. The next loop iteration
@@ -209,16 +252,29 @@ void mm_hierarchy_body(mm_parser* p):
 		else if (p.doc.kind == MM_MINDMAP && mm_match(p, c"(")):
 			close = ')'
 			n.shape = 1
+		else if (p.doc.kind == MM_MINDMAP && mm_match(p, c"))")):
+			close = '('
+			doubled = 1
+			n.shape = 4
+		else if (p.doc.kind == MM_MINDMAP && mm_match(p, c")")):
+			close = '('
+			n.shape = 3
+		else if (p.doc.kind == MM_MINDMAP && mm_match(p, c"{{")):
+			close = '}'
+			doubled = 1
+			n.shape = 5
 		if (close):
 			free(n.label)
 			n.label = mm_until(p, close)
-			if (doubled && mm_match(p, c")") == 0): mm_error(p.doc, p.pos, c"expected circle closing parenthesis")
+			if (doubled && mm_peek(p) != close): mm_error(p.doc, p.pos, c"expected doubled closing shape delimiter")
+			else if (doubled): p.pos = p.pos + 1
 		if (n.label[0] == 0): mm_error(p.doc, start, c"empty hierarchy label")
 		mm_space(p)
 		if (p.doc.kind == MM_KANBAN):
 			if (depth == 0 && mm_peek(p) == '@'): mm_error(p.doc, p.pos, c"metadata is supported on cards only")
 			mm_kanban_metadata(p, n)
 		mm_space(p)
+		if (p.doc.kind == MM_MINDMAP && mm_match(p, c":::")): mm_mindmap_classes(p, n)
 		if (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 13): mm_error(p.doc, p.pos, c"unsupported hierarchy shape, annotation or syntax")
 	__w_list_free(cast(__w_list*, indents))
 	__w_list_free(cast(__w_list*, parents))

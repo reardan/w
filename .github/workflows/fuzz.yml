@@ -1,0 +1,74 @@
+name: Fuzz
+
+# The nightly coverage-guided fuzzing campaign (issue #440; see
+# docs/projects/line_coverage.md, "Fuzzing"). `./wbuild wfuzz_compiler`
+# builds the compiler with --coverage and fuzzes it for $WFUZZ_SECONDS
+# with `bin/wv2 --streaming` as the differential reference, so a program
+# the AST front end compiles must compile to the same bytes under the
+# streaming front end; that front end's known checked-pointer rejection
+# is filtered as expected via wfuzz's --diff-expect. Findings themselves
+# never fail this workflow: reproduce one with `bin/wv2 <file> -o
+# /tmp/out`, shrink it with `./bin/wfuzz --binary <exe> --minimize`, and
+# check a minimized crashing input in as a regression fixture like
+# tests/safe_checked_struct_only_crash_fixture.w.
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Fuzz budget in seconds (default 1200)"
+        default: "1200"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz
+  cancel-in-progress: false
+
+jobs:
+  compiler:
+    name: Compiler fuzz
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up cached W bootstrap
+        uses: ./.github/actions/setup-w
+
+      # 20 minutes of fuzzing by default, or the dispatch budget, up to
+      # the wexec step's own one-hour cap on the wfuzz invocation.
+      - name: Fuzz the compiler
+        env:
+          WFUZZ_SECONDS: ${{ github.event.inputs.seconds || '1200' }}
+        run: ./wbuild wfuzz_compiler
+
+      - name: Report campaign results
+        if: always()
+        run: |
+          {
+            echo '### Compiler fuzz campaign'
+            echo 'Findings do not fail this workflow. Reproduce one with `bin/wv2 <file> -o /tmp/out` and shrink it with `./bin/wfuzz --binary <exe> --minimize <file>`.'
+            echo '```text'
+            cat bin/wfuzz_compiler/out/summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload corpus and findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compiler-fuzz
+          path: |
+            bin/wfuzz_compiler/out/summary.txt
+            bin/wfuzz_compiler/out/corpus
+            bin/wfuzz_compiler/out/crashes
+            bin/wfuzz_compiler/out/hangs
+            bin/wfuzz_compiler/out/diffs
+          retention-days: 14
+          if-no-files-found: warn

@@ -46,6 +46,8 @@ int mutable_view_deferred():
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if mutable_view_exercise() != 226: return 1
 	if mutable_view_nested_child() != 15: return 2

@@ -53,6 +53,8 @@ int nested_exclusive():
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if nested_exercise() != 1900: return 1
 	if nested_exclusive() != 19: return 2

@@ -15,11 +15,16 @@ positioned diagnostic and suppresses the preview.
   annotations. Containment uses a circle-plus endpoint and other relationships
   use labelled dashed dependency arrows. Node styles/classes and link styles are
   supported; rich Markdown and broader configuration remain incomplete.
-- **Mindmaps:** a single indentation-based tree with plain text, rectangular,
-  rounded, and circular labels. A dedicated subtree-height layout keeps sibling
-  branches separate. Nesting is bounded to 64 levels. Icons, classes, cloud,
-  bang and hexagon shapes are not yet supported. Indentation must return to an
-  existing level; the upstream ambiguous-indentation heuristic is not applied.
+- **Mindmaps:** a single indentation-based tree with plain text, `[square]`,
+  `(rounded)`, `((circle))`, `)cloud(`, `))bang((` and `{{hexagon}}` labels. A
+  dedicated subtree-height layout keeps sibling branches separate. Nesting is
+  bounded to 64 levels. A `::icon(name)` line attaches one icon name to the
+  previous node; icon fonts are not bundled, so the name renders as a badge row.
+  `:::a b` classes, trailing a node or on their own line, attach to the previous
+  node and are kept in the owned model as external CSS class names (mindmaps
+  have no `classDef`, so they do not change native colours). Indentation must
+  return to an existing level; the upstream ambiguous-indentation heuristic is
+  not applied.
 - **Kanban:** indentation-based columns and cards, explicit or generated IDs,
   assigned/ticket/priority metadata, validated priorities. Columns contain their
   cards and metadata in a dedicated column layout. Nested cards, metadata on

@@ -18,6 +18,9 @@ void ast_global_declaration(int binding, int type, char* init_name):
 	node.storage = 0
 	if (init_name):
 		global_initializer_check_type(init_name, type)
+		if (global_address_initializer(init_name, node.address, type)):
+			node.end_offset = token_start_offset
+			return
 		node.value = parse_constant_literal(c"initializer for global", init_name)
 		node.end_offset = token_start_offset
 		emit_global_initializer_ast(&node)

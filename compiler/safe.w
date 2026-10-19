@@ -144,7 +144,7 @@ int safe_kind(int type):
 	if (type < 0): return 0
 	int kind = retained_types[type].kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
-	if (kind == type_kind_safe_recordmut): return 3
+	if ((kind == type_kind_safe_recordmut) || (kind == type_kind_safe_slicemut)): return 3
 	if (kind == type_kind_optown): return 1
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
@@ -202,13 +202,13 @@ int safe_contains_checked(int type):
 int safe_slice(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return (retained_types[type].kind == type_kind_slice) || (retained_types[type].kind == type_kind_safe_slice)
+	return (retained_types[type].kind == type_kind_slice) || (retained_types[type].kind == type_kind_safe_slice) || (retained_types[type].kind == type_kind_safe_slicemut)
 
 
 int safe_inline_slice(int type):
 	type = safe_unqualified(type)
 	if (type < 0): return 0
-	return retained_types[type].kind == type_kind_safe_slice
+	return (retained_types[type].kind == type_kind_safe_slice) || (retained_types[type].kind == type_kind_safe_slicemut)
 
 
 int safe_record(int type):
@@ -219,7 +219,7 @@ int safe_record(int type):
 
 
 int safe_borrow_kind(int type):
-	if (safe_slice(type)): return 2
+	if (safe_slice(type) && (safe_kind(type) != 3)): return 2
 	return safe_kind(type)
 
 
@@ -388,7 +388,7 @@ int safe_record_shape_walk(int type, int kind, int depth, int* path, int* remain
 		retained_type* member = retained_types[field]
 		int nested = safe_record(field)
 		if (nested && (safe_kind(field) == 3) && (kind != 3)): return 0
-		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_optref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && ((member.kind == type_kind_refmut) || (member.kind == type_kind_optrefmut)))):
+		if (nested || (member.kind == type_kind_ref) || (member.kind == type_kind_optref) || (member.kind == type_kind_safe_slice) || ((kind == 3) && ((member.kind == type_kind_refmut) || (member.kind == type_kind_optrefmut) || (member.kind == type_kind_safe_slicemut)))):
 			if (nested):
 				if (safe_record_shape_walk(member.target, safe_kind(field), depth + 1, path, remaining) == 0): return 0
 			else if (safe_plain(safe_pointee(field), 0) == 0): return 0
@@ -420,7 +420,7 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 		int field = record.fields[i].type
 		if (safe_kind(field) == 1):
 			if (safe_owned_shape_walk(safe_pointee(field), depth + 1, path, remaining) == 0): return 0
-		else if (safe_plain(field, 0) == 0): return 0
+		else if ((safe_plain(field, 0) == 0) && (safe_callable_signature(field) < 0)): return 0
 	return 1
 
 
@@ -455,7 +455,7 @@ int safe_mixed_owned_shape_walk(int type, int depth, int* path, int* remaining):
 			if (safe_record(field)):
 				if (safe_record_shape_walk(retained_types[safe_unqualified(field)].target, safe_kind(field), depth + 1, path, remaining) == 0): return 0
 			else if (safe_plain(safe_pointee(field), 0) == 0): return 0
-		else if (safe_plain(field, 0) == 0): return 0
+		else if ((safe_plain(field, 0) == 0) && (safe_callable_signature(field) < 0)): return 0
 	return 1
 
 
@@ -880,7 +880,7 @@ void safe_add_owned_paths(int parent, int type, int depth, int* remaining):
 	retained_type* record = retained_types[element]
 	for i in range(record.fields.length):
 		int field = record.fields[i].type
-		if ((safe_kind(field) != 1) && (safe_plain(field, 0) == 0)): continue
+		if ((safe_kind(field) != 1) && (safe_plain(field, 0) == 0) && (safe_callable_signature(field) < 0)): continue
 		if (*remaining <= 0): return
 		*remaining = *remaining - 1
 		int child = safe_locals.length
@@ -1214,7 +1214,7 @@ int safe_place(int id, char* state, int* via):
 			while (safe_call_roots.length > saved):
 				safe_call_roots.pop()
 				safe_call_kinds.pop()
-		if ((n.op == '.') && ((safe_kind(n.semantic_type) == 1) || safe_plain(n.semantic_type, 0))):
+		if ((n.op == '.') && ((safe_kind(n.semantic_type) == 1) || safe_plain(n.semantic_type, 0) || (safe_callable_signature(n.semantic_type) >= 0))):
 			root = safe_project_owned(root, n.value, base.semantic_type)
 		return root
 	safe_error(id, c"safe: unsupported storage projection", -1)
@@ -1434,6 +1434,9 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 				safe_error(id, c"safe: checked slice ranges require inline descriptor lowering", -1)
 		if ((safe_inline_slice(n.semantic_type) == 0) && (array_value == 0)):
 			safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
+		# Frontend type warnings may be nonfatal. Descriptor conversion must
+		# never reinterpret a different element width or nominal record type.
+		safe_pointer_match(id, want, n.semantic_type)
 	else if (safe_inline_slice(n.semantic_type) || (safe_slice(want) != slice_value)):
 		safe_error(id, c"safe: checked pointer/slice representation mismatch", -1)
 	if (n.op == 'r'):
@@ -2030,7 +2033,7 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 			return -1
 		if ((callable_got < 0) || (safe_same_contract_type(want, n.semantic_type) == 0)):
 			safe_error(id, c"safe: function value requires a matching quantified contract", -1)
-		if ((op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (op != '?') && (op != '=')):
+		if ((op != 'v') && (op != 'C') && (op != 'G') && (op != 'W') && (op != 'F') && (op != '?') && (op != '=') && (op != '.')):
 			safe_error(id, c"safe: unsupported checked function value", -1)
 	if (kind && (op == '=') && (want >= 0) && (wanted == 0)):
 		safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
@@ -2550,14 +2553,21 @@ void safe_audit_runtime():
 void safe_check_finish():
 	if ((safe_mode == 0) && (type_safe_used == 0)): return
 	if (safe_bounds_disabled): error(c"safe: checked pointers require bounds checks")
-	if (((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, and win64 targets are supported")
+	int darwin = (target_isa == 1) && (target_os == 1) && (target_apple_platform == 1)
+	if ((darwin == 0) && ((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, win64 and arm64_darwin targets are supported")
 	safe_audit_runtime()
 	int count = retained_node_count()
 	safe_first = cast(int*, malloc(count * __word_size__))
 	safe_next = cast(int*, malloc(count * __word_size__))
 	safe_checked_functions = cast(int*, safe_zero(count, __word_size__))
-	safe_function_for_binding = cast(int*, malloc(retained_bindings.length * __word_size__))
-	for i in range(retained_bindings.length): safe_function_for_binding[i] = -1
+	# A compile root can carry checked-pointer types with no functions at
+	# all, and then retained_bindings is still null (retained_semantic only
+	# builds it for functions), so the binding count goes through a null
+	# guard here; every indexing site below only runs for existing bindings.
+	int bindings = 0
+	if (retained_bindings != 0): bindings = retained_bindings.length
+	safe_function_for_binding = cast(int*, safe_zero(bindings, __word_size__))
+	for i in range(bindings): safe_function_for_binding[i] = -1
 	for i in range(count):
 		safe_first[i] = -1
 		safe_next[i] = -1
@@ -2596,6 +2606,7 @@ void safe_check_finish():
 			if (n.semantic_type >= 0):
 				retained_type* t = retained_types[n.semantic_type]
 				for field in range(t.fields.length):
+					if (safe_callable_signature(t.fields[field].type) >= 0): safe_type_check(id, t.fields[field].type)
 					if (safe_contains_checked(t.fields[field].type) && (safe_record_shape(n.semantic_type, 3) == 0) && (safe_record(n.semantic_type) == 0) && (safe_owned_shape(n.semantic_type) == 0) && (safe_mixed_owned_shape(n.semantic_type) == 0)):
 						safe_error(id, c"safe: checked pointers in aggregates require one named shared-reference group", -1)
 			if ((n.binding < 0) || (retained_bindings[n.binding].return_type >= 0)): checked = 0
@@ -2608,16 +2619,16 @@ void safe_check_finish():
 			if ((n.kind == retained_declaration) && (n.binding >= 0) && (retained_bindings[n.binding].return_type < 0)):
 				safe_error(id, c"safe: global storage is not supported", -1)
 	# Resolve forward declarations to their completed implementation.
-	for b in range(retained_bindings.length):
+	for b in range(bindings):
 		if (safe_function_for_binding[b] >= 0): continue
 		retained_binding* binding = retained_bindings[b]
 		if (binding.return_type < 0): continue
-		for j in range(retained_bindings.length):
+		for j in range(bindings):
 			if ((safe_function_for_binding[j] >= 0) && (strcmp(binding.name, retained_bindings[j].name) == 0)):
 				safe_function_for_binding[b] = safe_function_for_binding[j]
 	# A declaration carries a contract even when no call reaches it. Validate
 	# its result relationship and compare every completed forward signature.
-	for b in range(retained_bindings.length):
+	for b in range(bindings):
 		retained_binding* binding = retained_bindings[b]
 		if ((binding.return_type < 0) || safe_trusted(binding.source)): continue
 		int checked = safe_mode || safe_contains_checked(binding.return_type)
@@ -2640,7 +2651,7 @@ void safe_check_finish():
 			if (safe_contract_matches(binding, definition) == 0):
 				safe_error(at, c"safe: forward declaration disagrees with its definition", function)
 	if (safe_mode):
-		for b in range(retained_bindings.length):
+		for b in range(bindings):
 			retained_binding* binding = retained_bindings[b]
 			if ((binding.source >= 0) && (strcmp(binding.name, c"main") == 0) && (safe_function_for_binding[b] < 0)):
 				safe_error(retained_sources[binding.source].root, c"safe: main requires a checked implementation", -1)

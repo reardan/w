@@ -38,6 +38,11 @@ int buffer_result_type(int type):
 # reference.
 void bounds_trap_call(char* helper_name):
 	int t = sym_lookup(helper_name)
+	# --freestanding has no diagnostic helper unless the program defines
+	# one: a failed check stops on ud2.
+	if (freestanding_mode && (t < 0)):
+		emit(2, c"\x0f\x0b")
+		return;
 	if (t < 0): t = sym_declare_global(helper_name, 4, 2)
 	push_ebx()
 	push_eax()

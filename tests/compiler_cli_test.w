@@ -4,7 +4,8 @@
 # wbuild: step="bin/wv2 tests/cli_probe.w -o bin/cli_probe"
 # wbuild: step="bin/wv2 -v -v tests/cli_probe.w -o bin/cli_probe_v"
 # wbuild: step="sh -c 'bin/wv2 \"$PWD/tests/cli_probe.w\" -o bin/cli_probe_abs'"
-# wbuild: step="bin/wv2 tests/cli_path_import_probe.w -o bin/cli_badimport" expect_fail expect_stderr="import paths are dotted module names"
+# wbuild: step="cp tests/diagnostic_inputs/cli_path_import.w.txt bin/cli_path_import_fixture.w"
+# wbuild: step="bin/wv2 bin/cli_path_import_fixture.w -o bin/cli_badimport" expect_fail expect_stderr="import paths are dotted module names"
 # wbuild: step="bin/wv2 tests/cli_probe.w -o /no/such/dir/cli_out" expect_fail expect_stderr="could not open output file"
 #
 # The optimizer/codegen option battery: every spelling of each toggle
@@ -67,9 +68,10 @@ including their --help usage text, JSON type-kind names for every user
 type kind, and the per-arch arch names.
 
 tests/cli_probe.w is the minimal compile input; tests/cli_types_probe.w
-declares one type of every user-declarable kind; tests/
-cli_path_import_probe.w spells an import as a file path to provoke the
-dotted-module hint.
+declares one type of every user-declarable kind; tests/diagnostic_inputs/
+cli_path_import.w.txt spells an import as a file path to provoke the
+dotted-module hint. Copy this intentionally invalid syntax into bin/
+so the repository-wide parser sweep only sees valid W source.
 */
 import lib.lib
 

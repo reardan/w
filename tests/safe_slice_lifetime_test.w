@@ -136,7 +136,7 @@ void test_checked_slice_boundaries():
 	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values\n\tint[] raw = s\n\treturn raw.length\n", c"safe:", 1)
 	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values[0:1]\n\treturn s.length\n", c"safe:", 1)
 	slice_lifetime_case(c"int main():\n\tint[1] values\n\tref int[] s = values\n\tref int[] t = s[0:1]\n\treturn t.length - 1\n", 0)
-	slice_lifetime_case(c"int main():\n\tint n = 0\n\tref int* p = &n\n\tref int[] s = p\n\treturn s.length\n", c"safe:", 1)
+	slice_lifetime_case(c"int main():\n\tint n = 0\n\tref int* p = &n\n\tref int[] s = p\n\treturn s.length\n", c"incompatible checked slice types", 1)
 	slice_lifetime_case(c"int main():\n\tref int[] s\n\treturn 0\n", c"initialization")
 	slice_lifetime_case(c"int main():\n\tint[1] a\n\tint[1] b\n\tref int[] s = a\n\ts = b\n\treturn s.length\n", c"cannot be reassigned")
 

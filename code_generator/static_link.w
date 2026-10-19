@@ -9,11 +9,17 @@ void static_note_address(int pos);
 void target_option_error(char* message);
 
 list[char*] static_link_names
+# --emit=obj imports: an R_X86_64_64 data slot per extern function,
+# against the undefined symbol the system linker resolves.
+list[char*] object_import_names
+list[int] object_import_slots
 list[int] static_link_addresses
 list[char*] static_link_paths
 
 
 void static_link_init():
+	object_import_names = new list[char*]
+	object_import_slots = new list[int]
 	static_link_names = new list[char*]
 	static_link_addresses = new list[int]
 	static_link_paths = new list[char*]
@@ -26,10 +32,23 @@ int static_link_address(char* name):
 	return 0
 
 
+# One zero data word the FFI shim calls through; elf_object_write
+# relocates it to the named C symbol. Repeated names share one slot.
+int object_import_slot(char* name):
+	for i in range(object_import_names.length):
+		if (strcmp(object_import_names[i], name) == 0): return object_import_slots[i]
+	while ((datapos % 8) != 0): emit_data_zeros(1)
+	int slot = emit_data_zeros(8)
+	object_import_names.push(strclone(name))
+	object_import_slots.push(slot)
+	return slot
+
+
 # Static exports use an ordinary data slot with a pointer relocation;
 # unresolved extern functions retain the normal loader-owned GOT path.
 int static_link_import_slot(char* name):
 	int address = static_link_address(name)
+	if ((address == 0) && elf_object): return object_import_slot(name)
 	if (address == 0):
 		int got = dyn_emit_import_slot()
 		dyn_add_import(name, got)

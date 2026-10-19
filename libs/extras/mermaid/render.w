@@ -354,6 +354,10 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		mm_bounds* b = s.nodes[i]
 		int style_start = s.items.length
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
+		# Concurrent state regions are unlabeled dashed partitions of their composite.
+		if (d.kind == MM_STATE && index_of(n.id, c"@region:") == 0):
+			mm_render_groups(d, s, i)
+			continue
 		if (d.kind == MM_ARCHITECTURE && n.annotation[0] != 0):
 			string_builder* label = string_from(c"[")
 			string_append(label, n.annotation)
