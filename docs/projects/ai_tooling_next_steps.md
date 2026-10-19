@@ -1452,6 +1452,30 @@ expression instead of "constant" in the diagnostic.
   paths against them), or add a test_map residue rule for
   `libs/standard/**/*.w` -> `unsafe_import_test`.
 
+## No selector word for the default target (2026-10-19, safe wasm W1)
+
+- **`w check --json x86 file.w` treats `x86` as a second source file**
+  and fails, although `check --json` labels default-target diagnostics
+  `"arch": "x86"` and every other target has a selector word (`x64`,
+  `arm64`, `wasm`, ...). A cross-target parity harness
+  (tests/safe_wasm_contract_test.w) therefore has to special-case the
+  default target by omitting the selector. Direction: accept `x86` as an
+  explicit no-op selector so per-target command lines stay uniform.
+
+## `test_changed` on a stacked branch (2026-10-19, safe sessions S1)
+
+- **`./wbuild test_changed` after a commit selects from the merge-base
+  with `origin/main`**, so on a branch stacked on an integration branch
+  it selects every target the whole integration branch touched, not the
+  branch's own diff. The workaround was piping
+  `git diff --name-only <integration-branch>` into `bin/wtest changed`
+  and running the printed targets by hand. Direction: accept a
+  `--base <rev>` (or honor `WTEST_BASE`) in `test_changed`.
+- **REPL-engine API clients inherit REPL defaults through error
+  recovery.** repl/incremental.w configures modes itself; recovery code
+  that restored a REPL-chosen default silently flipped its option
+  fingerprint. Recovery now restores the mode each entry started with.
+
 ## `--quiet` does not silence the x64 selector banner (2026-10-19, --emit=obj)
 
 `bin/wv2 x64 --quiet file.w` and `bin/wv2 --quiet x64 file.w` both still

@@ -16,8 +16,11 @@ deferred expressions, single-group mutable-reference records,
 checked methods and concrete generic calls,
 owned-integer buffers, byte arenas
 and win64 support. Linux ARM64 target admission extends the same bounded
-contracts with audited runtime pins and a QEMU execution gate. Other targets
-and persistent sessions remain under #712/#713. The remaining requirements
+contracts with audited runtime pins and a QEMU execution gate; wasm32/WASI
+admission does the same with a node execution gate. Android/iOS targets
+remain under #712. Persistent REPL and debugger sessions (#713) check
+every entry and stop against a replayed session transcript
+([usage](safe_mode.md#persistent-repl-and-debugger-sessions)). The remaining requirements
 below are not all delivered.
 
 The goal remains to prevent dangling references, use after move or
@@ -44,7 +47,7 @@ implementation rather than introduce a second ownership model.
 | Calls | Direct/imported/recursive calls, checked methods, concrete generic and quantified indirect calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Capturing/escaping callbacks and unmodeled generic operations |
 | Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction, nullable owners, tracked field partial moves/replacement and outer-function `defer`; explicit lexical `defer:` handles nested registration and loop jumps | Captured-argument thunks and deferred control-flow bodies |
 | Storage and libraries | Fixed arrays, inline checked slices, shared/exclusive borrowed structs with independent groups, mixed owned/reference structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
-| Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
+| Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency, persistent REPL bindings with cross-entry borrows, replacement, rollback and session-end destruction, read-only checked debugger views (#713) | Lifetime-labeled session bindings, checked views of outer frames and of aggregates |
 
 The checker in [compiler/safe.w](../../compiler/safe.w) uses resolved
 [retained semantic records](../../compiler/retained_semantic.w). Application
@@ -65,7 +68,7 @@ IDs below identify feature requirements, not a second execution schedule.
 | Deferred work, generics and callbacks | [#696](https://github.com/reardan/w/issues/696) | Wave 2, after the required lifetime and aggregate contracts |
 | Generic containers and checked iteration | [#697](https://github.com/reardan/w/issues/697) | Wave 3, after element ownership and checked generic/callback contracts |
 | Foreign boundaries and typed arenas | [#698](https://github.com/reardan/w/issues/698) | Foreign-boundary contracts in Wave 2 when ready; typed arenas in Wave 3 |
-| Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites |
+| Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites; transfer/share rules, spawn/join and scoped fork-join landed for Linux x86/x64 ([usage](safe_mode.md#thread-transfer-and-spawnjoin)); guarded mutexes and explicit-order atomics landed for Linux x86/x64 ([usage](safe_mode.md#synchronization-guarded-mutexes-and-atomics), [ordering argument](safe_mode_contracts.md#synchronization-and-memory-ordering)); independent review of the memory-ordering argument and generic mutex payloads remain |
 | Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize |
 
 Workstream #700 was split at implementation kickoff into
@@ -372,9 +375,9 @@ call or generated helper to bypass transfer or cleanup rules.
 
 Verify equivalent cleanup and diagnostics before admitting another target.
 Keep unsupported target and frontend combinations explicit. In-process REPL
-and debugger execution remain rejected until persistent bindings,
-replacement, cleanup, cross-entry borrows and failed-entry rollback are
-modeled together.
+and debugger execution model persistent bindings, replacement, cleanup,
+cross-entry borrows and failed-entry rollback together (#713); the forms they
+do not model are rejected explicitly.
 
 Audit cache keys and dependency hashes when introducing public lifetime
 contracts or new session state. Mode, target, compiler identity and relevant
