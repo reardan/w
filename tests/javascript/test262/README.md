@@ -241,6 +241,12 @@ dependencies remain gated; the fake-error test additionally needs object-literal
 `__proto__` semantics. No optional AggregateError or SuppressedError branch is
 counted as verified coverage.
 
+The verified trim methods admit `string-trimming`, `String.prototype.trimStart`,
+`String.prototype.trimEnd` and `u180e`. Contracts execute Unicode trimming,
+canonical alias identity, lone-surrogate preservation and U+180E exclusion from
+trim, numeric whitespace and RegExp whitespace. Symbol coercion remains gated;
+tests that use an undeclared Symbol dependency still report their actual FAIL.
+
 ## Recorded complete-family checkpoints
 
 These are fresh executions at the listed private W revisions, retained as
@@ -258,6 +264,10 @@ binary hashes, per-variant failures and adapter hashes remain in the raw reports
 | Entire Array, Object.defineProperty, Reflect.set | 4,232 | 8,405 | 5,833 | 980 | 1,506 | 86 | `f6fc14c9` frozen binary |
 | String.charAt, String.charCodeAt, String.split | 175 | 350 | 308 | 18 | 24 | 0 | `ee1b0dd5` |
 | Error.isError | 12 | 24 | 12 | 0 | 12 | 0 | `f6a9a6a0` |
+| String.substring, String.charAt, String.charCodeAt, String.split | 221 | 442 | 404 | 10 | 28 | 0 | `75d53e9d` |
+| Object.seal/freeze/isSealed/isFrozen, Object.defineProperty, Reflect.set | 1,388 | 2,760 | 2,578 | 98 | 74 | 10 | `a583b799` |
+| Array.lastIndexOf | 198 | 395 | 351 | 4 | 28 | 12 | `040b7ee3` |
+| String.trim/trimStart/trimEnd and Annex B trimLeft/trimRight | 183 | 366 | 306 | 4 | 56 | 0 | `5a94458e` |
 
 The combined reflection/string checkpoint includes all 10 Reflect.construct files/20 variants passing; native
 alternate-newTarget support remains a separate open capability. All 44
@@ -278,3 +288,10 @@ There were no process timeout, crash or malformed-report errors in that run.
 The later string checkpoint retains missing substring, eval and Math Symbol-tag
 dependencies as failures. All 25 charCodeAt files run: 48 variants pass and two
 still fail on an actual eval dependency.
+
+The integrity checkpoint's ten ERRORs and lastIndexOf's twelve ERRORs are native
+Array index/length or array-like argument limits. LastIndexOf's four FAILs use
+Date construction and the missing eval binding; they are not relabeled as
+inapplicable. All eight variants in each legacy trim alias family pass. The
+trim checkpoint retains four Symbol-dependent FAILs and 56 UNSUPPORTED variants
+for declared Symbol coercion and unimplemented function/exotic string conversion.

@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / 'tests/javascript/test262/manifest.json'
 STATUSES = ('PASS', 'FAIL', 'UNSUPPORTED', 'ERROR')
 FLAGS = {'onlyStrict', 'noStrict', 'raw', 'module', 'async', 'generated', 'CanBlockIsFalse', 'CanBlockIsTrue', 'non-deterministic'}
-FEATURES = {'coalesce-expression', 'Object.is', 'Reflect', 'Reflect.set', 'Reflect.construct', 'arrow-function', 'error-cause', 'Error.isError'}
+FEATURES = {'coalesce-expression', 'Object.is', 'Reflect', 'Reflect.set', 'Reflect.construct', 'arrow-function', 'error-cause', 'Error.isError',
+            'string-trimming', 'String.prototype.trimStart', 'String.prototype.trimEnd', 'u180e'}
 # Explicit capability inventory for requirements declared by hash-pinned cases.
 # Promote only alongside runtime implementation and executable contract checks.
 KNOWN_BUILTINS = {'eval', 'Number', 'isNaN', 'Object'}

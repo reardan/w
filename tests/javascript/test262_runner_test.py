@@ -370,6 +370,16 @@ class AdapterContract(unittest.TestCase):
         for dependency in ('Symbol', 'Proxy', 'cross-realm'):
             self.assertIsNotNone(adapter.unsupported({'features': ['Error.isError', dependency], 'flags': [], 'includes': []}))
 
+    def test_string_trim_capabilities_execute_ordered_unicode_operations(self):
+        source = "assert.sameValue(('\\uFEFF \\u2028x\\u00A0').trim(),'x');assert.sameValue(' x '.trimStart(),'x ');assert.sameValue(' x '.trimEnd(),' x');assert.sameValue(String.prototype.trimLeft,String.prototype.trimStart);assert.sameValue(String.prototype.trimRight,String.prototype.trimEnd);assert.sameValue('\\u180Ex\\u180E'.trim(),'\\u180Ex\\u180E');assert.sameValue((' '+String.fromCharCode(55296)+' ').trim(),String.fromCharCode(55296));assert.sameValue(isNaN(Number('\\u180E')),true);assert.sameValue(/\\s/.test('\\u180E'),false);"
+        for mode in ('sloppy', 'strict'):
+            actual = self.execute(source, mode)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+            self.assertEqual(actual['assertions'], 9)
+        tags = ['string-trimming', 'String.prototype.trimStart', 'String.prototype.trimEnd', 'u180e']
+        self.assertIsNone(adapter.unsupported({'features': tags, 'flags': [], 'includes': []}))
+        self.assertIsNotNone(adapter.unsupported({'features': tags + ['Symbol.toPrimitive'], 'flags': [], 'includes': []}))
+
     def test_invalid_utf8_output_is_error(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'bad-runner'
