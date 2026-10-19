@@ -332,7 +332,9 @@ int unary_expression_operand():
 		expect(c")")
 		mov_eax_int(type_get_size(sized))
 		return 3
-	else if (accept(c"new")):
+	else if (peek(c"new")):
+		if (freestanding_mode): error(c"'new' needs the W runtime allocator, which --freestanding excludes")
+		get_token()
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from
 		# the arguments in declaration order.

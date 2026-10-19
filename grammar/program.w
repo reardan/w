@@ -661,6 +661,76 @@ void global_initializer_check_type(char* name, int type):
 	error_type(c"' of type '", type, c"' at its declaration; assign it inside a function")
 
 
+# Address initializers at file scope, the static pointer tables C code
+# translates to: 'int* p = &g' (a global object), 'int fp = f' (a
+# function), 'char* s = c"text"' (bytes placed in the code image). The
+# word holds the target's linked address and is a rebase cell, so PIE
+# startup, dynamic RELATIVE relocations and --emit=obj R_X86_64_64
+# records all cover it. A function still only prototyped is resolved
+# once the whole program is compiled (global_address_finish).
+list[int] global_address_cells
+list[int] global_address_symbols
+
+
+void global_address_store(int cell, int value):
+	if (data_split): save_i(data + (cell - data_offset), value, word_size)
+	else: save_i(code + (cell - code_offset), value, word_size)
+	rebase_note(cell)
+
+
+void global_address_finish():
+	if (cast(int, global_address_cells) == 0): return;
+	for i in range(global_address_cells.length):
+		int t = global_address_symbols[i]
+		if (table[t + 1] != 'D'):
+			error3(c"function '", sym_record_name(t), c"' used in a global initializer is never defined")
+		global_address_store(global_address_cells[i], load_int(table + t + 2))
+	global_address_cells = 0
+	global_address_symbols = 0
+
+
+# 1 when the initializer at the current token is an address form, which
+# it then consumes and stores into the global at cell.
+int global_address_initializer(char* name, int cell, int type):
+	int t = -1
+	int value = 0
+	if (peek(c"&") || ((token[0] == 'c') && (token[1] == '"'))): t = -1
+	else:
+		t = sym_lookup(token)
+		if ((t < 0) || (load_int(table + t + 10) != 2)): return 0
+	if ((type_get_pointer_level(type) == 0) && (type_get_size(type) != word_size)):
+		diag_part(c"global '")
+		diag_part(name)
+		error_type(c"' holds an address and needs a pointer or word-sized type, not '", type, c"'")
+	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
+	if (t >= 0):
+		get_token()
+		if (table[t + 1] != 'D'):
+			if (data_split == 0): error3(c"function '", sym_record_name(t), c"' must be defined before a global initializer takes its address")
+			if (cast(int, global_address_cells) == 0):
+				global_address_cells = new list[int]
+				global_address_symbols = new list[int]
+			global_address_cells.push(cell)
+			global_address_symbols.push(t)
+			return 1
+		value = load_int(table + t + 2)
+	else if (accept(c"&")):
+		t = sym_lookup(token)
+		if ((t < 0) || (table[t + 1] != 'D') || (load_int(table + t + 10) != 1) || (sym_is_thread_local(t))):
+			error3(c"'&' in a global initializer needs a global variable, got '", token, c"'")
+		value = load_int(table + t + 2)
+		get_token()
+	else:
+		int length = process_prefixed_string_literal()
+		value = code_offset + codepos
+		emit(length, token)
+		emit_int8(0)
+		be_align_code()
+		get_token()
+	global_address_store(cell, value)
+	return 1
+
+
 # 'int x = 5' at file scope: a global declaration carrying a compile-time
 # constant initializer, stored straight into the global's reserved bytes
 # (the C model — no init code runs before main). This exists so a REPL
@@ -671,6 +741,7 @@ void global_initializer_check_type(char* name, int type):
 # the '=' used to produce.
 void global_initializer(char* name, int current_symbol, int decl_type):
 	global_initializer_check_type(name, decl_type)
+	if (global_address_initializer(name, load_int(table + current_symbol + 2), decl_type)): return;
 	int value = parse_constant_literal(c"initializer for global", name)
 	write_global_initial_value(current_symbol, decl_type, value)
 
