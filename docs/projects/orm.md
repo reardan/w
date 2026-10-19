@@ -131,4 +131,5 @@ landed units are listed here as they merge.
 | U2.3 migration planner + linter | [u2_3](orm/u2_3.md) | landed |
 | U2.4 migration applier, DDL, `bin/orm` | [u2_4](orm/u2_4.md) | landed |
 | U3.1 users, groups, permissions | [u3_1](orm/u3_1.md) | landed |
+| U3.2 sessions, API tokens, CSRF, throttle | [u3_2](orm/u3_2.md) | landed |
 | U3.4 serializers, filters, pagination | [u3_4](orm/u3_4.md) | landed |
