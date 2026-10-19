@@ -30,26 +30,6 @@ js_value* js_runtime_index_get(js_runtime* rt, js_value* object, int index):
 	js_text_free(key)
 	return value
 
-int js_runtime_array_resize(js_runtime* rt, js_value* object, js_value* value):
-	if (value.kind != 3 || f64is_nan(value.number) || value.number < 0.0 || value.number > cast(float64, rt.max_properties)):
-		js_runtime_fail(rt, 2, c"invalid or excessive array length")
-		return 0
-	int length = cast(int, value.number)
-	if (cast(float64, length) != value.number):
-		js_runtime_fail(rt, 2, c"invalid array length")
-		return 0
-	int i = object.properties.length - 1
-	while (i >= 0):
-		js_value* property = object.properties[i]
-		int index = js_runtime_array_index(property.key)
-		if (index >= length):
-			if (js_runtime_delete(rt, object, property.key) == 0):
-				object.array_length = index + 1
-				return 0
-		i = i - 1
-	object.array_length = length
-	return 1
-
 js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
 	int operation = cast(int, context)
@@ -63,8 +43,13 @@ js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiv
 			return rt.undefined_value
 		for i in range(args.length):
 			if (js_runtime_compat_step(rt) == 0): break
-			js_runtime_array_append(rt, receiver, args[i])
-		return js_runtime_number(rt, cast(float64, receiver.array_length))
+			char* raw = itoa(length + i)
+			int success = js_runtime_set(rt, receiver, raw, args[i])
+			free(raw)
+			if (success == 0): js_runtime_fail(rt, 2, c"array push element write rejected")
+		int next_length = length + args.length
+		if (rt.completion.status == 0 && js_runtime_array_resize(rt, receiver, js_runtime_number(rt, cast(float64, next_length))) == 0): js_runtime_fail(rt, 2, c"array push length write rejected")
+		return js_runtime_number(rt, cast(float64, next_length))
 	int start = 0
 	if (args.length > 0): start = js_runtime_relative_index(args[0], length, 0)
 	if (operation == 5):
@@ -99,7 +84,7 @@ js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiv
 	js_runtime_array_copy(rt, receiver, start, start + removed, result)
 	js_value* tail = js_runtime_alloc(rt, 6)
 	js_runtime_array_copy(rt, receiver, start + removed, length, tail)
-	if (rt.completion.status == 0): js_runtime_array_resize(rt, receiver, js_runtime_number(rt, cast(float64, start)))
+	if (rt.completion.status == 0 && js_runtime_array_resize(rt, receiver, js_runtime_number(rt, cast(float64, start))) == 0): js_runtime_fail(rt, 2, c"array resize rejected")
 	for i in range(inserted):
 		if (js_runtime_compat_step(rt) == 0): break
 		js_runtime_array_append(rt, receiver, args[i + 2])
@@ -193,4 +178,4 @@ void js_runtime_array_copy(js_runtime* rt, js_value* from, int start, int end, j
 	for i in range(start, end):
 		if (js_runtime_compat_step(rt) == 0): break
 		if (js_runtime_index_present(rt, from, i)): js_runtime_array_append(rt, target, js_runtime_index_get(rt, from, i))
-		else: target.array_length = target.array_length + 1
+		else if (js_runtime_array_resize(rt, target, js_runtime_number(rt, cast(float64, target.array_length + 1))) == 0): js_runtime_fail(rt, 2, c"array copy length write rejected")

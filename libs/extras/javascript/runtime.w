@@ -26,6 +26,7 @@ struct js_value:
 	js_node* code
 	int host
 	int array_length
+	int array_length_writable
 	int marked
 	js_text* key
 	js_value* value
@@ -200,6 +201,8 @@ void js_runtime_install_string_case(js_runtime* rt);
 void js_runtime_install_regexp(js_runtime* rt);
 void js_regexp_free(void* raw);
 js_value* js_regexp_literal(js_runtime* rt, char* raw);
+int js_runtime_define_ordinary(js_runtime* rt, js_value* object, js_text* key, js_value* value, js_value* getter, js_value* setter, int accessor, int writable, int enumerable, int configurable);
+int js_array_define_full(js_runtime* rt, js_value* array, js_text* key, js_value* value, js_value* getter, js_value* setter, int accessor, int writable, int enumerable, int configurable);
 int js_runtime_array_resize(js_runtime* rt, js_value* object, js_value* value);
 int js_runtime_int32(float64 value);
 int js_runtime_bit_operator(char* op);
@@ -208,6 +211,7 @@ float64 js_runtime_numeric_literal(char* text, int* consumed);
 void js_runtime_pattern_declare(js_runtime* rt, js_node* pattern, js_value* env, int mode, int immutable);
 void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, js_value* env);
 void js_runtime_array_append(js_runtime* rt, js_value* array, js_value* value);
+void js_runtime_array_create_append(js_runtime* rt, js_value* array, js_value* value);
 int js_runtime_compat_step(js_runtime* rt);
 js_value* js_runtime_iter_next(js_runtime* rt, js_value* value, int* index);
 void js_runtime_arguments(js_runtime* rt, js_node* node, js_value* env, list[js_value*] arguments);
@@ -291,6 +295,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.code = 0
 	value.host = 0
 	value.array_length = 0
+	value.array_length_writable = 1
 	value.marked = 0
 	value.key = 0
 	value.value = 0
@@ -967,6 +972,10 @@ int js_runtime_define(js_runtime* rt, js_value* object, js_text* key, js_value* 
 	if (value == 0 || value.owner != rt): return 0
 	if (getter != 0 && (getter.owner != rt || (getter.kind != 7 && getter.kind != 9))): return 0
 	if (setter != 0 && (setter.owner != rt || (setter.kind != 7 && setter.kind != 9))): return 0
+	if (object.kind == 6): return js_array_define_full(rt, object, key, value, getter, setter, accessor, writable, enumerable, configurable)
+	return js_runtime_define_ordinary(rt, object, key, value, getter, setter, accessor, writable, enumerable, configurable)
+
+int js_runtime_define_ordinary(js_runtime* rt, js_value* object, js_text* key, js_value* value, js_value* getter, js_value* setter, int accessor, int writable, int enumerable, int configurable):
 	js_value* property = js_runtime_property(object, key)
 	if (property != 0 && property.configurable == 0):
 		if (configurable || enumerable != property.enumerable || accessor != property.accessor): return 0
@@ -1123,6 +1132,9 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 			if (handled < 0):
 				js_runtime_fail(rt, 2, c"host property write rejected")
 				return 0
+		if (current.kind == 6 && js_runtime_key_is(key, c"length")):
+			if (current.array_length_writable == 0): return 0
+			break
 		js_value* property = js_runtime_property(current, key)
 		if (property != 0):
 			if (property.accessor):
@@ -1140,6 +1152,14 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 	if (js_runtime_object(receiver) == 0): return 0
 	js_value* own = js_runtime_property(receiver, key)
 	if (own != 0 && (own.accessor || own.writable == 0)): return 0
+	if (receiver.kind == 6):
+		if (js_runtime_key_is(key, c"length")): return js_runtime_array_resize(rt, receiver, value)
+		int enumerable = 1
+		int configurable = 1
+		if (own != 0):
+			enumerable = own.enumerable
+			configurable = own.configurable
+		return js_runtime_define_data(rt, receiver, key, value, 1, enumerable, configurable)
 	return js_runtime_put(rt, receiver, key, value)
 
 
@@ -1159,17 +1179,7 @@ int js_runtime_member_write(js_runtime* rt, js_value* object, js_text* key, js_v
 	if (js_runtime_object(object) == 0):
 		js_runtime_fail(rt, 2, c"property receiver is not mutable")
 		return 0
-	int index = -1
-	if (object.kind == 6):
-		if (js_runtime_key_is(key, c"length")):
-			return js_runtime_array_resize(rt, object, value)
-		index = js_runtime_array_index(key)
-		if (index >= rt.max_properties):
-			js_runtime_fail(rt, 5, c"JavaScript array length limit")
-			return 0
-	int ok = js_runtime_write_receiver(rt, object, key, value, object)
-	if (ok && index >= object.array_length): object.array_length = index + 1
-	return ok
+	return js_runtime_write_receiver(rt, object, key, value, object)
 
 
 js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
@@ -1290,7 +1300,7 @@ js_value* js_runtime_call_body(js_runtime* rt, js_value* callable, js_value* rec
 		js_value* argument = rt.undefined_value
 		if (js_kind(parameter, c"rest")):
 			argument = js_runtime_alloc(rt, 6)
-			for j in range(i, args.length): js_runtime_array_append(rt, argument, args[j])
+			for j in range(i, args.length): js_runtime_array_create_append(rt, argument, args[j])
 		else if (i < args.length): argument = args[i]
 		js_runtime_pattern_bind(rt, parameter, argument, env)
 	js_node* body = callable.code.children[1]
@@ -1767,7 +1777,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 					while (js_runtime_compat_step(rt)):
 						js_value* item = js_runtime_iter_next(rt, spread, &index)
 						if (item == 0): break
-						js_runtime_array_append(rt, object, item)
+						js_runtime_array_create_append(rt, object, item)
 				else:
 					for j in range(spread.properties.length):
 						js_value* property = spread.properties[j]
@@ -1801,8 +1811,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 					value = js_runtime_eval_node(rt, property.children[0], env)
 					if (rt.completion.status == 0 && js_kind(property.children[0], c"method")): js_class_define(rt, value, c"name", js_runtime_string(rt, key), 0, 1)
 			if (rt.completion.status == 0):
-				if (kind == 5): js_runtime_define_data(rt, object, key, value, 1, 1, 1)
-				else: js_runtime_member_write(rt, object, key, value)
+				js_runtime_define_data(rt, object, key, value, 1, 1, 1)
 			js_text_free(key)
 		return object
 	if (js_kind(node, c"call") || js_kind(node, c"construct")):
@@ -2053,3 +2062,5 @@ import libs.extras.javascript.runtime_global_numeric
 import libs.extras.javascript.runtime_regexp_split
 
 import libs.extras.javascript.runtime_string_code_unit
+
+import libs.extras.javascript.runtime_array_descriptor

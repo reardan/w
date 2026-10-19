@@ -152,7 +152,7 @@ js_value* js_json_value(js_json_reader* reader, int depth):
 			reader.position = reader.position + 1
 		js_value* child = js_json_value(reader, depth + 1)
 		if (rt.completion.status != 0): break
-		if (array): js_runtime_array_append(rt, value, child)
+		if (array): js_runtime_array_create_append(rt, value, child)
 		else: js_runtime_put(rt, value, key.text, child)
 		js_json_space(reader)
 		if (js_json_peek(reader) == close):

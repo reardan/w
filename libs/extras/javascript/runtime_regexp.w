@@ -636,7 +636,7 @@ js_value* js_re_method(void* runtime, void* context, js_value* receiver, list[js
 		else:
 			result = js_runtime_alloc(rt, 6)
 			for i in range(0, state.captures.length, 2):
-				js_runtime_array_append(rt, result, js_re_slice(rt, input, state.captures[i], state.captures[i + 1]))
+				js_runtime_array_create_append(rt, result, js_re_slice(rt, input, state.captures[i], state.captures[i + 1]))
 			js_runtime_set(rt, result, c"index", js_runtime_number(rt, cast(float64, state.captures[0])))
 			js_runtime_set(rt, result, c"input", js_runtime_string(rt, input))
 			js_runtime_set(rt, result, c"groups", rt.undefined_value)

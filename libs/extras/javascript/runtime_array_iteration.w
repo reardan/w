@@ -19,9 +19,8 @@ void js_array_iteration_store(js_runtime* rt, js_value* array, int index, js_val
 	char* raw = itoa(index)
 	js_text* key = js_runtime_key(raw)
 	free(raw)
-	js_runtime_define_data(rt, array, key, value, 1, 1, 1)
+	if (js_runtime_define_data(rt, array, key, value, 1, 1, 1) == 0): js_runtime_fail(rt, 2, c"array result property definition rejected")
 	js_text_free(key)
-	if (rt.completion.status == 0 && index >= array.array_length): array.array_length = index + 1
 
 js_value* js_array_iteration_body(js_runtime* rt, int operation, js_value* receiver, list[js_value*] args):
 	js_value* object = js_array_like_object(rt, receiver)

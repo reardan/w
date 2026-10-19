@@ -74,7 +74,15 @@ void js_runtime_array_append(js_runtime* rt, js_value* array, js_value* value):
 	char* index = itoa(array.array_length)
 	js_text* key = js_runtime_key(index)
 	free(index)
-	js_runtime_member_write(rt, array, key, value)
+	if (js_runtime_member_write(rt, array, key, value) == 0): js_runtime_fail(rt, 2, c"array element write rejected")
+	js_text_free(key)
+
+# Array creation uses CreateDataProperty rather than inherited [[Set]].
+void js_runtime_array_create_append(js_runtime* rt, js_value* array, js_value* value):
+	char* index = itoa(array.array_length)
+	js_text* key = js_runtime_key(index)
+	free(index)
+	if (js_runtime_define_data(rt, array, key, value, 1, 1, 1) == 0): js_runtime_fail(rt, 2, c"array element definition rejected")
 	js_text_free(key)
 
 void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, js_value* env):
@@ -108,7 +116,7 @@ void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, 
 				while (js_runtime_compat_step(rt)):
 					js_value* next = js_runtime_iter_next(rt, value, &index)
 					if (next == 0): break
-					js_runtime_array_append(rt, item, next)
+					js_runtime_array_create_append(rt, item, next)
 			else: item = js_runtime_iter_next(rt, value, &index)
 			if (item == 0): item = rt.undefined_value
 			js_runtime_pattern_bind(rt, child, item, env)

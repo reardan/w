@@ -11,6 +11,8 @@ struct js_object_descriptor:
 	int enumerable
 	int configurable
 
+int js_array_length_descriptor(js_runtime* rt, js_value* array, js_object_descriptor* desc);
+
 int js_object_ordinary(js_runtime* rt, js_value* object):
 	if (js_runtime_object(object) == 0 || object.owner != rt):
 		js_runtime_fail(rt, 2, c"reflection requires an object")
@@ -70,10 +72,7 @@ int js_object_descriptor_read(js_runtime* rt, js_value* source, js_object_descri
 
 int js_object_descriptor_apply(js_runtime* rt, js_value* object, js_text* key, js_object_descriptor* desc):
 	if (js_object_ordinary(rt, object) == 0): return 0
-	# ArraySetLength and indexed DefineOwnProperty need their own algorithm.
-	if (object.kind == 6):
-		js_runtime_fail(rt, 6, c"array descriptor mutation is not implemented")
-		return 0
+	if (object.kind == 6 && js_runtime_key_is(key, c"length")): return js_array_length_descriptor(rt, object, desc)
 	js_value* old = js_runtime_property(object, key)
 	int accessor = (desc.fields & 48) != 0
 	int data = (desc.fields & 12) != 0
@@ -105,7 +104,7 @@ js_value* js_object_descriptor_value(js_runtime* rt, js_value* object, js_text* 
 	if (rt.completion.status != 0): return rt.undefined_value
 	if (length):
 		js_runtime_set(rt, result, c"value", js_runtime_number(rt, cast(float64, object.array_length)))
-		js_runtime_set(rt, result, c"writable", js_runtime_boolean(rt, 1))
+		js_runtime_set(rt, result, c"writable", js_runtime_boolean(rt, object.array_length_writable))
 	else if (prop.accessor):
 		js_value* getter = rt.undefined_value
 		js_value* setter = rt.undefined_value
@@ -233,7 +232,7 @@ js_value* js_object_static(void* runtime, void* context, js_value* receiver, lis
 		for i in range(keys.length):
 			if (rt.completion.status != 0): break
 			js_value* own = js_runtime_property(object, keys[i])
-			if (code == 6 || (own != 0 && own.enumerable)): js_runtime_array_append(rt, result, js_runtime_string(rt, keys[i]))
+			if (code == 6 || (own != 0 && own.enumerable)): js_runtime_array_create_append(rt, result, js_runtime_string(rt, keys[i]))
 		js_for_in_keys_free(keys)
 		return result
 	js_text* key = js_runtime_string_text(rt, second)
@@ -259,8 +258,7 @@ js_value* js_object_static(void* runtime, void* context, js_value* receiver, lis
 	else if (code == 14):
 		js_value* target = object
 		if (args.length > 3): target = args[3]
-		if (object.kind == 6 || target.kind == 6): js_runtime_fail(rt, 6, c"Reflect.set array length semantics are not implemented")
-		else: result = js_runtime_boolean(rt, js_runtime_write_receiver(rt, object, key, third, target))
+		result = js_runtime_boolean(rt, js_runtime_write_receiver(rt, object, key, third, target))
 	else if (code == 15):
 		if (js_object_ordinary(rt, object)):
 			int success = 0
