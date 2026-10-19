@@ -1,0 +1,7 @@
+# bin/orm_gen error fixture (orm_gen_test): two errors, reported as
+# file:line: message with exit status 1.
+app broken
+
+model Thing:
+	strng name
+	fk owner -> Nobody
