@@ -169,6 +169,7 @@ void js_runtime_install_boxed(js_runtime* rt);
 void js_runtime_install_harness_math(js_runtime* rt);
 void js_runtime_install_harness_search(js_runtime* rt);
 void js_runtime_install_string_split(js_runtime* rt);
+void js_runtime_install_string_replace(js_runtime* rt);
 void js_runtime_install_reflect_construct(js_runtime* rt);
 js_value* js_runtime_remainder(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_array_join(js_runtime* rt);
@@ -548,6 +549,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_array_join(rt)
 	js_runtime_install_harness_search(rt)
 	js_runtime_install_string_split(rt)
+	js_runtime_install_string_replace(rt)
 	js_runtime_install_reflect_construct(rt)
 	return rt
 
@@ -2029,3 +2031,5 @@ import libs.extras.javascript.runtime_harness_search
 import libs.extras.javascript.runtime_string_split
 
 import libs.extras.javascript.runtime_reflect_construct
+
+import libs.extras.javascript.runtime_string_replace

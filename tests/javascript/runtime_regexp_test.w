@@ -121,7 +121,7 @@ void regexp_test_rejections():
 	regexp_test_eval(rt, c"/\\u00e9/i.test('e');", 6)
 	regexp_test_eval(rt, c"/[a-\\u00ff]/i.test('e');", 6)
 	regexp_test_eval(rt, c"/a/i.test('é');", 6)
-	regexp_test_eval(rt, c"'a'.replace(/a/, function(){return 'b';});", 6)
+	regexp_test_eval(rt, c"'a'.replace(/a/, function(){return 'b';})==='b';", 0)
 	regexp_test_eval(rt, c"new RegExp(/a/);", 6)
 	regexp_test_eval(rt, c"let r=/a/g;r.lastIndex='1';r.test('ba');", 6)
 	regexp_test_eval(rt, c"let custom=/a/;custom.exec=function(){return null;};custom.test('a');", 6)
