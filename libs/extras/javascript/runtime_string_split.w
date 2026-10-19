@@ -1,7 +1,10 @@
 # String-separator split operates on UTF-16 units, including lone surrogates.
-# RegExp/@@split dispatch remains explicit unsupported until Symbol methods.
+# RegExp separators use a separate sticky matching path. @@split is pending.
 # https://tc39.es/ecma262/#sec-string.prototype.split
 import libs.extras.javascript.runtime
+
+int js_string_split_limit(js_runtime* rt, js_value* value);
+js_value* js_string_split_regexp(js_runtime* rt, js_value* receiver, js_value* separator, js_value* limit_value);
 
 void js_string_split_piece(js_runtime* rt, js_value* array, js_text* source, int start, int end):
 	js_text* piece = js_text_new()
@@ -20,19 +23,10 @@ js_value* js_string_split(void* runtime, void* context, js_value* receiver, list
 		js_runtime_fail(rt, 2, c"split requires a coercible receiver")
 		return rt.undefined_value
 	js_value* separator = js_object_argument(rt, args, 0)
-	if (separator.regexp != 0):
-		js_runtime_fail(rt, 6, c"RegExp split requires Symbol.split dispatch")
-		return rt.undefined_value
+	if (separator.regexp != 0): return js_string_split_regexp(rt, receiver, separator, js_object_argument(rt, args, 1))
 	js_text* source = js_runtime_string_text(rt, receiver)
 	if (source == 0): return rt.undefined_value
-	int limit = (1 << 32) - 1
-	js_value* limit_value = js_object_argument(rt, args, 1)
-	if (limit_value.kind != 0):
-		float64 number = js_array_like_number(rt, limit_value)
-		limit = 0
-		if (rt.completion.status == 0 && js_builtin_finite(number)):
-			float64 reduced = js_number_remainder(rt, js_builtin_trunc(number), 4294967296.0)
-			if (rt.completion.status == 0): limit = cast(int, reduced) & ((1 << 32) - 1)
+	int limit = js_string_split_limit(rt, js_object_argument(rt, args, 1))
 	js_text* delimiter = 0
 	if (rt.completion.status == 0): delimiter = js_runtime_string_text(rt, separator)
 	js_value* result = rt.undefined_value

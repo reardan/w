@@ -2041,3 +2041,5 @@ import libs.extras.javascript.runtime_string_replace
 import libs.extras.javascript.runtime_array_concat
 
 import libs.extras.javascript.runtime_global_numeric
+
+import libs.extras.javascript.runtime_regexp_split

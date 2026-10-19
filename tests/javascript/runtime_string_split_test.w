@@ -35,7 +35,7 @@ int main(int argc, int argv):
 	string_split_eval(rt, c"let bad=0;try{'abc'.split('',1n);}catch(e){bad=e.constructor===TypeError;}bad;", 0)
 	string_split_eval(rt, c"let count=0;try{String.prototype.split.call(null,{toString:function(){count++;return '.';}});}catch(e){if(e.constructor===TypeError)count+=10;}count===10;", 0)
 	string_split_eval(rt, c"let setterCalls=0;Object.defineProperty(Object.prototype,'0',{set:function(){setterCalls++;},configurable:true});let parts='a.b'.split('.');delete Object.prototype[0];setterCalls===0 && parts[0]==='a' && parts[1]==='b';", 0)
-	string_split_eval(rt, c"'a'.split(/a/);", 6)
+	string_split_eval(rt, c"'a'.split(/a/).join('|')==='|';", 0)
 	js_runtime_free(rt)
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_string_split_test: OK")
