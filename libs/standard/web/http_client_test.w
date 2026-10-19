@@ -786,7 +786,7 @@ void test_http_streaming_matches_buffered():
 			http_test_request q
 			if (http_test_read_request(conn, &q) == 0): exit(1)
 			http_test_request_free(&q)
-			net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/plain\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0a")
+			net_test_send_text(conn, c"HTTP/1.1 103 Early Hints\x0d\x0aSet-Cookie: interim=ignored\x0d\x0a\x0d\x0aHTTP/1.1 200 OK\x0d\x0aContent-Type: text/plain\x0d\x0aSet-Cookie: test=2; Expires=Fri 01 Jan 2038 00:00:00 GMT, baz=qux\x0d\x0aSet-Cookie: other=3\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0a")
 			net_test_send_text(conn, c"6\x0d\x0astream\x0d\x0a")
 			net_test_send_text(conn, c"4\x0d\x0a me \x0d\x0a")
 			net_test_send_text(conn, c"7\x0d\x0aplease.\x0d\x0a")
@@ -806,6 +806,10 @@ void test_http_streaming_matches_buffered():
 	assert_equal(0, s.error)
 	http_response* head = http_stream_headers(s)
 	assert_equal(200, head.status)
+	assert_equal(2, http_response_set_cookie_count(head))
+	assert_strings_equal(c"test=2; Expires=Fri 01 Jan 2038 00:00:00 GMT, baz=qux", http_response_set_cookie(head, 0))
+	assert_strings_equal(c"other=3", http_response_set_cookie(head, 1))
+	assert_equal(2, http_response_set_cookie_count(buffered))
 	assert_strings_equal(c"text/plain", http_response_header(head, c"content-type"))
 	string_builder* collected = string_new()
 	char* buf = cast(char*, malloc(8))
@@ -833,3 +837,26 @@ void test_http_streaming_matches_buffered():
 # error. The IPv4 fallback itself is covered by lib/net_ipv6_test.w.
 void test_http_ipv6_literal_host_connects():
 	http_test_expect_error(http_get(c"http://[::1]:9/"), http_error_connect)
+
+
+void test_http_individual_set_cookie_fields():
+	http_response* resp = http_response_new()
+	assert_equal(0, http_response_set_cookie_count(resp))
+	asserts(c"null response cookie", http_response_set_cookie(0, 0) == 0)
+	char* line = strclone(c"sEt-CoOkIe: test=2; Expires=Fri, 01 Jan 2038 00:00:00 GMT, baz=qux  ")
+	assert_equal(1, http_store_header(resp, line, strlen(line)))
+	line[12] = 'X'
+	free(line)
+	char* second = c"Set-Cookie: other=3; HttpOnly"
+	assert_equal(1, http_store_header(resp, second, strlen(second)))
+	char* unrelated = c"Set-Cookie2: ignored=4"
+	assert_equal(1, http_store_header(resp, unrelated, strlen(unrelated)))
+	char* invalid = c" Set-Cookie: folded=bad"
+	assert_equal(0, http_store_header(resp, invalid, strlen(invalid)))
+	assert_equal(2, http_response_set_cookie_count(resp))
+	assert_strings_equal(c"test=2; Expires=Fri, 01 Jan 2038 00:00:00 GMT, baz=qux", http_response_set_cookie(resp, 0))
+	assert_strings_equal(c"other=3; HttpOnly", http_response_set_cookie(resp, 1))
+	asserts(c"negative cookie index", http_response_set_cookie(resp, -1) == 0)
+	asserts(c"past cookie index", http_response_set_cookie(resp, 2) == 0)
+	assert_strings_equal(c"test=2; Expires=Fri, 01 Jan 2038 00:00:00 GMT, baz=qux, other=3; HttpOnly", http_response_header(resp, c"set-cookie"))
+	http_response_free(resp)
