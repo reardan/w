@@ -13,8 +13,8 @@
 # wbuild: deps=tests/safe_outlives_runtime_fixture.w deps=tests/safe_owned_aggregate_runtime_fixture.w deps=tests/safe_owned_buffer_runtime_fixture.w
 # wbuild: deps=tests/safe_owned_field_runtime_fixture.w deps=tests/safe_partial_move_runtime_fixture.w deps=tests/safe_qualified_inference_runtime_fixture.w
 # wbuild: deps=tests/safe_reference_field_runtime_fixture.w deps=tests/safe_runtime_fixture.w deps=tests/safe_scalar_field_runtime_fixture.w
-# wbuild: deps=tests/safe_scoped_defer_runtime_fixture.w deps=tests/safe_slice_runtime_fixture.w deps=tests/safe_thread_runtime_fixture.w
-# wbuild: deps=tests/safe_win64_runtime_fixture.w
+# wbuild: deps=tests/safe_scoped_defer_runtime_fixture.w deps=tests/safe_slice_runtime_fixture.w deps=tests/safe_sync_runtime_fixture.w
+# wbuild: deps=tests/safe_thread_runtime_fixture.w deps=tests/safe_win64_runtime_fixture.w
 /*
 Ownership-preserving optimization: differential validation (#714,
 docs/projects/safe_mode.md "Ownership-preserving optimization

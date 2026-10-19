@@ -9,7 +9,8 @@ and macOS ARM64 (`arm64_darwin`):
 ```
 
 This is a bounded subset whose only concurrency is the audited
-[spawn/join API](#thread-transfer-and-spawnjoin), tracked by
+[spawn/join API](#thread-transfer-and-spawnjoin) with its
+[guarded mutexes and atomics](#synchronization-guarded-mutexes-and-atomics), tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
 design, including richer aggregates and broader lifetime contracts, is
@@ -1342,8 +1343,8 @@ Checked code can move owned work to another thread and lend borrows to a
 thread that is joined before the call returns. Import `lib.safe_thread`;
 like `lib/thread.w` underneath, it supports Linux x86 and x64 only, and other
 targets fail to compile it. This is part of
-[issue #699](https://github.com/reardan/w/issues/699). Synchronization
-primitives, atomics and shared mutation are not available yet.
+[issue #699](https://github.com/reardan/w/issues/699). Shared mutation
+goes only through the [synchronized types](#synchronization-guarded-mutexes-and-atomics).
 
 ### Transfer and share eligibility
 
@@ -1455,8 +1456,9 @@ the caller in order and the result is the same.
 
 ### Limits
 
-- No shared mutation: there are no atomics, locks or condition variables
-  for checked code, and globals keep their separate gate. Checked code
+- Shared mutation only through `WSafeMutex` guards and `WSafeAtomic`
+  operations (below). There are no condition variables, and globals keep
+  their separate gate. Checked code
   running on a thread is checked like any other function. However, legacy
   code that a checked thread calls under an `unsafe:` boundary can race,
   and that remains unsafe code's responsibility.
@@ -1466,6 +1468,141 @@ the caller in order and the result is the same.
   `scoped thread argument [field 'path'] ...` (fork-join),
   `thread entry must be fn[](own T*) -> int ...` and
   `fork-join entry must be fn[](T) -> int ...`. All use family `W0413`.
+
+## Synchronization: guarded mutexes and atomics
+
+`lib.safe_thread` also provides the only checked shared mutation: a mutex
+whose payload is reachable only while a guard is held, and an atomic integer
+whose every operation names its memory ordering. Both use the same Linux
+x86/x64 runtime as spawn/join. The memory-ordering argument is in
+[the contracts document](safe_mode_contracts.md#synchronization-and-memory-ordering).
+
+### Mutexes and guards
+
+```w
+import lib.safe_thread
+
+type Count = fn[](ref WSafeMutex*) -> int
+
+int count(ref WSafeMutex* mutex):
+	for i in range(1000):
+		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
+		refmut int* value = safe_guard_value(guard)
+		*value = *value + 1
+	return 0
+
+int main():
+	own int* start = new int
+	own WSafeMutex* mutex = safe_mutex_new(start)
+	ref WSafeMutex* shared = mutex
+	Count* entry = count
+	safe_thread_fork_join(entry, shared, shared)
+	own[a] WSafeGuard* guard = safe_mutex_lock(shared)
+	refmut int* value = safe_guard_value(guard)
+	return *value - 2000
+```
+
+| Call | Contract |
+| --- | --- |
+| `safe_mutex_new(own int* value) -> own WSafeMutex*` | Consumes the payload. Dropping the mutex destroys the payload once, then the mutex. |
+| `safe_mutex_lock(ref[a] WSafeMutex*) -> own[a] WSafeGuard*` | Blocks until the mutex is free. |
+| `safe_mutex_try_lock(ref[a] WSafeMutex*) -> optown[a] WSafeGuard*` | Returns an absent guard when the mutex is held. |
+| `safe_guard_value(refmut[a] WSafeGuard*) -> refmut[a] int*` | The payload view; it borrows the guard. |
+| `safe_guard_unlock(own[a] WSafeGuard*)` | Consumes the guard and releases the mutex early. |
+
+The lifetimes do the work:
+
+- **The guard borrows the mutex.** `own[a] WSafeGuard*` carries the shared
+  borrow `a` of the mutex. A guard owner must name it; plain
+  `own WSafeGuard*` is rejected. The mutex cannot be moved, consumed,
+  replaced or dropped while a guard may still exist, and a guard of a local
+  mutex cannot be returned, even inside another owner.
+- **Dropping the guard unlocks.** This happens at scope exit, `return`,
+  `break`, `continue`, replacement, early unlock and optional-owner cleanup.
+  The checker counts each drop as a use of the guard's borrow. A guard
+  released on only some paths still pins the mutex until its scope ends. A
+  guard cannot leave the block in which its mutex is declared
+  (`lock guard outlives the mutex it borrows`).
+- **The view borrows the guard.** A `refmut int*` from `safe_guard_value`
+  ends before the guard can be unlocked, moved or dropped. Using it after
+  `safe_guard_unlock` or after the guard's block is a use of a moved value.
+  A shared `ref WSafeGuard*` cannot open the view, and two live views of
+  one guard conflict.
+- **A guard stays on its locking thread.** It is neither transferable nor
+  shareable, at any depth of a payload or lent argument. Unlocking always
+  happens on the thread that locked.
+- **The mutex is opaque.** There is no field access, partial move or
+  checked allocation outside `safe_mutex_new`, and no plain construction.
+
+### Atomics
+
+```w
+int publish(ref WSafeAtomic* data, ref WSafeAtomic* ready):
+	safe_atomic_store(data, 42, memory_order_relaxed)
+	safe_atomic_store(ready, 1, memory_order_release)
+	return 0
+
+int consume(ref WSafeAtomic* data, ref WSafeAtomic* ready):
+	while (safe_atomic_load(ready, memory_order_acquire) == 0): pass
+	return safe_atomic_load(data, memory_order_relaxed)
+```
+
+`safe_atomic_new(int) -> own WSafeAtomic*` allocates a word. Every access
+goes through one of these calls, with a `WMemoryOrder` argument:
+
+| Operation | Admitted orders |
+| --- | --- |
+| `safe_atomic_load(ref WSafeAtomic*, order) -> int` | `relaxed`, `acquire`, `seq_cst` |
+| `safe_atomic_store(ref WSafeAtomic*, int value, order)` | `relaxed`, `release`, `seq_cst` |
+| `safe_atomic_fetch_add(ref WSafeAtomic*, int delta, order) -> int` (old value) | all five |
+| `safe_atomic_compare_exchange(ref WSafeAtomic*, int expected, int desired, success, failure) -> int` (observed value) | success: all five; failure: `relaxed`, `acquire`, `seq_cst` |
+
+Orders are spelled `memory_order_relaxed`, `memory_order_acquire`,
+`memory_order_release`, `memory_order_acq_rel` and `memory_order_seq_cst`,
+with C++11 meanings. The argument must be one of those constants, so every
+call's ordering is known when it is compiled. A runtime `WMemoryOrder`
+value or a cast integer is rejected, as is an order that the operation
+cannot have. The compare-exchange succeeded exactly when its result equals
+`expected`. There is no separate fence operation.
+
+### Thread rules
+
+| Type | Transferable | Shareable |
+| --- | --- | --- |
+| `own WSafeMutex*` | if its payload is | if its payload is transferable |
+| `own[a] WSafeGuard*` | no | no |
+| `own WSafeAtomic*` | yes | yes |
+
+A mutex is shareable even though its payload is only transferable: the lock
+lends the payload to one thread at a time. Pass `ref WSafeMutex*` or
+`ref WSafeAtomic*` (or a record holding them) to fork-join for concurrent
+use. Move the owner into a spawn payload to hand it over. Detached threads
+cannot share one mutex or atomic: there is no shared ownership.
+
+### Limits and costs
+
+- The payload is a single `int` (an `own int*`). Generic `WSafeMutex[T]`
+  waits for checked generic records (#696). The thread rule above is
+  structural, so it already describes such payloads.
+- Locking the same mutex twice on one thread, or locking two mutexes in
+  opposite orders on two threads, deadlocks. Deadlock is not memory
+  unsafety, and the checker does not prevent it.
+- A guard adds no allocation: its owner is the mutex's address. Lock and
+  unlock are one `lock` instruction each when uncontended. Waiting uses
+  futexes. Each atomic call is a function call around one instruction. A
+  `seq_cst` store adds a fence.
+- New diagnostics (family `W0413`): `lock guard outlives the mutex it
+  borrows`, `a lock guard owner must name its mutex lifetime`,
+  `... is a lock guard bound to its locking thread`,
+  `atomic memory order must be a memory_order_* constant`,
+  `atomic load cannot use release or acq_rel ordering`,
+  `atomic store cannot use acquire or acq_rel ordering` and
+  `compare-exchange failure ordering cannot be release or acq_rel`.
+
+`tests/safe_sync_test.w` checks the accepted and rejected contracts on x86
+and x64. `tests/safe_sync_runtime_test.w` covers lock release on every exit
+path, exact counts under fork-join and spawned-thread contention,
+release/acquire publication, and exactly-once cleanup with `W_DEBUG_ALLOC=1`.
 
 ## Entry points, diagnostics and costs
 
