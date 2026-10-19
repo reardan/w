@@ -229,6 +229,7 @@ void js_runtime_install_json(js_runtime* rt);
 void js_runtime_install_global_numeric(js_runtime* rt);
 void js_runtime_install_string_code_unit(js_runtime* rt);
 void js_runtime_install_string_substring(js_runtime* rt);
+void js_runtime_install_string_trim(js_runtime* rt);
 void js_runtime_install_classes(js_runtime* rt);
 void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode);
 void js_class_define(js_runtime* rt, js_value* object, char* name, js_value* value, int writable, int configurable);
@@ -571,6 +572,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_global_numeric(rt)
 	js_runtime_install_string_code_unit(rt)
 	js_runtime_install_string_substring(rt)
+	js_runtime_install_string_trim(rt)
 	return rt
 
 
@@ -2082,5 +2084,6 @@ import libs.extras.javascript.runtime_string_code_unit
 import libs.extras.javascript.runtime_array_descriptor
 
 import libs.extras.javascript.runtime_string_substring
+import libs.extras.javascript.runtime_string_trim
 
 import libs.extras.javascript.runtime_object_integrity
