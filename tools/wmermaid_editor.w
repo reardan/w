@@ -311,7 +311,7 @@ int main(int argc, int argv):
 		else if (canvas.edge >= 0): selection_text = c"Selected connection"
 		ui_label(&ctx, selection_text)
 		ui_same_line(&ctx)
-		ui_disable(&ctx, closing || (e.document.kind != MM_FLOW && e.document.kind != MM_ER))
+		ui_disable(&ctx, closing || mm_graph_edit_family(e.document.kind) == 0)
 		if (ui_button(&ctx, c"New")):
 			mm_canvas_reset(&canvas, e)
 			ui_textbox_set(&node_id, c"")
@@ -333,13 +333,10 @@ int main(int argc, int argv):
 			focus_label = 0
 		label_focus_id = ctx.next_id
 		ui_textarea(&ctx, ui_layout_next(&ctx, left.w - 112.0, 34.0), &node_label)
-		int can_add = e.document.error == 0 && (e.document.kind == MM_FLOW || e.document.kind == MM_ER) && mm_editor_identifier(&node_id.text[0]) && mm_find_node(e.document, &node_id.text[0]) < 0
+		int can_add = e.document.error == 0 && mm_graph_edit_family(e.document.kind) && mm_editor_identifier(&node_id.text[0]) && mm_find_node(e.document, &node_id.text[0]) < 0
 		ui_disable(&ctx, closing || can_add == 0)
 		if (ui_button(&ctx, c"Add")):
-			int added = 0
-			if (e.document.kind == MM_ER): added = mm_editor_add_entity(e, &node_id.text[0], node_label.buf.data)
-			else: added = mm_editor_add_node(e, &node_id.text[0], node_label.buf.data)
-			if (added):
+			if (mm_editor_add_graph_node(e, &node_id.text[0], node_label.buf.data)):
 				canvas.node = mm_find_node(e.document, &node_id.text[0])
 				canvas.edge = -1
 				mm_canvas_source_sync(&area, e.document.source)
@@ -365,6 +362,7 @@ int main(int argc, int argv):
 			if (mm_canvas_delete(&canvas, e)):
 				mm_canvas_source_sync(&area, e.document.source)
 				status = c"Deleted with incident connections. Ctrl+Z to undo."
+			else: status = c"This deletion cannot be represented safely here (e.g. it reaches inside a composite or namespace); use source editing."
 		ui_disable(&ctx, closing || mm_editor_can_move(e, canvas.node) == 0)
 		if (ui_button(&ctx, c"Move here")):
 			canvas.move_here = 1
@@ -372,13 +370,14 @@ int main(int argc, int argv):
 			ctx.focus = WM_CANVAS_FOCUS
 			status = c"Click the new top-left position. Escape cancels."
 		ui_same_line(&ctx)
-		ui_disable(&ctx, closing || canvas.node < 0 || (e.document.kind != MM_FLOW && e.document.kind != MM_ER))
+		ui_disable(&ctx, closing || canvas.node < 0 || mm_graph_edit_family(e.document.kind) == 0)
 		if (ui_button(&ctx, c"Link to")):
 			canvas.connect_from = canvas.node
 			canvas.move_here = 0
 			ctx.focus = WM_CANVAS_FOCUS
 			status = c"Click the destination node. Escape cancels."
 			if (e.document.kind == MM_ER): status = c"Click target: one-to-many relates. Edit cardinality and label in source."
+			if (e.document.kind == MM_CLASS): status = c"Click target: adds an association. Edit relationship kind in source."
 		ui_disable(&ctx, closing)
 		ui_region_pop(&ctx)
 		float32 source_y = left.y + 218.0
@@ -434,7 +433,7 @@ int main(int argc, int argv):
 			free(diagnostic)
 		else: ui_draw_text(&renderer, 12.0, height - 62.0, status, 2, theme.text_muted)
 		char* help = c"Ctrl+D canvas: Tab selects, arrows move (Shift: 10), Delete removes. Wheel zooms."
-		if (e.document.kind != MM_FLOW && e.document.kind != MM_ER): help = c"Preview and source editing for this family. Graphical editing: flowchart and ER."
+		if (mm_graph_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class and state."
 		ui_draw_text(&renderer, 12.0, height - 38.0, help, 2, theme.text_muted)
 		ui_clip_pop(&renderer)
 		ui_disable(&ctx, 0)
