@@ -198,8 +198,8 @@ requirements remain explicit UNSUPPORTED: `isConstructor.js` needs
 for a non-constructor. Original `propertyHelper.js` is pinned and executed;
 after the Math.pow/join and mapped arguments slices, verifyProperty executes
 unchanged. A fresh complete Object.is family run in this original-harness profile
-records 34 PASS/8 UNSUPPORTED and zero FAIL/ERROR across all 21 files/42 variants;
-six variants need Symbols and two need Reflect.construct. No helper is replaced
+records 36 PASS/6 UNSUPPORTED and zero FAIL/ERROR across all 21 files/42 variants;
+all six remaining variants need Symbols. No helper is replaced
 with a passing stub.
 
 Run `python3 tools/test262_conformance.py --harness upstream --require-all`
@@ -221,4 +221,6 @@ embedding API, including non-enumerable `globalThis`, global var properties and
 separate lexical bindings. Raw scripts use the same realm without assertion
 helpers. Ordinary `Reflect`, `Reflect.set`, `Object.is` and arrow-function feature
 metadata now reaches execution; this admits tests rather than assuming their
-results. Missing Reflect.construct and Symbol support remains explicit.
+results. The ordinary Reflect.construct slice also admits the original isConstructor.js
+helper, with real positive ordinary-function and negative arrow-function checks.
+Symbol support and native alternate-newTarget limitations remain explicit.

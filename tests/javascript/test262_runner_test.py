@@ -231,8 +231,18 @@ class AdapterContract(unittest.TestCase):
         source, reason = adapter.prepare_harness(sources, ['propertyHelper.js'])
         self.assertIsNone(reason)
         self.assertIn(sources['upstream/harness/propertyHelper.js'], source)
-        _, reason = adapter.prepare_harness(sources, ['isConstructor.js'])
-        self.assertIn('Reflect.construct', reason)
+        constructor_setup, reason = adapter.prepare_harness(sources, ['isConstructor.js'])
+        self.assertIsNone(reason)
+        with patch.object(adapter, 'FEATURES', adapter.FEATURES - {'Reflect.construct'}):
+            _, blocked = adapter.prepare_harness(sources, ['isConstructor.js'])
+            self.assertIn('Reflect.construct', blocked)
+        with tempfile.TemporaryDirectory() as directory:
+            harness = Path(directory) / 'harness.js'
+            harness.write_text(constructor_setup)
+            test = Path(directory) / 'test.js'
+            test.write_text('assert(isConstructor(function F(){}));assert(!isConstructor(()=>{}));')
+            actual = adapter.execute(BINARY, test, 'sloppy', 5, 100000, harness_path=harness)
+            self.assertEqual(actual['outcome'], 'normal', actual)
         for includes in [['missing.js'], ['../assert.js']]:
             with self.assertRaises(ValueError):
                 adapter.prepare_harness(sources, includes)
