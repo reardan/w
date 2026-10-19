@@ -403,6 +403,8 @@ int safe_opaque(int type):
 
 int safe_runtime_call(retained_binding* binding):
 	char* name = binding.name
+	if (safe_trusted(binding.source) && ends_with(retained_sources[binding.source].path, c"/lib/safe_foreign.w")):
+		return (strcmp(name, c"foreign_read") == 0) || (strcmp(name, c"foreign_write") == 0)
 	if (safe_buffer_source(binding.source)):
 		if ((strcmp(name, c"byte_arena_new") == 0) || (strcmp(name, c"byte_arena_length") == 0) || (strcmp(name, c"byte_arena_copy") == 0) || (strcmp(name, c"byte_arena_reset") == 0) || (strcmp(name, c"byte_arena_release") == 0)): return 1
 		if ((strcmp(name, c"owned_int_buffer_new") == 0) || (strcmp(name, c"owned_int_buffer_length") == 0) || (strcmp(name, c"owned_int_buffer_push") == 0) || (strcmp(name, c"owned_int_buffer_get") == 0) || (strcmp(name, c"owned_int_buffer_set") == 0) || (strcmp(name, c"owned_int_buffer_pop") == 0) || (strcmp(name, c"owned_int_buffer_clear") == 0)): return 1

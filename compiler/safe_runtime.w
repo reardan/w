@@ -40,6 +40,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/memory_freelist.w")): return c"3914deeecbd1076336d7d71c7ef948d437b5f2784de641b5e9b73134acdfd317"
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
+	if (ends_with(path, c"/lib/safe_foreign.w")): return c"bc265181309880ad5416d81d722a18b08cd0df30a4fb8ce3cf045aba52d5c18d"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
 	if (ends_with(path, c"/lib/safe_thread.w")): return c"aece9bfefb701d7fcc9e68d888a0140309d58db2adb028c9bd2973ec65bd6fa4"
 	if (ends_with(path, c"/lib/thread.w")): return c"5430e367b5acf2ac324a46294001ae9ebd426c9223130fa3bf2054bfdcaa6b89"
