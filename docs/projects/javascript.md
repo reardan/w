@@ -223,6 +223,10 @@ The initial semantic subset is deliberately explicit:
   object spread copies enumerable own properties. Shared non-enumerable array
   methods include `push`, `shift`, generic [slice](javascript_arguments.md),
   generic [some](javascript_array_some.md), `splice`, and `includes`.
+  Generic `every`, `forEach`, `map`, `filter`, `find`, `findIndex`, `findLast`,
+  `findLastIndex`, `reduce`, and `reduceRight` snapshot length, observe live
+  indexed properties and preserve callback/exception ordering. See the
+  [array iteration contract](javascript_array.md#callback-iteration).
   [Array/Array.isArray](javascript_array.md) provide bounded construction and brand
   checks. String methods include `slice`, `codePointAt`, `startsWith`, `indexOf`,
   and Unicode 12.1 [toLowerCase/toUpperCase](javascript_string_case.md), including
@@ -544,7 +548,7 @@ call path, so this permission does not leak to nested ordinary calls.
 
 The pinned Test262 addition reference-error cases now pass both script variants
 through `instanceof ReferenceError`. The expanded pinned runtime selection now
-reports 90 PASS and 23 explicit UNSUPPORTED across 113 variants, with no FAIL or
+reports 110 PASS and 35 explicit UNSUPPORTED across 145 variants, with no FAIL or
 ERROR; see its [manifest/profile](../../tests/javascript/test262/README.md).
 These are measured feature gains, not a full-conformance claim. The adapter's unsupported-syntax self-test now uses a class accessor,
 which remains unsupported, instead of a now-supported empty class.

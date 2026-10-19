@@ -315,6 +315,86 @@
       "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js",
       "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-4.js",
       "sha256": "22277b903cbef004737624aa5e0125783138f43edb23bd6aa8fff82b6d6cc34d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/every/15.4.4.16-7-1.js",
+      "sha256": "2cb41d588b3613bc3b4bc48910dc708afaebedc57b5ad23999256413a08217b6"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/every/15.4.4.16-7-2.js",
+      "sha256": "4ff69325d7d694d4fc18ae26177a03b5f7d627231a64620738e1dcec7d2c43e5"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js",
+      "sha256": "8825bae08ecd9c7d62a0f497522d3231727844887daf782cae8df71b599e564c"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
+      "sha256": "1ab6d831974a844c01164734c5c7083f3c1c0fed09f10fa99bbe32b7f76976be"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js",
+      "upstream_path": "test/built-ins/Array/prototype/find/predicate-call-parameters.js",
+      "sha256": "06b62d3c398e10be8d30803f7117ca4d387db8ce8fb0d9fee9485cb0fa28dc5d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js",
+      "upstream_path": "test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js",
+      "sha256": "79213c4b85cb27b8bbc8c14518f6ac1e8d43f77bf0bfa7cc3c39471e82ac95c2"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js",
+      "upstream_path": "test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js",
+      "sha256": "c3df51a3f7864f46d75f4d5b22c5b7fcafa0e7f4a1370fcec9fc15bfe40fdc42"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js",
+      "upstream_path": "test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js",
+      "sha256": "66817d3018a5846ef306ba0cdd2dc8a31c6b78755831736b2f9677ad075c593d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js",
+      "sha256": "74d413813680689e50299a5d3b0fdee3d99d38bb6c7f2f455f7cdbbff3a787ba"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
+      "sha256": "c755438728aba20236537836fd5d4e45ee064afa70198cf0d22228b59e93145a"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/map/15.4.4.19-8-1.js",
+      "sha256": "a8405a70579b19bb30cf62a2fd170dce061ca0f7822a2ac92da387e8959bfe95"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
+      "sha256": "e06c3dd1f4c4ffa596bad5d719201f3f70d78b86c78a1096f4707d8a06e34ffc"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
+      "sha256": "40c32826329f30349d21a60a3a6bf776e7f62e80754c17fb746d34c55687a126"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
+      "sha256": "2fb659a819655d804e179b12c0f885fc976f2e5125da83120c947d6597685c39"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
+      "sha256": "31d04ed08020d139fd83aa3e0cd0b2ea98270a267c2979f6dbcf0bae656e75c2"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
+      "sha256": "f2fbbf765dae2cfdbcdfa294a0c6c3aa8dc12923e53b77e4b3cb24492e15ac1f"
     }
   ],
   "cases": [
@@ -375,7 +455,23 @@
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-1.js",
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-3.js",
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-2.js",
-    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js"
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js",
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js",
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js",
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js",
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
+    "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js",
+    "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js",
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js",
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js",
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js",
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js",
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -738,6 +834,114 @@
       "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Sloppy mapped arguments are outside the runtime profile; the strict variant exercises callback arguments."
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Sloppy mapped arguments are outside the runtime profile; the strict variant exercises callback arguments."
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Property deletion remains outside the runtime profile."
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Property deletion remains outside the runtime profile."
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js#strict": {
       "status": "PASS"
     }
   },

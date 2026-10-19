@@ -217,6 +217,7 @@ js_value* js_numeric_bitwise(js_runtime* rt, char* operation, js_value* left, js
 js_value* js_numeric_not(js_runtime* rt, js_value* value);
 js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_some(js_runtime* rt);
+void js_runtime_install_array_iteration(js_runtime* rt);
 void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args);
 js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
 
@@ -468,6 +469,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_collections(rt)
 	js_runtime_install_array(rt)
 	js_runtime_install_some(rt)
+	js_runtime_install_array_iteration(rt)
 	js_runtime_install_regexp(rt)
 	js_runtime_install_builtins(rt)
 	js_runtime_install_number_parse(rt)
@@ -1851,6 +1853,7 @@ import libs.extras.javascript.runtime_string_case
 import libs.extras.javascript.runtime_arguments
 import libs.extras.javascript.runtime_array_like
 import libs.extras.javascript.runtime_array_some
+import libs.extras.javascript.runtime_array_iteration
 
 import libs.extras.javascript.runtime_addition
 

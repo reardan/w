@@ -27,10 +27,10 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 90, 'FAIL': 0, 'UNSUPPORTED': 23, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 81)
-        self.assertEqual(report['assertions'], 243)
-        self.assertEqual(report['variants'], 113)
+        self.assertEqual(report['counts'], {'PASS': 110, 'FAIL': 0, 'UNSUPPORTED': 35, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 101)
+        self.assertEqual(report['assertions'], 313)
+        self.assertEqual(report['variants'], 145)
         self.assertEqual(report['baseline_changes'], [])
 
     def test_pass_regressing_to_unsupported_fails_gate(self):
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 89, 'FAIL': 0, 'UNSUPPORTED': 24, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 109, 'FAIL': 0, 'UNSUPPORTED': 36, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -63,7 +63,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'load_manifest', return_value=(manifest, sources)):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 90, 'FAIL': 0, 'UNSUPPORTED': 23, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 110, 'FAIL': 0, 'UNSUPPORTED': 35, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')

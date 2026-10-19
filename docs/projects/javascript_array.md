@@ -31,7 +31,32 @@ receiver-independent branding, prototype mutation, inherited setters, collection
 and resource exhaustion. All tests run normally and in three allocator-debug
 groups with zero-leak assertions.
 
-A native probe of the unchanged full Preact module advances to its next runtime
-failure, ordinary function prototype mutation at `x.prototype.setState=...`.
-Ordinary function construction/prototype and Function.prototype call/apply/bind
-remain subsequent work; this slice does not claim successful Preact bootstrap.
+## Callback iteration
+
+`every`, `forEach`, `map`, `filter`, `find`, `findIndex`, `findLast`,
+`findLastIndex`, `reduce`, and `reduceRight` are generic methods accepting arrays,
+strings and bounded array-like receivers. They read/coerce length once before
+validating the callback. Values and property presence remain live during iteration:
+appends beyond the initial length are ignored, updates are observed, and the
+presence-based methods skip missing properties while including inherited ones.
+The four `find` methods instead visit holes as `undefined`. Reverse operations
+visit descending indices. `map` preserves holes and `filter` creates dense own
+data properties without invoking inherited index setters.
+
+Callbacks receive value/index/object and the optional `thisArg`; reductions
+receive accumulator/value/index/object with undefined `this`. Reductions without
+an initial value start at the first present element and throw TypeError if none
+exists. An explicitly supplied undefined initial value is preserved. Ordinary
+sloppy receiver substitution/boxing remains outside the runtime profile.
+
+Work charges shared fuel, length/arguments obey `max_properties`, and recursive
+native forwarding obeys depth limits. Native HasProperty and Get failures stop
+before later callbacks; their observable ordering has embedding tests. Normal
+and partitioned guard-allocator tests assert successful cleanup. The pinned
+Test262 selection adds sixteen unchanged files, including explicit unsupported
+neighbors requiring literal elisions, property deletion and sloppy mapped
+arguments. Symbols, Proxy and custom species are still unsupported; `map` and
+`filter` preserve the constructor read and reject invalid primitive constructors,
+then produce ordinary arrays in this profile.
+
+Algorithms follow [ECMA-262 indexed collections](https://tc39.es/ecma262/multipage/indexed-collections.html).

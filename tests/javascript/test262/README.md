@@ -14,10 +14,10 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The selected corpus contains 58 upstream files expanded into 113 variants:
-**90 PASS, 0 FAIL, 23 UNSUPPORTED, 0 ERROR**. Of those passes, 81 reach runtime
+The selected corpus contains 74 upstream files expanded into 145 variants:
+**110 PASS, 0 FAIL, 35 UNSUPPORTED, 0 ERROR**. Of those passes, 101 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. Positive cases execute 243 native assertions across strict/sloppy
+syntax errors. Positive cases execute 313 native assertions across strict/sloppy
 variants; older upstream cases also use conditional throwing checks. These
 numbers describe this selected corpus, **not full Test262 coverage or a browser
 standards pass rate**. Unsupported examples remain in the report.
@@ -30,6 +30,12 @@ names, array literal elisions, sloppy mapped arguments, Object reflection,
 Reflect/new.target, and the broad BigInt feature tag. Runtime tests separately
 exercise supported generic slice/array-like operations through the embedding
 API; the pinned slice case here requires the unavailable Object global.
+
+The array-iteration expansion adds sixteen files for map/filter/every/forEach,
+forward/reverse reduction and find/findIndex callback arguments and empty inputs.
+Twenty new variants pass. Twelve adjacent variants explicitly retain unsupported
+array literal elisions, property deletion or sloppy mapped arguments; existing
+passes and expected statuses remain unchanged.
 
 ## Provenance
 
