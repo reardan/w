@@ -71,7 +71,7 @@ void js_for_in_assign(js_runtime* rt, js_node* target, js_value* env, js_value* 
 		return
 	js_value* object = js_runtime_eval_node(rt, target.children[0], env)
 	js_text* key = 0
-	if (rt.completion.status == 0): key = js_runtime_member_key(rt, target, env)
+	if (rt.completion.status == 0): key = js_runtime_member_key(rt, target, env, object)
 	if (rt.completion.status == 0 && js_runtime_member_write(rt, object, key, value) == 0 && env.strict): js_runtime_fail(rt, 2, c"property write rejected")
 	js_text_free(key)
 

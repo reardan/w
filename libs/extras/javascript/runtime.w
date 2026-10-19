@@ -204,6 +204,7 @@ js_value* js_regexp_literal(js_runtime* rt, char* raw);
 int js_runtime_define_ordinary(js_runtime* rt, js_value* object, js_text* key, js_value* value, js_value* getter, js_value* setter, int accessor, int writable, int enumerable, int configurable);
 int js_array_define_full(js_runtime* rt, js_value* array, js_text* key, js_value* value, js_value* getter, js_value* setter, int accessor, int writable, int enumerable, int configurable);
 int js_runtime_array_resize(js_runtime* rt, js_value* object, js_value* value);
+js_text* js_runtime_string_text(js_runtime* rt, js_value* value);
 int js_runtime_int32(float64 value);
 int js_runtime_bit_operator(char* op);
 js_value* js_runtime_bit_binary(js_runtime* rt, char* op, float64 left, float64 right);
@@ -887,21 +888,25 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	return rt.undefined_value
 
 
-# Property-key conversion is explicit: strings and nonnegative bounded integer
-# indices only. Ordinary object ToPrimitive hooks are outside this subset.
-js_text* js_runtime_member_key(js_runtime* rt, js_node* node, js_value* env):
+# Property references retain the original key value. Get/Put/Delete perform
+# string-hint ToPropertyKey only after rejecting a nullish base. Symbols remain
+# outside the value model; all supported primitive and ordinary object keys use
+# the same conversion as Object/Reflect property operations.
+js_text* js_runtime_property_key(js_runtime* rt, js_value* object, js_value* value):
+	if (rt.completion.status != 0): return 0
+	if (object == 0 || value == 0 || object.owner != rt || value.owner != rt):
+		js_runtime_fail(rt, 2, c"foreign or null property reference")
+		return 0
+	if (object.kind == 0 || object.kind == 1):
+		js_runtime_fail(rt, 2, c"property reference has null or undefined base")
+		return 0
+	return js_runtime_string_text(rt, value)
+
+js_text* js_runtime_member_key(js_runtime* rt, js_node* node, js_value* env, js_value* object):
+	if (rt.completion.status != 0): return 0
 	if (js_kind(node, c"member")): return js_runtime_key(node.children[1].text)
 	js_value* key = js_runtime_eval_node(rt, node.children[1], env)
-	if (key.kind == 4): return js_text_clone(key.text)
-	if (key.kind == 3 && key.number >= -4294967295.0 && key.number <= 4294967295.0):
-		int index = cast(int, key.number)
-		if (cast(float64, index) == key.number):
-			char* spelling = itoa(index)
-			js_text* text = js_runtime_key(spelling)
-			free(spelling)
-			return text
-	js_runtime_fail(rt, 6, c"unsupported computed property key")
-	return 0
+	return js_runtime_property_key(rt, object, key)
 
 
 int js_runtime_array_index(js_text* key):
@@ -1188,6 +1193,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	js_value* object = 0
 	js_text* key = 0
 	js_value* old = rt.undefined_value
+	js_value* key_value = 0
 	int update = js_kind(node, c"assignment") == 0
 	int read = update || strcmp(node.text, c"=") != 0
 	if (js_kind(target, c"identifier")):
@@ -1201,8 +1207,11 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		else if (read): old = js_runtime_binding_value(rt, binding)
 	else:
 		object = js_runtime_eval_node(rt, target.children[0], env)
-		key = js_runtime_member_key(rt, target, env)
-		if (read): old = js_runtime_member_read(rt, object, key)
+		if (js_kind(target, c"computed_member")):
+			key_value = js_runtime_eval_node(rt, target.children[1], env)
+			if (read): key = js_runtime_property_key(rt, object, key_value)
+		else: key = js_runtime_member_key(rt, target, env, object)
+		if (read && rt.completion.status == 0): old = js_runtime_member_read(rt, object, key)
 	js_value* value = rt.undefined_value
 	if (rt.completion.status == 0):
 		if (update):
@@ -1222,6 +1231,9 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 				op[strlen(op) - 1] = 0
 				value = js_runtime_binary(rt, op, old, value)
 				free(op)
+	if (rt.completion.status == 0 && key_value != 0):
+		js_text_free(key)
+		key = js_runtime_property_key(rt, object, key_value)
 	if (rt.completion.status == 0):
 		if (binding != 0):
 			if (binding.immutable):
@@ -1760,7 +1772,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		return js_runtime_chain(rt, node.children[0], env, &skipped, &receiver)
 	if (js_kind(node, c"member") || js_kind(node, c"computed_member")):
 		js_value* object = js_runtime_eval_node(rt, node.children[0], env)
-		js_text* key = js_runtime_member_key(rt, node, env)
+		js_text* key = js_runtime_member_key(rt, node, env, object)
 		js_value* value = js_runtime_member_read(rt, object, key)
 		js_text_free(key)
 		return value
@@ -1822,7 +1834,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		if (js_kind(target, c"member") || js_kind(target, c"computed_member")):
 			receiver = js_runtime_eval_node(rt, target.children[0], env)
 			if (rt.completion.status == 0):
-				js_text* key = js_runtime_member_key(rt, target, env)
+				js_text* key = js_runtime_member_key(rt, target, env, receiver)
 				callable = js_runtime_member_read(rt, receiver, key)
 				js_text_free(key)
 		else if (js_kind(target, c"optional_chain")):

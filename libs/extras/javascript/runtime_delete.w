@@ -14,7 +14,7 @@ js_value* js_runtime_delete_expression(js_runtime* rt, js_node* operand, js_valu
 			key = js_runtime_key(operand.text)
 	else if (js_kind(operand, c"member") || js_kind(operand, c"computed_member")):
 		object = js_runtime_eval_node(rt, operand.children[0], env)
-		if (rt.completion.status == 0): key = js_runtime_member_key(rt, operand, env)
+		if (rt.completion.status == 0): key = js_runtime_member_key(rt, operand, env, object)
 	else: js_runtime_eval_node(rt, operand, env)
 	if (object != 0 && key != 0 && rt.completion.status == 0):
 		if (object.kind == 0 || object.kind == 1): js_runtime_fail(rt, 2, c"cannot delete a null or undefined property")
