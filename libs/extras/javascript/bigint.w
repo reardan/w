@@ -164,7 +164,7 @@ js_value* js_bigint_from_magnitude(js_runtime* rt, int bits, int negative):
 
 
 js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
-	int arithmetic = strcmp(op, c"+") == 0 || strcmp(op, c"-") == 0 || strcmp(op, c"*") == 0 || strcmp(op, c"/") == 0
+	int arithmetic = strcmp(op, c"+") == 0 || strcmp(op, c"-") == 0 || strcmp(op, c"*") == 0 || strcmp(op, c"/") == 0 || strcmp(op, c"%") == 0
 	if (a.kind != 10 || b.kind != 10):
 		if (arithmetic && (strcmp(op, c"+") != 0 || (a.kind != 4 && b.kind != 4))): js_bigint_error(rt, c"TypeError", c"BigInt arithmetic requires two BigInts")
 		else: js_runtime_fail(rt, 6, c"BigInt coercion or bitwise operation is outside the runtime subset")
@@ -202,7 +202,7 @@ js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 			if (limbs[i] != 0): return js_bigint_range_error(rt)
 		int product = limbs[0] | (limbs[1] << 16) | (limbs[2] << 32) | (limbs[3] << 48)
 		return js_bigint_from_magnitude(rt, product, negative_x != negative_y)
-	if (strcmp(op, c"/") == 0):
+	if (strcmp(op, c"/") == 0 || strcmp(op, c"%") == 0):
 		if (y == 0):
 			js_bigint_error(rt, c"RangeError", c"BigInt division by zero")
 			return rt.undefined_value
@@ -217,6 +217,7 @@ js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 			if (carry || js_bigint_unsigned_less(remainder, y) == 0):
 				remainder = remainder - y
 				quotient = quotient | (1 << bit)
+		if (strcmp(op, c"%") == 0): return js_bigint_from_magnitude(rt, remainder, negative_x)
 		return js_bigint_from_magnitude(rt, quotient, negative_x != negative_y)
 	js_runtime_fail(rt, 6, c"BigInt operator is outside the runtime subset")
 	return rt.undefined_value

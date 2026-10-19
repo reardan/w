@@ -165,6 +165,7 @@ void js_runtime_install_collections(js_runtime* rt);
 void js_runtime_install_object(js_runtime* rt);
 void js_runtime_install_boxed(js_runtime* rt);
 void js_runtime_install_harness_math(js_runtime* rt);
+js_value* js_runtime_remainder(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_array_join(js_runtime* rt);
 js_value* js_object_prototype_method(void* runtime, void* context, js_value* receiver, list[js_value*] args);
 int js_object_ordinary(js_runtime* rt, js_value* object);
@@ -832,6 +833,7 @@ js_value* js_runtime_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
 	if (strcmp(op, c"===") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b))
 	if (strcmp(op, c"!==") == 0): return js_runtime_boolean(rt, js_runtime_equal(a, b) == 0)
 	if (strcmp(op, c"+") == 0): return js_runtime_add(rt, a, b)
+	if (strcmp(op, c"%") == 0): return js_runtime_remainder(rt, a, b)
 	if (js_runtime_bit_operator(op)): return js_numeric_bitwise(rt, op, a, b)
 	if (a.kind == 10 || b.kind == 10): return js_bigint_binary(rt, op, a, b)
 	if (a.kind != 3 || b.kind != 3):
@@ -1827,10 +1829,10 @@ int js_runtime_supported(js_node* node):
 		if (node.text[0] == '0' && node.text[1] >= '0' && node.text[1] <= '9'): return 0
 	if (strcmp(kind, c"property") == 0 && strcmp(node.text, c"__proto__") == 0): return 0
 	if (strcmp(kind, c"unary") == 0 && strcmp(node.text, c"!") != 0 && strcmp(node.text, c"+") != 0 && strcmp(node.text, c"-") != 0 && strcmp(node.text, c"void") != 0 && strcmp(node.text, c"typeof") != 0 && strcmp(node.text, c"~") != 0 && strcmp(node.text, c"await") != 0 && strcmp(node.text, c"delete") != 0): return 0
-	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
+	if (strcmp(kind, c"assignment") == 0 && strcmp(node.text, c"=") != 0 && strcmp(node.text, c"+=") != 0 && strcmp(node.text, c"-=") != 0 && strcmp(node.text, c"*=") != 0 && strcmp(node.text, c"/=") != 0 && strcmp(node.text, c"%=") != 0 && strcmp(node.text, c"|=") != 0 && strcmp(node.text, c"&=") != 0 && strcmp(node.text, c"^=") != 0 && strcmp(node.text, c"<<=") != 0 && strcmp(node.text, c">>=") != 0 && strcmp(node.text, c">>>=") != 0): return 0
 	if (strcmp(kind, c"binary") == 0):
 		char* op = node.text
-		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"==") != 0 && strcmp(op, c"!=") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && strcmp(op, c"instanceof") != 0 && strcmp(op, c"in") != 0 && js_runtime_bit_operator(op) == 0): return 0
+		if (strcmp(op, c"+") != 0 && strcmp(op, c"-") != 0 && strcmp(op, c"*") != 0 && strcmp(op, c"/") != 0 && strcmp(op, c"%") != 0 && strcmp(op, c"===") != 0 && strcmp(op, c"!==") != 0 && strcmp(op, c"==") != 0 && strcmp(op, c"!=") != 0 && strcmp(op, c"<") != 0 && strcmp(op, c">") != 0 && strcmp(op, c"<=") != 0 && strcmp(op, c">=") != 0 && strcmp(op, c"&&") != 0 && strcmp(op, c"||") != 0 && strcmp(op, c"??") != 0 && strcmp(op, c",") != 0 && strcmp(op, c"instanceof") != 0 && strcmp(op, c"in") != 0 && js_runtime_bit_operator(op) == 0): return 0
 	for i in range(node.children.length):
 		if (js_runtime_supported(node.children[i]) == 0): return 0
 	return 1
@@ -1980,3 +1982,5 @@ import libs.extras.javascript.runtime_boxed
 
 import libs.extras.javascript.runtime_harness_math
 import libs.extras.javascript.runtime_array_join
+
+import libs.extras.javascript.runtime_remainder
