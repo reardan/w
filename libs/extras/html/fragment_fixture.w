@@ -1,3 +1,8 @@
+# wbuild: target=html_after_body_fixture tag=tests dep=build
+# wbuild: step="bin/wv2 x64 --strict libs/extras/html/fragment_fixture.w -o bin/html_after_body_fixture"
+# wbuild: step="bin/html_after_body_fixture div 616263 1 --hex" expect_stdout="abc"
+# wbuild: step="bin/html_after_body_fixture div f 1 --hex" expect_status=2
+# wbuild: step="bin/html_after_body_fixture div 6g 1 --hex" expect_status=2
 # wbuild: target=html_select_upstream_test tag=tests dep=build
 # wbuild: step="bin/wv2 x64 --strict libs/extras/html/fragment_fixture.w -o bin/html_select_fixture"
 # wbuild: step="python3 libs/extras/html/fragment_upstream.py bin/html_select_fixture --profile modern-select --gate select-context --report bin/html-select-upstream.json"
@@ -49,15 +54,38 @@ void html_fixture_output(html_node* node, int depth):
 			html_fixture_output(node.first_child, depth + 1)
 		node = node.next_sibling
 
+int html_fixture_hex_digit(int c):
+	if (c >= '0' && c <= '9'): return c - '0'
+	if (c >= 'a' && c <= 'f'): return c - 'a' + 10
+	return -1
+
 int main(int argc, char** argv):
-	if (argc != 3 && argc != 4): return 2
+	if (argc != 3 && argc != 4 && argc != 5): return 2
+	char* source = argv[2]
+	int length = strlen(source)
+	int encoded = argc == 5
+	if (encoded):
+		if (strcmp(argv[4], c"--hex") != 0 || length % 2 != 0): return 2
+		length = length / 2
+		source = cast(char*, malloc(length + 1))
+		for i in range(length):
+			int high = html_fixture_hex_digit(argv[2][i * 2])
+			int low = html_fixture_hex_digit(argv[2][i * 2 + 1])
+			if (high < 0 || low < 0):
+				free(source)
+				return 2
+			source[i] = cast(char, high * 16 + low)
+		source[length] = 0
 	int scripting = 1
-	if (argc == 4): scripting = strcmp(argv[3], c"0") != 0
+	if (argc >= 4): scripting = strcmp(argv[3], c"0") != 0
 	html_document* doc = 0
-	if (strcmp(argv[1], c"#document") == 0): doc = html_parse(argv[2], strlen(argv[2]))
+	if (strcmp(argv[1], c"#document") == 0): doc = html_parse(source, length)
 	else:
-		if (!html_fragment_context_supported(argv[1])): return 4
-		doc = html_parse_fragment(argv[2], strlen(argv[2]), argv[1], scripting)
+		if (!html_fragment_context_supported(argv[1])):
+			if (encoded): free(source)
+			return 4
+		doc = html_parse_fragment(source, length, argv[1], scripting)
+	if (encoded): free(source)
 	if (doc.failed):
 		html_document_free(doc)
 		return 3

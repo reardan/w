@@ -1,0 +1,111 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "6d4552a8b1057e42a180119d70273f563e53a264",
+  "files": {
+    "after-body/doctype01.dat": {
+      "path": "html/syntax/parsing/resources/doctype01.dat",
+      "sha256": "f3a286c09d729eeed9aa63e0aec13ab12336af04590c169543e6d1e1ef4723b2"
+    },
+    "after-body/domjs-unsafe.dat": {
+      "path": "html/syntax/parsing/resources/domjs-unsafe.dat",
+      "sha256": "eef4fb719e027ffaadfb854787d172893850fc561c29efe72d90c5bfa3c8b7ac"
+    },
+    "after-body/menuitem-element.dat": {
+      "path": "html/syntax/parsing/resources/menuitem-element.dat",
+      "sha256": "08e5e25f38bbc181c840ce5c5203b2566dc03129aeaf105ca2311645d40aae4d"
+    },
+    "after-body/processing-instructions.dat": {
+      "path": "html/syntax/parsing/resources/processing-instructions.dat",
+      "sha256": "3d4c6e67b59fda8fa0eb798106a42d244c69a84d7e3a385f9845bfc40071b4f1"
+    },
+    "after-body/ruby.dat": {
+      "path": "html/syntax/parsing/resources/ruby.dat",
+      "sha256": "5ae76ac4570d40e6648066798dd3ff729231bec98d3e010fdd67e0257f23a742"
+    },
+    "after-body/tables01.dat": {
+      "path": "html/syntax/parsing/resources/tables01.dat",
+      "sha256": "bfd4a53246e3acc527c8bb214cc743082e19260e72365001aad3f1d8f4bd08dc"
+    },
+    "after-body/template.dat": {
+      "path": "html/syntax/parsing/resources/template.dat",
+      "sha256": "72667fae7be5d2020b679409e45fed7b6923a3e9394da11a02c5bd9650323264"
+    },
+    "after-body/tests1.dat": {
+      "path": "html/syntax/parsing/resources/tests1.dat",
+      "sha256": "aada6e3d12d624051bc978694475bd6a12bcedd7758781ba62425314684d23f3"
+    },
+    "after-body/tests10.dat": {
+      "path": "html/syntax/parsing/resources/tests10.dat",
+      "sha256": "2d2624a819c323661e396d864ac23440053127b5ea7adb44a5904f5ceee5fa64"
+    },
+    "after-body/tests15.dat": {
+      "path": "html/syntax/parsing/resources/tests15.dat",
+      "sha256": "ef784ece74cbd760da3a6947aaf4478810246b73c753f25a04be4d11dd806b2d"
+    },
+    "after-body/tests16.dat": {
+      "path": "html/syntax/parsing/resources/tests16.dat",
+      "sha256": "3350be682713afc1f6dad37059f2551709497a3643c38c26e1fe36fd07d23745"
+    },
+    "after-body/tests18.dat": {
+      "path": "html/syntax/parsing/resources/tests18.dat",
+      "sha256": "5d0019ae43bb4e0b0da9f2e1d57ac0618a607bd8a1324b163ec7a23a1dc120f3"
+    },
+    "after-body/tests19.dat": {
+      "path": "html/syntax/parsing/resources/tests19.dat",
+      "sha256": "cb2f0875d14da9d96f939b7d549953f8f26e70ea14861935d07d828ab04e0e1d"
+    },
+    "after-body/tests2.dat": {
+      "path": "html/syntax/parsing/resources/tests2.dat",
+      "sha256": "9cf76b5f4890065c04fc82ae828379a55b85cbe76f584fb1ef23dcef0a77b86b"
+    },
+    "after-body/tests3.dat": {
+      "path": "html/syntax/parsing/resources/tests3.dat",
+      "sha256": "c4b4d8e0ea3d978c49d1e6a985d427164858b71ec980153c4526ed0c398f43b9"
+    },
+    "after-body/tests6.dat": {
+      "path": "html/syntax/parsing/resources/tests6.dat",
+      "sha256": "be16c74d2a9862283262968439c95b9bfce6182ea61055a3c886c28d14f3e01a"
+    },
+    "after-body/tests7.dat": {
+      "path": "html/syntax/parsing/resources/tests7.dat",
+      "sha256": "aeb9569589c809b1a563c0b163173e8cf980a6a4028cb7c210f19c181b56999a"
+    },
+    "after-body/tests9.dat": {
+      "path": "html/syntax/parsing/resources/tests9.dat",
+      "sha256": "857820f088506a6d20ea6acefbf19c0a6c4de87a39b24988878066397516b36f"
+    },
+    "after-body/tests_innerHTML_1.dat": {
+      "path": "html/syntax/parsing/resources/tests_innerHTML_1.dat",
+      "sha256": "acb9f835119e302d33204f437d54637a84ae26608ccb7bc961c6f7f44202a44c"
+    },
+    "after-body/tricky01.dat": {
+      "path": "html/syntax/parsing/resources/tricky01.dat",
+      "sha256": "3fb6d24c5e371860d096ef07f5fff38be3ceaa85f1239bee35cce548b596198a"
+    },
+    "after-body/webkit01.dat": {
+      "path": "html/syntax/parsing/resources/webkit01.dat",
+      "sha256": "063ca232535a792fa238ae769eeb0ddcc9bd2ee961d3da327ca134612d35d93c"
+    },
+    "after-body/webkit02.dat": {
+      "path": "html/syntax/parsing/resources/webkit02.dat",
+      "sha256": "03b215350d352faf110df2cc6eac23a44a7f70945b4ea962f0b17bed103459f7"
+    },
+    "after-body/LICENSE.md": {
+      "path": "LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+    }
+  },
+  "total_cases": 1308,
+  "normative_html": {
+    "immutable_url": "https://html.spec.whatwg.org/commit-snapshots/1ea5faabf97bb6735dadd7919425cffce0c75dba/",
+    "revision": "1ea5faabf97bb6735dadd7919425cffce0c75dba",
+    "sha256": "fe1d477a075fd6d354799e9a2521bdab1c694aecb3f72e2e647f17db221fd8ee"
+  },
+  "algorithm_ids": [
+    "parsing-main-afterbody",
+    "the-after-after-body-insertion-mode",
+    "parsing-main-inbody",
+    "parsing-html-fragments"
+  ],
+  "scope": "Every complete parsing/resources data file containing a body/html end-tag spelling; derived textual inventory includes rawtext and malformed cases and makes no assumption that prior insertion modes are implemented. All tree outputs are compared; parse errors and real browser WPT execution remain unverified."
+}
