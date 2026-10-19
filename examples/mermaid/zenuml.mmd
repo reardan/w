@@ -1,10 +1,17 @@
 zenuml
 title Native call hierarchy
 @Actor Client
-Service as Order Service
+@Boundary Service as Order Service
+@Database Repository
 Client->Service.checkout() {
-  Repository.save() {
-    return order
+  order = new Order(cart)
+  id = Repository.save(order)
+  try {
+    Payments.charge(order) { Bank.debit() }
+  } catch(declined) {
+    Service->Client: Retry payment
+  } finally {
+    Repository.audit(order)
   }
   if(accepted) {
     Service->Client: Confirmation

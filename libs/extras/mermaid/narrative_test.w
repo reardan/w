@@ -140,7 +140,7 @@ void test_narrative_zenuml_nested_calls_and_returns():
 	mm_document_free(d)
 
 void test_narrative_unsupported_and_malformed_diagnostics():
-	list[char*] sources = list[char*]{c"sequenceDiagram\nend", c"sequenceDiagram\nactivate A\ndeactivate B", c"sequenceDiagram\nalt x\nA->>B: hi", c"sequenceDiagram\nparticipant A\nlinks A: {\"Repo\": \"https://example.com\"}", c"sequenceDiagram\nloop x\nelse y\nend", c"journey\nTask: 6: Me", c"journey\nTask: 0: Me", c"journey\nTask: 3: Me,", c"timeline\n: orphan", c"gantt\ndateFormat DD/MM/YYYY", c"gantt\nA: 2023-02-29, 1d", c"gantt\nA: after missing, 1d", c"gantt\nA: 2024-01-01, 999999999999999999d", c"gantt\nA: a,2024-01-01,1d\nB: a,after a,1d", c"zenuml\nA.call() {", c"zenuml\n}", c"zenuml\nnew A", c"zenuml\nreturn x"}
+	list[char*] sources = list[char*]{c"sequenceDiagram\nend", c"sequenceDiagram\nactivate A\ndeactivate B", c"sequenceDiagram\nalt x\nA->>B: hi", c"sequenceDiagram\nlinks A: {\"Repo\": \"https://example.com\"}", c"sequenceDiagram\nloop x\nelse y\nend", c"journey\nTask: 6: Me", c"journey\nTask: 0: Me", c"journey\nTask: 3: Me,", c"timeline\n: orphan", c"gantt\ndateFormat DD/MMM/YYYY", c"gantt\nA: 2023-02-29, 1d", c"gantt\nA: after missing, 1d", c"gantt\nA: 2024-01-01, 999999999999999999d", c"gantt\nA: a,2024-01-01,1d\nB: a,after a,1d", c"zenuml\nA.call() {", c"zenuml\n}", c"zenuml\nnew A", c"zenuml\nreturn x"}
 	for char* source in sources:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported construct diagnosed", d.error != 0)
