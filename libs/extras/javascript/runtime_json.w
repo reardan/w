@@ -14,6 +14,9 @@ void js_json_error(js_runtime* rt, char* name, char* message):
 		js_runtime_fail(rt, 5, c"JSON error allocation limit")
 		return
 	js_value* error = js_runtime_error_value(rt, message)
+	if (error == rt.undefined_value):
+		js_runtime_fail(rt, 5, c"JSON error allocation limit")
+		return
 	error.intrinsic_error_name = name
 	if (strcmp(name, c"SyntaxError") == 0): error.prototype = rt.syntax_error_prototype
 	js_text* text = js_runtime_key(name)

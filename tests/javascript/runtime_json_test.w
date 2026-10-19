@@ -73,6 +73,20 @@ int main(int argc, int argv):
 	js_runtime_json_parse(rt, more)
 	assert_equal(5, rt.completion.status)
 	js_text_free(more)
+	js_value* undefined_prototype = rt.undefined_value.prototype
+	char* undefined_name = rt.undefined_value.intrinsic_error_name
+	js_runtime_begin(rt, 100000)
+	rt.max_properties = 13
+	js_json_error(rt, c"SyntaxError", c"x")
+	assert_equal(5, rt.completion.status)
+	assert1(rt.undefined_value.prototype == undefined_prototype)
+	assert1(rt.undefined_value.intrinsic_error_name == undefined_name)
+	js_runtime_begin(rt, 100000)
+	rt.max_properties = 16
+	js_json_error(rt, c"SyntaxError", c"this error message exceeds the property budget")
+	assert_equal(5, rt.completion.status)
+	assert1(rt.undefined_value.prototype == undefined_prototype)
+	assert1(rt.undefined_value.intrinsic_error_name == undefined_name)
 	js_runtime_free(rt)
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_json_test: OK")
