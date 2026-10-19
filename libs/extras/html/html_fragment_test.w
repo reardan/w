@@ -2,6 +2,7 @@
 # wbuild: target=html_fragment_upstream_test tag=tests dep=build
 # wbuild: step="bin/wv2 --strict libs/extras/html/fragment_fixture.w -o bin/html_fragment_fixture"
 # wbuild: step="python3 libs/extras/html/fragment_upstream.py bin/html_fragment_fixture"
+# wbuild: step="python3 libs/extras/html/fragment_report_test.py"
 import lib.testing
 import libs.extras.html.html
 
@@ -52,6 +53,31 @@ void test_fragment_tree_foundation():
 	assert_equal(0, doc.failed)
 	html_node* body = doc.root.first_child.first_child.next_sibling
 	assert_strings_equal(c"x</plaintext><b>&amp;", body.first_child.first_child.text)
+	html_document_free(doc)
+
+void test_fragment_html_context():
+	char* source = c"<!doctype html><title>heading</title><p>body"
+	html_document* doc = html_parse_fragment(source, strlen(source), c"html", 1)
+	assert_equal(0, doc.failed)
+	assert_equal(HTML_FRAGMENT, doc.root.kind)
+	html_node* head = doc.root.first_child
+	html_node* body = head.next_sibling
+	assert_strings_equal(c"head", head.name)
+	assert_strings_equal(c"body", body.name)
+	asserts(c"html context ownership", head.parent == doc.root && body.parent == doc.root)
+	assert_equal(1, head.depth)
+	assert_equal(1, body.depth)
+	assert_equal(0, cast(int, body.next_sibling))
+	assert_strings_equal(c"heading", head.first_child.first_child.text)
+	assert_strings_equal(c"body", body.first_child.first_child.text)
+	html_document_free(doc)
+	doc = html_parse_fragment(c"", 0, c"html", 1)
+	assert_equal(0, doc.failed)
+	assert_strings_equal(c"head", doc.root.first_child.name)
+	assert_strings_equal(c"body", doc.root.last_child.name)
+	html_document_free(doc)
+	doc = html_parse_fragment(0, -1, c"html", 1)
+	assert_equal(1, doc.failed)
 	html_document_free(doc)
 
 void test_fragment_ownership_and_limits():
