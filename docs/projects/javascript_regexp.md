@@ -39,6 +39,13 @@ hooks in `runtime.w`.
   offset and input; global matches are collected before callbacks run. Substitutions include `$$`, `$&`, prefix/suffix, and numbered captures,
   including two-digit fallback and unmatched captures. Global empty matches
   advance one UTF-16 unit; replacement output has the runtime string limit.
+- `String.prototype.split` with an intrinsic RegExp separator uses a fresh sticky
+  matcher, preserves the separator's `lastIndex`, inserts captures (including
+  unmatched `undefined` entries), and advances empty matches by UTF-16 code unit.
+  Receiver conversion, constructor/flags access and `ToUint32(limit)` preserve
+  observable order and exceptions. The default clone uses the internal pattern;
+  an own `source` getter and the original separator's own `exec` are not invoked.
+  String separators use the separate bounded string-split implementation.
 
 The unchanged W host's `/\n$/`, Preact 10.27.2's unitless-style-property pattern,
 `/(PointerCapture)$|Capture$/i`, `/xlink(H|:h)/`, and `/sName$/` use these general
@@ -52,15 +59,18 @@ quantifiers/brace syntax, repeated nullable atoms with `*` or `+`, lookbehind,
 word-boundary assertions, backreferences, named groups, legacy octal/control
 escapes, Unicode property escapes, `d`/`u`/`v` flags, non-ASCII ignore-case,
 RegExp-object constructor arguments, custom callable `exec` overrides,
-object string coercion, and string/object `lastIndex`
-coercion. Symbol protocols, subclass/species behavior, match/search/split,
-`toString`, and generic getter/boxed-string behavior are not implemented.
+object coercion in RegExp construction and `test`/`exec`, and string/object
+`lastIndex` coercion. Symbol protocols (including `Symbol.split`), custom
+subclass/species construction, custom callable `exec` on the split clone,
+match/search, `toString`, and generic getter behavior are not implemented.
+RegExp split supports the intrinsic separator path; this does not implement the
+full `RegExp.prototype[Symbol.split]` protocol or Unicode `u`/`v` semantics.
 The intrinsic `flags` getter reads native flags, not user-overridden flag
 properties. This is a bounded subset, not an ECMAScript conformance claim.
 
 Malformed supported constructor grammar and duplicate/invalid flags throw a
-`SyntaxError`-named runtime error. Unsupported failures and resource limits are
-terminal and cannot be caught by JavaScript. Literal feature rejection happens
+runtime error with the intrinsic `SyntaxError.prototype`. Unsupported failures
+and resource limits are terminal and cannot be caught by JavaScript. Literal feature rejection happens
 at evaluation; the runtime syntax preflight does not compile all regex patterns
 before earlier statements execute.
 
@@ -69,9 +79,11 @@ before earlier statements execute.
 Patterns are limited to 1,024 UTF-16 units, 32 nested groups, 16 captures,
 2,048 parse nodes, and 4,096 instructions. A runtime may retain at most 65,536
 pattern units including one unit of accounting per regex. Compilation, search,
-VM instructions, and replacement construction consume the existing execution
-budget. The backtracking stack is explicit: at most 4,097 live states, including the
-current state, are shared across nested assertions. Assertion/group nesting is
+VM instructions, replacement flag scans and construction, split cloning and
+output construction consume the existing execution budget. Split output is
+bounded by the runtime array/property limit and all emitted strings retain the
+runtime string limit. The backtracking stack is explicit: at most 4,097 live
+states, including the current state, are shared across nested assertions. Assertion/group nesting is
 limited to 32; no recursive matching depends on input length. Budget/stack/storage/output
 exhaustion reports status 5, never a false “no match.” Per-instruction class
 scans are additionally bounded by the pattern-size cap.
@@ -96,7 +108,13 @@ normally to avoid exhausting the debug allocator's virtual-memory map table.
 negative clearing, nesting, zero-width optional behavior and shared limit cleanup.
 `javascript_runtime_string_replace_test` checks callback ordering, arguments,
 exceptions, UTF-16 offsets, quotas, foreign values and collection ownership.
-These focused tests pass normally and in their guard allocator paths; full pinned
+`javascript_runtime_regexp_split_test` checks capture insertion, empty matches,
+limits, UTF-16, coercion/access order, preserved separator state, exceptions,
+foreign values, GC and resource exhaustion; `javascript_runtime_string_split_test`
+checks the string-separator path. The split implementation's 162-case reference
+comparison (18 patterns by 9 inputs) matched pinned Node 20.19.3. These focused
+tests passed normally and in their guard allocator paths. Complete upstream
+String.split audits still contain failures and unsupported cases; full pinned
 RegExp-family conformance remains unverified.
 
 The semantic JavaScript snippets were also evaluated in Node as a reference.
