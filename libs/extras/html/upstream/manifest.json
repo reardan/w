@@ -13,9 +13,17 @@
     "README.upstream.md": {
       "path": "tree-construction/README.md",
       "sha256": "5935c011ac581c8ab1e20e45bba6373c2a3975255017ec205dfcdb861f7c45c6"
+    },
+    "blocks.dat": {
+      "path": "tree-construction/blocks.dat",
+      "sha256": "e3b7da1b57a4ec6991443dfc7ab3270f41d0f5959092a49be3e0edca0dae2104"
+    },
+    "inbody01.dat": {
+      "path": "tree-construction/inbody01.dat",
+      "sha256": "cb722f2853ec9613b71ea68e8bb26f474cc450b64612930591ab2656406222fe"
     }
   },
-  "total_cases": 9,
+  "total_cases": 61,
   "diagnostics": "Recorded upstream, not asserted yet; current parser diagnostics differ.",
   "mandatory_remaining": [
     "complete HTML context insertion modes beyond existing document recovery",

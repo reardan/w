@@ -29,16 +29,36 @@ reconstruction/adoption agency, templates, namespaces and exact parse-error
 recovery remain mandatory implementation work. Depth/node/token/input caps are
 unchanged; fragment nodes count against those caps.
 
-The unchanged `upstream/tests4.dat` corpus comes from html5lib-tests commit
-`9329e64694e7835d0dcff9811e22856ef6ad16f9`, before tree fixtures migrated to WPT.
-The pinned original license and format documentation accompany it. `manifest.json`
-records file hashes; `inventory.json` inventories every .dat file and all fragment
-contexts at that revision, including unexecuted cases. Run
-`./wbuild html_fragment_test html_fragment_64_test html_fragment_upstream_test`.
-The upstream adapter compares native trees, reports all nine cases, and preserves
-all nine tree results in the denominator. Parse-error lists are retained
-unchanged but are not asserted by this initial tree-output adapter. This is a
-bounded profile and never a claim of full html5lib or WPT conformance.
+Whole-document and supported fragment parsing now share HTML scope boundaries
+for paragraph and block closure, special-element barriers for generic end tags,
+and list-item start/end recovery. Unmatched paragraph end tags synthesize a bounded
+empty paragraph. Adjacent text tokens coalesce in document trees too. This does
+not complete formatting reconstruction, table recovery, foreign namespaces,
+form pointers, or the remaining in-body rules.
+
+A leading accepted doctype precedes the HTML element in the document child list.
+Consumers must locate the HTML element by kind/name rather than assuming the
+first child is an element. Fragment extraction discards document-level nodes
+while retaining their allocations until document teardown. The native doctype
+still retains declaration text; public/system identifier parsing and quirks-mode
+selection are mandatory follow-up work.
+
+The unchanged `upstream/tests4.dat`, `blocks.dat` and `inbody01.dat` corpora come
+from html5lib-tests commit `9329e64694e7835d0dcff9811e22856ef6ad16f9`, before tree
+fixtures migrated to WPT. The pinned original license and format documentation
+accompany them. `manifest.json` records file hashes; `inventory.json` inventories
+every .dat file and all fragment contexts at that revision. The adapter selects
+all 61 cases from those three files, runs both scripting modes (122 variants),
+and retains the other 1,735 cases as NOT_RUN in the 1,796-case denominator. The
+selected document cases have no scripting-dependent behavior; this does not
+establish a document scripting-flag API. Run
+`./wbuild html_tree_test html_fragment_test html_fragment_64_test html_fragment_upstream_test html_test html_64_test`.
+Parse-error lists are retained unchanged but are not asserted by the tree-output
+adapter. The native fixture serializer currently supports the selected simple
+doctype and ASCII attribute-name profile, not full namespace/doctype serialization.
+Reports freeze exact HEAD revisions, fresh UTC evidence kind, driver/adapter and
+upstream hashes before execution, reject mid-run source/driver changes, and preserve every case and mode on missing-driver/timeout/error.
+This is a bounded profile, never a claim of full html5lib or WPT conformance.
 
 Win uses one native allocation identity per node and one rooted JS wrapper per
 node per realm. DocumentFragment moves splice children, leave the fragment

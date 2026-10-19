@@ -57,7 +57,7 @@
       "path": "tree-construction/blocks.dat",
       "sha256": "e3b7da1b57a4ec6991443dfc7ab3270f41d0f5959092a49be3e0edca0dae2104",
       "cases": 48,
-      "execution": "NOT_RUN"
+      "execution": "selected profile"
     },
     {
       "path": "tree-construction/comments01.dat",
@@ -105,7 +105,7 @@
       "path": "tree-construction/inbody01.dat",
       "sha256": "cb722f2853ec9613b71ea68e8bb26f474cc450b64612930591ab2656406222fe",
       "cases": 4,
-      "execution": "NOT_RUN"
+      "execution": "selected profile"
     },
     {
       "path": "tree-construction/isindex.dat",
@@ -402,5 +402,5 @@
       "execution": "NOT_RUN"
     }
   ],
-  "scope": "Full .dat inventory at pre-WPT-migration revision. Only tests4.dat vendored/executed. Unexecuted cases remain mandatory backlog; counts are inventory, not conformance evidence."
+  "scope": "Full .dat inventory at pre-WPT-migration revision. Entire tests4.dat, blocks.dat and inbody01.dat files selected. Other cases remain mandatory NOT_RUN; counts are inventory, not conformance evidence. Selected comparisons cover tree output only, not upstream parse-error counts."
 }

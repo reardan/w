@@ -28,6 +28,21 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(result[0], "ERROR")
             self.assertFalse(result[2])
 
+    def test_changed_driver_invalidates_all_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            driver = Path(directory) / "driver"
+            driver.write_text("#!" + sys.executable + "\nfrom pathlib import Path\np=Path(__file__)\np.write_bytes(p.read_bytes()+b'\\n# changed')\n")
+            driver.chmod(0o755)
+            report = Path(directory) / "report.json"
+            run = subprocess.run([sys.executable, str(ROOT / "fragment_upstream.py"),
+                                  str(driver), "--report", str(report)], capture_output=True, timeout=20)
+            self.assertEqual(run.returncode, 1)
+            result = json.loads(report.read_text())
+            self.assertEqual(result["counts"]["ERROR"], 61)
+            self.assertEqual(result["variant_counts"]["ERROR"], 122)
+            self.assertEqual(result["evidence"]["changed_during_execution"], ["driver binary"])
+            self.assertTrue(all(r["observed_status"] == "FAIL" for r in result["results"]))
+
     def test_missing_binary_keeps_all_cases(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / "report.json"
@@ -37,11 +52,15 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(run.returncode, 1)
             result = json.loads(report.read_text())
             self.assertEqual(result["total"], 1796)
-            self.assertEqual(result["selected"], 9)
-            self.assertEqual(result["counts"]["NOT_RUN"], 1787)
+            self.assertEqual(result["selected"], 61)
+            self.assertEqual(result["counts"]["NOT_RUN"], 1735)
             self.assertEqual(result["executed"], 0)
-            self.assertEqual(result["counts"]["ERROR"], 9)
-            self.assertEqual(len(result["results"]), 9)
+            self.assertEqual(result["counts"]["ERROR"], 61)
+            self.assertEqual(len(result["results"]), 61)
+            self.assertEqual(result["variant_counts"]["ERROR"], 122)
+            self.assertEqual(result["selected_variants"], 122)
+            self.assertIsNone(result["evidence"]["driver_sha256"])
+            self.assertTrue(result["evidence"]["driver_hash_error"])
 
 
 if __name__ == "__main__":
