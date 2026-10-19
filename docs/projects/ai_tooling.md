@@ -45,7 +45,9 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
   deleting indentation blocks and line chunks with bounded predicate runs.
   `w inspect` lists ELF sections and symbols and disassembles named functions
   using the in-tree x86, x64 and ARM64 decoders. See [reduce](reduce.md) and
-  [inspect](inspect.md). MCP adapters remain in the external integration repo.
+  [inspect](inspect.md). AST-suite manifest rewriting preserves these commands'
+  argument lists, including compiler flags passed to reduction predicates.
+  MCP adapters remain in the external integration repo.
 
 - **Library dependency discovery (#625):** `w deps` skips executable
   finalization so an extern-only consumer can report its source import

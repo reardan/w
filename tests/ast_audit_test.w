@@ -33,6 +33,40 @@ void test_ast_audit_selects_only_direct_compilations():
 	json_free(root)
 
 
+void assert_ast_audit_tool_unchanged(char* command):
+	for required in range(2):
+		json_value* root = json_parse(c"{\"targets\":[{\"name\":\"tool\",\"steps\":[{}]}]}")
+		json_value* step = json_array_get(jfield_array(json_array_get(jfield_array(root, c"targets"), 0), c"steps"), 0)
+		json_value* cmd = json_parse(command)
+		json_value* original = json_clone(cmd)
+		json_object_set(step, c"cmd", cmd)
+		assert_equal(3, ast_audit_command_kind(cmd))
+		json_value* stale = ast_audit_stale_flags(root)
+		assert_equal(0, json_array_length(stale))
+		json_value* report = ast_audit_manifest_mode(root, required)
+		assert_equal(0, jfield_int(report, c"changed_steps", -1))
+		cmd = jfield_array(step, c"cmd")
+		assert_equal(json_array_length(original), json_array_length(cmd))
+		for i in range(json_array_length(original)):
+			assert_strings_equal(ast_audit_arg(original, i), ast_audit_arg(cmd, i))
+		json_free(report)
+		json_free(stale)
+		json_free(original)
+		json_free(root)
+
+
+void test_ast_audit_preserves_inspection_and_reduction_arguments():
+	# The source-looking filename is deliberately malformed ELF input, not
+	# a compile step. This is inspect_test's required-AST CI regression.
+	assert_ast_audit_tool_unchanged(c"[\"bin/wv2\",\"inspect\",\"tests/inspect_probe.w\"]")
+	assert_ast_audit_tool_unchanged(c"[\"env\",\"-u\",\"NO_COLOR\",\"./bin/wv2_64\",\"inspect\",\"file.w\",\"--disasm\",\"--ast-full-expressions\"]")
+	assert_ast_audit_tool_unchanged(c"[\"bin/wv2\",\"reduce\",\"bug.w\",\"--\",\"./interesting.sh\",\"{}\"]")
+	# Predicate flags must neither be rewritten nor rejected as stale flags
+	# belonging to the outer compiler command.
+	assert_ast_audit_tool_unchanged(c"[\"env\",\"K=V\",\"bin/wv3\",\"reduce\",\"bug.w\",\"--\",\"bin/wv2\",\"--ast-full-expressions\",\"{}\"]")
+	assert_ast_audit_tool_unchanged(c"[\"bin/wv2\",\"reduce\",\"bug.w\",\"--\",\"./interesting.sh\",\"--ast-expressions\",\"{}\"]")
+
+
 void test_ast_audit_census_is_sorted_and_preserves_missing_stats():
 	char* input = c"compiling 'w.w'\n{\"ast_fallback\":true,\"file\":\"z.w\",\"line\":2,\"column\":1,\"token\":\"new\"}\n{\"ast_fallback\":true,\"file\":\"a.w\",\"line\":3,\"column\":4,\"token\":\"(\"}\n{\"ast_fallback\":true,\"file\":\"z.w\",\"line\":4,\"column\":5,\"token\":\"new\"}\nAST expression roots: 20\nStreaming expression roots: 3\nAST expression roots: 7\nStreaming return statements: 0"
 	json_value* report = ast_audit_census(input)
