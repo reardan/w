@@ -348,6 +348,6 @@ js_value* js_json_stringify_host(void* runtime, void* context, js_value* receive
 
 void js_runtime_install_json(js_runtime* rt):
 	js_value* json = js_runtime_alloc(rt, 5)
-	js_runtime_set(rt, json, c"parse", js_runtime_host_callable(rt, 0, js_json_parse_host))
-	js_runtime_set(rt, json, c"stringify", js_runtime_host_callable(rt, 0, js_json_stringify_host))
+	js_object_method(rt, json, c"parse", js_json_parse_host, 0, 2)
+	js_object_method(rt, json, c"stringify", js_json_stringify_host, 0, 3)
 	js_runtime_set(rt, rt.global, c"JSON", json)
