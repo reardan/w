@@ -1657,6 +1657,10 @@ int ast_expression_generic_infer_bound(expression_ast* tree, int depth, int def,
 					if (inferred < 0): return -1
 				for level in range(shapes[count]):
 					if (type_get_pointer_level(inferred) == 0): return -1
+					# A shared pointee's const record is not needed here (the
+					# result is unqualified below) and must not be pushed
+					# mid-probe, where it would shift the reserved signature.
+					if (type_safe_kind(inferred) == 2): inferred = type_safe_target(inferred)
 					inferred = type_lookup_previous_pointer(inferred)
 					if (inferred < 0): return -1
 				inferred = type_unqualified(inferred)

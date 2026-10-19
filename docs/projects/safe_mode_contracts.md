@@ -544,3 +544,88 @@ committing metadata during probing. Record-prefixed definitions take precedence;
 ordinary definitions retain precedence for inferred syntax, while explicit type
 arguments select generic definitions. Built-in operations and fields keep their
 existing lookup rules. Unsupported streaming forms still fail explicitly.
+
+
+## Thread transfer and share eligibility
+
+Eligibility is a structural predicate over retained types
+(`safe_thread_reason` in `compiler/safe.w`). It is not a declared trait.
+It has two modes. **Detached** checks a value going to a thread that no
+borrow scope encloses. Any borrowed component at any depth is rejected,
+including `ref`/`refmut` pointers, slices, inline borrowed records and
+labeled owners. **Scoped** checks a value lent to a thread that is joined
+within the lending call. A shared reference crosses only if its target is
+shareable. An exclusive reference crosses only if its target is
+transferable. A sharing flag records whether the walk has passed through a
+shared reference; it then remains set, so `ref` to `refmut` to `T` still
+requires shareable `T`. Owners, arrays and record fields recurse in the same
+mode. Callable fields are static code addresses. Audited opaque storage is
+transferable and shareable: it is uniquely owned, any thread may free it
+(`lib/thread_heap.w` remote frees), and no audited operation mutates it
+through a shared reference. Anything else is rejected, including raw
+pointers, unions, containers and unknown resources.
+
+Explicit opt-outs are nominal records defined in the pinned
+`lib/safe_thread.w`. `WThreadAffine` forbids both transfer and sharing;
+`WThreadUnshared` forbids only sharing. A user record with the same name
+from another source has no effect. Markers are plain values, so they do not
+change a record's checked layout or construction rules. Diagnostics give
+the dotted field path to the first offending component. The walk is bounded
+at depth 32 and 256 expanded records or arrays. Scalars are checked before
+the budget is charged, so wide records are accepted.
+
+The predicate runs at audited thread boundaries, not on ordinary calls.
+These boundaries are the generic specializations `safe_thread_spawn$...` and
+`safe_thread_fork_join$...`, recognized only when their implementation comes
+from the trusted, digest-matched `lib/safe_thread.w`. The check applies to
+the concrete specialized parameter type at each call. Wrapper functions and
+generic wrappers therefore cannot bypass it: the inner call is checked with
+the wrapper's concrete types. The check runs before the ordinary argument
+contract, so its message takes precedence. Ordinary ownership and borrow
+checking still applies to the same arguments. The payload is moved, a
+fork-join left/right pair cannot conflict, and live views exclude lending.
+The entry's quantified signature must be exactly
+`fn[](own T*) -> int` for spawn, or `fn[](T) -> int` with a sized
+non-optional `ref`/`refmut` `T` for fork-join. Owners are rejected as
+fork-join arguments because the runtime would not drop them.
+
+Inferring `own T*` from a shared-reference argument used to push a `const`
+pointee record during the speculative probe. That shifted the reserved
+signature slot and tripped an assertion in `ast_expression_commit_generic`.
+Inference now steps through the checked target without creating that
+record. Such a call now reaches the ordinary "owner requires new storage"
+diagnostic.
+
+
+## Audited thread runtime
+
+`lib/safe_thread.w` is pinned in `compiler/safe_runtime.w` together with its
+closure beyond the existing pins: `lib/thread.w`, `lib/thread_heap.w`,
+`lib/signal.w` and `lib/assert.w`. Checked callers can reach
+`safe_thread_spawn`, `safe_thread_join` and `safe_thread_fork_join`, nothing
+else. `WSafeThread` is opaque, like the buffer types. Its compiler-emitted
+destructor (`grammar/safe_cleanup.w`) is `__w_safe_thread_drop`, which joins
+the child before freeing the handle. Every owner-drop path therefore waits for
+the child: scope exit, replacement, early return and optional-owner cleanup.
+
+A live-thread counter is updated with `atomic_add`. It refuses a spawn when
+64 checked threads are unjoined, which bounds the address space taken by 4 MB
+stacks and gives refusal a deterministic test. Refusal and `clone` failure
+both return before the child exists. The generic `safe_thread_spawn` body
+then returns without clearing its `own T*` parameter. The ordinary recursive
+owner cleanup therefore destroys the payload. On success the parameter's slot
+is cleared, as in `owned_int_buffer_push`, and the child's entry consumes the
+payload. The child copies the payload pointer out of the handle and clears
+the field before calling the entry.
+
+Memory ordering follows `lib/thread.w`. The child writes `result` before the
+worker stores `done = 1`. `thread_join` waits for `done` and then for the
+kernel's exit-time CLEARTID store before the joiner reads `result` and frees
+the handle. On x86-TSO, with the futex syscalls, the result and every write
+the child made to lent `refmut` storage are visible to the joiner. No other
+memory is shared. A detached payload's owned graph is reachable only from the
+child. Fork-join borrows are shared read-only, or exclusive to one side. This
+contract is an argument from the existing `lib/thread.w` review, not a
+formal proof. Independent review of the memory-ordering argument is still an
+acceptance gate of #699. Stress tests would add evidence, not prove the
+absence of races.
