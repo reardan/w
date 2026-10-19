@@ -1,0 +1,36 @@
+# The w-orm example library app (issue #754, unit U5.2; README.md next to
+# this file). library_orm.w, library_orm_api.w and library_schema.json are
+# generated from this file by bin/orm_gen and committed;
+# orm_example_gen_test regenerates them and fails on any difference.
+#
+# This is release 2 of the schema. Release 1 (v1/library_v1.orm) called
+# Book.page_count "pages"; the rename ships as expand/migrate/contract
+# migrations (migrations/library/), so release-1 code keeps working until
+# the contract steps run.
+app library
+
+model Author:
+	string name max_length=200
+	string email max_length=254 unique
+	text bio null
+	datetime created auto_now_add
+	index created
+
+model Book:
+	enum Status: draft, pub
+	string title max_length=300
+	fk author -> Author on_delete=cascade related_name=books
+	Status status default=draft
+	decimal price digits=8 places=2
+	int page_count null
+	datetime created auto_now_add
+	check price >= 0 name=library_book_price_nonnegative
+	history
+
+# borrower_id holds auth_user.id: bin/orm_gen has no cross-file relations.
+model Loan:
+	fk book -> Book on_delete=cascade related_name=loans
+	int borrower_id indexed
+	datetime loaned_at auto_now_add
+	datetime returned_at null
+	history
