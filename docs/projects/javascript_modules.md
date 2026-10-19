@@ -10,22 +10,22 @@ resolver. Network policy remains the browser host's responsibility.
 
 - Named imports, including aliases: `import {value as local} from './dep.js'`.
 - Side-effect imports: `import './setup.js'`.
-- Const declaration exports, including binding patterns: `export const {value} = object`.
-- Function declaration exports: `export function f() { return 1; }`.
-- Local export aliases of const, function, or imported bindings: `export {value as answer}`.
+- Const, let and var declaration exports, including binding patterns: `export const {value} = object`, `export let count = 0`.
+- Function and class declaration exports: `export function f() { return 1; }`, `export class C {}`.
+- Local export aliases of declared or imported bindings: `export {value as answer}`.
 - Ordinary module bodies within the existing runtime's syntax subset, with
   separate strict environments, private lexical bindings, and undefined
   top-level `this`.
 
-Exported `let` and `var` declarations remain rejected, including indirect local
-export clauses. Function declarations may be reassigned inside their module;
-imports are live aliases and observe the current exported value. Import bindings
+Exported `let`, `var`, function and class declarations may be reassigned inside
+their defining module; imports and local re-export aliases observe the current
+exported binding. Const exports retain their normal assignment restrictions. Import bindings
 remain read-only in the importer. Exported objects retain shared identity and
 mutable properties, and exported functions retain their closure environments.
 This is not general ECMAScript module support.
 
 Default/namespace imports, default/star exports, `export ... from`, cycles,
-dynamic import, import metadata, top-level await, and unsupported body syntax
+dynamic import, import metadata, and unsupported body syntax
 produce explicit failures. No source rewriting or synchronous approximation of
 `await` is performed.
 
@@ -45,6 +45,7 @@ type js_module_resolver = fn(void*, char*, char*) -> js_module_source*
 
 js_modules* js_modules_new(js_runtime* runtime, js_module_resolver* resolver, void* context)
 js_module* js_modules_evaluate(js_modules* modules, char* specifier, char* referrer, int budget)
+js_module* js_modules_evaluate_async(js_modules* modules, char* specifier, char* referrer, int budget)
 js_value* js_modules_export(js_modules* modules, js_module* entry, char* name)
 void js_modules_free(js_modules* modules)
 ```
@@ -110,7 +111,10 @@ strict evaluation, closure lifetime, read-only imports, preflight rejection,
 cached failures through different and previously linked parents, reentrancy, and
 resource limits. Tests also exercise destructured const exports, function
 reassignment observed through imports, and imported closures after loader teardown
-and collection.
+and collection. `javascript_modules_mutable_test` additionally covers mutable
+let/var/class exports, live re-export chains, read-only imports, declaration
+patterns, asynchronous mutation, and retained bindings across collection and
+loader teardown; see [mutable module exports](javascript_mutable_modules.md).
 
 Win's source cache accepts URL-like specifiers, rejects bare and cross-origin
 requests, and resolves relative dependencies against the response URL. It limits
@@ -118,7 +122,33 @@ concurrency to three cancellable loaders. Source/graph failures are currently
 sticky for the document's module context; there are no import maps or CORS module
 fetches. Its integration test executes the unchanged `webgl_env.mjs`,
 `accessibility.mjs`, and `mobile_input.mjs`, including `makeEnv` and the event queue.
-The original `tools/web/index.html` still needs top-level await; the original
-`wasi_lite.mjs` additionally needs classes, `super`, `instanceof`, and BigInt
-arithmetic. Passing module preflight does not imply every API used by an uncalled
+Top-level await is available through asynchronous evaluation; the original
+`wasi_lite.mjs` now loads unchanged: its derived Error class, `super` call,
+`instanceof` catch and exact BigInt clock multiplication are exercised together
+by `javascript_modules_test`. Passing module preflight does not imply every API used by an uncalled
 export (for example `Map` or DOM accessibility operations) is available.
+
+
+## Asynchronous module evaluation
+
+`js_modules_evaluate_async` opts into validated top-level await and returns a
+borrowed module record while its body may still be suspended. The synchronous
+API retains the default ES2020 parser profile and rejects top-level await.
+Parser clients can explicitly set `js_parse_limits.top_level_await = 1` for a
+module; ordinary-function and formal-parameter await early errors remain active.
+
+An asynchronous record exposes `evaluation_promise`, with `state` 2 while
+pending, 3 after successful execution, and 4 after failure. Drive existing
+`js_runtime_drain_microtasks` checkpoints and inspect the Promise's result.
+A rejected module Promise does not itself throw out of a checkpoint. Subsequent
+requests for a failed cached module restore its cached error completion.
+Exports become available after state 3. Dependencies finish before importer
+bodies run, and concurrent roots share a pending dependency's evaluation.
+Cycles remain unsupported. The budget covers initial graph loading/execution;
+each suspended task preserves its remaining fuel across all later checkpoints.
+
+The loader owns its asynchronous module tasks and tasks spawned during those
+bodies. `js_modules_free` cancels them before releasing module records. Cancelled
+reactions may remain on a host Promise but their cleared tokens cannot access
+freed records. See `javascript.md` for bounded stack/root retention and terminal
+cancellation semantics.

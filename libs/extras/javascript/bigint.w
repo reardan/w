@@ -133,6 +133,92 @@ js_value* js_bigint_negate(js_runtime* rt, js_value* value):
 	return js_runtime_bigint_u64(rt, 0 - bits)
 
 
+# Unsigned magnitude operations use integer bits throughout. In particular the
+# host clock's nanoseconds must never pass through a JavaScript Number.
+int js_bigint_unsigned_less(int a, int b):
+	return (a ^ (1 << 63)) < (b ^ (1 << 63))
+
+
+int js_bigint_negative(js_value* value):
+	return value.bigint_bits < 0 && value.bigint_unsigned == 0
+
+
+int js_bigint_magnitude(js_value* value):
+	if (js_bigint_negative(value)): return 0 - value.bigint_bits
+	return value.bigint_bits
+
+
+js_value* js_bigint_range_error(js_runtime* rt):
+	js_bigint_error(rt, c"RangeError", c"BigInt exceeds bounded 64-bit range")
+	return rt.undefined_value
+
+
+js_value* js_bigint_from_magnitude(js_runtime* rt, int bits, int negative):
+	if (negative):
+		if (js_bigint_unsigned_less(1 << 63, bits)): return js_bigint_range_error(rt)
+		return js_runtime_bigint_i64(rt, 0 - bits)
+	return js_runtime_bigint_u64(rt, bits)
+
+
+js_value* js_bigint_binary(js_runtime* rt, char* op, js_value* a, js_value* b):
+	int arithmetic = strcmp(op, c"+") == 0 || strcmp(op, c"-") == 0 || strcmp(op, c"*") == 0 || strcmp(op, c"/") == 0
+	if (a.kind != 10 || b.kind != 10):
+		if (arithmetic && (strcmp(op, c"+") != 0 || (a.kind != 4 && b.kind != 4))): js_bigint_error(rt, c"TypeError", c"BigInt arithmetic requires two BigInts")
+		else: js_runtime_fail(rt, 6, c"BigInt coercion or bitwise operation is outside the runtime subset")
+		return rt.undefined_value
+	int x = js_bigint_magnitude(a)
+	int y = js_bigint_magnitude(b)
+	int negative_x = js_bigint_negative(a)
+	int negative_y = js_bigint_negative(b)
+	int less = js_bigint_unsigned_less(x, y)
+	if (negative_x != negative_y): less = negative_x
+	else if (negative_x): less = js_bigint_unsigned_less(y, x)
+	int equal = js_runtime_equal(a, b)
+	if (strcmp(op, c"<") == 0): return js_runtime_boolean(rt, less)
+	if (strcmp(op, c">") == 0): return js_runtime_boolean(rt, less == 0 && equal == 0)
+	if (strcmp(op, c"<=") == 0): return js_runtime_boolean(rt, less || equal)
+	if (strcmp(op, c">=") == 0): return js_runtime_boolean(rt, less == 0)
+	if (strcmp(op, c"+") == 0 || strcmp(op, c"-") == 0):
+		if (strcmp(op, c"-") == 0 && y != 0): negative_y = negative_y == 0
+		if (negative_x == negative_y):
+			int sum = x + y
+			if (js_bigint_unsigned_less(sum, x)): return js_bigint_range_error(rt)
+			return js_bigint_from_magnitude(rt, sum, negative_x)
+		if (js_bigint_unsigned_less(x, y)): return js_bigint_from_magnitude(rt, y - x, negative_y)
+		return js_bigint_from_magnitude(rt, x - y, negative_x)
+	if (strcmp(op, c"*") == 0):
+		# Base-2^16 limbs keep every multiply and carry within signed int64.
+		int[8] limbs
+		for i in range(8): limbs[i] = 0
+		for i in range(4):
+			for j in range(4): limbs[i + j] = limbs[i + j] + ((x >> (i * 16)) & 65535) * ((y >> (j * 16)) & 65535)
+		for i in range(7):
+			limbs[i + 1] = limbs[i + 1] + (limbs[i] >> 16)
+			limbs[i] = limbs[i] & 65535
+		for i in range(4, 8):
+			if (limbs[i] != 0): return js_bigint_range_error(rt)
+		int product = limbs[0] | (limbs[1] << 16) | (limbs[2] << 32) | (limbs[3] << 48)
+		return js_bigint_from_magnitude(rt, product, negative_x != negative_y)
+	if (strcmp(op, c"/") == 0):
+		if (y == 0):
+			js_bigint_error(rt, c"RangeError", c"BigInt division by zero")
+			return rt.undefined_value
+		int quotient = 0
+		int remainder = 0
+		# Restoring division uses one extra carry bit, so unsigned operands
+		# up to 2^64-1 work without signed division or floating point.
+		for step in range(64):
+			int bit = 63 - step
+			int carry = remainder < 0
+			remainder = (remainder << 1) | ((x >> bit) & 1)
+			if (carry || js_bigint_unsigned_less(remainder, y) == 0):
+				remainder = remainder - y
+				quotient = quotient | (1 << bit)
+		return js_bigint_from_magnitude(rt, quotient, negative_x != negative_y)
+	js_runtime_fail(rt, 6, c"BigInt operator is outside the runtime subset")
+	return rt.undefined_value
+
+
 char* js_bigint_text(js_value* value):
 	int bits = value.bigint_bits
 	int negative = bits < 0 && value.bigint_unsigned == 0

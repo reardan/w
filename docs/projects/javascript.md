@@ -85,7 +85,7 @@ updates, calls/members, dense arrays, ordinary named/string-keyed
 objects (including distinct shorthand properties), templates, simple imports,
 and exported declarations. Lowering preserves escaped non-directive strings so
 printing cannot accidentally introduce a strict-mode directive. Parsing is
-broader: lowering intentionally rejects classes, async/generator functions,
+broader: lowering intentionally rejects generator functions and unsupported class forms,
 computed object keys and richer module declarations. Runtime-oriented lowering
 also supports binding patterns, rest/default parameters, `new`, optional chains,
 spread and object methods. These newer nodes are not yet supported by every
@@ -114,8 +114,9 @@ in `tests/javascript/roundtrip_test.w`. Additional shapes are:
 | `string_utf16` | empty | none; value in `string_units` |
 
 An omitted for clause/catch/finally uses an `empty` node with offset -1;
-source-backed nodes preserve byte spans. `for-in`, assignment-target/`var` for-of bindings and
-catch destructuring remain explicit lowering failures. The printer handles
+source-backed nodes preserve byte spans. Bounded `for-in` lowering and execution
+are described in [enumeration](javascript_for_in.md). Assignment-target/`var`
+for-of bindings and catch destructuring remain explicit lowering failures. The printer handles
 loop bodies and label wrappers when protecting against a dangling `else`.
 
 `libs.extras.javascript.text` supplies owned `js_text` values, with explicit
@@ -199,9 +200,13 @@ Labelled function declarations remain unsupported (Annex B semantics).
 The initial semantic subset is deliberately explicit:
 
 - Undefined, null, booleans, binary64 decimal/hex/binary/octal numbers, UTF-16 strings; truthiness,
-  strict equality (including NaN), numeric `+ - * /` and comparisons, string
-  concatenation, `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary.
-  Bitwise `& | ^ ~ << >> >>>` use 32-bit JavaScript integer semantics.
+  strict equality (including NaN), bounded [abstract equality](javascript_equality.md),
+  numeric `- * /` and comparisons, and [addition](javascript_addition.md) with
+  ordinary ToPrimitive conversion, string concatenation and numeric conversion.
+  `!`, numeric unary `+ -`, `void`, `typeof`, `&& || ??`, comma and ternary work.
+  Bitwise `& | ^ ~ << >> >>>` apply [ordinary numeric coercion](javascript_numeric_coercion.md)
+  and 32-bit JavaScript integer semantics. Other numeric operators do not acquire
+  that broader coercion contract.
   `typeof` returns `undefined` for missing names while preserving TDZ failures.
 - Function/global `var` hoisting and redeclaration, parameter/var sharing, and
   duplicate body function declarations with the last declaration winning.
@@ -216,17 +221,35 @@ The initial semantic subset is deliberately explicit:
   objects, shorthand properties and methods, dot/computed property access,
   optional chains and mutation. Array/call spread accepts arrays and strings;
   object spread copies enumerable own properties. Shared non-enumerable array
-  methods include `push`, `shift`, `slice`, `splice`, and `includes`; string
-  methods include `slice`, `codePointAt`, `startsWith`, and `indexOf`.
+  methods include `push`, `shift`, generic [slice](javascript_arguments.md),
+  generic [some](javascript_array_some.md), `splice`, and `includes`.
+  Generic `every`, `forEach`, `map`, `filter`, `find`, `findIndex`, `findLast`,
+  `findLastIndex`, `reduce`, and `reduceRight` snapshot length, observe live
+  indexed properties and preserve callback/exception ordering. See the
+  [array iteration contract](javascript_array.md#callback-iteration).
+  [Array/Array.isArray](javascript_array.md) provide bounded construction and brand
+  checks. String methods include `slice`, `codePointAt`, `startsWith`, `indexOf`,
+  and Unicode 12.1 [toLowerCase/toUpperCase](javascript_string_case.md), including
+  full default mappings and contextual final sigma; locale casing is unsupported.
   String length/indexing use UTF-16 code units. Host-installed prototypes, data
   descriptors and accessors participate in property reads/writes; inherited
   accessors receive the original receiver. Read-only writes are ignored in
   sloppy code and throw in strict code. Function values expose `name`/`length`.
   Method calls pass `this`; arrows retain their enclosing receiver.
+  [Ordinary function construction](javascript_function_construction.md) provides
+  lazy prototype identity and constructor receiver/return behavior. Shared
+  [call/apply/bind](javascript_function_methods.md) forward receivers/arguments,
+  support generic array-like apply and retain bound values across GC. Dynamic
+  Function source construction and sloppy receiver boxing remain unsupported.
+  Strict/non-simple functions have deferred [unmapped arguments](javascript_arguments.md);
+  sloppy simple-parameter mapped arguments remain unsupported.
 - Lexical `for (let/const pattern of value)` over arrays and strings. Arrays read
   their live length each iteration; holes yield undefined. Strings iterate Unicode
   code points, preserving lone surrogates. Each iteration creates a fresh binding
   for captured closures; the iterable expression sees the binding in its TDZ.
+- [For-in](javascript_for_in.md) enumerates bounded ordinary own/prototype keys;
+  [in](javascript_has.md) tests property presence without invoking getters,
+  including hosts implementing the native HasProperty hook.
 - Cooked templates normalize raw CR/CRLF, decode escapes into UTF-16, and
   interpolate undefined, null, booleans, numbers and strings. Number spelling uses
   JavaScript decimal/exponent thresholds, including negative zero, NaN and infinity.
@@ -235,24 +258,46 @@ The initial semantic subset is deliberately explicit:
   labelled/unlabelled break/continue, return, throw and try/catch/finally.
 
 Unsupported syntax is rejected before execution, including module declarations
-through the script API, classes, generators/async, regex execution, tagged
-templates, prototype-literal `__proto__`, loose equality and additional numeric
-operators. Custom iterators, implicit operator coercions and exotic property-key
-conversions remain outside this subset. Destructuring assignment, computed binding
-keys and catch patterns remain unsupported. Global `this`, sloppy receiver
-substitution/boxing, `super` and ordinary functions' implicit `arguments` object
-are not implemented; accessing these receiver/arguments features reports
-unsupported status. Explicit `arguments` parameters remain ordinary bindings.
+through the script API, generators, tagged templates and prototype-literal
+`__proto__`. Numeric object-literal keys and array literal elisions are not yet
+lowered, although the runtime supports sparse arrays created through Array/length
+and indexed writes. Destructuring assignment, computed binding keys, catch
+patterns, custom iterators, Symbol hooks and exotic property-key conversions
+remain unsupported. Regex literals and bounded execution follow the separate
+[RegExp/string replace contract](javascript_regexp.md), not full RegExp coverage.
+Global `this`, sloppy receiver substitution/boxing and `super` property access
+remain unsupported. Explicit `arguments` parameters are ordinary bindings;
+non-simple parameters with a body lexical/function declaration named `arguments`
+remain unsupported because parameter/body environments are not split.
+
+Binary and conditional expressions use a bounded [iterative evaluator](javascript_expression_chains.md),
+with explicit saved-operand GC roots across await and cancellation. `if` branch
+tails and expression-statement wrappers reuse their evaluator frame. Original
+AST grouping, ordering, short circuiting, empty completions and per-node fuel
+remain intact; function recursion still uses the configured depth bound. This
+is not ECMAScript proper-tail-call support.
 
 Native Promise, binary buffers/views and text-codec constructors are supported;
 other constructor capabilities depend on installed host hooks. The runtime also
 installs bounded Number, Math and Date operations; this is not a complete standard
 library. BigInt literals lower to a distinct node for the bounded binary-boundary
-implementation; arbitrary-precision arithmetic is not implemented. No DOM, timer
+implementation. It supports exact `+`, `-`, `*`, `/`, ordered BigInt-to-BigInt
+comparisons, compound assignments and increment/decrement within the existing
+`[-2^63, 2^64-1]` range. Division truncates toward zero; division by zero and
+results outside that range throw `RangeError`, and mixed Number/BigInt arithmetic
+throws `TypeError`. The WASI clock's millisecond-to-nanosecond multiplication and
+DataView roundtrip never convert a BigInt operand or result to Number. Ordinary addition/abstract-equality conversions support the documented bounded
+BigInt cases; mixed-type ordered comparison, remainder, exponentiation and
+BigInt bitwise operators remain unsupported; arbitrary-precision arithmetic is not implemented.
+These bounded range failures are implementation limits, not ECMAScript's
+arbitrary-precision behavior. Arithmetic follows the applicable algorithms in
+[ECMA-262 BigInt operations](https://tc39.es/ecma262/multipage/ecmascript-data-types-and-values.html#sec-bigint-multiply). No DOM, timer
 task queue or browser authority is installed by the runtime. The separate
 [module API](javascript_modules.md) provides bounded acyclic graph loading with
-named const/function exports and live read-only imports. Browser module loading
-does not yet support top-level await.
+[mutable named exports](javascript_mutable_modules.md) and live read-only imports.
+Default exports, namespace imports, direct re-exports and cyclic graphs remain
+unsupported. Browser module loading
+supports top-level await through its explicit asynchronous evaluation API.
 
 Scope conflicts are checked before installing bindings, so a rejected script
 does not leave its otherwise fresh declarations in the temporal dead zone.
@@ -341,17 +386,20 @@ limits, and zero outstanding allocations after teardown.
 ## Promises and microtask checkpoints
 
 `js_runtime_new` installs `Promise`, `Promise.resolve`, `Promise.reject`,
-`Promise.prototype.then/catch`, and `queueMicrotask`. `new Promise(executor)`
+`Promise.prototype.then/catch/finally`, and `queueMicrotask`. `new Promise(executor)`
 calls its executor synchronously with resolve/reject functions. Settlement is
 first-call-wins, including adoption of a pending native promise. Reactions run
-as FIFO microtasks, propagate missing handlers, adopt returned native promises,
+as FIFO microtasks, propagate missing handlers, assimilate returned thenables,
 reject direct self-resolution, and turn handler/executor throws into rejections.
 
 Hosts create pending promises with `js_runtime_promise_new(rt)` and settle them
 with `js_runtime_promise_settle(rt, promise, value, rejected)`, where `rejected`
 is zero for resolution and nonzero for rejection. Both values must belong to
-that runtime. Host-retained pending promises need ordinary roots. Settlement
-never invokes JavaScript. Pending reactions, queued jobs, captured resolvers,
+that runtime. Host-retained pending promises need ordinary roots. Resolution synchronously reads an object’s `then` property; a JavaScript or
+host getter runs through the bounded property callback contract. The Promise is
+locked first, so reentrant settlement cannot win. A callable `then` runs later
+in a queued job with shared once-only resolving functions. A getter or `then`
+body throw rejects unless resolution already won. Pending reactions, queued jobs, captured resolvers,
 and settlement values participate in collection.
 
 Call `js_runtime_drain_microtasks(rt, budget)` at a host checkpoint, such as after
@@ -368,10 +416,17 @@ pending promise's reactions. Queue storage compacts consumed entries.
 `js_runtime_clear_microtasks(rt)` cancels queued jobs between executions; it does
 not remove reactions attached to still-pending promises.
 
-This is a native-promise subset: arbitrary thenable assimilation, Promise
-combinators/finally, subclass/species behavior, unhandled-rejection reporting,
-async/await, and general constructor semantics are not implemented. In particular,
-objects with a `then` property are currently fulfilled as ordinary objects.
+`finally` invokes its callable with no arguments, waits for its result (including
+a thenable), and preserves the original value/reason unless cleanup throws or
+rejects. Noncallable handlers pass through. `Promise.all`, `race`, and
+`allSettled` accept the runtime’s supported iterables (arrays and strings),
+preserve input order where applicable, and handle empty inputs, rejected
+elements, sparse arrays, and thenables. Each combinator captures the intrinsic
+constructor’s current `resolve` method once and observes each result’s `then`.
+Iteration charges fuel and is capped by `max_properties`; callbacks and partial
+result arrays remain traced across GC. Custom iterator protocols, generic
+constructor/subclass/species behavior, `Promise.any`, unhandled-rejection
+reporting, and general constructor semantics remain unsupported. Objects with a noncallable `then` fulfill as ordinary values.
 Constructor syntax is lowered and printed as `construct` AST nodes, with tests
 for member callees and trailing method calls.
 
@@ -448,3 +503,84 @@ Generic infrastructure and restrictions are documented in
 AST predicates must be pure, custom host state must participate in snapshots,
 and stateful recovery/streaming and ANTLR `more` remain unsupported. Existing
 eager grammars retain their generation behavior.
+
+`js_runtime_compile_function(rt, source, length)` compiles a complete ordinary
+function expression during an active host callback, for example
+`(function(event) { return this.value; })`. It consumes the current budget,
+respects source/parser/retained-script limits, stores the owned AST in the realm,
+and returns a global-environment closure without executing its body. It does not
+reset execution state or permit arbitrary nested script evaluation. Failures use
+the existing completion; hosts must root a retained callback across collection.
+`String(value)` converts supported primitives and ordinary objects through the
+bounded [string coercion contract](javascript_string_coercion.md); `String()`
+returns the empty string. Wrapper construction and Symbol hooks are unsupported.
+`parseFloat` and `Number.parseFloat` share a native function that converts through
+that contract and parses the longest valid decimal prefix after ECMAScript
+whitespace. It preserves signed zero, accepts signed `Infinity`, rounds decimal
+values to binary64, and handles overflow/subnormal values. The input is bounded
+by the runtime string limit and charged to the current execution budget. This
+does not add general numeric coercion or `parseInt`.
+
+
+The bounded class subset supports declarations and expressions, identifier-named
+instance/static methods, constructors, default constructors, class-to-class and
+`Error` inheritance, `super(...)`, and ordinary `instanceof` prototype walks.
+Classes require `new`; methods execute strictly. Class lexical bindings have a
+TDZ, the inner class-name binding is immutable, derived `this` is unavailable
+until `super` initializes it once, and constructor object/primitive return rules
+are enforced. Class prototypes/methods use nonenumerable descriptors; retained
+constructor frames, lexical `this` closures and intrinsic Error prototypes remain
+traced across collection. The unchanged `tools/web/wasi_lite.mjs` now loads and
+runs both `proc_exit`/`runStart` and its BigInt clock operation in the module test.
+
+This is not full class support: computed/string method names, accessors,
+async/generator methods, fields, private names, `super` property access,
+`new.target`, ordinary-function or other built-in subclassing, inferred anonymous
+class names, and Symbol.hasInstance hooks remain outside the runtime subset.
+`Error` and `ReferenceError` support calls/construction and primitive messages, but not options/cause,
+stack traces. Ordinary object messages use the bounded string coercion contract. Runtime-generated reference errors use ReferenceError.prototype; other runtime
+errors share Error.prototype while retaining their existing explicit names. Class evaluation and
+construction follow the applicable [ECMA-262 class algorithms](https://tc39.es/ecma262/multipage/ecmascript-language-functions-and-classes.html#sec-runtime-semantics-classdefinitionevaluation).
+
+Host native callables may set `host_construct = 2` for a constructor that requires
+`new`; `1` continues to allow both forms. Construction uses a separate native
+call path, so this permission does not leak to nested ordinary calls.
+
+The pinned Test262 addition reference-error cases now pass both script variants
+through `instanceof ReferenceError`. The expanded pinned runtime selection now
+reports 110 PASS and 35 explicit UNSUPPORTED across 145 variants, with no FAIL or
+ERROR; see its [manifest/profile](../../tests/javascript/test262/README.md).
+These are measured feature gains, not a full-conformance claim. The adapter's unsupported-syntax self-test now uses a class accessor,
+which remains unsupported, instead of a now-supported empty class.
+
+
+## Bounded asynchronous evaluation
+
+Async ordinary functions and arrows return native Promises. `await` genuinely
+suspends execution, including when given a primitive or fulfilled Promise;
+FIFO microtask checkpoints resume it. Throws reject the result Promise and
+`try`/`catch`/`finally` work across suspension. Async functions cannot be used as
+constructors. Async methods and generators remain unsupported. Await uses the Promise resolution machinery above, including thenable
+assimilation and throwing `then` getters.
+
+Each task uses a guarded 256 KiB W generator stack. Runtime defaults bound active
+tasks to 32, aggregate stacks to 8 MiB, and suspended root identities to 1,000,000.
+Each task retains its original remaining execution budget across checkpoints;
+a fresh checkpoint cannot replenish an infinite asynchronous loop. Checkpoint
+fuel also bounds the aggregate work resumed by that checkpoint.
+
+The first implementation conservatively snapshots all runtime heap identities
+at each suspension to retain evaluator temporaries safely. GC traces these roots,
+including duplicates held by different tasks; unrelated garbage can remain live
+until those tasks finish or cancel. Heap limits and `max_async_roots` bound this
+retention. Source ASTs remain runtime-owned. No GC scans native stack words.
+
+`js_runtime_async_cancel(rt)` cancels every suspended task, while
+`js_runtime_async_cancel_owner(rt, owner)` restricts cancellation to a host owner.
+Both run only outside active execution. Cancellation resumes with an uncatchable
+terminal completion to release native evaluator temporaries before freeing the
+stack; JavaScript catch/finally bodies are not run during terminal cancellation.
+Durable reaction tokens are invalidated, so later settlement cannot resume freed
+frames. Runtime teardown and clearing microtasks cancel tasks first. A terminal
+execution limit also cancels all suspended tasks. Hosts must cancel before
+releasing native objects referenced by their JavaScript callbacks.

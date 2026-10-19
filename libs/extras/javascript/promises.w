@@ -1,6 +1,6 @@
 # Included by runtime.w. Native promises and FIFO host-driven checkpoints.
 # promise_state: 0 ordinary value, 1 pending, 2 fulfilled, 3 rejected,
-# 4 following another native promise. Reactions are private traced heap nodes.
+# 4 locked while resolving a thenable. Reactions are private traced heap nodes.
 
 
 int js_runtime_callable(js_value* value):
@@ -45,23 +45,12 @@ js_value* js_runtime_promise_reaction(js_runtime* rt, js_value* source, js_value
 	return reaction
 
 
-# Host values must belong to rt. Settlement is first-call-wins, including
-# adoption of a pending native promise. No JS is invoked during settlement.
-int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value, int rejected):
-	if (promise == 0 || value == 0 || promise.owner != rt || value.owner != rt || promise.promise_state == 0):
-		js_runtime_fail(rt, 2, c"invalid promise settlement")
-		return 0
-	if (promise.promise_state != 1): return 1
-	if (rejected == 0 && value == promise):
-		value = js_runtime_error_value(rt, c"promise resolution cycle")
-		rejected = 1
-	if (rejected == 0 && value.promise_state != 0):
-		promise.promise_state = 4
-		promise.promise_result = value
-		js_runtime_promise_reaction(rt, value, promise, rt.undefined_value, rt.undefined_value)
-		return rt.completion.status == 0
-	# Reserve the entire fanout before modifying state, avoiding partial delivery.
+# Publish a final result after resolution has locked the Promise. Reserve the
+# complete fanout before changing state so limits cannot partially deliver it.
+int js_runtime_promise_finish(js_runtime* rt, js_value* promise, js_value* value, int rejected):
 	if (promise.reactions.length > rt.max_microtasks - (rt.microtasks.length - rt.microtask_head)):
+		# No result or delivery was committed: host settlement may retry.
+		promise.promise_state = 1
 		js_runtime_fail(rt, 5, c"JavaScript microtask queue limit")
 		return 0
 	promise.promise_state = 2
@@ -70,6 +59,53 @@ int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value
 	for i in range(promise.reactions.length): js_runtime_enqueue_microtask(rt, promise.reactions[i])
 	while (promise.reactions.length > 0): promise.reactions.pop()
 	return rt.completion.status == 0
+
+
+# Host values must belong to rt. First-call-wins also covers reentrant `then`
+# getters. Accessors run synchronously through the bounded property callback
+# contract; callable then bodies run only in a queued resolution job.
+int js_runtime_promise_settle(js_runtime* rt, js_value* promise, js_value* value, int rejected):
+	if (promise == 0 || value == 0 || promise.owner != rt || value.owner != rt || promise.promise_state == 0):
+		js_runtime_fail(rt, 2, c"invalid promise settlement")
+		return 0
+	if (promise.promise_state != 1): return 1
+	# Reserve fanout before observable lookup or locking. Host transports retain
+	# and retry pending settlement when a checkpoint queue is saturated.
+	if (promise.reactions.length > rt.max_microtasks - (rt.microtasks.length - rt.microtask_head)):
+		js_runtime_fail(rt, 5, c"JavaScript microtask queue limit")
+		return 0
+	promise.promise_state = 4
+	if (rejected == 0 && value == promise):
+		value = js_runtime_error_value(rt, c"promise resolution cycle")
+		rejected = 1
+	if (rejected == 0 && js_runtime_object(value)):
+		js_value* then = js_runtime_get(rt, value, c"then")
+		if (rt.completion.status == 2):
+			value = rt.completion.value
+			rejected = 1
+			rt.completion.status = 0
+			rt.completion.value = rt.undefined_value
+			rt.completion.message = c""
+		elif (rt.completion.status != 0):
+			promise.promise_state = 1
+			return 0
+		elif (js_runtime_callable(then)):
+			js_value* job = js_runtime_alloc(rt, 5)
+			if (rt.completion.status != 0):
+				promise.promise_state = 1
+				return 0
+			# Private job tag: ordinary reaction jobs always have number zero.
+			job.number = 1.0
+			job.parent = value
+			job.getter = then
+			job.this_value = promise
+			promise.promise_result = value
+			if (js_runtime_enqueue_microtask(rt, job)): return 1
+			# The job was not queued; release the lock for an explicit host retry.
+			promise.promise_state = 1
+			promise.promise_result = rt.undefined_value
+			return 0
+	return js_runtime_promise_finish(rt, promise, value, rejected)
 
 
 js_value* js_runtime_promise_then(void* runtime, void* context, js_value* receiver, list[js_value*] args):
@@ -159,8 +195,246 @@ js_value* js_runtime_promise_construct(js_runtime* rt, list[js_value*] args):
 	return promise
 
 
+js_value* js_runtime_thenable_resolve(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* capability = cast(js_value*, context)
+	if (capability.number != 0.0): return rt.undefined_value
+	capability.number = 1.0
+	js_value* value = rt.undefined_value
+	if (args.length > 0): value = args[0]
+	capability.parent.promise_state = 1
+	js_runtime_promise_settle(rt, capability.parent, value, 0)
+	return rt.undefined_value
+
+
+js_value* js_runtime_thenable_reject(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* capability = cast(js_value*, context)
+	if (capability.number != 0.0): return rt.undefined_value
+	capability.number = 1.0
+	js_value* value = rt.undefined_value
+	if (args.length > 0): value = args[0]
+	js_runtime_promise_finish(rt, capability.parent, value, 1)
+	return rt.undefined_value
+
+
+void js_runtime_thenable_job(js_runtime* rt, js_value* job):
+	js_value* capability = js_runtime_alloc(rt, 5)
+	if (rt.completion.status != 0): return
+	capability.parent = job.this_value
+	js_value* resolve = js_runtime_host_callable(rt, capability, js_runtime_thenable_resolve)
+	if (rt.completion.status != 0): return
+	resolve.parent = capability
+	js_value* reject = js_runtime_host_callable(rt, capability, js_runtime_thenable_reject)
+	if (rt.completion.status != 0): return
+	reject.parent = capability
+	list[js_value*] args = new list[js_value*]
+	args.push(resolve)
+	args.push(reject)
+	js_runtime_call_receiver(rt, job.getter, job.parent, args)
+	__w_list_free(cast(__w_list*, args))
+	if (rt.completion.status == 2):
+		js_value* reason = rt.completion.value
+		rt.completion.status = 0
+		rt.completion.message = c""
+		rt.completion.value = rt.undefined_value
+		if (capability.number == 0.0):
+			capability.number = 1.0
+			js_runtime_promise_finish(rt, capability.parent, reason, 1)
+
+
+js_value* js_runtime_finally_value(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* saved = cast(js_value*, context)
+	if (saved.number == 1.0): js_runtime_throw(rt, saved.this_value)
+	return saved.this_value
+
+
+js_value* js_runtime_finally_handler(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* captured = cast(js_value*, context)
+	list[js_value*] empty = new list[js_value*]
+	js_value* result = js_runtime_call_receiver(rt, captured.getter, rt.undefined_value, empty)
+	__w_list_free(cast(__w_list*, empty))
+	if (rt.completion.status != 0): return rt.undefined_value
+	js_value* promise = result
+	if (promise.promise_state == 0):
+		promise = js_runtime_promise_new(rt)
+		if (rt.completion.status == 0): js_runtime_promise_settle(rt, promise, result, 0)
+	if (rt.completion.status != 0): return rt.undefined_value
+	js_value* saved = js_runtime_alloc(rt, 5)
+	if (rt.completion.status != 0): return rt.undefined_value
+	saved.number = captured.number
+	saved.this_value = rt.undefined_value
+	if (args.length > 0): saved.this_value = args[0]
+	js_value* thunk = js_runtime_host_callable(rt, saved, js_runtime_finally_value)
+	if (rt.completion.status != 0): return rt.undefined_value
+	thunk.parent = saved
+	js_value* target = js_runtime_promise_new(rt)
+	if (rt.completion.status == 0): js_runtime_promise_reaction(rt, promise, target, thunk, rt.undefined_value)
+	return target
+
+
+js_value* js_runtime_promise_finally(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	if (receiver.promise_state == 0):
+		js_runtime_fail(rt, 2, c"Promise.finally receiver is not a promise")
+		return rt.undefined_value
+	js_value* callback = rt.undefined_value
+	if (args.length > 0): callback = args[0]
+	js_value* target = js_runtime_promise_new(rt)
+	if (rt.completion.status != 0): return rt.undefined_value
+	js_value* fulfilled = callback
+	js_value* rejected = callback
+	if (js_runtime_callable(callback)):
+		for i in range(2):
+			js_value* captured = js_runtime_alloc(rt, 5)
+			if (rt.completion.status != 0): return rt.undefined_value
+			captured.number = cast(float64, i)
+			captured.getter = callback
+			js_value* handler = js_runtime_host_callable(rt, captured, js_runtime_finally_handler)
+			if (rt.completion.status != 0): return rt.undefined_value
+			handler.parent = captured
+			if (i == 0): fulfilled = handler
+			else: rejected = handler
+	js_runtime_promise_reaction(rt, receiver, target, fulfilled, rejected)
+	return target
+
+
+# Result indices are own data properties; inherited setters must not intercept
+# the internal list accumulation required by Promise combinators.
+void js_runtime_combinator_store(js_runtime* rt, js_value* array, int index, js_value* value):
+	char* name = itoa(index)
+	js_text* key = js_runtime_key(name)
+	free(name)
+	if (js_runtime_put(rt, array, key, value) && index >= array.array_length): array.array_length = index + 1
+	js_text_free(key)
+
+
+# Combinator state and element records use traced heap edges. The shared
+# remaining count starts at one so synchronous overridden then methods cannot
+# fulfill all/allSettled before iteration has finished.
+void js_runtime_combinator_element(js_runtime* rt, js_value* element, js_value* value, int rejected):
+	js_value* state = element.parent
+	int mode = state.array_length
+	if (mode == 1 || (mode == 0 && rejected)):
+		js_runtime_promise_settle(rt, state.parent, value, rejected)
+		return
+	if (element.initialized): return
+	element.initialized = 1
+	if (mode == 2):
+		js_value* record = js_runtime_alloc(rt, 5)
+		if (rt.completion.status != 0): return
+		char* status = c"fulfilled"
+		char* field = c"value"
+		if (rejected):
+			status = c"rejected"
+			field = c"reason"
+		js_text* text = js_runtime_key(status)
+		js_value* label = js_runtime_string(rt, text)
+		js_text_free(text)
+		js_runtime_set(rt, record, c"status", label)
+		js_runtime_set(rt, record, field, value)
+		value = record
+	if (rt.completion.status != 0): return
+	js_runtime_combinator_store(rt, state.this_value, cast(int, element.number), value)
+	state.number = state.number - 1.0
+	if (state.number == 0.0 && rt.completion.status == 0): js_runtime_promise_settle(rt, state.parent, state.this_value, 0)
+
+
+js_value* js_runtime_combinator_fulfill(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* value = rt.undefined_value
+	if (args.length > 0): value = args[0]
+	js_runtime_combinator_element(rt, cast(js_value*, context), value, 0)
+	return rt.undefined_value
+
+
+js_value* js_runtime_combinator_reject(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_value* value = rt.undefined_value
+	if (args.length > 0): value = args[0]
+	js_runtime_combinator_element(rt, cast(js_value*, context), value, 1)
+	return rt.undefined_value
+
+
+js_value* js_runtime_promise_combinator(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	int mode = cast(int, context)
+	js_value* target = js_runtime_promise_new(rt)
+	if (rt.completion.status != 0): return rt.undefined_value
+	# Capture the intrinsic constructor's current resolve method once, as
+	# required even when user code replaces it during iteration.
+	js_value* resolver = js_runtime_get(rt, rt.promise_constructor, c"resolve")
+	if (rt.completion.status == 0 && js_runtime_callable(resolver) == 0): js_runtime_fail(rt, 2, c"Promise resolve is not callable")
+	if (rt.completion.status == 2):
+		js_value* reason = rt.completion.value
+		rt.completion.status = 0
+		rt.completion.value = rt.undefined_value
+		rt.completion.message = c""
+		js_runtime_promise_settle(rt, target, reason, 1)
+		return target
+	if (rt.completion.status != 0): return rt.undefined_value
+	if (args.length == 0 || (args[0].kind != 6 && args[0].kind != 4)):
+		js_runtime_promise_settle(rt, target, js_runtime_error_value(rt, c"Promise iterable requires array or string"), 1)
+		return target
+	js_value* state = js_runtime_alloc(rt, 5)
+	if (rt.completion.status != 0): return rt.undefined_value
+	state.parent = target
+	state.number = 1.0
+	state.array_length = mode
+	state.this_value = rt.undefined_value
+	if (mode != 1): state.this_value = js_runtime_alloc(rt, 6)
+	int index = 0
+	int count = 0
+	while (js_runtime_compat_step(rt)):
+		js_value* value = js_runtime_iter_next(rt, args[0], &index)
+		if (rt.completion.status != 0 || value == 0): break
+		if (count >= rt.max_properties):
+			js_runtime_fail(rt, 5, c"JavaScript Promise iterable limit")
+			break
+		list[js_value*] resolve_args = new list[js_value*]
+		resolve_args.push(value)
+		js_value* promise = js_runtime_call_receiver(rt, resolver, rt.promise_constructor, resolve_args)
+		__w_list_free(cast(__w_list*, resolve_args))
+		if (rt.completion.status != 0): break
+		js_value* element = js_runtime_alloc(rt, 5)
+		if (rt.completion.status != 0): break
+		element.parent = state
+		element.number = cast(float64, count)
+		element.initialized = 0
+		if (mode != 1): js_runtime_combinator_store(rt, state.this_value, count, rt.undefined_value)
+		state.number = state.number + 1.0
+		count = count + 1
+		js_value* fulfilled = js_runtime_host_callable(rt, element, js_runtime_combinator_fulfill)
+		if (rt.completion.status != 0): break
+		fulfilled.parent = element
+		js_value* rejected = js_runtime_host_callable(rt, element, js_runtime_combinator_reject)
+		if (rt.completion.status != 0): break
+		rejected.parent = element
+		js_value* then = js_runtime_get(rt, promise, c"then")
+		if (rt.completion.status != 0): break
+		list[js_value*] handlers = new list[js_value*]
+		handlers.push(fulfilled)
+		handlers.push(rejected)
+		js_runtime_call_receiver(rt, then, promise, handlers)
+		__w_list_free(cast(__w_list*, handlers))
+		if (rt.completion.status != 0): break
+	if (rt.completion.status == 2):
+		js_value* reason = rt.completion.value
+		rt.completion.status = 0
+		rt.completion.value = rt.undefined_value
+		rt.completion.message = c""
+		js_runtime_promise_settle(rt, target, reason, 1)
+	if (rt.completion.status != 0): return rt.undefined_value
+	state.number = state.number - 1.0
+	if (mode != 1 && state.number == 0.0): js_runtime_promise_settle(rt, target, state.this_value, 0)
+	return target
+
+
 void js_runtime_clear_microtasks(js_runtime* rt):
 	if (rt.running): return
+	js_runtime_async_cancel(rt)
 	while (rt.microtasks.length > 0): rt.microtasks.pop()
 	rt.microtask_head = 0
 
@@ -168,9 +442,13 @@ void js_runtime_clear_microtasks(js_runtime* rt):
 void js_runtime_install_promises(js_runtime* rt):
 	rt.promise_prototype = js_runtime_alloc(rt, 5)
 	js_runtime_set(rt, rt.promise_prototype, c"then", js_runtime_host_callable(rt, 0, js_runtime_promise_then))
+	js_runtime_set(rt, rt.promise_prototype, c"finally", js_runtime_host_callable(rt, 0, js_runtime_promise_finally))
 	js_runtime_set(rt, rt.promise_prototype, c"catch", js_runtime_host_callable(rt, cast(void*, 1), js_runtime_promise_then))
 	js_value* promise = js_runtime_host_callable(rt, 0, js_runtime_promise_requires_new)
 	rt.promise_constructor = promise
+	js_runtime_set(rt, promise, c"all", js_runtime_host_callable(rt, 0, js_runtime_promise_combinator))
+	js_runtime_set(rt, promise, c"race", js_runtime_host_callable(rt, cast(void*, 1), js_runtime_promise_combinator))
+	js_runtime_set(rt, promise, c"allSettled", js_runtime_host_callable(rt, cast(void*, 2), js_runtime_promise_combinator))
 	js_runtime_set(rt, promise, c"resolve", js_runtime_host_callable(rt, 0, js_runtime_promise_static))
 	js_runtime_set(rt, promise, c"reject", js_runtime_host_callable(rt, cast(void*, 1), js_runtime_promise_static))
 	js_runtime_set(rt, promise, c"prototype", rt.promise_prototype)
@@ -192,6 +470,9 @@ js_completion* js_runtime_drain_microtasks(js_runtime* rt, int budget):
 		rt.completion.steps = rt.completion.steps + 1
 		js_value* job = rt.microtasks[rt.microtask_head]
 		rt.microtask_head = rt.microtask_head + 1
+		if (job.number == 1.0):
+			js_runtime_thenable_job(rt, job)
+			continue
 		list[js_value*] args = new list[js_value*]
 		js_value* handler = job.getter
 		js_value* value = rt.undefined_value
@@ -214,10 +495,10 @@ js_completion* js_runtime_drain_microtasks(js_runtime* rt, int budget):
 				rt.completion.value = rt.undefined_value
 		__w_list_free(cast(__w_list*, args))
 		if (job.this_value != 0 && rt.completion.status == 0):
-			if (job.this_value.promise_state == 4): job.this_value.promise_state = 1
 			js_runtime_promise_settle(rt, job.this_value, value, rejected)
 	if (rt.microtask_head == rt.microtasks.length):
 		while (rt.microtasks.length > 0): rt.microtasks.pop()
 		rt.microtask_head = 0
 	rt.running = 0
+	if (rt.completion.status >= 5): js_runtime_async_cancel(rt)
 	return rt.completion

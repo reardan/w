@@ -186,7 +186,77 @@ void js_builtin_method(js_runtime* rt, js_value* object, char* name, js_host_rec
 	js_text_free(key)
 
 
+# String-hint OrdinaryToPrimitive for explicit ordinary conversion methods.
+# Internal callers that deliberately reject coercion keep primitive_text.
+# There is no shared Object/Function/Array prototype fallback in this runtime.
+js_text* js_runtime_string_text(js_runtime* rt, js_value* value):
+	if (rt.completion.status != 0): return 0
+	if (value.kind <= 4 || value.kind == 10): return js_runtime_primitive_text(rt, value)
+	if (js_runtime_object(value) == 0 || value.binary_kind != 0 || value.regexp != 0 || value.reactions != 0 || value.host_get != 0 || value.host_set != 0 || value.text_codec != 0):
+		js_runtime_fail(rt, 6, c"exotic String coercion is outside the runtime subset")
+		return 0
+	if (rt.depth >= rt.max_depth || js_runtime_compat_step(rt) == 0):
+		js_runtime_fail(rt, 5, c"JavaScript string coercion depth limit")
+		return 0
+	rt.depth = rt.depth + 1
+	js_text* result = 0
+	int attempted = 0
+	for i in range(2):
+		if (js_runtime_compat_step(rt) == 0): break
+		char* name = c"toString"
+		if (i == 1): name = c"valueOf"
+		js_value* method = js_runtime_get(rt, value, name)
+		if (rt.completion.status != 0): break
+		if (i == 0 && method.kind == 0):
+			# Explicit undefined must skip the method, but an absent default
+			# Object.prototype.toString must not silently change precedence.
+			js_text* key = js_runtime_key(name)
+			js_value* current = value
+			int present = 0
+			int depth = 0
+			while (current != 0 && depth < rt.max_depth):
+				if (js_runtime_compat_step(rt) == 0): break
+				if (js_runtime_property(current, key) != 0):
+					present = 1
+					break
+				current = current.prototype
+				depth = depth + 1
+			js_text_free(key)
+			if (present == 0):
+				js_runtime_fail(rt, 6, c"implicit prototype String coercion is outside the runtime subset")
+				break
+		if (method.kind != 7 && method.kind != 9): continue
+		attempted = 1
+		list[js_value*] args = new list[js_value*]
+		js_value* primitive = js_runtime_call_receiver(rt, method, value, args)
+		__w_list_free(cast(__w_list*, args))
+		if (rt.completion.status != 0): break
+		if (primitive.kind <= 4 || primitive.kind == 10):
+			result = js_runtime_primitive_text(rt, primitive)
+			break
+	if (result == 0 && rt.completion.status == 0):
+		if (attempted): js_runtime_fail(rt, 2, c"object conversion methods returned no primitive")
+		else: js_runtime_fail(rt, 2, c"object has no callable conversion method")
+	rt.depth = rt.depth - 1
+	return result
+
+
+js_value* js_builtin_string(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
+	js_text* text = 0
+	if (args.length == 0): text = js_text_new()
+	else: text = js_runtime_string_text(rt, args[0])
+	if (text == 0):
+		js_runtime_fail(rt, 6, c"String object coercion is outside the runtime subset")
+		return rt.undefined_value
+	js_value* result = js_runtime_string(rt, text)
+	js_text_free(text)
+	return result
+
+
 void js_runtime_install_builtins(js_runtime* rt):
+	js_runtime_set(rt, rt.global, c"String", js_runtime_host_callable(rt, 0, js_builtin_string))
 	js_value* math = js_runtime_alloc(rt, 5)
 	js_builtin_method(rt, math, c"round", js_builtin_math, 1)
 	js_builtin_method(rt, math, c"floor", js_builtin_math, 2)

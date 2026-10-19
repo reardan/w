@@ -1,6 +1,9 @@
 import libs.extras.javascript.runtime
 
+void js_class_define(js_runtime* rt, js_value* object, char* name, js_value* value, int writable, int configurable);
+js_value* js_class_string(js_runtime* rt, char* text);
 void js_runtime_array_copy(js_runtime* rt, js_value* from, int start, int end, js_value* target);
+js_value* js_array_like_slice(void* runtime, void* context, js_value* receiver, list[js_value*] args);
 
 # Bounded Array/String methods used by the unchanged browser host modules.
 # Prototype methods are shared, non-enumerable and receiver checked.
@@ -74,12 +77,6 @@ js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiv
 			js_value* item = js_runtime_index_get(rt, receiver, i)
 			if (js_runtime_equal(item, needle) || (item.kind == 3 && needle.kind == 3 && f64is_nan(item.number) && f64is_nan(needle.number))): return js_runtime_boolean(rt, 1)
 		return js_runtime_boolean(rt, 0)
-	int end = length
-	if (operation == 3):
-		if (args.length > 1): end = js_runtime_relative_index(args[1], length, length)
-		js_value* result = js_runtime_alloc(rt, 6)
-		js_runtime_array_copy(rt, receiver, start, end, result)
-		return result
 	# shift and splice remove an interval; splice supports inserted arguments.
 	int removed = length - start
 	int inserted = 0
@@ -159,11 +156,14 @@ js_value* js_runtime_string_method(void* runtime, void* context, js_value* recei
 	return js_runtime_number(rt, -1.0)
 
 void js_runtime_install_collections(js_runtime* rt):
-	rt.array_prototype = js_runtime_alloc(rt, 5)
+	rt.array_prototype = js_runtime_alloc(rt, 6)
 	rt.string_prototype = js_runtime_alloc(rt, 5)
 	js_runtime_collection_method(rt, rt.array_prototype, c"push", 1, js_runtime_array_method)
 	js_runtime_collection_method(rt, rt.array_prototype, c"shift", 2, js_runtime_array_method)
-	js_runtime_collection_method(rt, rt.array_prototype, c"slice", 3, js_runtime_array_method)
+	js_runtime_collection_method(rt, rt.array_prototype, c"slice", 3, js_array_like_slice)
+	js_value* slice = js_runtime_get(rt, rt.array_prototype, c"slice")
+	js_class_define(rt, slice, c"length", js_runtime_number(rt, 2.0), 0, 1)
+	js_class_define(rt, slice, c"name", js_class_string(rt, c"slice"), 0, 1)
 	js_runtime_collection_method(rt, rt.array_prototype, c"splice", 4, js_runtime_array_method)
 	js_runtime_collection_method(rt, rt.array_prototype, c"includes", 5, js_runtime_array_method)
 	js_runtime_collection_method(rt, rt.string_prototype, c"slice", 1, js_runtime_string_method)

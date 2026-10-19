@@ -165,6 +165,236 @@
       "path": "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
       "upstream_path": "test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
       "sha256": "528ca7f5a56663c102c4489c7fa6285d85ad77333994401c48497f174870b94d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/isArray/15.4.3.2-0-3.js",
+      "upstream_path": "test/built-ins/Array/isArray/15.4.3.2-0-3.js",
+      "sha256": "37c9f9327c7626d17a71ebfd47ec1135fa199a964a497819e538dd6c8c3f3391"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/isArray/15.4.3.2-0-4.js",
+      "upstream_path": "test/built-ins/Array/isArray/15.4.3.2-0-4.js",
+      "sha256": "e73c17004a481e47f8f43af7c8676ddedf74b042d23323df1800c45ee94599fe"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/isArray/15.4.3.2-0-6.js",
+      "upstream_path": "test/built-ins/Array/isArray/15.4.3.2-0-6.js",
+      "sha256": "035015bfe41486df441245726a19b12dd5b2be923baff5e63d951bdd7ab29214"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/isArray/15.4.3.2-2-1.js",
+      "upstream_path": "test/built-ins/Array/isArray/15.4.3.2-2-1.js",
+      "sha256": "6e249b5b2d990d1e417143aa7658f0d7671a9ed2305ec5e5f540d4f5b3d01e22"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/isArray/15.4.3.2-1-13.js",
+      "upstream_path": "test/built-ins/Array/isArray/15.4.3.2-1-13.js",
+      "sha256": "473bc6e3b80f27d7fb0fc090b6f42fd4c74f553639f407978bce157102924030"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-2-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-2-1.js",
+      "sha256": "228b5dd2f95d5107434889452257e7da5cd95f4b004193ba902c38ced65aa26e"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js",
+      "sha256": "b5476a2b4c06b9b14f6b5a886a86fde34e970e491be01ccf7270ba1d55ed7229"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-iii-8.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-c-iii-8.js",
+      "sha256": "431c15c2ff95699abfbeccfbf1e7c3ef6afa1529a0be466b18bb9b3379d70f54"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-1.js",
+      "sha256": "3b93704f87acf6a762f52a0d5deb4aeb821fd04827d3482dcf898ff09b5a6653"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/slice/create-non-array.js",
+      "upstream_path": "test/built-ins/Array/prototype/slice/create-non-array.js",
+      "sha256": "d24cdf6f49ed61c85b9af7783006dd4c5d89c77176a4d8887757d4a22df6448c"
+    },
+    {
+      "path": "upstream/test/built-ins/Function/prototype/call/S15.3.4.4_A5_T5.js",
+      "upstream_path": "test/built-ins/Function/prototype/call/S15.3.4.4_A5_T5.js",
+      "sha256": "18100a0a9540f55b502d5cfde756b136d2eb40327c905c860934b1237ee4d330"
+    },
+    {
+      "path": "upstream/test/built-ins/Function/prototype/apply/S15.3.4.3_A5_T5.js",
+      "upstream_path": "test/built-ins/Function/prototype/apply/S15.3.4.3_A5_T5.js",
+      "sha256": "a540ad6c30f3a89f173561ed5290b8ab95f56886619c6a2c8538287638f1ddcf"
+    },
+    {
+      "path": "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-2-8.js",
+      "upstream_path": "test/built-ins/Function/prototype/bind/15.3.4.5-2-8.js",
+      "sha256": "a23ce89d35aa698f9726196392e75dd57475e359fe5849206dd1cddc4390dbd2"
+    },
+    {
+      "path": "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-6-1.js",
+      "upstream_path": "test/built-ins/Function/prototype/bind/15.3.4.5-6-1.js",
+      "sha256": "15b8f2ba7a393b645baa2825e2db34f129d768804019431f3e7ae2c0e459a9d7"
+    },
+    {
+      "path": "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-11-1.js",
+      "upstream_path": "test/built-ins/Function/prototype/bind/15.3.4.5-11-1.js",
+      "sha256": "c3a47986c7c092c79572770bafc533d6dc7c3acef180926ec6c4e5e498c4726d"
+    },
+    {
+      "path": "upstream/test/built-ins/Function/prototype/bind/instance-construct-newtarget-boundtarget.js",
+      "upstream_path": "test/built-ins/Function/prototype/bind/instance-construct-newtarget-boundtarget.js",
+      "sha256": "4e9514ea1011a057438267bf30499b5f2639dc59ab566d2bf835c179aa09c358"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A2.3_T1.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A2.3_T1.js",
+      "sha256": "d09659aa3bf63984af88200f3ba0b361405805023051862ed57ac2f4bd2d8d52"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A2.4_T1.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A2.4_T1.js",
+      "sha256": "d9300490fb738560396341a4885a55c313dcdbef98dcc9160e8d9071fa43b178"
+    },
+    {
+      "path": "upstream/test/language/expressions/addition/S11.6.1_A2.4_T2.js",
+      "upstream_path": "test/language/expressions/addition/S11.6.1_A2.4_T2.js",
+      "sha256": "b69921de327508900a3c1dfc209f777b3cf7c0bf04fe61ee27dcc25976b05904"
+    },
+    {
+      "path": "upstream/test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js",
+      "upstream_path": "test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js",
+      "sha256": "c8c6b7a3a3197f0339dadecc6640e3cd6e9a905f3d5afbec7a2779c39bda9b18"
+    },
+    {
+      "path": "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.3_T1.js",
+      "upstream_path": "test/language/expressions/bitwise-and/S11.10.1_A2.3_T1.js",
+      "sha256": "149b6afa40815b9743cecf81834d3ef5d83efc7f2f325585a36b76dbed04ca5e"
+    },
+    {
+      "path": "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.4_T1.js",
+      "upstream_path": "test/language/expressions/bitwise-and/S11.10.1_A2.4_T1.js",
+      "sha256": "8300d8c16ce3ceb13cd5bef6435216869ebed8bdc4133c7a705c4151039662d2"
+    },
+    {
+      "path": "upstream/test/language/expressions/bitwise-and/bigint-and-number.js",
+      "upstream_path": "test/language/expressions/bitwise-and/bigint-and-number.js",
+      "sha256": "bc02df54c3b742718630192b7a49010026131589b35c7e7edce39732281fb144"
+    },
+    {
+      "path": "upstream/test/language/expressions/conditional/S11.12_A3_T4.js",
+      "upstream_path": "test/language/expressions/conditional/S11.12_A3_T4.js",
+      "sha256": "cdf1a36a5a7940fadd7463b1dd67da9222cea57a46c5540db6a71bd1c996efac"
+    },
+    {
+      "path": "upstream/test/language/expressions/conditional/S11.12_A4_T4.js",
+      "upstream_path": "test/language/expressions/conditional/S11.12_A4_T4.js",
+      "sha256": "e3998e13802de33af4ddf2b13f0973288ff189c44764a2d79de2b7c7eb6d6883"
+    },
+    {
+      "path": "upstream/test/language/expressions/conditional/in-branch-1.js",
+      "upstream_path": "test/language/expressions/conditional/in-branch-1.js",
+      "sha256": "70df4114a4fe0f51411fb5be2402f8dbfe5105cdda883fe6c2c496976ef779c5"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-1.js",
+      "sha256": "bf3dfca979e97af53eebb5cdcbe4fa10fb9add4e04b7731cfa3e7c72a43f26b7"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-3.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-3.js",
+      "sha256": "daa72a73f2ae9d096dfbd70629f853ef6ad8451e9361659a9fd2ce95621e48e6"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-2.js",
+      "sha256": "e8aff8c8a4ea4d5cce5265a010333fad9509f8c5cbc4dd279778f38519c4ab15"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js",
+      "upstream_path": "test/built-ins/Array/prototype/some/15.4.4.17-7-4.js",
+      "sha256": "22277b903cbef004737624aa5e0125783138f43edb23bd6aa8fff82b6d6cc34d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/every/15.4.4.16-7-1.js",
+      "sha256": "2cb41d588b3613bc3b4bc48910dc708afaebedc57b5ad23999256413a08217b6"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/every/15.4.4.16-7-2.js",
+      "sha256": "4ff69325d7d694d4fc18ae26177a03b5f7d627231a64620738e1dcec7d2c43e5"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js",
+      "sha256": "8825bae08ecd9c7d62a0f497522d3231727844887daf782cae8df71b599e564c"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
+      "sha256": "1ab6d831974a844c01164734c5c7083f3c1c0fed09f10fa99bbe32b7f76976be"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js",
+      "upstream_path": "test/built-ins/Array/prototype/find/predicate-call-parameters.js",
+      "sha256": "06b62d3c398e10be8d30803f7117ca4d387db8ce8fb0d9fee9485cb0fa28dc5d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js",
+      "upstream_path": "test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js",
+      "sha256": "79213c4b85cb27b8bbc8c14518f6ac1e8d43f77bf0bfa7cc3c39471e82ac95c2"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js",
+      "upstream_path": "test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js",
+      "sha256": "c3df51a3f7864f46d75f4d5b22c5b7fcafa0e7f4a1370fcec9fc15bfe40fdc42"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js",
+      "upstream_path": "test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js",
+      "sha256": "66817d3018a5846ef306ba0cdd2dc8a31c6b78755831736b2f9677ad075c593d"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js",
+      "sha256": "74d413813680689e50299a5d3b0fdee3d99d38bb6c7f2f455f7cdbbff3a787ba"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
+      "sha256": "c755438728aba20236537836fd5d4e45ee064afa70198cf0d22228b59e93145a"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/map/15.4.4.19-8-1.js",
+      "sha256": "a8405a70579b19bb30cf62a2fd170dce061ca0f7822a2ac92da387e8959bfe95"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
+      "sha256": "e06c3dd1f4c4ffa596bad5d719201f3f70d78b86c78a1096f4707d8a06e34ffc"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
+      "sha256": "40c32826329f30349d21a60a3a6bf776e7f62e80754c17fb746d34c55687a126"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
+      "sha256": "2fb659a819655d804e179b12c0f885fc976f2e5125da83120c947d6597685c39"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
+      "sha256": "31d04ed08020d139fd83aa3e0cd0b2ea98270a267c2979f6dbcf0bae656e75c2"
+    },
+    {
+      "path": "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
+      "upstream_path": "test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
+      "sha256": "f2fbbf765dae2cfdbcdfa294a0c6c3aa8dc12923e53b77e4b3cb24492e15ac1f"
     }
   ],
   "cases": [
@@ -195,7 +425,53 @@
     "upstream/test/language/statements/const/global-use-before-initialization-in-declaration-statement.js",
     "upstream/test/language/statements/const/global-use-before-initialization-in-prior-statement.js",
     "upstream/test/language/statements/let/global-use-before-initialization-in-declaration-statement.js",
-    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js"
+    "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js",
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-3.js",
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-4.js",
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-6.js",
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-2-1.js",
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-1-13.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-2-1.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-iii-8.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-1.js",
+    "upstream/test/built-ins/Array/prototype/slice/create-non-array.js",
+    "upstream/test/built-ins/Function/prototype/call/S15.3.4.4_A5_T5.js",
+    "upstream/test/built-ins/Function/prototype/apply/S15.3.4.3_A5_T5.js",
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-2-8.js",
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-6-1.js",
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-11-1.js",
+    "upstream/test/built-ins/Function/prototype/bind/instance-construct-newtarget-boundtarget.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A2.3_T1.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A2.4_T1.js",
+    "upstream/test/language/expressions/addition/S11.6.1_A2.4_T2.js",
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js",
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.3_T1.js",
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.4_T1.js",
+    "upstream/test/language/expressions/bitwise-and/bigint-and-number.js",
+    "upstream/test/language/expressions/conditional/S11.12_A3_T4.js",
+    "upstream/test/language/expressions/conditional/S11.12_A4_T4.js",
+    "upstream/test/language/expressions/conditional/in-branch-1.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-1.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-3.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-2.js",
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js",
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js",
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js",
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js",
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js",
+    "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js",
+    "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js",
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js",
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js",
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js",
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js",
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js",
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js",
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -307,12 +583,10 @@
       "reason": "unsupported required built-ins: eval"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A2.1_T2.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "instanceof evaluation is outside the implemented runtime subset."
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
       "status": "UNSUPPORTED",
@@ -368,6 +642,307 @@
     },
     "upstream/test/language/statements/let/global-use-before-initialization-in-prior-statement.js#strict": {
       "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-6.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-0-6.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-2-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-2-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-1-13.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Mapped arguments objects for sloppy simple parameters are not implemented"
+    },
+    "upstream/test/built-ins/Array/isArray/15.4.3.2-1-13.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-2-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Numeric object-literal property names are not lowered"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-2-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Numeric object-literal property names are not lowered"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Numeric object-literal property names are not lowered"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-i-3.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Numeric object-literal property names are not lowered"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-iii-8.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-iii-8.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions are not lowered"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions are not lowered"
+    },
+    "upstream/test/built-ins/Array/prototype/slice/create-non-array.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Object constructor and reflection methods are outside the installed runtime subset"
+    },
+    "upstream/test/built-ins/Array/prototype/slice/create-non-array.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Object constructor and reflection methods are outside the installed runtime subset"
+    },
+    "upstream/test/built-ins/Function/prototype/call/S15.3.4.4_A5_T5.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/call/S15.3.4.4_A5_T5.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/apply/S15.3.4.3_A5_T5.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/apply/S15.3.4.3_A5_T5.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-2-8.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-2-8.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-6-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-6-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-11-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/15.3.4.5-11-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/instance-construct-newtarget-boundtarget.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: Reflect, new.target"
+    },
+    "upstream/test/built-ins/Function/prototype/bind/instance-construct-newtarget-boundtarget.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: Reflect, new.target"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.3_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.3_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.4_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.4_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.4_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/addition/S11.6.1_A2.4_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A3_T1.4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.3_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.3_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.4_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/S11.10.1_A2.4_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/bitwise-and/bigint-and-number.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: BigInt"
+    },
+    "upstream/test/language/expressions/bitwise-and/bigint-and-number.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "unsupported features: BigInt"
+    },
+    "upstream/test/language/expressions/conditional/S11.12_A3_T4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/conditional/S11.12_A3_T4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/conditional/S11.12_A4_T4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/conditional/S11.12_A4_T4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/conditional/in-branch-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/language/expressions/conditional/in-branch-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-c-ii-3.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/some/15.4.4.17-7-4.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/every/15.4.4.16-7-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/filter/15.4.4.20-9-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Sloppy mapped arguments are outside the runtime profile; the strict variant exercises callback arguments."
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/find/predicate-not-called-on-empty-array.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Sloppy mapped arguments are outside the runtime profile; the strict variant exercises callback arguments."
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/findIndex/predicate-not-called-on-empty-array.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Property deletion remains outside the runtime profile."
+    },
+    "upstream/test/built-ins/Array/prototype/forEach/15.4.4.18-7-2.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Property deletion remains outside the runtime profile."
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js#sloppy": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-1.js#strict": {
+      "status": "UNSUPPORTED",
+      "reason": "Array literal elisions remain outside the semantic lowering profile."
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/map/15.4.4.19-8-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js#strict": {
+      "status": "PASS"
     }
   },
   "builtins_required": {
@@ -381,6 +956,9 @@
     "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js": [
       "Number",
       "isNaN"
+    ],
+    "upstream/test/built-ins/Array/prototype/slice/create-non-array.js": [
+      "Object"
     ]
   }
 }

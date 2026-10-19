@@ -247,4 +247,8 @@ js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding):
 	if (binding == 0 || binding.initialized == 0):
 		js_runtime_fail(rt, 2, c"uninitialized module binding")
 		return rt.undefined_value
+	if (binding.value.arguments_pending):
+		js_value* object = js_arguments_materialize(rt, binding.value)
+		if (rt.completion.status != 0): return rt.undefined_value
+		binding.value = object
 	return binding.value

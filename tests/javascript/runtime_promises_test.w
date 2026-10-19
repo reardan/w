@@ -2,7 +2,9 @@
 # wbuild: target=javascript_runtime_promises_test tag=tests dep=javascript_parser
 # wbuild: step="bin/wv2 x64 tests/javascript/runtime_promises_test.w -o bin/javascript_runtime_promises_test"
 # wbuild: step="bin/javascript_runtime_promises_test" expect_stdout="javascript_runtime_promises_test: OK"
-# wbuild: step="bin/javascript_runtime_promises_test memory" expect_stdout="javascript_runtime_promises_test: OK"
+# wbuild: step="bin/javascript_runtime_promises_test memory-reactions" expect_stdout="javascript_runtime_promises_test: OK"
+# wbuild: step="bin/javascript_runtime_promises_test memory-executor" expect_stdout="javascript_runtime_promises_test: OK"
+# wbuild: step="bin/javascript_runtime_promises_test memory-limits" expect_stdout="javascript_runtime_promises_test: OK"
 import lib.assert
 import lib.args
 import libs.extras.javascript.runtime
@@ -103,10 +105,11 @@ void test_pending_and_limits():
 
 int main(int argc, int argv):
 	args_init(argc, argv)
+	assert1(argc == 1 || strcmp(args_get(1), c"memory-reactions") == 0 || strcmp(args_get(1), c"memory-executor") == 0 || strcmp(args_get(1), c"memory-limits") == 0)
 	if (argc > 1): malloc_force_debug_mode()
-	test_promises()
-	test_executor()
-	test_pending_and_limits()
+	if (argc == 1 || strcmp(args_get(1), c"memory-reactions") == 0): test_promises()
+	if (argc == 1 || strcmp(args_get(1), c"memory-executor") == 0): test_executor()
+	if (argc == 1 || strcmp(args_get(1), c"memory-limits") == 0): test_pending_and_limits()
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_promises_test: OK")
 	return 0

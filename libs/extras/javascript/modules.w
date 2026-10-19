@@ -1,4 +1,4 @@
-# Bounded acyclic modules with named const/function exports. Syntax is extracted
+# Bounded acyclic modules with named live exports. Syntax is extracted
 # from validated parser nodes; executable statements use the runtime AST.
 import libs.extras.javascript.runtime
 
@@ -25,6 +25,8 @@ struct js_module:
 	js_node* tree
 	js_value* environment
 	js_value* retained
+	js_value* evaluation_promise
+	void* owner
 	list[js_module_request*] requests
 	list[js_module_name*] imports
 	list[js_module_name*] exports
@@ -45,6 +47,7 @@ struct js_modules:
 	int max_requests
 	int bytes
 	int requests
+	int async_mode
 
 js_modules* js_modules_new(js_runtime* runtime, js_module_resolver* resolver, void* context):
 	js_modules* modules = new js_modules()
@@ -69,6 +72,7 @@ void js_modules_names_free(list[js_module_name*] names):
 # so exported closures rooted by the host remain valid after loader teardown.
 void js_modules_free(js_modules* modules):
 	if (modules == 0): return
+	js_runtime_async_cancel_owner(modules.runtime, modules)
 	for i in range(modules.entries.length):
 		js_module* entry = modules.entries[i]
 		js_runtime_unroot(modules.runtime, entry.retained)
@@ -103,26 +107,11 @@ void js_modules_specifiers(pg_ast_node* node, list[js_module_name*] names, int r
 		return
 	for i in range(node.children.length): js_modules_specifiers(node.children[i], names, request, importing)
 
-int js_modules_const(js_module* entry, char* name):
-	for i in range(entry.imports.length):
-		if (strcmp(entry.imports[i].local, name) == 0): return 1
-	for i in range(entry.tree.children.length):
-		js_node* node = entry.tree.children[i]
-		if (js_kind(node, c"function") && strcmp(node.text, name) == 0): return 1
-		if (js_kind(node, c"variable") == 0 || strcmp(node.text, c"const") != 0): continue
-		for j in range(node.children.length):
-			list[js_node*] names = new list[js_node*]
-			js_runtime_pattern_names(node.children[j].children[0], names)
-			int found = 0
-			for k in range(names.length):
-				if (strcmp(names[k].text, name) == 0): found = 1
-			__w_list_free(cast(__w_list*, names))
-			if (found): return 1
-	return 0
-
 int js_modules_parse(js_modules* modules, js_module* entry, char* source, int length):
 	js_runtime* rt = modules.runtime
-	pg_parse_result* parsed = js_parse_with_limits(source, length, entry.identifier, 1, rt.parse_limits)
+	js_parse_limits limits = *rt.parse_limits
+	limits.top_level_await = modules.async_mode
+	pg_parse_result* parsed = js_parse_with_limits(source, length, entry.identifier, 1, &limits)
 	if (parsed.success == 0):
 		if (parsed.stream.resource_failed): js_runtime_fail(rt, 5, c"module parser resource limit")
 		else: js_runtime_fail(rt, 6, c"invalid module syntax")
@@ -163,8 +152,8 @@ int js_modules_parse(js_modules* modules, js_module* entry, char* source, int le
 			if (named != 0 && js_cst_child(node, c"export_from") == 0):
 				js_modules_specifiers(named, entry.exports, 0, 0)
 				continue
-			if (node.children.length != 2 || (js_cst_is(node.children[1], c"variable_statement") == 0 && js_cst_is(node.children[1], c"function_decl") == 0)):
-				js_runtime_fail(rt, 6, c"only named const and function exports are supported")
+			if (node.children.length != 2 || (js_cst_is(node.children[1], c"variable_statement") == 0 && js_cst_is(node.children[1], c"function_decl") == 0 && js_cst_is(node.children[1], c"class_decl") == 0)):
+				js_runtime_fail(rt, 6, c"only named declaration and local-list exports are supported")
 				break
 			node = node.children[1]
 		js_node* lowered = js_lower_node(node, parsed.diagnostics)
@@ -173,11 +162,11 @@ int js_modules_parse(js_modules* modules, js_module* entry, char* source, int le
 			break
 		js_node_add(tree, lowered)
 		if (exported):
-			if (js_kind(lowered, c"function")):
+			if (js_kind(lowered, c"function") || js_kind(lowered, c"class")):
 				js_modules_name(entry.exports, lowered.text, lowered.text, 0)
 				continue
-			if (js_kind(lowered, c"variable") == 0 || strcmp(lowered.text, c"const") != 0):
-				js_runtime_fail(rt, 6, c"mutable module exports are unsupported")
+			if (js_kind(lowered, c"variable") == 0):
+				js_runtime_fail(rt, 6, c"unsupported exported declaration")
 				break
 			for j in range(lowered.children.length):
 				list[js_node*] names = new list[js_node*]
@@ -185,9 +174,9 @@ int js_modules_parse(js_modules* modules, js_module* entry, char* source, int le
 				for k in range(names.length): js_modules_name(entry.exports, names[k].text, names[k].text, 0)
 				__w_list_free(cast(__w_list*, names))
 	if (rt.completion.status == 0 && js_runtime_supported(tree) == 0): js_runtime_fail(rt, 6, c"module syntax outside the runtime subset")
-	if (rt.completion.status == 0):
-		for i in range(entry.exports.length):
-			if (js_modules_const(entry, entry.exports[i].local) == 0): js_runtime_fail(rt, 6, c"mutable module exports are unsupported")
+	# Module parser binding validation already checks every local export is
+	# declared and all export names are unique. Mutability is not a restriction:
+	# import records below retain the defining environment and live binding.
 	pg_parse_result_free(parsed)
 	return rt.completion.status == 0
 
@@ -224,7 +213,7 @@ js_module* js_modules_link(js_modules* modules, char* specifier, char* referrer,
 	for i in range(modules.entries.length):
 		js_module* cached = modules.entries[i]
 		if (strcmp(cached.identifier, resolved.identifier) != 0): continue
-		if (cached.state == 0 || cached.state == 2): js_runtime_fail(rt, 6, c"cyclic modules are unsupported")
+		if (cached.state == 0 || (cached.state == 2 && modules.async_mode == 0)): js_runtime_fail(rt, 6, c"cyclic modules are unsupported")
 		if (cached.state == 4):
 			rt.completion.status = cached.error_status
 			rt.completion.message = cached.error_message
@@ -238,6 +227,7 @@ js_module* js_modules_link(js_modules* modules, char* specifier, char* referrer,
 		js_runtime_fail(rt, 2, c"module resolver returned no source")
 		return 0
 	js_module* entry = new js_module()
+	entry.owner = modules
 	entry.identifier = strclone(resolved.identifier)
 	entry.requests = new list[js_module_request*]
 	entry.imports = new list[js_module_name*]
@@ -263,22 +253,8 @@ js_module* js_modules_link(js_modules* modules, char* specifier, char* referrer,
 	entry.state = 1
 	return entry
 
-int js_modules_execute(js_modules* modules, js_module* entry, int depth):
+int js_modules_body(js_modules* modules, js_module* entry):
 	js_runtime* rt = modules.runtime
-	if (entry.state == 3): return 1
-	if (entry.state == 4):
-		rt.completion.status = entry.error_status
-		rt.completion.message = entry.error_message
-		rt.completion.value = entry.error_value
-		return 0
-	if (depth > modules.max_depth):
-		js_runtime_fail(rt, 5, c"module graph depth limit")
-		return 0
-	entry.state = 2
-	for i in range(entry.requests.length):
-		if (js_modules_execute(modules, cast(js_module*, entry.requests[i].module), depth + 1) == 0):
-			js_modules_failed(modules, entry)
-			return 0
 	entry.environment = js_runtime_environment(rt, rt.global)
 	js_text* key = js_runtime_key(c"environment")
 	js_runtime_put(rt, entry.retained, key, entry.environment)
@@ -315,6 +291,25 @@ int js_modules_execute(js_modules* modules, js_module* entry, int depth):
 	entry.state = 3
 	return 1
 
+int js_modules_execute(js_modules* modules, js_module* entry, int depth):
+	js_runtime* rt = modules.runtime
+	if (entry.state == 3): return 1
+	if (entry.state == 4):
+		rt.completion.status = entry.error_status
+		rt.completion.message = entry.error_message
+		rt.completion.value = entry.error_value
+		return 0
+	if (depth > modules.max_depth):
+		js_runtime_fail(rt, 5, c"module graph depth limit")
+		return 0
+	entry.state = 2
+	for i in range(entry.requests.length):
+		if (js_modules_execute(modules, cast(js_module*, entry.requests[i].module), depth + 1) == 0):
+			js_modules_failed(modules, entry)
+			return 0
+	return js_modules_body(modules, entry)
+
+
 # Returns a borrowed record on success, null on failure. Details are in the
 # runtime's completion. One budget covers graph loading and all module bodies.
 js_module* js_modules_evaluate(js_modules* modules, char* specifier, char* referrer, int budget):
@@ -330,6 +325,7 @@ js_module* js_modules_evaluate(js_modules* modules, char* specifier, char* refer
 	js_module* entry = js_modules_link(modules, specifier, referrer, 1)
 	if (entry != 0 && js_modules_execute(modules, entry, 1) == 0): entry = 0
 	rt.running = 0
+	if (rt.completion.status >= 5): js_runtime_async_cancel(rt)
 	return entry
 
 # Borrowed value; root it across collection or loader destruction. Missing
@@ -344,3 +340,57 @@ js_value* js_modules_export(js_modules* modules, js_module* entry, char* name):
 	js_value* binding = js_runtime_binding(entry.environment, exported.local)
 	if (binding == 0 || binding.initialized == 0): return 0
 	return js_runtime_binding_value(modules.runtime, binding)
+
+
+js_value* js_modules_async_body(void* runtime, void* context):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	js_module* entry = cast(js_module*, context)
+	js_modules* modules = cast(js_modules*, entry.owner)
+	for i in range(entry.requests.length):
+		js_module* dependency = cast(js_module*, entry.requests[i].module)
+		if (dependency.state != 3): js_runtime_await(rt, dependency.evaluation_promise)
+		if (rt.completion.status != 0):
+			js_modules_failed(modules, entry)
+			return rt.undefined_value
+	js_modules_body(modules, entry)
+	return rt.undefined_value
+
+
+js_value* js_modules_begin_async(js_modules* modules, js_module* entry):
+	js_runtime* rt = modules.runtime
+	if (entry.evaluation_promise != 0): return entry.evaluation_promise
+	if (entry.state == 3):
+		entry.evaluation_promise = js_runtime_promise_new(rt)
+		if (rt.completion.status == 0): js_runtime_promise_settle(rt, entry.evaluation_promise, rt.undefined_value, 0)
+	else:
+		entry.state = 2
+		for i in range(entry.requests.length):
+			js_modules_begin_async(modules, cast(js_module*, entry.requests[i].module))
+			if (rt.completion.status != 0):
+				js_modules_failed(modules, entry)
+				return rt.undefined_value
+		entry.evaluation_promise = js_runtime_async_start(rt, js_modules_async_body, entry, modules, entry.retained)
+	js_runtime_set(rt, entry.retained, c"evaluation", entry.evaluation_promise)
+	return entry.evaluation_promise
+
+
+# Returns a linked/evaluating/evaluated record. Observe evaluation_promise and
+# drive the normal host microtask checkpoints; neither entry nor await blocks.
+js_module* js_modules_evaluate_async(js_modules* modules, char* specifier, char* referrer, int budget):
+	js_runtime* rt = modules.runtime
+	if (js_runtime_begin(rt, budget) == 0): return 0
+	if (modules.resolver == 0 || specifier == 0 || referrer == 0):
+		js_runtime_fail(rt, 2, c"invalid module resolver request")
+		return 0
+	if (budget <= 0 || modules.max_depth <= 0 || modules.max_modules <= 0 || modules.max_bytes <= 0):
+		js_runtime_fail(rt, 5, c"module execution limit")
+		return 0
+	rt.running = 1
+	modules.async_mode = 1
+	js_module* entry = js_modules_link(modules, specifier, referrer, 1)
+	modules.async_mode = 0
+	if (entry != 0): js_modules_begin_async(modules, entry)
+	rt.running = 0
+	if (rt.completion.status >= 5): js_runtime_async_cancel(rt)
+	if (rt.completion.status != 0): return 0
+	return entry

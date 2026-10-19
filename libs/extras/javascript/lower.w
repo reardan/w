@@ -224,7 +224,7 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 						break
 			free(text)
 			return result
-		if (js_cst_is(node, c"KW_TRUE") || js_cst_is(node, c"KW_FALSE") || js_cst_is(node, c"KW_NULL") || js_cst_is(node, c"KW_THIS")): return js_node_new(c"literal", node.text)
+		if (js_cst_is(node, c"KW_TRUE") || js_cst_is(node, c"KW_FALSE") || js_cst_is(node, c"KW_NULL") || js_cst_is(node, c"KW_THIS") || js_cst_is(node, c"KW_SUPER")): return js_node_new(c"literal", node.text)
 		return js_lower_error(node, diagnostics)
 	if (js_cst_is(node, c"identifier_reference") || js_cst_is(node, c"identifier_name") || js_cst_is(node, c"binding_identifier")): return js_lower_identifier(node)
 	if (js_cst_is(node, c"statement") || js_cst_is(node, c"binding_pattern") || js_cst_is(node, c"return_value")):
@@ -305,7 +305,6 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 	if (js_cst_is(node, c"unary")):
 		if (count == 1): return js_lower_node(node.children[0], diagnostics)
 		pg_ast_node* op = node.children[0]
-		if (js_cst_is(op, c"KW_AWAIT")): return js_lower_error(node, diagnostics)
 		char* kind = c"unary"
 		if (strcmp(op.first_token.text, c"++") == 0 || strcmp(op.first_token.text, c"--") == 0): kind = c"update_prefix"
 		js_node* result = js_node_new(kind, op.first_token.text)
@@ -386,9 +385,9 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		return result
 	if (js_cst_is(node, c"parameters")): return js_lower_parameters(node, diagnostics)
 	if (js_cst_is(node, c"arrow_function")):
-		if (js_cst_child(node, c"async_modifier") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* parameter = js_cst_child(node, c"arrow_parameters").children[0]
 		js_node* result = js_node_new(c"arrow", c"")
+		result.async_function = js_cst_child(node, c"async_modifier") != 0
 		if (js_cst_is(parameter, c"binding_identifier")):
 			js_node* parameters = js_node_new(c"parameters", c"")
 			js_node_add(parameters, js_lower_identifier(parameter))
@@ -400,8 +399,44 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 			js_node_free(result)
 			return 0
 		return result
+	if (js_cst_is(node, c"class_decl") || js_cst_is(node, c"class_expr")):
+		pg_ast_node* binding = js_cst_child(node, c"binding_identifier")
+		char* name = strclone(c"")
+		if (binding != 0):
+			free(name)
+			name = js_identifier_decode(binding.first_token.text)
+		char* kind = c"class"
+		if (js_cst_is(node, c"class_expr")): kind = c"class_expression"
+		js_node* result = js_node_new(kind, name)
+		free(name)
+		pg_ast_node* tail = js_cst_child(node, c"class_tail")
+		pg_ast_node* base = js_cst_child(tail, c"extends_clause")
+		if (base == 0): js_node_add(result, js_node_new(c"empty", c""))
+		else if (js_lower_add(result, base.children[1], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		for i in range(tail.children.length):
+			pg_ast_node* element = tail.children[i]
+			if (js_cst_is(element, c"class_element") == 0): continue
+			pg_ast_node* method = js_cst_child(element, c"method")
+			if (method == 0): continue
+			pg_ast_node* key = js_cst_child(method, c"property_name")
+			pg_ast_node* parameters = js_cst_child(method, c"parameters")
+			if (parameters == 0 || js_cst_child(method, c"async_modifier") != 0 || js_cst_child(method, c"STAR") != 0 || key.children.length != 1 || js_cst_is(key.children[0], c"identifier_name") == 0):
+				js_node_free(result)
+				return js_lower_error(method, diagnostics)
+			char* method_name = js_identifier_decode(key.first_token.text)
+			char* method_kind = c"method"
+			if (js_cst_child(element, c"KW_STATIC") != 0): method_kind = c"static_method"
+			js_node* lowered = js_node_new(method_kind, method_name)
+			free(method_name)
+			js_node_add(result, lowered)
+			if (js_lower_add(lowered, parameters, diagnostics) == 0 || js_lower_add(lowered, js_cst_child(method, c"block"), diagnostics) == 0):
+				js_node_free(result)
+				return 0
+		return result
 	if (js_cst_is(node, c"function_decl") || js_cst_is(node, c"function_expr")):
-		if (js_cst_child(node, c"async_modifier") != 0 || js_cst_child(node, c"STAR") != 0): return js_lower_error(node, diagnostics)
+		if (js_cst_child(node, c"STAR") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* binding = js_cst_child(node, c"binding_identifier")
 		char* name = strclone(c"")
 		if (binding != 0):
@@ -410,6 +445,7 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		char* kind = c"function"
 		if (js_cst_is(node, c"function_expr")): kind = c"function_expression"
 		js_node* result = js_node_new(kind, name)
+		result.async_function = js_cst_child(node, c"async_modifier") != 0
 		free(name)
 		if (js_lower_add(result, js_cst_child(node, c"parameters"), diagnostics) == 0 || js_lower_add(result, js_cst_child(node, c"block"), diagnostics) == 0):
 			js_node_free(result)
@@ -482,15 +518,24 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 		if (js_cst_child(node, c"KW_AWAIT") != 0): return js_lower_error(node, diagnostics)
 		pg_ast_node* binding = js_cst_child(header, c"for_binding")
 		if (binding != 0):
-			# The facade supports lexical identifier bindings, not destructuring,
-			# assignment targets, var or the different enumeration semantics of in.
-			if (strcmp(header.children[1].first_token.text, c"of") != 0 || binding.children.length != 2): return js_lower_error(node, diagnostics)
-			char* kind = binding.children[0].first_token.text
-			if (strcmp(kind, c"let") != 0 && strcmp(kind, c"const") != 0): return js_lower_error(node, diagnostics)
+			int enumeration = strcmp(header.children[1].first_token.text, c"in") == 0
+			char* kind = c""
+			pg_ast_node* target = binding.children[0]
+			if (binding.children.length == 2):
+				kind = binding.children[0].first_token.text
+				target = binding.children[1]
+			if (enumeration == 0 && (strcmp(kind, c"let") != 0 && strcmp(kind, c"const") != 0)): return js_lower_error(node, diagnostics)
 			js_node* result = js_node_new(c"for_of", kind)
-			if (js_lower_add(result, binding.children[1], diagnostics) == 0 || js_lower_add(result, header.children[2], diagnostics) == 0 || js_lower_add(result, node.children[count - 1], diagnostics) == 0):
+			if (enumeration):
+				free(result.kind)
+				result.kind = strclone(c"for_in")
+			if (js_lower_add(result, target, diagnostics) == 0 || js_lower_add(result, header.children[2], diagnostics) == 0 || js_lower_add(result, node.children[count - 1], diagnostics) == 0):
 				js_node_free(result)
 				return 0
+			js_node* pattern = result.children[0]
+			if (enumeration && strcmp(pattern.kind, c"identifier") != 0 && (kind[0] != 0 || (strcmp(pattern.kind, c"member") != 0 && strcmp(pattern.kind, c"computed_member") != 0))):
+				js_node_free(result)
+				return js_lower_error(node, diagnostics)
 			return result
 		js_node* result = js_node_new(c"for", c"")
 		for i in range(3): js_node_add(result, js_node_new(c"empty", c""))
