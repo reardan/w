@@ -7,7 +7,7 @@
 # recreate its indexes and triggers. The applier runs it inside the
 # migration's transaction with foreign keys off and checks
 # PRAGMA foreign_key_check before COMMIT (ddl_common.w, orm_mx_commit).
-import libs.standard.orm.migrate.ddl_common
+import libs.standard.orm.history.ddl
 
 
 const int ORM_SQLITE_SET_NOT_NULL = 1
@@ -297,6 +297,7 @@ int orm_sqlite_add_column(orm_mx_ctx* x, orm_op* op):
 		json_free(one)
 		free(name)
 	json_free(f)
+	if (ok): ok = orm_hist_after_add_column(x, op)
 	return ok
 
 
@@ -316,7 +317,9 @@ int orm_sqlite_drop_column(orm_mx_ctx* x, orm_op* op):
 	for char* ix in indexes:
 		if (ok): ok = orm_mx_run(x, orm_mx_cat(c"DROP INDEX IF EXISTS ", orm_mx_ident(ix), 0, 0))
 	orm_mx_free_strings(indexes)
+	if (ok): ok = orm_hist_before_drop_column(x, op)
 	if (ok): ok = orm_mx_run(x, orm_mx_cat(c"ALTER TABLE ", orm_mx_ident(op.table), c" DROP COLUMN ", orm_mx_ident(op.column)))
+	if (ok): ok = orm_hist_after_drop_column(x, op)
 	return ok
 
 
@@ -720,6 +723,7 @@ int orm_sqlite_swap(orm_mx_ctx* x, orm_op* op):
 	if (ok): ok = orm_sqlite_rename(x, op.table, op.source_table)
 	if (ok): ok = orm_sqlite_rename(x, tmp, op.table)
 	if (ok): ok = orm_sqlite_swap_index_names(x, op.table, op.source_table)
+	if (ok): ok = orm_hist_after_swap(x, op)
 	free(tmp)
 	return ok
 
@@ -729,6 +733,7 @@ int orm_sqlite_rename_table(orm_mx_ctx* x, orm_op* op):
 	if (orm_mx_exec(x, c"PRAGMA legacy_alter_table=OFF") == 0): return 0
 	int ok = orm_sqlite_rename(x, op.source_table, op.table)
 	if (orm_mx_exec(x, c"PRAGMA legacy_alter_table=ON") == 0): ok = 0
+	if (ok): ok = orm_hist_after_rename(x, op)
 	return ok
 
 

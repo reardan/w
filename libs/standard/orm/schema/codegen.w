@@ -634,6 +634,10 @@ char* orm_codegen_api(orm_schema* s, char* data_module):
 	string_append(b, c"; do not edit.\n# API module: typed wrappers over libs.standard.orm.orm (docs/projects/orm.md).\nimport ")
 	string_append(b, data_module)
 	string_append(b, c"\nimport libs.standard.orm.orm\n")
+	int any_history = 0
+	for orm_schema_model* hm in s.ordered:
+		if (hm.history): any_history = 1
+	if (any_history): string_append(b, c"import libs.standard.orm.history.history\n")
 	for orm_schema_model* m in s.ordered:
 		char* n = m.name
 		char* desc = orm_schema_concat3(n, c"_desc()", c"")
@@ -646,6 +650,12 @@ char* orm_codegen_api(orm_schema* s, char* data_module):
 		orm_codegen_api_fn(b, c"int", n, c"_save", row_param, orm_schema_concat3(c"return orm_save(db, ", desc, c", row)"))
 		orm_codegen_api_fn(b, c"int", n, c"_delete", row_param, orm_schema_concat3(c"return orm_delete_row(db, ", desc, c", row)"))
 		orm_codegen_api_fn(b, c"void", n, c"_free", orm_schema_concat3(ptr, c" row", c""), orm_schema_concat3(c"orm_row_free(", desc, c", row)"))
+		if (m.history):
+			# Trigger history (U3.3, libs/standard/orm/history/history.w).
+			orm_codegen_api_fn(b, c"orm_result*", n, c"_history", row_param, orm_schema_concat3(c"return orm_history_of(db, ", desc, c", row)"))
+			orm_codegen_api_fn(b, c"orm_result*", n, c"_as_of", c"orm_db* db, char* when", orm_schema_concat3(c"return orm_history_as_of(db, ", desc, c", when)"))
+			orm_codegen_api_fn(b, ptr, n, c"_history_row", c"orm_history_entry* e", orm_schema_concat3(c"return cast(", ptr, c", e.row)"))
+			orm_codegen_api_fn(b, c"int", n, c"_prune_history", c"orm_db* db, char* older_than", orm_schema_concat3(c"return orm_history_prune(db, ", desc, c", older_than)"))
 	char* r = b.data
 	free(cast(void*, b))
 	return r

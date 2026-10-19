@@ -232,6 +232,13 @@ void step_initial():
 	assert_equal(0, t_apply(T_ALL, 0))
 
 
+list[orm_migration*] one_more(orm_migration* m):
+	list[orm_migration*] l = new list[orm_migration*]
+	for orm_migration* x in T_ALL: l.push(x)
+	l.push(m)
+	return l
+
+
 # Lint refusal, force, reverse_sql via unapply; unsafe ops need force.
 void step_lint_and_force():
 	orm_migration* m = hand_migration(c"raw_rename")
@@ -288,17 +295,23 @@ void step_lint_and_force():
 	b.sql = b.name
 	orm_backfill_register(c"library_noop_backfill", price_backfill)
 	assert_equal(1, t_apply(T_ALL, 0))
-	# History ops are left to the history unit.
+	# Trigger history (U3.3) on library_book and library_author: every later
+	# step changes these tables, and the history must follow
+	# (step_history_in_step checks it).
 	orm_migration* h = hand_migration(c"history")
-	orm_op* hop = orm_op_new(ORM_OP_CREATE_HISTORY, ORM_PHASE_EXPAND, c"library_book")
-	orm_migration_add(h, hop)
-	list[orm_migration*] one = new list[orm_migration*]
-	for orm_migration* x in T_ALL: one.push(x)
-	one.push(h)
-	assert_equal(-1, orm_migrate_apply(T_DB, one, 0))
-	assert_contains(orm_db_error(T_DB), c"not implemented yet (history unit)")
-	T_NEXT = T_NEXT - 1
-	T_PREV = fb.name
+	orm_migration_add(h, orm_op_new(ORM_OP_CREATE_HISTORY, ORM_PHASE_EXPAND, c"library_book"))
+	orm_op* ha = orm_op_new(ORM_OP_CREATE_HISTORY, ORM_PHASE_EXPAND, c"library_author")
+	ha.model_json = model_json(c"Author")
+	orm_migration_add(h, ha)
+	char* hsql = orm_migrate_sql(T_DB, one_more(h), h.name)
+	asserts(orm_db_error(T_DB), hsql != 0)
+	assert_contains(hsql, c"CREATE TABLE \"library_book_history\"")
+	deploy(h)
+	assert1(t_table_exists(c"library_book_history"))
+	assert1(t_column_exists(c"library_author_history", c"created"))
+	t_ok(c"UPDATE library_book SET pages = 999 WHERE title = 'Book 1'")
+	t_ok(c"UPDATE library_book SET pages = 999 WHERE title = 'Book 1'")
+	assert_equal(1, t_num(c"SELECT COUNT(*) FROM library_book_history WHERE pages = 999 AND history_type = '~'"))
 
 
 char* OLD_BOOK():
@@ -581,6 +594,67 @@ void step_tables():
 	assert1(t_table_exists(c"library_memo") == 0)
 
 
+# The history tables followed every change above (U3.3): added and
+# renamed columns are tracked, dropped ones keep their old values, the
+# SQLite rebuilds kept the triggers, and the library_author swap moved them
+# to the rebuilt table.
+char* t_last_hist(char* table, char* column, char* where):
+	return t_val(q(q(c"SELECT ", column, c" FROM ", table), c"_history WHERE ", where, c" ORDER BY history_id DESC LIMIT 1"))
+
+
+void step_history_in_step():
+	assert1(t_column_exists(c"library_book_history", c"isbn"))
+	assert1(t_column_exists(c"library_book_history", c"name"))
+	assert1(t_column_exists(c"library_book_history", c"pages_new"))
+	assert1(t_column_exists(c"library_book_history", c"title"))
+	assert1(t_column_exists(c"library_book_history", c"pages"))
+	assert1(t_num(c"SELECT COUNT(*) FROM library_book_history WHERE title = 'Book 0'") > 0)
+	t_ok(c"UPDATE library_book SET name = 'renamed' WHERE isbn = 'isbn-new3'")
+	assert_strings_equal(c"renamed", t_last_hist(c"library_book", c"name", c"isbn = 'isbn-new3'"))
+	assert_strings_equal(c"~", t_last_hist(c"library_book", c"history_type", c"isbn = 'isbn-new3'"))
+	assert_strings_equal(c"NULL", t_last_hist(c"library_book", c"title", c"isbn = 'isbn-new3'"))
+	t_ok(c"DELETE FROM library_book WHERE isbn = 'isbn-new3'")
+	assert_strings_equal(c"-", t_last_hist(c"library_book", c"history_type", c"isbn = 'isbn-new3'"))
+	# Rows written before and after the library_author swap.
+	assert_equal(2, t_num(c"SELECT COUNT(*) FROM library_author_history WHERE email = 'eve@x'"))
+	assert1(t_num(c"SELECT COUNT(*) FROM library_author_history WHERE email = 'dan@x'") >= 2)
+	t_ok(c"INSERT INTO library_author (name, email) VALUES ('Jan', 'jan@x')")
+	assert_strings_equal(c"+", t_last_hist(c"library_author", c"history_type", c"email = 'jan@x'"))
+	# The rebuild added bio; CREATE_HISTORY again (every live column) tracks it.
+	assert1(t_column_exists(c"library_author_history", c"bio") == 0)
+	orm_migration* h = hand_migration(c"author_history_again")
+	orm_migration_add(h, orm_op_new(ORM_OP_CREATE_HISTORY, ORM_PHASE_EXPAND, c"library_author"))
+	deploy(h)
+	assert1(t_column_exists(c"library_author_history", c"bio"))
+	t_ok(c"UPDATE library_author SET bio = 'b' WHERE email = 'jan@x'")
+	assert_strings_equal(c"b", t_last_hist(c"library_author", c"bio", c"email = 'jan@x'"))
+	# Unapplying CREATE_HISTORY drops the history table (DROP_HISTORY).
+	asserts(orm_db_error(T_DB), orm_migrate_unapply(T_DB, h))
+	assert1(t_table_exists(c"library_author_history") == 0)
+	t_ok(c"UPDATE library_author SET bio = 'c' WHERE email = 'jan@x'")
+	assert_equal(1, t_apply(T_ALL, 0))
+	assert1(t_table_exists(c"library_author_history"))
+	# RENAME_TABLE takes the history table along.
+	orm_migration* d = hand_migration(c"draft_history")
+	orm_op* cd = orm_op_new(ORM_OP_RAW_SQL, ORM_PHASE_EXPAND, c"library_draft")
+	cd.sql = c"CREATE TABLE library_draft (id INTEGER PRIMARY KEY, body TEXT)"
+	orm_migration_add(d, cd)
+	orm_migration_add(d, orm_op_new(ORM_OP_CREATE_HISTORY, ORM_PHASE_EXPAND, c"library_draft"))
+	deploy(d)
+	t_ok(c"INSERT INTO library_draft (id, body) VALUES (1, 'a')")
+	orm_migration* rn = hand_migration(c"rename_draft")
+	orm_op* ro = orm_op_new(ORM_OP_RENAME_TABLE, ORM_PHASE_EXPAND, c"library_sketch")
+	ro.source_table = c"library_draft"
+	orm_migration_add(rn, ro)
+	T_ALL.push(rn)
+	assert_equal(1, t_apply(T_ALL, 1))
+	assert1(t_table_exists(c"library_draft_history") == 0)
+	t_ok(c"UPDATE library_sketch SET body = 'b'")
+	t_ok(c"DELETE FROM library_sketch")
+	assert_equal(3, t_num(c"SELECT COUNT(*) FROM library_sketch_history"))
+	t_eq(c"b", c"SELECT body FROM library_sketch_history WHERE history_type = '-'")
+
+
 void run_apply_scenario(orm_db* db):
 	T_DB = db
 	T_DIALECT = orm_mx_dialect_of(db)
@@ -605,21 +679,15 @@ void run_apply_scenario(orm_db* db):
 	char* none = orm_migrate_sql(T_DB, T_ALL, 0)
 	asserts(orm_db_error(T_DB), none != 0)
 	assert_strings_equal(c"", none)
+	step_history_in_step()
 
 
 # ---------------------------------------------------------------------------
 # Writer round trip: what orm_makemigrations plans for the library fixture
 # applies cleanly, then a type change (table rebuild) and a hinted rename of
-# a referenced table (which rebuilds the through table). History ops are
-# stripped: CREATE_HISTORY belongs to the history unit.
-
-list[orm_migration*] strip_history(list[orm_migration*] ms):
-	for orm_migration* m in ms:
-		list[orm_op*] kept = new list[orm_op*]
-		for orm_op* op in m.ops:
-			if (op.kind != ORM_OP_CREATE_HISTORY && op.kind != ORM_OP_DROP_HISTORY): kept.push(op)
-		m.ops = kept
-	return ms
+# a referenced table (which rebuilds the through table). The initial
+# migration's CREATE_HISTORY for library_book applies as planned, and the
+# history follows the rebuild.
 
 
 void lint_clean(orm_migration* m):
@@ -629,7 +697,7 @@ void lint_clean(orm_migration* m):
 
 
 void deploy_all(list[orm_migration*] ms):
-	for orm_migration* m in strip_history(ms):
+	for orm_migration* m in ms:
 		lint_clean(m)
 		deploy(m)
 
@@ -667,6 +735,14 @@ void run_makemigrations_roundtrip(orm_db* db):
 	t_bad(c"INSERT INTO library_book (title, author_id, price) VALUES ('RT ghost', 999999, 2)")
 	t_ok(c"DELETE FROM library_book WHERE title = 'RT 2'")
 	assert_equal(4, t_num(c"SELECT COUNT(*) FROM library_book_tags"))
+	# History survived the rebuild and tracks the rebuilt table.
+	assert_equal(4, t_num(c"SELECT COUNT(*) FROM library_book_history WHERE history_type = '+'"))
+	assert_equal(1, t_num(c"SELECT COUNT(*) FROM library_book_history WHERE history_type = '-' AND title = 'RT 2'"))
+	if (t_pg()):
+		t_eq(c"character varying(400)", c"SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = to_regclass('library_book_history') AND attname = 'title'")
+		t_ok(q(c"INSERT INTO library_book (title, author_id, price) VALUES (repeat('x', 350), ", ann, c", 2)", 0))
+		assert_equal(1, t_num(c"SELECT COUNT(*) FROM library_book_history WHERE length(title) = 350"))
+		t_ok(c"DELETE FROM library_book WHERE length(title) = 350")
 	if (t_pg()): assert_equal(1, t_num(c"SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'library_book_author_id_idx' AND tablename = 'library_book' AND schemaname = current_schema()"))
 	else: assert_equal(1, t_num(c"SELECT COUNT(*) FROM sqlite_master WHERE name = 'library_book_author_id_idx' AND tbl_name = 'library_book'"))
 	# Rename library_tag (referenced by the through table) with a hint.
@@ -685,8 +761,8 @@ void run_makemigrations_roundtrip(orm_db* db):
 	t_bad(c"INSERT INTO library_book_tags (book_id, tag_id) SELECT id, 999999 FROM library_book WHERE title = 'RT 0'")
 	t_ok(c"DELETE FROM library_label WHERE name = 'poetry'")
 	assert_equal(4, t_num(c"SELECT COUNT(*) FROM library_book_tags"))
-	# Converged: nothing left to plan but the (stripped) history ops.
+	# Converged: nothing left to plan.
 	orm_makemig* r3 = orm_makemigrations_next(c"library", T_ALL, s2, T_DIALECT, 0)
 	asserts(r3.error, r3.error == 0)
-	for orm_migration* m in strip_history(r3.migrations): assert_equal(0, m.ops.length)
+	assert_equal(0, r3.migrations.length)
 	assert_equal(0, t_apply(T_ALL, 0))

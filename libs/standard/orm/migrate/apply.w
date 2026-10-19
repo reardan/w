@@ -140,8 +140,8 @@ int orm_migrate_op(orm_mx_ctx* x, orm_op* op):
 		if (op.sql == 0): return orm_mx_fail(x, c"RAW_SQL without sql", 0, 0)
 		return orm_mx_raw_sql(x, op.sql)
 	if (k == ORM_OP_BACKFILL): return orm_migrate_backfill(x, op)
-	if (k == ORM_OP_CREATE_HISTORY || k == ORM_OP_DROP_HISTORY):
-		return orm_mx_fail(x, orm_op_kind_name(k), c": not implemented yet (history unit)", 0)
+	if (k == ORM_OP_CREATE_HISTORY): return orm_hist_create(x, op)
+	if (k == ORM_OP_DROP_HISTORY): return orm_hist_drop(x, op)
 	int r = -1
 	if (orm_mx_pg(x)): r = orm_pg_op(x, op)
 	else: r = orm_sqlite_op(x, op)
@@ -459,6 +459,7 @@ orm_op* orm_migrate_inverse(orm_op* op):
 	else if (k == ORM_OP_ADD_INDEX): r = orm_op_new(ORM_OP_DROP_INDEX, op.phase, op.table)
 	else if (k == ORM_OP_ADD_CONSTRAINT): r = orm_op_new(ORM_OP_DROP_CONSTRAINT, op.phase, op.table)
 	else if (k == ORM_OP_SYNC_TRIGGER): r = orm_op_new(ORM_OP_DROP_SYNC_TRIGGER, op.phase, op.table)
+	else if (k == ORM_OP_CREATE_HISTORY): r = orm_op_new(ORM_OP_DROP_HISTORY, op.phase, op.table)
 	else if (k == ORM_OP_VALIDATE_CONSTRAINT || k == ORM_OP_COPY_COLUMN || k == ORM_OP_COPY_TABLE || k == ORM_OP_BACKFILL):
 		r = orm_op_new(ORM_OP_RAW_SQL, op.phase, op.table)
 	if (r == 0): return 0
@@ -473,9 +474,9 @@ orm_op* orm_migrate_inverse(orm_op* op):
 
 # Rolls back one recorded migration in a single transaction: RAW_SQL runs
 # its reverse_sql, CREATE_TABLE / ADD_COLUMN / ADD_INDEX / ADD_CONSTRAINT /
-# SYNC_TRIGGER are dropped, data ops (copies, backfills, validation) are
-# no-ops. Any other op refuses the whole unapply. Returns 1, or 0 with
-# orm_db_error set.
+# SYNC_TRIGGER / CREATE_HISTORY are dropped, data ops (copies, backfills,
+# validation) are no-ops. Any other op refuses the whole unapply. Returns
+# 1, or 0 with orm_db_error set.
 int orm_migrate_unapply(orm_db* db, orm_migration* m):
 	orm_db_set_error(db, c"")
 	orm_mx_ctx* x = orm_mx_new(db, 0)

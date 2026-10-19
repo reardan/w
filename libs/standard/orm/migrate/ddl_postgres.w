@@ -5,7 +5,7 @@
 # PL/pgSQL functions (BEFORE ROW for column pairs, AFTER ROW with a
 # transaction-local recursion guard for table pairs). Catalog lookups use
 # to_regclass so a missing table never aborts the migration's transaction.
-import libs.standard.orm.migrate.ddl_common
+import libs.standard.orm.history.ddl
 
 
 # "to_regclass(quote_ident('t'))"
@@ -97,7 +97,8 @@ int orm_pg_add_column(orm_mx_ctx* x, orm_op* op):
 	char* def = orm_mx_column_def(x, f, op.column, 1)
 	json_free(f)
 	if (def == 0): return 0
-	return orm_mx_run(x, orm_mx_cat(c"ALTER TABLE ", orm_mx_ident(op.table), c" ADD COLUMN ", def))
+	if (orm_mx_run(x, orm_mx_cat(c"ALTER TABLE ", orm_mx_ident(op.table), c" ADD COLUMN ", def)) == 0): return 0
+	return orm_hist_after_add_column(x, op)
 
 
 int orm_pg_alter_null(orm_mx_ctx* x, orm_op* op):
@@ -537,6 +538,7 @@ int orm_pg_swap(orm_mx_ctx* x, orm_op* op):
 		string_append(a, c" NOT VALID")
 		ok = orm_mx_run_b(x, a)
 	sql_result_free(fks)
+	if (ok): ok = orm_hist_after_swap(x, op)
 	return ok
 
 
@@ -561,5 +563,7 @@ int orm_pg_op(orm_mx_ctx* x, orm_op* op):
 	if (k == ORM_OP_DROP_SYNC_TRIGGER): return orm_pg_drop_sync(x, op)
 	if (k == ORM_OP_COPY_TABLE): return orm_pg_copy_table(x, op)
 	if (k == ORM_OP_SWAP_TABLES): return orm_pg_swap(x, op)
-	if (k == ORM_OP_RENAME_TABLE): return orm_pg_rename(x, op.source_table, op.table)
+	if (k == ORM_OP_RENAME_TABLE):
+		if (orm_pg_rename(x, op.source_table, op.table) == 0): return 0
+		return orm_hist_after_rename(x, op)
 	return -1

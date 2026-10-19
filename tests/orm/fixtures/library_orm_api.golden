@@ -2,6 +2,7 @@
 # API module: typed wrappers over libs.standard.orm.orm (docs/projects/orm.md).
 import tests.orm.generated.library_orm
 import libs.standard.orm.orm
+import libs.standard.orm.history.history
 
 
 orm_queryset* Author_objects(orm_db* db): return orm_objects(db, Author_desc())
@@ -26,3 +27,7 @@ Book* Book_new(): return cast(Book*, orm_row_new(Book_desc()))
 int Book_save(orm_db* db, Book* row): return orm_save(db, Book_desc(), row)
 int Book_delete(orm_db* db, Book* row): return orm_delete_row(db, Book_desc(), row)
 void Book_free(Book* row): orm_row_free(Book_desc(), row)
+orm_result* Book_history(orm_db* db, Book* row): return orm_history_of(db, Book_desc(), row)
+orm_result* Book_as_of(orm_db* db, char* when): return orm_history_as_of(db, Book_desc(), when)
+Book* Book_history_row(orm_history_entry* e): return cast(Book*, e.row)
+int Book_prune_history(orm_db* db, char* older_than): return orm_history_prune(db, Book_desc(), older_than)
