@@ -46,7 +46,7 @@ void test_html_trees():
 	html_fixture(c"<table><tr><td>a<td>b<tr><th>c", c"(html(head)(body(table(tr(td[a])(td[b]))(tr(th[c])))))")
 	html_fixture(c"<ul><li>a<ul><li>b<li>c</ul><li>d", c"(html(head)(body(ul(li[a](ul(li[b])(li[c])))(li[d]))))")
 	html_fixture(c"<p a='unterminated", c"(html(head)(body(p)))")
-	html_fixture(c"x < y </!>", c"(html(head)(body[x ][< y ][</!>]))")
+	html_fixture(c"x < y </!>", c"(html(head)(body[x < y </!>]))")
 
 void test_html_tokens():
 	char* source = c"<DiV ID='x&amp;y' id=z disabled data-k=12>text</DIV>"
