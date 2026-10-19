@@ -71,6 +71,8 @@ int mixed_exits(int early):
 
 
 int main():
+	unsafe:
+		malloc_force_debug_mode()
 	int before = debug_alloc_report_leaks()
 	if mixed_exercise() != 800: return 1
 	if mixed_nested_exercise() != 11: return 2
