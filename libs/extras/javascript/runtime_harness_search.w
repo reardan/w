@@ -1,6 +1,7 @@
 # Harness-facing standard builtins use normal coercion and property hooks.
 # https://tc39.es/ecma262/#sec-string.fromcharcode
 # https://tc39.es/ecma262/#sec-array.prototype.indexof
+# https://tc39.es/ecma262/#sec-array.prototype.lastindexof
 import libs.extras.javascript.runtime
 
 js_value* js_string_from_char_code(void* runtime, void* context, js_value* receiver, list[js_value*] args):
@@ -29,12 +30,26 @@ js_value* js_array_index_of(void* runtime, void* context, js_value* receiver, li
 	if (rt.completion.status != 0): return rt.undefined_value
 	int length = js_function_array_length(rt, js_runtime_get(rt, object, c"length"))
 	if (rt.completion.status != 0): return rt.undefined_value
+	int reverse = cast(int, context)
 	int start = 0
-	if (length > 0 && args.length > 1): start = js_array_like_index(rt, args[1], length)
+	if (reverse): start = length - 1
+	if (length > 0 && args.length > 1):
+		if (reverse):
+			float64 number = js_array_like_number(rt, args[1])
+			if (f64is_nan(number)): number = 0.0
+			number = js_builtin_trunc(number)
+			if (number < -cast(float64, length)): start = -1
+			else if (number < 0.0): start = length + cast(int, number)
+			else if (number < cast(float64, length)): start = cast(int, number)
+		else: start = js_array_like_index(rt, args[1], length)
 	if (rt.completion.status != 0): return rt.undefined_value
 	js_value* search = js_object_argument(rt, args, 0)
 	int result = -1
-	for i in range(start, length):
+	int count = length - start
+	if (reverse): count = start + 1
+	for offset in range(count):
+		int i = start + offset
+		if (reverse): i = start - offset
 		if (js_runtime_compat_step(rt) == 0): break
 		int present = js_array_like_has(rt, object, i)
 		if (rt.completion.status != 0): break
@@ -50,3 +65,4 @@ js_value* js_array_index_of(void* runtime, void* context, js_value* receiver, li
 void js_runtime_install_harness_search(js_runtime* rt):
 	js_object_method(rt, js_runtime_get(rt, rt.global, c"String"), c"fromCharCode", js_string_from_char_code, 0, 1)
 	js_object_method(rt, rt.array_prototype, c"indexOf", js_array_index_of, 0, 1)
+	js_object_method(rt, rt.array_prototype, c"lastIndexOf", js_array_index_of, 1, 1)
