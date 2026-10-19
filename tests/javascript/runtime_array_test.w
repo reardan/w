@@ -62,7 +62,7 @@ void test_array_limits():
 	js_runtime* rt = js_runtime_new()
 	array_eval(rt, c"let count=0;try{Array(-1);}catch(e){if(e.name==='RangeError')count++;}try{new Array(1.5);}catch(e){if(e.name==='RangeError')count++;}try{Array(0/0);}catch(e){if(e.name==='RangeError')count++;}try{Array(1/0);}catch(e){if(e.name==='RangeError')count++;}try{Array(4294967296);}catch(e){if(e.name==='RangeError')count++;}count===5;", 0)
 	array_eval(rt, c"Array(4294967295);", 5)
-	array_eval(rt, c"new Array.isArray([]);", 6)
+	array_eval(rt, c"let notConstructor=false;try{new Array.isArray([]);}catch(e){notConstructor=e.constructor===TypeError;}notConstructor;", 0)
 	array_eval(rt, c"class Unsupported extends Array{}", 6)
 	rt.max_properties = 8
 	array_eval(rt, c"Array(8).length===8;", 0)
