@@ -16,7 +16,8 @@ deferred expressions, single-group mutable-reference records,
 checked methods and concrete generic calls,
 owned-integer buffers, byte arenas
 and win64 support. Linux ARM64 target admission extends the same bounded
-contracts with audited runtime pins and a QEMU execution gate. Other targets
+contracts with audited runtime pins and a QEMU execution gate; wasm32/WASI
+admission does the same with a node execution gate. Android/iOS targets
 and persistent sessions remain under #712/#713. The remaining requirements
 below are not all delivered.
 

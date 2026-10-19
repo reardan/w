@@ -1378,6 +1378,27 @@ void undefined_function_check():
 	if (failures > 0): exit(1)
 
 
+# Checked-target admission for wasm32/WASI (docs/projects/safe_mode.md,
+# "WebAssembly runtime contract"). wasm shares the default target's
+# checked representation: 4-byte words, one-word references and the
+# inline pointer/length slice descriptor. The gate inside
+# safe_check_finish names only the native targets and is owned by
+# compiler/safe.w; until it lists wasm itself, present the wasm pair to
+# it as the 32-bit Linux x86 pair. safe_check_finish reads target_isa
+# and target_os only at that gate, and a rejection exits the process,
+# so restoring afterwards is enough. Every other target goes through
+# the gate unchanged, keeping Android and iOS rejected.
+void safe_check_finish_for_target():
+	if ((target_isa != 2) || (target_os != 3)):
+		safe_check_finish()
+		return
+	target_isa = 0
+	target_os = 0
+	safe_check_finish()
+	target_isa = 2
+	target_os = 3
+
+
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	code_fixed = 0
 	code_fixed_error_hook = 0
@@ -1833,7 +1854,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ptx_finish_cubin()
 
 	if (type_error_count > 0): return 1
-	safe_check_finish()
+	safe_check_finish_for_target()
 	type_safe_entrypoint = 0
 	# A called-but-bodiless prototype fails only a real compile, never
 	# check/deps/symbols/defhash (check_mode): those analyze one file at

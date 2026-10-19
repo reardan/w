@@ -1252,8 +1252,8 @@ checks unsupported targets and runtime-pin invalidation. The ordinary suite
 also cross-compiles the cleanup/lifetime runtime corpus in three optimization
 modes. `./wbuild tests_arm64` executes the accepted matrix and runtime corpus
 through `wrun` under QEMU, including guard-allocator runs. Runtime execution
-is a required target-admission gate. Android, iOS and WebAssembly
-checked applications remain rejected.
+is a required target-admission gate. Android and iOS checked applications
+remain rejected.
 
 ## ARM64 Darwin runtime contract
 
@@ -1280,10 +1280,65 @@ The Darwin CI job executes them with the guard allocator and verifies the
 Darwin compiler fixpoint. Native execution is a required completion gate for
 #712; Linux cross-compilation alone does not complete that deliverable.
 
+## WebAssembly runtime contract
+
+The `wasm` target (wasm32 + WASI preview1) accepts the same checked
+contracts as Linux x86. It shares that target's checked representation:
+4-byte words, one-word sized references and the two-word inline
+pointer/length slice descriptor. Owner transfers clear source slots and
+normal exits run the same conditional recursive cleanup. Bounds checks stay
+mandatory and trap through the existing `index out of range` path; explicit
+contracts apply without `--safe`. Callable contracts, captured callback
+storage, buffers and byte arenas need no wasm-specific rules: function
+values are table indices called through `call_indirect`, whose null slot
+traps, and arenas allocate through the ordinary heap.
+
+Three runtime pins bind `lib/__arch__/wasm/{android,context,syscalls}.w`.
+The syscall module implements the W runtime surface on the fixed WASI import
+set. `brk` returns 0, so the allocator switches to `mmap`, which bump-allocates
+linear memory above the data segment and shadow stack, rounding mappings to
+4 KiB and growing memory in 64 KiB wasm pages; a failed `memory.grow`
+returns -1, the allocator's out-of-memory path.
+`munmap` is a no-op, so released memory is never handed back to the host or
+reused by `mmap`; the free-list backend still reuses blocks. Iovec and
+out-parameter scratch lives at fixed addresses in the reserved low page and
+assumes the target's single thread. `exit` is WASI `proc_exit`, which, like
+Linux `exit_group`, runs no cleanup. The WASI import stubs (`wasi_*`) are not
+on the checked call allowlist, and no other raw call becomes callable from
+checked code. Modified or shadowed runtime implementations fail the audit.
+
+Linear memory has no unmapped pages and no page protection, so the guard
+allocator cannot fault. Its wasm substitute in `lib/memory_debug.w` keeps the
+bookkeeping table (leak reports, double-free and invalid-free detection) and
+turns faults into deferred checks. The guard page stays resident and is
+filled with canaries. A freed payload is filled with the poison byte `0x6b`
+instead of being protected. Canary and poison checks run on free, realloc,
+quarantine release and every leak report. Stray writes past a block, before
+it or into a freed block are therefore reported at the next check, not at the
+faulting instruction. Reads of freed memory are not detected; they observe
+poison rather than stale data. Address 0 is in the reserved low kilobyte, so
+an unchecked null dereference reads zeros instead of faulting. Checked code
+reaches optional references only after a presence check, and owners are
+never null after a successful allocation.
+
+`safe_wasm_contract_test` checks and compiles accepted and rejected
+contracts for `wasm` with both flag modes. It requires the same first
+diagnostic as the default x86 target and verifies the wasm module header.
+It also checks that rejection leaves no artifact, that WASI import stubs are
+rejected, that Android and iOS stay rejected, and that a changed runtime pin
+fails the audit. `safe_wasm_runtime_compile_test` builds every checked
+runtime fixture in default, `--no-regs --no-inline` and `--inline` modes,
+plus one explicit `--safe` variant. `tests_wasm` executes the contract
+matrix (`safe_wasm_contract_runtime_test`), that corpus
+(`safe_wasm_runtime_test`) and the guard substitute's positive and fault
+scenarios (`safe_wasm_guard_test`) under `bin/wrun wasm` (wasmtime, else
+node's WASI). Execution under a WASI host is a required admission gate;
+cross-compilation alone does not admit the target.
+
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64, win64 and arm64_darwin,
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64, win64, arm64_darwin and wasm,
 and in-process REPL/debugger
 execution reject checked pointers. A requested `--safe` is also rejected by
 in-process entry points. Compilation and structured checking run the same
