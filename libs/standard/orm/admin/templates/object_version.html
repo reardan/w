@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+{% if tabs %}<ul class="object-tools">{% for t in tabs %}<li><a href="{{ t.url }}" class="{{ t.cls }}">{{ t.label }}</a></li>{% endfor %}</ul>{% endif %}
+<p class="version-meta">{{ action_name }} at {{ date }}{% if reason %}: {{ reason }}{% endif %}</p>
+<h2>Changes</h2>
+<table id="version-diff">
+<thead><tr><th scope="col">Field</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+<tbody>
+{% for c in changes %}<tr><th scope="row">{{ c.label }}</th><td class="old">{{ c.old }}</td><td class="new">{{ c.new }}</td></tr>
+{% empty %}<tr><td colspan="3">No changes.</td></tr>
+{% endfor %}</tbody>
+</table>
+<h2>Values</h2>
+<table id="version-values">
+{% for f in values %}<tr><th scope="row">{{ f.label }}</th><td id="v_{{ f.name }}">{{ f.value }}</td></tr>
+{% endfor %}</table>
+{% if can_revert %}<form method="post" action="{{ action }}" id="revert-form">{% csrf_token %}<input type="submit" value="Revert to this version"></form>{% endif %}
+<p><a href="{{ history_url }}">Back to the history</a></p>
+{% endblock %}

@@ -17,6 +17,12 @@ int __sql_PQgetvalue
 int __sql_PQgetlength
 int __sql_PQcmdTuples
 int __sql_PQclear
+int __sql_PQsendQueryParams
+int __sql_PQsetSingleRowMode
+int __sql_PQgetResult
+int __sql_PQgetCancel
+int __sql_PQcancel
+int __sql_PQfreeCancel
 
 int __sql_postgres_state
 
@@ -58,5 +64,18 @@ int sql_postgres_available():
 	if (__sql_PQcmdTuples == 0): return 0
 	__sql_PQclear = dl_trampoline_argv(dl_sym(h, c"PQclear"), 1, 0)
 	if (__sql_PQclear == 0): return 0
+	# Streaming cursor (libpq 9.2+).
+	__sql_PQsendQueryParams = dl_trampoline_argv(dl_sym(h, c"PQsendQueryParams"), 8, 1)
+	if (__sql_PQsendQueryParams == 0): return 0
+	__sql_PQsetSingleRowMode = dl_trampoline_argv(dl_sym(h, c"PQsetSingleRowMode"), 1, 1)
+	if (__sql_PQsetSingleRowMode == 0): return 0
+	__sql_PQgetResult = dl_trampoline_argv(dl_sym(h, c"PQgetResult"), 1, 0)
+	if (__sql_PQgetResult == 0): return 0
+	__sql_PQgetCancel = dl_trampoline_argv(dl_sym(h, c"PQgetCancel"), 1, 0)
+	if (__sql_PQgetCancel == 0): return 0
+	__sql_PQcancel = dl_trampoline_argv(dl_sym(h, c"PQcancel"), 3, 1)
+	if (__sql_PQcancel == 0): return 0
+	__sql_PQfreeCancel = dl_trampoline_argv(dl_sym(h, c"PQfreeCancel"), 1, 0)
+	if (__sql_PQfreeCancel == 0): return 0
 	__sql_postgres_state = 1
 	return 1

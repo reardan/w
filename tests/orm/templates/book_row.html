@@ -1,0 +1,1 @@
+<li{% if forloop.first %} class="first"{% endif %}><a href="{% url "book_detail" id=book.id %}">{{ book.title }}</a> by {{ book.author.name }} ({{ book.tags|length }} tags)</li>

@@ -1485,3 +1485,18 @@ print "Compiling in x64 mode" to stderr: the banner comes from
 object_file_test diagnostic checks, for example) see an extra line.
 Direction: scan `--quiet` before applying selectors, or drop the banner
 when stderr is not a terminal.
+
+## w-orm agent friction (2026-10-19, issue #754)
+
+- **`# wbuild: timeout=` is milliseconds, and a too-small value fails
+  only under load.** `orm_related_test` shipped `timeout=300` meaning
+  seconds; the test normally finishes in under 300 ms, so it passed
+  locally and timed out once parallel builds slowed the machine.
+  Direction: reject (or warn on) a `timeout=` below, say, 1000 in
+  `manifest_check`, or accept a unit suffix (`300s`).
+- **`mem_copy(&name[5], ...)` on a `char*` fails with W0227** ("cannot
+  infer T, got 'constant'"); `cast(char*, &name[5])` works. The address
+  of an indexed `char*` element should infer `char*`.
+- **`bin/wtest changed` from a unit branch** needs the integration
+  branch as its base (see the `test_changed` entry above); every w-orm
+  unit agent piped its own staged file list instead.

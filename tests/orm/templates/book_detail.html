@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ book.title }}{% endblock %}
+{% block content %}<h1>{{ book.title }}</h1>
+<p>Author: {{ book.author.name }} (#{{ book.author_id }})</p>
+<p>Status: {{ book.status|upper }}</p>
+<p>Pages: {{ book.pages|default:"unknown" }}</p>
+<p>Tags: {% for t in book.tags %}{{ t.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+{% endblock %}

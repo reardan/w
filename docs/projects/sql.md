@@ -72,6 +72,26 @@ Build with `bin/wv2 x64 example.w -o bin/example`.
   Use these helpers consistently rather than mixing them with transaction SQL.
   Native DDL/implicit-commit rules still apply. Closing rolls back outstanding
   uncommitted work. Oracle uses commit-on-success outside explicit transactions.
+- `sql_query_cursor(db, sql, count, char** values)` (SQLite and PostgreSQL only;
+  other clients return 0 with an error) streams rows one at a time with no row
+  or total-size limit, and returns an owned `sql_cursor*` or 0. Parameters
+  follow `sql_query_params`. `sql_cursor_next(cur)` returns 1 when a row is
+  available, 0 at the end and -1 on error (read `sql_error(db)`); both are
+  sticky. `sql_cursor_columns`, `sql_cursor_column_name` (borrowed until free),
+  `sql_cursor_value(cur, col)` and `sql_cursor_value_length(cur, col)` (-1 NULL,
+  -2 no current row or invalid column) read the current row; values are
+  borrowed until the next `sql_cursor_next` or free and follow the result
+  conventions (non-null empty values, NUL-terminated, lengths for binary data).
+  `sql_cursor_free(cur)` finalizes the SQLite statement, or for PostgreSQL
+  cancels the query (outside a transaction; inside one it drains, so the
+  transaction is not aborted) and discards the remaining rows. While a cursor
+  is open, every other query, cursor, `sql_begin`, `sql_commit` or
+  `sql_rollback` on its connection fails with "connection has an open cursor";
+  the connection is released as soon as `sql_cursor_next` returns 0 or -1, or
+  on free. `sql_close` with an open cursor ends it; the cursor then returns -1
+  and must still be freed. PostgreSQL uses libpq single-row mode, so a cursor
+  that fails partway may already have returned rows; SQLite reports errors
+  from the statement at `sql_cursor_next`.
 - Errors belong to the connection and are replaced by the next operation.
   Connections, initialization, and queries are **single-threaded**. FreeTDS uses
   process-wide callbacks; do not combine this adapter with another DB-Library
@@ -112,7 +132,9 @@ and FreeTDS preserve binary columns; PostgreSQL uses its text-format encoding
 (e.g. bytea), and OCI preserves RAW data. Oracle treats empty strings as NULL.
 
 The W result collector accepts at most 1,024 columns, 100,000 rows, 1 MiB per
-cell, and approximately 64 MiB of copied result data and cell bookkeeping.
+cell, and approximately 64 MiB of copied result data and cell bookkeeping. Use
+`sql_query_cursor` (SQLite and PostgreSQL) for larger results: cursors keep one
+row at a time and have only the 1,024-column limit.
 Oracle's scalar define buffers have a smaller 32,767-byte per-cell limit and
 reject truncation. These bounds do not limit allocations inside libpq or
 `mysql_store_result`, which buffer results themselves. Use bounded queries.
@@ -124,7 +146,7 @@ are not undone by a result-conversion/size error; use explicit transactions when
 that matters. PostgreSQL COPY is unsupported and closes the connection to avoid
 leaving it in COPY protocol mode. Oracle LOB/LONG/object/cursor columns and
 PL/SQL blocks are unsupported. There is no statement cache, pooling, async I/O,
-streaming, output parameter API, or non-Linux-x64 ABI support yet.
+streaming for MySQL/SQL Server/Oracle, output parameter API, or non-Linux-x64 ABI support yet.
 
 ## Validation
 
@@ -132,6 +154,11 @@ streaming, output parameter API, or non-Linux-x64 ABI support yet.
   signed 64-bit integer text, NULL/empty/binary data, commit/rollback, errors,
   single-statement enforcement, result limits and result ownership. Clearly skips
   if the native library is unavailable.
+- `./wbuild sql_cursor_test`: SQLite cursor streaming 150,000 rows past the
+  collector limit, NULL/empty/binary values, parameters, the open-cursor lock,
+  early free, transactions, mid-stream errors and close with an open cursor.
+  `sql_cursor_postgres_local_test` does the same on PostgreSQL (non-root only,
+  via `bin/sql_postgres_fixture` (tests/sql_postgres_fixture.w)), including cancel on early free.
 - `./wbuild sql_native_abi_test`: actual libpq/MySQL failed-open paths when
   installed; C shared-library fixtures validate MySQL, FreeTDS and OCI calls,
   native output widths, stack arguments, callbacks, binding, truncation, cleanup,

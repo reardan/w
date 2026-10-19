@@ -1,0 +1,4 @@
+<!doctype html>
+<title>{% block title %}Library{% endblock %}</title>
+<nav>{% if user %}Signed in as {{ user.username }}{% else %}<a href="{% url "login" %}">Log in</a>{% endif %}</nav>
+<main>{% block content %}{% endblock %}</main>

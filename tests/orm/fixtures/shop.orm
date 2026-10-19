@@ -1,0 +1,54 @@
+# Second bin/orm_gen fixture (U1.1): every field type and option, a self
+# FK, a self M2M, nullable FKs, an FK cycle (Customer <-> Store), a forward
+# FK (Order -> Coupon), a custom pk, unique_together, a deprecated field
+# and a table= override. tests/orm/orm_gen_shop_test.w checks the
+# descriptors bin/orm_gen generates for it.
+app shop
+
+model Customer:
+	string email max_length=254 unique
+	text bio null
+	bool active default=true
+	bigint points default=0
+	float rating null
+	uuid token unique
+	json prefs null default="{}"
+	date birthday null
+	datetime joined auto_now_add
+	datetime touched auto_now default=now
+	string legacy_code max_length=20 deprecated
+	string secret max_length=64 no_history read_only
+	int visits indexed
+	fk referrer -> Customer on_delete=set_null related_name=referrals null
+	fk favorite_store -> Store on_delete=protect null    # cycle with Store.owner
+	table=shop_customers
+	index email active name=customer_email_active
+
+model Store:
+	string name max_length=100 default="Main Street"
+	fk owner -> Customer on_delete=restrict related_name=stores
+	m2m staff -> Customer
+	m2m neighbors -> Store
+
+model Order:
+	enum State: new, paid, shipped, cancelled
+	fk customer -> Customer on_delete=cascade related_name=orders
+	fk store -> Store on_delete=do_nothing
+	State state default=new
+	decimal total digits=12 places=2 default=0.00
+	int quantity default=1
+	int discount null default=null
+	fk coupon -> Coupon on_delete=set_default default=0
+	unique_together customer store
+	check total >= 0 name=shop_order_total_check
+	check quantity > 0
+	index state
+	history
+
+model Coupon:
+	string code max_length=16 unique
+	int percent
+
+model Country:
+	string iso max_length=2 pk
+	string label

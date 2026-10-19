@@ -32,3 +32,4 @@ log/*.core
 /libs/extras/protobuf/generated_proto_parser.w
 /tests/protobuf/common_pb.w
 /tests/protobuf/sample_pb.w
+/tests/orm/generated/

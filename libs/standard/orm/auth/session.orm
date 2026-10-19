@@ -1,0 +1,30 @@
+# w-orm sessions and API tokens (issue #754, unit U3.2;
+# docs/projects/orm/u3_2.md). session_orm.w, session_orm_api.w and
+# session_schema.json next to this file are generated from it by
+# bin/orm_gen and committed; orm_session_gen_test regenerates them and
+# fails on any difference.
+#
+# Only SHA-256 hex digests of the raw tokens are stored. `user` is an FK
+# to auth.orm's User (a cross-file FK, H1): deleting a user deletes its
+# sessions and tokens. An anonymous session has a NULL user.
+app session
+import libs/standard/orm/auth/auth.orm
+
+model Session:
+	string session_key max_length=64 unique
+	fk user -> User null on_delete=cascade
+	text session_data
+	datetime expire_date indexed
+	datetime created
+	table=auth_session
+
+model ApiToken:
+	fk user -> User on_delete=cascade
+	string name max_length=100
+	string token_key max_length=8 indexed
+	string digest max_length=64 unique
+	datetime created
+	datetime expiry null
+	datetime last_used null
+	unique_together user name
+	table=auth_api_token
