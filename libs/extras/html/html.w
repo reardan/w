@@ -635,7 +635,36 @@ html_node* html_select_start(html_tokenizer* t, html_node* current, html_token* 
 		current = html_close(current, current, token.start)
 	return current
 
-html_document* html_parse_with_limits(char* data, int length, html_limits* limits):
+# Repeated HTML/body start tags add missing attributes without replacing old
+# values. Transfer token-owned attributes only after the bounded union fits.
+void html_merge_document_attributes(html_tokenizer* t, html_node* node, html_token* token):
+	int count = 0
+	html_attribute* tail = 0
+	html_attribute* attr = node.attributes
+	while (attr != 0):
+		count = count + 1
+		tail = attr
+		attr = attr.next
+	attr = token.attributes
+	while (attr != 0):
+		if (html_attribute_find(node.attributes, attr.name) == 0): count = count + 1
+		attr = attr.next
+	if (count > t.limits.attributes):
+		html_stop(t, token.start, c"document attribute limit exceeded")
+		return
+	attr = token.attributes
+	token.attributes = 0
+	while (attr != 0):
+		html_attribute* next = attr.next
+		attr.next = 0
+		if (html_attribute_find(node.attributes, attr.name) != 0): html_attributes_free(attr)
+		else:
+			if (tail != 0): tail.next = attr
+			else: node.attributes = attr
+			tail = attr
+		attr = next
+
+html_document* html_parse_document_inner(char* data, int length, html_limits* limits, int fragment):
 	html_document* doc = new html_document()
 	html_tokenizer* t = html_tokenizer_new(data, length, limits)
 	if (!t.failed):
@@ -645,12 +674,39 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 		html_node* body = html_implied(doc, t, html, c"body", HTML_START)
 		html_node* current = body
 		int body_started = 0
+		# 0 retains the existing before/in-body foundation; 1 after body,
+		# 2 after after body. Neither closing tag pops open elements.
+		int after_body = 0
 		int declaration_allowed = 1
 		while (!t.failed):
 			html_token* token = html_tokenizer_next(t)
 			if ((token.kind == HTML_EOF) || t.failed):
 				html_token_free(token)
 				break
+			if (after_body):
+				if (token.kind == HTML_COMMENT):
+					html_node* parent = html
+					if (after_body == 2): parent = doc.root
+					html_add_node(doc, t, parent, token)
+					html_token_free(token)
+					continue
+				if (token.kind == HTML_DOCTYPE):
+					html_report(t, token.start, token.end, c"doctype after body ignored")
+					html_token_free(token)
+					continue
+				if (after_body == 1 && token.kind == HTML_END && strcmp(token.name, c"html") == 0):
+					if (fragment): html_report(t, token.start, token.end, c"html end ignored after fragment body")
+					else: after_body = 2
+					html_token_free(token)
+					continue
+				int in_body = token.kind == HTML_START && strcmp(token.name, c"html") == 0
+				if (token.kind == HTML_TEXT):
+					int i = 0
+					while (i < token.text_length && html_space(token.text[i])): i = i + 1
+					in_body = i == token.text_length
+				if (!in_body):
+					html_report(t, token.start, token.end, c"token after body reprocessed in body")
+					after_body = 0
 			if (token.kind == HTML_START):
 				declaration_allowed = 0
 				html_node* special = 0
@@ -658,7 +714,9 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 				if ((strcmp(token.name, c"head") == 0) && !body_started): special = head
 				if (strcmp(token.name, c"body") == 0): special = body
 				if (special != 0):
-					if (!special.implied): html_report(t, token.start, token.end, c"duplicate document element ignored")
+					if (!special.implied):
+						html_report(t, token.start, token.end, c"duplicate document element")
+						if (special == html || special == body): html_merge_document_attributes(t, special, token)
 					else:
 						special.implied = 0
 						special.start = token.start
@@ -667,7 +725,7 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 						token.attributes = 0
 					if (special == head): current = head
 					if (special == body):
-						current = body
+						if (!body_started): current = body
 						body_started = 1
 				else:
 					int metadata = (strcmp(token.name, c"title") == 0) || (strcmp(token.name, c"meta") == 0) || (strcmp(token.name, c"link") == 0) || (strcmp(token.name, c"base") == 0) || (strcmp(token.name, c"style") == 0) || (strcmp(token.name, c"script") == 0)
@@ -691,6 +749,17 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 					if ((n != 0) && !is_void): current = n
 			else if (token.kind == HTML_END):
 				declaration_allowed = 0
+				if (strcmp(token.name, c"body") == 0 || strcmp(token.name, c"html") == 0):
+					# In-head reprocesses body/html end tags after implicitly closing
+					# head, then the implied body enters the ordinary scope rules.
+					if (current == head): current = body
+					if (html_in_scope(current, c"body", 0, 0) == 0): html_report(t, token.start, token.end, c"body end outside scope ignored")
+					else:
+						body_started = 1
+						after_body = 1
+						if (strcmp(token.name, c"html") == 0 && !fragment): after_body = 2
+					html_token_free(token)
+					continue
 				html_node* match = html_end_match(current, token.name)
 				if (match == 0 && strcmp(token.name, c"p") == 0):
 					html_report(t, token.start, token.end, c"missing paragraph synthesized for end tag")
@@ -732,9 +801,9 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 				n.end = t.position
 				n = n.parent
 		# Synthetic document containers cover the entire supplied input.
-		doc.root.end = length
-		html.end = length
-		body.end = length
+		if (doc.root != 0): doc.root.end = length
+		if (html != 0): html.end = length
+		if (body != 0): body.end = length
 	doc.failed = t.failed
 	doc.source = t.source
 	doc.source_length = t.length
@@ -743,6 +812,9 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 	t.diagnostics = 0
 	html_tokenizer_free(t)
 	return doc
+
+html_document* html_parse_with_limits(char* data, int length, html_limits* limits):
+	return html_parse_document_inner(data, length, limits, 0)
 
 html_document* html_parse(char* data, int length):
 	return html_parse_with_limits(data, length, 0)
@@ -759,7 +831,7 @@ html_document* html_parse_fragment_with_limits(char* data, int length, char* con
 	# recovery, then return the synthetic HTML element's children. The parser's
 	# other insertion-mode limitations still apply to this bounded foundation.
 	if (context != 0 && strcmp(context, c"html") == 0):
-		html_document* parsed = html_parse_with_limits(data, length, limits)
+		html_document* parsed = html_parse_document_inner(data, length, limits, 1)
 		if (parsed.root != 0):
 			html_node* html = parsed.root.first_child
 			while (html != 0 && (html.kind != HTML_START || strcmp(html.name, c"html") != 0)): html = html.next_sibling
