@@ -1,5 +1,10 @@
 # Small external consumer: bounded resource loading plus independent HTML/CSS.
 # Compile with an explicit W import root when this file is outside the checkout.
+# Keep compile roots visible to wtest as well as testing external compilation.
+# wbuild: target=browser_resource_consumer_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 examples/web/browser_resource.w -o bin/browser_resource_consumer"
+# wbuild: step="bin/wv2 x64 examples/web/browser_resource.w -o bin/browser_resource_consumer_64"
+# wbuild: step="python3 tests/browser_resource_consumer_test.py" expect_stdout="browser resource consumers OK" timeout=120000
 import lib.args
 import libs.standard.web.content_decode
 import libs.extras.compress.codecs
@@ -35,10 +40,12 @@ int main(int argc, int argv):
 		print_string(c"final URL: ", stream.resp.final_url)
 		html_document* document = html_parse(content.output, content.output_length)
 		print_int(c"HTML failed: ", document.failed)
+		if (document.failed): code = 1
 		html_document_free(document)
 		char* style = c"body { color: #222; margin: 1em }"
 		css_document* stylesheet = css_parse_stylesheet_n(style, strlen(style), 0)
 		print_int(c"CSS rules: ", stylesheet.nodes.length)
+		if (stylesheet.failed): code = 1
 		css_document_free(stylesheet)
 	content_decoder_free(content)
 	http_stream_close(stream)

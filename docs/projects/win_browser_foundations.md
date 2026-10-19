@@ -37,8 +37,64 @@ standard built-ins and full early-error/runtime conformance remain
 requires native Mac compilation and qualification; Linux cross-compilation is
 only the W ABI/build check. The web bridge also needs browser and assistive
 technology qualification; DOM/wasm contract tests do not establish screen-reader
-behavior. These remaining dependencies keep the broader umbrella open even as
-the bounded library milestones are delivered.
+behavior. These are unfinished dependency projects, not missing implementations
+of the eight bounded browser-library milestones above. Closing the library
+milestone must not mark those dependency projects complete.
+
+## Acceptance audit and closeout
+
+The original issue checklist predates the implementation. The eight direct
+library deliverables landed in [#639](https://github.com/reardan/w/pull/639),
+[#640](https://github.com/reardan/w/pull/640), and subsequent extensions including
+[#641](https://github.com/reardan/w/pull/641),
+[#650](https://github.com/reardan/w/pull/650),
+[#652](https://github.com/reardan/w/pull/652), and
+[#656](https://github.com/reardan/w/pull/656). Evaluate them against their
+documented initial subsets, not full browser or ECMAScript conformance:
+
+| Direct deliverable | Acceptance evidence in the normal test suite |
+| --- | --- |
+| HTML tokenizer and tree | `html_test`, `html_entities_test` and x64 twins: deterministic recovery trees, embedded languages, references, spans, ownership, EOF and budgets; entity generation is verified offline |
+| CSS syntax APIs | `css_test` and x64 twin: semantic tokens/selectors/declarations, malformed-declaration recovery, balanced and nested blocks, EOF, spans and budgets; the maintained handwritten specification records provenance |
+| JavaScript AST boundary | `javascript_roundtrip_test`, `javascript_browser_language_test`, `javascript_labels_test`, `javascript_text_test`: lower/print/parse, control flow, explicit unsupported shapes, UTF-16 NUL/surrogates and source spans |
+| URL references | `urlparse_test` and x64 twin: base/reference tables, escaped delimiters, queries/fragments, IPv6, serialization and origin tuples; `file:` behavior is explicitly rejected/documented |
+| Owned HTTP client | `http_browser_test` and x64 twin: cancellation, total deadlines/slow trickles, TLS failures, partial bodies, redirect approval/loops, simultaneous clients and shutdown |
+| Bounded decoding | `content_decode_test` and x64 twin: input/output limits, chunk feeds and explicit completion, truncated/corrupt streams, unsupported encodings and concatenated gzip validation |
+| Embeddable JavaScript | `javascript_runtime_test`, `javascript_browser_runtime_test`, `javascript_runtime_invoke_test`, `javascript_embed_example`: closures, completions, isolated instances, host callbacks, roots/cycles and terminal execution budgets |
+| Images and painting | `png_test`, `graphics_image_jpeg_test` and x64 twins; `graphics_ui_image_test` and `graphics_ui_image_smoke_test`: malformed/truncated images, dimensions, transparency, clipping/scaling, updates/release and native readback (requires a display) |
+
+`browser_resource_consumer_test` closes the integration-test gap: it compiles
+the combined example for x86 and x64 both in the checkout and from a separate
+temporary directory with an explicit import root. A controlled loopback server
+exercises identity/gzip/deflate loading, relative redirects with retained
+fragments, rejection of cross-origin redirects, corrupt/truncated responses,
+unsupported encodings, expansion limits, and propagation of an HTML depth-limit
+failure to the process exit status. It needs no public network service.
+
+Closeout validation on 2026-10-19 against main `7cf0c447` plus this integration
+fix: `./wbuild --keep-going -j 8 tests javascript_compatibility` passed all
+1,561 targets, with `NO_COLOR` unset, pinned Node v20.19.3 on `PATH`, and an Xvfb
+display. The native image readback probe passed. The compatibility gate passed
+34/34 syntax cases, 3/3 growth cases, 3/3 execution examples, 9/9 runtime
+comparisons and 2/2 consumers. Structured checks passed for x86 and x64.
+
+Issue #637 is the **reusable library milestone** and closes when
+[#799](https://github.com/reardan/w/pull/799) merges the validated integration
+fix and acceptance audit. Remaining work continues in its existing tracks:
+
+- [#459](https://github.com/reardan/w/issues/459): portable shaping/bidi,
+  script/font segmentation, shaped carets, Cocoa IME and native input qualification.
+- [#465](https://github.com/reardan/w/issues/465): AT-SPI/UI Automation,
+  automatic widget semantics, keyboard routing and native assistive-technology
+  qualification. The reusable page-content snapshot API is already delivered.
+- [#492](https://github.com/reardan/w/issues/492): broader JavaScript syntax,
+  standard-library and runtime conformance beyond the embedding subset.
+- The application repository: dependency-pin upgrades, DOM/layout integration,
+  navigation/event scheduling and browser policy, as excluded by #637 itself.
+
+The eight direct deliverables complete this milestone. The dependency tickets
+remain open for their broader scope; #637 does not duplicate their tracking or
+claim full browser, text/input, accessibility, or ECMAScript conformance.
 
 ## Consumers and reproducibility
 
