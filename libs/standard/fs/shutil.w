@@ -18,9 +18,9 @@ wrappers live in lib/__arch__/<target>/copy_range.w; Darwin, win64 and
 wasm report ENOSYS there and always copy with read/write.
 shutil_last_copy_method says which method finished the last copy.
 
-Metadata: on Darwin, win64 and wasm lib/stat.w's statx and chmod are
+Metadata: on win64 and wasm lib/stat.w's statx and chmod are
 stubs, so copy_mode / the same-file check / directory detection fail or
-are skipped there; Linux x86, x64 and arm64 are the supported targets.
+are skipped there; Linux x86, x64, arm64 and Darwin are supported.
 shutil_disk_usage likewise needs statfs(2) (Linux only).
 
 Symlinks are followed when copying (Python's default symlinks=False):

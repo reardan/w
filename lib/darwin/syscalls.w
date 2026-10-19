@@ -81,8 +81,9 @@ int rmdir(char* path):
 int rename(char* oldpath, char* newpath):
 	return syscall(128, oldpath, newpath, 0)
 
-# Portable metadata wrappers are Linux-first (lib/stat.w). Darwin stubs
-# keep the symbols linkable; real getattrlist/stat paths are future work.
+# Translate native metadata into the portable lib/stat.w buffer layout.
+import lib.darwin.stat_layout
+
 int at_fdcwd():
 	return 0 - 100
 
@@ -91,11 +92,17 @@ const int at_symlink_nofollow = 256
 
 
 int statx(char* path, int flags, int mask, char* buf):
-	return -1
+	if ((flags != 0) && (flags != at_symlink_nofollow)): return -22
+	char[144] native
+	int number = 338  # stat64; lstat64 preserves the symlink itself.
+	if (flags == at_symlink_nofollow): number = 340
+	int status = syscall(number, path, &native[0], 0)
+	if (status == 0): darwin_stat_to_statx(&native[0], buf)
+	return status
 
 
 int chmod(char* path, int mode):
-	return -1
+	return syscall(15, path, mode, 0)
 
 
 int utimensat(char* path, int times, int flags):
