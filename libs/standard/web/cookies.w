@@ -40,8 +40,8 @@ TIME. Every time is a libs/standard/time/datetime.w datetime; the jar
 works in aware UTC (a naive `now` is read as UTC). Expiry instants are
 datetimes rather than Unix seconds so far-future cookies (Expires in
 9999) work on x86 past 2038. Expires is parsed with
-libs/standard/time/format.w's datetime_parse_http (IMF-fixdate, RFC 850,
-asctime and the Netscape "Wed, 09-Jun-2021 10:18:14 GMT" form); a date
+cookie_parse_date's RFC 6265 token algorithm (including reordered tokens,
+obsolete separators, and two-digit years); a date
 that does not parse, or a year before 1601 (RFC 6265 5.1.1), makes the
 attribute be ignored. Max-Age wins over Expires; Max-Age <= 0 expires
 the cookie at once (deleting a stored one). Expiry is clamped to
@@ -311,11 +311,85 @@ int cookie_parse_max_age(char* s, int* out):
 	return 1
 
 
+# RFC 6265 5.1.1 date delimiters. Everything else belongs to a token.
+int cookie_date_delimiter(int c):
+	return c == 9 || (c >= 32 && c <= 47) || (c >= 59 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126)
+
+int cookie_date_digits(char* text, int* position, int end, int minimum, int maximum, int* value):
+	int at = *position
+	int count = 0
+	int number = 0
+	while (at < end && text[at] >= '0' && text[at] <= '9'):
+		if (count == maximum): return 0
+		number = number * 10 + text[at] - '0'
+		count = count + 1
+		at = at + 1
+	if (count < minimum): return 0
+	*position = at
+	*value = number
+	return 1
+
+int cookie_date_time(char* text, int start, int end, int* hour, int* minute, int* second):
+	int pos = start
+	if (!cookie_date_digits(text, &pos, end, 1, 2, hour)): return 0
+	if (pos >= end || text[pos] != ':'): return 0
+	pos = pos + 1
+	if (!cookie_date_digits(text, &pos, end, 1, 2, minute)): return 0
+	if (pos >= end || text[pos] != ':'): return 0
+	pos = pos + 1
+	return cookie_date_digits(text, &pos, end, 1, 2, second)
+
+# Parse a cookie-date, which is deliberately more forgiving than HTTP-date.
+# Output is unchanged on failure. Calendar validation prevents normalization
+# of nonexistent dates, and UTC datetimes keep far-future dates safe on x86.
+int cookie_parse_date(char* text, datetime* out):
+	if (text == 0 || out == 0): return 0
+	int length = strlen(text)
+	int pos = 0
+	int found_time = 0
+	int found_day = 0
+	int found_month = 0
+	int found_year = 0
+	int hour = 0
+	int minute = 0
+	int second = 0
+	int day = 0
+	int month = 0
+	int year = 0
+	char* months = c"janfebmaraprmayjunjulaugsepoctnovdec"
+	while (pos < length):
+		while (pos < length && cookie_date_delimiter(text[pos] & 255)): pos = pos + 1
+		int start = pos
+		while (pos < length && !cookie_date_delimiter(text[pos] & 255)): pos = pos + 1
+		if (start == pos): continue
+		if (!found_time && cookie_date_time(text, start, pos, &hour, &minute, &second)):
+			found_time = 1
+			continue
+		int at = start
+		if (!found_day && cookie_date_digits(text, &at, pos, 1, 2, &day)):
+			found_day = 1
+			continue
+		if (!found_month && pos - start >= 3):
+			for i in range(12):
+				if (cookie_lower(text[start]) == months[i * 3] && cookie_lower(text[start + 1]) == months[i * 3 + 1] && cookie_lower(text[start + 2]) == months[i * 3 + 2]):
+					month = i + 1
+					found_month = 1
+			if (found_month): continue
+		at = start
+		if (!found_year && cookie_date_digits(text, &at, pos, 2, 4, &year)): found_year = 1
+	if (!found_time || !found_day || !found_month || !found_year): return 0
+	if (year >= 70 && year <= 99): year = year + 1900
+	else if (year <= 69): year = year + 2000
+	if (year < 1601 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59): return 0
+	if (day > date_days_in_month(year, month)): return 0
+	*out = datetime_with_offset(datetime_new(year, month, day, hour, minute, second, 0), 0)
+	return 1
+
 # Applies one cookie-av (name text[ns..ne), value av) to c.
 void cookie_apply_av(Cookie* c, char* text, int ns, int ne, char* av):
 	if (cookie_range_is(text, ns, ne, c"expires")):
 		datetime dt = cookie_epoch_min()
-		if (datetime_parse_http(av, &dt) && (dt.d.year >= 1601)):
+		if (cookie_parse_date(av, &dt)):
 			c.has_expires = 1
 			c.expires = dt
 	else if (cookie_range_is(text, ns, ne, c"max-age")):
