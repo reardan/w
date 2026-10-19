@@ -50,6 +50,14 @@ int main(int argc, int argv):
 	string_replace_eval(rt, c"var limitCallbacks=0;'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'.replace(/(?:)/g,function(){limitCallbacks++;return '';});", 5)
 	rt.max_properties = 10000
 	string_replace_eval(rt, c"limitCallbacks===0;", 0)
+	string_replace_eval(rt, c"let scan=/a/g;scan.lastIndex=77;let scanCalls=0;let scanGets=0;Object.defineProperty(scan,'flags',{get:function(){scanGets++;return hugeFlags;}});true;", 0)
+	js_text* huge_flags = js_text_new()
+	for i in range(4096): huge_flags.units.push('g')
+	js_runtime_set(rt, rt.global, c"hugeFlags", js_runtime_string(rt, huge_flags))
+	js_text_free(huge_flags)
+	char* scan_source = c"'a'.replace(scan,function(){scanCalls++;return 'x';});"
+	assert_equal(5, js_runtime_eval(rt, scan_source, strlen(scan_source), 100).status)
+	string_replace_eval(rt, c"scan.lastIndex===77 && scanCalls===0 && scanGets===1;", 0)
 	js_runtime_free(rt)
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_string_replace_test: OK")

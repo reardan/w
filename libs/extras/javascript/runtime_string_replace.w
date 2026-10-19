@@ -43,6 +43,7 @@ js_value* js_string_replace(void* runtime, void* context, js_value* receiver, li
 		int unicode = 0
 		if (flags != 0):
 			for i in range(flags.units.length):
+				if (js_runtime_compat_step(rt) == 0): break
 				if (flags.units[i] == 'g'): global = 1
 				if (flags.units[i] == 'u' || flags.units[i] == 'v'): unicode = 1
 		js_text_free(flags)
