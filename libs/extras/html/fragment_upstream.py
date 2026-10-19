@@ -75,7 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
     parser.add_argument("--timeout", type=float, default=10)
-    parser.add_argument("--profile", choices=("historical", "modern-select", "modern-after-body"), default="historical")
+    parser.add_argument("--profile", choices=("historical", "modern-select", "modern-after-body", "modern-pi"), default="historical")
     parser.add_argument("--gate", choices=("selected", "select-context", "full-corpus"), default="selected")
     parser.add_argument("--report", type=Path, default=Path("bin/html-fragment-upstream.json"))
     args = parser.parse_args()
@@ -83,7 +83,7 @@ def main():
         parser.error("timeout must be positive")
     if args.gate == "select-context" and args.profile != "modern-select":
         parser.error("select-context gate requires modern-select profile")
-    prefix = {"historical": "", "modern-select": "modern/", "modern-after-body": "after-body/"}[args.profile]
+    prefix = {"historical": "", "modern-select": "modern/", "modern-after-body": "after-body/", "modern-pi": "processing-instruction/"}[args.profile]
     manifest_name = prefix + "manifest.json"
     inventory_name = prefix + "inventory.json"
     manifest_bytes = (ROOT / "upstream" / manifest_name).read_bytes()

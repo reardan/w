@@ -15,7 +15,7 @@ from fragment_upstream import execute, validate_inventory, ROOT
 
 class ReportTests(unittest.TestCase):
     def test_inventory_identity_and_selected_sources_are_bound(self):
-        for prefix in ("", "modern/", "after-body/"):
+        for prefix in ("", "modern/", "after-body/", "processing-instruction/"):
             manifest = json.loads((ROOT / "upstream" / (prefix + "manifest.json")).read_bytes())
             inventory = json.loads((ROOT / "upstream" / (prefix + "inventory.json")).read_bytes())
             frozen = {name: (ROOT / "upstream" / name).read_bytes() for name in manifest["files"]}
@@ -96,6 +96,22 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(result["counts"]["ERROR"], 1308)
             self.assertEqual(result["variant_counts"]["ERROR"], 2600)
             self.assertEqual(result["counts"]["NOT_RUN"], 660)
+            self.assertEqual(result["executed"], 0)
+            self.assertFalse(result["gate"]["passed"])
+
+    def test_pi_missing_binary_keeps_dependency_failures_in_denominator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.json"
+            run = subprocess.run([sys.executable, str(ROOT / "fragment_upstream.py"),
+                                  str(Path(directory) / "missing"), "--profile", "modern-pi",
+                                  "--report", str(report)], capture_output=True, timeout=10)
+            self.assertEqual(run.returncode, 1)
+            result = json.loads(report.read_text())
+            self.assertEqual(result["total"], 1968)
+            self.assertEqual(result["selected"], 124)
+            self.assertEqual(result["counts"]["ERROR"], 124)
+            self.assertEqual(result["variant_counts"]["ERROR"], 247)
+            self.assertEqual(result["counts"]["NOT_RUN"], 1844)
             self.assertEqual(result["executed"], 0)
             self.assertFalse(result["gate"]["passed"])
 

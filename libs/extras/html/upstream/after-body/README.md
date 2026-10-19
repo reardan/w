@@ -25,8 +25,10 @@ comment placement, whitespace and ordinary-token recovery, scoped body/html
 end tags without popping open elements, HTML-fragment end-tag handling, and
 bounded merging of missing document-element attributes. It preserves existing
 attribute values and list order; the union cap is checked before ownership moves.
-The tokenizer's processing-instruction token branch is still missing, so this
-is not complete coverage of either current insertion mode. The existing initial,
+At the initial after-body checkpoint the processing-instruction branch was
+missing; the later [PI slice](../processing-instruction/README.md) adds native
+tokens and placement while retaining its table/template/noscript dependencies.
+Neither slice establishes complete coverage of every insertion-mode dependency. The existing initial,
 head, in-body, frameset, formatting, table, template, foreign-content, doctype,
 namespace and scripting gaps remain mandatory.
 
@@ -48,7 +50,7 @@ The native fixture accepts reversible `--hex` transport for source containing
 NUL; decoded bytes and explicit length enter the same native parser. It does not
 rewrite source or expected trees.
 
-Initial development audit after this implementation: 494 PASS, 733 FAIL,
+Historical initial development audit before the later PI slice: 494 PASS, 733 FAIL,
 81 UNSUPPORTED, zero ERROR/TIMEOUT, plus 660 NOT_RUN; variants: 987 PASS,
 1,451 FAIL, 162 UNSUPPORTED. These are tree-comparison outcomes, not a browser
 conformance percentage. Fresh committed evidence is supplied separately to the
