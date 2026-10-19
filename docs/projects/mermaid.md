@@ -199,10 +199,12 @@ These describe upstream syntax; the table below defines the implemented subset.
 | Rendering | Entity attribute rows, relationship text, crow's feet, optional circles, one bars, dashed/solid edges; shared scene for native and SVG output |
 
 Attributes occupy separate lines (or one attribute before a closing brace).
-Quoted text is displayed as literal text: Markdown/HTML, Mermaid entity escape
-codes and rich labels are not interpreted. Native glyph coverage follows the
-UI font system; SVG uses the viewer's monospace font. Label sizing uses an
-8-pixel-per-UTF-8-byte estimate, so multilingual text can reserve extra width.
+Labels support `<br>` line breaks, multi-line Markdown strings with
+`**bold**`/`*italic*` emphasis and wrapping at 200px; other HTML, Mermaid entity
+escape codes and rich labels are shown literally (see
+[Text layout](mermaid_text.md)). Native glyph coverage follows the UI font
+system; SVG uses a matching sans-serif face, and graph labels are measured with
+the native preview's per-glyph widths.
 ER attributes show type, name, keys and comment in each row rather than separate
 resizable columns. Layout uses longest-path ranks with deterministic cycle
 breaking, stable barycentric crossing-reduction sweeps and orthogonal connectors.
