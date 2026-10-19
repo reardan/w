@@ -692,6 +692,16 @@ const int ORM_OP_RENAME_TABLE = 18      # only for tables nothing reads yet (pla
 const int ORM_OP_CREATE_HISTORY = 19    # C8: history table + triggers for model_json
 const int ORM_OP_DROP_HISTORY = 20
 
+# orm_op.dialects bits (H1). One committed migration list serves every
+# dialect; an op that is only safe or only needed on some of them (the
+# PostgreSQL CHECK (c IS NOT NULL) NOT VALID that precedes SET NOT NULL,
+# which on SQLite would reject old-code inserts before a dual-write AFTER
+# trigger fills the column) carries a mask, and the applier and the linter
+# skip it elsewhere. Bit = 1 << ORM_DIALECT_*.
+const int ORM_OP_ON_SQLITE = 2
+const int ORM_OP_ON_POSTGRES = 4
+
+
 const int ORM_PHASE_EXPAND = 1
 const int ORM_PHASE_MIGRATE = 2
 const int ORM_PHASE_CONTRACT = 3
@@ -711,6 +721,7 @@ struct orm_op:
 	int non_atomic            # must run outside a transaction (CONCURRENTLY)
 	int unsafe                # planner/linter flagged; applier requires force
 	int batch_size            # COPY_COLUMN / COPY_TABLE / BACKFILL
+	int dialects              # 0 = every dialect; else ORM_OP_ON_* bits: the op runs (and lints) only there
 
 
 struct orm_migration:
@@ -730,6 +741,12 @@ orm_op* orm_op_new(int kind, int phase, char* table):
 	op.table = table
 	op.batch_size = 1000
 	return op
+
+
+# 1 when `op` runs on dialect `dialect_id` (0 = unknown: every op runs).
+int orm_op_runs_on(orm_op* op, int dialect_id):
+	if (op.dialects == 0 || dialect_id <= 0): return 1
+	return (op.dialects & (1 << dialect_id)) != 0
 
 
 orm_migration* orm_migration_new(char* app, char* name):

@@ -17,11 +17,17 @@
 #		check price >= 0 name=book_price_nonnegative
 #		history
 #
+# `import <path/to/other.orm>` (top level) makes that file's models valid
+# FK targets (cross-file FKs, H1); the path is tried as given (from the
+# directory W imports resolve from), then next to the importing file.
+#
 # Field kinds and flag bits reuse the numbers of libs/standard/orm/contract.w
 # (C2) but this module does not import the contract: bin/orm_gen only writes
 # text, so it builds for every target without the SQL client.
 import lib.lib
 import lib.str
+import lib.file
+import lib.path
 import structures.string
 
 
@@ -117,6 +123,8 @@ struct orm_schema:
 	list[orm_schema_model*] models     # declaration order
 	list[orm_schema_model*] ordered    # FK dependency order (ties: declaration order)
 	list[char*] errors                 # "file:line: message"
+	list[orm_schema*] imports          # `import` lines: schemas whose models are FK targets
+	list[char*] import_modules         # dotted W data module of each import ("libs.standard.orm.auth.auth_orm")
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +283,20 @@ orm_schema_model* orm_schema_find_model(orm_schema* s, char* name):
 	for orm_schema_model* m in s.models:
 		if (orm_schema_streq(m.name, name)): return m
 	return 0
+
+
+# A model of an imported schema (a cross-file FK target), or 0.
+orm_schema_model* orm_schema_find_external(orm_schema* s, char* name):
+	if (s.imports == 0): return 0
+	for orm_schema* i in s.imports:
+		orm_schema_model* m = orm_schema_find_model(i, name)
+		if (m != 0): return m
+	return 0
+
+
+# 1 when relation target `name` is declared by an imported file.
+int orm_schema_is_external(orm_schema* s, char* name):
+	return orm_schema_find_model(s, name) == 0 && orm_schema_find_external(s, name) != 0
 
 
 orm_schema_field* orm_schema_find_field(orm_schema_model* m, char* name):
@@ -681,6 +703,22 @@ char* orm_schema_api_names():
 	return c" desc objects rows new save delete free "
 
 
+# The wrappers a history model's API module adds (U3.3).
+char* orm_schema_history_names():
+	return c" history as_of history_row prune_history "
+
+
+# 1 when `name` is one of the space-separated words of `words`.
+int orm_schema_name_in(char* words, char* name):
+	string_builder* b = string_new()
+	string_append_char(b, ' ')
+	string_append(b, name)
+	string_append_char(b, ' ')
+	int found = contains(words, b.data)
+	string_free(b)
+	return found
+
+
 void orm_schema_resolve(orm_schema* s):
 	for orm_schema_model* m in s.models:
 		if (m.table == 0):
@@ -699,26 +737,36 @@ void orm_schema_resolve(orm_schema* s):
 				m.fields.insert(0, id)
 		else:
 			m.custom_pk = 1
+	for orm_schema_model* mm in s.models:
+		if (orm_schema_find_external(s, mm.name) != 0):
+			orm_schema_error2(s, mm.line, c"model '", mm.name, c"' clashes with a model of an imported file")
 	for orm_schema_model* m in s.models:
 		for orm_schema_field* f in m.fields:
 			if (f.kind != ORM_SCHEMA_FK && f.kind != ORM_SCHEMA_M2M): continue
-			string_builder* api = string_new()
-			string_append_char(api, ' ')
-			string_append(api, f.name)
-			string_append_char(api, ' ')
-			if (contains(orm_schema_api_names(), api.data)):
+			if (orm_schema_name_in(orm_schema_api_names(), f.name) || (m.history && orm_schema_name_in(orm_schema_history_names(), f.name))):
 				orm_schema_error2(s, f.line, c"relation name '", f.name, c"' clashes with a generated function")
-			string_free(api)
 			orm_schema_model* t = orm_schema_find_model(s, f.rel_model)
+			int external = 0
+			if (t == 0 && f.kind == ORM_SCHEMA_FK):
+				t = orm_schema_find_external(s, f.rel_model)
+				external = t != 0
 			if (t == 0):
 				if (f.kind == ORM_SCHEMA_FK): orm_schema_error2(s, f.line, c"unknown FK target '", f.rel_model, c"'")
+				else if (orm_schema_find_external(s, f.rel_model) != 0):
+					orm_schema_error2(s, f.line, c"M2M target '", f.rel_model, c"' is in an imported file (only FKs may cross files)")
 				else:
 					orm_schema_error2(s, f.line, c"unknown M2M target '", f.rel_model, c"'")
 				continue
 			if (!orm_schema_int_pk(t)):
 				orm_schema_error2(s, f.line, c"relation target '", f.rel_model, c"' needs an int pk")
 				continue
+			if (external && f.related_name != 0):
+				orm_schema_error2(s, f.line, c"related_name '", f.related_name, c"' needs a target in this file (the imported module is generated on its own)")
+				continue
 			if (f.kind == ORM_SCHEMA_FK && f.related_name != 0):
+				if (t.history && orm_schema_name_in(orm_schema_history_names(), f.related_name)):
+					orm_schema_error2(s, f.line, c"related_name '", f.related_name, c"' clashes with a generated function")
+					continue
 				if (orm_schema_member_taken(t, f.related_name) || orm_schema_find_field(t, f.related_name) != 0):
 					orm_schema_error2(s, f.line, c"related_name '", f.related_name, c"' clashes with a field of the target")
 					continue
@@ -786,12 +834,64 @@ int orm_schema_ordered_before(orm_schema* s, char* name, char* before):
 # ---------------------------------------------------------------------------
 # Entry point
 
+int __orm_schema_import_depth
+
+
+orm_schema* orm_schema_parse(char* text, char* path);
+
+
+# "libs/standard/orm/auth/auth.orm" declaring app auth ->
+# "libs.standard.orm.auth.auth_orm" (the module bin/orm_gen -o <dir>/ writes).
+char* orm_schema_import_module(char* path, char* app):
+	char* dir = path_dirname(path)
+	string_builder* b = string_new()
+	if (dir != 0 && dir[0] != 0 && strcmp(dir, c".") != 0):
+		char* d = dir
+		if (starts_with_at(d, c"./", 0)): d = substring(d, 2, strlen(d))
+		string_append(b, replace(d, c"/", c"."))
+		string_append_char(b, '.')
+	string_append(b, app)
+	string_append(b, c"_orm")
+	char* r = b.data
+	free(cast(void*, b))
+	return r
+
+
+# `import <path>`: parses the file (as given, else next to s.path) and
+# keeps it as a source of FK targets. Its errors are reported too.
+void orm_schema_import(orm_schema* s, char* path, int line):
+	if (!ends_with(path, c".orm")):
+		orm_schema_error2(s, line, c"import '", path, c"' is not an .orm file")
+		return
+	char* found = path
+	char* text = file_read_text(found)
+	if (text == 0):
+		found = path_join(path_dirname(s.path), path)
+		text = file_read_text(found)
+	if (text == 0):
+		orm_schema_error2(s, line, c"cannot read import '", path, c"'")
+		return
+	if (__orm_schema_import_depth >= 8):
+		orm_schema_error2(s, line, c"import '", path, c"' nests too deep (a cycle?)")
+		return
+	__orm_schema_import_depth = __orm_schema_import_depth + 1
+	orm_schema* i = orm_schema_parse(text, found)
+	__orm_schema_import_depth = __orm_schema_import_depth - 1
+	for char* e in i.errors: s.errors.push(e)
+	if (orm_schema_streq(i.app, s.app)):
+		orm_schema_error2(s, line, c"import '", path, c"' declares this file's own app")
+		return
+	s.imports.push(i)
+	s.import_modules.push(orm_schema_import_module(found, i.app))
+
 orm_schema* orm_schema_parse(char* text, char* path):
 	orm_schema* s = new orm_schema()
 	s.path = path
 	s.models = new list[orm_schema_model*]
 	s.ordered = new list[orm_schema_model*]
 	s.errors = new list[char*]
+	s.imports = new list[orm_schema*]
+	s.import_modules = new list[char*]
 	orm_schema_model* current = 0
 	int line_no = 0
 	int pos = 0
@@ -820,6 +920,12 @@ orm_schema* orm_schema_parse(char* text, char* path):
 				else:
 					s.app = toks[1]
 				current = 0
+				continue
+			if (orm_schema_streq(toks[0], c"import")):
+				current = 0
+				if (toks.length != 2): orm_schema_error(s, line_no, c"expected 'import <path/to/file.orm>'")
+				else:
+					orm_schema_import(s, toks[1], line_no)
 				continue
 			if (orm_schema_streq(toks[0], c"model")):
 				current = 0

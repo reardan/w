@@ -8,7 +8,7 @@
 #   	orm_backfill_register(c"blog_post_slug_backfill", post_slug_backfill)
 #   	return orm_cli_main(argc, argv, blog_migrations())
 #
-#   app migrate apply  --sqlite <path> | --postgres <conninfo> [--force]
+#   app migrate apply  --sqlite <path> | --postgres <conninfo> [--force] [--upto <name>]
 #   app migrate sql    --sqlite <path> | --postgres <conninfo> [<name>]
 #   app migrate status --sqlite <path> | --postgres <conninfo>
 #   app migrate lint   [--sqlite | --postgres] (no connection; dialect only)
@@ -19,7 +19,7 @@ import lib.args
 
 
 void orm_cli_usage():
-	println2(c"usage: migrate apply|sql|status|lint (--sqlite <path> | --postgres <conninfo>) [--force] [<name>]")
+	println2(c"usage: migrate apply|sql|status|lint (--sqlite <path> | --postgres <conninfo>) [--force] [--upto <name>] [<name>]")
 
 
 int orm_cli_lint(list[orm_migration*] ms, int dialect):
@@ -78,7 +78,17 @@ int orm_cli_main(int argc, int argv, list[orm_migration*] ms):
 		return 1
 	int status = 0
 	if (strcmp(cmd, c"apply") == 0):
-		int n = orm_migrate_apply(db, ms, force)
+		# --upto <name>: apply the pending migrations up to and including name.
+		char* upto = args_value(c"upto")
+		list[orm_migration*] run = ms
+		if (upto != 0): run = orm_migrate_upto(ms, upto)
+		int n = -1
+		if (run == 0):
+			char* why = orm_mx_cat(c"no migration named ", upto, 0, 0)
+			orm_db_set_error(db, why)
+			free(why)
+		else: n = orm_migrate_apply(db, run, force)
+		if (upto != 0 && run != 0): run.free()
 		if (n < 0):
 			print2(c"orm: ")
 			println2(orm_db_error(db))

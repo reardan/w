@@ -473,7 +473,9 @@ list[orm_lint_finding*] orm_lint_migration(orm_migration* m, int dialect_id):
 	x.findings = new list[orm_lint_finding*]
 	for orm_op* op in m.ops:
 		if (op.phase == ORM_PHASE_EXPAND): x.has_expand = 1
-	for i in range(m.ops.length): orm_lint_op(x, i, m.ops[i])
+	for i in range(m.ops.length):
+		# Ops for another dialect (orm_op.dialects) never run here.
+		if (orm_op_runs_on(m.ops[i], dialect_id)): orm_lint_op(x, i, m.ops[i])
 	list[orm_lint_finding*] out = x.findings
 	free(cast(void*, x))
 	return out

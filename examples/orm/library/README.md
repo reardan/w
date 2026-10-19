@@ -12,7 +12,7 @@ document. Linux x64 (the SQL client's platform), SQLite or PostgreSQL.
 ```sh
 ./wbuild build                       # once: bin/wv2
 ./wbuild orm_library                 # bin/orm_library
-bin/orm_library migrate apply --sqlite library.db --force
+bin/orm_library migrate apply --sqlite library.db
 bin/orm_library createsuperuser --sqlite library.db admin admin@example.org s3cret
 bin/orm_library serve --sqlite library.db --port 8000
 ```
@@ -20,11 +20,13 @@ bin/orm_library serve --sqlite library.db --port 8000
 `--postgres "host=... dbname=..."` works wherever `--sqlite <path>` does.
 `migrate` is U2.4's command line over this app's migrations:
 `migrate status`, `migrate sql [<name>]`, `migrate lint [--postgres]`.
-`--force` is needed only on a fresh database, where every migration runs
-in one go: the applier otherwise refuses to run a contract migration in
-the same run as the expand migration it requires (`0004`/`0005` require
-`0002`). Upgrading a release-1 database is two plain `migrate apply`
-runs, one per deploy (see below).
+A fresh database takes every migration in one run: the applier refuses
+a contract migration in the same run as the expand migration it requires
+(`0004`/`0005` require `0002`) only once some of the app's migrations are
+recorded, since then old code may still be running. Upgrading a
+release-1 database is two `migrate apply` runs, one per deploy (see
+below); `migrate apply --upto library.0003_migrate_library_book_pages`
+stops after the expand deploy.
 
 Then, against the server:
 

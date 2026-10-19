@@ -33,7 +33,7 @@ char* BOOK_ISBN():
 void test_add_column_not_null_postgres():
 	orm_change* c = orm_change_new(ORM_CHANGE_ADD_COLUMN, c"book", c"isbn")
 	c.field_json = BOOK_ISBN()
-	assert_strings_equal(c"0007_expand_book_isbn (atomic)\n  expand ADD_COLUMN book.isbn null\n0008_migrate_book_isbn (non-atomic)\n  migrate BACKFILL book.isbn name=book_isbn_backfill batch=1000 non_atomic\n  migrate ADD_CONSTRAINT book.isbn name=book_isbn_not_null sql=\"CHECK (isbn IS NOT NULL)\"\n0009_contract_book_isbn (atomic) requires 0007_expand_book_isbn\n  contract VALIDATE_CONSTRAINT book.isbn name=book_isbn_not_null\n  contract ALTER_NULL book.isbn not-null\n  contract DROP_CONSTRAINT book.isbn name=book_isbn_not_null\n", plan_one(c, ORM_DIALECT_POSTGRES))
+	assert_strings_equal(c"0007_expand_book_isbn (atomic)\n  expand ADD_COLUMN book.isbn null\n0008_migrate_book_isbn (non-atomic)\n  migrate BACKFILL book.isbn name=book_isbn_backfill batch=1000 non_atomic\n  migrate ADD_CONSTRAINT book.isbn name=book_isbn_not_null sql=\"CHECK (isbn IS NOT NULL)\" postgres_only\n0009_contract_book_isbn (atomic) requires 0007_expand_book_isbn\n  contract VALIDATE_CONSTRAINT book.isbn name=book_isbn_not_null postgres_only\n  contract ALTER_NULL book.isbn not-null\n  contract DROP_CONSTRAINT book.isbn name=book_isbn_not_null postgres_only\n", plan_one(c, ORM_DIALECT_POSTGRES))
 
 
 void test_add_column_not_null_sqlite():
@@ -86,7 +86,7 @@ void test_rename_column():
 	orm_change* c = orm_change_new(ORM_CHANGE_RENAME_COLUMN, c"book", c"title")
 	c.new_name = c"name"
 	c.field_json = c"{\"name\": \"title\", \"column\": \"title\"}"
-	assert_strings_equal(c"0007_expand_book_title (atomic)\n  expand ADD_COLUMN book.name null\n  expand SYNC_TRIGGER book.name <- book.title\n0008_migrate_book_title (non-atomic)\n  migrate COPY_COLUMN book.name <- book.title batch=1000 non_atomic\n  migrate ADD_CONSTRAINT book.name name=book_name_not_null sql=\"CHECK (name IS NOT NULL)\"\n0009_contract_book_title (atomic) requires 0007_expand_book_title\n  contract VALIDATE_CONSTRAINT book.name name=book_name_not_null\n  contract ALTER_NULL book.name not-null\n  contract DROP_CONSTRAINT book.name name=book_name_not_null\n  contract ALTER_NULL book.title null deprecated\n  contract DROP_SYNC_TRIGGER book.name <- book.title\n0010_contract_book_title (atomic) requires 0007_expand_book_title\n  contract DROP_COLUMN book.title\n", plan_one(c, ORM_DIALECT_POSTGRES))
+	assert_strings_equal(c"0007_expand_book_title (atomic)\n  expand ADD_COLUMN book.name null\n  expand SYNC_TRIGGER book.name <- book.title\n0008_migrate_book_title (non-atomic)\n  migrate COPY_COLUMN book.name <- book.title batch=1000 non_atomic\n  migrate ADD_CONSTRAINT book.name name=book_name_not_null sql=\"CHECK (name IS NOT NULL)\" postgres_only\n0009_contract_book_title (atomic) requires 0007_expand_book_title\n  contract VALIDATE_CONSTRAINT book.name name=book_name_not_null postgres_only\n  contract ALTER_NULL book.name not-null\n  contract DROP_CONSTRAINT book.name name=book_name_not_null postgres_only\n  contract ALTER_NULL book.title null deprecated\n  contract DROP_SYNC_TRIGGER book.name <- book.title\n0010_contract_book_title (atomic) requires 0007_expand_book_title\n  contract DROP_COLUMN book.title\n", plan_one(c, ORM_DIALECT_POSTGRES))
 	# The new column's snapshot points at the new name.
 	orm_planner* p = orm_planner_new(c"library", ORM_DIALECT_SQLITE, 1, 0)
 	list[orm_change*] cs = new list[orm_change*]
@@ -156,7 +156,7 @@ void test_add_unique():
 void test_alter_null():
 	orm_change* c = orm_change_new(ORM_CHANGE_ALTER_NULL, c"book", c"isbn")
 	c.field_json = BOOK_ISBN()
-	assert_strings_equal(c"0007_migrate_book_isbn (non-atomic)\n  migrate BACKFILL book.isbn name=book_isbn_backfill batch=1000 non_atomic\n  migrate ADD_CONSTRAINT book.isbn name=book_isbn_not_null sql=\"CHECK (isbn IS NOT NULL)\"\n0008_contract_book_isbn (atomic) requires 0007_migrate_book_isbn\n  contract VALIDATE_CONSTRAINT book.isbn name=book_isbn_not_null\n  contract ALTER_NULL book.isbn not-null\n  contract DROP_CONSTRAINT book.isbn name=book_isbn_not_null\n", plan_one(c, ORM_DIALECT_POSTGRES))
+	assert_strings_equal(c"0007_migrate_book_isbn (non-atomic)\n  migrate BACKFILL book.isbn name=book_isbn_backfill batch=1000 non_atomic\n  migrate ADD_CONSTRAINT book.isbn name=book_isbn_not_null sql=\"CHECK (isbn IS NOT NULL)\" postgres_only\n0008_contract_book_isbn (atomic) requires 0007_migrate_book_isbn\n  contract VALIDATE_CONSTRAINT book.isbn name=book_isbn_not_null postgres_only\n  contract ALTER_NULL book.isbn not-null\n  contract DROP_CONSTRAINT book.isbn name=book_isbn_not_null postgres_only\n", plan_one(c, ORM_DIALECT_POSTGRES))
 	c.nullable = 1
 	assert_strings_equal(c"0007_expand_book_isbn (atomic)\n  expand ALTER_NULL book.isbn null\n", plan_one(c, ORM_DIALECT_POSTGRES))
 

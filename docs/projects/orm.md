@@ -58,6 +58,13 @@ native client library is missing.
 - **C7 migrations.** `orm_migration` is an ordered list of `orm_op`, each
   tagged expand, migrate or contract. Destructive ops are contract-phase and
   name the expand migration that must already be applied.
+  `orm_op.dialects` (H1) is 0 for "every dialect" or a mask of
+  `ORM_OP_ON_SQLITE` / `ORM_OP_ON_POSTGRES` (`1 << ORM_DIALECT_*`);
+  `orm_op_runs_on(op, dialect_id)` tells the applier and the linter
+  whether to run it. One committed migration list serves every dialect:
+  the planner masks PostgreSQL's `CHECK (c IS NOT NULL) NOT VALID`
+  tightening ops, which on SQLite would reject old-code inserts during a
+  rename.
 - **C8 history.** `<table>_history` tables written only by triggers, with
   `history_id/date/type/user_id/reason/context_id`; the context is published
   per transaction via `set_config('w_orm.context', ...)` on PostgreSQL and a
@@ -72,8 +79,9 @@ native client library is missing.
 
 For an `.orm` file declaring `app library`, `bin/orm_gen` writes two modules:
 
-**Data module** (`library_orm.w`, imports only `contract.w`), per model `M`
-in FK dependency order (ties keep declaration order):
+**Data module** (`library_orm.w`, imports `contract.w` plus the data
+module of each `.orm` file it `import`s for cross-file FK targets, H1),
+per model `M` in FK dependency order (ties keep declaration order):
 
 - `struct M` — `int id` first unless another pk is declared; scalar fields in
   declaration order; an FK `author` becomes `int author_id` followed by the
@@ -85,7 +93,8 @@ in FK dependency order (ties keep declaration order):
 - `orm_model_desc* M_desc()` — builds the descriptor once and registers it.
 - `char* M_f_<field>()` — field handles; `char* M_<Enum>_<value>()` — enum
   values; typed relation accessors `T* M_<fk>(M*)` and `list[T*] M_<rel>(M*)`.
-- `void <app>_register()` — calls every `M_desc()` and resolves relations.
+- `void <app>_register()` — calls each imported app's `<app>_register()`,
+  then every `M_desc()`, and resolves relations.
 
 Naming rules: table `<app>_<model lower-case>`; FK column `<field>_id` with
 `ORM_F_INDEXED`; M2M through table `<app>_<model>_<field>` with columns
@@ -141,3 +150,4 @@ landed units are listed here as they merge.
 | U4.3 web routing, middleware, templates, forms | [u4_3](orm/u4_3.md) | landed |
 | U5.1 admin | [u5_1](orm/u5_1.md) | landed |
 | U5.2 example library app | [u5_2](orm/u5_2.md) | landed |
+| H1 hardening pass | [h1](orm/h1.md) | landed |

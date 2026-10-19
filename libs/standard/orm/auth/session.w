@@ -242,6 +242,7 @@ auth_session* session_create(orm_db* db, int user_id):
 	Session* row = Session_new()
 	row.session_key = orm_row_own(m, row, auth_token_digest(raw))
 	row.user_id = user_id
+	row.user__isnull = user_id == 0
 	row.session_data = orm_row_own(m, row, auth_session_encode(s))
 	row.expire_date = orm_row_own(m, row, auth_time_text(s.expires_at))
 	row.created = orm_row_own(m, row, auth_time_text(now))
@@ -267,7 +268,10 @@ int auth_session_write(orm_db* db, auth_session* s, int with_key, int with_user,
 		char* digest = auth_token_digest(s.key)
 		scratch.push(digest)
 		sets.push(orm_set_text(c"session_key", digest))
-	if (with_user): sets.push(orm_set(c"user_id", val_int(s.user_id)))
+	if (with_user):
+		# user is a nullable FK to auth's User: anonymous is NULL.
+		if (s.user_id == 0): sets.push(orm_set(c"user", e_null()))
+		else: sets.push(orm_set(c"user", val_int(s.user_id)))
 	if (with_data):
 		char* text = auth_session_encode(s)
 		scratch.push(text)
@@ -313,6 +317,7 @@ auth_session* session_load(orm_db* db, char* raw):
 	s.id = row.id
 	s.key = strclone(raw)
 	s.user_id = row.user_id
+	if (row.user__isnull): s.user_id = 0
 	s.expires_at = expires
 	auth_session_decode(s, row.session_data)
 	orm_result_free(r)
@@ -424,7 +429,7 @@ User* session_user(orm_db* db, auth_session* s):
 # Deletes every session of user_id (e.g. after a password change).
 # Returns the count, -1 on error.
 int session_flush_user(orm_db* db, int user_id):
-	return Session_objects(db).filter(q_eq_int(c"user_id", user_id)).delete()
+	return Session_objects(db).filter(q_eq_int(c"user", user_id)).delete()
 
 
 # Django's clearsessions: deletes rows whose expiry is at or before now.

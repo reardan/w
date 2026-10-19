@@ -476,6 +476,20 @@ int orm_hist_after_drop_column(orm_mx_ctx* x, orm_op* op):
 	return ok
 
 
+# SYNC_TRIGGER between two columns on SQLite: SQLite fires the most
+# recently created trigger first, so the history triggers are reinstalled
+# after the dual-write triggers. An insert then records its '+' row before
+# the sync trigger's UPDATE records '~' (table rebuilds also recreate the
+# history triggers last). PostgreSQL's column sync is a BEFORE trigger.
+int orm_hist_after_sync_columns(orm_mx_ctx* x, orm_op* op):
+	if (orm_mx_pg(x)): return 1
+	char* hist = orm_hist_table(op.table)
+	int ok = 1
+	if (orm_hist_exists(x, hist)): ok = orm_hist_refresh(x, op.table, hist)
+	free(hist)
+	return ok
+
+
 # SWAP_TABLES (the last step of a table rebuild): the history triggers
 # followed the old rows' table, which now carries op.table's name. They
 # move to op.source_table, the rebuilt table, and PostgreSQL history column

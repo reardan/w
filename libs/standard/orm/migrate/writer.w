@@ -177,6 +177,9 @@ void orm_writer_op(string_builder* b, orm_op* op):
 	if (op.non_atomic): orm_writer_set_int(b, c"op", c"non_atomic", 1)
 	if (op.unsafe): orm_writer_set_int(b, c"op", c"unsafe", 1)
 	if (op.batch_size != 1000): orm_writer_set_int(b, c"op", c"batch_size", op.batch_size)
+	if (op.dialects == ORM_OP_ON_POSTGRES): string_append(b, c"\top.dialects = ORM_OP_ON_POSTGRES\n")
+	else if (op.dialects == ORM_OP_ON_SQLITE): string_append(b, c"\top.dialects = ORM_OP_ON_SQLITE\n")
+	else if (op.dialects != 0): orm_writer_set_int(b, c"op", c"dialects", op.dialects)
 	string_append(b, c"\torm_migration_add(m, op)\n")
 
 

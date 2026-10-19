@@ -383,8 +383,27 @@ int orm_pg_drop_trigger_function(orm_mx_ctx* x, char* base, char* table):
 	return ok
 
 
-# Gives a serial pk its own sequence back, moved past the current rows.
-int orm_pg_reset_serial(orm_mx_ctx* x, char* table):
+# The highest id the serial sequence of `table`'s pk has handed out (0 for
+# none or no sequence).
+int orm_pg_pk_high_water(orm_mx_ctx* x, char* table):
+	char* pk = orm_pg_pk(x, table)
+	char* seq = orm_pg_serial_sequence(x, table, pk)
+	free(pk)
+	if (seq == 0): return 0
+	char* q = orm_mx_cat(c"SELECT CASE WHEN is_called THEN last_value ELSE last_value - 1 END FROM ", seq, 0, 0)
+	char* v = orm_mx_scalar(x, q)
+	free(q)
+	free(seq)
+	if (v == 0): return 0
+	int n = atoi(v)
+	free(v)
+	return n
+
+
+# Gives a serial pk its own sequence back, moved past the current rows and
+# past `floor` (the ids the sequence both tables shared handed out), so the
+# id of a row deleted while the tables were in sync is not reused.
+int orm_pg_reset_serial(orm_mx_ctx* x, char* table, int floor):
 	char* pk = orm_pg_pk(x, table)
 	char* seq = orm_pg_serial_sequence(x, table, pk)
 	int ok = 1
@@ -394,9 +413,11 @@ int orm_pg_reset_serial(orm_mx_ctx* x, char* table):
 			string_builder* b = string_new()
 			string_append(b, c"SELECT setval(")
 			orm_mx_literal_to(b, seq)
-			string_append(b, c", COALESCE(MAX(")
+			string_append(b, c", GREATEST(COALESCE(MAX(")
 			orm_mx_ident_to(b, pk)
-			string_append(b, c"), 0) + 1, false) FROM ")
+			string_append(b, c"), 0), ")
+			string_append_int(b, floor)
+			string_append(b, c") + 1, false) FROM ")
 			orm_mx_ident_to(b, table)
 			ok = orm_mx_run_b(x, b)
 		free(seq)
@@ -417,8 +438,11 @@ int orm_pg_drop_table_sync(orm_mx_ctx* x, char* a, char* b):
 int orm_pg_drop_sync(orm_mx_ctx* x, orm_op* op):
 	if (op.source_table != 0):
 		int ok = orm_pg_drop_table_sync(x, op.table, op.source_table)
-		if (ok): ok = orm_pg_reset_serial(x, op.table)
-		if (ok): ok = orm_pg_reset_serial(x, op.source_table)
+		int high = orm_pg_pk_high_water(x, op.table)
+		int high_b = orm_pg_pk_high_water(x, op.source_table)
+		if (high_b > high): high = high_b
+		if (ok): ok = orm_pg_reset_serial(x, op.table, high)
+		if (ok): ok = orm_pg_reset_serial(x, op.source_table, high)
 		return ok
 	char* base = orm_mx_sync_column_name(op)
 	int ok2 = orm_pg_drop_trigger_function(x, base, op.table)

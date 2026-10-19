@@ -151,12 +151,12 @@ User* authenticate_token(orm_db* db, char* raw):
 # The tokens of user_id ordered by name (a result of ApiToken rows; free
 # with orm_result_free). One SELECT.
 orm_result* token_list(orm_db* db, int user_id):
-	return ApiToken_objects(db).filter(q_eq_int(c"user_id", user_id)).order_by(c"name").all()
+	return ApiToken_objects(db).filter(q_eq_int(c"user", user_id)).order_by(c"name").all()
 
 
 # Deletes user_id's token `name`. Returns the count (0 or 1), -1 on error.
 int token_revoke(orm_db* db, int user_id, char* name):
-	return ApiToken_objects(db).filter(q_and(q_eq_int(c"user_id", user_id), q_eq(c"name", name))).delete()
+	return ApiToken_objects(db).filter(q_and(q_eq_int(c"user", user_id), q_eq(c"name", name))).delete()
 
 
 # Deletes the token raw identifies (knox's logout). Returns the count,
@@ -173,7 +173,7 @@ int token_revoke_raw(orm_db* db, char* raw):
 
 # Deletes every token of user_id (knox's logoutall). Count, -1 on error.
 int token_revoke_all(orm_db* db, int user_id):
-	return ApiToken_objects(db).filter(q_eq_int(c"user_id", user_id)).delete()
+	return ApiToken_objects(db).filter(q_eq_int(c"user", user_id)).delete()
 
 
 # Deletes tokens whose expiry is at or before now. Count, -1 on error.

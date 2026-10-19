@@ -541,8 +541,8 @@ json_value* orm_ser_value_json(orm_serializer* ser, orm_field_desc* fd, void* ro
 	return json_string(s)
 
 
-# Row-meta entries named "prefetch:<to_attr>" hold prefetch lists (U2.1),
-# not text, and are never read here.
+# Prefetch to_attr lists live apart from annotations (row meta attr lists,
+# H1); "prefetch:" names stay refused as a guard.
 json_value* orm_ser_annotation_json(orm_serializer* ser, orm_ser_field* sf, void* row):
 	if (starts_with(sf.name, c"prefetch:")): return json_null()
 	char* text = orm_row_annotation(ser.model, row, sf.name)

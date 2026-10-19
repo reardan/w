@@ -41,20 +41,20 @@ void sess_check(orm_db* db, int ok):
 
 
 char* sess_sqlite_ddl(int i):
-	if (i == 0): return c"CREATE TABLE auth_session (id INTEGER PRIMARY KEY AUTOINCREMENT, session_key VARCHAR(64) NOT NULL UNIQUE, user_id INTEGER NOT NULL DEFAULT 0, session_data TEXT NOT NULL, expire_date TEXT NOT NULL, created TEXT NOT NULL)"
+	if (i == 0): return c"CREATE TABLE auth_session (id INTEGER PRIMARY KEY AUTOINCREMENT, session_key VARCHAR(64) NOT NULL UNIQUE, user_id INTEGER NULL REFERENCES auth_user (id) ON DELETE CASCADE, session_data TEXT NOT NULL, expire_date TEXT NOT NULL, created TEXT NOT NULL)"
 	if (i == 1): return c"CREATE INDEX auth_session_user_id_idx ON auth_session (user_id)"
 	if (i == 2): return c"CREATE INDEX auth_session_expire_date_idx ON auth_session (expire_date)"
-	if (i == 3): return c"CREATE TABLE auth_api_token (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, name VARCHAR(100) NOT NULL, token_key VARCHAR(8) NOT NULL, digest VARCHAR(64) NOT NULL UNIQUE, created TEXT NOT NULL, expiry TEXT NULL, last_used TEXT NULL, UNIQUE (user_id, name))"
+	if (i == 3): return c"CREATE TABLE auth_api_token (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES auth_user (id) ON DELETE CASCADE, name VARCHAR(100) NOT NULL, token_key VARCHAR(8) NOT NULL, digest VARCHAR(64) NOT NULL UNIQUE, created TEXT NOT NULL, expiry TEXT NULL, last_used TEXT NULL, UNIQUE (user_id, name))"
 	if (i == 4): return c"CREATE INDEX auth_api_token_user_id_idx ON auth_api_token (user_id)"
 	if (i == 5): return c"CREATE INDEX auth_api_token_token_key_idx ON auth_api_token (token_key)"
 	return 0
 
 
 char* sess_postgres_ddl(int i):
-	if (i == 0): return c"CREATE TABLE auth_session (id BIGSERIAL PRIMARY KEY, session_key VARCHAR(64) NOT NULL UNIQUE, user_id BIGINT NOT NULL DEFAULT 0, session_data TEXT NOT NULL, expire_date TIMESTAMP NOT NULL, created TIMESTAMP NOT NULL)"
+	if (i == 0): return c"CREATE TABLE auth_session (id BIGSERIAL PRIMARY KEY, session_key VARCHAR(64) NOT NULL UNIQUE, user_id BIGINT NULL REFERENCES auth_user (id) ON DELETE CASCADE, session_data TEXT NOT NULL, expire_date TIMESTAMP NOT NULL, created TIMESTAMP NOT NULL)"
 	if (i == 1): return c"CREATE INDEX auth_session_user_id_idx ON auth_session (user_id)"
 	if (i == 2): return c"CREATE INDEX auth_session_expire_date_idx ON auth_session (expire_date)"
-	if (i == 3): return c"CREATE TABLE auth_api_token (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL, name VARCHAR(100) NOT NULL, token_key VARCHAR(8) NOT NULL, digest VARCHAR(64) NOT NULL UNIQUE, created TIMESTAMP NOT NULL, expiry TIMESTAMP NULL, last_used TIMESTAMP NULL, UNIQUE (user_id, name))"
+	if (i == 3): return c"CREATE TABLE auth_api_token (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES auth_user (id) ON DELETE CASCADE, name VARCHAR(100) NOT NULL, token_key VARCHAR(8) NOT NULL, digest VARCHAR(64) NOT NULL UNIQUE, created TIMESTAMP NOT NULL, expiry TIMESTAMP NULL, last_used TIMESTAMP NULL, UNIQUE (user_id, name))"
 	if (i == 4): return c"CREATE INDEX auth_api_token_user_id_idx ON auth_api_token (user_id)"
 	if (i == 5): return c"CREATE INDEX auth_api_token_token_key_idx ON auth_api_token (token_key)"
 	return 0
@@ -761,6 +761,35 @@ void sess_case_throttle(orm_db* db):
 	login_throttle_free(lt)
 
 
+# session.orm's `user` is a cross-file FK to auth's User (H1): an
+# anonymous session stores NULL, and deleting the user (through the ORM
+# collector or plain SQL) deletes its sessions and tokens.
+void sess_case_user_fk(orm_db* db):
+	orm_field_desc* fk = orm_model_field(Session_desc(), c"user")
+	assert_equal(ORM_FK, fk.kind)
+	assert1(orm_field_target(fk) == User_desc())
+	assert_equal(ORM_CASCADE, orm_model_field(ApiToken_desc(), c"user").on_delete)
+	auth_session* anon = session_create(db, 0)
+	sess_check(db, anon != 0)
+	assert_equal(1, Session_objects(db).filter(q_and(q_eq_int(c"id", anon.id), q_isnull(c"user", 1))).count())
+	User* u = create_user(db, c"fk_user", c"fk@example.com", c"pw")
+	sess_check(db, u != 0)
+	auth_session* s = session_create(db, u.id)
+	sess_check(db, s != 0)
+	char* t = token_create(db, u.id, c"fk", 0)
+	sess_check(db, t != 0)
+	assert_equal(1, Session_objects(db).filter(q_eq_int(c"user", u.id)).count())
+	sess_check(db, User_delete(db, u))
+	assert_equal(0, Session_objects(db).filter(q_eq_int(c"id", s.id)).count())
+	assert_equal(0, ApiToken_objects(db).filter(q_eq_int(c"user", u.id)).count())
+	assert_equal(1, Session_objects(db).filter(q_eq_int(c"id", anon.id)).count())
+	free(t)
+	User_free(u)
+	auth_session_free(s)
+	auth_session_free(anon)
+	__sess_mark = db.query_count
+
+
 void orm_session_run(orm_db* db):
 	auth_register()
 	session_register()
@@ -773,5 +802,6 @@ void orm_session_run(orm_db* db):
 	sess_case_tokens(db)
 	sess_case_csrf()
 	sess_case_throttle(db)
+	sess_case_user_fk(db)
 	auth_set_clock(0)
 	auth_password_set_iterations(0)

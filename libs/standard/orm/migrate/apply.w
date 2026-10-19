@@ -1,6 +1,7 @@
 # w-orm migration applier (issue #754, unit U2.4; docs/projects/orm/u2_4.md).
 #
 #   int   orm_migrate_apply(orm_db* db, list[orm_migration*] ms, int force)
+#   list[orm_migration*] orm_migrate_upto(list[orm_migration*] ms, char* name)
 #   char* orm_migrate_sql(orm_db* db, list[orm_migration*] ms, char* name)
 #   char* orm_migrate_status(orm_db* db, list[orm_migration*] ms)
 #   int   orm_migrate_unapply(orm_db* db, orm_migration* m)
@@ -135,6 +136,12 @@ int orm_migrate_backfill(orm_mx_ctx* x, orm_op* op):
 
 int orm_migrate_op(orm_mx_ctx* x, orm_op* op):
 	int k = op.kind
+	if (orm_op_runs_on(op, x.dialect) == 0):
+		# Another dialect's op (orm_op.dialects): nothing to do here.
+		char* note = orm_mx_cat(orm_op_kind_name(k), c" skipped: not for this dialect", 0, 0)
+		orm_mx_comment(x, note)
+		free(note)
+		return 1
 	if (k == ORM_OP_CREATE_TABLE): return orm_mx_create_table(x, op)
 	if (k == ORM_OP_RAW_SQL):
 		if (op.sql == 0): return orm_mx_fail(x, c"RAW_SQL without sql", 0, 0)
@@ -252,6 +259,18 @@ int orm_migrate_pending_before(list[orm_migration*] pending, int upto, char* key
 	return 0
 
 
+# 1 when no migration of `app` is recorded: a brand-new database (for that
+# app) has no old code running, so a contract step may follow its expand
+# step in the same apply run.
+int orm_migrate_app_fresh(list[orm_applied_row*] applied, char* app):
+	char* prefix = orm_migration_key(app, c"")
+	int fresh = 1
+	for orm_applied_row* a in applied:
+		if (starts_with_at(a.key, prefix, 0)): fresh = 0
+	free(prefix)
+	return fresh
+
+
 int orm_migrate_check(orm_mx_ctx* x, list[orm_migration*] pending, list[orm_applied_row*] applied, int force):
 	for i in range(pending.length):
 		orm_migration* m = pending[i]
@@ -280,7 +299,7 @@ int orm_migrate_check(orm_mx_ctx* x, list[orm_migration*] pending, list[orm_appl
 			int ok = 1
 			if (orm_migrate_find(applied, r) == 0):
 				if (orm_migrate_pending_before(pending, i, r)):
-					if (force == 0):
+					if (force == 0 && orm_migrate_app_fresh(applied, m.app) == 0):
 						orm_mx_fail(x, mkey, c": requires ", r)
 						char* t2 = orm_mx_cat(orm_db_error(x.db), c" to be applied by an earlier deploy, not in the same apply run (pass force to override)", 0, 0)
 						orm_db_set_error(x.db, t2)
@@ -328,9 +347,10 @@ list[orm_migration*] orm_migrate_pending(list[orm_migration*] ms, list[orm_appli
 # running anything it lints each pending migration (errors refuse unless
 # force), refuses ops marked unsafe unless force, and checks
 # requires_applied (the named migration must have been recorded by an
-# earlier apply run; force also accepts one earlier in this run) and
-# dependencies. Returns the number applied, or -1 with orm_db_error set;
-# a failing migration is rolled back (atomic) and stops the run.
+# earlier apply run; force, or an app with no recorded migration yet, also
+# accepts one earlier in this run) and dependencies. Returns the number
+# applied, or -1 with orm_db_error set; a failing migration is rolled back
+# (atomic) and stops the run.
 int orm_migrate_apply(orm_db* db, list[orm_migration*] ms, int force):
 	orm_db_set_error(db, c"")
 	orm_mx_ctx* x = orm_mx_new(db, 0)
@@ -368,6 +388,21 @@ int orm_migrate_apply(orm_db* db, list[orm_migration*] ms, int force):
 	pending.free()
 	orm_migrate_rows_free(applied)
 	return count
+
+
+# The prefix of `ms` up to and including migration `name` ("0003_x" or
+# "app.0003_x"); 0 when no migration has that name. The list is new (the
+# migrations are shared): free it with .free().
+list[orm_migration*] orm_migrate_upto(list[orm_migration*] ms, char* name):
+	list[orm_migration*] out = new list[orm_migration*]
+	for orm_migration* m in ms:
+		out.push(m)
+		char* key = orm_migration_key(m.app, m.name)
+		int hit = strcmp(name, m.name) == 0 || strcmp(name, key) == 0
+		free(key)
+		if (hit): return out
+	out.free()
+	return 0
 
 
 # The SQL apply would run, without running it: every pending migration, or
@@ -469,6 +504,7 @@ orm_op* orm_migrate_inverse(orm_op* op):
 		r.source_table = op.source_table
 		r.source_column = op.source_column
 	r.non_atomic = op.non_atomic
+	r.dialects = op.dialects
 	return r
 
 

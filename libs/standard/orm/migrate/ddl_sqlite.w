@@ -172,6 +172,40 @@ int orm_sqlite_is_constraint_word(char* w):
 # The 12-step rebuild of `table` with one change to its definition.
 # Returns 1 when rebuilt, 2 when the change matched nothing (the table is
 # left alone), 0 on error.
+# AUTOINCREMENT high-water mark: sqlite_sequence[to] becomes at least
+# sqlite_sequence[from], so ids deleted from `from` are not handed out
+# again once its rows live in `to` (a rebuild or a table swap).
+int orm_sqlite_keep_sequence(orm_mx_ctx* x, char* to, char* from):
+	char* has = orm_mx_scalar(x, c"SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
+	if (has == 0): return 1
+	free(has)
+	char* lt = orm_mx_literal(to)
+	char* lf = orm_mx_literal(from)
+	char* from_seq = orm_mx_cat(c"(SELECT seq FROM sqlite_sequence WHERE name = ", lf, c")", 0)
+	string_builder* b = string_new()
+	string_append(b, c"INSERT INTO sqlite_sequence (name, seq) SELECT ")
+	string_append(b, lt)
+	string_append(b, c", seq FROM sqlite_sequence WHERE name = ")
+	string_append(b, lf)
+	string_append(b, c" AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = ")
+	string_append(b, lt)
+	string_append(b, c")")
+	int ok = orm_mx_run_b(x, b)
+	string_builder* u = string_new()
+	string_append(u, c"UPDATE sqlite_sequence SET seq = ")
+	string_append(u, from_seq)
+	string_append(u, c" WHERE name = ")
+	string_append(u, lt)
+	string_append(u, c" AND seq < ")
+	string_append(u, from_seq)
+	if (ok): ok = orm_mx_run_b(x, u)
+	else: string_free(u)
+	free(from_seq)
+	free(lt)
+	free(lf)
+	return ok
+
+
 int orm_sqlite_rebuild(orm_mx_ctx* x, char* table, int mode, char* column, char* arg):
 	char* q = orm_sqlite_table_query(c"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ", table, 0)
 	char* sql = orm_mx_scalar(x, q)
@@ -254,9 +288,12 @@ int orm_sqlite_rebuild(orm_mx_ctx* x, char* table, int mode, char* column, char*
 		orm_mx_ident_to(ins, table)
 		ok = orm_mx_run_b(x, ins)
 	orm_mx_free_strings(cols)
-	char* oq = orm_sqlite_table_query(c"SELECT sql FROM sqlite_master WHERE tbl_name = ", table, c" AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, name")
+	# SQLite fires the most recently created trigger first: history
+	# triggers are recreated last so they still run before sync triggers.
+	char* oq = orm_sqlite_table_query(c"SELECT sql FROM sqlite_master WHERE tbl_name = ", table, c" AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, substr(name, 1, 7) = 'w_hist_', name")
 	list[char*] others = orm_mx_column_list(x, oq)
 	free(oq)
+	if (ok): ok = orm_sqlite_keep_sequence(x, tmp, table)
 	if (ok): ok = orm_mx_run(x, orm_mx_cat(c"DROP TABLE ", orm_mx_ident(table), 0, 0))
 	if (ok):
 		string_builder* rn = string_new()
@@ -481,6 +518,7 @@ int orm_sqlite_sync_columns(orm_mx_ctx* x, orm_op* op):
 		if (ok): ok = orm_mx_run_b(x, u)
 		else: string_free(u)
 		free(name)
+	if (ok): ok = orm_hist_after_sync_columns(x, op)
 	free(base)
 	free(qt)
 	free(qn)
@@ -722,6 +760,7 @@ int orm_sqlite_swap(orm_mx_ctx* x, orm_op* op):
 	int ok = orm_sqlite_rename(x, op.source_table, tmp)
 	if (ok): ok = orm_sqlite_rename(x, op.table, op.source_table)
 	if (ok): ok = orm_sqlite_rename(x, tmp, op.table)
+	if (ok): ok = orm_sqlite_keep_sequence(x, op.source_table, op.table)
 	if (ok): ok = orm_sqlite_swap_index_names(x, op.table, op.source_table)
 	if (ok): ok = orm_hist_after_swap(x, op)
 	free(tmp)

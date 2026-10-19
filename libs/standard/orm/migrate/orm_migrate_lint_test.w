@@ -178,6 +178,20 @@ void test_postgres_constraints_and_not_null():
 	assert_strings_equal(c"", summary(v, ORM_DIALECT_POSTGRES))
 
 
+# An op masked to one dialect (orm_op.dialects, H1) lints only there.
+void test_dialect_mask():
+	orm_migration* m = mig(c"0017_masked")
+	orm_op* r = raw(m, c"ALTER TABLE book ADD CHECK (price >= 0)")
+	r.dialects = ORM_OP_ON_POSTGRES
+	orm_op* s = raw(m, c"ALTER TABLE book RENAME COLUMN a TO b")
+	s.dialects = ORM_OP_ON_SQLITE
+	assert_strings_equal(c"warning W-ORM-M010@0", summary(m, ORM_DIALECT_POSTGRES))
+	assert_strings_equal(c"error W-ORM-M002@1", summary(m, ORM_DIALECT_SQLITE))
+	assert1(orm_op_runs_on(r, 0))
+	assert1(orm_op_runs_on(r, ORM_DIALECT_POSTGRES))
+	assert1(orm_op_runs_on(r, ORM_DIALECT_SQLITE) == 0)
+
+
 void test_messages_and_helpers():
 	orm_migration* m = mig(c"0017_msg")
 	orm_op* a = add(m, ORM_OP_ADD_COLUMN, ORM_PHASE_EXPAND, c"book", c"isbn")
@@ -211,6 +225,7 @@ int main():
 	test_destructive_ops()
 	test_atomicity()
 	test_postgres_constraints_and_not_null()
+	test_dialect_mask()
 	test_messages_and_helpers()
 	print(c"orm_migrate_lint_test: ok\n")
 	return 0

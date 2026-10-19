@@ -5,7 +5,10 @@
 # wbuild: step="bin/orm migrate lint --postgres" expect_fail expect_stdout="W-ORM-M005"
 # wbuild: step="bin/orm migrate status --sqlite bin/orm_cli_test.db" expect_stdout="[ ] demo.0001_initial (pending)"
 # wbuild: step="bin/orm migrate sql --sqlite bin/orm_cli_test.db 0002_expand_demo_item_note" expect_stdout="ADD COLUMN"
-# wbuild: step="bin/orm migrate apply --sqlite bin/orm_cli_test.db" expect_stdout="applied 3 migrations"
+# wbuild: step="bin/orm migrate apply --sqlite bin/orm_cli_test.db --upto 0009_nope" expect_fail expect_stderr="no migration named 0009_nope"
+# wbuild: step="bin/orm migrate apply --sqlite bin/orm_cli_test.db --upto demo.0002_expand_demo_item_note" expect_stdout="applied 2 migrations"
+# wbuild: step="bin/orm migrate status --sqlite bin/orm_cli_test.db" expect_stdout="[ ] demo.0003_demo_rows (pending)"
+# wbuild: step="bin/orm migrate apply --sqlite bin/orm_cli_test.db" expect_stdout="applied 1 migrations"
 # wbuild: step="bin/orm migrate apply --sqlite bin/orm_cli_test.db" expect_stdout="applied 0 migrations"
 # wbuild: step="bin/orm migrate status --sqlite bin/orm_cli_test.db" expect_stdout="[X] demo.0003_demo_rows (applied"
 # wbuild: step="bin/orm migrate apply" expect_fail expect_stderr="usage:"
@@ -13,7 +16,7 @@
 orm: the w-orm migration command line (issue #754, unit U2.4;
 docs/projects/orm/u2_4.md).
 
-	bin/orm migrate apply|sql|status|lint --sqlite <path> | --postgres <conninfo> [--force] [<name>]
+	bin/orm migrate apply|sql|status|lint --sqlite <path> | --postgres <conninfo> [--force] [--upto <name>] [<name>]
 
 Applications link the same command line into their own binary with their
 own migration list (libs/standard/orm/migrate/cli.w, orm_cli_main). This

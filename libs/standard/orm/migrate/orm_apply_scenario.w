@@ -102,8 +102,9 @@ void deploy(orm_migration* m):
 	assert_equal(1, n)
 
 
-list[orm_migration*] plan_change(orm_change* c):
-	orm_planner* p = orm_planner_new(c"library", T_DIALECT, T_NEXT, T_PREV)
+# Planned for `dialect`, linted and applied on T_DIALECT.
+list[orm_migration*] plan_change_as(orm_change* c, int dialect):
+	orm_planner* p = orm_planner_new(c"library", dialect, T_NEXT, T_PREV)
 	list[orm_change*] cs = new list[orm_change*]
 	cs.push(c)
 	list[orm_migration*] plan = orm_plan(p, cs)
@@ -113,6 +114,10 @@ list[orm_migration*] plan_change(orm_change* c):
 	T_NEXT = p.next_number
 	T_PREV = plan[plan.length - 1].name
 	return plan
+
+
+list[orm_migration*] plan_change(orm_change* c):
+	return plan_change_as(c, T_DIALECT)
 
 
 orm_migration* hand_migration(char* label):
@@ -200,7 +205,7 @@ void step_initial():
 	if (t_pg()):
 		assert_contains(sql, c"\"id\" BIGSERIAL PRIMARY KEY")
 		assert_contains(sql, c"NUMERIC(8, 2)")
-	else: assert_contains(sql, c"\"id\" INTEGER PRIMARY KEY")
+	else: assert_contains(sql, c"\"id\" INTEGER PRIMARY KEY AUTOINCREMENT")
 	char* status = orm_migrate_status(T_DB, T_ALL)
 	assert_contains(status, c"[ ] library.0001_initial (pending)")
 	assert_equal(1, t_apply(T_ALL, 0))
@@ -407,19 +412,27 @@ void step_unique_check_fk_index():
 	else: assert_equal(1, t_num(c"SELECT COUNT(*) FROM sqlite_master WHERE name = 'library_book_published_at_idx'"))
 
 
-# Rename column title -> name: duplication with dual-write triggers.
+# Rename column title -> name: duplication with dual-write triggers. title
+# is NOT NULL, so the PostgreSQL plan carries the CHECK (name IS NOT NULL)
+# NOT VALID ops (PostgreSQL-only, orm_op.dialects); one plan made for
+# PostgreSQL is applied on both dialects, as a committed list would be.
 void step_rename_column():
 	orm_change* c = orm_change_new(ORM_CHANGE_RENAME_COLUMN, c"library_book", c"title")
 	c.field_json = field_json(c"Book", c"title")
 	c.new_name = c"name"
 	c.batch_size = 2
-	list[orm_migration*] plan = plan_change(c)
+	list[orm_migration*] plan = plan_change_as(c, ORM_DIALECT_POSTGRES)
 	assert_equal(4, plan.length)
+	assert_equal(ORM_OP_ON_POSTGRES, plan[1].ops[plan[1].ops.length - 1].dialects)
 	deploy(plan[0])
 	char* ann = author_id(c"ann@x")
 	# old code writes title, new code writes name; each sees its column.
 	t_ok(q(c"INSERT INTO library_book (title, author_id, price, isbn) VALUES ('old-rc', ", ann, c", 1, 'isbn-old-rc')", 0))
 	t_eq(c"old-rc", c"SELECT name FROM library_book WHERE isbn = 'isbn-old-rc'")
+	# History records the insert first: on SQLite the dual-write UPDATE adds
+	# a '~' row after it, never before (the history triggers fire first).
+	t_eq(c"+", c"SELECT history_type FROM library_book_history WHERE isbn = 'isbn-old-rc' ORDER BY history_id LIMIT 1")
+	t_eq(c"old-rc", c"SELECT name FROM library_book_history WHERE isbn = 'isbn-old-rc' ORDER BY history_id DESC LIMIT 1")
 	t_ok(q(c"INSERT INTO library_book (name, author_id, price, isbn) VALUES ('new-rc', ", ann, c", 1, 'isbn-new-rc')", 0))
 	t_eq(c"new-rc", c"SELECT title FROM library_book WHERE isbn = 'isbn-new-rc'")
 	t_ok(c"UPDATE library_book SET title = 'old-rc2' WHERE isbn = 'isbn-old-rc'")
@@ -430,6 +443,9 @@ void step_rename_column():
 	deploy(plan[1])
 	assert_equal(0, t_num(c"SELECT COUNT(*) FROM library_book WHERE name IS NULL"))
 	assert_equal(0, t_num(c"SELECT COUNT(*) FROM library_book WHERE name <> title"))
+	# Old code still inserts after the migrate step (no CHECK on SQLite).
+	t_ok(q(c"INSERT INTO library_book (title, author_id, price, isbn) VALUES ('old-rc4', ", ann, c", 1, 'isbn-old-rc4')", 0))
+	t_eq(c"old-rc4", c"SELECT name FROM library_book WHERE isbn = 'isbn-old-rc4'")
 	deploy(plan[2])
 	T_TITLE = c"name"
 	t_ok(q(c"INSERT INTO library_book (name, author_id, price, isbn) VALUES ('new-rc3', ", ann, c", 1, 'isbn-new-rc3')", 0))
@@ -481,7 +497,15 @@ void step_alter_null():
 	assert_equal(2, plan.length)
 	deploy(plan[0])
 	t_eq(c"0", c"SELECT COUNT(*) FROM library_book WHERE price IS NULL")
+	# The newest book is deleted before SET NOT NULL (a 12-step rebuild on
+	# SQLite): its id is not handed out again afterwards.
+	t_ok(NEW_BOOK(c"gone", c"", c""))
+	int gone = t_num(c"SELECT id FROM library_book WHERE isbn = 'isbn-gone'")
+	t_ok(c"DELETE FROM library_book WHERE isbn = 'isbn-gone'")
 	deploy(plan[1])
+	t_ok(NEW_BOOK(c"after-gone", c"", c""))
+	assert1(t_num(c"SELECT id FROM library_book WHERE isbn = 'isbn-after-gone'") > gone)
+	t_ok(c"DELETE FROM library_book WHERE isbn = 'isbn-after-gone'")
 	t_bad(c"UPDATE library_book SET price = NULL WHERE isbn = 'isbn-nullprice'")
 	t_bad(c"UPDATE library_book SET price = -5 WHERE isbn = 'isbn-nullprice'")
 	assert_equal(1, t_num(c"SELECT COUNT(*) FROM library_book_tags"))
@@ -502,6 +526,7 @@ void step_rebuild_table():
 	t_eq(c"Dan", c"SELECT name FROM library_author__new WHERE email = 'dan@x'")
 	t_ok(c"UPDATE library_author SET name = 'Danny' WHERE email = 'dan@x'")
 	t_eq(c"Danny", c"SELECT name FROM library_author__new WHERE email = 'dan@x'")
+	char* dan = author_id(c"dan@x")
 	t_ok(c"DELETE FROM library_author WHERE email = 'dan@x'")
 	assert_equal(0, t_num(c"SELECT COUNT(*) FROM library_author__new WHERE email = 'dan@x'"))
 	assert_equal(0, t_num(c"SELECT COUNT(*) FROM library_author__new WHERE email = 'cat@x'"))
@@ -513,7 +538,10 @@ void step_rebuild_table():
 	assert1(t_column_exists(c"library_author__new", c"bio") == 0)
 	assert_strings_equal(ann, author_id(c"ann@x"))
 	t_ok(c"INSERT INTO library_author (name, email, created, bio) VALUES ('Eve', 'eve@x', '2026-01-05 00:00:00', 'hi')")
-	assert1(atoi(author_id(c"eve@x")) > atoi(author_id(c"cat@x")))
+	# Dan (the newest author, deleted while the tables were in sync) does
+	# not hand his id to Eve: SQLite's sqlite_sequence and PostgreSQL's
+	# sequence keep their high-water mark across the swap.
+	assert1(atoi(author_id(c"eve@x")) > atoi(dan))
 	# FKs from library_book now point at the rebuilt table.
 	char* eve = author_id(c"eve@x")
 	t_ok(q(c"INSERT INTO library_book (name, author_id, price, isbn) VALUES ('eve book', ", eve, c", 1, 'isbn-eve')", 0))

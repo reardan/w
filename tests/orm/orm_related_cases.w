@@ -203,6 +203,14 @@ void test_prefetch_objects(orm_db* db, rel_data* d):
 	assert_equal(3, orm_row_annotation_int(Author_desc(), authors[0], c"n", -1))
 	assert_equal(2, orm_row_annotation_int(Author_desc(), authors[1], c"n", -1))
 	assert_equal(1, orm_row_prefetched(Author_desc(), authors[1], c"published").length)
+	# The list lives in the row meta's attr lists (H1), not among the text
+	# annotations: no annotation answers to the to_attr name.
+	orm_row_meta* meta = orm_row_meta_get(Author_desc(), authors[1])
+	assert_equal(1, meta.ann_names.length)
+	assert_equal(1, meta.attr_names.length)
+	assert_strings_equal(c"published", meta.attr_names[0])
+	assert1(orm_row_annotation(Author_desc(), authors[1], c"published") == 0)
+	assert1(orm_row_annotation(Author_desc(), authors[1], c"prefetch:published") == 0)
 	orm_result_free(r)
 	# to_attr on a forward FK and on an M2M (custom queryset on Tag).
 	r = Book_objects(db).prefetch(orm_prefetch_new(c"author", 0, c"writer")).order_by(c"id").all()

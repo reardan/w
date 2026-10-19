@@ -143,10 +143,53 @@ void test_errors():
 	assert_equal(2, s.errors.length)
 
 
+# H1: names the history wrappers take (U3.3) are refused for relations
+# of history models, and `import` makes another file's models FK targets.
+void test_history_names():
+	expect_error(c"app x\nmodel A:\n\thistory\n\tfk history -> A null\n", c"t.orm:4: relation name 'history' clashes with a generated function")
+	expect_error(c"app x\nmodel A:\n\tm2m as_of -> A\n\thistory\n", c"t.orm:3: relation name 'as_of' clashes with a generated function")
+	expect_error(c"app x\nmodel A:\n\thistory\nmodel B:\n\tfk a -> A related_name=prune_history\n", c"t.orm:5: related_name 'prune_history' clashes with a generated function")
+	expect_error(c"app x\nmodel A:\n\thistory\nmodel B:\n\tfk a -> A related_name=history_row\n", c"t.orm:5: related_name 'history_row' clashes with a generated function")
+	# Without history the names are free.
+	orm_schema* s = parse(c"app x\nmodel A:\n\tfk history -> A null\n")
+	assert_equal(0, s.errors.length)
+
+
+void test_imports():
+	char* text = c"app sess\nimport libs/standard/orm/auth/auth.orm\nmodel Visit:\n\tfk user -> User on_delete=cascade\n\tfk group -> Group null on_delete=set_null\n"
+	orm_schema* s = parse(text)
+	assert_equal(0, s.errors.length)
+	assert_equal(1, s.imports.length)
+	assert_strings_equal(c"auth", s.imports[0].app)
+	assert_strings_equal(c"libs.standard.orm.auth.auth_orm", s.import_modules[0])
+	assert1(orm_schema_is_external(s, c"User"))
+	assert1(orm_schema_is_external(s, c"Visit") == 0)
+	char* data = orm_codegen_data(s)
+	assert_contains(data, c"import libs.standard.orm.contract\nimport libs.standard.orm.auth.auth_orm\n")
+	assert_contains(data, c"\tint user_id\n\tUser* user\n")
+	assert_contains(data, c"\tGroup* group\n\tint group__isnull\n")
+	assert_contains(data, c"f.rel_model = c\"User\"\n")
+	assert_contains(data, c"User* Visit_user(Visit* row): return row.user\n")
+	assert_contains(data, c"void sess_register():\n\tauth_register()\n\tVisit_desc()\n")
+	# The import is found next to the importing file too.
+	orm_schema* near = orm_schema_parse(c"app sess\nimport auth.orm\nmodel V:\n\tfk u -> User\n", c"libs/standard/orm/auth/sess.orm")
+	assert_equal(0, near.errors.length)
+	assert_strings_equal(c"libs.standard.orm.auth.auth_orm", near.import_modules[0])
+	expect_error(c"app x\nimport nowhere/none.orm\n", c"t.orm:2: cannot read import 'nowhere/none.orm'")
+	expect_error(c"app x\nimport libs/standard/orm/auth/auth_orm.w\n", c"t.orm:2: import 'libs/standard/orm/auth/auth_orm.w' is not an .orm file")
+	expect_error(c"app x\nimport\n", c"t.orm:2: expected 'import <path/to/file.orm>'")
+	expect_error(c"app auth\nimport libs/standard/orm/auth/auth.orm\n", c"t.orm:2: import 'libs/standard/orm/auth/auth.orm' declares this file's own app")
+	expect_error(c"app x\nimport libs/standard/orm/auth/auth.orm\nmodel V:\n\tm2m users -> User\n", c"t.orm:4: M2M target 'User' is in an imported file (only FKs may cross files)")
+	expect_error(c"app x\nimport libs/standard/orm/auth/auth.orm\nmodel V:\n\tfk u -> User related_name=visits\n", c"t.orm:4: related_name 'visits' needs a target in this file (the imported module is generated on its own)")
+	expect_error(c"app x\nimport libs/standard/orm/auth/auth.orm\nmodel User:\n\tint n\n", c"t.orm:3: model 'User' clashes with a model of an imported file")
+
+
 int main():
 	test_library()
 	test_syntax()
 	test_cycle_order()
 	test_errors()
+	test_history_names()
+	test_imports()
 	println(c"orm_schema_test: ok")
 	return 0

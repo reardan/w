@@ -619,35 +619,40 @@ void ex_api_history(int lathe):
 	assert_equal(X.librarian.id, ex_int(newest, c"history_user_id"))
 	char* reason = ex_fmt(c"PATCH /api/books/@/", lathe)
 	assert_strings_equal(reason, ex_str(newest, c"history_reason"))
-	# The insert: one '+' row in the POST's context. (On SQLite the
-	# rename's AFTER INSERT dual write also records a '~' row for the same
-	# statement, with a lower history_id; and a reused SQLite rowid can put
-	# an earlier, deleted book's rows in this list. So look the row up.)
+	# The oldest row is the insert, in the POST's context, and the only '+'
+	# row: ids are never reused (SQLite AUTOINCREMENT), so no deleted
+	# book's rows show up. On SQLite the rename's dual write records a '~'
+	# row right after it (history triggers fire first).
+	int n = json_array_length(arr)
+	json_value* first = json_array_get(arr, n - 1)
+	assert_strings_equal(c"+", ex_str(first, c"history_type"))
+	assert_strings_equal(c"POST /api/books/", ex_str(first, c"history_reason"))
+	assert_equal(X.librarian.id, ex_int(first, c"history_user_id"))
+	assert_equal(184, ex_int(first, c"page_count"))
+	assert_strings_equal(c"draft", ex_str(first, c"status"))
 	int inserts = 0
-	for i in range(json_array_length(arr)):
-		json_value* e = json_array_get(arr, i)
-		if (strcmp(ex_str(e, c"history_type"), c"+") != 0): continue
-		if (ex_is_null(e, c"history_reason") || strcmp(ex_str(e, c"history_reason"), c"POST /api/books/") != 0): continue
-		assert_equal(X.librarian.id, ex_int(e, c"history_user_id"))
-		assert_equal(184, ex_int(e, c"page_count"))
-		assert_strings_equal(c"draft", ex_str(e, c"status"))
-		inserts = inserts + 1
+	for i in range(n):
+		if (strcmp(ex_str(json_array_get(arr, i), c"history_type"), c"+") == 0): inserts = inserts + 1
 	assert_equal(1, inserts)
 	json_free(arr)
 	free(body)
-	# The checkout's loan was written in the reader's request context.
+	# The checkout's loan was written in the reader's request context: its
+	# oldest (and only '+') history row.
 	orm_result* loans = Loan_objects(X.db).filter(q_eq_int(c"book", X.dispossessed)).all()
 	ex_check(X.db, loans != 0 && loans.rows.length == 1)
 	orm_result* h = Loan_history(X.db, Loan_rows(loans)[0])
 	ex_check(X.db, h != 0)
+	list[orm_history_entry*] es = orm_history_entries(h)
+	orm_history_entry* oldest = es[es.length - 1]
+	assert_equal(ORM_HISTORY_INSERT, oldest.type)
 	char* why = ex_fmt(c"POST /api/books/@/checkout/", X.dispossessed)
-	int found = 0
-	for orm_history_entry* e in orm_history_entries(h):
-		if (e.type != ORM_HISTORY_INSERT || e.reason == 0 || strcmp(e.reason, why) != 0): continue
-		assert_equal(X.reader.id, e.user_id)
-		assert_equal(X.dispossessed, Loan_history_row(e).book_id)
-		found = found + 1
-	assert_equal(1, found)
+	assert_strings_equal(why, oldest.reason)
+	assert_equal(X.reader.id, oldest.user_id)
+	assert_equal(X.dispossessed, Loan_history_row(oldest).book_id)
+	int loan_inserts = 0
+	for orm_history_entry* e in es:
+		if (e.type == ORM_HISTORY_INSERT): loan_inserts = loan_inserts + 1
+	assert_equal(1, loan_inserts)
 	free(why)
 	char* lh = ex_expect(ex_call(c"GET", ex_fmt(c"/api/loans/@/history/", Loan_rows(loans)[0].id), 0, X.reader_tok, 0, 0), 200, 0)
 	assert_contains(lh, c"\"history_type\":\"~\"")

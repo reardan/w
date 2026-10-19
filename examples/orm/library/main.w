@@ -5,9 +5,12 @@
 # wbuild: step="bin/orm_library migrate lint --postgres" expect_stdout="lint: 7 migrations, 0 errors, 0 warnings"
 # wbuild: step="bin/orm_library migrate status --sqlite bin/orm_example_cli.db" expect_stdout="[ ] library.0002_expand_library_book_pages (pending)"
 # wbuild: step="bin/orm_library migrate sql --sqlite bin/orm_example_cli.db 0001_initial" expect_stdout="CREATE TABLE"
-# wbuild: step="bin/orm_library migrate apply --sqlite bin/orm_example_cli.db" expect_fail expect_stderr="to be applied by an earlier deploy"
-# wbuild: step="bin/orm_library migrate apply --sqlite bin/orm_example_cli.db --force" expect_stdout="applied 7 migrations"
+# wbuild: step="bin/orm_library migrate apply --sqlite bin/orm_example_cli.db --upto library.0003_migrate_library_book_pages" expect_stdout="applied 5 migrations"
+# wbuild: step="bin/orm_library migrate status --sqlite bin/orm_example_cli.db" expect_stdout="[ ] library.0004_contract_library_book_pages (pending, requires library.0002_expand_library_book_pages)"
+# wbuild: step="bin/orm_library migrate apply --sqlite bin/orm_example_cli.db" expect_stdout="applied 2 migrations"
 # wbuild: step="bin/orm_library migrate apply --sqlite bin/orm_example_cli.db" expect_stdout="applied 0 migrations"
+# wbuild: step="rm -f bin/orm_example_cli_fresh.db"
+# wbuild: step="bin/orm_library migrate apply --sqlite bin/orm_example_cli_fresh.db" expect_stdout="applied 7 migrations"
 # wbuild: step="bin/orm_library createsuperuser --sqlite bin/orm_example_cli.db admin admin@example.com pw" expect_stdout="created superuser admin"
 # wbuild: step="bin/orm_library createsuperuser --sqlite bin/orm_example_cli.db admin admin@example.com pw" expect_fail
 # wbuild: step="bin/orm_library serve" expect_fail expect_stderr="usage:"
@@ -15,15 +18,16 @@
 orm_library: the example library app's binary (issue #754, unit U5.2;
 examples/orm/library/README.md).
 
-	bin/orm_library migrate apply|sql|status|lint (--sqlite <path> | --postgres <conninfo>) [--force] [<name>]
+	bin/orm_library migrate apply|sql|status|lint (--sqlite <path> | --postgres <conninfo>) [--force] [--upto <name>] [<name>]
 	bin/orm_library createsuperuser (--sqlite <path> | --postgres <conninfo>) <username> <email> <password>
 	bin/orm_library serve (--sqlite <path> | --postgres <conninfo>) [--port 8000] [--host 127.0.0.1]
 
 migrate is U2.4's command line over this app's migrations
 (migrations.w). The applier refuses a contract migration in the same run
-as the expand step it requires, so a fresh database that takes every
-migration at once needs `migrate apply --force` (the list lints clean
-and has no unsafe ops, so force only waives that rule). serve answers the REST API
+as the expand step it requires, unless none of that app's migrations is
+recorded yet: a fresh database takes the whole list in one
+`migrate apply`, and `--upto <name>` stops after one migration (deploy
+the expand step, then the contract step later). serve answers the REST API
 (app.w) until killed; the session cookie is sent without Secure, since
 this server speaks plain HTTP.
 */

@@ -5,8 +5,9 @@
 #
 # Row layout: every row the ORM allocates is `struct_size + one word`. The
 # trailing word holds an orm_row_meta* (0 until something needs it) with
-# the row's annotation values and the owner of strings the ORM writes into
-# the row later (save() timestamps, refresh(), RETURNING defaults). Rows
+# the row's annotation values, its prefetch to_attr lists and the owner of
+# strings the ORM writes into the row later (save() timestamps, refresh(),
+# RETURNING defaults). Rows
 # from a result keep their meta in the result's arena; rows from
 # orm_row_new keep it on the heap until orm_row_free.
 import libs.standard.orm.contract
@@ -69,6 +70,8 @@ struct orm_row_meta:
 	list[void*] owned            # heap rows: strings freed by orm_row_free
 	list[char*] ann_names        # annotation names (shared per result)
 	list[char*] ann_values       # annotation values, 0 = SQL NULL
+	list[char*] attr_names       # prefetch to_attr names (related.w; shared per stitch)
+	list[void*] attr_values      # the to_attr lists (list[void*]), owned by the result
 
 
 # A values()/values_list() row: names are shared by every row of the result;

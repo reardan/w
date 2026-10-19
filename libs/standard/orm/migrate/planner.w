@@ -166,17 +166,23 @@ void orm_plan_not_null(orm_planner* p, orm_change_plan* cp, orm_stage* migrate, 
 		b.sql = name
 		b.non_atomic = 1
 		b.batch_size = orm_plan_batch(c)
+	# The CHECK ops are PostgreSQL-only (orm_op.dialects): on SQLite the
+	# CHECK would reject old-code inserts before a dual-write AFTER trigger
+	# fills the column, so a PostgreSQL plan applies there unchanged.
 	if (orm_plan_pg(p)):
 		orm_op* add = orm_stage_op(migrate, ORM_OP_ADD_CONSTRAINT, ORM_PHASE_MIGRATE, c.table, column)
 		add.name = check
 		add.sql = orm_planner_cat(p, c"CHECK (", column, c" IS NOT NULL)", 0)
+		add.dialects = ORM_OP_ON_POSTGRES
 		orm_op* v = orm_stage_op(contract, ORM_OP_VALIDATE_CONSTRAINT, ORM_PHASE_CONTRACT, c.table, column)
 		v.name = check
+		v.dialects = ORM_OP_ON_POSTGRES
 	orm_op* alter = orm_stage_op(contract, ORM_OP_ALTER_NULL, ORM_PHASE_CONTRACT, c.table, column)
 	alter.field_json = orm_planner_own(p, orm_mjson_set(field_json, c"null", c"false"))
 	if (orm_plan_pg(p)):
 		orm_op* drop = orm_stage_op(contract, ORM_OP_DROP_CONSTRAINT, ORM_PHASE_CONTRACT, c.table, column)
 		drop.name = check
+		drop.dialects = ORM_OP_ON_POSTGRES
 
 
 void orm_plan_add_column(orm_planner* p, orm_change_plan* cp):
@@ -507,6 +513,8 @@ void orm_describe_op(string_builder* b, orm_op* op):
 		string_append_int(b, op.batch_size)
 	if (op.non_atomic): string_append(b, c" non_atomic")
 	if (op.unsafe): string_append(b, c" unsafe")
+	if (op.dialects == ORM_OP_ON_POSTGRES): string_append(b, c" postgres_only")
+	else if (op.dialects == ORM_OP_ON_SQLITE): string_append(b, c" sqlite_only")
 	string_append(b, c"\n")
 
 

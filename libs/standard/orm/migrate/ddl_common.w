@@ -576,9 +576,11 @@ char* orm_mx_column_def(orm_mx_ctx* x, json_value* f, char* op_column, int addin
 	orm_mx_ident_to(b, col)
 	string_append(b, c" ")
 	if (orm_mx_jbool(f, c"pk")):
+		# SQLite: AUTOINCREMENT so a deleted row's id is never handed out
+		# again (a new object would inherit its history rows), as Django does.
 		if (orm_mx_jbool(f, c"auto") && orm_mx_kind_is_int(k)):
 			if (pg): string_append(b, c"BIGSERIAL PRIMARY KEY")
-			else: string_append(b, c"INTEGER PRIMARY KEY")
+			else: string_append(b, c"INTEGER PRIMARY KEY AUTOINCREMENT")
 			return orm_mx_take(b)
 		char* t = orm_mx_type(x, f)
 		string_append(b, t)
@@ -695,7 +697,7 @@ int orm_mx_through_table(orm_mx_ctx* x, char* table, char* pk, json_value* f):
 	char* target = orm_mx_rel_table(x, f)
 	if (target == 0): return orm_mx_fail(x, c"unknown m2m target model ", orm_mx_jstr(f, c"rel_model"), 0)
 	char* fk_type = c"INTEGER"
-	char* id_def = c"INTEGER PRIMARY KEY"
+	char* id_def = c"INTEGER PRIMARY KEY AUTOINCREMENT"
 	if (orm_mx_pg(x)):
 		fk_type = c"BIGINT"
 		id_def = c"BIGSERIAL PRIMARY KEY"

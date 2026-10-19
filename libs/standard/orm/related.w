@@ -25,11 +25,6 @@ import libs.standard.orm.atomic
 int __orm_prefetch_batch
 
 
-# Prefix of the row-meta annotation names that hold to_attr lists.
-char* ORM_PREFETCH_ATTR_PREFIX():
-	return c"prefetch:"
-
-
 # ---------------------------------------------------------------------------
 # Prefetch objects
 
@@ -56,29 +51,22 @@ orm_queryset* orm_queryset_prefetch(orm_queryset* qs, orm_prefetch* pf):
 # ---------------------------------------------------------------------------
 # to_attr storage
 #
-# A to_attr list lives in the row's meta annotations (load.w) under the name
-# "prefetch:<to_attr>", its value being the list pointer instead of text.
-# Annotation names that start with "prefetch:" are therefore not text;
-# serializers must skip them. The list is owned by the result the prefetch
-# stored its rows in.
-
-int orm_prefetch_attr_matches(char* name, char* to_attr):
-	char* prefix = ORM_PREFETCH_ATTR_PREFIX()
-	if (starts_with(name, prefix) == 0): return 0
-	return strcmp(name + strlen(prefix), to_attr) == 0
-
+# A to_attr list lives in the row meta's attr_names / attr_values (load.w),
+# apart from the text annotations, so annotation readers (serializers)
+# never see it. The list is owned by the result the prefetch stored its
+# rows in.
 
 # The list a prefetch stored under to_attr on this row, or 0.
 list[void*] orm_row_prefetched(orm_model_desc* m, void* row, char* to_attr):
 	orm_row_meta* meta = orm_row_meta_get(m, row)
-	if (meta == 0 || meta.ann_names == 0 || to_attr == 0): return 0
-	for i in range(meta.ann_names.length):
-		if (orm_prefetch_attr_matches(meta.ann_names[i], to_attr)): return cast(list[void*], meta.ann_values[i])
+	if (meta == 0 || meta.attr_names == 0 || to_attr == 0): return 0
+	for i in range(meta.attr_names.length):
+		if (strcmp(meta.attr_names[i], to_attr) == 0): return cast(list[void*], meta.attr_values[i])
 	return 0
 
 
-# Per-stitch state: annotation name lists are shared by every row of a
-# result, so adding a name copies the list once per distinct source list.
+# Per-stitch state: attr name lists are shared by the rows a stitch
+# touched, so adding a name copies the list once per distinct source list.
 struct orm_attr_writer:
 	orm_result* owner
 	char* name
@@ -96,34 +84,30 @@ orm_row_meta* orm_row_meta_ensure(orm_model_desc* m, void* row, orm_result* owne
 
 void orm_attr_set(orm_attr_writer* w, orm_model_desc* m, void* row, list[void*] value):
 	orm_row_meta* meta = orm_row_meta_ensure(m, row, w.owner)
-	if (meta.ann_names != 0):
-		for i in range(meta.ann_names.length):
-			if (strcmp(meta.ann_names[i], w.name) == 0):
-				meta.ann_values[i] = cast(char*, value)
+	if (meta.attr_names != 0):
+		for i in range(meta.attr_names.length):
+			if (strcmp(meta.attr_names[i], w.name) == 0):
+				meta.attr_values[i] = cast(void*, value)
 				return
-	int old = cast(int, meta.ann_names)
+	int old = cast(int, meta.attr_names)
 	list[char*] names = 0
 	if (old in w.copies): names = cast(list[char*], w.copies[old])
 	else:
 		names = cast(list[char*], orm_result_list(w.owner))
-		if (meta.ann_names != 0):
-			for char* n in meta.ann_names: names.push(n)
+		if (meta.attr_names != 0):
+			for char* n in meta.attr_names: names.push(n)
 		names.push(w.name)
 		w.copies[old] = cast(int, names)
-	if (meta.ann_values == 0):
-		meta.ann_values = cast(list[char*], orm_result_list(w.owner))
-	meta.ann_names = names
-	meta.ann_values.push(cast(char*, value))
+	if (meta.attr_values == 0):
+		meta.attr_values = cast(list[void*], orm_result_list(w.owner))
+	meta.attr_names = names
+	meta.attr_values.push(cast(void*, value))
 
 
 orm_attr_writer* orm_attr_writer_new(orm_result* owner, char* to_attr):
 	orm_attr_writer* w = new orm_attr_writer()
 	w.owner = owner
-	string_builder* b = string_new()
-	string_append(b, ORM_PREFETCH_ATTR_PREFIX())
-	string_append(b, to_attr)
-	w.name = orm_result_strdup(owner, b.data)
-	string_free(b)
+	w.name = orm_result_strdup(owner, to_attr)
 	w.copies = new map[int, int]
 	return w
 
