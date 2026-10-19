@@ -578,6 +578,17 @@ seeds — is `docs/release.md`.
 
 ## Tooling for agents
 
+- Use `./bin/wv2 reduce bug.w -o minimal.w -- ./interesting.sh {}` to
+  minimize a failing program. The predicate receives a candidate source path;
+  exit 0 keeps a deletion. The reducer removes declarations, indentation
+  blocks and line chunks while preserving the original input. Predicates can
+  check a compiler crash, a diagnostic or a program's wrong output; see
+  [the reducer guide](docs/projects/reduce.md) for examples and limits.
+- Use `./bin/wv2 inspect bin/program --sections --symbols` to inspect ELF
+  metadata, or `./bin/wv2 inspect bin/program --disasm main` to disassemble
+  one function. The in-tree decoders handle x86, x64 and ARM64 binaries
+  without binutils or executing the inspected program. See
+  [the inspector guide](docs/projects/inspect.md).
 - Use `./bin/wv2 check --json file.w` for compile-only diagnostics without
   writing an ELF. Add `x64` after `--json` for the 64-bit target. Output is
   newline-delimited JSON on stdout with `file`, `line`, `column`, `severity`,

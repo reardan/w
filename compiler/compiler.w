@@ -1169,6 +1169,8 @@ void help_link():
 	println(c"  symbols       dump global symbols and user-declared types")
 	println(c"  defhash       per-definition content hashes and refs (NDJSON)")
 	println(c"  tree          inspect owned module trees and semantic identities (NDJSON)")
+	println(c"  reduce        minimize a source file using an interestingness predicate")
+	println(c"  inspect       list ELF sections/symbols or disassemble a function")
 	println(c"")
 	help_selectors()
 	println(c"")
