@@ -19,6 +19,8 @@ struct sql_connection:
 	int error_handle
 	char* error
 	int transaction
+	# The open sql_cursor* (cast), or 0. Other queries fail while it is set.
+	int cursor
 
 struct sql_result:
 	list[char*] names
@@ -28,6 +30,18 @@ struct sql_result:
 	int columns
 	int affected
 	int bytes
+
+# A streaming cursor: one row at a time, no row limit. See client.w.
+struct sql_cursor:
+	sql_connection* connection
+	int driver
+	int handle
+	int result
+	int pending
+	int state
+	int cancel_ok
+	int columns
+	list[char*] names
 
 # Pointer/integer C arguments only. No native structures are passed by value.
 int sql_native_call13(int stub, int a0, int a1, int a2, int a3, int a4, int a5, int a6, int a7, int a8, int a9, int a10, int a11, int a12):

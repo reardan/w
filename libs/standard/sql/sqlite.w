@@ -24,8 +24,9 @@ sql_connection* sql_open_sqlite(char* path):
 	else: sql_native_call(__sql_sqlite3_busy_timeout, handle, 5000)
 	return c
 
-sql_result* sql_sqlite_query(sql_connection* c, char* query, int count, char** params):
-	int before = sql_native_call(__sql_sqlite3_total_changes64, c.handle)
+# Prepares exactly one statement and binds text parameters. Returns the
+# native statement handle, or 0 with the connection error set.
+int sql_sqlite_prepare(sql_connection* c, char* query, int count, char** params):
 	int stmt = 0
 	char* tail = 0
 	int rc = sql_native_call(__sql_sqlite3_prepare_v2, c.handle, cast(int, query), -1, cast(int, &stmt), cast(int, &tail))
@@ -59,6 +60,13 @@ sql_result* sql_sqlite_query(sql_connection* c, char* query, int count, char** p
 			sql_sqlite_error(c)
 			sql_native_call(__sql_sqlite3_finalize, stmt)
 			return 0
+	return stmt
+
+sql_result* sql_sqlite_query(sql_connection* c, char* query, int count, char** params):
+	int before = sql_native_call(__sql_sqlite3_total_changes64, c.handle)
+	int stmt = sql_sqlite_prepare(c, query, count, params)
+	if (stmt == 0): return 0
+	int rc = 0
 	int columns = sql_native_call(__sql_sqlite3_column_count, stmt)
 	if (columns > SQL_MAX_COLUMNS):
 		sql_native_call(__sql_sqlite3_finalize, stmt)
@@ -100,3 +108,46 @@ sql_result* sql_sqlite_query(sql_connection* c, char* query, int count, char** p
 		sql_result_free(r)
 		return 0
 	return r
+
+# Streaming: the statement stays prepared on the cursor until it ends or is freed.
+int sql_sqlite_cursor_open(sql_connection* c, sql_cursor* cur, char* query, int count, char** params):
+	int stmt = sql_sqlite_prepare(c, query, count, params)
+	if (stmt == 0): return 0
+	int columns = sql_native_call(__sql_sqlite3_column_count, stmt)
+	if (columns > SQL_MAX_COLUMNS):
+		sql_native_call(__sql_sqlite3_finalize, stmt)
+		return sql_error_set(c, c"sql: column limit exceeded")
+	for col in range(columns):
+		char* name = cast(char*, sql_native_call(__sql_sqlite3_column_name, stmt, col))
+		cur.names.push(sql_copy(name, strlen(name)))
+	cur.columns = columns
+	cur.handle = stmt
+	return 1
+
+# 1 = row, 0 = done, -1 = error (connection error set).
+int sql_sqlite_cursor_step(sql_connection* c, sql_cursor* cur):
+	int rc = sql_native_call(__sql_sqlite3_step, cur.handle)
+	if (rc == 100): return 1
+	if (rc == 101): return 0
+	sql_sqlite_error(c)
+	return -1
+
+# Finalizes the statement. Returns 0 (with the error set) if finalize reports one.
+int sql_sqlite_cursor_close(sql_connection* c, sql_cursor* cur):
+	if (cur.handle == 0): return 1
+	int rc = sql_native_call(__sql_sqlite3_finalize, cur.handle)
+	cur.handle = 0
+	return rc == 0
+
+# Borrowed until the next step. Non-NULL values are NUL-terminated; text
+# conversion of a BLOB keeps its bytes (embedded NULs included).
+char* sql_sqlite_cursor_value(sql_cursor* cur, int col):
+	if (sql_native_call(__sql_sqlite3_column_type, cur.handle, col) == 5): return 0
+	char* value = cast(char*, sql_native_call(__sql_sqlite3_column_text, cur.handle, col))
+	if (value == 0): return c""
+	return value
+
+int sql_sqlite_cursor_value_length(sql_cursor* cur, int col):
+	if (sql_native_call(__sql_sqlite3_column_type, cur.handle, col) == 5): return -1
+	sql_native_call(__sql_sqlite3_column_text, cur.handle, col)
+	return sql_native_call(__sql_sqlite3_column_bytes, cur.handle, col)
