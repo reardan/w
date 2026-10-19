@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+{% if tabs %}<ul class="object-tools">{% for t in tabs %}<li><a href="{{ t.url }}" class="{{ t.cls }}">{{ t.label }}</a></li>{% endfor %}</ul>{% endif %}
+<table id="change-history">
+<thead><tr><th scope="col">Version</th><th scope="col">Date/time</th><th scope="col">Action</th><th scope="col">User</th><th scope="col">Reason</th></tr></thead>
+<tbody>
+{% for e in entries %}<tr><th scope="row"><a href="{{ e.url }}">{{ e.id }}</a></th><td>{{ e.date }}</td><td>{{ e.action }}</td><td>{{ e.user }}</td><td>{{ e.reason }}</td></tr>
+{% endfor %}</tbody>
+</table>
+{% endblock %}

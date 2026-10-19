@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+{% if tabs %}<ul class="object-tools">{% for t in tabs %}<li><a href="{{ t.url }}" class="{{ t.cls }}">{{ t.label }}</a></li>{% endfor %}</ul>{% endif %}
+{% if protected %}
+<p>Deleting the {{ verbose_name }} &ldquo;{{ object }}&rdquo; would require deleting the following protected related objects:</p>
+<ul class="protected">{% for p in protected %}<li>{{ p }}</li>{% endfor %}</ul>
+{% elif perms_lacking %}
+<p>Deleting the {{ verbose_name }} &ldquo;{{ object }}&rdquo; would result in deleting related objects, but your account doesn't have permission to delete the following types of objects:</p>
+<ul class="perms-lacking">{% for p in perms_lacking %}<li>{{ p }}</li>{% endfor %}</ul>
+{% else %}
+<p>Are you sure you want to delete the {{ verbose_name }} &ldquo;{{ object }}&rdquo;? All of the following related items will be deleted:</p>
+<h2>Summary</h2>
+<ul class="summary">{% for s in summary %}<li>{{ s.label }}: {{ s.count }}</li>{% endfor %}</ul>
+<h2>Objects</h2>
+{{ tree }}
+<form method="post" action="{{ action }}">{% csrf_token %}<input type="hidden" name="post" value="yes"><input type="submit" value="Yes, I'm sure"> <a href="{{ cancel_url }}" class="cancel-link">No, take me back</a></form>
+{% endif %}
+{% endblock %}

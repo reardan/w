@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+{% for app in apps %}
+<div class="module app-{{ app.label }}">
+<table>
+<caption>{{ app.name }}</caption>
+{% for m in app.models %}<tr class="model-{{ m.name }}"><th scope="row">{% if m.list_url %}<a href="{{ m.list_url }}">{{ m.plural }}</a>{% else %}{{ m.plural }}{% endif %}</th><td>{% if m.add_url %}<a href="{{ m.add_url }}" class="addlink">Add</a>{% endif %}</td></tr>
+{% endfor %}</table>
+</div>
+{% empty %}
+<p>You don't have permission to view or edit anything.</p>
+{% endfor %}
+{% endblock %}

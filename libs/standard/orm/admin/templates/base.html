@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} | {{ site_title }}</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; color: #222; }
+#header { background: #264b5d; color: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+#header a { color: #fff; text-decoration: none; font-weight: bold; }
+#user-tools form { display: inline; }
+.breadcrumbs { background: #79aec8; padding: 6px 20px; color: #fff; }
+.breadcrumbs a { color: #fff; }
+#content { padding: 10px 20px; }
+table { border-collapse: collapse; }
+th, td { padding: 4px 8px; border-bottom: 1px solid #ddd; text-align: left; }
+.errorlist, .errornote { color: #ba2121; }
+#changelist-filter { float: right; margin-left: 20px; }
+#changelist-filter .selected a { font-weight: bold; }
+.object-tools { list-style: none; padding: 0; }
+.object-tools li { display: inline; margin-right: 10px; }
+.object-tools .active { font-weight: bold; }
+</style>
+</head>
+<body>
+<header id="header"><a id="site-name" href="{{ admin_url }}">{{ site_title }}</a>
+{% if user %}<div id="user-tools">Welcome, <strong>{{ user.username }}</strong>. <form id="logout-form" method="post" action="{{ logout_url }}">{% csrf_token %}<button type="submit">Log out</button></form></div>{% endif %}
+</header>
+<nav class="breadcrumbs">{% for b in breadcrumbs %}{% if b.url %}<a href="{{ b.url }}">{{ b.label }}</a>{% else %}{{ b.label }}{% endif %}{% if not forloop.last %} &rsaquo; {% endif %}{% endfor %}</nav>
+<main id="content">
+<h1>{{ title }}</h1>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+{% if add_url %}<ul class="object-tools"><li><a href="{{ add_url }}" class="addlink">Add {{ verbose_name }}</a></li></ul>{% endif %}
+{% if has_search %}<form id="changelist-search" method="get" action="{{ list_url }}"><input type="text" name="q" value="{{ query }}" id="searchbar"> <input type="submit" value="Search">{% for h in hidden %}<input type="hidden" name="{{ h.name }}" value="{{ h.value }}">{% endfor %}</form>{% endif %}
+{% if filters %}<nav id="changelist-filter"><h2>Filter</h2>
+{% for f in filters %}<h3>By {{ f.title }}</h3>
+<ul>{% for c in f.choices %}<li{% if c.selected %} class="selected"{% endif %}><a href="{{ c.url }}">{{ c.label }}</a></li>{% endfor %}</ul>
+{% endfor %}</nav>{% endif %}
+{% if errors %}<ul class="errorlist">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+<table id="result_list">
+<thead><tr>{% for h in headers %}<th scope="col"{% if h.sorted %} class="sorted {{ h.sorted }}"{% endif %}>{% if h.url %}<a href="{{ h.url }}">{{ h.label }}</a>{% else %}{{ h.label }}{% endif %}</th>{% endfor %}</tr></thead>
+<tbody>
+{% for row in rows %}<tr>{% for cell in row.cells %}{% if forloop.first %}<th><a href="{{ row.url }}">{{ cell }}</a></th>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>
+{% endfor %}</tbody>
+</table>
+{% if not errors %}<p class="paginator">{% if previous %}<a href="{{ previous }}" class="previous">previous</a> {% endif %}Page {{ page }} of {{ pages }}{% if next %} <a href="{{ next }}" class="next">next</a>{% endif %} &middot; {{ count }} {{ count_name }}</p>{% endif %}
+{% endblock %}

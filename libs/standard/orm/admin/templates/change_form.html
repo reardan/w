@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+{% if tabs %}<ul class="object-tools">{% for t in tabs %}<li><a href="{{ t.url }}" class="{{ t.cls }}">{{ t.label }}</a></li>{% endfor %}</ul>{% endif %}
+{% if readonly %}<div class="readonly">
+{% for f in readonly %}<p><label>{{ f.label }}:</label> <span class="readonly-value" id="ro_{{ f.name }}">{{ f.value }}</span></p>
+{% endfor %}</div>{% endif %}
+{% if form %}<form method="post" action="{{ action }}" id="{{ model_name }}_form">
+{{ form.html }}<div class="submit-row"><input type="submit" value="Save" name="_save"> <input type="submit" value="Save and continue editing" name="_continue"></div>
+</form>{% endif %}
+{% endblock %}
