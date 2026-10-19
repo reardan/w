@@ -1,0 +1,24 @@
+# Fixture schema for w-orm (issue #754). bin/orm_gen (U1.1) must produce
+# descriptors equal to tests/orm/fixtures/library_orm.w for this file.
+app library
+
+model Author:
+	string name max_length=200
+	string email max_length=254 unique
+	datetime created auto_now_add
+	index created
+
+model Tag:
+	string name max_length=50 unique
+
+model Book:
+	enum Status: draft, pub
+	string title max_length=300
+	fk author -> Author on_delete=cascade related_name=books
+	m2m tags -> Tag
+	Status status default=draft
+	decimal price digits=8 places=2
+	int pages null
+	datetime published_at null
+	check price >= 0 name=library_book_price_nonnegative
+	history
