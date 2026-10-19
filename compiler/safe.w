@@ -2560,8 +2560,14 @@ void safe_check_finish():
 	safe_first = cast(int*, malloc(count * __word_size__))
 	safe_next = cast(int*, malloc(count * __word_size__))
 	safe_checked_functions = cast(int*, safe_zero(count, __word_size__))
-	safe_function_for_binding = cast(int*, malloc(retained_bindings.length * __word_size__))
-	for i in range(retained_bindings.length): safe_function_for_binding[i] = -1
+	# A compile root can carry checked-pointer types with no functions at
+	# all, and then retained_bindings is still null (retained_semantic only
+	# builds it for functions), so the binding count goes through a null
+	# guard here; every indexing site below only runs for existing bindings.
+	int bindings = 0
+	if (retained_bindings != 0): bindings = retained_bindings.length
+	safe_function_for_binding = cast(int*, safe_zero(bindings, __word_size__))
+	for i in range(bindings): safe_function_for_binding[i] = -1
 	for i in range(count):
 		safe_first[i] = -1
 		safe_next[i] = -1
@@ -2613,16 +2619,16 @@ void safe_check_finish():
 			if ((n.kind == retained_declaration) && (n.binding >= 0) && (retained_bindings[n.binding].return_type < 0)):
 				safe_error(id, c"safe: global storage is not supported", -1)
 	# Resolve forward declarations to their completed implementation.
-	for b in range(retained_bindings.length):
+	for b in range(bindings):
 		if (safe_function_for_binding[b] >= 0): continue
 		retained_binding* binding = retained_bindings[b]
 		if (binding.return_type < 0): continue
-		for j in range(retained_bindings.length):
+		for j in range(bindings):
 			if ((safe_function_for_binding[j] >= 0) && (strcmp(binding.name, retained_bindings[j].name) == 0)):
 				safe_function_for_binding[b] = safe_function_for_binding[j]
 	# A declaration carries a contract even when no call reaches it. Validate
 	# its result relationship and compare every completed forward signature.
-	for b in range(retained_bindings.length):
+	for b in range(bindings):
 		retained_binding* binding = retained_bindings[b]
 		if ((binding.return_type < 0) || safe_trusted(binding.source)): continue
 		int checked = safe_mode || safe_contains_checked(binding.return_type)
@@ -2645,7 +2651,7 @@ void safe_check_finish():
 			if (safe_contract_matches(binding, definition) == 0):
 				safe_error(at, c"safe: forward declaration disagrees with its definition", function)
 	if (safe_mode):
-		for b in range(retained_bindings.length):
+		for b in range(bindings):
 			retained_binding* binding = retained_bindings[b]
 			if ((binding.source >= 0) && (strcmp(binding.name, c"main") == 0) && (safe_function_for_binding[b] < 0)):
 				safe_error(retained_sources[binding.source].root, c"safe: main requires a checked implementation", -1)
