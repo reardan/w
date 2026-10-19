@@ -30,6 +30,7 @@ struct js_regexp:
 	int position
 	int depth
 	int entry
+	int guards
 	list[js_re_node*] nodes
 	list[js_re_instruction*] code
 
@@ -143,10 +144,14 @@ js_re_node* js_re_atom(js_regexp* re):
 			js_runtime_fail(re.owner, 5, c"RegExp nesting limit")
 			return 0
 		int capture = 0
+		int assertion = 0
 		if (js_re_peek(re) == '?'):
 			re.position = re.position + 1
-			if (js_re_peek(re) != ':'):
-				js_runtime_fail(re.owner, 6, c"RegExp lookaround and named groups are unsupported")
+			int marker = js_re_peek(re)
+			if (marker == '='): assertion = 1
+			else if (marker == '!'): assertion = 2
+			else if (marker != ':'):
+				js_runtime_fail(re.owner, 6, c"RegExp lookbehind and named groups are unsupported")
 				return 0
 			re.position = re.position + 1
 		else:
@@ -162,6 +167,13 @@ js_re_node* js_re_atom(js_regexp* re):
 			return 0
 		re.position = re.position + 1
 		re.depth = re.depth - 1
+		if (assertion != 0):
+			js_re_node* lookahead = js_re_node_new(re, 9)
+			if (lookahead == 0): return 0
+			lookahead.left = child
+			lookahead.ch = assertion
+			lookahead.nullable = 1
+			return lookahead
 		if (capture == 0): return child
 		js_re_node* group = js_re_node_new(re, 8)
 		if (group == 0): return 0
@@ -287,25 +299,47 @@ int js_re_emit(js_regexp* re, int op, int next, int other, js_re_node* node):
 	return re.code.length - 1
 
 # Emit backwards so alternatives and repetition need no code relocation.
-int js_re_compile_node(js_regexp* re, js_re_node* node, int next):
+int js_re_compile_node_guard(js_regexp* re, js_re_node* node, int next, int guard_depth):
 	if (re.owner.completion.status != 0): return 0
 	if (node.kind == 0): return next
 	if (node.kind <= 4): return js_re_emit(re, node.kind, next, 0, node)
 	if (node.kind == 5):
-		int right = js_re_compile_node(re, node.right, next)
-		return js_re_compile_node(re, node.left, right)
+		int right = js_re_compile_node_guard(re, node.right, next, guard_depth)
+		return js_re_compile_node_guard(re, node.left, right, guard_depth)
 	if (node.kind == 6):
-		int left = js_re_compile_node(re, node.left, next)
-		int right = js_re_compile_node(re, node.right, next)
+		int left = js_re_compile_node_guard(re, node.left, next, guard_depth)
+		int right = js_re_compile_node_guard(re, node.right, next, guard_depth)
 		return js_re_emit(re, 5, left, right, node)
 	if (node.kind == 8):
 		int end = js_re_emit(re, 6, next, node.ch * 2 + 1, node)
-		int child = js_re_compile_node(re, node.left, end)
+		int child = js_re_compile_node_guard(re, node.left, end, guard_depth)
 		return js_re_emit(re, 6, child, node.ch * 2, node)
+	if (node.kind == 9):
+		# A separate accept ends the assertion at its first ordered match.
+		# Its alternative states never become outer backtracking choices.
+		int end = js_re_emit(re, 0, 0, 0, 0)
+		int child = js_re_compile_node_guard(re, node.left, end, guard_depth)
+		return js_re_emit(re, 8, next, child, node)
+	if (node.ch == '?' && node.left.nullable):
+		# RepeatMatcher rejects a zero-width optional iteration, even when
+		# greedy. Backtrack inside the child before trying the skipped branch.
+		# Nested guards use bounded scratch slots after the visible captures;
+		# sibling alternatives/sequences reuse slots, and match_at removes them.
+		if (guard_depth >= 32):
+			js_runtime_fail(re.owner, 5, c"RegExp optional guard nesting limit")
+			return 0
+		if (re.guards <= guard_depth): re.guards = guard_depth + 1
+		int slot = (re.captures + 1) * 2 + guard_depth
+		int progress = js_re_emit(re, 10, next, slot, node)
+		int child = js_re_compile_node_guard(re, node.left, progress, guard_depth + 1)
+		if (node.first_capture <= node.last_capture): child = js_re_emit(re, 7, child, 0, node)
+		int start = js_re_emit(re, 9, child, slot, node)
+		if (node.other): return js_re_emit(re, 5, next, start, node)
+		return js_re_emit(re, 5, start, next, node)
 	int branch = js_re_emit(re, 5, 0, next, node)
 	int after = branch
 	if (node.ch == '?'): after = next
-	int child = js_re_compile_node(re, node.left, after)
+	int child = js_re_compile_node_guard(re, node.left, after, guard_depth)
 	if (node.first_capture <= node.last_capture): child = js_re_emit(re, 7, child, 0, node)
 	re.code[branch].next = child
 	if (node.other):
@@ -313,6 +347,9 @@ int js_re_compile_node(js_regexp* re, js_re_node* node, int next):
 		re.code[branch].other = child
 	if (node.ch == '+'): return child
 	return branch
+
+int js_re_compile_node(js_regexp* re, js_re_node* node, int next):
+	return js_re_compile_node_guard(re, node, next, 0)
 
 int js_re_flag(int ch):
 	if (ch == 'g'): return 1
@@ -352,6 +389,7 @@ js_regexp* js_re_compile(js_runtime* rt, js_text* pattern, js_text* flags):
 	re.position = 0
 	re.depth = 0
 	re.entry = 0
+	re.guards = 0
 	re.nodes = new list[js_re_node*]
 	re.code = new list[js_re_instruction*]
 	rt.regexp_units = rt.regexp_units + pattern.units.length + 1
@@ -418,17 +456,17 @@ void js_re_state_free(js_re_state* state):
 	__w_list_free(cast(__w_list*, state.captures))
 	free(state)
 
-js_re_state* js_re_match_at(js_regexp* re, js_text* input, int start):
+# All nested assertions share the old 4096 pending + 1 active state bound.
+# Each call owns its input state and pending alternatives; only its first
+# successful state escapes. Recursion depends on pattern nesting, never input.
+js_re_state* js_re_match_program(js_regexp* re, js_text* input, js_re_state* state, int depth, int* states):
 	list[js_re_state*] stack = new list[js_re_state*]
-	js_re_state* state = js_re_state_new(re.entry, start, 0, (re.captures + 1) * 2)
-	state.captures[0] = start
 	js_re_state* result = 0
 	while (state != 0 && js_runtime_compat_step(re.owner)):
 		js_re_instruction* instruction = re.code[state.pc]
 		int op = instruction.op
 		int matched = 1
 		if (op == 0):
-			state.captures[1] = state.position
 			result = state
 			state = 0
 			break
@@ -453,21 +491,62 @@ js_re_state* js_re_match_at(js_regexp* re, js_text* input, int start):
 				matched = state.position == input.units.length
 				if ((re.flags & 4) && state.position < input.units.length): matched = js_re_line(input.units[state.position])
 		if (op == 5):
-			if (stack.length >= 4096):
+			if (*states >= 4097):
 				js_runtime_fail(re.owner, 5, c"RegExp backtracking stack limit")
 				break
 			stack.push(js_re_state_new(instruction.other, state.position, state.captures, state.captures.length))
+			*states = *states + 1
 		if (op == 6): state.captures[instruction.other] = state.position
 		if (op == 7):
 			for i in range(instruction.node.first_capture * 2, (instruction.node.last_capture + 1) * 2): state.captures[i] = -1
+		if (op == 8):
+			if (depth >= 32 || *states >= 4097):
+				js_runtime_fail(re.owner, 5, c"RegExp assertion nesting or backtracking state limit")
+				break
+			js_re_state* assertion = js_re_state_new(instruction.other, state.position, state.captures, state.captures.length)
+			*states = *states + 1
+			for i in range(instruction.node.first_capture * 2, (instruction.node.last_capture + 1) * 2): assertion.captures[i] = -1
+			assertion = js_re_match_program(re, input, assertion, depth + 1, states)
+			if (re.owner.completion.status != 0):
+				if (assertion != 0):
+					js_re_state_free(assertion)
+					*states = *states - 1
+				break
+			matched = assertion != 0
+			if (instruction.node.ch == 2): matched = assertion == 0
+			if (matched):
+				for i in range(instruction.node.first_capture * 2, (instruction.node.last_capture + 1) * 2):
+					int capture = -1
+					if (instruction.node.ch == 1): capture = assertion.captures[i]
+					state.captures[i] = capture
+			if (assertion != 0):
+				js_re_state_free(assertion)
+				*states = *states - 1
+		if (op == 9): state.captures[instruction.other] = state.position
+		if (op == 10): matched = state.position != state.captures[instruction.other]
 		if (matched): state.pc = instruction.next
 		else:
 			js_re_state_free(state)
+			*states = *states - 1
 			state = 0
 			if (stack.length > 0): state = stack.pop()
-	js_re_state_free(state)
+	if (state != 0):
+		js_re_state_free(state)
+		*states = *states - 1
 	for i in range(stack.length): js_re_state_free(stack[i])
+	*states = *states - stack.length
 	__w_list_free(cast(__w_list*, stack))
+	return result
+
+js_re_state* js_re_match_at(js_regexp* re, js_text* input, int start):
+	int captures = (re.captures + 1) * 2
+	js_re_state* state = js_re_state_new(re.entry, start, 0, captures + re.guards)
+	state.captures[0] = start
+	int states = 1
+	js_re_state* result = js_re_match_program(re, input, state, 0, &states)
+	if (result != 0):
+		result.captures[1] = result.position
+		while (result.captures.length > captures): result.captures.pop()
 	return result
 
 js_re_state* js_re_search(js_regexp* re, js_text* input, int start):

@@ -112,7 +112,7 @@ void regexp_test_rejections():
 	js_runtime* rt = js_runtime_new()
 	regexp_test_eval(rt, c"/a{2}/.test('aa');", 6)
 	regexp_test_eval(rt, c"/(a)\\1/.test('aa');", 6)
-	regexp_test_eval(rt, c"/(?=a)a/.test('a');", 6)
+	regexp_test_eval(rt, c"/(?=a)a/.test('a');", 0)
 	regexp_test_eval(rt, c"/(?<x>a)/.test('a');", 6)
 	regexp_test_eval(rt, c"/a/u.test('a');", 6)
 	regexp_test_eval(rt, c"/\\bword/.test('word');", 6)
