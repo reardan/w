@@ -35,6 +35,8 @@ char* safe_owner_drop_helper(int element):
 	# Dropping an unjoined checked thread handle waits for its child.
 	if (ends_with(source, c"/lib/safe_thread.w")):
 		if (strcmp(name, c"WSafeThread") == 0): helper = c"__w_safe_thread_drop"
+		# Dropping a lock guard releases its mutex.
+		else if (strcmp(name, c"WSafeGuard") == 0): helper = c"__w_safe_guard_drop"
 	else if (ends_with(source, c"/lib/safe_buffer.w") == 0): return 0
 	else if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
 	else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"

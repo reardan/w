@@ -51,6 +51,8 @@ int* safe_origin
 int* safe_parent_ref
 int* safe_birth
 int* safe_moved_at
+# Per function: 1 for locals whose destruction unlocks a borrowed mutex.
+char* safe_guard_locals
 int safe_function
 int safe_return_type
 list[char*] safe_sets
@@ -356,8 +358,38 @@ int safe_thread_record(int type, char* name):
 	return strcmp(record.name, name) == 0
 
 
+# Audited synchronized records: 1 mutex, 2 lock guard, 3 atomic.
+int safe_sync_record(int type):
+	if (safe_thread_record(type, c"WSafeMutex")): return 1
+	if (safe_thread_record(type, c"WSafeGuard")): return 2
+	if (safe_thread_record(type, c"WSafeAtomic")): return 3
+	return 0
+
+
+int safe_guard_drop_walk(int type, int depth, int* remaining):
+	type = safe_unqualified(type)
+	if ((type < 0) || (depth > 32) || (*remaining <= 0) || (safe_kind(type) != 1)): return 0
+	*remaining = *remaining - 1
+	int target = safe_unqualified(safe_pointee(type))
+	if (target < 0): return 0
+	if (safe_sync_record(target) == 2): return 1
+	retained_type* record = retained_types[target]
+	if ((record.kind != 0) || record.pointer_level): return 0
+	for i in range(record.fields.length):
+		if (safe_guard_drop_walk(record.fields[i].type, depth + 1, remaining)): return 1
+	return 0
+
+
+# An owner whose destruction runs audited code that reads borrowed storage:
+# a lock guard, or an owner holding one, unlocks its mutex when dropped.
+# Its drop is therefore a use of that borrow at every scope exit.
+int safe_guard_drop(int type):
+	int remaining = 256
+	return safe_guard_drop_walk(type, 0, &remaining)
+
+
 int safe_opaque(int type):
-	if (safe_thread_record(type, c"WSafeThread")): return 1
+	if (safe_thread_record(type, c"WSafeThread") || safe_sync_record(type)): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
@@ -372,8 +404,18 @@ int safe_runtime_call(retained_binding* binding):
 		if ((strcmp(name, c"owned_int_buffer_new") == 0) || (strcmp(name, c"owned_int_buffer_length") == 0) || (strcmp(name, c"owned_int_buffer_push") == 0) || (strcmp(name, c"owned_int_buffer_get") == 0) || (strcmp(name, c"owned_int_buffer_set") == 0) || (strcmp(name, c"owned_int_buffer_pop") == 0) || (strcmp(name, c"owned_int_buffer_clear") == 0)): return 1
 		return (strcmp(name, c"int_buffer_new") == 0) || (strcmp(name, c"int_buffer_length") == 0) || (strcmp(name, c"int_buffer_push") == 0) || (strcmp(name, c"int_buffer_get") == 0) || (strcmp(name, c"int_buffer_set") == 0) || (strcmp(name, c"int_buffer_pop") == 0) || (strcmp(name, c"int_buffer_clear") == 0) || (strcmp(name, c"int_buffer_view") == 0) || (strcmp(name, c"byte_string_new") == 0) || (strcmp(name, c"byte_string_length") == 0) || (strcmp(name, c"byte_string_push") == 0) || (strcmp(name, c"byte_string_get") == 0) || (strcmp(name, c"byte_string_set") == 0) || (strcmp(name, c"byte_string_pop") == 0) || (strcmp(name, c"byte_string_clear") == 0) || (strcmp(name, c"byte_string_view") == 0) || (strcmp(name, c"byte_string_append") == 0) || (strcmp(name, c"byte_string_from") == 0)
 	if (safe_thread_source(binding.source)):
+		if ((strcmp(name, c"safe_mutex_new") == 0) || (strcmp(name, c"safe_mutex_lock") == 0) || (strcmp(name, c"safe_mutex_try_lock") == 0) || (strcmp(name, c"safe_guard_value") == 0) || (strcmp(name, c"safe_guard_unlock") == 0)): return 1
+		if ((strcmp(name, c"safe_atomic_new") == 0) || (strcmp(name, c"safe_atomic_load") == 0) || (strcmp(name, c"safe_atomic_store") == 0) || (strcmp(name, c"safe_atomic_fetch_add") == 0) || (strcmp(name, c"safe_atomic_compare_exchange") == 0)): return 1
 		return (strcmp(name, c"safe_thread_join") == 0) || starts_with(name, c"safe_thread_spawn$") || starts_with(name, c"safe_thread_fork_join$")
 	return (strcmp(name, c"put_char") == 0) || (strcmp(name, c"put_error") == 0) || (strcmp(name, c"exit") == 0)
+
+
+# Audited opaque storage that any thread may own or read; mutexes and
+# guards are opaque too but carry their own thread rules below.
+int safe_thread_sealed(int type):
+	if (safe_opaque(type) == 0): return 0
+	int sync = safe_sync_record(type)
+	return (sync == 0) || (sync == 3)
 
 
 # Structural thread eligibility (#699): the obligations of Rust's Send and
@@ -392,10 +434,12 @@ int safe_runtime_call(retained_binding* binding):
 # Unique ownership alone is not sufficient: the whole reachable graph must
 # be free of raw pointers, unaudited resources and thread-affine markers.
 # WThreadAffine forbids transfer and sharing; WThreadUnshared forbids only
-# sharing, reserving interior mutation for audited synchronized types.
-# Callable fields are static code addresses. Audited opaque storage is
-# uniquely owned heap memory that any thread may release
-# (lib/thread_heap.w), with no mutation through a shared reference.
+# sharing. Interior mutation through a shared reference exists only in the
+# audited synchronized types: WSafeAtomic (atomic word operations) and
+# WSafeMutex (payload reachable only through a held guard). Callable fields
+# are static code addresses. Other audited opaque storage is uniquely owned
+# heap memory that any thread may release (lib/thread_heap.w), with no
+# mutation through a shared reference.
 char* safe_thread_reason(int type, int detached, int sharing, int depth, int* remaining, char** path):
 	if (safe_callable_signature(type) >= 0): return 0
 	type = safe_unqualified(type)
@@ -404,21 +448,32 @@ char* safe_thread_reason(int type, int detached, int sharing, int depth, int* re
 	if (safe_thread_record(type, c"WThreadUnshared")):
 		if (sharing): return c"is explicitly unshareable across threads"
 		return 0
+	# A guard must unlock on the thread that locked it, and its data view
+	# is exclusive to that holder; mutexes and atomics are opaque below.
+	if (safe_sync_record(type) == 2): return c"is a lock guard bound to its locking thread"
 	int kind = safe_kind(type)
 	retained_type* t = retained_types[type]
+	# A mutex is shareable whenever its payload is transferable: the lock
+	# lends the payload to one thread at a time, never to two at once, and
+	# any thread may end up dropping it.
+	if (safe_sync_record(type) == 1):
+		for i in range(t.fields.length):
+			char* reason = safe_thread_reason(t.fields[i].type, 1, 0, depth + 1, remaining, path)
+			if (reason != 0): return reason
+		return 0
 	# Scalars cost no budget, so wide plain records are not refused.
 	if ((kind == 0) && (t.fields.length == 0) && (t.kind != type_kind_array) && safe_plain(type, 0)): return 0
 	if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
 	*remaining = *remaining - 1
 	if (kind == 1):
 		if (detached && safe_owned_borrowed(type)): return c"carries a borrowed lifetime"
-		if (safe_opaque(safe_pointee(type))): return 0
+		if (safe_thread_sealed(safe_pointee(type))): return 0
 		return safe_thread_reason(safe_pointee(type), detached, sharing, depth + 1, remaining, path)
 	if (kind || safe_slice(type)):
 		if (detached): return c"borrows storage that the thread could outlive"
 		int target = safe_pointee(type)
 		if (safe_record(type)): target = t.target
-		if (safe_opaque(target)): return 0
+		if (safe_thread_sealed(target)): return 0
 		return safe_thread_reason(target, detached, sharing || (safe_borrow_kind(type) == 2), depth + 1, remaining, path)
 	if (t.kind == type_kind_array): return safe_thread_reason(t.target, detached, sharing, depth + 1, remaining, path)
 	if ((t.kind == 0) && (t.pointer_level == 0) && (t.fields.length > 0)):
@@ -484,6 +539,52 @@ void safe_thread_entry_check(int id, retained_binding* callee, int entry_kind):
 	if (valid == 0): safe_error(id, c"safe: fork-join entry must be fn[](T) -> int for a ref or refmut pointer T", -1)
 
 
+# Audited memory-order constants (lib/safe_thread.w WMemoryOrder): 0 relaxed,
+# 1 acquire, 2 release, 3 acq_rel, 4 seq_cst; -1 for any other binding.
+int safe_memory_order(int binding):
+	if (binding < 0): return -1
+	retained_binding* constant = retained_bindings[binding]
+	if ((constant.scope == 'L') || (constant.scope == 'A') || (safe_thread_source(constant.source) == 0)): return -1
+	if (strcmp(constant.name, c"memory_order_relaxed") == 0): return 0
+	if (strcmp(constant.name, c"memory_order_acquire") == 0): return 1
+	if (strcmp(constant.name, c"memory_order_release") == 0): return 2
+	if (strcmp(constant.name, c"memory_order_acq_rel") == 0): return 3
+	if (strcmp(constant.name, c"memory_order_seq_cst") == 0): return 4
+	return -1
+
+
+# Audited atomic operations: 1 load, 2 store, 3 fetch_add, 4 compare_exchange.
+int safe_atomic_kind(int binding):
+	int function = safe_function_for_binding[binding]
+	if (function < 0): return 0
+	retained_binding* implementation = retained_bindings[retained_record_at(function).binding]
+	if (safe_thread_source(implementation.source) == 0): return 0
+	if (strcmp(implementation.name, c"safe_atomic_load") == 0): return 1
+	if (strcmp(implementation.name, c"safe_atomic_store") == 0): return 2
+	if (strcmp(implementation.name, c"safe_atomic_fetch_add") == 0): return 3
+	if (strcmp(implementation.name, c"safe_atomic_compare_exchange") == 0): return 4
+	return 0
+
+
+# Memory orders are part of each atomic call's static contract: the
+# argument must name a WMemoryOrder constant valid for the operation
+# (C++11 rules). docs/projects/safe_mode_contracts.md gives the x86/x64
+# lowering argument for each admitted pair.
+void safe_atomic_order_check(int id, int atomic, int position):
+	int slot = position == 2
+	if (atomic == 1): slot = position == 1
+	if (atomic == 4): slot = (position == 3) || (position == 4)
+	if (slot == 0): return
+	retained_node n
+	retained_node_load(id, &n)
+	int order = -1
+	if (n.op == 'v'): order = safe_memory_order(n.binding)
+	if (order < 0): safe_error(id, c"safe: atomic memory order must be a memory_order_* constant", -1)
+	if ((atomic == 1) && ((order == 2) || (order == 3))): safe_error(id, c"safe: atomic load cannot use release or acq_rel ordering", -1)
+	if ((atomic == 2) && ((order == 1) || (order == 3))): safe_error(id, c"safe: atomic store cannot use acquire or acq_rel ordering", -1)
+	if ((atomic == 4) && (position == 4) && ((order == 2) || (order == 3))): safe_error(id, c"safe: compare-exchange failure ordering cannot be release or acq_rel", -1)
+
+
 void safe_pointer_match(int id, int want, int got):
 	int w = safe_unqualified(safe_pointee(want))
 	int g = safe_unqualified(safe_pointee(got))
@@ -535,7 +636,8 @@ int safe_owned_shape_walk(int type, int depth, int* path, int* remaining):
 	type = safe_unqualified(type)
 	if ((type < 0) || (depth > 32) || (*remaining <= 0)): return 0
 	*remaining = *remaining - 1
-	if (safe_plain(type, 0) || safe_opaque(type)): return 1
+	# A guard always carries its mutex's lifetime: own[a] WSafeGuard*.
+	if (safe_plain(type, 0) || (safe_opaque(type) && (safe_sync_record(type) != 2))): return 1
 	for i in range(depth):
 		if (path[i] == type): return 0
 	path[depth] = type
@@ -672,6 +774,8 @@ void safe_type_check_at(int id, int type, int depth, int* remaining):
 		if (safe_kind(type) == 3): safe_error(id, c"safe: mutable borrowed aggregate requires scalar fields and named reference groups", -1)
 		safe_error(id, c"safe: borrowed aggregate requires scalar fields and named shared-reference groups", -1)
 	if (safe_kind(type) || safe_slice(type)):
+		if ((safe_kind(type) == 1) && (safe_sync_record(safe_pointee(type)) == 2)):
+			safe_error(id, c"safe: a lock guard owner must name its mutex lifetime (own[a] WSafeGuard*)", -1)
 		if (safe_plain(safe_pointee(type), 0)): return
 		if ((safe_slice(type) == 0) && safe_owned_shape(safe_pointee(type))): return
 		if (safe_mixed_view(type)): return
@@ -1164,7 +1268,9 @@ void safe_access(int roots, int via, int write, int id, char* state):
 			safe_error(id, c"safe: conflicting access during call argument evaluation", -1)
 	safe_flow* event = safe_graph[safe_event]
 	for i in range(safe_locals.length):
-		if ((safe_local_loan(i) < 2) || ((state[i] & 7) != 2)): continue
+		if (safe_local_loan(i) < 2): continue
+		# A possibly moved guard may still be dropped on another path.
+		if (((state[i] & 7) != 2) && (((state[i] & 2) == 0) || (safe_guard_locals[i] == 0))): continue
 		if (i == safe_replacing): continue
 		if (safe_optional(retained_bindings[safe_locals[i]].type) && ((state[i] & 48) == 16)): continue
 		int origins = safe_origin[i]
@@ -1585,6 +1691,8 @@ int safe_borrow_groups(int id, int want, char* state, int* parent, safe_borrowed
 		retained_node base
 		retained_node_load(safe_child(&n, n.left), &base)
 		if (safe_optional(base.semantic_type)): safe_require_present(safe_child(&n, n.left), state)
+		if (safe_opaque(safe_pointee(base.semantic_type))):
+			safe_error(id, c"safe: opaque collection metadata is not accessible", -1)
 		if (safe_record(base.semantic_type)):
 			if ((kind == 3) && ((safe_kind(base.semantic_type) == 2) || (safe_kind(n.semantic_type) == 2))): safe_error(id, c"safe: cannot make a mutable borrow from a shared reference", -1)
 			int template = retained_types[safe_unqualified(base.semantic_type)].target
@@ -1927,10 +2035,12 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		if (safe_contract_matches(&expected, callee) == 0):
 			safe_error(id, c"safe: generic specialization disagrees with its concrete contract", -1)
 	int threading = 0
+	int atomic = 0
 	if (n.op != 'F'):
 		safe_implementation_check(id, binding, 0)
 		threading = safe_thread_entry_kind(binding)
 		if (threading): safe_thread_entry_check(id, callee, threading)
+		atomic = safe_atomic_kind(binding)
 
 	int return_parameter = safe_return_parameter(id, callee)
 	int return_root = -1
@@ -1944,6 +2054,7 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		# Only the value handed to the child crosses threads; fork-join's
 		# right argument stays on the caller, which waits for the child.
 		if (threading && (position == 1)): safe_thread_value_check(arg, want, threading == 1)
+		if (atomic): safe_atomic_order_check(arg, atomic, position)
 		safe_type_check(id, want)
 		int kind = safe_borrow_kind(want)
 		int root = -1
@@ -2179,6 +2290,8 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 	else if (kind && (op != '=')): safe_error(id, c"safe: checked pointers cannot escape into raw or scalar values", -1)
 	if (op == 'v'):
 		if (safe_has_array(n.semantic_type, 0)): safe_error(id, c"safe: array storage cannot be copied; pass a shared slice", -1)
+		# Audited scalar constants; ordering validity is checked per call.
+		if ((wanted == 0) && (safe_memory_order(n.binding) >= 0)): return -1
 		int index = safe_index(n.binding)
 		if (index < 0): safe_error(id, c"safe: global and function values are not supported", -1)
 		safe_read(index, id, state)
@@ -2215,6 +2328,7 @@ int safe_eval_groups(int id, char* state, int want, safe_borrowed* components):
 		safe_owner_construct(id, &n, want, state, components)
 		return -1
 	if ((op == 'D') && (n.high == 0) && safe_plain(n.semantic_type, 0)):
+		if (safe_opaque(n.semantic_type)): safe_error(id, c"safe: opaque collections require an audited constructor", -1)
 		safe_plain_construct(id, &n, want, state)
 		return -1
 	if (op == 'N'):
@@ -2446,6 +2560,8 @@ void safe_transfer(int event, char* state):
 				if (safe_local_loan(borrower) < 2): continue
 				if (safe_set_has(safe_origin[borrower], root) == 0): continue
 				if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
+				if (safe_validate && safe_guard_locals[borrower] && (state[borrower] & 2) && (safe_within(safe_birth[borrower], f.node) == 0)):
+					safe_error(f.node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
 				state[borrower] = (state[borrower] & 48) | 4
 				safe_moved_at[borrower] = f.node
 		for i in range(safe_locals.length):
@@ -2550,6 +2666,8 @@ void safe_function_check(int function):
 			int index = safe_index(n.binding)
 			if (index >= 0): safe_birth[index] = id
 	for i in range(safe_real_locals, count): safe_birth[i] = safe_birth[safe_index(safe_locals[i])]
+	safe_guard_locals = safe_zero(count, 1)
+	for i in range(safe_real_locals): safe_guard_locals[i] = safe_guard_drop(retained_bindings[safe_locals[i]].type)
 	int end = safe_add(function, -1, -1, 0, -1, -1)
 	int start = safe_sequence(safe_first[function], end, -1, -1)
 	# Reference liveness: direct uses plus reborrow ancestry. The fixed
@@ -2557,6 +2675,11 @@ void safe_function_check(int function):
 	for i in range(safe_graph.length):
 		safe_flow* f = safe_graph[i]
 		if ((f.action == 5) || (f.action == 6)): f.uses[f.binding] = 1
+		# A guard is used where it is dropped: its block's exit, any
+		# return, and the end of the function.
+		for j in range(safe_real_locals):
+			if (safe_guard_locals[j] == 0): continue
+			if ((f.action == 2) || (i == end) || ((f.action == 3) && safe_within(safe_birth[j], f.node))): f.uses[j] = 1
 		if (f.expression < 0): continue
 		retained_node root
 		retained_node_load(f.expression, &root)
@@ -2638,6 +2761,8 @@ void safe_function_check(int function):
 			safe_transfer(i, state)
 	free(state)
 	free(refined)
+	free(safe_guard_locals)
+	safe_guard_locals = 0
 	for i in range(safe_graph.length):
 		free(safe_graph[i].state)
 		free(safe_graph[i].live)
