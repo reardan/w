@@ -237,7 +237,7 @@ int mm_editor_add_edge(mm_editor* e, char* from_id, char* to_id):
 
 # Hit testing uses scene coordinates; callers reverse preview zoom and pan.
 int mm_editor_hit(mm_editor* e, int x, int y):
-	if (e.scene == 0 || (e.document.kind != MM_FLOW && e.document.kind != MM_ER)): return -1
+	if (e.scene == 0 || mm_graph_edit_family(e.document.kind) == 0): return -1
 	int hit = -1
 	for i in range(e.scene.nodes.length):
 		mm_bounds* b = e.scene.nodes[i]
@@ -330,7 +330,7 @@ int mm_editor_has_positions(mm_editor* e):
 # metadata-looking text and other diagrams remain byte-for-byte intact.
 int mm_editor_reset_positions(mm_editor* e):
 	mm_editor_move_cancel(e)
-	if (e.document.error != 0 || (e.document.kind != MM_FLOW && e.document.kind != MM_ER)): return 0
+	if (e.document.error != 0 || mm_graph_edit_family(e.document.kind) == 0): return 0
 	if (mm_editor_has_positions(e) == 0): return 1
 	mm_document* d = e.document
 	string_builder* source = string_new()

@@ -182,3 +182,34 @@ void test_canvas_selection_and_focus_change_exit_click_modes():
 	assert_equal(0, c.move_here)
 	assert_equal(1, e.history.length)
 	mm_editor_free(e)
+
+void test_canvas_state_diagram_select_connect_drag_and_delete():
+	mm_editor* e = mm_editor_new(c"unused.mmd", c"stateDiagram-v2\nIdle --> Busy\nDone\n")
+	mm_canvas c
+	mm_canvas_init(&c)
+	int busy = mm_find_node(e.document, c"Busy")
+	int done = mm_find_node(e.document, c"Done")
+	mm_canvas_cycle(&c, e, 0)
+	assert_equal(0, c.node)
+	mm_bounds* b = e.scene.nodes[busy]
+	mm_canvas_press(&c, e, cast(float32, b.x + 20), cast(float32, b.y + 20))
+	assert_equal(busy, c.node)
+	c.connect_from = busy
+	b = e.scene.nodes[done]
+	assert_equal(1, mm_canvas_press(&c, e, cast(float32, b.x + 20), cast(float32, b.y + 20)))
+	assert_equal(2, e.document.edges.length)
+	assert_strings_equal(c"Done", e.document.nodes[e.document.edges[1].to_node].id)
+	mm_canvas_reset(&c, e)
+	b = e.scene.nodes[done]
+	float32 px = cast(float32, b.x + 20)
+	float32 py = cast(float32, b.y + 20)
+	mm_canvas_press(&c, e, px, py)
+	assert_equal(2, c.gesture)
+	mm_canvas_motion(&c, e, px + 40.0, py + 30.0)
+	assert_equal(1, mm_canvas_release(&c, e))
+	asserts(c"state drag persisted", index_of(e.document.source, c"%% @w-position \"Done\" ") >= 0)
+	c.node = mm_find_node(e.document, c"Busy")
+	assert_equal(1, mm_canvas_delete(&c, e))
+	assert_equal(-1, mm_find_node(e.document, c"Busy"))
+	assert_equal(0, e.document.edges.length)
+	mm_editor_free(e)
