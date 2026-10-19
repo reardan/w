@@ -134,7 +134,13 @@ void mm_ui_render(ui_renderer* r, mm_scene* scene, ui_rect viewport, float32 zoo
 			# Transform the effective clip with the text, then restore it. A
 			# nested push would intersect world and local coordinate systems.
 			r.clip_stack[clip_slot] = ui_rect_new((visible.x - x) / zoom, (visible.y - y) / zoom, visible.w / zoom, visible.h / zoom)
-			ui_draw_text(r, 0.0, 0.0, p.text, 2, paper)
+			# Body strike (Regular 16) or the bold face at the same size, so
+			# runs keep the advances libs/extras/mermaid/text_metrics.w laid out.
+			int strike = ui_font_strike_from_scale(2)
+			if (p.text_style & MM_TEXT_BOLD): strike = ui_font_strike(UI_FACE_BOLD, MM_TEXT_SIZE)
+			int style = UI_TEXT_PLAIN
+			if (p.text_style & MM_TEXT_ITALIC): style = UI_TEXT_ITALIC
+			ui_draw_text_strike(r, 0.0, 0.0, p.text, strike, style, paper)
 			r.clip_stack[clip_slot] = visible
 			for i in range(start, r.layer_vert_count[layer]):
 				float32* v = &r.layer_verts[layer][i * 8]

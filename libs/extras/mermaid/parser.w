@@ -335,6 +335,7 @@ mm_document* mm_parse_raw(char* source, int length):
 	p.pos = 0
 	p.scope = -1
 	p.global_nodes = 0
+	p.markdown_unclosed = 0
 	if (length >= 3 && (source[0] & 255) == 239 && (source[1] & 255) == 187 && (source[2] & 255) == 191): p.pos = 3
 	mm_separators(&p)
 	char* header = mm_identifier(&p)

@@ -291,6 +291,7 @@ int mm_editor_delete(mm_editor* e, int node, int edge):
 	p.pos = e.document.source_start
 	p.scope = -1
 	p.global_nodes = 0
+	p.markdown_unclosed = 0
 	if (p.pos == 0 && scratch.length >= 3 && (scratch.source[0] & 255) == 239 && (scratch.source[1] & 255) == 187 && (scratch.source[2] & 255) == 191): p.pos = 3
 	mm_edit_separators(&scan)
 	char* header = mm_identifier(p)

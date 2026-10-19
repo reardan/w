@@ -52,7 +52,8 @@ void test_blocks_large_label_dimensions_stay_bounded():
 	mm_document* d = mm_parse(source.data, source.length)
 	asserts(c"large bounded grid parses", d.error == 0)
 	mm_scene* s = mm_render(d)
-	asserts(c"one long label does not multiply across columns", s.width > 800000 && s.width < 1000000)
+	# Text extents use the 11px advance of X (text_metrics.w).
+	asserts(c"one long label does not multiply across columns", s.width > 800000 && s.width < 1200000)
 	asserts(c"grid height bounded", s.height > 0 && s.height < 1000)
 	mm_scene_free(s)
 	mm_document_free(d)
