@@ -420,6 +420,11 @@
       "path": "upstream/harness/isConstructor.js",
       "upstream_path": "harness/isConstructor.js",
       "sha256": "68e1a3e4565a8d33ea7fc918627fbbf446bcf14d7a939777616b2b545a5e7d32"
+    },
+    {
+      "path": "upstream/harness/compareArray.js",
+      "upstream_path": "harness/compareArray.js",
+      "sha256": "3330423fe116cd96db70077d194471319ae9767ba1c8e2f73d7c133c5204509d"
     }
   ],
   "cases": [
@@ -617,20 +622,16 @@
       "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "unsupported required built-ins: Number, isNaN"
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T1.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "unsupported required built-ins: Number, isNaN"
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "unsupported required built-ins: Number, isNaN"
+      "status": "PASS"
     },
     "upstream/test/language/expressions/addition/S11.6.1_A4_T2.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "unsupported required built-ins: Number, isNaN"
+      "status": "PASS"
     },
     "upstream/test/language/expressions/assignment/id-eval-strict.js#strict": {
       "status": "PASS"

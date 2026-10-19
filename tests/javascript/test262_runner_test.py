@@ -27,8 +27,8 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 127, 'FAIL': 0, 'UNSUPPORTED': 24, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 118)
+        self.assertEqual(report['counts'], {'PASS': 131, 'FAIL': 0, 'UNSUPPORTED': 20, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 122)
         self.assertEqual(report['assertions'], 360)
         self.assertEqual(report['variants'], 151)
         self.assertEqual(report['baseline_changes'], [])
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 126, 'FAIL': 0, 'UNSUPPORTED': 25, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 130, 'FAIL': 0, 'UNSUPPORTED': 21, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -63,7 +63,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'load_manifest', return_value=(manifest, sources)):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 127, 'FAIL': 0, 'UNSUPPORTED': 24, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 131, 'FAIL': 0, 'UNSUPPORTED': 20, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
@@ -80,21 +80,23 @@ class AdapterContract(unittest.TestCase):
                 self.assertEqual(result['status'], 'UNSUPPORTED')
                 self.assertEqual(result['actual']['phase'], 'metadata')
                 self.assertEqual(result['actual']['message'],
-                                 'unsupported required built-ins: ' + ', '.join(requirements[case]))
+                                 'unsupported required built-ins: ' + ', '.join(sorted(set(requirements[case]) - adapter.BUILTINS)))
         # Direct execution retains genuine ReferenceError, including the
-        # unavailable eval/isNaN built-ins. No runtime exception is relabelled by classify.
-        for source in ['unknownUserVariable;', 'eval("1 + 1");', 'isNaN(0);']:
+        # unavailable eval built-in. No runtime exception is relabelled by classify.
+        for source in ['unknownUserVariable;', 'eval("1 + 1");']:
             actual = self.execute(source)
             self.assertEqual(actual['error_type'], 'ReferenceError')
             self.assertEqual(adapter.classify({}, actual), 'FAIL')
-        self.assertEqual(self.execute("assert.sameValue(Number.isFinite(1), true);")['outcome'], 'normal')
+        self.assertEqual(self.execute("assert.sameValue(Number.isFinite(1), true);assert.sameValue(isNaN(0), false);assert.sameValue(isNaN(undefined), true);")['outcome'], 'normal')
         # Claiming availability actually runs the pinned cases; it must expose
-        # failures until the runtime implements the advertised capability.
+        # eval failures. Check Number constants directly as well, so passing
+        # NaN arithmetic cannot conceal an unavailable required constant.
         with patch.object(adapter, 'BUILTINS', adapter.KNOWN_BUILTINS):
             promoted, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(promoted['counts']['FAIL'], 6)
-        self.assertEqual(len(promoted['baseline_changes']), 6)
+        self.assertEqual(promoted['counts']['FAIL'], 2)
+        self.assertEqual(len(promoted['baseline_changes']), 2)
+        self.assertEqual(self.execute("assert.sameValue(Number.NaN, NaN);assert.sameValue(Number.POSITIVE_INFINITY, Infinity);assert.sameValue(Number.NEGATIVE_INFINITY, -Infinity);")['outcome'], 'normal')
 
     def test_assertions_execute_and_reject_truthy_values(self):
         for source in ['assert(true);', 'assert.sameValue(NaN, NaN);', 'assert.notSameValue(0, -0);', 'assert.sameValue();']:
@@ -228,6 +230,9 @@ class AdapterContract(unittest.TestCase):
 
     def test_original_include_resolution_rejects_missing_cycles_and_capability_gaps(self):
         _, sources = adapter.load_manifest(adapter.MANIFEST)
+        source, reason = adapter.prepare_harness(sources, ['compareArray.js'])
+        self.assertIsNone(reason)
+        self.assertIn(sources['upstream/harness/compareArray.js'], source)
         source, reason = adapter.prepare_harness(sources, ['propertyHelper.js'])
         self.assertIsNone(reason)
         self.assertIn(sources['upstream/harness/propertyHelper.js'], source)

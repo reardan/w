@@ -22,7 +22,7 @@ FEATURES = {'coalesce-expression', 'Object.is', 'Reflect', 'Reflect.set', 'Refle
 # Explicit capability inventory for requirements declared by hash-pinned cases.
 # Promote only alongside runtime implementation and executable contract checks.
 KNOWN_BUILTINS = {'eval', 'Number', 'isNaN', 'Object'}
-BUILTINS = {'Object'}
+BUILTINS = {'Object', 'Number', 'isNaN'}
 DOC_FIELDS = {'description', 'info', 'esid', 'es5id', 'es6id', 'author'}
 
 
@@ -61,12 +61,12 @@ def metadata(source, harness=False):
     require(len(blocks) == 1, 'exactly one Test262 metadata block required')
     result = {}
     sequence_fields = {'flags', 'features', 'includes'}
-    doc_fields = DOC_FIELDS | ({'defines'} if harness else set())
+    doc_fields = DOC_FIELDS | ({'defines', 'allow_unused'} if harness else set())
     key = None
     for line in blocks[0].splitlines():
         if not line.strip() or line.lstrip().startswith('#'):
             continue
-        match = re.match(r'^([A-Za-z][A-Za-z0-9]*):(?:\s*(.*))?$', line)
+        match = re.match(r'^([A-Za-z][A-Za-z0-9_]*):(?:\s*(.*))?$', line)
         if match:
             key, value = match.groups()
             require(key not in result, 'duplicate metadata key: ' + key)

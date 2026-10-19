@@ -15,7 +15,7 @@ report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
 The selected corpus contains 77 upstream files expanded into 151 variants:
-**127 PASS, 0 FAIL, 24 UNSUPPORTED, 0 ERROR**. Of those passes, 118 reach runtime
+**131 PASS, 0 FAIL, 20 UNSUPPORTED, 0 ERROR**. Of those passes, 122 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
 syntax errors. Positive cases execute 360 native assertions across strict/sloppy
 variants; older upstream cases also use conditional throwing checks. These
@@ -69,12 +69,11 @@ executing that constructor remains unsupported.
 Manifest version 2 records built-in requirements for four hash-pinned cases:
 addition `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
 `Number` and `isNaN`; slice `create-non-array` needs `Object` reflection. The
-adapter advertises the selected Object reflection requirement, but not the other capabilities (bounded Number helpers
-lack the required constants/global `isNaN`), so six variants report explicit
-metadata UNSUPPORTED reasons. This is a declared capability boundary, not an
-exception filter: unknown identifiers and direct uses of missing built-ins
-still throw ReferenceError and classify as FAIL. A regression test advertises
-all four capabilities and verifies that execution exposes all six remaining failures.
+adapter advertises the selected Object reflection and Number/isNaN requirements.
+Direct checks verify Number.NaN and both infinities, and the original addition
+cases pass after global isNaN implementation. Only eval remains gated here (two
+variants). Unknown identifiers and direct uses of missing built-ins still throw
+ReferenceError and classify as FAIL; forcing eval admission exposes both failures.
 Source bytes and hashes remain unchanged.
 
 The native callbacks count real assertion invocations. Contract tests verify
@@ -142,8 +141,8 @@ of complete Promise semantics.
 The selected corpus now adds all three upstream empty-input Promise.all tests
 (A2.3_T1–T3) unchanged. The existing array slice Object-descriptor requirement
 is promoted only after its real execution passes with A's Object implementation.
-Current selected expectation is 77 files / 151 variants: 127 PASS and 24
-UNSUPPORTED (118 runtime passes, 360 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
+Current selected expectation is 77 files / 151 variants: 131 PASS and 24
+UNSUPPORTED (122 runtime passes, 360 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
 results; `--require-all` remains nonzero until they are implemented.
 
 `inventory.json` records the complete pinned upstream archive: 57,013 regular
@@ -224,3 +223,6 @@ metadata now reaches execution; this admits tests rather than assuming their
 results. The ordinary Reflect.construct slice also admits the original isConstructor.js
 helper, with real positive ordinary-function and negative arrow-function checks.
 Symbol support and native alternate-newTarget limitations remain explicit.
+
+The original compareArray.js include is hash-pinned. Harness-only `allow_unused`
+is admitted as upstream lint metadata; unknown executable metadata still fails.
