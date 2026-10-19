@@ -1,13 +1,10 @@
 # Storage conversion conformance on a real GPU. The default emit target
-# passes --ptx to print the embedded module without opening the driver.
-# The optional narrow_float_gpu_test runs the same kernels on CUDA.
+# reads the compiler's --ptx=<file> dump without running this CUDA-linked
+# binary. The optional narrow_float_gpu_test runs the kernels on CUDA.
 import lib.lib
 import lib.cuda
 import lib.assert
 import lib.fmath
-
-char* __w_ptx_module();
-
 
 kernel narrow_float_convert(float32* input, float16* half, bfloat16* brain, float32* halfwide, float32* brainwide, int n):
 	int i = block_idx() * block_dim() + thread_idx()
@@ -120,10 +117,7 @@ void check_narrow_gpu_storage():
 	gpu_free(cast(char*, brainwide))
 
 
-int main(int argc, char** argv):
-	if (argc > 1):
-		println(__w_ptx_module())
-		return 0
+int main():
 	check_narrow_gpu_rounding()
 	check_narrow_gpu_storage()
 	check_narrow_gpu_parameters_and_captures()
