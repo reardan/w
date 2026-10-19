@@ -7,10 +7,11 @@ until their ledger is promoted, preventing stale expected-failure exceptions.
 """
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 import random
+import signal
+import time
 import re
 from pathlib import Path
 import shutil
@@ -22,10 +23,42 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests/grammars/antlr_differential"
-spec = importlib.util.spec_from_file_location("sweep", ROOT / "libs/extras/grammars/antlr_to_pg/sweep_grammars_v4.py")
-sweep = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(sweep)
+# Keep the external Java reference runner self-contained: the repository sweep
+# and its normal regression harness are now native W tools.
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
+
+def git_output(root, *args):
+    return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
+
+
+def run_stage(argv, log, timeout, cwd):
+    start = time.monotonic()
+    result = {"argv": [str(arg) for arg in argv], "log": str(log), "status": "error"}
+    with log.open("wb") as output:
+        try:
+            process = subprocess.Popen(result["argv"], cwd=cwd, stdout=output,
+                                       stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                result["exit_code"] = process.wait(timeout=timeout)
+                result["status"] = ("pass" if process.returncode == 0 else
+                                    "crash" if process.returncode < 0 else "fail")
+            except subprocess.TimeoutExpired:
+                # Kill descendants too: wrappers and compiler children must not
+                # continue writing into artifacts after the stage timed out.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                result.update(status="timeout", exit_code=124)
+                output.write(b"\nSWEEP: stage timeout\n")
+        except OSError as error:
+            output.write(str(error).encode())
+            result["error"] = str(error)
+    result["seconds"] = round(time.monotonic() - start, 3)
+    return result
 
 def observation(output, skip_tokens=(), observe_rules=(), channel_map=None, token_names=None):
     result = {"tokens": [], "rules": []}
@@ -82,7 +115,7 @@ def load_manifest(path=FIXTURES / "manifest.json"):
         raise ValueError("unsupported differential manifest schema")
     for entry in data["files"]:
         source = (FIXTURES / entry["path"]).resolve()
-        if not source.is_relative_to(FIXTURES.resolve()) or sweep.sha256(source) != entry["sha256"]:
+        if not source.is_relative_to(FIXTURES.resolve()) or digest(source) != entry["sha256"]:
             raise ValueError("differential input hash/path mismatch: " + entry["path"])
     names = set()
     for case in data["cases"]:
@@ -111,7 +144,7 @@ def load_manifest(path=FIXTURES / "manifest.json"):
 
 def command(argv, directory, name, timeout, provenance):
     log = directory / (name + ".log")
-    result = sweep.run_stage(argv, log, timeout, ROOT)
+    result = run_stage(argv, log, timeout, ROOT)
     provenance[name] = result
     if result["status"] != "pass":
         raise ValueError(f"{name}: {result['status']}; see {log}")
@@ -167,7 +200,7 @@ def main(argv=None):
         args.translator_flag.extend(flag for flag in ("--exact-lexer", "--prediction") if flag not in args.translator_flag)
     if args.jar:
         args.jar = args.jar.resolve()
-        if sweep.sha256(args.jar) != data["oracle"]["jar_sha256"]:
+        if digest(args.jar) != data["oracle"]["jar_sha256"]:
             raise ValueError("ANTLR jar checksum mismatch")
     selected = [case for case in data["cases"] if not args.case or case["name"] in args.case]
     if args.case and set(args.case) - {case["name"] for case in selected}:
@@ -181,9 +214,9 @@ def main(argv=None):
         (ROOT / "bin/antlr_differential").mkdir(parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix="run-", dir=ROOT / "bin/antlr_differential"))
     print(f"Artifacts: {work}", flush=True)
-    provenance = {"oracle": data["oracle"], "manifest_sha256": sweep.sha256(FIXTURES / "manifest.json"),
-                  "runner_sha256": sweep.sha256(Path(__file__)), "translator_flags": args.translator_flag,
-                  "live_oracle": bool(args.jar), "exact": args.exact, "w_commit": sweep.git_output(ROOT, "rev-parse", "HEAD")}
+    provenance = {"oracle": data["oracle"], "manifest_sha256": digest(FIXTURES / "manifest.json"),
+                  "runner_sha256": digest(Path(__file__)), "translator_flags": args.translator_flag,
+                  "live_oracle": bool(args.jar), "exact": args.exact, "w_commit": git_output(ROOT, "rev-parse", "HEAD")}
     if args.jar:
         provenance["java_version"] = subprocess.check_output(["java", "-version"], stderr=subprocess.STDOUT, text=True)
         provenance["javac_version"] = subprocess.check_output(["javac", "-version"], stderr=subprocess.STDOUT, text=True)
@@ -191,7 +224,7 @@ def main(argv=None):
         if not version or int(version[1]) < data["oracle"]["minimum_java_major"]:
             raise ValueError("live oracle requires Java " + str(data["oracle"]["minimum_java_major"]) + " or newer")
     tools = [] if args.oracle_only else [ROOT / "bin" / name for name in ("antlr_to_pg", "parser_generator_grammars", "wv2")]
-    provenance["tool_hashes"] = {str(path): sweep.sha256(path) for path in tools}
+    provenance["tool_hashes"] = {str(path): digest(path) for path in tools}
     results, errors, new_snapshots = [], [], {}
     snapshots = json.loads((FIXTURES / "snapshots.json").read_text()) if not args.refresh_snapshots else {}
     for case in selected:
@@ -238,7 +271,7 @@ def main(argv=None):
             errors.append(case["name"] + ": " + str(error))
         print(case["name"] + (": ERROR " + row["error"] if "error" in row else ": mismatch" if any(item.get("status") == "fail" for item in row["inputs"]) else ": pass"), flush=True)
     for path in tools:
-        if sweep.sha256(path) != provenance["tool_hashes"][str(path)]:
+        if digest(path) != provenance["tool_hashes"][str(path)]:
             errors.append("tool changed during differential run: " + str(path))
     configured = sum(len(case["inputs"]) for case in selected)
     summary = {"configured_grammars": len(selected), "configured_inputs": configured,

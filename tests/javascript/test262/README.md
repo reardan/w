@@ -4,8 +4,8 @@ From the W repository root:
 
 ```sh
 ./wbuild javascript_test262
-python3 tools/test262_conformance.py --json bin/test262-conformance.json
-python3 tools/test262_conformance.py --require-all
+bin/test262_conformance --json bin/test262-conformance.json
+bin/test262_conformance --require-all
 ```
 
 This target executes **unmodified upstream Test262 tests in W's x64 interpreter**,

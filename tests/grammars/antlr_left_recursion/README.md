@@ -71,7 +71,7 @@ Normal offline tests never download tools or modify snapshots:
 ```sh
 python3 tests/antlr_left_recursion_oracle.py
 python3 tests/antlr_left_recursion_oracle_test.py
-python3 tests/antlr_left_recursion_refusals.py --tool bin/antlr_to_pg
+bin/antlr_left_recursion_refusals --tool bin/antlr_to_pg
 ```
 
 To reproduce the original graph, build the maintained inventory driver and pass its

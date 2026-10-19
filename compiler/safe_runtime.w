@@ -9,7 +9,10 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/__arch__/arm64_darwin/context.w")): return c"23abb972c712b19cdb7de44245451521ed6c6786039b51e5f4cb378f32e25547"
 	if (ends_with(path, c"/lib/__arch__/arm64_darwin/syscalls.w")): return c"8b84efac43cc93406bd727f606b115f80b25b44ea5e90e962cba24958243c899"
 	if (ends_with(path, c"/lib/darwin/context.w")): return c"64f2850916e604040424c9526d37dc186f5bd133570cad3877613ebe0b6fc511"
-	if (ends_with(path, c"/lib/darwin/syscalls.w")): return c"83a74790e3b89de9586ab36d86c044219cf5cdbd4d76425b0c4eb217f632878c"
+	# Metadata conversion uses fixed 144-byte input / 256-byte output bounds;
+	# no allocation or ownership changes, and no new checked-call entry points.
+	if (ends_with(path, c"/lib/darwin/syscalls.w")): return c"45c22f1278fe2e06a0548c78e3ebdcb0da7cb3b09b70f82b58f6e3315e582e61"
+	if (ends_with(path, c"/lib/darwin/stat_layout.w")): return c"40e7339c326b459131b7a269db5a306d55f363e98f14750a96c78fb68a00a72c"
 	if (ends_with(path, c"/lib/__arch__/arm64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/arm64/context.w")): return c"4a3249682fcff806dcc692c06388800598401f230dba49dc8deb231c28009438"
 	if (ends_with(path, c"/lib/__arch__/arm64/syscalls.w")): return c"e4832ebe92ac88c25e42727364730a0b5fb1bde92409dad527047663ede683fa"
@@ -40,6 +43,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/memory_freelist.w")): return c"3914deeecbd1076336d7d71c7ef948d437b5f2784de641b5e9b73134acdfd317"
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
+	if (ends_with(path, c"/lib/safe_foreign.w")): return c"bc265181309880ad5416d81d722a18b08cd0df30a4fb8ce3cf045aba52d5c18d"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
 	if (ends_with(path, c"/lib/safe_thread.w")): return c"aece9bfefb701d7fcc9e68d888a0140309d58db2adb028c9bd2973ec65bd6fa4"
 	if (ends_with(path, c"/lib/thread.w")): return c"5430e367b5acf2ac324a46294001ae9ebd426c9223130fa3bf2054bfdcaa6b89"

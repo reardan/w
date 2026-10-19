@@ -440,7 +440,7 @@ for the scroll region around them.
   `build.json` — never hand-edited.
 - `docs/projects/ui_framework.md` and `ui_widgets.md` status lines
   updated; `docs/images/ui_demo_*.png` refreshed via
-  `graphics/ui/demo.w --screenshot` + `tools/ppm_to_png.py` if the
+  `graphics/ui/demo.w --screenshot` + `tools/ppm_to_png.w` if the
   default screen changed.
 - Any friction hit in `w check` / `wtest` during the work gets an entry
   in `docs/projects/ai_tooling_next_steps.md` (repo rule).

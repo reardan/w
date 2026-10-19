@@ -46,13 +46,15 @@ bin/javascript_roundtrip_darwin memory
 bin/javascript_runtime_objects_darwin memory
 bin/javascript_runtime_environments_darwin memory
 compile tools/javascript_runtime_runner.w bin/javascript_conformance_darwin
-python3 tools/javascript_conformance.py --runner bin/javascript_conformance_darwin
+compile tools/javascript_conformance.w bin/javascript_conformance_cli_darwin
+bin/javascript_conformance_cli_darwin --runner bin/javascript_conformance_darwin
 compile examples/javascript/inspect.w bin/javascript_inspect_darwin
 compile examples/javascript/build.w bin/javascript_build_darwin
 compile examples/javascript/transform.w bin/javascript_transform_darwin
 bin/javascript_build_darwin > bin/javascript_built.mjs
 bin/javascript_inspect_darwin --module --check bin/javascript_built.mjs
-python3 tools/javascript_unicode.py --check
+bin/wv2_darwin arm64_darwin tools/javascript_unicode.w -o bin/javascript_unicode
+bin/javascript_unicode --check
 # The explicit compatibility runner requires the pinned Node release. Missing
 # or mismatched Node fails visibly; no tests are silently skipped.
 python3 tools/javascript_compatibility.py --parser bin/javascript_inspect_darwin --builder bin/javascript_build_darwin --transform bin/javascript_transform_darwin --runtime-compiler bin/wv2_darwin --runtime-arch arm64_darwin

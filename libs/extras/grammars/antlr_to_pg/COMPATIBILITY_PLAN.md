@@ -168,7 +168,7 @@ operations; change the pure generated comparisons currently selected differently
 by `g_at_stateful`. Review resulting JSON/CSV matcher golden changes explicitly.
 This task improves warning-free compilation, not semantic acceptance.
 
-Worker C extends `sweep_grammars_v4.py`, `tests/antlr_sweep_harness_test.py`, and
+Worker C extends `tools/antlr_sweep.w`, `tests/antlr_sweep_harness.w`, and
 `.github/workflows/grammar-coverage.yml`. Introduce a versioned schema with two
 independent configuration dimensions: permissive/strict translation and
 default/explicit-stateful lexer selection. For each configuration run translation,

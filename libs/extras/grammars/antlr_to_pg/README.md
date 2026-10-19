@@ -67,7 +67,7 @@ grammars describe the two formats involved, run through
   translates them and compares the output with the committed
   `../json.pg`/`../csv.pg` (plus reports and matcher modules);
   `./wbuild grammars_refresh` rewrites those after an intended change.
-- `sweep_grammars_v4.sh` / `.py`, `sweep_baseline.json` — the pinned,
+- `sweep_grammars_v4.sh` / `tools/antlr_sweep.w`, `sweep_baseline.json` — the pinned,
   staged corpus sweep and per-grammar regression gate (see "Stress-testing").
   `sweep_current_results.csv` records the current pinned run;
   `SWEEP_RESULTS.md` also retains the historical `sweep_results.csv` measurement.
@@ -316,8 +316,8 @@ as evidence the tool degrades honestly on a large real-world input rather
 than as a deliverable.
 
 `sweep_grammars_v4.sh` runs a pinned set of **291 selected top-level grammar
-cases**, not every grammar or subdirectory variant in grammars-v4. Its Python 3
-standard-library driver records separate translation, parser generation, W
+cases**, not every grammar or subdirectory variant in grammars-v4. Its native W
+driver records separate translation, parser generation, W
 compilation, and strict-translation results. Compilation appends an empty `main`
 and does **not** execute the generated parser. Strict acceptance is a conservative
 audit result, not evidence of semantic equivalence. Runtime checks belong in

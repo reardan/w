@@ -10,8 +10,9 @@ here with explicit byte offsets. On i386, 64-bit fields are read via
 load_word (low 32 bits) -- the same accepted limit lib/time.w documents
 for time_now() and that libs/extras/vcs/index.w used for size/mtime.
 
-Darwin / win64 / wasm stubs return -1 from the arch wrappers; callers
-see a negative errno-style failure.
+Darwin translates stat64/lstat64 into this buffer layout and supports chmod.
+Win64 / wasm metadata stubs return -1. Darwin's timestamp/ownership mutation
+wrappers remain unsupported; callers see a negative errno-style failure.
 
 Design notes: libs/standard/plans/05_filesystem.md (Phase 1 foundation),
 docs/projects/unix_primitives.md (explicit utimens / chown).

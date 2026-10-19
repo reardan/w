@@ -1,6 +1,6 @@
-# wbuild: target=android_executor_signal_device_test dep=wv2
+# wbuild: target=android_executor_signal_device_test dep=wv2 dep=android_executor_signal
 # wbuild: step="bin/wv2 arm64_android --strict tools/wexec_main.w tests/android_elf_imports.w -o bin/wexec_android_signal_test"
-# wbuild: step="python3 tests/android_executor_signal_test.py bin/wexec_android_signal_test"
+# wbuild: step="bin/android_executor_signal bin/wexec_android_signal_test"
 # wbuild: target=android_build_tools_compile_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 arm64 --strict tools/wexec_main.w -o bin/wexec_arm64_cross"
 # wbuild: step="bin/wv2 arm64_android --strict tools/wexec_main.w -o bin/wexec_android_cross"

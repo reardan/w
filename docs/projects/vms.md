@@ -96,7 +96,7 @@ Goals:
   purpose.
 - One control API (`wvmd`) that wharness, wexec and humans all use.
 - Keep the control plane, cell VMM and guest agent in W. Linux boxes
-  currently require installed QEMU; image/benchmark tooling also uses Python.
+  currently require installed QEMU; image assembly is native W; the optional QEMU comparison benchmark uses Python.
 
 Non-goals for now: cross-host live migration, GPU passthrough, Windows hosts,
 running untrusted code on a multi-tenant host (the threat model is "an
@@ -677,7 +677,8 @@ currently uses restore-on-demand templates rather than this library pool.
 ### Reproducible Linux image assembly
 
 ```sh
-python3 tools/wvm_image.py --rootfs /images/agent-rootfs.tar.gz \
+./wbuild wvm_image
+bin/wvm_image --rootfs /images/agent-rootfs.tar.gz \
   --sha256 <pinned-rootfs-sha256> --init bin/wvm_init --output bin/agent.cpio
 ```
 
@@ -689,7 +690,7 @@ and creates the early console device and mountpoints. It rejects duplicate,
 traversing and special-file entries, and paths beneath symlinks. Output is
 atomically replaced only after successful assembly. `agent.cpio.json` records
 rootfs, init and output SHA256 values; keep the rootfs digest and kernel pin
-in deployment configuration. Python is a build-time dependency only. This
+in deployment configuration. Assembly uses the native `wvm_image` tool. This
 provides reproducible assembly, not a maintained distribution/package lock.
 
 ### Session daemon and harness client

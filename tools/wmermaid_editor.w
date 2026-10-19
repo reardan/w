@@ -2,8 +2,8 @@
 # wbuild: target=mermaid_editor_platforms tag=tests dep=wv2
 # wbuild: step="bin/wv2 win64 tools/wmermaid_editor.w -o bin/wmermaid_editor_win.exe"
 # wbuild: step="bin/wv2 arm64_darwin tools/wmermaid_editor.w -o bin/wmermaid_editor_darwin"
-# wbuild: target=mermaid_editor_ui_test dep=wmermaid_editor dep=wmermaid
-# wbuild: step="xvfb-run -a python3 tools/mermaid_editor_ui_test.py"
+# wbuild: target=mermaid_editor_ui_test dep=wmermaid_editor dep=wmermaid dep=mermaid_editor_ui_driver
+# wbuild: step="xvfb-run -a bin/mermaid_editor_ui_driver"
 # Native desktop editor. Optional --frames N / --screenshot FILE for QA.
 import lib.args
 import lib.time

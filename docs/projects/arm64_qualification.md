@@ -3,7 +3,7 @@
 The checked-in command is:
 
 ```sh
-python3 tools/qualify_native.py --suite atomic --rounds 20 --output bin/atomic-native.json
+bin/qualify_native --suite atomic --rounds 20 --output bin/atomic-native.json
 ```
 
 Run it from a checkout with a native W compiler on both ARM64 Linux and Apple
@@ -22,7 +22,7 @@ the Linux `arm64` binaries directly through ADB:
 ```sh
 ./wbuild build
 adb devices -l
-python3 tools/qualify_native.py --suite atomic --adb SERIAL --pac off --rounds 20 --output bin/atomic-native-android.json
+bin/qualify_native --suite atomic --adb SERIAL --pac off --rounds 20 --output bin/atomic-native-android.json
 ```
 
 Replace `SERIAL` with the device listed by ADB. `--pac off` is required on CPUs
@@ -105,7 +105,7 @@ this CPU without PAC. Explicit `--pac=off` passed; no compiler or ordered-memory
 lowering change was required. The recorded command was:
 
 ```sh
-python3 tools/qualify_native.py --suite atomic --adb R9WW506BEKR --pac off --rounds 20 --output bin/atomic-native-sm-s134dl.json
+bin/qualify_native --suite atomic --adb R9WW506BEKR --pac off --rounds 20 --output bin/atomic-native-sm-s134dl.json
 ```
 
 Streaming (`--streaming`), retained (`--ast-required --ast-retain`) and optimized
@@ -149,7 +149,7 @@ The driver records compiler, fixture, source-tree and driver hashes and every
 compilation command. Its final invocation was:
 
 ```sh
-python3 tools/qualify_native.py --suite atomic --rounds 20 --output bin/atomic-native-final.json
+bin/qualify_native --suite atomic --rounds 20 --output bin/atomic-native-final.json
 ```
 
 Streaming (`--streaming`), retained (`--ast-required --ast-retain`) and optimized

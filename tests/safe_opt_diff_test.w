@@ -5,6 +5,7 @@
 # wbuild: deps=tests/safe_buffer_prototype_runtime_fixture.w deps=tests/safe_callable_runtime_fixture.w deps=tests/safe_callback_storage_runtime_fixture.w
 # wbuild: deps=tests/safe_collection_runtime_fixture.w deps=tests/safe_control_flow_runtime_fixture.w deps=tests/safe_disjoint_field_runtime_fixture.w
 # wbuild: deps=tests/safe_extension_runtime_fixture.w deps=tests/safe_generic_inference_runtime_fixture.w deps=tests/safe_generic_method_runtime_fixture.w
+# wbuild: deps=tests/safe_foreign_io_runtime_fixture.w
 # wbuild: deps=tests/safe_generic_runtime_fixture.w deps=tests/safe_generic_shape_runtime_fixture.w deps=tests/safe_methods_runtime_fixture.w
 # wbuild: deps=tests/safe_mixed_owner_exclusive_runtime_fixture.w deps=tests/safe_mixed_owner_runtime_fixture.w deps=tests/safe_mixed_owner_views_runtime_fixture.w
 # wbuild: deps=tests/safe_mutable_record_runtime_fixture.w deps=tests/safe_mutable_view_runtime_fixture.w deps=tests/safe_nested_aggregate_runtime_fixture.w

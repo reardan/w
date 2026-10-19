@@ -1,7 +1,7 @@
-# wbuild: target=antlr_audit_json_test tag=tests dep=antlr_to_pg
+# wbuild: target=antlr_audit_json_test tag=tests dep=antlr_to_pg dep=antlr_audit_driver
 # wbuild: step="bin/wv2 tests/antlr_audit_json_test.w -o bin/antlr_audit_json_test"
 # wbuild: step="bin/antlr_audit_json_test"
-# wbuild: step="python3 tests/antlr_audit_json_test.py"
+# wbuild: step="bin/antlr_audit_driver"
 import lib.testing
 import libs.extras.grammars.antlr_to_pg.audit_json
 import libs.extras.grammars.antlr_to_pg.recursion_diagnostics

@@ -156,6 +156,16 @@ source in the tree (`./wbuild manifest` writes a copy to `bin/build.json`
 for reading; `./wbuild manifest_check`, part of `tests`, fails when
 generation fails). Design notes in `docs/projects/wexec.md`.
 
+Repository host utilities and regression harnesses are written in W. Build a
+utility with `./wbuild <target>`, then invoke `bin/<target>` from this checkout;
+for example, `./wbuild android_build android_smoke`, `./wbuild wvm_image`,
+`./wbuild storage_bench`, or `./wbuild qualify_native`. The grammar sweep's
+existing `sweep_grammars_v4.sh` entry point builds and invokes `bin/antlr_sweep`.
+Python remains for independent reference work: PyTorch and Node comparisons,
+ANTLR/Valgrind oracles and their contract tests, the QEMU fleet comparison,
+foreign-host ABI checks, and Pillow/cryptography/zoneinfo fixture generation.
+The native Mac/device gates still require their actual hardware and SDKs.
+
 On x64 Linux, `./wbuild compiler_shared` builds the compiler implementation
 as `bin/libwcompiler.so` and its small launcher as `bin/wcompiler_shared`.
 `./wbuild compiler_static` links the same implementation from a compiled
@@ -477,7 +487,7 @@ requires signing and provisioning. See [native iOS](docs/projects/ios.md).
 Experimental Android support uses `arm64_android`: native ARM64 ELF/PIE,
 shared libraries, a local-seed Termux bootstrap, and a JNI native-controls
 demo. `./wbuild android_seed` cross-builds the initial device compiler;
-`python3 tools/android/build.py` packages the demo with an installed SDK/NDK.
+`bin/android_build` packages the demo with an installed SDK/NDK.
 See [Android support](docs/projects/android.md) for setup, device probes,
 and qualification limits.
 

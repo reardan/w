@@ -1,5 +1,5 @@
 # Test-only syscall interception, imported by the private import root
-# built by tools/mac/test_fs_durability.py. Production has no hooks.
+# built by tools/mac/test_fs_durability.w. Production has no hooks.
 int fs_fault_stage
 int fs_fault_kill
 int fs_fault_errno

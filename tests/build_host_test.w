@@ -188,8 +188,6 @@ void test_android_build_verify_aliases():
 	json_free(m.root)
 
 
-# wbuild: target=android_bootstrap_test tag=tests
-# wbuild: step="python3 tests/android_bootstrap_test.py"
 
 
 void test_android_native_targets_require_device():

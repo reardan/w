@@ -181,5 +181,8 @@ The combined [external consumer](../../examples/web/browser_resource.w) uses
 same-origin redirect approval, checked loading, gzip/deflate decoding, and the
 independent HTML/CSS APIs. It can be copied outside this checkout and compiled
 from any directory with `bin/wv2 --import-root /path/to/w main.w -o consumer`.
-The separate-directory probe is exercised against a controlled gzip HTTP server;
-no public network service is required.
+`./wbuild browser_resource_consumer_test` compiles it from a separate directory
+for x86 and x64 and exercises a controlled loopback HTTP server. It checks
+identity/gzip/deflate, redirect approval and retained fragments, decoding and
+transport errors, expansion limits, and a failing exit status when HTML parsing
+exhausts its depth budget. No public network service is required.
