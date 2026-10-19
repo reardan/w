@@ -127,6 +127,21 @@ int safe_session_type_checked(int type, int depth):
 	return 0
 
 
+# 1 when type, or a field it holds by value, carries lifetime labels
+# (own[a] lock guards, labeled borrows and records): their loans tie them to
+# another value, which the session cannot keep across entries.
+int safe_session_labeled(int type, int depth):
+	if ((type < 0) || (depth > 16)): return 0
+	type = type_unqualified(type)
+	if (type < 0): return 0
+	if (type_record(type).safe_lifetime != 0): return 1
+	if (type_is_array(type)): return safe_session_labeled(type_get_element_type(type), depth + 1)
+	if ((type_get_pointer_level(type) == 0) && (type_record(type).kind == 0)):
+		for i in range(type_num_args(type)):
+			if (safe_session_labeled(type_get_field_type_at(type, i), depth + 1)): return 1
+	return 0
+
+
 # Source spelling of a plain named type, or 0 when the name would not
 # resolve back to exactly this type (redefined structs, generics, arrays).
 char* safe_session_spell(int type):
@@ -455,6 +470,9 @@ void safe_session_item(int start, int end, int kind, int name_at, int symbol):
 		if (fresh.checked && safe_session_nested):
 			safe_session_binding_free(fresh)
 			safe_session_error_at(name_at, c"safe: checked session bindings cannot be declared while another entry or a debugger stop is active")
+		if (fresh.checked && safe_session_labeled(fresh.type, 0)):
+			safe_session_binding_free(fresh)
+			safe_session_error_at(name_at, c"safe: session bindings cannot have lifetime-labeled checked types (such as lock guards); keep them inside a function")
 		if (fresh.checked && safe_session_no_run):
 			safe_session_binding_free(fresh)
 			safe_session_error_at(name_at, c"safe: an entry that is not run cannot declare checked session bindings")

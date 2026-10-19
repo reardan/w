@@ -3,6 +3,10 @@
 # every block (lib/memory_debug.w); a cell has a size no compiler-internal
 # allocation shares, so counting live blocks of that size counts the
 # cells the session has not destroyed yet.
+import lib.lib
+import lib.memory_debug
+
+
 struct cell:
 	int value
 	char[1013] tag
@@ -18,6 +22,13 @@ int safe_repl_live_cells():
 	for i in range(debug_tbl_count):
 		if ((debug_tbl_freed[i] == 0) && (debug_tbl_size[i] == sizeof(cell))): live = live + 1
 	return live
+
+
+void safe_repl_report(char* label):
+	print(label)
+	print(c" live=")
+	print(itoa(safe_repl_live_cells()))
+	print(c"\x0a")
 
 
 int safe_repl_take(own cell* c):
