@@ -57,13 +57,18 @@ void safe_dbg_expect_order(char* text, list[char*] needles):
 
 
 void test_checked_locals_at_stops():
-	process_result* r = safe_dbg_run(c"p r.value + plain\np p.value\nrepl\nr = p\nr.value + 1000\n:end\nb safe_session_debugger_fixture.w:14\ncondition 1 b.value + i == 43\nc\np i\np b.value + i\nd 1\nc\np sum\np r.value\np p.value\np consume(p)\nset p 0\nc\np b.value\nup\np p.value\nc\np p.value\np total\nc\n")
+	process_result* r = safe_dbg_run(c"p r.value + plain\np p.value\nrepl\nr = p\nr.value + 1000\n:end\nb safe_session_debugger_fixture.w:14\ncondition 1 b.value + i == 43\nrepl\nstep(r, 2) + 500\np b.value + i + 100\nc\n:end\nc\np i\np b.value + i\nd 1\nc\np sum\np r.value\np p.value\np consume(p)\nset p 0\nc\np b.value\nup\np p.value\nc\np p.value\np total\nc\n")
 	assert_equal(0, r.status)
 	list[char*] out = new list[char*]
 	out.push(c"= 48")
 	out.push(c"= 41")
 	out.push(c"1041")
-	out.push(c"condition: b.value + i == 43, hits: 3")
+	# A stop nested inside an entry evaluates in the inner frame, then the
+	# entry finishes.
+	out.push(c"condition: b.value + i == 43, hits: 1")
+	out.push(c"= 143")
+	out.push(c"= 543")
+	out.push(c"condition: b.value + i == 43, hits: 4")
 	out.push(c"i = 2")
 	out.push(c"= 43")
 	out.push(c"sum = 170")

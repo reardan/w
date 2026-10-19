@@ -1461,3 +1461,17 @@ expression instead of "constant" in the diagnostic.
   (tests/safe_wasm_contract_test.w) therefore has to special-case the
   default target by omitting the selector. Direction: accept `x86` as an
   explicit no-op selector so per-target command lines stay uniform.
+
+## `test_changed` on a stacked branch (2026-10-19, safe sessions S1)
+
+- **`./wbuild test_changed` after a commit selects from the merge-base
+  with `origin/main`**, so on a branch stacked on an integration branch
+  it selects every target the whole integration branch touched, not the
+  branch's own diff. The workaround was piping
+  `git diff --name-only <integration-branch>` into `bin/wtest changed`
+  and running the printed targets by hand. Direction: accept a
+  `--base <rev>` (or honor `WTEST_BASE`) in `test_changed`.
+- **REPL-engine API clients inherit REPL defaults through error
+  recovery.** repl/incremental.w configures modes itself; recovery code
+  that restored a REPL-chosen default silently flipped its option
+  fingerprint. Recovery now restores the mode each entry started with.
