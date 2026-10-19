@@ -735,7 +735,7 @@ void html_merge_document_attributes(html_tokenizer* t, html_node* node, html_tok
 			tail = attr
 		attr = next
 
-html_document* html_parse_document_inner(char* data, int length, html_limits* limits, int fragment):
+html_document* html_parse_document_inner(char* data, int length, html_limits* limits, int fragment, int scripting):
 	html_document* doc = new html_document()
 	html_tokenizer* t = html_tokenizer_new(data, length, limits)
 	if (!t.failed):
@@ -750,12 +750,61 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 		# 0 retains the existing before/in-body foundation; 1 after body,
 		# 2 after after body. Neither closing tag pops open elements.
 		int after_body = 0
+		html_node* head_noscript = 0
 		int declaration_allowed = 1
 		while (!t.failed):
 			html_token* token = html_tokenizer_next(t)
 			if ((token.kind == HTML_EOF) || t.failed):
 				html_token_free(token)
 				break
+			if (head_noscript != 0 && current == head_noscript):
+				if (token.kind == HTML_END && strcmp(token.name, c"noscript") == 0):
+					current = html_close(current, head_noscript, token.end)
+					current.end = token.end
+					head_noscript = 0
+					html_token_free(token)
+					continue
+				int ignore = token.kind == HTML_DOCTYPE
+				if (token.kind == HTML_END && strcmp(token.name, c"br") != 0): ignore = 1
+				if (token.kind == HTML_START && (strcmp(token.name, c"head") == 0 || strcmp(token.name, c"noscript") == 0)): ignore = 1
+				if (ignore):
+					html_report(t, token.start, token.end, c"token ignored in head noscript")
+					html_token_free(token)
+					continue
+				int allowed = token.kind == HTML_COMMENT || token.kind == HTML_PROCESSING_INSTRUCTION
+				if (token.kind == HTML_START):
+					allowed = strcmp(token.name, c"html") == 0 || strcmp(token.name, c"basefont") == 0 || strcmp(token.name, c"bgsound") == 0 || strcmp(token.name, c"link") == 0 || strcmp(token.name, c"meta") == 0 || strcmp(token.name, c"noframes") == 0 || strcmp(token.name, c"style") == 0
+				if (token.kind == HTML_TEXT):
+					int prefix = 0
+					while (prefix < token.text_length && html_space(token.text[prefix])): prefix = prefix + 1
+					allowed = prefix == token.text_length
+					if (prefix > 0 && !allowed):
+						# Both decoded runs retain their enclosing lexical token span.
+						html_token* space = new html_token()
+						space.kind = HTML_TEXT
+						space.start = token.start
+						space.end = token.end
+						space.text = html_slice(token.text, 0, prefix, 0)
+						space.text_length = prefix
+						html_add_node(doc, t, current, space)
+						html_token_free(space)
+						if (t.failed):
+							html_token_free(token)
+							break
+						char* remainder = html_slice(token.text, prefix, token.text_length, 0)
+						free(token.text)
+						token.text = remainder
+						token.text_length = token.text_length - prefix
+				if (!allowed):
+					html_report(t, token.start, token.end, c"token reprocessed after head noscript")
+					current = html_close(current, head_noscript, token.start)
+					head_noscript = 0
+			if (scripting >= 0 && token.kind == HTML_END && strcmp(token.name, c"br") == 0):
+				# The in-body end-br rule reprocesses an attribute-free start tag.
+				html_report(t, token.start, token.end, c"br end tag treated as start")
+				token.kind = HTML_START
+				html_attributes_free(token.attributes)
+				token.attributes = 0
 			if (after_body):
 				if (token.kind == HTML_COMMENT || token.kind == HTML_PROCESSING_INSTRUCTION):
 					html_node* parent = html
@@ -817,6 +866,9 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 						body_started = 1
 				else:
 					int metadata = (strcmp(token.name, c"title") == 0) || (strcmp(token.name, c"meta") == 0) || (strcmp(token.name, c"link") == 0) || (strcmp(token.name, c"base") == 0) || (strcmp(token.name, c"style") == 0) || (strcmp(token.name, c"script") == 0)
+					if (scripting >= 0):
+						if (strcmp(token.name, c"basefont") == 0 || strcmp(token.name, c"bgsound") == 0 || strcmp(token.name, c"noframes") == 0): metadata = 1
+						if (strcmp(token.name, c"noscript") == 0 && document_phase < 3): metadata = 1
 					if (!body_started && metadata && ((current == body) || (current == head))):
 						current = head
 						if (document_phase < 3): document_phase = 2
@@ -835,9 +887,16 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"tr") == 0) || (strcmp(token.name, c"td") == 0) || (strcmp(token.name, c"th") == 0)):
 						current = html_optional_close(current, token.name, token.start)
 					int is_void = html_void(token.name)
+					if (scripting >= 0 && (strcmp(token.name, c"basefont") == 0 || strcmp(token.name, c"bgsound") == 0)): is_void = 1
 					if (token.self_closing && !is_void): html_report(t, token.start, token.end, c"self-closing flag ignored on HTML element")
 					html_node* n = html_add_node(doc, t, current, token)
-					if ((n != 0) && !is_void): current = n
+					if ((n != 0) && !is_void):
+						current = n
+						if (scripting >= 0 && strcmp(n.name, c"noscript") == 0):
+							if (scripting):
+								t.raw_name = strclone(c"noscript")
+								t.rcdata = 0
+							else if (n.parent == head): head_noscript = n
 			else if (token.kind == HTML_END):
 				declaration_allowed = 0
 				if (strcmp(token.name, c"body") == 0 || strcmp(token.name, c"html") == 0):
@@ -903,7 +962,15 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 	return doc
 
 html_document* html_parse_with_limits(char* data, int length, html_limits* limits):
-	return html_parse_document_inner(data, length, limits, 0)
+	return html_parse_document_inner(data, length, limits, 0, -1)
+
+# Existing generic callers retain their legacy noscript interpretation. Browser
+# hosts and conformance bridges explicitly select disabled(0) or enabled(1).
+html_document* html_parse_with_scripting_limits(char* data, int length, int scripting, html_limits* limits):
+	return html_parse_document_inner(data, length, limits, 0, scripting != 0)
+
+html_document* html_parse_with_scripting(char* data, int length, int scripting):
+	return html_parse_with_scripting_limits(data, length, scripting, 0)
 
 html_document* html_parse(char* data, int length):
 	return html_parse_with_limits(data, length, 0)
@@ -920,7 +987,7 @@ html_document* html_parse_fragment_with_limits(char* data, int length, char* con
 	# recovery, then return the synthetic HTML element's children. The parser's
 	# other insertion-mode limitations still apply to this bounded foundation.
 	if (context != 0 && strcmp(context, c"html") == 0):
-		html_document* parsed = html_parse_document_inner(data, length, limits, 1)
+		html_document* parsed = html_parse_document_inner(data, length, limits, 1, scripting != 0)
 		if (parsed.root != 0):
 			html_node* html = parsed.root.first_child
 			while (html != 0 && (html.kind != HTML_START || strcmp(html.name, c"html") != 0)): html = html.next_sibling
@@ -982,7 +1049,11 @@ html_document* html_parse_fragment_with_limits(char* data, int length, char* con
 					int is_void = html_void(token.name)
 					if (token.self_closing && !is_void): html_report(t, token.start, token.end, c"self-closing flag ignored on HTML element")
 					html_node* n = html_add_node(doc, t, current, token)
-					if ((n != 0) && !is_void): current = n
+					if ((n != 0) && !is_void):
+						current = n
+						if (scripting && strcmp(n.name, c"noscript") == 0):
+							t.raw_name = strclone(c"noscript")
+							t.rcdata = 0
 			else if (token.kind == HTML_END):
 				html_node* match = html_end_match(current, token.name)
 				if (match == 0 && strcmp(token.name, c"p") == 0):
