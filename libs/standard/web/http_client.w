@@ -146,6 +146,7 @@ struct http_response:
 	char* error_message
 	char* final_url
 	int redirect_count
+	list[char*] set_cookie_fields
 
 
 # Streaming response: status and headers are parsed eagerly by
@@ -407,7 +408,7 @@ void http_req_free(http_req* req):
 /* Responses */
 
 http_response* http_response_new():
-	http_response* resp = new http_response(0, new map[char*, char*], 0, 0, 0, c"", 0, 0)
+	http_response* resp = new http_response(0, new map[char*, char*], 0, 0, 0, c"", 0, 0, new list[char*])
 	return resp
 
 
@@ -431,6 +432,20 @@ char* http_response_header(http_response* resp, char* name):
 	return value
 
 
+# Individual Set-Cookie fields in wire order. Unlike the general merged
+# header API, these preserve commas inside Expires and extension values.
+# Returned strings are borrowed until http_response_free (or stream close).
+int http_response_set_cookie_count(http_response* resp):
+	if (resp == 0): return 0
+	return resp.set_cookie_fields.length
+
+
+char* http_response_set_cookie(http_response* resp, int index):
+	if (resp == 0): return 0
+	if ((index < 0) || (index >= resp.set_cookie_fields.length)): return 0
+	return resp.set_cookie_fields[index]
+
+
 void http_response_free(http_response* resp):
 	if (resp == 0): return
 	list[char*] keys = resp.headers.keys()
@@ -439,6 +454,8 @@ void http_response_free(http_response* resp):
 		free(value)
 	list_free[char*](keys)
 	map_free[char*, char*](resp.headers)
+	for char* field in resp.set_cookie_fields: free(field)
+	list_free[char*](resp.set_cookie_fields)
 	if (resp.body != 0): free(resp.body)
 	if (resp.final_url != 0): free(resp.final_url)
 	free(resp)
@@ -710,7 +727,15 @@ int http_store_header_into(map[char*, char*] headers, char* line, int length):
 
 
 int http_store_header(http_response* resp, char* line, int length):
-	return http_store_header_into(resp.headers, line, length)
+	if (http_store_header_into(resp.headers, line, length) == 0): return 0
+	# The shared parser has validated the name; retain only exact Set-Cookie.
+	char* cookie_name = c"set-cookie:"
+	int i = 0
+	while (i < 11):
+		if ((i >= length) || (http_lower_char(line[i] & 255) != cookie_name[i])): return 1
+		i = i + 1
+	resp.set_cookie_fields.push(http_trimmed_value(line, 11, length))
+	return 1
 
 
 # Reads the status line and header block into resp, skipping interim
