@@ -1,5 +1,6 @@
 # Family-specific geometry shared by SVG and the native desktop preview.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.style_render
 
 char* mm_data_format(int value):
 	string_builder* s = string_new()
@@ -38,11 +39,10 @@ void mm_data_vertex(mm_scene* s, mm_primitive* p, int x, int y):
 	if (y + 40 > s.height): s.height = y + 40
 
 # Consistent series colors and matching legend keys in every output backend.
+# A configured theme repaints MM_ROLE_SERIES primitives from pie1..pie12
+# (pie charts) or cScale0..cScale11 (other chart families).
 int mm_data_series_color(int index):
-	list[int] colors = list[int]{0x2563eb, 0xdc2626, 0x16a34a, 0x9333ea, 0xea580c, 0x0891b2, 0xdb2777, 0x65a30d, 0x4f46e5, 0x0d9488, 0xca8a04, 0x7c3aed}
-	int color = colors[index % colors.length]
-	__w_list_free(cast(__w_list*, colors))
-	return color
+	return mm_style_series_color(index)
 
 void mm_data_series_paint(mm_scene* s, int start, int series):
 	int color = mm_data_series_color(series)
@@ -52,6 +52,8 @@ void mm_data_series_paint(mm_scene* s, int start, int series):
 		p.style.mask = p.style.mask | 3
 		p.style.stroke = color
 		p.style.fill = p.style.stroke
+		p.role = MM_ROLE_SERIES
+		p.series = series
 
 void mm_data_pie_render(mm_document* d, mm_scene* s):
 	float sum = 0.0
@@ -347,9 +349,15 @@ void mm_data_tree_render_level(mm_data_chart* c, mm_scene* s, int parent, int x,
 				ww = x + cast(int, (used + weight) / row_weight * cast(float, width)) - xx
 				if (j + 1 == end): ww = x + width - xx
 				hh = strip
+			int style_start = s.items.length
 			mm_draw(s, MM_BOX, xx, yy, xx + ww, yy + hh, 0, c"")
 			# Labels in tiny cells go to a legend rather than crossing boundaries.
 			if (ww > strlen(item.label) * 8 + 12 && hh > 26): mm_text(s, xx + 6, yy + 6, item.label)
+			# classDef styles resolved at validation; they outrank the theme.
+			for k in range(style_start, s.items.length):
+				mm_primitive* cell = s.items[k]
+				if (item.style.mask != 0): cell.node_style = 1
+				mm_style_merge(&cell.style, &item.style)
 			if (item.kind == 5):
 				if (ww > 20 && hh > 40): mm_data_tree_render_level(c, s, index, xx + 4, yy + 26, ww - 8, hh - 30, depth + 1)
 			used = used + weight

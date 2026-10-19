@@ -126,6 +126,19 @@ struct mm_narrative_event:
 	int dashed
 	int arrow
 
+# Gantt calendar settings. Units are days, or minutes when the date format
+# has a time of day. Excluded and included day lists are sorted and unique.
+struct mm_gantt_settings:
+	char* date_format
+	char* axis_format
+	int minutes
+	int weekends
+	int weekend_start
+	int weekday_mask
+	list[int] excluded
+	list[int] included
+	int today
+
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
 
@@ -229,6 +242,19 @@ struct mm_document:
 	int layout_algorithm
 	int packet_bits
 	int packet_msb
+	# Frontmatter `config: kanban: ticketBaseUrl:`; null when not configured.
+	char* ticket_base_url
+	# Resolved theme variables (MM_THEME_COUNT colors), non-null when a theme is configured.
+	list[int] theme_values
+	# Flowchart layout configuration; config_mask bit 1 node spacing, bit 2 rank spacing.
+	int config_mask
+	int node_spacing
+	int rank_spacing
+	# 0 orthogonal step (default), 1 linear, 2 basis.
+	int edge_curve
+	# 0 classic, 1 neo (accepted as a classic approximation).
+	int look
+	mm_gantt_settings* gantt
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -287,6 +313,7 @@ int mm_add_node(mm_document* d, char* id, int offset):
 void mm_document_free(mm_document* d):
 	if (d == 0): return
 	if (d.comment_ranges != 0): __w_list_free(cast(__w_list*, d.comment_ranges))
+	if (d.theme_values != 0): __w_list_free(cast(__w_list*, d.theme_values))
 	for mm_note* note in d.notes:
 		free(note.text)
 		free(note)
@@ -362,6 +389,12 @@ void mm_document_free(mm_document* d):
 		free(box.section)
 		free(box)
 	__w_list_free(cast(__w_list*, d.boxes))
+	if (d.gantt != 0):
+		free(d.gantt.date_format)
+		free(d.gantt.axis_format)
+		__w_list_free(cast(__w_list*, d.gantt.excluded))
+		__w_list_free(cast(__w_list*, d.gantt.included))
+		free(d.gantt)
 	for mm_style_class* definition in d.style_definitions:
 		free(definition.name)
 		free(definition)
@@ -372,6 +405,7 @@ void mm_document_free(mm_document* d):
 	free(d.accessibility_description)
 	free(d.direction)
 	free(d.error)
+	if (d.ticket_base_url != 0): free(d.ticket_base_url)
 	free(d)
 
 # Lossless writer, including comments and formatting, even for invalid documents.

@@ -79,7 +79,7 @@ mm_scene* mm_canvas_edge_scene(mm_editor* e, int edge):
 
 int mm_canvas_hit_edge(mm_canvas* c, mm_editor* e, float32 x, float32 y):
 	if (e.scene == 0): return -1
-	if (e.document.kind != MM_FLOW && e.document.kind != MM_ER): return -1
+	if (mm_graph_edit_family(e.document.kind) == 0): return -1
 	float32 wx = (x - c.pan_x) / c.zoom
 	float32 wy = (y - c.pan_y) / c.zoom
 	float32 tolerance = 7.0 / c.zoom
@@ -181,7 +181,7 @@ void mm_canvas_cycle(mm_canvas* c, mm_editor* e, int reverse):
 	# Switching the visible selection always exits an armed click operation.
 	mm_canvas_cancel(c, e)
 	if (e.scene == 0 || e.document.nodes.length == 0): return
-	if (e.document.kind != MM_FLOW && e.document.kind != MM_ER): return
+	if (mm_graph_edit_family(e.document.kind) == 0): return
 	int count = e.document.nodes.length
 	int next = c.node
 	if (reverse && next < 0): next = 0

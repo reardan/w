@@ -198,10 +198,52 @@ int mm_serialize_style_equal(mm_style* a, mm_style* b):
 	if ((a.mask & MM_STYLE_WIDTH) && a.width != b.width): return 0
 	return 1
 
+# State start/end pseudo-states are identified as "@start:<scope index>". Returns
+# the prefix length (and the scope through *scope) or 0 for any other identifier.
+int mm_serialize_pseudo(char* id, int* scope):
+	int length = 0
+	if (starts_with(id, c"@start:")): length = 7
+	else if (starts_with(id, c"@end:")): length = 5
+	if (length == 0): return 0
+	int at = length
+	int sign = 1
+	if (id[at] == '-'):
+		sign = -1
+		at = at + 1
+	int value = 0
+	if (id[at] == 0): return 0
+	while (id[at] >= '0' && id[at] <= '9' && value < MM_MAX_ITEMS):
+		value = value * 10 + id[at] - '0'
+		at = at + 1
+	if (id[at] != 0): return 0
+	*scope = sign * value
+	return length
+
+# Node references compare by identity. A pseudo-state's identity is its kind
+# plus its composite's identity, since edits may shift the composite's index.
 int mm_serialize_reference_equal(mm_document* a, int ai, mm_document* b, int bi):
 	if (ai == -1 || bi == -1): return ai == bi
 	if (ai < 0 || ai >= a.nodes.length || bi < 0 || bi >= b.nodes.length): return 0
+	int a_scope = 0
+	int b_scope = 0
+	int a_prefix = mm_serialize_pseudo(a.nodes[ai].id, &a_scope)
+	int b_prefix = mm_serialize_pseudo(b.nodes[bi].id, &b_scope)
+	if (a_prefix != 0 && a_prefix == b_prefix && a_scope >= 0 && b_scope >= 0 && a_scope < ai && b_scope < bi): return mm_serialize_reference_equal(a, a_scope, b, b_scope)
 	return mm_serialize_text_equal(a.nodes[ai].id, b.nodes[bi].id)
+
+# The node of b with the same identity as a.nodes[index], or -1.
+int mm_serialize_find_equal(mm_document* a, int index, mm_document* b):
+	int scope = 0
+	int prefix = mm_serialize_pseudo(a.nodes[index].id, &scope)
+	if (prefix == 0 || scope < 0 || scope >= index): return mm_find_node(b, a.nodes[index].id)
+	int other = mm_serialize_find_equal(a, scope, b)
+	if (other < 0): return -1
+	string_builder* key = string_new()
+	string_append_bytes(key, a.nodes[index].id, prefix)
+	string_append_int(key, other)
+	int found = mm_find_node(b, key.data)
+	string_free(key)
+	return found
 
 int mm_serialize_node_equal(mm_node* a, mm_node* b):
 	if (mm_serialize_text_equal(a.label, b.label) == 0 || a.shape != b.shape || a.group != b.group): return 0

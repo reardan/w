@@ -47,43 +47,126 @@ edge indices. Indices must refer to already declared edges. Link styles accept
 `stroke`, `stroke-width` and label `color`; explicit edge values override defaults.
 They apply to the shared graph renderer, including arrows and endpoint markers.
 
-## Frontmatter themes
+## Configuration: frontmatter and init directives
 
 ```mermaid
 ---
 config:
-  theme: base
+  theme: base          # comments are allowed
   themeVariables:
     primaryColor: '#e0f2fe'
-    primaryBorderColor: '#0369a1'
-    primaryTextColor: '#0c4a6e'
-    lineColor: '#64748b'
-    textColor: '#334155'
-    background: '#ffffff'
+    lineColor: "#64748b"
+  flowchart: {curve: basis, nodeSpacing: 40}
 ---
+%%{init: {"themeVariables": {"edgeLabelBackground": "#ffffff"}}}%%
 flowchart LR
-A --> B
+A -->|label| B
 ```
 
-Accepted theme names are `default`, `base`, `dark`, `forest` and `neutral`.
-They select deterministic native palettes; `dark` also paints a dark preview/SVG
-background. The native palettes preserve their intent rather than reproducing
-upstream CSS, typography, palette derivation or categorical colors.
+Configuration comes from YAML frontmatter, from `%%{init: {...}}%%` /
+`%%{initialize: {...}}%%` directives, or both. Both become the same dotted keys
+and pass one validator, so they accept the same keys and report the same
+diagnostics. Directives must come after any frontmatter and before the diagram
+header; they may span lines and be mixed with `%%` comments and blank lines, and
+several may be given. A directive after the header is still rejected. Later
+sources override earlier ones key by key (frontmatter, then directives in
+order); repeating a key inside one source is an error.
 
-`themeVariables` requires `theme: base` and accepts only the six color keys in
-the example above. Values must be quoted hex colors. Primary colors style graph
-nodes; `lineColor` styles relationships and `textColor` styles non-node labels.
-Missing variables retain the base palette; automatic derivation of related
-colors is not implemented. Native frontmatter uses two spaces under `config`
-and four under `themeVariables`; unsupported config keys, themes and indentation
-produce a diagnostic. Field order does not affect the resolved palette.
+Frontmatter is a bounded YAML subset: block mappings at any consistent space
+indentation (tabs are rejected; a dedent must return to an enclosing level), `#`
+comment lines and trailing comments, plain or single/double-quoted scalars
+(without escapes), quoted keys, and inline `{key: value}` flow mappings. Lists,
+block scalars, anchors and tags produce a diagnostic. Directive objects are
+JSON-ish: single- or double-quoted strings, bare keys and values, numbers,
+booleans, nested objects and trailing commas; arrays and escapes are rejected.
+At most 256 entries and four levels of nesting are read.
 
-The source remains byte-for-byte saveable, including unsupported styles. Invalid
-styles suppress the preview. The current implementation does not support
-custom CSS, `stroke-dasharray`, opacity, font overrides, inline init
-directives, arbitrary diagram configuration, the upstream redux/neo themes,
-or external stylesheets. Classes refer to existing node identifiers; quoted ER
-display aliases are not style identifiers.
+| Key | Accepted values |
+| --- | --- |
+| `title` (frontmatter only) | scalar string |
+| `theme` | `default`, `base`, `dark`, `forest`, `neutral`; `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, `redux-dark-color` as native approximations |
+| `look` | `classic`; `neo` is accepted and renders with classic geometry |
+| `layout` | `dagre` (native layered), `force` |
+| `themeVariables.*` | see below; any theme |
+| `flowchart.nodeSpacing`, `flowchart.rankSpacing` | integer 0–500 |
+| `flowchart.curve` | `basis`, `linear`, `step`, `stepBefore`, `stepAfter` |
+| `packet.bitsPerRow`, `packet.bitOrder` | see the packet family |
+
+Any other key — `fontSize`, `fontFamily`, `themeCSS`, other diagram sections,
+`look: handDrawn` — produces a diagnostic. The theme names select deterministic
+native palettes; `dark`, `neo-dark`, `redux-dark` and `redux-dark-color` are dark
+modes and paint a dark preview/SVG background. They keep the intent of upstream
+themes rather than reproducing upstream CSS or typography.
+
+### Theme variables
+
+`themeVariables` works with every theme. Values are `#RGB`, `#RRGGBB` or a
+supported color name (quote hex values in YAML, where `#` starts a comment);
+`darkMode` takes `true`/`false`. Supported variables and where they paint:
+
+| Variable | Native use |
+| --- | --- |
+| `primaryColor`, `mainBkg` | node fill (`mainBkg` defaults to `primaryColor`) |
+| `primaryBorderColor`, `nodeBorder` | node stroke (`nodeBorder` defaults to `primaryBorderColor`) |
+| `primaryTextColor` | node text |
+| `secondaryColor`, `tertiaryColor` and their `BorderColor`/`TextColor` | derivation sources |
+| `clusterBkg`, `clusterBorder` | subgraph/group fill and stroke |
+| `titleColor` | group labels and the document title drawn by the shared metadata pass |
+| `lineColor`, `textColor` | relationships; non-node labels |
+| `edgeLabelBackground` | a box behind graph edge labels |
+| `background` | preview/SVG background |
+| `pie1`–`pie12` | pie slices and legend keys |
+| `cScale0`–`cScale11` | series colors of the other chart families (xychart, radar, …) |
+
+A variable keeps the selected theme's native value unless it, or a variable it
+derives from, is set; then it is derived as Mermaid's theme-base derives it,
+with integer HSL arithmetic (hue in degrees, saturation and lightness in
+percentage points, clamped; hue wraps):
+
+| Variable | Derived from |
+| --- | --- |
+| `primaryBorderColor` | `primaryColor`, saturation −40, lightness −10 (+10 in dark mode) |
+| `primaryTextColor` | `#333333` on a light `primaryColor` (luma ≥ 128), else `#eeeeee` |
+| `secondaryColor` | `primaryColor` hue −120 |
+| `tertiaryColor` | `primaryColor` hue +180, lightness +5 |
+| `secondary`/`tertiaryBorderColor` | their color, as for the primary border |
+| `secondary`/`tertiaryTextColor` | their color, RGB inverted |
+| `lineColor` | `background`, inverted |
+| `textColor` | `primaryTextColor` |
+| `mainBkg`, `nodeBorder` | `primaryColor`, `primaryBorderColor` |
+| `clusterBkg`, `clusterBorder` | `tertiaryColor`, `tertiaryBorderColor` |
+| `titleColor` | `textColor` (upstream uses `tertiaryTextColor`) |
+| `edgeLabelBackground` | `secondaryColor`, lightness −30 in dark mode |
+| `pie1`–`pie3` | primary, secondary, tertiary |
+| `pie4`–`pie6` | primary, secondary, tertiary, lightness −10 |
+| `pie7`–`pie12` | primary with hue/lightness +60/−10, −60/−10, +120/0, +60/−20, −60/−20, +120/−10 |
+| `cScale0`–`cScale2` | primary, secondary, tertiary |
+| `cScale3`–`cScale11` | primary hue +30, 60, 90, 120, 150, 210, 270, 300, 330 |
+
+`darkMode` defaults to the theme's own mode. The native palettes supply
+`background`, the primary colors, `lineColor`, `textColor`, cluster colors equal
+to the node colors, no edge-label box, and the fixed native series colors for
+`pie*`/`cScale*`; so a theme without variables renders as before. Without any
+configuration, charts keep the fixed series colors.
+
+### Layout keys
+
+`flowchart.nodeSpacing` and `rankSpacing` (upstream defaults 50) set the native
+layered layout's gaps between nodes in a rank (2 × nodeSpacing) and between ranks
+(rankSpacing + 90, leaving room for labels and markers), so the defaults
+reproduce the unconfigured layout. They apply to flowcharts only; other graph
+families ignore them, and the force layout uses them only for its starting positions. `flowchart.curve` routes flowchart
+edges: `step` (also `stepBefore`/`stepAfter`) is the default orthogonal route,
+`linear` replaces the first two legs with one straight segment and `basis` with a
+sampled cubic curve; each route keeps its final axis-aligned leg so arrowheads stay
+oriented. Self-loops remain orthogonal.
+
+The source remains byte-for-byte saveable, including unsupported styles and
+configuration. Invalid styles or configuration suppress the preview. The
+current implementation does not support custom CSS, `stroke-dasharray`,
+opacity, font configuration (`fontSize`, `fontFamily`), the hand-drawn look,
+arbitrary diagram configuration or external stylesheets. Classes refer to
+existing node identifiers; quoted ER display aliases are not style identifiers.
 
 Example: [styled.mmd](../../examples/mermaid/styled.mmd).
 
@@ -93,3 +176,8 @@ Example: [styled.mmd](../../examples/mermaid/styled.mmd).
 precedence, forward definitions, all four graph families, fillable shapes,
 SVG/native palette parity, transparent interiors, nested clipping, theme
 variables, malformed input, truncation, budgets and owned scene lifetime.
+`./wbuild config_test config_64_test` covers palette derivation, native theme
+stability, variables with every theme and dark mode, pie/cScale series colors,
+init directives (quoting, multi-line, fenced, frontmatter override, line numbers),
+relaxed frontmatter, spacing and curves, every configuration diagnostic, the
+entry budget and truncated prefixes.

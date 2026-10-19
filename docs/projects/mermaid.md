@@ -2,7 +2,7 @@
 
 The native engine provides a W parser, owned document model, lossless source writer,
 source-edit API, deterministic layout, SVG exporter, CLI, and native desktop
-editor with live preview and flowchart/ER canvas editing. It has no Mermaid JavaScript, Node,
+editor with live preview and flowchart/ER/class/state canvas editing. It has no Mermaid JavaScript, Node,
 browser, network, or external layout dependency. The desktop uses the existing
 `graphics.ui` and native OpenGL stack. The library and CLI run on x86 and x64;
 the desktop has Linux X11 workflow tests, Windows cross-compilation and Wine
@@ -52,13 +52,36 @@ until a 500 ms pause or editing boundary. **Previous/Next diagram**
 select a Mermaid fence while keeping the complete Markdown source editable.
 The dynamic path field supports paths beyond the former 127-byte limit.
 
-For flowcharts and ER diagrams, clicking a node selects it and populates the
+For flowcharts, ER, class (`classDiagram`) and state (`stateDiagram`,
+`stateDiagram-v2`) diagrams, clicking a node selects it and populates the
 inspector. **Apply** changes its displayed label; **Delete** removes the node
 and its incident connections. Clicking a connection selects it for deletion.
 Edits preserve unrelated source, comments, styles, configuration and other
 Markdown fences; deleting edges also updates indexed `linkStyle` assignments.
 Each graphical operation is one undo step, and failed edits leave the document
 unchanged. Group containers remain source-edited.
+
+Every graphical edit is a source splice validated by reparsing: the result must
+keep every other node (label, shape, members, annotation, attributes, scope,
+styles), every other edge in order, the notes, class definitions, direction,
+title and accessibility text, or nothing changes. `mm_editor_edit_reason`
+returns the reason an operation is unavailable (empty when it is available).
+
+| Family | Select / drag / Auto layout | Rename | Delete node | Delete connection | Add / Link to |
+| --- | --- | --- | --- | --- | --- |
+| Flowchart | top-level nodes | appends `ID[label]` keeping the shape | removes it from chains, `style`/`class`/`linkStyle` targets | yes | `ID["label"]`, `A --> B` |
+| ER | top-level entities | appends `ID[label]` | removes its relationships; attributes stay with survivors | yes | `ID["label"]`, a default `\|\|--\|{` relationship |
+| Class | top-level classes | appends `class ID["label"]` | removes its declaration/body, `<<annotation>> ID`, `ID : member` lines, relationships, `note for ID`, `style`/`cssClass` targets | yes | `class ID["label"]`, association `A --> B` |
+| State | top-level states | appends `ID : label` (plain states only) | removes its declarations, descriptions, transitions, `note ... of ID`, `style`/`class` targets; a `[*]` left without transitions goes too | yes | `ID : label`, `A --> B` (`[*] --> A`, `A --> [*]` from start/end) |
+
+A class or state whose only mention was a removed relationship is redeclared in
+place (`class Leg~T~`, or a bare state `Idle`), so deleting a connection never
+deletes its endpoints. Namespaces, composite states and nodes inside them
+are edited in source; so is any deletion that would reach inside a namespace or
+composite body, and class deletions in diagrams with lollipop `()--`
+interfaces, whose synthetic identities are positional. Start, end, choice,
+fork and join states have no editable label. Notes are not selectable on the
+canvas; they follow their node and are deleted with it.
 
 Drag a top-level node to reposition it; edges follow live. Release commits one
 undo step, while Escape restores the starting position. Small pointer jitter
@@ -70,9 +93,10 @@ under the pointer, **Fit** centers the diagram, and edits retain the camera.
 action and fits the result. The source/canvas divider is resizable. Nested nodes can be selected and relabelled
 or deleted, but moving them or their containing groups is not yet supported.
 
-**Add** creates a flowchart node or ER entity from the inspector fields.
-**Link to** then a destination click adds a flowchart arrow or a default ER
-relationship; edit relationship cardinality and labels in source.
+**Add** creates a flowchart node, ER entity, class or state from the inspector
+fields. **Link to** then a destination click adds a flowchart arrow, a default
+ER relationship, a class association or a state transition; edit relationship
+kind, cardinality and labels in source.
 **SVG** writes `CURRENT_FILE.svg` using the saved manual positions too.
 
 | Shortcut | Action |
@@ -175,10 +199,12 @@ These describe upstream syntax; the table below defines the implemented subset.
 | Rendering | Entity attribute rows, relationship text, crow's feet, optional circles, one bars, dashed/solid edges; shared scene for native and SVG output |
 
 Attributes occupy separate lines (or one attribute before a closing brace).
-Quoted text is displayed as literal text: Markdown/HTML, Mermaid entity escape
-codes and rich labels are not interpreted. Native glyph coverage follows the
-UI font system; SVG uses the viewer's monospace font. Label sizing uses an
-8-pixel-per-UTF-8-byte estimate, so multilingual text can reserve extra width.
+Labels support `<br>` line breaks, multi-line Markdown strings with
+`**bold**`/`*italic*` emphasis and wrapping at 200px; other HTML, Mermaid entity
+escape codes and rich labels are shown literally (see
+[Text layout](mermaid_text.md)). Native glyph coverage follows the UI font
+system; SVG uses a matching sans-serif face, and graph labels are measured with
+the native preview's per-glyph widths.
 ER attributes show type, name, keys and comment in each row rather than separate
 resizable columns. Layout uses longest-path ranks with deterministic cycle
 breaking, stable barycentric crossing-reduction sweeps and orthogonal connectors.
@@ -230,7 +256,7 @@ This is subset coverage, not a claim of upstream rendering or syntax parity.
 | State transitions | `-->`, optional `: label`, cycles/self transitions, scope-local `[*]` initial and final nodes |
 | State structures | Nested `state ID { ... }`, transitions to/from composites, `<<choice>>`, `<<fork>>`, `<<join>>` |
 | Direction | Top-level and group-local `direction TB`, `TD`, `BT`, `LR`, `RL`; children inherit their containing group's direction |
-| Output and editing | Shared native/SVG geometry, lossless read/write and source edits, editor preview/history/save for both families |
+| Output and editing | Shared native/SVG geometry, lossless read/write and source edits, editor preview/history/save and top-level canvas editing (select, drag, rename, delete, add, link) for both families |
 
 Groups reserve space for their children before the containing graph is laid out.
 Namespaces render as labeled containers; composite states render with their own
@@ -328,7 +354,9 @@ mm_document_free(doc)
   an owned location/message string.
 - `editor`: UI-independent source history, diagram selection, structured flowchart
   additions, hit testing, dirty state, conflict checking, reload, save and gesture state.
-- `edit_commands`: transactional label/delete commands and ER additions.
+- `edit_commands`: transactional label/delete commands for flowchart, ER, class
+  and state diagrams, `mm_editor_edit_reason`, ER/class/state additions
+  (`mm_editor_add_graph_node`) and connections (`mm_editor_connect`).
 - `positions`: bounded source position hints applied before rendering connections.
 - `canvas`: display-independent selection, movement, navigation and connection state.
 - `graphics.mermaid`: `mm_ui_render` draws a scene into a clipped viewport with
@@ -360,8 +388,9 @@ Remaining compatibility and editing work:
    links, fonts and rich labels without losing the native engine constraint.
 3. Improve text measurement, wrapping, edge routing, port placement and dense
    chart layout. Native geometry does not reproduce Dagre/ELK or browser layout.
-4. Extend canonical serialization and graphical editing beyond flow/ER; add
-   group movement, multi-selection, resize and richer edge/attribute inspectors.
+4. Extend canonical serialization beyond flow/ER and graphical editing beyond
+   flow/ER/class/state (requirement, use-case and the other graph families),
+   and into namespaces, composite states and notes; add group movement, multi-selection, resize and richer edge/attribute inspectors.
    Use editor commands to keep source/history synchronized; mutating the AST
    directly still does not update the lossless writer.
 5. Complete native Windows/macOS desktop qualification and add broader accessibility

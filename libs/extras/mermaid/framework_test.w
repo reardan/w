@@ -76,7 +76,7 @@ void test_framework_wardley_normalized_axes_and_dependencies():
 	mm_document_free(d)
 
 void test_framework_invalid_input_and_prefixes():
-	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA ## description", c"ishikawa-beta\n"}
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [1.1, 0.5]", c"wardley-beta\ncomponent A [0.5, -1]", c"wardley-beta\nA -> Missing", c"cynefin-beta\nunknown", c"cynefin-beta\n\"No domain\"", c"treeView-beta\nA\n  B\n C", c"treeView-beta\nA icon(custom)", c"treeView-beta\nA:::cls", c"treeView-beta\nA ##", c"treeView-beta\nA\n│   B", c"treeView-beta\nA\n── B",c"ishikawa-beta\n"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid framework fails explicitly", d.error != 0)
@@ -114,3 +114,136 @@ void test_framework_outline_accessibility_is_not_a_node():
 		mm_document_free(d)
 		string_free(source)
 	__w_list_free(cast(__w_list*, headers))
+
+void test_framework_treeview_tree_command_prefixes_and_descriptions():
+	# Plain-space and NBSP-padded (GNU tree) prefixes, plus indented and
+	# prefixed lines mixed in one forest, all yield the same ancestry.
+	list[char*] sources = list[char*]{c"treeView-beta\n.\n├── src\n│   ├── main.w ## Entry point\n│   └── \"lib dir\"\n│       └── util.w\n└── README.md\n", c"treeView-beta\n.\n├──\xc2\xa0src\n│\xc2\xa0\xc2\xa0 ├──\xc2\xa0main.w ## Entry point\n│\xc2\xa0\xc2\xa0 └──\xc2\xa0\"lib dir\"\n│\xc2\xa0\xc2\xa0     └──\xc2\xa0util.w\n│\n└──\xc2\xa0README.md\n", c"treeView-beta\n.\n    src\n        main.w ## Entry point\n│   └── \"lib dir\"\n            util.w\n    README.md\n"}
+	for char* source in sources:
+		mm_document* d = framework_parse(source)
+		assert_equal(6, d.nodes.length)
+		list[int] parents = list[int]{-1, 0, 1, 1, 3, 0}
+		for i in range(6):
+			mm_node* n = d.nodes[i]
+			assert_equal(parents[i], n.parent)
+		__w_list_free(cast(__w_list*, parents))
+		mm_node* main = d.nodes[2]
+		assert_strings_equal(c"main.w", main.label)
+		assert_strings_equal(c"Entry point", main.annotation)
+		mm_node* folder = d.nodes[3]
+		assert_strings_equal(c"lib dir", folder.label)
+		assert_strings_equal(c"", folder.annotation)
+		mm_scene* s = mm_render(d)
+		char* svg = mm_svg(s)
+		asserts(c"description exported", index_of(svg, c"fill=\"#64748b\" stroke=\"none\" stroke-width=\"2\" x=\"") >= 0 && index_of(svg, c">Entry point<") >= 0)
+		asserts(c"prefix glyphs are not label text", index_of(svg, c"├") < 0 && index_of(svg, c"│") < 0)
+		free(svg)
+		char* saved = mm_write(d)
+		assert_strings_equal(source, saved)
+		free(saved)
+		mm_scene_free(s)
+		mm_document_free(d)
+		for size in range(strlen(source) + 1):
+			mm_document* prefix = mm_parse(source, size)
+			mm_scene* scene = mm_render(prefix)
+			asserts(c"tree prefix parse and render agree", (prefix.error == 0 && scene != 0) || (prefix.error != 0 && scene == 0))
+			mm_scene_free(scene)
+			mm_document_free(prefix)
+	__w_list_free(cast(__w_list*, sources))
+	char* bad = c"ishikawa-beta\nProblem\n├── Cause\n"
+	mm_document* d = mm_parse(bad, strlen(bad))
+	assert_strings_equal(c"outline annotations and tree command prefixes are not yet supported", d.error)
+	mm_document_free(d)
+	bad = c"treeView-beta\nA\n│   B\n"
+	d = mm_parse(bad, strlen(bad))
+	assert_strings_equal(c"tree command prefix requires a branch marker", d.error)
+	mm_document_free(d)
+
+int framework_count(mm_scene* s, int kind, int dashed, int stroke):
+	int count = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == kind && p.dashed == dashed && (stroke < 0 || ((p.style.mask & 2) && p.style.stroke == stroke))): count = count + 1
+	return count
+
+void test_framework_wardley_evolution_notes_pipelines_and_decorators():
+	char* source = c"wardley-beta\ntitle Tea Shop\nevolution Uncharted -> Emerging -> Good -> Best\nanchor Business [0.95, 0.63]\ncomponent Cup of Tea [0.79, 0.61] label [19, -4]\ncomponent Kettle [0.43, 0.35] (build) inertia\ncomponent Power [0.1, 0.7] (outsource)\ncomponent Water [0.38, 0.82] (buy) (inertia)\nBusiness -> Cup of Tea\nCup of Tea -> Kettle\nKettle -> Power\nevolve Kettle 0.62\nnote \"Standardising power\" [0.30, 0.49]\nnote Unquoted note [0.2, 0.2]\npipeline Kettle\n{\n  component Campfire Kettle [0.30]\n  component Electric Kettle [0.55] (buy)\n}\npipeline Power [0.6, 0.9] { component Grid [0.75] }\nElectric Kettle -> Power\n"
+	mm_document* d = framework_parse(source)
+	assert_equal(10, d.nodes.length)
+	assert_equal(4, d.edges.length)
+	mm_node* kettle = d.nodes[2]
+	assert_strings_equal(c"build", mm_wardley_get(kettle, c"strategy"))
+	assert_strings_equal(c"1", mm_wardley_get(kettle, c"inertia"))
+	assert_strings_equal(c"620", mm_wardley_get(kettle, c"evolve"))
+	assert_strings_equal(c"300 550", mm_wardley_get(kettle, c"pipeline"))
+	mm_node* power = d.nodes[3]
+	assert_strings_equal(c"600 900", mm_wardley_get(power, c"pipeline"))
+	mm_node* water = d.nodes[4]
+	assert_strings_equal(c"buy", mm_wardley_get(water, c"strategy"))
+	assert_strings_equal(c"1", mm_wardley_get(water, c"inertia"))
+	mm_node* note = d.nodes[5]
+	assert_equal(3, note.shape)
+	assert_strings_equal(c"Standardising power", note.label)
+	assert_equal(300, note.value_y)
+	assert_equal(490, note.value_x)
+	note = d.nodes[6]
+	assert_strings_equal(c"Unquoted note", note.label)
+	mm_node* campfire = d.nodes[7]
+	assert_equal(2, campfire.parent)
+	assert_equal(2, campfire.shape)
+	assert_equal(430, campfire.value_y)
+	assert_equal(300, campfire.value_x)
+	mm_node* grid = d.nodes[9]
+	assert_equal(3, grid.parent)
+	mm_scene* s = mm_render(d)
+	mm_bounds* k = s.nodes[2]
+	mm_bounds* child = s.nodes[7]
+	asserts(c"pipeline component sits under its parent", child.y > k.y && child.x < k.x)
+	assert_equal(1, framework_count(s, MM_LINE, 1, 0xdc2626))
+	assert_equal(1, framework_count(s, MM_CIRCLE, 0, 0xdc2626))
+	assert_equal(2, framework_count(s, MM_BOX, 2, -1))
+	assert_equal(2, framework_count(s, MM_BOX, 0, -1))
+	int halos = 0
+	int cup_label = 0
+	mm_bounds* cup = s.nodes[1]
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_CIRCLE && p.x2 - p.x == 36): halos = halos + 1
+		if (p.kind == MM_TEXT && strcmp(p.text, c"Cup of Tea") == 0 && p.x == cup.x + 19 && p.y == cup.y - 4): cup_label = 1
+	assert_equal(4, halos)
+	asserts(c"custom label offset applied", cup_label)
+	char* svg = mm_svg(s)
+	asserts(c"custom stages rendered", index_of(svg, c"Uncharted") >= 0 && index_of(svg, c">Best<") >= 0 && index_of(svg, c"Genesis") < 0)
+	asserts(c"note rendered", index_of(svg, c"Standardising power") >= 0)
+	asserts(c"evolution colour exported", index_of(svg, c"#dc2626") >= 0)
+	free(svg)
+	char* saved = mm_write(d)
+	assert_strings_equal(source, saved)
+	free(saved)
+	mm_scene_free(s)
+	mm_document_free(d)
+	list[char*] samples = list[char*]{source, c"wardley-beta\nevolve \"A\" 0.4\ncomponent A [0.5, 0.6] label [-5, 7] (outsource)\n"}
+	for char* text in samples:
+		for size in range(strlen(text) + 1):
+			mm_document* prefix = mm_parse(text, size)
+			mm_scene* scene = mm_render(prefix)
+			asserts(c"wardley prefix parse and render agree", (prefix.error == 0 && scene != 0) || (prefix.error != 0 && scene == 0))
+			mm_scene_free(scene)
+			mm_document_free(prefix)
+	__w_list_free(cast(__w_list*, samples))
+
+void test_framework_wardley_modifier_diagnostics():
+	list[char*] bad = list[char*]{c"wardley-beta\ncomponent A [0.5, 0.5] (rent)", c"wardley-beta\ncomponent A [0.5, 0.5] (build) (buy)", c"wardley-beta\ncomponent A [0.5, 0.5] label [1000, 0]", c"wardley-beta\nevolution A -> B -> C", c"wardley-beta\nevolution A -> -> C -> D", c"wardley-beta\nevolution A -> B -> C -> D\nevolution A -> B -> C -> D", c"wardley-beta\nevolve Missing 0.5", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A->B 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\nevolve A 0.5\nevolve A 0.6", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.6, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\n}", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\nB [0.6]\n}", c"wardley-beta\nnote \"\" [0.1, 0.1]", c"wardley-beta\nnote Text", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.1, 0.2]\npipeline A [0.3, 0.4]", c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A {\ncomponent B [0.6]\n}\npipeline B [0.1, 0.2]", c"wardley-beta\nA +> B"}
+	for char* text in bad:
+		mm_document* d = mm_parse(text, strlen(text))
+		if (d.error == 0): println2(text)
+		asserts(c"invalid Wardley modifier fails explicitly", d.error != 0)
+		asserts(c"invalid Wardley modifier has no preview", mm_render(d) == 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, bad))
+	char* text = c"wardley-beta\ncomponent A [0.5, 0.5] (rent)\n"
+	mm_document* d = mm_parse(text, strlen(text))
+	assert_strings_equal(c"unsupported Wardley decorator; supported: build, buy, outsource, inertia", d.error)
+	mm_document_free(d)
+	text = c"wardley-beta\ncomponent A [0.5, 0.5]\npipeline A [0.4, 0.5] {\ncomponent B [0.9]\n}\n"
+	d = mm_parse(text, strlen(text))
+	assert_strings_equal(c"Wardley pipeline component outside pipeline range", d.error)
+	mm_document_free(d)

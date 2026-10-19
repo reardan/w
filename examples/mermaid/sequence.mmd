@@ -8,6 +8,8 @@ end
 box rgb(240, 240, 240) Storage
 participant DB as Database
 end
+link API: Dashboard @ https://example.com/api
+links DB: {"Runbook": "https://example.com/db"}
 Customer->>+API: Place order
 rect rgba(0, 128, 255, 0.15)
 API->>+DB: Save order

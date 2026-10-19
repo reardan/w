@@ -308,36 +308,229 @@ void mm_style_validate(mm_document* d):
 				free(name)
 				start = i + 1
 
-int mm_style_theme(mm_document* d, char* name):
+# Theme variables. Indices are in dependency order: every derived variable
+# names an earlier source, so one forward pass resolves the whole palette.
+const int MM_THEME_BACKGROUND = 0
+const int MM_THEME_PRIMARY = 1
+const int MM_THEME_PRIMARY_BORDER = 2
+const int MM_THEME_PRIMARY_TEXT = 3
+const int MM_THEME_SECONDARY = 4
+const int MM_THEME_TERTIARY = 7
+const int MM_THEME_LINE = 10
+const int MM_THEME_TEXT = 11
+const int MM_THEME_MAIN_BKG = 12
+const int MM_THEME_NODE_BORDER = 13
+const int MM_THEME_CLUSTER_BKG = 14
+const int MM_THEME_CLUSTER_BORDER = 15
+const int MM_THEME_TITLE = 16
+const int MM_THEME_EDGE_LABEL_BKG = 17
+const int MM_THEME_PIE = 18
+const int MM_THEME_SCALE = 30
+const int MM_THEME_COUNT = 42
+const int MM_THEME_UNSET = -2
+
+const int MM_THEME_ROOT = 0
+const int MM_THEME_COPY = 1
+const int MM_THEME_ADJUST = 2
+const int MM_THEME_BORDER = 3
+const int MM_THEME_CONTRAST = 4
+const int MM_THEME_INVERT = 5
+const int MM_THEME_EDGE = 6
+
+# Fixed categorical colors: the native series palette for every theme.
+int mm_style_series_color(int index):
+	list[int] colors = list[int]{0x2563eb, 0xdc2626, 0x16a34a, 0x9333ea, 0xea580c, 0x0891b2, 0xdb2777, 0x65a30d, 0x4f46e5, 0x0d9488, 0xca8a04, 0x7c3aed}
+	int color = colors[index % colors.length]
+	__w_list_free(cast(__w_list*, colors))
+	return color
+
+# Small decimal suffix of pie1..pie12 / cScale0..cScale11; -1 when malformed.
+int mm_theme_digits(char* text):
+	int length = strlen(text)
+	if (length == 0 || length > 2 || (length == 2 && text[0] == '0')): return -1
+	int value = 0
+	for i in range(length):
+		if (text[i] < '0' || text[i] > '9'): return -1
+		value = value * 10 + text[i] - '0'
+	return value
+
+# Variable index for a themeVariables key, or -1 when unsupported.
+int mm_theme_variable(char* name):
+	list[char*] names = list[char*]{c"background", c"primaryColor", c"primaryBorderColor", c"primaryTextColor", c"secondaryColor", c"secondaryBorderColor", c"secondaryTextColor", c"tertiaryColor", c"tertiaryBorderColor", c"tertiaryTextColor", c"lineColor", c"textColor", c"mainBkg", c"nodeBorder", c"clusterBkg", c"clusterBorder", c"titleColor", c"edgeLabelBackground"}
+	int result = -1
+	for i in range(names.length):
+		if (strcmp(name, names[i]) == 0): result = i
+	__w_list_free(cast(__w_list*, names))
+	if (result >= 0): return result
+	if (index_of(name, c"pie") == 0):
+		int number = mm_theme_digits(name + 3)
+		if (number >= 1 && number <= 12): return MM_THEME_PIE + number - 1
+	if (index_of(name, c"cScale") == 0):
+		int number = mm_theme_digits(name + 6)
+		if (number >= 0 && number <= 11): return MM_THEME_SCALE + number
+	return -1
+
+int mm_theme_abs(int value):
+	if (value < 0): return 0 - value
+	return value
+
+int mm_theme_clamp(int value, int low, int high):
+	if (value < low): return low
+	if (value > high): return high
+	return value
+
+int mm_theme_channel(int value):
+	return mm_theme_clamp((value * 255 + 500) / 1000, 0, 255)
+
+# Integer HSL adjustment in the style of khroma's adjust(): hue in degrees,
+# saturation and lightness in percentage points, clamped; hue wraps.
+int mm_theme_adjust(int rgb, int dh, int ds, int dl):
+	int r = (rgb >> 16) & 255
+	int g = (rgb >> 8) & 255
+	int b = rgb & 255
+	int high = r
+	if (g > high): high = g
+	if (b > high): high = b
+	int low = r
+	if (g < low): low = g
+	if (b < low): low = b
+	int light = (high + low) * 1000 / 510
+	int sat = 0
+	int hue = 0
+	int delta = high - low
+	if (delta != 0):
+		if (high + low > 255): sat = delta * 1000 / (510 - high - low)
+		else: sat = delta * 1000 / (high + low)
+		if (high == r): hue = (g - b) * 600 / delta
+		else if (high == g): hue = (b - r) * 600 / delta + 1200
+		else: hue = (r - g) * 600 / delta + 2400
+	hue = ((hue + dh * 10) % 3600 + 3600) % 3600
+	sat = mm_theme_clamp(sat + ds * 10, 0, 1000)
+	light = mm_theme_clamp(light + dl * 10, 0, 1000)
+	int chroma = (1000 - mm_theme_abs(2 * light - 1000)) * sat / 1000
+	int x = chroma * (600 - mm_theme_abs(hue % 1200 - 600)) / 600
+	int m = light - chroma / 2
+	int sector = hue / 600
+	int rr = chroma
+	int gg = x
+	int bb = 0
+	if (sector == 1):
+		rr = x
+		gg = chroma
+	else if (sector == 2):
+		rr = 0
+		gg = chroma
+		bb = x
+	else if (sector == 3):
+		rr = 0
+		gg = x
+		bb = chroma
+	else if (sector == 4):
+		rr = x
+		gg = 0
+		bb = chroma
+	else if (sector == 5):
+		gg = 0
+		bb = x
+	return (mm_theme_channel(rr + m) << 16) | (mm_theme_channel(gg + m) << 8) | mm_theme_channel(bb + m)
+
+int mm_theme_derive(int op, int source, int dh, int dl, int dark):
+	if (op == MM_THEME_COPY): return source
+	if (op == MM_THEME_ADJUST): return mm_theme_adjust(source, dh, 0, dl)
+	if (op == MM_THEME_BORDER):
+		if (dark): return mm_theme_adjust(source, 0, -40, 10)
+		return mm_theme_adjust(source, 0, -40, -10)
+	if (op == MM_THEME_CONTRAST):
+		int luminance = (((source >> 16) & 255) * 299 + ((source >> 8) & 255) * 587 + (source & 255) * 114) / 1000
+		if (luminance >= 128): return 0x333333
+		return 0xeeeeee
+	if (op == MM_THEME_INVERT): return 0xffffff - source
+	if (dark): return mm_theme_adjust(source, 0, 0, -30)
+	return source
+
+# Theme identifier for a theme name, or 0. neo/redux names are native approximations.
+int mm_style_theme_id(char* name):
+	list[char*] names = list[char*]{c"default", c"base", c"dark", c"forest", c"neutral", c"neo", c"neo-dark", c"redux", c"redux-dark", c"redux-color", c"redux-dark-color"}
+	int result = 0
+	for i in range(names.length):
+		if (strcmp(name, names[i]) == 0): result = i + 1
+	__w_list_free(cast(__w_list*, names))
+	return result
+
+# Resolve every theme variable. user holds MM_THEME_COUNT explicit values
+# (MM_THEME_UNSET when absent); dark is -1 for the theme's own mode. A variable
+# keeps the theme's native value unless it, or a variable it derives from, was
+# set explicitly; then it is derived the way Mermaid's theme-base derives it.
+void mm_style_theme_resolve(mm_document* d, int theme, list[int] user, int dark):
+	if (theme == 0): theme = 1
+	d.theme = theme
+	list[int] fills = list[int]{0xf8fafc, 0xfff4dd, 0x1f2937, 0xdcfce7, 0xf5f5f5, 0xffffff, 0x1f2023, 0xffffff, 0x18181b, 0xeef2ff, 0x1e1b4b}
+	list[int] strokes = list[int]{0x334155, 0x937044, 0x94a3b8, 0x166534, 0x525252, 0x4b5563, 0x9ca3af, 0x111111, 0xf4f4f5, 0x4f46e5, 0xa5b4fc}
+	list[int] texts = list[int]{0x0f172a, 0x333333, 0xf8fafc, 0x14532d, 0x171717, 0x111827, 0xf3f4f6, 0x111111, 0xf4f4f5, 0x1e1b4b, 0xeef2ff}
+	list[int] backgrounds = list[int]{0xffffff, 0xffffff, 0x0f172a, 0xffffff, 0xffffff, 0xffffff, 0x111214, 0xffffff, 0x09090b, 0xffffff, 0x0b0a1f}
+	list[int] modes = list[int]{0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1}
+	list[int] sources = list[int]{-1, -1, 1, 1, 1, 4, 4, 1, 7, 7, 0, 3, 1, 2, 7, 8, 11, 4, 1, 4, 7, 1, 4, 7, 1, 1, 1, 1, 1, 1, 1, 4, 7, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+	list[int] ops = list[int]{0, 0, 3, 4, 2, 3, 5, 2, 3, 5, 5, 1, 1, 1, 1, 1, 1, 6, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2}
+	list[int] hues = list[int]{0, 0, 0, 0, -120, 0, 0, 180, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, -60, 120, 60, -60, 120, 0, 0, 0, 30, 60, 90, 120, 150, 210, 270, 300, 330}
+	list[int] lights = list[int]{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -10, -10, -10, -10, -10, 0, -20, -20, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	list[int] native = new list[int]
+	for i in range(MM_THEME_COUNT): native.push(MM_THEME_UNSET)
+	int fill = fills[theme - 1]
+	int stroke = strokes[theme - 1]
+	int text = texts[theme - 1]
+	native[MM_THEME_BACKGROUND] = backgrounds[theme - 1]
+	native[MM_THEME_PRIMARY] = fill
+	native[MM_THEME_PRIMARY_BORDER] = stroke
+	native[MM_THEME_PRIMARY_TEXT] = text
+	native[MM_THEME_LINE] = stroke
+	native[MM_THEME_TEXT] = text
+	native[MM_THEME_CLUSTER_BKG] = fill
+	native[MM_THEME_CLUSTER_BORDER] = stroke
+	native[MM_THEME_EDGE_LABEL_BKG] = -1
+	for i in range(12):
+		native[MM_THEME_PIE + i] = mm_style_series_color(i)
+		native[MM_THEME_SCALE + i] = mm_style_series_color(i)
+	if (dark < 0): dark = modes[theme - 1]
+	list[int] values = new list[int]
+	list[int] touched = new list[int]
+	for v in range(MM_THEME_COUNT):
+		int value = MM_THEME_UNSET
+		if (user != 0): value = user[v]
+		int changed = value != MM_THEME_UNSET
+		if (changed == 0):
+			int source = sources[v]
+			if (source >= 0 && touched[source]): changed = 1
+			if (changed == 0 && native[v] != MM_THEME_UNSET): value = native[v]
+			else: value = mm_theme_derive(ops[v], values[source], hues[v], lights[v], dark)
+		values.push(value)
+		touched.push(changed)
 	d.palette.mask = 15
-	d.palette.fill = 0xf8fafc
-	d.palette.stroke = 0x334155
-	d.palette.text = 0x0f172a
+	d.palette.fill = values[MM_THEME_MAIN_BKG]
+	d.palette.stroke = values[MM_THEME_NODE_BORDER]
+	d.palette.text = values[MM_THEME_PRIMARY_TEXT]
 	d.palette.width = 2
-	d.background = 0xffffff
-	if (strcmp(name, c"default") == 0): d.theme = 1
-	else if (strcmp(name, c"base") == 0):
-		d.theme = 2
-		d.palette.fill = 0xfff4dd
-		d.palette.stroke = 0x937044
-		d.palette.text = 0x333333
-	else if (strcmp(name, c"dark") == 0):
-		d.theme = 3
-		d.palette.fill = 0x1f2937
-		d.palette.stroke = 0x94a3b8
-		d.palette.text = 0xf8fafc
-		d.background = 0x0f172a
-	else if (strcmp(name, c"forest") == 0):
-		d.theme = 4
-		d.palette.fill = 0xdcfce7
-		d.palette.stroke = 0x166534
-		d.palette.text = 0x14532d
-	else if (strcmp(name, c"neutral") == 0):
-		d.theme = 5
-		d.palette.fill = 0xf5f5f5
-		d.palette.stroke = 0x525252
-		d.palette.text = 0x171717
-	else: return 0
-	d.palette_line = d.palette.stroke
-	d.palette_label = d.palette.text
-	return 1
+	d.palette_line = values[MM_THEME_LINE]
+	d.palette_label = values[MM_THEME_TEXT]
+	d.background = values[MM_THEME_BACKGROUND]
+	if (d.theme_values != 0): __w_list_free(cast(__w_list*, d.theme_values))
+	d.theme_values = values
+	__w_list_free(cast(__w_list*, fills))
+	__w_list_free(cast(__w_list*, strokes))
+	__w_list_free(cast(__w_list*, texts))
+	__w_list_free(cast(__w_list*, backgrounds))
+	__w_list_free(cast(__w_list*, modes))
+	__w_list_free(cast(__w_list*, sources))
+	__w_list_free(cast(__w_list*, ops))
+	__w_list_free(cast(__w_list*, hues))
+	__w_list_free(cast(__w_list*, lights))
+	__w_list_free(cast(__w_list*, native))
+	__w_list_free(cast(__w_list*, touched))
+
+# Native layered-layout gaps; flowchart nodeSpacing/rankSpacing override them.
+int mm_style_lane_gap(mm_document* d):
+	if (d.kind == MM_FLOW && (d.config_mask & 1)): return d.node_spacing * 2
+	return 100
+
+int mm_style_rank_gap(mm_document* d):
+	if (d.kind == MM_FLOW && (d.config_mask & 2)): return d.rank_spacing + 90
+	return 140

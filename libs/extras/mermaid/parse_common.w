@@ -7,6 +7,9 @@ struct mm_parser:
 	int pos
 	int scope
 	int global_nodes
+	# 1 + the start of a markdown string that found no closing `"; none
+	# exists later either, which keeps repeated scans linear.
+	int markdown_unclosed
 
 int mm_peek(mm_parser* p):
 	if (p.pos >= p.doc.length): return 0
@@ -46,6 +49,13 @@ void mm_separators(mm_parser* p):
 char* mm_quoted(mm_parser* p):
 	p.pos = p.pos + 1
 	int start = p.pos
+	# Markdown strings ("`...`") may span lines and end at the closing `".
+	# Without one, the text is scanned again as an ordinary quoted string.
+	if (mm_peek(p) == '`' && (p.markdown_unclosed == 0 || start < p.markdown_unclosed - 1)):
+		while (mm_peek(p) != 0 && (mm_peek(p) != '"' || p.pos - 1 <= start || p.doc.source[p.pos - 1] != '`')): p.pos = p.pos + 1
+		if (mm_peek(p) == 0):
+			p.markdown_unclosed = start + 1
+			p.pos = start
 	while (mm_peek(p) != 0 && mm_peek(p) != '"' && mm_peek(p) != 10): p.pos = p.pos + 1
 	char* text = str_copy_range(p.doc.source, start, p.pos)
 	if (mm_peek(p) == '"'): p.pos = p.pos + 1

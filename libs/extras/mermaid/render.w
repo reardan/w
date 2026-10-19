@@ -1,5 +1,6 @@
 # Graph layout and rendering; shared scene primitives live in scene.w.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.text
 import libs.extras.mermaid.layout
 import libs.extras.mermaid.positions
 import libs.extras.mermaid.data_render
@@ -35,39 +36,59 @@ char* mm_scope_direction(mm_document* d, int scope):
 		scope = n.parent
 	return d.direction
 
+# Compartment titles (ER entities, classes, requirements, C4) and group
+# titles are names: they break only where the label says so. Other node
+# labels wrap at the upstream default wrapping width.
+int mm_label_wrap(mm_document* d, mm_node* n):
+	if (n.group || d.kind == MM_ER || d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4): return 0
+	return MM_TEXT_WRAP
+
+mm_text_block* mm_node_text(mm_document* d, mm_node* n):
+	return mm_text_layout(n.label, mm_label_wrap(d, n))
+
+# Height a node's label adds beyond the single line every shape reserves.
+int mm_node_text_extra(mm_document* d, mm_node* n):
+	mm_text_block* t = mm_node_text(d, n)
+	int extra = t.height - MM_TEXT_LINE
+	mm_text_block_free(t)
+	return extra
+
 void mm_measure(mm_document* d, mm_scene* s):
 	for mm_node* n in d.nodes:
 		mm_bounds* b = new mm_bounds()
 		b.rank = -1
-		b.w = strlen(n.label) * 8 + 40
+		mm_text_block* text = mm_node_text(d, n)
+		int extra = text.height - MM_TEXT_LINE
+		b.w = text.width + 40
+		mm_text_block_free(text)
 		if (b.w < 180): b.w = 180
-		b.h = 60
-		if (d.kind == MM_ARCHITECTURE && n.group): b.w = b.w + strlen(n.annotation) * 8 + 24
-		if (n.shape == 10 || n.shape == 12): b.h = 110
-		if (n.shape == 11): b.h = 72
+		b.h = 60 + extra
+		if (d.kind == MM_ARCHITECTURE && n.group): b.w = b.w + mm_text_width(n.annotation, 0) + 24
+		if (n.shape == 10 || n.shape == 12): b.h = 110 + extra
+		if (n.shape == 11): b.h = 72 + extra
 		if (n.shape == 28):
-			b.h = 72
+			b.h = 72 + extra
 		if (n.shape == 13):
 			b.w = 72
 			b.h = 72
 		if (n.shape == 2): b.h = b.w
 		if (n.shape == 3):
 			b.w = b.w * 2
-			b.h = 100
+			b.h = 100 + extra * 2
 		if (d.kind == MM_ER):
-			b.h = 40 + n.attributes.length * 26
+			b.h = 40 + extra + n.attributes.length * 26
 			for mm_attribute* a in n.attributes:
 				char* text = mm_attribute_text(a)
-				int width = strlen(text) * 8 + 32
+				int width = mm_text_width(text, 0) + 32
 				if (width > b.w): b.w = width
 				free(text)
 		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4) && n.group == 0):
-			b.h = 80 + n.members.length * 26
+			b.h = 80 + extra + n.members.length * 26
 			if (n.annotation[0] != 0): b.h = b.h + 24
-			int width = strlen(n.annotation) * 8 + 64
+			int width = mm_text_width(n.annotation, 0) + 68
 			if (width > b.w): b.w = width
 			for mm_member* m in n.members:
-				width = strlen(m.text) * 8 + 32
+				width = mm_text_width(m.text, 0) + 32
 				if (width > b.w): b.w = width
 		if (d.kind == MM_STATE && n.shape >= 3):
 			b.w = 32
@@ -84,7 +105,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 					b.h = 100
 		s.nodes.push(b)
 
-void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
+void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap):
 	# Longest-path ranks over a topological traversal. Break cycles at the
 	# first remaining node, deterministically, without repeatedly growing ranks.
 	list[int] incoming = new list[int]
@@ -127,6 +148,25 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
 		int size = b.h
 		if (horizontal): size = b.w
 		if (size > sizes[rank]): sizes[rank] = size
+	# Rank gaps start at the configured rank gap and grow to hold the edge labels drawn in them (beside the
+	# target's incoming segment in vertical layouts, above it horizontally).
+	list[int] gaps = new list[int]
+	for rank in range(max_rank + 1): gaps.push(rank_gap)
+	for mm_edge* e in edges:
+		if (e.label == 0 || e.label[0] == 0 || e.from_node == e.to_node): continue
+		int from_rank = nodes[e.from_node].rank
+		int to_rank = nodes[e.to_node].rank
+		if (reverse):
+			from_rank = max_rank - from_rank
+			to_rank = max_rank - to_rank
+		if (from_rank == to_rank): continue
+		int gap = to_rank
+		if (to_rank > from_rank): gap = to_rank - 1
+		mm_text_block* t = mm_text_layout(e.label, MM_TEXT_WRAP)
+		int need = t.height + 64
+		if (horizontal): need = t.width + 70
+		mm_text_block_free(t)
+		if (need > gaps[gap]): gaps[gap] = need
 	list[int] order = mm_layer_order(nodes, edges, max_rank)
 	for i in range(nodes.length):
 		mm_bounds* b = nodes[order[i]]
@@ -134,12 +174,12 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
 		for j in range(i):
 			mm_bounds* other = nodes[order[j]]
 			if (other.rank == b.rank):
-				if (horizontal): lane = lane + other.h + 100
-				else: lane = lane + other.w + 100
+				if (horizontal): lane = lane + other.h + lane_gap
+				else: lane = lane + other.w + lane_gap
 		int rank = b.rank
 		if (reverse): rank = max_rank - rank
 		int offset = 60
-		for j in range(rank): offset = offset + sizes[j] + 140
+		for j in range(rank): offset = offset + sizes[j] + gaps[j]
 		if (horizontal):
 			b.x = offset
 			b.y = lane
@@ -147,6 +187,7 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
 			b.x = lane
 			b.y = offset
 	__w_list_free(cast(__w_list*, sizes))
+	__w_list_free(cast(__w_list*, gaps))
 	__w_list_free(cast(__w_list*, order))
 
 # Return the direct child of scope containing index, or -1 outside this scope.
@@ -172,17 +213,20 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 		int b = mm_scope_child(d, e.to_node, scope)
 		if (a < 0 || b < 0 || a == b): continue
 		mm_edge* mapped = new mm_edge()
+		# Borrowed for label-aware rank gaps; only the struct is freed below.
+		mapped.label = e.label
 		for i in range(indices.length):
 			if (indices[i] == a): mapped.from_node = i
 			if (indices[i] == b): mapped.to_node = i
 		edges.push(mapped)
-	mm_place(nodes, edges, mm_scope_direction(d, scope))
+	mm_place(nodes, edges, mm_scope_direction(d, scope), mm_style_lane_gap(d), mm_style_rank_gap(d))
 	if (d.layout_algorithm == 1): mm_force_place(nodes, edges)
 	if (scope >= 0):
 		mm_bounds* box = s.nodes[scope]
-		box.h = 100
+		int extra = mm_node_text_extra(d, d.nodes[scope])
+		box.h = 100 + extra
 		for mm_bounds* b in nodes:
-			b.y = b.y + 24
+			b.y = b.y + 24 + extra
 			if (b.x + b.w + 60 > box.w): box.w = b.x + b.w + 60
 			if (b.y + b.h + 60 > box.h): box.h = b.y + b.h + 60
 	for mm_edge* e in edges: free(e)
@@ -310,14 +354,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 55
 		my = ay
 		horizontal = 1
-	if (horizontal):
-		mm_line(s, ax, ay, mx, ay, e.dashed)
-		mm_line(s, mx, ay, mx, by, e.dashed)
-		mm_line(s, mx, by, bx, by, e.dashed)
-	else:
-		mm_line(s, ax, ay, ax, my, e.dashed)
-		mm_line(s, ax, my, bx, my, e.dashed)
-		mm_line(s, bx, my, bx, by, e.dashed)
+	mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, e.dashed, e.from_node == e.to_node)
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
@@ -343,9 +380,11 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mm_line(s, bx, by, bx + end_dx * 10 - end_dy * 5, by + end_dy * 10 + end_dx * 5, 0)
 		mm_line(s, bx, by, bx + end_dx * 10 + end_dy * 5, by + end_dy * 10 - end_dx * 5, 0)
 	if (e.label[0] != 0):
-		if (e.from_node == e.to_node): mm_text(s, mx + 8, my - 22, e.label)
-		else if (horizontal): mm_text(s, (ax + mx) / 2 - strlen(e.label) * 4, ay - 22, e.label)
-		else: mm_text(s, bx + 8, (my + by) / 2 - 8, e.label)
+		mm_text_block* t = mm_text_layout(e.label, MM_TEXT_WRAP)
+		if (e.from_node == e.to_node): mm_text_draw(s, t, mx + 8, my - 6 - t.height, 0)
+		else if (horizontal): mm_text_draw(s, t, (ax + mx) / 2, ay - 6 - t.height, 1)
+		else: mm_text_draw(s, t, bx + 8, (my + by) / 2 - t.height / 2, 0)
+		mm_text_block_free(t)
 
 void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 	for i in range(d.nodes.length):
@@ -358,20 +397,21 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		if (d.kind == MM_STATE && index_of(n.id, c"@region:") == 0):
 			mm_render_groups(d, s, i)
 			continue
+		int title_x = b.x + 16
 		if (d.kind == MM_ARCHITECTURE && n.annotation[0] != 0):
-			string_builder* label = string_from(c"[")
-			string_append(label, n.annotation)
-			string_append(label, c"] ")
-			string_append(label, n.label)
-			mm_text(s, b.x + 16, b.y + 12, label.data)
-			string_free(label)
-		else: mm_text(s, b.x + 16, b.y + 12, n.label)
-		mm_line(s, b.x, b.y + 40, b.x + b.w, b.y + 40, 0)
+			string_builder* prefix = string_from(c"[")
+			string_append(prefix, n.annotation)
+			string_append(prefix, c"] ")
+			mm_text(s, title_x, b.y + 12, prefix.data)
+			title_x = title_x + mm_text_width(prefix.data, 0)
+			string_free(prefix)
+		int extra = mm_label(s, title_x, b.y + 12, n.label, 0, 0) - MM_TEXT_LINE
+		mm_line(s, b.x, b.y + 40 + extra, b.x + b.w, b.y + 40 + extra, 0)
 		mm_style_node(d, s, n, style_start)
 		mm_render_groups(d, s, i)
 
-void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b):
-	int y = b.y + 40
+void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
+	int y = b.y + 40 + extra
 	if (n.annotation[0] != 0):
 		string_builder* text = string_from(c"<<")
 		string_append(text, n.annotation)
@@ -396,10 +436,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 	for mm_edge* e in d.edges:
 		int start = s.items.length
 		mm_render_edge(d, s, e)
-		for i in range(start, s.items.length):
-			mm_primitive* primitive = s.items[i]
-			mm_style_merge(&primitive.style, &d.edge_style)
-			mm_style_merge(&primitive.style, &e.style)
+		mm_style_edge(d, s, e, start)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
@@ -415,17 +452,17 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 		if (n.shape == 28):
 			int cx = b.x + b.w / 2
 			mm_draw(s, MM_CIRCLE, cx - 12, b.y + 4, cx + 12, b.y + 28, 0, c"")
-			mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, b.y + 44, n.label)
+			mm_label(s, b.x + b.w / 2, b.y + 44, n.label, mm_label_wrap(d, n), 1)
 			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 10):
 			mm_actor_draw(s, b)
-			mm_text(s, b.x + 12, b.y + 90, n.label)
+			mm_label(s, b.x + 12, b.y + 90, n.label, mm_label_wrap(d, n), 0)
 			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 12 || n.shape == 13):
 			mm_arch_icon(s, n, b)
-			if (n.shape == 12): mm_text(s, b.x + 12, b.y + 86, n.label)
+			if (n.shape == 12): mm_label(s, b.x + 12, b.y + 86, n.label, mm_label_wrap(d, n), 0)
 			mm_style_node(d, s, n, style_start)
 			continue
 		if (n.shape == 21 || n.shape == 22):
@@ -476,13 +513,16 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 				oval.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * cast(float, b.w) / 2.0))
 				oval.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * cast(float, b.h) / 2.0))
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
-		int title_y = b.y + (b.h - 16) / 2
+		mm_text_block* title = mm_node_text(d, n)
+		int extra = title.height - MM_TEXT_LINE
+		int title_y = b.y + (b.h - title.height) / 2
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
-		if (d.kind != MM_STATE || n.shape != 3): mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, title_y, n.label)
-		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b)
+		if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
+		mm_text_block_free(title)
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b, extra)
 		if (d.kind == MM_ER):
 			for j in range(n.attributes.length):
-				int y = b.y + 40 + j * 26
+				int y = b.y + 40 + extra + j * 26
 				mm_line(s, b.x, y, b.x + b.w, y, 0)
 				char* text = mm_attribute_text(n.attributes[j])
 				mm_text(s, b.x + 12, y + 5, text)
@@ -527,6 +567,8 @@ void mm_render_metadata(mm_document* d, mm_scene* s):
 		for mm_bounds* b in s.nodes: b.y = b.y + 40
 		s.height = s.height + 40
 		mm_text(s, 40, 12, d.title)
+		mm_primitive* title = s.items[s.items.length - 1]
+		title.role = MM_ROLE_TITLE
 		s.has_title = 1
 	s.accessibility_title = strclone(d.accessibility_title)
 	if (s.accessibility_title[0] == 0):

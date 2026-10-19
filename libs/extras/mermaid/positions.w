@@ -8,8 +8,13 @@ int mm_position_title_offset(mm_document* d):
 	if (d.title[0] != 0): return 40
 	return 0
 
+# Families whose source grammar the graphical editor splices. Every one shares
+# the mm_node/mm_edge graph model and the generic graph layout and renderer.
+int mm_graph_edit_family(int kind):
+	return kind == MM_FLOW || kind == MM_ER || kind == MM_CLASS || kind == MM_STATE
+
 int mm_position_supported(mm_document* d, int index):
-	if (d.error != 0 || (d.kind != MM_FLOW && d.kind != MM_ER)): return 0
+	if (d.error != 0 || mm_graph_edit_family(d.kind) == 0): return 0
 	if (index < 0 || index >= d.nodes.length): return 0
 	mm_node* n = d.nodes[index]
 	if (n.group || n.parent >= 0): return 0
@@ -85,7 +90,7 @@ int mm_position_line_end(mm_document* d, int start):
 	return end
 
 void mm_positions_apply(mm_document* d, mm_scene* s):
-	if (d.kind != MM_FLOW && d.kind != MM_ER): return
+	if (mm_graph_edit_family(d.kind) == 0): return
 	int at = d.source_start
 	while (at < d.source_end):
 		int end = mm_position_line_end(d, at)

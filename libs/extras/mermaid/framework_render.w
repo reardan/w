@@ -38,6 +38,11 @@ mm_scene* mm_treeview_render(mm_document* d):
 			mm_line(s, a.x + 8, a.y + 24, a.x + 8, b.y + 8, 0)
 			mm_line(s, a.x + 8, b.y + 8, b.x - 4, b.y + 8, 0)
 		mm_text(s, b.x, b.y, n.label)
+		if (n.annotation[0] != 0):
+			mm_text(s, b.x + strlen(n.label) * 8 + 24, b.y, n.annotation)
+			mm_primitive* description = s.items[s.items.length - 1]
+			description.style.mask = description.style.mask | 4
+			description.style.text = 0x64748b
 	return s
 
 mm_scene* mm_ishikawa_render(mm_document* d):
@@ -193,6 +198,22 @@ mm_scene* mm_cynefin_render(mm_document* d):
 	mm_text(s, 40, 30, d.title)
 	return s
 
+char* mm_wardley_value(mm_node* n, char* key):
+	for mm_property* property in n.metadata:
+		if (strcmp(property.key, key) == 0): return property.value
+	return 0
+
+void mm_wardley_paint(mm_scene* s, int fill, int stroke):
+	mm_primitive* p = s.items[s.items.length - 1]
+	if (fill >= 0):
+		p.style.mask = p.style.mask | 1
+		p.style.fill = fill
+	if (stroke >= 0):
+		p.style.mask = p.style.mask | 2
+		p.style.stroke = stroke
+
+# Visibility runs upward and evolution rightward over a fixed 1000-unit plot.
+# Pipeline sub-components sit inside their pipeline band under the parent.
 mm_scene* mm_wardley_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
 	s.has_title = d.title[0] != 0
@@ -202,6 +223,8 @@ mm_scene* mm_wardley_render(mm_document* d):
 	mm_framework_arrow(s, 80, 650, 1080, 650, 0)
 	mm_text(s, 980, 688, c"Evolution")
 	list[char*] stages = list[char*]{c"Genesis", c"Custom", c"Product", c"Commodity"}
+	for mm_note* note in d.notes:
+		if (note.node == -1 && note.side >= 0 && note.side < 4): stages[note.side] = note.text
 	for i in range(4):
 		mm_text(s, 100 + i * 250, 662, stages[i])
 		if (i > 0): mm_line(s, 80 + i * 250, 90, 80 + i * 250, 650, 1)
@@ -211,6 +234,16 @@ mm_scene* mm_wardley_render(mm_document* d):
 		mm_bounds* b = s.nodes[i]
 		b.x = 80 + n.value_x
 		b.y = 650 - n.value_y * 560 / 1000
+		if (n.shape == 2): b.y = b.y + 28
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		char* range = mm_wardley_value(n, c"pipeline")
+		if (range == 0): continue
+		mm_bounds* b = s.nodes[i]
+		int split = index_of(range, c" ")
+		int low = 80 + atoi(range)
+		int high = 80 + atoi(range + split + 1)
+		mm_draw(s, MM_BOX, low - 12, b.y + 12, high + 12, b.y + 44, 0, c"")
 	for mm_edge* e in d.edges:
 		mm_bounds* a = s.nodes[e.from_node]
 		mm_bounds* b = s.nodes[e.to_node]
@@ -218,6 +251,46 @@ mm_scene* mm_wardley_render(mm_document* d):
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
-		mm_draw(s, MM_CIRCLE, b.x - 6, b.y - 6, b.x + 6, b.y + 6, n.shape, c"")
-		mm_text(s, b.x + 12, b.y - 16, n.label)
+		char* evolve = mm_wardley_value(n, c"evolve")
+		if (evolve == 0): continue
+		int target = 80 + atoi(evolve)
+		int direction = 1
+		if (target < b.x): direction = -1
+		int start = s.items.length
+		if (target - b.x > 24 || b.x - target > 24): mm_framework_arrow(s, b.x + direction * 8, b.y, target - direction * 8, b.y, 1)
+		mm_draw(s, MM_CIRCLE, target - 6, b.y - 6, target + 6, b.y + 6, 0, c"")
+		for k in range(start, s.items.length):
+			mm_primitive* item = s.items[k]
+			item.style.mask = item.style.mask | 2
+			item.style.stroke = 0xdc2626
+		mm_text(s, target + 12, b.y - 16, n.label)
+		mm_primitive* label = s.items[s.items.length - 1]
+		label.style.mask = label.style.mask | 4
+		label.style.text = 0xdc2626
+	for i in range(d.nodes.length):
+		mm_node* n = d.nodes[i]
+		mm_bounds* b = s.nodes[i]
+		if (n.shape == 3):
+			mm_text(s, b.x, b.y - 8, n.label)
+			continue
+		char* strategy = mm_wardley_value(n, c"strategy")
+		if (strategy != 0):
+			int fill = 0xe5e7eb
+			if (strcmp(strategy, c"buy") == 0): fill = 0x9ca3af
+			if (strcmp(strategy, c"outsource") == 0): fill = 0x4b5563
+			mm_draw(s, MM_CIRCLE, b.x - 18, b.y - 18, b.x + 18, b.y + 18, 0, c"")
+			mm_wardley_paint(s, fill, fill)
+		mm_draw(s, MM_CIRCLE, b.x - 6, b.y - 6, b.x + 6, b.y + 6, n.shape == 1, c"")
+		if (mm_wardley_value(n, c"inertia") != 0): mm_draw(s, MM_BOX, b.x + 22, b.y - 16, b.x + 28, b.y + 16, 2, c"")
+		int dx = 12
+		int dy = -16
+		char* offset = mm_wardley_value(n, c"label")
+		if (offset != 0):
+			dx = atoi(offset)
+			dy = atoi(offset + index_of(offset, c" ") + 1)
+		int x = b.x + dx
+		int y = b.y + dy
+		if (x < 0): x = 0
+		if (y < 0): y = 0
+		mm_text(s, x, y, n.label)
 	return s

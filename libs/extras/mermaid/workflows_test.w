@@ -80,7 +80,8 @@ void test_workflow_large_label_layout_bound():
 	mm_document* d = mm_parse(source.data, source.length)
 	asserts(c"large lane label parses", d.error == 0)
 	mm_scene* s = mm_render(d)
-	asserts(c"lane dimensions bounded by content", s.width > 800000 && s.width < 900000 && s.height < 1000)
+	# Text extents use the 11px advance of X (text_metrics.w).
+	asserts(c"lane dimensions bounded by content", s.width > 800000 && s.width < 1200000 && s.height < 1000)
 	mm_scene_free(s)
 	mm_document_free(d)
 	string_free(source)
