@@ -510,6 +510,13 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	d.layout_algorithm = envelope.layout_algorithm
 	d.ticket_base_url = envelope.ticket_base_url
 	envelope.ticket_base_url = 0
+	d.theme_values = envelope.theme_values
+	envelope.theme_values = 0
+	d.config_mask = envelope.config_mask
+	d.node_spacing = envelope.node_spacing
+	d.rank_spacing = envelope.rank_spacing
+	d.edge_curve = envelope.edge_curve
+	d.look = envelope.look
 	if (d.layout_algorithm == 1 && d.kind != MM_FLOW && d.kind != MM_ER && d.kind != MM_CLASS && d.kind != MM_STATE && d.kind != MM_REQUIREMENT && d.kind != MM_C4 && d.kind != MM_ARCHITECTURE && d.kind != MM_USECASE && d.kind != MM_AGENT): mm_error(d, 0, c"force layout is only supported for graph diagrams")
 	free(d.source)
 	d.source = envelope.source

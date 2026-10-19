@@ -25,6 +25,9 @@ struct mm_primitive:
 	int text_style
 	# Optional owned hyperlink for SVG text; native renderers ignore it.
 	char* href
+	# Theme role (MM_ROLE_* in style_render.w) and categorical series index.
+	int role
+	int series
 
 struct mm_bounds:
 	int x

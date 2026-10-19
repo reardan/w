@@ -94,7 +94,7 @@ void test_mermaid_envelope_original_diagnostics_and_edits():
 	asserts(c"prose retained", index_of(fixed.source, c"Footer") >= 0)
 	mm_document_free(d)
 	mm_document_free(fixed)
-	list[char*] invalid = list[char*]{c"```mermaid\nflowchart LR\nA", c"---\ntitle: x\nflowchart LR\nA", c"---\nconfig: {}\n---\nflowchart LR\nA", c"---\ntitle: |\n---\nflowchart LR\nA", c"flowchart LR\naccDescr { never closed"}
+	list[char*] invalid = list[char*]{c"```mermaid\nflowchart LR\nA", c"---\ntitle: x\nflowchart LR\nA", c"---\nconfig: [dark]\n---\nflowchart LR\nA", c"---\ntitle: |\n---\nflowchart LR\nA", c"flowchart LR\naccDescr { never closed"}
 	for char* input in invalid:
 		d = mm_parse(input, strlen(input))
 		asserts(c"malformed envelope rejected", d.error != 0)
