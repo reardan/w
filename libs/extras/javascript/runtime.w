@@ -218,6 +218,7 @@ int js_runtime_async_cancel(js_runtime* rt);
 js_value* js_runtime_async_call(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args);
 js_value* js_runtime_await(js_runtime* rt, js_value* value);
 void js_runtime_install_json(js_runtime* rt);
+void js_runtime_install_global_numeric(js_runtime* rt);
 void js_runtime_install_classes(js_runtime* rt);
 void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode);
 void js_class_define(js_runtime* rt, js_value* object, char* name, js_value* value, int writable, int configurable);
@@ -553,6 +554,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_string_split(rt)
 	js_runtime_install_string_replace(rt)
 	js_runtime_install_reflect_construct(rt)
+	js_runtime_install_global_numeric(rt)
 	return rt
 
 
@@ -2037,3 +2039,5 @@ import libs.extras.javascript.runtime_reflect_construct
 import libs.extras.javascript.runtime_string_replace
 
 import libs.extras.javascript.runtime_array_concat
+
+import libs.extras.javascript.runtime_global_numeric
