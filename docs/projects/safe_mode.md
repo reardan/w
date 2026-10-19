@@ -2285,3 +2285,79 @@ Compiler and prior checked fixture bytes are identical. Measurements are
 specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 until the dependent merges and integrated completion gates pass.
+
+
+### Ownership-preserving optimization validation (#714)
+
+`safe_opt_diff_test` (x86) and its `safe_opt_diff_64_test` twin (x64)
+compare every optimization configuration the x86/x64 back ends offer
+against an unoptimized reference. Each program is compiled with
+`-O0 --no-inline` as the reference and again with the defaults, `-O0`,
+each single opt-out (`--no-regs`, `--no-inline`, `--no-cond-branch`,
+`--no-loop-rotate`, `--no-expr-regs`, `--no-addr-modes`,
+`--no-direct-calls`, `--no-narrow-regs`, plus `--no-x86-budget` on x86 or
+`--no-ivopts`/`--no-reg-args` on x64), all opt-outs together, `--inline`,
+`--ast-opt`, and `--inline` with a `--profile-use` profile marking every
+function of the program hot. The profile is synthesized from
+`bin/wv2 defhash`, because `--profile-generate` cannot instrument a checked
+program: the injected `lib/profile.w` has no audited runtime contract.
+Every binary runs under `W_DEBUG_ALLOC=1`. Exit status, stdout and stderr
+(stack-trace frames removed, since inlining removes frames) must equal the
+reference.
+
+The corpus is every `tests/safe_*runtime_fixture.w` (39 programs, found by
+listing `tests/`; each must be declared as a `deps=` input so wtest and the
+build cache see edits), plus three new programs:
+
+- `tests/safe_opt_order_fixture.w` covers reverse-declaration drops, early
+  return with function and scoped defers, per-iteration owners with
+  `continue`/`break`, transfer into calls and out of returns, replacement,
+  nested owners, branch-dependent moves, a hot owner-per-iteration loop and
+  checked slice reads. `tests/safe_opt_log.w` hooks `free` and prints
+  `drop n` for each tagged owner it destroys and `mark n` at transfer points
+  and deferred actions. Stdout therefore records the exact order of drops,
+  deferred work and transfers. This program also compiles with `--safe`, and
+  the `--safe`, `--safe -O0 --no-inline` and `--safe --inline` hot builds must
+  print the plain reference's log.
+- `tests/safe_opt_order_manual_fixture.w` does the same work with raw
+  pointers, explicit `free()` and hand-ordered deferred calls. Under every
+  configuration it must print the checked program's reference log, including
+  the leak count. Hand-written and checked cleanup are observably identical.
+- `tests/safe_opt_bounds_fixture.w` selects one of six out-of-range accesses
+  through `SAFE_OPT_CASE`: a hot `for` loop over a checked slice, a
+  checked-slice accessor, a subslice, a fixed-array fill loop, a descending
+  `while` reaching index -1 and an inlinable scalar leaf. Each case must exit
+  nonzero with `index out of range` after the same marks and drops. Owners
+  still live at the trap are not destroyed, as documented. Case 0 runs every
+  access in range and must exit 0.
+
+The test also checks the inliner restriction directly from
+`-v -v -v --inline` output with the hot profile. Every function with an
+`own`, `ref` or `refmut` parameter, an `own` result, or a checked local
+declaration is refused (`inline_body_end(..., ok=0`) and never inlined. The
+manual twin's raw versions of the same functions are recorded. Parameter
+and result types are refused in `compiler/inline_table.w`. Checked
+declarations count as inlining hazards in `code_generator/statement_ast.w`.
+`--streaming`, which has no such hazard, is rejected for checked programs.
+
+Bodies whose only checked operations are temporaries remain inlinable. Two
+examples are a scalar wrapper that moves `opt_box(n)` straight into
+`opt_consume(...)` and a scalar leaf indexing its own fixed array. The test
+asserts that both are actually inlined under the hot profile. The transfer
+and drop remain inside the refused callees, and the inlined copy keeps its
+bounds check. Logs match the reference. The restriction was not relaxed.
+
+At the first full run, the x86 run made 745 comparisons and the x64 run
+made 793, with no mismatch. These figures come from 42 compiled programs:
+39 existing fixtures, the logging and bounds fixtures, and the manual twin.
+Exploratory probes also found no divergence in bounds checks inside
+`--ivopts` loops on x86/x64. The same held for `--ast-opt` on checked
+programs and hot-inlined bodies that pass fresh owners or borrowed locals
+across calls. No optimization pass was found to erase or reorder a check,
+transfer, deferred action or drop.
+
+A mutation check that swapped two `free()` calls in the manual twin produced
+16 reported mismatches. These are regression results for the passes and
+fixtures listed above, not a proof. ARM64 and win64 optimization variants
+remain covered by each runtime fixture's own cross-compile and execution
+targets, not by this harness.
