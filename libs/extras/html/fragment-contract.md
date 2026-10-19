@@ -15,11 +15,15 @@ start-tag token: matching context end-tag spellings stay text. Newline/reference
 NUL processing uses the existing explicit-length tokenizer. A normal plaintext
 start tag now consumes literal text through EOF as well.
 
+The html context delegates to the existing document insertion recovery and
+returns the synthesized head/body children under a fragment root; discarded
+document-level doctypes are never exposed as fragment children. The synthetic
+container remains allocated until document teardown and counts against limits.
 The div/body/head and scripting-disabled noscript contexts provide the existing
 bounded HTML tree recovery without document wrappers, with adjacent text
 coalescing, ignored document tags/doctypes and optional p/list-item closure.
 They do not establish full in-body/in-head algorithm coverage. Unsupported
-contexts (including html, tables, select, template and foreign names) return
+contexts (including tables, select, template and foreign names) return
 `failed=1` and a diagnostic. Full insertion modes, foster parenting, formatting
 reconstruction/adoption agency, templates, namespaces and exact parse-error
 recovery remain mandatory implementation work. Depth/node/token/input caps are
@@ -32,7 +36,7 @@ records file hashes; `inventory.json` inventories every .dat file and all fragme
 contexts at that revision, including unexecuted cases. Run
 `./wbuild html_fragment_test html_fragment_64_test html_fragment_upstream_test`.
 The upstream adapter compares native trees, reports all nine cases, and preserves
-unsupported html context in the denominator. Parse-error lists are retained
+all nine tree results in the denominator. Parse-error lists are retained
 unchanged but are not asserted by this initial tree-output adapter. This is a
 bounded profile and never a claim of full html5lib or WPT conformance.
 

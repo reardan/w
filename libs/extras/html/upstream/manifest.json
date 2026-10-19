@@ -18,7 +18,7 @@
   "total_cases": 9,
   "diagnostics": "Recorded upstream, not asserted yet; current parser diagnostics differ.",
   "mandatory_remaining": [
-    "html context insertion mode",
+    "complete HTML context insertion modes beyond existing document recovery",
     "full tree-construction corpus",
     "diagnostic recovery equivalence"
   ]

@@ -648,9 +648,38 @@ html_document* html_parse(char* data, int length):
 # insertion modes remain explicit failures instead of returning a wrong tree.
 int html_fragment_context_supported(char* context):
 	if (context == 0): return 0
-	return (strcmp(context, c"div") == 0) || (strcmp(context, c"body") == 0) || (strcmp(context, c"head") == 0) || html_is_raw(context) || html_is_rcdata(context) || (strcmp(context, c"plaintext") == 0) || (strcmp(context, c"noscript") == 0)
+	return (strcmp(context, c"html") == 0) || (strcmp(context, c"div") == 0) || (strcmp(context, c"body") == 0) || (strcmp(context, c"head") == 0) || html_is_raw(context) || html_is_rcdata(context) || (strcmp(context, c"plaintext") == 0) || (strcmp(context, c"noscript") == 0)
 
 html_document* html_parse_fragment_with_limits(char* data, int length, char* context, int scripting, html_limits* limits):
+	# HTML context starts before head; reuse the existing document insertion
+	# recovery, then return the synthetic HTML element's children. The parser's
+	# other insertion-mode limitations still apply to this bounded foundation.
+	if (context != 0 && strcmp(context, c"html") == 0):
+		html_document* parsed = html_parse_with_limits(data, length, limits)
+		if (parsed.root != 0):
+			html_node* html = parsed.root.first_child
+			html_node* discarded = html.next_sibling
+			while (discarded != 0):
+				discarded.parent = 0
+				discarded = discarded.next_sibling
+			parsed.root.kind = HTML_FRAGMENT
+			free(parsed.root.name)
+			parsed.root.name = strclone(c"#document-fragment")
+			parsed.root.first_child = html.first_child
+			parsed.root.last_child = html.last_child
+			html_node* child = html.first_child
+			while (child != 0):
+				child.parent = parsed.root
+				child = child.next_sibling
+			html.first_child = 0
+			html.last_child = 0
+			html.next_sibling = 0
+			html.parent = 0
+			html_node* node = parsed.allocations
+			while (node != 0):
+				if (node.depth > 0): node.depth = node.depth - 1
+				node = node.allocation_next
+		return parsed
 	html_document* doc = new html_document()
 	html_tokenizer* t = html_tokenizer_new(data, length, limits)
 	if (!html_fragment_context_supported(context)): html_stop(t, 0, c"unsupported HTML fragment context")
