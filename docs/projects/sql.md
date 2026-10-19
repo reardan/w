@@ -158,7 +158,7 @@ streaming for MySQL/SQL Server/Oracle, output parameter API, or non-Linux-x64 AB
   collector limit, NULL/empty/binary values, parameters, the open-cursor lock,
   early free, transactions, mid-stream errors and close with an open cursor.
   `sql_cursor_postgres_local_test` does the same on PostgreSQL (non-root only,
-  via `tests/sql_postgres_fixture.py`), including cancel on early free.
+  via `bin/sql_postgres_fixture` (tests/sql_postgres_fixture.w)), including cancel on early free.
 - `./wbuild sql_native_abi_test`: actual libpq/MySQL failed-open paths when
   installed; C shared-library fixtures validate MySQL, FreeTDS and OCI calls,
   native output widths, stack arguments, callbacks, binding, truncation, cleanup,

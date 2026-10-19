@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=orm_session_postgres_local_test tag=tests dep=orm_session_postgres_test data=tests/sql_postgres_fixture.py
-# wbuild: step="python3 tests/sql_postgres_fixture.py bin/orm_session_postgres_test"
+# wbuild: target=orm_session_postgres_local_test tag=tests dep=orm_session_postgres_test dep=sql_postgres_fixture data=tests/sql_postgres_fixture.w
+# wbuild: step="bin/sql_postgres_fixture bin/orm_session_postgres_test"
 # U3.2 end to end on PostgreSQL (the same scenarios as orm_session_test).
 # Needs W_SQL_POSTGRES (a libpq conninfo for an empty database); the
 # orm_session_postgres_local_test target starts a temporary cluster for it.

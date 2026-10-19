@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=orm_compile_postgres_local_test tag=tests dep=orm_compile_test data=tests/sql_postgres_fixture.py
-# wbuild: step="python3 tests/sql_postgres_fixture.py bin/orm_compile_test"
+# wbuild: target=orm_compile_postgres_local_test tag=tests dep=orm_compile_test dep=sql_postgres_fixture data=tests/sql_postgres_fixture.w
+# wbuild: step="bin/sql_postgres_fixture bin/orm_compile_test"
 # U1.2: golden SQL + bound values for the w-orm compiler on SQLite and
 # PostgreSQL, then a sample of the statements run against real SQLite
 # in-memory tables (and PostgreSQL when W_SQL_POSTGRES is set).

@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=orm_apply_postgres_local_test tag=tests dep=orm_apply_postgres_test data=tests/sql_postgres_fixture.py
-# wbuild: step="python3 tests/sql_postgres_fixture.py bin/orm_apply_postgres_test"
+# wbuild: target=orm_apply_postgres_local_test tag=tests dep=orm_apply_postgres_test dep=sql_postgres_fixture data=tests/sql_postgres_fixture.w
+# wbuild: step="bin/sql_postgres_fixture bin/orm_apply_postgres_test"
 # U2.4: the migration applier on PostgreSQL, end to end over every row of
 # plan section 5.2 (libs/standard/orm/migrate/orm_apply_scenario.w).
 import libs.standard.orm.migrate.orm_apply_scenario

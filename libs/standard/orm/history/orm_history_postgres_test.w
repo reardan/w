@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=orm_history_postgres_local_test tag=tests dep=orm_history_postgres_test data=tests/sql_postgres_fixture.py
-# wbuild: step="python3 tests/sql_postgres_fixture.py bin/orm_history_postgres_test"
+# wbuild: target=orm_history_postgres_local_test tag=tests dep=orm_history_postgres_test dep=sql_postgres_fixture data=tests/sql_postgres_fixture.w
+# wbuild: step="bin/sql_postgres_fixture bin/orm_history_postgres_test"
 # U3.3: trigger-based history on PostgreSQL. Needs W_SQL_POSTGRES (a libpq
 # conninfo for an empty database); orm_history_postgres_local_test starts a
 # temporary cluster for it. Scenario:

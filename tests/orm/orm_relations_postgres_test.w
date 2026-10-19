@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=orm_relations_postgres_local_test tag=tests dep=orm_relations_postgres_test data=tests/sql_postgres_fixture.py
-# wbuild: step="python3 tests/sql_postgres_fixture.py bin/orm_relations_postgres_test"
+# wbuild: target=orm_relations_postgres_local_test tag=tests dep=orm_relations_postgres_test dep=sql_postgres_fixture data=tests/sql_postgres_fixture.w
+# wbuild: step="bin/sql_postgres_fixture bin/orm_relations_postgres_test"
 # U2.1 on PostgreSQL: the orm_related_test and orm_atomic_test scenarios,
 # an aborted savepoint, and select_for_update(skip_locked) across two
 # connections. Needs W_SQL_POSTGRES (a libpq conninfo for an empty
