@@ -185,7 +185,13 @@ js_value* js_class_error(void* runtime, void* context, js_value* receiver, list[
 	js_value* error = js_runtime_alloc(rt, 5)
 	if (rt.completion.status != 0): return rt.undefined_value
 	error.prototype = cast(js_value*, context)
-	error.intrinsic_error_name = error.prototype.intrinsic_error_name
+	error.intrinsic_error_name = c"Error"
+	if (error.prototype == rt.eval_error_prototype): error.intrinsic_error_name = c"EvalError"
+	if (error.prototype == rt.range_error_prototype): error.intrinsic_error_name = c"RangeError"
+	if (error.prototype == rt.reference_error_prototype): error.intrinsic_error_name = c"ReferenceError"
+	if (error.prototype == rt.syntax_error_prototype): error.intrinsic_error_name = c"SyntaxError"
+	if (error.prototype == rt.type_error_prototype): error.intrinsic_error_name = c"TypeError"
+	if (error.prototype == rt.uri_error_prototype): error.intrinsic_error_name = c"URIError"
 	if (args.length > 0 && args[0].kind != 0):
 		js_text* text = js_runtime_string_text(rt, args[0])
 		if (text == 0):
@@ -248,7 +254,6 @@ js_value* js_class_error_to_string(void* runtime, void* context, js_value* recei
 
 
 void js_class_install_error(js_runtime* rt, char* name, js_value* prototype):
-	prototype.intrinsic_error_name = name
 	js_value* constructor = js_runtime_host_callable(rt, cast(void*, prototype), js_class_error)
 	constructor.this_value = prototype
 	constructor.error_constructor = 1
