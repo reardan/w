@@ -242,9 +242,13 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 				if (property.children.length != 0 || js_print_identifier_valid(property.text, 0) == 0): return js_print_error(diagnostics, property)
 				string_append(out, property.text)
 				continue
-			if (js_kind(property, c"property") == 0 || property.children.length != 1): return js_print_error(diagnostics, property)
-			if (utf8_validate_bytes(property.text, strlen(property.text)) == 0): return js_print_error(diagnostics, property)
-			js_print_quoted(out, property.text)
+			if ((js_kind(property, c"property") == 0 && js_kind(property, c"property_numeric") == 0) || property.children.length != 1): return js_print_error(diagnostics, property)
+			if (js_kind(property, c"property_numeric")):
+				if (pg_lexer_matcher_js_number(property.text, 0) != strlen(property.text)): return js_print_error(diagnostics, property)
+				string_append(out, property.text)
+			else:
+				if (utf8_validate_bytes(property.text, strlen(property.text)) == 0): return js_print_error(diagnostics, property)
+				js_print_quoted(out, property.text)
 			string_append(out, c": ")
 			if (js_print_expression(out, property.children[0], diagnostics) == 0): return 0
 		string_append(out, c"})")

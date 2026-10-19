@@ -1725,14 +1725,22 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				value = js_runtime_eval_node(rt, node.children[i], env)
 			else:
 				js_node* property = node.children[i]
-				key = js_runtime_key(property.text)
+				if (js_kind(property, c"property_numeric")):
+					int consumed = 0
+					float64 number = js_runtime_numeric_literal(property.text, &consumed)
+					char* spelling = js_runtime_number_text(number)
+					key = js_runtime_key(spelling)
+					free(spelling)
+				else: key = js_runtime_key(property.text)
 				if (js_kind(property, c"property_shorthand")):
 					js_value* binding = js_runtime_binding(env, property.text)
 					if (binding == 0): value = js_global_read(rt, property.text)
 					else if (binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 					else: value = js_runtime_binding_value(rt, binding)
 				else: value = js_runtime_eval_node(rt, property.children[0], env)
-			if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
+			if (rt.completion.status == 0):
+				if (kind == 5): js_runtime_define_data(rt, object, key, value, 1, 1, 1)
+				else: js_runtime_member_write(rt, object, key, value)
 			js_text_free(key)
 		return object
 	if (js_kind(node, c"call") || js_kind(node, c"construct")):
@@ -1800,12 +1808,12 @@ int js_runtime_supported(js_node* node):
 	char* kind = node.kind
 	int supported = js_kind(node, c"regex") || js_kind(node, c"class") || js_kind(node, c"class_expression") || js_kind(node, c"method") || js_kind(node, c"static_method") || js_kind(node, c"bigint") || js_kind(node, c"construct") || js_kind(node, c"label") || js_kind(node, c"template") || js_kind(node, c"template_text") || js_kind(node, c"arrow") || js_kind(node, c"for_of") || js_kind(node, c"for_in") || js_kind(node, c"try") || js_kind(node, c"catch") || js_kind(node, c"program") || js_kind(node, c"block") || js_kind(node, c"empty") || js_kind(node, c"number") || js_kind(node, c"string") || js_kind(node, c"string_utf16") || js_kind(node, c"string_non_directive") || js_kind(node, c"identifier") || js_kind(node, c"literal") || js_kind(node, c"function") || js_kind(node, c"function_expression") || js_kind(node, c"parameters") || js_kind(node, c"variable") || js_kind(node, c"declarator") || js_kind(node, c"expression_statement") || js_kind(node, c"return") || js_kind(node, c"throw") || js_kind(node, c"break") || js_kind(node, c"continue") || js_kind(node, c"if") || js_kind(node, c"conditional") || js_kind(node, c"while") || js_kind(node, c"do_while") || js_kind(node, c"for") || js_kind(node, c"assignment") || js_kind(node, c"update_prefix") || js_kind(node, c"update_postfix") || js_kind(node, c"binary") || js_kind(node, c"unary") || js_kind(node, c"member") || js_kind(node, c"computed_member") || js_kind(node, c"array") || js_kind(node, c"object") || js_kind(node, c"property") || js_kind(node, c"property_shorthand") || js_kind(node, c"call")
 	if (supported == 0): supported = js_kind(node, c"object_pattern") || js_kind(node, c"array_pattern") || js_kind(node, c"pattern_property") || js_kind(node, c"default_pattern") || js_kind(node, c"rest") || js_kind(node, c"spread") || js_kind(node, c"optional_chain") || js_kind(node, c"optional_member") || js_kind(node, c"optional_computed_member") || js_kind(node, c"optional_call")
-	if (supported == 0): supported = js_kind(node, c"switch") || js_kind(node, c"case")
+	if (supported == 0): supported = js_kind(node, c"switch") || js_kind(node, c"case") || js_kind(node, c"property_numeric")
 	if (supported == 0): return 0
 	if ((js_kind(node, c"member") || js_kind(node, c"computed_member")) && js_kind(node.children[0], c"literal") && strcmp(node.children[0].text, c"super") == 0): return 0
 	# Labelled function declarations require the unsupported Annex B rules.
 	if (js_kind(node, c"label") && js_kind(node.children[0], c"function")): return 0
-	if (strcmp(kind, c"number") == 0):
+	if (strcmp(kind, c"number") == 0 || strcmp(kind, c"property_numeric") == 0):
 		int consumed = 0
 		js_runtime_numeric_literal(node.text, &consumed)
 		if (consumed != strlen(node.text)): return 0

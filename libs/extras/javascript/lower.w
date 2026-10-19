@@ -165,7 +165,12 @@ js_node* js_lower_object_property(pg_ast_node* node, pg_diagnostics* diagnostics
 			free(key)
 			key = js_string_decode(name.first_token.text, diagnostics)
 		if (key == 0): return 0
-		js_node* property = js_node_new(c"property", key)
+		char* property_kind = c"property"
+		if (js_cst_is(name.children[0], c"NUMBER")):
+			free(key)
+			key = strclone(name.first_token.text)
+			property_kind = c"property_numeric"
+		js_node* property = js_node_new(property_kind, key)
 		js_node* method = js_node_new(c"function_expression", c"")
 		free(key)
 		js_node_add(property, method)
@@ -173,13 +178,19 @@ js_node* js_lower_object_property(pg_ast_node* node, pg_diagnostics* diagnostics
 		js_node_free(property)
 		return 0
 	char* key = 0
+	int numeric = 0
 	if (js_cst_is(first, c"binding_identifier")): key = js_identifier_decode(first.first_token.text)
 	else if (js_cst_is(first, c"property_name") && first.children.length == 1):
 		pg_ast_node* name = first.children[0]
 		if (js_cst_is(name, c"STRING")): key = js_string_decode(name.token.text, diagnostics)
 		else if (js_cst_is(name, c"identifier_name")): key = js_identifier_decode(name.first_token.text)
+		else if (js_cst_is(name, c"NUMBER")):
+			key = strclone(name.first_token.text)
+			numeric = 1
 	if (key == 0): return js_lower_error(node, diagnostics)
-	js_node* result = js_node_new(c"property", key)
+	char* property_kind = c"property"
+	if (numeric): property_kind = c"property_numeric"
+	js_node* result = js_node_new(property_kind, key)
 	free(key)
 	if (node.children.length == 1):
 		free(result.kind)
