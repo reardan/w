@@ -14,6 +14,11 @@ import libs.standard.orm.load
 import libs.standard.orm.compile
 
 
+# U2.1 hook: prefetch_related execution lives in related.w, imported at the
+# end of this file (it needs orm_queryset and orm_run_select).
+int orm_prefetch_execute(orm_db* db, orm_query* q, orm_result* r);
+
+
 const int ORM_VALUES_NONE = 0
 const int ORM_VALUES_DICT = 1    # values(): rows are orm_values_row* with names
 const int ORM_VALUES_LIST = 2    # values_list(): same rows, read by position
@@ -142,7 +147,7 @@ orm_queryset* orm_queryset_select_related(orm_queryset* qs, char* path):
 	return c
 
 
-# Recorded only; prefetch execution is a later unit (U2.1).
+# Runs after all()/first()/get(): one query per hop (related.w, U2.1).
 orm_queryset* orm_queryset_prefetch_related(orm_queryset* qs, char* path):
 	orm_queryset* c = orm_queryset_clone(qs)
 	orm_prefetch* pf = new orm_prefetch()
@@ -284,9 +289,19 @@ int orm_run_write(orm_db* db, orm_query* q):
 # ---------------------------------------------------------------------------
 # Evaluation
 
-# Every row (one query). Free with orm_result_free; 0 on error.
+# U2.1: runs the queryset's prefetch_related lookups on a loaded result;
+# frees it and returns 0 when one fails.
+orm_result* orm_with_prefetch(orm_queryset* qs, orm_result* r):
+	if (r == 0 || qs.values_mode != ORM_VALUES_NONE || qs.query.select.length > 0): return r
+	if (orm_prefetch_execute(qs.db, qs.query, r)): return r
+	orm_result_free(r)
+	return 0
+
+
+# Every row (one query, plus one per prefetch hop). Free with
+# orm_result_free; 0 on error.
 orm_result* orm_queryset_all(orm_queryset* qs):
-	return orm_run_select(qs.db, qs.query, qs.values_mode)
+	return orm_with_prefetch(qs, orm_run_select(qs.db, qs.query, qs.values_mode))
 
 
 orm_query* orm_first_query(orm_queryset* qs):
@@ -301,7 +316,7 @@ orm_query* orm_first_query(orm_queryset* qs):
 # The first row by the current ordering (pk when unordered): a result with
 # 0 or 1 rows, 0 on error.
 orm_result* orm_queryset_first(orm_queryset* qs):
-	return orm_run_select(qs.db, orm_first_query(qs), qs.values_mode)
+	return orm_with_prefetch(qs, orm_run_select(qs.db, orm_first_query(qs), qs.values_mode))
 
 
 # Exactly one row matching `where` (0 = the current filters). Returns 0
@@ -313,7 +328,7 @@ orm_result* orm_queryset_get(orm_queryset* qs, orm_where* where):
 	if (q.limit < 0 || q.limit > 2): q.limit = 2
 	orm_result* r = orm_run_select(qs.db, q, qs.values_mode)
 	if (r == 0): return 0
-	if (r.rows.length == 1): return r
+	if (r.rows.length == 1): return orm_with_prefetch(qs, r)
 	string_builder* msg = string_new()
 	if (r.rows.length == 0):
 		string_append(msg, q.model.name)
@@ -463,3 +478,7 @@ int orm_queryset_delete(orm_queryset* qs):
 	q.select.clear()
 	q.select_names.clear()
 	return orm_run_write(qs.db, q)
+
+
+# U2.1: prefetch execution, explicit loaders, iterator() and transactions.
+import libs.standard.orm.related
