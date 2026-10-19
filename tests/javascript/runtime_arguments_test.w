@@ -42,7 +42,7 @@ void test_arguments_closures():
 	arguments_eval(rt, c"function C(x){'use strict';this.x=arguments[0];}new C(7).x===7;", 0)
 	arguments_eval(rt, c"function poison(){'use strict';return arguments.callee;}poison();", 2)
 	arguments_eval(rt, c"function poisonSet(){'use strict';arguments.callee=3;}poisonSet();", 2)
-	arguments_eval(rt, c"function mapped(a){return arguments[0];}mapped(1);", 6)
+	arguments_eval(rt, c"function mapped(a){return arguments[0];}mapped(1);", 0)
 	arguments_eval(rt, c"function unsupported(a=1){let arguments=2;return arguments;}unsupported();", 6)
 	arguments_eval(rt, c"let resolve;let pending=new Promise(r=>{resolve=r;});let answer=0;async function later(x){'use strict';await pending;answer=arguments[0].x;}later({x:33});true;", 0)
 	js_runtime_collect(rt)

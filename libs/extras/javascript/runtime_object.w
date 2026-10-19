@@ -88,7 +88,9 @@ int js_object_descriptor_apply(js_runtime* rt, js_value* object, js_text* key, j
 		if ((desc.fields & 1) == 0): enumerable = old.enumerable
 		if ((desc.fields & 2) == 0): configurable = old.configurable
 		if (accessor == old.accessor):
-			if ((desc.fields & 4) == 0): value = old.value
+			if ((desc.fields & 4) == 0):
+				value = old.value
+				if (old.mapped_binding != 0): value = old.mapped_binding.value
 			if ((desc.fields & 8) == 0): writable = old.writable
 			if ((desc.fields & 16) == 0): getter = old.getter
 			if ((desc.fields & 32) == 0): setter = old.setter
@@ -112,7 +114,9 @@ js_value* js_object_descriptor_value(js_runtime* rt, js_value* object, js_text* 
 		js_runtime_set(rt, result, c"get", getter)
 		js_runtime_set(rt, result, c"set", setter)
 	else:
-		js_runtime_set(rt, result, c"value", prop.value)
+		js_value* value = prop.value
+		if (prop.mapped_binding != 0): value = prop.mapped_binding.value
+		js_runtime_set(rt, result, c"value", value)
 		js_runtime_set(rt, result, c"writable", js_runtime_boolean(rt, prop.writable))
 	int enumerable = 0
 	int configurable = 0

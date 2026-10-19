@@ -49,6 +49,8 @@ struct js_value:
 	list[js_value*] call_arguments
 	int arguments_pending
 	int arguments_object
+	js_value* mapped_binding
+	js_value* mapped_environment
 	js_value* boxed_value
 	int boxed_constructor
 	int join_active
@@ -252,7 +254,7 @@ js_value* js_numeric_not(js_runtime* rt, js_value* value);
 js_value* js_runtime_add(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_some(js_runtime* rt);
 void js_runtime_install_array_iteration(js_runtime* rt);
-void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args);
+void js_arguments_prepare(js_runtime* rt, js_value* env, list[js_value*] args, js_value* callable);
 js_value* js_arguments_materialize(js_runtime* rt, js_value* pending);
 
 
@@ -305,6 +307,8 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.call_arguments = 0
 	value.arguments_pending = 0
 	value.arguments_object = 0
+	value.mapped_binding = 0
+	value.mapped_environment = 0
 	value.boxed_value = 0
 	value.boxed_constructor = 0
 	value.join_active = 0
@@ -394,11 +398,14 @@ int js_runtime_put(js_runtime* rt, js_value* object, js_text* key, js_value* val
 		property.setter = 0
 		property.lexical_binding = 0
 		property.silent_immutable = 0
+		property.mapped_binding = 0
+		property.mapped_environment = 0
 		object.properties.push(property)
 	else if (property.immutable):
 		js_runtime_fail(rt, 2, c"assignment to constant binding")
 		return 0
 	property.value = value
+	if (property.mapped_binding != 0): property.mapped_binding.value = value
 	return 1
 
 
@@ -631,6 +638,7 @@ int js_runtime_collect(js_runtime* rt):
 			js_runtime_mark(pending, value.properties[i].value)
 			js_runtime_mark(pending, value.properties[i].getter)
 			js_runtime_mark(pending, value.properties[i].setter)
+			js_runtime_mark(pending, value.properties[i].mapped_environment)
 	__w_list_free(cast(__w_list*, pending))
 	int live = 0
 	int before = rt.heap.length
@@ -948,6 +956,11 @@ int js_runtime_define(js_runtime* rt, js_value* object, js_text* key, js_value* 
 	if (property == 0):
 		if (js_runtime_put(rt, object, key, value) == 0): return 0
 		property = js_runtime_property(object, key)
+	if (property.mapped_binding != 0):
+		if (accessor == 0): property.mapped_binding.value = value
+		if (accessor || writable == 0):
+			property.mapped_binding = 0
+			property.mapped_environment = 0
 	property.value = value
 	property.getter = getter
 	property.setter = setter
@@ -1028,7 +1041,9 @@ js_value* js_runtime_read_receiver(js_runtime* rt, js_value* object, js_text* ke
 		if (current.kind == 6 && js_runtime_key_is(key, c"length")): return js_runtime_number(rt, cast(float64, current.array_length))
 		js_value* property = js_runtime_property(current, key)
 		if (property != 0):
-			if (property.accessor == 0): return property.value
+			if (property.accessor == 0):
+				if (property.mapped_binding != 0): return property.mapped_binding.value
+				return property.value
 			if (property.getter == 0): return rt.undefined_value
 			if (js_runtime_property_enter(rt) == 0): return rt.undefined_value
 			list[js_value*] arguments = new list[js_value*]
@@ -1232,7 +1247,7 @@ js_value* js_runtime_call_body(js_runtime* rt, js_value* callable, js_value* rec
 			env.this_uninitialized = callable.class_kind == 2
 	js_node* parameters = callable.code.children[0]
 	for i in range(parameters.children.length): js_runtime_pattern_declare(rt, parameters.children[i], env, 4, 0)
-	if (rt.completion.status == 0): js_arguments_prepare(rt, env, args)
+	if (rt.completion.status == 0): js_arguments_prepare(rt, env, args, callable)
 	for i in range(parameters.children.length):
 		if (rt.completion.status != 0): break
 		js_node* parameter = parameters.children[i]
