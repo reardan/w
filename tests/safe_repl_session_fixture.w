@@ -1,0 +1,32 @@
+# Helpers loaded into the REPL by tests/safe_repl_session_test.w (with
+# --no_main). Under W_DEBUG_ALLOC the session allocator keeps a table of
+# every block (lib/memory_debug.w); a cell has a size no compiler-internal
+# allocation shares, so counting live blocks of that size counts the
+# cells the session has not destroyed yet.
+struct cell:
+	int value
+	char[1013] tag
+
+
+struct pair:
+	own cell* left
+	own cell* right
+
+
+int safe_repl_live_cells():
+	int live = 0
+	for i in range(debug_tbl_count):
+		if ((debug_tbl_freed[i] == 0) && (debug_tbl_size[i] == sizeof(cell))): live = live + 1
+	return live
+
+
+int safe_repl_take(own cell* c):
+	return c.value
+
+
+int safe_repl_peek(ref cell* c):
+	return c.value
+
+
+int main():
+	return 0

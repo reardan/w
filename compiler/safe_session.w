@@ -960,16 +960,21 @@ void safe_session_commit():
 	retired.free()
 
 
-# The pending entry faulted while running. When it could have changed
-# checked session state, every checked session binding is discarded: its
-# owner is leaked rather than risk a second destruction or a dangling use.
+# The pending entry faulted while running. Checked bindings it replaced or
+# whose state its analysis changes are discarded: their owners are leaked
+# rather than risk a second destruction or a dangling use.
 void safe_session_fault():
 	if (safe_session_bindings == 0): return
 	if (safe_session_changes()):
+		# Only bindings the entry could change: those it replaces and those
+		# whose state its analysis changes on some path. The rest keep
+		# their committed state, which no executed instruction touched.
 		int discarded = 0
 		for i in range(safe_session_bindings.length):
 			safe_session_binding* b = safe_session_bindings[i]
-			if (b.checked && (b.dropped == 0) && (b.discarded == 0)):
+			int changed = safe_session_listed(safe_session_retired, b)
+			if (b.captured && ((b.pending_state & 7) != (b.state & 7))): changed = 1
+			if (b.checked && changed && (b.dropped == 0) && (b.discarded == 0)):
 				b.discarded = 1
 				discarded = discarded + 1
 		if (discarded > 0):
