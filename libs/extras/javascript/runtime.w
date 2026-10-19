@@ -168,6 +168,7 @@ struct js_runtime:
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
 void js_runtime_install_object(js_runtime* rt);
+void js_runtime_install_object_integrity(js_runtime* rt);
 void js_runtime_install_boxed(js_runtime* rt);
 void js_runtime_install_harness_math(js_runtime* rt);
 void js_runtime_install_harness_search(js_runtime* rt);
@@ -558,6 +559,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_string_case(rt)
 	js_runtime_install_json(rt)
 	js_runtime_install_object(rt)
+	js_runtime_install_object_integrity(rt)
 	js_runtime_install_boxed(rt)
 	js_runtime_install_harness_math(rt)
 	js_runtime_install_array_join(rt)
@@ -2080,3 +2082,5 @@ import libs.extras.javascript.runtime_string_code_unit
 import libs.extras.javascript.runtime_array_descriptor
 
 import libs.extras.javascript.runtime_string_substring
+
+import libs.extras.javascript.runtime_object_integrity
