@@ -353,6 +353,16 @@ class AdapterContract(unittest.TestCase):
             self.assertEqual(actual['assertions'], 6)
         self.assertIn('error-cause', adapter.FEATURES)
 
+    def test_error_brand_capability_uses_internal_identity(self):
+        source = "let actual=new TypeError('x');let fake=Object.create(TypeError.prototype);fake.name='TypeError';assert.sameValue(Error.isError(actual),true);assert.sameValue(Error.isError(fake),false);assert.sameValue(Error.isError(TypeError.prototype),false);Object.setPrototypeOf(actual,null);assert.sameValue(Error.isError(actual),true);let effects=0;let guarded={};Object.defineProperty(guarded,'name',{get:function(){effects++;throw 23;}});assert.sameValue(Error.isError(guarded),false);assert.sameValue(effects,0);assert.throws(TypeError,function(){new Error.isError();});"
+        for mode in ('sloppy', 'strict'):
+            actual = self.execute(source, mode)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+            self.assertEqual(actual['assertions'], 7)
+        self.assertIn('Error.isError', adapter.FEATURES)
+        for dependency in ('Symbol', 'Proxy', 'cross-realm'):
+            self.assertIsNotNone(adapter.unsupported({'features': ['Error.isError', dependency], 'flags': [], 'includes': []}))
+
     def test_invalid_utf8_output_is_error(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'bad-runner'

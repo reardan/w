@@ -232,6 +232,15 @@ support. Contracts check inherited cause access, descriptor visibility, an
 explicit undefined cause, getter exceptions and EvalError/URIError identity.
 This does not admit Symbols, Proxy, realms or AggregateError dependencies.
 
+The `Error.isError` feature reaches execution after the native instance-brand
+implementation. Its contract verifies real errors, fake and intrinsic prototypes,
+prototype mutation, absence of observable property access and non-constructability
+in both modes. The complete 12-file family currently records 12 PASS and 12
+UNSUPPORTED variants: broad BigInt/class metadata, Symbols and cross-realm
+dependencies remain gated; the fake-error test additionally needs object-literal
+`__proto__` semantics. No optional AggregateError or SuppressedError branch is
+counted as verified coverage.
+
 ## Recorded complete-family checkpoints
 
 These are fresh executions at the listed private W revisions, retained as
@@ -246,8 +255,11 @@ binary hashes, per-variant failures and adapter hashes remain in the raw reports
 | parseInt, isNaN, isFinite | 85 | 170 | 134 | 0 | 30 | 6 | `34b4b166` |
 | RegExp (after include metadata correction) | 1,879 | 3,756 | 606 | 220 | 2,916 | 14 | `daec849e` frozen binary |
 | Object.defineProperty, Reflect.construct, Array.concat, String.split, RegExp Symbol.split, String.charCodeAt, Number MAX_VALUE/MIN_VALUE | 1,407 | 2,801 | 2,048 | 118 | 635 | 0 | `4b49480a` |
+| Entire Array, Object.defineProperty, Reflect.set | 4,232 | 8,405 | 5,833 | 980 | 1,506 | 86 | `f6fc14c9` frozen binary |
+| String.charAt, String.charCodeAt, String.split | 175 | 350 | 308 | 18 | 24 | 0 | `ee1b0dd5` |
+| Error.isError | 12 | 24 | 12 | 0 | 12 | 0 | `f6a9a6a0` |
 
-The last row includes all 10 Reflect.construct files/20 variants passing; native
+The combined reflection/string checkpoint includes all 10 Reflect.construct files/20 variants passing; native
 alternate-newTarget support remains a separate open capability. All 44
 RegExp Symbol.split files/88 variants remain explicitly unsupported. String.split
 accounts for all 120 files/240 variants: 196 PASS, 20 FAIL, 24 UNSUPPORTED.
@@ -258,3 +270,11 @@ budget exemption. The RegExp metadata correction admitted the original
 compareArray.js `allow_unused` field; its two previous harness ERROR variants now
 reach a genuine missing-String.match FAIL, while 14 resource errors remain.
 The same frozen RegExp runner binary was reused for that comparison.
+
+The entire Array checkpoint precedes later computed-key and Function prototype
+fixes. Its 86 ERROR variants are actual native resource refusals: 36 array-like
+argument limits, 34 index limits, 14 length limits and two iteration limits.
+There were no process timeout, crash or malformed-report errors in that run.
+The later string checkpoint retains missing substring, eval and Math Symbol-tag
+dependencies as failures. All 25 charCodeAt files run: 48 variants pass and two
+still fail on an actual eval dependency.
