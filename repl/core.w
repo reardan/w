@@ -516,8 +516,8 @@ struct repl_state:
 	int sites_count
 
 
-# The session's retained semantic mode (repl_ast_options): top-level items
-# switch it off while they compile and error recovery restores it.
+# The session's retained semantic mode, as each entry starts: top-level
+# items switch it off while they compile and error recovery restores it.
 int repl_semantic_mode
 
 # The per-entry checkpoint (nested evaluations swap in their own, see
@@ -709,12 +709,14 @@ void repl_safe_check_entry(int first_node):
 		while (token[0] != 0): repl_entry_item(-1)
 		repl_transcript_active = 0
 		close(file)
+	safe_session_token = token
 	safe_session_capture_check(first_node)
 	safe_session_contract_check(first_node)
 	safe_session_invalidate()
 	safe_session_seen = 0
 	safe_check_finish()
 	safe_session_validate()
+	safe_session_token = 0
 	repl_state_restore(mark)
 	free(cast(char*, mark))
 	current_function_symbol = saved_symbol
@@ -727,18 +729,21 @@ int repl_compile_entry(char* path):
 	if (safe_mode): target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	# Checkpoint everything a failed compile could leave half-updated
 	repl_checkpoint()
+	# The mode error recovery restores: whatever the session (or an API
+	# client such as repl/incremental.w) configured, not a default.
+	repl_semantic_mode = retained_semantic_mode
 
 	repl_recovery = 1
 	# Late binding (#114): register the function-address slots this entry
 	# emits, so a redefinition can repatch them later. Armed only while
 	# the engine compiles; the echo path's descriptor building stays out.
 	repl_call_site_hook = cast(int, repl_register_call_site)
-	# The checker's diagnostics point the tokenizer's token at a retained
-	# name; the next entry must tokenize into the real buffer again.
-	char* token_buffer = token
 	if (repl_setjmp(repl_jump_buffer)):
-		# error() jumped back: roll back the failed entry and skip execution
-		token = token_buffer
+		# error() jumped back: roll back the failed entry and skip execution.
+		# A checker diagnostic points the tokenizer's token at a retained
+		# name; the next entry must tokenize into the real buffer again.
+		if (safe_session_token != 0): token = safe_session_token
+		safe_session_token = 0
 		repl_recovery = 0
 		repl_call_site_hook = 0
 		# A failure in the checked-session transcript names its line there;
@@ -1326,10 +1331,12 @@ void repl_finish_load(int first_node):
 	finish_on_demand_imports()
 	safe_trust_sources(runtime_sources)
 	if (safe_check_requested()):
+		safe_session_token = token
 		safe_session_capture_check(first_node)
 		safe_session_contract_check(first_node)
 		safe_session_invalidate()
 		safe_check_finish()
+		safe_session_token = 0
 
 
 type __target_main_callback = fn(int, char**) -> int

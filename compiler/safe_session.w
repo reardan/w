@@ -97,6 +97,12 @@ type __safe_session_drop_callback = fn(int) -> void
 void safe_session_invalidate();
 
 
+# The tokenizer's buffer while the checker runs inside an in-process entry:
+# a checker diagnostic points token at a retained name, and recovery puts
+# this buffer back (0 outside a check).
+char* safe_session_token
+
+
 void safe_session_init():
 	if (safe_session_bindings != 0): return
 	safe_session_bindings = new list[safe_session_binding*]
@@ -719,7 +725,9 @@ void safe_session_probe(int function, int line):
 	safe_session_probe_function = function
 	safe_session_probe_line = line
 	safe_session_invalidate()
+	safe_session_token = token
 	safe_check_finish()
+	safe_session_token = 0
 	safe_session_probe_function = -1
 
 
