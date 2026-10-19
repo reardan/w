@@ -144,7 +144,6 @@ void test_arm64_contract_unsupported_targets():
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_android")
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_ios")
 	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"arm64_ios_sim")
-	arm64_contract_case(c"int main():\n\town int* value = new int\n\treturn 0\n", c"only Linux x86, x64 and arm64", 0, -1, c"wasm")
 
 void test_arm64_runtime_pin_rejects_changed_implementation():
 	char* root = c"bin/safe_arm64_pin"

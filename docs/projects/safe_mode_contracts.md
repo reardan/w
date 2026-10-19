@@ -408,7 +408,8 @@ callable rules above; capturing and escaping environments remain excluded.
 
 ## Target admission
 
-Checked programs are supported on Linux x86/x64/arm64 and win64. The win64
+Checked programs are supported on Linux x86/x64/arm64, win64, arm64_darwin
+and wasm. The win64
 audited runtime includes its own pinned allocation/syscall implementations;
 the guard allocator protects holes with `mprotect` because Windows cannot
 release a suffix of an allocation. Entrypoint selection requires a defined
@@ -427,6 +428,22 @@ references, control flow, generic/method/callback calls, buffers and arenas
 under default, unallocated-register and inline compilation. QEMU execution
 and guard allocation in `tests_arm64` are required in addition to host-side
 cross-compilation.
+
+WebAssembly admission (`wasm`, wasm32 + WASI) reuses the 32-bit x86 checked
+representation and pins the wasm android, context and syscall modules.
+Review covers the WASI import wrappers and their fixed low-page scratch,
+`brk` failure forcing `mmap`, `mmap` as a `memory.grow` bump allocator,
+no-op `munmap`, failing `mprotect`, `proc_exit` and the absence of a raw-call
+allowlist expansion (the `wasi_*` stubs stay uncallable from checked code).
+Because linear memory cannot be protected, the guard allocator is replaced by
+a documented substitute: resident canary guard pages and poisoned freed
+payloads checked at free, realloc, quarantine release and leak reports.
+Overruns and writes after free are detected late, and reads after free are
+not detected. The same accepted/rejected matrix runs with x86 diagnostic
+parity, artifact suppression, neighbouring-target rejection and changed-pin
+cases. The full runtime fixture corpus runs in three compilation modes. Node
+(or wasmtime) execution in `tests_wasm` is required in addition to
+compilation.
 
 ## Integration and review
 

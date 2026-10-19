@@ -1451,3 +1451,13 @@ expression instead of "constant" in the diagnostic.
   `:(glob)` pathspecs in step commands as path rules (match changed
   paths against them), or add a test_map residue rule for
   `libs/standard/**/*.w` -> `unsafe_import_test`.
+
+## No selector word for the default target (2026-10-19, safe wasm W1)
+
+- **`w check --json x86 file.w` treats `x86` as a second source file**
+  and fails, although `check --json` labels default-target diagnostics
+  `"arch": "x86"` and every other target has a selector word (`x64`,
+  `arm64`, `wasm`, ...). A cross-target parity harness
+  (tests/safe_wasm_contract_test.w) therefore has to special-case the
+  default target by omitting the selector. Direction: accept `x86` as an
+  explicit no-op selector so per-target command lines stay uniform.

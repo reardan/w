@@ -61,6 +61,30 @@ int debug_page_size():
 const int debug_canary = 90
 
 
+# wasm32 linear memory has no unmapped pages and no page protection
+# (lib/__arch__/wasm/syscalls.w: munmap is a no-op, mprotect fails), so
+# guards cannot fault there. The substitute is deferred detection: the
+# guard page stays resident and holds canaries, and a freed payload is
+# filled with this poison byte (0x6b, the Linux slab POISON_FREE value)
+# instead of being protected. Canary and poison checks run on free,
+# realloc, quarantine release and every leak report; a stray read is
+# not detected, only a write that disturbs a canary or poison byte.
+const int debug_freed_poison = 107
+
+
+int debug_linear_memory():
+	return __target_isa__ == 2
+
+
+void debug_linear_fill(int addr, int length, int value):
+	char* p = cast(char*, addr)
+	for i in range(length): p[i] = value
+
+
+# Quarantine release (below) verifies the poison before recycling a slot.
+void debug_check_freed(int idx);
+
+
 # Freed-but-still-mapped quarantine budget. ~32 MiB keeps recent UAFs
 # faulting on PROT_NONE while bounding VMA growth under alloc/free
 # churn. Linux defaults vm.max_map_count to 65530; each live block is
@@ -261,6 +285,7 @@ void debug_quarantine_reclaim_to(int budget):
 	if (vg_active): return
 	while ((debug_quarantine_bytes > budget) && debug_quarantine_head):
 		int i = debug_quarantine_head - 1
+		debug_check_freed(i)
 		int span = debug_tbl_region_size[i]
 		if (os_android()): span = span + debug_page_size()
 		if (munmap(debug_tbl_region[i], span) != 0):
@@ -336,8 +361,11 @@ void* debug_malloc(int size):
 	# Unmap the guard page so overflow faults on a hole. Prefer munmap
 	# over mprotect(PROT_NONE): mprotect splits one mapping into two
 	# VMAs and burns max_map_count twice as fast.
-	int guard_result
-	if (os_android() || os_windows()):
+	int guard_result = 0
+	if (debug_linear_memory()):
+		# The guard page stays resident on wasm; canaries replace the hole.
+		debug_linear_fill(guard_addr, page, debug_canary)
+	else if (os_android() || os_windows()):
 		# Reserve the guard: Android native translation may reuse an
 		# unmapped guest hole while creating its own mappings.
 		# Windows VirtualFree cannot release a suffix of an allocation.
@@ -367,9 +395,20 @@ void debug_check_canary(int idx):
 	for j in range(16):
 		if (p[j - 16] != debug_canary): debug_fatal(c"heap buffer underflow: bytes before the start of a block were overwritten", debug_tbl_ptr[idx])
 	int i = size
-	while (i < placed):
+	int end = placed
+	if (debug_linear_memory()): end = placed + debug_page_size()
+	while (i < end):
 		if (p[i] != debug_canary): debug_fatal(c"heap buffer overflow: bytes past the end of a block were overwritten", debug_tbl_ptr[idx])
 		i = i + 1
+
+
+# wasm only: a quarantined payload must still hold the free poison.
+void debug_check_freed(int idx):
+	if (debug_linear_memory() == 0): return
+	debug_check_canary(idx)
+	char* p = cast(char*, debug_tbl_ptr[idx])
+	for i in range(debug_tbl_size[idx]):
+		if (p[i] != debug_freed_poison): debug_fatal(c"heap use after free: a freed block was written", debug_tbl_ptr[idx])
 
 
 # Quarantine: PROT_NONE the payload so a near-term UAF faults, keep the
@@ -395,7 +434,8 @@ int debug_free(void* mem_address):
 			debug_tbl_recycle(debug_quarantine_pop())
 			debug_history_count = debug_history_count - 1
 		return 1
-	if (mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0) != 0):
+	if (debug_linear_memory()): debug_linear_fill(ptr, debug_tbl_size[idx], debug_freed_poison)
+	else if (mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0) != 0):
 		st_write_cstr(c"memory_debug: cannot protect freed allocation\x0a")
 		exit(1)
 	debug_tbl_freed[idx] = 1
@@ -445,6 +485,7 @@ int debug_alloc_report_leaks():
 	int leaked_bytes = 0
 	int n = debug_tbl_count
 	for i in range(n):
+		if (debug_tbl_freed[i] == 1): debug_check_freed(i)
 		if (debug_tbl_freed[i] == 0):
 			debug_check_canary(i)
 			st_write_cstr(c"memory_debug: leaked ")
