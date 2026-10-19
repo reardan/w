@@ -157,6 +157,8 @@ class AdapterContract(unittest.TestCase):
             'assert.throws(Error, function(){throw "Error";});',
             'assert.throws(Error, function(){missingIdentifier;});',
             'assert.throws(Error, 1);',
+            'function bad(){} bad.constructor=TypeError;assert.throws(TypeError,function(){throw bad;});',
+            'assert.throws(Error, function(){throw 1n;});',
         ]:
             actual = self.execute(source)
             self.assertEqual(actual['outcome'], 'throw', actual)

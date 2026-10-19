@@ -63,7 +63,7 @@ js_value* test262_throws(void* context, list[js_value*] args):
 	rt.completion.status = 0
 	rt.completion.value = rt.undefined_value
 	rt.completion.message = c""
-	if (thrown.kind < 5): return test262_failure(rt)
+	if (js_runtime_object(thrown) == 0 || js_runtime_callable(thrown)): return test262_failure(rt)
 	js_value* constructor = js_runtime_get(rt, thrown, c"constructor")
 	if (rt.completion.status != 0): return rt.undefined_value
 	if (constructor != args[0]): return test262_failure(rt)
