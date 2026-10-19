@@ -91,6 +91,23 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	sources.push(c"tests/tile_analysis_unit_test.w")
 	sources.push(c"tests/tile_ast_test.w")
 	sources.push(c"tests/ast_function_record_test.w")
+	# Unit tests whose runtime drives compiler APIs ordinary compiles
+	# never reach (compiler/type_table.w type_add_arg/type_get_arg,
+	# compiler/symbol_table.w sym_index_unbind/sym_info,
+	# compiler/module_graph.w invalidation, compiler/diagnostics.w
+	# did-you-mean, code_generator/integer.w accessors,
+	# code_generator/dynamic_registry.w, compiler/bignum.w and
+	# code_generator/wasm.w i32 encodings). Each runs as a harness so
+	# its runtime calls count, not just its compile (docs/projects/
+	# line_coverage.md, "Compiler coverage").
+	sources.push(c"compiler/type_table_test.w")
+	sources.push(c"tests/ast_symbol_probe_test.w")
+	sources.push(c"tests/module_dependencies_test.w")
+	sources.push(c"tests/did_you_mean_test.w")
+	sources.push(c"tests/integer_accessor_test.w")
+	sources.push(c"tests/dynamic_registry_test.w")
+	sources.push(c"compiler/bignum_test.w")
+	sources.push(c"tests/wasm_i32_encoding_test.w")
 	list[char*] tags = new list[char*]
 	tags.push(c"compiler")
 	tags.push(c"repl")
@@ -99,11 +116,27 @@ list[wcov_suite_build*] wcov_suite_builds(char* out):
 	tags.push(c"tile_analysis_test")
 	tags.push(c"tile_ast_test")
 	tags.push(c"function_record_test")
+	tags.push(c"type_table_test")
+	tags.push(c"symbol_probe_test")
+	tags.push(c"module_deps_test")
+	tags.push(c"did_you_mean_test")
+	tags.push(c"integer_accessor_test")
+	tags.push(c"dynamic_registry_test")
+	tags.push(c"bignum_test")
+	tags.push(c"wasm_encoding_test")
 	list[char*] variables = new list[char*]
 	variables.push(c"W_COVERAGE_COMPILER")
 	variables.push(c"W_COVERAGE_REPL")
 	variables.push(c"W_COVERAGE_WSH")
 	variables.push(c"W_COVERAGE_WDBG")
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
+	variables.push(0)
 	variables.push(0)
 	variables.push(0)
 	variables.push(0)

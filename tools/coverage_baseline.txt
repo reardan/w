@@ -49,16 +49,39 @@
 # retain both gains without lowering any existing floor.
 # Checked aggregate shape specialization raises grammar branches to 85.3%;
 # preserve the existing 0.6 point margin.
-code_generator/ 96.2
-compiler/ 94.9
-grammar/ 96.1
+# 2026-10-18 coverage drive: eight existing unit tests joined the
+# coverage suite as API harnesses (type_table, symbol_probe,
+# module_deps, did_you_mean, integer_accessor, dynamic_registry,
+# bignum, wasm_encoding); tests/compiler_cli_test.w pins the CLI
+# surfaces, tests/ptx_kernel_test.w exercises the PTX emitter through
+# tests/ptx_kernel_probe.w, and tests/generic_iter_test.w pins the
+# for-in protocol rejections. Measurements: code_generator lines
+# 97.7/branches 89.6, compiler lines 97.0/branches 87.5, grammar lines
+# 97.6/branches 86.1. Floors rise by the measured gains, preserving the
+# prior 0.5-0.9 point margins.
+# Round 2: tools/attach_e2e.w gains the attach command families the
+# original cases never sent (help, info topics and raw-mode fallbacks,
+# watchpoint delete/list, set/print/frame guards, duplicate and reused
+# breakpoints, unreadable examines, stack dumps, continue-to-natural
+# exit); tests/safe_control_flow_test.w pins the container-iteration and
+# pointer-selector rejections; tests/safe_cli_test.w pins the
+# main-prototype entrypoint rejection; tests/repl_generic_iter_test.w
+# reaches the REPL-only already-compiled generic instantiation paths.
+# Measurements: debugger lines 83.5/branches 69.6, compiler lines
+# 97.0/branches 87.5, grammar lines 97.6/branches 86.1, repl branches
+# 74.5. The debugger floors rise by the measured gains with their prior
+# 2.7 point margin; the compiler/grammar floors are unchanged
+# (measurements held).
+code_generator/ 96.8
+compiler/ 96.2
+grammar/ 96.8
 repl/ 91.5
-debugger/ 77.5
+debugger/ 80.8
 repl.w 80.5
 w.w 99.0
 diagnostics 50.8
-branches:code_generator/ 88.1
-branches:compiler/ 85.8
-branches:grammar/ 84.7
+branches:code_generator/ 89.0
+branches:compiler/ 87.0
+branches:grammar/ 85.5
 branches:repl/ 73.6
-branches:debugger/ 64.0
+branches:debugger/ 66.9

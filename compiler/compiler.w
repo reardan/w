@@ -170,6 +170,7 @@ int compile_attempt(char* fn):
 # of the path logic uses '/' uniformly so cross-platform paths just work.
 # Only active on Windows: on Unix a backslash is an ordinary filename
 # character and must be left alone.
+# coverage: exempt Windows-only normalization; no Windows host runs the coverage suite
 void path_normalize_sep(char* p):
 	if (os_windows() == 0): return
 	while (p[0] != 0):

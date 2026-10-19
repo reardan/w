@@ -418,6 +418,12 @@ void run_case(char* desc, char* src, char* commands, char* expect):
 	add_case(0, desc, WDBG, FIXTURE_BIN, src, commands, expect)
 
 
+# run_case_on: like run_case with an explicit debugger/fixture pair (the
+# finite fixture's short lifetime suits continue-until-exit scripts).
+void run_case_on(char* desc, char* dbg, char* fixture, char* src, char* commands, char* expect):
+	add_case(0, desc, dbg, fixture, src, commands, expect)
+
+
 void run_case_stderr(char* desc, char* src, char* commands, char* expect):
 	attach_case* c = add_case(0, desc, WDBG, FIXTURE_BIN, src, commands, expect)
 	c.want_stderr = 1
@@ -767,6 +773,32 @@ int main(int argc, char** argv):
 	# x64: detach truly restores patched bytes, same shape as the 32-bit
 	# case above.
 	run_detach_case(c"x64: ", WDBG64, FINITE_BIN64)
+
+	# Coverage-drive additions: the attach command families the original
+	# case list never sent -- help, info topics and their raw-mode
+	# fallbacks, watchpoint listing/deletion, set/print usage guards,
+	# frame selection guards, duplicate and freed-slot breakpoints,
+	# unreadable examines, the stack dump, and continuing the finite
+	# fixture to its natural exit (compiler-style drivers,
+	# tools/attach_e2e.w; docs/projects/line_coverage.md).
+	run_case(c"help lists commands", FIXTURE_SRC, c"h\ndetach\n", c"c/continue")
+	run_case(c"info unknown topic", FIXTURE_SRC, c"i bogus\ndetach\n", c"info topics:")
+	run_case(c"i b empty then with entry", FIXTURE_SRC, c"i b\nb slow_step\ni b\nkill\n", c"no breakpoints set")
+	run_case(c"i w empty then with entry", FIXTURE_SRC, c"i w\nwatch attach_counter\ni w\nkill\n", c"no watchpoints set")
+	run_case(c"duplicate breakpoint rejected", FIXTURE_SRC, c"b slow_step\nb slow_step\nkill\n", c"a breakpoint is already set there")
+	run_case(c"deleted slot is reused", FIXTURE_SRC, c"b slow_step\nd 1\nb slow_step\nkill\n", c"breakpoint 1 ")
+	run_case(c"watchpoint delete and double delete", FIXTURE_SRC, c"watch attach_counter\nd w 1\nd w 1\ndetach\n", c"watchpoint deleted")
+	run_case(c"delete all clears watchpoints", FIXTURE_SRC, c"watch attach_counter\nd\ni w\ndetach\n", c"no watchpoints set")
+	run_case(c"set usage and computed-value guard", FIXTURE_SRC, c"set\nset 3 4\ndetach\n", c"set needs a variable or memory location")
+	run_case(c"set a whole struct rejected", FIXTURE_SRC, c"set attach_pair 3\ndetach\n", c"cannot set a whole struct value")
+	run_case(c"print usage", FIXTURE_SRC, c"p\ndetach\n", c"usage: print <expression>")
+	run_case(c"stack dump", FIXTURE_SRC, c"st\ndetach\n", c"0x")
+	run_case(c"examine unreadable address", FIXTURE_SRC, c"x 0x1 1\ndetach\n", c"<unreadable>")
+	run_case(c"frame out of range", FIXTURE_SRC, c"f 99\nf x\ndetach\n", c"no frame 99")
+	run_case(c"raw mode: print, set, frame, locals, args, backtrace", 0, c"p x\nset x 1\nf\ni l\ni a\nbt\ndetach\n", c"no source: print unavailable")
+	run_case(c"raw mode: info topics degrade", 0, c"i l\ni a\ndetach\n", c"no source: args unavailable")
+	run_case_on(c"continue to natural exit", WDBG, FINITE_BIN, FINITE_SRC, c"c\ndetach\n", c"process exited with code")
+	run_case_on(c"x64: continue to natural exit", WDBG64, FINITE_BIN64, FINITE_SRC, c"c\ndetach\n", c"process exited with code")
 
 	add_case(0, c"PIE: symbols and breakpoint", WDBG64, c"bin/attach_target_pie", FIXTURE_SRC, c"b bump\nc\nbt\nkill\n", c"main (")
 	add_case(0, c"PIE: global pointer evaluation", WDBG64, c"bin/attach_target_pie", FIXTURE_SRC, c"p attach_pair_ref.second\ndetach\n", c"attach_pair_ref.second = 5678")
