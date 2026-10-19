@@ -78,8 +78,9 @@ display. The native image readback probe passed. The compatibility gate passed
 34/34 syntax cases, 3/3 growth cases, 3/3 execution examples, 9/9 runtime
 comparisons and 2/2 consumers. Structured checks passed for x86 and x64.
 
-For issue tracking, close the **reusable library milestone** once its validation
-passes and link the remaining work to its existing owners:
+Issue #637 is the **reusable library milestone** and closes when
+[#799](https://github.com/reardan/w/pull/799) merges the validated integration
+fix and acceptance audit. Remaining work continues in its existing tracks:
 
 - [#459](https://github.com/reardan/w/issues/459): portable shaping/bidi,
   script/font segmentation, shaped carets, Cocoa IME and native input qualification.
@@ -91,10 +92,9 @@ passes and link the remaining work to its existing owners:
 - The application repository: dependency-pin upgrades, DOM/layout integration,
   navigation/event scheduling and browser policy, as excluded by #637 itself.
 
-If #637 is retained as an umbrella for *all* those projects, it remains open;
-it should not be presented as an unfinished single library implementation.
-The useful split is the eight completed deliverables plus the existing dependency
-tickets, rather than new copies of those tickets or one expanding implementation PR.
+The eight direct deliverables complete this milestone. The dependency tickets
+remain open for their broader scope; #637 does not duplicate their tracking or
+claim full browser, text/input, accessibility, or ECMAScript conformance.
 
 ## Consumers and reproducibility
 
