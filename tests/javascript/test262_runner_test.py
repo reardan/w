@@ -316,6 +316,26 @@ class AdapterContract(unittest.TestCase):
                 with self.assertRaises((ValueError, OSError)):
                     adapter.load_manifest(manifest)
 
+    def test_invalid_utf8_output_is_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'bad-runner'
+            binary.write_text("#!/usr/bin/env python3\nimport os;os.write(1,b'\\xff')\n")
+            binary.chmod(0o755)
+            actual = adapter.execute(binary, Path(directory) / 'test.js', 'sloppy', 1, 1000)
+            self.assertEqual(adapter.classify({}, actual), 'ERROR')
+            self.assertEqual(actual['stdout_hex'], 'ff')
+
+    def test_missing_driver_preserves_variant_denominator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report, status = adapter.run(adapter.MANIFEST, Path(directory) / 'absent')
+        self.assertEqual(status, 1)
+        self.assertEqual(report['variants'], 151)
+        self.assertEqual(len(report['results']), 151)
+        self.assertGreater(report['counts']['ERROR'], 0)
+        self.assertEqual(report['counts']['PASS'], 0)
+        self.assertIsNone(report['evidence']['runner_sha256'])
+        self.assertTrue(report['evidence']['runner_hash_error'])
+
 
 if __name__ == '__main__':
     unittest.main()

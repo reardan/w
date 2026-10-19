@@ -183,15 +183,15 @@ def load_manifest(path):
 def execute(binary, path, mode, timeout, budget, asynchronous=False, harness_path=None):
     try:
         proc = subprocess.run([str(binary), str(path), 'module' if mode == 'module' else 'script', str(budget), 'raw' if mode == 'raw' else 'async' if asynchronous else 'harness'] + ([str(harness_path)] if harness_path else []),
-                              capture_output=True, text=True, timeout=timeout)
+                              capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {'phase': 'process', 'outcome': 'timeout'}
     except OSError as error:
         return {'phase': 'process', 'outcome': 'harness_error', 'message': str(error)}
     if proc.returncode:
-        return {'phase': 'process', 'outcome': 'crash' if proc.returncode < 0 else 'harness_error', 'exit_code': proc.returncode, 'stderr': proc.stderr[-2000:]}
+        return {'phase': 'process', 'outcome': 'crash' if proc.returncode < 0 else 'harness_error', 'exit_code': proc.returncode, 'stderr': proc.stderr[-2000:].decode('utf-8', errors='replace')}
     try:
-        actual = strict_json(proc.stdout)
+        actual = strict_json(proc.stdout.decode('utf-8'))
         require(isinstance(actual, dict) and type(actual.get('protocol')) is int and actual['protocol'] == 1, 'invalid runner protocol')
         require(actual.get('phase') in {'parse', 'early', 'lower', 'execute', 'harness'} and actual.get('outcome') in {'normal', 'error', 'throw', 'unsupported', 'limit', 'incomplete'}, 'invalid result')
         if actual['outcome'] in {'normal', 'throw', 'incomplete'}:
@@ -204,7 +204,7 @@ def execute(binary, path, mode, timeout, budget, asynchronous=False, harness_pat
         require('error_type' not in actual or isinstance(actual['error_type'], str), 'invalid error identity')
         return actual
     except (ValueError, TypeError) as error:
-        return {'phase': 'process', 'outcome': 'harness_error', 'message': str(error), 'stdout': proc.stdout[-2000:]}
+        return {'phase': 'process', 'outcome': 'harness_error', 'message': str(error), 'stdout_hex': proc.stdout[-2000:].hex()}
 
 
 def classify(meta, actual):
@@ -253,11 +253,15 @@ def prepare_harness(sources, includes):
 
 
 def provenance(binary):
+    try:
+        binary_hash, hash_error = hashlib.sha256(binary.read_bytes()).hexdigest(), None
+    except OSError as error:
+        binary_hash, hash_error = None, str(error)
     def revision(directory):
         result = subprocess.run(['git', '-C', str(directory), 'rev-parse', 'HEAD'], capture_output=True, text=True)
         return result.stdout.strip() if result.returncode == 0 else None
     return {'recorded_at_utc': datetime.now(timezone.utc).isoformat(), 'w_revision': revision(ROOT),
-            'application_revision': revision(ROOT.parent), 'runner_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+            'application_revision': revision(ROOT.parent), 'runner_sha256': binary_hash, 'runner_hash_error': hash_error,
             'kind': 'fresh-execution',
             'adapter_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             'runner_source_sha256': hashlib.sha256((ROOT / 'tools/test262_runtime_runner.w').read_bytes()).hexdigest()}
