@@ -126,6 +126,7 @@ landed units are listed here as they merge.
 | U1.1 schema generator | [u1_1](orm/u1_1.md) | landed |
 | U1.2 SQL compiler | [u1_2](orm/u1_2.md) | landed |
 | U1.3 QuerySet API | [u1_3](orm/u1_3.md) | landed |
+| U2.1 prefetch, iterator, transactions | [u2_1](orm/u2_1.md) | landed |
 | U2.2 migration state, autodetector, writer | [u2_2](orm/u2_2.md) | landed |
 | U2.3 migration planner + linter | [u2_3](orm/u2_3.md) | landed |
 | U2.4 migration applier, DDL, `bin/orm` | [u2_4](orm/u2_4.md) | landed |

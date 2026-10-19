@@ -205,6 +205,28 @@ void test_atomic_for_update(orm_db* db):
 	__e2e_mark = db.query_count
 
 
+void test_atomic_get_or_create_race(orm_db* db):
+	check(db, at_insert(db, c"race@example.com"))
+	orm_atomic_block* b = orm_atomic_begin(db)
+	asserts(orm_db_error(db), b != 0)
+	# The lookup misses but the INSERT hits the unique email: the INSERT's
+	# own savepoint rolls back, so the transaction stays usable on
+	# PostgreSQL and the outer block still commits.
+	list[orm_assignment*] clash = new list[orm_assignment*]
+	clash.push(orm_set_text(c"name", c"Impostor"))
+	clash.push(orm_set_text(c"email", c"race@example.com"))
+	int created = -1
+	orm_result* r = orm_get_or_create(db, Author_desc(), clash, 0, &created)
+	assert1(r == 0)
+	assert_equal(0, created)
+	assert_equal(1, db.atomic_depth)
+	check(db, at_insert(db, c"race2@example.com"))
+	check(db, orm_atomic_commit(db, b))
+	assert_equal(1, at_count(db, c"race2@example.com"))
+	clash.free()
+	__e2e_mark = db.query_count
+
+
 void orm_atomic_run(orm_db* db):
 	library_register()
 	db.log_queries = 1
@@ -213,3 +235,4 @@ void orm_atomic_run(orm_db* db):
 	test_atomic_blocks(db)
 	test_atomic_primitives(db)
 	test_atomic_for_update(db)
+	test_atomic_get_or_create_race(db)

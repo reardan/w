@@ -459,6 +459,23 @@ orm_result* orm_create_from_assignments(orm_db* db, orm_model_desc* m, list[orm_
 	return r
 
 
+# Inside a transaction the INSERT runs in its own savepoint, so a unique
+# race that fails it (which aborts the whole transaction on PostgreSQL)
+# rolls back only the savepoint and the caller's retry can still query.
+orm_result* orm_create_guarded(orm_db* db, orm_model_desc* m, list[orm_assignment*] lookup, list[orm_assignment*] defaults):
+	if (db.atomic_depth == 0): return orm_create_from_assignments(db, m, lookup, defaults)
+	orm_atomic_block* b = orm_atomic_begin(db)
+	if (b == 0): return 0
+	orm_result* r = orm_create_from_assignments(db, m, lookup, defaults)
+	if (r == 0):
+		orm_atomic_rollback(db, b)
+		return 0
+	if (orm_atomic_commit(db, b) == 0):
+		orm_result_free(r)
+		return 0
+	return r
+
+
 # Returns a one-row result: the row matching `lookup` (exact field =
 # value pairs), or a new row created from lookup + defaults. A failed
 # INSERT (a concurrent creator won the unique constraint) retries the get.
@@ -469,7 +486,7 @@ orm_result* orm_get_or_create(orm_db* db, orm_model_desc* m, list[orm_assignment
 	orm_where* w = orm_assignments_where(lookup)
 	orm_result* r = qs.get(w)
 	if (r != 0 || orm_error_is_does_not_exist(db) == 0): return r
-	r = orm_create_from_assignments(db, m, lookup, defaults)
+	r = orm_create_guarded(db, m, lookup, defaults)
 	if (r != 0):
 		if (created != 0): created[0] = 1
 		return r
@@ -540,7 +557,7 @@ orm_result* orm_update_or_create(orm_db* db, orm_model_desc* m, list[orm_assignm
 			return orm_update_returning(db, m, id, defaults)
 		if (orm_error_is_does_not_exist(db) == 0): return 0
 		if (attempt == 1): return 0
-		orm_result* r = orm_create_from_assignments(db, m, lookup, defaults)
+		orm_result* r = orm_create_guarded(db, m, lookup, defaults)
 		if (r != 0):
 			if (created != 0): created[0] = 1
 			return r
