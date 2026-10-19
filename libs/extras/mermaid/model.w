@@ -126,6 +126,19 @@ struct mm_narrative_event:
 	int dashed
 	int arrow
 
+# Gantt calendar settings. Units are days, or minutes when the date format
+# has a time of day. Excluded and included day lists are sorted and unique.
+struct mm_gantt_settings:
+	char* date_format
+	char* axis_format
+	int minutes
+	int weekends
+	int weekend_start
+	int weekday_mask
+	list[int] excluded
+	list[int] included
+	int today
+
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
 
@@ -227,6 +240,7 @@ struct mm_document:
 	int layout_algorithm
 	int packet_bits
 	int packet_msb
+	mm_gantt_settings* gantt
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -353,6 +367,12 @@ void mm_document_free(mm_document* d):
 		free(event.section)
 		free(event)
 	__w_list_free(cast(__w_list*, d.narrative))
+	if (d.gantt != 0):
+		free(d.gantt.date_format)
+		free(d.gantt.axis_format)
+		__w_list_free(cast(__w_list*, d.gantt.excluded))
+		__w_list_free(cast(__w_list*, d.gantt.included))
+		free(d.gantt)
 	for mm_style_class* definition in d.style_definitions:
 		free(definition.name)
 		free(definition)

@@ -4,6 +4,8 @@ autonumber
 actor Customer
 participant API as Shop API
 participant DB as Database
+link API: Dashboard @ https://example.com/api
+links DB: {"Runbook": "https://example.com/db"}
 Customer->>+API: Place order
 API->>+DB: Save order
 DB-->>-API: Order ID
