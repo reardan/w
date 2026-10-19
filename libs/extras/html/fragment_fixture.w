@@ -1,3 +1,6 @@
+# wbuild: target=html_noscript_upstream_test tag=tests dep=build
+# wbuild: step="bin/wv2 x64 --strict libs/extras/html/fragment_fixture.w -o bin/html_noscript_fixture"
+# wbuild: step="python3 libs/extras/html/fragment_upstream.py bin/html_noscript_fixture --profile modern-noscript --gate noscript-file --report bin/html-noscript-upstream.json"
 # wbuild: target=html_after_body_fixture tag=tests dep=build
 # wbuild: step="bin/wv2 x64 --strict libs/extras/html/fragment_fixture.w -o bin/html_after_body_fixture"
 # wbuild: step="bin/html_after_body_fixture div 616263 1 --hex" expect_stdout="abc"
@@ -85,7 +88,7 @@ int main(int argc, char** argv):
 	int scripting = 1
 	if (argc >= 4): scripting = strcmp(argv[3], c"0") != 0
 	html_document* doc = 0
-	if (strcmp(argv[1], c"#document") == 0): doc = html_parse(source, length)
+	if (strcmp(argv[1], c"#document") == 0): doc = html_parse_with_scripting(source, length, scripting)
 	else:
 		if (!html_fragment_context_supported(argv[1])):
 			if (encoded): free(source)

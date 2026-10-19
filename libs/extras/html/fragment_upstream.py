@@ -75,15 +75,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
     parser.add_argument("--timeout", type=float, default=10)
-    parser.add_argument("--profile", choices=("historical", "modern-select", "modern-after-body", "modern-pi"), default="historical")
-    parser.add_argument("--gate", choices=("selected", "select-context", "full-corpus"), default="selected")
+    parser.add_argument("--profile", choices=("historical", "modern-select", "modern-after-body", "modern-pi", "modern-noscript"), default="historical")
+    parser.add_argument("--gate", choices=("selected", "select-context", "noscript-file", "full-corpus"), default="selected")
     parser.add_argument("--report", type=Path, default=Path("bin/html-fragment-upstream.json"))
     args = parser.parse_args()
     if args.timeout <= 0:
         parser.error("timeout must be positive")
     if args.gate == "select-context" and args.profile != "modern-select":
         parser.error("select-context gate requires modern-select profile")
-    prefix = {"historical": "", "modern-select": "modern/", "modern-after-body": "after-body/", "modern-pi": "processing-instruction/"}[args.profile]
+    if args.gate == "noscript-file" and args.profile != "modern-noscript":
+        parser.error("noscript-file gate requires modern-noscript profile")
+    prefix = {"historical": "", "modern-select": "modern/", "modern-after-body": "after-body/", "modern-pi": "processing-instruction/", "modern-noscript": "noscript/"}[args.profile]
     manifest_name = prefix + "manifest.json"
     inventory_name = prefix + "inventory.json"
     manifest_bytes = (ROOT / "upstream" / manifest_name).read_bytes()
@@ -119,7 +121,7 @@ def main():
         "fixtures": manifest["files"],
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "inventory_sha256": hashlib.sha256(inventory_bytes).hexdigest(),
-        "scope": "Tree outputs retain both requested scripting modes. Document parsing currently has no scripting flag; related differences remain FAIL. Parse-error lists, foreign content and script execution remain unverified."}
+        "scope": "Tree outputs retain both requested scripting modes. Document and fragment parsing receive the requested scripting flag. Parse-error lists, foreign content and script execution remain unverified."}
     results = []
     for name in manifest["files"]:
         if not name.endswith(".dat"):
@@ -210,6 +212,10 @@ def main():
         gated = [r for r in results if r["context"] == manifest["gate_context"]]
         if len(gated) != manifest["gate_cases"]:
             raise SystemExit("select context gate denominator changed")
+    if args.gate == "noscript-file":
+        gated = [r for r in results if r["id"].rsplit(":", 1)[0] == manifest["gate_file"]]
+        if len(gated) != manifest["gate_cases"]:
+            raise SystemExit("noscript file gate denominator changed")
     passed = all(r["status"] == "PASS" for r in gated)
     if args.gate == "full-corpus" and report["not_run"]:
         passed = False

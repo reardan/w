@@ -1,0 +1,53 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "6d4552a8b1057e42a180119d70273f563e53a264",
+  "files": {
+    "noscript/noscript01.dat": {
+      "path": "html/syntax/parsing/resources/noscript01.dat",
+      "sha256": "e82449304a6371c14ed490384b6d814b7b1eeb1022dbc5caa2045fc8400655d7"
+    },
+    "after-body/processing-instructions.dat": {
+      "path": "html/syntax/parsing/resources/processing-instructions.dat",
+      "sha256": "3d4c6e67b59fda8fa0eb798106a42d244c69a84d7e3a385f9845bfc40071b4f1"
+    },
+    "after-body/tests1.dat": {
+      "path": "html/syntax/parsing/resources/tests1.dat",
+      "sha256": "aada6e3d12d624051bc978694475bd6a12bcedd7758781ba62425314684d23f3"
+    },
+    "after-body/tests16.dat": {
+      "path": "html/syntax/parsing/resources/tests16.dat",
+      "sha256": "3350be682713afc1f6dad37059f2551709497a3643c38c26e1fe36fd07d23745"
+    },
+    "after-body/tests18.dat": {
+      "path": "html/syntax/parsing/resources/tests18.dat",
+      "sha256": "5d0019ae43bb4e0b0da9f2e1d57ac0618a607bd8a1324b163ec7a23a1dc120f3"
+    },
+    "noscript/tests5.dat": {
+      "path": "html/syntax/parsing/resources/tests5.dat",
+      "sha256": "bf80b927082290541781844906abdcb72f091488f7a11e8b7d9ac00076dd4fce"
+    },
+    "after-body/webkit02.dat": {
+      "path": "html/syntax/parsing/resources/webkit02.dat",
+      "sha256": "03b215350d352faf110df2cc6eac23a44a7f70945b4ea962f0b17bed103459f7"
+    },
+    "after-body/LICENSE.md": {
+      "path": "LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+    }
+  },
+  "total_cases": 553,
+  "normative_html": {
+    "immutable_url": "https://html.spec.whatwg.org/commit-snapshots/1ea5faabf97bb6735dadd7919425cffce0c75dba/",
+    "revision": "1ea5faabf97bb6735dadd7919425cffce0c75dba",
+    "sha256": "fe1d477a075fd6d354799e9a2521bdab1c694aecb3f72e2e647f17db221fd8ee"
+  },
+  "algorithm_ids": [
+    "parsing-main-inheadnoscript",
+    "parsing-main-inhead",
+    "parsing-main-inbody",
+    "generic-raw-text-element-parsing-algorithm"
+  ],
+  "scope": "Entire unchanged files containing noscript source cases; all requested document scripting modes forwarded to native parser. Remaining unrelated tree failures retained; parse-error lists unverified.",
+  "gate_file": "noscript/noscript01.dat",
+  "gate_cases": 18
+}
