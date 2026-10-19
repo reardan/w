@@ -864,10 +864,10 @@ ref[a] T* generic_view[T](ref[a] T* value):
 The result keeps the same backing roots as an ordinary reference-returning
 call. Generic syntax does not bypass the checker. Checked slices and borrowed
 records retain their concrete layouts and contracts in explicit and inferred
-calls, including generic method syntax. Capturing callbacks and the existing
-unsupported `new T` allocation syntax in generic definitions retain their
-subsequent implementation gates. Noncapturing function pointers use the
-explicit quantified contracts below.
+calls, including generic method syntax. The existing unsupported `new T`
+allocation syntax in generic definitions retains its subsequent implementation
+gate. Function pointers use explicit quantified contracts; owned callback
+objects can pair them with an environment as described below.
 
 ### Quantified function pointers
 
@@ -909,12 +909,62 @@ participate in normal replacement and scope cleanup. Checked slices and the
 currently supported borrowed records keep their ordinary by-value ABI.
 
 Null, uninitialized, raw or cast-forged callables are rejected, as are raw
-escapes, global/aggregate callable storage and const-qualified callable
+escapes, global callable storage and const-qualified callable
 forms. These contracts describe ordinary W entry points; generators, kernels,
 variadic entry points and unaudited foreign functions cannot become checked
-function values. Capturing or escaping closure environments remain a separate
-workstream. Signatures admit at most ten parameters; nested validation is
+function values. Signatures admit at most ten parameters; nested validation is
 bounded to depth 32 and 256 expanded type visits.
+
+### Owned callback environments
+
+An owned record may store quantified function pointers alongside its owned
+environment. Construction supplies every field explicitly; default, missing,
+null, forged and incompatible callable fields are rejected. A callback object
+uses ordinary record syntax rather than an implicit environment or lambda:
+
+```w
+struct Environment:
+	own int* value
+
+type Invoke = fn[](ref Environment*, int) -> int
+
+struct Callback:
+	Invoke* code
+	own Environment* environment
+
+int invoke(ref Environment* environment, int extra):
+	ref int* value = environment.value
+	return *value + extra
+
+own Callback* capture(int number):
+	own int* value = new int
+	*value = number
+	own Environment* environment = new Environment(value)
+	return new Callback(invoke, environment)
+```
+
+The returned owner can escape its construction scope. Invoke it by borrowing
+its environment and passing that borrow to its `code` field. The function
+pointer is a static code address and may be copied independently; the
+environment remains governed by its own owner or borrow. Lifetime-bearing
+results keep the invocation's backing roots, so a live returned view prevents
+replacement or destruction of its environment. A shared receiver does not
+permit mutation through an incompatible mutable callback contract.
+
+Environment fields may themselves borrow external storage using the existing
+named ownership groups. Such a callback cannot outlive those external roots.
+Moving a callback transfers its owned environment once; replacing it or leaving
+scope, including an early failure return, recursively destroys initialized
+owned fields. Moving the environment out leaves the code field readable and
+prevents a second destruction of that environment. Replacement of the code
+field requires the same quantified contract.
+
+This representation adds no hidden environment allocation or reference count:
+the source chooses its ordinary owned records and allocations. Callable fields
+do not make a record pointer-free, so zero initialization, unqualified stack
+aggregate storage and unchecked copying do not become admissible. Raw function
+fields, erased signatures, implicit captures and anonymous lambda syntax are
+not part of this storage form.
 
 ### Argument effects
 
@@ -2127,3 +2177,30 @@ Compiler and prior checked fixture output bytes are identical. Measurements
 are specific to that corpus on the shared host. The implementation rebased
 unchanged onto the prerequisite validation commit. #696/#644 remain open
 for capturing callback storage and subsequent gates.
+
+
+### Captured callback storage validation
+
+An owned record can store quantified callable fields beside its owned or
+borrowed environment. Code and environment retain distinct field identities;
+projection, replacement, partial environment moves and invocation preserve
+the callable signature and captured lifetimes. Complete construction and
+recursive owner cleanup govern escaping owned captures. Borrowed captures
+cannot outlive their backing roots. This representation uses explicit records
+and callable fields; it does not introduce closure-expression syntax.
+
+Validation passed 33 contract cases on x86/x64 with and without `--safe`, all
+48 architecture/root checks and 1,428 ordinary targets including both Linux
+fixpoints, Wine runtime and benchmark. Instrumented validation passed 1,426
+targets plus six API harnesses with a COMPLETE receipt and reached all six
+changed executable lines. Existing coverage floors pass unchanged. Linux
+guard allocation and Memcheck report 360 allocations/frees and zero errors
+or leaks on each width. Optimization variants and Wine execute; ARM64
+variants cross-compile with runtime execution gates in CI.
+
+Seven alternating compiles of the fixed #787 parent corpus measured
+1.70/1.69 seconds and 116,032/116,256 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements are
+specific to that corpus on the shared host. The implementation rebased
+unchanged onto the prerequisite validation commit. #696/#644 remain open
+until the dependent merges and integrated completion gates pass.
