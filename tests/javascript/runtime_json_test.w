@@ -49,6 +49,7 @@ int main(int argc, int argv):
 		js_text_free(text)
 		assert_equal(2, rt.completion.status)
 		assert_strings_equal(c"SyntaxError", rt.completion.value.intrinsic_error_name)
+		assert1(rt.completion.value.prototype == rt.syntax_error_prototype)
 	json_eval(rt, c"JSON.stringify({a:1,b:true,c:null,s:'x'})==='{\"a\":1,\"b\":true,\"c\":null,\"s\":\"x\"}' && JSON.stringify([undefined,NaN,Infinity,-Infinity])==='[null,null,null,null]' && JSON.stringify({a:undefined,b:function(){},c:1})==='{\"c\":1}' && JSON.stringify(undefined)===undefined;", 0)
 	json_eval(rt, c"JSON.stringify(utf)==='\"\\\\u0000\\\\ud800😀\"' && JSON.stringify('\\b\\t\\n\\f\\r\\\"\\\\')==='\"\\\\b\\\\t\\\\n\\\\f\\\\r\\\\\"\\\\\\\\\"';", 0)
 	json_eval(rt, c"let keys={z:0,'10':10,'2':2,a:1,'01':1}; JSON.stringify(keys)==='{\"2\":2,\"10\":10,\"z\":0,\"a\":1,\"01\":1}';", 0)

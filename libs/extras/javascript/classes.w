@@ -181,6 +181,7 @@ js_value* js_class_instanceof(js_runtime* rt, js_value* object, js_value* callab
 
 js_value* js_class_error(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
 	js_value* error = js_runtime_alloc(rt, 5)
 	if (rt.completion.status != 0): return rt.undefined_value
 	error.prototype = cast(js_value*, context)
@@ -192,6 +193,16 @@ js_value* js_class_error(void* runtime, void* context, js_value* receiver, list[
 			return rt.undefined_value
 		js_class_define(rt, error, c"message", js_runtime_string(rt, text), 1, 1)
 		js_text_free(text)
+	# InstallErrorCause ignores nonobject options, including primitive strings.
+	# HasProperty precedes Get; an inherited cause is an own nonenumerable result.
+	if (rt.completion.status == 0 && args.length > 1 && js_runtime_object(args[1])):
+		js_text* key = js_runtime_key(c"cause")
+		int present = js_runtime_has_property(rt, args[1], key)
+		if (present && rt.completion.status == 0):
+			js_value* cause = js_runtime_member_read(rt, args[1], key)
+			if (rt.completion.status == 0): js_runtime_define_data(rt, error, key, cause, 1, 0, 1)
+		js_text_free(key)
+	if (rt.completion.status != 0): return rt.undefined_value
 	return error
 
 
@@ -255,6 +266,9 @@ void js_runtime_install_classes(js_runtime* rt):
 	rt.error_prototype = js_runtime_alloc(rt, 5)
 	js_class_install_error(rt, c"Error", rt.error_prototype)
 	js_builtin_method(rt, rt.error_prototype, c"toString", js_class_error_to_string, 0)
+	js_value* stringify = js_runtime_get(rt, rt.error_prototype, c"toString")
+	js_class_define(rt, stringify, c"name", js_class_string(rt, c"toString"), 0, 1)
+	js_class_define(rt, stringify, c"length", js_runtime_number(rt, 0.0), 0, 1)
 	rt.reference_error_prototype = js_runtime_alloc(rt, 5)
 	rt.reference_error_prototype.prototype = rt.error_prototype
 	js_class_install_error(rt, c"ReferenceError", rt.reference_error_prototype)
@@ -269,7 +283,15 @@ void js_runtime_install_classes(js_runtime* rt):
 	rt.syntax_error_prototype = js_runtime_alloc(rt, 5)
 	rt.syntax_error_prototype.prototype = rt.error_prototype
 	js_class_install_error(rt, c"SyntaxError", rt.syntax_error_prototype)
+	rt.eval_error_prototype = js_runtime_alloc(rt, 5)
+	rt.eval_error_prototype.prototype = rt.error_prototype
+	js_class_install_error(rt, c"EvalError", rt.eval_error_prototype)
+	rt.uri_error_prototype = js_runtime_alloc(rt, 5)
+	rt.uri_error_prototype.prototype = rt.error_prototype
+	js_class_install_error(rt, c"URIError", rt.uri_error_prototype)
 	js_value* error = js_runtime_get(rt, rt.global, c"Error")
 	js_runtime_get(rt, rt.global, c"TypeError").prototype = error
 	js_runtime_get(rt, rt.global, c"RangeError").prototype = error
 	js_runtime_get(rt, rt.global, c"SyntaxError").prototype = error
+	js_runtime_get(rt, rt.global, c"EvalError").prototype = error
+	js_runtime_get(rt, rt.global, c"URIError").prototype = error

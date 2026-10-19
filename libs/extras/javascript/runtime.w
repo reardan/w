@@ -125,6 +125,8 @@ struct js_runtime:
 	js_value* type_error_prototype
 	js_value* range_error_prototype
 	js_value* syntax_error_prototype
+	js_value* eval_error_prototype
+	js_value* uri_error_prototype
 	js_value* string_prototype
 	list[js_value*] heap
 	list[js_value*] roots
@@ -497,6 +499,8 @@ js_runtime* js_runtime_new():
 	rt.type_error_prototype = 0
 	rt.range_error_prototype = 0
 	rt.syntax_error_prototype = 0
+	rt.eval_error_prototype = 0
+	rt.uri_error_prototype = 0
 	rt.promise_constructor = 0
 	rt.max_binary_bytes = 67108864
 	rt.binary_bytes_used = 0
@@ -615,6 +619,8 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.type_error_prototype)
 	js_runtime_mark(pending, rt.range_error_prototype)
 	js_runtime_mark(pending, rt.syntax_error_prototype)
+	js_runtime_mark(pending, rt.eval_error_prototype)
+	js_runtime_mark(pending, rt.uri_error_prototype)
 	js_runtime_mark(pending, rt.promise_prototype)
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.array_prototype)

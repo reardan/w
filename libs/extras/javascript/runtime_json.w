@@ -15,6 +15,7 @@ void js_json_error(js_runtime* rt, char* name, char* message):
 		return
 	js_value* error = js_runtime_error_value(rt, message)
 	error.intrinsic_error_name = name
+	if (strcmp(name, c"SyntaxError") == 0): error.prototype = rt.syntax_error_prototype
 	js_text* text = js_runtime_key(name)
 	js_runtime_set(rt, error, c"name", js_runtime_string(rt, text))
 	js_text_free(text)
