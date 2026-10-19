@@ -1225,6 +1225,16 @@ js_value* js_runtime_call_native(js_runtime* rt, js_value* callable, js_value* r
 
 
 js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args):
+	if (callable == 0 || receiver == 0 || callable.owner != rt || receiver.owner != rt):
+		js_runtime_fail(rt, 2, c"foreign or null call target/receiver")
+		return rt.undefined_value
+	if (args.length > rt.max_properties):
+		js_runtime_fail(rt, 5, c"JavaScript call argument limit")
+		return rt.undefined_value
+	for i in range(args.length):
+		if (args[i] == 0 || args[i].owner != rt):
+			js_runtime_fail(rt, 2, c"foreign call argument")
+			return rt.undefined_value
 	if (callable.bound_target != 0): return js_function_bound(rt, callable, args, 0)
 	if (callable.kind == 9):
 		if (callable.host_construct == 2):
@@ -1244,7 +1254,12 @@ js_value* js_runtime_call_receiver(js_runtime* rt, js_value* callable, js_value*
 js_value* js_runtime_call_body(js_runtime* rt, js_value* callable, js_value* receiver, list[js_value*] args, js_value* new_target):
 	js_value* env = js_runtime_environment(rt, callable.parent)
 	if (env != rt.undefined_value):
-		if (js_kind(callable.code, c"arrow") == 0): env.this_value = receiver
+		if (js_kind(callable.code, c"arrow") == 0):
+			env.this_value = receiver
+			if (callable.strict == 0 && new_target == 0):
+				if (receiver.kind == 0 || receiver.kind == 1):
+					if (rt.global_object != 0): env.this_value = rt.global_object
+				else if (js_runtime_object(receiver) == 0): env.this_value = js_boxed_object(rt, receiver)
 		env.variable_scope = 1
 		env.strict = callable.strict
 		env.code = callable.code
