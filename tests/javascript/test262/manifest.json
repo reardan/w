@@ -696,8 +696,7 @@
       "status": "PASS"
     },
     "upstream/test/built-ins/Array/isArray/15.4.3.2-1-13.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Mapped arguments objects for sloppy simple parameters are not implemented"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/isArray/15.4.3.2-1-13.js#strict": {
       "status": "PASS"
@@ -887,8 +886,7 @@
       "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Sloppy mapped arguments are outside the runtime profile; the strict variant exercises callback arguments."
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/find/predicate-call-parameters.js#strict": {
       "status": "PASS"
@@ -900,8 +898,7 @@
       "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Sloppy mapped arguments are outside the runtime profile; the strict variant exercises callback arguments."
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/findIndex/predicate-call-parameters.js#strict": {
       "status": "PASS"

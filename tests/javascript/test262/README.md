@@ -15,9 +15,9 @@ report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
 The selected corpus contains 77 upstream files expanded into 151 variants:
-**124 PASS, 0 FAIL, 27 UNSUPPORTED, 0 ERROR**. Of those passes, 115 reach runtime
+**127 PASS, 0 FAIL, 24 UNSUPPORTED, 0 ERROR**. Of those passes, 118 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. Positive cases execute 333 native assertions across strict/sloppy
+syntax errors. Positive cases execute 360 native assertions across strict/sloppy
 variants; older upstream cases also use conditional throwing checks. These
 numbers describe this selected corpus, **not full Test262 coverage or a browser
 standards pass rate**. Unsupported examples remain in the report.
@@ -142,15 +142,18 @@ of complete Promise semantics.
 The selected corpus now adds all three upstream empty-input Promise.all tests
 (A2.3_T1–T3) unchanged. The existing array slice Object-descriptor requirement
 is promoted only after its real execution passes with A's Object implementation.
-Current selected expectation is 77 files / 151 variants: 124 PASS and 27
-UNSUPPORTED (115 runtime passes, 333 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
+Current selected expectation is 77 files / 151 variants: 127 PASS and 24
+UNSUPPORTED (118 runtime passes, 360 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
 results; `--require-all` remains nonzero until they are implemented.
 
 `inventory.json` records the complete pinned upstream archive: 57,013 regular
 files and 53,616 JavaScript test candidates after `_FIXTURE` exclusion. Each
 report retains the selected and unselected file counts, independently from
-executed variants. Full-suite applicability and variant expansion are not yet
-known and are recorded as null, never replaced by the small selected denominator.
+executed variants. The original pinned metadata parser expands all 53,616 candidates into 102,994
+declared strict/sloppy/raw/module variants with no parse diagnostics or unexpanded
+files. Full-suite applicability and runnable counts remain null; declared variants
+are not executed tests or passes. Reproduce offline after fetching the pinned
+archive using `wpt_inventory.py --expand-existing` as documented in the WPT corpus.
 Reports include fresh UTC timestamps, both repository SHAs and the executed
 runner's SHA-256. Source revision evidence does not imply a clean worktree or
 that the binary was rebuilt from those revisions.
@@ -193,11 +196,11 @@ Missing files, cycles and escaping names are ERROR. Transitive feature
 requirements remain explicit UNSUPPORTED: `isConstructor.js` needs
 `Reflect.construct`, otherwise its own catch would mistake a missing builtin
 for a non-constructor. Original `propertyHelper.js` is pinned and executed;
-after the Math.pow/join runtime slice it initializes, but verifyProperty still
-reports UNSUPPORTED for mapped sloppy arguments. A fresh complete Object.is
-family run in this original-harness profile records 28 PASS/14 UNSUPPORTED and
-zero FAIL/ERROR across all 21 files/42 variants; the remaining six descriptor
-variants need mapped arguments, six need Symbols, and two need Reflect.construct. No helper is replaced with a passing stub.
+after the Math.pow/join and mapped arguments slices, verifyProperty executes
+unchanged. A fresh complete Object.is family run in this original-harness profile
+records 34 PASS/8 UNSUPPORTED and zero FAIL/ERROR across all 21 files/42 variants;
+six variants need Symbols and two need Reflect.construct. No helper is replaced
+with a passing stub.
 
 Run `python3 tools/test262_conformance.py --harness upstream --require-all`
 for the selected corpus, or combine with `--archive` and `--family` for a
@@ -208,3 +211,7 @@ Additional reviewed selected-baseline promotions are both variants of
 `some/15.4.4.17-2-1.js` and `some/15.4.4.17-7-c-i-3.js` after numeric property-key
 lowering. The unchanged tests execute their assertions; no source or expected
 failure has been hidden. Default profile counts above include these promotions.
+
+Mapped arguments additionally promote the original sloppy variants of
+`isArray/15.4.3.2-1-13.js`, `find/predicate-call-parameters.js` and
+`findIndex/predicate-call-parameters.js`; their strict variants already passed.

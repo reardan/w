@@ -41,5 +41,1290 @@
   "complete_archive_inventory": true,
   "applicable_tests": null,
   "runnable_variants": null,
-  "limitations": "File inventory is complete. Candidate files are not an applicability or runnable variant denominator. WPT MANIFEST/environment/variant expansion and Test262 metadata expansion remain required. Unselected files are unexecuted, not passes or exclusions."
+  "limitations": "Archive and declared metadata inventory are complete for the pinned source. Declared items/variants are not an applicability or runnable denominator. Unexecuted candidates are not passes or exclusions; environment applicability remains unresolved.",
+  "metadata_expansion": {
+    "artifact": "test262-metadata.json",
+    "sha256": "9fbbe6166a03e4cf05da3fce7a0ebc8ada86e266fd78036d0447ed16be41be36",
+    "protocol": 1,
+    "revision": "2e0a56762801e275a9fdf96dc49d90ba0cddcf63",
+    "counts": {
+      "files": 53616,
+      "upstream_declared_variants": 102994
+    },
+    "flags": {
+      "raw": 32,
+      "noStrict": 2687,
+      "generated": 17003,
+      "onlyStrict": 678,
+      "async": 5624,
+      "module": 843,
+      "CanBlockIsFalse": 2,
+      "CanBlockIsTrue": 7
+    },
+    "features": {
+      "Symbol.iterator": 1867,
+      "IsHTMLDDA": 42,
+      "Reflect.construct": 704,
+      "arrow-function": 949,
+      "Symbol": 1494,
+      "generators": 4119,
+      "legacy-regexp": 26,
+      "cross-realm": 203,
+      "Reflect": 478,
+      "class": 4794,
+      "Reflect.set": 46,
+      "regexp-named-groups": 100,
+      "regexp-lookbehind": 19,
+      "Symbol.match": 88,
+      "Symbol.split": 58,
+      "regexp-duplicate-named-groups": 19,
+      "regexp-dotall": 17,
+      "Symbol.matchAll": 63,
+      "String.prototype.matchAll": 16,
+      "Symbol.replace": 98,
+      "String.prototype.replaceAll": 41,
+      "Symbol.search": 37,
+      "string-trimming": 54,
+      "String.prototype.trimStart": 23,
+      "String.prototype.trimEnd": 24,
+      "TypedArray": 2531,
+      "BigInt": 1506,
+      "Symbol.toPrimitive": 233,
+      "destructuring-binding": 6637,
+      "coalesce-expression": 26,
+      "logical-assignment-operators": 108,
+      "async-iteration": 4971,
+      "default-parameters": 2269,
+      "source-phase-imports": 253,
+      "AggregateError": 31,
+      "error-cause": 5,
+      "Symbol.species": 284,
+      "Array.fromAsync": 95,
+      "Proxy": 479,
+      "Symbol.unscopables": 45,
+      "array-find-from-last": 109,
+      "Array.prototype.at": 12,
+      "change-array-by-copy": 137,
+      "resizable-arraybuffer": 471,
+      "Symbol.isConcatSpreadable": 34,
+      "Array.prototype.flat": 15,
+      "Array.prototype.flatMap": 21,
+      "Int32Array": 4,
+      "Array.prototype.includes": 69,
+      "exponentiation": 104,
+      "stable-array-sort": 4,
+      "Symbol.toStringTag": 131,
+      "Array.prototype.values": 4,
+      "ArrayBuffer": 278,
+      "DataView": 193,
+      "align-detached-buffer-semantics-with-web-reality": 158,
+      "Int8Array": 38,
+      "SharedArrayBuffer": 467,
+      "arraybuffer-transfer": 59,
+      "immutable-arraybuffer": 66,
+      "Uint8Array": 13,
+      "explicit-resource-management": 483,
+      "async-functions": 705,
+      "Symbol.asyncIterator": 538,
+      "Atomics": 386,
+      "Float32Array": 7,
+      "Float64Array": 7,
+      "Uint16Array": 6,
+      "Uint8ClampedArray": 6,
+      "Atomics.pause": 5,
+      "Atomics.waitAsync": 101,
+      "computed-property-names": 478,
+      "DataView.prototype.setUint8": 56,
+      "Float16Array": 51,
+      "DataView.prototype.getFloat32": 7,
+      "DataView.prototype.getFloat64": 5,
+      "DataView.prototype.getInt16": 7,
+      "DataView.prototype.getInt32": 7,
+      "DataView.prototype.getInt8": 5,
+      "DataView.prototype.getUint16": 7,
+      "DataView.prototype.getUint32": 7,
+      "Temporal": 6716,
+      "Error.isError": 13,
+      "error-stack-accessor": 35,
+      "__proto__": 20,
+      "FinalizationRegistry": 49,
+      "symbols-as-weakmap-keys": 29,
+      "WeakSet": 34,
+      "WeakMap": 79,
+      "WeakRef": 37,
+      "for-of": 5,
+      "caller": 23,
+      "class-fields-private": 1134,
+      "Symbol.hasInstance": 17,
+      "new.target": 63,
+      "class-methods-private": 1709,
+      "class-static-methods-private": 1513,
+      "iterator-sequencing": 32,
+      "iterator-helpers": 567,
+      "globalThis": 148,
+      "iterator-chunking": 78,
+      "iterator-includes": 44,
+      "Iterator.prototype.join": 18,
+      "joint-iteration": 82,
+      "json-parse-with-source": 22,
+      "for-in-order": 9,
+      "well-formed-json-stringify": 1,
+      "array-grouping": 28,
+      "Map": 40,
+      "Set": 38,
+      "upsert": 72,
+      "Math.sumPrecise": 10,
+      "u180e": 25,
+      "numeric-separator-literal": 159,
+      "Object.fromEntries": 25,
+      "Object.hasOwn": 62,
+      "Object.is": 2,
+      "__getter__": 27,
+      "__setter__": 27,
+      "Reflect.setPrototypeOf": 23,
+      "Promise": 4,
+      "await-dictionary": 89,
+      "Promise.allSettled": 102,
+      "Promise.any": 92,
+      "Promise.prototype.finally": 29,
+      "promise-try": 15,
+      "promise-with-resolvers": 10,
+      "proxy-missing-checks": 3,
+      "tail-call-optimization": 35,
+      "String.fromCodePoint": 22,
+      "regexp-match-indices": 31,
+      "regexp-modifiers": 230,
+      "RegExp.escape": 21,
+      "regexp-unicode-property-escapes": 681,
+      "regexp-v-flag": 187,
+      "set-methods": 193,
+      "ShadowRealm": 64,
+      "String.prototype.at": 11,
+      "String.prototype.endsWith": 27,
+      "String.prototype.includes": 26,
+      "String.prototype.isWellFormed": 8,
+      "String.prototype.toWellFormed": 8,
+      "Symbol.prototype.description": 8,
+      "Intl.Era-monthcode": 1566,
+      "TypedArray.prototype.at": 13,
+      "stable-typedarray-sort": 1,
+      "uint8array-base64": 71,
+      "canonical-tz": 19,
+      "Intl.DateTimeFormat-datetimestyle": 16,
+      "Intl.DateTimeFormat-dayPeriod": 12,
+      "Intl.DateTimeFormat-fractionalSecondDigits": 10,
+      "Intl.DateTimeFormat-extend-timezonename": 2,
+      "intl-normative-optional": 8,
+      "Intl.DateTimeFormat-formatRange": 37,
+      "Intl.DisplayNames": 47,
+      "Intl.DisplayNames-v2": 12,
+      "Intl.DurationFormat": 111,
+      "Intl.Locale": 194,
+      "Intl-enumeration": 35,
+      "Intl.RelativeTimeFormat": 79,
+      "Intl.ListFormat": 81,
+      "Intl.Locale-info": 77,
+      "Intl.NumberFormat-unified": 68,
+      "Intl.NumberFormat-v3": 99,
+      "Intl.Segmenter": 79,
+      "hashbang": 29,
+      "const": 15,
+      "let": 77,
+      "super": 19,
+      "object-spread": 135,
+      "rest-parameters": 96,
+      "object-rest": 358,
+      "destructuring-assignment": 141,
+      "class-static-block": 65,
+      "optional-chaining": 56,
+      "import-defer": 252,
+      "class-fields-public": 2058,
+      "top-level-await": 277,
+      "class-static-fields-public": 213,
+      "decorators": 27,
+      "class-static-fields-private": 345,
+      "Int16Array": 2,
+      "Uint32Array": 2,
+      "dynamic-import": 1011,
+      "import.meta": 23,
+      "import-attributes": 101,
+      "json-modules": 14,
+      "import-text": 6,
+      "export-star-as-namespace-from-module": 19,
+      "source-phase-imports-module-source": 109,
+      "class-fields-private-in": 19,
+      "template": 1,
+      "import-bytes": 5,
+      "nonextensible-applies-to-private": 4,
+      "json-superset": 4,
+      "arbitrary-module-namespace-names": 16,
+      "optional-catch-binding": 5,
+      "host-gc-required": 15
+    },
+    "families": {
+      "annexB/built-ins": {
+        "files": 241,
+        "variants": 482
+      },
+      "annexB/language": {
+        "files": 845,
+        "variants": 895
+      },
+      "built-ins/AbstractModuleSource": {
+        "files": 8,
+        "variants": 8
+      },
+      "built-ins/AggregateError": {
+        "files": 25,
+        "variants": 50
+      },
+      "built-ins/Array": {
+        "files": 3083,
+        "variants": 6119
+      },
+      "built-ins/ArrayBuffer": {
+        "files": 221,
+        "variants": 442
+      },
+      "built-ins/ArrayIteratorPrototype": {
+        "files": 27,
+        "variants": 46
+      },
+      "built-ins/AsyncDisposableStack": {
+        "files": 104,
+        "variants": 208
+      },
+      "built-ins/AsyncFromSyncIteratorPrototype": {
+        "files": 38,
+        "variants": 76
+      },
+      "built-ins/AsyncFunction": {
+        "files": 18,
+        "variants": 36
+      },
+      "built-ins/AsyncGeneratorFunction": {
+        "files": 23,
+        "variants": 46
+      },
+      "built-ins/AsyncGeneratorPrototype": {
+        "files": 48,
+        "variants": 96
+      },
+      "built-ins/AsyncIteratorPrototype": {
+        "files": 13,
+        "variants": 26
+      },
+      "built-ins/Atomics": {
+        "files": 389,
+        "variants": 778
+      },
+      "built-ins/BigInt": {
+        "files": 77,
+        "variants": 154
+      },
+      "built-ins/Boolean": {
+        "files": 51,
+        "variants": 101
+      },
+      "built-ins/DataView": {
+        "files": 561,
+        "variants": 1122
+      },
+      "built-ins/Date": {
+        "files": 594,
+        "variants": 1188
+      },
+      "built-ins/DisposableStack": {
+        "files": 93,
+        "variants": 186
+      },
+      "built-ins/Error": {
+        "files": 93,
+        "variants": 186
+      },
+      "built-ins/FinalizationRegistry": {
+        "files": 47,
+        "variants": 94
+      },
+      "built-ins/Function": {
+        "files": 509,
+        "variants": 893
+      },
+      "built-ins/GeneratorFunction": {
+        "files": 23,
+        "variants": 46
+      },
+      "built-ins/GeneratorPrototype": {
+        "files": 61,
+        "variants": 122
+      },
+      "built-ins/Infinity": {
+        "files": 6,
+        "variants": 10
+      },
+      "built-ins/Iterator": {
+        "files": 654,
+        "variants": 1308
+      },
+      "built-ins/JSON": {
+        "files": 166,
+        "variants": 332
+      },
+      "built-ins/Map": {
+        "files": 204,
+        "variants": 405
+      },
+      "built-ins/MapIteratorPrototype": {
+        "files": 11,
+        "variants": 22
+      },
+      "built-ins/Math": {
+        "files": 327,
+        "variants": 654
+      },
+      "built-ins/NaN": {
+        "files": 6,
+        "variants": 10
+      },
+      "built-ins/NativeErrors": {
+        "files": 94,
+        "variants": 188
+      },
+      "built-ins/Number": {
+        "files": 340,
+        "variants": 680
+      },
+      "built-ins/Object": {
+        "files": 3411,
+        "variants": 6802
+      },
+      "built-ins/Promise": {
+        "files": 732,
+        "variants": 1458
+      },
+      "built-ins/Proxy": {
+        "files": 311,
+        "variants": 607
+      },
+      "built-ins/Reflect": {
+        "files": 153,
+        "variants": 306
+      },
+      "built-ins/RegExp": {
+        "files": 1879,
+        "variants": 3756
+      },
+      "built-ins/RegExpStringIteratorPrototype": {
+        "files": 17,
+        "variants": 34
+      },
+      "built-ins/Set": {
+        "files": 383,
+        "variants": 764
+      },
+      "built-ins/SetIteratorPrototype": {
+        "files": 11,
+        "variants": 22
+      },
+      "built-ins/ShadowRealm": {
+        "files": 64,
+        "variants": 124
+      },
+      "built-ins/SharedArrayBuffer": {
+        "files": 104,
+        "variants": 208
+      },
+      "built-ins/String": {
+        "files": 1223,
+        "variants": 2443
+      },
+      "built-ins/StringIteratorPrototype": {
+        "files": 7,
+        "variants": 14
+      },
+      "built-ins/SuppressedError": {
+        "files": 22,
+        "variants": 44
+      },
+      "built-ins/Symbol": {
+        "files": 98,
+        "variants": 192
+      },
+      "built-ins/Temporal": {
+        "files": 4605,
+        "variants": 9210
+      },
+      "built-ins/ThrowTypeError": {
+        "files": 14,
+        "variants": 28
+      },
+      "built-ins/TypedArray": {
+        "files": 1453,
+        "variants": 2890
+      },
+      "built-ins/TypedArrayConstructors": {
+        "files": 738,
+        "variants": 1446
+      },
+      "built-ins/Uint8Array": {
+        "files": 70,
+        "variants": 140
+      },
+      "built-ins/WeakMap": {
+        "files": 141,
+        "variants": 281
+      },
+      "built-ins/WeakRef": {
+        "files": 29,
+        "variants": 58
+      },
+      "built-ins/WeakSet": {
+        "files": 85,
+        "variants": 170
+      },
+      "built-ins/decodeURI": {
+        "files": 55,
+        "variants": 110
+      },
+      "built-ins/decodeURIComponent": {
+        "files": 56,
+        "variants": 112
+      },
+      "built-ins/encodeURI": {
+        "files": 31,
+        "variants": 62
+      },
+      "built-ins/encodeURIComponent": {
+        "files": 31,
+        "variants": 62
+      },
+      "built-ins/eval": {
+        "files": 10,
+        "variants": 20
+      },
+      "built-ins/global": {
+        "files": 29,
+        "variants": 56
+      },
+      "built-ins/isFinite": {
+        "files": 15,
+        "variants": 30
+      },
+      "built-ins/isNaN": {
+        "files": 15,
+        "variants": 30
+      },
+      "built-ins/parseFloat": {
+        "files": 54,
+        "variants": 108
+      },
+      "built-ins/parseInt": {
+        "files": 55,
+        "variants": 110
+      },
+      "built-ins/undefined": {
+        "files": 8,
+        "variants": 12
+      },
+      "harness/assert-false.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-notsamevalue-nan.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-notsamevalue-notsame.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-notsamevalue-objects.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-notsamevalue-tostring.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-notsamevalue-zeros.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-obj.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-samevalue-nan.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-samevalue-objects.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-samevalue-same.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-samevalue-tostring.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-samevalue-zeros.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-custom-typeerror.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-custom.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-incorrect-ctor.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-native.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-no-arg.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-no-error.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-null-fn.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-null.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-primitive.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-same-realm.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-throws-single-arg.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-tostring.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assert-true.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/assertRelativeDateMs.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-func-throws-sync.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-rejects-non-callable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-return-not-thenable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-returns-undefined.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-then-rejects.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-then-resolves.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-asyncTest-without-async-flag.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-custom-typeerror.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-custom.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-func-never-settles.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-func-throws-sync.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-incorrect-ctor.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-invalid-func.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-native.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-no-arg.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-no-error.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-null.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-primitive.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-resolved-error.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-same-realm.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/asyncHelpers-throwsAsync-single-arg.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/byteConversionValues.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-arguments.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-arraylike.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-different-elements.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-different-length.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-empty.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-falsy-arguments.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-message.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-same-elements-different-order.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-same-elements-same-order.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-samevalue.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-sparse.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/compare-array-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/dateConstants.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/decimalToHexString.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-array.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-circular.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-deep.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-mapset.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-object.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-primitives-bigint.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/deepEqual-primitives.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/detachArrayBuffer-host-detachArrayBuffer.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/detachArrayBuffer.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/fnGlobalObject.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/isConstructor.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/nans.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/nativeFunctionMatcher.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/promiseHelper.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyconfigurable-configurable-object.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyconfigurable-configurable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyconfigurable-not-configurable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyenumerable-enumerable-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyenumerable-enumerable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyenumerable-not-enumerable-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifyenumerable-not-enumerable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotconfigurable-configurable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotconfigurable-not-configurable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotenumerable-enumerable-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotenumerable-enumerable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotenumerable-not-enumerable-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotenumerable-not-enumerable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotwritable-not-writable-strict.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifynotwritable-writable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifywritable-array-length.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifywritable-not-writable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/propertyhelper-verifywritable-writable.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/proxytrapshelper-default.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/proxytrapshelper-overrides.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/sta.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/tcoHelper.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/testTypedArray-conversions-call-error.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/testTypedArray-conversions.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/testTypedArray.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-arguments.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-configurable-object.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-desc-is-not-object.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-noproperty.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-restore-accessor-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-restore-accessor.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-restore-symbol.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-restore.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-same-value.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-string-prop.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-symbol-prop.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-undefined-desc.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-value-error.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/verifyProperty-value.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "harness/wellKnownIntrinsicObjects.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/Array": {
+        "files": 2,
+        "variants": 4
+      },
+      "intl402/BigInt": {
+        "files": 11,
+        "variants": 22
+      },
+      "intl402/Collator": {
+        "files": 65,
+        "variants": 130
+      },
+      "intl402/Date": {
+        "files": 12,
+        "variants": 24
+      },
+      "intl402/DateTimeFormat": {
+        "files": 245,
+        "variants": 490
+      },
+      "intl402/DisplayNames": {
+        "files": 57,
+        "variants": 114
+      },
+      "intl402/DurationFormat": {
+        "files": 110,
+        "variants": 220
+      },
+      "intl402/FallbackSymbol": {
+        "files": 2,
+        "variants": 4
+      },
+      "intl402/Intl": {
+        "files": 66,
+        "variants": 132
+      },
+      "intl402/ListFormat": {
+        "files": 81,
+        "variants": 162
+      },
+      "intl402/Locale": {
+        "files": 190,
+        "variants": 380
+      },
+      "intl402/Number": {
+        "files": 7,
+        "variants": 14
+      },
+      "intl402/NumberFormat": {
+        "files": 251,
+        "variants": 502
+      },
+      "intl402/PluralRules": {
+        "files": 53,
+        "variants": 106
+      },
+      "intl402/RelativeTimeFormat": {
+        "files": 80,
+        "variants": 160
+      },
+      "intl402/Segmenter": {
+        "files": 79,
+        "variants": 158
+      },
+      "intl402/String": {
+        "files": 19,
+        "variants": 38
+      },
+      "intl402/Temporal": {
+        "files": 2029,
+        "variants": 4058
+      },
+      "intl402/TypedArray": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/constructors-string-and-single-element-array.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/constructors-taint-Object-prototype-2.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/constructors-taint-Object-prototype.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/default-locale-is-canonicalized.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/default-locale-is-supported.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/fallback-locales-are-supported.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/language-tags-canonicalized.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/language-tags-invalid.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/language-tags-valid.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/language-tags-with-underscore.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-consistent-with-resolvedOptions.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-default-locale-and-zxx-locale.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-duplicate-elements-removed.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-empty-and-undefined.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-locales-arg-coered-to-object.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-locales-arg-empty-array.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-returned-array-elements-are-not-frozen.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-taint-Array-2.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-taint-Array.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-test-option-localeMatcher.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "intl402/supportedLocalesOf-unicode-extensions-ignored.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "language/arguments-object": {
+        "files": 263,
+        "variants": 460
+      },
+      "language/asi": {
+        "files": 102,
+        "variants": 204
+      },
+      "language/block-scope": {
+        "files": 145,
+        "variants": 287
+      },
+      "language/comments": {
+        "files": 52,
+        "variants": 81
+      },
+      "language/computed-property-names": {
+        "files": 48,
+        "variants": 96
+      },
+      "language/destructuring": {
+        "files": 19,
+        "variants": 37
+      },
+      "language/directive-prologue": {
+        "files": 62,
+        "variants": 62
+      },
+      "language/eval-code": {
+        "files": 347,
+        "variants": 454
+      },
+      "language/export": {
+        "files": 3,
+        "variants": 3
+      },
+      "language/expressions": {
+        "files": 11102,
+        "variants": 21286
+      },
+      "language/function-code": {
+        "files": 217,
+        "variants": 281
+      },
+      "language/future-reserved-words": {
+        "files": 55,
+        "variants": 85
+      },
+      "language/global-code": {
+        "files": 42,
+        "variants": 75
+      },
+      "language/identifier-resolution": {
+        "files": 14,
+        "variants": 22
+      },
+      "language/identifiers": {
+        "files": 268,
+        "variants": 535
+      },
+      "language/import": {
+        "files": 129,
+        "variants": 135
+      },
+      "language/keywords": {
+        "files": 25,
+        "variants": 50
+      },
+      "language/line-terminators": {
+        "files": 41,
+        "variants": 82
+      },
+      "language/literals": {
+        "files": 536,
+        "variants": 1041
+      },
+      "language/module-code": {
+        "files": 599,
+        "variants": 602
+      },
+      "language/punctuators": {
+        "files": 11,
+        "variants": 22
+      },
+      "language/reserved-words": {
+        "files": 27,
+        "variants": 53
+      },
+      "language/rest-parameters": {
+        "files": 11,
+        "variants": 22
+      },
+      "language/source-text": {
+        "files": 1,
+        "variants": 2
+      },
+      "language/statementList": {
+        "files": 80,
+        "variants": 160
+      },
+      "language/statements": {
+        "files": 9347,
+        "variants": 18015
+      },
+      "language/types": {
+        "files": 113,
+        "variants": 211
+      },
+      "language/white-space": {
+        "files": 67,
+        "variants": 134
+      },
+      "staging/Temporal": {
+        "files": 2,
+        "variants": 4
+      },
+      "staging/Uint8Array": {
+        "files": 1,
+        "variants": 2
+      },
+      "staging/built-ins": {
+        "files": 8,
+        "variants": 16
+      },
+      "staging/decorators": {
+        "files": 3,
+        "variants": 6
+      },
+      "staging/explicit-resource-management": {
+        "files": 53,
+        "variants": 105
+      },
+      "staging/set-is-subset-of-empty-index.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "staging/set-is-subset-on-set-like.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "staging/set-is-subset-table-receiver-cleared.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "staging/set-is-subset-table-transition.js": {
+        "files": 1,
+        "variants": 2
+      },
+      "staging/set-methods": {
+        "files": 3,
+        "variants": 6
+      },
+      "staging/sm": {
+        "files": 1406,
+        "variants": 2631
+      },
+      "staging/source-phase-imports": {
+        "files": 2,
+        "variants": 4
+      },
+      "staging/top-level-await": {
+        "files": 1,
+        "variants": 1
+      }
+    },
+    "diagnostics": [],
+    "unexpanded": [],
+    "metadata_parser_sha256": {
+      "parseTestRecord.py": "d8c2e68f0dc49991cf1f01151b3c0c0975a292ff595390dfc972f05157a94bf7",
+      "monkeyYaml.py": "7a694159fd84ec3e88660d6a3f0d7d3330274c1c3d3d0737e7f42c911a83bce3"
+    },
+    "applicability": "unresolved; declared variant count is not an execution/pass count"
+  }
 }

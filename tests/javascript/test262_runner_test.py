@@ -27,9 +27,9 @@ class AdapterContract(unittest.TestCase):
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 124, 'FAIL': 0, 'UNSUPPORTED': 27, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 115)
-        self.assertEqual(report['assertions'], 333)
+        self.assertEqual(report['counts'], {'PASS': 127, 'FAIL': 0, 'UNSUPPORTED': 24, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 118)
+        self.assertEqual(report['assertions'], 360)
         self.assertEqual(report['variants'], 151)
         self.assertEqual(report['baseline_changes'], [])
 
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 123, 'FAIL': 0, 'UNSUPPORTED': 28, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 126, 'FAIL': 0, 'UNSUPPORTED': 25, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -63,7 +63,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'load_manifest', return_value=(manifest, sources)):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 124, 'FAIL': 0, 'UNSUPPORTED': 27, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 127, 'FAIL': 0, 'UNSUPPORTED': 24, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
