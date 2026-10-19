@@ -490,6 +490,17 @@ int html_void(char* name):
 	return (strcmp(name, c"area") == 0) || (strcmp(name, c"base") == 0) || (strcmp(name, c"br") == 0) || (strcmp(name, c"col") == 0) || (strcmp(name, c"embed") == 0) || (strcmp(name, c"hr") == 0) || (strcmp(name, c"img") == 0) || (strcmp(name, c"input") == 0) || (strcmp(name, c"link") == 0) || (strcmp(name, c"meta") == 0) || (strcmp(name, c"param") == 0) || (strcmp(name, c"source") == 0) || (strcmp(name, c"track") == 0) || (strcmp(name, c"wbr") == 0)
 
 html_node* html_add_node(html_document* doc, html_tokenizer* t, html_node* parent, html_token* token):
+	# Character tokens append to the existing adjacent text node in either
+	# document or fragment mode. This performs no new node allocation.
+	if (parent != 0 && token.kind == HTML_TEXT && parent.last_child != 0 && parent.last_child.kind == HTML_TEXT):
+		html_node* previous = parent.last_child
+		int size = __w_size_add(previous.text_length, token.text_length)
+		previous.text = cast(char*, __w_realloc(previous.text, previous.text_length + 1, __w_size_add(size, 1)))
+		for i in range(token.text_length): previous.text[previous.text_length + i] = token.text[i]
+		previous.text[size] = 0
+		previous.text_length = size
+		previous.end = token.end
+		return previous
 	int depth = 0
 	if (parent != 0): depth = parent.depth + 1
 	if ((doc.node_count >= t.limits.nodes) || (depth >= t.limits.depth)):
@@ -532,8 +543,38 @@ html_node* html_ancestor(html_node* n, char* name):
 		n = n.parent
 	return 0
 
+int html_block(char* name):
+	return (strcmp(name, c"address") == 0) || (strcmp(name, c"article") == 0) || (strcmp(name, c"aside") == 0) || (strcmp(name, c"blockquote") == 0) || (strcmp(name, c"center") == 0) || (strcmp(name, c"details") == 0) || (strcmp(name, c"dialog") == 0) || (strcmp(name, c"dir") == 0) || (strcmp(name, c"div") == 0) || (strcmp(name, c"dl") == 0) || (strcmp(name, c"fieldset") == 0) || (strcmp(name, c"figcaption") == 0) || (strcmp(name, c"figure") == 0) || (strcmp(name, c"footer") == 0) || (strcmp(name, c"header") == 0) || (strcmp(name, c"hgroup") == 0) || (strcmp(name, c"main") == 0) || (strcmp(name, c"menu") == 0) || (strcmp(name, c"nav") == 0) || (strcmp(name, c"ol") == 0) || (strcmp(name, c"p") == 0) || (strcmp(name, c"search") == 0) || (strcmp(name, c"section") == 0) || (strcmp(name, c"summary") == 0) || (strcmp(name, c"ul") == 0)
+
 int html_closes_p(char* name):
-	return (strcmp(name, c"p") == 0) || (strcmp(name, c"div") == 0) || (strcmp(name, c"section") == 0) || (strcmp(name, c"article") == 0) || (strcmp(name, c"ul") == 0) || (strcmp(name, c"ol") == 0) || (strcmp(name, c"dl") == 0) || (strcmp(name, c"table") == 0) || (strcmp(name, c"blockquote") == 0) || (strcmp(name, c"pre") == 0) || (strcmp(name, c"hr") == 0) || (strcmp(name, c"h1") == 0) || (strcmp(name, c"h2") == 0) || (strcmp(name, c"h3") == 0) || (strcmp(name, c"h4") == 0) || (strcmp(name, c"h5") == 0) || (strcmp(name, c"h6") == 0)
+	return (strcmp(name, c"address") == 0) || (strcmp(name, c"article") == 0) || (strcmp(name, c"aside") == 0) || (strcmp(name, c"blockquote") == 0) || (strcmp(name, c"center") == 0) || (strcmp(name, c"details") == 0) || (strcmp(name, c"dialog") == 0) || (strcmp(name, c"dir") == 0) || (strcmp(name, c"div") == 0) || (strcmp(name, c"dl") == 0) || (strcmp(name, c"fieldset") == 0) || (strcmp(name, c"figcaption") == 0) || (strcmp(name, c"figure") == 0) || (strcmp(name, c"footer") == 0) || (strcmp(name, c"header") == 0) || (strcmp(name, c"hgroup") == 0) || (strcmp(name, c"main") == 0) || (strcmp(name, c"menu") == 0) || (strcmp(name, c"nav") == 0) || (strcmp(name, c"ol") == 0) || (strcmp(name, c"p") == 0) || (strcmp(name, c"search") == 0) || (strcmp(name, c"section") == 0) || (strcmp(name, c"summary") == 0) || (strcmp(name, c"ul") == 0) || (strcmp(name, c"pre") == 0) || (strcmp(name, c"listing") == 0) || (strcmp(name, c"hr") == 0) || (strcmp(name, c"h1") == 0) || (strcmp(name, c"h2") == 0) || (strcmp(name, c"h3") == 0) || (strcmp(name, c"h4") == 0) || (strcmp(name, c"h5") == 0) || (strcmp(name, c"h6") == 0) || (strcmp(name, c"table") == 0) || (strcmp(name, c"form") == 0) || (strcmp(name, c"li") == 0) || (strcmp(name, c"dt") == 0) || (strcmp(name, c"dd") == 0)
+
+int html_special(char* name):
+	return (strcmp(name, c"address") == 0) || (strcmp(name, c"applet") == 0) || (strcmp(name, c"area") == 0) || (strcmp(name, c"article") == 0) || (strcmp(name, c"aside") == 0) || (strcmp(name, c"base") == 0) || (strcmp(name, c"basefont") == 0) || (strcmp(name, c"bgsound") == 0) || (strcmp(name, c"blockquote") == 0) || (strcmp(name, c"body") == 0) || (strcmp(name, c"br") == 0) || (strcmp(name, c"button") == 0) || (strcmp(name, c"caption") == 0) || (strcmp(name, c"center") == 0) || (strcmp(name, c"col") == 0) || (strcmp(name, c"colgroup") == 0) || (strcmp(name, c"dd") == 0) || (strcmp(name, c"details") == 0) || (strcmp(name, c"dialog") == 0) || (strcmp(name, c"dir") == 0) || (strcmp(name, c"div") == 0) || (strcmp(name, c"dl") == 0) || (strcmp(name, c"dt") == 0) || (strcmp(name, c"embed") == 0) || (strcmp(name, c"fieldset") == 0) || (strcmp(name, c"figcaption") == 0) || (strcmp(name, c"figure") == 0) || (strcmp(name, c"footer") == 0) || (strcmp(name, c"form") == 0) || (strcmp(name, c"frame") == 0) || (strcmp(name, c"frameset") == 0) || (strcmp(name, c"h1") == 0) || (strcmp(name, c"h2") == 0) || (strcmp(name, c"h3") == 0) || (strcmp(name, c"h4") == 0) || (strcmp(name, c"h5") == 0) || (strcmp(name, c"h6") == 0) || (strcmp(name, c"head") == 0) || (strcmp(name, c"header") == 0) || (strcmp(name, c"hgroup") == 0) || (strcmp(name, c"hr") == 0) || (strcmp(name, c"html") == 0) || (strcmp(name, c"iframe") == 0) || (strcmp(name, c"img") == 0) || (strcmp(name, c"input") == 0) || (strcmp(name, c"keygen") == 0) || (strcmp(name, c"li") == 0) || (strcmp(name, c"link") == 0) || (strcmp(name, c"listing") == 0) || (strcmp(name, c"main") == 0) || (strcmp(name, c"marquee") == 0) || (strcmp(name, c"menu") == 0) || (strcmp(name, c"meta") == 0) || (strcmp(name, c"nav") == 0) || (strcmp(name, c"noembed") == 0) || (strcmp(name, c"noframes") == 0) || (strcmp(name, c"noscript") == 0) || (strcmp(name, c"object") == 0) || (strcmp(name, c"ol") == 0) || (strcmp(name, c"p") == 0) || (strcmp(name, c"param") == 0) || (strcmp(name, c"plaintext") == 0) || (strcmp(name, c"pre") == 0) || (strcmp(name, c"script") == 0) || (strcmp(name, c"search") == 0) || (strcmp(name, c"section") == 0) || (strcmp(name, c"select") == 0) || (strcmp(name, c"source") == 0) || (strcmp(name, c"style") == 0) || (strcmp(name, c"summary") == 0) || (strcmp(name, c"table") == 0) || (strcmp(name, c"tbody") == 0) || (strcmp(name, c"td") == 0) || (strcmp(name, c"template") == 0) || (strcmp(name, c"textarea") == 0) || (strcmp(name, c"tfoot") == 0) || (strcmp(name, c"th") == 0) || (strcmp(name, c"thead") == 0) || (strcmp(name, c"title") == 0) || (strcmp(name, c"tr") == 0) || (strcmp(name, c"track") == 0) || (strcmp(name, c"ul") == 0) || (strcmp(name, c"wbr") == 0) || (strcmp(name, c"xmp") == 0)
+
+# The document/fragment root is the stack boundary; scope never crosses it.
+# Namespace-specific scope boundaries remain part of the foreign-content slice.
+html_node* html_in_scope(html_node* current, char* name, int button, int list_item):
+	while (current != 0 && current.kind == HTML_START):
+		if (strcmp(current.name, name) == 0): return current
+		char* tag = current.name
+		if ((strcmp(tag, c"applet") == 0) || (strcmp(tag, c"caption") == 0) || (strcmp(tag, c"html") == 0) || (strcmp(tag, c"table") == 0) || (strcmp(tag, c"td") == 0) || (strcmp(tag, c"th") == 0) || (strcmp(tag, c"marquee") == 0) || (strcmp(tag, c"object") == 0) || (strcmp(tag, c"template") == 0)): return 0
+		if (button && strcmp(tag, c"button") == 0): return 0
+		if (list_item && ((strcmp(tag, c"ol") == 0) || (strcmp(tag, c"ul") == 0))): return 0
+		current = current.parent
+	return 0
+
+html_node* html_end_match(html_node* current, char* name):
+	if (strcmp(name, c"p") == 0): return html_in_scope(current, name, 1, 0)
+	if (strcmp(name, c"li") == 0): return html_in_scope(current, name, 0, 1)
+	if (html_block(name) || (strcmp(name, c"pre") == 0) || (strcmp(name, c"listing") == 0) || (strcmp(name, c"button") == 0) || (strcmp(name, c"dd") == 0) || (strcmp(name, c"dt") == 0)): return html_in_scope(current, name, 0, 0)
+	# Existing head/body and table recovery retain their dedicated paths.
+	if ((strcmp(name, c"html") == 0) || (strcmp(name, c"head") == 0) || (strcmp(name, c"body") == 0) || (strcmp(name, c"table") == 0) || (strcmp(name, c"tr") == 0) || (strcmp(name, c"td") == 0) || (strcmp(name, c"th") == 0)): return html_ancestor(current, name)
+	while (current != 0 && current.kind == HTML_START):
+		if (strcmp(current.name, name) == 0): return current
+		if (html_special(current.name)): return 0
+		current = current.parent
+	return 0
 
 # Close through target; implied closes end at the next token's start.
 html_node* html_close(html_node* current, html_node* target, int end):
@@ -545,11 +586,13 @@ html_node* html_close(html_node* current, html_node* target, int end):
 
 html_node* html_optional_close(html_node* current, char* name, int end):
 	html_node* n = current
-	while ((n != 0) && (n.depth > 2)):
+	while ((n != 0) && (n.kind == HTML_START)):
 		int match = strcmp(n.name, name) == 0
 		if (((strcmp(name, c"dt") == 0) || (strcmp(name, c"dd") == 0)) && ((strcmp(n.name, c"dt") == 0) || (strcmp(n.name, c"dd") == 0))): match = 1
 		if (((strcmp(name, c"td") == 0) || (strcmp(name, c"th") == 0)) && ((strcmp(n.name, c"td") == 0) || (strcmp(n.name, c"th") == 0))): match = 1
 		if (match): return html_close(current, n, end)
+		int item = (strcmp(name, c"li") == 0) || (strcmp(name, c"dt") == 0) || (strcmp(name, c"dd") == 0)
+		if (item && html_special(n.name) && (strcmp(n.name, c"address") != 0) && (strcmp(n.name, c"div") != 0) && (strcmp(n.name, c"p") != 0)): break
 		# Do not cross a nested list or table when closing optional items.
 		if ((strcmp(n.name, c"ul") == 0) || (strcmp(n.name, c"ol") == 0) || (strcmp(n.name, c"table") == 0) || (strcmp(n.name, c"select") == 0) || (strcmp(n.name, c"dl") == 0)): break
 		n = n.parent
@@ -565,12 +608,14 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 		html_node* body = html_implied(doc, t, html, c"body", HTML_START)
 		html_node* current = body
 		int body_started = 0
+		int declaration_allowed = 1
 		while (!t.failed):
 			html_token* token = html_tokenizer_next(t)
 			if ((token.kind == HTML_EOF) || t.failed):
 				html_token_free(token)
 				break
 			if (token.kind == HTML_START):
+				declaration_allowed = 0
 				html_node* special = 0
 				if (strcmp(token.name, c"html") == 0): special = html
 				if ((strcmp(token.name, c"head") == 0) && !body_started): special = head
@@ -594,7 +639,7 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 						current = body
 						body_started = 1
 					if (html_closes_p(token.name)):
-						html_node* p = html_ancestor(current, c"p")
+						html_node* p = html_in_scope(current, c"p", 1, 0)
 						if (p != 0): current = html_close(current, p, token.start)
 					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"option") == 0) || (strcmp(token.name, c"tr") == 0) || (strcmp(token.name, c"td") == 0) || (strcmp(token.name, c"th") == 0)):
 						current = html_optional_close(current, token.name, token.start)
@@ -603,7 +648,14 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 					html_node* n = html_add_node(doc, t, current, token)
 					if ((n != 0) && !is_void): current = n
 			else if (token.kind == HTML_END):
-				html_node* match = html_ancestor(current, token.name)
+				declaration_allowed = 0
+				html_node* match = html_end_match(current, token.name)
+				if (match == 0 && strcmp(token.name, c"p") == 0):
+					html_report(t, token.start, token.end, c"missing paragraph synthesized for end tag")
+					match = html_implied(doc, t, current, c"p", HTML_START)
+					if (match != 0):
+						match.start = token.start
+						current = match
 				if ((match == 0) || html_void(token.name)):
 					html_report(t, token.start, token.end, c"unmatched end tag ignored")
 				else if (match.depth <= 2):
@@ -618,9 +670,19 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 					int i = 0
 					while ((i < token.text_length) && html_space(token.text[i])): i = i + 1
 					if (i < token.text_length):
+						declaration_allowed = 0
 						current = body
 						body_started = 1
-				if (token.kind == HTML_DOCTYPE): html_add_node(doc, t, doc.root, token)
+				if (token.kind == HTML_DOCTYPE):
+					if (declaration_allowed):
+						declaration_allowed = 0
+						html_node* declaration = html_add_node(doc, t, 0, token)
+						if (declaration != 0):
+							declaration.parent = doc.root
+							declaration.depth = 1
+							declaration.next_sibling = html
+							doc.root.first_child = declaration
+					else: html_report(t, token.start, token.end, c"doctype outside initial mode ignored")
 				else: html_add_node(doc, t, current, token)
 			html_token_free(token)
 			html_node* n = current
@@ -658,7 +720,15 @@ html_document* html_parse_fragment_with_limits(char* data, int length, char* con
 		html_document* parsed = html_parse_with_limits(data, length, limits)
 		if (parsed.root != 0):
 			html_node* html = parsed.root.first_child
-			html_node* discarded = html.next_sibling
+			while (html != 0 && (html.kind != HTML_START || strcmp(html.name, c"html") != 0)): html = html.next_sibling
+			if (html == 0):
+				parsed.failed = 1
+				return parsed
+			html_node* discarded = parsed.root.first_child
+			while (discarded != html):
+				discarded.parent = 0
+				discarded = discarded.next_sibling
+			discarded = html.next_sibling
 			while (discarded != 0):
 				discarded.parent = 0
 				discarded = discarded.next_sibling
@@ -701,24 +771,22 @@ html_document* html_parse_fragment_with_limits(char* data, int length, char* con
 				if (ignored): html_report(t, token.start, token.end, c"document tag ignored in fragment")
 				else:
 					if (html_closes_p(token.name)):
-						html_node* p = html_ancestor(current, c"p")
+						html_node* p = html_in_scope(current, c"p", 1, 0)
 						if (p != 0): current = html_close(current, p, token.start)
 					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"option") == 0)):
-						html_node* n = current
-						while (n != doc.root):
-							int match = strcmp(n.name, token.name) == 0
-							if (((strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0)) && ((strcmp(n.name, c"dt") == 0) || (strcmp(n.name, c"dd") == 0))): match = 1
-							if (match):
-								current = html_close(current, n, token.start)
-								break
-							if ((strcmp(n.name, c"ul") == 0) || (strcmp(n.name, c"ol") == 0) || (strcmp(n.name, c"dl") == 0) || (strcmp(n.name, c"select") == 0)): break
-							n = n.parent
+						current = html_optional_close(current, token.name, token.start)
 					int is_void = html_void(token.name)
 					if (token.self_closing && !is_void): html_report(t, token.start, token.end, c"self-closing flag ignored on HTML element")
 					html_node* n = html_add_node(doc, t, current, token)
 					if ((n != 0) && !is_void): current = n
 			else if (token.kind == HTML_END):
-				html_node* match = html_ancestor(current, token.name)
+				html_node* match = html_end_match(current, token.name)
+				if (match == 0 && strcmp(token.name, c"p") == 0):
+					html_report(t, token.start, token.end, c"missing paragraph synthesized for end tag")
+					match = html_implied(doc, t, current, c"p", HTML_START)
+					if (match != 0):
+						match.start = token.start
+						current = match
 				if ((match == 0) || (match == doc.root) || html_void(token.name)): html_report(t, token.start, token.end, c"unmatched fragment end tag ignored")
 				else: current = html_close(current, match, token.end)
 			else if (token.kind == HTML_DOCTYPE): html_report(t, token.start, token.end, c"doctype ignored in fragment")
