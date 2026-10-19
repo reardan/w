@@ -2683,7 +2683,8 @@ void safe_check_finish():
 	if ((safe_mode == 0) && (type_safe_used == 0)): return
 	if (safe_bounds_disabled): error(c"safe: checked pointers require bounds checks")
 	int darwin = (target_isa == 1) && (target_os == 1) && (target_apple_platform == 1)
-	if ((darwin == 0) && ((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, win64 and arm64_darwin targets are supported")
+	int wasm = (target_isa == 2) && (target_os == 3)
+	if ((darwin == 0) && (wasm == 0) && ((target_isa != 0) || ((target_os != 0) && (target_os != 2))) && ((target_isa != 1) || (target_os != 0))): error(c"safe: only Linux x86, x64 and arm64, win64, arm64_darwin and wasm targets are supported")
 	safe_audit_runtime()
 	int count = retained_node_count()
 	safe_first = cast(int*, malloc(count * __word_size__))
