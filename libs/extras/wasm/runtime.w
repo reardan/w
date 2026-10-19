@@ -741,6 +741,13 @@ int wwasm_execute(wwasm* m, int index, list[int] args):
 	list[int] locals = new list[int]
 	for int arg in args: locals.push(arg)
 	for int kind in f.locals: locals.push(0)
+	# Validation fixes local indices and the decoded operation stream. Neither
+	# list grows during execution; borrow their word storage for the hot loop.
+	__w_list* local_storage = cast(__w_list*, locals)
+	__w_list* operation_storage = cast(__w_list*, f.ops)
+	int* local_values = cast(int*, local_storage.items)
+	wwasm_op** operations = cast(wwasm_op**, operation_storage.items)
+	int operation_count = f.ops.length
 	list[int] stack = new list[int]
 	list[wwasm_control*] controls = new list[wwasm_control*]
 	wwasm_control* root = new wwasm_control()
@@ -749,15 +756,28 @@ int wwasm_execute(wwasm* m, int index, list[int] args):
 	controls.push(root)
 	int pc = 0
 	int result = 0
-	while (pc < f.ops.length && m.error == 0):
+	while (pc < operation_count && m.error == 0):
 		if (m.fuel <= 0):
 			wwasm_fail(m, c"WebAssembly instruction limit")
 			break
 		m.fuel = m.fuel - 1
-		wwasm_op* op = f.ops[pc]
+		wwasm_op* op = operations[pc]
 		int c = op.code
 		int branch = -1
-		if (c == 0): wwasm_fail(m, c"unreachable")
+		if (c == 65 || c == 66 || c == 67): stack.push(op.a)
+		else if (c > 67):
+			int b = 0
+			int a = stack.pop()
+			if ((c >= 70 && c <= 79) || (c >= 91 && c <= 96) || (c >= 106 && c <= 120) || c == 124 || c == 126 || c == 128 || c == 130 || c == 136 || (c >= 146 && c <= 149)):
+				b = a
+				a = stack.pop()
+			stack.push(wwasm_numeric(m, c, a, b))
+		else if (c == 32): stack.push(local_values[op.a])
+		else if (c == 33): local_values[op.a] = stack.pop()
+		else if (c == 34): local_values[op.a] = stack[stack.length - 1]
+		else if (c == 35): stack.push(m.globals[op.a].bits)
+		else if (c == 36): m.globals[op.a].bits = stack.pop()
+		else if (c == 0): wwasm_fail(m, c"unreachable")
 		else if (c >= 2 && c <= 4):
 			int condition = 1
 			if (c == 4): condition = stack.pop()
@@ -809,11 +829,6 @@ int wwasm_execute(wwasm* m, int index, list[int] args):
 			int first = stack.pop()
 			if (condition): stack.push(first)
 			else: stack.push(second)
-		else if (c == 32): stack.push(locals[op.a])
-		else if (c == 33): locals[op.a] = stack.pop()
-		else if (c == 34): locals[op.a] = stack[stack.length - 1]
-		else if (c == 35): stack.push(m.globals[op.a].bits)
-		else if (c == 36): m.globals[op.a].bits = stack.pop()
 		else if (c >= 40 && c <= 62):
 			int width = 4
 			if (c == 41): width = 8
@@ -835,14 +850,6 @@ int wwasm_execute(wwasm* m, int index, list[int] args):
 				else: stack.push(wwasm_i32(value))
 		else if (c == 63): stack.push(m.pages)
 		else if (c == 64): stack.push(wwasm_grow(m, stack.pop()))
-		else if (c == 65 || c == 66 || c == 67): stack.push(op.a)
-		else if (c != 1):
-			int b = 0
-			int a = stack.pop()
-			if ((c >= 70 && c <= 79) || (c >= 91 && c <= 96) || (c >= 106 && c <= 120) || c == 124 || c == 126 || c == 128 || c == 130 || c == 136 || (c >= 146 && c <= 149)):
-				b = a
-				a = stack.pop()
-			stack.push(wwasm_numeric(m, c, a, b))
 		if (branch >= 0):
 			int target = controls.length - branch - 1
 			wwasm_control* control = controls[target]
@@ -853,7 +860,7 @@ int wwasm_execute(wwasm* m, int index, list[int] args):
 			while (controls.length > target + 1): free(controls.pop())
 			if (control.pc < 0): break
 			if (control.loop): pc = control.pc
-			else: pc = f.ops[control.pc].end - 1
+			else: pc = operations[control.pc].end - 1
 		pc = pc + 1
 	if (type.result && m.error == 0): result = stack.pop()
 	for wwasm_control* control in controls: free(control)
