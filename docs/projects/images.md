@@ -183,3 +183,35 @@ symbol exactly once. `graphics_image_jpeg_test` covers EXIF parsing (both byte
 orders, every orientation, wrong type/count/value, corrupt TIFF headers, every
 prefix) and all eight orientation transforms; `png_test` covers 16-bit,
 packed and Adam7 PNGs with in-test packing and independently computed pixels.
+
+## GIF first image
+
+`graphics.image.gif` exposes `gif_decode_n(data, length, limits)` with the same
+owned `rgba_image`/`wresult` boundary as PNG and JPEG. It reads GIF87a/GIF89a
+logical screens, global/local color tables, image offsets, transparency and
+four-pass interlace. LZW supports 2–8-bit minimum code sizes, dictionary growth
+through 12 bits, clear codes, the next-code special case and deferred clear
+when the dictionary is full. The implementation follows the
+[GIF89a specification](https://www.w3.org/Graphics/GIF/spec-gif89a.txt).
+
+This API returns the first complete image on its logical screen. Transparent
+images start on a transparent canvas; otherwise the global background color is
+used where available. It requires a complete image-data terminator and rejects
+invalid dimensions, indices and compressed data. Bytes after the first image
+(including later frames and the final trailer) are deliberately not validated.
+Frame delays, disposal, looping and playback are not implemented. Plain-text
+extensions before the first image return `IMAGE_UNSUPPORTED`.
+
+Input, dimensions and RGBA allocations obey `image_limits`, with division before
+multiplication to prevent size overflow. A fixed 134,217,728-unit work budget
+also bounds byte reads/skips, canvas initialization, LZW code processing, prefix
+traversals and pixel output. Dictionary/scratch storage is fixed at 4,096 entries.
+No process or system image decoder is required.
+
+`graphics_image_gif_test` and its x64 twin compare exact RGBA against independent
+Pillow goldens, exercise short data sub-blocks, palette/offset/transparency,
+backgrounds, interlace, dictionary growth/full dictionaries and malformed LZW,
+and check every incomplete prefix of a small image, one-byte mutations and
+resource/work exhaustion. Original synthetic fixture generation is in
+`tests/images/generate_gif_fixtures.py`; Pillow is only needed to regenerate
+fixtures, not to run the tests or decoder.
