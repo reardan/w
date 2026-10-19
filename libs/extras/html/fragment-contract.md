@@ -69,9 +69,21 @@ rules; ordinary tokens return to in-body recovery. Missing HTML/body attributes
 merge in source order within the existing cap, without replacing existing
 values. The [whole affected-file audit](upstream/after-body/README.md) admits all
 1,308 cases from 22 current WPT fixture files and retains the full 1,968-case
-denominator. Current processing-instruction tokens, earlier insertion modes and
+denominator. Earlier insertion modes, template/table/noscript dependencies and
 other recorded tree failures remain mandatory; this does not claim complete
 current after-body conformance. No performance result is established here.
+
+Processing instructions use distinct native kind `HTML_PROCESSING_INSTRUCTION`
+(7). `name` is the owned, case-preserved ASCII target; `text`/`text_length` are
+owned data with literal NUL preserved and an allocated empty buffer when empty.
+The document owns every leaf until teardown; copying input/token bytes is not a
+node lifetime dependency. Leading PIs may precede doctype/HTML, and fragment
+extraction retains its existing discarded-allocation ownership. Consumers must
+map DOM nodeType 7 explicitly, expose nodeName/target and length-aware data, and
+keep PI nodes inert in rendering. Constructor, full CharacterData mutation,
+observers and Web IDL coercion are not supplied by the parser. The
+[complete PI fixture audit](upstream/processing-instruction/README.md) retains
+all 124 original cases and four table/template/noscript dependency failures.
 
 Win uses one native allocation identity per node and one rooted JS wrapper per
 node per realm. DocumentFragment moves splice children, leave the fragment

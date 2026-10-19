@@ -1,0 +1,35 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "6d4552a8b1057e42a180119d70273f563e53a264",
+  "files": {
+    "after-body/processing-instructions.dat": {
+      "path": "html/syntax/parsing/resources/processing-instructions.dat",
+      "sha256": "3d4c6e67b59fda8fa0eb798106a42d244c69a84d7e3a385f9845bfc40071b4f1"
+    },
+    "after-body/LICENSE.md": {
+      "path": "LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+    }
+  },
+  "total_cases": 124,
+  "normative_html": {
+    "immutable_url": "https://html.spec.whatwg.org/commit-snapshots/1ea5faabf97bb6735dadd7919425cffce0c75dba/",
+    "revision": "1ea5faabf97bb6735dadd7919425cffce0c75dba",
+    "sha256": "fe1d477a075fd6d354799e9a2521bdab1c694aecb3f72e2e647f17db221fd8ee"
+  },
+  "algorithm_ids": [
+    "processing-instruction-open-state",
+    "processing-instruction-target-state",
+    "after-processing-instruction-target-state",
+    "processing-instruction-data-state",
+    "processing-instruction-questionable-state",
+    "insert-a-processing-instruction",
+    "the-initial-insertion-mode",
+    "the-before-html-insertion-mode",
+    "the-before-head-insertion-mode",
+    "the-after-head-insertion-mode",
+    "parsing-main-afterbody",
+    "the-after-after-body-insertion-mode"
+  ],
+  "scope": "Entire unchanged processing-instructions.dat; table/template/noscript dependency failures retained. Native tree comparison, not browser WPT execution; upstream parse errors not asserted."
+}
