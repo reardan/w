@@ -11,6 +11,8 @@
 # wbuild: step="bin/javascript_runtime_array_iteration_test memory-g" expect_stdout="javascript_runtime_array_iteration_test: OK"
 # wbuild: step="bin/javascript_runtime_array_iteration_test memory-h" expect_stdout="javascript_runtime_array_iteration_test: OK"
 # wbuild: step="bin/javascript_runtime_array_iteration_test memory-host" expect_stdout="javascript_runtime_array_iteration_test: OK"
+# wbuild: step="bin/javascript_runtime_array_iteration_test memory-own" expect_stdout="javascript_runtime_array_iteration_test: OK"
+# wbuild: step="bin/javascript_runtime_array_iteration_test memory-async" expect_stdout="javascript_runtime_array_iteration_test: OK"
 import lib.assert
 import lib.args
 import libs.extras.javascript.runtime
@@ -134,15 +136,62 @@ void test_iteration_host():
 	js_runtime_free(rt)
 	__w_list_free(cast(__w_list*, state.log))
 
+# These programs share top-level bindings across checkpoints, unlike the
+# isolated expression cases above. GC between async suspension and resume
+# must retain both callbacks' original value/index/object argument records.
+void iteration_checkpoint(js_runtime* rt, char* source):
+	js_completion* result = js_runtime_eval(rt, source, strlen(source), 30000)
+	if (result.status != 0 || result.value.number != 1.0):
+		println(source)
+		println(result.message)
+	assert_equal(0, result.status)
+	assert1(result.value.number == 1.0)
+
+void test_iteration_own_data():
+	js_runtime* rt = js_runtime_new()
+	iteration_checkpoint(rt, c"let setter=function(){throw 73;};true;")
+	js_text* key = js_runtime_key(c"0")
+	assert1(js_runtime_define_accessor(rt, rt.array_prototype, key, 0, js_runtime_get(rt, rt.global, c"setter"), 1, 1))
+	iteration_checkpoint(rt, c"let mapped=Array.prototype.map.call({'0':7,length:1},x=>x+1);let filtered=Array.prototype.filter.call({'0':9,length:1},()=>true);mapped[0]===8 && filtered[0]===9;")
+	js_value* mapped = js_runtime_get(rt, rt.global, c"mapped")
+	js_value* filtered = js_runtime_get(rt, rt.global, c"filtered")
+	js_value* property = js_runtime_property(mapped, key)
+	assert1(property != 0 && property.writable && property.enumerable && property.configurable && property.accessor == 0)
+	property = js_runtime_property(filtered, key)
+	assert1(property != 0 && property.writable && property.enumerable && property.configurable && property.accessor == 0)
+	assert_equal(1, mapped.array_length)
+	assert_equal(1, filtered.array_length)
+	js_text_free(key)
+	js_runtime_free(rt)
+
+void test_iteration_async():
+	js_runtime* rt = js_runtime_new()
+	iteration_checkpoint(rt, c"let calls='';let gateResolve;const gate=new Promise(r=>{gateResolve=r;});const promises=[10,20].map(async function(v,i,o){calls+=i;await gate;return v+i+o.length;});let a=0;let b=0;promises[0].then(x=>{a=x;});promises[1].then(x=>{b=x;});calls==='01' && a===0 && b===0;")
+	assert_equal(2, rt.async_tasks.length)
+	js_runtime_collect(rt)
+	iteration_checkpoint(rt, c"gateResolve(1);a===0 && b===0;")
+	assert_equal(0, js_runtime_drain_microtasks(rt, 30000).status)
+	iteration_checkpoint(rt, c"a===12 && b===23;")
+	assert_equal(0, rt.async_tasks.length)
+	assert_equal(0, rt.async_stack_bytes)
+	assert_equal(0, rt.async_root_count)
+	# Synchronous predicate methods test the returned promise's truthiness;
+	# they must not await an async callback's eventual false result.
+	iteration_checkpoint(rt, c"[1,2].filter(async()=>false).length===2 && [1].every(async()=>false) && [1].find(async()=>false)===1;")
+	assert_equal(0, js_runtime_drain_microtasks(rt, 30000).status)
+	js_runtime_free(rt)
+
 int main(int argc, int argv):
 	args_init(argc, argv)
 	if (argc > 1): malloc_force_debug_mode()
-	if (argc == 1 || strcmp(args_get(1), c"memory-host") != 0):
+	if (argc == 1 || strcmp(args_get(1), c"memory-host") != 0 && strcmp(args_get(1), c"memory-own") != 0 && strcmp(args_get(1), c"memory-async") != 0):
 		if (argc > 1): iteration_group = args_get(1)[7] - 'a'
 		test_iteration()
 	if (argc == 1 || strcmp(args_get(1), c"memory-host") == 0):
 		iteration_group = -1
 		test_iteration_host()
+	if (argc == 1 || strcmp(args_get(1), c"memory-own") == 0): test_iteration_own_data()
+	if (argc == 1 || strcmp(args_get(1), c"memory-async") == 0): test_iteration_async()
 	if (argc > 1): assert_equal(0, debug_alloc_report_leaks())
 	println(c"javascript_runtime_array_iteration_test: OK")
 	return 0
