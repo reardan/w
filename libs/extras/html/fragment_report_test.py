@@ -43,6 +43,24 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(result["evidence"]["changed_during_execution"], ["driver binary"])
             self.assertTrue(all(r["observed_status"] == "FAIL" for r in result["results"]))
 
+    def test_modern_missing_binary_keeps_entire_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.json"
+            run = subprocess.run([sys.executable, str(ROOT / "fragment_upstream.py"),
+                                  str(Path(directory) / "missing"), "--profile", "modern-select",
+                                  "--gate", "select-context", "--report", str(report)],
+                                 capture_output=True, timeout=10)
+            self.assertEqual(run.returncode, 1)
+            result = json.loads(report.read_text())
+            self.assertEqual(result["total"], 1968)
+            self.assertEqual(result["selected"], 81)
+            self.assertEqual(result["counts"]["ERROR"], 81)
+            self.assertEqual(result["variant_counts"]["ERROR"], 162)
+            self.assertEqual(result["counts"]["NOT_RUN"], 1887)
+            self.assertEqual(result["gate"]["cases"], 4)
+            self.assertFalse(result["gate"]["passed"])
+            self.assertEqual(len(result["results"]), 81)
+
     def test_missing_binary_keeps_all_cases(self):
         with tempfile.TemporaryDirectory() as directory:
             report = Path(directory) / "report.json"

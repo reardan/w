@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/web-platform-tests/wpt",
+  "revision": "6d4552a8b1057e42a180119d70273f563e53a264",
+  "files": {
+    "modern/tests_innerHTML_1.dat": {
+      "path": "html/syntax/parsing/resources/tests_innerHTML_1.dat",
+      "sha256": "acb9f835119e302d33204f437d54637a84ae26608ccb7bc961c6f7f44202a44c"
+    },
+    "modern/LICENSE.md": {
+      "path": "LICENSE.md",
+      "sha256": "5fac07febb0e2a97fb0d7b0def149ec08b642e1ba4b9c345283ab1cbd2af6570"
+    }
+  },
+  "total_cases": 81,
+  "gate_context": "select",
+  "gate_cases": 4,
+  "scope": "Native tree-output comparisons of unchanged WPT resource data, not real browser WPT execution. Whole fixture admitted; nonselect failures retained.",
+  "normative_html": {
+    "immutable_url": "https://html.spec.whatwg.org/commit-snapshots/1ea5faabf97bb6735dadd7919425cffce0c75dba/",
+    "revision": "1ea5faabf97bb6735dadd7919425cffce0c75dba",
+    "sha256": "fe1d477a075fd6d354799e9a2521bdab1c694aecb3f72e2e647f17db221fd8ee"
+  },
+  "algorithm_ids": [
+    "parsing-main-inbody",
+    "parsing-html-fragments",
+    "reset-the-insertion-mode-appropriately",
+    "generate-implied-end-tags",
+    "has-an-element-in-scope"
+  ]
+}
