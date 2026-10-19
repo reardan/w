@@ -20,6 +20,8 @@ struct mm_primitive:
 	list[int] points
 	mm_style style
 	int node_style
+	# Optional owned hyperlink for SVG text; native renderers ignore it.
+	char* href
 
 struct mm_bounds:
 	int x
@@ -91,6 +93,7 @@ void mm_scene_free(mm_scene* s):
 	for mm_primitive* p in s.items:
 		if (p.points != 0): __w_list_free(cast(__w_list*, p.points))
 		free(p.text)
+		if (p.href != 0): free(p.href)
 		free(p)
 	for mm_bounds* b in s.nodes: free(b)
 	__w_list_free(cast(__w_list*, s.items))
@@ -207,13 +210,19 @@ char* mm_svg(mm_scene* scene):
 				else: string_append_char(out, ' ')
 			string_append(out, c"\"/>\n")
 		else:
+			if (p.href != 0):
+				string_append(out, c"<a href=\"")
+				mm_xml(out, p.href)
+				string_append(out, c"\">")
 			string_append(out, c"<text font-family=\"monospace\" font-size=\"13\"")
 			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x", p.x)
 			mm_svg_number(out, c"y", p.y + 13)
 			string_append_char(out, '>')
 			mm_xml(out, p.text)
-			string_append(out, c"</text>\n")
+			string_append(out, c"</text>")
+			if (p.href != 0): string_append(out, c"</a>")
+			string_append_char(out, 10)
 	string_append(out, c"</g></svg>\n")
 	char* result = out.data
 	free(out)

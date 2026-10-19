@@ -74,6 +74,21 @@ char* mm_source_title(mm_document* d, int start, int end):
 				break
 	return value
 
+# Narrow hook for `config: kanban: ticketBaseUrl: '...#TICKET#...'`.
+void mm_source_kanban(mm_document* d, char* line, int at, int end, int pos):
+	int colon = index_of(line, c":")
+	if (colon < 0):
+		mm_error(d, pos, c"kanban setting requires colon")
+		return
+	char* key = str_copy_range(line, 0, colon)
+	if (strcmp(key, c"ticketBaseUrl") != 0): mm_error(d, pos, c"unsupported kanban setting; supported: ticketBaseUrl")
+	else if (d.ticket_base_url != 0): mm_error(d, pos, c"duplicate ticketBaseUrl")
+	else:
+		char* value = mm_source_title(d, at + colon + 1, end)
+		if (index_of(value, c"https://") != 0 && index_of(value, c"http://") != 0): mm_error(d, pos, c"ticketBaseUrl must be an http or https URL")
+		d.ticket_base_url = value
+	free(key)
+
 void mm_source_frontmatter(mm_document* d):
 	int pos = d.source_start
 	int end = mm_source_line_end(d, pos, d.source_end)
@@ -93,6 +108,8 @@ void mm_source_frontmatter(mm_document* d):
 	int bits_seen = 0
 	int order_seen = 0
 	int layout_seen = 0
+	int kanban = 0
+	int kanban_seen = 0
 	mm_style custom
 	custom.mask = 0
 	custom.fill = 0
@@ -119,7 +136,15 @@ void mm_source_frontmatter(mm_document* d):
 			int at = pos
 			while (at < end && d.source[at] == 32): at = at + 1
 			int indent = at - pos
-			if (indent == 0 && index_of(line, c"title:") == 0):
+			if (indent <= 2 && strcmp(line, c"kanban:") != 0): kanban = 0
+			if (config && indent == 2 && strcmp(line, c"kanban:") == 0):
+				if (kanban_seen): mm_error(d, pos, c"duplicate kanban configuration")
+				kanban_seen = 1
+				kanban = 1
+				packet = 0
+				variables = 0
+			else if (config && kanban && indent == 4): mm_source_kanban(d, line, at, end, pos)
+			else if (indent == 0 && index_of(line, c"title:") == 0):
 				config = 0
 				variables = 0
 				packet = 0
