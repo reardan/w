@@ -705,6 +705,12 @@ int global_address_initializer(char* name, int cell, int type):
 	if (target_isa == 2): error(c"address initializers for globals are not supported on the wasm target")
 	if (t >= 0):
 		get_token()
+		if (peek(c"(")):
+			# 'int g = f()' is a call, not an address: report it as the
+			# non-constant initializer it is.
+			diag_part(c"initializer for global '")
+			diag_part(name)
+			error3(c"' must be a compile-time constant, got '", sym_record_name(t), c"'")
 		if (table[t + 1] != 'D'):
 			if (data_split == 0): error3(c"function '", sym_record_name(t), c"' must be defined before a global initializer takes its address")
 			if (cast(int, global_address_cells) == 0):
