@@ -17,6 +17,12 @@ void html_fixture_output(html_node* node, int depth):
 			print(c"\"")
 			print(node.text)
 			println(c"\"")
+		else if (node.kind == HTML_PROCESSING_INSTRUCTION):
+			print(c"<?")
+			print(node.name)
+			print(c" ")
+			print_write(1, node.text, node.text_length)
+			println(c"?>")
 		else if (node.kind == HTML_DOCTYPE):
 			print(c"<!DOCTYPE ")
 			int start = 0
