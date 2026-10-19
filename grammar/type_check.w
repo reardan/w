@@ -199,9 +199,28 @@ void check_void_pointer_conversion(char* context, char* callee_name, int arg_ind
 	type_error(c"' without cast() [void-pointer-conversion]")
 
 
+# A checked slice's length counts elements of one exact type. A warning
+# cannot permit a different width or nominal record, even when a caller
+# falls back to the streaming parser before retaining its checked call.
+void check_checked_slice_conversion(char* context, char* callee_name, int arg_index, int want, int got):
+	if ((type_safe_used == 0) || (type_is_safe_slice(want) == 0)): return
+	got = type_unqualified(got)
+	if (type_is_array(got) || type_is_slice(got)):
+		int wanted = type_unqualified(type_get_element_type(want))
+		int actual = type_unqualified(type_get_element_type(got))
+		if (wanted == actual): return
+	conversion_context(context, callee_name, arg_index)
+	diag_part(c" has incompatible checked slice types: expected '")
+	print_error_type(want)
+	diag_part(c"', got '")
+	print_error_type(got)
+	type_error(c"'")
+
+
 # Whether check_value_conversion can report want <- got for some value:
 # lets the AST front end skip recording the common conversions.
 int conversion_check_relevant(int want, int got):
+	if (type_safe_used && type_is_safe_slice(want)): return 1
 	int w = type_unqualified(want)
 	if (w < 0): return 0
 	if (type_get_pointer_level(w) == 0):
@@ -213,6 +232,7 @@ int conversion_check_relevant(int want, int got):
 
 # Every conversion check for one conversion site.
 void check_value_conversion(char* context, char* callee_name, int arg_index, int want, int got):
+	check_checked_slice_conversion(context, callee_name, arg_index, want, got)
 	check_constant_narrowing(context, callee_name, arg_index, want, got)
 	check_enum_conversion(context, callee_name, arg_index, want, got)
 	check_void_pointer_conversion(context, callee_name, arg_index, want, got)
