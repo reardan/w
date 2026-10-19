@@ -99,7 +99,7 @@ void test_equality_getters():
 
 void test_equality_limits():
 	js_runtime* rt = js_runtime_new()
-	equality_eval(rt, c"({})==1;", 6)
+	equality_eval(rt, c"!(({})==1);", 0)
 	equality_eval(rt, c"[]=='';", 6)
 	equality_eval(rt, c"new Uint8Array(1)==0;", 6)
 	equality_eval(rt, c"let explicit={valueOf:0,toString:undefined};let caught=false;try{explicit==0;}catch(e){caught=e.name==='TypeError';}caught;", 0)

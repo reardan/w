@@ -119,7 +119,7 @@ void string_coercion_limits():
 	rt.max_depth = 24
 	string_coercion_eval(rt, c"let o={toString:function(){return String(o);}};String(o);", 5)
 	string_coercion_eval(rt, c"let e=new Error();e.name=e;String(e);", 5)
-	string_coercion_eval(rt, c"String({});", 6)
+	string_coercion_eval(rt, c"String({})==='[object Object]';", 0)
 	string_coercion_eval(rt, c"String(/a/);", 6)
 	string_coercion_eval(rt, c"String(new Uint8Array(1));", 6)
 	# Deliberately primitive-only helper still rejects objects for other APIs.

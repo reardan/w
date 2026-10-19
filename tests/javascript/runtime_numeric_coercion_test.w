@@ -40,7 +40,7 @@ void test_numeric_order():
 	numeric_eval(rt, c"let caught=0;try{bad|later;}catch(e){caught=e;}caught===4 && count===0;", 0)
 	numeric_eval(rt, c"let big={valueOf:function(){return 1n;}};let thrown=0;true;", 0)
 	numeric_eval(rt, c"try{big&bad;}catch(e){thrown=e;}thrown===4;", 0)
-	numeric_eval(rt, c"({})|1;", 6)
+	numeric_eval(rt, c"(({})|1)===1;", 0)
 	numeric_eval(rt, c"let recursive={valueOf:function(){return recursive|0;}};true;", 0)
 	rt.max_depth = 20
 	numeric_eval(rt, c"recursive|0;", 5)

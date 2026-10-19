@@ -47,7 +47,7 @@ void test_add_objects():
 	addition_eval(rt, c"let stopped=0;let bad={valueOf:function(){throw 7;}};let later={valueOf:function(){stopped++;return 1;}};true;", 0)
 	addition_eval(rt, c"let caught=0;try{bad+later;}catch(e){caught=e;}caught===7 && stopped===0;", 0)
 	addition_eval(rt, c"({valueOf:function(){return {};},toString:function(){return {};}})+1;", 2)
-	addition_eval(rt, c"({})+'x';", 6)
+	addition_eval(rt, c"({})+'x'==='[object Object]x';", 0)
 	addition_eval(rt, c"new Error('detail')+''==='Error: detail';", 0)
 	js_runtime_free(rt)
 

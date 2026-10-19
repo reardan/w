@@ -38,6 +38,7 @@ struct js_value:
 	int writable
 	int enumerable
 	int configurable
+	int extensible
 	void* host_context
 	int host_get
 	int host_set
@@ -104,6 +105,7 @@ struct js_runtime_label:
 
 
 struct js_runtime:
+	js_value* object_prototype
 	js_value* regexp_prototype
 	int regexp_units
 	js_value* array_prototype
@@ -149,6 +151,7 @@ struct js_runtime:
 
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
+void js_runtime_install_object(js_runtime* rt);
 void js_runtime_install_array(js_runtime* rt);
 void js_runtime_install_function(js_runtime* rt);
 js_value* js_function_bound(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
@@ -251,6 +254,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.immutable = 0
 	value.initialized = 1
 	value.prototype = 0
+	if (kind == 5): value.prototype = rt.object_prototype
 	if (kind == 6): value.prototype = rt.array_prototype
 	if (kind == 7 || kind == 9): value.prototype = rt.function_prototype
 	value.getter = 0
@@ -259,6 +263,7 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.writable = 1
 	value.enumerable = 1
 	value.configurable = 1
+	value.extensible = 1
 	value.host_context = 0
 	value.host_get = 0
 	value.host_set = 0
@@ -338,6 +343,7 @@ int js_runtime_put(js_runtime* rt, js_value* object, js_text* key, js_value* val
 		return 0
 	js_value* property = js_runtime_property(object, key)
 	if (property == 0):
+		if (object.extensible == 0): return 0
 		if (object.properties.length >= rt.max_properties):
 			js_runtime_fail(rt, 5, c"JavaScript property limit")
 			return 0
@@ -419,6 +425,9 @@ js_runtime* js_runtime_new():
 	rt.async_stack_bytes = 0
 	rt.max_async_roots = 1000000
 	rt.async_root_count = 0
+	rt.object_prototype = 0
+	rt.array_prototype = 0
+	rt.string_prototype = 0
 	rt.regexp_prototype = 0
 	rt.regexp_units = 0
 	rt.microtasks = new list[js_value*]
@@ -463,6 +472,7 @@ js_runtime* js_runtime_new():
 	for i in range(rt.global.properties.length):
 		rt.global.properties[i].immutable = 1
 		rt.global.properties[i].lexical_binding = 1
+	rt.object_prototype = js_runtime_alloc(rt, 5)
 	js_runtime_install_function(rt)
 	js_runtime_install_promises(rt)
 	js_runtime_install_binary(rt)
@@ -477,6 +487,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_classes(rt)
 	js_runtime_install_string_case(rt)
 	js_runtime_install_json(rt)
+	js_runtime_install_object(rt)
 	return rt
 
 
@@ -526,6 +537,7 @@ int js_runtime_collect(js_runtime* rt):
 	if (rt.running): return -1
 	list[js_value*] pending = new list[js_value*]
 	js_runtime_mark(pending, rt.promise_constructor)
+	js_runtime_mark(pending, rt.object_prototype)
 	js_runtime_mark(pending, rt.error_prototype)
 	js_runtime_mark(pending, rt.reference_error_prototype)
 	js_runtime_mark(pending, rt.promise_prototype)
@@ -829,6 +841,8 @@ int js_runtime_object(js_value* value):
 int js_runtime_set_prototype(js_runtime* rt, js_value* object, js_value* prototype):
 	if (js_runtime_object(object) == 0 || object.owner != rt): return 0
 	if (prototype != 0 && (js_runtime_object(prototype) == 0 || prototype.owner != rt)): return 0
+	if (object.prototype == prototype): return 1
+	if (object.extensible == 0): return 0
 	js_value* current = prototype
 	int depth = 0
 	while (current != 0):
@@ -1021,6 +1035,7 @@ int js_runtime_write_receiver(js_runtime* rt, js_value* object, js_text* key, js
 			if (property.writable == 0): return 0
 			break
 		current = current.prototype
+	if (js_runtime_object(receiver) == 0): return 0
 	js_value* own = js_runtime_property(receiver, key)
 	if (own != 0 && (own.accessor || own.writable == 0)): return 0
 	return js_runtime_put(rt, receiver, key, value)
@@ -1860,3 +1875,5 @@ import libs.extras.javascript.runtime_addition
 import libs.extras.javascript.runtime_numeric
 
 import libs.extras.javascript.runtime_sequence
+
+import libs.extras.javascript.runtime_object
