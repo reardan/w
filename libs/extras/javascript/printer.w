@@ -249,8 +249,16 @@ int js_print_expression(string_builder* out, js_node* node, pg_diagnostics* diag
 			else:
 				if (utf8_validate_bytes(property.text, strlen(property.text)) == 0): return js_print_error(diagnostics, property)
 				js_print_quoted(out, property.text)
-			string_append(out, c": ")
-			if (js_print_expression(out, property.children[0], diagnostics) == 0): return 0
+			js_node* value = property.children[0]
+			if (js_kind(value, c"method")):
+				if (value.children.length != 2 || js_kind(value.children[0], c"parameters") == 0 || js_kind(value.children[1], c"block") == 0): return js_print_error(diagnostics, value)
+				string_append(out, c"(")
+				if (js_print_expression_list(out, value.children[0], 0, diagnostics) == 0): return 0
+				string_append(out, c") ")
+				if (js_print_statement(out, value.children[1], 0, diagnostics) == 0): return 0
+			else:
+				string_append(out, c": ")
+				if (js_print_expression(out, value, diagnostics) == 0): return 0
 		string_append(out, c"})")
 		return 1
 	if (js_kind(node, c"template")):

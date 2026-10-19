@@ -28,6 +28,16 @@ int js_function_append(js_runtime* rt, list[js_value*] target, list[js_value*] s
 # Shared construction dispatch lets bound functions forward native constructors
 # while preserving the ordinary/class new-target receiver path.
 js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target):
+	if (callable == 0 || new_target == 0 || callable.owner != rt || new_target.owner != rt || js_function_constructable(rt, callable) == 0 || js_function_constructable(rt, new_target) == 0):
+		js_runtime_fail(rt, 2, c"construction requires owned constructors")
+		return rt.undefined_value
+	if (args.length > rt.max_properties):
+		js_runtime_fail(rt, 5, c"JavaScript constructor argument limit")
+		return rt.undefined_value
+	for i in range(args.length):
+		if (args[i] == 0 || args[i].owner != rt):
+			js_runtime_fail(rt, 2, c"foreign constructor argument")
+			return rt.undefined_value
 	if (callable.bound_target != 0): return js_function_bound(rt, callable, args, new_target)
 	if (js_class_is_constructor(callable)): return js_class_construct(rt, callable, args, new_target)
 	if (new_target != callable):

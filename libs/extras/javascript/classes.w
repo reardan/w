@@ -40,11 +40,13 @@ js_value* js_class_evaluate(js_runtime* rt, js_node* node, js_value* env):
 	if (rt.completion.status != 0): return rt.undefined_value
 	int derived = js_kind(node.children[0], c"empty") == 0
 	js_value* base = 0
-	js_value* parent_prototype = 0
+	js_value* parent_prototype = rt.object_prototype
 	if (derived):
 		base = js_runtime_eval_node(rt, node.children[0], scope)
 		if (rt.completion.status != 0): return rt.undefined_value
-		if (base.kind == 1): base = 0
+		if (base.kind == 1):
+			base = 0
+			parent_prototype = 0
 		else:
 			if (js_class_is_constructor(base) == 0):
 				if (base.kind == 7 || base.kind == 9): js_runtime_fail(rt, 6, c"class heritage constructor is outside the runtime subset")
@@ -109,10 +111,10 @@ js_value* js_class_construct(js_runtime* rt, js_value* callable, list[js_value*]
 	rt.depth = rt.depth + 1
 	js_value* result = rt.undefined_value
 	if (callable.error_constructor):
-		result = js_runtime_call_receiver(rt, callable, rt.undefined_value, args)
+		js_value* prototype = js_runtime_get(rt, new_target, c"prototype")
 		if (rt.completion.status == 0):
-			js_value* prototype = js_runtime_get(rt, new_target, c"prototype")
-			if (js_runtime_object(prototype)): result.prototype = prototype
+			result = js_runtime_call_receiver(rt, callable, rt.undefined_value, args)
+			if (rt.completion.status == 0 && js_runtime_object(prototype)): result.prototype = prototype
 	else if (callable.code == 0 && callable.class_kind == 2):
 		result = js_class_construct(rt, callable.prototype, args, new_target)
 	else:

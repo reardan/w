@@ -169,6 +169,7 @@ void js_runtime_install_boxed(js_runtime* rt);
 void js_runtime_install_harness_math(js_runtime* rt);
 void js_runtime_install_harness_search(js_runtime* rt);
 void js_runtime_install_string_split(js_runtime* rt);
+void js_runtime_install_reflect_construct(js_runtime* rt);
 js_value* js_runtime_remainder(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_array_join(js_runtime* rt);
 js_value* js_object_prototype_method(void* runtime, void* context, js_value* receiver, list[js_value*] args);
@@ -217,6 +218,7 @@ js_value* js_runtime_await(js_runtime* rt, js_value* value);
 void js_runtime_install_json(js_runtime* rt);
 void js_runtime_install_classes(js_runtime* rt);
 void js_class_declare(js_runtime* rt, js_node* node, js_value* env, int mode);
+void js_class_define(js_runtime* rt, js_value* object, char* name, js_value* value, int writable, int configurable);
 void js_class_reference_error(js_runtime* rt);
 js_value* js_class_evaluate(js_runtime* rt, js_node* node, js_value* env);
 int js_class_is_constructor(js_value* value);
@@ -546,6 +548,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_array_join(rt)
 	js_runtime_install_harness_search(rt)
 	js_runtime_install_string_split(rt)
+	js_runtime_install_reflect_construct(rt)
 	return rt
 
 
@@ -1619,7 +1622,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 			rt.empty = 1
 			return rt.undefined_value
 		return constructor
-	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow")): return js_runtime_function(rt, node, env)
+	if (js_kind(node, c"function_expression") || js_kind(node, c"arrow") || js_kind(node, c"method")): return js_runtime_function(rt, node, env)
 	if (js_kind(node, c"function")):
 		rt.empty = 1
 		return rt.undefined_value
@@ -1765,7 +1768,9 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 					if (binding == 0): value = js_global_read(rt, property.text)
 					else if (binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 					else: value = js_runtime_binding_value(rt, binding)
-				else: value = js_runtime_eval_node(rt, property.children[0], env)
+				else:
+					value = js_runtime_eval_node(rt, property.children[0], env)
+					if (rt.completion.status == 0 && js_kind(property.children[0], c"method")): js_class_define(rt, value, c"name", js_runtime_string(rt, key), 0, 1)
 			if (rt.completion.status == 0):
 				if (kind == 5): js_runtime_define_data(rt, object, key, value, 1, 1, 1)
 				else: js_runtime_member_write(rt, object, key, value)
@@ -2007,3 +2012,5 @@ import libs.extras.javascript.runtime_remainder
 import libs.extras.javascript.runtime_harness_search
 
 import libs.extras.javascript.runtime_string_split
+
+import libs.extras.javascript.runtime_reflect_construct

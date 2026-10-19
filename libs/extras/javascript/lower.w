@@ -171,7 +171,7 @@ js_node* js_lower_object_property(pg_ast_node* node, pg_diagnostics* diagnostics
 			key = strclone(name.first_token.text)
 			property_kind = c"property_numeric"
 		js_node* property = js_node_new(property_kind, key)
-		js_node* method = js_node_new(c"function_expression", c"")
+		js_node* method = js_node_new(c"method", c"")
 		free(key)
 		js_node_add(property, method)
 		if (js_lower_add(method, parameters, diagnostics) && js_lower_add(method, js_cst_child(first, c"block"), diagnostics)): return property
