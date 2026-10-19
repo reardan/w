@@ -1,0 +1,25 @@
+{
+  "repository": "https://github.com/html5lib/html5lib-tests",
+  "revision": "9329e64694e7835d0dcff9811e22856ef6ad16f9",
+  "files": {
+    "tests4.dat": {
+      "path": "tree-construction/tests4.dat",
+      "sha256": "e6003a52e1cbffc361eca7c739cdd4459074ac8c59766d1eb171b9c9eb42f517"
+    },
+    "LICENSE": {
+      "path": "LICENSE",
+      "sha256": "ff512aac9ef231d504be5afaf4429005024e4b2aaf257be39524f37b8402aaf2"
+    },
+    "README.upstream.md": {
+      "path": "tree-construction/README.md",
+      "sha256": "5935c011ac581c8ab1e20e45bba6373c2a3975255017ec205dfcdb861f7c45c6"
+    }
+  },
+  "total_cases": 9,
+  "diagnostics": "Recorded upstream, not asserted yet; current parser diagnostics differ.",
+  "mandatory_remaining": [
+    "html context insertion mode",
+    "full tree-construction corpus",
+    "diagnostic recovery equivalence"
+  ]
+}

@@ -12,6 +12,7 @@ const int HTML_TEXT = 3
 const int HTML_COMMENT = 4
 const int HTML_DOCTYPE = 5
 const int HTML_DOCUMENT = 6
+const int HTML_FRAGMENT = 11
 
 struct html_limits:
 	int input_bytes
@@ -54,6 +55,8 @@ struct html_tokenizer:
 	int diagnostic_count
 	char* raw_name
 	int rcdata
+	int plaintext
+	int fragment_raw
 	html_limits limits
 	html_diagnostic* diagnostics
 	html_diagnostic* last_diagnostic
@@ -303,6 +306,8 @@ char* html_name(html_tokenizer* t, int start, int end):
 	return name
 
 int html_raw_end(html_tokenizer* t, int at):
+	# Fragment tokenization has no last emitted start tag at initialization.
+	if (t.fragment_raw): return 0
 	if (!html_match(t, at, c"</")): return 0
 	if (!html_match(t, at + 2, t.raw_name)): return 0
 	int after = at + 2 + strlen(t.raw_name)
@@ -368,6 +373,12 @@ html_token* html_tokenizer_next(html_tokenizer* t):
 		return token
 	t.count = t.count + 1
 	int start = t.position
+	if (t.plaintext):
+		t.position = t.length
+		token.kind = HTML_TEXT
+		token.text = html_decode(t, start, t.position, 0, &token.text_length)
+		token.end = t.position
+		return token
 	if (t.raw_name != 0):
 		if (html_raw_end(t, start)):
 			free(t.raw_name)
@@ -463,6 +474,7 @@ html_token* html_tokenizer_next(html_tokenizer* t):
 					tail = a
 			if ((t.position < t.length) && (t.source[t.position] == '>')): t.position = t.position + 1
 			else: html_report(t, start, t.position, c"EOF in tag")
+			if (!closing && (strcmp(token.name, c"plaintext") == 0)): t.plaintext = 1
 			if (!closing && (html_is_raw(token.name) || html_is_rcdata(token.name))):
 				t.raw_name = strclone(token.name)
 				t.rcdata = html_is_rcdata(token.name)
@@ -630,6 +642,85 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 
 html_document* html_parse(char* data, int length):
 	return html_parse_with_limits(data, length, 0)
+
+# Fragment contexts are HTML local names. Context and source are copied; no
+# borrowed context node survives this call. Full table/select/template/foreign
+# insertion modes remain explicit failures instead of returning a wrong tree.
+int html_fragment_context_supported(char* context):
+	if (context == 0): return 0
+	return (strcmp(context, c"div") == 0) || (strcmp(context, c"body") == 0) || (strcmp(context, c"head") == 0) || html_is_raw(context) || html_is_rcdata(context) || (strcmp(context, c"plaintext") == 0) || (strcmp(context, c"noscript") == 0)
+
+html_document* html_parse_fragment_with_limits(char* data, int length, char* context, int scripting, html_limits* limits):
+	html_document* doc = new html_document()
+	html_tokenizer* t = html_tokenizer_new(data, length, limits)
+	if (!html_fragment_context_supported(context)): html_stop(t, 0, c"unsupported HTML fragment context")
+	if (!t.failed):
+		doc.root = html_implied(doc, t, 0, c"#document-fragment", HTML_FRAGMENT)
+		if (strcmp(context, c"plaintext") == 0): t.plaintext = 1
+		if (html_is_raw(context) || html_is_rcdata(context) || (scripting && (strcmp(context, c"noscript") == 0))):
+			t.raw_name = strclone(context)
+			t.rcdata = html_is_rcdata(context)
+			t.fragment_raw = 1
+		html_node* current = doc.root
+		while (!t.failed):
+			html_token* token = html_tokenizer_next(t)
+			if ((token.kind == HTML_EOF) || t.failed):
+				html_token_free(token)
+				break
+			if (token.kind == HTML_START):
+				int ignored = (strcmp(token.name, c"html") == 0) || (strcmp(token.name, c"head") == 0) || (strcmp(token.name, c"body") == 0) || (strcmp(token.name, c"frameset") == 0)
+				if (ignored): html_report(t, token.start, token.end, c"document tag ignored in fragment")
+				else:
+					if (html_closes_p(token.name)):
+						html_node* p = html_ancestor(current, c"p")
+						if (p != 0): current = html_close(current, p, token.start)
+					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"option") == 0)):
+						html_node* n = current
+						while (n != doc.root):
+							int match = strcmp(n.name, token.name) == 0
+							if (((strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0)) && ((strcmp(n.name, c"dt") == 0) || (strcmp(n.name, c"dd") == 0))): match = 1
+							if (match):
+								current = html_close(current, n, token.start)
+								break
+							if ((strcmp(n.name, c"ul") == 0) || (strcmp(n.name, c"ol") == 0) || (strcmp(n.name, c"dl") == 0) || (strcmp(n.name, c"select") == 0)): break
+							n = n.parent
+					int is_void = html_void(token.name)
+					if (token.self_closing && !is_void): html_report(t, token.start, token.end, c"self-closing flag ignored on HTML element")
+					html_node* n = html_add_node(doc, t, current, token)
+					if ((n != 0) && !is_void): current = n
+			else if (token.kind == HTML_END):
+				html_node* match = html_ancestor(current, token.name)
+				if ((match == 0) || (match == doc.root) || html_void(token.name)): html_report(t, token.start, token.end, c"unmatched fragment end tag ignored")
+				else: current = html_close(current, match, token.end)
+			else if (token.kind == HTML_DOCTYPE): html_report(t, token.start, token.end, c"doctype ignored in fragment")
+			else:
+				# Tree construction coalesces adjacent character tokens.
+				html_node* previous = current.last_child
+				if ((token.kind == HTML_TEXT) && (previous != 0) && (previous.kind == HTML_TEXT)):
+					int size = __w_size_add(previous.text_length, token.text_length)
+					previous.text = cast(char*, __w_realloc(previous.text, previous.text_length + 1, __w_size_add(size, 1)))
+					for i in range(token.text_length): previous.text[previous.text_length + i] = token.text[i]
+					previous.text[size] = 0
+					previous.text_length = size
+					previous.end = token.end
+				else: html_add_node(doc, t, current, token)
+			html_token_free(token)
+			html_node* n = current
+			while (n != 0):
+				n.end = t.position
+				n = n.parent
+		doc.root.end = length
+	doc.failed = t.failed
+	doc.source = t.source
+	doc.source_length = t.length
+	doc.diagnostics = t.diagnostics
+	t.source = 0
+	t.diagnostics = 0
+	html_tokenizer_free(t)
+	return doc
+
+html_document* html_parse_fragment(char* data, int length, char* context, int scripting):
+	return html_parse_fragment_with_limits(data, length, context, scripting, 0)
 
 void html_document_free(html_document* doc):
 	if (doc == 0): return
