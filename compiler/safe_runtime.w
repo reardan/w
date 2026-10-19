@@ -41,7 +41,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/not_android.w")): return c"0b7879e15efa239e400be597aea6bf591c1348a81c35c76b2fe598a194903032"
 	if (ends_with(path, c"/lib/page_size.w")): return c"3bb1e2cc78bf4dea25ab2c2b59af56be951f5b8fbf8de281710c5ab866c7f572"
 	if (ends_with(path, c"/lib/safe_buffer.w")): return c"4b8efc51230de13849f81ec1dfbcf27cd995c1f2e0df9c09aa3a6caeea283b12"
-	if (ends_with(path, c"/lib/safe_thread.w")): return c"cd44769d6584aebb2191211e79c44e4a06c40b4c7502d5d27a610f405da7e7b4"
+	if (ends_with(path, c"/lib/safe_thread.w")): return c"aece9bfefb701d7fcc9e68d888a0140309d58db2adb028c9bd2973ec65bd6fa4"
 	if (ends_with(path, c"/lib/thread.w")): return c"5430e367b5acf2ac324a46294001ae9ebd426c9223130fa3bf2054bfdcaa6b89"
 	if (ends_with(path, c"/lib/signal.w")): return c"0b8751e18c25050a798d5e1e0db3e46d02f2af9ac59afbde2da0bb5e4f8b6f93"
 	if (ends_with(path, c"/lib/assert.w")): return c"56820763fe87be4f94c1212ac3d4badfc28baf6598137477e14ccdde0159c9d4"

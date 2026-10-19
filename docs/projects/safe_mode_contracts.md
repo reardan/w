@@ -562,7 +562,9 @@ requires shareable `T`. Owners, arrays and record fields recurse in the same
 mode. Callable fields are static code addresses. Audited opaque storage is
 transferable and shareable: it is uniquely owned, any thread may free it
 (`lib/thread_heap.w` remote frees), and no audited operation mutates it
-through a shared reference. Anything else is rejected, including raw
+through a shared reference. The synchronized types are the exceptions; see
+[Synchronization and memory ordering](#synchronization-and-memory-ordering).
+Anything else is rejected, including raw
 pointers, unions, containers and unknown resources.
 
 Explicit opt-outs are nominal records defined in the pinned
@@ -629,3 +631,198 @@ contract is an argument from the existing `lib/thread.w` review, not a
 formal proof. Independent review of the memory-ordering argument is still an
 acceptance gate of #699. Stress tests would add evidence, not prove the
 absence of races.
+
+
+## Synchronization and memory ordering
+
+This section is the reviewable argument for #699 deliverable 4. It covers
+the lifetime rules that keep the mutex payload inside critical sections and
+the x86/x64 lowering of each admitted atomic ordering. The runtime tests in
+`tests/safe_sync_runtime_test.w` add evidence; they are not a substitute for
+reviewing this argument. Like the rest of the thread runtime it applies to
+Linux x86 and x64 only, where hardware follows x86-TSO.
+
+### Guard lifetimes in the checker
+
+The mutex, guard and atomic are nominal records of the pinned
+`lib/safe_thread.w` (`safe_sync_record`). They are opaque in the same way as
+`WSafeThread`. Field projections, partial moves, field replacement, `new`
+and plain construction are all rejected, so checked code reaches the payload
+only through `safe_guard_value`. The audited runtime is a fixed set of calls
+(`safe_runtime_call`).
+
+`safe_mutex_lock(ref[a] WSafeMutex*) -> own[a] WSafeGuard*` reuses mixed
+owner provenance. `WSafeGuard` declares a single `ref[held]` group, so the
+returned owner retains the mutex's shared borrow through moves, owner fields
+and returns, exactly as other mixed owners do. Two rules close the gaps that
+ordinary mixed owners do not need, because dropping an ordinary mixed owner
+never reads its borrowed data:
+
+1. **A guard's drop is a use.** `safe_guard_drop` marks every local whose
+   owned graph reaches a guard. Liveness adds a use of each such local at
+   every block cleanup event of a block that contains it, at every return
+   capture and at the function end. A move, consumption, replacement or
+   destruction of the mutex root while the guard may still be dropped is then
+   a write that conflicts with a live borrow. `safe_access` normally skips
+   borrowers that might already have been moved. For guard locals it
+   considers any state that is possibly initialized, because a guard
+   released on one path is still dropped on another.
+2. **A mutex scope cannot end under an outliving guard.** When a block's
+   cleanup ends a root, the ordinary rule kills borrowers of that root.
+   For a possibly initialized guard local declared outside the block, that is
+   instead an error (`lock guard outlives the mutex it borrows`). Its later
+   drop would otherwise unlock freed memory.
+
+Guard owners must be labeled. The owned-shape walk stops treating a guard as
+plain opaque storage, and `safe_type_check` rejects `own WSafeGuard*`.
+Otherwise an unlabeled owner would carry no borrow. The view
+`safe_guard_value(refmut[a] WSafeGuard*) -> refmut[a] int*` uses the existing
+returned-reference contract: the view borrows the guard, so the guard
+cannot be unlocked, moved or dropped while the view is live. Rule 1 makes the
+guard's scope-exit drop an access too. Thread eligibility rejects a guard in
+both detached and scoped modes, at any depth. Unlocking therefore always
+happens on the locking thread, as `lib/thread.w`'s mutex requires. A mutex
+is examined in detached mode with sharing cleared: it is shareable whenever
+its payload is transferable. Atomics stay sealed opaque storage that is both
+transferable and shareable.
+
+The mutex payload is consumed by `safe_mutex_new`, which clears the
+parameter slot as `safe_thread_spawn` does. The ordinary recursive owner
+drop frees it once, before the mutex allocation. A guard owner is the
+mutex's own address, never a separate allocation, and its audited destructor
+`__w_safe_guard_drop` only unlocks. `safe_guard_unlock` is an empty function;
+its own parameter cleanup is the unlock.
+
+### Mutex: exclusion and happens-before
+
+`WSafeMutex.lock` is `lib/thread.w`'s three-state futex `wmutex` (Drepper,
+"Futexes Are Tricky"). Every state change is a `lock cmpxchg` or `lock xadd`,
+except the contended unlock's plain `word = 0` store, which follows its
+`lock xadd` in program order. Exclusion: a thread holds the lock only after a
+`cmpxchg` that observed 0, and locked instructions have a single total order.
+`safe_mutex_try_lock` is the same `0 -> 1` `cmpxchg` without waiting.
+
+Happens-before between holders: the critical section's payload stores
+precede the unlock's `lock xadd`, a full barrier, in program order. Under
+TSO, stores become visible in program order, so they are visible before
+the `0` that the next holder's `lock cmpxchg` observes. That observation
+comes either from the `xadd` (`1 -> 0`) or from the later plain store
+(`2 -> 1 -> 0`). The `lock cmpxchg` is itself a full barrier, so the new
+holder's later loads cannot be satisfied early. Payload accesses therefore
+form a total order consistent with the lock order, and the payload has no
+data race.
+
+Each payload access is inside a critical section. Accesses go only through
+a view. A view is live only while its guard is (checker rule above), and a
+guard exists only between its `mutex_lock` and its unlock on one thread.
+The compiler keeps payload accesses on the correct side of lock and unlock.
+They are loads and stores through a `refmut int*`, not promoted locals.
+Lock and unlock are out-of-line calls in the pinned runtime. Under
+`--inline`, the atomic intrinsics still spill parked values and clear
+folding notes (`atomic_notes_reset`). Any future optimizer must treat these
+calls as acquire/release boundaries.
+
+Destruction and the final wake: the contended unlock calls `futex_wake` on
+the mutex word after releasing it. The mutex cannot be freed in between.
+Only its owner can drop it. Another thread reaches it only through a
+fork-join borrow, which lasts until that thread's entry returns, after its
+guard drop has finished. A detached thread reaches it only by owning it.
+
+Deadlock (re-locking on one thread, lock-order inversion) is possible and is
+not a memory-safety violation.
+
+### Atomics: x86-TSO lowering
+
+`WSafeAtomic.value` is a heap word at offset 0. All allocators (free-list,
+per-thread heaps, `W_DEBUG_ALLOC`) return 8-byte-aligned blocks, so the word
+is naturally aligned and every full-width `mov` and locked operation on it is
+single-copy atomic. Checked code cannot address the word except through the
+calls below, so every access to a given atomic uses this mapping. The
+mapping is the standard C++11 mapping for x86 with a trailing fence. Its
+correctness for x86-TSO is established in the literature: Batty, Owens,
+Sarkar, Sewell and Weber, *Mathematizing C++ Concurrency*, POPL 2011, and the
+Cambridge "C/C++11 mappings to processors" table.
+
+| Operation and order | x86/x64 code |
+| --- | --- |
+| load `relaxed` | `mov` (`atomic_load_relaxed`) |
+| load `acquire`, `seq_cst` | `mov` (`atomic_load`) |
+| store `relaxed` | `mov` (`atomic_store_relaxed`) |
+| store `release` | `mov` (`atomic_store`) |
+| store `seq_cst` | `mov`, then `lock or [esp/rsp], 0` (`atomic_fence`) |
+| fetch_add, any order | `lock xadd` |
+| compare_exchange, any admitted pair | `lock cmpxchg` |
+
+Why each row is sufficient under TSO:
+
+- **Relaxed.** It needs only atomicity and per-location coherence. An
+  aligned word `mov` is atomic, and TSO is coherent per location.
+- **Release store.** TSO never reorders a store with earlier loads or
+  stores, so all prior accesses are visible before the `mov`. No fence is
+  needed.
+- **Acquire load.** TSO never reorders a load with later loads or stores,
+  so no later access can be satisfied before the `mov`. If it reads a
+  release store's value, the writer's earlier stores are already visible
+  (TSO stores are seen in one global order). The pair synchronizes.
+- **Read-modify-writes.** Locked instructions are atomic and act as full
+  barriers, which is at least `acq_rel` and `seq_cst` for every order. A
+  failed `cmpxchg` is still a locked full barrier, so every admitted failure
+  order holds. `release` and `acq_rel` failure orders are rejected
+  statically, because a failure performs no store (the C++ rule).
+- **Sequential consistency.** TSO's only relaxation is that a later load may
+  complete before an earlier store to another address is visible. A
+  `seq_cst` store is followed by a full fence, and every RMW is one, so no
+  `seq_cst` load can be reordered before a preceding `seq_cst` store.
+  `seq_cst` operations then take effect in program order within each thread
+  and in the single global store order across threads. Together these give
+  the one total order that `seq_cst` requires. `seq_cst` loads can stay
+  plain `mov`s only because every `seq_cst` store carries the fence. That
+  holds because the store code is fixed in the pinned runtime.
+- **Statically invalid orders.** A `release`/`acq_rel` load and an
+  `acquire`/`acq_rel` store have no C++ meaning and are rejected. The order
+  argument must name a `memory_order_*` constant from the pinned file
+  (`safe_memory_order`), so the checker sees the order of every call. The
+  runtime repeats the check and exits with an error for unchecked callers
+  that pass an invalid value.
+
+Compiler ordering: each intrinsic is emitted as its own instruction, after
+spilling parked expression values (`atomic_notes_reset`). It is never
+folded or treated as a constant, and the word is reached through a pointer
+argument, not a register-promoted local (`docs/projects/threads.md`,
+"Memory-order contract"). Calls into the runtime are further barriers to
+the current single-pass code generator.
+
+Not covered: ARM64, Windows and wasm targets (no checked thread runtime
+exists there), fences as a separate operation, atomics wider or narrower
+than the word, and shared ownership of an atomic or mutex between detached
+threads.
+
+### Validation
+
+`tests/safe_sync_test.w` checks each rule above as an accepted or rejected
+program, with and without `--safe`, on x86 and x64. The rejections cover:
+
+- views after unlock or scope end, and two live views;
+- shared-guard views and escaping views;
+- returned and owner-wrapped guards of local mutexes;
+- moving, consuming or replacing a mutex under a guard, including after a
+  conditional unlock;
+- an inner-block mutex under an outer guard, and unlabeled guard owners;
+- guards in spawn payloads, fork-join arguments and nested fields;
+- payload, guard and atomic field access, and fabricated mutexes and atomics;
+- every invalid or non-constant ordering, and raw helpers.
+
+`tests/safe_sync_runtime_test.w` runs in the default, `--safe`, `--no-regs
+--no-inline` and `--inline` modes on both widths. It covers:
+
+- lock release on return, `break`, `continue`, a `while` exit, early unlock,
+  replacement, absent try-lock and owner-held guards;
+- 8-thread fork-join mutex contention and 4-thread atomic contention (both
+  `fetch_add` and compare-exchange retry loops) with exact counts;
+- two spawned threads that each own a mutex and an atomic and run their own
+  contention trees while the parent contends on its own mutex;
+- release/acquire publication between two threads;
+- a second measured round under `W_DEBUG_ALLOC=1` that must leak nothing.
+
+Independent review of this section remains the #699 acceptance gate for
+deliverable 4. The tests cannot show that races are absent.
