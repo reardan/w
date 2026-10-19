@@ -61,7 +61,9 @@ native client library is missing.
 - **C8 history.** `<table>_history` tables written only by triggers, with
   `history_id/date/type/user_id/reason/context_id`; the context is published
   per transaction via `set_config('w_orm.context', ...)` on PostgreSQL and a
-  TEMP table `_w_orm_context` on SQLite.
+  TEMP table `_w_orm_context` on SQLite. `orm_db.on_begin` (an
+  `orm_begin_fn*`) runs after each outermost BEGIN; history uses it to
+  republish the transaction-local PostgreSQL context.
 - **orm_db** wraps the `sql_connection`, dialect, query counter (used by
   N+1 tests), atomic depth, on-commit callbacks, query log and last error.
   `orm_db_execute` / `orm_db_exec_sql` are the only paths to the database.
@@ -132,4 +134,5 @@ landed units are listed here as they merge.
 | U2.4 migration applier, DDL, `bin/orm` | [u2_4](orm/u2_4.md) | landed |
 | U3.1 users, groups, permissions | [u3_1](orm/u3_1.md) | landed |
 | U3.2 sessions, API tokens, CSRF, throttle | [u3_2](orm/u3_2.md) | landed |
+| U3.3 trigger-based history | [u3_3](orm/u3_3.md) | landed |
 | U3.4 serializers, filters, pagination | [u3_4](orm/u3_4.md) | landed |

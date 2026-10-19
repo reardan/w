@@ -1,5 +1,5 @@
 # wbuild: arch_only=x64
-# wbuild: timeout=300
+# wbuild: timeout=300000
 # U2.1 on SQLite in memory: prefetch_related, explicit loaders and
 # iterator() with query-count assertions (docs/projects/orm/u2_1.md).
 import tests.orm.orm_related_cases

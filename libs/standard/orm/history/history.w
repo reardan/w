@@ -170,6 +170,14 @@ int orm_history_publish(orm_db* db):
 	return ok
 
 
+# orm_db.on_begin while a context is set: PostgreSQL's transaction-local
+# set_config ends with each transaction, so every outermost BEGIN
+# republishes it. SQLite's TEMP row outlives transactions.
+int orm_history_on_begin(orm_db* db):
+	if (db.history_context == 0 || orm_history_is_pg(db) == 0): return 1
+	return orm_history_publish(db)
+
+
 # Sets the context with an explicit id (a request id, say). user_id <= 0
 # and reason 0 are stored as NULL. Returns 1, or 0 with orm_db_error set.
 int orm_history_set_context_id(orm_db* db, char* context_id, int user_id, char* reason):
@@ -189,6 +197,8 @@ int orm_history_set_context_id(orm_db* db, char* context_id, int user_id, char* 
 	if (db.history_context != 0): free(db.history_context)
 	db.history_context = b.data
 	free(cast(void*, b))
+	orm_begin_fn* hook = orm_history_on_begin
+	db.on_begin = hook
 	return orm_history_publish(db)
 
 
@@ -212,6 +222,7 @@ char* orm_history_set_context(orm_db* db, int user_id, char* reason):
 int orm_history_clear_context(orm_db* db):
 	if (db.history_context != 0): free(db.history_context)
 	db.history_context = 0
+	db.on_begin = 0
 	return orm_history_publish(db)
 
 

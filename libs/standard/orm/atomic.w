@@ -77,6 +77,15 @@ orm_atomic_block* orm_atomic_begin(orm_db* db):
 			orm_atomic_fail(db, c"orm: could not begin a transaction", sql_error(db.conn))
 			return 0
 		db.rollback_only = 0
+		if (db.on_begin != 0):
+			db.atomic_depth = 1
+			orm_begin_fn* hook = cast(orm_begin_fn*, db.on_begin)
+			int ok = hook(db)
+			db.atomic_depth = 0
+			if (ok == 0):
+				orm_atomic_count(db, c"ROLLBACK")
+				sql_rollback(db.conn)
+				return 0
 	else:
 		name = sql_savepoint_name(depth - 1)
 		orm_atomic_count(db, c"SAVEPOINT")

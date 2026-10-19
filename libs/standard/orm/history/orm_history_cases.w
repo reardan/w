@@ -219,6 +219,23 @@ void h_no_context(orm_db* db, orm_db* other, h_state* s):
 	assert_strings_equal(c"it's \"quoted\"", h_last(s.ivan.id, c"history_reason"))
 
 
+# A context set inside a transaction (transaction-local on PostgreSQL) is
+# republished by orm_db.on_begin at the next outermost BEGIN.
+void h_per_transaction(orm_db* db, h_state* s):
+	orm_atomic_block* b = orm_atomic_begin(db)
+	h_check(b != 0)
+	h_check(orm_history_set_context_id(db, c"tx-1", 5, c"in a transaction"))
+	h_exec(db, c"UPDATE library_book SET pages = 402 WHERE title = 'Ivanhoe'")
+	h_check(orm_atomic_commit(db, b))
+	assert_strings_equal(c"tx-1", h_last(s.ivan.id, c"history_context_id"))
+	b = orm_atomic_begin(db)
+	h_check(b != 0)
+	h_exec(db, c"UPDATE library_book SET pages = 403 WHERE title = 'Ivanhoe'")
+	h_check(orm_atomic_commit(db, b))
+	assert_strings_equal(c"tx-1", h_last(s.ivan.id, c"history_context_id"))
+	assert_strings_equal(c"5", h_last(s.ivan.id, c"history_user_id"))
+
+
 void h_read_diff(orm_db* db, h_state* s):
 	orm_result* r = Book_history(db, s.dune)
 	asserts(orm_db_error(db), r != 0)
@@ -364,5 +381,6 @@ void run_history_cases(orm_db* db, orm_db* other):
 	h_read_diff(db, s)
 	h_revert(db, s)
 	h_changeset(db, s)
+	h_per_transaction(db, s)
 	h_prune(db)
 	h_check(orm_history_clear_context(db))

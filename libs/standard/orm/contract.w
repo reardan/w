@@ -539,6 +539,13 @@ struct orm_db:
 	list[char*] query_log        # copies of executed SQL when log_queries
 	char* error                  # last ORM-level error (owned copy), "" when none
 	char* history_context        # C8: JSON context for the current transaction, or 0
+	void* on_begin               # orm_begin_fn* run after the outermost BEGIN, or 0
+
+
+# Called by orm_atomic_begin right after the outermost BEGIN (history
+# uses it to publish the transaction-local context). Returns 0 with
+# orm_db_error set to abort the block.
+type orm_begin_fn = fn(orm_db*) -> int
 
 
 orm_db* orm_db_new(sql_connection* conn, orm_dialect* dialect):
