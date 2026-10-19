@@ -27,6 +27,7 @@ tracked in the [ownership and borrowing roadmap](safe_mode_roadmap.md).
 | `refmut T*` | A non-null exclusive borrow; other access to the backing storage is suspended while it is live. |
 | `optref T*`, `optrefmut T*` | An optional shared/exclusive borrow; dereference requires a presence check. |
 | `ref T[]` | An immutable checked slice with an inline descriptor and a borrowed data lifetime. |
+| `refmut T[]` | An exclusive checked slice with writable elements and an inline descriptor. |
 | `ref[a] Record` | An inline struct value whose shared-reference fields borrow for one named lifetime. |
 | `refmut[a] Record` | An inline exclusive borrowed struct; copies are reborrows of its one lifetime group. |
 | `T*` | A legacy raw pointer; checked code may access it inside an explicit `unsafe:` block. |
@@ -867,10 +868,12 @@ ref[a] T* generic_view[T](ref[a] T* value):
 The result keeps the same backing roots as an ordinary reference-returning
 call. Generic syntax does not bypass the checker. Checked slices and borrowed
 records retain their concrete layouts and contracts in explicit and inferred
-calls, including generic method syntax. The existing unsupported `new T`
-allocation syntax in generic definitions retains its subsequent implementation
-gate. Function pointers use explicit quantified contracts; owned callback
-objects can pair them with an environment as described below.
+calls, including generic method syntax. Inside a specialization, `new T` and
+`new T(arguments)` resolve `T` through its active type substitution. Default
+allocation still requires a pointer-free sized value; record construction
+checks every concrete field, transfers owners once and preserves borrowed
+field lifetimes. Function pointers use explicit quantified contracts; owned
+callback objects can pair them with an environment as described below.
 
 ### Quantified function pointers
 
@@ -1058,10 +1061,19 @@ checking. A bound expression cannot invalidate the data being sliced. Bind
 a temporary view before indexing it or reading its length; direct scalar
 projections from unnamed temporaries remain rejected.
 
+`refmut T[]` uses the same inline descriptor ABI and borrows the backing
+storage exclusively. Its elements may be read and written. A shared reborrow
+temporarily freezes mutation until the shared view's last use; a shared slice
+cannot be upgraded to a mutable slice. Mutable subranges keep the complete
+backing-storage loan, so even nonoverlapping ranges do not establish disjoint
+access. Named return contracts, quantified callbacks and explicit/inferred
+generic calls preserve the access kind and lifetime. Borrowed mutable records
+may contain mutable-slice fields under the existing group rules.
+
 Ordinary `T[]` keeps its legacy pointer-to-descriptor ABI; implicit
-mixing with the inline checked representation is rejected. Mutable checked
-slices, descriptor construction, metadata borrowing and reassignment remain
-unsupported. Slice elements must be pointer-free sized values. To obtain a
+mixing with the inline checked representation is rejected. Explicit descriptor
+construction, metadata borrowing and reassignment remain unsupported.
+Slice elements must be pointer-free sized values. To obtain a
 checked subrange of a fixed array, first bind a checked full view; slicing
 the array directly still produces the legacy representation.
 
@@ -2757,3 +2769,55 @@ A mutation check that swapped two `free()` calls in the manual twin produced
 fixtures listed above, not a proof. ARM64 and win64 optimization variants
 remain covered by each runtime fixture's own cross-compile and execution
 targets, not by this harness.
+
+### Generic allocation validation
+
+`new T` resolves the active template substitution before ordinary type lookup
+in both compiler paths. The resulting concrete allocation retains sized-value,
+initialization and checked-owner requirements. This does not admit construction
+of opaque runtime metadata or add a `new Generic[T]` application form.
+
+Validation passed 20 contract cases on both Linux widths with and without
+`--safe`, all 48 architecture/root checks and 1,431 ordinary targets including
+both fixpoints, Wine runtime and benchmark. Instrumented validation passed
+1,429 targets plus six API harnesses with a COMPLETE receipt and reached all
+four changed executable lines. Existing floors pass unchanged. Linux guard
+allocation and Memcheck report 180 allocations/frees and zero errors/leaks
+per width. Optimization variants and Wine execute, with ARM64 runtime gates
+in CI.
+
+Seven alternating compiles of the fixed #788 parent corpus measured
+1.68/1.68 seconds and 116,480/116,160 KiB median peak RSS before/after.
+Compiler and prior checked fixture bytes are identical. Measurements describe
+that corpus on the shared host. The implementation rebased unchanged onto
+the prerequisite validation commit; #696/#644 retain their completion gates.
+
+
+### Checked mutable-slice validation
+
+`refmut T[]` retains exclusive access and its backing lifetime through local
+bindings, subranges, generic calls, methods and quantified callbacks. Shared
+reborrowing uses `ref T[]`; shared input cannot become mutable. The inline
+pointer/length representation stays distinct from legacy slices. Incompatible
+element or descriptor conversions are fatal even when warnings are nonfatal.
+
+Validation passed 44 accepted/rejected contract cases on x86/x64 with and
+without `--safe`, 1,435 ordinary targets including both Linux fixpoints,
+Windows runtime and benchmark, and all 60 distinct architecture/root checks
+selected by the complete change. Instrumented validation passed 1,433 targets
+plus six compiler/API harnesses with a COMPLETE receipt; all 47 changed
+executable compiler lines were reached. Existing coverage floors pass.
+
+Linux optimization variants and Wine execute the runtime fixture; three ARM64
+variants cross-compile locally and have required runtime CI gates. Native guards
+and Memcheck report 30 allocations/frees and zero errors/leaks on each Linux
+target. Seven alternating compiles of fixed parent `53c6fe88` sources measured
+1.66/1.66 seconds and 116,384/116,480 KiB median peak RSS before/after. Compiler
+output and prior callable/mixed-owner fixture binaries are byte-identical and
+execute. These measurements describe this corpus on the shared host.
+
+The first full run exposed one stale diagnostic assertion after slice conversion
+errors moved earlier; its updated rejection test and the subsequent complete
+ordinary/instrumented runs pass. Every tracked W source is identical before
+and after rebasing onto the prerequisite's final validation commit. This step
+supports #697/#698 under #644; their remaining deliverables stay open.

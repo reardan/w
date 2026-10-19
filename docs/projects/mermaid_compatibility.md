@@ -41,8 +41,8 @@ Node styling: [Styles and themes](mermaid_styling.md).
 | --- | --- | --- | --- |
 | Flowchart — `flowchart`, `graph` | Five directions, basic/stadium/subroutine/hexagonal/slanted shapes, labelled/chained edges, cycles, nested subgraphs, scoped directions, link styles | Additional shapes/edges, click actions, rich text, dense routing and most configuration | [build.mmd](../../examples/mermaid/build.mmd) |
 | ER — `erDiagram` | Entities/aliases, typed attributes and keys, all symbolic cardinalities and textual aliases, identifying/non-identifying relationships, link styles and optional force layout | Rich text, additional configuration, precise text metrics and crowded relationship routing | [orders.mmd](../../examples/mermaid/orders.mmd) |
-| Class — `classDiagram` | Member compartments, annotations, UML endpoints, multiplicities, generic labels, backtick IDs, dotted namespaces, unique lollipop interfaces and notes | Comma-separated generic parameters, interactive links and richer labels | [classes.mmd](../../examples/mermaid/classes.mmd) |
-| State — `stateDiagram`, `stateDiagram-v2` | Initial/final states, cross-scope transitions, composite states, choices, forks/joins, notes and scoped directions | Concurrent regions and rich labels | [states.mmd](../../examples/mermaid/states.mmd) |
+| Class — `classDiagram` | Member compartments, annotations, UML endpoints, multiplicities, nested and comma-separated generic labels, backtick IDs, dotted namespaces, unique lollipop interfaces and notes | Interactive links and richer labels | [classes.mmd](../../examples/mermaid/classes.mmd) |
+| State — `stateDiagram`, `stateDiagram-v2` | Initial/final states, cross-scope transitions, composite states, concurrent `--` regions, choices, forks/joins, notes and scoped directions | Per-state styling and rich labels | [states.mmd](../../examples/mermaid/states.mmd) |
 
 ## Graphs, hierarchy and workflows
 
@@ -51,7 +51,7 @@ Details and exact restrictions: [Graph and workflow families](mermaid_graph_fami
 | Family / headers | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
 | Requirement — `requirementDiagram` | Six requirement types, elements, validated properties, seven relation kinds, forward-reference validation | Rich Markdown and full configuration | [requirements.mmd](../../examples/mermaid/requirements.mmd) |
-| Mindmap — `mindmap` | Single indentation tree, plain/rectangular/rounded/circular nodes, subtree layout | Icons/classes, cloud/bang/hexagon shapes and ambiguous-indentation heuristics | [mindmap.mmd](../../examples/mermaid/mindmap.mmd) |
+| Mindmap — `mindmap` | Single indentation tree, plain/square/rounded/circle/cloud/bang/hexagon nodes, icon names, CSS class names, subtree layout | Icon fonts, class-driven styling and ambiguous-indentation heuristics | [mindmap.mmd](../../examples/mermaid/mindmap.mmd) |
 | Kanban — `kanban` | Columns/cards, generated or explicit IDs, assignment/ticket/priority metadata, column layout | Nested cards, ticket URLs and custom configuration | [kanban.mmd](../../examples/mermaid/kanban.mmd) |
 | TreeView — `treeView-beta` | Indented forests, quoted/Unicode labels, source-ordered rows and ancestry connectors | Tree-command prefixes, icons/classes and descriptions | [treeview.mmd](../../examples/mermaid/treeview.mmd) |
 | Ishikawa — `ishikawa-beta` | Problem head, alternating fishbone branches, indented causes/subcauses and ancestry | Exact upstream geometry, theme/configuration parity and richer labels | [ishikawa.mmd](../../examples/mermaid/ishikawa.mmd) |
@@ -76,7 +76,7 @@ Details: [Ordered diagrams](mermaid_narratives.md).
 
 | Family / header | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
-| Sequence — `sequenceDiagram` | Participants/actors, aliases, lifecycle, message variants, notes, activations, integer numbering ranges and nested interaction fragments | Participant objects, boxes, rect highlighting, links, fractional numbering and rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
+| Sequence — `sequenceDiagram` | Participants/actors, aliases, lifecycle, message variants, notes, activations, integer numbering ranges, nested interaction fragments, colored participant boxes and `rect` highlights | Participant objects, links, fractional numbering and rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
 | Journey — `journey` | Sections, tasks, 1–5 scores, actor lists and source-ordered score plot | Upstream avatar/face rendering, themes and HTML labels | [journey.mmd](../../examples/mermaid/journey.mmd) |
 | Timeline — `timeline` | Sections, ordinal period labels, multiple/continued events and chronological columns | Rich labels, configuration and alternative wrapping/layout | [timeline.mmd](../../examples/mermaid/timeline.mmd) |
 | Gantt — `gantt` | Validated Gregorian dates, day/week durations, sequential starts, forward/multiple dependencies, until endpoints and status/milestone marks | Other date formats/units, exclusions, timezones, today settings and links | [gantt.mmd](../../examples/mermaid/gantt.mmd) |
@@ -161,3 +161,9 @@ Graphical editing is still bounded to flow/ER: group/nested-node movement,
 multi-selection, resize, rich relationship/attribute inspectors and other-family
 editing remain. These are narrower than the original blanket dragging/deletion
 gap; they must not be represented as full graphical-editor completion.
+
+The second batch adds comma-separated class generic parameters, concurrent
+state regions, mindmap cloud/bang/hexagon shapes with icon and class
+decorations, and sequence participant boxes with `rect` highlights. CSS
+`rgb()`/`rgba()` colors are accepted where those sequence constructs take a
+color; `style`/`classDef` properties still use the documented subset.

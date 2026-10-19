@@ -2438,7 +2438,9 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (alias >= 0):
 			if (ast_expression_qualified_member(tree) == 0): return -1
 			base = import_alias_module_type(alias, token)
-		else: base = type_lookup(token)
+		else:
+			base = generic_subst_lookup(token)
+			if (base < 0): base = type_lookup(token)
 		if (base < 0): return -1
 		int offset = token_start_offset
 		ast_expression_advance(tree)

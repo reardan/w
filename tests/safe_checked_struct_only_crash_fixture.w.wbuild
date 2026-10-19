@@ -1,0 +1,4 @@
+# wbuild: target=safe_checked_struct_only_crash_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 tests/safe_checked_struct_only_crash_fixture.w -o bin/safe_checked_struct_only_fixture" expect_fail expect_stderr="Failed to find a _main() function"
+# wbuild: target=safe_checked_struct_only_crash_x64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/safe_checked_struct_only_crash_fixture.w -o bin/safe_checked_struct_only_fixture64" expect_fail expect_stderr="Failed to find a _main() function"

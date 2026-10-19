@@ -1475,3 +1475,13 @@ expression instead of "constant" in the diagnostic.
   recovery.** repl/incremental.w configures modes itself; recovery code
   that restored a REPL-chosen default silently flipped its option
   fingerprint. Recovery now restores the mode each entry started with.
+
+## `--quiet` does not silence the x64 selector banner (2026-10-19, --emit=obj)
+
+`bin/wv2 x64 --quiet file.w` and `bin/wv2 --quiet x64 file.w` both still
+print "Compiling in x64 mode" to stderr: the banner comes from
+`target_selector_apply` in the selector pre-scan, which runs before
+`--quiet` is parsed. Scripts that diff or grep compiler stderr (the
+object_file_test diagnostic checks, for example) see an extra line.
+Direction: scan `--quiet` before applying selectors, or drop the banner
+when stderr is not a terminal.

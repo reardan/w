@@ -669,7 +669,12 @@ void test_ast_container_probe_records_are_transactional():
 	assert_equal(-1, type_lookup_list(third))
 
 
-void test_ast_checked_aggregate_shapes_survive_growth_and_commit():
+void ast_checked_aggregate_shape_storage(int access_kind):
+	int record_kind = type_kind_safe_record
+	int slice_kind = type_kind_safe_slice
+	if (access_kind == 3):
+		record_kind = type_kind_safe_recordmut
+		slice_kind = type_kind_safe_slicemut
 	word_size = __word_size__
 	push_basic_types()
 	int integer = type_lookup(c"int")
@@ -677,9 +682,9 @@ void test_ast_checked_aggregate_shapes_survive_growth_and_commit():
 	if (element_pointer < 0): element_pointer = type_push_pointer(c"int", word_size, 1)
 	int base = type_push_size(c"GenericShapeScratch", 0)
 	type_add_arg(base, c"value", type_get_safe_lifetime(element_pointer, 2, c"left"))
-	type_add_arg(base, c"data", type_get_safe_slice(integer, c"right"))
+	type_add_arg(base, c"data", type_get_safe_slice(integer, c"right", access_kind))
 	int outer = type_push_size(c"GenericShapeScratchOuter", 0)
-	type_add_arg(outer, c"child", type_get_safe_record_kind(base, c"first,second", 2))
+	type_add_arg(outer, c"child", type_get_safe_record_kind(base, c"first,second", access_kind))
 	type_add_arg(outer, c"tag", integer)
 	expression_ast tree
 	expression_ast_bind(&tree)
@@ -702,16 +707,16 @@ void test_ast_checked_aggregate_shapes_survive_growth_and_commit():
 		strcpy(tree.type_names + label, labels)
 		tree.type_names_used = label + length
 		free(labels)
-		shapes[i] = ast_expression_safe_shape_type(&tree, outer, 2, label, 10 + i)
+		shapes[i] = ast_expression_safe_shape_type(&tree, outer, access_kind, label, 10 + i)
 		assert1(shapes[i] >= 0)
-		assert_equal(shapes[i], ast_expression_safe_shape_type(&tree, outer, 2, label, 100 + i))
+		assert_equal(shapes[i], ast_expression_safe_shape_type(&tree, outer, access_kind, label, 100 + i))
 	for i in range(80):
 		int shape = shapes[i]
 		int child = type_get_field_type_at(shape, 0)
 		int value = type_get_field_type_at(child, 0)
 		int data = type_get_field_type_at(child, 1)
-		assert_equal(type_kind_safe_record, type_get_kind(shape))
-		assert_equal(type_kind_safe_slice, type_get_kind(data))
+		assert_equal(record_kind, type_get_kind(shape))
+		assert_equal(slice_kind, type_get_kind(data))
 		assert_equal(outer, type_record(shape).alias_target)
 		assert_strings_equal(type_lifetime_at(shape, 0), type_lifetime_at(value, 0))
 		assert_strings_equal(type_lifetime_at(shape, 1), type_lifetime_at(data, 0))
@@ -747,9 +752,18 @@ void test_ast_checked_aggregate_shapes_survive_growth_and_commit():
 	expression_ast_type_names_reserve(&tree, 15)
 	strcpy(tree.type_names, c"rollback,other")
 	tree.type_names_used = 15
-	assert1(ast_expression_safe_shape_type(&tree, outer, 2, 0, 200) >= saved)
+	assert1(ast_expression_safe_shape_type(&tree, outer, access_kind, 0, 200) >= saved)
 	ast_expression_restore_types(&tree)
 	assert_equal(saved, type_count())
-	assert_equal(-1, type_lookup(c"ref[rollback,other] GenericShapeScratchOuter"))
+	if (access_kind == 2): assert_equal(-1, type_lookup(c"ref[rollback,other] GenericShapeScratchOuter"))
+	else: assert_equal(-1, type_lookup(c"refmut[rollback,other] GenericShapeScratchOuter"))
 	for i in range(tree.type_names_used): tree.type_names[i] = 'y'
 	assert_strings_equal(c"first0", type_lifetime_at(shapes[0], 0))
+
+
+void test_ast_checked_aggregate_shapes_survive_growth_and_commit():
+	ast_checked_aggregate_shape_storage(2)
+
+
+void test_ast_mutable_slice_shapes_survive_growth_and_commit():
+	ast_checked_aggregate_shape_storage(3)

@@ -58,6 +58,17 @@ int struct_declaration():
 				println2(c"]")
 
 			type_add_arg(type_index, strclone(token), field_type)
+			# A field embedding its own struct by value has infinite layout:
+			# every consumer that walks the shape recurses endlessly (wfuzz
+			# found the stack overflow, minimized to two lines, in
+			# type_has_array_field, init_array_field_descriptors_at and
+			# global_storage_ast_build). The struct name pre-registers before
+			# its fields parse, so the field type lookup succeeds and only
+			# this completion-time check can stop it. Pointer fields already
+			# returned 0 inside the walk.
+			if (type_embeds_depth(field_type, type_index, 0)):
+				error(c"recursive struct type: a field embeds the struct by value")
+				return 1
 			if (verbosity >= 1):
 				print_int(c"num_fields: ", num_fields)
 				print_string(c"field: ", token)
@@ -66,6 +77,7 @@ int struct_declaration():
 			get_token()
 			num_fields = num_fields + 1
 			pointer_indirection = 0
+
 
 		defhash_note(defhash_name, c"struct", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 		return 1

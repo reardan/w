@@ -476,6 +476,7 @@ const int type_kind_own = 21
 const int type_kind_ref = 22
 const int type_kind_refmut = 23
 const int type_kind_safe_slice = 24
+const int type_kind_safe_slicemut = 30
 const int type_kind_safe_record = 25
 const int type_kind_optref = 26
 const int type_kind_optrefmut = 27
@@ -488,7 +489,7 @@ int type_safe_kind(int type_index):
 	if (type_index < 0): return 0
 	int kind = type_record(type_index).kind
 	if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record)): return 2
-	if (kind == type_kind_safe_recordmut): return 3
+	if ((kind == type_kind_safe_recordmut) || (kind == type_kind_safe_slicemut)): return 3
 	if (kind == type_kind_optown): return 1
 	if ((kind >= type_kind_own) && (kind <= type_kind_refmut)): return kind - 20
 	if ((kind == type_kind_optref) || (kind == type_kind_optrefmut)): return kind - 24
@@ -499,7 +500,7 @@ int type_safe_target(int type_index):
 	type_index = type_unqualified(type_index)
 	if (type_index >= 0):
 		int kind = type_get_kind(type_index)
-		if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)): return type_index
+		if ((kind == type_kind_safe_slice) || (kind == type_kind_safe_slicemut) || (kind == type_kind_safe_record) || (kind == type_kind_safe_recordmut)): return type_index
 	if (type_safe_kind(type_index)): return type_record(type_index).alias_target
 	return type_index
 
@@ -630,12 +631,15 @@ int type_get_safe(int target, int kind):
 	return type_get_safe_lifetime(target, kind, 0)
 
 int type_is_safe_slice(int type):
-	return type_get_kind(type_unqualified(type)) == type_kind_safe_slice
+	int kind = type_get_kind(type_unqualified(type))
+	return (kind == type_kind_safe_slice) || (kind == type_kind_safe_slicemut)
 
 
 # Checked slices own their inline descriptor, never the backing allocation.
 # The two fields use the ordinary by-value/hidden-result aggregate ABI.
-int type_get_safe_slice(int element, char* lifetime):
+int type_get_safe_slice(int element, char* lifetime, int access_kind = 2):
+	int shape_kind = type_kind_safe_slice
+	if (access_kind == 3): shape_kind = type_kind_safe_slicemut
 	if (lifetime != 0):
 		for i in range(strlen(lifetime)):
 			if (lifetime[i] == ','): error(c"multiple lifetime labels require a borrowed aggregate")
@@ -643,15 +647,19 @@ int type_get_safe_slice(int element, char* lifetime):
 	element = type_unqualified(element)
 	for i in range(type_records.length):
 		type_rec* old = type_record(i)
-		if ((old.kind == type_kind_safe_slice) && (old.alias_target == element)):
+		if ((old.kind == shape_kind) && (old.alias_target == element)):
 			if ((old.safe_lifetime == 0) && (lifetime == 0)): return i
 			if ((old.safe_lifetime != 0) && (lifetime != 0)):
 				if (strcmp(old.safe_lifetime, lifetime) == 0): return i
 	type_rec* record = type_alloc()
 	char* prefix = c"ref "
+	char* label_prefix = c"ref["
+	if (access_kind == 3):
+		prefix = c"refmut "
+		label_prefix = c"refmut["
 	char* named = 0
 	if (lifetime != 0):
-		named = strjoin(c"ref[", lifetime)
+		named = strjoin(label_prefix, lifetime)
 		prefix = strjoin(named, c"] ")
 		record.safe_lifetime = strclone(lifetime)
 	char* base = strjoin(prefix, type_get_name(element))
@@ -660,7 +668,7 @@ int type_get_safe_slice(int element, char* lifetime):
 	if (named != 0):
 		free(named)
 		free(prefix)
-	record.kind = type_kind_safe_slice
+	record.kind = shape_kind
 	record.pointer_level = 0
 	record.total_size = 2 * word_size
 	record.alias_target = element
@@ -749,7 +757,7 @@ int type_get_safe_record_kind_at(int base, char* lifetime, int kind, int depth, 
 		if (type_is_safe_record(field_type)):
 			field_type = type_get_safe_record_kind_at(type_record(type_unqualified(field_type)).alias_target, mapped, type_safe_kind(field_type), depth + 1, remaining)
 		else if (type_is_safe_slice(field_type)):
-			field_type = type_get_safe_slice(type_get_element_type(field_type), mapped)
+			field_type = type_get_safe_slice(type_get_element_type(field_type), mapped, type_safe_kind(field_type))
 		else if ((type_safe_kind(field_type) >= 2) && (type_get_pointer_level(field_type) == 1)):
 			int field_kind = type_get_kind(type_unqualified(field_type)) - 20
 			field_type = type_get_safe_lifetime(type_safe_target(field_type), field_kind, mapped)
@@ -892,7 +900,7 @@ int type_is_array(int type_index):
 
 int type_is_slice(int type_index):
 	int kind = type_get_kind(type_index)
-	return (kind == type_kind_slice) | (kind == type_kind_slice_value) | (kind == type_kind_safe_slice)
+	return (kind == type_kind_slice) | (kind == type_kind_slice_value) | (kind == type_kind_safe_slice) | (kind == type_kind_safe_slicemut)
 
 
 int type_is_string(int type_index):
@@ -933,15 +941,49 @@ int type_is_buffer(int type_index):
 	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
 
 
-int type_has_array_field(int type_index):
+# Self-embedding reachability for the struct-declaration cycle check:
+# 1 when type_index's by-value fields (transitively, pointers excluded)
+# reach -- or *are* -- target. Depth-bounded: a table already holding a
+# cycle (only constructible through REPL redefinition) must not hang
+# the walk; beyond the cap, stop instead of deciding.
+int type_embeds_depth(int type_index, int target, int depth):
+	type_index = type_canonical(type_index)
+	if (type_index < 0): return 0
+	if (type_index == target): return 1
+	if (depth >= 32): return 0
+	if (type_get_pointer_level(type_index) > 0): return 0
+	# A T[N] array embeds its element inline (descriptor + element
+	# bytes, see type_push_array): the element type is its alias_target,
+	# with no field records to walk.
+	if (type_get_kind(type_index) == type_kind_array):
+		return type_embeds_depth(type_get_alias_target(type_index), target, depth + 1)
+	int count = type_num_args(type_index)
+	for i in range(count):
+		if (type_embeds_depth(type_get_field_type_at(type_index, i), target, depth + 1)): return 1
+	return 0
+
+
+# A cyclic struct (one embedding itself by value -- struct S:
+# S inner -- the struct name pre-registers before its fields parse, so
+# the lookup succeeds) has no finite answer here: the plain recursive
+# descent overran the stack (wfuzz, minimized to two lines).
+# struct_declaration now rejects self-embedding at completion; this
+# cap stays as the second layer for any other table state (redefined
+# records reaching here through streams or the REPL).
+int type_has_array_field_depth(int type_index, int depth):
 	type_index = type_canonical(type_index)
 	if (type_index < 0): return 0
 	if (type_get_pointer_level(type_index) > 0): return 0
 	if (type_is_array(type_index)): return 1
+	if (depth >= 32): return 0
 	int count = type_num_args(type_index)
 	for i in range(count):
-		if (type_has_array_field(type_get_field_type_at(type_index, i))): return 1
+		if (type_has_array_field_depth(type_get_field_type_at(type_index, i), depth + 1)): return 1
 	return 0
+
+
+int type_has_array_field(int type_index):
+	return type_has_array_field_depth(type_index, 0)
 
 
 int type_stack_words(int type_index):

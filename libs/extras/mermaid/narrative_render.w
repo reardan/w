@@ -41,6 +41,16 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 		bounds.x = right + 20
 		right = right + bounds.w
 		bounds.w = bounds.w - 40
+	# Participant boxes span their contiguous lanes behind every other primitive.
+	for mm_narrative_event* box in d.boxes:
+		mm_bounds* first = s.nodes[box.from_node]
+		mm_bounds* last = s.nodes[box.to_node]
+		# The top stays below an optional diagram title at y=20..36.
+		mm_draw(s, MM_BOX, first.x - 15, 40, last.x + last.w + 15, bottom + 20, 0, c"")
+		mm_primitive* outline = s.items[s.items.length - 1]
+		outline.style.mask = MM_STYLE_FILL
+		outline.style.fill = box.value
+		if (box.label[0] != 0): mm_text(s, (first.x + last.x + last.w) / 2 - strlen(box.label) * 4, 44, box.label)
 	# Fragment outlines precede lifelines and events so opaque primitives never hide them.
 	for i in range(d.narrative.length):
 		mm_narrative_event* event = d.narrative[i]
@@ -52,6 +62,12 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			int x = 30 + depth * 8
 			int y = 145 + i * 70
 			mm_draw(s, MM_BOX, x, y, right + 15 - depth * 8, 175 + event.end * 70, 0, c"")
+			# rect highlights are filled, borderless backgrounds rather than labelled fragments.
+			if (strcmp(event.detail, c"rect") == 0):
+				mm_primitive* highlight = s.items[s.items.length - 1]
+				highlight.style.mask = MM_STYLE_FILL | MM_STYLE_STROKE
+				highlight.style.fill = event.value
+				highlight.style.stroke = event.value
 	for i in range(count):
 		mm_node* node = d.nodes[i]
 		mm_bounds* bounds = s.nodes[i]
@@ -141,7 +157,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			if (nx < 10): nx = 10
 			mm_draw(s, MM_BOX, nx, y - 20, nx + w, y + 20, 0, c"")
 			mm_text(s, nx + 12, y - 8, event.label)
-		else if (event.kind == MM_N_BLOCK): mm_text(s, 45, y - 17, event.label)
+		else if (event.kind == MM_N_BLOCK && strcmp(event.detail, c"rect") != 0): mm_text(s, 45, y - 17, event.label)
 		else if (event.kind == MM_N_BRANCH):
 			mm_line(s, 35, y - 20, right + 10, y - 20, 1)
 			mm_text(s, 45, y - 12, event.label)

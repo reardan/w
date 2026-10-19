@@ -27,6 +27,8 @@ This file is compiled by the committed seed: only seed-understood
 syntax here.
 */
 int import_module(char* dotted);
+char* import_resolve(char* dotted);
+int import_lookup(char* path);
 
 
 struct lazy_runtime:
@@ -91,9 +93,20 @@ int lazy_helper_symbol(lazy_runtime* rt, int i):
 	return sym_lookup(lazy_helper_name(rt, i))
 
 
+# --freestanding: a builtin whose runtime module the program did not
+# import itself is an error at its first use, not a silent import.
+void lazy_freestanding_check(lazy_runtime* rt):
+	if ((freestanding_mode == 0) || rt.needed): return;
+	char* resolved = import_resolve(rt.module)
+	int have = import_lookup(resolved) >= 0
+	free(resolved)
+	if (have == 0): error3(c"this needs the W runtime module '", rt.module, c"', which --freestanding excludes")
+
+
 # Leave helper i's address in eax: directly when the runtime module is
 # already compiled, through the helper's backpatch chain otherwise.
 void lazy_emit_helper(lazy_runtime* rt, int i):
+	lazy_freestanding_check(rt)
 	rt.needed = 1
 	int t = lazy_helper_symbol(rt, i)
 	if (t >= 0):
@@ -110,6 +123,7 @@ void lazy_emit_helper(lazy_runtime* rt, int i):
 # callee word; otherwise the address is materialized and pushed.
 int lazy_call_begin(lazy_runtime* rt, int i):
 	int s = stack_pos
+	lazy_freestanding_check(rt)
 	int t = lazy_helper_symbol(rt, i)
 	if (direct_callee_ok(t)):
 		rt.needed = 1

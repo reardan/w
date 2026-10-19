@@ -114,6 +114,8 @@ int type_name():
 		get_token()
 		is_gpu = 1
 		if (accept(c"const")): is_const = 1
+	if (freestanding_mode && (peek(c"map") | peek(c"set") | peek(c"list")) && (nextc == '[')):
+		error3(c"'", token, c"' types need the W container runtime, which --freestanding excludes")
 	if (peek(c"map") & (nextc == '[')):
 		get_token()
 		expect(c"[")
@@ -196,11 +198,11 @@ int type_name():
 		if (type_safe_entrypoint == 0): error(c"checked pointers are not supported by in-process sessions")
 		if (ast_retain_mode == 0): error(c"checked pointers require the retained frontend")
 		if (type_is_slice(type)):
-			if (safe_kind != 2): error(c"checked slices require the immutable ref qualifier")
+			if ((safe_kind != 2) && (safe_kind != 3)): error(c"checked slices require ref or refmut")
 			int element = type_get_element_type(type)
 			if ((element < 0) || (type_get_size(element) <= 0)):
 				error(c"checked slices require a sized element")
-			type = type_get_safe_slice(element, lifetime)
+			type = type_get_safe_slice(element, lifetime, safe_kind)
 		else if ((type_get_pointer_level(type) == 0) && (type_num_args(type) > 0) && (type_is_array(type) == 0)):
 			if ((safe_kind != 2) && (safe_kind != 3)): error(c"borrowed structs require ref or refmut")
 			if (type_safe_kind(type)): error(c"borrowed struct qualifier requires a plain struct template")

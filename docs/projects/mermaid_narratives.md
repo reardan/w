@@ -25,7 +25,18 @@ aliases, implicit participants, solid/dashed messages with `->`, `-->`, `->>`,
 `autonumber` to resume; `create participant`/`create actor` (including aliases)
 and `destroy`; nested `loop`, `alt`,
 `opt`, `par`, `critical` and `break` fragments, their appropriate `else`, `and`
-and `option` branches, and `end`.
+and `option` branches, and `end`; `rect <color>` highlight regions; and
+`box [color] [label]` participant groups.
+
+`box` must be top-level and may contain only `participant`/`actor` declarations,
+each of which must be that participant's first appearance, so a box always
+covers contiguous lanes. The first word is the box fill when it parses as a
+supported color (a case-insensitive name, `#RGB`/`#RRGGBB`, `rgb()`, `rgba()` or
+`transparent`); otherwise the whole text is the label. `rect` requires such a
+color and nests with fragments like any other block, but takes no branches.
+`rgba()` alpha is composited over the white background, because native
+primitives carry opaque colors. Boxes draw behind the lanes with a centred
+label; rect highlights draw as filled, borderless bands behind their messages.
 
 The layout has ordered participant headers, actor figures, dashed lifelines,
 message arrowheads/crosses, activation bars, note boxes, numbered messages and
@@ -40,7 +51,7 @@ with an explicit integer sets a new range. Starts are 0–1,000,000 and incremen
 are 1–1,000,000.
 
 Not yet supported: participant configuration objects/stereotypes, participant
-configuration after creation, boxes, rect highlighting, links, fractional numbering,
+configuration after creation, `links`/`link` menus, fractional numbering,
 half-arrows, multiline/rich labels or browser styling. Arbitrary control
 keywords do not silently become participants.
 
