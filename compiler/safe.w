@@ -342,7 +342,22 @@ int safe_buffer_source(int source):
 	return ends_with(retained_sources[source].path, c"/lib/safe_buffer.w")
 
 
+int safe_thread_source(int source):
+	if ((source < 0) || (safe_trusted(source) == 0)): return 0
+	return ends_with(retained_sources[source].path, c"/lib/safe_thread.w")
+
+
+# Nominal identity of an audited lib/safe_thread.w record.
+int safe_thread_record(int type, char* name):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (safe_thread_source(record.source) == 0)): return 0
+	return strcmp(record.name, name) == 0
+
+
 int safe_opaque(int type):
+	if (safe_thread_record(type, c"WSafeThread")): return 1
 	type = safe_unqualified(type)
 	if (type < 0): return 0
 	retained_type* record = retained_types[type]
@@ -356,7 +371,117 @@ int safe_runtime_call(retained_binding* binding):
 		if ((strcmp(name, c"byte_arena_new") == 0) || (strcmp(name, c"byte_arena_length") == 0) || (strcmp(name, c"byte_arena_copy") == 0) || (strcmp(name, c"byte_arena_reset") == 0) || (strcmp(name, c"byte_arena_release") == 0)): return 1
 		if ((strcmp(name, c"owned_int_buffer_new") == 0) || (strcmp(name, c"owned_int_buffer_length") == 0) || (strcmp(name, c"owned_int_buffer_push") == 0) || (strcmp(name, c"owned_int_buffer_get") == 0) || (strcmp(name, c"owned_int_buffer_set") == 0) || (strcmp(name, c"owned_int_buffer_pop") == 0) || (strcmp(name, c"owned_int_buffer_clear") == 0)): return 1
 		return (strcmp(name, c"int_buffer_new") == 0) || (strcmp(name, c"int_buffer_length") == 0) || (strcmp(name, c"int_buffer_push") == 0) || (strcmp(name, c"int_buffer_get") == 0) || (strcmp(name, c"int_buffer_set") == 0) || (strcmp(name, c"int_buffer_pop") == 0) || (strcmp(name, c"int_buffer_clear") == 0) || (strcmp(name, c"int_buffer_view") == 0) || (strcmp(name, c"byte_string_new") == 0) || (strcmp(name, c"byte_string_length") == 0) || (strcmp(name, c"byte_string_push") == 0) || (strcmp(name, c"byte_string_get") == 0) || (strcmp(name, c"byte_string_set") == 0) || (strcmp(name, c"byte_string_pop") == 0) || (strcmp(name, c"byte_string_clear") == 0) || (strcmp(name, c"byte_string_view") == 0) || (strcmp(name, c"byte_string_append") == 0) || (strcmp(name, c"byte_string_from") == 0)
+	if (safe_thread_source(binding.source)):
+		return (strcmp(name, c"safe_thread_join") == 0) || starts_with(name, c"safe_thread_spawn$") || starts_with(name, c"safe_thread_fork_join$")
 	return (strcmp(name, c"put_char") == 0) || (strcmp(name, c"put_error") == 0) || (strcmp(name, c"exit") == 0)
+
+
+# Structural thread eligibility (#699): the obligations of Rust's Send and
+# Sync, derived from the type's shape instead of declared traits. Returns 0
+# when a value of this type may cross to another thread, else the reason it
+# may not; *path names the offending field.
+#
+# detached: the receiving thread is not enclosed by any borrow scope (a
+# spawned handle can outlive the caller), so no borrowed lifetime may cross,
+# at any depth. Otherwise the thread is joined inside the call that lends
+# the value: a shared reference crosses when its target may be shared, an
+# exclusive reference when its target may be transferred.
+# sharing: the value is reachable through a shared reference that both
+# threads may read concurrently.
+#
+# Unique ownership alone is not sufficient: the whole reachable graph must
+# be free of raw pointers, unaudited resources and thread-affine markers.
+# WThreadAffine forbids transfer and sharing; WThreadUnshared forbids only
+# sharing, reserving interior mutation for audited synchronized types.
+# Callable fields are static code addresses. Audited opaque storage is
+# uniquely owned heap memory that any thread may release
+# (lib/thread_heap.w), with no mutation through a shared reference.
+char* safe_thread_reason(int type, int detached, int sharing, int depth, int* remaining, char** path):
+	if (safe_callable_signature(type) >= 0): return 0
+	type = safe_unqualified(type)
+	if (type < 0): return c"has no audited thread-transfer contract"
+	if (safe_thread_record(type, c"WThreadAffine")): return c"is explicitly thread-affine"
+	if (safe_thread_record(type, c"WThreadUnshared")):
+		if (sharing): return c"is explicitly unshareable across threads"
+		return 0
+	int kind = safe_kind(type)
+	retained_type* t = retained_types[type]
+	# Scalars cost no budget, so wide plain records are not refused.
+	if ((kind == 0) && (t.fields.length == 0) && (t.kind != type_kind_array) && safe_plain(type, 0)): return 0
+	if ((depth > 32) || (*remaining <= 0)): return c"exceeds the thread analysis bound"
+	*remaining = *remaining - 1
+	if (kind == 1):
+		if (detached && safe_owned_borrowed(type)): return c"carries a borrowed lifetime"
+		if (safe_opaque(safe_pointee(type))): return 0
+		return safe_thread_reason(safe_pointee(type), detached, sharing, depth + 1, remaining, path)
+	if (kind || safe_slice(type)):
+		if (detached): return c"borrows storage that the thread could outlive"
+		int target = safe_pointee(type)
+		if (safe_record(type)): target = t.target
+		if (safe_opaque(target)): return 0
+		return safe_thread_reason(target, detached, sharing || (safe_borrow_kind(type) == 2), depth + 1, remaining, path)
+	if (t.kind == type_kind_array): return safe_thread_reason(t.target, detached, sharing, depth + 1, remaining, path)
+	if ((t.kind == 0) && (t.pointer_level == 0) && (t.fields.length > 0)):
+		for i in range(t.fields.length):
+			char* reason = safe_thread_reason(t.fields[i].type, detached, sharing, depth + 1, remaining, path)
+			if (reason != 0):
+				if (*path == 0): *path = t.fields[i].name
+				else:
+					char* dotted = strjoin(t.fields[i].name, c".")
+					*path = strjoin(dotted, *path)
+				return reason
+		return 0
+	# Raw pointers, unions, containers and unaudited resources.
+	return c"has no audited thread-transfer contract"
+
+
+void safe_thread_value_check(int id, int type, int detached):
+	int remaining = 256
+	char* path = 0
+	char* reason = safe_thread_reason(type, detached, 0, 0, &remaining, &path)
+	if (reason == 0): return
+	char* message = c"safe: scoped thread argument "
+	if (detached): message = c"safe: thread payload "
+	if (path != 0):
+		char* named = strjoin(message, c"field '")
+		named = strjoin(named, path)
+		message = strjoin(named, c"' ")
+	safe_error(id, strjoin(message, reason), -1)
+
+
+int safe_same_contract_type(int a, int b);
+
+
+# Audited thread entry points: 1 safe_thread_spawn, 2 safe_thread_fork_join.
+int safe_thread_entry_kind(int binding):
+	int function = safe_function_for_binding[binding]
+	if (function < 0): return 0
+	retained_binding* implementation = retained_bindings[retained_record_at(function).binding]
+	if (safe_thread_source(implementation.source) == 0): return 0
+	if (starts_with(implementation.name, c"safe_thread_spawn$")): return 1
+	if (starts_with(implementation.name, c"safe_thread_fork_join$")): return 2
+	return 0
+
+
+# safe_thread_spawn[E, T](E* entry, own T* payload) requires E to be
+# exactly fn[](own T*) -> int: the child consumes the payload once and
+# reports a scalar result. safe_thread_fork_join[E, T](E* entry, T left,
+# T right) requires fn[](T) -> int with T a sized ref/refmut pointer.
+void safe_thread_entry_check(int id, retained_binding* callee, int entry_kind):
+	int signature = -1
+	if (callee.parameters.length == entry_kind + 1): signature = safe_callable_signature(callee.parameters[0])
+	int valid = signature >= 0
+	if (valid):
+		retained_type* entry = retained_types[signature]
+		int result = safe_unqualified(entry.return_type)
+		valid = (entry.parameters.length == 1) && safe_same_contract_type(entry.parameters[0], callee.parameters[1]) && (result >= 0)
+		if (valid): valid = (retained_types[result].pointer_level == 0) && (strcmp(retained_types[result].name, c"int") == 0)
+	if (entry_kind == 1):
+		if (valid == 0): safe_error(id, c"safe: thread entry must be fn[](own T*) -> int for its transferred payload", -1)
+		return
+	int lent = callee.parameters[1]
+	if (valid): valid = (safe_kind(lent) >= 2) && (safe_optional(lent) == 0) && (safe_slice(lent) == 0) && (safe_record(lent) == 0)
+	if (valid == 0): safe_error(id, c"safe: fork-join entry must be fn[](T) -> int for a ref or refmut pointer T", -1)
 
 
 void safe_pointer_match(int id, int want, int got):
@@ -1801,7 +1926,11 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		expected.parameters = signature.parameters
 		if (safe_contract_matches(&expected, callee) == 0):
 			safe_error(id, c"safe: generic specialization disagrees with its concrete contract", -1)
-	if (n.op != 'F'): safe_implementation_check(id, binding, 0)
+	int threading = 0
+	if (n.op != 'F'):
+		safe_implementation_check(id, binding, 0)
+		threading = safe_thread_entry_kind(binding)
+		if (threading): safe_thread_entry_check(id, callee, threading)
 
 	int return_parameter = safe_return_parameter(id, callee)
 	int return_root = -1
@@ -1812,6 +1941,9 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 	while (arg >= 0):
 		if (position >= callee.parameters.length): safe_error(id, c"safe: call arity must match its contract", -1)
 		int want = callee.parameters[position]
+		# Only the value handed to the child crosses threads; fork-join's
+		# right argument stays on the caller, which waits for the child.
+		if (threading && (position == 1)): safe_thread_value_check(arg, want, threading == 1)
 		safe_type_check(id, want)
 		int kind = safe_borrow_kind(want)
 		int root = -1

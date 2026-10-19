@@ -8,7 +8,8 @@ and macOS ARM64 (`arm64_darwin`):
 ./bin/wv2 check --json --safe app.w
 ```
 
-This is a bounded, single-threaded subset, tracked by
+This is a bounded subset whose only concurrency is the audited
+[spawn/join API](#thread-transfer-and-spawnjoin), tracked by
 [issue #644](https://github.com/reardan/w/issues/644). It does not make arbitrary
 legacy W code memory-safe. Unsupported operations produce errors. The broader
 design, including richer aggregates and broader lifetime contracts, is
@@ -1279,6 +1280,137 @@ accepted programs on Apple Silicon. `safe_darwin_runtime_compile_test` builds
 The Darwin CI job executes them with the guard allocator and verifies the
 Darwin compiler fixpoint. Native execution is a required completion gate for
 #712; Linux cross-compilation alone does not complete that deliverable.
+
+## Thread transfer and spawn/join
+
+Checked code can move owned work to another thread and lend borrows to a
+thread that is joined before the call returns. Import `lib.safe_thread`;
+like `lib/thread.w` underneath, it supports Linux x86 and x64 only, and other
+targets fail to compile it. This is part of
+[issue #699](https://github.com/reardan/w/issues/699). Synchronization
+primitives, atomics and shared mutation are not available yet.
+
+### Transfer and share eligibility
+
+W has no `Send`/`Sync` traits. The compiler derives eligibility from the
+shape of the type. A value is **transferable** if it may move to another
+thread. A value is **shareable** if two threads may read it through shared
+references at the same time.
+
+| Reachable part | Transferable | Shareable |
+| --- | --- | --- |
+| Scalars, enums and pointer-free records/arrays | yes | yes |
+| `own T*` / `optown T*` | if `T` is | if `T` is |
+| `own[a] Record*`, `optown[a]`: owner carrying borrowed groups | only to scoped work, if the record is | if the record is |
+| `ref T*`, `ref T[]`, `ref[a] Record` | only to scoped work, if `T` is shareable | if `T` is |
+| `refmut T*`, `refmut[a] Record` | only to scoped work, if `T` is transferable | if `T` is |
+| Quantified `fn[...]` pointers (static code addresses) | yes | yes |
+| Audited buffers, strings, arenas and `WSafeThread` handles | yes | yes |
+| Fields of type `WThreadAffine` | no | no |
+| Fields of type `WThreadUnshared` | yes | no |
+| Raw pointers, unions, containers, unaudited resources | no | no |
+
+The rules apply to every field, nested owned child and array element.
+Ownership alone does not make a value transferable. For example, an
+`own[a] Job*` whose record holds `ref[a] int*` still borrows external
+storage, so it cannot go to detached work. A shared reference to stack data
+can never become a detached payload. The two marker records are plain data,
+so a struct can opt out of transfer or sharing without changing its checked
+layout. The current audited types offer no way to mutate through a shared
+reference. `WThreadUnshared` reserves that case (interior mutation) for
+future synchronized types. Analysis is bounded at 32 levels and 256 expanded
+records or arrays; scalar fields do not count toward that limit.
+
+### Detached spawn and join
+
+```w
+import lib.safe_thread
+
+struct Job:
+	own int* value
+	int scale
+
+type Worker = fn[](own Job*) -> int
+
+int run_job(own Job* job):
+	ref int* value = job.value
+	return *value * job.scale
+
+int main():
+	own int* value = new int
+	*value = 6
+	Worker* entry = run_job
+	optown WSafeThread* thread = safe_thread_spawn(entry, new Job(value, 7))
+	if (!thread): return 1
+	own WSafeThread* started = thread
+	return safe_thread_join(started) - 42
+```
+
+`safe_thread_spawn[E, T](E* entry, own T* payload)` requires a transferable `T`.
+It also requires `E` to be exactly `fn[](own T*) -> int`. A bare function name
+has no value type for inference, so either bind it to a typed local first or
+supply both type arguments (`safe_thread_spawn[Worker, Job](run_job, job)`).
+
+- **Spawn** always consumes the payload; the source binding becomes moved.
+- **Success** returns a present handle. The child passes the payload to
+  `entry` exactly once, and `entry`'s parameter cleanup destroys it on the
+  child.
+- **Failure** returns an absent handle. This happens when 64 checked threads
+  are already live (spawned but not joined) or when `clone` fails. The
+  payload never reached a thread; the runtime destroys it before returning.
+  The handle must be tested before it can be joined.
+- **Join** (`safe_thread_join(own WSafeThread*)`) consumes the handle, waits for
+  the child to finish and returns `entry`'s result.
+- **Dropping a present handle** waits for the child; this includes scope
+  exit, replacement and an early return. No checked thread outlives every
+  owner of its handle. Handles are transferable, so another checked
+  thread may join one.
+
+Handles are opaque. Checked code cannot construct them, read their fields or
+call the runtime's raw helpers.
+
+### Scoped fork-join
+
+```w
+struct Chunk:
+	int start
+	int total
+
+type Sum = fn[](refmut Chunk*) -> int
+
+int fill(refmut Chunk* chunk):
+	chunk.total = chunk.start + 1
+	return chunk.total
+
+int split(refmut Chunk* first, refmut Chunk* second):
+	Sum* entry = fill
+	return safe_thread_fork_join(entry, first, second)
+```
+
+`safe_thread_fork_join[E, T](E* entry, T left, T right)` runs `entry(left)` on
+a new thread and `entry(right)` on the caller. It joins the child before
+returning the sum of both results. `T` must be a non-optional `ref` or `refmut`
+pointer, and `E` must be `fn[](T) -> int`. The borrows last for the whole call,
+so the lent storage outlives the child. This is the scoped-borrowing contract:
+the join is proven before the backing storage expires. The left argument must
+satisfy the scoped rules in the table, which permit borrowed lifetimes.
+Ordinary call checking rejects lending the same exclusive storage twice and
+conflicts with a live view. If no thread can be started, both entries run on
+the caller in order and the result is the same.
+
+### Limits
+
+- No shared mutation: there are no atomics, locks or condition variables
+  for checked code, and globals keep their separate gate. Checked code
+  running on a thread is checked like any other function. However, legacy
+  code that a checked thread calls under an `unsafe:` boundary can race,
+  and that remains unsafe code's responsibility.
+- Results are a single `int`. Other data comes back through `refmut`
+  arguments of fork-join; detached payloads are consumed by the child.
+- Diagnostics: `thread payload [field 'path'] ...` (detached),
+  `scoped thread argument [field 'path'] ...` (fork-join),
+  `thread entry must be fn[](own T*) -> int ...` and
+  `fork-join entry must be fn[](T) -> int ...`. All use family `W0413`.
 
 ## Entry points, diagnostics and costs
 

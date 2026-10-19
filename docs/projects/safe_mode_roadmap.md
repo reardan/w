@@ -65,7 +65,7 @@ IDs below identify feature requirements, not a second execution schedule.
 | Deferred work, generics and callbacks | [#696](https://github.com/reardan/w/issues/696) | Wave 2, after the required lifetime and aggregate contracts |
 | Generic containers and checked iteration | [#697](https://github.com/reardan/w/issues/697) | Wave 3, after element ownership and checked generic/callback contracts |
 | Foreign boundaries and typed arenas | [#698](https://github.com/reardan/w/issues/698) | Foreign-boundary contracts in Wave 2 when ready; typed arenas in Wave 3 |
-| Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites |
+| Transfer/share rules and concurrency | [#699](https://github.com/reardan/w/issues/699) | Wave 4, after aggregate, callback and boundary prerequisites; transfer/share rules, spawn/join and scoped fork-join landed for Linux x86/x64 ([usage](safe_mode.md#thread-transfer-and-spawnjoin)); synchronization, atomics and guard lifetimes remain |
 | Additional targets, persistent sessions and performance | [#700](https://github.com/reardan/w/issues/700) | Across waves as each component's prerequisites stabilize |
 
 Workstream #700 was split at implementation kickoff into
