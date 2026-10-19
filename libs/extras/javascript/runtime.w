@@ -178,6 +178,7 @@ void js_runtime_install_reflect_construct(js_runtime* rt);
 js_value* js_runtime_remainder(js_runtime* rt, js_value* left, js_value* right);
 void js_runtime_install_array_join(js_runtime* rt);
 void js_runtime_install_array_concat(js_runtime* rt);
+void js_runtime_install_array_mutation(js_runtime* rt);
 js_value* js_object_prototype_method(void* runtime, void* context, js_value* receiver, list[js_value*] args);
 int js_object_ordinary(js_runtime* rt, js_value* object);
 js_value* js_object_argument(js_runtime* rt, list[js_value*] args, int index);
@@ -565,6 +566,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_harness_math(rt)
 	js_runtime_install_array_join(rt)
 	js_runtime_install_array_concat(rt)
+	js_runtime_install_array_mutation(rt)
 	js_runtime_install_harness_search(rt)
 	js_runtime_install_string_split(rt)
 	js_runtime_install_string_replace(rt)
@@ -2087,3 +2089,5 @@ import libs.extras.javascript.runtime_string_substring
 import libs.extras.javascript.runtime_string_trim
 
 import libs.extras.javascript.runtime_object_integrity
+
+import libs.extras.javascript.runtime_array_mutation

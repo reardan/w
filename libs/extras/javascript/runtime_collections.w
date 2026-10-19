@@ -37,19 +37,6 @@ js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiv
 		js_runtime_fail(rt, 2, c"array method requires array receiver")
 		return rt.undefined_value
 	int length = receiver.array_length
-	if (operation == 1):
-		if (length > rt.max_properties - args.length):
-			js_runtime_fail(rt, 5, c"array length limit")
-			return rt.undefined_value
-		for i in range(args.length):
-			if (js_runtime_compat_step(rt) == 0): break
-			char* raw = itoa(length + i)
-			int success = js_runtime_set(rt, receiver, raw, args[i])
-			free(raw)
-			if (success == 0): js_runtime_fail(rt, 2, c"array push element write rejected")
-		int next_length = length + args.length
-		if (rt.completion.status == 0 && js_runtime_array_resize(rt, receiver, js_runtime_number(rt, cast(float64, next_length))) == 0): js_runtime_fail(rt, 2, c"array push length write rejected")
-		return js_runtime_number(rt, cast(float64, next_length))
 	int start = 0
 	if (args.length > 0): start = js_runtime_relative_index(args[0], length, 0)
 	if (operation == 5):
@@ -62,21 +49,16 @@ js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiv
 			js_value* item = js_runtime_index_get(rt, receiver, i)
 			if (js_runtime_equal(item, needle) || (item.kind == 3 && needle.kind == 3 && f64is_nan(item.number) && f64is_nan(needle.number))): return js_runtime_boolean(rt, 1)
 		return js_runtime_boolean(rt, 0)
-	# shift and splice remove an interval; splice supports inserted arguments.
+	# The remaining splice foundation is separate from generic end mutations.
 	int removed = length - start
 	int inserted = 0
-	if (operation == 2):
-		start = 0
-		removed = 1
-		if (length == 0): return rt.undefined_value
-	else:
-		if (args.length == 0): removed = 0
-		if (args.length > 1):
-			removed = 0
-			if (args[1].kind == 3 && args[1].number > 0):
-				removed = length - start
-				if (args[1].number < cast(float64, removed)): removed = cast(int, args[1].number)
-		if (args.length > 2): inserted = args.length - 2
+	if (args.length == 0): removed = 0
+	if (args.length > 1):
+		removed = 0
+		if (args[1].kind == 3 && args[1].number > 0):
+			removed = length - start
+			if (args[1].number < cast(float64, removed)): removed = cast(int, args[1].number)
+	if (args.length > 2): inserted = args.length - 2
 	if (length - removed > rt.max_properties - inserted):
 		js_runtime_fail(rt, 5, c"array splice length limit")
 		return rt.undefined_value
@@ -89,7 +71,6 @@ js_value* js_runtime_array_method(void* runtime, void* context, js_value* receiv
 		if (js_runtime_compat_step(rt) == 0): break
 		js_runtime_array_append(rt, receiver, args[i + 2])
 	js_runtime_array_copy(rt, tail, 0, tail.array_length, receiver)
-	if (operation == 2): return js_runtime_index_get(rt, result, 0)
 	return result
 
 js_value* js_runtime_string_method(void* runtime, void* context, js_value* receiver, list[js_value*] args):
@@ -143,8 +124,6 @@ js_value* js_runtime_string_method(void* runtime, void* context, js_value* recei
 void js_runtime_install_collections(js_runtime* rt):
 	rt.array_prototype = js_runtime_alloc(rt, 6)
 	rt.string_prototype = js_runtime_alloc(rt, 5)
-	js_runtime_collection_method(rt, rt.array_prototype, c"push", 1, js_runtime_array_method)
-	js_runtime_collection_method(rt, rt.array_prototype, c"shift", 2, js_runtime_array_method)
 	js_runtime_collection_method(rt, rt.array_prototype, c"slice", 3, js_array_like_slice)
 	js_value* slice = js_runtime_get(rt, rt.array_prototype, c"slice")
 	js_class_define(rt, slice, c"length", js_runtime_number(rt, 2.0), 0, 1)
