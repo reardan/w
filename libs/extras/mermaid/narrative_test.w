@@ -140,7 +140,7 @@ void test_narrative_zenuml_nested_calls_and_returns():
 	mm_document_free(d)
 
 void test_narrative_unsupported_and_malformed_diagnostics():
-	list[char*] sources = list[char*]{c"sequenceDiagram\nend", c"sequenceDiagram\nactivate A\ndeactivate B", c"sequenceDiagram\nalt x\nA->>B: hi", c"sequenceDiagram\nbox blue\nparticipant A\nend", c"sequenceDiagram\nloop x\nelse y\nend", c"journey\nTask: 6: Me", c"journey\nTask: 0: Me", c"journey\nTask: 3: Me,", c"timeline\n: orphan", c"gantt\ndateFormat DD/MM/YYYY", c"gantt\nA: 2023-02-29, 1d", c"gantt\nA: after missing, 1d", c"gantt\nA: 2024-01-01, 999999999999999999d", c"gantt\nA: a,2024-01-01,1d\nB: a,after a,1d", c"zenuml\nA.call() {", c"zenuml\n}", c"zenuml\nnew A", c"zenuml\nreturn x"}
+	list[char*] sources = list[char*]{c"sequenceDiagram\nend", c"sequenceDiagram\nactivate A\ndeactivate B", c"sequenceDiagram\nalt x\nA->>B: hi", c"sequenceDiagram\nparticipant A\nlinks A: {\"Repo\": \"https://example.com\"}", c"sequenceDiagram\nloop x\nelse y\nend", c"journey\nTask: 6: Me", c"journey\nTask: 0: Me", c"journey\nTask: 3: Me,", c"timeline\n: orphan", c"gantt\ndateFormat DD/MM/YYYY", c"gantt\nA: 2023-02-29, 1d", c"gantt\nA: after missing, 1d", c"gantt\nA: 2024-01-01, 999999999999999999d", c"gantt\nA: a,2024-01-01,1d\nB: a,after a,1d", c"zenuml\nA.call() {", c"zenuml\n}", c"zenuml\nnew A", c"zenuml\nreturn x"}
 	for char* source in sources:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported construct diagnosed", d.error != 0)
@@ -359,3 +359,57 @@ void test_narrative_gantt_maximum_reverse_dependency_chain():
 	assert_equal(last.start + MM_MAX_ITEMS, first.end)
 	mm_document_free(d)
 	string_free(source)
+
+void test_narrative_sequence_boxes_and_rect_highlights():
+	char* source = c"sequenceDiagram\nbox Aqua Frontend team\nparticipant A as Alice\nactor B\nend\nbox rgb(33, 66, 99)\nparticipant C\nend\nparticipant D\nrect rgba(0, 0, 255, 0.5)\nA->>C: hello\nalt ok\nC-->>A: hi\nend\nend\nrect lightgray\nD->>B: ping\nend\n"
+	mm_document* d = narrative_parse(source)
+	assert_equal(4, d.nodes.length)
+	assert_equal(2, d.boxes.length)
+	mm_narrative_event* box = d.boxes[0]
+	assert_strings_equal(c"Frontend team", box.label)
+	assert_equal(0x00ffff, box.value)
+	assert_equal(0, box.from_node)
+	assert_equal(1, box.to_node)
+	box = d.boxes[1]
+	assert_strings_equal(c"", box.label)
+	assert_equal(0x214263, box.value)
+	assert_equal(2, box.from_node)
+	assert_equal(2, box.to_node)
+	mm_narrative_event* rect = d.narrative[0]
+	assert_equal(MM_N_BLOCK, rect.kind)
+	assert_strings_equal(c"rect", rect.detail)
+	assert_equal(0x8080ff, rect.value)
+	assert_equal(5, rect.end)
+	mm_scene* s = mm_render(d)
+	mm_bounds* a = s.nodes[0]
+	mm_bounds* b = s.nodes[1]
+	mm_bounds* d_lane = s.nodes[3]
+	int fills = 0
+	for mm_primitive* item in s.items:
+		if (item.kind == MM_BOX && (item.style.mask & MM_STYLE_FILL) && item.style.fill == 0x00ffff):
+			fills = fills + 1
+			asserts(c"box spans its participants", item.x < a.x && item.x2 > b.x + b.w && item.x2 < d_lane.x)
+		if (item.kind == MM_TEXT): asserts(c"rect color is not a label", index_of(item.text, c"rgba") < 0)
+	assert_equal(1, fills)
+	mm_scene_free(s)
+	narrative_export(d, c">Frontend team</text>")
+	for length in range(strlen(source) + 1):
+		mm_document* prefix = mm_parse(source, length)
+		s = mm_render(prefix)
+		asserts(c"error or render", (prefix.error != 0 && s == 0) || (prefix.error == 0 && s != 0))
+		mm_scene_free(s)
+		mm_document_free(prefix)
+	mm_document_free(d)
+	list[char*] invalid = list[char*]{c"sequenceDiagram\nbox Team\nend", c"sequenceDiagram\nbox Team\nparticipant A\nA->>A: x\nend", c"sequenceDiagram\nparticipant A\nbox Team\nparticipant A\nend", c"sequenceDiagram\nloop x\nbox Team\nparticipant A\nend\nend", c"sequenceDiagram\nbox Team\nparticipant A", c"sequenceDiagram\nrect notacolor\nA->>B: x\nend", c"sequenceDiagram\nrect rgb(1, 2)\nA->>B: x\nend", c"sequenceDiagram\nrect rgb(300, 0, 0)\nA->>B: x\nend", c"sequenceDiagram\nrect rgba(1, 2, 3, 1.5)\nA->>B: x\nend", c"sequenceDiagram\nrect red\nA->>B: x\nelse y\nend"}
+	for char* text in invalid:
+		d = mm_parse(text, strlen(text))
+		asserts(c"invalid box or rect diagnosed", d.error != 0)
+		asserts(c"invalid box or rect suppresses preview", mm_render(d) == 0)
+		mm_document_free(d)
+	__w_list_free(cast(__w_list*, invalid))
+	assert_equal(0xffffff, mm_style_css_color(c"White"))
+	assert_equal(0x010203, mm_style_css_color(c"rgb(1,2,3)"))
+	assert_equal(0xffffff, mm_style_css_color(c"rgba(0, 0, 0, 0)"))
+	assert_equal(-1, mm_style_css_color(c"transparent"))
+	assert_equal(-2, mm_style_css_color(c"rgb(1, 2, 3"))
+	assert_equal(-2, mm_style_css_color(c"rgba(1, 2, 3)"))

@@ -49,6 +49,47 @@ void test_graph_mindmap_ancestry_and_tree_layout():
 	free(svg)
 	mm_scene_free(s)
 
+void test_graph_mindmap_shapes_icons_and_classes():
+	char* source = c"mindmap\n  root((Ideas))\n    ::icon(fa fa-book)\n    cloud)Cloudy(\n    bang))Bang!((\n    :::urgent large\n    hex{{Hexagon}} :::calm\n      leaf\n"
+	mm_document* d = graph_family_parse(source)
+	assert_equal(5, d.nodes.length)
+	mm_node* root = d.nodes[0]
+	assert_strings_equal(c"fa fa-book", root.annotation)
+	mm_node* cloud = d.nodes[1]
+	assert_equal(3, cloud.shape)
+	assert_strings_equal(c"Cloudy", cloud.label)
+	mm_node* bang = d.nodes[2]
+	assert_equal(4, bang.shape)
+	assert_strings_equal(c"Bang!", bang.label)
+	assert_strings_equal(c"urgent,large", bang.style_classes)
+	mm_node* hex = d.nodes[3]
+	assert_equal(5, hex.shape)
+	assert_strings_equal(c"calm", hex.style_classes)
+	mm_node* leaf = d.nodes[4]
+	assert_equal(3, leaf.parent)
+	assert_equal(0, cloud.parent)
+	mm_scene* s = mm_render(d)
+	int polygons = 0
+	for mm_primitive* item in s.items:
+		if (item.kind == MM_POLYGON): polygons = polygons + 1
+	assert_equal(3, polygons)
+	for i in range(d.nodes.length):
+		mm_bounds* b = s.nodes[i]
+		mm_node* n = d.nodes[i]
+		asserts(c"label fits its outline", strlen(n.label) * 8 + 40 <= b.w)
+	char* svg = mm_svg(s)
+	asserts(c"icon name rendered", index_of(svg, c">fa fa-book</text>") >= 0)
+	asserts(c"cloud outline exported", index_of(svg, c"<polygon") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	for length in range(strlen(source) + 1):
+		mm_document* prefix = mm_parse(source, length)
+		s = mm_render(prefix)
+		asserts(c"error or render", (prefix.error != 0 && s == 0) || (prefix.error == 0 && s != 0))
+		mm_scene_free(s)
+		mm_document_free(prefix)
+	mm_document_free(d)
+
 void test_graph_kanban_columns_cards_and_metadata():
 	mm_document* d = graph_family_parse(c"kanban\nTodo\n  c[Implement]@{ assigned: 'W team', ticket: W-42, priority: 'High' }\nDone\n  [Test]\n")
 	assert_equal(4, d.nodes.length)
@@ -68,7 +109,7 @@ void test_graph_kanban_columns_cards_and_metadata():
 	mm_document_free(d)
 
 void test_graph_family_rejections_and_truncations():
-	list[char*] bad = list[char*]{c"mindmap\nA\nB", c"mindmap\nA\n  B\n C", c"mindmap\nA\n  ::icon(fa)", c"kanban\nA\n  B\n    C", c"kanban\nA\n  b[B]@{priority:'urgent'}", c"requirementDiagram\nrequirement R {\nrisk: unknown\n}", c"requirementDiagram\nA - verifies -> B", c"requirementDiagram\nelement E {\nid: 1\n}", c"requirementDiagram\nrequirement R {\nid: 1\nid: 2\n}"}
+	list[char*] bad = list[char*]{c"mindmap\nA\nB", c"mindmap\nA\n  B\n C", c"mindmap\n::icon(fa)", c"mindmap\nA\n  ::icon()", c"mindmap\nA\n  ::icon(a)\n  ::icon(b)", c"mindmap\nA\n  :::", c"mindmap\nA\n  ::shape(x)", c"mindmap\nA))bang(", c"mindmap\nA{{hex}", c"mindmap\nA:::bad!name", c"kanban\nA\n  B\n    C", c"kanban\nA\n  b[B]@{priority:'urgent'}", c"requirementDiagram\nrequirement R {\nrisk: unknown\n}", c"requirementDiagram\nA - verifies -> B", c"requirementDiagram\nelement E {\nid: 1\n}", c"requirementDiagram\nrequirement R {\nid: 1\nid: 2\n}"}
 	for char* text in bad:
 		mm_document* d = mm_parse(text, strlen(text))
 		asserts(c"invalid syntax rejected", d.error != 0)

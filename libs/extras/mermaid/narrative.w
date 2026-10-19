@@ -1,5 +1,6 @@
 # Native ordered Mermaid grammars. Unsupported syntax is diagnosed, never ignored.
 import libs.extras.mermaid.parse_common
+import libs.extras.mermaid.style
 
 const int MM_N_MESSAGE = 1
 const int MM_N_NOTE = 2
@@ -279,8 +280,82 @@ void mm_n_autonumber(mm_parser* p, char* text, list[int] numbering):
 	numbering[2] = step
 	p.doc.narrative_numbered = 1
 
+# `box [color] [label]` groups the participants declared before its `end`.
+# The first word is a fill only when it parses as a supported CSS color.
+void mm_n_box(mm_parser* p, char* text, list[int] blocks):
+	if (blocks.length != 0):
+		mm_error(p.doc, p.pos, c"sequence boxes must be top-level")
+		return
+	if (p.doc.boxes.length >= MM_MAX_ITEMS):
+		mm_error(p.doc, p.pos, c"sequence box limit exceeded")
+		return
+	char* rest = mm_n_trim(text + 3)
+	int split = index_of(rest, c" ")
+	if (mm_n_prefix(rest, c"rgb")): split = index_of(rest, c")") + 1
+	if (split <= 0): split = strlen(rest)
+	char* word = mm_n_part(rest, 0, split)
+	int color = -1
+	char* label
+	if (word[0] != 0 && mm_style_css_color(word) != -2):
+		color = mm_style_css_color(word)
+		label = mm_n_part(rest, split, strlen(rest))
+	else: label = strclone(rest)
+	mm_narrative_event* box = new mm_narrative_event()
+	box.label = label
+	box.detail = strclone(c"")
+	box.section = strclone(c"")
+	box.value = color
+	box.from_node = -1
+	box.to_node = -1
+	p.doc.boxes.push(box)
+	blocks.push(-1)
+	free(word)
+	free(rest)
+
+void mm_n_box_member(mm_parser* p, char* text, int actor):
+	int before = p.doc.nodes.length
+	mm_n_declare(p, text, actor)
+	if (p.doc.error != 0): return
+	if (p.doc.nodes.length != before + 1):
+		mm_error(p.doc, p.pos, c"box participants must be declared first inside their box")
+		return
+	mm_narrative_event* box = p.doc.boxes[p.doc.boxes.length - 1]
+	if (box.from_node < 0): box.from_node = before
+	box.to_node = before
+
+void mm_n_rect(mm_parser* p, char* text, list[int] blocks):
+	char* value = mm_n_trim(text + 5)
+	int color = mm_style_css_color(value)
+	free(value)
+	if (color == -2):
+		mm_error(p.doc, p.pos, c"rect requires a supported color such as rgb(r, g, b)")
+		return
+	if (blocks.length >= 32):
+		mm_error(p.doc, p.pos, c"sequence nesting limit exceeded")
+		return
+	int index = p.doc.narrative.length
+	mm_narrative_event* event = mm_n_event(p, MM_N_BLOCK, text, c"")
+	if (event == 0): return
+	free(event.detail)
+	event.detail = strclone(c"rect")
+	event.value = color
+	blocks.push(index)
+
 void mm_n_sequence(mm_parser* p, char* text, list[int] blocks, list[int] numbering):
-	if (mm_n_prefix(text, c"participant ")): mm_n_declare(p, text + 12, 0)
+	int in_box = blocks.length > 0 && blocks[blocks.length - 1] < 0
+	if (in_box && strcmp(text, c"end") != 0 && mm_n_prefix(text, c"participant ") == 0 && mm_n_prefix(text, c"actor ") == 0):
+		mm_error(p.doc, p.pos, c"sequence boxes may contain only participant or actor declarations")
+		return
+	if (in_box && strcmp(text, c"end") == 0):
+		blocks.pop()
+		mm_narrative_event* box = p.doc.boxes[p.doc.boxes.length - 1]
+		if (box.from_node < 0): mm_error(p.doc, p.pos, c"empty sequence box")
+		return
+	if (in_box && mm_n_prefix(text, c"participant ")): mm_n_box_member(p, text + 12, 0)
+	else if (in_box): mm_n_box_member(p, text + 6, 1)
+	else if (strcmp(text, c"box") == 0 || mm_n_prefix(text, c"box ")): mm_n_box(p, text, blocks)
+	else if (mm_n_prefix(text, c"rect ")): mm_n_rect(p, text, blocks)
+	else if (mm_n_prefix(text, c"participant ")): mm_n_declare(p, text + 12, 0)
 	else if (mm_n_prefix(text, c"actor ")): mm_n_declare(p, text + 6, 1)
 	else if (mm_n_prefix(text, c"create ")): mm_n_lifecycle(p, text + 7, 1)
 	else if (mm_n_prefix(text, c"destroy ")): mm_n_lifecycle(p, text + 8, 0)

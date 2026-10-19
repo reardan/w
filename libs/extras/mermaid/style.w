@@ -29,13 +29,75 @@ int mm_style_color(char* value):
 			else: result = result * 16 + digit
 		return result
 	if (strcmp(value, c"none") == 0 || strcmp(value, c"transparent") == 0): return -1
-	list[char*] names = list[char*]{c"black", c"white", c"red", c"green", c"blue", c"yellow", c"cyan", c"magenta", c"gray", c"grey", c"orange", c"purple", c"pink", c"navy", c"teal", c"lime"}
-	list[int] values = list[int]{0, 0xffffff, 0xff0000, 0x008000, 0x0000ff, 0xffff00, 0x00ffff, 0xff00ff, 0x808080, 0x808080, 0xffa500, 0x800080, 0xffc0cb, 0x000080, 0x008080, 0x00ff00}
+	list[char*] names = list[char*]{c"black", c"white", c"red", c"green", c"blue", c"yellow", c"cyan", c"magenta", c"gray", c"grey", c"orange", c"purple", c"pink", c"navy", c"teal", c"lime", c"aqua", c"fuchsia", c"silver", c"maroon", c"olive", c"lightblue", c"lightgreen", c"lightgray", c"lightgrey", c"lightyellow", c"lavender", c"beige"}
+	list[int] values = list[int]{0, 0xffffff, 0xff0000, 0x008000, 0x0000ff, 0xffff00, 0x00ffff, 0xff00ff, 0x808080, 0x808080, 0xffa500, 0x800080, 0xffc0cb, 0x000080, 0x008080, 0x00ff00, 0x00ffff, 0xff00ff, 0xc0c0c0, 0x800000, 0x808000, 0xadd8e6, 0x90ee90, 0xd3d3d3, 0xd3d3d3, 0xffffe0, 0xe6e6fa, 0xf5f5dc}
 	int result = -2
 	for i in range(names.length):
 		if (strcmp(value, names[i]) == 0): result = values[i]
 	__w_list_free(cast(__w_list*, names))
 	__w_list_free(cast(__w_list*, values))
+	return result
+
+# Parses an integer 0..255, or (fraction set) an alpha 0..1 as hundredths.
+# Returns -1 for malformed text; *at advances past the number.
+int mm_style_channel(char* value, int* at, int fraction):
+	int i = *at
+	while (value[i] == 32): i = i + 1
+	int number = 0
+	int digits = 0
+	while (value[i] >= '0' && value[i] <= '9' && digits < 4):
+		number = number * 10 + value[i] - '0'
+		digits = digits + 1
+		i = i + 1
+	if (fraction):
+		number = number * 100
+		if (value[i] == '.'):
+			i = i + 1
+			int scale = 10
+			while (value[i] >= '0' && value[i] <= '9'):
+				number = number + (value[i] - '0') * scale
+				scale = scale / 10
+				digits = digits + 1
+				i = i + 1
+		if (number > 100): return -1
+	else if (number > 255): return -1
+	while (value[i] == 32): i = i + 1
+	*at = i
+	if (digits == 0): return -1
+	return number
+
+# CSS rgb()/rgba() and case-insensitive names. Alpha is composited over the
+# white diagram background because native primitives carry opaque colors.
+int mm_style_css_color(char* value):
+	int length = strlen(value)
+	int alpha = index_of(value, c"rgba(") == 0
+	if (alpha || index_of(value, c"rgb(") == 0):
+		if (value[length - 1] != ')'): return -2
+		int at = 4
+		if (alpha): at = 5
+		int result = 0
+		int opacity = 100
+		int parsed = 0
+		list[int] channels = new list[int]
+		for i in range(3 + alpha):
+			int channel = mm_style_channel(value, &at, i == 3)
+			if (channel < 0): break
+			parsed = parsed + 1
+			if (i == 3): opacity = channel
+			else: channels.push(channel)
+			if (i < 2 + alpha):
+				if (value[at] != ','): break
+				at = at + 1
+		int valid = parsed == 3 + alpha && at == length - 1
+		for int channel in channels: result = result * 256 + 255 - (255 - channel) * opacity / 100
+		__w_list_free(cast(__w_list*, channels))
+		if (valid == 0): return -2
+		return result
+	char* lower = strclone(value)
+	for i in range(length):
+		if (lower[i] >= 'A' && lower[i] <= 'Z'): lower[i] = lower[i] + 32
+	int result = mm_style_color(lower)
+	free(lower)
 	return result
 
 void mm_style_merge(mm_style* result, mm_style* next):
@@ -234,6 +296,7 @@ int mm_style_statement(mm_parser* p):
 	return 1
 
 void mm_style_validate(mm_document* d):
+	if (d.kind == MM_MINDMAP): return
 	for mm_node* node in d.nodes:
 		int start = 0
 		int length = strlen(node.style_classes)
