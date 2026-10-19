@@ -292,7 +292,13 @@ every input the binary exits 0 on through a reference command and saves
 a different status, stdout or `{out}` file to `<out>/diffs/` (with both
 `{out}` files as `.out` / `.out_ref` and a `.log` of both stderrs); seeds that
 already differ are listed as "seed diffs" and their mutants skip the
-oracle. The run is deterministic for a given `--seed` and `--cases`
+oracle. `--diff-expect <text>` (repeatable, any marker counts) filters
+the *expected* kind of difference: a reference run whose stderr
+contains a marker (say, a front end rejecting a feature the binary
+supports by design) is not saved to `<out>/diffs` and not counted as a
+finding — the summary tallies it as "expected diffs" — and its inputs
+stay ordinary corpus citizens, so mutants still run against the oracle
+and real findings behind the expected rejection surface. The run is deterministic for a given `--seed` and `--cases`
 (case *i* draws from `wf_rng(seed, i)`); `--seconds` bounds it by time
 instead. `--minimize <file>` deletes lines and then bytes while the exit
 status stays the same, and prints the result. The header of
@@ -302,17 +308,27 @@ status stays the same, and prints the result. The header of
 `tests/wcoverage/fuzz_target_fixture.w`, whose nested conditions end in
 a null dereference, for 400 cases: coverage must grow past the seed, the
 crash must be found, a second run must produce the same corpus, and the
-minimizer must reduce a crashing input to `if (while (`.
+minimizer must reduce a crashing input to `if (while (`. Two more steps
+run a one-seed differential against `bin/wv2`: the seed's divergence
+must surface as `seed diffs: 1`, and the same run with
+`--diff-expect compiling` must move it to `expected diffs: 1` instead.
 
 `./wbuild wfuzz_compiler` (in no umbrella) builds
 `bin/wfuzz_compiler/compiler_cov` from `w.w`, seeds the corpus with
 every `.w` file under `tests/` of at most 4 KiB, and fuzzes it for
 `$WFUZZ_SECONDS` (default 300) with `bin/wv2 --streaming` as the
 differential reference, so a program the AST front end compiles must
-compile to the same bytes under the streaming front end. Results are in
+compile to the same bytes under the streaming front end; that front
+end's known by-design rejections — checked pointers, outlives clauses,
+checked function contracts and scoped defer all "require the retained"
+front end — are filtered through repeatable `--diff-expect` markers so
+they cannot bury real differences. Results are in
 `bin/wfuzz_compiler/out/`. The nightly `.github/workflows/fuzz.yml`
 workflow (also runnable by hand with a budget) runs it for 20 minutes,
 writes the summary and the list of findings to the job summary, and
 uploads the corpus, crashes, hangs and diffs as the `compiler-fuzz`
 artifact for 14 days. Findings do not fail the workflow; reproduce one
-with `bin/wv2 <file> -o /tmp/out` and shrink it with `--minimize`.
+with `bin/wv2 <file> -o /tmp/out` and shrink it with `--minimize`, then
+check the crashing input in as a regression fixture — the first
+campaign's null-`retained_bindings` SIGSEGV became
+`tests/safe_checked_struct_only_crash_fixture.w`.

@@ -933,15 +933,49 @@ int type_is_buffer(int type_index):
 	return type_is_array(type_index) | type_is_slice(type_index) | type_is_string(type_index)
 
 
-int type_has_array_field(int type_index):
+# Self-embedding reachability for the struct-declaration cycle check:
+# 1 when type_index's by-value fields (transitively, pointers excluded)
+# reach -- or *are* -- target. Depth-bounded: a table already holding a
+# cycle (only constructible through REPL redefinition) must not hang
+# the walk; beyond the cap, stop instead of deciding.
+int type_embeds_depth(int type_index, int target, int depth):
+	type_index = type_canonical(type_index)
+	if (type_index < 0): return 0
+	if (type_index == target): return 1
+	if (depth >= 32): return 0
+	if (type_get_pointer_level(type_index) > 0): return 0
+	# A T[N] array embeds its element inline (descriptor + element
+	# bytes, see type_push_array): the element type is its alias_target,
+	# with no field records to walk.
+	if (type_get_kind(type_index) == type_kind_array):
+		return type_embeds_depth(type_get_alias_target(type_index), target, depth + 1)
+	int count = type_num_args(type_index)
+	for i in range(count):
+		if (type_embeds_depth(type_get_field_type_at(type_index, i), target, depth + 1)): return 1
+	return 0
+
+
+# A cyclic struct (one embedding itself by value -- struct S:
+# S inner -- the struct name pre-registers before its fields parse, so
+# the lookup succeeds) has no finite answer here: the plain recursive
+# descent overran the stack (wfuzz, minimized to two lines).
+# struct_declaration now rejects self-embedding at completion; this
+# cap stays as the second layer for any other table state (redefined
+# records reaching here through streams or the REPL).
+int type_has_array_field_depth(int type_index, int depth):
 	type_index = type_canonical(type_index)
 	if (type_index < 0): return 0
 	if (type_get_pointer_level(type_index) > 0): return 0
 	if (type_is_array(type_index)): return 1
+	if (depth >= 32): return 0
 	int count = type_num_args(type_index)
 	for i in range(count):
-		if (type_has_array_field(type_get_field_type_at(type_index, i))): return 1
+		if (type_has_array_field_depth(type_get_field_type_at(type_index, i), depth + 1)): return 1
 	return 0
+
+
+int type_has_array_field(int type_index):
+	return type_has_array_field_depth(type_index, 0)
 
 
 int type_stack_words(int type_index):
