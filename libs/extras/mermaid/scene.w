@@ -2,6 +2,7 @@
 # No DOM, JavaScript, external layout engine or graphics context required.
 import libs.extras.mermaid.model
 import lib.fmath
+import libs.extras.mermaid.text_metrics
 
 const int MM_LINE = 1
 const int MM_BOX = 2
@@ -20,6 +21,8 @@ struct mm_primitive:
 	list[int] points
 	mm_style style
 	int node_style
+	# MM_TEXT_BOLD / MM_TEXT_ITALIC flags of a text run.
+	int text_style
 
 struct mm_bounds:
 	int x
@@ -49,8 +52,8 @@ void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, ch
 	p.dashed = dashed
 	p.text = strclone(text)
 	s.items.push(p)
-	if (kind == MM_TEXT): x2 = x + strlen(text) * 8
-	if (kind == MM_TEXT): y2 = y + 16
+	if (kind == MM_TEXT): x2 = x + mm_text_width(text, 0)
+	if (kind == MM_TEXT): y2 = y + MM_TEXT_LINE
 	if (x2 + 40 > s.width): s.width = x2 + 40
 	if (y2 + 40 > s.height): s.height = y2 + 40
 	if (x + 40 > s.width): s.width = x + 40
@@ -61,6 +64,14 @@ void mm_line(mm_scene* s, int x, int y, int x2, int y2, int dashed):
 
 void mm_text(mm_scene* s, int x, int y, char* text):
 	mm_draw(s, MM_TEXT, x, y, 0, 0, 0, text)
+
+# One styled run of text; its extent counts the styled (wider bold) advances.
+void mm_text_styled(mm_scene* s, int x, int y, char* text, int style):
+	mm_draw(s, MM_TEXT, x, y, 0, 0, 0, text)
+	mm_primitive* p = s.items[s.items.length - 1]
+	p.text_style = style
+	int x2 = x + mm_text_width(text, style)
+	if (x2 + 40 > s.width): s.width = x2 + 40
 
 void mm_ellipse(mm_scene* s, int x, int y, int rx, int ry):
 	int px = x + rx
@@ -207,10 +218,13 @@ char* mm_svg(mm_scene* scene):
 				else: string_append_char(out, ' ')
 			string_append(out, c"\"/>\n")
 		else:
-			string_append(out, c"<text font-family=\"monospace\" font-size=\"13\"")
+			string_append(out, c"<text font-family=\"Liberation Sans, Arial, Helvetica, sans-serif\"")
+			mm_svg_number(out, c"font-size", MM_TEXT_SIZE)
+			if (p.text_style & MM_TEXT_BOLD): string_append(out, c" font-weight=\"bold\"")
+			if (p.text_style & MM_TEXT_ITALIC): string_append(out, c" font-style=\"italic\"")
 			mm_svg_paint(out, p)
 			mm_svg_number(out, c"x", p.x)
-			mm_svg_number(out, c"y", p.y + 13)
+			mm_svg_number(out, c"y", p.y + MM_TEXT_ASCENT)
 			string_append_char(out, '>')
 			mm_xml(out, p.text)
 			string_append(out, c"</text>\n")

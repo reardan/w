@@ -217,7 +217,8 @@ void test_mermaid_long_label_does_not_multiply_canvas_size():
 		string_append_char(source, 10)
 	mm_document* d = mm_test_parse(source.data)
 	mm_scene* scene = mm_render(d)
-	asserts(c"canvas width bounded by total source size", scene.width > 2400000 && scene.width < 3000000)
+	# 11px per X (text_metrics.w); one unbroken word never wraps.
+	asserts(c"canvas width bounded by total source size", scene.width > 2400000 && scene.width < 4000000)
 	asserts(c"canvas height bounded by total row sizes", scene.height > 0 && scene.height < 200000)
 	mm_scene_free(scene)
 	mm_document_free(d)
