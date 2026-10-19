@@ -191,8 +191,8 @@ risking files referenced by the current manifest or pinned readers.
 Run `./wbuild storage_probe`, then:
 
 ```sh
-python3 tools/storage/bench.py --count 1000 --durability each --output bin/storage-bench.json
-python3 tools/storage/bench.py --count 1000 --durability end --output bin/storage-bench-end.json
+bin/storage_bench --count 1000 --durability each --output bin/storage-bench.json
+bin/storage_bench --count 1000 --durability end --output bin/storage-bench-end.json
 ```
 
 The JSON includes warm reads, requested-cold reads, scans, sustained updates,

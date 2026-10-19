@@ -26,7 +26,7 @@ import graphics.ui.demo_shell
 
 # Write the just-drawn frame as a binary PPM (P6): glReadPixels is
 # bottom-origin, PPM rows run top-down, so rows flip on the way out.
-# Convert with any image tool (e.g. tools/ppm_to_png.py).
+# Convert with any image tool (e.g. tools/ppm_to_png.w).
 int ui_demo_write_ppm(char* path, int w, int h):
 	char* pixels = cast(char*, malloc(w * h * 4))
 	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels)

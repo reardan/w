@@ -1,6 +1,6 @@
 # Cross-host structural gate: compiler-emitted iOS binaries need no Apple
 # SDK to build or inspect. Actual UIKit execution: tools/ios/smoke.sh.
-# wbuild: target=ios_target_test tag=tests dep=wv2 dep=wtest
+# wbuild: target=ios_target_test tag=tests dep=wv2 dep=wtest dep=ios_check_macho
 # wbuild: step="bin/wtest archs -f tests/wtest/manifest_ios.json graphics/ios/demo.w --check" expect_stdout="arm64_ios graphics/ios/demo.w: OK" expect_stdout="arm64_ios_sim graphics/ios/demo.w: OK"
 # wbuild: step="bin/wv2 arm64_darwin --strict graphics/ios/demo.w -o bin/ios_macos_test"
 # wbuild: step="bin/wv2 arm64_ios --strict graphics/ios/demo.w -o bin/ios_device_test"
@@ -84,3 +84,6 @@ void test_ios_simulator_platform():
 
 void test_macos_platform_unchanged():
 	ios_check_image(c"bin/ios_macos_test", 1)
+
+# wbuild: step="bin/ios_check_macho bin/ios_device_test device"
+# wbuild: step="bin/ios_check_macho bin/ios_simulator_test simulator"

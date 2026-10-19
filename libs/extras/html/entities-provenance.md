@@ -15,14 +15,14 @@ The W implementation follows the HTML Standard's
 [character reference states](https://html.spec.whatwg.org/multipage/parsing.html#character-reference-state),
 including the numeric-reference control substitution table.
 
-`python3 tools/html_entities.py` validates the input hash and value schema, sorts
+`bin/html_entities` validates the input hash and value schema, sorts
 the names, removes their leading ampersands, encodes values as UTF-8, and emits
 immutable packed name/value records with little-endian 16-bit offsets. It adds
 no aliases and does not infer missing-semicolon permissions. Every output
 includes the input hash and license attribution. Normal W compilation imports
 the checked-in `entities.w` and requires neither Python nor external files.
 
-`python3 tools/html_entities.py --check` performs the same transformation without
+`bin/html_entities --check` performs the same transformation without
 writing and fails on stale generated output or a changed input hash. The
 conventional x86/x64 entity tests include this check and independently read
 `entities.json` for expected values through W's JSON parser.

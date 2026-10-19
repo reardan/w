@@ -1,6 +1,6 @@
 # Pinned ANTLR Unicode data
 
-`generate.py` extracts property intervals and aliases from the exact ANTLR
+`generate.w` extracts property intervals and aliases from the exact ANTLR
 4.13.2 jar used by the conformance oracle. It also records Java 17
 `Character.toLowerCase(int)` / `toUpperCase(int)` mappings, which the reference
 ANTLR tool uses for case-insensitive lexer range endpoints. These are simple
@@ -10,7 +10,8 @@ Run explicitly with Java 17 on PATH:
 
 ```sh
 PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:$PATH \
-  python3 tools/antlr_unicode/generate.py /path/to/antlr-4.13.2-complete.jar
+  ./wbuild antlr_unicode
+  bin/antlr_unicode /path/to/antlr-4.13.2-complete.jar
 ```
 
 The jar SHA-256 must be

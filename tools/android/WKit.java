@@ -451,7 +451,7 @@ final class WKit {
         return (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE);
     }
 
-    /** Small icon: the packaged w_notification drawable (build.py --notifications), else the app icon. */
+    /** Small icon: the packaged w_notification drawable (android_build --notifications), else the app icon. */
     static int notificationIcon(Context context) {
         int icon = context.getResources().getIdentifier("w_notification", "drawable", context.getPackageName());
         if (icon == 0) icon = context.getApplicationInfo().icon;
@@ -494,7 +494,7 @@ final class WKit {
         return -1;
     }
 
-    /** Non-empty text keeps the process in a foreground service (build.py --notifications); "" stops it. */
+    /** Non-empty text keeps the process in a foreground service (android_build --notifications); "" stops it. */
     private boolean background(String text) {
         Intent intent = new Intent(activity, WService.class);
         if (text.isEmpty()) { activity.stopService(intent); return true; }

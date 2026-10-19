@@ -40,7 +40,7 @@
 			"javascript_compatibility": "explicit compatibility gate requiring pinned external Node runtime",
 			"storage_probe": "storage benchmark driver binary",
 			"tile_benchmark": "opt-in CUDA timing sweep; tile_benchmark_compile_test covers its build in tests",
-			"storage_native_test": "storage benchmark run (tools/storage/native_test.py)",
+			"storage_native_test": "storage benchmark run (tools/storage/native_check.w)",
 			"wast_audit": "AST audit tool binary",
 			"ast_expression_suite": "AST migration audit; reruns the whole tests umbrella",
 			"wbench_compare": "hand-run benchmark comparison; wbench_compare_test covers it",
@@ -62,20 +62,6 @@
 				"name": "antlr_differential_harness_test",
 				"tags": ["tests"],
 				"steps": [{"cmd": ["python3", "tests/antlr_differential_harness_test.py"]}]
-			},
-			{
-				"name": "antlr_sweep_harness_test",
-				"tags": ["tests"],
-				"steps": [
-					{"cmd": ["python3", "tests/antlr_sweep_harness_test.py"]}
-				]
-			},
-			{
-				"name": "wvm_image_test",
-				"tags": ["tests"],
-				"steps": [
-					{"cmd": ["python3", "tests/wvm_image_test.py"]}
-				]
 			},
 			{
 				"name": "manifest",
@@ -415,7 +401,9 @@
 			"tags": ["tests_darwin"],
 			"deps": ["build_darwin"],
 			"steps": [
-				{"cmd": ["python3", "tools/qualify_native.py", "--suite", "atomic", "--rounds", "20"]}
+				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "--strict", "tools/qualify_native.w", "-o", "bin/qualify_native_darwin.new"]},
+				{"cmd": ["mv", "-f", "bin/qualify_native_darwin.new", "bin/qualify_native_darwin"]},
+				{"cmd": ["bin/qualify_native_darwin", "--suite", "atomic", "--rounds", "20"]}
 			]
 		},
 		{

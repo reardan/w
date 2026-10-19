@@ -89,21 +89,22 @@ The existing OpenGL widget renderer has not been ported to native Android.
 The browser/Wasm route remains available separately.
 
 Requires an installed Android SDK platform 35 or newer, Build Tools 35 or
-newer, an NDK (r28 or newer recommended), a JDK, and Python 3.9 or newer. The build
-script runs on Linux or macOS and uses these installed tools directly; it does not download packages
+newer, an NDK (r28 or newer recommended), a JDK, and a built W compiler. The native build
+tool runs on Linux or macOS and uses these installed tools directly; it does not download packages
 or require Gradle. Set `ANDROID_HOME`/`ANDROID_SDK_ROOT`, or use `--sdk`.
 `--ndk` and `--compiler` override automatic NDK selection and `bin/wv2`.
 
 ```sh
-python3 tools/android/build.py
+./wbuild android_build android_smoke
+bin/android_build
 adb devices
-python3 tools/android/smoke.py --serial DEVICE_SERIAL
+bin/android_smoke --serial DEVICE_SERIAL
 ```
 
 Output: `bin/android/app/WApp.apk` and `preview.png`. The APK is a debuggable
 development build signed with a generated local key under `bin/android/`.
 It targets API 35, requires API 28, and packages only `arm64-v8a`. Custom
-sources can replace the demo argument to `build.py`; they must implement:
+sources can replace the demo argument to `android_build`; they must implement:
 
 ```text
 export void wandroid_setup()
@@ -128,12 +129,12 @@ thread-local storage, and W static-library output remain unsupported.
 
 ## Packaging other apps
 
-`build.py` packages any W source that exports the three callbacks. Other
+`android_build` packages any W source that exports the three callbacks. Other
 repositories pass their own identity and options; the defaults reproduce
 the demo:
 
 ```sh
-python3 tools/android/build.py /path/to/app.w --import-root /path/to/repo \
+bin/android_build /path/to/app.w --import-root /path/to/repo \
     --package org.example.app --label "Example" --icon icon.png \
     --theme daynight --min-sdk 29 --internet --scheme example \
     --out /path/to/repo/bin/android --apk-name Example.apk
@@ -222,7 +223,7 @@ New control and event numbers start at 32.
   id. `wandroid_background(text)` starts a `dataSync` foreground service
   with an ongoing notification so timers and HTTP keep running while the app
   is in the background (call it while the Activity is still visible, e.g. in
-  lifecycle phase 2); `""` stops it. Both need `build.py --notifications`
+  lifecycle phase 2); `""` stops it. Both need `android_build --notifications`
   and return 0 otherwise. Android 15 limits that service type to six hours a
   day.
 
@@ -242,10 +243,10 @@ and demo shared-library checks. These need neither an SDK nor a device:
 ./wbuild android_elf_test android_bootstrap_test android_build_tools_compile_test android_app_test android_kit_test
 ```
 
-`android_kit_test` builds the kit example and runs `tools/android/check_bridge.py`,
+`android_kit_test` builds the kit example and runs `tools/android/check_bridge.w`,
 which checks that every W `extern` has a C definition with the same arity and
 that `kit.c`, `WKit.java`, `kit.w` and `WActivity` agree on operation codes,
-event kinds and JNI signatures. On a device, `tools/android/kit_smoke.py`
+event kinds and JNI signatures. On a device, `tools/android/kit_smoke.w`
 exercises screens, lists, text, secrets, a timer, HTTP through `adb reverse`,
 Back, a dialog, a deep link and the permission/background fallbacks (see its
 usage text for the build command). It passed on the Samsung SM-S134DL
@@ -259,8 +260,8 @@ The optional device probes test exported integer/float arguments, stack
 spills, relocated data, and a W compiler running inside Android's app sandbox:
 
 ```sh
-python3 tools/android/build.py --probes
-python3 tools/android/smoke.py --serial DEVICE_SERIAL --probes
+bin/android_build --probes
+bin/android_smoke --serial DEVICE_SERIAL --probes
 ```
 
 The probe APK packages `compiler/cli.w` as a shared library and the runtime
@@ -284,7 +285,7 @@ but do not substitute for execution on physical ARM64 hardware.
 Command-line self-hosting and executor termination can be reproduced over adb:
 
 ```sh
-python3 tools/android/selfhost.py --serial DEVICE_SERIAL
+bin/android_selfhost --serial DEVICE_SERIAL
 ANDROID_SERIAL=DEVICE_SERIAL ./wbuild android_executor_signal_device_test
 ```
 

@@ -38,5 +38,5 @@ int main(int argc, char** argv):
 		return 100
 	return wg_native_run(path, argv + first * __word_size__)
 
-# wbuild: target=wgrind_native_test tag=tests dep=wgrind_native dep=wgrind input=tests/wgrind_native_test.py input=tests/wgrind_native/
-# wbuild: step="python3 tests/wgrind_native_test.py" expect_stdout="wgrind native executable checks OK"
+# wbuild: target=wgrind_native_test tag=tests dep=wgrind_native dep=wgrind dep=wgrind_native_driver input=tests/wgrind_native_driver.w input=tests/wgrind_native/
+# wbuild: step="bin/wgrind_native_driver" expect_stdout="wgrind native executable checks OK"

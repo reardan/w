@@ -37,7 +37,7 @@ CHAR/NAV), radio, toggle, progress, dropdown (a popup scope over the
 renderer's popup layer since round 1; a single overlay batch before
 that), all in the shared demo form (screenshots:
 `docs/images/ui_demo_light.png`, `ui_demo_dark.png`; captured via the
-native demo's `--screenshot` flag + `tools/ppm_to_png.py`, with
+native demo's `--screenshot` flag + `tools/ppm_to_png.w`, with
 `--theme light|dark|ocean` and `--dialog` selecting what is on screen —
 all four images are reproducible from the CLI, and render under Xvfb +
 Mesa llvmpipe when no GPU is around). Stage 3

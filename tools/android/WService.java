@@ -15,7 +15,7 @@ import android.util.Log;
  * can keep following remote work (timers and HTTP on the UI thread) while it is
  * in the background, instead of being cached and frozen. It shows one ongoing,
  * low-importance notification and does no work itself. Declared only by
- * build.py --notifications (dataSync type); Android 15 limits that type to six
+ * android_build --notifications (dataSync type); Android 15 limits that type to six
  * hours a day, after which onTimeout stops it.
  */
 public final class WService extends Service {

@@ -1,7 +1,6 @@
 # wbuild: binary=javascript_runtime_runner arch=x64 dep=javascript_parser
-# wbuild: target=javascript_conformance tag=tests dep=javascript_runtime_runner
-# wbuild: step="python3 tools/javascript_conformance.py"
-# wbuild: step="python3 tests/javascript/conformance_runner_test.py"
+# wbuild: target=javascript_conformance tag=tests dep=javascript_runtime_runner dep=javascript_conformance_cli
+# wbuild: step="bin/javascript_conformance"
 # One process, one realm. JSON protocol v1; semantic failures are data, CLI
 # misuse/I/O failures exit nonzero. This is a native fixture driver, not Test262.
 import lib.args

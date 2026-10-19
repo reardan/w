@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=sql_native_abi_test tag=tests dep=sql_native_test data=tests/sql_native_fixture.c data=tests/sql_native_fixture.py
-# wbuild: step="python3 tests/sql_native_fixture.py bin/sql_native_test"
+# wbuild: target=sql_native_abi_test tag=tests dep=sql_native_test dep=sql_native_fixture data=tests/sql_native_fixture.c data=tests/sql_native_fixture.w
+# wbuild: step="bin/sql_native_fixture bin/sql_native_test"
 import libs.standard.sql.client
 import lib.assert
 

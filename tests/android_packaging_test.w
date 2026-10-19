@@ -1,0 +1,32 @@
+import tools.android.build_lib
+
+int main():
+	char* work = ht_temp()
+	for char* name in ht_command(c"9.0 10.0 10.1 11.0-rc1 12.0-beta1"): ht_mkdir(path_join(work, name))
+	ht_require(strcmp(path_basename(ab_newest(work, c"*")), c"10.1") == 0, c"SDK versions must sort numerically and exclude prereleases")
+	ht_require(ab_match(c"[a-z][a-z0-9+.-]*", c"wkit+app") && !ab_match(c"[a-z][a-z0-9+.-]*", c"bad scheme"), c"URI scheme validation")
+	list[char*] command = ht_command(c"android_build --package org.example.app --theme daynight --min-sdk 29 --internet --notifications --scheme wkit --scheme second")
+	command.push(c"--label")
+	command.push(c"A & B <demo>")
+	char** argv = strv_new(command.length)
+	for i in range(command.length): strv_set(argv, i, command[i])
+	arg_namespace* args = argparse_parse_or_exit(ab_parser(), command.length, cast(int, argv))
+	char* manifest = path_join(work, c"AndroidManifest.xml")
+	char* resources = path_join(work, c"res")
+	ab_manifest(args, manifest, resources)
+	xml_element* root = xml_fromstring(ht_read(manifest).data)
+	ht_require(root != 0 && strcmp(xml_get(root, c"package"), c"org.example.app") == 0, c"application id")
+	xml_element* app = xml_find(root, c"application")
+	char* ns = c"{http://schemas.android.com/apk/res/android}"
+	ht_require(strcmp(xml_get(app, strjoin(ns, c"label")), c"A & B <demo>") == 0, c"label escaping")
+	ht_require(strcmp(xml_get(app, strjoin(ns, c"theme")), c"@style/WDayNight") == 0, c"day/night theme")
+	ht_require(xml_findall(root, c"uses-permission").length == 4, c"permission inventory")
+	ht_require(xml_findall(app, c"service").length == 1, c"foreground service")
+	xml_element* activity = xml_find(app, c"activity")
+	ht_require(strcmp(xml_get(activity, strjoin(ns, c"name")), c"org.wlang.androiddemo.WActivity") == 0, c"JNI activity package must stay fixed")
+	ht_require(xml_findall(activity, c"intent-filter").length == 3, c"launcher and two deep links")
+	ht_require(xml_fromstring(ht_read(path_join(resources, c"values/w_theme.xml")).data) != 0, c"theme resource")
+	ht_require(xml_fromstring(ht_read(path_join(resources, c"xml/w_network_security.xml")).data) != 0, c"network policy resource")
+	ht_cleanup()
+	println(c"Android packaging checks OK")
+	return 0

@@ -85,7 +85,7 @@ extern void wandroid_secure_delete(char* key)
 # arrive as android_event_uri. Recreation reports the original URI again.
 extern int wandroid_intent_uri(char* buffer, int capacity)
 
-# Local notification (build.py --notifications adds the permission and icon).
+# Local notification (android_build --notifications adds the permission and icon).
 # id >= 0 replaces an earlier one with the same id; tapping it opens the app and
 # sends android_event_notification with the id. Returns 0 when not permitted.
 extern int wandroid_notify(int id, char* title, char* text)

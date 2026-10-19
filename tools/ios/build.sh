@@ -30,23 +30,9 @@ xcrun --sdk "$sdk" clang -target "$triple" -isysroot "$sdk_path" \
     tools/ios/host.m tools/ios/callback.S -framework UIKit -framework Foundation \
     -install_name '@executable_path/Frameworks/WIOS.framework/WIOS' -o "$out/WIOS.new"
 mv -f "$out/WIOS.new" "$framework/WIOS"
-python3 - "$app" "$plist_platform" "${W_IOS_BUNDLE_ID:-org.wlang.native-demo}" <<'PY'
-import pathlib, plistlib, sys
-app, platform, identifier = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-base = dict(CFBundleDevelopmentRegion="en", CFBundleInfoDictionaryVersion="6.0",
-            CFBundleShortVersionString="1.0", CFBundleVersion="1", MinimumOSVersion="17.0",
-            CFBundleSupportedPlatforms=[platform])
-app_info = dict(base, CFBundleIdentifier=identifier, CFBundleExecutable="WApp",
-                CFBundleName="W on iPhone", CFBundlePackageType="APPL",
-                UIDeviceFamily=[1, 2], UILaunchScreen={},
-                UISupportedInterfaceOrientations=["UIInterfaceOrientationPortrait",
-                    "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"])
-framework_info = dict(base, CFBundleIdentifier="org.wlang.WIOS", CFBundleExecutable="WIOS",
-                      CFBundleName="WIOS", CFBundlePackageType="FMWK")
-for path, value in [(app / "Info.plist", app_info),
-                    (app / "Frameworks/WIOS.framework/Info.plist", framework_info)]:
-    path.write_bytes(plistlib.dumps(value))
-PY
+"$compiler" arm64_darwin --strict tools/ios/plist.w -o "$out/plist.new"
+mv -f "$out/plist.new" "$out/plist"
+"$out/plist" "$app" "$plist_platform" "${W_IOS_BUNDLE_ID:-org.wlang.native-demo}"
 if [ "$platform" = simulator ]; then
     codesign --force --sign - "$framework"
     codesign --force --sign - "$app"
@@ -59,5 +45,7 @@ elif [ -n "${W_IOS_SIGN_IDENTITY:-}" ]; then
 else
     echo "Device app built; deployment requires W_IOS_SIGN_IDENTITY, W_IOS_PROFILE and W_IOS_ENTITLEMENTS." >&2
 fi
-python3 tools/ios/check_macho.py "$app/WApp" "$platform"
+"$compiler" arm64_darwin --strict tools/ios/check_macho.w -o "$out/check_macho.new"
+mv -f "$out/check_macho.new" "$out/check_macho"
+"$out/check_macho" "$app/WApp" "$platform"
 printf '%s\n' "$app"
