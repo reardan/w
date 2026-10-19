@@ -487,7 +487,7 @@ html_token* html_tokenizer_next(html_tokenizer* t):
 	return token
 
 int html_void(char* name):
-	return (strcmp(name, c"area") == 0) || (strcmp(name, c"base") == 0) || (strcmp(name, c"br") == 0) || (strcmp(name, c"col") == 0) || (strcmp(name, c"embed") == 0) || (strcmp(name, c"hr") == 0) || (strcmp(name, c"img") == 0) || (strcmp(name, c"input") == 0) || (strcmp(name, c"link") == 0) || (strcmp(name, c"meta") == 0) || (strcmp(name, c"param") == 0) || (strcmp(name, c"source") == 0) || (strcmp(name, c"track") == 0) || (strcmp(name, c"wbr") == 0)
+	return (strcmp(name, c"area") == 0) || (strcmp(name, c"base") == 0) || (strcmp(name, c"br") == 0) || (strcmp(name, c"col") == 0) || (strcmp(name, c"embed") == 0) || (strcmp(name, c"hr") == 0) || (strcmp(name, c"img") == 0) || (strcmp(name, c"input") == 0) || (strcmp(name, c"link") == 0) || (strcmp(name, c"meta") == 0) || (strcmp(name, c"param") == 0) || (strcmp(name, c"source") == 0) || (strcmp(name, c"track") == 0) || (strcmp(name, c"wbr") == 0) || (strcmp(name, c"keygen") == 0)
 
 html_node* html_add_node(html_document* doc, html_tokenizer* t, html_node* parent, html_token* token):
 	# Character tokens append to the existing adjacent text node in either
@@ -567,7 +567,7 @@ html_node* html_in_scope(html_node* current, char* name, int button, int list_it
 html_node* html_end_match(html_node* current, char* name):
 	if (strcmp(name, c"p") == 0): return html_in_scope(current, name, 1, 0)
 	if (strcmp(name, c"li") == 0): return html_in_scope(current, name, 0, 1)
-	if (html_block(name) || (strcmp(name, c"pre") == 0) || (strcmp(name, c"listing") == 0) || (strcmp(name, c"button") == 0) || (strcmp(name, c"dd") == 0) || (strcmp(name, c"dt") == 0)): return html_in_scope(current, name, 0, 0)
+	if (html_block(name) || (strcmp(name, c"applet") == 0) || (strcmp(name, c"marquee") == 0) || (strcmp(name, c"object") == 0) || (strcmp(name, c"select") == 0) || (strcmp(name, c"pre") == 0) || (strcmp(name, c"listing") == 0) || (strcmp(name, c"button") == 0) || (strcmp(name, c"dd") == 0) || (strcmp(name, c"dt") == 0)): return html_in_scope(current, name, 0, 0)
 	# Existing head/body and table recovery retain their dedicated paths.
 	if ((strcmp(name, c"html") == 0) || (strcmp(name, c"head") == 0) || (strcmp(name, c"body") == 0) || (strcmp(name, c"table") == 0) || (strcmp(name, c"tr") == 0) || (strcmp(name, c"td") == 0) || (strcmp(name, c"th") == 0)): return html_ancestor(current, name)
 	while (current != 0 && current.kind == HTML_START):
@@ -596,6 +596,43 @@ html_node* html_optional_close(html_node* current, char* name, int end):
 		# Do not cross a nested list or table when closing optional items.
 		if ((strcmp(n.name, c"ul") == 0) || (strcmp(n.name, c"ol") == 0) || (strcmp(n.name, c"table") == 0) || (strcmp(n.name, c"select") == 0) || (strcmp(n.name, c"dl") == 0)): break
 		n = n.parent
+	return current
+
+# HTML snapshot 1ea5faab: select uses in-body rules, not an obsolete
+# in-select mode. Fragment context is tested explicitly where specified; it
+# does not pretend the detached context element is on the open-element stack.
+html_node* html_generate_implied(html_node* current, int except_optgroup, int end):
+	while (current != 0 && current.kind == HTML_START):
+		char* name = current.name
+		int implied = (strcmp(name, c"dd") == 0) || (strcmp(name, c"dt") == 0) || (strcmp(name, c"li") == 0) || (strcmp(name, c"option") == 0) || (strcmp(name, c"p") == 0) || (strcmp(name, c"rb") == 0) || (strcmp(name, c"rp") == 0) || (strcmp(name, c"rt") == 0) || (strcmp(name, c"rtc") == 0)
+		if (!except_optgroup && strcmp(name, c"optgroup") == 0): implied = 1
+		if (!implied): break
+		current.end = end
+		current = current.parent
+	return current
+
+html_node* html_select_start(html_tokenizer* t, html_node* current, html_token* token, int fragment_select, int* ignored):
+	char* name = token.name
+	int is_select = strcmp(name, c"select") == 0
+	int is_input = strcmp(name, c"input") == 0
+	if (fragment_select && (is_select || is_input)):
+		html_report(t, token.start, token.end, c"select or input start ignored in select fragment")
+		*ignored = 1
+		return current
+	html_node* select = html_in_scope(current, c"select", 0, 0)
+	if ((is_select || is_input) && select != 0):
+		html_report(t, token.start, token.end, c"select closed by select or input start")
+		if (is_select): *ignored = 1
+		return html_close(current, select, token.start)
+	int option = strcmp(name, c"option") == 0
+	int optgroup = strcmp(name, c"optgroup") == 0
+	int rule = option || optgroup || (strcmp(name, c"hr") == 0)
+	if (rule && select != 0):
+		current = html_generate_implied(current, option, token.start)
+		if (html_in_scope(current, c"option", 0, 0) != 0 || (!option && html_in_scope(current, c"optgroup", 0, 0) != 0)):
+			html_report(t, token.start, token.end, c"option or optgroup remains in scope")
+	else if ((option || optgroup) && current.kind == HTML_START && strcmp(current.name, c"option") == 0):
+		current = html_close(current, current, token.start)
 	return current
 
 html_document* html_parse_with_limits(char* data, int length, html_limits* limits):
@@ -638,10 +675,15 @@ html_document* html_parse_with_limits(char* data, int length, html_limits* limit
 					else if ((current == head) || (current == body)):
 						current = body
 						body_started = 1
+					int ignored = 0
+					current = html_select_start(t, current, token, 0, &ignored)
+					if (ignored):
+						html_token_free(token)
+						continue
 					if (html_closes_p(token.name)):
 						html_node* p = html_in_scope(current, c"p", 1, 0)
 						if (p != 0): current = html_close(current, p, token.start)
-					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"option") == 0) || (strcmp(token.name, c"tr") == 0) || (strcmp(token.name, c"td") == 0) || (strcmp(token.name, c"th") == 0)):
+					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"tr") == 0) || (strcmp(token.name, c"td") == 0) || (strcmp(token.name, c"th") == 0)):
 						current = html_optional_close(current, token.name, token.start)
 					int is_void = html_void(token.name)
 					if (token.self_closing && !is_void): html_report(t, token.start, token.end, c"self-closing flag ignored on HTML element")
@@ -710,7 +752,7 @@ html_document* html_parse(char* data, int length):
 # insertion modes remain explicit failures instead of returning a wrong tree.
 int html_fragment_context_supported(char* context):
 	if (context == 0): return 0
-	return (strcmp(context, c"html") == 0) || (strcmp(context, c"div") == 0) || (strcmp(context, c"body") == 0) || (strcmp(context, c"head") == 0) || html_is_raw(context) || html_is_rcdata(context) || (strcmp(context, c"plaintext") == 0) || (strcmp(context, c"noscript") == 0)
+	return (strcmp(context, c"html") == 0) || (strcmp(context, c"div") == 0) || (strcmp(context, c"body") == 0) || (strcmp(context, c"head") == 0) || html_is_raw(context) || html_is_rcdata(context) || (strcmp(context, c"plaintext") == 0) || (strcmp(context, c"noscript") == 0) || (strcmp(context, c"select") == 0)
 
 html_document* html_parse_fragment_with_limits(char* data, int length, char* context, int scripting, html_limits* limits):
 	# HTML context starts before head; reuse the existing document insertion
@@ -768,12 +810,13 @@ html_document* html_parse_fragment_with_limits(char* data, int length, char* con
 				break
 			if (token.kind == HTML_START):
 				int ignored = (strcmp(token.name, c"html") == 0) || (strcmp(token.name, c"head") == 0) || (strcmp(token.name, c"body") == 0) || (strcmp(token.name, c"frameset") == 0)
+				current = html_select_start(t, current, token, strcmp(context, c"select") == 0, &ignored)
 				if (ignored): html_report(t, token.start, token.end, c"document tag ignored in fragment")
 				else:
 					if (html_closes_p(token.name)):
 						html_node* p = html_in_scope(current, c"p", 1, 0)
 						if (p != 0): current = html_close(current, p, token.start)
-					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0) || (strcmp(token.name, c"option") == 0)):
+					if ((strcmp(token.name, c"li") == 0) || (strcmp(token.name, c"dt") == 0) || (strcmp(token.name, c"dd") == 0)):
 						current = html_optional_close(current, token.name, token.start)
 					int is_void = html_void(token.name)
 					if (token.self_closing && !is_void): html_report(t, token.start, token.end, c"self-closing flag ignored on HTML element")
