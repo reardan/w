@@ -126,13 +126,13 @@ js_value* js_object_descriptor_value(js_runtime* rt, js_value* object, js_text* 
 list[js_text*] js_object_keys(js_runtime* rt, js_value* object):
 	list[js_text*] keys = new list[js_text*]
 	if (js_object_ordinary(rt, object) == 0): return keys
-	for i in range(object.properties.length):
-		if (rt.completion.status != 0): break
-		js_for_in_key(rt, keys, object.properties[i].key)
 	if (object.kind == 6 && rt.completion.status == 0):
 		js_text* key = js_runtime_key(c"length")
 		js_for_in_key(rt, keys, key)
 		js_text_free(key)
+	for i in range(object.properties.length):
+		if (rt.completion.status != 0): break
+		js_for_in_key(rt, keys, object.properties[i].key)
 	return keys
 
 int js_object_define_properties(js_runtime* rt, js_value* object, js_value* properties):
@@ -160,6 +160,7 @@ int js_object_define_properties(js_runtime* rt, js_value* object, js_value* prop
 
 js_value* js_object_constructor(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
 	js_value* value = js_object_argument(rt, args, 0)
 	if (value.kind == 0 || value.kind == 1): return js_runtime_alloc(rt, 5)
 	if (js_runtime_object(value)): return value
@@ -262,6 +263,7 @@ js_value* js_object_static(void* runtime, void* context, js_value* receiver, lis
 
 js_value* js_object_prototype_method(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
 	int code = cast(int, context)
 	if (code == 1):
 		if (receiver.kind == 0 || receiver.kind == 1): js_runtime_fail(rt, 2, c"valueOf requires a coercible receiver")
@@ -277,12 +279,30 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 		if (receiver.kind == 6): tag = c"[object Array]"
 		if (js_function_callable(receiver)): tag = c"[object Function]"
 		if (receiver.kind == 10): tag = c"[object BigInt]"
+		if (receiver.arguments_object): tag = c"[object Arguments]"
 		if (receiver.regexp != 0): tag = c"[object RegExp]"
 		if (receiver.intrinsic_error_name[0] != 0): tag = c"[object Error]"
 		if (receiver.binary_kind != 0 || receiver.reactions != 0):
 			js_runtime_fail(rt, 6, c"exotic Object tag is not implemented")
 			return rt.undefined_value
 		return js_class_string(rt, tag)
+	if (code == 5):
+		js_value* object = js_object_argument(rt, args, 0)
+		if (js_runtime_object(object) == 0): return js_runtime_boolean(rt, 0)
+		if (js_runtime_object(receiver) == 0):
+			js_runtime_fail(rt, 2, c"isPrototypeOf requires an object receiver")
+			return rt.undefined_value
+		object = object.prototype
+		int depth = 0
+		while (object != 0):
+			if (js_runtime_compat_step(rt) == 0): return rt.undefined_value
+			if (object == receiver): return js_runtime_boolean(rt, 1)
+			depth = depth + 1
+			if (depth >= rt.max_depth):
+				js_runtime_fail(rt, 5, c"JavaScript prototype depth limit")
+				return rt.undefined_value
+			object = object.prototype
+		return js_runtime_boolean(rt, 0)
 	if (js_object_ordinary(rt, receiver) == 0): return rt.undefined_value
 	js_text* key = js_runtime_string_text(rt, js_object_argument(rt, args, 0))
 	if (key == 0): return rt.undefined_value
@@ -293,6 +313,13 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 	js_text_free(key)
 	return js_runtime_boolean(rt, result)
 
+void js_object_method(js_runtime* rt, js_value* object, char* name, js_host_receiver_function* callback, int code, int length):
+	js_value* method = js_runtime_host_callable(rt, cast(void*, code), callback)
+	js_class_define(rt, method, c"name", js_class_string(rt, name), 0, 1)
+	js_class_define(rt, method, c"length", js_runtime_number(rt, cast(float64, length)), 0, 1)
+	js_class_define(rt, object, name, method, 1, 1)
+
+
 void js_runtime_install_object(js_runtime* rt):
 	js_value* constructor = js_runtime_host_callable(rt, 0, js_object_constructor)
 	constructor.host_construct = 1
@@ -300,10 +327,11 @@ void js_runtime_install_object(js_runtime* rt):
 	js_class_define(rt, constructor, c"length", js_runtime_number(rt, 1.0), 0, 1)
 	js_class_define(rt, constructor, c"prototype", rt.object_prototype, 0, 0)
 	js_class_define(rt, rt.object_prototype, c"constructor", constructor, 1, 1)
-	js_builtin_method(rt, rt.object_prototype, c"valueOf", js_object_prototype_method, 1)
-	js_builtin_method(rt, rt.object_prototype, c"toString", js_object_prototype_method, 2)
-	js_builtin_method(rt, rt.object_prototype, c"hasOwnProperty", js_object_prototype_method, 3)
-	js_builtin_method(rt, rt.object_prototype, c"propertyIsEnumerable", js_object_prototype_method, 4)
+	js_object_method(rt, rt.object_prototype, c"valueOf", js_object_prototype_method, 1, 0)
+	js_object_method(rt, rt.object_prototype, c"toString", js_object_prototype_method, 2, 0)
+	js_object_method(rt, rt.object_prototype, c"hasOwnProperty", js_object_prototype_method, 3, 1)
+	js_object_method(rt, rt.object_prototype, c"propertyIsEnumerable", js_object_prototype_method, 4, 1)
+	js_object_method(rt, rt.object_prototype, c"isPrototypeOf", js_object_prototype_method, 5, 1)
 	js_value* reflect = js_runtime_alloc(rt, 5)
 	for i in range(1, 17):
 		char* name = c"create"
@@ -322,8 +350,11 @@ void js_runtime_install_object(js_runtime* rt):
 		if (i == 14): name = c"set"
 		if (i == 15): name = c"deleteProperty"
 		if (i == 16): name = c"has"
-		if (i <= 12): js_builtin_method(rt, constructor, name, js_object_static, i)
-		if (i == 2 || i == 4 || i == 7 || i == 8 || i >= 11): js_builtin_method(rt, reflect, name, js_object_static, i + 20)
-	js_builtin_method(rt, reflect, c"ownKeys", js_object_static, 26)
+		int length = 2
+		if (i == 2 || i == 14): length = 3
+		if (i == 5 || i == 6 || i == 7 || i == 11 || i == 12): length = 1
+		if (i <= 12): js_object_method(rt, constructor, name, js_object_static, i, length)
+		if (i == 2 || i == 4 || i == 7 || i == 8 || i >= 11): js_object_method(rt, reflect, name, js_object_static, i + 20, length)
+	js_object_method(rt, reflect, c"ownKeys", js_object_static, 26, 1)
 	js_runtime_set(rt, rt.global, c"Object", constructor)
 	js_runtime_set(rt, rt.global, c"Reflect", reflect)

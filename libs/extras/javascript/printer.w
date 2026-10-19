@@ -403,6 +403,25 @@ int js_print_statement(string_builder* out, js_node* node, int depth, pg_diagnos
 			string_append(out, node.text)
 		string_append(out, c";")
 		return 1
+	if (js_kind(node, c"switch")):
+		string_append(out, c"switch (")
+		if (js_print_expression(out, node.children[0], diagnostics) == 0): return 0
+		string_append(out, c") {\n")
+		for i in range(1, node.children.length):
+			js_node* clause = node.children[i]
+			js_print_indent(out, depth + 1)
+			if (js_kind(clause.children[0], c"empty")): string_append(out, c"default")
+			else:
+				string_append(out, c"case ")
+				if (js_print_expression(out, clause.children[0], diagnostics) == 0): return 0
+			string_append(out, c":\n")
+			for j in range(1, clause.children.length):
+				js_print_indent(out, depth + 2)
+				if (js_print_statement(out, clause.children[j], depth + 2, diagnostics) == 0): return 0
+				string_append(out, c"\n")
+		js_print_indent(out, depth)
+		string_append(out, c"}")
+		return 1
 	if (js_kind(node, c"while") || js_kind(node, c"do_while")):
 		if (count != 2): return js_print_error(diagnostics, node)
 		if (js_kind(node, c"do_while")):

@@ -500,6 +500,27 @@ js_node* js_lower_impl(pg_ast_node* node, pg_diagnostics* diagnostics):
 			free(result.text)
 			result.text = js_identifier_decode(label.first_token.text)
 		return result
+	if (js_cst_is(node, c"switch_statement")):
+		js_node* result = js_node_new(c"switch", c"")
+		if (js_lower_add(result, node.children[2], diagnostics) == 0):
+			js_node_free(result)
+			return 0
+		for i in range(5, count - 1):
+			pg_ast_node* clause = node.children[i]
+			int fallback = js_cst_is(clause.children[0], c"KW_DEFAULT")
+			js_node* lowered = js_node_new(c"case", c"")
+			js_node_add(result, lowered)
+			if (fallback): js_node_add(lowered, js_node_new(c"empty", c""))
+			else if (js_lower_add(lowered, clause.children[1], diagnostics) == 0):
+				js_node_free(result)
+				return 0
+			int start = 3
+			if (fallback): start = 2
+			for j in range(start, clause.children.length):
+				if (js_lower_add(lowered, clause.children[j], diagnostics) == 0):
+					js_node_free(result)
+					return 0
+		return result
 	if (js_cst_is(node, c"while_statement") || js_cst_is(node, c"do_statement")):
 		char* kind = c"while"
 		int condition = 2

@@ -55,6 +55,7 @@ js_value* js_arguments_materialize(js_runtime* rt, js_value* pending):
 		return rt.undefined_value
 	js_value* object = js_runtime_alloc(rt, 5)
 	if (rt.completion.status != 0): return rt.undefined_value
+	object.arguments_object = 1
 	js_class_define(rt, object, c"length", js_runtime_number(rt, cast(float64, pending.call_arguments.length)), 1, 1)
 	for i in range(pending.call_arguments.length):
 		if (js_runtime_compat_step(rt) == 0): break

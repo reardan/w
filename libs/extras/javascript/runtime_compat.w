@@ -249,10 +249,12 @@ js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding):
 		js_runtime_fail(rt, 2, c"uninitialized module binding")
 		return rt.undefined_value
 	if (binding.accessor == 3):
-		if (js_runtime_has_property(rt, binding.getter, binding.key) == 0):
-			js_runtime_fail(rt, 2, c"uninitialized or missing binding")
-			return rt.undefined_value
-		return js_runtime_member_read(rt, binding.getter, binding.key)
+		if (js_runtime_property_enter(rt) == 0): return rt.undefined_value
+		js_value* result = rt.undefined_value
+		if (js_runtime_has_property(rt, binding.getter, binding.key) == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+		if (rt.completion.status == 0): result = js_runtime_member_read(rt, binding.getter, binding.key)
+		js_runtime_property_leave(rt)
+		return result
 	if (binding.value.arguments_pending):
 		js_value* object = js_arguments_materialize(rt, binding.value)
 		if (rt.completion.status != 0): return rt.undefined_value
