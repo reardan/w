@@ -139,3 +139,4 @@ landed units are listed here as they merge.
 | U4.1 viewsets, permissions, throttling | [u4_1](orm/u4_1.md) | landed |
 | U4.2 OpenAPI generation | [u4_2](orm/u4_2.md) | landed |
 | U4.3 web routing, middleware, templates, forms | [u4_3](orm/u4_3.md) | landed |
+| U5.2 example library app | [u5_2](orm/u5_2.md) | landed |
