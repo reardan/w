@@ -15,7 +15,10 @@ hooks in `runtime.w`.
 - Ordered alternatives, capturing and `(?:noncapturing)` groups, literals,
   dot, bracket classes and ranges (including negation), `^` and `$`.
 - Greedy/lazy `*`, `+`, and `?`. Repetition clears captures inside the repeated
-  atom; unmatched captures are `undefined`.
+  atom; unmatched captures are `undefined`. Nullable optional atoms skip
+  zero-width iterations. Repeated nullable `*`/`+` atoms remain unsupported.
+- Atomic positive and negative lookahead, including nested assertions, preserve
+  the input position, ordered captures and outer backtracking.
 - `\d`, `\D`, `\w`, `\W`, `\s`, `\S`, control escapes `\n\r\t\f\v`,
   `\0` without a following digit, fixed-width `\xHH`/`\uHHHH`, escaped
   punctuation/identity escapes, and class backspace `\b`.
@@ -32,7 +35,8 @@ hooks in `runtime.w`.
   is writable, non-enumerable, and non-configurable. Writes required by exec
   throw when it is made read-only through the native descriptor API.
 - `String.replace` with string or native regex search and primitive replacement
-  text. Substitutions include `$$`, `$&`, prefix/suffix, and numbered captures,
+  text or callable replacement. Callbacks receive the match, captures, UTF-16
+  offset and input; global matches are collected before callbacks run. Substitutions include `$$`, `$&`, prefix/suffix, and numbered captures,
   including two-digit fallback and unmatched captures. Global empty matches
   advance one UTF-16 unit; replacement output has the runtime string limit.
 
@@ -44,11 +48,11 @@ execution: its other JavaScript syntax and DOM requirements are separate work.
 ## Explicit gaps
 
 Unsupported features terminate with runtime status 6. They include counted
-quantifiers/brace syntax, repeated nullable atoms with `*` or `+`, lookarounds,
+quantifiers/brace syntax, repeated nullable atoms with `*` or `+`, lookbehind,
 word-boundary assertions, backreferences, named groups, legacy octal/control
 escapes, Unicode property escapes, `d`/`u`/`v` flags, non-ASCII ignore-case,
 RegExp-object constructor arguments, custom callable `exec` overrides,
-replacement callbacks, object string coercion, and string/object `lastIndex`
+object string coercion, and string/object `lastIndex`
 coercion. Symbol protocols, subclass/species behavior, match/search/split,
 `toString`, and generic getter/boxed-string behavior are not implemented.
 The intrinsic `flags` getter reads native flags, not user-overridden flag
@@ -66,8 +70,9 @@ Patterns are limited to 1,024 UTF-16 units, 32 nested groups, 16 captures,
 2,048 parse nodes, and 4,096 instructions. A runtime may retain at most 65,536
 pattern units including one unit of accounting per regex. Compilation, search,
 VM instructions, and replacement construction consume the existing execution
-budget. The backtracking stack is explicit and limited to 4,096 entries; no
-recursive matching depends on input length. Budget/stack/storage/output
+budget. The backtracking stack is explicit: at most 4,097 live states, including the
+current state, are shared across nested assertions. Assertion/group nesting is
+limited to 32; no recursive matching depends on input length. Budget/stack/storage/output
 exhaustion reports status 5, never a false “no match.” Per-instruction class
 scans are additionally bounded by the pattern-size cap.
 
@@ -86,6 +91,13 @@ and storage limits, partial compile cleanup, GC, and forced debug-allocator
 leak detection. The memory-mode run focuses on native limit/cleanup and
 retained-regex lifetime paths; the complete parser-heavy semantic suite runs
 normally to avoid exhausting the debug allocator's virtual-memory map table.
+
+`javascript_runtime_regexp_lookahead_test` checks assertion capture ordering,
+negative clearing, nesting, zero-width optional behavior and shared limit cleanup.
+`javascript_runtime_string_replace_test` checks callback ordering, arguments,
+exceptions, UTF-16 offsets, quotas, foreign values and collection ownership.
+These focused tests pass normally and in their guard allocator paths; full pinned
+RegExp-family conformance remains unverified.
 
 The semantic JavaScript snippets were also evaluated in Node as a reference.
 Rules were checked against the [ECMAScript RegExp and String text-processing
