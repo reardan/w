@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Adversarial native runner results must preserve truthful outcome accounting."""
 import json
+import copy
 from pathlib import Path
 import subprocess
 import sys
@@ -9,10 +10,29 @@ import unittest
 from unittest.mock import patch
 
 sys.dont_write_bytecode = True
-from fragment_upstream import execute, ROOT
+from fragment_upstream import execute, validate_inventory, ROOT
 
 
 class ReportTests(unittest.TestCase):
+    def test_inventory_identity_and_selected_sources_are_bound(self):
+        for prefix in ("", "modern/", "after-body/"):
+            manifest = json.loads((ROOT / "upstream" / (prefix + "manifest.json")).read_bytes())
+            inventory = json.loads((ROOT / "upstream" / (prefix + "inventory.json")).read_bytes())
+            frozen = {name: (ROOT / "upstream" / name).read_bytes() for name in manifest["files"]}
+            validate_inventory(manifest, inventory, frozen)
+            for field in ("revision", "repository"):
+                bad = copy.deepcopy(inventory)
+                bad[field] = "another upstream"
+                with self.assertRaisesRegex(ValueError, "identity mismatch"):
+                    validate_inventory(manifest, bad, frozen)
+            for field, value in (("sha256", "wrong"), ("cases", 999),
+                                 ("path", "other.dat"), ("execution", "NOT_RUN")):
+                bad = copy.deepcopy(inventory)
+                selected = next(r for r in bad["files"] if r["execution"] != "NOT_RUN")
+                selected[field] = value
+                with self.assertRaises(ValueError):
+                    validate_inventory(manifest, bad, frozen)
+
     def test_outcomes(self):
         with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"ok\n", b"")):
             self.assertEqual(execute([], "ok\n"), ("PASS", "", True))

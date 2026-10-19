@@ -36,6 +36,41 @@ def execute(command, expected, timeout=10):
     return "PASS", "", True
 
 
+def validate_inventory(manifest, inventory, frozen_files):
+    """A pinned denominator must describe the same sources that are executed."""
+    if any(inventory.get(key) != manifest.get(key) for key in ("repository", "revision")):
+        raise ValueError("manifest/inventory upstream identity mismatch")
+    records = inventory["files"]
+    by_path = {record["path"]: record for record in records}
+    if len(by_path) != len(records) or inventory["total_files"] != len(records):
+        raise ValueError("inventory file denominator mismatch")
+    if any(type(record["cases"]) is not int or record["cases"] < 0 or
+           record["execution"] not in ("NOT_RUN", "SELECTED", "selected profile")
+           for record in records):
+        raise ValueError("invalid inventory count or selection disposition")
+    if sum(record["cases"] for record in records) != inventory["total_cases"]:
+        raise ValueError("inventory case denominator mismatch")
+    selected = {record["path"] for record in records if record["execution"] != "NOT_RUN"}
+    admitted = {record["path"] for name, record in manifest["files"].items() if name.endswith(".dat")}
+    if selected != admitted:
+        raise ValueError("manifest/inventory selected paths mismatch")
+    counted = 0
+    seen = set()
+    for name, record in manifest["files"].items():
+        if not name.endswith(".dat"):
+            continue
+        if record["path"] in seen:
+            raise ValueError("duplicate admitted fixture path")
+        seen.add(record["path"])
+        original = by_path[record["path"]]
+        count = len(frozen_files[name].decode("utf-8").split("#data\n")) - 1
+        if original["sha256"] != record["sha256"] or original["cases"] != count:
+            raise ValueError("manifest/inventory selected hash or count mismatch")
+        counted += count
+    if counted != manifest["total_cases"]:
+        raise ValueError("selected case denominator mismatch")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
@@ -61,6 +96,10 @@ def main():
         frozen_files[name] = data
         if hashlib.sha256(data).hexdigest() != record["sha256"]:
             raise SystemExit(f"upstream hash mismatch: {name}")
+    try:
+        validate_inventory(manifest, inventory, frozen_files)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     def revision(path):
         run = subprocess.run(["git", "-C", str(path), "rev-parse", "HEAD"], capture_output=True, text=True)
         return run.stdout.strip() if run.returncode == 0 else None
