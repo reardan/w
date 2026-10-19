@@ -54,7 +54,7 @@ void regexp_test_semantics():
 	regexp_test_source(c"let r=/x/; r.source='y'; r.flags='g'; r.source==='x' && r.flags==='';")
 	regexp_test_source(c"let caught=false; try{RegExp.prototype.test('x');}catch(e){caught=true;} caught;")
 	regexp_test_source(c"RegExp.prototype.source==='(?:)' && RegExp.prototype.flags==='' && RegExp.prototype.global===undefined;")
-	regexp_test_source(c"let caught=false;try{new RegExp('[z-a]');}catch(e){caught=e.name==='SyntaxError';}caught;")
+	regexp_test_source(c"let caught=false;try{new RegExp('[z-a]');}catch(e){caught=e.name==='SyntaxError' && e.constructor===SyntaxError && Object.getPrototypeOf(e)===SyntaxError.prototype;}caught;")
 
 void regexp_test_native_limits():
 	js_runtime* rt = js_runtime_new()

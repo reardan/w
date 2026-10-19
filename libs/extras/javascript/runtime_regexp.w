@@ -59,6 +59,7 @@ void js_re_syntax(js_runtime* rt, char* message):
 	js_value* error = rt.completion.value
 	if (error.kind != 5): return
 	error.intrinsic_error_name = c"SyntaxError"
+	error.prototype = rt.syntax_error_prototype
 	js_text* key = js_runtime_key(c"name")
 	js_value* property = js_runtime_property(error, key)
 	js_text_free(key)
