@@ -1,0 +1,40 @@
+# w-orm users, groups and permissions (issue #754, unit U3.1;
+# docs/projects/orm/u3_1.md). Table and column names follow Django's
+# contrib.auth / contrib.contenttypes so a W app and a Django app can share
+# one database. libs/standard/orm/auth/auth_orm.w and auth_orm_api.w are
+# generated from this file by bin/orm_gen and committed; orm_auth_gen_test
+# regenerates them and fails on any difference.
+app auth
+
+model ContentType:
+	string app_label max_length=100
+	string model max_length=100
+	unique_together app_label model
+	table=django_content_type
+
+model Permission:
+	string name max_length=255
+	fk content_type -> ContentType on_delete=cascade
+	string codename max_length=100
+	unique_together content_type codename
+	table=auth_permission
+
+model Group:
+	string name max_length=150 unique
+	m2m permissions -> Permission
+	table=auth_group
+
+model User:
+	string password max_length=128
+	datetime last_login null
+	bool is_superuser default=false
+	string username max_length=150 unique
+	string first_name max_length=150 default=""
+	string last_name max_length=150 default=""
+	string email max_length=254 default=""
+	bool is_staff default=false
+	bool is_active default=true
+	datetime date_joined auto_now_add
+	m2m groups -> Group
+	m2m user_permissions -> Permission
+	table=auth_user
