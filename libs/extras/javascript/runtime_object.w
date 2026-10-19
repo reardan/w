@@ -136,7 +136,8 @@ list[js_text*] js_object_keys(js_runtime* rt, js_value* object):
 	return keys
 
 int js_object_define_properties(js_runtime* rt, js_value* object, js_value* properties):
-	if (js_object_ordinary(rt, properties) == 0): return 0
+	properties = js_boxed_object(rt, properties)
+	if (rt.completion.status != 0 || js_object_ordinary(rt, properties) == 0): return 0
 	list[js_text*] keys = js_object_keys(rt, properties)
 	list[js_object_descriptor*] descriptors = new list[js_object_descriptor*]
 	# Conversion is completed for every enumerable descriptor before mutation.
@@ -163,9 +164,7 @@ js_value* js_object_constructor(void* runtime, void* context, js_value* receiver
 	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
 	js_value* value = js_object_argument(rt, args, 0)
 	if (value.kind == 0 || value.kind == 1): return js_runtime_alloc(rt, 5)
-	if (js_runtime_object(value)): return value
-	js_runtime_fail(rt, 6, c"primitive wrapper construction is not implemented")
-	return rt.undefined_value
+	return js_boxed_object(rt, value)
 
 # Codes 1 create, 2 defineProperty, 3 defineProperties, 4 descriptor,
 # 5 keys, 6 names, 7 getPrototypeOf, 8 setPrototypeOf, 9 is, 10 hasOwn,
@@ -191,7 +190,13 @@ js_value* js_object_static(void* runtime, void* context, js_value* receiver, lis
 		if (object.kind != 1): result.prototype = object
 		if (second.kind != 0): js_object_define_properties(rt, result, second)
 		return result
+	if (reflect == 0 && (code == 4 || code == 5 || code == 6 || code == 7 || code == 10)):
+		object = js_boxed_object(rt, object)
+		if (rt.completion.status != 0): return rt.undefined_value
 	if (js_runtime_object(object) == 0):
+		if (reflect == 0 && code == 8 && object.kind != 0 && object.kind != 1):
+			if (second.kind != 1 && js_runtime_object(second) == 0): js_runtime_fail(rt, 2, c"prototype must be an object or null")
+			return object
 		if (reflect == 0 && code == 12): return js_runtime_boolean(rt, 0)
 		if (reflect == 0 && code == 11): return object
 		js_runtime_fail(rt, 2, c"reflection requires an object")
@@ -266,9 +271,7 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
 	int code = cast(int, context)
 	if (code == 1):
-		if (receiver.kind == 0 || receiver.kind == 1): js_runtime_fail(rt, 2, c"valueOf requires a coercible receiver")
-		else if (js_runtime_object(receiver) == 0): js_runtime_fail(rt, 6, c"primitive wrapper construction is not implemented")
-		return receiver
+		return js_boxed_object(rt, receiver)
 	if (code == 2):
 		char* tag = c"[object Object]"
 		if (receiver.kind == 0): tag = c"[object Undefined]"
@@ -279,6 +282,11 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 		if (receiver.kind == 6): tag = c"[object Array]"
 		if (js_function_callable(receiver)): tag = c"[object Function]"
 		if (receiver.kind == 10): tag = c"[object BigInt]"
+		if (receiver.boxed_value != 0):
+			if (receiver.boxed_value.kind == 2): tag = c"[object Boolean]"
+			if (receiver.boxed_value.kind == 3): tag = c"[object Number]"
+			if (receiver.boxed_value.kind == 4): tag = c"[object String]"
+			if (receiver.boxed_value.kind == 10): tag = c"[object BigInt]"
 		if (receiver.arguments_object): tag = c"[object Arguments]"
 		if (receiver.regexp != 0): tag = c"[object RegExp]"
 		if (receiver.intrinsic_error_name[0] != 0): tag = c"[object Error]"
@@ -289,9 +297,8 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 	if (code == 5):
 		js_value* object = js_object_argument(rt, args, 0)
 		if (js_runtime_object(object) == 0): return js_runtime_boolean(rt, 0)
-		if (js_runtime_object(receiver) == 0):
-			js_runtime_fail(rt, 2, c"isPrototypeOf requires an object receiver")
-			return rt.undefined_value
+		receiver = js_boxed_object(rt, receiver)
+		if (rt.completion.status != 0): return rt.undefined_value
 		object = object.prototype
 		int depth = 0
 		while (object != 0):
@@ -303,7 +310,8 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 				return rt.undefined_value
 			object = object.prototype
 		return js_runtime_boolean(rt, 0)
-	if (js_object_ordinary(rt, receiver) == 0): return rt.undefined_value
+	receiver = js_boxed_object(rt, receiver)
+	if (rt.completion.status != 0 || js_object_ordinary(rt, receiver) == 0): return rt.undefined_value
 	js_text* key = js_runtime_string_text(rt, js_object_argument(rt, args, 0))
 	if (key == 0): return rt.undefined_value
 	js_value* own = js_runtime_property(receiver, key)

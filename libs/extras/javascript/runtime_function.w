@@ -35,6 +35,7 @@ js_value* js_runtime_construct(js_runtime* rt, js_value* callable, list[js_value
 		return rt.undefined_value
 	if (callable == rt.promise_constructor): return js_runtime_promise_construct(rt, args)
 	if (callable.binary_constructor != 0): return js_runtime_binary_construct(rt, callable.binary_constructor, args)
+	if (callable.boxed_constructor): return js_boxed_construct(rt, callable.boxed_constructor, args)
 	if (callable.host_construct): return js_runtime_call_native(rt, callable, rt.undefined_value, args)
 	if (js_function_callable(callable) == 0 || (callable.code != 0 && (callable.code.async_function || js_kind(callable.code, c"method") || js_kind(callable.code, c"static_method") || js_kind(callable.code, c"arrow")))):
 		js_runtime_fail(rt, 2, c"value is not a constructor")

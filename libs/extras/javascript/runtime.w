@@ -49,6 +49,8 @@ struct js_value:
 	list[js_value*] call_arguments
 	int arguments_pending
 	int arguments_object
+	js_value* boxed_value
+	int boxed_constructor
 	int host_receiver
 	js_value* this_value
 	int variable_scope
@@ -107,6 +109,9 @@ struct js_runtime_label:
 
 struct js_runtime:
 	js_value* object_prototype
+	js_value* boolean_prototype
+	js_value* number_prototype
+	js_value* bigint_prototype
 	js_value* regexp_prototype
 	int regexp_units
 	js_value* array_prototype
@@ -157,6 +162,12 @@ struct js_runtime:
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
 void js_runtime_install_object(js_runtime* rt);
+void js_runtime_install_boxed(js_runtime* rt);
+int js_object_ordinary(js_runtime* rt, js_value* object);
+js_value* js_object_argument(js_runtime* rt, list[js_value*] args, int index);
+void js_object_method(js_runtime* rt, js_value* object, char* name, js_host_receiver_function* callback, int code, int length);
+js_value* js_boxed_object(js_runtime* rt, js_value* value);
+js_value* js_boxed_construct(js_runtime* rt, int kind, list[js_value*] args);
 js_value* js_runtime_switch(js_runtime* rt, js_node* node, js_value* env);
 js_value* js_runtime_delete_expression(js_runtime* rt, js_node* operand, js_value* env);
 int js_global_has(js_runtime* rt, char* name);
@@ -289,6 +300,8 @@ js_value* js_runtime_alloc(js_runtime* rt, int kind):
 	value.call_arguments = 0
 	value.arguments_pending = 0
 	value.arguments_object = 0
+	value.boxed_value = 0
+	value.boxed_constructor = 0
 	value.host_receiver = 0
 	value.this_value = 0
 	value.variable_scope = 0
@@ -445,6 +458,9 @@ js_runtime* js_runtime_new():
 	rt.async_root_count = 0
 	rt.global_object = 0
 	rt.object_prototype = 0
+	rt.boolean_prototype = 0
+	rt.number_prototype = 0
+	rt.bigint_prototype = 0
 	rt.array_prototype = 0
 	rt.string_prototype = 0
 	rt.regexp_prototype = 0
@@ -510,6 +526,7 @@ js_runtime* js_runtime_new():
 	js_runtime_install_string_case(rt)
 	js_runtime_install_json(rt)
 	js_runtime_install_object(rt)
+	js_runtime_install_boxed(rt)
 	return rt
 
 
@@ -560,6 +577,9 @@ int js_runtime_collect(js_runtime* rt):
 	list[js_value*] pending = new list[js_value*]
 	js_runtime_mark(pending, rt.promise_constructor)
 	js_runtime_mark(pending, rt.object_prototype)
+	js_runtime_mark(pending, rt.boolean_prototype)
+	js_runtime_mark(pending, rt.number_prototype)
+	js_runtime_mark(pending, rt.bigint_prototype)
 	js_runtime_mark(pending, rt.error_prototype)
 	js_runtime_mark(pending, rt.reference_error_prototype)
 	js_runtime_mark(pending, rt.type_error_prototype)
@@ -582,6 +602,7 @@ int js_runtime_collect(js_runtime* rt):
 	while (pending.length > 0):
 		js_value* value = pending.pop()
 		js_runtime_mark(pending, value.promise_result)
+		js_runtime_mark(pending, value.boxed_value)
 		js_runtime_mark(pending, value.bound_target)
 		js_runtime_mark(pending, value.bound_receiver)
 		if (value.bound_arguments != 0):
@@ -1029,7 +1050,9 @@ js_value* js_runtime_member_read(js_runtime* rt, js_value* object, js_text* key)
 			js_text_free(unit)
 			return value
 		return js_runtime_read_receiver(rt, rt.string_prototype, key, object)
-	if (object.kind == 2 || object.kind == 3 || object.kind == 10): return rt.undefined_value
+	if (object.kind == 2): return js_runtime_read_receiver(rt, rt.boolean_prototype, key, object)
+	if (object.kind == 3): return js_runtime_read_receiver(rt, rt.number_prototype, key, object)
+	if (object.kind == 10): return js_runtime_read_receiver(rt, rt.bigint_prototype, key, object)
 	if (object.kind < 5 || object.kind > 9):
 		js_runtime_fail(rt, 2, c"property receiver is not an object")
 		return rt.undefined_value
@@ -1937,3 +1960,5 @@ import libs.extras.javascript.runtime_global
 import libs.extras.javascript.runtime_switch
 
 import libs.extras.javascript.runtime_delete
+
+import libs.extras.javascript.runtime_boxed
