@@ -314,10 +314,13 @@ js_value* js_object_prototype_method(void* runtime, void* context, js_value* rec
 				return rt.undefined_value
 			object = object.prototype
 		return js_runtime_boolean(rt, 0)
-	receiver = js_boxed_object(rt, receiver)
-	if (rt.completion.status != 0 || js_object_ordinary(rt, receiver) == 0): return rt.undefined_value
+	# Both methods perform ToPropertyKey before ToObject(this).
 	js_text* key = js_runtime_string_text(rt, js_object_argument(rt, args, 0))
 	if (key == 0): return rt.undefined_value
+	receiver = js_boxed_object(rt, receiver)
+	if (rt.completion.status != 0 || js_object_ordinary(rt, receiver) == 0):
+		js_text_free(key)
+		return rt.undefined_value
 	js_value* own = js_runtime_property(receiver, key)
 	int result = own != 0
 	if (code == 4): result = own != 0 && own.enumerable
