@@ -253,6 +253,15 @@ js_value* js_class_error_to_string(void* runtime, void* context, js_value* recei
 	return result
 
 
+# Error.isError reads the internal instance brand, never a public name,
+# constructor, prototype, or coercion hook. Intrinsic prototypes are ordinary.
+js_value* js_class_is_error(void* runtime, void* context, js_value* receiver, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, runtime)
+	if (js_builtin_arguments(rt, args) == 0): return rt.undefined_value
+	js_value* value = js_object_argument(rt, args, 0)
+	return js_runtime_boolean(rt, js_runtime_object(value) && value.intrinsic_error_name[0] != 0)
+
+
 void js_class_install_error(js_runtime* rt, char* name, js_value* prototype):
 	js_value* constructor = js_runtime_host_callable(rt, cast(void*, prototype), js_class_error)
 	constructor.this_value = prototype
@@ -270,6 +279,7 @@ void js_class_install_error(js_runtime* rt, char* name, js_value* prototype):
 void js_runtime_install_classes(js_runtime* rt):
 	rt.error_prototype = js_runtime_alloc(rt, 5)
 	js_class_install_error(rt, c"Error", rt.error_prototype)
+	js_object_method(rt, js_runtime_get(rt, rt.global, c"Error"), c"isError", js_class_is_error, 0, 1)
 	js_builtin_method(rt, rt.error_prototype, c"toString", js_class_error_to_string, 0)
 	js_value* stringify = js_runtime_get(rt, rt.error_prototype, c"toString")
 	js_class_define(rt, stringify, c"name", js_class_string(rt, c"toString"), 0, 1)
