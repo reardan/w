@@ -62,6 +62,17 @@ Reports freeze exact HEAD revisions, fresh UTC evidence kind, driver/adapter and
 upstream hashes before execution, reject mid-run source/driver changes, and preserve every case and mode on missing-driver/timeout/error.
 This is a bounded profile, never a claim of full html5lib or WPT conformance.
 
+After-body recovery preserves the native open-element chain, places comments
+under HTML after body and under Document after the final HTML end tag, and keeps
+HTML fragments in the after-body state. Whitespace is processed through in-body
+rules; ordinary tokens return to in-body recovery. Missing HTML/body attributes
+merge in source order within the existing cap, without replacing existing
+values. The [whole affected-file audit](upstream/after-body/README.md) admits all
+1,308 cases from 22 current WPT fixture files and retains the full 1,968-case
+denominator. Current processing-instruction tokens, earlier insertion modes and
+other recorded tree failures remain mandatory; this does not claim complete
+current after-body conformance. No performance result is established here.
+
 Win uses one native allocation identity per node and one rooted JS wrapper per
 node per realm. DocumentFragment moves splice children, leave the fragment
 empty and detached, and preserve existing child wrappers/listeners. Documents

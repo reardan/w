@@ -17,6 +17,8 @@ class ReportTests(unittest.TestCase):
         with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"ok\n", b"")):
             self.assertEqual(execute([], "ok\n"), ("PASS", "", True))
             self.assertEqual(execute([], "wrong\n")[0], "FAIL")
+        with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 3, b"", b"")):
+            self.assertEqual(execute([], "")[0], "ERROR")
         with patch("subprocess.run", return_value=subprocess.CompletedProcess([], -11, b"", b"")):
             self.assertEqual(execute([], "")[0], "ERROR")
         with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"\xff", b"")):
@@ -60,6 +62,22 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(result["gate"]["cases"], 4)
             self.assertFalse(result["gate"]["passed"])
             self.assertEqual(len(result["results"]), 81)
+
+    def test_after_body_missing_binary_keeps_complete_affected_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.json"
+            run = subprocess.run([sys.executable, str(ROOT / "fragment_upstream.py"),
+                                  str(Path(directory) / "missing"), "--profile", "modern-after-body",
+                                  "--report", str(report)], capture_output=True, timeout=10)
+            self.assertEqual(run.returncode, 1)
+            result = json.loads(report.read_text())
+            self.assertEqual(result["total"], 1968)
+            self.assertEqual(result["selected"], 1308)
+            self.assertEqual(result["counts"]["ERROR"], 1308)
+            self.assertEqual(result["variant_counts"]["ERROR"], 2600)
+            self.assertEqual(result["counts"]["NOT_RUN"], 660)
+            self.assertEqual(result["executed"], 0)
+            self.assertFalse(result["gate"]["passed"])
 
     def test_missing_binary_keeps_all_cases(self):
         with tempfile.TemporaryDirectory() as directory:

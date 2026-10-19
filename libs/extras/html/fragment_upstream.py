@@ -28,7 +28,9 @@ def execute(command, expected, timeout=10):
         return "ERROR", f"malformed native UTF-8 output: {error}", True
     if run.returncode == 4:
         return "UNSUPPORTED", "native fragment context is not implemented", True
-    if run.returncode or output != expected:
+    if run.returncode:
+        return "ERROR", f"native driver refused execution: exit={run.returncode}, stderr={errors!r}", True
+    if output != expected:
         return "FAIL", (f"exit={run.returncode}, expected={expected!r}, "
                         f"actual={output!r}, stderr={errors!r}"), True
     return "PASS", "", True
@@ -38,7 +40,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
     parser.add_argument("--timeout", type=float, default=10)
-    parser.add_argument("--profile", choices=("historical", "modern-select"), default="historical")
+    parser.add_argument("--profile", choices=("historical", "modern-select", "modern-after-body"), default="historical")
     parser.add_argument("--gate", choices=("selected", "select-context", "full-corpus"), default="selected")
     parser.add_argument("--report", type=Path, default=Path("bin/html-fragment-upstream.json"))
     args = parser.parse_args()
@@ -46,7 +48,7 @@ def main():
         parser.error("timeout must be positive")
     if args.gate == "select-context" and args.profile != "modern-select":
         parser.error("select-context gate requires modern-select profile")
-    prefix = "modern/" if args.profile == "modern-select" else ""
+    prefix = {"historical": "", "modern-select": "modern/", "modern-after-body": "after-body/"}[args.profile]
     manifest_name = prefix + "manifest.json"
     inventory_name = prefix + "inventory.json"
     manifest_bytes = (ROOT / "upstream" / manifest_name).read_bytes()
@@ -78,7 +80,7 @@ def main():
         "fixtures": manifest["files"],
         "manifest_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
         "inventory_sha256": hashlib.sha256(inventory_bytes).hexdigest(),
-        "scope": "Tree outputs in both scripting modes; selected document families are scripting-insensitive. Parse-error lists, foreign content and script execution remain unverified."}
+        "scope": "Tree outputs retain both requested scripting modes. Document parsing currently has no scripting flag; related differences remain FAIL. Parse-error lists, foreign content and script execution remain unverified."}
     results = []
     for name in manifest["files"]:
         if not name.endswith(".dat"):
@@ -96,9 +98,13 @@ def main():
             if "#script-on\n" in rest: modes = [1]
             variants = []
             for scripting in modes:
-                status, reason, executed = execute(
-                    [str(args.binary.resolve()), context, data, str(scripting)],
-                    expected, args.timeout)
+                command = [str(args.binary.resolve()), context, data, str(scripting)]
+                # argv cannot contain NUL. Decode this reversible transport in
+                # the native fixture driver, retaining every original byte.
+                if "\0" in data:
+                    command[2] = data.encode("utf-8").hex()
+                    command.append("--hex")
+                status, reason, executed = execute(command, expected, args.timeout)
                 variants.append({"scripting": bool(scripting), "status": status,
                                  "reason": reason, "executed": executed})
             # One case keeps one result even when both scripting modes run.
