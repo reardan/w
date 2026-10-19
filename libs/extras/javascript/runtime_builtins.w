@@ -281,6 +281,8 @@ void js_runtime_install_builtins(js_runtime* rt):
 	js_builtin_constant(rt, number, c"MAX_SAFE_INTEGER", 9007199254740991.0)
 	js_builtin_constant(rt, number, c"MIN_SAFE_INTEGER", -9007199254740991.0)
 	js_builtin_constant(rt, number, c"EPSILON", 2.220446049250313e-16)
+	js_builtin_constant(rt, number, c"MAX_VALUE", float64_from_bits((0x7ff << 52) - 1))
+	js_builtin_constant(rt, number, c"MIN_VALUE", float64_from_bits(1))
 	js_builtin_constant(rt, number, c"NaN", js_builtin_nan())
 	js_builtin_constant(rt, number, c"POSITIVE_INFINITY", float64_from_bits(0x7ff << 52))
 	js_builtin_constant(rt, number, c"NEGATIVE_INFINITY", float64_from_bits((1 << 63) | (0x7ff << 52)))
