@@ -12,6 +12,7 @@ const int HTML_TEXT = 3
 const int HTML_COMMENT = 4
 const int HTML_DOCTYPE = 5
 const int HTML_DOCUMENT = 6
+const int HTML_PROCESSING_INSTRUCTION = 7
 const int HTML_FRAGMENT = 11
 
 struct html_limits:
@@ -268,13 +269,13 @@ int html_reference(html_tokenizer* t, int start, int end, int attribute, string_
 	if ((pos < end) && (t.source[pos] == ';')): html_report(t, start, pos + 1, c"unknown named character reference")
 	return start
 
-# entities: 0 normalizes only, 1 decodes text/RCDATA, 2 decodes attribute values.
+# entities: -1 preserves PI data NUL, 0 normalizes only, 1 text/RCDATA, 2 attributes.
 char* html_decode(html_tokenizer* t, int start, int end, int entities, int* length):
 	string_builder* out = string_new()
 	int i = start
 	while (i < end):
 		int c = t.source[i] & 255
-		if (c == 0):
+		if (c == 0 && entities >= 0):
 			html_report(t, i, i + 1, c"NUL replaced")
 			string_append(out, c"\xef\xbf\xbd")
 			i = i + 1
@@ -282,7 +283,7 @@ char* html_decode(html_tokenizer* t, int start, int end, int entities, int* leng
 			string_append_char(out, 10)
 			i = i + 1
 			if ((i < end) && (t.source[i] == 10)): i = i + 1
-		else if (entities && (c == '&')):
+		else if (entities > 0 && (c == '&')):
 			int after = html_reference(t, i, end, entities == 2, out)
 			if (after > i): i = after
 			else:
@@ -363,6 +364,52 @@ html_attribute* html_attribute_find(html_attribute* a, char* name):
 		a = a.next
 	return 0
 
+# HTML snapshot 1ea5faab processing-instruction states. The scanner retains
+# source bytes for bogus-comment fallback and never expands character references.
+void html_processing_instruction(html_tokenizer* t, html_token* token):
+	int start = t.position
+	int pos = start + 2
+	int target_start = pos
+	int valid = 1
+	if (pos < t.length && !html_alpha(t.source[pos] & 255) && t.source[pos] != '_'): valid = 0
+	while (valid && pos < t.length):
+		int c = t.source[pos] & 255
+		if (html_space(c) || c == '?' || c == '>'): break
+		if (!html_alnum(c) && c != '-' && c != '_'):
+			valid = 0
+			break
+		pos = pos + 1
+	if (valid && pos == t.length):
+		html_report(t, start, pos, c"EOF in processing instruction")
+		t.position = pos
+		return
+	if (valid):
+		char* lower = html_slice(t.source, target_start, pos, 1)
+		if (strcmp(lower, c"xml") == 0 || strcmp(lower, c"xml-stylesheet") == 0): valid = 0
+		free(lower)
+	if (!valid):
+		html_report(t, start, pos, c"invalid or disallowed processing instruction target")
+		while (pos < t.length && t.source[pos] != '>'): pos = pos + 1
+		token.kind = HTML_COMMENT
+		token.text = html_decode(t, start + 1, pos, 0, &token.text_length)
+		if (pos < t.length): pos = pos + 1
+		t.position = pos
+		return
+	int target_end = pos
+	while (pos < t.length && html_space(t.source[pos])): pos = pos + 1
+	int data_start = pos
+	while (pos < t.length && t.source[pos] != '>'): pos = pos + 1
+	if (pos == t.length):
+		html_report(t, start, pos, c"EOF in processing instruction")
+		t.position = pos
+		return
+	int data_end = pos
+	if (data_end > data_start && t.source[data_end - 1] == '?'): data_end = data_end - 1
+	token.kind = HTML_PROCESSING_INSTRUCTION
+	token.name = html_slice(t.source, target_start, target_end, 0)
+	token.text = html_decode(t, data_start, data_end, -1, &token.text_length)
+	t.position = pos + 1
+
 html_token* html_tokenizer_next(html_tokenizer* t):
 	html_token* token = new html_token()
 	token.start = t.position
@@ -399,7 +446,9 @@ html_token* html_tokenizer_next(html_tokenizer* t):
 		token.text = html_decode(t, content, t.position, 0, &token.text_length)
 		if (t.position < t.length): t.position = t.position + 3
 		else: html_report(t, start, t.position, c"EOF in comment")
-	else if (html_match(t, start, c"<!") || html_match(t, start, c"<?")):
+	else if (html_match(t, start, c"<?")):
+		html_processing_instruction(t, token)
+	else if (html_match(t, start, c"<!")):
 		token.kind = HTML_COMMENT
 		int content = start + 2
 		if (html_match(t, start, c"<!doctype") && ((start + 9 == t.length) || html_space(t.source[start + 9]) || (t.source[start + 9] == '>'))):
@@ -527,6 +576,28 @@ html_node* html_add_node(html_document* doc, html_tokenizer* t, html_node* paren
 		else: parent.first_child = n
 		parent.last_child = n
 	return n
+
+# Insert a newly allocated leaf before an already-owned child. Allocation and
+# depth admission still use the shared bounded insertion path.
+html_node* html_insert_before(html_document* doc, html_tokenizer* t, html_node* parent, html_node* reference, html_token* token):
+	if (reference == 0): return html_add_node(doc, t, parent, token)
+	html_node* previous = 0
+	html_node* scan = parent.first_child
+	while (scan != reference && scan != 0):
+		previous = scan
+		scan = scan.next_sibling
+	if (scan == 0):
+		html_stop(t, token.start, c"missing insertion reference")
+		return 0
+	html_node* last = parent.last_child
+	html_node* node = html_add_node(doc, t, parent, token)
+	if (node == 0): return 0
+	last.next_sibling = 0
+	parent.last_child = last
+	node.next_sibling = reference
+	if (previous != 0): previous.next_sibling = node
+	else: parent.first_child = node
+	return node
 
 html_node* html_implied(html_document* doc, html_tokenizer* t, html_node* parent, char* name, int kind):
 	html_token* token = new html_token()
@@ -674,6 +745,8 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 		html_node* body = html_implied(doc, t, html, c"body", HTML_START)
 		html_node* current = body
 		int body_started = 0
+		# Placement phases for leaf nodes: before HTML/head, in head, after head, body.
+		int document_phase = fragment
 		# 0 retains the existing before/in-body foundation; 1 after body,
 		# 2 after after body. Neither closing tag pops open elements.
 		int after_body = 0
@@ -684,7 +757,7 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 				html_token_free(token)
 				break
 			if (after_body):
-				if (token.kind == HTML_COMMENT):
+				if (token.kind == HTML_COMMENT || token.kind == HTML_PROCESSING_INSTRUCTION):
 					html_node* parent = html
 					if (after_body == 2): parent = doc.root
 					html_add_node(doc, t, parent, token)
@@ -707,6 +780,17 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 				if (!in_body):
 					html_report(t, token.start, token.end, c"token after body reprocessed in body")
 					after_body = 0
+			if (token.kind == HTML_PROCESSING_INSTRUCTION):
+				html_node* inserted = 0
+				if (document_phase == 0): inserted = html_insert_before(doc, t, doc.root, html, token)
+				else if (document_phase == 1): inserted = html_insert_before(doc, t, html, head, token)
+				else if (document_phase == 3): inserted = html_insert_before(doc, t, html, body, token)
+				else: inserted = html_add_node(doc, t, current, token)
+				while (inserted != 0):
+					inserted.end = t.position
+					inserted = inserted.parent
+				html_token_free(token)
+				continue
 			if (token.kind == HTML_START):
 				declaration_allowed = 0
 				html_node* special = 0
@@ -723,16 +807,23 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 						special.end = token.end
 						special.attributes = token.attributes
 						token.attributes = 0
-					if (special == head): current = head
+					if (special == html && document_phase == 0): document_phase = 1
+					if (special == head):
+						current = head
+						document_phase = 2
 					if (special == body):
+						document_phase = 4
 						if (!body_started): current = body
 						body_started = 1
 				else:
 					int metadata = (strcmp(token.name, c"title") == 0) || (strcmp(token.name, c"meta") == 0) || (strcmp(token.name, c"link") == 0) || (strcmp(token.name, c"base") == 0) || (strcmp(token.name, c"style") == 0) || (strcmp(token.name, c"script") == 0)
-					if (!body_started && metadata && ((current == body) || (current == head))): current = head
+					if (!body_started && metadata && ((current == body) || (current == head))):
+						current = head
+						if (document_phase < 3): document_phase = 2
 					else if ((current == head) || (current == body)):
 						current = body
 						body_started = 1
+						document_phase = 4
 					int ignored = 0
 					current = html_select_start(t, current, token, 0, &ignored)
 					if (ignored):
@@ -756,6 +847,7 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 					if (html_in_scope(current, c"body", 0, 0) == 0): html_report(t, token.start, token.end, c"body end outside scope ignored")
 					else:
 						body_started = 1
+						document_phase = 4
 						after_body = 1
 						if (strcmp(token.name, c"html") == 0 && !fragment): after_body = 2
 					html_token_free(token)
@@ -773,6 +865,7 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 					current = html_close(current, match, token.end)
 					current = body
 					if (match != head): body_started = 1
+					else: document_phase = 3
 				else:
 					if (match != current): html_report(t, token.start, token.end, c"misnested end tag closes ancestors")
 					current = html_close(current, match, token.end)
@@ -784,15 +877,11 @@ html_document* html_parse_document_inner(char* data, int length, html_limits* li
 						declaration_allowed = 0
 						current = body
 						body_started = 1
+						document_phase = 4
 				if (token.kind == HTML_DOCTYPE):
 					if (declaration_allowed):
 						declaration_allowed = 0
-						html_node* declaration = html_add_node(doc, t, 0, token)
-						if (declaration != 0):
-							declaration.parent = doc.root
-							declaration.depth = 1
-							declaration.next_sibling = html
-							doc.root.first_child = declaration
+						html_insert_before(doc, t, doc.root, html, token)
 					else: html_report(t, token.start, token.end, c"doctype outside initial mode ignored")
 				else: html_add_node(doc, t, current, token)
 			html_token_free(token)
