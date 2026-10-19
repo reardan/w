@@ -128,7 +128,7 @@ js_value* js_function_bind(js_runtime* rt, js_value* target, list[js_value*] arg
 	if (rt.completion.status != 0): return rt.undefined_value
 	return bound
 
-# operation: 1 call, 2 apply, 3 bind. Each wrapper shares a depth/fuel budget,
+# operation: 1 call, 2 apply, 3 bind, 4 toString (explicit source gap). Each wrapper shares a depth/fuel budget,
 # including a native wrapper forwarding to itself without entering an AST.
 js_value* js_function_method(void* runtime, void* context, js_value* receiver, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, runtime)
@@ -137,6 +137,13 @@ js_value* js_function_method(void* runtime, void* context, js_value* receiver, l
 		return rt.undefined_value
 	if (js_builtin_arguments(rt, args) == 0 || js_function_enter(rt) == 0): return rt.undefined_value
 	int operation = cast(int, context)
+	if (operation == 4):
+		# The AST does not retain the original source text required by
+		# Function.prototype.toString. Do not inherit Object's brand string or
+		# manufacture source; native/bound formatting is also tracked separately.
+		js_runtime_fail(rt, 6, c"Function source rendering is outside the runtime subset")
+		rt.depth = rt.depth - 1
+		return rt.undefined_value
 	if (operation == 3):
 		js_value* bound = js_function_bind(rt, receiver, args)
 		rt.depth = rt.depth - 1
@@ -184,6 +191,7 @@ void js_function_method_install(js_runtime* rt, char* name, int length, int oper
 
 void js_runtime_install_function(js_runtime* rt):
 	rt.function_prototype = js_runtime_host_callable(rt, 0, js_function_empty)
+	rt.function_prototype.prototype = rt.object_prototype
 	js_class_define(rt, rt.function_prototype, c"name", js_class_string(rt, c""), 0, 1)
 	js_class_define(rt, rt.function_prototype, c"length", js_runtime_number(rt, 0.0), 0, 1)
 	js_value* constructor = js_runtime_host_callable(rt, 0, js_function_dynamic)
@@ -195,5 +203,6 @@ void js_runtime_install_function(js_runtime* rt):
 	js_function_method_install(rt, c"call", 1, 1)
 	js_function_method_install(rt, c"apply", 2, 2)
 	js_function_method_install(rt, c"bind", 1, 3)
+	js_function_method_install(rt, c"toString", 0, 4)
 	js_runtime_set(rt, rt.global, c"Function", constructor)
 	js_class_define(rt, rt.global, c"Function", constructor, 1, 1)

@@ -32,6 +32,16 @@ void test_methods_basic():
 	methods_eval(rt, c"Function.prototype.call.call({},null);", 2)
 	methods_eval(rt, c"sum.apply(object,'45');", 2)
 	methods_eval(rt, c"sum.apply(object,{length:1n});", 2)
+	methods_eval(rt, c"Object.getPrototypeOf(Function.prototype)===Object.prototype && Object.getPrototypeOf(Function)===Function.prototype && Object.getPrototypeOf(sum)===Function.prototype && Object.prototype.isPrototypeOf(sum);", 0)
+	methods_eval(rt, c"sum.hasOwnProperty('length') && Number.hasOwnProperty('MAX_VALUE') && !Number.propertyIsEnumerable('MAX_VALUE') && String.prototype.charCodeAt.hasOwnProperty('name') && sum.valueOf()===sum;", 0)
+	methods_eval(rt, c"let rendering=Object.getOwnPropertyDescriptor(Function.prototype,'toString');rendering.writable && !rendering.enumerable && rendering.configurable && rendering.value.name==='toString' && rendering.value.length===0 && !rendering.value.hasOwnProperty('prototype');", 0)
+	methods_eval(rt, c"let rejected=0;let invalid=[undefined,null,1,true,'x',{},[]];for(let i=0;i<invalid.length;i++){try{Function.prototype.toString.call(invalid[i]);}catch(e){if(e.constructor===TypeError)rejected++;}}rejected===7;", 0)
+	methods_eval(rt, c"Object.prototype.toString.call(sum)==='[object Function]' && Object.prototype.toString.call(Function.prototype)==='[object Function]';", 0)
+	methods_eval(rt, c"sum.toString();", 6)
+	methods_eval(rt, c"String(sum);", 6)
+	methods_eval(rt, c"Function.prototype.toString.call(Math.abs);", 6)
+	methods_eval(rt, c"Function.prototype.toString.call(sum.bind(null));", 6)
+	methods_eval(rt, c"Function.prototype.hasOwnProperty('toString') && Function.prototype.toString!==Object.prototype.toString;", 0)
 	js_runtime_free(rt)
 
 void test_methods_bound():
