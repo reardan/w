@@ -84,7 +84,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 					b.h = 100
 		s.nodes.push(b)
 
-void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
+void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap):
 	# Longest-path ranks over a topological traversal. Break cycles at the
 	# first remaining node, deterministically, without repeatedly growing ranks.
 	list[int] incoming = new list[int]
@@ -134,12 +134,12 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction):
 		for j in range(i):
 			mm_bounds* other = nodes[order[j]]
 			if (other.rank == b.rank):
-				if (horizontal): lane = lane + other.h + 100
-				else: lane = lane + other.w + 100
+				if (horizontal): lane = lane + other.h + lane_gap
+				else: lane = lane + other.w + lane_gap
 		int rank = b.rank
 		if (reverse): rank = max_rank - rank
 		int offset = 60
-		for j in range(rank): offset = offset + sizes[j] + 140
+		for j in range(rank): offset = offset + sizes[j] + rank_gap
 		if (horizontal):
 			b.x = offset
 			b.y = lane
@@ -176,7 +176,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 			if (indices[i] == a): mapped.from_node = i
 			if (indices[i] == b): mapped.to_node = i
 		edges.push(mapped)
-	mm_place(nodes, edges, mm_scope_direction(d, scope))
+	mm_place(nodes, edges, mm_scope_direction(d, scope), mm_style_lane_gap(d), mm_style_rank_gap(d))
 	if (d.layout_algorithm == 1): mm_force_place(nodes, edges)
 	if (scope >= 0):
 		mm_bounds* box = s.nodes[scope]
@@ -310,14 +310,7 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 55
 		my = ay
 		horizontal = 1
-	if (horizontal):
-		mm_line(s, ax, ay, mx, ay, e.dashed)
-		mm_line(s, mx, ay, mx, by, e.dashed)
-		mm_line(s, mx, by, bx, by, e.dashed)
-	else:
-		mm_line(s, ax, ay, ax, my, e.dashed)
-		mm_line(s, ax, my, bx, my, e.dashed)
-		mm_line(s, bx, my, bx, by, e.dashed)
+	mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, e.dashed, e.from_node == e.to_node)
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
@@ -392,10 +385,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 	for mm_edge* e in d.edges:
 		int start = s.items.length
 		mm_render_edge(d, s, e)
-		for i in range(start, s.items.length):
-			mm_primitive* primitive = s.items[i]
-			mm_style_merge(&primitive.style, &d.edge_style)
-			mm_style_merge(&primitive.style, &e.style)
+		mm_style_edge(d, s, e, start)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
@@ -523,6 +513,8 @@ void mm_render_metadata(mm_document* d, mm_scene* s):
 		for mm_bounds* b in s.nodes: b.y = b.y + 40
 		s.height = s.height + 40
 		mm_text(s, 40, 12, d.title)
+		mm_primitive* title = s.items[s.items.length - 1]
+		title.role = MM_ROLE_TITLE
 		s.has_title = 1
 	s.accessibility_title = strclone(d.accessibility_title)
 	if (s.accessibility_title[0] == 0):

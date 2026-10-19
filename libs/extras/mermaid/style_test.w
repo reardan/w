@@ -86,7 +86,7 @@ void test_mermaid_theme_palettes_and_variables():
 	mm_scene* s = mm_render(d)
 	assert_equal(0, s.background)
 	for mm_primitive* p in s.items:
-		if (p.kind == MM_BOX): assert_equal(0x123456, mm_paint_fill(p))
+		if (p.kind == MM_BOX && p.node_style): assert_equal(0x123456, mm_paint_fill(p))
 		if (p.node_style): assert_equal(0xabcdef, mm_paint_stroke(p))
 		if (p.kind == MM_LINE && p.node_style == 0): assert_equal(0xff0000, mm_paint_stroke(p))
 		if (strcmp(p.text, c"edge") == 0): assert_equal(0x00ff00, mm_paint_fill(p))
@@ -94,7 +94,7 @@ void test_mermaid_theme_palettes_and_variables():
 	mm_document_free(d)
 
 void test_mermaid_style_invalid_values_and_unsupported_properties():
-	list[char*] inputs = list[char*]{c"flowchart LR\nA:::missing", c"flowchart LR\nstyle A fill:#ggg", c"flowchart LR\nstyle A fill:url(bad)", c"flowchart LR\nstyle A stroke-width:17px", c"flowchart LR\nstyle A stroke-width:0", c"flowchart LR\nstyle A font-size:12px", c"flowchart LR\nclassDef bad, fill:red", c"flowchart LR\nstyle A fill:red,", c"---\nconfig:\n  theme: missing\n---\nflowchart LR\nA", c"---\nconfig:\n  theme: dark\n  themeVariables:\n    primaryColor: '#fff'\n---\nflowchart LR\nA", c"---\nconfig:\n  theme: base\n  themeVariables:\n    primaryColor: red\n---\nflowchart LR\nA", c"---\nconfig:\n  theme: base\n  themeVariables:\n    fontSize: 12\n---\nflowchart LR\nA"}
+	list[char*] inputs = list[char*]{c"flowchart LR\nA:::missing", c"flowchart LR\nstyle A fill:#ggg", c"flowchart LR\nstyle A fill:url(bad)", c"flowchart LR\nstyle A stroke-width:17px", c"flowchart LR\nstyle A stroke-width:0", c"flowchart LR\nstyle A font-size:12px", c"flowchart LR\nclassDef bad, fill:red", c"flowchart LR\nstyle A fill:red,", c"---\nconfig:\n  theme: missing\n---\nflowchart LR\nA", c"---\nconfig:\n  theme: base\n  themeVariables:\n    primaryColor: chartreuse\n---\nflowchart LR\nA", c"---\nconfig:\n  theme: base\n  themeVariables:\n    fontSize: 12\n---\nflowchart LR\nA"}
 	for char* input in inputs:
 		mm_document* d = mm_parse(input, strlen(input))
 		asserts(c"unsupported style diagnosed", d.error != 0)

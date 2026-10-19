@@ -227,6 +227,16 @@ struct mm_document:
 	int layout_algorithm
 	int packet_bits
 	int packet_msb
+	# Resolved theme variables (MM_THEME_COUNT colors), non-null when a theme is configured.
+	list[int] theme_values
+	# Flowchart layout configuration; config_mask bit 1 node spacing, bit 2 rank spacing.
+	int config_mask
+	int node_spacing
+	int rank_spacing
+	# 0 orthogonal step (default), 1 linear, 2 basis.
+	int edge_curve
+	# 0 classic, 1 neo (accepted as a classic approximation).
+	int look
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -284,6 +294,7 @@ int mm_add_node(mm_document* d, char* id, int offset):
 void mm_document_free(mm_document* d):
 	if (d == 0): return
 	if (d.comment_ranges != 0): __w_list_free(cast(__w_list*, d.comment_ranges))
+	if (d.theme_values != 0): __w_list_free(cast(__w_list*, d.theme_values))
 	for mm_note* note in d.notes:
 		free(note.text)
 		free(note)
