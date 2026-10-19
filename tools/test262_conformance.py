@@ -11,6 +11,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import tarfile
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / 'tests/javascript/test262/manifest.json'
@@ -20,7 +22,7 @@ FEATURES = {'coalesce-expression'}
 # Explicit capability inventory for requirements declared by hash-pinned cases.
 # Promote only alongside runtime implementation and executable contract checks.
 KNOWN_BUILTINS = {'eval', 'Number', 'isNaN', 'Object'}
-BUILTINS = set()
+BUILTINS = {'Object'}
 DOC_FIELDS = {'description', 'info', 'esid', 'es5id', 'es6id', 'author'}
 
 
@@ -111,8 +113,8 @@ def unsupported(meta):
     flags = set(meta['flags'])
     if flags - FLAGS:
         return 'unknown flags: ' + ', '.join(sorted(flags - FLAGS))
-    if flags & {'module', 'async', 'CanBlockIsFalse', 'CanBlockIsTrue', 'non-deterministic'}:
-        return 'unsupported flags: ' + ', '.join(sorted(flags & {'module', 'async', 'CanBlockIsFalse', 'CanBlockIsTrue', 'non-deterministic'}))
+    if flags & {'module', 'CanBlockIsFalse', 'CanBlockIsTrue', 'non-deterministic'}:
+        return 'unsupported flags: ' + ', '.join(sorted(flags & {'module', 'CanBlockIsFalse', 'CanBlockIsTrue', 'non-deterministic'}))
     if meta['includes']:
         return 'unsupported harness includes: ' + ', '.join(meta['includes'])
     if set(meta['features']) - FEATURES:
@@ -164,9 +166,9 @@ def load_manifest(path):
     return data, sources
 
 
-def execute(binary, path, mode, timeout, budget):
+def execute(binary, path, mode, timeout, budget, asynchronous=False):
     try:
-        proc = subprocess.run([str(binary), str(path), 'module' if mode == 'module' else 'script', str(budget), 'raw' if mode == 'raw' else 'harness'],
+        proc = subprocess.run([str(binary), str(path), 'module' if mode == 'module' else 'script', str(budget), 'raw' if mode == 'raw' else 'async' if asynchronous else 'harness'],
                               capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return {'phase': 'process', 'outcome': 'timeout'}
@@ -176,10 +178,13 @@ def execute(binary, path, mode, timeout, budget):
         return {'phase': 'process', 'outcome': 'crash' if proc.returncode < 0 else 'harness_error', 'exit_code': proc.returncode, 'stderr': proc.stderr[-2000:]}
     try:
         actual = json.loads(proc.stdout)
-        require(isinstance(actual, dict) and actual.get('protocol') == 1, 'invalid runner protocol')
-        require(actual.get('phase') in {'parse', 'early', 'lower', 'execute'} and actual.get('outcome') in {'normal', 'error', 'throw', 'unsupported', 'limit'}, 'invalid result')
-        if actual['outcome'] in {'normal', 'throw'}:
+        require(isinstance(actual, dict) and type(actual.get('protocol')) is int and actual['protocol'] == 1, 'invalid runner protocol')
+        require(actual.get('phase') in {'parse', 'early', 'lower', 'execute'} and actual.get('outcome') in {'normal', 'error', 'throw', 'unsupported', 'limit', 'incomplete'}, 'invalid result')
+        if actual['outcome'] in {'normal', 'throw', 'incomplete'}:
             require(actual['phase'] == 'execute' and type(actual.get('steps')) is int and actual['steps'] > 0 and type(actual.get('assertions')) is int and actual['assertions'] >= 0, 'missing execution evidence')
+        if asynchronous and actual['phase'] == 'execute' and actual['outcome'] in {'normal', 'throw', 'incomplete'}:
+            require(type(actual.get('done_calls')) is int and actual['done_calls'] >= 0, 'missing async completion evidence')
+            require(actual['outcome'] != 'normal' or actual['done_calls'] == 1, 'async normal completion requires exactly one $DONE')
         if actual['outcome'] == 'error':
             require(actual['phase'] in {'parse', 'early'} and actual.get('error_type') == 'SyntaxError', 'invalid parser error')
         require('error_type' not in actual or isinstance(actual['error_type'], str), 'invalid error identity')
@@ -189,7 +194,7 @@ def execute(binary, path, mode, timeout, budget):
 
 
 def classify(meta, actual):
-    if actual['outcome'] in {'crash', 'timeout', 'harness_error', 'limit'}:
+    if actual['outcome'] in {'crash', 'timeout', 'harness_error', 'limit', 'incomplete'}:
         return 'ERROR'
     if actual['outcome'] == 'unsupported':
         return 'UNSUPPORTED'
@@ -200,8 +205,28 @@ def classify(meta, actual):
     return 'PASS' if actual['phase'] == 'execute' and actual['outcome'] == 'normal' else 'FAIL'
 
 
-def run(manifest_path, binary, timeout=10, budget=100000):
-    manifest, sources = load_manifest(manifest_path)
+def provenance(binary):
+    def revision(directory):
+        result = subprocess.run(['git', '-C', str(directory), 'rev-parse', 'HEAD'], capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+    return {'recorded_at_utc': datetime.now(timezone.utc).isoformat(), 'w_revision': revision(ROOT),
+            'application_revision': revision(ROOT.parent), 'runner_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+            'kind': 'fresh-execution'}
+
+
+def suite_inventory(manifest_path, manifest):
+    path = manifest_path.parent / 'inventory.json'
+    if not path.exists():
+        return {'complete_archive_inventory': False, 'candidate_test_files': None, 'unselected_files': None}
+    inventory = json.loads(path.read_text())
+    require(inventory['revision'] == manifest['upstream']['commit'], 'suite inventory revision mismatch')
+    total = inventory['counts']['candidate_test_files_excluding_fixtures']
+    require(type(total) is int and total >= len(manifest['cases']), 'invalid complete suite count')
+    return {**inventory, 'selected_files': len(manifest['cases']), 'unselected_files': total - len(manifest['cases'])}
+
+
+def run(manifest_path, binary, timeout=10, budget=100000, loaded=None):
+    manifest, sources = load_manifest(manifest_path) if loaded is None else loaded
     results = []
     with tempfile.TemporaryDirectory(prefix='w-test262-') as directory:
         for case in manifest['cases']:
@@ -221,21 +246,53 @@ def run(manifest_path, binary, timeout=10, budget=100000):
                 else:
                     file = Path(directory) / 'case.js'
                     file.write_text(('"use strict";\n' if mode == 'strict' else '') + source, encoding='utf-8')
-                    actual = execute(binary, file, mode, timeout, budget)
+                    actual = execute(binary, file, mode, timeout, budget, asynchronous='async' in meta['flags'])
                 results.append({'id': case + '#' + mode, 'status': classify(meta, actual), 'mode': mode, 'negative': meta.get('negative'), 'actual': actual})
     baseline_changes = []
     for item in results:
-        expected = manifest['baseline'].get(item['id'])
+        expected = manifest['baseline'].get(item['id']) if manifest['baseline'] is not None else None
         item['baseline'] = expected
-        if expected is None or item['status'] != expected['status']:
+        if manifest['baseline'] is not None and (expected is None or item['status'] != expected['status']):
             baseline_changes.append({'id': item['id'], 'expected': expected['status'] if expected else None, 'actual': item['status']})
     observed = Counter(item['status'] for item in results)
     counts = {status: observed[status] for status in STATUSES}
-    report = {'protocol': 1, 'suite': manifest['suite'], 'upstream': manifest['upstream'], 'profile': 'native-boolean-samevalue-v1',
-              'files': len(manifest['cases']), 'variants': len(results), 'counts': counts, 'baseline_changes': baseline_changes,
+    report = {'protocol': 1, 'suite': manifest['suite'], 'upstream': manifest['upstream'], 'profile': 'native-assertions-async-v2',
+              'evidence': provenance(binary), 'inventory': suite_inventory(manifest_path, manifest), 'baseline_reviewed': manifest['baseline'] is not None,
+              'selected_files': len(manifest['cases']), 'executed_variants': sum(item['actual']['phase'] not in {'metadata', 'process'} for item in results),
+              'unsupported_by_reason': dict(sorted(Counter(item['actual'].get('message', item['actual']['phase']) for item in results if item['status'] == 'UNSUPPORTED').items())),
+              'files': len(manifest['cases']), 'variants': None if any(item['actual']['phase'] == 'metadata' and item['status'] == 'ERROR' for item in results) else len(results), 'result_records': len(results), 'unexpanded_files': sum(item['actual']['phase'] == 'metadata' and item['status'] == 'ERROR' for item in results), 'counts': counts, 'baseline_changes': baseline_changes,
               'execution_passes': sum(item['status'] == 'PASS' and item['actual']['phase'] == 'execute' for item in results),
               'assertions': sum(item['actual'].get('assertions', 0) for item in results), 'results': results}
     return report, int(bool(counts['FAIL'] or counts['ERROR'] or baseline_changes))
+
+
+def archive_cases(archive, families):
+    """Enumerate whole directories from the immutable complete upstream archive.
+
+    This diagnostic expansion has no expected-status mask. All FAIL/ERROR and
+    UNSUPPORTED remain nonzero in --require-all mode, with the full inventory
+    retained. Source selection is directories only, never favorable test names.
+    """
+    inventory = json.loads((MANIFEST.parent / 'inventory.json').read_text())
+    require(hashlib.sha256(archive.read_bytes()).hexdigest() == inventory['archive_sha256'], 'upstream archive pin mismatch')
+    require(families and len(families) == len(set(families)), 'missing or duplicate families')
+    for family in families:
+        require(family.startswith('test/') and family.endswith('/') and '..' not in family.split('/'), 'families must be complete test/ directories with trailing slash')
+    sources = {}
+    prefix = 'test262-' + inventory['revision'] + '/'
+    with tarfile.open(archive) as upstream:
+        for item in upstream:
+            if not item.isfile() or not item.name.startswith(prefix):
+                continue
+            name = item.name[len(prefix):]
+            if not name.endswith('.js') or '_FIXTURE' in name or not any(name.startswith(family) for family in families):
+                continue
+            sources['upstream/' + name] = upstream.extractfile(item).read().decode('utf-8')
+    for family in families:
+        require(any(case.startswith('upstream/' + family) for case in sources), 'empty family: ' + family)
+    manifest = {'suite': 'test262-complete-family-audit', 'upstream': {'repository': inventory['repository'], 'commit': inventory['revision']},
+                'cases': sorted(sources), 'builtins_required': {}, 'baseline': None}
+    return manifest, sources
 
 
 def main():
@@ -245,11 +302,18 @@ def main():
     parser.add_argument('--json', type=Path)
     parser.add_argument('--timeout', type=float, default=10)
     parser.add_argument('--budget', type=int, default=100000)
+    parser.add_argument('--archive', type=Path, help='hash-pinned complete upstream archive for family audit')
+    parser.add_argument('--family', action='append', default=[], help='complete test/ directory prefix, ending in /; repeatable')
     parser.add_argument('--require-all', action='store_true', help='also fail if any case is unsupported')
     args = parser.parse_args()
     try:
         require(0 < args.timeout <= 300 and 0 < args.budget <= 10000000, 'invalid time/step budget')
-        report, status = run(args.manifest.resolve(), args.runner.resolve(), args.timeout, args.budget)
+        require(bool(args.archive) == bool(args.family), '--archive and --family must be used together')
+        loaded = archive_cases(args.archive, args.family) if args.archive else None
+        report, status = run(args.manifest.resolve(), args.runner.resolve(), args.timeout, args.budget, loaded=loaded)
+        if args.archive:
+            report['families'] = args.family
+            report['archive_sha256'] = hashlib.sha256(args.archive.read_bytes()).hexdigest()
         if args.require_all and report['counts']['UNSUPPORTED']:
             status = 1
     except (OSError, ValueError, TypeError, KeyError) as error:

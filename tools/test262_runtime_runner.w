@@ -12,6 +12,8 @@ import libs.extras.javascript.runtime
 # Native harness overrides permitted by upstream INTERPRETING.md. These
 # implement only the documented boolean/SameValue assertion profile.
 int test262_assertions = 0
+int test262_done_calls = 0
+js_value* test262_done_error = 0
 
 js_value* test262_failure(js_runtime* rt):
 	js_value* error = js_runtime_alloc(rt, 5)
@@ -46,6 +48,39 @@ js_value* test262_not_same(void* context, list[js_value*] args):
 	if (js_runtime_same_value(a, b)): return test262_failure(rt)
 	return rt.undefined_value
 
+# The callback really runs. Catch only ordinary throws; execution limits and
+# unsupported operations remain terminal and cannot become assertion passes.
+js_value* test262_throws(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	test262_assertions = test262_assertions + 1
+	if (args.length < 2 || js_runtime_callable(args[1]) == 0): return test262_failure(rt)
+	list[js_value*] empty = new list[js_value*]
+	js_runtime_call(rt, args[1], empty)
+	__w_list_free(cast(__w_list*, empty))
+	if (rt.completion.status >= 5): return rt.undefined_value
+	if (rt.completion.status != 2): return test262_failure(rt)
+	js_value* thrown = rt.completion.value
+	rt.completion.status = 0
+	rt.completion.value = rt.undefined_value
+	rt.completion.message = c""
+	if (thrown.kind < 5): return test262_failure(rt)
+	js_value* constructor = js_runtime_get(rt, thrown, c"constructor")
+	if (rt.completion.status != 0): return rt.undefined_value
+	if (constructor != args[0]): return test262_failure(rt)
+	return rt.undefined_value
+
+js_value* test262_done(void* context, list[js_value*] args):
+	js_runtime* rt = cast(js_runtime*, context)
+	test262_done_calls = test262_done_calls + 1
+	if (test262_done_error == 0 && test262_done_calls > 1):
+		test262_done_error = js_runtime_alloc(rt, 5)
+		test262_done_error.intrinsic_error_name = c"Test262Error"
+		js_runtime_root(rt, test262_done_error)
+	if (test262_done_error == 0 && args.length > 0 && args[0].kind != 0):
+		test262_done_error = args[0]
+		js_runtime_root(rt, test262_done_error)
+	return rt.undefined_value
+
 js_value* test262_unsupported(void* context, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, context)
 	js_runtime_fail(rt, 6, c"unsupported Test262 harness helper or host hook")
@@ -65,16 +100,17 @@ js_value* test262_callable(js_runtime* rt, js_host_function* callback):
 	value.host = cast(int, callback)
 	return value
 
-void test262_install(js_runtime* rt):
+void test262_install(js_runtime* rt, int asynchronous):
 	js_runtime_bind(rt, c"assert", test262_assert)
 	js_value* assertion = js_runtime_get(rt, rt.global, c"assert")
 	js_runtime_set(rt, assertion, c"sameValue", test262_callable(rt, test262_same))
 	js_runtime_set(rt, assertion, c"notSameValue", test262_callable(rt, test262_not_same))
-	js_runtime_set(rt, assertion, c"throws", test262_callable(rt, test262_unsupported))
+	js_runtime_set(rt, assertion, c"throws", test262_callable(rt, test262_throws))
 	js_runtime_set_host_hooks(rt, assertion, 0, test262_missing_helper, 0)
 	js_runtime_bind(rt, c"$DONOTEVALUATE", test262_do_not_evaluate)
 	js_runtime_bind(rt, c"$ERROR", test262_do_not_evaluate)
-	js_runtime_bind(rt, c"$DONE", test262_unsupported)
+	if (asynchronous): js_runtime_bind(rt, c"$DONE", test262_done)
+	else: js_runtime_bind(rt, c"$DONE", test262_unsupported)
 	js_runtime_bind(rt, c"print", test262_unsupported)
 	js_runtime_bind(rt, c"Test262Error", test262_unsupported)
 	js_runtime_bind(rt, c"compareArray", test262_unsupported)
@@ -127,7 +163,7 @@ json_value* test262_value(js_value* value):
 	return result
 
 
-json_value* test262_run(char* source, char* filename, int module, int budget, int raw):
+json_value* test262_run(char* source, char* filename, int module, int budget, int raw, int asynchronous):
 	# Use the same generated grammar and validator sequence as js_parse, with
 	# an observation boundary before early-error validation. No syntax is
 	# reimplemented here. Runtime evaluation still goes through the public API.
@@ -162,17 +198,24 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	pg_parse_result_free(parsed)
 	if (result != 0): return result
 	js_runtime* rt = js_runtime_new()
-	if (raw == 0): test262_install(rt)
+	if (raw == 0): test262_install(rt, asynchronous)
 	js_completion* completion = js_runtime_eval(rt, source, strlen(source), budget)
+	int total_steps = completion.steps
+	if (asynchronous && completion.status == 0):
+		completion = js_runtime_drain_microtasks(rt, budget - total_steps)
+		total_steps = total_steps + completion.steps
+	if (asynchronous && completion.status == 0 && test262_done_error != 0): js_runtime_throw(rt, test262_done_error)
 	char* outcome = c"normal"
+	if (asynchronous && completion.status == 0 && test262_done_calls == 0): outcome = c"incomplete"
 	if (completion.status == 2): outcome = c"throw"
 	if (completion.status == 5): outcome = c"limit"
 	if (completion.status == 6): outcome = c"unsupported"
 	if (completion.status != 0 && completion.status != 2 && completion.status != 5 && completion.status != 6): outcome = c"invalid_completion"
 	result = test262_result(c"execute", outcome)
 	json_object_set(result, c"assertions", json_int(test262_assertions))
+	json_object_set(result, c"done_calls", json_int(test262_done_calls))
 	if (completion.status == 2 && completion.value.intrinsic_error_name[0] != 0): json_object_set(result, c"error_type", json_string(completion.value.intrinsic_error_name))
-	json_object_set(result, c"steps", json_int(completion.steps))
+	json_object_set(result, c"steps", json_int(total_steps))
 	json_object_set(result, c"message", json_string(completion.message))
 	json_object_set(result, c"value", test262_value(completion.value))
 	js_runtime_free(rt)
@@ -182,9 +225,9 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 int main(int argc, int argv):
 	args_init(argc, argv)
 	if (argc != 5):
-		println(c"usage: test262_runtime_runner FILE script|module BUDGET harness|raw")
+		println(c"usage: test262_runtime_runner FILE script|module BUDGET harness|async|raw")
 		return 2
-	if (strcmp(args_get(4), c"raw") != 0 && strcmp(args_get(4), c"harness") != 0): return 2
+	if (strcmp(args_get(4), c"raw") != 0 && strcmp(args_get(4), c"harness") != 0 && strcmp(args_get(4), c"async") != 0): return 2
 	char* goal = args_get(2)
 	if (strcmp(goal, c"script") != 0 && strcmp(goal, c"module") != 0): return 2
 	int budget = 0
@@ -195,7 +238,7 @@ int main(int argc, int argv):
 	if (budget <= 0 || budget > 10000000): return 2
 	char* source = file_read_text(args_get(1))
 	if (source == 0): return 2
-	json_value* result = test262_run(source, args_get(1), strcmp(goal, c"module") == 0, budget, strcmp(args_get(4), c"raw") == 0)
+	json_value* result = test262_run(source, args_get(1), strcmp(goal, c"module") == 0, budget, strcmp(args_get(4), c"raw") == 0, strcmp(args_get(4), c"async") == 0)
 	char* output = json_stringify(result)
 	println(output)
 	free(output)

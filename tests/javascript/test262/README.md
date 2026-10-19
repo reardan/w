@@ -14,10 +14,10 @@ is not involved. The default target also runs the adapter's contract tests and w
 report to `bin/test262-conformance.json`. No
 network access or third-party Python packages are needed to run it.
 
-The selected corpus contains 74 upstream files expanded into 145 variants:
-**110 PASS, 0 FAIL, 35 UNSUPPORTED, 0 ERROR**. Of those passes, 101 reach runtime
+The selected corpus contains 77 upstream files expanded into 151 variants:
+**118 PASS, 0 FAIL, 33 UNSUPPORTED, 0 ERROR**. Of those passes, 109 reach runtime
 execution (including eight genuine ReferenceError negatives) and nine verify
-syntax errors. Positive cases execute 313 native assertions across strict/sloppy
+syntax errors. Positive cases execute 325 native assertions across strict/sloppy
 variants; older upstream cases also use conditional throwing checks. These
 numbers describe this selected corpus, **not full Test262 coverage or a browser
 standards pass rate**. Unsupported examples remain in the report.
@@ -49,15 +49,17 @@ before execution. Test files retain their original copyright notices.
 
 ## Explicit harness profile
 
-The profile is `native-boolean-samevalue-v1`. Upstream
+The profile is `native-assertions-async-v2` (expanded from `native-boolean-samevalue-v1`). Upstream
 [INTERPRETING.md](upstream/INTERPRETING.md) permits consumers to override harness
 functions. This driver installs native W overrides for `assert`,
 `assert.sameValue`, `assert.notSameValue`, and `$DONOTEVALUATE`; the pinned harness
 JavaScript is a reference contract and **is not evaluated**. `assert` requires the
 boolean value `true`, and SameValue distinguishes signed zero and equates NaN.
 Assertion failures throw a distinct host Test262Error value. Diagnostic message
-formatting, construction/prototypes of Test262Error, `assert.throws`, comparison
-helpers, `$DONE`, `print`, and `$262` host operations are not implemented. Calls
+formatting, construction/prototypes of Test262Error, comparison
+helpers, `print`, and `$262` host operations remain unsupported. `assert.throws`
+executes its callback and compares real constructor identity. Async scripts use
+`$DONE` and a fuel-bounded Promise/microtask drain; see the expansion below. Calls
 to the installed unsupported helper stubs or missing assertion/host properties
 produce UNSUPPORTED, never a passing no-op. Full harness-object introspection is
 outside this profile. Constructor syntax now lowers, allowing unreachable
@@ -67,12 +69,12 @@ executing that constructor remains unsupported.
 Manifest version 2 records built-in requirements for four hash-pinned cases:
 addition `S11.6.1_A1` needs `eval`; `S11.6.1_A4_T1` and `S11.6.1_A4_T2` need
 `Number` and `isNaN`; slice `create-non-array` needs `Object` reflection. The
-adapter does not advertise these complete capabilities (bounded Number helpers
-lack the required constants/global `isNaN`), so eight variants report explicit
+adapter advertises the selected Object reflection requirement, but not the other capabilities (bounded Number helpers
+lack the required constants/global `isNaN`), so six variants report explicit
 metadata UNSUPPORTED reasons. This is a declared capability boundary, not an
 exception filter: unknown identifiers and direct uses of missing built-ins
 still throw ReferenceError and classify as FAIL. A regression test advertises
-all four capabilities and verifies that execution exposes all eight failures.
+all four capabilities and verifies that execution exposes all six remaining failures.
 Source bytes and hashes remain unchanged.
 
 The native callbacks count real assertion invocations. Contract tests verify
@@ -85,7 +87,7 @@ runner output, crashes, timeouts, budgets, metadata, and source pins.
 - Ordinary scripts run once unchanged and once with `"use strict";` prepended.
   `onlyStrict`, `noStrict`, and `raw` select their appropriate single variant.
   Raw scripts receive no harness bindings and no source prefix.
-- Async tests, modules/resolution, includes, blocking/non-deterministic flags,
+- Modules/resolution, includes, blocking/non-deterministic flags,
   and features outside the declared profile produce explicit UNSUPPORTED
   results. No missing include is silently ignored. Only the
   `coalesce-expression` feature tag is currently enabled; untagged cases still
@@ -123,3 +125,52 @@ Keep its parser/validator observation sequence synchronized with `js_parse`.
 Its step budget defaults to 100,000; the supervisor also enforces a ten-second
 wall-clock timeout per variant. This adapter is a foundation for extending
 coverage as the runtime and harness capabilities grow.
+
+## Phase 1 native harness expansion (2026-10-19)
+
+Profile `native-assertions-async-v2` preserves the earlier strict boolean/SameValue
+assertions and adds real `assert.throws` callback execution with constructor
+identity, plus `$DONE` and Promise/microtask execution for async scripts. The
+same total fuel covers evaluation and the microtask drain. Limits cannot be
+caught as an assertion success. Missing completion is ERROR; duplicate `$DONE`
+and `$DONE(error)` fail even when called inside a Promise reaction. Realms are
+still fresh processes. Modules, realm creation, timers and arbitrary upstream
+includes remain unsupported; the original assert.js/sta.js files are still
+reference contracts, not executed harness source. Async support is not a claim
+of complete Promise semantics.
+
+The selected corpus now adds all three upstream empty-input Promise.all tests
+(A2.3_T1–T3) unchanged. The existing array slice Object-descriptor requirement
+is promoted only after its real execution passes with A's Object implementation.
+Current selected expectation is 77 files / 151 variants: 118 PASS and 33
+UNSUPPORTED (109 runtime passes, 325 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
+results; `--require-all` remains nonzero until they are implemented.
+
+`inventory.json` records the complete pinned upstream archive: 57,013 regular
+files and 53,616 JavaScript test candidates after `_FIXTURE` exclusion. Each
+report retains the selected and unselected file counts, independently from
+executed variants. Full-suite applicability and variant expansion are not yet
+known and are recorded as null, never replaced by the small selected denominator.
+Reports include fresh UTC timestamps, both repository SHAs and the executed
+runner's SHA-256. Source revision evidence does not imply a clean worktree or
+that the binary was rebuilt from those revisions.
+
+To audit complete families, obtain the exact archive URL in `inventory.json`
+and check its SHA-256, then run for example:
+
+```sh
+python3 tools/test262_conformance.py --archive /path/to/test262.tar.gz \
+  --family test/built-ins/Object/create/ \
+  --family test/built-ins/Object/getOwnPropertyDescriptor/ \
+  --family test/built-ins/Reflect/get/ --family test/built-ins/Reflect/set/ \
+  --require-all --json bin/test262-object-families.json
+```
+
+This enumerates every non-fixture JS file in each directory from the pinned
+archive, with no favorable-case selection or expected-status mask. Unsupported
+metadata/includes/features and genuine runtime failures remain reported. Unknown
+metadata remains ERROR, and makes the expanded variant denominator unknown;
+all source files still remain in the report. The normal selected regression
+profile stays separate. The application tool `win/tests/wpt_inventory.py` can
+reproduce the archive and full sorted file/hash index; `inventory.json` pins both
+archive and index hashes. Ordinary runs remain offline.

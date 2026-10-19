@@ -18,19 +18,19 @@ BINARY = ROOT / 'bin/test262_runtime_runner'
 
 
 class AdapterContract(unittest.TestCase):
-    def execute(self, source, mode='sloppy', budget=10000):
+    def execute(self, source, mode='sloppy', budget=10000, asynchronous=False):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'test.js'
             path.write_text(('"use strict";\n' if mode == 'strict' else '') + source)
-            return adapter.execute(BINARY, path, mode, 5, budget)
+            return adapter.execute(BINARY, path, mode, 5, budget, asynchronous=asynchronous)
 
     def test_actual_upstream_execution(self):
         report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 0)
-        self.assertEqual(report['counts'], {'PASS': 110, 'FAIL': 0, 'UNSUPPORTED': 35, 'ERROR': 0})
-        self.assertEqual(report['execution_passes'], 101)
-        self.assertEqual(report['assertions'], 313)
-        self.assertEqual(report['variants'], 145)
+        self.assertEqual(report['counts'], {'PASS': 118, 'FAIL': 0, 'UNSUPPORTED': 33, 'ERROR': 0})
+        self.assertEqual(report['execution_passes'], 109)
+        self.assertEqual(report['assertions'], 325)
+        self.assertEqual(report['variants'], 151)
         self.assertEqual(report['baseline_changes'], [])
 
     def test_pass_regressing_to_unsupported_fails_gate(self):
@@ -47,7 +47,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'execute', side_effect=regress):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 109, 'FAIL': 0, 'UNSUPPORTED': 36, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 117, 'FAIL': 0, 'UNSUPPORTED': 34, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'PASS')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'UNSUPPORTED')
@@ -63,7 +63,7 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'load_manifest', return_value=(manifest, sources)):
             report, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(report['counts'], {'PASS': 110, 'FAIL': 0, 'UNSUPPORTED': 35, 'ERROR': 0})
+        self.assertEqual(report['counts'], {'PASS': 118, 'FAIL': 0, 'UNSUPPORTED': 33, 'ERROR': 0})
         self.assertEqual(len(report['baseline_changes']), 1)
         self.assertEqual(report['baseline_changes'][0]['expected'], 'UNSUPPORTED')
         self.assertEqual(report['baseline_changes'][0]['actual'], 'PASS')
@@ -76,7 +76,7 @@ class AdapterContract(unittest.TestCase):
         self.assertEqual(status, 0)
         for result in report['results']:
             case = result['id'].split('#')[0]
-            if case in requirements:
+            if case in requirements and not set(requirements[case]) <= adapter.BUILTINS:
                 self.assertEqual(result['status'], 'UNSUPPORTED')
                 self.assertEqual(result['actual']['phase'], 'metadata')
                 self.assertEqual(result['actual']['message'],
@@ -93,8 +93,8 @@ class AdapterContract(unittest.TestCase):
         with patch.object(adapter, 'BUILTINS', adapter.KNOWN_BUILTINS):
             promoted, status = adapter.run(adapter.MANIFEST, BINARY)
         self.assertEqual(status, 1)
-        self.assertEqual(promoted['counts']['FAIL'], 8)
-        self.assertEqual(len(promoted['baseline_changes']), 8)
+        self.assertEqual(promoted['counts']['FAIL'], 6)
+        self.assertEqual(len(promoted['baseline_changes']), 6)
 
     def test_assertions_execute_and_reject_truthy_values(self):
         for source in ['assert(true);', 'assert.sameValue(NaN, NaN);', 'assert.notSameValue(0, -0);', 'assert.sameValue();']:
@@ -138,10 +138,60 @@ class AdapterContract(unittest.TestCase):
         self.assertEqual(self.execute('if (typeof assert !== "undefined") throw 1;', 'raw')['outcome'], 'normal')
 
     def test_unsupported_helpers_are_never_passes(self):
-        for source in ['assert.throws(1, function() {});', 'assert.compareArray([], []);', '$262.createRealm();', '$DONE();']:
+        for source in ['assert.compareArray([], []);', '$262.createRealm();', '$DONE();']:
             actual = self.execute(source)
             self.assertEqual(adapter.classify({}, actual), 'UNSUPPORTED', actual)
         self.assertEqual(adapter.classify({}, self.execute('while (true) {}', budget=10)), 'ERROR')
+
+    def test_native_throws_checks_constructor_and_runs_callback(self):
+        for source in [
+            'assert.throws(ReferenceError, function(){missingIdentifier;});',
+            'assert.throws(Error, function(){throw new Error("expected");});',
+            'function E(){} assert.throws(E, function(){throw new E();});',
+        ]:
+            actual = self.execute(source)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+            self.assertEqual(actual['assertions'], 1)
+        for source in [
+            'assert.throws(Error, function(){});',
+            'assert.throws(Error, function(){throw "Error";});',
+            'assert.throws(Error, function(){missingIdentifier;});',
+            'assert.throws(Error, 1);',
+        ]:
+            actual = self.execute(source)
+            self.assertEqual(actual['outcome'], 'throw', actual)
+            self.assertEqual(actual['error_type'], 'Test262Error')
+        actual = self.execute('assert.throws(Error, function(){while(true){}});', budget=100)
+        self.assertEqual(actual['outcome'], 'limit')
+
+    def test_async_done_microtasks_and_failure_identity(self):
+        for source in [
+            'Promise.resolve().then(function(){assert.sameValue(1,1);$DONE();});',
+            'async function f(){await Promise.resolve();$DONE();} f();',
+        ]:
+            actual = self.execute(source, asynchronous=True)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+            self.assertEqual(actual['done_calls'], 1)
+        for source in ['$DONE();$DONE();', 'Promise.resolve().then(function(){$DONE();$DONE();});']:
+            actual = self.execute(source, asynchronous=True)
+            self.assertEqual(actual['outcome'], 'throw', actual)
+            self.assertEqual(actual['error_type'], 'Test262Error')
+        actual = self.execute('Promise.resolve().then(function(){$DONE(new ReferenceError("expected"));});', asynchronous=True)
+        self.assertEqual(actual['outcome'], 'throw')
+        self.assertEqual(actual['error_type'], 'ReferenceError')
+        self.assertEqual(adapter.classify({'negative': {'phase': 'runtime', 'type': 'ReferenceError'}}, actual), 'PASS')
+        actual = self.execute('new Promise(function(){});', asynchronous=True)
+        self.assertEqual(actual['outcome'], 'incomplete')
+        self.assertEqual(adapter.classify({}, actual), 'ERROR')
+        actual = self.execute('queueMicrotask(function(){while(true){}});', asynchronous=True, budget=100)
+        self.assertEqual(actual['outcome'], 'limit')
+
+    def test_complete_inventory_keeps_unexecuted_denominator(self):
+        manifest, _ = adapter.load_manifest(adapter.MANIFEST)
+        inventory = adapter.suite_inventory(adapter.MANIFEST, manifest)
+        self.assertEqual(inventory['counts']['candidate_test_files_excluding_fixtures'], 53616)
+        self.assertEqual(inventory['unselected_files'], 53616 - len(manifest['cases']))
+        self.assertIsNone(inventory['runnable_variants'])
 
     def test_metadata_and_variants(self):
         def meta(fields):
@@ -149,7 +199,7 @@ class AdapterContract(unittest.TestCase):
         self.assertEqual(adapter.variants(meta('')), ['sloppy', 'strict'])
         for flag, expected in [('onlyStrict', 'strict'), ('noStrict', 'sloppy'), ('raw', 'raw'), ('module', 'module')]:
             self.assertEqual(adapter.variants(meta('flags: [' + flag + ']')), [expected])
-        for fields in ['flags: [module]', 'flags: [async]', 'flags: [unknownFlag]', 'includes:\n  - compareArray.js', 'features: [BigInt]']:
+        for fields in ['flags: [module]', 'flags: [unknownFlag]', 'includes:\n  - compareArray.js', 'features: [BigInt]']:
             self.assertIsNotNone(adapter.unsupported(meta(fields)))
         for fields in ['flags: [onlyStrict, noStrict]', 'flags: [raw, onlyStrict]', 'negative:\n  phase: runtime', 'negative:\n  phase: unknown\n  type: Error', 'flags: []\nflags: []', 'unexpected: value', 'includes: &anchor []']:
             with self.assertRaises(ValueError, msg=fields):

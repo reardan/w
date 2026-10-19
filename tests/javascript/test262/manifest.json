@@ -395,6 +395,21 @@
       "path": "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
       "upstream_path": "test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
       "sha256": "f2fbbf765dae2cfdbcdfa294a0c6c3aa8dc12923e53b77e4b3cb24492e15ac1f"
+    },
+    {
+      "path": "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T1.js",
+      "upstream_path": "test/built-ins/Promise/all/S25.4.4.1_A2.3_T1.js",
+      "sha256": "cfb1cbf7b137f3d850b819c96e2465e4928dc7c931dcada26b2be824046e3cb7"
+    },
+    {
+      "path": "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T2.js",
+      "upstream_path": "test/built-ins/Promise/all/S25.4.4.1_A2.3_T2.js",
+      "sha256": "b35bd3a4b2d9c0456b4476724b1e58af336908bcf03fad72c21723b52816ef9d"
+    },
+    {
+      "path": "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js",
+      "upstream_path": "test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js",
+      "sha256": "40d10d9a4a73cab268bcaca6ddd62db4167a0223a84a2e56733ccbfa8f129361"
     }
   ],
   "cases": [
@@ -471,7 +486,10 @@
     "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-1.js",
     "upstream/test/built-ins/Array/prototype/reduce/15.4.4.21-10-2.js",
     "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-1.js",
-    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js"
+    "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js",
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T1.js",
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T2.js",
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js"
   ],
   "baseline": {
     "upstream/test/language/expressions/coalesce/chainable.js#sloppy": {
@@ -705,12 +723,10 @@
       "reason": "Array literal elisions are not lowered"
     },
     "upstream/test/built-ins/Array/prototype/slice/create-non-array.js#sloppy": {
-      "status": "UNSUPPORTED",
-      "reason": "Object constructor and reflection methods are outside the installed runtime subset"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/slice/create-non-array.js#strict": {
-      "status": "UNSUPPORTED",
-      "reason": "Object constructor and reflection methods are outside the installed runtime subset"
+      "status": "PASS"
     },
     "upstream/test/built-ins/Function/prototype/call/S15.3.4.4_A5_T5.js#sloppy": {
       "status": "PASS"
@@ -942,6 +958,24 @@
       "status": "PASS"
     },
     "upstream/test/built-ins/Array/prototype/reduceRight/15.4.4.22-10-2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T1.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T1.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T2.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T2.js#strict": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js#sloppy": {
+      "status": "PASS"
+    },
+    "upstream/test/built-ins/Promise/all/S25.4.4.1_A2.3_T3.js#strict": {
       "status": "PASS"
     }
   },
