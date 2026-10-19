@@ -11,7 +11,7 @@ char* safe_runtime_digest(char* path):
 	if (ends_with(path, c"/lib/darwin/context.w")): return c"64f2850916e604040424c9526d37dc186f5bd133570cad3877613ebe0b6fc511"
 	# Metadata conversion uses fixed 144-byte input / 256-byte output bounds;
 	# no allocation or ownership changes, and no new checked-call entry points.
-	if (ends_with(path, c"/lib/darwin/syscalls.w")): return c"765d59b90fd598b00586a7cc0a3181692c48f583b1b878a137ad0bb388751069"
+	if (ends_with(path, c"/lib/darwin/syscalls.w")): return c"45c22f1278fe2e06a0548c78e3ebdcb0da7cb3b09b70f82b58f6e3315e582e61"
 	if (ends_with(path, c"/lib/darwin/stat_layout.w")): return c"40e7339c326b459131b7a269db5a306d55f363e98f14750a96c78fb68a00a72c"
 	if (ends_with(path, c"/lib/__arch__/arm64/android.w")): return c"c3dedd9815d6a3b7af6d035889328b6028af988db1caac5b10e6beba63413ee3"
 	if (ends_with(path, c"/lib/__arch__/arm64/context.w")): return c"4a3249682fcff806dcc692c06388800598401f230dba49dc8deb231c28009438"

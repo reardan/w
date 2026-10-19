@@ -26,6 +26,12 @@ void test_host_files_metadata_copy_glob_and_cleanup():
 	ht_equal_file(copied, c"payload")
 	assert_equal(1, glob_glob(path_join(nested, c"cop*")).length)
 	assert_equal(0, symlink(c"nested/deeper/copied", link))
+	char[64] target
+	int length = readlink(link, &target[0], 64)
+	assert_equal(strlen(c"nested/deeper/copied"), length)
+	target[length] = 0
+	assert_strings_equal(c"nested/deeper/copied", &target[0])
+	assert_strings_equal(ht_resolve(copied), ht_resolve(link))
 	assert_equal(0, file_stat_path(link, &st))
 	assert_equal(1, file_is_reg(&st))
 	assert_equal(0, file_lstat_path(link, &st))

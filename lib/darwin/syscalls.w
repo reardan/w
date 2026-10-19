@@ -130,11 +130,11 @@ int getgid():
 
 
 int readlink(char* path, char* buf, int size):
-	return -1
+	return syscall(58, path, buf, size)
 
 
 int symlink(char* target, char* linkpath):
-	return -1
+	return syscall(57, target, linkpath, 0)
 
 
 # getdirentries64 (344): reads from the fd's offset like the Linux
