@@ -1,12 +1,18 @@
 sequenceDiagram
 title Checkout interaction
 autonumber
+box lightblue Storefront
 actor Customer
 participant API as Shop API
+end
+box rgb(240, 240, 240) Storage
 participant DB as Database
+end
 Customer->>+API: Place order
+rect rgba(0, 128, 255, 0.15)
 API->>+DB: Save order
 DB-->>-API: Order ID
+end
 alt accepted
 API-->>Customer: Confirmed
 else rejected

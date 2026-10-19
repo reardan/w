@@ -214,6 +214,8 @@ struct mm_document:
 	list[int] comment_ranges
 	mm_data_chart* data
 	list[mm_narrative_event*] narrative
+	# Sequence participant boxes: label, fill in value (-1 none), lanes from/to.
+	list[mm_narrative_event*] boxes
 	int narrative_numbered
 	mm_rail_grammar* railroad
 	list[mm_style_class*] style_definitions
@@ -238,6 +240,7 @@ mm_document* mm_document_new():
 	d.direction = strclone(c"TB")
 	d.packet_bits = 32
 	d.narrative = new list[mm_narrative_event*]
+	d.boxes = new list[mm_narrative_event*]
 	d.style_definitions = new list[mm_style_class*]
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
@@ -353,6 +356,12 @@ void mm_document_free(mm_document* d):
 		free(event.section)
 		free(event)
 	__w_list_free(cast(__w_list*, d.narrative))
+	for mm_narrative_event* box in d.boxes:
+		free(box.label)
+		free(box.detail)
+		free(box.section)
+		free(box)
+	__w_list_free(cast(__w_list*, d.boxes))
 	for mm_style_class* definition in d.style_definitions:
 		free(definition.name)
 		free(definition)

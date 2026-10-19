@@ -45,16 +45,22 @@ void mm_uml_generic(mm_parser* p, string_builder* label, int depth):
 		return
 	if (mm_match(p, c"~") == 0): return
 	string_append_char(label, '<')
-	mm_space(p)
-	char* type = mm_uml_id(p)
-	string_append(label, type)
-	free(type)
-	# A tilde followed by a type starts another nested parameter.
-	if (mm_peek(p) == '~' && p.pos + 1 < p.doc.length):
-		int next = p.doc.source[p.pos + 1] & 255
-		if (mm_id_char(next) || next == '`'): mm_uml_generic(p, label, depth + 1)
-	mm_space(p)
-	if (mm_match(p, c"~") == 0): mm_error(p.doc, p.pos, c"expected generic closing ~; comma type parameters are unsupported")
+	int count = 0
+	while (p.doc.error == 0):
+		mm_space(p)
+		char* type = mm_uml_id(p)
+		string_append(label, type)
+		free(type)
+		# A tilde followed by a type starts another nested parameter.
+		if (mm_peek(p) == '~' && p.pos + 1 < p.doc.length):
+			int next = p.doc.source[p.pos + 1] & 255
+			if (mm_id_char(next) || next == '`'): mm_uml_generic(p, label, depth + 1)
+		mm_space(p)
+		count = count + 1
+		if (count > 32): mm_error(p.doc, p.pos, c"generic parameter limit exceeded")
+		if (mm_match(p, c",") == 0): break
+		string_append(label, c", ")
+	if (mm_match(p, c"~") == 0): mm_error(p.doc, p.pos, c"expected generic closing ~")
 	string_append_char(label, '>')
 
 int mm_uml_node(mm_parser* p, int scope, int final):
@@ -430,28 +436,75 @@ void mm_uml_edge_scopes(mm_document* d):
 			scope = parent.parent
 		edge.scope = scope
 
+int mm_state_is_region(mm_node* n):
+	return index_of(n.id, c"@region:") == 0
+
+int mm_state_region_new(mm_parser* p, int scope):
+	string_builder* key = string_from(c"@region:")
+	string_append_int(key, p.doc.nodes.length)
+	int region = mm_add_node(p.doc, key.data, p.pos)
+	string_free(key)
+	if (region < 0): return -1
+	mm_node* n = p.doc.nodes[region]
+	free(n.label)
+	n.label = strclone(c"")
+	n.parent = scope
+	n.group = 1
+	n.declared = 1
+	n.shape = 1
+	return region
+
+# Concurrent state regions are anonymous groups inside their composite. The
+# first separator moves the statements seen so far into region zero.
+int mm_state_region(mm_parser* p, int scope, int current):
+	int count = 0
+	for mm_node* node in p.doc.nodes:
+		if (node.parent == current): count = count + 1
+	if (count == 0):
+		mm_error(p.doc, p.pos, c"empty concurrent state region")
+		return current
+	if (current == scope):
+		int first = mm_state_region_new(p, scope)
+		if (first < 0): return current
+		for i in range(first):
+			mm_node* node = p.doc.nodes[i]
+			if (node.parent == scope): node.parent = first
+	int region = mm_state_region_new(p, scope)
+	if (region < 0): return current
+	return region
+
 void mm_uml_body(mm_parser* p, int scope, int depth):
 	mm_separators(p)
+	int current = scope
 	while (p.doc.error == 0 && mm_peek(p) != 0):
 		if (mm_match(p, c"}")):
 			if (scope < 0): mm_error(p.doc, p.pos - 1, c"unexpected closing group brace")
+			else if (current != scope):
+				int count = 0
+				for mm_node* node in p.doc.nodes:
+					if (node.parent == current): count = count + 1
+				if (count == 0): mm_error(p.doc, p.pos - 1, c"empty concurrent state region")
 			return
 		int start = p.pos
 		if (mm_metadata(p)): mm_space(p)
 		else if (mm_style_statement(p)): mm_space(p)
-		else if (mm_keyword(p, c"note")): mm_uml_note(p, scope)
+		else if (p.doc.kind == MM_STATE && mm_peek(p) == '-' && p.pos + 1 < p.doc.length && p.doc.source[p.pos + 1] == '-'):
+			p.pos = p.pos + 2
+			if (scope < 0): mm_error(p.doc, start, c"concurrent region separator outside composite state")
+			else: current = mm_state_region(p, scope, current)
+		else if (mm_keyword(p, c"note")): mm_uml_note(p, current)
 		else if (mm_keyword(p, c"direction")):
-			if (scope < 0): mm_direction(p)
+			if (current < 0): mm_direction(p)
 			else:
 				char* outer = p.doc.direction
 				p.doc.direction = strclone(outer)
 				mm_direction(p)
-				mm_node* n = p.doc.nodes[scope]
+				mm_node* n = p.doc.nodes[current]
 				free(n.direction)
 				n.direction = p.doc.direction
 				p.doc.direction = outer
-		else if (p.doc.kind == MM_CLASS): mm_class_statement(p, scope, depth)
-		else: mm_state_statement(p, scope, depth)
+		else if (p.doc.kind == MM_CLASS): mm_class_statement(p, current, depth)
+		else: mm_state_statement(p, current, depth)
 		if (mm_end(p) == 0 && mm_peek(p) != '}'): mm_error(p.doc, p.pos, c"unsupported UML syntax or missing statement separator")
 		mm_separators(p)
 		if (p.pos == start): mm_error(p.doc, start, c"expected UML statement")
