@@ -1604,14 +1604,141 @@ and x64. `tests/safe_sync_runtime_test.w` covers lock release on every exit
 path, exact counts under fork-join and spawned-thread contention,
 release/acquire publication, and exactly-once cleanup with `W_DEBUG_ALLOC=1`.
 
+## Persistent REPL and debugger sessions
+
+The REPL (`repl.w`) and wdbg (`debugger/debugger.w`) run checked code in
+process (#713). A loaded file (`repl file.w`, `:load`, the wdbg debuggee)
+runs the ordinary whole-program analysis before any of its code executes,
+including the redefinition rule below. Every prompt entry is checked before
+it runs; the session logic lives in `compiler/safe_session.w`.
+
+**Session transcript.** Top-level persistent declarations and statements
+execute as before, but the checker sees them through a transcript: one
+function, `__w_repl_session`, that replays every committed entry item that
+names a checked session binding, in order, followed by the pending entry.
+Each declaration becomes a local renamed `name__wsN` (one generation per
+declaration), so ownership, initialization, moves, borrows and reborrow
+ancestry carry across entries exactly as they do between statements of one
+function. Plain persistent variables an item reads become parameters of the
+transcript function (their spelling comes from the declaration, or from the
+type when it can be spelled back). Items that name no checked binding are
+checked as separate functions and are not replayed. The transcript is
+compiled after the entry, checked, and rolled back; it never executes. A
+transcript diagnostic carries a note mapping its line back to the entry
+file and line.
+
+**State and end of an entry.** After the check, the flow state at the end
+of the transcript's outer block is recorded per generation. A checked owner
+must be held or moved on every path of the entry (`safe: a checked session
+owner must be held or moved on every path of an entry`). A successful entry
+commits: the moved owners' globals are cleared, and the new generations and
+states become the session state the next entry starts from.
+
+**Replacement.** Redeclaring a checked name in a later entry retires the
+old generation. If it still held an owner, the transcript destroys it at the
+redeclaration (so a live borrow of it conflicts like a drop in a function),
+and commit destroys it once at run time. Redeclaring a checked name twice in
+the same entry is rejected. Redefining a function whose signature mentions a
+checked type with a different checked contract is rejected (`safe:
+redefinition changes a checked function contract that existing callers rely
+on`), at the prompt or from a loaded file, because existing callers were
+checked against the old contract.
+
+**Cross-entry borrows.** A `ref`/`refmut` declared at the prompt borrows a
+session owner exactly as a local would: the owner cannot be moved,
+replaced or mutated incompatibly while a later entry still uses the
+borrow, and a borrow cannot be used after its owner moved. Functions,
+templates and nested forms cannot capture a checked session binding (`safe:
+functions, templates and nested forms cannot use a checked session binding;
+pass it as an argument`); the binding has to be passed as an argument.
+
+**Failure and rollback.** An entry that fails to compile or to check rolls
+back like any REPL error: no new generation, state change or replayed item
+is published, and dangling loans or stale contracts never reach the next
+entry. Checker caches keyed by retained type IDs are cleared before each
+check, and trusted-runtime records are truncated with their sources on
+rollback, so success-failure-success sequences check against the committed
+state only. An entry that faults at run time is rolled back as well; the
+checked bindings it replaced or whose state its analysis changes on some
+path are discarded (`note: checked session bindings were discarded after
+the fault; their owners are leaked, not dropped`), and later uses report
+`safe: this checked session binding was discarded after a runtime fault`.
+Other checked bindings keep their committed state. A leak is the safe
+outcome: the session can no longer prove which of the owner's moves ran.
+
+**Session end.** `:quit`, end of input, `-c`/`-e` exits and `:reset`
+destroy every held session owner once, newest first, through the same
+destructor `cleanup` emits (owned records recursively; the audited helper
+for runtime-owned records). Moved, discarded and already-replaced owners are
+not destroyed again. `:reset` then forgets all session state, so the next
+entry starts from an empty transcript and re-imports re-read their sources:
+an edited imported module is checked afresh, including its new contracts.
+Options and the target are fixed for the life of a process, so there is no
+option-change path to invalidate.
+
+**Unsupported forms.** These fail explicitly instead of being
+approximated: `--safe` on in-process entry points; checked declarations in
+an entry that does not run (`:type`, `safe: an entry that is not run cannot
+declare checked session bindings`); declaring, replacing or naming a checked
+session binding from a nested entry (a stop inside a running entry, or any
+debugger evaluation); `return`, `goto`, `defer` and `yield` in an item that
+names a checked session binding; and session bindings with lifetime-labeled
+checked types such as `own[a] WSafeGuard*` lock guards (`safe: session
+bindings cannot have lifetime-labeled checked types ...`), whose loans tie
+them to another value. Owner assignment to an existing persistent binding
+is rejected by the existing `owner assignment requires a plain local or
+parameter` rule; declare a new generation instead.
+
+**Debugger evaluation.** wdbg checks its debuggee before running it. At a
+stop, `print`, breakpoint conditions, logpoints and `repl` entries are the
+same in-process entries, so they follow the same rules (breakpoint and
+evaluation parity). When the stopped frame has checked locals, the checker
+re-analyzes the stopped function and reads the flow state at the stop's
+statement:
+
+- a checked owner or borrow that is definitely initialized there (and, for
+  a borrow, still used later by the program, so its loan is valid) is
+  presented as a read-only `ref T*` view, a parameter of the entry's own
+  check that never joins the replayed session;
+- other checked locals are hidden; naming one reports why (`safe: this
+  checked local is not definitely initialized and live at this debugger
+  stop`, or that only owner and reference pointers without lifetime labels
+  can be viewed);
+- assigning a view (`safe: checked debugger locals are read-only views at a
+  stop; assign them in the program`) or moving out of it (`safe: owner
+  requires new storage or an ownership transfer`) is rejected, and frame
+  writes of checked locals are never copied back;
+- outer frames (`up`) have no known state mid-call, so their checked locals
+  are hidden (`safe: checked locals are only available in the innermost
+  frame of an analyzed function at a debugger stop`);
+- `set` refuses checked locals and globals (`set: checked variables cannot
+  be written by the debugger; their ownership state would go stale`), in
+  process and in attach mode.
+
+Plain locals are presented by value as before and still write back.
+Attach mode (`--attach`) evaluates with its own read-only interpreter over
+ptrace and runs no checked code in the target.
+
+The hook into the checker is one optional callback,
+`safe_function_end_hook`, which `compiler/safe.w` calls with each analyzed
+function before releasing its flow graph; it is zero outside sessions.
+`tests/safe_repl_session_test.w` and `tests/safe_session_debugger_test.w`
+(each with an x64 twin) cover persistence, replacement, reset and exit
+destruction counted under `W_DEBUG_ALLOC=1`, success-failure-success,
+diagnostic recovery, fault discards, every unsupported form above, an
+imported-source edit across `:reset`, and the debugger views, conditions
+and rejections.
+
 ## Entry points, diagnostics and costs
 
 `--bounds=off` and the streaming frontend are incompatible with checked
-pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64, win64, arm64_darwin and wasm,
-and in-process REPL/debugger
-execution reject checked pointers. A requested `--safe` is also rejected by
-in-process entry points. Compilation and structured checking run the same
-analysis before an output file is published.
+pointers, with or without `--safe`. Targets other than Linux x86/x64/arm64,
+win64, arm64_darwin and wasm reject checked pointers. The in-process REPL
+and debugger admit them under the session rules in "Persistent REPL and
+debugger sessions" below; a requested `--safe` is still rejected by
+in-process entry points, and the incremental compile API admits only scalar
+functions. Compilation and structured checking run the same analysis before
+an output file is published.
 
 Ownership errors use diagnostic family `W0413`, with source spans and related
 ownership/borrow locations. Safety errors do not depend on `--strict`.
@@ -1739,7 +1866,7 @@ with and without the flag. `safe_runtime_test` uses the guard allocator to
 observe leaks and duplicate destruction across transfer, replacement,
 parameters, return, break, continue and fall-through cleanup.
 `safe_cli_test` covers option order, structured conflicts and in-process
-rejection. The parser-generator grammar includes the contextual qualifiers
+`--safe` rejection. The parser-generator grammar includes the contextual qualifiers
 and unsafe blocks. Self-host fixpoints, the full suite, cross-architecture
 compiler checks and changed-line coverage remain the release gates.
 

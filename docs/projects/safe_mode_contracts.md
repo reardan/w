@@ -466,6 +466,23 @@ reference-to-element returns, and attempts to forge bounds. The full suite,
 both self-host fixpoints, changed-line coverage and measured costs are gates,
 not evidence of a formal soundness proof.
 
+Persistent REPL and debugger sessions (#713) keep this single contract by
+construction: each entry is checked as the continuation of one transcript
+function in which every earlier checked declaration is a renamed local, so
+binding identity, initialization and move state, backing roots and reborrow
+parents are the ordinary per-function analysis rather than a second,
+session-level model. The checker exposes one read-only callback
+(`safe_function_end_hook`) for reading flow states before the graph is
+released. Only the state at the end of the transcript is published, and only
+after the entry ran to completion; a failed or faulting entry publishes
+nothing, and a fault discards (leaks) exactly the owners the entry could
+have changed. A redefinition may not change a checked function contract
+that existing callers were checked against. Debugger stops reuse the same
+analysis of the stopped function: a local is presented only when it is
+definitely initialized at the stop and, for a borrow, still live in the
+program (so its loan is one the checker already validated), and only as a
+shared borrow that cannot be moved or written back. Session-end destruction
+mirrors scope cleanup, so each held owner is destroyed exactly once.
 
 ## Optional owner representation and construction
 

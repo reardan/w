@@ -18,7 +18,9 @@ owned-integer buffers, byte arenas
 and win64 support. Linux ARM64 target admission extends the same bounded
 contracts with audited runtime pins and a QEMU execution gate; wasm32/WASI
 admission does the same with a node execution gate. Android/iOS targets
-and persistent sessions remain under #712/#713. The remaining requirements
+remain under #712. Persistent REPL and debugger sessions (#713) check
+every entry and stop against a replayed session transcript
+([usage](safe_mode.md#persistent-repl-and-debugger-sessions)). The remaining requirements
 below are not all delivered.
 
 The goal remains to prevent dangling references, use after move or
@@ -45,7 +47,7 @@ implementation rather than introduce a second ownership model.
 | Calls | Direct/imported/recursive calls, checked methods, concrete generic and quantified indirect calls, alpha-equivalent forward contracts, owned returns and checked reference/slice/borrowed-record returns | Capturing/escaping callbacks and unmodeled generic operations |
 | Cleanup | Reverse-order destruction on supported exits, replacement, parameters, owner moves, recursive owner-bearing struct destruction, nullable owners, tracked field partial moves/replacement and outer-function `defer`; explicit lexical `defer:` handles nested registration and loop jumps | Captured-argument thunks and deferred control-flow bodies |
 | Storage and libraries | Fixed arrays, inline checked slices, shared/exclusive borrowed structs with independent groups, mixed owned/reference structs, opaque integer/owned-integer buffers, byte strings and byte arenas | Generic containers, maps/sets, general arenas and richer raw interoperation |
-| Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency | Persistent REPL/debugger bindings and cross-entry lifetimes |
+| Tooling | Compiler-session resets, safety-option fingerprints, source/contract invalidation, compile/check consistency, persistent REPL bindings with cross-entry borrows, replacement, rollback and session-end destruction, read-only checked debugger views (#713) | Lifetime-labeled session bindings, checked views of outer frames and of aggregates |
 
 The checker in [compiler/safe.w](../../compiler/safe.w) uses resolved
 [retained semantic records](../../compiler/retained_semantic.w). Application
@@ -373,9 +375,9 @@ call or generated helper to bypass transfer or cleanup rules.
 
 Verify equivalent cleanup and diagnostics before admitting another target.
 Keep unsupported target and frontend combinations explicit. In-process REPL
-and debugger execution remain rejected until persistent bindings,
-replacement, cleanup, cross-entry borrows and failed-entry rollback are
-modeled together.
+and debugger execution model persistent bindings, replacement, cleanup,
+cross-entry borrows and failed-entry rollback together (#713); the forms they
+do not model are rejected explicitly.
 
 Audit cache keys and dependency hashes when introducing public lifetime
 contracts or new session state. Mode, target, compiler identity and relevant

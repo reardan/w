@@ -65,6 +65,10 @@ int safe_event
 int safe_position
 list[int] safe_call_roots
 list[int] safe_call_kinds
+# Persistent sessions (compiler/safe_session.w) read a function's analyzed
+# flow graph before it is released; zero everywhere else.
+int safe_function_end_hook
+type __safe_function_end_callback = fn(int) -> void
 
 
 int safe_check_requested():
@@ -2759,6 +2763,7 @@ void safe_function_check(int function):
 		if (safe_graph[i].reached):
 			for j in range(count): state[j] = safe_graph[i].state[j]
 			safe_transfer(i, state)
+	if (safe_function_end_hook != 0): (cast(__safe_function_end_callback*, safe_function_end_hook))(function)
 	free(state)
 	free(refined)
 	free(safe_guard_locals)

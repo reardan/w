@@ -46,6 +46,7 @@ import debugger.sigcontext
 import debugger.common
 import structures.json
 import structures.json_codec
+import compiler.safe_session
 
 
 # Result of one repl_eval() call. status 1: the entry compiled and ran
@@ -98,6 +99,32 @@ int repl_result_type
 # The staged entry file's descriptor, so error recovery can close it even
 # when the failure happened inside an imported file.
 int repl_entry_file
+
+# Checked sessions (compiler/safe_session.w, #713): the item
+# repl_entry_item just compiled -- 0 a declaration, 1 a typed persistent
+# variable, 2 an inferred one, 3 a statement, 4 a bare expression -- with a
+# persistent variable's global and the entry-text offset of its name.
+int repl_item_kind
+int repl_item_symbol
+int repl_item_name_at
+# 1 while the checked-session transcript compiles: its function
+# definitions are analysis-only, never late-bound or recorded as items.
+int repl_transcript_active
+# Nesting depth of repl_eval: a 'debugger' stop inside an executing entry
+# evaluates further entries before the outer one finishes.
+int repl_eval_depth
+# The text of the entry being compiled (item spans index into it).
+char* repl_entry_text
+
+# The session's staging directory (created by repl_init, pid-tagged),
+# the number of entries staged so far, and the most recently staged
+# entry's path. Only the path string is freed when the next entry
+# replaces it: the files themselves stay until repl_cleanup(), because
+# generic definitions record (file, offset) spans that later entries
+# re-parse on instantiation.
+char* repl_staging_dir
+int repl_staged_count
+char* repl_staged_path
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +330,8 @@ int repl_infer_declaration():
 	int decl_type = inferred_storage_type(name, got)
 	expect_or_newline(c";")
 	int global_symbol = repl_declare_global(name, decl_type, 1)
+	repl_item_kind = 2
+	repl_item_symbol = global_symbol
 	int gskip = repl_skip_start()
 	sym_define_global(global_symbol)
 	emit_global_storage(decl_type)
@@ -325,6 +354,8 @@ int repl_infer_declaration():
 # extern, function, persistent variable) or an executable statement.
 void repl_entry_item(int entry_symbol):
 	repl_result_type = -1
+	repl_item_kind = 0
+	repl_item_name_at = token_start_offset
 
 	# Pure declarations: none of this executes now, but imports and extern
 	# shims emit code, so the entry function jumps over the region
@@ -350,12 +381,13 @@ void repl_entry_item(int entry_symbol):
 		number_of_args = 0
 		return;
 
-	# type-name ...: a function definition or a persistent variable
-	if (safe_qualifier_ahead()): error(c"checked pointers are not supported by in-process sessions")
-	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
+	# type-name ...: a function definition or a persistent variable. A
+	# checked qualifier (own/ref/refmut) starts one too.
+	if (safe_qualifier_ahead() | peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		int decl_type = type_name()
 		if (token[0] == 0): error(c"identifier expected after type name")
 		char* decl_name = strclone(token)
+		repl_item_name_at = token_start_offset
 		get_token()
 
 		# function definition, e.g. "int add(int a, int b):"
@@ -370,7 +402,7 @@ void repl_entry_item(int entry_symbol):
 			# older definition of this name to the address just defined.
 			# Only 'D' symbols: a bare prototype ("int f(int);") stays
 			# 'U' and its address slot holds the backpatch chain.
-			if (table[function_symbol + 1] == 'D'):
+			if ((table[function_symbol + 1] == 'D') && (repl_transcript_active == 0)):
 				repl_queue_late_bind(decl_name, load_int(table + function_symbol + 2))
 			current_function_symbol = entry_symbol
 			number_of_args = 0
@@ -381,11 +413,18 @@ void repl_entry_item(int entry_symbol):
 		# persistent variable: storage lives in the code buffer (jumped
 		# over); the initializer runs inside the entry function
 		int global_symbol = repl_declare_global(decl_name, decl_type, 1)
+		repl_item_kind = 1
+		repl_item_symbol = global_symbol
 		int gskip = repl_skip_start()
 		sym_define_global(global_symbol)
 		emit_global_storage(decl_type)
 		repl_skip_end(gskip)
 		pointer_indirection = 0
+		# Top-level executable code is analyzed by the checked-session
+		# transcript, not as an anonymous entry function: keep it out of the
+		# semantic forest (compiler/safe_session.w).
+		int decl_semantic = retained_semantic_mode
+		retained_semantic_mode = 0
 
 		if (accept(c"=")):
 			# compile "name = expression" into the entry function
@@ -402,21 +441,29 @@ void repl_entry_item(int entry_symbol):
 			assign_store(decl_type)
 			stack_pos = stack_pos - 1
 		expect_or_newline(c";")
+		retained_semantic_mode = decl_semantic
 		free(decl_name)
 		return;
 
+	int semantic = retained_semantic_mode
+	retained_semantic_mode = 0
 	# 'name := expression': a persistent variable with an inferred type
-	if (repl_infer_declaration()): return;
+	if (repl_infer_declaration()):
+		retained_semantic_mode = semantic
+		return;
 
 	# control flow and other non-expression statements
 	if (repl_token_is_statement()):
+		repl_item_kind = 3
 		int statement_table_pos = table_pos
 		enclosing_tab_level = 0
 		statement()
 		table_pos = statement_table_pos /* drop statement-local symbols */
+		retained_semantic_mode = semantic
 		return;
 
 	# bare expression: keep its value for echoing (unless it assigns)
+	repl_item_kind = 4
 	expression_is_assignment = 0
 	last_call_return_type = -1
 	last_call_end = -1
@@ -433,6 +480,7 @@ void repl_entry_item(int entry_symbol):
 	if ((result_type == 3) && (last_call_end == codepos)):
 		if (last_call_return_type >= 0): repl_result_type = last_call_return_type
 	if (expression_is_assignment): repl_result_type = -1
+	retained_semantic_mode = semantic
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +515,10 @@ struct repl_state:
 	int function_symbol
 	int sites_count
 
+
+# The session's retained semantic mode, as each entry starts: top-level
+# items switch it off while they compile and error recovery restores it.
+int repl_semantic_mode
 
 # The per-entry checkpoint (nested evaluations swap in their own, see
 # repl_nest_save) and the :reset snapshot below (0 until taken).
@@ -504,6 +556,9 @@ void repl_state_capture(repl_state* st):
 # rollback restores.
 void repl_state_restore(repl_state* st):
 	retained_rollback(&st.retained)
+	# Retained source IDs are reused after rollback: no trust or checker
+	# cache may outlive the source it was computed for.
+	safe_session_sync_sources()
 	# Under --ast-emit-retained an entry that fails mid-statement leaves the
 	# statement's walk record open; its node was just retracted, so the
 	# record and its phases go back to the walk pools here rather than at
@@ -553,6 +608,9 @@ void repl_state_clear_context():
 	cond_discard_mark = 0
 	ast_cond_discard = 0
 	diag_clear()
+	# An error inside a top-level item leaves its semantic suppression on.
+	retained_semantic_mode = repl_semantic_mode
+	repl_transcript_active = 0
 
 
 void repl_checkpoint():
@@ -602,10 +660,78 @@ int repl_reset_to_genesis():
 type __repl_bind_hook_callback = fn() -> void
 
 
+# Prime the tokenizer on a freshly opened staged file.
+void repl_prime_file(char* path):
+	filename = path
+	file = open(path, 0, 511)
+	asserts(c"could not reopen entry buffer", file >= 0)
+	if (ast_retain_mode): retained_source_begin(filename)
+	getchar_reset(file)
+	repl_entry_file = file
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	byte_offset = 0
+	expr_nesting_depth = 0
+	stmt_nesting_depth = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+
+
+# Checked sessions (#713, compiler/safe_session.w): after an entry compiled,
+# replay the session transcript with its items appended, run the ordinary
+# checker over the whole forest and roll the transcript back. Errors unwind
+# through repl_compile_entry's recovery like any compile error, so a
+# rejected entry runs nothing and publishes nothing.
+void repl_safe_check_entry(int first_node):
+	repl_state* mark = new repl_state
+	repl_state_capture(mark)
+	int saved_symbol = current_function_symbol
+	int saved_hook = repl_call_site_hook
+	repl_call_site_hook = 0
+	int warnings = warning_count
+	int result_type = repl_result_type
+	if (safe_session_pending()):
+		char* text = safe_session_transcript()
+		# One reused path: diagnostics quote it after the compile, and the
+		# next transcript replaces it.
+		char* path = cstr(f"{repl_staging_dir}/session.w")
+		int out = create_file(path, 511)
+		asserts(c"could not create the checked session transcript", out >= 0)
+		write(out, text, strlen(text))
+		close(out)
+		free(text)
+		if (safe_session_transcript_path != 0): free(safe_session_transcript_path)
+		safe_session_transcript_path = path
+		repl_transcript_active = 1
+		repl_prime_file(path)
+		while (token[0] != 0): repl_entry_item(-1)
+		repl_transcript_active = 0
+		close(file)
+	safe_session_token = token
+	safe_session_capture_check(first_node)
+	safe_session_contract_check(first_node)
+	safe_session_invalidate()
+	safe_session_seen = 0
+	safe_check_finish()
+	safe_session_validate()
+	safe_session_token = 0
+	repl_state_restore(mark)
+	free(cast(char*, mark))
+	current_function_symbol = saved_symbol
+	repl_call_site_hook = saved_hook
+	warning_count = warnings
+	repl_result_type = result_type
+
+
 int repl_compile_entry(char* path):
 	if (safe_mode): target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	# Checkpoint everything a failed compile could leave half-updated
 	repl_checkpoint()
+	# The mode error recovery restores: whatever the session (or an API
+	# client such as repl/incremental.w) configured, not a default.
+	repl_semantic_mode = retained_semantic_mode
 
 	repl_recovery = 1
 	# Late binding (#114): register the function-address slots this entry
@@ -613,10 +739,18 @@ int repl_compile_entry(char* path):
 	# the engine compiles; the echo path's descriptor building stays out.
 	repl_call_site_hook = cast(int, repl_register_call_site)
 	if (repl_setjmp(repl_jump_buffer)):
-		# error() jumped back: roll back the failed entry and skip execution
+		# error() jumped back: roll back the failed entry and skip execution.
+		# A checker diagnostic points the tokenizer's token at a retained
+		# name; the next entry must tokenize into the real buffer again.
+		if (safe_session_token != 0): token = safe_session_token
+		safe_session_token = 0
 		repl_recovery = 0
 		repl_call_site_hook = 0
+		# A failure in the checked-session transcript names its line there;
+		# say which entry line that replays.
+		safe_session_explain(filename, line_number + 1)
 		repl_rollback()
+		safe_session_discard()
 		# The failure may have happened inside an imported file
 		if (file != repl_entry_file): close(file)
 		close(repl_entry_file)
@@ -662,7 +796,16 @@ int repl_compile_entry(char* path):
 	repl_result_type = -1
 	if (repl_bind_hook != 0): (cast(__repl_bind_hook_callback*, repl_bind_hook))()
 
-	while (token[0] != 0): repl_entry_item(entry_symbol)
+	int entry_length = 0
+	if (repl_entry_text != 0): entry_length = strlen(repl_entry_text)
+	while (token[0] != 0):
+		int item_start = token_start_offset
+		repl_entry_item(entry_symbol)
+		# Record executable items for the checked-session transcript
+		if ((repl_item_kind != 0) && (repl_entry_text != 0) && ast_retain_mode):
+			int item_end = token_start_offset
+			if ((token[0] == 0) || (item_end > entry_length)): item_end = entry_length
+			safe_session_item(item_start, item_end, repl_item_kind, repl_item_name_at, repl_item_symbol)
 
 	# The entry function's implicit end is a function exit: run any
 	# deferred statements registered by this entry (LIFO)
@@ -679,8 +822,16 @@ int repl_compile_entry(char* path):
 	# strings: the modules' functions land after the entry's ret, so
 	# they are never in the execution path. Generic instantiations
 	# requested by this entry compile here too.
+	# Generic instantiations first, so only the injected runtimes after
+	# them are trusted -- the same order link_impl uses.
+	generic_finish_instantiations()
+	int runtime_sources = 0
+	if (retained_sources != 0): runtime_sources = retained_sources.length
 	finish_on_demand_imports()
+	# Compiler-injected runtimes are audited like a compile's (link_impl)
+	safe_trust_sources(runtime_sources)
 	close(file)
+	if (safe_check_requested()): repl_safe_check_entry(repl_saved.retained.nodes)
 	repl_recovery = 0
 	repl_call_site_hook = 0
 
@@ -947,15 +1098,8 @@ char* repl_echo_json(int type, int value):
 # Staging directory (D6): one per session, so concurrent REPL processes
 # never collide and every staged entry file has a single well-known home.
 
-# The session's staging directory (created by repl_init, pid-tagged),
-# the number of entries staged so far, and the most recently staged
-# entry's path. Only the path string is freed when the next entry
-# replaces it: the files themselves stay until repl_cleanup(), because
-# generic definitions record (file, offset) spans that later entries
-# re-parse on instantiation.
-char* repl_staging_dir
-int repl_staged_count
-char* repl_staged_path
+# The staging globals (repl_staging_dir, repl_staged_count,
+# repl_staged_path) are declared with the session globals near the top.
 
 
 # Path for staged entry n inside the session's staging directory
@@ -1028,20 +1172,26 @@ void repl_ast_options():
 	# S2.5: the retained forest and emission from it are the default too.
 	ast_retain_mode = 1
 	ast_emit_retained_mode = 1
-	# P1.2b: no semantic snapshot records unless --ast-retain asks.
-	retained_semantic_mode = 0
+	# Semantic records for every declaration, as a compile keeps them: a
+	# later entry may pass checked pointers to an earlier definition, and
+	# the checker reads them (#713). Top-level executable items switch them
+	# off; the checked-session transcript analyzes those instead.
+	retained_semantic_mode = 1
 	int streaming = args_has_bool_flag(c"streaming")
 	if (streaming):
 		ast_expressions_mode = 0
 		ast_retain_mode = 0
 		ast_emit_retained_mode = 0
+		retained_semantic_mode = 0
 	repl_ast_option(c"ast-expressions")
+	repl_semantic_mode = retained_semantic_mode
 	char* ast_only_flag = 0
 	if (repl_ast_option(c"ast-full-expressions")): ast_only_flag = c"--ast-full-expressions"
 	if (repl_ast_option(c"ast-retain")): ast_only_flag = c"--ast-retain"
 	if (repl_ast_option(c"ast-required")): ast_only_flag = c"--ast-required"
 	if (repl_ast_option(c"ast-emit-retained")): ast_only_flag = c"--ast-emit-retained"
 	if (streaming && (ast_only_flag != 0)): streaming_conflict_error(ast_only_flag)
+	repl_semantic_mode = retained_semantic_mode
 
 
 # Initialize the session: the compiler configured for in-process
@@ -1053,7 +1203,10 @@ void repl_ast_options():
 # runs from, the shared eval engine (repl_engine_init: recoverable
 # compile errors, staging directory) and the runtime support modules.
 void repl_inprocess_setup():
-	type_safe_entrypoint = 0
+	# Checked pointers are admitted: every entry, loaded file and debuggee
+	# runs the ordinary checker before it executes (#713).
+	type_safe_entrypoint = 1
+	safe_function_end_hook = cast(int, safe_session_end_hook)
 	if (safe_mode): target_option_error(c"--safe is not supported by in-process REPL or debugger sessions")
 	verbosity = -1
 	# The in-process model runs compiled code directly, so the target
@@ -1098,6 +1251,8 @@ void repl_inprocess_setup():
 	else: define_asm_functions()
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+	# The auto-imported runtime closure is audited, as in link_impl.
+	safe_trust_sources(0)
 
 
 void repl_init():
@@ -1163,6 +1318,30 @@ int repl_session_function(char* name):
 	return -1
 
 
+# Finish an in-process compile of a whole file (repl_load_file, wdbg's
+# debuggee): queued generic instantiations and on-demand runtimes (trusted
+# like the auto-imported runtime), then the same analysis a compile runs
+# before publishing (#713). A loaded file never executes before its
+# checked code is accepted, and it may not retarget existing callers under
+# a different checked contract.
+void repl_finish_load(int first_node):
+	generic_finish_instantiations()
+	int runtime_sources = 0
+	if (retained_sources != 0): runtime_sources = retained_sources.length
+	finish_on_demand_imports()
+	safe_trust_sources(runtime_sources)
+	if (safe_check_requested()):
+		safe_session_token = token
+		safe_session_capture_check(first_node)
+		safe_session_contract_check(first_node)
+		safe_session_invalidate()
+		safe_check_finish()
+		safe_session_token = 0
+
+
+type __target_main_callback = fn(int, char**) -> int
+
+
 # Compile a source file into the session buffer and resolve the deferred
 # runtimes it may have used (print builtin, f-strings, json codec, var):
 # the call sites go through backpatch chains until the modules are
@@ -1171,9 +1350,6 @@ int repl_session_function(char* name):
 # undefined prototype's address slot holds its backpatch chain, not an
 # entry point. Returns 1 when main ran, 0 otherwise. Afterwards every
 # function and global from the file is live for later entries.
-type __target_main_callback = fn(int, char**) -> int
-
-
 int repl_load_file(char* path, int run_main, int argc, int argv):
 	repl_note_loaded_file(path)
 	# Late binding (#114): register the file's call sites too, so
@@ -1182,8 +1358,9 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	# the process (no entry checkpoint exists yet), so no rollback pairing
 	# is needed.
 	repl_call_site_hook = cast(int, repl_register_call_site)
+	int first_node = retained_node_count()
 	compile_input_file(path)
-	finish_on_demand_imports()
+	repl_finish_load(first_node)
 	repl_call_site_hook = 0
 	if (run_main == 0): return 0
 	int main_symbol = sym_lookup(c"main")
@@ -1210,6 +1387,15 @@ type __address_callback = fn() -> int
 type __repl_echo_hook_callback = fn(int, int) -> void
 
 
+# End of one repl_eval: leave the nesting level and give an outer entry its
+# pending checked-session state back.
+void repl_eval_finish(char* suspended):
+	repl_eval_depth = repl_eval_depth - 1
+	# Frame locals a debugger stop presented belong to this entry alone.
+	safe_session_views_clear()
+	if (suspended != 0): safe_session_resume(suspended)
+
+
 repl_result repl_eval(char* entry_text):
 	repl_result r
 	r.status = 0
@@ -1220,6 +1406,12 @@ repl_result repl_eval(char* entry_text):
 	# repl_nest_save): this call may be running from a 'debugger' stop's
 	# command loop in the middle of another entry's execution.
 	char* nest = repl_nest_save()
+	# A nested entry (a 'debugger' stop inside an executing one) keeps the
+	# outer entry's pending checked-session state aside; it may not name or
+	# make checked session bindings itself (compiler/safe_session.w).
+	char* suspended = 0
+	if (repl_eval_depth > 0): suspended = safe_session_suspend()
+	repl_eval_depth = repl_eval_depth + 1
 
 	repl_stage_init()
 	if (repl_staged_path != 0): free(repl_staged_path)
@@ -1231,23 +1423,33 @@ repl_result repl_eval(char* entry_text):
 	write(out, c"\x0a", 1)
 	close(out)
 
+	char* outer_text = repl_entry_text
+	repl_entry_text = entry_text
+	safe_session_begin(repl_staged_path, entry_text, repl_no_run)
+	safe_session_nested = (suspended != 0) || (repl_bind_hook != 0)
 	int address = repl_compile_entry(repl_staged_path)
+	repl_entry_text = outer_text
 	if (address == 0):
+		repl_eval_finish(suspended)
 		repl_nest_restore(nest)
 		return r /* compile error: reported and rolled back already */
 
 	if (repl_no_run):
 		repl_discard_late_bind()
+		safe_session_discard()
 		r.value = 0
 		r.echo_type = repl_result_type
 		r.status = 1
+		repl_eval_finish(suspended)
 		repl_nest_restore(nest)
 		return r
 
 	repl_fault_active = 1
 	if (repl_setjmp(repl_fault_jump_buffer)):
 		repl_rollback()
+		safe_session_fault()
 		r.status = 2
+		repl_eval_finish(suspended)
 		repl_nest_restore(nest)
 		return r
 	r.value = (cast(__address_callback*, address))()
@@ -1259,9 +1461,21 @@ repl_result repl_eval(char* entry_text):
 	# site of each (re)defined name to the new address. A fault above
 	# skips this: repl_rollback discarded the queue with the definitions.
 	repl_apply_late_bind()
+	# Checked sessions: publish the entry's checked state; owners it moved
+	# are cleared and owners it replaced are destroyed.
+	safe_session_commit()
 	r.status = 1
+	repl_eval_finish(suspended)
 	repl_nest_restore(nest)
 	return r
+
+
+# End the session's checked state (#713): destroy every checked session
+# owner still held, newest first, exactly once. Called on :quit, end of
+# input, :reset and the other normal session exits; safe while no entry
+# is compiling or running.
+void repl_session_end():
+	safe_session_end()
 
 
 # End the session: remove the staged entry files and the staging

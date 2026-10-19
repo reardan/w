@@ -970,6 +970,7 @@ void repl_run_e_mode(list[char*] entries, int json_mode):
 			repl_result r = repl_eval(entries[i])
 			if (r.status != 1): had_error = 1
 		i = i + 1
+	repl_session_end()
 	repl_cleanup()
 	if (had_error): exit(1)
 	exit(0)
@@ -1128,6 +1129,7 @@ int repl_main(int argc, int argv, int initial_shell):
 		repl_shell_commands_imported = 1
 		if (shell_command_text != 0):
 			repl_dispatch_shell_line(shell_command_text)
+			repl_session_end()
 			repl_cleanup()
 			return repl_shell_last_status
 	list[char*] e_entries = repl_collect_e_entries()
@@ -1145,10 +1147,12 @@ int repl_main(int argc, int argv, int initial_shell):
 		if (repl_read_entry() == 0):
 			if (repl_interactive): println(c"")
 			else: println2(c"")
+			repl_session_end()
 			repl_cleanup()
 			if (initial_shell): exit(repl_shell_last_status)
 			exit(0)
 		if (string_equals(repl_entry, c":quit")):
+			repl_session_end()
 			repl_cleanup()
 			if (initial_shell): exit(repl_shell_last_status)
 			exit(0)
@@ -1159,6 +1163,9 @@ int repl_main(int argc, int argv, int initial_shell):
 			print_symbol_table(0)
 			continue
 		if (string_equals(repl_entry, c":reset")):
+			# Checked session owners are destroyed while the code that
+			# owns their destructors is still loaded.
+			repl_session_end()
 			if (repl_reset_to_genesis()):
 				# The synthesized shell_commands import (if any) is one of
 				# the entries rolled back, so its "already imported" flag
