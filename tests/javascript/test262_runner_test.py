@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -18,6 +19,12 @@ BINARY = ROOT / 'bin/test262_runtime_runner'
 
 
 class AdapterContract(unittest.TestCase):
+    def test_native_quota_failure_preserves_sentinel_and_roots(self):
+        for extra in ([], ['memory']):
+            process = subprocess.run([str(BINARY), '--quota-contract', *extra], capture_output=True, text=True, timeout=10)
+            self.assertEqual(process.returncode, 0, process.stderr)
+            self.assertEqual(process.stdout, 'Test262 native quota ownership: OK\n')
+
     def execute(self, source, mode='sloppy', budget=10000, asynchronous=False):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'test.js'

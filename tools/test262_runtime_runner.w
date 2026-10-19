@@ -4,6 +4,7 @@
 # wbuild: step="python3 tests/javascript/test262_runner_test.py"
 # Bounded upstream Test262 profile. Fresh process and realm per variant.
 import lib.args
+import lib.assert
 import lib.file
 import structures.json
 import libs.extras.javascript.runtime
@@ -17,6 +18,7 @@ js_value* test262_done_error = 0
 
 js_value* test262_failure(js_runtime* rt):
 	js_value* error = js_runtime_alloc(rt, 5)
+	if (error == rt.undefined_value): return rt.undefined_value
 	error.intrinsic_error_name = c"Test262Error"
 	js_runtime_throw(rt, error)
 	return rt.undefined_value
@@ -73,9 +75,11 @@ js_value* test262_done(void* context, list[js_value*] args):
 	js_runtime* rt = cast(js_runtime*, context)
 	test262_done_calls = test262_done_calls + 1
 	if (test262_done_error == 0 && test262_done_calls > 1):
-		test262_done_error = js_runtime_alloc(rt, 5)
-		test262_done_error.intrinsic_error_name = c"Test262Error"
-		js_runtime_root(rt, test262_done_error)
+		js_value* error = js_runtime_alloc(rt, 5)
+		if (error == rt.undefined_value): return rt.undefined_value
+		error.intrinsic_error_name = c"Test262Error"
+		if (js_runtime_root(rt, error) == 0): return rt.undefined_value
+		test262_done_error = error
 	if (test262_done_error == 0 && args.length > 0 && args[0].kind != 0):
 		test262_done_error = args[0]
 		js_runtime_root(rt, test262_done_error)
@@ -97,6 +101,7 @@ js_value* test262_missing_helper(void* runtime, void* context, js_value* object,
 
 js_value* test262_callable(js_runtime* rt, js_host_function* callback):
 	js_value* value = js_runtime_alloc(rt, 9)
+	if (value == rt.undefined_value): return rt.undefined_value
 	value.host = cast(int, callback)
 	return value
 
@@ -250,8 +255,52 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	return result
 
 
+int test262_quota_contract(int guarded):
+	if (guarded): malloc_force_debug_mode()
+	js_runtime* rt = js_runtime_new()
+	assert1(js_runtime_root(rt, rt.undefined_value))
+	int roots = rt.roots.length
+	int maximum = rt.max_values
+	list[js_value*] args = new list[js_value*]
+	rt.max_values = rt.heap.length
+	test262_failure(rt)
+	assert_equal(5, rt.completion.status)
+	assert_equal(0, strlen(rt.undefined_value.intrinsic_error_name))
+	js_runtime_begin(rt, 1000)
+	assert1(test262_callable(rt, test262_assert) == rt.undefined_value)
+	assert_equal(5, rt.completion.status)
+	assert_equal(0, rt.undefined_value.host)
+	js_runtime_begin(rt, 1000)
+	test262_done_calls = 1
+	test262_done_error = 0
+	test262_done(rt, args)
+	assert_equal(5, rt.completion.status)
+	assert1(test262_done_error == 0)
+	assert_equal(0, strlen(rt.undefined_value.intrinsic_error_name))
+	assert_equal(roots, rt.roots.length)
+	# A later successful duplicate keeps its own rooted error through collection.
+	rt.max_values = maximum
+	js_runtime_begin(rt, 1000)
+	test262_done_calls = 1
+	test262_done(rt, args)
+	assert_equal(0, rt.completion.status)
+	assert_equal(roots + 1, rt.roots.length)
+	js_runtime_collect(rt)
+	assert_equal(0, strcmp(test262_done_error.intrinsic_error_name, c"Test262Error"))
+	js_runtime_throw(rt, test262_done_error)
+	assert_equal(2, rt.completion.status)
+	assert1(rt.completion.value != rt.undefined_value)
+	__w_list_free(cast(__w_list*, args))
+	js_runtime_free(rt)
+	test262_done_error = 0
+	if (guarded): assert_equal(0, debug_alloc_report_leaks())
+	println(c"Test262 native quota ownership: OK")
+	return 0
+
+
 int main(int argc, int argv):
 	args_init(argc, argv)
+	if ((argc == 2 || argc == 3) && strcmp(args_get(1), c"--quota-contract") == 0): return test262_quota_contract(argc == 3)
 	if (argc != 5 && argc != 6):
 		println(c"usage: test262_runtime_runner FILE script|module BUDGET harness|async|raw [UPSTREAM_HARNESS]")
 		return 2
