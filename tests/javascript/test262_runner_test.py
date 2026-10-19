@@ -345,6 +345,14 @@ class AdapterContract(unittest.TestCase):
         actual = self.execute("if(this!==globalThis || this.Object!==Object) throw 1;", 'raw')
         self.assertEqual(actual['outcome'], 'normal', actual)
 
+    def test_error_cause_capability_executes_native_semantics(self):
+        source = "let calls=0;let parent={};Object.defineProperty(parent,'cause',{get:function(){calls++;return 23;}});let options=Object.create(parent);let e=new URIError('message',options);assert.sameValue(e.cause,23);assert.sameValue(calls,1);assert.sameValue(e.constructor,URIError);assert.sameValue(Object.getOwnPropertyDescriptor(e,'cause').enumerable,false);let n=new EvalError('text',{cause:undefined});assert.sameValue(Object.hasOwn(n,'cause'),true);let bad={};Object.defineProperty(bad,'cause',{get:function(){throw 9;}});let caught;try{new Error('x',bad);}catch(e){caught=e;}assert.sameValue(caught,9);"
+        for mode in ('sloppy', 'strict'):
+            actual = self.execute(source, mode)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+            self.assertEqual(actual['assertions'], 6)
+        self.assertIn('error-cause', adapter.FEATURES)
+
     def test_invalid_utf8_output_is_error(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'bad-runner'

@@ -141,7 +141,7 @@ of complete Promise semantics.
 The selected corpus now adds all three upstream empty-input Promise.all tests
 (A2.3_T1–T3) unchanged. The existing array slice Object-descriptor requirement
 is promoted only after its real execution passes with A's Object implementation.
-Current selected expectation is 77 files / 151 variants: 131 PASS and 24
+Current selected expectation is 77 files / 151 variants: 131 PASS and 20
 UNSUPPORTED (122 runtime passes, 360 native assertions). The prior profile recorded 110 PASS/35 UNSUPPORTED before these changes. Default exit 0 still allows explicit unsupported
 results; `--require-all` remains nonzero until they are implemented.
 
@@ -226,3 +226,35 @@ Symbol support and native alternate-newTarget limitations remain explicit.
 
 The original compareArray.js include is hash-pinned. Harness-only `allow_unused`
 is admitted as upstream lint metadata; unknown executable metadata still fails.
+
+The `error-cause` feature reaches actual execution after native Error constructor
+support. Contracts check inherited cause access, descriptor visibility, an
+explicit undefined cause, getter exceptions and EvalError/URIError identity.
+This does not admit Symbols, Proxy, realms or AggregateError dependencies.
+
+## Recorded complete-family checkpoints
+
+These are fresh executions at the listed private W revisions, retained as
+historical snapshots after later implementation changes. They use the original
+upstream assertion helpers and the default 100,000-step budget. Counts overlap
+between rows and must not be added into a suite-wide pass rate. None establishes
+complete support for the associated language feature. Exact source pins, runner
+binary hashes, per-variant failures and adapter hashes remain in the raw reports.
+
+| Complete family selection | Files | Variants | PASS | FAIL | UNSUPPORTED | ERROR | W runtime revision |
+|---|---:|---:|---:|---:|---:|---:|---|
+| parseInt, isNaN, isFinite | 85 | 170 | 134 | 0 | 30 | 6 | `34b4b166` |
+| RegExp (after include metadata correction) | 1,879 | 3,756 | 606 | 220 | 2,916 | 14 | `daec849e` frozen binary |
+| Object.defineProperty, Reflect.construct, Array.concat, String.split, RegExp Symbol.split, String.charCodeAt, Number MAX_VALUE/MIN_VALUE | 1,407 | 2,801 | 2,048 | 118 | 635 | 0 | `4b49480a` |
+
+The last row includes all 10 Reflect.construct files/20 variants passing; native
+alternate-newTarget support remains a separate open capability. All 44
+RegExp Symbol.split files/88 variants remain explicitly unsupported. String.split
+accounts for all 120 files/240 variants: 196 PASS, 20 FAIL, 24 UNSUPPORTED.
+
+The numeric ERROR records are six strict/sloppy variants exhausting the unchanged
+execution budget; they were not relabeled as unsupported or given a passing
+budget exemption. The RegExp metadata correction admitted the original
+compareArray.js `allow_unused` field; its two previous harness ERROR variants now
+reach a genuine missing-String.match FAIL, while 14 resource errors remain.
+The same frozen RegExp runner binary was reused for that comparison.
