@@ -113,11 +113,15 @@ struct js_runtime:
 	js_value* arguments_thrower
 	js_value* error_prototype
 	js_value* reference_error_prototype
+	js_value* type_error_prototype
+	js_value* range_error_prototype
+	js_value* syntax_error_prototype
 	js_value* string_prototype
 	list[js_value*] heap
 	list[js_value*] roots
 	list[js_node*] scripts
 	js_value* global
+	js_value* global_object
 	js_value* undefined_value
 	js_completion* completion
 	int running
@@ -152,6 +156,14 @@ struct js_runtime:
 js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding);
 void js_runtime_install_collections(js_runtime* rt);
 void js_runtime_install_object(js_runtime* rt);
+int js_global_has(js_runtime* rt, char* name);
+int js_runtime_has_property(js_runtime* rt, js_value* object, js_text* key);
+void js_runtime_pattern_names(js_node* pattern, list[js_node*] names);
+int js_bigint_space(int unit);
+js_value* js_global_read(js_runtime* rt, char* name);
+void js_global_binding_write(js_runtime* rt, js_value* binding, js_value* value, int strict);
+void js_global_declare(js_runtime* rt, js_value* env, js_value* binding, int function);
+void js_bigint_error(js_runtime* rt, char* name, char* message);
 void js_runtime_install_array(js_runtime* rt);
 void js_runtime_install_function(js_runtime* rt);
 js_value* js_function_bound(js_runtime* rt, js_value* callable, list[js_value*] args, js_value* new_target);
@@ -399,6 +411,8 @@ js_value* js_runtime_error_value(js_runtime* rt, char* message):
 	error.intrinsic_error_name = name
 	error.prototype = rt.error_prototype
 	if (strcmp(name, c"ReferenceError") == 0): error.prototype = rt.reference_error_prototype
+	if (strcmp(name, c"TypeError") == 0): error.prototype = rt.type_error_prototype
+	if (strcmp(name, c"SyntaxError") == 0): error.prototype = rt.syntax_error_prototype
 	js_text* key = js_runtime_key(name)
 	js_value* label = js_runtime_string(rt, key)
 	js_text_free(key)
@@ -425,6 +439,7 @@ js_runtime* js_runtime_new():
 	rt.async_stack_bytes = 0
 	rt.max_async_roots = 1000000
 	rt.async_root_count = 0
+	rt.global_object = 0
 	rt.object_prototype = 0
 	rt.array_prototype = 0
 	rt.string_prototype = 0
@@ -438,6 +453,9 @@ js_runtime* js_runtime_new():
 	rt.arguments_thrower = 0
 	rt.error_prototype = 0
 	rt.reference_error_prototype = 0
+	rt.type_error_prototype = 0
+	rt.range_error_prototype = 0
+	rt.syntax_error_prototype = 0
 	rt.promise_constructor = 0
 	rt.max_binary_bytes = 67108864
 	rt.binary_bytes_used = 0
@@ -540,6 +558,9 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.object_prototype)
 	js_runtime_mark(pending, rt.error_prototype)
 	js_runtime_mark(pending, rt.reference_error_prototype)
+	js_runtime_mark(pending, rt.type_error_prototype)
+	js_runtime_mark(pending, rt.range_error_prototype)
+	js_runtime_mark(pending, rt.syntax_error_prototype)
 	js_runtime_mark(pending, rt.promise_prototype)
 	for i in range(rt.microtask_head, rt.microtasks.length): js_runtime_mark(pending, rt.microtasks[i])
 	js_runtime_mark(pending, rt.array_prototype)
@@ -548,6 +569,7 @@ int js_runtime_collect(js_runtime* rt):
 	js_runtime_mark(pending, rt.string_prototype)
 	js_runtime_mark(pending, rt.regexp_prototype)
 	js_runtime_mark(pending, rt.global)
+	js_runtime_mark(pending, rt.global_object)
 	js_runtime_mark(pending, rt.undefined_value)
 	js_runtime_mark(pending, rt.completion.value)
 	for i in range(rt.roots.length): js_runtime_mark(pending, rt.roots[i])
@@ -754,6 +776,7 @@ void js_runtime_declare(js_runtime* rt, js_node* node, js_value* env):
 			js_runtime_put(rt, env, key, js_runtime_function(rt, statement, env))
 			js_value* binding = js_runtime_property(env, key)
 			if (binding != 0): binding.lexical_binding = env.variable_scope == 0
+			js_global_declare(rt, env, binding, 1)
 			js_text_free(key)
 
 
@@ -1070,8 +1093,13 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 	int read = update || strcmp(node.text, c"=") != 0
 	if (js_kind(target, c"identifier")):
 		binding = js_runtime_binding(env, target.text)
-		if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
-		else: old = js_runtime_binding_value(rt, binding)
+		if (binding == 0 && rt.global_object != 0):
+			object = rt.global_object
+			key = js_runtime_key(target.text)
+			if (env.strict && js_global_has(rt, target.text) == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+			if (read): old = js_global_read(rt, target.text)
+		else if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+		else if (read): old = js_runtime_binding_value(rt, binding)
 	else:
 		object = js_runtime_eval_node(rt, target.children[0], env)
 		key = js_runtime_member_key(rt, target, env)
@@ -1099,7 +1127,7 @@ js_value* js_runtime_assign(js_runtime* rt, js_node* node, js_value* env):
 		if (binding != 0):
 			if (binding.immutable):
 				if (binding.silent_immutable == 0 || env.strict): js_runtime_fail(rt, 2, c"assignment to constant binding")
-			else: binding.value = value
+			else: js_global_binding_write(rt, binding, value, env.strict)
 		else if (js_runtime_member_write(rt, object, key, value) == 0 && env.strict):
 			js_runtime_fail(rt, 2, c"property write rejected")
 	js_text_free(key)
@@ -1504,7 +1532,8 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 		return js_runtime_boolean(rt, strcmp(node.text, c"true") == 0)
 	if (js_kind(node, c"identifier")):
 		js_value* property = js_runtime_binding(env, node.text)
-		if (property == 0 || property.initialized == 0):
+		if (property == 0): return js_global_read(rt, node.text)
+		if (property.initialized == 0):
 			js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 			return rt.undefined_value
 		return js_runtime_binding_value(rt, property)
@@ -1582,7 +1611,7 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 	if (js_kind(node, c"unary")):
 		js_node* operand = node.children[0]
 		js_value* value = rt.undefined_value
-		int missing_typeof = strcmp(node.text, c"typeof") == 0 && js_kind(operand, c"identifier") && js_runtime_binding(env, operand.text) == 0
+		int missing_typeof = strcmp(node.text, c"typeof") == 0 && js_kind(operand, c"identifier") && js_runtime_binding(env, operand.text) == 0 && js_global_has(rt, operand.text) == 0
 		if (missing_typeof == 0): value = js_runtime_eval_node(rt, operand, env)
 		if (rt.completion.status != 0): return rt.undefined_value
 		if (strcmp(node.text, c"typeof") == 0):
@@ -1653,7 +1682,8 @@ js_value* js_runtime_eval_impl(js_runtime* rt, js_node* node, js_value* env):
 				key = js_runtime_key(property.text)
 				if (js_kind(property, c"property_shorthand")):
 					js_value* binding = js_runtime_binding(env, property.text)
-					if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+					if (binding == 0): value = js_global_read(rt, property.text)
+					else if (binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 					else: value = js_runtime_binding_value(rt, binding)
 				else: value = js_runtime_eval_node(rt, property.children[0], env)
 			if (rt.completion.status == 0): js_runtime_member_write(rt, object, key, value)
@@ -1877,3 +1907,5 @@ import libs.extras.javascript.runtime_numeric
 import libs.extras.javascript.runtime_sequence
 
 import libs.extras.javascript.runtime_object
+
+import libs.extras.javascript.runtime_global

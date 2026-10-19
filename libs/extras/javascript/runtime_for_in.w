@@ -59,10 +59,15 @@ void js_for_in_assign(js_runtime* rt, js_node* target, js_value* env, js_value* 
 	if (rt.completion.status != 0): return
 	if (js_kind(target, c"identifier")):
 		js_value* binding = js_runtime_binding(env, target.text)
-		if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+		if (binding == 0 && rt.global_object != 0):
+			js_text* global_key = js_runtime_key(target.text)
+			if (env.strict && js_global_has(rt, target.text) == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+			if (rt.completion.status == 0 && js_runtime_member_write(rt, rt.global_object, global_key, value) == 0 && env.strict): js_runtime_fail(rt, 2, c"property write rejected")
+			js_text_free(global_key)
+		else if (binding == 0 || binding.initialized == 0): js_runtime_fail(rt, 2, c"uninitialized or missing binding")
 		elif (binding.immutable):
 			if (binding.silent_immutable == 0 || env.strict): js_runtime_fail(rt, 2, c"assignment to constant binding")
-		else: binding.value = value
+		else: js_global_binding_write(rt, binding, value, env.strict)
 		return
 	js_value* object = js_runtime_eval_node(rt, target.children[0], env)
 	js_text* key = 0

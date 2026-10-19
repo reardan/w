@@ -257,3 +257,17 @@ void js_runtime_install_classes(js_runtime* rt):
 	rt.reference_error_prototype.prototype = rt.error_prototype
 	js_class_install_error(rt, c"ReferenceError", rt.reference_error_prototype)
 	js_runtime_get(rt, rt.global, c"ReferenceError").prototype = js_runtime_get(rt, rt.global, c"Error")
+
+	rt.type_error_prototype = js_runtime_alloc(rt, 5)
+	rt.type_error_prototype.prototype = rt.error_prototype
+	js_class_install_error(rt, c"TypeError", rt.type_error_prototype)
+	rt.range_error_prototype = js_runtime_alloc(rt, 5)
+	rt.range_error_prototype.prototype = rt.error_prototype
+	js_class_install_error(rt, c"RangeError", rt.range_error_prototype)
+	rt.syntax_error_prototype = js_runtime_alloc(rt, 5)
+	rt.syntax_error_prototype.prototype = rt.error_prototype
+	js_class_install_error(rt, c"SyntaxError", rt.syntax_error_prototype)
+	js_value* error = js_runtime_get(rt, rt.global, c"Error")
+	js_runtime_get(rt, rt.global, c"TypeError").prototype = error
+	js_runtime_get(rt, rt.global, c"RangeError").prototype = error
+	js_runtime_get(rt, rt.global, c"SyntaxError").prototype = error

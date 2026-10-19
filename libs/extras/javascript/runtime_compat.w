@@ -28,6 +28,7 @@ void js_runtime_pattern_declare(js_runtime* rt, js_node* pattern, js_value* env,
 				binding.initialized = mode == 3
 				binding.lexical_binding = mode == 1
 				binding.immutable = immutable
+				if (mode == 3): js_global_declare(rt, env, binding, 0)
 		js_text_free(key)
 	__w_list_free(cast(__w_list*, names))
 
@@ -83,7 +84,7 @@ void js_runtime_pattern_bind(js_runtime* rt, js_node* pattern, js_value* value, 
 		js_value* binding = js_runtime_binding(env, pattern.text)
 		if (binding == 0): js_runtime_fail(rt, 6, c"binding pattern requires a declaration")
 		else:
-			binding.value = value
+			js_global_binding_write(rt, binding, value, env.strict)
 			binding.initialized = 1
 		return
 	if (js_kind(pattern, c"default_pattern")):
@@ -247,6 +248,11 @@ js_value* js_runtime_binding_value(js_runtime* rt, js_value* binding):
 	if (binding == 0 || binding.initialized == 0):
 		js_runtime_fail(rt, 2, c"uninitialized module binding")
 		return rt.undefined_value
+	if (binding.accessor == 3):
+		if (js_runtime_has_property(rt, binding.getter, binding.key) == 0):
+			js_runtime_fail(rt, 2, c"uninitialized or missing binding")
+			return rt.undefined_value
+		return js_runtime_member_read(rt, binding.getter, binding.key)
 	if (binding.value.arguments_pending):
 		js_value* object = js_arguments_materialize(rt, binding.value)
 		if (rt.completion.status != 0): return rt.undefined_value

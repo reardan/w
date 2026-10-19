@@ -36,6 +36,8 @@ void test_reflection():
 	reflection_eval(rt, c"let key={toString:function(){return 'coerced';}};Object.defineProperty(o,key,{value:22});o.coerced===22;", 0)
 	reflection_eval(rt, c"let locked={};Object.defineProperty(locked,'x',{value:1});let receiver={};!Reflect.set(locked,'x',2,receiver) && !Object.hasOwn(receiver,'x');", 0)
 	reflection_eval(rt, c"let array=[];let ld=Object.getOwnPropertyDescriptor(array,'length');ld.value===0 && ld.writable && !ld.configurable && !ld.enumerable && !Reflect.deleteProperty(array,'length');", 0)
+	reflection_eval(rt, c"let typed=0;try{Object.defineProperty({},'x',{get:3});}catch(e){typed=e.constructor===TypeError && e instanceof Error;}typed && new RangeError() instanceof Error && new SyntaxError().constructor===SyntaxError;", 0)
+	reflection_eval(rt, c"let range=0;try{Array(-1);}catch(e){range=e.constructor===RangeError;}range===true;", 0)
 	js_runtime* foreign = js_runtime_new()
 	js_value* target = js_runtime_alloc(rt, 5)
 	js_value* other = js_runtime_alloc(foreign, 5)

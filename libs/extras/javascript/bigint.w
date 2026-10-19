@@ -32,6 +32,9 @@ void js_bigint_error(js_runtime* rt, char* name, char* message):
 	js_runtime_fail(rt, 2, message)
 	if (rt.completion.value == rt.undefined_value): return
 	rt.completion.value.intrinsic_error_name = name
+	if (strcmp(name, c"RangeError") == 0): rt.completion.value.prototype = rt.range_error_prototype
+	if (strcmp(name, c"SyntaxError") == 0): rt.completion.value.prototype = rt.syntax_error_prototype
+	if (strcmp(name, c"ReferenceError") == 0): rt.completion.value.prototype = rt.reference_error_prototype
 	js_text* text = js_runtime_key(name)
 	js_value* label = js_runtime_string(rt, text)
 	js_text_free(text)
