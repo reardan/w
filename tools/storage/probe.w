@@ -1,7 +1,7 @@
 # wbuild: binary=storage_probe arch=x64
-# wbuild: target=storage_native_test
+# wbuild: target=storage_native_test dep=storage_native_check
 # wbuild: step="bin/wv2 x64 tools/storage/probe.w -o bin/storage_native_probe"
-# wbuild: step="python3 tools/storage/native_test.py bin/storage_native_probe" timeout=60000
+# wbuild: step="bin/storage_native_check bin/storage_native_probe" timeout=60000
 # Native process-recovery fixture and repeatable storage benchmark driver.
 import libs.standard.distributed.durable_apply
 import libs.standard.distributed.storage_maintenance

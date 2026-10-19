@@ -1,10 +1,10 @@
 # Example of graphics/android/kit.w: tabs, screens, lists, text views, a text
 # area, a dialog, HTTP and secure storage. Launched with the data URI
-# "wkit:smoke?URL" it also runs tools/android/kit_smoke.py's device self-test.
-# wbuild: target=android_kit_test tag=tests dep=wv2
+# "wkit:smoke?URL" it also runs tools/android/kit_smoke.w's device self-test.
+# wbuild: target=android_kit_test dep=android_check_elf dep=android_check_bridge tag=tests dep=wv2
 # wbuild: step="bin/wv2 arm64_android --shared --strict graphics/android/kit_demo.w -o bin/libandroid_kit_demo.so"
-# wbuild: step="python3 tools/android/check_elf.py bin/libandroid_kit_demo.so"
-# wbuild: step="python3 tools/android/check_bridge.py"
+# wbuild: step="bin/android_check_elf bin/libandroid_kit_demo.so"
+# wbuild: step="bin/android_check_bridge"
 import lib.lib
 import lib.str
 import graphics.android.kit

@@ -230,7 +230,7 @@ error rather than durability success.
 Run `./wbuild fs_durability_darwin_test` on an Apple Silicon Mac (also
 included in `./wbuild tests_darwin`). It bootstraps the native compiler,
 runs the shared `lib/fs_test.w` and `lib/io_test.w` suites, then runs
-`tools/mac/test_fs_durability.py`. The generated Darwin twins remain
+`tools/mac/test_fs_durability.w`. The generated Darwin twins remain
 compile guards in Linux `tests`. Python 3 is needed for the fault harness.
 
 Native validation on 2026-10-09: M3 Pro, macOS 26.3 (25D125), Darwin

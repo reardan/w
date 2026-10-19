@@ -1,4 +1,4 @@
-# Run by tools/mac/test_fs_durability.py with a private syscall import
+# Run by tools/mac/test_fs_durability.w with a private syscall import
 # root. fs_replace_durable itself is compiled without modification.
 import lib.fs
 import lib.assert

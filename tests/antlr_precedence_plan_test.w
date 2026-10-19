@@ -1,4 +1,4 @@
-# wbuild: target=antlr_precedence_plan_test tag=tests dep=antlr_to_pg
+# wbuild: target=antlr_precedence_plan_test tag=tests dep=antlr_to_pg dep=antlr_left_recursion_refusals
 # wbuild: step="bin/wv2 --strict tests/antlr_precedence_plan_test.w -o bin/antlr_precedence_plan_test"
 # wbuild: step="bin/antlr_precedence_plan_test"
 # wbuild: step="bin/wv2 x64 --strict tests/antlr_precedence_plan_test.w -o bin/antlr_precedence_plan_test_x64"
@@ -6,7 +6,7 @@
 # wbuild: target=antlr_left_recursion_oracle_test tag=tests dep=antlr_precedence_plan_test dep=antlr_parser_progress_inventory
 # wbuild: step="python3 tests/antlr_left_recursion_oracle_test.py"
 # wbuild: step="python3 tests/antlr_left_recursion_oracle.py --plan-tool bin/antlr_precedence_plan_test --progress-tool bin/antlr_parser_progress_inventory"
-# wbuild: step="python3 tests/antlr_left_recursion_refusals.py --tool bin/antlr_to_pg"
+# wbuild: step="bin/antlr_left_recursion_refusals --tool bin/antlr_to_pg"
 import lib.assert
 import bin.generated_antlr4_parser
 import libs.extras.grammars.antlr_to_pg.ast

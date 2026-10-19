@@ -4,7 +4,7 @@ Run from the W repository root:
 
 ```sh
 ./wbuild javascript_conformance
-python3 tools/javascript_conformance.py --json bin/javascript-conformance.json
+bin/javascript_conformance --json bin/javascript-conformance.json
 ```
 
 The build target compiles the generated parser and the x64 W interpreter driver,

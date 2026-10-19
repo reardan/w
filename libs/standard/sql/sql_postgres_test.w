@@ -1,6 +1,6 @@
 # wbuild: arch_only=x64
-# wbuild: target=sql_postgres_local_test tag=tests dep=sql_postgres_test data=tests/sql_postgres_fixture.py
-# wbuild: step="python3 tests/sql_postgres_fixture.py bin/sql_postgres_test"
+# wbuild: target=sql_postgres_local_test tag=tests dep=sql_postgres_test dep=sql_postgres_fixture data=tests/sql_postgres_fixture.w
+# wbuild: step="bin/sql_postgres_fixture bin/sql_postgres_test"
 import libs.standard.sql.client
 import lib.env
 import lib.assert

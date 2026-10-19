@@ -53,7 +53,7 @@ Use `--import-root /path/to/pinned/w` when compiling outside the dependency
 checkout. HTML, CSS and image decoders need no generator or external library at
 build/run time. The maintained HTML/CSS token specifications record their scope
 and provenance. HTML's complete named-reference table is checked in with its
-pinned WHATWG source; `python3 tools/html_entities.py --check` verifies offline
+pinned WHATWG source; `bin/html_entities --check` verifies offline
 reproduction. JavaScript consumers first run `./wbuild javascript_parser` in
 the dependency checkout. UI consumers retain the existing reproducible
 `ui_font_data`/`generated` build targets and checked-in font inputs. Shaped runs optionally require system HarfBuzz

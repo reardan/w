@@ -8,4 +8,6 @@ for name in fs io; do
 	bin/wv2_darwin arm64_darwin --strict "lib/${name}_test.w" -o "bin/${name}_test_darwin"
 	tools/mac/run_darwin_tests.sh "bin/${name}_test_darwin"
 done
-python3 tools/mac/test_fs_durability.py
+bin/wv2_darwin arm64_darwin --strict tools/mac/test_fs_durability.w -o bin/darwin_fs_qualification.new
+mv -f bin/darwin_fs_qualification.new bin/darwin_fs_qualification
+bin/darwin_fs_qualification

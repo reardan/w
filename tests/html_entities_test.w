@@ -1,6 +1,7 @@
+# wbuild: tool=tools/html_entities.w
 # wbuild: x64
 # wbuild: deps=libs/extras/html/entities.json
-# wbuild: step="python3 tools/html_entities.py --check"
+# wbuild: step="bin/html_entities --check"
 # wbuild: step="bin/html_entities_test --filter contexts,numeric,limits" env="W_TEST_LEAKS=1"
 import lib.testing
 import lib.file

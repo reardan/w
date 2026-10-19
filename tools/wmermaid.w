@@ -1,6 +1,4 @@
 # wbuild: binary=wmermaid
-# wbuild: target=mermaid_cli_test tag=tests dep=wmermaid
-# wbuild: step="python3 tools/mermaid_cli_test.py"
 import lib.args
 import libs.extras.mermaid.io
 import libs.extras.mermaid.render

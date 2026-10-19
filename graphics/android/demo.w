@@ -1,7 +1,7 @@
-# Native Android controls and W state; build with tools/android/build.py.
-# wbuild: target=android_app_test tag=tests dep=wv2
+# Native Android controls and W state; build with tools/android/build.w.
+# wbuild: target=android_app_test dep=android_check_elf tag=tests dep=wv2
 # wbuild: step="bin/wv2 arm64_android --shared --strict graphics/android/demo.w -o bin/libandroid_demo.so"
-# wbuild: step="python3 tools/android/check_elf.py bin/libandroid_demo.so"
+# wbuild: step="bin/android_check_elf bin/libandroid_demo.so"
 import lib.lib
 import graphics.android.ui
 

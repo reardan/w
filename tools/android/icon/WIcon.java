@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import javax.imageio.ImageIO;
 
 /**
- * Launcher icon resources for tools/android/build.py --icon, from one PNG.
+ * Launcher icon resources for tools/android/build.w --icon, from one PNG.
  * Run with the JDK's single-file launcher (no packages or downloads):
  *
  *   java -Djava.awt.headless=true tools/android/icon/WIcon.java icon.png res/ [#RRGGBB]

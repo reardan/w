@@ -143,7 +143,7 @@ diagnostics. Its selected fixtures also run with allocation leak checks.
 The generated table uses immutable packed records and bounded binary lookups;
 it requires no per-document table allocation or global initialization.
 
-`python3 tools/html_entities.py --check` verifies the snapshot's SHA-256 and
+`bin/html_entities --check` verifies the snapshot's SHA-256 and
 byte-identical regeneration as part of the entity tests. Run without `--check`
 to regenerate. The [data provenance](../../libs/extras/html/entities-provenance.md)
 records the upstream URLs, pin, licensing and update procedure.

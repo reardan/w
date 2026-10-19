@@ -49,7 +49,7 @@ clean lexer diagnostics, and the implemented early-error checks.
 The lexer distinguishes regular expressions from division using parser-selected
 lexical goals. A mode stack and interpolation brace context handle nested
 templates. Unicode 12.1 identifier tables are vendored and reproducibly generated
-by `python3 tools/javascript_unicode.py --check`. Comments retain line-break
+by `bin/javascript_unicode --check`. Comments retain line-break
 information for automatic semicolon insertion and restricted productions.
 
 The grammar handles expressions and precedence, optional chaining and nullish
@@ -425,7 +425,7 @@ executes pinned upstream tests with native W assertion overrides and explicit
 PASS/FAIL/UNSUPPORTED/ERROR results. Run `./wbuild javascript_test262` to save its
 report to `bin/test262-conformance.json`. Its reviewed per-variant baseline fails
 on unexpected support changes. Use
-`python3 tools/test262_conformance.py --require-all` to fail on every unsupported
+`bin/test262_conformance --require-all` to fail on every unsupported
 variant as well. Full upstream harness and full-suite execution remain deferred.
 
 Early-error checks include async/generator parameter expressions and duplicate

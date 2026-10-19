@@ -50,7 +50,7 @@ duplicated descriptors can prolong a lock's lifetime.
 On each native ARM64 Linux and Apple Silicon checkout:
 
 ```sh
-python3 tools/qualify_native.py --suite durability --rounds 20 \
+bin/qualify_native --suite durability --rounds 20 \
   --scratch /path/on/filesystem-under-test --output bin/durability-native.json
 ```
 
@@ -91,7 +91,7 @@ On 2026-10-09, native M3 Pro/macOS 26.3 tests on local internal APFS passed
 cases with recovery. File and directory full barriers succeeded on this
 filesystem/device. Run `./wbuild fs_durability_darwin_test`; the full scope,
 assumptions and test mechanism are in [Darwin qualification](reliable_services.md#darwin-qualification-608).
-The existing `tools/qualify_native.py --suite durability` fixture also passed
+The existing `tools/qualify_native.w --suite durability` fixture also passed
 20 rounds in each of streaming, retained and optimized modes (60 runs), using
 `--compiler bin/wv2_darwin --scratch bin`; local evidence is written to
 `bin/fs608_native_qualification.json`.

@@ -127,7 +127,7 @@ For a reproducible native preview on a headless Linux host with Xvfb:
 ```sh
 xvfb-run -a bin/wmermaid_editor examples/mermaid/orders.mmd \
   --frames 3 --screenshot bin/mermaid.ppm
-python3 tools/ppm_to_png.py bin/mermaid.ppm bin/mermaid.png
+bin/ppm_to_png bin/mermaid.ppm bin/mermaid.png
 ```
 
 ## Desktop validation by platform
