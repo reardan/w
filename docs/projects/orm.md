@@ -103,6 +103,12 @@ int M_delete(orm_db* db, M* row)           # orm_delete_row(db, M_desc(), row)
 void M_free(M* row)                        # orm_row_free(M_desc(), row)
 ```
 
+Rows the runtime allocates (`orm_row_new`, query results) carry one extra
+trailer word after `struct_size` (U1.3's `orm_row_meta*`: annotations and
+strings the ORM writes later). Any generated helper that allocates a row,
+such as a future `M_clone`, must use `orm_row_new(M_desc())`, never
+`malloc(sizeof(M))`, and write functions must not be given stack rows.
+
 so the runtime (U1.3) provides `orm_queryset`, `orm_objects`, `orm_save`,
 `orm_delete_row`, `orm_row_new` and `orm_row_free` with those signatures.
 
@@ -113,4 +119,11 @@ landed units are listed here as they merge.
 
 | Unit | Page | Status |
 | --- | --- | --- |
+| U0.1 typed SQL values | [u0_1](orm/u0_1.md) | landed |
+| U0.2 streaming cursor | [u0_2](orm/u0_2.md) | landed |
+| U0.3 savepoints | [u0_3](orm/u0_3.md) | landed |
 | U0.4 contracts + fixture | this page | landed |
+| U1.1 schema generator | [u1_1](orm/u1_1.md) | landed |
+| U1.2 SQL compiler | [u1_2](orm/u1_2.md) | landed |
+| U1.3 QuerySet API | [u1_3](orm/u1_3.md) | landed |
+| U2.3 migration planner + linter | [u2_3](orm/u2_3.md) | landed |
