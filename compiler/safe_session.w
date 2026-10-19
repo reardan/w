@@ -88,6 +88,7 @@ char* safe_session_transcript_path
 # that cannot be presented at this stop.
 list[safe_session_binding*] safe_session_views
 list[char*] safe_session_hidden
+list[char*] safe_session_hidden_reasons
 
 
 type __safe_session_drop_callback = fn(int) -> void
@@ -108,6 +109,7 @@ void safe_session_init():
 	safe_session_line_numbers = new list[int]
 	safe_session_views = new list[safe_session_binding*]
 	safe_session_hidden = new list[char*]
+	safe_session_hidden_reasons = new list[char*]
 
 
 # 1 when values of type must be modeled by the checker across entries.
@@ -245,6 +247,16 @@ void safe_session_indent(string_builder* out, char* text):
 	string_append_char(out, 10)
 
 
+# 1 when the word ending at i is the target of a plain or compound
+# assignment ('=' but not '==').
+int safe_session_assigned(char* text, int i, int end):
+	while ((i < end) && ((text[i] == ' ') || (text[i] == 9))): i = i + 1
+	if (i >= end): return 0
+	if ((text[i] == '=') && ((i + 1 >= end) || (text[i + 1] != '='))): return 1
+	if ((i + 1 < end) && (text[i + 1] == '=') && (text[i] != '!') && (text[i] != '<') && (text[i] != '>') && (text[i] != '=')): return safe_session_ident_part(text[i]) == 0
+	return 0
+
+
 int safe_session_line_count(char* text):
 	int length = strlen(text)
 	while ((length > 0) && safe_session_blank(text[length - 1])): length = length - 1
@@ -300,8 +312,8 @@ void safe_session_binding_free(safe_session_binding* b):
 
 
 # One pass over an item's text. With out == 0 it only classifies the item:
-# bit 0 names a checked binding, bit 1 holds a construct the session
-# function cannot replay. With out it writes the renamed text: checked and
+# bit 0 names a checked session binding (not a frame view), bit 1 holds a
+# construct the session function cannot replay. With out it writes the renamed text: checked and
 # declared bindings always take their alias; a plain generation does when it
 # is a local of the function being built or can be declared as its
 # parameter, and otherwise stays the global (which a checked function then
@@ -362,7 +374,7 @@ int safe_session_scan(int start, int end, int kind, int name_at, safe_session_bi
 		if ((field == 0) && (prefix == 0)):
 			for h in range(safe_session_hidden.length):
 				if ((out == 0) && (strcmp(word, safe_session_hidden[h]) == 0)):
-					safe_session_error_at(word_start, c"safe: this checked local is not definitely initialized and live at this debugger stop")
+					safe_session_error_at(word_start, safe_session_hidden_reasons[h])
 			if ((declared != 0) && (strcmp(word, declared) == 0)):
 				int current = word_start >= name_at
 				if (kind == 2): current = word_start == name_at
@@ -374,7 +386,11 @@ int safe_session_scan(int start, int end, int kind, int name_at, safe_session_bi
 				safe_session_error_at(word_start, c"safe: this checked session binding was discarded after a runtime fault")
 			if ((out == 0) && safe_session_nested && (target.view == 0)):
 				safe_session_error_at(word_start, c"safe: checked session bindings are unavailable while another entry or a debugger stop is active")
-			named = named | 1
+			if ((out == 0) && target.view && safe_session_assigned(text, i, end)):
+				safe_session_error_at(word_start, c"safe: checked debugger locals are read-only views at a stop; assign them in the program")
+			# A frame view is a parameter of this entry's own function; it
+			# never joins the replayed session.
+			if (target.view == 0): named = named | 1
 		if ((target != 0) && (target.checked == 0) && (target != fresh)):
 			int local = session && target.in_session
 			if ((local == 0) && (target.spelling == 0)): target = 0
@@ -479,9 +495,10 @@ void safe_session_item(int start, int end, int kind, int name_at, int symbol):
 			safe_session_touched = 1
 	safe_session_text* item = safe_session_text_new(renamed, line)
 	item.declares = fresh
+	# The entry's final value is checked as a plain expression read, so a
+	# borrow it yields never escapes the transcript function.
+	if (leading): for k in range(6): renamed[leading - 1 + k] = ' '
 	if (session):
-		# The entry's final value: replayed as a plain expression read.
-		if (leading): for k in range(6): renamed[leading - 1 + k] = ' '
 		if (fresh != 0): fresh.in_session = 1
 		safe_session_new_items.push(item)
 		safe_session_touched = 1
@@ -638,9 +655,13 @@ void safe_session_probe_capture(int function):
 		else if ((f.action == 3) && (retained_record_at(f.node).parent == function)): chosen.push(f)
 	for i in range(safe_real_locals):
 		if (chosen.length == 0): break
+		# A borrow is only known to be valid while the program still uses
+		# it: past its last use its root may already be moved or dropped.
+		int borrow = safe_local_kind(i) >= 2
 		int alive = 1
 		for k in range(chosen.length):
 			if ((chosen[k].state[i] & 7) != 2): alive = 0
+			if (borrow && (chosen[k].live[i] == 0)): alive = 0
 		if (alive):
 			retained_binding* local = retained_bindings[safe_locals[i]]
 			safe_session_probe_names.push(local.name)
@@ -684,10 +705,12 @@ void safe_session_probe(int function, int line):
 	safe_session_probe_function = -1
 
 
+# 1 when the probe found local name (declared at line; any line when
+# negative) usable at the stop.
 int safe_session_probe_alive(char* name, int line):
 	if (safe_session_probe_names == 0): return 0
 	for i in range(safe_session_probe_names.length):
-		if ((strcmp(safe_session_probe_names[i], name) == 0) && (safe_session_probe_lines[i] == line)): return 1
+		if ((strcmp(safe_session_probe_names[i], name) == 0) && ((line < 0) || (safe_session_probe_lines[i] == line))): return 1
 	return 0
 
 
@@ -716,9 +739,12 @@ void safe_session_view(char* name, int type, char* spelling):
 	safe_session_views.push(b)
 
 
-void safe_session_hide(char* name):
+# A checked local of the stopped frame that the entry may not name, and the
+# diagnostic a reference to it reports.
+void safe_session_hide(char* name, char* reason):
 	safe_session_init()
 	safe_session_hidden.push(strclone(name))
+	safe_session_hidden_reasons.push(reason)
 
 
 void safe_session_views_clear():
@@ -727,6 +753,7 @@ void safe_session_views_clear():
 	safe_session_views.clear()
 	for i in range(safe_session_hidden.length): free(safe_session_hidden[i])
 	safe_session_hidden.clear()
+	safe_session_hidden_reasons.clear()
 
 
 # safe_function_end_hook: for the session function, read the state where
@@ -974,6 +1001,9 @@ struct safe_session_suspended:
 	list[safe_session_text*] items
 	list[safe_session_text*] standalone
 	list[int] states
+	list[safe_session_binding*] views
+	list[char*] hidden
+	list[char*] hidden_reasons
 	char* path
 	char* text
 	int touched
@@ -994,6 +1024,12 @@ char* safe_session_suspend():
 	for i in range(safe_session_bindings.length):
 		saved.states.push(safe_session_bindings[i].pending_state)
 		saved.states.push(safe_session_bindings[i].captured)
+	saved.views = safe_session_views
+	saved.hidden = safe_session_hidden
+	saved.hidden_reasons = safe_session_hidden_reasons
+	safe_session_views = new list[safe_session_binding*]
+	safe_session_hidden = new list[char*]
+	safe_session_hidden_reasons = new list[char*]
 	saved.path = safe_session_entry_path
 	saved.text = safe_session_entry_text
 	saved.touched = safe_session_touched
@@ -1016,6 +1052,13 @@ void safe_session_resume(char* state):
 	safe_session_retired.free()
 	safe_session_new_items.free()
 	safe_session_standalone.free()
+	safe_session_views_clear()
+	safe_session_views.free()
+	safe_session_hidden.free()
+	safe_session_hidden_reasons.free()
+	safe_session_views = saved.views
+	safe_session_hidden = saved.hidden
+	safe_session_hidden_reasons = saved.hidden_reasons
 	safe_session_new = saved.fresh
 	safe_session_retired = saved.retired
 	safe_session_new_items = saved.items

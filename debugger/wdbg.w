@@ -356,6 +356,14 @@ void dbg_print_command(int pc, int esp, char* arg):
 	dbg_eval(arg, pc, esp)
 
 
+# A raw word written into a checked owner or borrow would bypass the
+# ownership state the checker proved (#713): refuse it.
+int dbg_set_checked(int type):
+	if (safe_session_type_checked(type, 0) == 0): return 0
+	println(c"set: checked variables cannot be written by the debugger; their ownership state would go stale")
+	return 1
+
+
 # set <name> <value>: writes a local, argument or global word.
 void dbg_set_command(int pc, int esp, char* arg):
 	char* value_text = dbg_split_word(arg)
@@ -365,6 +373,7 @@ void dbg_set_command(int pc, int esp, char* arg):
 	int v = dbg_number(value_text)
 	int note = dbg_local_find(arg, pc)
 	if (note >= 0):
+		if (dbg_set_checked(dbg_local_type(note))): return;
 		int addr = dbg_local_runtime_addr(note, esp)
 		if (dbg_mem_readable(addr, __word_size__) == 0):
 			println(c"variable is not addressable here")
@@ -375,6 +384,7 @@ void dbg_set_command(int pc, int esp, char* arg):
 	int g = dbg_global_find(arg)
 	if (g >= 0):
 		if (dbg_sym_symtype(g) != 2):
+			if (dbg_set_checked(dbg_sym_type(g))): return;
 			dbg_mem_write_word(dbg_sym_address(g), v)
 			print(arg)
 			print(c" = ")
@@ -1267,11 +1277,12 @@ int wdbg_main(int argc, int argv):
 	# saved register, which 'print', 'info args' and the outer frames
 	# cannot read (debugger/locals.w reads r12-r15 alone)
 	reg_args_disabled = 1
+	int first_node = retained_node_count()
 	compile_input_file(target)
 	# On-demand runtimes for to_json/from_json and f"..." template
 	# strings used by the debuggee, plus its queued generic
-	# instantiations
-	finish_on_demand_imports()
+	# instantiations; then the checker, before the debuggee runs (#713)
+	repl_finish_load(first_node)
 
 	int* target_main = cast(int*, sym_address(c"main"))
 	asserts(c"debuggee has no main()", target_main != 0)

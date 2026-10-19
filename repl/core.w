@@ -1313,6 +1313,28 @@ int repl_session_function(char* name):
 	return -1
 
 
+# Finish an in-process compile of a whole file (repl_load_file, wdbg's
+# debuggee): queued generic instantiations and on-demand runtimes (trusted
+# like the auto-imported runtime), then the same analysis a compile runs
+# before publishing (#713). A loaded file never executes before its
+# checked code is accepted, and it may not retarget existing callers under
+# a different checked contract.
+void repl_finish_load(int first_node):
+	generic_finish_instantiations()
+	int runtime_sources = 0
+	if (retained_sources != 0): runtime_sources = retained_sources.length
+	finish_on_demand_imports()
+	safe_trust_sources(runtime_sources)
+	if (safe_check_requested()):
+		safe_session_capture_check(first_node)
+		safe_session_contract_check(first_node)
+		safe_session_invalidate()
+		safe_check_finish()
+
+
+type __target_main_callback = fn(int, char**) -> int
+
+
 # Compile a source file into the session buffer and resolve the deferred
 # runtimes it may have used (print builtin, f-strings, json codec, var):
 # the call sites go through backpatch chains until the modules are
@@ -1321,9 +1343,6 @@ int repl_session_function(char* name):
 # undefined prototype's address slot holds its backpatch chain, not an
 # entry point. Returns 1 when main ran, 0 otherwise. Afterwards every
 # function and global from the file is live for later entries.
-type __target_main_callback = fn(int, char**) -> int
-
-
 int repl_load_file(char* path, int run_main, int argc, int argv):
 	repl_note_loaded_file(path)
 	# Late binding (#114): register the file's call sites too, so
@@ -1334,20 +1353,8 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	repl_call_site_hook = cast(int, repl_register_call_site)
 	int first_node = retained_node_count()
 	compile_input_file(path)
-	generic_finish_instantiations()
-	int runtime_sources = 0
-	if (retained_sources != 0): runtime_sources = retained_sources.length
-	finish_on_demand_imports()
-	safe_trust_sources(runtime_sources)
+	repl_finish_load(first_node)
 	repl_call_site_hook = 0
-	# The same analysis a compile runs before publishing (#713): a loaded
-	# file never executes before its checked code is accepted, and it may
-	# not retarget existing callers under a different checked contract.
-	if (safe_check_requested()):
-		safe_session_capture_check(first_node)
-		safe_session_contract_check(first_node)
-		safe_session_invalidate()
-		safe_check_finish()
 	if (run_main == 0): return 0
 	int main_symbol = sym_lookup(c"main")
 	if (main_symbol >= 0):
@@ -1377,6 +1384,8 @@ type __repl_echo_hook_callback = fn(int, int) -> void
 # pending checked-session state back.
 void repl_eval_finish(char* suspended):
 	repl_eval_depth = repl_eval_depth - 1
+	# Frame locals a debugger stop presented belong to this entry alone.
+	safe_session_views_clear()
 	if (suspended != 0): safe_session_resume(suspended)
 
 
