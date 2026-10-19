@@ -208,6 +208,13 @@ json_value* test262_run(char* source, char* filename, int module, int budget, in
 	pg_parse_result_free(parsed)
 	if (result != 0): return result
 	js_runtime* rt = js_runtime_new()
+	js_value* global_object = js_runtime_alloc(rt, 5)
+	js_text* global_key = js_runtime_key(c"globalThis")
+	js_runtime_define_data(rt, global_object, global_key, global_object, 1, 0, 1)
+	js_text_free(global_key)
+	if (js_runtime_set_global_object(rt, global_object) == 0):
+		js_runtime_free(rt)
+		return test262_result(c"harness", c"limit")
 	if (raw == 0):
 		if (harness_source == 0): test262_install(rt, asynchronous)
 		else: test262_install_upstream(rt, asynchronous)

@@ -215,3 +215,10 @@ failure has been hidden. Default profile counts above include these promotions.
 Mapped arguments additionally promote the original sloppy variants of
 `isArray/15.4.3.2-1-13.js`, `find/predicate-call-parameters.js` and
 `findIndex/predicate-call-parameters.js`; their strict variants already passed.
+
+The script runner now creates a real ordinary global object through the native
+embedding API, including non-enumerable `globalThis`, global var properties and
+separate lexical bindings. Raw scripts use the same realm without assertion
+helpers. Ordinary `Reflect`, `Reflect.set`, `Object.is` and arrow-function feature
+metadata now reaches execution; this admits tests rather than assuming their
+results. Missing Reflect.construct and Symbol support remains explicit.

@@ -316,6 +316,20 @@ class AdapterContract(unittest.TestCase):
                 with self.assertRaises((ValueError, OSError)):
                     adapter.load_manifest(manifest)
 
+    def test_implemented_reflection_features_reach_execution(self):
+        meta = {'flags': [], 'includes': [], 'features': ['Reflect', 'Reflect.set', 'Object.is', 'arrow-function']}
+        self.assertIsNone(adapter.unsupported(meta))
+        actual = self.execute("const o={x:3};assert.sameValue(Reflect.get(o,'x'),3);assert.sameValue(Reflect.set(o,'x',4),true);assert.sameValue(o.x,4);assert.sameValue(Object.is(NaN,NaN),true);assert.sameValue((x=>x+1)(2),3);")
+        self.assertEqual(actual['outcome'], 'normal', actual)
+        self.assertIn('Symbol', adapter.unsupported(dict(meta, features=['Symbol'])))
+
+    def test_native_script_global_object_and_lexical_bindings(self):
+        for mode in ('sloppy', 'strict'):
+            actual = self.execute("assert.sameValue(this,globalThis);assert.sameValue(Object.getOwnPropertyDescriptor(this,'globalThis').enumerable,false);assert.sameValue(this.Object,Object);var x=3;assert.sameValue(this.x,3);this.x=4;assert.sameValue(x,4);let lexical=5;assert.sameValue(this.lexical,undefined);assert.sameValue(lexical,5);Object.defineProperty(this,'throwing',{get:function(){throw 23;}});try{throwing;throw 'lost';}catch(e){assert.sameValue(e,23);}", mode)
+            self.assertEqual(actual['outcome'], 'normal', actual)
+        actual = self.execute("if(this!==globalThis || this.Object!==Object) throw 1;", 'raw')
+        self.assertEqual(actual['outcome'], 'normal', actual)
+
     def test_invalid_utf8_output_is_error(self):
         with tempfile.TemporaryDirectory() as directory:
             binary = Path(directory) / 'bad-runner'
