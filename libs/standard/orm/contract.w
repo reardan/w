@@ -646,6 +646,23 @@ void orm_result_free(orm_result* r):
 # unsafe change into expand / migrate / contract operations that ship in
 # separate migrations; the applier (U2.4) runs them; the autodetector (U2.2)
 # produces them from schema snapshots.
+#
+# Field use per op (agreed by U2.3/U2.4):
+# - table-level copies (SYNC_TRIGGER, COPY_TABLE, SWAP_TABLES, RENAME_TABLE):
+#   `table` is the new table, `source_table` the old one;
+# - column-level copies (SYNC_TRIGGER, COPY_COLUMN): `column` is the new
+#   column, `source_column` the old one;
+# - ADD_CONSTRAINT: `name` plus `sql` holding the whole constraint body
+#   ("CHECK (...)", "FOREIGN KEY (...) REFERENCES ...", "UNIQUE USING INDEX i");
+#   the applier appends NOT VALID on PostgreSQL;
+# - BACKFILL: `name` and `sql` both hold the registered backfill name.
+#
+# field_json keys (a subset of the U1.1 schema snapshot's field object):
+#   "name", "column", "kind" (ORM_* number), "null" (bool; absent = NOT NULL),
+#   "default" (SQL text; present and non-null = the column has a DB default),
+#   "deprecated" (bool; an ALTER_NULL carrying it only drops NOT NULL),
+#   "max_length", "digits", "places", "unique" (bool), and for ADD_INDEX
+#   "columns" (array of column names) plus "unique".
 
 const int ORM_OP_CREATE_TABLE = 1       # model_json: full model snapshot
 const int ORM_OP_DROP_TABLE = 2
@@ -696,6 +713,7 @@ struct orm_migration:
 	list[orm_op*] ops
 	int atomic                # 0 when any op is non_atomic
 	char* requires_applied    # contract step: name of the expand migration that must be applied first, or 0
+	int phase                 # ORM_PHASE_* of the migration as a whole (empty marker migrations), 0 = derive from ops
 
 
 orm_op* orm_op_new(int kind, int phase, char* table):
