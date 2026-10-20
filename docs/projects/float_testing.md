@@ -77,3 +77,19 @@ Still open for a future pass:
   batches), rather than the hand-picked vectors above.
 - A slower optional target for large generated/random TestFloat batches
   once the compiler can consume compact case tables efficiently.
+
+## Sixteen-bit storage coverage
+
+`float16_test` and `bfloat16_test` (with x64 twins) check golden storage
+patterns, ties-to-even, signed zeros, subnormals, infinities, NaNs and
+overflow. Exhaustive storage round trips complement boundary vectors;
+NaNs are checked according to each backend's payload contract. Function
+returns are tested directly in float32 expressions so a raw half cannot
+silently masquerade as float32 bits, the bug missed by storage-only tests.
+Containers, aliases and compound stores exercise the same conversions.
+
+ARM64, Wasm and PTX tests qualify the conversion emitters separately from
+the x86-specific float32/float64 conformance vectors above. Default FP
+state is part of the native ARM64 contract; see [float.md](float.md).
+`debug_float_test` checks numeric output and original storage bits for
+all four formats, and REPL fixtures check both text and JSON echoes.

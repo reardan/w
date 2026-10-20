@@ -60,6 +60,7 @@ int type_index_indexed
 int float32_type
 int float64_type
 int float16_type
+int bfloat16_type
 int float_type
 int float32_value_type
 int float64_value_type
@@ -1376,8 +1377,8 @@ int type_decays_to_pointer(int want, int got):
 
 
 # Float kind of an expression type, as a VALUE after promote(): 0 = not
-# float, 1 = float32 bits in eax, 2 = float64 bits in rax. float16 counts
-# as kind 1 because its load path widens to float32. Pointer types have
+# float, 1 = float32 bits in eax, 2 = float64 bits in rax. Both 16-bit
+# storage formats count as kind 1 because loads widen to float32. Pointers have
 # their own indices, so float* correctly reads as kind 0.
 int type_float_kind(int t):
 	# Unqualified, not just canonical: a const-wrapped float (e.g. a
@@ -1385,10 +1386,16 @@ int type_float_kind(int t):
 	# routes its loads through the float pipeline.
 	t = type_unqualified(t)
 	if ((t == float32_type) || (t == float_type) ||
-			(t == float16_type) || (t == float32_value_type)):
+			(t == float16_type) || (t == bfloat16_type) || (t == float32_value_type)):
 		return 1
 	if ((t == float64_type) || (t == float64_value_type)): return 2
 	return 0
+
+
+# Narrow floats have distinct storage encodings but share float32 arithmetic.
+int type_is_narrow_float(int t):
+	t = type_unqualified(t)
+	return (t == float16_type) || (t == bfloat16_type)
 
 
 # Combined operating kind for a binary operator's two operand types:
@@ -1646,10 +1653,11 @@ void push_basic_types():
 	uint64_type = type_push_size(c"uint64", 8)
 
 	# IEEE-754 floating point. 'float' is an alias of float32 by kind (see
-	# type_float_kind); float16 is storage-only (all math in float32).
+	# type_float_kind); float16/bfloat16 are storage-only (math in float32).
 	float32_type = type_push_size(c"float32", 4)
 	float64_type = type_push_size(c"float64", 8)
 	float16_type = type_push_size(c"float16", 2)
+	bfloat16_type = type_push_size(c"bfloat16", 2)
 	float_type = type_push_size(c"float", 4)
 	float32_value_type = type_push_size(c"float32 value", 0)
 	float64_value_type = type_push_size(c"float64 value", 0)

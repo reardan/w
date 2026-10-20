@@ -1609,6 +1609,7 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 	ptx_line(c"{")
 	ptx_line(c".reg .b64 %ax, %bx, %cx, %sp, %bp;")
 	ptx_line(c".reg .b32 %w0, %w1;")
+	ptx_line(c".reg .b16 %half;")
 	ptx_line(c".reg .f32 %fa, %fb;")
 	ptx_line(c".reg .f64 %da, %db;")
 	ptx_line(c".reg .pred %p;")

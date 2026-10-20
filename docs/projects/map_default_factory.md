@@ -160,10 +160,12 @@ for you.
 ### How `m.add` lowers
 
 `hash_map_add_suffix()` (`grammar/hash_builtin.w`) rejects struct and
-float16 value types up front (`"map add requires an integer or float
+float16/bfloat16 value types up front (`"map add requires an integer or float
 value type"` / `"map add does not support float16 values"`, pinned by
 `tests/map_add_error_fixture.w` / `tests/map_add_float16_error_fixture.w`
-in `build.base.json`). Integer values lower to `__w_map_add(map, key,
+in the generated manifest; bfloat16 has an analogous fixture). Ordinary
+indexed compound assignment supports both narrow formats. Integer values
+lower to `__w_map_add(map, key,
 delta)` (`structures/hash_table.w`), which does
 `slot[0] = slot[0] + delta` on the (zero-initialized-on-allocation)
 value slot after `__w_map_insert_slot` finds-or-inserts it — no trap,

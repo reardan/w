@@ -78,7 +78,11 @@ void emit_gpu_for_device_end_ast(gpu_statement_ast* node):
 
 
 void emit_gpu_capture_value_ast(statement_ast* node):
-	promote(sym_emit_value(node.binding, node.callee_name))
+	int type = sym_emit_value(node.binding, node.callee_name)
+	int got = promote(type)
+	# The device capture slot retains its declared storage type. Loading
+	# a narrow float widened it, so restore its storage bits for transport.
+	if (type_is_narrow_float(type)): coerce(type, got)
 	push_slot()
 	ast_gpu_captures_emitted = ast_gpu_captures_emitted + 1
 

@@ -100,8 +100,8 @@ void dbg_inspect_hex(json_value* node, char* key, int value):
 	free(text)
 
 
-# Summaries never recurse or call debuggee code. Floats and wide scalars
-# are explicitly shown as bits/unsupported, never mislabeled as integers.
+# Summaries never recurse or call debuggee code. Floats carry numeric
+# text in value and their original storage pattern in bits.
 json_value* dbg_inspect_value(char* path, char* name, int addr, int type):
 	json_value* node = json_object()
 	json_object_set(node, c"path", json_string(path))
@@ -128,7 +128,14 @@ json_value* dbg_inspect_value(char* path, char* name, int addr, int type):
 		dbg_inspect_hex(node, c"value", value)
 		dbg_inspect_hex(node, c"pointer", value)
 		if (value == 0): json_object_set(node, c"expandable", json_bool(0))
-	else if (type_float_kind(type) || type_is_unsigned_word(type)):
+	else if (type_float_kind(type)):
+		char* text = dbg_float_text(value, type)
+		json_object_set(node, c"value", json_string(text))
+		free(text)
+		char* raw = hex_fixed(value, width * 2)
+		json_object_set(node, c"bits", json_string(raw))
+		free(raw)
+	else if (type_is_unsigned_word(type)):
 		dbg_inspect_hex(node, c"value", value)
 	else:
 		char* name = type_get_name(type)

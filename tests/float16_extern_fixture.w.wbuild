@@ -1,0 +1,2 @@
+# wbuild: target=narrow_float_abi_test tag=tests dep=wv2 dep=wfixture
+# wbuild: step="bin/wfixture bin/wv2 tests/float16_extern_fixture.w tests/bfloat16_extern_fixture.w tests/float16_export_fixture.w"

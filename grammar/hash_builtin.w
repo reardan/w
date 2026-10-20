@@ -202,7 +202,7 @@ int hash_container_key_type(int container_type):
 # accumulate from zero the same way — add the delta exactly like the
 # m[key] += path and store back through __w_map_set. The parked map/key
 # slots feed both calls, so the key is evaluated once. Either way the
-# expression yields the updated value. float16 values stay rejected: the
+# expression yields the updated value. Narrow float values stay rejected: the
 # slot word holds raw half bits the float emitters cannot add directly.
 # (A runtime float variant in structures/hash_table.w could not cover
 # float64, whose type is rejected on 32-bit targets, so the dispatch
@@ -212,7 +212,9 @@ int hash_map_add_suffix(int type):
 	int value_type = type_map_value_type(container_type)
 	int key_type = type_map_key_type(container_type)
 	if (type_num_args(value_type) > 0): error(c"map add requires an integer or float value type")
-	if (type_canonical(value_type) == float16_type):
+	if (type_unqualified(value_type) == bfloat16_type):
+		error(c"map add does not support bfloat16 values")
+	if (type_unqualified(value_type) == float16_type):
 		error(c"map add does not support float16 values")
 	int value_kind = type_float_kind(type_value(value_type))
 	promote(type)

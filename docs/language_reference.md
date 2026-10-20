@@ -81,7 +81,8 @@ it.
 | `bool` | 1 | 1 | — | Values 0 and 1; `true` and `false`. |
 | `float`, `float32` | 4 | 4 | — | |
 | `float64` | compile error | 8 | — | Only on 64-bit-word targets. |
-| `float16` | 2 | 2 (x64) | — | Storage only; x86 family only. See [float.md](projects/float.md). |
+| `float16` | 2 | 2 | — | Binary16 storage; float32 computation. F16C required on x86/x64/win64. See [float.md](projects/float.md). |
+| `bfloat16` | 2 | 2 | — | 8 exponent / 7 fraction bits; float32 computation, integer conversions on every backend. |
 | `T*`, `pointer`, `void*` | 4 | 8 | — | |
 | `string` | 4 | 8 | — | One word in a variable. `.length` is in bytes. Representation: [arrays_slices_strings.md](projects/arrays_slices_strings.md). |
 | `var` | 4 | 8 | — | A dynamically typed box ([dynamic_var.md](projects/dynamic_var.md)). |
@@ -347,7 +348,7 @@ and a use in an expression.
 |---|---|---|
 | Fully reserved | `new`, `cast`, `sizeof` | Rejected as any declared name; only a struct field may use them. |
 | Built-in constants | `true`, `false`, `__word_size__`, `__target_isa__` | A local or global declaration compiles, but every use still reads the built-in value. A function by this name compiles and the program crashes. |
-| Statement and type words | `if` `while` `for` `in` `return` `break` `continue` `pass` `switch` `defer` `goto` `debugger` `const` `yield` `raw_asm` `var` `string` `byte` `char` `int` `uint` `bool` `void` `float` `float16` `float32` `float64` `int8`..`int64` `uint8`..`uint64` `function` `constant` `pointer`, and every struct, union, enum or alias name in scope | Accepted as variable, function and field names, but `name = ...` cannot start a statement, because the line is parsed as that statement or declaration. Avoid them. |
+| Statement and type words | `if` `while` `for` `in` `return` `break` `continue` `pass` `switch` `defer` `goto` `debugger` `const` `yield` `raw_asm` `var` `string` `byte` `char` `int` `uint` `bool` `void` `float` `float16` `bfloat16` `float32` `float64` `int8`..`int64` `uint8`..`uint64` `function` `constant` `pointer`, and every struct, union, enum or alias name in scope | Accepted as variable, function and field names, but `name = ...` cannot start a statement, because the line is parsed as that statement or declaration. Avoid them. |
 | Built-in call names | `print`, `println`, `syscall`, `to_json`, `from_json`, `setjmp`, `longjmp` | Usable as locals, but not as function names (`symbol redefined`). |
 | Built-in helpers | `input` `read_all` `ints` `lines` `words` `split` `join` `max` `min` `abs` `len` `any` `all` `enum_name` `mul_hi` `mul_wide` `add_carry` | Usable as any name. A user function with the same name defined **before** the call replaces the built-in. See the prelude collision below. |
 | Words with a built-in meaning in one position only | `range` `list` `map` `set` `it` and the container pseudo-method names (`push`, `pop`, `keys`, `add`, ...) | Usable as any name. |

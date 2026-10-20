@@ -1089,3 +1089,4 @@ void diag_code_table():
 	diag_code_row(c"W0411", c"expression emission exceeds safe recursive depth")
 	diag_code_row(c"W0412", c"in-process code buffer exhausted; start a new session")
 	diag_code_row(c"W0413", c"unnecessary parentheses around a single condition [condition-parens]")
+	diag_code_row(c"W0414", c"map add does not support bfloat16 values")

@@ -62,6 +62,12 @@ browser  --https/JSON-->  bin/wdbg_web (x64)  --pipes-->  bin/wdbg prog.w
   `registers`, `stack` and `disas` now. Hex bytes for the disassembly
   come from an `x` word dump over the function's address range.
 
+  Typed float locals and fields display numeric text with their original
+  storage bits, including float16/bfloat16. The debugger's structured
+  `inspect <path>` values expose numeric `value` and hexadecimal `bits`
+  strings; float64 requires the x64 debugger. Raw register/stack dumps
+  keep their existing hexadecimal presentation.
+
 - **Transport: wdbg's own text protocol.** The issue weighed a new
   structured protocol against reusing the stdin/stdout loop behind a
   server. v1 reuses it: wdbg prints `wdbg> ` before every read even off a

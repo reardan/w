@@ -2,10 +2,12 @@ import code_generator.code_emitter
 import code_generator.wgrind
 import code_generator.ptx
 import code_generator.wasm
+import code_generator.wasm_half
 import code_generator.arm64
 import code_generator.x86
 import code_generator.wasm_module
 import code_generator.sse
+import code_generator.bfloat
 import code_generator.x86_asm
 import code_generator.arm64_asm
 import code_generator.elf
