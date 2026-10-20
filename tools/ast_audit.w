@@ -57,7 +57,14 @@ int ast_audit_program_index(json_value* cmd):
 	return index
 
 
-# 0: other command; 1: eligible; 2: explicit AST mode; 3: query/help or
+# These commands own their entire argument tail. A .w input is data to
+# inspect/reduce, and a reducer predicate may contain compiler flags itself.
+int ast_audit_tool_command(json_value* cmd, int program):
+	char* subcommand = ast_audit_arg(cmd, program + 1)
+	return strcmp(subcommand, c"inspect") == 0 || strcmp(subcommand, c"reduce") == 0
+
+
+# 0: other command; 1: eligible; 2: explicit AST mode; 3: query/help/tool or
 # no source. Append the flag so check's own option prefix is left intact.
 int ast_audit_command_kind(json_value* cmd):
 	if (cmd == 0 || cmd.type != json_type_array()): return 0
@@ -67,6 +74,7 @@ int ast_audit_command_kind(json_value* cmd):
 	json_value* first = json_array_get(cmd, program)
 	if (first.type != json_type_string()): return 0
 	if (ast_audit_compiler(first.string_value) == 0): return 0
+	if (ast_audit_tool_command(cmd, program)): return 3
 	int source = 0
 	int query = 0
 	int explicit_mode = 0
@@ -177,6 +185,7 @@ json_value* ast_audit_stale_flags(json_value* root):
 			if (cmd == 0): continue
 			int program = ast_audit_program_index(cmd)
 			if (ast_audit_compiler(ast_audit_arg(cmd, program)) == 0): continue
+			if (ast_audit_tool_command(cmd, program)): continue
 			char* flag = 0
 			int streaming = 0
 			for k in range(program + 1, json_array_length(cmd)):

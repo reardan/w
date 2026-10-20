@@ -40,6 +40,15 @@ Deferred (section "Out of scope" below, each with rationale): LSP server,
 
 ## Implementation status
 
+- **Failing-program reduction and ELF inspection (#717):** `w reduce`
+  minimizes a source file against an external interestingness predicate,
+  deleting indentation blocks and line chunks with bounded predicate runs.
+  `w inspect` lists ELF sections and symbols and disassembles named functions
+  using the in-tree x86, x64 and ARM64 decoders. See [reduce](reduce.md) and
+  [inspect](inspect.md). AST-suite manifest rewriting preserves these commands'
+  argument lists, including compiler flags passed to reduction predicates.
+  MCP adapters remain in the external integration repo.
+
 - **Library dependency discovery (#625):** `w deps` skips executable
   finalization so an extern-only consumer can report its source import
   closure before its linked libraries exist. This keeps `wtest` selection
@@ -1386,8 +1395,8 @@ before merge.
   missing trailing newline) already surface through `check`; a rewriting
   formatter needs a lossless token stream the single-pass tokenizer does
   not keep.
-- **`w reduce`, `w inspect`**: conveniences, not enablers; `w inspect`
-  is mostly `readelf`/`objdump` wrapping.
+- **`w reduce`, `w inspect`**: since built in #717; see
+  [the reducer](reduce.md) and [the ELF inspector](inspect.md).
 - **Tree-sitter grammar**: valuable for editors but external to this
   repo's toolchain; no other MVP piece depends on it.
 - **`w-debug-mcp`**: since built — `bin/wdmcp` (`tools/mcp/w_debug_mcp.w`)
