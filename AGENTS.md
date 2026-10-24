@@ -108,10 +108,10 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    and **debug runtime failures** by scripting `./bin/wdbg` over stdin rather
    than adding print statements.
 5. **Optional warm daemon (Linux x86/x64)**: `bin/wbuildd` (build it with
-   `./wbuild wbuildd`) keeps check/deps/symbols answers, the `wtest`
+   `./wbuild wbuildd`) keeps check/deps/symbols/defhash answers, the `wtest`
    closure cache and a build's manifest and content hashes warm,
    invalidated by inotify. `bin/wbuildd check --json <file>`,
-   `bin/wbuildd deps|symbols ...`, `git diff --name-only HEAD |
+   `bin/wbuildd deps|symbols|defhash ...`, `git diff --name-only HEAD |
    bin/wbuildd changed` and `bin/wbuildd build <targets>` print exactly
    what the `bin/wv2`/`bin/wtest`/`bin/wexec` commands print; the first
    one starts the daemon (`WBUILDD=0` runs the one-shot command instead),

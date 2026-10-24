@@ -32,6 +32,7 @@ import lib.lib
 import lib.path
 import lib.file
 import tools.wtest_scratch
+import tools.deps_cache
 
 
 void sc_setup():
@@ -44,6 +45,20 @@ void sc_setup():
 	sc_link(c"lib", c"lib")
 	sc_link(c"structures", c"structures")
 	sc_link(c"code_generator", c"code_generator")
+
+
+# One --defhash-index record (tools/test_map.w header comment) for
+# scratch_lib.w whose stand-in 'bin/wv2 defhash' output names a single
+# made-up definition, so a run that uses it sees the definition set
+# change.
+char* sc_index_record(char* digest, int status):
+	string_builder* r = string_new()
+	string_append(r, c"{\"path\": \"scratch_lib.w\", \"digest\": \"")
+	string_append(r, digest)
+	string_append(r, c"\", \"status\": ")
+	string_append_int(r, status)
+	string_append(r, c", \"stdout\": \"{\\\"name\\\": \\\"bogus\\\", \\\"kind\\\": \\\"function\\\", \\\"hash\\\": \\\"0\\\"}\\n\"}\n")
+	return r.data
 
 
 int main():
@@ -206,5 +221,37 @@ int main():
 	git(av(c"checkout", c"-q", c"--", c"scratch_lib.w"))
 	err = wtest_err(av(c"changed", c"--defhash", c"scratch_lib.w"), 0)
 	if (contains(err, c"committed-clean")): fail(c"positional committed-clean path: warning fired")
+
+	# --defhash-index (issue #485): the records bin/wbuildd keeps current
+	# at save time stand in for 'bin/wv2 defhash' on the worktree copy,
+	# but only while the file still has the recorded content digest.
+	# Against a comment-only edit (which skips), a matching record whose
+	# output names other definitions turns the skip into a fallback --
+	# proof the index was read -- while a stale digest, an unreadable
+	# index or a malformed one is ignored.
+	sc_append(c"scratch_lib.w", c"\n# comment only, index cases\n")
+	char* index_file = sc_path(c"bin/defhash_index")
+	char* digest = deps_file_digest(sc_path(c"scratch_lib.w"), 1)
+	if (digest == 0): fail(c"could not hash scratch_lib.w")
+	sc_write(c"bin/defhash_index", sc_index_record(digest, 0))
+	out = wtest_out(av(c"changed", c"--defhash", c"scratch_lib.w", c"--defhash-index", index_file), 0)
+	if (has_line(out, c"scratch_target") == 0):
+		fail(c"defhash index: a matching record was not used")
+	# A record for a failed defhash run fails open the same way.
+	sc_write(c"bin/defhash_index", sc_index_record(digest, 1))
+	out = wtest_out(av(c"changed", c"--defhash", c"--defhash-index", index_file, c"scratch_lib.w"), 0)
+	if (has_line(out, c"scratch_target") == 0):
+		fail(c"defhash index: a failed record did not fall back")
+	sc_write(c"bin/defhash_index", sc_index_record(c"0000", 0))
+	out = wtest_out(av(c"changed", c"--defhash", c"scratch_lib.w", c"--defhash-index", index_file), 0)
+	if (has_line(out, c"scratch_target")):
+		fail(c"defhash index: a record with a stale digest was used")
+	sc_write(c"bin/defhash_index", c"not json\n")
+	out = wtest_out(av(c"changed", c"--defhash", c"scratch_lib.w", c"--defhash-index", index_file), 0)
+	if (has_line(out, c"scratch_target")):
+		fail(c"defhash index: a malformed index was used")
+	out = wtest_out(av(c"changed", c"--defhash", c"scratch_lib.w", c"--defhash-index", sc_path(c"bin/no_such_index")), 0)
+	if (has_line(out, c"scratch_target")):
+		fail(c"defhash index: a missing index changed the selection")
 
 	return sc_ok()
