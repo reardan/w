@@ -228,6 +228,17 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	ui_draw_rrect(ctx.rndr, area, cast(float32, ctx.theme.radius), fill)
 	ui_render_rect(ctx.rndr, ui_rect_new(area.x + 4.0, area.y + area.h - 2.0, area.w - 8.0, 2.0), line_color)
 
+	# Plain Tab indents here, so the focus stop claims it; Ctrl+Tab
+	# still leaves the field.
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_TEXTBOX, area, 0)
+	if (node != 0): node.actions = UI_ACCESS_SET_VALUE
+	ui_focus_stop(ctx, id, area, 1)
+	int changed = 0
+	char* requested = ui_access_value_request(ctx, id)
+	if (requested != 0):
+		ui_textarea_set(st, requested)
+		changed = 1
+
 	# Focus follows the press, and the caret lands where it landed.
 	ui_rect view = ui_rect_new(area.x + pad, area.y + pad, area.w - pad * 2.0, area.h - pad * 2.0)
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
@@ -247,7 +258,6 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 			st.sel_anchor = 0 - 1
 		else if (ctx.focus == id): ctx.focus = 0
 
-	int changed = 0
 	# Behind an open popup the keys are the popup's (see ui_textbox).
 	if ((ctx.focus == id) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
 		int i = 0
@@ -330,4 +340,5 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 
 	ui_scroll_end(ctx, &st.scroll)
 	ui_text_input_declare(ctx, id, area, 1)
+	ui_access_set_value(ctx, node, st.buf.data, st.buf.length)
 	return changed

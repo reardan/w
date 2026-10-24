@@ -13,7 +13,7 @@ import graphics.ui.widgets.context
 
 
 # Toggles *checked and returns 1 on the frame it flips. The whole
-# box-plus-label row is clickable.
+# box-plus-label row is clickable; Space toggles it while focused.
 int ui_checkbox(ui_context* ctx, char* label, int32* checked):
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
@@ -21,8 +21,13 @@ int ui_checkbox(ui_context* ctx, char* label, int32* checked):
 	int box = ctx.theme.unit * 2
 	float32 w = cast(float32, box + ctx.theme.gap + ui_text_width(label, scale))
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
-	int toggled = ui_click_behavior(ctx, id, r)
+	ui_access_node* n = ui_access_widget(ctx, id, UI_ACCESS_CHECKBOX, r, label)
+	ui_focus_stop(ctx, id, r, 0)
+	int toggled = ui_activate_behavior(ctx, id, r)
 	if (toggled): checked[0] = 1 - checked[0]
+	if (n != 0):
+		n.actions = n.actions | UI_ACCESS_TOGGLE
+		if (checked[0]): n.states = n.states | UI_ACCESS_CHECKED
 
 	# Rounded box: an accent fill with a checkmark when checked, an
 	# outlined box otherwise.
@@ -54,11 +59,16 @@ int ui_radio(ui_context* ctx, char* label, int index, int32* selected):
 	int box = ctx.theme.unit * 2
 	float32 w = cast(float32, box + ctx.theme.gap + ui_text_width(label, scale))
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
-	int clicked = ui_click_behavior(ctx, id, r)
+	ui_access_node* n = ui_access_widget(ctx, id, UI_ACCESS_RADIO, r, label)
+	ui_focus_stop(ctx, id, r, 0)
+	int clicked = ui_activate_behavior(ctx, id, r)
 	int changed = 0
 	if (clicked && (selected[0] != index)):
 		selected[0] = index
 		changed = 1
+	if (n != 0):
+		n.actions = n.actions | UI_ACCESS_ACTIVATE
+		if (selected[0] == index): n.states = n.states | UI_ACCESS_CHECKED
 
 	# A circle: ring in the accent when selected (with a center dot),
 	# border gray otherwise.
@@ -90,8 +100,13 @@ int ui_toggle(ui_context* ctx, char* label, int32* on):
 	int track_h = ctx.theme.unit * 2
 	float32 w = cast(float32, track_w + ctx.theme.gap + ui_text_width(label, scale))
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
-	int flipped = ui_click_behavior(ctx, id, r)
+	ui_access_node* n = ui_access_widget(ctx, id, UI_ACCESS_SWITCH, r, label)
+	ui_focus_stop(ctx, id, r, 0)
+	int flipped = ui_activate_behavior(ctx, id, r)
 	if (flipped): on[0] = 1 - on[0]
+	if (n != 0):
+		n.actions = n.actions | UI_ACCESS_TOGGLE
+		if (on[0]): n.states = n.states | UI_ACCESS_CHECKED
 
 	ui_rect track = ui_rect_new(r.x, r.y + (r.h - cast(float32, track_h)) * 0.5, cast(float32, track_w), cast(float32, track_h))
 	ui_color track_color = ctx.theme.widget

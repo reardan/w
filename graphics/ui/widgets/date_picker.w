@@ -58,10 +58,19 @@ void ui_picker_field_draw(ui_context* ctx, int id, ui_rect r, char* text, int is
 # that opens in the same frame does not read it as a press outside
 # itself and close again.
 int ui_picker_field_click(ui_context* ctx, int id, ui_rect r, int32* open):
+	# A combobox: Space/Return opens it from the keyboard. Callers set
+	# its value text once they have formatted it.
+	ui_access_node* node = ui_access_widget(ctx, id, UI_ACCESS_COMBOBOX, r, 0)
+	if (node != 0):
+		node.actions = UI_ACCESS_ACTIVATE
+		if (open[0]): node.states = node.states | UI_ACCESS_EXPANDED | UI_ACCESS_FOCUSABLE
 	if (open[0]):
 		ctx.hot = id
+		if (ui_access_take_activation(ctx, id)):
+			open[0] = 0
 		return 0
-	if (ui_click_behavior(ctx, id, r)):
+	ui_focus_stop(ctx, id, r, 0)
+	if (ui_activate_behavior(ctx, id, r)):
 		open[0] = 1
 		ctx.input.mouse_pressed = 0
 		return 1
@@ -96,7 +105,7 @@ void ui_date_picker_page_to(ui_calendar_state* cal, ui_date* a, ui_date* b):
 void ui_date_picker_close(ui_context* ctx, int id, int32* open):
 	open[0] = 0
 	ui_popup_dismiss(ctx, id)
-	if (ctx.focus == id + 3): ctx.focus = 0
+	if (ctx.focus > id): ctx.focus = id
 
 
 struct ui_date_picker_state:
@@ -133,6 +142,7 @@ int ui_date_picker(ui_context* ctx, float32 w, ui_date_picker_state* st, ui_date
 	char[12] text
 	if (ui_date_is_set(value)):
 		ui_date_format(value, &text[0])
+		ui_access_set_value(ctx, ui_access_find(ctx.access, id), &text[0], strlen(&text[0]))
 		ui_picker_field_draw(ctx, id, r, &text[0], 0)
 	else: ui_picker_field_draw(ctx, id, r, placeholder, 1)
 
@@ -210,6 +220,7 @@ int ui_date_range_picker(ui_context* ctx, float32 w, ui_date_range_state* st, ui
 	char[28] text
 	if (ui_date_is_set(start) && ui_date_is_set(end)):
 		ui_date_range_format(start, end, &text[0])
+		ui_access_set_value(ctx, ui_access_find(ctx.access, id), &text[0], strlen(&text[0]))
 		ui_picker_field_draw(ctx, id, r, &text[0], 0)
 	else: ui_picker_field_draw(ctx, id, r, placeholder, 1)
 

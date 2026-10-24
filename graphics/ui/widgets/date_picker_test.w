@@ -112,7 +112,8 @@ void test_clicking_a_day_picks_it_and_closes():
 	assert_date(&value, 2026, 9, 10)
 	assert_equal(0, st.open)
 	assert_equal(0, ctx.popup_depth)
-	assert_equal(0, ctx.focus)
+	# Keyboard focus returns to the field (the frame's first widget).
+	assert_equal(1, ctx.focus)
 
 	# Reopening and picking the same day is not a change, but closes.
 	click_field(ctx)
