@@ -246,9 +246,23 @@ void test_a_private_bus():
 	dbus_test_bus_stop(&bus)
 
 
+char* dbus_test_cat(char* a, char* b):
+	int na = strlen(a)
+	int nb = strlen(b)
+	char* out = cast(char*, malloc(na + nb + 1))
+	for i in range(na): out[i] = a[i]
+	for i in range(nb + 1): out[na + i] = b[i]
+	return out
+
+
 void test_an_abstract_socket_bus():
 	dbus_test_bus bus
-	if (!dbus_test_bus_start_at(&bus, c"unix:abstract=/tmp/w-dbus-test-abstract")):
+	# The pid keeps concurrent runs (the x86 and x64 twins) off each
+	# other's name.
+	char* listen = dbus_test_cat(c"unix:abstract=/tmp/w-dbus-test-", itoa(getpid()))
+	int started = dbus_test_bus_start_at(&bus, listen)
+	free(listen)
+	if (!started):
 		test_skip(c"SKIP: dbus-daemon not available")
 		return
 	asserts(c"abstract address", starts_with(bus.address, c"unix:abstract="))
