@@ -376,3 +376,20 @@ void check_missing_return(int declared, char* name, int line, int column):
 	diag_part(c"function '")
 	diag_part(name)
 	type_error_at(c"' can reach the end of its body without returning a value", line - 1, line, column, name)
+
+
+# 'new T' builds the runtime descriptors of T's fixed-size array fields;
+# raw malloc memory has none, so indexing such a field of
+# cast(T*, malloc(...)) reads a garbage header (issue #459). True when a
+# cast to want of an allocator call should warn.
+int cast_malloc_lacks_array_descriptors(int want, int allocator_call):
+	if (!allocator_call): return 0
+	want = type_unqualified(want)
+	if ((want < 0) || (type_get_pointer_level(want) != 1)): return 0
+	int record = type_lookup_previous_pointer(want)
+	if ((record < 0) || (type_num_args(type_canonical(record)) == 0)): return 0
+	return type_has_array_field(record)
+
+
+char* cast_malloc_array_warning():
+	return c"warning: cast of malloc() memory to a struct with fixed-size array fields leaves their descriptors unset; allocate it with 'new' [malloc-array-fields]"

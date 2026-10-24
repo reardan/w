@@ -1090,3 +1090,4 @@ void diag_code_table():
 	diag_code_row(c"W0412", c"in-process code buffer exhausted; start a new session")
 	diag_code_row(c"W0413", c"unnecessary parentheses around a single condition [condition-parens]")
 	diag_code_row(c"W0414", c"map add does not support bfloat16 values")
+	diag_code_row(c"W0415", c"cast of malloc() memory to a struct with fixed-size array fields leaves their descriptors unset; allocate it with 'new' [malloc-array-fields]")
