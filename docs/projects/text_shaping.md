@@ -1,12 +1,21 @@
 # Shaped text runs
 
-`graphics.ui.shape` is an opt-in Linux x64 HarfBuzz adapter for applications that
-need OpenType shaping rather than codepoint drawing. It dynamically loads
-`libharfbuzz.so.0`; `ui_shape_available()` reports whether the library and its
-required entry points are present. Importing the adapter requires the normal
-Linux dynamic loader and `libdl.so.2`. Ordinary UI text has no new HarfBuzz
-link dependency. Other platforms must supply a shaping adapter before using this
-API; this module is not a portable fallback implementation.
+`graphics.ui.shape` shapes OpenType text runs for applications that need more
+than codepoint drawing. It has two engines behind one API:
+
+- **Portable** (`lib.ttf_shape` over `lib.ttf_layout`, wrapped by
+  `graphics.ui.shape_ot`): pure W, every target. Import `graphics.ui.shape_ot`
+  alone where no shared library may be loaded (static x86, wasm, macOS,
+  Windows).
+- **Native**: the Linux x64 HarfBuzz adapter, which dynamically loads
+  `libharfbuzz.so.0` (needs the Linux loader and `libdl.so.2`).
+  `ui_shape_available()` reports whether it loaded.
+
+`ui_shape_set_engine(UI_SHAPE_ENGINE_AUTO | _NATIVE | _PORTABLE)` selects the
+engine: AUTO (the default) uses HarfBuzz when present and the portable engine
+otherwise, NATIVE returns `UI_SHAPE_UNAVAILABLE` without HarfBuzz, and PORTABLE
+never loads it. `run.engine` records which one produced a run. Ordinary UI text
+has no HarfBuzz link dependency.
 
 `ui_shape_utf8(text, byte_length, strike, direction, script, language,
 max_glyphs)` returns an owned `ui_shaped_run`, including on failure. Check
@@ -15,65 +24,126 @@ max_glyphs)` returns an owned `ui_shaped_run`, including on failure. Check
 Input is validated UTF-8 with an explicit length, including embedded NUL.
 Choose an existing font strike, `UI_SHAPE_LTR`, `UI_SHAPE_RTL`, or
 `UI_SHAPE_AUTO`, an ISO 15924 script tag packed as a big-endian integer (zero
-means guess), and a terminated BCP 47 language name (null means `und`).
+means guess), and a terminated BCP 47 language name (null means `und`; the
+portable engine accepts it for parity and uses the font's default language
+system).
 
 The run owns visual-order glyph IDs, UTF-8 byte clusters, signed offsets and
 advances in 1/64 pixel units. `advance` is the total horizontal advance.
-HarfBuzz applies its default OpenType features, including ligatures,
-contextual forms and mark positioning when the selected font supplies them.
 `ui_draw_shaped_run(renderer, x, y, run, color)` draws those glyph IDs through
 the existing TrueType atlas and renderer's clipping/batching, preserving the
 shaper's fractional positions without applying pair kerning again. `x,y`
-locates the line box's top-left. The new `ui_font_glyph_id` API lets another
-shaping engine use the same rasterizer and cache.
+locates the line box's top-left. `ui_font_glyph_id` lets any shaping engine use
+the same rasterizer and cache.
+
+## The portable engine
+
+`ttf_shape(font, cps, clusters, count, rtl, script, language, flags)` returns an
+`otl_buffer` of positioned glyphs in visual order, in font units. It follows
+HarfBuzz's default, Arabic, Hebrew, Indic (Devanagari) and Thai/Lao shapers:
+
+- **Normalization** against the font's cmap (decompose, reorder by modified
+  combining class, recompose), with default ignorables hidden and RTL mirroring.
+- **GSUB** types 1-8 (`lib.ttf_layout`) with GDEF classes, mark attachment
+  classes and mark filtering sets, lookup flags, and script/language/feature
+  selection: `ccmp`/`locl`, Arabic `isol`/`fina`/`medi`/`init` from Unicode
+  joining types, `rlig`/`rclt`/`calt`/`liga`/`clig`, and for Devanagari the
+  `nukt`/`akhn`/`rphf`/`rkrf`/`blwf`/`half`/`vatu`/`cjct` basic and
+  `pres`/`abvs`/`blws`/`psts`/`haln` presentation features with syllable
+  analysis and reph and pre-base matra reordering.
+- **GPOS** types 1-9: `kern`, mark-to-base, mark-to-ligature, mark-to-mark,
+  cursive attachment, `dist`, `abvm`/`blwm`.
+- **Fallbacks** for fonts without the tables: Arabic presentation forms
+  (including lam-alef and shadda ligatures) from the font's cmap, Hebrew
+  presentation compositions, legacy `kern` table pairs, and HarfBuzz's
+  combining-class mark placement.
+
+`ttf_shape_no_liga` and `ttf_shape_no_kern` flags turn off ligatures and
+kerning. Other complex scripts (Bengali and the other Indic scripts,
+Myanmar, Khmer, the Universal Shaping Engine scripts) shape through the default
+shaper: their GSUB/GPOS features apply, but without script-specific reordering.
+
+`tools/shape_dump.w` prints a run in `hb-shape` format and
+`tools/shape_compare_hb.py` diffs it against HarfBuzz 15 (uharfbuzz). Across 62
+system TrueType fonts, nine Noto fonts and the installed CFF fonts over a
+multi-script corpus, with GSUB/GPOS/GDEF/kern hidden in turn to reach every
+fallback, the remaining differences are a fallback Greek mark offset in
+OpenSymbol, a one-unit double-width mark rounding in FreeSans without GPOS, and
+Unifont's Arabic presentation ligatures.
+
+## Carets, clusters and fonts
+
+Clusters identify source ranges and may combine several graphemes in one
+ligature. `ui_shaped_caret_x(run, text, offset)` maps a grapheme boundary to x
+over a run, dividing a ligature evenly among the graphemes it covers and
+running right to left in an RTL run; `ui_shaped_offset_from_x` is its inverse.
+Shape again after changing the text, selected face, size, script or language.
+The ordinary `ui_draw_text` and widget text paths continue to use codepoint
+drawing, where a nonspacing mark now takes no advance and sits on its base
+(centred on it when it comes from a fallback face); opt in to shaping
+explicitly when laying out document runs.
 
 The host must split paragraphs by bidi direction, script and font, choose
 fallbacks and line breaks, and assemble the resulting runs into visual order.
-The optional paragraph bidi adapter described below supplies directional runs
-and their visual order for either an unwrapped paragraph or caller-selected
-wrapped lines, retaining the paragraph's resolved context.
-`AUTO` guesses one run's properties; it is not Unicode paragraph bidi.
-Clusters identify source ranges and may combine multiple graphemes in one
-ligature. They are not a complete caret or selection model. Shape again after
-changing the text, selected face, size, script or language. The ordinary
-`ui_draw_text` and widget text paths continue to use codepoint drawing; opt in
-explicitly when laying out document runs.
+The paragraph bidi API described below supplies directional runs and their
+visual order for either an unwrapped paragraph or caller-selected wrapped
+lines. `AUTO` direction guesses one run's direction from its first strong
+character; it is not paragraph bidi.
 
-The embedded faces cover Latin, Greek and Cyrillic. Load a TrueType face with
-coverage for the required script using `ui_font_face_load_ttf` or
-`ui_font_face_load_bytes`, create its strike, and shape that run. This API does
-not run codepoint fallback inside an already shaped run: missing coverage
-produces the selected face's `.notdef` glyph. Supply an appropriate CJK,
-Arabic, Devanagari or Thai face rather than relying on the embedded subset.
-CFF/OTTO outlines, color glyphs and hinting remain outside the rasterizer.
+The embedded faces cover Latin, Greek and Cyrillic, and no larger fallback face
+is bundled: a Noto set covering the world's scripts is tens of megabytes, which
+the compiler tree and wasm builds should not carry. Load a face with coverage
+for the required script using `ui_font_face_load_ttf` or
+`ui_font_face_load_bytes` (TrueType `glyf` or CFF `OTTO` outlines, including
+CID-keyed CJK fonts), register it with `ui_font_add_fallback` for codepoint
+text, create its strike, and shape that run. A shaped run does not fall back
+inside itself: missing coverage produces the selected face's `.notdef` glyph.
+Color glyphs and hinting remain outside the rasterizer; CFF hint operators are
+read and skipped, as the rasterizer draws unhinted outlines at every size.
 
 Calls accept at most 65536 source bytes and an output budget between zero and
-1048576 glyphs. Failure returns no partial glyph array. These bound W-owned
-input/output; HarfBuzz owns its temporary shaping allocations and execution,
-and this adapter does not provide a native-call timeout or allocation budget.
-Font bytes, strikes and atlas caches retain their existing process lifetime;
-runs must be freed individually. Use the UI thread, as the shared font/atlas
-and lazy adapter initialization are not synchronized.
+1048576 glyphs. Failure returns no partial glyph array. HarfBuzz owns its
+temporary shaping allocations and execution, and the native adapter provides
+no native-call timeout or allocation budget. Font bytes, strikes and atlas
+caches retain their existing process lifetime; runs must be freed
+individually. Use the UI thread, as the shared font/atlas and lazy adapter
+initialization are not synchronized.
 
-`./wbuild graphics_ui_shape_test` exercises strict UTF-8, explicit-length NUL,
-empty runs, invalid inputs, output limits, mark positioning, Hebrew RTL
-clusters, deterministic GSUB ligature substitution, and headless rendering/cache
-reuse. It visibly skips the native portion when HarfBuzz is unavailable. The
-ligature test replaces the checked-in Liberation Sans fixture's GSUB table in
-memory with a known `fi` substitution; it needs no system font or generator.
+## Tests
 
-The adapter uses the published HarfBuzz contracts for
+- `./wbuild ttf_shape_test` (and `ttf_shape_64_test`) checks the portable
+  engine against 46 lines of recorded HarfBuzz 15 output
+  (`tests/data/shape_golden.txt`, regenerated by `tools/shape_golden_hb.py`)
+  over Liberation Sans and the small OFL Noto subsets in `tests/data/fonts/`,
+  including fonts with tables hidden, plus joining forms, normalization
+  tables, script selection, options and RTL mirroring.
+- `./wbuild ttf_cff_test` compares CFF paths with fontTools output
+  (`tests/data/cff_paths.txt`, from `tools/cff_paths_ref.py`) for a name-keyed
+  and a CID-keyed font, and rasterizes and shapes them.
+- `./wbuild graphics_ui_shape_test` runs strict UTF-8, explicit-length NUL,
+  empty runs, invalid inputs, output limits, mark positioning, Hebrew RTL
+  clusters, an in-memory GSUB `fi` ligature, Arabic and Devanagari runs, engine
+  selection, carets and headless rendering through both engines, skipping the
+  native one visibly when HarfBuzz is unavailable.
+
+The native adapter uses the published HarfBuzz contracts for
 [buffers and clusters](https://harfbuzz.github.io/harfbuzz-hb-buffer.html),
 [read-only font blobs](https://harfbuzz.github.io/harfbuzz-hb-blob.html), and
 [shaping](https://harfbuzz.github.io/shaping-and-shape-plans.html).
 
 ## Paragraph bidi analysis
 
-`graphics.ui.bidi` is a separate opt-in Linux x64 adapter for
-`libfribidi.so.0`. `ui_bidi_available()` checks the library and required symbols;
-ordinary UI text gains no FriBidi dependency. Importing the module needs the
-same Linux loader and `libdl.so.2` as the shaping adapter. It is not a portable
-fallback, and its Unicode data version is supplied by the installed FriBidi.
+`graphics.ui.bidi` analyzes paragraphs with two engines, like shaping. The
+portable one is `lib.bidi`, a W implementation of UAX #9 (Unicode 15.0.0) that
+passes all 91,707 lines of the Unicode `BidiCharacterTest.txt`
+(`bin/bidi_conformance path/to/BidiCharacterTest.txt`; `./wbuild bidi_test`
+checks a committed sample). `graphics.ui.bidi_portable` wraps it with no native
+dependency. The native one is the Linux x64 adapter for `libfribidi.so.0`;
+`ui_bidi_available()` checks the library and required symbols, and its Unicode
+data version is supplied by the installed FriBidi.
+`ui_bidi_set_engine(UI_BIDI_ENGINE_AUTO | _NATIVE | _PORTABLE)` selects the
+engine as `ui_shape_set_engine` does. Ordinary UI text gains no FriBidi
+dependency.
 
 `ui_bidi_utf8(text, byte_length, direction, max_scalars)` analyzes one paragraph
 and supplies its unwrapped layout. Choose `UI_BIDI_AUTO`, `UI_BIDI_LTR`, or
@@ -204,7 +274,7 @@ bounds the number of simultaneously retained lines. Whole-paragraph line output
 matches the unwrapped layout.
 
 Inputs and budgets are capped at 65536 bytes/scalars. W-owned arrays are bounded
-by that cap, while native temporary allocations and execution remain under
+by that cap, while the native engine's temporary allocations and execution remain under
 FriBidi's control with no timeout. As with shaping, lazy native initialization
 is unsynchronized; use the UI thread.
 
@@ -219,8 +289,8 @@ cross-line isolates/overrides, trailing isolate controls, independent reflow,
 paragraph disposal, empty and invalid ranges, NUL/supplementary offsets, maximum
 ranges, native failure cleanup, and shaped marks at nonzero document offsets.
 Native tests visibly skip
-when their optional library is unavailable. This is regression coverage, not a
-claim of complete Unicode bidi conformance qualification.
+when their optional library is unavailable; the portable engine runs every
+case.
 
 The adapter uses FriBidi's published
 [paragraph and line ABI](https://github.com/fribidi/fribidi/blob/master/lib/fribidi-bidi.h)

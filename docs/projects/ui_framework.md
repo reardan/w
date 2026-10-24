@@ -50,8 +50,9 @@ input landed 2026-09-25 (#462): struct values such as
 `locationInWindow` are read through key-value coding (`valueForKey:`
 boxes the NSPoint in an NSValue, `getValue:size:` copies it out), so
 the no-struct-return rule in `graphics/cocoa.w` stands. Still pending:
-complex-script shaping (#459) and accessibility (#465). Runtime TrueType
-fonts and the Win32/WGL backend have since shipped.
+accessibility (#465). Runtime TrueType/CFF fonts, portable complex-script
+shaping and bidi (#459), an opt-in NSTextInputClient bridge, and the
+Win32/WGL backend have since shipped.
 
 The widget set's expansion past stage 3 is issue #441 and has its own
 pair of docs: `docs/projects/ui_widgets.md` (design — the

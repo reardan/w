@@ -60,12 +60,25 @@ replacement requests are not implemented yet.
   compositionend clears it and commits once, and blur cancels old-field
   previews and suppresses late commits. Hosts using this adapter inherit the
   behavior; other embedding hosts must implement the event contract themselves.
-- **Cocoa:** existing Unicode character decoding remains available. Full
-  NSTextInputClient, marked text, dead-key/IME composition and native candidate
-  placement are still outstanding; the preview contract does not imply this
-  platform bridge exists.
+- **Cocoa:** by default the window decodes `[event characters]`, so dead keys
+  and input methods do not compose. `graphics.ime_cocoa` is the opt-in
+  `NSTextInputClient` bridge: build `bin/libwtextinput.dylib` with
+  `tools/mac/build_text_input.sh` (from `graphics/ui/native/text_input.m`),
+  ship it beside the executable, and call `gfx_cocoa_text_input_enable(win)`
+  after `gfx_window_open`. While a field is focused, key-downs go through
+  `interpretKeyEvents:`; `insertText:` commits arrive as CHAR (one per scalar),
+  `setMarkedText:` publishes W preedit snapshots with the selection start in
+  scalars, `unmarkText` commits the marked text, and keys the input system
+  returns through `doCommandBySelector:` (arrows, Return, Backspace, Control
+  chords) keep the window's own CHAR/NAV translation. Command chords bypass the
+  bridge. A focus change discards composition without committing it, and
+  `firstRectForCharacterRange:` places the candidate window under the field
+  rectangle from `gfx_text_input`. The native contract test
+  (`text_input_test.m`, run by the build script) and
+  `graphics_ime_cocoa_darwin` (cross-compiled in Linux CI) run on a Mac; the
+  bridge has not yet been qualified with installed input methods there.
 
-Native X11/Win64 input uses `graphics.input_queue`, which grows to preserve
+Native X11/Win64/Cocoa input uses `graphics.input_queue`, which grows to preserve
 long IME commits and drains at the UI's 32-character/8-navigation-event frame
 budgets. Later pointer or navigation changes wait until preceding committed
 text was consumed, preserving the insertion target. The web queue follows the
@@ -84,12 +97,12 @@ candidate windows still require interactive qualification with installed input
 methods; a successful structural check is not a CJK desktop smoke test.
 
 Shaping is a separate layer: grapheme movement and native Unicode input do not
-provide bidi paragraph layout or font coverage. The default embedded faces
-cover Latin, Greek and Cyrillic. A browser host should load suitable licensed
-TrueType CJK/script faces with `ui_font_face_load_ttf` and register them through
-`ui_font_add_fallback`; no larger fallback font is bundled by this work. CFF
-outlines, hinting, complete script coverage and Cocoa composition remain part
-of the broader #459 work.
+provide bidi paragraph layout or font coverage (see
+[shaping](text_shaping.md)). The default embedded faces cover Latin, Greek and
+Cyrillic. A browser host should load suitable licensed TrueType or CFF
+CJK/script faces with `ui_font_face_load_ttf` and register them through
+`ui_font_add_fallback`; no larger fallback font is bundled. Hinting remains
+outside the rasterizer.
 
 Native contracts follow the [Xlib internationalized text input specification](https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.pdf),
 [WM_CHAR Unicode semantics](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-char),

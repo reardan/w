@@ -636,6 +636,25 @@ current state:
 			gpu inventory above; remaining: A2 virtual-register emission,
 			shared memory, recoverable CUresult errors, multi-GPU)
 
+	text and fonts (docs/projects/text_shaping.md, text_input.md):
+		working:
+			lib/ttf.w: TrueType glyf and CFF/OTTO outlines (name-keyed
+				and CID-keyed), cmap, legacy kern; unhinted rasterizer
+			lib/bidi.w: UAX #9, passes all of BidiCharacterTest.txt
+			lib/ttf_shape.w + lib/ttf_layout.w: portable GSUB/GPOS
+				shaper (default, Arabic, Hebrew, Devanagari, Thai/Lao),
+				golden-tested against HarfBuzz 15
+			graphics.ui.shape / graphics.ui.bidi: portable engines with
+				optional HarfBuzz/FriBidi; shaped-run grapheme carets
+			IME: X11 XIM, Win64 IMM, web composition, opt-in Cocoa
+				NSTextInputClient bridge (graphics.ime_cocoa)
+		missing:
+			hinting; color glyphs; Indic reordering beyond Devanagari,
+				Myanmar/Khmer/USE shapers; paragraph script/font
+				segmentation; a bundled fallback face (by decision:
+				hosts load Noto faces); Mac qualification of the
+				Cocoa IME bridge with real input methods
+
 	net:
 		working:
 			basic socket/connect/server paths (direct socket syscalls on

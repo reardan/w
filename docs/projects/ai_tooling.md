@@ -168,7 +168,12 @@ Shipped from the next-steps backlog:
   header layout is documented next to the size formula, and the sibling
   trap — casting an array/slice expression to a pointer type the decay
   does not cover — warns at the cast (`grammar/unary_expression.w`,
-  frozen by `tests/array_cast_warning_fixture.w`).
+  frozen by `tests/array_cast_warning_fixture.w`). The third trap, a
+  record with array fields allocated by `cast(T*, malloc(...))` (only
+  `new` writes the headers), warns too since 2026-10 (W0415
+  `[malloc-array-fields]`, `grammar/type_check.w`, frozen by
+  `tests/malloc_array_fields_warning_fixture.w` and its `--streaming`
+  twin; #459).
 - **A top-level declaration may carry a compile-time constant
   initializer** (2026-07-28, wave 4), so a typical `:save`d REPL session
   round-trips. `grammar/program.w`'s `global_initializer` stores the
