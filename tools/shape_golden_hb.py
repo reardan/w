@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Regenerate tests/data/shape_golden.txt from HarfBuzz (uharfbuzz).
+
+    pip install uharfbuzz
+    python3 tools/shape_golden_hb.py > tests/data/shape_golden.txt
+
+Each font section lists text lines with HarfBuzz's output in the
+tools/shape_dump.w format; tests/ttf_shape_test.w shapes the same lines
+with lib/ttf_shape.w and requires identical output. The text for each
+font is in SECTIONS below; add a line there, rerun, and commit both.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from shape_compare_hb import harfbuzz  # noqa: E402
+
+SECTIONS = [
+    ("tools/ui/LiberationSans-Regular.ttf", [
+        "AVATAR Wolf To. Ty, LT",
+        "é ễ ậ ǖ q̣̇ ø̈",
+        "é ä́ ñ",
+        "Тест Ўў Їжак",
+        "Ελληνικά ά ῷ",
+        "עִבְרִית שָׁלוֹם בְּרֵאשִׁית",
+        "(a[b]{c}) «x» ‹y›",
+        "a‍b‌c x︀y ‎z‏",
+        "مرحبا English 123",
+        "नमस्ते",
+    ]),
+    ("tests/data/fonts/NotoSans-subset.ttf", [
+        "office fluffy affine ffi ffl fj",
+        "fi fl ffi ffl ff",
+        "Ünïcödé façade naïve résumé",
+        "e̊ q̣̇ a͜b x̧̌",
+        "AVATAR Wolf To. Ty, LT",
+    ]),
+    ("tests/data/fonts/NotoSansArabic-subset.ttf", [
+        "مرحبا بالعالم",
+        "السلام عليكم ورحمة الله وبركاته",
+        "لا إله إلا الله ﻻ لأ لآ",
+        "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+        "١٢٣ ٤٥٦",
+        "فارسی: کتاب‌ها گچ پژوهش",
+        "اردو: پاکستان ہے",
+        "ـبـ ـ ب‍ ‍ب",
+    ]),
+    ("tests/data/fonts/NotoSansDevanagari-subset.ttf", [
+        "नमस्ते दुनिया",
+        "हिन्दी भाषा का इतिहास बहुत पुराना है।",
+        "संस्कृत क्षत्रिय श्री",
+        "क्षत्रिय ज्ञान श्री त्र द्ध द्व र्क र्कि कि कृ प्र्य",
+        "अर्थ धर्म कर्म पूर्ण आर्य सूर्य",
+    ]),
+    ("tests/data/fonts/NotoSansHebrew-subset.ttf", [
+        "עִבְרִית שָׁלוֹם בְּרֵאשִׁית",
+        "שָׁלוֹם עוֹלָם בְּרֵאשִׁית בָּרָא",
+        "תּוֹרָה וּמִצְוֹת",
+    ]),
+    ("tests/data/fonts/NotoSansThai-subset.ttf", [
+        "สวัสดีครับ ภาษาไทย น้ำ ที่",
+    ]),
+    # Hidden tables reach the fallbacks: legacy kern and mark placement
+    # without GPOS, presentation forms without GSUB, Hebrew presentation
+    # compositions without GPOS mark, and Indic reordering without GSUB.
+    ("tools/ui/LiberationSans-Regular.ttf!-GPOS", [
+        "AVATAR Wolf To. Ty, LT",
+        "é ễ ậ ǖ q̣̇ ø̈",
+        "e̊ q̣̇ a͜b x̧̌",
+        "עִבְרִית שָׁלוֹם בְּרֵאשִׁית",
+        "a\u200db\u200cc x\ufe00y \u200ez\u200f",
+    ]),
+    ("tools/ui/LiberationSans-Regular.ttf!-GPOS!-GSUB!-GDEF", [
+        "é ễ ậ ǖ q̣̇ ø̈",
+        "Ελληνικά ά ῷ",
+    ]),
+    ("tests/data/fonts/NotoSansArabic-subset.ttf!-GSUB", [
+        "مرحبا بالعالم",
+        "لا إله إلا الله ﻻ لأ لآ",
+        "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+    ]),
+    ("tests/data/fonts/NotoSansHebrew-subset.ttf!-GPOS", [
+        "שָׁלוֹם עוֹלָם בְּרֵאשִׁית בָּרָא",
+        "תּוֹרָה וּמִצְוֹת",
+    ]),
+    ("tests/data/fonts/NotoSansDevanagari-subset.ttf!-GSUB", [
+        "हिन्दी भाषा का इतिहास बहुत पुराना है।",
+        "क्षत्रिय ज्ञान श्री त्र द्ध द्व र्क र्कि कि कृ प्र्य",
+    ]),
+]
+
+
+def main():
+    print("# HarfBuzz output for tests/ttf_shape_test.w; regenerate with")
+    print("# python3 tools/shape_golden_hb.py > tests/data/shape_golden.txt")
+    print("# '@font' starts a section; other lines are text<TAB>expected.")
+    for font, lines in SECTIONS:
+        print("@" + font)
+        for text, expected in zip(lines, harfbuzz(font, lines)):
+            print(text + "\t" + expected)
+
+
+if __name__ == "__main__":
+    main()

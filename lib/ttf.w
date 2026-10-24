@@ -381,20 +381,44 @@ int ttf_kern_units(ttf_font* f, int left, int right):
 		return total
 	return ttf_kern_table_units(f, left, right)
 
-# The legacy 'kern' table's format-0 value for the pair, ignoring GPOS.
-int ttf_kern_table_units(ttf_font* f, int left, int right):
-	if (f.kern == 0): return 0
+# Binary-search one format-0 kern subtable (pairs starts at nPairs).
+int ttf_kern_pair_value(ttf_font* f, int pairs, int left, int right, int* found):
 	int key = left * 65536 + right
 	int lo = 0
-	int hi = f.kern_pairs - 1
+	int hi = ttf_u16(f, pairs) - 1
 	while (lo <= hi):
 		int mid = (lo + hi) / 2
-		int rec = f.kern + 8 + mid * 6
+		int rec = pairs + 8 + mid * 6
+		if (rec + 6 > f.size): return 0
 		int k = ttf_u16(f, rec) * 65536 + ttf_u16(f, rec + 2)
-		if (k == key): return ttf_s16(f, rec + 4)
+		if (k == key):
+			found[0] = 1
+			return ttf_s16(f, rec + 4)
 		if (k < key): lo = mid + 1
 		else: hi = mid - 1
 	return 0
+
+# The legacy 'kern' table's value for the pair, ignoring GPOS: the sum
+# over its horizontal format-0 subtables (an override subtable replaces
+# the sum so far), as HarfBuzz applies them.
+int ttf_kern_table_units(ttf_font* f, int left, int right):
+	if (f.kern == 0): return 0
+	int kern = ttf_table(f, c"kern")
+	int tables = ttf_u16(f, kern + 2)
+	int sub = kern + 4
+	int total = 0
+	for t in range(tables):
+		if (sub + 6 > f.size): return total
+		int length = ttf_u16(f, sub + 2)
+		int coverage = ttf_u16(f, sub + 4)
+		if (((coverage >> 8) == 0) && ((coverage & 7) == 1)):
+			int found = 0
+			int value = ttf_kern_pair_value(f, sub + 6, left, right, &found)
+			if (found):
+				if (coverage & 8): total = value
+				else: total = total + value
+		sub = sub + length
+	return total
 
 
 # Release the bytes ttf_load read. Not for ttf_load_bytes fonts, whose

@@ -16,8 +16,24 @@ import sys
 import uharfbuzz as hb
 
 
+def font_bytes(spec):
+    """The bytes of a font spec: a path, optionally followed by "!-TAG"
+    suffixes that hide those tables (the tag's last letter is decremented,
+    which keeps the table directory sorted for binary search), as
+    tests/ttf_shape_test.w does to exercise fallback paths."""
+    parts = spec.split("!-")
+    data = bytearray(open(parts[0], "rb").read())
+    count = int.from_bytes(data[4:6], "big")
+    for tag in parts[1:]:
+        for i in range(count):
+            at = 12 + i * 16
+            if data[at:at + 4] == tag.encode("ascii"):
+                data[at + 3] -= 1
+    return bytes(data)
+
+
 def harfbuzz(path, lines):
-    blob = hb.Blob.from_file_path(path)
+    blob = hb.Blob(font_bytes(path))
     face = hb.Face(blob)
     font = hb.Font(face)
     font.scale = (face.upem, face.upem)

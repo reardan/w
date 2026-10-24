@@ -537,7 +537,6 @@ int otl_ligature_subst(otl_ctx* c, int sub, int i):
 		g.gid = ttf_u16(f, lig)
 		g.lig_id = lig_id
 		g.lig_comp = components
-		g.unicode_mark = 0
 		if (c.gdef_classes != 0): g.props = otl_glyph_class(c, g)
 		else if (components > 1): g.props = otl_class_ligature
 		c.next = i + 1
