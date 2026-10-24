@@ -193,3 +193,49 @@ void test_engine_selection():
 	assert_equal(UI_SHAPE_ENGINE_PORTABLE, run.engine)
 	assert_equal(1, run.count)
 	ui_shaped_run_free(run)
+
+# Caret positions over a shaped run: a ligature's width divides among the
+# graphemes it covers, a right-to-left run starts at its right edge, and
+# hit testing returns the nearest grapheme boundary.
+void shape_case_carets():
+	int latin = ui_font_strike(ui_font_face_load_ttf(c"tests/data/fonts/NotoSans-subset.ttf"), 20)
+	char* text = c"office"
+	ui_shaped_run* run = ui_shape_utf8(text, 6, latin, UI_SHAPE_LTR, 0, 0, 10)
+	assert_equal(UI_SHAPE_OK, run.status)
+	assert_equal(4, run.count)
+	int o = run.glyphs[0].x_advance
+	int ffi = run.glyphs[1].x_advance
+	assert_equal(0, ui_shaped_caret_x(run, text, 0))
+	assert_equal(o, ui_shaped_caret_x(run, text, 1))
+	assert_equal(o + ffi / 3, ui_shaped_caret_x(run, text, 2))
+	assert_equal(o + ffi * 2 / 3, ui_shaped_caret_x(run, text, 3))
+	assert_equal(o + ffi, ui_shaped_caret_x(run, text, 4))
+	assert_equal(run.advance, ui_shaped_caret_x(run, text, 6))
+	assert_equal(2, ui_shaped_offset_from_x(run, text, o + ffi / 3 + 1))
+	assert_equal(0, ui_shaped_offset_from_x(run, text, -50))
+	assert_equal(6, ui_shaped_offset_from_x(run, text, run.advance + 50))
+	ui_shaped_run_free(run)
+	# "e" + combining acute + "x": the mark is in e's grapheme, so no caret
+	# stops between them.
+	text = c"e\xcc\x81x"
+	run = ui_shape_utf8(text, 4, latin, UI_SHAPE_LTR, 0, 0, 10)
+	int e = run.glyphs[0].x_advance
+	assert_equal(e, ui_shaped_caret_x(run, text, 3))
+	assert_equal(3, ui_shaped_offset_from_x(run, text, e))
+	assert_equal(0, ui_shaped_caret_x(run, text, 1))
+	ui_shaped_run_free(run)
+	int hebrew = ui_font_strike(ui_font_face_load_ttf(c"tests/data/fonts/NotoSansHebrew-subset.ttf"), 20)
+	# Two Hebrew letters right to left: offset 0 at the right edge, the
+	# boundary between them at the first letter's left edge.
+	text = c"\xd7\xa9\xd7\x9c"
+	run = ui_shape_utf8(text, 4, hebrew, UI_SHAPE_AUTO, 0, 0, 10)
+	assert_equal(UI_SHAPE_RTL, run.direction)
+	assert_equal(run.advance, ui_shaped_caret_x(run, text, 0))
+	assert_equal(run.glyphs[0].x_advance, ui_shaped_caret_x(run, text, 2))
+	assert_equal(0, ui_shaped_caret_x(run, text, 4))
+	assert_equal(2, ui_shaped_offset_from_x(run, text, run.glyphs[0].x_advance))
+	ui_shaped_run_free(run)
+	assert_equal(0, ui_shaped_caret_x(0, text, 1))
+
+void test_carets():
+	shape_each_engine(shape_case_carets)

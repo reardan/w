@@ -142,6 +142,47 @@ void test_kerning():
 	ui_render_destroy(&r)
 
 
+# ---- combining marks --------------------------------------------------
+
+# A combining mark adds no width and does not break the kerning of the
+# pair around it; fitting never strands it from its base; drawn, it
+# sits over the base (Liberation's marks hang left of a zero advance).
+void test_combining_marks():
+	int strike = ui_font_strike(ui_font_face_load_ttf(c"tools/ui/LiberationSans-Regular.ttf"), 20)
+	ui_glyph e = ui_font_glyph(strike, 'e')
+	assert_equal(e.advance, ui_text_width_strike(c"e\xcc\x81", strike))
+	assert_equal(ui_text_width_strike(c"AV", strike), ui_text_width_strike(c"A\xcc\x8aV", strike))
+	assert_equal(3, ui_text_fit_strike(c"e\xcc\x81x", strike, e.advance))
+	assert_equal(0, ui_text_caret_from_x_strike(c"e\xcc\x81x", strike, 1))
+	assert_equal(3, ui_text_caret_from_x_strike(c"e\xcc\x81x", strike, e.advance))
+	ui_glyph acute = ui_font_glyph(strike, 0x0301)
+	asserts(c"face has the mark", acute.gid != 0)
+	assert_equal(0, ui_font_mark_dx(&e, &acute))
+	ui_renderer r
+	ui_render_init_headless(&r)
+	ui_render_begin(&r, 320, 240)
+	ui_draw_text_strike(&r, 0.0, 0.0, c"e\xcc\x81", strike, 0, ui_gray(0.0))
+	assert_equal(2, quads(&r))
+	float32 mark_left = vert(&r, 6, 0)
+	asserts(c"mark ink over the base", (mark_left < cast(float32, e.advance)) && (mark_left >= 0.0))
+	ui_render_destroy(&r)
+	# A mark whose ink starts past the pen (as from a fallback face) is
+	# centred on the base's advance.
+	ui_glyph wide = acute
+	wide.bearing_x = 1
+	wide.w = 4
+	assert_equal(0 - (e.advance + 4) / 2 - 1, ui_font_mark_dx(&e, &wide))
+	ui_glyph none
+	none.face = 0 - 1
+	assert_equal(0, ui_font_mark_dx(&none, &acute))
+	assert1(ui_font_is_mark(0x0301))
+	assert1(!ui_font_is_mark('a'))
+	assert1(!ui_font_is_mark(0x0903))
+	# A mark no face has stays a visible, spacing replacement glyph.
+	ui_glyph missing = ui_font_glyph(strike, 0x1dff)
+	if (missing.gid == 0): assert_equal(e.advance + missing.advance, ui_text_width_strike(c"e\xe1\xb7\xbf", strike))
+
+
 # ---- italic -----------------------------------------------------------
 
 # The default faces have true italics: UI_TEXT_ITALIC swaps in the

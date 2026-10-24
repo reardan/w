@@ -11,6 +11,7 @@ import lib.ttf_layout
 import lib.ttf_shape
 import lib.unicode_text
 import graphics.ui.render
+import graphics.ui.grapheme
 
 const int UI_SHAPE_OK = 0
 const int UI_SHAPE_INVALID = 1
@@ -159,3 +160,89 @@ int ui_draw_shaped_run(ui_renderer* renderer, float32 x, float32 y, ui_shaped_ru
 		pen_x = pen_x + glyph.x_advance
 		pen_y = pen_y + glyph.y_advance
 	return 1
+
+# ---- carets -------------------------------------------------------------
+
+# The byte range [start, end) of cluster value cluster in run: from the
+# cluster to the next larger cluster value (or the end of the source).
+int __ui_shaped_cluster_end(ui_shaped_run* run, int cluster):
+	int end = run.source_bytes
+	for i in range(run.count):
+		int c = run.glyphs[i].cluster
+		if ((c > cluster) && (c < end)): end = c
+	return end
+
+# Graphemes in text[start, end), at least 1.
+int __ui_shaped_graphemes(char* text, int length, int start, int end):
+	int n = 0
+	int at = start
+	while (at < end):
+		int next = ui_grapheme_next_n(text, length, at)
+		if (next <= at): next = at + 1
+		at = next
+		n = n + 1
+	if (n == 0): return 1
+	return n
+
+# Caret x (26.6 pixels from the run's left edge) for byte offset in the
+# run's source text, which must be the text the run was shaped from. A
+# cluster several graphemes wide (a ligature) is divided evenly among
+# them. In a right-to-left run logical order runs right to left: the
+# start of the text is at the right edge. An offset inside a grapheme
+# rounds down to its start.
+int ui_shaped_caret_x(ui_shaped_run* run, char* text, int offset):
+	if ((run == 0) || (run.status != UI_SHAPE_OK)): return 0
+	int rtl = run.direction == UI_SHAPE_RTL
+	if (offset <= 0):
+		if (rtl): return run.advance
+		return 0
+	if (offset >= run.source_bytes):
+		if (rtl): return 0
+		return run.advance
+	int length = run.source_bytes
+	int pen = 0
+	int i = 0
+	while (i < run.count):
+		int cluster = run.glyphs[i].cluster
+		int left = pen
+		int j = i
+		while ((j < run.count) && (run.glyphs[j].cluster == cluster)):
+			pen = pen + run.glyphs[j].x_advance
+			j = j + 1
+		int end = __ui_shaped_cluster_end(run, cluster)
+		if ((offset >= cluster) && (offset < end)):
+			int parts = __ui_shaped_graphemes(text, length, cluster, end)
+			int index = 0
+			int at = cluster
+			while (at < offset):
+				int next = ui_grapheme_next_n(text, length, at)
+				if (next <= at): next = at + 1
+				if (next > offset): break
+				at = next
+				index = index + 1
+			int width = pen - left
+			if (rtl): return pen - width * index / parts
+			return left + width * index / parts
+		i = j
+	if (rtl): return 0
+	return run.advance
+
+# The byte offset (a grapheme boundary) whose caret is nearest x (26.6
+# pixels from the run's left edge).
+int ui_shaped_offset_from_x(ui_shaped_run* run, char* text, int x):
+	if ((run == 0) || (run.status != UI_SHAPE_OK)): return 0
+	int length = run.source_bytes
+	int best = 0
+	int best_distance = -1
+	int at = 0
+	while (1):
+		int distance = ui_shaped_caret_x(run, text, at) - x
+		if (distance < 0): distance = 0 - distance
+		if ((best_distance < 0) || (distance < best_distance)):
+			best = at
+			best_distance = distance
+		if (at >= length): break
+		int next = ui_grapheme_next_n(text, length, at)
+		if (next <= at): next = at + 1
+		at = next
+	return best

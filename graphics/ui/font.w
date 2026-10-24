@@ -33,6 +33,7 @@ import libs.standard.crypto.base64
 import graphics.ui.font_data
 import lib.bytes
 import graphics.ui.grapheme
+import lib.unicode_text
 
 
 # Mask ids in atlas bake order.
@@ -702,6 +703,30 @@ int ui_font_kern(int strike, ui_glyph* left, ui_glyph* right):
 	return ttf_scale_round(font, ui_font_strike_ppem(strike), units)
 
 
+# A nonspacing (Mn/Me) combining mark: in plain text it sits on the
+# glyph before it, with no advance and no kerning of its own.
+int ui_font_is_mark(int cp):
+	return (cp >= 768) && ut_is_nonspacing_mark(cp)
+
+
+# Whether glyph g (for cp) is a combining mark drawn on prev rather than
+# set after it. A mark no face has keeps its visible, spacing
+# replacement glyph.
+int ui_font_on_base(ui_glyph* prev, ui_glyph* g, int cp):
+	return (prev.face >= 0) && (g.gid != 0) && ui_font_is_mark(cp)
+
+
+# Horizontal pixel shift that puts a combining mark over base when it is
+# drawn at the pen just past base. Fonts design marks to hang left of a
+# zero advance, so a same-face mark with a negative bearing stays as
+# designed; a mark whose ink starts at or after the pen (a spacing-style
+# design, or one from a fallback face) is centred on base's advance.
+int ui_font_mark_dx(ui_glyph* base, ui_glyph* mark):
+	if (base.face < 0): return 0
+	if ((mark.bearing_x < 0) && (mark.face == base.face)): return 0
+	return 0 - (base.advance + mark.w) / 2 - mark.bearing_x
+
+
 ui_glyph ui_font_mask(int mask):
 	return ui_font_decode(ui_font_mask_record(mask))
 
@@ -796,6 +821,7 @@ int ui_text_width_strike_n(char* s, int limit, int strike):
 		int cp = 0
 		i = ui_utf8_next(s, i, &cp)
 		ui_glyph g = ui_font_glyph(strike, cp)
+		if (ui_font_on_base(&prev, &g, cp)): continue
 		width = width + ui_font_kern(strike, &prev, &g) + g.advance
 		prev = g
 	return width
@@ -844,6 +870,7 @@ int ui_text_caret_from_x_strike(char* s, int strike, int x_rel):
 			int cp = 0
 			i = ui_utf8_next(s, i, &cp)
 			ui_glyph g = ui_font_glyph(strike, cp)
+			if (ui_font_on_base(&prev, &g, cp)): continue
 			acc = acc + ui_font_kern(strike, &prev, &g) + g.advance
 			prev = g
 		if (x_rel < before + (acc - before) / 2): return start
@@ -865,6 +892,10 @@ int ui_text_fit_strike(char* s, int strike, int max_w):
 		int cp = 0
 		int next = ui_utf8_next(s, i, &cp)
 		ui_glyph g = ui_font_glyph(strike, cp)
+		# A mark takes no room, so it stays with the base it follows.
+		if (ui_font_on_base(&prev, &g, cp)):
+			i = next
+			continue
 		int end = pen + ui_font_kern(strike, &prev, &g) + g.advance
 		if (end > max_w):
 			return i
