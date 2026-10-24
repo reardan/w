@@ -367,17 +367,29 @@ int safe_thread_record(int type, char* name):
 	return strcmp(record.name, name) == 0
 
 
+# An instance of an audited lib/safe_thread.w generic record: the type
+# table names it prefix$arguments (docs/projects/generics.md "Name mangling").
+int safe_thread_generic_record(int type, char* prefix):
+	type = safe_unqualified(type)
+	if (type < 0): return 0
+	retained_type* record = retained_types[type]
+	if ((record.kind != 0) || record.pointer_level || (safe_thread_source(record.source) == 0)): return 0
+	return starts_with(record.name, prefix)
+
+
 # Audited synchronized records: 1 mutex, 2 lock guard, 3 atomic.
 int safe_sync_record(int type):
-	if (safe_thread_record(type, c"WSafeMutex")): return 1
-	if (safe_thread_record(type, c"WSafeGuard")): return 2
+	if (safe_thread_generic_record(type, c"WSafeMutex$")): return 1
+	if (safe_thread_generic_record(type, c"WSafeGuard$")): return 2
 	if (safe_thread_record(type, c"WSafeAtomic")): return 3
 	return 0
 
 
 int safe_guard_drop_walk(int type, int depth, int* remaining):
 	type = safe_unqualified(type)
-	if ((type < 0) || (depth > 32) || (*remaining <= 0) || (safe_kind(type) != 1)): return 0
+	if ((type < 0) || (safe_kind(type) != 1)): return 0
+	# Fail closed: an owner graph past the bound counts as holding a guard.
+	if ((depth > 32) || (*remaining <= 0)): return 1
 	*remaining = *remaining - 1
 	int target = safe_unqualified(safe_pointee(type))
 	if (target < 0): return 0
@@ -415,7 +427,7 @@ int safe_runtime_call(retained_binding* binding):
 		if ((strcmp(name, c"owned_int_buffer_new") == 0) || (strcmp(name, c"owned_int_buffer_length") == 0) || (strcmp(name, c"owned_int_buffer_push") == 0) || (strcmp(name, c"owned_int_buffer_get") == 0) || (strcmp(name, c"owned_int_buffer_set") == 0) || (strcmp(name, c"owned_int_buffer_pop") == 0) || (strcmp(name, c"owned_int_buffer_clear") == 0)): return 1
 		return (strcmp(name, c"int_buffer_new") == 0) || (strcmp(name, c"int_buffer_length") == 0) || (strcmp(name, c"int_buffer_push") == 0) || (strcmp(name, c"int_buffer_get") == 0) || (strcmp(name, c"int_buffer_set") == 0) || (strcmp(name, c"int_buffer_pop") == 0) || (strcmp(name, c"int_buffer_clear") == 0) || (strcmp(name, c"int_buffer_view") == 0) || (strcmp(name, c"byte_string_new") == 0) || (strcmp(name, c"byte_string_length") == 0) || (strcmp(name, c"byte_string_push") == 0) || (strcmp(name, c"byte_string_get") == 0) || (strcmp(name, c"byte_string_set") == 0) || (strcmp(name, c"byte_string_pop") == 0) || (strcmp(name, c"byte_string_clear") == 0) || (strcmp(name, c"byte_string_view") == 0) || (strcmp(name, c"byte_string_append") == 0) || (strcmp(name, c"byte_string_from") == 0)
 	if (safe_thread_source(binding.source)):
-		if ((strcmp(name, c"safe_mutex_new") == 0) || (strcmp(name, c"safe_mutex_lock") == 0) || (strcmp(name, c"safe_mutex_try_lock") == 0) || (strcmp(name, c"safe_guard_value") == 0) || (strcmp(name, c"safe_guard_unlock") == 0)): return 1
+		if (starts_with(name, c"safe_mutex_new$") || starts_with(name, c"safe_mutex_lock$") || starts_with(name, c"safe_mutex_try_lock$") || starts_with(name, c"safe_guard_value$") || starts_with(name, c"safe_guard_unlock$")): return 1
 		if ((strcmp(name, c"safe_atomic_new") == 0) || (strcmp(name, c"safe_atomic_load") == 0) || (strcmp(name, c"safe_atomic_store") == 0) || (strcmp(name, c"safe_atomic_fetch_add") == 0) || (strcmp(name, c"safe_atomic_compare_exchange") == 0)): return 1
 		return (strcmp(name, c"safe_thread_join") == 0) || starts_with(name, c"safe_thread_spawn$") || starts_with(name, c"safe_thread_fork_join$")
 	return (strcmp(name, c"put_char") == 0) || (strcmp(name, c"put_error") == 0) || (strcmp(name, c"exit") == 0)
@@ -786,7 +798,7 @@ void safe_type_check_at(int id, int type, int depth, int* remaining):
 		safe_error(id, c"safe: borrowed aggregate requires scalar fields and named shared-reference groups", -1)
 	if (safe_kind(type) || safe_slice(type)):
 		if ((safe_kind(type) == 1) && (safe_sync_record(safe_pointee(type)) == 2)):
-			safe_error(id, c"safe: a lock guard owner must name its mutex lifetime (own[a] WSafeGuard*)", -1)
+			safe_error(id, c"safe: a lock guard owner must name its mutex lifetime (own[a] WSafeGuard[T]*)", -1)
 		if (safe_plain(safe_pointee(type), 0)): return
 		if ((safe_slice(type) == 0) && safe_owned_shape(safe_pointee(type))): return
 		if (safe_mixed_view(type)): return
@@ -2505,6 +2517,20 @@ void safe_condition(int id, char* state):
 	safe_eval(id, state, -1)
 
 
+# A return drops every local in reverse declaration order: a guard that
+# may still hold a loan on a mutex declared after it would unlock freed
+# memory. Block exits apply the same rule to the roots that end there.
+void safe_guard_order_check(int node, char* state):
+	for borrower in range(safe_locals.length):
+		if ((safe_guard_locals[borrower] == 0) || ((state[borrower] & 2) == 0)): continue
+		if (safe_local_loan(borrower) < 2): continue
+		if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
+		for root in range(safe_locals.length):
+			if (safe_set_has(safe_origin[borrower], root) && (safe_birth[borrower] < safe_birth[root])):
+				safe_error(node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
+				return
+
+
 int safe_within(int node, int scope):
 	while (node >= 0):
 		if (node == scope): return 1
@@ -2565,6 +2591,7 @@ void safe_transfer(int event, char* state):
 						if (safe_set_has(components.roots[group], i) && (safe_return_path_allowed(safe_return_components.roots[group], i) == 0)):
 							safe_error(f.node, c"safe: returned reference must borrow from the function's borrowed parameter", safe_birth[i])
 		else: safe_eval(f.expression, state, safe_return_type)
+		if (safe_validate): safe_guard_order_check(f.node, state)
 	else if (f.action == 3):
 		# A loop reuses a binding for each allocation/stack lifetime. Kill
 		# surviving loans as well as the ended roots so the next iteration
@@ -2575,7 +2602,10 @@ void safe_transfer(int event, char* state):
 				if (safe_local_loan(borrower) < 2): continue
 				if (safe_set_has(safe_origin[borrower], root) == 0): continue
 				if (safe_optional(retained_bindings[safe_locals[borrower]].type) && ((state[borrower] & 48) == 16)): continue
-				if (safe_validate && safe_guard_locals[borrower] && (state[borrower] & 2) && (safe_within(safe_birth[borrower], f.node) == 0)):
+				# Cleanup drops a block's owners in reverse declaration order,
+				# so a guard declared before its mutex would unlock it after
+				# the mutex is freed.
+				if (safe_validate && safe_guard_locals[borrower] && (state[borrower] & 2) && ((safe_within(safe_birth[borrower], f.node) == 0) || (safe_birth[borrower] < safe_birth[root]))):
 					safe_error(f.node, c"safe: lock guard outlives the mutex it borrows", safe_birth[borrower])
 				state[borrower] = (state[borrower] & 48) | 4
 				safe_moved_at[borrower] = f.node

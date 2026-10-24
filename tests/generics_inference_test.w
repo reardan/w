@@ -1,6 +1,8 @@
 # wbuild: x64
 # wbuild: step="bin/wv2 tests/generics_infer_conflict_error_fixture.w -o bin/generics_infer_conflict_error_fixture" expect_fail expect_stderr="conflicting types inferred for type parameter 'T': 'int' vs 'char*'"
 # wbuild: step="bin/wv2 tests/generics_infer_struct_shape_error_fixture.w -o bin/generics_infer_struct_shape_error_fixture" expect_fail expect_stderr="generic function 'sum_first': cannot infer type argument 'T'"
+# wbuild: step="bin/wv2 --streaming tests/generics_inference_test.w -o bin/generics_inference_streaming"
+# wbuild: step="bin/generics_inference_streaming"
 # wbuild: step="bin/wv2 tests/generics_infer_forward_error_fixture.w -o bin/generics_infer_forward_error_fixture" expect_fail expect_stderr="Cannot find symbol: 'later_pick'"
 import lib.testing
 
@@ -50,6 +52,26 @@ T rec_sum[T](T a, T depth):
 	if (depth <= 0):
 		return a
 	return rec_sum(a, depth - 1) + a
+
+
+# A 'Name[T]*' parameter binds T from the argument's instance record.
+struct infer_box[T]:
+	T value
+	int tag
+
+
+struct infer_two[K, V]:
+	K key
+	V value
+
+
+T infer_box_get[T](infer_box[T]* box):
+	return box.value
+
+
+V infer_two_value[K, V](infer_two[K, V]* two, K key):
+	if (two.key == key): return two.value
+	return two.value
 
 
 void test_int_literals():
@@ -136,3 +158,20 @@ void test_generic_body_and_recursion():
 	assert_equal(9, largest3(4, 9, 2))
 	assert_equal(9, largest3[int](9, 2, 4))
 	assert_equal(15, rec_sum(5, 2))
+
+
+void test_struct_application_args():
+	infer_box[int] box
+	box.value = 41
+	box.tag = 1
+	infer_box[int]* boxed = &box
+	assert_equal(41, infer_box_get(boxed))
+	infer_box[char*] named
+	named.value = c"w"
+	infer_box[char*]* label = &named
+	assert_equal('w', infer_box_get(label)[0])
+	infer_two[int, char*] two
+	two.key = 3
+	two.value = c"x"
+	infer_two[int, char*]* pairing = &two
+	assert_equal('x', infer_two_value(pairing, 3)[0])

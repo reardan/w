@@ -82,6 +82,8 @@ int safe_qualifier_ahead():
 	char* save = generic_reparse_save()
 	get_token()
 	int is_type = peek(c"[") || peek(c"const") || (type_lookup(token) >= 0) || (generic_subst_lookup(token) >= 0)
+	# A generic struct application: 'own WSafeMutex[int]*'.
+	if ((is_type == 0) && (nextc == '[') && (generic_def_lookup(token, 1) >= 0)): is_type = 1
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	if (is_type): return kind

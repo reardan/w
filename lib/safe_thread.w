@@ -35,7 +35,7 @@
 # kernel's exit-time CLEARTID store before the handle is read here, so the
 # result is visible (x86-TSO plus the futex syscalls). No other memory is
 # shared: the payload's whole owned graph is reachable only by the child.
-# Shared mutation goes only through WSafeMutex guards and WSafeAtomic
+# Shared mutation goes only through WSafeMutex[T] guards and WSafeAtomic
 # operations below.
 import lib.thread
 
@@ -133,30 +133,36 @@ int safe_thread_fork_join[E, T](E* entry, T left, T right):
 
 # ---- Synchronization (#699 deliverable 4) ----
 #
-# WSafeMutex owns an int payload behind a lib/thread.w futex mutex.
+# WSafeMutex[T] owns a T payload behind a lib/thread.w futex mutex.
 # Checked code can reach the payload only through a held guard:
-# - safe_mutex_new(own int* value) consumes the payload. The mutex is an
-#   ordinary owner: dropping it destroys the payload once, then the mutex.
-# - safe_mutex_lock(ref[a] WSafeMutex*) blocks until the lock is free and
-#   returns own[a] WSafeGuard*: the guard keeps the shared borrow of the
-#   mutex for as long as it lives, so the mutex cannot move or be dropped
-#   first. safe_mutex_try_lock returns an absent guard instead of waiting.
+# - safe_mutex_new(own T* value) consumes the payload. The mutex is an
+#   ordinary owner: dropping it destroys the payload once (with T's own
+#   recursive owner cleanup), then the mutex.
+# - safe_mutex_lock(ref[a] WSafeMutex[T]*) blocks until the lock is free
+#   and returns own[a] WSafeGuard[T]*: the guard keeps the shared borrow of
+#   the mutex for as long as it lives, so the mutex cannot move or be
+#   dropped first. safe_mutex_try_lock returns an absent guard instead of
+#   waiting.
 # - The guard owner is the mutex's own address; it is never freed. Its
 #   compiler-emitted destructor, __w_safe_guard_drop, unlocks. It runs at
 #   every scope exit, return, break, continue and replacement, and when
 #   safe_guard_unlock consumes the guard (that function's parameter cleanup
 #   is the unlock). The checker treats each such drop as a use of the
 #   guard's borrow and keeps guards on the thread that locked them.
-# - safe_guard_value(refmut[a] WSafeGuard*) returns refmut[a] int*: a view
+# - safe_guard_value(refmut[a] WSafeGuard[T]*) returns refmut[a] T*: a view
 #   whose lifetime is a borrow of the guard, so it ends before the guard
 #   can be released.
+# - T is whatever `own T*` admits without a lifetime: a sized plain value
+#   or an owned record graph with no borrowed fields (so no guard either).
+#   The checker's structural thread rules see the payload through the
+#   mutex's `value` field.
 # Ordering: mutex_lock is a lock cmpxchg and mutex_unlock a lock xadd, both
 # full barriers on x86/x64, so a holder's payload writes are visible to the
 # next holder (docs/projects/threads.md "Memory-order contract").
 #
 # WSafeAtomic is a word whose every access goes through the operations
 # below with an explicit WMemoryOrder. The checker requires the order to be
-# a memory_order_* constant valid for the operation (C++11 rules); the
+# a memory_order_* constant valid for the operation (C++17 rules); the
 # runtime checks repeat that for unchecked callers and trap. Lowering on
 # x86/x64 (TSO), argued in docs/projects/safe_mode_contracts.md:
 #   load    relaxed: mov; acquire, seq_cst: mov
@@ -171,14 +177,22 @@ enum WMemoryOrder:
 	memory_order_seq_cst = 4
 
 
-struct WSafeMutex:
+struct WSafeMutex[T]:
 	wmutex lock
-	own int* value
+	own T* value
+
+
+# Every WSafeMutex[T] has this layout: the payload is one owner word
+# whatever T is, so one untyped record allocates and unlocks them all.
+struct __w_safe_mutex_storage:
+	wmutex lock
+	void* value
 
 
 # Compile-time shape only: the field gives the guard owner its one
-# borrowed group (the mutex). A guard's address is its mutex's address.
-struct WSafeGuard:
+# borrowed group (the mutex), and T names the payload its view opens. A
+# guard's address is its mutex's address, which is also the lock word's.
+struct WSafeGuard[T]:
 	ref[held] wmutex* lock
 
 
@@ -186,45 +200,43 @@ struct WSafeAtomic:
 	int value
 
 
-# Compiler-emitted destructor for a present guard: release the lock.
-void __w_safe_guard_drop(WSafeGuard* guard):
-	WSafeMutex* raw = cast(WSafeMutex*, guard)
-	mutex_unlock(&raw.lock)
+# Compiler-emitted destructor for a present guard of any payload type:
+# release the lock. The guard address is the mutex's lock word.
+void __w_safe_guard_drop(wmutex* lock):
+	mutex_unlock(lock)
 
 
-own WSafeMutex* safe_mutex_new(own int* value):
-	WSafeMutex* mutex = new WSafeMutex
+own WSafeMutex[T]* safe_mutex_new[T](own T* value):
+	__w_safe_mutex_storage* mutex = new __w_safe_mutex_storage
 	mutex_init(&mutex.lock)
-	int** slot = cast(int**, &mutex.value)
-	*slot = cast(int*, value)
+	mutex.value = cast(void*, value)
 	# The mutex now owns the payload; clear the parameter's home so its
 	# generated cleanup does not destroy it.
-	int** transferred = cast(int**, &value)
-	*transferred = cast(int*, 0)
-	return cast(own WSafeMutex*, mutex)
+	void** transferred = cast(void**, &value)
+	*transferred = cast(void*, 0)
+	return cast(own WSafeMutex[T]*, mutex)
 
 
-own[a] WSafeGuard* safe_mutex_lock(ref[a] WSafeMutex* mutex):
-	WSafeMutex* raw = cast(WSafeMutex*, mutex)
+own[a] WSafeGuard[T]* safe_mutex_lock[T](ref[a] WSafeMutex[T]* mutex):
+	__w_safe_mutex_storage* raw = cast(__w_safe_mutex_storage*, mutex)
 	mutex_lock(&raw.lock)
-	return cast(own[a] WSafeGuard*, raw)
+	return cast(own[a] WSafeGuard[T]*, raw)
 
 
 # One lock cmpxchg 0 -> 1, as mutex_lock's uncontended fast path.
-optown[a] WSafeGuard* safe_mutex_try_lock(ref[a] WSafeMutex* mutex):
-	WSafeMutex* raw = cast(WSafeMutex*, mutex)
-	if (atomic_cas(&raw.lock.word, 0, 1) != 0): return cast(optown[a] WSafeGuard*, 0)
-	return cast(optown[a] WSafeGuard*, raw)
+optown[a] WSafeGuard[T]* safe_mutex_try_lock[T](ref[a] WSafeMutex[T]* mutex):
+	__w_safe_mutex_storage* raw = cast(__w_safe_mutex_storage*, mutex)
+	if (atomic_cas(&raw.lock.word, 0, 1) != 0): return cast(optown[a] WSafeGuard[T]*, 0)
+	return cast(optown[a] WSafeGuard[T]*, raw)
 
 
-refmut[a] int* safe_guard_value(refmut[a] WSafeGuard* guard):
-	WSafeMutex* raw = cast(WSafeMutex*, guard)
-	int** slot = cast(int**, &raw.value)
-	return cast(refmut[a] int*, *slot)
+refmut[a] T* safe_guard_value[T](refmut[a] WSafeGuard[T]* guard):
+	__w_safe_mutex_storage* raw = cast(__w_safe_mutex_storage*, guard)
+	return cast(refmut[a] T*, raw.value)
 
 
 # Consumes the guard; its parameter cleanup unlocks.
-void safe_guard_unlock(own[a] WSafeGuard* guard):
+void safe_guard_unlock[T](own[a] WSafeGuard[T]* guard):
 	return
 
 
