@@ -17,7 +17,7 @@ text as a standalone token. A documented-but-unlisted flag fails the
 run with a doc:line: message, so docs and the binary cannot drift.
 
 Anchors — a line is about the compiler when it contains one of:
-	"wv2", "w check", "w deps", "w symbols", "w defhash",
+	"wv2", "w check", "w deps", "w symbols", "w defhash", "w reduce", "w inspect",
 	"w --debug", "w --version", "w --help"
 (other tools' lines — wbuild, wtest, wdbg, git — are not scanned, so
 their flags are not falsely required of the compiler's help).
@@ -93,6 +93,8 @@ int skills_line_is_compiler(char* line):
 	if (index_of(line, c"w deps") >= 0): return 1
 	if (index_of(line, c"w symbols") >= 0): return 1
 	if (index_of(line, c"w defhash") >= 0): return 1
+	if (index_of(line, c"w reduce") >= 0): return 1
+	if (index_of(line, c"w inspect") >= 0): return 1
 	if (index_of(line, c"w --debug") >= 0): return 1
 	if (index_of(line, c"w --version") >= 0): return 1
 	if (index_of(line, c"w --help") >= 0): return 1
@@ -159,7 +161,7 @@ void skills_scan_doc(char* doc):
 # doc line happens to mention the flag. Grow this list with the flag
 # surface (compiler/compiler.w's help_* functions).
 void skills_check_core():
-	char* core = c"-o -v -h --help --version --strict --quiet --stats --stats-selfcheck --verbose --bounds --pac --ptx --json --imports --bool-ops --closure --import-root --debug x64 arm64 arm64_darwin win64 wasm check deps symbols defhash"
+	char* core = c"-o -v -h --help --version --strict --quiet --stats --stats-selfcheck --verbose --bounds --pac --ptx --json --imports --bool-ops --closure --import-root --debug x64 arm64 arm64_darwin win64 wasm check deps symbols defhash reduce inspect --timeout-ms --max-tests --sections --symbols --disasm"
 	int i = 0
 	while (core[i] != 0):
 		int start = i
@@ -201,6 +203,8 @@ int main(int argc, int argv):
 # wbuild: step="bin/wv2 deps --help" stdout_file=bin/skills_help_deps.txt
 # wbuild: step="bin/wv2 symbols --help" stdout_file=bin/skills_help_symbols.txt
 # wbuild: step="bin/wv2 defhash --help" stdout_file=bin/skills_help_defhash.txt
-# wbuild: step="cat bin/skills_help_w.txt bin/skills_help_check.txt bin/skills_help_deps.txt bin/skills_help_symbols.txt bin/skills_help_defhash.txt" stdout_file=bin/skills_help.txt
+# wbuild: step="bin/wv2 reduce --help" stdout_file=bin/skills_help_reduce.txt expect_stdout="usage: w reduce"
+# wbuild: step="bin/wv2 inspect --help" stdout_file=bin/skills_help_inspect.txt expect_stdout="usage: w inspect"
+# wbuild: step="cat bin/skills_help_w.txt bin/skills_help_check.txt bin/skills_help_deps.txt bin/skills_help_symbols.txt bin/skills_help_defhash.txt bin/skills_help_reduce.txt bin/skills_help_inspect.txt" stdout_file=bin/skills_help.txt
 # wbuild: step="bin/wv2 check -h" expect_stdout="usage: w check [--json]"
 # wbuild: step="bin/skills_check bin/skills_help.txt AGENTS.md README.md .cursor/skills/w-arm64-qemu/SKILL.md .cursor/skills/w-c-import-debug/SKILL.md .cursor/skills/w-check-diagnostics/SKILL.md .cursor/skills/w-debug-wdbg/SKILL.md .cursor/skills/w-repl-explore/SKILL.md .cursor/skills/w-seed-update/SKILL.md .cursor/skills/w-select-tests/SKILL.md" expect_stdout="skills_check: OK"

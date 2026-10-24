@@ -4,6 +4,8 @@ import compiler.compiler
 import compiler.coverage_exec
 import debugger.wdbg
 import lib.crash
+import tools.reduce
+import tools.inspect
 
 
 # The analysis subcommand word: 1 check, 2 deps, 3 symbols, 4 defhash, 5 tree,
@@ -49,6 +51,10 @@ export int compiler_main(int argc, int argv):
 	if (argc >= 2):
 		char** first_arg = argv + __word_size__
 		if (strcmp(*first_arg, c"--debug") == 0): return wdbg_main(argc, argv)
+		# These tools take a predicate command or an existing binary, so their
+		# arguments do not participate in compiler target-selector shifting.
+		if (strcmp(*first_arg, c"reduce") == 0): return reduce_main(argc, argv)
+		if (strcmp(*first_arg, c"inspect") == 0): return inspect_main(argc, argv)
 		int subcommand = subcommand_of(*first_arg)
 		if (subcommand == 1): return check_main(argc, argv)
 		if (subcommand == 2): return deps_main(argc, argv)
