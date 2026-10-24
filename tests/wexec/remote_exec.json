@@ -1,0 +1,24 @@
+{
+	"dirs": ["bin"],
+	"targets": [
+		{"name": "wv2", "steps": [{"cmd": ["true"]}]},
+		{"name": "wexec", "steps": [{"cmd": ["true"]}]},
+		{
+			"name": "remote_gen",
+			"inputs": ["bin/wexec_remote_exec_input.txt", "tests/wexec/fake_ssh.sh"],
+			"outputs": ["bin/wexec_remote_exec_out.txt", "bin/wexec_remote_exec_tool.sh"],
+			"steps": [
+				{"cmd": ["cp", "bin/wexec_remote_exec_input.txt", "bin/wexec_remote_exec_out.txt"]},
+				{"cmd": ["cp", "tests/wexec/fake_ssh.sh", "bin/wexec_remote_exec_tool.sh"]},
+				{"cmd": ["echo", "remote_gen step ran"]}
+			]
+		},
+		{
+			"name": "remote_leak",
+			"inputs": [],
+			"steps": [
+				{"cmd": ["cat", "bin/wexec_remote_exec_undeclared.txt"]}
+			]
+		}
+	]
+}

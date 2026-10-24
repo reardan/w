@@ -304,6 +304,10 @@ content-addressed remote store:
   remotely, and pulls outputs back would formalize the existing habit
   — no execution API, no workers, just ssh. Full farm-style RE is not
   worth it at this repo's scale.
+  **Status:** implemented as `wexec --remote=<host>` (issue #487;
+  wexec.md "Remote execution"). It uses a content-addressed upload
+  instead of rsync, and outputs come back as WBUN1 bundles that fill the
+  local stamps and the shared cache.
 
 ## Direction 4 — the grammar + version-control integrated build
 

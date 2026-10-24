@@ -122,6 +122,10 @@ build. For a changed path P the emitted targets are the union of:
         the fixture path itself is a literal inside the test's source,
         passed to a bin/wexec subprocess as a "-f" argument at run
         time, so neither rule (a) nor rule (b) can see the coupling.
+        tests/wexec/remote_exec.json, tests/wexec/fake_ssh.sh and wbuild
+        -> wexec_remote_exec_test the same way: the manifest and the
+        ssh stand-in are run-time arguments, and the test's "remote"
+        runs ./wbuild.
       - tools/mac/run_darwin_tests.sh -> the darwin cross-compile
         targets whose Mach-O binaries it executes on a Mac
         (arm64_darwin_smoke_test, net_darwin, graphics_darwin,
@@ -1894,6 +1898,9 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		matched = 1
 	if (strcmp(path, c"tests/wexec/remote_cache.json") == 0):
 		wtest_add(path, c"wexec_remote_cache_test")
+		matched = 1
+	if ((strcmp(path, c"tests/wexec/remote_exec.json") == 0) || (strcmp(path, c"tests/wexec/fake_ssh.sh") == 0) || (strcmp(path, c"wbuild") == 0)):
+		wtest_add(path, c"wexec_remote_exec_test")
 		matched = 1
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
