@@ -107,7 +107,7 @@ void atspi_test_registry(atspi_test_client* c, dbus_message* m):
 # Returns 1 (reply), -1 (error reply, also filled) or 0 (timeout).
 int atspi_test_pump(atspi_test_client* c, ui_atspi_bridge* b, ui_access_tree* tree, int serial, dbus_message* reply):
 	dbus_message_init(reply)
-	for i in range(200):
+	for i in range(1000):
 		ui_access_atspi_dispatch(b, tree)
 		dbus_message m
 		if (dbus_wait(c.conn, &m, 10) == 1):
@@ -221,10 +221,13 @@ void check_bridge(char* address):
 	ui_access_atspi_set_origin(b, 100, 50)
 	assert_equal(1, ui_access_atspi_publish(b, tree))
 
-	# Registration: a Peer.Ping round trip lets Embed and Set land.
-	dbus_body(c.conn)
-	assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.freedesktop.DBus.Peer", c"Ping", 0, &reply))
-	dbus_message_free(&reply)
+	# Registration: the first Ping's reply follows the bridge's Embed
+	# call, which the client answers (with the Id Set) while waiting;
+	# the second Ping follows that answer, so both have landed after it.
+	for k in range(2):
+		dbus_body(c.conn)
+		assert_equal(1, atspi_test_call(c, b, tree, 0, c"org.freedesktop.DBus.Peer", c"Ping", 0, &reply))
+		dbus_message_free(&reply)
 	assert_equal(1, c.embeds)
 	asserts(c"embedded", ui_access_atspi_embedded(b))
 	assert_equal(7, b.app_id)
