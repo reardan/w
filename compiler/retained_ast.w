@@ -422,11 +422,19 @@ void retained_copy_columns(int* to, int* from, int count, int stride, int column
 		left = left - 1
 
 
-# Index of the first word where a and b differ, or -1.
+# Index of the first word where a and b differ, or -1. Every semantic
+# expression group compares all its columns here (#714: 269M Ir of an x86
+# self-compile), so equal runs are skipped four words at a time and the
+# word loop below only locates a difference.
 int retained_words_differ(int* a, int* b, int count):
 	int* p = a
 	int* q = b
 	int left = count
+	while (left >= 4):
+		if ((p[0] != q[0]) || (p[1] != q[1]) || (p[2] != q[2]) || (p[3] != q[3])): break
+		p = &p[4]
+		q = &q[4]
+		left = left - 4
 	while (left > 0):
 		if (*p != *q): return count - left
 		p = p + __word_size__

@@ -1919,6 +1919,13 @@ later contracts is necessary for the current flag-independent implementation;
 reducing that retention cost is future work. The small legacy fixture's
 executable is byte-identical between the two compilers.
 
+Progress (2026-10-24, #714): a keyed `type_lookup_pointer`, debug line
+tables that compare file names by pointer, cached interned file names and a
+cheaper `retained_intern` comparison cut self-compile Ir by 14.3% on x86 and
+9.8% on x64, with byte-identical output. They also make the count almost
+independent of the checkout path. The retention work itself remains;
+`safe_mode_instruction_growth.md` has the measurements.
+
 On this branch, compiling the manual fixture took 38.69 ms / 4,672 KiB;
 compiling `tests/safe_cost_fixture.w` with `--safe` took 48.56 ms / 6,464 KiB.
 These equivalent programs allocate, use and destroy one integer a million
