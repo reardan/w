@@ -1,8 +1,22 @@
 # wbuild: name=graphics_ui_bidi_test arch_only=x64
-# Optional native bidi plus HarfBuzz integration; headless, no system fonts.
+# Paragraph bidi through both engines: the optional native FriBidi one and
+# the portable lib.bidi one, plus shaping integration; headless, no system
+# fonts. Engine-neutral cases run once per available engine.
 import lib.testing
 import graphics.ui.bidi
 import graphics.ui.shape
+
+type bidi_case = fn() -> void
+
+# Runs a case under the portable engine, then FriBidi when it is present.
+void bidi_each_engine(bidi_case* body):
+	ui_bidi_set_engine(UI_BIDI_ENGINE_PORTABLE)
+	body()
+	if (ui_bidi_available()):
+		ui_bidi_set_engine(UI_BIDI_ENGINE_NATIVE)
+		body()
+	else: print(c"SKIP: FriBidi Linux x64 unavailable; portable engine only\n")
+	ui_bidi_set_engine(UI_BIDI_ENGINE_AUTO)
 
 void bidi_assert_failure(char* text, int length, int direction, int budget, int expected):
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(text, length, direction, budget)
@@ -57,18 +71,23 @@ void test_bidi_validation_and_unavailable():
 	bidi_assert_failure(c"a", 1, UI_BIDI_AUTO, -1, UI_BIDI_LIMIT)
 	int state = __ui_bidi_state
 	__ui_bidi_state = -1
+	ui_bidi_set_engine(UI_BIDI_ENGINE_NATIVE)
 	bidi_assert_failure(c"a", 1, UI_BIDI_AUTO, 10, UI_BIDI_UNAVAILABLE)
 	ui_bidi_paragraph* empty = ui_bidi_utf8(0, 0, UI_BIDI_RTL, 0)
 	bidi_assert_invariants(empty)
 	assert_equal(UI_BIDI_RTL, empty.direction)
 	ui_bidi_paragraph_free(empty)
+	# AUTO falls back to the portable engine when FriBidi is missing.
+	ui_bidi_set_engine(UI_BIDI_ENGINE_AUTO)
+	ui_bidi_paragraph* fallback = ui_bidi_utf8(c"a\xd7\x90", 3, UI_BIDI_AUTO, 10)
+	bidi_assert_invariants(fallback)
+	assert_equal(UI_BIDI_ENGINE_PORTABLE, fallback.engine)
+	assert_equal(2, fallback.run_count)
+	ui_bidi_paragraph_free(fallback)
 	__ui_bidi_state = state
 	ui_bidi_paragraph_free(0)
 
-void test_bidi_mixed_numbers_and_runs():
-	if (!ui_bidi_available()):
-		print(c"SKIP: FriBidi Linux x64 unavailable\n")
-		return
+void bidi_case_mixed_numbers_and_runs():
 	# abc ALEF BET 12: digits keep LTR order inside the RTL span.
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"abc \xd7\x90\xd7\x91 12", 11, UI_BIDI_AUTO, 9)
 	bidi_assert_invariants(paragraph)
@@ -96,8 +115,11 @@ void test_bidi_mixed_numbers_and_runs():
 	assert_equal(3, paragraph.visual_to_logical[4])
 	ui_bidi_paragraph_free(paragraph)
 
-void test_bidi_isolates_overrides_and_whitespace():
-	if (!ui_bidi_available()): return
+
+void test_bidi_mixed_numbers_and_runs():
+	bidi_each_engine(bidi_case_mixed_numbers_and_runs)
+
+void bidi_case_isolates_overrides_and_whitespace():
 	# a RLI ALEF BET PDI b. Controls retain logical indices.
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"a\xe2\x81\xa7\xd7\x90\xd7\x91\xe2\x81\xa9b", 12, UI_BIDI_AUTO, 10)
 	bidi_assert_invariants(paragraph)
@@ -129,8 +151,11 @@ void test_bidi_isolates_overrides_and_whitespace():
 	assert_equal(UI_BIDI_RTL, paragraph.direction)
 	ui_bidi_paragraph_free(paragraph)
 
-void test_bidi_nul_supplementary_and_limits():
-	if (!ui_bidi_available()): return
+
+void test_bidi_isolates_overrides_and_whitespace():
+	bidi_each_engine(bidi_case_isolates_overrides_and_whitespace)
+
+void bidi_case_nul_supplementary_and_limits():
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"a\0\xf0\x9f\x98\x80", 6, UI_BIDI_AUTO, 3)
 	bidi_assert_invariants(paragraph)
 	assert_equal(3, paragraph.count)
@@ -146,6 +171,10 @@ void test_bidi_nul_supplementary_and_limits():
 	ui_bidi_paragraph_free(paragraph)
 	bidi_assert_failure(large, 65536, UI_BIDI_AUTO, 65535, UI_BIDI_LIMIT)
 	free(large)
+
+
+void test_bidi_nul_supplementary_and_limits():
+	bidi_each_engine(bidi_case_nul_supplementary_and_limits)
 
 int bidi_native_failure(int* args):
 	# Match the adapter trampoline's W signature, including undefined high bits
@@ -258,8 +287,7 @@ void test_bidi_line_validation_and_empty():
 	__ui_bidi_state = state
 	ui_bidi_line_free(0)
 
-void test_bidi_line_wrap_resets_whitespace_and_preserves_context():
-	if (!ui_bidi_available()): return
+void bidi_case_line_wrap_resets_whitespace_and_preserves_context():
 	# a SPACE ALEF BET SPACE 12 SPACE GIMEL. The first line ends within RTL.
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"a \xd7\x90\xd7\x91 12 \xd7\x92", 12, UI_BIDI_AUTO, 9)
 	bidi_assert_invariants(paragraph)
@@ -299,8 +327,11 @@ void test_bidi_line_wrap_resets_whitespace_and_preserves_context():
 	ui_bidi_line_free(first)
 	ui_bidi_line_free(second)
 
-void test_bidi_line_rtl_reflow_is_independent():
-	if (!ui_bidi_available()): return
+
+void test_bidi_line_wrap_resets_whitespace_and_preserves_context():
+	bidi_each_engine(bidi_case_line_wrap_resets_whitespace_and_preserves_context)
+
+void bidi_case_line_rtl_reflow_is_independent():
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"\xd7\x90 abc  def", 11, UI_BIDI_AUTO, 10)
 	assert_equal(UI_BIDI_RTL, paragraph.direction)
 	ui_bidi_line* narrow = ui_bidi_reorder_line(paragraph, 2, 5)
@@ -319,8 +350,11 @@ void test_bidi_line_rtl_reflow_is_independent():
 	ui_bidi_line_free(narrow)
 	ui_bidi_paragraph_free(paragraph)
 
-void test_bidi_line_isolate_override_and_bracket_context():
-	if (!ui_bidi_available()): return
+
+void test_bidi_line_rtl_reflow_is_independent():
+	bidi_each_engine(bidi_case_line_rtl_reflow_is_independent)
+
+void bidi_case_line_isolate_override_and_bracket_context():
 	# The RLI opener is on an earlier line; its digits still have level 2.
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"a\xe2\x81\xa7\xd7\x90\xd7\x91 12\xe2\x81\xa9z", 15, UI_BIDI_AUTO, 9)
 	bidi_assert_invariants(paragraph)
@@ -350,8 +384,11 @@ void test_bidi_line_isolate_override_and_bracket_context():
 	ui_bidi_line_free(line)
 	ui_bidi_paragraph_free(paragraph)
 
-void test_bidi_line_boundaries_limits_and_native_failure():
-	if (!ui_bidi_available()): return
+
+void test_bidi_line_isolate_override_and_bracket_context():
+	bidi_each_engine(bidi_case_line_isolate_override_and_bracket_context)
+
+void bidi_case_line_boundaries_limits_and_native_failure():
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"a\0\xf0\x9f\x98\x80", 6, UI_BIDI_AUTO, 3)
 	ui_bidi_line* line = ui_bidi_reorder_line(paragraph, 1, 2)
 	bidi_line_assert_map(line, c"\x00\x01", 2)
@@ -368,17 +405,18 @@ void test_bidi_line_boundaries_limits_and_native_failure():
 	bidi_line_assert_failure(paragraph, 2, 2, UI_BIDI_INVALID)
 	bidi_line_assert_failure(paragraph, 1, 2147483647, UI_BIDI_INVALID)
 	bidi_line_assert_failure(paragraph, 4, 0, UI_BIDI_INVALID)
-	int native = __ui_bidi_functions[3]
-	__ui_bidi_functions[3] = cast(int, bidi_native_failure)
-	bidi_line_assert_failure(paragraph, 1, 2, UI_BIDI_FAILED)
-	__ui_bidi_functions[3] = native
-	int state = __ui_bidi_state
-	__ui_bidi_state = -1
-	bidi_line_assert_failure(paragraph, 1, 2, UI_BIDI_UNAVAILABLE)
-	line = ui_bidi_reorder_line(paragraph, 3, 0)
-	bidi_line_assert_invariants(line)
-	ui_bidi_line_free(line)
-	__ui_bidi_state = state
+	if (paragraph.engine == UI_BIDI_ENGINE_NATIVE):
+		int native = __ui_bidi_functions[3]
+		__ui_bidi_functions[3] = cast(int, bidi_native_failure)
+		bidi_line_assert_failure(paragraph, 1, 2, UI_BIDI_FAILED)
+		__ui_bidi_functions[3] = native
+		int state = __ui_bidi_state
+		__ui_bidi_state = -1
+		bidi_line_assert_failure(paragraph, 1, 2, UI_BIDI_UNAVAILABLE)
+		line = ui_bidi_reorder_line(paragraph, 3, 0)
+		bidi_line_assert_invariants(line)
+		ui_bidi_line_free(line)
+		__ui_bidi_state = state
 	line = ui_bidi_reorder_line(paragraph, 1, 2)
 	bidi_line_assert_map(line, c"\x00\x01", 2)
 	ui_bidi_line_free(line)
@@ -397,6 +435,10 @@ void test_bidi_line_boundaries_limits_and_native_failure():
 	assert_equal(65535, line.byte_start)
 	ui_bidi_line_free(line)
 	ui_bidi_paragraph_free(paragraph)
+
+
+void test_bidi_line_boundaries_limits_and_native_failure():
+	bidi_each_engine(bidi_case_line_boundaries_limits_and_native_failure)
 
 void test_bidi_line_shaping_preserves_marks_and_document_offsets():
 	if (!ui_bidi_available() || !ui_shape_available()): return
@@ -431,8 +473,7 @@ void test_bidi_line_shaping_preserves_marks_and_document_offsets():
 	ui_render_destroy(&renderer)
 	ui_bidi_line_free(line)
 
-void test_bidi_line_trailing_isolates_reset_entire_whitespace_suffix():
-	if (!ui_bidi_available()): return
+void bidi_case_line_trailing_isolates_reset_entire_whitespace_suffix():
 	# A PDI at the wrap boundary must not hide the space inside the isolate.
 	ui_bidi_paragraph* paragraph = ui_bidi_utf8(c"a\xe2\x81\xa7\xd7\x90\xd7\x91 \xe2\x81\xa9z", 13, UI_BIDI_AUTO, 7)
 	assert_equal(1, paragraph.levels[4])
@@ -458,3 +499,6 @@ void test_bidi_line_trailing_isolates_reset_entire_whitespace_suffix():
 		ui_bidi_line_free(line)
 		ui_bidi_paragraph_free(paragraph)
 	free(source)
+
+void test_bidi_line_trailing_isolates_reset_entire_whitespace_suffix():
+	bidi_each_engine(bidi_case_line_trailing_isolates_reset_entire_whitespace_suffix)

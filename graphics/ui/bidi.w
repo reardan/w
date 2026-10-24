@@ -1,55 +1,17 @@
-# Optional Linux x64 paragraph bidi analysis. Shape logical source ranges;
-# scalar position maps are not glyph order or a caret/selection model.
+# Paragraph bidi analysis: the optional Linux x64 FriBidi engine, with the
+# portable lib.bidi engine of graphics.ui.bidi_portable whenever FriBidi is
+# unavailable (or when ui_bidi_set_engine selects it). Scalar position maps
+# are not glyph order or a caret/selection model.
 # Native ABI: https://github.com/fribidi/fribidi/blob/master/lib/fribidi-bidi.h
 import lib.dlcall
+import graphics.ui.bidi_portable
 
-const int UI_BIDI_OK = 0
-const int UI_BIDI_INVALID = 1
-const int UI_BIDI_UNAVAILABLE = 2
-const int UI_BIDI_LIMIT = 3
-const int UI_BIDI_FAILED = 4
-const int UI_BIDI_AUTO = 0
-const int UI_BIDI_LTR = 4
-const int UI_BIDI_RTL = 5
+int __ui_bidi_engine
 
-struct ui_bidi_run:
-	int byte_start
-	int byte_length
-	int scalar_start
-	int scalar_count
-	int level
-	int direction
-
-struct ui_bidi_paragraph:
-	int status
-	int direction
-	int source_bytes
-	int count
-	int run_count
-	int* byte_offsets
-	char* levels
-	int32* logical_to_visual
-	int32* visual_to_logical
-	ui_bidi_run* runs
-	int32* visual_runs
-	# Retained native analysis before line-specific whitespace resets.
-	int32* bidi_types
-	char* resolved_levels
-
-struct ui_bidi_line:
-	int status
-	int direction
-	int byte_start
-	int byte_length
-	int scalar_start
-	int count
-	int run_count
-	int* byte_offsets
-	char* levels
-	int32* logical_to_visual
-	int32* visual_to_logical
-	ui_bidi_run* runs
-	int32* visual_runs
+# UI_BIDI_ENGINE_AUTO (FriBidi when present, else portable), _NATIVE
+# (FriBidi only: UI_BIDI_UNAVAILABLE without it) or _PORTABLE.
+void ui_bidi_set_engine(int engine):
+	__ui_bidi_engine = engine
 
 int __ui_bidi_state
 int[4] __ui_bidi_functions
@@ -68,63 +30,6 @@ int ui_bidi_available():
 		if (__ui_bidi_functions[i] == 0): return 0
 	__ui_bidi_state = 1
 	return 1
-
-void __ui_bidi_clear(ui_bidi_paragraph* paragraph):
-	free(paragraph.byte_offsets)
-	free(paragraph.levels)
-	free(paragraph.logical_to_visual)
-	free(paragraph.visual_to_logical)
-	free(paragraph.runs)
-	free(paragraph.visual_runs)
-	free(paragraph.bidi_types)
-	free(paragraph.resolved_levels)
-	paragraph.byte_offsets = 0
-	paragraph.levels = 0
-	paragraph.logical_to_visual = 0
-	paragraph.visual_to_logical = 0
-	paragraph.runs = 0
-	paragraph.visual_runs = 0
-	paragraph.bidi_types = 0
-	paragraph.resolved_levels = 0
-	paragraph.count = 0
-	paragraph.run_count = 0
-
-void ui_bidi_paragraph_free(ui_bidi_paragraph* paragraph):
-	if (paragraph == 0): return
-	__ui_bidi_clear(paragraph)
-	free(paragraph)
-
-# Maps are local to the supplied slice; byte/scalar run spans name the paragraph.
-int __ui_bidi_runs(int count, int scalar_start, int* byte_offsets, char* levels, int32* logical_to_visual, int32* visual_to_logical, ui_bidi_run* runs, int32* visual_runs):
-	int run_count = 0
-	int32* owners = cast(int32*, malloc(count * 4))
-	int start = 0
-	while (start < count):
-		int end = start + 1
-		while ((end < count) && (levels[end] == levels[start])): end = end + 1
-		ui_bidi_run* run = &runs[run_count]
-		run.byte_start = byte_offsets[start]
-		run.byte_length = byte_offsets[end] - run.byte_start
-		run.scalar_start = scalar_start + start
-		run.scalar_count = end - start
-		run.level = levels[start]
-		run.direction = UI_BIDI_LTR
-		if (run.level & 1): run.direction = UI_BIDI_RTL
-		for i in range(start, end): owners[i] = run_count
-		run_count = run_count + 1
-		start = end
-	int previous = -1
-	int visual_count = 0
-	for i in range(count):
-		int logical = visual_to_logical[i]
-		logical_to_visual[logical] = i
-		int owner = owners[logical]
-		if (owner != previous):
-			visual_runs[visual_count] = owner
-			visual_count = visual_count + 1
-			previous = owner
-	free(owners)
-	return run_count
 
 int __ui_bidi_reorder(int32* types, int count, int direction, char* levels, int32* visual_to_logical):
 	# L1 includes trailing isolate controls. Native reorder_line versions omit
@@ -149,58 +54,27 @@ int __ui_bidi_reorder(int32* types, int count, int direction, char* levels, int3
 
 # Analyze one unwrapped paragraph (no hard line or paragraph separators).
 # Strict explicit-length UTF-8, including NUL; max 65536 bytes/scalars.
-# Always owned, including failures. Empty input succeeds without a native call.
+# Always owned, including failures. Empty input succeeds without analysis.
 # Controls retain indices. Runs cover logical source; visual_runs orders runs.
 ui_bidi_paragraph* ui_bidi_utf8(char* text, int length, int direction, int max_scalars):
 	ui_bidi_paragraph* paragraph = new ui_bidi_paragraph()
-	paragraph.status = UI_BIDI_INVALID
-	if ((length < 0) || ((text == 0) && (length > 0))): return paragraph
-	if ((direction != UI_BIDI_AUTO) && (direction != UI_BIDI_LTR) && (direction != UI_BIDI_RTL)): return paragraph
-	if ((length > 65536) || (max_scalars < 0) || (max_scalars > 65536)):
-		paragraph.status = UI_BIDI_LIMIT
-		return paragraph
-	int count = 0
-	int at = 0
-	while (at < length):
-		int cp = 0
-		int size = utf8_scan(text + at, length - at, &cp)
-		if (size == 0): return paragraph
-		if (((cp >= 10) && (cp <= 13)) || ((cp >= 28) && (cp <= 30)) || (cp == 133) || (cp == 8232) || (cp == 8233)): return paragraph
-		count = count + 1
-		at = at + size
-	if (count > max_scalars):
-		paragraph.status = UI_BIDI_LIMIT
-		return paragraph
-	paragraph.direction = UI_BIDI_LTR
-	if (direction == UI_BIDI_RTL): paragraph.direction = UI_BIDI_RTL
-	paragraph.source_bytes = length
-	if (count == 0):
-		paragraph.status = UI_BIDI_OK
-		paragraph.byte_offsets = cast(int*, malloc(sizeof(int)))
-		paragraph.byte_offsets[0] = 0
+	int count = __ui_bidi_validate(paragraph, text, length, direction, max_scalars)
+	if (count <= 0): return paragraph
+	if (__ui_bidi_engine == UI_BIDI_ENGINE_PORTABLE):
+		__ui_bidi_portable_fill(paragraph, text, length, direction, count)
 		return paragraph
 	if (!ui_bidi_available()):
+		if (__ui_bidi_engine == UI_BIDI_ENGINE_AUTO):
+			__ui_bidi_portable_fill(paragraph, text, length, direction, count)
+			return paragraph
 		paragraph.status = UI_BIDI_UNAVAILABLE
 		return paragraph
+	paragraph.engine = UI_BIDI_ENGINE_NATIVE
 	paragraph.status = UI_BIDI_FAILED
-	paragraph.count = count
-	paragraph.byte_offsets = cast(int*, malloc((count + 1) * sizeof(int)))
-	paragraph.levels = cast(char*, malloc(count))
-	paragraph.logical_to_visual = cast(int32*, malloc(count * 4))
-	paragraph.visual_to_logical = cast(int32*, malloc(count * 4))
 	int32* scalars = cast(int32*, malloc(count * 4))
-	paragraph.bidi_types = cast(int32*, malloc(count * 4))
-	paragraph.resolved_levels = cast(char*, malloc(count))
+	__ui_bidi_alloc(paragraph, text, length, count, scalars)
 	int32* types = paragraph.bidi_types
 	int32* brackets = cast(int32*, malloc(count * 4))
-	at = 0
-	for i in range(count):
-		int cp = 0
-		paragraph.byte_offsets[i] = at
-		at = at + utf8_scan(text + at, length - at, &cp)
-		scalars[i] = cp
-		paragraph.visual_to_logical[i] = i
-	paragraph.byte_offsets[count] = length
 	int[8] args
 	args[0] = cast(int, scalars)
 	args[1] = count
@@ -229,68 +103,27 @@ ui_bidi_paragraph* ui_bidi_utf8(char* text, int length, int direction, int max_s
 	if (!success):
 		__ui_bidi_clear(paragraph)
 		return paragraph
-	paragraph.runs = cast(ui_bidi_run*, malloc(count * sizeof(ui_bidi_run)))
-	paragraph.visual_runs = cast(int32*, malloc(count * 4))
-	paragraph.run_count = __ui_bidi_runs(count, 0, paragraph.byte_offsets, paragraph.levels, paragraph.logical_to_visual, paragraph.visual_to_logical, paragraph.runs, paragraph.visual_runs)
-	paragraph.status = UI_BIDI_OK
+	__ui_bidi_finish(paragraph)
 	return paragraph
 
-void __ui_bidi_line_clear(ui_bidi_line* line):
-	free(line.byte_offsets)
-	free(line.levels)
-	free(line.logical_to_visual)
-	free(line.visual_to_logical)
-	free(line.runs)
-	free(line.visual_runs)
-	line.byte_offsets = 0
-	line.levels = 0
-	line.logical_to_visual = 0
-	line.visual_to_logical = 0
-	line.runs = 0
-	line.visual_runs = 0
-	line.count = 0
-	line.run_count = 0
-
-void ui_bidi_line_free(ui_bidi_line* line):
-	if (line == 0): return
-	__ui_bidi_line_clear(line)
-	free(line)
 
 # Reorder a caller-selected scalar range using the original paragraph context.
 # Owned output survives paragraph disposal. Maps/levels use line-local indices;
 # byte offsets and run byte/scalar starts stay relative to the original paragraph.
 # Caller chooses legal wrap boundaries (do not split graphemes/shaping clusters).
+# The paragraph's own engine reorders the line.
 ui_bidi_line* ui_bidi_reorder_line(ui_bidi_paragraph* paragraph, int scalar_start, int scalar_count):
+	if ((paragraph != 0) && (paragraph.engine == UI_BIDI_ENGINE_PORTABLE)): return ui_bidi_portable_reorder_line(paragraph, scalar_start, scalar_count)
 	ui_bidi_line* line = new ui_bidi_line()
-	line.status = UI_BIDI_INVALID
-	if ((paragraph == 0) || (paragraph.status != UI_BIDI_OK)): return line
-	if ((scalar_start < 0) || (scalar_start > paragraph.count) || (scalar_count < 0)): return line
-	if (scalar_count > paragraph.count - scalar_start): return line
-	line.direction = paragraph.direction
-	line.scalar_start = scalar_start
-	line.byte_start = paragraph.byte_offsets[scalar_start]
-	line.byte_length = paragraph.byte_offsets[scalar_start + scalar_count] - line.byte_start
+	if (!__ui_bidi_line_begin(line, paragraph, scalar_start, scalar_count)): return line
 	if ((scalar_count > 0) && !ui_bidi_available()):
 		line.status = UI_BIDI_UNAVAILABLE
 		return line
-	line.byte_offsets = cast(int*, malloc((scalar_count + 1) * sizeof(int)))
-	for i in range(scalar_count + 1): line.byte_offsets[i] = paragraph.byte_offsets[scalar_start + i]
-	if (scalar_count == 0):
-		line.status = UI_BIDI_OK
-		return line
-	line.levels = cast(char*, malloc(scalar_count))
-	line.logical_to_visual = cast(int32*, malloc(scalar_count * 4))
-	line.visual_to_logical = cast(int32*, malloc(scalar_count * 4))
-	for i in range(scalar_count):
-		line.levels[i] = paragraph.resolved_levels[scalar_start + i]
-		line.visual_to_logical[i] = i
+	__ui_bidi_line_alloc(line, paragraph, scalar_start, scalar_count)
+	if (scalar_count == 0): return line
 	line.status = UI_BIDI_FAILED
 	if (!__ui_bidi_reorder(&paragraph.bidi_types[scalar_start], scalar_count, line.direction, line.levels, line.visual_to_logical)):
 		__ui_bidi_line_clear(line)
 		return line
-	line.count = scalar_count
-	line.runs = cast(ui_bidi_run*, malloc(scalar_count * sizeof(ui_bidi_run)))
-	line.visual_runs = cast(int32*, malloc(scalar_count * 4))
-	line.run_count = __ui_bidi_runs(scalar_count, scalar_start, line.byte_offsets, line.levels, line.logical_to_visual, line.visual_to_logical, line.runs, line.visual_runs)
-	line.status = UI_BIDI_OK
+	__ui_bidi_line_finish(line, scalar_start, scalar_count)
 	return line
