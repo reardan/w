@@ -710,12 +710,15 @@ seeds — is `docs/release.md`.
   command starts one when none is running (`bin/wbuildd start` /
   `status` / `stop` manage it by hand; `serve` runs it in the
   foreground; `--no-autostart` or `WBUILDD_AUTOSTART=0` turns auto-start
-  off). `bin/wbuildd check|deps|symbols ARGS` and `bin/wbuildd changed
-  ARGS` print exactly what `bin/wv2 check|deps|symbols ARGS` and
+  off). `bin/wbuildd check|deps|symbols|defhash ARGS` and `bin/wbuildd changed
+  ARGS` print exactly what `bin/wv2 check|deps|symbols|defhash ARGS` and
   `bin/wtest changed ARGS` print, answered from the daemon's warm state:
-  check/deps/symbols results stay in memory until inotify sees a file in
+  check/deps/symbols/defhash results stay in memory until inotify sees a file in
   their import closure change, and the daemon keeps
-  `bin/.wtest_deps_cache` warm in the background. `bin/wbuildd build
+  `bin/.wtest_deps_cache` warm in the background. A `.w` file saved
+  outside `bin/` is rehashed (`defhash`) in the background, and
+  `bin/wbuildd changed --defhash` uses those hashes instead of
+  recompiling the saved file (issue #485). `bin/wbuildd build
   ARGS` is `bin/wexec ARGS` run by the daemon in the caller's own
   terminal, starting from its warm generated manifest and content
   hashes (`WBUILDD=1 ./wbuild ...` routes `./wbuild` through it). With

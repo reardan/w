@@ -410,6 +410,15 @@ already done — selection and cache lookup are index reads, and the
 "nearly instant build" experience is real for the common case (edit →
 exact test set → mostly cached → run the few truly affected binaries).
 
+*Status (issue #485):* the watcher is `bin/wbuildd`'s inotify watch.
+A `.w` file saved outside `bin/` has its `bin/wv2 defhash` answer
+recomputed in the background, and `bin/wbuildd changed --defhash` hands
+those answers to `bin/wtest` (`--defhash-index`), which uses them for
+the worktree side of its comparison while the file's content digest
+still matches. The HEAD side is still computed per run, and selection
+still goes through `bin/wtest`'s closure cache; see
+`docs/projects/wbuildd.md` §8, "Save-time defhash index".
+
 ### 4d. Incremental codegen — flagged as research, probably skip
 
 The maximal version — cache per-definition machine code and patch
