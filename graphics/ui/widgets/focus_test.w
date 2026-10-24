@@ -218,6 +218,28 @@ void test_a_textarea_keeps_tab_and_ctrl_tab_leaves():
 	ui_render_destroy(&fx.r)
 
 
+# Focus an application hands to its own surface (an id past every
+# widget's, like a canvas) keeps plain Tab; Ctrl+Tab still leaves.
+void test_application_owned_focus_keeps_tab():
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
+	form_model m
+	form_model_init(&m)
+	form_frame(ctx, &m)
+	ctx.focus = 900001
+	tab(ctx, 0)
+	ui_begin(ctx, 400, 400)
+	assert_equal(900001, ctx.focus)
+	assert_equal(1, ctx.char_count)
+	assert_equal(9, ctx.chars[0])
+	ui_end(ctx)
+	form_frame(ctx, &m)
+	tab(ctx, GFX_MOD_CTRL)
+	form_frame(ctx, &m)
+	assert_equal(1, ctx.focus)
+	ui_render_destroy(&fx.r)
+
+
 void modal_frame(ui_context* ctx, int32* open, int32* opened, int32* ok):
 	ui_begin(ctx, 320, 240)
 	if (ui_button(ctx, c"Open")): open[0] = 1

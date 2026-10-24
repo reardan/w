@@ -170,16 +170,28 @@ void ui_focus_step(ui_context* ctx, int reverse):
 	ctx.focus_visible = 1
 
 
+# 1 when focus belongs to the application rather than a widget: an id
+# past the previous frame's widget ids (ctx.next_id has not been reset
+# yet) that registered no focus stop, such as a custom canvas.
+int ui_focus_app_owned(ui_context* ctx):
+	if ((ctx.focus == 0) || (ctx.focus < ctx.next_id)): return 0
+	for i in range(ctx.focus_count):
+		if (ctx.focus_order[i] == ctx.focus): return 0
+	return 1
+
+
 # Drain this frame's Tab/Shift-Tab CHARs into focus moves. Plain Tab
-# stays queued for a focused stop that consumes it (a textarea indents);
-# Ctrl+Tab always moves, the GTK convention for leaving such a field.
+# stays queued for a focused stop that consumes it (a textarea indents)
+# and for application-owned focus; Ctrl+Tab always moves, the GTK
+# convention for leaving such a field.
 void ui_focus_route(ui_context* ctx):
 	int kept = 0
 	int i = 0
 	while (i < ctx.char_count):
 		int ch = ctx.chars[i]
 		int mods = ctx.char_mods[i]
-		int claimed = (ctx.focus != 0) && (ctx.focus_tab_widget == ctx.focus) && ((mods & GFX_MOD_CTRL) == 0)
+		int owner = (ctx.focus_tab_widget == ctx.focus) || ui_focus_app_owned(ctx)
+		int claimed = (ctx.focus != 0) && owner && ((mods & GFX_MOD_CTRL) == 0)
 		if ((ch == 9) && ((mods & (GFX_MOD_ALT | GFX_MOD_SUPER)) == 0) && (claimed == 0)):
 			ui_focus_step(ctx, mods & GFX_MOD_SHIFT)
 		else:
@@ -193,10 +205,11 @@ void ui_focus_route(ui_context* ctx):
 # Start a frame: reset ids/hot/layout, start the render batch, clear
 # to the theme background (skipped headless).
 void ui_begin(ui_context* ctx, int width, int height):
+	# Tab routes against last frame's stops and ids before they are
+	# rebuilt.
+	ui_focus_route(ctx)
 	ctx.hot = 0
 	ctx.next_id = 1
-	# Tab routes against last frame's stops before they are rebuilt.
-	ui_focus_route(ctx)
 	ctx.focus_count = 0
 	ctx.focus_tab_widget = 0
 	ctx.access_label = 0
