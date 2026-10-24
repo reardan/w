@@ -91,8 +91,11 @@ int main(int argc, int argv):
 	expect_event(win, GFX_EVENT_KEY_DOWN, 51)
 	expect_event(win, GFX_EVENT_CHAR, 8)
 	expect_event(win, GFX_EVENT_KEY_DOWN, 123)
-	expect_event(win, GFX_EVENT_NAV, GFX_NAV_LEFT)
+	# The NAV waits behind this frame's text until the next poll.
 	gfx_event none
+	assert_equal(0, gfx_window_next_event(win, &none))
+	gfx_window_poll(win)
+	expect_event(win, GFX_EVENT_NAV, GFX_NAV_LEFT)
 	assert_equal(0, gfx_window_next_event(win, &none))
 
 	# An input method's commit: one CHAR per scalar, astral included.
