@@ -1525,8 +1525,8 @@ the caller in order and the result is the same.
 
 ## Synchronization: guarded mutexes and atomics
 
-`lib.safe_thread` also provides the only checked shared mutation: a mutex
-whose payload is reachable only while a guard is held, and an atomic integer
+`lib.safe_thread` also provides the only checked shared mutation: a generic
+mutex whose payload is reachable only while a guard is held, and an atomic integer
 whose every operation names its memory ordering. Both use the same Linux
 x86/x64 runtime as spawn/join. The memory-ordering argument is in
 [the contracts document](safe_mode_contracts.md#synchronization-and-memory-ordering).
@@ -1536,33 +1536,47 @@ x86/x64 runtime as spawn/join. The memory-ordering argument is in
 ```w
 import lib.safe_thread
 
-type Count = fn[](ref WSafeMutex*) -> int
+struct Account:
+	int balance
+	own int* history
 
-int count(ref WSafeMutex* mutex):
+type Deposit = fn[](ref WSafeMutex[Account]*) -> int
+
+int deposit(ref WSafeMutex[Account]* mutex):
 	for i in range(1000):
-		own[a] WSafeGuard* guard = safe_mutex_lock(mutex)
-		refmut int* value = safe_guard_value(guard)
-		*value = *value + 1
+		own[a] WSafeGuard[Account]* guard = safe_mutex_lock(mutex)
+		refmut Account* account = safe_guard_value(guard)
+		account.balance = account.balance + 1
 	return 0
 
 int main():
-	own int* start = new int
-	own WSafeMutex* mutex = safe_mutex_new(start)
-	ref WSafeMutex* shared = mutex
-	Count* entry = count
+	own WSafeMutex[Account]* mutex = safe_mutex_new(new Account(0, new int))
+	ref WSafeMutex[Account]* shared = mutex
+	Deposit* entry = deposit
 	safe_thread_fork_join(entry, shared, shared)
-	own[a] WSafeGuard* guard = safe_mutex_lock(shared)
-	refmut int* value = safe_guard_value(guard)
-	return *value - 2000
+	own[a] WSafeGuard[Account]* guard = safe_mutex_lock(shared)
+	refmut Account* account = safe_guard_value(guard)
+	return account.balance - 2000
 ```
 
 | Call | Contract |
 | --- | --- |
-| `safe_mutex_new(own int* value) -> own WSafeMutex*` | Consumes the payload. Dropping the mutex destroys the payload once, then the mutex. |
-| `safe_mutex_lock(ref[a] WSafeMutex*) -> own[a] WSafeGuard*` | Blocks until the mutex is free. |
-| `safe_mutex_try_lock(ref[a] WSafeMutex*) -> optown[a] WSafeGuard*` | Returns an absent guard when the mutex is held. |
-| `safe_guard_value(refmut[a] WSafeGuard*) -> refmut[a] int*` | The payload view; it borrows the guard. |
-| `safe_guard_unlock(own[a] WSafeGuard*)` | Consumes the guard and releases the mutex early. |
+| `safe_mutex_new(own T* value) -> own WSafeMutex[T]*` | Consumes the payload. Dropping the mutex destroys the payload once, with its owned fields, then the mutex. |
+| `safe_mutex_lock(ref[a] WSafeMutex[T]*) -> own[a] WSafeGuard[T]*` | Blocks until the mutex is free. |
+| `safe_mutex_try_lock(ref[a] WSafeMutex[T]*) -> optown[a] WSafeGuard[T]*` | Returns an absent guard when the mutex is held. |
+| `safe_guard_value(refmut[a] WSafeGuard[T]*) -> refmut[a] T*` | The payload view; it borrows the guard. |
+| `safe_guard_unlock(own[a] WSafeGuard[T]*)` | Consumes the guard and releases the mutex early. |
+
+`T` is inferred from the payload or from the mutex and guard arguments
+(`safe_mutex_lock(m)`); explicit arguments (`safe_mutex_lock[int](m)`) are
+equivalent. Inference matches a `Name[T]*` parameter against the argument's
+generic struct instance, for any generic function
+([generics](generics.md#type-argument-inference)). `T` is any type a
+lifetime-free `own T*` admits: a sized scalar or an owned record graph
+with no borrowed fields. A payload with a borrowed lifetime, a raw pointer or
+a lock guard is rejected (`unsupported type or reference-bearing aggregate`,
+or the guard-lifetime error). A payload may itself be a mutex
+(`WSafeMutex[WSafeMutex[int]]`); each level has its own guard.
 
 The lifetimes do the work:
 
@@ -1576,8 +1590,11 @@ The lifetimes do the work:
   The checker counts each drop as a use of the guard's borrow. A guard
   released on only some paths still pins the mutex until its scope ends. A
   guard cannot leave the block in which its mutex is declared
-  (`lock guard outlives the mutex it borrows`).
-- **The view borrows the guard.** A `refmut int*` from `safe_guard_value`
+  (`lock guard outlives the mutex it borrows`). Locals are dropped in
+  reverse declaration order, so a guard (or an owner holding one) declared
+  *before* its mutex in the same block is rejected the same way, at the
+  block's end and at every `return`.
+- **The view borrows the guard.** A `refmut T*` from `safe_guard_value`
   ends before the guard can be unlocked, moved or dropped. Using it after
   `safe_guard_unlock` or after the guard's block is a use of a moved value.
   A shared `ref WSafeGuard*` cannot open the view, and two live views of
@@ -1587,6 +1604,8 @@ The lifetimes do the work:
   happens on the thread that locked.
 - **The mutex is opaque.** There is no field access, partial move or
   checked allocation outside `safe_mutex_new`, and no plain construction.
+  The untyped storage record behind every `WSafeMutex[T]` has no checked
+  shape either.
 
 ### Atomics
 
@@ -1613,7 +1632,8 @@ goes through one of these calls, with a `WMemoryOrder` argument:
 
 Orders are spelled `memory_order_relaxed`, `memory_order_acquire`,
 `memory_order_release`, `memory_order_acq_rel` and `memory_order_seq_cst`,
-with C++11 meanings. The argument must be one of those constants, so every
+with C++ meanings; the failure order of a compare-exchange follows C++17,
+which admits a failure order stronger than the success order. The argument must be one of those constants, so every
 call's ordering is known when it is compiled. A runtime `WMemoryOrder`
 value or a cast integer is rejected, as is an order that the operation
 cannot have. The compare-exchange succeeded exactly when its result equals
@@ -1623,28 +1643,66 @@ cannot have. The compare-exchange succeeded exactly when its result equals
 
 | Type | Transferable | Shareable |
 | --- | --- | --- |
-| `own WSafeMutex*` | if its payload is | if its payload is transferable |
-| `own[a] WSafeGuard*` | no | no |
+| `own WSafeMutex[T]*` | if `T` is | if `T` is transferable |
+| `own[a] WSafeGuard[T]*` | no | no |
 | `own WSafeAtomic*` | yes | yes |
 
 A mutex is shareable even though its payload is only transferable: the lock
-lends the payload to one thread at a time. Pass `ref WSafeMutex*` or
+lends the payload to one thread at a time. Pass `ref WSafeMutex[T]*` or
 `ref WSafeAtomic*` (or a record holding them) to fork-join for concurrent
 use. Move the owner into a spawn payload to hand it over. Detached threads
 cannot share one mutex or atomic: there is no shared ownership.
 
 ### Limits and costs
 
-- The payload is a single `int` (an `own int*`). Generic `WSafeMutex[T]`
-  waits for checked generic records (#696). The thread rule above is
-  structural, so it already describes such payloads.
-- Locking the same mutex twice on one thread, or locking two mutexes in
-  opposite orders on two threads, deadlocks. Deadlock is not memory
-  unsafety, and the checker does not prevent it.
-- A guard adds no allocation: its owner is the mutex's address. Lock and
-  unlock are one `lock` instruction each when uncontended. Waiting uses
-  futexes. Each atomic call is a function call around one instruction. A
-  `seq_cst` store adds a fence.
+- `WSafeMutex[T]` and `WSafeGuard[T]` are ordinary generic records of the
+  pinned file, recognized by the checker per instance. Checked code still
+  has no `new Generic[T]` form, so mutexes come only from `safe_mutex_new`.
+  A payload with borrowed lifetimes (`own[a] T*`) is not supported: the
+  mutex type has no lifetime parameter to carry them.
+- Locking the same mutex twice on one thread, locking two mutexes in
+  opposite orders on two threads, holding a guard across a fork-join that
+  locks the same mutex, or replacing a guard with a new lock of the same
+  mutex (`g = safe_mutex_lock(m)`, whose right side runs first) deadlocks.
+  Deadlock is not memory unsafety, and the checker does not prevent it.
+- A guard adds no allocation: its owner is the mutex's address. Every
+  `WSafeMutex[T]` has one layout (a lock word and one owner word) and one
+  set of audited operations per instance, so `T` costs nothing at run time.
+  Waiting uses futexes. Each atomic call is a function call around one
+  instruction. A `seq_cst` store adds a fence.
+- Measured costs (Linux x86_64 container shared with other builds; Valgrind
+  callgrind instruction counts per iteration over 100,000 iterations,
+  including the loop's 4 instructions, and best-of-5 wall time over 10
+  million uncontended iterations; x86 / x64):
+
+  | Operation | Instructions | ns |
+  | --- | --- | --- |
+  | lock, view, increment, guard drop (`int` payload) | 95 / 97 | 13.5 / 14.0 |
+  | the same with a record payload | 95 / 97 | 13.2 / 13.6 |
+  | raw `mutex_lock` + `mutex_unlock` (`lib/thread.w`) | 45 / 48 | 14.2 / 13.2 |
+  | `try_lock` and drop | 60 / 59 | 12.2 / 12.2 |
+  | `load` acquire | 31 / 31 | 1.5 / 1.4 |
+  | `store` release | 32 / 32 | 1.5 / 1.5 |
+  | `store` seq_cst | 37 / 37 | 7.4 / 7.7 |
+  | `fetch_add` | 30 / 29 | 6.1 / 6.4 |
+  | `compare_exchange` | 51 / 51 | 6.1 / 6.1 |
+
+  The checked guard path executes about 50 more instructions than the raw
+  mutex (calls, the guard's optional-owner bookkeeping and drop dispatch),
+  but uncontended time is dominated by the two locked instructions and is
+  the same. Compiling with the mutex API adds about 1-8 ms over an empty
+  program that imports it (110 ms); `--safe` adds 10-30 ms for the runtime
+  fixture (161 ms to 189 ms).
+- Memory checking: `tests/safe_sync_runtime_fixture.w` and
+  `tests/safe_thread_runtime_fixture.w` run clean under
+  `W_DEBUG_ALLOC=1` (zero leaked allocations in the measured round) and
+  under Memcheck with `W_DEBUG_ALLOC=valgrind` on both widths (0 errors;
+  220 and 1,126 allocations, all freed; Memcheck only sees the main
+  heap's pooled blocks, not the per-thread heaps). Helgrind and DRD run on
+  these static binaries but report every futex handshake (4,168 and
+  551,905 errors): the runtime uses raw futexes and `clone`, with no
+  pthread calls or happens-before annotations, so those tools see no
+  synchronization at all and their reports are not evidence either way.
 - New diagnostics (family `W0413`): `lock guard outlives the mutex it
   borrows`, `a lock guard owner must name its mutex lifetime`,
   `... is a lock guard bound to its locking thread`,
@@ -1654,8 +1712,10 @@ cannot share one mutex or atomic: there is no shared ownership.
   `compare-exchange failure ordering cannot be release or acq_rel`.
 
 `tests/safe_sync_test.w` checks the accepted and rejected contracts on x86
-and x64. `tests/safe_sync_runtime_test.w` covers lock release on every exit
-path, exact counts under fork-join and spawned-thread contention,
+and x64, including generic payloads and guard declaration order.
+`tests/safe_sync_runtime_test.w` covers lock release on every exit
+path, exact counts under fork-join and spawned-thread contention (with
+`int` and record payloads, nested mutexes and a spawned mutex owner),
 release/acquire publication, and exactly-once cleanup with `W_DEBUG_ALLOC=1`.
 
 ## Persistent REPL and debugger sessions
