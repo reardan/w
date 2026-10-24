@@ -349,6 +349,8 @@ int ttf_pair_pos(ttf_font* f, int sub, int left, int right, int* matched):
 # (negative pulls the right glyph closer). GPOS 'kern' lookups when the
 # font has them, else the legacy kern table; 0 when neither lists the
 # pair.
+int ttf_kern_table_units(ttf_font* f, int left, int right);
+
 int ttf_kern_units(ttf_font* f, int left, int right):
 	if (f.gpos_feature != 0):
 		int total = 0
@@ -377,6 +379,10 @@ int ttf_kern_units(ttf_font* f, int left, int right):
 				if (matched): s = subs
 				s = s + 1
 		return total
+	return ttf_kern_table_units(f, left, right)
+
+# The legacy 'kern' table's format-0 value for the pair, ignoring GPOS.
+int ttf_kern_table_units(ttf_font* f, int left, int right):
 	if (f.kern == 0): return 0
 	int key = left * 65536 + right
 	int lo = 0
@@ -486,6 +492,18 @@ int ttf_boost_coverage(int v):
 int ttf_glyf_offset(ttf_font* f, int gid):
 	if (f.loc_long): return ttf_u32(f, f.loca + gid * 4)
 	return ttf_u16(f, f.loca + gid * 2) * 2
+
+
+# A glyph's ink box in font units (y up): box[0..3] = xMin, yMin, xMax,
+# yMax. Returns 0, with a zero box, for an empty or missing glyph.
+int ttf_glyph_bbox(ttf_font* f, int gid, int* box):
+	for i in range(4): box[i] = 0
+	if ((gid < 0) || (gid >= f.glyph_count)): return 0
+	int off = ttf_glyf_offset(f, gid)
+	if (ttf_glyf_offset(f, gid + 1) <= off): return 0
+	int at = f.glyf + off
+	for i in range(4): box[i] = ttf_s16(f, at + 2 + i * 2)
+	return 1
 
 
 struct ttf_bitmap:

@@ -126,3 +126,119 @@ int ut_mirror(int cp):
 	int mirror = ut_pair_lookup(utd_mirrors(), utd_mirrors_count(), cp)
 	if (mirror < 0): return cp
 	return mirror
+
+# General_Category values (the unicode_cat_* numbering) shaping looks at.
+const int ut_cat_cn = 0
+const int ut_cat_mn = 6
+const int ut_cat_mc = 7
+const int ut_cat_me = 8
+const int ut_cat_zs = 23
+const int ut_cat_cc = 26
+const int ut_cat_cf = 27
+
+# Arabic positional forms (the <isolated>/<final>/<initial>/<medial>
+# decomposition tags).
+const int ut_form_none = 0
+const int ut_form_isol = 1
+const int ut_form_fina = 2
+const int ut_form_init = 3
+const int ut_form_medi = 4
+
+int ut_category(int cp):
+	return ut_range_value(utd_category(), utd_category_count(), cp)
+
+int ut_combining_class(int cp):
+	return ut_range_value(utd_ccc(), utd_ccc_count(), cp)
+
+# A nonspacing or enclosing mark (Mn, Me): drawn over or under its base.
+int ut_is_nonspacing_mark(int cp):
+	int category = ut_category(cp)
+	return (category == ut_cat_mn) || (category == ut_cat_me)
+
+# Default_Ignorable_Code_Point, as UAX #44 derives it: invisible format
+# controls, variation selectors and the like, which render with no ink.
+int ut_default_ignorable(int cp):
+	if ((cp == 0x00ad) || (cp == 0x034f) || (cp == 0x061c) || (cp == 0x115f) || (cp == 0x1160) || (cp == 0x3164) || (cp == 0xfeff) || (cp == 0xffa0)): return 1
+	if ((cp >= 0x17b4) && (cp <= 0x17b5)): return 1
+	if ((cp >= 0x180b) && (cp <= 0x180f)): return 1
+	if ((cp >= 0x200b) && (cp <= 0x200f)): return 1
+	if ((cp >= 0x202a) && (cp <= 0x202e)): return 1
+	if ((cp >= 0x2060) && (cp <= 0x206f)): return 1
+	if ((cp >= 0xfe00) && (cp <= 0xfe0f)): return 1
+	if ((cp >= 0xfff0) && (cp <= 0xfff8)): return 1
+	if ((cp >= 0x1bca0) && (cp <= 0x1bca3)): return 1
+	if ((cp >= 0x1d173) && (cp <= 0x1d17a)): return 1
+	return (cp >= 0xe0000) && (cp <= 0xe0fff)
+
+int ut_triple_lookup(char* table, int count, int base, int form):
+	int lo = 0
+	int hi = count - 1
+	int key = base * 8 + form
+	while (lo <= hi):
+		int mid = (lo + hi) >> 1
+		int at = ut_u24(table, mid * 7) * 8 + (table[mid * 7 + 3] & 255)
+		if (at == key): return ut_u24(table, mid * 7 + 4)
+		if (at < key): lo = mid + 1
+		else: hi = mid - 1
+	return -1
+
+# The Arabic Presentation Forms codepoint of letter in a positional form,
+# or -1: the fallback when a font has no GSUB positional features.
+int ut_arabic_form(int letter, int form):
+	return ut_triple_lookup(utd_arabic_forms(), utd_arabic_forms_count(), letter, form)
+
+# The presentation-form ligature of LAM followed by alef in form
+# (ut_form_isol or ut_form_fina), or -1.
+int ut_lam_alef(int alef, int form):
+	return ut_triple_lookup(utd_lam_alef(), utd_lam_alef_count(), alef, form)
+
+const int ut_hangul_s = 0xac00
+const int ut_hangul_l = 0x1100
+const int ut_hangul_v = 0x1161
+const int ut_hangul_t = 0x11a7
+
+# Canonical decomposition of cp into first[0] (and second[0], 0 for a
+# singleton). Returns 0 when cp has none. Hangul syllables decompose
+# algorithmically (LV + T, or L + V).
+int ut_decompose(int cp, int* first, int* second):
+	int index = cp - ut_hangul_s
+	if ((index >= 0) && (index < 11172)):
+		int t = index % 28
+		if (t != 0):
+			first[0] = cp - t
+			second[0] = ut_hangul_t + t
+		else:
+			first[0] = ut_hangul_l + index / 588
+			second[0] = ut_hangul_v + (index % 588) / 28
+		return 1
+	char* table = utd_decomp()
+	int lo = 0
+	int hi = utd_decomp_count() - 1
+	while (lo <= hi):
+		int mid = (lo + hi) >> 1
+		int at = ut_u24(table, mid * 9)
+		if (at == cp):
+			first[0] = ut_u24(table, mid * 9 + 3)
+			second[0] = ut_u24(table, mid * 9 + 6)
+			return 1
+		if (at < cp): lo = mid + 1
+		else: hi = mid - 1
+	return 0
+
+# The canonical (NFC) composition of the pair, or -1.
+int ut_compose(int a, int b):
+	if ((a >= ut_hangul_l) && (a < ut_hangul_l + 19) && (b >= ut_hangul_v) && (b < ut_hangul_v + 21)):
+		return ut_hangul_s + ((a - ut_hangul_l) * 21 + (b - ut_hangul_v)) * 28
+	int index = a - ut_hangul_s
+	if ((index >= 0) && (index < 11172) && ((index % 28) == 0) && (b > ut_hangul_t) && (b < ut_hangul_t + 28)): return a + (b - ut_hangul_t)
+	char* table = utd_compose()
+	int lo = 0
+	int hi = utd_compose_count() - 1
+	while (lo <= hi):
+		int mid = (lo + hi) >> 1
+		int x = ut_u24(table, mid * 9)
+		int y = ut_u24(table, mid * 9 + 3)
+		if ((x == a) && (y == b)): return ut_u24(table, mid * 9 + 6)
+		if ((x < a) || ((x == a) && (y < b))): lo = mid + 1
+		else: hi = mid - 1
+	return -1
