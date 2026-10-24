@@ -424,6 +424,54 @@ void retained_expression_semantics(expression_ast* tree, retained_group* group):
 		s[9 * count + i] = pointer_level
 
 
+# A global initializer parsed for the declaration about to be noted
+# (grammar/program.w, grammar/ast_global.w). Only a semantic session keeps
+# it; retained_declaration_note attaches it to the global of the same name.
+char* retained_pending_initializer_name
+int retained_pending_initializer_kind
+int retained_pending_initializer_value
+int retained_pending_initializer_symbol
+char* retained_pending_initializer_bytes
+int retained_pending_initializer_length
+
+
+void retained_initializer_note(char* name, int kind, int value, int symbol, char* bytes, int length):
+	if ((ast_retain_mode == 0) || (retained_semantic_mode == 0)): return
+	if (retained_pending_initializer_name != 0): free(retained_pending_initializer_name)
+	if (retained_pending_initializer_bytes != 0): free(retained_pending_initializer_bytes)
+	retained_pending_initializer_name = strclone(name)
+	retained_pending_initializer_kind = kind
+	retained_pending_initializer_value = value
+	retained_pending_initializer_symbol = symbol
+	retained_pending_initializer_bytes = 0
+	retained_pending_initializer_length = length
+	if (bytes != 0):
+		retained_pending_initializer_bytes = cast(char*, malloc(length + 1))
+		for i in range(length): retained_pending_initializer_bytes[i] = bytes[i]
+		retained_pending_initializer_bytes[length] = 0
+
+
+void retained_initializer_attach(retained_record* node, char* name, int id):
+	if (retained_pending_initializer_name == 0): return
+	if (strcmp(retained_pending_initializer_name, name) == 0):
+		retained_initializer* init = cast(retained_initializer*, retained_arena_alloc(sizeof(retained_initializer)))
+		init.kind = retained_pending_initializer_kind
+		init.value = retained_pending_initializer_value
+		init.binding = -1
+		init.bytes = 0
+		init.length = retained_pending_initializer_length
+		if (retained_pending_initializer_symbol >= 0): init.binding = retained_binding_note(retained_pending_initializer_symbol, id)
+		char* bytes = retained_pending_initializer_bytes
+		if (bytes != 0):
+			init.bytes = retained_arena_alloc(init.length + 1)
+			for i in range(init.length + 1): init.bytes[i] = bytes[i]
+		node.initializer = init
+	free(retained_pending_initializer_name)
+	retained_pending_initializer_name = 0
+	if (retained_pending_initializer_bytes != 0): free(retained_pending_initializer_bytes)
+	retained_pending_initializer_bytes = 0
+
+
 # Definition hooks run after the declaration. Adopt its already retained
 # function/initializer children instead of creating a second parser.
 void retained_declaration_note(char* name, char* kind, int start, int end, int line, int column):
@@ -440,6 +488,7 @@ void retained_declaration_note(char* name, char* kind, int start, int end, int l
 			int binding = retained_binding_note(sym_probe(name), id)
 			node.binding = binding
 			if (binding >= 0): node.semantic_type = retained_bindings[binding].type
+			if (strcmp(kind, c"global") == 0): retained_initializer_attach(node, name, id)
 		else: node.semantic_type = retained_type_note(type_lookup(name))
 	retained_source* input = retained_sources[source]
 	input.declaration_cursor = id + 1

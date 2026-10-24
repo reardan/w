@@ -266,6 +266,12 @@ void retained_query_node(int id, retained_node* node):
 		retained_query_bytes(c"arena_text_hex", node.arena_text, node.arena_text_length)
 		retained_query_bytes(c"arena_type_names_hex", node.arena_type_names, node.arena_type_names_length)
 	retained_query_string(c"result_type", node.result_type)
+	retained_initializer* init = node.initializer
+	if (init != 0):
+		retained_query_int(c"initializer_kind", init.kind)
+		retained_query_int(c"initializer_value", init.value)
+		retained_query_int(c"initializer_binding", init.binding)
+		retained_query_bytes(c"initializer_hex", init.bytes, init.length)
 	retained_query_string(c"binding_name", node.binding_name)
 	retained_query_string(c"binding_file", node.binding_file)
 	retained_query_end_record()
