@@ -1,10 +1,14 @@
 # wbuild: x64 timeout=600000
 # Checked debugger evaluation (#713): at a stop, print, conditions and
 # 'repl' entries see the checked locals the checker proves usable there as
-# read-only shared borrows; moved owners, borrows past their last use,
-# outer frames, moves out of a view and raw 'set' writes are rejected
-# explicitly. The 32-bit test drives a 32-bit wdbg and the x64 twin a
-# 64-bit one.
+# read-only shared views: owners and references as 'ref T*', optional ones
+# as 'optref T*' (presence check still required), inline slices as
+# 'ref T[]', in the innermost frame and in outer frames suspended in a
+# call. Moved owners (including those moved into the call in progress),
+# borrows past their last use, locals lent exclusively to the call in
+# progress, labeled aggregates, writes through views, moves out of a view
+# and raw 'set' writes are rejected explicitly. The 32-bit test drives a
+# 32-bit wdbg and the x64 twin a 64-bit one.
 import lib.testing
 import lib.process
 import lib.str
@@ -34,14 +38,18 @@ char* safe_dbg_build():
 	return safe_dbg_binary
 
 
-process_result* safe_dbg_run(char* input):
+process_result* safe_dbg_run_fixture(char* fixture, char* input):
 	char** args = strv_new(3)
 	strv_set(args, 0, safe_dbg_build())
-	strv_set(args, 1, c"tests/safe_session_debugger_fixture.w")
+	strv_set(args, 1, fixture)
 	process_result* result = process_run(args[0], args, 0, input, 300000)
 	free(cast(void*, args))
 	assert1(result != 0)
 	return result
+
+
+process_result* safe_dbg_run(char* input):
+	return safe_dbg_run_fixture(c"tests/safe_session_debugger_fixture.w", input)
 
 
 void safe_dbg_expect_order(char* text, list[char*] needles):
@@ -82,8 +90,56 @@ void test_checked_locals_at_stops():
 	err.push(c"checked debugger locals are read-only views at a stop")
 	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
 	err.push(c"owner requires new storage or an ownership transfer")
-	err.push(c"checked locals are only available in the innermost frame of an analyzed function")
+	# 'up' from consume: main is suspended in the call that moved p.
 	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
+	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
+	safe_dbg_expect_order(r.stderr_text, err)
+	out.free()
+	err.free()
+	process_result_free(r)
+
+
+# Outer frames suspended in a call, optional owners and references, and
+# inline slices (tests/safe_session_debugger_views_fixture.w).
+void test_checked_views_of_frames_optionals_and_slices():
+	string_builder* in = string_new()
+	# bump(p): main lends p exclusively to the call.
+	string_append(in, c"up\np q.value + r.value\np p.value\np all[1] + all.length\np some.value\np present(some) + present(none) + 1000\np h.tag\nc\n")
+	# bump(w): the reborrow and its root are both lent.
+	string_append(in, c"up\np w.value\np p.value\np q.value\nc\n")
+	# peek(r, h.tag): r is in use by the call; w is past its last use.
+	string_append(in, c"up\np r.value + p.value + q.value\np w.value\nc\n")
+	# maybe(look): an optional reference parameter.
+	string_append(in, c"p m.value\np present(m)\nrepl\nint seen = 0\nif (m): seen = m.value + 100\nseen\n:end\nc\n")
+	# slice_sum(tail): a shared slice parameter; main's refmut slice is
+	# viewed as shared.
+	string_append(in, c"p s[0] + s.length\nrepl\ns[0] = 5\n:end\nup\np tail[1] + tail.length\np all[2]\nc\n")
+	process_result* r = safe_dbg_run_fixture(c"tests/safe_session_debugger_views_fixture.w", in.data)
+	string_free(in)
+	assert_equal(0, r.status)
+	list[char*] out = new list[char*]
+	out.push(c"= 40")
+	out.push(c"= 5")
+	out.push(c"= 1030")
+	out.push(c"bump(w)")
+	out.push(c"= 20")
+	out.push(c"= 52")
+	out.push(c"= 12")
+	out.push(c"= 112")
+	out.push(c"= 9")
+	out.push(c"= 10")
+	out.push(c"= 3")
+	out.push(c"debuggee main returned 0")
+	safe_dbg_expect_order(r.stdout_text, out)
+	list[char*] err = new list[char*]
+	err.push(c"this checked local is lent exclusively to the call this frame is suspended in")
+	err.push(c"optional reference requires a presence check")
+	err.push(c"only checked owners, references, optional references and slices without lifetime labels can be viewed at a debugger stop")
+	err.push(c"this checked local is lent exclusively to the call this frame is suspended in")
+	err.push(c"this checked local is lent exclusively to the call this frame is suspended in")
+	err.push(c"this checked local is not definitely initialized and live at this debugger stop")
+	err.push(c"optional reference requires a presence check")
+	err.push(c"write through a shared reference")
 	safe_dbg_expect_order(r.stderr_text, err)
 	out.free()
 	err.free()

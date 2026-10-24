@@ -1746,25 +1746,39 @@ parameter` rule; declare a new generation instead.
 **Debugger evaluation.** wdbg checks its debuggee before running it. At a
 stop, `print`, breakpoint conditions, logpoints and `repl` entries are the
 same in-process entries, so they follow the same rules (breakpoint and
-evaluation parity). When the stopped frame has checked locals, the checker
-re-analyzes the stopped function and reads the flow state at the stop's
-statement:
+evaluation parity). When the selected frame has checked locals, the checker
+re-analyzes that frame's function and reads its flow state:
 
-- a checked owner or borrow that is definitely initialized there (and, for
-  a borrow, still used later by the program, so its loan is valid) is
-  presented as a read-only `ref T*` view, a parameter of the entry's own
-  check that never joins the replayed session;
+- in the innermost frame, at the stop's statement;
+- in an outer frame (`up`, `frame <n>`), which is suspended inside a call
+  its statement makes, both before and after that statement, so moves the
+  statement makes count (an owner moved into the call in progress is not
+  held), while every borrow the statement uses -- including those the
+  callee holds -- counts as in use and must still have every root it
+  borrows held;
+- a checked owner, reference, optional owner or reference, or inline
+  checked slice (`ref T[]`, `refmut T[]`) without lifetime labels that is
+  definitely initialized there (and, for a borrow, still used later by the
+  program or known absent, so its loan is valid) is presented as a
+  read-only view, a parameter of the entry's own check that never joins
+  the replayed session: `ref T*` for owners and references, `optref T*`
+  for optional ones (dereferencing still requires a presence check in the
+  entry), `ref T[]` for slices (element writes are `safe: write through a
+  shared reference`);
 - other checked locals are hidden; naming one reports why (`safe: this
   checked local is not definitely initialized and live at this debugger
-  stop`, or that only owner and reference pointers without lifetime labels
-  can be viewed);
+  stop`; in an outer frame, `safe: this checked local is lent exclusively
+  to the call this frame is suspended in` for a local, or the root of a
+  reborrow, that the statement passes as `refmut` or as an owned record's
+  exclusive group; `safe: only checked owners, references, optional
+  references and slices without lifetime labels can be viewed at a
+  debugger stop` for aggregates, arrays of checked values and labeled
+  types; `safe: checked locals are only available in analyzed functions at
+  a debugger stop` when the frame is not in an analyzed function);
 - assigning a view (`safe: checked debugger locals are read-only views at a
   stop; assign them in the program`) or moving out of it (`safe: owner
   requires new storage or an ownership transfer`) is rejected, and frame
   writes of checked locals are never copied back;
-- outer frames (`up`) have no known state mid-call, so their checked locals
-  are hidden (`safe: checked locals are only available in the innermost
-  frame of an analyzed function at a debugger stop`);
 - `set` refuses checked locals and globals (`set: checked variables cannot
   be written by the debugger; their ownership state would go stale`), in
   process and in attach mode.
@@ -1773,15 +1787,17 @@ Plain locals are presented by value as before and still write back.
 Attach mode (`--attach`) evaluates with its own read-only interpreter over
 ptrace and runs no checked code in the target.
 
-The hook into the checker is one optional callback,
-`safe_function_end_hook`, which `compiler/safe.w` calls with each analyzed
-function before releasing its flow graph; it is zero outside sessions.
+The hooks into the checker are two optional callbacks, zero outside
+sessions: `safe_function_end_hook`, which `compiler/safe.w` calls with each
+analyzed function before releasing its flow graph, and
+`safe_call_argument_hook`, which sees each call argument's contract, roots
+and reborrow parents while an outer frame's call statement is re-run.
 `tests/safe_repl_session_test.w` and `tests/safe_session_debugger_test.w`
 (each with an x64 twin) cover persistence, replacement, reset and exit
 destruction counted under `W_DEBUG_ALLOC=1`, success-failure-success,
 diagnostic recovery, fault discards, every unsupported form above, an
-imported-source edit across `:reset`, and the debugger views, conditions
-and rejections.
+imported-source edit across `:reset`, and the debugger views (innermost
+and outer frames, optional and slice views), conditions and rejections.
 
 ## Entry points, diagnostics and costs
 

@@ -375,8 +375,10 @@ void repl_entry_item(int entry_symbol):
 	# Generic function definitions ('T twice[T](T a):'): captured into
 	# the generics registry (no code emitted) and skipped. Each entry is
 	# staged in its own file, so the recorded span stays re-parseable
-	# from later entries.
-	if (generic_declaration_scan_repl()):
+	# from later entries. A statement keyword never starts one: 'return
+	# d[1]' (the debugger's wrapped expressions) indexes, it does not
+	# declare a generic named d.
+	if ((repl_token_is_statement() == 0) && generic_declaration_scan_repl()):
 		current_function_symbol = entry_symbol
 		number_of_args = 0
 		return;

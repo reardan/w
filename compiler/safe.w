@@ -69,6 +69,11 @@ list[int] safe_call_kinds
 # flow graph before it is released; zero everywhere else.
 int safe_function_end_hook
 type __safe_function_end_callback = fn(int) -> void
+# Debugger stops in outer frames (compiler/safe_session.w) observe each call
+# argument's contract, roots and reborrow parents while re-running a call
+# statement's transfer; zero everywhere else.
+int safe_call_argument_hook
+type __safe_call_argument_callback = fn(int, int, int, safe_borrowed*) -> void
 
 
 int safe_check_requested():
@@ -2072,6 +2077,7 @@ int safe_call_groups(int id, retained_node* n, char* state, int* parent, safe_bo
 		if (kind >= 2): root = safe_borrow_groups(arg, want, state, &via, &argument, -1, 0)
 		else if (safe_owned_borrowed(want)): root = safe_eval_groups(arg, state, want, &argument)
 		else: root = safe_eval(arg, state, want)
+		if (safe_call_argument_hook != 0): (cast(__safe_call_argument_callback*, safe_call_argument_hook))(want, root, via, &argument)
 		if (safe_carries_borrow(want)):
 			for component in range(safe_lifetime_count(want)):
 				int slot = safe_contract_offset(callee, position) + component
