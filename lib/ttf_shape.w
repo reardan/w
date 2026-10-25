@@ -18,31 +18,29 @@ with no GPOS attachment are centred over (or under) their base using
 glyph boxes, stacking outward. Default-ignorable characters (ZWJ, ZWNJ,
 variation selectors, bidi controls) shape with no ink and no advance.
 
-Complex Indic and Southeast Asian reordering is limited to Devanagari:
-pre-base matra and reph reordering with the dev2 feature sequence (see
-ttf_shape_indic). Other complex scripts apply the generic features,
-which suits Thai and Hebrew fonts but not full Indic shaping.
+Devanagari, Bengali, Gurmukhi, Gujarati, Oriya, Tamil, Telugu, Kannada
+and Malayalam runs go through lib.ttf_indic, a port of HarfBuzz's Indic
+shaper (syllables, reph, pre-base matras and consonants, the basic and
+presentation feature stages). Other complex scripts (Southeast Asian,
+USE) apply the generic features, which suits Thai and Hebrew fonts but
+not their reordering.
 */
 import lib.lib
 import lib.ttf
+import lib.ttf_indic
 import lib.ttf_layout
 import lib.unicode_text
 
 const int ttf_shape_no_liga = 1     # flags: disable liga/clig
 const int ttf_shape_no_kern = 2     # flags: disable kern
 
-# Feature masks. Global features use bit 0; Arabic positional forms and
-# Indic per-syllable features take their own bits.
+# Feature masks. Global features use bit 0; Arabic positional forms take
+# their own bits (lib.ttf_indic's per-syllable masks start at bit 5).
 const int ttf_mask_global = 1
 const int ttf_mask_isol = 2
 const int ttf_mask_fina = 4
 const int ttf_mask_medi = 8
 const int ttf_mask_init = 16
-const int ttf_mask_rphf = 32
-const int ttf_mask_half = 64
-const int ttf_mask_pref = 128
-const int ttf_mask_blwf = 256
-const int ttf_mask_pstf = 512
 
 # OpenType script tags for a Unicode script id, most preferred first, as
 # 4-byte groups, always ending in the DFLT/dflt/latn fallbacks. Writes up
@@ -110,7 +108,8 @@ int ttf_is_joining_script(char* code):
 
 # Combining class for mark reordering. Like HarfBuzz, Hebrew and Arabic
 # points are renumbered so the marks nearest the letter (dagesh, shin and
-# sin dots; shadda) sort first, which is the order fonts expect.
+# sin dots; shadda) sort first, which is the order fonts expect. The
+# Telugu length marks (84, 91) sort before the virama (9).
 int ttf_modified_ccc(int cp):
 	int ccc = ut_combining_class(cp)
 	if ((ccc >= 10) && (ccc <= 26)):
@@ -118,6 +117,8 @@ int ttf_modified_ccc(int cp):
 		return hebrew[ccc - 10]
 	if ((ccc >= 27) && (ccc <= 32)): return ccc + 1
 	if (ccc == 33): return 27
+	if (ccc == 84): return 4
+	if (ccc == 91): return 5
 	return ccc
 
 # Canonical reordering of combining marks (UAX #15 / HarfBuzz's mark
@@ -308,8 +309,8 @@ void ttf_fallback_marks(ttf_font* f, otl_buffer* b, int rtl):
 			top = top + (mark_box[3] - mark_box[1])
 		g.attach = base
 		g.attach_kind = otl_attach_mark
-		g.attach_dx = dx + g.x_offset
-		g.attach_dy = dy + g.y_offset
+		g.attach_dx = dx
+		g.attach_dy = dy
 
 # Legacy pair kerning between consecutive non-mark glyphs. Like
 # HarfBuzz, the adjustment is split: half (rounded down) widens the first
@@ -334,8 +335,6 @@ void ttf_fallback_kern(ttf_font* f, otl_buffer* b, int rtl):
 			b.glyphs[right].x_advance = b.glyphs[right].x_advance + kern - first
 			b.glyphs[right].x_offset = b.glyphs[right].x_offset + kern - first
 		previous = i
-
-int ttf_shape_indic(ttf_font* f, otl_buffer* b, char* scripts, int script_count, int language);
 
 # Canonical decomposition of cp for a font that lacks its glyph: appends
 # the fully decomposed codepoints to out and returns their count, or 0
@@ -430,13 +429,101 @@ void ttf_recompose(ttf_font* f, otl_buffer* b, int hebrew_forms):
 		else: last_ccc = ccc
 		i = i + 1
 
+# HarfBuzz's Indic decomposition (no short circuit): cp fully decomposed
+# whenever the font has the parts, even when it has cp itself, except
+# U+0931, U+09DC, U+09DD and U+0B94. Appends to out; returns the count,
+# or 0 when cp stays whole.
+int ttf_indic_decompose(ttf_font* f, int cp, int32* out, int depth):
+	if ((cp == 0x0931) || (cp == 0x09dc) || (cp == 0x09dd) || (cp == 0x0b94)): return 0
+	int a = 0
+	int b = 0
+	if ((depth > 4) || !ut_decompose(cp, &a, &b)): return 0
+	if ((b != 0) && (ttf_glyph_id(f, b) == 0)): return 0
+	int n = ttf_indic_decompose(f, a, out, depth + 1)
+	if ((n == 0) && (ttf_glyph_id(f, a) != 0)):
+		out[0] = a
+		n = 1
+	if (n == 0): return 0
+	if (b != 0):
+		out[n] = b
+		n = n + 1
+	return n
+
+# HarfBuzz's recomposition for the Indic shaper: a mark (Mn, Mc, Me)
+# composes into the last starter when nothing between them has an equal
+# or higher combining class, the starter is not itself a mark (split
+# matras stay split) and the font has the composite. U+09AF U+09BC
+# composes to U+09DF despite the composition exclusion.
+void ttf_indic_recompose(ttf_font* f, otl_buffer* b):
+	if (b.count == 0): return
+	int starter = 0
+	int i = 1
+	while (i < b.count):
+		otl_glyph* g = &b.glyphs[i]
+		int category = -1
+		if (g.cp >= 0): category = ut_category(g.cp)
+		int mark = (category == ut_cat_mn) || (category == ut_cat_mc) || (category == ut_cat_me)
+		otl_glyph* s = &b.glyphs[starter]
+		if (mark && (s.cp >= 0) && ((starter == i - 1) || (ttf_modified_ccc(b.glyphs[i - 1].cp) < ttf_modified_ccc(g.cp)))):
+			int composed = -1
+			int sc = ut_category(s.cp)
+			if ((sc != ut_cat_mn) && (sc != ut_cat_mc) && (sc != ut_cat_me)):
+				if ((s.cp == 0x09af) && (g.cp == 0x09bc)): composed = 0x09df
+				else: composed = ut_compose(s.cp, g.cp)
+			int gid = 0
+			if (composed >= 0): gid = ttf_glyph_id(f, composed)
+			if (gid != 0):
+				if (g.cluster < s.cluster): s.cluster = g.cluster
+				s.cp = composed
+				s.gid = gid
+				s.unicode_mark = ut_is_nonspacing_mark(composed)
+				otl_buffer_delete(b, i)
+				continue
+		if ((g.cp < 0) || (ttf_modified_ccc(g.cp) == 0)): starter = i
+		i = i + 1
+
 int ttf_continues_cluster(int cp):
 	int category = ut_category(cp)
 	if ((category == ut_cat_mn) || (category == ut_cat_mc) || (category == ut_cat_me)): return 1
 	return (cp == 0x200d) || ((cp >= 0x1160) && (cp <= 0x11ff)) || ((cp >= 0xfe00) && (cp <= 0xfe0f)) || ((cp >= 0xe0100) && (cp <= 0xe01ef)) || ((cp >= 0x1f3fb) && (cp <= 0x1f3ff))
 
+# HarfBuzz's fallback for a space character the font lacks: its width
+# as a fraction of the em (N for upem/N), or a special width (-1 the
+# space glyph's, -2 a digit's, -3 a period's, -4 half the space's, -5
+# 4/18 em); 0 when cp is no such space.
+int ttf_space_fallback(int cp):
+	if ((cp == 0x20) || (cp == 0xa0)): return -1
+	if ((cp == 0x2000) || (cp == 0x2002)): return 2
+	if ((cp == 0x2001) || (cp == 0x2003) || (cp == 0x3000)): return 1
+	if (cp == 0x2004): return 3
+	if (cp == 0x2005): return 4
+	if (cp == 0x2006): return 6
+	if (cp == 0x2007): return -2
+	if (cp == 0x2008): return -3
+	if (cp == 0x2009): return 5
+	if (cp == 0x200a): return 16
+	if (cp == 0x202f): return -4
+	if (cp == 0x205f): return -5
+	return 0
+
+# The advance of a fallback space glyph (see ttf_space_fallback).
+int ttf_space_fallback_advance(ttf_font* f, int kind, int advance):
+	if (kind > 0): return (f.upem + kind / 2) / kind
+	if (kind == -2):
+		for d in range(10):
+			int digit = ttf_glyph_id(f, '0' + d)
+			if (digit != 0): return ttf_advance_units(f, digit)
+	if (kind == -3):
+		int dot = ttf_glyph_id(f, '.')
+		if (dot == 0): dot = ttf_glyph_id(f, ',')
+		if (dot != 0): return ttf_advance_units(f, dot)
+	if (kind == -4): return advance / 2
+	if (kind == -5): return f.upem * 4 / 18
+	return advance
+
 void ttf_shape_add(ttf_font* f, otl_buffer* b, int cp, int source, int rtl):
 	int gid = ttf_glyph_id(f, cp)
+	if ((gid == 0) && (ttf_space_fallback(cp) != 0)): gid = ttf_glyph_id(f, ' ')
 	if (rtl):
 		int mirror = ut_mirror(cp)
 		if (mirror != cp):
@@ -477,38 +564,13 @@ void ttf_thai_sara_am(ttf_font* f, otl_buffer* b, int cp, int source):
 		if (b.glyphs[k].cluster < cluster): cluster = b.glyphs[k].cluster
 	for k in range(from, end): b.glyphs[k].cluster = cluster
 
-# Shape count codepoints (clusters[i] is each one's source position) as
-# one run. rtl: 1 for a right-to-left run. script: a lib.unicode_text
-# script id, or -1 to guess from the text. language: an OpenType
-# language-system tag (otl_tag), or 0. Returns an owned buffer in visual
-# order; free it with otl_buffer_free.
-otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int rtl, int script, int language, int flags):
-	otl_buffer* b = otl_buffer_new(count + 4)
-	if (script < 0): script = ttf_guess_script(cps, count)
-	int space = ttf_glyph_id(f, ' ')
-	int32[16] parts
-	for i in range(count):
-		int pieces = 0
-		parts[0] = cps[i]
-		if ((cps[i] & ~0x80) == 0x0e33):
-			ttf_thai_sara_am(f, b, cps[i], clusters[i])
-			continue
-		if (ttf_glyph_id(f, cps[i]) == 0): pieces = ttf_decompose_for(f, cps[i], &parts[0], 0)
-		if (pieces == 0):
-			parts[0] = cps[i]
-			pieces = 1
-		for p in range(pieces): ttf_shape_add(f, b, parts[p], clusters[i], rtl)
-	ttf_reorder_marks(b)
-	char[40] scripts
-	int script_count = ttf_script_tags(script, &scripts[0])
-	int hebrew_forms = ttf_code_is(ut_script_code(script), c"Hebr") && !otl_has_feature(f, otl_gpos, &scripts[0], script_count, otl_tag(c"mark"))
-	ttf_recompose(f, b, hebrew_forms)
-	otl_set_classes(f, b)
+# The GSUB stages of every script but the Indic ones: ccmp/locl, Arabic-
+# style joining forms (or the presentation-form fallback), rlig, then
+# rclt/calt/liga/clig.
+void ttf_shape_gsub(ttf_font* f, otl_buffer* b, char* scripts, int script_count, int language, int joining, int rtl, int flags):
 	int[16] tags
 	int[16] masks
 	int n = 0
-	char* code = ut_script_code(script)
-	int joining = ttf_is_joining_script(code)
 	# Joining forms come from the characters, before ccmp can decompose
 	# a letter into glyphs (a substitution's output inherits the mask).
 	if (joining):
@@ -519,26 +581,15 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rvrn"), ttf_mask_global, &n)
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"ccmp"), ttf_mask_global, &n)
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"locl"), ttf_mask_global, &n)
-	otl_apply_stage(f, b, otl_gsub, &scripts[0], script_count, language, &tags[0], &masks[0], n, rtl)
-	# Like HarfBuzz, Devanagari uses the Indic shaper unless the font's
-	# GSUB script choice falls back to DFLT or latn (a font designed for
-	# other scripts), when it shapes as default text.
-	int indic = 0
-	if ttf_code_is(code, c"Deva"):
-		int gsub = ttf_table(f, c"GSUB")
-		indic = 1
-		if (otl_langsys(f, gsub, c"dev2deva", 2, 0) == 0):
-			if (otl_langsys(f, gsub, c"DFLT", 1, 0) != 0): indic = 0
-			else if ((otl_langsys(f, gsub, c"dflt", 1, 0) == 0) && (otl_langsys(f, gsub, c"latn", 1, 0) != 0)): indic = 0
-	if (indic): ttf_shape_indic(f, b, &scripts[0], script_count, language)
+	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
 	if (joining):
-		int has_forms = otl_has_feature(f, otl_gsub, &scripts[0], script_count, otl_tag(c"init")) || otl_has_feature(f, otl_gsub, &scripts[0], script_count, otl_tag(c"fina"))
+		int has_forms = otl_has_feature(f, otl_gsub, scripts, script_count, otl_tag(c"init")) || otl_has_feature(f, otl_gsub, scripts, script_count, otl_tag(c"fina"))
 		if (has_forms):
 			char* order = c"isolfinamediinit"
 			for k in range(4):
 				tags[0] = otl_tag(&order[k * 4])
 				masks[0] = ttf_mask_isol << k
-				otl_apply_stage(f, b, otl_gsub, &scripts[0], script_count, language, &tags[0], &masks[0], 1, rtl)
+				otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], 1, rtl)
 		else:
 			int32* forms = cast(int32*, malloc(b.count * 4 + 4))
 			ttf_joining_forms(b, forms)
@@ -548,17 +599,121 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 			otl_set_classes(f, b)
 	n = 0
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rlig"), ttf_mask_global, &n)
-	otl_apply_stage(f, b, otl_gsub, &scripts[0], script_count, language, &tags[0], &masks[0], n, rtl)
+	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
 	n = 0
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"rclt"), ttf_mask_global, &n)
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"calt"), ttf_mask_global, &n)
 	if ((flags & ttf_shape_no_liga) == 0):
 		ttf_stage1(&tags[0], &masks[0], otl_tag(c"liga"), ttf_mask_global, &n)
 		ttf_stage1(&tags[0], &masks[0], otl_tag(c"clig"), ttf_mask_global, &n)
-	otl_apply_stage(f, b, otl_gsub, &scripts[0], script_count, language, &tags[0], &masks[0], n, rtl)
+	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], n, rtl)
+
+# HarfBuzz's vowel constraints (the USE spec's
+# IndicShapingInvalidCluster.txt): whether a dotted circle goes between
+# a and b, an independent vowel and a sign that together look like
+# another vowel. (Devanagari RA, VIRAMA, I is handled by the caller.)
+int ttf_indic_vowel_constraint(char* code, int a, int b):
+	if (ttf_code_is(code, c"Deva")):
+		if (a == 0x0905): return (b == 0x093a) || (b == 0x093b) || (b == 0x093e) || (b == 0x0945) || (b == 0x0946) || (b == 0x0949) || (b == 0x094a) || (b == 0x094b) || (b == 0x094c) || (b == 0x094f) || (b == 0x0956) || (b == 0x0957)
+		if (a == 0x0906): return (b == 0x093a) || (b == 0x0945) || (b == 0x0946) || (b == 0x0947) || (b == 0x0948)
+		if (a == 0x0909): return (b == 0x0941)
+		if (a == 0x090f): return (b == 0x0945) || (b == 0x0946) || (b == 0x0947)
+		return 0
+	if (ttf_code_is(code, c"Beng")):
+		if (a == 0x0985): return (b == 0x09be)
+		if (a == 0x098b): return (b == 0x09c3)
+		if (a == 0x098c): return (b == 0x09e2)
+		return 0
+	if (ttf_code_is(code, c"Guru")):
+		if (a == 0x0a05): return (b == 0x0a3e) || (b == 0x0a48) || (b == 0x0a4c)
+		if (a == 0x0a72): return (b == 0x0a3f) || (b == 0x0a40) || (b == 0x0a47)
+		if (a == 0x0a73): return (b == 0x0a41) || (b == 0x0a42) || (b == 0x0a4b)
+		return 0
+	if (ttf_code_is(code, c"Gujr")):
+		if (a == 0x0a85): return (b == 0x0abe) || (b == 0x0ac5) || (b == 0x0ac7) || (b == 0x0ac8) || (b == 0x0ac9) || (b == 0x0acb) || (b == 0x0acc)
+		if (a == 0x0ac5): return (b == 0x0abe)
+		return 0
+	if (ttf_code_is(code, c"Orya")):
+		if (a == 0x0b05): return (b == 0x0b3e)
+		if (a == 0x0b0f): return (b == 0x0b57)
+		if (a == 0x0b13): return (b == 0x0b57)
+		return 0
+	if (ttf_code_is(code, c"Taml")):
+		if (a == 0x0b85): return (b == 0x0bc2)
+		return 0
+	if (ttf_code_is(code, c"Telu")):
+		if (a == 0x0c12): return (b == 0x0c4c) || (b == 0x0c55)
+		if (a == 0x0c3f): return (b == 0x0c55)
+		if (a == 0x0c46): return (b == 0x0c55)
+		if (a == 0x0c4a): return (b == 0x0c55)
+		return 0
+	if (ttf_code_is(code, c"Knda")):
+		if (a == 0x0c89): return (b == 0x0cbe)
+		if (a == 0x0c8b): return (b == 0x0cbe)
+		if (a == 0x0c92): return (b == 0x0ccc)
+		return 0
+	if (ttf_code_is(code, c"Mlym")):
+		if (a == 0x0d07): return (b == 0x0d57)
+		if (a == 0x0d09): return (b == 0x0d57)
+		if (a == 0x0d0e): return (b == 0x0d46)
+		if (a == 0x0d12): return (b == 0x0d3e) || (b == 0x0d57)
+		return 0
+	return 0
+
+# Shape count codepoints (clusters[i] is each one's source position) as
+# one run. rtl: 1 for a right-to-left run. script: a lib.unicode_text
+# script id, or -1 to guess from the text. language: an OpenType
+# language-system tag (otl_tag), or 0. Returns an owned buffer in visual
+# order; free it with otl_buffer_free.
+otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int rtl, int script, int language, int flags):
+	otl_buffer* b = otl_buffer_new(count + 4)
+	if (script < 0): script = ttf_guess_script(cps, count)
+	int space = ttf_glyph_id(f, ' ')
+	char[40] scripts
+	int script_count = ttf_script_tags(script, &scripts[0])
+	char* code = ut_script_code(script)
+	int indic = ttf_indic_applies(f, code, &scripts[0], script_count)
+	int32[16] parts
+	int vowel_last = -1
+	for i in range(count):
+		int pieces = 0
+		parts[0] = cps[i]
+		# HarfBuzz's Indic preprocessing: a dotted circle splits a vowel
+		# sequence that would read as another vowel (pairs do not overlap).
+		int split = indic && (i > 0) && (i - 1 > vowel_last) && ttf_indic_vowel_constraint(code, cps[i - 1], cps[i])
+		if (indic && (i > 1) && (i - 2 > vowel_last) && ttf_code_is(code, c"Deva") && (cps[i - 2] == 0x0930) && (cps[i - 1] == 0x094d) && (cps[i] == 0x0907)): split = 1
+		if (split):
+			vowel_last = i
+			int circle_cluster = clusters[i]
+			if ((b.count > 0) && ttf_continues_cluster(cps[i])): circle_cluster = b.glyphs[b.count - 1].cluster
+			otl_buffer_add(b, ttf_glyph_id(f, 0x25cc), 0x25cc, circle_cluster, ttf_mask_global)
+		if ((cps[i] & ~0x80) == 0x0e33):
+			ttf_thai_sara_am(f, b, cps[i], clusters[i])
+			continue
+		if (indic): pieces = ttf_indic_decompose(f, cps[i], &parts[0], 0)
+		else if (ttf_glyph_id(f, cps[i]) == 0): pieces = ttf_decompose_for(f, cps[i], &parts[0], 0)
+		if (pieces == 0):
+			parts[0] = cps[i]
+			pieces = 1
+		for p in range(pieces): ttf_shape_add(f, b, parts[p], clusters[i], rtl)
+	ttf_reorder_marks(b)
+	int hebrew_forms = ttf_code_is(code, c"Hebr") && !otl_has_feature(f, otl_gpos, &scripts[0], script_count, otl_tag(c"mark"))
+	if (indic): ttf_indic_recompose(f, b)
+	else: ttf_recompose(f, b, hebrew_forms)
+	otl_set_classes(f, b)
+	int[16] tags
+	int[16] masks
+	int n = 0
+	int joining = ttf_is_joining_script(code) && !indic
+	if (indic):
+		ttf_indic_plan* plan = ttf_indic_plan_new(f, ttf_indic_script(code), &scripts[0], script_count, language)
+		ttf_indic_shape(plan, b, (flags & ttf_shape_no_liga) == 0)
+		ttf_indic_plan_free(plan)
+	else: ttf_shape_gsub(f, b, &scripts[0], script_count, language, joining, rtl, flags)
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
 		g.x_advance = ttf_advance_units(f, g.gid)
+		if ((g.gid == space) && (g.cp >= 0) && (g.cp != ' ') && (ttf_glyph_id(f, g.cp) == 0) && (ttf_space_fallback(g.cp) != 0)): g.x_advance = ttf_space_fallback_advance(f, ttf_space_fallback(g.cp), g.x_advance)
 		g.y_advance = 0
 		g.x_offset = 0
 		g.y_offset = 0
@@ -566,8 +721,8 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 		g.attach_kind = 0
 	n = 0
 	if ((flags & ttf_shape_no_kern) == 0): ttf_stage1(&tags[0], &masks[0], otl_tag(c"kern"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mark"), ttf_mask_global, &n)
-	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mkmk"), ttf_mask_global, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mark"), ttf_mask_global | otl_mask_manual_joiners, &n)
+	ttf_stage1(&tags[0], &masks[0], otl_tag(c"mkmk"), ttf_mask_global | otl_mask_manual_joiners, &n)
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"curs"), ttf_mask_global, &n)
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"dist"), ttf_mask_global, &n)
 	ttf_stage1(&tags[0], &masks[0], otl_tag(c"abvm"), ttf_mask_global, &n)
@@ -585,12 +740,13 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 	# placement, except in Indic and Thai text, whose marks the font
 	# designs in place. GPOS counts as unusable for Hebrew unless it has
 	# the 'hebr' script (a HarfBuzz rule for broken legacy fonts).
-	# First GDEF marks lose their width (the Indic shaper zeroes none).
+	# First GDEF marks lose their width (the Indic shaper zeroes none);
+	# without GDEF the classes come from the text (nonspacing marks).
 	# Without GPOS, an LTR mark keeps its ink where it was by moving back
 	# by the width it loses.
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if (!indic && (g.props == otl_class_mark) && g.unicode_mark):
+		if (!indic && (g.props == otl_class_mark)):
 			if (!positioned && !rtl): g.x_offset = g.x_offset - g.x_advance
 			g.x_advance = 0
 	if (!positioned && !indic && !ttf_code_is(code, c"Thai") && !ttf_code_is(code, c"Laoo")): ttf_fallback_marks(f, b, rtl)
@@ -604,170 +760,3 @@ otl_buffer* ttf_shape(ttf_font* f, int32* cps, int32* clusters, int count, int r
 	otl_position_finish(b, rtl)
 	if (rtl): otl_buffer_reverse(b)
 	return b
-
-# ---- Devanagari --------------------------------------------------------
-
-# Indic character classes for the Devanagari block (U+0900..U+097F).
-const int ttf_indic_other = 0
-const int ttf_indic_consonant = 1
-const int ttf_indic_halant = 2
-const int ttf_indic_nukta = 3
-const int ttf_indic_matra_pre = 4
-const int ttf_indic_matra = 5
-const int ttf_indic_vowel = 6
-const int ttf_indic_mark = 7
-const int ttf_indic_ra = 8
-const int ttf_indic_zwj = 9
-
-int ttf_indic_class(int cp):
-	if (cp == 0x200d): return ttf_indic_zwj
-	if ((cp < 0x0900) || (cp > 0x097f)): return ttf_indic_other
-	if (cp == 0x0930): return ttf_indic_ra
-	if (cp == 0x094d): return ttf_indic_halant
-	if (cp == 0x093c): return ttf_indic_nukta
-	if (cp == 0x093f): return ttf_indic_matra_pre
-	if (((cp >= 0x093e) && (cp <= 0x094c)) || ((cp >= 0x094e) && (cp <= 0x094f)) || ((cp >= 0x0955) && (cp <= 0x0957)) || ((cp >= 0x0962) && (cp <= 0x0963)) || (cp == 0x093a) || (cp == 0x093b)): return ttf_indic_matra
-	if (((cp >= 0x0915) && (cp <= 0x0939)) || ((cp >= 0x0958) && (cp <= 0x095f)) || ((cp >= 0x0978) && (cp <= 0x097f))): return ttf_indic_consonant
-	if (((cp >= 0x0904) && (cp <= 0x0914)) || ((cp >= 0x0960) && (cp <= 0x0961)) || ((cp >= 0x0972) && (cp <= 0x0977))): return ttf_indic_vowel
-	if ((cp >= 0x0900) && (cp <= 0x0903)): return ttf_indic_mark
-	return ttf_indic_other
-
-int ttf_indic_glyph_class(otl_glyph* g):
-	if (g.cp < 0): return ttf_indic_other
-	return ttf_indic_class(g.cp)
-
-int ttf_indic_is_consonant(int cls):
-	return (cls == ttf_indic_consonant) || (cls == ttf_indic_ra)
-
-# Devanagari syllables: (Ra H)? (C N? H)* C N? (matras, marks)* — the
-# initial Ra+halant becomes a reph (moved after the base and its
-# post-base matras) and a pre-base matra (U+093F) moves before the
-# consonant cluster. Then the dev2 basic features apply per syllable
-# position masks and the presentation features globally.
-int ttf_shape_indic(ttf_font* f, otl_buffer* b, char* scripts, int script_count, int language):
-	# Reph and rakar need the font's forms for them (HarfBuzz asks
-	# whether rphf/blwf would substitute; the feature's presence is close).
-	int can_reph = otl_has_feature(f, otl_gsub, scripts, script_count, otl_tag(c"rphf"))
-	int can_rakar = otl_has_feature(f, otl_gsub, scripts, script_count, otl_tag(c"blwf"))
-	int can_half = otl_has_feature(f, otl_gsub, scripts, script_count, otl_tag(c"half"))
-	int syllable = 0
-	int i = 0
-	while (i < b.count):
-		int cls = ttf_indic_glyph_class(&b.glyphs[i])
-		if (!ttf_indic_is_consonant(cls)):
-			i = i + 1
-			continue
-		int start = i
-		int has_reph = 0
-		if (can_reph && (cls == ttf_indic_ra) && (i + 2 < b.count) && (ttf_indic_glyph_class(&b.glyphs[i + 1]) == ttf_indic_halant) && ttf_indic_is_consonant(ttf_indic_glyph_class(&b.glyphs[i + 2]))):
-			has_reph = 1
-		int at = i
-		int base = i
-		while (at < b.count):
-			int c = ttf_indic_glyph_class(&b.glyphs[at])
-			if (!ttf_indic_is_consonant(c)): break
-			base = at
-			at = at + 1
-			if ((at < b.count) && (ttf_indic_glyph_class(&b.glyphs[at]) == ttf_indic_nukta)): at = at + 1
-			if ((at < b.count) && (ttf_indic_glyph_class(&b.glyphs[at]) == ttf_indic_halant)):
-				int after = at + 1
-				if ((after < b.count) && (ttf_indic_glyph_class(&b.glyphs[after]) == ttf_indic_zwj)): after = after + 1
-				if ((after < b.count) && ttf_indic_is_consonant(ttf_indic_glyph_class(&b.glyphs[after]))):
-					at = after
-					continue
-				at = at + 1
-				break
-			break
-		int end = at
-		while ((end < b.count) && ((ttf_indic_glyph_class(&b.glyphs[end]) == ttf_indic_matra) || (ttf_indic_glyph_class(&b.glyphs[end]) == ttf_indic_matra_pre) || (ttf_indic_glyph_class(&b.glyphs[end]) == ttf_indic_mark) || (ttf_indic_glyph_class(&b.glyphs[end]) == ttf_indic_nukta) || (ttf_indic_glyph_class(&b.glyphs[end]) == ttf_indic_halant))): end = end + 1
-		# A final Ra after a halant takes its below-base form (rakar), so
-		# the base is the consonant before it.
-		while (can_rakar && (base > start + 1) && (ttf_indic_glyph_class(&b.glyphs[base]) == ttf_indic_ra) && (ttf_indic_glyph_class(&b.glyphs[base - 1]) == ttf_indic_halant)):
-			int previous = base - 2
-			while ((previous > start) && !ttf_indic_is_consonant(ttf_indic_glyph_class(&b.glyphs[previous]))): previous = previous - 1
-			base = previous
-		if (has_reph && (base == start)): has_reph = 0
-		# Masks: half forms for consonants before the base, below-base
-		# forms after it, reph on the initial Ra+halant.
-		syllable = syllable + 1
-		for k in range(start, end):
-			otl_glyph* g = &b.glyphs[k]
-			g.syllable = syllable
-			# Pre-base consonants may take below-base forms too (new-spec
-			# Devanagari applies blwf before and after the base).
-			if (k < base): g.mask = g.mask | ttf_mask_half | ttf_mask_blwf
-			if (k > base): g.mask = g.mask | ttf_mask_blwf | ttf_mask_pstf
-		if (has_reph):
-			b.glyphs[start].mask = (b.glyphs[start].mask | ttf_mask_rphf) & ~ttf_mask_half
-			b.glyphs[start + 1].mask = (b.glyphs[start + 1].mask | ttf_mask_rphf) & ~ttf_mask_half
-		# Pre-base matra to the syllable start (after a reph's Ra+halant
-		# keeps its logical place until rphf forms the reph).
-		otl_glyph tmp
-		for k in range(base + 1, end):
-			if (ttf_indic_glyph_class(&b.glyphs[k]) == ttf_indic_matra_pre):
-				otl_glyph_copy(&tmp, &b.glyphs[k])
-				int m = k
-				int target = start
-				if (has_reph): target = start + 2
-				# Without half forms a halant before the base stays visible,
-				# and the matra goes after the last one (HarfBuzz's final
-				# reordering).
-				if (!can_half):
-					for x in range(target, base):
-						if (ttf_indic_glyph_class(&b.glyphs[x]) == ttf_indic_halant): target = x + 1
-				while (m > target):
-					otl_glyph_copy(&b.glyphs[m], &b.glyphs[m - 1])
-					m = m - 1
-				otl_glyph_copy(&b.glyphs[target], &tmp)
-				# The matra and the consonants it moved over, through the base,
-				# share one cluster, as in HarfBuzz.
-				int through = min(k, base + 1)
-				for x in range(target + 1, through + 1):
-					if (b.glyphs[x].cluster < b.glyphs[target].cluster): b.glyphs[target].cluster = b.glyphs[x].cluster
-				for x in range(target + 1, through + 1): b.glyphs[x].cluster = b.glyphs[target].cluster
-		i = end
-	int[16] tags
-	int[16] masks
-	char* basic = c"nuktakhnrphfrkrfblwfhalfvatucjct"
-	int[8] basic_masks
-	basic_masks[0] = ttf_mask_global
-	basic_masks[1] = ttf_mask_global
-	basic_masks[2] = ttf_mask_rphf
-	basic_masks[3] = ttf_mask_global
-	basic_masks[4] = ttf_mask_blwf
-	basic_masks[5] = ttf_mask_half
-	basic_masks[6] = ttf_mask_global
-	basic_masks[7] = ttf_mask_global
-	for k in range(8):
-		tags[0] = otl_tag(&basic[k * 4])
-		masks[0] = basic_masks[k]
-		otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], 1, 0)
-	# Move a formed reph after the base and its post-base matras.
-	i = 0
-	while (i < b.count):
-		otl_glyph* g = &b.glyphs[i]
-		if (((g.mask & ttf_mask_rphf) == 0) || (g.cp != 0x0930)):
-			i = i + 1
-			continue
-		int syllable_id = g.syllable
-		int j = i + 1
-		while ((j < b.count) && (syllable_id != 0) && (b.glyphs[j].syllable == syllable_id)): j = j + 1
-		int consumed = (i + 1 >= b.count) || (b.glyphs[i + 1].cp != 0x094d)
-		if (consumed && (j - 1 > i)):
-			otl_glyph tmp
-			otl_glyph_copy(&tmp, g)
-			tmp.mask = tmp.mask & ~ttf_mask_rphf
-			for k in range(i, j - 1): otl_glyph_copy(&b.glyphs[k], &b.glyphs[k + 1])
-			otl_glyph_copy(&b.glyphs[j - 1], &tmp)
-			int cluster = b.glyphs[i].cluster
-			for k in range(i, j):
-				if (b.glyphs[k].cluster < cluster): cluster = b.glyphs[k].cluster
-			for k in range(i, j): b.glyphs[k].cluster = cluster
-		else: b.glyphs[i].mask = b.glyphs[i].mask & ~ttf_mask_rphf
-		i = j
-	char* presentation = c"presabvsblwspstshaln"
-	for k in range(5):
-		tags[k] = otl_tag(&presentation[k * 4])
-		masks[k] = ttf_mask_global
-	otl_apply_stage(f, b, otl_gsub, scripts, script_count, language, &tags[0], &masks[0], 5, 0)
-	return 1

@@ -150,6 +150,54 @@ int ut_category(int cp):
 int ut_combining_class(int cp):
 	return ut_range_value(utd_ccc(), utd_ccc_count(), cp)
 
+# Indic shaping categories (HarfBuzz's indic machine categories, from
+# Indic_Syllabic_Category with its overrides; SMPst is 19 here) and
+# positions (its ot_position_t), for the Indic blocks U+0900..U+0D7F and
+# the shared characters their syllables use. Everything else is X / END.
+const int ut_icat_x = 0
+const int ut_icat_c = 1
+const int ut_icat_v = 2
+const int ut_icat_n = 3
+const int ut_icat_h = 4
+const int ut_icat_zwnj = 5
+const int ut_icat_zwj = 6
+const int ut_icat_m = 7
+const int ut_icat_sm = 8
+const int ut_icat_a = 9
+const int ut_icat_placeholder = 10
+const int ut_icat_dottedcircle = 11
+const int ut_icat_rs = 12
+const int ut_icat_mpst = 13
+const int ut_icat_repha = 14
+const int ut_icat_ra = 15
+const int ut_icat_cm = 16
+const int ut_icat_symbol = 17
+const int ut_icat_cs = 18
+const int ut_icat_smpst = 19
+
+const int ut_ipos_start = 0
+const int ut_ipos_ra_to_become_reph = 1
+const int ut_ipos_pre_m = 2
+const int ut_ipos_pre_c = 3
+const int ut_ipos_base_c = 4
+const int ut_ipos_after_main = 5
+const int ut_ipos_above_c = 6
+const int ut_ipos_before_sub = 7
+const int ut_ipos_below_c = 8
+const int ut_ipos_after_sub = 9
+const int ut_ipos_before_post = 10
+const int ut_ipos_post_c = 11
+const int ut_ipos_after_post = 12
+const int ut_ipos_smvd = 13
+const int ut_ipos_end = 14
+
+int ut_indic_category(int cp):
+	return ut_range_value(utd_indic_cat(), utd_indic_cat_count(), cp)
+
+int ut_indic_position(int cp):
+	if ((cp < 0) || (cp > 1114111)): return ut_ipos_end
+	return ut_range_value(utd_indic_pos(), utd_indic_pos_count(), cp)
+
 # A nonspacing or enclosing mark (Mn, Me): drawn over or under its base.
 int ut_is_nonspacing_mark(int cp):
 	int category = ut_category(cp)

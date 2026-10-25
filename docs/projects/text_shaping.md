@@ -40,17 +40,24 @@ the same rasterizer and cache.
 
 `ttf_shape(font, cps, clusters, count, rtl, script, language, flags)` returns an
 `otl_buffer` of positioned glyphs in visual order, in font units. It follows
-HarfBuzz's default, Arabic, Hebrew, Indic (Devanagari) and Thai/Lao shapers:
+HarfBuzz's default, Arabic, Hebrew, Indic and Thai/Lao shapers:
 
 - **Normalization** against the font's cmap (decompose, reorder by modified
   combining class, recompose), with default ignorables hidden and RTL mirroring.
 - **GSUB** types 1-8 (`lib.ttf_layout`) with GDEF classes, mark attachment
   classes and mark filtering sets, lookup flags, and script/language/feature
   selection: `ccmp`/`locl`, Arabic `isol`/`fina`/`medi`/`init` from Unicode
-  joining types, `rlig`/`rclt`/`calt`/`liga`/`clig`, and for Devanagari the
-  `nukt`/`akhn`/`rphf`/`rkrf`/`blwf`/`half`/`vatu`/`cjct` basic and
-  `pres`/`abvs`/`blws`/`psts`/`haln` presentation features with syllable
-  analysis and reph and pre-base matra reordering.
+  joining types, `rlig`/`rclt`/`calt`/`liga`/`clig`, and for the nine Indic
+  scripts (Devanagari, Bengali, Gurmukhi, Gujarati, Oriya, Tamil, Telugu,
+  Kannada, Malayalam; `lib.ttf_indic`, new `dev2`-style and old `deva`-style
+  tags) HarfBuzz's Indic shaper: its syllable machine and per-script
+  configuration (virama, base position, reph position and mode, `blwf` mode),
+  Indic normalization and split matras, vowel-constraint and broken-cluster
+  dotted circles, initial reordering, the `nukt`/`akhn`/`rphf`/`rkrf`/`pref`/
+  `blwf`/`abvf`/`half`/`pstf`/`vatu`/`cjct` stages with their masks and
+  joiner rules, final reordering (reph, pre-base matras, pre-base-reordering
+  `pref` consonants), and the `init`/`pres`/`abvs`/`blws`/`psts`/`haln`
+  presentation features.
 - **GPOS** types 1-9: `kern`, mark-to-base, mark-to-ligature, mark-to-mark,
   cursive attachment, `dist`, `abvm`/`blwm`.
 - **Fallbacks** for fonts without the tables: Arabic presentation forms
@@ -59,9 +66,14 @@ HarfBuzz's default, Arabic, Hebrew, Indic (Devanagari) and Thai/Lao shapers:
   combining-class mark placement.
 
 `ttf_shape_no_liga` and `ttf_shape_no_kern` flags turn off ligatures and
-kerning. Other complex scripts (Bengali and the other Indic scripts,
-Myanmar, Khmer, the Universal Shaping Engine scripts) shape through the default
-shaper: their GSUB/GPOS features apply, but without script-specific reordering.
+kerning. Other complex scripts (Sinhala, Myanmar, Khmer, the Universal Shaping
+Engine scripts, and Indic text in fonts with only `dev3`-style USE tags) shape
+through the default shaper: their GSUB/GPOS features apply, but without
+script-specific reordering. Against the full Noto Sans fonts the Indic shaper
+matches HarfBuzz 15 on a word-and-conjunct corpus (about 2,000-2,600 lines per
+script) and on random mark/joiner stress text; the known differences are a
+syllable longer than HarfBuzz's buffer window and a precomposed letter that a
+mixed Latin run sends through the default shaper's normalizer.
 
 `tools/shape_dump.w` prints a run in `hb-shape` format and
 `tools/shape_compare_hb.py` diffs it against HarfBuzz 15 (uharfbuzz). Across 62

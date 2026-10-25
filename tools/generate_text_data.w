@@ -16,6 +16,10 @@
 #                             CompositionExclusions.txt for composition)
 #                             and the <isolated>/<final>/<initial>/<medial>
 #                             Arabic presentation forms (shaping fallback)
+#   IndicSyllabicCategory.txt Indic_Syllabic_Category and
+#   IndicPositionalCategory.txt  Indic_Positional_Category, mapped to
+#                             HarfBuzz's Indic shaper categories and
+#                             positions (lib/ttf_indic.w)
 # The files are unmodified copies of the unicodetools 15.0.0 data
 # (unicodetools/data/ucd/15.0.0/, DerivedBidiClass.txt from extracted/).
 #
@@ -334,6 +338,211 @@ char* gen_load_scripts(list[char*] codes):
 	return table
 
 
+# ---- Indic syllabic categories ----------------------------------------
+# HarfBuzz's Indic shaper table (gen-indic-table.py), restricted to the
+# nine Indic blocks the portable shaper handles plus the shared blocks
+# its syllables use. Category values are lib/unicode_text.w's ut_icat_*
+# numbers and positions its ut_ipos_* numbers.
+
+const int gen_icat_x = 0
+const int gen_icat_c = 1
+const int gen_icat_v = 2
+const int gen_icat_n = 3
+const int gen_icat_h = 4
+const int gen_icat_zwnj = 5
+const int gen_icat_zwj = 6
+const int gen_icat_m = 7
+const int gen_icat_sm = 8
+const int gen_icat_a = 9
+const int gen_icat_placeholder = 10
+const int gen_icat_dottedcircle = 11
+const int gen_icat_rs = 12
+const int gen_icat_mpst = 13
+const int gen_icat_repha = 14
+const int gen_icat_ra = 15
+const int gen_icat_cm = 16
+const int gen_icat_symbol = 17
+const int gen_icat_cs = 18
+const int gen_icat_smpst = 19
+
+const int gen_ipos_pre_m = 2
+const int gen_ipos_pre_c = 3
+const int gen_ipos_base_c = 4
+const int gen_ipos_after_main = 5
+const int gen_ipos_above_c = 6
+const int gen_ipos_before_sub = 7
+const int gen_ipos_below_c = 8
+const int gen_ipos_after_sub = 9
+const int gen_ipos_post_c = 11
+const int gen_ipos_after_post = 12
+const int gen_ipos_smvd = 13
+const int gen_ipos_end = 14
+
+
+# Indic_Syllabic_Category value -> category (HarfBuzz's category_map),
+# or -1 for an unknown name.
+int gen_indic_category(char* name):
+	if (gen_name_index(c"Other Consonant_Prefixed Modifying_Letter Tone_Letter", name) >= 0): return gen_icat_x
+	if (gen_name_index(c"Consonant Consonant_Dead Consonant_Head_Letter Consonant_Initial_Postfixed", name) >= 0): return gen_icat_c
+	if (gen_name_index(c"Consonant_Final Consonant_Medial Consonant_Subjoined Consonant_Succeeding_Repha", name) >= 0): return gen_icat_cm
+	if (gen_name_index(c"Bindu Gemination_Mark Syllable_Modifier Visarga", name) >= 0): return gen_icat_sm
+	if (gen_name_index(c"Consonant_Killer Pure_Killer Vowel_Dependent", name) >= 0): return gen_icat_m
+	if (gen_name_index(c"Brahmi_Joining_Number Consonant_Placeholder Number Number_Joiner", name) >= 0): return gen_icat_placeholder
+	if (gen_name_index(c"Vowel Vowel_Independent", name) >= 0): return gen_icat_v
+	if (gen_name_index(c"Virama Invisible_Stacker", name) >= 0): return gen_icat_h
+	if (gen_name_index(c"Nukta Tone_Mark", name) >= 0): return gen_icat_n
+	if (strcmp(name, c"Avagraha") == 0): return gen_icat_symbol
+	if (strcmp(name, c"Cantillation_Mark") == 0): return gen_icat_a
+	if (strcmp(name, c"Consonant_Preceding_Repha") == 0): return gen_icat_repha
+	if (strcmp(name, c"Consonant_With_Stacker") == 0): return gen_icat_cs
+	if (strcmp(name, c"Joiner") == 0): return gen_icat_zwj
+	if (strcmp(name, c"Non_Joiner") == 0): return gen_icat_zwnj
+	if (strcmp(name, c"Register_Shifter") == 0): return gen_icat_rs
+	return -1
+
+
+# Indic_Positional_Category value -> position (HarfBuzz's position_map:
+# split matras take the position of their last part), or -1.
+int gen_indic_position(char* name):
+	if (strcmp(name, c"Not_Applicable") == 0): return gen_ipos_end
+	if (strcmp(name, c"Left") == 0): return gen_ipos_pre_c
+	if (gen_name_index(c"Top Top_And_Left", name) >= 0): return gen_ipos_above_c
+	if (gen_name_index(c"Bottom Top_And_Bottom Top_And_Bottom_And_Left", name) >= 0): return gen_ipos_below_c
+	if (gen_name_index(c"Right Bottom_And_Right Left_And_Right Top_And_Bottom_And_Right Top_And_Left_And_Right Top_And_Right", name) >= 0): return gen_ipos_post_c
+	if (strcmp(name, c"Overstruck") == 0): return gen_ipos_after_main
+	if (strcmp(name, c"Visual_order_left") == 0): return gen_ipos_pre_m
+	return -1
+
+
+# The block HarfBuzz's table covers cp in: 1..9 for Devanagari, Bengali,
+# Gurmukhi, Gujarati, Oriya, Tamil, Telugu, Kannada, Malayalam; 10 for
+# the shared blocks (Latin, Vedic Extensions, punctuation, super- and
+# subscripts, Devanagari Extended) and the dotted-circle single; 0
+# outside.
+int gen_indic_block(int cp):
+	if ((cp >= 0x0900) && (cp <= 0x0d7f)): return ((cp - 0x0900) >> 7) + 1
+	if ((cp <= 0x00ff) || (cp == 0x25cc)): return 10
+	if ((cp >= 0x1cd0) && (cp <= 0x1cff)): return 10
+	if ((cp >= 0x2000) && (cp <= 0x209f)): return 10
+	if ((cp >= 0xa8e0) && (cp <= 0xa8ff)): return 10
+	return 0
+
+
+# Matra positions by block (HarfBuzz's matra_pos_* rules).
+int gen_indic_matra_position(int cp, int position, int block):
+	if (position == gen_ipos_pre_c): return gen_ipos_pre_m
+	if (position == gen_ipos_post_c):
+		if (block == 1): return gen_ipos_after_sub
+		if ((block >= 2) && (block <= 6)): return gen_ipos_after_post
+		if (block == 7):
+			if (cp <= 0x0c42): return gen_ipos_before_sub
+			return gen_ipos_after_sub
+		if (block == 8):
+			if ((cp < 0x0cc3) || (cp > 0x0cd6)): return gen_ipos_before_sub
+			return gen_ipos_after_sub
+		if (block == 9): return gen_ipos_after_post
+		return gen_ipos_after_sub
+	if (position == gen_ipos_above_c):
+		if (block == 3): return gen_ipos_after_post
+		if (block == 5): return gen_ipos_after_main
+		if ((block == 7) || (block == 8)): return gen_ipos_before_sub
+		return gen_ipos_after_sub
+	if (position == gen_ipos_below_c):
+		if ((block == 3) || (block == 4) || (block == 6) || (block == 9)): return gen_ipos_after_post
+		if ((block == 7) || (block == 8)): return gen_ipos_before_sub
+		return gen_ipos_after_sub
+	return position
+
+
+# One Indic property file into table (255 = unlisted), for the covered
+# blocks only.
+void gen_indic_file(char* path, char* table, int positional):
+	wstream* src = gen_open(path)
+	string_builder* line = string_new()
+	list[char*] f = new list[char*]
+	int first = 0
+	int last = 0
+	while (stream_read_line(src, line)):
+		gen_split(line.data, f)
+		if ((f.length < 2) || (f[0][0] == 0)): continue
+		int value = 0
+		if (positional): value = gen_indic_position(f[1])
+		else: value = gen_indic_category(f[1])
+		gen_parse_range(f[0], &first, &last)
+		for cp in range(first, last + 1):
+			if (gen_indic_block(cp) == 0): continue
+			if (value < 0): gen_fail(c"unknown Indic category", f[1])
+			table[cp] = value
+	stream_close(src)
+
+
+# One of HarfBuzz's category overrides; an otherwise unlisted codepoint
+# starts at position END.
+void gen_indic_override(char* cat, char* pos, int cp, int value):
+	if ((cat[cp] & 255) == 255): pos[cp] = gen_ipos_end
+	cat[cp] = value
+
+
+# IndicSyllabicCategory.txt and IndicPositionalCategory.txt -> the
+# category and position tables, built as gen-indic-table.py builds them.
+void gen_load_indic(char* cat, char* pos):
+	char* syllabic = gen_table(255)
+	char* positional = gen_table(255)
+	gen_indic_file(c"tools/unicode/IndicSyllabicCategory.txt", syllabic, 0)
+	gen_indic_file(c"tools/unicode/IndicPositionalCategory.txt", positional, 1)
+	for cp in range(gen_max_cp + 1):
+		cat[cp] = 255
+		pos[cp] = gen_ipos_end
+		int s = syllabic[cp] & 255
+		int p = positional[cp] & 255
+		if ((s == 255) && (p == 255)): continue
+		if (s == 255): s = gen_icat_x
+		if (p == 255): p = gen_ipos_end
+		if ((s == gen_icat_sm) && (p == gen_ipos_end)): s = gen_icat_smpst
+		cat[cp] = s
+		pos[cp] = p
+	free(syllabic)
+	free(positional)
+	for k in range(9): gen_indic_override(cat, pos, 0x0930 + k * 128, gen_icat_ra)
+	gen_indic_override(cat, pos, 0x09f0, gen_icat_ra)
+	gen_indic_override(cat, pos, 0x0953, gen_icat_sm)
+	gen_indic_override(cat, pos, 0x0954, gen_icat_sm)
+	gen_indic_override(cat, pos, 0x0a40, gen_icat_mpst)
+	gen_indic_override(cat, pos, 0x0a72, gen_icat_c)
+	gen_indic_override(cat, pos, 0x0a73, gen_icat_c)
+	for cp in range(0x1ce2, 0x1ce9): gen_indic_override(cat, pos, cp, gen_icat_a)
+	gen_indic_override(cat, pos, 0x1ced, gen_icat_a)
+	for cp in range(0xa8f2, 0xa8f8): gen_indic_override(cat, pos, cp, gen_icat_symbol)
+	for cp in range(0x1ce9, 0x1ced): gen_indic_override(cat, pos, cp, gen_icat_symbol)
+	for cp in range(0x1cee, 0x1cf2): gen_indic_override(cat, pos, cp, gen_icat_symbol)
+	gen_indic_override(cat, pos, 0x0a51, gen_icat_m)
+	for cp in range(0x11301, 0x11304): gen_indic_override(cat, pos, cp, gen_icat_sm)
+	gen_indic_override(cat, pos, 0x1133b, gen_icat_n)
+	gen_indic_override(cat, pos, 0x1133c, gen_icat_n)
+	gen_indic_override(cat, pos, 0x0afb, gen_icat_n)
+	gen_indic_override(cat, pos, 0x0b55, gen_icat_n)
+	gen_indic_override(cat, pos, 0x09fc, gen_icat_placeholder)
+	gen_indic_override(cat, pos, 0x0c80, gen_icat_placeholder)
+	gen_indic_override(cat, pos, 0x0d04, gen_icat_placeholder)
+	gen_indic_override(cat, pos, 0x25cc, gen_icat_dottedcircle)
+	gen_indic_override(cat, pos, 0x2015, gen_icat_placeholder)
+	gen_indic_override(cat, pos, 0x2022, gen_icat_placeholder)
+	for cp in range(0x25fb, 0x25ff): gen_indic_override(cat, pos, cp, gen_icat_placeholder)
+	for cp in range(gen_max_cp + 1):
+		int c = cat[cp] & 255
+		if (c == 255):
+			cat[cp] = gen_icat_x
+			continue
+		int positioned = (c == gen_icat_cm) || (c == gen_icat_sm) || (c == gen_icat_rs) || (c == gen_icat_h) || (c == gen_icat_m) || (c == gen_icat_mpst)
+		if (!positioned): pos[cp] = gen_ipos_end
+		int consonant = (c == gen_icat_c) || (c == gen_icat_cs) || (c == gen_icat_ra) || (c == gen_icat_cm) || (c == gen_icat_v) || (c == gen_icat_placeholder) || (c == gen_icat_dottedcircle)
+		if (consonant): pos[cp] = gen_ipos_base_c
+		else if ((c == gen_icat_m) || (c == gen_icat_mpst)): pos[cp] = gen_indic_matra_position(cp, pos[cp] & 255, gen_indic_block(cp))
+		else if ((c == gen_icat_sm) || (c == gen_icat_smpst) || (c == gen_icat_a) || (c == gen_icat_symbol)): pos[cp] = gen_ipos_smvd
+	pos[0x0a51] = gen_ipos_below_c
+	pos[0x0b01] = gen_ipos_before_sub
+
+
 void gen_hex_byte(string_builder* out, int value):
 	value = value & 255
 	string_append_char(out, 92)
@@ -503,7 +712,8 @@ int main(int argc, int argv):
 	stream_write_line(out, c"# Range tables: 4-byte entries (24-bit big-endian start, value byte).")
 	stream_write_line(out, c"# Bidi values are unicode_bidi_* numbers (L=1 .. PDI=23); joining values")
 	stream_write_line(out, c"# are U=0 T=1 R=2 L=3 D=4 C=5; script values index utd_script_codes;")
-	stream_write_line(out, c"# category values are unicode_cat_* numbers (Cn=0 .. Co=29).")
+	stream_write_line(out, c"# category values are unicode_cat_* numbers (Cn=0 .. Co=29); Indic")
+	stream_write_line(out, c"# categories and positions are ut_icat_* and ut_ipos_* numbers.")
 	gen_ranges(out, c"utd_bidi", bidi)
 	gen_ranges(out, c"utd_joining", joining)
 	gen_ranges(out, c"utd_script", scripts)
@@ -516,6 +726,11 @@ int main(int argc, int argv):
 	for code in codes: string_append(names, code)
 	gen_int_function(out, c"utd_script_code_count", codes.length)
 	gen_function(out, c"utd_script_codes", names)
+	char* indic_cat = gen_table(0)
+	char* indic_pos = gen_table(0)
+	gen_load_indic(indic_cat, indic_pos)
+	gen_ranges(out, c"utd_indic_cat", indic_cat)
+	gen_ranges(out, c"utd_indic_pos", indic_pos)
 	gen_pairs(out, c"utd_brackets", c"tools/unicode/BidiBrackets.txt", 1)
 	gen_pairs(out, c"utd_mirrors", c"tools/unicode/BidiMirroring.txt", 0)
 	stream_close(out)

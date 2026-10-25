@@ -12,6 +12,14 @@ applies, so the files stay small.
 | `NotoSansArabic-subset.ttf` | `NotoSansArabic-Regular.ttf` 2.013 |
 | `NotoSansDevanagari-subset.ttf` | `NotoSansDevanagari-Regular.ttf` 2.007 |
 | `NotoSansHebrew-subset.ttf` | `NotoSansHebrew-Regular.ttf` 3.001 |
+| `NotoSansBengali-subset.ttf` | `NotoSansBengali-Regular.ttf` 3.011 |
+| `NotoSansGurmukhi-subset.ttf` | `NotoSansGurmukhi-Regular.ttf` 2.004 |
+| `NotoSansGujarati-subset.ttf` | `NotoSansGujarati-Regular.ttf` 2.106 |
+| `NotoSansOriya-subset.ttf` | `NotoSansOriya-Regular.ttf` 2.007 |
+| `NotoSansTamil-subset.ttf` | `NotoSansTamil-Regular.ttf` 2.004 |
+| `NotoSansTelugu-subset.ttf` | `NotoSansTelugu-Regular.ttf` 2.005 |
+| `NotoSansKannada-subset.ttf` | `NotoSansKannada-Regular.ttf` 2.006 |
+| `NotoSansMalayalam-subset.ttf` | `NotoSansMalayalam-Regular.ttf` 2.104 |
 | `NotoSansThai-subset.ttf` | `NotoSansThai-Regular.ttf` 2.002 |
 | `NotoSans-cff-subset.otf` | `NotoSans-Regular.otf` (unhinted OTF), CFF with subroutines |
 | `NotoSansJP-subset.otf` | noto-cjk `Sans/SubsetOTF/JP/NotoSansJP-Regular.otf`, CID-keyed CFF |
@@ -34,6 +42,21 @@ pyftsubset NotoSansArabic-Regular.ttf --text-file=arabic-lines.txt \
 
 (The Hebrew subset also keeps U+FB1D..U+FB4F; NotoSans keeps only
 ccmp, locl, rvrn, liga, clig, calt, rclt, kern, mark, mkmk and dist.)
+The eight Indic subsets other than Devanagari keep only the glyphs
+HarfBuzz passes through while shaping their golden lines with the full
+font (every intermediate GSUB buffer, collected with a buffer message
+function), plus U+25CC, ZWNJ and ZWJ, with no layout closure, so they
+stay 8-17 KB each and still shape those lines exactly as the full
+font does:
+
+```sh
+pyftsubset NotoSansTelugu-Regular.ttf --text-file=telugu-lines.txt \
+  --glyphs-file=telugu-glyphs.txt --unicodes=25CC,200C,200D \
+  --no-layout-closure --glyph-names --no-hinting --notdef-outline \
+  --name-IDs='*' --layout-features=ccmp,locl,rvrn,nukt,akhn,rphf,rkrf,pref,blwf,abvf,half,pstf,vatu,cjct,init,pres,abvs,blws,psts,haln,rlig,rclt,calt,liga,clig,kern,mark,mkmk,curs,dist,abvm,blwm \
+  --output-file=NotoSansTelugu-subset.ttf
+```
+
 The text is the matching lines of `tools/shape_golden_hb.py`; the two
 OTF subsets keep hinting and subroutines (no `--no-hinting`) so the CFF
 interpreter meets hintmask and callsubr/callgsubr. After replacing a

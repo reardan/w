@@ -23,6 +23,7 @@ https://learn.microsoft.com/typography/opentype/spec/chapter2
 */
 import lib.lib
 import lib.ttf
+import lib.unicode_text
 
 const int otl_class_base = 1
 const int otl_class_ligature = 2
@@ -34,8 +35,29 @@ const int otl_gpos = 1
 
 const int otl_attach_mark = 1
 const int otl_attach_cursive = 2
+# A GPOS mark attachment: its y offset is final when made (see otl_attach).
+const int otl_attach_gpos_mark = 3
 
 const int otl_max_nesting = 8
+
+# otl_glyph.subst bits (HarfBuzz's glyph props): any substitution, a
+# ligature of several glyphs, an output of a multiple substitution.
+const int otl_subst_substituted = 1
+const int otl_subst_ligated = 2
+const int otl_subst_multiplied = 4
+
+# Flags carried in the high bits of a stage's feature masks. hb selects
+# HarfBuzz's matching rules: input glyphs must carry the feature mask, a
+# default-ignorable glyph is skipped only when it does not match, and ZWNJ
+# is skipped in backtrack/lookahead context (input ZWJ too, unless
+# manual_joiners). per_syllable keeps matches inside the starting glyph's
+# syllable. Without hb the legacy rules apply: ZWJ and variation
+# selectors are always skipped, ZWNJ never, and only the first glyph's
+# mask is checked.
+const int otl_mask_per_syllable = 0x10000000
+const int otl_mask_manual_joiners = 0x20000000
+const int otl_mask_hb = 0x40000000
+const int otl_mask_flags = 0x70000000
 
 struct otl_glyph:
 	int gid
@@ -56,6 +78,9 @@ struct otl_glyph:
 	int attach_dx
 	int attach_dy
 	int syllable      # shaper-defined syllable number, or 0
+	int subst         # otl_subst_* bits: how GSUB has changed the glyph
+	int icat          # shaper-defined character category (Indic)
+	int ipos          # shaper-defined position (Indic)
 
 struct otl_buffer:
 	int count
@@ -78,6 +103,11 @@ struct otl_ctx:
 	int budget         # remaining subtable applications before giving up
 	int rtl
 	int next           # position after a successful application
+	int hb             # otl_mask_hb matching (see the flag)
+	int manual_joiners
+	int per_syllable
+	int lookup_mask    # the current lookup's feature mask, flags removed
+	int syllable       # syllable of the glyph the lookup started at
 
 otl_buffer* otl_buffer_new(int capacity):
 	otl_buffer* b = new otl_buffer
@@ -118,6 +148,9 @@ void otl_glyph_copy(otl_glyph* dst, otl_glyph* src):
 	dst.attach_dx = src.attach_dx
 	dst.attach_dy = src.attach_dy
 	dst.syllable = src.syllable
+	dst.subst = src.subst
+	dst.icat = src.icat
+	dst.ipos = src.ipos
 
 # Append one glyph for codepoint cp at source cluster.
 void otl_buffer_add(otl_buffer* b, int gid, int cp, int cluster, int mask):
@@ -140,6 +173,9 @@ void otl_buffer_add(otl_buffer* b, int gid, int cp, int cluster, int mask):
 	g.attach_dx = 0
 	g.attach_dy = 0
 	g.syllable = 0
+	g.subst = 0
+	g.icat = 0
+	g.ipos = 0
 	b.count = b.count + 1
 
 void otl_buffer_delete(otl_buffer* b, int at):
@@ -200,6 +236,11 @@ void otl_ctx_init(otl_ctx* c, ttf_font* f, otl_buffer* b, int kind):
 	c.budget = 1000000
 	c.rtl = 0
 	c.next = 0
+	c.hb = 0
+	c.manual_joiners = 0
+	c.per_syllable = 0
+	c.lookup_mask = -1
+	c.syllable = 0
 
 int otl_has_gdef_classes(ttf_font* f):
 	int gdef = ttf_table(f, c"GDEF")
@@ -230,8 +271,8 @@ int otl_in_mark_set(otl_ctx* c, int set, int gid):
 	int cov = c.gdef_sets + ttf_u32(c.font, c.gdef_sets + 4 + set * 4)
 	return ttf_coverage(c.font, cov, gid) >= 0
 
-# Whether glyph i is skipped by the current lookup flag.
-int otl_skip(otl_ctx* c, int i):
+# Whether glyph i is skipped by the current lookup flag's glyph classes.
+int otl_skip_props(otl_ctx* c, int i):
 	otl_glyph* g = &c.buffer.glyphs[i]
 	int cls = g.props
 	if ((c.flag & 2) && (cls == otl_class_base)): return 1
@@ -243,8 +284,18 @@ int otl_skip(otl_ctx* c, int i):
 		else if (c.flag & 65280):
 			if (c.gdef_attach == 0): return 1
 			if (ttf_class(c.font, c.gdef_attach, g.gid) != ((c.flag >> 8) & 255)): return 1
+	return 0
+
+# Whether glyph i is skipped by the current lookup flag (legacy rules).
+int otl_skip(otl_ctx* c, int i):
+	if (otl_skip_props(c, i)): return 1
+	otl_glyph* g = &c.buffer.glyphs[i]
+	if (c.hb): return 0
 	# Invisible controls never block a match, except ZWNJ, which exists to
-	# break joining and ligatures.
+	# break joining and ligatures. Positioning skips every unsubstituted
+	# default ignorable, ZWNJ included (as HarfBuzz does), except ZWJ in
+	# a manual-joiner feature ('mark', 'mkmk').
+	if ((c.kind == otl_gpos) && (g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && ut_default_ignorable(g.cp)): return (g.cp != 0x200d) || !c.manual_joiners
 	if ((g.cp == 0x200d) || ((g.cp >= 0x180b) && (g.cp <= 0x180d)) || ((g.cp >= 0xfe00) && (g.cp <= 0xfe0f)) || (g.cp == 0x2060) || (g.cp == 0xfeff)): return 1
 	return 0
 
@@ -264,6 +315,38 @@ int otl_prev_index(otl_ctx* c, int i):
 
 # ---- matching ----------------------------------------------------------
 
+# Under hb rules, whether glyph g may be skipped when it does not match
+# (HarfBuzz's SKIP_MAYBE): an unsubstituted default ignorable, except ZWNJ
+# in GSUB input or manual-joiner context, ZWJ in manual-joiner input, and
+# hidden characters (CGJ, Mongolian variation selectors, tags) in GSUB.
+int otl_hb_ignorable(otl_ctx* c, otl_glyph* g, int context):
+	int cp = g.cp
+	if ((cp < 0) || (g.subst & otl_subst_substituted) || !ut_default_ignorable(cp)): return 0
+	if (c.kind == otl_gpos): return (cp != 0x200d) || context || !c.manual_joiners
+	if (cp == 0x200c): return context && !c.manual_joiners
+	if (cp == 0x200d): return context || !c.manual_joiners
+	if ((cp == 0x034f) || ((cp >= 0x180b) && (cp <= 0x180d)) || (cp == 0x180f) || ((cp >= 0xe0020) && (cp <= 0xe007f))): return 0
+	return 1
+
+int otl_match_item(otl_ctx* c, int how, int data, int base, int k, int class_def, int i);
+
+# HarfBuzz's skipping iterator: the first glyph in direction dir from at
+# that matches item k (input glyphs must carry the lookup mask, context
+# glyphs need not), or -1 when a glyph that cannot be skipped fails.
+int otl_hb_find(otl_ctx* c, int how, int data, int base, int k, int class_def, int at, int dir, int context):
+	int j = at + dir
+	while ((j >= 0) && (j < c.buffer.count)):
+		if (otl_skip_props(c, j)):
+			j = j + dir
+			continue
+		otl_glyph* g = &c.buffer.glyphs[j]
+		int ok = context || ((g.mask & c.lookup_mask) != 0)
+		if (c.per_syllable && (c.syllable != 0) && (g.syllable != c.syllable)): ok = 0
+		if (ok && otl_match_item(c, how, data, base, k, class_def, j)): return j
+		if (!otl_hb_ignorable(c, g, context)): return -1
+		j = j + dir
+	return -1
+
 const int otl_match_glyph = 0
 const int otl_match_class = 1
 const int otl_match_coverage = 2
@@ -282,7 +365,8 @@ int otl_match_item(otl_ctx* c, int how, int data, int base, int k, int class_def
 int otl_match_forward(otl_ctx* c, int how, int data, int base, int count, int class_def, int start, int32* positions):
 	int at = start
 	for k in range(count):
-		at = otl_next_index(c, at)
+		if (c.hb): at = otl_hb_find(c, how, data, base, k, class_def, at, 1, 0)
+		else: at = otl_next_index(c, at)
 		if (at < 0): return 0
 		if (!otl_match_item(c, how, data, base, k, class_def, at)): return 0
 		positions[k] = at
@@ -291,7 +375,8 @@ int otl_match_forward(otl_ctx* c, int how, int data, int base, int count, int cl
 int otl_match_backward(otl_ctx* c, int how, int data, int base, int count, int class_def, int start):
 	int at = start
 	for k in range(count):
-		at = otl_prev_index(c, at)
+		if (c.hb): at = otl_hb_find(c, how, data, base, k, class_def, at, -1, 1)
+		else: at = otl_prev_index(c, at)
 		if (at < 0): return 0
 		if (!otl_match_item(c, how, data, base, k, class_def, at)): return 0
 	return 1
@@ -300,7 +385,8 @@ int otl_match_backward(otl_ctx* c, int how, int data, int base, int count, int c
 int otl_match_forward_from(otl_ctx* c, int how, int data, int base, int count, int class_def, int start):
 	int at = start
 	for k in range(count):
-		at = otl_next_index(c, at)
+		if (c.hb): at = otl_hb_find(c, how, data, base, k, class_def, at, 1, 1)
+		else: at = otl_next_index(c, at)
 		if (at < 0): return 0
 		if (!otl_match_item(c, how, data, base, k, class_def, at)): return 0
 	return 1
@@ -311,9 +397,60 @@ int otl_apply_lookup_at(otl_ctx* c, int lookup_index, int i);
 
 # Apply nested lookup records (seqIndex, lookupIndex) at the matched
 # input positions; c.next ends up after the matched input.
+void otl_apply_records_hb(otl_ctx* c, int records, int record_count, int32* positions, int input_count):
+	# HarfBuzz's apply_lookup: glyphs a nested lookup adds are taken to
+	# follow the current position (so later records can address them),
+	# and removed ones the positions after it.
+	int count = input_count
+	int end = positions[count - 1] + 1
+	for r in range(record_count):
+		int idx = ttf_u16(c.font, records + r * 4)
+		int lookup = ttf_u16(c.font, records + r * 4 + 2)
+		if (idx >= count): continue
+		int orig_len = c.buffer.count
+		if (positions[idx] >= orig_len): continue
+		int applied = 0
+		c.depth = c.depth + 1
+		if (c.depth <= otl_max_nesting): applied = otl_apply_lookup_at(c, lookup, positions[idx])
+		c.depth = c.depth - 1
+		if (!applied): continue
+		int delta = c.buffer.count - orig_len
+		if (delta == 0): continue
+		end = end + delta
+		if (end < positions[idx]):
+			delta = delta + positions[idx] - end
+			end = positions[idx]
+		int next = idx + 1
+		if (delta > 0):
+			if (delta + count > 64): break
+		else:
+			if (delta < next - count): delta = next - count
+			next = next - delta
+		# Shift positions[next..count) by delta places.
+		if (delta > 0):
+			int k = count - 1
+			while (k >= next):
+				positions[k + delta] = positions[k]
+				k = k - 1
+		else:
+			for k in range(next, count): positions[k + delta] = positions[k]
+		next = next + delta
+		count = count + delta
+		for j in range(idx + 1, next): positions[j] = positions[j - 1] + 1
+		while (next < count):
+			positions[next] = positions[next] + delta
+			next = next + 1
+	if (end < 0): end = 0
+	c.next = end
+
 void otl_apply_records(otl_ctx* c, int records, int record_count, int32* positions, int input_count):
 	int saved_flag = c.flag
 	int saved_set = c.mark_set
+	if (c.hb):
+		otl_apply_records_hb(c, records, record_count, positions, input_count)
+		c.flag = saved_flag
+		c.mark_set = saved_set
+		return
 	for r in range(record_count):
 		int seq = ttf_u16(c.font, records + r * 4)
 		int lookup = ttf_u16(c.font, records + r * 4 + 2)
@@ -447,6 +584,7 @@ int otl_chain_context(otl_ctx* c, int sub, int i):
 void otl_set_gid(otl_ctx* c, int i, int gid):
 	otl_glyph* g = &c.buffer.glyphs[i]
 	g.gid = gid
+	g.subst = g.subst | otl_subst_substituted
 	if (c.gdef_classes != 0): g.props = otl_glyph_class(c, g)
 
 int otl_single_subst(otl_ctx* c, int sub, int i):
@@ -481,6 +619,14 @@ int otl_multiple_subst(otl_ctx* c, int sub, int i):
 		g.cp = -1
 		g.unicode_mark = 0
 		otl_set_gid(c, i + k, ttf_u16(f, seq + 2 + k * 2))
+	if (n > 1):
+		# Like HarfBuzz, the outputs are numbered components (0-based) of
+		# the sequence unless the glyph was inside a ligature.
+		int numbered = c.buffer.glyphs[i].lig_id == 0
+		for k in range(n):
+			otl_glyph* out = &c.buffer.glyphs[i + k]
+			out.subst = out.subst | otl_subst_multiplied
+			if (numbered): out.lig_comp = k
 	c.next = i + n
 	return 1
 
@@ -507,6 +653,12 @@ int otl_ligature_subst(otl_ctx* c, int sub, int i):
 		int components = ttf_u16(f, lig + 2)
 		if ((components == 0) || (components > 64)): continue
 		if (!otl_match_forward(c, otl_match_glyph, lig + 4, 0, components - 1, 0, i, &positions[0])): continue
+		if (c.hb && (components == 1)):
+			# HarfBuzz substitutes a one-glyph ligature in place, not as a
+			# ligature.
+			otl_set_gid(c, i, ttf_u16(f, lig))
+			c.next = i + 1
+			return 1
 		int last = i
 		if (components > 1): last = positions[components - 2]
 		# Skipped marks between components belong to the component before
@@ -537,6 +689,8 @@ int otl_ligature_subst(otl_ctx* c, int sub, int i):
 		g.gid = ttf_u16(f, lig)
 		g.lig_id = lig_id
 		g.lig_comp = components
+		g.subst = (g.subst | otl_subst_substituted | otl_subst_ligated) & ~otl_subst_multiplied
+		if (components == 1): g.subst = g.subst & ~otl_subst_ligated
 		if (c.gdef_classes != 0): g.props = otl_glyph_class(c, g)
 		else if (components > 1): g.props = otl_class_ligature
 		c.next = i + 1
@@ -683,9 +837,15 @@ void otl_attach(otl_ctx* c, int i, int target, int mark_anchor, int base_anchor)
 	otl_anchor(c.font, base_anchor, &bx, &by)
 	otl_glyph* g = &c.buffer.glyphs[i]
 	g.attach = target
-	g.attach_kind = otl_attach_mark
+	g.attach_kind = otl_attach_gpos_mark
+	# Like HarfBuzz, attaching replaces the mark's offset (later lookups
+	# add to it). The vertical offset is resolved now, from the base's
+	# offset at this point; only the horizontal one follows the base when
+	# positioning finishes.
 	g.attach_dx = bx - mx
-	g.attach_dy = by - my
+	g.attach_dy = 0
+	g.x_offset = 0
+	g.y_offset = by - my + c.buffer.glyphs[target].y_offset
 
 # The MarkRecord of mark i in a MarkArray: its class and anchor offset.
 int otl_mark_record(otl_ctx* c, int mark_array, int index, int* anchor):
@@ -693,6 +853,20 @@ int otl_mark_record(otl_ctx* c, int mark_array, int index, int* anchor):
 	int rec = mark_array + 2 + index * 4
 	anchor[0] = mark_array + ttf_u16(c.font, rec + 2)
 	return ttf_u16(c.font, rec)
+
+# A glyph's ligature component as HarfBuzz reads it: 0 on a ligature.
+int otl_lig_comp(otl_glyph* g):
+	if (g.subst & otl_subst_ligated): return 0
+	return g.lig_comp
+
+# HarfBuzz's MarkBasePos accept(): false for a later component of a
+# multiple substitution's output that follows the earlier one.
+int otl_accept_base(otl_buffer* b, int j):
+	otl_glyph* g = &b.glyphs[j]
+	if (((g.subst & otl_subst_multiplied) == 0) || (otl_lig_comp(g) == 0) || (j == 0)): return 1
+	otl_glyph* p = &b.glyphs[j - 1]
+	if ((p.props == otl_class_mark) || ((p.subst & otl_subst_multiplied) == 0)): return 1
+	return (g.lig_id != p.lig_id) || (otl_lig_comp(g) != otl_lig_comp(p) + 1)
 
 # MarkBasePos (4) and MarkLigPos (5): attach to the previous non-mark.
 int otl_mark_base_pos(otl_ctx* c, int sub, int i, int ligature):
@@ -702,9 +876,17 @@ int otl_mark_base_pos(otl_ctx* c, int sub, int i, int ligature):
 	int mark_index = ttf_coverage(f, sub + ttf_u16(f, sub + 2), b.glyphs[i].gid)
 	if (mark_index < 0): return 0
 	int j = i - 1
-	while ((j >= 0) && ((b.glyphs[j].props == otl_class_mark) || (b.glyphs[j].cp == 0x200d) || (b.glyphs[j].cp == 0x034f))): j = j - 1
+	int base_cov = sub + ttf_u16(f, sub + 4)
+	while (j >= 0):
+		otl_glyph* g = &b.glyphs[j]
+		int skip = (g.props == otl_class_mark) || ((g.cp >= 0) && ((g.subst & otl_subst_substituted) == 0) && ut_default_ignorable(g.cp) && ((g.cp != 0x200d) || !c.manual_joiners))
+		# HarfBuzz attaches to the first glyph of a multiple substitution's
+		# output, unless a later one is itself a covered base.
+		if (!skip && !ligature && !otl_accept_base(b, j) && (ttf_coverage(f, base_cov, g.gid) < 0)): skip = 1
+		if (!skip): break
+		j = j - 1
 	if (j < 0): return 0
-	int base_index = ttf_coverage(f, sub + ttf_u16(f, sub + 4), b.glyphs[j].gid)
+	int base_index = ttf_coverage(f, base_cov, b.glyphs[j].gid)
 	if (base_index < 0): return 0
 	int class_count = ttf_u16(f, sub + 6)
 	int mark_anchor = 0
@@ -745,8 +927,16 @@ int otl_mark_mark_pos(otl_ctx* c, int sub, int i):
 	int j = otl_prev_index(c, i)
 	c.flag = flag
 	if ((j < 0) || (b.glyphs[j].props != otl_class_mark)): return 0
-	# Both marks must sit on the same base (or ligature component).
-	if ((b.glyphs[i].lig_id != b.glyphs[j].lig_id) || (b.glyphs[i].lig_comp != b.glyphs[j].lig_comp)): return 0
+	# Both marks must sit on the same base (or ligature component), unless
+	# one of them is itself a ligature (HarfBuzz's rule; a ligature glyph
+	# counts as component 0).
+	int id1 = b.glyphs[i].lig_id
+	int id2 = b.glyphs[j].lig_id
+	int comp1 = otl_lig_comp(&b.glyphs[i])
+	int comp2 = otl_lig_comp(&b.glyphs[j])
+	if (id1 == id2):
+		if ((id1 != 0) && (comp1 != comp2)): return 0
+	else if (!(((id1 > 0) && (comp1 == 0)) || ((id2 > 0) && (comp2 == 0)))): return 0
 	int base_index = ttf_coverage(f, sub + ttf_u16(f, sub + 4), b.glyphs[j].gid)
 	if (base_index < 0): return 0
 	int class_count = ttf_u16(f, sub + 6)
@@ -811,7 +1001,7 @@ int otl_lookup_type(otl_ctx* c, int lookup):
 int otl_apply_lookup_at(otl_ctx* c, int lookup_index, int i):
 	int lookup = otl_lookup(c, lookup_index)
 	if (lookup == 0): return 0
-	if (otl_skip(c, i)): return 0
+	if (!c.hb && otl_skip(c, i)): return 0
 	int type = ttf_u16(c.font, lookup)
 	int subs = ttf_u16(c.font, lookup + 4)
 	for s in range(subs):
@@ -824,6 +1014,11 @@ int otl_apply_lookup_at(otl_ctx* c, int lookup_index, int i):
 void otl_apply_lookup(otl_ctx* c, int lookup_index, int mask):
 	int lookup = otl_lookup(c, lookup_index)
 	if (lookup == 0): return
+	c.hb = (mask & otl_mask_hb) != 0
+	c.manual_joiners = (mask & otl_mask_manual_joiners) != 0
+	c.per_syllable = (mask & otl_mask_per_syllable) != 0
+	mask = mask & ~otl_mask_flags
+	c.lookup_mask = mask
 	int type = ttf_u16(c.font, lookup)
 	int subs = ttf_u16(c.font, lookup + 4)
 	int reverse = (c.kind == otl_gsub) && (otl_lookup_type(c, lookup) == 8)
@@ -832,6 +1027,7 @@ void otl_apply_lookup(otl_ctx* c, int lookup_index, int mask):
 	while ((i >= 0) && (i < c.buffer.count)):
 		int applied = 0
 		if ((c.buffer.glyphs[i].mask & mask) && !otl_skip(c, i)):
+			c.syllable = c.buffer.glyphs[i].syllable
 			for s in range(subs):
 				c.budget = c.budget - 1
 				if (c.budget < 0): return
@@ -941,6 +1137,173 @@ int otl_has_feature(ttf_font* f, int kind, char* scripts, int script_count, int 
 		if (otl_tag_at(f, features + 2 + feature_index * 6) == tag): return 1
 	return 0
 
+# The GSUB lookups of feature tag in the selected language system,
+# ascending and without duplicates (the required feature is not
+# included). Returns the count; out has room for max.
+int otl_feature_lookups(ttf_font* f, char* scripts, int script_count, int language, int tag, int32* out, int max):
+	int table = ttf_table(f, c"GSUB")
+	int langsys = otl_langsys(f, table, scripts, script_count, language)
+	if (langsys == 0): return 0
+	int features = table + ttf_u16(f, table + 6)
+	int feature_total = ttf_u16(f, features)
+	int n = 0
+	for x in range(ttf_u16(f, langsys + 4)):
+		int feature_index = ttf_u16(f, langsys + 6 + x * 2)
+		if (feature_index >= feature_total): continue
+		int rec = features + 2 + feature_index * 6
+		if (otl_tag_at(f, rec) != tag): continue
+		int feature = features + ttf_u16(f, rec + 4)
+		for l in range(ttf_u16(f, feature + 2)):
+			int lookup = ttf_u16(f, feature + 4 + l * 2)
+			int at = n
+			int found = 0
+			for e in range(n):
+				if (out[e] == lookup): found = 1
+			if (found || (n >= max)): continue
+			while ((at > 0) && (out[at - 1] > lookup)):
+				out[at] = out[at - 1]
+				at = at - 1
+			out[at] = lookup
+			n = n + 1
+	return n
+
+# Whether the input sequence of a context rule (count items after the
+# first glyph, how/class_def as in otl_match_item) matches glyphs[1..].
+int otl_would_input(otl_ctx* c, int how, int data, int base, int class_def, int32* glyphs, int count):
+	ttf_font* f = c.font
+	for k in range(1, count):
+		int value = ttf_u16(f, data + (k - 1) * 2)
+		if (how == otl_match_glyph):
+			if (glyphs[k] != value): return 0
+		else if (how == otl_match_class):
+			if (ttf_class(f, class_def, glyphs[k]) != value): return 0
+		else if (ttf_coverage(f, base + value, glyphs[k]) < 0): return 0
+	return 1
+
+# The coverage table a GSUB subtable is keyed on (its first input
+# glyph's), after resolving extensions.
+int otl_subtable_coverage(otl_ctx* c, int type, int sub):
+	ttf_font* f = c.font
+	if (type == 7):
+		type = ttf_u16(f, sub + 2)
+		sub = sub + ttf_u32(f, sub + 4)
+	int format = ttf_u16(f, sub)
+	if ((type == 5) && (format == 3)): return sub + ttf_u16(f, sub + 6)
+	if ((type == 6) && (format == 3)):
+		int input_at = sub + 4 + ttf_u16(f, sub + 2) * 2
+		return sub + ttf_u16(f, input_at + 2)
+	return sub + ttf_u16(f, sub + 2)
+
+# HarfBuzz's would_apply for one GSUB subtable: whether it would
+# substitute exactly glyphs[0..count). zero_context rejects chaining
+# rules with backtrack or lookahead. Like HarfBuzz, class-based and
+# coverage-based contexts do not recheck the first glyph's coverage.
+int otl_would_subtable(otl_ctx* c, int type, int sub, int32* glyphs, int count, int zero_context):
+	ttf_font* f = c.font
+	if (type == 7):
+		type = ttf_u16(f, sub + 2)
+		sub = sub + ttf_u32(f, sub + 4)
+	int format = ttf_u16(f, sub)
+	if ((type == 1) || (type == 2) || (type == 3) || (type == 8)):
+		return (count == 1) && (ttf_coverage(f, sub + ttf_u16(f, sub + 2), glyphs[0]) >= 0)
+	if (type == 4):
+		int index = ttf_coverage(f, sub + ttf_u16(f, sub + 2), glyphs[0])
+		if ((index < 0) || (index >= ttf_u16(f, sub + 4))): return 0
+		int set = sub + ttf_u16(f, sub + 6 + index * 2)
+		for l in range(ttf_u16(f, set)):
+			int lig = set + ttf_u16(f, set + 2 + l * 2)
+			if (ttf_u16(f, lig + 2) != count): continue
+			if (otl_would_input(c, otl_match_glyph, lig + 4, 0, 0, glyphs, count)): return 1
+		return 0
+	if ((type != 5) && (type != 6)): return 0
+	if (format == 3):
+		if (type == 5):
+			if (ttf_u16(f, sub + 2) != count): return 0
+			return otl_would_input(c, otl_match_coverage, sub + 8, sub, 0, glyphs, count)
+		int back_count = ttf_u16(f, sub + 2)
+		int input_at = sub + 4 + back_count * 2
+		int input_count = ttf_u16(f, input_at)
+		int ahead_count = ttf_u16(f, input_at + 2 + input_count * 2)
+		if (zero_context && ((back_count != 0) || (ahead_count != 0))): return 0
+		if (input_count != count): return 0
+		return otl_would_input(c, otl_match_coverage, input_at + 4, sub, 0, glyphs, count)
+	if ((format != 1) && (format != 2)): return 0
+	int set_index = 0
+	int set_count = 0
+	int sets = 0
+	int class_def = 0
+	int how = otl_match_glyph
+	if (format == 1):
+		set_index = ttf_coverage(f, sub + ttf_u16(f, sub + 2), glyphs[0])
+		set_count = ttf_u16(f, sub + 4)
+		sets = sub + 6
+	else if (type == 5):
+		class_def = sub + ttf_u16(f, sub + 4)
+		set_index = ttf_class(f, class_def, glyphs[0])
+		set_count = ttf_u16(f, sub + 6)
+		sets = sub + 8
+		how = otl_match_class
+	else:
+		class_def = sub + ttf_u16(f, sub + 6)
+		set_index = ttf_class(f, class_def, glyphs[0])
+		set_count = ttf_u16(f, sub + 10)
+		sets = sub + 12
+		how = otl_match_class
+	if ((set_index < 0) || (set_index >= set_count)): return 0
+	int set_off = ttf_u16(f, sets + set_index * 2)
+	if (set_off == 0): return 0
+	int set = sub + set_off
+	for r in range(ttf_u16(f, set)):
+		int rule = set + ttf_u16(f, set + 2 + r * 2)
+		if (type == 5):
+			if (ttf_u16(f, rule) != count): continue
+			if (otl_would_input(c, how, rule + 4, 0, class_def, glyphs, count)): return 1
+			continue
+		int back_count = ttf_u16(f, rule)
+		int input_at = rule + 2 + back_count * 2
+		int input_count = ttf_u16(f, input_at)
+		if (input_count == 0): continue
+		int ahead_count = ttf_u16(f, input_at + 2 + (input_count - 1) * 2)
+		if (zero_context && ((back_count != 0) || (ahead_count != 0))): continue
+		if (input_count != count): continue
+		if (otl_would_input(c, how, input_at + 2, 0, class_def, glyphs, count)): return 1
+	return 0
+
+# HarfBuzz's hb_ot_layout_lookup_would_substitute over a list of GSUB
+# lookups: whether any would substitute glyphs[0..count) as a whole.
+int otl_would_substitute(ttf_font* f, int32* lookups, int lookup_count, int32* glyphs, int count, int zero_context):
+	if (count < 1): return 0
+	otl_ctx c
+	otl_ctx_init(&c, f, 0, otl_gsub)
+	for l in range(lookup_count):
+		int lookup = otl_lookup(&c, lookups[l])
+		if (lookup == 0): continue
+		int type = ttf_u16(f, lookup)
+		int subs = ttf_u16(f, lookup + 4)
+		# The lookup's coverage digest must have the first glyph.
+		int covered = 0
+		for s in range(subs):
+			int sub = lookup + ttf_u16(f, lookup + 6 + s * 2)
+			if (ttf_coverage(f, otl_subtable_coverage(&c, type, sub), glyphs[0]) >= 0): covered = 1
+		if (!covered): continue
+		for s in range(subs):
+			if (otl_would_subtable(&c, type, lookup + ttf_u16(f, lookup + 6 + s * 2), glyphs, count, zero_context)): return 1
+	return 0
+
+# HarfBuzz's merge_clusters: glyphs start..end-1 take their smallest
+# cluster, widened to whole clusters at both ends.
+void otl_merge_clusters(otl_buffer* b, int start, int end):
+	if (end > b.count): end = b.count
+	if (end - start < 2): return
+	int cluster = b.glyphs[start].cluster
+	for i in range(start + 1, end):
+		if (b.glyphs[i].cluster < cluster): cluster = b.glyphs[i].cluster
+	if (cluster != b.glyphs[end - 1].cluster):
+		while ((end < b.count) && (b.glyphs[end - 1].cluster == b.glyphs[end].cluster)): end = end + 1
+	if (cluster != b.glyphs[start].cluster):
+		while ((start > 0) && (b.glyphs[start - 1].cluster == b.glyphs[start].cluster)): start = start - 1
+	for i in range(start, end): b.glyphs[i].cluster = cluster
+
 # ---- finishing ---------------------------------------------------------
 
 # Resolve mark attachments into offsets for the final visual direction;
@@ -948,13 +1311,13 @@ int otl_has_feature(ttf_font* f, int kind, char* scripts, int script_count, int 
 void otl_position_finish(otl_buffer* b, int rtl):
 	for i in range(b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if ((g.attach_kind != otl_attach_mark) || (g.attach < 0) || (g.attach >= i)): continue
+		if (((g.attach_kind != otl_attach_mark) && (g.attach_kind != otl_attach_gpos_mark)) || (g.attach < 0) || (g.attach >= i)): continue
 		otl_glyph* base = &b.glyphs[g.attach]
 		int between = 0
 		if (rtl):
 			for k in range(g.attach + 1, i + 1): between = between + b.glyphs[k].x_advance
-			g.x_offset = base.x_offset + g.attach_dx + between
+			g.x_offset = base.x_offset + g.attach_dx + g.x_offset + between
 		else:
 			for k in range(g.attach, i): between = between + b.glyphs[k].x_advance
-			g.x_offset = base.x_offset + g.attach_dx - between
-		g.y_offset = base.y_offset + g.attach_dy
+			g.x_offset = base.x_offset + g.attach_dx + g.x_offset - between
+		if (g.attach_kind == otl_attach_mark): g.y_offset = base.y_offset + g.attach_dy + g.y_offset
