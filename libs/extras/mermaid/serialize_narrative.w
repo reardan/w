@@ -844,7 +844,9 @@ void mm_sn_zenuml(mm_serializer* out, mm_document* d):
 			if (top == 0 || top.call || (mm_n_prefix(e.label, c"else") == 0 && mm_n_prefix(e.label, c"catch") == 0 && mm_n_prefix(e.label, c"finally") == 0)):
 				out.failed = 1
 				break
+			w.depth = w.depth - 1
 			mm_sz_indent(&w)
+			w.depth = w.depth + 1
 			mm_out(out, c"} ")
 			mm_sz_text(out, e.label)
 			mm_out(out, c" {\n")
@@ -912,8 +914,13 @@ void mm_sn_zenuml(mm_serializer* out, mm_document* d):
 				break
 			reply = is_new == 0 && mm_sz_reply_at(d, e.end, e.to_node, e.from_node)
 			if (reply == 0 && (e.end >= d.narrative.length || d.narrative[e.end].kind != MM_N_DEACTIVATE)): out.failed = 1
+		# `name = A.m()`: the reply right after a plain call, named by an identifier.
+		int inline_reply = nested == 0 && is_new == 0 && mm_sz_reply_at(d, i + 1, e.to_node, e.from_node) && mm_serialize_is_id(d.narrative[i + 1].label) && d.narrative[i + 1].detail[0] == 0
 		mm_sz_comment(&w, e)
 		mm_sz_indent(&w)
+		if (inline_reply):
+			mm_out(out, d.narrative[i + 1].label)
+			mm_out(out, c" = ")
 		if (reply):
 			char* name = d.narrative[e.end].label
 			if (mm_serialize_is_id(name) == 0): out.failed = 1
@@ -940,6 +947,7 @@ void mm_sn_zenuml(mm_serializer* out, mm_document* d):
 		mm_out_line(out)
 		mm_sz_flush(&w)
 		i = i + 1
+		if (inline_reply): i = i + 1
 	if (w.stack.length != 0): out.failed = 1
 	while (w.created < d.nodes.length && out.failed == 0):
 		if (w.created == w.external): out.failed = 1
