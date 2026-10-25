@@ -176,6 +176,11 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 			else if ((keysym >> 24) == 1): cp = keysym & 0xffffff
 			if ((cp > 0) && (cp <= 1114111) && ((cp < 55296) || (cp > 57343))):
 				gfx_input_queue_push(&win.input_queue, GFX_EVENT_CHAR, cp, event.input.x, event.input.y, mods)
+		# Shift+Tab arrives as ISO_Left_Tab (0xfe20), which Xlib maps to no
+		# text; report it as the Tab character with Shift held, as the other
+		# backends do, so Shift+Tab focus traversal works on X11.
+		if (keysym == 0xfe20):
+			gfx_input_queue_push(&win.input_queue, GFX_EVENT_CHAR, 9, event.input.x, event.input.y, mods)
 		# Navigation keysyms have no character; translate the portable
 		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Up 0xff52,
 		# XK_Right 0xff53, XK_Down 0xff54, XK_Page_Up 0xff55,

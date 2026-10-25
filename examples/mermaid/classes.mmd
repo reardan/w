@@ -17,3 +17,9 @@ classDiagram
         +pay() bool
     }
     Customer "1" o-- "0..*" Invoice : owns
+    class Repository~T~ {
+        +List~T~ items$
+        +find(int id) T
+        +save(T item)* bool
+    }
+    link Customer "https://example.com/customers" "Customer docs"

@@ -1,10 +1,20 @@
 # A deliberately bounded CSS subset, shared by SVG and the native renderer.
 import libs.extras.mermaid.parse_common
+import libs.extras.mermaid.text_metrics
 
 const int MM_STYLE_FILL = 1
 const int MM_STYLE_STROKE = 2
 const int MM_STYLE_TEXT = 4
 const int MM_STYLE_WIDTH = 8
+const int MM_STYLE_DASH = 16
+const int MM_STYLE_OPACITY = 32
+const int MM_STYLE_WEIGHT = 64
+const int MM_STYLE_ITALIC = 128
+const int MM_STYLE_SIZE = 256
+const int MM_STYLE_FAMILY = 512
+const int MM_STYLE_RADIUS = 1024
+const int MM_STYLE_FILL_OPACITY = 2048
+const int MM_STYLE_MAX_FONTS = 32
 
 char* mm_style_trim(char* text, int start, int end):
 	while (start < end && (text[start] == 32 || text[start] == 9 || text[start] == 13)): start = start + 1
@@ -101,48 +111,198 @@ int mm_style_css_color(char* value):
 	return result
 
 void mm_style_merge(mm_style* result, mm_style* next):
-	if (next.mask & MM_STYLE_FILL): result.fill = next.fill
-	if (next.mask & MM_STYLE_STROKE): result.stroke = next.stroke
-	if (next.mask & MM_STYLE_TEXT): result.text = next.text
-	if (next.mask & MM_STYLE_WIDTH): result.width = next.width
-	result.mask = result.mask | next.mask
+	int mask = next.mask
+	if (mask & MM_STYLE_FILL): result.fill = next.fill
+	if (mask & MM_STYLE_STROKE): result.stroke = next.stroke
+	if (mask & MM_STYLE_TEXT): result.text = next.text
+	if (mask & MM_STYLE_WIDTH): result.width = next.width
+	if (mask & MM_STYLE_DASH):
+		result.dash = next.dash
+		result.gap = next.gap
+	if (mask & MM_STYLE_OPACITY): result.opacity = next.opacity
+	if (mask & MM_STYLE_FILL_OPACITY): result.fill_opacity = next.fill_opacity
+	if (mask & MM_STYLE_WEIGHT): result.font = result.font - (result.font & MM_TEXT_BOLD) + (next.font & MM_TEXT_BOLD)
+	if (mask & MM_STYLE_ITALIC): result.font = result.font - (result.font & MM_TEXT_ITALIC) + (next.font & MM_TEXT_ITALIC)
+	if (mask & MM_STYLE_SIZE): result.font_size = next.font_size
+	if (mask & MM_STYLE_FAMILY): result.family = next.family
+	if (mask & MM_STYLE_RADIUS): result.radius = next.radius
+	result.mask = result.mask | mask
+
+void mm_style_clear(mm_style* style):
+	style.mask = 0
+	style.fill = 0
+	style.stroke = 0
+	style.text = 0
+	style.width = 0
+	style.dash = 0
+	style.gap = 0
+	style.opacity = 0
+	style.fill_opacity = 0
+	style.font = 0
+	style.font_size = 0
+	style.family = 0
+	style.radius = 0
+
+# Unsigned decimal of at most digits characters, optionally followed by px; -1 when malformed.
+int mm_style_pixels(char* value, int start, int end, int digits):
+	if (end - start >= 2 && value[end - 2] == 'p' && value[end - 1] == 'x'): end = end - 2
+	if (end <= start || end - start > digits): return -1
+	int result = 0
+	for i in range(start, end):
+		if (value[i] < '0' || value[i] > '9'): return -1
+		result = result * 10 + value[i] - '0'
+	return result
+
+# CSS <alpha-value>: 0..1 with up to two decimals, or 0%..100%; hundredths or -1.
+int mm_style_alpha(char* value):
+	int length = strlen(value)
+	if (length > 1 && value[length - 1] == '%'):
+		int percent = mm_style_pixels(value, 0, length - 1, 3)
+		if (percent > 100): return -1
+		return percent
+	int i = 0
+	int whole = 0
+	while (value[i] >= '0' && value[i] <= '9' && i < 2):
+		whole = whole * 10 + value[i] - '0'
+		i = i + 1
+	int result = whole * 100
+	int scale = 10
+	if (value[i] == '.'):
+		i = i + 1
+		if (value[i] == 0): return -1
+		while (value[i] >= '0' && value[i] <= '9' && scale > 0):
+			result = result + (value[i] - '0') * scale
+			scale = scale / 10
+			i = i + 1
+	if (i == 0 || value[i] != 0 || result > 100): return -1
+	return result
+
+# One family name, quoted or bare (letters, digits, spaces, - and _), up to 64 bytes.
+char* mm_style_family_name(char* value):
+	int length = strlen(value)
+	int start = 0
+	int end = length
+	if (length >= 2 && (value[0] == '"' || value[0] == '\'') && value[length - 1] == value[0]):
+		start = 1
+		end = length - 1
+	if (end <= start || end - start > 64): return 0
+	for i in range(start, end):
+		int c = value[i] & 255
+		if (isalnum(c) == 0 && c != ' ' && c != '-' && c != '_'): return 0
+	return str_copy_range(value, start, end)
+
+# Index (1-based) of an interned family name in the document's font table, or 0.
+int mm_style_font(mm_document* d, char* name, int offset):
+	for i in range(d.style_fonts.length):
+		if (strcmp(d.style_fonts[i], name) == 0): return i + 1
+	if (d.style_fonts.length >= MM_STYLE_MAX_FONTS):
+		mm_error(d, offset, c"font-family limit exceeded")
+		return 0
+	d.style_fonts.push(strclone(name))
+	return d.style_fonts.length
 
 void mm_style_property(mm_document* d, mm_style* style, char* key, char* value, int offset):
+	list[char*] keys = list[char*]{c"fill", c"stroke", c"color", c"stroke-width", c"stroke-dasharray", c"opacity", c"font-weight", c"font-style", c"font-size", c"font-family", c"rx", c"fill-opacity", c"ry"}
 	int mask = 0
-	if (strcmp(key, c"fill") == 0): mask = MM_STYLE_FILL
-	else if (strcmp(key, c"stroke") == 0): mask = MM_STYLE_STROKE
-	else if (strcmp(key, c"color") == 0): mask = MM_STYLE_TEXT
-	else if (strcmp(key, c"stroke-width") == 0): mask = MM_STYLE_WIDTH
-	else:
-		mm_error(d, offset, c"unsupported style property; supported: fill, stroke, color, stroke-width")
+	for i in range(keys.length):
+		if (strcmp(key, keys[i]) == 0):
+			mask = 1 << i
+			if (i == 12): mask = MM_STYLE_RADIUS
+	__w_list_free(cast(__w_list*, keys))
+	# CSS motion properties (the documented edge-animation classDef) are
+	# validated and accepted, but the native scene is static, so they are not
+	# stored: a dashed edge draws its dash pattern without moving it.
+	if (mask == 0 && (strcmp(key, c"stroke-dashoffset") == 0 || strcmp(key, c"animation") == 0 || strcmp(key, c"animation-duration") == 0 || strcmp(key, c"animation-name") == 0 || strcmp(key, c"animation-timing-function") == 0 || strcmp(key, c"animation-iteration-count") == 0 || strcmp(key, c"animation-direction") == 0 || strcmp(key, c"animation-delay") == 0)):
+		int ok = strlen(value) > 0 && strlen(value) <= 128
+		for i in range(strlen(value)):
+			int c = value[i] & 255
+			if (isalnum(c) == 0 && c != ' ' && c != '-' && c != '.' && c != '_' && c != '%'): ok = 0
+		if (ok && key[0] == 's'):
+			int at = 0
+			if (value[0] == '-'): at = 1
+			int number = mm_style_pixels(value, at, strlen(value), 6)
+			if (number < 0 || number > 100000): ok = 0
+		if (ok == 0): mm_error(d, offset, c"stroke-dashoffset takes a length; animation properties take CSS keywords, names and times")
 		return
+	if (mask == 0):
+		mm_error(d, offset, c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry")
+		return
+	int length = strlen(value)
 	int parsed = -2
+	int extra = 0
+	char* message = c"invalid style value; use #RGB/#RRGGBB, a supported color name, none, or a 1-16px stroke width"
 	if (mask == MM_STYLE_WIDTH):
-		int length = strlen(value)
-		if (length >= 2 && strcmp(value + length - 2, c"px") == 0): length = length - 2
-		parsed = 0
-		if (length == 0 || length > 2): parsed = -2
-		for i in range(length):
-			if (value[i] < '0' || value[i] > '9'): parsed = -2
-			if (parsed >= 0): parsed = parsed * 10 + value[i] - '0'
+		parsed = mm_style_pixels(value, 0, length, 2)
 		if (parsed < 1 || parsed > 16): parsed = -2
+	else if (mask == MM_STYLE_DASH):
+		message = c"stroke-dasharray takes none, 0, or one or two 1-64px lengths separated by a space"
+		if (strcmp(value, c"none") == 0 || strcmp(value, c"0") == 0): parsed = 0
+		else:
+			int split = index_of(value, c" ")
+			if (split < 0): split = length
+			parsed = mm_style_pixels(value, 0, split, 2)
+			extra = parsed
+			if (split < length):
+				int at = split
+				while (value[at] == ' '): at = at + 1
+				extra = mm_style_pixels(value, at, length, 2)
+			if (parsed < 1 || parsed > 64 || extra < 1 || extra > 64): parsed = -2
+	else if (mask == MM_STYLE_OPACITY || mask == MM_STYLE_FILL_OPACITY):
+		message = c"opacity takes a number from 0 to 1 or a percentage"
+		parsed = mm_style_alpha(value)
+		if (parsed < 0): parsed = -2
+	else if (mask == MM_STYLE_WEIGHT):
+		message = c"font-weight takes normal, bold, bolder, lighter or 100-900"
+		if (strcmp(value, c"bold") == 0 || strcmp(value, c"bolder") == 0): parsed = MM_TEXT_BOLD
+		else if (strcmp(value, c"normal") == 0 || strcmp(value, c"lighter") == 0): parsed = 0
+		else:
+			int weight = mm_style_pixels(value, 0, length, 3)
+			if (weight >= 100 && weight <= 900 && weight % 100 == 0):
+				parsed = 0
+				if (weight >= 600): parsed = MM_TEXT_BOLD
+	else if (mask == MM_STYLE_ITALIC):
+		message = c"font-style takes normal, italic or oblique"
+		if (strcmp(value, c"italic") == 0 || strcmp(value, c"oblique") == 0): parsed = MM_TEXT_ITALIC
+		else if (strcmp(value, c"normal") == 0): parsed = 0
+	else if (mask == MM_STYLE_SIZE):
+		message = c"font-size takes 8-72px"
+		parsed = mm_style_pixels(value, 0, length, 2)
+		if (parsed < 8 || parsed > 72): parsed = -2
+	else if (mask == MM_STYLE_FAMILY):
+		message = c"font-family takes one quoted or plain family name"
+		char* name = mm_style_family_name(value)
+		if (name != 0):
+			parsed = mm_style_font(d, name, offset)
+			free(name)
+			if (parsed == 0): return
+	else if (mask == MM_STYLE_RADIUS):
+		message = c"rx and ry take 0-64px"
+		parsed = mm_style_pixels(value, 0, length, 2)
+		if (parsed > 64): parsed = -2
+		if (parsed < 0): parsed = -2
 	else: parsed = mm_style_color(value)
 	if (parsed == -2):
-		mm_error(d, offset, c"invalid style value; use #RGB/#RRGGBB, a supported color name, none, or a 1-16px stroke width")
+		mm_error(d, offset, message)
 		return
 	style.mask = style.mask | mask
 	if (mask == MM_STYLE_FILL): style.fill = parsed
 	if (mask == MM_STYLE_STROKE): style.stroke = parsed
 	if (mask == MM_STYLE_TEXT): style.text = parsed
 	if (mask == MM_STYLE_WIDTH): style.width = parsed
+	if (mask == MM_STYLE_DASH):
+		style.dash = parsed
+		style.gap = extra
+	if (mask == MM_STYLE_OPACITY): style.opacity = parsed
+	if (mask == MM_STYLE_FILL_OPACITY): style.fill_opacity = parsed
+	if (mask == MM_STYLE_WEIGHT): style.font = style.font - (style.font & MM_TEXT_BOLD) + parsed
+	if (mask == MM_STYLE_ITALIC): style.font = style.font - (style.font & MM_TEXT_ITALIC) + parsed
+	if (mask == MM_STYLE_SIZE): style.font_size = parsed
+	if (mask == MM_STYLE_FAMILY): style.family = parsed
+	if (mask == MM_STYLE_RADIUS): style.radius = parsed
 
 mm_style mm_style_parse(mm_parser* p):
 	mm_style style
-	style.mask = 0
-	style.fill = 0
-	style.stroke = 0
-	style.text = 0
-	style.width = 0
+	mm_style_clear(&style)
 	int count = 0
 	while (mm_end(p) == 0 && p.doc.error == 0):
 		int start = p.pos
@@ -150,8 +310,37 @@ mm_style mm_style_parse(mm_parser* p):
 		char* key = mm_style_trim(p.doc.source, start, p.pos)
 		if (mm_match(p, c":") == 0): mm_error(p.doc, p.pos, c"style property requires colon")
 		start = p.pos
-		while (mm_end(p) == 0 && mm_peek(p) != ','): p.pos = p.pos + 1
+		while (mm_end(p) == 0 && mm_peek(p) != ','):
+			# `\,` keeps a comma inside a value (`stroke-dasharray: 9\,5`).
+			if (mm_peek(p) == '\\' && p.pos + 1 < p.doc.length && p.doc.source[p.pos + 1] == ','): p.pos = p.pos + 1
+			p.pos = p.pos + 1
+		if (strcmp(key, c"stroke-dasharray") == 0):
+			# Upstream splits declarations at every comma, so the documented
+			# `stroke-dasharray: 9,5,...` leaves a stray `5` that the browser
+			# drops; the bare lengths that follow are kept as dash lengths.
+			while (mm_peek(p) == ',' && p.doc.error == 0):
+				int next = p.pos + 1
+				while (next < p.doc.length && (p.doc.source[next] == 32 || p.doc.source[next] == 9)): next = next + 1
+				int digits = next
+				while (digits < p.doc.length && p.doc.source[digits] >= '0' && p.doc.source[digits] <= '9'): digits = digits + 1
+				if (digits == next): break
+				if (digits + 1 < p.doc.length && p.doc.source[digits] == 'p' && p.doc.source[digits + 1] == 'x'): digits = digits + 2
+				int after = digits
+				while (after < p.doc.length && (p.doc.source[after] == 32 || p.doc.source[after] == 9)): after = after + 1
+				if (after < p.doc.length && p.doc.source[after] != ',' && p.doc.source[after] != ';' && p.doc.source[after] != 10 && p.doc.source[after] != 13): break
+				p.pos = digits
 		char* value = mm_style_trim(p.doc.source, start, p.pos)
+		if (strcmp(key, c"stroke-dasharray") == 0):
+			# CSS separates dash lengths with commas or spaces.
+			int write = 0
+			for i in range(strlen(value)):
+				int c = value[i]
+				if (c == '\\' && value[i + 1] == ','): continue
+				if (c == ','): c = ' '
+				if (c == ' ' && write > 0 && value[write - 1] == ' '): continue
+				value[write] = c
+				write = write + 1
+			value[write] = 0
 		mm_style_property(p.doc, &style, key, value, start)
 		free(key)
 		free(value)
@@ -165,6 +354,25 @@ mm_style_class* mm_style_find(mm_document* d, char* name):
 	for mm_style_class* definition in d.style_definitions:
 		if (strcmp(name, definition.name) == 0): return definition
 	return 0
+
+# classDef default, then assigned classes in order, then the node's own style.
+mm_style mm_style_resolve(mm_document* d, mm_node* node):
+	mm_style resolved
+	mm_style_clear(&resolved)
+	mm_style_class* definition = mm_style_find(d, c"default")
+	if (definition != 0): mm_style_merge(&resolved, &definition.style)
+	int begin = 0
+	int length = strlen(node.style_classes)
+	if (length != 0):
+		for i in range(length + 1):
+			if (i == length || node.style_classes[i] == ','):
+				char* name = mm_style_trim(node.style_classes, begin, i)
+				definition = mm_style_find(d, name)
+				if (definition != 0): mm_style_merge(&resolved, &definition.style)
+				free(name)
+				begin = i + 1
+	mm_style_merge(&resolved, &node.style)
+	return resolved
 
 int mm_style_name(char* name):
 	if (name[0] == 0): return 0
@@ -239,6 +447,33 @@ int mm_style_links(mm_parser* p):
 	free(targets)
 	return 1
 
+# Index of the flowchart edge whose explicit ID (`e1@-->`) is name, or -1.
+int mm_style_edge_named(mm_document* d, char* name):
+	if (d.kind != MM_FLOW): return -1
+	for i in range(d.edges.length):
+		mm_edge* e = d.edges[i]
+		if (e.id != 0 && strcmp(e.id, name) == 0): return i
+	return -1
+
+# `class e1 animate` names an edge ID: the classes are kept as an edge
+# `class` property and resolved after parsing (classDef may come later).
+void mm_style_edge_assign(mm_parser* p, mm_edge* e, char* classes):
+	int start = 0
+	for i in range(strlen(classes) + 1):
+		if (classes[i] == 0 || classes[i] == ','):
+			char* name = mm_style_trim(classes, start, i)
+			if (mm_style_name(name) == 0): mm_error(p.doc, p.pos, c"invalid style class name")
+			free(name)
+			start = i + 1
+	if (e.metadata == 0): e.metadata = new list[mm_property*]
+	if (e.metadata.length >= 16):
+		mm_error(p.doc, p.pos, c"edge class assignment limit exceeded")
+		return
+	mm_property* property = new mm_property()
+	property.key = strclone(c"class")
+	property.value = strclone(classes)
+	e.metadata.push(property)
+
 int mm_style_statement(mm_parser* p):
 	if (mm_style_links(p)): return 1
 	int kind = 0
@@ -250,16 +485,19 @@ int mm_style_statement(mm_parser* p):
 	char* targets
 	if (mm_peek(p) == '"'): targets = mm_quoted(p)
 	else:
-		int start = p.pos
-		while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 32 && mm_peek(p) != 9 && mm_peek(p) != ';'): p.pos = p.pos + 1
-		targets = str_copy_range(p.doc.source, start, p.pos)
+		# Comma-separated targets may have spaces after the commas (`A, B`).
+		string_builder* joined = string_new()
+		while (p.doc.error == 0):
+			int start = p.pos
+			while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != 32 && mm_peek(p) != 9 && mm_peek(p) != ';'): p.pos = p.pos + 1
+			string_append_bytes(joined, p.doc.source + start, p.pos - start)
+			if (p.pos == start || joined.data[joined.length - 1] != ','): break
+			while (mm_peek(p) == 32 || mm_peek(p) == 9): p.pos = p.pos + 1
+		targets = strclone(joined.data)
+		string_free(joined)
 	mm_space(p)
 	mm_style style
-	style.mask = 0
-	style.fill = 0
-	style.stroke = 0
-	style.text = 0
-	style.width = 0
+	mm_style_clear(&style)
 	char* classes = strclone(c"")
 	if (kind == 3):
 		int start = p.pos
@@ -281,6 +519,7 @@ int mm_style_statement(mm_parser* p):
 						definition.name = strclone(name)
 						p.doc.style_definitions.push(definition)
 				if (definition != 0): mm_style_merge(&definition.style, &style)
+			else if (kind == 3 && mm_style_edge_named(p.doc, name) >= 0): mm_style_edge_assign(p, p.doc.edges[mm_style_edge_named(p.doc, name)], classes)
 			else:
 				int index = mm_add_node(p.doc, name, p.pos)
 				if (index >= 0):
@@ -295,8 +534,33 @@ int mm_style_statement(mm_parser* p):
 	free(classes)
 	return 1
 
+# Edge class assignments, in order, over the edge's own linkStyle-free style.
+void mm_style_edge_classes(mm_document* d):
+	if (d.kind != MM_FLOW): return
+	for mm_edge* e in d.edges:
+		if (e.metadata == 0): continue
+		for mm_property* property in e.metadata:
+			if (strcmp(property.key, c"class") != 0): continue
+			int start = 0
+			int length = strlen(property.value)
+			for i in range(length + 1):
+				if (i == length || property.value[i] == ','):
+					char* name = mm_style_trim(property.value, start, i)
+					mm_style_class* definition = mm_style_find(d, name)
+					if (definition == 0): mm_error(d, 0, c"assigned style class has no classDef")
+					else:
+						mm_style merged = definition.style
+						mm_style_merge(&merged, &e.style)
+						e.style = merged
+					free(name)
+					start = i + 1
+
 void mm_style_validate(mm_document* d):
-	if (d.kind == MM_MINDMAP): return
+	mm_style_edge_classes(d)
+	# Mindmap and TreeView classes name stylesheet (themeCSS) classes, and use
+	# case and class-diagram classes need no classDef upstream (`:::name` and
+	# cssClass may name external CSS): unknown names stay CSS class names.
+	if (d.kind == MM_MINDMAP || d.kind == MM_TREEVIEW || d.kind == MM_USECASE || d.kind == MM_CLASS): return
 	for mm_node* node in d.nodes:
 		int start = 0
 		int length = strlen(node.style_classes)
@@ -326,7 +590,33 @@ const int MM_THEME_TITLE = 16
 const int MM_THEME_EDGE_LABEL_BKG = 17
 const int MM_THEME_PIE = 18
 const int MM_THEME_SCALE = 30
-const int MM_THEME_COUNT = 42
+const int MM_THEME_NOTE_BKG = 42
+const int MM_THEME_NOTE_BORDER = 43
+const int MM_THEME_NOTE_TEXT = 44
+const int MM_THEME_ACTOR_BKG = 45
+const int MM_THEME_ACTOR_BORDER = 46
+const int MM_THEME_ACTOR_TEXT = 47
+const int MM_THEME_ACTOR_LINE = 48
+const int MM_THEME_SIGNAL = 49
+const int MM_THEME_SIGNAL_TEXT = 50
+const int MM_THEME_GIT = 51
+const int MM_THEME_VENN = 59
+const int MM_THEME_TASK_BKG = 67
+const int MM_THEME_TASK_BORDER = 68
+const int MM_THEME_TASK_TEXT = 69
+const int MM_THEME_ACTIVE_TASK_BKG = 70
+const int MM_THEME_DONE_TASK_BKG = 71
+const int MM_THEME_CRIT_BKG = 72
+const int MM_THEME_GRID = 73
+const int MM_THEME_TODAY = 74
+const int MM_THEME_SECTION_BKG = 75
+const int MM_THEME_ALT_SECTION_BKG = 76
+const int MM_THEME_EXCLUDE_BKG = 77
+const int MM_THEME_ROW_ODD = 78
+const int MM_THEME_ROW_EVEN = 79
+const int MM_THEME_GRADIENT_START = 80
+const int MM_THEME_GRADIENT_STOP = 81
+const int MM_THEME_COUNT = 82
 const int MM_THEME_UNSET = -2
 
 const int MM_THEME_ROOT = 0
@@ -336,8 +626,9 @@ const int MM_THEME_BORDER = 3
 const int MM_THEME_CONTRAST = 4
 const int MM_THEME_INVERT = 5
 const int MM_THEME_EDGE = 6
+const int MM_THEME_GIT_SHADE = 7
 
-# Fixed categorical colors: the native series palette for every theme.
+# Fixed categorical colors: the native series palette without a configured theme.
 int mm_style_series_color(int index):
 	list[int] colors = list[int]{0x2563eb, 0xdc2626, 0x16a34a, 0x9333ea, 0xea580c, 0x0891b2, 0xdb2777, 0x65a30d, 0x4f46e5, 0x0d9488, 0xca8a04, 0x7c3aed}
 	int color = colors[index % colors.length]
@@ -357,10 +648,14 @@ int mm_theme_digits(char* text):
 # Variable index for a themeVariables key, or -1 when unsupported.
 int mm_theme_variable(char* name):
 	list[char*] names = list[char*]{c"background", c"primaryColor", c"primaryBorderColor", c"primaryTextColor", c"secondaryColor", c"secondaryBorderColor", c"secondaryTextColor", c"tertiaryColor", c"tertiaryBorderColor", c"tertiaryTextColor", c"lineColor", c"textColor", c"mainBkg", c"nodeBorder", c"clusterBkg", c"clusterBorder", c"titleColor", c"edgeLabelBackground"}
+	list[char*] extras = list[char*]{c"noteBkgColor", c"noteBorderColor", c"noteTextColor", c"actorBkg", c"actorBorder", c"actorTextColor", c"actorLineColor", c"signalColor", c"signalTextColor", c"git0", c"git1", c"git2", c"git3", c"git4", c"git5", c"git6", c"git7", c"venn1", c"venn2", c"venn3", c"venn4", c"venn5", c"venn6", c"venn7", c"venn8", c"taskBkgColor", c"taskBorderColor", c"taskTextColor", c"activeTaskBkgColor", c"doneTaskBkgColor", c"critBkgColor", c"gridColor", c"todayLineColor", c"sectionBkgColor", c"altSectionBkgColor", c"excludeBkgColor", c"attributeBackgroundColorOdd", c"attributeBackgroundColorEven", c"gradientStart", c"gradientStop"}
 	int result = -1
 	for i in range(names.length):
 		if (strcmp(name, names[i]) == 0): result = i
+	for i in range(extras.length):
+		if (strcmp(name, extras[i]) == 0): result = MM_THEME_NOTE_BKG + i
 	__w_list_free(cast(__w_list*, names))
+	__w_list_free(cast(__w_list*, extras))
 	if (result >= 0): return result
 	if (index_of(name, c"pie") == 0):
 		int number = mm_theme_digits(name + 3)
@@ -437,6 +732,9 @@ int mm_theme_adjust(int rgb, int dh, int ds, int dl):
 int mm_theme_derive(int op, int source, int dh, int dl, int dark):
 	if (op == MM_THEME_COPY): return source
 	if (op == MM_THEME_ADJUST): return mm_theme_adjust(source, dh, 0, dl)
+	if (op == MM_THEME_GIT_SHADE):
+		if (dark): return mm_theme_adjust(source, dh, 0, 0 - dl)
+		return mm_theme_adjust(source, dh, 0, dl)
 	if (op == MM_THEME_BORDER):
 		if (dark): return mm_theme_adjust(source, 0, -40, 10)
 		return mm_theme_adjust(source, 0, -40, -10)
@@ -448,7 +746,7 @@ int mm_theme_derive(int op, int source, int dh, int dl, int dark):
 	if (dark): return mm_theme_adjust(source, 0, 0, -30)
 	return source
 
-# Theme identifier for a theme name, or 0. neo/redux names are native approximations.
+# Theme identifier for a theme name, or 0.
 int mm_style_theme_id(char* name):
 	list[char*] names = list[char*]{c"default", c"base", c"dark", c"forest", c"neutral", c"neo", c"neo-dark", c"redux", c"redux-dark", c"redux-color", c"redux-dark-color"}
 	int result = 0
@@ -457,39 +755,78 @@ int mm_style_theme_id(char* name):
 	__w_list_free(cast(__w_list*, names))
 	return result
 
+# Upstream mermaid@12.2.0 resolved values (packages/mermaid/src/themes/theme-*.js),
+# one row per variable and one 6-digit column per theme in mm_style_theme_id
+# order. Translucent values are composited over the theme background and
+# "------" marks a variable the theme leaves to derivation.
+int mm_theme_upstream(list[char*] rows, int variable, int theme):
+	char* row = rows[variable]
+	int at = (theme - 1) * 7
+	if (row[at] == '-'): return MM_THEME_UNSET
+	int value = 0
+	for i in range(6): value = value * 16 + mm_style_hex(row[at + i])
+	return value
+
+list[char*] mm_theme_rows():
+	return list[char*]{c"ffffff f4f4f4 333333 ffffff ffffff ffffff 333333 ffffff 333333 ffffff 333333", c"ececff fff4dd 1f2020 cde498 eeeeee cccccc 1f2020 cccccc 1f2020 cccccc 1f2020", c"c7c7f1 eeddbb cccccc abb594 d4d4d4 b3b3b3 cccccc 181818 cccccc 181818 cccccc", c"131300 333333 e0dfdf 321b67 111111 333333 e0dfdf 28253d e0dfdf 28253d e0dfdf", c"ffffde f4ddff 474949 cdffb2 fcfcfc cccccc 474949 cccccc 474949 cccccc 474949", c"eeeebc ddbbee 2f2f2f b4e599 e3e3e3 b3b3b3 2f2f2f b3b3b3 2f2f2f b3b3b3 2f2f2f", c"000021 0b2200 b8b6b6 32004d 030303 333333 b8b6b6 333333 b8b6b6 333333 b8b6b6", c"f9ffec f6f9ff 201f1f e1efc0 eeeeee ffffff 201f1f ffffff 201f1f ffffff 201f1f", c"e3f1c7 cfdbf3 060606 c3cab2 d4d4d4 e6e6e6 060606 e6e6e6 060606 e6e6e6 060606", c"060013 090600 dfe0e0 321b67 111111 000000 dfe0e0 000000 dfe0e0 000000 dfe0e0", c"333333 0b0b0b d3d3d3 000000 666666 000000 cccccc 000000 cccccc 000000 cccccc", c"333333 333333 cccccc 000000 000000 333333 cccccc 28253d cccccc 28253d cccccc", c"ececff fff4dd 1f2020 cde498 eeeeee ffffff 2a2020 ffffff 111113 ffffff 111113", c"9370db eeddbb cccccc 13540c 999999 000000 cccccc 28253d ffffff 28253d ffffff", c"ffffde f6f9ff 474949 cdffb2 fcfcfc ffffff 201f1f f9f9fb 1e1a2e f9f9fb 1e1a2e", c"aaaa33 cfdbf3 666666 6eaa49 707070 e6e6e6 060606 bdbccc bdbccc bdbccc bdbccc", c"333333 090600 f9fffe 333333 333333 000000 dfe0e0 000000 dfe0e0 000000 dfe0e0", c"ededed f4ddff 585858 e8e8e8 ffffff cccccc 474949 cccccc 474949 cccccc 474949", c"ececff fff4dd 0b0000 cde498 f4f4f4 ececfe 1f2020 ececfe 1f2020 f4a8ff f4a8ff", c"ffffde f4ddff 4d1037 cdffb2 555555 e9e9f1 474949 e9e9f1 474949 46ecd5 46ecd5", c"b5ff20 f6f9ff 3f5258 e1efc0 bbbbbb ffffff 201f1f ffffff 201f1f ffb86a ffb86a", c"b9b9ff ffe3aa 4f2f1b 8cb42f 777777 bcbcfb 060606 bcbcfb 060606 dab2ff dab2ff", c"ffff45 e3aaff 6e0a0a 6aff19 999999 cacadd 2e3030 cacadd 2e3030 7bf1a8 7bf1a8", c"d7ff86 c3d7ff 3b0048 33b42f dddddd fcfccf 060606 fcfccf 060606 c4b4ff c4b4ff", c"ff86ff c5ffaa 995a01 70d990 ffffff fbbcfb 060606 fbbcfb 060606 ffa2a2 ffa2a2", c"20ffff ffaac5 154706 d99070 dddddd bcfbfb 060606 bcfbfb 060606 ffdf20 ffdf20", c"ff2020 ddfff4 161722 98cde4 bbbbbb feecec 201f20 feecec 201f20 a3b3ff a3b3ff", c"ff20ff a3ff77 00296f 1a6330 999999 f98bf9 000000 f98bf9 000000 bbf451 bbf451", c"20ff8f ff77a3 01629c 63301a 777777 8bf9f9 000000 8bf9f9 000000 74d4ff 74d4ff", c"ff5353 aaffe3 ------ 1a4d63 555555 fbbcbc 060606 fbbcbc 060606 ffa1ad ffa1ad", c"8686ff ffcb5d 1f2020 b9d970 555555 7373f8 000000 bfbfbf 000000 f4a8ff f4a8ff", c"ffff78 cb5dff 0b0000 acff7f f4f4f4 9b9bbf 080909 bfbfbf 080909 46ecd5 46ecd5", c"d7ff86 77a3ff 4d1037 cde498 555555 f9f986 000000 bfbfbf 000000 ffb86a ffb86a", c"c286ff e3ff5d 3f5258 84d970 bbbbbb b573f8 000000 bfbfbf 000000 dab2ff dab2ff", c"ff86ff 92ff5d 4f2f1b 70d990 777777 f873f8 000000 bfbfbf 000000 7bf1a8 7bf1a8", c"ff86c2 5dff7a 6e0a0a 70d9c5 999999 f873b5 000000 bfbfbf 000000 c4b4ff c4b4ff", c"ff8686 5dffcb 3b0048 70b9d9 dddddd f87373 000000 bfbfbf 000000 ffa2a2 ffa2a2", c"ffc286 5de3ff 995a01 7084d9 ffffff f8b573 000000 bfbfbf 000000 ffdf20 ffdf20", c"c2ff86 9680ff 154706 c570d9 dddddd bff986 c0bfbe bfbfbf c0bfbe a3b3ff a3b3ff", c"86ffc2 ff5de3 161722 d97084 bbbbbb 73f8b5 000000 bfbfbf 000000 bbf451 bbf451", c"86ffff ff5d92 00296f d99070 999999 73f8f8 000000 bfbfbf 000000 74d4ff 74d4ff", c"86c2ff ff7a5d 01629c d9c570 777777 73b5f8 000000 bfbfbf 000000 ffa1ad ffa1ad", c"fff5ad fff5ad 474949 fff5ad 666666 fff5ad fff5ad fff5ad fef9c3 fff5ad fef9c3", c"aaaa33 e4db95 2f2f2f 6eaa49 999999 e4db95 e4db95 facc15 facc15 facc15 facc15", c"000000 333333 b8b6b6 000000 ffffff 333333 333333 28253d 28253d 28253d 28253d", c"ececff fff4dd 1f2020 cde498 eeeeee ffffff 2a2020 ffffff 111113 ffffff 111113", c"9370db eeddbb cccccc a6cf47 d4d4d4 b3b3b3 cccccc 28253d ffffff 28253d ffffff", c"000000 333333 d3d3d3 000000 333333 333333 e0dfdf 28253d e0dfdf 28253d e0dfdf", c"9370db eeddbb cccccc a6cf47 d4d4d4 b3b3b3 cccccc 28253d ffffff 28253d ffffff", c"333333 333333 d3d3d3 333333 333333 333333 cccccc 28253d ffffff 28253d ffffff", c"333333 333333 d3d3d3 333333 333333 333333 cccccc 28253d cccccc 28253d cccccc", c"0000ec ffcb5d 797d7d 9bc834 b4b4b4 7373f8 8b0000 7373f8 000000 7373f8 000000", c"dede00 cb5dff a12273 7aff32 555555 9b9bbf b72682 9b9bbf 080909 9b9bbf 080909", c"9dec00 77a3ff 6a8993 b0d45b bbbbbb f9f986 78959e f9f986 000000 f9f986 000000", c"0076ec ff7a5d 9b5c35 c8ab34 777777 73b5f8 ae683b 73b5f8 000000 73b5f8 000000", c"00ecec ff5d92 cb1313 c86134 999999 73f8f8 e31515 73f8f8 000000 73f8f8 000000", c"00ec76 ff5de3 65007b c83452 dddddd 73f8b5 a300c7 73f8b5 000000 73f8b5 000000", c"ec00ec 92ff5d cc7801 34c861 ffffff f873f8 fea01c f873f8 000000 f873f8 000000", c"ec0000 5dffcb 31a50e 349bc8 dddddd f87373 38bd10 f87373 000000 f87373 000000", c"5353ff ffc244 6a6e6e 8cb42f 555555 ------ ------ ------ ------ e879f9 e879f9", c"ffff45 c244ff a40000 6aff19 f4f4f4 ------ ------ ------ ------ 2dd4bf 2dd4bf", c"b5ff20 5d92ff cc2a91 a6cf47 555555 ------ ------ ------ ------ fb923c fb923c", c"ff53ff 80ff44 87a1a9 2fb457 bbbbbb ------ ------ ------ ------ 22d3ee 22d3ee", c"53ffff ff4480 bf7344 b4572f 777777 ------ ------ ------ ------ 4ade80 4ade80", c"45ff45 ff4480 eb2626 19ffae 999999 ------ ------ ------ ------ a78bfa a78bfa", c"ff5353 44ffc2 b800e1 2f8cb4 dddddd ------ ------ ------ ------ f87171 f87171", c"45ffff ffc244 feab35 196aff ffffff ------ ------ ------ ------ facc15 facc15", c"8a90dd fff4dd 595c5c 487e3a 707070 ececfe 1f2020 ececfe 1f2020 ececfe 1f2020", c"534fbc eeddbb ffffff 13540c 575757 b3b3b3 cccccc 181818 cccccc 181818 cccccc", c"ffffff 333333 e2dcd6 ffffff ffffff 333333 cccccc 28253d cccccc 28253d cccccc", c"bfc7ff ffffff 81b1db cde498 eeeeee ffffff 595c5c ffffff 595c5c ffffff 595c5c", c"d3d3d3 d3d3d3 d3d3d3 d3d3d3 bbbbbb d3d3d3 584343 d3d3d3 38383e d3d3d3 38383e", c"ff0000 ff0000 e83737 ff0000 dd4422 ff0000 ff0000 ff0000 ff0000 ff0000 ff0000", c"d3d3d3 d3d3d3 d3d3d3 d3d3d3 e6e6e6 d3d3d3 d3d3d3 d3d3d3 d3d3d3 d3d3d3 d3d3d3", c"ff0000 ff0000 db5757 ff0000 dd4422 ff0000 ff0000 ff0000 ff0000 ff0000 ff0000", c"b4b4ff f6f9ff b4ac76 6eaa49 bdbdbd ffffff 201f1f ffffff 201f1f f4a8ff f4a8ff", c"ffffff ffffff 333333 ffffff ffffff ffffff ffffff ffffff ffffff ffffff 333333", c"eeeeee eeeeee 9f9758 eeeeee eeeeee eeeeee eeeeee eeeeee eeeeee eeeeee eeeeee", c"ffffff ffffff 525252 ffffff ffffff ffffff ffffff ffffff ffffff ffffff ffffff", c"f2f2f2 f2f2f2 383838 f2f2f2 f2f2f2 f2f2f2 f2f2f2 f2f2f2 f2f2f2 f2f2f2 f2f2f2", c"c7c7f1 eeddbb cccccc abb594 d4d4d4 0042eb 0042eb 0042eb 0042eb 0042eb 0042eb", c"eeeebc ddbbee 2f2f2f b4e599 e3e3e3 eb0042 eb0042 eb0042 eb0042 eb0042 eb0042"}
+
+# Per-theme scalars (which): 0 stroke width, 1 label font size, 2/3 drop
+# shadow dx/dy, 4 shadow color, 5 shadow alpha in hundredths, 6 whether neo
+# node strokes use the gradient, 7 shadow blur (stdDeviation). The classic
+# and neo themes use their dropShadow CSS drop-shadow(); the redux themes name
+# url(#drop-shadow), the filter rendering-util/insertLookDefs.ts defines: an
+# unblurred feDropShadow offset 4px at 0.06 opacity, black on light themes and
+# white on dark ones.
+int mm_theme_scalar(int theme, int which):
+	list[int] widths = list[int]{1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 2}
+	list[int] sizes = list[int]{16, 16, 16, 16, 16, 14, 14, 14, 14, 14, 14}
+	list[int] dxs = list[int]{1, 1, 1, 1, 1, 0, 1, 4, 4, 4, 4}
+	list[int] dys = list[int]{2, 2, 2, 2, 2, 1, 2, 4, 4, 4, 4}
+	list[int] colors = list[int]{0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0xb9b9b9, 0, 0xb9b9b9, 0, 0xffffff, 0, 0xffffff}
+	list[int] alphas = list[int]{100, 100, 100, 50, 100, 25, 20, 6, 6, 6, 6}
+	list[int] gradients = list[int]{0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0}
+	list[int] blurs = list[int]{2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0}
+	int result = 0
+	if (which == 0): result = widths[theme - 1]
+	else if (which == 1): result = sizes[theme - 1]
+	else if (which == 2): result = dxs[theme - 1]
+	else if (which == 3): result = dys[theme - 1]
+	else if (which == 4): result = colors[theme - 1]
+	else if (which == 5): result = alphas[theme - 1]
+	else if (which == 6): result = gradients[theme - 1]
+	else if (which == 7): result = blurs[theme - 1]
+	__w_list_free(cast(__w_list*, widths))
+	__w_list_free(cast(__w_list*, sizes))
+	__w_list_free(cast(__w_list*, dxs))
+	__w_list_free(cast(__w_list*, dys))
+	__w_list_free(cast(__w_list*, colors))
+	__w_list_free(cast(__w_list*, alphas))
+	__w_list_free(cast(__w_list*, gradients))
+	__w_list_free(cast(__w_list*, blurs))
+	return result
+
+# Upstream theme fontFamily (themes/theme-*.js): the classic themes use
+# "trebuchet ms", neo/neo-dark arial and the redux family "Recursive Variable",
+# each followed by arial and sans-serif.
+char* mm_theme_font_family(int theme):
+	if (theme >= 8): return c"\"Recursive Variable\", arial, sans-serif"
+	if (theme == 6 || theme == 7): return c"arial, sans-serif"
+	return c"\"trebuchet ms\", verdana, arial, sans-serif"
+
 # Resolve every theme variable. user holds MM_THEME_COUNT explicit values
 # (MM_THEME_UNSET when absent); dark is -1 for the theme's own mode. A variable
-# keeps the theme's native value unless it, or a variable it derives from, was
-# set explicitly; then it is derived the way Mermaid's theme-base derives it.
+# keeps the selected theme's upstream value unless it, or a variable it derives
+# from, was set explicitly; then it is derived the way Mermaid's theme-base
+# derives it.
 void mm_style_theme_resolve(mm_document* d, int theme, list[int] user, int dark):
 	if (theme == 0): theme = 1
 	d.theme = theme
-	list[int] fills = list[int]{0xf8fafc, 0xfff4dd, 0x1f2937, 0xdcfce7, 0xf5f5f5, 0xffffff, 0x1f2023, 0xffffff, 0x18181b, 0xeef2ff, 0x1e1b4b}
-	list[int] strokes = list[int]{0x334155, 0x937044, 0x94a3b8, 0x166534, 0x525252, 0x4b5563, 0x9ca3af, 0x111111, 0xf4f4f5, 0x4f46e5, 0xa5b4fc}
-	list[int] texts = list[int]{0x0f172a, 0x333333, 0xf8fafc, 0x14532d, 0x171717, 0x111827, 0xf3f4f6, 0x111111, 0xf4f4f5, 0x1e1b4b, 0xeef2ff}
-	list[int] backgrounds = list[int]{0xffffff, 0xffffff, 0x0f172a, 0xffffff, 0xffffff, 0xffffff, 0x111214, 0xffffff, 0x09090b, 0xffffff, 0x0b0a1f}
 	list[int] modes = list[int]{0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1}
-	list[int] sources = list[int]{-1, -1, 1, 1, 1, 4, 4, 1, 7, 7, 0, 3, 1, 2, 7, 8, 11, 4, 1, 4, 7, 1, 4, 7, 1, 1, 1, 1, 1, 1, 1, 4, 7, 1, 1, 1, 1, 1, 1, 1, 1, 1}
-	list[int] ops = list[int]{0, 0, 3, 4, 2, 3, 5, 2, 3, 5, 5, 1, 1, 1, 1, 1, 1, 6, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2}
-	list[int] hues = list[int]{0, 0, 0, 0, -120, 0, 0, 180, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, -60, 120, 60, -60, 120, 0, 0, 0, 30, 60, 90, 120, 150, 210, 270, 300, 330}
-	list[int] lights = list[int]{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -10, -10, -10, -10, -10, 0, -20, -20, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	list[int] native = new list[int]
-	for i in range(MM_THEME_COUNT): native.push(MM_THEME_UNSET)
-	int fill = fills[theme - 1]
-	int stroke = strokes[theme - 1]
-	int text = texts[theme - 1]
-	native[MM_THEME_BACKGROUND] = backgrounds[theme - 1]
-	native[MM_THEME_PRIMARY] = fill
-	native[MM_THEME_PRIMARY_BORDER] = stroke
-	native[MM_THEME_PRIMARY_TEXT] = text
-	native[MM_THEME_LINE] = stroke
-	native[MM_THEME_TEXT] = text
-	native[MM_THEME_CLUSTER_BKG] = fill
-	native[MM_THEME_CLUSTER_BORDER] = stroke
-	native[MM_THEME_EDGE_LABEL_BKG] = -1
-	for i in range(12):
-		native[MM_THEME_PIE + i] = mm_style_series_color(i)
-		native[MM_THEME_SCALE + i] = mm_style_series_color(i)
+	list[int] sources = list[int]{-1, -1, 1, 1, 1, 4, 4, 1, 7, 7, 0, 3, 1, 2, 7, 8, 11, 4, 1, 4, 7, 1, 4, 7, 1, 1, 1, 1, 1, 1, 1, 4, 7, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, 42, -1, 12, 2, 3, 46, 11, 11, 1, 4, 7, 1, 1, 1, 1, 1, 1, 4, 7, 1, 1, 4, 1, 4, 1, 2, 11, 1, -1, -1, -1, -1, 7, -1, -1, -1, -1, 2, 5}
+	list[int] ops = list[int]{0, 0, 3, 4, 2, 3, 5, 2, 3, 5, 5, 1, 1, 1, 1, 1, 1, 6, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 3, 0, 1, 1, 1, 1, 1, 1, 7, 7, 7, 7, 7, 7, 7, 7, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1}
+	list[int] hues = list[int]{0, 0, 0, 0, -120, 0, 0, 180, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, -60, 120, 60, -60, 120, 0, 0, 0, 30, 60, 90, 120, 150, 210, 270, 300, 330, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -30, -60, -90, 60, 120, 0, 0, 0, 60, -60, 60, 120, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	list[int] lights = list[int]{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -10, -10, -10, -10, -10, 0, -20, -20, -10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -25, -25, -25, -25, -25, -25, -25, -25, -30, -30, -30, -30, -30, -30, -30, -30, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	list[char*] rows = mm_theme_rows()
 	if (dark < 0): dark = modes[theme - 1]
 	list[int] values = new list[int]
 	list[int] touched = new list[int]
@@ -499,38 +836,187 @@ void mm_style_theme_resolve(mm_document* d, int theme, list[int] user, int dark)
 		int changed = value != MM_THEME_UNSET
 		if (changed == 0):
 			int source = sources[v]
+			int native = mm_theme_upstream(rows, v, theme)
 			if (source >= 0 && touched[source]): changed = 1
-			if (changed == 0 && native[v] != MM_THEME_UNSET): value = native[v]
-			else: value = mm_theme_derive(ops[v], values[source], hues[v], lights[v], dark)
+			if (changed == 0 && native != MM_THEME_UNSET): value = native
+			else if (source >= 0): value = mm_theme_derive(ops[v], values[source], hues[v], lights[v], dark)
+			else: value = 0
 		values.push(value)
 		touched.push(changed)
 	d.palette.mask = 15
 	d.palette.fill = values[MM_THEME_MAIN_BKG]
 	d.palette.stroke = values[MM_THEME_NODE_BORDER]
 	d.palette.text = values[MM_THEME_PRIMARY_TEXT]
-	d.palette.width = 2
+	d.palette.width = mm_theme_scalar(theme, 0)
 	d.palette_line = values[MM_THEME_LINE]
 	d.palette_label = values[MM_THEME_TEXT]
 	d.background = values[MM_THEME_BACKGROUND]
+	# The neo and redux themes set a 14px label font unless fontSize is configured.
+	if (d.font_size == 0 && mm_theme_scalar(theme, 1) != MM_TEXT_SIZE): d.font_size = mm_theme_scalar(theme, 1)
 	if (d.theme_values != 0): __w_list_free(cast(__w_list*, d.theme_values))
 	d.theme_values = values
-	__w_list_free(cast(__w_list*, fills))
-	__w_list_free(cast(__w_list*, strokes))
-	__w_list_free(cast(__w_list*, texts))
-	__w_list_free(cast(__w_list*, backgrounds))
+	__w_list_free(cast(__w_list*, rows))
 	__w_list_free(cast(__w_list*, modes))
 	__w_list_free(cast(__w_list*, sources))
 	__w_list_free(cast(__w_list*, ops))
 	__w_list_free(cast(__w_list*, hues))
 	__w_list_free(cast(__w_list*, lights))
-	__w_list_free(cast(__w_list*, native))
 	__w_list_free(cast(__w_list*, touched))
 
-# Native layered-layout gaps; flowchart nodeSpacing/rankSpacing override them.
+# Native layered-layout gaps; flowchart (and use case) nodeSpacing/rankSpacing override them.
 int mm_style_lane_gap(mm_document* d):
-	if (d.kind == MM_FLOW && (d.config_mask & 1)): return d.node_spacing * 2
+	if ((d.kind == MM_FLOW || d.kind == MM_USECASE) && (d.config_mask & 1)): return d.node_spacing * 2
 	return 100
 
 int mm_style_rank_gap(mm_document* d):
-	if (d.kind == MM_FLOW && (d.config_mask & 2)): return d.rank_spacing + 90
+	if ((d.kind == MM_FLOW || d.kind == MM_USECASE) && (d.config_mask & 2)): return d.rank_spacing + 90
 	return 140
+
+# Font size configuration: 8..72, optionally followed by px; -1 when invalid.
+int mm_style_font_size_value(char* value):
+	int size = mm_style_pixels(value, 0, strlen(value), 2)
+	if (size < 8 || size > 72): return -1
+	return size
+
+# A CSS font-family list for fontFamily configuration: family names, quotes,
+# commas and spaces, at most 128 bytes.
+int mm_style_family_list(char* value):
+	int length = strlen(value)
+	if (length == 0 || length > 128): return 0
+	for i in range(length):
+		int c = value[i] & 255
+		if (isalnum(c) == 0 && c != ' ' && c != ',' && c != '-' && c != '_' && c != '"' && c != '\''): return 0
+	return 1
+
+# Skip whitespace and /* comments */ in themeCSS text.
+int mm_style_css_space(char* css, int at):
+	while (css[at] != 0):
+		if (css[at] == ' ' || css[at] == 9 || css[at] == 10 || css[at] == 13): at = at + 1
+		else if (css[at] == '/' && css[at + 1] == '*'):
+			int close = index_of(css + at + 2, c"*/")
+			if (close < 0): return strlen(css)
+			at = at + close + 4
+		else: return at
+	return at
+
+# themeCSS subset: rules ".name[, .name...] { property: value; ... }" whose
+# declarations use the classDef property set; each rule merges into the named
+# class definitions (creating them), so `class`/`:::` can assign them.
+# `!important` is accepted and ignored. Other selectors, at-rules and
+# malformed text fail with a diagnostic.
+void mm_style_theme_css(mm_document* d, char* css, int offset):
+	char* message = c"themeCSS supports .class { property: value; } rules"
+	int at = mm_style_css_space(css, 0)
+	int rules = 0
+	while (css[at] != 0 && d.error == 0):
+		list[char*] names = new list[char*]
+		while (d.error == 0):
+			if (css[at] != '.'):
+				mm_error(d, offset, message)
+				break
+			int start = at + 1
+			at = start
+			while (mm_id_char(css[at] & 255) || css[at] == '-'): at = at + 1
+			char* name = str_copy_range(css, start, at)
+			if (mm_style_name(name) == 0): mm_error(d, offset, message)
+			names.push(name)
+			at = mm_style_css_space(css, at)
+			if (css[at] == ','):
+				at = mm_style_css_space(css, at + 1)
+				continue
+			if (css[at] != '{'): mm_error(d, offset, message)
+			break
+		mm_style style
+		mm_style_clear(&style)
+		if (d.error == 0):
+			at = at + 1
+			int count = 0
+			while (d.error == 0):
+				at = mm_style_css_space(css, at)
+				if (css[at] == '}'):
+					at = at + 1
+					break
+				int colon = at
+				while (css[colon] != 0 && css[colon] != ':' && css[colon] != ';' && css[colon] != '}'): colon = colon + 1
+				int stop = colon
+				while (css[stop] != 0 && css[stop] != ';' && css[stop] != '}'): stop = stop + 1
+				if (css[colon] != ':' || css[stop] == 0):
+					mm_error(d, offset, message)
+					break
+				char* key = mm_style_trim(css, at, colon)
+				int end = stop
+				char* raw = mm_style_trim(css, colon + 1, end)
+				int important = index_of(raw, c"!important")
+				if (important >= 0): raw[important] = 0
+				char* value = mm_style_trim(raw, 0, strlen(raw))
+				mm_style_property(d, &style, key, value, offset)
+				free(key)
+				free(raw)
+				free(value)
+				count = count + 1
+				if (count > 16): mm_error(d, offset, c"style property limit exceeded")
+				at = stop
+				if (css[at] == ';'): at = at + 1
+		if (d.error == 0):
+			for char* name in names:
+				mm_style_class* definition = mm_style_find(d, name)
+				if (definition == 0):
+					if (d.style_definitions.length >= 128):
+						mm_error(d, offset, c"style class limit exceeded")
+						break
+					definition = new mm_style_class()
+					definition.name = strclone(name)
+					d.style_definitions.push(definition)
+				mm_style_merge(&definition.style, &style)
+		for char* name in names: free(name)
+		__w_list_free(cast(__w_list*, names))
+		rules = rules + 1
+		if (rules > 64): mm_error(d, offset, c"themeCSS rule limit exceeded")
+		at = mm_style_css_space(css, at)
+
+# Font and CSS configuration keys owned by the styling layer: fontFamily,
+# fontSize, themeCSS and themeVariables.fontFamily / fontSize. key is the
+# path below "config."; returns 1 when the key was handled (or diagnosed).
+int mm_style_config_key(mm_document* d, char* key, char* value, int map, int offset):
+	int family = strcmp(key, c"fontFamily") == 0 || strcmp(key, c"themeVariables.fontFamily") == 0
+	int size = strcmp(key, c"fontSize") == 0 || strcmp(key, c"themeVariables.fontSize") == 0
+	int css = strcmp(key, c"themeCSS") == 0
+	if (family == 0 && size == 0 && css == 0): return 0
+	if (map):
+		mm_error(d, offset, c"configuration value must be a scalar")
+		return 1
+	if (family):
+		if (mm_style_family_list(value) == 0): mm_error(d, offset, c"fontFamily takes a CSS font-family list of names, quotes, commas and spaces")
+		else:
+			if (d.font_family != 0): free(d.font_family)
+			d.font_family = strclone(value)
+	else if (size):
+		int px = mm_style_font_size_value(value)
+		if (px < 0): mm_error(d, offset, c"fontSize must be 8 to 72 (px)")
+		else: d.font_size = px
+	else: mm_style_theme_css(d, value, offset)
+	return 1
+
+# Move configuration-owned styling from the envelope document that read the
+# frontmatter/directives into the parsed diagram: fontFamily/fontSize and the
+# themeCSS classes, which sit beneath the diagram's own classDef statements.
+void mm_style_adopt(mm_document* d, mm_document* envelope):
+	if (d.font_family != 0): free(d.font_family)
+	d.font_family = envelope.font_family
+	envelope.font_family = 0
+	d.font_size = envelope.font_size
+	for mm_style_class* css in envelope.style_definitions:
+		mm_style style = css.style
+		if (style.mask & MM_STYLE_FAMILY): style.family = mm_style_font(d, envelope.style_fonts[style.family - 1], 0)
+		mm_style_class* own = mm_style_find(d, css.name)
+		if (own == 0):
+			if (d.style_definitions.length >= 128):
+				mm_error(d, 0, c"style class limit exceeded")
+				return
+			own = new mm_style_class()
+			own.name = strclone(css.name)
+			own.style = style
+			d.style_definitions.push(own)
+		else:
+			mm_style_merge(&style, &own.style)
+			own.style = style

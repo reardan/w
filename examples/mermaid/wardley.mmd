@@ -1,6 +1,7 @@
 wardley-beta
 title Native diagram value chain
-evolution Genesis -> Custom built -> Product -> Commodity
+size [1100, 700]
+evolution Genesis@0.2 -> Custom built@0.45 -> Product / Rental@0.75 -> Commodity@1.0
 anchor User [0.95, 0.2]
 component Desktop editor [0.7, 0.5] label [12, -20]
 component Layout [0.4, 0.6] (build)
@@ -8,6 +9,12 @@ component Graphics [0.15, 0.8] (buy) inertia
 User -> Desktop editor
 Desktop editor -> Layout
 Layout -> Graphics
+component Fonts [0.1, 0.92] (market)
+Graphics +'glyphs'> Fonts
+User -.-> Layout; drives
+annotations [0.95, 0.75]
+annotation 1,[0.42, 0.55] "Deterministic layered placement"
+accelerator "Open fonts" [0.2, 0.7]
 evolve Layout 0.75
 pipeline Graphics
 {

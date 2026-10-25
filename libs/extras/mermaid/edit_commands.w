@@ -2,6 +2,8 @@
 # Unrelated comments, Markdown fences, configuration and directives stay intact.
 import libs.extras.mermaid.editor
 import libs.extras.mermaid.serialize
+import libs.extras.mermaid.edit_outline
+import libs.extras.mermaid.edit_slots
 
 const int MM_EDIT_LABEL = 1
 const int MM_EDIT_NODE_DELETE = 2
@@ -18,33 +20,26 @@ int mm_edit_has_interfaces(mm_document* d):
 		if (n.shape == 28): return 1
 	return 0
 
-char* mm_edit_nested_reason(mm_document* d):
-	if (d.kind == MM_CLASS): return c"Edit classes inside namespaces in the source pane."
-	return c"Edit states inside composite states in the source pane."
-
 # Borrowed static text: an empty string means the selected operation is available.
 char* mm_editor_edit_reason(mm_editor* e, int operation, int index):
 	if (e == 0 || e.document.error != 0): return c"Fix source errors before editing the diagram."
 	mm_document* d = e.document
-	if (mm_graph_edit_family(d.kind) == 0): return c"Graphical editing is available for flowcharts, ER, class and state diagrams."
+	if (mm_canvas_edit_family(d.kind) == 0): return c"Graphical editing is available for flowchart, ER, class, state, requirement, use case, architecture, block, C4, swimlane, mindmap, treeView, kanban and agentflow diagrams."
 	if (operation == MM_EDIT_EDGE_DELETE):
 		if (index < 0 || index >= d.edges.length): return c"Select a connection first."
-		if (mm_edit_uml(d)):
-			mm_edge* edge = d.edges[index]
-			if (d.nodes[edge.from_node].parent >= 0 || d.nodes[edge.to_node].parent >= 0): return mm_edit_nested_reason(d)
-			if (mm_edit_has_interfaces(d)): return c"Edit lollipop interfaces in the source pane."
-	else:
-		if (operation != MM_EDIT_LABEL && operation != MM_EDIT_NODE_DELETE): return c"Unknown edit command."
-		if (index < 0 || index >= d.nodes.length): return c"Select a node first."
-		mm_node* n = d.nodes[index]
-		if (n.group):
-			if (d.kind == MM_CLASS): return c"Edit namespaces in the source pane."
-			if (d.kind == MM_STATE): return c"Edit composite states in the source pane."
-			return c"Edit groups in the source pane."
-		if (mm_edit_uml(d) && n.parent >= 0): return mm_edit_nested_reason(d)
-		if (n.shape == 28 && d.kind == MM_CLASS): return c"Edit lollipop interfaces in the source pane."
-		if (operation == MM_EDIT_NODE_DELETE && mm_edit_has_interfaces(d)): return c"Edit lollipop interfaces in the source pane."
-		if (operation == MM_EDIT_LABEL && d.kind == MM_STATE && n.shape != 1): return c"Start, end, choice, fork and join states have no editable label."
+		if (mm_edit_has_interfaces(d)): return c"Edit lollipop interfaces in the source pane."
+		return c""
+	if (operation != MM_EDIT_LABEL && operation != MM_EDIT_NODE_DELETE): return c"Unknown edit command."
+	if (index < 0 || index >= d.nodes.length): return c"Select a node first."
+	mm_node* n = d.nodes[index]
+	if (n.shape == 28 && d.kind == MM_CLASS): return c"Edit lollipop interfaces in the source pane."
+	if (operation == MM_EDIT_NODE_DELETE && mm_edit_has_interfaces(d)): return c"Edit lollipop interfaces in the source pane."
+	# Synthetic containers: a block diagram's root, concurrent state regions.
+	if (n.group && n.id[0] == '@'): return c"Edit this container in the source pane."
+	if (operation == MM_EDIT_NODE_DELETE && d.kind == MM_MINDMAP && index == 0): return c"A mindmap keeps its root; rename it instead."
+	if (operation == MM_EDIT_LABEL):
+		if (d.kind == MM_STATE && n.shape != 1 && n.group == 0): return c"Start, end, choice, fork and join states have no editable label."
+		if (d.kind == MM_REQUIREMENT): return c"Requirement and element names are identifiers; rename them in the source pane."
 	return c""
 
 int mm_edit_text_safe(char* text):
@@ -201,17 +196,23 @@ char* mm_edit_label_statement(mm_document* d, mm_node* n, char* label):
 int mm_editor_set_label(mm_editor* e, int index, char* label):
 	if (mm_editor_edit_reason(e, MM_EDIT_LABEL, index)[0] != 0 || mm_edit_text_safe(label) == 0): return 0
 	if (strcmp(e.document.nodes[index].label, label) == 0): return 1
+	if (mm_outline_family(e.document.kind)): return mm_outline_rename(e, index, label)
+	if (e.document.kind != MM_FLOW && e.document.kind != MM_ER && mm_edit_uml(e.document) == 0): return mm_ee_rename(e, index, label)
+	if (e.document.nodes[index].group && mm_edit_uml(e.document) == 0): return mm_ee_rename(e, index, label)
+	# Minimal bytes first: the label's own text, edited in place.
+	if (mm_ee_rename_in_place(e, index, label)): return 1
 	char* statement = mm_edit_label_statement(e.document, e.document.nodes[index], label)
 	if (statement == 0): return 0
 	string_builder* source = string_new()
 	string_append_bytes(source, e.document.source, e.document.source_end)
-	if (source.length > 0 && source.data[source.length - 1] != 10): string_append_char(source, 10)
+	if (source.length > 0 && source.data[source.length - 1] != 10): mm_append_newline(source, e.document)
 	string_append(source, statement)
-	string_append_char(source, 10)
+	mm_append_newline(source, e.document)
 	string_append_bytes(source, e.document.source + e.document.source_end, e.document.length - e.document.source_end)
 	int ok = mm_edit_commit(e, source.data, -1, -1, index, label)
 	free(statement)
 	string_free(source)
+	if (ok == 0): ok = mm_ee_rename_insert(e, index, label)
 	return ok
 
 struct mm_edit_token:
@@ -264,6 +265,17 @@ void mm_edit_splice(mm_edit_scan* scan, int start, int end, char* replacement):
 		piece.statement = 0
 		scan.pieces.push(piece)
 		return
+	if (replacement[0] == 0):
+		# A removed statement alone on its line takes the line (with its
+		# indentation inside a subgraph) rather than leaving it blank.
+		mm_document* d = scan.original
+		int line_start = start
+		while (line_start > scan.copied && line_start > d.source_start && (d.source[line_start - 1] == 32 || d.source[line_start - 1] == 9)): line_start = line_start - 1
+		int line_end = end
+		while (line_end < d.source_end && (d.source[line_end] == 32 || d.source[line_end] == 9 || d.source[line_end] == 13)): line_end = line_end + 1
+		if ((line_start == d.source_start || d.source[line_start - 1] == 10) && line_start >= scan.copied && line_end < d.source_end && d.source[line_end] == 10):
+			start = line_start
+			end = line_end + 1
 	string_append_bytes(scan.output, scan.original.source + scan.copied, start - scan.copied)
 	string_append(scan.output, replacement)
 	scan.copied = end
@@ -276,10 +288,12 @@ void mm_edit_separators(mm_edit_scan* scan):
 		mm_space(p)
 		int start = p.pos
 		if (mm_match(p, c"%%")):
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
+			int kind = 0
 			int x = 0
 			int y = 0
-			int record = mm_position_record(scan.original, start, p.pos, &x, &y)
+			int record = mm_geometry_record(scan.original, start, p.pos, &kind, &x, &y)
 			int removed = record >= 0 && record == scan.node
 			if (record >= 0 && scan.removed != 0 && scan.removed[record]): removed = 1
 			if (removed): mm_edit_splice(scan, start, p.pos, c"")
@@ -723,15 +737,75 @@ int mm_editor_delete_uml(mm_editor* e, int node, int edge):
 	__w_list_free(cast(__w_list*, relaxed))
 	return ok
 
+# The family scanners keep their exact statement rewriting; nested scopes,
+# groups and the other families use the validated generic splices.
 int mm_editor_delete_node(mm_editor* e, int index):
 	if (mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, index)[0] != 0): return 0
-	if (mm_edit_uml(e.document)): return mm_editor_delete_uml(e, index, -1)
-	return mm_editor_delete(e, index, -1)
+	if (mm_outline_family(e.document.kind)): return mm_outline_delete(e, index)
+	if (e.document.nodes[index].group == 0):
+		if (mm_edit_uml(e.document) && mm_editor_delete_uml(e, index, -1)): return 1
+		if ((e.document.kind == MM_FLOW || e.document.kind == MM_ER) && mm_editor_delete(e, index, -1)): return 1
+	return mm_ee_delete_node(e, index)
 
 int mm_editor_delete_edge(mm_editor* e, int index):
 	if (mm_editor_edit_reason(e, MM_EDIT_EDGE_DELETE, index)[0] != 0): return 0
-	if (mm_edit_uml(e.document)): return mm_editor_delete_uml(e, -1, index)
-	return mm_editor_delete(e, -1, index)
+	if (mm_edit_uml(e.document) && mm_editor_delete_uml(e, -1, index)): return 1
+	if ((e.document.kind == MM_FLOW || e.document.kind == MM_ER) && mm_editor_delete(e, -1, index)): return 1
+	return mm_ee_delete_edge(e, index)
+
+# Remove a group but keep its members (they join the group's parent).
+int mm_editor_ungroup(mm_editor* e, int index):
+	if (mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, index)[0] != 0): return 0
+	if (e.document.nodes[index].group == 0 || mm_outline_family(e.document.kind)): return 0
+	return mm_ee_ungroup(e, index)
+
+# Move a node into group (or to the top level with -1) where the syntax allows.
+int mm_editor_reparent(mm_editor* e, int index, int group):
+	if (mm_editor_edit_reason(e, MM_EDIT_NODE_DELETE, index)[0] != 0): return 0
+	if (mm_outline_family(e.document.kind) || e.document.kind == MM_BLOCK): return 0
+	return mm_ee_reparent(e, index, group)
+
+# Ids resolved first: every deletion shifts indices. One undo step for all.
+int mm_editor_delete_nodes(mm_editor* e, list[int] indices):
+	if (indices.length == 0): return 0
+	list[char*] ids = new list[char*]
+	for int index in indices:
+		if (index < 0 || index >= e.document.nodes.length):
+			__w_list_free(cast(__w_list*, ids))
+			return 0
+		ids.push(strclone(e.document.nodes[index].id))
+	mm_editor_begin(e)
+	int ok = 1
+	int outline = mm_outline_family(e.document.kind)
+	for char* id in ids:
+		if (ok == 0): break
+		int index = mm_find_node(e.document, id)
+		# Already gone with a deleted group (or outline subtree).
+		if (index < 0 || outline): continue
+		ok = mm_editor_delete_node(e, index)
+	if (outline):
+		# Outline ids are positional: delete deepest-last positions first.
+		list[int] order = new list[int]
+		for int index in indices: order.push(index)
+		for i in range(1, order.length):
+			int j = i
+			while (j > 0 && order[j] > order[j - 1]):
+				int t = order[j]
+				order[j] = order[j - 1]
+				order[j - 1] = t
+				j = j - 1
+		for int index in order:
+			if (ok == 0): break
+			int covered = 0
+			for int other in indices:
+				if (other != index && other < e.document.nodes.length && mm_position_within(e.document, index, other)): covered = 1
+			if (covered == 0): ok = mm_editor_delete_node(e, index)
+		__w_list_free(cast(__w_list*, order))
+	if (ok): mm_editor_commit(e)
+	else: mm_editor_rollback(e)
+	for char* id in ids: free(id)
+	__w_list_free(cast(__w_list*, ids))
+	return ok
 
 int mm_editor_add_entity(mm_editor* e, char* id, char* label):
 	if (e.document.kind != MM_ER || mm_editor_identifier(id) == 0 || mm_edit_text_safe(label) == 0): return 0
@@ -779,10 +853,12 @@ int mm_editor_connect_uml(mm_editor* e, int from_node, int to_node);
 # those identities instead of restricting connection creation to UI-generated IDs.
 int mm_editor_connect(mm_editor* e, char* from_id, char* to_id):
 	if (e.document.error != 0 || from_id == 0 || to_id == 0): return 0
-	if (e.document.kind != MM_FLOW && mm_edit_uml(e.document) == 0): return 0
+	if (mm_outline_family(e.document.kind) || mm_canvas_edit_family(e.document.kind) == 0): return 0
 	int from_node = mm_find_node(e.document, from_id)
 	int to_node = mm_find_node(e.document, to_id)
 	if (from_node < 0 || to_node < 0): return 0
+	if (e.document.kind == MM_ER): return mm_editor_add_relationship(e, from_id, to_id, c"relates", 1, 3, 0)
+	if (e.document.kind != MM_FLOW && mm_edit_uml(e.document) == 0): return mm_ee_connect(e, from_node, to_node)
 	if (mm_edit_uml(e.document)): return mm_editor_connect_uml(e, from_node, to_node)
 	mm_edge* edge = new mm_edge()
 	edge.from_node = from_node
@@ -807,9 +883,9 @@ int mm_edit_append_checked(mm_editor* e, char* statement, int added_nodes, int f
 	if (old.error != 0 || statement == 0): return 0
 	string_builder* source = string_new()
 	string_append_bytes(source, old.source, old.source_end)
-	if (source.length > 0 && source.data[source.length - 1] != 10): string_append_char(source, 10)
+	if (source.length > 0 && source.data[source.length - 1] != 10): mm_append_newline(source, old)
 	string_append(source, statement)
-	string_append_char(source, 10)
+	mm_append_newline(source, old)
 	string_append_bytes(source, old.source + old.source_end, old.length - old.source_end)
 	mm_document* next = mm_parse_selected(source.data, source.length, e.selected)
 	int added_edges = from_node >= 0
@@ -883,4 +959,177 @@ int mm_editor_connect_uml(mm_editor* e, int from_node, int to_node):
 int mm_editor_add_graph_node(mm_editor* e, char* id, char* label):
 	if (e.document.kind == MM_ER): return mm_editor_add_entity(e, id, label)
 	if (e.document.kind == MM_FLOW): return mm_editor_add_node(e, id, label)
-	return mm_editor_add_uml_node(e, id, label)
+	if (mm_edit_uml(e.document)): return mm_editor_add_uml_node(e, id, label)
+	if (mm_outline_family(e.document.kind)):
+		# Outlines: a last child of the root (labels are the identities).
+		if (e.document.nodes.length == 0): return 0
+		char* text = label
+		if (text == 0 || text[0] == 0): text = id
+		return mm_outline_add(e, 0, text, 0)
+	return mm_ee_add_node(e, id, label, -1)
+
+# Add inside a group: a flowchart subgraph, swimlane lane, use-case
+# boundary, namespace, composite state, C4 boundary or architecture group.
+int mm_editor_add_node_in(mm_editor* e, char* id, char* label, int group):
+	if (group < 0): return mm_editor_add_graph_node(e, id, label)
+	if (e.document.error != 0 || group >= e.document.nodes.length || e.document.nodes[group].group == 0): return 0
+	if (mm_outline_family(e.document.kind) || e.document.kind == MM_BLOCK): return 0
+	char* text = label
+	if (text == 0 || text[0] == 0): text = id
+	if (mm_edit_uml(e.document)):
+		# `class Id["Label"]` / `state "Label" as Id` inside the block body.
+		if (mm_editor_identifier(id) == 0 || mm_edit_text_safe(text) == 0 || mm_find_node(e.document, id) >= 0): return 0
+		string_builder* statement = string_new()
+		if (e.document.kind == MM_CLASS):
+			string_append(statement, c"class ")
+			string_append(statement, id)
+			if (strcmp(text, id) != 0):
+				string_append(statement, c"[\"")
+				string_append(statement, text)
+				string_append(statement, c"\"]")
+		else:
+			if (strcmp(text, id) != 0):
+				string_append(statement, c"state \"")
+				string_append(statement, text)
+				string_append(statement, c"\" as ")
+			else: string_append(statement, c"state ")
+			string_append(statement, id)
+		mm_expect* x = mm_expect_new(e.document)
+		x.added.push(id)
+		x.added_labels.push(text)
+		x.added_parents.push(group)
+		x.relaxed[group] = 1
+		int ok = mm_ee_insert_in_group(e, group, statement.data, x)
+		mm_expect_free(x)
+		string_free(statement)
+		return ok
+	return mm_ee_add_node(e, id, text, group)
+
+# Inspector commands: connection label and kind, ER cardinalities and
+# attributes, class members and requirement properties. Each is one
+# validated, minimal splice of the statement that states it.
+int mm_editor_edge_editable(mm_editor* e, int index):
+	if (mm_editor_edit_reason(e, MM_EDIT_EDGE_DELETE, index)[0] != 0): return 0
+	return mm_outline_family(e.document.kind) == 0
+
+int mm_editor_edge_label(mm_editor* e, int index, char* label):
+	if (mm_editor_edge_editable(e, index) == 0 || e.document.kind == MM_REQUIREMENT): return 0
+	return mm_ee_edge_label(e, index, label)
+
+# `operator`: the family's connector text (`-.->`, `<|--`, `||--o{`) or a
+# requirement relation keyword (`satisfies`).
+int mm_editor_edge_kind(mm_editor* e, int index, char* operator):
+	if (mm_editor_edge_editable(e, index) == 0): return 0
+	if (e.document.kind == MM_C4 || e.document.kind == MM_ARCHITECTURE): return 0
+	return mm_ee_edge_kind(e, index, operator)
+
+int mm_editor_er_cardinality(mm_editor* e, int index, int left, int right, int dashed):
+	if (mm_editor_edge_editable(e, index) == 0): return 0
+	return mm_ee_er_cardinality(e, index, left, right, dashed)
+
+int mm_editor_attribute_add(mm_editor* e, int index, char* type_name, char* name, char* keys, char* comment):
+	return mm_ee_attribute_add(e, index, type_name, name, keys, comment)
+
+int mm_editor_attribute_remove(mm_editor* e, int index, int which):
+	return mm_ee_attribute_remove(e, index, which)
+
+int mm_editor_attribute_set(mm_editor* e, int index, int which, char* type_name, char* name, char* keys, char* comment):
+	return mm_ee_attribute_set(e, index, which, type_name, name, keys, comment)
+
+int mm_editor_member_add(mm_editor* e, int index, char* text):
+	return mm_ee_member_add(e, index, text)
+
+int mm_editor_member_remove(mm_editor* e, int index, int which):
+	return mm_ee_member_remove(e, index, which)
+
+int mm_editor_member_set(mm_editor* e, int index, int which, char* text):
+	return mm_ee_member_set(e, index, which, text)
+
+# Connector choices the inspector offers per family, space-separated (class
+# operators contain `|`).
+char* mm_editor_edge_kinds(int kind):
+	if (kind == MM_FLOW || kind == MM_SWIMLANE || kind == MM_BLOCK): return c"--> --- -.-> ==> --o --x <-->"
+	if (kind == MM_AGENT): return c"--> --- -.-> -.- ==> --x"
+	if (kind == MM_CLASS): return c"--> -- ..> .. <|-- *-- o-- ..|>"
+	if (kind == MM_STATE): return c"-->"
+	if (kind == MM_REQUIREMENT): return c"contains copies derives satisfies verifies refines traces"
+	if (kind == MM_USECASE): return c"--> --- ..>"
+	return c""
+
+# The inspector's compartment lines: ER attributes, class members and
+# requirement properties, one editable text per line.
+int mm_editor_line_count(mm_editor* e, int index):
+	mm_document* d = e.document
+	if (d.error != 0 || index < 0 || index >= d.nodes.length): return 0
+	mm_node* n = d.nodes[index]
+	if (d.kind == MM_ER):
+		if (n.attributes == 0): return 0
+		return n.attributes.length
+	if (d.kind != MM_CLASS && d.kind != MM_REQUIREMENT): return 0
+	if (n.members == 0): return 0
+	return n.members.length
+
+# Owned text of line `which`: `type name [keys] ["comment"]` for an ER
+# attribute, the member text otherwise; null when out of range.
+char* mm_editor_line_text(mm_editor* e, int index, int which):
+	if (which < 0 || which >= mm_editor_line_count(e, index)): return 0
+	mm_node* n = e.document.nodes[index]
+	if (e.document.kind == MM_ER):
+		mm_attribute* a = n.attributes[which]
+		return mm_ee_attribute_text(a.type_name, a.name, a.keys, a.comment)
+	return strclone(n.members[which].text)
+
+char* mm_edit_trimmed(char* text, int start, int end):
+	while (start < end && (text[start] == 32 || text[start] == 9)): start = start + 1
+	while (end > start && (text[end - 1] == 32 || text[end - 1] == 9)): end = end - 1
+	return str_copy_range(text, start, end)
+
+# Rewrite line `which` in place from its inspector text (one validated
+# splice; an ER text splits into type, name, keys and a quoted comment).
+int mm_editor_line_set(mm_editor* e, int index, int which, char* text):
+	if (text == 0 || which < 0 || which >= mm_editor_line_count(e, index)): return 0
+	char* current = mm_editor_line_text(e, index, which)
+	int same = strcmp(current, text) == 0
+	free(current)
+	if (same): return 1
+	if (e.document.kind != MM_ER): return mm_editor_member_set(e, index, which, text)
+	int length = strlen(text)
+	int quote = index_of(text, c"\"")
+	int code_end = length
+	char* comment = strclone(c"")
+	if (quote >= 0):
+		int close = length
+		while (close > quote + 1 && text[close - 1] != '"'): close = close - 1
+		if (close <= quote + 1 || close - 1 == quote):
+			free(comment)
+			return 0
+		free(comment)
+		comment = str_copy_range(text, quote + 1, close - 1)
+		code_end = quote
+		for i in range(close, length):
+			if (text[i] != 32 && text[i] != 9):
+				free(comment)
+				return 0
+	# type and name are the first two words; the rest are the keys.
+	list[int] starts = new list[int]
+	list[int] ends = new list[int]
+	int at = 0
+	while (at < code_end && starts.length < 2):
+		while (at < code_end && (text[at] == 32 || text[at] == 9)): at = at + 1
+		if (at >= code_end): break
+		starts.push(at)
+		while (at < code_end && text[at] != 32 && text[at] != 9): at = at + 1
+		ends.push(at)
+	int ok = 0
+	if (starts.length == 2):
+		char* type_name = str_copy_range(text, starts[0], ends[0])
+		char* name = str_copy_range(text, starts[1], ends[1])
+		char* keys = mm_edit_trimmed(text, ends[1], code_end)
+		ok = mm_editor_attribute_set(e, index, which, type_name, name, keys, comment)
+		free(type_name)
+		free(name)
+		free(keys)
+	free(comment)
+	__w_list_free(cast(__w_list*, starts))
+	__w_list_free(cast(__w_list*, ends))
+	return ok

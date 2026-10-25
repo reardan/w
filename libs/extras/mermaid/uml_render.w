@@ -1,5 +1,6 @@
 # UML note gutters preserve graph vertices and keep annotations outside groups.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.style_render
 
 list[char*] mm_uml_note_lines(char* text):
 	list[char*] lines = new list[char*]
@@ -21,7 +22,7 @@ list[char*] mm_uml_note_lines(char* text):
 int mm_uml_note_width(list[char*] lines):
 	int width = 120
 	for char* line in lines:
-		if (strlen(line) * 8 + 32 > width): width = strlen(line) * 8 + 32
+		if (mm_text_width(line, 0) + 32 > width): width = mm_text_width(line, 0) + 32
 	return width
 
 void mm_uml_note_lines_free(list[char*] lines):
@@ -70,8 +71,10 @@ void mm_uml_notes(mm_document* d, mm_scene* s):
 			if (left_y > y): y = left_y
 			if (right_y > y): y = right_y
 			below = y + height + 24
+		int note_start = s.items.length
 		mm_draw(s, MM_BOX, x, y, x + width, y + height, 0, c"")
 		mm_line(s, x + width - 12, y, x + width - 12, y + 12, 0)
 		mm_line(s, x + width - 12, y + 12, x + width, y + 12, 0)
 		for i in range(lines.length): mm_text(s, x + 12, y + 12 + i * 22, lines[i])
+		mm_style_role(s, note_start, MM_ROLE_NOTE, 0)
 		mm_uml_note_lines_free(lines)

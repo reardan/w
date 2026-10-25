@@ -32,7 +32,7 @@ void mm_rail_space(mm_parser* p):
 			p.pos = p.pos + 1
 			continue
 		if (mm_match(p, c"%%") || (p.doc.kind == MM_RAIL_PEG && mm_match(p, c"#"))):
-			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"railroad configuration directives are unsupported")
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
 			continue
 		int comment = 0
@@ -84,22 +84,32 @@ void mm_rail_expect(mm_parser* p, char* token):
 	mm_rail_space(p)
 	if (mm_match(p, token) == 0): mm_error(p.doc, p.pos, c"expected grammar delimiter")
 
-char* mm_rail_literal(mm_parser* p):
+# Quoted literal with the upstream escape set of each notation. IR, EBNF and
+# PEG strings (`"..."` or `'...'`) decode `\n`, `\r` and `\t` and take any
+# other escaped character literally (`\"`, `\\`, `\x` -> `x`); they may span
+# lines. ABNF strings follow RFC 5234: double quotes only, no escapes, so a
+# backslash is an ordinary character. `title` reuses this decoding, except
+# that an ABNF title may also be single-quoted.
+char* mm_rail_literal_mode(mm_parser* p, int title):
 	mm_rail_space(p)
 	int quote = mm_peek(p)
-	if (quote != '"' && quote != 39):
-		mm_error(p.doc, p.pos, c"expected quoted grammar literal")
+	int raw = p.doc.kind == MM_RAIL_ABNF
+	if (quote != '"' && (quote != 39 || (raw && title == 0))):
+		if (raw && quote == 39): mm_error(p.doc, p.pos, c"ABNF literals must be double-quoted")
+		else: mm_error(p.doc, p.pos, c"expected quoted grammar literal")
 		return strclone(c"")
 	p.pos = p.pos + 1
 	string_builder* s = string_new()
-	while (mm_peek(p) != 0 && mm_peek(p) != 10 && mm_peek(p) != quote):
-		if (mm_match(p, c"\\")):
-			if (mm_peek(p) == quote || mm_peek(p) == '\\'):
-				string_append_char(s, mm_peek(p))
-				p.pos = p.pos + 1
-			else:
-				mm_error(p.doc, p.pos, c"unsupported literal escape; use quoted literals or numeric ABNF values")
-				break
+	while (mm_peek(p) != 0 && mm_peek(p) != quote):
+		if (title && mm_peek(p) == 10): break
+		if (raw == 0 && mm_peek(p) == 92 && p.pos + 1 < p.doc.length):
+			p.pos = p.pos + 1
+			int escaped = mm_peek(p)
+			if (escaped == 'n'): escaped = 10
+			else if (escaped == 'r'): escaped = 13
+			else if (escaped == 't'): escaped = 9
+			string_append_char(s, escaped)
+			p.pos = p.pos + 1
 		else:
 			string_append_char(s, mm_peek(p))
 			p.pos = p.pos + 1
@@ -108,6 +118,29 @@ char* mm_rail_literal(mm_parser* p):
 	char* result = strclone(s.data)
 	string_free(s)
 	return result
+
+char* mm_rail_literal(mm_parser* p):
+	return mm_rail_literal_mode(p, 0)
+
+# A rule head (`name =`, `name ::=`, `name =/`, `Name <-`) at the start of a
+# line ends the previous rule when its `;` was omitted. Upstream requires
+# the semicolon; every grammar it accepts keeps its meaning here.
+int mm_rail_rule_head(mm_parser* p):
+	int i = p.pos - 1
+	while (i >= 0 && (p.doc.source[i] == ' ' || p.doc.source[i] == 9 || p.doc.source[i] == 13)): i = i - 1
+	if (i >= 0 && p.doc.source[i] != 10): return 0
+	i = p.pos
+	int c = mm_peek(p)
+	if (isalpha(c) == 0 && c != '_'): return 0
+	while (i < p.doc.length && (mm_id_char(p.doc.source[i]) || p.doc.source[i] == '-')):
+		if (p.doc.source[i] == '-' && i + 1 < p.doc.length && p.doc.source[i + 1] == '>'): break
+		i = i + 1
+	while (i < p.doc.length && (p.doc.source[i] == ' ' || p.doc.source[i] == 9)): i = i + 1
+	if (i >= p.doc.length): return 0
+	c = p.doc.source[i]
+	if (p.doc.kind == MM_RAIL_PEG): return c == '<' && i + 1 < p.doc.length && p.doc.source[i + 1] == '-'
+	if (c == ':'): return i + 2 < p.doc.length && p.doc.source[i + 1] == ':' && p.doc.source[i + 2] == '='
+	return c == '='
 
 int mm_rail_wrap(mm_parser* p, int kind, int child):
 	int index = mm_rail_add(p, kind, c"")
@@ -334,6 +367,7 @@ int mm_rail_sequence(mm_parser* p, int depth):
 		mm_rail_space(p)
 		int c = mm_peek(p)
 		if (c == 0 || c == ';' || c == ')' || c == ']' || c == '}' || c == '|' || c == '/'): break
+		if (mm_rail_rule_head(p)): break
 		if (p.doc.kind == MM_RAIL_EBNF): mm_match(p, c",")
 		if (parent < 0):
 			parent = mm_rail_add(p, MM_RAIL_SEQUENCE, c"")
@@ -358,6 +392,16 @@ int mm_rail_expression(mm_parser* p, int depth):
 	if (parent >= 0): return parent
 	return first
 
+# Link each reference to the rule it names (upstream draws references as plain
+# boxes and never inlines them; recursive grammars therefore stay finite).
+void mm_rail_resolve(mm_rail_grammar* g):
+	for mm_rail_expr* e in g.expressions:
+		if (e.kind != MM_RAIL_REFERENCE): continue
+		e.target = 0
+		for i in range(g.rules.length):
+			mm_rail_rule* rule = g.rules[i]
+			if (strcmp(rule.name, e.text) == 0): e.target = i + 1
+
 void mm_rail_body(mm_parser* p):
 	mm_rail_grammar* g = p.doc.railroad
 	mm_rail_space(p)
@@ -366,7 +410,7 @@ void mm_rail_body(mm_parser* p):
 		else if (mm_match(p, c"title ")):
 			mm_space(p)
 			free(g.title)
-			if (mm_peek(p) == '"' || mm_peek(p) == 39): g.title = mm_rail_literal(p)
+			if (mm_peek(p) == '"' || mm_peek(p) == 39): g.title = mm_rail_literal_mode(p, 1)
 			else:
 				int start = p.pos
 				while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
@@ -400,8 +444,11 @@ void mm_rail_body(mm_parser* p):
 				existing.expression = choice
 				free(name)
 			else: g.rules.push(new mm_rail_rule(name, expression))
-			mm_rail_expect(p, c";")
-			if (p.doc.kind == MM_RAIL_ABNF):
-				while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
+			mm_rail_space(p)
+			if (mm_match(p, c";")):
+				if (p.doc.kind == MM_RAIL_ABNF):
+					while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
+			else if (p.doc.error == 0 && mm_peek(p) != 0 && mm_rail_rule_head(p) == 0): mm_error(p.doc, p.pos, c"expected grammar delimiter")
 		mm_rail_space(p)
 	if (g.rules.length == 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"railroad diagram requires a grammar rule")
+	mm_rail_resolve(g)

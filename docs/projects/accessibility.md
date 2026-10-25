@@ -413,6 +413,32 @@ Not yet provided:
   falls through to the default proxy.
 - Embedded fragment roots.
 
+## One bridge per target, and custom canvases
+
+`graphics.__arch__.access_platform` picks the bridge for the compile target
+behind five calls: `ui_access_platform_open(win, name)` (a handle, 0 when no
+assistive technology is reachable), `_origin(handle, win)` (screen position,
+cheap per frame), `_publish(handle, tree)`, `_dispatch(handle, tree)` (-1 once
+the bus is gone) and `_close(handle)`. Linux targets use AT-SPI, win64 UI
+Automation (installing the `WM_GETOBJECT` hook), wasm the ARIA mirror, and
+macOS nothing by default: the NSAccessibility bridge needs its companion dylib
+at load time, so it is opted into by compiling with
+`--import-root tools/mac/access_cocoa`, which supplies a replacement
+`graphics/__arch__/arm64_darwin/access_platform.w`.
+
+An application canvas adds its own nodes after `ui_end` (which fixes the
+widgets' focused id) and before publishing, then sets `tree.focused_id` while
+it owns keyboard focus. Its items use ids outside widget issue order and below
+`ui_access_root_id`. Focus requests for them arrive as `ctx.focus = id`
+(the widget callback) and activations in the context's activation queue; the
+application maps both back to its own selection on the next frame.
+`graphics/mermaid_access.w` and `tools/wmermaid_editor.w` are the worked
+example, qualified with Orca ([mermaid.md](mermaid.md), "Screen readers").
+Running it found two toolkit bugs, both fixed: the AT-SPI bridge rejected
+object paths above 10^8, so the widgets' document root (2^30) answered no
+queries; and X11 reported Shift+Tab (ISO_Left_Tab) as no character, so reverse
+focus traversal never reached the widgets.
+
 ## Focus and contrast
 
 `ui_access_move_focus(tree, reverse)` proposes insertion-order traversal,

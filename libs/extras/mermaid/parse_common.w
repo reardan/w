@@ -31,12 +31,23 @@ int mm_end(mm_parser* p):
 	if (p.pos + 1 < p.doc.length && p.doc.source[p.pos] == '%' && p.doc.source[p.pos + 1] == '%'): return 1
 	return mm_peek(p) == 0 || mm_peek(p) == 10 || mm_peek(p) == ';'
 
+# A %%{...}%% directive at p.pos ('{' after "%%"), already read and
+# validated by config.w, is skipped like a comment; it may span lines.
+void mm_skip_directive(mm_parser* p):
+	int at = p.pos
+	while (p.pos + 2 < p.doc.length && (p.doc.source[p.pos] != '}' || p.doc.source[p.pos + 1] != '%' || p.doc.source[p.pos + 2] != '%')): p.pos = p.pos + 1
+	if (p.pos + 2 >= p.doc.length):
+		mm_error(p.doc, at, c"unterminated Mermaid directive")
+		p.pos = p.doc.length
+		return
+	p.pos = p.pos + 3
+
 void mm_separators(mm_parser* p):
 	while (1):
 		mm_space(p)
 		if (mm_match(p, c"%%")):
 			int start = p.pos - 2
-			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"Mermaid configuration directives are not supported in the native renderer")
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			while (mm_peek(p) != 0 && mm_peek(p) != 10): p.pos = p.pos + 1
 			if (p.doc.comment_ranges == 0): p.doc.comment_ranges = new list[int]
 			list[int] ranges = p.doc.comment_ranges

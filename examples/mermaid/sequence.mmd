@@ -22,3 +22,5 @@ API--xCustomer: Declined
 end
 Note over Customer,API: Source editable in the native desktop
 API->>-Customer: Done
+participant Queue@{ "type": "queue", "alias": "Job queue" }
+API->>()Queue: Enqueue #9829; receipt
