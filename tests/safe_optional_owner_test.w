@@ -94,14 +94,6 @@ void optional_owner_case(char* source, char* diagnostic, int relaxed = 0, int se
 	free(full)
 
 
-
-
-
-
-
-
-
-
 void test_optional_owner_0():
 	optional_owner_case(c"int main():\n\toptown int* value = 0\n\tif (value): return 1\n\treturn 0\n", 0)
 	optional_owner_case(c"int main():\n\toptown int* value = new int\n\t*value = 7\n\treturn *value - 7\n", 0)

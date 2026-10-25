@@ -74,7 +74,7 @@ struct otl_glyph:
 	int unicode_mark  # nonspacing mark (Mn/Me) in the source text
 	int lig_id        # ligature a mark was skipped inside, or 0
 	int lig_comp      # 1-based component of that ligature, or the
-	                  # component count on the ligature glyph itself
+					  # component count on the ligature glyph itself
 	int x_advance
 	int y_advance
 	int x_offset

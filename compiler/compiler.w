@@ -703,7 +703,7 @@ char* target_pending
 int target_selector_apply(char* arg):
 	if (strcmp(arg, c"x64") == 0):
 		if (quiet_mode == 0): println2(c"Compiling in x64 mode")
-		word_size =  8
+		word_size = 8
 		word_size_log2 = 3
 		diag_word_size = word_size
 		# W^X (docs/projects/wx_split.md Stage B): mutable globals, GOT

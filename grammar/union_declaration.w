@@ -18,7 +18,7 @@ int union_declaration():
 		sym_declare_global(token, type_index, 1)
 		get_token()
 		expect(c":")
-		while(tab_level > start_tab_level):
+		while (tab_level > start_tab_level):
 			int field_type = type_name()
 			if (type_has_array_field(field_type)):
 				error(c"fixed array fields are not implemented in unions")

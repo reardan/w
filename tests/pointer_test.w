@@ -14,7 +14,6 @@ void test_int_func_pointer():
 	assert_equal(1337, test_func())
 
 
-
 void test_int_pointer():
 	int want = 7777
 	print_hex(c"want: ", want)
@@ -59,7 +58,7 @@ void test_char_ptr_ms1():
 # Milestone 2: ampersand operator
 void test_ptr_to_int_address():
 	int value = 10
-	int *ptr = &value
+	int* ptr = &value
 	*ptr = 20
 	assert_equal(20, value)
 

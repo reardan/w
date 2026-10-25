@@ -341,7 +341,7 @@ void statement_impl():
 			# An un-indented next line means the block is empty (like 'pass')
 			if (start_tab_level > block_tab_level):
 				int after_jump = 0
-				while(start_tab_level <= tab_level):
+				while (start_tab_level <= tab_level):
 					lint_unreachable_check(after_jump)
 					# a 'name:' goto label makes what follows reachable
 					if ((nextc == ':') && is_ident_start_byte(token[0])): terminates = 0
@@ -377,10 +377,10 @@ void statement_impl():
 
 	else if (while_statement()): terminates = flow_terminates
 	else if (gpu_for_statement()): inline_hazard_count = inline_hazard_count + 1
-	else if (for_statement()) {}
+	else if (for_statement()) { }
 	else if (switch_statement()): terminates = flow_terminates
-	else if (ast_statement_simple(&jumps)) {}
-	else if (ast_statement_value(&jumps)) {}
+	else if (ast_statement_simple(&jumps)) { }
+	else if (ast_statement_value(&jumps)) { }
 
 	# 'break' targets the innermost breakable construct: a switch when
 	# break_in_switch is set (grammar/while_statement.w), a loop otherwise
@@ -449,7 +449,7 @@ void statement_impl():
 	else if (raw_asm_literal()):
 		inline_hazard_count = inline_hazard_count + 1
 		expect_or_newline(c";")
-	else if (asm_block_misplaced()) {}
+	else if (asm_block_misplaced()) { }
 
 	# launch kernel[grid, block](args...) (grammar/kernel_decl.w)
 	else if (launch_statement()):

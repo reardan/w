@@ -112,7 +112,6 @@ void darwin_contract_case(char* source, char* diagnostic, int relaxed = 0, int s
 	free(full)
 
 
-
 void test_darwin_contract_0():
 	darwin_contract_case(c"int main():\n\town int* value = new int\n\t*value = (1 << 40) + 7\n\treturn (*value >> 40) - 1\n", 0)
 	darwin_contract_case(c"int main():\n\town int* value = new int\n\town int* moved = value\n\treturn *value\n", c"moved")

@@ -1,5 +1,3 @@
-
-
 import lib.testing
 
 
@@ -99,4 +97,3 @@ void test_nested_loop_break():
 			if (j == 2): break
 			c = c + 1
 	assert_equal(6, c)
-

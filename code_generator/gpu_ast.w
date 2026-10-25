@@ -67,7 +67,6 @@ void emit_gpu_for_guard_ast(gpu_statement_ast* node):
 	be_br_zero(node.guard_target)
 
 
-
 void emit_gpu_for_device_end_ast(gpu_statement_ast* node):
 	be_ctrl_end(node.guard_target)
 	ret()

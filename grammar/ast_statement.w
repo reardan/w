@@ -157,7 +157,6 @@ void ast_statement_finish_expression(statement_ast* node):
 	ast_roots_emitted = ast_roots_emitted + 1
 
 
-
 int ast_statement_value(int* jumps):
 	if (ast_expressions_mode < 2): return 0
 	int kind = 0

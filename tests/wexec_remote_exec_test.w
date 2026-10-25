@@ -162,4 +162,3 @@ void test_remote_exec():
 
 	unlink(c"bin/wexec_remote_exec_input.txt")
 	unlink(c"bin/wexec_remote_exec_undeclared.txt")
-

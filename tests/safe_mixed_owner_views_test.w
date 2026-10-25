@@ -94,7 +94,6 @@ void mixed_view_case(char* source, char* diagnostic, int relaxed = 0, int seed =
 	free(full)
 
 
-
 void test_mixed_views_0():
 	mixed_view_case(c"struct Mixed:\n\town int* stored\n\tref[data] int* view\nown[a] Mixed* make(ref[a] int* input):\n\treturn new Mixed(new int, input)\nref[a] int* get(ref[a] Mixed* holder):\n\treturn holder.view\nint main():\n\tint x = 3\n\tint y = 4\n\town[a] Mixed* holder = make(&x)\n\tref int* p = get(holder)\n\treturn *p - 3\n", 0)
 	mixed_view_case(c"struct Mixed:\n\town int* stored\n\tref[data] int* view\nown[a] Mixed* make(ref[a] int* input):\n\treturn new Mixed(new int, input)\nint main():\n\tint x = 3\n\tint y = 4\n\town[a] Mixed* holder = make(&x)\n\tref Mixed* view = holder\n\tref int* p = view.view\n\tref int* child = view.stored\n\treturn *p - 3\n", 0)

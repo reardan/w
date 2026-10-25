@@ -24,7 +24,7 @@ int nested_replacement_views():
 	int[3] b
 	int[4] c
 	c[1] = 8
-	own[x,y] NestedReplacementOuter* owner = new NestedReplacementOuter(new NestedReplacementMiddle(new NestedReplacementView(a, b)))
+	own[x, y] NestedReplacementOuter* owner = new NestedReplacementOuter(new NestedReplacementMiddle(new NestedReplacementView(a, b)))
 	ref int[] previous = owner.middle.child.first
 	owner.middle.child.first = c
 	ref int[] current = owner.middle.child.first

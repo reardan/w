@@ -140,6 +140,57 @@ ui_shaped_run* ui_shape_portable_utf8(char* text, int length, int strike, int di
 	__ui_shape_portable_fill(run, text, length, direction, script, max_glyphs)
 	return run
 
+# The scalars of text[start, end) next to an item, up to 5 of them (as
+# HarfBuzz keeps): after it when forward, else before it, written to out
+# in logical order. Stops at invalid UTF-8. Returns the count.
+int __ui_shape_context(char* text, int start, int end, int forward, int32* out):
+	int count = 0
+	if (forward):
+		int at = start
+		while ((at < end) && (count < 5)):
+			int cp = 0
+			int size = utf8_scan(text + at, end - at, &cp)
+			if ((size <= 0) || (cp < 0)): break
+			out[count] = cp
+			count = count + 1
+			at = at + size
+		return count
+	int32[5] reversed
+	int at = end
+	while ((at > start) && (count < 5)):
+		int lead = at - 1
+		while ((lead > start) && (lead > at - 4) && ((text[lead] & 0xc0) == 0x80)): lead = lead - 1
+		int cp = 0
+		int size = utf8_scan(text + lead, at - lead, &cp)
+		if ((size != at - lead) || (cp < 0)): break
+		reversed[count] = cp
+		count = count + 1
+		at = lead
+	for i in range(count): out[i] = reversed[count - 1 - i]
+	return count
+
+# Shapes the item text[item_start, item_start + item_length) of a longer
+# text[0, text_length) as ui_shape_portable_utf8 does, with the text
+# around it as shaping context (HarfBuzz's hb_buffer_add_utf8 item
+# offsets): Arabic-style joining continues across the item boundary, as
+# when a word is split between fonts. Clusters are relative to
+# item_start. Only the item must be valid UTF-8; context stops at an
+# invalid sequence.
+ui_shaped_run* ui_shape_portable_item(char* text, int text_length, int item_start, int item_length, int strike, int direction, int script, char* language, int max_glyphs):
+	ui_shaped_run* run = new ui_shaped_run()
+	run.engine = UI_SHAPE_ENGINE_PORTABLE
+	run.status = UI_SHAPE_INVALID
+	if ((text_length < 0) || (item_start < 0) || (item_length < 0) || (item_start > text_length) || (item_length > text_length - item_start)): return run
+	if (!__ui_shape_validate(run, text + item_start, item_length, strike, direction, language, max_glyphs)): return run
+	int32[5] pre
+	int32[5] post
+	int pre_count = __ui_shape_context(text, 0, item_start, 0, &pre[0])
+	int post_count = __ui_shape_context(text, item_start + item_length, text_length, 1, &post[0])
+	ttf_shape_set_context(&pre[0], pre_count, &post[0], post_count)
+	__ui_shape_portable_fill(run, text + item_start, item_length, direction, script, max_glyphs)
+	ttf_shape_set_context(cast(int32*, 0), 0, cast(int32*, 0), 0)
+	return run
+
 void ui_shaped_run_free(ui_shaped_run* run):
 	if (run == 0): return
 	free(run.glyphs)

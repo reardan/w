@@ -17,8 +17,6 @@ pre-existing one (same degrade-to-status-quo pattern as the statx and
 remote-cache stubs). */
 
 
-
-
 int wexec_process_group_enter():
 	return -1
 
