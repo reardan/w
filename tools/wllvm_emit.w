@@ -1201,6 +1201,12 @@ char* llvm_value_inner(int group, int operand):
 	int type = node.semantic_type
 	int type_class = llvm_class(type)
 	int op = node.op
+	# A generic named before its declaration ('f[T]' as a value or callee)
+	# is its instance's address.
+	if (op == 135):
+		if ((node.payload_text != 0) && (node.payload_text in llvm_function_names)): return llvm_constant_address(llvm_function_symbol(llvm_function_names[node.payload_text]))
+		llvm_error_at(id, c"reference to", node.payload_text)
+		return c"0"
 	if ((type_class == llvm_class_none) && (op != 'C') && (op != 'F') && (op != 'G') && (op != 'W')):
 		if (type >= 0): llvm_error_at(id, c"expression type", retained_types[type].name)
 		else: llvm_error(id, c"expression type")

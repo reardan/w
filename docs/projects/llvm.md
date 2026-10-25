@@ -119,7 +119,8 @@ point, and the output file is left untouched.
 - Generic functions with explicit (`max[int](a, b)`) or inferred type
   arguments, including generic methods: each instantiation is retained as
   an ordinary function under its mangled name (`max$int`), and a generic
-  call names it.
+  call names it, as does a generic referenced before its declaration
+  (the front end retains that reference's mangled instance name).
 - Checked owners, with the drops the tree leaves implicit reproduced from
   types as `grammar/safe_cleanup.w` does: moving an owner into an owner
   destination (argument, return, initializer, assignment, `new T(...)`

@@ -105,8 +105,18 @@ int inferred():
 	return total
 
 
+# Named before its declaration: a forward generic reference.
+int forward_pick():
+	return late_pick[int](7, 9)
+
+
+T late_pick[T](T a, T b):
+	return b - a
+
+
 int generics():
 	int total = smaller[int](12, 7) + largest[int](3, 5) + largest3[int](4, 9, 2)
+	total = total + forward_pick()
 	char z = largest[char]('a', 'z')
 	total = total + z - 'z'
 	total = total + pick_first[int, char*](11, c"ignored")
