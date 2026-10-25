@@ -87,7 +87,8 @@ point, and the output file is left untouched.
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
   enums, pointers of any level, function values and aliases of them,
   `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]` and slice handles, generic records (`pair[int]`), and
+  arrays `T[N]`, slice handles, the built-in `list[T]`, `map[K, V]` and
+  `set[T]` containers of any of these, generic records (`pair[int]`), and
   checked pointers (`own`, `optown`, `ref`, `refmut`, `optref`,
   `optrefmut`) with checked slices (`ref T[]`) and borrowed records as
   locals and fields.
@@ -122,20 +123,36 @@ point, and the output file is left untouched.
   to three arguments, `break`, `continue`, `pass`, `return`, `unsafe:`
   blocks, inferred declarations (`name := value`) and expression
   statements.
+- Containers: `new list[T]`/`new map[K, V]`/`new set[T]`, map defaults
+  (`new map[K, V](value)`, a factory, or an empty inner container),
+  `list[T]{...}`/`map[K, V]{k: v}`/`set[T]{...}` literals, `l[i]` as a
+  place, `l[a:b]` slices, `m[k]` reads, stores and compound stores,
+  `.length`, `in`, every list, map and set method, and the `it` forms
+  (`l.map(it * 2)`, `l.filter(...)`, `l.min_by(...)`, ...), and the
+  prelude's `print(list)`, `len`, `any`/`all`, `split`/`join`,
+  `input`/`read_all`/`ints`/`lines`/`words`. Each lowers
+  to the same `structures/` runtime call the native front end makes, with
+  the element slot size and key kind taken from the retained types.
+- Statements: `if`/`elif`/`else`, `while`, `for i in range(...)` with one
+  to three arguments, cursor loops (`for x in l`, `for i, x in l`,
+  `enumerate`, `for k, v in m`, `for k in s`, fixed arrays and slices,
+  strings through `lib.utf8`, and `T*` iterables with `T_iter_*`
+  functions), `break`, `continue`, `pass`, `return`, `unsafe:` blocks,
+  `name := value` and expression statements.
 
 Division and remainder guard zero divisors and signed minimum divided by
 minus one, and an out-of-range array subscript traps; LLVM traps report a
 different signal (SIGILL) from the native backend's. Calls and operands
 preserve evaluation order.
 
-Not yet supported, and rejected with a diagnostic: floats, containers
-(`list`, `map`, `set`, cursor `for` loops), records passed or returned by
-value (including checked slices and borrowed records crossing a call),
-arrays inside records, f-strings, `switch`, `defer`, `goto`,
-generators, GPU code, C imports and other `extern` functions
+Not yet supported, and rejected with a diagnostic: floats, records
+passed or returned by value (including checked slices and borrowed records
+crossing a call), arrays inside records, f-strings, `switch`, `defer`,
+`goto`, generators, GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
-`thread_create`, ...). Containers are the largest gap: about half of the
-rejected test programs below declare one.
+`thread_create`, ...). A container trap (out-of-range index, missing
+key) prints its message and then reaches the `print_stack_trace` trap
+stub.
 
 ## Evidence (2026-10-24)
 
@@ -162,11 +179,15 @@ times on the development container (x86-64, Clang 18.1.3). W x64 is
 | sha256_1m | 0.151s | 0.296s | 0.109s | 0.108s |
 | regex_backtrack | 0.273s | 0.574s | 0.145s | 0.152s |
 | matmul_256 | 0.199s | 0.404s | 0.166s | 0.173s |
+| siphash_keys | 0.313s | 0.498s | 0.242s | 0.282s |
+| strcmp_sort | 0.221s | 0.367s | 0.155s | 0.159s |
 
 At `-O2` the LLVM build of the W source runs as fast as the hand-written C
 twin, 1.07x to 1.9x faster than W's own x64 code (`sum` folds to a
-constant under both LLVM builds). `siphash_keys`, `inflate_corpus` and
-`strcmp_sort` use containers and are not yet accepted.
+constant under both LLVM builds). The container benchmarks
+(`siphash_keys` maps and sets, `strcmp_sort` lists) run their runtime
+helpers through LLVM too. `inflate_corpus` uses generics and is not yet
+accepted.
 
 ## Tests
 
@@ -179,7 +200,8 @@ constant under both LLVM builds). `siphash_keys`, `inflate_corpus` and
 lowering, unsupported-program diagnostics, CLI errors and input/output
 identity protection, including preservation of existing output on
 rejected input. When `clang` is on `PATH`, it also builds
-`tests/wllvm_scalar_fixture.w` and `tests/wllvm_memory_fixture.w` with
+`tests/wllvm_scalar_fixture.w`, `tests/wllvm_memory_fixture.w` and
+`tests/wllvm_container_fixture.w` with
 W's x64 backend and with wllvm at `-O0` and `-O2` and compares exit status
 and both output streams, builds hand-linked IR with the documented flags,
 checks the division and bounds traps, and checks that a library trap stub
@@ -190,11 +212,7 @@ import graph.
 
 ## Next steps
 
-1. Containers: `list`/`map`/`set` values are runtime pointers whose
-   operations are calls into `structures/`, which already lower; the
-   missing piece is reproducing each operation's helper protocol (element
-   slot sizes, key kinds, aggregate variants) from retained types.
-2. Records by value (copy-in parameters, caller-provided result buffers),
+1. Records by value (copy-in parameters, caller-provided result buffers),
    floats, f-strings and `switch`.
-3. Other targets: arm64 Linux needs only a different `_start` and syscall
+2. Other targets: arm64 Linux needs only a different `_start` and syscall
    constraint string.

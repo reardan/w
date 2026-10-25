@@ -170,6 +170,8 @@ int llvm_class_of(retained_type* t):
 	if (t.kind == 7): return llvm_class_slice
 	# string handles, enums and function values are one word
 	if ((t.kind == 8) || (t.kind == 4) || (t.kind == 2)): return llvm_class_word
+	# list (12), map (10) and set (11) handles (see "containers" below)
+	if ((t.kind == 10) || (t.kind == 11) || (t.kind == 12)): return llvm_class_word
 	if (t.fields.length > 0):
 		for i in range(t.fields.length):
 			int field = llvm_class(t.fields[i].type)
@@ -470,6 +472,15 @@ int llvm_node_id(int group, int operand):
 char* llvm_value(int group, int operand);
 char* llvm_address(int group, int operand);
 int llvm_is_checked_slice(int type);
+# containers (defined below the statements)
+int llvm_container_op(int op);
+char* llvm_container_expression(int group, int id, retained_node* node);
+char* llvm_list_element(int group, int id, retained_node* node);
+char* llvm_map_read(int group, int id, retained_node* node);
+char* llvm_it_slot(int id);
+int llvm_container_prelude_helper(int op, int helper);
+char* llvm_container_prelude(int group, int id, retained_node* node);
+void llvm_container_for(int id);
 
 
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
@@ -507,7 +518,7 @@ void llvm_store(int id, int type, char* value, char* address):
 
 int llvm_place(retained_node* node):
 	int op = node.op
-	if ((op == 'd') || (op == 'i') || (op == 'I') || (op == 'B')): return 1
+	if ((op == 'd') || (op == 'i') || (op == 'I') || (op == 'B') || (op == 'j') || (op == 134)): return 1
 	if (op == '.'): return node.high >= 0
 	if (op == 'v'): return (node.binding >= 0) && ((node.binding in llvm_locals) || (retained_bindings[node.binding].linkage in llvm_global_decls))
 	return 0
@@ -536,6 +547,10 @@ char* llvm_address(int group, int operand):
 		else: base = llvm_address(group, node.left)
 		return llvm_offset(base, llvm_number(node.value))
 	if (op == 'B'): return llvm_offset(llvm_pointer(llvm_value(group, node.left)), llvm_number(node.value))
+	if (op == 'j'): return llvm_list_element(group, id, &node)
+	if (op == 134): return llvm_it_slot(id)
+	# A record-valued m[key] names its value slot.
+	if (((op == 'm') || (op == 'q')) && (llvm_class(node.semantic_type) == llvm_class_struct)): return llvm_pointer(llvm_map_read(group, id, &node))
 	if (op == 'i'):
 		char* base = llvm_value(group, node.left)
 		char* index = llvm_value(group, node.right)
@@ -1001,6 +1016,7 @@ char* llvm_value_inner(int group, int operand):
 	if ((op == 'P') || (op == 'y')):
 		int helper = node.high
 		if (op == 'y'): helper = node.value
+		if (llvm_container_prelude_helper(op, helper)): return llvm_container_prelude(group, id, &node)
 		char* name = llvm_prelude_helper(helper)
 		if ((op == 'P') && (node.left < 0)): name = c"__w_print_nl"
 		if ((name == 0) || ((op == 'y') && (helper < 9))):
@@ -1022,6 +1038,7 @@ char* llvm_value_inner(int group, int operand):
 			llvm_helper_call(id, c"__w_print_nl", values)
 		values.free()
 		return result
+	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
 	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
 		if ((op == 'C') && (node.binding < 0)):
 			llvm_error(id, c"unbound call")
@@ -1439,6 +1456,634 @@ void llvm_range(int id):
 	values.free()
 
 
+# --- containers --------------------------------------------------------------
+# Built-in list[T], map[K, V] and set[T] values are runtime handles, one
+# word each. Every operation is a call into structures/w_list.w or
+# structures/hash_table.w (auto-imported, lowered like any W code) with
+# the argument protocol of code_generator/expression_ast.w and
+# grammar/for_statement.w; the protocol's slot sizes and key kinds come
+# from the retained container types.
+
+char* llvm_join(char* a, char* b):
+	string_builder* text = string_new()
+	string_append(text, a)
+	string_append(text, b)
+	char* result = retained_intern(text.data)
+	string_free(text)
+	return result
+
+
+# 12 list, 10 map, 11 set; 0 for any other type.
+int llvm_container_kind(int type):
+	if (type < 0): return 0
+	retained_type* t = llvm_type(type)
+	if (t.pointer_level > 0): return 0
+	if ((t.kind == 10) || (t.kind == 11) || (t.kind == 12)): return t.kind
+	return 0
+
+
+# A list's element, a set's key or a map's key.
+int llvm_container_key(int type):
+	return llvm_type(type).target
+
+
+# A list's element or a map's value.
+int llvm_container_value_type(int type):
+	retained_type* t = llvm_type(type)
+	if (t.kind == 10): return t.return_type
+	return t.target
+
+
+# grammar/list_builtin.w's list_element_slot_size: record slots round up
+# to whole words.
+int llvm_slot_size(int type):
+	if (type < 0): return 8
+	if (llvm_class(type) == llvm_class_struct):
+		int size = (llvm_type(type).size + 7) & (0 - 8)
+		if (size < 8): size = 8
+		return size
+	# an untyped constant infers int
+	if (llvm_type(type).size < 1): return 8
+	return llvm_type(type).size
+
+
+# grammar/hash_builtin.w's hash_key_kind_for_type: 3 string, 2 char*, 1 word.
+int llvm_key_kind(int type):
+	if (llvm_is_string(type)): return 3
+	if (llvm_is_char_pointer(type)): return 2
+	return 1
+
+
+int llvm_is_record(int type):
+	return llvm_class(type) == llvm_class_struct
+
+
+char* llvm_call1(int id, char* name, char* a):
+	list[char*] values = list[char*]{a}
+	char* result = llvm_helper_call(id, name, values)
+	values.free()
+	return result
+
+
+char* llvm_call2(int id, char* name, char* a, char* b):
+	list[char*] values = list[char*]{a, b}
+	char* result = llvm_helper_call(id, name, values)
+	values.free()
+	return result
+
+
+char* llvm_call3(int id, char* name, char* a, char* b, char* c):
+	list[char*] values = list[char*]{a, b, c}
+	char* result = llvm_helper_call(id, name, values)
+	values.free()
+	return result
+
+
+int llvm_operand_type(int group, int operand):
+	retained_node node
+	retained_node_load(llvm_node_id(group, operand), &node)
+	return node.semantic_type
+
+
+# The operand's value, coerced to a container's key or element type.
+char* llvm_container_operand(int group, int operand, int want):
+	char* value = llvm_value(group, operand)
+	return llvm_convert(llvm_node_id(group, operand), value, llvm_operand_type(group, operand), want)
+
+
+# A new container of the given type, as hash_emit_new_container and
+# list_emit_new_container build it.
+char* llvm_container_new(int id, int type):
+	int kind = llvm_container_kind(type)
+	if (kind == 12): return llvm_call1(id, c"__w_list_new", llvm_number(llvm_slot_size(llvm_container_key(type))))
+	if (kind == 11): return llvm_call1(id, c"__w_set_new", llvm_number(llvm_key_kind(llvm_container_key(type))))
+	if (kind == 10): return llvm_call2(id, c"__w_map_new", llvm_number(llvm_key_kind(llvm_container_key(type))), llvm_number(llvm_type(llvm_container_value_type(type)).size))
+	llvm_error(id, c"container type")
+	return c"0"
+
+
+# grammar/hash_builtin.w's hash_default_container_descriptor.
+int llvm_default_descriptor(int type):
+	int kind = llvm_container_kind(type)
+	if (kind == 12): return 3 | (llvm_slot_size(llvm_container_key(type)) << 5)
+	if (kind == 11): return 2 | (llvm_key_kind(llvm_container_key(type)) << 2)
+	int value = llvm_container_value_type(type)
+	int desc = 1 | (llvm_key_kind(llvm_container_key(type)) << 2)
+	desc = desc | (llvm_type(value).size << 5)
+	# hash_default_inner_zero: plain arithmetic scalars default to zero
+	int scalar = (llvm_class(value) == llvm_class_word) && (llvm_container_kind(value) == 0) && (llvm_is_string(value) == 0) && (llvm_type(value).pointer_level == 0)
+	if (scalar): desc = desc | 16
+	return desc
+
+
+# ast_expression_method_helper (compiler/expression_ast.w).
+char* llvm_method_helper(int method):
+	method = method & 255
+	if (method == 11): return c"__w_map_remove"
+	if (method == 12): return c"__w_set_add"
+	if (method == 13): return c"__w_map_free"
+	if (method == 14): return c"__w_map_get"
+	if (method == 15): return c"__w_map_get_or"
+	if (method == 16): return c"__w_map_keys"
+	if (method == 17): return c"__w_map_values"
+	if (method == 18): return c"__w_map_add"
+	if (method == 142): return c"__w_map_get_addr"
+	if (method == 143): return c"__w_map_get_or_addr"
+	if (method == 129): return c"__w_list_push_bytes"
+	if (method == 130): return c"__w_list_pop_addr"
+	if (method == 131): return c"__w_list_insert_bytes"
+	if (method == 1): return c"__w_list_push"
+	if (method == 2): return c"__w_list_pop"
+	if (method == 3): return c"__w_list_insert"
+	if (method == 4): return c"__w_list_remove"
+	if (method == 5): return c"__w_list_clear"
+	if (method == 6): return c"__w_list_free"
+	if (method == 20): return c"__w_list_sort"
+	if (method == 21): return c"__w_list_sorted"
+	if (method == 22): return c"__w_list_sum"
+	if (method == 23): return c"__w_list_min"
+	if (method == 24): return c"__w_list_max"
+	if (method == 25): return c"__w_list_reverse"
+	if (method == 26): return c"__w_list_reversed"
+	if (method == 27): return c"__w_list_count"
+	if (method == 28): return c"__w_list_index"
+	if (method == 30): return c"__w_list_sort_by"
+	if (method == 31): return c"__w_list_sorted_by"
+	if (method == 32): return c"__w_list_map"
+	if (method == 33): return c"__w_list_filter"
+	if (method == 34): return c"__w_list_reduce"
+	if (method == 158): return c"__w_list_sort_by_addr"
+	if (method == 159): return c"__w_list_sorted_by_addr"
+	return 0
+
+
+# A container method call ('M'): the receiver, each argument coerced as
+# the native emitter coerces it, then the method's trailing constant.
+char* llvm_container_method(int group, int id, retained_node* node):
+	int container = llvm_operand_type(group, node.left)
+	int kind = llvm_container_kind(container)
+	int method = node.value & 127
+	char* helper = llvm_method_helper(node.value)
+	if ((kind == 0) || (helper == 0)):
+		llvm_error_at(id, c"method call", llvm_number(node.value))
+		return c"0"
+	int key = llvm_container_key(container)
+	int value_type = -1
+	if (kind == 10): value_type = llvm_container_value_type(container)
+	if ((method == 18) && (llvm_class(value_type) != llvm_class_word)):
+		llvm_error(id, c"map add of this value type")
+		return c"0"
+	list[char*] values = new list[char*]
+	values.push(llvm_value(group, node.left))
+	int arg = node.right
+	int count = 0
+	while ((arg >= 0) && (llvm_failed == 0)):
+		int want = -1
+		if ((method == 1) || ((method == 3) && (count == 1))): want = key
+		if ((((method >= 11) && (method <= 18)) || (method == 27) || (method == 28)) && (count == 0)): want = key
+		if (((method == 15) || (method == 18)) && (count == 1)): want = value_type
+		retained_node argument
+		retained_node_load(llvm_node_id(group, arg), &argument)
+		char* value = llvm_value(group, arg)
+		if (want >= 0): value = llvm_convert(id, value, argument.semantic_type, want)
+		values.push(value)
+		count = count + 1
+		arg = argument.next_arg
+	# m.add(key) adds one
+	if ((method == 18) && (count == 1)): values.push(c"1")
+	if ((method == 16) || (method == 17)): values.push(llvm_number(node.high))
+	if ((method == 20) || (method == 21) || (method == 27) || (method == 28)): values.push(llvm_number(llvm_key_kind(key)))
+	if (method == 32): values.push(llvm_number(llvm_slot_size(llvm_container_key(node.semantic_type))))
+	char* result = llvm_helper_call(id, helper, values)
+	values.free()
+	return result
+
+
+# m[key] read: the value word, or a record value's slot address.
+char* llvm_map_read(int group, int id, retained_node* node):
+	int map = llvm_operand_type(group, node.left)
+	char* table = llvm_value(group, node.left)
+	char* key = llvm_container_operand(group, node.right, llvm_container_key(map))
+	char* helper = c"__w_map_get"
+	if (llvm_is_record(llvm_container_value_type(map))): helper = c"__w_map_get_addr"
+	return llvm_call2(id, helper, table, key)
+
+
+# m[key] = value and m[key] op= value ('w'; its left is the 'm' node).
+char* llvm_map_store(int group, int id, retained_node* node):
+	retained_node index
+	retained_node_load(llvm_node_id(group, node.left), &index)
+	int map = llvm_operand_type(group, index.left)
+	int element = llvm_container_value_type(map)
+	char* table = llvm_value(group, index.left)
+	char* key = llvm_container_operand(group, index.right, llvm_container_key(map))
+	int right_type = llvm_operand_type(group, node.right)
+	char* value = c"0"
+	if (node.value != 0):
+		if (llvm_class(element) != llvm_class_word):
+			llvm_error(id, c"compound map assignment of this type")
+			return c"0"
+		char* before = llvm_call2(id, c"__w_map_get", table, key)
+		value = llvm_value(group, node.right)
+		value = llvm_binary(id, node.value, llvm_unsigned_word(element) || llvm_unsigned_word(right_type), before, value)
+	else: value = llvm_value(group, node.right)
+	value = llvm_convert(id, value, right_type, element)
+	char* helper = c"__w_map_set"
+	if (llvm_is_record(element) && llvm_is_record(right_type)): helper = c"__w_map_set_bytes"
+	llvm_call3(id, helper, table, key, value)
+	return value
+
+
+# A container literal ('O'): a new container, then each entry pushed,
+# added or set in order.
+char* llvm_container_literal(int group, int id, retained_node* node):
+	int type = node.semantic_type
+	int kind = llvm_container_kind(type)
+	char* container = llvm_container_new(id, type)
+	int entry = node.left
+	while ((entry >= 0) && (llvm_failed == 0)):
+		retained_node item
+		retained_node_load(llvm_node_id(group, entry), &item)
+		if (kind == 10):
+			char* key = llvm_container_operand(group, item.left, llvm_container_key(type))
+			char* value = llvm_container_operand(group, item.right, llvm_container_value_type(type))
+			char* helper = c"__w_map_set"
+			if (item.value): helper = c"__w_map_set_bytes"
+			llvm_call3(id, helper, container, key, value)
+		else if (kind == 12):
+			char* element = llvm_container_operand(group, item.left, llvm_container_key(type))
+			char* helper = c"__w_list_push"
+			if (item.value): helper = c"__w_list_push_bytes"
+			llvm_call2(id, helper, container, element)
+		else: llvm_call2(id, c"__w_set_add", container, llvm_container_operand(group, item.left, llvm_container_key(type)))
+		entry = item.next_arg
+	return container
+
+
+# new list[T], new set[T], new map[K, V] and new map[K, V](default) ('V').
+char* llvm_container_allocation(int group, int id, retained_node* node):
+	int type = node.semantic_type
+	char* container = llvm_container_new(id, type)
+	if (node.high == 0): return container
+	char* value = c"0"
+	if (node.high == 3): value = llvm_number(llvm_default_descriptor(llvm_container_value_type(type)))
+	else:
+		value = llvm_value(group, node.left)
+		if (node.high == 1): value = llvm_convert(id, value, llvm_operand_type(group, node.left), llvm_container_value_type(type))
+	llvm_call3(id, c"__w_map_set_default", container, llvm_number(node.high), value)
+	return container
+
+
+# A word of stack in the function's entry block.
+char* llvm_entry_slot():
+	char* slot = llvm_temp()
+	string_append(llvm_entry, c"  ")
+	string_append(llvm_entry, slot)
+	string_append(llvm_entry, c" = alloca i64, align 8\x0a")
+	return slot
+
+
+# The hidden 'it' slots of the enclosing l.method(<expression of it>)
+# forms, innermost last: 'it' names the innermost one.
+list[char*] llvm_it_slots
+
+
+char* llvm_it_slot(int id):
+	if ((llvm_it_slots == 0) || (llvm_it_slots.length == 0)):
+		llvm_error(id, c"'it' outside a list method")
+		return c"null"
+	return llvm_it_slots[llvm_it_slots.length - 1]
+
+
+# l.method(<expression of it>) (ast_list_it): evaluate the expression once
+# per element into a lazily built key list, then hand the keys to the
+# method's runtime helper, as code_generator/expression_ast.w does.
+char* llvm_list_it(int group, int id, retained_node* node):
+	int mode = node.value
+	int element = llvm_container_key(llvm_operand_type(group, node.left))
+	int key_type = llvm_operand_type(group, node.right)
+	int key_size = llvm_slot_size(key_type)
+	if (llvm_class(key_type) != llvm_class_word):
+		llvm_error(id, c"list method key of this type")
+		return c"0"
+	char* list = llvm_value(group, node.left)
+	char* cursor = llvm_entry_slot()
+	char* keys = llvm_entry_slot()
+	char* it = llvm_entry_slot()
+	llvm_store_width(8, c"0", cursor)
+	llvm_store_width(8, c"0", keys)
+	char* value_fn = c"__w_list_iter_value"
+	if (llvm_is_record(element)): value_fn = c"__w_list_addr"
+	int head = llvm_label_new()
+	int yes = llvm_label_new()
+	int done = llvm_label_new()
+	llvm_branch(head)
+	llvm_label(head)
+	char* index = llvm_load(-1, cursor)
+	char* length = llvm_load(-1, llvm_offset(llvm_pointer(list), c"8"))
+	llvm_cond_branch(llvm_instruction(c"icmp slt", index, length), yes, done)
+	llvm_label(yes)
+	llvm_store_width(8, llvm_call2(id, value_fn, list, index), it)
+	if (llvm_it_slots == 0): llvm_it_slots = new list[char*]
+	llvm_it_slots.push(it)
+	char* key = llvm_value(group, node.right)
+	llvm_it_slots.pop()
+	llvm_store_width(8, llvm_call3(id, c"__w_list_push_lazy", llvm_load(-1, keys), key, llvm_number(key_size)), keys)
+	llvm_store_width(8, llvm_instruction(c"add", index, c"1"), cursor)
+	llvm_branch(head)
+	llvm_label(done)
+	char* gathered = llvm_call2(id, c"__w_list_or_new", llvm_load(-1, keys), llvm_number(key_size))
+	int kind = llvm_key_kind(key_type)
+	if (mode == 0): return gathered
+	if (mode == 1): return llvm_call2(id, c"__w_list_filter_keys", list, gathered)
+	if ((mode >= 2) && (mode <= 5)): return llvm_call2(id, c"__w_list_truth", gathered, llvm_number(mode - 2))
+	if (mode == 6): return llvm_call1(id, c"__w_list_sum", gathered)
+	if (mode == 7): return llvm_call1(id, c"__w_list_min", gathered)
+	if (mode == 8): return llvm_call1(id, c"__w_list_max", gathered)
+	if (mode == 9): return llvm_call3(id, c"__w_list_sort_keys", list, gathered, llvm_number(kind))
+	if (mode == 10): return llvm_call3(id, c"__w_list_sorted_keys", list, gathered, llvm_number(kind))
+	# min_by / max_by: the best element itself
+	char* best = llvm_call2(id, c"__w_list_best_key", gathered, llvm_number(kind | ((mode - 11) << 2)))
+	char* address = llvm_call2(id, c"__w_list_addr", list, best)
+	if (llvm_is_record(element)): return address
+	return llvm_load(element, llvm_pointer(address))
+
+
+# Prelude builtins over containers and stdin (grammar/print_builtin.w's
+# helper table): print(list) 4, input() 6, read_all() 7, ints() 8,
+# any/all 14/15, lines()/words() 16/17, split 18, join 19 and len 21.
+int llvm_container_prelude_helper(int op, int helper):
+	if (op == 'P'): return helper == 4
+	return ((helper >= 6) && (helper <= 8)) || ((helper >= 14) && (helper <= 19)) || (helper == 21)
+
+
+char* llvm_container_prelude(int group, int id, retained_node* node):
+	if (node.op == 'P'):
+		# __w_print_list(list, kind): 4 string, 2 char* or 3 word elements
+		int element = llvm_container_key(llvm_operand_type(group, node.left))
+		int kind = 3
+		if (llvm_is_string(element)): kind = 4
+		else if (llvm_is_char_pointer(element)): kind = 2
+		llvm_call2(id, c"__w_print_list", llvm_value(group, node.left), llvm_number(kind))
+		if (node.value != 0):
+			list[char*] none = new list[char*]
+			llvm_helper_call(id, c"__w_print_nl", none)
+			none.free()
+		return c"0"
+	int helper = node.value
+	if (helper == 21):
+		# len(x): strlen of a char*, else the length word of a container,
+		# string or buffer
+		char* value = llvm_value(group, node.left)
+		if (node.high): return llvm_call1(id, c"strlen", value)
+		return llvm_load(-1, llvm_offset(llvm_pointer(value), c"8"))
+	list[char*] values = new list[char*]
+	int arg = node.left
+	while ((arg >= 0) && (llvm_failed == 0)):
+		values.push(llvm_value(group, arg))
+		if ((helper == 18) && (arg == node.left)):
+			values.push(llvm_number(node.high))
+			retained_node first
+			retained_node_load(llvm_node_id(group, arg), &first)
+			if (first.next_arg < 0): values.push(c"0")
+		retained_node argument
+		retained_node_load(llvm_node_id(group, arg), &argument)
+		arg = argument.next_arg
+	if (helper == 19): values.push(llvm_number(node.high))
+	char* name = c"input"
+	if (helper == 7): name = c"read_all"
+	if (helper == 8): name = c"ints"
+	if (helper == 14): name = c"__w_any"
+	if (helper == 15): name = c"__w_all"
+	if (helper == 16): name = c"__w_lines"
+	if (helper == 17): name = c"__w_words"
+	if (helper == 18): name = c"__w_split"
+	if (helper == 19): name = c"__w_join"
+	char* result = llvm_helper_call(id, name, values)
+	values.free()
+	return result
+
+
+int llvm_container_op(int op):
+	return (op == 'V') || (op == 'O') || (op == 'M') || (op == 'm') || (op == 'q') || (op == 'w') || (op == 'H') || (op == 'J') || (op == 133)
+
+
+char* llvm_container_expression(int group, int id, retained_node* node):
+	int op = node.op
+	if (op == 'V'): return llvm_container_allocation(group, id, node)
+	if (op == 'O'): return llvm_container_literal(group, id, node)
+	if (op == 'M'): return llvm_container_method(group, id, node)
+	if ((op == 'm') || (op == 'q')): return llvm_map_read(group, id, node)
+	if (op == 'w'): return llvm_map_store(group, id, node)
+	if (op == 133): return llvm_list_it(group, id, node)
+	if (op == 'H'):
+		# key in container: the key is evaluated first
+		int container = llvm_operand_type(group, node.right)
+		char* key = llvm_container_operand(group, node.left, llvm_container_key(container))
+		char* handle = llvm_value(group, node.right)
+		char* helper = c"__w_list_contains"
+		if (node.value == 1): helper = c"__w_map_contains"
+		if (node.value == 2): helper = c"__w_set_contains"
+		if (node.value == 3): helper = c"__w_list_contains_cstr"
+		return llvm_extend(llvm_bool(llvm_call2(id, helper, handle, key)))
+	# l[start:end] copies the range into a new list
+	char* list = llvm_value(group, node.left)
+	char* start = c"0"
+	if (node.right >= 0): start = llvm_value(group, node.right)
+	char* end = c"0"
+	if (node.high >= 0): end = llvm_value(group, node.high)
+	list[char*] values = list[char*]{list, start, end, llvm_number(node.high >= 0)}
+	char* result = llvm_helper_call(id, c"__w_list_slice", values)
+	values.free()
+	return result
+
+
+# l[index]: the element's address from __w_list_addr, a normal place.
+char* llvm_list_element(int group, int id, retained_node* node):
+	char* list = llvm_value(group, node.left)
+	char* index = llvm_value(group, node.right)
+	return llvm_pointer(llvm_call2(id, c"__w_list_addr", list, index))
+
+
+int llvm_word_byte(int c):
+	return ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9')) || (c == '_')
+
+
+# Offset of the binding's name as a whole word in the for header (the
+# statement's text before its iterable).
+int llvm_header_position(int id, int group, int binding):
+	retained_node statement
+	retained_node_load(id, &statement)
+	retained_node iterable
+	retained_node_load(group, &iterable)
+	retained_source* source = retained_sources[statement.source]
+	char* name = retained_bindings[binding].name
+	int length = strlen(name)
+	int at = statement.start + 3
+	while ((at + length <= iterable.start) && (at + length <= source.length)):
+		int matched = 1
+		for i in range(length):
+			if (source.bytes[at + i] != name[i]): matched = 0
+		int after = source.bytes[at + length]
+		int before = source.bytes[at - 1]
+		if (matched && (llvm_word_byte(before) == 0) && (llvm_word_byte(after) == 0)): return at
+		at = at + 1
+	return iterable.start
+
+
+# for x in l, for i, x in l, for k in m, for k, v in m, for k in s:
+# for_cursor_loop's begin/done/value/next protocol. The container is
+# evaluated once; the cursor is a phi over the loop.
+void llvm_container_for(int id):
+	int entry_reachable = llvm_reachable
+	int group = -1
+	int body = -1
+	list[int] variables = new list[int]
+	int child = llvm_first[id]
+	while (child >= 0):
+		int kind = retained_node_kind(child)
+		if ((kind == retained_expression_group) && (group < 0)): group = child
+		else if (kind == retained_local):
+			retained_node local
+			retained_node_load(child, &local)
+			variables.push(local.binding)
+		else if ((kind == retained_statement) && (body < 0)): body = child
+		else: llvm_error(id, c"for statement shape")
+		child = llvm_next[child]
+	if ((group < 0) || (body < 0) || (variables.length < 1) || (variables.length > 2)):
+		llvm_error(id, c"for statement shape")
+		variables.free()
+		return
+	# Typed loop variables are recorded before the iterable and inferred
+	# ones after it, so order the two by where the header names them.
+	if ((variables.length == 2) && (llvm_header_position(id, group, variables[1]) < llvm_header_position(id, group, variables[0]))):
+		int swap = variables[0]
+		variables[0] = variables[1]
+		variables[1] = swap
+	for i in range(variables.length):
+		if ((variables[i] < 0) || ((variables[i] in llvm_locals) == 0)): llvm_error(id, c"for loop variable")
+	int type = llvm_group_type(group)
+	int kind = llvm_container_kind(type)
+	# Other iterables (for_container_loop): 1 a fixed array or slice by
+	# index, 2 a string's code points (lib.utf8), 3 a struct pointer's
+	# T_iter_begin/done/next/value functions.
+	int sequence = 0
+	int element = -1
+	char* custom = 0
+	if ((kind == 0) && (type >= 0)):
+		retained_type* t = llvm_type(type)
+		if ((t.pointer_level == 0) && ((t.kind == 6) || (t.kind == 7))):
+			sequence = 1
+			element = t.target
+			if (llvm_class(element) != llvm_class_word): llvm_error_at(id, c"for loop over", t.name)
+		else if (llvm_is_string(type)): sequence = 2
+		else if ((t.pointer_level == 1) && (t.target >= 0) && (llvm_class(t.target) == llvm_class_struct)):
+			sequence = 3
+			custom = llvm_join(llvm_type(t.target).name, c"_iter_")
+			if (strcmp(llvm_type(t.target).name, c"generator") == 0): llvm_error(id, c"generator loop")
+	if ((kind == 0) && (sequence == 0)):
+		if (type >= 0): llvm_error_at(id, c"for loop over", retained_types[type].name)
+		else: llvm_error(id, c"for loop iterable")
+	if ((kind == 11) && (variables.length == 2)): llvm_error(id, c"two loop variables over a set")
+	if ((sequence != 0) && (variables.length == 2)): llvm_error(id, c"two loop variables over this iterable")
+	if (llvm_failed):
+		variables.free()
+		return
+	char* prefix = c"__w_list_iter_"
+	if (kind != 12): prefix = c"__w_map_iter_"
+	if (sequence == 3): prefix = custom
+	char* container = llvm_group(group)
+	char* begin = c"0"
+	if ((sequence == 0) || (sequence == 3)): begin = llvm_call1(id, llvm_join(prefix, c"begin"), container)
+	int before = llvm_block
+	char* cursor = llvm_temp()
+	char* advanced = llvm_temp()
+	int head = llvm_label_new()
+	int yes = llvm_label_new()
+	int next = llvm_label_new()
+	int done = llvm_label_new()
+	llvm_branch(head)
+	llvm_label(head)
+	llvm_put(c"  ")
+	llvm_put(cursor)
+	llvm_put(c" = phi i64 [ ")
+	llvm_put(begin)
+	llvm_put(c", %b")
+	llvm_put(llvm_number(before))
+	llvm_put(c" ], [ ")
+	llvm_put(advanced)
+	llvm_put(c", %b")
+	llvm_put(llvm_number(next))
+	llvm_put(c" ]\x0a")
+	char* finished = c"0"
+	if ((sequence == 1) || (sequence == 2)):
+		# a slice, array header or string: {data, length}
+		finished = llvm_extend(llvm_instruction(c"icmp sge", cursor, llvm_load(-1, llvm_offset(llvm_pointer(container), c"8"))))
+	else: finished = llvm_call2(id, llvm_join(prefix, c"done"), container, cursor)
+	llvm_cond_branch(llvm_bool(finished), done, yes)
+	llvm_label(yes)
+	int first_storage = retained_bindings[variables[0]].type
+	char* first = c"0"
+	if (sequence == 1):
+		char* data = llvm_pointer(llvm_load(-1, llvm_pointer(container)))
+		char* offset = llvm_instruction(c"mul", cursor, llvm_number(llvm_type(element).size))
+		first = llvm_convert(id, llvm_load(element, llvm_offset(data, offset)), element, first_storage)
+	else if (sequence == 2): first = llvm_call2(id, c"utf8_decode", container, cursor)
+	else if (sequence == 3): first = llvm_call2(id, llvm_join(prefix, c"value"), container, cursor)
+	else:
+		# The first variable: a list element (its index when there are two)
+		# or a map or set key. Record elements bind their slot's address.
+		element = llvm_container_key(type)
+		char* first_helper = c"__w_map_iter_key"
+		int first_type = element
+		if (kind == 12):
+			first_helper = c"__w_list_iter_value"
+			if (llvm_is_record(element)):
+				first_helper = c"__w_list_addr"
+				first_type = -1
+			if (variables.length == 2):
+				first_helper = c"__w_list_iter_index"
+				first_type = -1
+		first = llvm_call2(id, first_helper, container, cursor)
+		if (first_type >= 0): first = llvm_convert(id, first, first_type, first_storage)
+	llvm_store(id, first_storage, first, llvm_name(c"%v", variables[0]))
+	if (variables.length == 2):
+		int value_type = llvm_container_value_type(type)
+		char* second_helper = c"__w_map_iter_value"
+		if (kind == 12): second_helper = c"__w_list_iter_value"
+		if (llvm_is_record(value_type)):
+			second_helper = c"__w_map_iter_value_addr"
+			if (kind == 12): second_helper = c"__w_list_addr"
+		int second_storage = retained_bindings[variables[1]].type
+		char* second = llvm_call2(id, second_helper, container, cursor)
+		if (llvm_is_record(value_type) == 0): second = llvm_convert(id, second, value_type, second_storage)
+		llvm_store(id, second_storage, second, llvm_name(c"%v", variables[1]))
+	int previous_break = llvm_break_label
+	int previous_continue = llvm_continue_label
+	llvm_break_label = done
+	llvm_continue_label = next
+	llvm_statement(body)
+	llvm_break_label = previous_break
+	llvm_continue_label = previous_continue
+	llvm_branch(next)
+	llvm_label(next)
+	char* stepped = c"0"
+	if (sequence == 1): stepped = llvm_instruction(c"add", cursor, c"1")
+	else if (sequence == 2): stepped = llvm_call2(id, c"utf8_next", container, cursor)
+	else: stepped = llvm_call2(id, llvm_join(prefix, c"next"), container, cursor)
+	llvm_put(c"  ")
+	llvm_put(advanced)
+	llvm_put(c" = add i64 ")
+	llvm_put(stepped)
+	llvm_put(c", 0\x0a")
+	llvm_branch(head)
+	llvm_label(done)
+	llvm_reachable = entry_reachable
+	variables.free()
+
+# --- end of containers -------------------------------------------------------
+
+
 void llvm_statement(int id):
 	if (llvm_failed): return
 	retained_node node
@@ -1485,6 +2130,9 @@ void llvm_statement(int id):
 		return
 	if (strcmp(node.name, c"for range") == 0):
 		llvm_range(id)
+		return
+	if (strcmp(node.name, c"for") == 0):
+		llvm_container_for(id)
 		return
 	if (strcmp(node.name, c"while") == 0):
 		int entry_reachable = llvm_reachable
