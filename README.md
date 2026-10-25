@@ -101,10 +101,9 @@ Other useful targets:
 ```
 
 The [LLVM offload backend](docs/projects/llvm.md) visits the production
-retained AST, emits LLVM IR for a checked subset (integers, pointers, records,
-arrays, strings, globals and the standard library's own code), and links a
-freestanding x86-64 executable with an external Clang. Ordinary W builds do
-not need LLVM.
+retained AST, emits LLVM IR, and links x86-64 or arm64 Linux executables with
+an external Clang; at `-O2` they run 1.1x to 2.2x faster than W's own x64
+code. Ordinary W builds do not need LLVM.
 
 Apple Silicon Macs can run static ARM64 W cells through the
 [Hypervisor.framework backend](docs/projects/vms_darwin.md). Run

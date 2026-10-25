@@ -1105,6 +1105,9 @@ void program_item():
 			char* defhash_op_name = operator_definition(decl_type)
 			defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 			return;
+		# An ordinary declaration named operator is recorded (and retained)
+		# like any other: it cannot collide with the overloads' names.
+		defhash_name = strclone(c"operator")
 		current_symbol = sym_declare_global(c"operator", decl_type, 1)
 	else:
 		defhash_name = strclone(token)
@@ -1123,19 +1126,13 @@ void program_item():
 		flow_definition_type_set = 1
 		function_definition(current_symbol)
 		if (export_pending):
-			char* export_name = defhash_name
-			if (export_name == 0): export_name = c"operator"
-			export_function_note(current_symbol, export_name, decl_type)
+			export_function_note(current_symbol, defhash_name, decl_type)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"=")):
 		if (export_pending): error(c"only functions can be exported")
-		# defhash_name is 0 only on the 'operator' branch above,
-		# which declared that literal name
-		char* init_name = defhash_name
-		if (init_name == 0): init_name = c"operator"
-		global_variable_declaration(current_symbol, decl_type, init_name)
+		global_variable_declaration(current_symbol, decl_type, defhash_name)
 		if (defhash_name != 0):
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 

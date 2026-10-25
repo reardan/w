@@ -14,7 +14,9 @@ runtime thunks emitted into an executable page convert the register
 convention into a W stack call of handler(sig, ucontext + 40) - the
 sigcontext is the uc_mcontext field at offset 40 - and a shared
 restorer performs rt_sigreturn. Callers pass the 2-argument handler
-directly then.
+directly then. The thunk also leaves both arguments in rdi/rsi on a
+16-byte aligned stack, the SysV call the LLVM backend's handler
+expects (tools/wllvm.w), so one thunk serves either compiler.
 
 Shared by the in-process debugger (debugger/wdbg.w) and the fatal-crash
 reporter (lib/crash.w); repl/core.w predates this file and keeps its
@@ -55,17 +57,20 @@ void signal_thunk_init():
 
 
 # Emit an x64 thunk calling handler(sig, &uc_mcontext) with the W stack
-# convention (first argument at the highest address). The handler
-# address uses a full-width immediate, including PIE load addresses.
+# convention (first argument at the highest address) and, at once, the
+# SysV one (rdi already holds sig). The kernel enters the thunk with rsp
+# 8 below a 16-byte boundary, so one padding word keeps the SysV call
+# aligned without moving the stack arguments. The handler address uses
+# a full-width immediate, including PIE load addresses.
 int signal_emit_handler_thunk(int handler):
 	signal_thunk_writable(1)
 	int addr = signal_thunk_page + signal_thunk_pos
-	/* push rdi ; lea rax,[rdx+40] ; push rax ; movabs rax,imm64 */
-	signal_thunk_emit(8, c"\x57\x48\x8d\x42\x28\x50\x48\xb8")
+	/* sub rsp,8 ; push rdi ; lea rax,[rdx+40] ; push rax ; mov rsi,rax ; movabs rax,imm64 */
+	signal_thunk_emit(15, c"\x48\x83\xec\x08\x57\x48\x8d\x42\x28\x50\x48\x89\xc6\x48\xb8")
 	save_i(cast(char*, signal_thunk_page + signal_thunk_pos), handler, 8)
 	signal_thunk_pos = signal_thunk_pos + 8
-	/* call rax ; add rsp,16 ; ret  (returns into the restorer) */
-	signal_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x10\xc3")
+	/* call rax ; add rsp,24 ; ret  (returns into the restorer) */
+	signal_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x18\xc3")
 	signal_thunk_writable(0)
 	return addr
 
