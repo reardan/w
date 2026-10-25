@@ -16,6 +16,8 @@ import libs.extras.mermaid.style_render
 import libs.extras.mermaid.uml_render
 import libs.extras.mermaid.c4_render
 import libs.extras.mermaid.agentflow_render
+import libs.extras.mermaid.flow_shapes
+import libs.extras.mermaid.class_members
 
 char* mm_attribute_text(mm_attribute* a):
 	string_builder* s = string_from(a.type_name)
@@ -62,6 +64,8 @@ void mm_measure(mm_document* d, mm_scene* s):
 		mm_text_block* text = mm_node_text(d, n)
 		int extra = text.height - MM_TEXT_LINE
 		b.w = text.width + 40
+		int text_w = text.width
+		int text_h = text.height
 		mm_text_block_free(text)
 		if (b.w < 180): b.w = 180
 		b.h = 60 + extra
@@ -91,7 +95,14 @@ void mm_measure(mm_document* d, mm_scene* s):
 			int width = mm_text_width(n.annotation, 0) + 68
 			if (width > b.w): b.w = width
 			for mm_member* m in n.members:
-				width = mm_text_width(m.text, 0) + 32
+				if (d.kind == MM_CLASS):
+					int classifier = 0
+					char* shown = mm_class_member_display(m.text, &classifier)
+					int style = 0
+					if (classifier == MM_MEMBER_ABSTRACT): style = MM_TEXT_ITALIC
+					width = mm_text_width(shown, style) + 32
+					free(shown)
+				else: width = mm_text_width(m.text, 0) + 32
 				if (width > b.w): b.w = width
 		if (d.kind == MM_USECASE): mm_uc_measure(d, n, b)
 		# requirement.rect_min_width / rect_min_height enlarge requirement and element boxes.
@@ -113,6 +124,7 @@ void mm_measure(mm_document* d, mm_scene* s):
 				if (strcmp(dir, c"LR") == 0 || strcmp(dir, c"RL") == 0):
 					b.w = 10
 					b.h = 100
+		if (d.kind == MM_FLOW && n.group == 0 && n.shape >= MM_FLOW_CYLINDER): mm_flow_shape_measure(n, b, mm_scope_direction(d, n.parent), text_w, text_h)
 		s.nodes.push(b)
 
 void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap):
@@ -141,8 +153,9 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 		for mm_edge* e in edges:
 			if (e.from_node == index && done[e.to_node] == 0):
 				mm_bounds* to = nodes[e.to_node]
-				int step = 1
-				if (e.min_length > 1): step = e.min_length
+				# Longer links (flowchart `--->`, use case extra dashes) span extra ranks.
+				int step = 1 + e.extra_rank
+				if (e.min_length > step): step = e.min_length
 				if (to.rank < from.rank + step): to.rank = from.rank + step
 				incoming[e.to_node] = incoming[e.to_node] - 1
 	__w_list_free(cast(__w_list*, incoming))
@@ -217,7 +230,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.parent == scope):
-			if (n.group): mm_layout_scope(d, s, i)
+			if (n.group && mm_flow_collapsed(d, i) == 0): mm_layout_scope(d, s, i)
 			indices.push(i)
 			nodes.push(s.nodes[i])
 	for mm_edge* e in d.edges:
@@ -228,6 +241,7 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 		# Borrowed for label-aware rank gaps; only the struct is freed below.
 		mapped.label = e.label
 		mapped.min_length = e.min_length
+		mapped.extra_rank = e.extra_rank
 		for i in range(indices.length):
 			if (indices[i] == a): mapped.from_node = i
 			if (indices[i] == b): mapped.to_node = i
@@ -260,6 +274,16 @@ void mm_layout(mm_document* d, mm_scene* s):
 	mm_measure(d, s)
 	mm_layout_scope(d, s, -1)
 	mm_layout_absolute(d, s, -1, 0, 0)
+	# Contents of collapsed subgraphs keep empty bounds at their group's origin.
+	for i in range(d.nodes.length):
+		int visible = mm_flow_visible_node(d, i)
+		if (visible == i): continue
+		mm_bounds* b = s.nodes[i]
+		mm_bounds* group = s.nodes[visible]
+		b.x = group.x
+		b.y = group.y
+		b.w = 0
+		b.h = 0
 
 # Convex, axis-aligned endpoint polygons, oriented away from their node.
 void mm_uml_marker(mm_scene* s, int x, int y, int dx, int dy, int kind):
@@ -379,11 +403,23 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		mx = ax + 55
 		my = ay
 		horizontal = 1
+	int path_start = s.items.length
+	if (d.kind == MM_FLOW && e.stroke == 2): return
 	int dashed = e.dashed
 	# Animated use-case edges (e.arrow) draw as dashes in static output.
 	if (d.kind == MM_USECASE && e.arrow): dashed = 1
+	int curve = d.edge_curve
+	if (d.kind == MM_FLOW && e.curve != 0): d.edge_curve = e.curve - 1
 	if (d.kind == MM_AGENT && e.curve != 0 && e.from_node != e.to_node): mm_agent_edge_path(s, e.curve, ax, ay, mx, my, bx, by, horizontal, dashed)
 	else: mm_style_edge_path(d, s, ax, ay, mx, my, bx, by, horizontal, dashed, e.from_node == e.to_node)
+	d.edge_curve = curve
+	if (d.kind == MM_FLOW):
+		mm_flow_link_stroke(s, e, path_start)
+		int end_dx = 0 - dx
+		int end_dy = 0 - dy
+		if (e.from_node == e.to_node): end_dx = dx
+		mm_flow_marker(s, ax, ay, dx, dy, e.left_marker)
+		mm_flow_marker(s, bx, by, end_dx, end_dy, e.right_marker)
 	if (d.kind == MM_ER):
 		mm_marker(s, ax, ay, dx, dy, e.left_card)
 		if (e.from_node == e.to_node): mm_marker(s, bx, by, dx, dy, e.right_card)
@@ -424,6 +460,14 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 			mm_render_groups(d, s, i)
 			continue
 		int style_start = s.items.length
+		if (mm_flow_collapsed(d, i)):
+			mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_text_block* collapsed = mm_node_text(d, n)
+			mm_text_draw(s, collapsed, b.x + b.w / 2, b.y + (b.h - collapsed.height) / 2, 1)
+			mm_text_block_free(collapsed)
+			mm_flow_link_scene(s, n, style_start)
+			mm_style_node(d, s, n, style_start)
+			continue
 		mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, d.kind == MM_STATE, c"")
 		# Concurrent state regions are unlabeled dashed partitions of their composite.
 		if (d.kind == MM_STATE && index_of(n.id, c"@region:") == 0):
@@ -442,7 +486,7 @@ void mm_render_groups(mm_document* d, mm_scene* s, int scope):
 		mm_style_node(d, s, n, style_start)
 		mm_render_groups(d, s, i)
 
-void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
+void mm_render_class(mm_document* d, mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 	int y = b.y + 40 + extra
 	if (n.annotation[0] != 0):
 		string_builder* text = string_from(c"<<")
@@ -456,7 +500,16 @@ void mm_render_class(mm_scene* s, mm_node* n, mm_bounds* b, int extra):
 		int count = 0
 		for mm_member* m in n.members:
 			if (m.method == method):
-				mm_text(s, b.x + 12, y + 5, m.text)
+				if (d.kind == MM_CLASS):
+					# Static members are underlined, abstract members italic, as upstream.
+					int classifier = 0
+					char* shown = mm_class_member_display(m.text, &classifier)
+					int style = 0
+					if (classifier == MM_MEMBER_ABSTRACT): style = MM_TEXT_ITALIC
+					mm_text_styled(s, b.x + 12, y + 5, shown, style)
+					if (classifier == MM_MEMBER_STATIC): mm_line(s, b.x + 12, y + 5 + MM_TEXT_LINE - 1, b.x + 12 + mm_text_width(shown, 0), y + 5 + MM_TEXT_LINE - 1, 0)
+					free(shown)
+				else: mm_text(s, b.x + 12, y + 5, m.text)
 				y = y + 26
 				count = count + 1
 		if (count == 0): y = y + 18
@@ -467,13 +520,31 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 	mm_render_groups(d, s, -1)
 	for mm_edge* e in d.edges:
 		int start = s.items.length
-		mm_render_edge(d, s, e)
+		int from = mm_flow_visible_node(d, e.from_node)
+		int to = mm_flow_visible_node(d, e.to_node)
+		if (from == e.from_node && to == e.to_node): mm_render_edge(d, s, e)
+		else if (from != to):
+			int original_from = e.from_node
+			int original_to = e.to_node
+			e.from_node = from
+			e.to_node = to
+			mm_render_edge(d, s, e)
+			e.from_node = original_from
+			e.to_node = original_to
 		mm_style_edge(d, s, e, start)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
-		if (n.group): continue
+		if (n.group || mm_flow_visible_node(d, i) != i): continue
 		int style_start = s.items.length
+		if (d.kind == MM_FLOW && n.shape >= MM_FLOW_CYLINDER):
+			if (mm_flow_shape_draw(s, n, b) == 0):
+				mm_text_block* inner = mm_node_text(d, n)
+				mm_text_draw(s, inner, b.x + b.w / 2, b.y + (b.h - inner.height) / 2, 1)
+				mm_text_block_free(inner)
+			mm_flow_link_scene(s, n, style_start)
+			mm_style_node(d, s, n, style_start)
+			continue
 		if (d.kind == MM_STATE && n.shape >= 4):
 			if (n.shape == 6): mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, 2, c"")
 			else:
@@ -549,7 +620,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 		if (d.kind == MM_ER || (d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): title_y = b.y + 12
 		if (d.kind != MM_STATE || n.shape != 3): mm_text_draw(s, title, b.x + b.w / 2, title_y, 1)
 		mm_text_block_free(title)
-		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(s, n, b, extra)
+		if ((d.kind == MM_CLASS || d.kind == MM_REQUIREMENT || d.kind == MM_C4)): mm_render_class(d, s, n, b, extra)
 		if (d.kind == MM_ER):
 			for j in range(n.attributes.length):
 				int y = b.y + 40 + extra + j * 26
@@ -557,6 +628,7 @@ void mm_render_graph(mm_document* d, mm_scene* s):
 				char* text = mm_attribute_text(n.attributes[j])
 				mm_text(s, b.x + 12, y + 5, text)
 				free(text)
+		mm_flow_link_scene(s, n, style_start)
 		mm_style_node(d, s, n, style_start)
 	if (d.kind == MM_CLASS || d.kind == MM_STATE): mm_uml_notes(d, s)
 
@@ -629,6 +701,9 @@ void mm_render_graph_refresh(mm_document* d, mm_scene* s):
 	for mm_primitive* p in s.items:
 		if (p.points != 0): __w_list_free(cast(__w_list*, p.points))
 		free(p.text)
+		if (p.href != 0): free(p.href)
+		if (p.href_target != 0): free(p.href_target)
+		if (p.tooltip != 0): free(p.tooltip)
 		free(p)
 	while (s.items.length > 0): s.items.pop()
 	free(s.accessibility_title)

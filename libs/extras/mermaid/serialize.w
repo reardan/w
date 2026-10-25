@@ -93,16 +93,74 @@ void mm_serialize_shape(mm_serializer* out, mm_node* n):
 		close = c"/]"
 		if (n.shape == 25 || n.shape == 27): open = c"[\\"
 		if (n.shape == 25 || n.shape == 26): close = c"\\]"
+	else if (n.shape == MM_FLOW_CYLINDER):
+		open = c"[("
+		close = c")]"
+	else if (n.shape == MM_FLOW_DOUBLE_CIRCLE):
+		open = c"((("
+		close = c")))"
+	else if (n.shape == MM_FLOW_ODD): open = c">"
 	else if (n.shape != 0): out.failed = 1
 	string_append(out.text, open)
 	mm_serialize_quote(out, n.label)
 	string_append(out.text, close)
 
+# Every `@{ ... }` pair in source order; the label pair carries the current label.
+void mm_serialize_flow_metadata(mm_serializer* out, mm_node* n):
+	mm_serialize_quote(out, n.id)
+	string_append(out.text, c"@{ ")
+	int first = 1
+	for mm_property* property in n.metadata:
+		if (n.group && strcmp(property.key, c"label") == 0): continue
+		if (first == 0): string_append(out.text, c", ")
+		first = 0
+		string_append(out.text, property.key)
+		string_append(out.text, c": ")
+		if (strcmp(property.key, c"label") == 0): mm_serialize_quote(out, n.label)
+		else: mm_serialize_quote(out, property.value)
+	string_append(out.text, c" }")
+
+void mm_serialize_repeat(mm_serializer* out, int c, int count):
+	for i in range(count): string_append_char(out.text, c)
+
+# The link token for a flowchart edge: start marker, stroke and length, end marker.
+void mm_serialize_flow_link(mm_serializer* out, mm_edge* edge):
+	if (edge.extra_rank < 0 || edge.extra_rank > 16 || edge.stroke < 0 || edge.stroke > 2): out.failed = 1
+	if (edge.id != 0):
+		string_append(out.text, edge.id)
+		string_append_char(out.text, '@')
+	if (edge.stroke == 2):
+		if (edge.left_marker != 0 || edge.right_marker != 0 || edge.arrow != 0 || edge.dashed != 0): out.failed = 1
+		mm_serialize_repeat(out, '~', edge.extra_rank + 3)
+		return
+	if (edge.left_marker == MM_ARROW): string_append_char(out.text, '<')
+	else if (edge.left_marker == MM_FLOW_CIRCLE): string_append_char(out.text, 'o')
+	else if (edge.left_marker == MM_FLOW_CROSS): string_append_char(out.text, 'x')
+	else if (edge.left_marker != 0): out.failed = 1
+	int end = 0
+	if (edge.arrow): end = '>'
+	if (edge.right_marker == MM_FLOW_CIRCLE): end = 'o'
+	else if (edge.right_marker == MM_FLOW_CROSS): end = 'x'
+	else if (edge.right_marker != 0): out.failed = 1
+	if (edge.arrow && edge.right_marker != 0): out.failed = 1
+	if (edge.dashed):
+		if (edge.stroke != 0): out.failed = 1
+		string_append_char(out.text, '-')
+		mm_serialize_repeat(out, '.', edge.extra_rank + 1)
+		string_append_char(out.text, '-')
+	else:
+		int c = '-'
+		if (edge.stroke == 1): c = '='
+		if (end != 0): mm_serialize_repeat(out, c, edge.extra_rank + 2)
+		else: mm_serialize_repeat(out, c, edge.extra_rank + 3)
+	if (end != 0): string_append_char(out.text, end)
+
 void mm_serialize_edge(mm_serializer* out, mm_document* d, mm_edge* edge):
 	if (edge.from_node < 0 || edge.from_node >= d.nodes.length || edge.to_node < 0 || edge.to_node >= d.nodes.length):
 		out.failed = 1
 		return
-	if (edge.from_port != 0 || edge.to_port != 0 || edge.left_marker != 0 || edge.right_marker != 0): out.failed = 1
+	if (edge.from_port != 0 || edge.to_port != 0): out.failed = 1
+	if (d.kind != MM_FLOW && (edge.left_marker != 0 || edge.right_marker != 0 || edge.id != 0 || edge.stroke != 0 || edge.extra_rank != 0)): out.failed = 1
 	mm_serialize_quote(out, d.nodes[edge.from_node].id)
 	string_append_char(out.text, 32)
 	if (d.kind == MM_ER):
@@ -117,11 +175,7 @@ void mm_serialize_edge(mm_serializer* out, mm_document* d, mm_edge* edge):
 		__w_list_free(cast(__w_list*, left))
 		__w_list_free(cast(__w_list*, right))
 	else:
-		if (edge.dashed):
-			if (edge.arrow == 0): out.failed = 1
-			string_append(out.text, c"-.->")
-		else if (edge.arrow): string_append(out.text, c"-->")
-		else: string_append(out.text, c"---")
+		mm_serialize_flow_link(out, edge)
 		if (edge.label[0] != 0):
 			string_append_char(out.text, '|')
 			mm_serialize_quote(out, edge.label)
@@ -147,11 +201,14 @@ void mm_serialize_scope(mm_serializer* out, mm_document* d, int scope, int depth
 		mm_node* n = d.nodes[i]
 		if (n.parent != scope): continue
 		out.nodes = out.nodes + 1
-		if (n.annotation[0] != 0 || n.members.length != 0 || n.metadata.length != 0 || n.global_node || n.role[0] != 0): out.failed = 1
+		if (n.annotation[0] != 0 || n.members.length != 0 || n.global_node || n.role[0] != 0): out.failed = 1
+		if (n.metadata.length != 0 && d.kind != MM_FLOW): out.failed = 1
 		if (n.group && n.attributes.length > 0): out.failed = 1
 		if (n.group): string_append(out.text, c"subgraph ")
-		mm_serialize_quote(out, n.id)
-		mm_serialize_shape(out, n)
+		if (n.group == 0 && n.metadata.length != 0): mm_serialize_flow_metadata(out, n)
+		else:
+			mm_serialize_quote(out, n.id)
+			mm_serialize_shape(out, n)
 		string_append_char(out.text, 10)
 		if (n.group):
 			if (n.direction[0] != 0):
@@ -160,6 +217,9 @@ void mm_serialize_scope(mm_serializer* out, mm_document* d, int scope, int depth
 				string_append_char(out.text, 10)
 			mm_serialize_scope(out, d, i, depth + 1)
 			string_append(out.text, c"end\n")
+			if (n.metadata.length != 0):
+				mm_serialize_flow_metadata(out, n)
+				string_append_char(out.text, 10)
 		else if (n.attributes.length > 0):
 			if (d.kind != MM_ER): out.failed = 1
 			mm_serialize_quote(out, n.id)
@@ -259,6 +319,14 @@ int mm_serialize_node_equal(mm_node* a, mm_node* b):
 	if (a.value_x != b.value_x || a.value_y != b.value_y || a.declared != b.declared || a.global_node != b.global_node): return 0
 	if (mm_serialize_text_equal(a.annotation, b.annotation) == 0 || mm_serialize_text_equal(a.role, b.role) == 0): return 0
 	if (a.members.length != b.members.length || a.metadata.length != b.metadata.length): return 0
+	# Metadata pairs compare in order; a label pair follows the node label itself.
+	for i in range(a.metadata.length):
+		mm_property* left = a.metadata[i]
+		mm_property* right = b.metadata[i]
+		if (strcmp(left.key, right.key) != 0): return 0
+		if (strcmp(left.key, c"label") != 0 && mm_serialize_text_equal(left.value, right.value) == 0): return 0
+	if (mm_serialize_text_equal(a.link, b.link) == 0 || mm_serialize_text_equal(a.link_target, b.link_target) == 0): return 0
+	if (mm_serialize_text_equal(a.tooltip, b.tooltip) == 0 || mm_serialize_text_equal(a.callback, b.callback) == 0): return 0
 	return 1
 
 int mm_serialize_edge_equal(mm_document* a, mm_edge* left, mm_document* b, mm_edge* right):
@@ -267,6 +335,7 @@ int mm_serialize_edge_equal(mm_document* a, mm_edge* left, mm_document* b, mm_ed
 	if (mm_serialize_text_equal(left.label, right.label) == 0 || mm_serialize_text_equal(left.left_label, right.left_label) == 0 || mm_serialize_text_equal(left.right_label, right.right_label) == 0): return 0
 	if (left.dashed != right.dashed || left.arrow != right.arrow || left.left_card != right.left_card || left.right_card != right.right_card): return 0
 	if (left.from_port != right.from_port || left.to_port != right.to_port || left.left_marker != right.left_marker || left.right_marker != right.right_marker): return 0
+	if (mm_serialize_text_equal(left.id, right.id) == 0 || left.stroke != right.stroke || left.extra_rank != right.extra_rank || left.animate != right.animate || left.curve != right.curve): return 0
 	return mm_serialize_style_equal(&left.style, &right.style)
 
 char* mm_serialize(mm_document* d):
@@ -309,6 +378,46 @@ char* mm_serialize(mm_document* d):
 		string_append(out.text, c"linkStyle default ")
 		mm_serialize_style(&out, &d.edge_style)
 	mm_serialize_scope(&out, d, -1, 0)
+	if (d.kind == MM_FLOW):
+		for mm_edge* edge in d.edges:
+			if (edge.animate == 0 && edge.curve == 0): continue
+			if (edge.id == 0 || edge.animate < 0 || edge.animate > 3 || edge.curve < 0 || edge.curve > 3):
+				out.failed = 1
+				continue
+			string_append(out.text, edge.id)
+			string_append(out.text, c"@{ ")
+			if (edge.animate == 1): string_append(out.text, c"animate: true")
+			else if (edge.animate == 2): string_append(out.text, c"animation: fast")
+			else if (edge.animate == 3): string_append(out.text, c"animation: slow")
+			if (edge.animate != 0 && edge.curve != 0): string_append(out.text, c", ")
+			if (edge.curve == 1): string_append(out.text, c"curve: step")
+			else if (edge.curve == 2): string_append(out.text, c"curve: linear")
+			else if (edge.curve == 3): string_append(out.text, c"curve: basis")
+			string_append(out.text, c" }\n")
+	for mm_node* n in d.nodes:
+		if (n.link == 0 && n.callback == 0):
+			if (n.tooltip != 0 || n.link_target != 0): out.failed = 1
+			continue
+		if (d.kind != MM_FLOW || (n.link != 0 && n.callback != 0)):
+			out.failed = 1
+			continue
+		string_append(out.text, c"click ")
+		mm_serialize_quote(&out, n.id)
+		if (n.link != 0):
+			string_append(out.text, c" href ")
+			mm_serialize_quote(&out, n.link)
+		else:
+			string_append(out.text, c" call ")
+			string_append(out.text, n.callback)
+			if (index_of(n.callback, c"\n") >= 0): out.failed = 1
+		if (n.tooltip != 0):
+			string_append_char(out.text, 32)
+			mm_serialize_quote(&out, n.tooltip)
+		if (n.link_target != 0):
+			if (n.link == 0): out.failed = 1
+			string_append_char(out.text, 32)
+			string_append(out.text, n.link_target)
+		string_append_char(out.text, 10)
 	if (out.nodes != d.nodes.length || out.edges != d.edges.length || out.text.length > MM_MAX_SOURCE): out.failed = 1
 	mm_document* check = mm_parse(out.text.data, out.text.length)
 	if (check.error != 0 || check.nodes.length != d.nodes.length || check.edges.length != d.edges.length): out.failed = 1

@@ -85,9 +85,9 @@ class/classDiagram_026.mmd	supported	ok
 class/classDiagram_027.mmd	supported	ok
 class/classDiagram_028.mmd	supported	ok
 class/classDiagram_029.mmd	supported	ok
-class/classDiagram_030.mmd	unsupported	error 3:1: unsupported UML statement
-class/classDiagram_031.mmd	unsupported	error 3:1: unsupported UML statement
-class/classDiagram_032.mmd	unsupported	error 4:5: unsupported UML statement
+class/classDiagram_030.mmd	supported	ok
+class/classDiagram_031.mmd	supported	ok
+class/classDiagram_032.mmd	supported	ok
 class/classDiagram_033.mmd	unsupported	error 5:84: unsupported style property; supported: fill, stroke, color, stroke-width
 class/classDiagram_034.mmd	supported	ok
 class/classDiagram_035.mmd	supported	ok
@@ -139,7 +139,7 @@ pie/examples_001.mmd	supported	ok
 pie/examples_002.mmd	supported	ok
 sequence/examples_003.mmd	supported	ok
 flowchart/examples_004.mmd	supported	ok
-flowchart/examples_005.mmd	unsupported	error 5:11: unsupported flowchart edge
+flowchart/examples_005.mmd	supported	ok
 sequence/examples_006.mmd	supported	ok
 sequence/examples_007.mmd	supported	ok
 sequence/examples_008.mmd	supported	ok
@@ -150,93 +150,93 @@ flowchart/flowchart_003.mmd	supported	ok
 flowchart/flowchart_004.mmd	supported	ok
 flowchart/flowchart_005.mmd	supported	ok
 flowchart/flowchart_006.mmd	supported	ok
-flowchart/flowchart_007.mmd	unsupported	error 4:11: unsupported node shape; quote literal labels beginning with a delimiter
-flowchart/flowchart_008.mmd	unsupported	error 10:11: unsupported node shape; quote literal labels beginning with a delimiter
+flowchart/flowchart_007.mmd	supported	ok
+flowchart/flowchart_008.mmd	supported	ok
 flowchart/flowchart_009.mmd	supported	ok
 flowchart/flowchart_010.mmd	supported	ok
 flowchart/flowchart_011.mmd	supported	ok
-flowchart/flowchart_012.mmd	unsupported	error 2:9: unsupported node shape; quote literal labels beginning with a delimiter
+flowchart/flowchart_012.mmd	supported	ok
 flowchart/flowchart_013.mmd	supported	ok
-flowchart/flowchart_014.mmd	unsupported	error 2:8: unsupported flowchart edge
+flowchart/flowchart_014.mmd	supported	ok
 flowchart/flowchart_015.mmd	supported	ok
 flowchart/flowchart_016.mmd	supported	ok
 flowchart/flowchart_017.mmd	supported	ok
 flowchart/flowchart_018.mmd	supported	ok
 flowchart/flowchart_019.mmd	supported	ok
 flowchart/flowchart_020.mmd	supported	ok
-flowchart/flowchart_021.mmd	unsupported	error 2:10: unsupported node shape; quote literal labels beginning with a delimiter
-flowchart/flowchart_022.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_023.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_024.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_025.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_026.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_027.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_028.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_029.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_030.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_031.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_032.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_033.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_034.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_035.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_036.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_037.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_038.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_039.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_040.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_041.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_042.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_043.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_044.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_045.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_046.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_047.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_048.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_049.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_050.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_051.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_052.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_053.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_054.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_055.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_056.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_057.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_058.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_059.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_060.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_061.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_062.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_063.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_064.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_065.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_066.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_067.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_068.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_069.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_070.mmd	unsupported	error 3:4: unsupported flowchart edge
+flowchart/flowchart_021.mmd	supported	ok
+flowchart/flowchart_022.mmd	supported	ok
+flowchart/flowchart_023.mmd	supported	ok
+flowchart/flowchart_024.mmd	supported	ok
+flowchart/flowchart_025.mmd	supported	ok
+flowchart/flowchart_026.mmd	supported	ok
+flowchart/flowchart_027.mmd	supported	ok
+flowchart/flowchart_028.mmd	supported	ok
+flowchart/flowchart_029.mmd	supported	ok
+flowchart/flowchart_030.mmd	supported	ok
+flowchart/flowchart_031.mmd	supported	ok
+flowchart/flowchart_032.mmd	supported	ok
+flowchart/flowchart_033.mmd	supported	ok
+flowchart/flowchart_034.mmd	supported	ok
+flowchart/flowchart_035.mmd	supported	ok
+flowchart/flowchart_036.mmd	supported	ok
+flowchart/flowchart_037.mmd	supported	ok
+flowchart/flowchart_038.mmd	supported	ok
+flowchart/flowchart_039.mmd	supported	ok
+flowchart/flowchart_040.mmd	supported	ok
+flowchart/flowchart_041.mmd	supported	ok
+flowchart/flowchart_042.mmd	supported	ok
+flowchart/flowchart_043.mmd	supported	ok
+flowchart/flowchart_044.mmd	supported	ok
+flowchart/flowchart_045.mmd	supported	ok
+flowchart/flowchart_046.mmd	supported	ok
+flowchart/flowchart_047.mmd	supported	ok
+flowchart/flowchart_048.mmd	supported	ok
+flowchart/flowchart_049.mmd	supported	ok
+flowchart/flowchart_050.mmd	supported	ok
+flowchart/flowchart_051.mmd	supported	ok
+flowchart/flowchart_052.mmd	supported	ok
+flowchart/flowchart_053.mmd	supported	ok
+flowchart/flowchart_054.mmd	supported	ok
+flowchart/flowchart_055.mmd	supported	ok
+flowchart/flowchart_056.mmd	supported	ok
+flowchart/flowchart_057.mmd	supported	ok
+flowchart/flowchart_058.mmd	supported	ok
+flowchart/flowchart_059.mmd	supported	ok
+flowchart/flowchart_060.mmd	supported	ok
+flowchart/flowchart_061.mmd	supported	ok
+flowchart/flowchart_062.mmd	supported	ok
+flowchart/flowchart_063.mmd	supported	ok
+flowchart/flowchart_064.mmd	supported	ok
+flowchart/flowchart_065.mmd	supported	ok
+flowchart/flowchart_066.mmd	supported	ok
+flowchart/flowchart_067.mmd	supported	ok
+flowchart/flowchart_068.mmd	supported	ok
+flowchart/flowchart_069.mmd	partial	ok	icon packs are not bundled: the icon draws as a placeholder glyph in its form
+flowchart/flowchart_070.mmd	partial	ok	remote images are never fetched: the image draws as a placeholder frame
 flowchart/flowchart_071.mmd	supported	ok
 flowchart/flowchart_072.mmd	supported	ok
-flowchart/flowchart_073.mmd	unsupported	error 2:31: expected --> after inline edge label
+flowchart/flowchart_073.mmd	supported	ok
 flowchart/flowchart_074.mmd	supported	ok
 flowchart/flowchart_075.mmd	supported	ok
 flowchart/flowchart_076.mmd	supported	ok
 flowchart/flowchart_077.mmd	supported	ok
-flowchart/flowchart_078.mmd	unsupported	error 2:5: unsupported flowchart edge
-flowchart/flowchart_079.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_080.mmd	unsupported	error 2:6: unsupported flowchart edge
-flowchart/flowchart_081.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_078.mmd	supported	ok
+flowchart/flowchart_079.mmd	supported	ok
+flowchart/flowchart_080.mmd	supported	ok
+flowchart/flowchart_081.mmd	supported	ok
 flowchart/flowchart_082.mmd	supported	ok
-flowchart/flowchart_083.mmd	unsupported	error 2:12: unsupported flowchart edge
-flowchart/flowchart_084.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_083.mmd	supported	ok
+flowchart/flowchart_084.mmd	supported	ok
 flowchart/flowchart_085.mmd	supported	ok
-flowchart/flowchart_086.mmd	unsupported	error 2:5: unsupported flowchart edge
-flowchart/flowchart_087.mmd	unsupported	error 2:5: unsupported flowchart edge
-flowchart/flowchart_088.mmd	unsupported	error 2:5: unsupported flowchart edge
-flowchart/flowchart_089.mmd	unsupported	error 2:5: unsupported flowchart edge
-flowchart/flowchart_090.mmd	unsupported	error 2:12: expected --> after inline edge label
-flowchart/flowchart_091.mmd	unsupported	error 2:12: expected --> after inline edge label
-flowchart/flowchart_092.mmd	unsupported	error 2:7: unsupported flowchart edge
-flowchart/flowchart_093.mmd	unsupported	error 6:10: expected entity or node identifier
+flowchart/flowchart_086.mmd	supported	ok
+flowchart/flowchart_087.mmd	supported	ok
+flowchart/flowchart_088.mmd	supported	ok
+flowchart/flowchart_089.mmd	unsupported	error 3:37: unsupported style property; supported: fill, stroke, color, stroke-width
+flowchart/flowchart_090.mmd	supported	ok
+flowchart/flowchart_091.mmd	supported	ok
+flowchart/flowchart_092.mmd	supported	ok
+flowchart/flowchart_093.mmd	supported	ok
 flowchart/flowchart_094.mmd	supported	ok
 flowchart/flowchart_095.mmd	supported	ok
 flowchart/flowchart_096.mmd	supported	ok
@@ -244,16 +244,16 @@ flowchart/flowchart_097.mmd	supported	ok
 flowchart/flowchart_098.mmd	supported	ok
 flowchart/flowchart_099.mmd	supported	ok
 flowchart/flowchart_100.mmd	supported	ok
-flowchart/flowchart_101.mmd	unsupported	error 16:16: expected entity or node identifier
-flowchart/flowchart_102.mmd	unsupported	error 8:8: unsupported flowchart edge
+flowchart/flowchart_101.mmd	supported	ok
+flowchart/flowchart_102.mmd	supported	ok
 flowchart/flowchart_103.mmd	supported	ok
-flowchart/flowchart_104.mmd	unsupported	error 5:5: unsupported Mermaid statement in native stage 1
-flowchart/flowchart_105.mmd	unsupported	error 6:5: unsupported Mermaid statement in native stage 1
+flowchart/flowchart_104.mmd	supported	ok
+flowchart/flowchart_105.mmd	supported	ok
 flowchart/flowchart_106.mmd	supported	ok
-flowchart/flowchart_107.mmd	unsupported	error 2:7: unsupported flowchart edge
+flowchart/flowchart_107.mmd	supported	ok
 flowchart/flowchart_108.mmd	unsupported	error 4:82: unsupported style property; supported: fill, stroke, color, stroke-width
 flowchart/flowchart_109.mmd	supported	ok
-flowchart/flowchart_110.mmd	unsupported	error 2:13: unsupported flowchart edge
+flowchart/flowchart_110.mmd	supported	ok
 flowchart/flowchart_111.mmd	supported	ok
 flowchart/flowchart_112.mmd	partial	ok	Font Awesome fa: label prefixes render as literal text
 flowchart/flowchart_113.mmd	partial	ok	Font Awesome fa:/fab: label prefixes render as literal text
@@ -371,19 +371,19 @@ sequence/sequenceDiagram_002.mmd	supported	ok
 sequence/sequenceDiagram_003.mmd	supported	ok
 sequence/sequenceDiagram_004.mmd	supported	ok
 sequence/sequenceDiagram_005.mmd	supported	ok
-sequence/sequenceDiagram_006.mmd	unsupported	error 2:46: unsupported participant identifier
-sequence/sequenceDiagram_007.mmd	unsupported	error 2:45: unsupported participant identifier
-sequence/sequenceDiagram_008.mmd	unsupported	error 2:44: unsupported participant identifier
-sequence/sequenceDiagram_009.mmd	unsupported	error 2:46: unsupported participant identifier
-sequence/sequenceDiagram_010.mmd	unsupported	error 2:49: unsupported participant identifier
-sequence/sequenceDiagram_011.mmd	unsupported	error 2:43: unsupported participant identifier
+sequence/sequenceDiagram_006.mmd	supported	ok
+sequence/sequenceDiagram_007.mmd	supported	ok
+sequence/sequenceDiagram_008.mmd	supported	ok
+sequence/sequenceDiagram_009.mmd	supported	ok
+sequence/sequenceDiagram_010.mmd	supported	ok
+sequence/sequenceDiagram_011.mmd	supported	ok
 sequence/sequenceDiagram_012.mmd	supported	ok
-sequence/sequenceDiagram_013.mmd	unsupported	error 2:57: unsupported participant identifier
-sequence/sequenceDiagram_014.mmd	unsupported	error 2:66: unsupported participant identifier
-sequence/sequenceDiagram_015.mmd	unsupported	error 2:86: unsupported participant identifier
+sequence/sequenceDiagram_013.mmd	supported	ok
+sequence/sequenceDiagram_014.mmd	supported	ok
+sequence/sequenceDiagram_015.mmd	supported	ok
 sequence/sequenceDiagram_016.mmd	supported	ok
 sequence/sequenceDiagram_017.mmd	supported	ok
-sequence/sequenceDiagram_018.mmd	unsupported	error 4:31: unsupported participant identifier
+sequence/sequenceDiagram_018.mmd	supported	ok
 sequence/sequenceDiagram_019.mmd	supported	ok
 sequence/sequenceDiagram_020.mmd	supported	ok
 sequence/sequenceDiagram_021.mmd	supported	ok
@@ -400,10 +400,10 @@ sequence/sequenceDiagram_031.mmd	supported	ok
 sequence/sequenceDiagram_032.mmd	supported	ok
 sequence/sequenceDiagram_033.mmd	supported	ok
 sequence/sequenceDiagram_034.mmd	supported	ok
-sequence/sequenceDiagram_035.mmd	unsupported	error 2:25: message requires a colon and label
+sequence/sequenceDiagram_035.mmd	supported	ok
 sequence/sequenceDiagram_036.mmd	supported	ok
-sequence/sequenceDiagram_037.mmd	partial	ok	link menus are kept in the model but not rendered
-sequence/sequenceDiagram_038.mmd	partial	ok	links menus are kept in the model but not rendered
+sequence/sequenceDiagram_037.mmd	supported	ok
+sequence/sequenceDiagram_038.mmd	supported	ok
 state/stateDiagram_001.mmd	supported	ok
 state/stateDiagram_002.mmd	supported	ok
 state/stateDiagram_003.mmd	supported	ok
@@ -540,9 +540,9 @@ zenuml/zenuml_003.mmd	supported	ok
 zenuml/zenuml_004.mmd	supported	ok
 zenuml/zenuml_005.mmd	supported	ok
 zenuml/zenuml_006.mmd	supported	ok
-zenuml/zenuml_007.mmd	unsupported	error 2:11: ZenUML new requires a participant and balanced arguments
-zenuml/zenuml_008.mmd	unsupported	error 14:12: unsupported ZenUML annotation
-zenuml/zenuml_009.mmd	unsupported	error 8:18: unsupported ZenUML annotation
+zenuml/zenuml_007.mmd	supported	ok
+zenuml/zenuml_008.mmd	supported	ok
+zenuml/zenuml_009.mmd	supported	ok
 zenuml/zenuml_010.mmd	supported	ok
 zenuml/zenuml_011.mmd	supported	ok
 zenuml/zenuml_012.mmd	supported	ok

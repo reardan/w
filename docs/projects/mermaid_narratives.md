@@ -53,10 +53,17 @@ destroyed participant are errors. Numbering continues while hidden; restarting
 with an explicit integer sets a new range. Starts are 0–1,000,000 and increments
 are 1–1,000,000.
 
-Not yet supported: participant configuration objects/stereotypes, participant
-configuration after creation, rendering link menus
-(they are kept in the model; the SVG has no interactive menus), `properties`/
-`details`, half-arrows, multiline/rich labels or browser styling. Upstream
+Participant objects `participant A@{ "type": "queue", "alias": "Jobs" }`
+select participant, actor, boundary, control, entity, database, collections or
+queue symbols (an `as` alias wins over `alias`). Central connections
+(`A->>()B`, `A()->>B`) draw small circles at the lifeline. Entity codes
+(`#9829;`, `#infin;`, `#quot;`) decode in labels and notes; the source keeps
+them. `link`/`links` menus render as a box under each lifeline whose safe
+entries are SVG links. `properties A: {json}` and `details A: text` are kept as
+participant members; property icons are never fetched.
+
+Not yet supported: participant
+configuration after creation, half-arrows, multiline/rich labels or browser styling. Upstream
 `autonumber` takes integers only, so fractional numbering is not offered. Arbitrary control
 keywords do not silently become participants.
 
@@ -168,11 +175,15 @@ a top-level call without an explicit caller uses an `External` participant.
 Balanced method arguments are required. Calls and returns become native
 lifeline messages with activation bars; control constructs become frames.
 
-Not yet supported: `@return`/`@reply`, `@Starter`, participant icons for
-annotations (they render as stereotype text), every loop spelling, rich
-comments or styles. Braces inside quoted arguments or after an async message's
+`@Starter(A)` names the caller of top-level calls; `@return`/`@reply` makes the
+next async message a dashed reply. `@Boundary`, `@Control`, `@Entity`,
+`@Database`, `@Collections` and `@Queue` draw their UML symbols. `//` comments
+(Markdown emphasis included) render above the following message or fragment.
+
+Not yet supported: icons for other annotations (they render as stereotype
+text), every loop spelling or styles. Braces inside quoted arguments or after an async message's
 colon stay label text.
-`//` comments are retained in source but not displayed above messages. Quoted
+Comments before a participant declaration are dropped. Quoted
 arguments do not currently process backslash escapes. Statements outside the
 listed subset fail explicitly.
 
@@ -188,5 +199,9 @@ diagnostics and every source prefix. `./wbuild narrative_test narrative_64_test`
 fragments, activation validation, journey score geometry, timeline event grouping,
 Gregorian dates/dependencies/status, nested ZenUML calls and returns, lossless
 edits, malformed/truncated input, ownership and source/item/layout bounds.
+`./wbuild sequence_objects_test sequence_objects_64_test` covers participant
+objects, properties/details, central connections, entity codes, link menus and
+ZenUML `@return`/`@Starter`/symbols/comments; `./wbuild flowchart_test
+flowchart_64_test` covers flowchart shapes, links, edge IDs and click actions.
 The same display list drives SVG and native desktop rendering; examples are
 also exercised through CLI check/export and native screenshot smoke checks.

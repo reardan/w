@@ -125,6 +125,8 @@ struct mm_narrative_event:
 	int end
 	int dashed
 	int arrow
+	# Sequence central connections `()`: bit 1 at the sender, bit 2 at the receiver.
+	int central
 
 # Gantt calendar settings. Units are days, or minutes when the date format
 # has a time of day. Excluded and included day lists are sorted and unique.
@@ -193,6 +195,12 @@ struct mm_node:
 	char* role
 	int global_node
 	list[mm_property*] metadata
+	# Interaction (flowchart/class `click`, class `link`/`callback`); null when absent.
+	# Links are exported as SVG anchors only for safe schemes; callbacks never run.
+	char* link
+	char* link_target
+	char* tooltip
+	char* callback
 
 struct mm_edge:
 	int from_node
@@ -211,7 +219,7 @@ struct mm_edge:
 	char* right_label
 	int scope
 	mm_style style
-	# Optional owned explicit edge ID (use case and agentflow `id@-->`); null when anonymous.
+	# Optional owned explicit edge ID (flowchart, use case and agentflow `id@-->`); null when anonymous.
 	char* id
 	# Label displacement in pixels (C4 UpdateRelStyle $offsetX/$offsetY).
 	int label_dx
@@ -221,6 +229,13 @@ struct mm_edge:
 	# Agentflow `e1@{ ... }` edge metadata (null when none) and curve
 	# (MM_CURVE_*, 0 = family default).
 	list[mm_property*] metadata
+	# Flowchart link extensions: stroke 0 normal / 1 thick / 2 invisible,
+	# extra ranks from longer links, animate 0 off / 1 on / 2 fast / 3 slow.
+	# `curve` below is per family: flowchart 0 inherited else edge_curve + 1;
+	# agentflow MM_CURVE_* (0 = family default).
+	int stroke
+	int extra_rank
+	int animate
 	int curve
 
 # UML notes are annotations, not graph vertices.
@@ -378,6 +393,10 @@ void mm_document_free(mm_document* d):
 			free(property.value)
 			free(property)
 		__w_list_free(cast(__w_list*, n.metadata))
+		if (n.link != 0): free(n.link)
+		if (n.link_target != 0): free(n.link_target)
+		if (n.tooltip != 0): free(n.tooltip)
+		if (n.callback != 0): free(n.callback)
 		free(n.role)
 		free(n.annotation)
 		free(n.direction)

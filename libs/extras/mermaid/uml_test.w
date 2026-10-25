@@ -32,7 +32,7 @@ void test_uml_class_members_and_compartments():
 	int method_y = 0
 	for mm_primitive* p in s.items:
 		if (strcmp(p.text, c"-int id") == 0): field_y = p.y
-		if (strcmp(p.text, c"+save() bool") == 0): method_y = p.y
+		if (strcmp(p.text, c"+save() : bool") == 0): method_y = p.y
 	asserts(c"attributes precede methods regardless of source order", field_y > 0 && field_y < method_y)
 	char* roundtrip = mm_write(d)
 	assert_strings_equal(source, roundtrip)
@@ -40,7 +40,7 @@ void test_uml_class_members_and_compartments():
 	mm_document_free(d)
 	char* svg = mm_svg(s)
 	asserts(c"scene owns annotation text", index_of(svg, c"&lt;&lt;service&gt;&gt;") >= 0)
-	asserts(c"scene owns members", index_of(svg, c"+load() Item") >= 0)
+	asserts(c"scene owns members", index_of(svg, c"+load() : Item") >= 0)
 	free(svg)
 	mm_scene_free(s)
 

@@ -13,6 +13,7 @@ import libs.extras.mermaid.workflows
 import libs.extras.mermaid.narrative
 import libs.extras.mermaid.railroad_parse
 import libs.extras.mermaid.agentflow
+import libs.extras.mermaid.flowchart
 
 int mm_node_parse(mm_parser* p):
 	int offset = p.pos
@@ -31,11 +32,29 @@ int mm_node_parse(mm_parser* p):
 		n.parent = -1
 	if ((p.doc.kind == MM_FLOW || p.doc.kind == MM_ER || p.doc.kind == MM_AGENT) && p.scope >= 0 && n.group == 0 && n.global_node == 0):
 		if (previous < 0 || n.parent < 0): n.parent = p.scope
+	if (p.doc.kind == MM_FLOW && mm_match(p, c"@{")):
+		mm_flow_node_metadata(p, n)
+		mm_space(p)
+		if (mm_match(p, c":::")): mm_style_inline(p, n)
+		return index
 	mm_space(p)
 	int close = 0
 	int extra = 0
+	int extra2 = 0
 	int flow = p.doc.kind == MM_FLOW || p.doc.kind == MM_AGENT
-	if (flow && mm_match(p, c"([")):
+	if (p.doc.kind == MM_FLOW && mm_match(p, c"[(")):
+		close = ')'
+		extra = ']'
+		n.shape = MM_FLOW_CYLINDER
+	else if (p.doc.kind == MM_FLOW && mm_match(p, c"(((")):
+		close = ')'
+		extra = ')'
+		extra2 = ')'
+		n.shape = MM_FLOW_DOUBLE_CIRCLE
+	else if (p.doc.kind == MM_FLOW && mm_match(p, c">")):
+		close = ']'
+		n.shape = MM_FLOW_ODD
+	else if (flow && mm_match(p, c"([")):
 		close = ']'
 		extra = ')'
 		n.shape = 21
@@ -88,6 +107,9 @@ int mm_node_parse(mm_parser* p):
 		n.label = mm_until(p, close)
 		if (extra != 0):
 			if (mm_peek(p) != extra): mm_error(p.doc, p.pos, c"expected second closing shape delimiter")
+			else: p.pos = p.pos + 1
+		if (extra2 != 0):
+			if (mm_peek(p) != extra2): mm_error(p.doc, p.pos, c"expected third closing shape delimiter")
 			else: p.pos = p.pos + 1
 	if (p.doc.kind == MM_AGENT): mm_agent_metadata(p, n)
 	mm_space(p)
@@ -161,7 +183,83 @@ void mm_attributes(mm_parser* p, int index):
 		mm_separators(p)
 	if (mm_peek(p) == '}'): p.pos = p.pos + 1
 
+# `&`-joined nodes; each link joins every node of its source group to every
+# node of its target group, in source order.
+list[int] mm_flow_group(mm_parser* p):
+	list[int] group = new list[int]
+	while (p.doc.error == 0):
+		int index = mm_node_parse(p)
+		if (index < 0): break
+		group.push(index)
+		mm_space(p)
+		if (mm_peek(p) != '&'): break
+		p.pos = p.pos + 1
+		mm_space(p)
+		if (group.length >= 64): mm_error(p.doc, p.pos, c"node group limit exceeded")
+	return group
+
+void mm_flow_statement(mm_parser* p):
+	int start = p.pos
+	while (mm_id_char(mm_peek(p))): p.pos = p.pos + 1
+	if (p.pos > start && mm_peek(p) == '@' && mm_flow_at(p, 1) == '{'):
+		char* name = str_copy_range(p.doc.source, start, p.pos)
+		int found = mm_flow_edge_find(p.doc, name)
+		free(name)
+		if (found >= 0):
+			p.pos = p.pos + 2
+			mm_flow_edge_metadata(p, p.doc.edges[found])
+			return
+	p.pos = start
+	list[int] lefts = mm_flow_group(p)
+	while (mm_end(p) == 0 && p.doc.error == 0):
+		mm_edge* link = new mm_edge()
+		link.label = strclone(c"")
+		int at = p.pos
+		char* id = mm_flow_edge_id(p)
+		if (mm_flow_link(p, link) == 0): mm_error(p.doc, p.pos, c"unsupported flowchart edge")
+		mm_space(p)
+		if (p.doc.error == 0 && mm_match(p, c"|")):
+			free(link.label)
+			link.label = mm_until(p, '|')
+		list[int] rights = new list[int]
+		if (p.doc.error == 0):
+			__w_list_free(cast(__w_list*, rights))
+			rights = mm_flow_group(p)
+		if (id != 0 && p.doc.error == 0):
+			if (lefts.length != 1 || rights.length != 1): mm_error(p.doc, at, c"an edge ID names exactly one link")
+			else if (mm_flow_edge_find(p.doc, id) >= 0): mm_error(p.doc, at, c"duplicate edge ID")
+		for int l in lefts:
+			for int r in rights:
+				if (p.doc.error != 0): break
+				if (p.doc.edges.length >= MM_MAX_ITEMS):
+					mm_error(p.doc, p.pos, c"edge limit exceeded")
+					break
+				mm_edge* e = new mm_edge()
+				e.from_node = l
+				e.to_node = r
+				e.scope = p.scope
+				e.label = strclone(link.label)
+				e.dashed = link.dashed
+				e.arrow = link.arrow
+				e.left_marker = link.left_marker
+				e.right_marker = link.right_marker
+				e.stroke = link.stroke
+				e.extra_rank = link.extra_rank
+				if (id != 0):
+					e.id = id
+					id = 0
+				p.doc.edges.push(e)
+		if (id != 0): free(id)
+		free(link.label)
+		free(link)
+		__w_list_free(cast(__w_list*, lefts))
+		lefts = rights
+	__w_list_free(cast(__w_list*, lefts))
+
 void mm_statement(mm_parser* p):
+	if (p.doc.kind == MM_FLOW):
+		mm_flow_statement(p)
+		return
 	int left = mm_node_parse(p)
 	if (left < 0): return
 	mm_space(p)
@@ -241,6 +339,7 @@ void mm_flow_body(mm_parser* p, int depth):
 		int start = p.pos
 		if (mm_metadata(p)): mm_space(p)
 		else if (mm_style_statement(p)): mm_space(p)
+		else if (p.doc.kind == MM_FLOW && mm_style_keyword(p, c"click")): mm_interaction_statement(p, 0)
 		else if (p.doc.kind == MM_AGENT && mm_keyword(p, c"global")):
 			if (depth >= 32):
 				mm_error(p.doc, p.pos, c"agentflow nesting limit exceeded")

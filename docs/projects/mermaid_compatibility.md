@@ -39,9 +39,9 @@ Node styling: [Styles and themes](mermaid_styling.md). Configuration: [Config re
 
 | Family / headers | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
-| Flowchart — `flowchart`, `graph` | Five directions, basic/stadium/subroutine/hexagonal/slanted shapes, labelled/chained edges, cycles, nested subgraphs, scoped directions, link styles, `<br>`/Markdown-string labels with emphasis and wrapping, `nodeSpacing`/`rankSpacing`/`curve` configuration | Additional shapes/edges, click actions, other rich text, dense routing and remaining configuration | [build.mmd](../../examples/mermaid/build.mmd) |
+| Flowchart — `flowchart`, `graph` | Five directions, every classic bracket shape plus the full named-shape inventory through `A@{ shape, label, icon, img, ... }` (cylinders, documents, stacked/lined/divided/tagged rectangles, braces, forks, flags, ...), labelled/chained edges with `&` groups, `<-->`/`o--o`/`x--x`/`~~~`/thick links and extended lengths, edge IDs with `animate`/`curve`, collapsed subgraphs, `click` hrefs/callbacks/tooltips/targets kept in the model and exported as safe SVG links (callbacks never run), cycles, nested subgraphs, scoped directions, link styles, `<br>`/Markdown-string labels with emphasis and wrapping, `nodeSpacing`/`rankSpacing`/`curve` configuration | Icon packs and remote images (drawn as placeholders), Font Awesome text, smooth-curve and animation fidelity (SMIL dash approximation), other rich text, dense routing and remaining configuration | [build.mmd](../../examples/mermaid/build.mmd) |
 | ER — `erDiagram` | Entities/aliases, typed attributes and keys, all symbolic cardinalities and textual aliases, identifying/non-identifying relationships, link styles and optional force layout | Rich attribute text, additional configuration and crowded relationship routing | [orders.mmd](../../examples/mermaid/orders.mmd) |
-| Class — `classDiagram` | Member compartments, annotations, UML endpoints, multiplicities, nested and comma-separated generic labels, backtick IDs, dotted namespaces, unique lollipop interfaces and notes; graphical rename/delete/add/link/drag for top-level classes | Interactive links, richer member labels and graphical editing inside namespaces | [classes.mmd](../../examples/mermaid/classes.mmd) |
+| Class — `classDiagram` | Member compartments, annotations, UML endpoints, multiplicities, nested and comma-separated generic labels, backtick IDs, dotted namespaces, unique lollipop interfaces and notes; `link`/`click`/`callback` statements as safe SVG links and tooltips; member labels with visibility, `~T~` generics, parameter lists, `name(params) : Return` display and `$` static (underlined) / `*` abstract (italic) classifiers; graphical rename/delete/add/link/drag for top-level classes | Graphical editing inside namespaces | [classes.mmd](../../examples/mermaid/classes.mmd) |
 | State — `stateDiagram`, `stateDiagram-v2` | Initial/final states, cross-scope transitions, composite states, concurrent `--` regions, choices, forks/joins, notes and scoped directions; graphical rename/delete/add/link/drag for top-level states | Per-state styling, rich labels and graphical editing inside composite states | [states.mmd](../../examples/mermaid/states.mmd) |
 
 ## Graphs, hierarchy and workflows
@@ -77,11 +77,11 @@ Details: [Ordered diagrams](mermaid_narratives.md).
 
 | Family / header | Implemented core | Important remaining gaps | Example |
 | --- | --- | --- | --- |
-| Sequence — `sequenceDiagram` | Participants/actors, aliases, lifecycle, message variants, notes, activations, integer numbering ranges, nested interaction fragments, colored participant boxes, `rect` highlights and `link`/`links` menus kept in the model | Participant objects, rendered link menus, `properties`/`details` and rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
+| Sequence — `sequenceDiagram` | Participants/actors, `@{ "type": ... }` participant objects (boundary/control/entity/database/collections/queue symbols), aliases, lifecycle, message variants including central `()` connections, entity codes (`#9829;`, `#infin;`), notes, activations, integer numbering ranges, nested interaction fragments, colored participant boxes, `rect` highlights, `link`/`links` menus rendered as SVG link boxes, and `properties`/`details` kept in the model | Half-arrows, property-driven icons/CSS classes and other rich labels | [sequence.mmd](../../examples/mermaid/sequence.mmd) |
 | Journey — `journey` | Sections, tasks, 1–5 scores, actor lists and source-ordered score plot | Upstream avatar/face rendering, themes and HTML labels | [journey.mmd](../../examples/mermaid/journey.mmd) |
 | Timeline — `timeline` | Sections, ordinal period labels, multiple/continued events, `<br>` line breaks and chronological columns | Other rich labels, configuration and alternative layouts | [timeline.mmd](../../examples/mermaid/timeline.mmd) |
 | Gantt — `gantt` | Validated dates in `YYYY`/`MM`/`DD`/`HH:mm` `dateFormat`s, minute/hour/day/week durations, `excludes`/`includes`/`weekend`, strftime `axisFormat`, fixed-date `todayMarker`, `click` hrefs kept in the model, sequential starts, forward/multiple dependencies, until endpoints and status/milestone marks | Timezones, month/year units, other moment.js tokens, `tickInterval`/`topAxis` and drawn links | [gantt.mmd](../../examples/mermaid/gantt.mmd) |
-| ZenUML — `zenuml` | Participants/actors and `@Annotation` kinds, aliases, `new` creation, assignment replies, async/sync/nested and inline-bodied calls, returns, alternatives, loops, try/catch/finally and parallel/optional fragments | `@return`/`@Starter`, annotation icons, rich comments and styles | [zenuml.mmd](../../examples/mermaid/zenuml.mmd) |
+| ZenUML — `zenuml` | Participants/actors and `@Annotation` kinds with Boundary/Control/Entity/Database/Collections/Queue symbols, `@Starter`, `@return`/`@reply` dashed replies, aliases, `new` creation (with or without arguments), assignment replies, async/sync/nested and inline-bodied calls, returns, alternatives, loops, try/catch/finally and parallel/optional fragments, `//` Markdown comments above messages and fragments | Icons for other annotation kinds and styles | [zenuml.mmd](../../examples/mermaid/zenuml.mmd) |
 
 Gantt schedules use their actual calendar semantics rather than generic graph
 positions. ZenUML is the separately documented extension included in the native
@@ -158,11 +158,11 @@ differ from upstream in layout or detail.
 | architecture | 6 | 0 | 0 | 6 |
 | block | 24 | 0 | 6 | 30 |
 | c4 | 6 | 0 | 0 | 6 |
-| class | 33 | 0 | 5 | 38 |
+| class | 36 | 0 | 2 | 38 |
 | cynefin | 3 | 0 | 0 | 3 |
 | er | 22 | 0 | 3 | 25 |
 | eventmodeling | 13 | 0 | 0 | 13 |
-| flowchart | 37 | 2 | 77 | 116 |
+| flowchart | 110 | 4 | 2 | 116 |
 | gantt | 4 | 0 | 7 | 11 |
 | gitgraph | 27 | 0 | 9 | 36 |
 | ishikawa | 1 | 0 | 0 | 1 |
@@ -176,7 +176,7 @@ differ from upstream in layout or detail.
 | railroad | 14 | 0 | 0 | 14 |
 | requirement | 6 | 0 | 3 | 9 |
 | sankey | 8 | 0 | 0 | 8 |
-| sequence | 29 | 2 | 11 | 42 |
+| sequence | 42 | 0 | 0 | 42 |
 | state | 19 | 0 | 3 | 22 |
 | swimlane | 13 | 0 | 0 | 13 |
 | timeline | 12 | 0 | 2 | 14 |
@@ -186,8 +186,8 @@ differ from upstream in layout or detail.
 | venn | 7 | 0 | 1 | 8 |
 | wardley | 12 | 0 | 7 | 19 |
 | xychart | 6 | 0 | 2 | 8 |
-| zenuml | 13 | 0 | 3 | 16 |
-| **All** | **388** | **6** | **154** | **548** |
+| zenuml | 16 | 0 | 0 | 16 |
+| **All** | **480** | **6** | **62** | **548** |
 
 <!-- corpus-counts:end -->
 

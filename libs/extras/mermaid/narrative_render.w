@@ -1,7 +1,80 @@
 # Lifelines, chronological event columns, scored journeys and a calendar axis.
 import libs.extras.mermaid.narrative
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.interaction
 import libs.extras.mermaid.text
+
+# A ZenUML `//` comment above its message or fragment, with Markdown emphasis.
+void mm_n_zen_comment_draw(mm_scene* s, mm_narrative_event* event, int x, int y):
+	if (event.detail[0] == 0): return
+	string_builder* markdown = string_from(c"`")
+	string_append(markdown, event.detail)
+	string_append_char(markdown, '`')
+	mm_text_block* block = mm_text_layout(markdown.data, 0)
+	mm_text_draw(s, block, x, y - block.height, 0)
+	mm_text_block_free(block)
+	string_free(markdown)
+
+# Sequence participant object symbols (shape 2-7), drawn above the label like
+# the actor figure: boundary, control, entity, database; collections and queue
+# draw their outline around the label instead.
+void mm_n_participant_symbol(mm_scene* s, mm_node* node, mm_bounds* bounds, int x, int shift):
+	int shape = node.shape
+	int top = 58 + shift
+	if (shape == 2):
+		mm_line(s, x - 22, top + 2, x - 22, top + 34, 0)
+		mm_line(s, x - 22, top + 18, x - 10, top + 18, 0)
+		mm_draw(s, MM_CIRCLE, x - 10, top + 2, x + 22, top + 34, 0, c"")
+	else if (shape == 3):
+		mm_draw(s, MM_CIRCLE, x - 16, top + 2, x + 16, top + 34, 0, c"")
+		mm_line(s, x - 2, top + 2, x + 6, top - 4, 0)
+		mm_line(s, x - 2, top + 2, x + 6, top + 8, 0)
+	else if (shape == 4):
+		mm_draw(s, MM_CIRCLE, x - 16, top, x + 16, top + 32, 0, c"")
+		mm_line(s, x - 18, top + 36, x + 18, top + 36, 0)
+	else if (shape == 5):
+		mm_draw(s, MM_BOX, x - 18, top + 6, x + 18, top + 36, 0, c"")
+		mm_primitive* body = s.items[s.items.length - 1]
+		body.style.mask = MM_STYLE_STROKE
+		body.style.stroke = -1
+		mm_line(s, x - 18, top + 6, x - 18, top + 36, 0)
+		mm_line(s, x + 18, top + 6, x + 18, top + 36, 0)
+		mm_ellipse(s, x, top + 6, 18, 6)
+		mm_ellipse(s, x, top + 36, 18, 6)
+	if (shape >= 2 && shape <= 5):
+		mm_text(s, x - strlen(node.label) * 4, 101 + shift, node.label)
+		return
+	if (shape == 6):
+		mm_draw(s, MM_BOX, bounds.x + 6, bounds.y - 6, bounds.x + bounds.w + 6, bounds.y + bounds.h - 6, 0, c"")
+		mm_draw(s, MM_BOX, bounds.x, bounds.y, bounds.x + bounds.w, bounds.y + bounds.h, 0, c"")
+	else:
+		int r = 10
+		mm_draw(s, MM_BOX, bounds.x + r, bounds.y, bounds.x + bounds.w - r, bounds.y + bounds.h, 0, c"")
+		mm_primitive* body = s.items[s.items.length - 1]
+		body.style.mask = MM_STYLE_STROKE
+		body.style.stroke = -1
+		mm_line(s, bounds.x + r, bounds.y, bounds.x + bounds.w - r, bounds.y, 0)
+		mm_line(s, bounds.x + r, bounds.y + bounds.h, bounds.x + bounds.w - r, bounds.y + bounds.h, 0)
+		mm_ellipse(s, bounds.x + r, bounds.y + bounds.h / 2, r, bounds.h / 2)
+		mm_ellipse(s, bounds.x + bounds.w - r, bounds.y + bounds.h / 2, r, bounds.h / 2)
+	mm_text(s, x - strlen(node.label) * 4, 83 + shift, node.label)
+
+# Participant `link`/`links` menus, listed in a box under the lifeline. Each
+# entry is an SVG link when its URL scheme is safe (mm_link_safe).
+void mm_n_link_menu(mm_scene* s, mm_node* node, mm_bounds* bounds, int y):
+	if (node.metadata.length == 0): return
+	int width = bounds.w
+	for mm_property* link in node.metadata:
+		int needed = strlen(link.key) * 8 + 24
+		if (needed > width): width = needed
+	int x = bounds.x + bounds.w / 2 - width / 2
+	mm_draw(s, MM_BOX, x, y, x + width, y + 8 + node.metadata.length * 22, 0, c"")
+	for i in range(node.metadata.length):
+		mm_property* link = node.metadata[i]
+		mm_text(s, x + 12, y + 6 + i * 22, link.key)
+		mm_primitive* entry = s.items[s.items.length - 1]
+		if (mm_link_safe(link.value)): entry.href = strclone(link.value)
+		entry.tooltip = strclone(link.value)
 
 void mm_n_arrow(mm_scene* s, int x, int y, int direction, int kind):
 	if (kind == 0): return
@@ -41,9 +114,18 @@ int mm_n_text_width(char* label, int wrap):
 	return width
 
 # A participant box or actor figure with its label; top is the box's top.
-void mm_n_actor_box(mm_scene* s, mm_node* node, mm_bounds* bounds, int top):
+void mm_n_actor_box(mm_document* d, mm_scene* s, mm_node* node, mm_bounds* bounds, int top):
 	int x = bounds.x + bounds.w / 2
 	int shift = top - 65
+	if (node.shape >= 2 && node.shape <= 7 && (d.kind == MM_SEQUENCE || d.kind == MM_ZENUML)):
+		mm_bounds* at = new mm_bounds()
+		at.x = bounds.x
+		at.y = top
+		at.w = bounds.w
+		at.h = bounds.h
+		mm_n_participant_symbol(s, node, at, x, shift)
+		free(at)
+		return
 	if (node.shape == 1):
 		mm_draw(s, MM_CIRCLE, x - 9, 58 + shift, x + 9, 76 + shift, 0, c"")
 		mm_line(s, x, 76 + shift, x, 98 + shift, 0)
@@ -144,7 +226,7 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			int y = rows[i] - 25
 			mm_draw(s, MM_BOX, x, y, right + 15 - depth * 8, rows[event.end] + 5, 0, c"")
 			# rect highlights are filled, borderless backgrounds rather than labelled fragments.
-			if (strcmp(event.detail, c"rect") == 0):
+			if (d.kind == MM_SEQUENCE && strcmp(event.detail, c"rect") == 0):
 				mm_primitive* highlight = s.items[s.items.length - 1]
 				highlight.style.mask = MM_STYLE_FILL | MM_STYLE_STROKE
 				highlight.style.fill = event.value
@@ -163,13 +245,14 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				end_y = rows[event.end]
 				dies = 1
 		int shift = bounds.y - 65
-		mm_n_actor_box(s, node, bounds, bounds.y)
+		mm_n_actor_box(d, s, node, bounds, bounds.y)
 		mm_line(s, x, 140 + shift, x, end_y, 1)
+		if (d.kind == MM_SEQUENCE): mm_n_link_menu(s, node, bounds, end_y + 32)
 		if (dies):
 			mm_line(s, x - 9, end_y - 9, x + 9, end_y + 9, 0)
 			mm_line(s, x - 9, end_y + 9, x + 9, end_y - 9, 0)
 		# sequence.mirrorActors repeats each surviving participant below its lifeline.
-		else if (mm_config_flag(d, c"sequence.mirrorActors", 0)): mm_n_actor_box(s, node, bounds, end_y + 10)
+		else if (mm_config_flag(d, c"sequence.mirrorActors", 0)): mm_n_actor_box(d, s, node, bounds, end_y + 10)
 		# Draw outer activation bars first, so nested bars remain visible.
 		int depth = 0
 		for j in range(d.narrative.length):
@@ -215,6 +298,9 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				mm_line(s, x, y, to, y, event.dashed)
 				mm_n_arrow(s, to, y, direction, event.arrow)
 				if (event.arrow == 4): mm_n_arrow(s, x, y, 0 - direction, event.arrow)
+				# Central connections mark the lifeline point with a small circle.
+				if (event.central & 1): mm_draw(s, MM_CIRCLE, x + direction * 2 - 5, y - 5, x + direction * 2 + 5, y + 5, 0, c"")
+				if (event.central & 2): mm_draw(s, MM_CIRCLE, to - direction * 14 - 5, y - 5, to - direction * 14 + 5, y + 5, 0, c"")
 			ordinal = ordinal + 1
 			char* label = mm_n_message_label(event, ordinal, numbered)
 			if (x == to): mm_n_message_text(s, x + 8, y - 23, label, wrap)
@@ -230,6 +316,11 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 				if (align != 0 && strcmp(align, c"right") == 0): label_x = high - label_width - 10
 				if (label_x < 10): label_x = 10
 				mm_n_message_text(s, label_x, y - 23, label, wrap)
+			if (d.kind == MM_ZENUML):
+				int comment_x = (x + to) / 2 - strlen(label) * 4
+				if (x == to): comment_x = x + 8
+				if (comment_x < 10): comment_x = 10
+				mm_n_zen_comment_draw(s, event, comment_x, y - 25)
 			free(label)
 		else if (event.kind == MM_N_NOTE):
 			int w = strlen(event.label) * 8 + 24
@@ -239,7 +330,9 @@ void mm_n_lifelines(mm_document* d, mm_scene* s):
 			if (nx < 10): nx = 10
 			mm_draw(s, MM_BOX, nx, y - 20, nx + w, y + 20, 0, c"")
 			mm_text(s, nx + 12, y - 8, event.label)
-		else if (event.kind == MM_N_BLOCK && strcmp(event.detail, c"rect") != 0): mm_text(s, 45, y - 17, event.label)
+		else if (event.kind == MM_N_BLOCK && (d.kind != MM_SEQUENCE || strcmp(event.detail, c"rect") != 0)):
+			mm_text(s, 45, y - 17, event.label)
+			if (d.kind == MM_ZENUML): mm_n_zen_comment_draw(s, event, 45, y - 19)
 		else if (event.kind == MM_N_BRANCH):
 			mm_line(s, 35, y - 20, right + 10, y - 20, 1)
 			mm_text(s, 45, y - 12, event.label)

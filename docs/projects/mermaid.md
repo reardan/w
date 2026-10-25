@@ -189,8 +189,9 @@ These describe upstream syntax; the table below defines the implemented subset.
 | --- | --- |
 | Input | Raw UTF-8 `.mmd` source or a selected Mermaid Markdown fence, BOM, LF/CRLF, `%%` comments, semicolon separators |
 | Flow header | `flowchart` or `graph`, followed by `TB`, `TD`, `BT`, `LR`, or `RL` |
-| Flow nodes | Bare IDs, rectangle `[label]`, rounded `(label)`, circle `((label))`, diamond `{label}`, stadium `([label])`, subroutine `[[label]]`, hexagon `{{label}}`, parallelograms and trapezoids; quoted labels |
-| Flow edges | `-->`, `---`, `-.->`, optional `|label|`, chains, cycles, self edges |
+| Flow nodes | Bare IDs, rectangle `[label]`, rounded `(label)`, circle `((label))`, double circle `(((label)))`, diamond `{label}`, stadium `([label])`, subroutine `[[label]]`, cylinder `[(label)]`, asymmetric `>label]`, hexagon `{{label}}`, parallelograms and trapezoids; quoted labels; `A@{ shape: ..., label: ... }` metadata with every Mermaid 12.2 shape name and alias (documents, stacked/lined/divided/tagged rectangles, braces, forks, flags, bolts, hourglass, ...), `icon`/`img` placeholders and `w`/`h`/`pos`/`constraint` |
+| Flow edges | `-->`, `---`, `-.->`, `==>`, `<-->`, `o--o`, `x--x`, invisible `~~~`, extended lengths (up to 16), `-- text -->` and `|label|`, `&` groups, chains, cycles, self edges; edge IDs `e1@-->` with `e1@{ animate: true, curve: linear }` |
+| Interaction | `click ID href "url" "tooltip" _blank`, `click ID "url"`, `click ID call fn()` and bare callbacks; links render as SVG `<a>` only for relative, fragment, http(s) and mailto URLs, callbacks are kept in the model and never run |
 | ER entities | Bare/quoted names, standalone entities, `[alias]`, attribute blocks |
 | ER attributes | `type name`, `PK`/`FK`/`UK` and comma-separated combinations, quoted comments, array/parenthesized/nullable types, `*` primary-key name spelling |
 | ER relationships | All 16 symbolic cardinality combinations plus textual aliases (`only one`, `zero or many`, etc.); `--` / `to` identifying and `..` / `optionally to` non-identifying; required `: label` |
@@ -213,8 +214,8 @@ parallel edges and long labels may overlap and need future routing work.
 
 Node styles/classes and a bounded frontmatter theme subset are implemented;
 see [Styles and themes](mermaid_styling.md). Remaining gaps include
-most configuration options, click actions, additional node/edge shapes and rich
-text. Class and state coverage is listed below; other families are listed in the
+most configuration options, icon packs and remote images (shown as placeholders),
+Font Awesome text and other rich text. Class and state coverage is listed below; other families are listed in the
 [compatibility matrix](mermaid_compatibility.md).
 
 ## Native graph layout selection
@@ -271,10 +272,12 @@ transitions support forward declarations across composite boundaries, plus
 left/right multiline notes. See [UML additions and limits](mermaid_uml.md) for
 exact identity, ownership and placement rules.
 
-Concurrent state regions, interactive links, rich text, comma-separated generic
-parameters and full configuration remain unsupported. Node styles/classes and
-accessibility statements are supported. Signatures and annotations display
-literally; static or abstract suffixes do not add font styling. Unsupported
+Concurrent state regions, rich text, comma-separated generic
+parameters and full configuration remain unsupported. Node styles/classes,
+accessibility statements and class `link`/`click`/`callback` statements (safe
+SVG links and tooltips) are supported. Members display with `~T~` generics as
+`<T>`, methods as `name(params) : Return`, `$` static members underlined and
+`*` abstract members in italics; annotations display literally. Unsupported
 structures fail parsing and clear the preview while preserving editable source.
 Automatic routing can still overlap connectors or labels across boundaries.
 
