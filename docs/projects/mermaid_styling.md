@@ -67,7 +67,7 @@ and to swimlane edges.
 | --- | --- |
 | State | `style`, `classDef`, `class`, and `:::NAME` after a state declaration, a state reference or a transition target. Start/end pseudo-states cannot be styled (as upstream); fork/join bars can |
 | Mindmap | `:::NAME` lines assign classes; classes come from `themeCSS` (mindmap has no `classDef`). Under a theme each top-level branch takes its `cScale` color, lightened per depth |
-| TreeView | `name :::a b ## description`; classes come from `themeCSS`, plus upstream's built-in `highlight` (highlightBg/highlightStroke). `icon(...)` is rejected |
+| TreeView | `name :::a b ## description`; classes come from `themeCSS`, plus upstream's built-in `highlight` (highlightBg/highlightStroke). `icon(...)` draws a native pictogram ([graph families](mermaid_graph_families.md)) |
 | Treemap | `:::NAME` on sections and leaves, `classDef`, and `style "Label" properties` (direct styles beat classes). Cells use a per-depth palette: each top-level section takes a series color (`cScale` under a theme), lighter as cells nest |
 | Venn | `style A properties` (a set or text node) and `style A,B properties` (the union of exactly those sets; a fill draws the shared region). Sets are translucent filled discs (`venn1`–`venn8` under a theme) |
 | Packet | `classDef`, `:::NAME` after a field label, and `style "Label"` or `style <first bit>` |
@@ -283,7 +283,7 @@ The source remains byte-for-byte saveable, including unsupported styles and
 configuration. Invalid styles or configuration suppress the preview. Not
 supported: selectors beyond `.class` in `themeCSS`, CSS properties outside the
 table above, loading font families natively (themes name upstream's
-families, metrics stay Arial-compatible), TreeView icons, arbitrary diagram configuration and
+families, metrics stay Arial-compatible), arbitrary diagram configuration and
 external stylesheets. Classes refer to existing node identifiers; quoted ER
 display aliases are not style identifiers.
 

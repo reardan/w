@@ -81,8 +81,10 @@ raw newline rather than emitting an approximation.
   `mindmap.maxNodeWidth` (both 200px), xychart category labels at their
   band width when the widest would collide, quadrant titles inside their
   quadrant, sequence text under `wrap`, and C4 names/descriptions.
-  `family_text_test` pins each from the scene. TD timelines, journey task
-  labels and gitGraph commit labels do not wrap. Sequence messages and
+  TD timeline text wraps like LR, and journey task labels wrap inside the
+  task box (every box takes the tallest wrapped height).
+  `family_text_test` pins each from the scene. GitGraph commit labels do
+  not wrap. Sequence messages and
   notes, journey tasks and timeline entries use the rich layout when the
   label is a Markdown string or holds `<br>`; ER attribute comments and
   requirement text (Markdown emphasis) do too.

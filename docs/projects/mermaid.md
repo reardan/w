@@ -463,7 +463,7 @@ for the algorithm, budgets and measured before/after quality.
 Node styles/classes and a bounded frontmatter theme subset are implemented;
 see [Styles and themes](mermaid_styling.md). Remaining gaps include
 most configuration options, icon packs and remote images (shown as placeholders),
-Font Awesome text and other rich text. Class and state coverage is listed below; other families are listed in the
+Font Awesome names outside the built-in pictogram table and other rich text. Class and state coverage is listed below; other families are listed in the
 [compatibility matrix](mermaid_compatibility.md).
 
 ## Native graph layout selection
@@ -521,8 +521,9 @@ transitions support forward declarations across composite boundaries, plus
 left/right multiline notes. See [UML additions and limits](mermaid_uml.md) for
 exact identity, ownership and placement rules.
 
-Concurrent state regions, rich text, comma-separated generic
-parameters and full configuration remain unsupported. Node styles/classes,
+Concurrent `--` state regions, comma-separated generic parameters and
+Markdown-string labels are supported; HTML labels and full configuration are
+not. Node styles/classes,
 accessibility statements and class `link`/`click`/`callback` statements (safe
 SVG links and tooltips) are supported. Members display with `~T~` generics as
 `<T>`, methods as `name(params) : Return`, `$` static members underlined and
@@ -544,8 +545,9 @@ Plain `title:` frontmatter is supported at the beginning of a raw diagram or
 inside the selected fence. Quoted scalar
 titles are accepted. The frontmatter parser also accepts the bounded `config`
 theme subset described in [Styles and themes](mermaid_styling.md); it is not a
-general YAML parser. Other structured values, YAML escapes and unsupported
-configuration fields produce diagnostics.
+general YAML parser: lists, block scalars, escapes and anchors are read
+([config reference](mermaid_config.md)), YAML tags are rejected, and
+unknown configuration keys are ignored and recorded.
 
 `accTitle:` and `accDescr:` (including brace-delimited multiline descriptions)
 provide escaped SVG title/description metadata across families, including the
@@ -666,15 +668,15 @@ Remaining compatibility and editing work:
    links, fonts and rich labels without losing the native engine constraint.
 3. Improve text measurement, wrapping, edge routing, port placement and dense
    chart layout. Native geometry does not reproduce Dagre/ELK or browser layout.
-4. Extend graphical editing beyond
-   flow/ER/class/state (requirement, use-case and the other graph families),
-   and into namespaces, composite states and notes; add group movement, multi-selection, resize and richer edge/attribute inspectors.
+4. Extend graphical editing to the families still edited as source
+   (sequence, Gantt, gitGraph, event modeling, ...) and to notes, lollipop
+   interfaces and architecture edge sides ([per-family table](#use)).
    Use editor commands to keep source/history synchronized; mutating the AST
    directly still does not update the lossless writer.
 5. Run the native Windows/macOS qualification
    ([checklist](mermaid_desktop_qualification.md)): Narrator/NVDA/VoiceOver,
    input, DPI/Retina and filesystem behavior. Accessible editing of labels on
-   the canvas itself, multi-selection and spoken announcements of edit results
+   the canvas itself and spoken announcements of edit results
    (live regions) are not provided yet.
 6. Expand the pinned upstream conformance corpus, malformed-input fuzzing and
    cross-family integration tests before claiming syntax or rendering parity.

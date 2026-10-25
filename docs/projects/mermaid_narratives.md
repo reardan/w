@@ -70,8 +70,9 @@ reversed at the sender. They draw with upstream's marker geometry (the
 `auto-start-reverse`, so the half flips with the message direction).
 Example: [sequence_half_arrows.mmd](../../examples/mermaid/sequence_half_arrows.mmd).
 
+Messages and notes take Markdown strings and `<br>` (the shared rich layout).
 Not yet supported: participant
-configuration after creation, multiline/rich labels or browser styling. Upstream
+configuration after creation or browser styling. Upstream
 `autonumber` takes integers only, so fractional numbering is not offered. Arbitrary control
 keywords do not silently become participants.
 
@@ -124,8 +125,8 @@ In the horizontal layout period and event text wraps at spaces inside the
 column (`timeline.width`, default 170px, less 30px padding) from measured
 per-glyph widths, as upstream wraps it; a single word wider than that widens
 the column instead, and event boxes and period headers grow 18px per extra
-line (issue #817). The `TD` layout sizes its boxes from measured widths but
-does not wrap. Other rich labels remain unsupported.
+line (issue #817). The `TD` layout wraps the same way. Markdown strings and
+`<br>` use the shared rich layout; other rich labels remain unsupported.
 
 Example: [timeline.mmd](../../examples/mermaid/timeline.mmd).
 

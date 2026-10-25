@@ -205,14 +205,14 @@ x64, including the guard allocator's leak checks.
   as `(x, down)` draws one arrow with a head per listed direction around a
   central square. `block:id:2` spans a composite over two parent columns.
   `A-- "X" -->B` (also `==` and `-.` openings) labels a link like
-  `A-->|X|B`. `style`, `classDef`, `class`
+  `A-->|X|B`; `-.->`/`-.-` draw dotted links and `==>`/`===` thick (4px)
+  links. `style`, `classDef`, `class`
   and inline `:::class` use the shared style subset (fill, stroke, color,
   stroke-width) on blocks and composites, and `linkStyle` on links; styling
   an undeclared block fails. Span overflow and malformed blocks fail
   explicitly. Column widths grow by actual content, so one large label does
-  not multiply across every column. Dotted/thick links and block-arrow
-  geometry other than the six directions and their combinations remain
-  unsupported.
+  not multiply across every column. Block-arrow geometry other than the six
+  directions and their combinations remains unsupported.
 
 - **Architecture:** services, nested groups, junctions, all sixteen
   source/target port pairs, arrowheads at either end, and explicit
