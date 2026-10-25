@@ -160,6 +160,7 @@ int llvm_named(retained_type* t, char* name):
 
 
 int llvm_class(int type);
+int llvm_has_headers(int type);
 
 
 int llvm_class_of(retained_type* t):
@@ -167,14 +168,18 @@ int llvm_class_of(retained_type* t):
 	# the retained tree does not spell out
 	if ((t.kind >= 21) && (t.kind <= 30)): return llvm_class_none
 	if (t.pointer_level > 0): return llvm_class_word
-	if (t.kind == 6): return llvm_class_array
+	if (t.kind == 6):
+		# The native backend leaves element headers zeroed: reject rather
+		# than disagree with its bounds checks.
+		if (llvm_has_headers(t.target)): return llvm_class_none
+		return llvm_class_array
 	if (t.kind == 7): return llvm_class_slice
 	# string handles, enums and function values are one word
 	if ((t.kind == 8) || (t.kind == 4) || (t.kind == 2)): return llvm_class_word
 	if (t.fields.length > 0):
 		for i in range(t.fields.length):
 			int field = llvm_class(t.fields[i].type)
-			if ((field == llvm_class_none) || (field == llvm_class_array) || (field == llvm_class_void)): return llvm_class_none
+			if ((field == llvm_class_none) || (field == llvm_class_void)): return llvm_class_none
 		return llvm_class_struct
 	char* n = t.name
 	if (strcmp(n, c"void") == 0): return llvm_class_void
@@ -472,6 +477,9 @@ char* llvm_value(int group, int operand);
 char* llvm_address(int group, int operand);
 
 
+int llvm_decays(int from, int to);
+
+
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
 # through the runtime's str_from_cstr, exactly as the native coercion.
 char* llvm_convert(int id, char* value, int from, int to):
@@ -490,7 +498,20 @@ char* llvm_convert(int id, char* value, int from, int to):
 		llvm_put(value)
 		llvm_put(c")\x0a")
 		return result
+	# A fixed array or slice decays to its data pointer.
+	if (llvm_decays(from, to)): return llvm_load(-1, llvm_pointer(value))
 	return value
+
+
+void llvm_fix_headers(int type, char* base);
+char* llvm_temporary_field(int group, retained_node* node);
+char* llvm_record_copy(int type, char* value);
+char* llvm_record_buffer(int type);
+void llvm_store_record_fields(int group, int id, retained_node* node, int record_type, char* object);
+char* llvm_record_literal(int group, int id, retained_node* node);
+int llvm_parameter_ok(int type);
+void llvm_convert_indirect(int group, int id, retained_node* node, list[char*] values, list[int] types);
+char* llvm_length(int group, int id, retained_node* node);
 
 
 # Store value (already an i64 word, or a struct's address) into a place.
@@ -498,6 +519,10 @@ void llvm_store(int id, int type, char* value, char* address):
 	int c = llvm_class(type)
 	if (c == llvm_class_struct):
 		llvm_memory_call(c"llvm.memcpy.p0.p0.i64", address, llvm_pointer(value), llvm_type(type).size)
+		llvm_fix_headers(type, address)
+		return
+	if (c == llvm_class_slice):
+		llvm_store_width(8, value, address)
 		return
 	if (c != llvm_class_word):
 		llvm_error(id, c"assignment of this type")
@@ -646,14 +671,21 @@ char* llvm_call(int group, int id, retained_node* node):
 	char* callee_value = c"0"
 	if (node.op == 'F'): callee_value = llvm_value(group, node.left)
 	while ((arg >= 0) && (llvm_failed == 0)):
-		values.push(llvm_value(group, arg))
+		char* value = llvm_value(group, arg)
 		retained_node argument
 		retained_node_load(llvm_node_id(group, arg), &argument)
+		# A record argument is the address of the caller's own copy.
+		if (llvm_class(argument.semantic_type) == llvm_class_struct): value = llvm_record_copy(argument.semantic_type, value)
+		values.push(value)
 		types.push(argument.semantic_type)
 		arg = argument.next_arg
 	char* target = c"null"
 	int count = values.length
-	if (node.op == 'F'): target = llvm_pointer(callee_value)
+	int record_result = -1
+	if ((node.op == 'F') && (llvm_class(node.semantic_type) == llvm_class_struct)): record_result = node.semantic_type
+	if (node.op == 'F'):
+		target = llvm_pointer(callee_value)
+		llvm_convert_indirect(group, id, node, values, types)
 	else:
 		retained_binding* callee = retained_bindings[node.binding]
 		if ((callee.linkage in llvm_functions) == 0):
@@ -684,15 +716,24 @@ char* llvm_call(int group, int id, retained_node* node):
 		if (count < defined.parameters.length): llvm_error_at(id, c"call argument count", callee.name)
 		for i in range(count):
 			if (i < defined.parameters.length):
-				if (llvm_class(defined.parameters[i]) != llvm_class_word): llvm_error_at(id, c"record parameter passed by value to", callee.name)
+				if (llvm_parameter_ok(defined.parameters[i]) == 0): llvm_error_at(id, c"parameter passed by value to", callee.name)
 				values[i] = llvm_convert(id, values[i], types[i], defined.parameters[i])
+		if (llvm_class(defined.return_type) == llvm_class_struct): record_result = defined.return_type
 		target = llvm_function_symbol(callee.linkage)
+	# A record result is written to a caller buffer named by a hidden first
+	# argument; the call's value is that buffer's address.
+	char* buffer = 0
+	if (record_result >= 0): buffer = llvm_address_value(llvm_record_buffer(record_result))
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
 	llvm_put(c" = call i64 ")
 	llvm_put(target)
 	llvm_put(c"(")
+	if (buffer != 0):
+		llvm_put(c"i64 ")
+		llvm_put(buffer)
+		if (count > 0): llvm_put(c", ")
 	for i in range(count):
 		if (i > 0): llvm_put(c", ")
 		llvm_put(c"i64 ")
@@ -700,6 +741,7 @@ char* llvm_call(int group, int id, retained_node* node):
 	llvm_put(c")\x0a")
 	values.free()
 	types.free()
+	if (buffer != 0): return buffer
 	return result
 
 
@@ -776,9 +818,11 @@ char* llvm_value_inner(int group, int operand):
 			if (linkage in llvm_functions): return llvm_constant_address(llvm_function_symbol(linkage))
 			llvm_error_at(id, c"reference to", node.binding_name)
 			return c"0"
+	if ((op == '.') && (node.high < 0)): return llvm_temporary_field(group, &node)
 	if (llvm_place(&node)):
 		char* address = llvm_address(group, operand)
 		if ((type_class == llvm_class_struct) || (type_class == llvm_class_array)): return llvm_address_value(address)
+		if (type_class == llvm_class_slice): return llvm_load(-1, address)
 		if (type_class != llvm_class_word):
 			llvm_error(id, c"value of this type")
 			return c"0"
@@ -865,6 +909,7 @@ char* llvm_value_inner(int group, int operand):
 		list[char*] size = list[char*]{llvm_number(bytes)}
 		char* object = llvm_helper_call(id, c"__w_new_object", size)
 		size.free()
+		if (llvm_has_headers(pointer.target)): llvm_fix_headers(pointer.target, llvm_pointer(object))
 		return object
 	if (op == 'k'):
 		# Host atomics at full word width (grammar/atomic_builtin.w).
@@ -937,32 +982,34 @@ char* llvm_value_inner(int group, int operand):
 		arguments.free()
 		return result
 	if (op == 'D'):
-		# new T(field=value, ...): zeroed heap storage from the runtime
+		# new T(field: value, ...): zeroed heap storage from the runtime; a
+		# T(field: value, ...) value is a zeroed temporary record.
+		if (node.high == 0):
+			if (type_class != llvm_class_struct):
+				llvm_error(id, c"record literal")
+				return c"0"
+			return llvm_record_literal(group, id, &node)
 		retained_type* pointer = llvm_type(type)
-		if ((node.high == 0) || (pointer.pointer_level != 1) || (pointer.target < 0) || (llvm_class(pointer.target) != llvm_class_struct)):
+		# new int(): one zeroed scalar
+		if ((pointer.pointer_level == 1) && (pointer.target >= 0) && (llvm_class(pointer.target) == llvm_class_word) && (node.left < 0)):
+			list[char*] scalar = list[char*]{c"8"}
+			char* cell = llvm_helper_call(id, c"__w_new_object", scalar)
+			scalar.free()
+			return cell
+		if ((pointer.pointer_level != 1) || (pointer.target < 0) || (llvm_class(pointer.target) != llvm_class_struct)):
 			llvm_error(id, c"record allocation")
 			return c"0"
 		retained_type* record = llvm_type(pointer.target)
 		list[char*] size = list[char*]{llvm_number(record.size)}
 		char* object = llvm_helper_call(id, c"__w_new_object", size)
 		size.free()
-		int entry = node.left
-		while ((entry >= 0) && (llvm_failed == 0)):
-			retained_node field
-			retained_node_load(llvm_node_id(group, entry), &field)
-			retained_node argument
-			retained_node_load(llvm_node_id(group, field.left), &argument)
-			if ((field.value < 0) || (field.value >= record.fields.length)):
-				llvm_error(id, c"record field initializer")
-				return c"0"
-			retained_field* target = record.fields[field.value]
-			char* value = llvm_convert(id, llvm_value(group, field.left), argument.semantic_type, target.type)
-			llvm_store(id, target.type, value, llvm_offset(llvm_pointer(object), llvm_number(target.offset)))
-			entry = field.next_arg
+		if (llvm_has_headers(pointer.target)): llvm_fix_headers(pointer.target, llvm_pointer(object))
+		llvm_store_record_fields(group, id, &node, pointer.target, object)
 		return object
 	if ((op == 'P') || (op == 'y')):
 		int helper = node.high
 		if (op == 'y'): helper = node.value
+		if ((op == 'y') && (helper == 21)): return llvm_length(group, id, &node)
 		char* name = llvm_prelude_helper(helper)
 		if ((op == 'P') && (node.left < 0)): name = c"__w_print_nl"
 		if ((name == 0) || ((op == 'y') && (helper < 9))):
@@ -988,7 +1035,7 @@ char* llvm_value_inner(int group, int operand):
 		if ((op == 'C') && (node.binding < 0)):
 			llvm_error(id, c"unbound call")
 			return c"0"
-		if ((type_class != llvm_class_word) && (type_class != llvm_class_void)):
+		if ((type_class != llvm_class_word) && (type_class != llvm_class_void) && (type_class != llvm_class_struct) && (type_class != llvm_class_slice)):
 			llvm_error(id, c"call result type")
 			return c"0"
 		return llvm_call(group, id, &node)
@@ -1147,11 +1194,10 @@ void llvm_local_init(int binding):
 	int type = retained_bindings[binding].type
 	char* address = llvm_name(c"%v", binding)
 	int c = llvm_class(type)
-	if ((c == llvm_class_struct) || (c == llvm_class_array)): llvm_memory_call(c"llvm.memset.p0.i64", address, 0, llvm_storage(type))
+	if ((c == llvm_class_struct) || (c == llvm_class_array)):
+		llvm_memory_call(c"llvm.memset.p0.i64", address, 0, llvm_storage(type))
+		llvm_fix_headers(type, address)
 	else: llvm_store_width(8, c"0", address)
-	if (c == llvm_class_array):
-		llvm_store_width(8, llvm_address_value(llvm_offset(address, c"16")), address)
-		llvm_store_width(8, llvm_number(llvm_type(type).array_length), llvm_offset(address, c"8"))
 
 
 int llvm_starts_with_word(int id):
@@ -1164,6 +1210,347 @@ int llvm_starts_with_word(int id):
 
 
 void llvm_statement(int id);
+
+
+# --- control flow and records by value ---------------------------------------
+# switch, legacy and scoped defer, goto, and records passed, returned and
+# copied by value. The production front end already expands every defer:
+# each exit carries its 'deferred exit' statements, in run order, after the
+# exit's own value, so lowering them is ordinary statement lowering.
+
+# The record type the current function returns through its hidden first
+# argument %ret (the caller's buffer), or -1.
+int llvm_return_record = -1
+# label name -> block, for the current function's goto targets
+map[char*, int] llvm_labels
+
+
+int llvm_parameter_ok(int type):
+	int c = llvm_class(type)
+	return (c == llvm_class_word) || (c == llvm_class_struct) || (c == llvm_class_slice)
+
+
+# Fixed arrays keep a {data, length} header naming their own storage, also
+# inside records.
+int llvm_has_headers(int type):
+	if (type < 0): return 0
+	retained_type* t = llvm_type(type)
+	if (t.pointer_level > 0): return 0
+	if (t.kind == 6): return 1
+	if ((t.kind == 7) || (t.kind == 8) || (t.kind == 4) || (t.kind == 2)): return 0
+	for i in range(t.fields.length):
+		if (llvm_has_headers(t.fields[i].type)): return 1
+	return 0
+
+
+# Storage for one value in the function's entry block.
+char* llvm_entry_slot(int bytes):
+	llvm_register = llvm_register + 1
+	char* name = llvm_name(c"%r", llvm_register)
+	string_append(llvm_entry, c"  ")
+	string_append(llvm_entry, name)
+	string_append(llvm_entry, c" = alloca [")
+	string_append_int(llvm_entry, bytes)
+	string_append(llvm_entry, c" x i8], align 8\x0a")
+	return name
+
+
+char* llvm_record_buffer(int type):
+	return llvm_entry_slot(llvm_storage(type))
+
+
+# Point every header in the storage at base back at its own data, as the
+# native backend does after each record copy and allocation.
+void llvm_fix_headers(int type, char* base):
+	if (llvm_has_headers(type) == 0): return
+	retained_type* t = llvm_type(type)
+	if (t.kind != 6):
+		for i in range(t.fields.length):
+			retained_field* field = t.fields[i]
+			llvm_fix_headers(field.type, llvm_offset(base, llvm_number(field.offset)))
+		return
+	# Arrays of elements with headers are outside the subset (llvm_class_of).
+	llvm_store_width(8, llvm_address_value(llvm_offset(base, c"16")), base)
+	llvm_store_width(8, llvm_number(t.array_length), llvm_offset(base, c"8"))
+
+
+# A record value is its storage's address; passing one by value copies it.
+char* llvm_record_copy(int type, char* value):
+	char* buffer = llvm_record_buffer(type)
+	llvm_memory_call(c"llvm.memcpy.p0.p0.i64", buffer, llvm_pointer(value), llvm_type(type).size)
+	llvm_fix_headers(type, buffer)
+	return llvm_address_value(buffer)
+
+
+# A scalar field of a call's record result (grammar/ast_expression.w marks
+# it with a negative high).
+char* llvm_temporary_field(int group, retained_node* node):
+	char* address = llvm_offset(llvm_pointer(llvm_value(group, node.left)), llvm_number(node.value))
+	int c = llvm_class(node.semantic_type)
+	if ((c == llvm_class_struct) || (c == llvm_class_array)): return llvm_address_value(address)
+	if (c == llvm_class_slice): return llvm_load(-1, address)
+	return llvm_load(node.semantic_type, address)
+
+
+# Field initializers of T(...) and new T(...), in source order.
+void llvm_store_record_fields(int group, int id, retained_node* node, int record_type, char* object):
+	retained_type* record = llvm_type(record_type)
+	int entry = node.left
+	while ((entry >= 0) && (llvm_failed == 0)):
+		retained_node field
+		retained_node_load(llvm_node_id(group, entry), &field)
+		retained_node argument
+		retained_node_load(llvm_node_id(group, field.left), &argument)
+		if ((field.value < 0) || (field.value >= record.fields.length)):
+			llvm_error(id, c"record field initializer")
+			return
+		retained_field* target = record.fields[field.value]
+		char* value = llvm_convert(id, llvm_value(group, field.left), argument.semantic_type, target.type)
+		llvm_store(id, target.type, value, llvm_offset(llvm_pointer(object), llvm_number(target.offset)))
+		entry = field.next_arg
+
+
+# T(field: value, ...): a zeroed temporary record.
+char* llvm_record_literal(int group, int id, retained_node* node):
+	char* buffer = llvm_record_buffer(node.semantic_type)
+	llvm_memory_call(c"llvm.memset.p0.i64", buffer, 0, llvm_storage(node.semantic_type))
+	llvm_fix_headers(node.semantic_type, buffer)
+	char* object = llvm_address_value(buffer)
+	llvm_store_record_fields(group, id, node, node.semantic_type, object)
+	return object
+
+
+# len(x) (prelude helper 21): strlen for a C string; containers and
+# buffers (string, slice, decayed fixed array) keep their length one word
+# into their header (grammar/print_builtin.w's prelude_len_expr).
+char* llvm_length(int group, int id, retained_node* node):
+	if (node.left < 0):
+		llvm_error(id, c"len without an argument")
+		return c"0"
+	retained_node argument
+	retained_node_load(llvm_node_id(group, node.left), &argument)
+	char* value = llvm_value(group, node.left)
+	if (llvm_is_char_pointer(argument.semantic_type)):
+		list[char*] operands = list[char*]{value}
+		char* length = llvm_helper_call(id, c"strlen", operands)
+		operands.free()
+		return length
+	return llvm_load(-1, llvm_offset(llvm_pointer(value), c"8"))
+
+
+# An array or slice value (its header's address) used as a pointer.
+int llvm_decays(int from, int to):
+	int c = llvm_class(from)
+	if ((c != llvm_class_array) && (c != llvm_class_slice)): return 0
+	return (to >= 0) && (llvm_type(to).pointer_level > 0)
+
+
+# Arguments of a call through a function value convert to the parameter
+# types of its fn type (decays and bool normalization, as direct calls).
+void llvm_convert_indirect(int group, int id, retained_node* node, list[char*] values, list[int] types):
+	retained_node callee
+	retained_node_load(llvm_node_id(group, node.left), &callee)
+	if (callee.semantic_type < 0): return
+	retained_type* t = llvm_type(callee.semantic_type)
+	if ((t.pointer_level > 0) && (t.kind != 2) && (t.target >= 0)): t = llvm_type(t.target)
+	if (t.kind != 2): return
+	for i in range(values.length):
+		if (i < t.parameters.length): values[i] = llvm_convert(id, values[i], types[i], t.parameters[i])
+
+
+# Run an exit's 'deferred exit' children (after its value, if any).
+void llvm_deferred_exits(int id):
+	int child = llvm_first[id]
+	while (child >= 0):
+		if ((retained_node_kind(child) == retained_statement) && (strcmp(retained_node_at(child).name, c"deferred exit") == 0)): llvm_statement(child)
+		child = llvm_next[child]
+
+
+int llvm_text_is(int type, char* name):
+	return (type >= 0) && llvm_named(llvm_type(type), name)
+
+
+# One case value against the scrutinee (emit_switch_case_compare): text
+# contents for a string or C-string scrutinee, else word equality.
+char* llvm_case_matches(int id, char* scrutinee, int scrutinee_type, int group):
+	char* value = llvm_group(group)
+	int type = llvm_group_type(group)
+	int literal = llvm_text_is(type, c"string value")
+	char* helper = 0
+	if (llvm_is_string(scrutinee_type) && (llvm_is_string(type) || literal)): helper = c"__w_string_equal"
+	else if (llvm_is_char_pointer(scrutinee_type) && (llvm_is_char_pointer(type) || literal)):
+		helper = c"__w_cstr_equal"
+		# A string literal case compares its NUL-terminated bytes.
+		if (literal): value = llvm_load(-1, llvm_pointer(value))
+	if (helper == 0): return llvm_instruction(c"icmp eq", scrutinee, value)
+	list[char*] operands = list[char*]{scrutinee, value}
+	char* equal = llvm_helper_call(id, helper, operands)
+	operands.free()
+	return llvm_instruction(c"icmp ne", equal, c"0")
+
+
+void llvm_switch(int id):
+	int entry_reachable = llvm_reachable
+	int scrutinee = llvm_first[id]
+	if ((scrutinee < 0) || (retained_node_kind(scrutinee) != retained_expression_group)):
+		llvm_error(id, c"switch statement shape")
+		return
+	char* value = llvm_group(scrutinee)
+	int type = llvm_group_type(scrutinee)
+	int end = llvm_label_new()
+	int previous_break = llvm_break_label
+	llvm_break_label = end
+	int clause = llvm_next[scrutinee]
+	while ((clause >= 0) && (llvm_failed == 0)):
+		char* name = retained_node_at(clause).name
+		if (strcmp(name, c"default") == 0):
+			if (llvm_first[clause] >= 0): llvm_statement(llvm_first[clause])
+			llvm_branch(end)
+		else if (strcmp(name, c"case") == 0):
+			int body = -1
+			list[int] values = new list[int]
+			int child = llvm_first[clause]
+			while (child >= 0):
+				if (retained_node_kind(child) == retained_expression_group): values.push(child)
+				else if (body < 0): body = child
+				child = llvm_next[child]
+			if ((body < 0) || (values.length == 0)):
+				llvm_error(clause, c"switch case shape")
+				values.free()
+				return
+			int matched = llvm_label_new()
+			int next = llvm_label_new()
+			for k in range(values.length):
+				char* hit = llvm_case_matches(clause, value, type, values[k])
+				if (k + 1 < values.length):
+					int more = llvm_label_new()
+					llvm_cond_branch(hit, matched, more)
+					llvm_label(more)
+				else: llvm_cond_branch(hit, matched, next)
+			values.free()
+			llvm_label(matched)
+			llvm_statement(body)
+			llvm_branch(end)
+			llvm_label(next)
+		else: llvm_error_at(clause, c"switch clause", name)
+		clause = llvm_next[clause]
+	llvm_branch(end)
+	llvm_label(end)
+	llvm_break_label = previous_break
+	llvm_reachable = entry_reachable
+
+
+int llvm_label_for(char* name):
+	if ((name in llvm_labels) == 0): llvm_labels[name] = llvm_label_new()
+	return llvm_labels[name]
+
+
+int llvm_identifier_byte(int c):
+	return ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9')) || (c == '_') || (c >= 128)
+
+
+# A label statement is a childless statement spelled 'name:'.
+int llvm_is_label(int id, retained_node* node):
+	if (llvm_first[id] >= 0): return 0
+	retained_source* source = retained_sources[node.source]
+	int length = strlen(node.name)
+	if ((length == 0) || (node.start < 0) || (node.start + length >= source.length)): return 0
+	for i in range(length):
+		if (source.bytes[node.start + i] != node.name[i]): return 0
+	return source.bytes[node.start + length] == ':'
+
+
+# goto's target: the identifier after the keyword in the source.
+char* llvm_goto_target(retained_node* node):
+	retained_source* source = retained_sources[node.source]
+	int at = node.start + 4
+	while ((at < source.length) && ((source.bytes[at] == ' ') || (source.bytes[at] == 9))): at = at + 1
+	int end = at
+	while ((end < source.length) && llvm_identifier_byte(source.bytes[end] & 255)): end = end + 1
+	if (end == at): return 0
+	string_builder* text = string_new()
+	for i in range(at, end): string_append_char(text, source.bytes[i])
+	char* name = retained_intern(text.data)
+	string_free(text)
+	return name
+
+
+void llvm_return(int id):
+	int group = llvm_first[id]
+	if ((group >= 0) && (retained_node_kind(group) != retained_expression_group)): group = -1
+	int return_type = retained_bindings[llvm_function].return_type
+	int return_class = llvm_class(return_type)
+	char* value = c"0"
+	if (group >= 0):
+		value = llvm_group(group)
+		if (return_class == llvm_class_word): value = llvm_convert(id, value, llvm_group_type(group), return_type)
+		# The record result is in the caller's buffer before defers run.
+		if (return_class == llvm_class_struct):
+			llvm_store(id, return_type, value, llvm_pointer(c"%ret"))
+			value = c"%ret"
+	else if (return_class == llvm_class_struct): value = c"%ret"
+	else if (return_class != llvm_class_void):
+		llvm_error(id, c"return without a value")
+		return
+	llvm_deferred_exits(id)
+	llvm_put(c"  ret i64 ")
+	llvm_put(value)
+	llvm_put(c"\x0a")
+	llvm_terminated = 1
+	llvm_reachable = 0
+
+
+# The control-flow statements of this section; 0 when id is another kind.
+int llvm_control_statement(int id, retained_node* node):
+	char* name = node.name
+	if (strcmp(name, c"return") == 0):
+		llvm_return(id)
+		return 1
+	if ((strcmp(name, c"break") == 0) || (strcmp(name, c"continue") == 0)):
+		int target = llvm_break_label
+		if (strcmp(name, c"continue") == 0): target = llvm_continue_label
+		llvm_deferred_exits(id)
+		if (target < 0): llvm_error(id, c"jump outside a loop")
+		else: llvm_branch(target)
+		llvm_reachable = 0
+		return 1
+	if (strcmp(name, c"switch") == 0):
+		llvm_switch(id)
+		return 1
+	# Registration only: the front end expands each exit's defers.
+	if (((strcmp(name, c"defer") == 0) || (strcmp(name, c"scoped defer") == 0)) && (llvm_first[id] < 0)): return 1
+	if (strcmp(name, c"deferred exit") == 0):
+		int child = llvm_first[id]
+		if ((child < 0) || (retained_node_kind(child) != retained_expression_group)): llvm_error(id, c"deferred statement shape")
+		else: llvm_group(child)
+		return 1
+	if ((strcmp(name, c"goto") == 0) && (llvm_first[id] < 0)):
+		char* target = llvm_goto_target(node)
+		if (target == 0):
+			llvm_error(id, c"goto target")
+			return 1
+		llvm_branch(llvm_label_for(target))
+		llvm_reachable = 0
+		return 1
+	# name := value declares name after its initializer.
+	int first = llvm_first[id]
+	if ((first >= 0) && (retained_node_kind(first) == retained_expression_group) && (llvm_next[first] >= 0) && (retained_node_kind(llvm_next[first]) == retained_local) && (llvm_next[llvm_next[first]] < 0)):
+		retained_node local
+		retained_node_load(llvm_next[first], &local)
+		if ((local.binding < 0) || ((local.binding in llvm_locals) == 0)):
+			llvm_error(id, c"local declaration")
+			return 1
+		int type = retained_bindings[local.binding].type
+		char* value = llvm_convert(id, llvm_group(first), llvm_group_type(first), type)
+		llvm_store(id, type, value, llvm_name(c"%v", local.binding))
+		return 1
+	if (llvm_is_label(id, node)):
+		int label = llvm_label_for(name)
+		llvm_branch(label)
+		llvm_label(label)
+		llvm_reachable = 1
+		return 1
+	return 0
 
 
 void llvm_range(int id):
@@ -1238,29 +1625,7 @@ void llvm_statement(int id):
 			child = llvm_next[child]
 		return
 	if (strcmp(node.name, c"pass") == 0): return
-	if ((strcmp(node.name, c"break") == 0) || (strcmp(node.name, c"continue") == 0)):
-		int target = llvm_break_label
-		if (strcmp(node.name, c"continue") == 0): target = llvm_continue_label
-		if (target < 0): llvm_error(id, c"jump outside a loop")
-		else: llvm_branch(target)
-		llvm_reachable = 0
-		return
-	if (strcmp(node.name, c"return") == 0):
-		int group = llvm_first[id]
-		int return_type = retained_bindings[llvm_function].return_type
-		char* value = c"0"
-		if ((group >= 0) && (retained_node_kind(group) == retained_expression_group)):
-			value = llvm_group(group)
-			if (llvm_class(return_type) == llvm_class_word): value = llvm_convert(id, value, llvm_group_type(group), return_type)
-		else if (llvm_class(return_type) != llvm_class_void):
-			llvm_error(id, c"return without a value")
-			return
-		llvm_put(c"  ret i64 ")
-		llvm_put(value)
-		llvm_put(c"\x0a")
-		llvm_terminated = 1
-		llvm_reachable = 0
-		return
+	if (llvm_control_statement(id, &node)): return
 	if (strcmp(node.name, c"for range") == 0):
 		llvm_range(id)
 		return
@@ -1416,8 +1781,10 @@ void llvm_emit_function(int id):
 	string_append(llvm_code, c"define internal i64 ")
 	string_append(llvm_code, llvm_name(c"@w", function.linkage))
 	string_append(llvm_code, c"(")
+	int hidden = llvm_class(function.return_type) == llvm_class_struct
+	if (hidden): string_append(llvm_code, c"i64")
 	for i in range(function.parameters.length):
-		if (i > 0): string_append(llvm_code, c", ")
+		if ((i > 0) || hidden): string_append(llvm_code, c", ")
 		string_append(llvm_code, c"i64")
 	string_append(llvm_code, c") {\x0aentry:\x0a  call void @llvm.trap()\x0a  unreachable\x0a}\x0a\x0a")
 	llvm_stubs = llvm_stubs + 1
@@ -1435,24 +1802,34 @@ void llvm_emit_body(int id):
 	llvm_reachable = 1
 	llvm_expression_depth = 0
 	llvm_locals = new map[int, int]
+	llvm_labels = new map[char*, int]
 	llvm_entry = string_new()
 	llvm_out = string_new()
 	int return_class = llvm_class(function.return_type)
-	if ((return_class != llvm_class_word) && (return_class != llvm_class_void)):
+	if ((return_class != llvm_class_word) && (return_class != llvm_class_void) && (return_class != llvm_class_struct) && (return_class != llvm_class_slice)):
 		llvm_error_at(id, c"return type of", node.name)
 	for p in range(function.parameters.length):
-		if (llvm_class(function.parameters[p]) != llvm_class_word): llvm_error_at(id, c"parameter type of", node.name)
+		if (llvm_parameter_ok(function.parameters[p]) == 0): llvm_error_at(id, c"parameter type of", node.name)
 	string_append(llvm_code, c"define internal i64 ")
 	string_append(llvm_code, llvm_name(c"@w", function.linkage))
 	string_append(llvm_code, c"(")
 	int child = llvm_first[id]
 	int argument = 0
+	# A record result goes to the caller's buffer, a hidden first argument.
+	llvm_return_record = -1
+	if (return_class == llvm_class_struct):
+		llvm_return_record = function.return_type
+		string_append(llvm_code, c"i64 %ret")
+		argument = 1
+	# Record parameters arrive as the address of the caller's copy.
+	map[int, int] record_parameters = new map[int, int]
 	while ((child >= 0) && (retained_node_kind(child) == retained_local)):
 		retained_node parameter
 		retained_node_load(child, &parameter)
 		if (argument > 0): string_append(llvm_code, c", ")
 		string_append(llvm_code, c"i64 ")
 		string_append(llvm_code, llvm_name(c"%a", parameter.binding))
+		if ((parameter.binding >= 0) && (llvm_class(retained_bindings[parameter.binding].type) == llvm_class_struct)): record_parameters[parameter.binding] = 1
 		argument = argument + 1
 		child = llvm_next[child]
 	string_append(llvm_code, c") {\x0aentry:\x0a")
@@ -1466,7 +1843,11 @@ void llvm_emit_body(int id):
 		llvm_locals[local] = 1
 		string_append(llvm_entry, c"  ")
 		string_append(llvm_entry, llvm_name(c"%v", local))
-		if (llvm_storage(type) == 8): string_append(llvm_entry, c" = alloca i64, align 8\x0a")
+		if (local in record_parameters):
+			string_append(llvm_entry, c" = inttoptr i64 ")
+			string_append(llvm_entry, llvm_name(c"%a", local))
+			string_append(llvm_entry, c" to ptr\x0a")
+		else if (llvm_storage(type) == 8): string_append(llvm_entry, c" = alloca i64, align 8\x0a")
 		else:
 			string_append(llvm_entry, c" = alloca [")
 			string_append_int(llvm_entry, llvm_storage(type))
@@ -1477,13 +1858,14 @@ void llvm_emit_body(int id):
 	while ((parameter_id >= 0) && (retained_node_kind(parameter_id) == retained_local)):
 		retained_node parameter
 		retained_node_load(parameter_id, &parameter)
-		if (parameter.binding in llvm_locals): llvm_store_width(8, llvm_name(c"%a", parameter.binding), llvm_name(c"%v", parameter.binding))
+		if ((parameter.binding in llvm_locals) && ((parameter.binding in record_parameters) == 0)): llvm_store_width(8, llvm_name(c"%a", parameter.binding), llvm_name(c"%v", parameter.binding))
 		parameter_id = llvm_next[parameter_id]
 	while (child >= 0):
 		llvm_statement(child)
 		child = llvm_next[child]
 	# Falling off the end returns 0 (a void function's only exit).
-	if (llvm_terminated == 0): llvm_put(c"  ret i64 0\x0a")
+	if ((llvm_terminated == 0) && (llvm_return_record >= 0)): llvm_put(c"  ret i64 %ret\x0a")
+	else if (llvm_terminated == 0): llvm_put(c"  ret i64 0\x0a")
 	string_append(llvm_code, llvm_entry.data)
 	string_append(llvm_code, c"  br label %b0\x0a")
 	string_append(llvm_code, llvm_out.data)
@@ -1491,9 +1873,61 @@ void llvm_emit_body(int id):
 	string_free(llvm_entry)
 	string_free(llvm_out)
 	llvm_locals.free()
+	llvm_labels.free()
+	record_parameters.free()
 
 
 # --- globals and the entry point -------------------------------------------
+
+# Offsets and lengths of every fixed-array header in a value of type.
+void llvm_header_layout(int type, int base, list[int] offsets, list[int] lengths):
+	if (llvm_has_headers(type) == 0): return
+	retained_type* t = llvm_type(type)
+	if (t.kind != 6):
+		for i in range(t.fields.length): llvm_header_layout(t.fields[i].type, base + t.fields[i].offset, offsets, lengths)
+		return
+	offsets.push(base)
+	lengths.push(t.array_length)
+
+
+# A zeroed record global whose array headers name their own storage.
+void llvm_global_headers(string_builder* text, int type, int linkage):
+	list[int] offsets = new list[int]
+	list[int] lengths = new list[int]
+	llvm_header_layout(type, 0, offsets, lengths)
+	string_builder* shape = string_new()
+	string_builder* value = string_new()
+	int at = 0
+	for i in range(offsets.length):
+		string_append(shape, c"[")
+		string_append_int(shape, offsets[i] - at)
+		string_append(shape, c" x i8], ptr, i64, ")
+		string_append(value, c"[")
+		string_append_int(value, offsets[i] - at)
+		string_append(value, c" x i8] zeroinitializer, ptr getelementptr (i8, ptr ")
+		string_append(value, llvm_name(c"@g", linkage))
+		string_append(value, c", i64 ")
+		string_append_int(value, offsets[i] + 16)
+		string_append(value, c"), i64 ")
+		string_append_int(value, lengths[i])
+		string_append(value, c", ")
+		at = offsets[i] + 16
+	string_append(shape, c"[")
+	string_append_int(shape, llvm_storage(type) - at)
+	string_append(shape, c" x i8]")
+	string_append(value, c"[")
+	string_append_int(value, llvm_storage(type) - at)
+	string_append(value, c" x i8] zeroinitializer")
+	string_append(text, c"<{ ")
+	string_append(text, shape.data)
+	string_append(text, c" }> <{ ")
+	string_append(text, value.data)
+	string_append(text, c" }>")
+	string_free(shape)
+	string_free(value)
+	offsets.free()
+	lengths.free()
+
 
 void llvm_emit_global(int linkage):
 	int id = llvm_global_decls[linkage]
@@ -1520,6 +1954,7 @@ void llvm_emit_global(int linkage):
 			string_append(text, c"ptr ")
 			string_append(text, llvm_function_symbol(retained_bindings[init.binding].linkage))
 		else: llvm_error_at(id, c"initializer of global", node.name)
+	else if ((c == llvm_class_struct) && (init == 0) && llvm_has_headers(type)): llvm_global_headers(text, type, linkage)
 	else if ((c == llvm_class_struct) && (init == 0)):
 		string_append(text, c"[")
 		string_append_int(text, llvm_storage(type))

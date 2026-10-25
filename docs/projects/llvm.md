@@ -86,25 +86,40 @@ point, and the output file is left untouched.
 
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
   enums, pointers of any level, function values and aliases of them,
-  `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]` and slice handles.
+  `string` handles, records (structs whose fields are all of these,
+  including fixed arrays and nested records), fixed arrays `T[N]` and slice
+  handles.
 - Locals with or without initializers (storage is zeroed at the
-  declaration, as are fixed-array headers), parameters, globals with
-  constant, C string, `&global` or function initializers, and `const`
-  globals.
+  declaration, as are fixed-array headers), `name := value`, parameters,
+  globals with constant, C string, `&global` or function initializers, and
+  `const` globals.
+- Records by value: record parameters (the caller passes the address of
+  its own copy), record results (written to a caller buffer passed as a
+  hidden first argument), assignment from calls, fields of a call's result
+  and `T(field: value, ...)` literals. Every fixed-array header, also one
+  nested in a record, a record global or a heap record, names its own
+  storage after each copy, as the native backend keeps it. Fixed arrays and
+  slices decay to their data pointer where a pointer is expected,
+  including through function values.
 - Expressions: integer arithmetic and comparisons (unsigned where W uses
   unsigned word operations), bitwise operations and shifts (counts masked
   to six bits), short-circuit `&&`/`||`, `?:`, casts, assignments and
   compound assignments, `++`/`--`, address-of, dereference, field access,
   pointer subscripts, bounds-checked array subscripts, record copies,
-  `new T` and `new T(field=value, ...)`, C and UTF-8 string literals,
-  string equality, direct, indirect and `syscall` calls, the `print`/
-  `println` builtins and the `max`/`min`/`abs`/`strlen` helpers, the limb
+  `new T`, `new T()` and `new T(field: value, ...)`, C and UTF-8 string
+  literals, string equality, direct, indirect and `syscall` calls, the
+  `print`/`println` builtins and the `max`/`min`/`abs`/`strlen`/`len`
+  helpers, the limb
   and bit intrinsics (`mul_hi`, `mul_wide`, `add_carry`, `shr`, `rotl`,
   `rotr`, `popcount`, `clz`, `ctz`) and the host atomics.
 - Statements: `if`/`elif`/`else`, `while`, `for i in range(...)` with one
-  to three arguments, `break`, `continue`, `pass`, `return`, `unsafe:`
-  blocks and expression statements.
+  to three arguments, `switch` (int-like, `string` and `char*` scrutinees,
+  multi-value cases, `default`), `break`, `continue`, `goto` and labels,
+  `pass`, `return`, legacy `defer` and checked `defer:`, `unsafe:` blocks
+  and expression statements. The front end already expands each exit's
+  deferred statements into its retained tree (`deferred exit` children of
+  `return`, `break`, `continue` and block ends), so they lower in order;
+  a record result is copied to the caller's buffer before they run.
 
 Division and remainder guard zero divisors and signed minimum divided by
 minus one, and an out-of-range array subscript traps; LLVM traps report a
@@ -112,9 +127,9 @@ different signal (SIGILL) from the native backend's. Calls and operands
 preserve evaluation order.
 
 Not yet supported, and rejected with a diagnostic: floats, containers
-(`list`, `map`, `set`, cursor `for` loops), records passed or returned by
-value, arrays inside records, generics, f-strings, `switch`, `defer`,
-`goto`, generators, checked pointers (`own`, `ref`, ... and their
+(`list`, `map`, `set`, cursor `for` loops), records returned through
+function values (the native backend does not support them either),
+generics, f-strings, generators, checked pointers (`own`, `ref`, ... and their
 slices), GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
 `thread_create`, ...). Containers are the largest gap: about half of the
@@ -177,7 +192,9 @@ import graph.
    operations are calls into `structures/`, which already lower; the
    missing piece is reproducing each operation's helper protocol (element
    slot sizes, key kinds, aggregate variants) from retained types.
-2. Records by value (copy-in parameters, caller-provided result buffers),
-   floats, f-strings and `switch`.
+2. Floats and f-strings. `lib.testing` programs take `main` from the
+   library and their test list from the compiler-synthesized
+   `__w_test_main`; wllvm requires the input module to define `main` and
+   does not lower that synthesized runner yet.
 3. Other targets: arm64 Linux needs only a different `_start` and syscall
    constraint string.
