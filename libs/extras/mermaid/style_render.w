@@ -81,9 +81,14 @@ void mm_style_bezier(mm_scene* s, int x0, int y0, int x1, int y1, int x2, int y2
 # mx (horizontal) or my (vertical). flowchart.curve selects step (orthogonal,
 # the default), linear or basis; every route ends with an axis-aligned leg so
 # arrowheads and endpoint markers keep their orientation. Loops stay orthogonal.
+# Per-edge curve forced by the renderer (agentflow `curve`; -1: none), in
+# flowchart.curve values.
+int mm_style_curve_override = -1
+
 void mm_style_edge_path(mm_document* d, mm_scene* s, int ax, int ay, int mx, int my, int bx, int by, int horizontal, int dashed, int loop):
 	int curve = 0
 	if (d.kind == MM_FLOW && loop == 0): curve = d.edge_curve
+	if (mm_style_curve_override >= 0 && loop == 0): curve = mm_style_curve_override
 	if (horizontal):
 		if (curve == 1): mm_line(s, ax, ay, mx, by, dashed)
 		else if (curve == 2): mm_style_bezier(s, ax, ay, (ax + mx) / 2, ay, (ax + mx) / 2, by, mx, by, dashed)

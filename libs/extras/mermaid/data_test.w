@@ -29,8 +29,10 @@ void test_data_pie_proportions_and_source():
 	mm_scene* scene = mm_render(d)
 	mm_document_free(d)
 	char* svg = mm_svg(scene)
-	asserts(c"quarter fraction label", index_of(svg, c">25</text>") >= 0)
-	asserts(c"three quarter fraction label", index_of(svg, c">75</text>") >= 0)
+	# Upstream slice labels: ((value / sum) * 100).toFixed(0) + '%'.
+	asserts(c"quarter percentage label", index_of(svg, c">25%</text>") >= 0)
+	asserts(c"three quarter percentage label", index_of(svg, c">75%</text>") >= 0)
+	asserts(c"no bare slice number", index_of(svg, c">25</text>") < 0)
 	asserts(c"owned source title", index_of(svg, c">Budget</text>") >= 0)
 	free(svg)
 	mm_scene_free(scene)
@@ -401,7 +403,7 @@ void test_data_dense_pie_legend_labels():
 			assert_equal(80 + labels * 26, p.y)
 			labels = labels + 1
 		if (strcmp(p.text, c"2.5% (value: 1)") == 0): percentages = percentages + 1
-		if (strcmp(p.text, c"2.5") == 0):
+		if (strcmp(p.text, c"2.5%") == 0):
 			outside = outside + 1
 			if (p.x + mm_text_width(p.text, 0) > outside_right): outside_right = p.x + mm_text_width(p.text, 0)
 	assert_equal(40, labels)

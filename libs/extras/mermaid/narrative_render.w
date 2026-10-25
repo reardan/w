@@ -400,60 +400,6 @@ void mm_n_face(mm_scene* s, int cx, int cy, int score):
 		px = cx + dx
 		py = y
 
-void mm_n_journey_scene(mm_document* d, mm_scene* s):
-	int x = 110
-	int previous_x = -1
-	int previous_y = 0
-	char* section = c""
-	for i in range(d.narrative.length):
-		mm_narrative_event* event = d.narrative[i]
-		int w = mm_n_text_width(event.label, 0) + 40
-		int actors_width = mm_text_width(event.detail, 0) + 30
-		if (actors_width > w): w = actors_width
-		if (w < 180): w = 180
-		if (strcmp(event.section, section) != 0):
-			mm_text(s, x, 60, event.section)
-			section = event.section
-		mm_draw(s, MM_BOX, x, 100, x + w - 20, 150, 1, c"")
-		mm_n_rich_text(s, x + 10, 117 - (mm_n_text_height(event.label) - 18) / 2, event.label)
-		mm_text(s, x + 10, 365, event.detail)
-		# Actor avatars: one coloured dot per listed actor along the task's top edge.
-		int dot = x + 10
-		int start = 0
-		int length = strlen(event.detail)
-		for k in range(length + 1):
-			if (k < length && event.detail[k] != ','): continue
-			char* name = mm_n_part(event.detail, start, k)
-			int actor = mm_find_node(d, name)
-			free(name)
-			start = k + 1
-			if (actor < 0 || dot > x + w - 34): continue
-			mm_draw(s, MM_CIRCLE, dot, 93, dot + 14, 107, 0, c"")
-			mm_n_fill(s, mm_n_actor_color(actor), 0x333333)
-			dot = dot + 18
-		int cx = x + (w - 20) / 2
-		int y = 345 - event.value * 34
-		mm_line(s, cx, 155, cx, 350, 1)
-		if (previous_x >= 0): mm_line(s, previous_x, previous_y, cx, y, 0)
-		mm_n_face(s, cx, y, event.value)
-		s.nodes.push(new mm_bounds(x, 100, w - 20, 50, 0, 0))
-		previous_x = cx
-		previous_y = y
-		x = x + w + 20
-	for score in range(1, 6):
-		char[2] number
-		number[0] = cast(char, '0' + score)
-		number[1] = 0
-		mm_text(s, 55, 338 - score * 34, number)
-	mm_text(s, 30, 145, c"Score")
-	# Actor legend below the chart, in first-mention order.
-	for k in range(d.nodes.length):
-		mm_node* actor = d.nodes[k]
-		int ly = 400 + k * 24
-		mm_draw(s, MM_CIRCLE, 30, ly, 44, ly + 14, 0, c"")
-		mm_n_fill(s, mm_n_actor_color(k), 0x333333)
-		mm_text(s, 52, ly - 1, actor.label)
-
 # Length of a `<br>`, `<br/>` or `<br />` tag (any case) at text[i], else 0.
 int mm_n_break_tag(char* text, int i):
 	if (text[i] != '<' || tolower(text[i + 1]) != 'b' || tolower(text[i + 2]) != 'r'): return 0
@@ -527,6 +473,85 @@ list[char*] mm_n_wrap_lines(list[char*] lines, int max):
 	mm_n_lines_free(lines)
 	return out
 
+# Journey task width: at least 180px (and the actor line), widened only for
+# a word that would not fit; the label wraps inside it, as upstream's
+# fixed-width task boxes wrap their text (issue #817).
+int mm_n_journey_width(mm_narrative_event* event):
+	int w = 180
+	int actors_width = mm_text_width(event.detail, 0) + 30
+	if (actors_width > w): w = actors_width
+	list[char*] lines = mm_n_label_lines(event.label)
+	int word = mm_n_longest_word(lines) + 40
+	mm_n_lines_free(lines)
+	if (word > w): w = word
+	return w
+
+void mm_n_journey_scene(mm_document* d, mm_scene* s):
+	# Every task box shares the tallest wrapped label's height; the score
+	# area below moves down by the extra lines.
+	int label_height = 18
+	for mm_narrative_event* event in d.narrative:
+		mm_text_block* b = mm_text_layout(event.label, mm_n_journey_width(event) - 40)
+		if (b.height > label_height): label_height = b.height
+		mm_text_block_free(b)
+	int extra = label_height - 18
+	int x = 110
+	int previous_x = -1
+	int previous_y = 0
+	char* section = c""
+	for i in range(d.narrative.length):
+		mm_narrative_event* event = d.narrative[i]
+		int w = mm_n_journey_width(event)
+		if (strcmp(event.section, section) != 0):
+			mm_text(s, x, 60, event.section)
+			section = event.section
+		mm_draw(s, MM_BOX, x, 100, x + w - 20, 150 + extra, 1, c"")
+		mm_text_block* block = mm_text_layout(event.label, w - 40)
+		int own_height = block.height
+		if (mm_text_lines(block) == 1): own_height = mm_n_text_height(event.label)
+		int label_y = 117 + (extra - (own_height - 18)) / 2
+		if (mm_text_rich(event.label)): mm_label(s, x + 10, label_y, event.label, w - 40, 0)
+		else if (mm_text_lines(block) == 1): mm_text(s, x + 10, label_y, event.label)
+		else: mm_text_draw(s, block, x + 10, label_y, 0)
+		mm_text_block_free(block)
+		mm_text(s, x + 10, 365 + extra, event.detail)
+		# Actor avatars: one coloured dot per listed actor along the task's top edge.
+		int dot = x + 10
+		int start = 0
+		int length = strlen(event.detail)
+		for k in range(length + 1):
+			if (k < length && event.detail[k] != ','): continue
+			char* name = mm_n_part(event.detail, start, k)
+			int actor = mm_find_node(d, name)
+			free(name)
+			start = k + 1
+			if (actor < 0 || dot > x + w - 34): continue
+			mm_draw(s, MM_CIRCLE, dot, 93, dot + 14, 107, 0, c"")
+			mm_n_fill(s, mm_n_actor_color(actor), 0x333333)
+			dot = dot + 18
+		int cx = x + (w - 20) / 2
+		int y = 345 + extra - event.value * 34
+		mm_line(s, cx, 155 + extra, cx, 350 + extra, 1)
+		if (previous_x >= 0): mm_line(s, previous_x, previous_y, cx, y, 0)
+		mm_n_face(s, cx, y, event.value)
+		s.nodes.push(new mm_bounds(x, 100, w - 20, 50 + extra, 0, 0))
+		previous_x = cx
+		previous_y = y
+		x = x + w + 20
+	for score in range(1, 6):
+		char[2] number
+		number[0] = cast(char, '0' + score)
+		number[1] = 0
+		mm_text(s, 55, 338 + extra - score * 34, number)
+	mm_text(s, 30, 145 + extra / 2, c"Score")
+	# Actor legend below the chart, in first-mention order.
+	for k in range(d.nodes.length):
+		mm_node* actor = d.nodes[k]
+		int ly = 400 + extra + k * 24
+		mm_draw(s, MM_CIRCLE, 30, ly, 44, ly + 14, 0, c"")
+		mm_n_fill(s, mm_n_actor_color(k), 0x333333)
+		mm_text(s, 52, ly - 1, actor.label)
+
 void mm_n_lines_draw(mm_scene* s, int x, int y, list[char*] lines):
 	for i in range(lines.length): mm_text(s, x, y + i * 18, lines[i])
 
@@ -568,14 +593,26 @@ list[int] mm_n_timeline_series(mm_document* d):
 		else: series.push(color_index)
 	return series
 
+list[char*] mm_n_timeline_lines(char* label, int width):
+	return mm_n_wrap_lines(mm_n_label_lines(label), width - 30)
+
+# Vertical (TD) timelines wrap like horizontal ones: the period column and
+# every event box are at least timeline.width (default 170) wide, widened
+# only for a word that would not fit, and their text wraps inside; a row is
+# as tall as its tallest wrapped label (issue #817).
+int mm_n_timeline_word_width(char* label, int min_width):
+	list[char*] lines = mm_n_label_lines(label)
+	int needed = mm_n_longest_word(lines) + 40
+	mm_n_lines_free(lines)
+	if (needed > min_width): return needed
+	return min_width
+
 void mm_n_timeline_vertical(mm_document* d, mm_scene* s, list[int] series):
-	int period_width = 170
+	int min_width = mm_config_number(d, c"timeline.width", 170)
+	int period_width = min_width
 	for mm_narrative_event* event in d.narrative:
 		if (event.kind != MM_N_PERIOD): continue
-		list[char*] lines = mm_n_label_lines(event.label)
-		int needed = mm_n_lines_width(lines) + 40
-		if (needed > period_width): period_width = needed
-		mm_n_lines_free(lines)
+		period_width = mm_n_timeline_word_width(event.label, period_width)
 	int axis = 60 + period_width + 40
 	int y = 90
 	int top = y
@@ -587,20 +624,20 @@ void mm_n_timeline_vertical(mm_document* d, mm_scene* s, list[int] series):
 			mm_text(s, 60, y, period.section)
 			section = period.section
 			y = y + 30
-		list[char*] period_lines = mm_n_label_lines(period.label)
+		list[char*] period_lines = mm_n_timeline_lines(period.label, period_width)
 		int height = 45 + (period_lines.length - 1) * 18
 		int next = index + 1
 		while (next < d.narrative.length):
 			mm_narrative_event* event = d.narrative[next]
 			if (event.kind == MM_N_PERIOD): break
-			list[char*] lines = mm_n_label_lines(event.label)
+			list[char*] lines = mm_n_timeline_lines(event.label, mm_n_timeline_word_width(event.label, min_width))
 			int needed = 45 + (lines.length - 1) * 18
 			if (needed > height): height = needed
 			mm_n_lines_free(lines)
 			next = next + 1
 		mm_draw(s, MM_BOX, 60, y, 60 + period_width, y + height, 1, c"")
 		mm_n_timeline_paint(d, s, series[index])
-		mm_n_timeline_text(s, 75, y + 15, period.label, period_lines, 0)
+		mm_n_timeline_text(s, 75, y + 15, period.label, period_lines, period_width - 30)
 		mm_n_lines_free(period_lines)
 		int cy = y + height / 2
 		mm_line(s, 60 + period_width, cy, axis, cy, 0)
@@ -609,13 +646,12 @@ void mm_n_timeline_vertical(mm_document* d, mm_scene* s, list[int] series):
 		int x = axis + 40
 		for i in range(index + 1, next):
 			mm_narrative_event* event = d.narrative[i]
-			list[char*] lines = mm_n_label_lines(event.label)
-			int width = mm_n_lines_width(lines) + 40
-			if (width < 120): width = 120
+			int width = mm_n_timeline_word_width(event.label, min_width)
+			list[char*] lines = mm_n_timeline_lines(event.label, width)
 			mm_line(s, x - 40, cy, x, cy, 0)
 			mm_draw(s, MM_BOX, x, y, x + width, y + height, 0, c"")
 			mm_n_timeline_paint(d, s, series[i])
-			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines, 0)
+			mm_n_timeline_text(s, x + 15, y + 15, event.label, lines, width - 30)
 			mm_n_lines_free(lines)
 			x = x + width + 35
 		y = y + height + 35
@@ -639,9 +675,6 @@ int mm_n_timeline_column(mm_document* d, int index, int min_width):
 		if (needed > width): width = needed
 		next = next + 1
 	return width
-
-list[char*] mm_n_timeline_lines(char* label, int width):
-	return mm_n_wrap_lines(mm_n_label_lines(label), width - 30)
 
 void mm_n_timeline_scene(mm_document* d, mm_scene* s):
 	list[int] series = mm_n_timeline_series(d)

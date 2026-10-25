@@ -75,7 +75,7 @@ mm_primitive* mm_data_disc(mm_scene* s, int cx, int cy, int r):
 	return p
 
 # Pie geometry. Wedges wide enough (0.55 radians of chord) carry their
-# percentage inside, as upstream's textPosition labels. Narrower wedges get
+# rounded percentage ("25%") inside, as upstream's textPosition labels. Narrower wedges get
 # an outside label beside the pie on the side their middle points to,
 # joined to the rim by a two-segment leader (issue #817). Each side's
 # labels keep their angular order and are pushed apart to one label pitch,
@@ -138,7 +138,19 @@ char* mm_data_pie_percent(int percent):
 	free(text)
 	return result
 
-# Draw one side's outside labels; returns the widest label's right edge.
+# Slice label text as upstream's pie renderer writes it:
+# ((value / sum) * 100).toFixed(0) + '%' (percent in thousandths).
+char* mm_data_pie_slice_label(int percent):
+	string_builder* text = string_from(c"")
+	string_append_int(text, (percent + 500) / 1000)
+	string_append_char(text, '%')
+	char* result = text.data
+	free(text)
+	return result
+
+# Draw one side's outside labels, precise percentages with a % sign as in the
+# legend (upstream drops the labels of slices that round to 0%); returns the
+# widest label's right edge.
 int mm_data_pie_side(mm_scene* s, list[int] slices, list[float] angles, list[int] tops, list[int] percents, int right):
 	int edge = 0
 	for k in range(slices.length):
@@ -158,7 +170,7 @@ int mm_data_pie_side(mm_scene* s, list[int] slices, list[float] angles, list[int
 		if (right): column = MM_DATA_PIE_CX + dx
 		mm_line(s, rx, ry, ex, ey, 0)
 		mm_line(s, ex, ey, column, ty, 0)
-		char* text = mm_data_format(percents[k])
+		char* text = mm_data_pie_percent(percents[k])
 		int width = mm_text_width(text, 0)
 		int x = column + 4
 		if (right == 0): x = column - 4 - width
@@ -200,7 +212,7 @@ void mm_data_pie_render(mm_document* d, mm_scene* s):
 		if (sweep >= 0.55):
 			int lx = cx + cast(int, fcos(middle) * 125.0)
 			int ly = cy + cast(int, fsin(middle) * 125.0)
-			char* text = mm_data_format(percent)
+			char* text = mm_data_pie_slice_label(percent)
 			mm_text(s, lx - mm_text_width(text, 0) / 2, ly - 8, text)
 			free(text)
 			mm_primitive* label = s.items[s.items.length - 1]
