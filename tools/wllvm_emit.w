@@ -51,6 +51,9 @@ list[int] llvm_next
 # triples, in node order.
 map[int, int] llvm_propagate_first
 list[int] llvm_propagate_sites
+# 1 when a W function of more than six parameters is used as a value, so an
+# indirect call that wide may reach System V code (llvm_native_compatible_call).
+int llvm_wide_function_values
 # linkage -> defining function node; name -> linkage of a defined function
 map[int, int] llvm_functions
 map[char*, int] llvm_function_names
@@ -918,6 +921,7 @@ char* llvm_direct_call(int group, int id, int linkage, list[int] operands);
 char* llvm_array_allocation(int group, int id, retained_node* node);
 char* llvm_propagate(int group, int id, retained_node* node);
 int llvm_is_var(int type);
+char* llvm_var_operand(int id, char* value, int type);
 char* llvm_var_convert(int id, char* value, int from, int to, int* done);
 char* llvm_var_binary(int id, int op, char* a, int a_type, char* b, int b_type);
 int llvm_form_statement(int id, retained_node* node);
@@ -941,6 +945,8 @@ char* llvm_temporary_field(int group, int id, retained_node* node);
 char* llvm_record_literal(int group, int id, retained_node* node);
 void llvm_store_record_fields(int group, int id, retained_node* node, int record_type, char* object);
 int llvm_parameter_ok(int type);
+void llvm_parameter_types(int id);
+void llvm_native_compatible_call(char* result, char* target, list[char*] values);
 
 
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
@@ -2232,8 +2238,6 @@ char* llvm_call(int group, int id, retained_node* node):
 	list[int] types = new list[int]
 	int arg = node.left
 	if (node.op == 'F'): arg = node.right
-	char* callee_value = c"0"
-	if (node.op == 'F'): callee_value = llvm_value(group, node.left)
 	list[int] operands = new list[int]
 	while ((arg >= 0) && (llvm_failed == 0)):
 		operands.push(arg)
@@ -2245,6 +2249,10 @@ char* llvm_call(int group, int id, retained_node* node):
 		values.push(value)
 		types.push(argument.semantic_type)
 		arg = argument.next_arg
+	# The native call pushes every argument before it loads the callee, so
+	# an argument that reassigns the function value calls the new one.
+	char* callee_value = c"0"
+	if (node.op == 'F'): callee_value = llvm_value(group, node.left)
 	char* target = c"null"
 	int count = values.length
 	int record_result = -1
@@ -2358,6 +2366,7 @@ char* llvm_call(int group, int id, retained_node* node):
 			return c"0"
 		retained_node definition
 		retained_node_load(llvm_functions[linkage], &definition)
+		llvm_parameter_types(llvm_functions[linkage])
 		retained_binding* defined = retained_bindings[definition.binding]
 		# A W variadic callee takes its tail as one slice parameter.
 		int variadic = sym_w_variadic_fixed_args(defined.origin)
@@ -2380,6 +2389,12 @@ char* llvm_call(int group, int id, retained_node* node):
 	char* buffer = 0
 	if (record_result >= 0): buffer = llvm_address_value(llvm_record_buffer(record_result))
 	char* result = llvm_temp()
+	if ((node.op == 'F') && ((count <= 6) || (llvm_wide_function_values == 0)) && (buffer == 0) && (llvm_arm64 == 0)):
+		llvm_native_compatible_call(result, target, values)
+		values.free()
+		types.free()
+		operands.free()
+		return result
 	llvm_put(c"  ")
 	llvm_put(result)
 	llvm_put(c" = call i64 ")
@@ -2399,6 +2414,117 @@ char* llvm_call(int group, int id, retained_node* node):
 	operands.free()
 	if (buffer != 0): return buffer
 	return result
+
+
+# A function value may be natively generated code: the in-process REPL and
+# the incremental compiler run functions they compiled into their code
+# buffer. Those take their arguments on the stack (the first at the highest
+# offset, the caller popping them) and use rbx as scratch, while wllvm's own
+# functions take System V registers. So an indirect call of up to six words
+# passes them both ways, through inline asm that pushes rdi.. in native
+# order (padded to keep the call 16-byte aligned) and tells LLVM that rbx
+# and every caller-saved register do not survive it. A wider call (only
+# when no W function that wide is a value, so its target is native code or
+# a lib/dlcall.w trampoline) pushes its words from an entry-block array.
+void llvm_native_wide_call(char* result, char* target, list[char*] values):
+	int count = values.length
+	char* block = llvm_temp()
+	string_append(llvm_entry, c"  ")
+	string_append(llvm_entry, block)
+	string_append(llvm_entry, c" = alloca [")
+	string_append_int(llvm_entry, count)
+	string_append(llvm_entry, c" x i64], align 8\x0a")
+	for i in range(count): llvm_store_width(8, values[i], llvm_offset(block, llvm_number(i * 8)))
+	int pad = (count & 1) * 8
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = call i64 asm sideeffect alignstack \"")
+	if (pad): llvm_put(c"subq $$8, %rsp; ")
+	for i in range(count):
+		llvm_put(c"pushq ")
+		llvm_put(llvm_number(i * 8))
+		llvm_put(c"($2); ")
+	llvm_put(c"callq *$1; addq $$")
+	llvm_put(llvm_number(count * 8 + pad))
+	llvm_put(c", %rsp\", \"={rax},r,r,~{rbx},~{rcx},~{rdx},~{rsi},~{rdi},~{r8},~{r9},~{r10},~{r11}")
+	for x in range(16):
+		llvm_put(c",~{xmm")
+		llvm_put(llvm_number(x))
+		llvm_put(c"}")
+	llvm_put(c",~{memory},~{dirflag},~{fpsr},~{flags}\"(ptr ")
+	llvm_put(target)
+	llvm_put(c", ptr ")
+	llvm_put(block)
+	llvm_put(c")\x0a")
+
+
+void llvm_native_compatible_call(char* result, char* target, list[char*] values):
+	if (values.length > 6):
+		llvm_native_wide_call(result, target, values)
+		return
+	list[char*] registers = list[char*]{c"rdi", c"rsi", c"rdx", c"rcx", c"r8", c"r9"}
+	int count = values.length
+	int pad = (count & 1) * 8
+	# One output is a plain i64; more are a struct of the clobbered inputs.
+	char* call = result
+	if (count > 0): call = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(call)
+	if (count == 0): llvm_put(c" = call i64")
+	else:
+		llvm_put(c" = call {i64")
+		for i in range(count): llvm_put(c", i64")
+		llvm_put(c"}")
+	llvm_put(c" asm sideeffect alignstack \"")
+	if (pad): llvm_put(c"subq $$8, %rsp; ")
+	for i in range(count):
+		llvm_put(c"pushq %")
+		llvm_put(registers[i])
+		llvm_put(c"; ")
+	llvm_put(c"callq *$")
+	llvm_put(llvm_number(count + 1))
+	if (count + pad > 0):
+		llvm_put(c"; addq $$")
+		llvm_put(llvm_number(count * 8 + pad))
+		llvm_put(c", %rsp")
+	llvm_put(c"\", \"={rax}")
+	for i in range(count):
+		llvm_put(c",={")
+		llvm_put(registers[i])
+		llvm_put(c"}")
+	llvm_put(c",r")
+	for i in range(count):
+		llvm_put(c",")
+		llvm_put(llvm_number(i + 1))
+	list[char*] scratch = list[char*]{c"rbx", c"rcx", c"rdx", c"rsi", c"rdi", c"r8", c"r9", c"r10", c"r11"}
+	for name in scratch:
+		int input = 0
+		for i in range(count):
+			if (strcmp(registers[i], name) == 0): input = 1
+		if (input == 0):
+			llvm_put(c",~{")
+			llvm_put(name)
+			llvm_put(c"}")
+	for x in range(16):
+		llvm_put(c",~{xmm")
+		llvm_put(llvm_number(x))
+		llvm_put(c"}")
+	llvm_put(c",~{memory},~{dirflag},~{fpsr},~{flags}\"(ptr ")
+	llvm_put(target)
+	for i in range(count):
+		llvm_put(c", i64 ")
+		llvm_put(values[i])
+	llvm_put(c")\x0a")
+	if (count > 0):
+		llvm_put(c"  ")
+		llvm_put(result)
+		llvm_put(c" = extractvalue {i64")
+		for i in range(count): llvm_put(c", i64")
+		llvm_put(c"} ")
+		llvm_put(call)
+		llvm_put(c", 0\x0a")
+	scratch.free()
+	registers.free()
 
 
 # The tail of a W variadic call (finish_w_variadic_arguments): the values
@@ -2468,6 +2594,10 @@ char* llvm_float_branch(int group, int operand, int type):
 	retained_node branch
 	retained_node_load(llvm_node_id(group, operand), &branch)
 	char* value = llvm_value(group, operand)
+	# An array arm of a pointer-typed conditional decays to its data; a
+	# typed arm of a var conditional is boxed.
+	if (llvm_decays(branch.semantic_type, type)): return llvm_load(-1, llvm_pointer(value))
+	if (llvm_is_var(type) && (llvm_is_var(branch.semantic_type) == 0)): return llvm_var_operand(llvm_node_id(group, operand), value, branch.semantic_type)
 	int got = llvm_float_kind(branch.semantic_type)
 	int want = llvm_float_kind(type)
 	if ((got != want) && (got <= 2) && (want <= 2)): return llvm_float_coerce(value, got, want)
@@ -2642,6 +2772,18 @@ char* llvm_value_inner(int group, int operand):
 				return llvm_constant_address(shim)
 			int import = llvm_import_of(node.binding)
 			if ((import >= 0) && (load_int(table + retained_bindings[node.binding].origin + 10) == 2)): return llvm_constant_address(llvm_import_thunk(id, node.binding, import))
+			# A runtime stub as a function value (repl_error_jump =
+			# repl_longjmp) is the module-asm twin's address; AArch64's
+			# setjmp takes an extra save area, so it has none.
+			# (The built-in stubs carry no parameter list: try each arity.)
+			char* stub = 0
+			for arity in range(3):
+				if (stub == 0): stub = llvm_runtime_stub(retained_bindings[node.binding].name, arity)
+			if ((stub != 0) && ((llvm_arm64 == 0) || (strcmp(stub, c"repl_setjmp") != 0)) && (strcmp(stub, c"tls_size") != 0)):
+				if (strcmp(stub, c"repl_setjmp") == 0): llvm_function_setjmp = 1
+				llvm_runtime_used[stub] = 1
+				if (strcmp(stub, c"thread_create") == 0): llvm_runtime_used[c"stack_create"] = 1
+				return llvm_constant_address(strjoin(c"@__wllvm_", stub))
 			llvm_error_at(id, c"reference to", node.binding_name)
 			return c"0"
 	if ((op == '.') && (node.high < 0)): return llvm_temporary_field(group, id, &node)
@@ -2991,12 +3133,24 @@ char* llvm_value_inner(int group, int operand):
 		if (type_class != llvm_class_word):
 			llvm_error(id, c"cast target")
 			return c"0"
+		# A cast to var boxes; a var cast unboxes (coerce_explicit): text and
+		# void* as conversions do, any integer from the boxed int, then
+		# narrowed as below.
+		int cast_from = llvm_operand_type(group, node.left)
+		if (llvm_is_var(type) != llvm_is_var(cast_from)):
+			retained_type* wanted = llvm_type(type)
+			if (llvm_is_var(type) || (wanted.pointer_level > 0) || llvm_is_string(type)):
+				int converted_done = 0
+				return llvm_var_convert(id, value, cast_from, type, &converted_done)
+			value = llvm_call1(id, c"__w_var_unbox_int", value)
+			cast_from = -1
 		if (llvm_is_bool(type)): return llvm_extend(llvm_bool(value))
-		if (llvm_decays(llvm_operand_type(group, node.left), type)): value = llvm_load(-1, llvm_pointer(value))
+		if (llvm_decays(cast_from, type)): value = llvm_load(-1, llvm_pointer(value))
 		retained_node source
 		retained_node_load(llvm_node_id(group, node.left), &source)
 		# Float casts are coerce()'s conversions; a float cast to a narrow
 		# integer keeps cvtt's whole word, as natively.
+		if (cast_from < 0): source.semantic_type = -1
 		if (llvm_float_kind(type) || llvm_float_kind(source.semantic_type)):
 			if (llvm_type(type).pointer_level > 0): return value
 			char* converted = llvm_float_coerce(value, llvm_float_kind(source.semantic_type), llvm_float_kind(type))
@@ -3365,6 +3519,10 @@ int llvm_text_is(int type, char* name):
 char* llvm_case_matches(int id, char* scrutinee, int scrutinee_type, int group):
 	char* value = llvm_group(group)
 	int type = llvm_group_type(group)
+	# An array case against a pointer scrutinee decays to its data.
+	if (llvm_decays(type, scrutinee_type)):
+		value = llvm_load(-1, llvm_pointer(value))
+		type = scrutinee_type
 	int literal = llvm_text_is(type, c"string value")
 	char* helper = 0
 	if (llvm_is_string(scrutinee_type) && (llvm_is_string(type) || literal)): helper = c"__w_string_equal"
@@ -3705,7 +3863,10 @@ int llvm_operand_type(int group, int operand):
 # The operand's value, coerced to a container's key or element type.
 char* llvm_container_operand(int group, int operand, int want):
 	char* value = llvm_value(group, operand)
-	return llvm_convert(llvm_node_id(group, operand), value, llvm_operand_type(group, operand), want)
+	value = llvm_convert(llvm_node_id(group, operand), value, llvm_operand_type(group, operand), want)
+	# A float16/bfloat16 slot holds the 2-byte bits, as a store does.
+	if (llvm_narrow_float(want)): value = llvm_narrow_bits(value, llvm_narrow_float(want))
+	return value
 
 
 # A new container of the given type, as hash_emit_new_container and
@@ -3803,6 +3964,8 @@ char* llvm_container_method(int group, int id, retained_node* node):
 		retained_node_load(llvm_node_id(group, arg), &argument)
 		char* value = llvm_value(group, arg)
 		if (want >= 0): value = llvm_convert(id, value, argument.semantic_type, want)
+		# A pushed or inserted float16/bfloat16 element is its 2-byte bits.
+		if ((kind == 12) && (want == key) && llvm_narrow_float(want)): value = llvm_narrow_bits(value, llvm_narrow_float(want))
 		values.push(value)
 		count = count + 1
 		arg = argument.next_arg
@@ -4471,7 +4634,7 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 	while ((arg >= 0) && (llvm_failed == 0)):
 		int want = -1
 		if (values.length < callee.parameters.length): want = callee.parameters[values.length]
-		values.push(llvm_container_operand(group, arg, want))
+		values.push(llvm_convert(llvm_node_id(group, arg), llvm_value(group, arg), llvm_operand_type(group, arg), want))
 		retained_node argument
 		retained_node_load(llvm_node_id(group, arg), &argument)
 		arg = argument.next_arg
@@ -5789,7 +5952,25 @@ void llvm_emit_function(int id):
 	llvm_stubs = llvm_stubs + 1
 
 
+# The symbol table keeps the first sym_max_param_slots parameter types
+# only, so the binding's later parameters read -1: take them from the
+# definition's parameter locals, as the native callee's frame does.
+void llvm_parameter_types(int id):
+	retained_node node
+	retained_node_load(id, &node)
+	if (node.binding < 0): return
+	list[int] parameters = retained_bindings[node.binding].parameters
+	int child = llvm_first[id]
+	int p = 0
+	while ((child >= 0) && (retained_node_kind(child) == retained_local)):
+		int binding = retained_node_at(child).binding
+		if ((p < parameters.length) && (parameters[p] < 0) && (binding >= 0)): parameters[p] = retained_bindings[binding].type
+		p = p + 1
+		child = llvm_next[child]
+
+
 void llvm_emit_body(int id):
+	llvm_parameter_types(id)
 	retained_node node
 	retained_node_load(id, &node)
 	llvm_function = node.binding
@@ -6076,6 +6257,7 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_next = new list[int]
 	llvm_propagate_first = new map[int, int]
 	llvm_propagate_sites = new list[int]
+	llvm_wide_function_values = 0
 	int input = -1
 	for i in range(retained_sources.length):
 		if (strcmp(retained_sources[i].path, filename) == 0): input = i
@@ -6097,6 +6279,8 @@ int llvm_emit(char* filename, char* output_path):
 		if (retained_node_kind(id) != retained_expression): continue
 		retained_node node
 		retained_node_load(id, &node)
+		# A function of more than six parameters named as a value.
+		if ((node.op == 'v') && (node.binding >= 0) && (retained_bindings[node.binding].parameters.length > 6)): llvm_wide_function_values = 1
 		if ((node.op != 136) || (node.parent < 0)): continue
 		llvm_propagate_sites.push(retained_node_at(node.parent).parent)
 		llvm_propagate_sites.push(node.end)
