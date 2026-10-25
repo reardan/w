@@ -197,6 +197,55 @@ void mm_layered_transpose(mm_layered* g):
 					improved = 1
 			if (improved == 0): break
 
+# Sifting: move each node to the slot of its rank where it crosses least,
+# given everything else fixed. Moving v past a neighbor u changes the count by
+# the difference of their two pair crossings, so one scan per node suffices.
+void mm_layered_sift(mm_layered* g):
+	list[int] snapshot = new list[int]
+	for r in range(g.max_rank + 1):
+		int first = g.rank_start[r]
+		int last = g.rank_start[r + 1]
+		if (last - first < 3): continue
+		while (snapshot.length > 0): snapshot.pop()
+		for i in range(first, last): snapshot.push(g.order[i])
+		for int v in snapshot:
+			if (g.work > MM_LAYOUT_TRANSPOSE_WORK): break
+			int at = first + g.position[v]
+			int best = at
+			int least = 0
+			int delta = 0
+			int i = at - 1
+			while (i >= first):
+				int u = g.order[i]
+				delta = delta + mm_layered_pair(g, v, u) - mm_layered_pair(g, u, v)
+				if (delta < least):
+					least = delta
+					best = i
+				i = i - 1
+			delta = 0
+			i = at + 1
+			while (i < last):
+				int u = g.order[i]
+				delta = delta + mm_layered_pair(g, u, v) - mm_layered_pair(g, v, u)
+				if (delta < least):
+					least = delta
+					best = i
+				i = i + 1
+			if (best == at): continue
+			if (best < at):
+				int k = at
+				while (k > best):
+					g.order[k] = g.order[k - 1]
+					k = k - 1
+			else:
+				int k = at
+				while (k < best):
+					g.order[k] = g.order[k + 1]
+					k = k + 1
+			g.order[best] = v
+			for k in range(first, last): g.position[g.order[k]] = k - first
+	__w_list_free(cast(__w_list*, snapshot))
+
 void mm_layered_order(mm_layered* g):
 	list[int] best = new list[int]
 	for int v in g.order: best.push(v)
@@ -208,6 +257,7 @@ void mm_layered_order(mm_layered* g):
 	while (step < rounds && least > 0):
 		mm_layered_sweep(g, step % 2 == 0)
 		mm_layered_transpose(g)
+		mm_layered_sift(g)
 		int crossings = mm_layered_crossings(g)
 		if (crossings < least):
 			least = crossings
@@ -339,7 +389,14 @@ void mm_place_tracks(list[mm_edge_route*] routes, list[int] jog_gap, list[int] j
 		int first = start[gap]
 		int last = start[gap + 1]
 		if (last - first < 2 || last - first > MM_LAYOUT_TRACK_LIMIT): continue
-		# Rightward jogs (larger start first), then leftward (smaller start first).
+		# Rightward jogs (larger start first), then leftward (smaller start
+		# first); from one start the longer jog goes first. Sorted by the
+		# secondary key, then stably by the primary one.
+		for i in range(first, last):
+			int j = members[i]
+			if (jog_down[j] >= jog_up[j]): keys[j] = 0 - jog_down[j]
+			else: keys[j] = jog_down[j]
+		mm_layout_sort(members, first, last, keys, scratch)
 		for i in range(first, last):
 			int j = members[i]
 			if (jog_down[j] >= jog_up[j]): keys[j] = 0 - jog_up[j]
@@ -354,21 +411,23 @@ void mm_place_tracks(list[mm_edge_route*] routes, list[int] jog_gap, list[int] j
 			if (hi < lo):
 				lo = jog_down[j]
 				hi = jog_up[j]
+			# Longest path over the conflicts: a jog sits below every earlier
+			# (higher-ranked) jog it overlaps, so each overlapping pair keeps
+			# the processing order and crosses at most once.
 			int t = 0
-			int placed = 0
-			while (placed == 0):
-				int clash = 0
-				for k in range(first, i):
-					int other = members[k]
-					if (track[other] != t): continue
-					int olo = jog_up[other]
-					int ohi = jog_down[other]
-					if (ohi < olo):
-						olo = jog_down[other]
-						ohi = jog_up[other]
-					if (lo < ohi + 4 && olo < hi + 4 && key_up[other] != key_up[j] && key_down[other] != key_down[j]): clash = 1
-				if (clash == 0): placed = 1
-				else: t = t + 1
+			for k in range(first, i):
+				int other = members[k]
+				if (track[other] < 0 || track[other] + 1 <= t): continue
+				int olo = jog_up[other]
+				int ohi = jog_down[other]
+				if (ohi < olo):
+					olo = jog_down[other]
+					ohi = jog_up[other]
+				if (lo < ohi + 4 && olo < hi + 4):
+					# A shared trunk may share the track, never rise above it.
+					if (key_up[other] == key_up[j] || key_down[other] == key_down[j]):
+						if (track[other] > t): t = track[other]
+					else: t = track[other] + 1
 			track[j] = t
 			if (t + 1 > tracks): tracks = t + 1
 		if (tracks < 2): continue
@@ -386,7 +445,7 @@ void mm_place_tracks(list[mm_edge_route*] routes, list[int] jog_gap, list[int] j
 
 # Longest-path ranks, layered ordering with dummy chains, lane packing, and the
 # dummy channels as routes for the edges whose routes[i] record is non-null.
-void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap, list[mm_edge_route*] routes):
+void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int lane_gap, int rank_gap, list[mm_edge_route*] routes, int entity_ports):
 	int n = nodes.length
 	# Kahn's traversal; a cycle is broken at the lowest-index remaining node.
 	list[int] incoming = new list[int]
@@ -432,6 +491,39 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 				if (to.rank < from.rank + length): to.rank = from.rank + length
 				incoming[e.to_node] = incoming[e.to_node] - 1
 				if (incoming[e.to_node] == 0): ready.push(e.to_node)
+	# Promotion: longest-path ranks put every node as high as its predecessors
+	# allow, which stretches the edges of nodes with more successors than
+	# predecessors. Those move down to just above their nearest successor,
+	# bottom ranks first, shortening long edges (fewer dummies and crossings).
+	list[int] by_rank = new list[int]
+	list[int] rank_key = new list[int]
+	list[int] sort_scratch = new list[int]
+	for i in range(n):
+		by_rank.push(i)
+		rank_key.push(0 - nodes[i].rank)
+		sort_scratch.push(0)
+	mm_layout_sort(by_rank, 0, n, rank_key, sort_scratch)
+	list[int] in_forward = new list[int]
+	for i in range(n): in_forward.push(0)
+	for mm_edge* e in edges:
+		if (nodes[e.to_node].rank > nodes[e.from_node].rank): in_forward[e.to_node] = in_forward[e.to_node] + 1
+	for int v in by_rank:
+		mm_bounds* b = nodes[v]
+		int out_forward = 0
+		int lowest = -1
+		for k in range(out_start[v], out_start[v + 1]):
+			mm_edge* e = edges[out[k]]
+			mm_bounds* to = nodes[e.to_node]
+			if (to.rank <= b.rank): continue
+			int length = 1 + e.extra_rank
+			if (e.min_length > length): length = e.min_length
+			out_forward = out_forward + 1
+			if (lowest < 0 || to.rank - length < lowest): lowest = to.rank - length
+		if (out_forward > in_forward[v] && lowest > b.rank): b.rank = lowest
+	__w_list_free(cast(__w_list*, by_rank))
+	__w_list_free(cast(__w_list*, rank_key))
+	__w_list_free(cast(__w_list*, sort_scratch))
+	__w_list_free(cast(__w_list*, in_forward))
 	for mm_bounds* b in nodes:
 		if (b.rank > max_rank): max_rank = b.rank
 	__w_list_free(cast(__w_list*, incoming))
@@ -612,6 +704,97 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 	list[int] jog_down = new list[int]
 	list[int] key_up = new list[int]
 	list[int] key_down = new list[int]
+	# Port distribution mirrored from mm_render_ports: ER entity sides always
+	# spread across the side; elsewhere a side holding parallel edges, or edges
+	# that both leave and arrive, spreads 16px apart, in far-end order. The jogs use
+	# those shifted ports so the track order matches the drawn ports.
+	list[int] from_shift = new list[int]
+	list[int] to_shift = new list[int]
+	list[int] from_spread = new list[int]
+	list[int] to_spread = new list[int]
+	for i in range(edges.length):
+		from_shift.push(0)
+		to_shift.push(0)
+		from_spread.push(0)
+		to_spread.push(0)
+	if (routes != 0):
+		list[int] entry_edge = new list[int]
+		list[int] entry_end = new list[int]
+		list[int] entry_group = new list[int]
+		list[int] entry_far = new list[int]
+		list[int] entry_other = new list[int]
+		for i in range(edges.length):
+			if (routes[i] == 0 || chain_length[i] < 0): continue
+			mm_edge* e = edges[i]
+			if (e.stroke == 2): continue
+			int from_rank = nodes[e.from_node].rank
+			int to_rank = nodes[e.to_node].rank
+			if (reverse):
+				from_rank = max_rank - from_rank
+				to_rank = max_rank - to_rank
+			int side = 1
+			if (to_rank < from_rank): side = 0
+			int far_from = g.lane[e.to_node] + nodes[e.to_node].w / 2
+			int far_to = g.lane[e.from_node] + nodes[e.from_node].w / 2
+			if (horizontal):
+				far_from = g.lane[e.to_node] + nodes[e.to_node].h / 2
+				far_to = g.lane[e.from_node] + nodes[e.from_node].h / 2
+			if (chain_length[i] > 0):
+				far_from = g.lane[chain_start[i]]
+				far_to = g.lane[chain_start[i] + chain_length[i] - 1]
+			for which in range(2):
+				entry_edge.push(i)
+				entry_end.push(which)
+				if (which == 0):
+					entry_group.push(e.from_node * 2 + side)
+					entry_far.push(far_from)
+					entry_other.push(e.to_node)
+				else:
+					entry_group.push(e.to_node * 2 + (1 - side))
+					entry_far.push(far_to)
+					entry_other.push(e.from_node)
+		list[int] entry_order = new list[int]
+		list[int] entry_scratch = new list[int]
+		for i in range(entry_edge.length):
+			entry_order.push(i)
+			entry_scratch.push(0)
+		mm_layout_sort(entry_order, 0, entry_order.length, entry_far, entry_scratch)
+		mm_layout_sort(entry_order, 0, entry_order.length, entry_group, entry_scratch)
+		int at = 0
+		while (at < entry_order.length):
+			int stop = at
+			int spread = 0
+			while (stop < entry_order.length && entry_group[entry_order[stop]] == entry_group[entry_order[at]]):
+				int entry = entry_order[stop]
+				for k in range(at, stop):
+					int other = entry_order[k]
+					if (entry_end[other] != entry_end[entry] || entry_other[other] == entry_other[entry]): spread = 1
+				stop = stop + 1
+			if (spread || entity_ports):
+				for k in range(at, stop):
+					int entry = entry_order[k]
+					int shift = ((k - at) * 2 - (stop - at - 1)) * 8
+					if (entity_ports):
+						# ER: slots across the whole entity side.
+						int node = edges[entry_edge[entry]].from_node
+						if (entry_end[entry]): node = edges[entry_edge[entry]].to_node
+						int size = nodes[node].w
+						if (horizontal): size = nodes[node].h
+						shift = size * (k - at + 1) / (stop - at + 1) - size / 2
+					if (entry_end[entry] == 0):
+						from_shift[entry_edge[entry]] = shift
+						from_spread[entry_edge[entry]] = 1
+					else:
+						to_shift[entry_edge[entry]] = shift
+						to_spread[entry_edge[entry]] = 1
+			at = stop
+		__w_list_free(cast(__w_list*, entry_edge))
+		__w_list_free(cast(__w_list*, entry_end))
+		__w_list_free(cast(__w_list*, entry_group))
+		__w_list_free(cast(__w_list*, entry_far))
+		__w_list_free(cast(__w_list*, entry_other))
+		__w_list_free(cast(__w_list*, entry_order))
+		__w_list_free(cast(__w_list*, entry_scratch))
 	if (routes != 0):
 		for i in range(edges.length):
 			mm_edge_route* route = routes[i]
@@ -646,20 +829,28 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 				if (next_point < n):
 					if (horizontal): there = there + nodes[next_point].h / 2
 					else: there = there + nodes[next_point].w / 2
+				int here_key = point
+				int there_key = next_point
+				if (k == 0 && from_spread[i]):
+					here = here + from_shift[i]
+					here_key = -2 - i * 2
+				if (k == chain_length[i] && to_spread[i]):
+					there = there + to_shift[i]
+					there_key = -3 - i * 2
 				jog_route.push(i)
 				jog_index.push(k)
 				if (step > 0):
 					jog_gap.push(p)
 					jog_up.push(here)
 					jog_down.push(there)
-					key_up.push(point)
-					key_down.push(next_point)
+					key_up.push(here_key)
+					key_down.push(there_key)
 				else:
 					jog_gap.push(next)
 					jog_up.push(there)
 					jog_down.push(here)
-					key_up.push(next_point)
-					key_down.push(point)
+					key_up.push(there_key)
+					key_down.push(here_key)
 				point = next_point
 				if (step > 0):
 					route.gaps.push(offsets[p] + sizes[p])
@@ -690,6 +881,10 @@ void mm_place(list[mm_bounds*] nodes, list[mm_edge*] edges, char* direction, int
 		mm_place_tracks(routes, jog_gap, jog_route, jog_index, jog_up, jog_down, key_up, key_down, gap_low, gap_high)
 		__w_list_free(cast(__w_list*, gap_low))
 		__w_list_free(cast(__w_list*, gap_high))
+	__w_list_free(cast(__w_list*, from_shift))
+	__w_list_free(cast(__w_list*, to_shift))
+	__w_list_free(cast(__w_list*, from_spread))
+	__w_list_free(cast(__w_list*, to_spread))
 	__w_list_free(cast(__w_list*, jog_gap))
 	__w_list_free(cast(__w_list*, jog_route))
 	__w_list_free(cast(__w_list*, jog_index))
