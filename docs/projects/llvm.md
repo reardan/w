@@ -87,7 +87,10 @@ point, and the output file is left untouched.
 - Types: `int`, `uint`, the fixed-width integers, `char`, `byte`, `bool`,
   enums, pointers of any level, function values and aliases of them,
   `string` handles, records (structs whose fields are all of these), fixed
-  arrays `T[N]` and slice handles.
+  arrays `T[N]` and slice handles, generic records (`pair[int]`), and
+  checked pointers (`own`, `optown`, `ref`, `refmut`, `optref`,
+  `optrefmut`) with checked slices (`ref T[]`) and borrowed records as
+  locals and fields.
 - Locals with or without initializers (storage is zeroed at the
   declaration, as are fixed-array headers), parameters, globals with
   constant, C string, `&global` or function initializers, and `const`
@@ -102,9 +105,23 @@ point, and the output file is left untouched.
   `println` builtins and the `max`/`min`/`abs`/`strlen` helpers, the limb
   and bit intrinsics (`mul_hi`, `mul_wide`, `add_carry`, `shr`, `rotl`,
   `rotr`, `popcount`, `clz`, `ctz`) and the host atomics.
+- Generic functions with explicit (`max[int](a, b)`) or inferred type
+  arguments, including generic methods: each instantiation is retained as
+  an ordinary function under its mangled name (`max$int`), and a generic
+  call names it.
+- Checked owners, with the drops the tree leaves implicit reproduced from
+  types as `grammar/safe_cleanup.w` does: moving an owner into an owner
+  destination (argument, return, initializer, assignment, `new T(...)`
+  field) clears a named source local, parameter or owned field; assigning
+  to an owner drops the value it replaces; and owners still in scope are
+  dropped, newest first, at block ends, `break`/`continue`, and returns
+  (then the function's owner parameters). A drop runs the audited
+  destructor for `lib/safe_buffer.w` and `lib/safe_thread.w` records,
+  else drops owned fields in reverse order and frees the allocation.
 - Statements: `if`/`elif`/`else`, `while`, `for i in range(...)` with one
   to three arguments, `break`, `continue`, `pass`, `return`, `unsafe:`
-  blocks and expression statements.
+  blocks, inferred declarations (`name := value`) and expression
+  statements.
 
 Division and remainder guard zero divisors and signed minimum divided by
 minus one, and an out-of-range array subscript traps; LLVM traps report a
@@ -113,9 +130,9 @@ preserve evaluation order.
 
 Not yet supported, and rejected with a diagnostic: floats, containers
 (`list`, `map`, `set`, cursor `for` loops), records passed or returned by
-value, arrays inside records, generics, f-strings, `switch`, `defer`,
-`goto`, generators, checked pointers (`own`, `ref`, ... and their
-slices), GPU code, C imports and other `extern` functions
+value (including checked slices and borrowed records crossing a call),
+arrays inside records, f-strings, `switch`, `defer`, `goto`,
+generators, GPU code, C imports and other `extern` functions
 without a W body, and the remaining assembly stubs (`repl_setjmp`,
 `thread_create`, ...). Containers are the largest gap: about half of the
 rejected test programs below declare one.

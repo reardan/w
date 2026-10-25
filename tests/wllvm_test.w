@@ -1,4 +1,4 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w data=tests/wllvm_generic_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
 # and the fixtures are executed through W and through wllvm's clang build
@@ -72,6 +72,14 @@ void test_wllvm_deterministic_ir():
 	assert_contains(a, c"call i32 @llvm.fshl.i32(")
 	unlink(first)
 	free(a)
+	# Generic instances are ordinary functions under their mangled names;
+	# checked owners lower to plain pointers plus their implicit drops.
+	wllvm_test_emit(c"tests/wllvm_generic_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"icmp ne i64")
+	unlink(first)
+	free(a)
 	free(first)
 	free(second)
 
@@ -109,8 +117,6 @@ void test_wllvm_rejects_unsupported_programs():
 	wllvm_test_reject(c"int main():\n\tdefer main()\n\treturn 0\n")
 	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
 	wllvm_test_reject(c"int helper():\n\treturn 1\n")
-	# checked owners free themselves at scope exit, which the tree leaves implicit
-	wllvm_test_reject(c"int main():\n\town int* value = new int\n\t*value = 3\n\treturn *value - 3\n")
 
 
 void test_wllvm_cli_errors():
@@ -223,6 +229,7 @@ void test_wllvm_native_differential():
 		return
 	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
 	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
+	wllvm_test_differential(clang, c"tests/wllvm_generic_fixture.w", 183)
 	free(clang)
 
 

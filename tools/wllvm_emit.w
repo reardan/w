@@ -163,9 +163,8 @@ int llvm_class(int type);
 
 
 int llvm_class_of(retained_type* t):
-	# checked pointers (own/ref/optown/... kinds 21-30) carry automatic drops
-	# the retained tree does not spell out
-	if ((t.kind >= 21) && (t.kind <= 30)): return llvm_class_none
+	# Checked pointers (kinds 21-23, 26, 27, 29) are words; checked slices
+	# (24, 30) and borrowed records (25, 28) are records by fields below.
 	if (t.pointer_level > 0): return llvm_class_word
 	if (t.kind == 6): return llvm_class_array
 	if (t.kind == 7): return llvm_class_slice
@@ -470,6 +469,7 @@ int llvm_node_id(int group, int operand):
 
 char* llvm_value(int group, int operand);
 char* llvm_address(int group, int operand);
+int llvm_is_checked_slice(int type);
 
 
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
@@ -554,7 +554,8 @@ char* llvm_address(int group, int operand):
 			char* descriptor = llvm_address(group, node.left)
 			data = llvm_offset(descriptor, c"16")
 			length = llvm_number(llvm_type(left.semantic_type).array_length)
-		else if (llvm_class(left.semantic_type) == llvm_class_slice):
+		else if ((llvm_class(left.semantic_type) == llvm_class_slice) || llvm_is_checked_slice(left.semantic_type)):
+			# A checked slice is the {data, length} pair itself (a record).
 			char* descriptor = llvm_pointer(llvm_value(group, node.left))
 			data = llvm_pointer(llvm_load(-1, descriptor))
 			length = llvm_load(-1, llvm_offset(descriptor, c"8"))
@@ -638,6 +639,24 @@ int llvm_enum_constant(int binding, int* value):
 	return 0
 
 
+int llvm_is_owner(int type);
+void llvm_owner_move(int group, int operand, int destination);
+char* llvm_owner_assign(int group, int id, retained_node* node);
+
+
+# ---- Generics ----------------------------------------------------------
+# A generic call ('G' explicit type arguments, 'W' inferred) names its
+# committed instantiation by mangled name (payload_text, e.g.
+# "smaller$int"); each instantiation is retained as an ordinary function
+# record under that name. Returns the instance's linkage, -1 when it has
+# no W body, or -2 for a non-generic call.
+int llvm_generic_callee(retained_node* node):
+	if ((node.op != 'G') && (node.op != 'W')): return -2
+	if (node.payload_text == 0): return -1
+	if (node.payload_text in llvm_function_names): return llvm_function_names[node.payload_text]
+	return -1
+
+
 char* llvm_call(int group, int id, retained_node* node):
 	list[char*] values = new list[char*]
 	list[int] types = new list[int]
@@ -645,7 +664,9 @@ char* llvm_call(int group, int id, retained_node* node):
 	if (node.op == 'F'): arg = node.right
 	char* callee_value = c"0"
 	if (node.op == 'F'): callee_value = llvm_value(group, node.left)
+	list[int] operands = new list[int]
 	while ((arg >= 0) && (llvm_failed == 0)):
+		operands.push(arg)
 		values.push(llvm_value(group, arg))
 		retained_node argument
 		retained_node_load(llvm_node_id(group, arg), &argument)
@@ -653,11 +674,23 @@ char* llvm_call(int group, int id, retained_node* node):
 		arg = argument.next_arg
 	char* target = c"null"
 	int count = values.length
-	if (node.op == 'F'): target = llvm_pointer(callee_value)
+	if (node.op == 'F'):
+		target = llvm_pointer(callee_value)
+		retained_node callee_node
+		retained_node_load(llvm_node_id(group, node.left), &callee_node)
+		retained_type* signature = llvm_type(callee_node.semantic_type)
+		if ((signature.parameters.length == 0) && (signature.target >= 0)): signature = llvm_type(signature.target)
+		for i in range(count):
+			if (i < signature.parameters.length): llvm_owner_move(group, operands[i], signature.parameters[i])
 	else:
-		retained_binding* callee = retained_bindings[node.binding]
-		if ((callee.linkage in llvm_functions) == 0):
-			int syscall = (strcmp(callee.name, c"syscall") == 0) || (strcmp(callee.name, c"syscall7") == 0)
+		char* callee_name = node.payload_text
+		int linkage = llvm_generic_callee(node)
+		if (linkage == -2):
+			retained_binding* callee = retained_bindings[node.binding]
+			linkage = callee.linkage
+			callee_name = callee.name
+		if ((linkage in llvm_functions) == 0):
+			int syscall = (strcmp(callee_name, c"syscall") == 0) || (strcmp(callee_name, c"syscall7") == 0)
 			if (syscall && ((values.length == 4) || (values.length == 7))):
 				char* result = llvm_temp()
 				llvm_put(c"  ")
@@ -671,22 +704,25 @@ char* llvm_call(int group, int id, retained_node* node):
 				llvm_put(c")\x0a")
 				values.free()
 				types.free()
+				operands.free()
 				return result
-			llvm_error_at(id, c"call to a function without a W body", callee.name)
+			llvm_error_at(id, c"call to a function without a W body", callee_name)
 			values.free()
 			types.free()
+			operands.free()
 			return c"0"
 		retained_node definition
-		retained_node_load(llvm_functions[callee.linkage], &definition)
+		retained_node_load(llvm_functions[linkage], &definition)
 		retained_binding* defined = retained_bindings[definition.binding]
 		# _main passes argc and argv even to a main without parameters.
 		if (count > defined.parameters.length): count = defined.parameters.length
-		if (count < defined.parameters.length): llvm_error_at(id, c"call argument count", callee.name)
+		if (count < defined.parameters.length): llvm_error_at(id, c"call argument count", callee_name)
 		for i in range(count):
 			if (i < defined.parameters.length):
-				if (llvm_class(defined.parameters[i]) != llvm_class_word): llvm_error_at(id, c"record parameter passed by value to", callee.name)
+				if (llvm_class(defined.parameters[i]) != llvm_class_word): llvm_error_at(id, c"record parameter passed by value to", callee_name)
 				values[i] = llvm_convert(id, values[i], types[i], defined.parameters[i])
-		target = llvm_function_symbol(callee.linkage)
+				llvm_owner_move(group, operands[i], defined.parameters[i])
+		target = llvm_function_symbol(linkage)
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
@@ -700,6 +736,7 @@ char* llvm_call(int group, int id, retained_node* node):
 	llvm_put(c")\x0a")
 	values.free()
 	types.free()
+	operands.free()
 	return result
 
 
@@ -758,7 +795,7 @@ char* llvm_value_inner(int group, int operand):
 	int type = node.semantic_type
 	int type_class = llvm_class(type)
 	int op = node.op
-	if ((type_class == llvm_class_none) && (op != 'C') && (op != 'F')):
+	if ((type_class == llvm_class_none) && (op != 'C') && (op != 'F') && (op != 'G') && (op != 'W')):
 		if (type >= 0): llvm_error_at(id, c"expression type", retained_types[type].name)
 		else: llvm_error(id, c"expression type")
 		return c"0"
@@ -957,6 +994,7 @@ char* llvm_value_inner(int group, int operand):
 				return c"0"
 			retained_field* target = record.fields[field.value]
 			char* value = llvm_convert(id, llvm_value(group, field.left), argument.semantic_type, target.type)
+			llvm_owner_move(group, field.left, target.type)
 			llvm_store(id, target.type, value, llvm_offset(llvm_pointer(object), llvm_number(target.offset)))
 			entry = field.next_arg
 		return object
@@ -984,7 +1022,7 @@ char* llvm_value_inner(int group, int operand):
 			llvm_helper_call(id, c"__w_print_nl", values)
 		values.free()
 		return result
-	if ((op == 'C') || (op == 'F')):
+	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
 		if ((op == 'C') && (node.binding < 0)):
 			llvm_error(id, c"unbound call")
 			return c"0"
@@ -997,6 +1035,7 @@ char* llvm_value_inner(int group, int operand):
 		retained_node_load(llvm_node_id(group, node.left), &left)
 		retained_node right
 		retained_node_load(llvm_node_id(group, node.right), &right)
+		if (llvm_is_owner(left.semantic_type)): return llvm_owner_assign(group, id, &node)
 		if (llvm_place(&left) == 0):
 			llvm_error(id, c"assignment target")
 			return c"0"
@@ -1140,6 +1179,178 @@ int llvm_group_type(int id):
 	return root.semantic_type
 
 
+# ---- Checked pointers ----------------------------------------------------
+# Checked pointers (own/optown/ref/refmut/optref/optrefmut) use the plain
+# pointer ABI, as natively (grammar/safe_cleanup.w). Unique owners add two
+# behaviors the tree leaves implicit, reproduced here from types alone:
+# transferring an owner out of a named local, parameter or owned field
+# clears its source, and every owner in scope is dropped when its block
+# ends or a jump leaves it (locals newest first, then a function's
+# parameters on its exits). Dropping a null owner does nothing.
+
+# Owners declared so far in the function being lowered, in declaration
+# order, and the stack depth a break/continue unwinds to.
+list[int] llvm_owner_stack
+int llvm_loop_owner_mark
+
+
+int llvm_is_owner(int type):
+	if (type < 0): return 0
+	int kind = llvm_type(type).kind
+	return (kind == 21) || (kind == 29)
+
+
+# ref T[] / refmut T[]: a {data, length} record value, not a slice handle.
+int llvm_is_checked_slice(int type):
+	if (type < 0): return 0
+	int kind = llvm_type(type).kind
+	return (kind == 24) || (kind == 30)
+
+
+# The record (or scalar) an owner of type points at.
+int llvm_owner_element(int type):
+	retained_type* pointer = llvm_type(llvm_type(type).target)
+	return pointer.target
+
+
+# The audited destructor that replaces free for element, or -1
+# (safe_owner_drop_helper).
+int llvm_owner_helper(int id, int element):
+	if (element < 0): return -1
+	retained_type* t = llvm_type(element)
+	char* name = t.name
+	char* helper = 0
+	if (ends_with(t.file, c"/lib/safe_thread.w")):
+		if (strcmp(name, c"WSafeThread") == 0): helper = c"__w_safe_thread_drop"
+		else if (starts_with(name, c"WSafeGuard$")): helper = c"__w_safe_guard_drop"
+	else if (ends_with(t.file, c"/lib/safe_buffer.w")):
+		if (strcmp(name, c"WIntBuffer") == 0): helper = c"__w_int_buffer_drop"
+		else if (strcmp(name, c"WByteString") == 0): helper = c"__w_byte_string_drop"
+		else if (strcmp(name, c"WOwnedIntBuffer") == 0): helper = c"__w_owned_int_buffer_drop"
+		else if (strcmp(name, c"WByteArena") == 0): helper = c"__w_byte_arena_drop"
+	if (helper == 0): return -1
+	if ((helper in llvm_function_names) == 0):
+		llvm_error_at(id, c"call to a missing runtime helper", helper)
+		return -1
+	return llvm_function_names[helper]
+
+
+void llvm_owner_call(int id, int linkage, char* pointer):
+	llvm_put(c"  call i64 ")
+	llvm_put(llvm_function_symbol(linkage))
+	llvm_put(c"(i64 ")
+	llvm_put(pointer)
+	llvm_put(c")\x0a")
+
+
+void llvm_owner_free(int id, char* pointer):
+	if ((c"free" in llvm_function_names) == 0):
+		llvm_error_at(id, c"call to a missing runtime helper", c"free")
+		return
+	llvm_owner_call(id, llvm_function_names[c"free"], pointer)
+
+
+# Drop the owned value pointer of owner type type: its owned fields in
+# reverse declaration order, then the allocation (safe_owner_drop_value).
+void llvm_owner_drop_value(int id, int type, char* pointer, int depth):
+	if (depth > 32):
+		llvm_error(id, c"recursive owned aggregate destruction")
+		return
+	int drop = llvm_label_new()
+	int done = llvm_label_new()
+	llvm_cond_branch(llvm_instruction(c"icmp ne", pointer, c"0"), drop, done)
+	llvm_label(drop)
+	int element = llvm_owner_element(type)
+	int helper = llvm_owner_helper(id, element)
+	if (helper >= 0): llvm_owner_call(id, helper, pointer)
+	else:
+		retained_type* record = llvm_type(element)
+		int field = record.fields.length
+		while (field > 0):
+			field = field - 1
+			retained_field* f = record.fields[field]
+			if (llvm_is_owner(f.type)):
+				char* child = llvm_load(f.type, llvm_offset(llvm_pointer(pointer), llvm_number(f.offset)))
+				llvm_owner_drop_value(id, f.type, child, depth + 1)
+		llvm_owner_free(id, pointer)
+	llvm_branch(done)
+	llvm_label(done)
+
+
+# Drop the owner stored at address and clear it.
+void llvm_owner_drop_slot(int id, int type, char* address):
+	llvm_owner_drop_value(id, type, llvm_load(type, address), 0)
+	llvm_store_width(8, c"0", address)
+
+
+# Drop the owners declared since mark, newest first; with parameters, also
+# the function's owner parameters (a function exit).
+void llvm_owner_cleanup(int id, int mark, int parameters):
+	if (llvm_terminated): llvm_label(llvm_label_new())
+	int i = llvm_owner_stack.length
+	while (i > mark):
+		i = i - 1
+		int binding = llvm_owner_stack[i]
+		llvm_owner_drop_slot(id, retained_bindings[binding].type, llvm_name(c"%v", binding))
+	if (parameters == 0): return
+	list[int] owners = new list[int]
+	int child = llvm_first[llvm_function_node]
+	while ((child >= 0) && (retained_node_kind(child) == retained_local)):
+		retained_node parameter
+		retained_node_load(child, &parameter)
+		if ((parameter.binding >= 0) && llvm_is_owner(retained_bindings[parameter.binding].type)): owners.push(parameter.binding)
+		child = llvm_next[child]
+	i = owners.length
+	while (i > 0):
+		i = i - 1
+		llvm_owner_drop_slot(id, retained_bindings[owners[i]].type, llvm_name(c"%v", owners[i]))
+	owners.free()
+
+
+void llvm_owner_end_scope(int id, int mark):
+	llvm_owner_cleanup(id, mark, 0)
+	while (llvm_owner_stack.length > mark): llvm_owner_stack.pop()
+
+
+void llvm_owner_declare(int binding):
+	if (llvm_is_owner(retained_bindings[binding].type)): llvm_owner_stack.push(binding)
+
+
+# Moving an owner into a destination of owner type clears its named source:
+# a local or parameter, or an owned field along a named path
+# (safe_owner_move).
+void llvm_owner_move(int group, int operand, int destination):
+	if ((llvm_is_owner(destination) == 0) || (operand < 0)): return
+	retained_node source
+	retained_node_load(llvm_node_id(group, operand), &source)
+	if (llvm_is_owner(source.semantic_type) == 0): return
+	if ((source.op == 'v') && (source.binding >= 0) && (source.binding in llvm_locals)):
+		llvm_store_width(8, c"0", llvm_name(c"%v", source.binding))
+	else if (source.op == '.'): llvm_store_width(8, c"0", llvm_address(group, operand))
+
+
+# An assignment to an owner drops the value it replaces; returns its value.
+char* llvm_owner_assign(int group, int id, retained_node* node):
+	retained_node left
+	retained_node_load(llvm_node_id(group, node.left), &left)
+	retained_node right
+	retained_node_load(llvm_node_id(group, node.right), &right)
+	int type = left.semantic_type
+	if ((node.value != 0) || ((left.op != '.') && ((left.op != 'v') || ((left.binding in llvm_locals) == 0)))):
+		llvm_error(id, c"owner assignment target")
+		return c"0"
+	char* address = c"0"
+	if (left.op == '.'): address = llvm_address(group, node.left)
+	char* value = llvm_convert(id, llvm_value(group, node.right), right.semantic_type, type)
+	llvm_owner_move(group, node.right, type)
+	if (left.op == '.'): llvm_owner_drop_value(id, type, llvm_load(type, address), 0)
+	else:
+		address = llvm_name(c"%v", left.binding)
+		llvm_owner_drop_slot(id, type, address)
+	llvm_store_width(8, value, address)
+	return value
+
+
 # --- statements --------------------------------------------------------------
 
 # Zero a local's storage, and point a fixed array's header at its data.
@@ -1210,11 +1421,14 @@ void llvm_range(int id):
 	llvm_label(yes)
 	int previous_break = llvm_break_label
 	int previous_continue = llvm_continue_label
+	int previous_mark = llvm_loop_owner_mark
 	llvm_break_label = done
 	llvm_continue_label = next
+	llvm_loop_owner_mark = llvm_owner_stack.length
 	llvm_statement(body)
 	llvm_break_label = previous_break
 	llvm_continue_label = previous_continue
+	llvm_loop_owner_mark = previous_mark
 	llvm_branch(next)
 	llvm_label(next)
 	llvm_store(id, type, llvm_instruction(c"add", llvm_load(type, address), step), address)
@@ -1232,17 +1446,21 @@ void llvm_statement(int id):
 	# Keep lowering (and checking) unreachable code in a fresh block.
 	if (llvm_terminated): llvm_label(llvm_label_new())
 	if ((strcmp(node.name, c":") == 0) || (strcmp(node.name, c"{") == 0) || (strcmp(node.name, c"unsafe block") == 0)):
+		int owner_mark = llvm_owner_stack.length
 		int child = llvm_first[id]
 		while (child >= 0):
 			llvm_statement(child)
 			child = llvm_next[child]
+		llvm_owner_end_scope(id, owner_mark)
 		return
 	if (strcmp(node.name, c"pass") == 0): return
 	if ((strcmp(node.name, c"break") == 0) || (strcmp(node.name, c"continue") == 0)):
 		int target = llvm_break_label
 		if (strcmp(node.name, c"continue") == 0): target = llvm_continue_label
 		if (target < 0): llvm_error(id, c"jump outside a loop")
-		else: llvm_branch(target)
+		else:
+			llvm_owner_cleanup(id, llvm_loop_owner_mark, 0)
+			llvm_branch(target)
 		llvm_reachable = 0
 		return
 	if (strcmp(node.name, c"return") == 0):
@@ -1252,9 +1470,13 @@ void llvm_statement(int id):
 		if ((group >= 0) && (retained_node_kind(group) == retained_expression_group)):
 			value = llvm_group(group)
 			if (llvm_class(return_type) == llvm_class_word): value = llvm_convert(id, value, llvm_group_type(group), return_type)
+			retained_node returned
+			retained_node_load(group, &returned)
+			llvm_owner_move(group, returned.op, return_type)
 		else if (llvm_class(return_type) != llvm_class_void):
 			llvm_error(id, c"return without a value")
 			return
+		llvm_owner_cleanup(id, 0, 1)
 		llvm_put(c"  ret i64 ")
 		llvm_put(value)
 		llvm_put(c"\x0a")
@@ -1286,11 +1508,14 @@ void llvm_statement(int id):
 		llvm_label(yes)
 		int previous_break = llvm_break_label
 		int previous_continue = llvm_continue_label
+		int previous_mark = llvm_loop_owner_mark
 		llvm_break_label = end
 		llvm_continue_label = head
+		llvm_loop_owner_mark = llvm_owner_stack.length
 		llvm_statement(body)
 		llvm_break_label = previous_break
 		llvm_continue_label = previous_continue
+		llvm_loop_owner_mark = previous_mark
 		llvm_branch(head)
 		llvm_label(end)
 		llvm_reachable = entry_reachable
@@ -1327,6 +1552,24 @@ void llvm_statement(int id):
 		llvm_reachable = end_reachable || (entry_reachable && (has_else == 0))
 		return
 	int child = llvm_first[id]
+	# 'name := value' retains its initializer before the inferred local.
+	if ((child >= 0) && (retained_node_kind(child) == retained_expression_group) && (llvm_next[child] >= 0) && (retained_node_kind(llvm_next[child]) == retained_local) && (llvm_next[llvm_next[child]] < 0)):
+		retained_node inferred
+		retained_node_load(llvm_next[child], &inferred)
+		if ((inferred.binding < 0) || ((inferred.binding in llvm_locals) == 0)):
+			llvm_error(id, c"local declaration")
+			return
+		int inferred_type = retained_bindings[inferred.binding].type
+		if (llvm_class(inferred_type) == llvm_class_array):
+			llvm_error(id, c"array initializer")
+			return
+		char* inferred_value = llvm_convert(id, llvm_group(child), llvm_group_type(child), inferred_type)
+		retained_node inferred_root
+		retained_node_load(child, &inferred_root)
+		llvm_owner_move(child, inferred_root.op, inferred_type)
+		llvm_store(id, inferred_type, inferred_value, llvm_name(c"%v", inferred.binding))
+		llvm_owner_declare(inferred.binding)
+		return
 	if ((child >= 0) && (retained_node_kind(child) == retained_local)):
 		retained_node local
 		retained_node_load(child, &local)
@@ -1336,6 +1579,7 @@ void llvm_statement(int id):
 			return
 		if (child < 0):
 			llvm_local_init(local.binding)
+			llvm_owner_declare(local.binding)
 			return
 		if ((retained_node_kind(child) != retained_expression_group) || (llvm_next[child] >= 0)):
 			llvm_error(id, c"multiple local declaration")
@@ -1345,7 +1589,11 @@ void llvm_statement(int id):
 			llvm_error(id, c"array initializer")
 			return
 		char* value = llvm_convert(id, llvm_group(child), llvm_group_type(child), type)
+		retained_node initializer
+		retained_node_load(child, &initializer)
+		llvm_owner_move(child, initializer.op, type)
 		llvm_store(id, type, value, llvm_name(c"%v", local.binding))
+		llvm_owner_declare(local.binding)
 		return
 	if ((child >= 0) && (retained_node_kind(child) == retained_expression_group) && (llvm_next[child] < 0)):
 		retained_node expression
@@ -1435,6 +1683,8 @@ void llvm_emit_body(int id):
 	llvm_reachable = 1
 	llvm_expression_depth = 0
 	llvm_locals = new map[int, int]
+	llvm_owner_stack = new list[int]
+	llvm_loop_owner_mark = 0
 	llvm_entry = string_new()
 	llvm_out = string_new()
 	int return_class = llvm_class(function.return_type)
@@ -1483,7 +1733,9 @@ void llvm_emit_body(int id):
 		llvm_statement(child)
 		child = llvm_next[child]
 	# Falling off the end returns 0 (a void function's only exit).
-	if (llvm_terminated == 0): llvm_put(c"  ret i64 0\x0a")
+	if (llvm_terminated == 0):
+		llvm_owner_cleanup(id, 0, 1)
+		llvm_put(c"  ret i64 0\x0a")
 	string_append(llvm_code, llvm_entry.data)
 	string_append(llvm_code, c"  br label %b0\x0a")
 	string_append(llvm_code, llvm_out.data)
@@ -1491,6 +1743,7 @@ void llvm_emit_body(int id):
 	string_free(llvm_entry)
 	string_free(llvm_out)
 	llvm_locals.free()
+	llvm_owner_stack.free()
 
 
 # --- globals and the entry point -------------------------------------------
