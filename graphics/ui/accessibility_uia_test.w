@@ -16,6 +16,12 @@ extern int UiaGetPropertyValue(int node, int property_id, char* out)
 extern int UiaGetRuntimeId(int node, int* out)
 extern int UiaNavigate(int node, int direction, char* condition, char* cache_request, int* requested, int* tree_structure)
 extern int UiaHUiaNodeFromVariant(char* value, int* node)
+extern int UiaAddEvent(int node, int event_id, int callback, int scope, int32* properties, int count, char* cache, int* event)
+extern int UiaRemoveEvent(int event)
+
+c_lib "user32.dll"
+extern int PeekMessageW(char* msg, int hwnd, int filter_min, int filter_max, int remove)
+extern int DispatchMessageW(char* msg)
 
 c_lib "oleaut32.dll"
 extern int SafeArrayGetElement(int array, int32* index, char* value)
@@ -46,6 +52,25 @@ int record_action(void* context, int id, int action, char* data, int length):
 		for i in range(length): last_value[i] = data[i]
 		last_length = length
 	return 1
+
+
+int focus_events
+
+
+# UiaEventCallback(UiaEventArgs* args, SAFEARRAY* requested, BSTR tree);
+# UiaEventArgs is {EventArgsType Type; int EventId}.
+void on_event(int args, int requested, int tree):
+	if (load_int32(cast(char*, args + 4)) == UIA_AutomationFocusChangedEventId): focus_events = focus_events + 1
+
+
+# Pump messages until a focus event arrived (at most ~2s).
+void wait_for_focus_event():
+	char[64] msg
+	int tries = 0
+	while ((focus_events == 0) && (tries < 40)):
+		while (PeekMessageW(&msg[0], 0, 0, 0, 1) & 255): DispatchMessageW(&msg[0])
+		if (focus_events == 0): Sleep(50)
+		tries = tries + 1
 
 
 int hr(int v):
@@ -450,8 +475,16 @@ int main():
 	# Republish without the tabs and with the checkbox cleared: property
 	# and structure events are raised (when clients listen), the tabs'
 	# providers stop answering, and the survivors keep their identity.
+	# wine delivers focus-changed events to an in-process client (its
+	# property-changed and structure-changed paths are stubs).
+	int focus_event = 0
+	assert_equal(0, hr(UiaAddEvent(root_node, UIA_AutomationFocusChangedEventId, win_callback(cast(int, on_event), 3), 7, cast(int32*, 0), 0, &cache[0], &focus_event)))
 	ui_access_tree* next = build(0, 0)
+	next.focused_id = 4
 	assert_equal(1, ui_access_uia_publish(bridge, next))
+	wait_for_focus_event()
+	assert_equal(1, focus_events)
+	assert_equal(0, hr(UiaRemoveEvent(focus_event)))
 	assert_equal(0, call2(toggle, 4, cast(int, &state[0])))
 	assert_equal(0, state[0])
 	assert_equal(button, find_child(root, 2))
