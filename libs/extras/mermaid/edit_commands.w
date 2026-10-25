@@ -205,9 +205,9 @@ int mm_editor_set_label(mm_editor* e, int index, char* label):
 	if (statement == 0): return 0
 	string_builder* source = string_new()
 	string_append_bytes(source, e.document.source, e.document.source_end)
-	if (source.length > 0 && source.data[source.length - 1] != 10): string_append_char(source, 10)
+	if (source.length > 0 && source.data[source.length - 1] != 10): mm_append_newline(source, e.document)
 	string_append(source, statement)
-	string_append_char(source, 10)
+	mm_append_newline(source, e.document)
 	string_append_bytes(source, e.document.source + e.document.source_end, e.document.length - e.document.source_end)
 	int ok = mm_edit_commit(e, source.data, -1, -1, index, label)
 	free(statement)
@@ -883,9 +883,9 @@ int mm_edit_append_checked(mm_editor* e, char* statement, int added_nodes, int f
 	if (old.error != 0 || statement == 0): return 0
 	string_builder* source = string_new()
 	string_append_bytes(source, old.source, old.source_end)
-	if (source.length > 0 && source.data[source.length - 1] != 10): string_append_char(source, 10)
+	if (source.length > 0 && source.data[source.length - 1] != 10): mm_append_newline(source, old)
 	string_append(source, statement)
-	string_append_char(source, 10)
+	mm_append_newline(source, old)
 	string_append_bytes(source, old.source + old.source_end, old.length - old.source_end)
 	mm_document* next = mm_parse_selected(source.data, source.length, e.selected)
 	int added_edges = from_node >= 0
