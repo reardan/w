@@ -1,7 +1,7 @@
 # Shared differential input for the production x64 backend and wllvm:
 # slices and slice values (ranges over arrays, slices and strings, array
-# decay to slices and pointers, slice cursor loops), parallel assignment
-# and enum_name. Output and exit status must match exactly.
+# decay to slices and pointers, slice cursor loops), fixed arrays inside
+# records, parallel assignment and enum_name. Output and exit status must match exactly.
 import lib.lib
 
 enum shade:
@@ -13,6 +13,23 @@ enum shade:
 struct spot:
 	int x
 	int y
+
+
+# Fixed-array fields carry inline headers that every new record points
+# at its own storage: declarations, new, copies and globals.
+struct label:
+	int tag
+	char[5] text
+
+
+struct shelf:
+	int before
+	int[3] cells
+	label name
+	int marker
+
+
+shelf global_shelf
 
 
 type sum_callback = fn(int*, int) -> int
@@ -74,6 +91,23 @@ int main():
 	check(c"string slice", part.length * 1000 + part[0] * 10 + (text[4:][1] == 'f'))
 	println(text[2:5])
 	check(c"len", len(values) * 10 + len(values[1:]))
+
+	shelf local_shelf
+	local_shelf.cells[0] = 4
+	local_shelf.cells[2] = 6
+	local_shelf.name.text[1] = 'q'
+	shelf* heap_shelf = new shelf
+	heap_shelf.cells[1] = 5
+	shelf copied = local_shelf
+	copied.cells[0] = 40
+	global_shelf.cells[1] = 11
+	global_shelf.name.text[4] = 'z'
+	check(c"record arrays", sum_pointer(local_shelf.cells, 3) + sum_slice(heap_shelf.cells) + local_shelf.cells.length + local_shelf.cells[0])
+	check(c"record copy", copied.cells[0] * 100 + local_shelf.cells[0] + (cast(int, copied.cells.data) - cast(int, &copied)))
+	check(c"global record", sum_slice(global_shelf.cells) + global_shelf.name.text[4] + local_shelf.name.text.length)
+	int shelf_total = 0
+	for x in local_shelf.cells[1:]: shelf_total = shelf_total * 10 + x
+	check(c"record slice", shelf_total)
 
 	int a = 1
 	int b = 2

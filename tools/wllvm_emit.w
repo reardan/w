@@ -194,7 +194,8 @@ int llvm_class_of(retained_type* t):
 	if (t.fields.length > 0):
 		for i in range(t.fields.length):
 			int field = llvm_class(t.fields[i].type)
-			if ((field == llvm_class_none) || (field == llvm_class_array) || (field == llvm_class_void)): return llvm_class_none
+			# fixed-array fields keep an inline header (see "arrays inside records")
+			if ((field == llvm_class_none) || (field == llvm_class_void)): return llvm_class_none
 		return llvm_class_struct
 	char* n = t.name
 	if (strcmp(n, c"void") == 0): return llvm_class_void
@@ -675,6 +676,20 @@ void llvm_container_for(int id);
 char* llvm_slice_range(int group, int id, retained_node* node);
 char* llvm_parallel_assign(int group, int id, retained_node* node);
 char* llvm_enum_name(int group, int id, retained_node* node);
+# generators (defined after the slices)
+int llvm_generator_self
+int llvm_uses_gen_switch
+char* llvm_generator_create(int group, int id, retained_node* node);
+char* llvm_generator_switch(int id, list[char*] values);
+void llvm_generator_begin(int id);
+void llvm_generator_finish(int id);
+void llvm_generator_yield(int id);
+void llvm_generator_free_loops(int id);
+void llvm_generator_loop(char* container, int open);
+void llvm_generator_emit_runtime();
+# arrays inside records (defined after the generators)
+void llvm_init_array_fields(int type, char* address);
+int llvm_global_record_headers(int linkage, int type, string_builder* text);
 
 
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
@@ -710,6 +725,7 @@ void llvm_store(int id, int type, char* value, char* address):
 	int c = llvm_class(type)
 	if (c == llvm_class_struct):
 		llvm_memory_call(c"llvm.memcpy.p0.p0.i64", address, llvm_pointer(value), llvm_type(type).size)
+		llvm_init_array_fields(type, address)
 		return
 	if (c != llvm_class_word):
 		llvm_error(id, c"assignment of this type")
@@ -989,6 +1005,11 @@ char* llvm_call(int group, int id, retained_node* node):
 				types.free()
 				operands.free()
 				return result
+			if ((strcmp(callee_name, c"gen_switch") == 0) && (values.length == 2)):
+				char* switched = llvm_generator_switch(id, values)
+				values.free()
+				types.free()
+				return switched
 			if ((strcmp(callee_name, c"__w_test_main") == 0) && (values.length == 0)):
 				values.free()
 				types.free()
@@ -1316,6 +1337,7 @@ char* llvm_value_inner(int group, int operand):
 		list[char*] size = list[char*]{llvm_number(bytes)}
 		char* object = llvm_helper_call(id, c"__w_new_object", size)
 		size.free()
+		if (target == llvm_class_struct): llvm_init_array_fields(pointer.target, llvm_pointer(object))
 		return object
 	if (op == 'k'):
 		# Host atomics at full word width (grammar/atomic_builtin.w).
@@ -1397,6 +1419,7 @@ char* llvm_value_inner(int group, int operand):
 		list[char*] size = list[char*]{llvm_number(record.size)}
 		char* object = llvm_helper_call(id, c"__w_new_object", size)
 		size.free()
+		llvm_init_array_fields(pointer.target, llvm_pointer(object))
 		int entry = node.left
 		while ((entry >= 0) && (llvm_failed == 0)):
 			retained_node field
@@ -1439,6 +1462,7 @@ char* llvm_value_inner(int group, int operand):
 		return result
 	if (op == 'Z'): return llvm_slice_range(group, id, &node)
 	if (op == 'A'): return llvm_parallel_assign(group, id, &node)
+	if (op == 'X'): return llvm_generator_create(group, id, &node)
 	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
 	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
 		if ((op == 'C') && (node.binding < 0)):
@@ -1804,6 +1828,7 @@ void llvm_local_init(int binding):
 	if (c == llvm_class_array):
 		llvm_store_width(8, llvm_address_value(llvm_offset(address, c"16")), address)
 		llvm_store_width(8, llvm_number(llvm_type(type).array_length), llvm_offset(address, c"8"))
+	if (c == llvm_class_struct): llvm_init_array_fields(type, address)
 
 
 int llvm_starts_with_word(int id):
@@ -2395,6 +2420,7 @@ void llvm_container_for(int id):
 	int sequence = 0
 	int element = -1
 	char* custom = 0
+	int generator = 0
 	if ((kind == 0) && (type >= 0)):
 		retained_type* t = llvm_type(type)
 		if ((t.pointer_level == 0) && ((t.kind == 6) || (t.kind == 7) || (t.kind == 9))):
@@ -2405,7 +2431,7 @@ void llvm_container_for(int id):
 		else if ((t.pointer_level == 1) && (t.target >= 0) && (llvm_class(t.target) == llvm_class_struct)):
 			sequence = 3
 			custom = llvm_join(llvm_type(t.target).name, c"_iter_")
-			if (strcmp(llvm_type(t.target).name, c"generator") == 0): llvm_error(id, c"generator loop")
+			generator = strcmp(llvm_type(t.target).name, c"generator") == 0
 	if ((kind == 0) && (sequence == 0)):
 		if (type >= 0): llvm_error_at(id, c"for loop over", retained_types[type].name)
 		else: llvm_error(id, c"for loop iterable")
@@ -2487,7 +2513,9 @@ void llvm_container_for(int id):
 	int previous_continue = llvm_continue_label
 	llvm_break_label = done
 	llvm_continue_label = next
+	if (generator): llvm_generator_loop(container, 1)
 	llvm_statement(body)
+	if (generator): llvm_generator_loop(container, 0)
 	llvm_break_label = previous_break
 	llvm_continue_label = previous_continue
 	llvm_branch(next)
@@ -2503,6 +2531,7 @@ void llvm_container_for(int id):
 	llvm_put(c", 0\x0a")
 	llvm_branch(head)
 	llvm_label(done)
+	if (generator): llvm_call1(id, c"gen_free", container)
 	llvm_reachable = entry_reachable
 	variables.free()
 
@@ -2594,6 +2623,248 @@ char* llvm_enum_name(int group, int id, retained_node* node):
 # --- end of slices, parallel assignment and enum_name ------------------------
 
 
+# --- generators --------------------------------------------------------------
+# Stackful coroutines (lib/generator.w, grammar/generator_decl.w). A
+# generator body is an ordinary function with the hidden trailing
+# __w_gen_self parameter; yield and return call __w_gen_yield and
+# __w_gen_return. A call builds argv and calls __w_gen_create with a
+# per-generator entry thunk in place of the body: __w_gen_create seeds
+# the new stack for the native stack-argument convention (a zero return
+# address, then self, then the arguments last-first), so the thunk reads
+# them above its return address and calls the body with register
+# arguments. gen_switch is module assembly with the native stub's
+# register protocol.
+
+# Generator linkage -> argument count, for the thunks.
+map[int, int] llvm_generator_thunks
+# Handles of the enclosing generator cursor loops, innermost last: a
+# return frees them first (for_cleanup_emit_all).
+list[char*] llvm_generator_loops
+
+
+# Record the body's hidden self parameter, if this is a generator.
+void llvm_generator_begin(int id):
+	llvm_generator_self = -1
+	if (cast(int, llvm_generator_loops) != 0): llvm_generator_loops.clear()
+	int child = llvm_first[id]
+	while ((child >= 0) && (retained_node_kind(child) == retained_local)):
+		retained_node parameter
+		retained_node_load(child, &parameter)
+		if (strcmp(parameter.name, c"__w_gen_self") == 0): llvm_generator_self = parameter.binding
+		child = llvm_next[child]
+
+
+char* llvm_generator_self_value():
+	return llvm_load(-1, llvm_name(c"%v", llvm_generator_self))
+
+
+void llvm_generator_finish(int id):
+	llvm_call1(id, c"__w_gen_return", llvm_generator_self_value())
+	# __w_gen_return never comes back; the thunk traps if it did.
+	llvm_put(c"  ret i64 0\x0a")
+	llvm_terminated = 1
+	llvm_reachable = 0
+
+
+void llvm_generator_yield(int id):
+	int group = llvm_first[id]
+	if ((llvm_generator_self < 0) || (group < 0) || (retained_node_kind(group) != retained_expression_group)):
+		llvm_error(id, c"yield outside a generator")
+		return
+	int yield_type = retained_bindings[llvm_function].return_type
+	char* value = llvm_convert(id, llvm_group(group), llvm_group_type(group), yield_type)
+	llvm_call2(id, c"__w_gen_yield", llvm_generator_self_value(), value)
+
+
+void llvm_generator_loop(char* container, int open):
+	if (cast(int, llvm_generator_loops) == 0): llvm_generator_loops = new list[char*]
+	if (open): llvm_generator_loops.push(container)
+	else: llvm_generator_loops.pop()
+
+
+void llvm_generator_free_loops(int id):
+	if (cast(int, llvm_generator_loops) == 0): return
+	int i = llvm_generator_loops.length
+	while (i > 0):
+		i = i - 1
+		llvm_call1(id, c"gen_free", llvm_generator_loops[i])
+
+
+# counter(a, b) -> __w_gen_create(thunk, argv, argc), argv[0] the last
+# argument (generator_call_suffix).
+char* llvm_generator_create(int group, int id, retained_node* node):
+	retained_binding* callee = retained_bindings[node.binding]
+	if ((callee.linkage in llvm_functions) == 0):
+		llvm_error_at(id, c"generator without a W body", callee.name)
+		return c"0"
+	list[char*] values = new list[char*]
+	int arg = node.left
+	while ((arg >= 0) && (llvm_failed == 0)):
+		int want = -1
+		if (values.length < callee.parameters.length): want = callee.parameters[values.length]
+		values.push(llvm_container_operand(group, arg, want))
+		retained_node argument
+		retained_node_load(llvm_node_id(group, arg), &argument)
+		arg = argument.next_arg
+	int count = values.length
+	if (count != callee.parameters.length): llvm_error_at(id, c"generator call argument count", callee.name)
+	if (llvm_failed):
+		values.free()
+		return c"0"
+	char* argv = llvm_temp()
+	string_append(llvm_entry, c"  ")
+	string_append(llvm_entry, argv)
+	string_append(llvm_entry, c" = alloca [")
+	string_append_int(llvm_entry, count + 1)
+	string_append(llvm_entry, c" x i64], align 8\x0a")
+	for i in range(count): llvm_store_width(8, values[i], llvm_offset(argv, llvm_number((count - 1 - i) * 8)))
+	values.free()
+	llvm_function_symbol(callee.linkage)
+	llvm_generator_thunks[callee.linkage] = count
+	char* thunk = llvm_address_value(llvm_name(c"@wg", callee.linkage))
+	return llvm_call3(id, c"__w_gen_create", thunk, llvm_address_value(argv), llvm_number(count))
+
+
+char* llvm_generator_switch(int id, list[char*] values):
+	llvm_uses_gen_switch = 1
+	char* result = llvm_temp()
+	llvm_put(c"  ")
+	llvm_put(result)
+	llvm_put(c" = call i64 @__wllvm_gen_switch(i64 ")
+	llvm_put(values[0])
+	llvm_put(c", i64 ")
+	llvm_put(values[1])
+	llvm_put(c")\x0a")
+	return result
+
+
+void llvm_generator_emit_runtime():
+	if (llvm_uses_gen_switch):
+		# gen_switch(save, restore): push the callee-saved registers, store
+		# rsp through save, load restore, pop them there and return.
+		string_append(llvm_code, c"declare i64 @__wllvm_gen_switch(i64, i64)\x0a")
+		string_append(llvm_code, c"module asm \".text\"\x0amodule asm \".globl __wllvm_gen_switch\"\x0amodule asm \"__wllvm_gen_switch:\"\x0a")
+		string_append(llvm_code, c"module asm \"  pushq %rbx\"\x0amodule asm \"  pushq %rbp\"\x0amodule asm \"  pushq %r12\"\x0a")
+		string_append(llvm_code, c"module asm \"  pushq %r13\"\x0amodule asm \"  pushq %r14\"\x0amodule asm \"  pushq %r15\"\x0a")
+		string_append(llvm_code, c"module asm \"  movq %rsp, (%rdi)\"\x0amodule asm \"  movq %rsi, %rsp\"\x0a")
+		string_append(llvm_code, c"module asm \"  popq %r15\"\x0amodule asm \"  popq %r14\"\x0amodule asm \"  popq %r13\"\x0a")
+		string_append(llvm_code, c"module asm \"  popq %r12\"\x0amodule asm \"  popq %rbp\"\x0amodule asm \"  popq %rbx\"\x0a")
+		string_append(llvm_code, c"module asm \"  retq\"\x0a\x0a")
+	int any = 0
+	for linkage, count in llvm_generator_thunks:
+		if ((linkage in llvm_queued) == 0): continue
+		any = 1
+		# Entered by gen_switch's ret with rsp at the zero return address;
+		# the stack is not call-aligned, hence stackrealign.
+		string_append(llvm_code, c"define internal void ")
+		string_append(llvm_code, llvm_name(c"@wg", linkage))
+		string_append(llvm_code, c"() #1 {\x0aentry:\x0a  %frame = call ptr @llvm.addressofreturnaddress.p0()\x0a")
+		for i in range(count + 1):
+			string_append(llvm_code, c"  %p")
+			string_append_int(llvm_code, i)
+			string_append(llvm_code, c" = getelementptr i8, ptr %frame, i64 ")
+			# self above the return address, then argument i at 16 + 8 * (count - 1 - i)
+			if (i == count): string_append_int(llvm_code, 8)
+			else: string_append_int(llvm_code, 16 + 8 * (count - 1 - i))
+			string_append(llvm_code, c"\x0a  %a")
+			string_append_int(llvm_code, i)
+			string_append(llvm_code, c" = load i64, ptr %p")
+			string_append_int(llvm_code, i)
+			string_append(llvm_code, c", align 8\x0a")
+		string_append(llvm_code, c"  %done = call i64 ")
+		string_append(llvm_code, llvm_name(c"@w", linkage))
+		string_append(llvm_code, c"(")
+		for i in range(count + 1):
+			if (i > 0): string_append(llvm_code, c", ")
+			string_append(llvm_code, c"i64 %a")
+			string_append_int(llvm_code, i)
+		string_append(llvm_code, c")\x0a  call void @llvm.trap()\x0a  unreachable\x0a}\x0a\x0a")
+	if (any):
+		llvm_uses_trap = 1
+		string_append(llvm_code, c"declare ptr @llvm.addressofreturnaddress.p0()\x0a")
+		string_append(llvm_code, c"attributes #1 = { noinline \"stackrealign\" }\x0a\x0a")
+# --- end of generators -------------------------------------------------------
+
+
+# --- arrays inside records ---------------------------------------------------
+# A T[N] field is stored inline like a fixed-array local: a {data, length}
+# header followed by the elements, with data naming the elements. Every
+# place a record comes into being points its headers at its own storage
+# (grammar/array_field_init.w): declarations, new T, record copies and
+# globals. The headers of arrays of records stay zero, as natively.
+
+# Header offsets and lengths of type's array fields, nested records included.
+void llvm_array_headers(int type, int offset, list[int] offsets, list[int] lengths):
+	retained_type* t = llvm_type(type)
+	if ((t.pointer_level == 0) && (t.kind == 6)):
+		offsets.push(offset)
+		lengths.push(t.array_length)
+		return
+	if ((t.pointer_level != 0) || (t.kind == 8) || (t.kind == 10) || (t.kind == 11) || (t.kind == 12)): return
+	for field in t.fields: llvm_array_headers(field.type, offset + field.offset, offsets, lengths)
+
+
+void llvm_init_array_fields(int type, char* address):
+	list[int] offsets = new list[int]
+	list[int] lengths = new list[int]
+	llvm_array_headers(type, 0, offsets, lengths)
+	for i in range(offsets.length):
+		char* header = llvm_offset(address, llvm_number(offsets[i]))
+		llvm_store_width(8, llvm_address_value(llvm_offset(header, c"16")), header)
+		llvm_store_width(8, llvm_number(lengths[i]), llvm_offset(header, c"8"))
+	offsets.free()
+	lengths.free()
+
+
+# A zeroed global record with array fields: a packed constant whose
+# headers point into the global itself. Returns 0 when there are none.
+int llvm_global_record_headers(int linkage, int type, string_builder* text):
+	list[int] offsets = new list[int]
+	list[int] lengths = new list[int]
+	llvm_array_headers(type, 0, offsets, lengths)
+	int count = offsets.length
+	if (count > 0):
+		string_builder* shape = string_new()
+		string_builder* fill = string_new()
+		int at = 0
+		for i in range(count + 1):
+			int end = llvm_storage(type)
+			if (i < count): end = offsets[i]
+			if (end > at):
+				string_append(shape, c"[")
+				string_append_int(shape, end - at)
+				string_append(shape, c" x i8], ")
+				string_append(fill, c"[")
+				string_append_int(fill, end - at)
+				string_append(fill, c" x i8] zeroinitializer, ")
+			if (i < count):
+				string_append(shape, c"ptr, i64, ")
+				string_append(fill, c"ptr getelementptr (i8, ptr ")
+				string_append(fill, llvm_name(c"@g", linkage))
+				string_append(fill, c", i64 ")
+				string_append_int(fill, offsets[i] + 16)
+				string_append(fill, c"), i64 ")
+				string_append_int(fill, lengths[i])
+				string_append(fill, c", ")
+				at = offsets[i] + 16
+		# drop the trailing ", "
+		shape.length = shape.length - 2
+		shape.data[shape.length] = 0
+		fill.length = fill.length - 2
+		fill.data[fill.length] = 0
+		string_append(text, c"<{ ")
+		string_append(text, shape.data)
+		string_append(text, c" }> <{ ")
+		string_append(text, fill.data)
+		string_append(text, c" }>")
+		string_free(shape)
+		string_free(fill)
+	offsets.free()
+	lengths.free()
+	return count > 0
+# --- end of arrays inside records --------------------------------------------
+
+
 void llvm_statement(int id):
 	if (llvm_failed): return
 	retained_node node
@@ -2618,7 +2889,14 @@ void llvm_statement(int id):
 			llvm_branch(target)
 		llvm_reachable = 0
 		return
+	if (strcmp(node.name, c"yield") == 0):
+		llvm_generator_yield(id)
+		return
 	if (strcmp(node.name, c"return") == 0):
+		llvm_generator_free_loops(id)
+		if (llvm_generator_self >= 0):
+			llvm_generator_finish(id)
+			return
 		int group = llvm_first[id]
 		int return_type = retained_bindings[llvm_function].return_type
 		char* value = c"0"
@@ -2822,9 +3100,13 @@ void llvm_emit_function(int id):
 	string_append(llvm_code, c"define internal i64 ")
 	string_append(llvm_code, llvm_name(c"@w", function.linkage))
 	string_append(llvm_code, c"(")
-	for i in range(function.parameters.length):
-		if (i > 0): string_append(llvm_code, c", ")
+	int stub_parameter = llvm_first[id]
+	int stub_count = 0
+	while ((stub_parameter >= 0) && (retained_node_kind(stub_parameter) == retained_local)):
+		if (stub_count > 0): string_append(llvm_code, c", ")
 		string_append(llvm_code, c"i64")
+		stub_count = stub_count + 1
+		stub_parameter = llvm_next[stub_parameter]
 	string_append(llvm_code, c") {\x0aentry:\x0a  call void @llvm.trap()\x0a  unreachable\x0a}\x0a\x0a")
 	llvm_stubs = llvm_stubs + 1
 
@@ -2887,13 +3169,15 @@ void llvm_emit_body(int id):
 		retained_node_load(parameter_id, &parameter)
 		if (parameter.binding in llvm_locals): llvm_store_width(8, llvm_name(c"%a", parameter.binding), llvm_name(c"%v", parameter.binding))
 		parameter_id = llvm_next[parameter_id]
+	llvm_generator_begin(id)
 	while (child >= 0):
 		llvm_statement(child)
 		child = llvm_next[child]
-	# Falling off the end returns 0 (a void function's only exit).
-	if (llvm_terminated == 0):
-		llvm_owner_cleanup(id, 0, 1)
-		llvm_put(c"  ret i64 0\x0a")
+	# Falling off the end returns 0 (a void function's only exit) or
+	# finishes a generator.
+	if (llvm_terminated == 0): llvm_owner_cleanup(id, 0, 1)
+	if ((llvm_terminated == 0) && (llvm_generator_self >= 0)): llvm_generator_finish(id)
+	if (llvm_terminated == 0): llvm_put(c"  ret i64 0\x0a")
 	string_append(llvm_code, llvm_entry.data)
 	string_append(llvm_code, c"  br label %b0\x0a")
 	string_append(llvm_code, llvm_out.data)
@@ -2931,6 +3215,7 @@ void llvm_emit_global(int linkage):
 			string_append(text, c"ptr ")
 			string_append(text, llvm_function_symbol(retained_bindings[init.binding].linkage))
 		else: llvm_error_at(id, c"initializer of global", node.name)
+	else if ((c == llvm_class_struct) && (init == 0) && llvm_global_record_headers(linkage, type, text)): value = text.data
 	else if ((c == llvm_class_struct) && (init == 0)):
 		string_append(text, c"[")
 		string_append_int(text, llvm_storage(type))
@@ -2997,6 +3282,7 @@ void llvm_free_tables():
 	llvm_first.free()
 	llvm_next.free()
 	llvm_tests.free()
+	llvm_generator_thunks.free()
 
 
 # Called only after a successful x64 production compile with semantic
@@ -3012,6 +3298,8 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_tests = new list[int]
 	llvm_tests_wanted = 0
 	llvm_stubs = 0
+	llvm_uses_gen_switch = 0
+	llvm_generator_thunks = new map[int, int]
 	llvm_data = string_new()
 	llvm_code = string_new()
 	llvm_message = string_new()
@@ -3117,6 +3405,7 @@ int llvm_emit(char* filename, char* output_path):
 	if (llvm_failed == 0):
 		llvm_emit_test_main()
 		llvm_emit_entry(entry_binding.linkage, entry_binding.parameters.length)
+		llvm_generator_emit_runtime()
 		if (llvm_uses_memory): llvm_emit_memory_runtime()
 		string_builder* module = string_new()
 		string_append(module, c"; W LLVM offload: production retained AST, signed 64-bit words, freestanding x86-64 Linux\x0a")
