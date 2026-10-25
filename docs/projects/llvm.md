@@ -496,40 +496,53 @@ so nothing LLVM holds in a register crosses the switch. A cursor loop over a gen
 on its exit edges, and a `return` inside such loops frees each enclosing
 generator first, as `for_cleanup_emit_all` does.
 
-## Evidence (2026-10-24)
+## Evidence (2026-10-25)
 
-Differential corpus: every `tests/*.w` program with a `main` was built by
-`bin/wllvm` and by `bin/wv2 x64`, and the two executables were run with no
-input. Of 708 programs, wllvm accepted 196: 170 produced identical stdout
-and exit status, and the other 26 reached a trap stub (assertion failures
-and stack-trace tests, the crash-handler and `memory_debug` fixtures,
-`dlcall`, the VM fixtures) or were 32-bit-only tests. The run also found
-five `own` fixtures that built but leaked, because the retained tree leaves
-the automatic drops implicit; checked pointers are now rejected. The other
-512 were rejected with a diagnostic, most often for containers, floats,
-`switch`/`defer`, generics and records by value.
+Differential corpus: every `tests/*.w` program with a `main` or built on
+`lib/testing.w` (1035 programs) was built by `bin/wllvm` (clang -O2) and by
+`bin/wv2 x64`, and both executables were run with no input; stdout and
+exit status were compared with `0x` addresses masked. 234 programs are
+rejected by the production front end itself (expected-failure fixtures),
+and wllvm rejects none of the rest. Of the remaining 801, 795 behave
+identically. The six that differ:
 
-Benchmarks: `tests/bench` programs that fit the subset, best of five wall
-times on the development container (x86-64, Clang 18.1.3). W x64 is
-`bin/wv2 x64` with its default register promotion; the C column is the
-`tests/bench/c/` twin at `clang -O2`. All builds print the same checksum.
+- `cli_types_probe` and `array_cast_warning_fixture`: their native
+  binaries return a different exit status on every run (they exist to be
+  compiled for warnings or read by `w symbols`).
+- `elf_relro_test`: inspects the native ELF layout at fixed addresses.
+- `extern_data_test`: `extern int optind` is a word in W but 4 bytes in
+  libc; natively the GOT copy is zero-extended, under wllvm the read goes
+  past libc's object.
+- `repl_retained_emit_test` and `regalloc_diff_test`: harness artifacts
+  (a SIGPIPE race in the REPL child, and a 25-minute sweep whose orphaned
+  native shards shared output paths with the wllvm run). Both pass when
+  run alone.
 
-| program | W x64 | wllvm -O0 | wllvm -O2 | C clang -O2 |
-|---|---|---|---|---|
-| sum | 0.201s | 0.479s | folded | folded |
-| sieve | 0.284s | 0.463s | 0.266s | 0.256s |
-| sha256_1m | 0.151s | 0.296s | 0.109s | 0.108s |
-| regex_backtrack | 0.273s | 0.574s | 0.145s | 0.152s |
-| matmul_256 | 0.199s | 0.404s | 0.166s | 0.173s |
-| siphash_keys | 0.313s | 0.498s | 0.242s | 0.282s |
-| strcmp_sort | 0.221s | 0.367s | 0.155s | 0.159s |
+Of the programs that need hardware or libraries this machine lacks
+(`libcuda.so.1`, macOS frameworks, wasm hosts, the 32-bit loader), wllvm
+builds the same binaries, which fail at load exactly as the native ones.
 
-At `-O2` the LLVM build of the W source runs as fast as the hand-written C
-twin, 1.07x to 1.9x faster than W's own x64 code (`sum` folds to a
-constant under both LLVM builds). The container benchmarks
-(`siphash_keys` maps and sets, `strcmp_sort` lists) run their runtime
-helpers through LLVM too. `inflate_corpus` uses generics and is not yet
-accepted.
+Benchmarks: all nine `tests/bench` programs, best of five wall times on
+the development container (x86-64, Clang 18.1.3). W x64 is `bin/wv2 x64`
+with its default register promotion; the C column is the `tests/bench/c/`
+twin at `clang -O2`. Every build prints the same checksum.
+
+| program | W x64 | wllvm -O0 | wllvm -O2 | C clang -O2 | W x64 / wllvm -O2 |
+|---|---|---|---|---|---|
+| sum | 0.245s | 1.399s | folded | folded | |
+| sieve | 0.547s | 0.910s | 0.511s | 0.502s | 1.07x |
+| sha256_1m | 0.279s | 0.449s | 0.134s | 0.122s | 2.09x |
+| regex_backtrack | 0.343s | 0.882s | 0.239s | 0.198s | 1.43x |
+| matmul_256 | 0.218s | 0.608s | 0.165s | 0.167s | 1.32x |
+| siphash_keys | 0.811s | 1.429s | 0.627s | 0.604s | 1.29x |
+| strcmp_sort | 0.433s | 0.721s | 0.296s | 0.239s | 1.46x |
+| inflate_corpus | 0.279s | 0.486s | 0.132s | 0.071s | 2.11x |
+| regex_pathological | 0.563s | 0.888s | 0.255s | (no twin) | 2.21x |
+
+At `-O2` the LLVM build of the W source runs 1.07x to 2.2x faster than
+W's own x64 code and within about 20% of the hand-written C twins, except
+`inflate_corpus`, which is still 1.9x behind its C twin. `-O0` is
+slower than W x64 because every local stays in memory.
 
 ## Tests
 
