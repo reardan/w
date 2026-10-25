@@ -210,8 +210,8 @@ CID-keyed CJK fonts), register it with `ui_font_add_fallback` for codepoint
 text, create its strike, and shape that run (or let `graphics.ui.itemize` pick
 faces per grapheme). A single shaped run does not fall back inside itself:
 missing coverage produces the selected face's `.notdef` glyph.
-Color glyphs and hinting remain outside the rasterizer; CFF hint operators are
-read and skipped, as the rasterizer draws unhinted outlines at every size.
+Color glyphs remain outside the rasterizer. Hinting is an opt-in strike
+option (see Hinting below); CFF hint operators are read and skipped either way.
 
 Calls accept at most 65536 source bytes and an output budget between zero and
 1048576 glyphs. Failure returns no partial glyph array. HarfBuzz owns its
@@ -220,6 +220,81 @@ no native-call timeout or allocation budget. Font bytes, strikes and atlas
 caches retain their existing process lifetime; runs must be freed
 individually. Use the UI thread, as the shared font/atlas and lazy adapter
 initialization are not synchronized.
+
+## Hinting
+
+`lib.ttf_hint` fits glyph outlines to the pixel grid for small UI text
+(issue #824). It is a vertical-only light autohinter in the style of
+FreeType's light mode, and it handles TrueType (`glyf`) and CFF (`OTTO`)
+outlines the same way. It does not run the TrueType bytecode (`fpgm`,
+`prep`, `cvt `, glyph instructions) or read CFF stem hints and hint masks;
+it measures the outline itself. We chose this over a bytecode interpreter
+for three reasons. It covers both outline formats and unhinted fonts with a
+few hundred lines instead of a full TrueType VM. Vertical-only fitting
+fixes the problem the issue describes (soft, unevenly placed horizontal
+stems, baselines and x-heights at 9-14 px). It also leaves every
+horizontal metric alone, so there is nothing to reconcile with shaped
+advances. A bytecode interpreter could still be added later as another
+mode.
+
+Opt in per strike. `ui_font_strike_hinted(face, ppem, UI_HINT_LIGHT)` finds
+or creates a hinted strike. It is separate from the unhinted
+`ui_font_strike(face, ppem)` (`UI_HINT_NONE`), so existing golden rasters
+and `ui_draw_text` output change only where a program asks for hinting.
+`ui_font_strike_hinting` reads a strike's mode, and
+`ui_font_strike_with_hinting` switches it. The companions a strike finds
+for itself keep its mode: the resized and true-italic strikes, the device
+strike `graphics.ui.render` draws at a pixel scale, and the per-face item
+strikes of a paragraph (`ui_font_strike_sibling`). At the `lib.ttf` level,
+`ttf_rasterize_hinted(font, gid, ppem, skew, TTF_HINT_LIGHT, &bitmap)` is
+the entry point. `TTF_HINT_NONE` is exactly `ttf_rasterize_skewed`.
+
+Hinting never moves anything horizontally. Advances, kerning, bitmap
+widths and left bearings are identical in both modes, and shaped runs keep
+their unhinted 1/64-pixel advances and offsets. Carets, line widths and
+paragraph layout are therefore the same whether a strike is hinted or not.
+
+The algorithm follows FreeType's Latin autohinter:
+
+- **Blue zones**, measured once per face from FreeType's Latin reference
+  letters. These are the capital top and bottom (`THEZOCQS`, `HEZLOCUS`),
+  the ascender (`fijkdbh`), the x-height and small-letter bottom
+  (`xzroesc`) and the descender (`pqgjy`). Each letter's extreme point is
+  flat or round depending on its neighbours. A zone's reference is the
+  flat mean and its overshoot the round mean. A face with none of a
+  zone's letters has no such zone, and a face with no Latin letters
+  only has its stems fitted.
+- **Scale**: the vertical scale grows or shrinks slightly so that the
+  x-height overshoot lands on a whole pixel. A fraction of 0.375 px or
+  more rounds up, and a smaller one rounds down. The adjustment is
+  skipped when it would move any point of the face by two pixels or
+  more. Zones snap to whole pixels, and a zone is active only while its
+  overshoot is under 3/4 pixel. Below 1/2 pixel the overshoot is
+  suppressed, and from 1/2 to 3/4 it becomes half a pixel. These
+  comparisons use FreeType's 26.6 rounding.
+- **Edges and stems**: runs of near-horizontal outline segments become
+  edges. An edge is round when it passes through an off-curve point.
+  Edges merge when they are within 1/4 pixel. Bottom and top edges pair
+  into stems when the choice is mutual and the stem is under upem/4.
+  Edges in an active zone snap to its reference or overshoot and carry
+  their stem partner with them. Every other stem moves whole. A thin stem
+  is centred on a pixel, and a thicker one goes to whichever rounded edge
+  is closer to its original centre. As in FreeType's light mode, stem
+  widths keep their scaled size; only positions change.
+- **Map**: the fitted edges define a monotonic piecewise-linear map of y.
+  The map is applied to the flattened outline. Points between fitted
+  edges are interpolated, points beyond them move with the nearest one,
+  and a synthetic oblique is sheared after the move.
+
+Against FreeType 2.13's light autohinter (`FT_LOAD_TARGET_LIGHT |
+FT_LOAD_FORCE_AUTOHINT`) at 9-16 px over ASCII letters and digits, the
+ink rows (rows carrying at least half a pixel of coverage) are the same
+for 92-100% of glyphs. The fonts compared are Liberation, DejaVu, Noto,
+Roboto and URW, in both TrueType and CFF. Unhinted outlines match for
+62-76%. The row-profile distance (summed per-row coverage differences,
+relative to FreeType's total ink) drops from 0.14-0.18 to 0.04-0.06.
+Most remaining differences are sloped serif tops in the URW serif faces
+and the dots of `i` and `j`.
 
 ## Tests
 
@@ -232,6 +307,18 @@ initialization are not synchronized.
 - `./wbuild ttf_cff_test` compares CFF paths with fontTools output
   (`tests/data/cff_paths.txt`, from `tools/cff_paths_ref.py`) for a name-keyed
   and a CID-keyed font, and rasterizes and shapes them.
+- `./wbuild ttf_hint_test` (and `ttf_hint_64_test`) checks the hinter
+  against golden bitmaps for a TrueType and a CFF Noto subset at 9-14 px
+  (`tests/data/ttf_hint_golden.txt`, regenerated by `bin/ttf_hint_dump
+  --golden` from `tools/ttf_hint_dump.w`, after reviewing the change).
+  It also checks agreement with FreeType's light autohinter over the
+  same set (`tests/data/ttf_hint_freetype.txt`, from
+  `tools/ttf_hint_ref.py`, which needs freetype-py offline only), the
+  measured blue zones and x-height scaling, and that `TTF_HINT_NONE` is
+  the unhinted rasterizer byte for byte with unchanged advances.
+  `./wbuild graphics_ui_font_hint_test` covers hinted strikes, the
+  companions that inherit the mode, unchanged widths and shaped advances,
+  and paragraph items.
 - `./wbuild graphics_ui_shape_test` runs strict UTF-8, explicit-length NUL,
   empty runs, invalid inputs, output limits, mark positioning, Hebrew RTL
   clusters, an in-memory GSUB `fi` ligature, Arabic and Devanagari runs, engine
