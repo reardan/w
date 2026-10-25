@@ -1500,3 +1500,13 @@ when stderr is not a terminal.
 - **`bin/wtest changed` from a unit branch** needs the integration
   branch as its base (see the `test_changed` entry above); every w-orm
   unit agent piped its own staged file list instead.
+
+## `binary=` targets miss import-closure edits (2026-10-25, issue #819)
+
+`./wbuild wmermaid` (a `# wbuild: binary=wmermaid` target in
+`tools/wmermaid.w`) stays cached after an edit to any module it imports,
+for example `libs/extras/mermaid/scene.w`, so the CLI silently runs stale
+code; `<name>_test` targets in the same tree do rebuild on the same edit.
+Only `--no-cache` (or compiling with `bin/wv2` by hand) refreshes it.
+Direction: give source-owned `binary=`/`target=` compile steps the same
+`bin/wv2 deps` closure inputs that conventional test targets get.
