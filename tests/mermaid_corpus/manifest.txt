@@ -9,7 +9,7 @@ agentflow/agentflow_004.mmd	supported	ok
 agentflow/agentflow_005.mmd	supported	ok
 agentflow/agentflow_006.mmd	supported	ok
 agentflow/agentflow_007.mmd	supported	ok
-agentflow/agentflow_008.mmd	unsupported	error 11:33: unsupported agentflow presentation metadata
+agentflow/agentflow_008.mmd	supported	ok
 agentflow/agentflow_009.mmd	supported	ok
 agentflow/agentflow_010.mmd	supported	ok
 agentflow/agentflow_011.mmd	supported	ok
@@ -125,8 +125,8 @@ er/entityRelationshipDiagram_025.mmd	supported	ok
 eventmodeling/eventmodeling_001.mmd	supported	ok
 eventmodeling/eventmodeling_002.mmd	supported	ok
 eventmodeling/eventmodeling_003.mmd	supported	ok
-eventmodeling/eventmodeling_004.mmd	unsupported	error 4:19: unsupported event data or timeframe syntax
-eventmodeling/eventmodeling_005.mmd	unsupported	error 4:30: unsupported event data or timeframe syntax
+eventmodeling/eventmodeling_004.mmd	supported	ok
+eventmodeling/eventmodeling_005.mmd	supported	ok
 eventmodeling/eventmodeling_006.mmd	supported	ok
 eventmodeling/eventmodeling_007.mmd	supported	ok
 eventmodeling/eventmodeling_008.mmd	supported	ok
@@ -437,7 +437,7 @@ swimlane/swimlanes_008.mmd	supported	ok
 swimlane/swimlanes_009.mmd	supported	ok
 swimlane/swimlanes_010.mmd	supported	ok
 swimlane/swimlanes_011.mmd	supported	ok
-swimlane/swimlanes_012.mmd	unsupported	error 13:12: expected swimlane relationship
+swimlane/swimlanes_012.mmd	supported	ok
 swimlane/swimlanes_013.mmd	supported	ok
 timeline/timeline_001.mmd	supported	ok
 timeline/timeline_002.mmd	supported	ok

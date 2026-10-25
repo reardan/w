@@ -49,12 +49,26 @@ x64, including the guard allocator's leak checks.
   marker is diagnosed. `label ## description` attaches a description that
   renders muted after the label. Icons and `:::` classes remain unsupported
   and produce diagnostics.
-- **Ishikawa:** problem head, first-level cause branches alternating around a
-  spine, indented subcauses with ancestry connectors. Physical indentation
-  carries hierarchy; input and nesting are bounded.
-- **Cynefin:** all five domain regions, quoted items, optional title and labelled
-  domain transitions. Confusion occupies the centre between quadrant rows.
-  Native regions use rectangular boundaries instead of upstream organic curves.
+- **Ishikawa:** the upstream `ishikawaRenderer` geometry. The problem sits in
+  a fish head at the right end of a 2px spine; first-level causes alternate
+  above and below in pairs, each on a bone at 82° whose length comes from a
+  shared 500px pool in proportion to descendants (at least 75px, and at least
+  32px per descendant). Sub-causes alternate between horizontal bones (even
+  depths, 30px or 60px + 5px per child) and diagonal bones parallel to the
+  cause (odd depths), every bone ends in an arrowhead, cause labels are boxed
+  and sub-cause labels wrap at 15 characters (the head at 13). Each pair
+  starts left of the previous pair's labels. Physical indentation carries
+  hierarchy; input and nesting are bounded.
+- **Cynefin:** the upstream `cynefinRenderer` geometry on its 800×600 field with
+  40px padding: four unstroked quadrants, the wavy vertical fold and horizontal
+  boundary (seven cubic segments with seeded jitter; the native renderer uses
+  a fixed seed so output is reproducible), the thicker Clear/Chaotic cliff and
+  the central Confusion ellipse (15% of the field). Each domain shows its bold
+  name, decision model and practice, then its quoted items as pill badges;
+  Confusion shows at most three badges plus "+N more". Transitions are
+  quadratic curves between domain centres bowed by 15% of their length, with
+  the label at the control point; self-loops are skipped as upstream. Dense
+  transition routing and the `seed`/theme configuration remain open.
 - **Wardley:** anchors/components at validated visibility/evolution coordinates,
   a title, forward-resolved dependencies and four labelled evolution stages.
   Coordinates use bounded thousandths. `evolution A -> B -> C -> D` renames
@@ -209,14 +223,30 @@ x64, including the guard allocator's leak checks.
     `Lay_*` statements (rejected; upstream does not plan them), link
     rendering and `c4.wrap: false` (validated only).
 
-- **Swimlanes:** named responsibility lanes, five flow directions, rectangular,
-  rounded/stadium, circular and decision nodes; labelled solid/dashed edges and
-  chains, including handoffs and cycles. The layout aligns graph ranks across
+- **Swimlanes:** named responsibility lanes (`subgraph id[Label]`,
+  `id [Label]`, quoted or bare titles) and nested sub-lanes up to 32 levels,
+  drawn as rounded clusters inside their lane; five flow directions. Nodes use
+  every flowchart bracket form (rectangle, rounded, stadium, subroutine,
+  cylinder, circle, double circle, asymmetric, rhombus, hexagon, the four
+  slanted forms) and `id@{ shape: …, label: … }` with the expanded shape
+  catalogue (`shape_catalog.w`/`shapes.w`: documents, cylinders, braces,
+  forks, hourglass, bolt, delay, card, flag, cloud, bang, folder, data store,
+  console, browser, person, bucket, …). Links cover `-->`, `---`, `-.->`,
+  `-.-`, `==>`, `===` and longer forms, `x`/`o` heads, `<` bidirectional heads,
+  pipe and inline (`-- text -->`, `-. text .->`) labels, chains and `&`
+  groups. `classDef`, `class`, `:::class`, `style` and `linkStyle` apply. A
+  step stays in the lane that first declares it; naming it inside a nested
+  sub-lane of that lane moves it there. The layout aligns graph ranks across
   full-length lanes rather than treating lanes as ordinary clustered graphs.
-  Nested lanes, styles and additional shapes remain unsupported.
-- **Event modeling:** compact/relaxed timeframe and resetframe declarations,
-  all five entity types, namespace-derived lanes, inferred predecessor links,
-  explicit `->>` inputs, unique numeric frame identifiers and simple inline
-  data. A dedicated source-order timeline spans typed responsibility lanes.
-  External data blocks, typed/nested data payloads, and other data annotations
-  remain unsupported.
+- **Event modeling:** compact/relaxed timeframe and resetframe declarations with
+  1–3 digit identifiers, all five entity types, namespace-derived lanes
+  (ordered UI/automation, command/read model, events as upstream), inferred
+  predecessor links and explicit `->>` inputs. Payloads come from inline
+  `{ … }` (nested braces allowed; it runs to the last closer on the line) or
+  quoted text, or from `[[Name]]` references to `data Name `type` { … }`
+  blocks declared anywhere in the file. Backtick data types (`json`,
+  `jsobj`, `figma`, `salt`, `uri`, `md`, `html`, `text`) appear in the frame
+  heading; payloads render as text. `note FID { … }` and
+  `gwt FID given … when … then …` annotate a frame below a dashed rule,
+  `entity Name` declares an entity, and `/* … */` and `//` comments are
+  accepted. Frames hold at most 256 data lines and a diagram 4096.

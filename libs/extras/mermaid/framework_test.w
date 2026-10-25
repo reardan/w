@@ -43,11 +43,19 @@ void test_framework_cynefin_domains_and_transitions():
 	mm_bounds* a = s.nodes[0]
 	mm_bounds* b = s.nodes[1]
 	mm_bounds* c = s.nodes[4]
-	asserts(c"domains occupy separate regions", b.x > a.x + a.w)
-	asserts(c"confusion centered between rows", c.y > a.y + a.h)
+	# Upstream geometry: 800x600 field in 40px padding, adjacent quadrants,
+	# Confusion centred on the cross.
+	assert_equal(880, s.width)
+	assert_equal(680, s.height)
+	assert_equal(400, a.w)
+	assert_equal(300, a.h)
+	assert_equal(a.x + a.w, b.x)
+	assert_equal(a.x + a.w, c.x + c.w / 2)
+	assert_equal(a.y + a.h, c.y + c.h / 2)
 	char* svg = mm_svg(s)
 	asserts(c"items exported", index_of(svg, c"Experiment") >= 0)
-	asserts(c"transition legend exported", index_of(svg, c"complex -&gt; complicated: Learned") >= 0)
+	asserts(c"domain model exported", index_of(svg, c"Probe → Sense → Respond") >= 0)
+	asserts(c"transition label exported", index_of(svg, c">Learned<") >= 0)
 	int last_box = -1
 	int legend = -1
 	for i in range(s.items.length):
@@ -56,6 +64,47 @@ void test_framework_cynefin_domains_and_transitions():
 		if (index_of(p.text, c"Learned") >= 0): legend = i
 	asserts(c"transition text not hidden by region fills", legend > last_box)
 	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_framework_cynefin_confusion_overflow_and_self_loops():
+	mm_document* d = framework_parse(c"cynefin-beta\nconfusion\n\"One\"\n\"Two\"\n\"Three\"\n\"Four\"\n\"Five\"\ncomplex --> complex\n")
+	mm_scene* s = mm_render(d)
+	char* svg = mm_svg(s)
+	asserts(c"confusion caps badges", index_of(svg, c">Three<") >= 0 && index_of(svg, c">Four<") < 0)
+	asserts(c"confusion overflow badge", index_of(svg, c">+2 more<") >= 0)
+	free(svg)
+	for mm_primitive* p in s.items: asserts(c"self-loop transition skipped", p.role != 3)
+	mm_scene_free(s)
+	mm_document_free(d)
+
+void test_framework_ishikawa_upstream_geometry():
+	mm_document* d = framework_parse(c"ishikawa-beta\nBlurry Photo\nProcess\n  Out of focus\n  Shutter speed too slow\nUser\n  Shaky hands\nEquipment\n  Lens\n    Dirty lens\n    Damaged lens\nEnvironment\n  Too dark\n")
+	mm_scene* s = mm_render(d)
+	mm_bounds* head = s.nodes[0]
+	int spine_y = head.y + head.h / 2
+	int spine = 0
+	int min_x = 100000
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_LINE && p.y == spine_y && p.y2 == spine_y && p.style.width == 2): spine = spine + 1
+		if (p.x < min_x): min_x = p.x
+	assert_equal(1, spine)
+	asserts(c"content shifted to the margin", min_x >= 20 && min_x <= 22)
+	mm_bounds* process = s.nodes[1]
+	mm_bounds* user = s.nodes[4]
+	asserts(c"first cause above, second below", process.y + process.h < spine_y && user.y > spine_y)
+	mm_bounds* equipment = s.nodes[6]
+	asserts(c"later pairs sit left of earlier pairs", equipment.x < process.x)
+	asserts(c"head at the right end", head.x > process.x + process.w)
+	# Labels wrap at 15 characters.
+	char* svg = mm_svg(s)
+	asserts(c"cause wrapped", index_of(svg, c">Shutter speed<") >= 0 && index_of(svg, c">too slow<") >= 0)
+	free(svg)
+	int polygons = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_POLYGON): polygons = polygons + 1
+	# One head plus an arrowhead per bone (4 causes, 7 sub-causes).
+	assert_equal(1 + 11, polygons)
 	mm_scene_free(s)
 	mm_document_free(d)
 

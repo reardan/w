@@ -39,7 +39,7 @@ void mm_uc_set(mm_node* n, char* key, char* value):
 			free(property.value)
 			property.value = strclone(value)
 			return
-	n.metadata.push(new mm_property(strclone(key), strclone(value)))
+	n.metadata.push(new mm_property(strclone(key), strclone(value), MM_VALUE_STRING))
 
 int mm_uc_true(mm_node* n, char* key):
 	char* value = mm_uc_get(n, key)
