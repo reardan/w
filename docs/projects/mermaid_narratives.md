@@ -62,8 +62,16 @@ them. `link`/`links` menus render as a box under each lifeline whose safe
 entries are SVG links. `properties A: {json}` and `details A: text` are kept as
 participant members; property icons are never fetched.
 
+Half-arrows (upstream lexer tokens, solid and `--` dotted): `-|\` / `-|/`
+top / bottom solid half arrowheads and `-\\` / `-//` top / bottom stick
+halves at the receiver, and `/|-`, `\|-`, `//-`, `\\-` the same four
+reversed at the sender. They draw with upstream's marker geometry (the
+`solidTop`/`solidBottom`/`stickTop`/`stickBottom` markers oriented
+`auto-start-reverse`, so the half flips with the message direction).
+Example: [sequence_half_arrows.mmd](../../examples/mermaid/sequence_half_arrows.mmd).
+
 Not yet supported: participant
-configuration after creation, half-arrows, multiline/rich labels or browser styling. Upstream
+configuration after creation, multiline/rich labels or browser styling. Upstream
 `autonumber` takes integers only, so fractional numbering is not offered. Arbitrary control
 keywords do not silently become participants.
 
@@ -244,17 +252,32 @@ lifeline messages with activation bars; control constructs become frames.
 
 `@Starter(A)` names the caller of top-level calls; `@return`/`@reply` makes the
 next async message a dashed reply. `@Boundary`, `@Control`, `@Entity`,
-`@Database`, `@Collections` and `@Queue` draw their UML symbols. `//` comments
-(Markdown emphasis included) render above the following message or fragment.
+`@Database`, `@Collections` and `@Queue` draw their UML symbols. Every cloud
+annotator in zenuml.md's annotator chart (AWS `@CloudWatch` … `@VPC`, Azure
+`@AzureActiveDirectory` … `@VirtualMachine`, Google Cloud `@BigTable` …
+`@VisionAPI`; 50 kinds, matched case-insensitively like ZenUML) draws an icon
+tile left of the label in its provider's category colour with a short caption
+(`EC2`, `Fn`, `SQL`, ...); the vendor artwork itself is not reproduced. Other
+annotation names keep the `<<Annotation>>` stereotype line. zenuml.md
+documents no styling syntax; the participant rule of ZenUML's grammar
+(`participantType? stereotype? name width? label? COLOR?`) gives
+`<<Stereotype>>` (a `«Stereotype»` line above the label), a width in pixels
+(1–2000, the box's minimum width) and a `#rgb`/`#rrggbb` colour that fills the
+participant box with a contrasting black or white label (ZenUML's brightness
+rule), e.g. `@Lambda <<Service>> Checkout 180 as Checkout handler #FFEBE6`.
+`//` comments (Markdown emphasis included) render above the following message
+or fragment.
 
-Not yet supported: icons for other annotations (they render as stereotype
-text), every loop spelling or styles. Braces inside quoted arguments or after an async message's
+Not yet supported: every loop spelling, message styling and the vendor icon
+artwork. Braces inside quoted arguments or after an async message's
 colon stay label text.
 Comments before a participant declaration are dropped. Quoted
 arguments do not currently process backslash escapes. Statements outside the
 listed subset fail explicitly.
 
-Example: [zenuml.mmd](../../examples/mermaid/zenuml.mmd).
+Examples: [zenuml.mmd](../../examples/mermaid/zenuml.mmd),
+[zenuml_cloud.mmd](../../examples/mermaid/zenuml_cloud.mmd); checks in
+`./wbuild syntax_tail_test syntax_tail_64_test`.
 
 ## Validation
 
