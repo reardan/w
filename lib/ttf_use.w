@@ -587,15 +587,17 @@ int ttf_use_find_syllables(otl_buffer* b):
 		n = n + 1
 	index[n] = b.count
 	ttf_usm m
-	m.width = ttf_use_window + 1
-	m.pool = cast(char*, malloc(96 * m.width))
+	m.pool = cast(char*, malloc(96 * (ttf_use_window + 1)))
 	int broken = 0
 	int serial = 1
 	int at = 0
 	while (at < n):
 		m.cats = &cats[at]
-		m.len = n - at
-		if (m.len > ttf_use_window): m.len = ttf_use_window
+		# No syllable runs past an O or WJ after its first symbol (only a
+		# symbol cluster starts with O), which keeps the sets word-sized.
+		m.len = 1
+		while ((at + m.len < n) && (m.len < ttf_use_window) && (cats[at + m.len] != ttf_use_o) && (cats[at + m.len] != ttf_use_wj)): m.len = m.len + 1
+		m.width = m.len + 1
 		m.top = 0
 		int type = 0
 		int len = usm_match(&m, &type)
