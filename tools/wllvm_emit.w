@@ -913,6 +913,10 @@ int llvm_qualified_statement(int id, retained_node* node, retained_node* express
 void llvm_forms_emit_runtime();
 int llvm_variadic_tail(int group, int id, list[char*] values, list[int] types, list[int] operands, int fixed, int slice);
 char* llvm_ptx_module();
+# json and protobuf codecs (defined after the gpu host code)
+map[int, char*] llvm_codec_descs
+int llvm_codec_globals
+char* llvm_codec(int group, int id, retained_node* node);
 # arrays inside records (defined after the generators)
 void llvm_init_array_fields(int type, char* address);
 int llvm_global_record_headers(int linkage, int type, string_builder* text);
@@ -2709,6 +2713,7 @@ char* llvm_value_inner(int group, int operand):
 	if (op == 'A'): return llvm_parallel_assign(group, id, &node)
 	if (op == 'X'): return llvm_generator_create(group, id, &node)
 	if (op == 'z'): return llvm_method_call(group, id, &node)
+	if (op == 'x'): return llvm_codec(group, id, &node)
 	if (op == 'Y'): return llvm_array_allocation(group, id, &node)
 	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
 	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
@@ -4694,6 +4699,182 @@ char* llvm_ptx_module():
 	return llvm_constant_address(llvm_string_constant(ptx_module_buf, length))
 
 
+# --- json and protobuf codecs -------------------------------------------------
+# to_json/from_json and to_proto/from_proto/proto_descriptor ('x', kinds 0/1
+# and 2-5) call the codec runtimes with a static descriptor the native
+# front end emits as a blob (grammar/json_builtin.w,
+# grammar/protobuf_builtin.w). The retained node keeps the compiler type
+# index, so the same type table walk builds the same words here, as private
+# i64 array constants: each value, map, field-array and message descriptor
+# its own global, pointers as ptrtoint constant expressions. Struct and
+# message descriptors are shared per canonical type (json 1, protobuf 2).
+
+char* llvm_codec_global(char* prefix):
+	llvm_codec_globals = llvm_codec_globals + 1
+	return llvm_name(prefix, llvm_codec_globals)
+
+
+void llvm_codec_define(char* name, list[char*] words):
+	string_append(llvm_data, name)
+	string_append(llvm_data, c" = private unnamed_addr constant [")
+	string_append_int(llvm_data, words.length)
+	string_append(llvm_data, c" x i64] [")
+	for i in range(words.length):
+		if (i > 0): string_append(llvm_data, c", ")
+		string_append(llvm_data, c"i64 ")
+		string_append(llvm_data, words[i])
+	string_append(llvm_data, c"], align 8\x0a")
+
+
+# A pointer word: the address of a global, or 0.
+char* llvm_codec_pointer(char* name):
+	if (name == 0): return c"0"
+	return llvm_constant_address(name)
+
+
+char* llvm_json_struct(int t);
+char* llvm_json_value(int t);
+char* llvm_json_map(int t);
+
+
+# json_codec_emit_aux: a nested struct, list element or map descriptor.
+char* llvm_json_aux(int t, int kind):
+	if (kind == 5): return llvm_json_struct(t)
+	if (kind == 6): return llvm_json_value(type_list_element_type(t))
+	if (kind == 8): return llvm_json_map(t)
+	return 0
+
+
+# json_codec_emit_value_desc: {kind, size, aux}.
+char* llvm_json_value(int t):
+	t = type_unqualified(t)
+	int kind = json_codec_kind(t)
+	char* aux = llvm_json_aux(t, kind)
+	list[char*] words = new list[char*]
+	words.push(llvm_number(kind))
+	words.push(llvm_number(json_codec_size(t, kind)))
+	words.push(llvm_codec_pointer(aux))
+	char* name = llvm_codec_global(c"@.jv")
+	llvm_codec_define(name, words)
+	words.free()
+	return name
+
+
+# json_codec_emit_map_desc: {key kind, value kind, value size, value aux}.
+char* llvm_json_map(int t):
+	t = type_unqualified(t)
+	int value_type = type_unqualified(type_map_value_type(t))
+	int kind = json_codec_kind(value_type)
+	char* aux = llvm_json_aux(value_type, kind)
+	list[char*] words = new list[char*]
+	words.push(llvm_number(hash_key_kind_for_type(type_map_key_type(t))))
+	words.push(llvm_number(kind))
+	words.push(llvm_number(json_codec_size(value_type, kind)))
+	words.push(llvm_codec_pointer(aux))
+	char* name = llvm_codec_global(c"@.jm")
+	llvm_codec_define(name, words)
+	words.free()
+	return name
+
+
+# json_codec_descriptor: {field count, size, then per field {name, offset,
+# kind, size, aux}}. The front end already rejected recursive structs.
+char* llvm_json_struct(int t):
+	t = type_canonical(type_unqualified(t))
+	int key = t * 4 + 1
+	if (key in llvm_codec_descs): return llvm_codec_descs[key]
+	int n = type_num_args(t)
+	list[char*] words = new list[char*]
+	words.push(llvm_number(n))
+	words.push(llvm_number(type_get_size(t)))
+	for i in range(n):
+		int field_type = type_unqualified(type_get_field_type_at(t, i))
+		int kind = json_codec_kind(field_type)
+		char* field_name = type_get_field_name_at(t, i)
+		words.push(llvm_constant_address(llvm_string_constant(field_name, strlen(field_name))))
+		words.push(llvm_number(type_get_field_offset_at(t, i)))
+		words.push(llvm_number(kind))
+		words.push(llvm_number(json_codec_size(field_type, kind)))
+		words.push(llvm_codec_pointer(llvm_json_aux(field_type, kind)))
+	char* name = llvm_codec_global(c"@.jd")
+	llvm_codec_descs[key] = name
+	llvm_codec_define(name, words)
+	words.free()
+	return name
+
+
+# protobuf_emit_section: per repeated field a pb_value_desc {kind, aux},
+# the pb_field_desc {number, kind, offset, aux} array in wire-number
+# order, and the pb_message_desc {field count, fields, struct size}. The
+# message's name is cached before its fields, so cycles resolve.
+char* llvm_protobuf_message(int t):
+	t = type_canonical(type_unqualified(t))
+	int key = t * 4 + 2
+	if (key in llvm_codec_descs): return llvm_codec_descs[key]
+	char* name = llvm_codec_global(c"@.pd")
+	llvm_codec_descs[key] = name
+	char* info = protobuf_message_info(t)
+	int n = load_int(info)
+	list[char*] aux_words = new list[char*]
+	for i in range(n):
+		int field_type = type_get_field_type_at(t, i)
+		int kind = load_int(info + 8 + i * 12)
+		int element_kind = load_int(info + 12 + i * 12)
+		char* aux = c"0"
+		if (kind == protobuf_kind_message): aux = llvm_constant_address(llvm_protobuf_message(protobuf_field_message_type(field_type, kind)))
+		if (kind == protobuf_kind_repeated):
+			list[char*] value = new list[char*]
+			value.push(llvm_number(element_kind))
+			if (element_kind == protobuf_kind_message): value.push(llvm_constant_address(llvm_protobuf_message(protobuf_field_message_type(field_type, kind))))
+			else if (element_kind == protobuf_kind_bool): value.push(llvm_number(type_get_size(bool_type)))
+			else: value.push(c"0")
+			char* value_name = llvm_codec_global(c"@.pv")
+			llvm_codec_define(value_name, value)
+			value.free()
+			aux = llvm_constant_address(value_name)
+		aux_words.push(aux)
+	list[char*] fields = new list[char*]
+	int last = 0
+	for emitted in range(n):
+		int best = -1
+		int best_number = 0
+		for i in range(n):
+			int number = load_int(info + 4 + i * 12)
+			if ((number > last) && ((best < 0) || (number < best_number))):
+				best = i
+				best_number = number
+		fields.push(llvm_number(best_number))
+		fields.push(llvm_number(load_int(info + 8 + best * 12)))
+		fields.push(llvm_number(type_get_field_offset_at(t, best)))
+		fields.push(aux_words[best])
+		last = best_number
+	char* fields_name = llvm_codec_global(c"@.pf")
+	if (n > 0): llvm_codec_define(fields_name, fields)
+	list[char*] header = new list[char*]
+	header.push(llvm_number(n))
+	if (n > 0): header.push(llvm_constant_address(fields_name))
+	else: header.push(c"0")
+	header.push(llvm_number(type_stack_words(t) << 3))
+	llvm_codec_define(name, header)
+	header.free()
+	fields.free()
+	aux_words.free()
+	return name
+
+
+char* llvm_codec(int group, int id, retained_node* node):
+	int kind = node.value
+	if (kind == 5): return llvm_constant_address(llvm_protobuf_message(node.high))
+	char* argument = llvm_value(group, node.left)
+	if (llvm_failed): return c"0"
+	if (kind == 0): return llvm_call2(id, c"__w_json_encode", llvm_constant_address(llvm_json_struct(node.high)), argument)
+	if (kind == 1): return llvm_call2(id, c"__w_json_decode", llvm_constant_address(llvm_json_struct(node.high)), argument)
+	char* descriptor = llvm_constant_address(llvm_protobuf_message(node.high))
+	if (kind == 2): return llvm_call2(id, c"pb_to_bytes", descriptor, argument)
+	if (kind == 3): return llvm_call2(id, c"pb_from_bytes", descriptor, argument)
+	return llvm_call3(id, c"pb_from_data", descriptor, argument, llvm_value(group, node.right))
+
+
 void llvm_forms_emit_runtime():
 	if (llvm_uses_debugtrap): string_append(llvm_code, c"declare void @llvm.debugtrap() nounwind\x0a\x0a")
 # --- end of methods, allocation, propagation, var, gpu host code and other forms
@@ -5196,6 +5377,9 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_thunk_code = string_new()
 	llvm_uses_gen_switch = 0
 	llvm_uses_debugtrap = 0
+	if (llvm_codec_descs != 0): llvm_codec_descs.free()
+	llvm_codec_descs = new map[int, char*]
+	llvm_codec_globals = 0
 	llvm_generator_thunks = new map[int, int]
 	llvm_data = string_new()
 	llvm_code = string_new()
