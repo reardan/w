@@ -240,13 +240,14 @@ void mm_layout_scope(mm_document* d, mm_scene* s, int scope):
 		mapped.label = e.label
 		mapped.min_length = e.min_length
 		mapped.extra_rank = e.extra_rank
+		mapped.stroke = e.stroke
 		mapped.from_node = local[a]
 		mapped.to_node = local[b]
 		edges.push(mapped)
 		mm_edge_route* route = 0
 		if (a == e.from_node && b == e.to_node && d.layout_algorithm != 1): route = mm_edge_route_of(s.nodes[a], e, 1)
 		routes.push(route)
-	mm_place(nodes, edges, mm_scope_direction(d, scope), mm_style_lane_gap(d), mm_style_rank_gap(d), routes)
+	mm_place(nodes, edges, mm_scope_direction(d, scope), mm_style_lane_gap(d), mm_style_rank_gap(d), routes, d.kind == MM_ER)
 	__w_list_free(cast(__w_list*, local))
 	__w_list_free(cast(__w_list*, routes))
 	if (d.layout_algorithm == 1): mm_force_place(nodes, edges)
@@ -371,19 +372,26 @@ void mm_render_edge(mm_document* d, mm_scene* s, mm_edge* e):
 		ay = a.y
 		by = b.y + b.h
 	# Port distribution from mm_render_ports: ER relationships spread along the
-	# entity side in the order of their far ends; parallel edges elsewhere
-	# shift apart by a common offset. Small flow shapes retain their center ports.
-	if (record != 0):
+	# entity side in the order of their far ends; spread sides elsewhere use a
+	# 16px pitch around the center.
+	if (record != 0 && d.kind == MM_ER):
 		if (horizontal):
 			if (record.from_count > 0): ay = a.y + a.h * (record.from_slot + 1) / (record.from_count + 1)
 			if (record.to_count > 0): by = b.y + b.h * (record.to_slot + 1) / (record.to_count + 1)
-			ay = ay + record.offset
-			by = by + record.offset
 		else:
 			if (record.from_count > 0): ax = a.x + a.w * (record.from_slot + 1) / (record.from_count + 1)
 			if (record.to_count > 0): bx = b.x + b.w * (record.to_slot + 1) / (record.to_count + 1)
-			ax = ax + record.offset
-			bx = bx + record.offset
+	else if (record != 0):
+		int from_shift = 0
+		int to_shift = 0
+		if (record.from_count > 0): from_shift = (record.from_slot * 2 - (record.from_count - 1)) * 8
+		if (record.to_count > 0): to_shift = (record.to_slot * 2 - (record.to_count - 1)) * 8
+		if (horizontal):
+			ay = ay + from_shift
+			by = by + to_shift
+		else:
+			ax = ax + from_shift
+			bx = bx + to_shift
 	mm_node* from_node = d.nodes[e.from_node]
 	mm_node* to_node = d.nodes[e.to_node]
 	if (from_node.shape == 28):
@@ -666,7 +674,8 @@ void mm_render_node(mm_document* d, mm_scene* s, int i):
 # one entity side are ordered by the cross-axis position of their far end (the
 # first or last route channel when routed), so neighboring relationships do
 # not cross at the entity, and parallel relationships take adjacent slots.
-# Other families keep side-center ports and spread only parallel edges.
+# Other families keep side-center ports unless a side holds parallel or
+# opposite-direction edges; those spread 16px apart around the center.
 void mm_render_ports(mm_document* d, mm_scene* s):
 	list[mm_edge_route*] records = new list[mm_edge_route*]
 	list[int] group = new list[int]
@@ -728,13 +737,15 @@ void mm_render_ports(mm_document* d, mm_scene* s):
 	int at = 0
 	while (at < order.length):
 		int stop = at
-		int mixed = 0
+		int spread = 0
 		while (stop < order.length && group[order[stop]] == group[order[at]]):
-			if (end[order[stop]] != end[order[at]]): mixed = 1
+			for k in range(at, stop):
+				if (end[order[k]] != end[order[stop]] || pair[order[k]] == pair[order[stop]]): spread = 1
 			stop = stop + 1
-		# Elsewhere only a side where edges both leave and arrive is spread, so
-		# a back edge never runs on top of a forward edge into the same port.
-		if (d.kind == MM_ER || mixed):
+		# Elsewhere a side is spread only when it holds parallel edges or edges
+		# that both leave and arrive (mirrored by mm_place for track order), so
+		# no two edges run on top of each other into the same port.
+		if (d.kind == MM_ER || spread):
 			for i in range(at, stop):
 				mm_edge_route* r = records[order[i]]
 				if (end[order[i]] == 0):
@@ -744,22 +755,6 @@ void mm_render_ports(mm_document* d, mm_scene* s):
 					r.to_slot = i - at
 					r.to_count = stop - at
 		at = stop
-	if (d.kind != MM_ER):
-		for i in range(order.length): order[i] = i
-		mm_layout_sort(order, 0, order.length, pair, scratch)
-		at = 0
-		while (at < order.length):
-			int stop = at
-			while (stop < order.length && pair[order[stop]] == pair[order[at]]): stop = stop + 1
-			# Two entries (both ends) per edge; offsets step 16px around the axis.
-			int edges = (stop - at) / 2
-			int index = 0
-			for i in range(at, stop):
-				if (end[order[i]] != 0): continue
-				mm_edge_route* r = records[order[i]]
-				if (edges > 1): r.offset = (index * 2 - (edges - 1)) * 8
-				index = index + 1
-			at = stop
 	__w_list_free(cast(__w_list*, records))
 	__w_list_free(cast(__w_list*, group))
 	__w_list_free(cast(__w_list*, key))

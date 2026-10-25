@@ -11,18 +11,21 @@ C4, block and the narrative/data families keep their own layouts.
 1. **Ranks.** Longest-path ranks from Kahn's traversal with a ready queue;
    a cycle is broken at the lowest-index remaining node, so results are the
    same as the earlier quadratic scan. Extra-dash links keep their minimum
-   lengths.
+   lengths. A promotion pass then moves each node with more forward
+   successors than predecessors down to just above its nearest successor
+   (bottom ranks first), shortening long edges.
 2. **Dummy chains.** Every edge spanning more than one rank (forward or back
    edge) becomes a chain of dummy nodes, one per intermediate rank. Real and
    dummy nodes together are capped at `MM_LAYOUT_VIRTUAL_LIMIT` (32,768); an
    edge that would exceed it keeps a direct route.
 3. **Ordering.** Alternating barycenter sweeps (down by upper neighbors, up by
    lower neighbors, stable merge sort) each followed by adjacent-transposition
-   passes that swap neighbors while that strictly removes crossings. The
-   crossing count between adjacent ranks is computed exactly with a Fenwick
+   passes that swap neighbors while that strictly removes crossings, and a
+   sifting pass that moves each node to the slot of its rank where it crosses
+   least. The crossing count between adjacent ranks is computed exactly with a Fenwick
    tree after every round and the best order is kept (12 rounds, 6 above 2,048
-   virtual nodes). Transpositions share a fixed budget of 2,000,000 neighbor
-   comparisons per layout.
+   virtual nodes). Transpositions and sifting share a fixed budget of
+   2,000,000 neighbor comparisons per layout.
 4. **Coordinates.** Ranks are packed, then eight alternating passes pull each
    node toward the mean center of its neighbors in the rank just placed. Each
    rank is solved as a weighted isotonic regression (pool adjacent violators)
@@ -32,11 +35,15 @@ C4, block and the narrative/data families keep their own layouts.
 5. **Channel routing between ranks.** Each routed edge stores, on its source
    node's bounds (`mm_edge_route` in `scene.w`), its dummy lanes, the rank
    bands it crosses and the free gaps between ranks. In each gap the jogs of
-   different edges whose spans overlap get distinct tracks (bends); jogs
-   leaving the same point or reaching the same point share a trunk and may
-   share a track. Rightward jogs take tracks from the rightmost start,
-   leftward ones from the leftmost, so two jogs going the same way do not
-   cross. A gap with one track keeps the default bend (the 45px approach leg
+   different edges whose spans overlap get distinct tracks (bends). Jogs are
+   ranked rightward first by descending start, then leftward by ascending
+   start (from a shared start, the longer jog first), and each jog takes the
+   track just below every earlier jog it overlaps (longest path over the
+   overlaps; a jog sharing a trunk with an earlier one may share its track
+   but never rise above it). For jogs going the same way this yields no
+   crossing unless their ends are inverted, and an inverted pair crosses
+   once, so the drawn crossings equal the rank-to-rank crossings of the
+   order. The jog ends use the ports the renderer will draw (step 7). A gap with one track keeps the default bend (the 45px approach leg
    before the target), so simple diagrams are drawn as before.
 6. **Drawing.** `flowchart.curve` keeps selecting the connector inside each
    gap: `step`/`stepBefore`/`stepAfter` (orthogonal, the default), `linear`
@@ -46,8 +53,10 @@ C4, block and the narrative/data families keep their own layouts.
    cross-axis position of their far end (first/last channel when routed), so
    neighboring relationships do not cross at the entity and parallel
    relationships take adjacent, distinct ports. In other families a side is
-   only spread when edges both leave and arrive there (a back edge beside a
-   forward edge), and parallel edges between one pair shift apart by 16px.
+   only spread when it holds parallel edges or edges that both leave and
+   arrive (a back edge beside a forward edge); its ports then sit 16px apart
+   around the center in the same far-end order. `mm_place` mirrors this
+   assignment so channel tracks are ordered by the drawn ports.
 8. **Labels.** Edge labels start at the family default spot and move to the
    first of 18 candidates (other side of the leg, then steps along it) that is
    clear of every leaf node box and earlier label, using a uniform-grid index
@@ -87,23 +96,29 @@ ports, fixed label spots), measured with the same metric.
 | Fixture | Crossings | Node hits | Overlaps | Label overlaps | Label-node | Shared ports |
 | --- | --- | --- | --- | --- | --- | --- |
 | Dense flowchart TB, 24 nodes / 41 edges, before | 20 | 17 | 99 | 4 | 0 | 112 |
-| Dense flowchart TB, after | 76 | 0 | 0 | 0 | 0 | 52 |
+| Dense flowchart TB, after | 39 | 0 | 0 | 0 | 0 | 37 |
 | Dense flowchart LR, before | 20 | 17 | 99 | 5 | 2 | 112 |
-| Dense flowchart LR, after | 69 | 0 | 0 | 0 | 0 | 52 |
+| Dense flowchart LR, after | 39 | 0 | 0 | 0 | 0 | 37 |
 | Crowded ER, 7 entities / 17 relationships, before | 12 | 22 | 16 | 0 | 0 | 1 |
-| Crowded ER, after | 5 | 0 | 0 | 0 | 0 | 0 |
+| Crowded ER, after | 1 | 0 | 0 | 0 | 0 | 0 |
 
 Rank-to-rank crossings of the layered graph (`mm_layered_first_crossings`
-in source order, `mm_layered_last_crossings` after ordering) drop from 248 to
-39 on the dense flowchart and from 31 to 3 on the crowded ER fixture.
+in source order, `mm_layered_last_crossings` after ordering) drop from 226 to
+39 on the dense flowchart and from 23 to 0 on the crowded ER fixture. The
+flowchart's drawn crossings now equal its layered ones
+(`test_dense_flowchart_stress` asserts that and pins 39); the ER fixture has
+one crossing at entity ports spread across the whole side.
 
-The drawn segment-crossing count of the flowchart fixtures rises: before,
-long edges ran straight through intermediate nodes and edges with a common
-bend height were drawn on top of each other (99 collinear overlaps), which
-hides crossings instead of removing them. After routing every edge is
-traceable; the remaining crossings are where distinct tracks meet, roughly two
-per layered crossing. Shared ports that remain in flowcharts are the intended
-fan-in/fan-out at a node's side center.
+The old drawing's 20 visible crossings are not a reachable target: long
+edges ran straight through intermediate nodes (17) and edges shared bend
+heights (99 collinear overlaps), which hides crossings rather than removing
+them. Any layered drawing of these ranks has at least as many crossings as its
+order has rank-to-rank crossings, and a 300-restart randomized barycenter
+search over ranks and dummy chains built by the same rules (scratch script, not in the tree)
+found 36 at best, so 39 is within 3 of the best order found.
+On two further generated fixtures (24 nodes / 41-42 edges) drawn crossings
+are 34 and 25, again equal to the layered counts. Shared ports that remain in
+flowcharts are the intended fan-in/fan-out at a node's side center.
 
 ## Alternatives evaluated
 
@@ -117,11 +132,21 @@ fan-in/fan-out at a node's side center.
   connectors.
 - **Left-packed ranks** (the previous coordinates) were measured with the new
   ordering and channels first: long edges then jogged across the whole
-  drawing (63 crossings on a similar generated 24-node, 41-edge TB fixture against 34 once coordinates
-  follow neighbors, before tracks separated the shared bends).
-- **Median ordering** and **Brandes-Kopf** coordinates were not tried: the
-  transposition pass plus best-order tracking already removes most avoidable
-  layered crossings on the fixtures, and the isotonic regression gives
+  drawing (63 crossings on a similar generated 24-node, 41-edge TB fixture
+  against 34 once coordinates follow neighbors).
+- **Track assignment**: first-fit tracks (the lowest free track) gave 76
+  drawn crossings on the dense TB fixture; longest-path tracks in the order
+  above gave 60; drawing parallel edges with fixed +/-8px offsets that the
+  tracks did not know about added inversions with sibling edges (57); ports
+  ordered by far end and mirrored into the jogs brought it to 39, the layered
+  count.
+- **More ordering rounds** (40 instead of 12) and sifting did not lower the
+  layered count on the fixtures (39); promotion lowered the ER fixture from 3
+  to 0 and the source-order count from 248 to 226.
+- **Median ordering**, **Brandes-Kopf** coordinates and choosing a direct
+  connector over a routed one per edge were not adopted: drawn crossings
+  already equal the layered count, a direct connector can only add crossings
+  and node hits relative to its channel, and the isotonic regression gives
   straight dummy chains with one linear pass per rank.
 
 ## Large workloads
@@ -133,14 +158,14 @@ render, and SVG export:
 
 | Graph | Parse | Render | SVG |
 | --- | --- | --- | --- |
-| Flowchart 500 nodes / 703 edges | 3 / 4 | 62 / 48 | 5 / 5 |
-| Flowchart 1,000 / 1,463 | 6 / 6 | 79 / 61 | 11 / 11 |
-| Flowchart 2,000 / 2,957 | 11 / 12 | 126 / 113 | 22 / 24 |
-| Flowchart 4,000 / 5,953 | 24 / 25 | 265 / 211 | 53 / 50 |
-| ER 500 / 600 | 3 / 4 | 62 / 68 | 13 / 13 |
-| ER 1,000 / 1,198 | 8 / 8 | 251 / 140 | 25 / 27 |
-| ER 2,000 / 2,400 | 11 / 22 | 361 / 303 | 57 / 66 |
-| ER 4,000 / 4,798 | 26 / 22 | 636 / 493 | 183 / 146 |
+| Flowchart 500 nodes / 703 edges | 3 / 3 | 76 / 59 | 5 / 5 |
+| Flowchart 1,000 / 1,463 | 6 / 5 | 85 / 71 | 10 / 10 |
+| Flowchart 2,000 / 2,957 | 13 / 11 | 128 / 120 | 21 / 21 |
+| Flowchart 4,000 / 5,953 | 24 / 23 | 219 / 188 | 49 / 44 |
+| ER 500 / 600 | 3 / 3 | 88 / 68 | 12 / 12 |
+| ER 1,000 / 1,198 | 6 / 5 | 118 / 116 | 20 / 20 |
+| ER 2,000 / 2,400 | 11 / 11 | 238 / 207 | 51 / 54 |
+| ER 4,000 / 4,798 | 24 / 35 | 496 / 473 | 133 / 191 |
 
 Before this work the 1,024-edge budget rejected all but the smallest of
 these; at 1,000 nodes and 1,000 edges the previous renderer took 89 ms
@@ -152,8 +177,8 @@ Hot paths are now O((V + S) log V) per ordering round for V real plus dummy
 nodes and S segments: ranking, CSR adjacency, merge-sort sweeps, Fenwick
 crossing counts, per-rank regression and track assignment (bounded to 512
 jogs per gap), the sorted port assignment and the grid label index. The
-quadratic parts left are bounded: transpositions by their work budget, track
-assignment by its per-gap limit, and subgraph layout scans all nodes once per
+quadratic parts left are bounded: transpositions and sifting by their shared
+work budget, track assignment by its per-gap limit, and subgraph layout scans all nodes once per
 group.
 
 Budgets raised accordingly (all still checked):

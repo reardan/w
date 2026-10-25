@@ -137,9 +137,9 @@ void test_ordering_removes_avoidable_crossings():
 	mm_scene_free(s)
 	mm_document_free(d)
 
-# Measured on these generators: before layered routing the TB fixture drew
-# 22 edges through unrelated nodes with 95 collinear overlaps and 6
-# overlapping labels; the LR one 23, 119 and 5 (docs/projects/mermaid_layout.md).
+# Measured on these generators: before layered routing both fixtures drew 17
+# edges through unrelated nodes, 99 collinear overlaps, 4-5 overlapping labels
+# and 20 visible crossings (docs/projects/mermaid_layout.md).
 void test_dense_flowchart_stress():
 	list[char*] directions = list[char*]{c"TB", c"LR"}
 	for char* direction in directions:
@@ -152,7 +152,10 @@ void test_dense_flowchart_stress():
 		assert_equal(0, q.overlaps)
 		assert_equal(0, q.label_overlaps)
 		assert_equal(0, q.label_node_overlaps)
-		asserts(c"crossings bounded", q.crossings <= d.edges.length * 2)
+		# Every drawn crossing is a rank-to-rank crossing the ordering kept
+		# (39 here; random-restart search finds 36 at best).
+		asserts(c"drawn crossings match the layered ones", q.crossings <= mm_layered_last_crossings)
+		asserts(c"crossings pinned", q.crossings <= 39)
 		# Deterministic display list.
 		mm_scene* again = mm_render(d)
 		char* first = mm_svg(s)
@@ -173,6 +176,7 @@ void test_crowded_er_ports_and_labels():
 	mm_document* d = 0
 	mm_route_quality* q = routing_measure(text, &s, &d)
 	asserts(c"fixture is crowded", d.edges.length >= 14)
+	asserts(c"crowded ER crossings pinned", q.crossings <= 1)
 	assert_equal(0, q.node_hits)
 	assert_equal(0, q.shared_ports)
 	assert_equal(0, q.label_overlaps)

@@ -308,14 +308,16 @@ system; SVG uses a matching sans-serif face, and graph labels are measured with
 the native preview's per-glyph widths.
 ER attributes show type, name, keys and comment in each row rather than separate
 resizable columns. Layout uses longest-path ranks with deterministic cycle
-breaking, dummy-node chains for edges spanning several ranks, barycenter sweeps
-with adjacent transposition (keeping the order with the fewest crossings),
+breaking and rank promotion, dummy-node chains for edges spanning several
+ranks, barycenter sweeps with adjacent transposition and sifting (keeping the
+order with the fewest crossings),
 neighbor-aligned coordinates, channel routing between ranks and orthogonal
 connectors by default. Edges never pass through unrelated node boxes (unless a
 persisted position moves one endpoint, which drops that edge's channel route),
 ER relationships spread along entity sides in the order of their far ends,
-parallel flow edges spread apart, and edge labels move off nodes and earlier
-labels. It is not upstream Dagre/ELK; see [Layered layout and routing](mermaid_layout.md)
+parallel flow edges take distinct ports in the same order, drawn crossings
+equal the rank-to-rank crossings of the chosen order, and edge labels move off
+nodes and earlier labels. It is not upstream Dagre/ELK; see [Layered layout and routing](mermaid_layout.md)
 for the algorithm, budgets and measured before/after quality.
 
 Node styles/classes and a bounded frontmatter theme subset are implemented;
