@@ -59,7 +59,7 @@ void mm_serialize_event_frame(mm_serializer* out, mm_document* d, int index, int
 		if (e.to_node == index && e.from_node == previous):
 			reset = 0
 			edge[0] = edge[0] + 1
-	if (reset): mm_out(out, c"rf ")
+	if (reset && previous >= 0): mm_out(out, c"rf ")
 	else: mm_out(out, c"tf ")
 	mm_out(out, n.id)
 	mm_out_char(out, 32)
@@ -166,6 +166,7 @@ void mm_serialize_event_body(mm_serializer* out, mm_document* d):
 				continue
 			mm_out(out, c"gwt ")
 			mm_out(out, d.nodes[note.node].id)
+			mm_out_char(out, 32)
 			# "given: evt A\nthen: evt B" -> "given evt A then evt B".
 			for k in range(strlen(note.text)):
 				int c = note.text[k]
