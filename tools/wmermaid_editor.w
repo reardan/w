@@ -160,6 +160,8 @@ int main(int argc, int argv):
 		int now = time_monotonic_ms()
 		if (ctx.input.mouse_pressed || ctx.nav_count > 0): last_source_time = 0
 		int old_selection = canvas.node
+		int disk_reload = 0
+		int disk_keep = 0
 		if (mm_access_apply(&ctx, WM_CANVAS_FOCUS, &canvas, e)): status = c"Selected from the accessibility tree."
 		int changed = 0
 		for i in range(ctx.char_count):
@@ -187,6 +189,8 @@ int main(int argc, int argv):
 					int saved = mm_editor_save_checked(e)
 					status = wm_save_message(e, saved)
 					external = e.disk_state
+				else if (key == 'r' && (ctx.char_mods[i] & GFX_MOD_SHIFT) != 0 && external == MM_DISK_CHANGED): disk_reload = 1
+				else if (key == 'k' && external != MM_DISK_SAME): disk_keep = 1
 				else if (key == 'z' || key == 'y'):
 					int redo = key == 'y' || (ctx.char_mods[i] & GFX_MOD_SHIFT) != 0
 					changed = mm_canvas_undo(&canvas, e, redo)
@@ -347,7 +351,11 @@ int main(int argc, int argv):
 			else: ui_label(&ctx, c"Changed on disk:")
 			ui_same_line(&ctx)
 			ui_disable(&ctx, closing || external == MM_DISK_MISSING)
-			if (ui_button(&ctx, c"Reload from disk")):
+			if (ui_button(&ctx, c"Reload from disk")): disk_reload = 1
+			ui_same_line(&ctx)
+			ui_disable(&ctx, closing)
+			if (ui_button(&ctx, c"Keep mine")): disk_keep = 1
+			if (disk_reload && closing == 0):
 				mm_canvas_reset(&canvas, e)
 				if (mm_editor_reload(e)):
 					mm_canvas_source_sync(&area, e.document.source)
@@ -356,9 +364,7 @@ int main(int argc, int argv):
 					fit = 1
 					status = c"Reloaded the disk version; Ctrl+Z cannot restore the discarded edits."
 				else: status = c"Reload failed."
-			ui_same_line(&ctx)
-			ui_disable(&ctx, closing)
-			if (ui_button(&ctx, c"Keep mine")):
+			else if (disk_keep && closing == 0):
 				if (mm_editor_keep_mine(e)):
 					external = MM_DISK_SAME
 					status = c"Keeping your version. Save replaces the disk file."
@@ -496,6 +502,7 @@ int main(int argc, int argv):
 			free(diagnostic)
 		else: ui_draw_text(&renderer, 12.0, height - 62.0, status, 2, theme.text_muted)
 		char* help = c"Ctrl+D canvas: Tab selects, arrows move (Shift: 10), Delete removes. Wheel zooms."
+		if (external != MM_DISK_SAME): help = c"Changed on disk: Ctrl+Shift+R reloads it (discarding edits), Ctrl+K keeps your version."
 		if (mm_graph_edit_family(e.document.kind) == 0): help = c"Preview and source editing for this family. Graphical editing: flowchart, ER, class and state."
 		ui_draw_text(&renderer, 12.0, height - 38.0, help, 2, theme.text_muted)
 		ui_clip_pop(&renderer)

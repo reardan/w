@@ -121,12 +121,13 @@ def keycode(keysym):
 
 
 # Real key presses (libatspi synthesizes them with XTest).
-def key(keysym, ctrl=False):
-    if ctrl:
-        Atspi.generate_keyboard_event(keycode(0xFFE3), None, Atspi.KeySynthType.PRESS)
+def key(keysym, ctrl=False, shift=False):
+    held = [sym for sym, on in ((0xFFE3, ctrl), (0xFFE1, shift)) if on]
+    for sym in held:
+        Atspi.generate_keyboard_event(keycode(sym), None, Atspi.KeySynthType.PRESS)
     Atspi.generate_keyboard_event(keycode(keysym), None, Atspi.KeySynthType.PRESSRELEASE)
-    if ctrl:
-        Atspi.generate_keyboard_event(keycode(0xFFE3), None, Atspi.KeySynthType.RELEASE)
+    for sym in reversed(held):
+        Atspi.generate_keyboard_event(keycode(sym), None, Atspi.KeySynthType.RELEASE)
     pump(0.4)
 
 
@@ -238,6 +239,11 @@ def main():
         key(0xFF09)
         wait_for(lambda: has(canvas, "Beta", Atspi.StateType.FOCUSED), "second Tab moves focus to Beta")
         speech.expect("Beta")
+        key(0xFF09, shift=True)
+        wait_for(lambda: has(canvas, "Alpha", Atspi.StateType.FOCUSED), "Shift+Tab moves focus back to Alpha")
+        speech.expect("Alpha")
+        key(0xFF09)
+        wait_for(lambda: has(canvas, "Beta", Atspi.StateType.FOCUSED), "Tab returns to Beta")
         key(0xFFFF)
         wait_for(lambda: names(canvas) == ["Alpha", "Gamma"], "Delete removes Beta and its edges: %r" % names(canvas))
         require([e for e in EVENTS if e[0].startswith("object:children-changed")], "children-changed events on deletion")

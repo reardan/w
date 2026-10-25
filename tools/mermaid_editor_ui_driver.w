@@ -1,5 +1,8 @@
 # wbuild: binary=mermaid_editor_ui_driver arch=x64 tag=tests
-# Real X11/XTest editor workflow; run through the opt-in Xvfb target.
+# Real X11/XTest editor workflows; run through the opt-in Xvfb target:
+# the pointer/keyboard flowchart workflow, keyboard-only edit/undo/redo
+# chains in each graphically editable family, and external-change
+# detection with refused saves, Keep mine, reload and deletion.
 import tools.host_tools
 import lib.str
 import lib.format
@@ -108,14 +111,27 @@ void mu_undo(char* expected, char* message):
 	mu_save()
 	mu_wait(expected, 0, message)
 
-int main():
-	mu_display = XOpenDisplay(0)
-	ht_require(mu_display != 0, c"X11 unavailable; run with xvfb-run -a")
-	mu_root = XDefaultRootWindow(mu_display)
-	char* work = ht_temp()
-	mu_path = path_join(work, c"diagram.mmd")
-	char* original = c"%% keep this comment\nflowchart LR\nA[Alpha] --> B[Beta]\n"
-	ht_write(mu_path, original, strlen(original))
+void mu_redo(char* expected, char* message):
+	mu_key(c"y", c"Control_L")
+	mu_save()
+	mu_wait(expected, 0, message)
+
+# The bytes on disk right after a save, once they differ from before.
+char* mu_saved_change(char* before, char* message):
+	mu_save()
+	mu_wait(before, 1, message)
+	return ht_read(mu_path).data
+
+# A save that must not write: the file keeps its bytes for a while.
+void mu_refused_save(char* kept, char* message):
+	mu_save()
+	process_sleep_ms(500)
+	ht_require(strcmp(ht_read(mu_path).data, kept) == 0, message)
+
+# Start the editor on path and wait until its window is viewable.
+process* mu_start(char* path):
+	mu_path = path
+	mu_window = 0
 	spawn_options* options = spawn_options_new()
 	options.new_group = 1
 	process* editor = ht_spawn(ht_argv(c"bin/wmermaid_editor", mu_path), options)
@@ -134,6 +150,99 @@ int main():
 	XSetInputFocus(mu_display, mu_window, 1, 0)
 	mu_flush()
 	process_sleep_ms(250)
+	return editor
+
+void mu_quit(process* editor):
+	mu_key(c"q", c"Control_L")
+	ht_require(process_wait_or_kill(editor, 5000) == 0, c"editor did not close normally")
+	mu_window = 0
+
+# Canvas focus with nothing selected: Ctrl+D, then a click on empty canvas.
+void mu_canvas():
+	mu_key(c"d", c"Control_L")
+	mu_click(1250.0, 700.0)
+
+void mu_write_external(char* text):
+	ht_write(mu_path, text, strlen(text))
+	# The editor polls a few times a second.
+	process_sleep_ms(700)
+
+# Keyboard only, per graphically editable family: select with Tab, move with
+# arrows, Tab then Shift+Tab back to the first node, delete it (deleted
+# names it; it must vanish from the source), and walk an undo/redo chain whose every state is saved and
+# compared byte for byte.
+void mu_family(char* work, char* name, char* source, char* deleted):
+	char* path = path_join(work, name)
+	ht_write(path, source, strlen(source))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right", c"Shift_L")
+	char* moved = mu_saved_change(source, strjoin(name, c": keyboard move was not saved"))
+	ht_require(contains(moved, c"@w-position"), strjoin(name, c": move did not store a position"))
+	mu_key(c"Down")
+	char* lowered = mu_saved_change(moved, strjoin(name, c": second move was not saved"))
+	mu_key(c"Tab")
+	mu_key(c"Tab", c"Shift_L")
+	mu_key(c"Delete")
+	char* removed = mu_saved_change(lowered, strjoin(name, c": Delete changed nothing"))
+	ht_require(!contains(removed, deleted), strjoin(name, c": Delete kept the selected item"))
+	mu_undo(lowered, strjoin(name, c": undo of the deletion"))
+	mu_undo(moved, strjoin(name, c": undo of the second move"))
+	mu_undo(source, strjoin(name, c": undo of the first move"))
+	mu_redo(moved, strjoin(name, c": redo of the first move"))
+	mu_redo(lowered, strjoin(name, c": redo of the second move"))
+	mu_redo(removed, strjoin(name, c": redo of the deletion"))
+	mu_undo(lowered, strjoin(name, c": undo after redo"))
+	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
+	mu_quit(editor)
+
+void mu_families(char* work):
+	mu_family(work, c"er.mmd", c"erDiagram\nCUSTOMER ||--o{ ORDER : places\nORDER ||--|{ LINE : contains\n", c"CUSTOMER")
+	mu_family(work, c"class.mmd", c"classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat\n", c"Animal")
+	mu_family(work, c"state.mmd", c"stateDiagram-v2\nIdle --> Running : start\nRunning --> Done : finish\n", c"Idle")
+
+# External changes: a save over a changed file is refused, Keep mine makes
+# the next save replace exactly that version, Reload from disk adopts it,
+# and a deleted file is only recreated after Keep mine.
+void mu_conflicts(char* work):
+	char* path = path_join(work, c"conflict.mmd")
+	char* original = c"flowchart LR\nA[Alpha] --> B[Beta]\n"
+	ht_write(path, original, strlen(original))
+	process* editor = mu_start(path)
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	char* external = c"%% external edit\nflowchart LR\nA[Alpha] --> B[Beta]\nB --> C\n"
+	mu_write_external(external)
+	mu_refused_save(external, c"save overwrote an external change")
+	mu_refused_save(external, c"second save overwrote an external change")
+	mu_key(c"k", c"Control_L")
+	char* mine = mu_saved_change(external, c"Keep mine did not allow the save")
+	ht_require(contains(mine, c"@w-position") && !contains(mine, c"external edit"), c"Keep mine did not save the editor's version")
+	char* again = c"%% second external edit\nflowchart LR\nA[Alpha] --> B[Beta]\n"
+	mu_write_external(again)
+	mu_key(c"r", c"Control_L", c"Shift_L")
+	mu_canvas()
+	mu_key(c"Tab")
+	mu_key(c"Right")
+	char* merged = mu_saved_change(again, c"edit after reload was not saved")
+	ht_require(contains(merged, c"second external edit") && contains(merged, c"@w-position"), c"reload did not adopt the disk version")
+	unlink(mu_path)
+	process_sleep_ms(700)
+	mu_save()
+	process_sleep_ms(500)
+	ht_require(!path_exists(mu_path), c"save recreated a deleted file without asking")
+	mu_key(c"k", c"Control_L")
+	mu_save()
+	mu_wait(merged, 0, c"Keep mine did not recreate the deleted file")
+	mu_quit(editor)
+
+void mu_flowchart(char* work):
+	char* original = c"%% keep this comment\nflowchart LR\nA[Alpha] --> B[Beta]\n"
+	char* path = path_join(work, c"diagram.mmd")
+	ht_write(path, original, strlen(original))
+	process* editor = mu_start(path)
 	char* svg = path_join(work, c"initial.svg")
 	ht_checked(ht_argv(c"bin/wmermaid", c"svg", mu_path, svg))
 	xml_element* root = xml_fromstring(ht_read(svg).data)
@@ -219,12 +328,20 @@ int main():
 	mu_type(c"%% typed\n")
 	mu_undo(renamed, c"contiguous source typing was not one undo step")
 	ht_checked(ht_argv(c"bin/wmermaid", c"check", mu_path))
-	mu_key(c"q", c"Control_L")
-	ht_require(process_wait_or_kill(editor, 5000) == 0, c"editor did not close normally")
+	mu_quit(editor)
 	char* screenshot = c"bin/mermaid-editor-workflow.ppm"
 	ht_checked(ht_argv(c"bin/wmermaid_editor", mu_path, c"--frames", c"3", c"--screenshot", screenshot))
 	ht_require(starts_with(ht_read(screenshot).data, c"P6\n"), c"missing editor screenshot")
 	ht_equal_file(mu_path, renamed)
+
+int main():
+	mu_display = XOpenDisplay(0)
+	ht_require(mu_display != 0, c"X11 unavailable; run with xvfb-run -a")
+	mu_root = XDefaultRootWindow(mu_display)
+	char* work = ht_temp()
+	mu_flowchart(work)
+	mu_families(work)
+	mu_conflicts(work)
 	XCloseDisplay(mu_display)
 	ht_cleanup()
 	println(c"Mermaid native editor workflow passed")
