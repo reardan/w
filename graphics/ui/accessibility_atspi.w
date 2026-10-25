@@ -57,6 +57,7 @@ const int ATSPI_ROLE_PUSH_BUTTON = 43
 const int ATSPI_ROLE_RADIO_BUTTON = 44
 const int ATSPI_ROLE_TABLE = 55
 const int ATSPI_ROLE_TABLE_CELL = 56
+const int ATSPI_ROLE_TABLE_COLUMN_HEADER = 57
 const int ATSPI_ROLE_TOGGLE_BUTTON = 62
 const int ATSPI_ROLE_APPLICATION = 75
 const int ATSPI_ROLE_ENTRY = 79
@@ -155,6 +156,162 @@ int ui_atspi_path_id(char* path):
 	if (id <= 0): return 0 - 1
 	return id
 
+/* Tables: a TABLE's ROW children hold CELL children. The first row is
+the column-header row when it offers no action and is not selected
+while a later row does or is (the shape graphics/ui/widgets/table.w
+publishes); table row indices count data rows only. */
+
+int ui_atspi_row_is_live(ui_access_node* row):
+	return (row.actions != 0) || ((row.states & UI_ACCESS_SELECTED) != 0)
+
+
+int ui_atspi_is_header_row(ui_access_node* row):
+	if ((row == 0) || (row.role != UI_ACCESS_ROW) || (row.parent == 0) || (row.parent.role != UI_ACCESS_TABLE)): return 0
+	ui_access_node* c = row.parent.first_child
+	while ((c != 0) && (c.role != UI_ACCESS_ROW)): c = c.next_sibling
+	if ((c != row) || ui_atspi_row_is_live(row)): return 0
+	c = row.next_sibling
+	while (c != 0):
+		if ((c.role == UI_ACCESS_ROW) && ui_atspi_row_is_live(c)): return 1
+		c = c.next_sibling
+	return 0
+
+
+ui_access_node* ui_atspi_header_row(ui_access_node* table):
+	ui_access_node* c = table.first_child
+	while (c != 0):
+		if (ui_atspi_is_header_row(c)): return c
+		c = c.next_sibling
+	return 0
+
+
+int ui_atspi_is_data_row(ui_access_node* c):
+	return (c != 0) && (c.role == UI_ACCESS_ROW) && (c.parent != 0) && (c.parent.role == UI_ACCESS_TABLE) && !ui_atspi_is_header_row(c)
+
+
+int ui_atspi_table_rows(ui_access_node* table):
+	int count = 0
+	ui_access_node* c = table.first_child
+	while (c != 0):
+		if (ui_atspi_is_data_row(c)): count = count + 1
+		c = c.next_sibling
+	return count
+
+
+ui_access_node* ui_atspi_table_row(ui_access_node* table, int index):
+	if (index < 0): return 0
+	int k = 0
+	ui_access_node* c = table.first_child
+	while (c != 0):
+		if (ui_atspi_is_data_row(c)):
+			if (k == index): return c
+			k = k + 1
+		c = c.next_sibling
+	return 0
+
+
+int ui_atspi_row_cells(ui_access_node* row):
+	int count = 0
+	ui_access_node* c = row.first_child
+	while (c != 0):
+		if (c.role == UI_ACCESS_CELL): count = count + 1
+		c = c.next_sibling
+	return count
+
+
+ui_access_node* ui_atspi_row_cell(ui_access_node* row, int col):
+	if ((row == 0) || (col < 0)): return 0
+	int k = 0
+	ui_access_node* c = row.first_child
+	while (c != 0):
+		if (c.role == UI_ACCESS_CELL):
+			if (k == col): return c
+			k = k + 1
+		c = c.next_sibling
+	return 0
+
+
+int ui_atspi_table_columns(ui_access_node* table):
+	int most = 0
+	ui_access_node* c = table.first_child
+	while (c != 0):
+		if ((c.role == UI_ACCESS_ROW) && (ui_atspi_row_cells(c) > most)): most = ui_atspi_row_cells(c)
+		c = c.next_sibling
+	return most
+
+
+# A data cell's row (among data rows) and column; 0 when n is not one.
+int ui_atspi_cell_position(ui_access_node* n, int* row, int* col):
+	if ((n == 0) || (n.role != UI_ACCESS_CELL) || !ui_atspi_is_data_row(n.parent)): return 0
+	ui_access_node* table = n.parent.parent
+	int r = 0
+	ui_access_node* c = table.first_child
+	while ((c != 0) && (c != n.parent)):
+		if (ui_atspi_is_data_row(c)): r = r + 1
+		c = c.next_sibling
+	int k = 0
+	c = n.parent.first_child
+	while ((c != 0) && (c != n)):
+		if (c.role == UI_ACCESS_CELL): k = k + 1
+		c = c.next_sibling
+	row[0] = r
+	col[0] = k
+	return 1
+
+
+int ui_atspi_has_table(ui_access_node* n):
+	return (n != 0) && (n.role == UI_ACCESS_TABLE)
+
+
+int ui_atspi_has_table_cell(ui_access_node* n):
+	int r = 0
+	int c = 0
+	return ui_atspi_cell_position(n, &r, &c)
+
+
+/* Selection: lists, tab lists and tables over their item, tab and data
+row children; the child index counts every child, as GetChildAtIndex
+does. */
+
+int ui_atspi_has_selection(ui_access_node* n):
+	return (n != 0) && ((n.role == UI_ACCESS_LIST) || (n.role == UI_ACCESS_TAB_LIST) || (n.role == UI_ACCESS_TABLE))
+
+
+int ui_atspi_selectable_child(ui_access_node* c):
+	if (c == 0): return 0
+	if ((c.role == UI_ACCESS_TAB) || (c.role == UI_ACCESS_LIST_ITEM)): return 1
+	return ui_atspi_is_data_row(c)
+
+
+int ui_atspi_selected_count(ui_access_node* n):
+	int count = 0
+	ui_access_node* c = n.first_child
+	while (c != 0):
+		if (ui_atspi_selectable_child(c) && ((c.states & UI_ACCESS_SELECTED) != 0)): count = count + 1
+		c = c.next_sibling
+	return count
+
+
+ui_access_node* ui_atspi_selected_at(ui_access_node* n, int index):
+	if (index < 0): return 0
+	int k = 0
+	ui_access_node* c = n.first_child
+	while (c != 0):
+		if (ui_atspi_selectable_child(c) && ((c.states & UI_ACCESS_SELECTED) != 0)):
+			if (k == index): return c
+			k = k + 1
+		c = c.next_sibling
+	return 0
+
+
+int ui_atspi_selection_same(ui_access_node* a, ui_access_node* b):
+	int count = ui_atspi_selected_count(a)
+	if (count != ui_atspi_selected_count(b)): return 0
+	for i in range(count):
+		if (ui_atspi_selected_at(a, i).id != ui_atspi_selected_at(b, i).id): return 0
+	return 1
+
+
 
 int ui_atspi_role(ui_access_node* n):
 	int r = n.role
@@ -173,7 +330,9 @@ int ui_atspi_role(ui_access_node* n):
 	if (r == UI_ACCESS_LIST_ITEM): return ATSPI_ROLE_LIST_ITEM
 	if (r == UI_ACCESS_TABLE): return ATSPI_ROLE_TABLE
 	if (r == UI_ACCESS_ROW): return ATSPI_ROLE_TABLE_ROW
-	if (r == UI_ACCESS_CELL): return ATSPI_ROLE_TABLE_CELL
+	if (r == UI_ACCESS_CELL):
+		if (ui_atspi_is_header_row(n.parent)): return ATSPI_ROLE_TABLE_COLUMN_HEADER
+		return ATSPI_ROLE_TABLE_CELL
 	if (r == UI_ACCESS_RADIO): return ATSPI_ROLE_RADIO_BUTTON
 	# AT-SPI 2.52 has no switch role; a toggle button with CHECKED and
 	# PRESSED is what toolkits publish for one.
@@ -201,6 +360,7 @@ char* ui_atspi_role_name(int role):
 	if (role == ATSPI_ROLE_TABLE): return c"table"
 	if (role == ATSPI_ROLE_TABLE_ROW): return c"table row"
 	if (role == ATSPI_ROLE_TABLE_CELL): return c"table cell"
+	if (role == ATSPI_ROLE_TABLE_COLUMN_HEADER): return c"table column header"
 	if (role == ATSPI_ROLE_RADIO_BUTTON): return c"radio button"
 	if (role == ATSPI_ROLE_TOGGLE_BUTTON): return c"toggle button"
 	if (role == ATSPI_ROLE_COMBO_BOX): return c"combo box"
@@ -212,8 +372,9 @@ char* ui_atspi_role_name(int role):
 	return c"panel"
 
 
-# The AT-SPI state bits of a published node (two 32-bit words).
-void ui_atspi_states(ui_atspi_bridge* b, ui_access_node* n, int* lo, int* hi):
+# The AT-SPI state bits of a node (two 32-bit words), focused_id being
+# its snapshot's focus.
+void ui_atspi_states_for(ui_access_node* n, int focused_id, int* lo, int* hi):
 	int s = 0
 	int t = 0
 	int inert = ui_access_inert(n)
@@ -225,15 +386,14 @@ void ui_atspi_states(ui_atspi_bridge* b, ui_access_node* n, int* lo, int* hi):
 	if (inert == 0): s = s | (1 << ATSPI_STATE_ENABLED) | (1 << ATSPI_STATE_SENSITIVE)
 	if (hidden == 0): s = s | (1 << ATSPI_STATE_VISIBLE) | (1 << ATSPI_STATE_SHOWING)
 	if (((n.states & UI_ACCESS_FOCUSABLE) != 0) && (inert == 0)): s = s | (1 << ATSPI_STATE_FOCUSABLE)
-	if ((b.published.focused_id == n.id) && (inert == 0)): s = s | (1 << ATSPI_STATE_FOCUSED)
+	if ((focused_id == n.id) && (inert == 0)): s = s | (1 << ATSPI_STATE_FOCUSED)
 	int role = n.role
 	if ((role == UI_ACCESS_CHECKBOX) || (role == UI_ACCESS_RADIO) || (role == UI_ACCESS_SWITCH)):
 		t = t | (1 << (ATSPI_STATE_CHECKABLE - 32))
 		if ((n.states & UI_ACCESS_CHECKED) != 0):
 			s = s | (1 << ATSPI_STATE_CHECKED)
 			if (role == UI_ACCESS_SWITCH): s = s | (1 << ATSPI_STATE_PRESSED)
-	if ((role == UI_ACCESS_TAB) || (role == UI_ACCESS_LIST_ITEM) || (role == UI_ACCESS_ROW) || (role == UI_ACCESS_CELL)):
-		s = s | (1 << ATSPI_STATE_SELECTABLE)
+	if (ui_atspi_selectable_child(n)): s = s | (1 << ATSPI_STATE_SELECTABLE)
 	if ((n.states & UI_ACCESS_SELECTED) != 0): s = s | (1 << ATSPI_STATE_SELECTED)
 	if (role == UI_ACCESS_COMBOBOX):
 		s = s | (1 << ATSPI_STATE_EXPANDABLE)
@@ -247,6 +407,33 @@ void ui_atspi_states(ui_atspi_bridge* b, ui_access_node* n, int* lo, int* hi):
 	if ((n.parent == 0) && (role == UI_ACCESS_DOCUMENT)): s = s | (1 << ATSPI_STATE_ACTIVE)
 	lo[0] = s
 	hi[0] = t
+
+
+void ui_atspi_states(ui_atspi_bridge* b, ui_access_node* n, int* lo, int* hi):
+	ui_atspi_states_for(n, b.published.focused_id, lo, hi)
+
+
+# The nick AT-SPI events use for state number k (0 for ones never sent).
+char* ui_atspi_state_nick(int k):
+	if (k == ATSPI_STATE_ACTIVE): return c"active"
+	if (k == ATSPI_STATE_CHECKED): return c"checked"
+	if (k == ATSPI_STATE_COLLAPSED): return c"collapsed"
+	if (k == ATSPI_STATE_EDITABLE): return c"editable"
+	if (k == ATSPI_STATE_ENABLED): return c"enabled"
+	if (k == ATSPI_STATE_EXPANDABLE): return c"expandable"
+	if (k == ATSPI_STATE_EXPANDED): return c"expanded"
+	if (k == ATSPI_STATE_FOCUSABLE): return c"focusable"
+	if (k == ATSPI_STATE_MODAL): return c"modal"
+	if (k == ATSPI_STATE_PRESSED): return c"pressed"
+	if (k == ATSPI_STATE_SELECTABLE): return c"selectable"
+	if (k == ATSPI_STATE_SELECTED): return c"selected"
+	if (k == ATSPI_STATE_SENSITIVE): return c"sensitive"
+	if (k == ATSPI_STATE_SHOWING): return c"showing"
+	if (k == ATSPI_STATE_VISIBLE): return c"visible"
+	if (k == ATSPI_STATE_CHECKABLE): return c"checkable"
+	if (k == ATSPI_STATE_HAS_POPUP): return c"has-popup"
+	if (k == ATSPI_STATE_READ_ONLY): return c"read-only"
+	return 0
 
 
 /* Text offsets: AT-SPI counts characters (code points). The snapshot's
@@ -388,6 +575,36 @@ void ui_atspi_put_text(dbus_buf* out, ui_access_text* t):
 	dbus_put_string_n(out, t.data, t.length)
 
 
+# A row without a name of its own is named from its cells, as ARIA
+# rows are: screen readers announce a focused row by its name and do
+# not read a row's cells themselves.
+void ui_atspi_put_name(dbus_buf* out, ui_access_node* n):
+	if ((n.role != UI_ACCESS_ROW) || (n.name.length > 0)):
+		ui_atspi_put_text(out, &n.name)
+		return
+	int length = 0
+	ui_access_node* c = n.first_child
+	while (c != 0):
+		if (c.name.length > 0): length = length + c.name.length + 1
+		c = c.next_sibling
+	if (length == 0):
+		ui_atspi_put_text(out, &n.name)
+		return
+	char* joined = cast(char*, __w_alloc(length))
+	int at = 0
+	c = n.first_child
+	while (c != 0):
+		if (c.name.length > 0):
+			if (at > 0):
+				joined[at] = ' '
+				at = at + 1
+			for i in range(c.name.length): joined[at + i] = c.name.data[i]
+			at = at + c.name.length
+		c = c.next_sibling
+	dbus_put_string_n(out, joined, at)
+	free(joined)
+
+
 /* Queued actions, applied by ui_access_atspi_dispatch. */
 
 int ui_atspi_allowed(ui_access_node* n, int action):
@@ -428,7 +645,7 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 		if (strcmp(prop, c"Name") == 0):
 			dbus_put_sig(out, c"s")
 			if (n == 0): dbus_put_string(out, b.app_name)
-			else: ui_atspi_put_text(out, &n.name)
+			else: ui_atspi_put_name(out, n)
 			return 1
 		if (strcmp(prop, c"Description") == 0):
 			dbus_put_sig(out, c"s")
@@ -498,6 +715,46 @@ int ui_atspi_put_property(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n, 
 		dbus_put_sig(out, c"d")
 		dbus_put_double_int(out, v)
 		return 1
+	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Table") && ui_atspi_has_table(n)):
+		int count = 0 - 1
+		if (strcmp(prop, c"NRows") == 0): count = ui_atspi_table_rows(n)
+		if (strcmp(prop, c"NColumns") == 0): count = ui_atspi_table_columns(n)
+		if (strcmp(prop, c"NSelectedRows") == 0): count = ui_atspi_selected_count(n)
+		if (strcmp(prop, c"NSelectedColumns") == 0): count = 0
+		if (count >= 0):
+			dbus_put_sig(out, c"i")
+			dbus_put_i32(out, count)
+			return 1
+		if ((strcmp(prop, c"Caption") == 0) || (strcmp(prop, c"Summary") == 0)):
+			dbus_put_sig(out, c"(so)")
+			ui_atspi_put_ref(b, out, 0 - 1)
+			return 1
+		return 0
+	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.TableCell") && ui_atspi_has_table_cell(n)):
+		int row = 0
+		int col = 0
+		ui_atspi_cell_position(n, &row, &col)
+		if ((strcmp(prop, c"ColumnSpan") == 0) || (strcmp(prop, c"RowSpan") == 0)):
+			dbus_put_sig(out, c"i")
+			dbus_put_i32(out, 1)
+			return 1
+		if (strcmp(prop, c"Position") == 0):
+			dbus_put_sig(out, c"(ii)")
+			dbus_put_struct(out)
+			dbus_put_i32(out, row)
+			dbus_put_i32(out, col)
+			return 1
+		if (strcmp(prop, c"Table") == 0):
+			dbus_put_sig(out, c"(so)")
+			ui_atspi_put_ref(b, out, n.parent.parent.id)
+			return 1
+		return 0
+	if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Selection") && ui_atspi_has_selection(n)):
+		if (strcmp(prop, c"NSelectedChildren") == 0):
+			dbus_put_sig(out, c"i")
+			dbus_put_i32(out, ui_atspi_selected_count(n))
+			return 1
+		return 0
 	return 0
 
 
@@ -520,6 +777,9 @@ void ui_atspi_put_interfaces(dbus_buf* out, ui_access_node* n):
 	if (ui_atspi_has_text(n)): dbus_put_string(out, c"org.a11y.atspi.Text")
 	if (ui_atspi_has_editable(n)): dbus_put_string(out, c"org.a11y.atspi.EditableText")
 	if (ui_atspi_has_value(n)): dbus_put_string(out, c"org.a11y.atspi.Value")
+	if (ui_atspi_has_table(n)): dbus_put_string(out, c"org.a11y.atspi.Table")
+	if (ui_atspi_has_table_cell(n)): dbus_put_string(out, c"org.a11y.atspi.TableCell")
+	if (ui_atspi_has_selection(n)): dbus_put_string(out, c"org.a11y.atspi.Selection")
 	dbus_array_end(out, mark, 4)
 
 
@@ -635,6 +895,23 @@ int ui_atspi_call_properties(ui_atspi_bridge* b, dbus_message* m, ui_access_node
 			props[3] = c"CurrentValue"
 			props[4] = c"Text"
 			count = 5
+		else if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Table")):
+			props[0] = c"NRows"
+			props[1] = c"NColumns"
+			props[2] = c"Caption"
+			props[3] = c"Summary"
+			props[4] = c"NSelectedRows"
+			props[5] = c"NSelectedColumns"
+			count = 6
+		else if (ui_atspi_iface_is(iface, c"org.a11y.atspi.TableCell")):
+			props[0] = c"ColumnSpan"
+			props[1] = c"Position"
+			props[2] = c"RowSpan"
+			props[3] = c"Table"
+			count = 4
+		else if (ui_atspi_iface_is(iface, c"org.a11y.atspi.Selection")):
+			props[0] = c"NSelectedChildren"
+			count = 1
 		ui_atspi_put_all(b, out, n, iface, &props[0], count)
 		return dbus_reply(b.bus, m, c"a{sv}")
 	if (ui_atspi_member(m, c"Set")):
@@ -959,19 +1236,197 @@ int ui_atspi_call_value(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
 	return ui_atspi_unknown(b, m)
 
 
+int ui_atspi_reply_ref(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
+	if (n == 0): ui_atspi_put_ref(b, dbus_body(b.bus), 0 - 1)
+	else: ui_atspi_put_ref(b, dbus_body(b.bus), n.id)
+	return dbus_reply(b.bus, m, c"(so)")
+
+
+# Select a child by queueing its activation (what a click does).
+int ui_atspi_select(ui_atspi_bridge* b, ui_access_node* c):
+	if (!ui_atspi_selectable_child(c)): return 0
+	if ((c.states & UI_ACCESS_SELECTED) != 0): return 1
+	return ui_atspi_enqueue(b, c, UI_ACCESS_ACTIVATE, c"", 0)
+
+
+int ui_atspi_call_table(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
+	dbus_reader r
+	dbus_message_reader(m, &r)
+	int columns = ui_atspi_table_columns(n)
+	int cells = ui_atspi_table_rows(n) * columns
+	if (ui_atspi_member(m, c"GetAccessibleAt")):
+		int row = dbus_read_i32(&r)
+		int col = dbus_read_i32(&r)
+		return ui_atspi_reply_ref(b, m, ui_atspi_row_cell(ui_atspi_table_row(n, row), col))
+	if (ui_atspi_member(m, c"GetIndexAt")):
+		int row = dbus_read_i32(&r)
+		int col = dbus_read_i32(&r)
+		int index = 0 - 1
+		if (ui_atspi_row_cell(ui_atspi_table_row(n, row), col) != 0): index = row * columns + col
+		return ui_atspi_reply_i32(b, m, index)
+	if (ui_atspi_member(m, c"GetRowAtIndex") || ui_atspi_member(m, c"GetColumnAtIndex")):
+		int index = dbus_read_i32(&r)
+		int v = 0 - 1
+		if ((index >= 0) && (index < cells)):
+			if (ui_atspi_member(m, c"GetRowAtIndex")): v = index / columns
+			else: v = index % columns
+		return ui_atspi_reply_i32(b, m, v)
+	if (ui_atspi_member(m, c"GetRowColumnExtentsAtIndex")):
+		int index = dbus_read_i32(&r)
+		int ok = (index >= 0) && (index < cells)
+		int row = 0
+		int col = 0
+		int selected = 0
+		if ok:
+			row = index / columns
+			col = index % columns
+			selected = (ui_atspi_table_row(n, row).states & UI_ACCESS_SELECTED) != 0
+		dbus_buf* out = dbus_body(b.bus)
+		dbus_put_bool(out, ok)
+		dbus_put_i32(out, row)
+		dbus_put_i32(out, col)
+		dbus_put_i32(out, ok)
+		dbus_put_i32(out, ok)
+		dbus_put_bool(out, selected)
+		return dbus_reply(b.bus, m, c"biiiib")
+	if (ui_atspi_member(m, c"GetRowDescription")):
+		return ui_atspi_reply_string(b, m, c"")
+	if (ui_atspi_member(m, c"GetColumnDescription")):
+		ui_access_node* header = ui_atspi_row_cell(ui_atspi_header_row(n), dbus_read_i32(&r))
+		if (header == 0): return ui_atspi_reply_string(b, m, c"")
+		ui_atspi_put_text(dbus_body(b.bus), &header.name)
+		return dbus_reply(b.bus, m, c"s")
+	if (ui_atspi_member(m, c"GetRowExtentAt") || ui_atspi_member(m, c"GetColumnExtentAt")):
+		int row = dbus_read_i32(&r)
+		int col = dbus_read_i32(&r)
+		return ui_atspi_reply_i32(b, m, ui_atspi_row_cell(ui_atspi_table_row(n, row), col) != 0)
+	if (ui_atspi_member(m, c"GetRowHeader")):
+		return ui_atspi_reply_ref(b, m, 0)
+	if (ui_atspi_member(m, c"GetColumnHeader")):
+		return ui_atspi_reply_ref(b, m, ui_atspi_row_cell(ui_atspi_header_row(n), dbus_read_i32(&r)))
+	if (ui_atspi_member(m, c"GetSelectedRows") || ui_atspi_member(m, c"GetSelectedColumns")):
+		dbus_buf* out = dbus_body(b.bus)
+		int mark = dbus_array_begin(out, 4)
+		if (ui_atspi_member(m, c"GetSelectedRows")):
+			for i in range(ui_atspi_table_rows(n)):
+				if ((ui_atspi_table_row(n, i).states & UI_ACCESS_SELECTED) != 0): dbus_put_i32(out, i)
+		dbus_array_end(out, mark, 4)
+		return dbus_reply(b.bus, m, c"ai")
+	if (ui_atspi_member(m, c"IsRowSelected") || ui_atspi_member(m, c"IsSelected")):
+		ui_access_node* row = ui_atspi_table_row(n, dbus_read_i32(&r))
+		if (ui_atspi_member(m, c"IsSelected") && (ui_atspi_row_cell(row, dbus_read_i32(&r)) == 0)): row = 0
+		return ui_atspi_reply_bool(b, m, (row != 0) && ((row.states & UI_ACCESS_SELECTED) != 0))
+	if (ui_atspi_member(m, c"IsColumnSelected")):
+		return ui_atspi_reply_bool(b, m, 0)
+	if (ui_atspi_member(m, c"AddRowSelection")):
+		ui_access_node* row = ui_atspi_table_row(n, dbus_read_i32(&r))
+		return ui_atspi_reply_bool(b, m, (row != 0) && ui_atspi_select(b, row))
+	if (ui_atspi_member(m, c"AddColumnSelection") || ui_atspi_member(m, c"RemoveRowSelection") || ui_atspi_member(m, c"RemoveColumnSelection")):
+		return ui_atspi_reply_bool(b, m, 0)
+	return ui_atspi_unknown(b, m)
+
+
+int ui_atspi_call_table_cell(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
+	int row = 0
+	int col = 0
+	ui_atspi_cell_position(n, &row, &col)
+	if (ui_atspi_member(m, c"GetRowColumnSpan")):
+		dbus_buf* out = dbus_body(b.bus)
+		dbus_put_i32(out, row)
+		dbus_put_i32(out, col)
+		dbus_put_i32(out, 1)
+		dbus_put_i32(out, 1)
+		return dbus_reply(b.bus, m, c"iiii")
+	if (ui_atspi_member(m, c"GetRowHeaderCells") || ui_atspi_member(m, c"GetColumnHeaderCells")):
+		dbus_buf* out = dbus_body(b.bus)
+		int mark = dbus_array_begin(out, 8)
+		if (ui_atspi_member(m, c"GetColumnHeaderCells")):
+			ui_access_node* header = ui_atspi_row_cell(ui_atspi_header_row(n.parent.parent), col)
+			if (header != 0): ui_atspi_put_ref(b, out, header.id)
+		dbus_array_end(out, mark, 8)
+		return dbus_reply(b.bus, m, c"a(so)")
+	return ui_atspi_unknown(b, m)
+
+
+int ui_atspi_call_selection(ui_atspi_bridge* b, dbus_message* m, ui_access_node* n):
+	dbus_reader r
+	dbus_message_reader(m, &r)
+	if (ui_atspi_member(m, c"GetSelectedChild")):
+		return ui_atspi_reply_ref(b, m, ui_atspi_selected_at(n, dbus_read_i32(&r)))
+	if (ui_atspi_member(m, c"SelectChild")):
+		ui_access_node* c = ui_atspi_child_at(b, n, dbus_read_i32(&r))
+		return ui_atspi_reply_bool(b, m, (c != 0) && ui_atspi_select(b, c))
+	if (ui_atspi_member(m, c"IsChildSelected")):
+		ui_access_node* c = ui_atspi_child_at(b, n, dbus_read_i32(&r))
+		return ui_atspi_reply_bool(b, m, ui_atspi_selectable_child(c) && ((c.states & UI_ACCESS_SELECTED) != 0))
+	# Single selection driven by activation: nothing can be deselected
+	# or selected wholesale.
+	if (ui_atspi_member(m, c"DeselectSelectedChild") || ui_atspi_member(m, c"DeselectChild") || ui_atspi_member(m, c"SelectAll") || ui_atspi_member(m, c"ClearSelection")):
+		return ui_atspi_reply_bool(b, m, 0)
+	return ui_atspi_unknown(b, m)
+
+
+/* The libatspi cache: GetItems preloads the whole tree and AddAccessible
+/ RemoveAccessible keep it current. */
+
+ui_access_node* ui_atspi_preorder_next(ui_access_node* n):
+	if (n.first_child != 0): return n.first_child
+	while (n != 0):
+		if (n.next_sibling != 0): return n.next_sibling
+		n = n.parent
+	return 0
+
+
+# One ((so)(so)(so)iiassusau) item: self, application, parent, index in
+# parent, child count, interfaces, name, role, description, states.
+void ui_atspi_put_cache_item(ui_atspi_bridge* b, dbus_buf* out, ui_access_node* n):
+	dbus_put_struct(out)
+	if (n == 0): ui_atspi_put_ref(b, out, 0)
+	else: ui_atspi_put_ref(b, out, n.id)
+	ui_atspi_put_ref(b, out, 0)
+	ui_atspi_put_parent(b, out, n)
+	if (n == 0): dbus_put_i32(out, 0 - 1)
+	else: dbus_put_i32(out, ui_atspi_index_in_parent(n))
+	dbus_put_i32(out, ui_atspi_child_count(b, n))
+	ui_atspi_put_interfaces(out, n)
+	int lo = 0
+	int hi = 0
+	if (n == 0):
+		dbus_put_string(out, b.app_name)
+		dbus_put_u32(out, ATSPI_ROLE_APPLICATION)
+		dbus_put_string(out, c"")
+	else:
+		ui_atspi_put_name(out, n)
+		dbus_put_u32(out, ui_atspi_role(n))
+		ui_atspi_put_text(out, &n.description)
+		ui_atspi_states(b, n, &lo, &hi)
+	int mark = dbus_array_begin(out, 4)
+	dbus_put_u32(out, lo)
+	dbus_put_u32(out, hi)
+	dbus_array_end(out, mark, 4)
+
+
+int ui_atspi_call_cache(ui_atspi_bridge* b, dbus_message* m):
+	dbus_buf* out = dbus_body(b.bus)
+	int mark = dbus_array_begin(out, 8)
+	ui_atspi_put_cache_item(b, out, 0)
+	if (b.published != 0):
+		ui_access_node* n = b.published.root
+		while (n != 0):
+			ui_atspi_put_cache_item(b, out, n)
+			n = ui_atspi_preorder_next(n)
+	dbus_array_end(out, mark, 8)
+	return dbus_reply(b.bus, m, c"a((so)(so)(so)iiassusau)")
+
+
 # Answer one method call addressed to an object path.
 int ui_atspi_handle_call(ui_atspi_bridge* b, dbus_message* m):
 	if (strcmp(m.interface, c"org.freedesktop.DBus.Peer") == 0):
 		dbus_body(b.bus)
 		if (ui_atspi_member(m, c"Ping")): return dbus_reply(b.bus, m, c"")
 		return ui_atspi_unknown(b, m)
-	# libatspi preloads its cache from here; an empty cache makes it
-	# query each object as it is needed.
 	if ((strcmp(m.path, c"/org/a11y/atspi/cache") == 0) && ui_atspi_on(m, c"org.a11y.atspi.Cache") && ui_atspi_member(m, c"GetItems")):
-		dbus_buf* out = dbus_body(b.bus)
-		int mark = dbus_array_begin(out, 8)
-		dbus_array_end(out, mark, 8)
-		return dbus_reply(b.bus, m, c"a((so)(so)(so)iiassusau)")
+		return ui_atspi_call_cache(b, m)
 	int id = ui_atspi_path_id(m.path)
 	ui_access_node* n = 0
 	if (id > 0):
@@ -989,6 +1444,9 @@ int ui_atspi_handle_call(ui_atspi_bridge* b, dbus_message* m):
 		if ((strcmp(m.interface, c"org.a11y.atspi.Text") == 0) && ui_atspi_has_text(n)): return ui_atspi_call_text(b, m, n)
 		if ((strcmp(m.interface, c"org.a11y.atspi.EditableText") == 0) && ui_atspi_has_editable(n)): return ui_atspi_call_editable(b, m, n)
 		if ((strcmp(m.interface, c"org.a11y.atspi.Value") == 0) && ui_atspi_has_value(n)): return ui_atspi_call_value(b, m, n)
+		if ((strcmp(m.interface, c"org.a11y.atspi.Table") == 0) && ui_atspi_has_table(n)): return ui_atspi_call_table(b, m, n)
+		if ((strcmp(m.interface, c"org.a11y.atspi.TableCell") == 0) && ui_atspi_has_table_cell(n)): return ui_atspi_call_table_cell(b, m, n)
+		if ((strcmp(m.interface, c"org.a11y.atspi.Selection") == 0) && ui_atspi_has_selection(n)): return ui_atspi_call_selection(b, m, n)
 	return ui_atspi_unknown(b, m)
 
 
@@ -1074,7 +1532,28 @@ int ui_atspi_has_child(ui_access_node* parent, int id):
 
 
 # Announce what changed from old to new (new is already published).
+void ui_atspi_emit_cache_add(ui_atspi_bridge* b, ui_access_node* n):
+	ui_atspi_put_cache_item(b, dbus_body(b.bus), n)
+	dbus_signal(b.bus, c"/org/a11y/atspi/cache", c"org.a11y.atspi.Cache", c"AddAccessible", c"((so)(so)(so)iiassusau)")
+
+
+void ui_atspi_emit_cache_remove(ui_atspi_bridge* b, int id):
+	char[64] path
+	dbus_buf* out = dbus_body(b.bus)
+	dbus_put_struct(out)
+	dbus_put_string(out, b.bus.unique_name)
+	dbus_put_path(out, ui_atspi_node_path(&path[0], id))
+	dbus_signal(b.bus, c"/org/a11y/atspi/cache", c"org.a11y.atspi.Cache", c"RemoveAccessible", c"(so)")
+
+
 void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tree* fresh):
+	# The cache first, parents before children, so the events below
+	# refer to objects a caching client already knows.
+	if ((old == 0) || (old.root == 0) || (fresh.root == 0) || (fresh.root.id != old.root.id)): ui_atspi_emit_cache_add(b, 0)
+	ui_access_node* walk = fresh.root
+	while (walk != 0):
+		if (ui_access_find(old, walk.id) == 0): ui_atspi_emit_cache_add(b, walk)
+		walk = ui_atspi_preorder_next(walk)
 	if ((old == 0) || (old.root == 0)):
 		if (fresh.root != 0):
 			ui_atspi_emit_children(b, 0, c"add", 0, fresh.root.id)
@@ -1088,6 +1567,7 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 			ui_access_node* gone = old.nodes[id]
 			if (ui_access_find(fresh, id) == 0):
 				ui_atspi_emit_state(b, id, c"defunct", 1)
+				ui_atspi_emit_cache_remove(b, id)
 				if ((gone.parent != 0) && (ui_access_find(fresh, gone.parent.id) != 0)):
 					ui_atspi_emit_children(b, gone.parent.id, c"remove", ui_atspi_index_in_parent(gone), id)
 	for int id in fresh.nodes:
@@ -1098,19 +1578,38 @@ void ui_atspi_emit_changes(ui_atspi_bridge* b, ui_access_tree* old, ui_access_tr
 				ui_access_node* parent_was = ui_access_find(old, n.parent.id)
 				if (parent_was != 0): ui_atspi_emit_children(b, n.parent.id, c"add", ui_atspi_index_in_parent(n), id)
 			continue
-		int changed = n.states ^ was.states
-		if ((changed & UI_ACCESS_CHECKED) != 0): ui_atspi_emit_state(b, id, c"checked", (n.states & UI_ACCESS_CHECKED) != 0)
-		if ((changed & UI_ACCESS_EXPANDED) != 0): ui_atspi_emit_state(b, id, c"expanded", (n.states & UI_ACCESS_EXPANDED) != 0)
-		if ((changed & UI_ACCESS_SELECTED) != 0): ui_atspi_emit_state(b, id, c"selected", (n.states & UI_ACCESS_SELECTED) != 0)
-		if ((changed & UI_ACCESS_DISABLED) != 0):
-			ui_atspi_emit_state(b, id, c"enabled", (n.states & UI_ACCESS_DISABLED) == 0)
-			ui_atspi_emit_state(b, id, c"sensitive", (n.states & UI_ACCESS_DISABLED) == 0)
+		# Every AT-SPI state that changed but focus (announced last, the
+		# old focus first).
+		int lo = 0
+		int hi = 0
+		int was_lo = 0
+		int was_hi = 0
+		ui_atspi_states_for(n, 0, &lo, &hi)
+		ui_atspi_states_for(was, 0, &was_lo, &was_hi)
+		for k in range(64):
+			int on = 0
+			int off = 0
+			if (k < 32):
+				on = (lo >> k) & 1
+				off = (was_lo >> k) & 1
+			else:
+				on = (hi >> (k - 32)) & 1
+				off = (was_hi >> (k - 32)) & 1
+			if ((on != off) && (ui_atspi_state_nick(k) != 0)): ui_atspi_emit_state(b, id, ui_atspi_state_nick(k), on)
 		if (!ui_atspi_text_same(&n.name, &was.name)): ui_atspi_emit_name(b, id, c"accessible-name", &n.name)
 		if (!ui_atspi_text_same(&n.description, &was.description)): ui_atspi_emit_name(b, id, c"accessible-description", &n.description)
 		if ((n.role == UI_ACCESS_PROGRESS) && !ui_atspi_text_same(&n.value, &was.value)): ui_atspi_emit_name(b, id, c"accessible-value", &n.value)
 		if (ui_atspi_has_text(n) && !ui_atspi_text_same(&n.value, &was.value)):
 			ui_atspi_emit_text(b, id, c"delete", &was.value)
 			ui_atspi_emit_text(b, id, c"insert", &n.value)
+	# One SelectionChanged per container whose selected children changed,
+	# after the per-child selected states.
+	walk = fresh.root
+	while (walk != 0):
+		ui_access_node* had = ui_access_find(old, walk.id)
+		if (ui_atspi_has_selection(walk) && (had != 0) && !ui_atspi_selection_same(walk, had)):
+			ui_atspi_emit(b, walk.id, c"org.a11y.atspi.Event.Object", c"SelectionChanged", c"", 0, 0)
+		walk = ui_atspi_preorder_next(walk)
 	int old_focus = 0
 	if (old != 0): old_focus = old.focused_id
 	if (fresh.focused_id != old_focus):
