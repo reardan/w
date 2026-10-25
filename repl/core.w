@@ -47,6 +47,7 @@ import debugger.common
 import structures.json
 import structures.json_codec
 import compiler.safe_session
+import lib.__arch__.thread_id
 
 
 # Result of one repl_eval() call. status 1: the entry compiled and ran
@@ -196,8 +197,7 @@ const int repl_tls_capacity = 65536
 
 
 int repl_gettid():
-	if (__word_size__ == 8): return syscall(186, 0, 0, 0)
-	return syscall(224, 0, 0, 0)
+	return arch_gettid()
 
 
 # The tids of this process's threads, from /proc/self/task, into ids.
