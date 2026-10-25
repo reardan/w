@@ -45,6 +45,12 @@ int llvm_uses_trap
 int llvm_uses_bits
 list[int] llvm_first
 list[int] llvm_next
+# '?' error exits: statement -> its first 'deferred exit' child that a
+# '?' inside it (rather than the statement itself) emitted, chained
+# through llvm_next; and the (statement, '?' end offset, '?' node)
+# triples, in node order.
+map[int, int] llvm_propagate_first
+list[int] llvm_propagate_sites
 # linkage -> defining function node; name -> linkage of a defined function
 map[int, int] llvm_functions
 map[char*, int] llvm_function_names
@@ -2945,9 +2951,11 @@ int llvm_group_type(int id):
 # parameters on its exits). Dropping a null owner does nothing.
 
 # Owners declared so far in the function being lowered, in declaration
-# order, and the stack depth a break/continue unwinds to.
+# order, and the stack depths a continue and a break unwind to (a break
+# leaves the innermost loop or switch).
 list[int] llvm_owner_stack
 int llvm_loop_owner_mark
+int llvm_break_owner_mark
 
 
 int llvm_is_owner(int type):
@@ -3147,24 +3155,16 @@ int llvm_return_record = -1
 map[char*, int] llvm_labels
 
 
-# Checked slices, borrowed records and records holding checked pointers
-# cross calls by the safe-mode ABI, which is outside the subset.
-int llvm_checked_record(int type):
-	if (type < 0): return 0
-	retained_type* t = llvm_type(type)
-	if (t.pointer_level > 0): return 0
-	if ((t.kind >= 21) && (t.kind <= 30)): return 1
-	if ((t.kind == 6) || (t.kind == 7) || (t.kind == 8) || (t.kind == 9) || (t.kind == 10) || (t.kind == 11) || (t.kind == 12)): return 0
-	for field in t.fields:
-		if (llvm_checked_record(field.type)): return 1
-	return 0
-
-
-# A word, or a record passed or returned by value.
+# A word, or a record passed or returned by value. Checked slices
+# (ref/refmut T[]), borrowed records and records holding owners use the
+# same aggregate convention natively (docs/projects/safe_mode_contracts.md):
+# an inline descriptor or record copied into the callee's parameter, and a
+# caller-owned result buffer passed as the hidden first argument. Owner
+# transfers and drops follow "unique owners" above.
 int llvm_parameter_ok(int type):
 	int c = llvm_class(type)
 	if (c == llvm_class_word): return 1
-	return (c == llvm_class_struct) && (llvm_checked_record(type) == 0)
+	return c == llvm_class_struct
 
 
 # Storage for one record value in the function's entry block.
@@ -3271,7 +3271,9 @@ void llvm_switch(int id):
 	int type = llvm_group_type(scrutinee)
 	int end = llvm_label_new()
 	int previous_break = llvm_break_label
+	int previous_break_mark = llvm_break_owner_mark
 	llvm_break_label = end
+	llvm_break_owner_mark = llvm_owner_stack.length
 	int clause = llvm_next[scrutinee]
 	while ((clause >= 0) && (llvm_failed == 0)):
 		char* name = retained_node_at(clause).name
@@ -3309,6 +3311,7 @@ void llvm_switch(int id):
 	llvm_branch(end)
 	llvm_label(end)
 	llvm_break_label = previous_break
+	llvm_break_owner_mark = previous_break_mark
 	llvm_reachable = entry_reachable
 
 
@@ -3394,7 +3397,9 @@ int llvm_control_statement(int id, retained_node* node):
 		if (target < 0): llvm_error(id, c"jump outside a loop")
 		else:
 			llvm_deferred_exits(id)
-			llvm_owner_cleanup(id, llvm_loop_owner_mark, 0)
+			int mark = llvm_break_owner_mark
+			if (strcmp(name, c"continue") == 0): mark = llvm_loop_owner_mark
+			llvm_owner_cleanup(id, mark, 0)
 			llvm_branch(target)
 		llvm_reachable = 0
 		return 1
@@ -3470,13 +3475,16 @@ void llvm_range(int id):
 	int previous_break = llvm_break_label
 	int previous_continue = llvm_continue_label
 	int previous_mark = llvm_loop_owner_mark
+	int previous_break_mark = llvm_break_owner_mark
 	llvm_break_label = done
 	llvm_continue_label = next
 	llvm_loop_owner_mark = llvm_owner_stack.length
+	llvm_break_owner_mark = llvm_owner_stack.length
 	llvm_statement(body)
 	llvm_break_label = previous_break
 	llvm_continue_label = previous_continue
 	llvm_loop_owner_mark = previous_mark
+	llvm_break_owner_mark = previous_break_mark
 	llvm_branch(next)
 	llvm_label(next)
 	llvm_store(id, type, llvm_instruction(c"add", llvm_load(type, address), step), address)
@@ -4144,13 +4152,19 @@ void llvm_container_for(int id):
 		llvm_store(id, second_storage, second, llvm_name(c"%v", variables[1]))
 	int previous_break = llvm_break_label
 	int previous_continue = llvm_continue_label
+	int previous_mark = llvm_loop_owner_mark
+	int previous_break_mark = llvm_break_owner_mark
 	llvm_break_label = done
 	llvm_continue_label = next
+	llvm_loop_owner_mark = llvm_owner_stack.length
+	llvm_break_owner_mark = llvm_owner_stack.length
 	if (generator): llvm_generator_loop(container, 1)
 	llvm_statement(body)
 	if (generator): llvm_generator_loop(container, 0)
 	llvm_break_label = previous_break
 	llvm_continue_label = previous_continue
+	llvm_loop_owner_mark = previous_mark
+	llvm_break_owner_mark = previous_break_mark
 	llvm_branch(next)
 	llvm_label(next)
 	char* stepped = c"0"
@@ -4175,7 +4189,8 @@ void llvm_container_for(int id):
 # base[start:end] over an array, slice or string, as grammar/postfix_expr.w
 # lowers it: trap unless 0 <= start <= end <= length, then return a fresh
 # malloc'd {data + start * element size, end - start} descriptor that
-# names the range in place (the legacy, unchecked-slice ABI).
+# names the range in place (the legacy, unchecked-slice ABI). A checked
+# ref/refmut T[] receiver's range is an inline {data, length} record.
 char* llvm_slice_range(int group, int id, retained_node* node):
 	int base_type = llvm_operand_type(group, node.left)
 	int element_size = 1
@@ -4197,7 +4212,10 @@ char* llvm_slice_range(int group, int id, retained_node* node):
 	char* offset = start
 	if (element_size > 1): offset = llvm_instruction(c"mul", start, llvm_number(element_size))
 	char* data = llvm_instruction(c"add", llvm_load(-1, descriptor), offset)
-	char* result = llvm_call1(id, c"malloc", llvm_number(16))
+	# A checked receiver's range is a two-word stack temporary instead.
+	char* result = 0
+	if (llvm_is_checked_slice(base_type)): result = llvm_address_value(llvm_record_buffer(base_type))
+	else: result = llvm_call1(id, c"malloc", llvm_number(16))
 	char* slot = llvm_pointer(result)
 	llvm_store_width(8, data, slot)
 	llvm_store_width(8, llvm_instruction(c"sub", end, start), llvm_offset(slot, c"8"))
@@ -4666,9 +4684,40 @@ char* llvm_array_allocation(int group, int id, retained_node* node):
 	return object
 
 
+# 1 when id is a 'deferred exit' a '?' in its parent statement emitted.
+int llvm_propagate_exit(int id, retained_node* node):
+	if ((node.kind != retained_statement) || (strcmp(node.name, c"deferred exit") != 0)): return 0
+	for i in range(0, llvm_propagate_sites.length, 3):
+		if ((llvm_propagate_sites[i] == node.parent) && (llvm_propagate_sites[i + 1] == node.end)): return 1
+	return 0
+
+
+# The deferred statements of the '?' node id in statement, in run order:
+# each '?' of one statement emitted the same count of them, one run after
+# another in node order (ends alone do not tell them apart: the tree gives
+# every postfix node of a group the group's end).
+void llvm_propagate_deferred(int statement, int id, int end):
+	int sites = 0
+	int index = -1
+	for i in range(0, llvm_propagate_sites.length, 3):
+		if ((llvm_propagate_sites[i] != statement) || (llvm_propagate_sites[i + 1] != end)): continue
+		if (llvm_propagate_sites[i + 2] == id): index = sites
+		sites = sites + 1
+	if ((index < 0) || ((statement in llvm_propagate_first) == 0)): return
+	list[int] exits = new list[int]
+	int exit = llvm_propagate_first[statement]
+	while (exit >= 0):
+		if (retained_node_at(exit).end == end): exits.push(exit)
+		exit = llvm_next[exit]
+	int each = exits.length / sites
+	for k in range(index * each, (index + 1) * each): llvm_statement(exits[k])
+	exits.free()
+
+
 # r? (op 136, result_propagate_suffix): return r from the function unless
-# r.ok, freeing the enclosing generator loops and owners as a return
-# does; otherwise the place of r.value.
+# r.ok, freeing the enclosing generator loops, running the deferred
+# statements and dropping owners as a return does; otherwise the place of
+# r.value.
 char* llvm_propagate(int group, int id, retained_node* node):
 	if (llvm_generator_self >= 0):
 		llvm_error(id, c"'?' in a generator")
@@ -4688,6 +4737,7 @@ char* llvm_propagate(int group, int id, retained_node* node):
 	llvm_cond_branch(llvm_bool(ok), good, bad)
 	llvm_label(bad)
 	llvm_generator_free_loops(id)
+	llvm_propagate_deferred(retained_node_at(llvm_node_id(group, -1)).parent, id, node.end)
 	llvm_owner_cleanup(id, 0, 1)
 	llvm_put(c"  ret i64 ")
 	llvm_put(result)
@@ -5263,13 +5313,16 @@ void llvm_statement(int id):
 		int previous_break = llvm_break_label
 		int previous_continue = llvm_continue_label
 		int previous_mark = llvm_loop_owner_mark
+		int previous_break_mark = llvm_break_owner_mark
 		llvm_break_label = end
 		llvm_continue_label = head
 		llvm_loop_owner_mark = llvm_owner_stack.length
+		llvm_break_owner_mark = llvm_owner_stack.length
 		llvm_statement(body)
 		llvm_break_label = previous_break
 		llvm_continue_label = previous_continue
 		llvm_loop_owner_mark = previous_mark
+		llvm_break_owner_mark = previous_break_mark
 		llvm_branch(head)
 		llvm_label(end)
 		llvm_reachable = entry_reachable
@@ -5454,6 +5507,7 @@ void llvm_emit_body(int id):
 	llvm_labels = new map[char*, int]
 	llvm_owner_stack = new list[int]
 	llvm_loop_owner_mark = 0
+	llvm_break_owner_mark = 0
 	llvm_entry = string_new()
 	llvm_out = string_new()
 	int return_class = llvm_class(function.return_type)
@@ -5646,6 +5700,8 @@ void llvm_free_tables():
 	llvm_globals_used.free()
 	llvm_global_order.free()
 	llvm_owned_first.free()
+	llvm_propagate_first.free()
+	llvm_propagate_sites.free()
 	llvm_owned_next.free()
 	llvm_first.free()
 	llvm_next.free()
@@ -5719,6 +5775,8 @@ int llvm_emit(char* filename, char* output_path):
 	llvm_owned_next = new list[int]
 	llvm_first = new list[int]
 	llvm_next = new list[int]
+	llvm_propagate_first = new map[int, int]
+	llvm_propagate_sites = new list[int]
 	int input = -1
 	for i in range(retained_sources.length):
 		if (strcmp(retained_sources[i].path, filename) == 0): input = i
@@ -5733,6 +5791,17 @@ int llvm_emit(char* filename, char* output_path):
 	for i in range(count):
 		llvm_first.push(-1)
 		llvm_next.push(-1)
+	# result_propagate_suffix emits each '?''s deferred statements on its
+	# error path while the enclosing statement is open, so they become that
+	# statement's 'deferred exit' children, ending where the '?' does.
+	for id in range(count):
+		if (retained_node_kind(id) != retained_expression): continue
+		retained_node node
+		retained_node_load(id, &node)
+		if ((node.op != 136) || (node.parent < 0)): continue
+		llvm_propagate_sites.push(retained_node_at(node.parent).parent)
+		llvm_propagate_sites.push(node.end)
+		llvm_propagate_sites.push(id)
 	# Descending insertion preserves production order even when a parent
 	# declaration is appended after the body it adopts.
 	for i in range(count):
@@ -5740,6 +5809,10 @@ int llvm_emit(char* filename, char* output_path):
 		retained_node node
 		retained_node_load(id, &node)
 		if (node.parent >= 0):
+			if (llvm_propagate_exit(id, &node)):
+				if (node.parent in llvm_propagate_first): llvm_next[id] = llvm_propagate_first[node.parent]
+				llvm_propagate_first[node.parent] = id
+				continue
 			llvm_next[id] = llvm_first[node.parent]
 			llvm_first[node.parent] = id
 	for i in range(retained_bindings.length):

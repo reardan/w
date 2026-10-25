@@ -168,7 +168,13 @@ point, and the output file is left untouched.
   `set[T]` containers of any of these, generic records (`pair[int]`), and
   checked pointers (`own`, `optown`, `ref`, `refmut`, `optref`,
   `optrefmut`) with checked slices (`ref T[]`) and borrowed records as
-  locals and fields.
+  locals, fields, parameters and results. Natively these cross calls by
+  the ordinary aggregate convention (`docs/projects/safe_mode_contracts.md`):
+  the inline `{data, length}` descriptor or record is copied into the
+  parameter, and a caller-owned result buffer is the hidden first
+  argument; a range of a checked slice is a two-word stack temporary,
+  not the legacy malloc'd descriptor. All 44 `safe_*_runtime_fixture`
+  programs match native under `W_DEBUG_ALLOC=1`.
 - Locals with or without initializers (storage is zeroed at the
   declaration, as are fixed-array headers; a record's fixed-array fields
   get their inline headers wherever a record comes into being: its
@@ -275,7 +281,10 @@ point, and the output file is left untouched.
 - Other forms: method calls (`p.move(1, 2)`, a record receiver passing its
   address), `new T[n]` (`__w_alloc_trap`, then an inline `{data, length}`
   header), `?` on a `wresult[T]*` (an error frees the enclosing generator
-  loops and owners and returns the operand), W variadic calls (the tail in
+  loops, runs the deferred statements in scope and returns the operand, as
+  `result_propagate_suffix` does; the front end records those statements
+  as `deferred exit` children of the statement holding the `?`, one run per
+  `?` in node order, which wllvm keeps off the statement's own child list), W variadic calls (the tail in
   an entry-block array behind a `{data, length}` descriptor, as
   `finish_w_variadic_arguments` lays it out), `var` values through
   `structures/w_dynamic.w`'s box, unbox, operator and text helpers, the
@@ -393,8 +402,7 @@ native arm64 build, as do the container, slice and generator fixtures,
 
 Not yet supported, and rejected with a diagnostic: records returned
 through function values (the native backend does not support them
-either), checked slices, borrowed records and records holding checked
-pointers passed or returned by value (the safe-mode call ABI), arrays of
+either), arrays of
 records holding fixed arrays (the native backend leaves their element
 headers zeroed), an array field of a call's record result (natively its
 header's data word is read as a descriptor), `\u` escapes in `raw_asm`, and the `get_context`/`store_context`

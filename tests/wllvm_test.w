@@ -205,8 +205,6 @@ void test_wllvm_rejects_unsupported_programs():
 	wllvm_test_reject(c"struct holder:\n\tint[2] items\nint main():\n\tholder[2] all\n\treturn 0\n")
 	# natively an array field of a call's result has no defined value
 	wllvm_test_reject(c"struct holder:\n\tint[2] items\nholder make():\n\tholder h\n\treturn h\nint main():\n\treturn make().items[1]\n")
-	# checked slices and borrowed records cross calls by the safe-mode ABI
-	wllvm_test_reject(c"int first(ref int[] v):\n\treturn v[0]\nint main():\n\tint[2] a\n\tref int[] s = a\n\treturn first(s)\n")
 	wllvm_test_reject(c"int main():\n\traw_asm(c\"\\u00e9\")\n\treturn 0\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
 	wllvm_test_reject(c"int main():\n\treturn 0\n\traw_asm(c\"\\u00e9\")\n")
@@ -337,6 +335,12 @@ void test_wllvm_native_differential():
 	wllvm_test_differential(clang, c"tests/wllvm_forms_fixture.w", 11)
 	wllvm_test_differential(clang, c"tests/wllvm_codec_fixture.w", 10)
 	wllvm_test_differential(clang, c"tests/wllvm_control_fixture.w", 23)
+	wllvm_test_differential(clang, c"tests/wllvm_propagate_fixture.w", 44)
+	# Checked slices, borrowed records and records holding owners by value,
+	# under the guard-page allocator's leak count (0 = no leak, no fault).
+	list[char*] safe_fixtures = list[char*]{c"tests/safe_slice_runtime_fixture.w", c"tests/safe_aggregate_runtime_fixture.w", c"tests/safe_owned_field_runtime_fixture.w", c"tests/safe_mutable_slice_runtime_fixture.w", c"tests/safe_extension_runtime_fixture.w"}
+	for fixture in safe_fixtures: wllvm_test_differential(clang, fixture, 0)
+	safe_fixtures.free()
 	free(clang)
 
 
