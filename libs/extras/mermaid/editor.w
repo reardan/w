@@ -1,6 +1,7 @@
 # UI-independent editor state: bounded undo/redo, parse-on-change, safe save.
 import libs.extras.mermaid.io
 import libs.extras.mermaid.render
+import libs.extras.mermaid.save_guard
 
 struct mm_editor:
 	mm_document* document
@@ -16,16 +17,18 @@ struct mm_editor:
 	int move_index
 	int move_start_x
 	int move_start_y
+	# Disk polling (mm_editor_poll) and the last save's outcome.
+	mm_disk_stamp disk_stamp
+	int disk_state
+	int polls
+	int save_status
+	char* recovery_path
 
 void mm_editor_move_cancel(mm_editor* e);
 
 # Treat unreadable paths as occupied; only ENOENT means absent.
 int mm_editor_path_present(char* path):
-	io_result result
-	int fd = fs_open(path, FS_O_RDONLY, 0, &result)
-	if (fd < 0): return result.native_error != 2
-	io_close(fd, &result)
-	return 1
+	return mm_disk_present(path)
 
 mm_editor* mm_editor_new(char* path, char* source):
 	if (path == 0 || source == 0 || strlen(source) > MM_MAX_SOURCE): return 0
@@ -41,6 +44,8 @@ mm_editor* mm_editor_new(char* path, char* source):
 	e.scene = mm_render(e.document)
 	e.history = new list[char*]
 	e.history.push(strclone(source))
+	mm_disk_stamp_read(path, &e.disk_stamp)
+	e.disk_state = mm_disk_compare(path, e.disk_present, e.disk_source)
 	return e
 
 # Opening records that the snapshot came from an existing file, even if another
@@ -54,6 +59,7 @@ mm_editor* mm_editor_open(char* path):
 		return 0
 	mm_editor* e = mm_editor_new(path, source)
 	e.disk_present = 1
+	e.disk_state = mm_disk_compare(path, 1, e.disk_source)
 	free(source)
 	return e
 
@@ -110,31 +116,81 @@ int mm_editor_undo(mm_editor* e, int redo):
 	mm_editor_load(e, e.history[next])
 	return 1
 
+# The disk baseline is now what the editor shows as saved.
+void mm_editor_adopt_baseline(mm_editor* e, char* source, int present):
+	char* copy = 0
+	if (source != 0): copy = strclone(source)
+	else: copy = strclone(c"")
+	free(e.disk_source)
+	e.disk_source = copy
+	e.disk_present = present
+	e.disk_state = MM_DISK_SAME
+	mm_disk_stamp_read(e.path, &e.disk_stamp)
+
 # Detect content changes, replacement and deletion before overwriting the file.
-# This is an optimistic guard, not a lock against another writer during replace.
 int mm_editor_external_change(mm_editor* e):
+	return mm_disk_compare(e.path, e.disk_present, e.disk_source) != MM_DISK_SAME
+
+# Periodic check for the UI loop: MM_DISK_SAME, MM_DISK_CHANGED or
+# MM_DISK_MISSING. The size/mtime/ctime/inode fingerprint is read every
+# call; the bytes are compared when it moved or on every force call, which
+# catches same-second, same-size in-place rewrites and stat-less platforms.
+int mm_editor_poll(mm_editor* e, int force):
+	mm_disk_stamp now
+	mm_disk_stamp_read(e.path, &now)
+	e.polls = e.polls + 1
+	if (force == 0 && mm_disk_stamp_same(&now, &e.disk_stamp) && e.disk_state == MM_DISK_SAME): return MM_DISK_SAME
+	e.disk_state = mm_disk_compare(e.path, e.disk_present, e.disk_source)
+	if (e.disk_state == MM_DISK_SAME): e.disk_stamp = now
+	return e.disk_state
+
+# "Keep mine": acknowledge the current disk version (or its deletion) as
+# the baseline, so the next save replaces exactly that version. Nothing is
+# written here, and a later external change is detected again.
+int mm_editor_keep_mine(mm_editor* e):
+	if (mm_disk_present(e.path) == 0):
+		mm_editor_adopt_baseline(e, 0, 0)
+		return 1
 	int length = 0
 	char* disk = mm_read_source(e.path, &length)
-	int changed = 0
-	if (disk == 0): changed = e.disk_present || mm_editor_path_present(e.path)
-	else:
-		changed = e.disk_present == 0 || length != strlen(e.disk_source)
-		if (changed == 0):
-			for i in range(length):
-				if (disk[i] != e.disk_source[i]): changed = 1
+	if (disk == 0): return 0
+	if (strlen(disk) != length):
+		free(disk)
+		return 0
+	mm_editor_adopt_baseline(e, disk, 1)
 	free(disk)
-	return changed
+	return 1
 
-int mm_editor_save(mm_editor* e):
-	if (mm_editor_external_change(e)): return 0
-	io_result result
-	if (mm_save(e.document, e.path, &result) != IO_OK): return 0
+void mm_editor_clear_recovery(mm_editor* e):
+	free(e.recovery_path)
+	e.recovery_path = 0
+
+# MM_SAVE_OK, MM_SAVE_CONFLICT (disk differs from the baseline, or another
+# writer raced the save; nothing of theirs is overwritten and recovery_path
+# names any bytes that had to be set aside) or MM_SAVE_FAILED.
+int mm_editor_save_checked(mm_editor* e):
+	char* recovery = 0
+	int status = mm_save_cas(e.path, e.disk_present, e.disk_source, e.document.source, e.document.length, &recovery)
+	if (recovery != 0):
+		mm_editor_clear_recovery(e)
+		e.recovery_path = recovery
+	e.save_status = status
+	if (status == MM_SAVE_CONFLICT): e.disk_state = MM_DISK_CHANGED
+	if (status == MM_SAVE_CONFLICT && recovery != 0 && mm_disk_matches(e.path, e.document.source)):
+		# Placed, but an in-place writer touched the claimed copy afterwards.
+		free(e.saved_source)
+		e.saved_source = strclone(e.document.source)
+		mm_editor_adopt_baseline(e, e.document.source, 1)
+		e.disk_state = MM_DISK_CHANGED
+		return status
+	if (status != MM_SAVE_OK): return status
 	free(e.saved_source)
 	e.saved_source = strclone(e.document.source)
-	free(e.disk_source)
-	e.disk_source = strclone(e.document.source)
-	e.disk_present = 1
-	return 1
+	mm_editor_adopt_baseline(e, e.document.source, 1)
+	return status
+
+int mm_editor_save(mm_editor* e):
+	return mm_editor_save_checked(e) == MM_SAVE_OK
 
 # Save As refuses an existing destination; use Open to review it first.
 int mm_editor_save_as(mm_editor* e, char* path):
@@ -152,9 +208,7 @@ int mm_editor_save_as(mm_editor* e, char* path):
 	e.path = saved_path
 	free(e.saved_source)
 	e.saved_source = strclone(e.document.source)
-	free(e.disk_source)
-	e.disk_source = strclone(e.document.source)
-	e.disk_present = 1
+	mm_editor_adopt_baseline(e, e.document.source, 1)
 	return 1
 
 # Reload explicitly discards pending changes and resets undo to the disk version.
@@ -171,9 +225,7 @@ int mm_editor_reload(mm_editor* e):
 	e.position = 0
 	free(e.saved_source)
 	e.saved_source = strclone(disk.source)
-	free(e.disk_source)
-	e.disk_source = strclone(disk.source)
-	e.disk_present = 1
+	mm_editor_adopt_baseline(e, disk.source, 1)
 	mm_document_free(disk)
 	return 1
 
@@ -355,6 +407,7 @@ void mm_editor_free(mm_editor* e):
 	free(e.path)
 	free(e.saved_source)
 	free(e.disk_source)
+	free(e.recovery_path)
 	for char* text in e.history: free(text)
 	__w_list_free(cast(__w_list*, e.history))
 	free(e)

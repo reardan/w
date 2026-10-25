@@ -682,3 +682,13 @@ void test_atspi_tables_selection_and_cache():
 
 void test_atspi_open_without_a_bus():
 	assert_equal(0, cast(int, ui_access_atspi_open_at(c"unix:path=/nonexistent/w-atspi", c"x")))
+
+
+# Widget snapshots root at ui_access_root_id (2^30); paths up to 2^31 - 1
+# must resolve, longer ones must not overflow into another id.
+void test_atspi_paths_cover_widget_root_ids():
+	char[64] path
+	assert_equal(1073741824, ui_atspi_path_id(ui_atspi_node_path(&path[0], 1073741824)))
+	assert_equal(2147483647, ui_atspi_path_id(c"/org/a11y/atspi/accessible/2147483647"))
+	assert_equal(0 - 1, ui_atspi_path_id(c"/org/a11y/atspi/accessible/21474836470"))
+	assert_equal(0, ui_atspi_path_id(c"/org/a11y/atspi/accessible/root"))
