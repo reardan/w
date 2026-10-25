@@ -240,3 +240,16 @@ Budgets raised accordingly (all still checked):
 | Force layout nodes | 1,024 (all graphs) | 1,024 (`force layout node limit exceeded`) |
 | Other graph families | 1,024 nodes / edges | unchanged (`MM_MAX_ITEMS`) |
 | Layered virtual nodes | none | 32,768 real + dummy nodes |
+
+## Sankey ordering
+
+Sankey charts do not use the layered pipeline: `data_render.w` keeps
+longest-path (or `sankey.nodeAlignment`) columns and orders each column by
+weighted predecessor centers, alternating barycenter sweeps and adjacent
+transpositions. Candidates are compared by a global, geometric crossing count
+over every pair of ribbons whose x spans overlap, not only ribbons between the
+same column pair, computed as merge-sort weighted inversions per stretch
+between column edges. The whole relaxation runs under one work budget
+(`MM_DATA_SANKEY_WORK_BUDGET`) that shortens the schedule for large charts
+instead of skipping it. Details and measured results are in
+[mermaid_data.md](mermaid_data.md).

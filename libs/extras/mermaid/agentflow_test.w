@@ -285,6 +285,50 @@ void test_agentflow_edge_ids_metadata_and_curves():
 	asserts(c"linear curve draws a diagonal leg", linear > step)
 	asserts(c"basis curve draws a smooth bend", basis > linear)
 
+int agent_animated_lines(mm_scene* s, int dashed):
+	int count = 0
+	for mm_primitive* p in s.items:
+		if (p.kind == MM_LINE && p.dashed == dashed): count = count + 1
+	return count
+
+void test_agentflow_animated_edges():
+	char* text = c"agentflow-beta LR\nA e1@--> B\nA e2@--> C\nA e3@--> D\nA e4@--> E\nA e5@--> F\ne1@{animate: true}\ne2@{animation: fast}\ne3@{animate: true, animation: slow, curve: basis}\ne4@{animate: false, animation: fast}\ne5@{animate: true}\ne5@{animate: false}\n"
+	mm_document* d = agent_parse(text)
+	mm_edge* e = d.edges[0]
+	assert_equal(1, e.animate)
+	e = d.edges[1]
+	assert_equal(2, e.animate)
+	e = d.edges[2]
+	assert_equal(3, e.animate)
+	e = d.edges[3]
+	assert_equal(0, e.animate)
+	# A later metadata block overrides the earlier key.
+	e = d.edges[4]
+	assert_equal(0, e.animate)
+	char* saved = mm_write(d)
+	assert_strings_equal(text, saved)
+	free(saved)
+	mm_scene* s = mm_render(d)
+	asserts(c"animate: true marches at 1s", agent_animated_lines(s, 4) > 0)
+	asserts(c"animation: fast marches at 0.5s", agent_animated_lines(s, 5) > 0)
+	# The curved slow edge animates along all of its segments.
+	asserts(c"animation: slow marches at 2s", agent_animated_lines(s, 6) > 1)
+	char* svg = mm_svg(s)
+	asserts(c"SMIL dash animation exported", index_of(svg, c"<animate attributeName=\"stroke-dashoffset\" from=\"20\" to=\"0\" dur=\"1s\" repeatCount=\"indefinite\"/>") >= 0)
+	asserts(c"fast animation exported", index_of(svg, c"dur=\"0.5s\"") >= 0)
+	asserts(c"slow animation exported", index_of(svg, c"dur=\"2s\"") >= 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+	# Without animation metadata the export stays static.
+	d = agent_parse(c"agentflow-beta LR\nA e1@--> B\ne1@{curve: step}\n")
+	s = mm_render(d)
+	svg = mm_svg(s)
+	asserts(c"static edges export no animation", index_of(svg, c"<animate ") < 0)
+	free(svg)
+	mm_scene_free(s)
+	mm_document_free(d)
+
 void test_agentflow_collapsed_flows():
 	char* text = c"agentflow-beta LR\nflow P[Pipeline]@{view: collapsed}\nA[Alpha] --> B[Beta]\nflow Inner\nX[Hidden]\nend\nend\nC[Gamma] --> A\nB --> D[Delta]\nA --> X\n"
 	mm_document* d = agent_parse(text)

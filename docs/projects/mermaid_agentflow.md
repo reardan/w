@@ -67,9 +67,14 @@ Presentation:
   curves an orthogonal route and the smooth curves a cubic bend. Each route ends
   with an axis-aligned leg so arrowheads and failure crosses keep their
   orientation.
-- `animate` and `animation` are validated (`true`/`false`, `fast`/`slow`) and kept
-  as edge metadata, but the native renderer and SVG export are static: no
-  animation runs.
+- `animate` and `animation` are validated (`true`/`false`, `fast`/`slow`), kept
+  as edge metadata and rendered like animated flowchart links: `animate: true`
+  or an `animation` speed makes every segment of the edge (straight or curved
+  route) dashed, and the SVG export marches the dashes with a SMIL
+  `<animate attributeName="stroke-dashoffset">` (1s, `fast` 0.5s, `slow` 2s;
+  no script). `animate: false` turns the edge off even with an `animation`
+  speed, and a later `id@{…}` block overrides an earlier key. The native
+  preview draws animated edges dashed but static, as it does for flowchart.
 - `algorithm` is recorded but layout is native W; it does not reproduce ELK
   placement.
 

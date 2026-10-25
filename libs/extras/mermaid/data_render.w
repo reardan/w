@@ -1273,11 +1273,160 @@ void mm_data_fill(mm_primitive* p, int color):
 # Global node ordering (issue #817). Each column starts from the weighted
 # predecessor order above, then alternating barycenter sweeps (forward by
 # weighted source centers, backward by weighted target centers, as
-# d3-sankey's relaxation) reorder the columns; the order with the fewest
-# value-weighted ribbon crossings wins, the initial one on ties, so the
-# result is deterministic and never worse than the single forward pass.
+# d3-sankey's relaxation) reorder the columns, and adjacent transpositions
+# refine the best order found. Orders are compared by their value-weighted
+# global ribbon crossings (mm_data_sankey_crossings: every pair of ribbons
+# whose x spans overlap, not only ribbons between the same two columns); a
+# change is kept only when it strictly lowers the count, so the result is
+# deterministic and never worse than the single forward pass.
+#
+# Cost: one sweep or one transposition trial plus one crossing count is about
+# (MM_DATA_SANKEY_SAMPLES + 1) * S + E + N * R units (S the ribbons' summed
+# column spans, E flows, N nodes, R columns; the sorts add a log factor). The
+# whole relaxation stays within MM_DATA_SANKEY_WORK_BUDGET units: up to
+# MM_DATA_SANKEY_SWEEPS sweeps, then the remaining trials for at most
+# MM_DATA_SANKEY_TRANSPOSE_PASSES transposition passes. A chart too large
+# for the full schedule gets a shorter one, down to a single forward sweep
+# kept only if it lowers the count, instead of being skipped. At the
+# 256-flow item limit (8 columns of 12 nodes) the sweeps always fit and a
+# render stays well under a second.
 const int MM_DATA_SANKEY_SWEEPS = 8
-const int MM_DATA_SANKEY_RELAX_LIMIT = 4000
+const int MM_DATA_SANKEY_WORK_BUDGET = 400000
+const int MM_DATA_SANKEY_SAMPLES = 4
+const int MM_DATA_SANKEY_TRANSPOSE_PASSES = 4
+
+# Statistics of the last Sankey relaxation, for tests and diagnostics:
+# crossings of the initial order and of the chosen one, the sweeps and the
+# transposition trials run.
+float mm_data_sankey_initial_crossings
+float mm_data_sankey_final_crossings
+int mm_data_sankey_sweeps_run
+int mm_data_sankey_transposes_run
+
+# Sweeps the work budget allows for a chart costing `cost` units per sweep
+# (the initial count takes one more `cost`); at least one, 0 for no work.
+int mm_data_sankey_sweep_budget(int cost):
+	if (cost <= 0): return 0
+	int sweeps = MM_DATA_SANKEY_WORK_BUDGET / cost - 1
+	if (sweeps > MM_DATA_SANKEY_SWEEPS): sweeps = MM_DATA_SANKEY_SWEEPS
+	if (sweeps < 1): sweeps = 1
+	return sweeps
+
+# Stable bottom-up merge sort of `order` (indexes into the key lists) by
+# primary key, then secondary key, then original position.
+void mm_data_sankey_sort(list[int] order, list[float] primary, list[float] secondary):
+	int count = order.length
+	list[int] scratch = new list[int]
+	for i in range(count): scratch.push(0)
+	int width = 1
+	while (width < count):
+		int lo = 0
+		while (lo < count):
+			int mid = lo + width
+			if (mid > count): mid = count
+			int hi = mid + width
+			if (hi > count): hi = count
+			int i = lo
+			int j = mid
+			int k = lo
+			while (i < mid || j < hi):
+				int take_left = j >= hi
+				if (i < mid && j < hi):
+					int a = order[i]
+					int b = order[j]
+					take_left = primary[a] < primary[b] || (primary[a] == primary[b] && secondary[a] <= secondary[b])
+				if (take_left):
+					scratch[k] = order[i]
+					i = i + 1
+				else:
+					scratch[k] = order[j]
+					j = j + 1
+				k = k + 1
+			for m in range(lo, hi): order[m] = scratch[m]
+			lo = hi
+		width = width * 2
+	__w_list_free(cast(__w_list*, scratch))
+
+# Value-weighted inversions of `key` along `order`: the sum of
+# weight[a] * weight[b] over pairs placed a before b with key[a] > key[b]
+# (strictly). Merge counting keeps it O(k log k); `order` ends sorted.
+float mm_data_sankey_inversions(list[int] order, list[float] key, list[float] weight):
+	int count = order.length
+	float total = 0.0
+	list[int] scratch = new list[int]
+	for i in range(count): scratch.push(0)
+	int width = 1
+	while (width < count):
+		int lo = 0
+		while (lo < count):
+			int mid = lo + width
+			if (mid > count): mid = count
+			int hi = mid + width
+			if (hi > count): hi = count
+			float left = 0.0
+			for m in range(lo, mid): left = left + weight[order[m]]
+			int i = lo
+			int j = mid
+			int k = lo
+			while (i < mid || j < hi):
+				if (j >= hi || (i < mid && key[order[i]] <= key[order[j]])):
+					left = left - weight[order[i]]
+					scratch[k] = order[i]
+					i = i + 1
+				else:
+					total = total + left * weight[order[j]]
+					scratch[k] = order[j]
+					j = j + 1
+				k = k + 1
+			for m in range(lo, hi): order[m] = scratch[m]
+			lo = hi
+		width = width * 2
+	__w_list_free(cast(__w_list*, scratch))
+	return total
+
+# Flow incidence in compressed rows: node i's outgoing flows are
+# out_flow[out_start[i] .. out_start[i + 1]], its incoming ones likewise.
+struct mm_data_sankey_graph:
+	list[int] out_start
+	list[int] out_flow
+	list[int] in_start
+	list[int] in_flow
+
+void mm_data_sankey_rows(list[int] start, list[int] flow, list[int] ends, int nodes):
+	for i in range(nodes + 1): start.push(0)
+	for int node in ends: start[node + 1] = start[node + 1] + 1
+	for i in range(nodes): start[i + 1] = start[i + 1] + start[i]
+	list[int] fill = new list[int]
+	for i in range(nodes): fill.push(start[i])
+	for i in range(ends.length): flow.push(0)
+	for i in range(ends.length):
+		flow[fill[ends[i]]] = i
+		fill[ends[i]] = fill[ends[i]] + 1
+	__w_list_free(cast(__w_list*, fill))
+
+mm_data_sankey_graph* mm_data_sankey_graph_new(mm_document* d):
+	mm_data_sankey_graph* g = new mm_data_sankey_graph()
+	g.out_start = new list[int]
+	g.out_flow = new list[int]
+	g.in_start = new list[int]
+	g.in_flow = new list[int]
+	list[int] sources = new list[int]
+	list[int] targets = new list[int]
+	for mm_data_item* item in d.data.items:
+		sources.push(item.parent)
+		targets.push(item.b)
+	mm_data_sankey_rows(g.out_start, g.out_flow, sources, d.nodes.length)
+	mm_data_sankey_rows(g.in_start, g.in_flow, targets, d.nodes.length)
+	__w_list_free(cast(__w_list*, sources))
+	__w_list_free(cast(__w_list*, targets))
+	return g
+
+void mm_data_sankey_graph_free(mm_data_sankey_graph* g):
+	__w_list_free(cast(__w_list*, g.out_start))
+	__w_list_free(cast(__w_list*, g.out_flow))
+	__w_list_free(cast(__w_list*, g.in_start))
+	__w_list_free(cast(__w_list*, g.in_flow))
+	free(g)
 
 # Stack one column top-down in node.order.
 void mm_data_sankey_place(mm_document* d, list[mm_data_flow_node*] nodes, int rank, float scale, int padding):
@@ -1303,116 +1452,279 @@ float mm_data_sankey_mid(mm_data_flow_node* node):
 	return cast(float, node.y) + cast(float, node.height) / 2.0
 
 # Weighted center of a node's neighbours: sources (forward) or targets.
-float mm_data_sankey_key(mm_document* d, list[mm_data_flow_node*] nodes, int index, int forward):
+float mm_data_sankey_key(mm_document* d, mm_data_sankey_graph* g, list[mm_data_flow_node*] nodes, int index, int forward):
 	float center = 0.0
 	float total = 0.0
-	for mm_data_item* flow in d.data.items:
-		int other = -1
-		if (forward && flow.b == index): other = flow.parent
-		if (forward == 0 && flow.parent == index): other = flow.b
-		if (other < 0): continue
+	list[int] start = g.out_start
+	list[int] flows = g.out_flow
+	if (forward):
+		start = g.in_start
+		flows = g.in_flow
+	for k in range(start[index], start[index + 1]):
+		mm_data_item* flow = d.data.items[flows[k]]
+		int other = flow.b
+		if (forward): other = flow.parent
 		center = center + mm_data_sankey_mid(nodes[other]) * cast(float, flow.a)
 		total = total + cast(float, flow.a)
 	if (total == 0.0): return mm_data_sankey_mid(nodes[index])
 	return center / total
 
 # Stable reorder of one column by neighbour centers.
-void mm_data_sankey_sweep_rank(mm_document* d, list[mm_data_flow_node*] nodes, int rank, int forward, float scale, int padding):
+void mm_data_sankey_sweep_rank(mm_document* d, mm_data_sankey_graph* g, list[mm_data_flow_node*] nodes, int rank, int forward, float scale, int padding):
 	list[int] ordered = new list[int]
-	list[float] keys = new list[float]
 	for i in range(nodes.length):
-		if (nodes[i].rank == rank):
-			ordered.push(-1)
-			keys.push(0.0)
+		if (nodes[i].rank == rank): ordered.push(-1)
 	for i in range(nodes.length):
 		mm_data_flow_node* node = nodes[i]
 		if (node.rank == rank && node.order >= 0 && node.order < ordered.length): ordered[node.order] = i
-	for k in range(ordered.length):
-		if (ordered[k] >= 0): keys[k] = mm_data_sankey_key(d, nodes, ordered[k], forward)
-	for i in range(1, ordered.length):
-		int id = ordered[i]
-		float key = keys[i]
-		int j = i
-		while (j > 0 && keys[j - 1] > key):
-			ordered[j] = ordered[j - 1]
-			keys[j] = keys[j - 1]
-			j = j - 1
-		ordered[j] = id
-		keys[j] = key
-	for k in range(ordered.length):
-		if (ordered[k] >= 0): nodes[ordered[k]].order = k
+	list[int] members = new list[int]
+	for int i in ordered:
+		if (i >= 0): members.push(i)
+	list[float] keys = new list[float]
+	list[float] position = new list[float]
+	list[int] order = new list[int]
+	for k in range(members.length):
+		keys.push(mm_data_sankey_key(d, g, nodes, members[k], forward))
+		position.push(cast(float, k))
+		order.push(k)
+	mm_data_sankey_sort(order, keys, position)
+	for k in range(order.length): nodes[members[order[k]]].order = k
 	mm_data_sankey_place(d, nodes, rank, scale, padding)
 	__w_list_free(cast(__w_list*, ordered))
+	__w_list_free(cast(__w_list*, members))
 	__w_list_free(cast(__w_list*, keys))
+	__w_list_free(cast(__w_list*, position))
+	__w_list_free(cast(__w_list*, order))
 
-# Value-weighted crossings between ribbons spanning the same pair of
-# columns with distinct endpoints (ribbons sharing an endpoint never cross:
-# their slots follow the opposite end's order, see mm_data_sankey_slots).
-float mm_data_sankey_crossings(mm_document* d, list[mm_data_flow_node*] nodes):
+# Ribbon offsets inside each node: outgoing ribbons stack in the vertical
+# order of their targets and incoming ones in that of their sources (ties in
+# source order), as d3-sankey's link breadths, so ribbons sharing a node
+# never cross. Sorting each node's flows keeps it O(E log E).
+void mm_data_sankey_offsets(mm_document* d, list[mm_data_flow_node*] nodes, list[int] start, list[int] flows, int outgoing, list[float] offset):
+	list[int] members = new list[int]
+	list[float] keys = new list[float]
+	list[float] position = new list[float]
+	list[int] order = new list[int]
+	for node in range(nodes.length):
+		__w_list_clear(cast(__w_list*, members))
+		__w_list_clear(cast(__w_list*, keys))
+		__w_list_clear(cast(__w_list*, position))
+		__w_list_clear(cast(__w_list*, order))
+		for k in range(start[node], start[node + 1]):
+			int flow = flows[k]
+			mm_data_item* item = d.data.items[flow]
+			int other = item.parent
+			if (outgoing): other = item.b
+			order.push(members.length)
+			members.push(flow)
+			keys.push(mm_data_sankey_mid(nodes[other]))
+			position.push(cast(float, flow))
+		mm_data_sankey_sort(order, keys, position)
+		float used = 0.0
+		for int k in order:
+			mm_data_item* item = d.data.items[members[k]]
+			offset[members[k]] = used
+			used = used + cast(float, item.a)
+	__w_list_free(cast(__w_list*, members))
+	__w_list_free(cast(__w_list*, keys))
+	__w_list_free(cast(__w_list*, position))
+	__w_list_free(cast(__w_list*, order))
+
+void mm_data_sankey_graph_slots(mm_document* d, mm_data_sankey_graph* g, list[mm_data_flow_node*] nodes, list[float] out_offset, list[float] in_offset):
+	__w_list_clear(cast(__w_list*, out_offset))
+	__w_list_clear(cast(__w_list*, in_offset))
+	for i in range(d.data.items.length):
+		out_offset.push(0.0)
+		in_offset.push(0.0)
+	mm_data_sankey_offsets(d, nodes, g.out_start, g.out_flow, 1, out_offset)
+	mm_data_sankey_offsets(d, nodes, g.in_start, g.in_flow, 0, in_offset)
+
+void mm_data_sankey_slots(mm_document* d, list[mm_data_flow_node*] nodes, list[float] out_offset, list[float] in_offset):
+	mm_data_sankey_graph* g = mm_data_sankey_graph_new(d)
+	mm_data_sankey_graph_slots(d, g, nodes, out_offset, in_offset)
+	mm_data_sankey_graph_free(g)
+
+# Horizontal geometry of the drawn columns: column r spans
+# [80 + r * pitch, 80 + r * pitch + width].
+struct mm_data_sankey_columns:
+	int pitch
+	int width
+	float scale
+
+# A drawn ribbon's center line at x: the smoothstep from its source slot's
+# middle to its target slot's, exactly as mm_data_sankey_render draws it.
+float mm_data_sankey_center(mm_data_sankey_columns* c, mm_data_item* item, mm_data_flow_node* from, mm_data_flow_node* to, float out_used, float in_used, int x):
+	float a = cast(float, from.y) + (out_used + cast(float, item.a) / 2.0) * c.scale
+	float b = cast(float, to.y) + (in_used + cast(float, item.a) / 2.0) * c.scale
+	int x0 = 80 + from.rank * c.pitch + c.width
+	int x1 = 80 + to.rank * c.pitch
+	if (x <= x0 || x1 <= x0): return a
+	if (x >= x1): return b
+	float t = cast(float, x - x0) / cast(float, x1 - x0)
+	return a + (b - a) * t * t * (3.0 - 2.0 * t)
+
+# Value-weighted global ribbon crossings of the drawn chart. The x axis is
+# cut at every column edge into gaps between columns and column interiors;
+# every ribbon alive across a stretch (its x span covers it) is compared
+# with every other: a crossing is a strict change of their vertical order
+# between the stretch's two edges. So ribbons spanning different column
+# pairs count (a long ribbon against the ribbons of each gap it passes, and
+# long ribbons against each other inside the columns they pass), as well as
+# ribbons between the same two columns. Center lines use the drawn slots, so
+# ribbons sharing a node stack apart instead of tying. Per stretch the count
+# is a weighted inversion count, O(k log k) for its k ribbons; gaps are cut
+# into MM_DATA_SANKEY_SAMPLES pieces so a long smoothstep ribbon crossing a
+# shorter one twice in one gap counts both crossings.
+float mm_data_sankey_crossings(mm_document* d, mm_data_sankey_graph* g, list[mm_data_flow_node*] nodes, int ranks, mm_data_sankey_columns* c):
 	float total = 0.0
-	int count = d.data.items.length
-	for i in range(count):
-		mm_data_item* a = d.data.items[i]
-		mm_data_flow_node* au = nodes[a.parent]
-		mm_data_flow_node* av = nodes[a.b]
-		for j in range(i + 1, count):
-			mm_data_item* b = d.data.items[j]
-			if (a.parent == b.parent || a.b == b.b): continue
-			mm_data_flow_node* bu = nodes[b.parent]
-			mm_data_flow_node* bv = nodes[b.b]
-			if (au.rank != bu.rank || av.rank != bv.rank): continue
-			if ((au.order < bu.order) != (av.order < bv.order)): total = total + cast(float, a.a) * cast(float, b.a)
+	list[float] out_offset = new list[float]
+	list[float] in_offset = new list[float]
+	mm_data_sankey_graph_slots(d, g, nodes, out_offset, in_offset)
+	# Stretch 2 * r: the gap right of column r; 2 * r + 1: column r + 1's interior.
+	list[list[int]] stretches = new list[list[int]]
+	for k in range(ranks * 2): stretches.push(new list[int])
+	for i in range(d.data.items.length):
+		mm_data_item* item = d.data.items[i]
+		int first = nodes[item.parent].rank
+		int last = nodes[item.b].rank
+		if (first < 0 || last >= ranks || last <= first): continue
+		for k in range(first * 2, last * 2 - 1): stretches[k].push(i)
+	list[float] height = new list[float]
+	list[float] previous = new list[float]
+	list[float] weight = new list[float]
+	list[int] order = new list[int]
+	for k in range(ranks * 2):
+		list[int] members = stretches[k]
+		if (members.length >= 2):
+			int column = k / 2
+			int x0 = 80 + column * c.pitch + c.width
+			int x1 = 80 + (column + 1) * c.pitch
+			int pieces = MM_DATA_SANKEY_SAMPLES
+			if (k % 2 == 1):
+				x0 = x1
+				x1 = x1 + c.width
+				pieces = 1
+			# Rank the ribbons at the stretch's left edge (ties by the next
+			# sample), then at each further sample by height with ties kept in
+			# the previous order: the weighted inversions between consecutive
+			# rankings are the strict order changes, and a crossing that falls
+			# exactly on a sample still counts once.
+			__w_list_clear(cast(__w_list*, height))
+			__w_list_clear(cast(__w_list*, previous))
+			__w_list_clear(cast(__w_list*, weight))
+			__w_list_clear(cast(__w_list*, order))
+			for m in range(members.length):
+				int flow = members[m]
+				mm_data_item* item = d.data.items[flow]
+				height.push(mm_data_sankey_center(c, item, nodes[item.parent], nodes[item.b], out_offset[flow], in_offset[flow], x0))
+				previous.push(mm_data_sankey_center(c, item, nodes[item.parent], nodes[item.b], out_offset[flow], in_offset[flow], x0 + (x1 - x0) / pieces))
+				weight.push(cast(float, item.a))
+				order.push(m)
+			mm_data_sankey_sort(order, height, previous)
+			for m in range(members.length): previous[order[m]] = cast(float, m)
+			for piece in range(1, pieces + 1):
+				int x = x0 + (x1 - x0) * piece / pieces
+				for m in range(members.length):
+					int flow = members[m]
+					mm_data_item* item = d.data.items[flow]
+					height[m] = mm_data_sankey_center(c, item, nodes[item.parent], nodes[item.b], out_offset[flow], in_offset[flow], x)
+				mm_data_sankey_sort(order, height, previous)
+				# order is now the new ranking; height takes the new ranks.
+				for m in range(members.length): height[order[m]] = cast(float, m)
+				total = total + mm_data_sankey_inversions(order, previous, weight)
+				for m in range(members.length): previous[m] = height[m]
+		__w_list_free(cast(__w_list*, members))
+	__w_list_free(cast(__w_list*, stretches))
+	__w_list_free(cast(__w_list*, height))
+	__w_list_free(cast(__w_list*, previous))
+	__w_list_free(cast(__w_list*, weight))
+	__w_list_free(cast(__w_list*, order))
+	__w_list_free(cast(__w_list*, out_offset))
+	__w_list_free(cast(__w_list*, in_offset))
 	return total
 
-void mm_data_sankey_relax(mm_document* d, list[mm_data_flow_node*] nodes, int ranks, float scale, int padding):
-	if (ranks < 2 || d.data.items.length > MM_DATA_SANKEY_RELAX_LIMIT): return
+# Node indexes of column `rank` in their current order.
+list[int] mm_data_sankey_column(list[mm_data_flow_node*] nodes, int rank):
+	list[int] column = new list[int]
+	for i in range(nodes.length):
+		if (nodes[i].rank == rank): column.push(-1)
+	for i in range(nodes.length):
+		mm_data_flow_node* node = nodes[i]
+		if (node.rank == rank && node.order >= 0 && node.order < column.length): column[node.order] = i
+	return column
+
+void mm_data_sankey_relax(mm_document* d, list[mm_data_flow_node*] nodes, int ranks, float scale, int padding, int pitch, int node_width):
+	mm_data_sankey_sweeps_run = 0
+	mm_data_sankey_transposes_run = 0
+	mm_data_sankey_initial_crossings = 0.0
+	mm_data_sankey_final_crossings = 0.0
+	if (ranks < 2): return
+	mm_data_sankey_columns* c = new mm_data_sankey_columns()
+	c.pitch = pitch
+	c.width = node_width
+	c.scale = scale
+	int span = 0
+	for mm_data_item* item in d.data.items: span = span + nodes[item.b].rank - nodes[item.parent].rank
+	int cost = span * (MM_DATA_SANKEY_SAMPLES + 1) + d.data.items.length + nodes.length * ranks
+	int sweeps = mm_data_sankey_sweep_budget(cost)
+	mm_data_sankey_graph* g = mm_data_sankey_graph_new(d)
 	list[int] best = new list[int]
 	for mm_data_flow_node* node in nodes: best.push(node.order)
-	float best_crossings = mm_data_sankey_crossings(d, nodes)
-	for sweep in range(MM_DATA_SANKEY_SWEEPS):
+	float best_crossings = mm_data_sankey_crossings(d, g, nodes, ranks, c)
+	mm_data_sankey_initial_crossings = best_crossings
+	for sweep in range(sweeps):
 		if (best_crossings == 0.0): break
 		if (sweep % 2 == 0):
-			for rank in range(1, ranks): mm_data_sankey_sweep_rank(d, nodes, rank, 1, scale, padding)
+			for rank in range(1, ranks): mm_data_sankey_sweep_rank(d, g, nodes, rank, 1, scale, padding)
 		else:
 			int rank = ranks - 2
 			while (rank >= 0):
-				mm_data_sankey_sweep_rank(d, nodes, rank, 0, scale, padding)
+				mm_data_sankey_sweep_rank(d, g, nodes, rank, 0, scale, padding)
 				rank = rank - 1
-		float crossings = mm_data_sankey_crossings(d, nodes)
+		mm_data_sankey_sweeps_run = sweep + 1
+		float crossings = mm_data_sankey_crossings(d, g, nodes, ranks, c)
 		if (crossings < best_crossings):
 			best_crossings = crossings
 			for i in range(nodes.length): best[i] = nodes[i].order
 	for i in range(nodes.length): nodes[i].order = best[i]
 	for rank in range(ranks): mm_data_sankey_place(d, nodes, rank, scale, padding)
+	# Adjacent transpositions refine the best order: each swap of two
+	# neighbours in a column is kept only if the global count drops. Each
+	# trial costs one count, and the trials share what the sweeps left of
+	# the work budget (at most MM_DATA_SANKEY_TRANSPOSE_PASSES passes).
+	int trials = MM_DATA_SANKEY_WORK_BUDGET / cost - mm_data_sankey_sweeps_run - 1
+	int passes = 0
+	int improved = 1
+	while (improved && best_crossings > 0.0 && passes < MM_DATA_SANKEY_TRANSPOSE_PASSES && trials > 0):
+		improved = 0
+		passes = passes + 1
+		for rank in range(ranks):
+			list[int] column = mm_data_sankey_column(nodes, rank)
+			for k in range(column.length - 1):
+				if (trials <= 0 || best_crossings == 0.0): break
+				trials = trials - 1
+				mm_data_sankey_transposes_run = mm_data_sankey_transposes_run + 1
+				int upper = column[k]
+				int lower = column[k + 1]
+				if (upper < 0 || lower < 0): continue
+				nodes[upper].order = k + 1
+				nodes[lower].order = k
+				mm_data_sankey_place(d, nodes, rank, scale, padding)
+				float crossings = mm_data_sankey_crossings(d, g, nodes, ranks, c)
+				if (crossings < best_crossings):
+					best_crossings = crossings
+					column[k] = lower
+					column[k + 1] = upper
+					improved = 1
+				else:
+					nodes[upper].order = k
+					nodes[lower].order = k + 1
+					mm_data_sankey_place(d, nodes, rank, scale, padding)
+			__w_list_free(cast(__w_list*, column))
+	mm_data_sankey_final_crossings = best_crossings
 	__w_list_free(cast(__w_list*, best))
-
-# Ribbon offsets inside each node: outgoing ribbons stack in the vertical
-# order of their targets and incoming ones in that of their sources, as
-# d3-sankey's link breadths, so ribbons sharing a node never cross.
-void mm_data_sankey_slots(mm_document* d, list[mm_data_flow_node*] nodes, list[float] out_offset, list[float] in_offset):
-	int count = d.data.items.length
-	for i in range(count):
-		out_offset.push(0.0)
-		in_offset.push(0.0)
-	for i in range(count):
-		mm_data_item* item = d.data.items[i]
-		float target = mm_data_sankey_mid(nodes[item.b])
-		float source = mm_data_sankey_mid(nodes[item.parent])
-		float out_used = 0.0
-		float in_used = 0.0
-		for j in range(count):
-			if (j == i): continue
-			# Past the relaxation bound slots keep source order (linear work).
-			if (count > MM_DATA_SANKEY_RELAX_LIMIT && j > i): break
-			mm_data_item* other = d.data.items[j]
-			if (other.parent == item.parent):
-				float y = mm_data_sankey_mid(nodes[other.b])
-				if (count > MM_DATA_SANKEY_RELAX_LIMIT || y < target || (y == target && j < i)): out_used = out_used + cast(float, other.a)
-			if (other.b == item.b):
-				float y = mm_data_sankey_mid(nodes[other.parent])
-				if (count > MM_DATA_SANKEY_RELAX_LIMIT || y < source || (y == source && j < i)): in_used = in_used + cast(float, other.a)
-		out_offset[i] = out_used
-		in_offset[i] = in_used
+	mm_data_sankey_graph_free(g)
+	free(c)
 
 void mm_data_sankey_render(mm_document* d, mm_scene* s):
 	list[mm_data_flow_node*] nodes = new list[mm_data_flow_node*]
@@ -1532,7 +1844,7 @@ void mm_data_sankey_render(mm_document* d, mm_scene* s):
 		for k in range(ordered.length): nodes[ordered[k]].order = k
 		mm_data_sankey_place(d, nodes, rank, scale, padding)
 		__w_list_free(cast(__w_list*, ordered))
-	mm_data_sankey_relax(d, nodes, ranks, scale, padding)
+	mm_data_sankey_relax(d, nodes, ranks, scale, padding, pitch, node_width)
 	for mm_data_flow_node* node in nodes: node.x = 80 + node.rank * pitch
 	list[float] out_offset = new list[float]
 	list[float] in_offset = new list[float]

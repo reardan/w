@@ -6,7 +6,9 @@ import libs.extras.mermaid.agentflow
 # An edge's `curve` metadata (MM_CURVE_*) is drawn by mm_render_edge through
 # mm_style_curve_override: along its layered channel or obstacle route, ending
 # with an axis-aligned leg so arrowheads and failure crosses keep their
-# orientation. `animate` / `animation` stay metadata: the renderer is static.
+# orientation. `animate` / `animation` set e.animate (mm_agent_edge_animate):
+# the edge's segments draw dashed and the SVG export marches the dashes with
+# SMIL (1s, fast 0.5s, slow 2s), as animated flowchart links do.
 
 # Re-index a scene laid out for a projected view (mm_agent_project) back to
 # the original nodes: hidden descendants take their collapsed container's

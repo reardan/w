@@ -510,6 +510,158 @@ void test_data_sankey_global_crossing_reduction():
 	mm_document_free(first)
 	mm_document_free(second)
 
+# Drawn ribbon crossings read back from the scene for every pair of ribbons
+# whose x spans overlap: sign changes of the difference of their center lines
+# (top edge plus bottom edge, sampled 17 times each) across the overlap.
+float data_sankey_center(mm_primitive* p, int x):
+	if (x <= p.points[0]): return cast(float, p.points[1] + p.points[67])
+	for j in range(1, 17):
+		int x1 = p.points[j * 2]
+		if (x <= x1):
+			int x0 = p.points[j * 2 - 2]
+			float y0 = cast(float, p.points[j * 2 - 1] + p.points[(34 - j) * 2 + 1])
+			float y1 = cast(float, p.points[j * 2 + 1] + p.points[(33 - j) * 2 + 1])
+			if (x1 == x0): return y1
+			return y0 + (y1 - y0) * cast(float, x - x0) / cast(float, x1 - x0)
+	return cast(float, p.points[33] + p.points[35])
+
+int data_sankey_drawn_crossings(mm_scene* scene):
+	list[mm_primitive*] ribbons = new list[mm_primitive*]
+	for mm_primitive* p in scene.items:
+		if (p.kind == MM_POLYGON && p.points.length == 68): ribbons.push(p)
+	int total = 0
+	for i in range(ribbons.length):
+		mm_primitive* a = ribbons[i]
+		for j in range(i + 1, ribbons.length):
+			mm_primitive* b = ribbons[j]
+			int lo = a.points[0]
+			if (b.points[0] > lo): lo = b.points[0]
+			int hi = a.points[32]
+			if (b.points[32] < hi): hi = b.points[32]
+			if (hi <= lo): continue
+			int last = 0
+			for k in range(65):
+				int x = lo + (hi - lo) * k / 64
+				float diff = data_sankey_center(a, x) - data_sankey_center(b, x)
+				int sign = 0
+				if (diff > 0.0): sign = 1
+				if (diff < 0.0): sign = -1
+				if (sign != 0 && last != 0 && sign != last): total = total + 1
+				if (sign != 0): last = sign
+	__w_list_free(cast(__w_list*, ribbons))
+	return total
+
+# Global crossing counts in value units (flow values are fixed point).
+int data_sankey_units(float crossings):
+	return cast(int, crossings / 1000000.0 + 0.5)
+
+int data_sankey_drawn(char* source):
+	mm_document* d = data_parse(source)
+	mm_scene* scene = mm_render(d)
+	int crossings = data_sankey_drawn_crossings(scene)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	return crossings
+
+void test_data_sankey_crossings_between_column_pairs():
+	# The long A->Y ribbon crosses the B->N->Y path, which shares no column
+	# pair with it: the first pass draws 2 crossings and the old same-pair
+	# count saw none, so it never moved. Globally counted, the backward
+	# sweep swaps Y and Z and one unavoidable crossing remains.
+	char* source = c"sankey-beta\nA,M,5\nB,N,5\nM,Z,5\nN,Y,5\nA,Y,10\n"
+	assert_equal(1, data_sankey_drawn(source))
+	assert_equal(100, data_sankey_units(mm_data_sankey_initial_crossings))
+	assert_equal(25, data_sankey_units(mm_data_sankey_final_crossings))
+	asserts(c"cross-span chart relaxes", mm_data_sankey_sweeps_run >= 1)
+	# Same-pair crossings still count: M->Y and N->Z cross once (25 = 5 * 5).
+	assert_equal(1, data_sankey_drawn(c"sankey-beta\nA,M,5\nB,N,5\nM,Y,5\nN,Z,5\nB,Y,10\n"))
+	assert_equal(25, data_sankey_units(mm_data_sankey_final_crossings))
+	# A planar chart reaches zero and stops sweeping.
+	assert_equal(0, data_sankey_drawn(c"sankey-beta\nA,X,3\nB,Y,3\nC,X,3\nD,Y,3\nE,X,3\nX,Z,9\nY,W,6\n"))
+	assert_equal(0, data_sankey_units(mm_data_sankey_final_crossings))
+
+# A deterministic stress chart at the 256-flow item limit: 8 columns of 12
+# nodes, a chain into every node and extra flows spanning 1-3 columns.
+char* data_sankey_stress_source():
+	string_builder* text = string_from(c"sankey-beta\n")
+	list[int] seen = new list[int]
+	int seed = 7
+	int flows = 0
+	int attempts = 0
+	while (flows < 256 && attempts < 100000):
+		attempts = attempts + 1
+		seed = (seed * 1103515245 + 12345) & 2147483647
+		int from_layer = 0
+		int to_layer = 0
+		int from_index = 0
+		int to_index = 0
+		if (flows < 84):
+			to_layer = flows / 12 + 1
+			to_index = flows % 12
+			from_layer = to_layer - 1
+			from_index = (seed >> 8) % 12
+		else:
+			from_layer = (seed >> 4) % 7
+			to_layer = from_layer + 1 + ((seed >> 9) % 3)
+			if (to_layer > 7): to_layer = 7
+			from_index = (seed >> 13) % 12
+			to_index = (seed >> 18) % 12
+		int key = (from_layer * 12 + from_index) * 1000 + to_layer * 12 + to_index
+		int duplicate = 0
+		for int other in seen:
+			if (other == key): duplicate = 1
+		if (duplicate): continue
+		seen.push(key)
+		string_append(text, c"n")
+		string_append_int(text, from_layer)
+		string_append(text, c"_")
+		string_append_int(text, from_index)
+		string_append(text, c",n")
+		string_append_int(text, to_layer)
+		string_append(text, c"_")
+		string_append_int(text, to_index)
+		string_append(text, c",")
+		string_append_int(text, 1 + (seed >> 23) % 9)
+		string_append(text, c"\n")
+		flows = flows + 1
+	__w_list_free(cast(__w_list*, seen))
+	char* source = strclone(text.data)
+	string_free(text)
+	return source
+
+void test_data_sankey_global_crossings_stress():
+	char* source = data_sankey_stress_source()
+	mm_document* d = data_parse(source)
+	assert_equal(256, d.data.items.length)
+	mm_scene* scene = mm_render(d)
+	int drawn = data_sankey_drawn_crossings(scene)
+	int initial = data_sankey_units(mm_data_sankey_initial_crossings)
+	int final = data_sankey_units(mm_data_sankey_final_crossings)
+	# The full schedule fits the work budget at the item limit.
+	assert_equal(MM_DATA_SANKEY_SWEEPS, mm_data_sankey_sweeps_run)
+	asserts(c"transpositions refine the sweeps", mm_data_sankey_transposes_run > 0)
+	# The first-pass order weighs about 49900; sweeps plus transpositions
+	# take it to about 41300. The previous same-column-pair relaxation drew
+	# 2250 crossings on this chart; the global one draws about 1990.
+	asserts(c"stress chart loses at least 15% of its crossings", final * 100 <= initial * 85)
+	asserts(c"stress chart draws fewer crossings than before", drawn > 0 && drawn < 2250)
+	# Deterministic: rendering again reproduces the counts and the drawing.
+	mm_scene* again = mm_render(d)
+	assert_equal(drawn, data_sankey_drawn_crossings(again))
+	assert_equal(final, data_sankey_units(mm_data_sankey_final_crossings))
+	mm_scene_free(again)
+	mm_scene_free(scene)
+	mm_document_free(d)
+	free(source)
+
+void test_data_sankey_sweep_budget():
+	assert_equal(0, mm_data_sankey_sweep_budget(0))
+	assert_equal(MM_DATA_SANKEY_SWEEPS, mm_data_sankey_sweep_budget(1000))
+	# Larger charts get a shorter schedule, never none.
+	assert_equal(2, mm_data_sankey_sweep_budget(MM_DATA_SANKEY_WORK_BUDGET / 3))
+	assert_equal(1, mm_data_sankey_sweep_budget(MM_DATA_SANKEY_WORK_BUDGET))
+	assert_equal(1, mm_data_sankey_sweep_budget(MM_DATA_SANKEY_WORK_BUDGET * 50))
+
 void test_data_packet_configured_word_order():
 	mm_document* d = data_parse(c"---\nconfig:\n  packet:\n    bitsPerRow: 16\n    bitOrder: descending\n---\npacket\n0-7: \"Data\"\n8-19: \"Rest\"\n")
 	assert_equal(16, d.packet_bits)
