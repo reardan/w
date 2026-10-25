@@ -1,0 +1,102 @@
+# wbuild: x64
+# Inspector commands: connection label and kind, ER cardinalities and
+# attributes, class members. Every edit is one minimal splice that
+# round-trips (save -> reopen -> SVG) and undoes back to the original.
+import lib.testing
+import libs.extras.mermaid.edit_commands
+
+void ei_round_trip(mm_editor* e, char* name):
+	string_builder* path = string_from(c"bin/mermaid_edit_inspect_")
+	string_append(path, name)
+	string_append(path, c".mmd")
+	unlink(path.data)
+	assert_equal(1, mm_editor_save_as(e, path.data))
+	mm_document* reopened = mm_read_selected(path.data, e.selected)
+	asserts(c"reopens", reopened != 0 && reopened.error == 0)
+	assert_strings_equal(e.document.source, reopened.source)
+	mm_scene* scene = mm_render(reopened)
+	asserts(c"renders", scene != 0)
+	char* svg = mm_svg(scene)
+	asserts(c"exports SVG", svg != 0 && index_of(svg, c"<svg") >= 0)
+	free(svg)
+	mm_scene_free(scene)
+	mm_document_free(reopened)
+	unlink(path.data)
+	string_free(path)
+
+void ei_undo_all(mm_editor* e, char* source):
+	while (e.position > 0): assert_equal(1, mm_editor_undo(e, 0))
+	assert_strings_equal(source, e.document.source)
+
+void test_flowchart_edge_label_add_edit_remove_and_kind():
+	char* source = c"flowchart LR\n%% keep\nA[Start] --> B[Next]\nB -->|go| C\n"
+	mm_editor* e = mm_editor_new(c"bin/unused.mmd", source)
+	asserts(c"parses", e.document.error == 0)
+	assert_equal(1, mm_editor_edge_editable(e, 0))
+	assert_equal(1, mm_editor_edge_label(e, 0, c"begin"))
+	assert_strings_equal(c"begin", e.document.edges[0].label)
+	assert_equal(1, mm_editor_edge_label(e, 1, c"went"))
+	asserts(c"label edited in place", index_of(e.document.source, c"B -->|went| C\n") >= 0)
+	assert_equal(1, mm_editor_edge_label(e, 1, c""))
+	asserts(c"label removed", e.document.edges[1].label == 0 || e.document.edges[1].label[0] == 0)
+	asserts(c"label delimiters removed", index_of(e.document.source, c"|went|") < 0)
+	assert_equal(1, mm_editor_edge_kind(e, 1, c"-.->"))
+	assert_equal(1, e.document.edges[1].dashed)
+	asserts(c"operator replaced", index_of(e.document.source, c"B -.-> C\n") >= 0)
+	assert_equal(0, mm_editor_edge_kind(e, 1, c"bad op"))
+	asserts(c"comment kept", index_of(e.document.source, c"%% keep\n") >= 0)
+	asserts(c"kinds offered", index_of(mm_editor_edge_kinds(MM_FLOW), c"|-.->|") >= 0)
+	ei_round_trip(e, c"flow")
+	ei_undo_all(e, source)
+	mm_editor_free(e)
+
+void test_class_edge_kind_and_members():
+	char* source = c"classDiagram\nclass Animal {\n  +String name\n  +eat()\n}\nAnimal <|-- Dog\n"
+	mm_editor* e = mm_editor_new(c"bin/unused.mmd", source)
+	asserts(c"parses", e.document.error == 0)
+	int animal = mm_find_node(e.document, c"Animal")
+	assert_equal(2, e.document.nodes[animal].members.length)
+	assert_equal(1, mm_editor_member_add(e, animal, c"+sleep()"))
+	animal = mm_find_node(e.document, c"Animal")
+	assert_equal(3, e.document.nodes[animal].members.length)
+	assert_equal(1, e.document.nodes[animal].members[2].method)
+	assert_equal(1, mm_editor_member_set(e, animal, 0, c"-int age"))
+	animal = mm_find_node(e.document, c"Animal")
+	assert_strings_equal(c"-int age", e.document.nodes[animal].members[0].text)
+	assert_equal(1, mm_editor_member_remove(e, animal, 1))
+	animal = mm_find_node(e.document, c"Animal")
+	assert_equal(2, e.document.nodes[animal].members.length)
+	asserts(c"method removed", index_of(e.document.source, c"eat()") < 0)
+	assert_equal(1, mm_editor_edge_kind(e, 0, c"*--"))
+	asserts(c"composition operator", index_of(e.document.source, c"Animal *-- Dog\n") >= 0)
+	ei_round_trip(e, c"class")
+	ei_undo_all(e, source)
+	mm_editor_free(e)
+
+void test_er_cardinality_and_attributes():
+	char* source = c"erDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {\n  string name\n  int id PK\n}\n"
+	mm_editor* e = mm_editor_new(c"bin/unused.mmd", source)
+	asserts(c"parses", e.document.error == 0)
+	int before_left = e.document.edges[0].left_card
+	assert_equal(1, mm_editor_er_cardinality(e, 0, 0, 3, 1))
+	asserts(c"cardinality operator", index_of(e.document.source, c"CUSTOMER |o..|{ ORDER : places\n") >= 0)
+	assert_equal(1, e.document.edges[0].dashed)
+	asserts(c"left cardinality changed", e.document.edges[0].left_card != before_left)
+	assert_equal(0, mm_editor_er_cardinality(e, 0, 5, 0, 0))
+	assert_equal(1, mm_editor_edge_label(e, 0, c"orders"))
+	assert_strings_equal(c"orders", e.document.edges[0].label)
+	int customer = mm_find_node(e.document, c"CUSTOMER")
+	assert_equal(1, mm_editor_attribute_add(e, customer, c"string", c"email", c"UK", c"login"))
+	customer = mm_find_node(e.document, c"CUSTOMER")
+	assert_equal(3, e.document.nodes[customer].attributes.length)
+	assert_strings_equal(c"email", e.document.nodes[customer].attributes[2].name)
+	assert_equal(1, mm_editor_attribute_set(e, customer, 0, c"string", c"full_name", c"", c""))
+	customer = mm_find_node(e.document, c"CUSTOMER")
+	assert_strings_equal(c"full_name", e.document.nodes[customer].attributes[0].name)
+	assert_equal(1, mm_editor_attribute_remove(e, customer, 1))
+	customer = mm_find_node(e.document, c"CUSTOMER")
+	assert_equal(2, e.document.nodes[customer].attributes.length)
+	asserts(c"attribute line removed", index_of(e.document.source, c"int id PK") < 0)
+	ei_round_trip(e, c"er")
+	ei_undo_all(e, source)
+	mm_editor_free(e)
