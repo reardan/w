@@ -422,6 +422,19 @@ void test_wllvm_arm64_target():
 	assert_contains(text, c"call double @llvm.sqrt.f64(")
 	assert_equal(-1, index_of(text, c"declare double @\"sqrt\""))
 	free(text)
+	# Generators switch stacks with an AArch64 gen_switch called from inline
+	# asm, and setjmp saves the callee-saved registers to a caller area.
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/wllvm_generator_fixture.w", c"-o", ir}))
+	text = file_read_text(ir)
+	assert_contains(text, c"module asm \"__wllvm_gen_switch:\"")
+	assert_contains(text, c"bl __wllvm_gen_switch")
+	assert_contains(text, c"module asm \"  ldp x29, x30, [sp], #16\"")
+	assert_equal(-1, index_of(text, c"pushq"))
+	free(text)
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"arm64", c"tests/setjmp_test.w", c"-o", ir}))
+	text = file_read_text(ir)
+	assert_contains(text, c"declare i64 @__wllvm_repl_setjmp(i64, ptr) returns_twice")
+	free(text)
 	unlink(ir)
 	free(ir)
 	char* clang = process_which(c"clang")
@@ -431,7 +444,9 @@ void test_wllvm_arm64_target():
 	if ((clang == 0) || (lld == 0) || (qemu == 0)):
 		println(c"wllvm: clang, ld.lld or qemu-aarch64 unavailable; arm64 run skipped")
 		return
-	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w", c"tests/wllvm_float_fixture.w", c"tests/wllvm_half_fixture.w"}
+	# Generators (gen_switch), setjmp/longjmp and stack traces too; the
+	# trace names main at its line (the file is the DWARF base name).
+	list[char*] fixtures = list[char*]{c"tests/wllvm_scalar_fixture.w", c"tests/wllvm_memory_fixture.w", c"tests/wllvm_generic_fixture.w", c"tests/wllvm_float_fixture.w", c"tests/wllvm_half_fixture.w", c"tests/wllvm_container_fixture.w", c"tests/wllvm_slice_fixture.w", c"tests/wllvm_generator_fixture.w", c"tests/setjmp_test.w", c"tests/stack_trace_test.w"}
 	for fixture in fixtures:
 		char* native = wllvm_test_path(c".arm64")
 		char* reference = wllvm_test_path(c".arm64ref")
@@ -440,7 +455,11 @@ void test_wllvm_arm64_target():
 		process_result* baseline = wllvm_test_run(list[char*]{qemu, reference})
 		process_result* result = wllvm_test_run(list[char*]{qemu, native})
 		assert_equal(baseline.status, result.status)
-		assert_strings_equal(baseline.stdout_text, result.stdout_text)
+		# lib/testing.w output names each test's address, which differs.
+		if (ends_with(fixture, c"_test.w")): assert_contains(result.stdout_text, c"passed")
+		else: assert_strings_equal(baseline.stdout_text, result.stdout_text)
+		if (ends_with(fixture, c"stack_trace_test.w")):
+			assert_contains(result.stderr_text, c"  at main (stack_trace_test.w:58)")
 		process_result_free(baseline)
 		process_result_free(result)
 		unlink(native)

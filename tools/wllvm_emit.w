@@ -1313,6 +1313,8 @@ void llvm_function_attributes(string_builder* module):
 	string_append(module, c"attributes #1 = { \"frame-pointer\"=\"all\" \"disable-tail-calls\"=\"true\" null_pointer_is_valid")
 	if (llvm_traces): string_append(module, c" noinline")
 	string_append(module, c" }\x0a")
+	# __w_test_main (llvm_emit_test_main) is always inlined into its caller.
+	string_append(module, c"attributes #2 = { \"frame-pointer\"=\"all\" \"disable-tail-calls\"=\"true\" null_pointer_is_valid alwaysinline }\x0a")
 
 
 # thread_local globals (docs/projects/thread_local.md) share one
@@ -1385,13 +1387,15 @@ void llvm_tls_finish():
 
 
 # Runtime functions the native backends write in assembly
-# (code_generator/x64_asm.w), as SysV twins in module asm. Returns the
-# stub a call of name with count arguments lowers to, or 0 (always on
-# AArch64, which has no twins yet).
+# (code_generator/x64_asm.w, arm64_asm.w), as SysV and AAPCS64 twins in
+# module asm. Returns the stub a call of name with count arguments lowers
+# to, or 0. AArch64 has the stubs native arm64 has: setjmp and longjmp
+# (thread_create, stack_create and the thread_local block are x86-only
+# natively too).
 char* llvm_runtime_stub(char* name, int count):
-	if (llvm_arm64): return 0
 	if (((strcmp(name, c"repl_setjmp") == 0) || (strcmp(name, c"setjmp") == 0)) && (count == 1)): return c"repl_setjmp"
 	if (((strcmp(name, c"repl_longjmp") == 0) || (strcmp(name, c"longjmp") == 0)) && (count == 2)): return c"repl_longjmp"
+	if (llvm_arm64): return 0
 	if ((strcmp(name, c"thread_create") == 0) && (count == 1)): return c"thread_create"
 	if ((strcmp(name, c"stack_create") == 0) && (count == 0)): return c"stack_create"
 	if ((strcmp(name, c"__w_tls_size") == 0) && (count == 0)): return c"tls_size"
@@ -1405,6 +1409,16 @@ char* llvm_runtime_call(char* stub, list[char*] values):
 	# The block size is known once every function is emitted.
 	if (strcmp(stub, c"tls_size") == 0): return llvm_load(-1, c"@__wllvm_tls_size")
 	if (strcmp(stub, c"thread_create") == 0): llvm_runtime_used[c"stack_create"] = 1
+	# The AArch64 jmp_buf (8 words) cannot hold x19-x28 and d8-d15, so
+	# setjmp also takes a save area in the calling function's frame, which
+	# outlives every longjmp to it, and records its address in the
+	# buffer's first register word.
+	char* save = 0
+	if (llvm_arm64 && (strcmp(stub, c"repl_setjmp") == 0)):
+		save = llvm_temp()
+		string_append(llvm_entry, c"  ")
+		string_append(llvm_entry, save)
+		string_append(llvm_entry, c" = alloca [18 x i64], align 16\x0a")
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
@@ -1415,6 +1429,9 @@ char* llvm_runtime_call(char* stub, list[char*] values):
 		if (i > 0): llvm_put(c", ")
 		llvm_put(c"i64 ")
 		llvm_put(values[i])
+	if (save != 0):
+		llvm_put(c", ptr ")
+		llvm_put(save)
 	llvm_put(c")\x0a")
 	return result
 
@@ -1431,7 +1448,9 @@ void llvm_asm_function(string_builder* module, char* stub, char* declaration):
 	llvm_asm(module, c".p2align 4")
 	string_append(module, c"module asm \".type __wllvm_")
 	string_append(module, stub)
-	string_append(module, c",@function\"\x0amodule asm \"__wllvm_")
+	# '@' starts a comment in ARM assembly syntax
+	if (llvm_arm64): string_append(module, c",%function\"\x0amodule asm \"__wllvm_")
+	else: string_append(module, c",@function\"\x0amodule asm \"__wllvm_")
 	string_append(module, stub)
 	string_append(module, c":\"\x0a")
 
@@ -1444,9 +1463,56 @@ void llvm_asm_function_end(string_builder* module, char* stub):
 	string_append(module, c"\"\x0a\x0a")
 
 
+# AArch64 setjmp(buf, save) and longjmp(buf, value): buf holds the resume
+# pc (x30), sp and x29 as native arm64's does, then the save area holding
+# x19-x28 and d8-d15.
+void llvm_emit_arm64_runtime_stubs(string_builder* module):
+	if (c"repl_setjmp" in llvm_runtime_used):
+		llvm_asm_function(module, c"repl_setjmp", c"declare i64 @__wllvm_repl_setjmp(i64, ptr) returns_twice")
+		llvm_asm(module, c"  str x30, [x0]")
+		llvm_asm(module, c"  mov x9, sp")
+		llvm_asm(module, c"  str x9, [x0, #8]")
+		llvm_asm(module, c"  str x29, [x0, #16]")
+		llvm_asm(module, c"  str x1, [x0, #24]")
+		llvm_asm(module, c"  stp x19, x20, [x1]")
+		llvm_asm(module, c"  stp x21, x22, [x1, #16]")
+		llvm_asm(module, c"  stp x23, x24, [x1, #32]")
+		llvm_asm(module, c"  stp x25, x26, [x1, #48]")
+		llvm_asm(module, c"  stp x27, x28, [x1, #64]")
+		llvm_asm(module, c"  stp d8, d9, [x1, #80]")
+		llvm_asm(module, c"  stp d10, d11, [x1, #96]")
+		llvm_asm(module, c"  stp d12, d13, [x1, #112]")
+		llvm_asm(module, c"  stp d14, d15, [x1, #128]")
+		llvm_asm(module, c"  mov x0, #0")
+		llvm_asm(module, c"  ret")
+		llvm_asm_function_end(module, c"repl_setjmp")
+	if (c"repl_longjmp" in llvm_runtime_used):
+		llvm_asm_function(module, c"repl_longjmp", c"declare i64 @__wllvm_repl_longjmp(i64, i64) noreturn")
+		llvm_asm(module, c"  ldr x9, [x0, #24]")
+		llvm_asm(module, c"  ldp x19, x20, [x9]")
+		llvm_asm(module, c"  ldp x21, x22, [x9, #16]")
+		llvm_asm(module, c"  ldp x23, x24, [x9, #32]")
+		llvm_asm(module, c"  ldp x25, x26, [x9, #48]")
+		llvm_asm(module, c"  ldp x27, x28, [x9, #64]")
+		llvm_asm(module, c"  ldp d8, d9, [x9, #80]")
+		llvm_asm(module, c"  ldp d10, d11, [x9, #96]")
+		llvm_asm(module, c"  ldp d12, d13, [x9, #112]")
+		llvm_asm(module, c"  ldp d14, d15, [x9, #128]")
+		llvm_asm(module, c"  ldr x30, [x0]")
+		llvm_asm(module, c"  ldr x10, [x0, #8]")
+		llvm_asm(module, c"  mov sp, x10")
+		llvm_asm(module, c"  ldr x29, [x0, #16]")
+		llvm_asm(module, c"  mov x0, x1")
+		llvm_asm(module, c"  ret")
+		llvm_asm_function_end(module, c"repl_longjmp")
+
+
 # The same buffer layout as the native stubs (lib/setjmp.w): resume pc,
 # the caller's sp and rbp, then rbx and r12-r15.
 void llvm_emit_runtime_stubs(string_builder* module):
+	if (llvm_arm64):
+		llvm_emit_arm64_runtime_stubs(module)
+		return
 	if (c"repl_setjmp" in llvm_runtime_used):
 		llvm_asm_function(module, c"repl_setjmp", c"declare i64 @__wllvm_repl_setjmp(i64) returns_twice")
 		llvm_asm(module, c"  movq (%rsp), %rcx")
@@ -2006,8 +2072,10 @@ char* llvm_test_main_call(int id):
 
 void llvm_emit_test_main():
 	if (llvm_tests_wanted == 0): return
-	# Private like native's zero-sized __w_test_main symbol: traces skip it.
-	string_append(llvm_code, c"define private i64 @__w_test_main() #1 {\x0aentry:\x0a")
+	# Private like native's zero-sized __w_test_main symbol, and inlined
+	# into its one caller so the frame-record chain stays exact: traces go
+	# from __w_run_tests straight to execute_tests, as native ones do.
+	string_append(llvm_code, c"define private i64 @__w_test_main() #2 {\x0aentry:\x0a")
 	int run = llvm_function_names[c"__w_run_tests"]
 	int complete = run in llvm_queued
 	for i in range(llvm_tests.length):
@@ -3815,10 +3883,6 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 	if ((callee.linkage in llvm_functions) == 0):
 		llvm_error_at(id, c"generator without a W body", callee.name)
 		return c"0"
-	# The entry thunk and gen_switch follow the x86-64 stack layout.
-	if (llvm_arm64):
-		llvm_error_at(id, c"AArch64 generator", callee.name)
-		return c"0"
 	list[char*] values = new list[char*]
 	int arg = node.left
 	while ((arg >= 0) && (llvm_failed == 0)):
@@ -3843,18 +3907,40 @@ char* llvm_generator_create(int group, int id, retained_node* node):
 	values.free()
 	llvm_function_symbol(callee.linkage)
 	llvm_generator_thunks[callee.linkage] = count
-	char* thunk = llvm_address_value(llvm_name(c"@wg", callee.linkage))
+	char* entry = llvm_name(c"@wg", callee.linkage)
+	if (llvm_arm64): entry = llvm_name(c"@__wllvm_genentry_", callee.linkage)
+	char* thunk = llvm_address_value(entry)
 	return llvm_call3(id, c"__w_gen_create", thunk, llvm_address_value(argv), llvm_number(count))
 
 
 char* llvm_generator_switch(int id, list[char*] values):
-	if (llvm_arm64):
-		llvm_error(id, c"AArch64 generator switch")
-		return c"0"
 	llvm_uses_gen_switch = 1
 	char* result = llvm_temp()
 	llvm_put(c"  ")
 	llvm_put(result)
+	if (llvm_arm64):
+		# Native arm64's protocol (code_generator/arm64_asm.w) saves only
+		# x29 and the resume address, and __w_gen_create seeds a fresh
+		# stack for exactly that. The call site therefore declares every
+		# other register clobbered, so LLVM keeps nothing in a register
+		# across the switch.
+		llvm_put(c" = call i64 asm sideeffect \"bl __wllvm_gen_switch\", \"={x0},{x0},{x1}")
+		for r in range(2, 29):
+			if (r == 18): continue
+			llvm_put(c",~{x")
+			llvm_put(llvm_number(r))
+			llvm_put(c"}")
+		llvm_put(c",~{x30}")
+		for r in range(32):
+			llvm_put(c",~{q")
+			llvm_put(llvm_number(r))
+			llvm_put(c"}")
+		llvm_put(c",~{cc},~{memory}\"(i64 ")
+		llvm_put(values[0])
+		llvm_put(c", i64 ")
+		llvm_put(values[1])
+		llvm_put(c")\x0a")
+		return result
 	llvm_put(c" = call i64 @__wllvm_gen_switch(i64 ")
 	llvm_put(values[0])
 	llvm_put(c", i64 ")
@@ -3863,7 +3949,58 @@ char* llvm_generator_switch(int id, list[char*] values):
 	return result
 
 
+# AArch64: gen_switch and, per generator, an entry stub. A fresh stack's
+# first resume pops x29 and the entry address and lands on the zero
+# return-address slot, above which __w_gen_create left self and then the
+# arguments last-first, as on x86-64; that sp need not be 16-byte aligned,
+# so the stub passes it in x0, realigns sp and calls the thunk.
+void llvm_generator_emit_arm64_runtime():
+	if (llvm_uses_gen_switch):
+		string_append(llvm_code, c"module asm \".text\"\x0amodule asm \".p2align 2\"\x0amodule asm \"__wllvm_gen_switch:\"\x0a")
+		string_append(llvm_code, c"module asm \"  stp x29, x30, [sp, #-16]!\"\x0amodule asm \"  mov x9, sp\"\x0amodule asm \"  str x9, [x0]\"\x0a")
+		string_append(llvm_code, c"module asm \"  mov sp, x1\"\x0amodule asm \"  ldp x29, x30, [sp], #16\"\x0amodule asm \"  ret\"\x0a\x0a")
+	for linkage, count in llvm_generator_thunks:
+		if ((linkage in llvm_queued) == 0): continue
+		char* entry = llvm_name(c"__wllvm_genentry_", linkage)
+		char* thunk = llvm_name(c"__wllvm_genbody_", linkage)
+		string_append(llvm_code, c"declare void @")
+		string_append(llvm_code, entry)
+		string_append(llvm_code, c"()\x0amodule asm \".text\"\x0amodule asm \".p2align 2\"\x0amodule asm \"")
+		string_append(llvm_code, entry)
+		string_append(llvm_code, c":\"\x0amodule asm \"  mov x0, sp\"\x0amodule asm \"  and x9, x0, #-16\"\x0amodule asm \"  mov sp, x9\"\x0a")
+		string_append(llvm_code, c"module asm \"  bl ")
+		string_append(llvm_code, thunk)
+		string_append(llvm_code, c"\"\x0amodule asm \"  brk #1\"\x0a")
+		# hidden, not internal: only the module asm names it
+		string_append(llvm_code, c"define hidden void @")
+		string_append(llvm_code, thunk)
+		string_append(llvm_code, c"(ptr %frame) #1 {\x0aentry:\x0a")
+		for i in range(count + 1):
+			string_append(llvm_code, c"  %p")
+			string_append_int(llvm_code, i)
+			string_append(llvm_code, c" = getelementptr i8, ptr %frame, i64 ")
+			if (i == count): string_append_int(llvm_code, 8)
+			else: string_append_int(llvm_code, 16 + 8 * (count - 1 - i))
+			string_append(llvm_code, c"\x0a  %a")
+			string_append_int(llvm_code, i)
+			string_append(llvm_code, c" = load i64, ptr %p")
+			string_append_int(llvm_code, i)
+			string_append(llvm_code, c", align 8\x0a")
+		string_append(llvm_code, c"  %done = call i64 ")
+		string_append(llvm_code, llvm_function_label(linkage))
+		string_append(llvm_code, c"(")
+		for i in range(count + 1):
+			if (i > 0): string_append(llvm_code, c", ")
+			string_append(llvm_code, c"i64 %a")
+			string_append_int(llvm_code, i)
+		string_append(llvm_code, c")\x0a  call void @llvm.trap()\x0a  unreachable\x0a}\x0a\x0a")
+		llvm_uses_trap = 1
+
+
 void llvm_generator_emit_runtime():
+	if (llvm_arm64):
+		llvm_generator_emit_arm64_runtime()
+		return
 	if (llvm_uses_gen_switch):
 		# gen_switch(save, restore): push the callee-saved registers, store
 		# rsp through save, load restore, pop them there and return.
@@ -3883,7 +4020,7 @@ void llvm_generator_emit_runtime():
 		# the stack is not call-aligned, hence stackrealign.
 		string_append(llvm_code, c"define internal void ")
 		string_append(llvm_code, llvm_name(c"@wg", linkage))
-		string_append(llvm_code, c"() #1 {\x0aentry:\x0a  %frame = call ptr @llvm.addressofreturnaddress.p0()\x0a")
+		string_append(llvm_code, c"() #3 {\x0aentry:\x0a  %frame = call ptr @llvm.addressofreturnaddress.p0()\x0a")
 		for i in range(count + 1):
 			string_append(llvm_code, c"  %p")
 			string_append_int(llvm_code, i)
@@ -3907,7 +4044,7 @@ void llvm_generator_emit_runtime():
 	if (any):
 		llvm_uses_trap = 1
 		string_append(llvm_code, c"declare ptr @llvm.addressofreturnaddress.p0()\x0a")
-		string_append(llvm_code, c"attributes #1 = { noinline \"stackrealign\" }\x0a\x0a")
+		string_append(llvm_code, c"attributes #3 = { noinline \"stackrealign\" \"frame-pointer\"=\"all\" \"disable-tail-calls\"=\"true\" null_pointer_is_valid }\x0a\x0a")
 # --- end of generators -------------------------------------------------------
 
 
