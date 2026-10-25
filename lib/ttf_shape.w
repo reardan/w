@@ -667,12 +667,14 @@ int ttf_indic_vowel_constraint(char* code, int a, int b):
 # order; free it with otl_buffer_free.
 # A font with no space glyph to hide default ignorables (VS16 after an
 # emoji, ZWJ) behind drops them instead, as HarfBuzz does, merging a
-# dropped glyph's cluster into its neighbor's.
+# dropped glyph's cluster into its neighbor's. Like HarfBuzz, only
+# unsubstituted ones: a ligature or substitution GSUB made from an
+# ignorable (a Khmer ZWJ + robat ligature) is a real glyph.
 void ttf_shape_drop_ignorables(otl_buffer* b):
 	int i = 0
 	while (i < b.count):
 		otl_glyph* g = &b.glyphs[i]
-		if ((g.cp < 0) || !ut_default_ignorable(g.cp)):
+		if ((g.cp < 0) || !ut_default_ignorable(g.cp) || ((g.subst & otl_subst_substituted) != 0)):
 			i = i + 1
 			continue
 		int cluster = g.cluster

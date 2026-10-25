@@ -164,3 +164,33 @@ void test_rtl_mirroring_and_order():
 	assert_equal(ttf_glyph_id(&font, ')'), b.glyphs[2].gid)
 	otl_buffer_free(b)
 	ttf_free(&font)
+
+void expect_shape(ttf_font* font, char* text, char* want):
+	string_builder* got = string_new()
+	shape_format(font, text, strlen(text), got)
+	assert_strings_equal(want, got.data)
+	string_free(got)
+
+# A font with no space glyph drops default ignorables after shaping, as
+# HarfBuzz does, but only unsubstituted ones: a glyph GSUB made from an
+# ignorable (a Khmer ZWJ + robat ligature) stays.
+void test_dropped_ignorables():
+	otl_buffer* b = otl_buffer_new(4)
+	otl_buffer_add(b, 5, 'A', 0, 1)
+	otl_buffer_add(b, 7, 0x200d, 1, 1)
+	b.glyphs[1].subst = otl_subst_substituted | otl_subst_ligated
+	otl_buffer_add(b, 0, 0xfe0f, 4, 1)
+	otl_buffer_add(b, 0, 0x200c, 7, 1)
+	ttf_shape_drop_ignorables(b)
+	assert_equal(2, b.count)
+	assert_equal(5, b.glyphs[0].gid)
+	assert_equal(7, b.glyphs[1].gid)
+	assert_equal(1, b.glyphs[1].cluster)
+	otl_buffer_free(b)
+	# The emoji subset has no space glyph: VS16 after the heart drops, and
+	# the ZWJ family and skin-toned thumbs up ligate through GSUB.
+	ttf_font font
+	asserts(c"emoji subset loads", shape_load_spec(&font, c"tests/data/fonts/NotoColorEmoji-subset.ttf"))
+	expect_shape(&font, c"\xe2\x9d\xa4\xef\xb8\x8f", c"dir=ltr 2@0+2550(0,0)")
+	expect_shape(&font, c"\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7", c"dir=ltr 10@0+2550(0,0)")
+	expect_shape(&font, c"\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd", c"dir=ltr 9@0+2550(0,0)")
