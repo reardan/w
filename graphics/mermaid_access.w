@@ -92,7 +92,7 @@ string_builder* mm_access_summary(mm_editor* e, int exposed):
 	if (e.document.accessibility_description != 0 && e.document.accessibility_description[0] != 0):
 		string_append(s, c". ")
 		string_append(s, e.document.accessibility_description)
-	if (mm_graph_edit_family(e.document.kind)): string_append(s, c". Tab and Shift+Tab select, arrows move, Delete removes, Ctrl+R edits the label.")
+	if (mm_canvas_edit_family(e.document.kind)): string_append(s, c". Tab and Shift+Tab select, Space adds to the selection, Ctrl+A selects all, arrows move, Alt+arrows resize, Delete removes, Ctrl+R edits the label.")
 	return s
 
 string_builder* mm_access_node_description(mm_editor* e, int index):
@@ -195,7 +195,7 @@ ui_access_node* mm_access_canvas(ui_access_tree* tree, int parent_id, int canvas
 	int exposed = mm_access_count_items(e)
 	if (exposed > MM_ACCESS_MAX_ITEMS): exposed = MM_ACCESS_MAX_ITEMS
 	mm_access_text(tree, canvas_id, UI_ACCESS_DESCRIPTION, mm_access_summary(e, exposed))
-	int selectable = mm_graph_edit_family(e.document.kind) && e.document.error == 0
+	int selectable = mm_canvas_edit_family(e.document.kind) && e.document.error == 0
 	int focus_id = canvas_id
 	int added = 0
 	if (mm_access_has_items(e)):
@@ -211,10 +211,12 @@ ui_access_node* mm_access_canvas(ui_access_tree* tree, int parent_id, int canvas
 			added = added + 1
 			item.states = UI_ACCESS_FOCUSABLE
 			item.actions = UI_ACCESS_FOCUS
-			if (selectable && d.nodes[i].group == 0): item.actions = item.actions | UI_ACCESS_ACTIVATE
-			if (c.node == i):
-				item.states = item.states | UI_ACCESS_SELECTED
-				focus_id = id
+			if (selectable && mm_canvas_selectable(e, i)):
+				item.actions = item.actions | UI_ACCESS_ACTIVATE
+			# Every member of a multi-selection is SELECTED; the focused one
+			# carries focus.
+			if (mm_canvas_selected(c, i)): item.states = item.states | UI_ACCESS_SELECTED
+			if (c.node == i): focus_id = id
 			char* label = mm_access_label(d.nodes[i])
 			ui_access_set_text(tree, id, UI_ACCESS_NAME, label, strlen(label))
 			mm_access_text(tree, id, UI_ACCESS_DESCRIPTION, mm_access_node_description(e, i))
@@ -247,8 +249,10 @@ int mm_access_select(int canvas_id, int id, mm_canvas* c, mm_editor* e):
 	c.node = -1
 	c.edge = -1
 	if (kind == MM_ACCESS_NODE):
-		# Groups can be read but, as with Tab, not selected for editing.
-		if (e.document.nodes[index].group == 0): c.node = index
+		# Groups select like nodes (as with Tab); synthetic containers do not.
+		if (mm_canvas_selectable(e, index) == 0): return 0
+		mm_canvas_clear_selection(c)
+		c.node = index
 	else: c.edge = index
 	return 1
 

@@ -50,11 +50,11 @@ void test_canvas_items_have_roles_names_and_descriptions():
 	assert_equal(UI_ACCESS_GROUP, group.role)
 	assert_strings_equal(c"Shop", group.name.data)
 	assert_strings_equal(c"group S containing 1 items", group.description.data)
-	assert_equal(0, group.actions & UI_ACCESS_ACTIVATE)
+	asserts(c"group selectable", (group.actions & UI_ACCESS_ACTIVATE) != 0)
 	ui_access_node* alpha = ui_access_find(tree, mm_access_node_id(MT_CANVAS, a))
 	assert_equal(UI_ACCESS_LIST_ITEM, alpha.role)
 	assert_strings_equal(c"Alpha", alpha.name.data)
-	assert_strings_equal(c"node A in Shop, 1 outgoing, 0 incoming", alpha.description.data)
+	assert_strings_equal(c"node A in Shop, 1 outgoing, 0 incoming, movable", alpha.description.data)
 	ui_access_node* beta = ui_access_find(tree, mm_access_node_id(MT_CANVAS, mt_find_node(e, c"B")))
 	assert_strings_equal(c"node B, 1 outgoing, 1 incoming, movable", beta.description.data)
 	asserts(c"node selectable", (alpha.actions & UI_ACCESS_ACTIVATE) != 0)
@@ -171,10 +171,16 @@ void test_assistive_focus_and_select_requests_reach_the_canvas():
 	assert_equal(edge_id, next.focused_id)
 	ui_access_tree_free(tree)
 	tree = next
-	# Groups are readable but not selectable, as with Tab.
+	# Groups select like nodes, as with Tab.
 	int group_id = mm_access_node_id(MT_CANVAS, mt_find_node(e, c"S"))
-	assert_equal(0, ui_access_dispatch(tree, group_id, UI_ACCESS_ACTIVATE, 0, 0))
+	assert_equal(1, ui_access_dispatch(tree, group_id, UI_ACCESS_ACTIVATE, 0, 0))
+	next = ui_access_tree_new(256, 65536)
+	mt_frame(ctx, next, &c, e)
+	assert_equal(mt_find_node(e, c"S"), c.node)
+	assert_equal(-1, c.edge)
+	assert_equal(group_id, next.focused_id)
 	ui_access_tree_free(tree)
+	ui_access_tree_free(next)
 	mm_editor_free(e)
 	ui_render_destroy(&fx.r)
 
@@ -193,5 +199,25 @@ void test_non_graph_family_exposes_the_canvas_only():
 	canvas = ui_access_find(tree, MT_CANVAS)
 	asserts(c"error summary", contains(canvas.description.data, c"Syntax error"))
 	assert_equal(0, cast(int, canvas.first_child))
+	ui_access_tree_free(tree)
+	mm_editor_free(e)
+
+void test_multi_selection_marks_every_member_selected():
+	mm_editor* e = mm_editor_new(c"unused_access.mmd", mt_source)
+	mm_canvas c
+	mm_canvas_init(&c)
+	int a = mt_find_node(e, c"A")
+	int b = mt_find_node(e, c"B")
+	int cc = mt_find_node(e, c"C")
+	c.node = a
+	mm_canvas_toggle_node(&c, e, b)
+	mm_canvas_toggle_node(&c, e, mt_find_node(e, c"S"))
+	ui_access_tree* tree = mt_snapshot(&c, e, 1)
+	asserts(c"A selected", (ui_access_find(tree, mm_access_node_id(MT_CANVAS, a)).states & UI_ACCESS_SELECTED) != 0)
+	asserts(c"B selected", (ui_access_find(tree, mm_access_node_id(MT_CANVAS, b)).states & UI_ACCESS_SELECTED) != 0)
+	asserts(c"group selected", (ui_access_find(tree, mm_access_node_id(MT_CANVAS, mt_find_node(e, c"S"))).states & UI_ACCESS_SELECTED) != 0)
+	assert_equal(0, ui_access_find(tree, mm_access_node_id(MT_CANVAS, cc)).states & UI_ACCESS_SELECTED)
+	assert_equal(mm_access_node_id(MT_CANVAS, mt_find_node(e, c"S")), tree.focused_id)
+	asserts(c"multi-select help", contains(ui_access_find(tree, MT_CANVAS).description.data, c"Space adds to the selection"))
 	ui_access_tree_free(tree)
 	mm_editor_free(e)
