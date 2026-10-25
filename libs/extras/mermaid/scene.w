@@ -44,12 +44,58 @@ struct mm_primitive:
 	# theme role paint never overrides them.
 	int user_mask
 
+# Layered-layout geometry of one relationship, kept on its source node's
+# bounds so every renderer of that edge (full scene, canvas hit tests, drag
+# previews) borrowing the bounds sees it. Routes thread long edges through the
+# dummy-node channels the layered layout reserved in intermediate ranks; the
+# endpoint snapshot invalidates a route once either endpoint is moved alone.
+struct mm_edge_route:
+	mm_edge* edge
+	int from_x
+	int from_y
+	int to_x
+	int to_y
+	# Cross-axis channel coordinate per dummy, the rank-axis extent (enter,
+	# exit) the edge crosses at each dummy, and the free gap (start, end)
+	# before each dummy and before the target. Null when the edge has no route.
+	list[int] lanes
+	list[int] spans
+	list[int] gaps
+	# Bend per gap assigned by channel routing between ranks (-1: default).
+	list[int] bends
+	# Axis of the layout that produced the route (1 = LR/RL ranks).
+	int horizontal
+	# Port distribution along the node sides (count 0 = side center).
+	int from_slot
+	int from_count
+	int to_slot
+	int to_count
+	# Cross-axis offset of both ports that spreads parallel edges apart.
+	int offset
+	# Label origin chosen by the collision-avoiding placement (placed = 0: none).
+	int placed
+	int label_x
+	int label_y
+
 struct mm_bounds:
 	int x
 	int y
 	int w
 	int h
 	int rank
+	# Owned geometry records of edges leaving this node (null when none).
+	list[mm_edge_route*] routes
+
+# Uniform-grid index of occupied rectangles (node boxes and placed edge
+# labels) that edge-label placement queries; see routing.w.
+struct mm_label_grid:
+	int cell
+	int columns
+	int rows
+	list[int] head
+	list[int] next
+	list[int] entry_rect
+	list[int] rects
 
 struct mm_scene:
 	list[mm_primitive*] items
@@ -72,6 +118,10 @@ struct mm_scene:
 	int shadow_alpha
 	int gradient_start
 	int gradient_stop
+	# Transient while mm_render_graph draws edges: occupied-area index for
+	# label placement (null otherwise), and 1 to draw edge paths only.
+	mm_label_grid* labels
+	int path_only
 
 void mm_draw(mm_scene* s, int kind, int x, int y, int x2, int y2, int dashed, char* text):
 	mm_primitive* p = new mm_primitive()
@@ -129,6 +179,36 @@ void mm_marker(mm_scene* s, int x, int y, int dx, int dy, int card):
 	if (card == 0 || card == 2): mm_draw(s, MM_CIRCLE, cx - 4, cy - 4, cx + 4, cy + 4, 0, c"")
 	else: mm_line(s, cx + px * 7, cy + py * 7, cx - px * 7, cy - py * 7, 0)
 
+void mm_edge_route_clear(mm_edge_route* r):
+	if (r.lanes != 0): __w_list_free(cast(__w_list*, r.lanes))
+	if (r.spans != 0): __w_list_free(cast(__w_list*, r.spans))
+	if (r.gaps != 0): __w_list_free(cast(__w_list*, r.gaps))
+	if (r.bends != 0): __w_list_free(cast(__w_list*, r.bends))
+	r.bends = 0
+	r.lanes = 0
+	r.spans = 0
+	r.gaps = 0
+
+void mm_bounds_free(mm_bounds* b):
+	if (b.routes != 0):
+		for mm_edge_route* r in b.routes:
+			mm_edge_route_clear(r)
+			free(r)
+		__w_list_free(cast(__w_list*, b.routes))
+	free(b)
+
+# The geometry record of e on its source bounds b, created on demand.
+mm_edge_route* mm_edge_route_of(mm_bounds* b, mm_edge* e, int create):
+	if (b.routes != 0):
+		for mm_edge_route* r in b.routes:
+			if (r.edge == e): return r
+	if (create == 0): return 0
+	if (b.routes == 0): b.routes = new list[mm_edge_route*]
+	mm_edge_route* r = new mm_edge_route()
+	r.edge = e
+	b.routes.push(r)
+	return r
+
 void mm_scene_free(mm_scene* s):
 	if (s == 0): return
 	for mm_primitive* p in s.items:
@@ -140,7 +220,7 @@ void mm_scene_free(mm_scene* s):
 		if (p.href_target != 0): free(p.href_target)
 		if (p.tooltip != 0): free(p.tooltip)
 		free(p)
-	for mm_bounds* b in s.nodes: free(b)
+	for mm_bounds* b in s.nodes: mm_bounds_free(b)
 	__w_list_free(cast(__w_list*, s.items))
 	__w_list_free(cast(__w_list*, s.nodes))
 	free(s.accessibility_title)

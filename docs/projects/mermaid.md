@@ -308,9 +308,15 @@ system; SVG uses a matching sans-serif face, and graph labels are measured with
 the native preview's per-glyph widths.
 ER attributes show type, name, keys and comment in each row rather than separate
 resizable columns. Layout uses longest-path ranks with deterministic cycle
-breaking, stable barycentric crossing-reduction sweeps and orthogonal connectors.
-It is not upstream Dagre/ELK: complex cycles,
-parallel edges and long labels may overlap and need future routing work.
+breaking, dummy-node chains for edges spanning several ranks, barycenter sweeps
+with adjacent transposition (keeping the order with the fewest crossings),
+neighbor-aligned coordinates, channel routing between ranks and orthogonal
+connectors by default. Edges never pass through unrelated node boxes (unless a
+persisted position moves one endpoint, which drops that edge's channel route),
+ER relationships spread along entity sides in the order of their far ends,
+parallel flow edges spread apart, and edge labels move off nodes and earlier
+labels. It is not upstream Dagre/ELK; see [Layered layout and routing](mermaid_layout.md)
+for the algorithm, budgets and measured before/after quality.
 
 Node styles/classes and a bounded frontmatter theme subset are implemented;
 see [Styles and themes](mermaid_styling.md). Remaining gaps include
@@ -326,9 +332,10 @@ The native extension `config.layout: force` selects deterministic force-directed
 placement for flow, ER, class, state, requirement, C4, architecture, use-case and
 agentflow graphs. Each group is laid out independently and sized around its
 children. Fixed iteration budgets and a final collision pass keep sibling boxes
-disjoint and repeated exports reproducible. Dense edge routing and labels can
-still overlap. Unsupported layout names and force layout on other families are
-diagnosed rather than silently ignored.
+disjoint and repeated exports reproducible. Force layout keeps direct
+connectors (no channel routes) and the general 1,024-node budget because each
+round is quadratic. Unsupported layout names and force layout on other families
+are diagnosed rather than silently ignored.
 
 ```mermaid
 ---
@@ -469,9 +476,12 @@ mm_document_free(doc)
 - `graphics.mermaid_access`: `mm_access_canvas` adds the canvas semantics to a
   snapshot; `mm_access_apply` applies assistive focus/select requests.
 
-The shared source limit is 1 MiB. Graph documents permit at most 1,024 nodes and
-1,024 edges; graph attributes/members have 1,024-per-node and 4,096-document
-budgets. Common graph/container nesting is capped at 32 levels. Some families
+The shared source limit is 1 MiB. Flowchart and ER documents permit at most
+4,096 nodes and 8,192 edges (ER attributes: 1,024 per entity, 16,384 per
+document); the other graph documents keep 1,024 nodes and 1,024 edges, and
+attributes/members have 1,024-per-node and 4,096-document budgets. Force layout
+is limited to 1,024 nodes. The measurements behind these budgets are in
+[Layered layout and routing](mermaid_layout.md). Common graph/container nesting is capped at 32 levels. Some families
 have different limits: hierarchy depth, data values/entries, railroad expressions
 and metadata budgets are specified in their linked references. Parsing rejects
 invalid UTF-8, embedded NUL and non-whitespace ASCII controls. Source bytes remain
@@ -544,5 +554,9 @@ The #706 follow-up tests add canonical model serialization, selected Markdown
 edits, stale-file save guards, native concave-polygon filling, force-layout
 repeatability/collision checks, layered crossing reduction, extended shapes/link
 styles, vertical GitGraph lane bounds, and the semantic cases described in each
-family reference. Native and SVG consume the same display lists; geometry tests
+family reference. `routing_test` measures dense flowchart and crowded ER
+stress fixtures (no edge through an unrelated node, no collinear overlaps of
+unrelated edges, no overlapping labels or ER ports, bounded crossings),
+manual positions overriding layout routes, and the raised flowchart/ER
+budgets at 2,000 nodes. Native and SVG consume the same display lists; geometry tests
 do not claim browser pixel parity or additional desktop-platform qualification.

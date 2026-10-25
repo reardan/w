@@ -39,6 +39,6 @@ void mm_agent_unproject(mm_scene* s, list[int] slots):
 			b.h = source.h
 			b.rank = source.rank
 		nodes.push(b)
-	for mm_bounds* b in view: free(b)
+	for mm_bounds* b in view: mm_bounds_free(b)
 	__w_list_free(cast(__w_list*, view))
 	s.nodes = nodes

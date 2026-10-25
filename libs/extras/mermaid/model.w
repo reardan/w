@@ -2,6 +2,7 @@
 import lib.lib
 import lib.str
 import structures.string
+import lib.container
 
 const int MM_FLOW = 1
 const int MM_ER = 2
@@ -184,6 +185,12 @@ const int MM_CURVE_BASIS = 3
 
 const int MM_MAX_SOURCE = 1048576
 const int MM_MAX_ITEMS = 1024
+# Flowchart and ER diagrams lay out through the layered placement, whose
+# passes are O((V + S) log V) (docs/projects/mermaid_layout.md), so they get
+# larger node, relationship and attribute budgets than the other families.
+const int MM_MAX_GRAPH_NODES = 4096
+const int MM_MAX_GRAPH_EDGES = 8192
+const int MM_MAX_GRAPH_ATTRIBUTES = 16384
 
 struct mm_style_class:
 	char* name
@@ -352,6 +359,9 @@ struct mm_document:
 	list[mm_property*] config
 	# Configuration paths that were read but ignored (unknown or unsupported keys).
 	list[char*] config_ignored
+	# Node index by id, filled by mm_add_node; flowchart and ER lookups use it
+	# (their ids never change after creation), keeping large parses linear.
+	map[char*, int] node_ids
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -368,6 +378,7 @@ mm_document* mm_document_new():
 	d.style_fonts = new list[char*]
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
+	d.node_ids = new map[char*, int]
 	return d
 
 void mm_error(mm_document* d, int offset, char* message):
@@ -383,15 +394,27 @@ void mm_error(mm_document* d, int offset, char* message):
 		else: d.error_column = d.error_column + 1
 
 int mm_find_node(mm_document* d, char* id):
+	if (d.node_ids != 0 && (d.kind == MM_FLOW || d.kind == MM_ER)):
+		int found = d.node_ids.get(id, -1)
+		if (found < 0): return -1
+		if (found < d.nodes.length && strcmp(d.nodes[found].id, id) == 0): return found
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (strcmp(n.id, id) == 0): return i
 	return -1
 
+int mm_node_limit(mm_document* d):
+	if (d.kind == MM_FLOW || d.kind == MM_ER): return MM_MAX_GRAPH_NODES
+	return MM_MAX_ITEMS
+
+int mm_edge_limit(mm_document* d):
+	if (d.kind == MM_FLOW || d.kind == MM_ER): return MM_MAX_GRAPH_EDGES
+	return MM_MAX_ITEMS
+
 int mm_add_node(mm_document* d, char* id, int offset):
 	int index = mm_find_node(d, id)
 	if (index >= 0): return index
-	if (d.nodes.length >= MM_MAX_ITEMS):
+	if (d.nodes.length >= mm_node_limit(d)):
 		mm_error(d, offset, c"node limit exceeded")
 		return -1
 	mm_node* n = new mm_node()
@@ -406,6 +429,7 @@ int mm_add_node(mm_document* d, char* id, int offset):
 	n.metadata = new list[mm_property*]
 	n.parent = -1
 	d.nodes.push(n)
+	if (d.node_ids != 0): d.node_ids[n.id] = d.nodes.length - 1
 	return d.nodes.length - 1
 
 void mm_config_free(mm_document* d);
@@ -459,6 +483,7 @@ void mm_document_free(mm_document* d):
 		free(e.left_label)
 		free(e.right_label)
 		free(e)
+	if (d.node_ids != 0): map_free[char*, int](d.node_ids)
 	__w_list_free(cast(__w_list*, d.nodes))
 	__w_list_free(cast(__w_list*, d.edges))
 	if (d.railroad != 0):
