@@ -82,7 +82,7 @@ Other useful targets:
 ./wbuild wmermaid wmermaid_editor # native Mermaid tools: docs/projects/mermaid.md
 ./wbuild wgrind      # heap checker: bin/wgrind [--native] bin/program [args...]
 ./wbuild wgrind_native # experimental Linux x64: bin/wgrind --native-exec bin/program
-./wbuild wllvm       # optional scalar-subset LLVM IR emitter (bin/wllvm file.w -o file.ll)
+./wbuild wllvm       # optional LLVM backend: bin/wllvm file.w -o out (needs clang; .ll for IR only)
 ./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
 ./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
 ./wbuild wvmd        # persistent Linux-box session scheduler
@@ -100,9 +100,11 @@ Other useful targets:
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
 
-The [LLVM offload experiment](docs/projects/llvm.md) visits the production
-retained AST and emits LLVM IR text for a checked scalar subset. Running that
-output uses an external Clang installation; ordinary W builds do not need LLVM.
+The [LLVM offload backend](docs/projects/llvm.md) visits the production
+retained AST, emits LLVM IR for a checked subset (integers, pointers, records,
+arrays, strings, globals and the standard library's own code), and links a
+freestanding x86-64 executable with an external Clang. Ordinary W builds do
+not need LLVM.
 
 Apple Silicon Macs can run static ARM64 W cells through the
 [Hypervisor.framework backend](docs/projects/vms_darwin.md). Run

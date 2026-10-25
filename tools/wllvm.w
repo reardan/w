@@ -1,13 +1,17 @@
 # wbuild: binary=wllvm arch=x64
 /*
-Opt-in LLVM IR experiment over the production compiler's retained forest.
+Opt-in LLVM backend over the production compiler's retained forest (#337).
 The front end still emits native code to the null device while binding the
-trees: this is not an independent semantic-analysis pass. LLVM tools are
-needed only when a user chooses to compile the resulting textual IR.
+trees: this is not an independent semantic-analysis pass. The tool writes
+LLVM IR text, and for any output not named *.ll hands it to clang to build
+a freestanding x86-64 Linux executable (no C library). LLVM is needed only
+for that last step.
 */
 import compiler.compiler
 import tools.wllvm_emit
 import lib.stat
+import lib.process
+import lib.env
 
 
 int wllvm_error(char* message):
@@ -18,15 +22,17 @@ int wllvm_error(char* message):
 
 
 void wllvm_usage():
-	println(c"usage: wllvm input.w -o output.ll")
-	println(c"Experimental LLVM IR from the production retained AST; 64-bit integer semantics.")
-	println(c"Subset: scalar integer/boolean functions, locals, arithmetic, comparisons,")
-	println(c"same-file calls, if/elif/else, while, return, break and continue.")
-	println(c"The input must define a main function with no parameters.")
-	println(c"Imports, globals, pointers, containers and other unsupported syntax fail.")
+	println(c"usage: wllvm input.w -o output [-O0|-O1|-O2|-O3|-Os] [--emit-llvm] [--cc clang]")
+	println(c"Compile a W program through LLVM: production retained AST, x64 semantics.")
+	println(c"An output named *.ll (or --emit-llvm) is LLVM IR text and needs no LLVM.")
+	println(c"Any other output is a freestanding x86-64 Linux executable built by clang")
+	println(c"(--cc, else $WLLVM_CC, else clang on PATH) at -O2 unless another level is given.")
+	println(c"Subset: integer, bool, char, pointer, enum, string-handle and record types;")
+	println(c"locals, globals, fixed arrays, calls (direct, indirect, syscall), if, while,")
+	println(c"for-range, break, continue and return, across every module the entry reaches.")
+	println(c"Floats, containers, generics, records by value and other constructs fail.")
 	println(c"The front end currently also emits native code to the null device.")
-	println(c"No LLVM installation is needed to emit IR. To compile it separately:")
-	println(c"  clang -O2 output.ll -o program")
+	println(c"To build IR by hand: clang -O2 -static -nostdlib output.ll -o program")
 
 
 char* wllvm_absolute(char* path):
@@ -55,10 +61,31 @@ int wllvm_same_file(char* input, char* output):
 	return (in_stat.ino == out_stat.ino) && (in_stat.dev == out_stat.dev)
 
 
+# Build output from ir with clang; clang's diagnostics pass through.
+int wllvm_link(char* path, char* level, char* ir, char* output):
+	list[char*] args = list[char*]{path, level, c"-static", c"-nostdlib", c"-Wno-override-module", c"-o", output, ir}
+	char** vector = strv_new(args.length)
+	for i in range(args.length): strv_set(vector, i, args[i])
+	process_result* result = process_run(path, vector, 0, 0, 600000)
+	free(cast(void*, vector))
+	args.free()
+	if (result == 0): return wllvm_error(c"could not run clang")
+	print_error(result.stdout_text)
+	print_error(result.stderr_text)
+	int status = result.status
+	process_result_free(result)
+	if (status != 0): return wllvm_error(c"clang failed")
+	return 0
+
+
 int main(int argc, int argv):
 	if (__word_size__ != 8): return wllvm_error(c"build wllvm for a 64-bit host (./wbuild wllvm)")
 	char* input = 0
 	char* output = 0
+	char* level = c"-O2"
+	char* cc = env_get(c"WLLVM_CC")
+	if ((cc == 0) || (cc[0] == 0)): cc = c"clang"
+	int emit_llvm = 0
 	for i in range(1, argc):
 		char** arg = argv + i * __word_size__
 		if ((strcmp(*arg, c"--help") == 0) || (strcmp(*arg, c"-h") == 0)):
@@ -71,16 +98,31 @@ int main(int argc, int argv):
 			arg = argv + i * __word_size__
 			output = *arg
 			if (output[0] == 0): return wllvm_error(c"-o requires an output path")
+		else if (strcmp(*arg, c"--cc") == 0):
+			i = i + 1
+			if (i >= argc): return wllvm_error(c"--cc requires a compiler")
+			arg = argv + i * __word_size__
+			cc = *arg
+		else if (strcmp(*arg, c"--emit-llvm") == 0): emit_llvm = 1
+		else if ((strcmp(*arg, c"-O0") == 0) || (strcmp(*arg, c"-O1") == 0) || (strcmp(*arg, c"-O2") == 0) || (strcmp(*arg, c"-O3") == 0) || (strcmp(*arg, c"-Os") == 0)): level = *arg
 		else if (starts_with(*arg, c"-")): return wllvm_error(c"unsupported option (run --help)")
 		else:
 			if (input != 0): return wllvm_error(c"expected exactly one input file")
 			input = *arg
 	if ((input == 0) || (output == 0)):
 		wllvm_usage()
-		return wllvm_error(c"an input file and -o output.ll are required")
+		return wllvm_error(c"an input file and -o output are required")
+	if (ends_with(output, c".ll")): emit_llvm = 1
 	input = wllvm_absolute(input)
 	output = wllvm_absolute(output)
 	if (wllvm_same_file(input, output)): return wllvm_error(c"input and output must be different files")
+	# An executable is linked from IR next to it, removed afterwards.
+	char* ir = output
+	if (emit_llvm == 0):
+		cc = process_which(cc)
+		if ((cc == 0) || (path_exists(cc) == 0)): return wllvm_error(c"clang not found (install clang, set WLLVM_CC or pass --cc)")
+		ir = strjoin(output, c".wllvm.ll")
+		if (wllvm_same_file(input, ir)): return wllvm_error(c"input and output must be different files")
 	char** program = cast(char**, argv)
 	compiler_argv0 = *program
 	verbosity = -1
@@ -97,8 +139,11 @@ int main(int argc, int argv):
 	int status = link_impl(5, cast(int, args), 1, 1)
 	free(args)
 	if (status == 0):
-		if (llvm_emit(input, output) == 0): status = 1
+		if (llvm_emit(input, ir) == 0): status = 1
 	retained_clear()
+	if ((status == 0) && (emit_llvm == 0)):
+		status = wllvm_link(cc, level, ir, output)
+		unlink(ir)
 	free(input)
 	free(output)
 	return status

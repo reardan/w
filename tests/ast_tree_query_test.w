@@ -235,3 +235,43 @@ void test_deferred_tree_source_and_exit_bindings():
 	process_result_free(result)
 	unlink(path)
 	free(path)
+
+
+# Global declarations carry their compile-time initializer: a constant, a
+# C string's bytes, or the binding whose address the global holds.
+void test_global_initializer_records():
+	char* path = cstr(f"bin/ast_initializer_query_{getpid()}.w")
+	char* source = c"int answer = -42\nchar* greeting = c\"hi\"\nint* answer_ref = &answer\nint later\nint pick():\n\treturn answer\ntype picker_fn = fn() -> int\npicker_fn picker = pick\nint main():\n\treturn picker() + later\n"
+	assert1(file_write_text(path, source))
+	process_result* result = tree_test_run_filtered(path, path, 1)
+	assert_equal(0, result.status)
+	list[char*] lines = split(result.stdout_text, 10)
+	map[char*, int] bindings = new map[char*, int]
+	map[char*, json_value*] rows = new map[char*, json_value*]
+	for i in range(lines.length):
+		if (lines[i][0] == 0): continue
+		json_value* row = json_parse(lines[i])
+		if ((strcmp(jfield_string(row, c"record"), c"node") == 0) && (strcmp(jfield_string(row, c"kind"), c"declaration") == 0)):
+			char* name = strclone(jfield_string(row, c"name"))
+			bindings[name] = jfield_int(row, c"binding", -1)
+			rows[name] = row
+		else: json_free(row)
+	json_value* answer = rows[c"answer"]
+	assert_equal(1, jfield_int(answer, c"initializer_kind", 0))
+	assert_equal(-42, jfield_int(answer, c"initializer_value", 0))
+	json_value* greeting = rows[c"greeting"]
+	assert_equal(2, jfield_int(greeting, c"initializer_kind", 0))
+	assert_strings_equal(c"6869", jfield_string(greeting, c"initializer_hex"))
+	json_value* answer_ref = rows[c"answer_ref"]
+	assert_equal(3, jfield_int(answer_ref, c"initializer_kind", 0))
+	assert_equal(bindings[c"answer"], jfield_int(answer_ref, c"initializer_binding", -2))
+	json_value* picker = rows[c"picker"]
+	assert_equal(4, jfield_int(picker, c"initializer_kind", 0))
+	assert_equal(bindings[c"pick"], jfield_int(picker, c"initializer_binding", -2))
+	assert_equal(0, jfield_int(rows[c"later"], c"initializer_kind", 0))
+	assert_equal(0, jfield_int(rows[c"main"], c"initializer_kind", 0))
+	for i in range(lines.length): free(lines[i])
+	lines.free()
+	process_result_free(result)
+	unlink(path)
+	free(path)

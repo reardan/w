@@ -443,8 +443,10 @@ compiled by `bin/wv2`. This:
 
 The bounded experiment is now `bin/wllvm`, documented in [llvm.md](llvm.md).
 It reuses production parsing, semantic analysis and retained bindings, then
-walks the retained tree to emit LLVM IR for an explicit scalar subset.
-Unsupported constructs fail rather than silently falling back. LLVM remains
+walks the retained tree to emit LLVM IR for an explicit subset (integers,
+pointers, records, arrays, strings, globals, and the reachable standard
+library code) and links a freestanding executable with Clang. Unsupported
+constructs in the input program fail rather than silently falling back. LLVM remains
 an external, opt-in consumer of the text output; bootstrap and the normal
 compiler backends do not depend on it. The original assessment below records
 why this is an experiment rather than a commitment to a full LLVM backend.

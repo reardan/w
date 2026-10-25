@@ -1,14 +1,15 @@
-# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w
+# wbuild: binary=wllvm_test tag=tests dep=wllvm data=tests/wllvm_scalar_fixture.w data=tests/wllvm_memory_fixture.w
 # wbuild: step="bin/wllvm_test"
 # LLVM is deliberately optional: structural/rejection checks always run,
-# and the same fixture is executed through W and clang at O0/O2 when
-# clang is available on PATH. No shell or external tool is needed to
-# emit the IR itself.
+# and the fixtures are executed through W and through wllvm's clang build
+# at O0/O2 when clang is available on PATH. No shell or external tool is
+# needed to emit the IR itself.
 import lib.testing
 import lib.process
 import lib.file
 import lib.utf8
 import lib.stat
+import lib.path
 
 
 int wllvm_test_serial
@@ -49,8 +50,8 @@ void test_wllvm_deterministic_ir():
 	char* b = file_read_text(second)
 	assert1(a != 0 && b != 0)
 	assert_strings_equal(a, b)
-	assert_contains(a, c"define i32 @main(")
-	assert_contains(a, c"i64")
+	assert_contains(a, c"define void @__wllvm_start(")
+	assert_contains(a, c"module asm \"_start:\"")
 	assert_contains(a, c"sdiv i64")
 	assert_contains(a, c"srem i64")
 	assert_contains(a, c"icmp slt i64")
@@ -59,6 +60,18 @@ void test_wllvm_deterministic_ir():
 	unlink(second)
 	free(a)
 	free(b)
+	# Memory, globals and the library runtime it prints through.
+	wllvm_test_emit(c"tests/wllvm_memory_fixture.w", first)
+	a = file_read_text(first)
+	assert1(a != 0)
+	assert_contains(a, c"internal global")
+	assert_contains(a, c"getelementptr i8, ptr")
+	assert_contains(a, c"call void @llvm.memcpy.p0.p0.i64(")
+	assert_contains(a, c"asm sideeffect \"syscall\"")
+	assert_contains(a, c"private unnamed_addr constant [11 x i8] c\"globals ok\\00\"")
+	assert_contains(a, c"call i32 @llvm.fshl.i32(")
+	unlink(first)
+	free(a)
 	free(first)
 	free(second)
 
@@ -88,17 +101,16 @@ void wllvm_test_reject(char* source):
 
 
 void test_wllvm_rejects_unsupported_programs():
-	wllvm_test_reject(c"int global_value\nint main():\n\treturn global_value\n")
-	wllvm_test_reject(c"int main():\n\tint* p = 0\n\treturn p == 0\n")
 	wllvm_test_reject(c"float value(float x):\n\treturn x + 1.0\nint main():\n\treturn 0\n")
-	wllvm_test_reject(c"int main():\n\tint n = 0\n\tfor i in range(4): n = n + i\n\treturn n\n")
-	wllvm_test_reject(c"struct Point:\n\tint x\nint main():\n\treturn 0\n")
-	wllvm_test_reject(c"import lib.str\nint main():\n\treturn 0\n")
+	wllvm_test_reject(c"int main():\n\tlist[int] values = new list[int]\n\treturn 0\n")
+	wllvm_test_reject(c"struct Point:\n\tint x\nint first(Point p):\n\treturn p.x\nint main():\n\tPoint p\n\treturn first(p)\n")
 	wllvm_test_reject(c"int main():\n\treturn missing_name\n")
-	wllvm_test_reject(c"int main():\n\treturn 0\n\tint* p = 0\n")
+	wllvm_test_reject(c"int main():\n\treturn 0\n\tfloat f = 1.0\n")
 	wllvm_test_reject(c"int main():\n\tdefer main()\n\treturn 0\n")
-	wllvm_test_reject(c"int main():\n\tint n\n\treturn n\n")
-	wllvm_test_reject(c"int main():\n\tpass\n")
+	wllvm_test_reject(c"int main():\n\tint[2] values\n\tint[2] other\n\treturn get_context(0)\n")
+	wllvm_test_reject(c"int helper():\n\treturn 1\n")
+	# checked owners free themselves at scope exit, which the tree leaves implicit
+	wllvm_test_reject(c"int main():\n\town int* value = new int\n\t*value = 3\n\treturn *value - 3\n")
 
 
 void test_wllvm_cli_errors():
@@ -115,6 +127,20 @@ void test_wllvm_cli_errors():
 	result = wllvm_test_run(list[char*]{c"bin/wllvm", c"--unknown"})
 	assert1(result.status != 0)
 	process_result_free(result)
+	result = wllvm_test_run(list[char*]{c"bin/wllvm", c"tests/wllvm_scalar_fixture.w", c"-o", c"bin/wllvm_unused.ll", c"--cc"})
+	assert1(result.status != 0)
+	process_result_free(result)
+	result = wllvm_test_run(list[char*]{c"bin/wllvm", c"tests/wllvm_scalar_fixture.w", c"-o", c"bin/wllvm_unused", c"-O9"})
+	assert1(result.status != 0)
+	process_result_free(result)
+	# A compiler that does not exist fails the build after emission.
+	char* output = wllvm_test_path(c"")
+	result = wllvm_test_run(list[char*]{c"bin/wllvm", c"tests/wllvm_scalar_fixture.w", c"-o", output, c"--cc", c"bin/wllvm_no_such_clang"})
+	assert1(result.status != 0)
+	assert_contains(result.stderr_text, c"clang not found")
+	assert1(path_exists(output) == 0)
+	process_result_free(result)
+	free(output)
 
 
 void test_wllvm_cli_file_errors():
@@ -166,34 +192,56 @@ void test_wllvm_cli_file_errors():
 	free(output)
 
 
-void test_wllvm_native_differential():
-	char* clang = process_which(c"clang")
-	if clang == 0:
-		println(c"wllvm: clang unavailable; optional native comparison skipped")
-		return
-	char* ir = wllvm_test_path(c".ll")
+# The production x64 backend and wllvm's clang build must agree on the
+# exit status and both output streams.
+void wllvm_test_differential(char* clang, char* fixture, int expected):
 	char* native = wllvm_test_path(c".native")
 	char* reference = wllvm_test_path(c".reference")
-	wllvm_test_emit(c"tests/wllvm_scalar_fixture.w", ir)
-	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wv2", c"x64", c"tests/wllvm_scalar_fixture.w", c"-o", reference}))
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wv2", c"x64", fixture, c"-o", reference}))
 	process_result* baseline = wllvm_test_run(list[char*]{reference})
-	assert_equal(73, baseline.status)
+	assert_equal(expected, baseline.status)
 	list[char*] options = list[char*]{c"-O0", c"-O2"}
 	for optimization in options:
-		wllvm_test_success(wllvm_test_run(list[char*]{clang, optimization, ir, c"-o", native}))
+		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", optimization, c"--cc", clang, fixture, c"-o", native}))
 		process_result* result = wllvm_test_run(list[char*]{native})
 		assert_equal(baseline.status, result.status)
 		assert_strings_equal(baseline.stdout_text, result.stdout_text)
 		assert_strings_equal(baseline.stderr_text, result.stderr_text)
 		process_result_free(result)
+	options.free()
 	process_result_free(baseline)
-	unlink(ir)
 	unlink(native)
 	unlink(reference)
-	free(clang)
-	free(ir)
 	free(native)
 	free(reference)
+
+
+void test_wllvm_native_differential():
+	char* clang = process_which(c"clang")
+	if clang == 0:
+		println(c"wllvm: clang unavailable; optional native comparison skipped")
+		return
+	wllvm_test_differential(clang, c"tests/wllvm_scalar_fixture.w", 73)
+	wllvm_test_differential(clang, c"tests/wllvm_memory_fixture.w", 12)
+	free(clang)
+
+
+# IR text builds by hand with the documented freestanding flags.
+void test_wllvm_ir_builds_with_clang():
+	char* clang = process_which(c"clang")
+	if clang == 0: return
+	char* ir = wllvm_test_path(c".ll")
+	char* native = wllvm_test_path(c".native")
+	wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"--emit-llvm", c"tests/wllvm_scalar_fixture.w", c"-o", ir}))
+	wllvm_test_success(wllvm_test_run(list[char*]{clang, c"-O2", c"-static", c"-nostdlib", ir, c"-o", native}))
+	process_result* result = wllvm_test_run(list[char*]{native})
+	assert_equal(73, result.status)
+	process_result_free(result)
+	unlink(ir)
+	unlink(native)
+	free(ir)
+	free(native)
+	free(clang)
 
 
 void test_wllvm_native_division_traps():
@@ -202,21 +250,43 @@ void test_wllvm_native_division_traps():
 	list[char*] sources = list[char*]{
 		c"int quotient(int a, int b):\n\treturn a / b\nint main():\n\treturn quotient(17, 0)\n",
 		c"int remainder(int a, int b):\n\treturn a % b\nint main():\n\tint n = 1\n\tn = n << 63\n\treturn remainder(n, -1)\n",
+		c"int main():\n\tint[2] values\n\tint i = 2\n\treturn values[i]\n",
 	}
 	for source in sources:
 		char* input = wllvm_test_path(c".w")
-		char* ir = wllvm_test_path(c".ll")
 		char* native = wllvm_test_path(c".native")
 		assert1(file_write_text(input, source))
-		wllvm_test_emit(input, ir)
-		wllvm_test_success(wllvm_test_run(list[char*]{clang, c"-O2", ir, c"-o", native}))
+		wllvm_test_success(wllvm_test_run(list[char*]{c"bin/wllvm", c"-O2", c"--cc", clang, input, c"-o", native}))
 		process_result* result = wllvm_test_run(list[char*]{native})
 		assert1(result.status != 0)
 		process_result_free(result)
 		unlink(input)
-		unlink(ir)
 		unlink(native)
 		free(input)
-		free(ir)
 		free(native)
+	free(clang)
+
+
+# A library function outside the subset becomes a trap with a note; the
+# rest of the program still builds and runs.
+void test_wllvm_library_trap_stub():
+	char* clang = process_which(c"clang")
+	if clang == 0: return
+	char* input = wllvm_test_path(c".w")
+	char* native = wllvm_test_path(c".native")
+	assert1(file_write_text(input, c"import lib.stack_trace\nint main(int argc, int argv):\n\tif (argc > 1): print_stack_trace()\n\treturn 5\n"))
+	process_result* built = wllvm_test_run(list[char*]{c"bin/wllvm", c"--cc", clang, input, c"-o", native})
+	assert_equal(0, built.status)
+	assert_contains(built.stderr_text, c"wllvm: note: print_stack_trace traps if called")
+	process_result_free(built)
+	process_result* result = wllvm_test_run(list[char*]{native})
+	assert_equal(5, result.status)
+	process_result_free(result)
+	result = wllvm_test_run(list[char*]{native, c"trace"})
+	assert1((result.status != 0) && (result.status != 5))
+	process_result_free(result)
+	unlink(input)
+	unlink(native)
+	free(input)
+	free(native)
 	free(clang)
