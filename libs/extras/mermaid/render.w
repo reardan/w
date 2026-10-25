@@ -92,6 +92,12 @@ void mm_measure(mm_document* d, mm_scene* s):
 				width = mm_text_width(m.text, 0) + 32
 				if (width > b.w): b.w = width
 		if (d.kind == MM_USECASE): mm_uc_measure(d, n, b)
+		# requirement.rect_min_width / rect_min_height enlarge requirement and element boxes.
+		if (d.kind == MM_REQUIREMENT && n.group == 0):
+			int min_width = mm_config_number(d, c"requirement.rect_min_width", 0)
+			int min_height = mm_config_number(d, c"requirement.rect_min_height", 0)
+			if (b.w < min_width): b.w = min_width
+			if (b.h < min_height): b.h = min_height
 		if (d.kind == MM_STATE && n.shape >= 3):
 			b.w = 32
 			b.h = 32

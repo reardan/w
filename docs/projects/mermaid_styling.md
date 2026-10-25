@@ -64,22 +64,15 @@ A -->|label| B
 ```
 
 Configuration comes from YAML frontmatter, from `%%{init: {...}}%%` /
-`%%{initialize: {...}}%%` directives, or both. Both become the same dotted keys
-and pass one validator, so they accept the same keys and report the same
-diagnostics. Directives must come after any frontmatter and before the diagram
-header; they may span lines and be mixed with `%%` comments and blank lines, and
-several may be given. A directive after the header is still rejected. Later
-sources override earlier ones key by key (frontmatter, then directives in
-order); repeating a key inside one source is an error.
-
-Frontmatter is a bounded YAML subset: block mappings at any consistent space
-indentation (tabs are rejected; a dedent must return to an enclosing level), `#`
-comment lines and trailing comments, plain or single/double-quoted scalars
-(without escapes), quoted keys, and inline `{key: value}` flow mappings. Lists,
-block scalars, anchors and tags produce a diagnostic. Directive objects are
-JSON-ish: single- or double-quoted strings, bare keys and values, numbers,
-booleans, nested objects and trailing commas; arrays and escapes are rejected.
-At most 256 entries and four levels of nesting are read.
+`%%{initialize: {...}}%%` directives anywhere in the diagram, or both. All
+sources become the same dotted keys and pass one validator; later sources
+override earlier ones key by key (frontmatter, then directives in order).
+Frontmatter is a bounded YAML subset with lists, block scalars, anchors,
+aliases, merge keys and escapes. The sources, precedence, YAML subset, bounds
+and the per-family keys (sequence, gantt, timeline, xyChart, sankey, radar,
+gitGraph, railroad, requirement, c4) are documented in
+[mermaid_config.md](mermaid_config.md). The keys below are the theme, look,
+layout and flowchart settings.
 
 | Key | Accepted values |
 | --- | --- |
@@ -92,8 +85,10 @@ At most 256 entries and four levels of nesting are read.
 | `flowchart.curve` | `basis`, `linear`, `step`, `stepBefore`, `stepAfter` |
 | `packet.bitsPerRow`, `packet.bitOrder` | see the packet family |
 
-Any other key — `fontSize`, `fontFamily`, `themeCSS`, other diagram sections,
-`look: handDrawn` — produces a diagnostic. The theme names select deterministic
+Keys that are not supported natively — `fontSize`, `fontFamily`, `themeCSS`,
+unsupported diagram settings — are ignored deterministically and recorded in
+`mm_document.config_ignored`; invalid values of supported keys, such as
+`look: handDrawn`, produce a diagnostic. The theme names select deterministic
 native palettes; `dark`, `neo-dark`, `redux-dark` and `redux-dark-color` are dark
 modes and paint a dark preview/SVG background. They keep the intent of upstream
 themes rather than reproducing upstream CSS or typography.
@@ -164,8 +159,8 @@ oriented. Self-loops remain orthogonal.
 The source remains byte-for-byte saveable, including unsupported styles and
 configuration. Invalid styles or configuration suppress the preview. The
 current implementation does not support custom CSS, `stroke-dasharray`,
-opacity, font configuration (`fontSize`, `fontFamily`), the hand-drawn look,
-arbitrary diagram configuration or external stylesheets. Classes refer to
+opacity, font configuration (`fontSize`, `fontFamily`), the hand-drawn look
+or external stylesheets. Classes refer to
 existing node identifiers; quoted ER display aliases are not style identifiers.
 
 Example: [styled.mmd](../../examples/mermaid/styled.mmd).
@@ -180,4 +175,6 @@ variables, malformed input, truncation, budgets and owned scene lifetime.
 stability, variables with every theme and dark mode, pie/cScale series colors,
 init directives (quoting, multi-line, fenced, frontmatter override, line numbers),
 relaxed frontmatter, spacing and curves, every configuration diagnostic, the
-entry budget and truncated prefixes.
+entry budget and truncated prefixes; `config_yaml_test` and
+`config_family_test` cover the YAML subset and per-family keys
+([mermaid_config.md](mermaid_config.md#checks)).

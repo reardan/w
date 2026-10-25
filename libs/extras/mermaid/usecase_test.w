@@ -179,7 +179,12 @@ void test_usecase_configuration_keys():
 	assert_equal(90, d.node_spacing)
 	assert_equal(2, d.c4_shape_in_row)
 	mm_document_free(d)
-	list[char*] bad = list[char*]{c"---\nconfig:\n  usecase:\n    colorScheme: random\n---\nusecase-beta\nA\n", c"---\nconfig:\n  usecase:\n    bogus: 1\n---\nusecase-beta\nA\n", c"---\nconfig:\n  architecture:\n    seed: x\n---\nusecase-beta\nA\n", c"---\nconfig:\n  c4:\n    c4BoundaryInRow: 0\n---\nusecase-beta\nA\n"}
+	# Unknown family keys are ignored deterministically and recorded.
+	d = uc_parse(c"---\nconfig:\n  usecase:\n    bogus: 1\n---\nusecase-beta\nA\n")
+	assert_equal(0, d.error)
+	assert_equal(1, d.config_ignored.length)
+	mm_document_free(d)
+	list[char*] bad = list[char*]{c"---\nconfig:\n  usecase:\n    colorScheme: random\n---\nusecase-beta\nA\n", c"---\nconfig:\n  architecture:\n    seed: x\n---\nusecase-beta\nA\n", c"---\nconfig:\n  c4:\n    c4BoundaryInRow: 0\n---\nusecase-beta\nA\n"}
 	for char* text in bad:
 		mm_document* invalid = mm_parse(text, strlen(text))
 		asserts(c"invalid family configuration rejected", invalid.error != 0)

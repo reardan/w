@@ -312,8 +312,11 @@ void mm_flow_body(mm_parser* p, int depth):
 		if (p.pos == start): mm_error(p.doc, start, c"expected flowchart statement")
 	if (depth > 0 && p.doc.error == 0): mm_error(p.doc, p.pos, c"unterminated subgraph")
 
-mm_document* mm_parse_raw(char* source, int length):
+# config: resolved configuration (owned by the new document), available to
+# family parsers that need it while parsing (e.g. gitGraph.mainBranchName).
+mm_document* mm_parse_raw(char* source, int length, list[mm_property*] config):
 	mm_document* d = mm_document_new()
+	d.config = config
 	if (length < 0 || length > MM_MAX_SOURCE || (source == 0 && length != 0)):
 		mm_error(d, 0, c"invalid input or source limit exceeded")
 		return d
@@ -498,7 +501,10 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	envelope.diagram_index = selected
 	if (envelope.error != 0): return envelope
 	int start = envelope.source_start
-	mm_document* d = mm_parse_raw(envelope.source + start, envelope.source_end - start)
+	mm_document* d = mm_parse_raw(envelope.source + start, envelope.source_end - start, envelope.config)
+	envelope.config = 0
+	d.config_ignored = envelope.config_ignored
+	envelope.config_ignored = 0
 	mm_style_validate(d)
 	d.palette = envelope.palette
 	d.background = envelope.background

@@ -12,7 +12,7 @@ agentflow/agentflow_007.mmd	supported	ok
 agentflow/agentflow_008.mmd	unsupported	error 11:33: unsupported agentflow presentation metadata
 agentflow/agentflow_009.mmd	supported	ok
 agentflow/agentflow_010.mmd	supported	ok
-agentflow/agentflow_011.mmd	unsupported	error 3:1: unsupported configuration key
+agentflow/agentflow_011.mmd	supported	ok
 agentflow/agentflow_012.mmd	unsupported	error 3:1: supported native layouts: dagre, force
 architecture/architecture_001.mmd	supported	ok
 architecture/architecture_002.mmd	supported	ok
@@ -77,7 +77,7 @@ class/classDiagram_018.mmd	supported	ok
 class/classDiagram_019.mmd	supported	ok
 class/classDiagram_020.mmd	supported	ok
 class/classDiagram_021.mmd	supported	ok
-class/classDiagram_022.mmd	unsupported	error 3:1: unsupported configuration key
+class/classDiagram_022.mmd	supported	ok
 class/classDiagram_023.mmd	supported	ok
 class/classDiagram_024.mmd	supported	ok
 class/classDiagram_025.mmd	supported	ok
@@ -93,7 +93,7 @@ class/classDiagram_034.mmd	supported	ok
 class/classDiagram_035.mmd	supported	ok
 class/classDiagram_036.mmd	supported	ok
 class/classDiagram_037.mmd	unsupported	error 1:1: assigned style class has no classDef
-class/classDiagram_038.mmd	unsupported	error 2:1: inconsistent frontmatter indentation
+class/classDiagram_038.mmd	supported	ok
 cynefin/cynefin_001.mmd	supported	ok
 cynefin/cynefin_002.mmd	supported	ok
 cynefin/cynefin_003.mmd	supported	ok
@@ -147,7 +147,7 @@ gitgraph/examples_009.mmd	unsupported	error 2:20: expected commit property colon
 flowchart/flowchart_001.mmd	supported	ok
 flowchart/flowchart_002.mmd	supported	ok
 flowchart/flowchart_003.mmd	supported	ok
-flowchart/flowchart_004.mmd	unsupported	error 3:1: unsupported configuration key
+flowchart/flowchart_004.mmd	supported	ok
 flowchart/flowchart_005.mmd	supported	ok
 flowchart/flowchart_006.mmd	supported	ok
 flowchart/flowchart_007.mmd	unsupported	error 4:11: unsupported node shape; quote literal labels beginning with a delimiter
@@ -246,7 +246,7 @@ flowchart/flowchart_099.mmd	supported	ok
 flowchart/flowchart_100.mmd	supported	ok
 flowchart/flowchart_101.mmd	unsupported	error 16:16: expected entity or node identifier
 flowchart/flowchart_102.mmd	unsupported	error 8:8: unsupported flowchart edge
-flowchart/flowchart_103.mmd	unsupported	error 3:1: unsupported configuration key
+flowchart/flowchart_103.mmd	supported	ok
 flowchart/flowchart_104.mmd	unsupported	error 5:5: unsupported Mermaid statement in native stage 1
 flowchart/flowchart_105.mmd	unsupported	error 6:5: unsupported Mermaid statement in native stage 1
 flowchart/flowchart_106.mmd	supported	ok
@@ -265,10 +265,10 @@ gantt/gantt_004.mmd	supported	ok
 gantt/gantt_005.mmd	unsupported	error 2:21: unsupported Gantt dateFormat
 gantt/gantt_006.mmd	unsupported	error 2:21: unsupported Gantt dateFormat
 gantt/gantt_007.mmd	unsupported	error 2:21: unsupported Gantt directive or missing task colon
-gantt/gantt_008.mmd	unsupported	error 2:1: unsupported frontmatter field
+gantt/gantt_008.mmd	supported	ok
 gantt/gantt_009.mmd	supported	ok
 gantt/gantt_010.mmd	unsupported	error 3:17: unsupported Gantt dateFormat
-gantt/gantt_011.mmd	unsupported	error 3:1: inconsistent frontmatter indentation
+gantt/gantt_011.mmd	unsupported	error 8:19: unterminated quoted configuration value
 gitgraph/gitgraph_001.mmd	supported	ok
 gitgraph/gitgraph_002.mmd	supported	ok
 gitgraph/gitgraph_003.mmd	supported	ok
@@ -279,31 +279,31 @@ gitgraph/gitgraph_007.mmd	supported	ok
 gitgraph/gitgraph_008.mmd	supported	ok
 gitgraph/gitgraph_009.mmd	supported	ok
 gitgraph/gitgraph_010.mmd	supported	ok
-gitgraph/gitgraph_011.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_012.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_013.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_014.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_015.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_016.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_017.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_011.mmd	supported	ok
+gitgraph/gitgraph_012.mmd	supported	ok
+gitgraph/gitgraph_013.mmd	supported	ok
+gitgraph/gitgraph_014.mmd	supported	ok
+gitgraph/gitgraph_015.mmd	unsupported	error 27:27: empty or duplicate commit id
+gitgraph/gitgraph_016.mmd	supported	ok
+gitgraph/gitgraph_017.mmd	supported	ok
 gitgraph/gitgraph_018.mmd	supported	ok
 gitgraph/gitgraph_019.mmd	supported	ok
 gitgraph/gitgraph_020.mmd	supported	ok
-gitgraph/gitgraph_021.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_022.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_023.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_024.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_025.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_026.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_027.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_028.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_029.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_030.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_031.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_032.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_033.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_034.mmd	unsupported	error 3:1: unsupported configuration key
-gitgraph/gitgraph_035.mmd	unsupported	error 3:1: unsupported configuration key
+gitgraph/gitgraph_021.mmd	supported	ok
+gitgraph/gitgraph_022.mmd	supported	ok
+gitgraph/gitgraph_023.mmd	supported	ok
+gitgraph/gitgraph_024.mmd	supported	ok
+gitgraph/gitgraph_025.mmd	supported	ok
+gitgraph/gitgraph_026.mmd	supported	ok
+gitgraph/gitgraph_027.mmd	supported	ok
+gitgraph/gitgraph_028.mmd	supported	ok
+gitgraph/gitgraph_029.mmd	unsupported	error 6:1: unsupported theme variable
+gitgraph/gitgraph_030.mmd	unsupported	error 6:1: unsupported theme variable
+gitgraph/gitgraph_031.mmd	unsupported	error 6:1: unsupported theme variable
+gitgraph/gitgraph_032.mmd	unsupported	error 6:1: unsupported theme variable
+gitgraph/gitgraph_033.mmd	unsupported	error 6:1: unsupported theme variable
+gitgraph/gitgraph_034.mmd	unsupported	error 6:1: unsupported theme variable
+gitgraph/gitgraph_035.mmd	unsupported	error 6:1: unsupported theme variable
 ishikawa/ishikawa_001.mmd	supported	ok
 kanban/kanban_001.mmd	supported	ok
 kanban/kanban_002.mmd	supported	ok
@@ -317,24 +317,24 @@ mindmap/mindmap_006.mmd	supported	ok
 mindmap/mindmap_007.mmd	supported	ok
 mindmap/mindmap_008.mmd	supported	ok
 mindmap/mindmap_009.mmd	supported	ok
-mindmap/mindmap_010.mmd	unsupported	error 3:1: unsupported configuration key
-mindmap/mindmap_011.mmd	unsupported	error 4:1: unsupported configuration key
+mindmap/mindmap_010.mmd	supported	ok
+mindmap/mindmap_011.mmd	unsupported	error 7:1: unsupported theme variable
 mindmap/mindmap_012.mmd	partial	ok	::icon() names are kept in the model; icon fonts are not drawn
 mindmap/mindmap_013.mmd	supported	ok
 mindmap/mindmap_014.mmd	unsupported	error 5:7: indentation must match a previous level
 mindmap/mindmap_015.mmd	supported	ok
 packet/packet_001.mmd	supported	ok
 packet/packet_002.mmd	supported	ok
-packet/packet_003.mmd	unsupported	error 4:1: unsupported packet setting
-packet/packet_004.mmd	unsupported	error 4:1: unsupported packet setting
+packet/packet_003.mmd	supported	ok
+packet/packet_004.mmd	unsupported	error 7:1: unsupported theme variable
 pie/pie_001.mmd	supported	ok
-pie/pie_002.mmd	unsupported	error 3:1: unsupported configuration key
+pie/pie_002.mmd	unsupported	error 8:1: unsupported theme variable
 quadrant/quadrantChart_001.mmd	supported	ok
-quadrant/quadrantChart_002.mmd	unsupported	error 3:1: unsupported configuration key
+quadrant/quadrantChart_002.mmd	unsupported	error 7:1: unsupported theme variable
 quadrant/quadrantChart_003.mmd	supported	ok
 radar/radar_001.mmd	supported	ok
 radar/radar_002.mmd	supported	ok
-radar/radar_003.mmd	unsupported	error 3:1: unsupported configuration key
+radar/radar_003.mmd	unsupported	error 12:1: unsupported theme variable
 railroad/railroad_001.mmd	supported	ok
 railroad/railroad_002.mmd	supported	ok
 railroad/railroad_003.mmd	supported	ok
@@ -358,14 +358,14 @@ requirement/requirementDiagram_006.mmd	unsupported	error 3:11: expected requirem
 requirement/requirementDiagram_007.mmd	supported	ok
 requirement/requirementDiagram_008.mmd	supported	ok
 requirement/requirementDiagram_009.mmd	unsupported	error 3:21: expected requirement property block
-sankey/sankey_001.mmd	unsupported	error 3:1: unsupported configuration key
+sankey/sankey_001.mmd	supported	ok
 sankey/sankey_002.mmd	supported	ok
 sankey/sankey_003.mmd	supported	ok
 sankey/sankey_004.mmd	supported	ok
 sankey/sankey_005.mmd	supported	ok
-sankey/sankey_006.mmd	unsupported	error 3:1: unsupported configuration key
-sankey/sankey_007.mmd	unsupported	error 3:1: unsupported configuration key
-sankey/sankey_008.mmd	unsupported	error 6:1: invalid frontmatter key
+sankey/sankey_006.mmd	supported	ok
+sankey/sankey_007.mmd	supported	ok
+sankey/sankey_008.mmd	supported	ok
 sequence/sequenceDiagram_001.mmd	supported	ok
 sequence/sequenceDiagram_002.mmd	supported	ok
 sequence/sequenceDiagram_003.mmd	supported	ok
@@ -446,34 +446,34 @@ timeline/timeline_004.mmd	supported	ok
 timeline/timeline_005.mmd	supported	ok
 timeline/timeline_006.mmd	unsupported	error 1:10: expected end of diagram header
 timeline/timeline_007.mmd	supported	ok
-timeline/timeline_008.mmd	unsupported	error 3:1: unsupported configuration key
-timeline/timeline_009.mmd	unsupported	error 3:1: unsupported configuration key
-timeline/timeline_010.mmd	unsupported	error 3:1: unsupported configuration key
-timeline/timeline_011.mmd	unsupported	error 3:1: unsupported configuration key
-timeline/timeline_012.mmd	unsupported	error 3:1: unsupported configuration key
-timeline/timeline_013.mmd	unsupported	error 3:1: unsupported configuration key
-timeline/timeline_014.mmd	unsupported	error 3:1: unsupported configuration key
+timeline/timeline_008.mmd	supported	ok
+timeline/timeline_009.mmd	unsupported	error 7:1: unsupported theme variable
+timeline/timeline_010.mmd	supported	ok
+timeline/timeline_011.mmd	supported	ok
+timeline/timeline_012.mmd	supported	ok
+timeline/timeline_013.mmd	supported	ok
+timeline/timeline_014.mmd	supported	ok
 treemap/treemap_001.mmd	supported	ok
 treemap/treemap_002.mmd	supported	ok
 treemap/treemap_003.mmd	supported	ok
 treemap/treemap_004.mmd	supported	ok
 treemap/treemap_005.mmd	supported	ok
-treemap/treemap_006.mmd	unsupported	error 3:1: unsupported configuration key
-treemap/treemap_007.mmd	unsupported	error 3:1: unsupported configuration key
-treemap/treemap_008.mmd	unsupported	error 3:1: unsupported configuration key
+treemap/treemap_006.mmd	supported	ok
+treemap/treemap_007.mmd	supported	ok
+treemap/treemap_008.mmd	supported	ok
 treeview/treeView_001.mmd	supported	ok
 treeview/treeView_002.mmd	unsupported	error 3:73: TreeView icons and classes are not yet supported
 treeview/treeView_003.mmd	supported	ok
 treeview/treeView_004.mmd	unsupported	error 3:29: TreeView icons and classes are not yet supported
 treeview/treeView_005.mmd	supported	ok
-treeview/treeView_006.mmd	unsupported	error 3:1: unsupported configuration key
+treeview/treeView_006.mmd	supported	ok
 treeview/treeView_007.mmd	unsupported	error 9:1: invalid frontmatter key
 treeview/treeView_008.mmd	unsupported	error 3:34: TreeView icons and classes are not yet supported
-treeview/treeView_009.mmd	unsupported	error 3:1: unsupported configuration key
+treeview/treeView_009.mmd	unsupported	error 8:28: TreeView icons and classes are not yet supported
 treeview/treeView_010.mmd	unsupported	error 4:69: TreeView icons and classes are not yet supported
 treeview/treeView_011.mmd	supported	ok
 treeview/treeView_012.mmd	supported	ok
-treeview/treeView_013.mmd	unsupported	error 3:1: unsupported configuration key
+treeview/treeView_013.mmd	unsupported	error 8:1: unsupported theme variable
 usecase/usecase_001.mmd	supported	ok
 usecase/usecase_002.mmd	supported	ok
 usecase/usecase_003.mmd	supported	ok
@@ -528,12 +528,12 @@ wardley/wardley_018.mmd	unsupported	error 3:6: expected Wardley dependency arrow
 wardley/wardley_019.mmd	unsupported	error 3:6: expected Wardley dependency arrow
 xychart/xyChart_001.mmd	supported	ok
 xychart/xyChart_002.mmd	supported	ok
-xychart/xyChart_003.mmd	unsupported	error 4:1: unsupported theme variable
-xychart/xyChart_004.mmd	unsupported	error 3:1: unsupported configuration key
-xychart/xyChart_005.mmd	unsupported	error 3:1: unsupported configuration key
+xychart/xyChart_003.mmd	unsupported	error 5:1: unsupported theme variable
+xychart/xyChart_004.mmd	supported	ok
+xychart/xyChart_005.mmd	supported	ok
 xychart/xyChart_006.mmd	supported	ok
 xychart/xyChart_007.mmd	supported	ok
-xychart/xyChart_008.mmd	unsupported	error 3:1: unsupported configuration key
+xychart/xyChart_008.mmd	unsupported	error 9:1: unsupported theme variable
 zenuml/zenuml_001.mmd	supported	ok
 zenuml/zenuml_002.mmd	supported	ok
 zenuml/zenuml_003.mmd	supported	ok

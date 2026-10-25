@@ -56,7 +56,7 @@ void mm_outline_body(mm_parser* p):
 		if (mm_peek(p) == 0): break
 		if (mm_peek(p) == 13 || mm_peek(p) == 10): continue
 		if (mm_match(p, c"%%")):
-			if (mm_peek(p) == '{'): mm_error(p.doc, p.pos, c"configuration directive unsupported")
+			if (mm_peek(p) == '{'): mm_skip_directive(p)
 			char* comment = mm_line_text(p)
 			free(comment)
 			continue
