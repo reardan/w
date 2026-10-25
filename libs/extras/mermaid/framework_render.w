@@ -1,5 +1,6 @@
 # Family-specific outlines, fishbones, Cynefin regions and Wardley axes.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.style_render
 
 mm_scene* mm_framework_scene(mm_document* d):
 	mm_scene* s = new mm_scene()
@@ -25,6 +26,19 @@ void mm_framework_arrow(mm_scene* s, int ax, int ay, int bx, int by, int dashed)
 	mm_line(s, bx, by, bx - ux + px, by - uy + py, 0)
 	mm_line(s, bx, by, bx - ux - px, by - uy - py, 0)
 
+# The node names the `highlight` class and no classDef/themeCSS rule replaces it.
+int mm_tree_highlighted(mm_node* n):
+	int start = 0
+	int length = strlen(n.style_classes)
+	int found = 0
+	for i in range(length + 1):
+		if (i == length || n.style_classes[i] == ','):
+			char* name = str_copy_range(n.style_classes, start, i)
+			if (strcmp(name, c"highlight") == 0): found = 1
+			free(name)
+			start = i + 1
+	return found
+
 mm_scene* mm_treeview_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)
 	for i in range(d.nodes.length):
@@ -37,13 +51,28 @@ mm_scene* mm_treeview_render(mm_document* d):
 			b.x = a.x + 36
 			mm_line(s, a.x + 8, a.y + 24, a.x + 8, b.y + 8, 0)
 			mm_line(s, a.x + 8, b.y + 8, b.x - 4, b.y + 8, 0)
+		# Classed rows get a highlight box behind the label; `highlight` is
+		# upstream's built-in class (highlightBg over white, highlightStroke).
+		int start = s.items.length
+		if (n.style_classes[0] != 0):
+			int width = strlen(n.label) * 8 + 12
+			if (n.annotation[0] != 0): width = width + strlen(n.annotation) * 8 + 24
+			mm_draw(s, MM_BOX, b.x - 6, b.y - 4, b.x - 6 + width, b.y + 20, 0, c"")
+			mm_primitive* row = s.items[start]
+			if (mm_tree_highlighted(n)):
+				row.style.mask = MM_STYLE_FILL | MM_STYLE_STROKE | MM_STYLE_WIDTH
+				row.style.fill = 0xfff7dc
+				row.style.stroke = 0xffc107
+				row.style.width = 1
 		mm_text(s, b.x, b.y, n.label)
 		if (n.annotation[0] != 0):
 			mm_text(s, b.x + strlen(n.label) * 8 + 24, b.y, n.annotation)
 			mm_primitive* description = s.items[s.items.length - 1]
 			description.style.mask = description.style.mask | 4
 			description.style.text = 0x64748b
+		if (n.style_classes[0] != 0): mm_style_node(d, s, n, start)
 	return s
+
 
 mm_scene* mm_ishikawa_render(mm_document* d):
 	mm_scene* s = mm_framework_scene(d)

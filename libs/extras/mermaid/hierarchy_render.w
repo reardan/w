@@ -1,5 +1,6 @@
 # Dedicated column and tree layouts; parent means ancestry, never a cluster box.
 import libs.extras.mermaid.scene
+import libs.extras.mermaid.style_render
 import lib.fmath
 
 # Mindmap cloud (3) and bang (4) outlines are 48-point polygons: lobes bulge
@@ -44,6 +45,22 @@ char* mm_kanban_ticket_url(char* base, char* ticket):
 	char* result = strclone(url.data)
 	string_free(url)
 	return result
+
+# Index of the root's child whose subtree holds node i (upstream section-N).
+int mm_mindmap_branch(mm_document* d, int i):
+	int node = i
+	while (node >= 0):
+		mm_node* n = d.nodes[node]
+		if (n.parent < 0): return 0
+		mm_node* parent = d.nodes[n.parent]
+		if (parent.parent < 0):
+			int branch = 0
+			for j in range(node):
+				mm_node* sibling = d.nodes[j]
+				if (sibling.parent == n.parent): branch = branch + 1
+			return branch
+		node = n.parent
+	return 0
 
 mm_scene* mm_hierarchy_render(mm_document* d):
 	mm_scene* s = new mm_scene()
@@ -119,6 +136,7 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		mm_bounds* b = s.nodes[i]
+		int style_start = s.items.length
 		int shape = MM_BOX
 		if (n.shape == 2): shape = MM_CIRCLE
 		if (d.kind == MM_MINDMAP && n.shape >= 3): mm_mindmap_outline(s, n, b)
@@ -147,5 +165,7 @@ mm_scene* mm_hierarchy_render(mm_document* d):
 				mm_primitive* link = s.items[s.items.length - 1]
 				link.href = mm_kanban_ticket_url(d.ticket_base_url, m.text + 8)
 			y = y + 24
+		if (d.kind == MM_MINDMAP && n.parent >= 0): mm_style_role(s, style_start, MM_ROLE_TINT, mm_mindmap_branch(d, i))
+		if (d.kind == MM_MINDMAP && (n.style_classes[0] != 0 || n.style.mask != 0)): mm_style_node(d, s, n, style_start)
 	__w_list_free(cast(__w_list*, heights))
 	return s

@@ -115,6 +115,8 @@ int mm_usecase_node(mm_parser* p, int parent, int declare):
 	if (close):
 		free(n.label)
 		n.label = mm_until(p, close)
+	mm_space(p)
+	if (mm_match(p, c":::")): mm_style_inline(p, n)
 	return index
 
 void mm_usecase_body(mm_parser* p, int scope):

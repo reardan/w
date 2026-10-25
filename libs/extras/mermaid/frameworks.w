@@ -42,6 +42,26 @@ int mm_tree_prefix(mm_parser* p, int indent):
 		column = column + 1
 	return -1
 
+# Comma-joined class names from "name name ..." at text[at]; diagnoses bad names.
+char* mm_tree_classes(mm_parser* p, char* text, int at):
+	string_builder* joined = string_new()
+	int length = strlen(text)
+	while (at < length):
+		while (at < length && (text[at] == 32 || text[at] == 9)): at = at + 1
+		int start = at
+		while (at < length && text[at] != 32 && text[at] != 9): at = at + 1
+		if (at == start): break
+		char* name = str_copy_range(text, start, at)
+		if (mm_style_name(name) == 0): mm_error(p.doc, p.pos, c"invalid TreeView class name")
+		if (joined.length + strlen(name) > 4096): mm_error(p.doc, p.pos, c"node class assignment limit exceeded")
+		if (joined.length != 0): string_append_char(joined, ',')
+		string_append(joined, name)
+		free(name)
+	if (joined.length == 0): mm_error(p.doc, p.pos, c"expected TreeView class names")
+	char* result = strclone(joined.data)
+	string_free(joined)
+	return result
+
 void mm_outline_body(mm_parser* p):
 	list[int] indents = new list[int]
 	list[int] parents = new list[int]
@@ -75,14 +95,22 @@ void mm_outline_body(mm_parser* p):
 		if (depth >= 64): mm_error(p.doc, p.pos, c"outline nesting limit exceeded")
 		char* text = mm_line_text(p)
 		char* description = strclone(c"")
+		char* classes = 0
 		if (p.doc.kind == MM_TREEVIEW):
-			if (index_of(text, c":::") >= 0 || index_of(text, c"icon(") >= 0): mm_error(p.doc, p.pos, c"TreeView icons and classes are not yet supported")
 			int marker = index_of(text, c"##")
 			if (marker >= 0):
 				free(description)
 				description = mm_style_trim(text, marker + 2, strlen(text))
 				if (description[0] == 0): mm_error(p.doc, p.pos, c"empty TreeView description")
 				char* label = mm_style_trim(text, 0, marker)
+				free(text)
+				text = label
+			if (index_of(text, c"icon(") >= 0): mm_error(p.doc, p.pos, c"TreeView icons are not yet supported")
+			# `:::name` (space separated, after the label) assigns CSS classes.
+			int styled = index_of(text, c":::")
+			if (styled >= 0):
+				classes = mm_tree_classes(p, text, styled + 3)
+				char* label = mm_style_trim(text, 0, styled)
 				free(text)
 				text = label
 		else if (index_of(text, c":::") >= 0 || index_of(text, c" ##") >= 0 || index_of(text, c"icon(") >= 0 || index_of(text, c"├") >= 0 || index_of(text, c"└") >= 0 || index_of(text, c"│") >= 0): mm_error(p.doc, p.pos, c"outline annotations and tree command prefixes are not yet supported")
@@ -100,12 +128,16 @@ void mm_outline_body(mm_parser* p):
 		if (index < 0):
 			free(text)
 			free(description)
+			if (classes != 0): free(classes)
 			break
 		mm_node* n = p.doc.nodes[index]
 		free(n.label)
 		n.label = text
 		free(n.annotation)
 		n.annotation = description
+		if (classes != 0):
+			free(n.style_classes)
+			n.style_classes = classes
 		if (text[0] == 0): mm_error(p.doc, p.pos, c"empty outline label")
 		if (depth > 0): n.parent = parents[depth - 1]
 		if (depth == indents.length):

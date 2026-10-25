@@ -34,6 +34,9 @@ int mm_workflow_node(mm_parser* p, int lane):
 		free(n.label)
 		n.label = mm_until(p, close)
 		if ((doubled || stadium) && mm_match(p, c")") == 0): mm_error(p.doc, p.pos, c"expected closing shape parenthesis")
+	if (p.doc.kind == MM_SWIMLANE && mm_match(p, c":::")):
+		mm_style_inline(p, n)
+		mm_space(p)
 	return index
 
 void mm_workflow_edge(mm_parser* p, int from, int to, char* label, int dashed, int arrow):
@@ -52,7 +55,8 @@ void mm_workflow_edge(mm_parser* p, int from, int to, char* label, int dashed, i
 void mm_swimlane_body(mm_parser* p):
 	int scope = -1
 	while (mm_peek(p) != 0 && p.doc.error == 0):
-		if (mm_metadata(p)):
+		if (mm_metadata(p) || mm_style_statement(p)):
+			if (mm_end(p) == 0): mm_error(p.doc, p.pos, c"unsupported swimlane syntax")
 			mm_separators(p)
 			continue
 		if (mm_keyword(p, c"subgraph")):

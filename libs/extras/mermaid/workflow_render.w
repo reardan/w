@@ -104,11 +104,14 @@ mm_scene* mm_workflow_render(mm_document* d):
 			box.w = minor
 			box.h = major + header
 		lane_offset = lane_offset + minor + 20
+		int lane_start = s.items.length
 		mm_draw(s, MM_BOX, box.x, box.y, box.x + box.w, box.y + box.h, 0, c"")
 		mm_text(s, box.x + 16, box.y + 16, group.label)
 		if (horizontal): mm_line(s, box.x + header, box.y, box.x + header, box.y + box.h, 0)
 		else: mm_line(s, box.x, box.y + header, box.x + box.w, box.y + header, 0)
+		if (d.kind == MM_SWIMLANE): mm_style_node(d, s, group, lane_start)
 	for mm_edge* e in d.edges:
+		int edge_start = s.items.length
 		mm_bounds* a = s.nodes[e.from_node]
 		mm_bounds* b = s.nodes[e.to_node]
 		int ax = a.x + a.w / 2
@@ -179,16 +182,23 @@ mm_scene* mm_workflow_render(mm_document* d):
 			if (e.arrow): mm_framework_arrow(s, bx, my, bx, by, e.dashed)
 			else: mm_line(s, bx, my, bx, by, e.dashed)
 		mm_text(s, mx + 8, my - 20, e.label)
+		if (d.kind == MM_SWIMLANE): mm_style_edge(d, s, e, edge_start)
 	for i in range(d.nodes.length):
 		mm_node* n = d.nodes[i]
 		if (n.group): continue
 		mm_bounds* b = s.nodes[i]
-		if (n.shape == 2): mm_ellipse(s, b.x + b.w / 2, b.y + b.h / 2, b.w / 2, b.h / 2)
-		else if (n.shape == 3):
-			mm_line(s, b.x, b.y + b.h / 2, b.x + b.w / 2, b.y, 0)
-			mm_line(s, b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, 0)
-			mm_line(s, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h, 0)
-			mm_line(s, b.x + b.w / 2, b.y + b.h, b.x, b.y + b.h / 2, 0)
+		int style_start = s.items.length
+		# Circles and decisions are fillable polygons, so fill styles reach them.
+		if (n.shape == 2 || n.shape == 3):
+			mm_draw(s, MM_POLYGON, b.x, b.y, b.x + b.w, b.y + b.h, 0, c"")
+			mm_primitive* outline = s.items[s.items.length - 1]
+			if (n.shape == 3): outline.points = list[int]{b.x, b.y + b.h / 2, b.x + b.w / 2, b.y, b.x + b.w, b.y + b.h / 2, b.x + b.w / 2, b.y + b.h}
+			else:
+				outline.points = new list[int]
+				for k in range(32):
+					float angle = cast(float, k) * 6.2831853 / 32.0
+					outline.points.push(b.x + b.w / 2 + cast(int, fcos(angle) * cast(float, b.w) / 2.0))
+					outline.points.push(b.y + b.h / 2 + cast(int, fsin(angle) * cast(float, b.h) / 2.0))
 		else: mm_draw(s, MM_BOX, b.x, b.y, b.x + b.w, b.y + b.h, n.shape == 1, c"")
 		if (d.kind == MM_EVENT_MODEL):
 			mm_text(s, b.x + 12, b.y + 12, n.annotation)
@@ -197,6 +207,7 @@ mm_scene* mm_workflow_render(mm_document* d):
 				mm_member* m = n.members[j]
 				mm_text(s, b.x + 12, b.y + 64 + j * 24, m.text)
 		else: mm_text(s, b.x + (b.w - strlen(n.label) * 8) / 2, b.y + (b.h - 16) / 2, n.label)
+		if (d.kind == MM_SWIMLANE): mm_style_node(d, s, n, style_start)
 	__w_list_free(cast(__w_list*, sizes))
 	if (s.width < 240): s.width = 240
 	if (s.height < 160): s.height = 160

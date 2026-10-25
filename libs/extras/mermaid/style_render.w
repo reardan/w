@@ -45,6 +45,7 @@ void mm_style_node(mm_document* d, mm_scene* scene, mm_node* node, int start):
 	for i in range(start, scene.items.length):
 		mm_primitive* primitive = scene.items[i]
 		primitive.node_style = 1
+		primitive.user_mask = primitive.user_mask | resolved.mask
 		if (primitive.role == MM_ROLE_NONE): primitive.role = role
 		mm_style_merge(&primitive.style, &resolved)
 
@@ -145,9 +146,9 @@ void mm_style_role_paint(list[int] values, mm_primitive* p, mm_style* resolved):
 	else if (role == MM_ROLE_TINT):
 		stroke = values[MM_THEME_SCALE + p.series % 12]
 		fill = mm_theme_adjust(stroke, 0, 0, p.tint)
-	if (fill != -3 && p.kind != MM_TEXT): resolved.fill = fill
-	if (stroke != -3): resolved.stroke = stroke
-	if (text != -3 && p.kind == MM_TEXT): resolved.text = text
+	if (fill != -3 && p.kind != MM_TEXT && (p.user_mask & MM_STYLE_FILL) == 0): resolved.fill = fill
+	if (stroke != -3 && (p.user_mask & MM_STYLE_STROKE) == 0): resolved.stroke = stroke
+	if (text != -3 && p.kind == MM_TEXT && (p.user_mask & MM_STYLE_TEXT) == 0): resolved.text = text
 
 # The neo look: themed node outlines take the theme's drop shadow and, where
 # the theme enables it, the primaryBorderColor -> secondaryBorderColor gradient.
@@ -195,7 +196,7 @@ void mm_style_scene(mm_document* d, mm_scene* scene):
 			resolved.text = d.palette_label
 			if (primitive.role == MM_ROLE_TITLE): resolved.text = values[MM_THEME_TITLE]
 		mm_style_merge(&resolved, &primitive.style)
-		if (primitive.role >= MM_ROLE_NOTE && primitive.node_style == 0): mm_style_role_paint(values, primitive, &resolved)
+		if (primitive.role >= MM_ROLE_NOTE): mm_style_role_paint(values, primitive, &resolved)
 		if (primitive.role == MM_ROLE_SERIES):
 			int base = MM_THEME_SCALE
 			if (d.kind == MM_PIE): base = MM_THEME_PIE

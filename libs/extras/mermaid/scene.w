@@ -35,6 +35,9 @@ struct mm_primitive:
 	int effects
 	# Lightness offset for tinted series fills (treemap depth palettes).
 	int tint
+	# Style mask bits set by the document's own styles (classes, style, :::);
+	# theme role paint never overrides them.
+	int user_mask
 
 struct mm_bounds:
 	int x

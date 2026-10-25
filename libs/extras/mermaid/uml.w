@@ -305,6 +305,13 @@ void mm_class_statement(mm_parser* p, int scope, int depth):
 	else if (mm_match(p, c":")): mm_class_member(p, index)
 	else: mm_class_relation(p, index, scope)
 
+# `State:::class`; upstream does not style start or end states either.
+void mm_state_class(mm_parser* p, mm_node* n):
+	if (n.shape >= 4 && n.shape != 6):
+		mm_error(p.doc, p.pos, c"start and end states cannot be styled")
+		return
+	mm_style_inline(p, n)
+
 void mm_state_statement(mm_parser* p, int scope, int depth):
 	int declaration = mm_keyword(p, c"state")
 	char* label = 0
@@ -344,11 +351,15 @@ void mm_state_statement(mm_parser* p, int scope, int depth):
 			free(n.annotation)
 			n.annotation = annotation
 			mm_space(p)
+		if (mm_match(p, c":::")):
+			mm_state_class(p, n)
+			mm_space(p)
 		if (mm_match(p, c"{")): mm_group_body(p, index, depth)
 		return
 	if (mm_match(p, c":::")):
-		mm_error(p.doc, p.pos, c"state styling is not supported")
-		return
+		mm_state_class(p, n)
+		mm_space(p)
+		if (mm_end(p) || mm_peek(p) == '}'): return
 	if (mm_match(p, c":")):
 		if (n.shape != 1): mm_error(p.doc, p.pos, c"special state cannot have a description")
 		free(n.label)
@@ -363,6 +374,9 @@ void mm_state_statement(mm_parser* p, int scope, int depth):
 	if (mm_match(p, c"-->") == 0): mm_error(p.doc, p.pos, c"expected state transition -->")
 	e.to_node = mm_uml_node(p, scope, 1)
 	mm_space(p)
+	if (e.to_node >= 0 && mm_match(p, c":::")):
+		mm_state_class(p, p.doc.nodes[e.to_node])
+		mm_space(p)
 	if (mm_match(p, c":")):
 		free(e.label)
 		e.label = mm_uml_text(p)

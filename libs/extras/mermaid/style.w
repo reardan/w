@@ -456,7 +456,8 @@ int mm_style_statement(mm_parser* p):
 	return 1
 
 void mm_style_validate(mm_document* d):
-	if (d.kind == MM_MINDMAP): return
+	# Mindmap and TreeView classes name stylesheet (themeCSS) classes; unknown names are ignored.
+	if (d.kind == MM_MINDMAP || d.kind == MM_TREEVIEW): return
 	for mm_node* node in d.nodes:
 		int start = 0
 		int length = strlen(node.style_classes)
