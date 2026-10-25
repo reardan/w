@@ -245,9 +245,10 @@ int agent_diagonal_edges(mm_scene* s):
 	return count
 
 void test_agentflow_edge_ids_metadata_and_curves():
-	char* text = c"agentflow-beta LR\nA e1@--> B\nA e2@-.-> C\nA --> D\ne1@{animate: true, animation: fast, curve: step}\ne2@{ curve: linear }\n"
+	char* text = c"agentflow-beta LR\nA e1@--> B\nA e2@-.-> C\nA --> D\nA --> E\ne1@{animate: true, animation: fast, curve: step}\ne2@{ curve: linear }\n"
 	mm_document* d = agent_parse(text)
-	assert_equal(3, d.edges.length)
+	# Four targets: none sits level with the centered source, so every curve shows.
+	assert_equal(4, d.edges.length)
 	mm_edge* e = d.edges[0]
 	assert_strings_equal(c"e1", e.id)
 	assert_equal(MM_CURVE_STEP, e.curve)
@@ -266,12 +267,12 @@ void test_agentflow_edge_ids_metadata_and_curves():
 	int linear = agent_diagonal_edges(s)
 	mm_scene_free(s)
 	mm_document_free(d)
-	d = agent_parse(c"agentflow-beta LR\nA e1@--> B\nA e2@-.-> C\nA --> D\ne1@{curve: step}\ne2@{curve: step}\n")
+	d = agent_parse(c"agentflow-beta LR\nA e1@--> B\nA e2@-.-> C\nA --> D\nA --> E\ne1@{curve: step}\ne2@{curve: step}\n")
 	s = mm_render(d)
 	int step = agent_diagonal_edges(s)
 	mm_scene_free(s)
 	mm_document_free(d)
-	d = agent_parse(c"agentflow-beta LR\nA e1@--> B\nA e2@-.-> C\nA --> D\ne1@{curve: basis}\ne2@{curve: monotoneX}\n")
+	d = agent_parse(c"agentflow-beta LR\nA e1@--> B\nA e2@-.-> C\nA --> D\nA --> E\ne1@{curve: basis}\ne2@{curve: monotoneX}\n")
 	e = d.edges[1]
 	assert_equal(MM_CURVE_BASIS, e.curve)
 	s = mm_render(d)
