@@ -18,7 +18,6 @@ const int llvm_class_none = 0
 const int llvm_class_word = 1
 const int llvm_class_struct = 2
 const int llvm_class_array = 3
-const int llvm_class_slice = 4
 const int llvm_class_void = 5
 
 string_builder* llvm_out
@@ -184,7 +183,8 @@ int llvm_class_of(retained_type* t):
 	# (24, 30) and borrowed records (25, 28) are records by fields below.
 	if (t.pointer_level > 0): return llvm_class_word
 	if (t.kind == 6): return llvm_class_array
-	if (t.kind == 7): return llvm_class_slice
+	# slices (7) and slice values (9) are one word: a {data, length} descriptor's address
+	if ((t.kind == 7) || (t.kind == 9)): return llvm_class_word
 	# string handles, enums and function values are one word
 	if ((t.kind == 8) || (t.kind == 4) || (t.kind == 2)): return llvm_class_word
 	# list (12), map (10) and set (11) handles (see "containers" below)
@@ -249,6 +249,25 @@ int llvm_is_string(int type):
 	if (type < 0): return 0
 	retained_type* t = llvm_type(type)
 	return (t.pointer_level == 0) && (t.kind == 8)
+
+
+# Strings, slices and slice values: a word naming a {data, length}
+# descriptor, the layout a fixed array's header shares.
+int llvm_is_buffer(int type):
+	if (type < 0): return 0
+	retained_type* t = llvm_type(type)
+	return (t.pointer_level == 0) && ((t.kind == 7) || (t.kind == 8) || (t.kind == 9))
+
+
+# An array, slice or slice value converted to a pointer (or cast to a
+# word integer) decays to its data pointer, the descriptor's first word
+# (type_decays_to_pointer, coerce_explicit).
+int llvm_decays(int from, int to):
+	if ((from < 0) || (to < 0)): return 0
+	retained_type* f = llvm_type(from)
+	if ((f.pointer_level != 0) || ((f.kind != 6) && (f.kind != 7) && (f.kind != 9))): return 0
+	retained_type* t = llvm_type(to)
+	return (t.pointer_level > 0) || (t.kind == 0)
 
 
 int llvm_is_char_pointer(int type):
@@ -643,6 +662,7 @@ char* llvm_value(int group, int operand);
 char* llvm_address(int group, int operand);
 int llvm_is_checked_slice(int type);
 # containers (defined below the statements)
+int llvm_operand_type(int group, int operand);
 int llvm_container_op(int op);
 char* llvm_container_expression(int group, int id, retained_node* node);
 char* llvm_list_element(int group, int id, retained_node* node);
@@ -651,6 +671,10 @@ char* llvm_it_slot(int id);
 int llvm_container_prelude_helper(int op, int helper);
 char* llvm_container_prelude(int group, int id, retained_node* node);
 void llvm_container_for(int id);
+# slices, parallel assignment and enum_name (defined after the containers)
+char* llvm_slice_range(int group, int id, retained_node* node);
+char* llvm_parallel_assign(int group, int id, retained_node* node);
+char* llvm_enum_name(int group, int id, retained_node* node);
 
 
 # Bool stores and arguments hold 0 or 1; a C string becomes a string value
@@ -663,6 +687,7 @@ char* llvm_convert(int id, char* value, int from, int to):
 	# A string literal or f-string value decays to its data pointer where a
 	# char* is wanted (type_decays_to_pointer).
 	if (llvm_is_char_pointer(to) && (from >= 0) && llvm_named(retained_types[from], c"string value")): return llvm_load(-1, llvm_pointer(value))
+	if (llvm_decays(from, to) && (llvm_type(to).pointer_level > 0)): return llvm_load(-1, llvm_pointer(value))
 	if (llvm_is_string(to) && llvm_is_char_pointer(from)):
 		if ((c"str_from_cstr" in llvm_function_names) == 0):
 			llvm_error(id, c"string conversion without str_from_cstr")
@@ -745,7 +770,7 @@ char* llvm_address(int group, int operand):
 			char* descriptor = llvm_address(group, node.left)
 			data = llvm_offset(descriptor, c"16")
 			length = llvm_number(llvm_type(left.semantic_type).array_length)
-		else if ((llvm_class(left.semantic_type) == llvm_class_slice) || llvm_is_checked_slice(left.semantic_type)):
+		else if (llvm_is_buffer(left.semantic_type) || llvm_is_checked_slice(left.semantic_type)):
 			# A checked slice is the {data, length} pair itself (a record).
 			char* descriptor = llvm_pointer(llvm_value(group, node.left))
 			data = llvm_pointer(llvm_load(-1, descriptor))
@@ -926,13 +951,20 @@ char* llvm_call(int group, int id, retained_node* node):
 	char* target = c"null"
 	int count = values.length
 	if (node.op == 'F'):
-		target = llvm_pointer(callee_value)
+		# Coerce through the signature's parameter types when it has them.
+		int callee_type = llvm_operand_type(group, node.left)
+		if (callee_type >= 0):
+			retained_type* signature = llvm_type(callee_type)
+			if ((signature.parameters.length == 0) && (signature.target >= 0)): signature = llvm_type(signature.target)
+			for i in range(count):
+				if (i < signature.parameters.length): values[i] = llvm_convert(id, values[i], types[i], signature.parameters[i])
 		retained_node callee_node
 		retained_node_load(llvm_node_id(group, node.left), &callee_node)
-		retained_type* signature = llvm_type(callee_node.semantic_type)
-		if ((signature.parameters.length == 0) && (signature.target >= 0)): signature = llvm_type(signature.target)
+		retained_type* owner_signature = llvm_type(callee_node.semantic_type)
+		if ((owner_signature.parameters.length == 0) && (owner_signature.target >= 0)): owner_signature = llvm_type(owner_signature.target)
 		for i in range(count):
-			if (i < signature.parameters.length): llvm_owner_move(group, operands[i], signature.parameters[i])
+			if (i < owner_signature.parameters.length): llvm_owner_move(group, operands[i], owner_signature.parameters[i])
+		target = llvm_pointer(callee_value)
 	else:
 		char* callee_name = node.payload_text
 		int linkage = llvm_generic_callee(node)
@@ -1399,6 +1431,8 @@ char* llvm_value_inner(int group, int operand):
 			llvm_helper_call(id, c"__w_print_nl", values)
 		values.free()
 		return result
+	if (op == 'Z'): return llvm_slice_range(group, id, &node)
+	if (op == 'A'): return llvm_parallel_assign(group, id, &node)
 	if (llvm_container_op(op)): return llvm_container_expression(group, id, &node)
 	if ((op == 'C') || (op == 'F') || (op == 'G') || (op == 'W')):
 		if ((op == 'C') && (node.binding < 0)):
@@ -1516,6 +1550,7 @@ char* llvm_value_inner(int group, int operand):
 			llvm_error(id, c"cast target")
 			return c"0"
 		if (llvm_is_bool(type)): return llvm_extend(llvm_bool(value))
+		if (llvm_decays(llvm_operand_type(group, node.left), type)): value = llvm_load(-1, llvm_pointer(value))
 		retained_node source
 		retained_node_load(llvm_node_id(group, node.left), &source)
 		# Float casts are coerce()'s conversions; a float cast to a narrow
@@ -2197,7 +2232,7 @@ char* llvm_list_it(int group, int id, retained_node* node):
 # any/all 14/15, lines()/words() 16/17, split 18, join 19 and len 21.
 int llvm_container_prelude_helper(int op, int helper):
 	if (op == 'P'): return helper == 4
-	return ((helper >= 6) && (helper <= 8)) || ((helper >= 14) && (helper <= 19)) || (helper == 21)
+	return ((helper >= 6) && (helper <= 8)) || ((helper >= 14) && (helper <= 21))
 
 
 char* llvm_container_prelude(int group, int id, retained_node* node):
@@ -2214,6 +2249,7 @@ char* llvm_container_prelude(int group, int id, retained_node* node):
 			none.free()
 		return c"0"
 	int helper = node.value
+	if (helper == 20): return llvm_enum_name(group, id, node)
 	if (helper == 21):
 		# len(x): strlen of a char*, else the length word of a container,
 		# string or buffer
@@ -2355,7 +2391,7 @@ void llvm_container_for(int id):
 	char* custom = 0
 	if ((kind == 0) && (type >= 0)):
 		retained_type* t = llvm_type(type)
-		if ((t.pointer_level == 0) && ((t.kind == 6) || (t.kind == 7))):
+		if ((t.pointer_level == 0) && ((t.kind == 6) || (t.kind == 7) || (t.kind == 9))):
 			sequence = 1
 			element = t.target
 			if (llvm_class(element) != llvm_class_word): llvm_error_at(id, c"for loop over", t.name)
@@ -2465,6 +2501,91 @@ void llvm_container_for(int id):
 	variables.free()
 
 # --- end of containers -------------------------------------------------------
+
+
+# --- slices, parallel assignment and enum_name ------------------------------
+# base[start:end] over an array, slice or string, as grammar/postfix_expr.w
+# lowers it: trap unless 0 <= start <= end <= length, then return a fresh
+# malloc'd {data + start * element size, end - start} descriptor that
+# names the range in place (the legacy, unchecked-slice ABI).
+char* llvm_slice_range(int group, int id, retained_node* node):
+	int base_type = llvm_operand_type(group, node.left)
+	int element_size = 1
+	if (llvm_is_string(base_type) == 0):
+		retained_type* t = llvm_type(base_type)
+		if ((t.target >= 0) && (llvm_type(t.target).size > 1)): element_size = llvm_type(t.target).size
+	char* descriptor = llvm_pointer(llvm_value(group, node.left))
+	char* start = c"0"
+	if (node.right >= 0): start = llvm_value(group, node.right)
+	char* end = 0
+	if (node.high >= 0): end = llvm_value(group, node.high)
+	char* length = llvm_load(-1, llvm_offset(descriptor, c"8"))
+	if (end == 0): end = length
+	char* invalid = llvm_instruction(c"icmp slt", start, c"0")
+	invalid = llvm_op(c"or", c"i1", invalid, llvm_instruction(c"icmp slt", end, c"0"))
+	invalid = llvm_op(c"or", c"i1", invalid, llvm_instruction(c"icmp sgt", end, length))
+	invalid = llvm_op(c"or", c"i1", invalid, llvm_instruction(c"icmp sgt", start, end))
+	llvm_trap_if(invalid)
+	char* offset = start
+	if (element_size > 1): offset = llvm_instruction(c"mul", start, llvm_number(element_size))
+	char* data = llvm_instruction(c"add", llvm_load(-1, descriptor), offset)
+	char* result = llvm_call1(id, c"malloc", llvm_number(16))
+	char* slot = llvm_pointer(result)
+	llvm_store_width(8, data, slot)
+	llvm_store_width(8, llvm_instruction(c"sub", end, start), llvm_offset(slot, c"8"))
+	return result
+
+
+# a, b = b, a (emit_ast_parallel): every target's address, then every
+# value, then the stores. The 'A' node chains 'T' pairs (left = target,
+# right = value) through next_arg.
+char* llvm_parallel_assign(int group, int id, retained_node* node):
+	list[char*] addresses = new list[char*]
+	list[char*] values = new list[char*]
+	list[int] types = new list[int]
+	int pair = node.left
+	while ((pair >= 0) && (llvm_failed == 0)):
+		retained_node p
+		retained_node_load(llvm_node_id(group, pair), &p)
+		retained_node target
+		retained_node_load(llvm_node_id(group, p.left), &target)
+		if ((llvm_place(&target) == 0) || (llvm_class(target.semantic_type) != llvm_class_word)): llvm_error(id, c"parallel assignment target")
+		else:
+			addresses.push(llvm_address(group, p.left))
+			types.push(target.semantic_type)
+		pair = p.next_arg
+	pair = node.left
+	int i = 0
+	while ((pair >= 0) && (llvm_failed == 0)):
+		retained_node p
+		retained_node_load(llvm_node_id(group, pair), &p)
+		values.push(llvm_convert(id, llvm_value(group, p.right), llvm_operand_type(group, p.right), types[i]))
+		i = i + 1
+		pair = p.next_arg
+	if (llvm_failed == 0):
+		for j in range(addresses.length): llvm_store(id, types[j], values[j], addresses[j])
+	addresses.free()
+	values.free()
+	types.free()
+	return c"0"
+
+
+# enum_name(e) (prelude_emit_enum_name): __w_enum_name over a table of
+# "value\0name\0" entries for the enum's constants, ending in an empty one.
+char* llvm_enum_name(int group, int id, retained_node* node):
+	retained_type* t = llvm_type(llvm_operand_type(group, node.left))
+	string_builder* table = string_new()
+	for entry in t.constants:
+		char* digits = itoa(entry.value)
+		string_append(table, digits)
+		string_append_char(table, 0)
+		string_append(table, entry.name)
+		string_append_char(table, 0)
+		free(digits)
+	char* text = llvm_address_value(llvm_string_constant(table.data, table.length))
+	string_free(table)
+	return llvm_call2(id, c"__w_enum_name", text, llvm_value(group, node.left))
+# --- end of slices, parallel assignment and enum_name ------------------------
 
 
 void llvm_statement(int id):
