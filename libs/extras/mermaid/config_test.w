@@ -43,9 +43,9 @@ void test_mermaid_theme_derivation_from_primary_color():
 	assert_equal(0x0000ff, v[MM_THEME_PIE + 1])
 	assert_equal(0x1affff, v[MM_THEME_PIE + 2])
 	assert_equal(0xff0000, v[MM_THEME_SCALE])
-	# Untouched roots keep the native base palette.
-	assert_equal(0xffffff, v[MM_THEME_BACKGROUND])
-	assert_equal(0x937044, v[MM_THEME_LINE])
+	# Untouched roots keep the upstream base palette.
+	assert_equal(0xf4f4f4, v[MM_THEME_BACKGROUND])
+	assert_equal(0x0b0b0b, v[MM_THEME_LINE])
 	mm_scene* s = mm_render(d)
 	int nodes = 0
 	int clusters = 0
@@ -71,26 +71,48 @@ void test_mermaid_theme_derivation_from_primary_color():
 	mm_scene_free(s)
 	mm_document_free(d)
 
-void test_mermaid_native_themes_without_variables_are_unchanged():
+# Spot values from upstream mermaid@12.2.0 theme-*.js, in mm_style_theme_id order.
+void test_mermaid_upstream_theme_palettes():
 	list[char*] themes = list[char*]{c"default", c"base", c"dark", c"forest", c"neutral", c"neo", c"neo-dark", c"redux", c"redux-dark", c"redux-color", c"redux-dark-color"}
-	for char* theme in themes:
+	list[int] fills = list[int]{0xececff, 0xfff4dd, 0x1f2020, 0xcde498, 0xeeeeee, 0xffffff, 0x2a2020, 0xffffff, 0x111113, 0xffffff, 0x111113}
+	list[int] borders = list[int]{0x9370db, 0xeeddbb, 0xcccccc, 0x13540c, 0x999999, 0x000000, 0xcccccc, 0x28253d, 0xffffff, 0x28253d, 0xffffff}
+	list[int] clusters = list[int]{0xffffde, 0xf6f9ff, 0x474949, 0xcdffb2, 0xfcfcfc, 0xffffff, 0x201f1f, 0xf9f9fb, 0x1e1a2e, 0xf9f9fb, 0x1e1a2e}
+	list[int] labels = list[int]{0xededed, 0xf4ddff, 0x585858, 0xe8e8e8, 0xffffff, 0xcccccc, 0x474949, 0xcccccc, 0x474949, 0xcccccc, 0x474949}
+	list[int] pies = list[int]{0xececff, 0xfff4dd, 0x0b0000, 0xcde498, 0xf4f4f4, 0xececfe, 0x1f2020, 0xececfe, 0x1f2020, 0xf4a8ff, 0xf4a8ff}
+	list[int] scales = list[int]{0x8686ff, 0xffcb5d, 0x1f2020, 0xb9d970, 0x555555, 0x7373f8, 0x000000, 0xbfbfbf, 0x000000, 0xf4a8ff, 0xf4a8ff}
+	list[int] notes = list[int]{0xfff5ad, 0xfff5ad, 0x474949, 0xfff5ad, 0x666666, 0xfff5ad, 0xfff5ad, 0xfff5ad, 0xfef9c3, 0xfff5ad, 0xfef9c3}
+	for i in range(themes.length):
 		string_builder* source = string_from(c"---\nconfig:\n  theme: ")
-		string_append(source, theme)
+		string_append(source, themes[i])
 		string_append(source, c"\n---\nflowchart TB\nsubgraph G\nA -->|go| B\nend\n")
 		mm_document* d = config_parse(source.data)
 		list[int] v = d.theme_values
-		assert_equal(d.palette.fill, v[MM_THEME_CLUSTER_BKG])
-		assert_equal(d.palette.stroke, v[MM_THEME_CLUSTER_BORDER])
-		assert_equal(-1, v[MM_THEME_EDGE_LABEL_BKG])
-		for i in range(12):
-			assert_equal(mm_style_series_color(i), v[MM_THEME_PIE + i])
-			assert_equal(mm_style_series_color(i), v[MM_THEME_SCALE + i])
+		assert_equal(fills[i], d.palette.fill)
+		assert_equal(borders[i], d.palette.stroke)
+		assert_equal(clusters[i], v[MM_THEME_CLUSTER_BKG])
+		assert_equal(labels[i], v[MM_THEME_EDGE_LABEL_BKG])
+		assert_equal(pies[i], v[MM_THEME_PIE])
+		assert_equal(scales[i], v[MM_THEME_SCALE])
+		assert_equal(notes[i], v[MM_THEME_NOTE_BKG])
+		# The neo and redux themes default to upstream's 14px label font.
+		if (i >= 5): assert_equal(14, d.font_size)
+		else: assert_equal(0, d.font_size)
 		mm_scene* s = mm_render(d)
-		for mm_primitive* p in s.items: asserts(c"no label boxes without edgeLabelBackground", p.role != MM_ROLE_LABEL_BOX)
+		int boxes = 0
+		for mm_primitive* p in s.items:
+			if (p.role == MM_ROLE_LABEL_BOX): boxes = boxes + 1
+		assert_equal(1, boxes)
 		mm_scene_free(s)
 		mm_document_free(d)
 		string_free(source)
 	__w_list_free(cast(__w_list*, themes))
+	__w_list_free(cast(__w_list*, fills))
+	__w_list_free(cast(__w_list*, borders))
+	__w_list_free(cast(__w_list*, clusters))
+	__w_list_free(cast(__w_list*, labels))
+	__w_list_free(cast(__w_list*, pies))
+	__w_list_free(cast(__w_list*, scales))
+	__w_list_free(cast(__w_list*, notes))
 
 void test_mermaid_theme_variables_with_any_theme_and_dark_mode():
 	mm_document* d = config_parse(c"---\nconfig:\n  theme: dark\n  themeVariables:\n    primaryColor: '#336699'\n    clusterBkg: navy\n    titleColor: '#fa0'\n    edgeLabelBackground: '#222'\n---\nflowchart TB\n")
@@ -101,7 +123,7 @@ void test_mermaid_theme_variables_with_any_theme_and_dark_mode():
 	assert_equal(0x000080, v[MM_THEME_CLUSTER_BKG])
 	assert_equal(0xffaa00, v[MM_THEME_TITLE])
 	assert_equal(0x222222, v[MM_THEME_EDGE_LABEL_BKG])
-	assert_equal(0x0f172a, d.background)
+	assert_equal(0x333333, d.background)
 	mm_document_free(d)
 	d = config_parse(c"---\nconfig:\n  themeVariables:\n    darkMode: true\n    primaryColor: '#336699'\n    secondaryColor: '#808080'\n---\nflowchart TB\n")
 	assert_equal(1, d.theme)
@@ -113,7 +135,7 @@ void test_mermaid_theme_variables_with_any_theme_and_dark_mode():
 	assert_equal(0x123456, d.theme_values[MM_THEME_TITLE])
 	assert_equal(0x010203, d.palette.stroke)
 	assert_equal(0xfefefe, d.palette.fill)
-	assert_equal(0x937044, d.theme_values[MM_THEME_CLUSTER_BORDER])
+	assert_equal(0xcfdbf3, d.theme_values[MM_THEME_CLUSTER_BORDER])
 	mm_document_free(d)
 
 void test_mermaid_title_and_series_palettes():
@@ -135,7 +157,7 @@ void test_mermaid_title_and_series_palettes():
 		if (p.kind != MM_POLYGON): continue
 		if (sectors == 0): assert_equal(0x010101, mm_paint_fill(p))
 		if (sectors == 1): assert_equal(0x020202, mm_paint_fill(p))
-		if (sectors == 2): assert_equal(mm_style_series_color(2), mm_paint_fill(p))
+		if (sectors == 2): assert_equal(0xe1efc0, mm_paint_fill(p))
 		sectors = sectors + 1
 	assert_equal(3, sectors)
 	mm_scene_free(s)
@@ -160,7 +182,7 @@ void test_mermaid_init_directives():
 		mm_document* d = config_parse(source)
 		assert_equal(3, d.theme)
 		assert_equal(0x00ff00, d.palette.fill)
-		assert_equal(0x0f172a, d.background)
+		assert_equal(0x333333, d.background)
 		assert_equal(2, d.nodes.length)
 		mm_scene* s = mm_render(d)
 		asserts(c"directive renders", s != 0)
@@ -263,7 +285,7 @@ void test_mermaid_configuration_diagnostics():
 	config_reject(c"%%{init: {\"theme\": \"da\\\"rk\"}}%%\nflowchart LR\nA\n", c"escaped configuration strings are not supported")
 	config_reject(c"%%{init: {'themeVariables': {'pie': ['#fff']}}}%%\nflowchart LR\nA\n", c"configuration arrays are not supported")
 	config_reject(c"%%{init: {'theme': 'dark', 'theme': 'forest'}}%%\nflowchart LR\nA\n", c"duplicate theme setting")
-	config_reject(c"%%{init: {'fontFamily': 'serif'}}%%\nflowchart LR\nA\n", c"unsupported configuration key")
+	config_reject(c"%%{init: {'fontFamily': 'serif;x'}}%%\nflowchart LR\nA\n", c"fontFamily takes a CSS font-family list of names, quotes, commas and spaces")
 	config_reject(c"%%{init: {'a': {'b': {'c': {'d': 1}}}}}%%\nflowchart LR\nA\n", c"configuration nesting too deep")
 	config_reject(c"%%{init: {'look': 'handDrawn'}}%%\nflowchart LR\nA\n", c"unsupported look; supported: classic, neo")
 	config_reject(c"%%{init: {'flowchart': {'curve': 'cardinal'}}}%%\nflowchart LR\nA\n", c"unsupported flowchart curve; supported: basis, linear, step, stepBefore, stepAfter")

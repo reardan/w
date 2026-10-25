@@ -376,7 +376,8 @@ int mm_config_scalar_entry(mm_document* d, mm_config_entry* e):
 # key is the path below "config.".
 void mm_config_key(mm_document* d, mm_config_entry* e, char* key, list[int] user, int* theme, int* dark):
 	char* value = e.value
-	if (strcmp(key, c"packet") == 0 || strcmp(key, c"themeVariables") == 0 || strcmp(key, c"flowchart") == 0 || strcmp(key, c"kanban") == 0):
+	if (mm_style_config_key(d, key, value, e.map, e.offset)): return
+	if (strcmp(key, c"packet") == 0 ||strcmp(key, c"themeVariables") == 0 || strcmp(key, c"flowchart") == 0 || strcmp(key, c"kanban") == 0):
 		if (e.map == 0): mm_error(d, e.offset, c"configuration section must be a mapping")
 	else if (strcmp(key, c"theme") == 0):
 		if (mm_config_scalar_entry(d, e)):

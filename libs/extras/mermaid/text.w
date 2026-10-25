@@ -25,6 +25,8 @@ struct mm_text_block:
 	list[int] line_widths
 	int width
 	int height
+	# Baseline-to-baseline pitch at the size the block was measured with.
+	int pitch
 
 # Tokens are unbroken text pieces (kind 0), spaces (1) and line breaks (2).
 struct mm_text_token:
@@ -76,9 +78,9 @@ void mm_text_token_push(list[mm_text_token*] tokens, int kind, int start, int en
 	t.style = style
 	tokens.push(t)
 
-list[mm_text_token*] mm_text_tokens(char* text, int start, int end, int markdown):
+list[mm_text_token*] mm_text_tokens(char* text, int start, int end, int markdown, int base):
 	list[mm_text_token*] tokens = new list[mm_text_token*]
-	int style = 0
+	int style = base
 	int italic_marker = 0
 	int piece = start
 	int i = start
@@ -121,7 +123,7 @@ list[mm_text_token*] mm_text_tokens(char* text, int start, int end, int markdown
 		if (kind == 1 || kind == 2): mm_text_token_push(tokens, kind, i, i, style)
 		style = style ^ toggle
 		# A line break ends any emphasis that never closed on its line.
-		if (kind == 2): style = 0
+		if (kind == 2): style = base
 		i = i + skip
 		piece = i
 	mm_text_token_push(tokens, 0, piece, end, style)
@@ -140,8 +142,10 @@ void mm_text_run_add(mm_text_block* b, string_builder* text, int style, int line
 	b.runs.push(r)
 	string_free(text)
 
-# Lay out label; max_width <= 0 disables automatic wrapping.
-mm_text_block* mm_text_layout(char* label, int max_width):
+# Lay out label; max_width <= 0 disables automatic wrapping. base holds the
+# MM_TEXT_BOLD / MM_TEXT_ITALIC flags a style (font-weight, font-style) gives
+# the whole label; Markdown emphasis toggles relative to it.
+mm_text_block* mm_text_layout_style(char* label, int max_width, int base):
 	mm_text_block* b = new mm_text_block()
 	b.runs = new list[mm_text_run*]
 	b.line_widths = new list[int]
@@ -152,7 +156,7 @@ mm_text_block* mm_text_layout(char* label, int max_width):
 	if (markdown):
 		start = 1
 		end = end - 1
-	list[mm_text_token*] tokens = mm_text_tokens(label, start, end, markdown)
+	list[mm_text_token*] tokens = mm_text_tokens(label, start, end, markdown, base)
 	int line = 0
 	int line_width = 0
 	int pending_space = 0
@@ -213,8 +217,12 @@ mm_text_block* mm_text_layout(char* label, int max_width):
 	__w_list_free(cast(__w_list*, tokens))
 	for int w in b.line_widths:
 		if (w > b.width): b.width = w
-	b.height = b.line_widths.length * MM_TEXT_PITCH - (MM_TEXT_PITCH - MM_TEXT_LINE)
+	b.pitch = mm_text_pitch()
+	b.height = b.line_widths.length * b.pitch - (b.pitch - mm_text_line_height())
 	return b
+
+mm_text_block* mm_text_layout(char* label, int max_width):
+	return mm_text_layout_style(label, max_width, 0)
 
 int mm_text_lines(mm_text_block* b):
 	return b.line_widths.length
@@ -234,7 +242,7 @@ void mm_text_draw(mm_scene* s, mm_text_block* b, int x, int y, int centered):
 	for mm_text_run* r in b.runs:
 		int left = x
 		if (centered): left = x - b.line_widths[r.line] / 2
-		mm_text_styled(s, left + r.x, y + r.line * MM_TEXT_PITCH, r.text, r.style)
+		mm_text_styled(s, left + r.x, y + r.line * b.pitch, r.text, r.style)
 
 # Lay out, draw and free in one step; returns the block height drawn.
 int mm_label(mm_scene* s, int x, int y, char* label, int max_width, int centered):

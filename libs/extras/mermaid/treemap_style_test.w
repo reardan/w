@@ -46,7 +46,7 @@ void test_treemap_class_definitions_style_cells():
 
 void test_treemap_class_diagnostics():
 	list[char*] bad = list[char*]{c"treemap-beta\n\"A\": 1:::missing\n", c"treemap-beta\n\"A\": 1:::\n", c"treemap-beta\n\"A\": 1\nclassDef x colour:red\n", c"treemap-beta\n\"A\": 1\nstyle A fill:red\n"}
-	list[char*] messages = list[char*]{c"assigned style class has no classDef", c"expected entity or node identifier", c"unsupported style property; supported: fill, stroke, color, stroke-width", c"treemap labels must be quoted"}
+	list[char*] messages = list[char*]{c"assigned style class has no classDef", c"expected entity or node identifier", c"unsupported style property; supported: fill, stroke, color, stroke-width, stroke-dasharray, opacity, fill-opacity, font-weight, font-style, font-size, font-family, rx, ry", c"treemap labels must be quoted"}
 	for i in range(bad.length):
 		mm_document* d = mm_parse(bad[i], strlen(bad[i]))
 		assert_strings_equal(messages[i], d.error)

@@ -196,7 +196,7 @@ void test_mermaid_item_limits():
 	string_free(s)
 
 void test_mermaid_rejects_configuration_and_other_shapes():
-	list[char*] cases = list[char*]{c"%%{init: {\"fontSize\": 12}}%%\nflowchart TB\nA", c"flowchart TB\nA[(database)]", c"erDiagram\nA {\n9bad id\n}"}
+	list[char*] cases = list[char*]{c"%%{init: {\"look\": \"handDrawn\"}}%%\nflowchart TB\nA", c"flowchart TB\nA[(database)]", c"erDiagram\nA {\n9bad id\n}"}
 	for char* source in cases:
 		mm_document* d = mm_parse(source, strlen(source))
 		asserts(c"unsupported semantics rejected", d.error != 0)

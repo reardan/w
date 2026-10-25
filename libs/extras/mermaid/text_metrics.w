@@ -16,12 +16,42 @@ const int MM_TEXT_ASCENT = 14
 const int MM_TEXT_LINE = 16
 const int MM_TEXT_PITCH = 20
 
+# Current label font size in px while a document renders (0 = MM_TEXT_SIZE).
+# mm_render sets it from fontSize configuration or a node's font-size style;
+# every advance, line box and pitch below scales from the 16px tables.
+int mm_text_px
+
+int mm_text_size():
+	if (mm_text_px <= 0): return MM_TEXT_SIZE
+	return mm_text_px
+
+# Selects the size for later measurements; returns the previous setting.
+int mm_text_set_size(int px):
+	int previous = mm_text_px
+	if (px == MM_TEXT_SIZE): px = 0
+	mm_text_px = px
+	return previous
+
+int mm_text_scale(int value):
+	int size = mm_text_size()
+	if (size == MM_TEXT_SIZE): return value
+	return (value * size + MM_TEXT_SIZE - 1) / MM_TEXT_SIZE
+
+int mm_text_line_height():
+	return mm_text_size()
+
+int mm_text_pitch():
+	return mm_text_scale(MM_TEXT_PITCH)
+
+int mm_text_ascent():
+	return mm_text_scale(MM_TEXT_ASCENT)
+
 char* mm_text_advances(int style):
 	if (style & MM_TEXT_BOLD): return c"efijjomeffgjefeejjjjjjjjjjffjjjkqmmmmlkmmejmknmmlmmlkmlpllkfefjjfjkjkjfkkeejeokkkkgjfkjmjjigegj"
 	return c"eegjjoldffgjefeejjjjjjjjjjeejjjjqllmmlkmmeiljnmmlmmlkmlpllkeeeijfjjijjejjeeienjjjjfiejimiiifefj"
 
 # East Asian wide and emoji blocks take a full em; combining marks none.
-int mm_text_codepoint_width(int cp, int style):
+int mm_text_codepoint_width16(int cp, int style):
 	if (cp >= 32 && cp < 127): return mm_text_advances(style)[cp - 32] - 'a'
 	if (cp < 32 || cp == 127): return 0
 	if (cp >= 0x300 && cp < 0x370): return 0
@@ -29,6 +59,11 @@ int mm_text_codepoint_width(int cp, int style):
 	if ((cp >= 0x1100 && cp < 0x1160) || (cp >= 0x2e80 && cp < 0xa4d0) || (cp >= 0xac00 && cp < 0xd7a4) || (cp >= 0xf900 && cp < 0xfb00) || (cp >= 0xfe30 && cp < 0xfe50) || (cp >= 0xff00 && cp < 0xff61) || (cp >= 0xffe0 && cp < 0xffe7) || (cp >= 0x1f300 && cp < 0x1fb00) || cp >= 0x20000): return MM_TEXT_SIZE
 	if (style & MM_TEXT_BOLD): return 10
 	return 9
+
+# Advance at the current size; scaled advances round up, so a run can only
+# be overestimated.
+int mm_text_codepoint_width(int cp, int style):
+	return mm_text_scale(mm_text_codepoint_width16(cp, style))
 
 # Decode one UTF-8 sequence at text[i]; invalid bytes count as U+FFFD.
 int mm_text_next(char* text, int i, int end, int* cp):

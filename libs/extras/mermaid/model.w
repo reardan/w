@@ -48,6 +48,19 @@ struct mm_style:
 	int stroke
 	int text
 	int width
+	# stroke-dasharray dash/gap in px (dash 0 = explicitly solid).
+	int dash
+	int gap
+	# opacity and fill-opacity in hundredths (0..100).
+	int opacity
+	int fill_opacity
+	# MM_TEXT_BOLD / MM_TEXT_ITALIC values for font-weight / font-style.
+	int font
+	int font_size
+	# 1-based index into mm_document.style_fonts.
+	int family
+	# rx/ry corner radius in px.
+	int radius
 
 # Data chart values use signed fixed-point thousandths. Counts and bit indices
 # are plain integers; interpretation is determined by document and item kind.
@@ -255,6 +268,11 @@ struct mm_document:
 	# 0 classic, 1 neo (accepted as a classic approximation).
 	int look
 	mm_gantt_settings* gantt
+	# Owned font-family names referenced by mm_style.family (1-based).
+	list[char*] style_fonts
+	# Configured fontFamily (owned, 0 = native default) and fontSize in px (0 = 16).
+	char* font_family
+	int font_size
 
 mm_document* mm_document_new():
 	mm_document* d = new mm_document()
@@ -268,6 +286,7 @@ mm_document* mm_document_new():
 	d.narrative = new list[mm_narrative_event*]
 	d.boxes = new list[mm_narrative_event*]
 	d.style_definitions = new list[mm_style_class*]
+	d.style_fonts = new list[char*]
 	d.nodes = new list[mm_node*]
 	d.edges = new list[mm_edge*]
 	return d
@@ -399,6 +418,9 @@ void mm_document_free(mm_document* d):
 		free(definition.name)
 		free(definition)
 	__w_list_free(cast(__w_list*, d.style_definitions))
+	for char* font in d.style_fonts: free(font)
+	__w_list_free(cast(__w_list*, d.style_fonts))
+	if (d.font_family != 0): free(d.font_family)
 	free(d.source)
 	free(d.title)
 	free(d.accessibility_title)

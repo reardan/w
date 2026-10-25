@@ -499,6 +499,7 @@ mm_document* mm_parse_selected(char* source, int length, int selected):
 	if (envelope.error != 0): return envelope
 	int start = envelope.source_start
 	mm_document* d = mm_parse_raw(envelope.source + start, envelope.source_end - start)
+	mm_style_adopt(d, envelope)
 	mm_style_validate(d)
 	d.palette = envelope.palette
 	d.background = envelope.background
